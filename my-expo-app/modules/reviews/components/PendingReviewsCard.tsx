@@ -4,7 +4,8 @@
 // Tıklayınca bekleyen işleri SIRAYLA değerlendirme modalı açılır.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, Animated, Easing } from 'react-native';
-import { Star, ArrowUpRight } from 'lucide-react-native';
+import { Star, ArrowUpRight, ArrowUpLeft } from 'lucide-react-native';
+import { isRTL } from '../../../core/i18n';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { AlertPillX } from '../../../core/ui/AlertPillX';
 import { listMyPendingReviews } from '../api';
@@ -93,7 +94,7 @@ export function PendingReviewsCard({
         }}>
           {/* Ambient glow */}
           <Animated.View style={{
-            position: 'absolute', top: -30, right: -30,
+            position: 'absolute', top: -30, end: -30,
             width: 160, height: 160, borderRadius: 80,
             backgroundColor: '#FFFFFF',
             opacity: glowOpacity, transform: [{ scale: glowScale }],
@@ -108,15 +109,15 @@ export function PendingReviewsCard({
               <View className="flex-row items-center" style={{ gap: 6 }}>
                 <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.9)' }} />
                 <Text style={{ fontSize: 9, fontWeight: '500', color: 'rgba(255,255,255,0.9)', letterSpacing: 0.5, textTransform: 'uppercase' }}>Değerlendir</Text>
-                <Text style={{ fontSize: 22, fontWeight: '300', letterSpacing: -0.5, lineHeight: 24, color: '#FFF', marginLeft: 4 }}>
+                <Text style={{ fontSize: 22, fontWeight: '300', letterSpacing: -0.5, lineHeight: 24, color: '#FFF', marginStart: 4 }}>
                   {count}
                 </Text>
-                <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.9)', marginLeft: 2 }}>iş değerlendirilmeyi bekliyor</Text>
+                <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.9)', marginStart: 2 }}>iş değerlendirilmeyi bekliyor</Text>
               </View>
             </View>
 
             <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' }}>
-              <ArrowUpRight size={14} color="#FFFFFF" strokeWidth={1.8} />
+              {isRTL() ? <ArrowUpLeft size={14} color="#FFFFFF" strokeWidth={1.8} /> : <ArrowUpRight size={14} color="#FFFFFF" strokeWidth={1.8} />}
             </View>
           </View>
         </Animated.View>

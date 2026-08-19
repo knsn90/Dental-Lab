@@ -2,7 +2,8 @@ import { localeTag } from '../../../core/i18n';
 // OrderReviewsSection — lab/admin tarafı: bir işe gelen değerlendirmeleri salt-okunur gösterir (Faz 4).
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, Pressable, ActivityIndicator, Image } from 'react-native';
-import { Star, CornerDownRight } from 'lucide-react-native';
+import { Star, CornerDownRight, CornerDownLeft } from 'lucide-react-native';
+import { isRTL } from '../../../core/i18n';
 import { DS } from '../../../core/theme/dsTokens';
 import { hexA } from '../../../core/theme/stationPalette';
 import { REVIEW_DIMENSIONS } from '../constants';
@@ -136,7 +137,9 @@ function LabReplyBlock({ review, accent, onUpdated }: { review: OrderReview; acc
       <View style={{ backgroundColor: hexA(accent, 0.06), borderRadius: 10, padding: 10, gap: 6 }}>
         {review.lab_reply ? (
           <View style={{ flexDirection: 'row', gap: 6 }}>
-            <CornerDownRight size={14} color={accent} strokeWidth={1.8} style={{ marginTop: 1 }} />
+            {isRTL()
+              ? <CornerDownLeft size={14} color={accent} strokeWidth={1.8} style={{ marginTop: 1 }} />
+              : <CornerDownRight size={14} color={accent} strokeWidth={1.8} style={{ marginTop: 1 }} />}
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 11, fontWeight: '700', color: accent, marginBottom: 2 }}>Lab yanıtı</Text>
               <Text style={{ fontSize: 13, color: DS.ink[700], lineHeight: 18 }}>{review.lab_reply}</Text>

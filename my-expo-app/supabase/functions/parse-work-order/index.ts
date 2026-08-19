@@ -57,11 +57,21 @@ interface ParsedWorkOrder {
   shade: string | null;
   impression_type: string | null;
   notes: string | null;
+  // ── Yeni form alanları (2026-08 redesign) ──
+  // Eski formlarda yoklar; okunamazsa null döner ve akış aynen çalışır.
+  patient_gender: 'kadın' | 'erkek' | null;
+  patient_dob: string | null;          // YYYY-MM-DD
+  delivery_method: 'kurye' | 'elden' | 'kargo' | null;
+  scan_bodies_delivered: boolean | null;
+  form_no: string | null;              // mükerrer fotoğrafı ayırt etmek için
+  /** "İşlem Satırları" tablosu — bir siparişte farklı dişe farklı işlem. */
+  items: Array<{ work_type: string | null; tooth_numbers: number[]; shade: string | null }>;
   /** Her alan için güven seviyesi — UI sarı/kırmızı uyarı için */
   confidence: Record<
     'clinic_id' | 'doctor_name' | 'patient_name' | 'order_date' | 'delivery_date' |
     'urgency' | 'tooth_numbers' | 'work_type' | 'shade' |
-    'impression_type' | 'notes',
+    'impression_type' | 'notes' | 'patient_gender' | 'patient_dob' |
+    'delivery_method' | 'items',
     Confidence
   >;
   /** Genel okunabilirlik notu (varsa kullanıcıya gösterilir) */
@@ -141,8 +151,28 @@ const WORK_ORDER_TOOL = {
       tooth_numbers:   { type: 'array', items: { type: 'integer' }, description: 'FDI diş numaraları; işaretli yoksa []' },
       work_type:       { type: ['string', 'null'] },
       shade:           { type: ['string', 'null'], description: 'Vita kodu (A1/A2/…) veya el yazısı renk' },
-      impression_type: { type: ['string', 'null'], enum: ['Klasik', 'Dijital', 'Putty', null] },
+      // "Manuel" yeni formun etiketi ("Manuel (Ölçü)"); Klasik/Putty eski
+      // formlar ve serbest metin için korunuyor.
+      impression_type: { type: ['string', 'null'], enum: ['Manuel', 'Klasik', 'Dijital', 'Putty', null] },
       notes:           { type: ['string', 'null'] },
+      patient_gender:  { type: ['string', 'null'], enum: ['kadın', 'erkek', null] },
+      patient_dob:     { type: ['string', 'null'], description: 'YYYY-MM-DD (form YYYY/AA/GG sırasıyla basar)' },
+      delivery_method: { type: ['string', 'null'], enum: ['kurye', 'elden', 'kargo', null] },
+      scan_bodies_delivered: { type: ['boolean', 'null'] },
+      form_no:         { type: ['string', 'null'], description: 'Sağ üstteki Form No hanesi' },
+      items: {
+        type: 'array',
+        description: '"İşlem Satırları" tablosundaki dolu satırlar; tablo boşsa []',
+        items: {
+          type: 'object',
+          properties: {
+            work_type:     { type: ['string', 'null'] },
+            tooth_numbers: { type: 'array', items: { type: 'integer' } },
+            shade:         { type: ['string', 'null'] },
+          },
+          required: ['work_type', 'tooth_numbers', 'shade'],
+        },
+      },
       confidence: {
         type: 'object',
         properties: {
@@ -150,9 +180,12 @@ const WORK_ORDER_TOOL = {
           order_date: CONF_ENUM, delivery_date: CONF_ENUM, urgency: CONF_ENUM,
           tooth_numbers: CONF_ENUM, work_type: CONF_ENUM, shade: CONF_ENUM,
           impression_type: CONF_ENUM, notes: CONF_ENUM,
+          patient_gender: CONF_ENUM, patient_dob: CONF_ENUM,
+          delivery_method: CONF_ENUM, items: CONF_ENUM,
         },
         required: ['clinic_id', 'doctor_name', 'patient_name', 'order_date', 'delivery_date',
-                   'urgency', 'tooth_numbers', 'work_type', 'shade', 'impression_type', 'notes'],
+                   'urgency', 'tooth_numbers', 'work_type', 'shade', 'impression_type', 'notes',
+                   'patient_gender', 'patient_dob', 'delivery_method', 'items'],
       },
       overall_note: { type: ['string', 'null'] },
       alternatives: {
@@ -170,7 +203,8 @@ const WORK_ORDER_TOOL = {
       },
     },
     required: ['clinic_id', 'doctor_name', 'patient_name', 'order_date', 'delivery_date',
-               'urgency', 'tooth_numbers', 'work_type', 'shade', 'impression_type', 'notes', 'confidence'],
+               'urgency', 'tooth_numbers', 'work_type', 'shade', 'impression_type', 'notes',
+               'patient_gender', 'patient_dob', 'delivery_method', 'items', 'confidence'],
   },
 };
 
@@ -236,7 +270,11 @@ Kurallar:
 - shade/renk: "A2", "3M3" (3D-Master), "BL2" gibi kodlar geçerli — aynen yaz.
 - tooth_numbers: FDI numaraları; metinde yazılan diş no'larını al ("36-46" → metindeki haliyle
   geçen numaraları ver, uydurma/aralık şişirme yapma).
-- work_type: "implant üstü zirkonyum" gibi ifadelerde en yakın kategoriyi seç (Zirkonyum vb.).
+- work_type: metinde geçen işlem adını olabildiğince AYNEN yaz ("zirkon kron",
+  "screw retained" gibi). Jenerik kategoriye çevirme — sistemdeki hizmet adıyla
+  eşleştirilecek.
+- items: metin birden fazla işlem/diş grubu tarif ediyorsa her birini ayrı ver;
+  tek bir iş varsa [] bırak ve work_type/tooth_numbers alanlarını kullan.
 - İmplant sistemi/marka (ör. Neodent), özel istekler → notes alanına yaz.
 - clinic_id yalnızca metinde uuid varsa; klinik ADI clinic_id DEĞİLDİR (adı doctor/notes bağlamında bırak).
 ${senderNote ? '\nGönderenin ek notu (dikkate al): ' + senderNote : ''}
@@ -360,6 +398,27 @@ Format:
 [el ile doldurulmuş hasta adı, doktor adı, tarih, renk vb. — okuyabildiğin kadar.
  Eğer el yazısı bir dental terime benziyorsa (örn. "okluzal", "vida", "zirkon"), büyük olasılıkla odur.]
 
+=== FORM YERLEŞİMİ (2026-08 sürümü — bölümleri bu sırayla ara) ===
+  1. ÜST BANT: solda lab adı/logosu, ortada "İŞ EMRİ FORMU" + KLİNİK adı,
+     sağda QR ("WORKORDER:<uuid>") ve altında "FORM NO" tarağı.
+  2. KÜNYE KUTUSU: "Hekim" satırı (klinik hekimleri kutucuk olarak basılı +
+     "Diğer:" yazma satırı), altında Hasta Adı · Cinsiyet (K/E) ·
+     Doğum Tar. (YYYY/AA/GG) · Tarih (GG/AA/YYYY) · Teslim Tar. (GG/AA/YYYY).
+     ⚠ Doğum tarihi ile diğer iki tarihin hane sırası FARKLI.
+  3. ACİLİYET bandı: Normal / Acil / Çok Acil.
+  4. DİŞ ŞEMASI: iki anatomik ark YAN YANA — SOLDA üst çene (11-28),
+     SAĞDA alt çene (31-48). Her dişin üstünde FDI numarası yazılı.
+     İşaretli = boyanmış/daire içine alınmış diş.
+  5. İŞLEM TİPİ: laboratuvarın hizmet kataloğu, KATEGORİ BAŞLIKLARI altında
+     (ör. "DİŞ ÜSTÜ HİZMETLER", "İMPLANT ÜSTÜ HİZMETLER"). Etiketleri
+     BİREBİR yaz — bunlar sistemdeki hizmet adlarıdır.
+  6. İŞLEM SATIRLARI: üç sütunlu tablo (İşlem | Diş No | Renk), el yazısı.
+  7. RENK: Vita Classic (A1…D4) + Vita 3D-Master (0M1…5M3) kutucukları,
+     altında "Diğer renk" yazma satırı.
+  8. ÖLÇÜ YÖNTEMİ: Manuel (Ölçü) / Dijital (Tarama).
+  9. TESLİM: Kurye / Elden / Kargo + "Scan body teslim edildi".
+ 10. ÖZEL NOTLAR: çizgili yazma alanı.
+
 === İŞARETLİ KUTULAR ===
 [hangi checkbox işaretli — örn: "İşlem Tipi: Metal-Porselen işaretli", "Aciliyet: Acil işaretli", vb.
  İşaretler X, ✓, dolu kutu, daire içine alma olabilir — hepsini "işaretli" say.]
@@ -437,15 +496,42 @@ Sadece JSON döndür, başka metin yazma.
   "tooth_numbers": number[],
                       // FDI numaraları — transkripsiyondaki "DİŞ ŞEMASI" bölümünden al.
                       // İşaretli olan dişler. Hiçbir şey işaretli değilse [].
-  "work_type": "Zirkonyum"|"Metal-Porselen"|"E-max"|"Tam Seramik"|"İmplant Üstü"|"Hareketli Protez"|"Geçici Kron"|"Onlay/Inlay"|null,
-                      // Transkripsiyondaki "İŞARETLİ KUTULAR"da İşlem Tipi bölümünden al.
-                      // "Metal Seramik Kron" gibi varyasyonlar da Metal-Porselen kabul et.
+  "work_type": string|null,
+                      // İŞARETLİ olan işlem kutusunun etiketini BİREBİR kopyala.
+                      // ⚠ KRİTİK: Form, laboratuvarın KENDİ hizmet kataloğunu basar
+                      // (kategori başlıkları altında, ör. "İMPLANT ÜSTÜ HİZMETLER" →
+                      // "Screw Retained Kron", "DİŞ ÜSTÜ HİZMETLER" → "Zirkon Kron / Köprü").
+                      // Bu adlar sistemdeki hizmet kayıtlarıyla eşleştirilecek; kendi
+                      // kelimenle YAZMA, jenerik kategoriye ÇEVİRME. "Zirkon Kron / Köprü"
+                      // gördüysen aynen "Zirkon Kron / Köprü" yaz — "Zirkonyum" DEĞİL.
   "shade": string|null,
-                      // Vita renk skalası — A1/A2/A3/A3.5/A4/B1/B2/B3/C1/C2/D2/D3 veya el yazısı renk.
-  "impression_type": "Klasik"|"Dijital"|"Putty"|null,
-                      // Ölçü yöntemi.
+                      // Renk. Form iki skalayı da basar:
+                      //   Vita Classic: A1 A2 A3 A3.5 A4 B1 B2 B3 B4 C1 C2 C3 C4 D2 D3 D4
+                      //   Vita 3D-Master: 0M1…5M3 (ör. 2M2, 3L1.5, 4R2.5)
+                      // İşaretli kutunun kodunu aynen ver. Altındaki "Diğer renk" yazma
+                      // satırı doluysa onu kullan.
+  "impression_type": "Manuel"|"Dijital"|null,
+                      // "Ölçü Yöntemi" bölümünde işaretli kutu:
+                      // "Manuel (Ölçü)" → "Manuel", "Dijital (Tarama)" → "Dijital".
   "notes": string|null,
                       // Özel notlar — el yazısı. Transkripsiyondaki notları kullan.
+                      // İmplant sistemi/markası da buraya yazılıyor.
+  "patient_gender": "kadın"|"erkek"|null,
+                      // Künyedeki "Cinsiyet" alanında K veya E kutusu işaretli.
+  "patient_dob": string|null,
+                      // YYYY-MM-DD. Künyedeki "Doğum Tar." tarağı — form YYYY/AA/GG
+                      // sırasıyla basar (diğer iki tarih GG/AA/YYYY, karıştırma).
+  "delivery_method": "kurye"|"elden"|"kargo"|null,
+                      // "Teslim" bölümünde işaretli kutu.
+  "scan_bodies_delivered": boolean|null,
+                      // "Teslim" bölümündeki "Scan body teslim edildi" kutusu.
+  "form_no": string|null,
+                      // Sağ üstte, QR altındaki "Form No" tarağına yazılan numara.
+  "items": [ { "work_type": string|null, "tooth_numbers": number[], "shade": string|null } ],
+                      // "İŞLEM SATIRLARI" tablosu (sütunlar: İşlem | Diş No | Renk).
+                      // Farklı dişlere farklı işlem yapılacaksa hekim buraya yazar.
+                      // SADECE DOLU satırları ver; tablo boşsa []. work_type yine
+                      // katalog etiketiyle birebir olmalı.
   "confidence": {
     "clinic_id":       "high"|"medium"|"low"|"missing",
     "doctor_name":     "high"|"medium"|"low"|"missing",
@@ -457,7 +543,11 @@ Sadece JSON döndür, başka metin yazma.
     "work_type":       "high"|"medium"|"low"|"missing",
     "shade":           "high"|"medium"|"low"|"missing",
     "impression_type": "high"|"medium"|"low"|"missing",
-    "notes":           "high"|"medium"|"low"|"missing"
+    "notes":           "high"|"medium"|"low"|"missing",
+    "patient_gender":  "high"|"medium"|"low"|"missing",
+    "patient_dob":     "high"|"medium"|"low"|"missing",
+    "delivery_method": "high"|"medium"|"low"|"missing",
+    "items":           "high"|"medium"|"low"|"missing"
   },
   "overall_note": string|null
                       // Genel okunabilirlik özeti — transkripsiyondaki "GENEL NOT" bölümünden esinlen.

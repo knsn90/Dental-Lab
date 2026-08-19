@@ -3,6 +3,7 @@
 // (OrderDetailMobileHandoff) TEK KAYNAKTAN render edilsin diye çıkarıldı.
 // JSX gövdesi V2'deki orijinalle BİREBİR aynı; sadece bağımlılıklar prop olarak alınır.
 import React from 'react';
+import { isRTL } from '../../../core/i18n';
 import { View, Text, Pressable, Platform, useWindowDimensions } from 'react-native';
 import {
   ChevronUp, ChevronDown, CircleCheck, Circle, AlertTriangle,
@@ -33,13 +34,15 @@ export function StageWorkflowTimeline(p: any) {
               <>
                 <Pressable
                   onPress={() => setStagesExpanded((v: boolean) => !v)}
-                  style={({ hovered }: any) => ({
+                  /* NOT: obje-stil ZORUNLU — NativeWind v4'te fonksiyon-stilli
+                     Pressable native'de stili düşürüp satırı column'a çeviriyor;
+                     "12/12" rozeti tam-genişlik bar oluyordu (web'de sorun yok). */
+                  style={{
                     paddingHorizontal: isNarrow ? 14 : 24, paddingVertical: 14,
                     borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)',
                     flexDirection: 'row', alignItems: 'center', gap: 8,
-                    backgroundColor: hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
                     ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                  })}
+                  }}
                 >
                   <Text className="text-[10px] font-semibold uppercase" style={{ letterSpacing: 1.2, color: 'rgba(255,255,255,0.55)' }}>
                     Aşama Detayları
@@ -146,7 +149,10 @@ export function StageWorkflowTimeline(p: any) {
                       // Açılır menü paneli — panele uygun lacivert; ince satırda sağa, aktif kartta sola hizalı.
                       const renderDropdown = (alignRight: boolean) => (menuOpen && menu.length > 0) ? (
                         <View style={{
-                          position: 'absolute', top: '100%', ...(alignRight ? { right: 0 } : { left: 0 }),
+                          // RTL: tetikleyici aynalandığı için hizayı da çevir; yoksa menü
+                          // karşı tarafa açılıp kapsayıcının dışında kırpılıyor.
+                          position: 'absolute', top: '100%',
+                          ...((alignRight !== isRTL()) ? { right: 0 } : { left: 0 }),
                           marginTop: 5, minWidth: 184, zIndex: 50, borderRadius: 9, overflow: 'hidden',
                           backgroundColor: (panelTheme === 'clinic' || panelTheme === 'doctor') ? '#3A3D4C' : '#2A3B57',
                           borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', ...dropShadow,
@@ -222,7 +228,7 @@ export function StageWorkflowTimeline(p: any) {
                           {/* Content — DENSITY: AKTİF/sanal = büyük kart; tamamlanan/bekleyen = ince tek satır */}
                           {compact && isNarrow ? (
                             /* MOBİL kompakt: 2 satır — isim (tam) + rozet/Detay üstte · teknisyen + durum altta */
-                            <View className={`flex-1 ml-2.5 ${isLast ? '' : 'pb-2.5'}`} style={{ paddingTop: 1, gap: 3 }}>
+                            <View className={`flex-1 ms-2.5 ${isLast ? '' : 'pb-2.5'}`} style={{ paddingTop: 1, gap: 3 }}>
                               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
                                 <Text numberOfLines={1} style={{ flex: 1, fontSize: 12.5, fontWeight: '700', color: isCompleted ? 'rgba(255,255,255,0.82)' : isRejected ? '#FCA5A5' : 'rgba(255,255,255,0.55)' }}>{stationName}</Text>
                                 {isRejected ? (<View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, backgroundColor: 'rgba(220,38,38,0.20)' }}><Text style={{ fontSize: 9, fontWeight: '800', color: '#FCA5A5', letterSpacing: 0.5 }}>RED</Text></View>) : null}
@@ -237,7 +243,7 @@ export function StageWorkflowTimeline(p: any) {
                               ) : null}
                             </View>
                           ) : compact ? (
-                            <View className={`flex-1 ml-2.5 ${isLast ? '' : 'pb-2.5'}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 28 }}>
+                            <View className={`flex-1 ms-2.5 ${isLast ? '' : 'pb-2.5'}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 28 }}>
                               <View style={{ flex: 1, flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', columnGap: 6 }}>
                                 <Text numberOfLines={1} style={{ fontSize: 12.5, fontWeight: '700', color: isCompleted ? 'rgba(255,255,255,0.82)' : isRejected ? '#FCA5A5' : 'rgba(255,255,255,0.52)', flexShrink: 1 }}>{stationName}</Text>
                                 {techName ? <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '500', color: 'rgba(255,255,255,0.45)', flexShrink: 1 }}>· {techName}</Text> : null}
@@ -251,7 +257,7 @@ export function StageWorkflowTimeline(p: any) {
                             </View>
                           ) : (
                           <View
-                            className={`flex-1 ml-2.5 ${isLast && !isActive ? '' : 'pb-4'}`}
+                            className={`flex-1 ms-2.5 ${isLast && !isActive ? '' : 'pb-4'}`}
                             style={isActive ? {
                               backgroundColor: 'rgba(255,255,255,0.08)',
                               borderRadius: 12,
@@ -334,7 +340,7 @@ export function StageWorkflowTimeline(p: any) {
                                       <Pressable
                                         onPress={doComplete}
                                         disabled={stageCompleting}
-                                        style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingLeft: 13, paddingRight: menu.length > 0 ? 9 : 13, paddingVertical: 8, ...(Platform.OS === 'web' ? { cursor: stageCompleting ? 'wait' : 'pointer' } as any : {}) }}
+                                        style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingStart: 13, paddingEnd: menu.length > 0 ? 9 : 13, paddingVertical: 8, ...(Platform.OS === 'web' ? { cursor: stageCompleting ? 'wait' : 'pointer' } as any : {}) }}
                                       >
                                         <Check size={14} color="#4ADE80" strokeWidth={2.6} />
                                         <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#4ADE80' }}>Tamamla</Text>

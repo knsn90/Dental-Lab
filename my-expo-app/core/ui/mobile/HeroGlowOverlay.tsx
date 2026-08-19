@@ -29,7 +29,7 @@ export function HeroGlowOverlay({ color, variant = 'warm' }: HeroGlowOverlayProp
           // @ts-ignore
           pointerEvents="none"
           style={{
-            position: 'absolute', top: -40, right: -40, width: 200, height: 200, borderRadius: 100,
+            position: 'absolute', top: -40, end: -40, width: 200, height: 200, borderRadius: 100,
             // @ts-ignore
             backgroundImage: `radial-gradient(circle at center, ${color}CC, ${color}55 35%, transparent 70%)`,
           } as any}
@@ -42,7 +42,7 @@ export function HeroGlowOverlay({ color, variant = 'warm' }: HeroGlowOverlayProp
           // @ts-ignore
           pointerEvents="none"
           style={{
-            position: 'absolute', top: -50, right: -50, width: 260, height: 260, borderRadius: 130,
+            position: 'absolute', top: -50, end: -50, width: 260, height: 260, borderRadius: 130,
             // @ts-ignore
             backgroundImage: `radial-gradient(circle at center, ${color}CC, ${color}55 35%, transparent 70%)`,
           } as any}
@@ -51,7 +51,7 @@ export function HeroGlowOverlay({ color, variant = 'warm' }: HeroGlowOverlayProp
           // @ts-ignore
           pointerEvents="none"
           style={{
-            position: 'absolute', bottom: -60, left: -40, width: 180, height: 180, borderRadius: 90,
+            position: 'absolute', bottom: -60, start: -40, width: 180, height: 180, borderRadius: 90,
             // @ts-ignore
             backgroundImage: `radial-gradient(circle at center, ${color}66, transparent 65%)`,
           } as any}

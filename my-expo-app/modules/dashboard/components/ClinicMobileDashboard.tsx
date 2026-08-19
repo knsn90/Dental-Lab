@@ -5,6 +5,7 @@
 //           → aksiyon gerektiren / hekim listesi → quick actions
 
 import React from 'react';
+import { firstName as displayFirstName } from '../../../core/util/personName';
 import { View, Text, Pressable, ScrollView, Platform, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,6 +14,8 @@ import {
   AlertTriangle, ArrowUpRight,
 } from 'lucide-react-native';
 import Svg, { Defs, Pattern, Rect, Line } from 'react-native-svg';
+import { isRTL, fmtWeekdayDayMonth } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { MOBILE_PANEL_THEMES, useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { DS } from '../../../core/theme/dsTokens';
 import { HeroGlowOverlay } from '../../../core/ui/mobile/HeroGlowOverlay';
@@ -28,11 +31,17 @@ import { RecentOrdersMobile, type RecentOrderItem } from './RecentOrdersMobile';
 
 const CLINIC = MOBILE_PANEL_THEMES.klinik;
 
+// Gün/ay adları getDay()/getMonth() ile indekslenen SABİT dizi → sözlüğe takılmaz,
+// tek tek autoT() ile çevrilir (Miladi ay adları; Şemsi takvim kullanılmaz).
+const DAY_NAMES   = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
+const MONTH_NAMES = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+// Hafta şeridi kolon etiketleri — ilk harf gösterilir; çeviri sonrası ilk harf alınır
+// (fa: دوشنبه → د), böylece Türkçe görünüm birebir korunur.
+const WEEK_STRIP_DAYS = ['Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi','Pazar'];
+
 function clinicTodayLabel(): string {
   const d = new Date();
-  const days   = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
-  const months = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
-  return `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]}`;
+  return fmtWeekdayDayMonth(d);
 }
 
 export interface ClinicDelayedCase {
@@ -89,9 +98,10 @@ export function ClinicMobileDashboard(props: ClinicMobileDashboardProps) {
   const T = useMobileTokens();
 
   const rawName = (profile?.full_name ?? '').trim();
-  const firstName = rawName.split(' ')[0] ?? '';
-  const clinic    = props.clinicName ?? (profile as any)?.clinic_name ?? 'Kliniğiniz';
-  const greeting  = props.greeting   ?? `Merhaba, ${clinic}.`;
+  const firstName = displayFirstName(rawName);
+  const rtl = isRTL();
+  const clinic    = props.clinicName ?? (profile as any)?.clinic_name ?? autoT('Kliniğiniz');
+  const greeting  = props.greeting   ?? `${autoT('Merhaba,')} ${clinic}.`;
   const today     = props.todayLabel ?? defaultToday();
 
   const live = {
@@ -149,7 +159,9 @@ export function ClinicMobileDashboard(props: ClinicMobileDashboardProps) {
         <NewOrderCTACard
           accentColor={CLINIC.primary}
           onPress={props.onNewOrder}
-          kicker={(props.thisMonthNew ?? 0) > 0 ? `BU AY ${props.thisMonthNew} YENİ SİPARİŞ` : 'YENİ SİPARİŞ'}
+          kicker={(props.thisMonthNew ?? 0) > 0
+            ? `${autoT('BU AY')} ${props.thisMonthNew} ${autoT('YENİ SİPARİŞ')}`
+            : autoT('YENİ SİPARİŞ')}
           rightSlot={faceScanOk ? <FaceScanQuickAction variant="card" accentColor={CLINIC.primary} /> : undefined}
         />
       )}
@@ -214,10 +226,10 @@ export function ClinicMobileDashboard(props: ClinicMobileDashboardProps) {
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               {[
-                { l: 'Alındı', n: live.stages.alindi },
-                { l: 'Üretim', n: live.stages.uretim },
-                { l: 'KK',     n: live.stages.kk },
-                { l: 'Hazır',  n: live.stages.hazir },
+                { l: autoT('Alındı'), n: live.stages.alindi },
+                { l: autoT('Üretim'), n: live.stages.uretim },
+                { l: autoT('KK'),     n: live.stages.kk },
+                { l: autoT('Hazır'),  n: live.stages.hazir },
               ].map((s, i) => (
                 <View key={i} style={{ alignItems: 'center', gap: 6 }}>
                   {/* Rakam daire içinde — desktop tasarımı */}
@@ -251,28 +263,28 @@ export function ClinicMobileDashboard(props: ClinicMobileDashboardProps) {
       {/* ═══ KPI 2-grid — Aktif sipariş + (Onay bekleyen varsa) ya da Hekim sayısı ═══ */}
       <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingBottom: 16 }}>
         <Kpi
-          label="Aktif sipariş"
+          label={autoT('Aktif sipariş')}
           numericValue={props.activeOrders ?? 0}
-          delta={`${props.thisMonthNew ?? 0} bu ay`}
-          sub={`${props.overdueCount ?? 0} geciken`}
+          delta={`${props.thisMonthNew ?? 0} ${autoT('bu ay')}`}
+          sub={`${props.overdueCount ?? 0} ${autoT('geciken')}`}
           deltaColor={T.jade}
           icon={ClipboardList}
         />
         {pendingApprovals > 0 ? (
           <Kpi
-            label="Onay bekleyen"
+            label={autoT('Onay bekleyen')}
             numericValue={pendingApprovals}
-            delta="incele →"
+            delta={autoT('incele →')}
             dark
             accent={CLINIC.primary}
             icon={FileCheck}
           />
         ) : (
           <Kpi
-            label="Hekim"
+            label={autoT('Hekim')}
             numericValue={doctorsCount}
-            delta={doctorsCount > 0 ? 'aktif' : 'hekim yok'}
-            sub={doctorsCount > 0 ? 'klinik kadrosu' : undefined}
+            delta={doctorsCount > 0 ? autoT('aktif') : autoT('hekim yok')}
+            sub={doctorsCount > 0 ? autoT('klinik kadrosu') : undefined}
             deltaColor={T.jade}
             icon={Stethoscope}
           />
@@ -310,7 +322,7 @@ export function ClinicMobileDashboard(props: ClinicMobileDashboardProps) {
 
           return (
             <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-end', height: 110, paddingHorizontal: 2 }}>
-              {['Pa', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct', 'Pz'].map((d, i) => {
+              {WEEK_STRIP_DAYS.map((d, i) => {
                 const n = week[i] ?? 0;
                 const isToday = i === 6;
                 const pct = n > 0 ? Math.min(Math.max((n / SCALE_MAX) * 100, 8), 100) : 0;
@@ -354,7 +366,7 @@ export function ClinicMobileDashboard(props: ClinicMobileDashboardProps) {
                       </View>
                     </View>
                     <Text style={{ fontSize: 10, fontWeight: isToday ? '700' : '500', color: isToday ? T.ink : T.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                      {d[0]}
+                      {autoT(d).charAt(0)}
                     </Text>
                   </View>
                 );
@@ -401,8 +413,8 @@ export function ClinicMobileDashboard(props: ClinicMobileDashboardProps) {
             </Text>
             <Text style={{ fontSize: 11.5, color: T.ink3, marginTop: 2 }}>
               {doctorsCount > 0
-                ? `${doctorsCount} hekim için bekleyen onay veya gecikme yok.`
-                : 'Bekleyen onay veya gecikme yok.'}
+                ? `${doctorsCount} ${autoT('hekim için bekleyen onay veya gecikme yok.')}`
+                : autoT('Bekleyen onay veya gecikme yok.')}
             </Text>
           </View>
         </View>
@@ -434,8 +446,9 @@ export function ClinicMobileDashboard(props: ClinicMobileDashboardProps) {
                     </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                        <Text style={{ fontSize: 14, fontWeight: '600', color: T.ink, flexShrink: 1 }} numberOfLines={1}>{o.patient}</Text>
-                        <Text style={{ fontSize: 10, color: T.ink3, fontFamily: T.mono, flexShrink: 0 }}>{o.id}</Text>
+                        <Text style={{ fontSize: 14, fontWeight: '600', color: T.ink, flexShrink: 1, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{o.patient}</Text>
+                        {/* Sipariş no Latin başlar → RNW dir="auto" ile LTR olur; RTL'de hizayı sabitle */}
+                        <Text style={{ fontSize: 10, color: T.ink3, fontFamily: T.mono, flexShrink: 0, textAlign: rtl ? 'right' : undefined }}>{o.id}</Text>
                       </View>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2, minWidth: 0 }}>
                         {!!o.doctorName && (
@@ -503,7 +516,8 @@ function TopIconButton({ icon: Icon, onPress, badgeDot }:
           {badgeDot && (
             <View style={{
               position: 'absolute',
-              top: 7, right: 7,
+              // `end:` inline stili bu projede güvenilir değil → yönü açıkça seç
+              top: 7, ...(isRTL() ? { left: 7 } : { right: 7 }),
               width: 8, height: 8, borderRadius: 4,
               backgroundColor: T.ruby,
               borderWidth: 1.5, borderColor: T.card,
@@ -575,8 +589,6 @@ function Kpi({ label, numericValue, delta, deltaColor, sub, dark, accent, icon: 
 }
 
 function defaultToday(): string {
-  const days = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
-  const months = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
   const d = new Date();
-  return `${days[d.getDay()]} · ${d.getDate()} ${months[d.getMonth()]}`;
+  return fmtWeekdayDayMonth(d, ' · ');
 }

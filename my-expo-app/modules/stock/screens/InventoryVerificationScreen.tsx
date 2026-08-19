@@ -24,12 +24,13 @@ import {
 import { useRouter, useSegments } from 'expo-router';
 import { safeBack } from '../../../core/util/safeBack';
 import {
-  ChevronLeft, ClipboardList, Inbox, Lock, RefreshCw, Search, TrendingDown, TrendingUp, X,
+  ChevronLeft, ChevronRight, ClipboardList, Inbox, Lock, RefreshCw, Search, TrendingDown, TrendingUp, X,
 } from 'lucide-react-native';
 import { ResponsiveCanvas } from '../../../core/layout/ResponsiveCanvas';
 import { groupByCategory, CategoryHeaderRow } from '../categoryGroup';
 import { DS } from '../../../core/theme/dsTokens';
 import { toast } from '../../../core/ui/Toast';
+import { isRTL } from '../../../core/i18n';
 import {
   listVerifications, fetchVerificationLines, openVerification, saveCount,
   approveVerification, closePeriod,
@@ -240,7 +241,7 @@ export function InventoryVerificationScreen({ accentColor = DS.lab.primary, embe
             opacity: pressed ? 0.6 : 1, ...webCursor,
           })}
         >
-          <ChevronLeft size={16} color={DS.ink[700]} strokeWidth={1.8} />
+          {isRTL() ? <ChevronRight size={16} color={DS.ink[700]} strokeWidth={1.8} /> : <ChevronLeft size={16} color={DS.ink[700]} strokeWidth={1.8} />}
         </Pressable>
         <Text style={{
           fontSize: 10, fontWeight: '500', letterSpacing: 1.2,
@@ -507,13 +508,13 @@ export function InventoryVerificationScreen({ accentColor = DS.lab.primary, embe
                   Ürün
                 </Text>
                 <Text style={{
-                  width: 108, textAlign: 'right', fontSize: 10, fontWeight: '500',
+                  width: 108, textAlign: 'end' as any, fontSize: 10, fontWeight: '500',
                   letterSpacing: 1.2, textTransform: 'uppercase', color: DS.ink[400],
                 }}>
                   Sayım
                 </Text>
                 <Text style={{
-                  width: 120, textAlign: 'right', fontSize: 10, fontWeight: '500',
+                  width: 120, textAlign: 'end' as any, fontSize: 10, fontWeight: '500',
                   letterSpacing: 1.2, textTransform: 'uppercase', color: DS.ink[400],
                 }}>
                   Fark
@@ -547,9 +548,9 @@ export function InventoryVerificationScreen({ accentColor = DS.lab.primary, embe
                       backgroundColor: bg,
                       borderTopWidth: i === 0 ? 0 : 1,
                       borderTopColor: DS.ink[100],
-                      borderLeftWidth: 2,
-                      borderLeftColor: hasVar ? tint(DS.lab.warning, 0.55) : 'transparent',
-                      paddingLeft: 16, paddingRight: 18, paddingVertical: 11,
+                      borderStartWidth: 2,
+                      borderStartColor: hasVar ? tint(DS.lab.warning, 0.55) : 'transparent',
+                      paddingStart: 16, paddingEnd: 18, paddingVertical: 11,
                     }}
                   >
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -590,7 +591,7 @@ export function InventoryVerificationScreen({ accentColor = DS.lab.primary, embe
                           borderRadius: 12, borderWidth: 1,
                           borderColor: l.counted ? tint(accentColor, 0.40) : DS.ink[300],
                           backgroundColor: isDraft ? DS.lab.surface : DS.ink[50],
-                          fontSize: 13, color: DS.ink[900], textAlign: 'right',
+                          fontSize: 13, color: DS.ink[900], textAlign: 'end' as any,
                           ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
                         }}
                       />

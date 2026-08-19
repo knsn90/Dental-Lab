@@ -9,7 +9,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, Pressable, ScrollView, TextInput, Modal, KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { Wallet, Plus, Check, X, Trash2, Users, Calendar, Banknote } from 'lucide-react-native';
+import { Wallet, Plus, Check, X, Trash2, Users, Calendar, Banknote, FileText } from 'lucide-react-native';
 import { supabase } from '../../../core/api/supabase';
 import { toast } from '../../../core/ui/Toast';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,6 +28,7 @@ import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { groupByCurrency, type CurrencyTotal } from '../../../core/money/aggregations';
 import { MoneyMultiX } from '../../../core/money/MoneyMultiX';
 import { formatMoney, CURRENCY_META, SUPPORTED_CURRENCIES, type Currency } from '../../../core/money/currency';
+import { EmployeeStatementModal, type StatementEmployee } from '../components/EmployeeStatementModal';
 
 const DISPLAY = { fontFamily: 'Inter Tight, Inter, system-ui, sans-serif', fontWeight: '300' as const };
 // Katı per-currency: tutar KENDİ para biriminde.
@@ -70,6 +71,8 @@ export function SalariesScreen() {
   const [employees, setEmployees] = useState<EmpRow[]>(cached?.employees ?? []);
   const [loading, setLoading] = useState(cached === null);
   const [payOpen, setPayOpen] = useState<EmpRow | null>(null);
+  // Hesap dökümü — çalışana ödenen maaş + avansların kronolojik listesi
+  const [statementOf, setStatementOf] = useState<StatementEmployee | null>(null);
   const [recent, setRecent] = useState<SalaryRow[]>(cached?.recent ?? []);
   // Toplam ödenen maaş — TÜM ödeme kayıtlarından (aktif/pasif fark etmez, hesap sabit).
   const [allPaidSlices, setAllPaidSlices] = useState<CurrencyTotal[]>(cached?.allPaidSlices ?? []);
@@ -153,8 +156,8 @@ export function SalariesScreen() {
             borderRadius: 20, overflow: 'hidden',
             backgroundColor: ACCENT, padding: 18, position: 'relative',
           }}>
-            <View style={{ position: 'absolute', top: -40, right: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
-            <View style={{ position: 'absolute', bottom: -50, left: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+            <View style={{ position: 'absolute', top: -40, end: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
+            <View style={{ position: 'absolute', bottom: -50, start: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
 
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
               <View style={{ flex: 1, minWidth: 0 }}>
@@ -237,6 +240,19 @@ export function SalariesScreen() {
                 <Text style={{ fontSize: 11, color: T.ink3 }}>Toplam ödenen</Text>
                 <MoneyMultiX slices={e.salaryByCcy ?? []} variant="inline" colorBySign={false} />
               </View>
+              <Pressable
+                onPress={() => setStatementOf(e as StatementEmployee)}
+                style={({ hovered }: any) => ({
+                  flexDirection: 'row', alignItems: 'center', gap: 4,
+                  paddingHorizontal: 11, paddingVertical: 8, borderRadius: 999,
+                  borderWidth: 1, borderColor: T.hairline,
+                  backgroundColor: hovered ? T.hairline2 : 'transparent',
+                  ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+                })}
+              >
+                <FileText size={12} color={T.ink2} strokeWidth={1.8} />
+                <Text style={{ fontSize: 12, fontWeight: '500', color: T.ink2 }}>Döküm</Text>
+              </Pressable>
               <Pressable onPress={() => setPayOpen(e)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: T.ink }}>
                 <Plus size={12} color="#FFFFFF" strokeWidth={2} />
                 <Text style={{ fontSize: 12, fontWeight: '600', color: T.bg }}>Maaş Öde</Text>
@@ -289,6 +305,13 @@ export function SalariesScreen() {
           employee={payOpen}
           onClose={() => setPayOpen(null)}
           onSaved={() => { setPayOpen(null); load(); }}
+        />
+      )}
+
+      {statementOf && (
+        <EmployeeStatementModal
+          employee={statementOf}
+          onClose={() => setStatementOf(null)}
         />
       )}
     </ScrollView>

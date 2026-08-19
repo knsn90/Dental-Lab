@@ -1124,7 +1124,7 @@ function StockPickerModal({
                 <View style={{ gap: 6 }}>
                   <FieldLabel>Para birimi</FieldLabel>
                   <View style={{ flexDirection: 'row', gap: 8 }}>
-                    {(['TRY', 'EUR', 'USD', 'GBP'] as const).map((c) => {
+                    {(['TRY', 'EUR', 'USD', 'GBP', 'IRT'] as const).map((c) => {
                       const on = nCcy === c;
                       return (
                         <Pressable

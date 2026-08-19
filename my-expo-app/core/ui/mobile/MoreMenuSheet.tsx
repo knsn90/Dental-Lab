@@ -8,13 +8,15 @@
  *  • Modal route değil — geçici overlay
  */
 import React, { useEffect, useRef } from 'react';
+import { isRTL } from '../../i18n';
 import {
   Modal, View, Text, Pressable, Animated, Easing, Platform,
   useWindowDimensions, ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
-import { ChevronRight, X } from 'lucide-react-native';
+import { ChevronRight, ChevronLeft, X } from 'lucide-react-native';
+import { autoT } from '../../i18n/autoTranslate';
 import type { LucideIcon } from 'lucide-react-native';
 import { useMobileTokens } from '../../theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../store/themeModeStore';
@@ -106,7 +108,7 @@ export function MoreMenuSheet({ visible, onClose, items, accentColor = '#0F172A'
         <Pressable
           onPress={onClose}
           style={{ flex: 1 }}
-          accessibilityLabel="Menüyü kapat"
+          accessibilityLabel={autoT('Menüyü kapat')}
         />
 
         {/* Sheet — alttan kayar */}
@@ -116,8 +118,8 @@ export function MoreMenuSheet({ visible, onClose, items, accentColor = '#0F172A'
             left: 0, right: 0, bottom: 0,
             transform: [{ translateY: sheetY }],
             backgroundColor: T.card,
-            borderTopLeftRadius: 24,
-            borderTopRightRadius: 24,
+            borderTopStartRadius: 24,
+            borderTopEndRadius: 24,
             paddingBottom: Math.max(insets.bottom, 12) + 12,
             maxHeight: maxSheetHeight,
             ...(Platform.OS === 'ios' ? {
@@ -150,7 +152,7 @@ export function MoreMenuSheet({ visible, onClose, items, accentColor = '#0F172A'
               fontSize: 24, fontWeight: '800', color: T.ink,
               letterSpacing: -0.5, lineHeight: 28,
             }}>
-              {title ?? 'Daha'}
+              {title ?? autoT('Daha')}
             </Text>
             {subtitle ? (
               <Text style={{
@@ -186,7 +188,7 @@ export function MoreMenuSheet({ visible, onClose, items, accentColor = '#0F172A'
                   />
                   {idx < items.length - 1 && (
                     <View style={{
-                      height: 1, marginLeft: 70,
+                      height: 1, marginStart: 70,
                       backgroundColor: T.hairline,
                     }} />
                   )}
@@ -197,11 +199,12 @@ export function MoreMenuSheet({ visible, onClose, items, accentColor = '#0F172A'
 
           {/* Powered by Siman — platform kimliği (white-label) */}
           <View style={{
-            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+            // Marka kilidi — RTL'de sıra ters dönmesin (bkz. PatternsShell)
+            flexDirection: isRTL() ? 'row-reverse' : 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
             paddingTop: 12, marginTop: 4, marginHorizontal: 16,
             borderTopWidth: 1, borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
           }}>
-            <Text style={{ fontSize: 10, color: T.ink3 }}>Powered by</Text>
+            <Text style={{ fontSize: 10, color: T.ink3 }} numberOfLines={1}>Powered by</Text>
             <SimanWordmark height={9} color="#9A9A9A" />
           </View>
         </Animated.View>
@@ -225,6 +228,9 @@ function ListRow({
 }) {
   const Icon = item.icon;
   const itemAccent = item.accent ?? accentColor;
+  const rtl = isRTL();
+  // Satır sonu chevron'u yön bildirir → RTL'de aynalanır
+  const Chevron = rtl ? ChevronLeft : ChevronRight;
 
   // STATIC style — RN 0.83 + new arch iOS'ta Pressable style callback fn
   // bazen uygulanmıyor (flexDirection: 'row' atılıyor, default column kalıyor).
@@ -256,7 +262,7 @@ function ListRow({
         <Icon size={19} color="#FFFFFF" strokeWidth={2} />
         {item.badge ? (
           <View style={{
-            position: 'absolute', top: -3, right: -3,
+            position: 'absolute', top: -3, ...(rtl ? { left: -3 } : { right: -3 }),
             minWidth: 17, height: 17, borderRadius: 9, paddingHorizontal: 5,
             alignItems: 'center', justifyContent: 'center',
             backgroundColor: '#DC2626',
@@ -282,7 +288,7 @@ function ListRow({
       </Text>
 
       {/* Chevron — iOS native ince */}
-      <ChevronRight size={18} color={chevronColor} strokeWidth={2.2} />
+      <Chevron size={18} color={chevronColor} strokeWidth={2.2} />
     </Pressable>
   );
 }

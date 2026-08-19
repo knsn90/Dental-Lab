@@ -86,6 +86,9 @@ export interface ClinicInvoiceRow {
   remaining: number;
   currency: string;            // faturanın kendi para birimi (EUR/USD/…); gösterimde baz'a çevrilir
   status: string;
+  /** Faturanın bağlı olduğu işin hastası/siparişi — hekim her sekmede görmek istiyor. */
+  patient_name?: string | null;
+  order_no?: string | null;
   days_overdue: number;        // negatif → vade gelmedi, pozitif → geciken gün
   notes?: string | null;
 }
@@ -99,6 +102,9 @@ export interface StatementLine {
   invoice_no?: string | null;
   doctor_id?: string | null;
   doctor_name?: string | null;
+  /** Faturanın bağlı olduğu işin hastası — hekim ekstrede görmek istiyor. */
+  patient_name?: string | null;
+  order_no?: string | null;
   /** Borçlandıran tutar (fatura kesimi → +) — satırın kendi para biriminde */
   debit: number;
   /** Borç azaltan tutar (ödeme → +) — satırın kendi para biriminde */
@@ -156,6 +162,9 @@ export interface PaymentSubmissionRow {
   submitted_at: string;
   reviewed_at?: string | null;
   reject_reason?: string | null;
+  /** Faturanın bağlı olduğu işin hastası/siparişi — hekim her sekmede görmek istiyor. */
+  patient_name?: string | null;
+  order_no?: string | null;
   approved_payment_id?: string | null;
 }
 
@@ -198,6 +207,9 @@ export interface PaymentRow {
   payment_date: string;
   payment_method: string;
   reference_no?: string | null;
+  /** Faturanın bağlı olduğu işin hastası/siparişi — hekim her sekmede görmek istiyor. */
+  patient_name?: string | null;
+  order_no?: string | null;
 }
 
 export interface PaymentLinkRow {
@@ -210,6 +222,9 @@ export interface PaymentLinkRow {
   status: string;
   created_at: string;
   paid_at?: string | null;
+  /** Faturanın bağlı olduğu işin hastası/siparişi — hekim her sekmede görmek istiyor. */
+  patient_name?: string | null;
+  order_no?: string | null;
 }
 
 /* ────────────────────────────────────────────────────────────────────── */
@@ -308,7 +323,7 @@ export async function fetchOverview(clinicId: string): Promise<FinanceOverview> 
 export async function fetchOpenInvoices(clinicId: string): Promise<ClinicInvoiceRow[]> {
   const { data, error } = await labEq(supabase
     .from('invoices')
-    .select('id, invoice_no:invoice_number, issue_date, due_date, total_amount:total, paid_amount, status, notes, currency')
+    .select('id, invoice_no:invoice_number, issue_date, due_date, total_amount:total, paid_amount, status, notes, currency, work_order:work_orders!invoices_work_order_id_fkey(order_number, patient_name)')
     .eq('clinic_id', clinicId)
     .in('status', ['kesildi', 'kismi_odendi']))
     .order('due_date', { ascending: true, nullsFirst: false });
@@ -328,6 +343,8 @@ export async function fetchOpenInvoices(clinicId: string): Promise<ClinicInvoice
       status: inv.status,
       days_overdue: daysDiff(inv.due_date),
       notes: inv.notes,
+      patient_name: inv.work_order?.patient_name ?? null,
+      order_no: inv.work_order?.order_number ?? null,
     };
   });
 }
@@ -442,7 +459,7 @@ export async function fetchOverviewCharts(clinicId: string): Promise<OverviewCha
   (invRes.data ?? []).forEach((i: any) => curSet.add(i.currency || base));
   (payRes.data ?? []).forEach((p: any) => curSet.add(p.invoices?.currency || base));
   (methodRes.data ?? []).forEach((p: any) => curSet.add(p.invoices?.currency || base));
-  const curOrder = ['TRY', 'EUR', 'USD', 'GBP'];
+  const curOrder = ['TRY', 'EUR', 'USD', 'GBP', 'IRT'];
   const byCurrency: CurrencyCharts[] = [...curSet]
     .sort((a, b) => curOrder.indexOf(a) - curOrder.indexOf(b))
     .map(cur => {
@@ -536,7 +553,7 @@ export async function fetchMySubmissions(clinicId: string): Promise<PaymentSubmi
       id, invoice_id, amount, payment_method, payment_date,
       reference_no, bank_name, sender_name, receipt_url, notes,
       status, submitted_at, reviewed_at, reject_reason, approved_payment_id,
-      invoices(invoice_no:invoice_number, currency)
+      invoices(invoice_no:invoice_number, currency, work_order:work_orders!invoices_work_order_id_fkey(order_number, patient_name))
     `)
     .eq('clinic_id', clinicId)
     .order('submitted_at', { ascending: false });
@@ -560,6 +577,8 @@ export async function fetchMySubmissions(clinicId: string): Promise<PaymentSubmi
     reviewed_at: s.reviewed_at,
     reject_reason: s.reject_reason,
     approved_payment_id: s.approved_payment_id,
+    patient_name: s.invoices?.work_order?.patient_name ?? null,
+    order_no: s.invoices?.work_order?.order_number ?? null,
   }));
 }
 
@@ -594,7 +613,7 @@ export async function fetchPendingSubmissions(): Promise<PaymentSubmissionRow[]>
       id, invoice_id, clinic_id, amount, payment_method, payment_date,
       reference_no, bank_name, sender_name, receipt_url, notes,
       status, submitted_at, reviewed_at, reject_reason, approved_payment_id,
-      invoices(invoice_no:invoice_number, currency),
+      invoices(invoice_no:invoice_number, currency, work_order:work_orders!invoices_work_order_id_fkey(order_number, patient_name)),
       clinics(name)
     `)
     .eq('status', 'pending')
@@ -620,6 +639,8 @@ export async function fetchPendingSubmissions(): Promise<PaymentSubmissionRow[]>
     reject_reason: s.reject_reason,
     approved_payment_id: s.approved_payment_id,
     clinic_name: s.clinics?.name ?? undefined,
+    patient_name: s.invoices?.work_order?.patient_name ?? null,
+    order_no: s.invoices?.work_order?.order_number ?? null,
   }));
 }
 
@@ -705,13 +726,13 @@ export async function fetchStatement(
   const [invRes, payRes] = await Promise.all([
     labEq(supabase
       .from('invoices')
-      .select('id, invoice_no:invoice_number, issue_date, total_amount:total, status, currency, doctor_id, doctors(id, full_name)')
+      .select('id, invoice_no:invoice_number, issue_date, total_amount:total, status, currency, doctor_id, doctors(id, full_name), work_order:work_orders!invoices_work_order_id_fkey(order_number, patient_name)')
       .eq('clinic_id', clinicId)
       .neq('status', 'iptal'))
       .order('issue_date', { ascending: true }),
     labEq(supabase
       .from('payments')
-      .select('id, amount, payment_date, payment_method, reference_no, invoice_id, invoices!inner(clinic_id, currency, invoice_no:invoice_number, doctor_id, doctors(id, full_name))')
+      .select('id, amount, payment_date, payment_method, reference_no, invoice_id, invoices!inner(clinic_id, currency, invoice_no:invoice_number, doctor_id, doctors(id, full_name), work_order:work_orders!invoices_work_order_id_fkey(order_number, patient_name))')
       .eq('invoices.clinic_id', clinicId), 'invoices.lab_id')
       .order('payment_date', { ascending: true }),
   ]);
@@ -742,6 +763,8 @@ export async function fetchStatement(
         invoice_no: inv.invoice_no,
         doctor_id: inv.doctor_id ?? null,
         doctor_name: inv.doctors?.full_name ?? null,
+        patient_name: inv.work_order?.patient_name ?? null,
+        order_no: inv.work_order?.order_number ?? null,
         debit: total, credit: 0, currency: cur,
         balance: 0,
       },
@@ -763,6 +786,8 @@ export async function fetchStatement(
         invoice_no: p.invoices?.invoice_no ?? null,
         doctor_id: p.invoices?.doctor_id ?? null,
         doctor_name: p.invoices?.doctors?.full_name ?? null,
+        patient_name: p.invoices?.work_order?.patient_name ?? null,
+        order_no: p.invoices?.work_order?.order_number ?? null,
         debit: 0, credit: amt, currency: cur,
         balance: 0,
       },
@@ -810,7 +835,7 @@ export async function fetchStatement(
 export async function fetchPayments(clinicId: string): Promise<PaymentRow[]> {
   const { data, error } = await labEq(supabase
     .from('payments')
-    .select('id, invoice_id, amount, payment_date, payment_method, reference_no, invoices!inner(clinic_id, currency, invoice_no:invoice_number)')
+    .select('id, invoice_id, amount, payment_date, payment_method, reference_no, invoices!inner(clinic_id, currency, invoice_no:invoice_number, work_order:work_orders!invoices_work_order_id_fkey(order_number, patient_name))')
     .eq('invoices.clinic_id', clinicId), 'invoices.lab_id')
     .order('payment_date', { ascending: false });
   if (error) throw error;
@@ -824,6 +849,8 @@ export async function fetchPayments(clinicId: string): Promise<PaymentRow[]> {
     payment_date: p.payment_date,
     payment_method: p.payment_method,
     reference_no: p.reference_no,
+    patient_name: p.invoices?.work_order?.patient_name ?? null,
+    order_no: p.invoices?.work_order?.order_number ?? null,
   }));
 }
 
@@ -834,7 +861,7 @@ export async function fetchPayments(clinicId: string): Promise<PaymentRow[]> {
 export async function fetchPaymentLinks(clinicId: string): Promise<PaymentLinkRow[]> {
   const { data, error } = await labEq(supabase
     .from('payment_intents')
-    .select('id, invoice_id, token:public_token, amount, status, created_at, paid_at, invoices!inner(clinic_id, currency, invoice_no:invoice_number)')
+    .select('id, invoice_id, token:public_token, amount, status, created_at, paid_at, invoices!inner(clinic_id, currency, invoice_no:invoice_number, work_order:work_orders!invoices_work_order_id_fkey(order_number, patient_name))')
     .eq('invoices.clinic_id', clinicId), 'invoices.lab_id')
     .order('created_at', { ascending: false });
   if (error) throw error;
@@ -849,6 +876,8 @@ export async function fetchPaymentLinks(clinicId: string): Promise<PaymentLinkRo
     status: p.status,
     created_at: p.created_at,
     paid_at: p.paid_at,
+    patient_name: p.invoices?.work_order?.patient_name ?? null,
+    order_no: p.invoices?.work_order?.order_number ?? null,
   }));
 }
 

@@ -1,4 +1,5 @@
 import { localeTag } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 /**
  * PaymentLinkPanel — InvoiceDetail içinde "Ödeme Linki" yönetimi
  *
@@ -71,7 +72,7 @@ export function PaymentLinkPanel({ invoiceId, balance, onChanged }: Props) {
   const handleRefund = (intent: PaymentIntent) => {
     Alert.alert(
       'İade Et',
-      `${fmtMoney(Number(intent.amount))} tutarındaki ödeme iade edilsin mi?`,
+      `${fmtMoney(Number(intent.amount))} ${autoT('tutarındaki ödeme iade edilsin mi?')}`,
       [
         { text: 'Vazgeç', style: 'cancel' },
         { text: 'İade Et', style: 'destructive', onPress: async () => {

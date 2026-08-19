@@ -14,6 +14,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { firstName as displayFirstName } from '../../../core/util/personName';
 import { useTranslation } from 'react-i18next';
 import { localeTag } from '../../../core/i18n';
 import {
@@ -23,7 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
   Truck, Navigation, Check, Timer, MapPin, Bell, QrCode,
-  ChevronRight, Map as MapIcon, TrendingUp, Phone, Camera, MessageCircle,
+  ChevronRight, ChevronLeft, Map as MapIcon, TrendingUp, Phone, Camera, MessageCircle,
   Clock, CheckCircle2, AlertCircle, Calendar, Target, Activity,
 } from 'lucide-react-native';
 import { DS } from '../../../core/theme/dsTokens';
@@ -33,6 +34,7 @@ import { fetchMyDeliveries, type CourierDelivery } from '../api';
 import { PremiumKPI } from '../components/PremiumKPI';
 import { CourierLiveMap } from '../CourierLiveMap';
 import { formatAddress } from '../../../core/util/formatAddress';
+import { isRTL } from '../../../core/i18n';
 
 const TH = DS.tech;
 const DISPLAY = {
@@ -210,7 +212,7 @@ function MobileView({ profile, items, dash, loading, router, onRefresh, onScan, 
         <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
           <Bell size={15} color={DS.ink[800]} />
           {dash.pending.length > 0 && (
-            <View style={{ position: 'absolute', top: -2, right: -2, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: DANGER, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}>
+            <View style={{ position: 'absolute', top: -2, end: -2, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: DANGER, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}>
               <Text style={{ fontSize: 9, fontWeight: '800', color: '#FFF' }}>{dash.pending.length}</Text>
             </View>
           )}
@@ -229,7 +231,7 @@ function MobileView({ profile, items, dash, loading, router, onRefresh, onScan, 
           style={{ ...DISPLAY, fontSize: 30, color: DS.ink[900], letterSpacing: -0.9, lineHeight: 34, marginTop: 4 }}
           numberOfLines={1}
         >
-          Merhaba, <Text style={{ color: TH.primary }}>{profile?.full_name?.split(' ')[0] ?? 'Kurye'}</Text>
+          Merhaba, <Text style={{ color: TH.primary }}>{displayFirstName(profile?.full_name, 'Kurye')}</Text>
         </Text>
         <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 4, textTransform: 'capitalize' }}>
           {new Date().toLocaleDateString(localeTag(i18n.language), { weekday: 'long', day: '2-digit', month: 'long' })}
@@ -495,7 +497,7 @@ function PreviewDeliveryCard({ index, delivery, onPress }: { index: number; deli
           <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: timeTone + '14' }}>
             <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, color: timeTone }}>{timeLabel.toUpperCase()}</Text>
           </View>
-          <ChevronRight size={14} color={DS.ink[400]} />
+          {isRTL() ? <ChevronLeft size={14} color={DS.ink[400]} /> : <ChevronRight size={14} color={DS.ink[400]} />}
         </View>
       </View>
     </Pressable>
@@ -522,7 +524,7 @@ function DesktopView({ profile, items, dash, loading, router, onRefresh, onScan,
             style={{ ...DISPLAY, fontSize: 36, color: DS.ink[900], letterSpacing: -1, lineHeight: 40, marginTop: 6 }}
             numberOfLines={1}
           >
-            Merhaba, <Text style={{ color: TH.primary }}>{profile?.full_name?.split(' ')[0] ?? 'Kurye'}</Text>
+            Merhaba, <Text style={{ color: TH.primary }}>{displayFirstName(profile?.full_name, 'Kurye')}</Text>
           </Text>
           <Text style={{ fontSize: 13, color: DS.ink[500], marginTop: 6, textTransform: 'capitalize' }}>{fmtTodayDate(i18n.language)}</Text>
         </View>
@@ -565,8 +567,8 @@ function DesktopView({ profile, items, dash, loading, router, onRefresh, onScan,
           })}
         >
           {/* Dekoratif daireler — F2 spec (220 + 180) */}
-          <View style={{ position: 'absolute', top: -40, right: -40, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(255,255,255,0.15)' }} pointerEvents="none" />
-          <View style={{ position: 'absolute', bottom: -60, left: -20, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(0,0,0,0.05)' }} pointerEvents="none" />
+          <View style={{ position: 'absolute', top: -40, end: -40, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(255,255,255,0.15)' }} pointerEvents="none" />
+          <View style={{ position: 'absolute', bottom: -60, start: -20, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(0,0,0,0.05)' }} pointerEvents="none" />
 
           <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: 32, flexWrap: 'wrap' }}>
             {/* Sol: Eyebrow + Huge Display + Body + CTA */}
@@ -637,8 +639,8 @@ function DesktopView({ profile, items, dash, loading, router, onRefresh, onScan,
           borderRadius: 28, padding: 48, backgroundColor: TH.primary,
           position: 'relative', overflow: 'hidden',
         }}>
-          <View style={{ position: 'absolute', top: -40, right: -40, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(255,255,255,0.15)' }} pointerEvents="none" />
-          <View style={{ position: 'absolute', bottom: -60, left: -20, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(0,0,0,0.05)' }} pointerEvents="none" />
+          <View style={{ position: 'absolute', top: -40, end: -40, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(255,255,255,0.15)' }} pointerEvents="none" />
+          <View style={{ position: 'absolute', bottom: -60, start: -20, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(0,0,0,0.05)' }} pointerEvents="none" />
 
           <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 32, flexWrap: 'wrap' }}>
             <View style={{ flex: 1, minWidth: 280 }}>
@@ -702,7 +704,7 @@ function DesktopView({ profile, items, dash, loading, router, onRefresh, onScan,
                   <Text style={{ flex: 1, fontSize: 12, color: DS.ink[700] }} numberOfLines={1}>{d.destination_phone ?? '—'}</Text>
                   <Text style={{ flex: 1, fontSize: 11, color: DS.ink[500] }}>{fmtElapsedFrom(d.assigned_at)} önce</Text>
                   <View style={{ flex: 1 }}><Chip label={STATUS_LABEL[d.status] ?? d.status} color={STATUS_COLOR[d.status] ?? DS.ink[500]} /></View>
-                  <ChevronRight size={14} color={DS.ink[300]} />
+                  {isRTL() ? <ChevronLeft size={14} color={DS.ink[300]} /> : <ChevronRight size={14} color={DS.ink[300]} />}
                 </Pressable>
               ))}
             </Card>
@@ -788,9 +790,9 @@ function ProgressRing({ value, size = 68 }: { value: number; size?: number }) {
         width: size, height: size, borderRadius: radius,
         borderWidth: stroke, borderColor: 'transparent',
         borderTopColor: TH.primary,
-        borderRightColor: value > 25 ? TH.primary : 'transparent',
+        borderEndColor: value > 25 ? TH.primary : 'transparent',
         borderBottomColor: value > 50 ? TH.primary : 'transparent',
-        borderLeftColor: value > 75 ? TH.primary : 'transparent',
+        borderStartColor: value > 75 ? TH.primary : 'transparent',
         position: 'absolute',
         transform: [{ rotate: `${(value / 100) * 360 - 90}deg` }],
       }} />
@@ -853,7 +855,7 @@ function DeliveryRow({ index, delivery, onPress }: { index: number; delivery: Co
         </View>
         <View style={{ alignItems: 'flex-end', gap: 4 }}>
           <Chip label={STATUS_LABEL[delivery.status] ?? delivery.status} color={STATUS_COLOR[delivery.status] ?? DS.ink[500]} />
-          <ChevronRight size={13} color={DS.ink[400]} />
+          {isRTL() ? <ChevronLeft size={13} color={DS.ink[400]} /> : <ChevronRight size={13} color={DS.ink[400]} />}
         </View>
       </View>
     </Pressable>

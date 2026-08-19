@@ -118,9 +118,16 @@ serve(async (req) => {
   }
 
   // ── courier kimliği (cancel/track/calculate/create) ──
-  const { data: provRows, error: provErr } = await userClient.rpc('get_active_provider', { p_type: 'courier' });
+  // Sağlayıcı ADIYLA okunuyor: kurye tipinde birden çok entegrasyon aynı anda
+  // aktif olabilir (BanaBiKurye + Shipink/Navlungo) ve get_active_provider
+  // tipteki İLK aktif satırı döndürür — yanlış sağlayıcının kaydına düşmemek
+  // için filtre burada. RLS (lab_id = get_my_lab_id()) kiracıyı sınırlar.
+  const { data: prov, error: provErr } = await userClient
+    .from('provider_credentials')
+    .select('id, environment, credentials')
+    .eq('type', 'courier').eq('provider', 'banabikurye').eq('is_active', true)
+    .maybeSingle();
   if (provErr) return json({ ok: false, message: 'Kimlik okunamadı: ' + provErr.message });
-  const prov = Array.isArray(provRows) ? provRows[0] : provRows;
   if (!prov?.credentials?.auth_token) {
     return json({ ok: false, message: 'Aktif BanaBiKurye entegrasyonu yok. Ayarlar → Entegrasyonlar → Kurye.' });
   }

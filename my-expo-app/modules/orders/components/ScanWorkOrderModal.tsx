@@ -14,7 +14,9 @@ import {
   View, Text, Pressable, Platform, Modal, ScrollView, Animated, Easing,
 } from 'react-native';
 import { TeethLoader } from '../../../core/ui/TeethLoader';
-import { X, FileUp, Sparkles, Check, AlertCircle, Camera, ArrowRight } from 'lucide-react-native';
+import { X, FileUp, Sparkles, Check, AlertCircle, Camera, ArrowRight, ArrowLeft } from 'lucide-react-native';
+import { isRTL } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { supabase } from '../../../core/api/supabase';
 import { DS } from '../../../core/theme/dsTokens';
 
@@ -32,6 +34,13 @@ interface ParsedWorkOrder {
   shade: string | null;
   impression_type: string | null;
   notes: string | null;
+  // Yeni form alanları (eski formlarda gelmez)
+  patient_gender?: 'kadın' | 'erkek' | null;
+  patient_dob?: string | null;
+  delivery_method?: 'kurye' | 'elden' | 'kargo' | null;
+  scan_bodies_delivered?: boolean | null;
+  form_no?: string | null;
+  items?: Array<{ work_type: string | null; tooth_numbers: number[]; shade: string | null }>;
   confidence?: Record<string, Confidence>;
   overall_note?: string | null;
   raw_transcription?: string | null;
@@ -187,7 +196,7 @@ export function ScanWorkOrderModal({ visible, onClose, onCreateOrder, accentColo
             {parsing && <AIThinkingLoader accentColor={accentColor} />}
 
             {error && (
-              <View style={{ flexDirection: 'row', gap: 10, padding: 14, backgroundColor: 'rgba(156,46,46,0.06)', borderRadius: 10, borderLeftWidth: 3, borderLeftColor: '#9C2E2E' }}>
+              <View style={{ flexDirection: 'row', gap: 10, padding: 14, backgroundColor: 'rgba(156,46,46,0.06)', borderRadius: 10, borderStartWidth: 3, borderStartColor: '#9C2E2E' }}>
                 <AlertCircle size={16} color="#9C2E2E" strokeWidth={1.8} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 12, fontWeight: '700', color: '#9C2E2E' }}>OCR başarısız</Text>
@@ -201,7 +210,7 @@ export function ScanWorkOrderModal({ visible, onClose, onCreateOrder, accentColo
 
             {parsed && (() => {
               const conf = parsed.confidence ?? {};
-              const totalFields = ['clinic_id','doctor_name','patient_name','order_date','delivery_date','urgency','tooth_numbers','work_type','shade','impression_type','notes'];
+              const totalFields = ['clinic_id','doctor_name','patient_name','order_date','delivery_date','urgency','tooth_numbers','work_type','shade','impression_type','notes','patient_gender','patient_dob','delivery_method','items'];
               const highCount   = totalFields.filter(k => (conf as any)[k] === 'high').length;
               const lowCount    = totalFields.filter(k => (conf as any)[k] === 'low').length;
               const filledCount = totalFields.filter(k => {
@@ -213,14 +222,14 @@ export function ScanWorkOrderModal({ visible, onClose, onCreateOrder, accentColo
               const overallColor = overallTone === 'ok' ? '#0F766E' : overallTone === 'warn' ? '#9C2E2E' : '#92400E';
               const overallBg    = overallTone === 'ok' ? 'rgba(15,118,110,0.08)' : overallTone === 'warn' ? 'rgba(156,46,46,0.06)' : '#FFFBEB';
               const overallMsg   = lowCount > 0
-                ? `${lowCount} alan zor okundu — sarı/kırmızı kutuları kontrol et.`
+                ? `${lowCount} ${autoT('alan zor okundu — sarı/kırmızı kutuları kontrol et.')}`
                 : qualityPct >= 70
-                  ? `Form temiz okundu (%${qualityPct} kesin). Birkaç saniyede iş emrine geçebilirsin.`
+                  ? `${autoT('Form temiz okundu')} (%${qualityPct} ${autoT('kesin')}). ${autoT('Birkaç saniyede iş emrine geçebilirsin.')}`
                   : 'Form kısmen dolduruldu — eksik alanları manuel tamamla.';
 
               return (
               <View style={{ gap: 12 }}>
-                <View style={{ flexDirection: 'row', gap: 10, padding: 12, backgroundColor: overallBg, borderRadius: 10, borderLeftWidth: 3, borderLeftColor: overallColor }}>
+                <View style={{ flexDirection: 'row', gap: 10, padding: 12, backgroundColor: overallBg, borderRadius: 10, borderStartWidth: 3, borderStartColor: overallColor }}>
                   <Check size={15} color={overallColor} strokeWidth={2} />
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 12, color: overallColor, fontWeight: '700' }}>
@@ -308,6 +317,26 @@ export function ScanWorkOrderModal({ visible, onClose, onCreateOrder, accentColo
                   </View>
                 </View>
                 <ParsedField label="Ölçü Yöntemi" value={parsed.impression_type} confidence={(conf as any).impression_type} />
+                {/* Yeni form alanları — yalnız okunduysa göster, eski formlarda satır kalabalığı yapmasın */}
+                {!!parsed.patient_gender && (
+                  <ParsedField label="Cinsiyet" value={parsed.patient_gender} confidence={(conf as any).patient_gender} />
+                )}
+                {!!parsed.patient_dob && (
+                  <ParsedField label="Doğum Tarihi" value={parsed.patient_dob} mono confidence={(conf as any).patient_dob} />
+                )}
+                {!!parsed.delivery_method && (
+                  <ParsedField label="Teslim Yöntemi" value={parsed.delivery_method} confidence={(conf as any).delivery_method} />
+                )}
+                {(parsed.items?.length ?? 0) > 0 && (
+                  <ParsedField
+                    label="İşlem Satırları"
+                    value={parsed.items!.map(it =>
+                      `${it.work_type ?? '—'} · ${it.tooth_numbers.join(', ')}${it.shade ? ' · ' + it.shade : ''}`,
+                    ).join('\n')}
+                    multiline
+                    confidence={(conf as any).items}
+                  />
+                )}
                 <ParsedField
                   label="Notlar"
                   value={parsed.notes}
@@ -346,7 +375,7 @@ export function ScanWorkOrderModal({ visible, onClose, onCreateOrder, accentColo
                 <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFF' }}>
                   Bu Verilerle İş Emri Aç
                 </Text>
-                <ArrowRight size={13} color="#FFF" strokeWidth={2.2} />
+                {isRTL() ? <ArrowLeft size={13} color="#FFF" strokeWidth={2.2} /> : <ArrowRight size={13} color="#FFF" strokeWidth={2.2} />}
               </Pressable>
             </View>
           )}

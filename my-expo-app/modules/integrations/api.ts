@@ -442,6 +442,106 @@ export const COURIER_PROVIDERS: ProviderDefinition[] = [
     ],
     implemented: true,
   },
+  {
+    key:   'navlungo',
+    label: 'Navlungo',
+    description: 'Kargo toplayıcı — Aras, Yurtiçi, PTT, Sürat, HepsiJet, Kolay Gelsin. Şehirler arası gönderi için; barkod üretir, canlı konum vermez. Lab kendi Navlungo üyeliğinin API kimliğini girer.',
+    website: 'https://domestic.navlungo.com',
+    pricing: 'Gönderi ücreti Navlungo hesabınızdan tahsil edilir; Siman komisyon almaz.',
+    fields: [
+      // Navlungo'da sabit API anahtarı YOK — kullanıcı adı/parola ile 8 saatlik
+      // token alınır. Token'ı edge function önbellekler, kullanıcı görmez.
+      { key: 'username', label: 'API kullanıcı adı', type: 'text', required: true,
+        helpText: 'Navlungo paneli → API bilgileri.' },
+      { key: 'password', label: 'API parolası', type: 'password', required: true,
+        helpText: 'Gizli tutun. 8 saatlik oturum anahtarı bununla alınır.' },
+      { key: 'environment', label: 'Ortam', type: 'select', required: true, options: [
+        { value: 'sandbox',    label: 'Test (domestic-qa.navlungo.com)' },
+        { value: 'production', label: 'Canlı (domestic.navlungo.com)' },
+      ]},
+      // Gönderici adresi: API'ye her gönderide tek tek yollanmaz, adres defterine
+      // bir kez kaydedilip dönen id (sender_address_id) kullanılır.
+      { key: 'pickup_contact_name', label: 'Gönderici adı', type: 'text', required: true,
+        placeholder: 'Lab ünvanı / yetkili' },
+      { key: 'pickup_phone', label: 'Gönderici telefonu', type: 'text', required: true,
+        placeholder: '+90 5xx xxx xx xx' },
+      { key: 'pickup_email', label: 'Gönderici e-postası', type: 'text',
+        placeholder: 'lab@ornek.com' },
+      { key: 'pickup_address', label: 'Alış adresi (sokak/cadde)', type: 'text', required: true,
+        placeholder: 'Mahalle, Sokak, No', helpText: 'İl ve ilçe ayrı alanlarda; buraya yalnız açık adres.' },
+      { key: 'pickup_city', label: 'Alış ili', type: 'text', required: true, placeholder: 'İstanbul' },
+      { key: 'pickup_district', label: 'Alış ilçesi', type: 'text', required: true, placeholder: 'Kadıköy' },
+      // Taşıyıcı: 1 = otomatik seç. Diğerleri Navlungo'nun taşıyıcı id'leri.
+      { key: 'carrier_id', label: 'Taşıyıcı', type: 'select', required: true, options: [
+        { value: '1',  label: 'Otomatik seç (önerilen)' },
+        { value: '13', label: 'Aras Kargo' },
+        { value: '18', label: 'Yurtiçi Kargo' },
+        { value: '14', label: 'PTT Kargo' },
+        { value: '9',  label: 'Sürat Kargo' },
+        { value: '10', label: 'HepsiJet' },
+        { value: '16', label: 'HepsiJet XL' },
+        { value: '11', label: 'Kolay Gelsin' },
+        { value: '12', label: 'Scotty' },
+      ]},
+      { key: 'post_type', label: 'Gönderi tipi', type: 'select', options: [
+        { value: '2', label: 'Standart' },
+        { value: '1', label: 'Aynı gün' },
+      ]},
+      { key: 'default_desi', label: 'Varsayılan desi', type: 'text',
+        placeholder: '1', helpText: 'Gönderi başına varsayılan desi; teslimat oluştururken değiştirilebilir.' },
+      { key: 'barcode_format', label: 'Barkod formatı', type: 'select', options: [
+        { value: 'pdf-A5', label: 'PDF A5' },
+        { value: 'pdf-A6', label: 'PDF A6' },
+        { value: 'zpl',    label: 'ZPL (termal yazıcı)' },
+        { value: 'html',   label: 'HTML' },
+      ]},
+    ],
+    implemented: true,
+  },
+  {
+    key:   'shipink',
+    label: 'Shipink',
+    description: 'Kargo toplayıcı — tek hesapla birden çok taşıyıcı. Teslimat ekranında fiyat sorgulanır, gönderi oluşturulur ve etiket üretilir. Lab kendi Shipink üyeliğiyle bağlanır.',
+    website: 'https://app.shipink.io',
+    pricing: 'Gönderi ücreti Shipink hesabınızdan tahsil edilir; Siman komisyon almaz.',
+    fields: [
+      // Shipink'te sabit API anahtarı YOK — e-posta/parola ile ~1 saatlik token
+      // alınır. Token'ı edge function önbellekler, kullanıcı görmez.
+      { key: 'username', label: 'Shipink e-posta', type: 'text', required: true,
+        placeholder: 'lab@ornek.com',
+        helpText: 'Shipink paneline giriş yaptığınız e-posta.' },
+      { key: 'password', label: 'Parola', type: 'password', required: true,
+        helpText: 'Gizli tutun. Oturum anahtarı bununla alınır ve yenilenir. Ortamı yukarıdaki Sandbox/Production seçicisinden belirleyin — canlı hesap test ortamında geçerli DEĞİLDİR (Shipink test için ayrı kayıt ister).' },
+      // Ortam alanı BİLİNÇLİ olarak yok: kaydın üst düzey `environment` kolonu
+      // yetkili kaynak ve editörde zaten kendi seçicisi var. Katalogda ikinci
+      // bir "Ortam" seçici koymak, canlı kimliğin sandbox uca gönderilip
+      // "invalid_grant" almasına yol açıyor (yaşandı).
+      // Gönderici adresi Shipink'te "depo" (warehouse) kaydıdır: bir kez
+      // oluşturulur, dönen id saklanır. İlk fiyat sorgusunda otomatik kurulur.
+      { key: 'pickup_contact_name', label: 'Gönderici adı', type: 'text', required: true,
+        placeholder: 'Lab ünvanı / yetkili' },
+      { key: 'pickup_phone', label: 'Gönderici telefonu', type: 'text', required: true,
+        placeholder: '+90 5xx xxx xx xx' },
+      { key: 'pickup_email', label: 'Gönderici e-postası', type: 'text',
+        placeholder: 'lab@ornek.com' },
+      { key: 'pickup_street', label: 'Alış adresi (sokak/cadde)', type: 'text', required: true,
+        placeholder: 'Mahalle, Sokak, No', helpText: 'İl ve ilçe ayrı alanlarda; buraya yalnız açık adres.' },
+      // DİKKAT: Shipink'in şemasında state=il, city=ilçe. Alan adları burada
+      // Türkçe karşılığıyla tutuluyor, çeviri edge function'da yapılıyor.
+      { key: 'pickup_city', label: 'Alış ili', type: 'text', required: true, placeholder: 'İstanbul' },
+      { key: 'pickup_district', label: 'Alış ilçesi', type: 'text', required: true, placeholder: 'Kadıköy' },
+      { key: 'pickup_zip', label: 'Alış posta kodu', type: 'text', placeholder: '34857' },
+      { key: 'company_name', label: 'Firma ünvanı (fatura)', type: 'text', placeholder: 'Örnek Diş Deposu A.Ş.' },
+      { key: 'tax_id', label: 'Vergi no', type: 'text' },
+      { key: 'tax_office', label: 'Vergi dairesi', type: 'text' },
+      // Varsayılan paket ölçüleri — teslimat ekranında değiştirilebilir.
+      { key: 'default_weight', label: 'Varsayılan ağırlık (kg)', type: 'text', placeholder: '1' },
+      { key: 'default_length', label: 'Varsayılan uzunluk (cm)', type: 'text', placeholder: '20' },
+      { key: 'default_width',  label: 'Varsayılan genişlik (cm)', type: 'text', placeholder: '15' },
+      { key: 'default_height', label: 'Varsayılan yükseklik (cm)', type: 'text', placeholder: '10' },
+    ],
+    implemented: true,
+  },
 ];
 
 // ─── CRUD ────────────────────────────────────────────────────────────────
@@ -546,6 +646,58 @@ export async function testCredential(
       const ok = !error && (data as any)?.ok === true;
       const msg = ok
         ? `Bağlantı başarılı${(data as any)?.client_name ? ' — ' + (data as any).client_name : ''}`
+        : ((data as any)?.message ?? error?.message ?? 'Bağlantı başarısız');
+      await supabase.rpc('record_provider_test', { p_id: id, p_ok: ok, p_message: msg });
+      return { ok, message: msg };
+    } catch (e: any) {
+      const msg = 'Test hatası: ' + (e?.message ?? String(e));
+      await supabase.rpc('record_provider_test', { p_id: id, p_ok: false, p_message: msg });
+      return { ok: false, message: msg };
+    }
+  }
+
+  // Navlungo — kullanıcı adı/parola ile token alınabiliyor mu?
+  // Navlungo'da sabit anahtar yok; test = /auth/api'den 8 saatlik token alabilmek.
+  if (type === 'courier' && provider === 'navlungo') {
+    try {
+      const { data, error } = await supabase.functions.invoke('navlungo-dispatch', {
+        body: {
+          action:      'test',
+          username:    _credentials?.username,
+          password:    _credentials?.password,
+          environment: environment ?? _credentials?.environment ?? 'sandbox',
+        },
+      });
+      const ok  = !error && (data as any)?.ok === true;
+      const msg = ok
+        ? 'Bağlantı başarılı — oturum anahtarı alındı'
+        : ((data as any)?.message ?? error?.message ?? 'Bağlantı başarısız');
+      await supabase.rpc('record_provider_test', { p_id: id, p_ok: ok, p_message: msg });
+      return { ok, message: msg };
+    } catch (e: any) {
+      const msg = 'Test hatası: ' + (e?.message ?? String(e));
+      await supabase.rpc('record_provider_test', { p_id: id, p_ok: false, p_message: msg });
+      return { ok: false, message: msg };
+    }
+  }
+
+  // Shipink — e-posta/parola ile token alınabiliyor mu?
+  // Navlungo'daki gibi sabit anahtar yok; test = POST /token'dan oturum açabilmek.
+  if (type === 'courier' && provider === 'shipink') {
+    try {
+      const { data, error } = await supabase.functions.invoke('shipink-dispatch', {
+        body: {
+          action:      'test',
+          username:    _credentials?.username,
+          password:    _credentials?.password,
+          // Shipink'te varsayılan CANLI ortam — labların çoğu doğrudan canlı
+          // hesapla bağlanıyor, sessizce test ortamına düşmek yanıltıcı olur.
+          environment: environment ?? _credentials?.environment ?? 'production',
+        },
+      });
+      const ok  = !error && (data as any)?.ok === true;
+      const msg = ok
+        ? 'Bağlantı başarılı — oturum anahtarı alındı'
         : ((data as any)?.message ?? error?.message ?? 'Bağlantı başarısız');
       await supabase.rpc('record_provider_test', { p_id: id, p_ok: ok, p_message: msg });
       return { ok, message: msg };

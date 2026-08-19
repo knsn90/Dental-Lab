@@ -8,16 +8,54 @@
 // veya backend upload — component bunu bilmez).
 
 import React from 'react';
+import { isRTL } from '../../../core/i18n';
+import { dirIcon } from '../../../core/i18n';
 import {
   View, Text, ScrollView, Modal, Pressable, TouchableOpacity, Image, Platform, StyleSheet,
   Animated, Easing, useWindowDimensions,
 } from 'react-native';
+import { ConfirmDialog, type ConfirmState } from '../../../core/ui/ConfirmDialog';
 import { AppIcon } from '../../../core/ui/AppIcon';
 import { F } from '../../../core/theme/typography';
 import { LinearProgressX, PercentRingX } from '../../../core/ui/ProgressX';
 import { dsTheme, type DsTheme } from '../../../core/theme/dsTokens';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
+
+/**
+ * Satırda küçük resim gösterilsin mi? `kind` her zaman set edilmiyor (WhatsApp/
+ * devralınan dosyalarda boş gelebiliyor), o yüzden uzantıya da bakılır.
+ * SVG bilerek dışarıda: RN Image onu çizemiyor, boş kutu görünürdü.
+ */
+/** "Gülüş Fotoğrafı · WhatsApp Image 2026….jpeg" → "Gülüş Fotoğrafı".
+ *  Etiket yoksa uzantısız dosya adına düşer. */
+/** Hero görselin üstünde yüzen ileri/geri düğmesi. */
+const heroNavBtn = {
+  position: 'absolute' as const,
+  top: '50%' as any, marginTop: -17,
+  width: 34, height: 34, borderRadius: 17,
+  alignItems: 'center' as const, justifyContent: 'center' as const,
+  backgroundColor: 'rgba(255,255,255,0.9)',
+  ...(Platform.OS === 'web'
+    ? ({ cursor: 'pointer', backdropFilter: 'blur(6px)', boxShadow: '0 2px 8px rgba(15,23,42,0.16)' } as any)
+    : {}),
+};
+
+function shortLabel(name: string): string {
+  const first = String(name ?? '').split('·')[0].trim();
+  if (first && first !== name.trim()) return first;
+  return first.replace(/\.[a-z0-9]{2,5}$/i, '');
+}
+
+function isPreviewable(att: UploadAttachment): boolean {
+  if (!att.uri) return false;
+  const n = `${att.filename ?? ''} ${att.name ?? ''}`.toLowerCase();
+  // Uzantı önce: `kind` çağıran tarafta yanlış set edilebiliyor (bilinmeyen
+  // türler 'image'a düşüyordu → zip için boş küçük resim kutusu çiziliyordu).
+  if (/\.(zip|rar|7z|tar|gz|stl|ply|obj|3mf|dcm|pdf|mp4|mov|webm)(\s|$|\?)/.test(n)) return false;
+  if (/\.(png|jpe?g|webp|gif|bmp|heic|heif|avif)(\s|$|\?)/.test(n)) return true;
+  return att.kind === 'image';
+}
 
 export interface UploadAttachment {
   id:    string;
@@ -224,7 +262,7 @@ export function FilesUploadModal({
     return (
       <View style={{
         position: 'absolute' as any,
-        bottom: 4, right: 4,
+        bottom: 4, end: 4,
         width: 36, height: 36,
         alignItems: 'center', justifyContent: 'center',
       }}>
@@ -428,6 +466,32 @@ export function FilesUploadModal({
     );
   };
 
+  // Hero önizleme: üstte büyük görsel, altta küçük karolar. Seçim yapılmadıysa
+  // ilk görsel gösterilir; görsel yoksa hero hiç çizilmez (STL/ZIP'in önizlemesi yok).
+  const [heroId, setHeroId] = React.useState<string | null>(null);
+  // Silme yıkıcı ve geri alınamaz — kullanıcı onaylamadan dosya kaldırılmaz.
+  const [confirm, setConfirm] = React.useState<ConfirmState | null>(null);
+  const askRemove = React.useCallback((att: UploadAttachment) => {
+    setConfirm({
+      title: 'Dosyayı sil',
+      highlight: shortLabel(att.name),
+      message: 'dosyası siparişten kaldırılacak. Bu işlem geri alınamaz.',
+      variant: 'danger',
+      label: 'Evet, sil',
+      onConfirm: () => { onRemove?.(att.id); },
+    });
+  }, [onRemove]);
+  const heroImages = React.useMemo(() => attachments.filter(isPreviewable), [attachments]);
+  const heroFile = React.useMemo(
+    () => (heroImages.length ? (heroImages.find(a => a.id === heroId) ?? heroImages[0]) : null),
+    [heroImages, heroId],
+  );
+  const stepHero = React.useCallback((d: number) => {
+    if (heroImages.length < 2 || !heroFile) return;
+    const i = heroImages.findIndex(a => a.id === heroFile.id);
+    setHeroId(heroImages[(i + d + heroImages.length) % heroImages.length].id);
+  }, [heroImages, heroFile]);
+
   // ── Sağ panel "Yüklenen Dosyalar" — yükleme KUTUSU (kategori) bazlı gruplama,
   //    yeni yüklenen üstte (en son eklenen → en üst kategori + grup içinde en üst).
   const uploadedGroups = React.useMemo(() => {
@@ -501,7 +565,7 @@ export function FilesUploadModal({
 
           <View style={{ flex: 1, flexDirection: splitView && !isMobile ? 'row' : 'column' }}>
           <ScrollView
-            style={{ flex: splitView && !isMobile ? 1.6 : 1, borderRightWidth: splitView && !isMobile ? 1 : 0, borderRightColor: T.hairline }}
+            style={{ flex: splitView && !isMobile ? 1.6 : 1, borderEndWidth: splitView && !isMobile ? 1 : 0, borderEndColor: T.hairline }}
             contentContainerStyle={{ padding: isMobile ? 14 : 24 }}
             showsVerticalScrollIndicator={false}
           >
@@ -519,7 +583,7 @@ export function FilesUploadModal({
                     <TouchableOpacity
                       onPress={onPreviewAll3D}
                       style={{
-                        marginLeft: 'auto' as any,
+                        marginStart: 'auto' as any,
                         flexDirection: 'row', alignItems: 'center', gap: 5,
                         paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
                         backgroundColor: accentColor,
@@ -638,6 +702,86 @@ export function FilesUploadModal({
                 </View>
               </View>
 
+              {/* ── Hero önizleme ── */}
+              {heroFile && (
+                <View style={{ marginBottom: 14 }}>
+                  {/* Oklar görselin İÇİNDE konumlanmalı — daha önce dış kaba
+                      göre yerleşip şeridin arkasında kalıyorlardı. */}
+                  <View style={{ position: 'relative' }}>
+                    <Pressable
+                      onPress={() => onPreview?.(heroFile)}
+                      style={({ hovered }: any) => ({
+                        width: '100%', height: 240, borderRadius: 12, overflow: 'hidden',
+                        backgroundColor: '#0F172A08',
+                        ...(Platform.OS === 'web'
+                          ? ({ cursor: 'pointer',
+                               boxShadow: hovered ? '0 10px 28px rgba(15,23,42,0.18)' : '0 1px 4px rgba(15,23,42,0.08)',
+                               transition: 'box-shadow 150ms ease-out' } as any)
+                          : {}),
+                      })}
+                    >
+                      <Image source={{ uri: heroFile.uri }} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
+                    </Pressable>
+                    {heroImages.length > 1 && (
+                      <>
+                        <TouchableOpacity onPress={() => stepHero(-1)} style={[heroNavBtn, isRTL() ? { right: 8 } : { left: 8 }]} hitSlop={8} accessibilityLabel="Önceki">
+                          <AppIcon name={dirIcon('chevron-left') as any} size={18} color="#0F172A" />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => stepHero(1)} style={[heroNavBtn, isRTL() ? { left: 8 } : { right: 8 }]} hitSlop={8} accessibilityLabel="Sonraki">
+                          <AppIcon name={dirIcon('chevron-right') as any} size={18} color="#0F172A" />
+                        </TouchableOpacity>
+                      </>
+                    )}
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                    <Text numberOfLines={1} style={{ flex: 1, fontSize: 11, fontFamily: F.semibold, color: '#475569' }}>
+                      {shortLabel(heroFile.name)}
+                    </Text>
+                    <Text style={{ fontSize: 10.5, color: '#94A3B8' }}>
+                      {heroImages.findIndex(a => a.id === heroFile.id) + 1} / {heroImages.length}
+                    </Text>
+                    {onRemove && heroFile.canRemove && (
+                      <TouchableOpacity
+                        onPress={() => askRemove(heroFile)}
+                        style={{ width: 26, height: 26, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FEE2E2' }}
+                        accessibilityLabel="Bu fotoğrafı sil"
+                      >
+                        <AppIcon name={'trash-2' as any} size={13} color="#DC2626" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {/* TEK şerit — fotoğraflar kategorilere dağılmıyor, hepsi burada.
+                      Esnek pay: kaç tane olursa olsun tek sıraya sığar. */}
+                  {heroImages.length > 1 && (
+                    <View style={{
+                      flexDirection: 'row', marginTop: 8, gap: 2,
+                      borderRadius: 8, overflow: 'hidden', backgroundColor: '#FFFFFF',
+                    }}>
+                      {heroImages.map(a => {
+                        const active = a.id === heroFile.id;
+                        return (
+                          <Pressable
+                            key={a.id}
+                            onPress={() => setHeroId(a.id)}
+                            style={{
+                              flex: active ? 2.4 : 1, height: 64, minWidth: 0,
+                              backgroundColor: '#EEF2F6',
+                              opacity: active ? 1 : 0.78,
+                              ...(Platform.OS === 'web'
+                                ? ({ cursor: 'pointer', transition: 'flex-grow 220ms ease-out, opacity 220ms ease-out' } as any)
+                                : {}),
+                            }}
+                          >
+                            <Image source={{ uri: a.uri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
+              )}
+
               {/* Aktif yüklemeler — listenin EN ÜSTÜNDE her dosya için ayrı progress bar */}
               {activeUploads.map((u, idx) => (
                 <UploadProgressRow
@@ -664,15 +808,21 @@ export function FilesUploadModal({
                   </Text>
                 </View>
               ) : (
-                uploadedGroups.map(group => (
+                uploadedGroups.map(group => {
+                  // Fotoğraflar üstteki tek galeriye taşındı; burada yalnız
+                  // görsel OLMAYANLAR (STL, ZIP, PDF…) listelenir. Grubun tamamı
+                  // fotoğraftan ibaretse başlık da çizilmez, boş başlık kalmasın.
+                  const rest = group.items.filter(a => !isPreviewable(a));
+                  if (!rest.length) return null;
+                  return (
                   <View key={group.title} style={{ marginBottom: 14 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                       <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: group.color }} />
                       <Text style={{ fontSize: 10.5, fontFamily: F.bold, color: '#0F172A', letterSpacing: 0.6, textTransform: 'uppercase' as any }}>
-                        {group.title} · {group.items.length}
+                        {group.title} · {rest.length}
                       </Text>
                     </View>
-                    {group.items.map(att => (
+                    {rest.map(att => (
                       <Pressable
                         key={att.id}
                         onPress={() => onPreview?.(att)}
@@ -685,18 +835,38 @@ export function FilesUploadModal({
                           ...(Platform.OS === 'web' ? { cursor: 'pointer' as any } as any : {}),
                         })}
                       >
-                        <View style={{
-                          width: 28, height: 28, borderRadius: 7,
-                          backgroundColor: '#22C55E18',
-                          alignItems: 'center', justifyContent: 'center',
-                          borderWidth: 1, borderColor: '#22C55E33',
-                        }}>
-                          <AppIcon
-                            name={iconForKind(att.kind, att.name) as any}
-                            size={13}
-                            color="#22C55E"
-                          />
-                        </View>
+                        {/* Fotoğraflarda ikon yerine gerçek küçük resim.
+                            `uri` zaten elimizde (yerel object URL / signed URL),
+                            ek istek gerekmiyor. Görsel olmayanlar ikonda kalır. */}
+                        {isPreviewable(att) ? (
+                          <View style={{
+                            width: 40, height: 40, borderRadius: 8, overflow: 'hidden',
+                            backgroundColor: '#F1F5F9',
+                            borderWidth: 1, borderColor: '#E2E8F0',
+                          }}>
+                            <Image
+                              source={{ uri: att.uri }}
+                              style={{ width: '100%', height: '100%' }}
+                              resizeMode="cover"
+                            />
+                          </View>
+                        ) : (() => {
+                          const m = fileTypeMeta(att.name, att.kind);
+                          return (
+                            <View style={{
+                              width: 40, height: 40, borderRadius: 8,
+                              backgroundColor: m.color + '18',
+                              alignItems: 'center', justifyContent: 'center',
+                              borderWidth: 1, borderColor: m.color + '33',
+                              gap: 1,
+                            }}>
+                              <AppIcon name={m.icon as any} size={14} color={m.color} />
+                              <Text style={{ fontSize: 7.5, fontFamily: F.bold, color: m.color, letterSpacing: 0.3 }}>
+                                {m.badge}
+                              </Text>
+                            </View>
+                          );
+                        })()}
                         <Text
                           style={{ flex: 1, fontSize: 12, fontFamily: F.semibold, color: '#0F172A' }}
                           numberOfLines={1}
@@ -705,7 +875,7 @@ export function FilesUploadModal({
                         </Text>
                         {onRemove && att.canRemove && (
                           <TouchableOpacity
-                            onPress={(e) => { (e as any).stopPropagation?.(); onRemove(att.id); }}
+                            onPress={(e) => { (e as any).stopPropagation?.(); askRemove(att); }}
                             style={{ width: 24, height: 24, borderRadius: 6, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FEE2E2' }}
                           >
                             <AppIcon name={'close' as any} size={11} color="#EF4444" />
@@ -714,7 +884,8 @@ export function FilesUploadModal({
                       </Pressable>
                     ))}
                   </View>
-                ))
+                  );
+                })
               )}
             </ScrollView>
           )}
@@ -734,6 +905,8 @@ export function FilesUploadModal({
           </View>
         </View>
       </View>
+      {/* Silme onayı — modalın İÇİNDE, üstünde görünsün */}
+      <ConfirmDialog state={confirm} onClose={() => setConfirm(null)} />
     </Modal>
   );
 }
@@ -786,7 +959,7 @@ function UploadProgressRow({
             {filename}
           </Text>
         </View>
-        <Text style={{ fontSize: 14, fontFamily: F.bold, color: accentColor, minWidth: 48, textAlign: 'right' as any }}>
+        <Text style={{ fontSize: 14, fontFamily: F.bold, color: accentColor, minWidth: 48, textAlign: 'end' as any as any }}>
           {pct != null ? `%${pct}` : '...'}
         </Text>
       </View>
@@ -805,13 +978,45 @@ function UploadProgressRow({
 }
 
 // ── Split view helpers ──────────────────────────────────────────────────────
+/**
+ * Dosya türü görünümü — ikon, renk ve uzantı rozeti.
+ *
+ * NEDEN rozet: STL/PLY/OBJ hepsi aynı küp ikonuyla çiziliyordu, teknisyen
+ * hangisinin ne olduğunu ancak dosya adını sonuna kadar okuyarak anlıyordu.
+ * Uzantı metni ikondan daha hızlı taranıyor.
+ */
+function fileTypeMeta(name: string, kind?: UploadAttachment['kind']): {
+  icon: string; color: string; badge: string;
+} {
+  const ext = (name.split('.').pop() ?? '').toLowerCase();
+  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext))
+    return { icon: 'file-archive', color: '#D97706', badge: ext.toUpperCase() };
+  if (['stl', 'ply', 'obj', '3mf'].includes(ext))
+    return { icon: 'box', color: '#3B82F6', badge: ext.toUpperCase() };
+  if (ext === 'pdf')
+    return { icon: 'file-pdf-box', color: '#DC2626', badge: 'PDF' };
+  if (['html', 'htm'].includes(ext))
+    return { icon: 'globe', color: '#8B5CF6', badge: 'HTML' };
+  if (['mp4', 'mov', 'webm', 'avi'].includes(ext))
+    return { icon: 'play-circle', color: '#0EA5E9', badge: ext.toUpperCase() };
+  if (['dcm'].includes(ext))
+    return { icon: 'file-text', color: '#0891B2', badge: 'DCM' };
+  if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'].includes(ext))
+    return { icon: 'image', color: '#22C55E', badge: ext.toUpperCase() };
+  return { icon: iconForKind(kind, name), color: '#64748B', badge: ext ? ext.toUpperCase().slice(0, 4) : 'DOSYA' };
+}
+
 function iconForKind(kind: UploadAttachment['kind'], name: string): string {
+  // Uzantı önce bakılır: tarama arşivi kind='scan' gelse de .zip ise
+  // küp değil arşiv ikonu gösterilmeli.
+  if (/\.(zip|rar|7z|tar|gz)$/i.test(name)) return 'file-archive';
   if (kind === 'video') return 'video-outline';
   if (kind === 'pdf')   return 'file-pdf-box';
   if (kind === 'scan')  return 'cube-outline';
   if (kind === 'image') return 'image-outline';
   // Fallback by extension
   const ext = name.split('.').pop()?.toLowerCase() ?? '';
+  if (['zip','rar','7z','tar','gz'].includes(ext))  return 'file-archive';
   if (['stl','obj','ply','3mf'].includes(ext))      return 'cube-outline';
   if (['mp4','mov','webm','avi'].includes(ext))     return 'video-outline';
   if (['pdf'].includes(ext))                         return 'file-pdf-box';
@@ -927,12 +1132,12 @@ const s = StyleSheet.create({
   uploadCardLabel:    { fontSize: 11, fontFamily: F.semibold, color: '#0F172A', textAlign: 'center' as any },
   uploadCardFileName: { fontSize: 10, fontFamily: F.regular, color: '#059669', marginTop: 3, width: '100%' },
   uploadCardBtn: {
-    position: 'absolute' as any, bottom: 8, right: 8,
+    position: 'absolute' as any, bottom: 8, end: 8,
     width: 26, height: 26, borderRadius: 13,
     alignItems: 'center' as any, justifyContent: 'center' as any,
   },
   uploadCardDel: {
-    position: 'absolute' as any, top: 18, right: 8,
+    position: 'absolute' as any, top: 18, end: 8,
     width: 20, height: 20, borderRadius: 10,
     backgroundColor: '#FEE2E2',
     alignItems: 'center' as any, justifyContent: 'center' as any,

@@ -17,7 +17,9 @@ import {
 import { usePathname, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { LucideIcon } from 'lucide-react-native';
-import { Search, X, CornerDownLeft } from 'lucide-react-native';
+import { Search, X, CornerDownLeft, CornerDownRight } from 'lucide-react-native';
+import { isRTL } from '../../i18n';
+import { autoT } from '../../i18n/autoTranslate';
 import { useThemeModeStore } from '../../store/themeModeStore';
 import { useCommandPalette } from '../../store/commandPaletteStore';
 
@@ -64,11 +66,17 @@ interface Props {
 // iOS 26+ native liquid glass available? (via @callstack/liquid-glass)
 const LIQUID_GLASS = Platform.OS === 'ios' && !!isLiquidGlassSupported;
 
+/** Sayı rozetinin yatay konumu — `end:` inline stili bu projede güvenilir değil. */
+const badgeSideStyle = () => (isRTL() ? { left: -7 } : { right: -7 });
+
 export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems, onSearchNavigate, getItemRef }: Props) {
   const pathname = usePathname();
   const router   = useRouter();
   const insets   = useSafeAreaInsets();
   const dark     = useThemeModeStore(s => s.resolvedDark);
+  const rtl      = isRTL();
+  // "Enter" köşe oku yön bildirir → RTL'de aynalanır
+  const EnterIcon = rtl ? CornerDownRight : CornerDownLeft;
 
   // ─── Search-morph durumu ───────────────────────────────────────────────
   const searchEnabled = !!searchItems && !!onSearchNavigate;
@@ -114,6 +122,12 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
       const seg = items[i].routeName;
       if (seg === 'index') continue;
       if (pathname.includes('/' + seg)) return i;
+    }
+    // Sipariş detayı top-level rota (/order/[id]) — "Siparişler" listesinin bir
+    // alt sayfası; o sekme aktif kalmalı. ('/orders' loop'ta zaten eşleşir.)
+    if (/(^|\/)order(\/|$)/.test(pathname)) {
+      const ordersIdx = items.findIndex(it => it.routeName === 'orders' || it.routeName === 'all-orders');
+      if (ordersIdx >= 0) return ordersIdx;
     }
     // Bilinen sekme eşleşmedi (ör. ayarlar/profil — "Daha" arkasındaki sayfalar)
     // → "Daha (...)" sekmesini aktif göster; yoksa fallback 0
@@ -230,9 +244,9 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
         ref={inputRef}
         value={query}
         onChangeText={setQuery}
-        placeholder="Sayfa ara…"
+        placeholder={autoT('Sayfa ara…')}
         placeholderTextColor={dark ? 'rgba(247,242,233,0.4)' : 'rgba(20,16,12,0.4)'}
-        style={[s.searchInput, { color: dark ? '#F7F2E9' : '#0E0E0E' }]}
+        style={[s.searchInput, { color: dark ? '#F7F2E9' : '#0E0E0E', textAlign: rtl ? 'right' : undefined }]}
         returnKeyType="search"
         autoCorrect={false}
         onSubmitEditing={() => {
@@ -264,7 +278,7 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
       {filteredSearch.length === 0 ? (
         <View style={{ paddingVertical: 16, alignItems: 'center' }}>
           <Text style={{ fontSize: 12.5, color: dark ? 'rgba(247,242,233,0.5)' : 'rgba(20,16,12,0.45)' }}>
-            Eşleşen sayfa yok
+            {autoT('Eşleşen sayfa yok')}
           </Text>
         </View>
       ) : (
@@ -275,7 +289,7 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
             style={s.resultRow}
           >
             <View style={[s.resultIcon, { backgroundColor: `${accent}1A` }]}>
-              <CornerDownLeft size={14} color={accent} strokeWidth={2} />
+              <EnterIcon size={14} color={accent} strokeWidth={2} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={{ fontSize: 14, fontWeight: '600', color: dark ? '#F7F2E9' : '#0E0E0E' }} numberOfLines={1}>
@@ -294,7 +308,16 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
   ) : null;
 
   // Bar content — either GlassView, BlurView, or plain web fallback
-  const barFlex = fabItem ? { flex: 1 } : null;
+  // Genişlik yönetimi:
+  //  • arama açık        → tam genişliğe uzar (arama input'u için)
+  //  • FAB'lı panel      → flex:1 ile FAB'dan kalan alana sığar (aktif label
+  //                        açılınca ekranı TAŞMAZ; ikonlar içeride ortalanır)
+  //  • FAB'sız panel     → içeriğe göre daralır (kompakt, sıkı grup)
+  const barFlex: any = searchActive
+    ? { alignSelf: 'stretch' }
+    // FAB'lı panel: sabit gap taşmaya yol açıyor (aktif label + FAB dar alanda).
+    // flex:1 + space-evenly → hücreler kalan alana EŞİT dağılır, kenara taşmaz.
+    : (fabItem ? { flex: 1, justifyContent: 'space-evenly', gap: 0 } : null);
   const barContent =
     LIQUID_GLASS ? (
       <LiquidGlassView
@@ -485,6 +508,7 @@ function SearchAboveFab({ accentColor }: { accentColor?: string }) {
 function FabButton({ item, accentColor, itemRef }: { item: PillTabItem; accentColor: string; itemRef?: (node: any) => void }) {
   const scale = useRef(new Animated.Value(1)).current;
   const Icon  = item.icon;
+  const badgeSide = badgeSideStyle();
 
   const handle = () => {
     Animated.sequence([
@@ -521,7 +545,7 @@ function FabButton({ item, accentColor, itemRef }: { item: PillTabItem; accentCo
           />
           <Icon size={26} color="#FFFFFF" strokeWidth={2.6} />
           {!!item.badgeCount && item.badgeCount > 0 && (
-            <View style={[s.countBadge, { borderColor: accentColor }]}>
+            <View style={[s.countBadge, badgeSide, { borderColor: accentColor }]}>
               <Text style={s.countBadgeText}>
                 {item.badgeCount > 99 ? '99+' : String(item.badgeCount)}
               </Text>
@@ -551,7 +575,7 @@ function FabButton({ item, accentColor, itemRef }: { item: PillTabItem; accentCo
       >
         <Icon size={26} color="#FFFFFF" strokeWidth={2.6} />
         {!!item.badgeCount && item.badgeCount > 0 && (
-          <View style={[s.countBadge, { borderColor: accentColor }]}>
+          <View style={[s.countBadge, badgeSide, { borderColor: accentColor }]}>
             <Text style={s.countBadgeText}>
               {item.badgeCount > 99 ? '99+' : String(item.badgeCount)}
             </Text>
@@ -577,6 +601,8 @@ function PillCell({
   const Icon  = item.icon;
   const scale = useRef(new Animated.Value(1)).current;
   const expand = useRef(new Animated.Value(active ? 1 : 0)).current;
+  const rtl = isRTL();
+  const badgeSide = badgeSideStyle();
 
   useEffect(() => {
     Animated.spring(expand, {
@@ -626,7 +652,7 @@ function PillCell({
             strokeWidth={active ? 2.2 : 1.9}
           />
           {!!item.badgeCount && item.badgeCount > 0 && (
-            <View style={[s.countBadge, { borderColor: dark ? '#0A0A0A' : '#FFFFFF' }]}>
+            <View style={[s.countBadge, badgeSide, { borderColor: dark ? '#0A0A0A' : '#FFFFFF' }]}>
               <Text style={s.countBadgeText}>
                 {item.badgeCount > 99 ? '99+' : String(item.badgeCount)}
               </Text>
@@ -639,7 +665,8 @@ function PillCell({
           <Animated.View
             style={{
               maxWidth: labelMaxWidth,
-              marginLeft: labelMarginLeft,
+              // Animated logical margin yerine açık yön — RTL'de etiket ikona yapışmasın
+              ...(rtl ? { marginRight: labelMarginLeft } : { marginLeft: labelMarginLeft }),
               opacity: labelOpacity,
               overflow: 'hidden',
             }}
@@ -661,8 +688,8 @@ function PillCell({
 const s = StyleSheet.create({
   wrap: {
     position: 'absolute',
-    left: 0,
-    right: 0,
+    start: 0,
+    end: 0,
     paddingHorizontal: 16,
     alignItems: 'center',
     backgroundColor: 'transparent',
@@ -671,11 +698,14 @@ const s = StyleSheet.create({
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    // Apple-grouping (proximity): ikonlar geniş space-between ile dağıtılmak
+    // yerine sıkı bir grup halinde ortalanır; bar içeriğe göre daralır (kompakt pill).
+    justifyContent: 'center',
+    alignSelf: 'center',
+    gap: 12,
     paddingVertical: 7,
-    paddingHorizontal: 6,
+    paddingHorizontal: 10,
     borderRadius: 999,
-    width: '100%',
     maxWidth: 420,
     overflow: 'hidden',
     ...(Platform.OS === 'web'
@@ -748,6 +778,7 @@ const s = StyleSheet.create({
   asymRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 12,
     width: '100%',
   },
@@ -780,8 +811,8 @@ const s = StyleSheet.create({
   innerHighlight: {
     position: 'absolute',
     top: 0,
-    left: 0,
-    right: 0,
+    start: 0,
+    end: 0,
     height: '50%',
     borderTopLeftRadius: 999,
     borderTopRightRadius: 999,
@@ -822,7 +853,7 @@ const s = StyleSheet.create({
   countBadge: {
     position: 'absolute',
     top: -5,
-    right: -7,
+    // yatay konum çağrı yerinde (isRTL) verilir — `end:` bu projede güvenilir değil
     minWidth: 16,
     height: 16,
     borderRadius: 8,

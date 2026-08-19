@@ -110,8 +110,8 @@ export function TimingBreakdown({
                 style={{
                   width: visibleItems.length <= 2 ? '50%' : visibleItems.length === 3 ? '33.333%' : '25%',
                   paddingHorizontal: 14, paddingVertical: 11,
-                  borderRightWidth: idx < visibleItems.length - 1 ? 1 : 0,
-                  borderRightColor: P.ink100,
+                  borderEndWidth: idx < visibleItems.length - 1 ? 1 : 0,
+                  borderEndColor: P.ink100,
                   gap: 5,
                   position: 'relative',
                 }}
@@ -142,7 +142,7 @@ export function TimingBreakdown({
                     hitSlop={6}
                     style={({ hovered }: any) => ({
                       position: 'absolute' as any,
-                      top: 8, right: 8,
+                      top: 8, end: 8,
                       width: 22, height: 22, borderRadius: 6,
                       alignItems: 'center', justifyContent: 'center',
                       backgroundColor: hovered ? hexA('#EA580C', 0.16) : hexA('#EA580C', 0.08),

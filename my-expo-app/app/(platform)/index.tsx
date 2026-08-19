@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, Pressable, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
-import { AlertTriangle, TrendingUp, Filter as FunnelIcon, Repeat, ArrowUpRight, Clock, Inbox, Moon } from 'lucide-react-native';
+import { AlertTriangle, TrendingUp, Filter as FunnelIcon, Repeat, ArrowUpRight, ArrowUpLeft, Clock, Inbox, Moon } from 'lucide-react-native';
+import { isRTL } from '../../core/i18n';
+import { autoT } from '../../core/i18n/autoTranslate';
 import { PercentRingX } from '../../core/ui/ProgressX';
 import { platformStats, growthSeries, platformMetrics, type PlatformStats, type GrowthPoint, type PlatformMetrics } from '../../modules/platform/api';
 import { C, SERIF, NUM, Kpi, Panel, PageHeader, SectionLabel, Banner, IconBtn, planTone } from '../../modules/platform/ui';
@@ -28,6 +30,8 @@ export default function PlatformOverview() {
   const urgent = attention ? attention.silent_30d + attention.trial_ending_7d : 0;
   const activationPct = metrics ? pct(metrics.retention.activated_30d, metrics.retention.new_30d) : 0;
   const openLabs = () => router.replace('/(platform)/labs' as any);
+  // Yönlü ikon: köşegen ok RTL'de karşı köşeye bakmalı (chevron/arrow kuralı).
+  const GoIcon = isRTL() ? ArrowUpLeft : ArrowUpRight;
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
@@ -56,8 +60,8 @@ export default function PlatformOverview() {
 
             {/* Acil dikkat — full-bleed banner */}
             {urgent > 0 && (
-              <Banner tone={C.red} icon={AlertTriangle} title={`${urgent} lab dikkat gerektiriyor`}
-                action={<IconBtn icon={ArrowUpRight} tone={C.red} onPress={openLabs} />}>
+              <Banner tone={C.red} icon={AlertTriangle} title={`${urgent} ${autoT('lab dikkat gerektiriyor')}`}
+                action={<IconBtn icon={GoIcon} tone={C.red} onPress={openLabs} />}>
                 {attention!.silent_30d} lab 30 gündür sessiz · {attention!.trial_ending_7d} denemesi 7 gün içinde bitiyor
               </Banner>
             )}
@@ -89,8 +93,8 @@ export default function PlatformOverview() {
               <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6, height: 116, borderBottomWidth: 1, borderBottomColor: C.line, paddingBottom: 0 }}>
                 {growth.map((g, i) => (
                   <View key={i} style={{ flex: 1, alignItems: 'center', justifyContent: 'flex-end', gap: 3 }}>
-                    <View style={{ width: '66%', height: Math.max(2, (g.orders / maxOrders) * 84), backgroundColor: C.accent, borderTopLeftRadius: 3, borderTopRightRadius: 3, opacity: 0.92 }} />
-                    <View style={{ width: '66%', height: Math.max(2, (g.new_labs / maxLabs) * 22), backgroundColor: C.green, borderTopLeftRadius: 3, borderTopRightRadius: 3 }} />
+                    <View style={{ width: '66%', height: Math.max(2, (g.orders / maxOrders) * 84), backgroundColor: C.accent, borderTopStartRadius: 3, borderTopEndRadius: 3, opacity: 0.92 }} />
+                    <View style={{ width: '66%', height: Math.max(2, (g.new_labs / maxLabs) * 22), backgroundColor: C.green, borderTopStartRadius: 3, borderTopEndRadius: 3 }} />
                   </View>
                 ))}
               </View>
@@ -144,6 +148,7 @@ export default function PlatformOverview() {
  * >0 hücre: tone renkli metrik + "Lab'lara git →" aksiyonu (tıklanır);
  * 0 hücre: susturulmuş ink3 + "Sorun yok". */
 function AttentionLedger({ items, onOpen }: { items: { label: string; value: number; tone: string; icon: any }[]; onOpen: () => void }) {
+  const GoIcon = isRTL() ? ArrowUpLeft : ArrowUpRight;
   return (
     <Panel padding={0} style={{ marginBottom: 30, overflow: 'hidden' }}>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
@@ -154,7 +159,7 @@ function AttentionLedger({ items, onOpen }: { items: { label: string; value: num
             <Pressable key={it.label} onPress={active ? onOpen : undefined}
               style={({ hovered }: any) => ({
                 flex: 1, minWidth: 190, paddingVertical: 20, paddingHorizontal: 22,
-                borderLeftWidth: i === 0 ? 0 : 1, borderLeftColor: C.line,
+                borderStartWidth: i === 0 ? 0 : 1, borderStartColor: C.line,
                 backgroundColor: hovered && active ? C.cardHover : 'transparent',
                 ...(web && active ? ({ cursor: 'pointer' } as any) : {}),
               })}>
@@ -166,7 +171,7 @@ function AttentionLedger({ items, onOpen }: { items: { label: string; value: num
               {active ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 9 }}>
                   <Text style={{ fontSize: 11.5, fontWeight: '700', color: it.tone }}>Lab'lara git</Text>
-                  <ArrowUpRight size={13} color={it.tone} strokeWidth={2.2} />
+                  <GoIcon size={13} color={it.tone} strokeWidth={2.2} />
                 </View>
               ) : (
                 <Text style={{ fontSize: 11.5, color: C.ink3, marginTop: 9 }}>Sorun yok</Text>
@@ -187,7 +192,7 @@ function PlanBar({ plans }: { plans: Record<string, number> }) {
     <View style={{ marginBottom: 30 }}>
       <View style={{ flexDirection: 'row', height: 12, borderRadius: 999, overflow: 'hidden', backgroundColor: C.soft }}>
         {entries.map(([plan, n], i) => (
-          <View key={plan} style={{ width: `${((n as number) / total) * 100}%`, backgroundColor: planTone(plan), borderRightWidth: i === entries.length - 1 ? 0 : 2, borderRightColor: C.card }} />
+          <View key={plan} style={{ width: `${((n as number) / total) * 100}%`, backgroundColor: planTone(plan), borderEndWidth: i === entries.length - 1 ? 0 : 2, borderEndColor: C.card }} />
         ))}
       </View>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16, marginTop: 13 }}>

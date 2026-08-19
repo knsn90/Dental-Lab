@@ -63,7 +63,7 @@ export function AddressAutocompleteField({
     <View style={{ position: 'relative' as any, zIndex: 20 }}>
       <View style={{ position: 'relative' as any }}>
         <TextInput
-          style={[inputStyle, { paddingRight: 34 }]}
+          style={[inputStyle, { paddingEnd: 34 }]}
           value={value ?? ''}
           onChangeText={onChangeText}
           placeholder={placeholder}
@@ -71,7 +71,7 @@ export function AddressAutocompleteField({
           autoCapitalize="none"
           autoCorrect={false}
         />
-        <View style={{ position: 'absolute' as any, right: 12, top: 0, bottom: 0, justifyContent: 'center' }}>
+        <View style={{ position: 'absolute' as any, end: 12, top: 0, bottom: 0, justifyContent: 'center' }}>
           {loading ? <ActivityIndicator size="small" color={accentColor} /> : <Search size={15} color={DS.ink[400]} strokeWidth={1.9} />}
         </View>
       </View>

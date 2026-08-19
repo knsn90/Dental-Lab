@@ -64,12 +64,15 @@ function Pill({
     <Pressable
       onPress={onPress}
       disabled={busy}
-      style={({ hovered }: any) => ({
-        flexDirection: 'row', alignItems: 'center', gap: 6,
+      /* NOT: obje-stil ZORUNLU — NativeWind v4'te fonksiyon-stilli Pressable
+         native'de stili düşürüp satırı column'a çeviriyor; ikon+yazı alt alta
+         düşüp pill zemini/kenarlığı kayboluyordu (web'de sorun yok). */
+      style={{
+        flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
         paddingVertical: padV, paddingHorizontal: padH, borderRadius: 999, borderWidth: 1,
-        backgroundColor: bg, borderColor: border, opacity: busy ? 0.6 : hovered ? 0.88 : 1,
+        backgroundColor: bg, borderColor: border, opacity: busy ? 0.6 : 1,
         ...(Platform.OS === 'web' && !busy ? ({ cursor: 'pointer', transition: 'opacity 0.15s ease' } as any) : {}),
-      })}
+      }}
     >
       {busy ? <ActivityIndicator size="small" color={fg} /> : <Icon size={iconSize} color={fg} strokeWidth={1.8} />}
       <Text style={{ fontSize: textSize, fontWeight: '500', color: fg }}>{label}</Text>

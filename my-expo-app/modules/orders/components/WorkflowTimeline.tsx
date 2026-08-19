@@ -9,8 +9,9 @@
 
 import React from 'react';
 import { View, Text, ScrollView, Platform } from 'react-native';
-import { ChevronRight, Check, Pause, Cog, Hourglass, AlertOctagon, RotateCcw, Ban } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, Check, Pause, Cog, Hourglass, AlertOctagon, RotateCcw, Ban } from 'lucide-react-native';
 import { useStationTheme, hexA } from '../../../core/theme/stationPalette';
+import { isRTL } from '../../../core/i18n';
 import { getStageStateMeta, type StageStatus } from '../stations/stageStates';
 
 export interface TimelineStage {
@@ -78,7 +79,9 @@ export function WorkflowTimeline({
         <React.Fragment key={s.id}>
           <TimelineChip stage={s} isCurrent={s.id === currentStageId} accent={accent} />
           {i < stages.length - 1 && (
-            <ChevronRight size={11} color={P.ink300} strokeWidth={1.6} />
+            isRTL()
+              ? <ChevronLeft size={11} color={P.ink300} strokeWidth={1.6} />
+              : <ChevronRight size={11} color={P.ink300} strokeWidth={1.6} />
           )}
         </React.Fragment>
       ))}

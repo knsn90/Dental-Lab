@@ -6,7 +6,7 @@ import {
   RefreshControl, useWindowDimensions, Animated, Easing,
 } from 'react-native';
 import { ClinicLogoPicker } from '../components/ClinicLogoPicker';
-import { Search, X, SlidersHorizontal, Plus, Building2, Users, UserPlus, List, ChevronRight, ChevronUp, ChevronDown, Edit2, Trash2, Phone, Mail, MapPin, RefreshCw, UserX, AlertCircle, Check, Percent, MinusCircle, Briefcase, Stethoscope, Printer, Eye, EyeOff, Link2, Copy } from 'lucide-react-native';
+import { Search, X, SlidersHorizontal, Plus, Building2, Users, UserPlus, List, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Edit2, Trash2, Phone, Mail, MapPin, RefreshCw, UserX, AlertCircle, Check, Percent, MinusCircle, Briefcase, Stethoscope, Printer, Eye, EyeOff, Link2, Copy } from 'lucide-react-native';
 import { buildWorkOrderFormHtml } from '../../orders/buildWorkOrderFormHtml';
 import { useSegments } from 'expo-router';
 import { LabConnectionsScreen } from '../../lab-connections/screens/LabConnectionsScreen';
@@ -22,11 +22,15 @@ import { AppIcon } from '../../../core/ui/AppIcon';
 import { DS } from '../../../core/theme/dsTokens';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { useColorThemeStore } from '../../../core/store/colorThemeStore';
-import { titleCaseTR as titleCaseTRShared } from '../../../core/utils/textCase';
+import { titleCaseTR as titleCaseTRShared, normalizeDoctorName } from '../../../core/utils/textCase';
 import { searchPlaces, getPlaceDetails, startPlaceSession, endPlaceSession, type PlaceSuggestion } from '../../auth/api/places';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
+import { isRTL } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 
 // ── Design tokens ───────────────────────────────────────────────────
 const DISPLAY = {
@@ -146,6 +150,7 @@ const TAB_FILTERS = [
 interface Props { accentColor?: string; }
 
 export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
+  const rtl = isRTL();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
   const insets = useSafeAreaInsets();
@@ -155,6 +160,9 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
   const { getTheme } = useColorThemeStore();
   const accentColor = accentColorProp ?? getTheme(panelType).primary;
   const T = useMobileTokens();
+  // SlideTabBar cursor'ı beyaz metin basar → koyu ink şart (panel `primary`si
+  // lab'da safran sarısı, beyazla okunmaz).
+  const panel = usePanelTheme();
   const isDark = useThemeModeStore(s => s.resolvedDark);
 
   // localStorage cache — 2. ziyarette anında render, arka planda taze veri.
@@ -195,7 +203,7 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
   const sendInvite = useCallback(async () => {
     setInviteOpen(true); setInviteBusy(true); setInviteErr(null); setInviteCode(null); setInviteCopied(false);
     try { setInviteCode(await labCreateInvite()); }
-    catch (e: any) { setInviteErr(e?.message ?? 'Davet kodu üretilemedi'); }
+    catch (e: any) { setInviteErr(e?.message ?? autoT('Davet kodu üretilemedi')); }
     finally { setInviteBusy(false); }
   }, []);
 
@@ -288,24 +296,55 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
       }
     } catch { /* fallback */ }
 
+    // Hekimler + labın hizmet kataloğu — formdaki kutular bunlardan üretilir.
+    // Katalog gelmezse şablon jenerik listeye düşer (form yine basılır).
+    let formDoctors: Array<{ name: string }> = [];
+    let formServices: Array<{ name: string; category?: string | null }> = [];
+    try {
+      const [docsRes, svcRes] = await Promise.all([
+        supabase.from('doctors').select('full_name').eq('clinic_id', clinic.id).order('full_name'),
+        supabase.from('lab_services').select('name, category, sort_order').eq('is_active', true).order('category').order('sort_order'),
+      ]);
+      formDoctors = ((docsRes.data ?? []) as any[])
+        .map(d => ({ name: String(d.full_name ?? '').trim() }))
+        .filter(d => d.name);
+      formServices = ((svcRes.data ?? []) as any[])
+        .map(s => ({ name: String(s.name ?? '').trim(), category: s.category ?? null }))
+        .filter(s => s.name);
+    } catch { /* katalog okunamazsa form yine basılsın */ }
+
+    // Diş şeması path verisi ~30 KB — dinamik import, klinik ekranının
+    // paketine girmesin. Gelmezse şablon kutu ızgarasına düşer.
+    let toothPaths: Record<number, string[]> | undefined;
+    let toothLabelPos: Record<number, [number, number]> | undefined;
+    try {
+      const mod = await import('../../orders/assets/toothPaths');
+      toothPaths = mod.TOOTH_PATHS;
+      toothLabelPos = mod.TOOTH_LABEL_POS;
+    } catch { /* şema olmadan da form basılır */ }
+
     const html = buildWorkOrderFormHtml({
       clinic: { id: clinic.id, name: clinic.name, address: clinic.address, phone: clinic.phone },
       lab,
+      doctors: formDoctors,
+      services: formServices,
+      toothPaths,
+      toothLabelPos,
       copies: 2,
     });
     const w = window.open('', '_blank', 'width=900,height=1100');
-    if (!w) { toast.error('Pop-up engellendi.'); return; }
+    if (!w) { toast.error(autoT('Pop-up engellendi.')); return; }
     w.document.open(); w.document.write(html); w.document.close();
   };
 
   const handleDeleteClinic = async (clinic: Clinic) => {
     // Web'de Alert.alert "destructive" butonu güvenilir çalışmıyor → window.confirm
     const confirmed = Platform.OS === 'web'
-      ? (typeof window !== 'undefined' && window.confirm(`"${clinic.name}" kliniğini silmek istiyor musunuz?`))
+      ? (typeof window !== 'undefined' && window.confirm(`"${clinic.name}" ${autoT('kliniğini silmek istiyor musunuz?')}`))
       : await new Promise<boolean>(resolve => {
-          Alert.alert('Klinik Sil', `"${clinic.name}" kliniğini silmek istiyor musunuz?`, [
-            { text: 'İptal', style: 'cancel', onPress: () => resolve(false) },
-            { text: 'Sil', style: 'destructive', onPress: () => resolve(true) },
+          Alert.alert(autoT('Klinik Sil'), `"${clinic.name}" ${autoT('kliniğini silmek istiyor musunuz?')}`, [
+            { text: autoT('İptal'), style: 'cancel', onPress: () => resolve(false) },
+            { text: autoT('Sil'), style: 'destructive', onPress: () => resolve(true) },
           ]);
         });
     if (!confirmed) return;
@@ -313,17 +352,17 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
     const { error } = await supabase.from('clinics').delete().eq('id', clinic.id);
     if (!error) {
       setClinics(prev => prev.filter(c => c.id !== clinic.id));
-      toast.success('Klinik silindi');
+      toast.success(autoT('Klinik silindi'));
       return;
     }
     // FK constraint hata mesajları — kullanıcıya net bilgi ver
     const msg = error.message || '';
     if (/foreign key|violates|referenced/i.test(msg)) {
-      toast.error('Bu kliniğe bağlı sipariş/hekim var. Önce onları silin veya pasife alın.');
+      toast.error(autoT('Bu kliniğe bağlı sipariş/hekim var. Önce onları silin veya pasife alın.'));
     } else if (/permission|denied|rls|policy/i.test(msg)) {
-      toast.error('Silme yetkiniz yok.');
+      toast.error(autoT('Silme yetkiniz yok.'));
     } else {
-      toast.error('Klinik silinemedi: ' + msg);
+      toast.error(autoT('Klinik silinemedi') + ': ' + msg);
     }
   };
 
@@ -335,11 +374,11 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
 
   const handleDeleteDoctor = async (doctor: Doctor) => {
     const confirmed = Platform.OS === 'web'
-      ? (typeof window !== 'undefined' && window.confirm(`"${doctor.full_name}" adlı hekimi silmek istiyor musunuz?`))
+      ? (typeof window !== 'undefined' && window.confirm(`"${doctor.full_name}" ${autoT('adlı hekimi silmek istiyor musunuz?')}`))
       : await new Promise<boolean>(resolve => {
-          Alert.alert('Hekim Sil', `"${doctor.full_name}" adlı hekimi silmek istiyor musunuz?`, [
-            { text: 'İptal', style: 'cancel', onPress: () => resolve(false) },
-            { text: 'Sil', style: 'destructive', onPress: () => resolve(true) },
+          Alert.alert(autoT('Hekim Sil'), `"${doctor.full_name}" ${autoT('adlı hekimi silmek istiyor musunuz?')}`, [
+            { text: autoT('İptal'), style: 'cancel', onPress: () => resolve(false) },
+            { text: autoT('Sil'), style: 'destructive', onPress: () => resolve(true) },
           ]);
         });
     if (!confirmed) return;
@@ -347,16 +386,16 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
     const { error } = await supabase.from('doctors').delete().eq('id', doctor.id);
     if (!error) {
       setDoctors(prev => prev.filter(d => d.id !== doctor.id));
-      toast.success('Hekim silindi');
+      toast.success(autoT('Hekim silindi'));
       return;
     }
     const msg = error.message || '';
     if (/foreign key|violates|referenced/i.test(msg)) {
-      toast.error('Bu hekime bağlı sipariş var. Önce siparişleri kontrol edin veya hekimi pasife alın.');
+      toast.error(autoT('Bu hekime bağlı sipariş var. Önce siparişleri kontrol edin veya hekimi pasife alın.'));
     } else if (/permission|denied|rls|policy/i.test(msg)) {
-      toast.error('Silme yetkiniz yok.');
+      toast.error(autoT('Silme yetkiniz yok.'));
     } else {
-      toast.error('Hekim silinemedi: ' + msg);
+      toast.error(autoT('Hekim silinemedi') + ': ' + msg);
     }
   };
 
@@ -412,34 +451,23 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
       {/* ── Filter Bar — 2 satır (tabs üstte, aksiyonlar altta) ─── */}
       <View className="px-4 pb-2" style={{ paddingTop: isDesktop ? 12 : 4, gap: 10 }}>
         {/* Row 1: Tabs — horizontal scroll; ScrollView dikey büyümesin */}
+        {/* Onaylar / Kullanıcılar / Kayıtlar ile AYNI bileşen (SlideTabBar).
+            Buradaki elle yazılmış gri raylı şerit görsel olarak yakındı ama
+            kayan cursor'ı yoktu ve sayaç tipografisi ayrı yoldan geliyordu.
+            8 sekme dar ekrana sığmadığı için yatay kaydırma korunuyor. */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           style={{ flexGrow: 0, flexShrink: 0 }}
-          contentContainerStyle={{ gap: 6, alignItems: 'center' }}
+          contentContainerStyle={{ alignItems: 'center' }}
         >
-          <View className="flex-row gap-0.5 p-0.5 bg-cream-panel rounded-full">
-            {TAB_FILTERS.map(f => {
-              const active = activeTab === f.key;
-              const count = tabCounts[f.key];        // Bağlantılar gibi sayısız sekmelerde undefined
-              return (
-                <Pressable
-                  key={f.key}
-                  onPress={() => setActiveTab(f.key as any)}
-                  className={`flex-row items-center gap-1.5 px-3 py-1.5 rounded-full ${active ? 'bg-ink-900' : ''}`}
-                >
-                  <Text className={`text-[12px] font-semibold ${active ? 'text-white' : 'text-ink-500'}`}>
-                    {f.label}
-                  </Text>
-                  {count != null && (
-                    <Text className={`text-[10px] font-bold ${active ? 'text-white/60' : 'text-ink-400'}`}>
-                      {count}
-                    </Text>
-                  )}
-                </Pressable>
-              );
-            })}
-          </View>
+          <SlideTabBar
+            items={TAB_FILTERS.map(f => ({ key: f.key, label: autoT(f.label), count: tabCounts[f.key] }))}
+            activeKey={activeTab}
+            onChange={(k) => setActiveTab(k as any)}
+            accentColor={panel.accent}
+            style={rtl ? { marginRight: -4 } : { marginLeft: -4 }}
+          />
         </ScrollView>
 
         {/* Row 2: Actions — Ara / Filtrele / Kurum (her zaman 36px, kompakt).
@@ -588,7 +616,7 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
                       <View style={{ width: isDesktop ? 26 : 20, height: isDesktop ? 26 : 20, borderRadius: R.sm, backgroundColor: cat.bg, alignItems: 'center', justifyContent: 'center' }}>
                         <AppIcon name={cat.icon as any} size={isDesktop ? 13 : 11} color={cat.color} />
                       </View>
-                      <Text style={{ fontSize: isDesktop ? 11 : 10, fontWeight: '500', letterSpacing: 0.5, textTransform: 'uppercase', color: T.ink3 }} numberOfLines={1}>{cat.label}</Text>
+                      <Text style={{ fontSize: isDesktop ? 11 : 10, fontWeight: '500', letterSpacing: 0.5, textTransform: 'uppercase', color: T.ink3 }} numberOfLines={1}>{autoT(cat.label)}</Text>
                     </View>
                     <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
                       <Text style={{ ...DISPLAY, fontSize: isDesktop ? 28 : 20, letterSpacing: -0.4, color: T.ink }}>{categoryCounts[cat.value] ?? 0}</Text>
@@ -726,7 +754,7 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
                           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                               <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: cat.color }} />
-                              <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[800] }}>{cat.label}</Text>
+                              <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[800] }}>{autoT(cat.label)}</Text>
                             </View>
                             <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[900] }}>{count}</Text>
                           </View>
@@ -766,7 +794,7 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
               <Text style={{ fontSize: 13, color: '#DC2626' }}>{inviteErr}</Text>
             ) : inviteCode ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 14, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E5E7EB' }}>
-                <Text selectable style={{ flex: 1, fontSize: 24, fontWeight: '800', letterSpacing: 3, color: DS.ink[900], fontFamily: Platform.OS === 'web' ? 'JetBrains Mono, monospace' : undefined }}>
+                <Text selectable style={{ flex: 1, fontSize: 24, fontWeight: '800', letterSpacing: 3, color: DS.ink[900], textAlign: rtl ? 'right' : undefined, fontFamily: Platform.OS === 'web' ? 'JetBrains Mono, monospace' : undefined }}>
                   {inviteCode}
                 </Text>
                 <Pressable onPress={copyInvite}
@@ -826,6 +854,7 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
 function AnimatedQuickActions({ accentColor, onAddClinic, onAddDoctor, onShowDoctors }: {
   accentColor: string; onAddClinic: () => void; onAddDoctor: () => void; onShowDoctors: () => void;
 }) {
+  const rtl = isRTL();
   const glowAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
@@ -862,13 +891,13 @@ function AnimatedQuickActions({ accentColor, onAddClinic, onAddDoctor, onShowDoc
     >
       {/* Shimmer glow */}
       <Animated.View style={{
-        position: 'absolute', top: -20, right: -20,
+        position: 'absolute', top: -20, ...(rtl ? { left: -20 } : { right: -20 }),
         width: 100, height: 100, borderRadius: 50,
         backgroundColor: '#FFFFFF',
         opacity: glowOpacity,
       }} pointerEvents="none" />
       <Animated.View style={{
-        position: 'absolute', bottom: -30, left: -10,
+        position: 'absolute', bottom: -30, ...(rtl ? { right: -10 } : { left: -10 }),
         width: 80, height: 80, borderRadius: 40,
         backgroundColor: '#FFFFFF',
         opacity: glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.05, 0.12] }),
@@ -926,7 +955,7 @@ function EmptyState({ hasSearch, search, accentColor, onAdd }: { hasSearch: bool
           : <Building2 size={24} color={accentColor} strokeWidth={1.5} />}
       </View>
       <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>{hasSearch ? 'Sonuç bulunamadı' : 'Henüz klinik eklenmemiş'}</Text>
-      <Text style={{ fontSize: 13, color: DS.ink[500], marginTop: 6 }}>{hasSearch ? `"${search}" ile eşleşen kayıt yok` : 'İlk kliniği ekleyerek başlayın'}</Text>
+      <Text style={{ fontSize: 13, color: DS.ink[500], marginTop: 6 }}>{hasSearch ? `"${search}" ${autoT('ile eşleşen kayıt yok')}` : 'İlk kliniği ekleyerek başlayın'}</Text>
       {!hasSearch && (
         <Pressable onPress={onAdd}
           style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 20, paddingVertical: 10, borderRadius: R.pill, backgroundColor: DS.ink[900], marginTop: 16 }}>
@@ -943,6 +972,8 @@ function DoctorsTable({ doctors, clinics, search, accentColor, onAdd, onEdit, on
   doctors: Doctor[]; clinics: Clinic[]; search: string; accentColor: string;
   onAdd: () => void; onEdit: (d: Doctor) => void; onToggle: (d: Doctor) => void; onDelete: (d: Doctor) => void;
 }) {
+  const rtl = isRTL();
+  const align = rtl ? ('right' as const) : undefined;
   const filtered = doctors.filter(d => {
     if (!search) return true;
     return d.full_name.toLowerCase().includes(search) || d.specialty?.toLowerCase().includes(search) || d.phone?.includes(search);
@@ -954,7 +985,7 @@ function DoctorsTable({ doctors, clinics, search, accentColor, onAdd, onEdit, on
         {search ? <Search size={24} color={DS.ink[300]} strokeWidth={1.5} /> : <Users size={24} color={DS.ink[300]} strokeWidth={1.5} />}
       </View>
       <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>{search ? 'Sonuç bulunamadı' : 'Henüz hekim eklenmemiş'}</Text>
-      <Text style={{ fontSize: 13, color: DS.ink[500], marginTop: 6 }}>{search ? `"${search}" ile eşleşen hekim yok` : 'İlk hekimi ekleyerek başlayın'}</Text>
+      <Text style={{ fontSize: 13, color: DS.ink[500], marginTop: 6 }}>{search ? `"${search}" ${autoT('ile eşleşen hekim yok')}` : 'İlk hekimi ekleyerek başlayın'}</Text>
       {!search && (
         <Pressable onPress={onAdd}
           style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 20, paddingVertical: 10, borderRadius: R.pill, backgroundColor: DS.ink[900], marginTop: 16 }}>
@@ -969,10 +1000,10 @@ function DoctorsTable({ doctors, clinics, search, accentColor, onAdd, onEdit, on
     <View style={{ ...CARD, overflow: 'hidden' }}>
       {/* Table header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: DS.ink[50], borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
-        <Text style={{ flex: 2.8, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500] }}>HEKİM</Text>
-        <Text style={{ flex: 1.5, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500] }}>UZMANLIK</Text>
-        <Text style={{ flex: 1.8, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500] }}>KLİNİK</Text>
-        <Text style={{ flex: 1.4, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500] }}>TELEFON</Text>
+        <Text style={{ flex: 2.8, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textAlign: align }}>HEKİM</Text>
+        <Text style={{ flex: 1.5, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textAlign: align }}>UZMANLIK</Text>
+        <Text style={{ flex: 1.8, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textAlign: align }}>KLİNİK</Text>
+        <Text style={{ flex: 1.4, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textAlign: align }}>TELEFON</Text>
         <Text style={{ flex: 0.9, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textAlign: 'center' }}>DURUM</Text>
         <View style={{ width: 76 }} />
       </View>
@@ -991,7 +1022,7 @@ function DoctorsTable({ doctors, clinics, search, accentColor, onAdd, onEdit, on
                 <Text style={{ fontSize: 12, fontWeight: '600', color: accentColor }}>{d.full_name.charAt(0).toUpperCase()}</Text>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[900] }} numberOfLines={1}>{d.full_name}</Text>
+                <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[900], textAlign: align }} numberOfLines={1}>{d.full_name}</Text>
                 {!d.is_active && (
                   <View style={{ backgroundColor: 'rgba(217,75,75,0.12)', borderRadius: R.pill, paddingHorizontal: 6, paddingVertical: 1, alignSelf: 'flex-start', marginTop: 2 }}>
                     <Text style={{ fontSize: 9, fontWeight: '700', color: '#9C2E2E', letterSpacing: 0.5 }}>PASİF</Text>
@@ -999,9 +1030,9 @@ function DoctorsTable({ doctors, clinics, search, accentColor, onAdd, onEdit, on
                 )}
               </View>
             </View>
-            <Text style={{ flex: 1.5, fontSize: 13, color: d.specialty ? DS.ink[700] : DS.ink[400] }} numberOfLines={1}>{d.specialty || '—'}</Text>
-            <Text style={{ flex: 1.8, fontSize: 13, color: clinicName ? DS.ink[700] : DS.ink[400] }} numberOfLines={1}>{clinicName ?? '—'}</Text>
-            <Text style={{ flex: 1.4, fontSize: 13, color: d.phone ? DS.ink[700] : DS.ink[400] }} numberOfLines={1}>{d.phone ?? '—'}</Text>
+            <Text style={{ flex: 1.5, fontSize: 13, color: d.specialty ? DS.ink[700] : DS.ink[400], textAlign: align }} numberOfLines={1}>{d.specialty || '—'}</Text>
+            <Text style={{ flex: 1.8, fontSize: 13, color: clinicName ? DS.ink[700] : DS.ink[400], textAlign: align }} numberOfLines={1}>{clinicName ?? '—'}</Text>
+            <Text style={{ flex: 1.4, fontSize: 13, color: d.phone ? DS.ink[700] : DS.ink[400], textAlign: align }} numberOfLines={1}>{d.phone ?? '—'}</Text>
             <View style={{ flex: 0.9, alignItems: 'center' }}>
               <AppSwitch value={d.is_active} onValueChange={() => onToggle(d)} accentColor={accentColor} />
             </View>
@@ -1055,6 +1086,7 @@ function ClinicRow({
   onToggleDoctor: (d: Doctor) => void; onEditDoctor: (d: Doctor) => void; onDeleteDoctor: (d: Doctor) => void;
   onPrintForm: () => void;
 }) {
+  const rtl = isRTL();
   const cat = CLINIC_CATEGORIES.find(c => c.value === (clinic.category ?? 'klinik')) ?? CLINIC_CATEGORIES[0];
   const primaryDoctor = doctors[0];
   const extraDoctors  = Math.max(0, doctors.length - 1);
@@ -1077,7 +1109,7 @@ function ClinicRow({
         <View style={{ flex: 1, minWidth: 0 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
             <View style={{ borderRadius: R.pill, paddingHorizontal: 7, paddingVertical: 1, backgroundColor: clinic.is_active ? cat.bg : DS.ink[100] }}>
-              <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: clinic.is_active ? cat.color : DS.ink[400] }}>{cat.label}</Text>
+              <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: clinic.is_active ? cat.color : DS.ink[400] }}>{autoT(cat.label)}</Text>
             </View>
             {!clinic.is_active && (
               <View style={{ backgroundColor: 'rgba(217,75,75,0.12)', borderRadius: R.pill, paddingHorizontal: 6, paddingVertical: 1 }}>
@@ -1085,7 +1117,7 @@ function ClinicRow({
               </View>
             )}
           </View>
-          <Text style={{ fontSize: isNarrow ? 14 : 16, fontWeight: '700', color: DS.ink[900], letterSpacing: -0.2, lineHeight: isNarrow ? 18 : 21 }} numberOfLines={1}>{clinic.name}</Text>
+          <Text style={{ fontSize: isNarrow ? 14 : 16, fontWeight: '700', color: DS.ink[900], letterSpacing: -0.2, lineHeight: isNarrow ? 18 : 21, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{clinic.name}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 }}>
             <Users size={11} color={DS.ink[400]} strokeWidth={1.8} />
             <Text style={{ fontSize: 11, color: DS.ink[500], flex: 1 }} numberOfLines={1}>
@@ -1102,7 +1134,7 @@ function ClinicRow({
             <Pressable
               style={{ width: 32, height: 32, borderRadius: R.sm, alignItems: 'center', justifyContent: 'center' }}
               onPress={onPrintForm}
-              accessibilityLabel="Klinik için iş emri formu yazdır"
+              accessibilityLabel={autoT('Klinik için iş emri formu yazdır')}
             >
               <Printer size={14} color={DS.ink[500]} strokeWidth={1.8} />
             </Pressable>
@@ -1112,10 +1144,12 @@ function ClinicRow({
             <Pressable style={{ width: 32, height: 32, borderRadius: R.sm, alignItems: 'center', justifyContent: 'center' }} onPress={onDeleteClinic}>
               <Trash2 size={14} color="#9C2E2E" strokeWidth={1.8} />
             </Pressable>
-            <Pressable style={{ width: 34, height: 34, borderRadius: 17, marginLeft: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: isExpanded ? accentColor + '14' : DS.ink[100] }} onPress={onToggleExpand}>
+            <Pressable style={{ width: 34, height: 34, borderRadius: 17, ...(rtl ? { marginRight: 4 } : { marginLeft: 4 }), alignItems: 'center', justifyContent: 'center', backgroundColor: isExpanded ? accentColor + '14' : DS.ink[100] }} onPress={onToggleExpand}>
               {isExpanded
                 ? <ChevronUp size={16} color={accentColor} strokeWidth={1.8} />
-                : <ChevronRight size={16} color={DS.ink[500]} strokeWidth={1.8} />}
+                : rtl
+                  ? <ChevronLeft size={16} color={DS.ink[500]} strokeWidth={1.8} />
+                  : <ChevronRight size={16} color={DS.ink[500]} strokeWidth={1.8} />}
             </Pressable>
           </View>
         ) : (
@@ -1174,9 +1208,9 @@ function ClinicRow({
               <UserPlus size={13} color={accentColor} strokeWidth={1.8} />
               <Text style={{ fontSize: 13, fontWeight: '600', color: accentColor }}>Bu kliniğe hekim ekle</Text>
             </Pressable>
-            <Pressable onPress={onSetDiscount} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: R.sm, backgroundColor: '#EDE9FE', marginLeft: 4 }}>
+            <Pressable onPress={onSetDiscount} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: R.sm, backgroundColor: '#EDE9FE', ...(rtl ? { marginRight: 4 } : { marginLeft: 4 }) }}>
               <Percent size={12} color="#7C3AED" strokeWidth={1.8} />
-              <Text style={{ fontSize: 11, fontWeight: '600', color: '#7C3AED' }}>{discountPercent != null && discountPercent > 0 ? `%${discountPercent} İndirim` : 'İndirim Ekle'}</Text>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: '#7C3AED' }}>{discountPercent != null && discountPercent > 0 ? `%${discountPercent} ${autoT('İndirim')}` : 'İndirim Ekle'}</Text>
             </Pressable>
             <View style={{ flex: 1 }} />
             <AppSwitch value={clinic.is_active} onValueChange={onToggleClinic} accentColor={accentColor} />
@@ -1193,6 +1227,7 @@ function DoctorRow({ doctor, isLast, accentColor, onToggle, onEdit, onDelete }: 
   doctor: Doctor; isLast?: boolean; accentColor: string;
   onToggle: () => void; onEdit: () => void; onDelete: () => void;
 }) {
+  const rtl = isRTL();
   return (
     <View style={{
       flexDirection: 'row', alignItems: 'center', gap: 10,
@@ -1204,9 +1239,9 @@ function DoctorRow({ doctor, isLast, accentColor, onToggle, onEdit, onDelete }: 
         <Text style={{ fontSize: 12, fontWeight: '700', color: accentColor }}>{doctor.full_name.charAt(0).toUpperCase()}</Text>
       </View>
       <View style={{ flex: 1, gap: 1 }}>
-        <Text style={{ fontSize: 13, fontWeight: '600', color: doctor.is_active ? DS.ink[900] : DS.ink[400] }} numberOfLines={1}>{doctor.full_name}</Text>
+        <Text style={{ fontSize: 13, fontWeight: '600', color: doctor.is_active ? DS.ink[900] : DS.ink[400], textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{doctor.full_name}</Text>
         {(doctor.specialty || doctor.phone) && (
-          <Text style={{ fontSize: 11, color: DS.ink[400] }} numberOfLines={1}>{[doctor.specialty, doctor.phone].filter(Boolean).join(' · ')}</Text>
+          <Text style={{ fontSize: 11, color: DS.ink[400], textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{[doctor.specialty, doctor.phone].filter(Boolean).join(' · ')}</Text>
         )}
       </View>
       <AppSwitch value={doctor.is_active} onValueChange={onToggle} accentColor={accentColor} />
@@ -1222,9 +1257,10 @@ function DoctorRow({ doctor, isLast, accentColor, onToggle, onEdit, onDelete }: 
 
 // ─── Clinic Member Row (Yönetici / Sekreter) ─────────────────────────
 function ClinicMemberRow({ member, isLast }: { member: ClinicMember; isLast?: boolean }) {
+  const rtl = isRTL();
   const isAdmin = member.user_type === 'clinic_admin';
   const accent  = isAdmin ? '#6BA888' : '#7C3AED';
-  const label   = isAdmin ? 'Yönetici' : 'Sekreter';
+  const label   = autoT(isAdmin ? 'Yönetici' : 'Sekreter');
   return (
     <View style={{
       flexDirection: 'row', alignItems: 'center', gap: 10,
@@ -1236,9 +1272,9 @@ function ClinicMemberRow({ member, isLast }: { member: ClinicMember; isLast?: bo
         <Text style={{ fontSize: 12, fontWeight: '700', color: accent }}>{(member.full_name || '?').charAt(0).toUpperCase()}</Text>
       </View>
       <View style={{ flex: 1, gap: 1 }}>
-        <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>{member.full_name}</Text>
+        <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900], textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{member.full_name}</Text>
         {(member.email || member.phone) && (
-          <Text style={{ fontSize: 11, color: DS.ink[400] }} numberOfLines={1}>{[member.email, member.phone].filter(Boolean).join(' · ')}</Text>
+          <Text style={{ fontSize: 11, color: DS.ink[400], textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{[member.email, member.phone].filter(Boolean).join(' · ')}</Text>
         )}
       </View>
       <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: `${accent}1A` }}>
@@ -1254,10 +1290,11 @@ function ClinicMemberRow({ member, isLast }: { member: ClinicMember; isLast?: bo
 }
 
 function InfoRow({ icon, text }: { icon: React.ReactNode; text: string }) {
+  const rtl = isRTL();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
       {icon}
-      <Text style={{ fontSize: 12, color: DS.ink[500], flex: 1 }} numberOfLines={1}>{text}</Text>
+      <Text style={{ fontSize: 12, color: DS.ink[500], flex: 1, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{text}</Text>
     </View>
   );
 }
@@ -1269,9 +1306,10 @@ function FilterPanel({ visible, activeFilterCount, draftCategory, draftStatus, o
   onDraftCategory: (v: ClinicCategory | 'all') => void; onDraftStatus: (v: 'all' | 'active' | 'inactive') => void;
   onApply: () => void; onClose: () => void;
 }) {
+  const rtl = isRTL();
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(10,10,10,0.2)', alignItems: 'flex-end', paddingTop: 116, paddingRight: 16 }} activeOpacity={1} onPress={onClose}>
+      <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(10,10,10,0.2)', alignItems: 'flex-end', paddingTop: 116, ...(rtl ? { paddingLeft: 16 } : { paddingRight: 16 }) }} activeOpacity={1} onPress={onClose}>
         <View style={{ width: 310, ...CARD, overflow: 'hidden' }} onStartShouldSetResponder={() => true}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -1296,7 +1334,7 @@ function FilterPanel({ visible, activeFilterCount, draftCategory, draftStatus, o
                 return (
                   <Pressable key={item.value} style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: R.pill, borderWidth: 1.5, borderColor: active ? DS.ink[900] : DS.ink[200], backgroundColor: active ? DS.ink[100] : 'transparent' }}
                     onPress={() => onDraftCategory(item.value as any)}>
-                    <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? DS.ink[900] : DS.ink[500] }}>{item.label}</Text>
+                    <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? DS.ink[900] : DS.ink[500] }}>{autoT(item.label)}</Text>
                   </Pressable>
                 );
               })}
@@ -1311,7 +1349,7 @@ function FilterPanel({ visible, activeFilterCount, draftCategory, draftStatus, o
                 return (
                   <Pressable key={item.value} style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: R.pill, borderWidth: 1.5, borderColor: active ? DS.ink[900] : DS.ink[200], backgroundColor: active ? DS.ink[100] : 'transparent' }}
                     onPress={() => onDraftStatus(item.value)}>
-                    <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? DS.ink[900] : DS.ink[500] }}>{item.label}</Text>
+                    <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? DS.ink[900] : DS.ink[500] }}>{autoT(item.label)}</Text>
                   </Pressable>
                 );
               })}
@@ -1358,11 +1396,12 @@ function PasswordField({ value, onChange, placeholder, inputStyle }: {
   inputStyle: any;
 }) {
   const [visible, setVisible] = useState(false);
+  const rtl = isRTL();
   const T = useMobileTokens();
   return (
     <View style={{ position: 'relative' }}>
       <TextInput
-        style={{ ...inputStyle, paddingRight: 42 }}
+        style={{ ...inputStyle, ...(rtl ? { paddingLeft: 42 } : { paddingRight: 42 }) }}
         value={value}
         onChangeText={onChange}
         placeholder={placeholder}
@@ -1375,12 +1414,12 @@ function PasswordField({ value, onChange, placeholder, inputStyle }: {
         onPress={() => setVisible(v => !v)}
         style={{
           position: 'absolute',
-          right: 6, top: 0, bottom: 0,
+          ...(rtl ? { left: 6 } : { right: 6 }), top: 0, bottom: 0,
           width: 36,
           alignItems: 'center', justifyContent: 'center',
           ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
         }}
-        accessibilityLabel={visible ? 'Şifreyi gizle' : 'Şifreyi göster'}
+        accessibilityLabel={visible ? autoT('Şifreyi gizle') : autoT('Şifreyi göster')}
       >
         {visible
           ? <EyeOff size={16} color={T.ink3} strokeWidth={1.8} />
@@ -1476,6 +1515,7 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
 }) {
   // Theme-aware tokens — override module-level static inputBase/CARD
   const T = useMobileTokens();
+  const rtl = isRTL();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const inputBase = {
     borderWidth: 1, borderColor: T.hairline, borderRadius: R.md,
@@ -1695,13 +1735,13 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
             : /password.*(short|weak)|en az 6/i.test(rawMsg)
               ? 'Şifre çok zayıf — en az 6 karakter olmalı.'
             : rawMsg;
-          const fullMsg = `Yetkili kaydı başarısız: ${friendly}`;
+          const fullMsg = `${autoT('Yetkili kaydı başarısız')}: ${friendly}`;
           setError(fullMsg);
           toast.error(fullMsg);
           console.warn('[ClinicModal] admin-create-user error:', { rawMsg, fnErr, fnData });
           return;
         }
-        toast.success('Klinik yetkilisi oluşturuldu ✓');
+        toast.success(autoT('Klinik yetkilisi oluşturuldu ✓'));
       }
 
       onSuccess();
@@ -1797,7 +1837,7 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
                     }}
                       onPress={() => set('category', cat.value)}>
                       <AppIcon name={cat.icon as any} size={16} color={active ? cat.color : T.ink3} />
-                      <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: active ? cat.color : T.ink2 }}>{cat.label}</Text>
+                      <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: active ? cat.color : T.ink2 }}>{autoT(cat.label)}</Text>
                       {active && <Check size={12} color={cat.color} strokeWidth={2} />}
                     </Pressable>
                   );
@@ -1839,7 +1879,7 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
                           {catItem && <View style={{ width: 22, height: 22, borderRadius: 6, backgroundColor: catItem.color + '18', alignItems: 'center', justifyContent: 'center' }}>
                             <AppIcon name={catItem.icon as any} size={11} color={catItem.color} />
                           </View>}
-                          <Text style={{ flex: 1, fontSize: 13, fontWeight: '500', color: DS.ink[900] }} numberOfLines={1}>{c.name}</Text>
+                          <Text style={{ flex: 1, fontSize: 13, fontWeight: '500', color: DS.ink[900], textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{c.name}</Text>
                           <View style={{ backgroundColor: DS.lab.bgSoft, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
                             <Text style={{ fontSize: 9, fontWeight: '700', color: '#D97706' }}>Kayıtlı</Text>
                           </View>
@@ -1877,11 +1917,11 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
                             <MapPin size={11} color="#1A73E8" strokeWidth={2} />
                           </View>
                           <View style={{ flex: 1, minWidth: 0 }}>
-                            <Text style={{ fontSize: 12.5, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+                            <Text style={{ fontSize: 12.5, fontWeight: '600', color: DS.ink[900], textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>
                               {g.mainText}
                             </Text>
                             {g.secondaryText ? (
-                              <Text style={{ fontSize: 10.5, color: DS.ink[500], marginTop: 1 }} numberOfLines={1}>
+                              <Text style={{ fontSize: 10.5, color: DS.ink[500], marginTop: 1, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>
                                 {g.secondaryText}
                               </Text>
                             ) : null}
@@ -1905,21 +1945,21 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
             <SectionCard title="Adres">
               <ModalField label="İl" required>
                 <Pressable style={{ ...inputBase, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }} onPress={() => { setIlOpen(v => !v); setIlceOpen(false); }}>
-                  <Text style={{ fontSize: 14, color: form.il ? T.ink : T.ink3, flex: 1 }}>{form.il || 'Seçiniz'}</Text>
+                  <Text style={{ fontSize: 14, color: form.il ? T.ink : T.ink3, flex: 1, textAlign: rtl ? 'right' : undefined }}>{form.il || 'Seçiniz'}</Text>
                   {ilOpen ? <ChevronUp size={14} color={T.ink3} strokeWidth={1.8} /> : <ChevronDown size={14} color={T.ink3} strokeWidth={1.8} />}
                 </Pressable>
                 {ilOpen && <DropdownList items={ilResults} selected={form.il} searchValue={ilSearch} onSearch={setIlSearch} searchPlaceholder="İl ara..." onSelect={selectIl} accentColor={accentColor} />}
               </ModalField>
               <ModalField label="İlçe" required>
                 <Pressable style={{ ...inputBase, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', opacity: form.il ? 1 : 0.4 }} onPress={() => { if (!form.il) return; setIlceOpen(v => !v); setIlOpen(false); }}>
-                  <Text style={{ fontSize: 14, color: form.ilce ? T.ink : T.ink3, flex: 1 }}>{form.ilce || (form.il ? 'Seçiniz' : 'Önce il seçin')}</Text>
+                  <Text style={{ fontSize: 14, color: form.ilce ? T.ink : T.ink3, flex: 1, textAlign: rtl ? 'right' : undefined }}>{form.ilce || (form.il ? 'Seçiniz' : 'Önce il seçin')}</Text>
                   {ilceOpen ? <ChevronUp size={14} color={T.ink3} strokeWidth={1.8} /> : <ChevronDown size={14} color={T.ink3} strokeWidth={1.8} />}
                 </Pressable>
                 {ilceOpen && <DropdownList items={ilceResults} selected={form.ilce} searchValue={ilceSearch} onSearch={setIlceSearch} searchPlaceholder="İlçe ara..." onSelect={selectIlce} accentColor={accentColor} />}
               </ModalField>
-              <ModalField label="Mahalle" required hint={dbMahalleler.length ? `${dbMahalleler.length} mahalle bulundu — listeden seç` : 'Önce il ve ilçe seçin'}>
+              <ModalField label="Mahalle" required hint={dbMahalleler.length ? `${dbMahalleler.length} ${autoT('mahalle bulundu — listeden seç')}` : 'Önce il ve ilçe seçin'}>
                 <Pressable style={{ ...inputBase, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', opacity: form.ilce ? 1 : 0.4 }} onPress={() => { if (!form.ilce) return; setMahOpen(v => !v); setIlOpen(false); setIlceOpen(false); }}>
-                  <Text style={{ fontSize: 14, color: form.mahalle ? T.ink : T.ink3, flex: 1 }}>{form.mahalle || (form.ilce ? 'Mahalle seçiniz' : 'Önce ilçe seçin')}</Text>
+                  <Text style={{ fontSize: 14, color: form.mahalle ? T.ink : T.ink3, flex: 1, textAlign: rtl ? 'right' : undefined }}>{form.mahalle || (form.ilce ? 'Mahalle seçiniz' : 'Önce ilçe seçin')}</Text>
                   {mahOpen ? <ChevronUp size={14} color={T.ink3} strokeWidth={1.8} /> : <ChevronDown size={14} color={T.ink3} strokeWidth={1.8} />}
                 </Pressable>
                 {mahOpen && <DropdownList items={mahResults.map(m => m.mahalle)} selected={form.mahalle} searchValue={mahSearch} onSearch={setMahSearch} searchPlaceholder="Mahalle ara..." onSelect={selectMahalle} accentColor={accentColor} />}
@@ -2002,8 +2042,8 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
                           ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                         }}
                       >
-                        <Text style={{ fontSize: 12, fontWeight: '700', color: active ? accentColor : DS.ink[800] }}>{opt.l}</Text>
-                        <Text style={{ fontSize: 10, color: DS.ink[500], marginTop: 2 }}>{opt.d}</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: active ? accentColor : DS.ink[800] }}>{autoT(opt.l)}</Text>
+                        <Text style={{ fontSize: 10, color: DS.ink[500], marginTop: 2 }}>{autoT(opt.d)}</Text>
                       </Pressable>
                     );
                   })}
@@ -2108,6 +2148,7 @@ export function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, 
 }) {
   // Theme-aware tokens — local inputBase shadows the module-level static one
   const T = useMobileTokens();
+  const rtl = isRTL();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const inputBase = {
     borderWidth: 1, borderColor: T.hairline, borderRadius: R.md,
@@ -2169,11 +2210,10 @@ export function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, 
 
     setSaving(true);
     try {
-      // 1) Title-case + boşluk temizliği (TR locale)
-      const cleanedName = titleCaseTR(form.full_name);
-      // 2) "Dr." önekini otomatik ekle — kullanıcı zaten unvan yazmadıysa
-      const PREFIX_RE = /^(Dr\.?|Dt\.?|Prof\.?|Doç\.?|Opr\.?|Uzm\.?)\s/i;
-      const finalName = PREFIX_RE.test(cleanedName) ? cleanedName : `Dr. ${cleanedName}`;
+      // Title-case + ünvan öneki ("Dt.") — kopya mantık yerine kanonik yardımcı.
+      // Eskiden buradaki kopya "Dr." ekliyordu ve textCase'deki asılla ayrı
+      // yaşıyordu; varsayılan ünvan tek yerden gelmeli.
+      const finalName = normalizeDoctorName(form.full_name);
 
       const payload = { full_name: finalName, phone: form.phone.trim() || null, specialty: form.specialty.trim() || null,
         notes: form.notes.trim() || null, clinic_id: form.clinic_id || null, is_active: form.is_active, tckn: tcknTrim || null };
@@ -2190,7 +2230,7 @@ export function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, 
           .ilike('full_name', finalName.replace(/^(Dr|Dt|Prof|Doç|Opr|Uzm)\.?\s+/i, '%'))
           .limit(1);
         if (dupe && dupe.length) {
-          setError(`"${dupe[0].full_name}" bu klinikte zaten kullanıcı olarak kayıtlı — yeni hekim eklemek yerine listeden onu seçin.`);
+          setError(`"${dupe[0].full_name}" ${autoT('bu klinikte zaten kullanıcı olarak kayıtlı — yeni hekim eklemek yerine listeden onu seçin.')}`);
           return;
         }
       }
@@ -2229,7 +2269,7 @@ export function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, 
             : /password.*(short|weak)|en az 6/i.test(rawMsg)
               ? 'Şifre çok zayıf — en az 6 karakter olmalı.'
             : rawMsg;
-          setError(`Hekim kaydedildi, ancak giriş hesabı oluşturulamadı: ${friendly}`);
+          setError(`${autoT('Hekim kaydedildi, ancak giriş hesabı oluşturulamadı')}: ${friendly}`);
           return;
         }
       }
@@ -2287,7 +2327,7 @@ export function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, 
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
             <SectionCard title="Hekim Bilgileri">
-              <ModalField label="Ad Soyad" required hint="“Dr.” öneki + büyük harf düzeltmesi otomatik">
+              <ModalField label="Ad Soyad" required hint="“Dt.” öneki + büyük harf düzeltmesi otomatik">
                 <TextInput
                   style={inputBase}
                   value={form.full_name}
@@ -2302,7 +2342,7 @@ export function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, 
                   style={{ ...inputBase, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
                   onPress={() => setSpecialtyOpen(v => !v)}
                 >
-                  <Text style={{ fontSize: 14, color: form.specialty ? DS.ink[900] : DS.ink[400], flex: 1 }}>
+                  <Text style={{ fontSize: 14, color: form.specialty ? DS.ink[900] : DS.ink[400], flex: 1, textAlign: rtl ? 'right' : undefined }}>
                     {form.specialty || 'Uzmanlık seç'}
                   </Text>
                   {specialtyOpen
@@ -2312,7 +2352,10 @@ export function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, 
                 </Pressable>
                 {specialtyOpen && (
                   <DropdownList
-                    items={DENTAL_SPECIALTIES.filter(s => s.toLowerCase().includes(specialtySearch.toLowerCase())) as unknown as string[]}
+                    items={DENTAL_SPECIALTIES.filter(sp => {
+                      const q = specialtySearch.toLocaleLowerCase();
+                      return !q || sp.toLocaleLowerCase().includes(q) || autoT(sp).toLocaleLowerCase().includes(q);
+                    }) as unknown as string[]}
                     selected={form.specialty}
                     searchValue={specialtySearch}
                     onSearch={setSpecialtySearch}
@@ -2415,6 +2458,7 @@ export function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, 
 function ClinicDropdown({ value, clinics, accentColor, onChange }: {
   value: string; clinics: Clinic[]; accentColor: string; onChange: (id: string) => void;
 }) {
+  const rtl = isRTL();
   const [open, setOpen] = useState(false);
   const selected = clinics.find(c => c.id === value);
   return (
@@ -2422,7 +2466,7 @@ function ClinicDropdown({ value, clinics, accentColor, onChange }: {
       <Pressable style={{ ...inputBase, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderColor: open ? DS.ink[900] : DS.ink[200] }} onPress={() => setOpen(v => !v)}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
           <Briefcase size={14} color={selected ? accentColor : DS.ink[400]} strokeWidth={1.8} />
-          <Text style={{ fontSize: 14, color: selected ? DS.ink[900] : DS.ink[400], flex: 1 }} numberOfLines={1}>{selected ? selected.name : 'Klinik seçin...'}</Text>
+          <Text style={{ fontSize: 14, color: selected ? DS.ink[900] : DS.ink[400], flex: 1, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{selected ? selected.name : 'Klinik seçin...'}</Text>
         </View>
         {open ? <ChevronUp size={14} color={DS.ink[400]} strokeWidth={1.8} /> : <ChevronDown size={14} color={DS.ink[400]} strokeWidth={1.8} />}
       </Pressable>
@@ -2440,7 +2484,7 @@ function ClinicDropdown({ value, clinics, accentColor, onChange }: {
               <Pressable key={c.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: i < clinics.length - 1 ? 1 : 0, borderBottomColor: 'rgba(0,0,0,0.04)', backgroundColor: isSelected ? accentColor + '08' : 'transparent' }}
                 onPress={() => { onChange(c.id); setOpen(false); }}>
                 <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: isSelected ? accentColor : DS.ink[300] }} />
-                <Text style={{ flex: 1, fontSize: 14, color: isSelected ? accentColor : DS.ink[700], fontWeight: isSelected ? '600' : '400' }} numberOfLines={1}>{c.name}</Text>
+                <Text style={{ flex: 1, fontSize: 14, color: isSelected ? accentColor : DS.ink[700], fontWeight: isSelected ? '600' : '400', textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{c.name}</Text>
                 {isSelected && <Check size={13} color={accentColor} strokeWidth={2} />}
               </Pressable>
             );
@@ -2456,6 +2500,7 @@ function DiscountModal({ clinic, currentDiscount, onClose, onSaved }: {
   clinic: { id: string; name: string } | null; currentDiscount: number | null;
   onClose: () => void; onSaved: (clinicId: string, percent: number) => void;
 }) {
+  const rtl = isRTL();
   const [value, setValue] = React.useState('');
   const [saving, setSaving] = React.useState(false);
 
@@ -2463,7 +2508,7 @@ function DiscountModal({ clinic, currentDiscount, onClose, onSaved }: {
 
   const handleSave = async () => {
     const pct = Number(value.replace(',', '.'));
-    if (!Number.isFinite(pct) || pct < 0 || pct > 100) { toast.error('İndirim oranı 0 ile 100 arasında olmalıdır.'); return; }
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) { toast.error(autoT('İndirim oranı 0 ile 100 arasında olmalıdır.')); return; }
     if (!clinic) return;
     setSaving(true);
     const { error } = await supabase.from('clinic_discounts').upsert({ clinic_id: clinic.id, discount_rate: pct }, { onConflict: 'clinic_id' });
@@ -2501,7 +2546,7 @@ function DiscountModal({ clinic, currentDiscount, onClose, onSaved }: {
             <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: DS.ink[200], borderRadius: R.md, overflow: 'hidden' }}>
               <TextInput style={{ flex: 1, fontSize: 22, fontWeight: '800', color: DS.ink[900], paddingHorizontal: 16, paddingVertical: 12, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) } as any}
                 value={value} onChangeText={setValue} keyboardType="decimal-pad" placeholder="Örn: 10" placeholderTextColor={DS.ink[400]} maxLength={5} />
-              <View style={{ paddingHorizontal: 16, borderLeftWidth: 1, borderLeftColor: DS.ink[200], backgroundColor: DS.ink[50] }}>
+              <View style={{ paddingHorizontal: 16, ...(rtl ? { borderRightWidth: 1, borderRightColor: DS.ink[200] } : { borderLeftWidth: 1, borderLeftColor: DS.ink[200] }), backgroundColor: DS.ink[50] }}>
                 <Text style={{ fontSize: 20, fontWeight: '800', color: '#7C3AED' }}>%</Text>
               </View>
             </View>
@@ -2529,6 +2574,7 @@ function DiscountModal({ clinic, currentDiscount, onClose, onSaved }: {
 
 // ─── Managers List (Klinik Yöneticileri) ──────────────────────
 function ManagersList({ managers, accentColor }: { managers: any[]; accentColor: string }) {
+  const rtl = isRTL();
   if (managers.length === 0) {
     return (
       <View style={{ ...CARD, padding: 32, alignItems: "center", gap: 12 }}>
@@ -2559,16 +2605,16 @@ function ManagersList({ managers, accentColor }: { managers: any[]; accentColor:
           </View>
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <Text style={{ fontSize: 14, fontWeight: "600", color: DS.ink[900] }} numberOfLines={1}>{m.full_name || "—"}</Text>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: DS.ink[900], textAlign: rtl ? "right" : undefined }} numberOfLines={1}>{m.full_name || "—"}</Text>
               {m.isFallback && (
                 <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, backgroundColor: "#FEF3C7" }}>
                   <Text style={{ fontSize: 9, fontWeight: "700", color: "#92400E" }}>GEÇİCİ</Text>
                 </View>
               )}
             </View>
-            <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 2 }} numberOfLines={1}>
+            <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 2, textAlign: rtl ? "right" : undefined }} numberOfLines={1}>
               {m.clinic?.name ?? "Klinik atanmamış"}{m.phone ? "  ·  " + m.phone : ""}
-              {m.isFallback ? "  ·  ilk hekim" : ""}
+              {m.isFallback ? "  ·  " + autoT('ilk hekim') : ""}
             </Text>
           </View>
           <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, backgroundColor: m.is_active ? "#D1FAE5" : DS.ink[100] }}>

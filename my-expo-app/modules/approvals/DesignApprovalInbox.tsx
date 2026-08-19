@@ -12,6 +12,7 @@ import { FilesUploadModal, type UploadAttachment } from '../orders/components/Fi
 import { allStationFileCategories } from '../orders/stations/registry';
 import { Viewer3DModalLazy } from '../viewer-3d/Viewer3DLazy';
 import { toast } from '../../core/ui/Toast';
+import { autoT } from '../../core/i18n/autoTranslate';
 
 function detectKind(name: string): UploadAttachment['kind'] {
   const ext = (name.split('.').pop() || '').toLowerCase();
@@ -29,9 +30,9 @@ function expiresLabel(iso: string | null): { text: string; urgent: boolean } {
   const ms = new Date(iso).getTime() - Date.now();
   if (ms <= 0) return { text: 'Süre doldu', urgent: true };
   const h = Math.floor(ms / 3_600_000);
-  if (h >= 24) return { text: `${Math.floor(h / 24)} gün kaldı`, urgent: false };
-  if (h >= 1) return { text: `${h} saat kaldı`, urgent: h < 6 };
-  return { text: `${Math.max(1, Math.floor(ms / 60_000))} dk kaldı`, urgent: true };
+  if (h >= 24) return { text: `${Math.floor(h / 24)} ${autoT('gün kaldı')}`, urgent: false };
+  if (h >= 1) return { text: `${h} ${autoT('saat kaldı')}`, urgent: h < 6 };
+  return { text: `${Math.max(1, Math.floor(ms / 60_000))} ${autoT('dk kaldı')}`, urgent: true };
 }
 
 export function DesignApprovalInbox({ routePrefix = '/(doctor)' }: { routePrefix?: string }) {

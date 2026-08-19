@@ -1,4 +1,5 @@
-import { localeTag } from '../../../core/i18n';
+import { isRTL, localeTag } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 /**
  * MessagesB5Mobile — Variant B B5 inbox + B5b thread.
  * Self-contained: manages list ↔ thread navigation internally.
@@ -9,7 +10,7 @@ import {
   StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, Alert,
 } from 'react-native';
 import {
-  ChevronLeft, X, Send, Mic, Camera, Sparkles, Paperclip, Trash2,
+  ChevronLeft, ChevronRight, X, Send, Mic, Camera, Sparkles, Paperclip, Trash2,
 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
@@ -80,6 +81,7 @@ function InboxView({
   accentColor?: string;
 }) {
   const theme = useMobileTheme();
+  const rtl = isRTL();
   const { items, loading } = useOrderChatInbox();
   const { profile } = useAuthStore();
   // Lab tarafı (lab/admin/teknisyen) → klinik adı + altında hekim. Klinik/hekim → hasta adı.
@@ -104,7 +106,7 @@ function InboxView({
         <Pressable
           onPress={onClose}
           hitSlop={16}
-          style={[styles.topBtn, { position: 'absolute', top: 8, right: 16 }]}
+          style={[styles.topBtn, { position: 'absolute', top: 8, ...(rtl ? { left: 16 } : { right: 16 }) }]}
         >
           <X size={22} color={theme.text} strokeWidth={2.2} />
         </Pressable>
@@ -127,12 +129,12 @@ function InboxView({
             const unread = item.unread_for_me > 0;
             // Panel tarafına göre başlık: lab → klinik adı (alt: hekim), klinik/hekim → hasta adı
             const senderName = isLabSide
-              ? (item.clinic_name ?? item.doctor_name ?? 'Sohbet')
-              : (item.patient_name ?? item.work_type ?? 'Sohbet');
+              ? (item.clinic_name ?? item.doctor_name ?? autoT('Sohbet'))
+              : (item.patient_name ?? item.work_type ?? autoT('Sohbet'));
             const titleSub = isLabSide
               ? (item.clinic_name ? (item.doctor_name ?? null) : null)
               : null;
-            const sub = item.work_type ?? `Sipariş #${item.order_number}`;
+            const sub = item.work_type ?? `${autoT('Sipariş')} #${item.order_number}`;
             return (
               <Pressable onPress={() => onOpenOrder(item.work_order_id, senderName, sub)}>
                 <View style={[
@@ -150,21 +152,24 @@ function InboxView({
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={[
                         styles.sender,
-                        { color: unread ? '#FFF' : theme.text, fontWeight: unread ? '700' : '600' },
+                        { color: unread ? '#FFF' : theme.text, fontWeight: unread ? '700' : '600',
+                          textAlign: rtl ? ('right' as const) : undefined },
                       ]} numberOfLines={1}>
                         {senderName}
                       </Text>
                       {titleSub ? (
                         <Text style={[
                           styles.preview,
-                          { color: unread ? 'rgba(255,255,255,0.9)' : theme.text, fontWeight: '600', marginBottom: 1 },
+                          { color: unread ? 'rgba(255,255,255,0.9)' : theme.text, fontWeight: '600', marginBottom: 1,
+                            textAlign: rtl ? ('right' as const) : undefined },
                         ]} numberOfLines={1}>
                           {titleSub}
                         </Text>
                       ) : null}
                       <Text style={[
                         styles.preview,
-                        { color: unread ? 'rgba(255,255,255,0.85)' : theme.textMuted },
+                        { color: unread ? 'rgba(255,255,255,0.85)' : theme.textMuted,
+                          textAlign: rtl ? ('right' as const) : undefined },
                       ]} numberOfLines={2}>
                         {item.last_content ?? sub}
                       </Text>
@@ -177,7 +182,7 @@ function InboxView({
                   {unread && (
                     <View style={[styles.unreadPill, { backgroundColor: uiPrimary }]}>
                       <Text style={[styles.unreadPillText, { color: theme.accent }]}>
-                        {item.unread_for_me} yeni mesaj →
+                        {item.unread_for_me} {autoT('yeni mesaj')} {rtl ? '←' : '→'}
                       </Text>
                     </View>
                   )}
@@ -202,6 +207,7 @@ function ThreadView({
   accentColor?: string;
 }) {
   const theme = useMobileTheme();
+  const rtl = isRTL();
   const { profile } = useAuthStore();
   const { messages, loading, refetch, remove } = useChatMessages(orderId, profile?.id);
   const [draft, setDraft] = useState('');
@@ -262,7 +268,7 @@ function ThreadView({
       const { url, error } = await uploadChatAttachment(blob, orderId, fileName);
       if (error || !url) {
         setUploading(false);
-        Alert.alert('Yükleme hatası', error ?? 'Dosya yüklenemedi.');
+        Alert.alert(autoT('Yükleme hatası'), error ?? autoT('Dosya yüklenemedi.'));
         return;
       }
 
@@ -281,7 +287,7 @@ function ThreadView({
       refetch();
     } catch (e: any) {
       setUploading(false);
-      Alert.alert('Hata', e?.message ?? 'Dosya eklenemedi.');
+      Alert.alert(autoT('Hata'), e?.message ?? autoT('Dosya eklenemedi.'));
     }
   };
 
@@ -290,17 +296,19 @@ function ThreadView({
       {/* Sticky header */}
       <View style={styles.threadHead}>
         <Pressable onPress={onBack} hitSlop={8} style={styles.topBtn}>
-          <ChevronLeft size={22} color={DS.ink[900]} strokeWidth={2} />
+          {rtl
+            ? <ChevronRight size={22} color={DS.ink[900]} strokeWidth={2} />
+            : <ChevronLeft  size={22} color={DS.ink[900]} strokeWidth={2} />}
         </Pressable>
         <View style={[styles.threadAvatar, { backgroundColor: 'rgba(0,0,0,0.06)' }]}>
           <Text style={[styles.threadAvatarText, { color: DS.ink[900] }]}>
             {senderName.slice(0, 2).toUpperCase()}
           </Text>
-          <View style={styles.onlineDot} />
+          <View style={[styles.onlineDot, rtl ? { left: 0 } : { right: 0 }]} />
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={styles.threadName} numberOfLines={1}>{senderName}</Text>
-          <Text style={styles.threadSub} numberOfLines={1}>{sub}</Text>
+          <Text style={[styles.threadName, rtl && { textAlign: 'right' as const }]} numberOfLines={1}>{senderName}</Text>
+          <Text style={[styles.threadSub,  rtl && { textAlign: 'right' as const }]} numberOfLines={1}>{sub}</Text>
         </View>
       </View>
 
@@ -345,8 +353,18 @@ function ThreadView({
                     style={[
                       styles.bubble,
                       mine
-                        ? { backgroundColor: uiAccent, borderTopRightRadius: 22, borderBottomRightRadius: 6 }
-                        : { backgroundColor: '#FFF', borderColor: 'rgba(0,0,0,0.06)', borderWidth: 1, borderTopLeftRadius: 22, borderBottomLeftRadius: 6 },
+                        ? {
+                            backgroundColor: uiAccent,
+                            ...(rtl
+                              ? { borderTopLeftRadius: 22,  borderBottomLeftRadius: 6 }
+                              : { borderTopRightRadius: 22, borderBottomRightRadius: 6 }),
+                          }
+                        : {
+                            backgroundColor: '#FFF', borderColor: 'rgba(0,0,0,0.06)', borderWidth: 1,
+                            ...(rtl
+                              ? { borderTopRightRadius: 22, borderBottomRightRadius: 6 }
+                              : { borderTopLeftRadius: 22,  borderBottomLeftRadius: 6 }),
+                          },
                     ]}
                   >
                     {item.external_source === 'whatsapp' && (
@@ -366,6 +384,7 @@ function ThreadView({
                         fontFamily: MFONT.uiRegular,
                         fontSize: 14,
                         lineHeight: 20,
+                        textAlign: rtl ? 'right' : undefined,
                       }}>
                         {item.content}
                       </Text>
@@ -423,7 +442,7 @@ function ThreadView({
             {sending ? (
               <ActivityIndicator color={theme.primary} size="small" />
             ) : draft.trim() ? (
-              <Send size={16} color="#FFF" strokeWidth={2} />
+              <Send size={16} color="#FFF" strokeWidth={2} style={{ transform: [{ scaleX: rtl ? -1 : 1 }] } as any} />
             ) : (
               <Mic size={16} color="#FFF" strokeWidth={2} />
             )}
@@ -560,7 +579,6 @@ const styles = StyleSheet.create({
   },
   onlineDot: {
     position: 'absolute',
-    right: 0,
     bottom: 0,
     width: 10,
     height: 10,

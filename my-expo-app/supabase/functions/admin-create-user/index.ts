@@ -41,10 +41,16 @@ Deno.serve(async (req: Request) => {
       throw new Error('Yetkiniz yok');
     }
 
-    // Yeni lab kullanıcısı caller'ın lab_id'sini miras alır
-    const inheritedLabId = callerProfile.lab_id ?? null;
-
     const body = await req.json();
+
+    // Yeni lab kullanıcısı caller'ın lab_id'sini miras alır.
+    // İSTİSNA: platform yöneticisi (user_type='admin') başka bir lab için hesap
+    // açabilmeli — konsoldan lab kurup sahibine giriş bilgisi vermek için. Onun
+    // kendi lab_id'si yok, o yüzden miras işe yaramaz; hedef lab body'den gelir.
+    // Yalnız platform yöneticisine açık: lab müdürü kendi labının dışına çıkamaz.
+    const inheritedLabId = (callerIsAdmin && body.target_lab_id)
+      ? String(body.target_lab_id)
+      : (callerProfile.lab_id ?? null);
     const { email, password, full_name, user_type, role, phone, address, clinic_type, specialty, department, level, monthly_salary, clinic_permissions, skip_doctor_row } = body;
     let { clinic_name, clinic_id } = body;
 

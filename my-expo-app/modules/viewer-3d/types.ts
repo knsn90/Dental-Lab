@@ -53,6 +53,12 @@ export interface Viewer3DProps {
   /** Kaynak dosya indirme — ZIP'ten açıldıysa indirme butonu tek tek mesh (ply)
    *  yerine KAYNAK dosyayı (zip) indirir. url = imzalı URL, name = kayıt adı. */
   sourceDownload?: { url: string; name: string };
+  /**
+   * Model yüklenince sahnenin küçük JPEG anlık görüntüsü (data-URL).
+   * Dosya listesi 16–29 MB'lık mesh'i indirmeden önizleme gösterebilsin diye
+   * çağıran taraf bunu depolayabilir.
+   */
+  onThumbnail?: (dataUrl: string) => void;
   /** Called when modal close requested */
   onClose: () => void;
 }

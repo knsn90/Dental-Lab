@@ -4,8 +4,10 @@
 //           → geciken vakalar / positive empty state
 
 import React from 'react';
+import { firstName as displayFirstName } from '../../../core/util/personName';
 import { useTranslation } from 'react-i18next';
-import { localeTag } from '../../../core/i18n';
+import { localeTag, isRTL } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { View, Text, Pressable, ScrollView, Platform, RefreshControl, Image } from 'react-native';
 import Svg, { Defs, Pattern, Rect, Line, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { HeroGlowOverlay } from '../../../core/ui/mobile/HeroGlowOverlay';
@@ -24,6 +26,10 @@ import { useAuthStore } from '../../../core/store/authStore';
 import { RecentOrdersMobile, type RecentOrderItem } from './RecentOrdersMobile';
 
 const LAB = MOBILE_PANEL_THEMES.lab;
+
+// Hafta şeridi kolon etiketleri — ilk harf gösterilir; çeviri sonrası ilk harf
+// alınır (fa: دوشنبه → د), Türkçe görünüm birebir korunur.
+const WEEK_STRIP_DAYS = ['Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi','Pazar'];
 
 // Desktop ile aynı format: "Pazartesi, 12 Mayıs"
 function todayLabel(lng?: string): string {
@@ -82,9 +88,10 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
   const { t, i18n } = useTranslation();
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
+  const rtl = isRTL(i18n.language);
 
   const rawName = (profile?.full_name ?? '').trim();
-  const firstName = rawName.split(' ')[0] ?? '';
+  const firstName = displayFirstName(rawName);
   const greeting = props.greeting ?? (firstName ? t('dashboard.greetingName', { name: firstName }) : t('dashboard.greeting'));
 
   const live = {
@@ -246,7 +253,7 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
           label={t('dashboard.activeOrders')}
           numericValue={props.activeOrders ?? 0}
           delta={overdue > 0 ? t('dashboard.overdueCount', { count: overdue }) : t('dashboard.noOverdue')}
-          sub={props.avgDurationHours != null ? `ort ${Math.round(props.avgDurationHours)}sa` : undefined}
+          sub={props.avgDurationHours != null ? `${autoT('ort')} ${Math.round(props.avgDurationHours)}${autoT('sa')}` : undefined}
           deltaColor={overdue > 0 ? T.ruby : T.jade}
           icon={ClipboardList}
         />
@@ -309,7 +316,7 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
 
             {/* Bars */}
             <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6, height: 140, paddingHorizontal: 2 }}>
-              {['Pa', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct', 'Pz'].map((d, i) => {
+              {WEEK_STRIP_DAYS.map((d, i) => {
                 const received  = week[i] ?? 0;
                 const completed = weekDone[i] ?? 0;
                 const isToday   = i === 6;
@@ -383,7 +390,7 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
                       textTransform: 'uppercase',
                       letterSpacing: 0.55,
                     }}>
-                      {d[0]}
+                      {autoT(d).charAt(0)}
                     </Text>
                   </View>
                 );
@@ -461,8 +468,9 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
                   </View>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                      <Text style={{ fontSize: 14, fontWeight: '600', color: T.ink, flexShrink: 1 }} numberOfLines={1}>{o.patient}</Text>
-                      <Text style={{ fontSize: 10, color: T.ink3, fontFamily: T.mono, flexShrink: 0 }}>{o.id}</Text>
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: T.ink, flexShrink: 1, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{o.patient}</Text>
+                      {/* Sipariş no Latin başlar → RNW dir="auto" ile LTR olur; RTL'de hizayı sabitle */}
+                      <Text style={{ fontSize: 10, color: T.ink3, fontFamily: T.mono, flexShrink: 0, textAlign: rtl ? 'right' : undefined }}>{o.id}</Text>
                     </View>
                     <Text style={{ fontSize: 11.5, color: T.ink3, marginTop: 2 }} numberOfLines={1}>
                       {o.workType}
@@ -519,7 +527,8 @@ function TopIconButton({ icon: Icon, onPress, badgeDot }:
           {badgeDot && (
             <View style={{
               position: 'absolute',
-              top: 7, right: 7,
+              // `end:` inline stili bu projede güvenilir değil → yönü açıkça seç
+              top: 7, ...(isRTL() ? { left: 7 } : { right: 7 }),
               width: 8, height: 8, borderRadius: 4,
               backgroundColor: T.ruby,
               borderWidth: 1.5, borderColor: T.card,

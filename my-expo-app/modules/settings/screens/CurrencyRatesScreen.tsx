@@ -1,4 +1,4 @@
-import { localeTag } from '../../../core/i18n';
+import { localeTag, isRTL } from '../../../core/i18n';
 /**
  * Kur Yönetim Ekranı (Phase 1).
  *
@@ -16,7 +16,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, Pressable, Platform, ScrollView, Modal, TextInput, useWindowDimensions } from 'react-native';
 import {
   Plus, X, Check, RefreshCw, Globe, AlertCircle,
-  Calendar, ArrowRight, ChevronDown, History,
+  Calendar, ArrowRight, ArrowLeft, ChevronDown, History,
 } from 'lucide-react-native';
 import { supabase } from '../../../core/api/supabase';
 import { useAuthStore } from '../../../core/store/authStore';
@@ -212,7 +212,7 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
                     <View style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor + '14', borderWidth: 1, borderColor: accentColor + '22' }}>
                       <Text style={{ fontSize: 14, fontWeight: '700', color: accentColor, letterSpacing: 0.4 }}>{m.symbol}</Text>
                     </View>
-                    <View style={{ flex: 1, minWidth: 0, marginLeft: 10 }}>
+                    <View style={{ flex: 1, minWidth: 0, marginStart: 10 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
                         <Text style={{ fontSize: 14, fontWeight: '700', color: '#0A0A0A', letterSpacing: 0.3 }}>{currency}</Text>
                         <Text style={{ fontSize: 11, color: '#9A9A9A' }} numberOfLines={1}>{m.label}</Text>
@@ -231,7 +231,7 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
                       </Text>
                       <Text style={{ fontSize: 10, color: '#9A9A9A', fontWeight: '500' }}>{baseCurrency}</Text>
                     </View>
-                    {isStale && <AlertCircle size={14} color="#D97706" strokeWidth={1.8} style={{ marginLeft: 6 }} />}
+                    {isStale && <AlertCircle size={14} color="#D97706" strokeWidth={1.8} style={{ marginStart: 6 }} />}
                   </>
                 ) : (
                   <>
@@ -257,7 +257,9 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
 
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
                       <Text style={{ fontSize: 11, color: '#6B6B6B' }}>1 {currency}</Text>
-                      <ArrowRight size={10} color="#9A9A9A" strokeWidth={1.6} />
+                      {isRTL()
+                        ? <ArrowLeft size={10} color="#9A9A9A" strokeWidth={1.6} />
+                        : <ArrowRight size={10} color="#9A9A9A" strokeWidth={1.6} />}
                       <Text style={{ fontSize: 11, color: '#6B6B6B' }}>
                         {rate ? `${rate.rate.toFixed(2)} ${baseCurrency}` : '—'}
                       </Text>

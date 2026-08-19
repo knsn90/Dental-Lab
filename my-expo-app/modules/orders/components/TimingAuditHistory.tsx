@@ -7,8 +7,10 @@
 // Hepsini birleştirip tersine kronolojik sıraya dizer (collapsible).
 
 import React, { useEffect, useState } from 'react';
+import { autoT } from '../../../core/i18n/autoTranslate';
+import { isRTL } from '../../../core/i18n';
 import { View, Text, Pressable } from 'react-native';
-import { Activity, ArrowRight, Settings, ChevronDown, ChevronRight } from 'lucide-react-native';
+import { Activity, ArrowRight, ArrowLeft, Settings, ChevronDown, ChevronRight, ChevronLeft } from 'lucide-react-native';
 import { supabase } from '../../../core/api/supabase';
 import { useStationTheme, hexA, type StationPalette } from '../../../core/theme/stationPalette';
 import { formatDuration, getStageStateMeta } from '../stations/stageStates';
@@ -45,9 +47,9 @@ const FIELD_LABEL: Record<string, string> = {
 function formatRel(iso: string): string {
   const d = new Date(iso);
   const diff = Date.now() - d.getTime();
-  if (diff < 60_000)        return `${Math.floor(diff / 1000)} sn önce`;
-  if (diff < 3_600_000)     return `${Math.floor(diff / 60_000)} dk önce`;
-  if (diff < 86_400_000)    return `${Math.floor(diff / 3_600_000)} saat önce`;
+  if (diff < 60_000)        return `${Math.floor(diff / 1000)} ${autoT('sn önce')}`;
+  if (diff < 3_600_000)     return `${Math.floor(diff / 60_000)} ${autoT('dk önce')}`;
+  if (diff < 86_400_000)    return `${Math.floor(diff / 3_600_000)} ${autoT('saat önce')}`;
   return d.toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
@@ -125,7 +127,7 @@ export function TimingAuditHistory({ stageId }: { stageId: string }) {
           </Text>
           {expanded
             ? <ChevronDown size={13} color={P.ink400} strokeWidth={1.8} />
-            : <ChevronRight size={13} color={P.ink400} strokeWidth={1.8} />}
+            : isRTL() ? <ChevronLeft size={13} color={P.ink400} strokeWidth={1.8} /> : <ChevronRight size={13} color={P.ink400} strokeWidth={1.8} />}
         </View>
       </Pressable>
 
@@ -164,7 +166,7 @@ function AuditRow({ p: P, entry, isLast }: { p: StationPalette; entry: AuditEntr
         </Text>
       </View>
       {entry.reason && (
-        <Text style={{ fontSize: 11, color: P.ink500, paddingLeft: 70, lineHeight: 15 }} numberOfLines={3}>
+        <Text style={{ fontSize: 11, color: P.ink500, paddingStart: 70, lineHeight: 15 }} numberOfLines={3}>
           „{entry.reason}"
         </Text>
       )}
@@ -184,7 +186,7 @@ function renderHeadline(P: StationPalette, e: AuditEntry): React.ReactNode {
         <Text style={{ fontSize: 12, fontWeight: '600', color: fromMeta.color }}>
           {fromMeta.short}
         </Text>
-        <ArrowRight size={11} color={P.ink400} strokeWidth={2} />
+        {isRTL() ? <ArrowLeft size={11} color={P.ink400} strokeWidth={2} /> : <ArrowRight size={11} color={P.ink400} strokeWidth={2} />}
         <Text style={{ fontSize: 12, fontWeight: '700', color: toMeta.color }}>
           {toMeta.short}
         </Text>
@@ -200,7 +202,7 @@ function renderHeadline(P: StationPalette, e: AuditEntry): React.ReactNode {
         <Text style={{ fontSize: 11, color: P.ink400 }}>
           {formatDuration(e.old_value ?? 0)}
         </Text>
-        <ArrowRight size={11} color={P.ink400} strokeWidth={2} />
+        {isRTL() ? <ArrowLeft size={11} color={P.ink400} strokeWidth={2} /> : <ArrowRight size={11} color={P.ink400} strokeWidth={2} />}
         <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#EA580C' }}>
           {formatDuration(e.new_value ?? 0)}
         </Text>

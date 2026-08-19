@@ -168,8 +168,8 @@ export function HRHubScreen() {
                           height: 16,
                           borderRadius: 2,
                           backgroundColor: t.accent,
-                          marginLeft: -6,
-                          marginRight: 4,
+                          marginStart: -6,
+                          marginEnd: 4,
                         }}
                       />
                     )}

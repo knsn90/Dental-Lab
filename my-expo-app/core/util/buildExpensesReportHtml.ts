@@ -63,7 +63,7 @@ export function buildExpensesReportHtml(input: BuildInput): string {
   const { labName, labAddress, labPhone, labTaxNo, periodFrom, periodTo, expenses, primaryCurrency = 'TRY' } = input;
 
   // ── Kategori özeti — KATI per-currency: farklı para birimleri ASLA toplanmaz ──
-  const CCY_ORDER = ['TRY', 'EUR', 'USD', 'GBP'];
+  const CCY_ORDER = ['TRY', 'EUR', 'USD', 'GBP', 'IRT'];
   const ccyOf = (e: Expense) => (((e as any).currency as string) || primaryCurrency);
   const addTo = (m: Map<string, number>, ccy: string, amt: number) => m.set(ccy, (m.get(ccy) ?? 0) + amt);
   const sortCcy = (m: Map<string, number>) =>

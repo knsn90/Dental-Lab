@@ -5,6 +5,7 @@
  * Üretim istasyonlarını CRUD + sıralama.
  */
 import React, { useCallback, useEffect, useState } from 'react';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import {
   View, Text, ScrollView, Pressable,
   TextInput, Modal, ActivityIndicator, Alert, Platform,
@@ -640,7 +641,7 @@ export function StationsSection({ accentColor = '#F5C24B' }: Props) {
   async function confirmDelete(station: Station) {
     const ok = await confirmAsync(
       'İstasyonu Sil',
-      `"${station.name}" istasyonunu silmek istediğinize emin misiniz?`,
+      `"${station.name}" ${autoT('istasyonunu silmek istediğinize emin misiniz?')}`,
       { confirmText: 'Sil', destructive: true },
     );
     if (!ok) return;
@@ -716,7 +717,9 @@ export function StationsSection({ accentColor = '#F5C24B' }: Props) {
         <View>
           <Text className="text-[13px]" style={{ color: T.ink3 }}>
             {stations.length > 0
-              ? `${stations.length} istasyon tanımlı · ${stations.filter(st => st.is_active).length} aktif`
+              /* Şablon dizesi sözlükle EŞLEŞEMEZ (sayı değişiyor) → statik
+                 parçalar ayrı ayrı autoT'den geçirilir. */
+              ? `${stations.length} ${autoT('istasyon tanımlı')} · ${stations.filter(st => st.is_active).length} ${autoT('aktif')}`
               : 'Henüz istasyon eklenmemiş'
             }
           </Text>
@@ -844,7 +847,7 @@ export function StationsSection({ accentColor = '#F5C24B' }: Props) {
                   </Pressable>
                   <Pressable
                     onPress={() => { setEditing(station); setFormVisible(true); }}
-                    className="w-8 h-8 rounded-[10px] items-center justify-center ml-1"
+                    className="w-8 h-8 rounded-[10px] items-center justify-center ms-1"
                     style={{ backgroundColor: `${accentColor}14` }}
                   >
                     <Pencil size={13} color={accentColor} strokeWidth={1.8} />

@@ -100,6 +100,38 @@ export async function getSignedUrl(storagePath: string): Promise<string | null> 
   return data?.signedUrl ?? null;
 }
 
+/**
+ * Küçük resim URL'leri — Supabase görüntü dönüştürme ucuyla (render/image).
+ *
+ * NEDEN: galeri şeridi 64px karo çiziyor ama tam çözünürlüklü orijinali
+ * indiriyordu; 30 fotoğraflı bir siparişte panel dakikalarca boş kalıyordu
+ * (ölçüm: 34 KB'lık bir dosya 5 KB'a düşüyor — büyük fotoğraflarda oran çok
+ * daha yüksek).
+ *
+ * Toplu `createSignedUrls` dönüştürme seçeneği KABUL ETMİYOR; imza, dönüşüm
+ * parametrelerini de kapsadığı için sonradan URL'e ekleme yapılamıyor. Bu
+ * yüzden tekil imzalar paralel atılıyor. Hata alan dosya sessizce atlanır —
+ * çağıran taraf o dosya için tam boy URL'e düşer.
+ */
+export async function getThumbUrls(
+  storagePaths: string[],
+  size = 160,
+): Promise<Record<string, string>> {
+  if (!storagePaths.length) return {};
+  const uniq = Array.from(new Set(storagePaths));
+  const rows = await Promise.all(uniq.map(async (path) => {
+    try {
+      const { data } = await supabase.storage.from(BUCKET).createSignedUrl(path, 3600, {
+        transform: { width: size, height: size, resize: 'cover', quality: 60 },
+      });
+      return data?.signedUrl ? [path, data.signedUrl] as const : null;
+    } catch { return null; }
+  }));
+  const out: Record<string, string> = {};
+  for (const r of rows) if (r) out[r[0]] = r[1];
+  return out;
+}
+
 export async function getSignedUrls(storagePaths: string[]): Promise<Record<string, string>> {
   if (storagePaths.length === 0) return {};
   // Single batch request (1 HTTP call) instead of N parallel requests.
@@ -111,4 +143,32 @@ export async function getSignedUrls(storagePaths: string[]): Promise<Record<stri
     if (row.path && row.signedUrl) result[row.path] = row.signedUrl;
   });
   return result;
+}
+
+/** Mesh küçük resmi için sabit yol: <dosya>.thumb.jpg (aynı klasörde). */
+export function meshThumbPath(storagePath: string): string {
+  return `${storagePath}.thumb.jpg`;
+}
+
+/**
+ * 3D görüntüleyicinin yakaladığı anlık görüntüyü depoya yazar.
+ *
+ * Sessizce başarısız olur: küçük resim bir kolaylık, yazılamazsa liste eski
+ * davranışına (tür rozeti) döner. Zaten varsa üzerine yazılır (upsert) —
+ * model yeniden hizalanırsa görüntü de tazelenir.
+ */
+export async function saveMeshThumb(storagePath: string, dataUrl: string): Promise<boolean> {
+  try {
+    const b64 = dataUrl.split(',')[1];
+    if (!b64) return false;
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const { error } = await supabase.storage
+      .from(BUCKET)
+      .upload(meshThumbPath(storagePath), bytes, {
+        contentType: 'image/jpeg', upsert: true, cacheControl: '3600',
+      });
+    return !error;
+  } catch { return false; }
 }

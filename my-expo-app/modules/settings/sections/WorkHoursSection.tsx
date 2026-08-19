@@ -141,7 +141,7 @@ export function WorkHoursSection({ accentColor = '#3B82F6' }: { accentColor?: st
           <View key={wd} style={{ backgroundColor: T.card, borderRadius: 14, borderWidth: 1, borderColor: T.hairline, padding: 14, gap: 10 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: T.ink }}>{label}</Text>
-              {closed && <Text style={{ fontSize: 11, color: T.ink3, marginRight: 8 }}>Kapalı</Text>}
+              {closed && <Text style={{ fontSize: 11, color: T.ink3, marginEnd: 8 }}>Kapalı</Text>}
               <Pressable
                 onPress={() => addWindow(wd)}
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: A + '14', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}

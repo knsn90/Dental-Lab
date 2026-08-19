@@ -155,8 +155,8 @@ export function CommandPalette({ navItems, onNavigate, accentColor = C.primary }
           backgroundColor: t.backdrop,
           alignItems: isNative ? 'flex-end' : 'center',
           paddingTop: isNative ? Math.max(insets.top, 8) + 6 + 38 + 8 : 80,
-          paddingRight: isNative ? 12 : 16,
-          paddingLeft: isNative ? 12 : 16,
+          paddingEnd: isNative ? 12 : 16,
+          paddingStart: isNative ? 12 : 16,
         }]}
         onPress={closePalette}
       >
@@ -399,7 +399,7 @@ export function CommandPaletteFAB({ accentColor = C.primary }: { accentColor?: s
 const fab = StyleSheet.create({
   btn: {
     position: 'absolute',
-    right: 20,
+    end: 20,
     bottom: 100,   // above mobile tab bar
     width: 48,
     height: 48,

@@ -21,9 +21,11 @@ import { SmileOverlay } from './SmileOverlay';
 import type { MeshDiagnostics } from '../lib/meshDiagnostics';
 import { classifyFile, paletteColor } from '../lib/layerMap';
 import { describeOcclusion, type OcclusionResult } from '../lib/occlusion';
+import { describeWaviness, wavinessVerdict, DEFAULT_RANGE_UM, type WavinessResult } from '../lib/waviness';
 import { registerViewer, unregisterViewer, type ViewerBridge } from '../viewerBridge';
 import { useViewerTheme } from '../lib/viewerTheme';
 import { toast } from '../../../core/ui/Toast';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { DentyFAB } from '../../denty/components/DentyFAB';
 
 function Viewer3DModal(props: Viewer3DProps) {
@@ -35,7 +37,7 @@ function Viewer3DModal(props: Viewer3DProps) {
     return <Mobile {...props} />;
   }
 
-  const { visible, files, title, onClose, referenceImages = [], sourceDownload } = props;
+  const { visible, files, title, onClose, referenceImages = [], sourceDownload, onThumbnail } = props;
   const T = useViewerTheme();
   const insets = useSafeAreaInsets(); // mobil-web çentik/status bar boşluğu
 
@@ -57,9 +59,23 @@ function Viewer3DModal(props: Viewer3DProps) {
   // Kapanış (oklüzyon) analizi — alt/üst çene mesafe ısı haritası + özet
   const [occlusion, setOcclusion] = useState<OcclusionResult | null>(null);
   const [occlusionBusy, setOcclusionBusy] = useState(false);
+  // Yüzey dalgalanma analizi — servikal/kesim hattı artefaktı tespiti
+  const [waviness, setWaviness] = useState<WavinessResult | null>(null);
+  const [wavinessBusy, setWavinessBusy] = useState(false);
+  const [wavinessRange, setWavinessRange] = useState(DEFAULT_RANGE_UM);
+
+  // İki analiz de aynı vertex-renk kanalını kullanıyor; ikisi birden açık
+  // olursa ikincisi birincinin haritasını eziyor. Tek aktif harita kuralı.
+  const anyBusy = occlusionBusy || wavinessBusy;
+  const clearMaps = () => {
+    if (occlusion) { sceneRef.current?.clearOcclusion(); setOcclusion(null); }
+    if (waviness) { sceneRef.current?.clearWaviness(); setWaviness(null); }
+  };
+
   const toggleOcclusion = async () => {
-    if (occlusionBusy) return;
+    if (anyBusy) return;
     if (occlusion) { sceneRef.current?.clearOcclusion(); setOcclusion(null); return; }
+    clearMaps();
     setOcclusionBusy(true);
     try {
       const res = (await sceneRef.current?.analyzeOcclusion()) ?? null;
@@ -72,6 +88,25 @@ function Viewer3DModal(props: Viewer3DProps) {
       setOcclusionBusy(false);
     }
   };
+
+  const toggleWaviness = async () => {
+    if (anyBusy) return;
+    if (waviness) { sceneRef.current?.clearWaviness(); setWaviness(null); return; }
+    clearMaps();
+    setWavinessBusy(true);
+    try {
+      const res = (await sceneRef.current?.analyzeWaviness(wavinessRange)) ?? null;
+      if (!res) toast.info(autoT('Dalgalanma analizi için görünür bir yüzey taraması gerekli.'));
+      setWaviness(res);
+    } catch (e: any) {
+      console.error('[waviness]', e);
+      toast.error(e?.message ?? autoT('Dalgalanma analizi yapılamadı.'));
+      setWaviness(null);
+    } finally {
+      setWavinessBusy(false);
+    }
+  };
+
 
   // Simanty köprüsü — asistanın 3D araçları (kapanisAnalizi / taramaTeshis) için
   // açık viewer'ın kontrollerini register et. files/diagnostics değişince güncelle.
@@ -261,7 +296,7 @@ function Viewer3DModal(props: Viewer3DProps) {
                 alignItems: 'center', justifyContent: 'center',
                 backgroundColor: hovered ? T.iconBgHover : 'transparent',
                 opacity: downloading ? 0.5 : 1,
-                marginRight: 4,
+                marginEnd: 4,
                 ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
               })}
             >
@@ -294,6 +329,7 @@ function Viewer3DModal(props: Viewer3DProps) {
             ) : (
               <>
                 <ThreeScene
+                  onThumbnail={onThumbnail}
                   ref={sceneRef}
                   files={visibleFiles}
                   layerStyles={layerStyles}
@@ -380,6 +416,8 @@ function Viewer3DModal(props: Viewer3DProps) {
                   onCutAxisChange={setCutAxis}
                   cutPosition={cutPosition}
                   onCutPositionChange={setCutPosition}
+                  wavinessActive={!!waviness || wavinessBusy}
+                  onToggleWaviness={toggleWaviness}
                   showGrid={showGrid}
                   onToggleGrid={() => setShowGrid(v => !v)}
                   xrayMode={xrayMode}
@@ -405,7 +443,7 @@ function Viewer3DModal(props: Viewer3DProps) {
 
                 {/* Kapanış analizi özet + legend (sol alt) */}
                 {(occlusion || occlusionBusy) && (
-                  <View style={{ position: 'absolute', left: 12, bottom: 12, maxWidth: 300, backgroundColor: 'rgba(15,15,18,0.88)', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, gap: 6 }}>
+                  <View style={{ position: 'absolute', start: 12, bottom: 12, maxWidth: 300, backgroundColor: 'rgba(15,15,18,0.88)', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, gap: 6 }}>
                     <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>Kapanış Analizi</Text>
                     {occlusionBusy
                       ? <Text style={{ color: '#E5E7EB', fontSize: 11, lineHeight: 16 }}>Analiz ediliyor…</Text>
@@ -421,10 +459,98 @@ function Viewer3DModal(props: Viewer3DProps) {
                   </View>
                 )}
 
+                {/* Dalgalanma analizi özet + skala (sol üst — sol alt köşe
+                    kapanış özeti ve FPS rozetiyle zaten dolu) */}
+                {(waviness || wavinessBusy) && (
+                  <View style={{
+                    position: 'absolute', top: 12, start: 12, width: 268,
+                    backgroundColor: T.toolbarBg,
+                    borderWidth: 1, borderColor: T.toolbarBorder,
+                    borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, gap: 7,
+                    ...(Platform.OS === 'web' ? {
+                      boxShadow: '0 12px 32px rgba(0,0,0,0.20)',
+                      backdropFilter: 'blur(14px) saturate(1.2)',
+                    } as any : {}),
+                  } as any}>
+                    <Text style={{
+                      color: T.panelLabelMuted, fontSize: 9, fontWeight: '800',
+                      letterSpacing: 0.9, textTransform: 'uppercase',
+                    }}>
+                      Yüzey Dalgalanması
+                    </Text>
+
+                    {wavinessBusy ? (
+                      <Text style={{ color: T.iconFg, fontSize: 11, lineHeight: 16 }}>
+                        Analiz ediliyor… (büyük taramalarda birkaç saniye)
+                      </Text>
+                    ) : waviness ? (
+                      <>
+                        {(() => {
+                          const v = wavinessVerdict(waviness);
+                          const tone = v.tone === 'ok' ? '#2D9A6B' : v.tone === 'warn' ? '#E89B2A' : '#D94B4B';
+                          return (
+                            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 7 }}>
+                              <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: tone, marginTop: 4 }} />
+                              <Text style={{ flex: 1, color: T.iconFg, fontSize: 11.5, fontWeight: '600', lineHeight: 16 }}>
+                                {v.text}
+                              </Text>
+                            </View>
+                          );
+                        })()}
+                        <Text style={{ color: T.panelLabelMuted, fontSize: 10.5, lineHeight: 15 }}>
+                          {describeWaviness(waviness)}
+                        </Text>
+
+                        {/* Renk skalası — nötr = düz yüzey, iki uç = çukur/tümsek */}
+                        <View style={{ gap: 4, marginTop: 2 }}>
+                          <View style={{
+                            height: 8, borderRadius: 4, overflow: 'hidden',
+                            ...(Platform.OS === 'web' ? {
+                              backgroundImage: 'linear-gradient(90deg,#2563EB 0%,#7DA9F0 25%,#E3E6EB 50%,#F0A05A 75%,#DC2626 100%)',
+                            } as any : { backgroundColor: '#E3E6EB' }),
+                          } as any} />
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                            <Text style={{ color: T.panelLabelMuted, fontSize: 9 }}>−{waviness.rangeUm} µm</Text>
+                            <Text style={{ color: T.panelLabelMuted, fontSize: 9 }}>düz</Text>
+                            <Text style={{ color: T.panelLabelMuted, fontSize: 9 }}>+{waviness.rangeUm} µm</Text>
+                          </View>
+                        </View>
+
+                        {/* Skala penceresi — kusurun büyüklüğü baştan bilinmediği
+                            için sabit bir skala her vakada doğru olmuyor */}
+                        {Platform.OS === 'web' && (
+                          <View style={{ marginTop: 2 }}>
+                            <Text style={{ color: T.panelLabelMuted, fontSize: 9.5, marginBottom: 2 }}>
+                              Skala penceresi: ±{wavinessRange} µm
+                            </Text>
+                            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                            {React.createElement('input' as any, {
+                              type: 'range', min: 20, max: 200, step: 10, value: wavinessRange,
+                              onChange: (e: any) => {
+                                const v = parseInt(e.target.value, 10);
+                                setWavinessRange(v);
+                                // Yumuşatma önbellekte — sürüklerken anlık yeniden boyama
+                                const res = sceneRef.current?.setWavinessRange(v);
+                                if (res) setWaviness(res);
+                              },
+                              style: { width: '100%', accentColor: T.accent, cursor: 'pointer' },
+                            })}
+                          </View>
+                        )}
+
+                        <Text style={{ color: T.panelLabelMuted, fontSize: 9.5, lineHeight: 13, marginTop: 2 }}>
+                          {waviness.bandMm[0]}–{waviness.bandMm[1]} mm bandı. Artefakt mı anatomi mi
+                          ayrımını yapmaz — üretim öncesi bakılmasını işaret eder.
+                        </Text>
+                      </>
+                    ) : null}
+                  </View>
+                )}
+
                 {/* Mesafe ölçümleri overlay (sağ alt) */}
                 {measurements.length > 0 && (
                   <View style={{
-                    position: 'absolute', bottom: 12, right: 12,
+                    position: 'absolute', bottom: 12, end: 12,
                     backgroundColor: T.toolbarBg,
                     borderRadius: 10, padding: 8,
                     borderWidth: 1, borderColor: T.toolbarBorder,
@@ -454,12 +580,14 @@ function Viewer3DModal(props: Viewer3DProps) {
                 {/* Measurement mode hint */}
                 {measureMode && (
                   <View style={{
-                    position: 'absolute', top: 12, left: 12,
+                    position: 'absolute', start: 12,
+                    // Analiz kartları da sol üstte — üstüne binmesin
+                    top: (waviness || wavinessBusy) ? 232 : 12,
                     paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
                     backgroundColor: T.accent + 'CC',
                   } as any}>
                     <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>
-                      📏 Ölçüm modu — modele 2 nokta tıkla
+                      Ölçüm modu — modele 2 nokta tıkla
                     </Text>
                   </View>
                 )}

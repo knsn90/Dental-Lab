@@ -42,14 +42,18 @@ export function titleCaseTR(raw: string): string {
 }
 
 /**
- * Hekim ad-soyad normalizasyonu: titleCaseTR + "Dr." önek garantisi.
+ * Hekim ad-soyad normalizasyonu: titleCaseTR + "Dt." önek garantisi.
  *
- * Kullanıcı zaten Dr./Dt./Prof./Doç./Opr./Uzm. yazdıysa korunur,
- * aksi halde başına "Dr. " eklenir.
+ * Varsayılan önek "Dt." (Diş Tabibi) — bu bir diş laboratuvarı ürünü, sistemdeki
+ * hekimlerin tamamı diş hekimi. Kullanıcı zaten bir ünvan yazdıysa (Dr./Dt./
+ * Prof./Doç./Opr./Uzm.) ONA DOKUNULMAZ: "Prof. Dr. X" gibi gerçek ünvanları
+ * "Dt."ye çevirmek yanlış olur.
  */
+export const DOCTOR_TITLE_DEFAULT = 'Dt.';
+
 export function normalizeDoctorName(raw: string): string {
   const cleaned = titleCaseTR(raw);
   if (!cleaned) return cleaned;
   const PREFIX_RE = /^(Dr\.?|Dt\.?|Prof\.?|Doç\.?|Opr\.?|Uzm\.?)\s/i;
-  return PREFIX_RE.test(cleaned) ? cleaned : `Dr. ${cleaned}`;
+  return PREFIX_RE.test(cleaned) ? cleaned : `${DOCTOR_TITLE_DEFAULT} ${cleaned}`;
 }

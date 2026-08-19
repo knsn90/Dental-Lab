@@ -229,7 +229,7 @@ export function MinLevelBulkModal({ visible, accentColor, onClose, onSaved }: Pr
                       style={{
                         width: 70, paddingHorizontal: 10, paddingVertical: 5,
                         borderRadius: 10, borderWidth: 1, borderColor: DS.ink[300],
-                        fontSize: 12, color: DS.ink[900], textAlign: 'right',
+                        fontSize: 12, color: DS.ink[900], textAlign: 'end' as any,
                         backgroundColor: DS.lab.surface,
                         ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
                       }}
@@ -280,7 +280,7 @@ export function MinLevelBulkModal({ visible, accentColor, onClose, onSaved }: Pr
                             width: 90, paddingHorizontal: 12, paddingVertical: 7,
                             borderRadius: 10, borderWidth: 1,
                             borderColor: dirty ? accentColor : DS.ink[300],
-                            fontSize: 13, color: DS.ink[900], textAlign: 'right',
+                            fontSize: 13, color: DS.ink[900], textAlign: 'end' as any,
                             ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
                           }}
                         />

@@ -70,7 +70,7 @@ const styles = StyleSheet.create({
   empty: { paddingVertical: 16 },
   emptyText: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center' },
   row: { flexDirection: 'row' },
-  lineContainer: { alignItems: 'center', width: 24, marginRight: 12 },
+  lineContainer: { alignItems: 'center', width: 24, marginEnd: 12 },
   dot: {
     width: 12,
     height: 12,

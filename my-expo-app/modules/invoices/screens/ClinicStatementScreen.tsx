@@ -1,4 +1,4 @@
-import { localeTag } from '../../../core/i18n';
+import { localeTag, isRTL } from '../../../core/i18n';
 import { safeBack } from '../../../core/util/safeBack';
 /**
  * ClinicStatementScreen — Klinik Hesap Ekstresi (Patterns Design Language)
@@ -17,10 +17,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, useSegments } from 'expo-router';
 import {
-  ArrowLeft, Printer, Download, FileSpreadsheet,
+  ArrowLeft, ArrowRight, Printer, Download, FileSpreadsheet,
   Calendar, Search, X, Filter, ArrowUpRight, ArrowDownLeft,
   Minus, Banknote, CreditCard, Landmark, FileText,
-  Inbox, Building2, ChevronDown, FileClock, ChevronRight,
+  Inbox, Building2, ChevronDown, FileClock, ChevronRight, ChevronLeft,
 } from 'lucide-react-native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -291,7 +291,7 @@ export function ClinicStatementScreen() {
     const set = new Set<string>();
     for (const i of invoices) if (i.status !== 'iptal') set.add(i.currency || 'TRY');
     for (const o of unbilled) for (const c of Object.keys(unbilledTotals(o))) set.add(c);
-    const order = ['TRY', 'EUR', 'USD', 'GBP'];
+    const order = ['TRY', 'EUR', 'USD', 'GBP', 'IRT'];
     const arr = Array.from(set).sort((a, b) => order.indexOf(a) - order.indexOf(b));
     return arr.length ? arr : ['TRY'];
   }, [invoices, unbilled]);
@@ -522,7 +522,7 @@ export function ClinicStatementScreen() {
           onPress={() => safeBack('/')}
           style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
         >
-          <ArrowLeft size={18} color={DS.ink[900]} strokeWidth={1.8} />
+          {isRTL() ? <ArrowRight size={18} color={DS.ink[900]} strokeWidth={1.8} /> : <ArrowLeft size={18} color={DS.ink[900]} strokeWidth={1.8} />}
         </Pressable>
 
         <View style={{ flex: 1 }}>
@@ -532,7 +532,7 @@ export function ClinicStatementScreen() {
               {clinicName}
             </Text>
           </View>
-          <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 2, marginLeft: 24 }}>
+          <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 2, marginStart: 24 }}>
             Hesap Ekstresi · {allLines.length} hareket
           </Text>
         </View>
@@ -671,17 +671,17 @@ export function ClinicStatementScreen() {
                   )}
 
                   {isDesktop && (
-                    <Text style={{ fontSize: 11, color: DS.ink[400], width: 110, textAlign: 'right' }}>
+                    <Text style={{ fontSize: 11, color: DS.ink[400], width: 110, textAlign: 'end' as any }}>
                       {fmtDateShort(row.date)}
                     </Text>
                   )}
 
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900], textAlign: 'right', minWidth: 78 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900], textAlign: 'end' as any, minWidth: 78 }}>
                     {fmtMoney(row.amount, selectedCcy)}
                   </Text>
                   {busy
                     ? <ActivityIndicator size="small" color={DS.ink[400]} />
-                    : <ChevronRight size={15} color={DS.ink[300]} strokeWidth={1.8} />}
+                    : isRTL() ? <ChevronLeft size={15} color={DS.ink[300]} strokeWidth={1.8} /> : <ChevronRight size={15} color={DS.ink[300]} strokeWidth={1.8} />}
                 </Pressable>
               );
             })}
@@ -853,11 +853,11 @@ export function ClinicStatementScreen() {
                 { label: 'TİP',       flex: 0.6 },
                 { label: 'AÇIKLAMA',  flex: 3 },
                 { label: 'DURUM',     flex: 1 },
-                { label: 'BORÇ',      flex: 1.2, align: 'right' as const },
-                { label: 'ALACAK',    flex: 1.2, align: 'right' as const },
-                { label: 'BAKİYE',    flex: 1.2, align: 'right' as const },
+                { label: 'BORÇ',      flex: 1.2, align: 'end' as const },
+                { label: 'ALACAK',    flex: 1.2, align: 'end' as const },
+                { label: 'BAKİYE',    flex: 1.2, align: 'end' as const },
               ].map((h, i) => (
-                <Text key={i} style={{ flex: h.flex, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textAlign: h.align }}>
+                <Text key={i} style={{ flex: h.flex, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textAlign: h.align as any }}>
                   {h.label}
                 </Text>
               ))}
@@ -880,13 +880,13 @@ export function ClinicStatementScreen() {
               <View style={{ flex: 0.6 }} />
               <View style={{ flex: 3 }} />
               <View style={{ flex: 1 }} />
-              <Text style={{ flex: 1.2, fontSize: 12, fontWeight: '700', color: DS.ink[900], textAlign: 'right' }}>
+              <Text style={{ flex: 1.2, fontSize: 12, fontWeight: '700', color: DS.ink[900], textAlign: 'end' as any }}>
                 {fmtMoney(totals.debit, selectedCcy)}
               </Text>
-              <Text style={{ flex: 1.2, fontSize: 12, fontWeight: '700', color: CHIP_TONES.success.fg, textAlign: 'right' }}>
+              <Text style={{ flex: 1.2, fontSize: 12, fontWeight: '700', color: CHIP_TONES.success.fg, textAlign: 'end' as any }}>
                 {fmtMoney(totals.credit, selectedCcy)}
               </Text>
-              <Text style={{ flex: 1.2, fontSize: 12, fontWeight: '700', color: totals.balance > 0 ? DS.ink[900] : CHIP_TONES.success.fg, textAlign: 'right' }}>
+              <Text style={{ flex: 1.2, fontSize: 12, fontWeight: '700', color: totals.balance > 0 ? DS.ink[900] : CHIP_TONES.success.fg, textAlign: 'end' as any }}>
                 {fmtMoney(totals.balance, selectedCcy)}
               </Text>
             </View>
@@ -1019,7 +1019,7 @@ function StatementRow({ line, last, currency, onOpen }: { line: StatementLine; l
         </View>
       </View>
 
-      <View style={{ flex: 3, gap: 2, paddingRight: 8 }}>
+      <View style={{ flex: 3, gap: 2, paddingEnd: 8 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
             {rowTitle}
@@ -1050,21 +1050,21 @@ function StatementRow({ line, last, currency, onOpen }: { line: StatementLine; l
 
       <Text style={{
         flex: 1.2, fontSize: 13, fontWeight: line.debit > 0 ? '600' : '400',
-        color: line.debit > 0 ? DS.ink[900] : DS.ink[300], textAlign: 'right',
+        color: line.debit > 0 ? DS.ink[900] : DS.ink[300], textAlign: 'end' as any,
       }}>
         {line.debit > 0 ? fmtMoney(line.debit, currency) : '—'}
       </Text>
 
       <Text style={{
         flex: 1.2, fontSize: 13, fontWeight: line.credit > 0 ? '600' : '400',
-        color: line.credit > 0 ? CHIP_TONES.success.fg : DS.ink[300], textAlign: 'right',
+        color: line.credit > 0 ? CHIP_TONES.success.fg : DS.ink[300], textAlign: 'end' as any,
       }}>
         {line.credit > 0 ? fmtMoney(line.credit, currency) : '—'}
       </Text>
 
       <Text style={{
         flex: 1.2, fontSize: 13, fontWeight: '600',
-        color: line.balance > 0 ? DS.ink[900] : CHIP_TONES.success.fg, textAlign: 'right',
+        color: line.balance > 0 ? DS.ink[900] : CHIP_TONES.success.fg, textAlign: 'end' as any,
       }}>
         {fmtMoney(line.balance, currency)}
       </Text>

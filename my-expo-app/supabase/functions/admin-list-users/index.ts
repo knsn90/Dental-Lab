@@ -29,13 +29,45 @@ Deno.serve(async (req: Request) => {
 
     const { data: callerProfile } = await adminClient
       .from('profiles')
-      .select('user_type')
+      .select('user_type, lab_id')
       .eq('id', userData.user.id)
       .single();
 
     if (!callerProfile || callerProfile.user_type !== 'admin') {
       throw new Error('Sadece adminler kullanıcı listesini görebilir');
     }
+
+    // KİRACI SINIRI — bu fonksiyon service-role ile çalışır, yani RLS'i baypas eder;
+    // filtreyi KENDİSİ yapmak zorunda. 'admin' global bir yetki değil, lab-başına bir
+    // roldür: filtresiz bırakıldığında her lab admini tüm sistemin kullanıcılarını
+    // görüyordu (ölçüldü: 21 profilin 20'si yabancı).
+    const callerLab: string | null = callerProfile.lab_id ?? null;
+    if (!callerLab) {
+      // Laba bağlı olmayan hesap (ör. yetim admin) hiçbir kiracının listesini görmez.
+      return new Response(
+        JSON.stringify({ users: [] }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
+    // Hekim/klinik profillerinin lab_id'si NULL'dur; bağ klinik üzerinden kurulur.
+    // Bu yüzden kapsam üç ayaklı: doğrudan lab_id, kliniğin labı, onaylı lab üyeliği.
+    const [clinicRes, memberRes] = await Promise.all([
+      adminClient.from('clinics').select('id').eq('lab_id', callerLab),
+      adminClient.from('clinic_lab_memberships')
+        .select('member_profile_id, member_clinic_id')
+        .eq('lab_id', callerLab).in('status', ['active', 'approved']),
+    ]);
+    const labClinicIds = new Set<string>((clinicRes.data ?? []).map((c: any) => c.id));
+    const memberProfileIds = new Set<string>();
+    for (const m of memberRes.data ?? []) {
+      if (m.member_profile_id) memberProfileIds.add(m.member_profile_id);
+      if (m.member_clinic_id)  labClinicIds.add(m.member_clinic_id);
+    }
+    const inMyLab = (p: any): boolean =>
+      p.lab_id === callerLab ||
+      (p.clinic_id != null && labClinicIds.has(p.clinic_id)) ||
+      memberProfileIds.has(p.id);
 
     // auth.users + profiles paralel — eskiden seri idi (~2× round-trip)
     const [authRes, profRes] = await Promise.all([
@@ -49,14 +81,14 @@ Deno.serve(async (req: Request) => {
     const authUsers = authRes.data;
     const profiles = profRes.data;
 
-    const profileMap: Record<string, any> = {};
-    (profiles ?? []).forEach((p: any) => { profileMap[p.id] = p; });
+    // Liste labın PROFİLLERİNDEN kurulur. Eskiden authUsers.users üzerinden
+    // kuruluyordu; profili olmayan auth kullanıcıları bile e-postasıyla sızıyordu.
+    const emailById: Record<string, string | null> = {};
+    authUsers.users.forEach((u) => { emailById[u.id] = u.email ?? null; });
 
-    const merged = authUsers.users.map((u) => ({
-      ...(profileMap[u.id] ?? {}),
-      id: u.id,
-      email: u.email ?? null,
-    }));
+    const merged = (profiles ?? [])
+      .filter(inMyLab)
+      .map((p: any) => ({ ...p, id: p.id, email: emailById[p.id] ?? p.email ?? null }));
 
     // created_at'e göre sırala (en yeni önce)
     merged.sort((a, b) =>

@@ -10,6 +10,10 @@ import { dispatchNotification } from '../../core/notifications/dispatch';
 /** Bekletme nedeni kategorileri. responsible='client' olanlar teslim tarihini öteler. */
 export const HOLD_CATEGORIES = [
   { key: 'client_missing_file', label: 'Eksik dosya / tarama',   responsible: 'client' as const },
+  // Fiziksel eksik: abutment/analog, model, eski protez vb. klinikten gelmesi
+  // gereken PARÇA. 'Eksik dosya / tarama' dijital karşılığı; ikisi ayrı çünkü
+  // hekime giden bildirimde ne göndermesi gerektiği net olmalı.
+  { key: 'client_missing_part', label: 'Eksik parça / model',   responsible: 'client' as const },
   { key: 'client_approval',     label: 'Hekim onayı bekleniyor', responsible: 'client' as const },
   { key: 'client_other',        label: 'Diğer (hekim/klinik)',   responsible: 'client' as const },
   { key: 'material',            label: 'Malzeme bekleniyor',     responsible: 'lab' as const },

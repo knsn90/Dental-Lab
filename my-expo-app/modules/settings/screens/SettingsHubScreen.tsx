@@ -7,12 +7,13 @@
  * Tüm paneller (lab, admin, doctor, clinic) aynı ekranı kullanır.
  */
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTurkeyOnlyFeatures } from '../../../core/store/labSettingsStore';
 import { safeBack } from '../../../core/util/safeBack';
 import { useTranslation } from 'react-i18next';
 import { View, Text, ScrollView, Pressable, useWindowDimensions, Modal, Platform } from 'react-native';
 import { useSegments, useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronLeft, Menu, X, Check } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, Menu, X, Check } from 'lucide-react-native';
 
 import { HubContext } from '../../../core/ui/HubContext';
 import { useColorThemeStore } from '../../../core/store/colorThemeStore';
@@ -35,6 +36,7 @@ import { EquipmentSection } from '../sections/EquipmentSection';
 import { WorkHoursSection } from '../sections/WorkHoursSection';
 import { MOBILE_PANEL_THEMES } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { isRTL } from '../../../core/i18n';
 
 // ── Display font token ──────────────────────────────────────────────────
 const DISPLAY = {
@@ -57,6 +59,8 @@ interface NavItem {
   sub:   string;
   /** If set, only show this tab when user has this permission */
   requiresPermission?: string;
+  /** Yalnız TR bölgesinde görünür (e-Fatura/iyzico gibi Türkiye'ye özgü). */
+  trOnly?: boolean;
   /** Sol menüde hangi başlık altında görünsün. Boşsa öncekinin grubuna girer.
       13 madde düz liste hâlindeyken "hangi ayar nerede" taranarak bulunuyordu. */
   group?: string;
@@ -111,7 +115,7 @@ const LAB_ITEMS: NavItem[] = [
   // ── Operasyon: üretim ve para akışını yapılandıran ayarlar ──
   { key: 'stations',     label: 'İstasyonlar',   sub: 'Üretim aşamaları',             requiresPermission: 'manage_settings', group: 'Operasyon' },
   { key: 'currency',     label: 'Döviz Kurları',  sub: 'EUR/USD/GBP kur yönetimi',     requiresPermission: 'manage_settings' },
-  { key: 'integrations', label: 'Entegrasyonlar', sub: 'e-Fatura & POS ayarları',     requiresPermission: 'manage_settings' },
+  { key: 'integrations', label: 'Entegrasyonlar', sub: 'e-Fatura & POS ayarları',     requiresPermission: 'manage_settings', trOnly: true },
   // ── Sistem: gözlem ──
   // NOT: "WhatsApp Destek" buradan CIKARILDI — ayar degil, gunluk operasyon
   // ekrani. Artik kenar cubugunda Destek'in yaninda kendi girdisi var.
@@ -199,9 +203,13 @@ export function SettingsHubScreen({
   // PillTabBar height (~78) + safe-area bottom; sayfa içeriği altta nav'e değmesin
   const bottomPad = isNarrow ? Math.max(insets.bottom, 8) + 96 : 0;
 
+  const trOnly = useTurkeyOnlyFeatures();
+
   // Filter nav items by RBAC permissions
   const allNavItems = getNavItems(panel);
   const navItems = allNavItems.filter(item => {
+    // Bölge süzgeci izinden ÖNCE: İran labında e-Fatura/POS ayarı hiç listelenmez.
+    if (item.trOnly && !trOnly) return false;
     if (!item.requiresPermission) return true;
     if (!permStore.loaded) return true; // show all while loading
     return permStore.permissions.has(item.requiresPermission);
@@ -236,7 +244,7 @@ export function SettingsHubScreen({
             })}
             accessibilityLabel="Geri"
           >
-            <ChevronLeft size={22} color="#0A0A0A" strokeWidth={2} />
+            {isRTL() ? <ChevronRight size={22} color="#0A0A0A" strokeWidth={2} /> : <ChevronLeft size={22} color="#0A0A0A" strokeWidth={2} />}
           </Pressable>
           <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.4, color: '#0A0A0A' }}>
             Ayarlar
@@ -426,7 +434,7 @@ export function SettingsHubScreen({
                       style={{
                         width: 3, height: 16, borderRadius: 2,
                         backgroundColor: accent,
-                        marginLeft: -6, marginRight: 4,
+                        marginStart: -6, marginEnd: 4,
                       }}
                     />
                   )}

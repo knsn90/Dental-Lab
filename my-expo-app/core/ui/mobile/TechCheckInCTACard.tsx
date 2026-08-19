@@ -12,6 +12,7 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, Pressable, Platform, Animated, Easing } from 'react-native';
 import { QrCode, Clock } from 'lucide-react-native';
+import { autoT } from '../../i18n/autoTranslate';
 
 interface Props {
   onPress: () => void;
@@ -26,10 +27,13 @@ interface Props {
 export function TechCheckInCTACard({
   onPress,
   accentColor,
-  kicker = 'MESAİ',
-  title = 'QR ile giriş yap',
+  kicker,
+  title,
   subtitle,
 }: Props) {
+  // Varsayılan metinler prop olarak gelir → JSX metin düğümü değil, autoT() şart
+  const kickerText = kicker ?? autoT('MESAİ');
+  const titleText  = title  ?? autoT('QR ile giriş yap');
   const pulse = useRef(new Animated.Value(0)).current;
   const blob1 = useRef(new Animated.Value(0)).current;
   const press = useRef(new Animated.Value(0)).current;
@@ -102,7 +106,7 @@ export function TechCheckInCTACard({
           style={{
             position: 'absolute',
             top: -40,
-            right: -40,
+            end: -40,
             width: 140,
             height: 140,
             borderRadius: 70,
@@ -130,7 +134,7 @@ export function TechCheckInCTACard({
                 letterSpacing: 1.1,
                 textTransform: 'uppercase',
               }} numberOfLines={1}>
-                {kicker}
+                {kickerText}
               </Text>
             </View>
             <Text style={{
@@ -140,7 +144,7 @@ export function TechCheckInCTACard({
               letterSpacing: -0.3,
               lineHeight: 21,
             }} numberOfLines={1}>
-              {title}
+              {titleText}
             </Text>
             {!!subtitle && (
               <Text style={{

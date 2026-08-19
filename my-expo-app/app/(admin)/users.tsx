@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { fmtDayMonthYear } from '../../core/i18n';
 import {
   View,
   Text,
@@ -26,6 +27,7 @@ import { Profile } from '../../lib/types';
 import { AppIcon } from '../../core/ui/AppIcon';
 import { ActivityIndicator } from '../../core/ui/teethCompat';
 import { confirmAsync } from '../../core/util/confirm';
+import { autoT } from '../../core/i18n/autoTranslate';
 
 type FilterType = 'all' | 'admin' | 'lab' | 'doctor' | 'clinic_admin';
 type StatusFilter = 'all' | 'active' | 'inactive';
@@ -50,7 +52,7 @@ function fmtDate(dateStr?: string | null) {
   if (!dateStr) return '—';
   const d = new Date(dateStr);
   const months = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
-  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+  return fmtDayMonthYear(d);
 }
 
 interface UserStats {
@@ -538,7 +540,7 @@ function DetailPanel({
           </View>
         </View>
         <Text style={dp.name}>{profile.full_name}</Text>
-        <Text style={[dp.role, { color: primary }]}>{badge.roleLabel.toUpperCase()}</Text>
+        <Text style={[dp.role, { color: primary }]}>{autoT(badge.roleLabel).toUpperCase()}</Text>
         <Text style={dp.joined}>Katılım: {fmtDate(profile.created_at)}</Text>
       </View>
 
@@ -1100,7 +1102,7 @@ const styles = StyleSheet.create({
   headerBtn:        { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFFFFF', paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10 },
   headerBtnActive:  { backgroundColor: '#F1F5F9' },
   headerBtnText:    { fontSize: 13, fontWeight: '600', color: K },
-  headerBtnBadge:   { backgroundColor: K, borderRadius: 10, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5, marginLeft: 2 },
+  headerBtnBadge:   { backgroundColor: K, borderRadius: 10, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5, marginStart: 2 },
   headerBtnBadgeText: { fontSize: 10, fontWeight: '800', color: '#FFFFFF' },
   addBtn:           { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: K, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 10 },
   addBtnText:       { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
@@ -1124,7 +1126,7 @@ const styles = StyleSheet.create({
 
   cardList:    { gap: 12 },
   card:        {
-    backgroundColor: '#F2F4F6', borderRadius: 14, padding: 16, paddingLeft: 20,
+    backgroundColor: '#F2F4F6', borderRadius: 14, padding: 16, paddingStart: 20,
     flexDirection: 'row', alignItems: 'center', gap: 14, position: 'relative', overflow: 'hidden',
   } as any,
   cardSelected: {
@@ -1132,7 +1134,7 @@ const styles = StyleSheet.create({
     borderWidth: 2, borderColor: 'rgba(15,23,42,0.15)',
     boxShadow: '0 8px 32px rgba(15,23,42,0.05)',
   } as any,
-  cardAccent:   { position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, backgroundColor: K },
+  cardAccent:   { position: 'absolute', start: 0, top: 0, bottom: 0, width: 3, backgroundColor: K },
   cardInactive: { opacity: 0.55 },
   avatar:       { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' },
   avatarImg:    { width: 52, height: 52, borderRadius: 26 },
@@ -1164,7 +1166,7 @@ const dp = StyleSheet.create({
     overflow: 'hidden',
     boxShadow: '0 16px 40px rgba(15,23,42,0.04)',
   } as any,
-  closeBtn: { position: 'absolute', top: 12, right: 12, zIndex: 2, width: 28, height: 28, borderRadius: 8, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
+  closeBtn: { position: 'absolute', top: 12, end: 12, zIndex: 2, width: 28, height: 28, borderRadius: 8, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
 
   hero: { padding: 28, paddingBottom: 20, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
   avatarWrap: { width: 96, height: 96, alignItems: 'center', justifyContent: 'center', marginBottom: 14, position: 'relative' },
@@ -1180,10 +1182,10 @@ const dp = StyleSheet.create({
   metric: {
     flexGrow: 1, flexBasis: '45%', minWidth: 120,
     backgroundColor: '#F8FAFC', borderRadius: 12,
-    padding: 14, paddingRight: 16, height: 92,
+    padding: 14, paddingEnd: 16, height: 92,
     justifyContent: 'space-between', position: 'relative', overflow: 'hidden',
   },
-  metricIconWrap: { position: 'absolute', top: -10, right: -10 },
+  metricIconWrap: { position: 'absolute', top: -10, end: -10 },
   metricLabel:    { fontSize: 10, fontWeight: '800', color: '#64748B', letterSpacing: 0.5, textTransform: 'uppercase' },
   metricValue:    { fontSize: 22, fontWeight: '800', color: K, letterSpacing: -0.5 },
 
@@ -1197,7 +1199,7 @@ const dp = StyleSheet.create({
 });
 
 const fp = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.25)', alignItems: 'flex-end', paddingTop: 70, paddingRight: 24 },
+  backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.25)', alignItems: 'flex-end', paddingTop: 70, paddingEnd: 24 },
   panel:    { width: 300, backgroundColor: '#FFFFFF', borderRadius: 18, overflow: 'hidden',
               shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.15, shadowRadius: 32 },
   header:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14 },

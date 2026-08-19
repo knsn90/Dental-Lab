@@ -10,7 +10,8 @@ const ScanB6Mobile: any = React.lazy(() => import('../../modules/orders/screens/
 import { useOrderChatInbox } from '../../modules/orders/hooks/useOrderChatInbox';
 import { Tabs, Slot, useRouter, Redirect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Home, ListChecks, QrCode, History, User, Search, Inbox, Wrench, Wallet, CalendarDays, ChevronRight } from 'lucide-react-native';
+import { Home, ListChecks, QrCode, History, User, Search, Inbox, Wrench, Wallet, CalendarDays, ChevronRight, ChevronLeft } from 'lucide-react-native';
+import { isRTL } from '../../core/i18n';
 import { CommandPalette } from '../../core/ui/CommandPalette';
 import { useCommandPalette } from '../../core/store/commandPaletteStore';
 import { PatternsShell, useIsDesktop } from '../../core/layout/PatternsShell';
@@ -213,7 +214,7 @@ export default function StationLayout() {
                   <LIcon size={18} color={TEKNISYEN.primary} strokeWidth={1.9} />
                 </View>
                 <Text style={{ flex: 1, fontSize: 14.5, fontWeight: '600', color: (T as any).ink2 ?? '#2C2C2C' }}>{l.label}</Text>
-                <ChevronRight size={18} color={(T as any).ink3 ?? '#9A9A9A'} strokeWidth={2} />
+                {isRTL() ? <ChevronLeft size={18} color={(T as any).ink3 ?? '#9A9A9A'} strokeWidth={2} /> : <ChevronRight size={18} color={(T as any).ink3 ?? '#9A9A9A'} strokeWidth={2} />}
               </Pressable>
             );
           })}

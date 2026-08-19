@@ -70,7 +70,7 @@ export function PlatformSidebar() {
   return (
     <View style={{ width: 232, backgroundColor: C.card, borderRadius: 22, borderWidth: 1, borderColor: C.line, margin: 14, paddingVertical: 22, paddingHorizontal: 14, flexDirection: 'column', ...CARD_SHADOW, ...(Platform.OS === 'web' ? { height: 'calc(100vh - 28px)' as any, position: 'sticky' as any, top: 14 } : {}) }}>
       {/* Marka */}
-      <View style={{ marginBottom: 26, marginLeft: 6, gap: 8 }}>
+      <View style={{ marginBottom: 26, marginStart: 6, gap: 8 }}>
         <SimanWordmark height={17} color={C.ink} />
         <Text style={{ color: C.accent, fontSize: 10, fontWeight: '700', letterSpacing: 1.6, textTransform: 'uppercase' }}>Platform Konsolu</Text>
       </View>
@@ -79,7 +79,7 @@ export function PlatformSidebar() {
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 4 }} showsVerticalScrollIndicator={false}>
         {SIDEBAR.map((sec, si) => (
           <View key={si} style={{ marginBottom: 16 }}>
-            {sec.group ? <Text style={{ color: C.ink3, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginLeft: 12, marginBottom: 7 }}>{sec.group}</Text> : null}
+            {sec.group ? <Text style={{ color: C.ink3, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginStart: 12, marginBottom: 7 }}>{sec.group}</Text> : null}
             {sec.items.map((n) => {
               const on = n.key === active;
               const Icon = n.icon;
@@ -87,7 +87,7 @@ export function PlatformSidebar() {
               // TabButton deseni). Renkli sol-kenar çubuğu KALDIRILDI (anti-pattern).
               return (
                 <Pressable key={n.key} onPress={() => router.replace(n.href as any)}
-                  style={({ hovered }: any) => ({ flexDirection: 'row', alignItems: 'center', gap: 11, paddingLeft: 12, paddingRight: 10, paddingVertical: 9, borderRadius: 10, marginBottom: 2,
+                  style={({ hovered }: any) => ({ flexDirection: 'row', alignItems: 'center', gap: 11, paddingStart: 12, paddingEnd: 10, paddingVertical: 9, borderRadius: 10, marginBottom: 2,
                     backgroundColor: on ? hexA(C.accent, 0.10) : (hovered ? C.cardHover : 'transparent'),
                     ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) })}>
                   <Icon size={16} color={on ? C.accent : C.ink3} strokeWidth={1.9} />
@@ -180,7 +180,7 @@ export function PlatformTopBar() {
       {/* Profil kartı */}
       <View style={{ position: 'relative', zIndex: 55 }}>
         <Pressable onPress={() => setMenu((m) => !m)}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: C.card, borderRadius: 999, borderWidth: 1, borderColor: C.line, paddingLeft: 6, paddingRight: 12, height: 40, ...CARD_SHADOW, ...(web ? { cursor: 'pointer' } as any : {}) }}>
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: C.card, borderRadius: 999, borderWidth: 1, borderColor: C.line, paddingStart: 6, paddingEnd: 12, height: 40, ...CARD_SHADOW, ...(web ? { cursor: 'pointer' } as any : {}) }}>
           <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>{initials}</Text>
           </View>
@@ -188,7 +188,7 @@ export function PlatformTopBar() {
           <ChevronDown size={15} color={C.ink3} strokeWidth={2} style={{ transform: [{ rotate: menu ? '180deg' : '0deg' }] }} />
         </Pressable>
         {menu && (
-          <View style={{ position: 'absolute', top: 46, right: 0, minWidth: 210, backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.line, overflow: 'hidden', ...CARD_SHADOW, zIndex: 70 }}>
+          <View style={{ position: 'absolute', top: 46, end: 0, minWidth: 210, backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.line, overflow: 'hidden', ...CARD_SHADOW, zIndex: 70 }}>
             <View style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.line }}>
               <Text numberOfLines={1} style={{ color: C.ink, fontSize: 13, fontWeight: '700' }}>{me.name || '—'}</Text>
               <Text numberOfLines={1} style={{ color: C.ink3, fontSize: 12, marginTop: 2 }}>{me.email}</Text>

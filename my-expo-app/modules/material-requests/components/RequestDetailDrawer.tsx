@@ -12,11 +12,12 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, Modal, Pressable, ScrollView, Platform, ActivityIndicator } from 'react-native';
 import {
-  X, Wrench, Clock, Calendar as CalendarIcon, User, ArrowRight,
+  X, Wrench, Clock, Calendar as CalendarIcon, User, ArrowRight, ArrowLeft,
   CheckCircle2, XCircle, Truck, PackageCheck, FileText,
   Hourglass, ShieldCheck, Slash,
 } from 'lucide-react-native';
 
+import { isRTL } from '../../../core/i18n';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import {
@@ -38,11 +39,14 @@ type Props = {
   isManager: boolean;
 };
 
-const makeEventCfg = (t: ReturnType<typeof useMobileTokens>): Record<string, { label: string; icon: any; color: string }> => ({
+const makeEventCfg = (t: ReturnType<typeof useMobileTokens>): Record<string, { label: string; icon: any; color: string }> => {
+  // "Yönlendirildi" olayı yön BİLDİRİR — RTL'de ok karşı tarafa bakmalı.
+  const Fwd = isRTL() ? ArrowLeft : ArrowRight;
+  return ({
   created:              { label: 'Talep oluşturuldu',            icon: Wrench,        color: t.ink2      },
   submitted:            { label: 'Müdür onayına gönderildi',      icon: Hourglass,     color: '#9C5E0E'   },
-  auto_forwarded_self:  { label: 'Otomatik admin yönlendirme',    icon: ArrowRight,    color: '#1D4ED8'   },
-  forwarded:            { label: 'Admin\'e yönlendirildi',         icon: ArrowRight,    color: '#1D4ED8'   },
+  auto_forwarded_self:  { label: 'Otomatik admin yönlendirme',    icon: Fwd,           color: '#1D4ED8'   },
+  forwarded:            { label: 'Admin\'e yönlendirildi',         icon: Fwd,           color: '#1D4ED8'   },
   rejected_manager:     { label: 'Müdür reddetti',                  icon: XCircle,       color: '#9C2E2E'   },
   rejected_admin:       { label: 'Admin reddetti',                  icon: XCircle,       color: '#9C2E2E'   },
   approved:             { label: 'Admin onayladı',                  icon: CheckCircle2,  color: '#1F6B47'   },
@@ -52,7 +56,8 @@ const makeEventCfg = (t: ReturnType<typeof useMobileTokens>): Record<string, { l
   cancelled:            { label: 'İptal edildi',                  icon: Slash,         color: t.ink3      },
   commented:            { label: 'Yorum eklendi',                 icon: FileText,      color: t.ink3      },
   updated:              { label: 'Güncellendi',                   icon: FileText,      color: t.ink3      },
-});
+  });
+};
 
 export function RequestDetailDrawer({
   visible, requestId, onClose, onAction, isAdmin, isManager,
@@ -222,7 +227,7 @@ export function RequestDetailDrawer({
                   <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: T.ink3 }}>
                     Zaman Çizgisi
                   </Text>
-                  <View style={{ paddingLeft: 6 }}>
+                  <View style={{ paddingStart: 6 }}>
                     {events.map((e, i) => {
                       const cfg = EVENT_CFG[e.action] ?? { label: e.action, icon: FileText, color: T.ink3 };
                       const Icon = cfg.icon;
@@ -279,7 +284,7 @@ export function RequestDetailDrawer({
                     Reddet
                   </PillButton>
                   <PillButton variant="dark" onPress={() => onAction('manager_forward', r)}
-                    leftIcon={<ArrowRight size={13} color={T.card} />}>
+                    leftIcon={isRTL() ? <ArrowLeft size={13} color={T.card} /> : <ArrowRight size={13} color={T.card} />}>
                     Admin'e Yönlendir
                   </PillButton>
                 </>

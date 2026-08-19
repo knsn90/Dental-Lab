@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { isRTL } from '../i18n';
 import { Animated, TouchableWithoutFeedback, StyleSheet, Platform } from 'react-native';
 import { useThemeModeStore } from '../store/themeModeStore';
 
@@ -41,9 +42,14 @@ export function AppSwitch({
     }).start();
   }, [value]);
 
+  // RTL: topuz çapraz eksende BAŞLANGICA hizalanır — LTR'de sol, RTL'de sağ.
+  // CSS transform'ları yön duyarlı DEĞİLDİR: pozitif translateX her iki dilde
+  // de sağa iter, dolayısıyla RTL'de topuz açıkken raydan taşıyordu. Yönü
+  // tersine çevirerek RTL'de kapalı=sağ, açık=sol olur (iOS/Android aynalaması).
+  const rtl = isRTL();
   const translateX = anim.interpolate({
     inputRange:  [0, 1],
-    outputRange: [MARGIN, MARGIN + TRAVEL],
+    outputRange: rtl ? [-MARGIN, -(MARGIN + TRAVEL)] : [MARGIN, MARGIN + TRAVEL],
   });
 
   const offTrack = isDark ? 'rgba(255,255,255,0.18)' : '#D1D5DB';

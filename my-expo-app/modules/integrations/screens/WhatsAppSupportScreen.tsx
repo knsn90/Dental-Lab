@@ -20,6 +20,7 @@
  * whatsapp_sessions RLS: lab manager/admin SELECT+UPDATE (migration 20260728160000).
  */
 import React, { useContext, useEffect, useState, useCallback } from 'react';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { View, Text, ScrollView, Pressable, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MessageCircle, PhoneCall, CheckCircle2, RefreshCw, Bot } from 'lucide-react-native';
@@ -59,11 +60,11 @@ function relTime(iso: string | null): string {
   if (!isFinite(ms) || ms < 0) return 'az önce';
   const min = Math.floor(ms / 60000);
   if (min < 1) return 'az önce';
-  if (min < 60) return `${min} dk önce`;
+  if (min < 60) return `${min} ${autoT('dk önce')}`;
   const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr} sa önce`;
+  if (hr < 24) return `${hr} ${autoT('sa önce')}`;
   const d = Math.floor(hr / 24);
-  return `${d} gün önce`;
+  return `${d} ${autoT('gün önce')}`;
 }
 
 function fmtPhone(p: string): string {

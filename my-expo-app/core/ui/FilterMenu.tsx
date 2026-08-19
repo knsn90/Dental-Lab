@@ -72,7 +72,7 @@ export function FilterMenu({ label, items, active, onChange, accent }: Props) {
         onPress={openMenu}
         style={({ pressed }: any) => ({
           flexDirection: 'row', alignItems: 'center', gap: 6,
-          paddingLeft: 12, paddingRight: 9, paddingVertical: 7,
+          paddingStart: 12, paddingEnd: 9, paddingVertical: 7,
           borderRadius: 9999,
           backgroundColor: T.cardSoft,
           opacity: pressed ? 0.65 : 1,
@@ -110,14 +110,16 @@ export function FilterMenu({ label, items, active, onChange, accent }: Props) {
                     style={({ pressed }: any) => ({
                       flexDirection: 'row', alignItems: 'center', gap: 8,
                       paddingHorizontal: 12, paddingVertical: 9, borderRadius: 11,
-                      backgroundColor: on ? tint + '12' : pressed ? T.cardSoft : 'transparent',
+                      // Seçili satır: %7 alfa beyaz kart üzerinde neredeyse görünmüyordu.
+                      // Belirgin ama ağır olmayan bir zemin + accent metin ile ayrışsın.
+                      backgroundColor: on ? tint + '1F' : pressed ? T.cardSoft : 'transparent',
                       ...webCursor,
                     })}
                   >
                     <Text style={{
                       flex: 1, fontSize: 13,
-                      fontWeight: on ? '600' : '500',
-                      color: on ? T.ink : T.ink2,
+                      fontWeight: on ? '700' : '500',
+                      color: on ? tint : T.ink2,
                     }}>
                       {it.label}
                     </Text>

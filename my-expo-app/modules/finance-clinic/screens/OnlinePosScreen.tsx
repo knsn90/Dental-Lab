@@ -126,6 +126,12 @@ export function OnlinePosScreen({ clinicId }: Props) {
                   </Text>
                   <StatusChip status={p.status} />
                 </View>
+                {/* Hekim isteği: faturanın hangi hastaya ait olduğu her sekmede görünsün. */}
+                {!!p.patient_name && (
+                  <Text style={{ fontSize: 11.5, color: DS.ink[700], marginTop: 2 }} numberOfLines={1}>
+                    {[p.patient_name, p.order_no].filter(Boolean).join(' · ')}
+                  </Text>
+                )}
                 <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 2 }}>
                   Oluşturuldu {fmtDate(p.created_at)}
                   {p.paid_at ? ` · ödendi ${fmtDate(p.paid_at)}` : ''}

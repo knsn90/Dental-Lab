@@ -18,6 +18,7 @@ import { DatePicker } from '../../../core/ui/DatePicker';
 import { toast } from '../../../core/ui/Toast';
 import { updateOrderClient, updateOrderAdmin, isOrderPrePlanning, fetchOrderItems, type ClientOrderEditItem, type ClientOrderEditFields } from '../api';
 import { createChangeRequest } from '../changeRequests';
+import { isRTL } from '../../../core/i18n';
 import { ToothNumberPicker } from './ToothNumberPicker';
 import { WORK_TYPES, ALL_SHADES } from '../constants';
 import type { WorkOrder } from '../types';
@@ -457,7 +458,8 @@ export function OrderEditSheet({
               <Pressable onPress={() => set('is_urgent')(!f.is_urgent)} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6, ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}) }}>
                 <Text style={{ fontSize: 13.5, fontWeight: '600', color: ink }}>Acil vaka</Text>
                 <View style={{ width: 42, height: 25, borderRadius: 999, backgroundColor: f.is_urgent ? A : hexA(ink, 0.2), justifyContent: 'center' }}>
-                  <View style={{ width: 19, height: 19, borderRadius: 10, backgroundColor: '#fff', position: 'absolute', top: 3, left: f.is_urgent ? 20 : 3 }} />
+                  {/* RTL: topuz ters yönde kaymalı — transform/left yön duyarlı değil */}
+                  <View style={{ width: 19, height: 19, borderRadius: 10, backgroundColor: '#fff', position: 'absolute', top: 3, ...(isRTL() ? { right: f.is_urgent ? 20 : 3 } : { left: f.is_urgent ? 20 : 3 }) }} />
                 </View>
               </Pressable>
               <EditField label="Not (hekim/lab)" value={f.notes} onChangeText={set('notes')} placeholder="Serbest not…" multiline />

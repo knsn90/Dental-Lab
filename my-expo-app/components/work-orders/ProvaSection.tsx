@@ -440,7 +440,7 @@ const s = StyleSheet.create({
   groupLabel: {
     fontSize: 12, fontWeight: '700', color: Colors.textMuted,
     textTransform: 'uppercase', letterSpacing: 0.5,
-    marginBottom: 6, marginLeft: 2,
+    marginBottom: 6, marginStart: 2,
   },
   card: {
     backgroundColor: Colors.surface, borderRadius: 12,
@@ -530,7 +530,7 @@ const modal = StyleSheet.create({
   chip: {
     paddingHorizontal: 14, paddingVertical: 7,
     borderRadius: 20, borderWidth: 1.5,
-    borderColor: Colors.border, marginRight: 8,
+    borderColor: Colors.border, marginEnd: 8,
     backgroundColor: Colors.background,
   },
   chipActive: { borderColor: Colors.primary, backgroundColor: Colors.primaryLight },

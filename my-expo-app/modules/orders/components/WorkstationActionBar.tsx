@@ -108,9 +108,9 @@ function StateActionChip({
               top: '100%',
               left: '50%',
               width: 0, height: 0,
-              borderLeftWidth: 5, borderRightWidth: 5, borderTopWidth: 5,
-              borderLeftColor: 'transparent',
-              borderRightColor: 'transparent',
+              borderStartWidth: 5, borderEndWidth: 5, borderTopWidth: 5,
+              borderStartColor: 'transparent',
+              borderEndColor: 'transparent',
               borderTopColor: 'rgba(15,23,42,0.95)',
               // @ts-ignore web transform
               transform: 'translateX(-50%)',

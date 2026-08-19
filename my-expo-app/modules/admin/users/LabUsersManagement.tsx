@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { isRTL, fmtDayMonthYear } from '../../../core/i18n';
 import {
   View,
   Text,
@@ -26,6 +27,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  ChevronLeft,
   AlertCircle,
   Save,
   UserX,
@@ -122,7 +124,7 @@ function fmtDate(dateStr?: string | null) {
   if (!dateStr) return '—';
   const d = new Date(dateStr);
   const months = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
-  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+  return fmtDayMonthYear(d);
 }
 
 interface UserStats {
@@ -520,7 +522,7 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
           borderRadius: 16,
           // 14 → 10: kart ~90px'ten ~74px'e indi, aynı ekrana %20 daha çok kişi.
           padding: 10,
-          paddingLeft: 14,
+          paddingStart: 14,
           flexDirection: 'row',
           alignItems: 'center',
           gap: 12,
@@ -551,7 +553,7 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
               olması; davet bekleyen (hesabı olmayan) kayıtta amber. */}
           <View
             style={{
-              position: 'absolute', right: -2, bottom: -2,
+              position: 'absolute', end: -2, bottom: -2,
               width: 11, height: 11, borderRadius: 6,
               borderWidth: 2, borderColor: '#FFFFFF',
               backgroundColor: isSynthetic ? '#E89B2A' : (prof.is_active ?? true) ? '#2D9A6B' : '#C4C4C4',
@@ -620,7 +622,7 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
               ) : (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
                   <Text style={{
-                    fontSize: 11, fontWeight: '600', minWidth: 34, textAlign: 'right',
+                    fontSize: 11, fontWeight: '600', minWidth: 34, textAlign: 'end' as any,
                     color: (prof.is_active ?? true) ? '#2D9A6B' : '#9A9A9A',
                   }}>
                     {(prof.is_active ?? true) ? 'Aktif' : 'Pasif'}
@@ -915,7 +917,7 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
 
       {/* Filter modal */}
       <Modal visible={showFilter} transparent animationType="fade" onRequestClose={() => setShowFilter(false)}>
-        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', alignItems: 'flex-end', paddingTop: 70, paddingRight: 24 }} onPress={() => setShowFilter(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', alignItems: 'flex-end', paddingTop: 70, paddingEnd: 24 }} onPress={() => setShowFilter(false)}>
           <View
             onStartShouldSetResponder={() => true}
             style={{
@@ -1040,7 +1042,7 @@ function DetailPanel({
       {/* Close button */}
       <Pressable
         onPress={onClose}
-        className="absolute top-3 right-3 z-10 w-7 h-7 rounded-lg items-center justify-center"
+        className="absolute top-3 end-3 z-10 w-7 h-7 rounded-lg items-center justify-center"
         style={{ backgroundColor: '#F1F5F9' }}
       >
         <X size={14} color="#64748B" strokeWidth={2} />
@@ -1091,10 +1093,12 @@ function DetailPanel({
               <View key={o.id} className="flex-row items-center gap-2.5 rounded-[10px] p-3" style={{ backgroundColor: '#F1F5F9' }}>
                 <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: o.overdue ? '#DC2626' : primary }} />
                 <View className="flex-1">
-                  <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A' }}>{o.order_number}</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A', textAlign: isRTL() ? 'right' : undefined }}>{o.order_number}</Text>
                   <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }} numberOfLines={1}>{o.item}</Text>
                 </View>
-                <ChevronRight size={14} color="#CBD5E1" strokeWidth={1.8} />
+                {isRTL()
+                  ? <ChevronLeft size={14} color="#CBD5E1" strokeWidth={1.8} />
+                  : <ChevronRight size={14} color="#CBD5E1" strokeWidth={1.8} />}
               </View>
             ))}
           </View>
@@ -1112,11 +1116,11 @@ function MetricCell({ label, value, icon, tint, accent }: {
       style={{
         flexGrow: 1, flexBasis: '45%', minWidth: 120,
         backgroundColor: '#F8FAFC', borderRadius: 14,
-        padding: 14, paddingRight: 16, height: 92,
+        padding: 14, paddingEnd: 16, height: 92,
         justifyContent: 'space-between', position: 'relative', overflow: 'hidden',
       }}
     >
-      <View style={{ position: 'absolute', top: -10, right: -10 }}>
+      <View style={{ position: 'absolute', top: -10, end: -10 }}>
         <MetricIcon name={icon} size={64} color={tint} style={{ opacity: 0.1 }} />
       </View>
       <Text style={{ fontSize: 10, fontWeight: '800', color: '#64748B', letterSpacing: 0.5, textTransform: 'uppercase' }}>{label}</Text>
@@ -1684,7 +1688,7 @@ export function AddUserModal({
             </Text>
             <Pressable
               onPress={handleClose}
-              style={{ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: P, cursor: 'pointer' as any, marginLeft: 12, marginTop: 2 }}
+              style={{ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: P, cursor: 'pointer' as any, marginStart: 12, marginTop: 2 }}
             >
               <X size={14} color={P} strokeWidth={2} />
             </Pressable>
@@ -1757,7 +1761,7 @@ export function AddUserModal({
               <View>
                 <Text style={FL}>Ad Soyad *</Text>
                 <TextInput style={INP} value={fullName} onChangeText={setFullName}
-                  placeholder={isDoctorType ? 'Dr. Ahmet Yılmaz' : 'Örn: Ahmet Yılmaz'} placeholderTextColor="#AEAEB2" />
+                  placeholder={isDoctorType ? 'Dt. Ahmet Yılmaz' : 'Örn: Ahmet Yılmaz'} placeholderTextColor="#AEAEB2" />
               </View>
 
               {/* Doctor: clinic name full width */}

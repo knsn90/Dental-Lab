@@ -112,7 +112,7 @@ export function MonthlyFlowChart({ data, height = 220, currency }: { data: Month
       </Svg>
 
       {/* Legend */}
-      <View style={{ flexDirection: 'row', gap: 16, marginTop: 6, paddingLeft: 4 }}>
+      <View style={{ flexDirection: 'row', gap: 16, marginTop: 6, paddingStart: 4 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: DS.ink[800] }} />
           <Text style={{ fontSize: 11, color: DS.ink[700], fontWeight: '500' }}>Kesilen Fatura</Text>
@@ -176,11 +176,11 @@ export function AgingBarChart({ buckets, currency }: { buckets: AgingBucket[]; c
             <View key={b.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: AGING_COLORS[b.key] }} />
               <Text style={{ flex: 1, fontSize: 12, color: DS.ink[800], fontWeight: '500' }}>{b.label}</Text>
-              <Text style={{ fontSize: 11, color: DS.ink[500], width: 60, textAlign: 'right' }}>{b.count} fat.</Text>
-              <Text style={{ ...DISPLAY, fontSize: 13, color: DS.ink[900], width: 90, textAlign: 'right', letterSpacing: -0.2 }}>
+              <Text style={{ fontSize: 11, color: DS.ink[500], width: 60, textAlign: 'end' as any }}>{b.count} fat.</Text>
+              <Text style={{ ...DISPLAY, fontSize: 13, color: DS.ink[900], width: 90, textAlign: 'end' as any, letterSpacing: -0.2 }}>
                 {compactCur(b.amount, currency)}
               </Text>
-              <Text style={{ fontSize: 10, color: DS.ink[400], width: 38, textAlign: 'right' }}>%{pct.toFixed(0)}</Text>
+              <Text style={{ fontSize: 10, color: DS.ink[400], width: 38, textAlign: 'end' as any }}>%{pct.toFixed(0)}</Text>
             </View>
           );
         })}
@@ -253,7 +253,7 @@ export function MethodDonut({ slices, size = 160, currency }: { slices: MethodSl
               <View style={{ width: 9, height: 9, borderRadius: 2, backgroundColor: s.color }} />
               <Text style={{ flex: 1, fontSize: 11, color: DS.ink[700], fontWeight: '500' }}>{s.slice.label}</Text>
               <Text style={{ fontSize: 11, color: DS.ink[500] }}>{compactCur(s.slice.amount, currency)}</Text>
-              <Text style={{ fontSize: 10, color: DS.ink[400], width: 36, textAlign: 'right' }}>
+              <Text style={{ fontSize: 10, color: DS.ink[400], width: 36, textAlign: 'end' as any }}>
                 %{((s.slice.amount / total) * 100).toFixed(0)}
               </Text>
             </View>

@@ -16,7 +16,7 @@ import { PurchaseInvoiceDetailScreen } from '../../purchases/screens/PurchaseInv
 import { View, Text, Pressable, Platform, ScrollView} from 'react-native';
 import { confirmAsync } from '../../../core/util/confirm';
 import {
-  ArrowLeft, ArrowDownCircle, ArrowUpCircle, RotateCcw, Settings as Adjust,
+  ArrowLeft, ArrowRight, ArrowDownCircle, ArrowUpCircle, RotateCcw, Settings as Adjust,
   Phone, Mail, Globe, MapPin, Building2, CreditCard, Calendar,
   Pencil, Plus, Receipt, Printer, FileSpreadsheet, Trash2,
 } from 'lucide-react-native';
@@ -36,6 +36,8 @@ import { findPurchaseInvoiceByNumber } from '../../purchases/api';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { CenteredLoader } from '../../../core/ui/CenteredLoader';
 import { buildCariStatementHtml, type CariLine } from '../../../core/util/buildCariStatementHtml';
+import { isRTL } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 
 interface Props {
   supplierId: string;
@@ -273,7 +275,7 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
     }));
 
     const html = buildCariStatementHtml({
-      documentTitle: 'Cari Hesap Ekstresi',
+      documentTitle: autoT('Cari Hesap Ekstresi'),
       periodFrom: periodFrom ?? null,
       periodTo: periodTo ?? null,
       lab: { name: 'Laboratuvar' },
@@ -300,7 +302,7 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
           onPress={onBack}
           style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999, backgroundColor: 'rgba(0,0,0,0.04)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
         >
-          <ArrowLeft size={14} color="#6B6B6B" strokeWidth={1.8} />
+          {isRTL() ? <ArrowRight size={14} color="#6B6B6B" strokeWidth={1.8} /> : <ArrowLeft size={14} color="#6B6B6B" strokeWidth={1.8} />}
           <Text style={{ fontSize: 13, fontWeight: '500', color: '#6B6B6B' }}>Tedarikçiler</Text>
         </Pressable>
         <View style={{ flexDirection: 'row', gap: 6 }}>
@@ -537,7 +539,7 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
               </View>
 
               {/* Edit + Delete actions */}
-              <View style={{ flexDirection: 'row', gap: 4, marginLeft: 8 }}>
+              <View style={{ flexDirection: 'row', gap: 4, marginStart: 8 }}>
                 <Pressable
                   onPress={(e: any) => { e?.stopPropagation?.(); handleEditTx(t); }}
                   hitSlop={6}

@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Home, ListChecks, Plus, MessageSquare, User, type LucideIcon,
 } from 'lucide-react-native';
+import { isRTL } from '../../i18n';
 import { MOBILE_TOKENS, useMobileTokens } from '../../theme/mobileDesignTokens';
 
 export interface FabTabItem {
@@ -101,7 +102,8 @@ function TabCell({
         <View style={{ position: 'relative' }}>
           <Icon size={22} color={tint} strokeWidth={active ? 2.2 : 1.7} />
           {!!item.badgeCount && item.badgeCount > 0 && (
-            <View style={s.countBadge}>
+            // `end:` inline stili bu projede güvenilir değil → yönü açıkça seç
+            <View style={[s.countBadge, isRTL() ? { left: -10 } : { right: -10 }]}>
               <Text style={s.countBadgeText}>{item.badgeCount > 99 ? '99+' : String(item.badgeCount)}</Text>
             </View>
           )}
@@ -150,8 +152,8 @@ function FabCenter({
 const s = StyleSheet.create({
   wrap: {
     position: 'absolute',
-    left: 0,
-    right: 0,
+    start: 0,
+    end: 0,
     paddingHorizontal: 16,
     alignItems: 'center',
     backgroundColor: 'transparent',
@@ -197,7 +199,7 @@ const s = StyleSheet.create({
 
   countBadge: {
     position: 'absolute',
-    top: -6, right: -10,
+    top: -6, // yatay konum çağrı yerinde (isRTL) verilir
     minWidth: 16, height: 16, borderRadius: 8,
     paddingHorizontal: 4,
     backgroundColor: '#EF4444',
@@ -212,8 +214,8 @@ const s = StyleSheet.create({
   fabWrap: {
     position: 'absolute',
     top: -24,
-    left: 0,
-    right: 0,
+    start: 0,
+    end: 0,
     alignItems: 'center',
   },
   fab: {

@@ -19,8 +19,9 @@
 import React from 'react';
 import { View, Text, Pressable, TextInput, Platform, ActivityIndicator } from 'react-native';
 import type { ViewStyle, StyleProp } from 'react-native';
-import { ChevronLeft, Search, X } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react-native';
 import { DS } from '../../theme/dsTokens';
+import { isRTL } from '../../i18n';
 
 /** §2 — display başlıklar daima light (300) */
 export const DISPLAY = {
@@ -84,7 +85,7 @@ export function SecHeader({ eyebrow, title, desc, onBack, action }: {
               opacity: pressed ? 0.6 : 1, ...webCursor,
             })}
           >
-            <ChevronLeft size={16} color={DS.ink[700]} strokeWidth={1.8} />
+            {isRTL() ? <ChevronRight size={16} color={DS.ink[700]} strokeWidth={1.8} /> : <ChevronLeft size={16} color={DS.ink[700]} strokeWidth={1.8} />}
           </Pressable>
         ) : null}
         <Text style={{

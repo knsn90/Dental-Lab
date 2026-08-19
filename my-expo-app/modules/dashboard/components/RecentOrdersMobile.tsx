@@ -3,33 +3,36 @@
 // Durum etiketi/rengi çağıran panelde (STATUS_CFG) çözülür; bu bileşen yalnız sunum.
 import React from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { ClipboardList, ChevronRight, CornerDownRight } from 'lucide-react-native';
+import { ClipboardList, ChevronRight, ChevronLeft, CornerDownRight, CornerDownLeft } from 'lucide-react-native';
+import { isRTL } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 
 // Tüm sipariş statülerini + duraklatmayı kapsayan çözümleyici (dashboard muted paleti).
 // Lokal STATUS_CFG yalnız 5 statü içerdiği için asamada/kurye_bekleniyor/on_hold gibi
 // durumlar ham/yanlış görünüyordu; kartlar bunu kullanmalı.
 export function resolveOrderStatus(status?: string | null, holdStatus?: string | null): { label: string; color: string; bg: string } {
-  if (holdStatus === 'on_hold') return { label: 'Duraklatıldı', color: '#9C5E0E', bg: 'rgba(232,155,42,0.15)' };
+  // NOT: etiketler sabit sözlük (veri) — JSX değil, bu yüzden autoT() ile çevrilir.
+  if (holdStatus === 'on_hold') return { label: autoT('Duraklatıldı'), color: '#9C5E0E', bg: 'rgba(232,155,42,0.15)' };
   const GRAY  = { color: '#6B6B6B', bg: 'rgba(0,0,0,0.05)' };
   const AMBER = { color: '#9C5E0E', bg: 'rgba(232,155,42,0.15)' };
   const BLUE  = { color: '#1F5689', bg: 'rgba(74,143,201,0.12)' };
   const GREEN = { color: '#1F6B47', bg: 'rgba(45,154,107,0.12)' };
   const RED   = { color: '#9C2E2E', bg: 'rgba(217,75,75,0.10)' };
   const M: Record<string, { label: string; color: string; bg: string }> = {
-    atama_bekleniyor:         { label: 'Atama Bekliyor', ...GRAY },
-    kutu_atandi:              { label: 'Kutu Atandı',    ...GRAY },
-    tasarim_onayi_bekleniyor: { label: 'Tasarım Onayı',  ...BLUE },
-    onay_bekliyor:            { label: 'Onay Bekliyor',  ...AMBER },
-    alindi:                   { label: 'Alındı',         ...GRAY },
-    asamada:                  { label: 'Üretimde',       ...AMBER },
-    uretimde:                 { label: 'Üretimde',       ...AMBER },
-    kalite_kontrol:           { label: 'Kalite Kontrol', ...BLUE },
-    teslimata_hazir:          { label: 'Kuryeye Teslim Edildi', ...GREEN },
-    kurye_bekleniyor:         { label: 'Kurye Bekleniyor', ...GREEN },
-    kuryede:                  { label: 'Kuryede',        ...GREEN },
-    teslim_edildi:            { label: 'Teslim Edildi',  ...GRAY },
-    iptal:                    { label: 'İptal',          ...RED },
+    atama_bekleniyor:         { label: autoT('Atama Bekliyor'), ...GRAY },
+    kutu_atandi:              { label: autoT('Kutu Atandı'),    ...GRAY },
+    tasarim_onayi_bekleniyor: { label: autoT('Tasarım Onayı'),  ...BLUE },
+    onay_bekliyor:            { label: autoT('Onay Bekliyor'),  ...AMBER },
+    alindi:                   { label: autoT('Alındı'),         ...GRAY },
+    asamada:                  { label: autoT('Üretimde'),       ...AMBER },
+    uretimde:                 { label: autoT('Üretimde'),       ...AMBER },
+    kalite_kontrol:           { label: autoT('Kalite Kontrol'), ...BLUE },
+    teslimata_hazir:          { label: autoT('Kuryeye Teslim Edildi'), ...GREEN },
+    kurye_bekleniyor:         { label: autoT('Kurye Bekleniyor'), ...GREEN },
+    kuryede:                  { label: autoT('Kuryede'),        ...GREEN },
+    teslim_edildi:            { label: autoT('Teslim Edildi'),  ...GRAY },
+    iptal:                    { label: autoT('İptal'),          ...RED },
   };
   return M[status ?? ''] ?? { label: status ?? '—', ...GRAY };
 }
@@ -73,7 +76,7 @@ function ContinuationTag() {
 }
 
 export function RecentOrdersMobile({
-  items, accent, accentDark, heading = 'Son Siparişler', onOpenOrder, onAllOrders,
+  items, accent, accentDark, heading, onOpenOrder, onAllOrders,
 }: {
   items: RecentOrderItem[];
   accent: string;
@@ -83,6 +86,10 @@ export function RecentOrdersMobile({
   onAllOrders?: () => void;
 }) {
   const T = useMobileTokens();
+  const rtl = isRTL();
+  const Chevron = rtl ? ChevronLeft : ChevronRight;
+  const CornerIcon = rtl ? CornerDownLeft : CornerDownRight;
+  const headingText = heading ?? autoT('Son Siparişler');
   if (!items.length) return null;
 
   // Mesajlar kartıyla aynı dil: tek kapsayıcı kart + renkli başlık şeridi +
@@ -105,7 +112,7 @@ export function RecentOrdersMobile({
           <View style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
             <ClipboardList size={16} color={accent} strokeWidth={2.2} />
           </View>
-          <Text style={{ fontSize: 13, fontWeight: '700', color: accentDark, letterSpacing: 0.2 }}>{heading}</Text>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: accentDark, letterSpacing: 0.2 }}>{headingText}</Text>
           {/* Geciken varsa kırmızı rozet — mesajlardaki okunmamış rozetinin karşılığı */}
           {overdueCount > 0 && (
             <View style={{ minWidth: 20, height: 20, paddingHorizontal: 6, borderRadius: 10, backgroundColor: T.ruby, alignItems: 'center', justifyContent: 'center' }}>
@@ -113,7 +120,7 @@ export function RecentOrdersMobile({
             </View>
           )}
           <View style={{ flex: 1 }} />
-          {!!onAllOrders && <ChevronRight size={18} color={accentDark} strokeWidth={2} />}
+          {!!onAllOrders && <Chevron size={18} color={accentDark} strokeWidth={2} />}
         </Pressable>
 
         {/* Satırlar — her satır bir VAKA; revizyon geçmişi altında girintili */}
@@ -140,7 +147,8 @@ export function RecentOrdersMobile({
                   verildi; kimlik taşımayan alanlar (no, rozet, tarih) alta indi. */}
               <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, minWidth: 0 }}>
-                  <Text style={{ fontSize: 13.5, fontWeight: '700', color: T.ink, flex: 1, minWidth: 0, letterSpacing: -0.1 }} numberOfLines={1}>
+                  {/* Hasta/hekim adı Latin olabilir → RNW dir="auto" LTR seçer; RTL'de hizayı sabitle */}
+                  <Text style={{ fontSize: 13.5, fontWeight: '700', color: T.ink, flex: 1, minWidth: 0, letterSpacing: -0.1, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>
                     {o.title}
                   </Text>
                   <View style={{ maxWidth: '46%', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, backgroundColor: o.statusBg, flexShrink: 0 }}>
@@ -153,7 +161,7 @@ export function RecentOrdersMobile({
                 <Text style={{ fontSize: 12, color: T.ink2 }} numberOfLines={1}>{o.workType}</Text>
 
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                  <Text style={{ fontSize: 10.5, color: T.ink3, fontFamily: T.mono, flexShrink: 1 }} numberOfLines={1}>
+                  <Text style={{ fontSize: 10.5, color: T.ink3, fontFamily: T.mono, flexShrink: 1, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>
                     #{o.no}
                   </Text>
                   {o.isRevision && <RevisionTag />}
@@ -176,14 +184,15 @@ export function RecentOrdersMobile({
                 onPress={() => onOpenOrder(h.id)}
                 style={{
                   flexDirection: 'row', alignItems: 'center', gap: 8,
-                  paddingLeft: 34, paddingRight: 16, paddingVertical: 9,
+                  paddingStart: 34, paddingEnd: 16, paddingVertical: 9,
                   borderTopWidth: 1, borderTopColor: T.hairline,
                   backgroundColor: `${accent}0A`,
                 }}
               >
-                <CornerDownRight size={13} color={T.ink3} strokeWidth={2} />
+                <CornerIcon size={13} color={T.ink3} strokeWidth={2} />
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ fontSize: 11.5, color: T.ink2, fontFamily: T.mono }} numberOfLines={1}>#{h.no}</Text>
+                  {/* Tam genişlik Text + Latin sipariş no → dir="auto" LTR yapar; RTL'de sabitle */}
+                  <Text style={{ fontSize: 11.5, color: T.ink2, fontFamily: T.mono, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>#{h.no}</Text>
                 </View>
                 <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 7, backgroundColor: h.statusBg }}>
                   <Text style={{ fontSize: 9.5, fontWeight: '700', color: h.statusColor }} numberOfLines={1}>{h.statusLabel}</Text>

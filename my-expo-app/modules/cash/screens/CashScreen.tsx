@@ -25,6 +25,7 @@ import {
 import { DS } from '../../../core/theme/dsTokens';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { confirmAsync } from '../../../core/util/confirm';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { DatePicker } from '../../../core/ui/DatePicker';
 import { toast } from '../../../core/ui/Toast';
 import { useBaseCurrency } from '../../../core/money/baseCurrency';
@@ -187,7 +188,7 @@ export function CashScreen() {
 
   const handleDeleteAccount = async (acc: CashAccount) => {
     // Alert.alert web'de no-op → cross-platform confirmAsync
-    const ok = await confirmAsync('Hesabı Sil', `"${acc.name}" hesabını silmek istiyor musunuz? Tüm hareketler silinecek.`, { confirmText: 'Sil', destructive: true });
+    const ok = await confirmAsync(autoT('Hesabı Sil'), `"${acc.name}" ${autoT('hesabını silmek istiyor musunuz? Tüm hareketler silinecek.')}`, { confirmText: autoT('Sil'), destructive: true });
     if (!ok) return;
     const { error } = await deleteCashAccount(acc.id);
     if (error) toast.error((error as any).message);
@@ -216,8 +217,8 @@ export function CashScreen() {
           backgroundColor: TH.bg, padding: 16,
           position: 'relative',
         }}>
-          <View style={{ position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: TH.bgDeep, opacity: 0.6 }} />
-          <View style={{ position: 'absolute', bottom: -50, left: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: TH.bgDeep, opacity: 0.4 }} />
+          <View style={{ position: 'absolute', top: -40, end: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: TH.bgDeep, opacity: 0.6 }} />
+          <View style={{ position: 'absolute', bottom: -50, start: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: TH.bgDeep, opacity: 0.4 }} />
 
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
             <View style={{ flex: 1, minWidth: 220 }}>
@@ -338,13 +339,13 @@ export function CashScreen() {
                     <Text style={{ flex: 1.5, fontSize: 12, color: DS.ink[500] }} numberOfLines={1}>
                       {acc.bank_name || '—'}
                     </Text>
-                    <Text style={{ flex: 1, fontSize: 12, fontWeight: '500', color: CHIP_TONES.success.fg, textAlign: 'right' }}>
+                    <Text style={{ flex: 1, fontSize: 12, fontWeight: '500', color: CHIP_TONES.success.fg, textAlign: 'end' as any }}>
                       {acc.total_in ? fmtCur(acc.total_in, acc.currency) : '—'}
                     </Text>
-                    <Text style={{ flex: 1, fontSize: 12, fontWeight: '500', color: CHIP_TONES.danger.fg, textAlign: 'right' }}>
+                    <Text style={{ flex: 1, fontSize: 12, fontWeight: '500', color: CHIP_TONES.danger.fg, textAlign: 'end' as any }}>
                       {acc.total_out ? fmtCur(acc.total_out, acc.currency) : '—'}
                     </Text>
-                    <Text style={{ flex: 1.2, fontSize: 13, fontWeight: '700', color: bal >= 0 ? DS.ink[900] : CHIP_TONES.danger.fg, textAlign: 'right' }}>
+                    <Text style={{ flex: 1.2, fontSize: 13, fontWeight: '700', color: bal >= 0 ? DS.ink[900] : CHIP_TONES.danger.fg, textAlign: 'end' as any }}>
                       {fmtCur(bal, acc.currency)}
                     </Text>
                     <View style={{ flex: 0.8, flexDirection: 'row', gap: 4 }}>
@@ -462,7 +463,7 @@ export function CashScreen() {
                         <Text style={{ flex: 2, fontSize: 12, color: DS.ink[700] }} numberOfLines={1}>
                           {mv.description}
                         </Text>
-                        <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color, textAlign: 'right' }}>
+                        <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color, textAlign: 'end' as any }}>
                           {isIn ? '+' : '−'}{fmtCur(mv.amount, selectedAccount?.currency)}
                         </Text>
                         <View style={{ flex: 0.5, alignItems: 'flex-end' }}>

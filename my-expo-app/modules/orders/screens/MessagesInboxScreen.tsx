@@ -227,7 +227,7 @@ const row = StyleSheet.create({
   },
   avatarText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
   statusDot: {
-    position: 'absolute', right: -2, bottom: -2,
+    position: 'absolute', end: -2, bottom: -2,
     width: 13, height: 13, borderRadius: 7,
     borderWidth: 2,
   },
@@ -431,7 +431,7 @@ const s = StyleSheet.create({
 
   filterRow: { gap: 8, paddingHorizontal: 20, paddingBottom: 12 },
 
-  divider: { height: 1, backgroundColor: '#F1F5F9', marginLeft: 76 }, // after avatar
+  divider: { height: 1, backgroundColor: '#F1F5F9', marginStart: 76 }, // after avatar
 
   emptyState: { alignItems: 'center', paddingVertical: 60, gap: 10, paddingHorizontal: 40 },
   emptyIcon:  { width: 64, height: 64, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },

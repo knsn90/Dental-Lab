@@ -13,6 +13,7 @@
  * Yalnızca giriş yapmış kullanıcıya ve desteklenen panellerde görünür.
  */
 import React, { useEffect, useRef, useState } from 'react';
+import { isRTL } from '../../../core/i18n';
 import {
   View, Text, Pressable, Modal, Platform, Animated, Easing, useWindowDimensions,
 } from 'react-native';
@@ -100,7 +101,8 @@ export function DentyFAB() {
     opacity: hoverAnim,
     transform: [
       // Orbun yanından hafifçe açılır; 6px'lik bu kayma "oradan çıktı" hissini verir.
-      { translateX: hoverAnim.interpolate({ inputRange: [0, 1], outputRange: [6, 0] }) },
+      // translateX yön-duyarlı DEĞİL: RTL'de tooltip orbun SAĞINDA durur, o yüzden işaret ters.
+      { translateX: hoverAnim.interpolate({ inputRange: [0, 1], outputRange: [isRTL() ? -6 : 6, 0] }) },
       { scale: hoverAnim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
     ],
   };
@@ -119,7 +121,8 @@ export function DentyFAB() {
     opacity: anim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 1, 1] }),
     transform: [
       { scale: anim.interpolate({ inputRange: [0, 1], outputRange: [isWide ? 0.98 : 0.9, 1] }) },
-      { translateX: isWide ? anim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) : 0 },
+      // Panel RTL'de SOL kenara yaslanır (alignItems:'flex-end' yön-duyarlı) → soldan girer.
+      { translateX: isWide ? anim.interpolate({ inputRange: [0, 1], outputRange: [isRTL() ? -40 : 40, 0] }) : 0 },
       { translateY: isWide ? 0 : anim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) },
     ],
   };
@@ -130,7 +133,8 @@ export function DentyFAB() {
       {!isOpen && (
         <View
           pointerEvents="box-none"
-          style={{ position: 'absolute', right: isWide ? 24 : 16, bottom: (isWide ? 24 : (insets.bottom + 74)) + bottomBar, zIndex: 9999 }}
+          style={{ position: 'absolute', ...(isRTL() ? { left: isWide ? 24 : 16 } : { right: isWide ? 24 : 16 }),
+            bottom: (isWide ? 24 : (insets.bottom + 74)) + bottomBar, zIndex: 9999 }}
         >
           {isWide ? (
           // Kabuk YOK — yalnız 60px orb. Camlı hap (blur + kenar + gölge +
@@ -153,7 +157,7 @@ export function DentyFAB() {
               style={[
                 tooltipStyle,
                 {
-                  position: 'absolute', right: ORB_SIZE + 8,
+                  position: 'absolute', ...(isRTL() ? { left: ORB_SIZE + 8 } : { right: ORB_SIZE + 8 }),
                   paddingHorizontal: 11, paddingVertical: 7, borderRadius: 11,
                   backgroundColor: 'rgba(255,255,255,0.72)',
                   borderWidth: 1, borderColor: 'rgba(255,255,255,0.85)',
@@ -210,7 +214,7 @@ export function DentyFAB() {
                 backgroundColor: theme.bg,
                 overflow: 'hidden',
                 ...(isWide
-                  ? { width: 440, height: '100%', borderTopLeftRadius: 28, borderBottomLeftRadius: 28 }
+                  ? { width: 440, height: '100%', borderTopStartRadius: 28, borderBottomStartRadius: 28 }
                   : { height: '84%', borderTopLeftRadius: 32, borderTopRightRadius: 32 }),
               },
               panelStyle,

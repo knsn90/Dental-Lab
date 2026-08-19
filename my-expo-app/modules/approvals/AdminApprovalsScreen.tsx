@@ -20,9 +20,11 @@ import { fetchPendingCancelRequests } from '../orders/cancellation';
 import { usePendingApprovals as useDesignApprovals } from './hooks/usePendingApprovals';
 import { MaterialRequestsScreen } from '../material-requests/screens/MaterialRequestsScreen';
 import { getRequestCounts } from '../material-requests/api';
+import { supabase } from '../../core/api/supabase';
+import { SlideTabBar } from '../../core/ui/SlideTabBar';
+import { usePanelTheme } from '../../core/theme/usePanelTheme';
 import { usePageTitleStore } from '../../core/store/pageTitleStore';
 import { useAuthStore } from '../../core/store/authStore';
-import { DS } from '../../core/theme/dsTokens';
 import { useMobileTokens } from '../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../core/store/themeModeStore';
 
@@ -50,6 +52,28 @@ export function AdminApprovalsScreen() {
 
   const { approvals } = useDesignApprovals();
   const designPending = approvals.length;
+
+  // Hekim kaydı bekleyen sayısı. Eskiden bu sekmenin rozeti HİÇ yoktu: sayı
+  // PendingApprovalsScreen'in içinde kalıyordu, o da yalnız sekme açıkken mount
+  // oluyordu. Sonuç: beş sekme birbirinin aynı görünüyor, iş nerede belli
+  // olmuyordu. Diğer sayaçlarla aynı desen — yalnız COUNT çeker, satır taşımaz.
+  const [doctorsPending, setDoctorsPending] = useState<number>(0);
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const { count } = await supabase
+          .from('profiles')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_type', 'doctor')
+          .eq('approval_status', 'pending');
+        if (!cancelled) setDoctorsPending(count ?? 0);
+      } catch { /* ignore */ }
+    };
+    tick();
+    const iv = setInterval(tick, 30_000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, []);
 
   // Rol kontrolü — manager (mesul müdür) / admin material onayını görür
   const profile     = useAuthStore(s => s.profile);
@@ -99,6 +123,10 @@ export function AdminApprovalsScreen() {
   const insets = useSafeAreaInsets();
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
+  // SlideTabBar cursor'ı beyaz metin zorluyor → accent KOYU olmalı.
+  // Panel `primary`si (ör. lab safranı #F5C24B) beyazla okunmuyordu; `accent`
+  // her panelde koyu ink (lab #0A0A0A · exec #172235 · klinik #2F313F).
+  const panel = usePanelTheme();
 
   // Shell title kullan — Siparişler sayfası pattern'i.
   // Sayfa içi büyük başlık yok, sidebar/topbar'da küçük "Onaylar" yazsın.
@@ -108,12 +136,16 @@ export function AdminApprovalsScreen() {
   }, []);
 
   const TABS: { key: Tab; label: string; short: string; icon: React.ComponentType<any>; count?: number }[] = [
-    { key: 'doctors', label: 'Hekim Kayıtları',  short: 'Hekimler', icon: Users },
+    { key: 'doctors', label: 'Hekim Kayıtları',  short: 'Hekimler', icon: Users, count: doctorsPending > 0 ? doctorsPending : undefined },
     { key: 'design',  label: 'Tasarım Onayları', short: 'Tasarım',  icon: ClipboardCheck, count: designPending > 0 ? designPending : undefined },
     ...(showMaterial ? [{ key: 'material' as Tab, label: 'Malzeme Talepleri', short: 'Malzeme', icon: Wrench, count: materialPending > 0 ? materialPending : undefined }] : []),
     ...(showCancel ? [{ key: 'cancel' as Tab, label: 'İptal Talepleri', short: 'İptal', icon: Ban, count: cancelPending > 0 ? cancelPending : undefined }] : []),
     ...(showCancel ? [{ key: 'change' as Tab, label: 'Değişiklik Talepleri', short: 'Değişiklik', icon: Pencil, count: changePending > 0 ? changePending : undefined }] : []),
   ];
+
+  // Görünür sekmelerin toplamı — rol yüzünden gizli sekmelerin sayısı eklenmez,
+  // aksi hâlde kullanıcı açamayacağı bir işi bekliyor sanırdı.
+  const totalPending = TABS.reduce((n, t) => n + (t.count ?? 0), 0);
 
   // ─── Top padding — mobile için TopActionBar yüksekliğini geç ─────────
   const headerTopPad = isDesktop ? 16 : Math.max(insets.top, 8) + 30;
@@ -135,19 +167,34 @@ export function AdminApprovalsScreen() {
         </View>
       )}
 
-      {/* Segmented control.
-          Eskiden her sekme flex:1 idi → 2400px'lik ekranda şerit tüm genişliğe
-          yayılıyor, sekmeler birbirinden kopuk duruyordu. Masaüstünde içeriğine
-          sarılır ve içerik paneliyle AYNI kenardan (24) başlar; mobilde tam
-          genişlik kalır (orada yayılmak doğru). */}
+      {/* Sekme çubuğu — masaüstü: paylaşılan SlideTabBar (users/logs ile aynı).
+          Mobil: tam genişliğe yayılan kısa etiketli segmented; orada yayılmak
+          doğru ve SlideTabBar'ın sabit dolgusu 5 sekmede taşardı. */}
       <View style={{
         paddingHorizontal: isDesktop ? 24 : 16,
         paddingTop: isDesktop ? headerTopPad : 8,
         paddingBottom: 12,
+        ...(isDesktop ? { flexDirection: 'row', alignItems: 'center', gap: 14 } : null),
       }}>
+        {isDesktop ? (
+          /* Masaüstünde uygulamanın KANONİK sekme çubuğu — (admin)/users,
+             (admin)/logs ve Hizmetler ekranıyla aynı bileşen. Buradaki elle
+             yapılmış gri raylı, ikonlu, 38px'lik şerit onlardan belirgin
+             biçimde daha iri duruyordu. İkonlar da düştü: etiketler zaten açık,
+             komşu sayfaların hiçbirinde ikon yok.
+             marginLeft -4 → çubuğun kendi iç dolgusunu geri alır, ilk pill
+             altındaki içerik paneliyle aynı 24 kenarından başlar. */
+          <SlideTabBar
+            items={TABS.map(t => ({ key: t.key, label: t.label, count: t.count }))}
+            activeKey={tab}
+            onChange={(k) => setTab(k as Tab)}
+            accentColor={panel.accent}
+            style={{ marginStart: -4 }}
+          />
+        ) : (
         <View style={{
           flexDirection: 'row',
-          alignSelf: isDesktop ? 'flex-start' : 'stretch',
+          alignSelf: 'stretch',
           maxWidth: '100%',
           // DESIGN_LANGUAGE §6 — üst nav "Pill" variant:
           // padding 4 + bg rgba(0,0,0,0.05) + radius 999. (Segmented/radius 12
@@ -164,14 +211,14 @@ export function AdminApprovalsScreen() {
                 key={t.key}
                 onPress={() => setTab(t.key)}
                 style={({ pressed }: any) => ({
-                  flex: isDesktop ? undefined : 1,
+                  flex: 1,
                   minWidth: 0,
                   flexDirection: 'row',
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: 6,
                   height: 38,
-                  paddingHorizontal: isDesktop ? 16 : 4,
+                  paddingHorizontal: 4,
                   borderRadius: 999,
                   opacity: pressed ? 0.7 : 1,
                   overflow: 'hidden',
@@ -197,33 +244,48 @@ export function AdminApprovalsScreen() {
                 <Text
                   numberOfLines={1}
                   style={{
-                    fontSize: isDesktop ? 13 : 12.5,
+                    fontSize: 12.5,
                     fontWeight: active ? '600' : '500',
                     color: active ? T.ink : T.ink3,
                     letterSpacing: -0.1,
                     flexShrink: 1,
                   }}
                 >
-                  {isDesktop ? t.label : t.short}
+                  {t.short}
                 </Text>
                 {t.count != null && (
-                  /* Bu bir HATA değil, DURUM sayacı. Aktif sekmede dolu kırmızı,
-                     pasifte yumuşak ton — beş sekmede beş dolu kırmızı daire
-                     "her şey acil" gürültüsü yapıyordu. */
+                  /* Bu bir HATA değil, İŞ sayacı — kırmızıydı. Onay kuyruğunda
+                     bekleyen kayıt normal iştir; hepsini alarm rengiyle boyamak
+                     gerçekten aciliyet taşıyan yerlerde kırmızının anlamını
+                     tüketiyordu. Nötr ton, aktif sekmede koyulaşır. */
                   <View style={{
                     minWidth: 18, height: 18, borderRadius: 9,
                     paddingHorizontal: 5,
-                    backgroundColor: active ? DS.lab.danger : 'rgba(217,75,75,0.14)',
+                    backgroundColor: active
+                      ? (isDark ? 'rgba(255,255,255,0.16)' : 'rgba(15,23,42,0.10)')
+                      : (isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.06)'),
                     alignItems: 'center', justifyContent: 'center',
-                    marginLeft: 2,
+                    marginStart: 2,
                   }}>
-                    <Text style={{ fontSize: 10, fontWeight: '700', color: active ? '#FFFFFF' : '#9C2E2E' }}>{t.count}</Text>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: active ? T.ink : T.ink3 }}>{t.count}</Text>
                   </View>
                 )}
               </Pressable>
             );
           })}
         </View>
+        )}
+
+        {/* Sayfaya gelen kişinin ilk sorusu "bana bakan bir şey var mı?".
+            Rozetler nerede olduğunu söylüyor, bu satır VAR MI sorusunu tek
+            bakışta kapatıyor — beş sekmeyi tarayıp toplama gerek kalmıyor. */}
+        {isDesktop && (
+          <Text style={{ fontSize: 12.5, color: T.ink3, fontWeight: '500' }}>
+            {totalPending > 0
+              ? `${totalPending} kayıt onay bekliyor`
+              : 'Bekleyen onay yok'}
+          </Text>
+        )}
       </View>
 
       {/* Content panel */}

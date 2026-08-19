@@ -3,7 +3,8 @@
 
 import React, { useState } from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
-import { ChevronDown, ChevronRight } from 'lucide-react-native';
+import { ChevronDown, ChevronRight, ChevronLeft } from 'lucide-react-native';
+import { isRTL } from '../../../core/i18n';
 import { useStationTheme, hexA } from '../../../core/theme/stationPalette';
 
 export function CollapsibleSection({
@@ -75,7 +76,9 @@ export function CollapsibleSection({
         {open ? (
           <ChevronDown size={14} color={P.ink400} strokeWidth={2} />
         ) : (
-          <ChevronRight size={14} color={P.ink400} strokeWidth={2} />
+          isRTL()
+            ? <ChevronLeft size={14} color={P.ink400} strokeWidth={2} />
+            : <ChevronRight size={14} color={P.ink400} strokeWidth={2} />
         )}
       </Pressable>
       {open && (

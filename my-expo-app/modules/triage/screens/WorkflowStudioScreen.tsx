@@ -9,8 +9,8 @@ import { View, Text, Pressable, ScrollView, TextInput, Platform, useWindowDimens
 import { confirmAsync } from '../../../core/util/confirm';
 import {
   Workflow, Cpu, Users, SlidersHorizontal, Plus, X, GripVertical, ChevronUp, ChevronDown,
-  Save, Trash2, Copy, Star, AlertTriangle, Sparkles, Clock, Layers, Zap, Check, Lightbulb, ArrowRight,
-  Pencil, Wrench, Brush, Box, ScanLine, Printer, Gem, Cog, Info, Search, ChevronRight,
+  Save, Trash2, Copy, Star, AlertTriangle, Sparkles, Clock, Layers, Zap, Check, Lightbulb, ArrowLeft, ArrowRight,
+  Pencil, Wrench, Brush, Box, ScanLine, Printer, Gem, Cog, Info, Search, ChevronLeft, ChevronRight,
 } from 'lucide-react-native';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { DS } from '../../../core/theme/dsTokens';
@@ -27,6 +27,8 @@ import {
 } from '../api';
 import { MATERIAL_CATEGORIES } from '../../../core/materials/stageCategories';
 import { toast } from '../../../core/ui/Toast';
+import { isRTL } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 
 // Yetkinlik ikon paleti (lucide).
 // KATEGORİLİ: on ikon tek sırada dizilince hepsi birbirine benziyordu ve hangisinin
@@ -212,7 +214,9 @@ export function WorkflowStudioScreen({ embedded = false }: {
     <ScrollView
       style={{ flex: 1, backgroundColor: embedded ? 'transparent' : PAGE }}
       contentContainerStyle={{
-        paddingHorizontal: embedded ? 0 : 16,
+        // Kartlar her iki modda da kenardan 16px içeride durur — gömülü halde
+        // ayarlar kabuğu yatay dolgu vermiyordu, kartlar ekran kenarına yapışıyordu.
+        paddingHorizontal: 16,
         paddingTop: embedded ? 0 : 62,
         paddingBottom: embedded ? 24 : 90,
         width: '100%',
@@ -222,7 +226,7 @@ export function WorkflowStudioScreen({ embedded = false }: {
       <View style={{ borderRadius: 22, padding: 20, overflow: 'hidden', backgroundColor: A, marginBottom: 16,
         // @ts-ignore web gradient
         backgroundImage: `linear-gradient(135deg, ${A} 0%, ${A_DEEP} 100%)` }}>
-        <View pointerEvents="none" style={{ position: 'absolute', top: -50, right: -40, width: 190, height: 190, borderRadius: 95, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+        <View pointerEvents="none" style={{ position: 'absolute', top: -50, end: -40, width: 190, height: 190, borderRadius: 95, backgroundColor: 'rgba(255,255,255,0.12)' }} />
         <Text style={{ fontSize: 10.5, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>Üretim Akışı Stüdyosu</Text>
         <Text style={{ ...({ fontFamily: DISPLAY } as any), fontSize: 28, color: '#FFFFFF', letterSpacing: -0.8, marginTop: 3 }}>İş Akışı Tasarımcısı</Text>
         <Text style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.82)', marginTop: 4 }}>Laboratuvarının üretim hattını tasarla — form doldurmuyorsun, süreç kuruyorsun.</Text>
@@ -242,8 +246,8 @@ export function WorkflowStudioScreen({ embedded = false }: {
                 <Icon size={16} color={active ? '#FFFFFF' : A_DEEP} strokeWidth={2} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: active ? '#FFFFFF' : INK[900] }} numberOfLines={1}>{a.label}</Text>
-                <Text style={{ fontSize: 10.5, color: active ? 'rgba(255,255,255,0.8)' : INK[400] }} numberOfLines={1}>{a.hint}</Text>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: active ? '#FFFFFF' : INK[900] }} numberOfLines={1}>{autoT(a.label)}</Text>
+                <Text style={{ fontSize: 10.5, color: active ? 'rgba(255,255,255,0.8)' : INK[400] }} numberOfLines={1}>{autoT(a.hint)}</Text>
               </View>
             </Pressable>
           );
@@ -299,7 +303,7 @@ function BuilderArea({ theme, isNarrow, stations, techs, templates, stationById,
     const stageNames = (r.stages ?? []).map(s => s.name);
     const { ids, matched } = matchPresetStations(stageNames, stations);
     setAiOpen(false);
-    setPresetNote(`Yapay zeka önerisi: ${matched}/${stageNames.length} aşama mevcut istasyonlarınla eşleşti${r.summary ? ' — ' + r.summary : ''}. Yetkinlikler kataloğa eklendi.`);
+    setPresetNote(`${autoT('Yapay zeka önerisi')}: ${matched}/${stageNames.length} ${autoT('aşama mevcut istasyonlarınla eşleşti')}${r.summary ? ' — ' + r.summary : ''}. ${autoT('Yetkinlikler kataloğa eklendi.')}`);
     setDraft({ id: null, name: 'Yapay Zeka Önerisi', caseTypesText: '', stationIds: ids, isDefault: false, isActive: true });
     setSelStage(null);
     onReload();
@@ -310,7 +314,7 @@ function BuilderArea({ theme, isNarrow, stations, techs, templates, stationById,
   const openClone = (t: StudioTemplate) => { setDraft({ id: null, name: `${t.name} (kopya)`, caseTypesText: t.case_types.join(', '), stationIds: [...t.station_ids], isDefault: false, isActive: true }); setSelStage(null); };
   const applyPreset = (p: typeof WORKFLOW_PRESETS[number]) => {
     const { ids, matched } = matchPresetStations(p.stages, stations);
-    setPresetNote(matched < p.stages.length ? `${p.name}: ${matched}/${p.stages.length} aşama mevcut istasyonlarınla eşleşti. Kalanları "Aşama ekle"den tamamlayabilirsin.` : null);
+    setPresetNote(matched < p.stages.length ? `${p.name}: ${matched}/${p.stages.length} ${autoT('aşama mevcut istasyonlarınla eşleşti. Kalanları "Aşama ekle"den tamamlayabilirsin.')}` : null);
     setDraft({ id: null, name: p.name, caseTypesText: p.caseTypes, stationIds: ids, isDefault: false, isActive: true });
     setSelStage(null);
   };
@@ -345,7 +349,7 @@ function BuilderArea({ theme, isNarrow, stations, techs, templates, stationById,
 
   // Kart üzerinden doğrudan sil (onaylı) — Düzenle'ye girmeye gerek yok.
   const removeCard = async (t: StudioTemplate) => {
-    const ok = await confirmAsync('İş Akışını Sil', `"${t.name}" iş akışını silmek istediğine emin misin?`, { confirmText: 'Sil', destructive: true });
+    const ok = await confirmAsync('İş Akışını Sil', `"${t.name}" ${autoT('iş akışını silmek istediğine emin misin?')}`, { confirmText: 'Sil', destructive: true });
     if (!ok) return;
     const res: any = await deleteTemplate(t.id);
     if (res?.error) { toast.error(res.error.message ?? 'Silinemedi'); return; }
@@ -462,7 +466,7 @@ function BuilderArea({ theme, isNarrow, stations, techs, templates, stationById,
         {/* Hazır şablonlar */}
         <View style={{ gap: 8 }}>
           <Text style={{ fontSize: 10.5, fontWeight: '700', color: INK[400], letterSpacing: 0.5, textTransform: 'uppercase' }}>Hazır Şablonlar — başlangıç için tıkla</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingRight: 8 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingEnd: 8 }}>
             {WORKFLOW_PRESETS.map(p => (
               <Pressable key={p.name} onPress={() => applyPreset(p)} style={{ width: 200, padding: 13, borderRadius: 14, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', gap: 7, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
                 <View style={{ width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(A, 0.12) }}><Workflow size={16} color={A_DEEP} strokeWidth={2} /></View>
@@ -500,7 +504,9 @@ function BuilderArea({ theme, isNarrow, stations, techs, templates, stationById,
                 <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 5, marginBottom: 12 }}>
                   {t.station_ids.map((sid, i) => { const st = stationById.get(sid); if (!st) return null; return (
                     <View key={sid + i} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                      {i > 0 && <ArrowRight size={11} color={INK[300]} strokeWidth={2} />}
+                      {i > 0 && (isRTL()
+                        ? <ArrowLeft size={11} color={INK[300]} strokeWidth={2} />
+                        : <ArrowRight size={11} color={INK[300]} strokeWidth={2} />)}
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: tint(st.color, 0.10) }}>
                         <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: st.color }} />
                         <Text style={{ fontSize: 11, fontWeight: '600', color: INK[700] }}>{st.name}</Text>
@@ -705,9 +711,9 @@ function StageDetailPanel({ theme, st, techs, idx, total, stationById, draftStat
         <Text style={dlabel}>Bağımlılıklar</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <DepChip label={prev ? prev.name : 'Başlangıç'} color={prev?.color ?? INK[300]} />
-          <ArrowRight size={12} color={INK[300]} strokeWidth={2} />
+          {isRTL() ? <ArrowLeft size={12} color={INK[300]} strokeWidth={2} /> : <ArrowRight size={12} color={INK[300]} strokeWidth={2} />}
           <DepChip label={st.name} color={st.color} strong />
-          <ArrowRight size={12} color={INK[300]} strokeWidth={2} />
+          {isRTL() ? <ArrowLeft size={12} color={INK[300]} strokeWidth={2} /> : <ArrowRight size={12} color={INK[300]} strokeWidth={2} />}
           <DepChip label={next ? next.name : 'Teslim'} color={next?.color ?? INK[300]} />
         </View>
       </View>
@@ -1146,13 +1152,13 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
                   çıkıyordu, yani en çok bilgi taşıyan satır kayboluyordu. */}
               <Text style={{ fontSize: 11, color: INK[400] }} numberOfLines={1}>
                 {[
-                  `${u.stations} istasyon`,
-                  `${u.techs} kişi`,
+                  `${u.stations} ${autoT('istasyon')}`,
+                  `${u.techs} ${autoT('kişi')}`,
                   s.description?.trim() || null,
                 ].filter(Boolean).join(' · ')}
               </Text>
             </View>
-            <ChevronRight size={16} color={active ? A_DEEP : INK[300]} strokeWidth={2} />
+            {isRTL() ? <ChevronLeft size={16} color={active ? A_DEEP : INK[300]} strokeWidth={2} /> : <ChevronRight size={16} color={active ? A_DEEP : INK[300]} strokeWidth={2} />}
           </Pressable>
         );
       })}
@@ -1195,7 +1201,7 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
           {listNode}
           <Modal visible={!!draft} transparent animationType="slide" onRequestClose={() => setDraft(null)}>
             <Pressable onPress={() => setDraft(null)} style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.35)', justifyContent: 'flex-end' }}>
-              <Pressable onPress={() => {}} style={{ backgroundColor: '#FFFFFF', borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 18, paddingBottom: 28, maxHeight: '88%' }}>
+              <Pressable onPress={() => {}} style={{ backgroundColor: '#FFFFFF', borderTopStartRadius: 22, borderTopEndRadius: 22, padding: 18, paddingBottom: 28, maxHeight: '88%' }}>
                 <View style={{ alignItems: 'center', marginBottom: 10 }}>
                   <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(15,23,42,0.15)' }} />
                 </View>

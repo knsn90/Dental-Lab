@@ -33,6 +33,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DS } from '../../../core/theme/dsTokens';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { SlideTabBar } from '../../../core/ui/SlideTabBar';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { supabase } from '../../../core/api/supabase';
 import { getRangeBounds, type RangeKey } from '../components/DateRangePicker';
 import { CenteredLoader } from '../../../core/ui/CenteredLoader';
@@ -99,7 +101,7 @@ function fmtMonth(iso: string): string {
   return d.toLocaleDateString(localeTag(), { month: 'long', year: 'numeric' });
 }
 
-const CCY_ORDER = ['TRY', 'EUR', 'USD', 'GBP'];
+const CCY_ORDER = ['TRY', 'EUR', 'USD', 'GBP', 'IRT'];
 
 // ── Period pills ────────────────────────────────────────────────────
 const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
@@ -423,17 +425,26 @@ export function FinanceReportScreen() {
           iki farklı "aktif" dili aynı satırda kafa karıştırıyordu. */}
       <View style={{ paddingHorizontal: PAGE_PADDING, paddingBottom: 14 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-          <SegmentedControl
-            items={TAB_ITEMS.map(t => ({ key: t.key, label: t.label, icon: t.icon, badge: t.badge }))}
-            active={tab}
+          {/* Uygulamanın ortak sekme çubuğu — Siparişler / Onaylar / Kurumlar /
+              Faturalar / Karlılık ile aynı bileşen. Yerel SegmentedControl
+              kaldırıldı; ikonlar da düştü (komşu sayfaların hiçbirinde yok).
+              Rozet → sayaç: bileşen 0'dan büyükken etiketin yanına yazar. */}
+          <SlideTabBar
+            items={TAB_ITEMS.map(t => ({ key: t.key, label: t.label, count: t.badge }))}
+            activeKey={tab}
             onChange={k => setTab(k as typeof tab)}
+            accentColor={theme.accent}
+            style={{ marginStart: -4 }}
           />
 
           {tab === 'rapor' && (
-            <SegmentedControl
+            <SlideTabBar
+              size="sm"
               items={RANGE_OPTIONS.map(o => ({ key: o.key, label: o.label }))}
-              active={range}
+              activeKey={range}
               onChange={k => setRange(k as RangeKey)}
+              accentColor={theme.accent}
+              style={{ marginStart: -3 }}
             />
           )}
 
@@ -521,63 +532,6 @@ export function FinanceReportScreen() {
   );
 }
 
-// ─── Segmented control ──────────────────────────────────────────────
-/**
- * Raylı segment — sekmeler ve dönem seçimi aynı dili konuşur.
- * Basınca anında geri bildirim (opacity + hafif küçülme): tepki tıklamayı
- * beklemez, parmağın/işaretçinin bastığı anda gelir.
- */
-function SegmentedControl({ items, active, onChange }: {
-  items: { key: string; label: string; icon?: React.ComponentType<any>; badge?: number }[];
-  active: string;
-  onChange: (key: string) => void;
-}) {
-  const T = useMobileTokens();
-  return (
-    <View style={{
-      flexDirection: 'row', flexWrap: 'wrap', gap: 2,
-      padding: 3, borderRadius: 9999,
-      backgroundColor: T.cardSoft,
-      alignSelf: 'flex-start',
-    }}>
-      {items.map(it => {
-        const on = it.key === active;
-        const Icon = it.icon;
-        return (
-          <Pressable
-            key={it.key}
-            onPress={() => onChange(it.key)}
-            style={({ pressed }: any) => ({
-              flexDirection: 'row', alignItems: 'center', gap: 6,
-              paddingHorizontal: 14, paddingVertical: 7,
-              borderRadius: 9999,
-              backgroundColor: on ? T.card : 'transparent',
-              // @ts-ignore web
-              boxShadow: on ? '0 1px 3px rgba(0,0,0,0.08)' : undefined,
-              opacity: pressed && !on ? 0.55 : 1,
-              transform: [{ scale: pressed ? 0.97 : 1 }],
-              cursor: 'pointer',
-            })}
-          >
-            {Icon ? <Icon size={13} strokeWidth={on ? 2.2 : 1.6} color={on ? T.ink : T.ink3} /> : null}
-            <Text style={{ fontSize: 12, fontWeight: on ? '600' : '500', color: on ? T.ink : T.ink3 }}>
-              {it.label}
-            </Text>
-            {it.badge ? (
-              <View style={{
-                minWidth: 16, paddingHorizontal: 5, paddingVertical: 1, borderRadius: 9999,
-                backgroundColor: CHIP_TONES.warning.bg, alignItems: 'center',
-              }}>
-                <Text style={{ fontSize: 10, fontWeight: '700', color: CHIP_TONES.warning.text }}>{it.badge}</Text>
-              </View>
-            ) : null}
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
 // ─── Section Header ─────────────────────────────────────────────────
 function SectionHeader({ icon: Icon, label, count }: { icon: React.ComponentType<any>; label: string; count?: number }) {
   const T = useMobileTokens();
@@ -636,10 +590,10 @@ function ResultCard({ data, periodLabel, accent }: {
   const flat = profit === 0;
   const netColor = flat ? T.ink2 : loss ? EXPENSE : INCOME;
   const badge = flat
-    ? { label: 'BAŞA BAŞ', ...CHIP_TONES.info }
+    ? { label: autoT('BAŞA BAŞ'), ...CHIP_TONES.info }
     : loss
-      ? { label: 'ZARAR', ...CHIP_TONES.danger }
-      : { label: 'KÂR', ...CHIP_TONES.success };
+      ? { label: autoT('ZARAR'), ...CHIP_TONES.danger }
+      : { label: autoT('KÂR'), ...CHIP_TONES.success };
 
   const span = income + expense;
   const incomeShare  = span > 0 ? (income  / span) * 100 : 0;
@@ -669,7 +623,7 @@ function ResultCard({ data, periodLabel, accent }: {
           fontSize: 10, fontWeight: '600', letterSpacing: 1.1,
           textTransform: 'uppercase', color: T.ink3,
         }}>
-          Net Kâr · {periodLabel}
+          {autoT('Net Kâr')} · {periodLabel}
         </Text>
         <Text numberOfLines={1} style={{ ...DISPLAY, fontSize: 40, letterSpacing: -1.4, lineHeight: 46, color: netColor }}>
           {profit > 0 ? '+' : ''}{f(profit)}
@@ -733,7 +687,7 @@ function ConsolidatedStrip({ totals }: { totals: { income: number; expense: numb
           fontSize: 10, fontWeight: '600', letterSpacing: 1.1,
           textTransform: 'uppercase', color: T.ink3, paddingBottom: 6,
         }}>
-          Konsolide Net Kâr · {baseSymbol()}
+          {autoT('Konsolide Net Kâr')} · {baseSymbol()}
         </Text>
         <Text numberOfLines={1} style={{
           ...DISPLAY, fontSize: 26, letterSpacing: -0.8,
@@ -743,9 +697,10 @@ function ConsolidatedStrip({ totals }: { totals: { income: number; expense: numb
         </Text>
       </View>
       <Text style={{ fontSize: 11, color: T.ink3, lineHeight: 17 }}>
-        Gelir {fmtMoney(totals.income)} · Gider {fmtMoney(totals.expense)}.
-        Farklı para birimleri güncel TCMB kuruyla baz para birimine çevrildi — kur
-        değiştikçe bu rakam da değişir.
+        {/* Tutarlar cümleyi parçalara bölüyordu → parçalar ayrı ayrı aranıp
+            yarısı Türkçe kalıyordu. Statik kısımlar autoT'den geçer. */}
+        {autoT('Gelir')} {fmtMoney(totals.income)} · {autoT('Gider')} {fmtMoney(totals.expense)}.
+        {' '}{autoT('Farklı para birimleri güncel kurla baz para birimine çevrildi — kur değiştikçe bu rakam da değişir.')}
       </Text>
     </View>
   );

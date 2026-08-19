@@ -4,10 +4,12 @@
  */
 
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { autoT } from '../../../../core/i18n/autoTranslate';
 import { View, Text, Pressable, ScrollView, TextInput } from 'react-native';
 import {
-  Plus, Sparkles, ChevronRight, Wallet, Search, Archive, CheckCircle2, FileEdit,
+  Plus, Sparkles, ChevronRight, ChevronLeft, Wallet, Search, Archive, CheckCircle2, FileEdit,
 } from 'lucide-react-native';
+import { isRTL } from '../../../../core/i18n';
 
 import { DS } from '../../../../core/theme/dsTokens';
 import { CURRENCY_META, type Currency } from '../../../../core/money/currency';
@@ -154,7 +156,7 @@ export default function BonusPolicyListScreen({ onOpenEditor }: Props = {}) {
           <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 4 }}>
             {counts.all === 0
               ? 'Henüz politika yok — aşağıdan birini seçerek başla'
-              : `${counts.active} aktif · ${counts.draft} taslak${counts.archived > 0 ? ` · ${counts.archived} arşiv` : ''}`
+              : `${counts.active} ${autoT('aktif')} · ${counts.draft} ${autoT('taslak')}${counts.archived > 0 ? ` · ${counts.archived} ${autoT('arşiv')}` : ''}`
             }
           </Text>
         </View>
@@ -201,7 +203,7 @@ export default function BonusPolicyListScreen({ onOpenEditor }: Props = {}) {
                   <Sparkles size={14} color={TH.primary} strokeWidth={2.2} />
                   <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>{def.label}</Text>
                   <View style={{ flex: 1 }} />
-                  <ChevronRight size={14} color={DS.ink[400]} />
+                  {isRTL() ? <ChevronLeft size={14} color={DS.ink[400]} /> : <ChevronRight size={14} color={DS.ink[400]} />}
                 </View>
                 <Text style={{ fontSize: 11, color: DS.ink[500], lineHeight: 15 }} numberOfLines={2}>
                   {def.description}
@@ -222,11 +224,11 @@ export default function BonusPolicyListScreen({ onOpenEditor }: Props = {}) {
             flexDirection: 'row', gap: 4, padding: 4,
             backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 999,
           }}>
-            <FilterPill label={`Tümü ${counts.all}`}        active={filter === 'all'}      onPress={() => setFilter('all')} />
-            <FilterPill label={`Aktif ${counts.active}`}    active={filter === 'active'}   onPress={() => setFilter('active')} dot="#2D9A6B" />
+            <FilterPill label={`${autoT('Tümü')} ${counts.all}`}        active={filter === 'all'}      onPress={() => setFilter('all')} />
+            <FilterPill label={`${autoT('Aktif')} ${counts.active}`}    active={filter === 'active'}   onPress={() => setFilter('active')} dot="#2D9A6B" />
             <FilterPill label={`Taslak ${counts.draft}`}    active={filter === 'draft'}    onPress={() => setFilter('draft')}  dot={DS.ink[500]} />
             {counts.archived > 0 ? (
-              <FilterPill label={`Arşiv ${counts.archived}`} active={filter === 'archived'} onPress={() => setFilter('archived')} dot="#D94B4B" />
+              <FilterPill label={`${autoT('Arşiv')} ${counts.archived}`} active={filter === 'archived'} onPress={() => setFilter('archived')} dot="#D94B4B" />
             ) : null}
           </View>
 
@@ -366,7 +368,7 @@ function PolicyRow({ policy: p, onPress }: { policy: BonusPolicy; onPress: () =>
         </Text>
       </View>
 
-      <ChevronRight size={16} color={DS.ink[400]} />
+      {isRTL() ? <ChevronLeft size={16} color={DS.ink[400]} /> : <ChevronRight size={16} color={DS.ink[400]} />}
     </Pressable>
   );
 }

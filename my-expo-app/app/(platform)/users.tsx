@@ -75,7 +75,7 @@ export default function PlatformUsers() {
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, paddingHorizontal: 18 }}>
                     <View style={{ position: 'relative' }}>
                       <IconChip icon={UsersIcon} tone={C.accent} size={34} />
-                      <View style={{ position: 'absolute', right: -1, bottom: -1, width: 10, height: 10, borderRadius: 5, backgroundColor: u.is_active ? C.green : C.red, borderWidth: 2, borderColor: C.card }} />
+                      <View style={{ position: 'absolute', end: -1, bottom: -1, width: 10, height: 10, borderRadius: 5, backgroundColor: u.is_active ? C.green : C.red, borderWidth: 2, borderColor: C.card }} />
                     </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text numberOfLines={1} style={{ color: C.ink, fontSize: 14, fontWeight: '700', letterSpacing: -0.2 }}>
@@ -85,7 +85,7 @@ export default function PlatformUsers() {
                     </View>
                     {u.lab_name ? <Chip tone={C.ink2}>{u.lab_name}</Chip> : null}
                     <Text style={{ color: C.ink3, fontSize: 12, width: 96 }}>{u.role || u.user_type}</Text>
-                    <Text style={{ color: C.ink3, fontSize: 11.5, width: 90, textAlign: 'right' }}>{u.last_sign_in_at ? new Date(u.last_sign_in_at).toLocaleDateString() : '—'}</Text>
+                    <Text style={{ color: C.ink3, fontSize: 11.5, width: 90, textAlign: 'end' as any }}>{u.last_sign_in_at ? new Date(u.last_sign_in_at).toLocaleDateString() : '—'}</Text>
                     <Pressable disabled={busy === u.id} onPress={() => act(u.id, () => setUserActive(u.id, !u.is_active))} style={iconBtn}>
                       <Power size={16} color={u.is_active ? C.amber : C.green} strokeWidth={1.9} />
                     </Pressable>

@@ -41,10 +41,10 @@
       "orders": "سفارش‌ها",
       "paperOrders": "سفارش‌های دستی",
       "approvals": "تأییدها",
-      "clinics": "کلینیک‌ها",
+      "clinics": "مراکز درمانی",
       "team": "تیم",
       "stock": "موجودی و انبار",
-      "production": "تابلوی ساخت",
+      "production": "تابلوی تولید",
       "workflows": "گردش‌کارها",
       "courier": "پیگیری پیک",
       "finance": "مالی",
@@ -52,8 +52,8 @@
       "support": "پشتیبانی",
       "messages": "پیام‌ها",
       "settings": "تنظیمات",
-      "summary": "خلاصه",
-      "cases": "کیس‌ها",
+      "summary": "خانه",
+      "cases": "سفارش‌ها",
       "search": "جستجو",
       "more": "بیشتر",
       "new": "جدید",
@@ -489,7 +489,7 @@
       "receivedMembers": "دریافت‌شده",
       "deliveredMembers": "تحویل‌شده",
       "quickAction": "اقدام سریع",
-      "newOrder": "ساخت سفارش جدید",
+      "newOrder": "ثبت سفارش جدید",
       "noTasks": "وظیفه‌ای در انتظار نیست",
       "production": "ساخت",
       "active": "فعال",
@@ -589,7 +589,7 @@
     "cta": {
       "ordersToday": "{{total}} سفارش امروز",
       "newOrder": "سفارش جدید",
-      "createNewOrder": "ساخت سفارش کاری جدید"
+      "createNewOrder": "ثبت سفارش کاری جدید"
     },
     "delayedCase": {
       "qcIssue": "مشکل کنترل کیفیت",
@@ -617,7 +617,7 @@
     },
     "noPermission": {
       "title": "بدون دسترسی",
-      "orderCreate": "برای ساخت سفارش جدید از مدیر خود درخواست دسترسی کنید.",
+      "orderCreate": "برای ثبت سفارش جدید از مدیر خود درخواست دسترسی کنید.",
       "ordersView": "برای مشاهده سفارش‌ها از مدیر خود درخواست دسترسی کنید.",
       "usersManage": "مدیریت کاربران تنها برای مدیران کلینیک در دسترس است.",
       "settingsManage": "برای دسترسی به تنظیمات کلینیک از مدیر خود درخواست دسترسی کنید."
@@ -659,6 +659,7 @@
       "recordCount": "رکورد",
       "emptyAll": "هنوز کاربری نیست",
       "emptyFiltered": "هنوز اضافه نشده",
+      "emptyFilteredFmt": "هنوز {{role}} اضافه نشده",
       "emptyDesc": "کلینیک خود را با افزودن دندانپزشک، منشی یا مدیر پشتیبان توسعه دهید — هر نقش الگوی دسترسی خاص خود را دارد.",
       "addFirst": "افزودن اولین کاربر",
       "modal": {
@@ -842,7 +843,7 @@
       "activeCount": "فعال",
       "jobsAppearWhenAssigned": "کارها هنگام تخصیص اینجا نمایش داده می‌شوند",
       "quickAction": "اقدام سریع",
-      "createNewOrder": "ساخت سفارش جدید",
+      "createNewOrder": "ثبت سفارش جدید",
       "start": "شروع",
       "performance": "عملکرد",
       "completedStages": "مراحل تکمیل‌شده",

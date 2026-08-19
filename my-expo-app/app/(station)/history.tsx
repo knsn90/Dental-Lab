@@ -802,7 +802,7 @@ function SectionStages({ items, onSelectStage, isMobile }: { items: CompletedSta
               <RowCell flex={1.5}><Text style={{ fontSize: 11.5, color: P.ink500 }} numberOfLines={1}>{fmtDateShort(it.started_at, localeTag(i18n.language))}</Text></RowCell>
               <RowCell flex={1.5}><Text style={{ fontSize: 11.5, color: P.ink500 }} numberOfLines={1}>{fmtDateShort(it.completed_at, localeTag(i18n.language))}</Text></RowCell>
               <RowCell flex={1} align="right">
-                <Text style={{ fontSize: 12, fontWeight: '700', color: P.ink900, textAlign: 'right', fontVariant: ['tabular-nums'] as any }}>{dur}</Text>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: P.ink900, textAlign: 'end' as any, fontVariant: ['tabular-nums'] as any }}>{dur}</Text>
               </RowCell>
               <RowCell flex={1.2} align="right">
                 <View style={{ alignSelf: 'flex-end', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: b.bg }}>
@@ -821,7 +821,7 @@ function HeaderCell({ flex, label, align = 'left' }: { flex: number; label: stri
   const P = useStationTheme();
   return (
     <View style={{ flex, paddingHorizontal: 6 }}>
-      <Text style={{ fontSize: 10, fontWeight: '700', color: P.ink500, letterSpacing: 0.6, textTransform: 'uppercase', textAlign: align }}>{label}</Text>
+      <Text style={{ fontSize: 10, fontWeight: '700', color: P.ink500, letterSpacing: 0.6, textTransform: 'uppercase', textAlign: (align === 'right' ? 'end' : undefined) as any }}>{label}</Text>
     </View>
   );
 }

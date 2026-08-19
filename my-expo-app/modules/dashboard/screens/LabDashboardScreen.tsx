@@ -10,8 +10,10 @@
  * Patterns NativeWind — NO StyleSheet.create().
  */
 import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { firstName as displayFirstName } from '../../../core/util/personName';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { useTranslation } from 'react-i18next';
-import { localeTag, isRTL } from '../../../core/i18n';
+import { localeTag, isRTL, weekdayOffset, fmtDayMonthShort, fmtMonthShort } from '../../../core/i18n';
 import {
   View, Text, ScrollView, Pressable, Image,
   useWindowDimensions, RefreshControl,
@@ -25,7 +27,7 @@ import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 import {
   Plus, ClipboardList, TrendingUp, AlertTriangle, Package,
   Calendar, ShieldCheck, Inbox, Activity, CheckCircle,
-  ChevronRight, ArrowUpRight, ArrowRight, Clock, Trophy,
+  ChevronRight, ArrowUpRight, ArrowUpLeft, ArrowRight, ArrowLeft, Clock, Trophy,
   Check, Clipboard, Box, Settings, ListChecks, CornerDownRight,
   Receipt, Wallet,
 } from 'lucide-react-native';
@@ -202,7 +204,7 @@ function PercentRingHero({
               fontWeight: '400',
               fontSize: size * 0.13,
               color: pctColor,
-              marginLeft: 3,
+              marginStart: 3,
               lineHeight: size * 0.13,
             }}>
               %
@@ -271,7 +273,8 @@ function getWeekDays(): { label: string; date: string; isToday: boolean }[] {
   const now = new Date();
   const dayOfWeek = now.getDay(); // 0=Sun
   const monday = new Date(now);
-  monday.setDate(now.getDate() - ((dayOfWeek + 6) % 7)); // go back to Monday
+  // Hafta başlangıcı bölgeye bağlı: TR/AB Pazartesi, İran Cumartesi (weekdayOffset).
+  monday.setDate(now.getDate() - weekdayOffset(dayOfWeek));
 
   const result: { label: string; date: string; isToday: boolean }[] = [];
   const todayISO = todayStr();
@@ -388,7 +391,7 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, plannin
               pointerEvents="none"
               style={{
                 position: 'absolute',
-                top: -80, left: -50,
+                top: -80, start: -50,
                 width: 200, height: 200, borderRadius: 100,
                 backgroundColor: P, opacity: 0.55,
               }}
@@ -397,7 +400,7 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, plannin
               pointerEvents="none"
               style={{
                 position: 'absolute',
-                top: -130, left: -100,
+                top: -130, start: -100,
                 width: 320, height: 320, borderRadius: 160,
                 backgroundColor: P, opacity: 0.20,
               }}
@@ -414,7 +417,7 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, plannin
 
         {/* CANLI badge with animated dot */}
         <View className="absolute rounded-full" style={{
-          top: 14, left: 14,
+          top: 14, start: 14,
           paddingHorizontal: 10, paddingVertical: 4,
           backgroundColor: `${P}E6`,
           flexDirection: 'row', alignItems: 'center', gap: 6,
@@ -435,7 +438,7 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, plannin
             onPress={() => router.push('/(lab)/all-orders?status=alindi' as any)}
             className="absolute rounded-full"
             style={{
-              top: 14, right: 14,
+              top: 14, end: 14,
               paddingHorizontal: 10, paddingVertical: 4,
               backgroundColor: 'rgba(255,255,255,0.10)',
               borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
@@ -555,7 +558,7 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
   const floatY = floatAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 8] });
   const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.10, 0.28] });
   const glowScale = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.15] });
-  const arrowX = arrowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 6] });
+  const arrowX = arrowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, isRTL() ? -6 : 6] });
 
   const handleHoverIn = () => {
     Animated.spring(scaleAnim, { toValue: 1.02, friction: 8, tension: 200, useNativeDriver: true }).start();
@@ -588,7 +591,7 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
         <Animated.View
           pointerEvents="none"
           style={{
-            position: 'absolute', top: -20, right: -20,
+            position: 'absolute', top: -20, end: -20,
             width: 140, height: 140, borderRadius: 70,
             // Bulanıklık ışığı yaydığı için opaklık 0.18 → 0.22; aynı değerde
             // bırakılınca leke soluklaşıyordu.
@@ -601,7 +604,7 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
         <Animated.View
           pointerEvents="none"
           style={{
-            position: 'absolute', top: -40, right: -40,
+            position: 'absolute', top: -40, end: -40,
             width: 180, height: 180, borderRadius: 90,
             backgroundColor: 'rgba(255,255,255,1)',
             opacity: glowOpacity,
@@ -615,7 +618,7 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
         <Animated.View
           pointerEvents="none"
           style={{
-            position: 'absolute', bottom: -60, left: -40,
+            position: 'absolute', bottom: -60, start: -40,
             width: 200, height: 200, borderRadius: 100,
             backgroundColor: '#F4D078',
             opacity: 0.42,
@@ -643,7 +646,7 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
           >
             <Text style={{ fontSize: 13, fontWeight: '500', color: '#FFF' }}>Başla</Text>
             <Animated.View style={{ transform: [{ translateX: arrowX }] }}>
-              <ArrowRight size={14} color="#FFF" strokeWidth={2} />
+              {isRTL() ? <ArrowLeft size={14} color="#FFF" strokeWidth={2} /> : <ArrowRight size={14} color="#FFF" strokeWidth={2} />}
             </Animated.View>
           </View>
         </View>
@@ -1042,7 +1045,7 @@ function TopTechnicians({ data }: { data: TechStat[] }) {
                 <View className="flex-1 rounded overflow-hidden" style={{ height: 5, backgroundColor: DS.ink[100] }}>
                   <View className="rounded" style={{ height: 5, backgroundColor: barColor, width: `${rate}%` as any }} />
                 </View>
-                <Text style={{ fontSize: 11, fontWeight: '700', color: barColor, width: 30, textAlign: 'right' }}>{rate}%</Text>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: barColor, width: 30, textAlign: 'end' as any }}>{rate}%</Text>
               </View>
               <Text style={{ fontSize: 10, color: DS.ink[400] }}>
                 {tech.total_assigned} atama · {(tech.avg_work_duration_hours ?? 0).toFixed(1)}s ort.
@@ -1090,7 +1093,7 @@ export function LabDashboardScreen() {
     const out: MonthBar[] = [];
     for (let i = 5; i >= 0; i--) {
       const d = new Date(); d.setMonth(d.getMonth() - i);
-      out.push({ month: MONTHS_TR[d.getMonth()], count: 0 });
+      out.push({ month: fmtMonthShort(d), count: 0 });
     }
     return out;
   });
@@ -1125,7 +1128,7 @@ export function LabDashboardScreen() {
 
   const isManager  = profile?.role === 'manager' || profile?.user_type === 'admin';
   const today      = todayStr();
-  const firstName  = profile?.full_name?.split(' ')[0] ?? '';
+  const firstName  = displayFirstName(profile?.full_name);
   const overdueOrders    = orders.filter(o => isOrderOverdue(o.delivery_date, o.status, (o as any).hold_status));
   const todayDeliverable = orders.filter(o => o.delivery_date === today && o.status !== 'teslim_edildi');
 
@@ -1525,7 +1528,7 @@ export function LabDashboardScreen() {
   const taskItems = [
     ...(triagePending.length > 0 ? [{
       icon: ClipboardList as React.FC<any>,
-      label: `Planlamayı tamamla · ${triagePending.length} sipariş`,
+      label: `${autoT('Planlamayı tamamla')} · ${triagePending.length} ${autoT('sipariş')}`,
       time: 'Aşama ataması bekliyor',
       done: false,
       onPress: () => router.push('/(lab)/all-orders' as any),
@@ -1535,7 +1538,7 @@ export function LabDashboardScreen() {
       return {
         icon: Clock as React.FC<any>,
         label: `Gecikmiş teslimat · ${shortNo(o.order_number)}`,
-        time: late ? `${late} gün gecikti · ${fmtDate(o.delivery_date)}` : fmtDate(o.delivery_date),
+        time: late ? `${late} ${autoT('gün gecikti')} · ${fmtDate(o.delivery_date)}` : fmtDate(o.delivery_date),
         done: false,
         onPress: () => router.push(`/(lab)/order/${o.id}` as any),
       };
@@ -1559,7 +1562,7 @@ export function LabDashboardScreen() {
       icon: Receipt as React.FC<any>,
       label: `Fatura kes · ${shortNo(u.order_number)}`,
       time: u.delivered_at
-        ? `${fmtDate(String(u.delivered_at).slice(0, 10))} tarihinde teslim edildi`
+        ? `${fmtDate(String(u.delivered_at).slice(0, 10))} ${autoT('tarihinde teslim edildi')}`
         : 'Teslim edildi, faturası yok',
       done: false,
       onPress: () => router.push(`/(lab)/order/${u.work_order_id}` as any),
@@ -1575,14 +1578,14 @@ export function LabDashboardScreen() {
       return {
         icon: Wallet as React.FC<any>,
         label: `Tahsilat yap · ${inv.invoice_number ?? 'fatura'}`,
-        time: late ? `${remaining} kaldı · ${late} gün vadesi geçti` : `${remaining} kaldı`,
+        time: late ? `${remaining} ${autoT('kaldı')} · ${late} ${autoT('gün vadesi geçti')}` : `${remaining} ${autoT('kaldı')}`,
         done: false,
         onPress: () => router.push(`/(lab)/invoice/${inv.id}` as any),
       };
     }),
     ...((stockSummary?.lowCount ?? 0) > 0 ? [{
       icon: AlertTriangle as React.FC<any>,
-      label: `Stok siparişi ver · ${stockSummary!.lowCount} kalem`,
+      label: `${autoT('Stok siparişi ver')} · ${stockSummary!.lowCount} ${autoT('kalem')}`,
       time: 'Kritik seviyenin altında',
       done: false,
       onPress: () => router.push('/(lab)/stock' as any),
@@ -1624,7 +1627,7 @@ export function LabDashboardScreen() {
     const monthsShort = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
     const ws = new Date(wdays[0].date + 'T00:00:00');
     const we = new Date(wdays[6].date + 'T00:00:00');
-    const weekRange = `${ws.getDate()} ${monthsShort[ws.getMonth()]} → ${we.getDate()} ${monthsShort[we.getMonth()]}`;
+    const weekRange = `${fmtDayMonthShort(ws)} → ${fmtDayMonthShort(we)}`;
 
     // Delayed cases — overdue + critical
     const delayedItems = overdueOrders.slice(0, 3).map((o: any) => {
@@ -1827,14 +1830,14 @@ export function LabDashboardScreen() {
               <View className="flex-row items-center" style={{ gap: 6, flexWrap: 'wrap' }}>
                 <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: INK }} />
                 <Text style={{ fontSize: 9, fontWeight: '700', color: INK, letterSpacing: 0.7, textTransform: 'uppercase', opacity: 0.75 }}>Yeni iş</Text>
-                <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.5, lineHeight: 24, color: INK, marginLeft: 4 }}>
+                <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.5, lineHeight: 24, color: INK, marginStart: 4 }}>
                   {triagePending.length}
                 </Text>
-                <Text style={{ fontSize: 13, color: INK, marginLeft: 2, opacity: 0.8 }}>sipariş geldi — planlamayı başlat</Text>
+                <Text style={{ fontSize: 13, color: INK, marginStart: 2, opacity: 0.8 }}>sipariş geldi — planlamayı başlat</Text>
               </View>
             </View>
             <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.10)', alignItems: 'center', justifyContent: 'center' }}>
-              <ArrowUpRight size={14} color={INK} strokeWidth={1.8} />
+              {isRTL() ? <ArrowUpLeft size={14} color={INK} strokeWidth={1.8} /> : <ArrowUpRight size={14} color={INK} strokeWidth={1.8} />}
             </View>
           </View>
         </Pressable>
@@ -1883,7 +1886,7 @@ export function LabDashboardScreen() {
               }}
             >
               <Text style={{ fontSize: 12, fontWeight: '600', color: '#9C5E0E' }}>Tümünü gör</Text>
-              <ArrowUpRight size={12} color="#9C5E0E" strokeWidth={1.8} />
+              {isRTL() ? <ArrowUpLeft size={12} color="#9C5E0E" strokeWidth={1.8} /> : <ArrowUpRight size={12} color="#9C5E0E" strokeWidth={1.8} />}
             </Pressable>
           </View>
 
@@ -1943,7 +1946,7 @@ export function LabDashboardScreen() {
                     backgroundColor: '#D97706',
                   }}>
                     <Text style={{ fontSize: 11, fontWeight: '600', color: '#FFF' }}>Planla</Text>
-                    <ArrowUpRight size={11} color="#FFF" strokeWidth={2} />
+                    {isRTL() ? <ArrowUpLeft size={11} color="#FFF" strokeWidth={2} /> : <ArrowUpRight size={11} color="#FFF" strokeWidth={2} />}
                   </View>
                 </Pressable>
               );
@@ -2007,7 +2010,7 @@ export function LabDashboardScreen() {
               className="items-center justify-center rounded-full"
               style={{ width: 32, height: 32, backgroundColor: DS.ink[100] }}
             >
-              <ArrowUpRight size={14} color={DS.ink[500]} strokeWidth={1.8} />
+              {isRTL() ? <ArrowUpLeft size={14} color={DS.ink[500]} strokeWidth={1.8} /> : <ArrowUpRight size={14} color={DS.ink[500]} strokeWidth={1.8} />}
             </Pressable>
           </View>
           <View style={{ flex: 1, minHeight: 140 }}>
@@ -2020,7 +2023,7 @@ export function LabDashboardScreen() {
           <View className="w-full flex-row items-center justify-between" style={{ marginBottom: 8 }}>
             <Text style={{ fontSize: 14, fontWeight: '500', color: INK }}>Üretim</Text>
             <Pressable onPress={() => router.push('/(lab)/all-orders' as any)}>
-              <ArrowUpRight size={14} color={DS.ink[500]} strokeWidth={1.8} />
+              {isRTL() ? <ArrowUpLeft size={14} color={DS.ink[500]} strokeWidth={1.8} /> : <ArrowUpRight size={14} color={DS.ink[500]} strokeWidth={1.8} />}
             </Pressable>
           </View>
           {/* PercentRingHero — card bg (no dark container) */}
@@ -2091,7 +2094,7 @@ export function LabDashboardScreen() {
           <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Hekim</Text>
           {isDesktop && <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>İş Tipi</Text>}
           <Text style={{ flex: 1.4, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Durum</Text>
-          {isDesktop && <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, textAlign: 'right' }}>Teslim</Text>}
+          {isDesktop && <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, textAlign: 'end' as any }}>Teslim</Text>}
         </View>
 
         {recentOrders.length === 0
@@ -2122,7 +2125,7 @@ export function LabDashboardScreen() {
                 >
                   {/* Vaka grubu: anchor üstte, eski üyeler altında girintili + ok
                       (siparişler listesiyle aynı dil — flattenRevisionCases bayrakları) */}
-                  <View style={{ flex: 1.2, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 4, paddingLeft: (order as any).__revChild ? 14 : 0 }}>
+                  <View style={{ flex: 1.2, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 4, paddingStart: (order as any).__revChild ? 14 : 0 }}>
                     {(order as any).__revChild && (
                       <CornerDownRight size={12} color={(order as any).__continuation ? '#3563A8' : '#9C5E0E'} strokeWidth={2.2} style={{ flexShrink: 0 }} />
                     )}
@@ -2161,7 +2164,7 @@ export function LabDashboardScreen() {
                   </View>
                   {isDesktop && (
                     <Text style={{
-                      flex: 1, fontSize: 11, fontWeight: overdue ? '700' : '500', textAlign: 'right',
+                      flex: 1, fontSize: 11, fontWeight: overdue ? '700' : '500', textAlign: 'end' as any,
                       color: overdue ? '#9C2E2E' : DS.ink[400],
                     }}>
                       {fmtDate(order.delivery_date)}

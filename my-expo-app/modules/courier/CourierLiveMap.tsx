@@ -1,4 +1,5 @@
-import { localeTag } from '../../core/i18n';
+import { localeTag, isRTL } from '../../core/i18n';
+import { autoT } from '../../core/i18n/autoTranslate';
 // modules/courier/CourierLiveMap.tsx
 // Aktif teslimat için canlı harita — Leaflet via CDN (web).
 // Native: koordinat/zaman gösteren özet kart (Faz 3 v1 web öncelikli).
@@ -368,7 +369,7 @@ export function CourierLiveMap({
 
   const lastTime = new Date(lastPing.recorded_at);
   const ageSec = Math.floor((Date.now() - lastTime.getTime()) / 1000);
-  const ageLabel = ageSec < 60 ? `${ageSec} sn önce` : ageSec < 3600 ? `${Math.floor(ageSec / 60)} dk önce` : `${Math.floor(ageSec / 3600)} sa önce`;
+  const ageLabel = ageSec < 60 ? `${ageSec} ${autoT('sn önce')}` : ageSec < 3600 ? `${Math.floor(ageSec / 60)} ${autoT('dk önce')}` : `${Math.floor(ageSec / 3600)} ${autoT('sa önce')}`;
 
   // Kurye → destination mesafe (haversine, km)
   const distanceKm = destCoord ? haversineKm(lastPing, destCoord) : null;
@@ -401,7 +402,7 @@ export function CourierLiveMap({
 
       {/* ─── Custom zoom buttons (sağ alt, yuvarlak, ayrık) ─── */}
       {Platform.OS === 'web' && (
-        <View style={{ position: 'absolute', right: 12, bottom: 12, gap: 8, zIndex: 1000 }}>
+        <View style={{ position: 'absolute', end: 12, bottom: 12, gap: 8, zIndex: 1000 }}>
           <Pressable
             onPress={() => mapRef.current?.zoomIn()}
             style={{
@@ -444,7 +445,7 @@ export function CourierLiveMap({
         <View
           pointerEvents="box-none"
           style={{
-            position: 'absolute', left: 12, top: 12, bottom: 12,
+            position: 'absolute', start: 12, top: 12, bottom: 12,
             width: 260, gap: 8,
             // @ts-ignore web — Leaflet panes z-index 200-700
             zIndex: 1000,
@@ -549,7 +550,7 @@ export function CourierLiveMap({
                       // @ts-ignore web
                       style={{
                         position: 'absolute',
-                        left: `${pct}%`,
+                        ...(isRTL() ? { right: `${pct}%` } : { left: `${pct}%` }),
                         top: '50%',
                         width: 12, height: 12, borderRadius: 6,
                         backgroundColor: '#FFF',

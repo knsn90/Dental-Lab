@@ -16,8 +16,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useSegments } from 'expo-router';
 import {
-  ArrowLeft, Search, X, Building2, AlertTriangle,
-  Clock, Inbox, ChevronRight, FileText, Receipt, SlidersHorizontal, Check, Bell,
+  ArrowLeft, ArrowRight, Search, X, Building2, AlertTriangle,
+  Clock, Inbox, ChevronLeft, ChevronRight, FileText, Receipt, SlidersHorizontal, Check, Bell,
 } from 'lucide-react-native';
 import { SendReminderModal } from '../../finance-clinic/components/SendReminderModal';
 import { sendBulkPaymentReminders } from '../../finance-clinic/api';
@@ -34,6 +34,7 @@ import { formatMoney, CURRENCY_META, type Currency } from '../../../core/money/c
 import { groupByCurrency } from '../../../core/money/aggregations';
 import { MoneyMultiX } from '../../../core/money/MoneyMultiX';
 import { FAB_CLEARANCE } from '../../../core/ui/pageMetrics';
+import { isRTL } from '../../../core/i18n';
 
 // ── Patterns tokens ─────────────────────────────────────────────────
 const DISPLAY = {
@@ -221,7 +222,7 @@ export function ClinicBalanceScreen() {
       {!isEmbedded && (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingTop: 58, paddingBottom: 8 }}>
           <Pressable onPress={() => safeBack('/')} style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}>
-            <ArrowLeft size={18} color={DS.ink[900]} strokeWidth={1.8} />
+            {isRTL() ? <ArrowRight size={18} color={DS.ink[900]} strokeWidth={1.8} /> : <ArrowLeft size={18} color={DS.ink[900]} strokeWidth={1.8} />}
           </Pressable>
           <View style={{ flex: 1 }}>
             <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>Cari Hesap</Text>
@@ -245,8 +246,8 @@ export function ClinicBalanceScreen() {
           padding: 16,
           position: 'relative',
         }}>
-          <View style={{ position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.18)' }} />
-          <View style={{ position: 'absolute', bottom: -50, left: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+          <View style={{ position: 'absolute', top: -40, end: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.18)' }} />
+          <View style={{ position: 'absolute', bottom: -50, start: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
 
           <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.78)', marginBottom: 12 }}>
             Toplam Alacak
@@ -388,11 +389,11 @@ export function ClinicBalanceScreen() {
                 { label: 'FATURA',     flex: 0.7 },
                 { label: 'KESİLEN',    flex: 1.2 },
                 { label: 'TAHSİL',     flex: 1.2 },
-                { label: 'BAKİYE',     flex: 1.2, align: 'right' as const },
-                { label: 'GECİKMİŞ',   flex: 1.2, align: 'right' as const },
+                { label: 'BAKİYE',     flex: 1.2, align: 'end' as const },
+                { label: 'GECİKMİŞ',   flex: 1.2, align: 'end' as const },
                 { label: '',           flex: 1.6 },
               ].map((h, i) => (
-                <Text key={i} style={{ flex: h.flex, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textAlign: h.align }}>
+                <Text key={i} style={{ flex: h.flex, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textAlign: h.align as any }}>
                   {h.label}
                 </Text>
               ))}
@@ -455,7 +456,7 @@ export function ClinicBalanceScreen() {
                     {fmtCur(paid, b.currency)}
                   </Text>
 
-                  <Text style={{ flex: 1.2, fontSize: 13, fontWeight: '600', color: hasOverdue ? CHIP_TONES.danger.fg : DS.ink[900], textAlign: 'right' }}>
+                  <Text style={{ flex: 1.2, fontSize: 13, fontWeight: '600', color: hasOverdue ? CHIP_TONES.danger.fg : DS.ink[900], textAlign: 'end' as any }}>
                     {fmtCur(balance, b.currency)}
                   </Text>
 
@@ -520,7 +521,7 @@ export function ClinicBalanceScreen() {
                         </Pressable>
                       );
                     })()}
-                    <ChevronRight size={14} color={DS.ink[300]} strokeWidth={1.8} />
+                    {isRTL() ? <ChevronLeft size={14} color={DS.ink[300]} strokeWidth={1.8} /> : <ChevronRight size={14} color={DS.ink[300]} strokeWidth={1.8} />}
                   </View>
                 </Pressable>
               );
@@ -585,7 +586,7 @@ export function ClinicBalanceScreen() {
                           Bakiye
                         </Text>
                       </View>
-                      <ChevronRight size={16} color={DS.ink[300]} strokeWidth={1.8} />
+                      {isRTL() ? <ChevronLeft size={16} color={DS.ink[300]} strokeWidth={1.8} /> : <ChevronRight size={16} color={DS.ink[300]} strokeWidth={1.8} />}
                     </View>
                   </View>
 
@@ -627,7 +628,7 @@ export function ClinicBalanceScreen() {
         <Pressable onPress={() => setFilterOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.42)', justifyContent: 'flex-end', ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) }}>
           <Pressable onPress={(e) => e.stopPropagation()} style={{
             backgroundColor: '#FFFFFF',
-            borderTopLeftRadius: 24, borderTopRightRadius: 24,
+            borderTopStartRadius: 24, borderTopEndRadius: 24,
             paddingTop: 12, paddingBottom: Math.max(insets.bottom, 16) + 12,
             maxHeight: '85%',
           }}>
@@ -637,7 +638,7 @@ export function ClinicBalanceScreen() {
               <Pressable onPress={() => { setOverdueOnly(false); setSortKey('balance_desc'); }} style={{ paddingHorizontal: 10, paddingVertical: 6 }}>
                 <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[500] }}>Temizle</Text>
               </Pressable>
-              <Pressable onPress={() => setFilterOpen(false)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', marginLeft: 4 }}>
+              <Pressable onPress={() => setFilterOpen(false)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', marginStart: 4 }}>
                 <X size={16} color={DS.ink[700]} strokeWidth={2} />
               </Pressable>
             </View>

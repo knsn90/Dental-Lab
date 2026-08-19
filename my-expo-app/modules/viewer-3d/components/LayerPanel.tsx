@@ -12,9 +12,10 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable, Platform, ScrollView } from 'react-native';
 import {
-  Eye, EyeOff, Layers, ChevronDown, ChevronRight, Box, Grid3x3, X,
+  Eye, EyeOff, Layers, ChevronDown, ChevronRight, ChevronLeft, Box, Grid3x3, X,
   Lock, Unlock, Focus,
 } from 'lucide-react-native';
+import { isRTL } from '../../../core/i18n';
 import type { ViewerFile, LayerStyle } from '../types';
 import { classifyFile, type LayerType } from '../lib/layerMap';
 import { useViewerTheme } from '../lib/viewerTheme';
@@ -111,7 +112,7 @@ export function LayerPanel({ files, layerStyles, onChange, onSetAllVisible, onCl
 
   return (
     <View style={{
-      position: 'absolute', top: 14, left: 14,
+      position: 'absolute', top: 14, start: 14,
       width: 300, maxHeight: '85%' as any,
       backgroundColor: C.cardBg,
       borderRadius: 18,
@@ -139,7 +140,7 @@ export function LayerPanel({ files, layerStyles, onChange, onSetAllVisible, onCl
           Katmanlar
         </Text>
         <View style={{
-          marginLeft: 'auto' as any,
+          marginStart: 'auto' as any,
           paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999,
           backgroundColor: C.accentSoft,
         }}>
@@ -208,7 +209,9 @@ export function LayerPanel({ files, layerStyles, onChange, onSetAllVisible, onCl
               >
                 {open
                   ? <ChevronDown size={11} color={C.fgMuted} strokeWidth={2.2} />
-                  : <ChevronRight size={11} color={C.fgMuted} strokeWidth={2.2} />}
+                  : isRTL()
+                    ? <ChevronLeft size={11} color={C.fgMuted} strokeWidth={2.2} />
+                    : <ChevronRight size={11} color={C.fgMuted} strokeWidth={2.2} />}
                 <Text style={{
                   color: C.fgMuted, fontSize: 9.5, fontWeight: '800',
                   letterSpacing: 0.7, textTransform: 'uppercase', flex: 1,
@@ -248,7 +251,7 @@ export function LayerPanel({ files, layerStyles, onChange, onSetAllVisible, onCl
                       {/* Active left bar */}
                       {isActive && (
                         <View style={{
-                          position: 'absolute', left: 0, top: 8, bottom: 8,
+                          position: 'absolute', start: 0, top: 8, bottom: 8,
                           width: 3, borderRadius: 2,
                           backgroundColor: C.accent,
                         }} />
@@ -266,7 +269,9 @@ export function LayerPanel({ files, layerStyles, onChange, onSetAllVisible, onCl
                       >
                         {isExpanded
                           ? <ChevronDown size={11} color={C.fgMuted} strokeWidth={2.2} />
-                          : <ChevronRight size={11} color={C.fgMuted} strokeWidth={2.2} />}
+                          : isRTL()
+                            ? <ChevronLeft size={11} color={C.fgMuted} strokeWidth={2.2} />
+                            : <ChevronRight size={11} color={C.fgMuted} strokeWidth={2.2} />}
                       </Pressable>
 
                       <View style={{

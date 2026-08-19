@@ -17,6 +17,7 @@ import { ChevronLeft, ChevronRight, Check } from 'lucide-react-native';
 import { supabase } from '../api/supabase';
 import { useOnboardingStore } from './onboardingStore';
 import { useNewOrderModalStore } from '../store/newOrderModalStore';
+import { isRTL } from '../i18n';
 
 // Doctor emerald theme (CLAUDE.md §7)
 const PRIMARY = '#32BB78';
@@ -243,6 +244,7 @@ export function OnboardingOverlay({ host = 'root' }: { host?: 'root' | 'newOrder
   if (!active || !step || !isActiveHost) return null;
 
   // ─── Tooltip card position (JS; updates per step) ─────────────────────────
+  const rtl = isRTL();
   const cardW = Math.min(CARD_MAX_W, W - 32);
   let cardLeft: number;
   let cardTop: number;
@@ -364,7 +366,8 @@ export function OnboardingOverlay({ host = 'root' }: { host?: 'root' | 'newOrder
                 <Pressable onPress={prev} hitSlop={8} style={[styles.ghostBtn, webCursor]}>
                   {({ pressed }: any) => (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, opacity: pressed ? 0.5 : 1 }}>
-                      <ChevronLeft size={16} color={INK} strokeWidth={2.2} />
+                      {rtl ? <ChevronRight size={16} color={INK} strokeWidth={2.2} />
+                           : <ChevronLeft size={16} color={INK} strokeWidth={2.2} />}
                       <Text style={styles.ghostText}>Geri</Text>
                     </View>
                   )}
@@ -377,7 +380,8 @@ export function OnboardingOverlay({ host = 'root' }: { host?: 'root' | 'newOrder
                       <Text style={styles.pillText}>{isLast ? 'Bitir' : 'İleri'}</Text>
                       {isLast
                         ? <Check size={16} color="#FFFFFF" strokeWidth={2.6} />
-                        : <ChevronRight size={16} color="#FFFFFF" strokeWidth={2.6} />}
+                        : rtl ? <ChevronLeft size={16} color="#FFFFFF" strokeWidth={2.6} />
+                              : <ChevronRight size={16} color="#FFFFFF" strokeWidth={2.6} />}
                     </View>
                   )}
                 </Pressable>

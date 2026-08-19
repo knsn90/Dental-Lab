@@ -1,4 +1,5 @@
 import { localeTag } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { safeBack } from '../../../core/util/safeBack';
 // modules/delivery/screens/DeliveryDetailScreen.tsx
 // Teslimat detayı — GPS geçmişi, durum timeline, kurye bilgisi
@@ -44,9 +45,9 @@ function mapsUrl(lat: number, lng: number) {
 
 function GpsCard({ ping }: { ping: GpsPing }) {
   const ago = Math.floor((Date.now() - new Date(ping.recorded_at).getTime()) / 1000);
-  const agoText = ago < 60 ? `${ago}sn önce`
-    : ago < 3600 ? `${Math.floor(ago / 60)}dk önce`
-    : `${Math.floor(ago / 3600)}s önce`;
+  const agoText = ago < 60 ? `${ago}${autoT('sn önce')}`
+    : ago < 3600 ? `${Math.floor(ago / 60)}${autoT('dk önce')}`
+    : `${Math.floor(ago / 3600)}${autoT('s önce')}`;
 
   function openMaps() {
     const url = mapsUrl(ping.lat, ping.lng);

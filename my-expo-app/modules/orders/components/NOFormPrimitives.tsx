@@ -8,6 +8,7 @@ import React from 'react';
 import { View, Text, Pressable, TextInput, Platform, useWindowDimensions } from 'react-native';
 import { useNOTokens, NOType, NORadius } from './NOTokens';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { isRTL } from '../../../core/i18n';
 
 // ── NOEyebrow ─────────────────────────────────────────────────────
 export interface NOEyebrowProps {
@@ -49,7 +50,7 @@ export function NOLabel({ children, required }: NOLabelProps) {
       }}
     >
       {required && (
-        <Text style={{ color: NO.error, marginRight: 3 }}>* </Text>
+        <Text style={{ color: NO.error, marginEnd: 3 }}>* </Text>
       )}
       {children}
     </Text>
@@ -211,6 +212,8 @@ export interface NOToggleProps {
 export function NOToggle({ on, onChange, accentColor }: NOToggleProps) {
   const NO = useNOTokens();
   const trackAccent = accentColor ?? NO.saffron;
+  // Kaydırmalı topuz yön duyarlı DEĞİL: RTL'de "açık" konum sola gitmeli.
+  const rtl = isRTL();
   // iOS-tarzı toggle: ON → accent-colored solid track + white thumb,
   //                  OFF → translucent neutral track + white thumb
   return (
@@ -233,7 +236,7 @@ export function NOToggle({ on, onChange, accentColor }: NOToggleProps) {
           backgroundColor: '#FFFFFF',
           position: 'absolute',
           top: 3,
-          left: on ? 17 : 3,
+          ...(rtl ? { right: on ? 17 : 3 } : { left: on ? 17 : 3 }),
         }}
       />
     </Pressable>

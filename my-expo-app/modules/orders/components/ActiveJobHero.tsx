@@ -3,6 +3,7 @@
 // Üstte denim gradient + istasyon adı; altta beyaz section + hasta/sipariş + workflow timeline.
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { View, Text, Platform, useWindowDimensions } from 'react-native';
 import { AlertTriangle, Calendar, Clock, Inbox, Pause, Play, Zap } from 'lucide-react-native';
 import { useStationTheme, hexA } from '../../../core/theme/stationPalette';
@@ -114,7 +115,7 @@ export function ActiveJobHero({
     const m = Math.floor((sec % 3600) / 60);
     const s = sec % 60;
     const pad = (n: number) => n.toString().padStart(2, '0');
-    if (d > 0) return `${d}g ${pad(h)}:${pad(m)}:${pad(s)}`;
+    if (d > 0) return `${d}${autoT('g')} ${pad(h)}:${pad(m)}:${pad(s)}`;
     return `${pad(h)}:${pad(m)}:${pad(s)}`;
   };
 
@@ -577,11 +578,11 @@ function TimingChip({ icon, label, value, color }: {
 
 // Compact human-readable süre formatı: 12dk · 1s 24dk · 3g 5s
 function fmtCompact(sec: number): string {
-  if (!isFinite(sec) || sec <= 0) return '0dk';
+  if (!isFinite(sec) || sec <= 0) return autoT('0dk');
   const d = Math.floor(sec / 86400);
   const h = Math.floor((sec % 86400) / 3600);
   const m = Math.floor((sec % 3600) / 60);
-  if (d > 0) return h > 0 ? `${d}g ${h}s` : `${d}g`;
-  if (h > 0) return m > 0 ? `${h}s ${m}dk` : `${h}s`;
-  return `${m}dk`;
+  if (d > 0) return h > 0 ? `${d}${autoT('g')} ${h}${autoT('s')}` : `${d}${autoT('g')}`;
+  if (h > 0) return m > 0 ? `${h}${autoT('s')} ${m}${autoT('dk')}` : `${h}${autoT('s')}`;
+  return `${m}${autoT('dk')}`;
 }

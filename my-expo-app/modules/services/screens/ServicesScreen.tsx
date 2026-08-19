@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { fetchAllLabServices, createLabService, updateLabService } from '../api';
 import { LabService } from '../types';
 import { C } from '../../../core/theme/colors';
+import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { AppSwitch } from '../../../core/ui/AppSwitch';
 import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 import { IconBtn } from '../../../core/ui/IconBtn';
@@ -22,6 +23,7 @@ interface Form {
 const EMPTY: Form = { name: '', category: '', price: '0', currency: 'TRY' };
 
 export function ServicesScreen() {
+  const panelTheme = usePanelTheme();
   const [services, setServices] = useState<LabService[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -91,7 +93,9 @@ export function ServicesScreen() {
           }))}
           activeKey={catFilter}
           onChange={setCatFilter}
-          accentColor={C.primary}
+          // Sabit maviydi; diğer sekme çubuklarıyla aynı görünsün diye panel
+          // ink'i (koyu) — cursor beyaz metin bastığı için de doğru olan bu.
+          accentColor={panelTheme.accent}
         />
 
         <View style={{ flex: 1 }} />

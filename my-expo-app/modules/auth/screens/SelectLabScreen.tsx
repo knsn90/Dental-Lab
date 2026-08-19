@@ -6,11 +6,12 @@
 import React, { useEffect } from 'react';
 import { View, Text, Pressable, ActivityIndicator, Platform, Image } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Building2, ChevronRight, Clock, Plus } from 'lucide-react-native';
+import { Building2, ChevronLeft, ChevronRight, Clock, Plus } from 'lucide-react-native';
 import { useAuthStore } from '../../../store/authStore';
 import { useActiveLabStore } from '../../../core/store/activeLabStore';
 import { AuthShell, AUTH, AUTH_FONT } from '../components/AuthShell';
 import type { LabMembership } from '../../lab-connections/api';
+import { isRTL } from '../../../core/i18n';
 
 function panelBase(userType?: string): string {
   return userType === 'doctor' ? '/(doctor)' : '/(clinic)';
@@ -20,6 +21,7 @@ export function SelectLabScreen() {
   const router = useRouter();
   const { profile } = useAuthStore();
   const { memberships, loaded, load, setActive } = useActiveLabStore();
+  const rtl = isRTL();
 
   useEffect(() => {
     if (profile?.id && !loaded) load(profile.id);
@@ -61,13 +63,14 @@ export function SelectLabScreen() {
                 <Text numberOfLines={1} style={{ fontFamily: AUTH_FONT.display, fontSize: 15, fontWeight: '700', color: AUTH.ink }}>{m.lab_name || 'Laboratuvar'}</Text>
                 <Text style={{ fontFamily: AUTH_FONT.sans, fontSize: 11.5, color: AUTH.inkSoft, marginTop: 1 }}>Girmek için dokun</Text>
               </View>
-              <ChevronRight size={18} color={AUTH.inkMuted} strokeWidth={2} />
+              {rtl ? <ChevronLeft size={18} color={AUTH.inkMuted} strokeWidth={2} />
+                   : <ChevronRight size={18} color={AUTH.inkMuted} strokeWidth={2} />}
             </Pressable>
           ))}
 
           {pendings.length > 0 && (
             <View style={{ gap: 8, marginTop: 4 }}>
-              <Text style={{ fontFamily: AUTH_FONT.sans, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: AUTH.inkMuted, marginLeft: 2 }}>Onay bekleyen</Text>
+              <Text style={{ fontFamily: AUTH_FONT.sans, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: AUTH.inkMuted, marginStart: 2 }}>Onay bekleyen</Text>
               {pendings.map((m) => (
                 <View key={m.membership_id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, backgroundColor: 'transparent', borderWidth: 1, borderColor: AUTH.border, opacity: 0.6 }}>
                   <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: AUTH.border, alignItems: 'center', justifyContent: 'center' }}>

@@ -8,6 +8,7 @@
  *  • Patterns §13 form modal — Display başlık + outlined X + dark+accent footer
  */
 import React, { useContext, useEffect, useMemo, useState } from 'react';
+import { useTurkeyOnlyFeatures } from '../../../core/store/labSettingsStore';
 import {
   View, Text, ScrollView, Pressable, Modal,
   TextInput, ActivityIndicator, Platform,
@@ -40,6 +41,7 @@ interface Props {
 }
 
 export function IntegrationsScreen({ accentColor = '#4771AB' }: Props) {
+  const trOnly = useTurkeyOnlyFeatures();
   const isEmbedded = useContext(HubContext);
   const safeEdges  = isEmbedded ? ([] as any) : (['top'] as any);
 
@@ -100,8 +102,8 @@ export function IntegrationsScreen({ accentColor = '#4771AB' }: Props) {
     <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={safeEdges}>
       <ScrollView contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 60 }}>
 
-        {/* e-Fatura */}
-        <Section
+        {/* e-Fatura — Türk mevzuatı; İran labında hiç gösterilmez. */}
+        {trOnly && <Section
           title="e-Fatura · e-Arşiv"
           IconCmp={ReceiptText}
           accentColor={accentColor}
@@ -112,10 +114,10 @@ export function IntegrationsScreen({ accentColor = '#4771AB' }: Props) {
           onActivate={handleActivate}
           onDelete={handleDelete}
           onTest={handleTest}
-        />
+        />}
 
-        {/* POS */}
-        <Section
+        {/* POS · iyzico — Türk ödeme sağlayıcısı; İran'da kullanılamaz. */}
+        {trOnly && <Section
           title="POS · Online Ödeme"
           IconCmp={CreditCard}
           accentColor={accentColor}
@@ -126,7 +128,7 @@ export function IntegrationsScreen({ accentColor = '#4771AB' }: Props) {
           onActivate={handleActivate}
           onDelete={handleDelete}
           onTest={handleTest}
-        />
+        />}
 
         {/* Kurye — her lab kendi BanaBiKurye üyeliğiyle bağlanır (lab-bazlı) */}
         <Section
@@ -461,7 +463,7 @@ function CredentialEditor({
                 width: 32, height: 32, borderRadius: 8,
                 borderWidth: 1.5, borderColor: accentColor,
                 alignItems: 'center', justifyContent: 'center',
-                marginLeft: 12, marginTop: 2,
+                marginStart: 12, marginTop: 2,
                 ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
               }}
             >

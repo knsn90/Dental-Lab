@@ -21,6 +21,8 @@ import { NOActionBar, NOActionBarProps } from './NOActionBar';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useBottomActionBar } from '../../../core/store/uiOverlayStore';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { isRTL } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 
 export interface NOPageChromeProps {
   /** Current step (1-4) */
@@ -101,6 +103,7 @@ export function NOPageChrome({
   const NO = useNOTokens();
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
+  const rtl = isRTL();
 
   // Mobile'da form alanı bir beyaz tabaka — cream "şerit"ler (top/bottom)
   // görünmesin. Form kartları zaten beyaz, bg ile birleşip continuous form
@@ -123,7 +126,7 @@ export function NOPageChrome({
       <View style={{
         position: 'absolute',
         top: 8,
-        right: 12,
+        end: 12,
         zIndex: 50,
         flexDirection: 'row',
         gap: 6,
@@ -193,8 +196,8 @@ export function NOPageChrome({
           <View
             style={{
               width: 360,
-              borderLeftWidth: 1,
-              borderLeftColor: NO.borderSoft,
+              borderStartWidth: 1,
+              borderStartColor: NO.borderSoft,
               backgroundColor: NO.bgStage,
               ...(Platform.OS === 'web'
                 ? { overflow: 'auto' as any }
@@ -219,14 +222,14 @@ export function NOPageChrome({
             ? {
                 position: 'absolute' as any,
                 bottom: Math.max(insets.bottom, 8),
-                right: 16,
+                end: 16,
                 zIndex: 100,
                 pointerEvents: 'box-none',
               }
             : {
                 position: 'absolute' as any,
                 bottom: insets.bottom + 14,
-                right: 16,
+                end: 16,
                 zIndex: 100,
                 pointerEvents: 'box-none',
               }
@@ -275,7 +278,7 @@ export function NOPageChrome({
                 <Text style={{ fontSize: 11, color: NO.inkSoft }}>
                   Taslak · {savedTime}
                 </Text>
-                <View style={{ width: 1, height: 18, backgroundColor: 'rgba(0,0,0,0.10)', marginLeft: 4 }} />
+                <View style={{ width: 1, height: 18, backgroundColor: 'rgba(0,0,0,0.10)', marginInlineStart: 4 }} />
               </View>
             )}
             {/* Önizleme — sadece desktop (mobile'da sadece İleri butonu kalsın) */}
@@ -323,7 +326,8 @@ export function NOPageChrome({
                     : {}),
                 }}
               >
-                <ArrowLeft size={14} color={NO.inkStrong} strokeWidth={2} />
+                {rtl ? <ArrowRight size={14} color={NO.inkStrong} strokeWidth={2} />
+                     : <ArrowLeft size={14} color={NO.inkStrong} strokeWidth={2} />}
                 <Text style={{ fontSize: 13, fontWeight: '500', color: NO.inkStrong }}>Geri</Text>
               </Pressable>
             )}
@@ -348,7 +352,8 @@ export function NOPageChrome({
                 ? <Loader size={14} color={textColor} strokeWidth={2} />
                 : (actionPrimary === 'success'
                     ? <Check size={14} color={textColor} strokeWidth={2.5} />
-                    : <ArrowRight size={14} color={textColor} strokeWidth={2} />);
+                    : rtl ? <ArrowLeft size={14} color={textColor} strokeWidth={2} />
+                          : <ArrowRight size={14} color={textColor} strokeWidth={2} />);
               const floatShadow = width < PANEL_BREAKPOINT && (Platform.OS as string) !== 'web'
                 ? {
                     shadowColor: '#0F172A',
@@ -397,7 +402,7 @@ export function NOPageChrome({
                       )}
                       {loading && iconNode}
                       <Text style={{ fontSize: 13, fontWeight: '500', color: textColor }}>
-                        {nextLabel ?? 'İleri'}
+                        {autoT(nextLabel ?? 'İleri')}
                       </Text>
                       {!loading && iconNode}
                     </View>
@@ -422,7 +427,7 @@ export function NOPageChrome({
                 >
                   {loading ? iconNode : null}
                   <Text style={{ fontSize: 13, fontWeight: '500', color: textColor }}>
-                    {nextLabel ?? 'İleri'}
+                    {autoT(nextLabel ?? 'İleri')}
                   </Text>
                   {!loading && iconNode}
                 </Pressable>
@@ -441,7 +446,9 @@ export function NOPageChrome({
               position: 'fixed',
               // PWA standalone'da home indicator alanını geç
               bottom: 'max(14px, calc(env(safe-area-inset-bottom, 0px) + 14px))' as any,
-              right: 'max(16px, calc(env(safe-area-inset-right, 0px) + 16px))' as any,
+              ...(rtl
+                ? { left: 'max(16px, calc(env(safe-area-inset-left, 0px) + 16px))' as any }
+                : { right: 'max(16px, calc(env(safe-area-inset-right, 0px) + 16px))' as any }),
               zIndex: 9999,
               pointerEvents: 'none',
             }}
@@ -463,12 +470,12 @@ export function NOPageChrome({
               } as any}
             >
               {savedTime && width >= PANEL_BREAKPOINT && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 10, paddingRight: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingInlineStart: 10, paddingInlineEnd: 4 }}>
                   <div style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: NO.success }} />
                   <span style={{ fontSize: 11, color: NO.inkSoft }}>
                     Taslak · {savedTime}
                   </span>
-                  <div style={{ width: 1, height: 18, backgroundColor: 'rgba(0,0,0,0.10)', marginLeft: 4 }} />
+                  <div style={{ width: 1, height: 18, backgroundColor: 'rgba(0,0,0,0.10)', marginInlineStart: 4 }} />
                 </div>
               )}
               {onPreview && (
@@ -512,8 +519,9 @@ export function NOPageChrome({
                     fontFamily: 'inherit',
                   }}
                 >
-                  <ArrowLeft size={14} color={NO.inkStrong} strokeWidth={2} />
-                  Geri
+                  {rtl ? <ArrowRight size={14} color={NO.inkStrong} strokeWidth={2} />
+                       : <ArrowLeft size={14} color={NO.inkStrong} strokeWidth={2} />}
+                  {autoT('Geri')}
                 </button>
               )}
               {onNext && (
@@ -542,11 +550,13 @@ export function NOPageChrome({
                   {loading
                     ? <Loader size={14} color={actionPrimary === 'saffron' ? NO.inkStrong : '#FFFFFF'} strokeWidth={2} />
                     : null}
-                  {nextLabel ?? 'İleri'}
+                  {autoT(nextLabel ?? 'İleri')}
                   {!loading && (
                     actionPrimary === 'success'
                       ? <Check size={14} color="#FFFFFF" strokeWidth={2.5} />
-                      : <ArrowRight size={14} color={actionPrimary === 'saffron' ? NO.inkStrong : '#FFFFFF'} strokeWidth={2} />
+                      : rtl
+                        ? <ArrowLeft size={14} color={actionPrimary === 'saffron' ? NO.inkStrong : '#FFFFFF'} strokeWidth={2} />
+                        : <ArrowRight size={14} color={actionPrimary === 'saffron' ? NO.inkStrong : '#FFFFFF'} strokeWidth={2} />
                   )}
                 </button>
               )}
@@ -573,6 +583,7 @@ function GlassActionBtn({
   const NO = useNOTokens();
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
+  const rtl = isRTL();
   const SIZE = 44;
   const RADIUS = 16;
   const shadow = Platform.OS === 'web'
@@ -587,7 +598,7 @@ function GlassActionBtn({
 
   const badgeNode = badge ? (
     <View style={{
-      position: 'absolute', top: -5, right: -5,
+      position: 'absolute', top: -5, ...(rtl ? { left: -5 } : { right: -5 }),
       minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5,
       alignItems: 'center', justifyContent: 'center',
       backgroundColor: badge.color,

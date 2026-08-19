@@ -17,11 +17,12 @@ import { View, Text, Pressable, ScrollView, Platform } from 'react-native';
 import { StepsTimelineX } from '../../../core/ui/ProgressX';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  ChevronLeft, Printer, MoreHorizontal, Play, Pause, AlertCircle,
+  ChevronLeft, ChevronRight, Printer, MoreHorizontal, Play, Pause, AlertCircle,
   Paperclip, Plus, MessageCircle, Mic, Truck, Check, ChevronDown, RotateCcw, Star,
 } from 'lucide-react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { MOBILE_PANEL_THEMES, useMobileTokens, type MobilePanel } from '../../../core/theme/mobileDesignTokens';
+import { isRTL } from '../../../core/i18n';
 
 const STAGES = [
   { key: 'in',    label: 'Alındı' },
@@ -162,7 +163,8 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
               alignItems: 'center', justifyContent: 'center',
             }}
           >
-            <ChevronLeft size={18} color={T.ink} strokeWidth={2} />
+            {isRTL() ? <ChevronRight size={18} color={T.ink} strokeWidth={2} />
+                     : <ChevronLeft size={18} color={T.ink} strokeWidth={2} />}
           </Pressable>
           <View style={{ alignItems: 'center', gap: 1 }}>
             <Text style={{ fontFamily: T.mono, fontSize: 10, color: T.ink3, letterSpacing: 0.6 }}>
@@ -224,7 +226,7 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
             <View
               pointerEvents="none"
               style={{
-                position: 'absolute', top: -60, right: -60, width: 220, height: 220, borderRadius: 110,
+                position: 'absolute', top: -60, end: -60, width: 220, height: 220, borderRadius: 110,
                 // @ts-ignore
                 backgroundImage: `radial-gradient(circle, rgba(255,255,255,0.5), transparent 60%)`,
               } as any}
@@ -279,7 +281,7 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
                 }}>
                   {props.remainingDays}
                 </Text>
-                <Text style={{ fontSize: 14, fontWeight: '500', color: T.ink, marginLeft: 4 }}>g</Text>
+                <Text style={{ fontSize: 14, fontWeight: '500', color: T.ink, marginStart: 4 }}>g</Text>
               </View>
               <Text style={{ fontSize: 10, color: T.ink3, marginTop: 2 }}>
                 Teslim {props.deliveryDate}
@@ -393,7 +395,7 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
               ) : !isMultiLane && props.technicianName ? (
                 <View style={{
                   flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6,
-                  paddingHorizontal: 5, paddingRight: 8, paddingVertical: 3,
+                  paddingHorizontal: 5, paddingEnd: 8, paddingVertical: 3,
                   borderRadius: 999, alignSelf: 'flex-start',
                   backgroundColor: 'rgba(255,255,255,0.06)',
                 }}>
@@ -415,7 +417,7 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
                   onPress={props.onAssignTech}
                   style={{
                     flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6,
-                    paddingHorizontal: 5, paddingRight: 10, paddingVertical: 3,
+                    paddingHorizontal: 5, paddingEnd: 10, paddingVertical: 3,
                     borderRadius: 999, alignSelf: 'flex-start',
                     backgroundColor: 'rgba(255,255,255,0.05)',
                     borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)',
@@ -550,7 +552,7 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
                             const active = s.status === 'aktif';
                             const dot = done || active ? accent : 'rgba(255,255,255,0.25)';
                             return (
-                              <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 4 }}>
+                              <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingStart: 4 }}>
                                 <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: dot }} />
                                 <Text style={{ fontSize: 12, color: active ? T.onDark : T.onDark2, fontWeight: active ? '700' : '400', flex: 1 }} numberOfLines={1}>{s.name}</Text>
                                 {done && <Text style={{ fontSize: 9, color: accent, fontWeight: '700' }}>✓</Text>}
@@ -1015,20 +1017,24 @@ function Ring({ value, size, stroke, color, children }: {
 }
 
 function Bar({ value, color, accent, hairline }: { value: number; color: string; accent: string; hairline: string }) {
+  // RTL: dolgu ve topuz aynı eksende yürümeli — `start:` inline'ı güvenilir
+  // olmadığı için ikisi de açıkça left/right ile konumlanır (topuz ters gitmesin).
+  const rtl = isRTL();
+  const pct = `${Math.min(100, Math.max(0, value))}%` as `${number}%`;
   return (
     <View style={{ height: 8, borderRadius: 4, backgroundColor: hairline, position: 'relative' }}>
       <View style={{
-        position: 'absolute', left: 0, top: 0, bottom: 0,
-        width: `${Math.min(100, Math.max(0, value))}%`,
+        position: 'absolute', ...(rtl ? { right: 0 } : { left: 0 }), top: 0, bottom: 0,
+        width: pct,
         backgroundColor: color, borderRadius: 4,
       }} />
       <View style={{
         position: 'absolute',
-        left: `${Math.min(100, Math.max(0, value))}%`,
+        ...(rtl ? { right: pct, marginRight: -8 } : { left: pct, marginLeft: -8 }),
         top: '50%',
         width: 16, height: 16, borderRadius: 8,
         backgroundColor: accent,
-        marginLeft: -8, marginTop: -8,
+        marginTop: -8,
       }} />
     </View>
   );

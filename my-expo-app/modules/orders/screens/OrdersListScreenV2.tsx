@@ -1,4 +1,5 @@
-import { localeTag } from '../../../core/i18n';
+import { localeTag, isRTL } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 /**
  * OrdersListScreenV2 — Patterns design language (NativeWind)
  *
@@ -42,7 +43,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useSegments } from 'expo-router';
-import { Search, X, SlidersHorizontal, ArrowUpDown, ChevronRight, Flame, Clock, LayoutList, Columns3, UserCheck, Pencil, Archive, Trash2, RotateCcw, AlertCircle, ShieldAlert, ListChecks, Camera, CornerDownRight, Inbox } from 'lucide-react-native';
+import { Search, X, SlidersHorizontal, ArrowUpDown, ChevronLeft, ChevronRight, Flame, Clock, LayoutList, Columns3, UserCheck, Pencil, Archive, Trash2, RotateCcw, AlertCircle, ShieldAlert, ListChecks, Camera, CornerDownLeft, CornerDownRight, Inbox } from 'lucide-react-native';
 import { RowActionsMenu, type RowAction } from '../../../core/ui/RowActionsMenu';
 import { ScanWorkOrderModal } from '../components/ScanWorkOrderModal';
 // Admin düzenleme artık yeni-sipariş SİHİRBAZINI (aynı 4 adım) düzenleme modunda açar.
@@ -54,6 +55,8 @@ import { useAuthStore } from '../../../core/store/authStore';
 import { supabase } from '../../../core/api/supabase';
 import { bootMark } from '../../../core/debug/bootTrace';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 import { toast } from '../../../core/ui/Toast';
@@ -156,7 +159,7 @@ function deliveryText(d: string, status: WorkOrderStatus, holdStatus?: string | 
   if (diff < 0)   return `${Math.abs(diff)}g gecikti`;
   if (diff === 0) return 'Bugün';
   if (diff === 1) return 'Yarın';
-  if (diff <= 6)  return `${diff} gün`;
+  if (diff <= 6)  return `${diff} ${autoT('gün')}`;
   return due.toLocaleDateString(localeTag(), { day: 'numeric', month: 'short' });
 }
 
@@ -184,6 +187,10 @@ export function OrdersListScreenV2() {
   const insets = useSafeAreaInsets();
   // Ana sayfa (Lab/Admin/Doctor/Clinic dashboard) ile aynı bg tonu.
   const T = useMobileTokens();
+  // SlideTabBar cursor'ı beyaz metin basar → koyu ink şart (panel `primary`si
+  // lab'da safran sarısı, beyaz yazıyla okunmaz). Ekranda zaten bir `panel`
+  // değişkeni var, bu yüzden `panelTheme`.
+  const panelTheme = usePanelTheme();
 
   // Footer "PLANLAMA BEKLİYOR" pulse — bir kez enjekte
   useEffect(() => { injectFooterPulseKeyframes(); }, []);
@@ -488,39 +495,52 @@ export function OrdersListScreenV2() {
             className="flex-1"
             contentContainerStyle={{ gap: 6 }}
           >
-            <View className="flex-row gap-0.5 p-0.5 bg-cream-panel rounded-full">
-              {statusFilters.map(f => {
-                const active = statusFilter === f.value && !urgentOnly && !overdueOnly;
-                const count = f.value === 'manual' ? paperInboxCount : (statusCounts[f.value] ?? 0);
-                // "Manuel" bir DURUM değil, ayrı bir gelen kutusu. Sona eklenince
-                // "Teslim"den sonraki bir statü gibi okunup gözden kaçıyordu:
-                // ayraç + ikon ile durum çiplerinden ayrıldı.
-                const isManualTab = f.value === 'manual';
-                return (
-                  <React.Fragment key={f.value}>
-                    {isManualTab && (
-                      <View style={{ width: 1, alignSelf: 'stretch', marginHorizontal: 5, marginVertical: 4, backgroundColor: 'rgba(0,0,0,0.10)' }} />
-                    )}
-                    <Pressable
-                      onPress={() => { setStatusFilter(f.value); setUrgentOnly(false); setOverdueOnly(false); }}
-                      className={`flex-row items-center gap-1.5 px-3 py-1.5 rounded-full ${active ? 'bg-ink-900' : ''}`}
-                    >
-                      {isManualTab && (
-                        <Inbox size={12} color={active ? '#FFFFFF' : '#6B6B6B'} strokeWidth={2} />
-                      )}
-                      <Text className={`text-[12px] font-semibold ${active ? 'text-white' : 'text-ink-500'}`}>
-                        {f.label}
-                      </Text>
-                      {(count > 0 || !isManualTab) && (
-                        <Text className={`text-[10px] font-bold ${active ? 'text-white/60' : 'text-ink-400'}`}>
-                          {count}
-                        </Text>
-                      )}
-                    </Pressable>
-                  </React.Fragment>
-                );
-              })}
-            </View>
+            {/* Onaylar / Kurumlar / Kullanıcılar ile AYNI bileşen, `sm` boyda —
+                yoğun liste sayfası olduğu için varsayılan boy fazla yer
+                kaplıyordu. "Manuel" ise şeridin DIŞINDA kaldı: o bir durum
+                değil ayrı bir gelen kutusu, sekmelerin arasına karışınca
+                "Teslim"den sonraki bir statü gibi okunuyordu. */}
+            <SlideTabBar
+              size="sm"
+              items={statusFilters
+                .filter(f => f.value !== 'manual')
+                .map(f => ({
+                  key: String(f.value),
+                  label: f.label,
+                  count: statusCounts[f.value] ?? 0,
+                }))}
+              activeKey={String(statusFilter)}
+              onChange={(k) => { setStatusFilter(k as any); setUrgentOnly(false); setOverdueOnly(false); }}
+              accentColor={panelTheme.accent}
+              style={{ marginStart: -3 }}
+            />
+
+            {statusFilters.some(f => f.value === 'manual') && (() => {
+              // Şeritle tutarlı: durum seçimi Acil/Geciken açıkken de geçerli
+              // kalıyor (liste filtresi ikisini birlikte uyguluyor), dolayısıyla
+              // seçili sekmeyi söndürmek uygulanan bir filtreyi gizlemek olurdu.
+              const active = statusFilter === 'manual';
+              return (
+                <Pressable
+                  onPress={() => { setStatusFilter('manual'); setUrgentOnly(false); setOverdueOnly(false); }}
+                  className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full"
+                  style={{
+                    backgroundColor: active ? panelTheme.accent : '#FFFFFF',
+                    borderWidth: 1, borderColor: active ? 'transparent' : 'rgba(0,0,0,0.06)',
+                  }}
+                >
+                  <Inbox size={12} color={active ? '#FFFFFF' : '#6B6B6B'} strokeWidth={2} />
+                  <Text className="text-[11.5px] font-semibold" style={{ color: active ? '#FFFFFF' : '#6B6B6B' }}>
+                    Manuel
+                  </Text>
+                  {paperInboxCount > 0 && (
+                    <Text className="text-[10px] font-bold" style={{ color: active ? 'rgba(255,255,255,0.6)' : '#9A9A9A' }}>
+                      {paperInboxCount}
+                    </Text>
+                  )}
+                </Pressable>
+              );
+            })()}
 
             {/* Acil / Geciken toggle pills */}
             <Pressable
@@ -661,7 +681,7 @@ export function OrdersListScreenV2() {
             >
               <Search size={16} color="#6B6B6B" strokeWidth={1.8} />
               <TextInput
-                className="flex-1 ml-2 text-[14px] text-ink-900"
+                className="flex-1 ms-2 text-[14px] text-ink-900"
                 placeholder="Sipariş, hasta, hekim ara"
                 placeholderTextColor="#9A9A9A"
                 value={search}
@@ -1381,7 +1401,7 @@ const MobileOrderCard = React.memo(function MobileOrderCard({ order, isManager, 
             <Text className="text-[11px]" style={{ color: T.ink3 }}>{`· ${toothCount} diş`}</Text>
           )}
           {!needsTriage && stagesTotal > 0 && (
-            <View className="flex-row items-center gap-1.5" style={{ marginLeft: 2 }}>
+            <View className="flex-row items-center gap-1.5" style={{ marginStart: 2 }}>
               <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(0,0,0,0.08)', overflow: 'hidden' }}>
                 <View style={{ width: `${progressPct}%`, height: '100%', borderRadius: 2, backgroundColor: barColor }} />
               </View>
@@ -1424,7 +1444,8 @@ const MobileOrderCard = React.memo(function MobileOrderCard({ order, isManager, 
             <Text className="text-[11px] font-semibold text-white">Ata</Text>
           </Pressable>
         ) : (
-          <ChevronRight size={16} color="#CCC" strokeWidth={1.6} />
+          isRTL() ? <ChevronLeft size={16} color="#CCC" strokeWidth={1.6} />
+                  : <ChevronRight size={16} color="#CCC" strokeWidth={1.6} />
         )}
       </View>
     </Pressable>
@@ -1481,7 +1502,7 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
         <Text className="uppercase" style={{ flex: 1.6, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
           Durum
         </Text>
-        <Text className="uppercase text-right" style={{ width: 92, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
+        <Text className="uppercase" style={{ textAlign: 'end' as any, width: 92, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
           {' '}
         </Text>
       </View>
@@ -1592,9 +1613,9 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
         { paddingVertical: 14 },
         !isLast && { borderBottomWidth: 1, borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
         // Planlama bekleyen — sabit soft amber zemin + sol kenar şeridi (animasyon yok)
-        needsTriage && { backgroundColor: 'rgba(217,119,6,0.05)', borderLeftWidth: 3, borderLeftColor: '#D97706' },
+        needsTriage && { backgroundColor: 'rgba(217,119,6,0.05)', borderStartWidth: 3, borderStartColor: '#D97706' },
         // Revizyon alt-satırı — girintili (üstteki orijinale bağlı)
-        (order as any).__revChild && { paddingLeft: 18 },
+        (order as any).__revChild && { paddingStart: 18 },
         // @ts-ignore web hover
         Platform.OS === 'web' ? { cursor: 'pointer', transition: 'background-color 0.15s' } as any : undefined,
       ]}
@@ -1605,7 +1626,9 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
         className="flex-row items-start gap-1"
       >
         {(order as any).__revChild && (
-          <CornerDownRight size={13} color={(order as any).__continuation ? '#3563A8' : '#9C5E0E'} strokeWidth={2.2} style={{ marginTop: 1, flexShrink: 0 }} />
+          isRTL()
+            ? <CornerDownLeft size={13} color={(order as any).__continuation ? '#3563A8' : '#9C5E0E'} strokeWidth={2.2} style={{ marginTop: 1, flexShrink: 0 }} />
+            : <CornerDownRight size={13} color={(order as any).__continuation ? '#3563A8' : '#9C5E0E'} strokeWidth={2.2} style={{ marginTop: 1, flexShrink: 0 }} />
         )}
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={{ fontSize: 11, fontFamily: 'monospace', color: T.ink3 }} numberOfLines={1}>
@@ -1692,10 +1715,10 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
       </Text>
 
       {/* Durum — Patterns Chip + üstte küçük "ACİL" / "YENİ" işaretleri */}
-      <View style={{ flex: 1.6, alignItems: 'flex-start', paddingRight: 8 }}>
+      <View style={{ flex: 1.6, alignItems: 'flex-start', paddingEnd: 8 }}>
         {/* Üst etiket satırı — birden fazla varsa yan yana */}
         {(order.is_urgent || needsTriage) && (
-          <View style={{ flexDirection: 'row', gap: 6, marginBottom: 2, marginLeft: 6 }}>
+          <View style={{ flexDirection: 'row', gap: 6, marginBottom: 2, marginStart: 6 }}>
             {order.is_urgent && (
               <Text
                 style={{
@@ -1752,7 +1775,8 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
             <Text className="text-[10px] font-semibold text-white">Ata</Text>
           </Pressable>
         ) : (
-          <ChevronRight size={14} color="#CCC" strokeWidth={1.6} />
+          isRTL() ? <ChevronLeft size={14} color="#CCC" strokeWidth={1.6} />
+                  : <ChevronRight size={14} color="#CCC" strokeWidth={1.6} />
         ))}
       </View>
     </Pressable>

@@ -216,7 +216,7 @@ const styles = StyleSheet.create({
   itemInfo: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
   itemName: { fontSize: 14, color: Colors.textPrimary, fontWeight: '500' },
   itemQty: { fontSize: 12, color: Colors.textMuted, fontWeight: '600' },
-  itemPrice: { fontSize: 14, fontWeight: '700', color: Colors.primary, marginRight: 10 },
+  itemPrice: { fontSize: 14, fontWeight: '700', color: Colors.primary, marginEnd: 10 },
   deleteBtn: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#FEF2F2', alignItems: 'center', justifyContent: 'center' },
   deleteBtnText: { fontSize: 11, color: '#DC2626', fontWeight: '700' },
   totalRow: {

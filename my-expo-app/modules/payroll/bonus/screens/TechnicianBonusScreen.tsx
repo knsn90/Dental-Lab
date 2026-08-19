@@ -4,13 +4,15 @@
  */
 
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { autoT } from '../../../../core/i18n/autoTranslate';
 import { View, Text, Pressable, ScrollView } from 'react-native';
 import {
-  ArrowLeft, Wallet, TrendingUp, Activity, ShieldCheck, Sparkles,
+  ArrowLeft, ArrowRight, ChevronLeft, Wallet, TrendingUp, Activity, ShieldCheck, Sparkles,
   Trophy, ChevronDown, ChevronRight,
 } from 'lucide-react-native';
 
 import { DS } from '../../../../core/theme/dsTokens';
+import { isRTL } from '../../../../core/i18n';
 import { supabase } from '../../../../core/api/supabase';
 import { listPolicies } from '../api';
 import type { BonusRun, BonusPolicy, BonusRunBreakdownRow, RunStatus } from '../types';
@@ -126,7 +128,7 @@ export default function TechnicianBonusScreen({ employeeId, initialName, onBack 
       {/* Back nav */}
       {onBack ? (
         <View style={{ marginBottom: 16 }}>
-          <PillButton variant="light" onPress={onBack} leftIcon={<ArrowLeft size={14} color={DS.ink[900]} />}>
+          <PillButton variant="light" onPress={onBack} leftIcon={isRTL() ? <ArrowRight size={14} color={DS.ink[900]} /> : <ArrowLeft size={14} color={DS.ink[900]} />}>
             Geri
           </PillButton>
         </View>
@@ -137,7 +139,7 @@ export default function TechnicianBonusScreen({ employeeId, initialName, onBack 
         kicker={`${employeeMeta?.role ?? 'Teknisyen'}${employeeMeta?.station ? ' · ' + employeeMeta.station : ''}`}
         value={TRY(grandTotal)}
         label={employeeName || 'Teknisyen'}
-        sub={`Son 12 ay · ${grandUnits} ${grandUnits === 1 ? "işlem" : "üye"}${employeeMeta?.email ? ' · ' + employeeMeta.email : ''}`}
+        sub={`${autoT('Son 12 ay')} · ${grandUnits} ${autoT(grandUnits === 1 ? 'işlem' : 'üye')}${employeeMeta?.email ? ' · ' + employeeMeta.email : ''}`}
         icon={Trophy}
         miniStats={[
           { label: 'Üye', value: String(grandUnits) },
@@ -165,7 +167,7 @@ export default function TechnicianBonusScreen({ employeeId, initialName, onBack 
                   {m.total_bonus > 0 ? Math.round(m.total_bonus / 1000) + 'K' : ''}
                 </Text>
                 <View style={{
-                  width: '100%', borderTopLeftRadius: 6, borderTopRightRadius: 6,
+                  width: '100%', borderTopStartRadius: 6, borderTopEndRadius: 6,
                   backgroundColor: isBest ? TH.primary : TH.success,
                   height: h, minHeight: 2,
                   opacity: m.total_bonus === 0 ? 0.2 : 1,
@@ -188,7 +190,7 @@ export default function TechnicianBonusScreen({ employeeId, initialName, onBack 
         }}>
           <SecHeader
             eyebrow="Açıklama"
-            title={`Neden bu kadar? — ${MONTH_LABELS[latestActive.month - 1]} ${latestActive.year}`}
+            title={`${autoT('Neden bu kadar?')} — ${autoT(MONTH_LABELS[latestActive.month - 1])} ${latestActive.year}`}
           />
           <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
             <ExplainTile icon={TrendingUp}  label="Üye"       value={String(latestActive.units)}             accent={TH.info} />
@@ -241,13 +243,13 @@ export default function TechnicianBonusScreen({ employeeId, initialName, onBack 
                     opacity: pressed ? 0.85 : 1,
                   })}
                 >
-                  {open ? <ChevronDown size={16} color={DS.ink[500]} /> : <ChevronRight size={16} color={DS.ink[500]} />}
+                  {open ? <ChevronDown size={16} color={DS.ink[500]} /> : (isRTL() ? <ChevronLeft size={16} color={DS.ink[500]} /> : <ChevronRight size={16} color={DS.ink[500]} />)}
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }}>
                       {MONTH_LABELS[m.month - 1]} {m.year}
                     </Text>
                     <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 2 }}>
-                      {m.units === 1 ? `1 işlem` : `${m.units} üye`} · {m.points.toFixed(1)} puan · {m.rows.length} policy
+                      {m.units === 1 ? `1 ${autoT('işlem')}` : `${m.units} ${autoT('üye')}`} · {m.points.toFixed(1)} puan · {m.rows.length} policy
                     </Text>
                   </View>
                   <Text style={{ ...DISPLAY, fontSize: 22, color: '#1F6B47', letterSpacing: -0.7 }}>
@@ -255,7 +257,7 @@ export default function TechnicianBonusScreen({ employeeId, initialName, onBack 
                   </Text>
                 </Pressable>
                 {open ? (
-                  <View style={{ paddingLeft: 28, paddingBottom: 14, gap: 8 }}>
+                  <View style={{ paddingStart: 28, paddingBottom: 14, gap: 8 }}>
                     {m.rows.map(({ run, policy, row }, i) => (
                       <View key={i} style={{ backgroundColor: DS.ink[50], borderRadius: 12, padding: 12 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -270,7 +272,7 @@ export default function TechnicianBonusScreen({ employeeId, initialName, onBack 
                           </Text>
                         </View>
                         <Text style={{ fontSize: 10, color: DS.ink[500], marginTop: 4 }}>
-                          {row.units === 1 ? `1 işlem` : `${row.units} üye`} · {(row.points ?? 0).toFixed?.(1) ?? row.points} puan ·{' '}
+                          {row.units === 1 ? `1 ${autoT('işlem')}` : `${row.units} ${autoT('üye')}`} · {(row.points ?? 0).toFixed?.(1) ?? row.points} puan ·{' '}
                           Bireysel {TRY(row.individual_bonus)} · Aşama {TRY(row.stage_bonus)} ·{' '}
                           Havuz {TRY(row.pool_share)} · Kalite ×{(row.quality_multiplier ?? 1).toFixed?.(2) ?? row.quality_multiplier}
                           {row.rejects ? ` · ${row.rejects} remake` : ''}

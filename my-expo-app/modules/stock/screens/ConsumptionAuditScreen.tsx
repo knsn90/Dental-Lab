@@ -24,12 +24,13 @@ import { View, Text, Pressable, TextInput, ActivityIndicator, Platform } from 'r
 import { useRouter, useSegments } from 'expo-router';
 import { safeBack } from '../../../core/util/safeBack';
 import {
-  ChevronLeft, Inbox, RefreshCw, Search, ShieldCheck, TriangleAlert, Wrench, X,
+  ChevronLeft, ChevronRight, Inbox, RefreshCw, Search, ShieldCheck, TriangleAlert, Wrench, X,
 } from 'lucide-react-native';
 import { ResponsiveCanvas } from '../../../core/layout/ResponsiveCanvas';
 import { groupByCategory, CategoryHeaderRow } from '../categoryGroup';
 import { DS } from '../../../core/theme/dsTokens';
 import { toast } from '../../../core/ui/Toast';
+import { isRTL } from '../../../core/i18n';
 import { ConsumptionFixModal } from '../components/ConsumptionFixModal';
 import {
   fetchConsumptionAudit, fetchConsumptionGaps,
@@ -219,7 +220,7 @@ export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded 
             opacity: pressed ? 0.6 : 1, ...webCursor,
           })}
         >
-          <ChevronLeft size={16} color={DS.ink[700]} strokeWidth={1.8} />
+          {isRTL() ? <ChevronRight size={16} color={DS.ink[700]} strokeWidth={1.8} /> : <ChevronLeft size={16} color={DS.ink[700]} strokeWidth={1.8} />}
         </Pressable>
         <Text style={{
           fontSize: 10, fontWeight: '500', letterSpacing: 1.2,
@@ -324,7 +325,7 @@ export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded 
                     backgroundColor: pct >= 80 ? DS.lab.success : pct > 0 ? accentColor : DS.ink[200],
                   }} />
                 </View>
-                <Text style={{ width: 108, textAlign: 'right', fontSize: 12, color: DS.ink[500] }}>
+                <Text style={{ width: 108, textAlign: 'end' as any, fontSize: 12, color: DS.ink[500] }}>
                   {g.missing} / {g.done_stages} kayıtsız
                 </Text>
               </View>
@@ -427,13 +428,13 @@ export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded 
               Kayıt
             </Text>
             <Text style={{
-              width: 150, textAlign: 'right', fontSize: 10, fontWeight: '500',
+              width: 150, textAlign: 'end' as any, fontSize: 10, fontWeight: '500',
               letterSpacing: 1.2, textTransform: 'uppercase', color: DS.ink[400],
             }}>
               Kayıtlı · Beklenen
             </Text>
             <Text style={{
-              width: 110, textAlign: 'right', fontSize: 10, fontWeight: '500',
+              width: 110, textAlign: 'end' as any, fontSize: 10, fontWeight: '500',
               letterSpacing: 1.2, textTransform: 'uppercase', color: DS.ink[400],
             }}>
               Sapma
@@ -525,7 +526,7 @@ export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded 
                 {r.flags.length > 0 ? (
                   <View style={{
                     flexDirection: 'row', flexWrap: 'wrap', gap: 6,
-                    marginTop: 8, marginLeft: 19,
+                    marginTop: 8, marginStart: 19,
                   }}>
                     {r.flags.map(f => (
                       <Chip

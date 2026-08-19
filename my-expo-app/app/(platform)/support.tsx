@@ -52,7 +52,7 @@ export default function PlatformSupport() {
                   </Text>
                 </View>
                 <Chip tone={statusTone(t.status)} dot>{(t.status || '—').toUpperCase()}</Chip>
-                <Text style={{ color: C.ink3, fontSize: 12, fontFamily: FONT, width: 92, textAlign: 'right' }}>{new Date(t.created_at).toLocaleDateString()}</Text>
+                <Text style={{ color: C.ink3, fontSize: 12, fontFamily: FONT, width: 92, textAlign: 'end' as any }}>{new Date(t.created_at).toLocaleDateString()}</Text>
               </View>
             ))}
           </Panel>

@@ -456,7 +456,7 @@ export function NotificationsSection({ accentColor }: Props) {
                   durduğunda "hangi ayara ait?" bağı kopuyordu. Yakınlık =
                   ilişki: numara, açtığın kanalın hemen altında. */}
               {ch.key === 'whatsapp' && on && (
-                <View style={{ marginLeft: 48, marginBottom: 12, gap: 8 }}>
+                <View style={{ marginStart: 48, marginBottom: 12, gap: 8 }}>
                   <Text style={{ fontSize: 11, color: '#6B7280' }}>
                     Telefon numarası — uluslararası biçim, örn. +905551112233
                   </Text>
@@ -493,7 +493,7 @@ export function NotificationsSection({ accentColor }: Props) {
               )}
 
               {i < CHANNEL_META.length - 1 && (
-                <View style={{ height: 1, backgroundColor: hairline, marginLeft: 48 }} />
+                <View style={{ height: 1, backgroundColor: hairline, marginStart: 48 }} />
               )}
             </React.Fragment>
           );
@@ -534,7 +534,7 @@ export function NotificationsSection({ accentColor }: Props) {
           </View>
           <View style={{ backgroundColor: surface, borderRadius: 20, padding: isNarrow ? 12 : 18, ...CARD_SHADOW }}>
             {/* Kolon başlıkları */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: ICON_GUTTER, paddingBottom: 6 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingStart: ICON_GUTTER, paddingBottom: 6 }}>
               <View style={{ flex: 1 }} />
               {CHANNEL_META.filter(ch => (VISIBLE_CHANNELS as readonly string[]).includes(ch.key)).map(ch => (
                 /* "UYG / PUSH / E-PST / WAPP" kısaltmaları okunmuyordu —
@@ -582,7 +582,7 @@ export function NotificationsSection({ accentColor }: Props) {
                     })}
                   </View>
                   {idx < group.items.length - 1 && (
-                    <View style={{ height: 1, backgroundColor: hairline, marginLeft: ICON_GUTTER }} />
+                    <View style={{ height: 1, backgroundColor: hairline, marginStart: ICON_GUTTER }} />
                   )}
                 </React.Fragment>
               );

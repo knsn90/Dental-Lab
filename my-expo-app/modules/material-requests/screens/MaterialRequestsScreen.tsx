@@ -12,13 +12,14 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Platform } from 'react-native';
 import {
   Wrench, Search, X, Hourglass, ShieldCheck, CheckCircle2, Truck, PackageCheck,
-  XCircle, ArrowRight, RefreshCcw, Filter as FilterIcon,
-  ChevronRight,
+  XCircle, ArrowLeft, ArrowRight, RefreshCcw, Filter as FilterIcon,
+  ChevronLeft, ChevronRight,
 } from 'lucide-react-native';
 
 import { DS } from '../../../core/theme/dsTokens';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { useAuthStore } from '../../../core/store/authStore';
+import { isRTL } from '../../../core/i18n';
 import {
   listRequests, getRequestCounts,
   type MaterialRequestRow, type RequestStatus, type RequestCounts,
@@ -94,8 +95,8 @@ export function MaterialRequestsScreen() {
         position: 'relative', overflow: 'hidden',
       }}>
         {/* Dekoratif daireler */}
-        <View style={{ position: 'absolute', top: -40, right: -40, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(255,255,255,0.15)' }} pointerEvents="none" />
-        <View style={{ position: 'absolute', bottom: -60, left: -20, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(0,0,0,0.05)' }} pointerEvents="none" />
+        <View style={{ position: 'absolute', top: -40, end: -40, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(255,255,255,0.15)' }} pointerEvents="none" />
+        <View style={{ position: 'absolute', bottom: -60, start: -20, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(0,0,0,0.05)' }} pointerEvents="none" />
 
         {/* Üst satır — kicker + title + ikon kapsülü */}
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
@@ -330,7 +331,7 @@ function RequestCard({
               </Text>
             )}
           </View>
-          <ChevronRight size={14} color={DS.ink[300]} />
+          {isRTL() ? <ChevronLeft size={14} color={DS.ink[300]} /> : <ChevronRight size={14} color={DS.ink[300]} />}
         </View>
 
         {/* Aksiyon barı — yetkiye göre */}
@@ -346,7 +347,7 @@ function RequestCard({
                   Reddet
                 </PillButton>
                 <PillButton size="sm" variant="dark" onPress={() => onAction('manager_forward')}
-                  leftIcon={<ArrowRight size={11} color="#FFF" />}>
+                  leftIcon={isRTL() ? <ArrowLeft size={11} color="#FFF" /> : <ArrowRight size={11} color="#FFF" />}>
                   Admin'e Yönlendir
                 </PillButton>
               </>

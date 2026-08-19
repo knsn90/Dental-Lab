@@ -5,9 +5,12 @@
 
 import React, { useState } from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
-import { LayoutDashboard, Wallet, Play, History, ArrowLeft } from 'lucide-react-native';
+import { ArrowLeft, ArrowRight } from 'lucide-react-native';
+import { isRTL } from '../../../../core/i18n';
 
 import { DS } from '../../../../core/theme/dsTokens';
+import { usePanelTheme } from '../../../../core/theme/usePanelTheme';
+import { SlideTabBar } from '../../../../core/ui/SlideTabBar';
 
 import BonusDashboardScreen from './BonusDashboardScreen';
 import BonusPolicyListScreen from './BonusPolicyListScreen';
@@ -18,8 +21,19 @@ import BonusAuditScreen from './BonusAuditScreen';
 
 type Mode = 'dashboard' | 'policies' | 'runs' | 'audit' | 'editor' | 'technician';
 
+/** Şeritte görünen modlar — 'editor' ve 'technician' alt sayfa, sekme değil. */
+type TabKey = 'dashboard' | 'policies' | 'runs' | 'audit';
+const TABS: { key: TabKey; label: string }[] = [
+  { key: 'dashboard', label: 'Özet' },
+  { key: 'policies',  label: 'Politikalar' },
+  { key: 'runs',      label: 'Hesaplamalar' },
+  { key: 'audit',     label: 'Geçmiş' },
+];
+
 export default function BonusHubScreen() {
   const [mode, setMode] = useState<Mode>('dashboard');
+  // SlideTabBar cursor'ı beyaz metin basar → koyu ink şart.
+  const panelTheme = usePanelTheme();
   const [editorId, setEditorId] = useState<string | null>(null);
   const [techState, setTechState] = useState<{ id: string; name?: string } | null>(null);
   const [prevMode, setPrevMode] = useState<Mode>('dashboard');
@@ -36,16 +50,16 @@ export default function BonusHubScreen() {
       {/* TAB BAR */}
       <View style={{ paddingTop: 4, paddingBottom: 16, paddingHorizontal: 16 }}>
         {showTabs ? (
-          <View style={{
-            flexDirection: 'row', gap: 2, padding: 4,
-            backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 999,
-            alignSelf: 'flex-start',
-          }}>
-            <TabBtn icon={LayoutDashboard} label="Özet"        active={mode === 'dashboard'} onPress={() => setMode('dashboard')} />
-            <TabBtn icon={Wallet}          label="Politikalar" active={mode === 'policies'}  onPress={() => setMode('policies')} />
-            <TabBtn icon={Play}            label="Hesaplamalar" active={mode === 'runs'}     onPress={() => setMode('runs')} />
-            <TabBtn icon={History}         label="Geçmiş"      active={mode === 'audit'}    onPress={() => setMode('audit')} />
-          </View>
+          /* Uygulamanın ortak sekme çubuğu — Siparişler / Onaylar / Kurumlar /
+             Karlılık / Faturalar ile aynı bileşen. İkonlar düştü: komşu
+             sayfaların hiçbirinde yok ve etiketler zaten açık. */
+          <SlideTabBar
+            items={TABS}
+            activeKey={mode as TabKey}
+            onChange={(k) => setMode(k as Mode)}
+            accentColor={panelTheme.accent}
+            style={{ marginStart: -4 }}
+          />
         ) : mode === 'editor' ? (
           <Pressable
             onPress={() => setMode('policies')}
@@ -57,7 +71,7 @@ export default function BonusHubScreen() {
               opacity: pressed ? 0.7 : 1,
             })}
           >
-            <ArrowLeft size={14} color={DS.ink[900]} />
+            {isRTL() ? <ArrowRight size={14} color={DS.ink[900]} /> : <ArrowLeft size={14} color={DS.ink[900]} />}
             <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[900] }}>Politikalara dön</Text>
           </Pressable>
         ) : null}
@@ -92,23 +106,3 @@ export default function BonusHubScreen() {
   );
 }
 
-function TabBtn({ icon: Icon, label, active, onPress }:
-  { icon: any; label: string; active: boolean; onPress: () => void }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => ({
-        flexDirection: 'row', alignItems: 'center', gap: 6,
-        paddingHorizontal: 14, paddingVertical: 7,
-        borderRadius: 999,
-        backgroundColor: active ? DS.ink[900] : 'transparent',
-        opacity: pressed ? 0.8 : 1,
-      })}
-    >
-      <Icon size={13} color={active ? '#FFF' : DS.ink[700]} strokeWidth={1.8} />
-      <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? '#FFF' : DS.ink[700] }}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}

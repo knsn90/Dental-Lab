@@ -5,7 +5,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, Pressable, StyleSheet, Animated, Easing, Platform, Linking, } from 'react-native';
-import { X, Check, ChevronRight, Camera as CameraIcon, AlertCircle } from 'lucide-react-native';
+import { X, Check, ChevronRight, ChevronLeft, Camera as CameraIcon, AlertCircle } from 'lucide-react-native';
+import { isRTL } from '../../../core/i18n';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 // expo-camera sadece native'de import edilsin (web bundle'a girmesin / hatasız patlasın)
 const isWeb = Platform.OS === 'web';
@@ -410,7 +411,9 @@ export function ScanB6Mobile({ onClose, onOpenOrder, onUpdateStatus }: Props) {
                 style={[styles.primaryBtn, { backgroundColor: theme.accent }]}
               >
                 <Text style={styles.primaryBtnText}>Vakayı aç</Text>
-                <ChevronRight size={16} color="#FFF" strokeWidth={2} />
+                {isRTL()
+                  ? <ChevronLeft size={16} color="#FFF" strokeWidth={2} />
+                  : <ChevronRight size={16} color="#FFF" strokeWidth={2} />}
               </Pressable>
               {onUpdateStatus && (
                 <Pressable
@@ -440,10 +443,10 @@ function CornerBracket({ corner, color }: { corner: 'tl' | 'tr' | 'bl' | 'br'; c
   const STROKE = 3;
   const RADIUS = 14;
   const positionStyle = {
-    tl: { top: 0, left: 0,    borderTopWidth: STROKE, borderLeftWidth: STROKE, borderTopLeftRadius: RADIUS },
-    tr: { top: 0, right: 0,   borderTopWidth: STROKE, borderRightWidth: STROKE, borderTopRightRadius: RADIUS },
-    bl: { bottom: 0, left: 0, borderBottomWidth: STROKE, borderLeftWidth: STROKE, borderBottomLeftRadius: RADIUS },
-    br: { bottom: 0, right: 0, borderBottomWidth: STROKE, borderRightWidth: STROKE, borderBottomRightRadius: RADIUS },
+    tl: { top: 0, start: 0,    borderTopWidth: STROKE, borderStartWidth: STROKE, borderTopStartRadius: RADIUS },
+    tr: { top: 0, end: 0,   borderTopWidth: STROKE, borderEndWidth: STROKE, borderTopEndRadius: RADIUS },
+    bl: { bottom: 0, start: 0, borderBottomWidth: STROKE, borderStartWidth: STROKE, borderBottomStartRadius: RADIUS },
+    br: { bottom: 0, end: 0, borderBottomWidth: STROKE, borderEndWidth: STROKE, borderBottomEndRadius: RADIUS },
   }[corner];
   return (
     <View style={[
@@ -483,16 +486,16 @@ const styles = StyleSheet.create({
   vignetteTop: {
     position: 'absolute',
     top: 0,
-    left: 0,
-    right: 0,
+    start: 0,
+    end: 0,
     height: 200,
     backgroundColor: 'rgba(0,0,0,0.55)',
   },
   vignetteBottom: {
     position: 'absolute',
     bottom: 0,
-    left: 0,
-    right: 0,
+    start: 0,
+    end: 0,
     height: 280,
     backgroundColor: 'rgba(0,0,0,0.55)',
   },
@@ -552,8 +555,8 @@ const styles = StyleSheet.create({
   },
   scanline: {
     position: 'absolute',
-    left: 8,
-    right: 8,
+    start: 8,
+    end: 8,
     height: 2,
   },
 
@@ -569,8 +572,8 @@ const styles = StyleSheet.create({
   permBanner: {
     position: 'absolute',
     top: 80,
-    left: 24,
-    right: 24,
+    start: 24,
+    end: 24,
     padding: 18,
     borderRadius: 22,
     backgroundColor: 'rgba(0,0,0,0.7)',
@@ -620,8 +623,8 @@ const styles = StyleSheet.create({
   // Bottom sheet
   sheet: {
     position: 'absolute',
-    left: 0,
-    right: 0,
+    start: 0,
+    end: 0,
     bottom: 0,
     paddingTop: 12,
     paddingHorizontal: 24,

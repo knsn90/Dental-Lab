@@ -30,7 +30,7 @@ export function PaymentBadges({ height = 18 }: { height?: number }) {
       <Pill>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: '#EB001B' }} />
-          <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: '#F79E1B', marginLeft: -5, opacity: 0.9 }} />
+          <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: '#F79E1B', marginStart: -5, opacity: 0.9 }} />
         </View>
         <Text style={{ fontSize: 10.5, fontWeight: '700', color: '#2C2C2C' }}>mastercard</Text>
       </Pill>

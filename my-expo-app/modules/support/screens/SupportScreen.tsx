@@ -1,5 +1,6 @@
 import { useSegments } from 'expo-router';
-import { localeTag } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
+import { localeTag, isRTL } from '../../../core/i18n';
 import { confirmAsync } from '../../../core/util/confirm';
 /**
  * SupportScreen — Dental Production Support OS
@@ -236,8 +237,8 @@ function HeroStrip({ kpis, onNew, isAdmin }: {
         : {}),
     }}>
       {/* glow daireleri */}
-      <View style={{ position: 'absolute', top: -50, right: -30, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.16)' }} />
-      <View style={{ position: 'absolute', bottom: -60, left: -20, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(0,0,0,0.05)' }} />
+      <View style={{ position: 'absolute', top: -50, end: -30, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.16)' }} />
+      <View style={{ position: 'absolute', bottom: -60, start: -20, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(0,0,0,0.05)' }} />
 
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
         <View style={{ flexShrink: 1, minWidth: 200 }}>
@@ -287,11 +288,11 @@ function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const m = Math.floor(diff / 60_000);
   if (m < 1) return 'az önce';
-  if (m < 60) return `${m} dk önce`;
+  if (m < 60) return `${m} ${autoT('dk önce')}`;
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h} sa önce`;
+  if (h < 24) return `${h} ${autoT('sa önce')}`;
   const d = Math.floor(h / 24);
-  if (d < 7) return `${d} gün önce`;
+  if (d < 7) return `${d} ${autoT('gün önce')}`;
   return new Date(iso).toLocaleDateString(localeTag(), { day: 'numeric', month: 'short' });
 }
 
@@ -829,7 +830,9 @@ function EmptyWorkspace({ onNew, onTemplate, isAdmin, tickets = [], onSelect }: 
                   <Text style={{ fontSize: 13.5, fontWeight: '600', color: W.inkStrong, letterSpacing: -0.1 }} numberOfLines={1}>{q.title}</Text>
                   <Text style={{ fontSize: 11.5, color: W.inkMute, marginTop: 2, lineHeight: 15 }} numberOfLines={1}>{q.tip}</Text>
                 </View>
-                {!isAdmin && <ChevronRight size={15} color={W.inkSoft} strokeWidth={1.7} />}
+                {!isAdmin && (isRTL()
+                  ? <ChevronLeft size={15} color={W.inkSoft} strokeWidth={1.7} />
+                  : <ChevronRight size={15} color={W.inkSoft} strokeWidth={1.7} />)}
               </Pressable>
             );
           })}
@@ -851,7 +854,7 @@ function EmptyWorkspace({ onNew, onTemplate, isAdmin, tickets = [], onSelect }: 
             <Text style={{ width: 110, fontSize: 9.5, fontWeight: '600', color: W.inkSoft, letterSpacing: 0.8, textTransform: 'uppercase' }}>Kategori</Text>
             <Text style={{ width: 110, fontSize: 9.5, fontWeight: '600', color: W.inkSoft, letterSpacing: 0.8, textTransform: 'uppercase' }}>Durum</Text>
             <Text style={{ width: 90, fontSize: 9.5, fontWeight: '600', color: W.inkSoft, letterSpacing: 0.8, textTransform: 'uppercase' }}>Öncelik</Text>
-            <Text style={{ width: 80, fontSize: 9.5, fontWeight: '600', color: W.inkSoft, letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'right' }}>Tarih</Text>
+            <Text style={{ width: 80, fontSize: 9.5, fontWeight: '600', color: W.inkSoft, letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'end' as any }}>Tarih</Text>
           </View>
 
           {/* Satırlar */}
@@ -889,7 +892,7 @@ function EmptyWorkspace({ onNew, onTemplate, isAdmin, tickets = [], onSelect }: 
                 <View style={{ width: 90, flexDirection: 'row' }}>
                   <StatusPill bg={pc.bg} fg={pc.fg} label={PRIORITY_LABELS[t.priority].toLocaleUpperCase('tr-TR')} />
                 </View>
-                <Text style={{ width: 80, fontSize: 10.5, color: W.inkSoft, textAlign: 'right' }}>
+                <Text style={{ width: 80, fontSize: 10.5, color: W.inkSoft, textAlign: 'end' as any }}>
                   {timeAgo(t.last_message_at)}
                 </Text>
               </Pressable>
@@ -1044,8 +1047,10 @@ function CenterWorkspace({ ticket, isAdmin, onUpdate, onBack, showBack, px }: {
       }}>
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
           {showBack && (
-            <Pressable onPress={onBack} style={{ padding: 4, marginLeft: -4, alignSelf: 'flex-start' }} hitSlop={8}>
-              <ChevronLeft size={20} color={W.inkMute} strokeWidth={1.8} />
+            <Pressable onPress={onBack} style={{ padding: 4, ...(isRTL() ? { marginRight: -4 } : { marginLeft: -4 }), alignSelf: 'flex-start' }} hitSlop={8}>
+              {isRTL()
+                ? <ChevronRight size={20} color={W.inkMute} strokeWidth={1.8} />
+                : <ChevronLeft size={20} color={W.inkMute} strokeWidth={1.8} />}
             </Pressable>
           )}
           <View style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: W.orangeSoft }}>
@@ -1338,8 +1343,8 @@ function MessageBubble({ message, isOwnPanel, attachments = [], onPreviewStl }: 
         maxWidth: '80%',
         paddingHorizontal: 14, paddingVertical: 11,
         borderRadius: 18,
-        borderTopRightRadius: isOwnPanel ? 5 : 18,
-        borderTopLeftRadius:  isOwnPanel ? 18 : 5,
+        borderTopEndRadius: isOwnPanel ? 5 : 18,
+        borderTopStartRadius:  isOwnPanel ? 18 : 5,
         backgroundColor: isInternal
           ? W.orangeSoft
           : isOwnPanel

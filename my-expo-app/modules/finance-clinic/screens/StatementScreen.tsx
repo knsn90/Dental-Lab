@@ -10,7 +10,8 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { View, Text, ScrollView, TextInput, Pressable, Platform } from 'react-native';
 import { useRouter, useSegments } from 'expo-router';
-import { Search, FileText, Banknote, Calendar, User as UserIcon, Filter as FilterIcon, X, FileSpreadsheet, Printer, ChevronRight } from 'lucide-react-native';
+import { Search, FileText, Banknote, Calendar, User as UserIcon, Filter as FilterIcon, X, FileSpreadsheet, Printer, ChevronRight, ChevronLeft } from 'lucide-react-native';
+import { isRTL } from '../../../core/i18n';
 
 import { DS } from '../../../core/theme/dsTokens';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
@@ -134,7 +135,9 @@ export function StatementScreen({ clinicId }: Props) {
         const inDesc = l.description.toLocaleLowerCase('tr').includes(q);
         const inNo   = (l.invoice_no ?? '').toLocaleLowerCase('tr').includes(q);
         const inDoc  = (l.doctor_name ?? '').toLocaleLowerCase('tr').includes(q);
-        if (!inDesc && !inNo && !inDoc) return false;
+        const inPat  = (l.patient_name ?? '').toLocaleLowerCase('tr').includes(q);
+        const inOrd  = (l.order_no ?? '').toLocaleLowerCase('tr').includes(q);
+        if (!inDesc && !inNo && !inDoc && !inPat && !inOrd) return false;
       }
       return true;
     });
@@ -248,7 +251,7 @@ export function StatementScreen({ clinicId }: Props) {
               Filtreler
             </Text>
             {activeFilterCount > 0 && (
-              <View style={{ backgroundColor: TH.primary, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1, marginLeft: 4 }}>
+              <View style={{ backgroundColor: TH.primary, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1, marginStart: 4 }}>
                 <Text style={{ fontSize: 9, fontWeight: '700', color: '#FFF' }}>{activeFilterCount}</Text>
               </View>
             )}
@@ -449,9 +452,9 @@ export function StatementScreen({ clinicId }: Props) {
           }}>
             <Text style={{ width: 84, fontSize: 10, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Tarih</Text>
             <Text style={{ flex: 1, fontSize: 10, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Açıklama</Text>
-            <Text style={{ width: 90, textAlign: 'right', fontSize: 10, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Borç</Text>
-            <Text style={{ width: 90, textAlign: 'right', fontSize: 10, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Alacak</Text>
-            <Text style={{ width: 100, textAlign: 'right', fontSize: 10, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Bakiye</Text>
+            <Text style={{ width: 90, textAlign: 'end' as any, fontSize: 10, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Borç</Text>
+            <Text style={{ width: 90, textAlign: 'end' as any, fontSize: 10, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Alacak</Text>
+            <Text style={{ width: 100, textAlign: 'end' as any, fontSize: 10, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Bakiye</Text>
           </View>
 
           {/* Lines */}
@@ -476,22 +479,26 @@ export function StatementScreen({ clinicId }: Props) {
                     : <Banknote size={12} color="#1F6B47" />}
                   <Text style={{ fontSize: 12, color: DS.ink[800], flex: 1 }} numberOfLines={1}>{l.description}</Text>
                 </View>
-                {l.doctor_name && (
-                  <Text style={{ fontSize: 10, color: DS.ink[400], marginTop: 2, marginLeft: 18 }} numberOfLines={1}>
-                    {l.doctor_name}
+                {/* Hekim + hasta (+ sipariş no) tek alt satırda — hekim ekstrede
+                    hangi hastanın işi olduğunu görmek istiyor. */}
+                {(l.doctor_name || l.patient_name) && (
+                  <Text style={{ fontSize: 10, color: DS.ink[400], marginTop: 2, marginStart: 18 }} numberOfLines={1}>
+                    {[l.doctor_name, l.patient_name, l.order_no].filter(Boolean).join(' · ')}
                   </Text>
                 )}
               </View>
-              <Text style={{ width: 90, textAlign: 'right', fontSize: 12, color: l.debit > 0 ? DS.ink[900] : DS.ink[300] }}>
+              <Text style={{ width: 90, textAlign: 'end' as any, fontSize: 12, color: l.debit > 0 ? DS.ink[900] : DS.ink[300] }}>
                 {l.debit > 0 ? Mnat(l.debit, l.currency) : '—'}
               </Text>
-              <Text style={{ width: 90, textAlign: 'right', fontSize: 12, color: l.credit > 0 ? '#1F6B47' : DS.ink[300], fontWeight: l.credit > 0 ? '600' : '400' }}>
+              <Text style={{ width: 90, textAlign: 'end' as any, fontSize: 12, color: l.credit > 0 ? '#1F6B47' : DS.ink[300], fontWeight: l.credit > 0 ? '600' : '400' }}>
                 {l.credit > 0 ? Mnat(l.credit, l.currency) : '—'}
               </Text>
-              <Text style={{ width: 100, textAlign: 'right', ...DISPLAY, fontSize: 14, color: l.balance > 0 ? '#9C2E2E' : DS.ink[900], letterSpacing: -0.3 }}>
+              <Text style={{ width: 100, textAlign: 'end' as any, ...DISPLAY, fontSize: 14, color: l.balance > 0 ? '#9C2E2E' : DS.ink[900], letterSpacing: -0.3 }}>
                 {Mnat(l.balance, l.currency)}
               </Text>
-              <ChevronRight size={14} color={l.invoice_id ? DS.ink[400] : 'transparent'} />
+              {isRTL()
+                ? <ChevronLeft size={14} color={l.invoice_id ? DS.ink[400] : 'transparent'} />
+                : <ChevronRight size={14} color={l.invoice_id ? DS.ink[400] : 'transparent'} />}
             </Pressable>
           ))}
 

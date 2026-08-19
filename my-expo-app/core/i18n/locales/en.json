@@ -659,6 +659,7 @@
       "recordCount": "records",
       "emptyAll": "No users yet",
       "emptyFiltered": "none added yet",
+      "emptyFilteredFmt": "No {{role}} added yet",
       "emptyDesc": "Grow your clinic by adding doctors, secretaries, or backup administrators — each role comes with its own permission template.",
       "addFirst": "Add your first user",
       "modal": {

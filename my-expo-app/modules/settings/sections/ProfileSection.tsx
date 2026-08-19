@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import {
-  Camera, Edit2, Mail, Phone, Lock, LogOut, ChevronRight, Eye, EyeOff, X,
+  Camera, Edit2, Mail, Phone, Lock, LogOut, ChevronLeft, ChevronRight, Eye, EyeOff, X,
   MapPin, User as UserIcon, Hash, MessageCircle, GraduationCap, Briefcase, Building2,
   Receipt, CreditCard, Search, Plus, Calendar,
 } from 'lucide-react-native';
@@ -22,6 +22,8 @@ import { useAuthStore } from '../../../core/store/authStore';
 import { supabase } from '../../../core/api/supabase';
 import { ColorOrb } from '../../denty/components/ColorOrb';
 import { toast } from '../../../core/ui/Toast';
+import { isRTL } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
@@ -108,7 +110,7 @@ function CardRow({ icon: Icon, iconColor, iconBg, label, value, placeholder, edi
       {...(onPress && !editing ? {
         onPress,
         accessibilityRole: 'button',
-        accessibilityLabel: empty ? `${label} ekle` : `${label} düzenle`,
+        accessibilityLabel: empty ? `${label} ${autoT('ekle')}` : `${label} ${autoT('düzenle')}`,
         style: ({ pressed }: any) => ({
           flexDirection: 'row', alignItems: 'center', gap: 12,
           paddingVertical: 8, marginHorizontal: -6, paddingHorizontal: 6, borderRadius: 12,
@@ -374,7 +376,7 @@ export function ProfileSection({ accentColor }: Props) {
         </View>
       )}
       <View
-        className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full items-center justify-center border-2 border-white"
+        className="absolute -bottom-1 -end-1 w-5 h-5 rounded-full items-center justify-center border-2 border-white"
         style={{ backgroundColor: accentColor }}
       >
         <Camera size={9} color="#FFFFFF" strokeWidth={2.5} />
@@ -463,7 +465,7 @@ export function ProfileSection({ accentColor }: Props) {
                   </View>
                 )}
                 <View
-                  className="absolute bottom-0 right-0 w-7 h-7 rounded-full items-center justify-center border-2"
+                  className="absolute bottom-0 end-0 w-7 h-7 rounded-full items-center justify-center border-2"
                   style={{ backgroundColor: accentColor, borderColor: T.card }}
                 >
                   <Camera size={12} color="#FFFFFF" strokeWidth={2} />
@@ -628,8 +630,8 @@ export function ProfileSection({ accentColor }: Props) {
                   <Text className="text-[11px] mb-0.5" style={{ color: T.ink3 }}>Şifre</Text>
                   <Text className="text-[14px] font-semibold" style={{ color: T.ink }}>Şifre Değiştir</Text>
                 </View>
-                <View style={{ transform: [{ rotate: showPass ? '90deg' : '0deg' }] }}>
-                  <ChevronRight size={15} color={T.ink3} strokeWidth={1.8} />
+                <View style={{ transform: [{ rotate: showPass ? (isRTL() ? '-90deg' : '90deg') : '0deg' }] }}>
+                  {isRTL() ? <ChevronLeft size={15} color={T.ink3} strokeWidth={1.8} /> : <ChevronRight size={15} color={T.ink3} strokeWidth={1.8} />}
                 </View>
               </Pressable>
               {showPass && (
@@ -1040,7 +1042,7 @@ function ClinicKurumTab({
             )}
             {/* Upload overlay badge */}
             <View style={{
-              position: 'absolute', bottom: -4, right: -4,
+              position: 'absolute', bottom: -4, end: -4,
               width: 26, height: 26, borderRadius: 13,
               backgroundColor: accentColor, alignItems: 'center', justifyContent: 'center',
               borderWidth: 2, borderColor: T.card,

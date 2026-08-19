@@ -1,4 +1,4 @@
-import { localeTag } from '../../../core/i18n';
+import { localeTag, isRTL } from '../../../core/i18n';
 /**
  * InvoicesListScreen — Fatura Yönetimi (Patterns Design Language)
  *
@@ -12,7 +12,7 @@ import {
   TextInput, Modal, ActivityIndicator, useWindowDimensions, Platform,
 } from 'react-native';
 import {
-  FileText, Search, X, ChevronRight, ChevronDown,
+  FileText, Search, X, ChevronRight, ChevronLeft, ChevronDown,
   TrendingUp, Wallet, AlertCircle, Banknote, Building2,
   Calendar, Layers, Receipt, CircleCheck, CircleX, Inbox,
   CreditCard, Landmark, File, Check, Hand,
@@ -26,6 +26,8 @@ import { type CurrencyTotal, groupByCurrency } from '../../../core/money/aggrega
 import { HubContext } from '../../../core/ui/HubContext';
 import { InvoiceDetailScreen } from './InvoiceDetailScreen';
 import { DS } from '../../../core/theme/dsTokens';
+import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 import { useInvoices, useInvoiceStats, useUnbilledWorkOrders } from '../hooks/useInvoices';
 import { createBulkInvoice, bulkRecordPayment } from '../api';
 import {
@@ -118,6 +120,8 @@ export function InvoicesListScreen() {
   // panel teması korunur). Örn admin finans → /(admin)/invoice/...
   const segments = useSegments();
   const panelBase = String(segments?.[0] ?? '(lab)');
+  // SlideTabBar cursor'ı beyaz metin basar → koyu ink şart.
+  const panelTheme = usePanelTheme();
   const invoiceHref = (id: string) => `/${panelBase}/invoice/${id}`;
   /**
    * Fatura hub içinde açılır — ayrı route'a gitmek finans kenar çubuğunu
@@ -194,36 +198,16 @@ export function InvoicesListScreen() {
         flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap',
         gap: 8, paddingHorizontal: 22, paddingTop: 10, paddingBottom: 8,
       }}>
-        {/* Status filter pills */}
-        <View style={{
-          flexDirection: 'row', gap: 2, padding: 3,
-          borderRadius: 9999, backgroundColor: DS.ink[100],
-        }}>
-          {STATUS_FILTERS.map(f => {
-            const active = statusFilter === f.value;
-            return (
-              <Pressable
-                key={f.value}
-                onPress={() => setStatusFilter(f.value)}
-                style={{
-                  paddingHorizontal: 12, paddingVertical: 6,
-                  borderRadius: 9999,
-                  backgroundColor: active ? '#FFF' : 'transparent',
-                  // @ts-ignore web
-                  boxShadow: active ? '0 1px 3px rgba(0,0,0,0.08)' : undefined,
-                  cursor: 'pointer',
-                }}
-              >
-                <Text style={{
-                  fontSize: 12, fontWeight: active ? '600' : '500',
-                  color: active ? DS.ink[900] : DS.ink[500],
-                }}>
-                  {f.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        {/* Durum filtresi — uygulamanın ortak sekme çubuğu (sm).
+            Siparişler / Onaylar / Kurumlar / Karlılık ile aynı bileşen. */}
+        <SlideTabBar
+          size="sm"
+          items={STATUS_FILTERS.map(f => ({ key: String(f.value), label: f.label }))}
+          activeKey={String(statusFilter)}
+          onChange={(k) => setStatusFilter(k as any)}
+          accentColor={panelTheme.accent}
+          style={{ marginStart: -3 }}
+        />
 
         {/* Overdue toggle */}
         <Pressable
@@ -342,7 +326,7 @@ export function InvoicesListScreen() {
             </Pressable>
           )}
           {isDesktop && (
-            <Text style={{ fontSize: 12, color: DS.ink[400], marginLeft: 8 }}>
+            <Text style={{ fontSize: 12, color: DS.ink[400], marginStart: 8 }}>
               <Text style={{ fontWeight: '600', color: DS.ink[900] }}>{filtered.length}</Text> fatura
             </Text>
           )}
@@ -376,7 +360,7 @@ export function InvoicesListScreen() {
               <Text style={{ ...colHeader, flex: 1 }}>Klinik / Hekim</Text>
               <Text style={{ ...colHeader, width: 100 }}>Tarih</Text>
               <Text style={{ ...colHeader, width: 100 }}>Vade</Text>
-              <Text style={{ ...colHeader, width: 110, textAlign: 'right' }}>Tutar</Text>
+              <Text style={{ ...colHeader, width: 110, textAlign: 'end' as any }}>Tutar</Text>
               <Text style={{ ...colHeader, width: 90, textAlign: 'center' }}>Durum</Text>
               <View style={{ width: 36 }} />
             </View>
@@ -515,9 +499,14 @@ function InvoiceRow({ invoice, isLast, onPress }: {
         <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[900] }} numberOfLines={1}>
           {invoice.clinic?.name ?? '—'}
         </Text>
-        {invoice.doctor?.full_name && (
+        {/* Hekim isteği: fatura listesinde hasta adı da görünsün. Hekim +
+            hasta tek satırda — liste zaten dar, ayrı satır üçüncü kata çıkarıyordu. */}
+        {(invoice.doctor?.full_name || invoice.work_order?.patient_name) && (
           <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }} numberOfLines={1}>
-            {normalizeDoctorName(invoice.doctor.full_name)}
+            {[
+              invoice.doctor?.full_name ? normalizeDoctorName(invoice.doctor.full_name) : null,
+              invoice.work_order?.patient_name ?? null,
+            ].filter(Boolean).join(' · ')}
           </Text>
         )}
       </View>
@@ -530,7 +519,7 @@ function InvoiceRow({ invoice, isLast, onPress }: {
         {fmtDate(invoice.due_date)}
       </Text>
       <Text style={{
-        width: 110, textAlign: 'right',
+        width: 110, textAlign: 'end' as any,
         ...DISPLAY, fontSize: 15, letterSpacing: -0.3, color: DS.ink[900],
       }}>
         {fmtMoney(invoice.total, invoice.currency)}
@@ -546,7 +535,9 @@ function InvoiceRow({ invoice, isLast, onPress }: {
         </View>
       </View>
       <View style={{ width: 36, alignItems: 'center' }}>
-        <ChevronRight size={14} strokeWidth={1.6} color={DS.ink[300]} />
+        {isRTL()
+          ? <ChevronLeft size={14} strokeWidth={1.6} color={DS.ink[300]} />
+          : <ChevronRight size={14} strokeWidth={1.6} color={DS.ink[300]} />}
       </View>
     </Pressable>
   );

@@ -32,7 +32,7 @@ export default function PlatformBilling() {
   };
   const invAct = async (fn: () => Promise<any>) => { setBusy(true); try { await fn(); await load(); } finally { setBusy(false); } };
 
-  const inputStyle = (active: boolean, w: number, h = 38, fs = 14): any => ({ width: w, height: h, paddingHorizontal: 12, borderRadius: 10, backgroundColor: C.cardHover, borderWidth: 1, borderColor: active ? C.accent : C.line, color: C.ink, fontSize: fs, textAlign: 'right', ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) });
+  const inputStyle = (active: boolean, w: number, h = 38, fs = 14): any => ({ width: w, height: h, paddingHorizontal: 12, borderRadius: 10, backgroundColor: C.cardHover, borderWidth: 1, borderColor: active ? C.accent : C.line, color: C.ink, fontSize: fs, textAlign: 'end' as any, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) });
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>

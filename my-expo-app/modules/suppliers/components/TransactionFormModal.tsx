@@ -142,7 +142,7 @@ export function TransactionFormModal({ visible, type, supplier, editing = null, 
 
       const d = data.data;
       if (d.amount != null)         setAmount(String(d.amount));
-      if (d.currency && ['TRY','USD','EUR'].includes(d.currency)) setCurrency(d.currency as Currency);
+      if (d.currency && ['TRY','USD','EUR','GBP','IRT'].includes(d.currency)) setCurrency(d.currency as Currency);
       if (d.transaction_date)       setDate(d.transaction_date);
       if (d.payment_method && ['transfer','cash','card','check'].includes(d.payment_method)) {
         setPaymentMethod(d.payment_method as PaymentMethod);

@@ -1,4 +1,5 @@
 import { localeTag } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 /**
  * ChecksScreen — Çek / Senet (Patterns Design Language)
  *
@@ -143,7 +144,7 @@ export function ChecksScreen() {
 
   const handleStatusChange = async (check: Check, newStatus: CheckStatus) => {
     // Alert.alert web'de no-op → cross-platform confirmAsync
-    const ok = await confirmAsync('Durum Güncelle', `"${CHECK_STATUS_LABELS[newStatus]}" olarak işaretlensin mi?`, { confirmText: 'Evet' });
+    const ok = await confirmAsync('Durum Güncelle', `"${CHECK_STATUS_LABELS[newStatus]}" ${autoT('olarak işaretlensin mi?')}`, { confirmText: 'Evet' });
     if (!ok) return;
     await updateCheckStatus(check.id, newStatus);
     refetch();
@@ -171,8 +172,8 @@ export function ChecksScreen() {
           backgroundColor: theme.primary, padding: 16,
           position: 'relative',
         }}>
-          <View style={{ position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.18)' }} />
-          <View style={{ position: 'absolute', bottom: -50, left: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+          <View style={{ position: 'absolute', top: -40, end: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.18)' }} />
+          <View style={{ position: 'absolute', bottom: -50, start: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
 
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
             <View>
@@ -248,7 +249,7 @@ export function ChecksScreen() {
           <Pressable onPress={() => setFilterOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.42)', justifyContent: 'flex-end', ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) }}>
             <Pressable onPress={(e) => e.stopPropagation()} style={{
               backgroundColor: '#FFFFFF',
-              borderTopLeftRadius: 24, borderTopRightRadius: 24,
+              borderTopStartRadius: 24, borderTopEndRadius: 24,
               paddingTop: 12, paddingBottom: Math.max(insets.bottom, 16) + 12,
               maxHeight: '85%',
             }}>
@@ -258,7 +259,7 @@ export function ChecksScreen() {
                 <Pressable onPress={() => setStatusFilter('all')} style={{ paddingHorizontal: 10, paddingVertical: 6 }}>
                   <Text style={{ fontSize: 12, fontWeight: '400', color: DS.ink[500] }}>Temizle</Text>
                 </Pressable>
-                <Pressable onPress={() => setFilterOpen(false)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', marginLeft: 4 }}>
+                <Pressable onPress={() => setFilterOpen(false)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', marginStart: 4 }}>
                   <X size={16} color={DS.ink[700]} strokeWidth={2} />
                 </Pressable>
               </View>

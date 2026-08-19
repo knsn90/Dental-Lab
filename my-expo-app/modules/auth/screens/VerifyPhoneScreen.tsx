@@ -133,7 +133,7 @@ export function VerifyPhoneScreen() {
             flexDirection: 'row', alignItems: 'flex-start', gap: 10,
             backgroundColor: 'rgba(220,38,38,0.06)',
             borderRadius: 10, padding: 12, marginBottom: 14,
-            borderLeftWidth: 3, borderLeftColor: AUTH.danger,
+            borderStartWidth: 3, borderStartColor: AUTH.danger,
           }}>
             <AlertCircle size={14} color={AUTH.danger} strokeWidth={2} style={{ marginTop: 1 }} />
             <Text style={{ flex: 1, fontFamily: AUTH_FONT.sans, fontSize: 12.5, color: AUTH.danger, lineHeight: 18 }}>

@@ -1,4 +1,5 @@
-import { localeTag } from '../../../core/i18n';
+import { localeTag, isRTL } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 /**
  * ProfileScreen — Patterns Design Language
  * ─────────────────────────────────────────
@@ -19,7 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import {
   Camera, Edit2, Mail, Phone, Lock, Bell, User,
-  Calendar, LogOut, ChevronRight, ChevronUp, Eye, EyeOff, X,
+  Calendar, LogOut, ChevronRight, ChevronLeft, ChevronUp, Eye, EyeOff, X,
   Building2, MapPin, Receipt, CreditCard,
 } from 'lucide-react-native';
 import { toast } from '../../../core/ui/Toast';
@@ -400,9 +401,9 @@ export function ProfileScreen() {
   // (DoctorProfileMobile ile aynı desen.) Native'de Alert.alert korunur.
   const handleSignOut = () => {
     if (Platform.OS === 'web') { setSignOutOpen(true); return; }
-    Alert.alert('Çıkış Yap', 'Hesabınızdan çıkmak istediğinizden emin misiniz?', [
-      { text: 'İptal', style: 'cancel' },
-      { text: 'Çıkış Yap', style: 'destructive', onPress: signOut },
+    Alert.alert(autoT('Çıkış Yap'), autoT('Hesabınızdan çıkmak istediğinizden emin misiniz?'), [
+      { text: autoT('İptal'), style: 'cancel' },
+      { text: autoT('Çıkış Yap'), style: 'destructive', onPress: signOut },
     ]);
   };
 
@@ -556,7 +557,7 @@ export function ProfileScreen() {
                     </View>
                   )}
                   <View style={{
-                    position: 'absolute', bottom: -4, right: -4,
+                    position: 'absolute', bottom: -4, end: -4,
                     width: 22, height: 22, borderRadius: 11,
                     backgroundColor: accent, alignItems: 'center', justifyContent: 'center',
                     borderWidth: 2, borderColor: '#FFFFFF',
@@ -603,7 +604,7 @@ export function ProfileScreen() {
                   </View>
                 )}
                 <View style={{
-                  position: 'absolute', bottom: -4, right: -4,
+                  position: 'absolute', bottom: -4, end: -4,
                   width: 22, height: 22, borderRadius: 11,
                   backgroundColor: accent, alignItems: 'center', justifyContent: 'center',
                   borderWidth: 2, borderColor: '#FFFFFF',
@@ -652,7 +653,7 @@ export function ProfileScreen() {
 
               {/* E-posta */}
               <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}>
-                <Mail size={14} color="#9A9A9A" strokeWidth={1.8} style={{ marginRight: 10 }} />
+                <Mail size={14} color="#9A9A9A" strokeWidth={1.8} style={{ marginEnd: 10 }} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 11, fontWeight: '500', color: '#9A9A9A', marginBottom: 2 }}>E-posta</Text>
                   <Text style={{ fontSize: 14, color: '#3C3C3C' }} numberOfLines={1}>{profile?.email ?? '—'}</Text>
@@ -685,7 +686,7 @@ export function ProfileScreen() {
 
               {/* Telefon */}
               <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}>
-                <Phone size={14} color="#9A9A9A" strokeWidth={1.8} style={{ marginRight: 10 }} />
+                <Phone size={14} color="#9A9A9A" strokeWidth={1.8} style={{ marginEnd: 10 }} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 11, fontWeight: '500', color: '#9A9A9A', marginBottom: 2 }}>Telefon</Text>
                   <Text style={{ fontSize: 14, color: profile?.phone ? '#3C3C3C' : '#C0C0C8' }}>
@@ -713,7 +714,7 @@ export function ProfileScreen() {
                 <Text style={{ fontSize: 14, fontWeight: '500', color: '#3C3C3C', flex: 1 }}>Şifre Değiştir</Text>
                 {showPassSection
                   ? <ChevronUp size={16} color="#9A9A9A" strokeWidth={1.8} />
-                  : <ChevronRight size={16} color="#9A9A9A" strokeWidth={1.8} />}
+                  : isRTL() ? <ChevronLeft size={16} color="#9A9A9A" strokeWidth={1.8} /> : <ChevronRight size={16} color="#9A9A9A" strokeWidth={1.8} />}
               </Pressable>
 
               {showPassSection && (

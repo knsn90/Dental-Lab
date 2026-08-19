@@ -11,6 +11,9 @@
  *   - Footer: Copyright sol · Page right
  */
 
+import { autoT } from '../i18n/autoTranslate';
+import { htmlAttrs, printLocale } from '../i18n/printLocale';
+
 export interface CariLine {
   /** Belge no / referans (T_ID) */
   refNo?: string | null;
@@ -69,6 +72,41 @@ export interface CariStatementInput {
   lines: CariLine[];
   /** Footer copyright metni (default: lab.name + yıl) */
   copyright?: string;
+  /**
+   * Belge cari hesap DEĞİLSE (ör. personel hesap dökümü) borç/alacak dili
+   * yanıltıcı olur — lab çalışana "borçlu" değildir, ödemiştir. Bu alanlar
+   * verilmezse klinik/tedarikçi ekstresi olduğu gibi kalır.
+   */
+  labels?: {
+    opening?: string;
+    debit?:   string;
+    credit?:  string;
+    closing?: string;
+    /** Kapanış altındaki açıklama; boş string verilirse hiç yazılmaz. */
+    closingHint?: string;
+  };
+  /** 'ledger' (varsayılan) = pozitif bakiye kırmızı/borç · 'neutral' = nötr ink */
+  balanceTone?: 'ledger' | 'neutral';
+  /** Borç/Alacak (B/A) rozetlerini ve alt lejantı gizle */
+  hideBaBadges?: boolean;
+  /**
+   * Marka çubuğunun rengi. Verilmezse koyu mürekkep (ink-900) kullanılır.
+   * Panel accent'i geçilirken dikkat: lab paneli safran (#F5C24B) ve üzerine
+   * beyaz metin okunmaz — açık tonlarda koyu metin gerekir.
+   */
+  accentColor?: string;
+}
+
+/** Bir hex rengin üzerine beyaz mı siyah mı metin geleceğini luminance ile seçer. */
+function readableOn(hex: string): string {
+  const h = hex.replace('#', '');
+  const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+  const r = parseInt(full.slice(0, 2), 16) / 255;
+  const g = parseInt(full.slice(2, 4), 16) / 255;
+  const b = parseInt(full.slice(4, 6), 16) / 255;
+  const lin = (c: number) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+  const lum = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  return lum > 0.45 ? '#0A0A0A' : '#FFFFFF';
 }
 
 function esc(v: unknown): string {
@@ -81,7 +119,7 @@ function esc(v: unknown): string {
 }
 
 function fmtMoney(n: number, currency: string, opts: { sign?: boolean } = {}): string {
-  const abs = Math.abs(n).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const abs = Math.abs(n).toLocaleString(printLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const sign = opts.sign ? (n > 0 ? '+ ' : n < 0 ? '− ' : '') : '';
   return `${sign}${abs} ${currency}`;
 }
@@ -89,13 +127,13 @@ function fmtMoney(n: number, currency: string, opts: { sign?: boolean } = {}): s
 function fmtDate(iso: string): string {
   if (!iso) return '—';
   const d = iso.includes('T') ? new Date(iso) : new Date(iso + 'T00:00:00');
-  return d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return d.toLocaleDateString(printLocale(), { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 function fmtDateLong(iso?: string | null): string {
   if (!iso) return '—';
   const d = iso.includes('T') ? new Date(iso) : new Date(iso + 'T00:00:00');
-  return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' });
+  return d.toLocaleDateString(printLocale(), { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 export function buildCariStatementHtml(input: CariStatementInput): string {
@@ -112,6 +150,11 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
           ? `${fmtDateLong(input.periodTo)} ve öncesi`
           : 'Tüm dönem';
 
+  const L = input.labels ?? {};
+  const neutralTone = input.balanceTone === 'neutral';
+  const hideBa = input.hideBaBadges === true;
+  const brandBg = input.accentColor ?? '#0A0A0A';
+  const brandFg = readableOn(brandBg);
   const addressLines = (input.holder.addressLines ?? []).filter(Boolean) as string[];
   const yearNow = new Date().getFullYear();
   const copyrightText = input.copyright ?? `© ${esc(input.lab.name)} ${yearNow}`;
@@ -124,14 +167,14 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
   const rowsHtml = input.lines
     .map((l) => {
       const isCredit = l.type === 'credit';
-      const borderColor = isCredit ? '#0F766E' : '#9C2E2E';
-      const moneyColor = isCredit ? '#0F766E' : '#9C2E2E';
+      const borderColor = isCredit ? '#2D9A6B' : '#D94B4B';
+      const moneyColor = isCredit ? '#2D9A6B' : '#D94B4B';
       const moneyText = fmtMoney(isCredit ? l.amount : -l.amount, l.currency || currency, { sign: true });
       const balText = fmtMoney(Math.abs(l.balance), l.currency || currency);
-      const baFlag = l.balance > 0.01 ? 'B' : l.balance < -0.01 ? 'A' : '—';
+      const baFlag = hideBa ? '' : (l.balance > 0.01 ? 'B' : l.balance < -0.01 ? 'A' : '—');
       return `<tr>
         <td class="t-id">
-          <div class="t-id-row"><span class="t-id-label">Belge No</span><strong>${esc(l.refNo ?? '—')}</strong></div>
+          <div class="t-id-row"><span class="t-id-label">${autoT('Belge No')}</span><strong>${esc(l.refNo ?? '—')}</strong></div>
           ${l.reference ? `<div class="ref-row"><span class="ref-tag">${esc(l.reference)}</span></div>` : ''}
         </td>
         <td class="date-cell" style="box-shadow:inset 3px 0 0 ${borderColor}">
@@ -152,9 +195,15 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
     .join('');
 
   return `<!DOCTYPE html>
-<html lang="tr">
+<html ${htmlAttrs()}>
 <head>
 <meta charset="utf-8">
+<!-- Pop-up penceresi uygulamanın CSS'ini miras almaz; tasarım dilinin display
+     fontu (Inter Tight 300) burada ayrıca yüklenmeli. Font gelmezse Inter'e,
+     o da yoksa sistem fontuna düşer — belge yine okunur kalır. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@300;400;500&display=swap" rel="stylesheet">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(docTitle)} — ${esc(input.holder.name)}</title>
 <style>
@@ -162,25 +211,41 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
   * { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
     --ink-900: #0B1220;
-    --ink-700: #1F2937;
-    --ink-500: #4B5563;
-    --ink-400: #6B7280;
-    --ink-300: #9CA3AF;
-    --line:    #E5E7EB;
-    --line-2:  #F3F4F6;
+    /* DS ink skalasi (core/theme/dsTokens.ts) */
+    --ink-700: #2C2C2C;
+    --ink-500: #6B6B6B;
+    --ink-400: #9A9A9A;
+    --ink-300: #D4D4D4;
+    --line:    #EAEAEA;
+    --line-2:  #F5F5F5;
     --bg:      #F8F9FB;
     --paper:   #FFFFFF;
     --accent:  #0B1220;
-    --debit:   #9C2E2E;
-    --credit:  #0F766E;
+    --brand-bg: ${brandBg};
+    --brand-fg: ${brandFg};
+    --brand-meta: ${brandFg === '#FFFFFF' ? 'rgba(255,255,255,0.62)' : 'rgba(10,10,10,0.55)'};
+    --debit:   #D94B4B;
+    --credit:  #2D9A6B;
   }
   body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     background: var(--bg);
     color: var(--ink-900);
     font-size: 11px;
-    line-height: 1.5;
+    /* Apple tipografi: kucuk metinde leading genis, tracking hafif pozitif */
+    line-height: 1.55;
+    letter-spacing: 0.08px;
     -webkit-font-smoothing: antialiased;
+    font-optical-sizing: auto;
+  }
+
+  /* Tasarim dili: display baslıklar Inter Tight Light (300) + negatif tracking.
+     Tracking boyuta gore degisir — buyudukce daha negatif (Apple §15). */
+  .display {
+    font-family: 'Inter Tight', 'Inter', -apple-system, system-ui, sans-serif;
+    font-weight: 300;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
   }
 
   /* Pop-up toolbar */
@@ -209,14 +274,16 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
     margin: 64px auto 32px;
     background: var(--paper);
     padding: 0;
-    box-shadow: 0 1px 0 rgba(15,23,42,0.04), 0 12px 32px rgba(15,23,42,0.06);
+    border-radius: 18px;
+    overflow: hidden;
+    box-shadow: 0 1px 0 rgba(10,10,10,0.03), 0 12px 32px rgba(10,10,10,0.06);
     border: 1px solid var(--line);
   }
 
   /* ───── Brand bar (top, accent strip) ───── */
   .brand-bar {
-    background: var(--ink-900);
-    color: #FFFFFF;
+    background: var(--brand-bg);
+    color: var(--brand-fg);
     padding: 14px 36px;
     display: flex; justify-content: space-between; align-items: center;
   }
@@ -224,9 +291,17 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
     font-size: 13px; font-weight: 600; letter-spacing: 0.4px;
     text-transform: uppercase;
   }
-  .brand-name img { height: 22px; max-width: 200px; object-fit: contain; filter: brightness(0) invert(1); }
+  /* Logo KENDİ renkleriyle basılır. Önce brightness(0)+invert(1) ile tek renge
+     zorlanıyordu; çok renkli logolarda (lacivert işaret + gri yazı) her şey düz
+     beyaz siluete dönüp marka tanınmaz oluyordu. Bunun yerine logo beyaz bir
+     çipin üzerine oturur — böylece marka çubuğu hangi renk olursa olsun okunur. */
+  .brand-logo-chip {
+    display: inline-flex; align-items: center;
+    background: #FFFFFF; border-radius: 8px; padding: 5px 9px;
+  }
+  .brand-name img { height: 22px; max-width: 200px; object-fit: contain; display: block; }
   .brand-meta {
-    font-size: 10px; color: rgba(255,255,255,0.6);
+    font-size: 10px; color: var(--brand-meta);
     letter-spacing: 0.4px; text-transform: uppercase;
   }
 
@@ -242,11 +317,12 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
     margin-bottom: 6px;
   }
   .doc-title-main {
-    font-size: 22px; font-weight: 600; letter-spacing: -0.6px;
+    font-family: 'Inter Tight', 'Inter', -apple-system, system-ui, sans-serif;
+    font-size: 26px; font-weight: 300; letter-spacing: -0.6px; line-height: 1.15;
     color: var(--ink-900); line-height: 1.2;
   }
   .doc-meta {
-    text-align: right;
+    text-align: end;
     font-size: 10px; color: var(--ink-400); line-height: 1.6;
   }
   .doc-meta .lbl {
@@ -262,11 +338,11 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
   }
   .info-col {
     padding: 22px 24px;
-    border-right: 1px solid var(--line);
+    border-inline-end: 1px solid var(--line);
   }
-  .info-col:last-child { border-right: none; }
-  .info-col:first-child { padding-left: 36px; }
-  .info-col:last-child  { padding-right: 36px; }
+  .info-col:last-child { border-inline-end: none; }
+  .info-col:first-child { padding-inline-start: 36px; }
+  .info-col:last-child  { padding-inline-end: 36px; }
 
   .info-eyebrow {
     font-size: 9px; font-weight: 700; letter-spacing: 1.2px;
@@ -297,13 +373,13 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
   table { width: 100%; border-collapse: collapse; margin-top: 4px; }
 
   thead th {
-    text-align: left;
+    text-align: start;
     font-size: 9px; font-weight: 700; color: var(--ink-500);
     letter-spacing: 1.2px; text-transform: uppercase;
     padding: 18px 12px 10px;
     border-bottom: 2px solid var(--ink-900);
   }
-  thead th.num { text-align: right; }
+  thead th.num { text-align: end; }
   thead th .pos { color: var(--credit); }
   thead th .neg { color: var(--debit); }
 
@@ -315,7 +391,7 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
   }
   tbody tr:last-child td { border-bottom: 1px solid var(--line); }
 
-  td.t-id { width: 220px; padding-right: 16px; }
+  td.t-id { width: 220px; padding-inline-end: 16px; }
   .t-id-row {
     display: flex; gap: 10px; align-items: baseline;
     font-size: 11px; color: var(--ink-900); margin-bottom: 4px;
@@ -335,7 +411,7 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
   }
 
   td.date-cell {
-    width: 100px; padding-left: 14px;
+    width: 100px; padding-inline-start: 14px;
     font-size: 11px; color: var(--ink-700);
   }
   .date-text { font-weight: 600; color: var(--ink-900); font-variant-numeric: tabular-nums; }
@@ -350,13 +426,13 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
   }
 
   td.money-cell {
-    width: 140px; text-align: right;
+    width: 140px; text-align: end;
     font-variant-numeric: tabular-nums;
     font-weight: 600; font-size: 12px;
     letter-spacing: -0.1px;
   }
   td.balance-cell {
-    width: 140px; text-align: right;
+    width: 140px; text-align: end;
     font-variant-numeric: tabular-nums; color: var(--ink-900);
   }
   .balance-num { font-size: 12px; font-weight: 600; }
@@ -404,15 +480,17 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
 
 <div class="toolbar">
   <span class="title">${esc(docTitle)} · ${esc(input.holder.name)}</span>
-  <button class="btn-print" onclick="window.print()">Yazdır / PDF Kaydet</button>
-  <button class="btn-close" onclick="window.close()">Kapat</button>
+  <button class="btn-print" onclick="window.print()">${autoT('Yazdır / PDF Kaydet')}</button>
+  <button class="btn-close" onclick="window.close()">${autoT('Kapat')}</button>
 </div>
 
 <div class="page">
   <!-- Brand strip -->
   <div class="brand-bar">
     <div class="brand-name">
-      ${input.lab.logoUrl ? `<img src="${esc(input.lab.logoUrl)}" alt="" />` : esc(input.lab.name)}
+      ${input.lab.logoUrl
+        ? `<span class="brand-logo-chip"><img src="${esc(input.lab.logoUrl)}" alt="${esc(input.lab.name)}" /></span>`
+        : esc(input.lab.name)}
     </div>
     <div class="brand-meta">${input.lab.taxNo ? `VKN ${esc(input.lab.taxNo)}` : ''}</div>
   </div>
@@ -424,10 +502,10 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
       <div class="doc-title-main">${esc(input.holder.name)}</div>
     </div>
     <div class="doc-meta">
-      <div class="lbl">Dönem</div>
+      <div class="lbl">${autoT('Dönem')}</div>
       <div class="val">${esc(period)}</div>
-      <div class="lbl" style="margin-top:8px">Düzenlenme</div>
-      <div class="val">${new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
+      <div class="lbl" style="margin-top:8px">${autoT('Düzenlenme')}</div>
+      <div class="val">${new Date().toLocaleDateString(printLocale(), { day: '2-digit', month: 'long', year: 'numeric' })}</div>
     </div>
   </div>
 
@@ -445,18 +523,18 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
     </div>
 
     <div class="info-col">
-      <div class="info-eyebrow">Hesap Özeti</div>
-      <div class="kv-row"><span class="kv-label">Açılış Bakiyesi</span><span class="kv-value">${fmtMoney(opening, currency)}</span></div>
-      <div class="kv-row"><span class="kv-label">Toplam Borç</span><span class="kv-value debit">${fmtMoney(totalDebit, currency)}</span></div>
-      <div class="kv-row"><span class="kv-label">Toplam Alacak</span><span class="kv-value credit">${fmtMoney(totalCredit, currency)}</span></div>
+      <div class="info-eyebrow">${autoT('Hesap Özeti')}</div>
+      <div class="kv-row"><span class="kv-label">${esc(L.opening ?? 'Açılış Bakiyesi')}</span><span class="kv-value">${fmtMoney(opening, currency)}</span></div>
+      <div class="kv-row"><span class="kv-label">${esc(L.debit ?? 'Toplam Borç')}</span><span class="kv-value debit">${fmtMoney(totalDebit, currency)}</span></div>
+      <div class="kv-row"><span class="kv-label">${esc(L.credit ?? 'Toplam Alacak')}</span><span class="kv-value credit">${fmtMoney(totalCredit, currency)}</span></div>
       <div class="kv-row"><span class="kv-label">Hareket</span><span class="kv-value">${input.lines.length}</span></div>
     </div>
 
     <div class="info-col">
-      <div class="info-eyebrow">Kapanış Bakiyesi</div>
-      <div class="kv-value lg ${closing > 0.01 ? 'debit' : closing < -0.01 ? 'credit' : ''}" style="font-size:22px; letter-spacing:-0.4px;">${fmtMoney(Math.abs(closing), currency)}</div>
+      <div class="info-eyebrow">${esc(L.closing ?? 'Kapanış Bakiyesi')}</div>
+      <div class="kv-value lg ${neutralTone ? '' : (closing > 0.01 ? 'debit' : closing < -0.01 ? 'credit' : '')}" style="font-family:'Inter Tight','Inter',system-ui,sans-serif; font-weight:300; font-size:30px; letter-spacing:-0.9px; line-height:1.1;">${fmtMoney(Math.abs(closing), currency)}</div>
       <div class="muted-line" style="margin-top:4px">
-        ${closing > 0.01 ? 'Borç bakiyesi (B)' : closing < -0.01 ? 'Alacak bakiyesi (A)' : 'Hesap eşit'}
+        ${L.closingHint !== undefined ? esc(L.closingHint) : (closing > 0.01 ? autoT('Borç bakiyesi (B)') : closing < -0.01 ? autoT('Alacak bakiyesi (A)') : autoT('Hesap eşit'))}
       </div>
       <div class="muted-line" style="margin-top:10px"><strong style="color:var(--ink-700)">Para Birimi</strong> ${esc(currency)}</div>
     </div>
@@ -467,15 +545,15 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
     <table>
       <thead>
         <tr>
-          <th>Belge / Referans</th>
-          <th>Tarih</th>
-          <th>Karşı Taraf</th>
-          <th class="num">Tutar <span class="pos">(+)</span> <span class="neg">(−)</span></th>
-          <th class="num">Bakiye</th>
+          <th>${autoT('Belge / Referans')}</th>
+          <th>${autoT('Tarih')}</th>
+          <th>${autoT('Karşı Taraf')}</th>
+          <th class="num">${autoT('Tutar')} <span class="pos">(+)</span> <span class="neg">(−)</span></th>
+          <th class="num">${autoT('Bakiye')}</th>
         </tr>
       </thead>
       <tbody>
-        ${rowsHtml || '<tr><td colspan="5" style="text-align:center;color:var(--ink-400);padding:40px;font-style:italic">Bu dönemde hareket bulunmuyor.</td></tr>'}
+        ${rowsHtml || `<tr><td colspan="5" style="text-align:center;color:var(--ink-400);padding:40px;font-style:italic">${autoT('Bu dönemde hareket bulunmuyor.')}</td></tr>`}
       </tbody>
     </table>
   </div>
@@ -483,26 +561,26 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
   <!-- Summary bar -->
   <div class="summary-bar">
     <div>
-      <div class="lbl">Toplam</div>
+      <div class="lbl">${autoT('Toplam')}</div>
       <div class="num" style="font-size:11px;font-weight:600;color:var(--ink-500);">${input.lines.length} hareket</div>
     </div>
     <div>
-      <div class="lbl">Toplam Borç</div>
+      <div class="lbl">${esc(L.debit ?? 'Toplam Borç')}</div>
       <div class="num debit">${fmtMoney(totalDebit, currency)}</div>
     </div>
     <div>
-      <div class="lbl">Toplam Alacak</div>
+      <div class="lbl">${esc(L.credit ?? 'Toplam Alacak')}</div>
       <div class="num credit">${fmtMoney(totalCredit, currency)}</div>
     </div>
     <div>
-      <div class="lbl">Kapanış Bakiyesi (${closingBa})</div>
+      <div class="lbl">${esc(L.closing ?? 'Kapanış Bakiyesi')}${hideBa ? '' : ` (${closingBa})`}</div>
       <div class="num ${closing > 0.01 ? 'debit' : closing < -0.01 ? 'credit' : ''}">${fmtMoney(Math.abs(closing), currency)}</div>
     </div>
   </div>
 
   <!-- Footer -->
   <div class="footer">
-    <div class="legend"><strong>B</strong> Borç bakiyesi · <strong>A</strong> Alacak bakiyesi</div>
+    <div class="legend">${hideBa ? '' : `<strong>B</strong> ${autoT('Borç bakiyesi')} · <strong>A</strong> ${autoT('Alacak bakiyesi')}`}</div>
     <div>${copyrightText} · Sayfa 1</div>
   </div>
 </div>

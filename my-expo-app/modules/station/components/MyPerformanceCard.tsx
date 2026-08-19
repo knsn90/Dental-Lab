@@ -4,11 +4,12 @@
 
 import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
-import { Gauge, ArrowRight } from 'lucide-react-native';
+import { Gauge, ArrowLeft, ArrowRight } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../../core/api/supabase';
 import { useAuthStore } from '../../../core/store/authStore';
 import { useStationTheme, hexA } from '../../../core/theme/stationPalette';
+import { isRTL } from '../../../core/i18n';
 
 interface PerfRow {
   total_stages: number | null;
@@ -58,6 +59,8 @@ export function MyPerformanceCard({ accentColor }: { accentColor?: string }) {
 
   const pct = row.approval_rate_pct ?? 0;
   const rc = rateColor(row.approval_rate_pct);
+  const rtl = isRTL();
+  const fillPct = `${Math.min(100, Math.max(0, pct))}%` as `${number}%`;
 
   const Stat = ({ label, value, color }: { label: string; value: string; color?: string }) => (
     <View style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 12, backgroundColor: hexA(accent, 0.07) }}>
@@ -88,7 +91,7 @@ export function MyPerformanceCard({ accentColor }: { accentColor?: string }) {
           }}
         >
           <Text style={{ fontSize: 10.5, color: accent, fontWeight: '600' }}>Detaylar</Text>
-          <ArrowRight size={11} color={accent} strokeWidth={2} />
+          {rtl ? <ArrowLeft size={11} color={accent} strokeWidth={2} /> : <ArrowRight size={11} color={accent} strokeWidth={2} />}
         </Pressable>
       </View>
 
@@ -101,12 +104,12 @@ export function MyPerformanceCard({ accentColor }: { accentColor?: string }) {
         <View style={{ position: 'relative', justifyContent: 'center' }}>
           {/* Ray */}
           <View style={{ height: 12, borderRadius: 999, backgroundColor: hexA(accent, 0.16), overflow: 'hidden' }}>
-            <View style={{ position: 'absolute', left: 0, top: 3, bottom: 3, width: `${Math.min(100, Math.max(0, pct))}%`, backgroundColor: accent, borderRadius: 999 }} />
+            <View style={{ position: 'absolute', ...(rtl ? { right: 0 } : { left: 0 }), top: 3, bottom: 3, width: fillPct, backgroundColor: accent, borderRadius: 999 }} />
           </View>
           {/* Knob — dolgu ucunda */}
           <View style={{
-            position: 'absolute', left: `${Math.min(100, Math.max(0, pct))}%`, top: '50%',
-            width: 18, height: 18, marginLeft: -9, marginTop: -9, borderRadius: 9,
+            position: 'absolute', ...(rtl ? { right: fillPct, marginRight: -9 } : { left: fillPct, marginLeft: -9 }), top: '50%',
+            width: 18, height: 18, marginTop: -9, borderRadius: 9,
             backgroundColor: accent,
             ...(Platform.OS === 'web' ? { boxShadow: `0 1px 3px rgba(0,0,0,0.15), 0 0 0 4px ${hexA(accent, 0.14)}` } as any : {}),
           }} />

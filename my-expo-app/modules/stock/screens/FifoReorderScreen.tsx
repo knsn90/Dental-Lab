@@ -24,12 +24,13 @@ import {
 import { useRouter, useSegments } from 'expo-router';
 import { safeBack } from '../../../core/util/safeBack';
 import {
-  AlertTriangle, ChevronLeft, Inbox, Layers, RefreshCw, Search,
+  AlertTriangle, ChevronLeft, ChevronRight, Inbox, Layers, RefreshCw, Search,
   ShoppingCart, TrendingDown, X,
 } from 'lucide-react-native';
 import { ResponsiveCanvas } from '../../../core/layout/ResponsiveCanvas';
 import { groupByCategory, CategoryHeaderRow } from '../categoryGroup';
 import { DS } from '../../../core/theme/dsTokens';
+import { isRTL } from '../../../core/i18n';
 import { toast } from '../../../core/ui/Toast';
 import {
   fetchFifoStock, fetchReorderSuggestions, fetchUncoveredCount,
@@ -196,7 +197,7 @@ export function FifoReorderScreen({ accentColor = DS.lab.primary, embedded = fal
             opacity: pressed ? 0.6 : 1, ...webCursor,
           })}
         >
-          <ChevronLeft size={16} color={DS.ink[700]} strokeWidth={1.8} />
+          {isRTL() ? <ChevronRight size={16} color={DS.ink[700]} strokeWidth={1.8} /> : <ChevronLeft size={16} color={DS.ink[700]} strokeWidth={1.8} />}
         </Pressable>
         <Text style={{
           fontSize: 11, fontWeight: '500', letterSpacing: 1.4,
@@ -364,7 +365,7 @@ export function FifoReorderScreen({ accentColor = DS.lab.primary, embedded = fal
               Ürün
             </Text>
             <Text style={{
-              width: 200, textAlign: 'right', fontSize: 10, fontWeight: '500',
+              width: 200, textAlign: 'end' as any, fontSize: 10, fontWeight: '500',
               letterSpacing: 1.2, textTransform: 'uppercase', color: DS.ink[400],
             }}>
               {tab === 'reorder' ? 'Tükeniş / Sipariş' : 'FIFO değeri'}
@@ -388,9 +389,9 @@ export function FifoReorderScreen({ accentColor = DS.lab.primary, embedded = fal
                     style={{
                       backgroundColor: hovered ? DS.ink[50] : '#FFF',
                       borderTopWidth: i === 0 ? 0 : 1, borderTopColor: DS.ink[100],
-                      borderLeftWidth: 2,
-                      borderLeftColor: soon ? tint(DS.lab.danger, 0.55) : 'transparent',
-                      paddingLeft: 18, paddingRight: 20, paddingVertical: 13,
+                      borderStartWidth: 2,
+                      borderStartColor: soon ? tint(DS.lab.danger, 0.55) : 'transparent',
+                      paddingStart: 18, paddingEnd: 20, paddingVertical: 13,
                     }}
                   >
                     <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 14 }}>

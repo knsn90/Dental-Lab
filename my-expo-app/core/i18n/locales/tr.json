@@ -659,6 +659,7 @@
       "recordCount": "kayıt",
       "emptyAll": "Henüz kullanıcı yok",
       "emptyFiltered": "eklenmedi",
+      "emptyFilteredFmt": "Henüz {{role}} eklenmedi",
       "emptyDesc": "Hekim, sekreter veya yedek yönetici ekleyerek kliniğinizi büyütün — her rol için ayrı yetki şablonu hazır.",
       "addFirst": "İlk kullanıcıyı ekle",
       "modal": {

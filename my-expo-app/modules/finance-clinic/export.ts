@@ -14,6 +14,8 @@ import { baseSymbol, getBaseCurrency } from '../../core/money/baseCurrency';
 import { rateToBase } from '../../core/money/rateCache';
 import { CURRENCY_META, type Currency } from '../../core/money/currency';
 
+import { autoT } from '../../core/i18n/autoTranslate';
+import { htmlAttrs, printLocale } from '../../core/i18n/printLocale';
 /** Satırın kendi para birimi sembolü (debit/credit çevirisiz gösterilir). */
 const sym = (cur?: string | null): string =>
   CURRENCY_META[(cur || getBaseCurrency()) as Currency]?.symbol ?? (cur || baseSymbol());
@@ -28,19 +30,19 @@ export type ExportContext = {
 };
 
 const fmtMoney = (n: number): string =>
-  (Number(n) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  (Number(n) || 0).toLocaleString(printLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const fmtDateTR = (iso: string | null | undefined): string => {
   if (!iso) return '—';
   try {
     const d = iso.includes('T') ? new Date(iso) : new Date(iso + 'T00:00:00');
-    return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' });
+    return d.toLocaleDateString(printLocale(), { day: '2-digit', month: 'short', year: 'numeric' });
   } catch { return '—'; }
 };
 
 const fmtDateTime = (d: Date) =>
-  d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' }) +
-  ' · ' + d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  d.toLocaleDateString(printLocale(), { day: '2-digit', month: 'long', year: 'numeric' }) +
+  ' · ' + d.toLocaleTimeString(printLocale(), { hour: '2-digit', minute: '2-digit' });
 
 /* ────────────────────────────────────────────────────────────────────── */
 /*  Ortak HTML şablonu — hem Excel hem PDF için kullanılır                */
@@ -72,7 +74,9 @@ function buildHtml(
         </td>
         <td class="cell-desc">
           <div class="desc-main">${escapeHtml(l.description)}</div>
-          ${l.doctor_name ? `<div class="desc-sub">${escapeHtml(l.doctor_name)}</div>` : ''}
+          ${(l.doctor_name || l.patient_name)
+            ? `<div class="desc-sub">${escapeHtml([l.doctor_name, l.patient_name, l.order_no].filter(Boolean).join(' · '))}</div>`
+            : ''}
         </td>
         <td class="cell-no">${escapeHtml(l.invoice_no ?? '')}</td>
         <td class="cell-debit">${l.debit > 0 ? fmtMoney(l.debit) + ' ' + sym(l.currency) : ''}</td>
@@ -136,10 +140,10 @@ function buildHtml(
       letter-spacing: 0.6px;
       font-weight: 700;
       padding: 10px 8px;
-      text-align: left;
+      text-align: start;
       border-bottom: 2px solid #CBD5E1;
     }
-    thead th.col-num { text-align: right; }
+    thead th.col-num { text-align: end; }
     tbody td { padding: 10px 8px; border-bottom: 1px solid #F1F5F9; vertical-align: top; }
     tbody tr:nth-child(even) { background: ${isExcel ? '#FAFBFC' : 'transparent'}; }
 
@@ -149,7 +153,7 @@ function buildHtml(
     .cell-desc { font-size: 12px; color: #1F2937; }
     .desc-main { font-weight: 500; }
     .desc-sub { font-size: 10px; color: #6B7280; margin-top: 2px; }
-    .cell-debit, .cell-credit, .cell-balance { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .cell-debit, .cell-credit, .cell-balance { text-align: end; white-space: nowrap; font-variant-numeric: tabular-nums; }
     .cell-debit { color: #0A0A0A; font-weight: 500; }
     .cell-credit { color: #1F6B47; font-weight: 600; }
     .cell-balance { font-weight: 600; }
@@ -175,7 +179,7 @@ function buildHtml(
     tfoot tr.totals-row { background: #F1F5F9; }
     tfoot tr.totals-row td { font-weight: 700; font-size: 12px; border-top: 1px solid #CBD5E1; }
     tfoot tr.closing-row td { font-size: 13px; font-weight: 700; border-top: 2px solid #0A0A0A; border-bottom: 2px solid #0A0A0A; padding-top: 12px; padding-bottom: 12px; background: #FFF7ED; }
-    tfoot td.label-cell { text-align: right; padding-right: 14px; }
+    tfoot td.label-cell { text-align: end; padding-inline-end: 14px; }
 
     .footer { margin-top: 28px; padding-top: 14px; border-top: 1px solid #E5E7EB; font-size: 10px; color: #9CA3AF; text-align: center; }
 
@@ -187,12 +191,12 @@ function buildHtml(
     }
   `;
 
-  const labLine     = ctx.labName     ? `<div class="meta-item"><div class="meta-label">Tedarikçi</div><div class="meta-value">${escapeHtml(ctx.labName)}</div></div>` : '';
-  const clinicLine  = ctx.clinicName  ? `<div class="meta-item"><div class="meta-label">Müşteri</div><div class="meta-value">${escapeHtml(ctx.clinicName)}</div></div>` : '';
+  const labLine     = ctx.labName     ? `<div class="meta-item"><div class="meta-label">${autoT('Tedarikçi')}</div><div class="meta-value">${escapeHtml(ctx.labName)}</div></div>` : '';
+  const clinicLine  = ctx.clinicName  ? `<div class="meta-item"><div class="meta-label">${autoT('Müşteri')}</div><div class="meta-value">${escapeHtml(ctx.clinicName)}</div></div>` : '';
 
   const html = `
 <!doctype html>
-<html lang="tr">
+<html ${htmlAttrs()}>
 <head>
   <meta charset="utf-8" />
   <title>Cari Ekstre · ${escapeHtml(ctx.rangeLabel)}</title>
@@ -210,29 +214,29 @@ function buildHtml(
     <div class="meta-grid">
       ${labLine}
       ${clinicLine}
-      <div class="meta-item"><div class="meta-label">Hekim</div><div class="meta-value">${escapeHtml(ctx.doctorLabel)}</div></div>
-      <div class="meta-item"><div class="meta-label">Hareket Türü</div><div class="meta-value">${escapeHtml(ctx.kindLabel)}</div></div>
-      <div class="meta-item"><div class="meta-label">Dönem</div><div class="meta-value">${escapeHtml(ctx.rangeLabel)}</div></div>
-      <div class="meta-item"><div class="meta-label">Rapor Tarihi</div><div class="meta-value">${escapeHtml(fmtDateTime(ctx.generatedAt))}</div></div>
+      <div class="meta-item"><div class="meta-label">${autoT('Hekim')}</div><div class="meta-value">${escapeHtml(ctx.doctorLabel)}</div></div>
+      <div class="meta-item"><div class="meta-label">${autoT('Hareket Türü')}</div><div class="meta-value">${escapeHtml(ctx.kindLabel)}</div></div>
+      <div class="meta-item"><div class="meta-label">${autoT('Dönem')}</div><div class="meta-value">${escapeHtml(ctx.rangeLabel)}</div></div>
+      <div class="meta-item"><div class="meta-label">${autoT('Rapor Tarihi')}</div><div class="meta-value">${escapeHtml(fmtDateTime(ctx.generatedAt))}</div></div>
     </div>
 
     <div class="kpi-grid">
-      <div class="kpi"><div class="kpi-label">Açılış Bakiye</div><div class="kpi-value">${fmtMoney(opening)} ${B}</div></div>
-      <div class="kpi kpi-debit"><div class="kpi-label">Toplam Borç</div><div class="kpi-value">${fmtMoney(totalDebit)} ${B}</div></div>
-      <div class="kpi kpi-credit"><div class="kpi-label">Toplam Alacak</div><div class="kpi-value">${fmtMoney(totalCredit)} ${B}</div></div>
-      <div class="kpi kpi-balance"><div class="kpi-label">Güncel Bakiye</div><div class="kpi-value">${fmtMoney(closing)} ${B}</div></div>
+      <div class="kpi"><div class="kpi-label">${autoT('Açılış Bakiye')}</div><div class="kpi-value">${fmtMoney(opening)} ${B}</div></div>
+      <div class="kpi kpi-debit"><div class="kpi-label">${autoT('Toplam Borç')}</div><div class="kpi-value">${fmtMoney(totalDebit)} ${B}</div></div>
+      <div class="kpi kpi-credit"><div class="kpi-label">${autoT('Toplam Alacak')}</div><div class="kpi-value">${fmtMoney(totalCredit)} ${B}</div></div>
+      <div class="kpi kpi-balance"><div class="kpi-label">${autoT('Güncel Bakiye')}</div><div class="kpi-value">${fmtMoney(closing)} ${B}</div></div>
     </div>
 
     <table>
       <thead>
         <tr>
-          <th>Tarih</th>
-          <th>Tür</th>
-          <th>Açıklama</th>
-          <th>Fatura No</th>
-          <th class="col-num">Borç</th>
+          <th>${autoT('Tarih')}</th>
+          <th>${autoT('Tür')}</th>
+          <th>${autoT('Açıklama')}</th>
+          <th>${autoT('Fatura No')}</th>
+          <th class="col-num">${autoT('Borç')}</th>
           <th class="col-num">Alacak</th>
-          <th class="col-num">Bakiye</th>
+          <th class="col-num">${autoT('Bakiye')}</th>
         </tr>
       </thead>
       <tbody>
@@ -240,7 +244,7 @@ function buildHtml(
       </tbody>
       <tfoot>
         <tr class="opening-row">
-          <td colspan="4" class="label-cell">Açılış Bakiye</td>
+          <td colspan="4" class="label-cell">${autoT('Açılış Bakiye')}</td>
           <td colspan="2"></td>
           <td class="cell-balance">${fmtMoney(opening)} ${B}</td>
         </tr>
@@ -251,7 +255,7 @@ function buildHtml(
           <td class="cell-balance">${fmtMoney(totalDebit - totalCredit)} ${B}</td>
         </tr>
         <tr class="closing-row">
-          <td colspan="4" class="label-cell">GÜNCEL BAKİYE</td>
+          <td colspan="4" class="label-cell">${autoT('GÜNCEL BAKİYE')}</td>
           <td colspan="2"></td>
           <td class="cell-balance">${fmtMoney(closing)} ${B}</td>
         </tr>

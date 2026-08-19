@@ -10,7 +10,7 @@
 import React, { useState } from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
 import {
-  Maximize2, RotateCcw, Box, ImageDown, Ruler, Scissors, Grid3x3, Layers, ScanLine, Magnet, Image as ImageIcon, Activity,
+  Maximize2, RotateCcw, Box, ImageDown, Ruler, Scissors, Grid3x3, Layers, ScanLine, Magnet, Image as ImageIcon, Activity, Waves,
 } from 'lucide-react-native';
 import { PRESETS, type CameraPreset } from '../lib/cameraPresets';
 import type { CutAxis } from '../types';
@@ -46,6 +46,9 @@ interface Props {
   /** Kapanış (oklüzyon) analizi aç/kapat */
   occlusionActive?: boolean;
   onToggleOcclusion?: () => void;
+  /** Yüzey dalgalanma analizi aç/kapat */
+  wavinessActive?: boolean;
+  onToggleWaviness?: () => void;
 }
 
 interface DockColors {
@@ -98,6 +101,7 @@ export function ViewerToolbar({
   autoAlign, onToggleAutoAlign,
   smileOpen, onToggleSmile,
   occlusionActive, onToggleOcclusion,
+  wavinessActive, onToggleWaviness,
 }: Props) {
   const [presetMenuOpen, setPresetMenuOpen] = useState(false);
   const [fovOpen, setFovOpen] = useState(false);
@@ -136,6 +140,13 @@ export function ViewerToolbar({
       label: occlusionActive ? 'Kapanış analizi açık' : 'Kapanış analizi',
       active: !!occlusionActive,
       onPress: onToggleOcclusion!,
+    }] : []),
+    ...(onToggleWaviness ? [{
+      kind: 'btn' as const,
+      icon: Waves,
+      label: wavinessActive ? 'Dalgalanma analizi açık' : 'Yüzey dalgalanması',
+      active: !!wavinessActive,
+      onPress: onToggleWaviness!,
     }] : []),
     { kind: 'gap' },
     // DISPLAY
@@ -180,7 +191,7 @@ export function ViewerToolbar({
   return (
     <>
       <View style={{
-        position: 'absolute', top: 14, right: 14,
+        position: 'absolute', top: 14, end: 14,
         backgroundColor: D.dockBg,
         borderRadius: 999,
         paddingVertical: 8, paddingHorizontal: 6,
@@ -339,7 +350,7 @@ function DockButton({ Icon, label, active, onPress, D }: {
         <View
           pointerEvents="none"
           style={{
-            position: 'absolute', right: 48, top: '50%' as any,
+            position: 'absolute', end: 48, top: '50%' as any,
             transform: [{ translateY: -13 }],
             backgroundColor: D.tooltipBg,
             paddingHorizontal: 12, paddingVertical: 6,
@@ -369,7 +380,7 @@ function PopCard({ D, top, width = 180, children }: {
 }) {
   return (
     <View style={{
-      position: 'absolute', right: 70, top,
+      position: 'absolute', end: 70, top,
       backgroundColor: D.popBg,
       borderRadius: 16, padding: 10,
       borderWidth: 1, borderColor: D.popBorder,

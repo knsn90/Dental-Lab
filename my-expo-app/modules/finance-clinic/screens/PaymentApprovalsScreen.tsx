@@ -154,6 +154,7 @@ export function PaymentApprovalsScreen() {
                         )}
                       </View>
                       <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 4 }}>
+                        {s.patient_name ? `${s.patient_name} · ` : ''}
                         Bildirim: {fmtDate(s.submitted_at.slice(0, 10))} · Ödeme tarihi: {fmtDate(s.payment_date)}
                       </Text>
                     </View>

@@ -4,8 +4,9 @@
 
 import React from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
-import { ChevronLeft } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
+import { isRTL } from '../../i18n';
 import { safeBack } from '../../util/safeBack';
 import { MOBILE_TOKENS } from '../../theme/mobileDesignTokens';
 
@@ -26,6 +27,8 @@ export function AppBar({
   showBack?: boolean;
 }) {
   const router = useRouter();
+  // Geri oku YÖN bildirir → RTL'de aynalanmalı (dir=rtl düzeni çevirir, ikon çizimini değil)
+  const BackIcon = isRTL() ? ChevronRight : ChevronLeft;
   return (
     <View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: big ? 8 : 6, backgroundColor: 'transparent' }}>
       {/* Top row — back / leading + trailing */}
@@ -37,7 +40,7 @@ export function AppBar({
                 onPress={() => safeBack()}
                 style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.05)' }}
               >
-                <ChevronLeft size={20} color={MOBILE_TOKENS.ink} strokeWidth={2} />
+                <BackIcon size={20} color={MOBILE_TOKENS.ink} strokeWidth={2} />
               </Pressable>
             )}
             {leading}

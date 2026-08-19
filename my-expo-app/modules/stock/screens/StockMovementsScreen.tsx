@@ -249,8 +249,8 @@ export function StockMovementsScreen({ accentColor = '#6366F1' }: { accentColor?
               position: 'relative',
               marginHorizontal: 12, marginTop: 4,
             }}>
-              <View style={{ position: 'absolute', top: -40, right: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
-              <View style={{ position: 'absolute', bottom: -50, left: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+              <View style={{ position: 'absolute', top: -40, end: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
+              <View style={{ position: 'absolute', bottom: -50, start: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
 
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
                 <View style={{ flex: 1, minWidth: 0 }}>
@@ -359,8 +359,8 @@ export function StockMovementsScreen({ accentColor = '#6366F1' }: { accentColor?
                 <Text style={[s.th, { flex: 0.5 }]}></Text>
                 <Text style={[s.th, { flex: 3 }]}>ÜRÜN</Text>
                 <Text style={[s.th, { flex: 1.2 }]}>İŞLEM</Text>
-                <Text style={[s.th, { flex: 1, textAlign: 'right' }]}>MİKTAR</Text>
-                <Text style={[s.th, { flex: 1.5, textAlign: 'right' }]}>SAAT</Text>
+                <Text style={[s.th, { flex: 1, textAlign: 'end' as any }]}>MİKTAR</Text>
+                <Text style={[s.th, { flex: 1.5, textAlign: 'end' as any }]}>SAAT</Text>
               </View>
             )}
           </View>
@@ -504,7 +504,7 @@ function DesktopRow({ m }: { m: Movement }) {
       </View>
 
       {/* Time */}
-      <Text style={[s.rowDate, { flex: 1.5, textAlign: 'right' }]}>
+      <Text style={[s.rowDate, { flex: 1.5, textAlign: 'end' as any }]}>
         {fmtTime(m.created_at)}
       </Text>
     </View>
@@ -695,7 +695,7 @@ const makeStyles = (T: ReturnType<typeof useMobileTokens>, isDark: boolean) => S
   cardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   cardTagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 },
   cardQty: { fontSize: 17, fontWeight: '700' },
-  cardTime: { fontSize: 11, color: T.ink3, marginTop: 8, textAlign: 'right' as const },
+  cardTime: { fontSize: 11, color: T.ink3, marginTop: 8, textAlign: 'end' as any },
 
   // Type pill
   typePill: {

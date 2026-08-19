@@ -227,7 +227,7 @@ export function PurchaseInvoicePreviewModal({
                 {/* ═══ ÜST BLOK — SATICI + e-FATURA başlık ═══ */}
                 <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
                   {/* Sol: satıcı (tedarikçi) bilgileri */}
-                  <View style={{ flex: 1, paddingRight: 16 }}>
+                  <View style={{ flex: 1, paddingEnd: 16 }}>
                     <Text style={{ ...SANS, fontSize: 11, fontWeight: '700', color: INK, marginBottom: 4 }}>
                       {(header?.supplier_name ?? '—').toUpperCase()}
                     </Text>
@@ -264,7 +264,7 @@ export function PurchaseInvoicePreviewModal({
                 {/* ═══ ORTA BLOK — SAYIN (alıcı) + belge meta tablosu ═══ */}
                 <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
                   {/* Sol: alıcı (lab) bilgileri */}
-                  <View style={{ flex: 1, paddingRight: 16 }}>
+                  <View style={{ flex: 1, paddingEnd: 16 }}>
                     <Text style={{ ...SANS, fontSize: 10, fontWeight: '700', color: INK, marginBottom: 2 }}>SAYIN</Text>
                     <Text style={{ ...SANS, fontSize: 11, fontWeight: '700', color: INK, marginBottom: 4 }}>
                       {labName}
@@ -475,7 +475,7 @@ function MetaRow({ label, value, last }: { label: string; value: string; last?: 
       borderBottomWidth: last ? 0 : 1,
       borderBottomColor: BORDER,
     }}>
-      <View style={{ width: 130, padding: 4, backgroundColor: LIGHT, borderRightWidth: 1, borderRightColor: BORDER }}>
+      <View style={{ width: 130, padding: 4, backgroundColor: LIGHT, borderEndWidth: 1, borderEndColor: BORDER }}>
         <Text style={{ ...SANS, fontSize: 10, fontWeight: '700', color: INK } as any}>{label}</Text>
       </View>
       <View style={{ flex: 1, padding: 4 }}>
@@ -495,8 +495,8 @@ function TH({ text, flex, w, align = 'center', last }: {
         ...(flex != null ? { flex } : {}),
         ...(w   != null ? { width: w } : {}),
         padding: 4,
-        borderRightWidth: last ? 0 : 1,
-        borderRightColor: BORDER,
+        borderEndWidth: last ? 0 : 1,
+        borderEndColor: BORDER,
         minHeight: 28,
         justifyContent: 'center',
       }}
@@ -524,8 +524,8 @@ function TD({ text, flex, w, align = 'center', last }: {
         ...(flex != null ? { flex } : {}),
         ...(w   != null ? { width: w } : {}),
         padding: 4,
-        borderRightWidth: last ? 0 : 1,
-        borderRightColor: BORDER,
+        borderEndWidth: last ? 0 : 1,
+        borderEndColor: BORDER,
         minHeight: 22,
         justifyContent: 'center',
       }}
@@ -551,19 +551,19 @@ function SumRow({ label, value, base, last, bold }: { label: string; value: stri
       borderBottomWidth: last ? 0 : 1,
       borderBottomColor: BORDER,
     }}>
-      <View style={{ flex: 1, padding: 6, borderRightWidth: 1, borderRightColor: BORDER }}>
-        <Text style={{ ...SANS, fontSize: 10, fontWeight: '700', color: INK, textAlign: 'right' } as any}>
+      <View style={{ flex: 1, padding: 6, borderEndWidth: 1, borderEndColor: BORDER }}>
+        <Text style={{ ...SANS, fontSize: 10, fontWeight: '700', color: INK, textAlign: 'end' as any } as any}>
           {label}
         </Text>
       </View>
-      <View style={{ width: 130, padding: 6, borderRightWidth: base ? 1 : 0, borderRightColor: BORDER }}>
-        <Text style={{ ...SANS, fontSize: bold ? 11 : 10, fontWeight: '700', color: INK, textAlign: 'right' } as any}>
+      <View style={{ width: 130, padding: 6, borderEndWidth: base ? 1 : 0, borderEndColor: BORDER }}>
+        <Text style={{ ...SANS, fontSize: bold ? 11 : 10, fontWeight: '700', color: INK, textAlign: 'end' as any } as any}>
           {value}
         </Text>
       </View>
       {base ? (
         <View style={{ width: 110, padding: 6 }}>
-          <Text style={{ ...SANS, fontSize: bold ? 11 : 10, fontWeight: '700', color: INK, textAlign: 'right' } as any}>
+          <Text style={{ ...SANS, fontSize: bold ? 11 : 10, fontWeight: '700', color: INK, textAlign: 'end' as any } as any}>
             {base}
           </Text>
         </View>

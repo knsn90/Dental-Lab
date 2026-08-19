@@ -3,17 +3,19 @@
 // Veriyi useOrderChatInbox'tan çeker (realtime); mesaj yoksa hiç render etmez.
 import React from 'react';
 import { View, Text, Pressable, Image } from 'react-native';
-import { MessageCircle, ChevronRight } from 'lucide-react-native';
+import { MessageCircle, ChevronRight, ChevronLeft } from 'lucide-react-native';
+import { isRTL } from '../../i18n';
+import { autoT } from '../../i18n/autoTranslate';
 import { useMobileTokens } from '../../theme/mobileDesignTokens';
 import { useOrderChatInbox } from '../../../modules/orders/hooks/useOrderChatInbox';
 
 function relTime(iso: string | null): string {
   if (!iso) return '';
   const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (diff < 60) return 'şimdi';
-  if (diff < 3600) return `${Math.floor(diff / 60)} dk`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)} sa`;
-  return `${Math.floor(diff / 86400)} g`;
+  if (diff < 60) return autoT('şimdi');
+  if (diff < 3600) return `${Math.floor(diff / 60)} ${autoT('dk')}`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} ${autoT('sa')}`;
+  return `${Math.floor(diff / 86400)} ${autoT('g')}`;
 }
 
 /** Accent'i siyaha doğru karıştırır. Başlık metni için şart: lab safranı (#F5C24B)
@@ -49,6 +51,9 @@ export function UnreadMessagesCard({
   showClinicLogo?: boolean;
 }) {
   const T = useMobileTokens();
+  const rtl = isRTL();
+  // Kart başlığındaki chevron yön bildirir → RTL'de aynalanır
+  const Chevron = rtl ? ChevronLeft : ChevronRight;
   const { items, totalUnread } = useOrderChatInbox();
 
   if (!items || items.length === 0) return null;
@@ -86,19 +91,19 @@ export function UnreadMessagesCard({
           <View style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
             <MessageCircle size={16} color={accent} strokeWidth={2.2} />
           </View>
-          <Text style={{ fontSize: 13, fontWeight: '700', color: headerInk, letterSpacing: 0.2 }}>Mesajlar</Text>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: headerInk, letterSpacing: 0.2 }}>{autoT('Mesajlar')}</Text>
           {totalUnread > 0 && (
             <View style={{ minWidth: 20, height: 20, paddingHorizontal: 6, borderRadius: 10, backgroundColor: accent, alignItems: 'center', justifyContent: 'center' }}>
               <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>{totalUnread > 99 ? '99+' : totalUnread}</Text>
             </View>
           )}
           <View style={{ flex: 1 }} />
-          <ChevronRight size={18} color={headerInk} strokeWidth={2} />
+          <Chevron size={18} color={headerInk} strokeWidth={2} />
         </Pressable>
 
         {/* Konuşmalar */}
         {top.map((it, i) => {
-          const title = it.patient_name || it.order_number || 'Sipariş';
+          const title = it.patient_name || it.order_number || autoT('Sipariş');
           const unread = it.unread_for_me > 0;
           // Eski localStorage cache'inde clinic_logo alanı yok → undefined → baş harf
           const logo = showClinicLogo ? (it.clinic_logo || null) : null;
@@ -131,11 +136,12 @@ export function UnreadMessagesCard({
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={{ fontSize: 13, fontWeight: unread ? '700' : '600', color: T.ink, flex: 1 }} numberOfLines={1}>{title}</Text>
+                  {/* Hasta adı / sipariş no Latin olabilir → dir="auto" LTR seçer; RTL'de sabitle */}
+                  <Text style={{ fontSize: 13, fontWeight: unread ? '700' : '600', color: T.ink, flex: 1, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{title}</Text>
                   <Text style={{ fontSize: 10.5, color: T.ink3 }}>{relTime(it.last_created_at)}</Text>
                 </View>
                 <Text style={{ fontSize: 12, color: unread ? T.ink2 : T.ink3, marginTop: 1 }} numberOfLines={1}>
-                  {it.last_attachment_type ? '📎 Ek' : (it.last_content || '—')}
+                  {it.last_attachment_type ? `📎 ${autoT('Ek')}` : (it.last_content || '—')}
                 </Text>
               </View>
               {unread && (

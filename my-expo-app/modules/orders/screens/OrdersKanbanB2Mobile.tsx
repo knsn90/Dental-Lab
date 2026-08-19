@@ -9,7 +9,8 @@ import {
   View, Text, ScrollView, Pressable, TextInput,
   RefreshControl, StyleSheet, Modal, Image,
 } from 'react-native';
-import { Search, X, SlidersHorizontal, Hash, CalendarDays, Clock, CornerDownRight } from 'lucide-react-native';
+import { Search, X, SlidersHorizontal, Hash, CalendarDays, Clock, CornerDownRight, CornerDownLeft } from 'lucide-react-native';
+import { isRTL } from '../../../core/i18n';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSegments } from 'expo-router';
 import { DS } from '../../../core/theme/dsTokens';
@@ -430,14 +431,14 @@ function ListView({
               onPress={() => onOpenOrder(h)}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 8,
-                marginLeft: 22, marginTop: 6,
+                marginStart: 22, marginTop: 6,
                 paddingHorizontal: 12, paddingVertical: 9,
                 borderRadius: 12,
                 backgroundColor: `${dot}0D`,
                 borderWidth: 1, borderColor: `${dot}1F`,
               }}
             >
-              <CornerDownRight size={13} color={T.ink3} strokeWidth={2} />
+              {isRTL() ? <CornerDownLeft size={13} color={T.ink3} strokeWidth={2} /> : <CornerDownRight size={13} color={T.ink3} strokeWidth={2} />}
               <Text style={[styles.histMetaText, { flex: 1 }]} numberOfLines={1}>#{hNo}</Text>
               <Text style={[styles.histMetaText, { color: hDone ? '#2D9A6B' : T.ink2 }]} numberOfLines={1}>
                 {hDone ? 'Teslim edildi' : 'Önceki'}
@@ -482,7 +483,7 @@ function LaneCard({ order, onPress }: { order: WorkOrder; onPress: () => void })
 
   return (
     <Pressable onPress={onPress} style={styles.card}>
-      <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, width: 80, height: 80 }}>
+      <View pointerEvents="none" style={{ position: 'absolute', top: 0, end: 0, width: 80, height: 80 }}>
         <Svg width="100%" height="100%">
           <Defs>
             <RadialGradient id={`lc-${orderNum}`} cx="100%" cy="0%" rx="100%" ry="100%" fx="100%" fy="0%">
@@ -595,7 +596,7 @@ const makeStyles = (T: any, isDark: boolean, accent: string) => StyleSheet.creat
   },
   filterDot: {
     position: 'absolute',
-    top: 7, right: 7,
+    top: 7, end: 7,
     width: 6, height: 6, borderRadius: 3,
   },
 
@@ -669,7 +670,7 @@ const makeStyles = (T: any, isDark: boolean, accent: string) => StyleSheet.creat
     fontFamily: MFONT.uiRegular,
     fontSize: 11,
     color: T.ink3,
-    marginLeft: -2,
+    marginStart: -2,
   },
 
   // ── Kart tarzı (teknisyen geçmiş sayfası ile aynı) ──
@@ -677,8 +678,8 @@ const makeStyles = (T: any, isDark: boolean, accent: string) => StyleSheet.creat
     backgroundColor: T.card,
     borderRadius: 18,
     paddingVertical: 14,
-    paddingLeft: 18,
-    paddingRight: 14,
+    paddingStart: 18,
+    paddingEnd: 14,
     gap: 11,
     borderWidth: 1,
     borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)',
@@ -695,10 +696,10 @@ const makeStyles = (T: any, isDark: boolean, accent: string) => StyleSheet.creat
   },
   histAccent: {
     position: 'absolute',
-    left: 0, top: 0, bottom: 0,
+    start: 0, top: 0, bottom: 0,
     width: 4,
-    borderTopLeftRadius: 18,
-    borderBottomLeftRadius: 18,
+    borderTopStartRadius: 18,
+    borderBottomStartRadius: 18,
   },
   histAvatar: {
     width: 40, height: 40, borderRadius: 13,

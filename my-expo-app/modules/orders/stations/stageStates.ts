@@ -5,6 +5,7 @@
 //                         bloklu, yeniden
 
 import type { LucideIcon } from 'lucide-react-native';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import {
   Clock, Play, Pause, Check, ShieldCheck, AlertOctagon, Cog, Hourglass, RotateCcw, SkipForward,
 } from 'lucide-react-native';
@@ -105,7 +106,7 @@ export function formatDuration(seconds: number): string {
   if (seconds < 86400) {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
-    return m > 0 ? `${h}s ${m}dk` : `${h} saat`;
+    return m > 0 ? `${h}${autoT('s')} ${m}${autoT('dk')}` : `${h} saat`;
   }
-  return `${Math.floor(seconds / 86400)} gün`;
+  return `${Math.floor(seconds / 86400)} ${autoT('gün')}`;
 }

@@ -3,6 +3,7 @@ import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Platfo
 import { ToggleLeft, ToggleRight, AlertTriangle } from 'lucide-react-native';
 import { getSettings, setSetting, type PlatformSettings } from '../../modules/platform/api';
 import { C, PageHeader, SectionLabel, hexA } from '../../modules/platform/ui';
+import { autoT } from '../../core/i18n/autoTranslate';
 
 type Field = { key: string; label: string; type: 'text' | 'number' | 'bool'; hint?: string; danger?: boolean };
 const GROUPS: { title: string; fields: Field[] }[] = [
@@ -53,15 +54,15 @@ export default function PlatformSettings() {
             const maintOn = g.title === 'Bakım modu' && !!s.maintenance_mode;
             return (
               <View key={g.title} style={{ marginBottom: 24 }}>
-                <SectionLabel tone={maintOn ? C.red : undefined}>{g.title}</SectionLabel>
+                <SectionLabel tone={maintOn ? C.red : undefined}>{autoT(g.title)}</SectionLabel>
                 <View style={{ backgroundColor: C.card, borderRadius: 18, borderWidth: 1, borderColor: maintOn ? hexA(C.red, 0.4) : C.line, overflow: 'hidden' }}>
                   {g.fields.map((f, i) => {
                     const val = s[f.key];
                     return (
                       <View key={f.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 18, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: C.line }}>
                         <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text style={{ color: C.ink, fontSize: 14, fontWeight: '600' }}>{f.label}</Text>
-                          {f.hint ? <Text style={{ color: f.danger ? C.amber : C.ink3, fontSize: 12, marginTop: 2 }}>{f.hint}</Text> : null}
+                          <Text style={{ color: C.ink, fontSize: 14, fontWeight: '600' }}>{autoT(f.label)}</Text>
+                          {f.hint ? <Text style={{ color: f.danger ? C.amber : C.ink3, fontSize: 12, marginTop: 2 }}>{autoT(f.hint)}</Text> : null}
                         </View>
                         {f.type === 'bool' ? (
                           <Pressable disabled={busy === f.key} onPress={() => save(f.key, !val)}>

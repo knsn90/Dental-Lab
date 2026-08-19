@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import {
-  ArrowLeft, MapPin, Phone, Truck, Check, Play, Navigation, Package,
+  ArrowLeft, ArrowRight, MapPin, Phone, Truck, Check, Play, Navigation, Package,
   Camera, PenTool, MessageCircle, Map as MapIcon, X, ExternalLink,
 } from 'lucide-react-native';
 import { supabase } from '../../../core/api/supabase';
@@ -25,7 +25,7 @@ import { updateDeliveryStatus } from '../../../modules/orders/api';
 import { useGpsTracker } from '../useGpsTracker';
 import { CourierLiveMap } from '../CourierLiveMap';
 import { DS } from '../../../core/theme/dsTokens';
-import { localeTag } from '../../../core/i18n';
+import { localeTag, isRTL } from '../../../core/i18n';
 import { formatAddress } from '../../../core/util/formatAddress';
 
 const TH = DS.tech;
@@ -303,7 +303,7 @@ function MobileView({ d, busy, onChangeStatus, onOpenMap, onCall, onBack }: any)
         backgroundColor: '#FFF', zIndex: 2,
       }}>
         <Pressable onPress={onBack} style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center' }}>
-          <ArrowLeft size={16} color={DS.ink[800]} />
+          {isRTL() ? <ArrowRight size={16} color={DS.ink[800]} /> : <ArrowLeft size={16} color={DS.ink[800]} />}
         </Pressable>
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 16, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
@@ -316,7 +316,7 @@ function MobileView({ d, busy, onChangeStatus, onOpenMap, onCall, onBack }: any)
       {/* Harita üst yarı */}
       <View style={{ height: 320, backgroundColor: TH.bgSoft, position: 'relative', overflow: 'hidden' }}>
         <CourierLiveMap deliveryId={d.id} />
-        <View style={{ position: 'absolute', top: 16, left: 16, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: '#FFF', flexDirection: 'row', gap: 6, alignItems: 'center',
+        <View style={{ position: 'absolute', top: 16, start: 16, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: '#FFF', flexDirection: 'row', gap: 6, alignItems: 'center',
           ...(Platform.OS === 'web' ? { boxShadow: '0 6px 18px rgba(0,0,0,0.12)' } as any : {})
         }}>
           <Navigation size={11} color={TH.primary} strokeWidth={2.2} />
@@ -331,7 +331,7 @@ function MobileView({ d, busy, onChangeStatus, onOpenMap, onCall, onBack }: any)
       >
         <View style={{
           backgroundColor: '#FFF',
-          borderTopLeftRadius: 28, borderTopRightRadius: 28,
+          borderTopStartRadius: 28, borderTopEndRadius: 28,
           padding: 16, gap: 16,
         }}>
           <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: DS.ink[200] }} />
@@ -408,7 +408,7 @@ function DesktopView({ d, busy, onChangeStatus, onOpenMap, onCall, onBack }: any
       <ScrollView style={{ flex: 4 }} contentContainerStyle={{ padding: 16, gap: 16 }}>
         {/* Breadcrumb + back */}
         <Pressable onPress={onBack} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start' }}>
-          <ArrowLeft size={14} color={DS.ink[500]} />
+          {isRTL() ? <ArrowRight size={14} color={DS.ink[500]} /> : <ArrowLeft size={14} color={DS.ink[500]} />}
           <Text style={{ fontSize: 11, color: DS.ink[500] }}>Teslimatlar / {d.destination_name ?? '—'}</Text>
         </Pressable>
 

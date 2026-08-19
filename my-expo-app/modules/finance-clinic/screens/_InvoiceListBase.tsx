@@ -6,7 +6,8 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { View, Text, ScrollView, Pressable } from 'react-native';
 import { useRouter, useSegments } from 'expo-router';
-import { FileText, AlertCircle, CreditCard, ChevronRight } from 'lucide-react-native';
+import { FileText, AlertCircle, CreditCard, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { isRTL } from '../../../core/i18n';
 
 import { DS } from '../../../core/theme/dsTokens';
 import { fetchOpenInvoices, type ClinicInvoiceRow } from '../api';
@@ -112,6 +113,12 @@ export function InvoiceListBase({
                     </Text>
                     <StatusChip status={inv.status} />
                   </View>
+                  {/* Hekim isteği: faturanın hangi hastaya ait olduğu her sekmede görünsün. */}
+                  {!!inv.patient_name && (
+                    <Text style={{ fontSize: 11.5, color: DS.ink[700], marginTop: 2 }} numberOfLines={1}>
+                      {[inv.patient_name, inv.order_no].filter(Boolean).join(' · ')}
+                    </Text>
+                  )}
                   <Text style={{ fontSize: 11, color: isOverdue ? '#9C2E2E' : DS.ink[500], marginTop: 4 }}>
                     {isOverdue
                       ? `${inv.days_overdue} gün gecikmiş · vade ${fmtDate(inv.due_date)}`
@@ -130,7 +137,8 @@ export function InvoiceListBase({
                 <PillButton variant={isOverdue ? 'danger' : 'dark'} size="sm" leftIcon={<CreditCard size={12} color="#FFF" />}>
                   Öde
                 </PillButton>
-                <ChevronRight size={16} color={DS.ink[400]} />
+                {isRTL() ? <ChevronLeft size={16} color={DS.ink[400]} />
+                         : <ChevronRight size={16} color={DS.ink[400]} />}
               </Pressable>
             );
           })}

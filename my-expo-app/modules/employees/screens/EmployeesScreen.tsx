@@ -1,4 +1,4 @@
-import { localeTag } from '../../../core/i18n';
+import { localeTag, isRTL } from '../../../core/i18n';
 /**
  * EmployeesScreen — Ekip (Patterns Design Language)
  *
@@ -37,7 +37,7 @@ import {
   Plus, Search, X, Inbox, Pencil, Trash2,
   UserPlus, UserX, UserCheck, Users, Phone, Mail, Clock,
   CircleCheck, Banknote, Landmark, CreditCard,
-  ChevronRight, CircleDollarSign, CheckCircle, Check, MoreHorizontal, SlidersHorizontal, ChevronDown,
+  ChevronRight, ChevronLeft, CircleDollarSign, CheckCircle, Check, MoreHorizontal, SlidersHorizontal, ChevronDown,
 } from 'lucide-react-native';
 import { confirmAsync } from '../../../core/util/confirm';
 
@@ -462,8 +462,8 @@ export function EmployeesScreen() {
           paddingVertical: isDesktop ? 18 : 16,
           position: 'relative',
         }}>
-          <View pointerEvents="none" style={{ position: 'absolute', top: -46, right: -34, width: 130, height: 130, borderRadius: 65, backgroundColor: 'rgba(255,255,255,0.18)' }} />
-          <View pointerEvents="none" style={{ position: 'absolute', bottom: -52, left: -26, width: 110, height: 110, borderRadius: 55, backgroundColor: 'rgba(255,255,255,0.10)' }} />
+          <View pointerEvents="none" style={{ position: 'absolute', top: -46, end: -34, width: 130, height: 130, borderRadius: 65, backgroundColor: 'rgba(255,255,255,0.18)' }} />
+          <View pointerEvents="none" style={{ position: 'absolute', bottom: -52, start: -26, width: 110, height: 110, borderRadius: 55, backgroundColor: 'rgba(255,255,255,0.10)' }} />
 
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
             {/* Sol — kicker + iki metrik yan yana */}
@@ -776,7 +776,7 @@ export function EmployeesScreen() {
                     </View>
                     {canViewSalaries && (
                       <>
-                        <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: DS.ink[900], textAlign: 'right' }}>
+                        <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: DS.ink[900], textAlign: 'end' as any }}>
                           {fmtMoney(emp.base_salary)}
                         </Text>
                         <View style={{ flex: 1 }}>
@@ -937,7 +937,7 @@ export function EmployeesScreen() {
             position: 'absolute', bottom: 20, left: 16, right: 16,
             flexDirection: 'row', alignItems: 'center', gap: 12,
             backgroundColor: DS.ink[900], borderRadius: 16,
-            paddingLeft: 16, paddingRight: 8, paddingVertical: 12,
+            paddingStart: 16, paddingEnd: 8, paddingVertical: 12,
             zIndex: 999,
             // @ts-ignore web
             boxShadow: '0 4px 32px rgba(0,0,0,0.25)',
@@ -1415,7 +1415,7 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
             {/* Outlined X — panel rengiyle */}
             <Pressable
               onPress={onClose}
-              style={{ width: 32, height: 32, borderRadius: 8, borderWidth: 1.5, borderColor: P, alignItems: 'center', justifyContent: 'center', marginLeft: 12, marginTop: 2, cursor: 'pointer' as any }}
+              style={{ width: 32, height: 32, borderRadius: 8, borderWidth: 1.5, borderColor: P, alignItems: 'center', justifyContent: 'center', marginStart: 12, marginTop: 2, cursor: 'pointer' as any }}
             >
               <X size={14} color={P} strokeWidth={2.2} />
             </Pressable>
@@ -1550,7 +1550,7 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
                     <Text style={{ flex: 1, fontSize: 12, color: DS.ink[700], lineHeight: 17 }}>
                       Teknisyenin hangi istasyonlarda çalışabileceğini <Text style={{ fontWeight: '700', color: P }}>Personel</Text> sekmesinden yönet. Otomatik atama ve "Yeniden Ata" aynı kaynağı kullanır.
                     </Text>
-                    <ChevronRight size={18} color={P} strokeWidth={2.2} />
+                    {isRTL() ? <ChevronLeft size={18} color={P} strokeWidth={2.2} /> : <ChevronRight size={18} color={P} strokeWidth={2.2} />}
                   </Pressable>
                 </View>
 
@@ -1705,7 +1705,7 @@ function SalaryModal({ visible, employee, onClose, onSaved }: {
             </View>
             <Pressable
               onPress={onClose}
-              style={{ width: 32, height: 32, borderRadius: 8, borderWidth: 1.5, borderColor: P, alignItems: 'center', justifyContent: 'center', marginLeft: 12, marginTop: 2, cursor: 'pointer' as any }}
+              style={{ width: 32, height: 32, borderRadius: 8, borderWidth: 1.5, borderColor: P, alignItems: 'center', justifyContent: 'center', marginStart: 12, marginTop: 2, cursor: 'pointer' as any }}
             >
               <X size={14} color={P} strokeWidth={2.2} />
             </Pressable>
@@ -1873,7 +1873,7 @@ function AdvanceModal({ visible, employee, onClose, onSaved }: {
             </View>
             <Pressable
               onPress={onClose}
-              style={{ width: 32, height: 32, borderRadius: 8, borderWidth: 1.5, borderColor: P, alignItems: 'center', justifyContent: 'center', marginLeft: 12, marginTop: 2, cursor: 'pointer' as any }}
+              style={{ width: 32, height: 32, borderRadius: 8, borderWidth: 1.5, borderColor: P, alignItems: 'center', justifyContent: 'center', marginStart: 12, marginTop: 2, cursor: 'pointer' as any }}
             >
               <X size={14} color={P} strokeWidth={2.2} />
             </Pressable>

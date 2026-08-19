@@ -1,4 +1,5 @@
-import { localeTag } from '../../../core/i18n';
+import { localeTag, dirIcon, weekdayOffset, weekStartsOn } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { openFileUrl } from '../../../core/util/openFile';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
@@ -106,6 +107,18 @@ interface ChatMessage {
 }
 
 // ── Attached file model ──────────────────────────────────────────────────────
+/** Önizlemede ileri/geri oku — görselin üstünde yüzen yuvarlak buton. */
+const navBtnStyle = {
+  position: 'absolute' as const,
+  top: '50%' as any,
+  marginTop: -18,
+  width: 36, height: 36, borderRadius: 18,
+  alignItems: 'center' as const, justifyContent: 'center' as const,
+  backgroundColor: 'rgba(255,255,255,0.92)',
+  borderWidth: 1, borderColor: '#E2E8F0',
+  ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 2px 10px rgba(15,23,42,0.14)' } as any) : {}),
+};
+
 type FileKind = 'photo' | 'video' | 'stl' | 'ply' | 'pdf' | 'other';
 
 interface AttachedFile {
@@ -810,6 +823,13 @@ export function NewOrderScreen({
   });
   const [loading, setLoading] = useState(false);
 
+  // ── Düzenleme: DB'de zaten var olan ekler ────────────────────────────────
+  // attachment.id === work_order_photos.id olan kayıtlar. Kaydet'te bunlar
+  // tekrar insert EDİLMEZ; formdan kaldırılanlar removedPhotosRef'e düşer ve
+  // kaydet'te (yalnız lab/admin — RLS delete lab'a açık) silinir.
+  const existingPhotosRef = useRef<Record<string, string>>({});
+  const removedPhotosRef  = useRef<Array<{ id: string; storage_path: string }>>([]);
+
   // ── Düzenleme prefill'i (async) — mevcut siparişi forma doldur ──
   useEffect(() => {
     if (!editOrderId) return;
@@ -828,6 +848,9 @@ export function NewOrderScreen({
           .eq('work_order_id', editOrderId)
           .order('created_at', { ascending: true });
         const list = (photos ?? []) as any[];
+        existingPhotosRef.current = {};
+        removedPhotosRef.current  = [];
+        list.forEach(ph => { if (ph?.id) existingPhotosRef.current[ph.id] = ph.storage_path ?? ''; });
         if (list.length) {
           const paths = list.map(ph => ph.storage_path).filter(Boolean);
           const urlMap: Record<string, string> = {};
@@ -938,6 +961,12 @@ export function NewOrderScreen({
         shade: string | null;
         impression_type: string | null;
         notes: string | null;
+        // Yeni form alanları — eski formlarda gelmez (undefined/null)
+        patient_gender?: 'kadın' | 'erkek' | null;
+        patient_dob?: string | null;
+        delivery_method?: 'kurye' | 'elden' | 'kargo' | null;
+        scan_bodies_delivered?: boolean | null;
+        items?: Array<{ work_type: string | null; tooth_numbers: number[]; shade: string | null }>;
       };
 
       // WhatsApp botundan gelen ek medyayı yakala (varsa) — submit sonrası taşınır.
@@ -954,19 +983,31 @@ export function NewOrderScreen({
       }
 
       // Ölçü yöntemi map
+      // 'Manuel' yeni formun etiketi ("Manuel (Ölçü)"); Klasik/Putty eski formlar.
       const measMap: Record<string, 'manual' | 'digital'> = {
-        'Klasik': 'manual', 'Dijital': 'digital', 'Putty': 'manual',
+        'Manuel': 'manual', 'Klasik': 'manual', 'Putty': 'manual', 'Dijital': 'digital',
       };
       const measurement_type = ocr.impression_type ? (measMap[ocr.impression_type] ?? '' as any) : '' as any;
 
-      // tooth_ops üret — her diş için ayrı op (BLANK_OP üzerine work_type+shade)
-      const tooth_ops: ToothOp[] = (ocr.tooth_numbers ?? []).map(t => ({
-        ...BLANK_OP,
-        tooth: t,
-        __uid: newOpUid(),
-        work_type: ocr.work_type ?? '',
-        shade: ocr.shade ?? '',
-      }));
+      // tooth_ops üret. Formdaki "İŞLEM SATIRLARI" tablosu doluysa HER SATIR
+      // kendi işlemini/rengini taşır (farklı dişe farklı işlem); tablo boşsa
+      // eski davranış: tüm dişlere tek work_type + shade.
+      const ocrItems = (ocr.items ?? []).filter(it => (it?.tooth_numbers?.length ?? 0) > 0);
+      const tooth_ops: ToothOp[] = ocrItems.length > 0
+        ? ocrItems.flatMap(it => it.tooth_numbers.map(t => ({
+            ...BLANK_OP,
+            tooth: t,
+            __uid: newOpUid(),
+            work_type: it.work_type ?? ocr.work_type ?? '',
+            shade: it.shade ?? ocr.shade ?? '',
+          })))
+        : (ocr.tooth_numbers ?? []).map(t => ({
+            ...BLANK_OP,
+            tooth: t,
+            __uid: newOpUid(),
+            work_type: ocr.work_type ?? '',
+            shade: ocr.shade ?? '',
+          }));
 
       setForm(prev => ({
         ...prev,
@@ -978,6 +1019,12 @@ export function NewOrderScreen({
         tooth_ops: tooth_ops.length > 0 ? tooth_ops : prev.tooth_ops,
         notes: ocr.notes ? (prev.notes ? prev.notes + '\n' + ocr.notes : ocr.notes) : prev.notes,
         measurement_type: measurement_type || prev.measurement_type,
+        patient_gender: ocr.patient_gender === 'kadın' ? 'kadın'
+                      : ocr.patient_gender === 'erkek' ? 'erkek'
+                      : prev.patient_gender,
+        patient_dob: ocr.patient_dob ? new Date(ocr.patient_dob) : prev.patient_dob,
+        delivery_method: ocr.delivery_method ?? prev.delivery_method,
+        scan_bodies_delivered: ocr.scan_bodies_delivered ?? prev.scan_bodies_delivered,
       }));
 
       // Klinik varsa: ÖNCE doctor_name varsa o hekimi ara (case-insensitive),
@@ -1014,16 +1061,16 @@ export function NewOrderScreen({
       }
 
       const filledCount = [
-        ocr.clinic_id ? 'klinik' : null,
-        ocr.doctor_name ? 'hekim' : null,
-        ocr.patient_name ? 'hasta' : null,
-        ocr.tooth_numbers?.length ? `${ocr.tooth_numbers.length} diş` : null,
-        ocr.work_type ? 'işlem tipi' : null,
-        ocr.shade ? 'renk' : null,
-        ocr.delivery_date ? 'tarih' : null,
-        ocr.urgency === 'acil' || ocr.urgency === 'cok_acil' ? 'aciliyet' : null,
+        ocr.clinic_id ? autoT('klinik') : null,
+        ocr.doctor_name ? autoT('hekim') : null,
+        ocr.patient_name ? autoT('hasta') : null,
+        ocr.tooth_numbers?.length ? `${ocr.tooth_numbers.length} ${autoT('diş')}` : null,
+        ocr.work_type ? autoT('işlem tipi') : null,
+        ocr.shade ? autoT('renk') : null,
+        ocr.delivery_date ? autoT('tarih') : null,
+        ocr.urgency === 'acil' || ocr.urgency === 'cok_acil' ? autoT('aciliyet') : null,
       ].filter(Boolean);
-      setOcrBanner(`Kağıt formdan ${filledCount.join(' · ')} otomatik dolduruldu. Kontrol et ve eksik alanları tamamla.`);
+      setOcrBanner(`${autoT('Kağıt formdan')} ${filledCount.join(' · ')} ${autoT('otomatik dolduruldu. Kontrol et ve eksik alanları tamamla.')}`);
 
       // Bir kez kullan, sonra temizle
       try { window.sessionStorage.removeItem('ocr_work_order'); } catch {}
@@ -1594,6 +1641,32 @@ export function NewOrderScreen({
   // ── File attachments ──────────────────────────────────────────────────────
   const [fileActiveTooth, setFileActiveTooth] = useState<number | null>(null);
   const [previewFile, setPreviewFile] = useState<AttachedFile | null>(null);
+
+  /** Önizlemede oklarla gezmek için yalnız fotoğraflar (sıra ekrandakiyle aynı). */
+  const previewPhotos = useMemo(
+    () => form.attachments.filter(a => a.kind === 'photo' && !!a.uri),
+    [form.attachments],
+  );
+  const previewIndex = useMemo(
+    () => (previewFile ? previewPhotos.findIndex(a => a.id === previewFile.id) : -1),
+    [previewPhotos, previewFile],
+  );
+  const stepPreview = useCallback((delta: number) => {
+    if (previewIndex < 0 || previewPhotos.length < 2) return;
+    const n = (previewIndex + delta + previewPhotos.length) % previewPhotos.length;
+    setPreviewFile(previewPhotos[n]);
+  }, [previewIndex, previewPhotos]);
+
+  // Klavye ile gezinme (web) — ok tuşları, Esc zaten modal'da bağlı.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !previewFile || previewPhotos.length < 2) return;
+    const onKey = (e: any) => {
+      if (e.key === 'ArrowRight') { e.preventDefault(); stepPreview(1); }
+      if (e.key === 'ArrowLeft')  { e.preventDefault(); stepPreview(-1); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [previewFile, previewPhotos.length, stepPreview]);
   // 3D taramalar lab ile aynı Viewer3DModal'da açılır (tek veya çoklu).
   const [viewer3DFiles, setViewer3DFiles] = useState<Array<{ id: string; name: string; url: string; format: 'stl' | 'ply' | 'obj' }> | null>(null);
   // Önizleme yönlendirici: 3D dosya → Viewer3DModal; diğerleri → normal önizleme.
@@ -1884,8 +1957,16 @@ export function NewOrderScreen({
   };
 
   const removeAttachment = (id: string) => {
-    // Drafts'a yüklenmiş dosyayı silmeye çalış (fire & forget)
     const target = form.attachments.find(a => a.id === id);
+    // Düzenlemede DB'de kayıtlı bir ek ise depodan HEMEN silme — önce
+    // work_order_photos satırı gitmeli, yoksa kırık kayıt kalır. Kaydet'te silinir.
+    if (id in existingPhotosRef.current) {
+      removedPhotosRef.current.push({ id, storage_path: existingPhotosRef.current[id] ?? '' });
+      delete existingPhotosRef.current[id];
+      setForm(f => ({ ...f, attachments: f.attachments.filter(a => a.id !== id) }));
+      return;
+    }
+    // Drafts'a yüklenmiş dosyayı silmeye çalış (fire & forget)
     if (target?.storage_path) {
       void supabase.storage.from('work-order-photos').remove([target.storage_path]);
     }
@@ -1941,6 +2022,25 @@ export function NewOrderScreen({
         attachments: f.attachments.map(a => a.id === att.id
           ? { ...a, upload_status: 'done', upload_progress: 100, storage_path: path } : a),
       }));
+
+      // STL/PLY/OBJ için küçük resim — arka planda, tarayıcı boştayken.
+      // Dosya listesi 16–29 MB'lık mesh'i indirmeden önizleme gösterebilsin diye.
+      // Üretilemezse (çok büyük / desteklenmeyen) sessizce atlanır; o dosya
+      // küçük resmini ilk kez 3D görüntüleyicide açılınca alır.
+      if (Platform.OS === 'web' && /\.(stl|ply|obj)$/i.test(att.name)) {
+        void (async () => {
+          try {
+            const [{ generateMeshThumbWhenIdle }, { saveMeshThumb }] = await Promise.all([
+              import('../../viewer-3d/lib/offscreenThumb'),
+              import('../../../lib/photos'),
+            ]);
+            // Yerel object URL kullanılıyor — dosya zaten bellekte, tekrar indirilmiyor.
+            generateMeshThumbWhenIdle(att.uri, att.name, (dataUrl) => {
+              void saveMeshThumb(path, dataUrl);
+            });
+          } catch { /* küçük resim bir kolaylık, akışı etkilemez */ }
+        })();
+      }
     }
   }, [profile?.id]);
 
@@ -2046,6 +2146,88 @@ export function NewOrderScreen({
     goToStep((step < 4 ? (step + 1) as Step : step));
   };
 
+  // ── DÜZENLEME: ekleri siparişe persist et ────────────────────────────────
+  // Yeni-sipariş akışıyla aynı mantık: pick anında drafts/'a yüklenmiş dosyalar
+  // için re-upload yok, sadece work_order_photos satırı açılır (RLS
+  // wop_select_drafts_via_order o satır üzerinden drafts yolunu okunur kılar).
+  // Henüz yüklenmemiş dosya varsa orders/<id>/ altına yüklenir.
+  const persistEditAttachments = async (orderId: string, canDelete: boolean) => {
+    let added = 0, removed = 0, failed = 0;
+
+    // RLS: lab kullanıcısında photos.lab_id = get_my_lab_id() olmalı; hekimin
+    // profile.lab_id null olabildiği için siparişten okuyoruz.
+    let labId: string | null = (profile as any)?.lab_id ?? null;
+    try {
+      const { data: wo } = await supabase.from('work_orders').select('lab_id').eq('id', orderId).maybeSingle();
+      if ((wo as any)?.lab_id) labId = (wo as any).lab_id;
+    } catch {}
+
+    for (const a of form.attachments) {
+      if (a.id in existingPhotosRef.current) continue;   // zaten DB'de
+      try {
+        let storagePath = (a.storage_path && a.upload_status === 'done') ? a.storage_path : '';
+        if (!storagePath) {
+          if (!a.uri) { failed++; continue; }
+          const resp = await fetch(a.uri);
+          const blob = await resp.blob();
+          const safeName = a.name.replace(/[^\w.-]+/g, '_').slice(0, 80);
+          // 'orders/' öneki ŞART — storage RLS yalnız orders/<work_order_id>/... açar.
+          storagePath = `orders/${orderId}/${Date.now()}-${safeName}`;
+          const { error: upErr } = await supabase.storage
+            .from('work-order-photos')
+            .upload(storagePath, blob, { contentType: blob.type || 'application/octet-stream', upsert: false });
+          if (upErr) {
+            failed++;
+            console.error('[edit-attachments] storage upload error', a.name, upErr.message);
+            continue;
+          }
+        }
+
+        // .select() YOK — RETURNING, SELECT politikasına tabi olurdu; satır
+        // yazılmışken hata sayılmasın diye yalın insert.
+        const { error: dbErr } = await supabase
+          .from('work_order_photos')
+          .insert({
+            work_order_id: orderId,
+            storage_path:  storagePath,
+            uploaded_by:   profile?.id,
+            lab_id:        labId,
+            caption:       a.name,
+          });
+
+        if (dbErr) {
+          failed++;
+          console.error('[edit-attachments] db insert error', a.name, dbErr.message);
+          continue;
+        }
+        // Tekrar kaydette çift insert olmasın
+        existingPhotosRef.current[a.id] = storagePath;
+        added++;
+      } catch (e: any) {
+        failed++;
+        console.error('[edit-attachments] unexpected error', a.name, e?.message);
+      }
+    }
+
+    // Kaldırılan mevcut ekler — RLS'te delete yalnız lab/admin tarafına açık.
+    // Klinik/hekim kaldırırsa dosya siparişte kalır, kullanıcıya söylenir.
+    const pendingRemovals = removedPhotosRef.current;
+    let keptOnServer = 0;
+    if (canDelete) {
+      for (const r of pendingRemovals) {
+        const { error } = await supabase.from('work_order_photos').delete().eq('id', r.id);
+        if (error) { failed++; console.error('[edit-attachments] delete error', r.id, error.message); continue; }
+        if (r.storage_path) void supabase.storage.from('work-order-photos').remove([r.storage_path]);
+        removed++;
+      }
+    } else {
+      keptOnServer = pendingRemovals.length;
+    }
+    removedPhotosRef.current = [];
+
+    return { added, removed, failed, keptOnServer };
+  };
+
   // ── DÜZENLEME kaydet — yeni oluşturmaz, mevcut siparişi günceller ──
   // Kalemler yeni-sipariş ile AYNI kodlamayla üretilir (opGroupMap + notes: "Marka:…·Renk:…")
   // ki tekrar düzenlemede prefill parse'ı bozulmasın. Ekler/ses/sohbet düzenlemede korunur
@@ -2126,9 +2308,27 @@ export function NewOrderScreen({
       : requestMode
         ? await createChangeRequest(editOrderId, fields, items)
         : await updateOrderClient(editOrderId, fields, items);
+    if (error) {
+      setLoading(false);
+      setSubmitError(`${requestMode ? 'Talep gönderilemedi' : 'Kaydedilemedi'}: ${(error as any).message ?? 'hata'}`);
+      return;
+    }
+
+    // Ekler alan/kalem güncellemesinden bağımsız yürür: yeni eklenen dosyalar
+    // siparişe bağlanır, kaldırılanlar (yalnız lab/admin) silinir. Değişiklik
+    // talebi modunda da dosyalar doğrudan eklenir — lab'ın görmesi gerekir.
+    const att = await persistEditAttachments(editOrderId, adminEdit);
     setLoading(false);
-    if (error) { setSubmitError(`${requestMode ? 'Talep gönderilemedi' : 'Kaydedilemedi'}: ${(error as any).message ?? 'hata'}`); return; }
-    toast.success(requestMode ? 'Değişiklik talebin gönderildi — lab onayına düştü.' : 'Sipariş güncellendi ✓');
+    if (att.failed > 0) toast.error(`${att.failed} dosya kaydedilemedi`);
+    if (att.keptOnServer > 0) toast.info(`${att.keptOnServer} dosya yalnız lab tarafından silinebilir — siparişte kalacak.`);
+
+    toast.success(
+      requestMode
+        ? 'Değişiklik talebin gönderildi — lab onayına düştü.'
+        : att.added > 0 || att.removed > 0
+          ? `Sipariş güncellendi ✓${att.added > 0 ? ` · ${att.added} dosya eklendi` : ''}${att.removed > 0 ? ` · ${att.removed} dosya silindi` : ''}`
+          : 'Sipariş güncellendi ✓'
+    );
     onSaved?.();
     onClose?.();
   };
@@ -3120,7 +3320,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                       <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: '#0A0A0A' }} numberOfLines={1}>
                         {u.name}
                       </Text>
-                      <Text style={{ fontSize: 12, fontWeight: '700', color: statusColor, minWidth: 56, textAlign: 'right' }}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: statusColor, minWidth: 56, textAlign: 'end' as any }}>
                         {u.status === 'done'  ? 'TAMAM' :
                          u.status === 'error' ? 'HATA'  :
                          u.status === 'pending' ? 'BEKLER' :
@@ -3386,7 +3586,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
               marginHorizontal: 24, marginTop: 16,
               padding: 14, borderRadius: 12,
               backgroundColor: 'rgba(37,99,235,0.06)',
-              borderLeftWidth: 3, borderLeftColor: '#2563EB',
+              borderStartWidth: 3, borderStartColor: '#2563EB',
               flexDirection: 'row', alignItems: 'flex-start', gap: 10,
             }}>
               <AppIcon name={'camera-outline' as any} size={18} color="#2563EB" />
@@ -3857,7 +4057,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
               )}
 
               {/* ── Sağ: Dosya listesi ── */}
-              <View style={[fus.twoColRight, !isDesktop && { paddingLeft: 0 }]}>
+              <View style={[fus.twoColRight, !isDesktop && { paddingStart: 0 }]}>
                 <View style={fus.subHeader}>
                   <Text style={fus.subLabel}>YÜKLENEN DOSYALAR</Text>
                   <Text style={fus.subHint}>Tüm ekler ve ön izleme</Text>
@@ -4025,11 +4225,13 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                 id:   a.id,
                 name: a.name,
                 uri:  a.uri,
+                // 'other' (zip, dcm, obj…) EskiDEN 'image'a düşüyordu; yükleme
+                // panelinde boş bir küçük resim kutusu çiziliyordu. Artık 'scan'.
                 kind: a.kind === 'photo' ? 'image'
                     : a.kind === 'video' ? 'video'
                     : a.kind === 'pdf'   ? 'pdf'
-                    : a.kind === 'stl' || a.kind === 'ply' ? 'scan'
-                    : 'image',
+                    : 'scan',
+                filename: a.name,
                 canRemove: true,
               }))}
             uploadingStates={form.attachments
@@ -4389,7 +4591,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                         <View style={{ flexDirection: 'row', alignItems: 'center', paddingBottom: 6, marginBottom: 4, borderBottomWidth: 1, borderBottomColor: NO.borderSoft }}>
                           <Text style={{ flex: 0.45, fontSize: 10, fontWeight: '600', color: NO.inkMute, letterSpacing: 0.5 }}>DİŞ</Text>
                           <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: NO.inkMute, letterSpacing: 0.5 }}>İŞLEM</Text>
-                          <Text style={{ width: 80, fontSize: 10, fontWeight: '600', color: NO.inkMute, letterSpacing: 0.5, textAlign: 'right' }}>MALİYET</Text>
+                          <Text style={{ width: 80, fontSize: 10, fontWeight: '600', color: NO.inkMute, letterSpacing: 0.5, textAlign: 'end' as any }}>MALİYET</Text>
                           <View style={{ width: 28 }} />
                         </View>
                         {/* Gruplanmış satırlar */}
@@ -4437,12 +4639,12 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                               </View>
                               {/* Düzenle ikonu */}
                               {isEditing && (
-                                <View style={{ marginRight: 4 }}>
+                                <View style={{ marginEnd: 4 }}>
                                   <AppIcon name="pencil" size={11} color={NO.inkSoft} />
                                 </View>
                               )}
                               {/* Maliyet */}
-                              <Text style={{ width: 80, fontSize: 12, fontWeight: '600', color: groupCost > 0 ? NO.inkStrong : NO.inkMute, textAlign: 'right' }}>
+                              <Text style={{ width: 80, fontSize: 12, fontWeight: '600', color: groupCost > 0 ? NO.inkStrong : NO.inkMute, textAlign: 'end' as any }}>
                                 {showPrices && groupCost > 0 ? `${curSym(op.currency ?? orderCur)}${groupCost.toLocaleString('tr-TR')}` : '—'}
                               </Text>
                               {/* Sil — gruptaki TÜM op'ları kaldırır */}
@@ -4516,12 +4718,12 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                               </View>
                               {/* Düzenle ikonu */}
                               {isEditing && (
-                                <View style={{ marginRight: 4 }}>
+                                <View style={{ marginEnd: 4 }}>
                                   <AppIcon name="pencil" size={11} color={NO.inkSoft} />
                                 </View>
                               )}
                               {/* Maliyet */}
-                              <Text style={{ width: 70, fontSize: 12, fontWeight: '600', color: cost > 0 ? NO.inkStrong : NO.inkMute, textAlign: 'right' }}>
+                              <Text style={{ width: 70, fontSize: 12, fontWeight: '600', color: cost > 0 ? NO.inkStrong : NO.inkMute, textAlign: 'end' as any }}>
                                 {showPrices && cost > 0 ? `${curSym(op.currency ?? orderCur)}${cost.toLocaleString('tr-TR')}` : '—'}
                               </Text>
                               {/* Sil — uid varsa sadece o op'u sil, yoksa o tooth'un tümünü sil */}
@@ -4633,12 +4835,12 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                 }}>
                   {/* Decorative blobs */}
                   <View pointerEvents="none" style={{
-                    position: 'absolute' as any, top: -60, right: -40,
+                    position: 'absolute' as any, top: -60, end: -40,
                     width: 200, height: 200, borderRadius: 9999,
                     backgroundColor: 'rgba(255,255,255,0.10)',
                   }} />
                   <View pointerEvents="none" style={{
-                    position: 'absolute' as any, bottom: -80, left: -30,
+                    position: 'absolute' as any, bottom: -80, start: -30,
                     width: 220, height: 220, borderRadius: 9999,
                     backgroundColor: 'rgba(255,255,255,0.06)',
                   }} />
@@ -4805,7 +5007,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                             <View style={{
                               minWidth: 60, maxWidth: 130,
                               paddingHorizontal: 6, paddingVertical: 3, borderRadius: 5,
-                              backgroundColor: NO.saffronSoft, alignItems: 'center', justifyContent: 'center', marginRight: 10,
+                              backgroundColor: NO.saffronSoft, alignItems: 'center', justifyContent: 'center', marginEnd: 10,
                             }}>
                               <Text style={{ fontSize: 10, fontWeight: '700', color: NO.inkStrong, fontFamily: 'monospace' }}>
                                 {teethLabel}
@@ -4983,11 +5185,42 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
 
             {/* Content */}
             {previewFile?.kind === 'photo' ? (
-              <Image
-                source={{ uri: previewFile.uri }}
-                style={fpv.image}
-                resizeMode="contain"
-              />
+              <View style={{ position: 'relative' }}>
+                <Image
+                  source={{ uri: previewFile.uri }}
+                  style={fpv.image}
+                  resizeMode="contain"
+                />
+                {previewPhotos.length > 1 && (
+                  <>
+                    <TouchableOpacity
+                      onPress={() => stepPreview(-1)}
+                      style={[navBtnStyle, { start: 10 }]}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      accessibilityLabel="Önceki fotoğraf"
+                    >
+                      <AppIcon name={dirIcon('chevron-left') as any} size={20} color="#0F172A" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => stepPreview(1)}
+                      style={[navBtnStyle, { end: 10 }]}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      accessibilityLabel="Sonraki fotoğraf"
+                    >
+                      <AppIcon name={dirIcon('chevron-right') as any} size={20} color="#0F172A" />
+                    </TouchableOpacity>
+                    <View style={{
+                      position: 'absolute', bottom: 10, alignSelf: 'center',
+                      paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
+                      backgroundColor: 'rgba(15,23,42,0.72)',
+                    }}>
+                      <Text style={{ fontSize: 11, color: '#FFF', fontFamily: F.semibold }}>
+                        {previewIndex + 1} / {previewPhotos.length}
+                      </Text>
+                    </View>
+                  </>
+                )}
+              </View>
             ) : previewFile?.kind === 'pdf' ? (
               <View style={fpv.fileInfo}>
                 <View style={fpv.fileIconBig}>
@@ -5369,7 +5602,7 @@ function ImplantInfoSection({
             </Text>
             {hasVerifiedLibrary && (
               <View style={{
-                marginLeft: 'auto' as any,
+                marginStart: 'auto' as any,
                 flexDirection: 'row', alignItems: 'center', gap: 3,
                 paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6,
                 backgroundColor: NO.success + '14',
@@ -5536,7 +5769,7 @@ function ImplantBrandCombobox({
                   })}
                 >
                   <AppIcon name={'history' as any} size={12} color={NO.inkMute} />
-                  <Text style={{ marginLeft: 8, flex: 1, fontSize: 12.5, color: NO.inkStrong }}>{r}</Text>
+                  <Text style={{ marginStart: 8, flex: 1, fontSize: 12.5, color: NO.inkStrong }}>{r}</Text>
                   {IMPLANT_LIBRARY_LINKS[r] && (
                     <AppIcon name={'check-decagram' as any} size={11} color={NO.success} />
                   )}
@@ -5571,7 +5804,7 @@ function ImplantBrandCombobox({
                     <AppIcon name={'check-decagram' as any} size={12} color={active ? accent : NO.success} />
                   )}
                   {active && (
-                    <AppIcon name={'check' as any} size={13} color={accent} style={{ marginLeft: 6 }} />
+                    <AppIcon name={'check' as any} size={13} color={accent} style={{ marginStart: 6 }} />
                   )}
                 </Pressable>
               );
@@ -5851,7 +6084,7 @@ function NewOrderSuccess({
           onPress={onClose}
           accessibilityLabel="Kapat"
           style={{
-            position: 'absolute', top: 16, right: 16, zIndex: 10,
+            position: 'absolute', top: 16, end: 16, zIndex: 10,
             width: 34, height: 34, borderRadius: 17,
             backgroundColor: 'rgba(255,255,255,0.18)',
             alignItems: 'center', justifyContent: 'center',
@@ -6085,13 +6318,13 @@ const makeFusStyles = (P: string) => StyleSheet.create({
     flexDirection: 'row', gap: 0, alignItems: 'flex-start',
   },
   twoColLeft: {
-    flex: 1, paddingRight: 16,
+    flex: 1, paddingEnd: 16,
   },
   twoColDivider: {
     width: 1, backgroundColor: '#F1F5F9', alignSelf: 'stretch',
   },
   twoColRight: {
-    flex: 1, paddingLeft: 16,
+    flex: 1, paddingStart: 16,
   },
   /* Empty state for right column */
   emptyState: {
@@ -6217,7 +6450,7 @@ const makeFusStyles = (P: string) => StyleSheet.create({
   },
   uploadCardTab: {
     height: 8, width: '50%', alignSelf: 'center' as any,
-    borderBottomLeftRadius: 5, borderBottomRightRadius: 5,
+    borderBottomStartRadius: 5, borderBottomEndRadius: 5,
     marginBottom: 0,
   },
   uploadCardBody: {
@@ -6250,12 +6483,12 @@ const makeFusStyles = (P: string) => StyleSheet.create({
     marginTop: 3, width: '100%',
   },
   uploadCardBtn: {
-    position: 'absolute' as any, bottom: 8, right: 8,
+    position: 'absolute' as any, bottom: 8, end: 8,
     width: 24, height: 24, borderRadius: 12,
     alignItems: 'center' as any, justifyContent: 'center' as any,
   },
   uploadCardDel: {
-    position: 'absolute' as any, top: 16, right: 8,
+    position: 'absolute' as any, top: 16, end: 8,
     width: 20, height: 20, borderRadius: 10,
     backgroundColor: '#FEE2E2',
     alignItems: 'center' as any, justifyContent: 'center' as any,
@@ -7019,8 +7252,8 @@ const makeDobStyles = (P: string) => StyleSheet.create({
   },
   sheet: {
     backgroundColor: '#F2F2F7',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+    borderTopStartRadius: 16,
+    borderTopEndRadius: 16,
     overflow: 'hidden',
     paddingBottom: 24,
   },
@@ -7162,7 +7395,7 @@ const makeIpStyles = (P: string, T: any, isDark: boolean) => StyleSheet.create({
   // Native bottom-sheet
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   sheet: {
-    backgroundColor: T.card, borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    backgroundColor: T.card, borderTopStartRadius: 24, borderTopEndRadius: 24,
     paddingTop: 10, paddingBottom: 28, paddingHorizontal: 8,
   },
   sheetHandle: {
@@ -8404,10 +8637,10 @@ const makeCbStyles = (P: string, T: any, isDark: boolean) => StyleSheet.create({
   msgRow:      { alignItems: 'flex-end', marginBottom: 4 },
   msgRowLeft:  { alignItems: 'flex-start', marginBottom: 4 },
   bubble:      { maxWidth: '78%', backgroundColor: P,
-                  borderRadius: 20, borderBottomRightRadius: 4,
+                  borderRadius: 20, borderBottomEndRadius: 4,
                   paddingVertical: 10, paddingHorizontal: 14,
                   shadowColor: P, shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
-  bubbleLeft:  { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#fff', borderBottomRightRadius: 20, borderBottomLeftRadius: 4,
+  bubbleLeft:  { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#fff', borderBottomEndRadius: 20, borderBottomStartRadius: 4,
                   shadowColor: '#000', shadowOpacity: isDark ? 0.25 : 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
   bubbleTxt:     { fontSize: 13, color: '#fff', lineHeight: 20 },
   bubbleTxtLeft: { color: T.ink },
@@ -8447,7 +8680,7 @@ const makeCbStyles = (P: string, T: any, isDark: boolean) => StyleSheet.create({
   flatBtnActive: { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9', borderRadius: 22 },
   // Pill input — input + ataç + mic hepsi içinde (referans WhatsApp tarzı)
   inputPill:   { flex: 1, flexDirection: 'row', alignItems: 'center', minHeight: 44,
-                  paddingLeft: 16, paddingRight: 4, borderRadius: 22,
+                  paddingStart: 16, paddingEnd: 4, borderRadius: 22,
                   backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline },
   textInput:   { flex: 1, fontSize: 13, color: T.ink, minHeight: 44, maxHeight: 110,
                   paddingHorizontal: 0, paddingVertical: 11, backgroundColor: 'transparent',
@@ -8473,7 +8706,7 @@ const makeCbStyles = (P: string, T: any, isDark: boolean) => StyleSheet.create({
   attachMenu: {
     position: 'absolute',
     bottom: 46,
-    left: 0,
+    start: 0,
     flexDirection: 'column',
     gap: 6,
     // @ts-ignore
@@ -8701,7 +8934,7 @@ function VoiceNoteInput({
 }
 
 const makeVniStyles = (P: string) => StyleSheet.create({
-  wrap:     { marginTop: 8, marginRight: 6, marginBottom: 4 },
+  wrap:     { marginTop: 8, marginEnd: 6, marginBottom: 4 },
   row:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   notesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, flex: 1 },
 
@@ -8944,9 +9177,17 @@ function DateWheelPickerModal({
   }, [visible]);
 
   const MONTHS_TR   = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
-  const WEEKDAYS_TR = ['Pzt','Sal','Çar','Per','Cum','Cmt','Paz'];
+  const WEEKDAYS_TR = (() => {
+    const base = ['Pzt','Sal','Çar','Per','Cum','Cmt','Paz'];   // Pazartesi tabanlı
+    const shift = (weekStartsOn() - 1 + 7) % 7;
+    return base.slice(shift).concat(base.slice(0, shift));
+  })();
 
-  const minY = minDate ? minDate.getFullYear() : new Date().getFullYear() - 60;
+  // Varsayılan alt sınır 100 yıl geriye: bu seçici doğum tarihi için de
+  // kullanılıyor ve `minDate` verilmediğinde 60 yıl geriye kapanıyordu —
+  // 1966'dan yaşlı hasta seçilemiyordu. İleri tarihli alanlar (teslim) zaten
+  // kendi `minDate`'ini geçiyor, bu varsayılan onları etkilemez.
+  const minY = minDate ? minDate.getFullYear() : new Date().getFullYear() - 100;
   const maxY = maxDate ? maxDate.getFullYear() : new Date().getFullYear() + 10;
   const yearList: number[] = [];
   for (let y = maxY; y >= minY; y--) yearList.push(y);
@@ -8954,7 +9195,8 @@ function DateWheelPickerModal({
   // Calendar grid (Mon-start)
   const firstOfMonth = new Date(viewYear, viewMonth, 1);
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
-  const startWeekday = (firstOfMonth.getDay() + 6) % 7;
+  // Hafta başlangıcı bölgeye bağlı: TR/AB Pazartesi, İran Cumartesi (weekdayOffset).
+  const startWeekday = weekdayOffset(firstOfMonth.getDay());
 
   const cells: Array<{ day: number; date: Date } | null> = [];
   for (let i = 0; i < startWeekday; i++) cells.push(null);
@@ -9040,7 +9282,7 @@ function DateWheelPickerModal({
               onPress={goPrev}
               style={{ width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: T.cardSoft }}
             >
-              <AppIcon name={'chevron-left' as any} size={15} color={T.ink2} />
+              <AppIcon name={dirIcon('chevron-left') as any} size={15} color={T.ink2} />
             </Pressable>
 
             <Pressable
@@ -9076,7 +9318,7 @@ function DateWheelPickerModal({
               onPress={goNext}
               style={{ width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: T.cardSoft }}
             >
-              <AppIcon name={'chevron-right' as any} size={15} color={T.ink2} />
+              <AppIcon name={dirIcon('chevron-right') as any} size={15} color={T.ink2} />
             </Pressable>
           </View>
 
@@ -9159,7 +9401,7 @@ function DateWheelPickerModal({
             <Pressable
               onPress={() => setMonthDropOpen(false)}
               style={{
-                position: 'absolute', top: 56, left: 50, width: 140, maxHeight: 240,
+                position: 'absolute', top: 56, start: 50, width: 140, maxHeight: 240,
                 backgroundColor: T.card, borderRadius: 12,
                 borderWidth: 1, borderColor: T.hairline,
                 paddingVertical: 4, overflow: 'hidden',
@@ -9201,7 +9443,7 @@ function DateWheelPickerModal({
             <Pressable
               onPress={() => setYearDropOpen(false)}
               style={{
-                position: 'absolute', top: 56, right: 50, width: 100, maxHeight: 240,
+                position: 'absolute', top: 56, end: 50, width: 100, maxHeight: 240,
                 backgroundColor: T.card, borderRadius: 12,
                 borderWidth: 1, borderColor: T.hairline,
                 paddingVertical: 4, overflow: 'hidden',
@@ -9448,7 +9690,7 @@ function DateField({ label, value, onChange, minDate, maxDate, placeholder, flex
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
         />
-        <TouchableOpacity onPress={handleOpenPicker} style={[_staticStyles.calIconBtn, { backgroundColor: 'transparent', borderLeftColor: NO.borderSoft }]} activeOpacity={0.7}>
+        <TouchableOpacity onPress={handleOpenPicker} style={[_staticStyles.calIconBtn, { backgroundColor: 'transparent', borderStartColor: NO.borderSoft }]} activeOpacity={0.7}>
           <AppIcon name="calendar-outline" size={16} color={value || focused || showPicker ? accent : NO.inkMute} />
         </TouchableOpacity>
       </View>
@@ -9581,7 +9823,7 @@ const makeIselStyles = (P: string, T: ReturnType<typeof useMobileTokens>, isDark
       borderWidth: 1, borderColor: borderCol, backgroundColor: bgCard,
     },
     cardActive: { borderColor: borderCol, backgroundColor: bgCard },
-    cardOpen:   { borderColor: borderCol, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
+    cardOpen:   { borderColor: borderCol, borderBottomStartRadius: 0, borderBottomEndRadius: 0 },
     cardError:  { borderColor: '#FCA5A5', backgroundColor: isDark ? 'rgba(239,68,68,0.10)' : '#FFF5F5' },
 
     cardLabel:        { fontSize: 10, fontFamily: F.medium, color: '#94A3B8', letterSpacing: 0.3 },
@@ -9595,7 +9837,7 @@ const makeIselStyles = (P: string, T: ReturnType<typeof useMobileTokens>, isDark
       backgroundColor: listBg,
       borderWidth: 1, borderTopWidth: 0,
       borderColor: borderCol,
-      borderBottomLeftRadius: 10, borderBottomRightRadius: 10,
+      borderBottomStartRadius: 10, borderBottomEndRadius: 10,
       overflow: 'hidden',
       shadowColor: '#0F172A',
       shadowOffset: { width: 0, height: 6 },
@@ -9730,8 +9972,8 @@ const makeSbStyles = (P: string) => StyleSheet.create({
   sidebar: {
     width: 100,
     backgroundColor: '#FFFFFF',
-    borderRightWidth: 1,
-    borderRightColor: '#F1F5F9',
+    borderEndWidth: 1,
+    borderEndColor: '#F1F5F9',
     paddingHorizontal: 8,
     paddingTop: 24,
     paddingBottom: 16,
@@ -9862,7 +10104,7 @@ const makeStyles = (P: string, T: any, isDark: boolean) => StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   sectionCardTitle: { fontSize: 13, fontWeight: '600', fontFamily: F.semibold, color: '#1E293B', letterSpacing: 0.1 },
-  sectionCardSub:   { fontSize: 12, fontWeight: '400', fontFamily: F.regular, color: C.textMuted, marginTop: 4, marginLeft: 36 },
+  sectionCardSub:   { fontSize: 12, fontWeight: '400', fontFamily: F.regular, color: C.textMuted, marginTop: 4, marginStart: 36 },
   sectionCardError: {
     borderColor: '#FEE2E2',
     borderWidth: 1.5,
@@ -9871,7 +10113,7 @@ const makeStyles = (P: string, T: any, isDark: boolean) => StyleSheet.create({
     width: 16, height: 16, borderRadius: 8,
     backgroundColor: '#EF4444',
     alignItems: 'center', justifyContent: 'center',
-    marginLeft: 4,
+    marginStart: 4,
   },
   sectionCardErrBadgeText: {
     fontSize: 9, fontFamily: F.semibold, color: '#FFFFFF',
@@ -9955,16 +10197,16 @@ const makeStyles = (P: string, T: any, isDark: boolean) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: '#FFFFFF',
     borderWidth: 1, borderColor: '#F1F5F9', borderRadius: 10,
-    paddingLeft: 14, overflow: 'hidden',
+    paddingStart: 14, overflow: 'hidden',
   },
   dateTextInput: {
     flex: 1, fontSize: 14, fontFamily: F.regular, color: '#0F172A',
-    paddingVertical: 11, paddingRight: 8,
+    paddingVertical: 11, paddingEnd: 8,
     outlineStyle: 'none',
   } as any,
   calIconBtn: {
     paddingHorizontal: 12, paddingVertical: 11,
-    borderLeftWidth: 1, borderLeftColor: '#F1F5F9',
+    borderStartWidth: 1, borderStartColor: '#F1F5F9',
     backgroundColor: '#F8FAFC',
   },
 
@@ -9987,7 +10229,7 @@ const makeStyles = (P: string, T: any, isDark: boolean) => StyleSheet.create({
   step2Container:        { flex: 1, backgroundColor: '#FFFFFF' },
   step2ContainerDesktop: { flexDirection: 'row' },
   step2Left:             { flex: 1, backgroundColor: '#FFFFFF' },
-  step2LeftDesktop:      { flex: 1, borderRightWidth: 1, borderRightColor: '#EEF2F7' },
+  step2LeftDesktop:      { flex: 1, borderEndWidth: 1, borderEndColor: '#EEF2F7' },
   step2LeftContent:      { padding: 16, paddingBottom: 24, gap: 0 },
   step2Right:            { backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: '#EEF2F7', maxHeight: 380 },
   step2RightDesktop:     { width: 300, borderTopWidth: 0, maxHeight: undefined },
@@ -10049,7 +10291,7 @@ const makeStyles = (P: string, T: any, isDark: boolean) => StyleSheet.create({
   summaryGroupTitle: { fontSize: 10, fontWeight: '500', fontFamily: F.medium, color: '#94A3B8', letterSpacing: 0.8, marginBottom: 10, textTransform: 'none' },
   summaryRow:        { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: '#F8FAFC' },
   summaryLabel:      { fontSize: 13, fontWeight: '400', fontFamily: F.regular, color: C.textSecondary, flex: 1 },
-  summaryValue:      { fontSize: 13, fontWeight: '500', fontFamily: F.medium, color: '#0F172A', flex: 2, textAlign: 'right' },
+  summaryValue:      { fontSize: 13, fontWeight: '500', fontFamily: F.medium, color: '#0F172A', flex: 2, textAlign: 'end' as any },
   summaryTotal:      { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, marginTop: 4 },
   summaryTotalLabel: { fontSize: 14, fontWeight: '500', fontFamily: F.medium, color: P },
   summaryTotalValue: { fontSize: 16, fontWeight: '600', fontFamily: F.semibold, color: P },
@@ -10212,7 +10454,7 @@ const fpv = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
   },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginEnd: 8 },
   kindBadge: {
     width: 26, height: 26, borderRadius: 7,
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,

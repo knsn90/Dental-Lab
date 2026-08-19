@@ -160,8 +160,8 @@ const s = StyleSheet.create({
   label:     { fontSize: 11, fontWeight: '600', color: '#64748B', letterSpacing: 0.5, marginBottom: 6 },
   inputRow:  { flexDirection: 'row' },
   input:     { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: '#0F172A', backgroundColor: '#FAFBFC' },
-  inputFlex: { flex: 1, borderTopRightRadius: 0, borderBottomRightRadius: 0, borderRightWidth: 0 },
-  eyeBtn:    { borderWidth: 1, borderColor: '#E2E8F0', borderTopRightRadius: 10, borderBottomRightRadius: 10, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FAFBFC' },
+  inputFlex: { flex: 1, borderTopEndRadius: 0, borderBottomEndRadius: 0, borderEndWidth: 0 },
+  eyeBtn:    { borderWidth: 1, borderColor: '#E2E8F0', borderTopEndRadius: 10, borderBottomEndRadius: 10, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FAFBFC' },
 
   btn:       { backgroundColor: '#0F172A', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 20 },
   btnText:   { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },

@@ -46,6 +46,35 @@ export async function labDetail(id: string): Promise<PlatformLabDetail> {
   return data as PlatformLabDetail;
 }
 
+export type LabRegion = 'TR' | 'IR';
+
+/**
+ * Platform konsolundan yeni lab kur.
+ *
+ * `create_lab_tenant`'tan farkı: o RPC labı ÇAĞIRANA bağlar (auth.uid() sahip
+ * olur), yani platform yöneticisi kullanamaz — kendi labı olurdu. Bu RPC
+ * sahipsiz lab kurar ve sahibini e-postayla işaretler; o kişi kayıt olup
+ * giriş yapınca `claim_pending_lab()` ile devralır.
+ *
+ * Bölge lab_settings'e yazılır → dil, takvim, para birimi ve KDV varsayılanı
+ * ilk açılıştan itibaren doğru gelir (İran: Farsça · Şemsi · Tümen · %10).
+ */
+export async function createLab(input: {
+  name: string; ownerEmail: string; region: LabRegion;
+  plan?: Plan; phone?: string | null; address?: string | null;
+}): Promise<string> {
+  const { data, error } = await supabase.rpc('admin_create_lab', {
+    p_name:        input.name,
+    p_owner_email: input.ownerEmail,
+    p_region:      input.region,
+    p_plan:        input.plan ?? 'trial',
+    p_phone:       input.phone ?? null,
+    p_address:     input.address ?? null,
+  });
+  if (error) throw error;
+  return data as string;
+}
+
 export async function setLabStatus(id: string, active: boolean): Promise<void> {
   const { error } = await supabase.rpc('admin_set_lab_status', { p_lab: id, p_active: active });
   if (error) throw error;
@@ -67,6 +96,67 @@ export type AuditRow = { id: number; actor: string | null; action: string; lab_n
 export type PlatformAdmin = { user_id: string; name: string | null; email: string | null; note: string | null; created_at: string };
 
 const num = (o: any, keys: string[]) => { for (const k of keys) if (o && o[k] != null) o[k] = Number(o[k]) || 0; return o; };
+
+/**
+ * Lab sahibine giriş hesabı aç (platform konsolundan).
+ *
+ * `admin-create-user` edge fonksiyonu normalde çağıranın lab_id'sini miras
+ * verir; platform yöneticisinin labı olmadığı için `target_lab_id` ile hedef
+ * lab açıkça geçilir (yalnız user_type='admin' için açık).
+ *
+ * Şifre burada üretilip GERİ DÖNDÜRÜLÜR — İran'a e-posta teslimi güvenilir
+ * olmadığı için davet bağlantısı yerine doğrudan devredilebilir bilgi veriyoruz.
+ * Kullanıcı ilk girişten sonra Profil'den değiştirebilir.
+ */
+export async function createLabOwner(input: {
+  labId: string; email: string; fullName: string; phone?: string | null;
+}): Promise<{ email: string; password: string }> {
+  const password = generateTempPassword();
+  const { data: { session } } = await supabase.auth.getSession();
+  const res = await fetch(
+    `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/admin-create-user`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session?.access_token ?? ''}`,
+      },
+      body: JSON.stringify({
+        target_lab_id: input.labId,
+        email: input.email.trim().toLowerCase(),
+        password,
+        full_name: input.fullName.trim(),
+        // Lab SAHİBİ exec/admin panelini kullanır (mevcut labların sahipleri de
+        // user_type='admin'). 'lab' + manager teknisyen/personel tarafıdır.
+        user_type: 'admin',
+        role: 'manager',
+        phone: input.phone ?? null,
+      }),
+    },
+  );
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(out?.error ?? 'Hesap oluşturulamadı');
+
+  // admin-create-user yalnız profiles.lab_id yazar; labs.owner_id boşta kalır.
+  // Sahipliği burada bağla — aksi halde lab "sahipsiz" görünür ve bekleyen
+  // e-posta kaydı asla temizlenmez.
+  const newId = out?.user?.id ?? out?.id ?? null;
+  if (newId) {
+    try { await supabase.rpc('admin_bind_lab_owner', { p_lab: input.labId, p_user: newId }); }
+    catch { /* sahiplik bağlanamazsa hesap yine çalışır */ }
+  }
+  return { email: input.email.trim().toLowerCase(), password };
+}
+
+/** Okunabilir geçici şifre — karışan karakterler (0/O, 1/l/I) dışarıda. */
+function generateTempPassword(): string {
+  const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const a = 'abcdefghijkmnpqrstuvwxyz';
+  const d = '23456789';
+  const pick = (set: string, n: number) =>
+    Array.from({ length: n }, () => set[Math.floor(Math.random() * set.length)]).join('');
+  return `${pick(A, 2)}${pick(a, 4)}${pick(d, 3)}`;
+}
 
 export async function platformStats(): Promise<PlatformStats> {
   const { data, error } = await supabase.rpc('admin_platform_stats');

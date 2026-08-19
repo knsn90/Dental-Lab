@@ -55,9 +55,10 @@ import {
 import {
   Shield, Users, Wrench, Stethoscope, Building2, Truck,
   Check, Save, RotateCcw, Lock, User as UserIcon, Search, X, ChevronDown,
-  ChevronRight, AlertTriangle,
+  ChevronRight, ChevronLeft, AlertTriangle,
 } from 'lucide-react-native';
 import { useAuthStore } from '../../../core/store/authStore';
+import { isRTL } from '../../../core/i18n';
 import { toast } from '../../../core/ui/Toast';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { CenteredLoader } from '../../../core/ui/CenteredLoader';
@@ -180,8 +181,10 @@ function PermissionCategory({
             ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
           })}
         >
-          <View style={{ transform: [{ rotate: expanded ? '90deg' : '0deg' }] }}>
-            <ChevronRight size={15} color={DS.ink[400]} strokeWidth={2.2} />
+          <View style={{ transform: [{ rotate: expanded ? (isRTL() ? '-90deg' : '90deg') : '0deg' }] }}>
+            {isRTL()
+              ? <ChevronLeft size={15} color={DS.ink[400]} strokeWidth={2.2} />
+              : <ChevronRight size={15} color={DS.ink[400]} strokeWidth={2.2} />}
           </View>
           <Text style={{ fontSize: 15, fontWeight: '700', color: DS.ink[900], letterSpacing: -0.2 }}>{catLabel}</Text>
           <Text style={{ fontSize: 12, color: DS.ink[400] }}>{activeCount}/{allKeys.length}</Text>
@@ -232,7 +235,7 @@ function PermissionCategory({
                 borderTopColor: 'rgba(0,0,0,0.04)',
               }}
             >
-              <View style={{ flex: 1, paddingRight: 12, gap: 2 }}>
+              <View style={{ flex: 1, paddingEnd: 12, gap: 2 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                   <Text style={{ fontSize: 13.5, fontWeight: '600', color: DS.ink[900] }}>{f.label}</Text>
                   {f.critical && <CriticalBadge />}
@@ -628,7 +631,7 @@ export function PermissionsScreen({ embedded = false, accentColor = '#4771AB' }:
         }}
       >
         {isActive && (
-          <View style={{ width: 3, height: 16, borderRadius: 2, backgroundColor: accentColor, marginLeft: -6, marginRight: 4 }} />
+          <View style={{ width: 3, height: 16, borderRadius: 2, backgroundColor: accentColor, marginStart: -6, marginEnd: 4 }} />
         )}
         <View style={{
           width: 28, height: 28, borderRadius: 8,

@@ -1,4 +1,5 @@
-import { localeTag } from '../../../core/i18n';
+import { localeTag, isRTL } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 /**
  * OperatorScreen — Teknisyen istasyon paneli
  *
@@ -12,7 +13,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Platform, useWindowDimensions, Modal } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  Check, ChevronRight, ChevronDown, Clock, Calendar,
+  Check, ChevronRight, ChevronLeft, ChevronDown, Clock, Calendar,
   Inbox, Flame, Play,
 } from 'lucide-react-native';
 import { supabase } from '../../../core/api/supabase';
@@ -166,10 +167,10 @@ function computeSla(deliveryDate: string | null): SlaInfo | null {
   const late = diff < 0;
   const risky = diff <= 1;
   let formatted: string;
-  if (late) formatted = `${Math.abs(diff)} gün gecikti`;
-  else if (diff === 0) formatted = 'Bugün';
-  else if (diff === 1) formatted = 'Yarın';
-  else formatted = `${diff} gün kaldı`;
+  if (late) formatted = `${Math.abs(diff)} ${autoT('gün gecikti')}`;
+  else if (diff === 0) formatted = autoT('Bugün');
+  else if (diff === 1) formatted = autoT('Yarın');
+  else formatted = `${diff} ${autoT('gün kaldı')}`;
   return {
     days: diff,
     late,
@@ -651,8 +652,8 @@ export function OperatorScreen() {
     <ScrollView
       style={{ flex: 1, backgroundColor: P.pageBg }}
       contentContainerStyle={{
-        paddingLeft: 16,
-        paddingRight: 16,
+        paddingStart: 16,
+        paddingEnd: 16,
         // Yüzen üst başlık (logo + aksiyon düğmeleri) 72px kaplıyor;
         // 16 yetmiyordu ve "İşlerim" logonun altına giriyordu.
         paddingTop: isWide ? 16 : mobileTopPad(insets.top),
@@ -1081,7 +1082,9 @@ function SelectedJobDetail({
           <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: P.ink700 }}>
             Bu iş hakkında yazış
           </Text>
-          <ChevronRight size={15} color={P.ink400} strokeWidth={2} />
+          {isRTL()
+            ? <ChevronLeft size={15} color={P.ink400} strokeWidth={2} />
+            : <ChevronRight size={15} color={P.ink400} strokeWidth={2} />}
         </Pressable>
 
         {/* Validation checklist artık popup'a taşındı — Tamamla butonuna basınca açılır */}
@@ -1308,7 +1311,7 @@ function ToothDetailRow({ label, value }: { label: string; value: string }) {
     }}>
       <Text style={{ fontSize: 11.5, color: P.ink500, flexShrink: 0 }}>{label}</Text>
       <Text
-        style={{ fontSize: 11.5, fontWeight: '600', color: P.ink900, flex: 1, minWidth: 0, textAlign: 'right' }}
+        style={{ fontSize: 11.5, fontWeight: '600', color: P.ink900, flex: 1, minWidth: 0, textAlign: 'end' as any }}
         numberOfLines={1}
       >
         {value}
@@ -1337,10 +1340,10 @@ function JobDetailsPanel({
 
   const dueText = dueLabel
     ? (dueLabel.late
-        ? `${Math.abs(dueLabel.days)} gün geçti · ${dueLabel.formatted}`
-        : dueLabel.days === 0 ? `Bugün · ${dueLabel.formatted}`
-        : dueLabel.days === 1 ? `Yarın · ${dueLabel.formatted}`
-        : `${dueLabel.days} gün kaldı · ${dueLabel.formatted}`)
+        ? `${Math.abs(dueLabel.days)} ${autoT('gün geçti')} · ${dueLabel.formatted}`
+        : dueLabel.days === 0 ? `${autoT('Bugün')} · ${dueLabel.formatted}`
+        : dueLabel.days === 1 ? `${autoT('Yarın')} · ${dueLabel.formatted}`
+        : `${dueLabel.days} ${autoT('gün kaldı')} · ${dueLabel.formatted}`)
     : null;
   const dueTone: 'neutral' | 'warning' | 'danger' = !dueLabel
     ? 'neutral'
@@ -1390,7 +1393,7 @@ function JobDetailsPanel({
                 </Text>
               </View>
             ))}
-            <Text style={{ fontSize: 10, color: P.ink400, alignSelf: 'center', marginLeft: 4 }}>
+            <Text style={{ fontSize: 10, color: P.ink400, alignSelf: 'center', marginStart: 4 }}>
               · {job.tooth_numbers.length} diş
             </Text>
           </View>
@@ -1461,7 +1464,7 @@ function DetailCell({
     <View style={{
       width: '50%',
       paddingHorizontal: 16, paddingVertical: 10,
-      borderRightWidth: 1, borderRightColor: P.ink100,
+      borderEndWidth: 1, borderEndColor: P.ink100,
       borderBottomWidth: 1, borderBottomColor: P.ink100,
       gap: 3,
     }}>
@@ -1654,7 +1657,9 @@ function QueueCard({
           <Pill bg={P.ink100} fg={P.ink500}>SIRADA</Pill>
         ) : null}
 
-        <ChevronRight size={15} color={isSelected ? P.accent : P.ink300} strokeWidth={1.8} />
+        {isRTL()
+          ? <ChevronLeft size={15} color={isSelected ? P.accent : P.ink300} strokeWidth={1.8} />
+          : <ChevronRight size={15} color={isSelected ? P.accent : P.ink300} strokeWidth={1.8} />}
       </View>
     </Pressable>
   );

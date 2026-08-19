@@ -30,7 +30,7 @@ import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { formatMoney, type Currency } from '../../../core/money/currency';
 import { formatAddress } from '../../../core/util/formatAddress';
 import { safeBack } from '../../../core/util/safeBack';
-import { localeTag } from '../../../core/i18n';
+import { localeTag, isRTL } from '../../../core/i18n';
 import { DELIVERY_PURPOSE_LABELS, type DeliveryPurpose } from '../../orders/api';
 import { DELIVERY_STATUS_CFG } from '../../orders/components/OrderLogisticsCard';
 import {
@@ -274,7 +274,7 @@ export function ExpenseDetailScreen({ expenseId, onBack, onOpenInvoice }: Props 
             opacity: pressed ? 0.6 : 1, ...webCursor,
           })}
         >
-          <ArrowLeft size={16} color={DS.ink[700]} strokeWidth={1.9} />
+          {isRTL() ? <ArrowRight size={16} color={DS.ink[700]} strokeWidth={1.9} /> : <ArrowLeft size={16} color={DS.ink[700]} strokeWidth={1.9} />}
         </Pressable>
         <Text style={{
           flex: 1, fontSize: 10, fontWeight: '500', letterSpacing: 1.2,
@@ -393,7 +393,9 @@ export function ExpenseDetailScreen({ expenseId, onBack, onOpenInvoice }: Props 
             {purposeLabel ? <InfoRow icon={Truck} label="Amaç" value={purposeLabel} /> : null}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 5 }}>
               {outbound
-                ? <ArrowRight size={14} color={DS.ink[400]} strokeWidth={1.7} />
+                ? (isRTL()
+                    ? <ArrowLeft size={14} color={DS.ink[400]} strokeWidth={1.7} />
+                    : <ArrowRight size={14} color={DS.ink[400]} strokeWidth={1.7} />)
                 : <ArrowLeftRight size={14} color={DS.ink[400]} strokeWidth={1.7} />}
               <Text style={{ fontSize: 12, color: DS.ink[500], width: 110 }}>Yön</Text>
               <Text style={{ flex: 1, fontSize: 13, color: DS.ink[900] }}>

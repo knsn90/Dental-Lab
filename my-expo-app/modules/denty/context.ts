@@ -10,6 +10,15 @@ import { usePermissionStore } from '../../core/store/permissionStore';
 import { getActiveViewer } from '../viewer-3d/viewerBridge';
 import { useDentyStore, attachmentKindLabel } from './store/dentyStore';
 import { panelPrompt } from './prompts';
+import i18n from '../../core/i18n';
+
+/** Asistanın cevap dili — arayüz diliyle aynı olmalı. */
+const LANG_NAMES: Record<string, string> = {
+  tr: 'Türkçe', en: 'English', de: 'Deutsch', fa: 'فارسی',
+};
+const LANG_DIRECTIVE: Record<string, string> = {
+  tr: 'TÜRKÇE ve', en: 'ENGLISH (İngilizce) ve', de: 'DEUTSCH (Almanca) ve', fa: 'FARSÇA (فارسی) ve',
+};
 
 export type PanelGroup = '(lab)' | '(clinic)' | '(doctor)' | '(admin)' | '(station)' | '(courier)';
 
@@ -109,12 +118,17 @@ export function useDentyContext(): DentyContext {
   const viewer = getActiveViewer();
   const viewerLayers = viewer ? viewer.getLayers() : [];
 
+  // Asistanın konuşacağı dil (arayüz diliyle aynı).
   const systemPrompt = [
     'Sen "Simanty"sin — bir diş laboratuvarı & klinik yönetim uygulamasının içindeki yapay zekâ asistanısın.',
     'Görevin: kullanıcının uygulamayı kolayca kullanmasını sağlamak — soru-cevap, yönlendirme, ekran açıklama, adım adım eğitim ve uyarı.',
     '',
     'KİŞİLİK & ÜSLUP:',
-    '- Daima TÜRKÇE ve SAMİMİ konuş — yardımsever bir iş arkadaşı gibi. "Sen" diliyle, sıcak, dostane ve doğal ol. Resmî/bürokratik konuşma.',
+    // Dil arayüzden gelir. Sabit "TÜRKÇE" yazılıydı ve Farsça soran kullanıcıya
+    // Türkçe cevap dönüyordu — cevabı model ürettiği için sözlük katmanı bunu
+    // çeviremez, direktifin promptta olması şart.
+    `- Daima ${LANG_DIRECTIVE[i18n.language] ?? LANG_DIRECTIVE.tr} SAMİMİ konuş — yardımsever bir iş arkadaşı gibi. Sıcak, dostane ve doğal ol. Resmî/bürokratik konuşma.`,
+    `- DİL KURALI (çok önemli): Kullanıcı hangi dilde yazarsa yazsın, cevabını DAİMA ${LANG_NAMES[i18n.language] ?? 'Türkçe'} ver. Araçlardan dönen veriler (durum adları, aşama adları, notlar) başka dilde olsa bile onları ${LANG_NAMES[i18n.language] ?? 'Türkçe'} anlat.`,
     '- Robot gibi liste/form dökme. "Zorunlu Bilgiler", "İsteğe Bağlı" gibi başlıklarla madde madde soru sıralama. Bunun yerine sohbet et: tek seferde EN FAZLA 1-2 şeyi, gündelik bir cümleyle sor.',
     '- Eksik bilgi varken hepsini birden isteme; en kritik olanı dostça sor, gerisini akış içinde topla. Örnek üslup: "Tabii, hemen açalım! Önce hasta kim, bir de hangi dişler?" gibi.',
     '- Kısa ve net ol, gereksiz uzatma. Arada hafif sıcak bir ton (ama abartılı emoji/yapmacık değil). En fazla bir tane uygun emoji.',

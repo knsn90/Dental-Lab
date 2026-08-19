@@ -195,7 +195,7 @@ export function GlobalSupportTrigger() {
               style={[fieldInput, { minHeight: 140, textAlignVertical: 'top' }] as any}
             />
             {ctx.error_message && (
-              <View style={{ marginTop: 8, padding: 10, borderRadius: 8, backgroundColor: W.orangeSoft, borderLeftWidth: 3, borderLeftColor: W.orange }}>
+              <View style={{ marginTop: 8, padding: 10, borderRadius: 8, backgroundColor: W.orangeSoft, borderStartWidth: 3, borderStartColor: W.orange }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 }}>
                   <AlertCircle size={10} color={W.orange} strokeWidth={2} />
                   <Text style={{ fontSize: 9.5, fontWeight: '800', color: W.orange, letterSpacing: 0.5, textTransform: 'uppercase' }}>Yakalanan Hata</Text>

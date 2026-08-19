@@ -204,8 +204,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     // top runtime'da insets.top + offset ile override edilir
     top: Platform.OS === 'web' ? 20 : 56,
-    left: 0,
-    right: 0,
+    start: 0,
+    end: 0,
     alignItems: 'center',
     zIndex: 99999,
     gap: 10,

@@ -5,7 +5,9 @@
  */
 import React from 'react';
 import { View, Text, Pressable, Platform, StyleSheet, Modal } from 'react-native';
-import { User as UserIcon, LogOut, ChevronRight, Monitor, Sun, Moon } from 'lucide-react-native';
+import { User as UserIcon, LogOut, ChevronRight, ChevronLeft, Monitor, Sun, Moon } from 'lucide-react-native';
+import { isRTL } from '../../i18n';
+import { autoT } from '../../i18n/autoTranslate';
 import { useThemeModeStore } from '../../store/themeModeStore';
 
 export interface ProfileMenuProps {
@@ -17,6 +19,7 @@ export interface ProfileMenuProps {
 }
 
 export function ProfileMenu({ visible, anchorTop, onClose, onProfile, onLogout }: ProfileMenuProps) {
+  const rtl = isRTL();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const mode    = useThemeModeStore(s => s.mode);
   const setMode = useThemeModeStore(s => s.setMode);
@@ -31,9 +34,10 @@ export function ProfileMenu({ visible, anchorTop, onClose, onProfile, onLogout }
   const activeBorder = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(20,16,12,0.08)';
 
   const themeOptions: Array<{ value: 'system' | 'light' | 'dark'; icon: any; label: string }> = [
-    { value: 'system', icon: Monitor, label: 'Otomatik' },
-    { value: 'light',  icon: Sun,     label: 'Açık' },
-    { value: 'dark',   icon: Moon,    label: 'Koyu' },
+    // Sabit dizideki label alanı JSX değil → autoT() şart
+    { value: 'system', icon: Monitor, label: autoT('Otomatik') },
+    { value: 'light',  icon: Sun,     label: autoT('Açık') },
+    { value: 'dark',   icon: Moon,    label: autoT('Koyu') },
   ];
 
   return (
@@ -48,7 +52,8 @@ export function ProfileMenu({ visible, anchorTop, onClose, onProfile, onLogout }
           style={{
             position: 'absolute',
             top: anchorTop,
-            right: 12,
+            // `end:` inline stili bu projede güvenilir değil → yönü açıkça seç
+            ...(rtl ? { left: 12 } : { right: 12 }),
             width: 260,
             borderRadius: 16,
             backgroundColor: surface,
@@ -113,22 +118,24 @@ export function ProfileMenu({ visible, anchorTop, onClose, onProfile, onLogout }
 
           <Row
             icon={UserIcon}
-            label="Profil"
+            label={autoT('Profil')}
             iconColor={ink}
             labelColor={ink}
             ink3={ink3}
             onPress={onProfile}
             showDivider
             hairline={hairline}
+            rtl={rtl}
           />
           <Row
             icon={LogOut}
-            label="Çıkış Yap"
+            label={autoT('Çıkış Yap')}
             iconColor="#DC2626"
             labelColor="#DC2626"
             ink3={ink3}
             onPress={onLogout}
             hairline={hairline}
+            rtl={rtl}
           />
         </View>
       </Pressable>
@@ -137,7 +144,7 @@ export function ProfileMenu({ visible, anchorTop, onClose, onProfile, onLogout }
 }
 
 function Row({
-  icon: Icon, label, iconColor, labelColor, ink3, onPress, showDivider, hairline,
+  icon: Icon, label, iconColor, labelColor, ink3, onPress, showDivider, hairline, rtl,
 }: {
   icon: any;
   label: string;
@@ -147,7 +154,10 @@ function Row({
   onPress: () => void;
   showDivider?: boolean;
   hairline: string;
+  rtl?: boolean;
 }) {
+  // Satır sonu chevron'u yön bildirir → RTL'de aynalanır
+  const Chevron = rtl ? ChevronLeft : ChevronRight;
   return (
     <Pressable onPress={onPress}>
       {({ pressed }: any) => (
@@ -167,7 +177,7 @@ function Row({
           <Text style={{ flex: 1, fontSize: 15, fontWeight: '500', color: labelColor }}>
             {label}
           </Text>
-          <ChevronRight size={16} color={ink3} strokeWidth={1.8} />
+          <Chevron size={16} color={ink3} strokeWidth={1.8} />
         </View>
       )}
     </Pressable>

@@ -7,6 +7,8 @@ import {
 import * as DocumentPicker from 'expo-document-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DS } from '../../../core/theme/dsTokens';
+import { isRTL } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { DatePicker } from '../../../core/ui/DatePicker';
 import { HubContext } from '../../../core/ui/HubContext';
@@ -15,7 +17,7 @@ import { toast } from '../../../core/ui/Toast';
 import { useEmployees } from '../../employees/hooks/useEmployees';
 import {
   Clock, CheckCircle, Upload, X, AlertTriangle, ShieldCheck,
-  Search, FolderOpen, ExternalLink, Pencil, Trash2, ArrowLeft,
+  Search, FolderOpen, ExternalLink, Pencil, Trash2, ArrowLeft, ArrowRight,
   FileText, CreditCard, Award, Activity, Calendar, DollarSign,
   Paperclip, Shield,
 } from 'lucide-react-native';
@@ -79,7 +81,7 @@ const WEB_CURSOR = Platform.OS === 'web' ? { cursor: 'pointer' as const } : {};
 function ExpiryBadge({ days }: { days: number | null }) {
   if (days === null) return null;
   const tone = days <= 7 ? CHIP_TONES.danger : days <= 30 ? CHIP_TONES.warning : CHIP_TONES.success;
-  const label = days <= 0 ? 'Süresi doldu' : `${days} gün`;
+  const label = days <= 0 ? autoT('Süresi doldu') : `${days} ${autoT('gün')}`;
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, backgroundColor: tone.bg }}>
       <Clock size={10} color={tone.fg} strokeWidth={1.6} />
@@ -663,7 +665,7 @@ export function DocumentsScreen(_props: DocumentsScreenProps = {}) {
     return (
       <View style={{ flex: 1, flexDirection: 'row' }}>
         {/* LEFT */}
-        <View style={{ width: 280, borderRightWidth: 1, borderRightColor: 'rgba(0,0,0,0.06)', flexDirection: 'column' }}>
+        <View style={{ width: 280, borderEndWidth: 1, borderEndColor: 'rgba(0,0,0,0.06)', flexDirection: 'column' }}>
           {!isEmbedded && (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 20, paddingBottom: 4 }}>
               <FolderOpen size={16} color={DS.ink[500]} strokeWidth={1.6} />
@@ -699,7 +701,9 @@ export function DocumentsScreen(_props: DocumentsScreenProps = {}) {
     return (
       <View style={{ flex: 1 }}>
         <Pressable style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)', ...WEB_CURSOR } as any} onPress={() => setSelectedId(null)}>
-          <ArrowLeft size={17} color={DS.ink[500]} strokeWidth={1.6} />
+          {isRTL()
+            ? <ArrowRight size={17} color={DS.ink[500]} strokeWidth={1.6} />
+            : <ArrowLeft size={17} color={DS.ink[500]} strokeWidth={1.6} />}
           <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500] }}>Geri</Text>
         </Pressable>
         <DocumentsDetail employee={selectedEmployee} userId={userId} labId={labId} />

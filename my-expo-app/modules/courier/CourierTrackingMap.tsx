@@ -620,7 +620,7 @@ export function CourierTrackingMap({
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 var map=L.map('map',{zoomControl:false,attributionControl:false}).setView([39.0,35.2],6);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/${isDark ? 'dark_all' : 'light_all'}/{z}/{x}/{y}{r}.png',{maxZoom:20,subdomains:'abcd'}).addTo(map);
 var cM=null,dM=null,oM=null,rL=null,fit=false;
 function ic(c){return L.divIcon({className:'',html:'<div style="width:18px;height:18px;border-radius:50%;background:'+c+';border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.45)"></div>',iconSize:[18,18],iconAnchor:[9,9]});}
 window.__updateMap=function(d){
@@ -664,7 +664,7 @@ window.__updateMap=function(d){
       {Platform.OS === 'web' && (
         <View style={{
           position: 'absolute',
-          right: 12,
+          end: 12,
           ...(isNarrow
             ? { top: 112 }                              // mobile: floating TopActionBar (QR/Bell/Profile) altında
             // desktop: sağ altta global "Simanty'ye sor" balonu duruyor (~56px + kenar

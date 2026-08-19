@@ -31,6 +31,47 @@ gelmeden devam edilmez.
 
 ---
 
+## 🌍 Çok Dillilik Kuralı (ZORUNLU)
+
+**Yeni bir özellik, metin veya değişiklik eklenirken çeviriler AYNI ANDA
+dört dilde de yapılır.** "Sonra Farsça'sını ekleriz" diye bırakılmaz — bırakılan
+her dize o dilde Türkçe görünür ve kullanıcı ekranı gösterene kadar fark edilmez.
+
+Desteklenen diller: **tr** (kaynak) · **en** · **de** · **fa**
+
+İki katman var, hangisine yazacağın metnin türüne bağlı:
+
+| Katman | Dosya | Ne zaman |
+|---|---|---|
+| Anahtarlı | `core/i18n/locales/{tr,en,de,fa}.json` | `t('admin.dashboard.newOrder')` ile çağrılan metinler |
+| Otomatik sözlük | `core/i18n/locales/auto.{en,de,fa}.json` | Kaynakta düz Türkçe yazılmış her `<Text>` / `placeholder` |
+
+**Otomatik sözlük BİREBİR eşleşir.** Anahtar, ekranda render edilen dizenin
+`trim()` hâlidir. Bu yüzden şu kalıplar sözlüğe TAKILMAZ ve çağrı yerinde
+`autoT()` ile sarılmalıdır:
+
+```tsx
+// ❌ tek parça olur, eşleşmez
+`${n} gün gecikti`
+<Text>Brüt {tutar}</Text>          // ✅ bu ÇALIŞIR — ayrı string çocuğu
+{kosul ? 'Aktif' : 'Pasif'}        // ✅ çalışır — string çocuğu
+
+// ✅ doğrusu
+`${n} ${autoT('gün gecikti')}`
+```
+
+**Çeviri katmanının GÖREMEDİĞİ yerler** (buralarda `autoT()` zorunlu):
+- Yazdırma/PDF şablonları — ham HTML üretir, JSX runtime'ından geçmez
+  (`core/i18n/printLocale.ts` + `autoT()` kullan)
+- `react-native-svg`'nin `<SvgText>`'i — RN `<Text>` değil, yamalanmaz
+- Sabit dizilerdeki `label`/`hint` alanları — JSX değil, veri
+- Veritabanına Türkçe YAZILAN metinler (bildirim başlıkları, aktivite kayıtları)
+  → render anında `autoT()` çözer; `"Başlık · KOD"` ve `"Başlık: Değer"`
+  biçimleri için önek eşleşmesi vardır
+
+**Kontrol:** değişiklikten sonra üç sözlüğün de aynı anahtarları içerdiğini
+doğrula. Eksik dil bırakma.
+
 ## 🚀 Deploy Kuralı (ZORUNLU)
 
 **Kullanıcı açıkça "deploy" (veya "deploy et / yayınla / online güncelle")

@@ -77,7 +77,7 @@ const styles = StyleSheet.create({
   },
   closeBtn: {
     padding: 4,
-    marginLeft: 12,
+    marginStart: 12,
   },
   closeText: {
     fontSize: 18,

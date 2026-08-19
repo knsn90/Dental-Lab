@@ -6,10 +6,11 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
 import {
-  History, User, ChevronDown, ChevronRight, Clock, Edit3, Filter,
+  History, User, ChevronDown, ChevronRight, ChevronLeft, Clock, Edit3, Filter,
 } from 'lucide-react-native';
 
 import { DS } from '../../../../core/theme/dsTokens';
+import { isRTL } from '../../../../core/i18n';
 import { supabase } from '../../../../core/api/supabase';
 import { listPolicies } from '../api';
 import type { BonusPolicy } from '../types';
@@ -200,7 +201,9 @@ export default function BonusAuditScreen() {
                     opacity: pressed ? 0.85 : 1,
                   })}
                 >
-                  {open ? <ChevronDown size={16} color={DS.ink[500]} /> : <ChevronRight size={16} color={DS.ink[500]} />}
+                  {open ? <ChevronDown size={16} color={DS.ink[500]} /> : (isRTL()
+                    ? <ChevronLeft size={16} color={DS.ink[500]} />
+                    : <ChevronRight size={16} color={DS.ink[500]} />)}
                   <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: TH.bgSoft, alignItems: 'center', justifyContent: 'center' }}>
                     <Edit3 size={18} color={TH.primary} strokeWidth={1.8} />
                   </View>

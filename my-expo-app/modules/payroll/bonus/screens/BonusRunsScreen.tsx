@@ -1,4 +1,5 @@
-import { localeTag } from '../../../../core/i18n';
+import { localeTag, isRTL } from '../../../../core/i18n';
+import { autoT } from '../../../../core/i18n/autoTranslate';
 /**
  * BonusRunsScreen — design language reset.
  * Hero kicker + Chip filtreler + Liste + Detail modal.
@@ -8,7 +9,7 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { View, Text, Pressable, ScrollView, Modal } from 'react-native';
 import {
   CheckCircle2, RotateCcw, Send, Undo2, X, Filter, ChevronDown,
-  AlertTriangle, Wallet, ChevronRight,
+  AlertTriangle, Wallet, ChevronLeft, ChevronRight,
 } from 'lucide-react-native';
 
 import { DS } from '../../../../core/theme/dsTokens';
@@ -181,7 +182,7 @@ export default function BonusRunsScreen({ onOpenTechnician }: Props = {}) {
                     <StatusChip status={r.status} />
                   </View>
                   <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 4 }}>
-                    {r.total_units === 1 ? `1 işlem` : `${r.total_units} üye`} · {rows.length} kişi ·{' '}
+                    {r.total_units === 1 ? `1 ${autoT('işlem')}` : `${r.total_units} ${autoT('üye')}`} · {rows.length} kişi ·{' '}
                     {new Date(r.calculated_at).toLocaleDateString(localeTag())}
                   </Text>
                 </View>
@@ -199,7 +200,8 @@ export default function BonusRunsScreen({ onOpenTechnician }: Props = {}) {
                     </Text>
                   ) : null}
                 </View>
-                <ChevronRight size={16} color={DS.ink[400]} />
+                {isRTL() ? <ChevronLeft size={16} color={DS.ink[400]} />
+                         : <ChevronRight size={16} color={DS.ink[400]} />}
               </Pressable>
             );
           })}
@@ -259,8 +261,8 @@ function BonusRunDetailModal({ run, policy, onClose, onChanged, onOpenTechnician
               </View>
               <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 4 }}>
                 Hesaplandı: {new Date(run.calculated_at).toLocaleString('tr-TR')}
-                {run.approved_at ? ` · Onaylandı: ${new Date(run.approved_at).toLocaleDateString(localeTag())}` : ''}
-                {run.posted_at ? ` · Yansıtıldı: ${new Date(run.posted_at).toLocaleDateString(localeTag())}` : ''}
+                {run.approved_at ? ` · ${autoT('Onaylandı:')} ${new Date(run.approved_at).toLocaleDateString(localeTag())}` : ''}
+                {run.posted_at ? ` · ${autoT('Yansıtıldı:')} ${new Date(run.posted_at).toLocaleDateString(localeTag())}` : ''}
               </Text>
             </View>
             <Pressable onPress={onClose} style={({ pressed }) => ({
@@ -287,12 +289,12 @@ function BonusRunDetailModal({ run, policy, onClose, onChanged, onOpenTechnician
             <View style={{ flexDirection: 'row', gap: 8, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: DS.ink[200] }}>
               <Text style={{ width: 28, fontSize: 9, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>#</Text>
               <Text style={{ flex: 1, fontSize: 9, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Teknisyen</Text>
-              <Text style={{ width: 50, textAlign: 'right', fontSize: 9, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Üye</Text>
-              <Text style={{ width: 50, textAlign: 'right', fontSize: 9, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Puan</Text>
-              <Text style={{ width: 70, textAlign: 'right', fontSize: 9, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Bireysel</Text>
-              <Text style={{ width: 70, textAlign: 'right', fontSize: 9, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Havuz</Text>
-              <Text style={{ width: 50, textAlign: 'right', fontSize: 9, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Kalite</Text>
-              <Text style={{ width: 80, textAlign: 'right', fontSize: 9, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Toplam</Text>
+              <Text style={{ width: 50, textAlign: 'end' as any, fontSize: 9, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Üye</Text>
+              <Text style={{ width: 50, textAlign: 'end' as any, fontSize: 9, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Puan</Text>
+              <Text style={{ width: 70, textAlign: 'end' as any, fontSize: 9, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Bireysel</Text>
+              <Text style={{ width: 70, textAlign: 'end' as any, fontSize: 9, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Havuz</Text>
+              <Text style={{ width: 50, textAlign: 'end' as any, fontSize: 9, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Kalite</Text>
+              <Text style={{ width: 80, textAlign: 'end' as any, fontSize: 9, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Toplam</Text>
             </View>
             {rows.length === 0 ? (
               <Text style={{ padding: 24, textAlign: 'center', fontSize: 12, color: DS.ink[400], fontStyle: 'italic' }}>Breakdown verisi yok.</Text>
@@ -315,14 +317,14 @@ function BonusRunDetailModal({ run, policy, onClose, onChanged, onOpenTechnician
                   {r.error ? <Text style={{ fontSize: 10, color: TH.danger }}>{r.error}</Text>
                   : r.station_code ? <Text style={{ fontSize: 10, color: DS.ink[400] }}>{r.station_code}</Text> : null}
                 </View>
-                <Text style={{ width: 50, textAlign: 'right', fontSize: 12, color: DS.ink[700] }}>{r.units}</Text>
-                <Text style={{ width: 50, textAlign: 'right', fontSize: 12, color: DS.ink[700] }}>{(r.points ?? 0).toFixed?.(1) ?? r.points}</Text>
-                <Text style={{ width: 70, textAlign: 'right', fontSize: 12, color: DS.ink[700] }}>{TRY(r.individual_bonus)}</Text>
-                <Text style={{ width: 70, textAlign: 'right', fontSize: 12, color: DS.ink[700] }}>{TRY(r.pool_share)}</Text>
-                <Text style={{ width: 50, textAlign: 'right', fontSize: 12, color: DS.ink[700] }}>
+                <Text style={{ width: 50, textAlign: 'end' as any, fontSize: 12, color: DS.ink[700] }}>{r.units}</Text>
+                <Text style={{ width: 50, textAlign: 'end' as any, fontSize: 12, color: DS.ink[700] }}>{(r.points ?? 0).toFixed?.(1) ?? r.points}</Text>
+                <Text style={{ width: 70, textAlign: 'end' as any, fontSize: 12, color: DS.ink[700] }}>{TRY(r.individual_bonus)}</Text>
+                <Text style={{ width: 70, textAlign: 'end' as any, fontSize: 12, color: DS.ink[700] }}>{TRY(r.pool_share)}</Text>
+                <Text style={{ width: 50, textAlign: 'end' as any, fontSize: 12, color: DS.ink[700] }}>
                   {(r.quality_multiplier ?? 1).toFixed?.(2) ?? r.quality_multiplier}×
                 </Text>
-                <Text style={{ width: 80, textAlign: 'right', ...DISPLAY, fontSize: 14, color: '#1F6B47' }}>{TRY(r.total_bonus)}</Text>
+                <Text style={{ width: 80, textAlign: 'end' as any, ...DISPLAY, fontSize: 14, color: '#1F6B47' }}>{TRY(r.total_bonus)}</Text>
               </Pressable>
             ))}
           </ScrollView>

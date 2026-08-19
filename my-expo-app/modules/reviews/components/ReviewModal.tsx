@@ -67,10 +67,10 @@ function PhotoGrid({ label, hint, list, signed, readOnly, accent, uploading, onA
         {list.map(p => (
           // Dolu kart — dosyalardaki kart tarzı (üst yeşil şerit + görsel + sil)
           <View key={p} style={{ width: 96, height: 116, borderRadius: 12, overflow: 'hidden', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E8F0' }}>
-            <View style={{ height: 8, width: '55%', alignSelf: 'center', borderBottomLeftRadius: 6, borderBottomRightRadius: 6, backgroundColor: '#22C55E' }} />
+            <View style={{ height: 8, width: '55%', alignSelf: 'center', borderBottomStartRadius: 6, borderBottomEndRadius: 6, backgroundColor: '#22C55E' }} />
             {signed[p] ? <Image source={{ uri: signed[p] }} style={{ flex: 1, width: '100%' }} resizeMode="cover" /> : <View style={{ flex: 1, backgroundColor: DS.ink[100] }} />}
             {!readOnly && (
-              <Pressable onPress={() => onRemove?.(p)} style={{ position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: 11, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}>
+              <Pressable onPress={() => onRemove?.(p)} style={{ position: 'absolute', top: 6, end: 6, width: 22, height: 22, borderRadius: 11, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}>
                 <X size={12} color="#EF4444" strokeWidth={2.4} />
               </Pressable>
             )}
@@ -79,7 +79,7 @@ function PhotoGrid({ label, hint, list, signed, readOnly, accent, uploading, onA
         {!readOnly && list.length < 6 && (
           // Ekle kartı — dosyalardaki dashed upload kartı tarzı
           <Pressable onPress={onAdd} disabled={uploading} style={{ width: 96, height: 116, borderRadius: 12, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: hexA(accent, 0.4), borderStyle: 'dashed', overflow: 'hidden', cursor: 'pointer' as any }}>
-            <View style={{ height: 8, width: '55%', alignSelf: 'center', borderBottomLeftRadius: 6, borderBottomRightRadius: 6, backgroundColor: hexA(accent, 0.45) }} />
+            <View style={{ height: 8, width: '55%', alignSelf: 'center', borderBottomStartRadius: 6, borderBottomEndRadius: 6, backgroundColor: hexA(accent, 0.45) }} />
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6, paddingBottom: 16 }}>
               {uploading ? <ActivityIndicator color={accent} /> : <>
                 <ImagePlus size={26} color={accent} strokeWidth={1.7} />
@@ -87,7 +87,7 @@ function PhotoGrid({ label, hint, list, signed, readOnly, accent, uploading, onA
               </>}
             </View>
             {!uploading && (
-              <View style={{ position: 'absolute', bottom: 8, right: 8, width: 26, height: 26, borderRadius: 13, backgroundColor: accent, alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ position: 'absolute', bottom: 8, end: 8, width: 26, height: 26, borderRadius: 13, backgroundColor: accent, alignItems: 'center', justifyContent: 'center' }}>
                 <Upload size={14} color="#FFFFFF" strokeWidth={2} />
               </View>
             )}

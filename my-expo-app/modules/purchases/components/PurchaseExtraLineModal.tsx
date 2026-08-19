@@ -222,7 +222,7 @@ export function PurchaseExtraLineModal({
                     style={{
                       width: f.width, paddingHorizontal: 12, paddingVertical: 10,
                       borderRadius: 14, borderWidth: 1, borderColor: DS.ink[300],
-                      fontSize: 13, color: DS.ink[900], textAlign: 'right',
+                      fontSize: 13, color: DS.ink[900], textAlign: 'end' as any,
                       ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
                     }}
                   />

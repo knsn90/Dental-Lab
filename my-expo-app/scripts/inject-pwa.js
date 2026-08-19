@@ -34,6 +34,24 @@ const PWA_HEAD = `
     <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
     <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png" />
 
+    <!-- ── Sosyal paylaşım (Open Graph + Twitter) — WhatsApp/Telegram/X kart ──
+         Görsel: public/og-cover.png (1200×630, scripts/gen-og-cover.mjs üretir).
+         og:image DEĞİŞİRSE ?v sürümünü artır (WhatsApp önizlemeyi cache'ler). -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Siman" />
+    <meta property="og:title" content="Siman — Dijital Diş Laboratuvarı Yönetimi" />
+    <meta property="og:description" content="Sipariş, üretim, teslimat ve finans tek platformda. Diş laboratuvarları için modern yönetim sistemi." />
+    <meta property="og:url" content="https://siman.app/" />
+    <meta property="og:image" content="https://siman.app/og-cover.png?v=1" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Siman — Dijital Diş Laboratuvarı Yönetimi" />
+    <meta property="og:locale" content="tr_TR" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Siman — Dijital Diş Laboratuvarı Yönetimi" />
+    <meta name="twitter:description" content="Sipariş, üretim, teslimat ve finans tek platformda." />
+    <meta name="twitter:image" content="https://siman.app/og-cover.png?v=1" />
+
     <!-- ── Service Worker register + auto-update ─────────────────── -->
     <script>
       if ('serviceWorker' in navigator) {

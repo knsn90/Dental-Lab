@@ -1,4 +1,4 @@
-import { localeTag } from '../../../core/i18n';
+import { localeTag, weekdayOffset } from '../../../core/i18n';
 import React, { useState, useMemo, useContext } from 'react';
 import { HubContext } from '../../../core/ui/HubContext';
 import {
@@ -35,6 +35,7 @@ import {
 } from 'lucide-react-native';
 import { getHolidaysForMonth, type TRHoliday } from '../helpers/turkeyHolidays';
 import { confirmAsync } from '../../../core/util/confirm';
+import { isRTL } from '../../../core/i18n';
 
 // ─── Lucide icon map for leave type icons (from api) ─────────────────────────
 const LUCIDE_ICON_MAP: Record<string, React.FC<any>> = {
@@ -359,7 +360,7 @@ export function HRScreen() {
       {isDesktop ? (
         <View style={{ flex: 1, flexDirection: 'row' }}>
           {/* Left panel — fixed 340px */}
-          <View style={{ width: 340, borderRightWidth: 1, borderRightColor: T.hairline }}>
+          <View style={{ width: 340, borderEndWidth: 1, borderEndColor: T.hairline }}>
             {employeeList}
           </View>
           {/* Right panel */}
@@ -378,7 +379,7 @@ export function HRScreen() {
                 paddingHorizontal: px,
               }}>
                 <Pressable style={{ flexDirection: 'row', alignItems: 'center', gap: 2, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) } as any} onPress={() => setSelectedId(null)}>
-                  <ChevronLeft size={20} color={T.ink3} strokeWidth={1.8} />
+                  {isRTL() ? <ChevronRight size={20} color={T.ink3} strokeWidth={1.8} /> : <ChevronLeft size={20} color={T.ink3} strokeWidth={1.8} />}
                   <Text style={{ fontSize: 14, fontWeight: '600', color: T.ink3 }}>Geri</Text>
                 </Pressable>
                 <Text style={{ flex: 1, fontSize: 15, fontWeight: '700', color: T.ink }} numberOfLines={1}>{selectedSummary.full_name}</Text>
@@ -525,7 +526,7 @@ function EmployeeRow({ summary, selected, onPress }: {
       style={({ hovered }: any) => ({
         flexDirection: 'row', alignItems: 'center', gap: 12,
         backgroundColor: selected ? '#FFFFFF' : (hovered ? '#FAFAF7' : '#FFFFFF'),
-        borderRadius: 16, padding: 12, paddingLeft: 14,
+        borderRadius: 16, padding: 12, paddingStart: 14,
         borderWidth: 0,
         // @ts-ignore web — selected = saffron ring + heavier shadow, default = soft shadow
         boxShadow: selected
@@ -585,7 +586,7 @@ function EmployeeRow({ summary, selected, onPress }: {
         </View>
       </View>
 
-      <ChevronRight size={16} color={selected ? DS.ink[700] : DS.ink[300]} strokeWidth={1.7} />
+      {isRTL() ? <ChevronLeft size={16} color={selected ? DS.ink[700] : DS.ink[300]} strokeWidth={1.7} /> : <ChevronRight size={16} color={selected ? DS.ink[700] : DS.ink[300]} strokeWidth={1.7} />}
     </Pressable>
   );
 }
@@ -630,8 +631,8 @@ function OverviewPanel({
         position: 'relative',
       }}>
         {/* Beyaz dekoratif blob'lar */}
-        <View style={{ position: 'absolute', top: -50, right: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.20)' }} />
-        <View style={{ position: 'absolute', bottom: -60, left: -30, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+        <View style={{ position: 'absolute', top: -50, end: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.20)' }} />
+        <View style={{ position: 'absolute', bottom: -60, start: -30, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(255,255,255,0.12)' }} />
 
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14 }}>
           <View style={{ flex: 1, minWidth: 0 }}>
@@ -992,8 +993,8 @@ function RightPanel({
         position: 'relative',
       }}>
         {/* Beyaz dekoratif blob'lar */}
-        <View style={{ position: 'absolute', top: -50, right: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.20)' }} />
-        <View style={{ position: 'absolute', bottom: -60, left: -30, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+        <View style={{ position: 'absolute', top: -50, end: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.20)' }} />
+        <View style={{ position: 'absolute', bottom: -60, start: -30, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(255,255,255,0.12)' }} />
 
         {/* Üst row: sol ring + sağ identity */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
@@ -1403,7 +1404,7 @@ function LeaveCard({ leave, canApprove, onApprove, onReject, onCancel, onDelete 
       ...cardSolid,
       padding: 0, overflow: 'hidden',
       borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
-      borderLeftWidth: 3, borderLeftColor: tc.fg,
+      borderStartWidth: 3, borderStartColor: tc.fg,
     }}>
       {/* MAIN ROW */}
       <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: 0 }}>
@@ -1470,7 +1471,7 @@ function LeaveCard({ leave, canApprove, onApprove, onReject, onCancel, onDelete 
               flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
               paddingVertical: 11,
               backgroundColor: hovered ? CHIP_TONES.success.fg : '#FFFFFF',
-              borderRightWidth: 1, borderRightColor: 'rgba(0,0,0,0.06)',
+              borderEndWidth: 1, borderEndColor: 'rgba(0,0,0,0.06)',
               ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
             })}
             onPress={() => onApprove(leave.id)}
@@ -1552,7 +1553,8 @@ function DevamTab({ currentMonth, monthLabel, prevMonth, nextMonth, records, att
   const [y, m] = currentMonth.split('-').map(Number);
   const daysInMonth = new Date(y, m, 0).getDate();
   const rawFirst = new Date(y, m - 1, 1).getDay();
-  const firstOffset = rawFirst === 0 ? 6 : rawFirst - 1;
+  // Hafta başlangıcı bölgeye bağlı: TR/AB Pazartesi, İran Cumartesi (weekdayOffset).
+  const firstOffset = weekdayOffset(rawFirst);
 
   const recordMap = useMemo(() => {
     const map: Record<string, EmployeeAttendance> = {};
@@ -1587,7 +1589,7 @@ function DevamTab({ currentMonth, monthLabel, prevMonth, nextMonth, records, att
             } as any)}
             onPress={prevMonth}
           >
-            <ChevronLeft size={16} color={DS.ink[700]} strokeWidth={1.8} />
+            {isRTL() ? <ChevronRight size={16} color={DS.ink[700]} strokeWidth={1.8} /> : <ChevronLeft size={16} color={DS.ink[700]} strokeWidth={1.8} />}
           </Pressable>
           <Text style={{ ...DISPLAY, fontSize: 15, fontWeight: '700', color: DS.ink[900], minWidth: 110, textAlign: 'center' }}>{monthLabel}</Text>
           <Pressable
@@ -1597,7 +1599,7 @@ function DevamTab({ currentMonth, monthLabel, prevMonth, nextMonth, records, att
             } as any)}
             onPress={nextMonth}
           >
-            <ChevronRight size={16} color={DS.ink[700]} strokeWidth={1.8} />
+            {isRTL() ? <ChevronLeft size={16} color={DS.ink[700]} strokeWidth={1.8} /> : <ChevronRight size={16} color={DS.ink[700]} strokeWidth={1.8} />}
           </Pressable>
         </View>
         <Pressable
@@ -1875,7 +1877,7 @@ function AttendanceRow({ record: r, onDelete }: {
         </View>
 
         {/* Çıkış */}
-        <View style={{ flex: 1, padding: 12, gap: 4, borderLeftWidth: 1, borderLeftColor: 'rgba(0,0,0,0.04)' }}>
+        <View style={{ flex: 1, padding: 12, gap: 4, borderStartWidth: 1, borderStartColor: 'rgba(0,0,0,0.04)' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
             <View style={{ width: 6, height: 6, borderRadius: 9999, backgroundColor: CHIP_TONES.danger.fg }} />
             <Text style={{ fontSize: 9.5, fontWeight: '700', color: DS.ink[500], letterSpacing: 1, textTransform: 'uppercase' }}>Çıkış</Text>
@@ -1899,7 +1901,7 @@ function AttendanceRow({ record: r, onDelete }: {
         {/* Toplam */}
         <View style={{
           flex: 1, padding: 12, gap: 4,
-          borderLeftWidth: 1, borderLeftColor: 'rgba(0,0,0,0.04)',
+          borderStartWidth: 1, borderStartColor: 'rgba(0,0,0,0.04)',
           backgroundColor: DS.ink[50],
         }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>

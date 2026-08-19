@@ -880,9 +880,29 @@ async function attachMediaToOrder(cx: Cx, workOrderId: string, b64: string, mime
       body: bytes,
     });
     if (!up.ok) { console.error('[wa] order-photo upload fail', up.status, (await up.text()).slice(0, 150)); return false; }
+    // DİKKAT: `caption` kolonu arayüzde HEM dosya adı HEM kategori anahtarı.
+    // OrderDetailScreenV2 adı `caption ?? storage_path` ile gösteriyor,
+    // kategoriyi de `fileCategoryOf(caption || storage_path)` ile UZANTIDAN
+    // çözüyor. Buraya gönderenin profil adı ya da boş metin yazılınca dosya
+    // "." adıyla ve "Diğer" grubunda görünüyordu. Bu yüzden caption'a her zaman
+    // UZANTILI, anlamlı bir ad yazılır.
+    const typed = (caption || '').trim();
+    const docName = (filename || '').trim();
+    let displayName: string;
+    if (docName && docName !== '.') {
+      displayName = docName;                       // belgede gerçek dosya adı var
+    } else if (typed && typed !== '.') {
+      displayName = typed;                         // kullanıcının yazdığı açıklama
+    } else {
+      const ts = new Date().toISOString().slice(0, 16).replace('T', ' ');
+      displayName = `WhatsApp ${ts}`;
+    }
+    // Kategori uzantıdan çözüldüğü için ad mutlaka uzantıyla bitmeli.
+    if (!new RegExp(`\\.${ext}$`, 'i').test(displayName)) displayName = `${displayName}.${ext}`;
+
     const ins = await fetch(`${cx.url}/rest/v1/work_order_photos`, {
       method: 'POST', headers: cx.HJmin,
-      body: JSON.stringify({ work_order_id: workOrderId, storage_path: path, lab_id: cx.labId, caption: (caption || 'WhatsApp').slice(0, 200), external_source: 'whatsapp' }),
+      body: JSON.stringify({ work_order_id: workOrderId, storage_path: path, lab_id: cx.labId, caption: displayName.slice(0, 200), external_source: 'whatsapp' }),
     });
     return ins.ok;
   } catch (e) { console.error('[wa] attachMediaToOrder err:', e); return false; }
@@ -1028,6 +1048,57 @@ async function beginCollect(cx: Cx, from: string, o: OrderLite): Promise<void> {
   await say(cx, from, `✅ *${o.order_number}* seçildi.${extra}\nŞimdi eklemek istediğiniz *foto / ölçü / STL / ZIP* dosyalarını gönderin. Bittiğinde *"menü"* yazın.`);
 }
 
+/** Seri sayacını atomik artırır; dönen değer bu dosyanın sıra numarasıdır. */
+async function burstBump(cx: Cx, phone: string): Promise<number> {
+  try {
+    const r = await fetch(`${cx.url}/rest/v1/rpc/wa_media_burst_bump`, {
+      method: 'POST',
+      headers: { ...cx.H, 'content-type': 'application/json' },
+      body: JSON.stringify({ p_lab: cx.labId, p_phone: phone }),
+    });
+    const v = await r.json().catch(() => 0);
+    return Number(v) || 0;
+  } catch { return 0; }
+}
+
+/** Sayacı okuyup sıfırlar; dönen değer o seride eklenen dosya sayısıdır. */
+async function burstFlush(cx: Cx, phone: string): Promise<number> {
+  try {
+    const r = await fetch(`${cx.url}/rest/v1/rpc/wa_media_burst_flush`, {
+      method: 'POST',
+      headers: { ...cx.H, 'content-type': 'application/json' },
+      body: JSON.stringify({ p_lab: cx.labId, p_phone: phone }),
+    });
+    const v = await r.json().catch(() => 0);
+    return Number(v) || 0;
+  } catch { return 0; }
+}
+
+/**
+ * Serinin ilk dosyasında çağrılır: kısa süre bekler, bu sırada gelen dosyalar
+ * sayacı artırır, sonra TEK bir özet mesajı gönderir.
+ *
+ * Neden bekleme: WhatsApp çoklu gönderimde her dosyayı ayrı webhook olarak
+ * yolluyor; 6 fotoğraf = 6 çağrı = eskiden 6 ayrı "eklendi" mesajı.
+ * Bekleme süresince yeni dosya gelmezse tek mesaj çıkar. Daha uzun süren
+ * gönderimlerde sayaç sıfırlandığı için yeni bir seri başlar — nadiren iki
+ * özet olur, altı tane değil.
+ */
+function scheduleBurstAck(cx: Cx, to: string, orderNo: string): void {
+  const job = (async () => {
+    await new Promise((r) => setTimeout(r, 6000));
+    const n = await burstFlush(cx, to);
+    if (n <= 0) return;
+    const adet = n === 1 ? '1 dosya' : `${n} dosya`;
+    await say(cx, to, `📎 *${orderNo}* siparişine ${adet} eklendi. Başka dosya gönderin ya da *"menü"* yazın.`);
+  })().catch((e) => console.error('[wa] burst ack error:', e));
+  // @ts-ignore — EdgeRuntime global (Supabase Edge)
+  if (typeof EdgeRuntime !== 'undefined' && (EdgeRuntime as any)?.waitUntil) {
+    // @ts-ignore
+    EdgeRuntime.waitUntil(job);
+  }
+}
+
 async function flowAddMedia(cx: Cx, from: string, sess: WaSession, iid: string | null, text: string, media: ReturnType<typeof mediaOf>): Promise<void> {
   const step = sess.step;
   if (step === 'pick' && iid && iid.startsWith('ord:')) {
@@ -1061,11 +1132,18 @@ async function flowAddMedia(cx: Cx, from: string, sess: WaSession, iid: string |
     if (media && orderId) {
       const dl = await fetchWaMedia(cx, media.id);
       if (!dl) { await say(cx, from, '⚠️ Dosya indirilemedi, tekrar gönderin.'); return; }
-      const ok = await attachMediaToOrder(cx, orderId, dl.b64, dl.mime, media.filename, media.caption || cx.senderName || '');
-      await saveSession(cx, from, { flow: 'add_media', step: 'collect', context: sess.context });
-      await say(cx, from, ok
-        ? `📎 *${orderNo}* siparişinin dosyalarına eklendi. Başka dosya gönderin ya da *"menü"* yazın.`
-        : '⚠️ Eklenemedi, tekrar deneyin.');
+      const ok = await attachMediaToOrder(cx, orderId, dl.b64, dl.mime, media.filename, media.caption || '');
+      // NOT: `context` BİLEREK yazılmıyor — sayaç orada tutuluyor ve buradan
+      // eski kopyayı geri yazmak onu ezerdi. PostgREST merge yalnız gönderilen
+      // kolonları günceller, context olduğu gibi kalır.
+      await saveSession(cx, from, { flow: 'add_media', step: 'collect' });
+      if (!ok) { await say(cx, from, '⚠️ Eklenemedi, tekrar deneyin.'); return; }
+
+      // Toplu gönderimde her dosyaya ayrı onay atmak yerine TEK özet:
+      // her dosya ayrı webhook çağrısı olduğu için sayaç DB'de atomik artar;
+      // yalnız serinin İLK dosyası kısa bir bekleme sonrası özeti gönderir.
+      const n = await burstBump(cx, from);
+      if (n === 1) scheduleBurstAck(cx, from, orderNo);
       return;
     }
     await say(cx, from, `Fotoğraf/dosya bekliyorum (*${orderNo}*). Bitirdiyseniz *"menü"* yazın.`);

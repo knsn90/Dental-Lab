@@ -14,10 +14,12 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Save, Trash2, Plus, X, CheckCircle2, ArrowLeft,
   Users, ListChecks, Layers, Sparkles, ShieldCheck, Settings2,
-  ChevronDown, ChevronRight, Play,
+  ChevronDown, ChevronRight, ChevronLeft, Play,
 } from 'lucide-react-native';
 
 import { DS } from '../../../../core/theme/dsTokens';
+import { isRTL } from '../../../../core/i18n';
+import { autoT } from '../../../../core/i18n/autoTranslate';
 import { CURRENCY_META, type Currency } from '../../../../core/money/currency';
 import { baseSymbol } from '../../../../core/money/baseCurrency';
 import {
@@ -109,7 +111,7 @@ function SectionCard({ icon: Icon, title, hint, children, defaultOpen = true }:
           </Text>
           {hint ? <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 2 }}>{hint}</Text> : null}
         </View>
-        {open ? <ChevronDown size={18} color={DS.ink[500]} /> : <ChevronRight size={18} color={DS.ink[500]} />}
+        {open ? <ChevronDown size={18} color={DS.ink[500]} /> : isRTL() ? <ChevronLeft size={18} color={DS.ink[500]} /> : <ChevronRight size={18} color={DS.ink[500]} />}
       </Pressable>
       {open ? (
         <View style={{ padding: 18, paddingTop: 4, borderTopWidth: 1, borderTopColor: DS.ink[100] }}>
@@ -155,7 +157,7 @@ function AddRowBtn({ label, onPress }: { label: string; onPress: () => void }) {
 function describeEffect(mult: number): { text: string; color: string; bg: string } {
   if (mult >= 1.01) {
     const pct = Math.round((mult - 1) * 100);
-    return { text: `+%${pct} ek prim`,   color: '#1F6B47', bg: 'rgba(45,154,107,0.12)' };
+    return { text: `+%${pct} ${autoT('ek prim')}`,   color: '#1F6B47', bg: 'rgba(45,154,107,0.12)' };
   }
   if (Math.abs(mult - 1) < 0.005) {
     return { text: 'Tam prim',            color: TH.info,   bg: 'rgba(74,143,201,0.12)' };
@@ -269,7 +271,7 @@ function QualityRulesCard({
             Üretim kalite motoru · {rules.length} kural · pencere: {QUALITY_WINDOW_LABELS[policy.quality_window]}
           </Text>
         </View>
-        {open ? <ChevronDown size={18} color={DS.ink[500]} /> : <ChevronRight size={18} color={DS.ink[500]} />}
+        {open ? <ChevronDown size={18} color={DS.ink[500]} /> : isRTL() ? <ChevronLeft size={18} color={DS.ink[500]} /> : <ChevronRight size={18} color={DS.ink[500]} />}
       </Pressable>
 
       {!open ? null : (
@@ -331,7 +333,7 @@ function QualityRulesCard({
                 })}
               </View>
               {policy.remake_penalty === 'penalty' ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 4, paddingLeft: 8, borderLeftWidth: 1, borderLeftColor: DS.ink[200] }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginStart: 4, paddingStart: 8, borderStartWidth: 1, borderStartColor: DS.ink[200] }}>
                   <Text style={{ fontSize: 11, color: DS.ink[500] }}>−</Text>
                   <TextInput
                     value={String(policy.remake_penalty_points ?? 0)}
@@ -342,7 +344,7 @@ function QualityRulesCard({
                       borderWidth: 1, borderColor: DS.ink[200], borderRadius: 8,
                       paddingHorizontal: 8, paddingVertical: 4,
                       fontSize: 12, color: DS.ink[900], backgroundColor: '#FFF',
-                      textAlign: 'right',
+                      textAlign: 'end' as any,
                     }}
                   />
                   <Text style={{ fontSize: 11, color: DS.ink[500] }}>puan / yenileme</Text>
@@ -402,7 +404,7 @@ function QualityRulesCard({
                           </Text>
                           <View style={{
                             paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999,
-                            backgroundColor: DS.ink[100], marginLeft: 'auto' as any,
+                            backgroundColor: DS.ink[100], marginStart: 'auto' as any,
                           }}>
                             <Text style={{ fontSize: 10, fontWeight: '700', color: DS.ink[500] }}>
                               {preset.rules.length}
@@ -476,7 +478,7 @@ function QualityRulesCard({
                               width: 44,
                               paddingVertical: 4,
                               fontSize: 14, fontWeight: '600', color: DS.ink[900],
-                              textAlign: 'right',
+                              textAlign: 'end' as any,
                             }}
                           />
                           <Text style={{ fontSize: 11, color: DS.ink[500] }}>%</Text>
@@ -498,7 +500,7 @@ function QualityRulesCard({
                               width: 52,
                               paddingVertical: 4,
                               fontSize: 14, fontWeight: '600', color: DS.ink[900],
-                              textAlign: 'right',
+                              textAlign: 'end' as any,
                             }}
                           />
                         </View>
@@ -644,11 +646,11 @@ function PlanBuilderCard({
   const currency = policy.currency ?? 'TRY';
   const summary = useMemo(() => {
     const parts: string[] = [];
-    parts.push(`${MODE_LABELS[policy.mode]} dağılım`);
-    parts.push(`üye başına ${currency} ${(Number(baseRate) || 0).toLocaleString('tr-TR')}`);
-    if (thresholdCount > 0)  parts.push(`${thresholdCount} eşik`);
-    if (qualityCount > 0)    parts.push(`${qualityCount} kalite kuralı`);
-    if (difficultyCount > 0) parts.push(`${difficultyCount} zorluk çarpanı`);
+    parts.push(`${autoT(MODE_LABELS[policy.mode])} ${autoT('dağılım')}`);
+    parts.push(`${autoT('üye başına')} ${currency} ${(Number(baseRate) || 0).toLocaleString('tr-TR')}`);
+    if (thresholdCount > 0)  parts.push(`${thresholdCount} ${autoT('eşik')}`);
+    if (qualityCount > 0)    parts.push(`${qualityCount} ${autoT('kalite kuralı')}`);
+    if (difficultyCount > 0) parts.push(`${difficultyCount} ${autoT('zorluk çarpanı')}`);
     return parts.join(' · ');
   }, [policy.mode, currency, baseRate, thresholdCount, qualityCount, difficultyCount]);
 
@@ -692,7 +694,7 @@ function PlanBuilderCard({
         </Pressable>
 
         <Pressable onPress={() => setOpen(o => !o)} style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}>
-          {open ? <ChevronDown size={18} color={DS.ink[500]} /> : <ChevronRight size={18} color={DS.ink[500]} />}
+          {open ? <ChevronDown size={18} color={DS.ink[500]} /> : isRTL() ? <ChevronLeft size={18} color={DS.ink[500]} /> : <ChevronRight size={18} color={DS.ink[500]} />}
         </Pressable>
       </View>
 
@@ -738,13 +740,13 @@ function PlanBuilderCard({
             <OverviewTile label="Üye oranı"  value={`${currency} ${baseRate}`} accent={TH.success} />
             <OverviewTile
               label="Kalite kuralı"
-              value={qualityCount > 0 ? `${qualityCount} eşik` : 'Henüz yok'}
+              value={qualityCount > 0 ? `${qualityCount} ${autoT('eşik')}` : 'Henüz yok'}
               accent={qualityCount > 0 ? TH.info : DS.ink[400]}
               muted={qualityCount === 0}
             />
             <OverviewTile
               label="Zorluk çarpanı"
-              value={difficultyCount > 0 ? `${difficultyCount} kayıt` : 'Henüz yok'}
+              value={difficultyCount > 0 ? `${difficultyCount} ${autoT('kayıt')}` : 'Henüz yok'}
               accent={difficultyCount > 0 ? '#7C3AED' : DS.ink[400]}
               muted={difficultyCount === 0}
               last
@@ -810,7 +812,7 @@ function PlanBuilderCard({
                     width: 140,
                     paddingHorizontal: 14, paddingVertical: 10,
                     fontSize: 18, fontWeight: '600', color: DS.ink[900],
-                    textAlign: 'right',
+                    textAlign: 'end' as any,
                   }}
                 />
                 <View style={{ width: 1, backgroundColor: DS.ink[200] }} />
@@ -849,7 +851,7 @@ function OverviewTile({ label, value, accent, muted, last }:
     <View style={{
       flex: 1, minWidth: 120,
       paddingVertical: 12, paddingHorizontal: 16,
-      borderRightWidth: last ? 0 : 1, borderRightColor: DS.ink[100],
+      borderEndWidth: last ? 0 : 1, borderEndColor: DS.ink[100],
       borderBottomWidth: 1, borderBottomColor: DS.ink[100],
     }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
@@ -946,7 +948,7 @@ export default function BonusPolicyEditorScreen({ embeddedId, onBack }: Props = 
 
   const handleDelete = async () => {
     if (!full) return;
-    if (typeof confirm === 'function' && !confirm(`"${full.policy.name}" silinsin mi? Geri alınamaz.`)) return;
+    if (typeof confirm === 'function' && !confirm(`"${full.policy.name}" ${autoT('silinsin mi? Geri alınamaz.')}`)) return;
     try {
       await deletePolicy(full.policy.id);
       goBack();
@@ -974,8 +976,8 @@ export default function BonusPolicyEditorScreen({ embeddedId, onBack }: Props = 
         borderRadius: 20, backgroundColor: TH.primary, padding: 22,
         position: 'relative', overflow: 'hidden', marginBottom: 16,
       }}>
-        <View style={{ position: 'absolute', top: -40, right: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
-        <View style={{ position: 'absolute', bottom: -50, left: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(0,0,0,0.05)' }} />
+        <View style={{ position: 'absolute', top: -40, end: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
+        <View style={{ position: 'absolute', bottom: -50, start: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(0,0,0,0.05)' }} />
 
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
           <View style={{ flex: 1, minWidth: 240 }}>

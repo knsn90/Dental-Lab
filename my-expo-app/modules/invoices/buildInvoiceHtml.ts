@@ -8,6 +8,8 @@
 import type { Invoice } from './types';
 import { INVOICE_STATUS_LABELS, PAYMENT_METHOD_LABELS } from './types';
 import type { LabLetterhead } from '../receipt/buildReceiptHtml';
+import { autoT } from '../../core/i18n/autoTranslate';
+import { htmlAttrs, printLocale } from '../../core/i18n/printLocale';
 
 // ─── Yardımcılar ──────────────────────────────────────────────────────────
 function esc(v: unknown): string {
@@ -23,14 +25,14 @@ function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   try {
     const d = iso.includes('T') ? new Date(iso) : new Date(iso + 'T00:00:00');
-    return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' });
+    return d.toLocaleDateString(printLocale(), { day: '2-digit', month: 'long', year: 'numeric' });
   } catch { return '—'; }
 }
 
 function fmtDateTime(iso: string | null | undefined): string {
   if (!iso) return '—';
   try {
-    return new Date(iso).toLocaleString('tr-TR', {
+    return new Date(iso).toLocaleString(printLocale(), {
       day: '2-digit', month: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit',
     });
@@ -41,7 +43,7 @@ function fmtMoney(amount: number | string | null | undefined, currency = 'TRY'):
   const n = typeof amount === 'string' ? Number(amount) : (amount ?? 0);
   if (!Number.isFinite(n)) return '—';
   const sym = currency === 'TRY' ? '₺' : currency + ' ';
-  return sym + n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return sym + n.toLocaleString(printLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 /** Adres JSON ({il,ilce,mahalle,sokak,bina_no,posta_kodu}) → okunabilir tek satır. */
@@ -100,11 +102,11 @@ export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
           <tr>
             <td class="num">${i + 1}</td>
             <td>${esc(it.description)}</td>
-            <td class="num">${Number(it.quantity).toLocaleString('tr-TR')}</td>
+            <td class="num">${Number(it.quantity).toLocaleString(printLocale())}</td>
             <td class="num">${fmtMoney(it.unit_price, currency)}</td>
             <td class="num right"><b>${fmtMoney(it.total, currency)}</b></td>
           </tr>`).join('')
-    : `<tr><td colspan="5" class="empty">Kalem eklenmemiş</td></tr>`;
+    : `<tr><td colspan="5" class="empty">${autoT('Kalem eklenmemiş')}</td></tr>`;
 
   // Ödeme satırları (varsa)
   const paymentRows = payments.length > 0
@@ -138,11 +140,11 @@ export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
     && invoice.status !== 'iptal';
 
   return `<!DOCTYPE html>
-<html lang="tr">
+<html ${htmlAttrs()}>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Fatura – ${esc(invoice.invoice_number)}</title>
+  <title>${autoT('Fatura')} – ${esc(invoice.invoice_number)}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { background: #fff; }
@@ -161,7 +163,7 @@ export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
     .letterhead .brand-divider { width: 1px; align-self: stretch; background: #e2e8f0; }
     .lab-name { font-size: 20px; font-weight: 800; color: #0f172a; letter-spacing: -0.3px; line-height: 1.2; max-width: 320px; }
     .lab-tagline { margin-top: 3px; font-size: 10px; font-weight: 600; letter-spacing: 1.4px; text-transform: uppercase; color: #94a3b8; }
-    .letterhead .contact { text-align: right; font-size: 11px; color: #475569; line-height: 1.7; max-width: 260px; }
+    .letterhead .contact { text-align: end; font-size: 11px; color: #475569; line-height: 1.7; max-width: 260px; }
     .letterhead .contact .row { display: block; }
     .letterhead .contact .row.strong { color: #0f172a; font-weight: 600; }
     .letterhead .contact .lbl { color: #94a3b8; }
@@ -172,7 +174,7 @@ export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
       border-radius: 8px;
     }
     .title-bar h1 { font-size: 18px; font-weight: 800; letter-spacing: 1.2px; }
-    .title-bar .right { text-align: right; }
+    .title-bar .right { text-align: end; }
     .title-bar .inv-no { font-size: 13px; font-weight: 700; }
     .title-bar .status {
       display: inline-block; margin-top: 4px;
@@ -201,7 +203,7 @@ export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
       margin-top: 14px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;
     }
     .dates-bar .cell { padding: 10px 14px; }
-    .dates-bar .cell + .cell { border-left: 1px solid #e2e8f0; }
+    .dates-bar .cell + .cell { border-inline-start: 1px solid #e2e8f0; }
     .dates-bar .label {
       font-size: 10px; font-weight: 700; color: #64748b;
       text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;
@@ -221,12 +223,12 @@ export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
     }
     table.items thead { background: #f8fafc; }
     table.items th {
-      text-align: left; padding: 10px 12px; font-size: 11px; font-weight: 700;
+      text-align: start; padding: 10px 12px; font-size: 11px; font-weight: 700;
       color: #475569; text-transform: uppercase; letter-spacing: 0.3px;
       border-bottom: 1px solid #e2e8f0;
     }
     table.items th.num, table.items td.num { text-align: center; }
-    table.items th.right, table.items td.right { text-align: right; }
+    table.items th.right, table.items td.right { text-align: end; }
     table.items th:first-child, table.items td:first-child { width: 36px; }
     table.items td {
       padding: 10px 12px; font-size: 12px; color: #0f172a;
@@ -243,8 +245,8 @@ export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
       padding: 7px 16px; font-size: 12px; color: #334155;
       border-bottom: 1px solid #f1f5f9;
     }
-    .totals td.label { text-align: right; }
-    .totals td.value { text-align: right; font-weight: 700; min-width: 130px; }
+    .totals td.label { text-align: end; }
+    .totals td.value { text-align: end; font-weight: 700; min-width: 130px; }
     .totals .grand td {
       border-top: 2px solid #0f172a; border-bottom: 2px solid #0f172a;
       font-size: 15px; color: #0f172a; padding: 12px 16px;
@@ -260,10 +262,10 @@ export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
     }
     table.payments thead { background: #ecfdf5; }
     table.payments th {
-      text-align: left; padding: 9px 12px; font-size: 11px; font-weight: 700;
+      text-align: start; padding: 9px 12px; font-size: 11px; font-weight: 700;
       color: #065f46; text-transform: uppercase; letter-spacing: 0.3px;
     }
-    table.payments th.right, table.payments td.right { text-align: right; }
+    table.payments th.right, table.payments td.right { text-align: end; }
     table.payments td {
       padding: 9px 12px; font-size: 12px; color: #0f172a;
       border-top: 1px solid #d1fae5;
@@ -291,7 +293,7 @@ export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
       box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     }
     .preview-bar .pb-title { font-size: 13px; font-weight: 600; letter-spacing: 0.3px; }
-    .preview-bar .pb-title .muted { color: #94a3b8; font-weight: 500; margin-left: 6px; }
+    .preview-bar .pb-title .muted { color: #94a3b8; font-weight: 500; margin-inline-start: 6px; }
     .preview-bar .pb-actions { display: flex; gap: 8px; }
     .preview-bar button {
       font-family: inherit; font-size: 13px; font-weight: 600;
@@ -324,8 +326,8 @@ export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
       <span class="muted">· ${esc(invoice.invoice_number)}</span>
     </div>
     <div class="pb-actions">
-      <button type="button" onclick="window.close()">Kapat</button>
-      <button type="button" class="primary" onclick="window.print()">Yazdır / PDF Kaydet</button>
+      <button type="button" onclick="window.close()">${autoT('Kapat')}</button>
+      <button type="button" class="primary" onclick="window.print()">${autoT('Yazdır / PDF Kaydet')}</button>
     </div>
   </div>
 
@@ -342,7 +344,7 @@ export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
     ${(labAddress || labPhone || labEmail || labWebsite) ? `
     <div class="contact">
       ${labAddress ? `<span class="row">${labAddress}</span>` : ''}
-      ${labPhone   ? `<span class="row"><span class="lbl">Tel:</span> ${labPhone}</span>` : ''}
+      ${labPhone   ? `<span class="row"><span class="lbl">${autoT('Tel:')}</span> ${labPhone}</span>` : ''}
       ${labEmail   ? `<span class="row">${labEmail}</span>` : ''}
       ${labWebsite ? `<span class="row strong">${labWebsite}</span>` : ''}
     </div>` : ''}
@@ -350,7 +352,7 @@ export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
 
   <!-- Title bar -->
   <div class="title-bar">
-    <h1>FATURA</h1>
+    <h1>${autoT('FATURA')}</h1>
     <div class="right">
       <div class="inv-no">${esc(invoice.invoice_number)}</div>
       <span class="status">${esc(statusLabel)}</span>
@@ -360,10 +362,10 @@ export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
   <!-- Alıcı + (opsiyonel) iş emri bilgisi -->
   <div class="info-grid">
     <div class="info-card">
-      <div class="label">Sayın / Müşteri</div>
+      <div class="label">${autoT('Sayın / Müşteri')}</div>
       <div class="value">${clinicName}</div>
       <div class="meta">
-        ${doctorName !== '—' ? (/^dr\.?\s/i.test(doctorName) ? doctorName : 'Dr. ' + doctorName) + '<br/>' : ''}
+        ${doctorName !== '—' ? (/^(dr|dt|prof|doç|opr|uzm)\.?\s/i.test(doctorName) ? doctorName : 'Dt. ' + doctorName) + '<br/>' : ''}
         ${clinicAddr  ? clinicAddr + '<br/>' : ''}
         ${clinicPhone ? 'Tel: ' + clinicPhone : ''}
         ${clinicEmail ? ' · ' + clinicEmail : ''}
@@ -378,8 +380,8 @@ export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
           ${invoice.work_order.delivery_date ? 'Teslim: ' + fmtDate(invoice.work_order.delivery_date) : ''}
         </div>
       ` : `
-        <div class="value">Serbest Fatura</div>
-        <div class="meta">İş emri ile ilişkili değil</div>
+        <div class="value">${autoT('Serbest Fatura')}</div>
+        <div class="meta">${autoT('İş emri ile ilişkili değil')}</div>
       `}
     </div>
   </div>
@@ -387,29 +389,29 @@ export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
   <!-- Tarihler -->
   <div class="dates-bar">
     <div class="cell">
-      <div class="label">Düzenleme Tarihi</div>
+      <div class="label">${autoT('Düzenleme Tarihi')}</div>
       <div class="value">${fmtDate(invoice.issue_date)}</div>
     </div>
     <div class="cell">
-      <div class="label">Vade Tarihi</div>
+      <div class="label">${autoT('Vade Tarihi')}</div>
       <div class="value ${isOverdue ? 'overdue' : ''}">${fmtDate(invoice.due_date)}</div>
     </div>
     <div class="cell">
-      <div class="label">Para Birimi</div>
+      <div class="label">${autoT('Para Birimi')}</div>
       <div class="value">${esc(currency)}</div>
     </div>
   </div>
 
   <!-- Kalemler -->
-  <h2>Hizmet / Ürün Kalemleri</h2>
+  <h2>${autoT('Hizmet / Ürün Kalemleri')}</h2>
   <table class="items">
     <thead>
       <tr>
         <th class="num">#</th>
-        <th>Açıklama</th>
-        <th class="num">Adet</th>
-        <th class="num">Birim Fiyat</th>
-        <th class="right">Tutar</th>
+        <th>${autoT('Açıklama')}</th>
+        <th class="num">${autoT('Adet')}</th>
+        <th class="num">${autoT('Birim Fiyat')}</th>
+        <th class="right">${autoT('Tutar')}</th>
       </tr>
     </thead>
     <tbody>${itemRows}</tbody>
@@ -419,44 +421,44 @@ export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
   <div class="totals">
     <table>
       <tr>
-        <td class="label">Ara Toplam</td>
+        <td class="label">${autoT('Ara Toplam')}</td>
         <td class="value">${fmtMoney(invoice.subtotal, currency)}</td>
       </tr>
       <tr>
-        <td class="label">KDV (%${Number(invoice.tax_rate).toLocaleString('tr-TR')})</td>
+        <td class="label">KDV (%${Number(invoice.tax_rate).toLocaleString(printLocale())})</td>
         <td class="value">${fmtMoney(invoice.tax_amount, currency)}</td>
       </tr>
       <tr class="grand">
-        <td class="label">Genel Toplam</td>
+        <td class="label">${autoT('Genel Toplam')}</td>
         <td class="value">${fmtMoney(invoice.total, currency)}</td>
       </tr>
       <tr class="paid">
-        <td class="label">Ödenen</td>
+        <td class="label">${autoT('Ödenen')}</td>
         <td class="value">${fmtMoney(invoice.paid_amount, currency)}</td>
       </tr>
       <tr class="balance ${balance <= 0 ? 'zero' : ''}">
-        <td class="label">Kalan Bakiye</td>
+        <td class="label">${autoT('Kalan Bakiye')}</td>
         <td class="value">${fmtMoney(balance, currency)}</td>
       </tr>
     </table>
   </div>
 
   ${paymentRows ? `
-    <h2>Tahsilat Geçmişi</h2>
+    <h2>${autoT('Tahsilat Geçmişi')}</h2>
     <table class="payments">
       <thead>
         <tr>
-          <th>Tarih</th>
-          <th>Yöntem</th>
-          <th>Referans</th>
-          <th class="right">Tutar</th>
+          <th>${autoT('Tarih')}</th>
+          <th>${autoT('Yöntem')}</th>
+          <th>${autoT('Referans')}</th>
+          <th class="right">${autoT('Tutar')}</th>
         </tr>
       </thead>
       <tbody>${paymentRows}</tbody>
     </table>
   ` : ''}
 
-  ${invoice.notes ? `<h2>Notlar</h2><div class="notes-box">${esc(invoice.notes)}</div>` : ''}
+  ${invoice.notes ? `<h2>${autoT('Notlar')}</h2><div class="notes-box">${esc(invoice.notes)}</div>` : ''}
 
   <div class="footer">
     <span>${labWebsite || ''}</span>

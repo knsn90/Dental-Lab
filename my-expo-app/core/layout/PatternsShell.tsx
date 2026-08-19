@@ -6,8 +6,9 @@
  *   • Renders <Slot /> for child route content.
  */
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { firstName as displayFirstName } from '../../core/util/personName';
 import { safeBack } from '../util/safeBack';
-import { View, Text, ScrollView, Pressable, TextInput, Platform, useWindowDimensions, Animated, Easing, Image } from 'react-native';
+import { View, Text, ScrollView, Pressable, TextInput, Platform, useWindowDimensions, Animated, Easing, Image, Linking } from 'react-native';
 import { Slot, usePathname, useRouter } from 'expo-router';
 
 // ── Patterns scrollbar — krem zemin, ink thumb (web only) ──────────────
@@ -57,8 +58,10 @@ import {
   LogOut, CheckSquare, CheckCircle, BarChart3, Calendar, Boxes, Wallet,
   Building2, Landmark, UserCog, Briefcase, Box, ShieldCheck, BadgeCheck, ListTodo,
   Camera, ScanLine, Clipboard, Wrench, Tag, ChevronDown, Inbox,
-  ListCheck, Scooter,
+  ListCheck, Scooter, TrendingUp,
 } from 'lucide-react-native';
+import { WhatsAppGlyph } from '../ui/WhatsAppGlyph';
+import { Tooth, Crown, Implant, ZirconiaDisc, DentalArch } from '../ui/dentalIcons';
 import { useAuthStore } from '../store/authStore';
 import { useActiveLabStore } from '../store/activeLabStore';
 import { usePermissionStore } from '../store/permissionStore';
@@ -124,8 +127,27 @@ interface Props {
   tourOrdersHref?: string;
 }
 
-// Lucide icon resolver — tüm DesktopShell iconName'leri kapsar
+/**
+ * WhatsApp marka işareti — Lucide marka ikonu içermez.
+ * Glifin kenar payı yok (path 0..24'ü doldurur), Lucide ikonlarında 1px pay +
+ * stroke var; aynı `size` ile yan yana konunca iri duruyordu, %88'e indirildi.
+ */
+const WhatsAppMark: React.ComponentType<any> = ({ size = 16, color }: { size?: number; color?: string }) => (
+  <WhatsAppGlyph size={Math.round(size * 0.88)} color={color} />
+);
+
+// Lucide icon resolver — kenar çubuğundaki iconName'leri kapsar.
+//
+// DİKKAT: Bu harita AppIcon'unkinden AYRI. Buraya eklenmeyen bir isim sessizce
+// DEFAULT_ICON'a (Grid) düşer — ekranda ızgara görürsen sebebi budur, ikon
+// bozuk değildir. Yeni bir iconName kullanmadan önce buraya da ekle.
 const ICONS: Record<string, React.ComponentType<any>> = {
+  whatsapp:         WhatsAppMark,
+  tooth:            Tooth,
+  crown:            Crown,
+  implant:          Implant,
+  'zirconia-disc':  ZirconiaDisc,
+  'dental-arch':    DentalArch,
   home:             Home,
   grid:             Grid,
   'clipboard-list': ClipboardList,
@@ -171,9 +193,34 @@ const ICONS: Record<string, React.ComponentType<any>> = {
   tag:              Tag,
   inbox:            Inbox,
   'calendar-days':  Calendar,
+  'trending-up':    TrendingUp,
 };
 
 const DEFAULT_ICON = Grid;
+
+/**
+ * Lab web sitesi bağlantısı — kenar çubuğundaki logo tıklanınca açılır.
+ *
+ * Kullanıcı ayarlara "nexadentlab.com" gibi protokolsüz yazabiliyor; normalize
+ * etmezsek relatif yol sayılır ve uygulama içinde 404'e gider.
+ * Web'de yeni sekme + `noopener` (açılan sayfa window.opener üzerinden bize
+ * erişmesin), native'de sistem tarayıcısı.
+ */
+export function normalizeSiteUrl(raw?: string | null): string | null {
+  const v = (raw ?? '').trim();
+  if (!v) return null;
+  return /^https?:\/\//i.test(v) ? v : `https://${v}`;
+}
+
+function openLabSite(raw?: string | null) {
+  const url = normalizeSiteUrl(raw);
+  if (!url) return;
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  } else {
+    Linking.openURL(url).catch(() => {});
+  }
+}
 
 function resolveIcon(name?: string) {
   if (!name) return DEFAULT_ICON;
@@ -254,17 +301,20 @@ export function PatternsShell({
   const [labLogo, setLabLogo] = useState<string | null>(null);
   const [brandMode, setBrandMode] = useState<'logo' | 'logo_text'>('logo_text');
   const [brandScale, setBrandScale] = useState(1);
+  /** labs.website — doluysa kenar çubuğundaki logo tıklanabilir olur. */
+  const [labWebsite, setLabWebsite] = useState<string | null>(null);
   useEffect(() => {
     const labId = (profile as any)?.lab_id;
     if (!labId || (panelType !== 'lab' && panelType !== 'admin' && panelType !== 'station')) {
-      setLabName(null); setLabLogo(null);
+      setLabName(null); setLabLogo(null); setLabWebsite(null);
       return;
     }
     let alive = true;
     (async () => {
-      const { data } = await supabase.from('labs').select('name, logo_url, sidebar_brand_mode, sidebar_logo_scale').eq('id', labId).maybeSingle();
+      const { data } = await supabase.from('labs').select('name, logo_url, website, sidebar_brand_mode, sidebar_logo_scale').eq('id', labId).maybeSingle();
       if (alive) {
         setLabName((data as any)?.name ?? null); setLabLogo((data as any)?.logo_url ?? null);
+        setLabWebsite((data as any)?.website ?? null);
         setBrandMode(((data as any)?.sidebar_brand_mode === 'logo' ? 'logo' : 'logo_text'));
         setBrandScale(Number((data as any)?.sidebar_logo_scale) || 1);
       }
@@ -278,6 +328,8 @@ export function PatternsShell({
   const activeLabMembership = useActiveLabStore((s) => s.active); // çoklu-lab: marka aktif lab'a göre
   useEffect(() => {
     if (panelType !== 'clinic_admin' && panelType !== 'doctor') { setClinicLogo(null); setConnectedLab(null); return; }
+    // NOT: klinik/hekim panelinde de markadaki logo LAB'a ait (white-label),
+    // dolayısıyla web sitesi bağlantısı burada da lab'ın sitesine gider.
     let alive = true;
     (async () => {
       const { data } = await supabase.from('clinics').select('logo_url, lab_id').limit(1).maybeSingle();
@@ -286,9 +338,12 @@ export function PatternsShell({
       // Aktif lab (çoklu-lab) varsa markayı ondan çöz; yoksa klinik satırının lab_id'si (tek-lab).
       const labId = activeLabMembership?.lab_id ?? (data as any)?.lab_id;
       if (labId) {
-        const { data: lab } = await supabase.from('labs').select('name, logo_url, sidebar_brand_mode, sidebar_logo_scale').eq('id', labId).maybeSingle();
-        if (alive && lab) { setConnectedLab({ name: (lab as any).name, logo: (lab as any).logo_url ?? null }); setBrandMode(((lab as any).sidebar_brand_mode === 'logo' ? 'logo' : 'logo_text')); setBrandScale(Number((lab as any).sidebar_logo_scale) || 1); }
-      } else setConnectedLab(null);
+        // NOT: klinik/hekim kullanıcısı labs tablosunu RLS ile okuyamaz
+        // (policy: id = get_my_lab_id()). Bağlı lab markasını SECURITY DEFINER
+        // RPC ile al (yalnız marka alanları, bağlılık doğrulanır).
+        const { data: lab } = await supabase.rpc('get_lab_brand', { p_lab_id: labId }).maybeSingle();
+        if (alive && lab) { setConnectedLab({ name: (lab as any).name, logo: (lab as any).logo_url ?? null }); setLabWebsite((lab as any).website ?? null); setBrandMode(((lab as any).sidebar_brand_mode === 'logo' ? 'logo' : 'logo_text')); setBrandScale(Number((lab as any).sidebar_logo_scale) || 1); }
+      } else { setConnectedLab(null); setLabWebsite(null); }
     })();
     return () => { alive = false; };
   }, [panelType, (profile as any)?.id, labBrandVersion, activeLabMembership?.lab_id]);
@@ -303,14 +358,14 @@ export function PatternsShell({
   const brand = useMemo(() => {
     const shortClinic = shortClinicName;  // klinik adı eklerini at (sidebar'a sığsın)
     if (brandName) return { name: brandName, sub: brandSubtitle ?? '' };
-    if (panelType === 'lab')          return { name: labName ?? 'Laboratuvar', sub: 'Laboratuvar', logo: labLogo };
+    if (panelType === 'lab')          return { name: labName ?? 'Laboratuvar', sub: 'Laboratuvar', logo: labLogo, website: labWebsite };
     // White-label: klinik/hekim panelinde de asıl sahip (lab) markası öne çıkar; klinik kimliği avatarda.
-    if (panelType === 'clinic_admin') return { name: shortClinic(connectedLab?.name) || shortClinic(profile?.clinic_name) || 'Klinik', sub: 'Diş Laboratuvarı', logo: connectedLab?.logo ?? null };
-    if (panelType === 'doctor')       return { name: shortClinic(connectedLab?.name) || shortClinic(profile?.clinic_name) || 'Hekim',  sub: 'Diş Laboratuvarı', logo: connectedLab?.logo ?? null };
-    if (panelType === 'admin')        return { name: labName ?? 'Admin',       sub: 'Yönetim', logo: labLogo };
-    if (panelType === 'station')      return { name: profile?.full_name ?? 'Teknisyen', sub: labName ?? 'İstasyon', logo: labLogo };
+    if (panelType === 'clinic_admin') return { name: shortClinic(connectedLab?.name) || shortClinic(profile?.clinic_name) || 'Klinik', sub: 'Diş Laboratuvarı', logo: connectedLab?.logo ?? null, website: labWebsite };
+    if (panelType === 'doctor')       return { name: shortClinic(connectedLab?.name) || shortClinic(profile?.clinic_name) || 'Hekim',  sub: 'Diş Laboratuvarı', logo: connectedLab?.logo ?? null, website: labWebsite };
+    if (panelType === 'admin')        return { name: labName ?? 'Admin',       sub: 'Yönetim', logo: labLogo, website: labWebsite };
+    if (panelType === 'station')      return { name: profile?.full_name ?? 'Teknisyen', sub: labName ?? 'İstasyon', logo: labLogo, website: labWebsite };
     return { name: 'Panel', sub: '' };
-  }, [panelType, profile, brandName, brandSubtitle, labName, labLogo, clinicLogo, connectedLab]);
+  }, [panelType, profile, brandName, brandSubtitle, labName, labLogo, labWebsite, clinicLogo, connectedLab]);
 
   // Panel-spesifik zemin paleti — mobile MOBILE_PANEL_THEMES.bgPage ile aynı
   // Dark mode'da koyu zemin.
@@ -380,7 +435,7 @@ export function PatternsShell({
   const canSwitchLab = isClinicSide && _labActiveCount > 1;
   const headerAvatar = (profile as any)?.avatar_url || (isClinicSide ? clinicLogo : null);
   const clinicShort = shortClinicName(profile?.clinic_name);
-  const headerName = isClinicSide && clinicShort ? clinicShort : ((profile?.full_name ?? 'Kullanıcı').split(' ')[0]);
+  const headerName = isClinicSide && clinicShort ? clinicShort : (displayFirstName(profile?.full_name, 'Kullanıcı'));
   const profileTitle = isClinicSide && clinicShort ? clinicShort : (profile?.full_name ?? 'Kullanıcı');
 
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
@@ -510,6 +565,12 @@ export function PatternsShell({
                     // Farsça glifler (üst nokta + iner kuyruk) Latin'e göre daha uzun;
                     // 38px satır kutusu üst/alttan kırpıyordu → RTL'de gevşet.
                     lineHeight: rtl ? 50 : 38,
+                    // RNW her Text'i dir="auto" ile basar; tarayıcı ilk güçlü yön
+                    // karakterine bakar. "NEX-2026-0166" gibi Latin başlayan başlıklar
+                    // dir=ltr olup RTL düzende SOLA hizalanıyor ve sol-üstteki araç
+                    // çubuğunun altına giriyordu. Blok hizasını dile sabitle —
+                    // kodun kendisi LTR okunmaya devam eder, yalnız hizası düzelir.
+                    ...(rtl ? { textAlign: 'right' as any } : null),
                   }}
                 >
                   {effectiveTitle}
@@ -609,7 +670,7 @@ export function PatternsShell({
                 <View
                   style={{
                     position: 'absolute',
-                    top: -4, right: -4,
+                    top: -4, end: -4,
                     minWidth: 18, height: 18, paddingHorizontal: 5,
                     borderRadius: 9, borderWidth: 2, borderColor: '#FFFFFF',
                     backgroundColor: '#EF4444',
@@ -628,7 +689,7 @@ export function PatternsShell({
           <View className="relative">
             <Pressable
               onPress={() => setProfileMenuOpen(v => !v)}
-              className="flex-row items-center gap-1.5 pl-0.5 pr-2.5 py-0.5 rounded-full"
+              className="flex-row items-center gap-1.5 ps-0.5 pe-2.5 py-0.5 rounded-full"
             >
               {headerAvatar ? (
                 <Image
@@ -728,7 +789,7 @@ export function PatternsShell({
         visible={notifOpen}
         onClose={() => setNotifOpen(false)}
         anchorTop={56}
-        anchorRight={24}
+        anchorEnd={24}
         panel={
           panelType === 'clinic_admin' ? 'clinic'
           : panelType === 'admin'        ? 'admin'
@@ -793,7 +854,7 @@ function AnimatedNewOrderCTA({ onPress, accentColor, expanded }: {
         }}>
           {/* Shimmer glow overlay */}
           <Animated.View style={{
-            position: 'absolute', top: -10, right: -10,
+            position: 'absolute', top: -10, end: -10,
             width: 60, height: 60, borderRadius: 30,
             backgroundColor: '#FFFFFF',
             opacity: glowOpacity,
@@ -820,7 +881,7 @@ function AnimatedNewOrderCTA({ onPress, accentColor, expanded }: {
         transform: [{ scale: scaleAnim }],
       }}>
         <Animated.View style={{
-          position: 'absolute', top: -6, right: -6,
+          position: 'absolute', top: -6, end: -6,
           width: 28, height: 28, borderRadius: 14,
           backgroundColor: '#FFFFFF',
           opacity: glowOpacity,
@@ -880,7 +941,7 @@ function ExpandedNavRow({ item, isActive, accentColor, activeRowBg, router }: an
       <NavAnchor href={item.onPress ? undefined : item.href}>
         <Pressable
           onPress={() => item.onPress ? item.onPress() : router.push(item.href)}
-          className="px-3 py-2.5 rounded-[10px] flex-row items-center gap-2.5 relative"
+          className={`px-3 ${rtl ? "py-2" : "py-2.5"} rounded-[10px] flex-row items-center gap-2.5 relative`}
           style={active ? { backgroundColor: activeRowBg } : undefined}
         >
           {active && <View className="absolute rounded" style={{ ...(rtl ? { right: 0 } : { left: 0 }), top: 8, bottom: 8, width: 2.5, backgroundColor: accentColor }} />}
@@ -901,7 +962,7 @@ function ExpandedNavRow({ item, isActive, accentColor, activeRowBg, router }: an
     <View>
       <Pressable
         onPress={() => setOpen((o) => !o)}
-        className="px-3 py-2.5 rounded-[10px] flex-row items-center gap-2.5 relative"
+        className={`px-3 ${rtl ? "py-2" : "py-2.5"} rounded-[10px] flex-row items-center gap-2.5 relative`}
         style={childActive ? { backgroundColor: activeRowBg } : undefined}
       >
         {childActive && <View className="absolute rounded" style={{ ...(rtl ? { right: 0 } : { left: 0 }), top: 8, bottom: 8, width: 2.5, backgroundColor: accentColor }} />}
@@ -918,7 +979,7 @@ function ExpandedNavRow({ item, isActive, accentColor, activeRowBg, router }: an
           <NavAnchor key={j} href={c.onPress ? undefined : c.href}>
             <Pressable
               onPress={() => c.onPress ? c.onPress() : router.push(c.href)}
-              className="py-2 rounded-[10px] flex-row items-center gap-2.5 relative"
+              className={`${rtl ? "py-1.5" : "py-2"} rounded-[10px] flex-row items-center gap-2.5 relative`}
               style={[(rtl ? { paddingRight: 34, paddingLeft: 12 } : { paddingLeft: 34, paddingRight: 12 }), a ? { backgroundColor: activeRowBg } : undefined]}
             >
               {a && <View className="absolute rounded" style={{ ...(rtl ? { right: 14 } : { left: 14 }), top: 7, bottom: 7, width: 2.5, backgroundColor: accentColor }} />}
@@ -962,14 +1023,35 @@ function ExpandedSidebar({
       {/* Logo — mode 'logo': sadece büyük logo (text yok) · 'logo_text': solda logo + sağda isim */}
       {brand.mode === 'logo' && brand.logo ? (
         // Logonun üst/altında sabit koruyucu boşluk (ölçekten bağımsız korunur)
-        <View className="items-center justify-center" style={{ paddingHorizontal: 10, paddingTop: 12, paddingBottom: 24 }}>
+        <Pressable
+          onPress={brand.website ? () => openLabSite(brand.website) : undefined}
+          disabled={!brand.website}
+          accessibilityRole={brand.website ? 'link' : undefined}
+          accessibilityLabel={brand.website ? `${brand.name} web sitesi` : undefined}
+          style={({ hovered }: any) => ({
+            alignItems: 'center', justifyContent: 'center',
+            paddingHorizontal: 10, paddingTop: 12, paddingBottom: 24,
+            opacity: brand.website && hovered ? 0.75 : 1,
+            ...(brand.website && Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+          })}
+        >
           <Image source={{ uri: brand.logo }} style={{ width: '100%', height: Math.round(60 * (brand.scale ?? 1)) }} resizeMode="contain" />
-        </View>
+        </Pressable>
       ) : (
         <View className="flex-row items-center gap-2.5 px-2.5 pb-5">
-          <View
-            className="rounded-[12px] items-center justify-center overflow-hidden"
-            style={{ width: Math.round(46 * (brand.scale ?? 1)), height: Math.round(46 * (brand.scale ?? 1)), backgroundColor: brand.logo ? '#FFFFFF' : logoSquareBg, borderWidth: brand.logo ? 1 : 0, borderColor: 'rgba(0,0,0,0.06)' }}
+          <Pressable
+            onPress={brand.website ? () => openLabSite(brand.website) : undefined}
+            disabled={!brand.website}
+            accessibilityRole={brand.website ? 'link' : undefined}
+            accessibilityLabel={brand.website ? `${brand.name} web sitesi` : undefined}
+            style={({ hovered }: any) => ({
+              borderRadius: 12, alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+              width: Math.round(46 * (brand.scale ?? 1)), height: Math.round(46 * (brand.scale ?? 1)),
+              backgroundColor: brand.logo ? '#FFFFFF' : logoSquareBg,
+              borderWidth: brand.logo ? 1 : 0, borderColor: 'rgba(0,0,0,0.06)',
+              opacity: brand.website && hovered ? 0.75 : 1,
+              ...(brand.website && Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+            })}
           >
             {brand.logo ? (
               <Image source={{ uri: brand.logo }} style={{ width: '88%', height: '88%' }} resizeMode="contain" />
@@ -978,7 +1060,7 @@ function ExpandedSidebar({
                 {brand.name.slice(0, 1).toUpperCase()}
               </Text>
             )}
-          </View>
+          </Pressable>
           <View className="flex-1">
             <Text numberOfLines={1} className="text-[16px] font-bold text-ink-900" style={{ letterSpacing: -0.3 }}>
               {brand.name}
@@ -1021,7 +1103,7 @@ function ExpandedSidebar({
         {onPressMessages && !hideSidebarMessages && (
           <Pressable
             onPress={onPressMessages}
-            className="px-3 py-2.5 rounded-[10px] flex-row items-center gap-2.5"
+            className={`px-3 ${rtl ? "py-2" : "py-2.5"} rounded-[10px] flex-row items-center gap-2.5`}
           >
             <MessageSquare size={15} color="#2C2C2C" strokeWidth={1.8} />
             <Text className="flex-1 text-[13px] text-ink-700">Mesajlar</Text>
@@ -1043,8 +1125,11 @@ function ExpandedSidebar({
       </ScrollView>
 
       {/* Powered by Siman — platform kimliği (white-label). Sola hizalı: sağ-alttaki FAB ile çakışmaz. */}
-      <View className="flex-row items-center gap-1.5 pt-3 mt-1" style={rtl ? { paddingRight: 10, paddingLeft: 56 } : { paddingLeft: 10, paddingRight: 56 }}>
-        <Text className="text-[9.5px] text-ink-400">Powered by</Text>
+      {/* "Powered by SIMAN" bir MARKA KİLİDİ — İngilizce ve bütün olarak okunur.
+          flex-row CSS'te yön duyarlı olduğu için RTL'de sıra ters dönüyor ve
+          "SIMAN Powered by" çıkıyordu; row-reverse bunu geri çevirir. */}
+      <View className="items-center gap-1.5 pt-3 mt-1" style={[{ flexDirection: rtl ? 'row-reverse' : 'row' }, rtl ? { paddingRight: 10, paddingLeft: 56 } : { paddingLeft: 10, paddingRight: 56 }]}>
+        <Text className="text-[9.5px] text-ink-400" numberOfLines={1}>Powered by</Text>
         <SimanWordmark height={9} color="#9A9A9A" />
       </View>
     </View>
@@ -1071,7 +1156,20 @@ function CollapsedSidebar({
       }}
     >
       {/* Logo */}
-      <View className="w-10 h-10 rounded-[11px] items-center justify-center mb-3.5 overflow-hidden" style={{ backgroundColor: brand?.logo ? '#FFFFFF' : logoSquareBg, borderWidth: brand?.logo ? 1 : 0, borderColor: 'rgba(0,0,0,0.06)' }}>
+      <Pressable
+        onPress={brand?.website ? () => openLabSite(brand.website) : undefined}
+        disabled={!brand?.website}
+        accessibilityRole={brand?.website ? 'link' : undefined}
+        accessibilityLabel={brand?.website ? `${brand.name} web sitesi` : undefined}
+        style={({ hovered }: any) => ({
+          width: 40, height: 40, borderRadius: 11, marginBottom: 14,
+          alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+          backgroundColor: brand?.logo ? '#FFFFFF' : logoSquareBg,
+          borderWidth: brand?.logo ? 1 : 0, borderColor: 'rgba(0,0,0,0.06)',
+          opacity: brand?.website && hovered ? 0.75 : 1,
+          ...(brand?.website && Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+        })}
+      >
         {brand?.logo ? (
           <Image source={{ uri: brand.logo }} style={{ width: '86%', height: '86%' }} resizeMode="contain" />
         ) : (
@@ -1079,7 +1177,7 @@ function CollapsedSidebar({
           {brand?.name?.slice(0, 1)?.toUpperCase() ?? 'P'}
         </Text>
         )}
-      </View>
+      </Pressable>
 
       {newOrderHref && (
         <View ref={tourRefs?.newOrder}>
@@ -1106,7 +1204,7 @@ function CollapsedSidebar({
               >
                 {active && (
                   <View
-                    className="absolute left-0 rounded"
+                    className="absolute start-0 rounded"
                     style={{ top: 8, bottom: 8, width: 2.5, backgroundColor: accentColor }}
                   />
                 )}
@@ -1114,7 +1212,7 @@ function CollapsedSidebar({
                 {item.badgeCount != null && item.badgeCount > 0 && (
                   <View
                     className="absolute min-w-[16px] h-4 px-1 rounded-full border-2 border-white items-center justify-center"
-                    style={{ top: -2, right: -2, backgroundColor: '#9C2E2E' }}
+                    style={{ top: -2, end: -2, backgroundColor: '#9C2E2E' }}
                   >
                     <Text className="text-[9px] font-semibold text-white">{item.badgeCount}</Text>
                   </View>
@@ -1132,7 +1230,7 @@ function CollapsedSidebar({
             {messagesUnreadCount > 0 && (
               <View
                 className="absolute min-w-[16px] h-4 px-1 rounded-full border-2 border-white items-center justify-center"
-                style={{ top: -2, right: -2, backgroundColor: '#9C2E2E' }}
+                style={{ top: -2, end: -2, backgroundColor: '#9C2E2E' }}
               >
                 <Text className="text-[9px] font-semibold text-white">{messagesUnreadCount}</Text>
               </View>
@@ -1169,7 +1267,7 @@ function BellBadge() {
       pointerEvents="none"
       style={{
         position: 'absolute',
-        top: -4, right: -4,
+        top: -4, end: -4,
         minWidth: 18, height: 18, paddingHorizontal: 5,
         borderRadius: 9, borderWidth: 2, borderColor: '#FFFFFF',
         backgroundColor: '#EF4444',

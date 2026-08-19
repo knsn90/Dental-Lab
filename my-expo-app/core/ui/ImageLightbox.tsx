@@ -3,8 +3,10 @@
 // + mobil kaydırma), safe-area uyumlu başlık, çift-tık/çift-tıkla zoom toggle.
 // DOM tabanlı (web-only) — hassas wheel/touch kontrolü için raw div/img kullanır.
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { isRTL } from '../i18n';
 
-type Img = { url: string; name: string };
+/** `thumb` verilirse alt şeritte o kullanılır — tam boy indirmemek için. */
+type Img = { url: string; name: string; thumb?: string };
 
 const MIN = 1;
 const MAX = 5;
@@ -31,6 +33,8 @@ export function ImageLightbox({
 
   const cur = images[index];
   const many = images.length > 1;
+  // RTL: "önceki" fiziksel olarak SAĞDA olur; ok tuşu/kaydırma yönü de aynalanır.
+  const rtl = isRTL();
 
   const reset = useCallback(() => { setScale(1); setTx(0); setTy(0); }, []);
   // Görsel değişince zoom/pan sıfırla
@@ -53,14 +57,14 @@ export function ImageLightbox({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
-      else if (e.key === 'ArrowRight') go(1);
-      else if (e.key === 'ArrowLeft') go(-1);
+      else if (e.key === 'ArrowRight') go(rtl ? -1 : 1);
+      else if (e.key === 'ArrowLeft') go(rtl ? 1 : -1);
       else if (e.key === '+' || e.key === '=') zoomBy(1.25);
       else if (e.key === '-' || e.key === '_') zoomBy(1 / 1.25);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, go, zoomBy]);
+  }, [onClose, go, zoomBy, rtl]);
 
   const onWheel = (e: any) => {
     e.preventDefault();
@@ -109,7 +113,7 @@ export function ImageLightbox({
     // Tek parmak yatay kaydırma (zoom yokken) → görsel değiştir
     if (swipe.current && e.changedTouches.length) {
       const dx = e.changedTouches[0].clientX - swipe.current.x;
-      if (Math.abs(dx) > 60) go(dx < 0 ? 1 : -1);
+      if (Math.abs(dx) > 60) go((dx < 0) === rtl ? -1 : 1);
     }
     if (e.touches.length === 0) { drag.current = null; pinch.current = null; swipe.current = null; }
   };
@@ -186,8 +190,9 @@ export function ImageLightbox({
     ]),
 
     // Prev / Next
-    many ? circleBtn('prev', '‹', () => go(-1), { position: 'absolute', left: 12, top: '50%', marginTop: -20, width: 44, height: 44, fontSize: 28 }) : null,
-    many ? circleBtn('next', '›', () => go(1), { position: 'absolute', right: 12, top: '50%', marginTop: -20, width: 44, height: 44, fontSize: 28 }) : null,
+    // `start`/`end` DOM'da geçerli CSS değil (sessizce yok sayılır) → fiziksel left/right.
+    many ? circleBtn('prev', rtl ? '›' : '‹', () => go(-1), { position: 'absolute', ...(rtl ? { right: 12 } : { left: 12 }), top: '50%', marginTop: -20, width: 44, height: 44, fontSize: 28 }) : null,
+    many ? circleBtn('next', rtl ? '‹' : '›', () => go(1), { position: 'absolute', ...(rtl ? { left: 12 } : { right: 12 }), top: '50%', marginTop: -20, width: 44, height: 44, fontSize: 28 }) : null,
 
     // Alt zoom kontrolleri
     E('div', {
@@ -201,5 +206,44 @@ export function ImageLightbox({
       E('div', { key: 'pct', style: { color: '#fff', fontSize: 12, fontWeight: 600, minWidth: 44, textAlign: 'center', fontVariantNumeric: 'tabular-nums' } }, `${Math.round(scale * 100)}%`),
       circleBtn('zin', '+', () => zoomBy(1.25)),
     ]),
+
+    // Alt şerit — diğer fotoğraflar. Zoom satırının hemen üstünde, ortalı;
+    // çok fotoğrafta yatay kaydırır. Küçük resim varsa tam boy indirilmez.
+    many ? E('div', {
+      key: 'strip',
+      style: {
+        position: 'absolute',
+        bottom: 'calc(max(20px, env(safe-area-inset-bottom, 20px)) + 46px)',
+        left: 0, right: 0,
+        display: 'flex', justifyContent: 'center',
+        pointerEvents: 'none',
+      },
+    }, [
+      E('div', {
+        key: 'inner',
+        style: {
+          display: 'flex', gap: 4, padding: 6,
+          maxWidth: 'min(92vw, 760px)', overflowX: 'auto',
+          background: 'rgba(0,0,0,0.42)', borderRadius: 12,
+          backdropFilter: 'blur(6px)',
+          pointerEvents: 'auto',
+          scrollbarWidth: 'thin',
+        },
+      }, images.map((im, i) => E('img', {
+        key: `t${i}`,
+        src: im.thumb ?? im.url,
+        alt: im.name,
+        onClick: (e: any) => { e.stopPropagation(); onIndexChange(i); },
+        style: {
+          width: i === index ? 84 : 44, height: 56,
+          objectFit: 'cover', borderRadius: 6, cursor: 'pointer',
+          flexShrink: 0,
+          opacity: i === index ? 1 : 0.55,
+          outline: i === index ? '2px solid rgba(255,255,255,0.9)' : 'none',
+          outlineOffset: -2,
+          transition: 'width 200ms ease-out, opacity 200ms ease-out',
+        },
+      }))),
+    ]) : null,
   ]);
 }

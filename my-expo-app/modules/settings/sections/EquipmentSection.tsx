@@ -271,8 +271,8 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
         backgroundColor: accentColor, padding: 18,
         position: 'relative',
       }}>
-        <View style={{ position: 'absolute', top: -40, right: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
-        <View style={{ position: 'absolute', bottom: -50, left: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+        <View style={{ position: 'absolute', top: -40, end: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
+        <View style={{ position: 'absolute', bottom: -50, start: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
 
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
           <View style={{ flex: 1, minWidth: 0 }}>
@@ -396,7 +396,7 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
         <Pressable onPress={() => setFilterOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.42)', justifyContent: 'flex-end', ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) }}>
           <Pressable onPress={(e) => e.stopPropagation()} style={{
             backgroundColor: T.card,
-            borderTopLeftRadius: 24, borderTopRightRadius: 24,
+            borderTopStartRadius: 24, borderTopEndRadius: 24,
             paddingTop: 12, paddingBottom: Math.max(insets.bottom, 16) + 12,
             maxHeight: '85%',
           }}>
@@ -406,7 +406,7 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
               <Pressable onPress={() => setFilterCat(null)} style={{ paddingHorizontal: 10, paddingVertical: 6 }}>
                 <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[500] }}>Temizle</Text>
               </Pressable>
-              <Pressable onPress={() => setFilterOpen(false)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', marginLeft: 4 }}>
+              <Pressable onPress={() => setFilterOpen(false)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', marginStart: 4 }}>
                 <X size={16} color={DS.ink[700]} strokeWidth={2} />
               </Pressable>
             </View>

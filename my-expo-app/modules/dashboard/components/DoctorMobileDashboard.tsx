@@ -4,12 +4,15 @@
 //           → bekleyen onaylar / geciken vakalar → quick actions
 
 import React from 'react';
+import { firstName as displayFirstName } from '../../../core/util/personName';
 import { View, Text, Pressable, ScrollView, Platform, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   QrCode, Flame, FileCheck, ClipboardList, Bell, User as UserIcon,
 } from 'lucide-react-native';
+import { isRTL, fmtWeekdayDayMonth } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { MOBILE_PANEL_THEMES, useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { HeroGlowOverlay } from '../../../core/ui/mobile/HeroGlowOverlay';
 import { Ring } from '../../../core/ui/mobile/Ring';
@@ -23,11 +26,16 @@ import { RecentOrdersMobile, type RecentOrderItem } from './RecentOrdersMobile';
 
 const DOCTOR = MOBILE_PANEL_THEMES.doctor;
 
+// Gün/ay adları getDay()/getMonth() ile indekslenen SABİT dizi → sözlüğe takılmaz,
+// tek tek autoT() ile çevrilir (Miladi ay adları; Şemsi takvim kullanılmaz).
+const DAY_NAMES   = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
+const MONTH_NAMES = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+// Hafta şeridi kolon etiketleri — ilk harf gösterilir (çeviri sonrası: دوشنبه → د).
+const WEEK_STRIP_DAYS = ['Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi','Pazar'];
+
 function doctorTodayLabel(): string {
   const d = new Date();
-  const days   = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
-  const months = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
-  return `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]}`;
+  return fmtWeekdayDayMonth(d);
 }
 
 export interface DoctorDelayedCase {
@@ -87,10 +95,11 @@ export function DoctorMobileDashboard(props: DoctorMobileDashboardProps) {
   const stripDrRe = /^\s*(dr\.?|doktor|prof\.?\s*dr\.?|doç\.?\s*dr\.?)\s*\.?\s*/i;
   let cleanName = rawName;
   while (stripDrRe.test(cleanName)) cleanName = cleanName.replace(stripDrRe, '').trim();
-  const firstName = cleanName.split(' ')[0] ?? '';
-  const greeting  = props.greeting   ?? (firstName ? `Hoş geldin, Dr. ${firstName}.` : 'Hoş geldin.');
+  const firstName = displayFirstName(cleanName);
+  const rtl = isRTL();
+  const greeting  = props.greeting   ?? (firstName ? `${autoT('Hoş geldin, Dt.')} ${firstName}.` : autoT('Hoş geldin.'));
   const today     = props.todayLabel ?? defaultToday();
-  const clinic    = props.clinicName ?? 'Klinik';
+  const clinic    = props.clinicName ?? autoT('Klinik');
 
   const live = {
     active: props.liveActive ?? 0,
@@ -131,7 +140,7 @@ export function DoctorMobileDashboard(props: DoctorMobileDashboardProps) {
             {greeting}
           </Text>
           <Text style={{ fontSize: 13.5, color: T.ink3, marginTop: 8, lineHeight: 19 }}>
-            Bugün {live.total} sipariş takipte, {live.active} aktif{(props.overdueCount ?? 0) > 0 ? `, ${props.overdueCount} geciken` : ''}.
+            {autoT('Bugün')} {live.total} {autoT('sipariş takipte,')} {live.active} {autoT('aktif')}{(props.overdueCount ?? 0) > 0 ? `, ${props.overdueCount} ${autoT('geciken')}` : ''}.
           </Text>
         </View>
 
@@ -143,7 +152,9 @@ export function DoctorMobileDashboard(props: DoctorMobileDashboardProps) {
         <NewOrderCTACard
           accentColor={DOCTOR.primary}
           onPress={props.onNewOrder}
-          kicker={(props.thisMonthNew ?? 0) > 0 ? `BU AY ${props.thisMonthNew} YENİ VAKA` : 'YENİ VAKA'}
+          kicker={(props.thisMonthNew ?? 0) > 0
+            ? `${autoT('BU AY')} ${props.thisMonthNew} ${autoT('YENİ VAKA')}`
+            : autoT('YENİ VAKA')}
           rightSlot={faceScanOk ? <FaceScanQuickAction variant="card" accentColor={DOCTOR.primary} /> : undefined}
         />
       )}
@@ -190,10 +201,10 @@ export function DoctorMobileDashboard(props: DoctorMobileDashboardProps) {
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               {[
-                { l: 'Alındı', n: live.stages.alindi },
-                { l: 'Üretim', n: live.stages.uretim },
-                { l: 'KK',     n: live.stages.kk },
-                { l: 'Hazır',  n: live.stages.hazir },
+                { l: autoT('Alındı'), n: live.stages.alindi },
+                { l: autoT('Üretim'), n: live.stages.uretim },
+                { l: autoT('KK'),     n: live.stages.kk },
+                { l: autoT('Hazır'),  n: live.stages.hazir },
               ].map((s, i) => (
                 <View key={i} style={{ alignItems: 'center', gap: 6 }}>
                   <View style={{
@@ -226,17 +237,17 @@ export function DoctorMobileDashboard(props: DoctorMobileDashboardProps) {
       {/* ═══ KPI 2-grid ═══ */}
       <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingBottom: 16 }}>
         <Kpi
-          label="Aktif sipariş"
+          label={autoT('Aktif sipariş')}
           numericValue={props.activeOrders ?? 0}
-          delta={`${props.thisMonthNew ?? 0} bu ay`}
-          sub={`${props.overdueCount ?? 0} geciken`}
+          delta={`${props.thisMonthNew ?? 0} ${autoT('bu ay')}`}
+          sub={`${props.overdueCount ?? 0} ${autoT('geciken')}`}
           deltaColor={T.jade}
           icon={ClipboardList}
         />
         <Kpi
-          label="Onay bekleyen"
+          label={autoT('Onay bekleyen')}
           numericValue={props.pendingApprovalsCount ?? 0}
-          delta={(props.pendingApprovalsCount ?? 0) > 0 ? 'incele →' : 'temiz'}
+          delta={(props.pendingApprovalsCount ?? 0) > 0 ? autoT('incele →') : autoT('temiz')}
           // 0 ise soft state, varsa dark — dikkat çeker
           dark={(props.pendingApprovalsCount ?? 0) > 0}
           accent={DOCTOR.primary}
@@ -276,7 +287,7 @@ export function DoctorMobileDashboard(props: DoctorMobileDashboardProps) {
 
           return (
             <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-end', height: 110, paddingHorizontal: 2 }}>
-              {['Pa', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct', 'Pz'].map((d, i) => {
+              {WEEK_STRIP_DAYS.map((d, i) => {
                 const n = week[i] ?? 0;
                 const isToday = i === 6;
                 const pct = n > 0 ? Math.min(Math.max((n / SCALE_MAX) * 100, 8), 100) : 0;
@@ -326,7 +337,7 @@ export function DoctorMobileDashboard(props: DoctorMobileDashboardProps) {
                       textTransform: 'uppercase',
                       letterSpacing: 0.5,
                     }}>
-                      {d[0]}
+                      {autoT(d).charAt(0)}
                     </Text>
                   </View>
                 );
@@ -405,8 +416,9 @@ export function DoctorMobileDashboard(props: DoctorMobileDashboardProps) {
                     </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                        <Text style={{ fontSize: 14, fontWeight: '600', color: T.ink, flexShrink: 1 }} numberOfLines={1}>{o.patient}</Text>
-                        <Text style={{ fontSize: 10, color: T.ink3, fontFamily: T.mono, flexShrink: 0 }}>{o.id}</Text>
+                        <Text style={{ fontSize: 14, fontWeight: '600', color: T.ink, flexShrink: 1, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{o.patient}</Text>
+                        {/* Sipariş no Latin başlar → RNW dir="auto" ile LTR olur; RTL'de hizayı sabitle */}
+                        <Text style={{ fontSize: 10, color: T.ink3, fontFamily: T.mono, flexShrink: 0, textAlign: rtl ? 'right' : undefined }}>{o.id}</Text>
                       </View>
                       <Text style={{ fontSize: 11.5, color: T.ink3, marginTop: 2 }} numberOfLines={1}>
                         {o.workType}
@@ -466,7 +478,8 @@ function TopIconButton({ icon: Icon, onPress, badgeDot }:
           {badgeDot && (
             <View style={{
               position: 'absolute',
-              top: 7, right: 7,
+              // `end:` inline stili bu projede güvenilir değil → yönü açıkça seç
+              top: 7, ...(isRTL() ? { left: 7 } : { right: 7 }),
               width: 8, height: 8, borderRadius: 4,
               backgroundColor: T.ruby,
               borderWidth: 1.5, borderColor: T.card,
@@ -538,8 +551,6 @@ function Kpi({ label, numericValue, delta, deltaColor, sub, dark, accent, icon: 
 }
 
 function defaultToday(): string {
-  const days = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
-  const months = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
   const d = new Date();
-  return `${days[d.getDay()]} · ${d.getDate()} ${months[d.getMonth()]}`;
+  return fmtWeekdayDayMonth(d, ' · ');
 }

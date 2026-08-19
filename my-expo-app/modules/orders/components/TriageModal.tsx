@@ -26,6 +26,7 @@ import {
   Eye, Download, Box, Paperclip, MessageSquare,
 } from 'lucide-react-native';
 import { supabase } from '../../../core/api/supabase';
+import { isRTL } from '../../../core/i18n';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { useAuthStore } from '../../../core/store/authStore';
 import { ChatDetail } from './MessagesPopup';
@@ -1009,7 +1010,7 @@ export function TriageModal({
                               })));
                             }}
                             style={({ hovered }: any) => ({
-                              marginLeft: 'auto' as any,
+                              marginStart: 'auto' as any,
                               flexDirection: 'row', alignItems: 'center', gap: 5,
                               paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
                               backgroundColor: hovered ? accentColor : accentColor + 'DD',
@@ -1081,7 +1082,7 @@ export function TriageModal({
                                 {/* 3D format badge */}
                                 {fmt3D && (
                                   <View style={{
-                                    position: 'absolute', top: 4, left: 4,
+                                    position: 'absolute', top: 4, start: 4,
                                     paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 999,
                                     backgroundColor: accentColor,
                                   }}>
@@ -1139,8 +1140,8 @@ export function TriageModal({
                                   style={({ hovered }: any) => ({
                                     flex: 1, paddingVertical: 6, flexDirection: 'row',
                                     alignItems: 'center', justifyContent: 'center', gap: 4,
-                                    borderLeftWidth: canPreview ? 1 : 0,
-                                    borderLeftColor: 'rgba(0,0,0,0.06)',
+                                    borderStartWidth: canPreview ? 1 : 0,
+                                    borderStartColor: 'rgba(0,0,0,0.06)',
                                     backgroundColor: hovered ? INK[100] : 'transparent',
                                     ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                                   })}
@@ -1319,8 +1320,8 @@ export function TriageModal({
                         overflow: 'hidden',
                         // İstasyonu tanıyan ince renk şeridi (sol kenar)
                         ...(isActive ? {
-                          borderLeftWidth: 3,
-                          borderLeftColor: st.color,
+                          borderStartWidth: 3,
+                          borderStartColor: st.color,
                         } : {}),
                       }}
                     >
@@ -1553,7 +1554,7 @@ export function TriageModal({
                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                 }}
               >
-                <ArrowLeft size={13} color={INK[700]} strokeWidth={1.8} />
+                {isRTL() ? <ArrowRight size={13} color={INK[700]} strokeWidth={1.8} /> : <ArrowLeft size={13} color={INK[700]} strokeWidth={1.8} />}
                 <Text style={{ fontSize: 13, fontWeight: '500', color: INK[700] }}>Geri</Text>
               </Pressable>
             )}
@@ -1586,7 +1587,7 @@ export function TriageModal({
                 <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFF', letterSpacing: 0.2 }}>
                   Planlamaya geç
                 </Text>
-                <ArrowRight size={14} color="#FFF" strokeWidth={2.2} />
+                {isRTL() ? <ArrowLeft size={14} color="#FFF" strokeWidth={2.2} /> : <ArrowRight size={14} color="#FFF" strokeWidth={2.2} />}
               </Pressable>
             ) : (
               <Pressable

@@ -19,6 +19,7 @@ import MaskedView from '@react-native-masked-view/masked-view';
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
 import { SvgCss } from 'react-native-svg/css';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { isRTL } from '../../i18n';
 import { supabase } from '../../api/supabase';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeModeStore } from '../../store/themeModeStore';
@@ -44,13 +45,16 @@ export function PanelTopHeader() {
         labLogoId = (c as any)?.lab_id ?? null;
       }
       if (!labLogoId) { if (alive) setLogo(null); return; }
+      // NOT: klinik/hekim kullanıcısı labs'ı RLS ile okuyamaz (policy: id = get_my_lab_id()).
+      // Bağlı lab logosunu SECURITY DEFINER RPC ile al (yalnız marka alanları, bağlılık doğrulanır).
       const { data: l } = await supabase
-        .from('labs').select('logo_url').eq('id', labLogoId).maybeSingle();
+        .rpc('get_lab_brand', { p_lab_id: labLogoId }).maybeSingle();
       if (alive) setLogo((l as any)?.logo_url ?? null);
     })();
     return () => { alive = false; };
   }, [labId, clinicId]);
 
+  const rtl = isRTL();
   const topBlurH = Math.max(insets.top, 8) + 96;
   // SVG logolar: RN <Image> SVG render etmez → native'de SvgCss (CSS <style> inline) kullan.
   const isSvgLogo = !!logo && /\.svg(\?|$)/i.test(logo);
@@ -116,7 +120,7 @@ export function PanelTopHeader() {
         Platform.OS !== 'web' && isSvgLogo ? (
           <View
             pointerEvents="none"
-            style={{ position: 'absolute', top: Math.max(insets.top, 8) + 7, left: 20, width: 130, height: 38, zIndex: 9 }}
+            style={{ position: 'absolute', top: Math.max(insets.top, 8) + 7, ...(rtl ? { right: 20 } : { left: 20 }), width: 130, height: 38, zIndex: 9 }}
           >
             {!!logoXml && <SvgCss xml={logoXml} width={130} height={38} />}
           </View>
@@ -124,7 +128,7 @@ export function PanelTopHeader() {
           <Image
             source={{ uri: logo }}
             resizeMode="contain"
-            style={{ position: 'absolute', top: Math.max(insets.top, 8) + 7, left: 20, width: 130, height: 38, zIndex: 9, pointerEvents: 'none' } as any}
+            style={{ position: 'absolute', top: Math.max(insets.top, 8) + 7, ...(rtl ? { right: 20 } : { left: 20 }), width: 130, height: 38, zIndex: 9, pointerEvents: 'none' } as any}
           />
         )
       )}

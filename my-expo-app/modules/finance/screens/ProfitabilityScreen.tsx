@@ -15,6 +15,9 @@ import { useAuthStore } from '../../../core/store/authStore';
 import { DS } from '../../../core/theme/dsTokens';
 import { HubContext } from '../../../core/ui/HubContext';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { SlideTabBar } from '../../../core/ui/SlideTabBar';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { CenteredLoader } from '../../../core/ui/CenteredLoader';
@@ -158,6 +161,8 @@ export function ProfitabilityScreen() {
   const isDesktop   = width >= 900;
   const labId       = profile?.lab_id ?? profile?.id ?? null;
   const T = useMobileTokens();
+  // SlideTabBar cursor'ı beyaz metin basar → koyu ink şart.
+  const panelTheme = usePanelTheme();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   useBaseCurrency();
 
@@ -264,43 +269,19 @@ export function ProfitabilityScreen() {
       contentContainerStyle={{ paddingHorizontal: 12, paddingTop: isEmbedded ? 4 : insets.top + 8, paddingBottom: 120, gap: 14 }}
       showsVerticalScrollIndicator={false}
     >
-      {/* ── Range filter — full width, eşit dağılım ─────────────────── */}
-      <View style={{ flexDirection: 'row', gap: 4, backgroundColor: T.cardSoft, borderRadius: 9999, padding: 4 }}>
-        {RANGE_OPTIONS.map(opt => {
-          const active = range === opt.key;
-          return (
-            <Pressable
-              key={opt.key}
-              onPress={() => setRange(opt.key)}
-              style={[
-                {
-                  flex: 1,
-                  alignItems: 'center', justifyContent: 'center',
-                  paddingHorizontal: 8,
-                  paddingVertical: 8,
-                  borderRadius: 9999,
-                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
-                } as any,
-                active && {
-                  backgroundColor: T.card,
-                  // @ts-ignore web
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  { fontSize: 12, fontWeight: '600', color: T.ink3 },
-                  active && { color: T.ink, fontWeight: '700' },
-                ]}
-                numberOfLines={1}
-              >
-                {opt.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      {/* ── Aralık seçici — uygulamanın ortak sekme çubuğu (sm) ─────────
+          Eskiden gri raylı, tam genişliğe eşit dağılan kendi şeridiydi:
+          4 seçenek 1200px'e yayılınca "Bu Ay" ile "Tümü" arası ekranın yarısı
+          kadar açılıyordu. Artık içeriğine sarılıyor ve Siparişler / Onaylar /
+          Kurumlar ile aynı dili konuşuyor. */}
+      <SlideTabBar
+        size="sm"
+        items={RANGE_OPTIONS.map(o => ({ key: o.key, label: o.label }))}
+        activeKey={range}
+        onChange={(k) => setRange(k as Range)}
+        accentColor={panelTheme.accent}
+        style={{ marginStart: -3 }}
+      />
 
       {loading ? (
         <CenteredLoader color={T.ink3} inline />
@@ -311,8 +292,8 @@ export function ProfitabilityScreen() {
             borderRadius: 20, overflow: 'hidden',
             backgroundColor: toneFg, padding: 20, position: 'relative',
           }}>
-            <View style={{ position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.18)' }} />
-            <View style={{ position: 'absolute', bottom: -50, left: -20, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+            <View style={{ position: 'absolute', top: -40, end: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.18)' }} />
+            <View style={{ position: 'absolute', bottom: -50, start: -20, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.12)' }} />
 
             {/* Üst satır: Net Kâr + İkon */}
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
@@ -327,12 +308,14 @@ export function ProfitabilityScreen() {
                   {profit >= 0 ? '+' : '−'}{baseSymbol()}{fmt(Math.abs(profit))}
                 </Text>
                 <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.72)', marginTop: 4 }}>
-                  {summary?.total_orders ?? 0} sipariş · {margin !== null ? `%${margin} marj` : 'marj —'}
-                  {margin !== null ? ` · ${
+                  {/* Şablon dizeleri sözlükle eşleşemez (sayı değişiyor) →
+                      statik kelimeler ayrı ayrı autoT'den geçer. */}
+                  {summary?.total_orders ?? 0} {autoT('sipariş')} · {margin !== null ? `%${margin} ${autoT('marj')}` : `${autoT('marj')} —`}
+                  {margin !== null ? ` · ${autoT(
                     margin >= 30 ? 'Mükemmel'
                     : margin >= 20 ? 'İyi'
                     : margin >= 10 ? 'Düşük' : 'Risk'
-                  }` : ''}
+                  )}` : ''}
                 </Text>
               </View>
               <View style={{ width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.22)' }}>
@@ -399,8 +382,10 @@ export function ProfitabilityScreen() {
               })}
             </View>
             <Text style={{ fontSize: 9, color: 'rgba(255,255,255,0.65)', marginTop: 8 }}>
-              Net Kâr · Maliyet · İşçilik · Materyal raporlama para biriminde ({baseSymbol()}) gösterilir.
-              Farklı para birimindeki ({'₺'}/$) kalemler güncel TCMB kuruyla çevrildiği için tutarlar yaklaşıktır (≈).
+              {/* Eskiden {baseSymbol()} cümleyi üç parçaya bölüyordu; her parça
+                  ayrı ayrı sözlükte aranıp yarısı çevrilmeden kalıyordu. */}
+              {autoT('Net Kâr · Maliyet · İşçilik · Materyal raporlama para biriminde gösterilir:')} {baseSymbol()}
+              {' '}{autoT('Farklı para birimindeki kalemler güncel kurla çevrildiği için tutarlar yaklaşıktır (≈).')}
             </Text>
           </View>
 
@@ -685,7 +670,7 @@ function DoctorRowView({ doc, isLast, revSlices }: { doc: DoctorRow; isLast: boo
             revSlices && revSlices.length
               ? revSlices.map(s => formatMoney(s.total, s.currency, { fractionDigits: 0 })).join(' · ')
               : `${fmt(doc.total_revenue)} ${baseSymbol()}${origSuffix(doc.revenue_currency, doc.revenue_original)}`
-          } gelir
+          } {autoT('gelir')}
         </Text>
       </View>
       <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: DS.radius.pill, alignItems: 'center', minWidth: 90, backgroundColor: chipTone.bg }}>

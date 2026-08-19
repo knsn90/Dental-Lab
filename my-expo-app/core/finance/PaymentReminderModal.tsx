@@ -17,6 +17,7 @@ import {
 import { useRouter, useSegments } from 'expo-router';
 import { X, ReceiptText, Phone } from 'lucide-react-native';
 import { DS } from '../theme/dsTokens';
+import { autoT } from '../i18n/autoTranslate';
 import { formatMoney, type Currency } from '../money/currency';
 
 export type ReminderRow = {
@@ -185,7 +186,7 @@ export function PaymentReminderModal({
                 Bakiyeniz hakkında kısa bir hatırlatma
               </Text>
               <Text style={{ fontSize: 13, lineHeight: 19, color: DS.ink[500], marginTop: 4 }}>
-                {labName ? `${labName} hesabınızda ` : 'Hesabınızda '}vadesi geçmiş bir tutar görünüyor.
+                {labName ? `${labName} ${autoT('hesabınızda')} ` : 'Hesabınızda '}vadesi geçmiş bir tutar görünüyor.
               </Text>
             </View>
             <PressScale onPress={onClose} style={{ padding: 6, borderRadius: 999 }}>

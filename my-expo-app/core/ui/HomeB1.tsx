@@ -4,10 +4,11 @@
  */
 import React from 'react';
 import { View, Text, Pressable, ScrollView, RefreshControl, StyleSheet } from 'react-native';
-import { ArrowRight, Sparkles, ChevronRight } from 'lucide-react-native';
+import { ArrowLeft, ArrowRight, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import Svg, { Polyline, Circle as SvgCircle } from 'react-native-svg';
 import { DS } from '../theme/dsTokens';
 import { MFONT, MSIZE, useMobileTheme, type MobileRole } from '../theme/mobileTheme';
+import { isRTL } from '../i18n';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 export interface KpiItem {
@@ -106,7 +107,8 @@ export function HomeB1(props: HomeB1Props) {
                   <Text style={[styles.primaryBtnText, { color: theme.surface }]}>
                     {primaryAction.label}
                   </Text>
-                  <ArrowRight size={16} color={theme.surface} strokeWidth={2} />
+                  {isRTL() ? <ArrowLeft size={16} color={theme.surface} strokeWidth={2} />
+                           : <ArrowRight size={16} color={theme.surface} strokeWidth={2} />}
                 </Pressable>
               )}
               {secondaryAction && (
@@ -240,7 +242,8 @@ function PriorityCard({
             <View style={[styles.priorityChevron, {
               backgroundColor: dark ? 'rgba(255,255,255,0.18)' : theme.accent,
             }]}>
-              <ChevronRight size={18} color={dark ? '#FFF' : theme.surface} strokeWidth={2} />
+              {isRTL() ? <ChevronLeft size={18} color={dark ? '#FFF' : theme.surface} strokeWidth={2} />
+                       : <ChevronRight size={18} color={dark ? '#FFF' : theme.surface} strokeWidth={2} />}
             </View>
           </View>
         </View>
@@ -332,7 +335,7 @@ const styles = StyleSheet.create({
   orbBig: {
     position: 'absolute',
     top: -80,
-    right: -80,
+    end: -80,
     width: 240,
     height: 240,
     borderRadius: 120,
@@ -341,7 +344,7 @@ const styles = StyleSheet.create({
   orbSmall: {
     position: 'absolute',
     top: 30,
-    right: 30,
+    end: 30,
     width: 80,
     height: 80,
     borderRadius: 40,
@@ -358,8 +361,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 4,
-    paddingLeft: 6,
-    paddingRight: 12,
+    paddingStart: 6,
+    paddingEnd: 12,
     borderRadius: 999,
     gap: 6,
   },
@@ -520,7 +523,7 @@ const styles = StyleSheet.create({
   },
   priorityWatermark: {
     position: 'absolute',
-    right: -20,
+    end: -20,
     top: -10,
     fontSize: 84,
     fontFamily: MFONT.uiThin,

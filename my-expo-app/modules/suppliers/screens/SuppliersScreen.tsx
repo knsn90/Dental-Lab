@@ -1,4 +1,6 @@
 import { localeTag } from '../../../core/i18n';
+import { FilterMenu } from '../../../core/ui/FilterMenu';
+import { autoT } from '../../../core/i18n/autoTranslate';
 /**
  * SuppliersScreen — Tedarikçiler & Cari Hesap ana ekranı.
  *
@@ -52,7 +54,6 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState<SupplierCategory | 'all'>('all');
-  const [filterOpen, setFilterOpen] = useState(false);
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
@@ -156,8 +157,8 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
         borderRadius: 20, overflow: 'hidden',
         backgroundColor: accentColor, padding: 18, position: 'relative',
       }}>
-        <View style={{ position: 'absolute', top: -40, right: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
-        <View style={{ position: 'absolute', bottom: -50, left: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+        <View style={{ position: 'absolute', top: -40, end: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
+        <View style={{ position: 'absolute', bottom: -50, start: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
 
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
           <View style={{ flex: 1, minWidth: 0 }}>
@@ -234,27 +235,21 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
           />
         </View>
 
-        {/* Filtre butonu — search ile aynı yükseklik */}
-        {(() => {
-          const hasFilter = catFilter !== 'all';
-          return (
-            <Pressable
-              onPress={() => setFilterOpen(true)}
-              style={{
-                flexDirection: 'row', alignItems: 'center', gap: 6,
-                height: 44, paddingHorizontal: 14, borderRadius: 14,
-                backgroundColor: hasFilter ? '#0A0A0A' : '#FFFFFF',
-                borderWidth: hasFilter ? 0 : 1, borderColor: 'rgba(0,0,0,0.08)',
-                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-              }}
-            >
-              <SlidersHorizontal size={14} strokeWidth={1.8} color={hasFilter ? '#FFFFFF' : '#475569'} />
-              <Text style={{ fontSize: 12, fontWeight: hasFilter ? '700' : '600', color: hasFilter ? '#FFFFFF' : '#475569' }}>
-                Filtre{hasFilter ? ' (1)' : ''}
-              </Text>
-            </Pressable>
-          );
-        })()}
+        {/* Filtre — masaüstünde tetikleyiciye ÇAPALI popover (core/ui/FilterMenu).
+            Eskiden ekranın altına yapışan tam genişlikte bir sheet açılıyordu;
+            masaüstünde mobil kalıbı gibi duruyordu. */}
+        <FilterMenu
+          label={autoT('Filtre')}
+          items={[
+            { key: 'all',       label: autoT('Tümü') },
+            { key: 'material',  label: autoT(CATEGORY_LABELS.material) },
+            { key: 'equipment', label: autoT(CATEGORY_LABELS.equipment) },
+            { key: 'service',   label: autoT(CATEGORY_LABELS.service) },
+            { key: 'other',     label: autoT(CATEGORY_LABELS.other) },
+          ]}
+          active={catFilter}
+          onChange={(k) => setCatFilter(k as typeof catFilter)}
+        />
 
         {/* CTA — Yeni Tedarikçi (sadece + ikon mobile'da kompakt) */}
         <Pressable
@@ -294,7 +289,7 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
               <Text style={[eyebrow, { flex: 2.5 }]}>Firma</Text>
               <Text style={[eyebrow, { flex: 1.2 }]}>Kategori</Text>
               <Text style={[eyebrow, { flex: 1.2 }]}>Son hareket</Text>
-              <Text style={[eyebrow, { flex: 1.5, textAlign: 'right' }]}>Bakiye</Text>
+              <Text style={[eyebrow, { flex: 1.5, textAlign: 'end' as any }]}>Bakiye</Text>
               <View style={{ width: 12 }} />
             </View>
             {filtered.map((s, idx) => {
@@ -371,7 +366,7 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
                       </View>
                     ) : null}
                   </View>
-                  <View style={{ width: 64, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 6, paddingLeft: 4 }}>
+                  <View style={{ width: 64, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 6, paddingStart: 4 }}>
                     <Pressable
                       onPress={(e: any) => { e?.stopPropagation?.(); setFormOpen({ visible: true, supplier: s }); }}
                       style={{ width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(31,86,137,0.10)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
@@ -383,16 +378,16 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
                         e?.stopPropagation?.();
                         const hasBalance = !!(bal && (bal.purchase_count > 0 || Math.abs(Number(bal.balance_account) || 0) > 0.01));
                         const confirmMsg = hasBalance
-                          ? `${s.name} firmasının geçmiş işlemi var. Pasife alınsın mı? (Veriler korunur; bakiye kapanana kadar listede "Pasif" olarak görünür.)`
-                          : `${s.name} firmasını kalıcı silmek istediğinden emin misin?`;
-                        if (!(await confirmAsync(hasBalance ? 'Firmayı Pasife Al' : 'Firmayı Sil', confirmMsg, { confirmText: hasBalance ? 'Pasife Al' : 'Sil', destructive: !hasBalance }))) return;
+                          ? `${s.name} ${autoT('firmasının geçmiş işlemi var. Pasife alınsın mı? (Veriler korunur; bakiye kapanana kadar listede "Pasif" olarak görünür.)')}`
+                          : `${s.name} ${autoT('firmasını kalıcı silmek istediğinden emin misin?')}`;
+                        if (!(await confirmAsync(autoT(hasBalance ? 'Firmayı Pasife Al' : 'Firmayı Sil'), confirmMsg, { confirmText: autoT(hasBalance ? 'Pasife Al' : 'Sil'), destructive: !hasBalance }))) return;
                         const res = hasBalance ? await deactivateSupplier(s.id) : await deleteSupplier(s.id);
                         if (res.error) {
                           const msg = String((res.error as any).message ?? '');
                           if (/foreign key|violates/i.test(msg)) {
                             const fb = await deactivateSupplier(s.id);
-                            if (fb.error) { toast.error('Silinemedi: ' + msg); return; }
-                            toast.success(`${s.name} pasife alındı (geçmiş kayıt var)`);
+                            if (fb.error) { toast.error(autoT('Silinemedi:') + ' ' + msg); return; }
+                            toast.success(`${s.name} ${autoT('pasife alındı (geçmiş kayıt var)')}`);
                           } else { toast.error('Silinemedi: ' + msg); return; }
                         } else { toast.success(`${s.name} ${hasBalance ? 'pasife alındı' : 'silindi'}`); }
                         load();
@@ -498,16 +493,16 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
                         e?.stopPropagation?.();
                         const hasBalance = !!(bal && (bal.purchase_count > 0 || Math.abs(Number(bal.balance_account) || 0) > 0.01));
                         const confirmMsg = hasBalance
-                          ? `${s.name} firmasının geçmiş işlemi var. Pasife alınsın mı?`
-                          : `${s.name} firmasını silmek istediğinden emin misin?`;
-                        if (!(await confirmAsync(hasBalance ? 'Firmayı Pasife Al' : 'Firmayı Sil', confirmMsg, { confirmText: hasBalance ? 'Pasife Al' : 'Sil', destructive: !hasBalance }))) return;
+                          ? `${s.name} ${autoT('firmasının geçmiş işlemi var. Pasife alınsın mı?')}`
+                          : `${s.name} ${autoT('firmasını silmek istediğinden emin misin?')}`;
+                        if (!(await confirmAsync(autoT(hasBalance ? 'Firmayı Pasife Al' : 'Firmayı Sil'), confirmMsg, { confirmText: autoT(hasBalance ? 'Pasife Al' : 'Sil'), destructive: !hasBalance }))) return;
                         const res = hasBalance ? await deactivateSupplier(s.id) : await deleteSupplier(s.id);
                         if (res.error) {
                           const msg = String((res.error as any).message ?? '');
                           if (/foreign key|violates/i.test(msg)) {
                             const fb = await deactivateSupplier(s.id);
-                            if (fb.error) { toast.error('Silinemedi: ' + msg); return; }
-                            toast.success(`${s.name} pasife alındı`);
+                            if (fb.error) { toast.error(autoT('Silinemedi:') + ' ' + msg); return; }
+                            toast.success(`${s.name} ${autoT('pasife alındı')}`);
                           } else { toast.error('Silinemedi: ' + msg); return; }
                         } else { toast.success(`${s.name} ${hasBalance ? 'pasife alındı' : 'silindi'}`); }
                         load();
@@ -533,58 +528,6 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
         onSaved={() => { setFormOpen({ visible: false, supplier: null }); load(); }}
       />
 
-      {/* ── Filtre Sheet ──────────────────────────────────── */}
-      <Modal visible={filterOpen} transparent animationType="fade" onRequestClose={() => setFilterOpen(false)}>
-        <Pressable onPress={() => setFilterOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.42)', justifyContent: 'flex-end', ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) }}>
-          <Pressable onPress={(e) => e.stopPropagation()} style={{
-            backgroundColor: T.card,
-            borderTopLeftRadius: 24, borderTopRightRadius: 24,
-            paddingTop: 12, paddingBottom: Math.max(insets.bottom, 16) + 12,
-            maxHeight: '85%',
-          }}>
-            <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: T.hairline, marginBottom: 14 }} />
-            <View style={{ paddingHorizontal: 20, paddingBottom: 12, flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={{ fontSize: 18, fontWeight: '700', color: T.ink, flex: 1 }}>Filtrele</Text>
-              <Pressable onPress={() => setCatFilter('all')} style={{ paddingHorizontal: 10, paddingVertical: 6 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: T.ink2 }}>Temizle</Text>
-              </Pressable>
-              <Pressable onPress={() => setFilterOpen(false)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: T.cardSoft, alignItems: 'center', justifyContent: 'center', marginLeft: 4 }}>
-                <X size={16} color={T.ink2} strokeWidth={2} />
-              </Pressable>
-            </View>
-            <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 12, gap: 18 }}>
-              <View style={{ gap: 8 }}>
-                <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: T.ink3, paddingHorizontal: 4 }}>Kategori</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  {(['all','material','equipment','service','other'] as const).map(c => {
-                    const active = catFilter === c;
-                    const label = c === 'all' ? 'Tümü' : CATEGORY_LABELS[c];
-                    return (
-                      <Pressable key={c} onPress={() => setCatFilter(c)} style={{
-                        paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999,
-                        borderWidth: 1, borderColor: active ? accentColor : T.hairline,
-                        backgroundColor: active ? accentColor : 'transparent',
-                        cursor: 'pointer' as any,
-                      }}>
-                        <Text style={{ fontSize: 12.5, fontWeight: active ? '700' : '500', color: active ? '#FFFFFF' : T.ink2 }}>{label}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </View>
-            </ScrollView>
-            <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
-              <Pressable onPress={() => setFilterOpen(false)} style={{
-                height: 48, borderRadius: 14, backgroundColor: '#0A0A0A',
-                alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer' as any,
-              }}>
-                <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>Uygula</Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
     </ScrollView>
   );
 }

@@ -83,7 +83,7 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     paddingVertical: 12,
   },
-  rightIcon: { paddingLeft: 8 },
+  rightIcon: { paddingStart: 8 },
   error: { fontSize: 12, color: Colors.error, marginTop: 4 },
   hint: { fontSize: 12, color: Colors.textSecondary, marginTop: 4 },
 });

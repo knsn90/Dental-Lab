@@ -18,15 +18,22 @@
  *   • Min/max tarih sınırı
  */
 import React, { useState, useMemo, useRef } from 'react';
+import { autoT } from '../i18n/autoTranslate';
 import { View, Text, Pressable, ScrollView, Modal, Platform } from 'react-native';
 import { Calendar, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react-native';
 import { DS } from '../theme/dsTokens';
+import { isRTL, weekStartsOn, weekdayOffset } from '../i18n';
 
 const MONTHS_TR = [
   'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
   'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık',
 ];
 const WEEKDAYS_TR = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+/** WEEKDAYS_TR Pazartesi başlangıçlıdır; bölgenin ilk gününe göre döndürülür. */
+function orderedWeekdays(): string[] {
+  const shift = (weekStartsOn() - 1 + 7) % 7;   // Pzt=1 tabanlı kaydırma
+  return WEEKDAYS_TR.slice(shift).concat(WEEKDAYS_TR.slice(0, shift));
+}
 
 const DISPLAY = {
   fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
@@ -59,11 +66,6 @@ function isSameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() &&
          a.getMonth()    === b.getMonth() &&
          a.getDate()     === b.getDate();
-}
-
-// Pazartesi-başlı haftalık offset (0 = Pzt, 6 = Paz)
-function mondayOffset(weekday: number): number {
-  return (weekday + 6) % 7;
 }
 
 // ── Component ────────────────────────────────────────────────────────
@@ -130,7 +132,7 @@ export function DatePicker({
   // ── Calendar grid ──────────────────────────────────────────────
   const grid = useMemo(() => {
     const firstDay  = new Date(viewYear, viewMonth, 1);
-    const offset    = mondayOffset(firstDay.getDay()); // 0 = Pzt
+    const offset    = weekdayOffset(firstDay.getDay()); // bölgeye göre Pzt veya Cmt başlangıç
     const daysInMon = new Date(viewYear, viewMonth + 1, 0).getDate();
 
     const cells: Array<{ day: number; date: Date; muted: boolean } | null> = [];
@@ -239,7 +241,9 @@ export function DatePicker({
                 onPress={goPrev}
                 style={{ width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FAFAFA' }}
               >
-                <ChevronLeft size={15} color={DS.ink[700]} strokeWidth={1.8} />
+                {isRTL()
+                  ? <ChevronRight size={15} color={DS.ink[700]} strokeWidth={1.8} />
+                  : <ChevronLeft size={15} color={DS.ink[700]} strokeWidth={1.8} />}
               </Pressable>
 
               {/* Ay trigger */}
@@ -253,7 +257,7 @@ export function DatePicker({
                 }}
               >
                 <Text style={{ ...DISPLAY, fontSize: 15, color: DS.ink[900], letterSpacing: -0.2 }}>
-                  {MONTHS_TR[viewMonth]}
+                  {autoT(MONTHS_TR[viewMonth])}
                 </Text>
                 <ChevronDown size={12} color={DS.ink[500]} strokeWidth={2} />
               </Pressable>
@@ -278,21 +282,23 @@ export function DatePicker({
                 onPress={goNext}
                 style={{ width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FAFAFA' }}
               >
-                <ChevronRight size={15} color={DS.ink[700]} strokeWidth={1.8} />
+                {isRTL()
+                  ? <ChevronLeft size={15} color={DS.ink[700]} strokeWidth={1.8} />
+                  : <ChevronRight size={15} color={DS.ink[700]} strokeWidth={1.8} />}
               </Pressable>
             </View>
 
             {/* Hafta başlıkları */}
             <View style={{ flexDirection: 'row', marginBottom: 4 }}>
-              {WEEKDAYS_TR.map(w => (
+              {orderedWeekdays().map(wRaw => (
                 <Text
-                  key={w}
+                  key={autoT(wRaw)}
                   style={{
                     flex: 1, textAlign: 'center', fontSize: 10, fontWeight: '600',
                     letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[400],
                   }}
                 >
-                  {w}
+                  {autoT(wRaw)}
                 </Text>
               ))}
             </View>
@@ -359,7 +365,7 @@ export function DatePicker({
             {monthDropOpen && (
               <Pressable
                 onPress={() => setMonthDropOpen(false)}
-                style={{ position: 'absolute', top: 56, left: 50, width: 140, maxHeight: 240,
+                style={{ position: 'absolute', top: 56, start: 50, width: 140, maxHeight: 240,
                   backgroundColor: '#FFFFFF', borderRadius: 12,
                   borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
                   paddingVertical: 4, overflow: 'hidden',
@@ -382,7 +388,7 @@ export function DatePicker({
                         }}
                       >
                         <Text style={{ fontSize: 13, fontWeight: active ? '700' : '500', color: active ? accent : DS.ink[800] }}>
-                          {m}
+                          {autoT(m)}
                         </Text>
                       </Pressable>
                     );
@@ -394,7 +400,7 @@ export function DatePicker({
             {yearDropOpen && (
               <Pressable
                 onPress={() => setYearDropOpen(false)}
-                style={{ position: 'absolute', top: 56, right: 50, width: 100, maxHeight: 240,
+                style={{ position: 'absolute', top: 56, end: 50, width: 100, maxHeight: 240,
                   backgroundColor: '#FFFFFF', borderRadius: 12,
                   borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
                   paddingVertical: 4, overflow: 'hidden',

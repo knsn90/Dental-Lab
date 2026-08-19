@@ -1,11 +1,11 @@
-import { localeTag } from '../../../core/i18n';
+import { localeTag, isRTL } from '../../../core/i18n';
 // modules/orders/components/StageCompletionPopup.tsx
 // Aşama tamamlama popup — DeltaBiome tarzı hero + bilgi kartı + CTA.
 // Patterns sayfasındaki dil: PillButton, Chip, SecHeader stilleri + tech-blue accent.
 
 import React from 'react';
 import { Modal, View, Text, Pressable, Platform } from 'react-native';
-import { Check, ArrowRight, X } from 'lucide-react-native';
+import { Check, ArrowRight, ArrowLeft, X } from 'lucide-react-native';
 import { useStationTheme, hexA } from '../../../core/theme/stationPalette';
 
 const SERIF = {
@@ -74,7 +74,7 @@ export function StageCompletionPopup({
             <Pressable
               onPress={onClose}
               style={({ hovered }: any) => ({
-                position: 'absolute', top: 14, right: 14,
+                position: 'absolute', top: 14, end: 14,
                 width: 32, height: 32, borderRadius: 16,
                 alignItems: 'center', justifyContent: 'center',
                 backgroundColor: hovered ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.12)',
@@ -209,7 +209,9 @@ export function StageCompletionPopup({
               <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#FFFFFF', letterSpacing: 0.3, textTransform: 'uppercase' }}>
                 İşlerime Dön
               </Text>
-              <ArrowRight size={14} color="#FFFFFF" strokeWidth={2.4} />
+              {isRTL()
+                ? <ArrowLeft size={14} color="#FFFFFF" strokeWidth={2.4} />
+                : <ArrowRight size={14} color="#FFFFFF" strokeWidth={2.4} />}
             </Pressable>
           </View>
         </View>

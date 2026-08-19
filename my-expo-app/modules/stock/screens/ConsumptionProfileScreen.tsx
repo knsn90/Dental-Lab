@@ -25,10 +25,12 @@ import {
 import { useRouter, useSegments } from 'expo-router';
 import { safeBack } from '../../../core/util/safeBack';
 import {
-  AlertTriangle, ArrowRight, Check, ChevronLeft, Copy, Link2, RefreshCw, Sparkles,
+  AlertTriangle, ArrowRight, ArrowLeft, Check, ChevronLeft, ChevronRight, Copy, Link2, RefreshCw, Sparkles,
 } from 'lucide-react-native';
 import { ResponsiveCanvas } from '../../../core/layout/ResponsiveCanvas';
 import { DS } from '../../../core/theme/dsTokens';
+import { isRTL } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { toast } from '../../../core/ui/Toast';
 import {
   fetchLabProfile, fetchProfileCoverage, cloneProfileFromTemplate, upsertConsumptionRule,
@@ -224,7 +226,9 @@ export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedde
             backgroundColor: 'rgba(0,0,0,0.05)', opacity: pressed ? 0.6 : 1, ...webCursor,
           })}
         >
-          <ChevronLeft size={16} color={DS.ink[700]} strokeWidth={1.8} />
+          {isRTL()
+            ? <ChevronRight size={16} color={DS.ink[700]} strokeWidth={1.8} />
+            : <ChevronLeft size={16} color={DS.ink[700]} strokeWidth={1.8} />}
         </Pressable>
         <Text style={{
           fontSize: 10, fontWeight: '500', letterSpacing: 1.2,
@@ -347,9 +351,10 @@ export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedde
 
             {stats.pct < 80 ? (
               <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 10, lineHeight: 18 }}>
-                Miktarsız akış için önerilen eşik %80. Eksik kalan {stats.total - stats.usable}{' '}
-                kombinasyonun {stats.noRule} tanesinde kural yok, {stats.noMapping} tanesine hiç
-                stok kalemi bağlanmamış.
+                {autoT('Miktarsız akış için önerilen eşik %80. Eksik kalan {a} kombinasyonun {b} tanesinde kural yok, {c} tanesine hiç stok kalemi bağlanmamış.')
+                  .replace('{a}', String(stats.total - stats.usable))
+                  .replace('{b}', String(stats.noRule))
+                  .replace('{c}', String(stats.noMapping))}
               </Text>
             ) : null}
           </View>
@@ -385,12 +390,12 @@ export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedde
                     backgroundColor: bg,
                     borderTopWidth: i === 0 ? 0 : 1,
                     borderTopColor: DS.ink[100],
-                    borderLeftWidth: 2,
-                    borderLeftColor: dirty ? accentColor
+                    borderStartWidth: 2,
+                    borderStartColor: dirty ? accentColor
                                    : noRule ? tint(DS.lab.danger, 0.55)
                                    : noMap ? tint(DS.lab.warning, 0.5)
                                    : 'transparent',
-                    paddingLeft: 16, paddingRight: 18, paddingVertical: 14,
+                    paddingStart: 16, paddingEnd: 18, paddingVertical: 14,
                   }}
                 >
                   {/* Satır 1 — Birincil: malzeme · İkincil: istasyon · rozetler */}
@@ -482,7 +487,9 @@ export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedde
                         <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[800] }}>
                           Ürün eşleştir
                         </Text>
-                        <ArrowRight size={11} color={DS.ink[500]} strokeWidth={1.8} />
+                        {isRTL()
+                          ? <ArrowLeft size={11} color={DS.ink[500]} strokeWidth={1.8} />
+                          : <ArrowRight size={11} color={DS.ink[500]} strokeWidth={1.8} />}
                       </Pressable>
                     ) : noRule ? (
                       <Pressable

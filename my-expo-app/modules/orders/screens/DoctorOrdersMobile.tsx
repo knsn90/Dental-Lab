@@ -13,10 +13,12 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  Search, SlidersHorizontal, Plus, AlertTriangle, ChevronRight, Inbox,
-  Flame, Clock, CheckCircle2, ClipboardList, CornerDownRight,
+  Search, SlidersHorizontal, Plus, AlertTriangle, ChevronRight, ChevronLeft, Inbox,
+  Flame, Clock, CheckCircle2, ClipboardList, CornerDownRight, CornerDownLeft,
 } from 'lucide-react-native';
 import { MOBILE_PANEL_THEMES, type StatusKind, useMobileTokens, useStatusTokens } from '../../../core/theme/mobileDesignTokens';
+import { isRTL } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import type { WorkOrder, WorkOrderStatus } from '../types';
 import { buildRevisionCases } from '../revisionGroups';
 
@@ -85,6 +87,7 @@ export function DoctorOrdersMobile({ orders, loading, refetch, onOpenOrder, onNe
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const T = useMobileTokens();
+  const rtl = isRTL();
   const [query, setQuery]   = useState('');
   const [filter, setFilter] = useState<FilterKey>('all');
 
@@ -157,8 +160,8 @@ export function DoctorOrdersMobile({ orders, loading, refetch, onOpenOrder, onNe
           borderRadius: 20, overflow: 'hidden',
           backgroundColor: DOCTOR.primary, padding: 18, position: 'relative',
         }}>
-          <View style={{ position: 'absolute', top: -40, right: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
-          <View style={{ position: 'absolute', bottom: -50, left: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+          <View style={{ position: 'absolute', top: -40, ...(rtl ? { left: -40 } : { right: -40 }), width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
+          <View style={{ position: 'absolute', bottom: -50, ...(rtl ? { right: -20 } : { left: -20 }), width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
 
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
             <View style={{ flex: 1, minWidth: 0 }}>
@@ -175,7 +178,7 @@ export function DoctorOrdersMobile({ orders, loading, refetch, onOpenOrder, onNe
                 {counts.all}
               </Text>
               <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.72)', marginTop: 4 }}>
-                {counts.active} aktif{counts.delivered > 0 ? ` · ${counts.delivered} teslim edildi` : ''}
+                {counts.active} {autoT('aktif')}{counts.delivered > 0 ? ` · ${counts.delivered} ${autoT('teslim edildi')}` : ''}
               </Text>
             </View>
             <Pressable
@@ -204,7 +207,7 @@ export function DoctorOrdersMobile({ orders, loading, refetch, onOpenOrder, onNe
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 }}>
                     <Icon size={11} color="rgba(255,255,255,0.85)" strokeWidth={2} />
                     <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>
-                      {stat.label}
+                      {autoT(stat.label)}
                     </Text>
                   </View>
                   <Text
@@ -287,7 +290,7 @@ export function DoctorOrdersMobile({ orders, loading, refetch, onOpenOrder, onNe
                 fontSize: 12.5, fontWeight: '500',
                 color: active ? '#FFFFFF' : T.ink,
               }}>
-                {f.label}
+                {autoT(f.label)}
               </Text>
               <View style={{
                 minWidth: 18, paddingHorizontal: 5, height: 18,
@@ -318,16 +321,16 @@ export function DoctorOrdersMobile({ orders, loading, refetch, onOpenOrder, onNe
           <EmptyState query={query} />
         ) : (
           <>
-            <Group title="Acil & Geciken" icon={Flame} iconColor={T.ruby} items={groups.urgent}
+            <Group title={autoT('Acil & Geciken')} icon={Flame} iconColor={T.ruby} items={groups.urgent}
               renderItem={o => <OrderCard key={o.id} order={o} overdue={isOverdue(o)} onPress={() => onOpenOrder(o)} history={groups.revChildren.get(String(o.id)) as WorkOrder[] | undefined} onOpenOrder={onOpenOrder} />}
             />
-            <Group title="Bu hafta teslim" icon={Clock} iconColor={DOCTOR.primary} items={groups.thisWeek}
+            <Group title={autoT('Bu hafta teslim')} icon={Clock} iconColor={DOCTOR.primary} items={groups.thisWeek}
               renderItem={o => <OrderCard key={o.id} order={o} overdue={false} onPress={() => onOpenOrder(o)} history={groups.revChildren.get(String(o.id)) as WorkOrder[] | undefined} onOpenOrder={onOpenOrder} />}
             />
-            <Group title="Yaklaşan" icon={Clock} iconColor={T.ink3} items={groups.later}
+            <Group title={autoT('Yaklaşan')} icon={Clock} iconColor={T.ink3} items={groups.later}
               renderItem={o => <OrderCard key={o.id} order={o} overdue={false} onPress={() => onOpenOrder(o)} history={groups.revChildren.get(String(o.id)) as WorkOrder[] | undefined} onOpenOrder={onOpenOrder} />}
             />
-            <Group title="Tamamlanan" icon={CheckCircle2} iconColor={T.jade} items={groups.delivered}
+            <Group title={autoT('Tamamlanan')} icon={CheckCircle2} iconColor={T.jade} items={groups.delivered}
               renderItem={o => <OrderCard key={o.id} order={o} overdue={false} onPress={() => onOpenOrder(o)} history={groups.revChildren.get(String(o.id)) as WorkOrder[] | undefined} onOpenOrder={onOpenOrder} />}
             />
           </>
@@ -430,7 +433,8 @@ function MetricPill({ label, value, accent, dark, dim }:
         <View style={{
           width: 6, height: 6, borderRadius: 4,
           backgroundColor: accent,
-          marginLeft: 2, marginBottom: 4,
+          ...(isRTL() ? { marginRight: 2 } : { marginLeft: 2 }),
+          marginBottom: 4,
         }} />
       </View>
     </View>
@@ -444,12 +448,13 @@ function OrderCard({ order, overdue, onPress, history, onOpenOrder }:
     /** Aynı vakanın eski revizyonları — kartın altında girintili alt-liste */
     history?: WorkOrder[]; onOpenOrder?: (o: WorkOrder) => void }) {
   const T = useMobileTokens();
+  const rtl = isRTL();
   const STATUS = useStatusTokens();
   const statusKind = overdue
     ? 'delay'
     : (STATUS_TO_KIND[order.status] ?? 'wait');
   const status = STATUS[statusKind];
-  const statusLabel = overdue ? 'Geciken' : STATUS_LABEL[order.status];
+  const statusLabel = autoT(overdue ? 'Geciken' : (STATUS_LABEL[order.status] ?? ''));
   const step = STATUS_STEP[order.status] ?? 0;
   const progressPct = ((step) / 4) * 100;
   const due = formatDue(order.delivery_date, order.status);
@@ -508,15 +513,17 @@ function OrderCard({ order, overdue, onPress, history, onOpenOrder }:
             </Text>
             <View style={{ width: 2, height: 2, borderRadius: 1, backgroundColor: T.ink3, flexShrink: 0 }} />
             <Text
-              style={{ fontSize: 11, color: T.ink3, flexShrink: 1, flex: 1 }}
+              style={{ fontSize: 11, color: T.ink3, flexShrink: 1, flex: 1, textAlign: rtl ? 'right' : undefined }}
               numberOfLines={1}
               ellipsizeMode="tail"
             >
-              {order.work_type ?? 'Sipariş'}
+              {order.work_type ?? autoT('Sipariş')}
             </Text>
           </View>
         </View>
-        <ChevronRight size={15} color={T.ink3} strokeWidth={1.8} />
+        {rtl
+          ? <ChevronLeft  size={15} color={T.ink3} strokeWidth={1.8} />
+          : <ChevronRight size={15} color={T.ink3} strokeWidth={1.8} />}
       </View>
 
       {/* Spec row — teeth + shade */}
@@ -613,15 +620,18 @@ function OrderCard({ order, overdue, onPress, history, onOpenOrder }:
         onPress={() => onOpenOrder?.(h)}
         style={{
           flexDirection: 'row', alignItems: 'center', gap: 8,
-          marginLeft: 20, marginTop: 6,
+          ...(rtl ? { marginRight: 20 } : { marginLeft: 20 }),
+          marginTop: 6,
           paddingHorizontal: 12, paddingVertical: 9,
           borderRadius: 12,
           backgroundColor: `${DOCTOR.primary}0D`,
           borderWidth: 1, borderColor: `${DOCTOR.primary}1F`,
         }}
       >
-        <CornerDownRight size={13} color={T.ink3} strokeWidth={2} />
-        <Text style={{ flex: 1, fontSize: 11.5, color: T.ink2, fontFamily: T.mono }} numberOfLines={1}>
+        {rtl
+          ? <CornerDownLeft  size={13} color={T.ink3} strokeWidth={2} />
+          : <CornerDownRight size={13} color={T.ink3} strokeWidth={2} />}
+        <Text style={{ flex: 1, fontSize: 11.5, color: T.ink2, fontFamily: T.mono, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>
           #{String((h as any).order_number ?? h.id).slice(-6)}
         </Text>
         <Text style={{ fontSize: 10.5, color: h.status === 'teslim_edildi' ? T.jade : T.ink3, fontWeight: '600' }}>

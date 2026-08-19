@@ -30,6 +30,30 @@ export interface PlaceDetails {
   website: string;
 }
 
+/**
+ * Türkçe-duyarlı, boşluk-duyarsız karşılaştırma anahtarı.
+ * "Dt. Selin Odabaşı" → "dtselinodabasi"  ·  "oda başı" → "odabasi"
+ */
+export function trKey(s: string | null | undefined): string {
+  return (s || '')
+    .toLocaleLowerCase('tr')
+    .replace(/ı/g, 'i').replace(/ğ/g, 'g').replace(/ü/g, 'u')
+    .replace(/ş/g, 's').replace(/ö/g, 'o').replace(/ç/g, 'c')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * Sorgunun HER kelimesi hedef alanlarda geçiyorsa eşleşme — kelime sırası
+ * önemsiz. Kısmi kelime kabul edilir ("mah" → "Mahallesi"), böylece kullanıcı
+ * adresi birebir yazmak zorunda kalmaz.
+ */
+export function matchesAllTokens(query: string, ...fields: (string | null | undefined)[]): boolean {
+  const tokens = query.trim().split(/\s+/).map(trKey).filter((t) => t.length >= 2);
+  if (!tokens.length) return false;
+  const hay = fields.map(trKey).join('|');
+  return tokens.every((t) => hay.includes(t));
+}
+
 // ── Session token (autocomplete + details aynı session) ──────────────
 let currentSessionToken: string | null = null;
 
@@ -51,8 +75,43 @@ export function endPlaceSession() {
   currentSessionToken = null;
 }
 
+// ── Konum yanlılığı (opsiyonel) ──────────────────────────────────────
+/** Aramayı bir noktanın çevresine ağırlıklandırır — kısıtlamaz, sıralamayı etkiler. */
+export interface PlaceBias {
+  lat: number;
+  lng: number;
+  /** Metre. Varsayılan 50 km — il ölçeğinde yeterli, komşu ili dışlamaz. */
+  radiusM?: number;
+}
+
+function biasBody(bias?: PlaceBias | null) {
+  if (!bias || !isFinite(bias.lat) || !isFinite(bias.lng)) return undefined;
+  return {
+    circle: {
+      center: { latitude: bias.lat, longitude: bias.lng },
+      radius: Math.min(Math.max(bias.radiusM ?? 50_000, 1), 50_000), // API tavanı 50 km
+    },
+  };
+}
+
+/**
+ * Türkiye sınırlayıcı kutusu — `searchText` için.
+ *
+ * NEDEN GEREKLİ: `regionCode: 'tr'` sonuçları Türkiye ile SINIRLAMAZ, yalnız
+ * biçimlendirmeyi/ağırlığı etkiler. Ölçüldü: "nexadent" araması sınırlama
+ * olmadan Almanya, Kanada, Arjantin ve Hindistan'daki klinikleri döndürüyor,
+ * İstanbul'daki gerçek laboratuvarı hiç göstermiyordu. Autocomplete'te bunun
+ * karşılığı `includedRegionCodes`, searchText'te ise bu dikdörtgen.
+ */
+const TR_BOUNDS = {
+  rectangle: {
+    low:  { latitude: 35.8, longitude: 25.6 },
+    high: { latitude: 42.2, longitude: 44.9 },
+  },
+};
+
 // ── Autocomplete ─────────────────────────────────────────────────────
-export async function searchPlaces(input: string): Promise<PlaceSuggestion[]> {
+export async function searchPlaces(input: string, bias?: PlaceBias | null): Promise<PlaceSuggestion[]> {
   if (!KEY) {
     // eslint-disable-next-line no-console
     console.warn('[places] EXPO_PUBLIC_GOOGLE_PLACES_KEY tanımlı değil');
@@ -74,6 +133,9 @@ export async function searchPlaces(input: string): Promise<PlaceSuggestion[]> {
         regionCode: 'tr',
         // includedPrimaryTypes kasıtlı olarak verilmiyor — kurum adı geniş eşleşsin
         sessionToken: currentSessionToken,
+        // Sonuçları Türkiye ile SINIRLA — regionCode tek başına yetmiyor (bkz. TR_BOUNDS)
+        includedRegionCodes: ['tr'],
+        locationBias: biasBody(bias),
       }),
     });
     if (!res.ok) {
@@ -96,6 +158,116 @@ export async function searchPlaces(input: string): Promise<PlaceSuggestion[]> {
     console.warn('[places] autocomplete error:', e);
     return [];
   }
+}
+
+// ── Text Search (geniş eşleşme) ──────────────────────────────────────
+/**
+ * `places:searchText` — autocomplete'in bulamadığını bulur.
+ *
+ * FARK: autocomplete bir ÖN EK tahminidir ("selin oda" → "Selin Odabaşı…"),
+ * text search ise serbest bir sorguyu tüm alanlarda arar ("ataşehir diş hekimi
+ * selin" gibi tarif eden cümleleri de eşleştirir). Bu yüzden sadece FALLBACK
+ * olarak çağrılır: SKU'su autocomplete'ten pahalı ve oturum jetonuna girmez.
+ */
+export async function searchPlacesText(input: string, bias?: PlaceBias | null): Promise<PlaceSuggestion[]> {
+  if (!KEY) return [];
+  const q = input.trim();
+  if (q.length < 3) return [];
+  try {
+    const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': KEY,
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress',
+      },
+      body: JSON.stringify({
+        textQuery: q,
+        languageCode: 'tr',
+        regionCode: 'tr',
+        maxResultCount: 8,
+        // Bias ve restriction birlikte gönderilemez; koordinat varsa onu
+        // (daha isabetli), yoksa Türkiye kutusunu kullan.
+        ...(biasBody(bias) ? { locationBias: biasBody(bias) } : { locationRestriction: TR_BOUNDS }),
+      }),
+    });
+    if (!res.ok) {
+      // eslint-disable-next-line no-console
+      console.warn('[places] searchText failed:', res.status, await res.text());
+      return [];
+    }
+    const j = await res.json();
+    return ((j.places ?? []) as any[])
+      .filter((p) => p?.id)
+      .map((p) => ({
+        placeId: p.id as string,
+        mainText: p.displayName?.text || '',
+        secondaryText: p.formattedAddress || '',
+      }));
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[places] searchText error:', e);
+    return [];
+  }
+}
+
+/**
+ * Geniş arama — kullanıcı ne yazarsa yazsın bir sonuç çıkarmaya çalışır.
+ *
+ * İki kademe, çünkü ikinci kademe daha pahalı bir SKU: ilki yeterliyse hiç
+ * çalışmaz.
+ *   1. autocomplete — ön ek tahmini, ucuz, çoğu adres/zincir için yeterli
+ *   2. searchText   — serbest metin, ünvanlı kurum adlarını bulan tek yol
+ *
+ * ÖLÇÜM (canlı API, "Dt. Selin Odabaşı"): autocomplete ham girdiyle de,
+ * ünvanı atılmış "Selin Odabaşı" ile de SIFIR sonuç döndü; searchText ham
+ * girdiyle "Ataşehir Diş Hekimi Selin Odabaşı"yı buldu. Bu yüzden araya bir
+ * "ünvanı temizle ve tekrar dene" adımı konmadı — ölçülebilir faydası yokken
+ * her aramaya bir ücretli çağrı daha eklerdi.
+ *
+ * Sonuçlar placeId ile tekilleştirilir; autocomplete sonuçları üstte kalır.
+ */
+export async function searchAddressesWide(
+  input: string,
+  bias?: PlaceBias | null,
+): Promise<PlaceSuggestion[]> {
+  const raw = input.trim();
+  if (raw.length < 3) return [];
+
+  const out: PlaceSuggestion[] = [];
+  const seen = new Set<string>();
+  const push = (list: PlaceSuggestion[]) => {
+    for (const s of list) {
+      if (!s.placeId || seen.has(s.placeId)) continue;
+      seen.add(s.placeId);
+      out.push(s);
+    }
+  };
+
+  push(await searchPlaces(raw, bias));
+  if (hasStrongMatch(raw, out)) return out;
+
+  push(await searchPlacesText(raw, bias));
+  return out;
+}
+
+/**
+ * Autocomplete gerçekten aranan yeri buldu mu?
+ *
+ * "Sonuç sayısı yeterli" ölçütü YANILTICI: ölçüldü — "nexadent" araması
+ * autocomplete'ten üç sonuç döndürüyor ama üçü de yakın-yazılışlı BAŞKA
+ * yerler (Nevadent, Novadent, Neva Dent); aranan laboratuvar listede yok.
+ * Sayıya bakıp erken çıkılsaydı, doğru sonucu bulan searchText hiç
+ * çalışmayacaktı. Bu yüzden ölçüt: sonuçlardan BİRİ sorgunun tüm
+ * kelimelerini içeriyor mu.
+ *
+ * Kelime bazlı, bütün-dize değil: "Barbaros mah Ataşehir" sorgusu "Barbaros
+ * Mahallesi, Ataşehir/İstanbul" sonucuyla kelime kelime örtüşür ama bitişik
+ * dize olarak örtüşmez — bütün-dize ölçütü burada gereksiz yere ikinci
+ * (pahalı) çağrıyı tetikliyordu.
+ */
+function hasStrongMatch(query: string, results: PlaceSuggestion[]): boolean {
+  return results.some((r) => matchesAllTokens(query, r.mainText, r.secondaryText));
 }
 
 // ── Place Details ────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import { localeTag } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 /**
  * LogsSection — Ayarlar > Loglar sekmesi (admin/lab only)
  * ────────────────────────────────────────────────────────
@@ -41,11 +42,11 @@ function timeAgo(dateStr: string): string {
   const now  = new Date();
   const date = new Date(dateStr);
   const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
-  if (diff < 60)     return 'Az önce';
-  if (diff < 3600)   return `${Math.floor(diff / 60)} dk önce`;
-  if (diff < 86400)  return `${Math.floor(diff / 3600)} saat önce`;
-  if (diff < 172800) return 'Dün ' + date.toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' });
-  if (diff < 604800) return `${Math.floor(diff / 86400)} gün önce`;
+  if (diff < 60)     return autoT('Az önce');
+  if (diff < 3600)   return `${Math.floor(diff / 60)} ${autoT('dk önce')}`;
+  if (diff < 86400)  return `${Math.floor(diff / 3600)} ${autoT('saat önce')}`;
+  if (diff < 172800) return autoT('Dün') + ' ' + date.toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' });
+  if (diff < 604800) return `${Math.floor(diff / 86400)} ${autoT('gün önce')}`;
   return date.toLocaleDateString(localeTag(), { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
@@ -207,7 +208,7 @@ export function LogsSection({ accentColor = '#4771AB' }: Props) {
             </Pressable>
           ))}
         </ScrollView>
-        <View className="flex-row items-center gap-1.5 pl-2">
+        <View className="flex-row items-center gap-1.5 ps-2">
           <Pressable
             onPress={() => setSearchOpen(v => !v)}
             className="w-8 h-8 rounded-lg items-center justify-center"

@@ -17,6 +17,7 @@ import { signIn, signOut } from '../../modules/auth/api';
 import { C } from '../../core/theme/colors';
 import { F } from '../../core/theme/typography';
 import { useIsDesktop } from '../../core/layout/DesktopShell';
+import { isRTL, dirIcon } from '../../core/i18n';
 
 import { AppIcon } from '../../core/ui/AppIcon';
 import { ActivityIndicator } from '../../core/ui/teethCompat';
@@ -87,7 +88,7 @@ function FloatingInput({
       <View style={[fi.box, { borderColor }]}>
         <Animated.Text
           pointerEvents="none"
-          style={[fi.label, { top: labelTop, fontSize: labelSize, color: labelColor }]}
+          style={[fi.label, isRTL() ? { right: 16 } : { left: 16 }, { top: labelTop, fontSize: labelSize, color: labelColor }]}
         >
           {label}
         </Animated.Text>
@@ -108,7 +109,7 @@ function FloatingInput({
           // @ts-ignore
           outlineStyle="none"
         />
-        {rightElement && <View style={fi.right}>{rightElement}</View>}
+        {rightElement && <View style={[fi.right, isRTL() ? { left: 14 } : { right: 14 }]}>{rightElement}</View>}
       </View>
       {error ? (
         <View style={fi.errorRow}>
@@ -128,28 +129,32 @@ const fi = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   label: {
-    position: 'absolute', left: 16, fontFamily: F.medium,
+    position: 'absolute', fontFamily: F.medium,
     zIndex: 2, backgroundColor: '#FFFFFF', paddingHorizontal: 2,
   },
   input: {
     fontSize: 14, fontFamily: F.regular, color: C.textPrimary,
     paddingTop: 4, paddingBottom: 10, minHeight: 36,
   },
-  right:     { position: 'absolute', right: 14, top: 0, bottom: 0, justifyContent: 'center' },
-  errorRow:  { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 5, marginLeft: 4 },
+  right:     { position: 'absolute', top: 0, bottom: 0, justifyContent: 'center' },
+  errorRow:  { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 5, marginStart: 4 },
   errorText: { fontSize: 11, fontFamily: F.regular, color: C.danger },
 });
 
 // ─── DecoCircles ──────────────────────────────────────────────────────────────
 function DecoCircles() {
+  // `start`/`end` yalnız I18nManager.isRTL'e bakar (native'de kapalı) → fiziksel yaz.
+  const rtl = isRTL();
+  const S = (v: number | string) => (rtl ? { right: v } : { left: v }) as any;
+  const E = (v: number | string) => (rtl ? { left: v } : { right: v }) as any;
   return (
     <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-      <View style={[dc.circle, { width: 360, height: 360, top: -130, left: -110, opacity: 0.06 }]} />
-      <View style={[dc.circle, { width: 250, height: 250, bottom: -70, right: -90, opacity: 0.08 }]} />
-      <View style={[dc.circle, { width: 150, height: 150, top: '42%', right: -40, opacity: 0.05 }]} />
-      <View style={[dc.dot, { top: '28%', left: 44, opacity: 0.2  }]} />
-      <View style={[dc.dot, { top: '52%', left: 114, opacity: 0.15 }]} />
-      <View style={[dc.dot, { top: '22%', right: 54, opacity: 0.18 }]} />
+      <View style={[dc.circle, { width: 360, height: 360, top: -130, opacity: 0.06 }, S(-110)]} />
+      <View style={[dc.circle, { width: 250, height: 250, bottom: -70, opacity: 0.08 }, E(-90)]} />
+      <View style={[dc.circle, { width: 150, height: 150, top: '42%', opacity: 0.05 }, E(-40)]} />
+      <View style={[dc.dot, { top: '28%', opacity: 0.2  }, S(44)]} />
+      <View style={[dc.dot, { top: '52%', opacity: 0.15 }, S(114)]} />
+      <View style={[dc.dot, { top: '22%', opacity: 0.18 }, E(54)]} />
     </View>
   );
 }
@@ -376,7 +381,7 @@ export default function AdminLoginScreen() {
           ) : (
             <>
               <Text style={fc.loginBtnText}>Yönetici Girişi</Text>
-              <AppIcon name="arrow-right" size={18} color="#FFFFFF" />
+              <AppIcon name={dirIcon('arrow-right')} size={18} color="#FFFFFF" />
             </>
           )}
         </TouchableOpacity>
@@ -393,7 +398,7 @@ export default function AdminLoginScreen() {
         onPress={() => router.replace('/(auth)/login')}
         activeOpacity={0.8}
       >
-        <AppIcon name="arrow-left" size={16} color={C.textSecondary} />
+        <AppIcon name={dirIcon('arrow-left')} size={16} color={C.textSecondary} />
         <Text style={fc.backBtnText}>Laboratuvar girişine dön</Text>
       </TouchableOpacity>
     </Animated.View>

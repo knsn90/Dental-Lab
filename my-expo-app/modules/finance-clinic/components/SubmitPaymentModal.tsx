@@ -181,7 +181,7 @@ export function SubmitPaymentModal({
                 Bilgileri girdikten sonra ödeme admin onayına düşer. Onaylanınca cari hesabınıza işlenir.
               </Text>
             </View>
-            <Pressable onPress={onClose} hitSlop={8} style={{ padding: 4, marginLeft: 8 }}>
+            <Pressable onPress={onClose} hitSlop={8} style={{ padding: 4, marginStart: 8 }}>
               <X size={20} color={DS.ink[500]} />
             </Pressable>
           </View>
@@ -253,7 +253,7 @@ export function SubmitPaymentModal({
                       <FileText size={14} color={DS.ink[500]} />
                       <Text style={{ flex: 1, fontSize: 13, color: selectedInvoice ? DS.ink[900] : DS.ink[400] }}>
                         {selectedInvoice
-                          ? `Fatura ${selectedInvoice.invoice_no ?? '—'} · Kalan ${M(selectedInvoice.remaining, selectedInvoice.currency)}`
+                          ? `Fatura ${selectedInvoice.invoice_no ?? '—'}${selectedInvoice.patient_name ? ' · ' + selectedInvoice.patient_name : ''} · Kalan ${M(selectedInvoice.remaining, selectedInvoice.currency)}`
                           : 'Fatura seçilmedi (genel ödeme)'}
                       </Text>
                       <Text style={{ fontSize: 10, color: DS.ink[400] }}>▼</Text>
@@ -299,6 +299,11 @@ export function SubmitPaymentModal({
                                     {M(inv.remaining, inv.currency)}
                                   </Text>
                                 </View>
+                                {!!inv.patient_name && (
+                                  <Text style={{ fontSize: 10.5, color: DS.ink[700], marginTop: 2 }} numberOfLines={1}>
+                                    {[inv.patient_name, inv.order_no].filter(Boolean).join(' · ')}
+                                  </Text>
+                                )}
                                 <Text style={{ fontSize: 10, color: inv.days_overdue > 0 ? '#9C2E2E' : DS.ink[500], marginTop: 2 }}>
                                   Vade {fmtDate(inv.due_date)}
                                   {inv.days_overdue > 0 ? ` · ${inv.days_overdue} gün gecikme` : ''}

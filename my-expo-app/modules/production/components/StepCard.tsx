@@ -36,7 +36,7 @@ export function StepCard({ step, onStart, onComplete, loading }: Props) {
     : null;
 
   return (
-    <View style={[styles.card, { borderLeftColor: ss.color }]}>
+    <View style={[styles.card, { borderStartColor: ss.color }]}>
       <View style={styles.header}>
         <View style={styles.iconWrap}>
           <Text style={styles.icon}>{icon}</Text>
@@ -95,7 +95,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
     marginBottom: 10,
-    borderLeftWidth: 4,
+    borderStartWidth: 4,
     // @ts-ignore
     boxShadow: '0 1px 6px rgba(0,0,0,0.06)',
   },

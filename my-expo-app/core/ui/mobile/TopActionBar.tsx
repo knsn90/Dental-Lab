@@ -6,10 +6,12 @@
  * vasıtasıyla bu aksiyonları sunar.
  */
 import React, { useState } from 'react';
+import { autoT } from '../../i18n/autoTranslate';
 import { View, Text, Pressable, Platform, StyleSheet, Modal, Alert, ScrollView, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { QrCode, Bell, User as UserIcon, Search, MessageCircle, LogOut, ChevronRight, BellOff, Check, Monitor, Sun, Moon } from 'lucide-react-native';
+import { QrCode, Bell, User as UserIcon, Search, MessageCircle, LogOut, ChevronRight, ChevronLeft, BellOff, Check, Monitor, Sun, Moon } from 'lucide-react-native';
+import { isRTL } from '../../i18n';
 import { LiquidGlassView, isLiquidGlassSupported } from '@callstack/liquid-glass';
 import { PulseRing } from '../PulseRing';
 import { useScanStore } from '../../store/scanStore';
@@ -56,6 +58,7 @@ export function TopActionBar({ routePrefix, notificationsRoute, accentColor, mes
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [notifMenuOpen, setNotifMenuOpen] = useState(false);
   const [messagesOpen, setMessagesOpen] = useState(false);
+  const rtl = isRTL();
 
   if (!isNarrow) return null;
 
@@ -79,10 +82,11 @@ export function TopActionBar({ routePrefix, notificationsRoute, accentColor, mes
     setProfileMenuOpen(false);
     // Alert.alert çok-butonlu hâli react-native-web'de NO-OP: butonlar yok
     // sayılıyor, onPress hiç çalışmıyor. PWA'da "Çıkış Yap" sessizce ölüyordu.
+    // confirmAsync JSX'ten geçmez → metinler autoT() ile çevrilir
     const ok = await confirmAsync(
-      'Çıkış Yap',
-      'Hesabınızdan çıkış yapmak istediğinize emin misiniz?',
-      { confirmText: 'Çıkış Yap', destructive: true },
+      autoT('Çıkış Yap'),
+      autoT('Hesabınızdan çıkış yapmak istediğinize emin misiniz?'),
+      { confirmText: autoT('Çıkış Yap'), destructive: true },
     );
     if (!ok) return;
     try { await useAuthStore.getState().signOut(); }
@@ -96,7 +100,8 @@ export function TopActionBar({ routePrefix, notificationsRoute, accentColor, mes
         style={{
           position: 'absolute',
           top: Math.max(insets.top, 8) + 6,
-          right: 12,
+          // `end:` inline stili bu projede güvenilir değil → yönü açıkça seç
+          ...(rtl ? { left: 12 } : { right: 12 }),
           flexDirection: 'row',
           gap: 6,
           zIndex: 1200,
@@ -147,6 +152,7 @@ function ProfileMenu({
   onProfile: () => void;
   onLogout: () => void;
 }) {
+  const rtl = isRTL();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const mode    = useThemeModeStore(s => s.mode);
   const setMode = useThemeModeStore(s => s.setMode);
@@ -161,9 +167,10 @@ function ProfileMenu({
   const activeBorder = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(20,16,12,0.08)';
 
   const themeOptions: Array<{ value: 'system' | 'light' | 'dark'; icon: any; label: string }> = [
-    { value: 'system', icon: Monitor, label: 'Otomatik' },
-    { value: 'light',  icon: Sun,     label: 'Açık' },
-    { value: 'dark',   icon: Moon,    label: 'Koyu' },
+    // Sabit dizideki label alanı JSX değil → autoT() şart
+    { value: 'system', icon: Monitor, label: autoT('Otomatik') },
+    { value: 'light',  icon: Sun,     label: autoT('Açık') },
+    { value: 'dark',   icon: Moon,    label: autoT('Koyu') },
   ];
 
   return (
@@ -181,7 +188,7 @@ function ProfileMenu({
           style={{
             position: 'absolute',
             top: anchorTop,
-            right: 12,
+            ...(rtl ? { left: 12 } : { right: 12 }),
             width: 260,
             borderRadius: 16,
             backgroundColor: surface,
@@ -246,7 +253,7 @@ function ProfileMenu({
 
           <MenuRow
             icon={UserIcon}
-            label="Profil"
+            label={autoT('Profil')}
             iconColor={ink}
             labelColor={ink}
             ink3={ink3}
@@ -256,7 +263,7 @@ function ProfileMenu({
           />
           <MenuRow
             icon={LogOut}
-            label="Çıkış Yap"
+            label={autoT('Çıkış Yap')}
             iconColor="#DC2626"
             labelColor="#DC2626"
             ink3={ink3}
@@ -281,6 +288,8 @@ function MenuRow({
   showDivider?: boolean;
   hairline: string;
 }) {
+  // Satır sonu chevron'u yön bildirir → RTL'de aynalanır
+  const Chevron = isRTL() ? ChevronLeft : ChevronRight;
   return (
     <Pressable onPress={onPress}>
       {({ pressed }: any) => (
@@ -300,7 +309,7 @@ function MenuRow({
           <Text style={{ flex: 1, fontSize: 15, fontWeight: '500', color: labelColor }}>
             {label}
           </Text>
-          <ChevronRight size={16} color={ink3} strokeWidth={1.8} />
+          <Chevron size={16} color={ink3} strokeWidth={1.8} />
         </View>
       )}
     </Pressable>
@@ -316,6 +325,7 @@ function NotificationsMenu({
   onClose: () => void;
   accentColor?: string;
 }) {
+  const rtl = isRTL();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const { items, unreadCount } = useNotifications();
   const { markRead, markAllRead } = useNotificationsActions();
@@ -351,7 +361,7 @@ function NotificationsMenu({
             style={{
               position: 'absolute',
               top: anchorTop,
-              right: 12,
+              ...(rtl ? { left: 12 } : { right: 12 }),
               width: 320,
               maxHeight: 480,
               borderRadius: 18,
@@ -386,7 +396,7 @@ function NotificationsMenu({
             }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <Text style={{ fontSize: 15, fontWeight: '600', color: ink }}>
-                  Bildirimler
+                  {autoT('Bildirimler')}
                 </Text>
                 {unreadCount > 0 && (
                   <View style={{
@@ -409,7 +419,7 @@ function NotificationsMenu({
                     }}>
                       <Check size={12} color={ink3} strokeWidth={2} />
                       <Text style={{ fontSize: 12, color: ink3, fontWeight: '500' }}>
-                        Tümünü oku
+                        {autoT('Tümünü oku')}
                       </Text>
                     </View>
                   )}
@@ -422,7 +432,7 @@ function NotificationsMenu({
               <View style={{ paddingVertical: 40, alignItems: 'center', gap: 8 }}>
                 <BellOff size={28} color={ink3} strokeWidth={1.5} />
                 <Text style={{ fontSize: 13, color: ink3 }}>
-                  Henüz bildirim yok
+                  {autoT('Henüz bildirim yok')}
                 </Text>
               </View>
             ) : (
@@ -492,10 +502,10 @@ function formatNotifTime(iso: string): string {
     const then = new Date(iso).getTime();
     const now = Date.now();
     const diffSec = Math.max(0, Math.floor((now - then) / 1000));
-    if (diffSec < 60) return 'şimdi';
-    if (diffSec < 3600) return `${Math.floor(diffSec / 60)} dk önce`;
-    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} sa önce`;
-    if (diffSec < 604800) return `${Math.floor(diffSec / 86400)} gün önce`;
+    if (diffSec < 60) return autoT('şimdi');
+    if (diffSec < 3600) return `${Math.floor(diffSec / 60)} ${autoT('dk önce')}`;
+    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} ${autoT('sa önce')}`;
+    if (diffSec < 604800) return `${Math.floor(diffSec / 86400)} ${autoT('gün önce')}`;
     const d = new Date(iso);
     return `${d.getDate().toString().padStart(2, '0')}.${(d.getMonth() + 1).toString().padStart(2, '0')}`;
   } catch {
@@ -504,6 +514,7 @@ function formatNotifTime(iso: string): string {
 }
 
 function TopBtn({ icon: Icon, onPress, badgeCount, btnRef }: { icon: any; onPress?: () => void; badgeCount?: number; btnRef?: (node: any) => void }) {
+  const rtl = isRTL();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const surface  = isDark ? '#1B1916'                : '#FFFFFF';
   const border   = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(20,16,12,0.08)';
@@ -527,9 +538,9 @@ function TopBtn({ icon: Icon, onPress, badgeCount, btnRef }: { icon: any; onPres
 
   const badge = badgeCount && badgeCount > 0 ? (
     <>
-    <PulseRing size={20} color="#EF4444" top={-5} right={-5} />
+    <PulseRing size={20} color="#EF4444" top={-5} {...(rtl ? { left: -5 } : { right: -5 })} />
     <View style={{
-      position: 'absolute', top: -5, right: -5,
+      position: 'absolute', top: -5, ...(rtl ? { left: -5 } : { right: -5 }),
       minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5,
       alignItems: 'center', justifyContent: 'center',
       backgroundColor: '#EF4444',

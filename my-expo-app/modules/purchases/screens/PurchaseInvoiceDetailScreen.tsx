@@ -21,14 +21,15 @@ import {
 import { useRouter, useLocalSearchParams, useSegments } from 'expo-router';
 import { safeBack } from '../../../core/util/safeBack';
 import {
-  ArrowLeft, Printer, Building2, Calendar, CreditCard, FileText,
+  ArrowLeft, ArrowRight, Printer, Building2, Calendar, CreditCard, FileText,
   TriangleAlert, Package, Plus, Trash2, Wrench,
 } from 'lucide-react-native';
 import { DS } from '../../../core/theme/dsTokens';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { formatMoney } from '../../../core/money/currency';
 import { formatQty } from '../../../core/util/formatQty';
-import { localeTag } from '../../../core/i18n';
+import { localeTag, isRTL } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { confirmAsync } from '../../../core/util/confirm';
 import { toast } from '../../../core/ui/Toast';
 import {
@@ -148,9 +149,9 @@ export function PurchaseInvoiceDetailScreen({ invoiceId, onBack }: Props = {}) {
 
   const removeExtra = useCallback(async (x: PurchaseInvoiceExtra) => {
     const ok = await confirmAsync(
-      'Kalemi sil',
-      `"${x.description}" fatura içeriğinden çıkarılacak.`,
-      { confirmText: 'Sil', destructive: true },
+      autoT('Kalemi sil'),
+      `"${x.description}" ${autoT('fatura içeriğinden çıkarılacak.')}`,
+      { confirmText: autoT('Sil'), destructive: true },
     );
     if (!ok) return;
     const res = await deletePurchaseInvoiceExtra(x.id);
@@ -205,7 +206,9 @@ export function PurchaseInvoiceDetailScreen({ invoiceId, onBack }: Props = {}) {
             opacity: pressed ? 0.6 : 1, ...webCursor,
           })}
         >
-          <ArrowLeft size={16} color={DS.ink[700]} strokeWidth={1.9} />
+          {isRTL()
+            ? <ArrowRight size={16} color={DS.ink[700]} strokeWidth={1.9} />
+            : <ArrowLeft size={16} color={DS.ink[700]} strokeWidth={1.9} />}
         </Pressable>
         <Text style={{
           flex: 1, fontSize: 10, fontWeight: '500', letterSpacing: 1.2,
@@ -355,9 +358,9 @@ export function PurchaseInvoiceDetailScreen({ invoiceId, onBack }: Props = {}) {
               borderTopWidth: 1, borderTopColor: DS.ink[100],
             }}>
               <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[400] }}>Ürün / Hizmet</Text>
-              <Text style={{ width: 110, textAlign: 'right', fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[400] }}>Miktar</Text>
-              <Text style={{ width: 110, textAlign: 'right', fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[400] }}>Birim fiyat</Text>
-              <Text style={{ width: 120, textAlign: 'right', fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[400] }}>Tutar</Text>
+              <Text style={{ width: 110, textAlign: 'end' as any, fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[400] }}>Miktar</Text>
+              <Text style={{ width: 110, textAlign: 'end' as any, fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[400] }}>Birim fiyat</Text>
+              <Text style={{ width: 120, textAlign: 'end' as any, fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[400] }}>Tutar</Text>
               <View style={{ width: 30 }} />
             </View>
 
@@ -381,13 +384,13 @@ export function PurchaseInvoiceDetailScreen({ invoiceId, onBack }: Props = {}) {
                       <Text numberOfLines={1} style={{ fontSize: 11, color: DS.ink[400] }}>{l.note}</Text>
                     ) : null}
                   </View>
-                  <Text style={{ width: 110, textAlign: 'right', fontSize: 13, color: DS.ink[700] }}>
+                  <Text style={{ width: 110, textAlign: 'end' as any, fontSize: 13, color: DS.ink[700] }}>
                     {formatQty(l.quantity)} {l.unit ?? ''}
                   </Text>
-                  <Text style={{ width: 110, textAlign: 'right', fontSize: 13, color: DS.ink[700] }}>
+                  <Text style={{ width: 110, textAlign: 'end' as any, fontSize: 13, color: DS.ink[700] }}>
                     {formatMoney(l.unit_cost_at_time ?? 0, currency, { fractionDigits: 2 })}
                   </Text>
-                  <Text style={{ width: 120, textAlign: 'right', fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>
+                  <Text style={{ width: 120, textAlign: 'end' as any, fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>
                     {formatMoney(amount, currency, { fractionDigits: 2 })}
                   </Text>
                   <View style={{ width: 30 }} />
@@ -427,13 +430,13 @@ export function PurchaseInvoiceDetailScreen({ invoiceId, onBack }: Props = {}) {
                       <Text numberOfLines={1} style={{ fontSize: 11, color: DS.ink[400] }}>{x.note}</Text>
                     ) : null}
                   </View>
-                  <Text style={{ width: 110, textAlign: 'right', fontSize: 13, color: DS.ink[700] }}>
+                  <Text style={{ width: 110, textAlign: 'end' as any, fontSize: 13, color: DS.ink[700] }}>
                     {formatQty(x.quantity)} {x.unit ?? ''}
                   </Text>
-                  <Text style={{ width: 110, textAlign: 'right', fontSize: 13, color: DS.ink[700] }}>
+                  <Text style={{ width: 110, textAlign: 'end' as any, fontSize: 13, color: DS.ink[700] }}>
                     {formatMoney(x.unit_price, currency, { fractionDigits: 2 })}
                   </Text>
-                  <Text style={{ width: 120, textAlign: 'right', fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>
+                  <Text style={{ width: 120, textAlign: 'end' as any, fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>
                     {formatMoney(amount, currency, { fractionDigits: 2 })}
                   </Text>
                   <Pressable
@@ -476,7 +479,7 @@ export function PurchaseInvoiceDetailScreen({ invoiceId, onBack }: Props = {}) {
           </Text>
         </View>
         {isForeign ? (
-          <Text style={{ fontSize: 11, color: DS.ink[400], textAlign: 'right', marginTop: 4 }}>
+          <Text style={{ fontSize: 11, color: DS.ink[400], textAlign: 'end' as any, marginTop: 4 }}>
             {formatMoney(inv.total_base, inv.base_currency_at_time as any, { fractionDigits: 2 })} karşılığı
           </Text>
         ) : null}

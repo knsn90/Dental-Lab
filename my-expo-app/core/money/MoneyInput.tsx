@@ -105,7 +105,7 @@ export function MoneyInput({
           style={{
             flexDirection: 'row', alignItems: 'center', gap: 5,
             paddingHorizontal: 12, height: '100%',
-            borderLeftWidth: 1, borderLeftColor: 'rgba(0,0,0,0.06)',
+            borderStartWidth: 1, borderStartColor: 'rgba(0,0,0,0.06)',
             backgroundColor: 'rgba(0,0,0,0.02)',
             ...(Platform.OS === 'web' ? { cursor: disabled ? 'not-allowed' : 'pointer' } as any : {}),
           }}
@@ -119,7 +119,7 @@ export function MoneyInput({
 
       {/* Base conversion preview */}
       {showBasePreview && currency !== base && (
-        <Text style={{ fontSize: 11, color: '#9A9A9A', marginTop: 6, marginLeft: 14 }}>
+        <Text style={{ fontSize: 11, color: '#9A9A9A', marginTop: 6, marginStart: 14 }}>
           {loading
             ? 'Kur yükleniyor…'
             : rate == null

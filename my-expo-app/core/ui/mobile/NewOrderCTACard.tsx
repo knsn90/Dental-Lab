@@ -11,6 +11,7 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, Pressable, Platform, Animated, Easing } from 'react-native';
 import { Plus, Sparkles, ArrowRight } from 'lucide-react-native';
+import { autoT } from '../../i18n/autoTranslate';
 
 interface Props {
   onPress: () => void;
@@ -27,11 +28,14 @@ interface Props {
 export function NewOrderCTACard({
   onPress,
   accentColor,
-  kicker = 'PRIMARY EYLEM',
-  title = 'Yeni vaka oluştur',
+  kicker,
+  title,
   subtitle,
   rightSlot,
 }: Props) {
+  // Varsayılan metinler prop olarak gelir → JSX metin düğümü değil, autoT() şart
+  const kickerText = kicker ?? autoT('PRIMARY EYLEM');
+  const titleText  = title  ?? autoT('Yeni vaka oluştur');
   const pulse = useRef(new Animated.Value(0)).current;
   const blob1 = useRef(new Animated.Value(0)).current;
   const press = useRef(new Animated.Value(0)).current;
@@ -106,7 +110,7 @@ export function NewOrderCTACard({
           style={{
             position: 'absolute',
             top: -40,
-            right: -40,
+            end: -40,
             width: 140,
             height: 140,
             borderRadius: 70,
@@ -133,7 +137,7 @@ export function NewOrderCTACard({
               textTransform: 'uppercase',
               marginBottom: 4,
             }} numberOfLines={1}>
-              {kicker}
+              {kickerText}
             </Text>
             <Text style={{
               fontSize: 17,
@@ -142,7 +146,7 @@ export function NewOrderCTACard({
               letterSpacing: -0.3,
               lineHeight: 21,
             }} numberOfLines={1}>
-              {title}
+              {titleText}
             </Text>
             {!!subtitle && (
               <Text style={{

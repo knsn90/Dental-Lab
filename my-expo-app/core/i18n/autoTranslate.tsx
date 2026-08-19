@@ -54,6 +54,20 @@ function ensureDict(lng?: string): void {
     .finally(() => dictLoading.delete(l));
 }
 
+/**
+ * Aktif dilin sözlüğü BELLEKTE mi? Kök düzen bunu remount anahtarına katar.
+ *
+ * Neden gerekli: dil (AsyncStorage'dan) ve sözlük (ayrı chunk) İKİSİ DE async
+ * gelir ve sırası garanti değil. Sözlük dilden SONRA gelirse `languageChanged`
+ * yayınlanır ama `key` hâlâ aynı dil olduğu için alt ağaç yeniden kurulmaz;
+ * ekran kaynak Türkçesiyle donar. Ana uygulamada gezinme bunu örterdi, giriş
+ * ekranı statik olduğu için orada kalıcıydı.
+ */
+export function isDictReady(lng?: string): boolean {
+  const l = lng ?? i18n.language;
+  return !l || l === 'tr' || !!DICTS[l];
+}
+
 // ── Farsça rakamlar (۰–۹) ────────────────────────────────────────────────
 // Yalnız Farsça (fa) modda, RENDER edilen metindeki Batı rakamlarını (0-9)
 // Farsça rakama çevir. ÖNEMLİ: sözlük eşleşmesinden (autoT) SONRA uygulanır —
@@ -61,8 +75,39 @@ function ensureDict(lng?: string): void {
 // eşleşme kaçardı. Yalnız <Text> içeriği + placeholder'a; TextInput value'suna
 // DOKUNULMAZ (patchProps zaten value'ya dokunmuyor) → parse/düzenleme bozulmaz.
 const FA_DIGITS = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+
+/**
+ * TANIMLAYICI KORUMASI — rakam çevrilmemesi gereken parçalar.
+ *
+ * QR giriş ekranında token `18a2cfc5-353f-480a` iken `۱۸a۲cfc۵-۳۵۳f-۴۸۰a`
+ * olarak çıkıyordu: onaltılık bir kimlikte Fars rakamı + Latin harf karışımı
+ * hem okunmaz hem kopyalanınca yanlış. Aynı sorun sipariş numarası (NEX-2026-
+ * 0168), e-posta, URL, dosya adı ve sürüm numarasında da var — bunların hepsi
+ * KİMLİKTİR, sayı değil; başka bir sistemle eşleştirilecekleri için Latin
+ * kalmalı. Sadece bu parçalar korunur; cümlenin geri kalanı normal çevrilir.
+ */
+const KEEP_LATIN = new RegExp([
+  '[0-9a-fA-F]{6,}(?:-[0-9a-fA-F]{3,})+',   // UUID / token
+  '[A-Za-zÇĞİÖŞÜçğıöşü]+-\\d[\\w-]*',       // NEX-2026-0168 gibi kod
+  '\\d[\\w]*[A-Za-z][\\w]*',                // 3D, 98mm, A3.5 — harf+rakam bitişik
+  '[\\w.+-]+@[\\w.-]+',                     // e-posta
+  'https?://\\S+|\\S+\\.(?:com|net|org|app|io)\\b',  // URL
+  '\\S+\\.(?:stl|ply|obj|zip|pdf|png|jpe?g|dcm)\\b', // dosya adı
+].join('|'), 'g');
+
 function toFaDigits(s: string): string {
-  return s.replace(/[0-9]/g, (d) => FA_DIGITS[+d]);
+  // Korunacak parçaları maskele → gerisini çevir → geri koy.
+  // Maske RAKAM İÇERMEZ (özel-kullanım alanı karakteri). Rakamla indekslersek
+  // o indeks de Farsça'ya çevrilir, geri koyma eşleşmez ve yerinde `۰` kalır —
+  // "3D Yazıcı Modelaj" ekranda "۰ Yazıcı Modelaj" oluyordu.
+  const keep: string[] = [];
+  const masked = s.replace(KEEP_LATIN, (m) => {
+    keep.push(m);
+    return String.fromCharCode(0xE100 + keep.length - 1);
+  });
+  const converted = masked.replace(/[0-9]/g, (d) => FA_DIGITS[+d]);
+  if (keep.length === 0) return converted;
+  return converted.replace(/[\uE100-\uE1FF]/g, (c) => keep[c.charCodeAt(0) - 0xE100] ?? c);
 }
 function faNumChild(c: any): any {
   // ÖNEMLİ: sayısal <Text>{86}</Text> çocuğu string DEĞİL number'dır → onu da çevir.
@@ -88,8 +133,30 @@ export function autoT(s: string): string {
   const key = s.trim();
   if (!key) return s;
   const hit = dict[key];
-  if (!hit) return s;
-  return s === key ? hit : s.replace(key, hit);
+  if (hit) return s === key ? hit : s.replace(key, hit);
+
+  // ÖNEK EŞLEŞMESİ — sonu DEĞİŞKEN olan metinler. Sipariş no / kayıt adı / sayı
+  // her seferinde farklı olduğu için tam eşleşme asla tutmaz; öneki çevirip
+  // kalanı olduğu gibi bırakırız. İki ayırıcı da gerçek veride görülüyor:
+  //   ": "  → "Klinik güncellendi: Dent Hekim"   (aktivite kayıtları, sunucu)
+  //   " · " → "Yeni iş emri · NEX-2026-0169"     (bildirim başlıkları, DB'de
+  //            Türkçe SAKLANIR; pano "Bekleyen aksiyonlar" satırları da bu şekli
+  //            şablon dizesiyle üretir)
+  // Kuyruk da sözlükteyse o da çevrilir — "Sipariş statüsü: Teslim Edildi" gibi
+  // iki parçası da sabit olan başlıklar için.
+  for (const sp of [': ', ' · ']) {
+    const i = key.indexOf(sp);
+    if (i <= 0) continue;
+    const head = key.slice(0, i);
+    const tail = key.slice(i + sp.length);
+    if (!tail) continue;
+    // ": " için sözlükte anahtar iki kayıtlı olabilir: "Başlık" veya "Başlık:"
+    const pre = dict[head] ?? (sp === ': ' ? dict[`${head}:`] : undefined);
+    if (!pre) continue;
+    const joiner = pre.endsWith(':') ? ' ' : sp;
+    return `${pre}${joiner}${dict[tail] ?? tail}`;
+  }
+  return s;
 }
 
 function isText(type: any): boolean {

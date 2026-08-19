@@ -111,8 +111,8 @@ export function TechLeaveRequestsScreen() {
           position: 'relative', overflow: 'hidden',
           ...(Platform.OS === 'web' ? { boxShadow: `0 10px 28px ${hexA(P.accent, 0.32)}` } as any : {}),
         }}>
-          <View pointerEvents="none" style={{ position: 'absolute', top: -46, right: -42, width: 168, height: 168, borderRadius: 84, backgroundColor: 'rgba(255,255,255,0.18)' }} />
-          <View pointerEvents="none" style={{ position: 'absolute', bottom: -54, left: -24, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(0,0,0,0.07)' }} />
+          <View pointerEvents="none" style={{ position: 'absolute', top: -46, end: -42, width: 168, height: 168, borderRadius: 84, backgroundColor: 'rgba(255,255,255,0.18)' }} />
+          <View pointerEvents="none" style={{ position: 'absolute', bottom: -54, start: -24, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(0,0,0,0.07)' }} />
           {Platform.OS === 'web' && (
             <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundImage: `radial-gradient(120% 80% at 85% 0%, ${hexA(P.accentDeep, 0.55)}, transparent 60%)` } as any} />
           )}

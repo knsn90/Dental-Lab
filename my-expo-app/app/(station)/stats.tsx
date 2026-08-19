@@ -2,13 +2,14 @@
 // Teknisyen Dashboard — Lab paneli kart tarzı (Patterns), tech-blue tema.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { firstName as displayFirstName } from '../../core/util/personName';
 import { View, Text, ScrollView, Pressable, Platform, Animated, Easing } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import {
-  Check, Clock, Flame, TrendingUp, Calendar, ArrowUpRight, ListTodo,
-  Wrench, Zap, AlertTriangle, ArrowRight,
+  Check, Clock, Flame, TrendingUp, Calendar, ArrowUpRight, ArrowUpLeft, ListTodo,
+  Wrench, Zap, AlertTriangle, ArrowRight, ArrowLeft,
 } from 'lucide-react-native';
 import { useAuthStore } from '../../core/store/authStore';
 import { usePermissionStore } from '../../core/store/permissionStore';
@@ -17,7 +18,7 @@ import { supabase } from '../../core/api/supabase';
 import { LinearProgressX, PercentRingX } from '../../core/ui/ProgressX';
 import { DS } from '../../core/theme/dsTokens';
 import { useStationTheme, hexA } from '../../core/theme/stationPalette';
-import { localeTag } from '../../core/i18n';
+import { localeTag, isRTL, fmtDayMonthShort, fmtDayMonthYear } from '../../core/i18n';
 import { mobileTopPad } from '../../core/ui/pageMetrics';
 
 const SERIF = {
@@ -115,7 +116,7 @@ function AnimatedActiveJobCard({
 
         {/* AKTİF badge */}
         <View className="absolute rounded-full" style={{
-          top: 14, left: 14,
+          top: 14, start: 14,
           paddingHorizontal: 10, paddingVertical: 4,
           backgroundColor: hexA(STATION_ACCENT, 0.95),
           flexDirection: 'row', alignItems: 'center', gap: 6,
@@ -133,7 +134,7 @@ function AnimatedActiveJobCard({
         {/* Sağ üst: critical badge */}
         {activeJob?.is_critical && (
           <View className="absolute rounded-full" style={{
-            top: 14, right: 14,
+            top: 14, end: 14,
             paddingHorizontal: 8, paddingVertical: 4,
             backgroundColor: 'rgba(217,119,6,0.95)',
             flexDirection: 'row', alignItems: 'center', gap: 4,
@@ -178,7 +179,7 @@ function AnimatedActiveJobCard({
         </Animated.View>
 
         {/* Sağ alt: count chip */}
-        <View className="absolute" style={{ bottom: 14, right: 14, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+        <View className="absolute" style={{ bottom: 14, end: 14, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <Zap size={11} color={STATION_ACCENT} strokeWidth={2.2} />
           <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF', letterSpacing: 0.3 }}>
             {activeNow}
@@ -210,7 +211,7 @@ function AnimatedActiveJobCard({
           className="items-center justify-center rounded-full"
           style={{ width: 32, height: 32, backgroundColor: hexA(STATION_ACCENT, 0.10) }}
         >
-          <ArrowUpRight size={14} color={STATION_ACCENT} strokeWidth={1.8} />
+          {isRTL() ? <ArrowUpLeft size={14} color={STATION_ACCENT} strokeWidth={1.8} /> : <ArrowUpRight size={14} color={STATION_ACCENT} strokeWidth={1.8} />}
         </View>
       </Pressable>
     </View>
@@ -269,7 +270,7 @@ function StationCTACard({ onPress }: { onPress: () => void }) {
   const floatY      = floatAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 8] });
   const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.10, 0.28] });
   const glowScale   = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.15] });
-  const arrowX      = arrowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 6] });
+  const arrowX      = arrowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, isRTL() ? -6 : 6] });
 
   return (
     <Pressable
@@ -286,15 +287,15 @@ function StationCTACard({ onPress }: { onPress: () => void }) {
         backgroundColor: STATION_ACCENT, minHeight: 180,
         transform: [{ scale: scaleAnim }],
       }}>
-        <Animated.View style={{ position: 'absolute', top: -20, right: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.18)', transform: [{ translateY: floatY }] }} />
-        <Animated.View pointerEvents="none" style={{ position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: '#FFFFFF', opacity: glowOpacity, transform: [{ scale: glowScale }] }} />
+        <Animated.View style={{ position: 'absolute', top: -20, end: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.18)', transform: [{ translateY: floatY }] }} />
+        <Animated.View pointerEvents="none" style={{ position: 'absolute', top: -40, end: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: '#FFFFFF', opacity: glowOpacity, transform: [{ scale: glowScale }] }} />
         <View style={{ position: 'relative' }}>
           <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 1.1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)', marginBottom: 14 }}>{t('station.dashboard.quickAction')}</Text>
           <Text style={{ ...SERIF, fontSize: 32, letterSpacing: -0.6, lineHeight: 35, color: '#FFFFFF', marginBottom: 18 }}>{t('station.dashboard.createNewOrder')}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', borderRadius: 9999, paddingHorizontal: 18, paddingVertical: 10, backgroundColor: '#FFFFFF', gap: 8 }}>
             <Text style={{ fontSize: 13, fontWeight: '700', color: STATION_DEEP }}>{t('station.dashboard.start')}</Text>
             <Animated.View style={{ transform: [{ translateX: arrowX }] }}>
-              <ArrowRight size={14} color={STATION_DEEP} strokeWidth={2.2} />
+              {isRTL() ? <ArrowLeft size={14} color={STATION_DEEP} strokeWidth={2.2} /> : <ArrowRight size={14} color={STATION_DEEP} strokeWidth={2.2} />}
             </Animated.View>
           </View>
         </View>
@@ -323,7 +324,7 @@ export default function StationDashboard() {
     const d = new Date();
     return {
       day:  days[d.getDay()],
-      date: `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`,
+      date: fmtDayMonthYear(d),
     };
   }, []);
 
@@ -503,7 +504,7 @@ export default function StationDashboard() {
     }] : [];
     const monthsShort = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
     const wkStart = new Date(); wkStart.setDate(wkStart.getDate() - 6);
-    const weekRange = `${wkStart.getDate()} ${monthsShort[wkStart.getMonth()]} → ${new Date().getDate()} ${monthsShort[new Date().getMonth()]}`;
+    const weekRange = `${fmtDayMonthShort(wkStart)} → ${fmtDayMonthShort(new Date())}`;
     const weekCompleted = stats.weekBars.reduce((s, b) => s + b.count, 0);
 
     // Notification buckets — teknisyen-specific labels
@@ -570,7 +571,7 @@ export default function StationDashboard() {
           {todayLabel.day} · {todayLabel.date}
         </Text>
         <Text style={{ ...SERIF, fontSize: 42, color: P.ink900, letterSpacing: -1.4, lineHeight: 44, marginTop: 4 }}>
-          Hoş geldin, <Text style={{ color: P.ink400 }}>{profile?.full_name?.split(' ')[0] ?? ''}</Text>
+          Hoş geldin, <Text style={{ color: P.ink400 }}>{displayFirstName(profile?.full_name)}</Text>
         </Text>
         <Text style={{ fontSize: 13, color: P.ink500, marginTop: 6 }}>
           {stats.activeNow === 0
@@ -619,7 +620,7 @@ export default function StationDashboard() {
                 <Text style={{ fontSize: 10.5, fontWeight: '700', color: P.ink500, letterSpacing: 1, textTransform: 'uppercase' }}>
                   {t('common.today')}
                 </Text>
-                <Text style={{ fontSize: 10.5, color: P.ink400, marginLeft: 'auto' }}>{todayLabel.day}</Text>
+                <Text style={{ fontSize: 10.5, color: P.ink400, marginStart: 'auto' }}>{todayLabel.day}</Text>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
                 <Text style={{ ...SERIF, fontSize: 52, lineHeight: 54, color: P.ink900, letterSpacing: -1.4 }}>
@@ -632,7 +633,7 @@ export default function StationDashboard() {
             {/* Alt: 2 ikincil metrik yan yana */}
             <View style={{ flexDirection: 'row', alignItems: 'stretch', paddingTop: 14, borderTopWidth: 1, borderTopColor: P.ink100 }}>
               {/* Toplam */}
-              <View style={{ flex: 1, gap: 4, paddingRight: 12 }}>
+              <View style={{ flex: 1, gap: 4, paddingEnd: 12 }}>
                 <View className="flex-row items-center" style={{ gap: 5 }}>
                   <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: STATION_DEEP }} />
                   <Text style={{ fontSize: 10, fontWeight: '700', color: P.ink500, letterSpacing: 0.8, textTransform: 'uppercase' }}>
@@ -652,7 +653,7 @@ export default function StationDashboard() {
               <View style={{ width: 1, backgroundColor: P.ink100 }} />
 
               {/* Ort. süre */}
-              <View style={{ flex: 1, gap: 4, paddingLeft: 12 }}>
+              <View style={{ flex: 1, gap: 4, paddingStart: 12 }}>
                 <View className="flex-row items-center" style={{ gap: 5 }}>
                   <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#9C5E0E' }} />
                   <Text style={{ fontSize: 10, fontWeight: '700', color: P.ink500, letterSpacing: 0.8, textTransform: 'uppercase' }}>
@@ -853,7 +854,7 @@ export default function StationDashboard() {
             className="items-center justify-center rounded-full"
             style={{ width: 32, height: 32, backgroundColor: hexA(STATION_ACCENT, 0.10) }}
           >
-            <ArrowUpRight size={14} color={STATION_ACCENT} strokeWidth={1.8} />
+            {isRTL() ? <ArrowUpLeft size={14} color={STATION_ACCENT} strokeWidth={1.8} /> : <ArrowUpRight size={14} color={STATION_ACCENT} strokeWidth={1.8} />}
           </Pressable>
         </View>
 

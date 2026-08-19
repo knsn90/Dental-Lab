@@ -8,9 +8,10 @@ import { View, Text, Pressable, Platform, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   Mail, Lock, Eye, EyeOff, User as UserIcon, Phone,
-  AlertCircle, Check, ChevronLeft,
+  AlertCircle, Check, ChevronLeft, ChevronRight,
 } from 'lucide-react-native';
 import { signUpLabUser, LabRole } from '../api';
+import { isRTL } from '../../../core/i18n';
 import { AuthShell, AuthInput, AuthButton, AUTH, AUTH_FONT } from '../components/AuthShell';
 import { ConsentGate, EMPTY_CONSENTS, hasRequiredConsents, type ConsentState } from '../components/ConsentGate';
 
@@ -118,7 +119,7 @@ export function RegisterLabScreen() {
             ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
           })}
         >
-          <ChevronLeft size={14} color={AUTH.inkSoft} strokeWidth={2} />
+          {isRTL() ? <ChevronRight size={14} color={AUTH.inkSoft} strokeWidth={2} /> : <ChevronLeft size={14} color={AUTH.inkSoft} strokeWidth={2} />}
           <Text style={{ fontFamily: AUTH_FONT.sans, fontSize: 12, color: AUTH.inkSoft, fontWeight: '600' }}>Geri</Text>
         </Pressable>
 
@@ -127,7 +128,7 @@ export function RegisterLabScreen() {
             flexDirection: 'row', alignItems: 'flex-start', gap: 10,
             backgroundColor: 'rgba(220,38,38,0.06)',
             borderRadius: 10, padding: 12, marginBottom: 14,
-            borderLeftWidth: 3, borderLeftColor: AUTH.danger,
+            borderStartWidth: 3, borderStartColor: AUTH.danger,
           }}>
             <AlertCircle size={14} color={AUTH.danger} strokeWidth={2} style={{ marginTop: 1 }} />
             <Text style={{ flex: 1, fontFamily: AUTH_FONT.sans, fontSize: 12.5, color: AUTH.danger, lineHeight: 18 }}>
@@ -141,7 +142,7 @@ export function RegisterLabScreen() {
             flexDirection: 'row', alignItems: 'flex-start', gap: 10,
             backgroundColor: 'rgba(22,163,74,0.08)',
             borderRadius: 10, padding: 12, marginBottom: 14,
-            borderLeftWidth: 3, borderLeftColor: AUTH.success,
+            borderStartWidth: 3, borderStartColor: AUTH.success,
           }}>
             <Check size={14} color={AUTH.success} strokeWidth={2.4} style={{ marginTop: 1 }} />
             <Text style={{ flex: 1, fontFamily: AUTH_FONT.sans, fontSize: 12.5, color: AUTH.success, lineHeight: 18, fontWeight: '500' }}>

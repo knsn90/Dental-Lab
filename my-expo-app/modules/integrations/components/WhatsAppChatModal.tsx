@@ -172,8 +172,8 @@ export function WhatsAppChatModal({
                     <View style={{
                       backgroundColor: mine ? (m.source === 'bot' ? '#EEF2FF' : '#DCFCE7') : '#FFFFFF',
                       borderRadius: 14,
-                      borderTopRightRadius: mine ? 4 : 14,
-                      borderTopLeftRadius: mine ? 14 : 4,
+                      borderTopEndRadius: mine ? 4 : 14,
+                      borderTopStartRadius: mine ? 14 : 4,
                       paddingHorizontal: 12, paddingVertical: 9,
                       borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
                     }}>
@@ -187,7 +187,7 @@ export function WhatsAppChatModal({
                       )}
                       <Text style={{ fontSize: 13.5, color: '#111827', lineHeight: 19 }}>{m.body ?? '—'}</Text>
                     </View>
-                    <Text style={{ fontSize: 10, color: '#9CA3AF', marginTop: 2, textAlign: mine ? 'right' : 'left' }}>
+                    <Text style={{ fontSize: 10, color: '#9CA3AF', marginTop: 2, textAlign: (mine ? 'end' : 'start') as any }}>
                       {fmtTime(m.created_at)}
                     </Text>
                   </View>

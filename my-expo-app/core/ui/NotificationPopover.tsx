@@ -1,11 +1,13 @@
 // core/ui/NotificationPopover.tsx
 // "Cards" tasarımıyla beyaz bildirim popover'ı.
-// - Bell ikonuna tıklayınca açılır (sağ üst köşeye anchored)
+// - Bell ikonuna tıklayınca açılır (üst köşeye anchored — LTR'de sağ, RTL'de sol)
 // - Geciken iş emirlerini + atanmamış işleri listeler
 // - Click-outside ile kapanır (Modal overlay)
 // - Okunmamışlar için solunda küçük renk noktası
 
 import React, { useMemo } from 'react';
+import { isRTL } from '../i18n';
+import { autoT } from '../i18n/autoTranslate';
 import { Modal, Pressable, View, Text, ScrollView, TouchableOpacity, Platform, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { AppIcon } from './AppIcon';
@@ -28,7 +30,9 @@ interface NotificationPopoverProps {
   onClose:    () => void;
   /** Anchor için viewport-rel pozisyon — bell ikonunun yaklaşık konumu */
   anchorTop?:    number;
-  anchorRight?:  number;
+  /** Satır-sonu kenarından uzaklık: LTR'de sağdan, RTL'de soldan. Zil ikonu
+   *  da aynalandığı için popover onunla aynı tarafta açılmalı. */
+  anchorEnd?:    number;
   /** Hangi panelin route'larına yönlendirsin — default lab */
   panel?:       'lab' | 'admin' | 'doctor' | 'clinic';
 }
@@ -38,7 +42,7 @@ export function NotificationPopover({
   visible,
   onClose,
   anchorTop   = 60,
-  anchorRight = 16,
+  anchorEnd   = 16,
   panel       = 'lab',
 }: NotificationPopoverProps) {
   const router = useRouter();
@@ -91,9 +95,9 @@ export function NotificationPopover({
           ? Math.floor((Date.now() - new Date(created).getTime()) / 3_600_000)
           : null;
         const ageLabel = ageHours == null ? '' :
-          ageHours < 1 ? 'Az önce' :
-          ageHours < 24 ? `${ageHours} saat önce` :
-          `${Math.floor(ageHours / 24)} gün önce`;
+          ageHours < 1 ? autoT('Az önce') :
+          ageHours < 24 ? `${ageHours} ${autoT('saat önce')}` :
+          `${Math.floor(ageHours / 24)} ${autoT('gün önce')}`;
 
         list.push({
           id:          `triage-${o.id}`,
@@ -121,7 +125,8 @@ export function NotificationPopover({
         <Pressable
           style={[
             s.popover,
-            { top: anchorTop, right: anchorRight, backgroundColor: t.surface, borderColor: t.hairline },
+            { top: anchorTop, ...(isRTL() ? { left: anchorEnd } : { right: anchorEnd }),
+              backgroundColor: t.surface, borderColor: t.hairline },
           ]}
           onPress={(e) => e.stopPropagation?.()}
         >

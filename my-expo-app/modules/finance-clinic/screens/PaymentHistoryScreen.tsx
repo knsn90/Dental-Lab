@@ -197,6 +197,7 @@ export function PaymentHistoryScreen({ clinicId }: Props) {
                       <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
                         {cfg.label}
                         {p.invoice_no ? `  ·  Fatura ${p.invoice_no}` : ''}
+                        {p.patient_name ? `  ·  ${p.patient_name}` : ''}
                       </Text>
                       <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 2 }}>
                         {fmtDate(p.payment_date)}
@@ -254,6 +255,7 @@ function SubmissionRow({
           <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
             {cfg.label}
             {s.invoice_no ? `  ·  Fatura ${s.invoice_no}` : ''}
+            {s.patient_name ? `  ·  ${s.patient_name}` : ''}
           </Text>
           <View style={{
             paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999,

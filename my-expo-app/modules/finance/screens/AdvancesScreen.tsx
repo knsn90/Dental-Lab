@@ -156,8 +156,8 @@ export function AdvancesScreen() {
         borderRadius: 20, overflow: 'hidden',
         backgroundColor: P, padding: 18, position: 'relative',
       }}>
-        <View style={{ position: 'absolute', top: -40, right: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
-        <View style={{ position: 'absolute', bottom: -50, left: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+        <View style={{ position: 'absolute', top: -40, end: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
+        <View style={{ position: 'absolute', bottom: -50, start: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
 
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
           <View style={{ flex: 1, minWidth: 0 }}>
@@ -245,7 +245,7 @@ export function AdvancesScreen() {
               </View>
               <Pressable onPress={() => setAdvOpen(e)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: T.ink }}>
                 <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: P }} />
-                <Text style={{ fontSize: 12, fontWeight: '600', color: T.bg, marginLeft: 2 }}>Avans Ver</Text>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: T.bg, marginStart: 2 }}>Avans Ver</Text>
               </Pressable>
             </View>
             );
@@ -394,7 +394,7 @@ function GiveAdvanceModal({ employee, onClose, onSaved }: {
             </View>
             <Pressable
               onPress={onClose}
-              style={{ width: 32, height: 32, borderRadius: 8, borderWidth: 1.5, borderColor: P, alignItems: 'center', justifyContent: 'center', marginLeft: 12, marginTop: 2, cursor: 'pointer' as any }}
+              style={{ width: 32, height: 32, borderRadius: 8, borderWidth: 1.5, borderColor: P, alignItems: 'center', justifyContent: 'center', marginStart: 12, marginTop: 2, cursor: 'pointer' as any }}
             >
               <X size={14} color={P} strokeWidth={2.2} />
             </Pressable>

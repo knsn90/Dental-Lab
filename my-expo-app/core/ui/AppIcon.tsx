@@ -36,11 +36,14 @@ import {
   Scooter, Tag, Timer, Trash2, TrendingDown, TrendingUp, Trophy, Truck,
   Undo2, Upload, User, UserCheck, UserCircle, UserPlus, UserX, Users,
   WifiOff, X, XCircle, Zap,
+  Ban, BellOff, FileArchive, Funnel, Link2, ListTodo, ReceiptText,
+  Repeat, Repeat2, Wallet, Wrench,
 } from 'lucide-react-native';
 // Lucide'de karşılığı olmayan dental ikonlar — createLucideIcon ile üretildi,
 // dolayısıyla yukarıdakilerle birebir aynı props sözleşmesine sahipler.
 import { Tooth, Crown, Implant, ZirconiaDisc, DentalArch } from './dentalIcons';
 import { WhatsAppGlyph } from './WhatsAppGlyph';
+import { dirIcon } from '../i18n';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type LucideFC = React.ComponentType<any>;
@@ -112,6 +115,9 @@ const ICONS: Record<string, LucideFC> = {
   'file-minus':          FileMinus,
   'file-x':              FileX,
   'receipt':             Receipt,
+  // Sıkıştırılmış dosya. Mevcut 'archive' adı Package'a (kutu) bağlı ve
+  // başka yerlerde kullanımda — onu değiştirmeden yeni ad eklendi.
+  'file-archive':        FileArchive,
 
   // ── Aksiyonlar ───────────────────────────────────────────────────────────
   'plus':                Plus,
@@ -280,7 +286,9 @@ const ICONS: Record<string, LucideFC> = {
   'sliders':                     SlidersHorizontal,
   'smartphone':                  Phone,
   'swap-horizontal':             ArrowLeftRight,
-  'tooth-outline':               CircleDot,
+  // Eski MCI adı — Lucide'de diş ikonu olmadığı için CircleDot'a (ortası noktalı
+  // daire) düşürülmüştü; artık gerçek diş silueti çiziyor.
+  'tooth-outline':               Tooth,
   'trash-can':                   Trash2,
   'trash-can-outline':           Trash2,
   'truck-delivery':              Truck,
@@ -341,6 +349,33 @@ const ICONS: Record<string, LucideFC> = {
   'send-check-outline':          Send,
   'tag-outline':                 Tag,
   'timeline-clock-outline':      Clock,
+
+  // ── Haritada olmayıp soru işareti çizen adlar (2026-08 taraması) ──────────
+  // Çoğu eski MCI/Ionicons adı; `as any` cast'i olduğu için TS yakalayamıyordu.
+  'document-outline':            FileText,
+  'information-outline':         Info,
+  'pencil-circle-outline':       Pencil,
+  'office-building-outline':     Building2,
+  'account-supervisor-outline':  UserCheck,
+  'bell-off-outline':            BellOff,
+  'camera-outline':              Camera,
+  'check-decagram':              BadgeCheck,
+  'checkmark-circle-outline':    CheckCircle,
+  'link-outline':                Link,
+  'lock-closed-outline':         Lock,
+  'play-circle-outline':         PlayCircle,
+  'cancel':                      Ban,
+  'undo':                        Undo2,
+  'receipt-text':                ReceiptText,
+  'repeat':                      Repeat,
+  'repeat-variant':              Repeat2,
+  'link-plus':                   Link2,
+  'list-todo':                   ListTodo,
+  'wallet':                      Wallet,
+  'wrench':                      Wrench,
+  // Lucide 1.x'te `Filter` → `Funnel` olarak yeniden adlandırıldı.
+  'filter':                      Funnel,
+  'shield-check-outline':        ShieldCheck,
 };
 
 // ── Bileşen ───────────────────────────────────────────────────────────────────
@@ -354,6 +389,8 @@ export interface AppIconProps {
   style?: any;
 }
 
+const warned = new Set<string>();
+
 export function AppIcon({
   name,
   size = 20,
@@ -362,6 +399,18 @@ export function AppIcon({
   set: _set,
   style: _style,
 }: AppIconProps) {
-  const Icon: LucideFC = ICONS[name] ?? HelpCircle;
+  // RTL (fa/ar/he/ur): yön bildiren ikonlar (chevron/arrow left↔right) aynadan
+  // yansır — "geri" oku RTL'de sağı göstermeli. Yönsüz adlar dokunulmadan geçer,
+  // LTR dillerde davranış birebir aynı kalır.
+  const iconName = dirIcon(name);
+  const Icon: LucideFC = ICONS[iconName] ?? HelpCircle;
+  const found = !!ICONS[iconName];
+  // Çağrı yerlerinin çoğu `name={'x' as any}` yazdığı için TS bunu yakalayamıyor;
+  // haritada olmayan ad sessizce soru işaretine dönüşüyordu. Geliştirmede bir kez
+  // uyar ki ekranda görmeden önce fark edilsin.
+  if (__DEV__ && !found && !warned.has(iconName)) {
+    warned.add(iconName);
+    console.warn(`[AppIcon] "${iconName}" haritada yok — HelpCircle çiziliyor. core/ui/AppIcon.tsx'e ekle.`);
+  }
   return <Icon size={size} color={color} strokeWidth={strokeWidth} />;
 }

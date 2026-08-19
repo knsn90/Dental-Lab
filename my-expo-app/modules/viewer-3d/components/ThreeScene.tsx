@@ -20,7 +20,8 @@ import type { ViewerFile, LayerStyle, Measurement, CutAxis } from '../types';
 import { loadGeometry } from '../lib/loaders';
 import { classifyFile } from '../lib/layerMap';
 import { analyzeOcclusion as computeOcclusion, clearOcclusion as clearOcclusionGeom, type OcclusionResult } from '../lib/occlusion';
-import { createScene, centerGeometry, fitCameraToObject, disposeObject, type SceneRefs } from '../lib/scene';
+import { analyzeWaviness as computeWaviness, clearWaviness as clearWavinessGeom, recolorWaviness, type WavinessResult } from '../lib/waviness';
+import { createScene, centerGeometry, fitCameraToObject, disposeObject, captureThumbnail, type SceneRefs } from '../lib/scene';
 import { computeGroupOrientation } from '../lib/orient';
 import { analyzeMesh, type MeshDiagnostics } from '../lib/meshDiagnostics';
 import { applyPreset, applyPresetSmooth, type CameraPreset } from '../lib/cameraPresets';
@@ -40,10 +41,22 @@ export interface ThreeSceneHandle {
   analyzeOcclusion: () => Promise<OcclusionResult | null>;
   /** Kapanış ısı haritasını kaldır, mesh'i eski materyaline döndür. */
   clearOcclusion: () => void;
+  /** Yüzey dalgalanma analizi: görünür tüm yüzey mesh'lerine ısı haritası + özet. */
+  analyzeWaviness: (rangeUm?: number) => Promise<WavinessResult | null>;
+  /** Dalgalanma ısı haritasını kaldır. */
+  clearWaviness: () => void;
+  /** Skala penceresini değiştir — yumuşatma tekrarlanmaz, sadece yeniden boyanır. */
+  setWavinessRange: (rangeUm: number) => WavinessResult | null;
 }
 
 interface Props {
   files: ViewerFile[];
+  /**
+   * Model yüklenip kameraya oturunca BİR KEZ çağrılır: sahnenin küçük JPEG
+   * anlık görüntüsü (data-URL). Çağıran taraf isterse depolar — böylece dosya
+   * listesi 16–29 MB'lık mesh'i indirmeden önizleme gösterebilir.
+   */
+  onThumbnail?: (dataUrl: string) => void;
   /** Map<fileId, LayerStyle> — visibility + opacity + color + wireframe + offsetY */
   layerStyles?: Record<string, LayerStyle>;
   bg?: number;
@@ -76,7 +89,7 @@ interface MeshEntry {
 }
 
 export const ThreeScene = React.forwardRef<ThreeSceneHandle, Props>(function ThreeScene(
-  { files, layerStyles, bg = 0x0e0e0e, measureMode, measurements = [], onAddMeasurement, cutAxis = 'none', cutPosition = 0, showGrid = false, xrayMode = false, autoAlign = false, onDiagnostics }: Props,
+  { files, onThumbnail, layerStyles, bg = 0x0e0e0e, measureMode, measurements = [], onAddMeasurement, cutAxis = 'none', cutPosition = 0, showGrid = false, xrayMode = false, autoAlign = false, onDiagnostics }: Props,
   ref,
 ) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -90,6 +103,8 @@ export const ThreeScene = React.forwardRef<ThreeSceneHandle, Props>(function Thr
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [initError, setInitError] = useState<string | null>(null);
   const [stats, setStats] = useState<PerfStats>({ fps: 60, triCount: 0, meshCount: 0 });
+  // Küçük resim tek sefer gönderilir (dosya değişince sıfırlanır).
+  const thumbSentRef = useRef(false);
   const perfRef = useRef<ReturnType<typeof createPerfMonitor> | null>(null);
   const T = useViewerTheme();
 
@@ -560,10 +575,24 @@ export const ThreeScene = React.forwardRef<ThreeSceneHandle, Props>(function Thr
         // Perf stats — yeni mesh'leri say
         perfRef.current?.refreshSceneStats(group);
 
+        // Küçük resim — yalnız bir kez, kamera modele oturduktan sonra.
+        // requestAnimationFrame ile bir kare bekleniyor ki controls'ün hedef
+        // güncellemesi uygulanmış olsun; yakalama kendi içinde render+toDataURL
+        // yaptığı için preserveDrawingBuffer olmaması sorun değil.
+        if (onThumbnail && !thumbSentRef.current) {
+          thumbSentRef.current = true;
+          requestAnimationFrame(() => {
+            const r = sceneRefs.current;
+            if (!r) return;
+            const url = captureThumbnail(r, 256);
+            if (url) onThumbnail(url);
+          });
+        }
+
       }
     });
 
-    return () => ac.abort();
+    return () => { ac.abort(); thumbSentRef.current = false; };
     // autoAlign değişince geometriler yeniden işlenmeli — diff effect zaten
     // var olan meshleri korur, autoAlign değiştiğinde hepsini temizle + reload
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -615,6 +644,7 @@ export const ThreeScene = React.forwardRef<ThreeSceneHandle, Props>(function Thr
       cp.constant = cutPosition;
     }
   }, [cutAxis, cutPosition]);
+
 
   // ── Measurement overlay sync ────────────────────────────────────
   useEffect(() => {
@@ -826,6 +856,81 @@ export const ThreeScene = React.forwardRef<ThreeSceneHandle, Props>(function Thr
         delete (lower.userData as any)._preOcc;
       }
     },
+    analyzeWaviness: async (rangeUm?: number) => {
+      // Görünür TÜM yüzey mesh'leri analiz edilir: kusur hangi katmanda olduğu
+      // baştan bilinmiyor, teknisyeni katman seçmeye zorlamak aracın değerini
+      // düşürürdü. Nokta bulutlarında komşuluk yok → elenir.
+      const targets = meshesRef.current
+        .map(e => e.mesh)
+        .filter(m => m.visible && !m.userData.isPointCloud && m.geometry?.getAttribute('position'));
+      if (targets.length === 0) return null;
+
+      let agg: WavinessResult | null = null;
+      let weight = 0;
+      for (const mesh of targets) {
+        const r = await computeWaviness(mesh, { rangeUm });
+        const mat = mesh.material as THREE.MeshPhysicalMaterial;
+        (mesh.userData as any)._preWav = {
+          vertexColors: mat.vertexColors, color: mat.color.clone(), map: mat.map,
+          opacity: mat.opacity, transparent: mat.transparent,
+        };
+        mat.vertexColors = true;
+        mat.map = null;
+        mat.color.set(0xffffff);
+        mat.opacity = 1;
+        mat.transparent = false;
+        mat.needsUpdate = true;
+
+        // Özet: vertex sayısına göre ağırlıklı ortalama; uç değerler (max) ve
+        // en kötü yüzde (p95) mesh'ler arasında maksimum alınır.
+        if (!agg) { agg = { ...r }; weight = r.sampleCount; }
+        else {
+          const w = weight + r.sampleCount;
+          agg.rmsUm = (agg.rmsUm * weight + r.rmsUm * r.sampleCount) / w;
+          agg.overRatio = (agg.overRatio * weight + r.overRatio * r.sampleCount) / w;
+          agg.p95Um = Math.max(agg.p95Um, r.p95Um);
+          agg.maxUm = Math.max(agg.maxUm, r.maxUm);
+          agg.sampleCount = w;
+          weight = w;
+        }
+      }
+      return agg;
+    },
+    setWavinessRange: (rangeUm: number) => {
+      let agg: WavinessResult | null = null;
+      let weight = 0;
+      for (const e of meshesRef.current) {
+        const r = recolorWaviness(e.mesh, rangeUm);
+        if (!r) continue;
+        if (!agg) { agg = { ...r }; weight = r.sampleCount; }
+        else {
+          const w = weight + r.sampleCount;
+          agg.rmsUm = (agg.rmsUm * weight + r.rmsUm * r.sampleCount) / w;
+          agg.overRatio = (agg.overRatio * weight + r.overRatio * r.sampleCount) / w;
+          agg.p95Um = Math.max(agg.p95Um, r.p95Um);
+          agg.maxUm = Math.max(agg.maxUm, r.maxUm);
+          agg.sampleCount = w;
+          weight = w;
+        }
+      }
+      return agg;
+    },
+    clearWaviness: () => {
+      for (const e of meshesRef.current) {
+        const mesh = e.mesh;
+        const pre = (mesh.userData as any)._preWav;
+        if (!pre) continue;
+        clearWavinessGeom(mesh);
+        const mat = mesh.material as THREE.MeshPhysicalMaterial;
+        mat.vertexColors = pre.vertexColors;
+        mat.color.copy(pre.color);
+        mat.map = pre.map;
+        mat.opacity = pre.opacity;
+        mat.transparent = pre.transparent;
+        mat.needsUpdate = true;
+        delete (mesh.userData as any)._preWav;
+      }
+    },
   }), []);
 
   const anyLoading = loadingIds.size > 0;
@@ -908,7 +1013,7 @@ export const ThreeScene = React.forwardRef<ThreeSceneHandle, Props>(function Thr
       {/* Performance stats overlay (sol alt) */}
       {!anyLoading && meshesRef.current.length > 0 && (
         <View style={{
-          position: 'absolute', bottom: 12, left: 12,
+          position: 'absolute', bottom: 12, start: 12,
           flexDirection: 'row', alignItems: 'center', gap: 8,
           paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
           backgroundColor: T.toolbarBg,

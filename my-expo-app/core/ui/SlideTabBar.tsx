@@ -27,9 +27,20 @@ interface Props<K extends string = string> {
   onChange: (key: K) => void;
   /** Cursor + aktif yazı için vurgu rengi (admin: #0F172A, lab: #2563EB) */
   accentColor: string;
+  /**
+   * Yoğun listelerin (Siparişler gibi) üstünde 'md' fazla yer kaplıyor.
+   * 'sm' aynı dili korur, yalnız dolgu ve punto küçülür. Varsayılan 'md' —
+   * mevcut kullanımlar (users / logs / onaylar / kurumlar) etkilenmez.
+   */
+  size?: 'sm' | 'md';
   /** Ekstra stil */
   style?: any;
 }
+
+const SIZES = {
+  md: { paddingHorizontal: 22, paddingVertical: 10, fontSize: 12,   gap: 4, pad: 4 },
+  sm: { paddingHorizontal: 13, paddingVertical: 6,  fontSize: 11.5, gap: 2, pad: 3 },
+} as const;
 
 interface Rect { x: number; width: number; }
 
@@ -38,8 +49,10 @@ export function SlideTabBar<K extends string>({
   activeKey,
   onChange,
   accentColor,
+  size = 'md',
   style,
 }: Props<K>) {
+  const SZ = SIZES[size];
   // Her tab'ın ölçümleri — key'e göre Map
   const layoutsRef = useRef<Record<string, Rect>>({});
   // Şu an cursor hangi tab üzerinde? (hover'da değişir, ama aktif farklı olabilir)
@@ -80,7 +93,7 @@ export function SlideTabBar<K extends string>({
 
   return (
     <View
-      style={[styles.bar, style]}
+      style={[styles.bar, { gap: SZ.gap, padding: SZ.pad }, style]}
       // Mouse çıkınca aktife dön
       {...(Platform.OS === 'web' ? {
         onMouseLeave: () => setHoveredKey(null),
@@ -91,15 +104,18 @@ export function SlideTabBar<K extends string>({
         pointerEvents="none"
         style={[
           styles.cursor,
-          { backgroundColor: accentColor, left, width, opacity },
+          { backgroundColor: accentColor, left, width, opacity, top: SZ.pad, bottom: SZ.pad },
         ]}
       />
 
       {/* Tab pill'leri */}
       {items.map((item) => {
-        // Aktif tab ve hover edilen tab beyaz metin gösterir; diğerleri gri.
-        const isActive  = item.key === activeKey;
-        const isHovered = item.key === hoveredKey;
+        // Cursor TEK yerde durabilir: hover varsa orada, yoksa aktif tabda.
+        // Eskiden "aktif VEYA hover" beyaz yazılıyordu; başka bir taba hover
+        // edilince cursor oraya kayıyor ama aktif tab beyaz kalıyordu →
+        // açık zemin üstünde beyaz yazı, seçili sekme görünmez oluyordu.
+        const underCursor = item.key === (hoveredKey ?? activeKey);
+        const isActive    = item.key === activeKey;
         return (
           <Pressable
             key={item.key}
@@ -108,12 +124,16 @@ export function SlideTabBar<K extends string>({
             {...(Platform.OS === 'web' ? {
               onHoverIn: () => setHoveredKey(item.key),
             } as any : {})}
-            style={styles.pill}
+            style={[styles.pill, { paddingHorizontal: SZ.paddingHorizontal, paddingVertical: SZ.paddingVertical }]}
           >
             <Text
               style={[
                 styles.pillText,
-                { color: (isActive || isHovered) ? '#FFFFFF' : '#64748B' },
+                { fontSize: SZ.fontSize },
+                // Cursor altındaki → beyaz. Cursor başka tabdayken AKTİF olan
+                // accent rengiyle koyu kalır: hover sırasında "neredeyim"
+                // bilgisi kaybolmasın, ama gri pasiflerle de karışmasın.
+                { color: underCursor ? '#FFFFFF' : isActive ? accentColor : '#64748B' },
               ]}
             >
               {item.label}

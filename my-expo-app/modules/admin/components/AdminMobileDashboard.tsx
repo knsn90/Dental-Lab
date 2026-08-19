@@ -9,6 +9,8 @@
 //   6) Geciken vakalar list OR positive empty state
 
 import React from 'react';
+import { firstName as displayFirstName } from '../../../core/util/personName';
+import { fmtWeekdayDayMonth } from '../../../core/i18n';
 import { useTranslation } from 'react-i18next';
 import { View, Text, Pressable, ScrollView, Platform, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -33,7 +35,7 @@ function adminTodayLabel(t: (key: string) => string): string {
   const d = new Date();
   const days   = t('admin.days.long').split(', ');
   const months = t('admin.months.long').split(', ');
-  return `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]}`;
+  return fmtWeekdayDayMonth(d);
 }
 
 export interface AdminMobileDashboardProps {
@@ -86,7 +88,7 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
   const T = useMobileTokens();
   const insets = useSafeAreaInsets();
 
-  const firstName = profile?.full_name?.split(' ')[0] ?? '';
+  const firstName = displayFirstName(profile?.full_name);
   const greeting  = props.greeting ?? (firstName ? t('dashboard.greetingName', { name: firstName }) : t('dashboard.greeting'));
 
   const live = {
@@ -163,10 +165,10 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
       }}>
         <GradientFill from={EXEC.primary} to="#E89B2A" angle={135} />
         {/* Yumuşak, büyük ışık daireleri — kenara doğru tam şeffafa çözülür (keskin görünmez) */}
-        <View pointerEvents="none" style={{ position: 'absolute', top: -90, right: -70, width: 300, height: 300 }}>
+        <View pointerEvents="none" style={{ position: 'absolute', top: -90, end: -70, width: 300, height: 300 }}>
           <RadialGlow color="#FFFFFF" opacity={0.20} stopAt={68} />
         </View>
-        <View pointerEvents="none" style={{ position: 'absolute', bottom: -100, left: -60, width: 260, height: 260 }}>
+        <View pointerEvents="none" style={{ position: 'absolute', bottom: -100, start: -60, width: 260, height: 260 }}>
           <RadialGlow color="#FFFFFF" opacity={0.12} stopAt={70} />
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -375,7 +377,7 @@ function TopIconButton({ icon: Icon, onPress, badgeDot }:
           {badgeDot && (
             <View style={{
               position: 'absolute',
-              top: 7, right: 7,
+              top: 7, end: 7,
               width: 8, height: 8, borderRadius: 4,
               backgroundColor: T.ruby,
               borderWidth: 1.5, borderColor: T.card,

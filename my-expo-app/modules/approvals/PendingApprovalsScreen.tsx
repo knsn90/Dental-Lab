@@ -1,4 +1,5 @@
 import { localeTag } from '../../core/i18n';
+import { autoT } from '../../core/i18n/autoTranslate';
 /**
  * PendingApprovalsScreen — Patterns design language
  *
@@ -113,7 +114,7 @@ export function PendingApprovalsScreen() {
   const handleReject = async (profile: PendingDoctor) => {
     const ok = await confirmAction(
       'Reddet',
-      `${profile.full_name} adlı hekimin kaydını reddetmek istediğinize emin misiniz?`,
+      `${profile.full_name} ${autoT('adlı hekimin kaydını reddetmek istediğinize emin misiniz?')}`,
     );
     if (!ok) return;
 
@@ -183,37 +184,21 @@ export function PendingApprovalsScreen() {
               /* Kesikli çerçeve "buraya bırak" anlamına gelir; burası bir bırakma
                  alanı değil, boş bir liste. Sayfa genişliğinde 200px'lik kesikli
                  kutu yerine ortalanmış, sınırlı genişlikte sakin bir yüzey. */
-              <View style={{ alignItems: 'center', paddingVertical: 24 }}>
-                <View style={{
-                  alignItems: 'center', gap: 10,
-                  paddingVertical: 32, paddingHorizontal: 28,
-                  borderRadius: 24, width: '100%', maxWidth: 420,
-                  backgroundColor: T.card,
-                  borderWidth: 1,
-                  borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)',
-                  ...(Platform.OS === 'web'
-                    ? { boxShadow: isDark ? '0 4px 16px rgba(0,0,0,0.35)' : '0 4px 16px rgba(15,23,42,0.05)' } as any
-                    : null),
-                }}>
-                  <View style={{
-                    width: 56, height: 56, borderRadius: 28,
-                    alignItems: 'center', justifyContent: 'center',
-                    backgroundColor: 'rgba(45,154,107,0.10)',
-                  }}>
-                    <UserCheck size={24} color="#2D9A6B" strokeWidth={1.6} />
-                  </View>
-                  {/* Büyük punto → negatif tracking, sıkı satır yüksekliği */}
-                  <Text style={{
-                    fontSize: 20, fontWeight: '300', color: T.ink,
-                    letterSpacing: -0.5, lineHeight: 24,
-                    ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : null),
-                  }}>
-                    Bekleyen kayıt yok
-                  </Text>
-                  <Text style={{ fontSize: 12.5, color: T.ink3, textAlign: 'center', lineHeight: 18, maxWidth: 300 }}>
-                    Yeni hekim kaydı geldiğinde burada görünür.
-                  </Text>
-                </View>
+              /* Gölgeli, çerçeveli, 24 yarıçaplı kart + 56px yeşil daire —
+                 sayfanın görsel olarak EN AĞIR öğesi "burada hiçbir şey yok"
+                 mesajıydı. Boşluk kendini duyurmamalı: satır içi, çerçevesiz,
+                 sakin. Yer açılınca gerçek içerik (Son İşlemler) öne çıkıyor. */
+              <View style={{
+                flexDirection: 'row', alignItems: 'center', gap: 10,
+                paddingVertical: 18, paddingHorizontal: 2,
+              }}>
+                <UserCheck size={16} color={T.ink3} strokeWidth={1.8} />
+                <Text style={{ fontSize: 13.5, color: T.ink2, fontWeight: '500' }}>
+                  Bekleyen hekim kaydı yok
+                </Text>
+                <Text style={{ fontSize: 12.5, color: T.ink3, flexShrink: 1 }}>
+                  · yeni kayıt geldiğinde burada görünür
+                </Text>
               </View>
             ) : (
               <>

@@ -13,7 +13,7 @@ export function BootTracePanel() {
   return (
     <View
       style={{
-        position: 'fixed' as any, right: 8, bottom: 8, zIndex: 99999,
+        position: 'fixed' as any, end: 8, bottom: 8, zIndex: 99999,
         maxWidth: 560, maxHeight: 340, overflow: 'hidden',
         backgroundColor: 'rgba(10,10,10,0.92)', borderRadius: 10, padding: 10,
       }}

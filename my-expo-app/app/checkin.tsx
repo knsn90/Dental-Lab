@@ -267,7 +267,7 @@ function ErrorCard({
 
       {isOutOfRange && (
         <TouchableOpacity style={[s.btn, { backgroundColor: '#F59E0B' }]} onPress={onRetryWithoutGps}>
-          <AppIcon name="wifi-off" size={16} color="#fff" style={{ marginRight: 6 }} />
+          <AppIcon name="wifi-off" size={16} color="#fff" style={{ marginEnd: 6 }} />
           <Text style={s.btnText}>GPS Olmadan Dene</Text>
         </TouchableOpacity>
       )}

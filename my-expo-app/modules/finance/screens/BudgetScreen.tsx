@@ -1,4 +1,5 @@
 import { localeTag } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 /**
  * BudgetScreen — Bütçe vs. Gerçekleşen
  *
@@ -27,6 +28,8 @@ import { DS } from '../../../core/theme/dsTokens';
 import { toast } from '../../../core/ui/Toast';
 import { useAuthStore } from '../../../core/store/authStore';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { baseSymbol, useBaseCurrency } from '../../../core/money/baseCurrency';
 
@@ -110,6 +113,8 @@ export function BudgetScreen() {
   const { width }  = useWindowDimensions();
   const isDesktop  = width >= 900;
   const T = useMobileTokens();
+  // SlideTabBar cursor'ı beyaz metin basar → koyu ink şart.
+  const panelTheme = usePanelTheme();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   useBaseCurrency();
 
@@ -166,35 +171,14 @@ export function BudgetScreen() {
       >
         {/* Period switcher + Add button */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <View style={{
-            flexDirection: 'row', gap: 2, padding: 3,
-            borderRadius: 9999, backgroundColor: T.cardSoft,
-          }}>
-            {(['monthly','yearly'] as BudgetPeriod[]).map(p => {
-              const active = period === p;
-              return (
-                <Pressable key={p}
-                  style={{
-                    paddingHorizontal: 14, paddingVertical: 7,
-                    borderRadius: 9999,
-                    backgroundColor: active ? T.card : 'transparent',
-                    // @ts-ignore web
-                    boxShadow: active ? '0 1px 3px rgba(0,0,0,0.08)' : undefined,
-                    cursor: 'pointer',
-                  }}
-                  onPress={() => setPeriod(p)}
-                >
-                  <Text style={{
-                    fontSize: 13,
-                    fontWeight: active ? '600' : '500',
-                    color: active ? T.ink : T.ink3,
-                  }}>
-                    {p === 'monthly' ? 'Aylık' : 'Yıllık'}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <SlideTabBar
+                size="sm"
+                items={[{ key: 'monthly', label: 'Aylık' }, { key: 'yearly', label: 'Yıllık' }]}
+                activeKey={period}
+                onChange={(k) => setPeriod(k as BudgetPeriod)}
+                accentColor={panelTheme.accent}
+                style={{ marginStart: -3 }}
+              />
           <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink3 }}>
             {periodLabel(period, currentPeriodStart(period))}
           </Text>
@@ -332,7 +316,7 @@ function ProgressBar({ pct, accent }: { pct: number; accent?: string }) {
     <View style={{ height: 8, borderRadius: 4, overflow: 'hidden', backgroundColor: T.cardSoft }}>
       <View style={{ height: 8, borderRadius: 4, width: `${clamped}%`, backgroundColor: color }} />
       {pct > 100 && (
-        <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 4, backgroundColor: CHIP_TONES.danger.fg }} />
+        <View style={{ position: 'absolute', end: 0, top: 0, bottom: 0, width: 4, backgroundColor: CHIP_TONES.danger.fg }} />
       )}
     </View>
   );
@@ -350,6 +334,7 @@ function BudgetEditor({
   onSaved: () => void;
 }) {
   const T = useMobileTokens();
+  const panelTheme = usePanelTheme();
   const [category, setCategory] = useState<BudgetCategory>('total');
   const [period, setPeriod]     = useState<BudgetPeriod>('monthly');
   const [amount, setAmount]     = useState('0');
@@ -403,7 +388,7 @@ function BudgetEditor({
   const handleDelete = async () => {
     if (!record) return;
     // Alert.alert web'de no-op → cross-platform confirmAsync
-    const ok = await confirmAsync('Bütçeyi Sil', `${CATEGORY_LABEL[record.category]} bütçesi silinsin mi?`, { confirmText: 'Sil', destructive: true });
+    const ok = await confirmAsync('Bütçeyi Sil', `${autoT(CATEGORY_LABEL[record.category])} ${autoT('bütçesi silinsin mi?')}`, { confirmText: 'Sil', destructive: true });
     if (!ok) return;
     await supabase.from('budgets').delete().eq('id', record.id);
     toast.success('Silindi');
@@ -475,36 +460,14 @@ function BudgetEditor({
               <Text style={{ fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>
                 Periyot
               </Text>
-              <View style={{
-                flexDirection: 'row', gap: 2, padding: 3,
-                borderRadius: 9999, backgroundColor: T.cardSoft,
-                alignSelf: 'flex-start',
-              }}>
-                {(['monthly','yearly'] as BudgetPeriod[]).map(p => {
-                  const active = period === p;
-                  return (
-                    <Pressable key={p}
-                      style={{
-                        paddingHorizontal: 14, paddingVertical: 7,
-                        borderRadius: 9999,
-                        backgroundColor: active ? T.card : 'transparent',
-                        // @ts-ignore web
-                        boxShadow: active ? '0 1px 3px rgba(0,0,0,0.08)' : undefined,
-                        cursor: 'pointer',
-                      }}
-                      onPress={() => setPeriod(p)}
-                    >
-                      <Text style={{
-                        fontSize: 12,
-                        fontWeight: active ? '600' : '500',
-                        color: active ? T.ink : T.ink3,
-                      }}>
-                        {p === 'monthly' ? 'Aylık' : 'Yıllık'}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+              <SlideTabBar
+                size="sm"
+                items={[{ key: 'monthly', label: 'Aylık' }, { key: 'yearly', label: 'Yıllık' }]}
+                activeKey={period}
+                onChange={(k) => setPeriod(k as BudgetPeriod)}
+                accentColor={panelTheme.accent}
+                style={{ marginStart: -3 }}
+              />
             </View>
 
             <View>

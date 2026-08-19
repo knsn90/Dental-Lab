@@ -1,4 +1,5 @@
 import { localeTag } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 /**
  * ExpensesScreen — Giderler (Patterns Design Language)
  *
@@ -328,7 +329,7 @@ export function ExpensesScreen() {
     }
 
     // Manuel gider — standart sil
-    const ok = await confirm1(`"${e.description}" kaydını silmek istediğine emin misin?`);
+    const ok = await confirm1(`"${e.description}" ${autoT('kaydını silmek istediğine emin misin?')}`);
     if (!ok) return;
     const { error } = await deleteExpense(e.id);
     if (error) { toast.error('Silinemedi: ' + (error as any).message); return; }
@@ -419,8 +420,8 @@ export function ExpensesScreen() {
           backgroundColor: theme.primary, padding: 16,
           position: 'relative',
         }}>
-          <View style={{ position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.18)' }} />
-          <View style={{ position: 'absolute', bottom: -50, left: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+          <View style={{ position: 'absolute', top: -40, end: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.18)' }} />
+          <View style={{ position: 'absolute', bottom: -50, start: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
 
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
             <View>
@@ -541,7 +542,7 @@ export function ExpensesScreen() {
               backgroundColor: isDesktop ? 'rgba(15,23,42,0.18)' : 'rgba(15,23,42,0.55)',
               justifyContent: isDesktop ? 'flex-start' : 'flex-end',
               alignItems: isDesktop ? 'flex-end' : 'stretch',
-              ...(isDesktop ? { paddingTop: filterAnchor.y, paddingRight: 24 } : {}),
+              ...(isDesktop ? { paddingTop: filterAnchor.y, paddingEnd: 24 } : {}),
             }}
           >
             <Pressable
@@ -557,7 +558,7 @@ export function ExpensesScreen() {
                       elevation: 12,
                     }
                   : {
-                      borderTopLeftRadius: 24, borderTopRightRadius: 24,
+                      borderTopStartRadius: 24, borderTopEndRadius: 24,
                       paddingTop: 12, paddingBottom: Math.max(insets.bottom, 16) + 12,
                       maxHeight: '85%',
                     }),
@@ -572,7 +573,7 @@ export function ExpensesScreen() {
                 <Pressable onPress={() => { setCatFilter('all'); setSortKey('date_desc'); setDateRange('all'); setCustomFrom(''); setCustomTo(''); }} style={{ paddingHorizontal: 10, paddingVertical: 6 }}>
                   <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[500] }}>Temizle</Text>
                 </Pressable>
-                <Pressable onPress={() => setFilterOpen(false)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', marginLeft: 4 }}>
+                <Pressable onPress={() => setFilterOpen(false)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', marginStart: 4 }}>
                   <X size={16} color={DS.ink[700]} strokeWidth={2} />
                 </Pressable>
               </View>
@@ -698,10 +699,10 @@ export function ExpensesScreen() {
                 { label: 'AÇIKLAMA', flex: 3 },
                 { label: 'TARİH',   flex: 1.2 },
                 { label: 'ÖDEME',   flex: 1 },
-                { label: 'TUTAR',   flex: 1.2, align: 'right' as const },
+                { label: 'TUTAR',   flex: 1.2, align: 'end' as const },
                 { label: 'İŞLEM',   flex: 0.8 },
               ].map((h, i) => (
-                <Text key={i} style={{ flex: h.flex, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textAlign: h.align }}>
+                <Text key={i} style={{ flex: h.flex, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textAlign: h.align as any }}>
                   {h.label}
                 </Text>
               ))}
@@ -885,7 +886,7 @@ function ExpenseFormModal({
   const [category, setCategory] = useState<ExpenseCategory>('kira');
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
-  const [currency, setCurrency] = useState<'TRY' | 'EUR' | 'USD' | 'GBP'>('TRY');
+  const [currency, setCurrency] = useState<Currency>('TRY');
   const [rate, setRate] = useState('');   // manuel kur (boş = o günün TCMB'si)
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [method, setMethod] = useState<ExpensePaymentMethod>('nakit');
@@ -957,7 +958,7 @@ function ExpenseFormModal({
       // Tarih
       if (d.invoice_date) setDate(d.invoice_date);
       // Para birimi
-      if (d.currency && ['TRY', 'EUR', 'USD', 'GBP'].includes(d.currency)) {
+      if (d.currency && ['TRY', 'EUR', 'USD', 'GBP', 'IRT'].includes(d.currency)) {
         setCurrency(d.currency);
       }
       // Toplam tutar — KDV dahil tercih
@@ -1015,7 +1016,7 @@ function ExpenseFormModal({
           ))
         : await new Promise<boolean>((resolve) => {
             Alert.alert(
-              `${label} faturası mı?`,
+              `${label} ${autoT('faturası mı?')}`,
               'Doğru yer "Stok › Satın Alma" akışıdır. Yine de buradan kaydetmek istediğine emin misin?',
               [
                 { text: 'Vazgeç',  style: 'cancel',      onPress: () => resolve(false) },

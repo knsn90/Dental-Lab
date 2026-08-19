@@ -168,7 +168,7 @@ export function ClinicNameAutocomplete({
       {error ? (
         <Text style={{
           fontFamily: AUTH_FONT.sans,
-          fontSize: 11, color: AUTH.danger, marginTop: 5, marginLeft: 4, fontWeight: '500',
+          fontSize: 11, color: AUTH.danger, marginTop: 5, marginStart: 4, fontWeight: '500',
         }}>
           {error}
         </Text>
@@ -178,7 +178,7 @@ export function ClinicNameAutocomplete({
       {focused && value.length > 0 && value.length < 3 && (
         <Text style={{
           fontFamily: AUTH_FONT.sans,
-          fontSize: 10.5, color: AUTH.inkMuted, marginTop: 4, marginLeft: 4,
+          fontSize: 10.5, color: AUTH.inkMuted, marginTop: 4, marginStart: 4,
         }}>
           En az 3 karakter — adresinizi otomatik dolduralım
         </Text>
@@ -212,7 +212,7 @@ export function ClinicNameAutocomplete({
             fontSize: 10,
             color: AUTH.inkMuted,
             fontFamily: AUTH_FONT.sans,
-            textAlign: 'right',
+            textAlign: 'end' as any,
           } as any}>
             Powered by Google
           </div>

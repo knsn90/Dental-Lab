@@ -7,14 +7,62 @@ import {
 } from 'react-native';
 import { Truck, User, Building2, X, Check, Search, MapPin, Calendar, Package, Shield, Bike, CreditCard, Banknote, ChevronDown } from 'lucide-react-native';
 import { supabase } from '../../../core/api/supabase';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { createDelivery, DELIVERY_PURPOSE_LABELS, type DeliveryPurpose, type DeliveryDirection } from '../api';
 import { useBaseCurrency, CURRENCY_META } from '../../../core/money/currency';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
-import { searchPlaces, getPlaceDetails, type PlaceSuggestion } from '../../auth/api/places';
+import { searchAddressesWide, getPlaceDetails, matchesAllTokens, type PlaceSuggestion, type PlaceBias } from '../../auth/api/places';
+import { formatAddress } from '../../../core/util/formatAddress';
 import { BanaBiKuryeLogo } from './BanaBiKuryeLogo';
+import { ShipinkLogo } from './ShipinkLogo';
+import { CarrierLogo } from './CarrierLogo';
 import { FilterMenu } from '../../../core/ui/FilterMenu';
 
 interface CourierOption { id: string; full_name: string; }
+
+/**
+ * Bir Shipink taşıyıcı seçeneği — shipink-dispatch'in normalize ettiği şekil.
+ * (Ham API cevabı iç içedir: carrier_service.{id,name,price,currency,
+ * delivery_time}; normalizasyon edge function'da yapılır.)
+ */
+interface ShipinkRate {
+  carrier_service_id:  string;
+  carrier_id?:         string | null;
+  /** Taşıyıcıyı zaten içeren hizmet adı — "HepsiJET Standart" */
+  name?:               string | null;
+  price?:              number | null;
+  currency?:           string | null;
+  /** saat cinsinden tahmini teslim süresi */
+  delivery_time?:      number | null;
+  /** gönderi oluştururken gerekir; tarifeyle birlikte gelir */
+  carrier_account_id?: string | null;
+  /** 'shipink' → gönderide ödeme kartı zorunlu */
+  provider?:           string | null;
+  /** taşıyıcı markasının SVG bağlantısı (shipink-dispatch türetir) */
+  logo_url?:           string | null;
+  cheapest?:           boolean;
+  fastest?:            boolean;
+}
+
+/**
+ * 48 → "2 gün", 24 → "1 gün", 6 → "6 saat". Boş/geçersizse null.
+ * Birim sözcüğü autoT ile: şablon dizesi tek parça olduğu için otomatik
+ * sözlüğe takılmaz, yalnız sabit parça çevrilebilir.
+ */
+function deliveryEta(hours: number | null | undefined): string | null {
+  const h = Number(hours);
+  if (!isFinite(h) || h <= 0) return null;
+  return h % 24 === 0 ? `${h / 24} ${autoT('gün')}` : `${h} ${autoT('saat')}`;
+}
+
+/** Tarife satırındaki "En ucuz" / "En hızlı" işareti. */
+function Badge({ text, color }: { text: string; color: string }) {
+  return (
+    <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: `${color}18` }}>
+      <Text style={{ fontSize: 9.5, fontWeight: '700', color, letterSpacing: 0.3 }}>{text}</Text>
+    </View>
+  );
+}
 
 interface Props {
   visible:     boolean;
@@ -55,6 +103,9 @@ const BBK_VEHICLES = [
   { id: 8,  label: 'Motor', cap: '20 kg’a kadar',  enabled: true },
   { id: -1, label: 'Araba', cap: '200 kg’a kadar', enabled: false },
 ];
+
+/** Kayıtlı (kendi veritabanımızdaki) klinik adresi — Google'a hiç gitmeden. */
+interface SavedAddress { id: string; name: string; address: string; phone: string }
 
 /** Edge fonksiyonun debug gövdesini okunabilir metne çevirir (yoksa null). */
 function fmtDebug(data: any): string | null {
@@ -112,6 +163,34 @@ const DEFAULT_DIRECTION: Record<DeliveryPurpose, DeliveryDirection> = {
 };
 
 const webCursor = Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {};
+// Shipink formundaki kısa sayı alanları (il/ilçe, ağırlık, ölçüler) — hepsi aynı kutu.
+/**
+ * Para birimi simgesi. Shipink tarifeleri CURRENCY_META'da olmayan bir kod da
+ * dönebilir (yurt dışı taşıyıcı) — böyle bir durumda kodun kendisi basılır.
+ */
+function curSymbol(code: string | undefined | null): string {
+  const c = String(code ?? 'TRY');
+  return (CURRENCY_META as Record<string, { symbol?: string }>)[c]?.symbol ?? c;
+}
+
+const SHP_INPUT = {
+  borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)', borderRadius: 10,
+  paddingHorizontal: 12, paddingVertical: 10, fontSize: 13,
+  outlineWidth: 0,
+} as any;
+
+/**
+ * "…, Kadıköy/İstanbul" biçiminde biten Türkçe adresten ilçe + il çıkarır.
+ * Kayıtlı klinik adresleri düz metin tutuluyor; kargo ise il ve ilçeyi AYRI
+ * ve zorunlu istiyor. Kalıp tutmazsa boş döner — yanlış tahmin edip gönderiyi
+ * kargoya reddettirmektense alanı boş bırakıp kullanıcıya yazdırmak doğru.
+ */
+function parseTrCityDistrict(addr: string): { il: string; ilce: string } {
+  const W = '[A-Za-zÇĞİÖŞÜçğıöşü]+(?:\\s[A-Za-zÇĞİÖŞÜçğıöşü]+)?';
+  const m = String(addr || '').match(new RegExp(`(${W})\\s*/\\s*(${W})`));
+  if (!m) return { il: '', ilce: '' };
+  return { ilce: m[1].trim(), il: m[2].trim() };
+}
 // Teknik detay bloğu: hizalı JSON için tek-aralıklı yüz.
 const FONT_MONO = Platform.OS === 'ios' ? 'Menlo' : Platform.OS === 'android' ? 'monospace' : 'ui-monospace, SFMono-Regular, Menlo, monospace';
 
@@ -276,7 +355,7 @@ function ModeCard({ selected, accent, icon: Icon, label, brand, onPress }: {
 }
 
 export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated, accentColor = '#0A0A0A', lockExternal = false, editDelivery = null, extraLeg = false, stageSnapshot = null }: Props) {
-  const [mode, setMode]         = useState<'internal' | 'external' | 'banabikurye'>('external');
+  const [mode, setMode]         = useState<'internal' | 'external' | 'banabikurye' | 'shipink'>('external');
   const [couriers, setCouriers] = useState<CourierOption[]>([]);
   const [courierId, setCourierId] = useState<string | null>(null);
   const [provider, setProvider]   = useState<string>('');
@@ -319,14 +398,47 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
   const [bbkCardsLoading, setBbkCardsLoading] = useState<boolean>(false);
   // Ayrıntılar varsayılan KAPALI — çoğu gönderide hiç dokunulmuyor.
   const [bbkMoreOpen, setBbkMoreOpen] = useState(false);
-  // Aynı kuryeyle gruplama: aynı hekime ait, teslime hazır diğer işler (aynı klinik → tek durak, tek ücret)
-  const [siblings, setSiblings] = useState<{ id: string; order_number: string | null; patient_name: string | null; status: string }[]>([]);
+  // ── Shipink (kargo toplayıcı) ──
+  // Akış BanaBiKurye'den farklı: fiyat sorgusu TEK bir tutar değil, taşıyıcı
+  // LİSTESİ döndürür — kullanıcı hangi kargoyla gideceğini de burada seçer.
+  const [shpBusy, setShpBusy]           = useState(false);
+  const [shpRates, setShpRates]         = useState<ShipinkRate[]>([]);
+  const [shpServiceId, setShpServiceId] = useState<string | null>(null);
+  const [shpWeight, setShpWeight] = useState('1');
+  const [shpLength, setShpLength] = useState('20');
+  const [shpWidth,  setShpWidth]  = useState('15');
+  const [shpHeight, setShpHeight] = useState('10');
+  // Shipink şemasında state = İL, city = İLÇE ve ikisi de zorunlu. Adres
+  // seçilince otomatik dolar; kullanıcı düzeltebilir.
+  const [shpState, setShpState] = useState('');
+  const [shpCity,  setShpCity]  = useState('');
+  const [shpZip,   setShpZip]   = useState('');
+  // Aynı kuryeyle gruplama: aynı KLİNİĞE gidecek, teslime hazır diğer işler
+  // (tek durak, tek ücret). Aynı klinikte başka hekimin işi de aday — çipte
+  // hekim adı yazılır ki hangi işin eklendiği belirsiz kalmasın.
+  const [siblings, setSiblings] = useState<{ id: string; order_number: string | null; patient_name: string | null; status: string; doctor_name: string | null }[]>([]);
+  const [siblingsLoaded, setSiblingsLoaded] = useState(false);
   const [groupIds, setGroupIds] = useState<string[]>([]);
   // Google Places adres arama + onay (BanaBiKurye teslim adresi) — client-side places modülü
   const [addrQuery, setAddrQuery]       = useState('');
   const [addrResults, setAddrResults]   = useState<PlaceSuggestion[]>([]);
   const [addrSelected, setAddrSelected] = useState<{ name: string; address: string; lat: string | null; lng: string | null; phone: string } | null>(null);
   const [addrSearching, setAddrSearching] = useState(false);
+  // Kayıtlı klinik adresleri — modal açılınca bir kez çekilir, yazarken yerelde
+  // filtrelenir. Sık senaryoda (zaten sistemde kayıtlı klinik) Google'a hiç
+  // gidilmez: hem anında sonuç hem sıfır maliyet.
+  const [savedAddrs, setSavedAddrs] = useState<SavedAddress[]>([]);
+  // Konum yanlılığı: lab koordinatı. Kısa/eksik sorgularda ("selin diş")
+  // Google'ın Türkiye genelinde değil, labın çevresinde araması için.
+  const [placeBias, setPlaceBias] = useState<PlaceBias | null>(null);
+  // Ön-doldurulan klinik ünvanı için otomatik arama yapılmaz (bedava değil);
+  // yalnız kullanıcı yazmaya başlayınca canlı arama devreye girer.
+  const [addrTouched, setAddrTouched] = useState(false);
+
+  /** Kayıtlı adreslerden sorguya uyanlar (en fazla 5). */
+  const savedMatches = addrQuery.trim().length >= 2 && !addrSelected
+    ? savedAddrs.filter((c) => matchesAllTokens(addrQuery, c.name, c.address)).slice(0, 5)
+    : [];
   // Ara hareket: amaç + yön + ücret (masraf her zaman lab gideri, işe yazılır)
   const [purpose, setPurpose]     = useState<DeliveryPurpose>('teslimat');
   const [direction, setDirection] = useState<DeliveryDirection>('lab_to_clinic');
@@ -366,12 +478,41 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
     setBbkApartment(''); setBbkIntercom(''); setBbkLoaders(false); setBbkNotify(true);
     setBbkPayment('cash'); setBbkBankCards([]); setBbkBankCardId(null); setBbkCardsLoading(false);
     setBbkMoreOpen(false);
+    setShpBusy(false); setShpRates([]); setShpServiceId(null);
+    setShpWeight('1'); setShpLength('20'); setShpWidth('15'); setShpHeight('10');
+    setShpState(''); setShpCity(''); setShpZip('');
     setFee('');
     // Varsayılan her iki akışta da 'teslimat' — en sık sebep bu.
     setPurpose('teslimat');
     setDirection('lab_to_clinic');
-    setAddrQuery(''); setAddrResults([]); setAddrSelected(null);
-    setSiblings([]); setGroupIds([]);
+    setAddrQuery(''); setAddrResults([]); setAddrSelected(null); setAddrTouched(false);
+    // Kayıtlı klinik adresleri + arama için lab konumu (ikisi de tek seferlik)
+    supabase
+      .from('clinics')
+      .select('id, name, address, phone')
+      .eq('lab_id', labId)
+      .not('address', 'is', null)
+      .limit(500)
+      .then(({ data }) => setSavedAddrs(
+        ((data ?? []) as any[])
+          // clinics.address polimorfik: bazı kayıtlar düz metin, bazıları
+          // {"il":…,"ilce":…} JSON. Ham basılırsa kullanıcı küme parantezli
+          // çöp görüyor — okunabilir tek satıra çevir. Arama da bu çevrilmiş
+          // metin üzerinde yapılır ("il"/"ilce" anahtarları eşleşmeye karışmasın).
+          .map((c) => ({ id: c.id, name: c.name ?? '', address: formatAddress(c.address), phone: c.phone ?? '' }))
+          .filter((c) => c.address.trim()),
+      ));
+    supabase
+      .from('labs')
+      .select('location_lat, location_lng')
+      .eq('id', labId)
+      .maybeSingle()
+      .then(({ data }) => {
+        const lat = Number((data as any)?.location_lat);
+        const lng = Number((data as any)?.location_lng);
+        setPlaceBias(isFinite(lat) && isFinite(lng) && (lat || lng) ? { lat, lng } : null);
+      });
+    setSiblings([]); setGroupIds([]); setSiblingsLoaded(false);
     if (editDelivery) setMode('banabikurye');        // düzenleme → BanaBiKurye modu sabit
     else if (lockExternal) setMode('external');      // kargo → iç kurye kapalı
     // Adres aramasını siparişin klinik ünvanıyla ön-doldur
@@ -387,26 +528,55 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
       }
       if (label) setAddrQuery(label);
     })();
-    // Aynı kuryeyle gruplama: aynı hekime ait, teslime hazır, aktif teslimatı olmayan
-    // diğer işleri getir (final teslimat akışı; ara hareket/düzenleme'de gizli).
-    if (!extraLeg && !editDelivery) {
+    // Aynı kuryeyle gruplama: aynı KLİNİĞE gidecek, teslime hazır, aktif teslimatı
+    // olmayan diğer işler. Hem final teslimatta hem ara hareket çağrısında geçerli;
+    // yalnız mevcut teslimatı düzenlerken kapalı (o kayıt tek işe bağlı).
+    setSiblingsLoaded(false);
+    if (!editDelivery) {
       (async () => {
         const { data: wo } = await supabase.from('work_orders').select('doctor_id').eq('id', workOrderId).maybeSingle();
-        if (!(wo as any)?.doctor_id) return;
+        const ownDoctorId = (wo as any)?.doctor_id ?? null;
+        if (!ownDoctorId) { setSiblingsLoaded(true); return; }
+
+        // Klinik kapsamı: hekimin kliniğindeki TÜM hekimlerin işleri aday
+        // (tek durak, tek ücret). Kliniksiz hekimde yalnız kendi işleri.
+        const { data: own } = await supabase.from('doctors').select('clinic_id').eq('id', ownDoctorId).maybeSingle();
+        const clinicId = (own as any)?.clinic_id ?? null;
+        let doctorIds: string[] = [ownDoctorId];
+        if (clinicId) {
+          const { data: mates } = await supabase.from('doctors').select('id').eq('clinic_id', clinicId);
+          const ids = ((mates ?? []) as any[]).map((d) => d.id).filter(Boolean);
+          if (ids.length) doctorIds = Array.from(new Set([ownDoctorId, ...ids]));
+        }
+
         const { data: cand } = await supabase
           .from('work_orders')
-          .select('id, order_number, patient_name, status')
-          .eq('doctor_id', (wo as any).doctor_id)
+          .select('id, order_number, patient_name, status, doctor_id')
+          .in('doctor_id', doctorIds)
           .in('status', ['teslimata_hazir', 'kurye_bekleniyor'])
           .neq('id', workOrderId)
           .order('created_at', { ascending: false })
           .limit(20);
         const list = ((cand ?? []) as any[]);
-        if (!list.length) return;
+        if (!list.length) { setSiblingsLoaded(true); return; }
+
         // Zaten aktif teslimatı (yolda/atanmış) olanları çıkar
         const { data: dels } = await supabase.from('deliveries').select('work_order_id, status').in('work_order_id', list.map((x) => x.id));
         const busy = new Set(((dels ?? []) as any[]).filter((d) => d.status !== 'teslim_edildi' && d.status !== 'iptal').map((d) => d.work_order_id));
-        setSiblings(list.filter((x) => !busy.has(x.id)));
+        const fresh = list.filter((x) => !busy.has(x.id));
+
+        // Başka hekimin işi ise hekim adı çipte görünsün
+        const otherDocIds = Array.from(new Set(fresh.map((x) => x.doctor_id).filter((d) => d && d !== ownDoctorId)));
+        const nameMap: Record<string, string> = {};
+        if (otherDocIds.length) {
+          const { data: docs } = await supabase.from('doctors').select('id, full_name').in('id', otherDocIds);
+          ((docs ?? []) as any[]).forEach((d) => { if (d?.id) nameMap[d.id] = d.full_name ?? ''; });
+        }
+        setSiblings(fresh.map((x) => ({
+          id: x.id, order_number: x.order_number, patient_name: x.patient_name, status: x.status,
+          doctor_name: nameMap[x.doctor_id] || null,
+        })));
+        setSiblingsLoaded(true);
       })();
     }
     // Internal kurye listesi
@@ -422,6 +592,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
   async function handleSubmit() {
     setError(null);
     if (mode === 'banabikurye') return; // BanaBiKurye kendi akışını kullanır (handleBbkCreate)
+    if (mode === 'shipink') return;     // Shipink kendi akışını kullanır (handleShpCreate)
     if (mode === 'internal' && !courierId) { setError('Kurye seçin'); return; }
     if (mode === 'external' && !provider && !tracking) { setError('Firma veya takip no girin'); return; }
     setSaving(true);
@@ -439,21 +610,69 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
       feeSource:     'manuel',
       stageSnapshot: stageSnapshot ?? undefined,
     });
+    if (!res.ok) { setSaving(false); setError(res.error ?? 'Oluşturulamadı'); return; }
+
+    // Aynı kuryeyle giden ek işler — yalnız iç kuryede (dış kargoda gruplama yok).
+    // Her iş için AYRI teslimat satırı, aynı kurye; ÜCRET YOK (tek gider birincilde
+    // kalır, gider trigger'ı fee null satırda kayıt açmaz).
+    if (mode === 'internal' && groupIds.length) {
+      for (const wid of groupIds) {
+        await createDelivery({
+          workOrderId: wid,
+          mode: 'internal',
+          courierId: courierId ?? undefined,
+          notes: notes.trim() || undefined,
+          purpose,
+          direction,
+          feeAmount: null,
+          feeCurrency: null,
+          stageSnapshot: stageSnapshot ?? undefined,
+        });
+      }
+    }
     setSaving(false);
-    if (!res.ok) { setError(res.error ?? 'Oluşturulamadı'); return; }
     onCreated(res.deliveryId!);
     onClose();
   }
 
-  // Google Places — klinik ünvanından adres ara (client-side, mevcut anahtar)
-  async function handleAddrSearch() {
+  // Google Places — klinik ünvanından adres ara (client-side, mevcut anahtar).
+  // `searchAddressesWide` kademeli çalışır: autocomplete → ünvansız autocomplete
+  // → text search. "Dt. Selin Odabaşı" gibi sadece autocomplete'in bulamadığı
+  // ünvanlar bu sayede sonuç veriyor.
+  async function handleAddrSearch(quiet = false) {
     const q = addrQuery.trim();
-    if (q.length < 3) { setError('Arama için en az 3 karakter yaz.'); return; }
+    if (q.length < 3) { if (!quiet) setError('Arama için en az 3 karakter yaz.'); return; }
     setError(null); setAddrSearching(true);
-    const results = await searchPlaces(q);
+    const results = await searchAddressesWide(q, placeBias);
     setAddrSearching(false);
     setAddrResults(results);
-    if (results.length === 0) setError('Eşleşen adres bulunamadı — ünvanı değiştir veya kayıtlı klinik adresi kullanılacak.');
+    // Kayıtlı adreslerden eşleşme varsa "bulunamadı" demek yanlış olur.
+    if (results.length === 0 && !quiet && savedMatches.length === 0) {
+      setError('Eşleşen adres bulunamadı — ünvanı kısalt (ör. sadece klinik adı) veya kayıtlı klinik adresi kullanılacak.');
+    }
+  }
+
+  // Canlı arama — kullanıcı yazmayı bıraktıktan 500 ms sonra. Ön-doldurulan
+  // ünvan için çalışmaz (addrTouched), yoksa modal her açılışta ücretli bir
+  // Places çağrısı yapardı.
+  useEffect(() => {
+    if (!visible || !addrTouched || addrSelected) return;
+    const q = addrQuery.trim();
+    if (q.length < 3) { setAddrResults([]); return; }
+    const t = setTimeout(() => { void handleAddrSearch(true); }, 500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addrQuery, addrTouched, addrSelected, visible, placeBias]);
+
+  /** Kayıtlı klinik adresi seçildi — Google detay çağrısı gerekmez. */
+  function handleSelectSaved(c: SavedAddress) {
+    setError(null);
+    setAddrSelected({ name: c.name, address: c.address, lat: null, lng: null, phone: c.phone || '' });
+    // Kayıtlı adres düz metin — kargo için il/ilçeyi kalıptan çıkarmayı dene.
+    const parsed = parseTrCityDistrict(c.address);
+    if (parsed.il)   setShpState(parsed.il);
+    if (parsed.ilce) setShpCity(parsed.ilce);
+    setAddrResults([]); setBbkPrice(null); resetShpRates();
   }
 
   // Aday seçildi → detay (adres+konum+telefon) çek
@@ -469,7 +688,11 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
       lng: det.lng != null ? String(det.lng) : null,
       phone: det.phone || '',
     });
-    setAddrResults([]); setBbkPrice(null);
+    // Kargo il/ilçeyi ayrı istiyor — Places detayında zaten ayrışmış geliyor.
+    if (det.il)        setShpState(det.il);
+    if (det.ilce)      setShpCity(det.ilce);
+    if (det.postaKodu) setShpZip(det.postaKodu);
+    setAddrResults([]); setBbkPrice(null); resetShpRates();
   }
 
   // Seçilen adres override'ını calculate/create body'sine ekler
@@ -621,6 +844,206 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
     onClose();
   }
 
+  /** Paket ya da adres değişince önceki fiyat listesi geçersizdir. */
+  function resetShpRates() { setShpRates([]); setShpServiceId(null); }
+
+  /** "1,5" → 1.5 ; geçersiz/boşsa verilen varsayılan. */
+  function num(raw: string, fallback: number): number {
+    const n = Number(String(raw).replace(',', '.'));
+    return isFinite(n) && n > 0 ? n : fallback;
+  }
+
+  /** Shipink — adres + paket bilgisini API gövdesine çevirir. */
+  function shpBody() {
+    return {
+      work_order_id: workOrderId,
+      direction,
+      note: notes.trim() || undefined,
+      recipient_name:   addrSelected?.name || undefined,
+      recipient_phone:  addrSelected?.phone || undefined,
+      recipient_street: addrSelected?.address || undefined,
+      recipient_state:  shpState.trim() || undefined,   // İL
+      recipient_city:   shpCity.trim()  || undefined,   // İLÇE
+      recipient_zip:    shpZip.trim()   || undefined,
+      packages: [{
+        weight: num(shpWeight, 1),
+        length: num(shpLength, 20),
+        width:  num(shpWidth, 15),
+        height: num(shpHeight, 10),
+      }],
+    };
+  }
+
+  /** Shipink — taşıyıcı fiyatlarını sorgula (gönderi OLUŞTURMAZ, ücretsiz). */
+  async function handleShpRates() {
+    if (!shpState.trim() || !shpCity.trim()) {
+      setError('Kargo için alıcının ili ve ilçesi zorunlu.'); return;
+    }
+    setError(null); setErrDetail(null); setErrOpen(false); setShpBusy(true);
+    const { data, error: err } = await supabase.functions.invoke('shipink-dispatch', {
+      body: { action: 'rates', ...shpBody() },
+    });
+    setShpBusy(false);
+    if (err || !(data as any)?.ok) {
+      setError((data as any)?.message ?? err?.message ?? 'Fiyat alınamadı');
+      setErrDetail(fmtDebug(data)); return;
+    }
+    const rates = ((data as any).rates ?? []) as ShipinkRate[];
+    setShpRates(rates);
+    // Tek seçenek varsa seçtir — kullanıcıya anlamsız bir tıklama bırakma.
+    setShpServiceId(rates.length === 1 ? String(rates[0].carrier_service_id) : null);
+    if (!rates.length) {
+      setError('Bu adrese gönderi yapan taşıyıcı bulunamadı — Shipink hesabınızdaki bağlı taşıyıcıları kontrol edin.');
+    }
+  }
+
+  /** Shipink — seçili taşıyıcıyla gönderi oluştur (GERÇEK, ücretli işlem). */
+  async function handleShpCreate() {
+    if (!shpServiceId) { setError('Taşıyıcı seçin.'); return; }
+    setError(null); setErrDetail(null); setErrOpen(false); setShpBusy(true);
+    const rate = shpRates.find((r) => String(r.carrier_service_id) === shpServiceId) ?? null;
+    const { data, error: err } = await supabase.functions.invoke('shipink-dispatch', {
+      body: {
+        action: 'create',
+        carrier_service_id: shpServiceId,
+        // Hesap id'si ve sağlayıcı tarifenin içinde geliyor — bunları geçince
+        // edge function ayrıca /carrier-accounts sorgulamak zorunda kalmaz.
+        carrier_account_id: rate?.carrier_account_id ?? undefined,
+        carrier_provider:   rate?.provider ?? undefined,
+        ...shpBody(),
+      },
+    });
+    if (err || !(data as any)?.ok) {
+      setShpBusy(false);
+      setError((data as any)?.message ?? err?.message ?? 'Gönderi oluşturulamadı');
+      setErrDetail(fmtDebug(data)); return;
+    }
+    const d = data as any;
+    // Fiyat API'den ZATEN sayı geliyor — parseFee TR metin formatı için;
+    // noktayı binlik ayıracı sanıp 241.16'yı 24116 yapar (BanaBiKurye'de yaşandı).
+    const priceNum = Number(d.price ?? rate?.price);
+    const fee = isFinite(priceNum) && priceNum >= 0 ? priceNum : null;
+    const res = await createDelivery({
+      workOrderId,
+      mode: 'external',
+      externalProvider: 'Shipink',
+      externalTrackingNo: d.tracking_number ? String(d.tracking_number) : undefined,
+      notes: notes.trim() || undefined,
+      purpose,
+      direction,
+      feeAmount:     fee,
+      feeCurrency:   fee != null ? String(d.currency ?? rate?.currency ?? 'TRY') : null,
+      feeSource:     fee != null ? 'shipink' : undefined,
+      stageSnapshot: stageSnapshot ?? undefined,
+    });
+    if (!res.ok) {
+      setShpBusy(false);
+      setError('Gönderi oluştu ama teslimat kaydı açılmadı: ' + (res.error ?? ''));
+      return;
+    }
+    // Gönderi id'si + etiket bağlantısı: iptal ve etiket uçları takip numarasını
+    // DEĞİL Shipink'in kendi id'sini ister, o yüzden ayrı kolonda saklanır.
+    if (d.shipment_id || d.label_url) {
+      await supabase.from('deliveries').update({
+        external_tracking_code: d.shipment_id ? String(d.shipment_id) : null,
+        external_label_url:     d.label_url ?? null,
+      }).eq('id', res.deliveryId!);
+    }
+    setShpBusy(false);
+    onCreated(res.deliveryId!);
+    onClose();
+  }
+
+  /** Seçili taşıyıcı tarifesi — buton etiketinde fiyatı göstermek için. */
+  const shpSelectedRate = shpRates.find((r) => String(r.carrier_service_id) === shpServiceId) ?? null;
+  const shpPriceLabel = shpSelectedRate?.price != null
+    ? `${curSymbol(shpSelectedRate.currency)}${(Number(shpSelectedRate.price) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : null;
+
+  /**
+   * Teslim/alış adresi arama bloğu — BanaBiKurye ve Shipink akışlarının
+   * ORTAK parçası. İki yerde ayrı ayrı durduğunda arama davranışı zamanla
+   * ayrışıyor; tek kaynak olarak burada duruyor.
+   */
+  // Google Places'ten ünvanla ara + onay (doğru adres)
+  const addressBlock = (
+            <View style={{ gap: 8 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#6B6B6B', letterSpacing: 0.6, textTransform: 'uppercase' }}>{direction === 'clinic_to_lab' ? 'Alış Adresi (Klinik)' : 'Teslim Adresi'}</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TextInput
+                  value={addrQuery}
+                  onChangeText={(t) => { setAddrQuery(t); setAddrTouched(true); }}
+                  placeholder="Klinik adı, hekim adı veya adres…"
+                  onSubmitEditing={() => handleAddrSearch()}
+                  style={{ flex: 1, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, /* @ts-ignore */ outlineWidth: 0 }}
+                />
+                <Pressable
+                  onPress={() => handleAddrSearch()}
+                  disabled={addrSearching}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, borderRadius: 10, backgroundColor: `${accentColor}14`, borderWidth: 1, borderColor: `${accentColor}30`, opacity: addrSearching ? 0.6 : 1 }}
+                >
+                  <Search size={14} color={accentColor} strokeWidth={2} />
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: accentColor }}>{addrSearching ? '…' : 'Ara'}</Text>
+                </Pressable>
+              </View>
+              <Text style={{ fontSize: 10.5, color: '#9A9A9A' }}>Klinik adı, hekim adı veya adresin bir parçasını yazabilirsin. Seçmezsen kayıtlı klinik adresi kullanılır.</Text>
+
+              {/* Kayıtlı adresler — sistemdeki klinikler. Google'dan önce
+                  gelir: hem daha doğru (bizim doğruladığımız adres) hem
+                  anında, hem ücretsiz. */}
+              {savedMatches.length > 0 && (
+                <>
+                  <Text style={{ fontSize: 9.5, fontWeight: '700', color: '#9A9A9A', letterSpacing: 0.6, textTransform: 'uppercase', marginTop: 2 }}>Kayıtlı klinikler</Text>
+                  {savedMatches.map((c) => (
+                    <Pressable
+                      key={c.id}
+                      onPress={() => handleSelectSaved(c)}
+                      style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: `${accentColor}28`, backgroundColor: `${accentColor}08` }}
+                    >
+                      <Building2 size={14} color={accentColor} strokeWidth={1.8} style={{ marginTop: 2 }} />
+                      <View style={{ flex: 1 }}>
+                        {!!c.name && <Text style={{ fontSize: 12.5, fontWeight: '600', color: '#0A0A0A' }}>{c.name}</Text>}
+                        <Text style={{ fontSize: 11.5, color: '#6B6B6B', lineHeight: 16 }}>{c.address}</Text>
+                      </View>
+                    </Pressable>
+                  ))}
+                </>
+              )}
+
+              {/* Aday adresler (Google Places autocomplete + text search) */}
+              {savedMatches.length > 0 && addrResults.length > 0 && (
+                <Text style={{ fontSize: 9.5, fontWeight: '700', color: '#9A9A9A', letterSpacing: 0.6, textTransform: 'uppercase', marginTop: 2 }}>Haritadan</Text>
+              )}
+              {addrResults.map((rsp) => (
+                <Pressable
+                  key={rsp.placeId}
+                  onPress={() => handleSelectPlace(rsp)}
+                  style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#FFF' }}
+                >
+                  <MapPin size={14} color={accentColor} strokeWidth={1.8} style={{ marginTop: 2 }} />
+                  <View style={{ flex: 1 }}>
+                    {!!rsp.mainText && <Text style={{ fontSize: 12.5, fontWeight: '600', color: '#0A0A0A' }}>{rsp.mainText}</Text>}
+                    {!!rsp.secondaryText && <Text style={{ fontSize: 11.5, color: '#6B6B6B', lineHeight: 16 }}>{rsp.secondaryText}</Text>}
+                  </View>
+                </Pressable>
+              ))}
+
+              {/* Seçili adres */}
+              {addrSelected && (
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: `${accentColor}40`, backgroundColor: `${accentColor}0C` }}>
+                  <Check size={14} color={accentColor} strokeWidth={2.4} style={{ marginTop: 2 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 10.5, fontWeight: '700', color: accentColor, letterSpacing: 0.4, textTransform: 'uppercase' }}>Seçili teslim adresi</Text>
+                    <Text style={{ fontSize: 12, color: '#0A0A0A', lineHeight: 16, marginTop: 2 }}>{addrSelected.address}</Text>
+                  </View>
+                  <Pressable onPress={() => { setAddrSelected(null); setBbkPrice(null); resetShpRates(); }} hitSlop={8}>
+                    <X size={14} color="#9A9A9A" />
+                  </Pressable>
+                </View>
+              )}
+            </View>
+  );
+
   if (!visible) return null;
 
   return (
@@ -675,35 +1098,28 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                     icon={Package}
                     title="Teslimat"
                     desc="Biten işi kliniğe gönder · siparişin final teslimatı olarak kaydedilir"
-                    onPress={() => { setPurpose(FINAL_PURPOSE); setDirection(DEFAULT_DIRECTION.teslimat); setBbkPrice(null); setBbkBreakdown(null); }}
+                    onPress={() => { setPurpose(FINAL_PURPOSE); setDirection(DEFAULT_DIRECTION.teslimat); setBbkPrice(null); setBbkBreakdown(null); resetShpRates(); }}
                   />
 
-                  <Text style={{ fontSize: 10.5, color: '#9A9A9A', marginTop: 2 }}>Ara hareket</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                    {EXTRA_PURPOSES.map(p => {
-                      const on = purpose === p;
-                      return (
-                        <Pressable
-                          key={p}
-                          onPress={() => { setPurpose(p); setDirection(DEFAULT_DIRECTION[p]); setBbkPrice(null); setBbkBreakdown(null); }}
-                          style={({ pressed }: any) => ({
-                            flexDirection: 'row', alignItems: 'center', gap: 5,
-                            paddingLeft: on ? 9 : 12, paddingRight: 12, paddingVertical: 8,
-                            borderRadius: 999,
-                            borderWidth: 1, borderColor: on ? accentColor : 'rgba(0,0,0,0.10)',
-                            backgroundColor: on ? `${accentColor}14` : '#FFF',
-                            opacity: pressed ? 0.6 : 1,
-                            transform: [{ scale: pressed ? 0.97 : 1 }],
-                            ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                          })}
-                        >
-                          {on ? <Check size={12} color={accentColor} strokeWidth={3} /> : null}
-                          <Text style={{ fontSize: 12, fontWeight: on ? '700' : '500', color: on ? accentColor : '#3C3C3C' }}>
-                            {DELIVERY_PURPOSE_LABELS[p]}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
+                  {/* Altı ara hareket pill olarak iki satır kaplıyordu ve asıl
+                      seçim olan Teslimat kartını aşağı itiyordu. Menüye alındı:
+                      seçili olan tetikleyicide okunur, hiçbir seçenek kaybolmaz.
+                      "Seçilmedi" → final teslimata (üstteki kart) geri döner. */}
+                  <View style={{ alignSelf: 'flex-start' }}>
+                    <FilterMenu
+                      label="Ara hareket"
+                      items={[
+                        { key: '', label: 'Seçilmedi' },
+                        ...EXTRA_PURPOSES.map(p => ({ key: p, label: DELIVERY_PURPOSE_LABELS[p] })),
+                      ]}
+                      active={purpose === FINAL_PURPOSE ? '' : purpose}
+                      onChange={(k) => {
+                        const np = (k || FINAL_PURPOSE) as DeliveryPurpose;
+                        setPurpose(np); setDirection(DEFAULT_DIRECTION[np]);
+                        setBbkPrice(null); setBbkBreakdown(null); resetShpRates();
+                      }}
+                      accent={accentColor}
+                    />
                   </View>
                 </View>
 
@@ -712,7 +1128,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                   <SegmentRow
                     accent={accentColor}
                     value={direction}
-                    onChange={(v) => { setDirection(v as DeliveryDirection); setBbkPrice(null); setBbkBreakdown(null); }}
+                    onChange={(v) => { setDirection(v as DeliveryDirection); setBbkPrice(null); setBbkBreakdown(null); resetShpRates(); }}
                     items={[
                       { id: 'lab_to_clinic', label: 'Lab → Klinik' },
                       { id: 'clinic_to_lab', label: 'Klinik → Lab' },
@@ -741,7 +1157,9 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                   accent={accentColor}
                   icon={Building2}
                   label="Dış Kargo"
-                  onPress={() => { setMode('external'); setBbkPrice(null); setError(null); }}
+                  // Kargoda gruplama yok — seçim taşınmasın (gizli seçimle sessizce
+                  // ek teslimat açılmaz).
+                  onPress={() => { setMode('external'); setBbkPrice(null); setError(null); setGroupIds([]); }}
                 />
                 {/* BanaBiKurye kardeşleriyle aynı anatomiyi taşır (ikon yuvası +
                     etiket satırı). Marka sözcük-işareti seçili değilken sönük,
@@ -753,8 +1171,77 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                   brand={<BanaBiKuryeLogo width={84} height={16} />}
                   onPress={() => { setMode('banabikurye'); setBbkPrice(null); setError(null); }}
                 />
+                {/* Shipink kargo toplayıcı — gruplama yok (tek gönderi, tek iş),
+                    o yüzden seçilince grup seçimi temizlenir. */}
+                <ModeCard
+                  selected={mode === 'shipink'}
+                  accent={accentColor}
+                  label="Kargo"
+                  brand={<ShipinkLogo width={62} height={16} />}
+                  onPress={() => { setMode('shipink'); setBbkPrice(null); setError(null); setGroupIds([]); resetShpRates(); }}
+                />
               </View>
             </View>
+            )}
+
+            {/* ── Aynı kuryeyle gönder: aynı kliniğe gidecek teslime hazır diğer işler ──
+                Bizim Kurye + BanaBiKurye'de geçerli (tek durak). Dış kargoda yok:
+                orada gruplama takip no'ya bağlı, firma tarafında karşılığı yok.
+                Aday yoksa bölüm KAYBOLMAZ — bilgi satırı kalır, yoksa özellik
+                silinmiş gibi görünüyordu. */}
+            {!editDelivery && (mode === 'internal' || mode === 'banabikurye') && (
+              <View style={{ gap: 8 }}>
+                <Text style={SECTION_LBL}>Aynı Kuryeyle Gönder</Text>
+                {!siblingsLoaded && siblings.length === 0 ? (
+                  <Text style={{ fontSize: 11.5, color: '#9A9A9A' }}>Uygun işler aranıyor…</Text>
+                ) : siblings.length === 0 ? (
+                  <Text style={{ fontSize: 11.5, color: '#9A9A9A', lineHeight: 16 }}>
+                    Şu an aynı kliniğe gidecek, teslime hazır başka iş yok — bu gönderi tek iş içerir.
+                  </Text>
+                ) : (
+                  <>
+                    <Text style={{ fontSize: 11, color: '#6B6B6B', lineHeight: 16 }}>
+                      Aynı kliniğe gidecek teslime hazır işleri seç — tek kurye, tek ücret. Her iş kendi kaydında bu kuryeyi gösterir.
+                    </Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                      {siblings.map((sb) => {
+                        const on = groupIds.includes(sb.id);
+                        return (
+                          <Pressable
+                            key={sb.id}
+                            onPress={() => { setGroupIds((prev) => on ? prev.filter((x) => x !== sb.id) : [...prev, sb.id]); setBbkPrice(null); setBbkBreakdown(null); }}
+                            style={{
+                              flexDirection: 'row', alignItems: 'center', gap: 6,
+                              paddingHorizontal: 11, paddingVertical: 8, borderRadius: 10,
+                              borderWidth: 1.5, borderColor: on ? accentColor : 'rgba(0,0,0,0.08)',
+                              backgroundColor: on ? `${accentColor}0C` : '#FFF',
+                              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                            }}
+                          >
+                            {on
+                              ? <Check size={13} color={accentColor} strokeWidth={2.6} />
+                              : <Package size={13} color="#9A9A9A" strokeWidth={1.8} />}
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: on ? accentColor : '#0A0A0A' }}>
+                              #{sb.order_number ?? '—'}
+                            </Text>
+                            {!!sb.patient_name && (
+                              <Text style={{ fontSize: 11, color: '#6B6B6B' }}>· {sb.patient_name}</Text>
+                            )}
+                            {!!sb.doctor_name && (
+                              <Text style={{ fontSize: 10.5, color: '#9A9A9A' }}>· {sb.doctor_name}</Text>
+                            )}
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                    {groupIds.length > 0 && (
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: accentColor }}>
+                        {groupIds.length + 1} iş tek gönderide birleştirilecek.
+                      </Text>
+                    )}
+                  </>
+                )}
+              </View>
             )}
 
             {/* Internal — courier list */}
@@ -835,48 +1322,6 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                   </Text>
                 </View>
 
-                {/* ── Aynı kuryeyle gönder: aynı hekime ait teslime hazır diğer işler ── */}
-                {!editDelivery && siblings.length > 0 && (
-                  <View style={{ gap: 8 }}>
-                    <Text style={SECTION_LBL}>Aynı Kuryeyle Gönder</Text>
-                    <Text style={{ fontSize: 11, color: '#6B6B6B', lineHeight: 16 }}>
-                      Aynı hekime ait teslime hazır işleri seç — tek kurye, tek ücret. Her iş kendi kaydında bu kuryeyi gösterir.
-                    </Text>
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                      {siblings.map((sb) => {
-                        const on = groupIds.includes(sb.id);
-                        return (
-                          <Pressable
-                            key={sb.id}
-                            onPress={() => setGroupIds((prev) => on ? prev.filter((x) => x !== sb.id) : [...prev, sb.id])}
-                            style={{
-                              flexDirection: 'row', alignItems: 'center', gap: 6,
-                              paddingHorizontal: 11, paddingVertical: 8, borderRadius: 10,
-                              borderWidth: 1.5, borderColor: on ? accentColor : 'rgba(0,0,0,0.08)',
-                              backgroundColor: on ? `${accentColor}0C` : '#FFF',
-                            }}
-                          >
-                            {on
-                              ? <Check size={13} color={accentColor} strokeWidth={2.6} />
-                              : <Package size={13} color="#9A9A9A" strokeWidth={1.8} />}
-                            <Text style={{ fontSize: 12, fontWeight: '700', color: on ? accentColor : '#0A0A0A' }}>
-                              #{sb.order_number ?? '—'}
-                            </Text>
-                            {!!sb.patient_name && (
-                              <Text style={{ fontSize: 11, color: '#6B6B6B' }}>· {sb.patient_name}</Text>
-                            )}
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                    {groupIds.length > 0 && (
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: accentColor }}>
-                        {groupIds.length + 1} iş tek gönderide birleştirilecek.
-                      </Text>
-                    )}
-                  </View>
-                )}
-
                 {/* ── Gönderi seçenekleri (düzenlemede gizli) ── */}
                 {!editDelivery && (
                   <>
@@ -942,57 +1387,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                   </>
                 )}
 
-                {/* Teslim adresi — Google Places'ten ünvanla ara + onay (doğru adres) */}
-                <View style={{ gap: 8 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#6B6B6B', letterSpacing: 0.6, textTransform: 'uppercase' }}>{direction === 'clinic_to_lab' ? 'Alış Adresi (Klinik)' : 'Teslim Adresi'}</Text>
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <TextInput
-                      value={addrQuery}
-                      onChangeText={setAddrQuery}
-                      placeholder="Klinik ünvanı / adres ara…"
-                      onSubmitEditing={handleAddrSearch}
-                      style={{ flex: 1, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, /* @ts-ignore */ outlineWidth: 0 }}
-                    />
-                    <Pressable
-                      onPress={handleAddrSearch}
-                      disabled={addrSearching}
-                      style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, borderRadius: 10, backgroundColor: `${accentColor}14`, borderWidth: 1, borderColor: `${accentColor}30`, opacity: addrSearching ? 0.6 : 1 }}
-                    >
-                      <Search size={14} color={accentColor} strokeWidth={2} />
-                      <Text style={{ fontSize: 12, fontWeight: '700', color: accentColor }}>{addrSearching ? '…' : 'Ara'}</Text>
-                    </Pressable>
-                  </View>
-                  <Text style={{ fontSize: 10.5, color: '#9A9A9A' }}>Boş bırakırsan siparişin kliniği aranır. Seçmezsen kayıtlı klinik adresi kullanılır.</Text>
-
-                  {/* Aday adresler (Google Places autocomplete) */}
-                  {addrResults.map((rsp) => (
-                    <Pressable
-                      key={rsp.placeId}
-                      onPress={() => handleSelectPlace(rsp)}
-                      style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#FFF' }}
-                    >
-                      <MapPin size={14} color={accentColor} strokeWidth={1.8} style={{ marginTop: 2 }} />
-                      <View style={{ flex: 1 }}>
-                        {!!rsp.mainText && <Text style={{ fontSize: 12.5, fontWeight: '600', color: '#0A0A0A' }}>{rsp.mainText}</Text>}
-                        {!!rsp.secondaryText && <Text style={{ fontSize: 11.5, color: '#6B6B6B', lineHeight: 16 }}>{rsp.secondaryText}</Text>}
-                      </View>
-                    </Pressable>
-                  ))}
-
-                  {/* Seçili adres */}
-                  {addrSelected && (
-                    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: `${accentColor}40`, backgroundColor: `${accentColor}0C` }}>
-                      <Check size={14} color={accentColor} strokeWidth={2.4} style={{ marginTop: 2 }} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 10.5, fontWeight: '700', color: accentColor, letterSpacing: 0.4, textTransform: 'uppercase' }}>Seçili teslim adresi</Text>
-                        <Text style={{ fontSize: 12, color: '#0A0A0A', lineHeight: 16, marginTop: 2 }}>{addrSelected.address}</Text>
-                      </View>
-                      <Pressable onPress={() => { setAddrSelected(null); setBbkPrice(null); }} hitSlop={8}>
-                        <X size={14} color="#9A9A9A" />
-                      </Pressable>
-                    </View>
-                  )}
-                </View>
+                {addressBlock}
 
                 {/* ── Gönderi ayrıntıları ───────────────────────────────
                     Bu 9 grubun hepsinin makul bir varsayılanı var ve çoğu
@@ -1276,8 +1671,127 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
               </View>
             )}
 
-            {/* Ücret — BanaBiKurye'de fiyat API'den gelir, elle sorulmaz */}
-            {mode !== 'banabikurye' && !editDelivery && (
+            {/* Shipink — fiyat sorgula → taşıyıcı seç → gönderi oluştur */}
+            {mode === 'shipink' && (
+              <View style={{ gap: 12 }}>
+                <View style={{ padding: 12, borderRadius: 10, backgroundColor: '#F4F8FC', gap: 4 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#0A0A0A' }}>Shipink ile kargo gönder</Text>
+                  <Text style={{ fontSize: 11.5, color: '#6B6B6B', lineHeight: 17 }}>
+                    {direction === 'clinic_to_lab'
+                      ? 'Alış hekim/klinik adresinden, teslim lab adresine. '
+                      : 'Alış lab adresinden, teslim hekim/klinik adresine. '}
+                    Önce taşıyıcı fiyatları sorgulanır; seçtiğin kargoyla gönderi oluşturulur ve etiket üretilir (ücret lab'a aittir).
+                  </Text>
+                </View>
+
+                {addressBlock}
+
+                {/* İl / ilçe — kargo şirketi ikisini AYRI ve zorunlu ister.
+                    Adres seçilince dolar; kayıtlı düz metin adreslerde boş
+                    kalabilir, o yüzden elle düzeltilebilir duruyor. */}
+                <View style={{ gap: 8 }}>
+                  <Text style={SECTION_LBL}>Alıcı İl / İlçe</Text>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <TextInput
+                      value={shpState}
+                      onChangeText={(t) => { setShpState(t); resetShpRates(); }}
+                      placeholder="İl (örn. İstanbul)"
+                      style={{ ...SHP_INPUT, flex: 1 }}
+                    />
+                    <TextInput
+                      value={shpCity}
+                      onChangeText={(t) => { setShpCity(t); resetShpRates(); }}
+                      placeholder="İlçe (örn. Kadıköy)"
+                      style={{ ...SHP_INPUT, flex: 1 }}
+                    />
+                  </View>
+                  <TextInput
+                    value={shpZip}
+                    onChangeText={(t) => { setShpZip(t); resetShpRates(); }}
+                    placeholder="Posta kodu (opsiyonel)"
+                    keyboardType="number-pad"
+                    style={{ ...SHP_INPUT, alignSelf: 'flex-start', minWidth: 160 }}
+                  />
+                </View>
+
+                {/* Paket — fiyat doğrudan buna bağlı, değişince tarifeler sıfırlanır */}
+                <View style={{ gap: 8 }}>
+                  <Text style={SECTION_LBL}>Paket</Text>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <View style={{ flex: 1, gap: 4 }}>
+                      <Text style={{ fontSize: 10, color: '#9A9A9A' }}>Ağırlık (kg)</Text>
+                      <TextInput value={shpWeight} onChangeText={(t) => { setShpWeight(t); resetShpRates(); }} keyboardType="decimal-pad" style={SHP_INPUT} />
+                    </View>
+                    <View style={{ flex: 1, gap: 4 }}>
+                      <Text style={{ fontSize: 10, color: '#9A9A9A' }}>Uzunluk (cm)</Text>
+                      <TextInput value={shpLength} onChangeText={(t) => { setShpLength(t); resetShpRates(); }} keyboardType="decimal-pad" style={SHP_INPUT} />
+                    </View>
+                    <View style={{ flex: 1, gap: 4 }}>
+                      <Text style={{ fontSize: 10, color: '#9A9A9A' }}>Genişlik (cm)</Text>
+                      <TextInput value={shpWidth} onChangeText={(t) => { setShpWidth(t); resetShpRates(); }} keyboardType="decimal-pad" style={SHP_INPUT} />
+                    </View>
+                    <View style={{ flex: 1, gap: 4 }}>
+                      <Text style={{ fontSize: 10, color: '#9A9A9A' }}>Yükseklik (cm)</Text>
+                      <TextInput value={shpHeight} onChangeText={(t) => { setShpHeight(t); resetShpRates(); }} keyboardType="decimal-pad" style={SHP_INPUT} />
+                    </View>
+                  </View>
+                </View>
+
+                {/* Taşıyıcı seçimi — yalnız fiyat sorgusundan sonra */}
+                {shpRates.length > 0 && (
+                  <View style={{ gap: 8 }}>
+                    <Text style={SECTION_LBL}>Taşıyıcı Seç</Text>
+                    {shpRates.map((r) => {
+                      const id = String(r.carrier_service_id);
+                      const on = shpServiceId === id;
+                      const sym = curSymbol(r.currency);
+                      return (
+                        <Pressable
+                          key={id}
+                          onPress={() => setShpServiceId(id)}
+                          style={{
+                            flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12,
+                            borderWidth: 1.5, borderColor: on ? accentColor : 'rgba(0,0,0,0.08)',
+                            backgroundColor: on ? `${accentColor}0C` : '#FFF',
+                            ...webCursor,
+                          }}
+                        >
+                          {/* Marka logosu satırın kimliği; seçim tiki fiyatın
+                              yanına alındı ki logo her satırda sabit dursun. */}
+                          <CarrierLogo url={r.logo_url} />
+                          <View style={{ flex: 1, gap: 2 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <Text style={{ fontSize: 13, fontWeight: '700', color: '#0A0A0A' }}>
+                                {r.name || 'Taşıyıcı'}
+                              </Text>
+                              {/* API zaten en ucuz/en hızlıyı işaretliyor — kullanıcı
+                                  üç fiyatı kafadan karşılaştırmasın. */}
+                              {r.cheapest && <Badge text="En ucuz" color="#047857" />}
+                              {r.fastest && <Badge text="En hızlı" color="#B45309" />}
+                            </View>
+                            <Text style={{ fontSize: 11, color: '#6B6B6B' }}>
+                              {deliveryEta(r.delivery_time) ?? '—'}
+                            </Text>
+                          </View>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text style={{ fontSize: 14, fontWeight: '800', color: on ? accentColor : '#3C3C3C' }}>
+                              {r.price != null ? `${sym}${(Number(r.price) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+                            </Text>
+                            {on && <Check size={15} color={accentColor} strokeWidth={2.6} />}
+                          </View>
+                        </Pressable>
+                      );
+                    })}
+                    <Text style={{ fontSize: 10.5, color: '#9A9A9A', lineHeight: 15 }}>
+                      Fiyatlar Shipink'in tahmini tarifeleridir; kesin tutar taşıyıcının ölçümüne göre değişebilir.
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* Ücret — BanaBiKurye ve Shipink'te fiyat API'den gelir, elle sorulmaz */}
+            {mode !== 'banabikurye' && mode !== 'shipink' && !editDelivery && (
               <View style={{ gap: 6 }}>
                 <Text style={{ fontSize: 11, fontWeight: '700', color: '#6B6B6B', letterSpacing: 0.6, textTransform: 'uppercase' }}>
                   Kurye Ücreti (opsiyonel)
@@ -1345,7 +1859,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
           </ScrollView>
 
           {/* Footer */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 16, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)', backgroundColor: '#FFFFFF', borderBottomLeftRadius: 20, borderBottomRightRadius: 20 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 16, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)', backgroundColor: '#FFFFFF', borderBottomStartRadius: 20, borderBottomEndRadius: 20 }}>
             {/* İptal ikincil bir çıkış — kutulu olduğunda asıl eylemle eşit
                 ağırlıkta görünüyordu. Metin butonu olarak geri çekildi. */}
             <Pressable
@@ -1380,6 +1894,28 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                     : editDelivery ? 'Düzenle & Kaydet'
                     : bbkPrice == null ? 'Fiyat Hesapla'
                     : `Onayla & Çağır (₺${bbkPrice})`}
+                </Text>
+              </Pressable>
+            ) : mode === 'shipink' ? (
+              <Pressable
+                onPress={shpRates.length === 0 ? handleShpRates : handleShpCreate}
+                disabled={shpBusy || (shpRates.length > 0 && !shpServiceId)}
+                style={({ pressed }: any) => ({
+                  flex: 3, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+                  paddingVertical: 13, borderRadius: 999, backgroundColor: accentColor,
+                  opacity: (shpBusy || (shpRates.length > 0 && !shpServiceId)) ? 0.45 : pressed ? 0.85 : 1,
+                  transform: [{ scale: pressed ? 0.98 : 1 }],
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                })}
+              >
+                {shpBusy
+                  ? <ActivityIndicator color="#FFF" />
+                  : <Truck size={14} color="#FFF" strokeWidth={2} />}
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFF' }}>
+                  {shpBusy ? 'İşleniyor…'
+                    : shpRates.length === 0 ? 'Fiyat Sorgula'
+                    : !shpServiceId ? 'Taşıyıcı Seçin'
+                    : shpPriceLabel ? `Gönderiyi Oluştur (${shpPriceLabel})` : 'Gönderiyi Oluştur'}
                 </Text>
               </Pressable>
             ) : (

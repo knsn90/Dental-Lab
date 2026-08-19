@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { Platform, View, Text, Pressable, useWindowDimensions } from 'react-native';
 import Svg, { G, Path, Text as SvgText, Rect, Circle } from 'react-native-svg';
 
@@ -580,7 +581,7 @@ export function ToothNumberPicker({
             // @ts-ignore
             pointerEvents="none"
           >
-            ÜST ÇENE
+            {autoT('ÜST ÇENE')}
           </SvgText>
         )}
         {jawMode !== 'upper' && !isQuarter && (
@@ -597,7 +598,7 @@ export function ToothNumberPicker({
             // @ts-ignore
             pointerEvents="none"
           >
-            ALT ÇENE
+            {autoT('ALT ÇENE')}
           </SvgText>
         )}
 
@@ -617,7 +618,7 @@ export function ToothNumberPicker({
             pointerEvents="none"
             transform={`rotate(${onlyLeft ? -90 : 90}, ${quarterLabelX}, ${quarterLabelY})`}
           >
-            {jawMode === 'upper' ? 'ÜST ÇENE' : 'ALT ÇENE'}
+            {autoT(jawMode === 'upper' ? 'ÜST ÇENE' : 'ALT ÇENE')}
           </SvgText>
         )}
 

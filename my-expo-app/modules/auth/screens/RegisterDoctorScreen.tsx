@@ -6,13 +6,14 @@ import React, { useState, useRef } from 'react';
 import { safeBack } from '../../../core/util/safeBack';
 import { View, Text, Pressable, Platform, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Mail, Lock, Eye, EyeOff, User as UserIcon, Phone, Building2, AlertCircle, ChevronLeft } from 'lucide-react-native';
+import { Mail, Lock, Eye, EyeOff, User as UserIcon, Phone, Building2, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { signUpDoctor } from '../api';
 import { AddressFields, AddressData, buildAddressString } from '../components/AddressFields';
 import { AuthShell, AuthInput, AuthButton, AUTH, AUTH_FONT } from '../components/AuthShell';
 import { ConsentGate, EMPTY_CONSENTS, hasRequiredConsents, type ConsentState } from '../components/ConsentGate';
 import { ClinicNameAutocomplete } from '../components/ClinicNameAutocomplete';
 import { PasswordChecklist } from '../components/PasswordChecklist';
+import { isRTL } from '../../../core/i18n';
 
 export function RegisterDoctorScreen() {
   const router = useRouter();
@@ -137,7 +138,7 @@ export function RegisterDoctorScreen() {
             ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
           })}
         >
-          <ChevronLeft size={14} color={AUTH.inkSoft} strokeWidth={2} />
+          {isRTL() ? <ChevronRight size={14} color={AUTH.inkSoft} strokeWidth={2} /> : <ChevronLeft size={14} color={AUTH.inkSoft} strokeWidth={2} />}
           <Text style={{ fontFamily: AUTH_FONT.sans, fontSize: 12, color: AUTH.inkSoft, fontWeight: '600' }}>
             Kayıt türü
           </Text>
@@ -149,7 +150,7 @@ export function RegisterDoctorScreen() {
             flexDirection: 'row', alignItems: 'flex-start', gap: 10,
             backgroundColor: 'rgba(220,38,38,0.06)',
             borderRadius: 10, padding: 12, marginBottom: 14,
-            borderLeftWidth: 3, borderLeftColor: AUTH.danger,
+            borderStartWidth: 3, borderStartColor: AUTH.danger,
           }}>
             <AlertCircle size={14} color={AUTH.danger} strokeWidth={2} style={{ marginTop: 1 }} />
             <Text style={{ flex: 1, fontFamily: AUTH_FONT.sans, fontSize: 12.5, color: AUTH.danger, lineHeight: 18 }}>

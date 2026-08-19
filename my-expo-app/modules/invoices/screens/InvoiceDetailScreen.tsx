@@ -1,4 +1,5 @@
-import { localeTag } from '../../../core/i18n';
+import { localeTag, isRTL } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 /**
  * InvoiceDetailScreen — Fatura Detayı (Patterns Design Language)
  *
@@ -13,10 +14,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  ArrowLeft, Printer, Banknote, CreditCard, Landmark, File,
+  ArrowLeft, ArrowRight, Printer, Banknote, CreditCard, Landmark, File,
   MoreHorizontal, Building2, User, Phone, MapPin, Calendar,
   ClipboardList, Plus, Trash2, Send, BellRing, CircleX,
-  CircleCheck, X, AlertCircle, ChevronRight, ChevronDown, Check, FileText, Undo2,
+  CircleCheck, X, AlertCircle, ChevronRight, ChevronLeft, ChevronDown, Check, FileText, Undo2,
 } from 'lucide-react-native';
 import { toast } from '../../../core/ui/Toast';
 import { ConfirmDialog, type ConfirmState } from '../../../core/ui/ConfirmDialog';
@@ -278,9 +279,9 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
     const diff = Math.round(
       (new Date(invoice.due_date + 'T00:00:00').getTime() - new Date(today + 'T00:00:00').getTime()) / 86400000,
     );
-    if (diff < 0)   return { text: `${Math.abs(diff)} gün gecikti`, color: '#DC2626', ...red };
+    if (diff < 0)   return { text: `${Math.abs(diff)} ${autoT('gün gecikti')}`, color: '#DC2626', ...red };
     if (diff === 0) return { text: 'Bugün vadeli',                  color: '#B45309', ...amber };
-    return { text: `${diff} gün kaldı`, color: diff <= 7 ? '#B45309' : '#1F6B47', ...(diff <= 7 ? amber : green) };
+    return { text: `${diff} ${autoT('gün kaldı')}`, color: diff <= 7 ? '#B45309' : '#1F6B47', ...(diff <= 7 ? amber : green) };
   })();
 
   // Fatura yaşam döngüsü — muhasebe için 4 adımlı çizelge (✓ done · ● active · ○ pending)
@@ -385,7 +386,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
           backgroundColor: '#FFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
           cursor: 'pointer' as any,
         }}>
-          <ArrowLeft size={17} strokeWidth={1.8} color={DS.ink[900]} />
+          {isRTL() ? <ArrowRight size={17} strokeWidth={1.8} color={DS.ink[900]} /> : <ArrowLeft size={17} strokeWidth={1.8} color={DS.ink[900]} />}
         </Pressable>
 
         {isDesktop && (
@@ -522,8 +523,8 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
               ].map((s, i) => (
                 <View key={s.label} style={{
                   minWidth: isDesktop ? 96 : 0, flex: isDesktop ? undefined : 1,
-                  paddingLeft: i === 0 ? 0 : 16, paddingRight: i === 0 ? 16 : 0,
-                  borderLeftWidth: i === 0 ? 0 : 1, borderLeftColor: 'rgba(255,255,255,0.15)',
+                  paddingStart: i === 0 ? 0 : 16, paddingEnd: i === 0 ? 16 : 0,
+                  borderStartWidth: i === 0 ? 0 : 1, borderStartColor: 'rgba(255,255,255,0.15)',
                 }}>
                   <Text style={{ fontSize: 9.5, fontWeight: '600', letterSpacing: 0.9, textTransform: 'uppercase', color: 'rgba(255,255,255,0.60)', marginBottom: 3 }}>
                     {s.label}
@@ -620,7 +621,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
                         <Text style={{ fontSize: 13, color: '#2563EB', fontWeight: '500' }}>
                           {lo.work_order.order_number}{lo.work_order.patient_name ? ` · ${lo.work_order.patient_name}` : ''}
                         </Text>
-                        <ChevronRight size={11} strokeWidth={1.4} color={DS.ink[300]} />
+                        {isRTL() ? <ChevronLeft size={11} strokeWidth={1.4} color={DS.ink[300]} /> : <ChevronRight size={11} strokeWidth={1.4} color={DS.ink[300]} />}
                       </Pressable>
                     ))
                   : invoice.work_order && (
@@ -630,7 +631,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
                         <Text style={{ fontSize: 13, color: '#2563EB', fontWeight: '500' }}>
                           {invoice.work_order.order_number}{invoice.work_order.patient_name ? ` · ${invoice.work_order.patient_name}` : ''}
                         </Text>
-                        <ChevronRight size={11} strokeWidth={1.4} color={DS.ink[300]} />
+                        {isRTL() ? <ChevronLeft size={11} strokeWidth={1.4} color={DS.ink[300]} /> : <ChevronRight size={11} strokeWidth={1.4} color={DS.ink[300]} />}
                       </Pressable>
                     )
                 }
@@ -690,8 +691,8 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
           }}>
             <Text style={{ flex: 3, ...TH }}>ACIKLAMA</Text>
             {isDesktop && <Text style={{ flex: 1, ...TH, textAlign: 'center' }}>ADET</Text>}
-            {isDesktop && <Text style={{ flex: 1.5, ...TH, textAlign: 'right' }}>BIRIM FIYAT</Text>}
-            <Text style={{ flex: 1.5, ...TH, textAlign: 'right' }}>TOPLAM</Text>
+            {isDesktop && <Text style={{ flex: 1.5, ...TH, textAlign: 'end' as any }}>BIRIM FIYAT</Text>}
+            <Text style={{ flex: 1.5, ...TH, textAlign: 'end' as any }}>TOPLAM</Text>
             {invoice.status === 'taslak' && <View style={{ width: 32 }} />}
           </View>
 
@@ -715,7 +716,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
                         <EditableNum value={Number(it.quantity)} editable onSave={(n) => saveItem(it.id, { quantity: n })} inputStyle={{ width: 48, textAlign: 'center' }} />
                         <Text style={{ fontSize: 12, color: DS.ink[400] }}>×</Text>
-                        <EditableNum value={Number(it.unit_price)} editable onSave={(n) => saveItem(it.id, { unit_price: n })} fmt={fmtMoney} inputStyle={{ width: 96, textAlign: 'right' }} />
+                        <EditableNum value={Number(it.unit_price)} editable onSave={(n) => saveItem(it.id, { unit_price: n })} fmt={fmtMoney} inputStyle={{ width: 96, textAlign: 'end' as any }} />
                       </View>
                     ) : (
                       <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 2 }}>
@@ -731,10 +732,10 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
                 )}
                 {isDesktop && (
                   <View style={{ flex: 1.5, alignItems: 'flex-end' }}>
-                    <EditableNum value={Number(it.unit_price)} editable={invoice.status === 'taslak'} onSave={(n) => saveItem(it.id, { unit_price: n })} fmt={fmtMoney} textStyle={{ fontSize: 13, color: DS.ink[800], textAlign: 'right' }} inputStyle={{ width: 110, textAlign: 'right' }} />
+                    <EditableNum value={Number(it.unit_price)} editable={invoice.status === 'taslak'} onSave={(n) => saveItem(it.id, { unit_price: n })} fmt={fmtMoney} textStyle={{ fontSize: 13, color: DS.ink[800], textAlign: 'end' as any }} inputStyle={{ width: 110, textAlign: 'end' as any }} />
                   </View>
                 )}
-                <Text style={{ flex: 1.5, fontSize: 13, fontWeight: '500', color: DS.ink[900], textAlign: 'right' }}>{fmtMoney(it.total)}</Text>
+                <Text style={{ flex: 1.5, fontSize: 13, fontWeight: '500', color: DS.ink[900], textAlign: 'end' as any }}>{fmtMoney(it.total)}</Text>
                 {invoice.status === 'taslak' && (
                   <Pressable onPress={async () => {
                     const { error } = await deleteInvoiceItem(it.id);
@@ -941,7 +942,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
             <Text style={{ fontSize: 11, fontWeight: '700', color: DS.ink[400], letterSpacing: 1, textTransform: 'uppercase' as any, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 6 }}>
               Para Birimi
             </Text>
-            {(['TRY', 'EUR', 'USD', 'GBP'] as const).map(c => {
+            {(['TRY', 'EUR', 'USD', 'GBP', 'IRT'] as const).map(c => {
               const active = (invoice.currency || 'TRY') === c;
               return (
                 <Pressable key={c} onPress={() => changeCurrency(c)} style={{

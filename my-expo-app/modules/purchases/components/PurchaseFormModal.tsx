@@ -147,7 +147,7 @@ export function PurchaseFormModal({ visible, accentColor = '#0A0A0A', onClose, o
       if (d.supplier_name) setSupplierName(d.supplier_name);
       if (d.invoice_number) setInvoiceNumber(d.invoice_number);
       if (d.invoice_date)   setInvoiceDate(d.invoice_date);
-      if (d.currency && ['TRY','USD','EUR'].includes(d.currency)) setCurrency(d.currency as Currency);
+      if (d.currency && ['TRY','USD','EUR','GBP','IRT'].includes(d.currency)) setCurrency(d.currency as Currency);
       if (d.vat_rate != null) setVatRate(String(d.vat_rate));
       if (d.exchange_rate != null) setExchangeRate(String(d.exchange_rate));
       if (Array.isArray(d.lines) && d.lines.length > 0) {
@@ -685,7 +685,7 @@ export function PurchaseFormModal({ visible, accentColor = '#0A0A0A', onClose, o
               <Text style={{ width: 64, ...fieldLabel, marginBottom: 0 }}>Birim</Text>
               <Text style={{ width: 110, ...fieldLabel, marginBottom: 0 }}>Birim fiyat</Text>
               <Text style={{ width: 64, ...fieldLabel, marginBottom: 0 }}>KDV %</Text>
-              <Text style={{ width: 110, ...fieldLabel, marginBottom: 0, textAlign: 'right' }}>Toplam</Text>
+              <Text style={{ width: 110, ...fieldLabel, marginBottom: 0, textAlign: 'end' as any }}>Toplam</Text>
               <View style={{ width: 32 }} />
             </View>
 
@@ -879,9 +879,9 @@ function LineRow({
             </View>
           </View>
           {line.item_id ? (
-            <Text style={{ fontSize: 10, color: '#1F6B47', fontWeight: '600', marginTop: 3, marginLeft: 20 }}>✓ Mevcut ürüne bağlandı</Text>
+            <Text style={{ fontSize: 10, color: '#1F6B47', fontWeight: '600', marginTop: 3, marginStart: 20 }}>✓ Mevcut ürüne bağlandı</Text>
           ) : line.item_name.trim() ? (
-            <Text style={{ fontSize: 10, color: accentColor, fontWeight: '600', marginTop: 3, marginLeft: 20 }}>+ Yeni ürün olarak kaydedilecek</Text>
+            <Text style={{ fontSize: 10, color: accentColor, fontWeight: '600', marginTop: 3, marginStart: 20 }}>+ Yeni ürün olarak kaydedilecek</Text>
           ) : null}
         </View>
 
@@ -992,7 +992,7 @@ function LineRow({
             })}
           </View>
           {line.item_kind === 'equipment' && (
-            <View style={{ flexDirection: 'row', gap: 8, flex: 1, marginLeft: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 8, flex: 1, marginStart: 8 }}>
               <TextInput
                 style={{ ...cellInput, flex: 1 }}
                 value={line.model ?? ''}

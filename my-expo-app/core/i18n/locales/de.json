@@ -659,6 +659,7 @@
       "recordCount": "Einträge",
       "emptyAll": "Noch keine Benutzer",
       "emptyFiltered": "noch nicht hinzugefügt",
+      "emptyFilteredFmt": "Noch keine {{role}} hinzugefügt",
       "emptyDesc": "Erweitern Sie Ihre Klinik um Zahnärzte, Sekretariat oder Backup-Administratoren — für jede Rolle liegt eine eigene Berechtigungsvorlage bereit.",
       "addFirst": "Ersten Benutzer hinzufügen",
       "modal": {

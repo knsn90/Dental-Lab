@@ -5,6 +5,7 @@
  * Böylece geri-ileri navigasyonda duplike kayıt oluşmaz.
  */
 import { supabase } from '../../core/api/supabase';
+import { getBaseCurrency } from '../../core/money/baseCurrency';
 
 // ── Types ──────────────────────────────────────────────────────────
 export interface LabSetupData {
@@ -66,12 +67,24 @@ export async function loadExistingData(): Promise<ExistingData> {
 
   const ownerName = profile?.full_name ?? '';
 
-  if (!profile?.lab_id) return { lab: null, ownerName };
+  // Platform konsolundan kurulmuş ve bu e-postaya bırakılmış bir lab var mı?
+  // Varsa devral — sihirbaz sıfırdan kurulum yerine hazır labı düzenlemeye
+  // düşer (ad/bölge/para birimi zaten dolu gelir). Eşleşme yoksa null döner
+  // ve normal "yeni lab" akışı aynen çalışır.
+  let labId = profile?.lab_id ?? null;
+  if (!labId) {
+    try {
+      const { data: claimed } = await supabase.rpc('claim_pending_lab');
+      if (claimed) labId = claimed as string;
+    } catch { /* devralma başarısızsa normal akış sürer */ }
+  }
+
+  if (!labId) return { lab: null, ownerName };
 
   const { data: lab } = await supabase
     .from('labs')
     .select('name, phone, email, address')
-    .eq('id', profile.lab_id)
+    .eq('id', labId)
     .single();
 
   return { lab: lab ?? null, ownerName };
@@ -185,8 +198,9 @@ export async function saveWizardData(payload: WizardPayload) {
       const rows = services.map((s, i) => ({
         name: s.name,
         category: s.category,
-        price: s.price,
-        currency: 'TRY',
+        // Şablon rakamları TRY pazarına ait — baz para birimi başkaysa fiyatsız aç.
+        price: templatePricesApply() ? s.price : 0,
+        currency: getBaseCurrency(),
         is_active: true,
         sort_order: i,
         lab_id: labId,
@@ -196,7 +210,31 @@ export async function saveWizardData(payload: WizardPayload) {
     }
   }
 
+  // Kurulum tamamlandı — bir daha sihirbaza düşmesin.
+  // (Yönlendirme `labs.setup_completed_at` NULL mü diye bakıyor.)
+  try {
+    await supabase.from('labs')
+      .update({ setup_completed_at: new Date().toISOString() })
+      .eq('id', labId);
+  } catch { /* işaretleme başarısızsa kurulum yine kaydedildi */ }
+
   return { labId };
+}
+
+/**
+ * Sihirbazı yarıda bırakma çıkışı. Bayrağı işaretler ki route guard kullanıcıyı
+ * tekrar sihirbaza fırlatmasın — kurulum ekranına sonradan `/(admin)/setup-wizard`
+ * adresinden dönülebilir.
+ */
+export async function dismissSetupWizard(): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+  const { data: prof } = await supabase.from('profiles').select('lab_id').eq('id', user.id).maybeSingle();
+  const labId = prof?.lab_id;
+  if (!labId) return;
+  await supabase.from('labs')
+    .update({ setup_completed_at: new Date().toISOString() })
+    .eq('id', labId);
 }
 
 // ── Hazır hizmet şablonları ────────────────────────────────────────
@@ -240,7 +278,19 @@ export const SERVICE_TEMPLATES: Record<string, ServiceTemplate[]> = {
 };
 
 // ── Fiyat formatla ─────────────────────────────────────────────────
+/**
+ * Şablon fiyatları TÜRKİYE pazarına göre TRY cinsindendir. Baz para birimi
+ * başka bir şeyse (ör. İran labı → تومان) bu rakamları o sembolle göstermek
+ * yanlış olur — 1.800 tümen bir zirkonyum kron değildir. O yüzden TRY dışı
+ * labda fiyat gösterilmez; hizmetler fiyatsız açılır ve lab kendi fiyat
+ * listesini girer (ekran zaten "fiyatları sonra düzenleyebilirsiniz" diyor).
+ */
+export function templatePricesApply(): boolean {
+  return getBaseCurrency() === 'TRY';
+}
+
 export function fmtPrice(n: number) {
+  if (!templatePricesApply()) return '—';
   try {
     return new Intl.NumberFormat('tr-TR', {
       style: 'currency', currency: 'TRY', maximumFractionDigits: 0,

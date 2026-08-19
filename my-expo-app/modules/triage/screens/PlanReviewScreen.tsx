@@ -1,19 +1,23 @@
 import { localeTag } from '../../../core/i18n';
+import { isRTL } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { safeBack } from '../../../core/util/safeBack';
 import { openFileUrl } from '../../../core/util/openFile';
 import { toast } from '../../../core/ui/Toast';
+import { supabase } from '../../../core/api/supabase';
 // modules/triage/screens/PlanReviewScreen.tsx
 // Plan Önizleme & Onay — planlama bekleyen sipariş açılınca ilk bu ekran gelir.
 // Gerçek veriyle çalışır; onayda mevcut triage_order RPC'sini çağırır.
 // Panel-aware (usePanelTheme) — lab müdür panelinde safran accent.
 
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { View, Text, Pressable, ScrollView, Platform, Modal, TextInput, useWindowDimensions } from 'react-native';
+import { View, Text, Pressable, ScrollView, Platform, Modal, TextInput, useWindowDimensions, Alert, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useSegments } from 'expo-router';
 import {
-  ListChecks, GripVertical, X, Plus, AlertTriangle, Sparkles, ChevronUp, ChevronDown, ChevronRight, Download,
-  Play, FileText, Stethoscope, Cpu, UserCheck, ChevronDown as Caret, Check, ArrowLeft, Layers, Box, MessageSquare, Save, Clock, Eye,
+  GripVertical, X, Plus, AlertTriangle, Sparkles, ChevronUp, ChevronDown, ChevronRight, Download,
+  Play, FileText, Stethoscope, ChevronDown as Caret, Check, ArrowLeft, Layers, Box, MessageSquare, Save, Clock, Eye, Printer,
+  Phone, Mail, User,
 } from 'lucide-react-native';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { DS } from '../../../core/theme/dsTokens';
@@ -35,6 +39,7 @@ import type { WorkOrder } from '../../orders/types';
 // Uygulama-içi görsel önizleme (zoom + ileri/geri + safe-area) — sipariş detayı kalıbı.
 import { ImageLightbox } from '../../../core/ui/ImageLightbox';
 import { useBottomActionBar } from '../../../core/store/uiOverlayStore';
+import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 
 function is3DFileFmt(path: string): 'stl' | 'ply' | 'obj' | null {
   const ext = (path ?? '').toLowerCase().split('.').pop();
@@ -71,6 +76,58 @@ function tint(hex: string, a: number) {
     return `rgba(${r},${g},${b},${a})`;
   } catch { return hex; }
 }
+/**
+ * Rengi beyazla karıştırıp OPAK bir ton üretir.
+ *
+ * `tint()` saydam döner; cam bir yüzeyin üstünde saydam dolgu kullanılırsa
+ * butonun kendisi de camlaşır ve altındaki içerik içinden geçer. Cam efekti
+ * yalnız barın kendisinde olsun diye barın üstündeki dolgular bununla üretilir.
+ */
+function mixWhite(hex: string, ratio: number) {
+  try {
+    const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+    const m = (c: number) => Math.round(255 + (c - 255) * ratio);
+    return `rgb(${m(r)},${m(g)},${m(b)})`;
+  } catch { return hex; }
+}
+
+/**
+ * Akış rampası — disk ve bağlantı rengi istasyonun KENDİ renginden değil,
+ * aşamanın akıştaki SIRASINDAN gelir.
+ *
+ * İstasyon renkleri birbirinden bağımsız seçildiği için 9 kart bir geçiş değil
+ * kopuk lekeler gibi duruyordu (ikisi neredeyse siyahtı). Rampa panelin kendi
+ * renginden başlar ve üretimin bittiğini anlatan yeşilde biter: renk artık
+ * "hangi istasyon" değil "akışın neresindeyiz" sorusunu cevaplıyor.
+ *
+ * Çıktı hex — `tint()` / `mixWhite()` hex bekliyor.
+ */
+function flowColor(i: number, total: number, from: string, to = '#2D9A6B') {
+  const t = total <= 1 ? 0 : Math.min(1, Math.max(0, i / (total - 1)));
+  try {
+    const ch = (h: string, k: number) => parseInt(h.slice(k, k + 2), 16);
+    const mix = (k: number) => {
+      const v = Math.round(ch(from, k) + (ch(to, k) - ch(from, k)) * t);
+      return Math.min(255, Math.max(0, v)).toString(16).padStart(2, '0');
+    };
+    return `#${mix(1)}${mix(3)}${mix(5)}`;
+  } catch { return from; }
+}
+
+/**
+ * Ham enum değerini okunur hâle getirir: `dijital_tarama` → "Dijital tarama".
+ * Alt çizgi ayrılır, yalnız İLK harf büyütülür (Title Case değil — "Dijital
+ * Tarama" bir başlık gibi okunur, bu bir değer). Kod gibi görünen kısa değerler
+ * (2M2, A3.5) olduğu gibi bırakılır.
+ */
+function prettyValue(raw: string | null | undefined): string {
+  const s = (raw ?? '').trim();
+  if (!s) return '—';
+  if (!/[a-zçğıöşü]/.test(s)) return s;            // 2M2, A3.5 gibi kodlar
+  const spaced = s.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+  return spaced.charAt(0).toLocaleUpperCase('tr-TR') + spaced.slice(1);
+}
+
 function initials(n: string | null) {
   if (!n) return '?';
   return n.trim().split(/\s+/).slice(0, 2).map(p => p[0]).join('').toUpperCase();
@@ -78,6 +135,133 @@ function initials(n: string | null) {
 function loadColor(load: number) {
   return load >= 5 ? '#D94B4B' : load >= 3 ? '#E89B2A' : '#2D9A6B';
 }
+
+// ── Sunum katmanı ───────────────────────────────────────────────────────────
+// Tek hairline değeri (17 farklı gri yerine). Kart kenarı, ayraç, ızgara.
+const HAIR = 'rgba(0,0,0,0.07)';
+
+/**
+ * Tipografi ölçeği — tracking BOYUTA göre değişir (sabit letter-spacing bir
+ * yerde mutlaka yanlıştır): büyük metin sıkışır, küçük etiket ferahlar.
+ * Ekranda yalnız bu 5 basamak kullanılır; ara boyut (12.5/13.5/9.5) yok.
+ */
+const TYPE = {
+  display: { fontFamily: DISPLAY, fontSize: 27, letterSpacing: -0.65, lineHeight: 32 } as const,
+  title:   { fontSize: 15, fontWeight: '600', letterSpacing: -0.15 } as const,
+  body:    { fontSize: 13, letterSpacing: -0.05 } as const,
+  meta:    { fontSize: 11.5, letterSpacing: 0 } as const,
+  label:   { fontSize: 10, fontWeight: '700', letterSpacing: 0.9, textTransform: 'uppercase' } as const,
+};
+
+/**
+ * Basınç geri bildirimi — parmak/imleç DEĞDİĞİ anda, bırakışta değil.
+ * Gecikme hissedilmesin diye 110ms; eğri Apple'ın standart giriş eğrisi.
+ */
+const press = (pressed: boolean, scale = 0.97) => ({
+  transform: [{ scale: pressed ? scale : 1 }],
+  ...(Platform.OS === 'web' ? { transition: 'transform 110ms cubic-bezier(0.2,0,0,1)' } as any : {}),
+});
+
+/**
+ * İpucu balonu — ikon butonun ne yaptığını söyler.
+ *
+ * Tarayıcının yerleşik `title` balonu yerine kendimiz çiziyoruz: o balon ~1 sn
+ * gecikiyor, sistem fontuyla geliyor ve konumu kontrol edilemiyor. Bu balon
+ * dokunulduğu anda beliriyor ve tasarım diline uyuyor.
+ *
+ * Genişlik hesabı yok: balon, butondan iki yana taşan geniş ve ortalanmış bir
+ * kapsayıcıda duruyor — metin ne kadar uzun olursa olsun ortalı kalıyor.
+ * Dokunmatikte hover kavramı olmadığı için native'de hiç render edilmiyor.
+ */
+function Tip({ label, children, grow, block }: {
+  label: string; children: React.ReactNode;
+  /** satır içinde tam genişliğe yayılan buton (mobil ana CTA) */
+  grow?: boolean;
+  /** kolon içinde tam genişlik kaplayan buton (kart içi teknisyen seçici gibi) */
+  block?: boolean;
+}) {
+  const [on, setOn] = useState(false);
+  const [dx, setDx] = useState(0);
+  if (Platform.OS !== 'web') return <>{children}</>;
+
+  const HALF = 130;   // balon en fazla 260 geniş
+
+  /**
+   * Balon, tetikleyiciye göre ABSOLUTE konumlanır — `fixed` denendi ve geri
+   * alındı: `backdrop-filter`'lı alt bar (ve transform'lu her ata) fixed için
+   * "containing block" yaratıyor, balon barın içine hapsoluyordu.
+   *
+   * Ekran dışına taşma, hover anında ölçülüp yatay kaydırmayla düzeltilir:
+   * balonun merkezi viewport'un içinde kalacak şekilde geri çekilir.
+   */
+  const show = (e: any) => {
+    setOn(true);
+    const r = e?.currentTarget?.getBoundingClientRect?.();
+    if (!r || typeof window === 'undefined') { setDx(0); return; }
+    const cx = r.left + r.width / 2;
+    const clamped = Math.min(Math.max(cx, HALF + 8), window.innerWidth - HALF - 8);
+    setDx(clamped - cx);
+  };
+
+  return React.createElement(
+    'div',
+    {
+      onMouseEnter: show,
+      onMouseLeave: () => setOn(false),
+      // Sarmalayıcı div, sardığı butonun düzendeki davranışını DEVRALMALI;
+      // yoksa tam genişlik isteyen butonlar içeriğe göre büzülür.
+      style: {
+        position: 'relative',
+        display: 'flex',
+        ...(grow ? { flex: '1 1 100%', width: '100%' } : null),
+        ...(block ? { width: '100%' } : null),
+      },
+    },
+    <>
+      {children}
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute', bottom: '100%', left: -HALF, right: -HALF, marginBottom: 8,
+          alignItems: 'center', zIndex: 200, opacity: on ? 1 : 0,
+          transform: [{ translateX: dx }],
+          transition: 'opacity 120ms ease',
+        } as any}
+      >
+        <View style={{
+          maxWidth: HALF * 2, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9,
+          backgroundColor: '#FFFFFF',
+          borderWidth: 1, borderColor: 'rgba(15,23,42,0.08)',
+          boxShadow: '0 8px 24px rgba(15,23,42,0.16)',
+        } as any}>
+          <Text style={{ fontSize: 11, fontWeight: '500', color: INK[800], letterSpacing: 0.1, lineHeight: 15, textAlign: 'center' }}>
+            {label}
+          </Text>
+        </View>
+      </View>
+    </>,
+  );
+}
+
+/** Bir CSS medya sorgusunu dinler (web dışında hep false). */
+function useMediaQuery(query: string) {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia(query);
+    const sync = () => setOn(mq.matches);
+    sync();
+    mq.addEventListener?.('change', sync);
+    return () => mq.removeEventListener?.('change', sync);
+  }, [query]);
+  return on;
+}
+
+/** prefers-reduced-motion — hareketi kapat, geri bildirimi (opaklık) bırak. */
+const useReducedMotion = () => useMediaQuery('(prefers-reduced-motion: reduce)');
+
+/** prefers-reduced-transparency — camı buzlandır/opaklaştır, blur'u kaldır. */
+const useReducedTransparency = () => useMediaQuery('(prefers-reduced-transparency: reduce)');
 
 interface Row {
   stationId: string;
@@ -103,6 +287,8 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
   const { width: winW } = useWindowDimensions();
   const isNarrow = winW < 768; // Faz 6: mobil/dar ekran düzeni
   const insets = useSafeAreaInsets(); // mobil/PWA — alt çentik (home indicator) boşluğu
+  const reduced = useReducedMotion();          // hareket azaltma tercihi → geçişler kapanır
+  const solidGlass = useReducedTransparency(); // saydamlık azaltma tercihi → cam opaklaşır
 
   const [data, setData] = useState<TriageData | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
@@ -113,6 +299,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
   const [openFileCats, setOpenFileCats] = useState<Record<string, boolean>>({});
   const [pickerFor, setPickerFor] = useState<string | null>(null); // teknisyen seçici açık olan stationId
   const [chatOpen, setChatOpen] = useState(false);                   // sipariş yazışması modal'ı
+  const [printing, setPrinting] = useState(false);                   // iş kağıdı hazırlanıyor
   const [dragIndex, setDragIndex] = useState<number | null>(null);   // sürüklenen aktif satır
   const [overIndex, setOverIndex] = useState<number | null>(null);   // üzerine gelinen satır
   // Çok-şerit sürükle-bırak: hangi şeritte hangi satır sürükleniyor/üzerine geliniyor
@@ -122,10 +309,14 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
   const [tplName, setTplName] = useState('');
   const [tplSaving, setTplSaving] = useState(false);
   const [tplDone, setTplDone] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);                 // "Aşama Ekle" açılır listesi
   const [selProc, setSelProc] = useState<string | null>(null);   // seçili işlem (diş vurgusu)
   const [selTooth, setSelTooth] = useState<number | null>(null); // seçili diş (işlem detayı)
   const [autoTriage, setAutoTriage] = useState(false);           // Faz 5c: oto-triaj ayarı
   const [matchedTpl, setMatchedTpl] = useState(false);           // Faz 5c: şablon güvenle eşleşti mi
+  // Planı ekran açılırken OTOMATİK şekillendiren kararlar — kullanıcıya söylenir,
+  // yoksa "9 aşama" listesi sanki elle kurulmuş gibi görünür.
+  const [autoSkipped, setAutoSkipped] = useState<string[]>([]);  // dijital ölçüde plandan çıkarılan istasyonlar
 
   // ── Faz 2: paralel iş şeritleri — İZOLE state. laneCount>1 iken devreye girer;
   //    tek-şerit yolu (rows/handlers/render/save) HİÇ değişmez. laneRows istasyonu
@@ -291,10 +482,18 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
     // listede kalır — müdür gerekirse triaj'da geri açabilir.
     if (d.order?.measurement_type === 'digital') {
       const skipKinds: StationKind[] = ['SCAN', 'MODEL_PREP'];
+      const skipped: string[] = [];
       initial = initial.map((r) => {
         const st = stationById.get(r.stationId);
-        return st && skipKinds.includes(getStationKind(st.name)) ? { ...r, active: false } : r;
+        if (st && r.active && skipKinds.includes(getStationKind(st.name))) {
+          skipped.push(st.name);
+          return { ...r, active: false };
+        }
+        return r;
       });
+      setAutoSkipped(skipped);
+    } else {
+      setAutoSkipped([]);
     }
 
     setRows(initial);
@@ -303,10 +502,69 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
 
   useEffect(() => { load(); }, [load]);
 
+  /**
+   * İş kağıdını yazdır — sipariş detayı ekranıyla AYNI A4 çıktısı
+   * (`buildOrderPrintDoc` ortak modülü).
+   *
+   * Triaj sorgusu yazdırma için gereken tüm kolonları çekmiyor (id/lab_id yok),
+   * bu yüzden basılacak satır burada ayrıca okunuyor. Hekim/klinik adı ve
+   * kalemler zaten elimizde — tekrar sorgulanmıyor.
+   */
+  const handlePrint = useCallback(async () => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    setPrinting(true);
+    try {
+      const { data: row } = await supabase
+        .from('work_orders')
+        // Tek parça string — supabase-js dönüş tipini SELECT literalinden çıkarır,
+        // parçalı birleştirme tipi GenericStringError'a düşürüyor.
+        .select('id, lab_id, order_number, created_at, is_urgent, patient_name, patient_gender, work_type, shade, model_type, machine_type, delivery_date, tooth_numbers, notes, lab_notes')
+        .eq('id', orderId)
+        .maybeSingle();
+      if (!row) { toast.error('Sipariş okunamadı, yazdırılamadı.'); return; }
+
+      const { buildOrderPrintDoc } = await import('../../orders/lib/buildOrderPrintDoc');
+      const printable: any = {
+        ...row,
+        order_items: data?.items ?? [],
+        doctor: { full_name: data?.doctorName ?? '—', clinic_name: data?.clinicName ?? '—' },
+      };
+      const qrUrl = `${window.location.origin}/order/${row.order_number}`;
+      const html = await buildOrderPrintDoc(printable, qrUrl, (data?.messages ?? []) as any);
+
+      // Gizli iframe → tarayıcı yazdırma diyaloğu. Sayfanın kendisini
+      // yazdırmak yerine iframe kullanılıyor ki ekranın stilleri çıktıya
+      // karışmasın. QR ve logo dış kaynaktan geldiği için onload'dan sonra
+      // kısa bir bekleme var; erken print boş görsel basıyordu.
+      const frame = document.createElement('iframe');
+      frame.setAttribute('aria-hidden', 'true');
+      frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;';
+      frame.onload = () => {
+        setTimeout(() => {
+          try { frame.contentWindow?.focus(); frame.contentWindow?.print(); } catch { /* yoksay */ }
+          // Diyalog kapanmadan kaldırırsak yazdırma iptal olur — geç temizle.
+          setTimeout(() => frame.remove(), 60_000);
+        }, 400);
+      };
+      document.body.appendChild(frame);
+      frame.srcdoc = html;
+    } catch (e) {
+      console.error('[PlanReview] yazdırma hazırlanamadı:', e);
+      toast.error('Yazdırma hazırlanamadı.');
+    } finally {
+      setPrinting(false);
+    }
+  }, [orderId, data]);
+
   const stationById = useMemo(() => new Map((data?.stations ?? []).map(s => [s.id, s])), [data]);
   const techById = useMemo(() => new Map((data?.technicians ?? []).map(t => [t.id, t])), [data]);
   const activeRows = rows.filter(r => r.active);
   const poolRows = rows.filter(r => !r.active);
+
+  // Teknisyeni olmayan aşamalar. autoAssignTech YETKİN aday bulamazsa null döner —
+  // yani bu sayı çoğu zaman "otomatiğe bırakıldı" değil, "bu istasyona yetkin
+  // kimse yok" demektir ve plan atanmamış aşamalarla üretime girer.
+  const unassignedCount = (laneCount > 1 ? laneRows : activeRows).filter(r => !r.technicianId).length;
 
   // Faz 5: parallelWithPrev bayraklarından grup numaraları türet (aktif satır sırasına hizalı).
   // Bir aşama "önceki ile paralel" ise önceki aşamayla aynı grubu paylaşır; küme dışı → null (seri).
@@ -533,6 +791,24 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
     return true;
   };
 
+  /**
+   * Üretimi başlat — geri dönüşü zor bir işlem. Atanmamış aşama varsa önce sorar.
+   * Engelleyici DEĞİL: müdür bilerek atanmadan başlatabilir (yetkin teknisyen
+   * gerçekten yoksa başka çaresi de yok), ama bunu bilmeden yapmasın.
+   */
+  const confirmAndSave = (opts?: { approve?: boolean }) => {
+    if (unassignedCount === 0) { handleSave(opts); return; }
+    const msg = `${unassignedCount} ${autoT('aşamaya teknisyen atanmadı; bu aşamalar atanmamış olarak üretime girer.')}\n\n${autoT('Yine de başlatılsın mı?')}`;
+    if (Platform.OS === 'web') {
+      if (typeof window === 'undefined' || window.confirm(msg)) handleSave(opts);
+      return;
+    }
+    Alert.alert(autoT('Atanmamış aşama var'), msg, [
+      { text: autoT('Vazgeç'), style: 'cancel' },
+      { text: autoT('Başlat'), onPress: () => { handleSave(opts); } },
+    ]);
+  };
+
   // Faz 5c: oto-triaj — ayar açık + şablon güvenle eşleşmiş + aktif aşama var → bir kez otomatik uygula+onayla
   useEffect(() => {
     if (loading || autoRanRef.current) return;
@@ -606,127 +882,243 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
 
   return (
     <View style={{ flex: 1, backgroundColor: PAGE }}>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 20 + insets.top, paddingBottom: (isNarrow ? 300 : 130) + insets.bottom, width: '100%' }}>
-        {/* Geri + başlık */}
-        <Pressable onPress={() => safeBack('/')} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 14, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-          <ArrowLeft size={16} color={INK[500]} strokeWidth={2} />
-          <Text style={{ fontSize: 13, color: INK[500], fontWeight: '600' }}>Geri</Text>
-        </Pressable>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: PAGE_PADDING, paddingTop: 18 + insets.top, paddingBottom: (isNarrow ? 300 : 150) + insets.bottom, width: '100%' }}>
+        {/* Geri — basınca küçülür (dokunuşta, bırakışta değil) */}
+        <View style={{ alignSelf: 'flex-start', marginBottom: 16, marginStart: -8 }}>
+          <Tip label="Planı kaydetmeden önceki sayfaya dön">
+            <Pressable
+              onPress={() => safeBack('/')}
+              hitSlop={8}
+              style={({ pressed, hovered }: any) => ({
+                flexDirection: 'row', alignItems: 'center', gap: 5,
+                paddingHorizontal: 8, paddingVertical: 6, borderRadius: 999,
+                backgroundColor: hovered ? 'rgba(0,0,0,0.04)' : 'transparent',
+                ...press(pressed),
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              })}
+            >
+              <ArrowLeft size={15} color={INK[500]} strokeWidth={2} />
+              <Text style={{ ...TYPE.body, color: INK[500], fontWeight: '600' }}>Geri</Text>
+            </Pressable>
+          </Tip>
+        </View>
 
-        {/* Sipariş künyesi + diş şeması — SPLIT (sol künye · sağ diş şeması) */}
-        <View style={{ flexDirection: isNarrow ? 'column' : 'row', gap: 16, marginBottom: 16, alignItems: 'stretch' }}>
-          {/* ── SOL: künye kartı ── */}
-          <View style={{ flex: 1, minWidth: 0, borderRadius: 20, overflow: 'hidden', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18,
-              // @ts-ignore web gradient
-              backgroundImage: `linear-gradient(135deg, ${tint(A, 0.16)} 0%, #FFFFFF 70%)` }}>
-              <View style={{ width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: A }}>
-                <ListChecks size={22} color={theme.accent} strokeWidth={1.9} />
-              </View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ fontSize: 11, fontWeight: '700', color: A_DEEP, letterSpacing: 1, textTransform: 'uppercase' }}>Plan Önizleme</Text>
-                <Text style={{ fontSize: 23, color: INK[900], fontFamily: DISPLAY, letterSpacing: -0.6, marginTop: 2 }} numberOfLines={1}>
-                  #{o?.order_number ?? '—'} · {o?.patient_name ?? 'Hasta'}
-                </Text>
-                <Text style={{ fontSize: 12.5, color: INK[500], marginTop: 2 }} numberOfLines={1}>
-                  {distinctProcs.length > 0 ? distinctProcs.join(' · ') : 'Sipariş'}
-                </Text>
-              </View>
-              {o?.is_urgent && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: tint('#D94B4B', 0.10), borderWidth: 1, borderColor: tint('#D94B4B', 0.25) }}>
-                  <AlertTriangle size={12} color="#9C2E2E" strokeWidth={2} />
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#9C2E2E' }}>Acil</Text>
-                </View>
-              )}
-              {/* Sipariş yazışması — sorun olursa hekim/klinikle mesajlaş */}
-              <Pressable
-                onPress={() => setChatOpen(true)}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: tint(A, 0.12), borderWidth: 1, borderColor: tint(A, 0.28), ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+        {/* Sipariş künyesi + diş şeması — SPLIT (sol künye · sağ diş şeması).
+            İki kart aynı yükseklikte (`stretch`). Künye kartı diş şemasından
+            kısa kalırsa fazla yükseklik ALTTA boşluk olarak birikmesin diye
+            içeride esnek bir ara verilir: işlem lejantı kartın tabanına oturur,
+            boşluk künyeyle lejant ARASINA dağılır. */}
+        <View style={{ flexDirection: isNarrow ? 'column' : 'row', gap: 14, marginBottom: 14, alignItems: 'stretch' }}>
+          {/* ── SOL: künye kartı ──
+              Hiyerarşi hastadan başlar: insan önce "kimin işi" diye bakar, sipariş
+              numarası künyedir. Gradyan + ikon kutusu kaldırıldı — sakin yüzey. */}
+          {/* Künye = hero. Düz beyaz bir kutu yerine panel renginden doğan
+              yumuşak bir gradyan + sağ üstte blur'lu ışık kümesi. Metin koyu
+              kalır (sayfanın geri kalanıyla aynı okuma tonu), yüzey ise sayfanın
+              geri kalanından ayrışır — bu kart sayfanın başlığı.
+              Orb yalnız web'de: native'de `filter: blur` yok, keskin bir daire
+              olarak görünürdü. */}
+          <View style={{
+            flex: 1, minWidth: 0, borderRadius: 22,
+            // react-native-web her View'a z-index:0 verir → her kart kendi
+            // stacking context'i olur ve DOM'da SONRA gelen kart üste biner.
+            // Künyedeki butonların ipucu balonu diş şemasının altında kalmasın
+            // diye bu kart bir üst basamağa alınır.
+            zIndex: 3,
+            backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: tint(A, 0.16),
+            ...(Platform.OS === 'web' ? {
+              backgroundImage: `linear-gradient(150deg, ${tint(A, 0.17)} 0%, ${tint(A, 0.06)} 34%, #FFFFFF 66%)`,
+            } as any : {}),
+          }}>
+            {/* Işık kümesi AYRI bir kırpma katmanında duruyor; kartın kendisine
+                `overflow: hidden` verilseydi içindeki butonların ipucu balonları
+                da kırpılırdı. Bu katman içerikle kardeş, atası değil. */}
+            {Platform.OS === 'web' && (
+              <View
+                pointerEvents="none"
+                style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 22, overflow: 'hidden' } as any}
               >
-                <MessageSquare size={14} color={A_DEEP} strokeWidth={2} />
-                <Text style={{ fontSize: 12, fontWeight: '700', color: A_DEEP }}>Mesaj{(data?.messages.length ?? 0) > 0 ? ` · ${data!.messages.length}` : ''}</Text>
-              </Pressable>
+                <View
+                  style={{
+                    position: 'absolute', top: -84, end: -44, width: 230, height: 230, borderRadius: 115,
+                    backgroundColor: tint(A, 0.22),
+                    filter: 'blur(52px)',
+                  } as any}
+                />
+              </View>
+            )}
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 20 }}>
+              <View style={{ flex: 1, minWidth: 0, gap: 5 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <Text style={{ ...TYPE.label, color: A_DEEP }}>Plan Önizleme</Text>
+                  {o?.is_urgent && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: tint('#D94B4B', 0.10) }}>
+                      <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: '#D94B4B' }} />
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: '#9C2E2E', letterSpacing: 0.3 }}>Acil</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={{ ...TYPE.display, color: INK[900] }} numberOfLines={1}>
+                  {o?.patient_name ?? 'Hasta'}
+                </Text>
+                <Text style={{ ...TYPE.body, color: INK[500] }} numberOfLines={1}>
+                  #{o?.order_number ?? '—'}{distinctProcs.length > 0 ? ` · ${distinctProcs.join(' · ')}` : ''}
+                </Text>
+              </View>
+
+              {/* İkincil aksiyonlar — sessiz, eşit ağırlıkta. Ana aksiyon altta. */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                {/* İş kağıdı — planı onaylamadan önce basılı nüsha alınabilsin.
+                    Çıktı sipariş detayı ekranıyla birebir aynı (ortak modül). */}
+                {Platform.OS === 'web' && (
+                  <Tip label="İş kağıdını A4 olarak yazdır">
+                    <Pressable
+                      onPress={handlePrint}
+                      disabled={printing}
+                      accessibilityLabel="İş kağıdını yazdır"
+                      style={({ pressed, hovered }: any) => ({
+                        flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
+                        backgroundColor: hovered && !printing ? 'rgba(0,0,0,0.05)' : 'transparent',
+                        borderWidth: 1, borderColor: HAIR, opacity: printing ? 0.55 : 1,
+                        ...press(pressed),
+                        ...(Platform.OS === 'web' ? { cursor: printing ? 'default' : 'pointer' } as any : {}),
+                      })}
+                    >
+                      <Printer size={14} color={INK[700]} strokeWidth={1.9} />
+                      <Text style={{ ...TYPE.meta, fontWeight: '600', color: INK[700] }}>{printing ? 'Hazırlanıyor…' : 'Yazdır'}</Text>
+                    </Pressable>
+                  </Tip>
+                )}
+                {/* Sipariş yazışması — sorun olursa hekim/klinikle mesajlaş */}
+                <Tip label="Hekim ve klinikle bu sipariş üzerinden yazış">
+                  <Pressable
+                    onPress={() => setChatOpen(true)}
+                    style={({ pressed, hovered }: any) => ({
+                      flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
+                      backgroundColor: tint(A, hovered ? 0.18 : 0.11),
+                      ...press(pressed),
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'transform 110ms cubic-bezier(0.2,0,0,1), background-color 140ms ease' } as any : {}),
+                    })}
+                  >
+                    <MessageSquare size={14} color={A_DEEP} strokeWidth={2} />
+                    <Text style={{ ...TYPE.meta, fontWeight: '600', color: A_DEEP }}>Mesaj{(data?.messages.length ?? 0) > 0 ? ` · ${data!.messages.length}` : ''}</Text>
+                  </Pressable>
+                </Tip>
+              </View>
             </View>
 
-            {/* Detay şeridi — işin künyesi */}
+            {/* Detay şeridi — kutu yok. Değer önde, etiket altında; okuma sırası
+                "3 diş" → "ÜYE". Yedi çerçeve yerine yedi sessiz sütun. */}
             {(() => {
-              const meta: { label: string; value: string }[] = [
+              const meta: { label: string; value: string; accent?: boolean }[] = [
                 ...(teeth.length ? [{ label: 'Üye', value: `${teeth.length} diş` }] : []),
-                ...(o?.shade ? [{ label: 'Renk', value: o.shade }] : []),
-                ...(o?.model_type ? [{ label: 'Model', value: o.model_type }] : []),
-                ...(o?.machine_type ? [{ label: 'Makine', value: o.machine_type }] : []),
-                ...(o?.patient_gender ? [{ label: 'Cinsiyet', value: o.patient_gender }] : []),
-                ...(o?.delivery_date ? [{ label: 'Teslim', value: new Date(o.delivery_date).toLocaleDateString(localeTag()) }] : []),
+                ...(o?.shade ? [{ label: 'Renk', value: prettyValue(o.shade) }] : []),
+                ...(o?.model_type ? [{ label: 'Model', value: prettyValue(o.model_type) }] : []),
+                ...(o?.machine_type ? [{ label: 'Makine', value: prettyValue(o.machine_type) }] : []),
+                ...(o?.patient_gender ? [{ label: 'Cinsiyet', value: prettyValue(o.patient_gender) }] : []),
                 ...(o?.created_at ? [{ label: 'Oluşturma', value: new Date(o.created_at).toLocaleDateString(localeTag()) }] : []),
+                // Teslim en sonda ve VURGULU: künyedeki tek karar-kritik alan,
+                // yedi eşit sütundan biri olarak kaybolmamalı.
+                ...(o?.delivery_date ? [{ label: 'Teslim', value: new Date(o.delivery_date).toLocaleDateString(localeTag()), accent: true }] : []),
               ];
               if (meta.length === 0) return null;
               return (
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 18, paddingVertical: 14, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-end', flexWrap: 'wrap', rowGap: 14, columnGap: 26, paddingHorizontal: 20, paddingVertical: 16, borderTopWidth: 1, borderTopColor: HAIR }}>
                   {meta.map(m => (
-                    <View key={m.label} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: PAGE, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }}>
-                      <Text style={{ fontSize: 9, fontWeight: '700', color: INK[400], letterSpacing: 0.6, textTransform: 'uppercase' }}>{m.label}</Text>
-                      <Text style={{ fontSize: 12.5, fontWeight: '600', color: INK[900], marginTop: 1 }}>{m.value}</Text>
-                    </View>
+                    m.accent ? (
+                      <View
+                        key={m.label}
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', gap: 7,
+                          paddingStart: 10, paddingEnd: 12, paddingVertical: 7, borderRadius: 999,
+                          backgroundColor: tint(o?.is_urgent ? '#D94B4B' : A, 0.10),
+                        }}
+                      >
+                        <Clock size={14} color={o?.is_urgent ? '#9C2E2E' : A_DEEP} strokeWidth={2} />
+                        <View>
+                          <Text style={{ fontSize: 14, fontWeight: '700', letterSpacing: -0.2, color: o?.is_urgent ? '#9C2E2E' : A_DEEP }}>{m.value}</Text>
+                          <Text style={{ ...TYPE.label, color: o?.is_urgent ? '#9C2E2E' : A_DEEP, opacity: 0.65, marginTop: 1 }}>{m.label}</Text>
+                        </View>
+                      </View>
+                    ) : (
+                      <View key={m.label} style={{ minWidth: 0 }}>
+                        <Text style={{ ...TYPE.title, color: INK[900] }} numberOfLines={1}>{m.value}</Text>
+                        <Text style={{ ...TYPE.label, color: INK[400], marginTop: 3 }}>{m.label}</Text>
+                      </View>
+                    )
                   ))}
                 </View>
               );
             })()}
 
-            {/* İşlem lejantı (tıkla → şemada vurgula) + seçili diş */}
+            {/* Kartı diş şeması yüksekliğine tamamlayan esnek ara */}
+            <View style={{ flex: 1, minHeight: 8 }} />
+
+            {/* İşlem lejantı (tıkla → şemada vurgula) + seçili diş.
+                Ayraç çizgisi YOK: üç hairline bant kartı forma benzetiyordu,
+                bu blok künyenin devamı olarak boşlukla ayrılıyor. */}
             {teeth.length > 0 && (
-              <View style={{ paddingHorizontal: 18, paddingVertical: 14, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)', gap: 10 }}>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              <View style={{ paddingHorizontal: 20, paddingBottom: 18, gap: 10 }}>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
                   {distinctProcs.map(p => {
                     const c = procColor(p);
                     const active = selProc === p;
                     const count = procTeeth[p]?.length ?? 0;
                     return (
-                      <Pressable
-                        key={p}
-                        onPress={() => { setSelProc(active ? null : p); setSelTooth(null); }}
-                        style={{
-                          flexDirection: 'row', alignItems: 'center', gap: 6,
-                          paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999,
-                          backgroundColor: active ? c : tint(c, 0.12),
-                          borderWidth: 1, borderColor: active ? c : tint(c, 0.25),
-                          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                        }}
-                      >
-                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: active ? '#FFF' : c }} />
-                        <Text style={{ fontSize: 11.5, fontWeight: '700', color: active ? '#FFF' : INK[800] }}>{p}</Text>
-                        {hasToothProc && count > 0 && (
-                          <Text style={{ fontSize: 10.5, fontWeight: '700', color: active ? 'rgba(255,255,255,0.85)' : INK[400] }}>{count}</Text>
-                        )}
-                      </Pressable>
+                      <Tip key={p} label={active ? 'Vurguyu kaldır' : `Şemada yalnız ${p} dişlerini vurgula`}>
+                        <Pressable
+                          onPress={() => { setSelProc(active ? null : p); setSelTooth(null); }}
+                          style={({ pressed, hovered }: any) => ({
+                            flexDirection: 'row', alignItems: 'center', gap: 7,
+                            paddingHorizontal: 11, paddingVertical: 7, borderRadius: 999,
+                            backgroundColor: active ? c : tint(c, hovered ? 0.16 : 0.09),
+                            ...press(pressed),
+                            ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'transform 110ms cubic-bezier(0.2,0,0,1), background-color 140ms ease' } as any : {}),
+                          })}
+                        >
+                          <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: active ? '#FFF' : c }} />
+                          <Text style={{ ...TYPE.meta, fontWeight: '600', color: active ? '#FFF' : INK[800] }}>{p}</Text>
+                          {hasToothProc && count > 0 && (
+                            <Text style={{ fontSize: 10.5, fontWeight: '700', color: active ? 'rgba(255,255,255,0.8)' : INK[400] }}>{count}</Text>
+                          )}
+                        </Pressable>
+                      </Tip>
                     );
                   })}
                 </View>
 
                 {/* Seçili diş → işlemi */}
                 {selTooth != null && toothProc[selTooth] && (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, backgroundColor: tint(procColor(toothProc[selTooth]), 0.10) }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 12, backgroundColor: tint(procColor(toothProc[selTooth]), 0.09) }}>
                     <View style={{ width: 22, height: 22, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: procColor(toothProc[selTooth]) }}>
                       <Text style={{ fontSize: 10, fontWeight: '800', color: '#FFF' }}>{selTooth}</Text>
                     </View>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: INK[900] }}>Diş {selTooth} · {toothProc[selTooth]}</Text>
+                    <Text style={{ ...TYPE.body, fontWeight: '600', color: INK[900] }}>Diş {selTooth} · {toothProc[selTooth]}</Text>
                   </View>
                 )}
               </View>
             )}
           </View>
 
-          {/* ── SAĞ: diş şeması kartı (görsel) ── */}
+          {/* ── SAĞ: diş şeması ── */}
           {teeth.length > 0 && (
-            <View style={{ width: isNarrow ? '100%' : 360, borderRadius: 20, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', padding: 14, gap: 8 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Box size={13} color={INK[400]} strokeWidth={1.8} />
-                <Text style={{ fontSize: 10, fontWeight: '700', color: INK[400], letterSpacing: 1, textTransform: 'uppercase' }}>Diş Şeması</Text>
-                <Text style={{ fontSize: 11, color: INK[400] }}>· {teeth.length} diş</Text>
+          <View style={{ width: isNarrow ? '100%' : 360, gap: 12 }}>
+          {teeth.length > 0 && (
+            <View style={{ borderRadius: 22, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: HAIR, padding: 16, gap: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                <Text style={{ ...TYPE.label, color: INK[400] }}>Diş Şeması</Text>
+                <Text style={{ ...TYPE.meta, color: INK[400] }}>{teeth.length} diş</Text>
                 <View style={{ flex: 1 }} />
                 {selProc && (
-                  <Pressable onPress={() => setSelProc(null)} hitSlop={6} style={{ ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-                    <Text style={{ fontSize: 10.5, fontWeight: '700', color: A_DEEP }}>Tümü</Text>
-                  </Pressable>
+                  <Tip label="Vurguyu kaldır, tüm dişleri göster">
+                    <Pressable
+                      onPress={() => setSelProc(null)}
+                      hitSlop={8}
+                      style={({ pressed }: any) => ({ ...press(pressed), ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) })}
+                    >
+                      <Text style={{ ...TYPE.meta, fontWeight: '600', color: A_DEEP }}>Tümü</Text>
+                    </Pressable>
+                  </Tip>
                 )}
               </View>
               <View style={{ alignItems: 'center', justifyContent: 'center' }}>
@@ -748,44 +1140,89 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
               )}
             </View>
           )}
+
+          </View>
+          )}
         </View>
 
-        <View style={{ flexDirection: isNarrow ? 'column' : 'row', gap: 16, flexWrap: 'wrap' }}>
-          {/* Sol referans */}
-          <View style={{ width: isNarrow ? '100%' : 240, gap: 12 }}>
-            <View style={{ borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', padding: 14, gap: 8 }}>
-              <Text style={{ fontSize: 10, fontWeight: '700', color: INK[400], letterSpacing: 1, textTransform: 'uppercase' }}>Hekim & Klinik</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: tint(A, 0.16), alignItems: 'center', justifyContent: 'center' }}>
-                  <Stethoscope size={14} color={A_DEEP} strokeWidth={1.8} />
+        <View style={{ flexDirection: isNarrow ? 'column' : 'row', gap: 14, flexWrap: 'wrap' }}>
+          {/* Sol referans — tek kart dili: radius 18, padding 16, aynı hairline.
+              zIndex 2: dosya satırlarındaki ipucu balonları sağdaki akış
+              kolonunun altında kalmasın (DOM'da akış sonra geliyor). */}
+          <View style={{ width: isNarrow ? '100%' : 256, gap: 12, zIndex: 2 }}>
+            <View style={{ borderRadius: 18, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: HAIR, padding: 16, gap: 10 }}>
+              <Text style={{ ...TYPE.label, color: INK[400] }}>Hekim & Klinik</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: tint(A, 0.12), alignItems: 'center', justifyContent: 'center' }}>
+                  <Stethoscope size={15} color={A_DEEP} strokeWidth={1.8} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: INK[900] }} numberOfLines={1}>{data?.doctorName ?? '—'}</Text>
-                  <Text style={{ fontSize: 11, color: INK[500] }} numberOfLines={1}>{data?.clinicName ?? ''}</Text>
+                  <Text style={{ ...TYPE.body, fontWeight: '600', color: INK[900] }} numberOfLines={1}>{data?.doctorName ?? '—'}</Text>
+                  <Text style={{ ...TYPE.meta, color: INK[500], marginTop: 1 }} numberOfLines={1}>{data?.clinicName ?? ''}</Text>
                 </View>
               </View>
-            </View>
-            {o?.notes ? (
-              <View style={{ borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', padding: 14, gap: 6 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <FileText size={12} color={INK[400]} strokeWidth={1.8} />
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: INK[400], letterSpacing: 1, textTransform: 'uppercase' }}>Hekim Notu</Text>
-                </View>
-                <Text style={{ fontSize: 12.5, color: INK[800], lineHeight: 18 }}>{o.notes}</Text>
-              </View>
-            ) : null}
 
+              {/* İletişim — triajda bir şey sorulacaksa (implant markası, eksik
+                  tarama) numara başka ekranda aranmasın. Dokunulabilir olanlar
+                  tel:/mailto: açar. */}
+              {(() => {
+                const lines: { key: string; icon: React.ReactNode; text: string; href?: string; tip: string }[] = [
+                  ...(data?.doctorPhone ? [{
+                    key: 'dp', icon: <Phone size={12} color={A_DEEP} strokeWidth={2} />,
+                    text: data.doctorPhone, href: `tel:${data.doctorPhone.replace(/\s/g, '')}`,
+                    tip: 'Hekimi ara',
+                  }] : []),
+                  ...(data?.clinicPhone ? [{
+                    key: 'cp', icon: <Phone size={12} color={INK[400]} strokeWidth={2} />,
+                    text: `${data.clinicPhone} · ${autoT('klinik')}`, href: `tel:${data.clinicPhone.replace(/\s/g, '')}`,
+                    tip: 'Kliniği ara',
+                  }] : []),
+                  ...(data?.clinicContact ? [{
+                    key: 'cc', icon: <User size={12} color={INK[400]} strokeWidth={2} />,
+                    text: `${data.clinicContact} · ${autoT('irtibat')}`, tip: 'Klinikteki irtibat kişisi',
+                  }] : []),
+                  ...(data?.clinicEmail ? [{
+                    key: 'ce', icon: <Mail size={12} color={INK[400]} strokeWidth={2} />,
+                    text: data.clinicEmail, href: `mailto:${data.clinicEmail}`,
+                    tip: 'E-posta gönder',
+                  }] : []),
+                ];
+                if (lines.length === 0) return null;
+                return (
+                  <View style={{ gap: 2, paddingTop: 10, borderTopWidth: 1, borderTopColor: HAIR }}>
+                    {lines.map(l => {
+                      const row = (
+                        <Pressable
+                          disabled={!l.href}
+                          onPress={() => { if (l.href) Linking.openURL(l.href).catch(() => {}); }}
+                          style={({ pressed, hovered }: any) => ({
+                            flexDirection: 'row', alignItems: 'center', gap: 7,
+                            paddingHorizontal: 6, paddingVertical: 6, borderRadius: 9, marginHorizontal: -6,
+                            backgroundColor: hovered && l.href ? 'rgba(0,0,0,0.035)' : 'transparent',
+                            ...press(pressed, 0.99),
+                            ...(Platform.OS === 'web' && l.href ? { cursor: 'pointer' } as any : {}),
+                          })}
+                        >
+                          {l.icon}
+                          <Text style={{ ...TYPE.meta, color: l.href ? INK[800] : INK[500], flex: 1 }} numberOfLines={1}>{l.text}</Text>
+                        </Pressable>
+                      );
+                      return l.href ? <Tip key={l.key} block label={l.tip}>{row}</Tip> : <View key={l.key}>{row}</View>;
+                    })}
+                  </View>
+                );
+              })()}
+            </View>
             {/* Hekim / klinik mesajları */}
             {(data?.messages.length ?? 0) > 0 && (
-              <View style={{ borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', padding: 14, gap: 10 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <MessageSquare size={12} color={INK[400]} strokeWidth={1.8} />
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: INK[400], letterSpacing: 1, textTransform: 'uppercase' }}>Hekim Mesajları</Text>
-                  <Text style={{ fontSize: 11, color: INK[400] }}>({data!.messages.length})</Text>
+              <View style={{ borderRadius: 18, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: HAIR, padding: 16, gap: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                  <Text style={{ ...TYPE.label, color: INK[400] }}>Hekim Mesajları</Text>
+                  <Text style={{ ...TYPE.meta, color: INK[400] }}>{data!.messages.length}</Text>
                 </View>
                 {data!.messages.map((m, i) => (
-                  <View key={m.id} style={{ gap: 3, paddingBottom: i < data!.messages.length - 1 ? 10 : 0, borderBottomWidth: i < data!.messages.length - 1 ? 1 : 0, borderBottomColor: 'rgba(0,0,0,0.05)' }}>
-                    {m.content ? <Text style={{ fontSize: 12.5, color: INK[800], lineHeight: 18 }}>{m.content}</Text> : null}
+                  <View key={m.id} style={{ gap: 4, paddingBottom: i < data!.messages.length - 1 ? 12 : 0, borderBottomWidth: i < data!.messages.length - 1 ? 1 : 0, borderBottomColor: HAIR }}>
+                    {m.content ? <Text style={{ ...TYPE.body, color: INK[800], lineHeight: 19 }}>{m.content}</Text> : null}
                     {m.attachment_name ? (
                       <Pressable
                         onPress={() => {
@@ -793,63 +1230,76 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                           if (Platform.OS === 'web' && isImagePath(m.attachment_name ?? '')) { setImageViewer({ url: m.attachment_url, name: m.attachment_name ?? '' }); return; }
                           openFileUrl(m.attachment_url);
                         }}
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, ...(Platform.OS === 'web' && m.attachment_url ? { cursor: 'pointer' } as any : {}) }}
+                        style={({ pressed }: any) => ({ flexDirection: 'row', alignItems: 'center', gap: 5, ...press(pressed), ...(Platform.OS === 'web' && m.attachment_url ? { cursor: 'pointer' } as any : {}) })}
                       >
                         <FileText size={11} color={m.attachment_url ? A_DEEP : INK[400]} strokeWidth={1.8} />
-                        <Text numberOfLines={1} style={{ fontSize: 11, fontStyle: 'italic', color: m.attachment_url ? A_DEEP : INK[500], textDecorationLine: m.attachment_url ? 'underline' : 'none' }}>{m.attachment_name}</Text>
+                        <Text numberOfLines={1} style={{ ...TYPE.meta, fontWeight: '600', color: m.attachment_url ? A_DEEP : INK[500] }}>{m.attachment_name}</Text>
                       </Pressable>
                     ) : null}
-                    <Text style={{ fontSize: 10, color: INK[400] }}>{m.sender_name ?? 'Hekim'} · {new Date(m.created_at).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</Text>
+                    <Text style={{ fontSize: 10.5, color: INK[400] }}>{m.sender_name ?? 'Hekim'} · {new Date(m.created_at).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</Text>
                   </View>
                 ))}
               </View>
             )}
 
             {/* Dosyalar */}
-            <View style={{ borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', padding: 14, gap: 8 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Box size={12} color={INK[400]} strokeWidth={1.8} />
-                <Text style={{ fontSize: 10, fontWeight: '700', color: INK[400], letterSpacing: 1, textTransform: 'uppercase' }}>Dosyalar</Text>
-                <Text style={{ fontSize: 11, color: INK[400] }}>({data?.files.length ?? 0})</Text>
+            <View style={{ borderRadius: 18, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: HAIR, padding: 16, gap: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                <Text style={{ ...TYPE.label, color: INK[400] }}>Dosyalar</Text>
+                <Text style={{ ...TYPE.meta, color: INK[400] }}>{data?.files.length ?? 0}</Text>
               </View>
-              {/* Tümünü katmanlı göster — 2+ 3D dosya varsa */}
+              {/* Tümünü katmanlı göster — 2+ 3D dosya varsa.
+                  Referans panelindeki yardımcı aksiyon: dolu accent blok yerine
+                  yumuşak tonlu yüzey. Koyu metin orta tonlu accent üzerinde
+                  okunmuyordu; artık koyu accent metin açık zeminde. */}
               {all3DFiles.length >= 2 && Platform.OS === 'web' && (
+                <Tip block label={`${all3DFiles.length} taramayı tek sahnede üst üste aç`}>
                 <Pressable
                   onPress={openAllLayered}
-                  style={({ hovered }: any) => ({
-                    alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6,
-                    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999,
-                    backgroundColor: hovered ? A_DEEP : A,
-                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  accessibilityLabel={`${all3DFiles.length} taramayı tek sahnede üst üste aç`}
+                  style={({ pressed, hovered }: any) => ({
+                    alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', gap: 9,
+                    paddingStart: 10, paddingEnd: 8, paddingVertical: 9, borderRadius: 12,
+                    backgroundColor: tint(A, hovered ? 0.17 : 0.10),
+                    ...press(pressed, 0.985),
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'transform 110ms cubic-bezier(0.2,0,0,1), background-color 140ms ease' } as any : {}),
                   })}
                 >
-                  <Layers size={12} color={theme.accent} strokeWidth={2.2} />
-                  <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.accent }}>Tümünü katmanlı göster ({all3DFiles.length})</Text>
+                  <Layers size={14} color={A_DEEP} strokeWidth={2} />
+                  <Text style={{ ...TYPE.meta, fontWeight: '600', color: A_DEEP, flex: 1 }} numberOfLines={1}>
+                    Katmanlı görüntüle
+                  </Text>
+                  <View style={{ minWidth: 19, height: 18, paddingHorizontal: 5, borderRadius: 9, backgroundColor: tint(A, 0.18), alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: A_DEEP }}>{all3DFiles.length}</Text>
+                  </View>
                 </Pressable>
+                </Tip>
               )}
               {(data?.files.length ?? 0) === 0 ? (
-                <Text style={{ fontSize: 12, color: INK[400], fontStyle: 'italic' }}>Dosya yok.</Text>
+                <Text style={{ ...TYPE.meta, color: INK[400] }}>Dosya yok.</Text>
               ) : (
                 fileGroups.map((g) => {
                   const isCollapsed = !openFileCats[g.key];
                   const catColor = g.key === 'photo' ? '#10B981' : g.key === 'scan' ? A : INK[500];
                   return (
-                  <View key={g.key} style={{ marginBottom: 2 }}>
-                    {/* Kategori başlığı — tıklayınca aç/kapa (varsayılan kapalı) */}
+                  <View key={g.key}>
+                    {/* Kategori başlığı — tıklayınca aç/kapa (varsayılan kapalı).
+                        Ok, açılış yönünü baştan söylüyor: kapalıyken sağa, açıkken aşağı. */}
                     <Pressable
                       onPress={() => setOpenFileCats(s => ({ ...s, [g.key]: !s[g.key] }))}
                       hitSlop={4}
-                      style={({ hovered }: any) => ({
-                        flexDirection: 'row', alignItems: 'center', gap: 7,
-                        paddingHorizontal: 8, paddingVertical: 7, borderRadius: 8,
-                        backgroundColor: hovered ? tint(A, 0.06) : 'transparent',
+                      style={({ pressed, hovered }: any) => ({
+                        flexDirection: 'row', alignItems: 'center', gap: 8,
+                        paddingHorizontal: 8, paddingVertical: 8, borderRadius: 10, marginHorizontal: -8,
+                        backgroundColor: hovered ? 'rgba(0,0,0,0.035)' : 'transparent',
+                        ...press(pressed, 0.985),
                         ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                       })}
                     >
-                      {isCollapsed ? <ChevronRight size={14} color={INK[500]} strokeWidth={2} /> : <ChevronDown size={14} color={INK[500]} strokeWidth={2} />}
-                      <Text style={{ flex: 1, fontSize: 11, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase', color: INK[500] }}>{g.label}</Text>
-                      <View style={{ minWidth: 20, height: 18, paddingHorizontal: 6, borderRadius: 9, backgroundColor: tint(catColor, 0.14), alignItems: 'center', justifyContent: 'center' }}>
-                        <Text style={{ fontSize: 10, fontWeight: '800', color: catColor }}>{g.files.length}</Text>
+                      {isCollapsed ? <ChevronRight size={14} color={INK[400]} strokeWidth={2} /> : <ChevronDown size={14} color={INK[400]} strokeWidth={2} />}
+                      <Text style={{ flex: 1, ...TYPE.meta, fontWeight: '600', color: INK[700] }}>{g.label}</Text>
+                      <View style={{ minWidth: 20, height: 18, paddingHorizontal: 6, borderRadius: 9, backgroundColor: tint(catColor, 0.13), alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: catColor }}>{g.files.length}</Text>
                       </View>
                     </Pressable>
                     {!isCollapsed && g.files.map(f => {
@@ -859,49 +1309,53 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                   return (
                   <View
                     key={f.id}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 8, paddingLeft: 26, paddingVertical: 6, borderRadius: 10 }}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingStart: 22, paddingVertical: 5, borderRadius: 10 }}
                   >
-                    <View style={{ width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(f.is3d || isZip ? A : INK[400], 0.12) }}>
+                    <View style={{ width: 28, height: 28, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(f.is3d || isZip ? A : INK[400], 0.11) }}>
                       {f.is3d || isZip ? <Box size={14} color={A_DEEP} strokeWidth={1.8} /> : <FileText size={14} color={INK[500]} strokeWidth={1.8} />}
                     </View>
-                    <Text style={{ flex: 1, fontSize: 12, fontWeight: '600', color: INK[800] }} numberOfLines={1}>{f.name}</Text>
+                    <Text style={{ flex: 1, ...TYPE.meta, fontWeight: '600', color: INK[800] }} numberOfLines={1}>{f.name}</Text>
                     {(f.is3d || isZip) && (
-                      <View style={{ paddingHorizontal: 6, paddingVertical: 1.5, borderRadius: 999, backgroundColor: tint(A, 0.16) }}>
-                        <Text style={{ fontSize: 8.5, fontWeight: '800', color: A_DEEP }}>{isZip ? 'ZIP · 3D' : '3D'}</Text>
+                      <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999, backgroundColor: tint(A, 0.14) }}>
+                        <Text style={{ fontSize: 8.5, fontWeight: '700', color: A_DEEP }}>{isZip ? 'ZIP' : '3D'}</Text>
                       </View>
                     )}
                     {/* Önizleme butonu — 3D ise viewer, diğeri yeni sekme */}
-                    <Pressable
-                      onPress={() => openFilePreview(f)}
-                      disabled={!previewable || isBusy}
-                      hitSlop={6}
-                      // @ts-ignore web tooltip
-                      title={isZip ? 'Zip aç ve 3D göster' : 'Önizle'}
-                      style={({ hovered }: any) => ({
-                        width: 26, height: 26, borderRadius: 7, alignItems: 'center', justifyContent: 'center',
-                        backgroundColor: hovered && previewable ? tint(A, 0.14) : 'transparent', opacity: previewable ? 1 : 0.4,
-                        ...(Platform.OS === 'web' && previewable && !isBusy ? { cursor: 'pointer' } as any : {}),
-                      })}
-                    >
-                      {isBusy
-                        ? <ActivityIndicator size="small" color={A_DEEP} />
-                        : <Eye size={13} color={previewable ? A_DEEP : INK[400]} strokeWidth={1.9} />}
-                    </Pressable>
+                    <Tip label={isZip ? 'Zip’i aç, 3D göster' : 'Önizle'}>
+                      <Pressable
+                        onPress={() => openFilePreview(f)}
+                        disabled={!previewable || isBusy}
+                        hitSlop={6}
+                        accessibilityLabel={isZip ? 'Zip’i aç ve 3D göster' : 'Önizle'}
+                        style={({ pressed, hovered }: any) => ({
+                          width: 26, height: 26, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
+                          backgroundColor: hovered && previewable ? tint(A, 0.13) : 'transparent', opacity: previewable ? 1 : 0.4,
+                          ...press(pressed, 0.9),
+                          ...(Platform.OS === 'web' && previewable && !isBusy ? { cursor: 'pointer' } as any : {}),
+                        })}
+                      >
+                        {isBusy
+                          ? <ActivityIndicator size="small" color={A_DEEP} />
+                          : <Eye size={13} color={previewable ? A_DEEP : INK[400]} strokeWidth={1.9} />}
+                      </Pressable>
+                    </Tip>
                     {/* İndir butonu — ham dosya (ZIP zip olarak iner) */}
-                    <Pressable
-                      onPress={() => forceDownload(f)}
-                      disabled={!previewable}
-                      hitSlop={6}
-                      // @ts-ignore web tooltip
-                      title="İndir"
-                      style={({ hovered }: any) => ({
-                        width: 26, height: 26, borderRadius: 7, alignItems: 'center', justifyContent: 'center',
-                        backgroundColor: hovered && previewable ? tint(A, 0.14) : 'transparent', opacity: previewable ? 1 : 0.4,
-                        ...(Platform.OS === 'web' && previewable ? { cursor: 'pointer' } as any : {}),
-                      })}
-                    >
-                      <Download size={13} color={previewable ? A_DEEP : INK[400]} strokeWidth={1.9} />
-                    </Pressable>
+                    <Tip label="İndir">
+                      <Pressable
+                        onPress={() => forceDownload(f)}
+                        disabled={!previewable}
+                        hitSlop={6}
+                        accessibilityLabel="Dosyayı indir"
+                        style={({ pressed, hovered }: any) => ({
+                          width: 26, height: 26, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
+                          backgroundColor: hovered && previewable ? tint(A, 0.13) : 'transparent', opacity: previewable ? 1 : 0.4,
+                          ...press(pressed, 0.9),
+                          ...(Platform.OS === 'web' && previewable ? { cursor: 'pointer' } as any : {}),
+                        })}
+                      >
+                        <Download size={13} color={previewable ? A_DEEP : INK[400]} strokeWidth={1.9} />
+                      </Pressable>
+                    </Tip>
                   </View>
                   );
                 })}
@@ -910,97 +1364,221 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                 })
               )}
             </View>
+
+            {/* Hekim notu — dosyaların altında. Triaj kararında önce taramaya
+                bakılır, not onu tamamlayan açıklamadır. */}
+            {o?.notes ? (
+              <View style={{ borderRadius: 18, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: HAIR, padding: 16, gap: 8 }}>
+                <Text style={{ ...TYPE.label, color: INK[400] }}>Hekim Notu</Text>
+                <Text style={{ ...TYPE.body, color: INK[800], lineHeight: 19 }}>{o.notes}</Text>
+              </View>
+            ) : null}
           </View>
 
-          {/* Sağ: pipeline */}
-          <View style={{ flex: 1, minWidth: isNarrow ? 0 : 320, width: isNarrow ? '100%' : undefined, gap: 10 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: INK[700] }}>
-                Üretim Akışı{laneCount > 1 ? ` · ${laneCount} iş şeridi` : ` · ${activeRows.length} aşama`}
-              </Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Sparkles size={12} color={A_DEEP} strokeWidth={2} />
-                <Text style={{ fontSize: 11, color: INK[500] }}>İstasyon varsayılan teknisyeni + canlı iş yükü</Text>
-              </View>
-            </View>
-
-            {/* Faz 2: iş şeridi kontrolü — aynı siparişte farklı işlemler bağımsız yürür.
-                Yalnız 2+ işlem (order_items) varken veya zaten çok-şerit iken görünür. */}
-            {((data?.items?.length ?? 0) > 1 || laneCount > 1) && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-                <Pressable onPress={addLane}
-                  style={({ hovered }: any) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: hovered ? tint(A, 0.18) : tint(A, 0.10), borderWidth: 1, borderColor: tint(A, 0.28), ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) })}>
-                  <Plus size={13} color={A_DEEP} strokeWidth={2.2} />
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: A_DEEP }}>İş şeridi ekle</Text>
-                </Pressable>
-                {laneCount > 1 && (
-                  <Pressable onPress={resetToSingleLane} style={Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : undefined}>
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: INK[500] }}>Tek şeride dön</Text>
-                  </Pressable>
-                )}
-                <Text style={{ fontSize: 11, color: INK[400] }}>
-                  {laneCount > 1 ? 'İşlem çipine dokunup şeridini değiştir' : 'Farklı işlemleri ayrı şeritlerde yürüt'}
+          {/* Sağ: pipeline — sol kolonun bir basamak altında kalır (yukarıdaki
+              not). Kendi içindeki dropdown/balonlar bu kolonun bağlamında
+              sıralanır, ekranda sol kolonla üst üste gelmiyorlar. */}
+          <View style={{ flex: 1, minWidth: isNarrow ? 0 : 320, width: isNarrow ? '100%' : undefined, gap: 12, zIndex: 1 }}>
+            {/* zIndex yalnız açılır liste AÇIKKEN yükselir. Sabit yüksek kalırsa
+                ilk satırdaki aşama kartlarının ipucu balonları bu şeridin
+                altında kalıyor (balon yukarı, buraya doğru açılıyor). */}
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', zIndex: addOpen ? 70 : 1 }}>
+            <View style={{ flex: 1, minWidth: 220, gap: 6 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                <Text style={{ ...TYPE.title, color: INK[900] }}>Üretim Akışı</Text>
+                <Text style={{ ...TYPE.meta, color: INK[400] }}>
+                  {laneCount > 1 ? `${laneCount} ${autoT('iş şeridi')}` : `${activeRows.length} ${autoT('aşama')}`} · {autoT('sırayı sürükleyerek değiştir')}
                 </Text>
               </View>
+
+              {/* Sessizce plandan ÇIKARILAN istasyonlar söylenir — söylenmezse
+                  bu istasyonlar "Aşama Ekle" listesinde gerçekten alakasız
+                  olanlarla aynı görünüyor ve çıkarılmaları kaza sanılıyor.
+                  (Hangi şablondan kurulduğu bilgisi kaldırıldı: müdür zaten
+                  planı gözüyle doğruluyor, satır yer kaplıyordu.) */}
+              {autoSkipped.length > 0 && (
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}>
+                  <Sparkles size={12} color={INK[400]} strokeWidth={2} style={{ marginTop: 2 } as any} />
+                  <Text style={{ ...TYPE.meta, color: INK[500], flex: 1, lineHeight: 17 }}>
+                    Dijital ölçü geldiği için {autoSkipped.join(' ve ')} plandan çıkarıldı
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* Plana girmemiş istasyonlar — TEK buton + açılır liste, başlığın
+                yanındaki boşlukta. Eskiden yan yana çip duvarıydı ve akışın en
+                altındaydı: istasyon sayısı arttıkça sayfanın en çok yer kaplayan
+                bloğu oluyordu, oysa çoğu planda hiç kullanılmıyor. */}
+            {/* Başlığın yanındaki araç kümesi: şerit + aşama ekleme.
+                İkisi de "akışı kur" işi, aynı yerde durmaları gerekiyor. */}
+            {/* nowrap: "Aşama Ekle" eskiden dar panelde width:'100%' alıyordu ve
+                şerit butonunu bir alt satıra itiyordu. İkisi tek satırda kalsın;
+                yer daralınca esneyen taraf "Aşama Ekle" olur. */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1, zIndex: 70 }}>
+            {((data?.items?.length ?? 0) > 1 || laneCount > 1) && (
+              <>
+                <Tip label="Farklı işlemleri bağımsız yürüyen ayrı şeritlere böl">
+                  <Pressable onPress={addLane}
+                    style={({ pressed, hovered }: any) => ({
+                      flexDirection: 'row', alignItems: 'center', gap: 7, paddingStart: 12, paddingEnd: 13, paddingVertical: 9, borderRadius: 999,
+                      backgroundColor: hovered ? tint(A, 0.12) : '#FFFFFF',
+                      borderWidth: 1, borderColor: HAIR,
+                      ...press(pressed, 0.98),
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'transform 110ms cubic-bezier(0.2,0,0,1), background-color 140ms ease' } as any : {}),
+                    })}>
+                    <Plus size={14} color={A_DEEP} strokeWidth={2.2} />
+                    <Text style={{ ...TYPE.meta, fontWeight: '600', color: A_DEEP }}>İş Şeridi</Text>
+                  </Pressable>
+                </Tip>
+                {laneCount > 1 && (
+                  <Tip label="Şeritleri birleştir, tek sıraya dön">
+                    <Pressable onPress={resetToSingleLane} hitSlop={6}
+                      style={({ pressed }: any) => ({ paddingHorizontal: 4, paddingVertical: 6, ...press(pressed), ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) })}>
+                      <Text style={{ ...TYPE.meta, fontWeight: '600', color: INK[500] }}>Tek şeride dön</Text>
+                    </Pressable>
+                  </Tip>
+                )}
+              </>
+            )}
+            {laneCount === 1 && poolRows.length > 0 && (
+              <View style={{ flex: 1, minWidth: 148, maxWidth: 216, zIndex: 70 }}>
+                <Tip block label="Plana girmemiş aşamalardan birini akışın sonuna ekle">
+                  <Pressable
+                    onPress={() => setAddOpen(o => !o)}
+                    style={({ pressed, hovered }: any) => ({
+                      width: '100%', flexDirection: 'row', alignItems: 'center', gap: 8,
+                      paddingStart: 12, paddingEnd: 10, paddingVertical: 9, borderRadius: 999,
+                      backgroundColor: addOpen || hovered ? tint(A, 0.12) : '#FFFFFF',
+                      borderWidth: 1, borderColor: addOpen ? tint(A, 0.35) : HAIR,
+                      ...press(pressed, 0.98),
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'transform 110ms cubic-bezier(0.2,0,0,1), background-color 140ms ease, border-color 140ms ease' } as any : {}),
+                    })}
+                  >
+                    <Plus size={14} color={A_DEEP} strokeWidth={2.2} />
+                    <Text style={{ ...TYPE.meta, fontWeight: '600', color: A_DEEP, flex: 1 }}>Aşama Ekle</Text>
+                    <View style={{ minWidth: 18, height: 17, paddingHorizontal: 5, borderRadius: 9, backgroundColor: tint(A, 0.16), alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: A_DEEP }}>{poolRows.length}</Text>
+                    </View>
+                    <Caret size={13} color={INK[400]} strokeWidth={2} style={{ transform: [{ rotate: addOpen ? '180deg' : '0deg' }] } as any} />
+                  </Pressable>
+                </Tip>
+
+                {addOpen && (
+                  <View style={{
+                    position: 'absolute', top: '100%', end: 0, minWidth: 244, marginTop: 6, zIndex: 80,
+                    borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: HAIR, padding: 6,
+                    ...(Platform.OS === 'web' ? { boxShadow: '0 16px 40px rgba(15,23,42,0.14)' } as any : {}),
+                  }}>
+                    <ScrollView style={{ maxHeight: 264 }} showsVerticalScrollIndicator={false}>
+                      {poolRows.map(r => {
+                        const st = stationById.get(r.stationId);
+                        if (!st) return null;
+                        return (
+                          <Pressable
+                            key={r.stationId}
+                            onPress={() => { setActive(r.stationId, true); setAddOpen(false); }}
+                            style={({ pressed, hovered }: any) => ({
+                              flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 10, borderRadius: 12,
+                              backgroundColor: hovered ? 'rgba(0,0,0,0.035)' : 'transparent',
+                              ...press(pressed, 0.99),
+                              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                            })}
+                          >
+                            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: st.color }} />
+                            <Text style={{ ...TYPE.body, fontWeight: '600', color: INK[800], flex: 1 }} numberOfLines={1}>{st.name}</Text>
+                            {st.est_duration_min != null && st.est_duration_min > 0 && (
+                              <Text style={{ fontSize: 10.5, fontWeight: '600', color: INK[400] }}>{fmtDuration(st.est_duration_min)}</Text>
+                            )}
+                            <Plus size={13} color={INK[400]} strokeWidth={2} />
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                )}
+              </View>
+            )}
+            </View>
+            </View>
+
+            {/* Çok-şeritteyken işlem→şerit atamasının nasıl yapıldığını söyler */}
+            {laneCount > 1 && (
+              <Text style={{ ...TYPE.meta, color: INK[400] }}>İşlem çipine dokunup şeridini değiştir</Text>
             )}
 
             {/* Faz 2: işlem→şerit çipleri (yalnız çok-şerit) */}
             {laneCount > 1 && (data?.items?.length ?? 0) > 0 && (
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
                 {(data?.items ?? []).map(it => (
-                  <Pressable key={it.id} onPress={() => cycleItemLane(it.id)}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingLeft: 10, paddingRight: 6, paddingVertical: 6, borderRadius: 999, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: INK[700] }} numberOfLines={1}>
+                  <Tip key={it.id} label="Bu işlemi bir sonraki şeride taşı">
+                  <Pressable onPress={() => cycleItemLane(it.id)}
+                    style={({ pressed, hovered }: any) => ({
+                      flexDirection: 'row', alignItems: 'center', gap: 8, paddingStart: 11, paddingEnd: 6, paddingVertical: 6, borderRadius: 999,
+                      backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: hovered ? tint(A, 0.4) : HAIR,
+                      ...press(pressed),
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'transform 110ms cubic-bezier(0.2,0,0,1), border-color 140ms ease' } as any : {}),
+                    })}>
+                    <Text style={{ ...TYPE.meta, fontWeight: '600', color: INK[700] }} numberOfLines={1}>
                       {it.name}{it.tooth_numbers?.length ? ` (${it.tooth_numbers.join(',')})` : ''}
                     </Text>
-                    <View style={{ minWidth: 22, height: 20, paddingHorizontal: 6, borderRadius: 999, backgroundColor: tint(A, 0.16), alignItems: 'center', justifyContent: 'center' }}>
-                      <Text style={{ fontSize: 11, fontWeight: '800', color: A_DEEP }}>Ş{itemLaneOf(it.id)}</Text>
+                    <View style={{ minWidth: 22, height: 20, paddingHorizontal: 6, borderRadius: 999, backgroundColor: tint(A, 0.14), alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ fontSize: 10.5, fontWeight: '700', color: A_DEEP }}>Ş{itemLaneOf(it.id)}</Text>
                     </View>
                   </Pressable>
+                  </Tip>
                 ))}
               </View>
             )}
 
-            {/* Faz 3: tahmini süre + SLA özeti */}
+            {/* Faz 3: termin değerlendirmesi + süreler.
+                Bu ekranda müdürün tek sorusu "bu plan termini tutar mı?" — cevabı
+                ilk sütunda, kendi tonuyla duruyor. Eskiden üçüncü sıradaydı ve
+                gecikecek bir plan yetişecek olandan ayırt edilemiyordu.
+                "8 sa pay" zihinsel hesap istiyor; altına tahmini bitiş yazılıyor. */}
             {(planTiming.anyDuration || planTiming.anySla) && (() => {
               const tones = {
-                ok:   { bg: tint('#2D9A6B', 0.10), bd: tint('#2D9A6B', 0.28), fg: '#1F6B47' },
-                warn: { bg: tint('#E89B2A', 0.12), bd: tint('#E89B2A', 0.30), fg: '#9A6710' },
-                late: { bg: tint('#D94B4B', 0.10), bd: tint('#D94B4B', 0.28), fg: '#9C2E2E' },
+                ok:   { fg: '#1F6B47', dot: '#2D9A6B' },
+                warn: { fg: '#9A6710', dot: '#E89B2A' },
+                late: { fg: '#9C2E2E', dot: '#D94B4B' },
               } as const;
               const t = slaStatus ? tones[slaStatus.tone] : null;
-              const slaLabel = slaStatus
+              const verdict = slaStatus
                 ? slaStatus.tone === 'late'
-                  ? `Termine ${Math.abs(Math.round(slaStatus.slackH))} sa geç`
+                  ? `Termini ${Math.abs(Math.round(slaStatus.slackH))} sa aşıyor`
                   : `Termine ${Math.round(slaStatus.slackH)} sa pay`
                 : null;
+              const finishAt = slaStatus ? new Date(slaStatus.estFinish) : null;
               return (
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, padding: 12, borderRadius: 14, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' }}>
-                  {planTiming.anyDuration && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: PAGE }}>
-                      <Clock size={14} color={A_DEEP} strokeWidth={2} />
-                      <View>
-                        <Text style={{ fontSize: 9.5, fontWeight: '700', color: INK[400], letterSpacing: 0.5, textTransform: 'uppercase' }}>Tahmini Süre</Text>
-                        <Text style={{ fontSize: 13.5, fontWeight: '700', color: INK[900] }}>{fmtDuration(planTiming.totalMin)}</Text>
+                <View style={{
+                  flexDirection: 'row', flexWrap: 'wrap', rowGap: 12, columnGap: 28, alignItems: 'center',
+                  paddingHorizontal: 16, paddingVertical: 14, borderRadius: 16,
+                  backgroundColor: t ? tint(t.dot, 0.07) : '#FFFFFF',
+                  borderWidth: 1, borderColor: t ? tint(t.dot, 0.24) : HAIR,
+                }}>
+                  {t && verdict && (
+                    <View style={{ minWidth: 0 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: t.dot }} />
+                        <Text style={{ fontSize: 15, fontWeight: '700', letterSpacing: -0.2, color: t.fg }}>{verdict}</Text>
                       </View>
+                      {finishAt && (
+                        <Text style={{ ...TYPE.meta, color: t.fg, opacity: 0.75, marginTop: 3 }}>
+                          Tahmini bitiş {finishAt.toLocaleString(localeTag(), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </Text>
+                      )}
+                    </View>
+                  )}
+                  {planTiming.anyDuration && (
+                    <View>
+                      <Text style={{ ...TYPE.title, color: INK[900] }}>{fmtDuration(planTiming.totalMin)}</Text>
+                      <Text style={{ ...TYPE.label, color: INK[400], marginTop: 3 }}>Tahmini Süre</Text>
                     </View>
                   )}
                   {planTiming.anySla && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: PAGE }}>
-                      <Layers size={14} color={A_DEEP} strokeWidth={2} />
-                      <View>
-                        <Text style={{ fontSize: 9.5, fontWeight: '700', color: INK[400], letterSpacing: 0.5, textTransform: 'uppercase' }}>Hedef Teslim (SLA)</Text>
-                        <Text style={{ fontSize: 13.5, fontWeight: '700', color: INK[900] }}>{planTiming.totalSlaH} sa</Text>
-                      </View>
-                    </View>
-                  )}
-                  {t && slaLabel && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: t.bg, borderWidth: 1, borderColor: t.bd }}>
-                      <AlertTriangle size={13} color={t.fg} strokeWidth={2} />
-                      <View>
-                        <Text style={{ fontSize: 9.5, fontWeight: '700', color: t.fg, letterSpacing: 0.5, textTransform: 'uppercase', opacity: 0.8 }}>Termin</Text>
-                        <Text style={{ fontSize: 12.5, fontWeight: '700', color: t.fg }}>{slaLabel}</Text>
-                      </View>
+                    <View>
+                      <Text style={{ ...TYPE.title, color: INK[900] }}>{planTiming.totalSlaH} sa</Text>
+                      <Text style={{ ...TYPE.label, color: INK[400], marginTop: 3 }}>Hedef Teslim</Text>
                     </View>
                   )}
                 </View>
@@ -1008,60 +1586,51 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
             })()}
 
             {error ? (
-              <View style={{ padding: 10, borderRadius: 10, backgroundColor: tint('#D94B4B', 0.08), borderWidth: 1, borderColor: tint('#D94B4B', 0.2) }}>
-                <Text style={{ fontSize: 12, color: '#9C2E2E', fontWeight: '600' }}>{error}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 11, borderRadius: 12, backgroundColor: tint('#D94B4B', 0.07) }}>
+                <AlertTriangle size={14} color="#9C2E2E" strokeWidth={2} />
+                <Text style={{ ...TYPE.body, color: '#9C2E2E', fontWeight: '600', flex: 1 }}>{error}</Text>
               </View>
             ) : null}
 
-            {laneCount === 1 && activeRows.map((r, i) => {
-              const st = stationById.get(r.stationId);
-              if (!st) return null;
-              const tech = r.technicianId ? techById.get(r.technicianId) ?? null : null;
+            {/* Tek şerit — akış şeması. Kartlar soldan sağa dizilir, aralarındaki
+                bağlaç ilişkiyi söyler: ok = sırayla, ‖ = eşzamanlı. */}
+            {laneCount === 1 && (() => {
+              const entries: FlowEntry[] = activeRows
+                .map((r, i) => {
+                  const st = stationById.get(r.stationId);
+                  if (!st) return null;
+                  return {
+                    key: r.stationId,
+                    st,
+                    tech: r.technicianId ? techById.get(r.technicianId) ?? null : null,
+                    parallelGroup: activeGroups[i],
+                    parallelOn: !!r.parallelWithPrev,
+                  };
+                })
+                .filter(Boolean) as FlowEntry[];
+              if (entries.length === 0) return null;
               return (
-                <StageRow
-                  key={r.stationId}
-                  st={st} idx={i} first={i === 0} last={i === activeRows.length - 1}
-                  tech={tech} accent={A} accentDeep={A_DEEP}
+                <StageFlow
+                  entries={entries}
+                  accent={A} accentDeep={A_DEEP} reduced={reduced}
                   technicians={data?.technicians ?? []}
-                  parallelGroup={activeGroups[i]}
-                  parallelOn={!!r.parallelWithPrev}
-                  onToggleParallel={() => toggleParallel(r.stationId)}
-                  pickerOpen={pickerFor === r.stationId}
-                  onTogglePicker={() => setPickerFor(p => p === r.stationId ? null : r.stationId)}
-                  onAssign={(tid) => assignTech(r.stationId, tid)}
-                  onRemove={() => setActive(r.stationId, false)}
-                  onUp={() => move(r.stationId, -1)}
-                  onDown={() => move(r.stationId, 1)}
-                  dragging={dragIndex === i}
-                  isOver={overIndex === i && dragIndex !== null && dragIndex !== i}
-                  onDragStart={() => setDragIndex(i)}
-                  onDragEnter={() => setOverIndex(i)}
-                  onDrop={() => { if (dragIndex !== null) reorderActive(dragIndex, i); setDragIndex(null); setOverIndex(null); }}
+                  pickerKey={pickerFor}
+                  onTogglePicker={(i) => { const id = entries[i].key; setPickerFor(p => p === id ? null : id); }}
+                  onAssign={(i, tid) => assignTech(entries[i].key, tid)}
+                  onRemove={(i) => setActive(entries[i].key, false)}
+                  onMove={(i, dir) => move(entries[i].key, dir)}
+                  onToggleParallel={(i) => toggleParallel(entries[i].key)}
+                  dragIndex={dragIndex} overIndex={overIndex}
+                  onDragStart={(i) => setDragIndex(i)}
+                  onDragEnter={(i) => setOverIndex(i)}
+                  onDrop={(i) => { if (dragIndex !== null) reorderActive(dragIndex, i); setDragIndex(null); setOverIndex(null); }}
                   onDragEnd={() => { setDragIndex(null); setOverIndex(null); }}
                 />
               );
-            })}
+            })()}
 
-            {/* Havuz: + Aşama ekle (tek-şerit) */}
-            {laneCount === 1 && poolRows.length > 0 && (
-              <View style={{ borderRadius: 16, borderWidth: 1, borderStyle: 'dashed', borderColor: INK[300], padding: 12, gap: 8, marginTop: 2 }}>
-                <Text style={{ fontSize: 10, fontWeight: '700', color: INK[400], letterSpacing: 0.8, textTransform: 'uppercase' }}>+ Aşama Ekle</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  {poolRows.map(r => {
-                    const st = stationById.get(r.stationId);
-                    if (!st) return null;
-                    return (
-                      <Pressable key={r.stationId} onPress={() => setActive(r.stationId, true)}
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-                        <Plus size={13} color={INK[500]} strokeWidth={2} />
-                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: st.color }} />
-                        <Text style={{ fontSize: 12, fontWeight: '600', color: INK[700] }}>{st.name}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </View>
-            )}
+            {/* (Plana girmemiş istasyonlar artık başlığın yanındaki "Aşama Ekle"
+                açılır listesinde — akışın altındaki çip duvarı kaldırıldı.) */}
 
             {/* Faz 2: ÇOK-ŞERİT — her işlem grubu kendi ardışık aşama dizisi (bağımsız yürür) */}
             {laneCount > 1 && Array.from({ length: laneCount }, (_, k) => k + 1).map((lane) => {
@@ -1069,50 +1638,78 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
               const inLane = new Set(arr.map(r => r.stationId));
               const addable = (data?.stations ?? []).filter(s => !inLane.has(s.id));
               return (
-                <View key={`lane-${lane}`} style={{ gap: 8, borderRadius: 16, borderWidth: 1, borderColor: tint(A, 0.20), backgroundColor: tint(A, 0.03), padding: 12 }}>
+                <View key={`lane-${lane}`} style={{ gap: 10, borderRadius: 18, borderWidth: 1, borderColor: tint(A, 0.18), backgroundColor: tint(A, 0.028), padding: 14 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Text style={{ fontSize: 11.5, fontWeight: '800', color: A_DEEP, letterSpacing: 0.6 }}>İŞ ŞERİDİ {lane}</Text>
-                    <Pressable onPress={() => removeLane(lane)} style={Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : undefined}>
-                      <X size={15} color={INK[400]} strokeWidth={2} />
-                    </Pressable>
+                    <Text style={{ ...TYPE.label, color: A_DEEP }}>İş Şeridi {lane}</Text>
+                    <Tip label="Bu şeridi kaldır">
+                      <Pressable
+                        onPress={() => removeLane(lane)}
+                        hitSlop={8}
+                        accessibilityLabel="Bu şeridi kaldır"
+                        style={({ pressed, hovered }: any) => ({
+                          width: 26, height: 26, borderRadius: 999, alignItems: 'center', justifyContent: 'center',
+                          backgroundColor: hovered ? 'rgba(0,0,0,0.05)' : 'transparent',
+                          ...press(pressed, 0.9),
+                          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                        })}
+                      >
+                        <X size={14} color={INK[400]} strokeWidth={2} />
+                      </Pressable>
+                    </Tip>
                   </View>
                   {arr.length === 0 ? (
-                    <Text style={{ fontSize: 12, color: INK[400] }}>Bu şeride aşağıdan aşama ekleyin.</Text>
-                  ) : arr.map((r, i) => {
-                    const st = stationById.get(r.stationId);
-                    if (!st) return null;
-                    const tech = r.technicianId ? techById.get(r.technicianId) ?? null : null;
+                    <Text style={{ ...TYPE.meta, color: INK[400] }}>Bu şeride aşağıdan aşama ekleyin.</Text>
+                  ) : (() => {
+                    const entries: FlowEntry[] = arr
+                      .map(r => {
+                        const st = stationById.get(r.stationId);
+                        if (!st) return null;
+                        return {
+                          key: r.uid,
+                          st,
+                          tech: r.technicianId ? techById.get(r.technicianId) ?? null : null,
+                          parallelGroup: null,
+                          parallelOn: false,
+                        };
+                      })
+                      .filter(Boolean) as FlowEntry[];
+                    if (entries.length === 0) return null;
                     return (
-                      <StageRow
-                        key={r.uid}
-                        st={st} idx={i} first={i === 0} last={i === arr.length - 1}
-                        tech={tech} accent={A} accentDeep={A_DEEP}
+                      <StageFlow
+                        entries={entries}
+                        accent={A} accentDeep={A_DEEP} reduced={reduced}
                         technicians={data?.technicians ?? []}
-                        parallelGroup={null} parallelOn={false} onToggleParallel={() => {}}
-                        pickerOpen={pickerFor === r.uid}
-                        onTogglePicker={() => setPickerFor(p => p === r.uid ? null : r.uid)}
-                        onAssign={(tid) => setLaneRowTech(r.uid, tid)}
-                        onRemove={() => removeLaneRow(r.uid)}
-                        onUp={() => moveLaneRow(r.uid, lane, -1)}
-                        onDown={() => moveLaneRow(r.uid, lane, 1)}
-                        dragging={dragLane?.lane === lane && dragLane.index === i}
-                        isOver={overLane?.lane === lane && overLane.index === i && !!dragLane && !(dragLane.lane === lane && dragLane.index === i)}
-                        onDragStart={() => setDragLane({ lane, index: i })}
-                        onDragEnter={() => setOverLane({ lane, index: i })}
-                        onDrop={() => { if (dragLane && dragLane.lane === lane) reorderLaneRows(lane, dragLane.index, i); setDragLane(null); setOverLane(null); }}
+                        pickerKey={pickerFor}
+                        onTogglePicker={(i) => { const uid = entries[i].key; setPickerFor(p => p === uid ? null : uid); }}
+                        onAssign={(i, tid) => setLaneRowTech(entries[i].key, tid)}
+                        onRemove={(i) => removeLaneRow(entries[i].key)}
+                        onMove={(i, dir) => moveLaneRow(entries[i].key, lane, dir)}
+                        onToggleParallel={() => {}}
+                        dragIndex={dragLane?.lane === lane ? dragLane.index : null}
+                        overIndex={overLane?.lane === lane ? overLane.index : null}
+                        onDragStart={(i) => setDragLane({ lane, index: i })}
+                        onDragEnter={(i) => setOverLane({ lane, index: i })}
+                        onDrop={(i) => { if (dragLane && dragLane.lane === lane) reorderLaneRows(lane, dragLane.index, i); setDragLane(null); setOverLane(null); }}
                         onDragEnd={() => { setDragLane(null); setOverLane(null); }}
                       />
                     );
-                  })}
+                  })()}
                   {addable.length > 0 && (
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
                       {addable.map(s => (
-                        <Pressable key={s.id} onPress={() => addStationToLane(s.id, lane)}
-                          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                        <Tip key={s.id} label={`${s.name} aşamasını bu şeride ekle`}>
+                        <Pressable onPress={() => addStationToLane(s.id, lane)}
+                          style={({ pressed, hovered }: any) => ({
+                            flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 11, paddingVertical: 7, borderRadius: 999,
+                            backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: hovered ? tint(A, 0.4) : HAIR,
+                            ...press(pressed),
+                            ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'transform 110ms cubic-bezier(0.2,0,0,1), border-color 140ms ease' } as any : {}),
+                          })}>
                           <Plus size={12} color={INK[500]} strokeWidth={2} />
-                          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: s.color }} />
-                          <Text style={{ fontSize: 12, fontWeight: '600', color: INK[700] }}>{s.name}</Text>
+                          <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: s.color }} />
+                          <Text style={{ ...TYPE.meta, fontWeight: '600', color: INK[700] }}>{s.name}</Text>
                         </Pressable>
+                        </Tip>
                       ))}
                     </View>
                   )}
@@ -1134,23 +1731,43 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
         const isPlanner = (profile as any)?.role === 'manager' || (profile as any)?.user_type === 'admin';
         const canStart = !saving && planRows.length > 0 && isPlanner;
         return (
-        <View style={{ position: Platform.OS === 'web' ? ('sticky' as any) : 'absolute', left: 0, right: 0, bottom: isNarrow ? (Math.max(insets.bottom, 8) + 70) : 0, paddingHorizontal: 16, paddingTop: 16, paddingBottom: isNarrow ? 12 : 16 + insets.bottom, backgroundColor: 'transparent' }}>
+        <View style={{ position: Platform.OS === 'web' ? ('sticky' as any) : 'absolute', left: 0, right: 0, bottom: isNarrow ? (Math.max(insets.bottom, 8) + 70) : 0, paddingHorizontal: PAGE_PADDING, paddingTop: 16, paddingBottom: isNarrow ? 12 : 16 + insets.bottom, backgroundColor: 'transparent' }}>
+          {/* Yüzen aksiyon katmanı — Kurye Takip panelinin cam formülü:
+              %8 beyaz zemin + derin gölge + üst kenar inset ışığı
+              (bkz. CourierTrackingScreen `glassBg` / `glassStrong`).
+              Blur oradaki 3px yerine 10px: kurye panelinin altında yumuşak bir
+              harita var, burada metinli kartlar geçiyor — 3px'te yazılar okunur
+              hâlde sızıp barın kendi metniyle karışıyordu. Saydamlık aynı kaldı.
+              Native'de backdrop-blur yok — orada %8 cam haritayı/kartları
+              sızdırıp yazıyı okunmaz yaptığı için opak yüzeye düşülür; aynı
+              gerekçe saydamlık azaltma tercihinde de geçerli. */}
           <View style={{
-            width: '100%', flexDirection: isNarrow ? 'column' : 'row', alignItems: isNarrow ? 'stretch' : 'center', gap: isNarrow ? 12 : 14, borderRadius: 18, paddingVertical: 12, paddingHorizontal: 16, backgroundColor: INK[900],
-            ...(Platform.OS === 'web' ? { boxShadow: '0 12px 32px rgba(0,0,0,0.22)' } as any : {}),
+            width: '100%', flexDirection: isNarrow ? 'column' : 'row', alignItems: isNarrow ? 'stretch' : 'center', gap: isNarrow ? 12 : 16,
+            borderRadius: 22, paddingVertical: 13, paddingHorizontal: 18,
+            backgroundColor: (Platform.OS !== 'web' || solidGlass) ? '#FFFFFF' : 'rgba(255,255,255,0.08)',
+            ...((Platform.OS !== 'web' || solidGlass) ? {
+              borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)',
+            } : {}),
+            ...(Platform.OS === 'web' ? {
+              ...(solidGlass ? {} : {
+                backdropFilter: 'blur(10px) saturate(125%)',
+                WebkitBackdropFilter: 'blur(10px) saturate(125%)',
+              }),
+              boxShadow: '0 12px 32px rgba(15,23,42,0.18), inset 0 1px 0 rgba(255,255,255,0.6)',
+            } as any : {}),
           }}>
             {/* Özet — hairline ayraçlı (mobilde sarar) */}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, flexWrap: 'wrap', flexShrink: 1 }}>
             <FooterStat icon={<Layers size={13} color={A} strokeWidth={2} />} label={laneCount > 1 ? 'Şerit·Aşama' : 'Aşama'} value={laneCount > 1 ? `${laneCount}·${planRows.length}` : String(planRows.length)} />
-            <View style={{ width: 1, height: 30, backgroundColor: 'rgba(255,255,255,0.10)' }} />
+            <View style={{ width: 1, height: 30, backgroundColor: 'rgba(0,0,0,0.08)' }} />
             <FooterStat icon={<Play size={12} color={A} strokeWidth={2} />} label="İlk istasyon" value={firstStation} />
-            <View style={{ width: 1, height: 30, backgroundColor: 'rgba(255,255,255,0.10)' }} />
+            <View style={{ width: 1, height: 30, backgroundColor: 'rgba(0,0,0,0.08)' }} />
             {planTiming.anyDuration && (<>
               <FooterStat icon={<Clock size={12} color={A} strokeWidth={2} />} label="Tahmini süre" value={fmtDuration(planTiming.totalMin)} />
-              <View style={{ width: 1, height: 30, backgroundColor: 'rgba(255,255,255,0.10)' }} />
+              <View style={{ width: 1, height: 30, backgroundColor: 'rgba(0,0,0,0.08)' }} />
             </>)}
             <FooterStat
-              icon={<Clock size={12} color={o?.is_urgent ? '#FBBF77' : A} strokeWidth={2} />}
+              icon={<Clock size={12} color={o?.is_urgent ? '#9A6710' : A_DEEP} strokeWidth={2} />}
               label="Teslim"
               value={o?.delivery_date ? new Date(o.delivery_date).toLocaleDateString(localeTag()) : '—'}
               warn={o?.is_urgent}
@@ -1159,21 +1776,21 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
             {/* Atanan ekip — avatar yığını */}
             {assignedTechs.length > 0 && (
               <>
-                <View style={{ width: 1, height: 30, backgroundColor: 'rgba(255,255,255,0.10)' }} />
-                <View style={{ gap: 3 }}>
-                  <Text style={{ fontSize: 9.5, fontWeight: '700', color: 'rgba(255,255,255,0.45)', letterSpacing: 0.8, textTransform: 'uppercase' }}>Ekip</Text>
+                <View style={{ width: 1, height: 30, backgroundColor: 'rgba(0,0,0,0.08)' }} />
+                <View style={{ gap: 4 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     {assignedTechs.slice(0, 4).map((t, i) => (
-                      <View key={t.id} style={{ width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(A, 0.22), borderWidth: 1.5, borderColor: INK[900], marginLeft: i === 0 ? 0 : -8 }}>
-                        <Text style={{ fontSize: 9, fontWeight: '800', color: '#FFF' }}>{initials(t.full_name)}</Text>
+                      <View key={t.id} style={{ width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: mixWhite(A, 0.18), borderWidth: 1.5, borderColor: '#FFFFFF', marginStart: i === 0 ? 0 : -8 }}>
+                        <Text style={{ fontSize: 9, fontWeight: '700', color: A_DEEP }}>{initials(t.full_name)}</Text>
                       </View>
                     ))}
                     {assignedTechs.length > 4 && (
-                      <View style={{ width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1.5, borderColor: INK[900], marginLeft: -8 }}>
-                        <Text style={{ fontSize: 9, fontWeight: '800', color: '#FFF' }}>+{assignedTechs.length - 4}</Text>
+                      <View style={{ width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEEFF1', borderWidth: 1.5, borderColor: '#FFFFFF', marginStart: -8 }}>
+                        <Text style={{ fontSize: 9, fontWeight: '700', color: INK[500] }}>+{assignedTechs.length - 4}</Text>
                       </View>
                     )}
                   </View>
+                  <Text style={{ fontSize: 9.5, fontWeight: '600', color: INK[500], letterSpacing: 0.9, textTransform: 'uppercase' }}>Ekip</Text>
                 </View>
               </>
             )}
@@ -1182,55 +1799,81 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
             {!isNarrow && <View style={{ flex: 1 }} />}
 
             {!isPlanner && (
-              <Text style={{ fontSize: 11, color: '#FBBF77', maxWidth: 220, ...(isNarrow ? { width: '100%' } : {}) }}>
+              <Text style={{ fontSize: 11, color: '#9A6710', maxWidth: 220, ...(isNarrow ? { width: '100%' } : {}) }}>
                 Üretime başlatmak için yönetici (müdür) veya admin yetkisi gerekir.
               </Text>
             )}
 
             {/* Aksiyonlar — mobilde tam genişlik sarar */}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, ...(isNarrow ? { width: '100%', flexWrap: 'wrap' } : {}) }}>
-            <Pressable
-              disabled={activeRows.length === 0}
-              onPress={openSaveTemplate}
-              style={({ hovered }: any) => ({
-                flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 11, borderRadius: 12,
-                backgroundColor: hovered ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.08)',
-                borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)',
-                opacity: activeRows.length === 0 ? 0.4 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-              })}
-            >
-              <Save size={14} color="rgba(255,255,255,0.9)" strokeWidth={1.9} />
-              <Text style={{ fontSize: 12.5, fontWeight: '700', color: 'rgba(255,255,255,0.9)' }}>Şablon Kaydet</Text>
-            </Pressable>
-            {/* Faz 5c: şablon eşleştiyse tek tıkla uygula + onayla */}
-            {matchedTpl && (
+            {/* Üç buton, tek ritim: aynı yükseklik (38), hap form, aynı ikon-metin
+                aralığı. Ağırlık farkı yüzeyle anlatılır — buzlu / tonlu / dolu —
+                köşe ve boyut oynatarak değil. */}
+            <Tip label="Bu aşama sırasını yeniden kullanılabilir şablon olarak kaydet">
               <Pressable
-                disabled={!canStart}
-                onPress={() => handleSave({ approve: true })}
-                style={({ hovered }: any) => ({
-                  flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 11, borderRadius: 12,
-                  backgroundColor: hovered ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.08)',
-                  borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
-                  opacity: !canStart ? 0.4 : 1, ...(Platform.OS === 'web' ? { cursor: canStart ? 'pointer' : 'default' } as any : {}),
+                disabled={activeRows.length === 0}
+                onPress={openSaveTemplate}
+                style={({ pressed, hovered }: any) => ({
+                  height: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+                  paddingHorizontal: 16, borderRadius: 999,
+                  backgroundColor: hovered ? '#F1F2F4' : '#FFFFFF',   // OPAK — cam yalnız barda
+                  borderWidth: 1, borderColor: 'rgba(15,23,42,0.08)',
+                  opacity: activeRows.length === 0 ? 0.4 : 1,
+                  ...press(pressed),
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'transform 110ms cubic-bezier(0.2,0,0,1), background-color 160ms ease' } as any : {}),
                 })}
               >
-                <Sparkles size={14} color="#FFFFFF" strokeWidth={2} />
-                <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#FFFFFF' }}>Tek Tıkla Uygula</Text>
+                <Save size={14} color={INK[500]} strokeWidth={1.9} />
+                <Text style={{ fontSize: 13, fontWeight: '600', letterSpacing: -0.1, color: INK[700] }}>Şablon Kaydet</Text>
               </Pressable>
+            </Tip>
+            {/* Faz 5c: şablon eşleştiyse tek tıkla uygula + onayla */}
+            {matchedTpl && (
+              <Tip label="Şablondaki planı olduğu gibi uygula ve üretimi başlat">
+                <Pressable
+                  disabled={!canStart}
+                  onPress={() => confirmAndSave({ approve: true })}
+                  style={({ pressed, hovered }: any) => ({
+                    height: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+                    paddingHorizontal: 16, borderRadius: 999,
+                    backgroundColor: mixWhite(A, hovered ? 0.22 : 0.14),   // OPAK açık accent
+                    opacity: !canStart ? 0.4 : 1,
+                    ...press(pressed),
+                    ...(Platform.OS === 'web' ? { cursor: canStart ? 'pointer' : 'default', transition: 'transform 110ms cubic-bezier(0.2,0,0,1), background-color 160ms ease' } as any : {}),
+                  })}
+                >
+                  <Sparkles size={14} color={A_DEEP} strokeWidth={2} />
+                  <Text style={{ fontSize: 13, fontWeight: '600', letterSpacing: -0.1, color: A_DEEP }}>Tek Tıkla Uygula</Text>
+                </Pressable>
+              </Tip>
             )}
-            <Pressable
-              disabled={!canStart}
-              onPress={() => handleSave()}
-              style={({ hovered }: any) => ({
-                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 22, paddingVertical: 12, borderRadius: 12,
-                backgroundColor: A, opacity: !canStart ? 0.5 : 1,
-                ...(isNarrow ? { flexGrow: 1, flexBasis: '100%' as any } : {}),
-                ...(Platform.OS === 'web' ? { cursor: canStart ? 'pointer' : 'default', boxShadow: hovered && canStart ? `0 6px 18px ${tint(A, 0.5)}` : 'none', transition: 'box-shadow 140ms ease' } as any : {}),
-              })}
+            <Tip
+              grow={isNarrow}
+              label={unassignedCount > 0
+                ? `${unassignedCount} ${autoT('aşama atanmamış — planı kaydeder, ilk aşamayı aktif eder')}`
+                : 'Planı kaydeder ve ilk aşamayı üretime açar'}
             >
-              <Play size={15} color="#FFFFFF" strokeWidth={2.4} />
-              <Text style={{ fontSize: 14, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.2 }}>{saving ? 'Kaydediliyor…' : 'Onayla & Üretime Başlat'}</Text>
-            </Pressable>
+              <Pressable
+                disabled={!canStart}
+                onPress={() => confirmAndSave()}
+                style={({ pressed, hovered }: any) => ({
+                  height: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  paddingHorizontal: 20, borderRadius: 999,
+                  backgroundColor: hovered && canStart ? A_DEEP : A,
+                  opacity: !canStart ? 0.5 : 1,
+                  ...(isNarrow ? { flexGrow: 1, width: '100%' as any } : {}),
+                  ...press(pressed, 0.98),
+                  ...(Platform.OS === 'web' ? {
+                    cursor: canStart ? 'pointer' : 'default',
+                    boxShadow: hovered && canStart ? `0 8px 20px ${tint(A, 0.42)}` : `0 3px 10px ${tint(A, 0.26)}`,
+                    transition: 'transform 110ms cubic-bezier(0.2,0,0,1), box-shadow 180ms ease, background-color 160ms ease',
+                  } as any : {}),
+                })}
+              >
+                <Play size={14} color="#FFFFFF" strokeWidth={2.4} />
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFFFFF', letterSpacing: -0.1 }}>{saving ? 'Kaydediliyor…' : 'Onayla & Üretime Başlat'}</Text>
+              </Pressable>
+            </Tip>
             </View>{/* /actions */}
           </View>
         </View>
@@ -1366,193 +2009,579 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
   );
 }
 
+/**
+ * Cam yüzey üstünde okunabilirlik (vibrancy): blur'lu zeminde metin kontrastı
+ * düşer. Değer önce ve ağır, etiket altında hafif geniş tracking ile yazılır.
+ */
 function FooterStat({ icon, label, value, warn }: { icon: React.ReactNode; label: string; value: string; warn?: boolean }) {
   return (
-    <View style={{ gap: 3, minWidth: 0 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+    <View style={{ gap: 4, minWidth: 0 }}>
+      <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '700', color: warn ? '#9A6710' : INK[900], fontFamily: DISPLAY, letterSpacing: -0.3 }}>{value}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
         {icon}
-        <Text style={{ fontSize: 9.5, fontWeight: '700', color: 'rgba(255,255,255,0.45)', letterSpacing: 0.8, textTransform: 'uppercase' }}>{label}</Text>
+        <Text style={{ fontSize: 9.5, fontWeight: '600', color: INK[500], letterSpacing: 0.9, textTransform: 'uppercase' }}>{label}</Text>
       </View>
-      <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '800', color: warn ? '#FBBF77' : '#FFF', fontFamily: DISPLAY, letterSpacing: -0.3 }}>{value}</Text>
     </View>
   );
 }
 
-function StageRow({
-  st, idx, first, last, tech, accent, accentDeep, technicians, pickerOpen, onTogglePicker, onAssign, onRemove, onUp, onDown,
-  parallelGroup, parallelOn, onToggleParallel,
-  dragging, isOver, onDragStart, onDragEnter, onDrop, onDragEnd,
-}: {
-  st: TriageStation; idx: number; first: boolean; last: boolean; tech: TriageTech | null;
-  accent: string; accentDeep: string; technicians: TriageTech[];
-  pickerOpen: boolean; onTogglePicker: () => void; onAssign: (id: string | null) => void;
-  onRemove: () => void; onUp: () => void; onDown: () => void;
-  parallelGroup: number | null; parallelOn: boolean; onToggleParallel: () => void;
-  dragging?: boolean; isOver?: boolean;
-  onDragStart?: () => void; onDragEnter?: () => void; onDrop?: () => void; onDragEnd?: () => void;
+// ═══════════════════════════════════════════════════════════════════════════
+// Akış şeması — aşamalar kart, aralarındaki ilişki bağlaç
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Bir aşamanın akıştaki hâli. Sıra, dizideki konumdur. */
+export type FlowEntry = {
+  key: string;
+  st: TriageStation;
+  tech: TriageTech | null;
+  parallelGroup: number | null;
+  /** önceki aşamayla EŞZAMANLI yürür → aradaki bağlaç ok değil, paralel işareti */
+  parallelOn: boolean;
+};
+
+const CARD_MIN = 176;   // bir aşama kartının hedef genişliği
+const CARD_H   = 148;   // SABİT yükseklik — bütün kartlar birebir aynı boyda
+const LINK_W   = 54;    // iki kart arasındaki bağlantı boşluğu
+const ROW_GAP  = 48;    // satırlar arası boşluk (U dönüşü buraya iner)
+const TURN_PAD = 32;    // ızgaranın iki yanında dönüş kavisine ayrılan koridor
+const TURN_R   = 22;    // U dönüşünün köşe yarıçapı
+const LINE_W   = 3;     // akış çizgisi kalınlığı — bağlantı grafiğin kahramanı
+const NODE     = 42;    // numara diski (çizginin üzerine oturur)
+
+/**
+ * Bağlantı — iki kartı gerçekten BİRBİRİNE BAĞLAR: çizgi bir kartın kenarından
+ * çıkıp diğerinin kenarına girer, havada durmaz. Ucundaki chevron akış yönünü
+ * söyler.
+ *
+ * Eşzamanlı aşamalarda ok yerine çift çizgi (=) çizilir: "ikisi aynı anda"
+ * demenin ayrı bir rozet gerektirmeyen hâli.
+ */
+function FlowLink({ kind, vertical, rtl, color }: {
+  kind: 'next' | 'parallel'; vertical: boolean; rtl?: boolean;
+  /** çizginin rengi — GİDİLEN aşamanın istasyon rengi (referanstaki gibi
+   *  çizgi bir sonraki diskin rengini taşır) */
+  color: string;
 }) {
-  const isWeb = Platform.OS === 'web';
-  const { width: _w } = useWindowDimensions();
-  const narrow = _w < 640;   // dar ekranda teknisyen seçici ad altına iner (çakışma önlenir)
-  // Teknisyen seçici bloğu — geniş ekranda satır içi, dar ekranda ad altında tam satır
-  const techBlock = (
-    <Pressable onPress={onTogglePicker} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, ...(narrow ? { justifyContent: 'flex-end' } : {}), ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-      <View style={{ alignItems: 'flex-end', gap: 2, minWidth: 0, flexShrink: 1 }}>
-        <Text style={{ fontSize: 12, fontWeight: '600', color: tech ? INK[800] : INK[400] }} numberOfLines={1}>{tech?.full_name ?? 'Otomatik atanacak'}</Text>
-        {tech ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-            <View style={{ width: 46, height: 5, borderRadius: 3, backgroundColor: 'rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-              <View style={{ width: `${Math.min(100, (tech.load / (tech.capacity && tech.capacity > 0 ? tech.capacity : 6)) * 100)}%`, height: 5, borderRadius: 3, backgroundColor: loadColor(tech.load) }} />
-            </View>
-            <Text style={{ fontSize: 10, fontWeight: '700', color: loadColor(tech.load) }}>{tech.load} aktif</Text>
+  const parallel = kind === 'parallel';
+  const soft = tint(color, 0.45);
+
+  if (vertical) {
+    return (
+      <View style={{ height: 34, width: '100%', alignItems: 'center', justifyContent: 'center' }}>
+        {parallel ? (
+          <View style={{ flexDirection: 'row', gap: 5, height: '100%' }}>
+            <View style={{ width: LINE_W, height: '100%', borderRadius: 2, backgroundColor: soft }} />
+            <View style={{ width: LINE_W, height: '100%', borderRadius: 2, backgroundColor: soft }} />
           </View>
         ) : (
-          <Text style={{ fontSize: 9.5, color: INK[400] }}>en uygun teknisyen</Text>
+          <View style={{ position: 'absolute', top: 0, bottom: 0, width: LINE_W, borderRadius: 2, backgroundColor: soft }} />
         )}
       </View>
-      {tech ? (
-        <View style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(st.color, 0.16) }}>
-          <Text style={{ fontSize: 12, fontWeight: '800', color: st.color }}>{initials(tech.full_name)}</Text>
+    );
+  }
+
+  return (
+    <View style={{ width: LINK_W, alignItems: 'center', justifyContent: 'center' }}>
+      {parallel ? (
+        // çift çizgi = eşzamanlı yürür
+        <View style={{ gap: 5, width: '100%' }}>
+          <View style={{ height: LINE_W, borderRadius: 2, backgroundColor: soft }} />
+          <View style={{ height: LINE_W, borderRadius: 2, backgroundColor: soft }} />
         </View>
       ) : (
-        <View style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderStyle: 'dashed', borderColor: INK[300] }}>
-          <Sparkles size={14} color={INK[400]} strokeWidth={1.8} />
-        </View>
+        // çizgi kartın kenarından kenarına — boşluğu tam kapatır
+        <View style={{ position: 'absolute', left: 0, right: 0, height: LINE_W, borderRadius: 2, backgroundColor: soft }} />
       )}
-      <Caret size={14} color={INK[400]} strokeWidth={2} />
-    </Pressable>
+    </View>
   );
-  const card = (
-    <View style={{
-      borderRadius: 16, backgroundColor: '#FFFFFF',
-      borderWidth: 1, borderColor: isOver ? accent : 'rgba(0,0,0,0.06)',
-      opacity: dragging ? 0.4 : 1,
-      ...(isWeb ? { transition: 'border-color 120ms ease, opacity 120ms ease' } as any : {}),
-    }}>
-      <View style={{ padding: 13, gap: narrow ? 10 : 0 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        {/* Sürükle tutamacı (web) — mobilde ↑↓ okları */}
-        {isWeb ? (
-          React.createElement('div', {
-            draggable: true,
-            onDragStart: (e: any) => { try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(idx)); } catch {} onDragStart?.(); },
-            onDragEnd: () => onDragEnd?.(),
-            style: { cursor: 'grab', display: 'flex', alignItems: 'center', touchAction: 'none' },
-            title: 'Sürükleyerek sırala',
-          }, <GripVertical size={17} color={INK[400]} strokeWidth={2} />)
-        ) : (
-          <View style={{ alignItems: 'center', gap: 2 }}>
-            <Pressable onPress={onUp} disabled={first} style={{ opacity: first ? 0.2 : 1 }}>
-              <ChevronUp size={15} color={INK[400]} strokeWidth={2} />
-            </Pressable>
-            <Pressable onPress={onDown} disabled={last} style={{ opacity: last ? 0.2 : 1 }}>
-              <ChevronDown size={15} color={INK[400]} strokeWidth={2} />
-            </Pressable>
-          </View>
-        )}
+}
 
-        {/* sıra numarası — nötr, daire */}
-        <View style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(accent, 0.12) }}>
-          <Text style={{ fontSize: 13, fontWeight: '700', color: accentDeep, fontFamily: DISPLAY }}>{idx + 1}</Text>
-        </View>
+/**
+ * Satır sonu U dönüşü — çizgi son kartın yan kenarından çıkar, dışarıda yumuşak
+ * bir kavisle aşağı iner ve alt satırdaki kartın yan kenarına girer. Yılan
+ * (snake) akışın kendisi: göz satır başına geri sıçramaz, çizgiyi takip eder.
+ *
+ * Üç kenarlı bir kutu olarak çizilir (üst · dış · alt) — köşe yarıçapı kavisi
+ * verir. `left` = dönüş kartın sol tarafından yapılıyor (sağdan-sola giden
+ * satırın sonu).
+ */
+/**
+ * DİKKAT — buradaki `left` DİL yönü değil, yılankavi satırın yönü.
+ * Konum/kenar/kavis üçü de MANTIKSAL (start/end) tutulur: satırlar zaten
+ * `flexDirection: row | row-reverse` ile aynalandığı ve CSS'te `row` dil
+ * yönüne duyarlı olduğu için, bağlaç da aynı eksende dönmelidir. Üçünden
+ * birini fiziksel bırakmak RTL'de kavisi ters tarafta bırakır.
+ */
+function TurnLoop({ left, color }: { left: boolean; color: string }) {
+  const soft = tint(color, 0.45);
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        top: CARD_H / 2 - LINE_W / 2,
+        height: CARD_H + ROW_GAP,   // bu kartın ortasından alt kartın ortasına
+        width: TURN_PAD,
+        borderTopWidth: LINE_W, borderBottomWidth: LINE_W, borderColor: soft,
+        // `left` = SERPANTİN yönü (tek/çift satır), dil değil. Satırın GÖRSEL
+        // sonu iki şeyin bileşimi: serpantin yönü XOR dil yönü. Mantıksal
+        // start/end burada işe yaramıyor (bu uygulamada yön duyarlı çözülmüyor),
+        // o yüzden tarafı açıkça hesaplayıp FİZİKSEL yazıyoruz — konum, kenar
+        // ve kavis üçü birlikte.
+        ...((left !== isRTL())
+          ? { left: -TURN_PAD, borderLeftWidth: LINE_W, borderTopLeftRadius: TURN_R, borderBottomLeftRadius: TURN_R }
+          : { right: -TURN_PAD, borderRightWidth: LINE_W, borderTopRightRadius: TURN_R, borderBottomRightRadius: TURN_R }),
+      }}
+    />
+  );
+}
 
-        {/* ad + rozetler */}
-        <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: INK[900], flexShrink: 1 }} numberOfLines={1}>{st.name}</Text>
-            {first && (
-              <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: tint(accent, 0.16) }}>
-                <Text style={{ fontSize: 9, fontWeight: '800', color: accentDeep, letterSpacing: 0.4 }}>İLK AŞAMA</Text>
-              </View>
+/**
+ * Üretim akışı — kartlar sıra sıra dizilir, aralarında bağlaç.
+ *
+ * Sarma (wrap) tarayıcıya BIRAKILMAZ: sütun sayısı ölçülen genişlikten
+ * hesaplanır ve satırlar elle parçalanır. Böylece "bu kart satır sonunda mı"
+ * sorusunun cevabı kesindir — bağlaç asla yanlış yere düşmez, satır sonunda
+ * dönüş işareti (↵) çıkar.
+ */
+function StageFlow({
+  entries, accent, accentDeep, technicians, reduced, pickerKey,
+  onTogglePicker, onAssign, onRemove, onMove, onToggleParallel,
+  dragIndex, overIndex, onDragStart, onDragEnter, onDrop, onDragEnd,
+}: {
+  entries: FlowEntry[];
+  accent: string; accentDeep: string; technicians: TriageTech[]; reduced?: boolean;
+  pickerKey: string | null;
+  onTogglePicker: (i: number) => void;
+  onAssign: (i: number, techId: string | null) => void;
+  onRemove: (i: number) => void;
+  onMove: (i: number, dir: -1 | 1) => void;
+  onToggleParallel: (i: number) => void;
+  dragIndex: number | null; overIndex: number | null;
+  onDragStart: (i: number) => void; onDragEnter: (i: number) => void; onDrop: (i: number) => void; onDragEnd: () => void;
+}) {
+  const [boxW, setBoxW] = useState(0);
+  const { width: winW } = useWindowDimensions();
+
+  // Dar ekran → dikey akış (yukarıdan aşağı okunur, ok da aşağı bakar).
+  const vertical = winW < 720 || (boxW > 0 && boxW < CARD_MIN * 2 + LINK_W);
+  // Satır = cols kart + (cols−1) bağlantı. Her satır aynı geometride olduğu için
+  // kartlar satırlar arasında birebir hizalanır. İki yanda U dönüşü için koridor
+  // ayrılır, o yüzden kullanılabilir genişlik boxW − 2·TURN_PAD.
+  const gridW = Math.max(0, boxW - TURN_PAD * 2);
+  const cols = vertical ? 1 : Math.max(1, Math.floor((gridW + LINK_W) / (CARD_MIN + LINK_W)));
+
+  // Satırlara böl — sarma kararı bizde, tarayıcıda değil.
+  const rows: FlowEntry[][] = [];
+  for (let i = 0; i < entries.length; i += cols) rows.push(entries.slice(i, i + cols));
+
+  // Akış boyunca süreklilik: her aşamanın rengi sırasından türer.
+  const colorAt = (i: number) => flowColor(i, entries.length, accent);
+
+  const renderCard = (en: FlowEntry, i: number, rtl = false, turnBelow = false) => (
+    <StageCard
+      entry={en} idx={i} first={i === 0} last={i === entries.length - 1}
+      accent={accent} accentDeep={accentDeep} technicians={technicians} reduced={reduced}
+      vertical={vertical} rtl={rtl} turnBelow={turnBelow}
+      color={colorAt(i)}
+      turnColor={colorAt(i + 1)}
+      pickerOpen={pickerKey === en.key}
+      onTogglePicker={() => onTogglePicker(i)}
+      onAssign={(tid) => onAssign(i, tid)}
+      onRemove={() => onRemove(i)}
+      onUp={() => onMove(i, -1)}
+      onDown={() => onMove(i, 1)}
+      onToggleParallel={() => onToggleParallel(i)}
+      dragging={dragIndex === i}
+      isOver={overIndex === i && dragIndex !== null && dragIndex !== i}
+      dropBefore={dragIndex !== null && dragIndex > i}
+      onDragStart={() => onDragStart(i)}
+      onDragEnter={() => onDragEnter(i)}
+      onDrop={() => onDrop(i)}
+      onDragEnd={onDragEnd}
+    />
+  );
+
+  // ── Dikey (dar ekran): kart, ok, kart, ok … ──
+  if (vertical) {
+    return (
+      <View onLayout={(e) => setBoxW(e.nativeEvent.layout.width)}>
+        {entries.map((en, i) => (
+          <View key={en.key} style={{ zIndex: en.key === pickerKey ? 20 : 1 }}>
+            {renderCard(en, i)}
+            {i < entries.length - 1 && (
+              <FlowLink kind={entries[i + 1].parallelOn ? 'parallel' : 'next'} vertical color={colorAt(i + 1)} />
             )}
+          </View>
+        ))}
+      </View>
+    );
+  }
+
+  // ── Yatay ızgara: yılan (bustrofedon) akış ──
+  // Çift satırlar soldan sağa, tek satırlar sağdan sola. Satır sonunda çizgi
+  // dışarıdan U yapıp alt satıra iner — göz satır başına geri sıçramaz.
+  return (
+    // zIndex 2: kart ipucu balonları, üstteki araç şeridinin (zIndex 1) üstünde kalsın
+    <View onLayout={(e) => setBoxW(e.nativeEvent.layout.width)} style={{ paddingHorizontal: TURN_PAD, zIndex: 2 }}>
+      {rows.map((row, r) => {
+        const rowHasPicker = row.some(en => en.key === pickerKey);
+        const rtl = r % 2 === 1;
+        return (
+          <View
+            key={`row-${r}`}
+            style={{
+              flexDirection: rtl ? 'row-reverse' : 'row', alignItems: 'stretch',
+              marginBottom: r < rows.length - 1 ? ROW_GAP : 0,
+              // seçici açık olan satır üstte kalsın (popover alttaki satırın altında kalmasın)
+              zIndex: rowHasPicker ? 20 : 1,
+            }}
+          >
+            {Array.from({ length: cols }, (_, j) => {
+              const i = r * cols + j;
+              const en = row[j];
+              const isRowLastCard = j === row.length - 1;
+              const next = entries[i + 1];
+              return (
+                <React.Fragment key={en ? en.key : `slot-${j}`}>
+                  {en
+                    ? renderCard(en, i, rtl, isRowLastCard && !!next)
+                    : <View style={{ flex: 1, minWidth: 0 }} />}
+                  {/* Kartlar arası bağlantı — son sütundan sonra yok; satır sonu
+                      dönüşü kartın ALTINA çizilir (bkz. TurnDown). */}
+                  {j < cols - 1 && (
+                    en && row[j + 1]
+                      ? <FlowLink kind={row[j + 1].parallelOn ? 'parallel' : 'next'} vertical={false} rtl={rtl} color={colorAt(i + 1)} />
+                      : <View style={{ width: LINK_W }} />
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+/**
+ * Tek aşama kartı.
+ *
+ * İçerik sırası "ne yapılacak → kim yapacak": üstte numara + istasyon adı,
+ * altta atanan teknisyen. Aksiyonlar (paralel / plandan çıkar) silinmez ama
+ * geri çekilir — imleç karta gelmeden %35 opaklıkta durur, gelince tam
+ * kontrasta çıkar. Klavye erişimi bozulmasın diye hiç gizlenmez.
+ */
+function StageCard({
+  entry, idx, first, last, accent, accentDeep, technicians, reduced, vertical, rtl, turnBelow, turnColor, color,
+  pickerOpen, onTogglePicker, onAssign, onRemove, onUp, onDown, onToggleParallel,
+  dragging, isOver, dropBefore, onDragStart, onDragEnter, onDrop, onDragEnd,
+}: {
+  entry: FlowEntry; idx: number; first: boolean; last: boolean;
+  accent: string; accentDeep: string; technicians: TriageTech[]; reduced?: boolean;
+  vertical: boolean; rtl?: boolean; turnBelow?: boolean; turnColor?: string;
+  /** akış rampasındaki rengi — istasyonun kendi rengi DEĞİL (bkz. flowColor) */
+  color: string;
+  pickerOpen: boolean; onTogglePicker: () => void; onAssign: (id: string | null) => void;
+  onRemove: () => void; onUp: () => void; onDown: () => void; onToggleParallel: () => void;
+  dragging?: boolean; isOver?: boolean; dropBefore?: boolean;
+  onDragStart: () => void; onDragEnter: () => void; onDrop: () => void; onDragEnd: () => void;
+}) {
+  const { st, tech, parallelGroup, parallelOn } = entry;
+  const isWeb = Platform.OS === 'web';
+  const [hover, setHover] = useState(false);
+  const anim = (props: string) => (isWeb && !reduced ? { transition: props } as any : {});
+  const lit = !isWeb || hover || pickerOpen;
+
+  const iconBtn = (key: string, active: boolean, label: string, onPress: () => void, icon: React.ReactNode) => (
+    <Tip key={key} label={label}>
+      <Pressable
+        onPress={onPress} accessibilityLabel={label} hitSlop={4}
+        style={({ pressed, hovered }: any) => ({
+          width: 24, height: 24, borderRadius: 999, alignItems: 'center', justifyContent: 'center',
+          backgroundColor: active ? tint(accent, 0.16) : hovered ? 'rgba(0,0,0,0.06)' : 'transparent',
+          opacity: lit || active ? 1 : 0.3,
+          ...press(pressed, 0.88),
+          ...anim('transform 110ms cubic-bezier(0.2,0,0,1), opacity 160ms ease, background-color 140ms ease'),
+          ...(isWeb ? { cursor: 'pointer' } as any : {}),
+        })}
+      >
+        {icon}
+      </Pressable>
+    </Tip>
+  );
+
+  const cap = tech?.capacity && tech.capacity > 0 ? tech.capacity : 6;
+
+  // Atanmamış aşamanın İKİ ayrı sebebi var ve ikisi çok farklı şeyler:
+  //  · bu istasyona yetkin hiç kimse yok  → yapılacak bir şey yok, uyarı
+  //  · yetkin var ama atanmadı            → müdür dokunup seçebilir
+  // Eskiden ikisi de "Otomatik atanacak · en uygun teknisyen" diyordu; bu cümle
+  // "sistem halleder" izlenimi veriyor, oysa aşama atanmamış üretime giriyor.
+  const qualifiedExists = technicians.some(t => t.role !== 'courier' && t.is_active !== false && isQualified(st, t));
+  const unassignedTone = qualifiedExists ? '#9A6710' : '#9C2E2E';
+
+  const body = (
+    <View style={{
+      // yatay ızgarada slotu doldurur, dikey akışta tam genişlik olur.
+      // Yükseklik SABİT: bütün kartlar birebir aynı boyda görünsün.
+      ...(vertical ? { width: '100%' as const } : { flex: 1, height: CARD_H }),
+      minWidth: 0,
+      // İmleç kartın üstündeyken kart, satırdaki komşularının ÜSTÜNE çıkar:
+      // aksi hâlde ipucu balonu DOM'da sonra gelen kartın altında kalıyor.
+      zIndex: hover || pickerOpen ? 30 : 0,
+      borderRadius: 18, backgroundColor: '#FFFFFF',
+      borderWidth: 1, borderColor: hover && !dragging ? 'rgba(0,0,0,0.13)' : HAIR,
+      opacity: dragging ? 0.3 : 1,
+      // Sürüklenmiyorken transform YOK: sabit bir scale(1) bile CSS'te
+      // "containing block" yaratıp içindeki fixed konumlu ipucu balonunu
+      // karta hapsediyor.
+      ...(dragging ? { transform: [{ scale: 0.97 }] } : null),
+      ...(isWeb ? { boxShadow: hover && !dragging ? '0 6px 20px rgba(0,0,0,0.07)' : '0 1px 2px rgba(0,0,0,0.03)' } as any : {}),
+      ...anim('opacity 160ms ease, transform 180ms cubic-bezier(0.2,0,0,1), border-color 140ms ease, box-shadow 180ms ease'),
+    }}>
+      {/* Satır sonu U dönüşü — bu kart satırın sonuysa ve akış devam ediyorsa */}
+      {!vertical && turnBelow && <TurnLoop left={!!rtl} color={turnColor ?? accent} />}
+
+      {/* Numara diski — akış çizgisinin ÜZERİNE oturur ve kartın kenarına yarı
+          biner (referans "snake timeline" dili). İstasyonun kendi rengini taşır,
+          böylece çizgi hangi renkse hangi diske gittiği baştan bellidir. */}
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute', width: NODE, height: NODE, borderRadius: NODE / 2,
+          alignItems: 'center', justifyContent: 'center',
+          backgroundColor: color,
+          borderWidth: 3, borderColor: '#FFFFFF',
+          ...(isWeb ? { boxShadow: `0 2px 8px ${tint(color, 0.35)}` } as any : {}),
+          ...(vertical
+            ? { top: -NODE / 2, start: 16 }
+            : rtl
+              ? { end: -NODE / 2, top: CARD_H / 2 - NODE / 2 }
+              : { start: -NODE / 2, top: CARD_H / 2 - NODE / 2 }),
+        }}
+      >
+        <Text style={{ fontSize: 17, fontWeight: '700', color: '#FFFFFF', fontFamily: DISPLAY, letterSpacing: -0.3 }}>{idx + 1}</Text>
+      </View>
+
+      {/* Bırakma göstergesi — kart nereye oturacak. Sürükleme yönünü izler;
+          sağdan-sola giden satırda "önce" sağ taraftır, gösterge de oraya gider. */}
+      {isOver && (() => {
+        const before = !!dropBefore;
+        const side = vertical
+          ? (before ? { top: -8 } : { bottom: -8 })
+          : ((before !== !!rtl) !== isRTL() ? { left: -8 } : { right: -8 });
+        return (
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute', borderRadius: 2, backgroundColor: accent,
+              ...(vertical ? { left: 0, right: 0, height: 3 } : { top: 0, bottom: 0, width: 3 }),
+              ...side,
+            }}
+          />
+        );
+      })()}
+
+      <View style={{
+        // Numara diski kartın kenarına biniyor → o taraftan ekstra pay bırak.
+        paddingTop: vertical ? 28 : 12, paddingBottom: 12,
+        paddingLeft: vertical ? 13 : rtl ? 13 : 27,
+        paddingRight: vertical ? 13 : rtl ? 27 : 13,
+        gap: 8, flex: 1,
+      }}>
+        {/* Başlık bloğu — ortalanmış, kalan alanın dikey ortasında.
+            Araçlar akıştan çıkıp köşeye sabitlendiği için başlık kartın
+            genişliğini tam kullanabiliyor ve sola yaslı durmuyor. */}
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 4, paddingTop: 14 }}>
+          <Text
+            style={{ fontSize: 14, fontWeight: '600', letterSpacing: -0.15, lineHeight: 18, color: INK[900], textAlign: 'center' }}
+            numberOfLines={2}
+          >
+            {st.name}
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', columnGap: 8, rowGap: 2 }}>
+            {/* Aşama süresi — "hangisini çıkarayım / hangi ikisini paralel
+                yürüteyim" kararını veren sayı. Toplamı zaten hesaplanıyordu ama
+                kartta görünmüyordu, karar kör veriliyordu. */}
+            {st.est_duration_min != null && st.est_duration_min > 0 && (
+              <Text style={{ fontSize: 10.5, fontWeight: '600', color: INK[500] }}>{fmtDuration(st.est_duration_min)}</Text>
+            )}
+            {first && <Text style={{ fontSize: 10.5, color: INK[400] }}>ilk aşama</Text>}
             {st.is_critical && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: tint('#D94B4B', 0.12) }}>
-                <AlertTriangle size={9} color="#9C2E2E" strokeWidth={2} />
-                <Text style={{ fontSize: 9, fontWeight: '800', color: '#9C2E2E', letterSpacing: 0.4 }}>KRİTİK</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: '#D94B4B' }} />
+                <Text style={{ fontSize: 10.5, fontWeight: '600', color: '#9C2E2E' }}>Kritik</Text>
               </View>
             )}
             {parallelGroup != null && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: tint(accent, 0.14) }}>
-                <Layers size={9} color={accentDeep} strokeWidth={2.2} />
-                <Text style={{ fontSize: 9, fontWeight: '800', color: accentDeep, letterSpacing: 0.4 }}>PARALEL · G{parallelGroup}</Text>
-              </View>
+              <Text style={{ fontSize: 10.5, fontWeight: '600', color: accentDeep }}>eşzamanlı G{parallelGroup}</Text>
             )}
           </View>
         </View>
 
-        {!narrow && techBlock}
+        {/* Tutamaç + aksiyonlar — üst köşede sabit. Diskin bulunduğu kenarın
+            KARŞI köşesine konur ki ikisi aynı tarafta sıkışmasın. */}
+        <View
+          style={{
+            position: 'absolute', top: 9, zIndex: 3,
+            ...((!!rtl !== isRTL()) && !vertical ? { left: 9 } : { right: 9 }),
+            flexDirection: 'row', alignItems: 'center', gap: 0,
+          }}
+        >
+            {isWeb ? (
+              <Tip label="Sürükleyerek sıraya taşı">
+                {React.createElement('div', {
+                  draggable: true,
+                  onDragStart: (e: any) => { try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(idx)); } catch {} onDragStart(); },
+                  onDragEnd: () => onDragEnd(),
+                  style: {
+                    cursor: dragging ? 'grabbing' : 'grab', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    width: 20, height: 22, touchAction: 'none',
+                    opacity: lit ? 0.7 : 0.22, transition: reduced ? undefined : 'opacity 160ms ease',
+                  },
+                }, <GripVertical size={14} color={INK[500]} strokeWidth={2} />)}
+              </Tip>
+            ) : (
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Pressable onPress={onUp} disabled={first} hitSlop={6} style={({ pressed }: any) => ({ width: 22, height: 24, alignItems: 'center', justifyContent: 'center', opacity: first ? 0.2 : 1, ...press(pressed, 0.85) })}>
+                  <ChevronUp size={14} color={INK[400]} strokeWidth={2} />
+                </Pressable>
+                <Pressable onPress={onDown} disabled={last} hitSlop={6} style={({ pressed }: any) => ({ width: 22, height: 24, alignItems: 'center', justifyContent: 'center', opacity: last ? 0.2 : 1, ...press(pressed, 0.85) })}>
+                  <ChevronDown size={14} color={INK[400]} strokeWidth={2} />
+                </Pressable>
+              </View>
+            )}
+            {!first && iconBtn('par', parallelOn, 'Önceki aşamayla eşzamanlı yürüt', onToggleParallel,
+              <Layers size={13} color={parallelOn ? accentDeep : INK[400]} strokeWidth={2} />)}
+            {iconBtn('rm', false, 'Aşamayı plandan çıkar', onRemove,
+              <X size={13} color={INK[400]} strokeWidth={2} />)}
+        </View>
 
-        {!first && (
-          <Pressable
-            onPress={onToggleParallel}
-            accessibilityLabel="Önceki aşamayla paralel"
-            style={{ width: 26, height: 26, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: parallelOn ? accent : 'rgba(0,0,0,0.04)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
-          >
-            <Layers size={13} color={parallelOn ? '#FFFFFF' : INK[400]} strokeWidth={2} />
-          </Pressable>
-        )}
-        <Pressable onPress={onRemove} style={{ width: 26, height: 26, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.04)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-          <X size={13} color={INK[400]} strokeWidth={2} />
-        </Pressable>
-      </View>
-      {narrow && (
-        <View style={{ paddingLeft: 42 }}>{techBlock}</View>
-      )}
-      </View>
-
-      {/* teknisyen dropdown */}
-      {pickerOpen && (
-        <View style={{ borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)', padding: 8, gap: 4 }}>
-          <Pressable onPress={() => onAssign(null)} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 8, borderRadius: 10, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-            <View style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderStyle: 'dashed', borderColor: INK[300] }}>
-              <Sparkles size={13} color={INK[400]} strokeWidth={1.8} />
-            </View>
-            <Text style={{ fontSize: 12.5, color: INK[700], fontWeight: '600' }}>Otomatik (en uygun teknisyen)</Text>
-            {!tech && <Check size={15} color={accentDeep} strokeWidth={2.5} style={{ marginLeft: 'auto' as any }} />}
-          </Pressable>
-          {[...technicians].sort((a, b) => {
-            // Uygun (yetkin) teknisyenler önce, sonra az yüklü
-            const qa = isQualified(st, a) ? 0 : 1, qb = isQualified(st, b) ? 0 : 1;
-            if (qa !== qb) return qa - qb;
-            return a.load - b.load;
-          }).map(t => {
-            const sel = tech?.id === t.id;
-            const qualified = isQualified(st, t);
-            const cap = t.capacity && t.capacity > 0 ? t.capacity : 6;
-            return (
-              <Pressable key={t.id} onPress={() => onAssign(t.id)}
-                style={({ hovered }: any) => ({ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 8, borderRadius: 10, opacity: qualified ? 1 : 0.5, backgroundColor: sel ? tint(accent, 0.08) : hovered ? 'rgba(0,0,0,0.03)' : 'transparent', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) })}>
-                <View style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(st.color, 0.16) }}>
-                  <Text style={{ fontSize: 11, fontWeight: '800', color: st.color }}>{initials(t.full_name)}</Text>
-                </View>
-                <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={{ fontSize: 12.5, color: INK[800], fontWeight: '600' }} numberOfLines={1}>{t.full_name}</Text>
-                  {st.required_skills.length > 0 && qualified && (
-                    <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: tint(accent, 0.16) }}>
-                      <Text style={{ fontSize: 8.5, fontWeight: '800', color: accentDeep }}>UYGUN</Text>
-                    </View>
-                  )}
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <View style={{ width: 40, height: 5, borderRadius: 3, backgroundColor: 'rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-                    <View style={{ width: `${Math.min(100, (t.load / cap) * 100)}%`, height: 5, borderRadius: 3, backgroundColor: loadColor(t.load) }} />
-                  </View>
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: loadColor(t.load) }}>{t.load}</Text>
-                </View>
-                {sel && <Check size={15} color={accentDeep} strokeWidth={2.5} />}
-              </Pressable>
-            );
+        {/* Kim yapacak — kartın tabanına oturur, kartlar aynı ritimde okunur */}
+        <Tip block label={tech ? 'Bu aşamanın teknisyenini değiştir' : 'Bu aşamaya teknisyen ata'}>
+        <Pressable
+          onPress={onTogglePicker}
+          style={({ pressed, hovered }: any) => ({
+            flexDirection: 'row', alignItems: 'center', gap: 8, padding: 7, borderRadius: 12,
+            backgroundColor: hovered || pickerOpen ? 'rgba(0,0,0,0.05)' : 'rgba(0,0,0,0.025)',
+            ...press(pressed, 0.985),
+            ...anim('transform 110ms cubic-bezier(0.2,0,0,1), background-color 140ms ease'),
+            ...(isWeb ? { cursor: 'pointer' } as any : {}),
           })}
+        >
+          {tech ? (
+            <View style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(color, 0.15) }}>
+              <Text style={{ fontSize: 10.5, fontWeight: '700', color: color }}>{initials(tech.full_name)}</Text>
+            </View>
+          ) : (
+            <View style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(unassignedTone, 0.12) }}>
+              <AlertTriangle size={13} color={unassignedTone} strokeWidth={2} />
+            </View>
+          )}
+          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', letterSpacing: -0.05, lineHeight: 15, color: tech ? INK[800] : unassignedTone }} numberOfLines={1}>
+              {tech ? tech.full_name : qualifiedExists ? 'Atanmadı' : 'Yetkin teknisyen yok'}
+            </Text>
+            {tech ? (
+              // Yük çubuğu yerine renkli nokta: aynı bilgi (renk = doluluk),
+              // yarı yükseklikte. Kart 198→174'e bu satırdan indi.
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: loadColor(tech.load) }} />
+                <Text style={{ fontSize: 10, fontWeight: '600', color: loadColor(tech.load) }}>{tech.load} aktif iş</Text>
+              </View>
+            ) : (
+              <Text style={{ fontSize: 10, color: INK[400] }} numberOfLines={1}>
+                {qualifiedExists ? 'dokun ve seç' : 'bu istasyona yetki tanımlı değil'}
+              </Text>
+            )}
+          </View>
+          <Caret size={13} color={INK[400]} strokeWidth={2} />
+        </Pressable>
+        </Tip>
+      </View>
+
+      {/* Teknisyen seçici — kartın altında yüzen katman. Kart yüksekliğini
+          büyütmez, böylece satırdaki diğer kartlar yerinden oynamaz. */}
+      {pickerOpen && (
+        <View style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, minWidth: 232, marginTop: 6, zIndex: 50,
+          borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: HAIR, padding: 8,
+          ...(isWeb ? { boxShadow: '0 16px 40px rgba(0,0,0,0.14)' } as any : {}),
+        }}>
+          <ScrollView style={{ maxHeight: 268 }} showsVerticalScrollIndicator={false}>
+            <Pressable
+              onPress={() => onAssign(null)}
+              style={({ pressed, hovered }: any) => ({
+                flexDirection: 'row', alignItems: 'center', gap: 10, padding: 9, borderRadius: 12,
+                backgroundColor: hovered ? 'rgba(0,0,0,0.035)' : 'transparent',
+                ...press(pressed, 0.99),
+                ...(isWeb ? { cursor: 'pointer' } as any : {}),
+              })}
+            >
+              <View style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderStyle: 'dashed', borderColor: INK[300] }}>
+                <Sparkles size={13} color={INK[400]} strokeWidth={1.8} />
+              </View>
+              <Text style={{ ...TYPE.body, color: INK[700], fontWeight: '600', flex: 1 }}>Otomatik — en uygun</Text>
+              {!tech && <Check size={15} color={accentDeep} strokeWidth={2.5} />}
+            </Pressable>
+            {[...technicians].sort((a, b) => {
+              // Uygun (yetkin) teknisyenler önce, sonra az yüklü
+              const qa = isQualified(st, a) ? 0 : 1, qb = isQualified(st, b) ? 0 : 1;
+              if (qa !== qb) return qa - qb;
+              return a.load - b.load;
+            }).map(t => {
+              const sel = tech?.id === t.id;
+              const qualified = isQualified(st, t);
+              const tcap = t.capacity && t.capacity > 0 ? t.capacity : 6;
+              return (
+                <Pressable key={t.id} onPress={() => onAssign(t.id)}
+                  style={({ pressed, hovered }: any) => ({
+                    flexDirection: 'row', alignItems: 'center', gap: 10, padding: 9, borderRadius: 12,
+                    opacity: qualified ? 1 : 0.5,
+                    backgroundColor: sel ? tint(accent, 0.09) : hovered ? 'rgba(0,0,0,0.035)' : 'transparent',
+                    ...press(pressed, 0.99),
+                    ...anim('background-color 120ms ease, transform 110ms cubic-bezier(0.2,0,0,1)'),
+                    ...(isWeb ? { cursor: 'pointer' } as any : {}),
+                  })}>
+                  <View style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(color, 0.15) }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: color }}>{initials(t.full_name)}</Text>
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                    <Text style={{ ...TYPE.body, color: INK[800], fontWeight: '600', flexShrink: 1 }} numberOfLines={1}>{t.full_name}</Text>
+                    {st.required_skills.length > 0 && qualified && (
+                      <View style={{ paddingHorizontal: 6, paddingVertical: 1.5, borderRadius: 999, backgroundColor: tint(accent, 0.14) }}>
+                        <Text style={{ fontSize: 9, fontWeight: '700', color: accentDeep }}>UYGUN</Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <View style={{ width: 34, height: 3, borderRadius: 2, backgroundColor: 'rgba(0,0,0,0.09)', overflow: 'hidden' }}>
+                      <View style={{ width: `${Math.min(100, (t.load / tcap) * 100)}%`, height: 3, borderRadius: 2, backgroundColor: loadColor(t.load) }} />
+                    </View>
+                    <Text style={{ fontSize: 10, fontWeight: '600', color: loadColor(t.load) }}>{t.load}</Text>
+                  </View>
+                  {sel && <Check size={15} color={accentDeep} strokeWidth={2.5} />}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
         </View>
       )}
     </View>
   );
 
+  // Kartın kendisi bırakma hedefi — sürüklenen kart bunun soluna/sağına oturur.
   if (isWeb) {
     return React.createElement('div', {
-      onDragOver: (e: any) => { e.preventDefault(); onDragEnter?.(); },
-      onDrop: (e: any) => { e.preventDefault(); onDrop?.(); },
-    }, card);
+      onDragOver: (e: any) => { e.preventDefault(); onDragEnter(); },
+      onDrop: (e: any) => { e.preventDefault(); onDrop(); },
+      onMouseEnter: () => setHover(true),
+      onMouseLeave: () => setHover(false),
+      style: vertical
+        ? { display: 'flex', width: '100%', minWidth: 0, position: 'relative' }
+        : { display: 'flex', flex: '1 1 0%', minWidth: 0, position: 'relative' },
+    }, body);
   }
-  return card;
+  return body;
 }

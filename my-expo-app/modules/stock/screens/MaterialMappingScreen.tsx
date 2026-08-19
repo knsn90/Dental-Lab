@@ -281,9 +281,9 @@ export function MaterialMappingScreen({ accentColor = DS.lab.primary, embedded =
                     backgroundColor: bg,
                     borderTopWidth: i === 0 ? 0 : 1,
                     borderTopColor: DS.ink[100],
-                    borderLeftWidth: 2,
-                    borderLeftColor: changed ? accentColor : 'transparent',
-                    paddingLeft: 16, paddingRight: 16,
+                    borderStartWidth: 2,
+                    borderStartColor: changed ? accentColor : 'transparent',
+                    paddingStart: 16, paddingEnd: 16,
                     paddingVertical: isNarrow ? 14 : 11,
                     ...webCursor,
                   }}

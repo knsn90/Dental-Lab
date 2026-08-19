@@ -6,8 +6,9 @@
  */
 import React from 'react';
 import { View, Text, Pressable, ActivityIndicator } from 'react-native';
-import { ArrowRight, Check } from 'lucide-react-native';
+import { ArrowRight, ArrowLeft, Check } from 'lucide-react-native';
 import { useNOTokens, NORadius } from './NOTokens';
+import { isRTL } from '../../../core/i18n';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 
 export interface NOActionBarProps {
@@ -95,7 +96,7 @@ export function NOActionBar({
             size={12}
             color={NO.inkStrong}
             strokeWidth={1.8}
-            style={{ transform: [{ rotate: '180deg' }] }}
+            style={isRTL() ? undefined : { transform: [{ rotate: '180deg' }] }}
           />
           <Text style={{ fontSize: 13, fontWeight: '500', color: NO.inkStrong }}>
             Geri
@@ -134,11 +135,19 @@ export function NOActionBar({
               {nextLabel}
             </Text>
             {primary !== 'success' && (
-              <ArrowRight
-                size={13}
-                color={primaryTextColor}
-                strokeWidth={1.8}
-              />
+              isRTL() ? (
+                <ArrowLeft
+                  size={13}
+                  color={primaryTextColor}
+                  strokeWidth={1.8}
+                />
+              ) : (
+                <ArrowRight
+                  size={13}
+                  color={primaryTextColor}
+                  strokeWidth={1.8}
+                />
+              )
             )}
           </>
         )}

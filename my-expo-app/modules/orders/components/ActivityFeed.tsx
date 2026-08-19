@@ -3,6 +3,7 @@
 // Workstation içinde "kim ne zaman ne yaptı" kanıtı.
 
 import React, { useEffect, useState } from 'react';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { View, Text} from 'react-native';
 import {
   FileUp, Pause, Play, Cog, Hourglass, AlertOctagon, RotateCcw, Check,
@@ -50,9 +51,9 @@ function formatTime(iso: string): string {
   const d = new Date(iso);
   const now = new Date();
   const diff = now.getTime() - d.getTime();
-  if (diff < 60_000) return `${Math.floor(diff / 1000)} sn önce`;
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} dk önce`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} saat önce`;
+  if (diff < 60_000) return `${Math.floor(diff / 1000)} ${autoT('sn önce')}`;
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} ${autoT('dk önce')}`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} ${autoT('saat önce')}`;
   return d.toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 

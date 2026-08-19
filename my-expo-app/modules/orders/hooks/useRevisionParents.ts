@@ -40,10 +40,15 @@ export function useRevisionParents<T extends RevisionGroupable>(rows: T[]): any[
   }, [key]);
 
   // Ebeveyn satırı yalnız PARENT_SELECT alanlarını taşır — hekim adı (lab'da
-  // `doctor` objesi, adminde `doctor_name`) ayrı sorgudan geliyor ve bu satıra
-  // hiç uğramıyordu → tabloda "ORİJİNAL" satırı boş hekim + '--' avatar ile
-  // çiziliyordu. Revizyon çocuğu aynı hekim/klinikten kopyalandığı için görsel
-  // alanları ondan devral.
+  // `doctor` objesi, adminde `doctor_name`) ve klinik logosu ayrı sorgudan
+  // geliyor ve bu satıra hiç uğramıyordu → tabloda "ORİJİNAL" satırı boş hekim
+  // + '--' avatar ile çiziliyordu. Revizyon çocuğu aynı hekim/klinikten
+  // kopyalandığı için görsel alanları ondan devral.
+  //
+  // `clinic_logo_url` DA devralınmalı: ismi devralıp logoyu unutmak, ORİJİNAL
+  // satırlarında logonun yerine hekim adının baş harflerini ("Dr. Aylin" → DA)
+  // bırakıyordu. Aynı klinikten gelen iki satır yan yana farklı avatar
+  // gösterdiği için logo "siliniyor" gibi görünüyordu.
   //
   // Ayrıca: `parents` efekt state'i olduğu için `rows` bir render önde olabilir;
   // ebeveyn pencereye girdiği anda aynı id iki kez listelenip React "duplicate
@@ -55,7 +60,12 @@ export function useRevisionParents<T extends RevisionGroupable>(rows: T[]): any[
       .map((p: any) => {
         const child: any = (rows ?? []).find((r: any) => (r as any).revision_of_id === p.id || (r as any).continues_order_id === p.id);
         if (!child) return p;
-        return { doctor: child.doctor, doctor_name: child.doctor_name, ...p };
+        return {
+          doctor: child.doctor,
+          doctor_name: child.doctor_name,
+          clinic_logo_url: child.clinic_logo_url,
+          ...p,
+        };
       });
   }, [parents, rows]);
 }

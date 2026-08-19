@@ -20,9 +20,9 @@ import { useAuthStore } from '../store/authStore';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type Currency = 'TRY' | 'EUR' | 'USD' | 'GBP';
+export type Currency = 'TRY' | 'EUR' | 'USD' | 'GBP' | 'IRT';
 
-export const SUPPORTED_CURRENCIES: Currency[] = ['TRY', 'EUR', 'USD', 'GBP'];
+export const SUPPORTED_CURRENCIES: Currency[] = ['TRY', 'EUR', 'USD', 'GBP', 'IRT'];
 
 export interface CurrencyMeta {
   code: Currency;
@@ -30,6 +30,12 @@ export interface CurrencyMeta {
   label: string;
   /** Ondalık ayraç format (Türkçe locale'i Intl handles automatic) */
   flag?: string;
+  /**
+   * Varsayılan ondalık hane. Tümen tutarları milyonlarla ifade edilir
+   * (bir kron ~5.000.000 تومان) — orada kuruş göstermek hem anlamsız hem
+   * okunmaz. Verilmezse 2 kabul edilir.
+   */
+  fractionDigits?: number;
 }
 
 export const CURRENCY_META: Record<Currency, CurrencyMeta> = {
@@ -37,6 +43,11 @@ export const CURRENCY_META: Record<Currency, CurrencyMeta> = {
   EUR: { code: 'EUR', symbol: '€', label: 'Euro',         flag: '🇪🇺' },
   USD: { code: 'USD', symbol: '$', label: 'ABD Doları',   flag: '🇺🇸' },
   GBP: { code: 'GBP', symbol: '£', label: 'İngiliz Sterlini', flag: '🇬🇧' },
+  // Tümen — ISO 4217'de yok (resmî birim Riyal/IRR, 1 تومان = 10 ریال) ama
+  // İran'da fiyatlar günlük hayatta Tümen'le konuşulur. `IRT` Tümen için
+  // fiilî standart koddur; IRR yazıp Tümen değeri saklamak dışa aktarımda
+  // 10× hataya yol açardı.
+  IRT: { code: 'IRT', symbol: 'تومان', label: 'İran Tümeni', flag: '🇮🇷', fractionDigits: 0 },
 };
 
 export interface ExchangeRate {
@@ -60,7 +71,7 @@ export function formatMoney(
   opts: { fractionDigits?: number; signed?: boolean } = {},
 ): string {
   if (amount == null || isNaN(amount)) return '—';
-  const fd = opts.fractionDigits ?? 2;
+  const fd = opts.fractionDigits ?? CURRENCY_META[currency]?.fractionDigits ?? 2;
   const sym = CURRENCY_META[currency]?.symbol ?? currency;
   // Math.abs: işaret yalnız `sign`den gelir — Intl'in kendi eksisiyle çift '-' basma
   const numStr = new Intl.NumberFormat('tr-TR', {

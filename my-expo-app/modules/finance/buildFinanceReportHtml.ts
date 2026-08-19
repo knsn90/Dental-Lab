@@ -1,4 +1,6 @@
-/**
+
+import { autoT } from '../../core/i18n/autoTranslate';
+import { htmlAttrs, printLocale } from '../../core/i18n/printLocale';/**
  * Finans Raporu PDF/Print HTML builder — Gelir / Gider / Kâr.
  *
  * Tasarım:
@@ -79,12 +81,12 @@ function esc(v: unknown): string {
 }
 
 function fmtMoney(n: number, currency = 'TRY'): string {
-  return (Number(n) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + currency;
+  return (Number(n) || 0).toLocaleString(printLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + currency;
 }
 
 function fmtMonth(iso: string): string {
   const d = iso.includes('T') ? new Date(iso) : new Date(iso + 'T00:00:00');
-  return d.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' });
+  return d.toLocaleDateString(printLocale(), { month: 'long', year: 'numeric' });
 }
 
 function pct(n: number, den: number): string {
@@ -118,7 +120,7 @@ export function buildFinanceReportHtml(input: FinanceReportInput): string {
   // Bar chart için max değer
   const maxBar = Math.max(...rows.map(r => Math.max(r.income, r.expense)), 1);
 
-  const today = new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' });
+  const today = new Date().toLocaleDateString(printLocale(), { day: '2-digit', month: 'long', year: 'numeric' });
 
   const tableRowsHtml = rows.map(r => {
     const income  = Number(r.income);
@@ -143,7 +145,7 @@ export function buildFinanceReportHtml(input: FinanceReportInput): string {
   }).join('');
 
   return `<!DOCTYPE html>
-<html lang="tr">
+<html ${htmlAttrs()}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -217,7 +219,7 @@ export function buildFinanceReportHtml(input: FinanceReportInput): string {
   }
   .doc-name { font-size: 9.5px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: var(--ink-500); margin-bottom: 6px; }
   .doc-title-main { font-size: 24px; font-weight: 600; letter-spacing: -0.6px; color: var(--ink-900); line-height: 1.2; }
-  .doc-meta { text-align: right; font-size: 10px; color: var(--ink-400); line-height: 1.6; }
+  .doc-meta { text-align: end; font-size: 10px; color: var(--ink-400); line-height: 1.6; }
   .doc-meta .lbl { font-size: 9px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--ink-500); }
   .doc-meta .val { font-size: 11px; color: var(--ink-900); font-weight: 500; }
 
@@ -229,12 +231,12 @@ export function buildFinanceReportHtml(input: FinanceReportInput): string {
   }
   .kpi-card {
     padding: 28px 28px 26px;
-    border-right: 1px solid var(--line);
+    border-inline-end: 1px solid var(--line);
     position: relative;
   }
-  .kpi-card:last-child { border-right: none; }
-  .kpi-card:first-child { padding-left: 36px; }
-  .kpi-card:last-child { padding-right: 36px; }
+  .kpi-card:last-child { border-inline-end: none; }
+  .kpi-card:first-child { padding-inline-start: 36px; }
+  .kpi-card:last-child { padding-inline-end: 36px; }
   .kpi-icon-circle {
     width: 36px; height: 36px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
@@ -288,19 +290,19 @@ export function buildFinanceReportHtml(input: FinanceReportInput): string {
   }
   table { width: 100%; border-collapse: collapse; }
   thead th {
-    text-align: left;
+    text-align: start;
     font-size: 9px; font-weight: 700; color: var(--ink-500);
     letter-spacing: 1.2px; text-transform: uppercase;
     padding: 12px 10px; border-bottom: 1px solid var(--line);
   }
-  thead th.num { text-align: right; }
+  thead th.num { text-align: end; }
   tbody td {
     padding: 12px 10px; vertical-align: middle;
     font-size: 11.5px; color: var(--ink-700);
     border-bottom: 1px solid var(--line-2);
   }
   tbody tr:last-child td { border-bottom: 1px solid var(--line); }
-  tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tbody td.num { text-align: end; font-variant-numeric: tabular-nums; }
   tbody td.num.strong { font-weight: 700; color: var(--ink-900); }
   tbody td.num.green  { color: var(--green); font-weight: 600; }
   tbody td.num.red    { color: var(--red);   font-weight: 600; }
@@ -348,7 +350,7 @@ export function buildFinanceReportHtml(input: FinanceReportInput): string {
     display: inline-flex; align-items: center; gap: 4px;
     padding: 2px 8px; border-radius: 999px;
     font-size: 10px; font-weight: 700; letter-spacing: 0.2px;
-    margin-left: 8px;
+    margin-inline-start: 8px;
     font-variant-numeric: tabular-nums;
   }
   .trend.up   { background: var(--green-soft); color: var(--green); }
@@ -367,8 +369,8 @@ export function buildFinanceReportHtml(input: FinanceReportInput): string {
     height: 10px; background: var(--line-2); border-radius: 999px; overflow: hidden;
   }
   .cat-bar { height: 100%; border-radius: 999px; }
-  .cat-amount { font-size: 11.5px; font-weight: 700; color: var(--ink-900); text-align: right; font-variant-numeric: tabular-nums; }
-  .cat-pct { font-size: 10.5px; color: var(--ink-500); text-align: right; font-variant-numeric: tabular-nums; }
+  .cat-amount { font-size: 11.5px; font-weight: 700; color: var(--ink-900); text-align: end; font-variant-numeric: tabular-nums; }
+  .cat-pct { font-size: 10.5px; color: var(--ink-500); text-align: end; font-variant-numeric: tabular-nums; }
 
   /* Category palette */
   .cat-malzeme  { background: #DC2626; }
@@ -419,7 +421,7 @@ export function buildFinanceReportHtml(input: FinanceReportInput): string {
     font-size: 9.5px; font-weight: 600; letter-spacing: 0.3px;
     background: var(--line-2); color: var(--ink-700);
   }
-  .top-amount { font-size: 12.5px; font-weight: 700; color: var(--red); text-align: right; font-variant-numeric: tabular-nums; }
+  .top-amount { font-size: 12.5px; font-weight: 700; color: var(--red); text-align: end; font-variant-numeric: tabular-nums; }
 
   /* Collection stats */
   .collection-grid {
@@ -467,8 +469,8 @@ export function buildFinanceReportHtml(input: FinanceReportInput): string {
 
 <div class="toolbar">
   <span class="title">Gelir / Gider Raporu · ${esc(input.lab.name)}</span>
-  <button class="btn-print" onclick="window.print()">Yazdır / PDF Kaydet</button>
-  <button class="btn-close" onclick="window.close()">Kapat</button>
+  <button class="btn-print" onclick="window.print()">${autoT('Yazdır / PDF Kaydet')}</button>
+  <button class="btn-close" onclick="window.close()">${autoT('Kapat')}</button>
 </div>
 
 <div class="page">
@@ -480,12 +482,12 @@ export function buildFinanceReportHtml(input: FinanceReportInput): string {
   <div class="title-block">
     <div>
       <div class="doc-name">Mali Performans Raporu</div>
-      <div class="doc-title-main">Gelir / Gider Analizi</div>
+      <div class="doc-title-main">${autoT('Gelir / Gider Analizi')}</div>
     </div>
     <div class="doc-meta">
-      <div class="lbl">Dönem</div>
+      <div class="lbl">${autoT('Dönem')}</div>
       <div class="val">${esc(input.periodLabel)}</div>
-      <div class="lbl" style="margin-top:8px">Düzenlenme</div>
+      <div class="lbl" style="margin-top:8px">${autoT('Düzenlenme')}</div>
       <div class="val">${today}</div>
     </div>
   </div>
@@ -512,42 +514,42 @@ export function buildFinanceReportHtml(input: FinanceReportInput): string {
   </div>
 
   <div class="period-strip">
-    <span class="period-pill income"><span class="dot"></span>Gelir</span>
-    <span class="period-pill expense"><span class="dot"></span>Gider</span>
+    <span class="period-pill income"><span class="dot"></span>${autoT('Gelir')}</span>
+    <span class="period-pill expense"><span class="dot"></span>${autoT('Gider')}</span>
     <span style="flex:1"></span>
     <span style="font-size:10.5px;color:var(--ink-500);font-weight:500">Tüm tutarlar ${esc(currency)} cinsinden · fatura kuruyla TL'ye çevrilmiş</span>
   </div>
 
   <div class="table-wrap">
-    <div class="table-title">Aylık Döküm</div>
+    <div class="table-title">${autoT('Aylık Döküm')}</div>
     <table>
       <thead>
         <tr>
-          <th>Dönem</th>
-          <th class="num">Gelir</th>
-          <th class="num">Gider</th>
+          <th>${autoT('Dönem')}</th>
+          <th class="num">${autoT('Gelir')}</th>
+          <th class="num">${autoT('Gider')}</th>
           <th class="num">Net Kâr</th>
           <th class="num">Marj</th>
-          <th>Görsel</th>
+          <th>${autoT('Görsel')}</th>
         </tr>
       </thead>
       <tbody>
-        ${tableRowsHtml || '<tr><td colspan="6" style="text-align:center;color:var(--ink-400);padding:32px;font-style:italic">Bu dönemde hareket bulunmuyor.</td></tr>'}
+        ${tableRowsHtml || `<tr><td colspan="6" style="text-align:center;color:var(--ink-400);padding:32px;font-style:italic">${autoT('Bu dönemde hareket bulunmuyor.')}</td></tr>`}
       </tbody>
     </table>
   </div>
 
   <div class="summary-bar">
     <div>
-      <div class="lbl">Dönem</div>
+      <div class="lbl">${autoT('Dönem')}</div>
       <div class="num" style="font-size:11px;color:var(--ink-500);">${rows.length} ay</div>
     </div>
     <div>
-      <div class="lbl">Gelir</div>
+      <div class="lbl">${autoT('Gelir')}</div>
       <div class="num green">${fmtMoney(totalIncome, currency)}</div>
     </div>
     <div>
-      <div class="lbl">Gider</div>
+      <div class="lbl">${autoT('Gider')}</div>
       <div class="num red">${fmtMoney(totalExpense, currency)}</div>
     </div>
     <div>
@@ -576,7 +578,7 @@ export function buildFinanceReportHtml(input: FinanceReportInput): string {
     }).join('');
     return `<div class="section">
       <div class="section-title">
-        <span>Gider Kategori Dağılımı</span>
+        <span>${autoT('Gider Kategori Dağılımı')}</span>
         <span class="meta">Toplam ${fmtMoney(total, currency)}</span>
       </div>
       ${rowsCat}
@@ -590,7 +592,7 @@ export function buildFinanceReportHtml(input: FinanceReportInput): string {
     const methodIcon: Record<string, string> = { nakit: '₺', kart: '◰', havale: '⇄', cek: '▤', diger: '·' };
     return `<div class="section">
       <div class="section-title">
-        <span>Ödeme Yöntemi Dağılımı</span>
+        <span>${autoT('Ödeme Yöntemi Dağılımı')}</span>
         <span class="meta">Gider toplamı ${fmtMoney(total, currency)}</span>
       </div>
       <div class="method-grid">
@@ -615,12 +617,12 @@ export function buildFinanceReportHtml(input: FinanceReportInput): string {
     const pendingRate    = Math.max(0, 100 - collectionRate - overdueRate);
     return `<div class="section">
       <div class="section-title">
-        <span>Tahsilat Performansı</span>
+        <span>${autoT('Tahsilat Performansı')}</span>
         <span class="meta">${c.invoiceCount} fatura · ${esc(input.periodLabel)}</span>
       </div>
       <div class="collection-grid">
         <div class="collection-card">
-          <div class="collection-label">Kesilen Fatura</div>
+          <div class="collection-label">${autoT('Kesilen Fatura')}</div>
           <div class="collection-value">${fmtMoney(c.totalBilled, currency)}</div>
           <div class="collection-sub">${c.invoiceCount} adet</div>
         </div>
@@ -632,17 +634,17 @@ export function buildFinanceReportHtml(input: FinanceReportInput): string {
         <div class="collection-card warn">
           <div class="collection-label">Bekleyen</div>
           <div class="collection-value warn">${fmtMoney(Math.max(0, c.totalBilled - c.totalPaid - c.totalOverdue), currency)}</div>
-          <div class="collection-sub">Vadesi gelmemiş</div>
+          <div class="collection-sub">${autoT('Vadesi gelmemiş')}</div>
         </div>
         <div class="collection-card danger">
-          <div class="collection-label">Gecikmiş</div>
+          <div class="collection-label">${autoT('Gecikmiş')}</div>
           <div class="collection-value red">${fmtMoney(c.totalOverdue, currency)}</div>
           <div class="collection-sub">%${overdueRate.toFixed(1)} riskli</div>
         </div>
       </div>
       <div class="progress-row">
         <div class="progress-label">
-          <span>Tahsilat dağılımı</span>
+          <span>${autoT('Tahsilat dağılımı')}</span>
           <span>%${collectionRate.toFixed(0)} tahsil / %${pendingRate.toFixed(0)} bekleyen / %${overdueRate.toFixed(0)} gecikmiş</span>
         </div>
         <div class="progress-track">
@@ -659,7 +661,7 @@ export function buildFinanceReportHtml(input: FinanceReportInput): string {
     if (te.length === 0) return '';
     return `<div class="section">
       <div class="section-title">
-        <span>Dönemin En Yüksek Giderleri</span>
+        <span>${autoT('Dönemin En Yüksek Giderleri')}</span>
         <span class="meta">İlk ${te.length} kalem</span>
       </div>
       <table class="top-table">
@@ -667,7 +669,7 @@ export function buildFinanceReportHtml(input: FinanceReportInput): string {
           ${te.map((e, idx) => {
             const rankClass = idx === 0 ? 'r1' : idx === 1 ? 'r2' : idx === 2 ? 'r3' : '';
             const d = new Date(e.date.includes('T') ? e.date : e.date + 'T00:00:00');
-            const dateStr = d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' });
+            const dateStr = d.toLocaleDateString(printLocale(), { day: '2-digit', month: 'short', year: 'numeric' });
             return `<tr>
               <td style="width:36px"><div class="rank-badge ${rankClass}">${idx + 1}</div></td>
               <td class="top-date" style="width:96px">${dateStr}</td>

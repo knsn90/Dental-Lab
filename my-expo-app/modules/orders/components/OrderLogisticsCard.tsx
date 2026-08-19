@@ -8,7 +8,8 @@
 
 import React from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
-import { Truck, ArrowLeft, ArrowRight, Plus, ChevronRight } from 'lucide-react-native';
+import { Truck, ArrowLeft, ArrowRight, Plus, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { isRTL } from '../../../core/i18n';
 import { DELIVERY_PURPOSE_LABELS, type DeliveryPurpose } from '../api';
 import { StaticRouteMap, legRouteAddresses } from './StaticRouteMap';
 import { formatMoney } from '../../../core/money/currency';
@@ -165,7 +166,7 @@ export function OrderLogisticsCard({
               <Text style={{ fontSize: 13, fontWeight: '600', color: tone.title }}>Kurye çağır</Text>
               <Text style={{ fontSize: 11.5, color: tone.muted }}>Henüz kurye hareketi yok</Text>
             </View>
-            <ChevronRight size={15} color={tone.muted} strokeWidth={2} />
+            {isRTL() ? <ChevronLeft size={15} color={tone.muted} strokeWidth={2} /> : <ChevronRight size={15} color={tone.muted} strokeWidth={2} />}
           </Pressable>
         ) : (
           <Text style={{ fontSize: 12, color: tone.muted, paddingHorizontal: 2 }}>
@@ -199,7 +200,7 @@ export function OrderLogisticsCard({
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                   <Text style={{ fontSize: 12, fontWeight: '600', color: tone.title }}>{purposeLabel}</Text>
-                  {leg.direction === 'clinic_to_lab'
+                  {(leg.direction === 'clinic_to_lab') !== isRTL()
                     ? <ArrowLeft size={11} color={tone.muted} strokeWidth={2} />
                     : <ArrowRight size={11} color={tone.muted} strokeWidth={2} />}
                   <Text style={{ flex: 1, fontSize: 11, color: tone.muted }} numberOfLines={1}>

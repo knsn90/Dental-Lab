@@ -21,16 +21,19 @@ import {
 import {
   Building2, Users, Stethoscope, Tag,
   ChevronRight, ChevronLeft, Check, Sparkles,
-  ArrowRight, Phone, Mail, MapPin, User,
+  ArrowRight, ArrowLeft, Phone, Mail, MapPin, User,
   CircleCheck, ChevronDown, ChevronUp, AlertCircle,
 } from 'lucide-react-native';
 import { DS } from '../../../core/theme/dsTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { isRTL } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import {
-  loadExistingData, saveWizardData,
-  SERVICE_TEMPLATES, fmtPrice,
+  loadExistingData, saveWizardData, dismissSetupWizard,
+  SERVICE_TEMPLATES, fmtPrice, templatePricesApply,
 } from '../api';
 import type { WizardPayload } from '../api';
+import { useLabSetupStore } from '../../../core/store/labSetupStore';
 
 // ── Design tokens ──────────────────────────────────────────────────
 const DISPLAY = {
@@ -130,13 +133,15 @@ export function SetupWizardScreen({ onComplete }: Props) {
   const slideAnim = useRef(new Animated.Value(0)).current;
 
   const animateTransition = (direction: 'forward' | 'back', callback: () => void) => {
-    const toX = direction === 'forward' ? -30 : 30;
+    // translateX yön duyarlı DEĞİL — RTL'de "ileri" sağa kaymalı, işareti çevir.
+    const sx = isRTL() ? -1 : 1;
+    const toX = (direction === 'forward' ? -30 : 30) * sx;
     Animated.parallel([
       Animated.timing(fadeAnim, { toValue: 0, duration: 150, useNativeDriver: true }),
       Animated.timing(slideAnim, { toValue: toX, duration: 150, useNativeDriver: true }),
     ]).start(() => {
       callback();
-      slideAnim.setValue(direction === 'forward' ? 30 : -30);
+      slideAnim.setValue((direction === 'forward' ? 30 : -30) * sx);
       Animated.parallel([
         Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
         Animated.timing(slideAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
@@ -224,6 +229,7 @@ export function SetupWizardScreen({ onComplete }: Props) {
           serviceCategories: selectedCategories,
         };
         await saveWizardData(payload);
+        useLabSetupStore.getState().markDone();   // guard geri fırlatmasın
         animateTransition('forward', () => setStep(s => s + 1));
       } catch (e: any) {
         setError(e.message || 'Kayıt sırasında bir hata oluştu');
@@ -251,6 +257,17 @@ export function SetupWizardScreen({ onComplete }: Props) {
         scrollRef.current?.scrollTo({ y: 0, animated: false });
       });
     }
+  };
+
+  // Sihirbazı tamamen bırak. Bayrak işaretlenmezse route guard kullanıcıyı
+  // buraya geri fırlatır ve panele hiç giremez. Kurulum ekranına sonradan
+  // Ayarlar üzerinden dönülebilir.
+  const [dismissing, setDismissing] = useState(false);
+  const dismissWizard = async () => {
+    setDismissing(true);
+    try { await dismissSetupWizard(); } catch { /* yine de çıkar */ }
+    useLabSetupStore.getState().markDone();
+    onComplete();
   };
 
   const skipStep = () => {
@@ -385,7 +402,7 @@ export function SetupWizardScreen({ onComplete }: Props) {
                   <Text style={{ ...SANS, fontSize: 15, fontWeight: '600', color: isDark ? '#0A0A0A' : '#FFFFFF' }}>
                     Panele Git
                   </Text>
-                  <ArrowRight size={16} color={isDark ? '#0A0A0A' : '#FFFFFF'} strokeWidth={2} />
+                  {isRTL() ? <ArrowLeft size={16} color={isDark ? '#0A0A0A' : '#FFFFFF'} strokeWidth={2} /> : <ArrowRight size={16} color={isDark ? '#0A0A0A' : '#FFFFFF'} strokeWidth={2} />}
                 </Pressable>
               ) : (
                 <>
@@ -412,7 +429,7 @@ export function SetupWizardScreen({ onComplete }: Props) {
                         <Text style={{ ...SANS, fontSize: 15, fontWeight: '600', color: isDark ? '#0A0A0A' : '#FFFFFF' }}>
                           {currentStep.key === 'welcome' ? 'Başlayalım' : currentStep.key === 'services' ? 'Kurulumu Tamamla' : 'Devam Et'}
                         </Text>
-                        <ChevronRight size={16} color={isDark ? '#0A0A0A' : '#FFFFFF'} strokeWidth={2} />
+                        {isRTL() ? <ChevronLeft size={16} color={isDark ? '#0A0A0A' : '#FFFFFF'} strokeWidth={2} /> : <ChevronRight size={16} color={isDark ? '#0A0A0A' : '#FFFFFF'} strokeWidth={2} />}
                       </>
                     )}
                   </Pressable>
@@ -429,7 +446,7 @@ export function SetupWizardScreen({ onComplete }: Props) {
                           cursor: 'pointer',
                         }}
                       >
-                        <ChevronLeft size={14} color={INK3} strokeWidth={2} />
+                        {isRTL() ? <ChevronRight size={14} color={INK3} strokeWidth={2} /> : <ChevronLeft size={14} color={INK3} strokeWidth={2} />}
                         <Text style={{ ...SANS, fontSize: 13, color: INK3 }}>Geri</Text>
                       </Pressable>
                     ) : <View />}
@@ -451,6 +468,24 @@ export function SetupWizardScreen({ onComplete }: Props) {
               )}
             </View>
           </View>
+
+          {/* Kurulumu sonraya bırakma çıkışı — welcome/complete dışında */}
+          {currentStep.key !== 'complete' && (
+            <Pressable
+              onPress={dismissWizard}
+              disabled={dismissing}
+              style={{
+                marginTop: 18, paddingVertical: 10, paddingHorizontal: 14,
+                alignSelf: 'center', opacity: dismissing ? 0.5 : 1,
+                // @ts-ignore web
+                cursor: 'pointer',
+              }}
+            >
+              <Text style={{ ...SANS, fontSize: 12.5, color: INK3, textAlign: 'center' }}>
+                Kurulumu daha sonra tamamla
+              </Text>
+            </Pressable>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -487,7 +522,7 @@ function WelcomeStep({ theme }: { theme: Theme }) {
       </View>
 
       <Text style={{ ...DISPLAY, fontSize: 28, letterSpacing: -0.5, color: theme.INK, textAlign: 'center' }}>
-        Laboratuvarınızı{'\n'}Kuralım
+        {autoT('Laboratuvarınızı Kuralım')}
       </Text>
       <Text style={{ ...SANS, fontSize: 15, color: theme.INK2, textAlign: 'center', lineHeight: 22, maxWidth: 360 }}>
         Birkaç adımda laboratuvarınızı hazırlayın.{'\n'}
@@ -573,7 +608,7 @@ function ClinicStep({ data, onChange, errors, theme }: { data: any; onChange: (d
         </View>
       </View>
 
-      <FormField label="İletişim Kişisi" placeholder="ör. Dr. Ahmet Yılmaz" value={data.contact_person}
+      <FormField label="İletişim Kişisi" placeholder="ör. Dt. Ahmet Yılmaz" value={data.contact_person}
         onChangeText={(v: string) => onChange({ ...data, contact_person: v })} icon={User} theme={theme} />
       <FormField label="Telefon" placeholder="ör. 0212 555 00 00" value={data.phone}
         onChangeText={(v: string) => onChange({ ...data, phone: v })} icon={Phone} keyboardType="phone-pad" error={errors.clinic_phone} theme={theme} />
@@ -588,7 +623,7 @@ function DoctorStep({ data, onChange, errors, theme }: { data: any; onChange: (d
   return (
     <View style={{ gap: 4 }}>
       <StepHeader icon={Stethoscope} title="İlk Hekim" subtitle="Kliniğinize bağlı ilk hekimi tanımlayın" theme={theme} />
-      <FormField label="Hekim Adı" placeholder="ör. Dr. Ayşe Kaya" value={data.full_name}
+      <FormField label="Hekim Adı" placeholder="ör. Dt. Ayşe Kaya" value={data.full_name}
         onChangeText={(v: string) => onChange({ ...data, full_name: v })} required icon={User} error={errors.doctor_name} theme={theme} />
       <FormField label="Telefon" placeholder="ör. 0532 555 00 00" value={data.phone}
         onChangeText={(v: string) => onChange({ ...data, phone: v })} icon={Phone} keyboardType="phone-pad" error={errors.doctor_phone} theme={theme} />
@@ -714,7 +749,8 @@ function ServicesStep({ selected, onToggle, errors, theme }: {
                     {cat}
                   </Text>
                   <Text style={{ ...SANS, fontSize: 12, color: isSelected ? (theme.isDark ? '#666' : 'rgba(255,255,255,0.6)') : theme.INK3, marginTop: 2 }}>
-                    {services.length} hizmet · {fmtPrice(services.reduce((s, x) => s + x.price, 0) / services.length)} ort.
+                    {services.length} hizmet
+                    {templatePricesApply() ? ` · ${fmtPrice(services.reduce((s, x) => s + x.price, 0) / services.length)} ${autoT('ort.')}` : ''}
                   </Text>
                 </View>
 
@@ -740,7 +776,7 @@ function ServicesStep({ selected, onToggle, errors, theme }: {
               {/* Expanded service list */}
               {isExpanded && (
                 <View style={{
-                  marginTop: 4, marginLeft: 12, marginRight: 12, padding: 12,
+                  marginTop: 4, marginStart: 12, marginEnd: 12, padding: 12,
                   borderRadius: 12, backgroundColor: theme.FIELD_BG,
                   borderWidth: 1, borderColor: theme.FIELD_BORDER,
                 }}>
@@ -752,7 +788,7 @@ function ServicesStep({ selected, onToggle, errors, theme }: {
                       borderBottomColor: theme.FIELD_BORDER,
                     }}>
                       <Text style={{ ...SANS, fontSize: 13, color: theme.INK, flex: 1 }} numberOfLines={1}>{svc.name}</Text>
-                      <Text style={{ ...SANS, fontSize: 13, fontWeight: '600', color: theme.INK2, marginLeft: 12 }}>{fmtPrice(svc.price)}</Text>
+                      <Text style={{ ...SANS, fontSize: 13, fontWeight: '600', color: theme.INK2, marginStart: 12 }}>{fmtPrice(svc.price)}</Text>
                     </View>
                   ))}
                 </View>
@@ -778,11 +814,11 @@ function CompleteStep({ labName, hasClinic, hasDoctor, hasEmployee, serviceCount
   labName: string; hasClinic: boolean; hasDoctor: boolean; hasEmployee: boolean; serviceCount: number; theme: Theme;
 }) {
   const items = [
-    { label: `${labName} kuruldu`, color: '#059669', done: true },
+    { label: `${labName} ${autoT('kuruldu')}`, color: '#059669', done: true },
     { label: hasClinic ? 'Klinik eklendi' : 'Klinik atlandı', color: hasClinic ? '#2563EB' : theme.INK3, done: hasClinic },
     { label: hasDoctor ? 'Hekim tanımlandı' : 'Hekim atlandı', color: hasDoctor ? '#7C3AED' : theme.INK3, done: hasDoctor },
     { label: hasEmployee ? 'Ekip üyesi eklendi' : 'Ekip atlandı', color: hasEmployee ? '#0EA5E9' : theme.INK3, done: hasEmployee },
-    { label: `${serviceCount} hizmet eklendi`, color: '#D97706', done: serviceCount > 0 },
+    { label: `${serviceCount} ${autoT('hizmet eklendi')}`, color: '#D97706', done: serviceCount > 0 },
   ];
 
   return (
@@ -874,7 +910,7 @@ function FormField({
         borderWidth: 1, borderColor: hasError ? '#DC2626' : theme.FIELD_BORDER,
         paddingHorizontal: 14,
       }}>
-        {Icon && <Icon size={16} color={hasError ? '#DC2626' : theme.INK3} strokeWidth={1.6} style={{ marginRight: 10 }} />}
+        {Icon && <Icon size={16} color={hasError ? '#DC2626' : theme.INK3} strokeWidth={1.6} style={{ marginEnd: 10 }} />}
         <TextInput
           value={value}
           onChangeText={onChangeText}
@@ -890,7 +926,7 @@ function FormField({
         />
       </View>
       {hasError && (
-        <Text style={{ ...SANS, fontSize: 11, color: '#DC2626', marginTop: 4, marginLeft: 4 }}>{error}</Text>
+        <Text style={{ ...SANS, fontSize: 11, color: '#DC2626', marginTop: 4, marginStart: 4 }}>{error}</Text>
       )}
     </View>
   );

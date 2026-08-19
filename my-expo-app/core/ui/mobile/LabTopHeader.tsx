@@ -13,6 +13,7 @@ import MaskedView from '@react-native-masked-view/masked-view';
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
 import { SvgCss } from 'react-native-svg/css';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { isRTL } from '../../i18n';
 import { supabase } from '../../api/supabase';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeModeStore } from '../../store/themeModeStore';
@@ -32,6 +33,7 @@ export function LabTopHeader() {
     return () => { alive = false; };
   }, [(profile as any)?.lab_id]);
 
+  const rtl = isRTL();
   const topBlurH = Math.max(insets.top, 8) + 96;
   // SVG logolar: RN <Image> SVG render etmez → native'de fetch + SvgCss (CSS <style> inline).
   const isSvgLogo = !!labLogo && /\.svg(\?|$)/i.test(labLogo);
@@ -94,7 +96,7 @@ export function LabTopHeader() {
         Platform.OS !== 'web' && isSvgLogo ? (
           <View
             pointerEvents="none"
-            style={{ position: 'absolute', top: Math.max(insets.top, 8) + 7, left: 20, width: 130, height: 38, zIndex: 9 }}
+            style={{ position: 'absolute', top: Math.max(insets.top, 8) + 7, ...(rtl ? { right: 20 } : { left: 20 }), width: 130, height: 38, zIndex: 9 }}
           >
             {!!logoXml && <SvgCss xml={logoXml} width={130} height={38} />}
           </View>
@@ -102,7 +104,7 @@ export function LabTopHeader() {
           <Image
             source={{ uri: labLogo }}
             resizeMode="contain"
-            style={{ position: 'absolute', top: Math.max(insets.top, 8) + 7, left: 20, width: 130, height: 38, zIndex: 9, pointerEvents: 'none' } as any}
+            style={{ position: 'absolute', top: Math.max(insets.top, 8) + 7, ...(rtl ? { right: 20 } : { left: 20 }), width: 130, height: 38, zIndex: 9, pointerEvents: 'none' } as any}
           />
         )
       )}

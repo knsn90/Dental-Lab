@@ -24,6 +24,8 @@ import { useAuthStore } from '../../../core/store/authStore';
 import { toast } from '../../../core/ui/Toast';
 import { DS } from '../../../core/theme/dsTokens';
 import { titleCaseTR } from '../../../core/utils/textCase';
+import { isRTL } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 
 const SERIF = { fontFamily: DS.font.display as string, fontWeight: '300' as const };
 const P     = DS.clinic.primary;
@@ -31,7 +33,9 @@ const INK   = DS.ink[900];
 
 type ClinicRole = 'doctor' | 'clinic_secretary' | 'clinic_admin';
 
-const DOCTOR_TITLES = ['Dr.', 'Dt.', 'Uzm. Dr.', 'Doç. Dr.', 'Prof. Dr.', 'Opr. Dr.', 'Yok'] as const;
+// Varsayılan (ilk sıradaki) ünvan "Dt." — sistemdeki hekimlerin tamamı diş
+// hekimi. Akademik/uzmanlık ünvanları listede kalır, elle seçilebilir.
+const DOCTOR_TITLES = ['Dt.', 'Dr.', 'Uzm. Dt.', 'Doç. Dr.', 'Prof. Dr.', 'Opr. Dr.', 'Yok'] as const;
 
 const ROLE_META: Record<ClinicRole, { labelKey: string; subKey: string; icon: any; accent: string; }> = {
   doctor:           { labelKey: 'clinic.roles.doctor',    subKey: 'clinic.roles.doctorSub',    icon: Stethoscope,  accent: '#0EA5E9' },
@@ -105,6 +109,7 @@ function UsersHeroCard({
   stats: { label: string; value: number | string; icon?: any }[];
   onInvite: () => void;
 }) {
+  const rtl = isRTL();
   return (
     <View style={{
       borderRadius: 20, overflow: 'hidden',
@@ -112,8 +117,8 @@ function UsersHeroCard({
       position: 'relative',
     }}>
       {/* Bloblar — F1 canonical */}
-      <View style={{ position: 'absolute', top: -40, right: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} pointerEvents="none" />
-      <View style={{ position: 'absolute', bottom: -50, left: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} pointerEvents="none" />
+      <View style={{ position: 'absolute', top: -40, ...(rtl ? { left: -40 } : { right: -40 }), width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} pointerEvents="none" />
+      <View style={{ position: 'absolute', bottom: -50, ...(rtl ? { right: -20 } : { left: -20 }), width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} pointerEvents="none" />
 
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
         <View style={{ flex: 1 }}>
@@ -198,6 +203,7 @@ function FilterPill({ icon: Icon, label, active, accent, onPress }: {
 
 function UserRow({ user, onPress }: { user: ClinicUser; onPress: () => void }) {
   const { t } = useTranslation();
+  const rtl = isRTL();
   const meta = ROLE_META[user.user_type] ?? ROLE_META.doctor;
   const Icon = meta.icon;
   return (
@@ -220,7 +226,7 @@ function UserRow({ user, onPress }: { user: ClinicUser; onPress: () => void }) {
 
       {/* Ad + Tür */}
       <View style={{ flex: 1, gap: 2 }}>
-        <Text style={{ fontSize: 14, fontWeight: '600', color: user.is_active ? INK : DS.ink[400] }} numberOfLines={1}>
+        <Text style={{ fontSize: 14, fontWeight: '600', color: user.is_active ? INK : DS.ink[400], textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>
           {titleCaseTR(user.full_name)}
         </Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -260,9 +266,10 @@ function UserFormModal({
   onSaved: () => void;
 }) {
   const { t } = useTranslation();
+  const rtl = isRTL();
   const isEdit = !!editing;
   const [role,        setRole]        = useState<ClinicRole>(editing?.user_type ?? 'doctor');
-  const [title,       setTitle]       = useState<string>('Dr.');
+  const [title,       setTitle]       = useState<string>('Dt.');
   const [titleOpen,   setTitleOpen]   = useState(false);
   const [fullName,    setFullName]    = useState(editing?.full_name ?? '');
   const [phone,       setPhone]       = useState(editing?.phone ?? '');
@@ -312,7 +319,7 @@ function UserFormModal({
       setEmailLocked(false); setPwdEditing(true);
       setIsActive(true);
       setPerms(DEFAULT_PERMS.doctor);
-      setTitle('Dr.'); setTitleOpen(false); setShowPwd(false);
+      setTitle('Dt.'); setTitleOpen(false); setShowPwd(false);
       setConfirmDel(false);
     }
   }, [editing, visible]);
@@ -348,12 +355,12 @@ function UserFormModal({
         const passwordChanged = pwdEditing && !!password.trim();
 
         if (emailChanged && password && password.length < 6) {
-          toast.error('Yeni şifre en az 6 karakter olmalı');
+          toast.error(autoT('Yeni şifre en az 6 karakter olmalı'));
           setSubmitting(false);
           return;
         }
         if (passwordChanged && password.length < 6) {
-          toast.error('Yeni şifre en az 6 karakter olmalı');
+          toast.error(autoT('Yeni şifre en az 6 karakter olmalı'));
           setSubmitting(false);
           return;
         }
@@ -396,7 +403,7 @@ function UserFormModal({
         close();
       }
     } catch (err: any) {
-      Alert.alert('Hata', err?.message ?? 'Kullanıcı oluşturulamadı');
+      Alert.alert(autoT('Hata'), err?.message ?? autoT('Kullanıcı oluşturulamadı'));
     } finally {
       setSubmitting(false);
     }
@@ -421,7 +428,7 @@ function UserFormModal({
       onSaved();
       close();
     } catch (err: any) {
-      Alert.alert('Silinemedi', err?.message ?? t('clinic.users.alert.deleteError'));
+      Alert.alert(autoT('Silinemedi'), err?.message ?? t('clinic.users.alert.deleteError'));
     } finally {
       setDeleting(false);
     }
@@ -551,7 +558,7 @@ function UserFormModal({
                       backgroundColor: '#FAFAFA', borderRadius: 12, padding: 12, gap: 10,
                     }}>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 14, color: INK }} numberOfLines={1}>
+                        <Text style={{ fontSize: 14, color: INK, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>
                           {email || <Text style={{ color: DS.ink[400], fontStyle: 'italic' }}>—</Text>}
                         </Text>
                       </View>
@@ -663,7 +670,7 @@ function UserFormModal({
                           <Pressable
                             onPress={() => { setPassword(''); setPwdEditing(false); setShowPwd(false); }}
                             style={({ hovered }: any) => ({
-                              paddingHorizontal: 10, paddingVertical: 8, marginRight: 4,
+                              paddingHorizontal: 10, paddingVertical: 8, ...(rtl ? { marginLeft: 4 } : { marginRight: 4 }),
                               ...(Platform.OS === 'web' ? { cursor: 'pointer', opacity: hovered ? 1 : 0.75 } as any : {}),
                             })}
                           >
@@ -840,6 +847,7 @@ function PermissionToggle({ label, sub, value, onToggle }: { label: string; sub:
 // ────────────────────────────────────────────────────────────────────
 export function ClinicUsersScreen() {
   const { t } = useTranslation();
+  const rtl = isRTL();
   const { profile } = useAuthStore();
   const [users,      setUsers]      = useState<ClinicUser[]>([]);
   const [loading,    setLoading]    = useState(true);
@@ -875,7 +883,7 @@ export function ClinicUsersScreen() {
   const showsShellHeader = width >= 1024;
 
   const activeMeta = filter === 'all'
-    ? { label: 'Tüm kullanıcılar', sub: 'Hekim, sekreter ve yöneticiler bir arada', accent: INK }
+    ? { label: autoT('Tüm kullanıcılar'), sub: autoT('Hekim, sekreter ve yöneticiler bir arada'), accent: INK }
     : { ...ROLE_META[filter as ClinicRole], label: t(ROLE_META[filter as ClinicRole].labelKey), sub: t(ROLE_META[filter as ClinicRole].subKey) };
 
   return (
@@ -956,7 +964,7 @@ export function ClinicUsersScreen() {
                       backgroundColor: `${item.c}1A`,
                       borderWidth: 3, borderColor: '#FFF',
                       alignItems: 'center', justifyContent: 'center',
-                      marginLeft: idx === 0 ? 0 : -14,
+                      ...(idx === 0 ? {} : (rtl ? { marginRight: -14 } : { marginLeft: -14 })),
                     }}>
                       <Icon size={22} color={item.c} strokeWidth={1.8} />
                     </View>
@@ -965,7 +973,7 @@ export function ClinicUsersScreen() {
               </View>
               <View style={{ alignItems: 'center', gap: 4 }}>
                 <Text style={{ ...SERIF, fontSize: 22, color: INK, letterSpacing: -0.4 }}>
-                  {filter === 'all' ? t('clinic.users.emptyAll') : `Henüz ${activeMeta.label.toLowerCase()} ${t('clinic.users.emptyFiltered')}`}
+                  {filter === 'all' ? t('clinic.users.emptyAll') : t('clinic.users.emptyFilteredFmt', { role: activeMeta.label.toLocaleLowerCase() })}
                 </Text>
                 <Text style={{ fontSize: 13, color: DS.ink[500], textAlign: 'center', maxWidth: 380 }}>
                   {t('clinic.users.emptyDesc')}

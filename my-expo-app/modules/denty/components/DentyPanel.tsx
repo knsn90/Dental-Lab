@@ -530,8 +530,8 @@ export function DentyPanel() {
                   alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '88%',
                   paddingHorizontal: 13, paddingVertical: 9,
                   borderRadius: 18,
-                  borderTopRightRadius: mine ? 6 : 18,
-                  borderBottomLeftRadius: mine ? 18 : 6,
+                  borderTopEndRadius: mine ? 6 : 18,
+                  borderBottomStartRadius: mine ? 18 : 6,
                   backgroundColor: mine ? A : theme.surface,
                   borderWidth: mine ? 0 : 1, borderColor: hexA(theme.accent, 0.08),
                   overflow: mine ? 'hidden' : 'visible',
@@ -569,7 +569,7 @@ export function DentyPanel() {
             {attachments.map((a) => {
               const KIcon = a.kind === 'photo' ? ImageIcon : a.kind === 'scan' ? Box : a.kind === 'video' ? Film : a.kind === 'pdf' ? FileText : Paperclip;
               return (
-                <View key={a.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 9, paddingRight: 6, paddingVertical: 6, borderRadius: 12, backgroundColor: hexA(A, 0.09), borderWidth: 1, borderColor: hexA(A, 0.2), maxWidth: 200 }}>
+                <View key={a.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingStart: 9, paddingEnd: 6, paddingVertical: 6, borderRadius: 12, backgroundColor: hexA(A, 0.09), borderWidth: 1, borderColor: hexA(A, 0.2), maxWidth: 200 }}>
                   <KIcon size={13} color={A} strokeWidth={2} />
                   <Text numberOfLines={1} style={{ fontSize: 11.5, color: theme.accent, flexShrink: 1, maxWidth: 130 }}>{a.name}</Text>
                   <Pressable onPress={() => removeAttachment(a.id)} hitSlop={6} style={{ padding: 2, ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}) }}>

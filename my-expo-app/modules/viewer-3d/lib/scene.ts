@@ -138,3 +138,37 @@ export function disposeObject(obj: THREE.Object3D) {
     else if (mat) mat.dispose();
   });
 }
+
+/**
+ * Sahnenin küçük bir anlık görüntüsünü JPEG data-URL olarak döndürür.
+ *
+ * NEDEN BURADA: STL/PLY dosyaları 16–29 MB. Dosya listesinde önizleme için
+ * bunları indirip render etmek 6 taramada ~150 MB eder. Onun yerine mesh
+ * ZATEN yüklüyken (görüntüleyici açıkken) bir kez yakalanır, sonraki okumalar
+ * ~5 KB olur.
+ *
+ * DİKKAT: renderer `preserveDrawingBuffer: false` ile kuruluyor — çizim
+ * tamponu kompozisyondan sonra temizleniyor. Bu yüzden render ile toDataURL
+ * AYNI senkron blokta olmak zorunda; araya await/rAF girerse boş kare gelir.
+ */
+export function captureThumbnail(refs: SceneRefs, size = 256): string | null {
+  try {
+    const canvas = refs.renderer.domElement;
+    const prevW = canvas.width, prevH = canvas.height;
+    // Kare bir görüntü için geçici olarak küçült — kullanıcı bunu görmez,
+    // hemen ardından eski boyut geri veriliyor.
+    refs.renderer.setSize(size, size, false);
+    refs.camera.aspect = 1;
+    refs.camera.updateProjectionMatrix();
+    refs.renderer.render(refs.scene, refs.camera);
+    const url = canvas.toDataURL('image/jpeg', 0.72);
+    // Geri al
+    refs.renderer.setSize(prevW, prevH, false);
+    refs.camera.aspect = prevW / Math.max(1, prevH);
+    refs.camera.updateProjectionMatrix();
+    refs.renderer.render(refs.scene, refs.camera);
+    return url && url.length > 2000 ? url : null;   // boş kare ~ çok kısa
+  } catch {
+    return null;
+  }
+}

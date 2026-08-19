@@ -6,6 +6,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { autoT } from '../../../../core/i18n/autoTranslate';
 import {
   Modal, View, Text, Pressable, ScrollView, TextInput,
   ActivityIndicator, useWindowDimensions,
@@ -191,8 +192,8 @@ export default function WorkTypeSelectorModal({ visible, selected, onClose, onAp
             {!isMobile ? (
               <View style={{
                 width: 260,
-                borderRightWidth: 1,
-                borderRightColor: DS.ink[100],
+                borderEndWidth: 1,
+                borderEndColor: DS.ink[100],
                 padding: 18,
                 gap: 4,
               }}>
@@ -247,7 +248,7 @@ export default function WorkTypeSelectorModal({ visible, selected, onClose, onAp
               {/* Toolbar */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <PillButton variant="light" size="sm" onPress={selectAll}>
-                  {isFlat ? `Tümünü seç (${filtered.length})` : 'Tümünü seç'}
+                  {isFlat ? `${autoT('Tümünü seç')} (${filtered.length})` : 'Tümünü seç'}
                 </PillButton>
                 <PillButton variant="light" size="sm" onPress={clearAll}>
                   {isFlat ? 'Bu seçimi temizle' : 'Seçimi temizle'}

@@ -8,12 +8,14 @@
 // Empty state shown when no items at all.
 
 import React from 'react';
+import { autoT } from '../../i18n/autoTranslate';
 import {
   View, Text, Pressable, ScrollView, Modal, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { isRTL } from '../../i18n';
 import {
-  X, FileCheck, Flame, Package, ChevronRight, BellOff,
+  X, FileCheck, Flame, Package, ChevronRight, ChevronLeft, BellOff,
   ShoppingCart, CreditCard, ClipboardCheck, MessageCircle, Truck, AlertCircle, Inbox, Wrench, AlarmClock, CheckCircle2, ClipboardList
 } from 'lucide-react-native';
 import { useMobileTokens, MOBILE_PANEL_THEMES, type MobilePanel } from '../../theme/mobileDesignTokens';
@@ -70,9 +72,9 @@ export function NotificationsSheet({
   upcoming = [],
   labels = {},
 }: Props) {
-  const approvalsLabel = labels.approvals ?? 'Onay bekleyen';
-  const overdueLabel   = labels.overdue   ?? 'Geciken';
-  const upcomingLabel  = labels.upcoming  ?? 'Yaklaşan teslimler';
+  const approvalsLabel = labels.approvals ?? autoT('Onay bekleyen');
+  const overdueLabel   = labels.overdue   ?? autoT('Geciken');
+  const upcomingLabel  = labels.upcoming  ?? autoT('Yaklaşan teslimler');
   const T = useMobileTokens();
   const PANEL = MOBILE_PANEL_THEMES[panel];
   const insets = useSafeAreaInsets();
@@ -143,7 +145,7 @@ export function NotificationsSheet({
               fontSize: 22, fontWeight: '500', color: T.ink, letterSpacing: -0.4, marginTop: 2,
               ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
             }}>
-              {totalCount > 0 ? `${totalCount} öğe` : 'Temiz'}
+              {totalCount > 0 ? `${totalCount} ${autoT('öğe')}` : autoT('Temiz')}
             </Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -186,7 +188,7 @@ export function NotificationsSheet({
             <Section
               icon={<Inbox size={14} color={PANEL.primary} strokeWidth={2} />}
               accent={PANEL.primary}
-              label="Bildirimler"
+              label={autoT('Bildirimler')}
               count={unreadDb.length || visibleDb.length}
             >
               {visibleDb.map(n => {
@@ -254,7 +256,7 @@ export function NotificationsSheet({
                   key={a.id}
                   patient={a.patient}
                   subtitle={a.workType}
-                  trailing="Onay"
+                  trailing={autoT('Onay')}
                   trailingColor={PANEL.primary}
                   iconBg={`${PANEL.primary}1A`}
                   icon={<FileCheck size={18} color={PANEL.primary} strokeWidth={1.7} />}
@@ -277,7 +279,7 @@ export function NotificationsSheet({
                   key={o.id}
                   patient={o.patient}
                   subtitle={o.workType}
-                  trailing={`${o.daysLate}g geç`}
+                  trailing={`${o.daysLate}${autoT('g geç')}`}
                   trailingColor={T.ruby}
                   iconBg={T.rubySoft}
                   icon={<Flame size={18} color={T.ruby} strokeWidth={1.7} />}
@@ -375,6 +377,8 @@ function NotificationRow({
   onPress: () => void;
 }) {
   const T = useMobileTokens();
+  // Satır sonu chevron'u yön bildirir → RTL'de aynalanır
+  const Chevron = isRTL() ? ChevronLeft : ChevronRight;
   return (
     <Pressable onPress={onPress}>
       {({ pressed }: any) => (
@@ -410,7 +414,7 @@ function NotificationRow({
             <Text style={{ fontSize: 12, fontWeight: '700', color: trailingColor, letterSpacing: -0.1 }}>
               {trailing}
             </Text>
-            <ChevronRight size={14} color={T.ink3} strokeWidth={1.8} />
+            <Chevron size={14} color={T.ink3} strokeWidth={1.8} />
           </View>
         </View>
       )}
@@ -443,6 +447,7 @@ function DbNotificationRow({ notif, icon, iconBg, onPress }: {
 }) {
   const T = useMobileTokens();
   const unread = !notif.read_at;
+  const Chevron = isRTL() ? ChevronLeft : ChevronRight;
   return (
     <Pressable onPress={onPress}>
       {({ pressed }: any) => (
@@ -489,7 +494,7 @@ function DbNotificationRow({ notif, icon, iconBg, onPress }: {
               {fmtRelative(notif.created_at)}
             </Text>
           </View>
-          <ChevronRight size={14} color={T.ink3} strokeWidth={1.8} style={{ marginTop: 14 }} />
+          <Chevron size={14} color={T.ink3} strokeWidth={1.8} style={{ marginTop: 14 }} />
         </View>
       )}
     </Pressable>
@@ -500,12 +505,12 @@ function fmtRelative(iso: string): string {
   const t = new Date(iso).getTime();
   const diff = Date.now() - t;
   const min  = Math.floor(diff / 60_000);
-  if (min < 1)    return 'Az önce';
-  if (min < 60)   return `${min} dk önce`;
+  if (min < 1)    return autoT('Az önce');
+  if (min < 60)   return `${min} ${autoT('dk önce')}`;
   const hr = Math.floor(min / 60);
-  if (hr < 24)    return `${hr} sa önce`;
+  if (hr < 24)    return `${hr} ${autoT('sa önce')}`;
   const dd = Math.floor(hr / 24);
-  if (dd < 7)     return `${dd} gün önce`;
+  if (dd < 7)     return `${dd} ${autoT('gün önce')}`;
   const d = new Date(iso);
   return `${d.getDate()}.${String(d.getMonth() + 1).padStart(2, '0')}`;
 }

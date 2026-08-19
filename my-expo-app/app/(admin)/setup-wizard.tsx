@@ -25,7 +25,7 @@ export default function AdminSetupWizardRoute() {
         onPress={handleLogout}
         style={{
           position: 'absolute',
-          top: 24, right: 24,
+          top: 24, end: 24,
           flexDirection: 'row', alignItems: 'center', gap: 6,
           paddingHorizontal: 14, paddingVertical: 8,
           borderRadius: 999,

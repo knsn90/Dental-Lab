@@ -482,7 +482,7 @@ export function LoginScreen() {
                 flexDirection: 'row', alignItems: 'flex-start', gap: 10,
                 backgroundColor: 'rgba(22,163,74,0.06)',
                 borderRadius: 10, padding: 12, marginBottom: 14,
-                borderLeftWidth: 3, borderLeftColor: AUTH.success,
+                borderStartWidth: 3, borderStartColor: AUTH.success,
               }}>
                 <Check size={14} color={AUTH.success} strokeWidth={2.4} style={{ marginTop: 1 }} />
                 <Text style={{ flex: 1, fontFamily: AUTH_FONT.sans, fontSize: 12.5, color: AUTH.success, lineHeight: 18 }}>
@@ -591,7 +591,7 @@ export function LoginScreen() {
                 accessibilityState={{ checked: remember }}
                 style={{
                   flexDirection: 'row', alignItems: 'center', gap: 8,
-                  paddingVertical: 4, paddingRight: 8,
+                  paddingVertical: 4, paddingEnd: 8,
                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                 }}
               >

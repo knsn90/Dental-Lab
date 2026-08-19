@@ -371,8 +371,8 @@ export function FinanceHubScreen({ forceActiveKey, overrideContent }: FinanceHub
                               height: 16,
                               borderRadius: 2,
                               backgroundColor: theme.primary,
-                              marginLeft: -6,
-                              marginRight: 4,
+                              marginStart: -6,
+                              marginEnd: 4,
                             }}
                           />
                         )}

@@ -2,6 +2,7 @@
 // Materyal kullanımı + fire + işçilik + kar katkısı tek tabloda.
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { weekdayOffset } from '../../../core/i18n';
 import {
   View, Text, ScrollView, Pressable,
   Platform, useWindowDimensions,
@@ -16,6 +17,8 @@ import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { CenteredLoader } from '../../../core/ui/CenteredLoader';
 import { FilterMenu } from '../../../core/ui/FilterMenu';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { baseSymbol, useBaseCurrency } from '../../../core/money/baseCurrency';
 import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
@@ -95,8 +98,8 @@ function getRange(r: Range): { from: string | null; to: string | null } {
   const pad  = (n: number) => String(n).padStart(2, '0');
   const ymd  = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   if (r === 'thisWeek') {
-    const day  = now.getDay() || 7;
-    const start = new Date(now); start.setDate(now.getDate() - day + 1);
+    // Hafta başlangıcı bölgeye bağlı: TR/AB Pazartesi, İran Cumartesi (weekdayOffset).
+    const start = new Date(now); start.setDate(now.getDate() - weekdayOffset(now.getDay()));
     return { from: ymd(start), to: ymd(now) };
   }
   if (r === 'thisMonth') return { from: ymd(new Date(yyyy, mm, 1)), to: ymd(new Date(yyyy, mm + 1, 0)) };
@@ -111,6 +114,8 @@ export function TechnicianPerformanceScreen() {
   const insets      = useSafeAreaInsets();
   const labId       = profile?.lab_id ?? profile?.id ?? null;
   const T = useMobileTokens();
+  // SlideTabBar cursor'ı beyaz metin basar → koyu ink şart.
+  const panelTheme = usePanelTheme();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   useBaseCurrency();
 
@@ -164,34 +169,16 @@ export function TechnicianPerformanceScreen() {
           sıralama nadiren değişir; seçili değer tetikleyicide görünür, listeler
           menüde durur. Üç satır → bir satır, hiçbir seçenek kaybolmadan. */}
       <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-        <View style={{ flexDirection: 'row', gap: 2, padding: 3, borderRadius: 9999, backgroundColor: T.cardSoft }}>
-          {RANGE_OPTIONS.map(opt => {
-            const active = range === opt.key;
-            return (
-              <Pressable
-                key={opt.key}
-                onPress={() => setRange(opt.key)}
-                style={({ pressed }: any) => ({
-                  paddingHorizontal: 12, paddingVertical: 7,
-                  borderRadius: 9999,
-                  opacity: pressed && !active ? 0.55 : 1,
-                  transform: [{ scale: pressed ? 0.97 : 1 }],
-                  ...(active ? {
-                    backgroundColor: T.card,
-                    // @ts-ignore web
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-                  } : {}),
-                  ...(Platform.OS === 'web' ? { cursor: 'pointer' as any } : {}),
-                })}
-              >
-                <Text style={[
-                  { fontSize: 12, fontWeight: '500', color: T.ink3 },
-                  active && { fontWeight: '600', color: T.ink },
-                ]}>{opt.label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        {/* Uygulamanın ortak sekme çubuğu (sm) — Siparişler / Faturalar /
+            Karlılık ile aynı bileşen. */}
+        <SlideTabBar
+          size="sm"
+          items={RANGE_OPTIONS.map(o => ({ key: o.key, label: o.label }))}
+          activeKey={range}
+          onChange={(k) => setRange(k as Range)}
+          accentColor={panelTheme.accent}
+          style={{ marginStart: -3 }}
+        />
 
         <FilterMenu
           label="Materyal"
@@ -237,11 +224,11 @@ export function TechnicianPerformanceScreen() {
               borderBottomWidth: 1, borderBottomColor: T.hairline,
             }}>
               <Text style={{ flex: 2.4, fontSize: 10, fontWeight: '600', color: T.ink3, letterSpacing: 0.8, textTransform: 'uppercase' }}>Teknisyen</Text>
-              <Text style={{ flex: 1.2, fontSize: 10, fontWeight: '600', color: T.ink3, letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'right' }}>Kullanım</Text>
-              <Text style={{ flex: 1.2, fontSize: 10, fontWeight: '600', color: T.ink3, letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'right' }}>Fire</Text>
+              <Text style={{ flex: 1.2, fontSize: 10, fontWeight: '600', color: T.ink3, letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'end' as any }}>Kullanım</Text>
+              <Text style={{ flex: 1.2, fontSize: 10, fontWeight: '600', color: T.ink3, letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'end' as any }}>Fire</Text>
               <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: T.ink3, letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'center' }}>Verim</Text>
-              <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: T.ink3, letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'right' }}>Süre</Text>
-              <Text style={{ flex: 1.4, fontSize: 10, fontWeight: '600', color: T.ink3, letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'right' }}>Kar Katkısı</Text>
+              <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: T.ink3, letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'end' as any }}>Süre</Text>
+              <Text style={{ flex: 1.4, fontSize: 10, fontWeight: '600', color: T.ink3, letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'end' as any }}>Kar Katkısı</Text>
             </View>
           )}
 
@@ -278,7 +265,7 @@ function PerfRowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; i
         { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 14 },
         !isLast && { borderBottomWidth: 1, borderBottomColor: T.hairline },
       ]}>
-        <View style={{ flex: 2.4, flexDirection: 'row', alignItems: 'center', gap: 10, paddingRight: 8 }}>
+        <View style={{ flex: 2.4, flexDirection: 'row', alignItems: 'center', gap: 10, paddingEnd: 8 }}>
           <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: T.cardSoft, alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ fontSize: 12, fontWeight: '600', color: T.ink3 }}>{initials}</Text>
           </View>
@@ -290,12 +277,12 @@ function PerfRowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; i
           </View>
         </View>
 
-        <View style={{ flex: 1.2, alignItems: 'flex-end', paddingRight: 8 }}>
+        <View style={{ flex: 1.2, alignItems: 'flex-end', paddingEnd: 8 }}>
           <Text style={{ ...DISPLAY, fontSize: 14, color: T.ink }}>{fmt1(row.used_qty)}</Text>
           {row.used_cost > 0 && <Text style={{ fontSize: 11, color: T.ink3, marginTop: 1 }}>{fmt(row.used_cost)} {baseSymbol()}</Text>}
         </View>
 
-        <View style={{ flex: 1.2, alignItems: 'flex-end', paddingRight: 8 }}>
+        <View style={{ flex: 1.2, alignItems: 'flex-end', paddingEnd: 8 }}>
           <Text style={[
             { ...DISPLAY, fontSize: 14, color: T.ink },
             wasteHigh && { color: CHIP_TONES.danger.fg },
@@ -305,7 +292,7 @@ function PerfRowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; i
           {row.waste_cost > 0 && <Text style={{ fontSize: 11, color: CHIP_TONES.danger.fg, marginTop: 1 }}>−{fmt(row.waste_cost)} {baseSymbol()}</Text>}
         </View>
 
-        <View style={{ flex: 1, alignItems: 'center', paddingRight: 8 }}>
+        <View style={{ flex: 1, alignItems: 'center', paddingEnd: 8 }}>
           {eff !== null ? (
             <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 9999, minWidth: 60, alignItems: 'center', backgroundColor: bg }}>
               <Text style={{ fontSize: 13, fontWeight: '600', letterSpacing: -0.2, color: fg }}>%{fmt1(eff)}</Text>
@@ -315,14 +302,14 @@ function PerfRowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; i
           )}
         </View>
 
-        <View style={{ flex: 1, alignItems: 'flex-end', paddingRight: 8 }}>
+        <View style={{ flex: 1, alignItems: 'flex-end', paddingEnd: 8 }}>
           <Text style={{ ...DISPLAY, fontSize: 14, color: T.ink }}>
             {fmt1(row.labor_hours)}<Text style={{ fontSize: 10, color: T.ink3, fontWeight: '600' }}> sa</Text>
           </Text>
           {row.labor_cost > 0 && <Text style={{ fontSize: 11, color: T.ink3, marginTop: 1 }}>{fmt(row.labor_cost)} {baseSymbol()}</Text>}
         </View>
 
-        <View style={{ flex: 1.4, alignItems: 'flex-end', paddingRight: 8 }}>
+        <View style={{ flex: 1.4, alignItems: 'flex-end', paddingEnd: 8 }}>
           <Text style={[
             { ...DISPLAY, fontSize: 14, color: CHIP_TONES.success.fg },
             row.profit_contribution < 0 && { color: CHIP_TONES.danger.fg },

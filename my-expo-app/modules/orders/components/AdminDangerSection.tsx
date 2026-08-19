@@ -10,7 +10,8 @@
 
 import React, { useState } from 'react';
 import { View, Text, Pressable, Platform, Modal, TextInput, useWindowDimensions } from 'react-native';
-import { ShieldAlert, Archive, RotateCcw, Trash2, AlertCircle, X, Pencil, ChevronRight } from 'lucide-react-native';
+import { ShieldAlert, Archive, RotateCcw, Trash2, AlertCircle, X, Pencil, ChevronRight, ChevronLeft } from 'lucide-react-native';
+import { isRTL } from '../../../core/i18n';
 import { archiveOrder, restoreOrder, hardDeleteOrder } from '../api';
 import { toast } from '../../../core/ui/Toast';
 import { useSegments } from 'expo-router';
@@ -200,7 +201,7 @@ function ActionRow({
           <Text style={{ fontSize: 11, color: '#9A9A9A', marginTop: 1 }}>{sub}</Text>
         ) : null}
       </View>
-      <ChevronRight size={14} color="#CCC" strokeWidth={1.6} />
+      {isRTL() ? <ChevronLeft size={14} color="#CCC" strokeWidth={1.6} /> : <ChevronRight size={14} color="#CCC" strokeWidth={1.6} />}
     </Pressable>
   );
 }

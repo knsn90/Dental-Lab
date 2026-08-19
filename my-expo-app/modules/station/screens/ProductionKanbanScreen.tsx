@@ -1,4 +1,5 @@
 import { localeTag } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 // modules/station/screens/ProductionKanbanScreen.tsx
 // Üretim Panosu — iş odaklı liste/sütun panosu.
 //
@@ -13,8 +14,9 @@ import { localeTag } from '../../../core/i18n';
 //   • Kolon = yuvarlak yüzey konteyner, kart yığını yok
 //   • Item = inline satır, hairline ayraçlarla bölünür
 //   • Dolu daire = aşama göstergesi (sol)
-//   • Tek kontrol çubuğu: durum solda · arama + filtre + yenile sağda.
-//     KPI şeridi kaldırıldı — aynı sayıları durum satırı zaten söylüyordu.
+//   • Tek kontrol çubuğu: rakamlar solda · arama + yenile sağda.
+//     Rakamlar aynı zamanda filtre: "Geciken 2"ye dokununca liste süzülür.
+//     Ayrı filtre çipleri kaldırıldı — aynı sayıyı ikinci kez gösteriyorlardı.
 
 import React, { useEffect, useMemo, useState, useContext, useRef } from 'react';
 import {
@@ -118,8 +120,11 @@ function makeStyles(C: Palette) {
       // Durum şeridi — DESIGN_LANGUAGE §2: DISPLAY (Inter Tight 300) rakam +
       // 10px uppercase meta etiket. Düz "4 iş · 2 aktif" cümlesinin yerini alır;
       // rakamlar tek bakışta okunur, etiketler geri planda kalır.
-      statWrap:   { flexDirection: 'row', alignItems: 'center', gap: 22, flexGrow: 1, flexShrink: 1, flexBasis: 220, minWidth: 0, flexWrap: 'wrap' },
-      statBlock:  { gap: 2 },
+      statWrap:   { flexDirection: 'row', alignItems: 'center', gap: 14, flexGrow: 1, flexShrink: 1, flexBasis: 220, minWidth: 0, flexWrap: 'wrap' },
+      statBlock:  { gap: 2, paddingVertical: 2 },
+      // Dokunulabilir rakamlar filtreyi açar; dolgu + yarıçap onları ölü metinden
+      // ayırır (dokunulabilir olan dokunulabilir görünmeli).
+      statBlockTap: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, marginHorizontal: -2 },
       statValue:  {
         fontFamily: DISPLAY_FONT, fontWeight: '300', fontSize: 20,
         letterSpacing: -0.6, lineHeight: 24, color: C.ink, ...NUM,
@@ -134,8 +139,6 @@ function makeStyles(C: Palette) {
 
       searchBox:  { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.card, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, flexGrow: 1, flexBasis: 200, minWidth: 150, borderWidth: 1, borderColor: C.hairline },
       searchInput:{ flex: 1, fontSize: 13, color: C.ink, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) },
-      fchip:      { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: C.hairline, backgroundColor: C.card },
-      fchipTxt:   { fontSize: 12.5, fontWeight: '500', color: C.ink2 },
       clearBtn:   { paddingHorizontal: 10, paddingVertical: 7 },
       clearTxt:   { fontSize: 12.5, fontWeight: '600' },
       refreshBtn: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
@@ -163,7 +166,7 @@ function makeStyles(C: Palette) {
       row:        { flexDirection: 'row', alignItems: 'center', gap: 12 },
       // Atanmamış satırda iki pil (Otomatik+Manuel) genişliğin yarısını yiyor →
       // kendi satırlarına in, başlık tam genişliği alsın.
-      actionRow:  { flexDirection: 'row', justifyContent: 'flex-end', gap: 6, marginLeft: 24 },
+      actionRow:  { flexDirection: 'row', justifyContent: 'flex-end', gap: 6, marginStart: 24 },
       rowDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.hairline },
 
       indicatorWrap: { paddingVertical: 4 },
@@ -194,7 +197,7 @@ function makeStyles(C: Palette) {
       backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.40)', justifyContent: 'flex-end', alignItems: 'center' },
       sheet: {
         width: '100%', maxWidth: 420, backgroundColor: C.card,
-        borderTopLeftRadius: 20, borderTopRightRadius: 20,
+        borderTopStartRadius: 20, borderTopEndRadius: 20,
         paddingTop: 8, paddingBottom: 24, paddingHorizontal: 16, gap: 8,
       },
       handle:   { width: 36, height: 5, borderRadius: 2.5, backgroundColor: C.ink3, alignSelf: 'center', marginBottom: 8, opacity: 0.4 },
@@ -221,10 +224,10 @@ function deliveryText(d: string): string {
   const today = new Date(); today.setHours(0,0,0,0);
   const due   = new Date(d + 'T00:00:00');
   const diff  = Math.ceil((due.getTime() - today.getTime()) / 86_400_000);
-  if (diff < 0)  return `${Math.abs(diff)}g geçti`;
-  if (diff === 0) return 'Bugün';
-  if (diff === 1) return 'Yarın';
-  if (diff <= 6)  return `${diff} gün`;
+  if (diff < 0)  return autoT('{n}g geçti').replace('{n}', String(Math.abs(diff)));
+  if (diff === 0) return autoT('Bugün');
+  if (diff === 1) return autoT('Yarın');
+  if (diff <= 6)  return `${diff} ${autoT('gün')}`;
   return due.toLocaleDateString(localeTag(), { day: 'numeric', month: 'short' });
 }
 
@@ -312,20 +315,23 @@ function ItemRow({
       {/* İki aksiyon kendi satırında — başlığı ezmesin */}
       {isUnassigned && (
         <View style={r.actionRow}>
+          {/* Ortak yol önce, ikincisi bir ton geride: her satırda iki DOLU pil
+              yan yana durunca liste bir buton duvarına dönüşüyordu ve hangisinin
+              varsayılan olduğu okunmuyordu. */}
+          <TouchableOpacity
+            onPress={onAssign}
+            activeOpacity={0.6}
+            style={r.pillGhost}
+          >
+            <Text style={[r.pillGhostText, { color: C.ink3 }]}>Manuel</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={onAutoAssign}
             disabled={busy}
             activeOpacity={0.75}
             style={[r.pill, { backgroundColor: C.accent }, busy && { opacity: 0.5 }]}
           >
-            <Text style={r.pillFilledText}>Otomatik</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={onAssign}
-            activeOpacity={0.75}
-            style={[r.pill, { backgroundColor: hexA(C.accent, 0.12) }]}
-          >
-            <Text style={[r.pillTintedText, { color: C.accentDeep }]}>Manuel</Text>
+            <Text style={r.pillFilledText}>Otomatik ata</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -380,7 +386,7 @@ function ColumnView({
           ) : null}
           <Text style={col.count}>{column.cards.length}</Text>
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 18, marginTop: 2, flexWrap: 'wrap' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginStart: 18, marginTop: 2, flexWrap: 'wrap' }}>
           {workloadLine && !isUnassigned ? <Text style={col.subtitle}>{workloadLine}</Text> : null}
           {column.overdue > 0 ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6, backgroundColor: hexA(DANGER, 0.12) }}>
@@ -397,11 +403,10 @@ function ColumnView({
       </View>
 
       {/* Liste konteyneri — darboğazda kenarlık kırmızıya döner (kart-içinde-kart değil) */}
-      <View style={[
-        col.list,
-        isUnassigned && column.cards.length > 0 && { borderColor: hexA(WARN, 0.45) },
-        bottleneck && { borderColor: hexA(DANGER, 0.45) },
-      ]}>
+      {/* Renkli çerçeve KALDIRILDI. Durumu zaten başlıktaki "ATAMA BEKLİYOR" /
+          "DARBOĞAZ" rozeti söylüyor; bir de tüm listeyi turuncuya çerçevelemek
+          aynı bilgiyi ikinci kez, daha gürültülü biçimde tekrar ediyordu. */}
+      <View style={col.list}>
         {column.cards.length === 0 ? (
           <Text style={col.empty}>Boş</Text>
         ) : (
@@ -431,19 +436,31 @@ function ColumnView({
 // Geniş ekranda kolonların sağında kalan boşluğu kullanır. Kendi verisi yok —
 // hepsi `columns`'tan türetilir, ek sorgu açmaz. İleride canlı istasyon
 // izleme / iş yükü dengeleme widget'ları bu şeride eklenebilir.
-function OpsRail({ columns, C, width }: { columns: KanbanColumn[]; C: Palette; width: number }) {
-  const overdueCards = columns
+function OpsRail({ columns, allColumns, C, width }: {
+  columns: KanbanColumn[];
+  /** Filtrelenmemiş kolonlar — kapasite panelin filtresine göre değişmez. */
+  allColumns: KanbanColumn[];
+  C: Palette; width: number;
+}) {
+  const stalledCards = columns
     .flatMap(c => c.cards.map(card => ({ card, col: c })))
     .filter(({ card }) => {
       const idle = card.stage_started_at ? Date.now() - new Date(card.stage_started_at).getTime() : 0;
       return slaStatus(card.current_stage, idle) === 'red';
     })
     .slice(0, 6);
-  const idle = columns.filter(c => !c.isUnassigned && c.cards.length === 0);
+  // Atıl kapasite `allColumns`'tan gelir. Eskiden filtrelenmiş listeden
+  // hesaplanıyordu; o liste boş istasyonları zaten ELEDİĞİ için bölüm her zaman
+  // "Tüm istasyonlar dolu" diyordu — üst şerit aynı anda "16 boş istasyon"
+  // gösterirken. Pano kendi kendisiyle çelişiyordu.
+  const idle = allColumns.filter(c => !c.isUnassigned && c.cards.length === 0);
   const busy = [...columns].filter(c => !c.isUnassigned && c.cards.length > 0)
     .sort((a, b) => b.cards.length - a.cards.length).slice(0, 5);
 
-  const Section = ({ title, count, children }: { title: string; count: number; children: React.ReactNode }) => (
+  /** Boş bölüm kutu ÇİZMEZ — sıfır bilgi için çerçeve çizmek panoyu şişiriyordu. */
+  const Section = ({ title, count, empty, children }: {
+    title: string; count: number; empty?: string; children?: React.ReactNode;
+  }) => (
     <View style={{ gap: 8 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <Text style={{ fontSize: 10, fontWeight: '500', letterSpacing: 1.2, textTransform: 'uppercase', color: C.ink3, flex: 1 }}>
@@ -451,18 +468,23 @@ function OpsRail({ columns, C, width }: { columns: KanbanColumn[]; C: Palette; w
         </Text>
         <Text style={{ fontSize: 11, fontWeight: '600', color: C.ink3, ...NUM }}>{count}</Text>
       </View>
-      <View style={{ backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.hairline, overflow: 'hidden' }}>
-        {children}
-      </View>
+      {count === 0 ? (
+        <Text style={{ fontSize: 12, color: C.ink3, opacity: 0.75, paddingBottom: 2 }}>{empty}</Text>
+      ) : (
+        <View style={{ backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.hairline, overflow: 'hidden' }}>
+          {children}
+        </View>
+      )}
     </View>
   );
 
   return (
-    <View style={{ width, gap: 16 }}>
-      <Section title="Gecikenler" count={overdueCards.length}>
-        {overdueCards.length === 0 ? (
-          <Text style={{ fontSize: 12, color: C.ink3, textAlign: 'center', paddingVertical: 14 }}>Geciken iş yok</Text>
-        ) : overdueCards.map(({ card, col }, i) => (
+    <View style={{ width, gap: 18 }}>
+      {/* "Gecikenler" DEĞİL: üst şeritteki "Geciken" teslim tarihine bakar, bu
+          liste aşamada bekleme süresine (SLA) bakar. Aynı adı taşıdıkları için
+          pano iki farklı sayı gösterip çelişiyor gibi görünüyordu. */}
+      <Section title="Aşamada bekleyen" count={stalledCards.length} empty="Bekleyen iş yok">
+        {stalledCards.map(({ card, col }, i) => (
           <View key={card.id} style={{
             paddingHorizontal: 12, paddingVertical: 9,
             borderTopWidth: i === 0 ? 0 : StyleSheet.hairlineWidth, borderTopColor: C.hairline,
@@ -477,10 +499,8 @@ function OpsRail({ columns, C, width }: { columns: KanbanColumn[]; C: Palette; w
         ))}
       </Section>
 
-      <Section title="Yoğun istasyonlar" count={busy.length}>
-        {busy.length === 0 ? (
-          <Text style={{ fontSize: 12, color: C.ink3, textAlign: 'center', paddingVertical: 14 }}>Aktif istasyon yok</Text>
-        ) : busy.map((c, i) => (
+      <Section title="Yoğun istasyonlar" count={busy.length} empty="Aktif istasyon yok">
+        {busy.map((c, i) => (
           <View key={c.key} style={{
             flexDirection: 'row', alignItems: 'center', gap: 8,
             paddingHorizontal: 12, paddingVertical: 9,
@@ -493,10 +513,8 @@ function OpsRail({ columns, C, width }: { columns: KanbanColumn[]; C: Palette; w
         ))}
       </Section>
 
-      <Section title="Atıl kapasite" count={idle.length}>
-        {idle.length === 0 ? (
-          <Text style={{ fontSize: 12, color: C.ink3, textAlign: 'center', paddingVertical: 14 }}>Tüm istasyonlar dolu</Text>
-        ) : (
+      <Section title="Atıl kapasite" count={idle.length} empty="Tüm istasyonlar dolu">
+        {(
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, padding: 12 }}>
             {idle.map(c => (
               <View key={c.key} style={{
@@ -612,16 +630,6 @@ function AssignPickerModal({ visible, card, labId, C, sx, onClose, onAssigned }:
 
 // ─── Ana ekran ───────────────────────────────────────────────────────────────
 
-function FilterChip({ label, active, onPress, color, sx }: {
-  label: string; active: boolean; onPress: () => void; color: string; sx: Sx;
-}) {
-  return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.7} style={[sx.s.fchip, active && { backgroundColor: color, borderColor: color }]}>
-      <Text style={[sx.s.fchipTxt, active && { color: '#FFFFFF' }]}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
 export function ProductionKanbanScreen() {
   const router      = useRouter();
   // Rota/sipariş linki AKTİF panelde açılmalı — sabit '/(lab)/...' admin veya
@@ -682,7 +690,6 @@ export function ProductionKanbanScreen() {
     .filter(col => col.isUnassigned ? col.cards.length > 0 : (showEmpty || col.cards.length > 0)),
   [columns, fAcil, fGeciken, q, showEmpty]);
   const filtersActive = fAcil || fGeciken || !!q;
-  const hiddenEmptyCount = useMemo(() => columns.filter(c => !c.isUnassigned && c.cards.length === 0).length, [columns]);
 
   async function handleRefresh() {
     setRefreshing(true);
@@ -761,6 +768,10 @@ export function ProductionKanbanScreen() {
                     - (railOn ? RAIL_W + COL_GAP : 0);
   const fits      = isDesktop && available / visibleCount >= COL_WIDTH;
   const colWidth  = fits ? Math.min(available / visibleCount, COL_MAX) : COL_WIDTH;
+  // Kümenin gerçek genişliği — ortalamak için gerekli. `fits` dalında tüm
+  // kolonlar tek satıra sığdığı garanti, dolayısıyla toplam basitçe hesaplanır.
+  const boardWidth = visibleCount * colWidth + COL_GAP * Math.max(visibleCount - 1, 0)
+                     + (railOn ? RAIL_W + COL_GAP : 0);
 
   const renderColumns = () => filteredColumns.map(c => (
     <ColumnView
@@ -783,14 +794,21 @@ export function ProductionKanbanScreen() {
   const unassignedTotal = columns.filter(c => c.isUnassigned).reduce((n, c) => n + c.cards.length, 0);
   const emptyStations   = columns.filter(c => !c.isUnassigned && c.cards.length === 0).length;
 
-  const stats: { key: string; value: number; label: string; color?: string }[] = [
+  // Sorun sayıları aynı zamanda KONTROL: rakama dokununca ilgili filtre açılır.
+  // Eskiden sayıyı görüp aynı bilgiyi taşıyan çipi ayrıca aramak gerekiyordu —
+  // kontrol, etkilediği şeyin yanında durmalı.
+  type Stat = { key: string; value: number; label: string; color?: string; onPress?: () => void; active?: boolean };
+  const stats: Stat[] = [
     { key: 't', value: totalCards,  label: 'İş' },
     { key: 'a', value: activeCount, label: 'Aktif' },
   ];
   if (unassignedTotal > 0) stats.push({ key: 'u', value: unassignedTotal, label: 'Atanmamış', color: WARN });
-  if (overdueTotal > 0)    stats.push({ key: 'o', value: overdueTotal,    label: 'Geciken',   color: DANGER });
-  if (rushTotal > 0)       stats.push({ key: 'r', value: rushTotal,       label: 'Acil',      color: WARN });
-  if (emptyStations > 0)   stats.push({ key: 'e', value: emptyStations,   label: 'Boş istasyon' });
+  if (overdueTotal > 0)    stats.push({ key: 'o', value: overdueTotal,    label: 'Geciken',   color: DANGER,
+                                        onPress: () => setFGeciken(v => !v), active: fGeciken });
+  if (rushTotal > 0)       stats.push({ key: 'r', value: rushTotal,       label: 'Acil',      color: WARN,
+                                        onPress: () => setFAcil(v => !v),   active: fAcil });
+  if (emptyStations > 0)   stats.push({ key: 'e', value: emptyStations,   label: 'Boş istasyon',
+                                        onPress: () => setShowEmpty(v => !v), active: showEmpty });
 
   return (
     <SafeAreaView style={[s.container]} edges={isEmbedded ? ([] as any) : ['top']}>
@@ -798,26 +816,39 @@ export function ProductionKanbanScreen() {
       {!loading && !error && (
         <View style={s.bar}>
           <View style={s.statWrap}>
-            {stats.map(st => (
-              <View key={st.key} style={s.statBlock}>
-                <Text style={[s.statValue, st.color ? { color: st.color } : null]}>{st.value}</Text>
-                <Text style={s.statLabel}>{st.label}</Text>
-              </View>
-            ))}
-            {lastSync && (
-              <View style={s.statBlock}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <LiveDot color={DS.lab.success} />
-                  <Text style={[s.statValue, { color: C.ink3 }]}>
-                    {lastSync.toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' })}
-                  </Text>
-                </View>
-                <Text style={s.statLabel}>Son eşitleme</Text>
-              </View>
-            )}
+            {stats.map(st => {
+              const body = (
+                <>
+                  <Text style={[s.statValue, st.color ? { color: st.color } : null]}>{st.value}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Text style={[s.statLabel, st.active ? { color: st.color ?? A } : null]}>{st.label}</Text>
+                    {st.active ? <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: st.color ?? A }} /> : null}
+                  </View>
+                </>
+              );
+              return st.onPress ? (
+                <TouchableOpacity key={st.key} onPress={st.onPress} activeOpacity={0.6}
+                  style={[s.statBlock, s.statBlockTap, st.active && { backgroundColor: hexA(st.color ?? A, 0.10) }]}>
+                  {body}
+                </TouchableOpacity>
+              ) : (
+                <View key={st.key} style={s.statBlock}>{body}</View>
+              );
+            })}
           </View>
 
           <View style={s.barTools}>
+            {/* Son eşitleme METRİK değil DURUM — iş sayılarıyla aynı ağırlıkta
+                display rakamı olarak durunca "6. bir KPI" gibi okunuyordu.
+                Yenile düğmesinin yanı doğru yeri: neyi tazelediğini söylüyor. */}
+            {lastSync && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingEnd: 2 }}>
+                <LiveDot color={DS.lab.success} />
+                <Text style={{ fontSize: 11.5, fontWeight: '500', color: C.ink3, ...NUM }}>
+                  {lastSync.toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' })}
+                </Text>
+              </View>
+            )}
             <View style={s.searchBox}>
               <AppIcon name="search" size={14} color={C.ink3} />
               <TextInput
@@ -829,11 +860,10 @@ export function ProductionKanbanScreen() {
                 <TouchableOpacity onPress={() => setSearch('')} hitSlop={8}><AppIcon name="x" size={14} color={C.ink3} /></TouchableOpacity>
               )}
             </View>
-            <FilterChip label={rushTotal > 0 ? `Acil (${rushTotal})` : 'Acil'} active={fAcil} onPress={() => setFAcil(v => !v)} color={WARN} sx={sx} />
-            <FilterChip label={overdueTotal > 0 ? `Geciken (${overdueTotal})` : 'Geciken'} active={fGeciken} onPress={() => setFGeciken(v => !v)} color={DANGER} sx={sx} />
-            {hiddenEmptyCount > 0 && (
-              <FilterChip label={showEmpty ? 'Boşları gizle' : `Boş istasyonlar (${hiddenEmptyCount})`} active={showEmpty} onPress={() => setShowEmpty(v => !v)} color={A} sx={sx} />
-            )}
+            {/* Acil / Geciken / Boş istasyon çipleri KALDIRILDI — üstteki
+                rakamlar zaten aynı sayıyı gösteriyordu ve artık dokunulabilir.
+                İki ayrı kontrol yüzeyi aynı şeyi anlatınca pano kalabalık
+                görünüyordu; yetenek aynen duruyor, yeri tek. */}
             {filtersActive && (
               <TouchableOpacity onPress={() => { setSearch(''); setFAcil(false); setFGeciken(false); }} style={s.clearBtn} activeOpacity={0.7}>
                 <Text style={[s.clearTxt, { color: A }]}>Temizle</Text>
@@ -861,11 +891,18 @@ export function ProductionKanbanScreen() {
           contentContainerStyle={{ padding: PAD }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={A} />}
         >
-          <View style={{ flexDirection: 'row', gap: COL_GAP, alignItems: 'flex-start' }}>
+          {/* Pano ORTALANIR. Kolonlar `flex:1` içindeyken sola yaslanıyor, şerit
+              sağa çivileniyordu; 2-3 kolonlu günlerde aralarında 500px'lik boş
+              bir kanyon kalıyordu. Küme kendi genişliği kadar yer kaplayıp
+              ortalanınca boşluk iki kenara eşit dağılıyor. */}
+          <View style={{
+            flexDirection: 'row', gap: COL_GAP, alignItems: 'flex-start',
+            alignSelf: 'center', maxWidth: boardWidth, width: '100%',
+          }}>
             <View style={{ flex: 1, flexDirection: 'row', gap: COL_GAP, alignItems: 'flex-start', flexWrap: 'wrap' }}>
               {renderColumns()}
             </View>
-            {railOn ? <OpsRail columns={filteredColumns} C={C} width={RAIL_W} /> : null}
+            {railOn ? <OpsRail columns={filteredColumns} allColumns={columns} C={C} width={RAIL_W} /> : null}
           </View>
         </ScrollView>
       ) : (
@@ -880,8 +917,8 @@ export function ProductionKanbanScreen() {
             {renderColumns()}
           </ScrollView>
           {railOn ? (
-            <ScrollView style={{ width: RAIL_W + PAD }} contentContainerStyle={{ paddingRight: PAD, paddingVertical: PAD }}>
-              <OpsRail columns={filteredColumns} C={C} width={RAIL_W} />
+            <ScrollView style={{ width: RAIL_W + PAD }} contentContainerStyle={{ paddingEnd: PAD, paddingVertical: PAD }}>
+              <OpsRail columns={filteredColumns} allColumns={columns} C={C} width={RAIL_W} />
             </ScrollView>
           ) : null}
         </View>

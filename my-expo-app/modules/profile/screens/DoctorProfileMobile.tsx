@@ -4,7 +4,8 @@
 
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { setLanguage, SUPPORTED, localeTag, type Lang } from '../../../core/i18n';
+import { setLanguage, SUPPORTED, localeTag, isRTL, type Lang } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import {
   View, Text, Pressable, ScrollView, Switch, Platform, Alert, Modal, TextInput, Linking, } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,7 +13,7 @@ import { useRouter } from 'expo-router';
 import {
   User as UserIcon, Mail, Phone, MapPin, Building2, Lock, Bell, Moon, Sun,
   Smartphone, ChevronRight, LogOut, ShieldCheck, FileText, HelpCircle, ScrollText,
-  X, Eye, EyeOff, Check as CheckIcon, Users, FileSpreadsheet, Banknote, Settings,
+  X, ChevronLeft, Eye, EyeOff, Check as CheckIcon, Users, FileSpreadsheet, Banknote, Settings,
   Landmark, Package, Wallet, CalendarDays, Trash2, AlertTriangle,
 } from 'lucide-react-native';
 import Constants from 'expo-constants';
@@ -52,7 +53,7 @@ interface Props {
 // Panel'e göre ünvan/başlık öneki ve fallback default ismi
 function panelMeta(panel: MobilePanel): { prefix: string; fallback: string; titleLabel: string } {
   switch (panel) {
-    case 'doctor':    return { prefix: 'Dr.',  fallback: 'Hekim',     titleLabel: 'Hekim' };
+    case 'doctor':    return { prefix: 'Dt.',  fallback: 'Hekim',     titleLabel: 'Hekim' };
     case 'klinik':    return { prefix: '',     fallback: 'Klinik',    titleLabel: 'Klinik Yöneticisi' };
     case 'exec':      return { prefix: '',     fallback: 'Yönetici',  titleLabel: 'Yönetim' };
     case 'teknisyen': return { prefix: '',     fallback: 'Teknisyen', titleLabel: 'Teknisyen' };
@@ -70,6 +71,7 @@ export function DoctorProfileMobile({ profile, onSignOut, panel = 'doctor' }: Pr
     : panel === 'teknisyen' ? 'roles.technician'
     : 'roles.labUser';
   const T = useMobileTokens();
+  const rtl = isRTL();
   const insets = useSafeAreaInsets();
   const themeMode = useThemeModeStore(s => s.mode);
   const setThemeMode = useThemeModeStore(s => s.setMode);
@@ -115,11 +117,11 @@ export function DoctorProfileMobile({ profile, onSignOut, panel = 'doctor' }: Pr
     // birden fazla "Dr." varsa loop ile hepsini sök (örn: "Dr. Dr. Ahmet")
     while (stripDrRe.test(cleanName)) cleanName = cleanName.replace(stripDrRe, '').trim();
   }
-  const fullName = cleanName || meta.fallback;
+  const fullName = cleanName || autoT(meta.fallback);
   const initial = (fullName ?? '?').charAt(0).toUpperCase();
 
   // Ada göre otomatik font size — uzun isimler 22 → 18 → 16 düşer
-  const displayName = meta.prefix ? `${meta.prefix} ${fullName}` : fullName;
+  const displayName = meta.prefix ? `${autoT(meta.prefix)} ${fullName}` : fullName;
   const dynamicFontSize = displayName.length > 26 ? 16
     : displayName.length > 18 ? 19
     : 22;
@@ -165,6 +167,7 @@ export function DoctorProfileMobile({ profile, onSignOut, panel = 'doctor' }: Pr
                   fontSize: dynamicFontSize,
                   fontWeight: '400', color: T.ink, letterSpacing: -0.4,
                   lineHeight: dynamicFontSize + 4,
+                  textAlign: rtl ? 'right' : undefined,
                   ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
                 }}
                 numberOfLines={2}
@@ -174,7 +177,7 @@ export function DoctorProfileMobile({ profile, onSignOut, panel = 'doctor' }: Pr
                 {displayName}
               </Text>
               {!!profile?.email && (
-                <Text style={{ fontSize: 11.5, color: T.ink3, marginTop: 4 }} numberOfLines={1}>
+                <Text style={{ fontSize: 11.5, color: T.ink3, marginTop: 4, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>
                   {profile.email}
                 </Text>
               )}
@@ -322,7 +325,8 @@ export function DoctorProfileMobile({ profile, onSignOut, panel = 'doctor' }: Pr
             <View style={{ flexDirection: 'row', gap: 6 }}>
               {(SUPPORTED as readonly Lang[]).map(lng => {
                 const active = i18n.language === lng;
-                const LABELS: Partial<Record<Lang, string>> = { tr: 'Türkçe', en: 'English' };
+                // Dil adları HER ZAMAN kendi dilinde yazılır — çeviriye tabi değil.
+                const LABELS: Record<Lang, string> = { tr: 'Türkçe', en: 'English', de: 'Deutsch', fa: 'فارسی' };
                 return (
                   <Pressable
                     key={lng}
@@ -920,6 +924,7 @@ function Divider() {
 function Row({ icon: Icon, label, value, onPress, placeholder, valueMono, readonly }:
   { icon: any; label: string; value?: string; onPress?: () => void; placeholder?: boolean; valueMono?: boolean; readonly?: boolean }) {
   const T = useMobileTokens();
+  const rtl = isRTL();
   const accent = React.useContext(AccentCtx);
   const content = (
     <>
@@ -931,7 +936,7 @@ function Row({ icon: Icon, label, value, onPress, placeholder, valueMono, readon
         <Icon size={16} color={accent || T.ink2} strokeWidth={1.7} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink }} numberOfLines={1}>
+        <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>
           {label}
         </Text>
         {!!value && (
@@ -942,6 +947,7 @@ function Row({ icon: Icon, label, value, onPress, placeholder, valueMono, readon
               marginTop: 2,
               fontStyle: placeholder ? 'italic' : 'normal',
               fontFamily: valueMono ? T.mono : undefined,
+              textAlign: rtl ? 'right' : undefined,
             }}
             numberOfLines={1}
           >
@@ -949,7 +955,9 @@ function Row({ icon: Icon, label, value, onPress, placeholder, valueMono, readon
           </Text>
         )}
       </View>
-      {!readonly && <ChevronRight size={15} color={T.ink3} strokeWidth={1.8} />}
+      {!readonly && (rtl
+        ? <ChevronLeft  size={15} color={T.ink3} strokeWidth={1.8} />
+        : <ChevronRight size={15} color={T.ink3} strokeWidth={1.8} />)}
     </>
   );
   if (readonly || !onPress) {
@@ -985,6 +993,7 @@ function Row({ icon: Icon, label, value, onPress, placeholder, valueMono, readon
 function ToggleRow({ icon: Icon, label, sub, value, onChange, accent }:
   { icon: any; label: string; sub: string; value: boolean; onChange: (v: boolean) => void; accent?: string }) {
   const T = useMobileTokens();
+  const rtl = isRTL();
   return (
     <View style={{
       flexDirection: 'row', alignItems: 'center', gap: 12,
@@ -998,10 +1007,10 @@ function ToggleRow({ icon: Icon, label, sub, value, onChange, accent }:
         <Icon size={16} color={accent || T.ink2} strokeWidth={1.7} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink }} numberOfLines={1}>
+        <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>
           {label}
         </Text>
-        <Text style={{ fontSize: 11, color: T.ink3, marginTop: 2 }} numberOfLines={1}>
+        <Text style={{ fontSize: 11, color: T.ink3, marginTop: 2, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>
           {sub}
         </Text>
       </View>

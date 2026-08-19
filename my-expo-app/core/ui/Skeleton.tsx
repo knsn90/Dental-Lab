@@ -65,7 +65,7 @@ export function SkeletonCard() {
     <View style={sk.card}>
       <View style={sk.cardHeader}>
         <Skeleton width={40} height={40} radius={20} />
-        <View style={{ flex: 1, marginLeft: 12 }}>
+        <View style={{ flex: 1, marginStart: 12 }}>
           <Skeleton width="55%" height={14} radius={6} />
           <Skeleton width="35%" height={11} radius={6} style={{ marginTop: 7 }} />
         </View>

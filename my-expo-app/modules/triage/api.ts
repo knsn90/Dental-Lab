@@ -112,6 +112,12 @@ export interface TriageData {
   messages: TriageMessage[];
   doctorName: string | null;
   clinicName: string | null;
+  /** Hekimin doğrudan telefonu (doctors.phone / profiles.phone) */
+  doctorPhone: string | null;
+  /** Klinik santrali + e-posta + irtibat kişisi (clinics.*) */
+  clinicPhone: string | null;
+  clinicEmail: string | null;
+  clinicContact: string | null;
   /** Sipariş kalemleri — diş↔işlem şeması için (her kalem hangi dişlere uygulanır) */
   items: TriageOrderItem[];
 }
@@ -218,20 +224,35 @@ export async function fetchTriageData(orderId: string, labId: string): Promise<T
     })),
   ];
 
-  // 5) Hekim & klinik adı (polymorphic: doctors VEYA profiles)
+  // 5) Hekim & klinik künyesi (polymorphic: doctors VEYA profiles).
+  //    Ad dışında iletişim de çekilir: triajda bir şey sorulacaksa (implant
+  //    markası, eksik tarama) müdürün numarayı başka ekranda araması gerekmesin.
   let doctorName: string | null = null, clinicName: string | null = null;
+  let doctorPhone: string | null = null, clinicPhone: string | null = null;
+  let clinicEmail: string | null = null, clinicContact: string | null = null;
   if (ord?.doctor_id) {
     const [d, p] = await Promise.all([
-      supabase.from('doctors').select('full_name, clinic:clinics(name)').eq('id', ord.doctor_id).maybeSingle(),
-      supabase.from('profiles').select('full_name, clinic_name').eq('id', ord.doctor_id).maybeSingle(),
+      supabase.from('doctors')
+        .select('full_name, phone, clinic:clinics(name, phone, email, contact_person)')
+        .eq('id', ord.doctor_id).maybeSingle(),
+      supabase.from('profiles')
+        .select('full_name, clinic_name, phone, email')
+        .eq('id', ord.doctor_id).maybeSingle(),
     ]);
     if (d.data) {
       doctorName = (d.data as any).full_name ?? null;
-      const cl = (d.data as any).clinic;
-      clinicName = Array.isArray(cl) ? cl[0]?.name ?? null : cl?.name ?? null;
+      doctorPhone = (d.data as any).phone ?? null;
+      const raw = (d.data as any).clinic;
+      const cl = Array.isArray(raw) ? raw[0] : raw;
+      clinicName = cl?.name ?? null;
+      clinicPhone = cl?.phone ?? null;
+      clinicEmail = cl?.email ?? null;
+      clinicContact = cl?.contact_person ?? null;
     } else if (p.data) {
       doctorName = (p.data as any).full_name ?? null;
       clinicName = (p.data as any).clinic_name ?? null;
+      doctorPhone = (p.data as any).phone ?? null;
+      clinicEmail = (p.data as any).email ?? null;
     }
   }
 
@@ -296,7 +317,11 @@ export async function fetchTriageData(orderId: string, labId: string): Promise<T
     if (pNote) mergedOrder = { ...(ord as any), notes: pNote };
   }
 
-  return { order: (mergedOrder as TriageOrderSummary) ?? null, stations, technicians, templates, files, messages, doctorName, clinicName, items };
+  return {
+    order: (mergedOrder as TriageOrderSummary) ?? null,
+    stations, technicians, templates, files, messages, items,
+    doctorName, clinicName, doctorPhone, clinicPhone, clinicEmail, clinicContact,
+  };
 }
 
 /** İş tipine en uygun şablonu seç (case_types eşleşmesi → default → ilk). */

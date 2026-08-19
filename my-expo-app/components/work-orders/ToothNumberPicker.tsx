@@ -154,8 +154,8 @@ export function ToothNumberPicker({ selected, onChange }: Props) {
         }}
       >
         {/* Corner labels */}
-        <Text style={[lbl, { top: 5, left: 8 }]}>SAĞ</Text>
-        <Text style={[lbl, { top: 5, right: 8 }]}>SOL</Text>
+        <Text style={[lbl, { top: 5, start: 8 }]}>SAĞ</Text>
+        <Text style={[lbl, { top: 5, end: 8 }]}>SOL</Text>
         <Text style={[lbl, { top: 5, left: cw / 2 - 10 }]}>ÜST</Text>
         <Text style={[lbl, { bottom: 5, left: cw / 2 - 10 }]}>ALT</Text>
 

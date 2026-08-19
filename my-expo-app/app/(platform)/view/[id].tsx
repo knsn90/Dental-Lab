@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Eye, AlertTriangle } from 'lucide-react-native';
 import { labSnapshot, type LabSnapshot } from '../../../modules/platform/api';
 import { C, FONT, SERIF, Kpi, Panel, SectionLabel, Chip, hexA } from '../../../modules/platform/ui';
+import { autoT } from '../../../core/i18n/autoTranslate';
 
 const orderTone = (s?: string | null) =>
   s === 'delivered' ? C.green : s === 'production' || s === 'in_production' ? C.accent : s === 'qc' ? C.violet : C.amber;
@@ -51,7 +52,7 @@ export default function PlatformViewLab() {
         </View>
 
         {/* Son siparişler */}
-        <SectionLabel>{`Son siparişler (${d.recent_orders.length})`}</SectionLabel>
+        <SectionLabel>{`${autoT('Son siparişler')} (${d.recent_orders.length})`}</SectionLabel>
         <Panel padding={0} style={{ marginBottom: 24 }}>
           {d.recent_orders.length === 0 ? <Empty /> : d.recent_orders.map((o, i) => (
             <View key={o.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 18, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: C.line }}>
@@ -61,13 +62,13 @@ export default function PlatformViewLab() {
                 <Text numberOfLines={1} style={{ color: C.ink3, fontSize: 12 }}>{o.work_type || '—'}</Text>
               </View>
               <Chip tone={orderTone(o.status)} dot>{o.status || '—'}</Chip>
-              <Text style={{ color: C.ink3, fontSize: 12, width: 84, textAlign: 'right' }}>{new Date(o.created_at).toLocaleDateString()}</Text>
+              <Text style={{ color: C.ink3, fontSize: 12, width: 84, textAlign: 'end' as any }}>{new Date(o.created_at).toLocaleDateString()}</Text>
             </View>
           ))}
         </Panel>
 
         {/* Açık talepler */}
-        <SectionLabel icon={AlertTriangle} tone={C.amber}>{`Açık destek talepleri (${d.open_tickets.length})`}</SectionLabel>
+        <SectionLabel icon={AlertTriangle} tone={C.amber}>{`${autoT('Açık destek talepleri')} (${d.open_tickets.length})`}</SectionLabel>
         <Panel padding={0} style={{ marginBottom: 24 }}>
           {d.open_tickets.length === 0 ? <Empty /> : d.open_tickets.map((t, i) => (
             <View key={t.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 18, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: C.line }}>
@@ -79,7 +80,7 @@ export default function PlatformViewLab() {
         </Panel>
 
         {/* Kullanıcılar */}
-        <SectionLabel>{`Kullanıcılar (${d.users.length})`}</SectionLabel>
+        <SectionLabel>{`${autoT('Kullanıcılar')} (${d.users.length})`}</SectionLabel>
         <Panel padding={0}>
           {d.users.map((u, i) => (
             <View key={u.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 18, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: C.line }}>

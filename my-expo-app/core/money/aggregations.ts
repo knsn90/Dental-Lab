@@ -105,7 +105,7 @@ export interface CurrencyTotal {
   count: number;
 }
 
-const CURRENCY_ORDER: Currency[] = ['TRY', 'EUR', 'USD', 'GBP'];
+const CURRENCY_ORDER: Currency[] = ['TRY', 'EUR', 'USD', 'GBP', 'IRT'];
 
 /**
  * Kayıtları para birimine göre bağımsız gruplar — base'e çevirmeden.

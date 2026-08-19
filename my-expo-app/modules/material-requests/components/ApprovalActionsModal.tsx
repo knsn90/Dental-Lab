@@ -13,10 +13,11 @@ import {
   View, Text, Modal, Pressable, TextInput, Platform, ActivityIndicator, ScrollView,
 } from 'react-native';
 import {
-  X, CheckCircle2, AlertCircle, Send, Truck, PackageCheck, ArrowRight,
+  X, CheckCircle2, AlertCircle, Send, Truck, PackageCheck, ArrowRight, ArrowLeft,
 } from 'lucide-react-native';
 
 import { DS } from '../../../core/theme/dsTokens';
+import { isRTL } from '../../../core/i18n';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { DatePicker } from '../../../core/ui/DatePicker';
 import {
@@ -92,7 +93,8 @@ export function ApprovalActionsModal({ visible, action, request, onClose, onDone
 
   if (!action || !request) return null;
   const cfg = ACTION_CFG[action];
-  const Icon = cfg.icon;
+  // Yön bildiren ikon RTL'de aynalanmalı — "yönlendir" oku sağa bakınca RTL'de geri demek olur.
+  const Icon = cfg.icon === ArrowRight && isRTL() ? ArrowLeft : cfg.icon;
 
   const reasonOk = !cfg.needsReason || note.trim().length >= 4;
   const canSubmit = reasonOk && !submitting;

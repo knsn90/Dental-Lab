@@ -77,7 +77,7 @@ export interface CreateExpenseParams {
   payment_method?: ExpensePaymentMethod;
   notes?: string;
   /** Phase 3: orijinal currency (default 'TRY') */
-  currency?: 'TRY' | 'EUR' | 'USD' | 'GBP';
+  currency?: Currency;
   /** Manuel kur (1 birim currency = X baz). Verilirse snapshot yerine bu kullanılır. */
   rate?: number;
 }

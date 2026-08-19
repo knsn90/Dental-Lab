@@ -14,6 +14,7 @@ import { View, Text, Animated, Easing } from 'react-native';
 import { Svg, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { Inbox, Cog, ShieldCheck, PackageCheck, Truck, Check, type LucideIcon } from 'lucide-react-native';
 import { DS, dsTheme, type DsTheme } from '../theme/dsTokens';
+import { isRTL } from '../i18n';
 
 // Sipariş status timeline'ı için varsayılan ikon seti (Alındı→Üretim→QC→Hazır→Teslim)
 const DEFAULT_STATUS_ICONS: LucideIcon[] = [Inbox, Cog, ShieldCheck, PackageCheck, Truck];
@@ -183,6 +184,9 @@ function PulseDot({ color, size, x, y }: { color: string; size: number; x: numbe
 }
 
 function PulseLinearHalo({ color, size, leftPct }: { color: string; size: number; leftPct: number }) {
+  // RTL: çubuk sağdan dolar → hale de yüzdeyi sağ kenardan ölçmeli.
+  // (`left`/`marginStart` yön-duyarlı DEĞİL; fiziksel eksen açıkça seçilir.)
+  const rtl = isRTL();
   const v = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     const loop = Animated.loop(
@@ -199,9 +203,12 @@ function PulseLinearHalo({ color, size, leftPct }: { color: string; size: number
   return (
     <Animated.View style={{
       position: 'absolute',
-      left: `${leftPct}%` as any, top: '50%' as any,
+      ...(rtl
+        ? { right: `${leftPct}%` as any, marginRight: -size / 2 }
+        : { left: `${leftPct}%` as any, marginLeft: -size / 2 }),
+      top: '50%' as any,
       width: size, height: size,
-      marginLeft: -size / 2, marginTop: -size / 2,
+      marginTop: -size / 2,
       borderRadius: size / 2,
       backgroundColor: color,
       transform: [{ scale }], opacity,
@@ -225,6 +232,7 @@ export function LinearProgressX({
   fillColor?: string;
 }) {
   const t = dsTheme(theme);
+  const rtl = isRTL();
   const accentFill = fillColor ?? t.accent;
   const knobBg = t.primary;
 
@@ -281,7 +289,7 @@ export function LinearProgressX({
             position: 'relative', overflow: 'hidden',
           }}>
             <View style={{
-              position: 'absolute', left: 0, top: fillInset, bottom: fillInset,
+              position: 'absolute', ...(rtl ? { right: 0 } : { left: 0 }), top: fillInset, bottom: fillInset,
               width: `${value}%`, backgroundColor: accentFill, borderRadius: 999,
             }} />
           </View>
@@ -291,9 +299,12 @@ export function LinearProgressX({
 
         <View style={{
           position: 'absolute',
-          left: `${value}%` as any, top: '50%',
+          ...(rtl
+            ? { right: `${value}%` as any, marginRight: -knobSize / 2 }
+            : { left: `${value}%` as any, marginLeft: -knobSize / 2 }),
+          top: '50%',
           width: knobSize, height: knobSize,
-          marginLeft: -knobSize / 2, marginTop: -knobSize / 2,
+          marginTop: -knobSize / 2,
           borderRadius: knobSize / 2,
           backgroundColor: knobBg,
           // @ts-ignore web shadow
@@ -415,7 +426,7 @@ export function PercentRingX({
               fontWeight: '400',
               fontSize: size * 0.13,
               color: lightColor,
-              marginLeft: 3,
+              marginStart: 3,
               lineHeight: size * 0.13,
             }}>
               %

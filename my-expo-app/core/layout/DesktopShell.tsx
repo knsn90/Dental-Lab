@@ -15,6 +15,7 @@
 //     • Sidebar köşeler          — açık 16, kapalı 9999 (pill)
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useEffect, useRef } from 'react';
+import { firstName as displayFirstName } from '../../core/util/personName';
 import {
   View,
   Text,
@@ -38,6 +39,7 @@ import { BlurFade } from '../ui/BlurFade';
 
 import { AppIcon } from '../ui/AppIcon';
 import { PulseRing } from '../ui/PulseRing';
+import { isRTL } from '../i18n';
 import { NotificationPopover } from '../ui/NotificationPopover';
 
 // ─── Tokens ───────────────────────────────────────────────────────────────────
@@ -100,7 +102,7 @@ interface Props {
 function IconBadge({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
-    <View style={s.iconBadge}>
+    <View style={[s.iconBadge, isRTL() ? { left: 2 } : { right: 2 }]}>
       <Text style={s.iconBadgeText}>{count > 99 ? '99+' : count}</Text>
     </View>
   );
@@ -126,13 +128,13 @@ function NavIcon({
         <Text style={{ fontSize: 17, opacity: active ? 1 : 0.5, width: 22, textAlign: 'center' }}>{item.emoji}</Text>
       )}
       {showBadge && (badgeNum || badgeDot) && (
-        <PulseRing size={14} color="#DC2626" top={-4} right={-6} />
+        <PulseRing size={14} color="#DC2626" top={-4} {...(isRTL() ? { left: -6 } : { right: -6 })} />
       )}
       {showBadge && (badgeNum || badgeDot) && (
         <View
           style={{
             position: 'absolute',
-            top: -4, right: -6,
+            top: -4, ...(isRTL() ? { left: -6 } : { right: -6 }),
             minWidth: badgeNum && badgeNum > 9 ? 18 : 14,
             height: 14,
             borderRadius: 7,
@@ -298,7 +300,7 @@ const rp = StyleSheet.create({
   panel: {
     backgroundColor: 'transparent',
     flexDirection: 'row',
-    borderLeftWidth: 0,
+    borderStartWidth: 0,
     paddingTop: 100,   // hero card hizası (header 88 + pageGrid padding 12)
   },
   panelOpen:   { width: RIGHT_W + TOGGLE_W },
@@ -313,7 +315,7 @@ const rp = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.95)',
     marginTop: 8,
-    marginRight: 4,
+    marginEnd: 4,
     ...Platform.select({
       web: {
         // @ts-ignore
@@ -389,7 +391,7 @@ const rp = StyleSheet.create({
     flexDirection: 'row', flexWrap: 'wrap',
   },
   statItem:      { width: '50%', padding: 14, alignItems: 'center', gap: 3 },
-  statItemRight: { borderRightWidth: 1, borderRightColor: '#F1F5F9' },
+  statItemRight: { borderEndWidth: 1, borderEndColor: '#F1F5F9' },
   statItemTop:   { borderTopWidth: 1,   borderTopColor:  '#F1F5F9' },
   statValue:      { fontSize: 24, fontWeight: '800', color: '#1C1C1E', letterSpacing: -0.5 },
   statValueAlert: { color: '#FF3B30' },
@@ -426,9 +428,9 @@ const rp = StyleSheet.create({
       default: {},
     }),
   },
-  orderRow:       { flexDirection: 'row', alignItems: 'center', paddingRight: 12, paddingVertical: 11, gap: 10 },
+  orderRow:       { flexDirection: 'row', alignItems: 'center', paddingEnd: 12, paddingVertical: 11, gap: 10 },
   orderRowBorder: { borderBottomWidth: 1, borderBottomColor: '#F8FAFC' },
-  statusAccent:   { width: 3, height: 34, borderRadius: 2, marginLeft: 10, flexShrink: 0 },
+  statusAccent:   { width: 3, height: 34, borderRadius: 2, marginStart: 10, flexShrink: 0 },
   orderInfo:      { flex: 1 },
   orderType:      { fontSize: 12, fontWeight: '600', color: '#1C1C1E' },
   orderNum:       { fontSize: 10, color: '#AEAEB2', marginTop: 1 },
@@ -706,7 +708,7 @@ export function DesktopShell({ navItems, accentColor = C.primary, onPressMessage
   }, [navItems]);
 
   const initials  = getInitials(profile?.full_name);
-  const firstName = profile?.full_name?.split(' ')[0] ?? 'Kullanıcı';
+  const firstName = displayFirstName(profile?.full_name, 'Kullanıcı');
 
   const normalizeHref = (href: string) => href.replace(/^\/\([^)]+\)/, '') || '/';
 
@@ -882,7 +884,7 @@ export function DesktopShell({ navItems, accentColor = C.primary, onPressMessage
               {activeActions}
             </View>
           </BlurFade>
-          <View style={s.headerRight}>
+          <View style={[s.headerRight, Platform.OS === 'web' ? (isRTL() ? { left: 16 } : { right: 16 }) : null]}>
             <TouchableOpacity style={s.headerIcon} onPress={() => setShowSearch(true)}>
               <AppIcon name="search" size={18} color={C.textSecondary} />
             </TouchableOpacity>
@@ -974,7 +976,7 @@ export function DesktopShell({ navItems, accentColor = C.primary, onPressMessage
           visible
           onClose={() => setNotifOpen(false)}
           anchorTop={60}
-          anchorRight={16}
+          anchorEnd={16}
         />
       )}
 
@@ -1032,7 +1034,7 @@ const s = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     flexDirection:   'column',
     paddingTop:      16,
-    borderRightWidth: 0,
+    borderEndWidth: 0,
     zIndex:          100,
     overflow:        'visible' as any,
     margin:          12,
@@ -1151,7 +1153,7 @@ const s = StyleSheet.create({
   navLabelActive: { fontWeight: '600' },
   navAccentBar: {
     position: 'absolute',
-    left: 0,
+    start: 0,
     top: 8,
     bottom: 8,
     width: 3,
@@ -1253,7 +1255,6 @@ const s = StyleSheet.create({
         // @ts-ignore
         position: 'fixed' as any,
         top: 16,
-        right: 16,
         zIndex: 200,
         // @ts-ignore
         boxShadow:
@@ -1277,7 +1278,6 @@ const s = StyleSheet.create({
   iconBadge: {
     position: 'absolute',
     top: 2,
-    right: 2,
     minWidth: 20,
     height: 20,
     borderRadius: 10,
@@ -1304,8 +1304,8 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingLeft: 4,
-    paddingRight: 10,
+    paddingStart: 4,
+    paddingEnd: 10,
     paddingVertical: 3,
     borderRadius: 999,
   },

@@ -2,15 +2,22 @@ import { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ChevronRight, Users, Building2, FileText, ClipboardList, CalendarClock, Save, LogOut, Eye, ToggleLeft, ToggleRight } from 'lucide-react-native';
-import { labDetail, setLabStatus, setLabPlan, extendTrial, updateLabMeta, offboardLab, labFlags, setLabFlag, labBilling, createInvoice, setInvoiceStatus, exportLabData, purgeLabPii, labUsage, setLabLimits, LIMIT_METRICS, labNotes, addLabNote, deleteLabNote, listLabApiKeys, createLabApiKey, revokeApiKey, PLANS, type PlatformLabDetail, type Plan, type LabFlag, type LabBilling, type LabUsage, type LabNote, type ApiKey } from '../../modules/platform/api';
+import { labDetail, createLabOwner, setLabStatus, setLabPlan, extendTrial, updateLabMeta, offboardLab, labFlags, setLabFlag, labBilling, createInvoice, setInvoiceStatus, exportLabData, purgeLabPii, labUsage, setLabLimits, LIMIT_METRICS, labNotes, addLabNote, deleteLabNote, listLabApiKeys, createLabApiKey, revokeApiKey, PLANS, type PlatformLabDetail, type Plan, type LabFlag, type LabBilling, type LabUsage, type LabNote, type ApiKey } from '../../modules/platform/api';
 import { C, FONT, SERIF, CARD_SHADOW, Kpi, Chip, hexA, planTone, fmtMoney, downloadJson } from '../../modules/platform/ui';
 import { Check, Download, Send, Trash2, KeyRound, Copy } from 'lucide-react-native';
+import { isRTL } from '../../core/i18n';
 
 export default function PlatformLabDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [d, setD] = useState<PlatformLabDetail | null>(null);
   const [busy, setBusy] = useState(false);
+  // Sahip hesabı — konsoldan kurulan labın ilk giriş kullanıcısı
+  const [ownName, setOwnName] = useState('');
+  const [ownMail, setOwnMail] = useState('');
+  const [ownBusy, setOwnBusy] = useState(false);
+  const [ownErr, setOwnErr]   = useState<string | null>(null);
+  const [ownerCreds, setOwnerCreds] = useState<{ email: string; password: string } | null>(null);
   const [edit, setEdit] = useState<{ name: string; phone: string; email: string; address: string } | null>(null);
   const [confirmOff, setConfirmOff] = useState(false);
   const [purgeName, setPurgeName] = useState<string | null>(null); // null = kapalı
@@ -42,7 +49,7 @@ export default function PlatformLabDetail() {
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 80, maxWidth: 980, width: '100%', alignSelf: 'center' }}>
         <Pressable onPress={() => router.replace('/(platform)/labs' as any)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 16, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-          <ChevronRight size={16} color={C.ink3} strokeWidth={2} style={{ transform: [{ rotate: '180deg' }] }} />
+          <ChevronRight size={16} color={C.ink3} strokeWidth={2} style={{ transform: [{ rotate: isRTL() ? '0deg' : '180deg' }] }} />
           <Text style={{ color: C.ink3, fontSize: 13 }}>Laboratuvarlar</Text>
         </Pressable>
 
@@ -86,7 +93,7 @@ export default function PlatformLabDetail() {
           {/* Deneme uzat */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <CalendarClock size={15} color={C.ink3} strokeWidth={1.8} />
-            <Text style={{ color: C.ink3, fontSize: 13, marginRight: 4 }}>Deneme uzat:</Text>
+            <Text style={{ color: C.ink3, fontSize: 13, marginEnd: 4 }}>Deneme uzat:</Text>
             {[7, 14, 30].map((days) => (
               <Pressable key={days} disabled={busy} onPress={() => run(() => extendTrial(String(id), days))}
                 style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, backgroundColor: C.cardHover, borderWidth: 1, borderColor: C.line, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
@@ -226,7 +233,7 @@ export default function PlatformLabDetail() {
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                       <Text style={{ color: C.ink3, fontSize: 11.5 }}>Limit (0=sınırsız):</Text>
                       <TextInput value={limitDraft[m.key] ?? String(limit)} onChangeText={(t) => setLimitDraft((d) => ({ ...d, [m.key]: t }))} keyboardType="numeric"
-                        style={{ width: 80, height: 32, paddingHorizontal: 10, borderRadius: 8, backgroundColor: C.cardHover, borderWidth: 1, borderColor: limitDraft[m.key] != null ? C.accent : C.line, color: C.ink, fontSize: 13, textAlign: 'right', ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
+                        style={{ width: 80, height: 32, paddingHorizontal: 10, borderRadius: 8, backgroundColor: C.cardHover, borderWidth: 1, borderColor: limitDraft[m.key] != null ? C.accent : C.line, color: C.ink, fontSize: 13, textAlign: 'end' as any, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
                       {limitDraft[m.key] != null && (
                         <Pressable disabled={busy} onPress={() => run(() => setLabLimits(String(id), { ...usage.overrides, [m.key]: parseInt(limitDraft[m.key], 10) || 0 }))}
                           style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: C.accent, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
@@ -293,6 +300,74 @@ export default function PlatformLabDetail() {
                 </Pressable>
               ))}
             </View>
+          </Card>
+        )}
+
+        {/* ── Sahip hesabı ────────────────────────────────────────────
+            Konsoldan kurulan labın henüz giriş yapabilen kullanıcısı yoktur;
+            burada sahibin hesabı açılır ve geçici şifre EKRANDA gösterilir.
+            İran'a e-posta teslimi güvenilir olmadığı için davet bağlantısı
+            yerine doğrudan devredilebilir bilgi veriyoruz. */}
+        {/* ownerCreds koşulu ŞART: hesap açılınca load() ile users.length 1 olur;
+            yalnız `length === 0` bakarsak kart o anda unmount olur ve şifre hiç
+            gösterilmez. Şifre ekranda kaldığı sürece kart açık kalmalı. */}
+        {(d.users.length === 0 || ownerCreds) && (
+          <Card title="Sahip hesabı">
+            <Text style={{ color: C.ink3, fontSize: 13, marginBottom: 12 }}>
+              Bu laboratuvarın henüz giriş yapabilen kullanıcısı yok. Yönetici hesabını burada açıp
+              giriş bilgilerini sahibine iletin.
+            </Text>
+
+            {ownerCreds ? (
+              <View style={{ gap: 8, backgroundColor: hexA(C.accent, 0.06), borderRadius: 12, padding: 14,
+                             borderWidth: 1, borderColor: hexA(C.accent, 0.25) }}>
+                <Text style={{ color: C.ink2, fontSize: 12, fontWeight: '700' }}>Giriş bilgileri — bu ekranı kapatınca şifre bir daha gösterilmez</Text>
+                <Text selectable style={{ color: C.ink, fontSize: 14 }}>E-posta: {ownerCreds.email}</Text>
+                <Text selectable style={{ color: C.ink, fontSize: 16, fontWeight: '700', letterSpacing: 1 }}>Şifre: {ownerCreds.password}</Text>
+                <Pressable onPress={() => { try { (navigator as any)?.clipboard?.writeText(`${ownerCreds.email} / ${ownerCreds.password}`); } catch {} }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start', marginTop: 4,
+                           paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.line }}>
+                  <Copy size={14} color={C.ink2} strokeWidth={1.8} />
+                  <Text style={{ color: C.ink2, fontSize: 13, fontWeight: '600' }}>Kopyala</Text>
+                </Pressable>
+                <Pressable onPress={() => setOwnerCreds(null)}
+                  style={{ alignSelf: 'flex-start', marginTop: 2, paddingHorizontal: 12, paddingVertical: 8 }}>
+                  <Text style={{ color: C.ink3, fontSize: 12, fontWeight: '600' }}>Bilgileri aldım, kapat</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <View style={{ gap: 10 }}>
+                <TextInput value={ownName} onChangeText={setOwnName} placeholder="Sahip adı soyadı" placeholderTextColor={C.ink3}
+                  style={{ backgroundColor: C.bg, borderWidth: 1, borderColor: C.line, borderRadius: 10,
+                           paddingHorizontal: 12, paddingVertical: 10, color: C.ink, fontSize: 14,
+                           ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
+                <TextInput value={ownMail} onChangeText={setOwnMail} placeholder="E-posta" placeholderTextColor={C.ink3}
+                  autoCapitalize="none" keyboardType="email-address"
+                  style={{ backgroundColor: C.bg, borderWidth: 1, borderColor: C.line, borderRadius: 10,
+                           paddingHorizontal: 12, paddingVertical: 10, color: C.ink, fontSize: 14,
+                           ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
+                {ownErr ? <Text style={{ color: '#DC2626', fontSize: 13 }}>{ownErr}</Text> : null}
+                <Pressable disabled={ownBusy} onPress={async () => {
+                    setOwnErr(null);
+                    if (!ownName.trim() || !ownMail.trim()) { setOwnErr('Ad ve e-posta zorunlu'); return; }
+                    setOwnBusy(true);
+                    try {
+                      const c = await createLabOwner({ labId: String(id), email: ownMail, fullName: ownName });
+                      setOwnerCreds(c);
+                      await load();
+                    } catch (e: any) { setOwnErr(String(e?.message ?? e)); }
+                    finally { setOwnBusy(false); }
+                  }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start',
+                           paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10,
+                           backgroundColor: C.accent, opacity: ownBusy ? 0.6 : 1 }}>
+                  <KeyRound size={15} color="#FFFFFF" strokeWidth={1.8} />
+                  <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>
+                    {ownBusy ? 'Oluşturuluyor…' : 'Yönetici hesabı oluştur'}
+                  </Text>
+                </Pressable>
+              </View>
+            )}
           </Card>
         )}
 

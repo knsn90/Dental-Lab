@@ -11,6 +11,8 @@
  * Patterns NativeWind — NO StyleSheet.create().
  */
 import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { firstName as displayFirstName } from '../../core/util/personName';
+import { autoT } from '../../core/i18n/autoTranslate';
 import {
   View, Text, ScrollView, Pressable, Image,
   useWindowDimensions, Animated,
@@ -22,12 +24,12 @@ import { useRouter } from 'expo-router';
 import {
   Package, Plus, Clock, CheckCircle, Activity, Users,
   CreditCard, Calendar, BarChart3, Layers, TrendingUp,
-  AlertTriangle, ArrowUpRight, ArrowRight, Check, Trophy, Inbox, Receipt, CornerDownRight,
+  AlertTriangle, ArrowUpRight, ArrowUpLeft, ArrowRight, ArrowLeft, Check, Trophy, Inbox, Receipt, CornerDownRight,
   Wallet,
 } from 'lucide-react-native';
 import { useStockAlert } from '../../core/hooks/useStockAlert';
 import { useTranslation } from 'react-i18next';
-import { localeTag } from '../../core/i18n';
+import { localeTag, isRTL, weekdayOffset, fmtWeekdayDayMonth } from '../../core/i18n';
 import { supabase } from '../../core/api/supabase';
 import { useRealtimeRefresh } from '../../core/hooks/useRealtimeRefresh';
 import { DS } from '../../core/theme/dsTokens';
@@ -106,7 +108,7 @@ function getTodayLabel(t: (k: string) => string) {
   const now = new Date();
   const days   = t('admin.days.long').split(', ');
   const months = t('admin.months.long').split(', ');
-  return `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]}`;
+  return fmtWeekdayDayMonth(now);
 }
 function todayStr() { return new Date().toISOString().split('T')[0]; }
 function fmtDate(date: string) {
@@ -138,7 +140,8 @@ function getWeekDays(t: (k: string) => string): { label: string; date: string; i
   const now = new Date();
   const dayOfWeek = now.getDay();
   const monday = new Date(now);
-  monday.setDate(now.getDate() - ((dayOfWeek + 6) % 7));
+  // Hafta başlangıcı bölgeye bağlı: TR/AB Pazartesi, İran Cumartesi (weekdayOffset).
+  monday.setDate(now.getDate() - weekdayOffset(dayOfWeek));
   const result: { label: string; date: string; isToday: boolean }[] = [];
   const todayISO = todayStr();
   const daysShort = t('admin.days.short').split(', ');
@@ -308,7 +311,7 @@ function SpineRow({ color, label, value, meta }: {
         ? <Text style={{ fontSize: 13, fontWeight: '700', color: INK, ...NUM }}>{value}</Text>
         : value}
       {meta ? (
-        <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[400], minWidth: 36, textAlign: 'right', ...NUM }}>{meta}</Text>
+        <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[400], minWidth: 36, textAlign: 'end' as any, ...NUM }}>{meta}</Text>
       ) : null}
     </View>
   );
@@ -466,7 +469,7 @@ function PercentRingHero({
               fontWeight: '400',
               fontSize: size * 0.13,
               color: pctColor,
-              marginLeft: 3,
+              marginStart: 3,
               lineHeight: size * 0.13,
             }}>
               %
@@ -543,7 +546,7 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, router 
 
         {/* CANLI badge */}
         <View className="absolute rounded-full" style={{
-          top: 14, left: 14,
+          top: 14, start: 14,
           paddingHorizontal: 10, paddingVertical: 4,
           backgroundColor: `${P}E6`,
           flexDirection: 'row', alignItems: 'center', gap: 6,
@@ -845,7 +848,7 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
   const floatY = floatAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 8] });
   const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.10, 0.28] });
   const glowScale = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.15] });
-  const arrowX = arrowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 6] });
+  const arrowX = arrowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, isRTL() ? -6 : 6] });
 
   const handleHoverIn = () => {
     Animated.spring(scaleAnim, { toValue: 1.02, friction: 8, tension: 200, useNativeDriver: true }).start();
@@ -880,7 +883,7 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
         <Animated.View
           pointerEvents="none"
           style={{
-            position: 'absolute', top: -20, right: -20,
+            position: 'absolute', top: -20, end: -20,
             width: 140, height: 140, borderRadius: 70,
             backgroundColor: '#CFE0F5',
             opacity: 0.55,
@@ -891,7 +894,7 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
         <Animated.View
           pointerEvents="none"
           style={{
-            position: 'absolute', top: -40, right: -40,
+            position: 'absolute', top: -40, end: -40,
             width: 180, height: 180, borderRadius: 90,
             backgroundColor: 'rgba(255,255,255,1)',
             opacity: glowOpacity,
@@ -905,7 +908,7 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
         <Animated.View
           pointerEvents="none"
           style={{
-            position: 'absolute', bottom: -60, left: -40,
+            position: 'absolute', bottom: -60, start: -40,
             width: 200, height: 200, borderRadius: 100,
             backgroundColor: '#F2C879',
             opacity: 0.42,
@@ -933,7 +936,7 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
           >
             <Text style={{ fontSize: 13, fontWeight: '500', color: INK }}>{t('admin.buttons.start')}</Text>
             <Animated.View style={{ transform: [{ translateX: arrowX }] }}>
-              <ArrowRight size={14} color={INK} strokeWidth={2} />
+              {isRTL() ? <ArrowLeft size={14} color={INK} strokeWidth={2} /> : <ArrowRight size={14} color={INK} strokeWidth={2} />}
             </Animated.View>
           </View>
         </View>
@@ -1053,7 +1056,23 @@ function StatusDistCard({ byStatus }: { byStatus: { label: string; count: number
 function WorkTypeCard({ data }: { data: { label: string; count: number; unit?: string | null }[] }) {
   const { t } = useTranslation();
   if (!data.length) return null;
-  const rows  = data.slice(0, 5);
+
+  // Birim başına ayrı seçim: baskın birimden (genelde "üye") ilk 5, diğer
+  // birimlerden en iyi 2'şer. Böylece çene/adet bazlı işler — gece plağı,
+  // model baskısı — tek bir üyelik işin gölgesinde kaybolmaz.
+  const byUnit = new Map<string, typeof data>();
+  for (const d of data) {
+    const u = serviceUnitLabel(d.unit);
+    if (!byUnit.has(u)) byUnit.set(u, []);
+    byUnit.get(u)!.push(d);
+  }
+  const unitsBySize = Array.from(byUnit.entries())
+    .sort((a, b) => b[1].length - a[1].length)
+    .map(([u]) => u);
+  const rows = unitsBySize
+    .flatMap((u, i) => (byUnit.get(u) ?? []).slice(0, i === 0 ? 5 : 2))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, WORKTYPE_RAMP.length);
   // `total` YALNIZ şerit oranları için — gösterilmiyor. Farklı birimlerin
   // toplamı anlamsızdır; oran hesabı için ortak bir payda gerektiği için var.
   const total = data.reduce((s, d) => s + d.count, 0) || 1;
@@ -1068,7 +1087,7 @@ function WorkTypeCard({ data }: { data: { label: string; count: number; unit?: s
   }
   const unitBreakdown = Array.from(perUnit.entries())
     .sort((a, b) => b[1] - a[1])
-    .map(([u, n]) => `${n} ${u}`)
+    .map(([u, n]) => `${n} ${autoT(u)}`)   // birim tek başına çevrilmeli — birleşik dize sözlüğe takılmaz
     .join(' · ');
   return (
     <SpineCard
@@ -1164,7 +1183,7 @@ export default function AdminDashboard() {
   const insets    = useSafeAreaInsets();
   const { profile } = useAuthStore();
   const { setTitle, clear } = usePageTitleStore();
-  const firstName = profile?.full_name?.split(' ')[0] ?? '';
+  const firstName = displayFirstName(profile?.full_name);
 
   useEffect(() => { setTitle(getTodayLabel(t)); return clear; }, [setTitle, clear, t]);
 
@@ -1424,10 +1443,13 @@ export default function AdminDashboard() {
       setMonthly(monthBuckets.map(b => ({ label: monthsShort[b.m], count: b.count })));
       setWeekCounts(wc);
       setWeekDone(wcDone);
+      // slice YOK — seçimi kart yapar. Burada kesince farklı BİRİMLER aynı
+      // sıralamada yarışıyordu: gece plağı "2 çene" ile 30/24/14 üyelik işlerin
+      // altında kalıp listeye hiç giremiyordu (ve başlıktaki birim kırılımı da
+      // zaten kesilmiş 5 satırdan hesaplandığı için "çene" hiç görünmüyordu).
       setByWorkType(
         Object.entries(wtMap)
           .sort((a, b) => b[1].count - a[1].count)
-          .slice(0, 5)
           .map(([label, v]) => ({ label, count: v.count, unit: v.unit })),
       );
       setOverdue(overdueN);
@@ -1559,8 +1581,8 @@ export default function AdminDashboard() {
     const late = daysLate(o.delivery_date);
     taskItems.push({
       icon: Clock as React.FC<any>,
-      label: `Gecikmiş teslimat · ${taskNo(o.order_number)}`,
-      time: late ? `${late} gün gecikti · ${fmtDate(o.delivery_date)}` : fmtDate(o.delivery_date),
+      label: `${autoT('Gecikmiş teslimat')} · ${taskNo(o.order_number)}`,
+      time: late ? `${late} ${autoT('gün gecikti')} · ${fmtDate(o.delivery_date)}` : fmtDate(o.delivery_date),
       done: false,
       onPress: () => router.push(`/(admin)/order/${o.id}` as any),
     });
@@ -1570,8 +1592,8 @@ export default function AdminDashboard() {
   upcoming.slice(0, 2).forEach(o => {
     taskItems.push({
       icon: Package as React.FC<any>,
-      label: `Teslime hazırla · ${taskNo(o.order_number)}`,
-      time: `${fmtDate(o.delivery_date)} teslim`,
+      label: `${autoT('Teslime hazırla')} · ${taskNo(o.order_number)}`,
+      time: `${fmtDate(o.delivery_date)} ${autoT('teslim')}`,
       done: false,
       onPress: () => router.push(`/(admin)/order/${o.id}` as any),
     });
@@ -1582,7 +1604,7 @@ export default function AdminDashboard() {
   todayOrdersFromRecent.slice(0, 1).forEach(o => {
     taskItems.push({
       icon: Calendar as React.FC<any>,
-      label: `Bugün teslim et · ${taskNo(o.order_number)}`,
+      label: `${autoT('Bugün teslim et')} · ${taskNo(o.order_number)}`,
       time: o.patient_name ?? t('admin.dashboard.today'),
       done: false,
       onPress: () => router.push(`/(admin)/order/${o.id}` as any),
@@ -1593,9 +1615,9 @@ export default function AdminDashboard() {
   unbilledRows.forEach((u: any) => {
     taskItems.push({
       icon: Receipt as React.FC<any>,
-      label: `Fatura kes · ${taskNo(u.order_number)}`,
+      label: `${autoT('Fatura kes')} · ${taskNo(u.order_number)}`,
       time: u.delivered_at
-        ? `${fmtDate(String(u.delivered_at).slice(0, 10))} tarihinde teslim edildi`
+        ? `${fmtDate(String(u.delivered_at).slice(0, 10))} ${autoT('tarihinde teslim edildi')}`
         : 'Teslim edildi, faturası yok',
       done: false,
       onPress: () => router.push(`/(admin)/order/${u.work_order_id}` as any),
@@ -1612,8 +1634,8 @@ export default function AdminDashboard() {
     const late = daysLate(inv.due_date);
     taskItems.push({
       icon: Wallet as React.FC<any>,
-      label: `Tahsilat yap · ${inv.invoice_number ?? 'fatura'}`,
-      time: late ? `${remaining} kaldı · ${late} gün vadesi geçti` : `${remaining} kaldı`,
+      label: `${autoT('Tahsilat yap')} · ${inv.invoice_number ?? autoT('fatura')}`,
+      time: late ? `${remaining} ${autoT('kaldı')} · ${late} ${autoT('gün vadesi geçti')}` : `${remaining} ${autoT('kaldı')}`,
       done: false,
       onPress: () => router.push(`/(admin)/invoice/${inv.id}` as any),
     });
@@ -1622,7 +1644,7 @@ export default function AdminDashboard() {
   if (lowStockCount > 0) {
     taskItems.push({
       icon: AlertTriangle as React.FC<any>,
-      label: `Stok siparişi ver · ${lowStockCount} kalem`,
+      label: `${autoT('Stok siparişi ver')} · ${lowStockCount} ${autoT('kalem')}`,
       time: 'Kritik seviyenin altında',
       done: false,
       onPress: () => router.push('/(admin)/stock' as any),
@@ -1683,7 +1705,7 @@ export default function AdminDashboard() {
       const due = new Date(o.delivery_date + 'T00:00:00').getTime();
       const tdy = new Date(); tdy.setHours(0, 0, 0, 0);
       const days = Math.ceil((due - tdy.getTime()) / 86400000);
-      const remainLabel = days <= 0 ? 'Bugün' : days === 1 ? 'Yarın' : `${days}g sonra`;
+      const remainLabel = days <= 0 ? 'Bugün' : days === 1 ? 'Yarın' : `${days}${autoT('g sonra')}`;
       return {
         id: String(o.order_number ?? o.id).slice(-6),
         _id: o.id,
@@ -1864,7 +1886,7 @@ export default function AdminDashboard() {
               className="items-center justify-center rounded-full"
               style={{ width: 32, height: 32, backgroundColor: DS.ink[100] }}
             >
-              <ArrowUpRight size={14} color={DS.ink[500]} strokeWidth={1.8} />
+              {isRTL() ? <ArrowUpLeft size={14} color={DS.ink[500]} strokeWidth={1.8} /> : <ArrowUpRight size={14} color={DS.ink[500]} strokeWidth={1.8} />}
             </Pressable>
           </View>
           {monthly.length > 0 && (
@@ -1879,7 +1901,7 @@ export default function AdminDashboard() {
           <View className="w-full flex-row items-center justify-between" style={{ marginBottom: 8 }}>
             <Text style={{ fontSize: 14, fontWeight: '500', color: INK }}>{t('admin.dashboard.deliveryRate')}</Text>
             <Pressable onPress={() => router.push('/(admin)/orders' as any)}>
-              <ArrowUpRight size={14} color={DS.ink[500]} strokeWidth={1.8} />
+              {isRTL() ? <ArrowUpLeft size={14} color={DS.ink[500]} strokeWidth={1.8} /> : <ArrowUpRight size={14} color={DS.ink[500]} strokeWidth={1.8} />}
             </Pressable>
           </View>
           <PercentRingHero value={deliveryPct} size={140} darkText />
@@ -1952,7 +1974,7 @@ export default function AdminDashboard() {
               <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>{t('admin.table.doctor')}</Text>
               {isDesktop && <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>{t('admin.table.workType')}</Text>}
               <Text style={{ flex: 1.4, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>{t('admin.table.status')}</Text>
-              {isDesktop && <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, textAlign: 'right' }}>{t('admin.table.delivery')}</Text>}
+              {isDesktop && <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, textAlign: 'end' as any }}>{t('admin.table.delivery')}</Text>}
             </View>
 
             {recentOrders.length === 0
@@ -1981,7 +2003,7 @@ export default function AdminDashboard() {
                     >
                       {/* Vaka grubu: orijinal üstte, revizyonlar altında girintili
                           (siparişler sayfasıyla aynı dil) */}
-                      <View className="flex-row items-center" style={{ flex: 1.2, minWidth: 0, gap: 6, paddingLeft: (order as any).__revChild ? 14 : 0 }}>
+                      <View className="flex-row items-center" style={{ flex: 1.2, minWidth: 0, gap: 6, paddingStart: (order as any).__revChild ? 14 : 0 }}>
                         {(order as any).__revChild && <CornerDownRight size={12} color={(order as any).__continuation ? '#3563A8' : '#9C5E0E'} strokeWidth={2} style={{ flexShrink: 0 }} />}
                         <View style={{ minWidth: 0 }}>
                           <Text style={{ fontSize: 12, fontWeight: '800', color: P }} numberOfLines={1}>#{order.order_number}</Text>
@@ -2023,7 +2045,7 @@ export default function AdminDashboard() {
                       </View>
                       {isDesktop && (
                         <Text style={{
-                          flex: 1, fontSize: 11, fontWeight: overdue ? '700' : '500', textAlign: 'right',
+                          flex: 1, fontSize: 11, fontWeight: overdue ? '700' : '500', textAlign: 'end' as any,
                           color: overdue ? '#9C2E2E' : DS.ink[400],
                         }}>
                           {fmtDate(order.delivery_date)}

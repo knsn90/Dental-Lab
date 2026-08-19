@@ -560,7 +560,7 @@ export async function createDelivery(params: {
   feeAmount?: number | null;
   /** Verilmezse lab'ın baz para birimi kullanılır. */
   feeCurrency?: string | null;
-  feeSource?: 'banabikurye' | 'manuel';
+  feeSource?: 'banabikurye' | 'manuel' | 'shipink';
   /** Çağrı anındaki üretim aşaması adı. */
   stageSnapshot?: string | null;
 }): Promise<{ ok: boolean; deliveryId?: string; error?: string }> {
@@ -587,7 +587,7 @@ export async function setDeliveryFee(
   deliveryId: string,
   amount: number | null,
   currency?: string | null,
-  source: 'banabikurye' | 'manuel' = 'manuel',
+  source: 'banabikurye' | 'manuel' | 'shipink' = 'manuel',
 ): Promise<{ ok: boolean; error?: string }> {
   const { error } = await supabase.rpc('set_delivery_fee', {
     p_delivery_id: deliveryId,

@@ -127,7 +127,7 @@ const lr = StyleSheet.create({
   name:      { fontSize: 13, fontWeight: '700', color: '#1C1C1E', flexShrink: 1 },
   badge:     { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5 },
   badgeText: { fontSize: 10, fontWeight: '700' },
-  time:      { fontSize: 11, color: '#AEAEB2', marginLeft: 'auto' as any },
+  time:      { fontSize: 11, color: '#AEAEB2', marginStart: 'auto' as any },
   action:    { fontSize: 13, color: '#6C6C70', marginBottom: 2 },
   entity:    { fontSize: 11, color: '#AEAEB2' },
 });
@@ -271,7 +271,7 @@ export default function AdminLogsScreen() {
               {/* Header */}
               <View style={s.cardHeader}>
                 <Text style={s.hCell} numberOfLines={1}>{t('admin.logs.table.user')}</Text>
-                <Text style={[s.hCell, { marginLeft: 'auto' as any }]}>{t('admin.logs.table.recordsRealtime', { count: logs.length })}</Text>
+                <Text style={[s.hCell, { marginStart: 'auto' as any }]}>{t('admin.logs.table.recordsRealtime', { count: logs.length })}</Text>
               </View>
               {filtered.map((log, i) => (
                 <LogRow key={log.id} log={log} isLast={i === filtered.length - 1} />

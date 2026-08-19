@@ -26,7 +26,7 @@ export function P({ children }: { children: React.ReactNode }) {
 }
 export function LI({ children }: { children: React.ReactNode }) {
   return (
-    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 6, paddingLeft: 4 }}>
+    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 6, paddingStart: 4 }}>
       <Text style={{ fontSize: 14, lineHeight: 22, color: INK[400] }}>•</Text>
       <Text style={{ flex: 1, fontSize: 14, lineHeight: 22, color: INK[700] }}>{children}</Text>
     </View>

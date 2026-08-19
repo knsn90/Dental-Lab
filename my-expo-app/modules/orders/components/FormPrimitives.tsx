@@ -145,7 +145,7 @@ export function SectionCard({
                 backgroundColor: '#EF4444',
                 alignItems: 'center', justifyContent: 'center',
                 paddingHorizontal: 5,
-                marginLeft: 2,
+                marginStart: 2,
               }}
             >
               <Text style={{ fontSize: 10, fontWeight: '600', color: '#FFFFFF' }}>
@@ -153,10 +153,10 @@ export function SectionCard({
               </Text>
             </View>
           )}
-          {headerRight && <View style={{ marginLeft: 'auto' }}>{headerRight}</View>}
+          {headerRight && <View style={{ marginStart: 'auto' }}>{headerRight}</View>}
         </View>
         {subtitle && (
-          <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 3, marginLeft: 42 }}>
+          <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 3, marginStart: 42 }}>
             {subtitle}
           </Text>
         )}

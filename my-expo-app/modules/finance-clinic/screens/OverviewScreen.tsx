@@ -11,11 +11,12 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { View, Text, ScrollView, Pressable } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Path, Circle } from 'react-native-svg';
 import {
-  Wallet, AlertCircle, Clock, CheckCircle2, FileText, ArrowRight, CreditCard,
+  Wallet, AlertCircle, Clock, CheckCircle2, FileText, ArrowRight, ArrowLeft, CreditCard,
   BarChart3, PieChart, TrendingUp,
 } from 'lucide-react-native';
 
 import { DS } from '../../../core/theme/dsTokens';
+import { isRTL } from '../../../core/i18n';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import {
   fetchOverview, fetchOpenInvoices, fetchOverviewCharts,
@@ -260,6 +261,12 @@ export function OverviewScreen({ clinicId, onJump }: Props) {
                   <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
                     Fatura {inv.invoice_no ?? '—'}
                   </Text>
+                  {/* Hekim isteği: hangi hastanın faturası olduğu özet listelerinde de görünsün. */}
+                  {!!inv.patient_name && (
+                    <Text style={{ fontSize: 11.5, color: DS.ink[700], marginTop: 2 }} numberOfLines={1}>
+                      {[inv.patient_name, inv.order_no].filter(Boolean).join(' · ')}
+                    </Text>
+                  )}
                   <Text style={{ fontSize: 11, color: '#9C2E2E', marginTop: 2 }}>
                     {inv.days_overdue} gün gecikmiş · vade {fmtDate(inv.due_date)}
                   </Text>
@@ -301,6 +308,12 @@ export function OverviewScreen({ clinicId, onJump }: Props) {
                   <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
                     Fatura {inv.invoice_no ?? '—'}
                   </Text>
+                  {/* Hekim isteği: hangi hastanın faturası olduğu özet listelerinde de görünsün. */}
+                  {!!inv.patient_name && (
+                    <Text style={{ fontSize: 11.5, color: DS.ink[700], marginTop: 2 }} numberOfLines={1}>
+                      {[inv.patient_name, inv.order_no].filter(Boolean).join(' · ')}
+                    </Text>
+                  )}
                   <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 2 }}>
                     Vade {fmtDate(inv.due_date)} · {Math.abs(inv.days_overdue)} gün kaldı
                   </Text>
@@ -308,7 +321,7 @@ export function OverviewScreen({ clinicId, onJump }: Props) {
                 <Text style={{ ...DISPLAY, fontSize: 18, color: DS.ink[900], letterSpacing: -0.5 }}>
                   {Mnat(inv.remaining, inv.currency)}
                 </Text>
-                <ArrowRight size={14} color={DS.ink[400]} />
+                {isRTL() ? <ArrowLeft size={14} color={DS.ink[400]} /> : <ArrowRight size={14} color={DS.ink[400]} />}
               </Pressable>
             ))}
           </Card>
@@ -350,7 +363,7 @@ function PremiumHero({
         <Svg
           width="100%"
           height="100%"
-          style={{ position: 'absolute', top: 0, left: 0 }}
+          style={{ position: 'absolute', top: 0, start: 0 }}
           // @ts-ignore
           pointerEvents="none"
         >

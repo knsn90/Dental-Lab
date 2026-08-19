@@ -224,7 +224,7 @@ function ScanCard({ accentColor, busy, onPress }: {
       <View
         pointerEvents="none"
         style={{
-          position: 'absolute', top: -34, right: -34,
+          position: 'absolute', top: -34, end: -34,
           width: 110, height: 110, borderRadius: 55,
           backgroundColor: 'rgba(255,255,255,0.12)',
         }}
@@ -302,7 +302,7 @@ function OrderPickerModal({ visible, orders, loading, accentColor, mode, setMode
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
         <View style={{
           backgroundColor: '#FFFFFF',
-          borderTopLeftRadius: 24, borderTopRightRadius: 24,
+          borderTopStartRadius: 24, borderTopEndRadius: 24,
           paddingTop: 16, paddingBottom: 24, paddingHorizontal: 16,
           maxHeight: '85%',
         }}>

@@ -1,3 +1,5 @@
+import type { Currency } from '../../../core/money/currency';
+
 /**
  * Bonus Engine — Domain types
  * (mirrors supabase tables from 20260529010000_bonus_engine_phase1.sql)
@@ -17,7 +19,7 @@ export interface BonusPolicy {
   description: string | null;
   mode: BonusMode;
   period_type: 'monthly';
-  currency: 'TRY' | 'USD' | 'EUR' | 'GBP';
+  currency: Currency;
   base_rate: number;
   distribution_method: DistributionMethod | null;
   quality_window: QualityWindow;

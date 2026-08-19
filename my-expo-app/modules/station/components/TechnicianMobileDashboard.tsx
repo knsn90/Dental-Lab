@@ -8,13 +8,15 @@
 //   • Aktif işlerim list (or positive empty state)
 
 import React, { useEffect, useRef, useState } from 'react';
+import { firstName as displayFirstName } from '../../../core/util/personName';
 import { useTranslation } from 'react-i18next';
 import { View, Text, Pressable, ScrollView, Platform, RefreshControl, Animated, Easing, Alert, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
-  Bell, QrCode, ListChecks, Clock, Flame, Play, Pause, CheckCircle2, ChevronRight,
+  Bell, QrCode, ListChecks, Clock, Flame, Play, Pause, CheckCircle2, ChevronRight, ChevronLeft,
   MessageCircle, User as UserIcon,
 } from 'lucide-react-native';
+import { isRTL } from '../../../core/i18n';
 import { useOrderChatInbox } from '../../orders/hooks/useOrderChatInbox';
 import { ProfileMenu } from '../../../core/ui/mobile/ProfileMenu';
 import { MessagesPopup } from '../../orders/components/MessagesPopup';
@@ -94,7 +96,7 @@ export function TechnicianMobileDashboard(props: TechnicianMobileDashboardProps)
   const stripDrRe = /^\s*(dr\.?|doktor|prof\.?\s*dr\.?|doç\.?\s*dr\.?)\s*\.?\s*/i;
   let cleanName = rawName;
   while (stripDrRe.test(cleanName)) cleanName = cleanName.replace(stripDrRe, '').trim();
-  const firstName = cleanName.split(' ')[0] || 'Teknisyen';
+  const firstName = displayFirstName(cleanName, 'Teknisyen');
 
   const activeNow  = props.activeNow ?? 0;
   const todayCount = props.todayCompleted ?? 0;
@@ -186,7 +188,9 @@ export function TechnicianMobileDashboard(props: TechnicianMobileDashboardProps)
             }}
           >
             <Text style={{ fontSize: 12, color: TECH.primary, fontWeight: '700' }}>{t('common.all')}</Text>
-            <ChevronRight size={13} color={TECH.primary} strokeWidth={2.2} />
+            {isRTL()
+              ? <ChevronLeft size={13} color={TECH.primary} strokeWidth={2.2} />
+              : <ChevronRight size={13} color={TECH.primary} strokeWidth={2.2} />}
           </Pressable>
         )}
       </View>
@@ -640,7 +644,9 @@ function ActiveJobCard({ job: j, T, onOpen }: { job: TechActiveJob; T: any; onOp
                 {statusLabel}
               </Text>
             </View>
-            <ChevronRight size={15} color={isActive ? 'rgba(255,255,255,0.78)' : T.ink3} strokeWidth={2.2} />
+            {isRTL()
+              ? <ChevronLeft size={15} color={isActive ? 'rgba(255,255,255,0.78)' : T.ink3} strokeWidth={2.2} />
+              : <ChevronRight size={15} color={isActive ? 'rgba(255,255,255,0.78)' : T.ink3} strokeWidth={2.2} />}
           </View>
         </View>
       )}
@@ -666,7 +672,7 @@ function TopIconButton({ icon: Icon, onPress, badgeDot }:
           {badgeDot && (
             <View style={{
               position: 'absolute',
-              top: 7, right: 7,
+              top: 7, end: 7,
               width: 8, height: 8, borderRadius: 4,
               backgroundColor: T.ruby,
               borderWidth: 1.5, borderColor: T.card,

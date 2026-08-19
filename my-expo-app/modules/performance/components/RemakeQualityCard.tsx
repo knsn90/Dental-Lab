@@ -128,7 +128,7 @@ export function RemakeQualityCard({ accentColor = '#7C3AED', onOpenOrder }: Prop
                   <View style={{ flex: 1, height: 6, borderRadius: 999, backgroundColor: '#F0F0F0', overflow: 'hidden' }}>
                     <View style={{ width: `${(s.count / maxStation) * 100}%`, height: '100%', borderRadius: 999, backgroundColor: s.name === 'Belirtilmemiş' ? '#D4D4D4' : accentColor }} />
                   </View>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#0A0A0A', width: 22, textAlign: 'right' }}>{s.count}</Text>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#0A0A0A', width: 22, textAlign: 'end' as any }}>{s.count}</Text>
                 </View>
               ))}
             </View>

@@ -9,6 +9,8 @@ import type { LabLetterhead } from '../receipt/buildReceiptHtml';
 import { buildCariStatementHtml, type CariLine } from '../../core/util/buildCariStatementHtml';
 import { baseSymbol } from '../../core/money/baseCurrency';
 
+import { autoT } from '../../core/i18n/autoTranslate';
+import { htmlAttrs, printLocale } from '../../core/i18n/printLocale';
 // ── Yardımcılar ──────────────────────────────────────────────────────
 function esc(v: unknown): string {
   if (v === null || v === undefined) return '—';
@@ -23,7 +25,7 @@ function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   try {
     const d = iso.includes('T') ? new Date(iso) : new Date(iso + 'T00:00:00');
-    return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' });
+    return d.toLocaleDateString(printLocale(), { day: '2-digit', month: 'long', year: 'numeric' });
   } catch { return '—'; }
 }
 
@@ -31,14 +33,14 @@ function fmtDateShort(iso: string | null | undefined): string {
   if (!iso) return '—';
   try {
     const d = iso.includes('T') ? new Date(iso) : new Date(iso + 'T00:00:00');
-    return d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return d.toLocaleDateString(printLocale(), { day: '2-digit', month: '2-digit', year: 'numeric' });
   } catch { return '—'; }
 }
 
 function fmtMoney(amount: number | string | null | undefined): string {
   const n = typeof amount === 'string' ? Number(amount) : (amount ?? 0);
   if (!Number.isFinite(n)) return '—';
-  return baseSymbol() + n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return baseSymbol() + n.toLocaleString(printLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 // ── Statement line builder ───────────────────────────────────────────
@@ -150,8 +152,11 @@ export function buildStatementHtml(
       ? (l.status ? (INVOICE_STATUS_LABELS[l.status as keyof typeof INVOICE_STATUS_LABELS] ?? l.status) : 'Fatura')
       : (l.method ? `Tahsilat (${PAYMENT_METHOD_LABELS[l.method as keyof typeof PAYMENT_METHOD_LABELS] ?? l.method})` : 'Tahsilat'),
     date: l.date,
-    counterparty: l.description,
-    counterpartySub: l.invoiceNo ?? null,
+    // Hekim isteği: ekstrede HASTA adı görünsün. Alt satırda eskiden fatura no
+    // vardı — o zaten solda "Belge No" sütununda yazıyor, tekrarıydı. Yerine
+    // sipariş no kondu: hasta + sipariş, hekimin işi tanıması için gereken çift.
+    counterparty: l.patientName ?? l.description,
+    counterpartySub: l.orderNo ?? null,
     amount: l.debit > 0 ? l.debit : l.credit,
     currency,
     type: l.debit > 0 ? 'debit' : 'credit',

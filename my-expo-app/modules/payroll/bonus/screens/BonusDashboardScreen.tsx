@@ -1,4 +1,5 @@
-import { localeTag } from '../../../../core/i18n';
+import { localeTag, isRTL } from '../../../../core/i18n';
+import { autoT } from '../../../../core/i18n/autoTranslate';
 /**
  * BonusDashboardScreen — F1 hero + KPI shelf + iki sütun (politikalar/runs + ranking).
  * Tasarım dili: docs/DESIGN_LANGUAGE.md
@@ -128,11 +129,11 @@ export default function BonusDashboardScreen({
     <ScrollView style={{ flex: 1, backgroundColor: 'transparent' }} contentContainerStyle={{ padding: pad, paddingBottom: 80 }}>
       {/* ═════ F1 HERO ═════ */}
       <HeroF1
-        kicker={`Prim Motoru · ${MONTH_LABELS[month - 1]} ${year}`}
-        title={<>Bu ay <Text style={{ color: TH.primary }}>{TRY(totals.payout)}</Text></>}
+        kicker={`${autoT('Prim Motoru')} · ${autoT(MONTH_LABELS[month - 1])} ${year}`}
+        title={<>{autoT('Bu ay')} <Text style={{ color: TH.primary }}>{TRY(totals.payout)}</Text></>}
         description={
-          `${summaries.length} aktif politika · ${totals.earners}/${totals.techs} teknisyen prim hak etti · ortalama ${TRY(totals.avg)}.` +
-          (totals.pool > 0 ? ` Havuz dağıtımı: ${TRY(totals.pool)}.` : '')
+          `${summaries.length} ${autoT('aktif politika')} · ${totals.earners}/${totals.techs} ${autoT('teknisyen prim hak etti')} · ${autoT('ortalama')} ${TRY(totals.avg)}.` +
+          (totals.pool > 0 ? ` ${autoT('Havuz dağıtımı:')} ${TRY(totals.pool)}.` : '')
         }
         stats={[
           { value: String(totals.earners), label: 'Hak Eden' },
@@ -141,10 +142,10 @@ export default function BonusDashboardScreen({
         ]}
         actions={
           <>
-            <PillButton variant="light" onPress={() => stepMonth(-1)} leftIcon={<ChevronLeft size={14} color={DS.ink[900]} />}>
+            <PillButton variant="light" onPress={() => stepMonth(-1)} leftIcon={isRTL() ? <ChevronRight size={14} color={DS.ink[900]} /> : <ChevronLeft size={14} color={DS.ink[900]} />}>
               Önceki ay
             </PillButton>
-            <PillButton variant="light" onPress={() => stepMonth(1)} rightIcon={<ChevronRight size={14} color={DS.ink[900]} />}>
+            <PillButton variant="light" onPress={() => stepMonth(1)} rightIcon={isRTL() ? <ChevronLeft size={14} color={DS.ink[900]} /> : <ChevronRight size={14} color={DS.ink[900]} />}>
               Sonraki ay
             </PillButton>
             <PillButton variant="ghost" onPress={load} leftIcon={<RefreshCw size={14} color={DS.ink[900]} />}>
@@ -170,12 +171,12 @@ export default function BonusDashboardScreen({
         position: 'relative', overflow: 'hidden', marginBottom: 16,
       }}>
         {/* Dekoratif daireler */}
-        <View style={{ position: 'absolute', top: -40, right: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
-        <View style={{ position: 'absolute', bottom: -50, left: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(0,0,0,0.05)' }} />
+        <View style={{ position: 'absolute', top: -40, end: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
+        <View style={{ position: 'absolute', bottom: -50, start: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(0,0,0,0.05)' }} />
 
         {/* 4 mini-stat tile — mobile'da 2x2, tablet+ 1x4 */}
         <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
-          <HeroTile icon={Wallet}     label="Toplam Prim"   value={TRY(totals.payout)} sub={totals.pool > 0 ? `Havuz ${TRY(totals.pool)}` : 'Bireysel'} />
+          <HeroTile icon={Wallet}     label="Toplam Prim"   value={TRY(totals.payout)} sub={totals.pool > 0 ? `${autoT('Havuz')} ${TRY(totals.pool)}` : 'Bireysel'} />
           <HeroTile icon={Users}      label="Hak Eden"      value={String(totals.earners)} sub="Prim alan kişi" />
           <HeroTile icon={TrendingUp} label="Ort. Prim"     value={TRY(totals.avg)} sub="Kişi başı" />
           <HeroTile icon={Layers}     label="Aktif Policy"  value={String(summaries.length)} sub="Bu dönem" />
@@ -293,7 +294,7 @@ export default function BonusDashboardScreen({
                             <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 4 }} numberOfLines={1}>
                               {earnerCount}/{techCount} kişi prim aldı
                               {s.policy.mode !== 'individual' && (r?.total_pool ?? 0) > 0
-                                ? ` · havuz ${TRY(r?.total_pool)}`
+                                ? ` · ${autoT('havuz')} ${TRY(r?.total_pool)}`
                                 : ''}
                             </Text>
                             {s.error ? (
@@ -308,7 +309,7 @@ export default function BonusDashboardScreen({
                               Bu Ay
                             </Text>
                           </View>
-                          <ChevronRight size={14} color={DS.ink[400]} />
+                          {isRTL() ? <ChevronLeft size={14} color={DS.ink[400]} /> : <ChevronRight size={14} color={DS.ink[400]} />}
                         </View>
 
                         {/* Progress bar — hak eden oranı */}
@@ -401,7 +402,7 @@ export default function BonusDashboardScreen({
                         <Text style={{ ...DISPLAY, fontSize: 18, color: DS.ink[900], letterSpacing: -0.5 }}>
                           {TRY(r.total_payout)}
                         </Text>
-                        <ChevronRight size={14} color={DS.ink[400]} />
+                        {isRTL() ? <ChevronLeft size={14} color={DS.ink[400]} /> : <ChevronRight size={14} color={DS.ink[400]} />}
                       </Pressable>
                     );
                   })}
@@ -611,7 +612,7 @@ function PodiumSlot({ rank, row, onPress, height, medalColor, big }: {
         <View
           className="items-center justify-center"
           style={{
-            position: 'absolute', bottom: -4, right: -4,
+            position: 'absolute', bottom: -4, end: -4,
             width: 18, height: 18, borderRadius: 9,
             backgroundColor: medalColor,
             borderWidth: 2, borderColor: '#FFF',

@@ -7,10 +7,12 @@ import { View, Text, Pressable, ScrollView, TextInput, Platform, useWindowDimens
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  Search, MapPin, ArrowRight, MessageSquare, Phone, ChevronRight, Clock,
+  Search, MapPin, ArrowRight, ArrowLeft, MessageSquare, Phone, ChevronRight, ChevronLeft, Clock,
   QrCode, Bell, User as UserIcon, X, Package, PackageCheck, Trash2,
   ChevronDown, Check,
 } from 'lucide-react-native';
+import { isRTL } from '../../core/i18n';
+import { autoT } from '../../core/i18n/autoTranslate';
 import { supabase } from '../../core/api/supabase';
 import { CourierTrackingMap } from './CourierTrackingMap';
 import { ActivityIndicator } from '../../core/ui/teethCompat';
@@ -341,12 +343,19 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix 
     // Not: PostgrestBuilder'da .catch() yok — try/catch ile sarmalanır.
     (async () => {
       try {
-        const { data } = await supabase.rpc('get_active_provider', { p_type: 'courier' });
+        // Kurye tipinde birden çok sağlayıcı aynı anda aktif olabilir; RPC
+        // tipteki ilk satırı döndürdüğü için hepsini okuyup KOORDİNATI OLANı
+        // seçiyoruz (Shipink gibi kargo entegrasyonlarında enlem/boylam yok).
+        const { data } = await supabase
+          .from('provider_credentials')
+          .select('credentials')
+          .eq('type', 'courier').eq('is_active', true);
         if (cancelled) return;
-        const p: any = Array.isArray(data) ? data[0] : data;
-        const lat = Number(p?.credentials?.pickup_lat);
-        const lng = Number(p?.credentials?.pickup_lng);
-        if (Number.isFinite(lat) && Number.isFinite(lng)) setLabCoord({ lat, lng });
+        for (const r of ((data ?? []) as any[])) {
+          const lat = Number(r?.credentials?.pickup_lat);
+          const lng = Number(r?.credentials?.pickup_lng);
+          if (Number.isFinite(lat) && Number.isFinite(lng)) { setLabCoord({ lat, lng }); break; }
+        }
       } catch { /* entegrasyon yoksa rota çıkış noktası olmadan çalışır */ }
     })();
     return () => { cancelled = true; };
@@ -368,17 +377,17 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix 
           if (error) { toast.error('Teslimat iptal edilemedi: ' + error.message); return; }
           load(true);
         } catch (e: any) {
-          toast.error('Teslimat iptal edilemedi: ' + (e?.message ?? 'bilinmeyen hata'));
+          toast.error(autoT('Teslimat iptal edilemedi:') + ' ' + (e?.message ?? autoT('bilinmeyen hata')));
         }
       })();
     };
     if (Platform.OS === 'web') {
-      if (window.confirm(`"#${d.order_number ?? d.id.slice(0, 8)}" teslimatını iptal etmek istediğinizden emin misiniz?`)) confirm();
+      if (window.confirm(`"#${d.order_number ?? d.id.slice(0, 8)}" ${autoT('teslimatını iptal etmek istediğinizden emin misiniz?')}`)) confirm();
     } else {
       Alert.alert(
-        'Teslimatı İptal Et',
-        `"#${d.order_number ?? d.id.slice(0, 8)}" teslimatını iptal etmek istediğinizden emin misiniz?`,
-        [{ text: 'Vazgeç', style: 'cancel' }, { text: 'İptal Et', style: 'destructive', onPress: confirm }],
+        autoT('Teslimatı İptal Et'),
+        `"#${d.order_number ?? d.id.slice(0, 8)}" ${autoT('teslimatını iptal etmek istediğinizden emin misiniz?')}`,
+        [{ text: autoT('Vazgeç'), style: 'cancel' }, { text: autoT('İptal Et'), style: 'destructive', onPress: confirm }],
       );
     }
   }, [load]);
@@ -395,8 +404,8 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix 
       <View style={{
         position: 'absolute' as any,
         top: isNarrow ? 0 : 16,
-        left: 16,
-        right: 16,
+        left: isNarrow ? 0 : 16,
+        right: isNarrow ? 0 : 16,
         bottom: isNarrow ? 0 : 16,
       }}>
         <View style={{
@@ -434,8 +443,11 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix 
           Mobile: full-width alt overlay · Desktop: left 360px overlay */}
       <View style={{
         position: 'absolute' as any,
-        left: isNarrow ? 16 : 24,
-        right: isNarrow ? 16 : undefined,
+        // RTL: yüzen panel BAŞLANGIÇ kenarında durmalı — `start` inline stili
+        // güvenilir çalışmadığı için tarafı açıkça hesaplıyoruz.
+        ...(isNarrow
+          ? { left: 16, right: 16 }
+          : (isRTL() ? { right: 24 } : { left: 24 })),
         top: isNarrow ? undefined : 24,
         bottom: isNarrow ? 110 : 24,
         width: isNarrow ? undefined : 300,
@@ -445,9 +457,16 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix 
       }}>
         <View style={{
           flex: 1,
-          backgroundColor: glassBg,
+          // Native'de backdrop-blur yok (glassStrong web-only) → %8 cam arka plan
+          // haritayı sızdırıp yazıları okunmaz yapıyordu. Native'de OPAK yüzey +
+          // hafif kenarlık; web'de buzlu cam korunur.
+          backgroundColor: Platform.OS === 'web' ? glassBg : (isDark ? '#17130F' : '#FFFFFF'),
           borderRadius: 22,
           overflow: 'hidden',
+          ...(Platform.OS !== 'web' ? {
+            borderWidth: 1,
+            borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.06)',
+          } : {}),
           ...glassStrong,
         }}>
           <View style={{ padding: 12, gap: 10 }}>
@@ -483,6 +502,7 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix 
                   key={d.id}
                   d={d}
                   accent={accent}
+                  isNarrow={isNarrow}
                   statusCfg={STATUS_CFG}
                   selected={selectedId === d.id}
                   onSelect={() => { setSelectedId(d.id); if (isNarrow) setDetailOpen(true); }}
@@ -505,7 +525,7 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix 
             // çubuğun arkasında kalıyor (ilk çakışmanın sebebi buydu).
             // bottom vermiyoruz: kutu içeriği kadar yer kaplasın, altında kalan harita
             // sürüklenebilir kalsın (tam boy kapsayıcı tıklamaları yutuyordu).
-            position: 'absolute', right: 24, top: 52,
+            position: 'absolute', end: 24, top: 52,
             width: 320,
             // @ts-ignore
             zIndex: 1000,
@@ -688,7 +708,7 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix 
       {/* MOBİL — teslimat detay bottom sheet (karta tıklayınca açılır) */}
       <Modal visible={isNarrow && detailOpen && !!selected} transparent animationType="slide" onRequestClose={() => setDetailOpen(false)}>
         <Pressable onPress={() => setDetailOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.42)', justifyContent: 'flex-end', ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) }}>
-          <Pressable onPress={() => {}} style={{ backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 8, paddingBottom: insets.bottom + 20, paddingHorizontal: 16, gap: 14 }}>
+          <Pressable onPress={() => {}} style={{ backgroundColor: '#FFFFFF', borderTopStartRadius: 24, borderTopEndRadius: 24, paddingTop: 8, paddingBottom: insets.bottom + 20, paddingHorizontal: 16, gap: 14 }}>
             {/* Grabber + başlık */}
             <View style={{ alignItems: 'center', marginBottom: 2 }}>
               <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(15,23,42,0.15)' }} />
@@ -1017,9 +1037,9 @@ function DeliveryTimeline({ delivery, etaSec, accent, flush = false }: {
   );
 }
 
-function DeliveryListCard({ d, selected, onSelect, onOpenOrder, onCancel, accent, statusCfg }: {
+function DeliveryListCard({ d, selected, onSelect, onOpenOrder, onCancel, accent, statusCfg, isNarrow }: {
   d: DeliveryRow; selected: boolean; onSelect: () => void; onOpenOrder: () => void;
-  onCancel?: () => void;
+  onCancel?: () => void; isNarrow?: boolean;
   accent: string; statusCfg: Record<DeliveryRow['status'], { label: string; bg: string; fg: string }>;
 }) {
   const cfg = statusCfg[d.status];
@@ -1036,11 +1056,13 @@ function DeliveryListCard({ d, selected, onSelect, onOpenOrder, onCancel, accent
 
   return (
     <Pressable
-      onPress={onSelect}
+      // Kart tıklanabilir: mobilde sipariş detayına gider; desktop'ta haritada seçer.
+      onPress={isNarrow ? onOpenOrder : onSelect}
       style={{
         backgroundColor: selected ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.45)',
         borderRadius: 14,
-        padding: 11, gap: 7,
+        padding: 11,
+        flexDirection: 'row', alignItems: 'center', gap: 8,
         ...(Platform.OS === 'web' ? {
           cursor: 'pointer',
           backdropFilter: 'blur(8px) saturate(140%)',
@@ -1048,46 +1070,51 @@ function DeliveryListCard({ d, selected, onSelect, onOpenOrder, onCancel, accent
         } as any : {}),
       }}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Text
-            style={{ fontSize: 12, fontWeight: '700', color: INK_900, flexShrink: 1 }}
-            numberOfLines={1}
-          >{origin}</Text>
-          <ArrowRight size={11} color={INK_300} strokeWidth={1.8} />
-          <Text style={{ fontSize: 12, fontWeight: '700', color: INK_900 }} numberOfLines={1}>{dest}</Text>
-        </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: cfg.bg }}>
-            <Text style={{ fontSize: 9, fontWeight: '700', color: cfg.fg, textTransform: 'uppercase' }}>{cfg.label}</Text>
+      <View style={{ flex: 1, gap: 7 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text
+              style={{ fontSize: 12, fontWeight: '700', color: INK_900, flexShrink: 1 }}
+              numberOfLines={1}
+            >{origin}</Text>
+            {isRTL() ? <ArrowLeft size={11} color={INK_300} strokeWidth={1.8} /> : <ArrowRight size={11} color={INK_300} strokeWidth={1.8} />}
+            <Text style={{ fontSize: 12, fontWeight: '700', color: INK_900 }} numberOfLines={1}>{dest}</Text>
           </View>
-          {onCancel && (
-            <Pressable
-              onPress={(e) => { e.stopPropagation?.(); onCancel(); }}
-              hitSlop={8}
-              style={{
-                width: 26, height: 26, borderRadius: 13,
-                alignItems: 'center', justifyContent: 'center',
-                backgroundColor: 'rgba(220,38,38,0.10)',
-                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-              }}
-            >
-              <Trash2 size={12} color="#DC2626" strokeWidth={2} />
-            </Pressable>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: cfg.bg }}>
+              <Text style={{ fontSize: 9, fontWeight: '700', color: cfg.fg, textTransform: 'uppercase' }}>{cfg.label}</Text>
+            </View>
+            {onCancel && (
+              <Pressable
+                onPress={(e) => { e.stopPropagation?.(); onCancel(); }}
+                hitSlop={8}
+                style={{
+                  width: 26, height: 26, borderRadius: 13,
+                  alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: 'rgba(220,38,38,0.10)',
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                }}
+              >
+                <Trash2 size={12} color="#DC2626" strokeWidth={2} />
+              </Pressable>
+            )}
+          </View>
+        </View>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {courierName && (
+            <>
+              <CourierAvatar size={18} accent={accent} initialsColor={accent} photo={courierPhoto} name={courierName} />
+              <Text style={{ fontSize: 10.5, fontWeight: '600', color: INK_900 }} numberOfLines={1}>{courierName}</Text>
+              <Text style={{ fontSize: 10.5, color: INK_300 }}>·</Text>
+            </>
           )}
+          <Text style={{ fontSize: 10.5, color: INK_500 }}>Sipariş #{d.order_number ?? '—'}</Text>
         </View>
       </View>
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        {courierName && (
-          <>
-            <CourierAvatar size={18} accent={accent} initialsColor={accent} photo={courierPhoto} name={courierName} />
-            <Text style={{ fontSize: 10.5, fontWeight: '600', color: INK_900 }} numberOfLines={1}>{courierName}</Text>
-            <Text style={{ fontSize: 10.5, color: INK_300 }}>·</Text>
-          </>
-        )}
-        <Text style={{ fontSize: 10.5, color: INK_500 }}>Sipariş #{d.order_number ?? '—'}</Text>
-      </View>
+      {/* Tıklanabilirlik göstergesi — karta basınca sipariş detayına gidilir */}
+      {isRTL() ? <ChevronLeft size={17} color={INK_300} strokeWidth={2} /> : <ChevronRight size={17} color={INK_300} strokeWidth={2} />}
     </Pressable>
   );
 }

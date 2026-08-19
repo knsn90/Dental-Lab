@@ -6,6 +6,7 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
+import { useTurkeyOnlyFeatures } from '../../../core/store/labSettingsStore';
 import { useTranslation } from 'react-i18next';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { View, Text, Pressable, ScrollView, useWindowDimensions } from 'react-native';
@@ -34,7 +35,7 @@ interface TabDef {
   accent: string;
 }
 
-const TABS: TabDef[] = [
+const ALL_TABS: TabDef[] = [
   { key: 'overview',  labelKey: 'clinic.finance.tabs.overview',  hintKey: 'clinic.finance.tabs.overviewHint',  icon: LayoutDashboard, accent: '#0F172A' },
   { key: 'statement', labelKey: 'clinic.finance.tabs.statement', hintKey: 'clinic.finance.tabs.statementHint', icon: BookOpen,        accent: '#0EA5E9' },
   { key: 'open',      labelKey: 'clinic.finance.tabs.open',      hintKey: 'clinic.finance.tabs.openHint',      icon: Clock,           accent: '#D97706' },
@@ -44,6 +45,13 @@ const TABS: TabDef[] = [
 ];
 
 export function ClinicFinanceHubScreen() {
+  // Online POS = iyzico (Türk sağlayıcı). İran labında sekme HİÇ listelenmez;
+  // TABS hem şeridi hem route çözümünü beslediği için tek yerden düşürmek yeterli.
+  const trOnly = useTurkeyOnlyFeatures();
+  const TABS = React.useMemo(
+    () => ALL_TABS.filter(t_ => trOnly || t_.key !== 'pos'),
+    [trOnly],
+  );
   const { t } = useTranslation();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 900;
@@ -168,7 +176,7 @@ export function ClinicFinanceHubScreen() {
                   })}
                 >
                   {active ? (
-                    <View style={{ width: 3, height: 16, borderRadius: 2, backgroundColor: DS.ink[900], marginLeft: -6, marginRight: 4 }} />
+                    <View style={{ width: 3, height: 16, borderRadius: 2, backgroundColor: DS.ink[900], marginStart: -6, marginEnd: 4 }} />
                   ) : null}
                   <Icon size={14} color={active ? DS.ink[900] : DS.ink[500]} strokeWidth={1.8} />
                   <View style={{ flex: 1 }}>

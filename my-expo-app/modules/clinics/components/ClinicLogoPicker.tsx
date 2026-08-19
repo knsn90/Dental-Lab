@@ -17,6 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Search, Building2, X, Camera } from 'lucide-react-native';
 import { supabase } from '../../../core/api/supabase';
 import { toast } from '../../../core/ui/Toast';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { ColorOrb } from '../../denty/components/ColorOrb';
@@ -71,19 +72,19 @@ export function ClinicLogoPicker({
       const { data, error } = await supabase.functions.invoke('clinic-logo-search', {
         body: { apply: true, url, clinicId },
       });
-      if (error || !data?.logo_url) { toast.error(data?.error ?? error?.message ?? 'Logo uygulanamadı'); return; }
+      if (error || !data?.logo_url) { toast.error(data?.error ?? error?.message ?? autoT('Logo uygulanamadı')); return; }
       onChange(data.logo_url);
-      toast.success('Logo güncellendi');
+      toast.success(autoT('Logo güncellendi'));
       setOpen(false);
     } catch (e: any) {
-      toast.error(e?.message ?? 'Logo uygulanamadı');
+      toast.error(e?.message ?? autoT('Logo uygulanamadı'));
     } finally { setApplyingUrl(null); }
   };
 
   const pickFromDevice = async () => {
     if (!clinicId) return;
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) { toast.warning('Galeri erişimi için izin verin.'); return; }
+    if (!perm.granted) { toast.warning(autoT('Galeri erişimi için izin verin.')); return; }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true, aspect: [1, 1], quality: 0.85, base64: true,
@@ -106,7 +107,7 @@ export function ClinicLogoPicker({
       const { error: dbErr } = await supabase.from('clinics').update({ logo_url: versioned }).eq('id', clinicId);
       if (dbErr) { toast.error(dbErr.message); return; }
       onChange(versioned);
-      toast.success('Logo güncellendi');
+      toast.success(autoT('Logo güncellendi'));
       setOpen(false);
     } finally { setUploading(false); }
   };

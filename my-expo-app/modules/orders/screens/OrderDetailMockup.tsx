@@ -121,7 +121,7 @@ export function OrderDetailMockup() {
                 </Text>
                 <Text className="text-ink-900 mt-1.5" style={{ ...DISPLAY, fontSize: 48, letterSpacing: -1.92, lineHeight: 48 }}>
                   {orderData.daysLeft}
-                  <Text className="ml-1" style={{ fontSize: 18 }}> gün</Text>
+                  <Text className="ms-1" style={{ fontSize: 18 }}> gün</Text>
                 </Text>
                 <Text className="text-[12px] text-ink-700 mt-1">Teslim {orderData.due}</Text>
               </View>
@@ -150,7 +150,7 @@ export function OrderDetailMockup() {
                 <Text className="text-[12px] font-medium" style={{ color: '#FFD86B' }}>2 saat 10 dakika gecikti</Text>
               </View>
             </View>
-            <View className="flex-row items-center gap-2.5 pl-2 pr-3.5 py-2 rounded-full bg-white/10">
+            <View className="flex-row items-center gap-2.5 ps-2 pe-3.5 py-2 rounded-full bg-white/10">
               <Avatar name={orderData.responsible} size={32} bg={T.primary} fg={T.accent} />
               <View>
                 <Text className="text-[13px] font-medium text-white">Navid İ.</Text>
@@ -217,7 +217,7 @@ export function OrderDetailMockup() {
                   <View className="flex-1">
                     <LinearProgressX value={w.progress} theme="lab" compact hideLabel animate />
                   </View>
-                  <Text className="text-[11px] text-ink-500 text-right" style={{ width: 32 }}>{w.progress}%</Text>
+                  <Text className="text-[11px] text-ink-500" style={{ textAlign: 'end' as any, width: 32 }}>{w.progress}%</Text>
                 </View>
                 <View className="items-end" style={{ flex: 0.4 }}>
                   <ArrowUpRight size={16} color="#9A9A9A" strokeWidth={1.6} />

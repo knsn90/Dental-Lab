@@ -1,4 +1,4 @@
-import { localeTag } from '../../../core/i18n';
+import { localeTag, isRTL } from '../../../core/i18n';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TextInput,
@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import Svg, { Path, Circle, Line, Polyline } from 'react-native-svg';
 import { User as UserIcon } from 'lucide-react-native';
+import { Tooth } from '../../../core/ui/dentalIcons';
 import { useAuthStore } from '../../../core/store/authStore';
 import { useAnimatedKeyboardHeight } from '../../../core/ui/useAnimatedKeyboardHeight';
 import { useOrderChatInbox } from '../hooks/useOrderChatInbox';
@@ -41,7 +42,7 @@ const DANGER  = '#EF4444';   // dosyada zaten kullanılan kırmızı (kayıt/sil
 type IconName =
   | 'x' | 'search' | 'send' | 'paperclip' | 'smile' | 'mic'
   | 'message-circle' | 'video' | 'phone' | 'more-vertical'
-  | 'image' | 'file' | 'arrow-left' | 'check' | 'check-check'
+  | 'image' | 'file' | 'arrow-left' | 'arrow-right' | 'check' | 'check-check'
   | 'pin' | 'calendar' | 'tooth' | 'palette' | 'cog'
   | 'play' | 'pause' | 'trash' | 'scan' | 'stop' | 'upload' | 'alert';
 function Icon({ name, size = 18, color = TEXT, strokeWidth = 1.8 }: {
@@ -62,11 +63,14 @@ function Icon({ name, size = 18, color = TEXT, strokeWidth = 1.8 }: {
     case 'image':          return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M21 15V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14" {...p}/><Circle cx="8.5" cy="8.5" r="1.5" {...p}/><Polyline points="21 15 16 10 5 21" {...p}/></Svg>;
     case 'file':           return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" {...p}/><Polyline points="14 2 14 8 20 8" {...p}/></Svg>;
     case 'arrow-left':     return <Svg width={size} height={size} viewBox="0 0 24 24"><Line x1="19" y1="12" x2="5" y2="12" {...p}/><Polyline points="12 19 5 12 12 5" {...p}/></Svg>;
+    case 'arrow-right':    return <Svg width={size} height={size} viewBox="0 0 24 24"><Line x1="5" y1="12" x2="19" y2="12" {...p}/><Polyline points="12 5 19 12 12 19" {...p}/></Svg>;
     case 'check':          return <Svg width={size} height={size} viewBox="0 0 24 24"><Polyline points="20 6 9 17 4 12" {...p}/></Svg>;
     case 'check-check':    return <Svg width={size} height={size} viewBox="0 0 24 24"><Polyline points="18 6 7 17 2 12" {...p}/><Polyline points="22 10 13 19" {...p}/></Svg>;
     case 'pin':            return <Svg width={size} height={size} viewBox="0 0 24 24"><Line x1="12" y1="17" x2="12" y2="22" {...p}/><Path d="M5 17h14l-2-9V4H7v4l-2 9z" {...p}/></Svg>;
     case 'calendar':       return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M19 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z" {...p}/><Line x1="16" y1="2" x2="16" y2="6" {...p}/><Line x1="8" y1="2" x2="8" y2="6" {...p}/><Line x1="3" y1="10" x2="21" y2="10" {...p}/></Svg>;
-    case 'tooth':          return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M7 3c-2 0-3 1.5-3 4 0 2 .8 3.4 1.2 5.5.4 2 .3 4 .8 6 .5 1.7 1.5 3.5 2.6 3.5 1.2 0 1.4-2 1.6-3.6.2-1.5.5-3 1.8-3s1.6 1.5 1.8 3c.2 1.6.4 3.6 1.6 3.6 1.1 0 2.1-1.8 2.6-3.5.5-2 .4-4 .8-6C18.2 10.4 19 9 19 7c0-2.5-1-4-3-4-1.6 0-2.6 1-4 1s-2.4-1-4-1z" {...p}/></Svg>;
+    // Ortak diş ikonu (core/ui/dentalIcons) — buradaki el çizimi path yerine
+    // geçti; tasarım sözleşmesi el çizimi SVG yerine kütüphaneyi şart koşuyor.
+    case 'tooth':          return <Tooth size={size} color={color} strokeWidth={strokeWidth} />;
     case 'palette':        return <Svg width={size} height={size} viewBox="0 0 24 24"><Circle cx="13.5" cy="6.5" r="0.5" {...p} fill={color} /><Circle cx="17.5" cy="10.5" r="0.5" {...p} fill={color} /><Circle cx="8.5" cy="7.5" r="0.5" {...p} fill={color} /><Circle cx="6.5" cy="12.5" r="0.5" {...p} fill={color} /><Path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8z" {...p}/></Svg>;
     case 'cog':            return <Svg width={size} height={size} viewBox="0 0 24 24"><Circle cx="12" cy="12" r="3" {...p}/><Path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" {...p}/></Svg>;
     case 'play':           return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M5 3l14 9-14 9V3z" {...p} fill={color}/></Svg>;
@@ -233,11 +237,11 @@ function Avatar({ name, color, unreadCount, size = 48, statusColor, avatarUrl, l
       {statusColor && (
         <View style={[
           avs.statusDot,
-          { backgroundColor: statusColor, right: -1, bottom: -1, width: size * 0.28, height: size * 0.28, borderRadius: size * 0.14 },
+          { backgroundColor: statusColor, ...(isRTL() ? { left: -1 } : { right: -1 }), bottom: -1, width: size * 0.28, height: size * 0.28, borderRadius: size * 0.14 },
         ]} />
       )}
       {showBadge && (
-        <View style={avs.badge}>
+        <View style={[avs.badge, isRTL() ? { left: -4 } : { right: -4 }]}>
           <Text style={avs.badgeText}>{unreadCount! > 99 ? '99+' : unreadCount}</Text>
         </View>
       )}
@@ -252,7 +256,7 @@ const avs = StyleSheet.create({
   text: { color: '#FFFFFF', fontWeight: '800' },
   badge: {
     position: 'absolute',
-    top: -4, right: -4,
+    top: -4,
     minWidth: 20, height: 20,
     paddingHorizontal: 6,
     borderRadius: 10,
@@ -433,7 +437,7 @@ function AudioPlayer({ url, isMine, accentColor }: { url: string; isMine: boolea
         ))}
       </View>
 
-      <Text style={{ fontSize: 10.5, fontWeight: '600', color: timeCol, minWidth: 32, textAlign: 'right' }}>
+      <Text style={{ fontSize: 10.5, fontWeight: '600', color: timeCol, minWidth: 32, textAlign: 'end' as any }}>
         {duration > 0 ? fmt(playing ? currentTime : duration) : '--:--'}
       </Text>
     </View>
@@ -505,7 +509,7 @@ function ImageLightbox({ url, onClose }: { url: string; onClose: () => void }) {
         <TouchableOpacity
           onPress={onClose}
           activeOpacity={0.75}
-          style={lb.closeBtn}
+          style={[lb.closeBtn, isRTL() ? { left: 20 } : { right: 20 }]}
         >
           <Icon name="x" size={20} color="#FFFFFF" strokeWidth={2.5} />
         </TouchableOpacity>
@@ -529,7 +533,7 @@ const lb = StyleSheet.create({
       : { shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 40, shadowOffset: { width: 0, height: 16 }, elevation: 30 }),
   },
   closeBtn: {
-    position: 'absolute', top: 20, right: 20,
+    position: 'absolute', top: 20,
     width: 38, height: 38, borderRadius: 19,
     backgroundColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center', justifyContent: 'center',
@@ -671,7 +675,7 @@ function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor, onIm
               resizeMode="cover"
             />
             {/* Magnify hint on web */}
-            <View style={mb.imageHint}>
+            <View style={[mb.imageHint, isRTL() ? { left: 7 } : { right: 7 }]}>
               <Icon name="search" size={14} color="#FFFFFF" strokeWidth={2.5} />
             </View>
           </TouchableOpacity>
@@ -779,14 +783,14 @@ const mb = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ wordBreak: 'normal', overflowWrap: 'break-word' } as any) : {}),
   },
   bubbleMine: {
-    borderBottomRightRadius: 4,
+    borderBottomEndRadius: 4,
     ...(Platform.OS === 'web'
       ? ({ boxShadow: '0 3px 10px rgba(15,23,42,0.14)' } as any)
       : { shadowColor: '#0F172A', shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } }),
   },
   bubbleOther: {
     backgroundColor: '#FFFFFF',
-    borderBottomLeftRadius: 4,
+    borderBottomStartRadius: 4,
     ...(Platform.OS === 'web'
       ? ({ boxShadow: '0 2px 6px rgba(15,23,42,0.06)' } as any)
       : { shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } }),
@@ -799,7 +803,7 @@ const mb = StyleSheet.create({
   },
   image:    { width: 220, height: 180 },
   imageHint: {
-    position: 'absolute', bottom: 7, right: 7,
+    position: 'absolute', bottom: 7,
     width: 24, height: 24, borderRadius: 12,
     backgroundColor: 'rgba(0,0,0,0.42)',
     alignItems: 'center', justifyContent: 'center',
@@ -1133,7 +1137,7 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
       <View style={cd.header}>
         {onBack && (
           <TouchableOpacity onPress={onBack} activeOpacity={0.7} style={cd.iconBtn}>
-            <Icon name="arrow-left" size={18} color={TEXT} strokeWidth={2} />
+            <Icon name={isRTL() ? 'arrow-right' : 'arrow-left'} size={18} color={TEXT} strokeWidth={2} />
           </TouchableOpacity>
         )}
         <View style={[
@@ -1145,7 +1149,7 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
             ? <Image source={{ uri: headerLogo }} style={cd.headerAvatarImg} resizeMode="contain" />
             : <Text style={cd.headerAvatarText}>{initials(headerTitle)}</Text>}
           {statusCfg && (
-            <View style={[cd.headerStatusDot, { backgroundColor: statusCfg.color }]} />
+            <View style={[cd.headerStatusDot, isRTL() ? { left: -1 } : { right: -1 }, { backgroundColor: statusCfg.color }]} />
           )}
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
@@ -1162,7 +1166,9 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
 
       {/* Pinned summary — iş açıklaması ve özet (WhatsApp pin tarzı) */}
       {(workType || hasPinDetails) && (
-        <View style={[cd.pinWrap, { borderLeftColor: accentColor }]}>
+        <View style={[cd.pinWrap,
+          isRTL() ? { borderRightWidth: 3, borderRightColor: accentColor }
+                  : { borderLeftWidth: 3, borderLeftColor: accentColor }]}>
           <View style={cd.pinTopRow}>
             <Icon name="pin" size={12} color={accentColor} strokeWidth={2.2} />
             <Text style={[cd.pinLabel, { color: accentColor }]}>SABİTLENDİ · İş Özeti</Text>
@@ -1433,7 +1439,7 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
                 {attachOpen ? (
                   <>
                     <Pressable style={cd.attachBackdrop} onPress={() => setAttachOpen(false)} />
-                    <View style={cd.attachMenu}>
+                    <View style={[cd.attachMenu, isRTL() ? { right: 0 } : { left: 0 }]}>
                       <TouchableOpacity
                         style={cd.attachItem}
                         onPress={() => { setAttachOpen(false); imageInputRef.current?.click(); }}
@@ -1589,7 +1595,7 @@ const cd = StyleSheet.create({
   headerAvatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', position: 'relative' },
   headerAvatarImg: { width: 30, height: 30 },
   headerAvatarText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
-  headerStatusDot: { position: 'absolute', right: -1, bottom: -1, width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: SURFACE },
+  headerStatusDot: { position: 'absolute', bottom: -1, width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: SURFACE },
   headerTitle: { fontSize: 15, fontWeight: '800', color: TEXT, letterSpacing: -0.2 },
   headerSub:   { fontSize: 11, color: MUTED, marginTop: 2 },
   headerUrgent:{ fontSize: 10, fontWeight: '800', color: '#EF4444', letterSpacing: 0.4 },
@@ -1598,7 +1604,6 @@ const cd = StyleSheet.create({
   pinWrap: {
     backgroundColor: SURFACE,
     borderBottomWidth: 1, borderBottomColor: BORDER,
-    borderLeftWidth: 3,
     paddingHorizontal: 14, paddingTop: 10, paddingBottom: 11,
     gap: 6,
   },
@@ -1723,7 +1728,7 @@ const cd = StyleSheet.create({
   },
   attachMenu: {
     position: 'absolute',
-    bottom: 46, left: 0,
+    bottom: 46,
     flexDirection: 'column',
     gap: 8,
     zIndex: 99,
@@ -1995,7 +2000,8 @@ export function MessagesPopup({ visible, onClose, accentColor, initialOrderId }:
         >
           {/* Desktop: split pane */}
           {isDesktop ? (
-            <View style={p.split}>
+            <View style={[p.split, isRTL() ? { borderLeftWidth: 1, borderLeftColor: Platform.OS === 'web' ? 'rgba(0,0,0,0.06)' : BORDER }
+                                     : { borderRightWidth: 1, borderRightColor: Platform.OS === 'web' ? 'rgba(0,0,0,0.06)' : BORDER }]}>
               {/* Left: chat list */}
               <View style={p.left}>
                 <View style={p.listHeader}>
@@ -2043,7 +2049,7 @@ export function MessagesPopup({ visible, onClose, accentColor, initialOrderId }:
                         onPress={() => setSelected(item)}
                       />
                     )}
-                    ItemSeparatorComponent={() => <View style={p.divider} />}
+                    ItemSeparatorComponent={() => <View style={[p.divider, isRTL() ? { marginRight: 72 } : { marginLeft: 72 }]} />}
                   />
                 )}
               </View>
@@ -2107,7 +2113,7 @@ export function MessagesPopup({ visible, onClose, accentColor, initialOrderId }:
                           onPress={() => setSelected(item)}
                         />
                       )}
-                      ItemSeparatorComponent={() => <View style={p.divider} />}
+                      ItemSeparatorComponent={() => <View style={[p.divider, isRTL() ? { marginRight: 72 } : { marginLeft: 72 }]} />}
                     />
                   )}
                 </View>
@@ -2127,7 +2133,7 @@ export function MessagesPopup({ visible, onClose, accentColor, initialOrderId }:
           <TouchableOpacity
             onPress={onClose}
             activeOpacity={0.7}
-            style={p.panelCloseBtn}
+            style={[p.panelCloseBtn, isRTL() ? { left: 12 } : { right: 12 }]}
           >
             <Icon name="x" size={17} color={MUTED} strokeWidth={2.5} />
           </TouchableOpacity>
@@ -2197,8 +2203,6 @@ const p = StyleSheet.create({
     // zemin sızdığı için gri görünüyordu; başlık kendi 0.80'ini üstüne bindirdiği
     // için de başlık beyaz, liste gri kalıyordu.
     backgroundColor: SURFACE,
-    borderRightWidth: 1,
-    borderRightColor: Platform.OS === 'web' ? 'rgba(0,0,0,0.06)' : BORDER,
   },
   right: {
     flex: 1,
@@ -2219,7 +2223,6 @@ const p = StyleSheet.create({
   panelCloseBtn: {
     position: 'absolute',
     top: 12,
-    right: 12,
     width: 32,
     height: 32,
     borderRadius: 16,
@@ -2246,7 +2249,6 @@ const p = StyleSheet.create({
   divider: {
     height: 1,
     backgroundColor: Platform.OS === 'web' ? 'rgba(241,245,249,0.55)' : BORDER,
-    marginLeft: 72,
   },
 
   emptyList: { padding: 40, alignItems: 'center' },

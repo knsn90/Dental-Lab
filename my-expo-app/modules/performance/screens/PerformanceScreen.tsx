@@ -9,6 +9,7 @@
  *           §03 pill buttons, Lucide icons.
  */
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { weekdayOffset } from '../../../core/i18n';
 import { router, useSegments } from 'expo-router';
 import { RemakeQualityCard } from '../components/RemakeQualityCard';
 import {
@@ -122,8 +123,8 @@ function getRange(r: Range): { from: string | null; to: string | null } {
   const pad  = (n: number) => String(n).padStart(2, '0');
   const ymd  = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   if (r === 'thisWeek') {
-    const day = now.getDay() || 7;
-    const start = new Date(now); start.setDate(now.getDate() - day + 1);
+    // Hafta başlangıcı bölgeye bağlı: TR/AB Pazartesi, İran Cumartesi (weekdayOffset).
+    const start = new Date(now); start.setDate(now.getDate() - weekdayOffset(now.getDay()));
     return { from: ymd(start), to: ymd(now) };
   }
   if (r === 'thisMonth') return { from: ymd(new Date(yyyy, mm, 1)), to: ymd(new Date(yyyy, mm + 1, 0)) };
@@ -340,8 +341,8 @@ export function PerformanceScreen() {
           borderRadius: 20, overflow: 'hidden',
           backgroundColor: accentColor, padding: 18, position: 'relative',
         }}>
-          <View style={{ position: 'absolute', top: -40, right: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
-          <View style={{ position: 'absolute', bottom: -50, left: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+          <View style={{ position: 'absolute', top: -40, end: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
+          <View style={{ position: 'absolute', bottom: -50, start: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
 
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
             <View style={{ flex: 1, minWidth: 0 }}>
@@ -455,7 +456,7 @@ export function PerformanceScreen() {
           </Pressable>
           {matOpen && (
             <View style={{
-              position: 'absolute', top: '100%', left: 0, marginTop: 4,
+              position: 'absolute', top: '100%', start: 0, marginTop: 4,
               backgroundColor: '#FFFFFF', borderRadius: 14,
               borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
               ...(Platform.OS === 'web' ? { boxShadow: '0 4px 20px rgba(0,0,0,0.12)' } : {}),
@@ -551,7 +552,7 @@ export function PerformanceScreen() {
               </View>
               <View style={{ flex: 1 }} />
               <View style={{ flex: 1 }} />
-              <View style={{ flex: 1.1, alignItems: 'flex-end', paddingRight: 8 }}>
+              <View style={{ flex: 1.1, alignItems: 'flex-end', paddingEnd: 8 }}>
                 <Text style={{ fontSize: 12, fontWeight: '700', color: CHIP_TONES.danger.fg }}>
                   −{fmt(totals.totalWaste)} {baseSymbol()}
                 </Text>
@@ -563,7 +564,7 @@ export function PerformanceScreen() {
                   </Text>
                 )}
               </View>
-              <View style={{ flex: 1, alignItems: 'flex-end', paddingRight: 8 }}>
+              <View style={{ flex: 1, alignItems: 'flex-end', paddingEnd: 8 }}>
                 <Text style={{ fontSize: 12, fontWeight: '700', color: DS.ink[700] }}>{fmt1(totals.totalLabor)} sa</Text>
               </View>
               <View style={{ flex: 1.3, alignItems: 'flex-end' }}>
@@ -625,7 +626,7 @@ function SortableHeader({ label, flex, sortKey, currentSort, currentDir, onPress
       style={{
         flex, flexDirection: 'row', alignItems: 'center', gap: 3,
         justifyContent: align === 'right' ? 'flex-end' : align === 'center' ? 'center' : 'flex-start',
-        paddingRight: align === 'right' ? 8 : 0,
+        paddingEnd: align === 'right' ? 8 : 0,
         // @ts-ignore web
         cursor: 'pointer',
       }}
@@ -671,7 +672,7 @@ function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWid
         borderBottomWidth: isLast ? 0 : 1, borderBottomColor: 'rgba(0,0,0,0.04)',
       }}>
         {/* Teknisyen */}
-        <View style={{ flex: 2.0, flexDirection: 'row', alignItems: 'center', gap: 10, paddingRight: 8 }}>
+        <View style={{ flex: 2.0, flexDirection: 'row', alignItems: 'center', gap: 10, paddingEnd: 8 }}>
           <View style={{
             width: 34, height: 34, borderRadius: 17,
             backgroundColor: 'rgba(139,92,184,0.12)',
@@ -743,7 +744,7 @@ function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWid
         </View>
 
         {/* Fire */}
-        <View style={{ flex: 1.1, alignItems: 'flex-end', paddingRight: 8 }}>
+        <View style={{ flex: 1.1, alignItems: 'flex-end', paddingEnd: 8 }}>
           <Text style={{
             fontSize: 14, fontWeight: '600',
             color: wasteHigh ? CHIP_TONES.danger.fg : DS.ink[900],
@@ -758,7 +759,7 @@ function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWid
         </View>
 
         {/* Verim */}
-        <View style={{ flex: 1, alignItems: 'center', paddingRight: 8 }}>
+        <View style={{ flex: 1, alignItems: 'center', paddingEnd: 8 }}>
           {eff !== null ? (
             <View style={{
               paddingHorizontal: 12, paddingVertical: 5,
@@ -773,7 +774,7 @@ function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWid
         </View>
 
         {/* Süre */}
-        <View style={{ flex: 1, alignItems: 'flex-end', paddingRight: 8 }}>
+        <View style={{ flex: 1, alignItems: 'flex-end', paddingEnd: 8 }}>
           <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }}>
             {fmt1(row.labor_hours)}<Text style={{ fontSize: 10, color: DS.ink[400], fontWeight: '500' }}> sa</Text>
           </Text>
@@ -851,7 +852,7 @@ function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWid
       </View>
 
       {/* Bottom — metric strip */}
-      <View style={{ flexDirection: 'row', gap: 12, paddingLeft: 44 }}>
+      <View style={{ flexDirection: 'row', gap: 12, paddingStart: 44 }}>
         <MiniStat label="Kullanım" value={fmt1(row.used_qty)} />
         <MiniStat label="Fire" value={fmt1(row.waste_qty)} color={wasteHigh ? CHIP_TONES.danger.fg : undefined} />
         <MiniStat label="Süre" value={`${fmt1(row.labor_hours)} sa`} />

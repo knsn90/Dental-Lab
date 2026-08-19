@@ -21,6 +21,7 @@ import { buildViewerHtml } from './htmlTemplate';
 import { classifyFile, paletteColor } from '../lib/layerMap';
 import { openFileUrl } from '../../../core/util/openFile';
 import { toast } from '../../../core/ui/Toast';
+import { autoT } from '../../../core/i18n/autoTranslate';
 
 // Dental kamera açıları (template SET_PRESET ile birebir eşleşir).
 const CAMERA_PRESETS: { key: string; label: string }[] = [
@@ -74,7 +75,7 @@ function OpacitySlider({ value, color, onChange }: { value: number; color: strin
         {/* knob */}
         <View style={{ position: 'absolute', left: Math.max(0, (w * value) - 8), width: 16, height: 16, borderRadius: 8, backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: color }} />
       </View>
-      <Text style={{ width: 38, textAlign: 'right', color: 'rgba(255,255,255,0.75)', fontSize: 11, fontWeight: '700', fontVariant: ['tabular-nums'] }}>%{pct}</Text>
+      <Text style={{ width: 38, textAlign: 'end' as any, color: 'rgba(255,255,255,0.75)', fontSize: 11, fontWeight: '700', fontVariant: ['tabular-nums'] }}>%{pct}</Text>
     </View>
   );
 }
@@ -240,12 +241,12 @@ function MobileViewer3D({ visible, files, title, onClose }: Viewer3DProps) {
       const uri = `${dir}${name}-3d.png`;
       await FileSystem.writeAsStringAsync(uri, base64, { encoding: 'base64' as any });
       if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'Ekran görüntüsü', UTI: 'public.png' });
+        await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: autoT('Ekran görüntüsü'), UTI: 'public.png' });
       } else {
-        toast.info('Ekran görüntüsü kaydedildi.');
+        toast.info(autoT('Ekran görüntüsü kaydedildi.'));
       }
     } catch (e: any) {
-      toast.error('Ekran görüntüsü alınamadı.');
+      toast.error(autoT('Ekran görüntüsü alınamadı.'));
     } finally {
       setShooting(false);
     }
@@ -325,7 +326,7 @@ function MobileViewer3D({ visible, files, title, onClose }: Viewer3DProps) {
                 if (msg.type === 'READY') setReady(true);
                 if (msg.type === 'ERROR') setLoadErr(msg.message ?? 'Yüklenemedi');
                 if (msg.type === 'SHOT' && msg.data) saveShot(msg.data);
-                if (msg.type === 'SHOT_ERR') { setShooting(false); toast.error('Ekran görüntüsü alınamadı.'); }
+                if (msg.type === 'SHOT_ERR') { setShooting(false); toast.error(autoT('Ekran görüntüsü alınamadı.')); }
               } catch { /* noop */ }
             }}
             onError={(e) => setLoadErr(e.nativeEvent.description)}
@@ -382,7 +383,7 @@ function MobileViewer3D({ visible, files, title, onClose }: Viewer3DProps) {
 
           {/* Sağ dikey araç çubuğu (desktop paritesi) — yalnız model hazırken */}
           {ready && !_loadErr && (
-            <View style={{ position: 'absolute', right: 10, top: 0, bottom: 0, justifyContent: 'center' }} pointerEvents="box-none">
+            <View style={{ position: 'absolute', end: 10, top: 0, bottom: 0, justifyContent: 'center' }} pointerEvents="box-none">
               <View style={{
                 backgroundColor: 'rgba(20,20,20,0.92)', borderRadius: 26,
                 borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
@@ -401,7 +402,7 @@ function MobileViewer3D({ visible, files, title, onClose }: Viewer3DProps) {
           {/* Kamera açıları popup */}
           {presetOpen && ready && (
             <View style={{
-              position: 'absolute', right: 64, top: '13%', width: 224,
+              position: 'absolute', end: 64, top: '13%', width: 224,
               backgroundColor: 'rgba(28,28,30,0.98)', borderRadius: 20,
               borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
               paddingVertical: 8, paddingHorizontal: 8,
@@ -434,7 +435,7 @@ function MobileViewer3D({ visible, files, title, onClose }: Viewer3DProps) {
           {panelOpen && (
             <View
               style={{
-                position: 'absolute', top: 12, right: 64, bottom: 12,
+                position: 'absolute', top: 12, end: 64, bottom: 12,
                 width: Math.min(300, width - 86),
                 backgroundColor: 'rgba(20,20,20,0.97)',
                 borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',

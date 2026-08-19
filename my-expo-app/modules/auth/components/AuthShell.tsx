@@ -21,7 +21,7 @@ import { LabFlowLogo } from '../../../core/ui/LabFlowLogo';
 import { SimanWordmark } from '../../../core/ui/SimanWordmark';
 import { useTranslation } from 'react-i18next';
 import { Globe, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react-native';
-import { SUPPORTED, setLanguage, type Lang } from '../../../core/i18n';
+import { SUPPORTED, setLanguage, isRTL, type Lang } from '../../../core/i18n';
 
 // ── Auth ekranları için dil seçici (dropdown) — login/register/forgot ─────
 // Kapalı: globe + mevcut dil (native ad) + chevron. Açık: native adlı liste,
@@ -302,7 +302,7 @@ export function AuthShell({ eyebrow, heading, subtitle, illustrationCaption, chi
               fontWeight: '800',
               letterSpacing: -0.9,
               color: AUTH.ink,
-              textAlign: isDesktop ? 'left' : 'center',
+              textAlign: isDesktop ? (isRTL() ? 'right' : 'left') : 'center',
             }}>
               {heading}
             </Text>
@@ -312,7 +312,7 @@ export function AuthShell({ eyebrow, heading, subtitle, illustrationCaption, chi
               fontFamily: AUTH_FONT.sans,
               fontSize: 13, color: AUTH.inkSoft,
               marginTop: 8, lineHeight: 19,
-              textAlign: isDesktop ? 'left' : 'center',
+              textAlign: isDesktop ? (isRTL() ? 'right' : 'left') : 'center',
               maxWidth: 340,
             }}>
               {subtitle}
@@ -357,10 +357,10 @@ export function AuthShell({ eyebrow, heading, subtitle, illustrationCaption, chi
     <View
       style={{
         flex: 1,
-        borderTopRightRadius: 28,
-        borderBottomRightRadius: 28,
-        borderTopLeftRadius: 0,
-        borderBottomLeftRadius: 0,
+        borderTopEndRadius: 28,
+        borderBottomEndRadius: 28,
+        borderTopStartRadius: 0,
+        borderBottomStartRadius: 0,
         overflow: 'hidden',
         backgroundColor: '#FFFFFF',
         padding: 16,
@@ -376,10 +376,12 @@ export function AuthShell({ eyebrow, heading, subtitle, illustrationCaption, chi
         style={{
           width: '100%',
           height: '100%',
-          borderTopRightRadius: 12,
-          borderBottomRightRadius: 12,
-          borderTopLeftRadius: 0,
-          borderBottomLeftRadius: 0,
+          // ImageStyle mantıksal yarıçapı desteklemiyor — tarafı elle çeviriyoruz.
+          // Kap (yukarıda) mantıksal End/Start yarıçapı kullanıyor; RTL'de "end"
+          // sol kenara düştüğü için görselin kavisi de sola geçmeli.
+          ...(isRTL()
+            ? { borderTopLeftRadius: 12, borderBottomLeftRadius: 12, borderTopRightRadius: 0, borderBottomRightRadius: 0 }
+            : { borderTopRightRadius: 12, borderBottomRightRadius: 12, borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }),
         }}
         resizeMode="cover"
       />
@@ -486,8 +488,8 @@ export function AuthShell({ eyebrow, heading, subtitle, illustrationCaption, chi
           <View
             style={{
               backgroundColor: AUTH.cardBg,
-              borderTopLeftRadius: 32,
-              borderTopRightRadius: 32,
+              borderTopStartRadius: 32,
+              borderTopEndRadius: 32,
               paddingHorizontal: 24,
               paddingTop: 28,
               paddingBottom: Math.max(insets.bottom, 12) + 20,
@@ -670,7 +672,7 @@ export function AuthInput({
       {error ? (
         <Text style={{
           fontFamily: AUTH_FONT.sans,
-          fontSize: 11, color: AUTH.danger, marginTop: 5, marginLeft: 4, fontWeight: '500',
+          fontSize: 11, color: AUTH.danger, marginTop: 5, marginStart: 4, fontWeight: '500',
         }}>
           {error}
         </Text>

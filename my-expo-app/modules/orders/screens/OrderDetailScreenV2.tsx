@@ -1,4 +1,5 @@
-import { localeTag } from '../../../core/i18n';
+import { localeTag, isRTL } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 /**
  * OrderDetailScreenV2 — Patterns dili (NativeWind), gerçek WorkOrder verisi
  *
@@ -11,20 +12,21 @@ import { localeTag } from '../../../core/i18n';
  *     Tur 4: Action handlers + permissions + edge cases
  */
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { View, Text, ScrollView, Pressable, Platform, Modal, useWindowDimensions, Image, ActivityIndicator, TextInput, Alert } from 'react-native';
+import { View, Text, ScrollView, Pressable, Platform, Modal, useWindowDimensions, Image, ActivityIndicator, TextInput, Alert, Linking } from 'react-native';
 import { useLocalSearchParams, useRouter, useSegments } from 'expo-router';
 import { safeBack } from '../../../core/util/safeBack';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../../core/store/authStore';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 import { supabase } from '../../../core/api/supabase';
+import { buildOrderPrintDoc } from '../lib/buildOrderPrintDoc';
 import { getSignedUrls } from '../../../lib/photos';
 import { useOrderDetail } from '../hooks/useOrderDetail';
 import { SupportButton } from '../../support/components/SupportButton';
 import { useOrderStages } from '../hooks/useOrderStages';
 import { LivingToothChart } from '../components/LivingToothChart';
 import { LinearProgressX, PercentRingX, StepsTimelineX } from '../../../core/ui/ProgressX';
-import { Bell, Printer, Check, ArrowUpRight, ChevronRight, Phone, MapPin, Download, MessageSquare, FileText, Image as ImageIcon, File as FileIcon, RotateCcw, UserCheck, Upload, AlertTriangle, CircleCheck, Circle, Clock, ChevronDown, ChevronUp, ListChecks, Play, Truck, Eye, Trash2, Plus, SkipForward, Pause, Layers, CornerUpLeft, User } from 'lucide-react-native';
+import { Bell, Printer, Check, ArrowUpRight, ChevronLeft, ChevronRight, Phone, MapPin, Download, MessageSquare, FileText, Image as ImageIcon, File as FileIcon, RotateCcw, UserCheck, Upload, AlertTriangle, CircleCheck, Circle, Clock, ChevronDown, ChevronUp, ListChecks, Play, Truck, Eye, Trash2, Plus, SkipForward, Pause, Layers, CornerUpLeft, User } from 'lucide-react-native';
 
 // Lazy viewer-3d (three.js ayrı chunk) — tek paylaşılan retry'lı lazy instance.
 import { Viewer3DModalLazy as Viewer3DModal } from '../../viewer-3d/Viewer3DLazy';
@@ -98,6 +100,7 @@ import { ChatDetail } from '../components/MessagesPopup';
 import { useChatMessages } from '../hooks/useChatMessages';
 import { toast } from '../../../core/ui/Toast';
 import { ImageLightbox } from '../../../core/ui/ImageLightbox';
+import { saveMeshThumb } from '../../../lib/photos';
 import { NativeImageViewer } from '../../../core/ui/mobile/NativeImageViewer';
 import MobileViewer3D from '../../viewer-3d/mobile/MobileViewer3D';
 import { X as CloseIcon } from 'lucide-react-native';
@@ -160,9 +163,42 @@ const readableInk = (hex: string) => {
 // Status → patterns timeline index (0..4)
 // "Hazır" ayrı bir aşama değil — paketleme bitince zaten hazırdır; sonraki gerçek
 // aşama kuryenin teslim alması. Bu yüzden 4. adım "Kurye" (elden teslimde gizlenir).
-const STATUS_ORDER = ['alindi', 'asamada', 'kalite_kontrol', 'teslimata_hazir', 'teslim_edildi'] as const;
 const STATUS_LABELS = ['Alındı', 'Üretim', 'Final QC', 'Kurye', 'Teslim'];
 const STATUS_LABELS_ELDEN = ['Alındı', 'Üretim', 'Final QC', 'Teslim']; // elden → kurye adımı yok
+
+/**
+ * Sipariş statüsü → 5 adımlı üst timeline indeksi.
+ *
+ * TAM liste olmak ZORUNDA. Eskiden bu, beş elemanlı bir dizide `indexOf`'tu ve
+ * eksik statüler -1 döndürüyordu; çağıran taraftaki `idx >= 0 ? idx : 0`
+ * fallback'i bunu sessizce "Alındı"ya çeviriyordu. Sonuç: kuryeye verilmiş bir
+ * sipariş timeline'da "Alındı"da duruyordu (canlıda 7 sipariş etkilenmişti —
+ * uretimde/kuryede/tasarim_onayi_bekleniyor statüleri dizide hiç yoktu).
+ * Yeni statü eklenirken buraya da eklenmezse aynı sessiz hata geri döner;
+ * bilinmeyen statü artık `null` döndürür ve timeline hiçbir adımı yanlış
+ * biçimde "şu an" göstermez.
+ */
+const STATUS_STEP: Record<string, number> = {
+  atama_bekleniyor:         0,
+  alindi:                   0,
+  kutu_atandi:              0,
+  tasarim_onayi_bekleniyor: 1,  // onay üretim sürerken alınır
+  uretimde:                 1,
+  asamada:                  1,
+  kalite_kontrol:           2,
+  teslimata_hazir:          3,  // kurye adımı: alınmayı bekliyor
+  kurye_bekleniyor:         3,
+  kuryede:                  3,
+  teslim_edildi:            4,
+};
+
+/** Elden teslimde "Kurye" adımı yok → 5'li skalayı 4'lüye indir. */
+function statusStep(status: string | null | undefined, elden: boolean): number | null {
+  const idx = STATUS_STEP[String(status ?? '')];
+  if (idx == null) return null;
+  if (!elden) return idx;
+  return idx >= 4 ? 3 : Math.min(idx, 2);
+}
 
 // Panel → patterns DS theme (renk paleti)
 // Aktif panel route segments primary signal — role değil, hangi panelin
@@ -220,7 +256,7 @@ export function OrderDetailScreenV2() {
   const router = useRouter();
   const { profile } = useAuthStore();
   const insets = useSafeAreaInsets();
-  const { order, signedUrls, loading, error, refetch } = useOrderDetail(id);
+  const { order, signedUrls, thumbUrls, loading, error, refetch } = useOrderDetail(id);
   const { stages: orderStages, activeStage, completedCount, totalStages, lanes, isMultiLane, refetch: refetchStages } = useOrderStages(id ?? undefined);
   // "Atanmamış" senaryosu — aktif yoksa ilk bekliyor aşamayı reassign hedefi olarak kullan
   const reassignTargetStage = activeStage ?? orderStages.find(s => s.status === 'bekliyor') ?? null;
@@ -298,13 +334,23 @@ export function OrderDetailScreenV2() {
       try {
         const [maps, courier] = await Promise.all([
           supabase.rpc('get_active_provider', { p_type: 'maps' }),
-          supabase.rpc('get_active_provider', { p_type: 'courier' }),
+          // Kuryede birden çok sağlayıcı aynı anda aktif olabilir (motokurye +
+          // kargo); RPC tipteki ilk satırı döndürüyor, o yüzden hepsi okunup
+          // alış adresi OLAN kayıt seçiliyor.
+          supabase.from('provider_credentials')
+            .select('provider, credentials')
+            .eq('type', 'courier').eq('is_active', true),
         ]);
         if (cancelled) return;
         const m: any = Array.isArray(maps.data) ? maps.data[0] : maps.data;
-        const c: any = Array.isArray(courier.data) ? courier.data[0] : courier.data;
         if (m?.provider === 'google-maps' && m?.credentials?.api_key) setMapsApiKey(m.credentials.api_key);
-        if (c?.credentials?.pickup_address) setLabAddress(c.credentials.pickup_address);
+        // Shipink alış adresini tek alanda değil parçalı tutar (sokak/ilçe/il).
+        const labAddr = ((courier.data ?? []) as any[])
+          .map((r) => String(r?.credentials?.pickup_address ?? '').trim()
+            || [r?.credentials?.pickup_street, r?.credentials?.pickup_district, r?.credentials?.pickup_city]
+                 .map((x) => String(x ?? '').trim()).filter(Boolean).join(', '))
+          .find((a) => a);
+        if (labAddr) setLabAddress(labAddr);
       } catch { /* entegrasyon yoksa önizleme çizilmez */ }
     })();
     return () => { cancelled = true; };
@@ -330,7 +376,7 @@ export function OrderDetailScreenV2() {
     const fetchDeliveries = async () => {
       const { data } = await supabase
         .from('deliveries')
-        .select('id, mode, status, courier_id, external_provider, external_tracking_no, picked_up_at, delivered_at, created_at, notes, destination_name, destination_address, destination_phone, purpose, direction, fee_amount, fee_currency, fee_source, stage_snapshot, courier:profiles!deliveries_courier_profiles_fkey(full_name)')
+        .select('id, mode, status, courier_id, external_provider, external_tracking_no, external_tracking_code, external_label_url, picked_up_at, delivered_at, created_at, notes, destination_name, destination_address, destination_phone, purpose, direction, fee_amount, fee_currency, fee_source, stage_snapshot, courier:profiles!deliveries_courier_profiles_fkey(full_name)')
         .eq('work_order_id', orderUuid)
         .order('created_at', { ascending: false });
       const rows = (data ?? []) as any[];
@@ -495,6 +541,7 @@ export function OrderDetailScreenV2() {
   const [stageCompleting, setStageCompleting] = useState(false);
   const [bbkTracking, setBbkTracking] = useState(false);
   const [cancelingDelivery, setCancelingDelivery] = useState(false);
+  const [shpBusy, setShpBusy] = useState(false);
   const [editDeliveryTarget, setEditDeliveryTarget] = useState<{ id: string; orderId: string } | null>(null);
   // Aşama aksiyon dropdown'u — hangi aşamanın menüsü açık (birincil "Tamamla" + ▼).
   const [stageMenuOpen, setStageMenuOpen] = useState<string | null>(null);
@@ -662,7 +709,8 @@ export function OrderDetailScreenV2() {
   }, [order?.order_number, _clinic, panelGroup]);
 
   // Derived ────────────────────────────────────────────────────────
-  const statusIdx = order ? STATUS_ORDER.indexOf(order.status as any) : 0;
+  const isElden = (order as any)?.delivery_method === 'elden';
+  const statusIdx = order ? (statusStep(order.status, isElden) ?? 0) : 0;
   const overdue = order ? isOrderOverdue(order.delivery_date, order.status, (order as any).hold_status) : false;
   // ── İşi Beklet — beklerken gecikme sayacı durur, kart "BEKLEMEDE" gösterir ──
   const onHold      = (order as any)?.hold_status === 'on_hold';
@@ -704,7 +752,7 @@ export function OrderDetailScreenV2() {
     }
 
     // Fallback — macro status index over 5-step pipeline
-    return Math.round(((statusIdx + 1) / STATUS_ORDER.length) * 100);
+    return Math.round(((statusIdx + 1) / STATUS_LABELS.length) * 100);
   }, [order, statusIdx, combinedStages, activeStage, nowTick]);
 
   const allTeeth = order?.tooth_numbers ?? [];
@@ -888,7 +936,7 @@ export function OrderDetailScreenV2() {
   // geliyor; hook olursa "rendered more hooks" hatası verir. Düz fonksiyon.
   const handleRemoveStage = async (stg: any) => {
     const label = stg?.station?.name ?? 'Aşama';
-    const ok = await confirmAsync('Aşamayı Sil', `"${label}" aşamasını silmek istediğine emin misin? Sıralama otomatik düzenlenir.`, { confirmText: 'Sil', destructive: true });
+    const ok = await confirmAsync('Aşamayı Sil', `"${label}" ${autoT('aşamasını silmek istediğine emin misin? Sıralama otomatik düzenlenir.')}`, { confirmText: 'Sil', destructive: true });
     if (!ok) return;
     const r = await removeOrderStage(stg.id);
     if (!r.ok) { toast.error(r.error ?? 'Aşama silinemedi'); return; }
@@ -898,7 +946,7 @@ export function OrderDetailScreenV2() {
   // ── Admin/müdür aşama override: her durumda Tamamla / Atla / Aktif et ──
   const handleAdminCompleteStage = async (stg: any) => {
     const label = stg?.station?.name ?? 'Aşama';
-    const ok = await confirmAsync('Aşamayı Tamamla', `"${label}" aşamasını tamamlamak istediğine emin misin? Sonraki aşama otomatik başlar.`, { confirmText: 'Tamamla' });
+    const ok = await confirmAsync('Aşamayı Tamamla', `"${label}" ${autoT('aşamasını tamamlamak istediğine emin misin? Sonraki aşama otomatik başlar.')}`, { confirmText: 'Tamamla' });
     if (!ok) return;
     const r = await adminCompleteStage(stg.id);
     if (!r.ok) { toast.error(r.error ?? 'Aşama tamamlanamadı'); return; }
@@ -907,7 +955,7 @@ export function OrderDetailScreenV2() {
   };
   const handleAdminSkipStage = async (stg: any) => {
     const label = stg?.station?.name ?? 'Aşama';
-    const ok = await confirmAsync('Aşamayı Atla', `"${label}" aşamasını ATLAMAK istediğine emin misin? Aşama "atlandı" olarak işaretlenir, sonraki aşama başlar.`, { confirmText: 'Atla' });
+    const ok = await confirmAsync('Aşamayı Atla', `"${label}" ${autoT('aşamasını ATLAMAK istediğine emin misin? Aşama "atlandı" olarak işaretlenir, sonraki aşama başlar.')}`, { confirmText: 'Atla' });
     if (!ok) return;
     const r = await adminSkipStage(stg.id);
     if (!r.ok) { toast.error(r.error ?? 'Aşama atlanamadı'); return; }
@@ -1105,8 +1153,8 @@ export function OrderDetailScreenV2() {
         currentStageIdx={stageIdx}
         totalStages={Math.max(orderStages.length, 5)}
         stageName={stageName}
-        timelineSteps={(order as any)?.delivery_method === 'elden' ? STATUS_LABELS_ELDEN : STATUS_LABELS}
-        timelineCurrent={statusIdx >= 0 ? statusIdx : 0}
+        timelineSteps={isElden ? STATUS_LABELS_ELDEN : STATUS_LABELS}
+        timelineCurrent={statusIdx}
         timelineTheme={progressTheme}
         operatorMins={mOperatorMins}
         queueMins={mQueueMins}
@@ -1151,6 +1199,7 @@ export function OrderDetailScreenV2() {
           <FilesList
             photos={[...(order.photos ?? []), ...inheritedFiles.photos]}
             signedUrls={{ ...(signedUrls ?? {}), ...inheritedFiles.urls }}
+            thumbUrls={thumbUrls}
             workOrderId={order.id}
             accentColor={panelAccent}
             onUploaded={refetch}
@@ -1161,7 +1210,17 @@ export function OrderDetailScreenV2() {
           { title: 'Sipariş alındı', user: 'Sistem', time: '—', kind: 'wait' },
         ]}
         doctorNote={(order as any).notes ?? null}
-        onBack={() => safeBack(`${panelGroup}/orders`)}
+        onBack={() => {
+          // Sipariş detayı Siparişler listesinin alt sayfasıdır → geri her zaman
+          // o listeye döner (Özet'ten/karttan açılsa bile). Lab listesi 'all-orders'.
+          if (panelGroup.startsWith('(')) {
+            const ordersRoute = panelGroup === '(lab)' ? 'all-orders' : 'orders';
+            router.replace(`/${panelGroup}/${ordersRoute}` as any);
+          } else {
+            // Top-level /order/[id] (bildirim/derin bağlantı) — panel bilinmiyor.
+            safeBack('/');
+          }
+        }}
         onChat={() => setChatOpen(true)}
         cancelNode={<OrderClientActions order={order as any} panelGroup={panelGroup} onChanged={refetch} />}
         logisticsNode={
@@ -1311,7 +1370,7 @@ export function OrderDetailScreenV2() {
       .update({ is_urgent: !order.is_urgent })
       .eq('id', order.id);
     setTogglingUrgent(false);
-    if (error) toast.error('Güncellenemedi: ' + (error as any).message);
+    if (error) toast.error(autoT('Güncellenemedi:') + ' ' + (error as any).message);
     else {
       toast.success(order.is_urgent ? 'Acil işareti kaldırıldı' : 'Acil olarak işaretlendi');
       refetch();
@@ -1353,7 +1412,7 @@ export function OrderDetailScreenV2() {
       try {
         const qrSvgHtml = (document.getElementById('dental-qr-container') as HTMLElement | null)
           ?.querySelector('svg')?.outerHTML ?? '';
-        const html = await buildPrintHtmlV2Async(order, qrUrl, chatMessages, qrSvgHtml);
+        const html = await buildOrderPrintDoc(order, qrUrl, chatMessages, qrSvgHtml);
         setPrintPreviewHtml(html);
       } catch (e) {
         console.error('print preview build failed', e);
@@ -1388,7 +1447,7 @@ export function OrderDetailScreenV2() {
                 backgroundImage: `linear-gradient(135deg, #0C8F56 0%, ${panelAccent} 100%)`,
               }}>
                 {/* Ambient glow */}
-                <View pointerEvents="none" style={{ position: 'absolute', top: -30, right: -30, width: 160, height: 160, borderRadius: 80, backgroundColor: '#FFFFFF', opacity: 0.12 }} />
+                <View pointerEvents="none" style={{ position: 'absolute', top: -30, end: -30, width: 160, height: 160, borderRadius: 80, backgroundColor: '#FFFFFF', opacity: 0.12 }} />
 
                 <View style={{ paddingHorizontal: 20, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
                   <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' }}>
@@ -1543,16 +1602,16 @@ export function OrderDetailScreenV2() {
                       gün
                     </Text>
                   </View>
-                  <Text className="text-[12px] mt-1 text-right" style={{ color: heroPalette.dark ? 'rgba(255,255,255,0.80)' : '#3C3C3C' }}>
+                  <Text className="text-[12px] mt-1" style={{ textAlign: 'end' as any, color: heroPalette.dark ? 'rgba(255,255,255,0.80)' : '#3C3C3C' }}>
                     {holdCategoryLabel((order as any).hold_category)}
                   </Text>
                   {!!(order as any).hold_reason && (
-                    <Text className="text-[11px] mt-0.5 text-right" numberOfLines={2} style={{ color: heroPalette.dark ? 'rgba(255,255,255,0.60)' : '#6B6B6B' }}>
+                    <Text className="text-[11px] mt-0.5" numberOfLines={2} style={{ textAlign: 'end' as any, color: heroPalette.dark ? 'rgba(255,255,255,0.60)' : '#6B6B6B' }}>
                       {(order as any).hold_reason}
                     </Text>
                   )}
                   {heldByClient && (
-                    <Text className="text-[10.5px] mt-1 text-right" style={{ color: '#E89B2A' }}>
+                    <Text className="text-[10.5px] mt-1" style={{ textAlign: 'end' as any, color: '#E89B2A' }}>
                       Teslim tarihi devam edince ötelenecek
                     </Text>
                   )}
@@ -1815,7 +1874,7 @@ export function OrderDetailScreenV2() {
                         if (mapped && mapped !== activeDelivery.status) {
                           const r = await updateDeliveryStatus(activeDelivery.id, mapped);
                           setBbkTracking(false);
-                          if (!r.ok) { toast.error('Güncellenemedi: ' + (r.error ?? '')); return; }
+                          if (!r.ok) { toast.error(autoT('Güncellenemedi:') + ' ' + (r.error ?? '')); return; }
                           toast.success(`BanaBiKurye: ${bbk} → durum güncellendi`);
                           refetch(); refetchStages();
                         } else {
@@ -1826,6 +1885,74 @@ export function OrderDetailScreenV2() {
                     >
                       <PillBtn onDark={heroPalette.dark} variant="surface" size="sm" icon={RotateCcw}>
                         {bbkTracking ? 'Sorgulanıyor…' : 'Durumu Güncelle'}
+                      </PillBtn>
+                    </Pressable>
+                  )}
+                  {/* Shipink — takip durumunu sorgula ve teslimata yaz */}
+                  {isManager && activeDelivery && activeDelivery.external_provider === 'Shipink'
+                    && activeDelivery.external_tracking_no && activeDelivery.status !== 'teslim_edildi' && (
+                    <Pressable
+                      disabled={shpBusy}
+                      onPress={async () => {
+                        setShpBusy(true);
+                        const { data, error: e } = await supabase.functions.invoke('shipink-dispatch', {
+                          body: { action: 'check', tracking_number: activeDelivery.external_tracking_no, delivery_id: activeDelivery.id },
+                        });
+                        setShpBusy(false);
+                        if (e || !(data as any)?.ok) {
+                          toast.error((data as any)?.message ?? e?.message ?? 'Durum alınamadı');
+                          return;
+                        }
+                        const raw    = (data as any)?.status_raw || '—';
+                        const mapped = (data as any)?.status ?? null;
+                        // Eşleme edge function'da yapılıp kayda yazıldı; burada
+                        // yalnız ekranı tazeliyoruz. Tanınmayan durumda kayıt
+                        // DEĞİŞMEZ — ham metni göstermek yanlış statü yazmaktan iyi.
+                        if (mapped && mapped !== activeDelivery.status) {
+                          toast.success(`Shipink: ${raw} → durum güncellendi`);
+                          refetch(); refetchStages();
+                        } else {
+                          toast.success(`Shipink durumu: ${raw}`);
+                        }
+                      }}
+                    >
+                      <PillBtn onDark={heroPalette.dark} variant="surface" size="sm" icon={RotateCcw}>
+                        {shpBusy ? 'Sorgulanıyor…' : 'Durumu Güncelle'}
+                      </PillBtn>
+                    </Pressable>
+                  )}
+                  {/* Shipink — kutuya yapıştırılacak kargo etiketi (barkod).
+                      Bağlantı kayıtta yoksa (etiket gönderi anında hazır
+                      olmayabiliyor) gönderi id'siyle yeniden sorulur. */}
+                  {isManager && activeDelivery && activeDelivery.external_provider === 'Shipink'
+                    && (activeDelivery.external_label_url || activeDelivery.external_tracking_code) && (
+                    <Pressable
+                      disabled={shpBusy}
+                      onPress={async () => {
+                        let url: string | null = activeDelivery.external_label_url ?? null;
+                        if (!url) {
+                          setShpBusy(true);
+                          const { data, error: e } = await supabase.functions.invoke('shipink-dispatch', {
+                            body: { action: 'label', shipment_id: activeDelivery.external_tracking_code },
+                          });
+                          setShpBusy(false);
+                          if (e || !(data as any)?.ok) {
+                            toast.error((data as any)?.message ?? e?.message ?? 'Etiket alınamadı');
+                            return;
+                          }
+                          url = (data as any)?.label_url ?? null;
+                          if (url) {
+                            await supabase.from('deliveries').update({ external_label_url: url }).eq('id', activeDelivery.id);
+                            refetch();
+                          }
+                        }
+                        if (!url) { toast.error('Etiket henüz hazır değil — birkaç dakika sonra tekrar deneyin.'); return; }
+                        if (Platform.OS === 'web') { if (typeof window !== 'undefined') window.open(url, '_blank'); }
+                        else await Linking.openURL(url);
+                      }}
+                    >
+                      <PillBtn onDark={heroPalette.dark} variant="surface" size="sm" icon={Printer}>
+                        {shpBusy ? 'Alınıyor…' : 'Kargo Etiketi'}
                       </PillBtn>
                     </Pressable>
                   )}
@@ -1842,6 +1969,15 @@ export function OrderDetailScreenV2() {
                           try {
                             await supabase.functions.invoke('banabikurye-dispatch', {
                               body: { action: 'cancel', order_id: activeDelivery.external_tracking_no },
+                            });
+                          } catch { /* yine de yerel iptal et */ }
+                        }
+                        // Shipink ise gerçek gönderiyi de iptal et (best-effort).
+                        // İptal ucu takip numarasını DEĞİL gönderi id'sini ister.
+                        if (activeDelivery.external_provider === 'Shipink' && activeDelivery.external_tracking_code) {
+                          try {
+                            await supabase.functions.invoke('shipink-dispatch', {
+                              body: { action: 'cancel', shipment_id: activeDelivery.external_tracking_code },
                             });
                           } catch { /* yine de yerel iptal et */ }
                         }
@@ -1862,8 +1998,8 @@ export function OrderDetailScreenV2() {
 
             {/* Status timeline — "Hazır" yok; 4. adım Kurye (elden teslimde gizli) */}
             <StepsTimelineX
-              steps={(order as any)?.delivery_method === 'elden' ? STATUS_LABELS_ELDEN : STATUS_LABELS}
-              current={statusIdx >= 0 ? statusIdx : 0}
+              steps={isElden ? STATUS_LABELS_ELDEN : STATUS_LABELS}
+              current={statusIdx}
               theme={progressTheme}
               variant={heroPalette.dark ? 'dark' : 'light'}
               // Renkli (yeşil) hero'da accent = hero-bg olacağından daireler kaybolur:
@@ -1968,7 +2104,7 @@ export function OrderDetailScreenV2() {
                 const techName = activeStage?.technician?.full_name ?? null;
                 if (techName) {
                   return (
-                    <View className="flex-row items-center gap-2.5 pl-2 pr-3.5 py-2 rounded-full bg-white/10">
+                    <View className="flex-row items-center gap-2.5 ps-2 pe-3.5 py-2 rounded-full bg-white/10">
                       <Avatar name={techName} size={32} bg={panelAccent} fg="#0A0A0A" />
                       <View>
                         <Text className="text-[13px] font-medium text-white">{techName.split(' ')[0]}</Text>
@@ -1980,7 +2116,7 @@ export function OrderDetailScreenV2() {
                 return (
                   <Pressable
                     onPress={isManager && reassignTargetStage ? () => setReassignOpen(true) : undefined}
-                    className="flex-row items-center gap-2.5 pl-2 pr-3.5 py-2 rounded-full bg-white/5 border border-white/10"
+                    className="flex-row items-center gap-2.5 ps-2 pe-3.5 py-2 rounded-full bg-white/5 border border-white/10"
                     style={isManager ? ({
                       // @ts-ignore web
                       cursor: 'pointer',
@@ -2021,7 +2157,7 @@ export function OrderDetailScreenV2() {
                       <View style={{ width: 96, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.14)', overflow: 'hidden' }}>
                         <View style={{ width: `${l.progressPct}%`, height: 6, borderRadius: 3, backgroundColor: panelAccent }} />
                       </View>
-                      <Text style={{ width: 36, textAlign: 'right', color: 'rgba(255,255,255,0.9)', fontSize: 11.5, fontWeight: '700' }}>{l.progressPct}%</Text>
+                      <Text style={{ width: 36, textAlign: 'end' as any, color: 'rgba(255,255,255,0.9)', fontSize: 11.5, fontWeight: '700' }}>{l.progressPct}%</Text>
                     </View>
                   );
                 })}
@@ -2091,7 +2227,7 @@ export function OrderDetailScreenV2() {
                 const m = Math.floor((sec % 3600) / 60);
                 const s = sec % 60;
                 const pad = (n: number) => n.toString().padStart(2, '0');
-                if (d > 0) return `${d}g ${pad(h)}:${pad(m)}:${pad(s)}`;
+                if (d > 0) return `${d}${autoT('g')} ${pad(h)}:${pad(m)}:${pad(s)}`;
                 return `${pad(h)}:${pad(m)}:${pad(s)}`;
               };
 
@@ -2283,7 +2419,7 @@ export function OrderDetailScreenV2() {
                     <View className="flex-1">
                       <LinearProgressX value={rowPct} theme={progressTheme} compact hideLabel animate />
                     </View>
-                    <Text className="text-[11px] text-ink-500 text-right" style={{ width: 32 }}>{rowPct}%</Text>
+                    <Text className="text-[11px] text-ink-500" style={{ textAlign: 'end' as any, width: 32 }}>{rowPct}%</Text>
                   </View>
                   <View className="items-end" style={{ flex: 0.4 }}>
                     <ArrowUpRight size={16} color="#9A9A9A" strokeWidth={1.6} />
@@ -2564,7 +2700,7 @@ export function OrderDetailScreenV2() {
                 <View className="gap-2">
                   <View className="flex-row items-center justify-between py-2 border-t border-black/[0.06]">
                     <Text className="text-[12px] text-ink-500">Çalışma</Text>
-                    <Text className="text-[12px] font-medium text-ink-900" style={{ maxWidth: 220, textAlign: 'right' }}>
+                    <Text className="text-[12px] font-medium text-ink-900" style={{ maxWidth: 220, textAlign: 'end' as any }}>
                       {(() => {
                         // Aktif dişe ait spesifik işlem — 3 katmanlı resolve
                         if (activeTooth == null) return order.work_type || '—';
@@ -2670,6 +2806,7 @@ export function OrderDetailScreenV2() {
               <FilesList
                 photos={[...(order.photos ?? []), ...inheritedFiles.photos]}
                 signedUrls={{ ...(signedUrls ?? {}), ...inheritedFiles.urls }}
+                thumbUrls={thumbUrls}
                 workOrderId={order.id}
                 accentColor={panelAccent}
                 onUploaded={refetch}
@@ -2741,7 +2878,7 @@ export function OrderDetailScreenV2() {
                   </Text>
                 </View>
                 {profit.margin_pct != null && (
-                  <Text className="text-[10px] text-white/50 text-right">
+                  <Text className="text-[10px] text-white/50" style={{ textAlign: 'end' as any }}>
                     Marj %{(Number(profit.margin_pct) || 0).toFixed(0)}
                   </Text>
                 )}
@@ -3111,7 +3248,7 @@ export function OrderDetailScreenV2() {
                     // QR SVG (DOM'da rendered BrandedQR/QRCode)
                     const qrSvgHtml = (document.getElementById('dental-qr-container') as HTMLElement | null)
                       ?.querySelector('svg')?.outerHTML ?? '';
-                    const html = await buildPrintHtmlV2Async(order, qrUrl, chatMessages, qrSvgHtml);
+                    const html = await buildOrderPrintDoc(order, qrUrl, chatMessages, qrSvgHtml);
                     const w = window.open('', '_blank');
                     if (!w) return;
                     w.document.write(html + '<script>window.onload=()=>setTimeout(()=>window.print(),400);<\/script>');
@@ -3212,7 +3349,7 @@ export function OrderDetailScreenV2() {
                       ['Model', order.model_type === 'dijital' ? 'Dijital' : order.model_type === 'fiziksel' ? 'Fiziksel' : order.model_type ?? '—'],
                       ['Teknisyen', order.assignee?.full_name ?? '—'],
                     ].map(([lbl, val], i) => (
-                      <View key={i} className={`flex-1 px-2.5 py-1.5 ${i < 2 ? 'border-r border-black/[0.04]' : ''}`}>
+                      <View key={i} className="flex-1 px-2.5 py-1.5" style={i < 2 ? { borderEndWidth: 1, borderEndColor: 'rgba(0,0,0,0.04)' } : undefined}>
                         <Text className="text-[7px] font-semibold uppercase text-ink-400" style={{ letterSpacing: 0.3 }}>{lbl}</Text>
                         <Text className="text-[10px] font-medium text-ink-900 mt-0.5">{val}</Text>
                       </View>
@@ -3245,18 +3382,18 @@ export function OrderDetailScreenV2() {
                     <View className="flex-row px-2.5 py-1" style={{ backgroundColor: '#FAFAF5' }}>
                       <Text className="flex-1 text-[7px] font-bold uppercase text-ink-400" style={{ letterSpacing: 0.6 }}>Kalem / Hizmet</Text>
                       <Text className="text-[7px] font-bold uppercase text-ink-400 text-center" style={{ width: 40, letterSpacing: 0.6 }}>Adet</Text>
-                      <Text className="text-[7px] font-bold uppercase text-ink-400 text-right" style={{ width: 60, letterSpacing: 0.6 }}>Fiyat</Text>
+                      <Text className="text-[7px] font-bold uppercase text-ink-400" style={{ textAlign: 'end' as any, width: 60, letterSpacing: 0.6 }}>Fiyat</Text>
                     </View>
                     {(order.order_items ?? []).map((it: any, i: number) => (
                       <View key={i} className="flex-row px-2.5 py-1.5 border-t border-black/[0.03]">
-                        <View className="flex-1 pr-2">
+                        <View className="flex-1 pe-2">
                           <Text className="text-[10px] text-ink-900">{it.name}</Text>
                           {!!it.notes && String(it.notes).trim().length > 0 && (
                             <Text className="text-[8.5px] text-ink-500 mt-0.5">{it.notes}</Text>
                           )}
                         </View>
                         <Text className="text-[10px] text-ink-500 text-center" style={{ width: 40 }}>{it.quantity}</Text>
-                        <Text className="text-[10px] text-ink-900 text-right" style={{ width: 60 }}>
+                        <Text className="text-[10px] text-ink-900" style={{ textAlign: 'end' as any, width: 60 }}>
                           {it.price > 0 ? `₺${it.price.toLocaleString('tr-TR')}` : '—'}
                         </Text>
                       </View>
@@ -3360,7 +3497,7 @@ function ActivityFeed({ history }: { history: StatusHistory[] }) {
   );
   return (
     <View className="relative">
-      <View className="absolute bg-black/[0.06]" style={{ left: 13, top: 14, bottom: 14, width: 1.5 }} />
+      <View className="absolute bg-black/[0.06]" style={{ start: 13, top: 14, bottom: 14, width: 1.5 }} />
       {sorted.map((h, i) => {
         const who = (h as any).changer?.full_name ?? 'Sistem';
         const newCfg = STATUS_CONFIG[h.new_status];
@@ -3419,6 +3556,16 @@ function fileCategoryOf(pathOrName: string): FileCat {
   if (/\.(jpe?g|png|webp|gif|bmp|heic|heif|avif|svg)$/.test(p)) return 'photo';
   return 'doc';
 }
+/** Galeri ileri/geri düğmesi — görselin dikey ortasında yüzer. */
+const galleryNavBtn = {
+  position: 'absolute' as const,
+  top: '50%' as any, marginTop: -15,
+  width: 30, height: 30, borderRadius: 15,
+  alignItems: 'center' as const, justifyContent: 'center' as const,
+  backgroundColor: 'rgba(255,255,255,0.92)',
+  ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 2px 8px rgba(15,23,42,0.16)' } as any) : {}),
+};
+
 const FILE_CAT_META: { key: FileCat; label: string }[] = [
   { key: 'scan',  label: 'Taramalar' },
   { key: 'photo', label: 'Fotoğraflar' },
@@ -3426,10 +3573,12 @@ const FILE_CAT_META: { key: FileCat; label: string }[] = [
 ];
 
 function FilesList({
-  photos, signedUrls, workOrderId, accentColor, onUploaded,
+  photos, signedUrls, thumbUrls, workOrderId, accentColor, onUploaded,
 }: {
   photos: WorkOrderPhoto[];
   signedUrls: Record<string, string>;
+  /** Küçük boy URL'ler (Supabase render/image). Boşsa tam boya düşülür. */
+  thumbUrls?: Record<string, string>;
   workOrderId: string;
   accentColor: string;
   onUploaded?: () => void;
@@ -3616,12 +3765,18 @@ function FilesList({
         const filename = f.caption ?? f.storage_path.split('/').pop() ?? 'Resim';
         const isImg = /\.(png|jpe?g|webp|gif|heic|heif|bmp)$/i.test(f.storage_path);
         const url = signedUrls[f.storage_path] ?? (f as any).signed_url ?? null;
-        return isImg && url ? { id: f.id, name: filename, url } : null;
+        // Lightbox alt şeridi küçük boyu kullanır; yoksa tam boya düşer.
+        const thumb = (thumbUrls ?? {})[f.storage_path] ?? url;
+        return isImg && url ? { id: f.id, name: filename, url, thumb } : null;
       })
-      .filter(Boolean) as Array<{ id: string; name: string; url: string }>;
+      .filter(Boolean) as Array<{ id: string; name: string; url: string; thumb: string }>;
   }, [photos, signedUrls]);
 
   // Kategori grupları — Taramalar / Fotoğraflar / Belgeler (boş olanlar gizli)
+  // Fotoğraf kategorisi galeri olarak gösterilir: üstte büyük görsel, altta
+  // küçük karolar. Silme YOK — detay ekranı okuma/inceleme alanı.
+  const [galleryId, setGalleryId] = useState<string | null>(null);
+
   const photoGroups = useMemo(() => {
     const by: Record<FileCat, WorkOrderPhoto[]> = { scan: [], photo: [], doc: [] };
     for (const f of photos) by[fileCategoryOf(f.caption || f.storage_path)].push(f);
@@ -3680,12 +3835,14 @@ function FilesList({
             <Pressable
               onPress={() => setOpenCats(s => ({ ...s, [g.key]: !s[g.key] }))}
               hitSlop={4}
-              style={({ hovered }: any) => ({
+              /* NOT: object style ZORUNLU — NativeWind v4'te fonksiyon-stilli
+                 Pressable native'de stili düşürüp satırı column'a çeviriyor;
+                 rozet tam-genişlik bar oluyordu (web'de sorun yok). */
+              style={{
                 flexDirection: 'row', alignItems: 'center', gap: 7,
                 paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8,
-                backgroundColor: hovered ? '#F8FAFC' : 'transparent',
                 ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-              })}
+              }}
             >
               {isCollapsed ? <ChevronRight size={14} color="#64748B" strokeWidth={2} /> : <ChevronDown size={14} color="#64748B" strokeWidth={2} />}
               <Text style={{ flex: 1, fontSize: 11, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase', color: '#475569' }}>{g.label}</Text>
@@ -3693,18 +3850,121 @@ function FilesList({
                 <Text style={{ fontSize: 10, fontWeight: '800', color: catColor }}>{g.files.length}</Text>
               </View>
             </Pressable>
-            {!isCollapsed && g.files.map((f) => {
+            {!isCollapsed && g.key === 'photo' && (() => {
+              // İmzalı URL'i olan görseller — henüz gelmemiş olanlar atlanır,
+              // boş kutu göstermek yerine geldiğinde kendiliğinden belirir.
+              const imgs = g.files
+                .map(f => ({
+                  f,
+                  url: signedUrls[f.storage_path] ?? (f as any).signed_url ?? null,
+                  // Şerit karoları küçük boyu kullanır; henüz gelmediyse tam boya düşer.
+                  thumb: (thumbUrls ?? {})[f.storage_path] ?? signedUrls[f.storage_path] ?? (f as any).signed_url ?? null,
+                }))
+                .filter(x => !!x.url) as Array<{ f: typeof g.files[number]; url: string; thumb: string }>;
+              if (!imgs.length) return null;
+              const cur = imgs.find(x => x.f.id === galleryId) ?? imgs[0];
+              const idx = imgs.findIndex(x => x.f.id === cur.f.id);
+              const step = (d: number) => setGalleryId(imgs[(idx + d + imgs.length) % imgs.length].f.id);
+              return (
+                <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
+                  {/* Büyük görsel — tıklayınca mevcut önizleyici açılır */}
+                  <View style={{ position: 'relative' }}>
+                    <Pressable
+                      onPress={() => openPreview(cur.f)}
+                      style={{
+                        width: '100%', height: 220, borderRadius: 12, overflow: 'hidden',
+                        backgroundColor: '#0F172A08',
+                        ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                      }}
+                    >
+                      <Image source={{ uri: cur.url }} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
+                    </Pressable>
+                    {imgs.length > 1 && (
+                      <>
+                        {/* Konum start/end ile aynalanır; ok da aynalanmazsa
+                            RTL'de "geri" düğmesi ileri ok gösterirdi. */}
+                        <Pressable onPress={() => step(-1)} style={[galleryNavBtn, isRTL() ? { right: 8 } : { left: 8 }]} hitSlop={8}>
+                          {isRTL()
+                            ? <ChevronRight size={16} color="#0F172A" strokeWidth={2} />
+                            : <ChevronLeft size={16} color="#0F172A" strokeWidth={2} />}
+                        </Pressable>
+                        <Pressable onPress={() => step(1)} style={[galleryNavBtn, isRTL() ? { left: 8 } : { right: 8 }]} hitSlop={8}>
+                          {isRTL()
+                            ? <ChevronLeft size={16} color="#0F172A" strokeWidth={2} />
+                            : <ChevronRight size={16} color="#0F172A" strokeWidth={2} />}
+                        </Pressable>
+                        <View style={{
+                          position: 'absolute', bottom: 8, alignSelf: 'center',
+                          paddingHorizontal: 9, paddingVertical: 3, borderRadius: 999,
+                          backgroundColor: 'rgba(15,23,42,0.72)',
+                        }}>
+                          <Text style={{ fontSize: 10.5, color: '#FFF', fontWeight: '600' }}>{idx + 1} / {imgs.length}</Text>
+                        </View>
+                      </>
+                    )}
+                  </View>
+                  {/* Şerit — tek sıra, bitişik karolar; seçili olan genişler.
+                      Sarmalayan ızgara yerine yatay kaydırma: 20 fotoğrafta bile
+                      tek satır kalır, büyük görselin altındaki yükseklik sabit. */}
+                  {imgs.length > 1 && (
+                    /* Sabit genişlik + yatay kaydırma yerine ESNEK pay: kaç
+                       fotoğraf olursa olsun hepsi tek sıraya sığar, taşma yok.
+                       Seçili karo 2.4 kat pay alıp öne çıkar.
+                       Aradaki beyaz çizgi: satır zemini beyaz + 2px gap. */
+                    <View style={{
+                      flexDirection: 'row', marginTop: 8, gap: 2,
+                      borderRadius: 8, overflow: 'hidden', backgroundColor: '#FFFFFF',
+                    }}>
+                      {imgs.map(x => {
+                        const active = x.f.id === cur.f.id;
+                        return (
+                          <Pressable
+                            key={x.f.id}
+                            onPress={() => setGalleryId(x.f.id)}
+                            style={{
+                              flex: active ? 2.4 : 1,
+                              height: 68, minWidth: 0,
+                              backgroundColor: '#EEF2F6',
+                              opacity: active ? 1 : 0.78,
+                              ...(Platform.OS === 'web'
+                                ? ({ cursor: 'pointer',
+                                     transition: 'flex-grow 220ms ease-out, opacity 220ms ease-out' } as any)
+                                : {}),
+                            }}
+                          >
+                            <Image source={{ uri: x.thumb }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
+              );
+            })()}
+            {!isCollapsed && g.key !== 'photo' && g.files.map((f) => {
             const ext = (f.storage_path.split('.').pop() ?? '').toUpperCase().slice(0, 4);
             const isImage = /\.(jpe?g|png|webp|gif|bmp)$/i.test(f.storage_path);
-            const color = isImage ? '#10B981' : '#3B82F6';
-            const Icon = isImage ? ImageIcon : FileIcon;
+            // Tür ayrımı: STL/PLY/OBJ, ZIP, HTML ve PDF ayrı renk+ikon alır.
+            // Öncesinde görsel olmayan her şey aynı mavi dosya ikonuydu.
+            const lowExt = ext.toLowerCase();
+            const isMesh = ['stl', 'ply', 'obj', '3mf'].includes(lowExt);
+            const isZip  = ['zip', 'rar', '7z', 'gz'].includes(lowExt);
+            const isHtml = ['html', 'htm'].includes(lowExt);
+            const isPdf  = lowExt === 'pdf';
+            const color = isImage ? '#10B981'
+                        : isMesh ? '#3B82F6'
+                        : isZip  ? '#D97706'
+                        : isHtml ? '#8B5CF6'
+                        : isPdf  ? '#DC2626'
+                        : '#64748B';
+            const Icon = isImage ? ImageIcon : isMesh ? Layers : FileIcon;
             const filename = f.caption ?? f.storage_path.split('/').pop() ?? '—';
             return (
               <View
                 key={f.id}
                 style={{
                   flexDirection: 'row', alignItems: 'center', gap: 9,
-                  paddingHorizontal: 12, paddingVertical: 5, paddingLeft: 28,
+                  paddingHorizontal: 12, paddingVertical: 5, paddingStart: 28,
                 }}
               >
                 <View
@@ -3732,12 +3992,11 @@ function FilesList({
                   hitSlop={6}
                   // @ts-ignore web tooltip
                   title={isArchiveExt(f.storage_path) ? 'Zip aç ve 3D göster' : 'Önizle'}
-                  style={({ hovered }: any) => ({
+                  style={{
                     width: 24, height: 24, borderRadius: 6,
                     alignItems: 'center', justifyContent: 'center',
-                    backgroundColor: hovered ? '#F1F5F9' : 'transparent',
                     ...(Platform.OS === 'web' && extractingId !== f.id ? { cursor: 'pointer' } as any : {}),
-                  })}
+                  }}
                 >
                   {extractingId === f.id
                     ? <ActivityIndicator size="small" color="#475569" />
@@ -3749,12 +4008,11 @@ function FilesList({
                   hitSlop={6}
                   // @ts-ignore web tooltip
                   title="İndir"
-                  style={({ hovered }: any) => ({
+                  style={{
                     width: 24, height: 24, borderRadius: 6,
                     alignItems: 'center', justifyContent: 'center',
-                    backgroundColor: hovered ? '#F1F5F9' : 'transparent',
                     ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                  })}
+                  }}
                 >
                   <Download size={12} color="#475569" strokeWidth={1.8} />
                 </Pressable>
@@ -3803,15 +4061,21 @@ function FilesList({
           files={[viewer3DFile]}
           title={viewer3DFile.name}
           onClose={() => setViewer3DFile(null)}
+          onThumbnail={(dataUrl) => {
+            // Mesh zaten yüklü — küçük resmi bir kez üretip sakla. Sonraki
+            // açılışlarda dosya listesi 16-29 MB indirmeden önizleme gösterir.
+            const f = photos.find(p => p.id === viewer3DFile.id);
+            if (f?.storage_path) void saveMeshThumb(f.storage_path, dataUrl);
+          }}
         />
       )}
 
       {/* Görsel önizleme — zoom (scroll/pinch) + pan + next/prev + safe-area (uygulama-içi).
           Zip içi görseller varsa onlar arasında gezilir. */}
       {imageViewer && (() => {
-        const src = (zipImages ?? referenceImages) as { url: string; name: string }[];
+        const src = (zipImages ?? referenceImages) as Array<{ url: string; name: string; thumb?: string }>;
         const lbImages = src.length
-          ? src.map(r => ({ url: r.url, name: r.name }))
+          ? src.map(r => ({ url: r.url, name: r.name, thumb: r.thumb }))
           : [imageViewer];
         let lbIndex = lbImages.findIndex(im => im.url === imageViewer.url);
         if (lbIndex < 0) { lbImages.unshift(imageViewer); lbIndex = 0; }
@@ -3935,9 +4199,9 @@ function timeAgo(iso: string): string {
   const d = new Date(iso);
   const diff = (Date.now() - d.getTime()) / 1000;
   if (diff < 60)        return 'az önce';
-  if (diff < 3600)      return `${Math.floor(diff / 60)} dk önce`;
-  if (diff < 86400)     return `${Math.floor(diff / 3600)} sa önce`;
-  if (diff < 86400 * 7) return `${Math.floor(diff / 86400)} g önce`;
+  if (diff < 3600)      return `${Math.floor(diff / 60)} ${autoT('dk önce')}`;
+  if (diff < 86400)     return `${Math.floor(diff / 3600)} ${autoT('sa önce')}`;
+  if (diff < 86400 * 7) return `${Math.floor(diff / 86400)} ${autoT('g önce')}`;
   return d.toLocaleDateString(localeTag(), { day: '2-digit', month: 'short' });
 }
 
@@ -3998,7 +4262,7 @@ function OrderChatPopup({
             onPress={onClose}
             className="absolute z-10 w-9 h-9 rounded-full items-center justify-center bg-white border border-black/[0.06]"
             style={{
-              top: 14, right: 14,
+              top: 14, end: 14,
               // @ts-ignore web shadow
               boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
             }}
@@ -4017,96 +4281,6 @@ function OrderChatPopup({
       </View>
     </Modal>
   );
-}
-
-// ── Print HTML — İş Kağıdı (yeni Nexadent A4 tasarımı, lib/printOrderHtml ortak)
-async function buildPrintHtmlV2Async(
-  order: WorkOrder,
-  _qrUrl: string,
-  messages?: Array<{ content: string; created_at: string; sender?: { full_name: string; user_type: string } | null }>,
-  qrSvgHtml?: string,
-): Promise<string> {
-  const { buildOrderPrintHtml } = await import('../../../lib/printOrderHtml');
-  const { TOOTH_PATHS, TOOTH_LABEL_POS } = await import('../assets/toothPaths');
-
-  // Lab info fetch
-  let lab: { name: string; phone?: string | null; logoUrl?: string | null } = { name: 'Nexadent', phone: null, logoUrl: null };
-  let logoOnly = false;
-  if ((order as any).lab_id) {
-    const { data } = await supabase.from('labs').select('name, phone, logo_url, sidebar_brand_mode').eq('id', (order as any).lab_id).maybeSingle();
-    if (data) {
-      lab = { name: data.name, phone: data.phone, logoUrl: data.logo_url };
-      logoOnly = (data as any).sidebar_brand_mode === 'logo' && !!data.logo_url;
-    }
-  }
-
-  // Attachments (work_order_photos)
-  const { data: photos } = await supabase
-    .from('work_order_photos')
-    .select('caption, storage_path')
-    .eq('work_order_id', order.id)
-    .order('created_at', { ascending: true });
-  const attachments = (photos ?? []).map(p => ({
-    name: (p as any).caption || ((p as any).storage_path as string).split('/').pop() || 'Dosya',
-  }));
-
-  // Messages mapping
-  const mappedMessages = (messages ?? []).map(m => ({
-    text: m.content,
-    timestamp: m.created_at,
-    senderName: m.sender?.full_name ?? 'Hekim',
-    type: 'text' as const,
-  }));
-
-  // ── Diş → işlem haritası (toothOps) ─────────────────────────────────────
-  // Öncelik:
-  //   1) order_items.tooth_numbers dolu → her item kendi diş+isim'ini verir
-  //   2) work_orders.work_type virgülle birleşik segmentler tooth_numbers ile aynı uzunlukta
-  //   3) Fallback: tek bir work_type
-  const toothNumbersArr = order.tooth_numbers ?? [];
-  const orderItems = (order as any).order_items as Array<{ name: string; quantity: number; tooth_numbers?: number[] | null }> | undefined;
-  let toothOps: Array<{ tooth: number; workType: string; shade?: string | null; material?: string | null }> = [];
-
-  const itemsWithTeeth = (orderItems ?? []).filter(it => Array.isArray(it.tooth_numbers) && it.tooth_numbers!.length > 0);
-  if (itemsWithTeeth.length > 0) {
-    itemsWithTeeth.forEach(it => {
-      it.tooth_numbers!.forEach(t => {
-        toothOps.push({ tooth: t, workType: it.name, shade: order.shade ?? null });
-      });
-    });
-  } else {
-    const wtSegs = (order.work_type ?? '').split(/,\s*/).map(s => s.trim()).filter(Boolean);
-    if (wtSegs.length === toothNumbersArr.length && wtSegs.length > 0) {
-      toothOps = toothNumbersArr.map((t, i) => ({ tooth: t, workType: wtSegs[i], shade: order.shade ?? null }));
-    }
-  }
-
-  return buildOrderPrintHtml({
-    orderNumber: order.order_number,
-    createdAt: order.created_at,
-    isUrgent: !!order.is_urgent,
-    patient: { name: order.patient_name ?? '—', gender: order.patient_gender ?? null },
-    doctor: { name: order.doctor?.full_name ?? '—', phone: order.doctor?.phone ?? null },
-    clinic: { name: order.doctor?.clinic_name ?? order.doctor?.clinic?.name ?? '—' },
-    lab,
-    workType: order.work_type ?? '—',
-    shade: order.shade,
-    modelType: order.model_type,
-    machineType: order.machine_type,
-    deliveryDate: order.delivery_date,
-    deliveryMethod: '',
-    toothNumbers: toothNumbersArr,
-    toothOps: toothOps.length > 0 ? toothOps : undefined,
-    notes: order.notes,
-    labNotes: order.lab_notes,
-    attachments,
-    messages: mappedMessages,
-    qrSvgHtml,
-    qrUrl: _qrUrl,
-    logoOnly,
-    toothPaths: TOOTH_PATHS,
-    toothLabelPos: TOOTH_LABEL_POS,
-  });
 }
 
 // Legacy compat — eski callers için stub. Yeni HTML async olduğundan callers async olmalı.

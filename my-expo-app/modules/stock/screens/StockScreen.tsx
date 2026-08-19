@@ -1,4 +1,4 @@
-import { localeTag } from '../../../core/i18n';
+import { localeTag, isRTL, weekdayOffset } from '../../../core/i18n';
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View, Text, ScrollView, Pressable,
@@ -56,7 +56,7 @@ import {
   Package, Plus, Search, X, Pencil, Trash2,
   ArrowDownCircle, ArrowUpCircle, AlertTriangle, AlertCircle,
   CheckCircle, XCircle, Filter, ChevronDown, ChevronUp,
-  ChevronRight, Tag, Grid3x3, ShoppingCart, Clock,
+  ChevronRight, ChevronLeft, Tag, Grid3x3, ShoppingCart, Clock,
   TrendingDown, Flame, PlusCircle, Check, ArrowLeftRight,
   DatabaseZap, Inbox, BarChart3, TrendingUp, Users,
   Calendar, Zap, Layers, MapPin, QrCode, Copy, Warehouse, ScanSearch,
@@ -207,8 +207,8 @@ interface StockItem {
   location?: string | null;
   barcode?: string | null;
   // Phase 2: multi-currency
-  default_purchase_currency?: 'TRY' | 'EUR' | 'USD' | 'GBP' | null;
-  last_unit_cost_currency?:   'TRY' | 'EUR' | 'USD' | 'GBP' | null;
+  default_purchase_currency?: Currency | null;
+  last_unit_cost_currency?:   Currency | null;
   // Faz 3: paket içeriği (ör. 1 Adet = 50 gr). Doluysa tüketim içerik biriminde
   // (gr) girilir, stoktan kesirli adet (gr ÷ pack_size) düşer; unit_cost = paket başı.
   pack_size?: number | null;
@@ -269,8 +269,8 @@ function StockHeroCard({ accentColor, eyebrow, value, sub, icon: HeadIcon, stats
   const DisplayFont = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
   return (
     <View style={{ borderRadius: 20, overflow: 'hidden', backgroundColor: accentColor, padding: 18, position: 'relative' }}>
-      <View style={{ position: 'absolute', top: -50, right: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.20)' }} />
-      <View style={{ position: 'absolute', bottom: -60, left: -30, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+      <View style={{ position: 'absolute', top: -50, end: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.20)' }} />
+      <View style={{ position: 'absolute', bottom: -60, start: -30, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(255,255,255,0.12)' }} />
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
         <View style={{ flex: 1, minWidth: 220 }}>
           <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)', marginBottom: 8 }}>{eyebrow}</Text>
@@ -997,7 +997,7 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                           <View style={{
                             paddingHorizontal: 14, height: '100%',
                             justifyContent: 'center',
-                            borderLeftWidth: 1, borderLeftColor: 'rgba(0,0,0,0.06)',
+                            borderStartWidth: 1, borderStartColor: 'rgba(0,0,0,0.06)',
                             backgroundColor: 'rgba(0,0,0,0.02)',
                           }}>
                             <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[700], letterSpacing: 0.4 }}>
@@ -1008,7 +1008,7 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                           <View style={{
                             paddingHorizontal: 12, height: '100%',
                             justifyContent: 'center',
-                            borderLeftWidth: 1, borderLeftColor: 'rgba(0,0,0,0.06)',
+                            borderStartWidth: 1, borderStartColor: 'rgba(0,0,0,0.06)',
                             backgroundColor: 'rgba(217,119,6,0.06)',
                           }}>
                             <Text style={{ fontSize: 11, fontWeight: '600', color: '#92400E' }}>
@@ -1545,7 +1545,7 @@ function PetalChart({ data, size = 216 }: { data: { label: string; value: number
 
   return (
     <View style={{ width: size, height: size }}>
-      <Svg width={size} height={size} style={{ position: 'absolute', top: 0, left: 0 }}>
+      <Svg width={size} height={size} style={{ position: 'absolute', top: 0, start: 0 }}>
         {data.map((d, idx) => {
           const s0 = idx * sliceDeg - 90 + gap / 2;
           const e0 = s0 + sliceDeg - gap;
@@ -1692,8 +1692,8 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
         position: 'relative',
       }}>
         {/* Dekoratif beyaz bloblar */}
-        <View style={{ position: 'absolute', top: -50, right: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.20)' }} />
-        <View style={{ position: 'absolute', bottom: -60, left: -30, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+        <View style={{ position: 'absolute', top: -50, end: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.20)' }} />
+        <View style={{ position: 'absolute', bottom: -60, start: -30, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(255,255,255,0.12)' }} />
 
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
           <View style={{ flex: 1, minWidth: 220 }}>
@@ -1822,7 +1822,7 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
                   <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '600', color: '#0A0A0A' }}>{t.label}</Text>
                   <Text numberOfLines={1} style={{ fontSize: 11, color: '#9A9A9A' }}>{t.detail}</Text>
                 </View>
-                <ChevronRight size={15} color="#9A9A9A" strokeWidth={1.8} />
+                {isRTL() ? <ChevronLeft size={15} color="#9A9A9A" strokeWidth={1.8} /> : <ChevronRight size={15} color="#9A9A9A" strokeWidth={1.8} />}
               </Pressable>
             ))}
           </View>
@@ -2739,8 +2739,8 @@ function getAnalyticsRange(r: AnalyticsRange): { from: string; to: string } {
   const pad = (n: number) => String(n).padStart(2, '0');
   const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   if (r === 'thisWeek') {
-    const day = now.getDay() || 7;
-    const start = new Date(now); start.setDate(now.getDate() - day + 1);
+    // Hafta başlangıcı bölgeye bağlı: TR/AB Pazartesi, İran Cumartesi (weekdayOffset).
+    const start = new Date(now); start.setDate(now.getDate() - weekdayOffset(now.getDay()));
     return { from: ymd(start), to: ymd(now) };
   }
   if (r === 'thisMonth') return { from: ymd(new Date(yyyy, mm, 1)), to: ymd(new Date(yyyy, mm + 1, 0)) };
@@ -2959,8 +2959,8 @@ function AnalyticsTab({ accentColor }: { accentColor: string }) {
             borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)',
           }}>
             <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500] }}>TEKNİSYEN</Text>
-            <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], textAlign: 'right' }}>KULLANIM</Text>
-            <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], textAlign: 'right' }}>FİRE</Text>
+            <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], textAlign: 'end' as any }}>KULLANIM</Text>
+            <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], textAlign: 'end' as any }}>FİRE</Text>
             <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], textAlign: 'center' }}>VERİM</Text>
           </View>
 
@@ -3035,8 +3035,8 @@ function AnalyticsTab({ accentColor }: { accentColor: string }) {
             borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)',
           }}>
             <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500] }}>MATERYAL</Text>
-            <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], textAlign: 'right' }}>MİKTAR</Text>
-            <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], textAlign: 'right' }}>MALİYET</Text>
+            <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], textAlign: 'end' as any }}>MİKTAR</Text>
+            <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], textAlign: 'end' as any }}>MALİYET</Text>
           </View>
 
           {wasteRows.length === 0 ? (
@@ -3332,7 +3332,7 @@ function ForecastTab({ items, accentColor }: { items: StockItem[]; accentColor: 
             );
           })}
         </View>
-        <View style={{ flexDirection: 'row', gap: 4, marginLeft: isDesktop ? 12 : 0 }}>
+        <View style={{ flexDirection: 'row', gap: 4, marginStart: isDesktop ? 12 : 0 }}>
           {([
             { key: 'all' as const,      label: 'Tümü',    count: forecasts.length, color: accentColor },
             { key: 'critical' as const, label: 'Kritik',  count: criticalCount,    color: CHIP_TONES.danger.fg },
@@ -3561,7 +3561,7 @@ function CostTab({ items, accentColor }: CostTabProps) {
 
       {/* ── Sort pills ── */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <Text style={{ fontSize: 12, color: '#9A9A9A', marginRight: 4, fontWeight: '500' }}>Sırala:</Text>
+        <Text style={{ fontSize: 12, color: '#9A9A9A', marginEnd: 4, fontWeight: '500' }}>Sırala:</Text>
         {([
           { key: 'value' as const, label: 'Değer' },
           { key: 'cost' as const,  label: 'Birim maliyet' },
@@ -3598,9 +3598,9 @@ function CostTab({ items, accentColor }: CostTabProps) {
         }}>
           <Text style={{ ...colHeader, flex: 1 }}>ÜRÜN</Text>
           {isDesktop && <Text style={{ ...colHeader, width: 100 }}>KATEGORI</Text>}
-          <Text style={{ ...colHeader, width: 100, textAlign: 'right' }}>BIRIM MALIYET</Text>
-          <Text style={{ ...colHeader, width: 80, textAlign: 'right' }}>MIKTAR</Text>
-          <Text style={{ ...colHeader, width: 110, textAlign: 'right' }}>TOPLAM DEGER</Text>
+          <Text style={{ ...colHeader, width: 100, textAlign: 'end' as any }}>BIRIM MALIYET</Text>
+          <Text style={{ ...colHeader, width: 80, textAlign: 'end' as any }}>MIKTAR</Text>
+          <Text style={{ ...colHeader, width: 110, textAlign: 'end' as any }}>TOPLAM DEGER</Text>
           {isDesktop && <Text style={{ ...colHeader, width: 80, textAlign: 'center' }}>DEGISIM</Text>}
         </View>
 
@@ -3624,13 +3624,13 @@ function CostTab({ items, accentColor }: CostTabProps) {
             {isDesktop && (
               <Text style={{ width: 100, fontSize: 12, color: DS.ink[500] }} numberOfLines={1}>{item.category || '—'}</Text>
             )}
-            <Text style={{ width: 100, textAlign: 'right', fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>
+            <Text style={{ width: 100, textAlign: 'end' as any, fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>
               {item.unit_cost != null && item.unit_cost > 0 ? `${fmt(item.unit_cost)} ${curSym(itemCcy(item))}` : '—'}
             </Text>
-            <Text style={{ width: 80, textAlign: 'right', fontSize: 13, color: DS.ink[700] }}>
+            <Text style={{ width: 80, textAlign: 'end' as any, fontSize: 13, color: DS.ink[700] }}>
               {fmtQtyDual(item.quantity, item.unit, item.pack_size, item.content_unit)}
             </Text>
-            <Text style={{ width: 110, textAlign: 'right', fontSize: 13, fontWeight: '700', color: item.totalValue > 0 ? '#059669' : DS.ink[400] }}>
+            <Text style={{ width: 110, textAlign: 'end' as any, fontSize: 13, fontWeight: '700', color: item.totalValue > 0 ? '#059669' : DS.ink[400] }}>
               {item.totalValue > 0 ? `${fmt(item.totalValue)} ${curSym(itemCcy(item))}` : '—'}
             </Text>
             {isDesktop && (
@@ -3672,10 +3672,10 @@ function CostTab({ items, accentColor }: CostTabProps) {
           <Text style={{ flex: 1, fontSize: 13, fontWeight: '700', color: DS.ink[900] }}>TOPLAM</Text>
           {isDesktop && <View style={{ width: 100 }} />}
           <View style={{ width: 100 }} />
-          <Text style={{ width: 80, textAlign: 'right', fontSize: 13, fontWeight: '600', color: DS.ink[700] }}>
+          <Text style={{ width: 80, textAlign: 'end' as any, fontSize: 13, fontWeight: '600', color: DS.ink[700] }}>
             {items.length} ürün
           </Text>
-          <Text style={{ minWidth: 110, textAlign: 'right', fontSize: 13, fontWeight: '800', color: '#059669' }} numberOfLines={1}>
+          <Text style={{ minWidth: 110, textAlign: 'end' as any, fontSize: 13, fontWeight: '800', color: '#059669' }} numberOfLines={1}>
             {fmtCcyMap(costData.valueByCcy)}
           </Text>
           {isDesktop && <View style={{ width: 80 }} />}
@@ -3690,7 +3690,7 @@ function CostTab({ items, accentColor }: CostTabProps) {
             <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[900] }}>
               Fiyat Gecmisi — {items.find(i => i.id === selectedItem)?.name ?? ''}
             </Text>
-            <Pressable onPress={() => setSelectedItem(null)} style={{ marginLeft: 'auto', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}>
+            <Pressable onPress={() => setSelectedItem(null)} style={{ marginStart: 'auto', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}>
               <X size={14} color={DS.ink[400]} strokeWidth={1.6} />
             </Pressable>
           </View>
@@ -3721,9 +3721,9 @@ function CostTab({ items, accentColor }: CostTabProps) {
           <View style={{ borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)', overflow: 'hidden' }}>
             <View style={{ flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#FAFAFA' }}>
               <Text style={{ ...colHeader, flex: 1 }}>TARIH</Text>
-              <Text style={{ ...colHeader, width: 80, textAlign: 'right' }}>MIKTAR</Text>
-              <Text style={{ ...colHeader, width: 100, textAlign: 'right' }}>BIRIM FIYAT</Text>
-              <Text style={{ ...colHeader, width: 100, textAlign: 'right' }}>TOPLAM</Text>
+              <Text style={{ ...colHeader, width: 80, textAlign: 'end' as any }}>MIKTAR</Text>
+              <Text style={{ ...colHeader, width: 100, textAlign: 'end' as any }}>BIRIM FIYAT</Text>
+              <Text style={{ ...colHeader, width: 100, textAlign: 'end' as any }}>TOPLAM</Text>
             </View>
             {selectedHistory.slice().reverse().slice(0, 20).map((h, idx) => (
               <View key={idx} style={{
@@ -3733,9 +3733,9 @@ function CostTab({ items, accentColor }: CostTabProps) {
                 <Text style={{ flex: 1, fontSize: 12, color: DS.ink[700] }}>
                   {new Date(h.created_at).toLocaleDateString(localeTag(), { day: '2-digit', month: '2-digit', year: 'numeric' })}
                 </Text>
-                <Text style={{ width: 80, textAlign: 'right', fontSize: 12, color: DS.ink[700] }}>{fmtQty(h.quantity)}</Text>
-                <Text style={{ width: 100, textAlign: 'right', fontSize: 12, fontWeight: '600', color: DS.ink[900] }}>{fmt(h.unit_cost)} {curSym(itemCcy(items.find(it => it.id === selectedItem)))}</Text>
-                <Text style={{ width: 100, textAlign: 'right', fontSize: 12, fontWeight: '600', color: '#059669' }}>{fmt(h.unit_cost * h.quantity)} {curSym(itemCcy(items.find(it => it.id === selectedItem)))}</Text>
+                <Text style={{ width: 80, textAlign: 'end' as any, fontSize: 12, color: DS.ink[700] }}>{fmtQty(h.quantity)}</Text>
+                <Text style={{ width: 100, textAlign: 'end' as any, fontSize: 12, fontWeight: '600', color: DS.ink[900] }}>{fmt(h.unit_cost)} {curSym(itemCcy(items.find(it => it.id === selectedItem)))}</Text>
+                <Text style={{ width: 100, textAlign: 'end' as any, fontSize: 12, fontWeight: '600', color: '#059669' }}>{fmt(h.unit_cost * h.quantity)} {curSym(itemCcy(items.find(it => it.id === selectedItem)))}</Text>
               </View>
             ))}
           </View>
@@ -3997,7 +3997,7 @@ function LocationsTab({ items, accentColor, onEditProduct, canEdit = true }: Loc
             <Text style={{ ...colHeader, flex: 1 }}>ÜRÜN</Text>
             <Text style={{ ...colHeader, width: 100 }}>KATEGORI</Text>
             <Text style={{ ...colHeader, width: 130 }}>BARKOD</Text>
-            <Text style={{ ...colHeader, width: 90, textAlign: 'right' }}>MIKTAR</Text>
+            <Text style={{ ...colHeader, width: 90, textAlign: 'end' as any }}>MIKTAR</Text>
             <Text style={{ ...colHeader, width: 80, textAlign: 'center' }}>DURUM</Text>
           </View>
 
@@ -4041,7 +4041,7 @@ function LocationsTab({ items, accentColor, onEditProduct, canEdit = true }: Loc
                     <Text style={{ fontSize: 11, color: DS.ink[300] }}>—</Text>
                   )}
                 </View>
-                <Text style={{ width: 90, textAlign: 'right', fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>
+                <Text style={{ width: 90, textAlign: 'end' as any, fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>
                   {item.quantity} {item.unit || ''}
                 </Text>
                 <View style={{ width: 80, alignItems: 'center' }}>
@@ -4374,8 +4374,8 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
           position: 'relative',
         }}>
           {/* Dekoratif beyaz bloblar */}
-          <View style={{ position: 'absolute', top: -50, right: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.20)' }} />
-          <View style={{ position: 'absolute', bottom: -60, left: -30, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+          <View style={{ position: 'absolute', top: -50, end: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.20)' }} />
+          <View style={{ position: 'absolute', bottom: -60, start: -30, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(255,255,255,0.12)' }} />
 
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
             <View style={{ flex: 1, minWidth: 220 }}>
@@ -4483,7 +4483,7 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
           >
             <Filter size={18} color={activeFilterCount > 0 ? accentColor : T.ink2} strokeWidth={1.6} />
             {activeFilterCount > 0 && (
-              <View style={{ position: 'absolute', top: 3, right: 3, minWidth: 14, height: 14, borderRadius: 7, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3, backgroundColor: accentColor, borderWidth: 1.5, borderColor: '#FFFFFF' }}>
+              <View style={{ position: 'absolute', top: 3, end: 3, minWidth: 14, height: 14, borderRadius: 7, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3, backgroundColor: accentColor, borderWidth: 1.5, borderColor: '#FFFFFF' }}>
                 <Text style={{ fontSize: 9, fontWeight: '700', color: '#FFFFFF' }}>{activeFilterCount}</Text>
               </View>
             )}
@@ -4551,7 +4551,9 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
                     onPress={() => toggleGroup(groupKey)}
                   >
                     {collapsed
-                      ? <ChevronRight size={14} color={T.ink3} strokeWidth={1.8} />
+                      ? (isRTL()
+                          ? <ChevronLeft size={14} color={T.ink3} strokeWidth={1.8} />
+                          : <ChevronRight size={14} color={T.ink3} strokeWidth={1.8} />)
                       : <ChevronDown size={14} color={T.ink3} strokeWidth={1.8} />
                     }
                     <Text style={{ fontSize: 14, fontWeight: '600', color: T.ink, letterSpacing: -0.2 }}>{label}</Text>
@@ -4575,11 +4577,11 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
                     return (
                       <View key={item.id} style={{
                         flexDirection: 'row', alignItems: 'center',
-                        paddingLeft: 16, paddingRight: 16, paddingVertical: 11, minHeight: 48,
+                        paddingStart: 16, paddingEnd: 16, paddingVertical: 11, minHeight: 48,
                         ...(!isLast ? { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' } : {}),
                       }}>
                         {/* Status dot — yuvarlak, soft halo */}
-                        <View style={{ width: 8, height: 8, borderRadius: 4, marginRight: 12, backgroundColor: dotColor }} />
+                        <View style={{ width: 8, height: 8, borderRadius: 4, marginEnd: 12, backgroundColor: dotColor }} />
 
                         <View style={{ flex: 2.8, flexDirection: 'row', alignItems: 'center' }}>
                           <View style={{ flex: 1 }}>
@@ -4610,7 +4612,7 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
                           </View>
                         </View>
                         {isDesktop && (
-                          <View style={{ flex: 2.2, paddingRight: 16, gap: 3 }}>
+                          <View style={{ flex: 2.2, paddingEnd: 16, gap: 3 }}>
                             <StockBar quantity={item.quantity} min={item.min_quantity} />
                             <Text style={{ fontSize: 10, color: DS.ink[400], fontWeight: '500' }}>{item.quantity} / {item.min_quantity}{item.unit ? ` ${item.unit}` : ''}</Text>
                           </View>
@@ -4733,8 +4735,8 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
                           height: 16,
                           borderRadius: 2,
                           backgroundColor: tAcc,
-                          marginLeft: -6,
-                          marginRight: 4,
+                          marginStart: -6,
+                          marginEnd: 4,
                         }}
                       />
                     )}

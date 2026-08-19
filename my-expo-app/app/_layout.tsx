@@ -10,9 +10,10 @@ if (typeof globalThis.WeakRef === 'undefined') {
 import '../global.css'; // NativeWind global stylesheet
 import '../core/i18n'; // i18n çatısı — uygulama başında bir kez init
 import { isRTL } from '../core/i18n';
+import { useLabSettingsStore } from '../core/store/labSettingsStore';
 import { amIPlatformAdmin, publicPlatformStatus } from '../modules/platform/api';
 import { useActiveLabStore } from '../core/store/activeLabStore';
-import { installAutoTranslate } from '../core/i18n/autoTranslate';
+import { installAutoTranslate, isDictReady } from '../core/i18n/autoTranslate';
 installAutoTranslate(); // global Text/TextInput runtime sözlük çevirisi (kaynak değişmeden)
 import { useTranslation } from 'react-i18next';
 import { useEffect, useState } from 'react';
@@ -33,6 +34,7 @@ import { supabase } from '../core/api/supabase';
 import { bootMark } from '../core/debug/bootTrace';
 import { signalAppReady } from '../core/debug/appReady';
 import { BootTracePanel } from '../core/debug/BootTracePanel';
+import { useLabSetupStore } from '../core/store/labSetupStore';
 import { useAuthStore } from '../core/store/authStore';
 import { usePermissionStore } from '../core/store/permissionStore';
 import { useFonts } from 'expo-font';
@@ -254,6 +256,18 @@ export default function RootLayout() {
   });
 
   const { session, profile, loading, setSession, setProfile, setLoading, fetchProfile } = useAuthStore();
+
+  // Lab ayarlarını oturum açılır açılmaz yükle.
+  //
+  // Neden burada: `load()` şimdiye kadar YALNIZ para birimi gerektiren bir ekran
+  // ya da Ayarlar açılınca tetikleniyordu. Bölgeye bağlı varsayılanlar (dil,
+  // takvim) ise girişin hemen sonrasında lazım — aksi halde İran labının
+  // kullanıcısı panoyu Türkçe görüyor, ancak Finans'a girince dil değişiyordu.
+  useEffect(() => {
+    if (!profile?.lab_id) return;
+    void useLabSettingsStore.getState().load();
+  }, [profile?.lab_id]);
+
   const { fetchPermissions: fetchPerms, clear: clearPerms } = usePermissionStore();
   // string[] olarak ele al: segments[0] literal route karşılaştırmaları expo-router'ın
   // tipli-route tuple union'ını daraltıp segments[1] erişimini bozuyordu.
@@ -270,6 +284,16 @@ export default function RootLayout() {
     amIPlatformAdmin().then((v) => { if (alive) setPlatformAdmin(v); }).catch(() => { if (alive) setPlatformAdmin(false); });
     return () => { alive = false; };
   }, [profile?.id]);
+
+  // Konsoldan açılan labın ilk kurulumu yapıldı mı (labs.setup_completed_at).
+  // null = henüz bilinmiyor → bu sırada sihirbaza ATMAYIZ (fail-open: okuma
+  // hata verirse de true sayılır, kullanıcı içeride kilitlenmesin).
+  const labSetupDone = useLabSetupStore((st) => st.done);
+  useEffect(() => {
+    const labId = profile?.lab_id;
+    if (!labId) { useLabSetupStore.getState().reset(); return; }
+    void useLabSetupStore.getState().load(labId);
+  }, [profile?.lab_id]);
 
   // Çoklu-lab klinik: aktif lab bağlamı (giriş sonrası lab seçimi + switcher).
   // Fail-open: RPC yoksa/hata verirse loaded=true & memberships boş → tek-lab davranışı.
@@ -552,6 +576,20 @@ export default function RootLayout() {
       return;
     }
 
+    // ── Labı var ama ilk kurulum sihirbazı hiç tamamlanmamış ──
+    // Konsoldan açılan lablar lab_id ile doğar, o yüzden yukarıdaki "lab_id yok"
+    // kapısına hiç düşmezler. Yalnız labın SAHİBİ/yöneticisi sihirbaza alınır —
+    // teknisyen ya da sonradan eklenen personel yarım kurulum yüzünden takılmasın.
+    // platformAdmin === null iken BEKLE: `!null` true'dur, saf platform
+    // operatörünü yanlışlıkla sihirbaza atardı.
+    if (profile?.lab_id && labSetupDone === false && platformAdmin === false) {
+      const isOwner = userType === 'admin' || (profile as any)?.role === 'manager';
+      if (isOwner && !(inAuthGroup && segments[1] === 'setup-wizard')) {
+        router.replace('/(auth)/setup-wizard' as any);
+        return;
+      }
+    }
+
     if (inAuthGroup) {
       // Kayıt sonrası doğrulama/onay bekleme ekranlarında kalmasına izin ver
       const isPostRegistration = segments[1] === 'verify-phone' || segments[1] === 'verify-email' || segments[1] === 'approval-waiting';
@@ -616,7 +654,7 @@ export default function RootLayout() {
         }
       }
     }
-  }, [session, profile, loading, platformAdmin, alLoaded, alActive, alMemberships]);
+  }, [session, profile, loading, platformAdmin, labSetupDone, alLoaded, alActive, alMemberships]);
 
   // Splash'ı kapat — HANGİ ROTADA olursak olalım. `app/index.tsx` yalnız '/'
   // adresinde mount olduğu için derin bağlantıda (ör. /orders) sinyal hiç
@@ -651,7 +689,7 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-    <RootErrorBoundary key={_i18nLang.language}>
+    <RootErrorBoundary key={`${_i18nLang.language}:${isDictReady(_i18nLang.language) ? 'r' : 'w'}`}>
       <StatusBar style="dark" />
       <Stack
         screenOptions={{

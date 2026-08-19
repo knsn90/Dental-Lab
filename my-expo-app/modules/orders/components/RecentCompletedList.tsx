@@ -1,11 +1,13 @@
 import { localeTag } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 // modules/orders/components/RecentCompletedList.tsx
 // Teknisyenin son tamamladığı işlerin read-only önizlemesi.
 // Kuyruk listesinin altında durur. Müdahele yok — sadece bilgi.
 
 import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
-import { CheckCircle2, ArrowRight, Clock, ChevronDown } from 'lucide-react-native';
+import { CheckCircle2, ArrowRight, ArrowLeft, Clock, ChevronDown } from 'lucide-react-native';
+import { isRTL } from '../../../core/i18n';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../../core/api/supabase';
 import { useAuthStore } from '../../../core/store/authStore';
@@ -24,10 +26,10 @@ interface CompletedStage {
 function formatRel(iso: string): string {
   const d = new Date(iso);
   const diff = Date.now() - d.getTime();
-  if (diff < 60_000)        return `${Math.floor(diff / 1000)} sn önce`;
-  if (diff < 3_600_000)     return `${Math.floor(diff / 60_000)} dk önce`;
-  if (diff < 86_400_000)    return `${Math.floor(diff / 3_600_000)} sa önce`;
-  if (diff < 86_400_000 * 7) return `${Math.floor(diff / 86_400_000)} gün önce`;
+  if (diff < 60_000)        return `${Math.floor(diff / 1000)} ${autoT('sn önce')}`;
+  if (diff < 3_600_000)     return `${Math.floor(diff / 60_000)} ${autoT('dk önce')}`;
+  if (diff < 86_400_000)    return `${Math.floor(diff / 3_600_000)} ${autoT('sa önce')}`;
+  if (diff < 86_400_000 * 7) return `${Math.floor(diff / 86_400_000)} ${autoT('gün önce')}`;
   return d.toLocaleDateString(localeTag(), { day: '2-digit', month: 'short' });
 }
 
@@ -146,7 +148,7 @@ export function RecentCompletedList({
             }}
           >
             <Text style={{ fontSize: 11, color: accent, fontWeight: '600' }}>Tümü</Text>
-            <ArrowRight size={11} color={accent} strokeWidth={2} />
+            {isRTL() ? <ArrowLeft size={11} color={accent} strokeWidth={2} /> : <ArrowRight size={11} color={accent} strokeWidth={2} />}
           </Pressable>
         </View>
 
@@ -215,7 +217,7 @@ export function RecentCompletedList({
           }}
         >
           <Text style={{ fontSize: 10.5, color: accent, fontWeight: '600' }}>Tümü</Text>
-          <ArrowRight size={11} color={accent} strokeWidth={2} />
+          {isRTL() ? <ArrowLeft size={11} color={accent} strokeWidth={2} /> : <ArrowRight size={11} color={accent} strokeWidth={2} />}
         </Pressable>
       </View>
       <View>

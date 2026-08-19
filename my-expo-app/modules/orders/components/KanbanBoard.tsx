@@ -15,7 +15,8 @@ import {
   Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Flame, ChevronRight, Clock } from 'lucide-react-native';
+import { Flame, ChevronRight, ChevronLeft, Clock } from 'lucide-react-native';
+import { isRTL } from '../../../core/i18n';
 import { WorkOrder, WorkOrderStatus } from '../types';
 import { STATUS_CONFIG, isOrderOverdue, getNextStatus } from '../constants';
 import { STAGE_LABEL, STAGE_COLOR, legacyStatusToStage, type Stage } from '../stages';
@@ -285,7 +286,7 @@ function KanbanCard({
           <Text style={{ fontSize: 11, fontWeight: '600', color: accent }}>
             {order.status === 'alindi' ? 'Başlat' : 'İlerlet'}
           </Text>
-          <ChevronRight size={12} color={accent} strokeWidth={2} />
+          {isRTL() ? <ChevronLeft size={12} color={accent} strokeWidth={2} /> : <ChevronRight size={12} color={accent} strokeWidth={2} />}
         </Pressable>
       )}
     </Pressable>

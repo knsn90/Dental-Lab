@@ -7,8 +7,11 @@
  * Patterns cardSolid stili + NativeWind className.
  */
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { SUPPORTED_CURRENCIES, CURRENCY_META } from '../../../core/money/currency';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { useTranslation } from 'react-i18next';
-import { setLanguage, SUPPORTED, type Lang } from '../../../core/i18n';
+import { setLanguage, SUPPORTED, type Lang,
+         getCalendarPref, setCalendarPref, usesPersianCalendar, type CalendarPref } from '../../../core/i18n';
 import { View, Text, ScrollView, Pressable, Platform, Modal, TextInput, useWindowDimensions } from 'react-native';
 import {
   Globe, Clock, Calendar, Monitor, Sun, Moon, Laptop,
@@ -20,6 +23,8 @@ import { Image as RNImage } from 'react-native';
 import { useAuthStore } from '../../../core/store/authStore';
 import {
   useLabSettingsStore,
+  defaultTaxRateFor,
+  type LabRegion,
   type CurrencyCode, type WeekStart, type ThemeMode,
 } from '../../../core/store/labSettingsStore';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
@@ -66,15 +71,19 @@ const DISPLAY_FONT = {
 };
 
 // ── Currency options ────────────────────────────────────────────────────
-const CURRENCIES: { code: CurrencyCode; symbol: string; label: string }[] = [
-  { code: 'TRY', symbol: '₺', label: 'Türk Lirası' },
-  { code: 'USD', symbol: '$', label: 'ABD Doları' },
-  { code: 'EUR', symbol: '€', label: 'Euro' },
-  { code: 'GBP', symbol: '£', label: 'İngiliz Sterlini' },
-];
+// TEK KAYNAK: core/money/currency. Buradaki liste elle yazılıydı ve IRT (Tümen)
+// eklendiğinde güncellenmediği için İran labı kendi para birimini seçemiyordu.
+const CURRENCIES: { code: CurrencyCode; symbol: string; label: string }[] =
+  SUPPORTED_CURRENCIES.map(code => ({
+    code,
+    symbol: CURRENCY_META[code].symbol,
+    label:  CURRENCY_META[code].label,
+  }));
 
 // ── Week start options ──────────────────────────────────────────────────
 const WEEK_STARTS: { key: WeekStart; label: string }[] = [
+  { key: 'auto',     label: 'Otomatik' },
+  { key: 'saturday', label: 'Cumartesi' },
   { key: 'monday', label: 'Pazartesi' },
   { key: 'sunday', label: 'Pazar' },
 ];
@@ -285,7 +294,7 @@ function SaveHint({ saving, dirty, accentColor }: {
   }
   if (savedAt != null) {
     const mins = Math.floor((Date.now() - savedAt) / 60_000);
-    const when = mins < 1 ? 'Az önce' : mins < 60 ? `${mins} dk önce` : `${Math.floor(mins / 60)} sa önce`;
+    const when = mins < 1 ? autoT('Az önce') : mins < 60 ? `${mins} ${autoT('dk önce')}` : `${Math.floor(mins / 60)} ${autoT('sa önce')}`;
     return (
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, minWidth: 96 }}>
         <Check size={12} color="#2D9A6B" strokeWidth={2.6} />
@@ -375,7 +384,7 @@ function SettingRow({
               <Text className="text-[12px]" style={{ color: T.ink3 }} numberOfLines={2}>{sub}</Text>
             </View>
           </View>
-          <View style={{ width: '100%', paddingLeft: 48 }}>
+          <View style={{ width: '100%', paddingStart: 48 }}>
             {children}
           </View>
         </View>
@@ -396,7 +405,7 @@ function SettingRow({
           </View>
         </View>
       )}
-      {!isLast && <View className="h-px" style={{ marginLeft: 48, backgroundColor: T.hairline2 }} />}
+      {!isLast && <View className="h-px" style={{ marginStart: 48, backgroundColor: T.hairline2 }} />}
     </>
   );
 }
@@ -458,6 +467,11 @@ export function GeneralSection({ panelType, accentColor }: Props) {
   const isDoctor = panelType === 'doctor';
 
   // User prefs (date/time format + doctor-only fields)
+  // Takvim tercihi i18n modülünde tutulur (localeTag onu okur, 80 dosya oradan geçer),
+  // store'da değil — bu yüzden yerel durumla aynalanıyor.
+  const labRegion = useLabSettingsStore(st => st.settings?.region ?? 'TR');
+  const updateLabSettings = useLabSettingsStore(st => st.update);
+  const [calPref, setCalPref] = React.useState<CalendarPref>(getCalendarPref());
   const dateFormat    = useUserPrefsStore(s => s.date_format);
   const timeFormat    = useUserPrefsStore(s => s.time_format);
   const doctorTitle   = useUserPrefsStore(s => s.doctor_title);
@@ -490,6 +504,8 @@ export function GeneralSection({ panelType, accentColor }: Props) {
   const [labAddrSaved, setLabAddrSaved]   = useState('');
   const [labPhoneInput, setLabPhoneInput] = useState('');
   const [labPhoneSaved, setLabPhoneSaved] = useState('');
+  const [labSiteInput, setLabSiteInput]   = useState('');
+  const [labSiteSaved, setLabSiteSaved]   = useState('');
   const [labContactSaving, setLabContactSaving] = useState(false);
   /** Kurye entegrasyonuna girilmiş alış adresi — adres boşsa tek tıkla kopyalanır. */
   const [pickupAddr, setPickupAddr] = useState<{ address: string; phone: string } | null>(null);
@@ -498,11 +514,13 @@ export function GeneralSection({ panelType, accentColor }: Props) {
   useEffect(() => {
     if (!labId || !isLab) return;
     (async () => {
-      const { data } = await supabase.from('labs').select('name, address, phone, logo_url, sidebar_brand_mode, sidebar_logo_scale').eq('id', labId).maybeSingle();
+      const { data } = await supabase.from('labs').select('name, address, phone, website, logo_url, sidebar_brand_mode, sidebar_logo_scale').eq('id', labId).maybeSingle();
       const addr = (data as any)?.address ?? '';
       const tel  = (data as any)?.phone ?? '';
+      const site = (data as any)?.website ?? '';
       setLabAddrInput(addr);  setLabAddrSaved(addr);
       setLabPhoneInput(tel);  setLabPhoneSaved(tel);
+      setLabSiteInput(site);  setLabSiteSaved(site);
       // Adres henüz girilmemişse kurye ayarındaki alış adresini öner
       if (!String(addr).trim()) {
         const { data: pc } = await supabase
@@ -533,13 +551,18 @@ export function GeneralSection({ panelType, accentColor }: Props) {
     if (!labId || labContactSaving) return;
     const a = labAddrInput.trim();
     const t = labPhoneInput.trim();
-    if (a === labAddrSaved.trim() && t === labPhoneSaved.trim()) return;
+    const w = labSiteInput.trim();
+    if (a === labAddrSaved.trim() && t === labPhoneSaved.trim() && w === labSiteSaved.trim()) return;
     setLabContactSaving(true);
     const { error } = await supabase.from('labs')
-      .update({ address: a || null, phone: t || null }).eq('id', labId);
+      .update({ address: a || null, phone: t || null, website: w || null }).eq('id', labId);
     setLabContactSaving(false);
-    if (!error) { setLabAddrSaved(a); setLabPhoneSaved(t); setPickupAddr(null); }
-  }, [labId, labAddrInput, labPhoneInput, labAddrSaved, labPhoneSaved, labContactSaving]);
+    if (!error) {
+      setLabAddrSaved(a); setLabPhoneSaved(t); setLabSiteSaved(w); setPickupAddr(null);
+      // Kenar çubuğundaki logo bağlantısı anında güncellensin
+      bumpLabBrand();
+    }
+  }, [labId, labAddrInput, labPhoneInput, labSiteInput, labAddrSaved, labPhoneSaved, labSiteSaved, labContactSaving, bumpLabBrand]);
 
   const saveBrandMode = useCallback(async (mode: 'logo' | 'logo_text') => {
     setBrandMode(mode);
@@ -695,7 +718,7 @@ export function GeneralSection({ panelType, accentColor }: Props) {
 
               <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
                 <View style={{ flex: 1, position: 'relative', justifyContent: 'center' }}>
-                  <View style={{ position: 'absolute', left: 10, zIndex: 1 }} pointerEvents="none">
+                  <View style={{ position: 'absolute', start: 10, zIndex: 1 }} pointerEvents="none">
                     <Phone size={13} color={T.ink3} strokeWidth={1.8} />
                   </View>
                   <SettingInput
@@ -706,14 +729,35 @@ export function GeneralSection({ panelType, accentColor }: Props) {
                     onSubmitEditing={saveLabContact}
                     placeholder="Telefon"
                     keyboardType="phone-pad"
-                    style={{ height: 36, paddingLeft: 30, paddingRight: 10 }}
+                    style={{ height: 36, paddingStart: 30, paddingEnd: 10 }}
                   />
                 </View>
                 <SaveHint
                   saving={labContactSaving}
-                  dirty={labAddrInput.trim() !== labAddrSaved.trim() || labPhoneInput.trim() !== labPhoneSaved.trim()}
+                  dirty={labAddrInput.trim() !== labAddrSaved.trim() || labPhoneInput.trim() !== labPhoneSaved.trim() || labSiteInput.trim() !== labSiteSaved.trim()}
                   accentColor={accentColor}
                 />
+              </View>
+
+              {/* Web sitesi — dolu olduğunda kenar çubuğundaki lab logosu bu adrese
+                  bağlanır. Protokol yazmak gerekmez, açılırken https:// eklenir. */}
+              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                <View style={{ flex: 1, position: 'relative', justifyContent: 'center' }}>
+                  <View style={{ position: 'absolute', start: 10, zIndex: 1 }} pointerEvents="none">
+                    <Globe size={13} color={T.ink3} strokeWidth={1.8} />
+                  </View>
+                  <SettingInput
+                    accentColor={accentColor}
+                    value={labSiteInput}
+                    onChangeText={setLabSiteInput}
+                    onBlur={saveLabContact}
+                    onSubmitEditing={saveLabContact}
+                    placeholder="Web sitesi (örn. nexadentlab.com)"
+                    autoCapitalize="none"
+                    keyboardType="url"
+                    style={{ height: 36, paddingStart: 30, paddingEnd: 10 }}
+                  />
+                </View>
               </View>
             </View>
           </SettingRow>
@@ -876,7 +920,7 @@ export function GeneralSection({ panelType, accentColor }: Props) {
               )}
               <Text style={{ fontSize: 11, color: T.ink3 }}>Büyük</Text>
               {/* Çıplak "%60" neye göre olduğunu söylemiyordu; uçlara etiket. */}
-              <Text style={{ fontSize: 11, color: T.ink3, minWidth: 40, textAlign: 'right' }}>
+              <Text style={{ fontSize: 11, color: T.ink3, minWidth: 40, textAlign: 'end' as any }}>
                 %{Math.round(logoScale * 100)}
               </Text>
             </View>
@@ -956,6 +1000,58 @@ export function GeneralSection({ panelType, accentColor }: Props) {
           />
         </SettingRow>
 
+        {/* Bölge — mevzuata bağlı özellikleri tek yerden açar/kapatır.
+            TR: e-Fatura + iyzico POS + %20 KDV · IR: ikisi de kapalı, %10 KDV.
+            Var olan laboratuvarlar 'TR' olduğu için davranışları değişmez. */}
+        <SettingRow
+          icon={Globe}
+          label="Bölge"
+          sub="Mevzuat bölgesi — dil, takvim, e-Fatura, POS ve KDV varsayılanını belirler"
+          accentColor={accentColor}
+        >
+          <DropdownSelect
+            options={[
+              { key: 'TR', label: '🇹🇷 Türkiye', sub: 'e-Fatura · POS · %20 KDV' },
+              { key: 'IR', label: '🇮🇷 İran',    sub: 'e-Fatura/POS yok · %10 KDV' },
+            ]}
+            value={labRegion}
+            onChange={(v) => {
+              // Bölge değişimi KDV varsayılanını da taşır (TR %20 · IR %10).
+              // Bilinçli bir kullanıcı eylemi olduğu için mevcut oranı günceller.
+              const r = v as LabRegion;
+              void updateLabSettings({ region: r, default_tax_rate: defaultTaxRateFor(r) });
+            }}
+            accentColor={accentColor}
+          />
+        </SettingRow>
+
+        {/* Takvim — YALNIZ Farsça'da anlamlı, o yüzden yalnız orada gösterilir.
+            Farsça konuşan herkes Şemsi kullanmaz: İran'da resmîdir ama Afgan/
+            diaspora kullanıcı ya da Farsça arayüz kullanan Türk lab Miladi bekler.
+            'Otomatik' cihaz saat dilimine bakar (Asia/Tehran → Şemsi).
+            Saklanan veri ETKİLENMEZ — bu yalnız görüntüleme biçimidir. */}
+        {i18n.language === 'fa' && (
+          <SettingRow
+            icon={CalendarDays}
+            label="تقویم"
+            sub={calPref === 'auto'
+              ? `خودکار — اکنون ${usesPersianCalendar() ? 'شمسی' : 'میلادی'}`
+              : 'تقویمی که تاریخ‌ها با آن نمایش داده می‌شوند'}
+            accentColor={accentColor}
+          >
+            <DropdownSelect
+              options={[
+                { key: 'auto',      label: 'خودکار',  sub: 'بر اساس منطقهٔ دستگاه' },
+                { key: 'persian',   label: 'شمسی',    sub: 'تقویم هجری شمسی' },
+                { key: 'gregorian', label: 'میلادی',  sub: 'تقویم میلادی' },
+              ]}
+              value={calPref}
+              onChange={(v) => { void setCalendarPref(v as CalendarPref); setCalPref(v as CalendarPref); }}
+              accentColor={accentColor}
+            />
+          </SettingRow>
+        )}
+
         {/* Tarih Formatı */}
         <SettingRow
           icon={CalendarDays}
@@ -1014,7 +1110,7 @@ export function GeneralSection({ panelType, accentColor }: Props) {
           <SettingRow
             icon={UserCheck}
             label="Hekim Unvanı"
-            sub="İsminizin önünde gösterilir (Dr., Diş Hekimi, Prof. Dr., …)"
+            sub="İsminizin önünde gösterilir (Dt., Diş Hekimi, Prof. Dr., …)"
             accentColor={accentColor}
           >
             <TextInput
@@ -1022,7 +1118,7 @@ export function GeneralSection({ panelType, accentColor }: Props) {
               style={{ height: 44, minWidth: 180, borderColor: T.hairline, backgroundColor: T.card, color: T.ink, outlineWidth: 0 } as any}
               value={doctorTitle}
               onChangeText={(v) => setUserPref('doctor_title', v.slice(0, 30))}
-              placeholder="Örn: Dr."
+              placeholder="Örn: Dt."
               placeholderTextColor={T.ink3}
               maxLength={30}
             />

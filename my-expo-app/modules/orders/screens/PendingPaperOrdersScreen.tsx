@@ -1,4 +1,5 @@
-import { localeTag } from '../../../core/i18n';
+import { localeTag, isRTL } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { openFileUrl } from '../../../core/util/openFile';
 import { confirmAsync } from '../../../core/util/confirm';
 /**
@@ -14,7 +15,7 @@ import {
 import { useRouter } from 'expo-router';
 import {
   Inbox, MessageCircle, Phone, Camera, Check, X, AlertCircle,
-  ChevronRight, Sparkles, Calendar, Building2, MessageSquare, ScanLine,
+  ChevronRight, ChevronLeft, Sparkles, Calendar, Building2, MessageSquare, ScanLine,
 } from 'lucide-react-native';
 import { supabase } from '../../../core/api/supabase';
 import { useAuthStore } from '../../../core/store/authStore';
@@ -139,8 +140,8 @@ export function PendingPaperOrdersScreen() {
   const fmtRelative = (iso: string) => {
     const diff = Date.now() - new Date(iso).getTime();
     if (diff < 60_000) return 'az önce';
-    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} dk önce`;
-    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} sa önce`;
+    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} ${autoT('dk önce')}`;
+    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} ${autoT('sa önce')}`;
     return new Date(iso).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short' });
   };
 
@@ -365,7 +366,7 @@ export function PendingPaperOrdersScreen() {
                   >
                     <Check size={13} color="#FFF" strokeWidth={2.2} />
                     <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFF' }}>Onayla → İş Emri Aç</Text>
-                    <ChevronRight size={12} color="#FFF" strokeWidth={2.2} />
+                    {isRTL() ? <ChevronLeft size={12} color="#FFF" strokeWidth={2.2} /> : <ChevronRight size={12} color="#FFF" strokeWidth={2.2} />}
                   </Pressable>
                 </View>
               </View>

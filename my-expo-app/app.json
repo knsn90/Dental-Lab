@@ -18,6 +18,7 @@
       "icon": "./assets/images/icon-ios.png",
       "bundleIdentifier": "com.nexadent.app",
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "İş emri fotoğrafı çekmek, QR okutmak ve 3D yüz tarama (gülüş tasarımı için) yapmak amacıyla kamera erişimi gerekiyor.",
         "NSPhotoLibraryUsageDescription": "Fotoğraf galerinize erişmek için izin gerekiyor.",
         "UIBackgroundModes": [
