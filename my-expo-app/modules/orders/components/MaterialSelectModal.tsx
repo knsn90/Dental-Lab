@@ -15,7 +15,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, Modal, ScrollView, Platform } from 'react-native';
-import { AlertTriangle, Check, Flame, Minus, Package, Plus, SkipForward, X } from 'lucide-react-native';
+import { AlertTriangle, Check, Flame, Minus, Package, Plus, SkipForward, X } from '../../../core/ui/icons';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import {
   fetchStageMaterialOptions, confirmStageMaterialsV2, newIdempotencyKey,

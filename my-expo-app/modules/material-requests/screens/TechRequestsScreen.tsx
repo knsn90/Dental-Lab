@@ -12,7 +12,7 @@ import { View, Text, ScrollView, Pressable, Platform } from 'react-native';
 import {
   Wrench, Plus, Clock, CheckCircle2, PackageCheck, XCircle,
   RefreshCcw, ChevronRight, Hourglass,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';

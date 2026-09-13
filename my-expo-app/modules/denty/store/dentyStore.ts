@@ -64,7 +64,11 @@ interface DentyStore {
   pending: PendingAction | null;
   attachments: DentyAttachment[];
 
+  /** Panel açılırken otomatik gönderilecek istem (ör. sipariş detayındaki "Özet çıkar"). */
+  seed: string | null;
   open: () => void;
+  openWith: (prompt: string) => void;
+  consumeSeed: () => string | null;
   close: () => void;
   toggle: () => void;
   openVoice: () => void;
@@ -83,8 +87,9 @@ interface DentyStore {
   clearAttachments: () => void;
 }
 
-export const useDentyStore = create<DentyStore>((set) => ({
+export const useDentyStore = create<DentyStore>((set, get) => ({
   isOpen: false,
+  seed: null,
   voiceOpen: false,
   busy: false,
   display: [],
@@ -93,6 +98,12 @@ export const useDentyStore = create<DentyStore>((set) => ({
   attachments: [],
 
   open: () => set({ isOpen: true }),
+  openWith: (prompt) => set({ isOpen: true, seed: prompt }),
+  consumeSeed: () => {
+    const s = get().seed;
+    if (s) set({ seed: null });
+    return s;
+  },
   close: () => set({ isOpen: false }),
   toggle: () => set((s) => ({ isOpen: !s.isOpen })),
   openVoice: () => set({ voiceOpen: true }),

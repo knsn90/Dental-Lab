@@ -400,6 +400,10 @@
         "label": "Arbeitszeiten",
         "sub": "Schicht, Mittagspause, Parallelarbeit"
       },
+      "finance": {
+        "label": "Finanzen",
+        "sub": "Währung, Steuer und Zahlungserinnerungen"
+      },
       "currency": {
         "label": "Wechselkurse",
         "sub": "EUR/USD/GBP-Kursverwaltung"

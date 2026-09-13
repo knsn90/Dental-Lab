@@ -9,7 +9,7 @@ import { safeBack } from '../../../core/util/safeBack';
  * §09 tableCard, §05 cardSolid, §05.5 form, §03 pill buttons,
  * §04 CHIP_TONES, DISPLAY font, Lucide icons.
  */
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useContext } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput,
   Platform, useWindowDimensions,
@@ -21,11 +21,10 @@ import {
   Calendar, Search, X, Filter, ArrowUpRight, ArrowDownLeft,
   Minus, Banknote, CreditCard, Landmark, FileText,
   Inbox, Building2, ChevronDown, FileClock, ChevronRight, ChevronLeft,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 
-import { DS } from '../../../core/theme/dsTokens';
 import { fetchInvoicesForClinic, fetchClinicBalance, fetchUnbilledWorkOrders, createInvoiceFromOrder, fetchClinicPriceCurrency } from '../api';
 import { buildStatementLines, buildStatementHtml } from '../buildStatementHtml';
 import type { StatementLine } from '../buildStatementHtml';
@@ -35,6 +34,7 @@ import {
   PAYMENT_METHOD_LABELS,
 } from '../types';
 import { supabase } from '../../../core/api/supabase';
+import { useActiveLabStore } from '../../../core/store/activeLabStore';
 import type { LabLetterhead } from '../../receipt/buildReceiptHtml';
 import { toast } from '../../../core/ui/Toast';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
@@ -42,6 +42,9 @@ import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { CenteredLoader } from '../../../core/ui/CenteredLoader';
 import { useBaseCurrency } from '../../../core/money/baseCurrency';
 import { CURRENCY_META, formatMoney, type Currency } from '../../../core/money/currency';
+import { useInkUI, type InkUI } from '../../../core/theme/inkScale';
+import { HubContext } from '../../../core/ui/HubContext';
+import { navBarMetrics } from '../../../core/ui/mobile/navGlass';
 
 // ── Patterns tokens ─────────────────────────────────────────────────
 const DISPLAY = {
@@ -49,36 +52,17 @@ const DISPLAY = {
   fontWeight: '300' as const,
 };
 
-const cardSolid = {
-  backgroundColor: '#FFF',
-  borderRadius: 24,
-  padding: 22,
-  // @ts-ignore web
-  boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)',
-};
-
-const tableCard = {
-  backgroundColor: '#FFF',
-  borderRadius: 24,
-  borderWidth: 1,
-  borderColor: 'rgba(0,0,0,0.05)',
-  overflow: 'hidden' as const,
-};
-
-const CHIP_TONES = {
-  success: { bg: 'rgba(45,154,107,0.12)', fg: '#1F6B47' },
-  warning: { bg: 'rgba(232,155,42,0.15)', fg: '#9C5E0E' },
-  danger:  { bg: 'rgba(217,75,75,0.12)',  fg: '#9C2E2E' },
-  info:    { bg: 'rgba(74,143,201,0.12)', fg: '#1F5689' },
-};
-
-const STATUS_CHIP: Record<InvoiceStatus, { bg: string; fg: string }> = {
-  taslak:       { bg: 'rgba(0,0,0,0.05)', fg: DS.ink[500] },
-  kesildi:      CHIP_TONES.info,
-  kismi_odendi: CHIP_TONES.warning,
-  odendi:       CHIP_TONES.success,
-  iptal:        CHIP_TONES.danger,
-};
+// cardSolid / tableCard / CHIP_TONES artık `useInkUI()`ten gelir — modül seviyesi
+// sabit hook çağıramadığı için koyu temada kart beyaz kalıyordu.
+function statusChip(U: InkUI): Record<InvoiceStatus, { bg: string; fg: string }> {
+  return {
+    taslak:       { bg: U.chipNeutral, fg: U.ink[500] },
+    kesildi:      U.chipTones.info,
+    kismi_odendi: U.chipTones.warning,
+    odendi:       U.chipTones.success,
+    iptal:        U.chipTones.danger,
+  };
+}
 
 const METHOD_ICON: Record<PaymentMethod, React.ComponentType<any>> = {
   nakit:  Banknote,
@@ -147,6 +131,30 @@ async function fetchLab(): Promise<LabLetterhead> {
   return _cachedLab;
 }
 
+// Klinik/hekim (selfView): kullanıcının profiles.lab_id'si YOK — bağlı olduğu lab'ı
+// aktif üyelikten (çoklu-lab) ya da kliniğin lab_id'sinden çöz, markayı get_lab_brand
+// SECURITY DEFINER RPC'sinden al (klinik/hekim labs tablosunu RLS ile okuyamaz).
+async function fetchSelfViewLab(): Promise<LabLetterhead> {
+  let labId: string | null = useActiveLabStore.getState().active?.lab_id ?? null;
+  if (!labId) {
+    const { data } = await supabase.from('clinics').select('lab_id').limit(1).maybeSingle();
+    labId = (data as any)?.lab_id ?? null;
+  }
+  if (!labId) return { id: '', name: 'Lab' };
+  const { data: lab } = await supabase.rpc('get_lab_brand', { p_lab_id: labId }).maybeSingle();
+  const b = lab as any;
+  return {
+    id: labId,
+    name: b?.name ?? 'Lab',
+    logo_url: b?.logo_url ?? null,
+    website: b?.website ?? null,
+    address: b?.address ?? null,
+    phone: b?.phone ?? null,
+    email: b?.email ?? null,
+    tax_number: b?.tax_number ?? null,
+  } as LabLetterhead;
+}
+
 // ── Excel export ─────────────────────────────────────────────────────
 // Tedarikçi cari ile aynı T-hesap CSV formatı.
 function escapeCsv(v: any): string {
@@ -210,10 +218,19 @@ function exportExcel(clinicName: string, lines: StatementLine[], periodFrom?: st
 // ═════════════════════════════════════════════════════════════════════
 // MAIN
 // ═════════════════════════════════════════════════════════════════════
-export function ClinicStatementScreen() {
+export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false }: {
+  /** Hub içine gömülünce (klinik/hekim kendi ekstresi) prop'la gelir; yoksa route param. */
+  clinicId?: string;
+  /** Klinik/hekim kendi ekstresini görüyor: lab'a özel bölümler (faturalanmamış işler,
+      geri butonu) gizlenir; veri çekimi RLS'e takılmayacak şekilde kısılır. */
+  selfView?: boolean;
+} = {}) {
+  const U = useInkUI();
+  const STATUS_CHIP = statusChip(U);
   useBaseCurrency();
   const router = useRouter();
-  const { clinicId } = useLocalSearchParams<{ clinicId: string }>();
+  const params = useLocalSearchParams<{ clinicId: string }>();
+  const clinicId = clinicIdProp ?? params.clinicId;
   // Bu ekran hem /(lab)/statement hem /(admin)/statement altında mount ediliyor.
   // Grup adını sabitlemek kullanıcıyı diğer panele atar → FinanceHubScreen ile
   // aynı desen: aktif grubu segment'ten oku.
@@ -221,6 +238,13 @@ export function ClinicStatementScreen() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
   const insets = useSafeAreaInsets();
+  // Hub içinde (Finans → Sağlık Kurumları → Ekstre) üst güvenli alanı ve sayfa
+  // başlığını KAP veriyor; burada bir daha `insets.top` eklemek başlıkla içerik
+  // arasında ~75px boş şerit bırakıyordu (kullanıcı cihazda gördü).
+  const isEmbedded = useContext(HubContext);
+  // Mobilde alt sınır yüzen navbar'ın GERÇEK geometrisinden gelir — 48px sabit
+  // dolgu son hareketleri barın altında bırakıyordu.
+  const scrollPadBottom = isDesktop ? 48 : navBarMetrics(insets.bottom).clearance + 16;
 
   // Page title
   const { setTitle, clear } = usePageTitleStore();
@@ -258,8 +282,9 @@ export function ClinicStatementScreen() {
     Promise.all([
       fetchInvoicesForClinic(clinicId),
       fetchClinicBalance(clinicId),
-      // Teslim edilmiş ama faturaya bağlanmamış işler — ekstrede görünmezdi.
-      fetchUnbilledWorkOrders(clinicId),
+      // Teslim edilmiş ama faturaya bağlanmamış işler — lab tarafı (faturalama).
+      // Klinik/hekim kendi ekstresinde bu bölüm gizli → RLS'e takılmamak için hiç çekme.
+      selfView ? Promise.resolve({ data: [] as UnbilledWorkOrder[] }) : fetchUnbilledWorkOrders(clinicId),
       // Varsayılan sekmenin ilk tercihi; başarısız olursa null döner ve
       // aşağıdaki sıralama bir sonraki ölçüte düşer.
       fetchClinicPriceCurrency(clinicId).catch(() => null),
@@ -456,7 +481,7 @@ export function ClinicStatementScreen() {
   const handlePrint = useCallback(async () => {
     setExporting(true);
     try {
-      const lab = await fetchLab();
+      const lab = selfView ? await fetchSelfViewLab() : await fetchLab();
       const html = buildStatementHtml(
         clinicInfo?.clinic_name ?? 'Klinik',
         filtered,
@@ -487,7 +512,7 @@ export function ClinicStatementScreen() {
     } finally {
       setExporting(false);
     }
-  }, [clinicInfo, filtered, dateFrom, dateTo, selectedCcy]);
+  }, [clinicInfo, filtered, dateFrom, dateTo, selectedCcy, selfView]);
 
   // ── Excel ──────────────────────────────────────────────
   const handleExcel = useCallback(() => {
@@ -507,7 +532,7 @@ export function ClinicStatementScreen() {
   const pct = totalBilled > 0 ? Math.min(100, (totalPaid / totalBilled) * 100) : 0;
 
   if (loading) {
-    return <CenteredLoader color={DS.ink[400]} label="Ekstre yükleniyor..." />;
+    return <CenteredLoader color={U.ink[400]} label="Ekstre yükleniyor..." />;
   }
 
   return (
@@ -515,24 +540,28 @@ export function ClinicStatementScreen() {
       {/* ── Header ────────────────────────────────────────── */}
       <View style={{
         flexDirection: 'row', alignItems: 'center', gap: 12,
-        paddingHorizontal: 16, paddingTop: 16 + (isDesktop ? 0 : insets.top), paddingBottom: 16,
-        borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
+        paddingHorizontal: 16,
+        paddingTop: isDesktop || isEmbedded ? (isEmbedded && !isDesktop ? 4 : 16) : 16 + insets.top,
+        paddingBottom: isEmbedded && !isDesktop ? 12 : 16,
+        borderBottomWidth: 1, borderBottomColor: U.hairline,
       }}>
-        <Pressable
-          onPress={() => safeBack('/')}
-          style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
-        >
-          {isRTL() ? <ArrowRight size={18} color={DS.ink[900]} strokeWidth={1.8} /> : <ArrowLeft size={18} color={DS.ink[900]} strokeWidth={1.8} />}
-        </Pressable>
+        {!selfView && (
+          <Pressable
+            onPress={() => safeBack('/')}
+            style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: U.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+          >
+            {isRTL() ? <ArrowRight size={18} color={U.ink[900]} strokeWidth={1.8} /> : <ArrowLeft size={18} color={U.ink[900]} strokeWidth={1.8} />}
+          </Pressable>
+        )}
 
         <View style={{ flex: 1 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Building2 size={16} color={DS.ink[400]} strokeWidth={1.6} />
-            <Text style={{ ...DISPLAY, fontSize: isDesktop ? 22 : 18, letterSpacing: -0.4, color: DS.ink[900] }}>
+            <Building2 size={16} color={U.ink[400]} strokeWidth={1.6} />
+            <Text style={{ ...DISPLAY, fontSize: isDesktop ? 22 : 18, letterSpacing: -0.4, color: U.ink[900] }}>
               {clinicName}
             </Text>
           </View>
-          <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 2, marginStart: 24 }}>
+          <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 2, marginStart: 24 }}>
             Hesap Ekstresi · {allLines.length} hareket
           </Text>
         </View>
@@ -548,7 +577,7 @@ export function ClinicStatementScreen() {
 
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 16, paddingBottom: 48, gap: 16 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: scrollPadBottom, gap: 16 }}
         showsVerticalScrollIndicator={false}
       >
         {/* ── Para birimi seçici (çok dövizli klinikte) ──────── */}
@@ -568,21 +597,21 @@ export function ClinicStatementScreen() {
                   style={{
                     flexDirection: 'row', alignItems: 'center', gap: 6,
                     paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, borderWidth: 1.5,
-                    borderColor: active ? DS.ink[900] : 'rgba(0,0,0,0.08)',
-                    backgroundColor: active ? DS.ink[900] : '#FFF',
+                    borderColor: active ? U.ink[900] : U.plainBtn.border,
+                    backgroundColor: active ? U.ink[900] : U.plainBtn.bg,
                     opacity: !active && n === 0 ? 0.55 : 1,
                     ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                   }}
                 >
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: active ? '#FFF' : DS.ink[500] }}>{sym}</Text>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: active ? '#FFF' : DS.ink[700] }}>{cur}</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: active ? U.onDarkPill : U.ink[500] }}>{sym}</Text>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: active ? U.onDarkPill : U.ink[700] }}>{cur}</Text>
                   <View style={{
                     minWidth: 18, paddingHorizontal: 5, paddingVertical: 1, borderRadius: 999,
-                    backgroundColor: active ? 'rgba(255,255,255,0.22)' : DS.ink[100],
+                    backgroundColor: active ? (U.isDark ? 'rgba(20,19,18,0.22)' : 'rgba(255,255,255,0.22)') : U.ink[100],
                   }}>
                     <Text style={{
                       fontSize: 10, fontWeight: '700', textAlign: 'center',
-                      color: active ? '#FFF' : (n === 0 ? DS.ink[400] : DS.ink[700]),
+                      color: active ? U.onDarkPill : (n === 0 ? U.ink[400] : U.ink[700]),
                     }}>{n}</Text>
                   </View>
                 </Pressable>
@@ -593,46 +622,46 @@ export function ClinicStatementScreen() {
 
         {/* ── Summary KPIs ─────────────────────────────────── */}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-          <MiniKPI label="Kesilen" value={fmtMoney(totalBilled, selectedCcy)} color={DS.ink[900]} />
-          <MiniKPI label="Tahsil Edilen" value={fmtMoney(totalPaid, selectedCcy)} color={CHIP_TONES.success.fg} />
-          <MiniKPI label="Bakiye" value={fmtMoney(balance, selectedCcy)} color={overdue > 0 ? CHIP_TONES.danger.fg : DS.ink[900]} />
-          {overdue > 0 && <MiniKPI label="Gecikmiş" value={fmtMoney(overdue, selectedCcy)} color={CHIP_TONES.danger.fg} />}
-          <View style={{ flex: 1, minWidth: 120, backgroundColor: '#FFF', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }}>
-            <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[400], marginBottom: 6 }}>
+          <MiniKPI label="Kesilen" value={fmtMoney(totalBilled, selectedCcy)} color={U.ink[900]} />
+          <MiniKPI label="Tahsil Edilen" value={fmtMoney(totalPaid, selectedCcy)} color={U.chipTones.success.fg} />
+          <MiniKPI label="Bakiye" value={fmtMoney(balance, selectedCcy)} color={overdue > 0 ? U.chipTones.danger.fg : U.ink[900]} />
+          {overdue > 0 && <MiniKPI label="Gecikmiş" value={fmtMoney(overdue, selectedCcy)} color={U.chipTones.danger.fg} />}
+          <View style={{ flex: 1, minWidth: 120, backgroundColor: U.surface, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: U.hairline }}>
+            <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: U.ink[400], marginBottom: 6 }}>
               Tahsilat
             </Text>
-            <View style={{ height: 6, borderRadius: 3, backgroundColor: DS.ink[200], overflow: 'hidden' }}>
+            <View style={{ height: 6, borderRadius: 3, backgroundColor: U.ink[200], overflow: 'hidden' }}>
               <View style={{ width: `${pct}%` as any, height: '100%', borderRadius: 3, backgroundColor: '#2D9A6B' }} />
             </View>
-            <Text style={{ fontSize: 11, fontWeight: '600', color: DS.ink[700], marginTop: 4 }}>{pct.toFixed(0)}%</Text>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: U.ink[700], marginTop: 4 }}>{pct.toFixed(0)}%</Text>
           </View>
         </View>
 
         {/* ── Faturalanmamış işler ─────────────────────────────
             Teslim edilmiş ama faturaya bağlanmamış siparişler.
             Bakiyeye DAHİL DEĞİL — ayrı, açıkça etiketli bölüm. */}
-        {pendingRows.length > 0 && (
-          <View style={{ ...tableCard, borderColor: 'rgba(232,155,42,0.35)' }}>
+        {!selfView && pendingRows.length > 0 && (
+          <View style={{ ...U.tableCard, borderColor: 'rgba(232,155,42,0.35)' }}>
             <View style={{
               flexDirection: 'row', alignItems: 'center', gap: 10,
               paddingHorizontal: 20, paddingVertical: 14,
-              backgroundColor: CHIP_TONES.warning.bg,
+              backgroundColor: U.chipTones.warning.bg,
               borderBottomWidth: 1, borderBottomColor: 'rgba(232,155,42,0.25)',
             }}>
-              <FileClock size={17} color={CHIP_TONES.warning.fg} strokeWidth={1.8} />
+              <FileClock size={17} color={U.chipTones.warning.fg} strokeWidth={1.8} />
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 14, fontWeight: '700', color: CHIP_TONES.warning.fg }}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: U.chipTones.warning.fg }}>
                   Faturalanmamış İşler
                 </Text>
-                <Text style={{ fontSize: 11, color: CHIP_TONES.warning.fg, opacity: 0.85, marginTop: 1 }}>
+                <Text style={{ fontSize: 11, color: U.chipTones.warning.fg, opacity: 0.85, marginTop: 1 }}>
                   Faturasını görmek ve kesmek için satıra dokun · bakiyeye dahil değil
                 </Text>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
-                <Text style={{ fontSize: 15, fontWeight: '700', color: CHIP_TONES.warning.fg }}>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: U.chipTones.warning.fg }}>
                   {fmtMoney(pendingTotal, selectedCcy)}
                 </Text>
-                <Text style={{ fontSize: 10, color: CHIP_TONES.warning.fg, opacity: 0.85 }}>
+                <Text style={{ fontSize: 10, color: U.chipTones.warning.fg, opacity: 0.85 }}>
                   {pendingRows.length} iş
                 </Text>
               </View>
@@ -649,17 +678,17 @@ export function ClinicStatementScreen() {
                     flexDirection: 'row', alignItems: 'center', gap: 12,
                     paddingHorizontal: 20, paddingVertical: 13,
                     borderBottomWidth: i === pendingRows.length - 1 ? 0 : 1,
-                    borderBottomColor: 'rgba(0,0,0,0.05)',
+                    borderBottomColor: U.hairline,
                     opacity: busy ? 0.55 : 1,
                     ...(Platform.OS === 'web' ? { cursor: busy ? 'default' : 'pointer' } as any : {}),
                   }}
                 >
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>
+                    <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>
                       {row.title}
-                      <Text style={{ fontWeight: '500', color: DS.ink[400] }}>{`  ·  ${row.ref}`}</Text>
+                      <Text style={{ fontWeight: '500', color: U.ink[400] }}>{`  ·  ${row.ref}`}</Text>
                     </Text>
-                    <Text numberOfLines={1} style={{ fontSize: 11, color: DS.ink[500], marginTop: 2 }}>
+                    <Text numberOfLines={1} style={{ fontSize: 11, color: U.ink[500], marginTop: 2 }}>
                       {row.subtitle || '—'}
                     </Text>
                   </View>
@@ -671,17 +700,17 @@ export function ClinicStatementScreen() {
                   )}
 
                   {isDesktop && (
-                    <Text style={{ fontSize: 11, color: DS.ink[400], width: 110, textAlign: 'end' as any }}>
+                    <Text style={{ fontSize: 11, color: U.ink[400], width: 110, textAlign: 'end' as any }}>
                       {fmtDateShort(row.date)}
                     </Text>
                   )}
 
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900], textAlign: 'end' as any, minWidth: 78 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: U.ink[900], textAlign: 'end' as any, minWidth: 78 }}>
                     {fmtMoney(row.amount, selectedCcy)}
                   </Text>
                   {busy
-                    ? <ActivityIndicator size="small" color={DS.ink[400]} />
-                    : isRTL() ? <ChevronLeft size={15} color={DS.ink[300]} strokeWidth={1.8} /> : <ChevronRight size={15} color={DS.ink[300]} strokeWidth={1.8} />}
+                    ? <ActivityIndicator size="small" color={U.ink[400]} />
+                    : isRTL() ? <ChevronLeft size={15} color={U.ink[300]} strokeWidth={1.8} /> : <ChevronRight size={15} color={U.ink[300]} strokeWidth={1.8} />}
                 </Pressable>
               );
             })}
@@ -695,19 +724,19 @@ export function ClinicStatementScreen() {
             <View style={{
               flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10,
               height: 44, paddingHorizontal: 14, borderRadius: 14,
-              borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#FFF',
+              borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg,
             }}>
-              <Search size={15} color={DS.ink[400]} strokeWidth={1.8} />
+              <Search size={15} color={U.ink[400]} strokeWidth={1.8} />
               <TextInput
-                style={{ flex: 1, fontSize: 14, color: DS.ink[900], outline: 'none' as any }}
+                style={{ flex: 1, fontSize: 14, color: U.ink[900], outline: 'none' as any }}
                 placeholder="Fatura no veya açıklama ara..."
-                placeholderTextColor={DS.ink[400]}
+                placeholderTextColor={U.ink[400]}
                 value={searchTerm}
                 onChangeText={setSearchTerm}
               />
               {searchTerm.length > 0 && (
                 <Pressable onPress={() => setSearchTerm('')} style={{ cursor: 'pointer' as any }}>
-                  <X size={14} color={DS.ink[400]} strokeWidth={2} />
+                  <X size={14} color={U.ink[400]} strokeWidth={2} />
                 </Pressable>
               )}
             </View>
@@ -717,14 +746,14 @@ export function ClinicStatementScreen() {
                 flexDirection: 'row', alignItems: 'center', gap: 6,
                 height: 44, paddingHorizontal: 14, borderRadius: 14,
                 borderWidth: 1,
-                borderColor: showFilters ? DS.ink[900] : 'rgba(0,0,0,0.08)',
-                backgroundColor: showFilters ? DS.ink[50] : '#FFF',
+                borderColor: showFilters ? U.ink[900] : U.plainBtn.border,
+                backgroundColor: showFilters ? U.ink[50] : U.plainBtn.bg,
                 cursor: 'pointer' as any,
               }}
             >
-              <Filter size={14} color={showFilters ? DS.ink[900] : DS.ink[400]} strokeWidth={1.8} />
+              <Filter size={14} color={showFilters ? U.ink[900] : U.ink[400]} strokeWidth={1.8} />
               {isDesktop && (
-                <Text style={{ fontSize: 13, fontWeight: showFilters ? '600' : '500', color: showFilters ? DS.ink[900] : DS.ink[500] }}>
+                <Text style={{ fontSize: 13, fontWeight: showFilters ? '600' : '500', color: showFilters ? U.ink[900] : U.ink[500] }}>
                   Filtre
                 </Text>
               )}
@@ -734,22 +763,22 @@ export function ClinicStatementScreen() {
           {/* Extended filters */}
           {showFilters && (
             <View style={{
-              ...cardSolid, padding: 16, gap: 12,
+              ...U.cardSolid, padding: 16, gap: 12,
               flexDirection: isDesktop ? 'row' : 'column', alignItems: isDesktop ? 'flex-end' : 'stretch',
             }}>
               {/* Date from */}
               <View style={{ flex: 1, gap: 4 }}>
-                <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: DS.ink[400] }}>
+                <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: U.ink[400] }}>
                   Başlangıç
                 </Text>
                 <TextInput
                   style={{
                     height: 44, paddingHorizontal: 14, borderRadius: 14,
-                    borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#FFF',
-                    fontSize: 14, color: DS.ink[900], outline: 'none' as any,
+                    borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg,
+                    fontSize: 14, color: U.ink[900], outline: 'none' as any,
                   }}
                   placeholder="YYYY-AA-GG"
-                  placeholderTextColor={DS.ink[300]}
+                  placeholderTextColor={U.ink[300]}
                   value={dateFrom}
                   onChangeText={setDateFrom}
                 />
@@ -757,17 +786,17 @@ export function ClinicStatementScreen() {
 
               {/* Date to */}
               <View style={{ flex: 1, gap: 4 }}>
-                <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: DS.ink[400] }}>
+                <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: U.ink[400] }}>
                   Bitiş
                 </Text>
                 <TextInput
                   style={{
                     height: 44, paddingHorizontal: 14, borderRadius: 14,
-                    borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#FFF',
-                    fontSize: 14, color: DS.ink[900], outline: 'none' as any,
+                    borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg,
+                    fontSize: 14, color: U.ink[900], outline: 'none' as any,
                   }}
                   placeholder="YYYY-AA-GG"
-                  placeholderTextColor={DS.ink[300]}
+                  placeholderTextColor={U.ink[300]}
                   value={dateTo}
                   onChangeText={setDateTo}
                 />
@@ -775,10 +804,10 @@ export function ClinicStatementScreen() {
 
               {/* Type filter */}
               <View style={{ gap: 4 }}>
-                <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: DS.ink[400] }}>
+                <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: U.ink[400] }}>
                   Tip
                 </Text>
-                <View style={{ flexDirection: 'row', gap: 4, padding: 3, backgroundColor: DS.ink[100], borderRadius: 14 }}>
+                <View style={{ flexDirection: 'row', gap: 4, padding: 3, backgroundColor: U.ink[100], borderRadius: 14 }}>
                   {([
                     { key: 'all', label: 'Tümü' },
                     { key: 'invoice', label: 'Fatura' },
@@ -791,11 +820,11 @@ export function ClinicStatementScreen() {
                         onPress={() => setTypeFilter(opt.key)}
                         style={{
                           paddingHorizontal: 14, paddingVertical: 10, borderRadius: 11,
-                          backgroundColor: active ? '#FFF' : 'transparent',
+                          backgroundColor: active ? U.segActive : 'transparent',
                           cursor: 'pointer' as any,
                         }}
                       >
-                        <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? DS.ink[900] : DS.ink[500] }}>
+                        <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? U.ink[900] : U.ink[500] }}>
                           {opt.label}
                         </Text>
                       </Pressable>
@@ -810,11 +839,11 @@ export function ClinicStatementScreen() {
                   onPress={() => { setDateFrom(''); setDateTo(''); setTypeFilter('all'); }}
                   style={{
                     paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999,
-                    backgroundColor: DS.ink[100], cursor: 'pointer' as any,
+                    backgroundColor: U.ink[100], cursor: 'pointer' as any,
                     alignSelf: 'flex-end',
                   }}
                 >
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[700] }}>Temizle</Text>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: U.ink[700] }}>Temizle</Text>
                 </Pressable>
               )}
             </View>
@@ -823,9 +852,9 @@ export function ClinicStatementScreen() {
 
         {/* ── Statement table ──────────────────────────────── */}
         {filtered.length === 0 ? (
-          <View style={{ ...cardSolid, alignItems: 'center', paddingVertical: 48, gap: 10 }}>
-            <Inbox size={32} color={DS.ink[300]} strokeWidth={1.4} />
-            <Text style={{ fontSize: 14, fontWeight: '500', color: DS.ink[400] }}>
+          <View style={{ ...U.cardSolid, alignItems: 'center', paddingVertical: 48, gap: 10 }}>
+            <Inbox size={32} color={U.ink[300]} strokeWidth={1.4} />
+            <Text style={{ fontSize: 14, fontWeight: '500', color: U.ink[400] }}>
               {searchTerm || dateFrom || dateTo || typeFilter !== 'all'
                 ? 'Filtreye uygun hareket bulunamadı'
                 : 'Henüz hareket yok'}
@@ -833,21 +862,21 @@ export function ClinicStatementScreen() {
           </View>
         ) : isDesktop ? (
           /* ── Desktop table ─────────────────────────────────── */
-          <View style={tableCard}>
+          <View style={U.tableCard}>
             {/* Toolbar */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
-              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
+              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: U.ink[900] }}>
                 Ekstre
               </Text>
               <View style={{ flex: 1 }} />
-              <Text style={{ fontSize: 12, color: DS.ink[400] }}>
+              <Text style={{ fontSize: 12, color: U.ink[400] }}>
                 {filtered.length} hareket
                 {(dateFrom || dateTo) ? ` · ${dateFrom || '...'} → ${dateTo || '...'}` : ''}
               </Text>
             </View>
 
             {/* Header */}
-            <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: '#FAFAFA', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+            <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: U.surfaceSoft, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
               {[
                 { label: 'TARİH',     flex: 1.2 },
                 { label: 'TİP',       flex: 0.6 },
@@ -857,7 +886,7 @@ export function ClinicStatementScreen() {
                 { label: 'ALACAK',    flex: 1.2, align: 'end' as const },
                 { label: 'BAKİYE',    flex: 1.2, align: 'end' as const },
               ].map((h, i) => (
-                <Text key={i} style={{ flex: h.flex, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textAlign: h.align as any }}>
+                <Text key={i} style={{ flex: h.flex, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: U.ink[500], textAlign: h.align as any }}>
                   {h.label}
                 </Text>
               ))}
@@ -873,37 +902,37 @@ export function ClinicStatementScreen() {
             <View style={{
               flexDirection: 'row', alignItems: 'center',
               paddingHorizontal: 20, paddingVertical: 14,
-              borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
-              backgroundColor: '#FAFAFA',
+              borderTopWidth: 1, borderTopColor: U.hairline,
+              backgroundColor: U.surfaceSoft,
             }}>
-              <Text style={{ flex: 1.2, fontSize: 11, color: DS.ink[500] }}>{filtered.length} hareket</Text>
+              <Text style={{ flex: 1.2, fontSize: 11, color: U.ink[500] }}>{filtered.length} hareket</Text>
               <View style={{ flex: 0.6 }} />
               <View style={{ flex: 3 }} />
               <View style={{ flex: 1 }} />
-              <Text style={{ flex: 1.2, fontSize: 12, fontWeight: '700', color: DS.ink[900], textAlign: 'end' as any }}>
+              <Text style={{ flex: 1.2, fontSize: 12, fontWeight: '700', color: U.ink[900], textAlign: 'end' as any }}>
                 {fmtMoney(totals.debit, selectedCcy)}
               </Text>
-              <Text style={{ flex: 1.2, fontSize: 12, fontWeight: '700', color: CHIP_TONES.success.fg, textAlign: 'end' as any }}>
+              <Text style={{ flex: 1.2, fontSize: 12, fontWeight: '700', color: U.chipTones.success.fg, textAlign: 'end' as any }}>
                 {fmtMoney(totals.credit, selectedCcy)}
               </Text>
-              <Text style={{ flex: 1.2, fontSize: 12, fontWeight: '700', color: totals.balance > 0 ? DS.ink[900] : CHIP_TONES.success.fg, textAlign: 'end' as any }}>
+              <Text style={{ flex: 1.2, fontSize: 12, fontWeight: '700', color: totals.balance > 0 ? U.ink[900] : U.chipTones.success.fg, textAlign: 'end' as any }}>
                 {fmtMoney(totals.balance, selectedCcy)}
               </Text>
             </View>
           </View>
         ) : (
           /* ���─ Mobile list ────────────────────────────────────── */
-          <View style={tableCard}>
-            <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
-              <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: DS.ink[900] }}>Ekstre</Text>
+          <View style={U.tableCard}>
+            <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
+              <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: U.ink[900] }}>Ekstre</Text>
             </View>
 
             {filtered.map((line, i) => {
               const isInvoice = line.type === 'invoice';
               const Icon = isInvoice ? ArrowUpRight : ArrowDownLeft;
               const chip = isInvoice && line.status ? STATUS_CHIP[line.status as InvoiceStatus] : null;
-              const mTitle = [line.orderNo, line.patientName].filter(Boolean).join(' · ') || line.description;
-              const mSub = [line.clinicName, line.doctorName].filter(Boolean).join(' · ');
+              const mTitle = [line.invoiceNo, line.patientName].filter(Boolean).join(' · ') || line.description;
+              const mSub = [line.orderNo, line.doctorName].filter(Boolean).join(' · ');
 
               return (
                 <Pressable key={line.id ?? i}
@@ -913,27 +942,27 @@ export function ClinicStatementScreen() {
                   flexDirection: 'row', alignItems: 'center', gap: 12,
                   paddingHorizontal: 16, paddingVertical: 12,
                   borderBottomWidth: i < filtered.length - 1 ? 1 : 0,
-                  borderBottomColor: 'rgba(0,0,0,0.04)',
-                  backgroundColor: pressed && line.id ? '#FAFAFA' : 'transparent',
+                  borderBottomColor: U.hairlineSoft,
+                  backgroundColor: pressed && line.id ? U.rowHover : 'transparent',
                   ...(line.id && Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                 })}>
                   <View style={{
                     width: 32, height: 32, borderRadius: 10,
-                    backgroundColor: isInvoice ? CHIP_TONES.info.bg : CHIP_TONES.success.bg,
+                    backgroundColor: isInvoice ? U.chipTones.info.bg : U.chipTones.success.bg,
                     alignItems: 'center', justifyContent: 'center',
                   }}>
-                    <Icon size={14} color={isInvoice ? CHIP_TONES.info.fg : CHIP_TONES.success.fg} strokeWidth={2} />
+                    <Icon size={14} color={isInvoice ? U.chipTones.info.fg : U.chipTones.success.fg} strokeWidth={2} />
                   </View>
 
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>
                       {mTitle}
                     </Text>
                     {mSub ? (
-                      <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }} numberOfLines={1}>{mSub}</Text>
+                      <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 1 }} numberOfLines={1}>{mSub}</Text>
                     ) : null}
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                      <Text style={{ fontSize: 11, color: DS.ink[400] }}>{fmtDateShort(line.date)}</Text>
+                      <Text style={{ fontSize: 11, color: U.ink[400] }}>{fmtDateShort(line.date)}</Text>
                       {isInvoice && chip && line.status && (
                         <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: chip.bg }}>
                           <Text style={{ fontSize: 9, fontWeight: '600', color: chip.fg }}>
@@ -942,7 +971,7 @@ export function ClinicStatementScreen() {
                         </View>
                       )}
                       {!isInvoice && line.method && (
-                        <Text style={{ fontSize: 10, color: DS.ink[400] }}>
+                        <Text style={{ fontSize: 10, color: U.ink[400] }}>
                           {PAYMENT_METHOD_LABELS[line.method as PaymentMethod]}
                         </Text>
                       )}
@@ -952,11 +981,11 @@ export function ClinicStatementScreen() {
                   <View style={{ alignItems: 'flex-end' }}>
                     <Text style={{
                       fontSize: 13, fontWeight: '600',
-                      color: isInvoice ? DS.ink[900] : CHIP_TONES.success.fg,
+                      color: isInvoice ? U.ink[900] : U.chipTones.success.fg,
                     }}>
                       {isInvoice ? fmtMoney(line.debit, selectedCcy) : `-${fmtMoney(line.credit, selectedCcy)}`}
                     </Text>
-                    <Text style={{ fontSize: 10, color: DS.ink[400], marginTop: 1 }}>
+                    <Text style={{ fontSize: 10, color: U.ink[400], marginTop: 1 }}>
                       {fmtMoney(line.balance, selectedCcy)}
                     </Text>
                   </View>
@@ -967,11 +996,11 @@ export function ClinicStatementScreen() {
             <View style={{
               flexDirection: 'row', justifyContent: 'space-between',
               paddingHorizontal: 16, paddingVertical: 12,
-              borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
-              backgroundColor: '#FAFAFA',
+              borderTopWidth: 1, borderTopColor: U.hairline,
+              backgroundColor: U.surfaceSoft,
             }}>
-              <Text style={{ fontSize: 11, color: DS.ink[500] }}>{filtered.length} hareket</Text>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: totals.balance > 0 ? DS.ink[900] : CHIP_TONES.success.fg }}>
+              <Text style={{ fontSize: 11, color: U.ink[500] }}>{filtered.length} hareket</Text>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: totals.balance > 0 ? U.ink[900] : U.chipTones.success.fg }}>
                 Bakiye: {fmtMoney(totals.balance, selectedCcy)}
               </Text>
             </View>
@@ -984,14 +1013,17 @@ export function ClinicStatementScreen() {
 
 // ─── Desktop statement row ───────────────────────────────────────────
 function StatementRow({ line, last, currency, onOpen }: { line: StatementLine; last: boolean; currency: string; onOpen?: () => void }) {
+  const U = useInkUI();
+  const STATUS_CHIP = statusChip(U);
   const isInvoice = line.type === 'invoice';
   const Icon = isInvoice ? ArrowUpRight : ArrowDownLeft;
   const chip = isInvoice && line.status ? STATUS_CHIP[line.status as InvoiceStatus] : null;
   const MIcon = !isInvoice && line.method ? METHOD_ICON[line.method as PaymentMethod] : null;
   const clickable = !!onOpen;
   // Başlık: sipariş no + hasta · Alt satır: klinik + hekim (yoksa description'a düş)
-  const rowTitle = [line.orderNo, line.patientName].filter(Boolean).join(' · ') || line.description;
-  const rowSub = [line.clinicName, line.doctorName].filter(Boolean).join(' · ');
+  // Fatura no (FTR-) birincil; sipariş no (LAB-) + hekim alt satırda. İkisi de görünür.
+  const rowTitle = [line.invoiceNo, line.patientName].filter(Boolean).join(' · ') || line.description;
+  const rowSub = [line.orderNo, line.doctorName].filter(Boolean).join(' · ');
 
   return (
     <Pressable
@@ -1001,40 +1033,40 @@ function StatementRow({ line, last, currency, onOpen }: { line: StatementLine; l
         flexDirection: 'row', alignItems: 'center',
         paddingHorizontal: 20, paddingVertical: 12,
         borderBottomWidth: last ? 0 : 1,
-        borderBottomColor: 'rgba(0,0,0,0.04)',
-        backgroundColor: hovered && clickable ? '#FAFAFA' : 'transparent',
+        borderBottomColor: U.hairlineSoft,
+        backgroundColor: hovered && clickable ? U.rowHover : 'transparent',
         ...(clickable && Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
       })}>
-      <Text style={{ flex: 1.2, fontSize: 12, color: DS.ink[500], fontFamily: 'monospace' }}>
+      <Text style={{ flex: 1.2, fontSize: 12, color: U.ink[500], fontFamily: 'monospace' }}>
         {fmtDateShort(line.date)}
       </Text>
 
       <View style={{ flex: 0.6 }}>
         <View style={{
           width: 22, height: 22, borderRadius: 6,
-          backgroundColor: isInvoice ? CHIP_TONES.info.bg : CHIP_TONES.success.bg,
+          backgroundColor: isInvoice ? U.chipTones.info.bg : U.chipTones.success.bg,
           alignItems: 'center', justifyContent: 'center',
         }}>
-          <Icon size={11} color={isInvoice ? CHIP_TONES.info.fg : CHIP_TONES.success.fg} strokeWidth={2} />
+          <Icon size={11} color={isInvoice ? U.chipTones.info.fg : U.chipTones.success.fg} strokeWidth={2} />
         </View>
       </View>
 
       <View style={{ flex: 3, gap: 2, paddingEnd: 8 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>
             {rowTitle}
           </Text>
           {!isInvoice && MIcon && (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-              <MIcon size={10} color={DS.ink[400]} strokeWidth={1.6} />
-              <Text style={{ fontSize: 10, color: DS.ink[400] }}>
+              <MIcon size={10} color={U.ink[400]} strokeWidth={1.6} />
+              <Text style={{ fontSize: 10, color: U.ink[400] }}>
                 {line.method ? PAYMENT_METHOD_LABELS[line.method as PaymentMethod] : ''}
               </Text>
             </View>
           )}
         </View>
         {rowSub ? (
-          <Text style={{ fontSize: 11, color: DS.ink[400] }} numberOfLines={1}>{rowSub}</Text>
+          <Text style={{ fontSize: 11, color: U.ink[400] }} numberOfLines={1}>{rowSub}</Text>
         ) : null}
       </View>
 
@@ -1050,21 +1082,21 @@ function StatementRow({ line, last, currency, onOpen }: { line: StatementLine; l
 
       <Text style={{
         flex: 1.2, fontSize: 13, fontWeight: line.debit > 0 ? '600' : '400',
-        color: line.debit > 0 ? DS.ink[900] : DS.ink[300], textAlign: 'end' as any,
+        color: line.debit > 0 ? U.ink[900] : U.ink[300], textAlign: 'end' as any,
       }}>
         {line.debit > 0 ? fmtMoney(line.debit, currency) : '—'}
       </Text>
 
       <Text style={{
         flex: 1.2, fontSize: 13, fontWeight: line.credit > 0 ? '600' : '400',
-        color: line.credit > 0 ? CHIP_TONES.success.fg : DS.ink[300], textAlign: 'end' as any,
+        color: line.credit > 0 ? U.chipTones.success.fg : U.ink[300], textAlign: 'end' as any,
       }}>
         {line.credit > 0 ? fmtMoney(line.credit, currency) : '—'}
       </Text>
 
       <Text style={{
         flex: 1.2, fontSize: 13, fontWeight: '600',
-        color: line.balance > 0 ? DS.ink[900] : CHIP_TONES.success.fg, textAlign: 'end' as any,
+        color: line.balance > 0 ? U.ink[900] : U.chipTones.success.fg, textAlign: 'end' as any,
       }}>
         {fmtMoney(line.balance, currency)}
       </Text>
@@ -1074,9 +1106,10 @@ function StatementRow({ line, last, currency, onOpen }: { line: StatementLine; l
 
 // ─── Mini KPI ────────────────────────────────────────────────────────
 function MiniKPI({ label, value, color }: { label: string; value: string; color: string }) {
+  const U = useInkUI();
   return (
-    <View style={{ flex: 1, minWidth: 120, backgroundColor: '#FFF', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }}>
-      <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[400], marginBottom: 4 }}>
+    <View style={{ flex: 1, minWidth: 120, backgroundColor: U.surface, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: U.hairline }}>
+      <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: U.ink[400], marginBottom: 4 }}>
         {label}
       </Text>
       <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color }}>{value}</Text>
@@ -1089,6 +1122,7 @@ function PillBtn({ icon: Icon, label, onPress, variant = 'dark', busy }: {
   icon: React.ComponentType<any>; label?: string; onPress: () => void;
   variant?: 'dark' | 'ghost'; busy?: boolean;
 }) {
+  const U = useInkUI();
   const dark = variant === 'dark';
   return (
     <Pressable
@@ -1098,16 +1132,16 @@ function PillBtn({ icon: Icon, label, onPress, variant = 'dark', busy }: {
         flexDirection: 'row', alignItems: 'center', gap: 6,
         paddingHorizontal: label ? 16 : 12, paddingVertical: 10,
         borderRadius: 999,
-        backgroundColor: dark ? DS.ink[900] : 'transparent',
+        backgroundColor: dark ? U.ink[900] : 'transparent',
         borderWidth: dark ? 0 : 1,
-        borderColor: DS.ink[200],
+        borderColor: U.ink[200],
         opacity: busy ? 0.5 : 1,
         cursor: 'pointer' as any,
       }}
     >
-      <Icon size={14} color={dark ? '#FFF' : DS.ink[700]} strokeWidth={1.8} />
+      <Icon size={14} color={dark ? U.onDarkPill : U.ink[700]} strokeWidth={1.8} />
       {!!label && (
-        <Text style={{ fontSize: 12, fontWeight: '600', color: dark ? '#FFF' : DS.ink[700] }}>
+        <Text style={{ fontSize: 12, fontWeight: '600', color: dark ? U.onDarkPill : U.ink[700] }}>
           {label}
         </Text>
       )}

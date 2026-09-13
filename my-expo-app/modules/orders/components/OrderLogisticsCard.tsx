@@ -8,12 +8,14 @@
 
 import React from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
-import { Truck, ArrowLeft, ArrowRight, Plus, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { Truck, ArrowLeft, ArrowRight, Plus, ChevronLeft, ChevronRight } from '../../../core/ui/icons';
 import { isRTL } from '../../../core/i18n';
 import { DELIVERY_PURPOSE_LABELS, type DeliveryPurpose } from '../api';
 import { StaticRouteMap, legRouteAddresses } from './StaticRouteMap';
 import { formatMoney } from '../../../core/money/currency';
 import { hexA } from '../../../core/theme/stationPalette';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 
 /** Teslimat durumu rozetleri — kurye takip ekranıyla aynı dil. */
@@ -75,11 +77,25 @@ interface Props {
 
 const LIGHT_TONE = { label: '#9A9A9A', title: '#0A0A0A', muted: '#6B6B6B' };
 
+/** Koyu modda teslimat rozeti ön-plan renkleri (açık koyu-lacivert/yeşil/kırmızı okunmaz). */
+const DARK_STATUS_FG: Record<string, string> = {
+  '#6B6B6B': 'rgba(247,242,233,0.72)',
+  '#1E3A8A': '#93C5FD',
+  '#0F6E50': '#6EE7B7',
+  '#9C2E2E': '#FCA5A5',
+};
+
 export function OrderLogisticsCard({
   legs, accent, rowBg, isManager, canCall = true, onCall, onEditFee, fmtDate,
-  frameless = false, tone = LIGHT_TONE,
+  frameless = false, tone,
   mapsApiKey, labAddress, clinicAddress, onOpenTracking, clientView = false,
 }: Props) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  // Çağıran tone geçmediyse: koyuda token-tabanlı, açıkta mevcut açık ton.
+  const toneEff = tone ?? (isDark
+    ? { label: T.ink3, title: T.ink, muted: T.ink2 }
+    : LIGHT_TONE);
   // İptal edilmiş bacaklar listede yer kaplamasın — kayıt DB'de durur (gider/denetim
   // izi), yalnız bu kartta gizlenir.
   // Klinik/hekim (clientView): yalnız kliniğe giden (outbound) teslimat bacağı görünür;
@@ -113,13 +129,13 @@ export function OrderLogisticsCard({
           bakacağını bilmiyordu. Eylem artık etkilediği kartın başlığında,
           içerikten hafif. */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-        <Truck size={12} color={tone.label} strokeWidth={1.8} />
-        <Text style={{ fontSize: 11, fontWeight: '600', color: tone.label, letterSpacing: 1.1, textTransform: 'uppercase' }}>
+        <Truck size={12} color={toneEff.label} strokeWidth={1.8} />
+        <Text style={{ fontSize: 11, fontWeight: '600', color: toneEff.label, letterSpacing: 1.1, textTransform: 'uppercase' }}>
           Lojistik
         </Text>
         <View style={{ flex: 1 }} />
         {shownLegs.length > 0 && (
-          <Text style={{ fontSize: 11, fontWeight: '500', color: tone.muted }}>
+          <Text style={{ fontSize: 11, fontWeight: '500', color: toneEff.muted }}>
             {shownLegs.length} hareket
           </Text>
         )}
@@ -163,21 +179,29 @@ export function OrderLogisticsCard({
               <Truck size={16} color={accent} strokeWidth={1.9} />
             </View>
             <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: tone.title }}>Kurye çağır</Text>
-              <Text style={{ fontSize: 11.5, color: tone.muted }}>Henüz kurye hareketi yok</Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: toneEff.title }}>Kurye çağır</Text>
+              <Text style={{ fontSize: 11.5, color: toneEff.muted }}>Henüz kurye hareketi yok</Text>
             </View>
-            {isRTL() ? <ChevronLeft size={15} color={tone.muted} strokeWidth={2} /> : <ChevronRight size={15} color={tone.muted} strokeWidth={2} />}
+            {isRTL() ? <ChevronLeft size={15} color={toneEff.muted} strokeWidth={2} /> : <ChevronRight size={15} color={toneEff.muted} strokeWidth={2} />}
           </Pressable>
         ) : (
-          <Text style={{ fontSize: 12, color: tone.muted, paddingHorizontal: 2 }}>
+          <Text style={{ fontSize: 12, color: toneEff.muted, paddingHorizontal: 2 }}>
             Henüz kurye hareketi yok.
           </Text>
         )
       ) : (
         <View style={{ gap: 8 }}>
           {shownLegs.map(leg => {
-            const st = DELIVERY_STATUS_CFG[leg.status]
-              ?? { label: leg.status, bg: 'rgba(0,0,0,0.05)', fg: tone.muted };
+            const stRaw = DELIVERY_STATUS_CFG[leg.status]
+              ?? { label: leg.status, bg: 'rgba(0,0,0,0.05)', fg: '#6B6B6B' };
+            // Koyu modda: nötr (siyah-alfa) zemini beyaz-alfaya çevir, koyu ön-planı aç.
+            const st = isDark
+              ? {
+                  label: stRaw.label,
+                  bg: stRaw.bg.startsWith('rgba(0,0,0') ? 'rgba(255,255,255,0.10)' : stRaw.bg,
+                  fg: DARK_STATUS_FG[stRaw.fg] ?? toneEff.muted,
+                }
+              : stRaw;
             const purposeLabel = DELIVERY_PURPOSE_LABELS[(leg.purpose ?? 'teslimat') as DeliveryPurpose] ?? 'Teslimat';
             const who = leg.mode === 'internal'
               ? (leg.courier?.full_name ?? 'Bizim kurye')
@@ -199,11 +223,11 @@ export function OrderLogisticsCard({
                 })}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: tone.title }}>{purposeLabel}</Text>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: toneEff.title }}>{purposeLabel}</Text>
                   {(leg.direction === 'clinic_to_lab') !== isRTL()
-                    ? <ArrowLeft size={11} color={tone.muted} strokeWidth={2} />
-                    : <ArrowRight size={11} color={tone.muted} strokeWidth={2} />}
-                  <Text style={{ flex: 1, fontSize: 11, color: tone.muted }} numberOfLines={1}>
+                    ? <ArrowLeft size={11} color={toneEff.muted} strokeWidth={2} />
+                    : <ArrowRight size={11} color={toneEff.muted} strokeWidth={2} />}
+                  <Text style={{ flex: 1, fontSize: 11, color: toneEff.muted }} numberOfLines={1}>
                     {leg.direction === 'clinic_to_lab' ? 'Klinik → Lab' : 'Lab → Klinik'}
                   </Text>
                   <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: st.bg }}>
@@ -211,7 +235,7 @@ export function OrderLogisticsCard({
                   </View>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={{ flex: 1, fontSize: 11, color: tone.muted }} numberOfLines={1}>
+                  <Text style={{ flex: 1, fontSize: 11, color: toneEff.muted }} numberOfLines={1}>
                     {who}
                     {leg.stage_snapshot ? ` · ${leg.stage_snapshot}` : ''}
                     {' · '}{fmtDate(leg.created_at)}
@@ -220,12 +244,12 @@ export function OrderLogisticsCard({
                       diğer lab kullanıcıları salt-okunur görür. */}
                   {clientView ? null : isManager ? (
                     <Pressable onPress={() => onEditFee(leg)} hitSlop={8}>
-                      <Text style={{ fontSize: 11.5, fontWeight: '600', color: fee ? tone.title : accent }}>
+                      <Text style={{ fontSize: 11.5, fontWeight: '600', color: fee ? toneEff.title : accent }}>
                         {fee ?? '+ ücret'}
                       </Text>
                     </Pressable>
                   ) : (
-                    !!fee && <Text style={{ fontSize: 11.5, fontWeight: '600', color: tone.title }}>{fee}</Text>
+                    !!fee && <Text style={{ fontSize: 11.5, fontWeight: '600', color: toneEff.title }}>{fee}</Text>
                   )}
                 </View>
 
@@ -261,8 +285,8 @@ export function OrderLogisticsCard({
 
   return (
     <View style={{
-      backgroundColor: '#FFFFFF', borderRadius: 24, borderWidth: 1,
-      borderColor: 'rgba(0,0,0,0.06)', padding: 20,
+      backgroundColor: isDark ? T.card : '#FFFFFF', borderRadius: 24, borderWidth: 1,
+      borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.06)', padding: 20,
     }}>
       {body}
     </View>

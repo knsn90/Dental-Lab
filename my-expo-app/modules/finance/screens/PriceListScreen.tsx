@@ -20,7 +20,7 @@ import {
   Search, X, Plus, Tag, Pencil, Info, Building2,
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ArrowLeft, ArrowRight, PlusCircle, Trash2, Calendar, FileDown,
   GitMerge, Scissors, Check, Zap, GripVertical, Sparkles,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { supabase } from '../../../core/api/supabase';
 import { CURRENCY_META, type Currency } from '../../../core/money/currency';
 import { baseSymbol, useBaseCurrency } from '../../../core/money/baseCurrency';
@@ -1423,12 +1423,15 @@ function StandardTab() {
             style={({ hovered }: any) => ({
               width: 36, height: 36, borderRadius: 9999,
               alignItems: 'center', justifyContent: 'center',
-              backgroundColor: moreOpen || hovered ? DS.ink[100] : '#FFFFFF',
-              borderWidth: 1, borderColor: DS.ink[200],
+              // Beyaz buton kuralı: koyu temada kart yüzeyi değil, bir kademe koyu (cardSoft).
+              backgroundColor: isDark
+                ? (moreOpen || hovered ? 'rgba(255,255,255,0.06)' : T.cardSoft)
+                : (moreOpen || hovered ? DS.ink[100] : '#FFFFFF'),
+              borderWidth: 1, borderColor: isDark ? T.hairline : DS.ink[200],
               ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
             })}
           >
-            <Text style={{ fontSize: 17, fontWeight: '700', color: DS.ink[700], marginTop: -4 }}>···</Text>
+            <Text style={{ fontSize: 17, fontWeight: '700', color: isDark ? T.ink2 : DS.ink[700], marginTop: -4 }}>···</Text>
           </Pressable>
 
           {moreOpen && (
@@ -1441,7 +1444,8 @@ function StandardTab() {
               <View style={{
                 position: 'absolute', top: '100%', ...(isRTL() ? { left: 0 } : { right: 0 }), marginTop: 6, zIndex: 50,
                 minWidth: 210, borderRadius: 14, padding: 6,
-                backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: DS.ink[200],
+                backgroundColor: isDark ? T.card : '#FFFFFF',
+                borderWidth: 1, borderColor: isDark ? T.hairline : DS.ink[200],
                 ...(Platform.OS === 'web' ? { boxShadow: '0 16px 40px rgba(15,23,42,0.14)' } as any : {}),
               }}>
                 {([
@@ -1459,12 +1463,12 @@ function StandardTab() {
                       style={({ hovered }: any) => ({
                         flexDirection: 'row', alignItems: 'center', gap: 9,
                         paddingHorizontal: 10, paddingVertical: 9, borderRadius: 10,
-                        backgroundColor: hovered ? DS.ink[50] : 'transparent',
+                        backgroundColor: hovered ? (isDark ? 'rgba(255,255,255,0.06)' : DS.ink[50]) : 'transparent',
                         ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                       })}
                     >
-                      <Icon size={14} color={DS.ink[500]} strokeWidth={1.8} />
-                      <Text style={{ fontSize: 12.5, fontWeight: '600', color: DS.ink[900] }}>{it.label}</Text>
+                      <Icon size={14} color={isDark ? T.ink3 : DS.ink[500]} strokeWidth={1.8} />
+                      <Text style={{ fontSize: 12.5, fontWeight: '600', color: isDark ? T.ink : DS.ink[900] }}>{it.label}</Text>
                     </Pressable>
                   );
                 })}
@@ -1555,7 +1559,7 @@ function StandardTab() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{
             flexDirection: 'row', gap: 3, padding: 3,
-            borderRadius: 9999, backgroundColor: DS.ink[50],
+            borderRadius: 9999, backgroundColor: isDark ? T.cardSoft : DS.ink[50],
             alignItems: 'center',
           }}
         >
@@ -1578,7 +1582,7 @@ function StandardTab() {
                   fontWeight: active ? '700' : '600',
                   letterSpacing: 0.2,
                   textTransform: 'none',
-                  color: active ? '#FFFFFF' : DS.ink[500],
+                  color: active ? '#FFFFFF' : (isDark ? T.ink2 : DS.ink[500]),
                 }} numberOfLines={1}>
                   {c}
                 </Text>
@@ -1605,7 +1609,7 @@ function StandardTab() {
                 isFirst={visibleFilterCats.indexOf(cat) === 0}
                 isLast={visibleFilterCats.indexOf(cat) === visibleFilterCats.length - 1}
               />
-              <View style={s.catCard}>
+              <View style={[s.catCard, isDark && { backgroundColor: T.card, borderColor: T.hairline }] as any}>
               {items.map((sv, idx) => (
                 <ServiceRow
                   key={sv.id}
@@ -1630,10 +1634,10 @@ function StandardTab() {
           {ungrouped.length > 0 && (
             <View>
               <View style={s.groupHeader}>
-                <Text style={s.groupTitle}>Diğer</Text>
-                <Text style={s.groupCount}>{ungrouped.length} hizmet</Text>
+                <Text style={[s.groupTitle, isDark && { color: T.ink2 }]}>Diğer</Text>
+                <Text style={[s.groupCount, isDark && { color: T.ink3 }]}>{ungrouped.length} hizmet</Text>
               </View>
-              <View style={s.catCard}>
+              <View style={[s.catCard, isDark && { backgroundColor: T.card, borderColor: T.hairline }] as any}>
               {ungrouped.map((sv, idx) => (
                 <ServiceRow
                   key={sv.id}
@@ -1657,10 +1661,11 @@ function StandardTab() {
           )}
           {filtered.length === 0 && (
             <View style={s.empty}>
-              <Tag size={36} color={DS.ink[300]} strokeWidth={1.4} />
-              <Text style={s.emptyTitle}>{search ? 'Sonuç bulunamadı' : 'Henüz hizmet eklenmemiş'}</Text>
+              <Tag size={36} color={isDark ? T.ink3 : DS.ink[300]} strokeWidth={1.4} />
+              <Text style={[s.emptyTitle, isDark && { color: T.ink2 }]}>{search ? 'Sonuç bulunamadı' : 'Henüz hizmet eklenmemiş'}</Text>
               {!search && (
-                <Pressable style={s.emptyBtn as any} onPress={openAdd}>
+                /* Koyu temada siyah pill sayfa zemininde kaybolurdu → panel accent'i. */
+                <Pressable style={[s.emptyBtn, isDark && { backgroundColor: catTheme.accent }] as any} onPress={openAdd}>
                   <Text style={s.emptyBtnText}>Ilk hizmeti ekle</Text>
                 </Pressable>
               )}
@@ -1742,6 +1747,8 @@ function CategoryHeader({
   isLast: boolean;
 }) {
   const T = useMobileTokens();
+  // Her alt-bileşen KENDİ hook'unu alır — koşulsuz, JSX'ten önce.
+  const isDark = useThemeModeStore(st => st.resolvedDark);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
   const commit = () => {
@@ -1749,9 +1756,11 @@ function CategoryHeader({
     if (trimmed && trimmed !== name) onRename(trimmed);
     setEditing(false);
   };
-  const iconBtn = (color: string = DS.ink[500]) => ({ hovered }: any) => ({
+  /** Kategori başlığındaki kalem/birleştir/böl ikon düğmeleri (hover zemini temaya bağlı). */
+  const iconTint = isDark ? T.ink2 : DS.ink[500];
+  const iconBtn = () => ({ hovered }: any) => ({
     padding: 5, borderRadius: 6,
-    backgroundColor: hovered ? DS.ink[100] : 'transparent',
+    backgroundColor: hovered ? (isDark ? 'rgba(255,255,255,0.08)' : DS.ink[100]) : 'transparent',
     ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
   });
   return (
@@ -1764,14 +1773,16 @@ function CategoryHeader({
             autoFocus
             onSubmitEditing={commit}
             onBlur={commit}
-            placeholderTextColor={DS.ink[300]}
+            placeholderTextColor={isDark ? T.ink3 : DS.ink[300]}
             style={[
               s.groupTitle as any,
               {
                 flex: 1,
                 paddingVertical: 2, paddingHorizontal: 6,
-                borderRadius: 6, borderWidth: 1, borderColor: DS.ink[300],
-                backgroundColor: '#FFFFFF',
+                borderRadius: 6, borderWidth: 1,
+                borderColor: isDark ? T.hairline : DS.ink[300],
+                backgroundColor: isDark ? T.cardSoft : '#FFFFFF',
+                ...(isDark ? { color: T.ink } : {}),
                 ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
               },
             ]}
@@ -1781,7 +1792,7 @@ function CategoryHeader({
             hitSlop={6}
             style={iconBtn()}
           >
-            <X size={12} color={DS.ink[500]} strokeWidth={1.8} />
+            <X size={12} color={iconTint} strokeWidth={1.8} />
           </Pressable>
         </View>
       ) : (
@@ -1795,13 +1806,15 @@ function CategoryHeader({
                 style={({ hovered }: any) => ({
                   width: 18, height: 14, borderRadius: 4,
                   alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: isFirst ? 'transparent' : (hovered ? DS.ink[100] : DS.ink[50]),
+                  backgroundColor: isFirst ? 'transparent'
+                    : isDark ? (hovered ? 'rgba(255,255,255,0.10)' : T.cardSoft)
+                    : (hovered ? DS.ink[100] : DS.ink[50]),
                   opacity: isFirst ? 0.3 : 1,
                   ...(Platform.OS === 'web' && !isFirst ? { cursor: 'pointer' } as any : {}),
                 })}
                 accessibilityLabel={`${name} kategorisini yukarı taşı`}
               >
-                <ChevronUp size={10} color={DS.ink[700]} strokeWidth={2} />
+                <ChevronUp size={10} color={isDark ? T.ink2 : DS.ink[700]} strokeWidth={2} />
               </Pressable>
               <Pressable
                 onPress={() => !isLast && onMove(1)}
@@ -1810,23 +1823,25 @@ function CategoryHeader({
                 style={({ hovered }: any) => ({
                   width: 18, height: 14, borderRadius: 4,
                   alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: isLast ? 'transparent' : (hovered ? DS.ink[100] : DS.ink[50]),
+                  backgroundColor: isLast ? 'transparent'
+                    : isDark ? (hovered ? 'rgba(255,255,255,0.10)' : T.cardSoft)
+                    : (hovered ? DS.ink[100] : DS.ink[50]),
                   opacity: isLast ? 0.3 : 1,
                   ...(Platform.OS === 'web' && !isLast ? { cursor: 'pointer' } as any : {}),
                 })}
                 accessibilityLabel={`${name} kategorisini aşağı taşı`}
               >
-                <ChevronDown size={10} color={DS.ink[700]} strokeWidth={2} />
+                <ChevronDown size={10} color={isDark ? T.ink2 : DS.ink[700]} strokeWidth={2} />
               </Pressable>
             </View>
-            <Text style={s.groupTitle}>{name}</Text>
+            <Text style={[s.groupTitle, isDark && { color: T.ink2 }]}>{name}</Text>
             <Pressable
               onPress={() => { setDraft(name); setEditing(true); }}
               hitSlop={6}
               style={iconBtn()}
               accessibilityLabel={`${name} kategorisini yeniden adlandır`}
             >
-              <Pencil size={11} color={DS.ink[500]} strokeWidth={1.6} />
+              <Pencil size={11} color={iconTint} strokeWidth={1.6} />
             </Pressable>
             <Pressable
               onPress={onMerge}
@@ -1834,7 +1849,7 @@ function CategoryHeader({
               style={iconBtn()}
               accessibilityLabel={`${name} kategorisini birleştir`}
             >
-              <GitMerge size={11} color={DS.ink[500]} strokeWidth={1.6} />
+              <GitMerge size={11} color={iconTint} strokeWidth={1.6} />
             </Pressable>
             <Pressable
               onPress={onSplit}
@@ -1842,7 +1857,7 @@ function CategoryHeader({
               style={iconBtn()}
               accessibilityLabel={`${name} kategorisini böl`}
             >
-              <Scissors size={11} color={DS.ink[500]} strokeWidth={1.6} />
+              <Scissors size={11} color={iconTint} strokeWidth={1.6} />
             </Pressable>
             <Pressable
               onPress={onDelete}
@@ -1857,7 +1872,7 @@ function CategoryHeader({
               <Trash2 size={11} color="#D94B4B" strokeWidth={1.6} />
             </Pressable>
           </View>
-          <Text style={s.groupCount}>{count} hizmet</Text>
+          <Text style={[s.groupCount, isDark && { color: T.ink3 }]}>{count} hizmet</Text>
         </>
       )}
     </View>
@@ -1880,11 +1895,15 @@ function ServiceRow({
 }) {
   const theme = usePanelTheme();
   const T = useMobileTokens();
+  // Her alt-bileşen KENDİ hook'unu alır — koşulsuz, JSX'ten önce.
+  const isDark = useThemeModeStore(st => st.resolvedDark);
   const isWeb = Platform.OS === 'web';
   const arrowBtnStyle = (disabled: boolean) => ({ hovered }: any) => ({
     width: 22, height: 18, borderRadius: 6,
     alignItems: 'center' as const, justifyContent: 'center' as const,
-    backgroundColor: disabled ? 'transparent' : (hovered ? DS.ink[100] : DS.ink[50]),
+    backgroundColor: disabled ? 'transparent'
+      : isDark ? (hovered ? 'rgba(255,255,255,0.10)' : T.cardSoft)
+      : (hovered ? DS.ink[100] : DS.ink[50]),
     opacity: disabled ? 0.3 : 1,
     ...(Platform.OS === 'web' && !disabled ? { cursor: 'pointer' } as any : {}),
   });
@@ -1892,6 +1911,8 @@ function ServiceRow({
   const row = (
     <View style={[
       s.serviceRow,
+      // Kart yüzeyi koyulaştı → satır ayracı da beyaz-alfa olmalı.
+      isDark && { borderBottomColor: T.hairline2 },
       isLast && { borderBottomWidth: 0 },
       !sv.is_active && { opacity: 0.5 },
       dragging && { opacity: 0.4 },
@@ -1905,21 +1926,21 @@ function ServiceRow({
           onDragEnd: () => onDragEnd?.(),
           style: { cursor: 'grab', display: 'flex', alignItems: 'center', marginEnd: 8, touchAction: 'none' },
           title: 'Sürükleyerek sırala',
-        }, <GripVertical size={16} color={DS.ink[400]} strokeWidth={1.9} />)
+        }, <GripVertical size={16} color={isDark ? T.ink3 : DS.ink[400]} strokeWidth={1.9} />)
       ) : (
         <View style={{ gap: 2, marginEnd: 8 }}>
           <Pressable onPress={() => !isFirst && onMove(sv, -1)} disabled={isFirst} hitSlop={4} style={arrowBtnStyle(isFirst)}>
-            <ChevronUp size={12} color={DS.ink[500]} strokeWidth={2} />
+            <ChevronUp size={12} color={isDark ? T.ink2 : DS.ink[500]} strokeWidth={2} />
           </Pressable>
           <Pressable onPress={() => !isLast && onMove(sv, 1)} disabled={isLast} hitSlop={4} style={arrowBtnStyle(isLast)}>
-            <ChevronDown size={12} color={DS.ink[500]} strokeWidth={2} />
+            <ChevronDown size={12} color={isDark ? T.ink2 : DS.ink[500]} strokeWidth={2} />
           </Pressable>
         </View>
       )}
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={[s.serviceName, { color: T.ink }]} numberOfLines={1}>{sv.name}</Text>
         {sv.production_days != null && (
-          <Text style={{ fontSize: 11, color: DS.ink[400], fontWeight: '500', marginTop: 2 }}>
+          <Text style={{ fontSize: 11, color: isDark ? T.ink3 : DS.ink[400], fontWeight: '500', marginTop: 2 }}>
             {sv.production_days} gün
           </Text>
         )}
@@ -1928,11 +1949,16 @@ function ServiceRow({
       {/* Renk DEĞİL ağırlık vurgular: `theme.primary` lab panelinde safran
           (#F5C24B) — beyaz zeminde ~1.6:1 kontrast, yani sayfanın en önemli
           sayısı en okunmaz olanıydı. Ücretsiz hizmet yeşil kalır (anlam taşır). */}
-      <Text style={[s.servicePrice, { color: sv.price_type === 'free' ? '#1F6B47' : T.ink, marginTop: 0, textAlign: 'end' as any }]}>
+      {/* Ücretsiz yeşili koyu zeminde okunmuyordu → açık yeşile çıkılır (status rengi korunur). */}
+      <Text style={[s.servicePrice, {
+        color: sv.price_type === 'free' ? (isDark ? '#7BD8AC' : '#1F6B47') : T.ink,
+        marginTop: 0, textAlign: 'end' as any,
+      }]}>
         {fmtServicePrice(sv)}
       </Text>
-      <Pressable style={s.editBtn as any} onPress={() => onEdit(sv)}>
-        <Pencil size={14} color={DS.ink[500]} strokeWidth={1.6} />
+      {/* Beyaz buton kuralı: kart yüzeyi DEĞİL, bir kademe koyu (cardSoft) + hairline. */}
+      <Pressable style={[s.editBtn, isDark && { backgroundColor: T.cardSoft, borderColor: T.hairline }] as any} onPress={() => onEdit(sv)}>
+        <Pencil size={14} color={isDark ? T.ink2 : DS.ink[500]} strokeWidth={1.6} />
       </Pressable>
       <Pressable
         onPress={() => onDelete(sv)}
@@ -1965,6 +1991,7 @@ function ServiceRow({
 // ────────────────────────────────────────────────────────────────────────────
 function CustomTab() {
   const T = useMobileTokens();
+  const isDark = useThemeModeStore(st => st.resolvedDark);
   const { profile } = useAuthStore();
   const [clinics, setClinics]         = useState<Clinic[]>([]);
   const [services, setServices]       = useState<LabService[]>([]);
@@ -2178,13 +2205,13 @@ function CustomTab() {
         /* -- Service override list for selected clinic -- */
         <View style={{ flex: 1 }}>
           {/* Back + clinic name header */}
-          <View style={s.clinicHeader}>
-            <Pressable style={s.backBtn as any} onPress={() => setSelected(null)}>
-              {isRTL() ? <ArrowRight size={16} color="#2563EB" strokeWidth={1.6} /> : <ArrowLeft size={16} color="#2563EB" strokeWidth={1.6} />}
+          <View style={[s.clinicHeader, isDark && { backgroundColor: T.card, borderBottomColor: T.hairline }] as any}>
+            <Pressable style={[s.backBtn, isDark && { backgroundColor: T.cardSoft, borderWidth: 1, borderColor: T.hairline }] as any} onPress={() => setSelected(null)}>
+              {isRTL() ? <ArrowRight size={16} color={isDark ? '#93C5FD' : '#2563EB'} strokeWidth={1.6} /> : <ArrowLeft size={16} color={isDark ? '#93C5FD' : '#2563EB'} strokeWidth={1.6} />}
             </Pressable>
             <View style={{ flex: 1 }}>
-              <Text style={s.clinicHeaderTitle}>{selectedClinic.name}</Text>
-              <Text style={s.clinicHeaderSub}>Ozel fiyat listesi</Text>
+              <Text style={[s.clinicHeaderTitle, isDark && { color: T.ink }] as any}>{selectedClinic.name}</Text>
+              <Text style={[s.clinicHeaderSub, isDark && { color: T.ink3 }] as any}>Ozel fiyat listesi</Text>
             </View>
             {/* F2: Standart listeyi bu kliniğe toplu aktar (başlangıç noktası) */}
             <Pressable
@@ -2207,14 +2234,14 @@ function CustomTab() {
               style={({ hovered }: any) => ({
                 flexDirection: 'row', alignItems: 'center', gap: 6,
                 paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9999,
-                backgroundColor: hovered ? '#F1F5F9' : '#FFFFFF',
-                borderWidth: 1, borderColor: DS.ink[200],
+                backgroundColor: isDark ? (hovered ? 'rgba(255,255,255,0.06)' : T.cardSoft) : (hovered ? '#F1F5F9' : '#FFFFFF'),
+                borderWidth: 1, borderColor: isDark ? T.hairline : DS.ink[200],
                 opacity: pdfBusy ? 0.6 : 1,
                 ...(Platform.OS === 'web' ? { cursor: pdfBusy ? 'wait' as any : 'pointer' as any } as any : {}),
               })}
             >
-              <FileDown size={14} color={DS.ink[700]} strokeWidth={1.8} />
-              <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[900] }}>{pdfBusy ? 'Hazırlanıyor…' : 'PDF'}</Text>
+              <FileDown size={14} color={isDark ? T.ink2 : DS.ink[700]} strokeWidth={1.8} />
+              <Text style={{ fontSize: 12, fontWeight: '600', color: isDark ? T.ink : DS.ink[900] }}>{pdfBusy ? 'Hazırlanıyor…' : 'PDF'}</Text>
             </Pressable>
             <View style={s.overrideBadge}>
               <Text style={s.overrideBadgeText}>{overrides.length} ozel fiyat</Text>

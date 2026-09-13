@@ -10,16 +10,17 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { firstName as displayFirstName } from '../../../core/util/personName';
 import { useTranslation } from 'react-i18next';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { View, Text, Pressable, ScrollView, Platform, RefreshControl, Animated, Easing, Alert, Image } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Bell, QrCode, ListChecks, Clock, Flame, Play, Pause, CheckCircle2, ChevronRight, ChevronLeft,
   MessageCircle, User as UserIcon,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { isRTL } from '../../../core/i18n';
 import { useOrderChatInbox } from '../../orders/hooks/useOrderChatInbox';
 import { ProfileMenu } from '../../../core/ui/mobile/ProfileMenu';
-import { MessagesPopup } from '../../orders/components/MessagesPopup';
 import Svg, { Defs, Rect, RadialGradient, Stop, LinearGradient as SvgLinearGradient } from 'react-native-svg';
 import { MOBILE_PANEL_THEMES, useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { Ring } from '../../../core/ui/mobile/Ring';
@@ -40,6 +41,8 @@ export interface TechActiveJob {
   patient: string;
   workType: string;
   stationName: string;
+  doctorName?: string | null;
+  clinicName?: string | null;
   status: string;          // 'aktif' | 'bekliyor' | 'durakladi' | ...
   startedAt?: string | null;
   isCritical?: boolean;
@@ -73,11 +76,11 @@ export function TechnicianMobileDashboard(props: TechnicianMobileDashboardProps)
   const router = useRouter();
   const { profile } = useAuthStore();
   const T = useMobileTokens();
+  const insets = useSafeAreaInsets();
   const setScanOpen = useScanStore(s => s.setOpen);
   const { totalUnread } = useOrderChatInbox();
   const signOut = useAuthStore(s => s.signOut);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
-  const [messagesOpen, setMessagesOpen] = useState(false);
 
   const handleLogout = () => {
     setProfileMenuOpen(false);
@@ -89,6 +92,10 @@ export function TechnicianMobileDashboard(props: TechnicianMobileDashboardProps)
   const handleProfile = () => {
     setProfileMenuOpen(false);
     router.push('/(station)/profile' as any);
+  };
+  const handleAccessCode = () => {
+    setProfileMenuOpen(false);
+    router.push('/(station)/settings?tab=mycode' as any);
   };
 
   // Strip "Dr." prefix if present (technician panel doesn't use Dr.)
@@ -120,7 +127,9 @@ export function TechnicianMobileDashboard(props: TechnicianMobileDashboardProps)
         flexDirection: 'row',
         alignItems: 'flex-start',
         paddingHorizontal: 20,
-        paddingTop: 96,
+        // Lab logosu (PanelTopHeader: insets.top+7, 38 yüksek) ile selamlama arasında
+        // nefes — diğer panellerin mobil özetleriyle aynı ofset.
+        paddingTop: Math.max(insets.top, 8) + 72,
         paddingBottom: 18,
         gap: 12,
       }}>
@@ -142,16 +151,7 @@ export function TechnicianMobileDashboard(props: TechnicianMobileDashboardProps)
            (QR · Mesaj · Bildirim · Profil) — tüm station sayfalarında sabit. */}
       </View>
 
-      {/* ═══ QR Check-In CTA — mesai giriş / çıkış ═══ */}
-      <TechCheckInCTACard
-        accentColor={TECH.primary}
-        onPress={() => setScanOpen(true)}
-        kicker={t('station.mobile.checkIn')}
-        title={t('station.mobile.checkInWithQr')}
-        subtitle={t('station.mobile.scanQrInstructions')}
-      />
-
-      {/* ═══ Aktif işlerim — mesai kartının hemen altında ═══ */}
+      {/* ═══ Aktif işlerim — EN ÜSTTE (yoğun teknisyen ilk bakışta "ne yapmalıyım"ı görsün) ═══ */}
       <View style={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <View style={{ flex: 1, gap: 2 }}>
           <Text style={{ fontSize: 10, fontWeight: '700', color: TECH.primary, letterSpacing: 1.4, textTransform: 'uppercase' }}>
@@ -235,6 +235,15 @@ export function TechnicianMobileDashboard(props: TechnicianMobileDashboardProps)
           ))}
         </View>
       )}
+
+      {/* ═══ QR Check-In CTA — mesai giriş / çıkış (aktif işlerin ALTINDA) ═══ */}
+      <TechCheckInCTACard
+        accentColor={TECH.primary}
+        onPress={() => setScanOpen(true)}
+        kicker={t('station.mobile.checkIn')}
+        title={t('station.mobile.checkInWithQr')}
+        subtitle={t('station.mobile.scanQrInstructions')}
+      />
 
       {/* ═══ Verimliliğin (gradient hero) ═══
           Diagonal linear (#0A1B3D→#163D8F→#2E6DFF) + sağ üst radial glow (#6BCBFF). */}
@@ -486,15 +495,12 @@ export function TechnicianMobileDashboard(props: TechnicianMobileDashboardProps)
         anchorTop={120}
         onClose={() => setProfileMenuOpen(false)}
         onProfile={handleProfile}
+        onAccessCode={handleAccessCode}
         onLogout={handleLogout}
       />
 
-      {/* Messages popup */}
-      <MessagesPopup
-        visible={messagesOpen}
-        onClose={() => setMessagesOpen(false)}
-        accentColor={TECH.primary}
-      />
+      {/* Mesajlar artık layout'taki TopActionBar'dan açılıyor (buradaki kopya
+          hiç açılmıyordu ve ScrollView içinde olduğu için sayfayla kayardı). */}
     </ScrollView>
   );
 }
@@ -561,7 +567,6 @@ function ActiveJobCard({ job: j, T, onOpen }: { job: TechActiveJob; T: any; onOp
       {({ pressed }: any) => (
         <View
           style={{
-            flexDirection: 'row', alignItems: 'center', gap: 12,
             padding: 14, borderRadius: 18,
             backgroundColor: cardBg,
             borderWidth: 1, borderColor: cardBorder,
@@ -578,6 +583,7 @@ function ActiveJobCard({ job: j, T, onOpen }: { job: TechActiveJob; T: any; onOp
             } as any : {}),
           }}
         >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           {/* Sol icon — nabız halo'lu (aktif/kritik için) */}
           <View style={{ width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
             {showPulse && (
@@ -620,6 +626,14 @@ function ActiveJobCard({ job: j, T, onOpen }: { job: TechActiveJob; T: any; onOp
             <Text style={{ fontSize: 11.5, color: subColor, fontWeight: '500' }} numberOfLines={1}>
               {j.workType} · {j.stationName}
             </Text>
+            {(j.doctorName || j.clinicName) && (
+              <Text
+                style={{ fontSize: 11, color: isActive ? 'rgba(255,255,255,0.72)' : T.ink3, fontWeight: '500' }}
+                numberOfLines={1}
+              >
+                {[j.doctorName, j.clinicName].filter(Boolean).join(' · ')}
+              </Text>
+            )}
           </View>
 
           {/* Sağ — durum + chevron */}
@@ -648,6 +662,28 @@ function ActiveJobCard({ job: j, T, onOpen }: { job: TechActiveJob; T: any; onOp
               ? <ChevronLeft size={15} color={isActive ? 'rgba(255,255,255,0.78)' : T.ink3} strokeWidth={2.2} />
               : <ChevronRight size={15} color={isActive ? 'rgba(255,255,255,0.78)' : T.ink3} strokeWidth={2.2} />}
           </View>
+          </View>
+
+          {/* Durum-farkında CTA — tek dokunuşla eyleme: başlamamışsa "İşe Başla",
+              başlamışsa "Tamamla". Gerçek akış (malzeme onayı + aktif-limit) OperatorScreen'de. */}
+          <Pressable
+            onPress={onOpen}
+            style={{
+              marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+              paddingVertical: 11, borderRadius: 13,
+              backgroundColor: isActive ? 'rgba(255,255,255,0.18)' : TECH.primary,
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+            }}
+          >
+            {isPaused
+              ? <Play size={16} color="#FFFFFF" strokeWidth={2} />
+              : j.startedAt
+                ? <CheckCircle2 size={16} color="#FFFFFF" strokeWidth={2} />
+                : <Play size={16} color="#FFFFFF" strokeWidth={2} />}
+            <Text style={{ fontSize: 13.5, fontWeight: '700', color: '#FFFFFF', letterSpacing: 0.2 }}>
+              {isPaused ? autoT('Devam et') : j.startedAt ? autoT('Tamamla') : autoT('İşe Başla')}
+            </Text>
+          </Pressable>
         </View>
       )}
     </Pressable>

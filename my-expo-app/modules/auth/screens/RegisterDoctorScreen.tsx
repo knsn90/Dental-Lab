@@ -6,7 +6,7 @@ import React, { useState, useRef } from 'react';
 import { safeBack } from '../../../core/util/safeBack';
 import { View, Text, Pressable, Platform, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Mail, Lock, Eye, EyeOff, User as UserIcon, Phone, Building2, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { Mail, Lock, Eye, EyeOff, User as UserIcon, Phone, Building2, AlertCircle, ChevronLeft, ChevronRight } from '../../../core/ui/icons';
 import { signUpDoctor } from '../api';
 import { AddressFields, AddressData, buildAddressString } from '../components/AddressFields';
 import { AuthShell, AuthInput, AuthButton, AUTH, AUTH_FONT } from '../components/AuthShell';

@@ -4,11 +4,12 @@
 
 import React from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
-import { ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight } from '../icons';
 import { useRouter } from 'expo-router';
 import { isRTL } from '../../i18n';
 import { safeBack } from '../../util/safeBack';
-import { MOBILE_TOKENS } from '../../theme/mobileDesignTokens';
+import { useMobileTokens } from '../../theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../store/themeModeStore';
 
 export function AppBar({
   kicker,
@@ -27,6 +28,8 @@ export function AppBar({
   showBack?: boolean;
 }) {
   const router = useRouter();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   // Geri oku YÖN bildirir → RTL'de aynalanmalı (dir=rtl düzeni çevirir, ikon çizimini değil)
   const BackIcon = isRTL() ? ChevronRight : ChevronLeft;
   return (
@@ -38,9 +41,9 @@ export function AppBar({
             {showBack && (
               <Pressable
                 onPress={() => safeBack()}
-                style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.05)' }}
+                style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }}
               >
-                <BackIcon size={20} color={MOBILE_TOKENS.ink} strokeWidth={2} />
+                <BackIcon size={20} color={T.ink} strokeWidth={2} />
               </Pressable>
             )}
             {leading}
@@ -54,9 +57,9 @@ export function AppBar({
       {/* Kicker (caps label) */}
       {kicker && (
         <Text style={{
-          fontSize: 11, fontWeight: '600', color: MOBILE_TOKENS.ink3,
+          fontSize: 11, fontWeight: '600', color: T.ink3,
           letterSpacing: 1.2, textTransform: 'uppercase',
-          ...(Platform.OS === 'web' ? { fontFamily: MOBILE_TOKENS.ui } as any : {}),
+          ...(Platform.OS === 'web' ? { fontFamily: T.ui } as any : {}),
           marginBottom: 4,
         }}>
           {kicker}
@@ -70,11 +73,11 @@ export function AppBar({
           style={{
             fontSize: big ? 32 : 22,
             fontWeight: big ? '300' : '600',
-            color: MOBILE_TOKENS.ink,
+            color: T.ink,
             letterSpacing: big ? -0.7 : -0.3,
             lineHeight: big ? 36 : 26,
             ...(Platform.OS === 'web'
-              ? { fontFamily: big ? MOBILE_TOKENS.display : MOBILE_TOKENS.ui } as any
+              ? { fontFamily: big ? T.display : T.ui } as any
               : {}),
           }}
         >

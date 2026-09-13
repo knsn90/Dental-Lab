@@ -22,7 +22,7 @@ import {
   Camera, Edit2, Mail, Phone, Lock, Bell, User,
   Calendar, LogOut, ChevronRight, ChevronLeft, ChevronUp, Eye, EyeOff, X,
   Building2, MapPin, Receipt, CreditCard,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { toast } from '../../../core/ui/Toast';
 import { AppSwitch } from '../../../core/ui/AppSwitch';
 import { useAuthStore } from '../../../core/store/authStore';
@@ -523,7 +523,7 @@ export function ProfileScreen() {
                   value={clinicData?.billing_mode === 'per_order' ? 'Her Teslimat' : 'Aylık Toplu'} />
                 <KurumRow icon={Calendar}   label="Vade"
                   value={clinicData?.default_payment_terms_days != null
-                    ? `${clinicData.default_payment_terms_days} gün`
+                    ? `${clinicData.default_payment_terms_days} ${autoT('gün')}`
                     : null} />
               </View>
             </Card>
@@ -820,20 +820,20 @@ export function ProfileScreen() {
             {/* ── Çıkış — solid destructive button at the bottom ── */}
             <Pressable
               onPress={handleSignOut}
-              style={({ pressed }: any) => ({
-                marginTop: 4,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 10,
-                paddingVertical: 15,
-                paddingHorizontal: 20,
-                borderRadius: 14,
-                backgroundColor: '#DC2626',
-                opacity: pressed ? 0.82 : 1,
-                // @ts-ignore web
-                cursor: 'pointer',
-              })}
+              // Fonksiyon-stilli Pressable native'de row'u düşürüyor → object stil.
+              style={Platform.OS === 'web'
+                ? ((({ pressed }: any) => ({
+                    marginTop: 4,
+                    flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const,
+                    gap: 10, paddingVertical: 15, paddingHorizontal: 20, borderRadius: 14,
+                    backgroundColor: '#DC2626', opacity: pressed ? 0.82 : 1, cursor: 'pointer',
+                  })) as any)
+                : {
+                    marginTop: 4,
+                    flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const,
+                    gap: 10, paddingVertical: 15, paddingHorizontal: 20, borderRadius: 14,
+                    backgroundColor: '#DC2626',
+                  }}
             >
               <LogOut size={18} color="#FFFFFF" strokeWidth={2.2} />
               <Text style={{ fontSize: 15, fontWeight: '600', color: '#FFFFFF', letterSpacing: -0.2 }}>

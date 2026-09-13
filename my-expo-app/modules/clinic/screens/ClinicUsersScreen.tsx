@@ -17,7 +17,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   UserPlus, Stethoscope, ShieldCheck, ClipboardList, ChevronDown, Check, X, Users as UsersIcon, Trash2,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 
 import { fetchMyClinicUsers, updateClinicUser, inviteClinicUser, generateDoctorPassword, deleteClinicUser, updateClinicUserAuth } from '../api';
 import { useAuthStore } from '../../../core/store/authStore';
@@ -26,10 +26,11 @@ import { DS } from '../../../core/theme/dsTokens';
 import { titleCaseTR } from '../../../core/utils/textCase';
 import { isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
+import { useInkUI } from '../../../core/theme/inkScale';
+import { useHeroSurface, HeroGlow } from '../../../core/ui/HeroGlow';
 
 const SERIF = { fontFamily: DS.font.display as string, fontWeight: '300' as const };
 const P     = DS.clinic.primary;
-const INK   = DS.ink[900];
 
 type ClinicRole = 'doctor' | 'clinic_secretary' | 'clinic_admin';
 
@@ -110,15 +111,17 @@ function UsersHeroCard({
   onInvite: () => void;
 }) {
   const rtl = isRTL();
+  const heroBg = useHeroSurface(accentColor);
   return (
     <View style={{
       borderRadius: 20, overflow: 'hidden',
       backgroundColor: accentColor, padding: 18,
       position: 'relative',
-    }}>
-      {/* Bloblar — F1 canonical */}
-      <View style={{ position: 'absolute', top: -40, ...(rtl ? { left: -40 } : { right: -40 }), width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} pointerEvents="none" />
-      <View style={{ position: 'absolute', bottom: -50, ...(rtl ? { right: -20 } : { left: -20 }), width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} pointerEvents="none" />
+      ...heroBg,
+    } as any}>
+      {/* Bloblar — F1 canonical (koyu temada blur ile yayılır) */}
+      <HeroGlow size={160} opacity={0.18} style={{ top: -40, ...(rtl ? { left: -40 } : { right: -40 }) }} />
+      <HeroGlow size={140} opacity={0.12} delay={900} style={{ bottom: -50, ...(rtl ? { right: -20 } : { left: -20 }) }} />
 
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
         <View style={{ flex: 1 }}>
@@ -184,24 +187,26 @@ function UsersHeroCard({
 function FilterPill({ icon: Icon, label, active, accent, onPress }: {
   icon?: any; label: string; active: boolean; accent: string; onPress: () => void;
 }) {
+  const U = useInkUI();
   return (
     <Pressable
       onPress={onPress}
       style={{
         flexDirection: 'row', alignItems: 'center', gap: 7,
         paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999,
-        backgroundColor: active ? INK : 'rgba(255,255,255,0.6)',
-        borderWidth: 1, borderColor: active ? INK : 'rgba(255,255,255,0.95)',
+        backgroundColor: active ? U.ink[900] : U.plainBtn.bg,
+        borderWidth: 1, borderColor: active ? U.ink[900] : U.plainBtn.border,
         ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.12s' } as any : {}),
       }}
     >
-      {Icon ? <Icon size={13} color={active ? '#FFF' : accent} strokeWidth={2} /> : null}
-      <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#FFF' : INK }}>{label}</Text>
+      {Icon ? <Icon size={13} color={active ? U.onDarkPill : accent} strokeWidth={2} /> : null}
+      <Text style={{ fontSize: 13, fontWeight: '600', color: active ? U.onDarkPill : U.ink[900] }}>{label}</Text>
     </Pressable>
   );
 }
 
 function UserRow({ user, onPress }: { user: ClinicUser; onPress: () => void }) {
+  const U = useInkUI();
   const { t } = useTranslation();
   const rtl = isRTL();
   const meta = ROLE_META[user.user_type] ?? ROLE_META.doctor;
@@ -212,13 +217,13 @@ function UserRow({ user, onPress }: { user: ClinicUser; onPress: () => void }) {
       style={{
         flexDirection: 'row', alignItems: 'center', gap: 14,
         paddingHorizontal: 16, paddingVertical: 14,
-        borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)',
+        borderTopWidth: 1, borderTopColor: U.hairlineSoft,
         ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
       }}
     >
       {/* Avatar */}
       <View style={{
-        width: 42, height: 42, borderRadius: 21, backgroundColor: `${meta.accent}18`,
+        width: 42, height: 42, borderRadius: 21, backgroundColor: `${meta.accent}${U.isDark ? '3D' : '18'}`,
         alignItems: 'center', justifyContent: 'center',
       }}>
         <Text style={{ fontSize: 14, fontWeight: '700', color: meta.accent }}>{initials(user.full_name)}</Text>
@@ -226,26 +231,26 @@ function UserRow({ user, onPress }: { user: ClinicUser; onPress: () => void }) {
 
       {/* Ad + Tür */}
       <View style={{ flex: 1, gap: 2 }}>
-        <Text style={{ fontSize: 14, fontWeight: '600', color: user.is_active ? INK : DS.ink[400], textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>
+        <Text style={{ fontSize: 14, fontWeight: '600', color: user.is_active ? U.ink[900] : U.ink[400], textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>
           {titleCaseTR(user.full_name)}
         </Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, backgroundColor: `${meta.accent}14` }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, backgroundColor: `${meta.accent}${U.isDark ? '33' : '14'}` }}>
             <Icon size={11} color={meta.accent} strokeWidth={2} />
             <Text style={{ fontSize: 11, color: meta.accent, fontWeight: '600' }}>{t(meta.labelKey)}</Text>
           </View>
           {user.specialty && (
-            <Text style={{ fontSize: 11, color: DS.ink[400] }} numberOfLines={1}>{user.specialty}</Text>
+            <Text style={{ fontSize: 11, color: U.ink[400] }} numberOfLines={1}>{user.specialty}</Text>
           )}
           {user.phone && (
-            <Text style={{ fontSize: 11, color: DS.ink[400] }}>· {user.phone}</Text>
+            <Text style={{ fontSize: 11, color: U.ink[400] }}>· {user.phone}</Text>
           )}
         </View>
       </View>
 
       {!user.is_active && (
-        <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: 'rgba(0,0,0,0.06)' }}>
-          <Text style={{ fontSize: 10, color: DS.ink[500], fontWeight: '600', letterSpacing: 0.3 }}>PASİF</Text>
+        <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: U.chipNeutral }}>
+          <Text style={{ fontSize: 10, color: U.ink[500], fontWeight: '600', letterSpacing: 0.3 }}>PASİF</Text>
         </View>
       )}
     </Pressable>
@@ -265,6 +270,7 @@ function UserFormModal({
   clinicName: string | null;
   onSaved: () => void;
 }) {
+  const U = useInkUI();
   const { t } = useTranslation();
   const rtl = isRTL();
   const isEdit = !!editing;
@@ -436,20 +442,20 @@ function UserFormModal({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 16 }}>
-        <View style={{ width: '100%', maxWidth: 560, maxHeight: '92%', backgroundColor: '#FFF', borderRadius: 24, overflow: 'hidden' }}>
+      <View style={{ flex: 1, backgroundColor: U.scrim, justifyContent: 'center', alignItems: 'center', padding: 16 }}>
+        <View style={{ width: '100%', maxWidth: 560, maxHeight: '92%', backgroundColor: U.surface, borderRadius: 24, overflow: 'hidden', ...(U.isDark ? { borderWidth: 1, borderColor: U.hairline } : {}) }}>
           {/* Header */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
             <View>
-              <Text style={{ ...SERIF, fontSize: 22, color: INK }}>
+              <Text style={{ ...SERIF, fontSize: 22, color: U.ink[900] }}>
                 {isEdit ? t('clinic.users.modal.titleEdit') : t('clinic.users.modal.titleNew')}
               </Text>
-              <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 2 }}>
+              <Text style={{ fontSize: 12, color: U.ink[500], marginTop: 2 }}>
                 {isEdit ? t('clinic.users.modal.subtitleEdit') : t('clinic.users.modal.subtitleNew')}
               </Text>
             </View>
             <Pressable onPress={close} style={{ padding: 6 }}>
-              <X size={20} color={DS.ink[500]} />
+              <X size={20} color={U.ink[500]} />
             </Pressable>
           </View>
 
@@ -463,8 +469,8 @@ function UserFormModal({
                     <View style={{
                       flexDirection: 'row', alignItems: 'center', gap: 12,
                       padding: 14, borderRadius: 14,
-                      backgroundColor: `${meta.accent}10`,
-                      borderWidth: 1, borderColor: `${meta.accent}33`,
+                      backgroundColor: `${meta.accent}${U.isDark ? '2E' : '10'}`,
+                      borderWidth: 1, borderColor: `${meta.accent}${U.isDark ? '55' : '33'}`,
                     }}>
                       <View style={{
                         width: 38, height: 38, borderRadius: 12,
@@ -477,10 +483,10 @@ function UserFormModal({
                         <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: meta.accent }}>
                           {t('clinic.users.modal.role')}
                         </Text>
-                        <Text style={{ fontSize: 15, fontWeight: '700', color: INK, letterSpacing: -0.2 }}>
+                        <Text style={{ fontSize: 15, fontWeight: '700', color: U.ink[900], letterSpacing: -0.2 }}>
                           {t(meta.labelKey)}
                         </Text>
-                        <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 1 }}>{t(meta.subKey)}</Text>
+                        <Text style={{ fontSize: 11, color: U.ink[500], marginTop: 1 }}>{t(meta.subKey)}</Text>
                       </View>
                     </View>
                   );
@@ -489,7 +495,7 @@ function UserFormModal({
                 {/* Rol seçici (sadece yeni kullanıcı ekleme ekranında) */}
                 {!isEdit && (
                   <View>
-                    <Text style={{ fontSize: 12, color: DS.ink[500], marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.4 }}>{t('clinic.users.modal.role')}</Text>
+                    <Text style={{ fontSize: 12, color: U.ink[500], marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.4 }}>{t('clinic.users.modal.role')}</Text>
                     <View style={{ flexDirection: 'row', gap: 8 }}>
                       {(['doctor', 'clinic_secretary', 'clinic_admin'] as ClinicRole[]).map(r => {
                         const meta = ROLE_META[r];
@@ -501,13 +507,13 @@ function UserFormModal({
                             onPress={() => setRole(r)}
                             style={{
                               flex: 1, padding: 12, borderRadius: 14, gap: 6,
-                              backgroundColor: active ? `${meta.accent}14` : '#FAFAFA',
-                              borderWidth: 1.5, borderColor: active ? meta.accent : 'transparent',
+                              backgroundColor: active ? `${meta.accent}${U.isDark ? '33' : '14'}` : U.plainBtn.bg,
+                              borderWidth: 1.5, borderColor: active ? meta.accent : U.plainBtn.border,
                             }}
                           >
                             <Icon size={18} color={meta.accent} strokeWidth={2} />
-                            <Text style={{ fontSize: 13, fontWeight: '700', color: active ? meta.accent : INK }}>{t(meta.labelKey)}</Text>
-                            <Text style={{ fontSize: 10, color: DS.ink[400] }} numberOfLines={2}>{t(meta.subKey)}</Text>
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: active ? meta.accent : U.ink[900] }}>{t(meta.labelKey)}</Text>
+                            <Text style={{ fontSize: 10, color: U.ink[400] }} numberOfLines={2}>{t(meta.subKey)}</Text>
                           </Pressable>
                         );
                       })}
@@ -518,26 +524,26 @@ function UserFormModal({
                 {/* Hekim için unvan dropdown */}
                 {!isEdit && role === 'doctor' && (
                   <View>
-                    <Text style={{ fontSize: 12, color: DS.ink[500], marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.4 }}>{t('clinic.users.modal.title')}</Text>
+                    <Text style={{ fontSize: 12, color: U.ink[500], marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.4 }}>{t('clinic.users.modal.title')}</Text>
                     <Pressable
                       onPress={() => setTitleOpen(!titleOpen)}
                       style={{
                         flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                        padding: 12, borderRadius: 12, backgroundColor: '#FAFAFA',
+                        padding: 12, borderRadius: 12, backgroundColor: U.surfaceSoft,
                       }}
                     >
-                      <Text style={{ fontSize: 14, color: INK }}>{title}</Text>
-                      <ChevronDown size={16} color={DS.ink[500]} />
+                      <Text style={{ fontSize: 14, color: U.ink[900] }}>{title}</Text>
+                      <ChevronDown size={16} color={U.ink[500]} />
                     </Pressable>
                     {titleOpen && (
-                      <View style={{ marginTop: 6, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' }}>
+                      <View style={{ marginTop: 6, backgroundColor: U.surface, borderRadius: 12, borderWidth: 1, borderColor: U.fieldBorder }}>
                         {DOCTOR_TITLES.map(t => (
                           <Pressable key={t} onPress={() => { setTitle(t); setTitleOpen(false); }}
                             style={({ hovered }: any) => ({
-                              padding: 10, backgroundColor: hovered ? 'rgba(0,0,0,0.03)' : 'transparent',
+                              padding: 10, backgroundColor: hovered ? U.rowHover : 'transparent',
                               flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
                             })}>
-                            <Text style={{ fontSize: 13, color: INK }}>{t}</Text>
+                            <Text style={{ fontSize: 13, color: U.ink[900] }}>{t}</Text>
                             {title === t && <Check size={14} color={P} />}
                           </Pressable>
                         ))}
@@ -551,15 +557,15 @@ function UserFormModal({
 
                 {/* E-posta — edit'te varsayılan kilitli, "Düzenle" ile açılır */}
                 <View>
-                  <Text style={{ fontSize: 12, color: DS.ink[500], marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>{t('clinic.users.modal.email')}</Text>
+                  <Text style={{ fontSize: 12, color: U.ink[500], marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>{t('clinic.users.modal.email')}</Text>
                   {isEdit && emailLocked ? (
                     <View style={{
                       flexDirection: 'row', alignItems: 'center',
-                      backgroundColor: '#FAFAFA', borderRadius: 12, padding: 12, gap: 10,
+                      backgroundColor: U.surfaceSoft, borderRadius: 12, padding: 12, gap: 10,
                     }}>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 14, color: INK, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>
-                          {email || <Text style={{ color: DS.ink[400], fontStyle: 'italic' }}>—</Text>}
+                        <Text style={{ fontSize: 14, color: U.ink[900], textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>
+                          {email || <Text style={{ color: U.ink[400], fontStyle: 'italic' }}>—</Text>}
                         </Text>
                       </View>
                       <Pressable
@@ -576,18 +582,18 @@ function UserFormModal({
                   ) : (
                     <View style={{
                       flexDirection: 'row', alignItems: 'center',
-                      backgroundColor: '#FAFAFA', borderRadius: 12,
+                      backgroundColor: U.surfaceSoft, borderRadius: 12,
                     }}>
                       <TextInput
                         value={email}
                         onChangeText={setEmail}
                         placeholder={t('clinic.users.modal.emailPlaceholder')}
-                        placeholderTextColor={DS.ink[400]}
+                        placeholderTextColor={U.ink[400]}
                         autoCapitalize="none"
                         keyboardType="email-address"
                         autoFocus={isEdit}
                         style={{
-                          flex: 1, padding: 12, fontSize: 14, color: INK,
+                          flex: 1, padding: 12, fontSize: 14, color: U.ink[900],
                           ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
                         }}
                       />
@@ -599,7 +605,7 @@ function UserFormModal({
                             ...(Platform.OS === 'web' ? { cursor: 'pointer', opacity: hovered ? 1 : 0.75 } as any : {}),
                           })}
                         >
-                          <Text style={{ fontSize: 11, color: DS.ink[500], fontWeight: '600' }}>{t('clinic.users.modal.cancelBtn')}</Text>
+                          <Text style={{ fontSize: 11, color: U.ink[500], fontWeight: '600' }}>{t('clinic.users.modal.cancelBtn')}</Text>
                         </Pressable>
                       )}
                     </View>
@@ -609,7 +615,7 @@ function UserFormModal({
                 {/* Şifre — edit'te "Değiştir" butonu, create'te açık */}
                 <View>
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <Text style={{ fontSize: 12, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.4 }}>{t('clinic.users.modal.password')}</Text>
+                    <Text style={{ fontSize: 12, color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.4 }}>{t('clinic.users.modal.password')}</Text>
                     {pwdEditing && (
                       <Pressable onPress={() => setPassword(generateDoctorPassword())} style={({ hovered }: any) => ({
                         paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
@@ -624,9 +630,9 @@ function UserFormModal({
                   {isEdit && !pwdEditing ? (
                     <View style={{
                       flexDirection: 'row', alignItems: 'center',
-                      backgroundColor: '#FAFAFA', borderRadius: 12, padding: 12, gap: 10,
+                      backgroundColor: U.surfaceSoft, borderRadius: 12, padding: 12, gap: 10,
                     }}>
-                      <Text style={{ flex: 1, fontSize: 14, color: INK, letterSpacing: 2, fontFamily: Platform.OS === 'web' ? 'monospace' : undefined }}>
+                      <Text style={{ flex: 1, fontSize: 14, color: U.ink[900], letterSpacing: 2, fontFamily: Platform.OS === 'web' ? 'monospace' : undefined }}>
                         ••••••••••
                       </Text>
                       <Pressable
@@ -644,18 +650,18 @@ function UserFormModal({
                     <>
                       <View style={{
                         flexDirection: 'row', alignItems: 'center',
-                        backgroundColor: '#FAFAFA', borderRadius: 12,
+                        backgroundColor: U.surfaceSoft, borderRadius: 12,
                       }}>
                         <TextInput
                           value={password}
                           onChangeText={setPassword}
                           placeholder={isEdit ? t('clinic.users.modal.passwordPlaceholderEdit') : t('clinic.users.modal.passwordPlaceholderNew')}
-                          placeholderTextColor={DS.ink[400]}
+                          placeholderTextColor={U.ink[400]}
                           secureTextEntry={!showPwd}
                           autoCapitalize="none"
                           autoFocus={isEdit}
                           style={{
-                            flex: 1, padding: 12, fontSize: 14, color: INK,
+                            flex: 1, padding: 12, fontSize: 14, color: U.ink[900],
                             fontFamily: Platform.OS === 'web' ? 'monospace' : undefined,
                             ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
                           }}
@@ -664,7 +670,7 @@ function UserFormModal({
                           paddingHorizontal: 10, paddingVertical: 8,
                           ...(Platform.OS === 'web' ? { cursor: 'pointer', opacity: hovered ? 1 : 0.75 } as any : {}),
                         })}>
-                          <Text style={{ fontSize: 11, color: DS.ink[500], fontWeight: '600' }}>{showPwd ? t('clinic.users.modal.hideBtn') : t('clinic.users.modal.showBtn')}</Text>
+                          <Text style={{ fontSize: 11, color: U.ink[500], fontWeight: '600' }}>{showPwd ? t('clinic.users.modal.hideBtn') : t('clinic.users.modal.showBtn')}</Text>
                         </Pressable>
                         {isEdit && (
                           <Pressable
@@ -674,11 +680,11 @@ function UserFormModal({
                               ...(Platform.OS === 'web' ? { cursor: 'pointer', opacity: hovered ? 1 : 0.75 } as any : {}),
                             })}
                           >
-                            <Text style={{ fontSize: 11, color: DS.ink[500], fontWeight: '600' }}>{t('clinic.users.modal.cancelBtn')}</Text>
+                            <Text style={{ fontSize: 11, color: U.ink[500], fontWeight: '600' }}>{t('clinic.users.modal.cancelBtn')}</Text>
                           </Pressable>
                         )}
                       </View>
-                      <Text style={{ fontSize: 10.5, color: DS.ink[400], marginTop: 4 }}>
+                      <Text style={{ fontSize: 10.5, color: U.ink[400], marginTop: 4 }}>
                         {isEdit
                           ? t('clinic.users.modal.passwordHintEdit')
                           : t('clinic.users.modal.passwordHintNew')}
@@ -698,8 +704,8 @@ function UserFormModal({
                 {/* Yetkiler — rol-bazlı filtre */}
                 <View>
                   <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
-                    <Text style={{ fontSize: 12, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.4 }}>{t('clinic.users.modal.permissions')}</Text>
-                    <Text style={{ fontSize: 10.5, color: DS.ink[400] }}>
+                    <Text style={{ fontSize: 12, color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.4 }}>{t('clinic.users.modal.permissions')}</Text>
+                    <Text style={{ fontSize: 10.5, color: U.ink[400] }}>
                       {role === 'doctor' ? t('clinic.users.modal.permissionsHintDoctor')
                        : role === 'clinic_secretary' ? t('clinic.users.modal.permissionsHintSecretary')
                        : t('clinic.users.modal.permissionsHintAdmin')}
@@ -717,16 +723,16 @@ function UserFormModal({
                 {/* Aktiflik (sadece edit) */}
                 {isEdit && (
                   <View>
-                    <Text style={{ fontSize: 12, color: DS.ink[500], marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.4 }}>{t('clinic.users.modal.accountStatus')}</Text>
+                    <Text style={{ fontSize: 12, color: U.ink[500], marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.4 }}>{t('clinic.users.modal.accountStatus')}</Text>
                     <PermissionToggle label="Aktif" sub="Pasif kullanıcı sisteme giriş yapamaz" value={isActive} onToggle={() => setIsActive(!isActive)} />
                   </View>
                 )}
 
                 {/* Submit + Sil */}
                 {isEdit && confirmDel ? (
-                  <View style={{ backgroundColor: 'rgba(220,38,38,0.06)', borderRadius: 14, padding: 14, gap: 10, borderWidth: 1, borderColor: 'rgba(220,38,38,0.18)' }}>
-                    <Text style={{ fontSize: 13, color: '#991B1B', fontWeight: '700' }}>{t('clinic.users.modal.deleteConfirm')}</Text>
-                    <Text style={{ fontSize: 11.5, color: '#7F1D1D' }}>
+                  <View style={{ backgroundColor: U.isDark ? 'rgba(220,38,38,0.16)' : 'rgba(220,38,38,0.06)', borderRadius: 14, padding: 14, gap: 10, borderWidth: 1, borderColor: 'rgba(220,38,38,0.18)' }}>
+                    <Text style={{ fontSize: 13, color: U.isDark ? '#F3A0A0' : '#991B1B', fontWeight: '700' }}>{t('clinic.users.modal.deleteConfirm')}</Text>
+                    <Text style={{ fontSize: 11.5, color: U.isDark ? 'rgba(243,160,160,0.82)' : '#7F1D1D' }}>
                       {t('clinic.users.modal.deleteWarning')}
                     </Text>
                     <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
@@ -734,12 +740,12 @@ function UserFormModal({
                         onPress={() => setConfirmDel(false)}
                         style={({ hovered }: any) => ({
                           flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center',
-                          backgroundColor: hovered ? 'rgba(0,0,0,0.04)' : '#FFF',
-                          borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
+                          backgroundColor: hovered ? U.plainBtn.hoverBg : U.plainBtn.bg,
+                          borderWidth: 1, borderColor: U.plainBtn.border,
                           ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                         })}
                       >
-                        <Text style={{ fontSize: 13, fontWeight: '600', color: INK }}>{t('clinic.users.modal.cancelBtn')}</Text>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>{t('clinic.users.modal.cancelBtn')}</Text>
                       </Pressable>
                       <Pressable
                         onPress={handleDelete}
@@ -765,7 +771,7 @@ function UserFormModal({
                       disabled={submitting}
                       style={({ hovered }: any) => ({
                         flex: 1,
-                        backgroundColor: submitting ? 'rgba(0,0,0,0.4)' : hovered ? '#19B06B' : P,
+                        backgroundColor: submitting ? (U.isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.4)') : hovered ? '#19B06B' : P,
                         paddingVertical: 14, borderRadius: 14, alignItems: 'center',
                         ...(Platform.OS === 'web' ? { cursor: submitting ? 'not-allowed' : 'pointer', transition: 'background-color 0.12s' } as any : {}),
                       })}
@@ -779,7 +785,7 @@ function UserFormModal({
                         onPress={() => setConfirmDel(true)}
                         style={({ hovered }: any) => ({
                           paddingHorizontal: 16, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
-                          backgroundColor: hovered ? 'rgba(220,38,38,0.12)' : 'rgba(220,38,38,0.06)',
+                          backgroundColor: hovered ? 'rgba(220,38,38,0.20)' : (U.isDark ? 'rgba(220,38,38,0.16)' : 'rgba(220,38,38,0.06)'),
                           borderWidth: 1, borderColor: 'rgba(220,38,38,0.18)',
                           ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'background-color 0.12s' } as any : {}),
                         })}
@@ -798,39 +804,41 @@ function UserFormModal({
 }
 
 function FormField({ label, ...props }: any) {
+  const U = useInkUI();
   return (
     <View>
-      <Text style={{ fontSize: 12, color: DS.ink[500], marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</Text>
+      <Text style={{ fontSize: 12, color: U.ink[500], marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</Text>
       <TextInput
         {...props}
         style={{
-          backgroundColor: '#FAFAFA', borderRadius: 12, padding: 12, fontSize: 14, color: INK,
+          backgroundColor: U.surfaceSoft, borderRadius: 12, padding: 12, fontSize: 14, color: U.ink[900],
           ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
         }}
-        placeholderTextColor={DS.ink[400]}
+        placeholderTextColor={U.ink[400]}
       />
     </View>
   );
 }
 
 function PermissionToggle({ label, sub, value, onToggle }: { label: string; sub: string; value: boolean; onToggle: () => void }) {
+  const U = useInkUI();
   return (
     <Pressable
       onPress={onToggle}
       style={{
         flexDirection: 'row', alignItems: 'center', gap: 12,
         padding: 12, borderRadius: 12,
-        backgroundColor: '#FAFAFA',
+        backgroundColor: U.surfaceSoft,
         ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
       }}
     >
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontSize: 13, fontWeight: '600', color: INK }}>{label}</Text>
-        <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 2 }}>{sub}</Text>
+        <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>{label}</Text>
+        <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 2 }}>{sub}</Text>
       </View>
       <View style={{
         width: 40, height: 22, borderRadius: 11, padding: 2,
-        backgroundColor: value ? P : 'rgba(0,0,0,0.12)',
+        backgroundColor: value ? P : (U.isDark ? 'rgba(255,255,255,0.20)' : 'rgba(0,0,0,0.12)'),
         justifyContent: 'center',
       }}>
         <View style={{
@@ -846,6 +854,7 @@ function PermissionToggle({ label, sub, value, onToggle }: { label: string; sub:
 // Ana ekran
 // ────────────────────────────────────────────────────────────────────
 export function ClinicUsersScreen() {
+  const U = useInkUI();
   const { t } = useTranslation();
   const rtl = isRTL();
   const { profile } = useAuthStore();
@@ -883,14 +892,16 @@ export function ClinicUsersScreen() {
   const showsShellHeader = width >= 1024;
 
   const activeMeta = filter === 'all'
-    ? { label: autoT('Tüm kullanıcılar'), sub: autoT('Hekim, sekreter ve yöneticiler bir arada'), accent: INK }
+    ? { label: autoT('Tüm kullanıcılar'), sub: autoT('Hekim, sekreter ve yöneticiler bir arada'), accent: U.ink[900] }
     : { ...ROLE_META[filter as ClinicRole], label: t(ROLE_META[filter as ClinicRole].labelKey), sub: t(ROLE_META[filter as ClinicRole].subKey) };
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#F9FAFB' }}>
+    <View style={{ flex: 1, backgroundColor: U.isDark ? U.pageBg : '#F9FAFB' }}>
       <ScrollView contentContainerStyle={{
         paddingHorizontal: isDesktop ? 28 : 16,
-        paddingTop: isDesktop ? 28 : Math.max(insets.top, 8) + 30,
+        // +30 yetmiyordu: yüzen logo/aksiyon başlığı (PanelTopHeader) başlığın
+        // üstüne biniyordu. Aynı başlığın altında duran diğer ekranlarla aynı pay: +72.
+        paddingTop: isDesktop ? 28 : Math.max(insets.top, 8) + 72,
         paddingBottom: 100,
         maxWidth: 1280, width: '100%', alignSelf: 'center',
       }}>
@@ -908,7 +919,7 @@ export function ClinicUsersScreen() {
               fontSize: 34,
               letterSpacing: -0.025 * 34,
               lineHeight: 36,
-              color: INK,
+              color: U.ink[900],
             }}>
               {t('clinic.users.pageTitle')}
             </Text>
@@ -931,22 +942,23 @@ export function ClinicUsersScreen() {
 
         {/* ════════ KOMPAKT FİLTRE + LİSTE BAŞLIK ════════ */}
         <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 22, marginBottom: 12 }}>
-          <FilterPill label={t('clinic.users.filterAll')}     active={filter === 'all'}              accent={INK}    onPress={() => setFilter('all')} />
+          <FilterPill label={t('clinic.users.filterAll')}     active={filter === 'all'}              accent={U.ink[900]}    onPress={() => setFilter('all')} />
           <FilterPill icon={Stethoscope}   label={t('clinic.users.filterDoctor')}    active={filter === 'doctor'}           accent="#0EA5E9" onPress={() => setFilter('doctor')} />
           <FilterPill icon={ClipboardList} label={t('clinic.users.filterSecretary')} active={filter === 'clinic_secretary'} accent="#7C3AED" onPress={() => setFilter('clinic_secretary')} />
           <FilterPill icon={ShieldCheck}   label={t('clinic.users.filterAdmin')} active={filter === 'clinic_admin'}     accent={P}      onPress={() => setFilter('clinic_admin')} />
           <View style={{ flex: 1 }} />
-          <Text style={{ fontSize: 12, color: DS.ink[400] }}>{filtered.length} {t('clinic.users.recordCount')}</Text>
+          <Text style={{ fontSize: 12, color: U.ink[400] }}>{filtered.length} {t('clinic.users.recordCount')}</Text>
         </View>
 
         {/* ════════ LİSTE ════════ */}
         <View style={{
-          backgroundColor: '#FFF', borderRadius: 22, overflow: 'hidden',
-          ...(Platform.OS === 'web' ? { boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 12px 28px rgba(0,0,0,0.05)' } as any : {}),
+          backgroundColor: U.surface, borderRadius: 22, overflow: 'hidden',
+          ...(U.isDark ? { borderWidth: 1, borderColor: U.hairline } : {}),
+          ...(Platform.OS === 'web' ? { boxShadow: U.isDark ? '0 12px 28px rgba(0,0,0,0.45)' : '0 1px 3px rgba(0,0,0,0.04), 0 12px 28px rgba(0,0,0,0.05)' } as any : {}),
         }}>
           {loading ? (
             <View style={{ padding: 64, alignItems: 'center' }}>
-              <Text style={{ fontSize: 13, color: DS.ink[400] }}>{t('common.loading')}</Text>
+              <Text style={{ fontSize: 13, color: U.ink[400] }}>{t('common.loading')}</Text>
             </View>
           ) : filtered.length === 0 ? (
             <View style={{ padding: isDesktop ? 56 : 36, alignItems: 'center', gap: 18 }}>
@@ -961,8 +973,8 @@ export function ClinicUsersScreen() {
                   return (
                     <View key={idx} style={{
                       width: 56, height: 56, borderRadius: 28,
-                      backgroundColor: `${item.c}1A`,
-                      borderWidth: 3, borderColor: '#FFF',
+                      backgroundColor: `${item.c}${U.isDark ? '3D' : '1A'}`,
+                      borderWidth: 3, borderColor: U.surface,
                       alignItems: 'center', justifyContent: 'center',
                       ...(idx === 0 ? {} : (rtl ? { marginRight: -14 } : { marginLeft: -14 })),
                     }}>
@@ -972,10 +984,10 @@ export function ClinicUsersScreen() {
                 })}
               </View>
               <View style={{ alignItems: 'center', gap: 4 }}>
-                <Text style={{ ...SERIF, fontSize: 22, color: INK, letterSpacing: -0.4 }}>
+                <Text style={{ ...SERIF, fontSize: 22, color: U.ink[900], letterSpacing: -0.4 }}>
                   {filter === 'all' ? t('clinic.users.emptyAll') : t('clinic.users.emptyFilteredFmt', { role: activeMeta.label.toLocaleLowerCase() })}
                 </Text>
-                <Text style={{ fontSize: 13, color: DS.ink[500], textAlign: 'center', maxWidth: 380 }}>
+                <Text style={{ fontSize: 13, color: U.ink[500], textAlign: 'center', maxWidth: 380 }}>
                   {t('clinic.users.emptyDesc')}
                 </Text>
               </View>

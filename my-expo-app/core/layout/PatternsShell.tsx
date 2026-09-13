@@ -54,12 +54,14 @@ function injectPatternsScrollbar() {
 import {
   Home, Grid, ClipboardList, FileText, FilePlus, PlusCircle,
   Activity, Stethoscope, Settings, Users, Package, Truck,
-  DollarSign, MessageSquare, MessagesSquare, Search, Bell, LifeBuoy, ChevronLeft, ChevronRight,
+  DollarSign, MessageSquare, MessagesSquare, Search, Bell, ChevronLeft, ChevronRight,
   LogOut, CheckSquare, CheckCircle, BarChart3, Calendar, Boxes, Wallet,
   Building2, Landmark, UserCog, Briefcase, Box, ShieldCheck, BadgeCheck, ListTodo,
   Camera, ScanLine, Clipboard, Wrench, Tag, ChevronDown, Inbox,
   ListCheck, Scooter, TrendingUp,
-} from 'lucide-react-native';
+  Monitor, Sun, Moon,
+} from '../ui/icons';
+import { SupportIcon } from '../ui/SupportIcon';
 import { WhatsAppGlyph } from '../ui/WhatsAppGlyph';
 import { Tooth, Crown, Implant, ZirconiaDisc, DentalArch } from '../ui/dentalIcons';
 import { useAuthStore } from '../store/authStore';
@@ -76,6 +78,8 @@ import { useNotifications } from '../store/notificationsStore';
 import { openSupport } from '../store/supportStore';
 import { MOBILE_PANEL_THEMES, type MobilePanel } from '../theme/mobileDesignTokens';
 import { useThemeModeStore } from '../store/themeModeStore';
+import { autoT } from '../i18n/autoTranslate';
+import { useHeroSurface, useAccentTones } from '../ui/HeroGlow';
 import { isRTL } from '../i18n';
 import { amIPlatformAdmin, myLimits } from '../../modules/platform/api';
 
@@ -168,7 +172,7 @@ const ICONS: Record<string, React.ComponentType<any>> = {
   bell:             Bell,
   logout:           LogOut,
   'log-out':        LogOut,
-  'help-circle':    LifeBuoy,
+  'help-circle':    SupportIcon,
   'check-square':   CheckSquare,
   'check-circle':   CheckCircle,
   'bar-chart-3':    BarChart3,
@@ -370,6 +374,12 @@ export function PatternsShell({
   // Panel-spesifik zemin paleti — mobile MOBILE_PANEL_THEMES.bgPage ile aynı
   // Dark mode'da koyu zemin.
   const isDark = useThemeModeStore(s => s.resolvedDark);
+  const themeMode = useThemeModeStore(s => s.mode);
+  const setThemeMode = useThemeModeStore(s => s.setMode);
+  // Accent butonlar (yeni sipariş / daralt): koyu temada lacivert gradyan yüzey.
+  const accentSurface = useHeroSurface(accentColor);
+  // Tema seçicideki dolu daire — koyu temada accent'in derin karşılığı.
+  const { fill: accentFill } = useAccentTones(accentColor);
   const palette = useMemo(() => {
     if (isDark) {
       return {
@@ -390,6 +400,41 @@ export function PatternsShell({
       panelBg: theme.surface, // beyaz — sidebar/kart bg
     };
   }, [panelType, isDark]);
+
+  // Shell dark-token seti — sabit açık renkleri tek yerden çevir (toolbar/nav/başlık/profil).
+  const SC = isDark ? {
+    surface:   '#1B1916',   // toolbar / kart / profil chip
+    surfaceEl: '#221F1B',   // dropdown / popover
+    ink:       '#F7F2E9',
+    ink2:      'rgba(247,242,233,0.72)',
+    ink3:      'rgba(247,242,233,0.45)',
+    iconMuted: '#B8B2A6',
+    hairline:  'rgba(255,255,255,0.10)',
+    chip:      'rgba(255,255,255,0.06)',
+    chipStrong:'rgba(255,255,255,0.14)',
+  } : {
+    surface:   '#FFFFFF',
+    surfaceEl: '#FFFFFF',
+    ink:       '#0A0A0A',
+    ink2:      '#2C2C2C',
+    ink3:      '#9A9A9A',
+    iconMuted: '#2C2C2C',
+    hairline:  'rgba(0,0,0,0.06)',
+    chip:      'rgba(0,0,0,0.06)',
+    chipStrong:'rgba(0,0,0,0.10)',
+  };
+
+  // Profil menüsü satırı: ayraç çizgisi yerine hover'da yuvarlak vurgu.
+  // Menüyü ayıran her hairline görsel gürültü; boşluk + vurgu yeterli.
+  const menuRow = ({ hovered, pressed }: any) => ({
+    flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10,
+    height: 34, paddingHorizontal: 10, borderRadius: 10,
+    backgroundColor: hovered ? SC.chip : 'transparent',
+    opacity: pressed ? 0.7 : 1,
+    ...(Platform.OS === 'web'
+      ? { cursor: 'pointer', transitionProperty: 'background-color', transitionDuration: '140ms' } as any
+      : {}),
+  });
 
   // expo-router usePathname() route group prefix'i çıkarır: /(lab)/orders → /orders
   const normalizeHref = (href: string) => href.replace(/^\/\([^)]+\)/, '') || '/';
@@ -496,12 +541,12 @@ export function PatternsShell({
             width: 38,
             height: 38,
             borderRadius: 19,
-            backgroundColor: accentColor,
+            ...accentSurface,
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 10,
             // @ts-ignore web
-            boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
+            boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.5)' : '0 4px 12px rgba(0,0,0,0.12)',
             cursor: 'pointer',
           }}
         >
@@ -555,7 +600,7 @@ export function PatternsShell({
             {effectiveTitle ? (
               <View className="gap-0.5">
                 <Text
-                  className="text-ink-900"
+                  className="text-ink-900 dark:text-white/90"
                   numberOfLines={1}
                   style={{
                     fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
@@ -584,13 +629,13 @@ export function PatternsShell({
                         return (
                           <React.Fragment key={idx}>
                             <Pressable onPress={() => safeBack('/')}>
-                              <Text className="text-[13px] text-ink-400" style={{ textDecorationLine: 'underline' }}>{trimmed}</Text>
+                              <Text className="text-[13px] text-ink-400 dark:text-white/55" style={{ textDecorationLine: 'underline' }}>{trimmed}</Text>
                             </Pressable>
-                            <Text className="text-[11px] text-ink-300">›</Text>
+                            <Text className="text-[11px] text-ink-300 dark:text-white/35">›</Text>
                           </React.Fragment>
                         );
                       }
-                      return <Text key={idx} className="text-[13px] text-ink-400">{trimmed}</Text>;
+                      return <Text key={idx} className="text-[13px] text-ink-400 dark:text-white/55">{trimmed}</Text>;
                     })}
                   </View>
                 ) : null}
@@ -613,9 +658,10 @@ export function PatternsShell({
            top: 16,
            ...(rtl ? { left: 16 } : { right: 16 }),
            zIndex: 200,
-           backgroundColor: '#FFFFFF',
+           backgroundColor: SC.surface,
+           borderWidth: isDark ? 1 : 0, borderColor: SC.hairline,
            // @ts-ignore web shadow
-           boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
+           boxShadow: isDark ? '0 4px 16px rgba(0,0,0,0.4)' : '0 4px 16px rgba(0,0,0,0.06)',
          }}
        >
           {/* Search */}
@@ -632,7 +678,7 @@ export function PatternsShell({
               placeholderTextColor="#9A9A9A"
               onSubmitEditing={() => onSearchSubmit?.(searchQ)}
               style={{
-                flex: 1, fontSize: 12, color: '#0A0A0A',
+                flex: 1, fontSize: 12, color: SC.ink,
                 // @ts-ignore web outline reset
                 outlineWidth: 0,
               }}
@@ -646,7 +692,7 @@ export function PatternsShell({
             className="w-8 h-8 rounded-full items-center justify-center hover:bg-black/5 relative"
             style={({ hovered }: any) => ({ backgroundColor: hovered ? 'rgba(194,65,12,0.10)' : 'transparent' })}
           >
-            <LifeBuoy size={14} color="#C2410C" strokeWidth={1.8} />
+            <SupportIcon size={14} color="#C2410C" strokeWidth={1.8} />
           </Pressable>
 
           {/* Bell — bildirim */}
@@ -654,7 +700,7 @@ export function PatternsShell({
             onPress={() => setNotifOpen(v => !v)}
             className="w-8 h-8 rounded-full items-center justify-center hover:bg-black/5 relative"
           >
-            <Bell size={14} color="#2C2C2C" strokeWidth={1.8} />
+            <Bell size={14} color={SC.iconMuted} strokeWidth={1.8} />
             <BellBadge />
           </Pressable>
 
@@ -665,7 +711,7 @@ export function PatternsShell({
               onPress={onPressMessages}
               className="w-8 h-8 rounded-full items-center justify-center hover:bg-black/5 relative"
             >
-              <MessageSquare size={14} color="#2C2C2C" strokeWidth={1.8} />
+              <MessageSquare size={14} color={SC.iconMuted} strokeWidth={1.8} />
               {messagesUnreadCount > 0 && (
                 <View
                   style={{
@@ -705,7 +751,7 @@ export function PatternsShell({
                   <Text className="text-[11px] font-semibold" style={{ color: '#FFFFFF' }}>{initials}</Text>
                 </View>
               )}
-              <Text className="text-[12px] font-medium text-ink-900" numberOfLines={1}>
+              <Text className="text-[12px] font-medium text-ink-900 dark:text-white/90" numberOfLines={1}>
                 {headerName}
               </Text>
             </Pressable>
@@ -717,65 +763,110 @@ export function PatternsShell({
                   style={{ position: 'fixed' as any, top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }}
                 />
                 <View
-                  className="absolute bg-white rounded-2xl border border-black/[0.06] overflow-hidden"
+                  className="absolute"
                   style={{
-                    top: 40, ...(rtl ? { left: 0 } : { right: 0 }), width: 220, zIndex: 100,
+                    top: 40, ...(rtl ? { left: 0 } : { right: 0 }), width: 236, zIndex: 100,
+                    backgroundColor: SC.surfaceEl,
+                    borderRadius: 16, borderWidth: 1, borderColor: SC.hairline,
+                    padding: 6,
                     // @ts-ignore web shadow
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
+                    boxShadow: isDark ? '0 12px 32px rgba(0,0,0,0.55)' : '0 10px 30px rgba(15,23,42,0.12)',
                   }}
                 >
-                  <View className="px-4 py-3 border-b border-black/[0.06] flex-row items-center gap-2.5">
+                  {/* Kimlik — ayraç yok, boşlukla ayrılır */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingTop: 8, paddingBottom: 12 }}>
                     {headerAvatar ? (
-                      <Image source={{ uri: headerAvatar }} className="w-9 h-9 rounded-full" style={{ backgroundColor: '#FFFFFF' }} />
+                      <Image source={{ uri: headerAvatar }} style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: '#FFFFFF' }} />
                     ) : (
-                      <View className="w-9 h-9 rounded-full items-center justify-center" style={{ backgroundColor: accentColor }}>
-                        <Text className="text-[13px] font-semibold text-white">{initials}</Text>
+                      <View style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor }}>
+                        <Text style={{ fontSize: 12.5, fontWeight: '600', color: '#FFFFFF' }}>{initials}</Text>
                       </View>
                     )}
-                    <View className="flex-1">
-                      <Text numberOfLines={1} className="text-[13px] font-semibold text-ink-900">
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text numberOfLines={1} style={{ fontSize: 13.5, fontWeight: '600', color: SC.ink, letterSpacing: -0.1 }}>
                         {profileTitle}
                       </Text>
-                      <Text numberOfLines={1} className="text-[11px] text-ink-400">
+                      <Text numberOfLines={1} style={{ fontSize: 11.5, color: SC.ink3, marginTop: 1 }}>
                         {isClinicSide && clinicShort ? `${profile?.full_name ?? ''} · ${panelTypeLabel(profile?.user_type)}` : panelTypeLabel(profile?.user_type)}
                       </Text>
                     </View>
                   </View>
+
                   <Pressable
-                    onPress={() => {
-                      setProfileMenuOpen(false);
-                      router.push('/settings' as any);
-                    }}
-                    className="px-4 py-2.5 flex-row items-center gap-2.5"
+                    onPress={() => { setProfileMenuOpen(false); router.push('/settings' as any); }}
+                    style={menuRow}
                   >
-                    <UserCog size={14} color="#2C2C2C" strokeWidth={1.8} />
-                    <Text className="text-[13px] text-ink-700">Profil</Text>
+                    <UserCog size={15} color={SC.ink3} strokeWidth={1.8} />
+                    <Text style={{ fontSize: 13, color: SC.ink2 }}>Profil</Text>
                   </Pressable>
                   {isPlatformAdmin && (
                     <Pressable
                       onPress={() => { setProfileMenuOpen(false); router.push('/(platform)' as any); }}
-                      className="px-4 py-2.5 flex-row items-center gap-2.5"
+                      style={menuRow}
                     >
-                      <ShieldCheck size={14} color="#4F8DF7" strokeWidth={1.8} />
-                      <Text className="text-[13px] text-ink-700">Platform</Text>
+                      <ShieldCheck size={15} color="#4F8DF7" strokeWidth={1.8} />
+                      <Text style={{ fontSize: 13, color: SC.ink2 }}>Platform</Text>
                     </Pressable>
                   )}
                   {canSwitchLab && (
                     <Pressable
                       onPress={() => { setProfileMenuOpen(false); router.push('/(auth)/select-lab' as any); }}
-                      className="px-4 py-2.5 flex-row items-center gap-2.5"
+                      style={menuRow}
                     >
-                      <Building2 size={14} color="#2C2C2C" strokeWidth={1.8} />
-                      <Text className="text-[13px] text-ink-700">Lab değiştir</Text>
+                      <Building2 size={15} color={SC.ink3} strokeWidth={1.8} />
+                      <Text style={{ fontSize: 13, color: SC.ink2 }}>Lab değiştir</Text>
                     </Pressable>
                   )}
-                  <View className="h-px bg-black/[0.06]" />
-                  <Pressable
-                    onPress={handleLogout}
-                    className="px-4 py-2.5 flex-row items-center gap-2.5"
-                  >
-                    <LogOut size={14} color="#9C2E2E" strokeWidth={1.8} />
-                    <Text className="text-[13px]" style={{ color: '#9C2E2E' }}>Çıkış yap</Text>
+
+                  {/* Tema — ayrı başlıklı blok yerine satır içi kontrol */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingStart: 10, paddingEnd: 4, marginTop: 2, height: 40 }}>
+                    <Text style={{ fontSize: 13, color: SC.ink2 }}>{autoT('Tema')}</Text>
+                    {/* Toggle: kapsül ray + seçili olan DOLU accent daire.
+                        Seçili durum rengin kendisiyle okunur, kelime gerekmez. */}
+                    <View
+                      accessibilityRole={'radiogroup' as any}
+                      style={{
+                        flexDirection: 'row', alignItems: 'center',
+                        gap: 1, padding: 2, borderRadius: 999,
+                        backgroundColor: SC.chip,
+                      }}
+                    >
+                      {([
+                        { value: 'system' as const, Icon: Monitor, label: autoT('Otomatik') },
+                        { value: 'light'  as const, Icon: Sun,     label: autoT('Açık tema') },
+                        { value: 'dark'   as const, Icon: Moon,    label: autoT('Koyu tema') },
+                      ]).map(opt => {
+                        const on = themeMode === opt.value;
+                        return (
+                          <Pressable
+                            key={opt.value}
+                            onPress={() => setThemeMode(opt.value)}
+                            accessibilityRole="radio"
+                            accessibilityState={{ selected: on }}
+                            accessibilityLabel={opt.label}
+                            style={({ pressed, hovered }: any) => ({
+                              width: 26, height: 26, borderRadius: 13,
+                              alignItems: 'center', justifyContent: 'center',
+                              backgroundColor: on ? accentFill : hovered ? SC.chipStrong : 'transparent',
+                              opacity: pressed ? 0.75 : 1,
+                              ...(Platform.OS === 'web'
+                                ? { cursor: 'pointer', transitionProperty: 'background-color', transitionDuration: '160ms' } as any
+                                : {}),
+                            })}
+                          >
+                            <opt.Icon size={14} color={on ? '#FFFFFF' : SC.ink3} strokeWidth={on ? 2.2 : 1.8} />
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+
+                  {/* TEK ayraç — yalnız yıkıcı eylemi ayırır */}
+                  <View style={{ height: 1, backgroundColor: SC.hairline, marginVertical: 6, marginHorizontal: 4 }} />
+
+                  <Pressable onPress={handleLogout} style={menuRow}>
+                    <LogOut size={15} color="#D9736F" strokeWidth={1.8} />
+                    <Text style={{ fontSize: 13, color: isDark ? '#E8918D' : '#9C2E2E' }}>Çıkış yap</Text>
                   </Pressable>
                 </View>
               </>
@@ -805,6 +896,8 @@ export function PatternsShell({
 function AnimatedNewOrderCTA({ onPress, accentColor, expanded }: {
   onPress: () => void; accentColor: string; expanded: boolean;
 }) {
+  // Koyu temada CTA lacivert gradyana döner (hero'larla aynı yüzey dili).
+  const accentSurface = useHeroSurface(accentColor);
   const glowAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const iconAnim = useRef(new Animated.Value(0)).current;
@@ -828,7 +921,7 @@ function AnimatedNewOrderCTA({ onPress, accentColor, expanded }: {
     ).start();
   }, [glowAnim, iconAnim]);
 
-  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.25] });
+  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.42] });
   const iconRotate = iconAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '90deg'] });
 
   const handleHoverIn = () => {
@@ -847,17 +940,20 @@ function AnimatedNewOrderCTA({ onPress, accentColor, expanded }: {
         <Animated.View style={{
           paddingHorizontal: 14, paddingVertical: 10,
           borderRadius: 12,
-          backgroundColor: accentColor,
+          ...accentSurface,
           flexDirection: 'row', alignItems: 'center', gap: 8,
           overflow: 'hidden',
           transform: [{ scale: scaleAnim }],
         }}>
           {/* Shimmer glow overlay */}
+          {/* Parıltı: keskin daire değil, YAYILAN ışık. Blur ışığı dağıttığı
+              için opaklık bir tık yükseltildi (0.25 → 0.42). */}
           <Animated.View style={{
             position: 'absolute', top: -10, end: -10,
             width: 60, height: 60, borderRadius: 30,
             backgroundColor: '#FFFFFF',
             opacity: glowOpacity,
+            ...(Platform.OS === 'web' ? ({ filter: 'blur(18px)' } as any) : {}),
           }} pointerEvents="none" />
           <Animated.View style={{ transform: [{ rotate: iconRotate }] }}>
             <PlusCircle size={14} color="#FFFFFF" strokeWidth={1.8} />
@@ -875,7 +971,7 @@ function AnimatedNewOrderCTA({ onPress, accentColor, expanded }: {
     >
       <Animated.View style={{
         width: 40, height: 40, borderRadius: 10,
-        backgroundColor: accentColor,
+        ...accentSurface,
         alignItems: 'center', justifyContent: 'center',
         overflow: 'hidden',
         transform: [{ scale: scaleAnim }],
@@ -885,6 +981,7 @@ function AnimatedNewOrderCTA({ onPress, accentColor, expanded }: {
           width: 28, height: 28, borderRadius: 14,
           backgroundColor: '#FFFFFF',
           opacity: glowOpacity,
+          ...(Platform.OS === 'web' ? ({ filter: 'blur(10px)' } as any) : {}),
         }} pointerEvents="none" />
         <Animated.View style={{ transform: [{ rotate: iconRotate }] }}>
           <PlusCircle size={16} color="#FFFFFF" strokeWidth={2} />
@@ -930,6 +1027,14 @@ function NavAnchor({ href, children }: { href?: string; children: React.ReactNod
 
 function ExpandedNavRow({ item, isActive, accentColor, activeRowBg, router }: any) {
   const rtl = isRTL();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  // Nav renkleri koyu-farkında (koyu sidebar üzerinde okunur).
+  const icOn   = isDark ? '#F7F2E9' : '#0A0A0A';
+  const icOff  = isDark ? '#B8B2A6' : '#2C2C2C';
+  const icOff2 = isDark ? '#9A9488' : '#6B6B6B';
+  const badgeOnBg  = isDark ? '#F7F2E9' : '#0A0A0A';
+  const badgeOffBg = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)';
+  const badgeOffFg = isDark ? '#B8B2A6' : '#6B6B6B';
   const hasChildren = Array.isArray(item.children) && item.children.length > 0;
   const childActive = hasChildren && item.children.some((c: PatternsNavItem) => isActive(c));
   const [open, setOpen] = useState<boolean>(!!childActive);
@@ -945,11 +1050,11 @@ function ExpandedNavRow({ item, isActive, accentColor, activeRowBg, router }: an
           style={active ? { backgroundColor: activeRowBg } : undefined}
         >
           {active && <View className="absolute rounded" style={{ ...(rtl ? { right: 0 } : { left: 0 }), top: 8, bottom: 8, width: 2.5, backgroundColor: accentColor }} />}
-          <IconCmp size={15} color={active ? '#0A0A0A' : '#2C2C2C'} strokeWidth={1.8} />
-          <Text className={`flex-1 text-[13px] ${active ? 'font-medium text-ink-900' : 'text-ink-700'}`}>{item.label}</Text>
+          <IconCmp size={15} color={active ? icOn : icOff} strokeWidth={1.8} />
+          <Text className={`flex-1 text-[13px] ${active ? 'font-medium text-ink-900 dark:text-white/90' : 'text-ink-700 dark:text-white/70'}`}>{item.label}</Text>
           {item.badgeCount != null && item.badgeCount > 0 && (
-            <View className="px-1.5 py-px rounded-full" style={{ backgroundColor: item.badgeColor ?? (active ? '#0A0A0A' : 'rgba(0,0,0,0.06)') }}>
-              <Text className="text-[10px] font-semibold" style={{ color: item.badgeColor ? '#FFFFFF' : (active ? accentColor : '#6B6B6B') }}>{item.badgeCount}</Text>
+            <View className="px-1.5 py-px rounded-full" style={{ backgroundColor: item.badgeColor ?? (active ? badgeOnBg : badgeOffBg) }}>
+              <Text className="text-[10px] font-semibold" style={{ color: item.badgeColor ? '#FFFFFF' : (active ? accentColor : badgeOffFg) }}>{item.badgeCount}</Text>
             </View>
           )}
         </Pressable>
@@ -966,10 +1071,10 @@ function ExpandedNavRow({ item, isActive, accentColor, activeRowBg, router }: an
         style={childActive ? { backgroundColor: activeRowBg } : undefined}
       >
         {childActive && <View className="absolute rounded" style={{ ...(rtl ? { right: 0 } : { left: 0 }), top: 8, bottom: 8, width: 2.5, backgroundColor: accentColor }} />}
-        <IconCmp size={15} color={childActive ? '#0A0A0A' : '#2C2C2C'} strokeWidth={1.8} />
-        <Text className={`flex-1 text-[13px] ${childActive ? 'font-medium text-ink-900' : 'text-ink-700'}`}>{item.label}</Text>
+        <IconCmp size={15} color={childActive ? icOn : icOff} strokeWidth={1.8} />
+        <Text className={`flex-1 text-[13px] ${childActive ? 'font-medium text-ink-900 dark:text-white/90' : 'text-ink-700 dark:text-white/70'}`}>{item.label}</Text>
         <View style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }}>
-          <ChevronDown size={14} color="#9A9A9A" strokeWidth={2} />
+          <ChevronDown size={14} color={icOff2} strokeWidth={2} />
         </View>
       </Pressable>
       {open && item.children.map((c: PatternsNavItem, j: number) => {
@@ -983,11 +1088,11 @@ function ExpandedNavRow({ item, isActive, accentColor, activeRowBg, router }: an
               style={[(rtl ? { paddingRight: 34, paddingLeft: 12 } : { paddingLeft: 34, paddingRight: 12 }), a ? { backgroundColor: activeRowBg } : undefined]}
             >
               {a && <View className="absolute rounded" style={{ ...(rtl ? { right: 14 } : { left: 14 }), top: 7, bottom: 7, width: 2.5, backgroundColor: accentColor }} />}
-              <CIcon size={14} color={a ? '#0A0A0A' : '#6B6B6B'} strokeWidth={1.8} />
-              <Text className={`flex-1 text-[12.5px] ${a ? 'font-medium text-ink-900' : 'text-ink-500'}`}>{c.label}</Text>
+              <CIcon size={14} color={a ? icOn : icOff2} strokeWidth={1.8} />
+              <Text className={`flex-1 text-[12.5px] ${a ? 'font-medium text-ink-900 dark:text-white/90' : 'text-ink-500 dark:text-white/55'}`}>{c.label}</Text>
               {c.badgeCount != null && c.badgeCount > 0 && (
-                <View className="px-1.5 py-px rounded-full" style={{ backgroundColor: a ? '#0A0A0A' : 'rgba(0,0,0,0.06)' }}>
-                  <Text className="text-[10px] font-semibold" style={{ color: a ? accentColor : '#6B6B6B' }}>{c.badgeCount}</Text>
+                <View className="px-1.5 py-px rounded-full" style={{ backgroundColor: a ? badgeOnBg : badgeOffBg }}>
+                  <Text className="text-[10px] font-semibold" style={{ color: a ? accentColor : badgeOffFg }}>{c.badgeCount}</Text>
                 </View>
               )}
             </Pressable>
@@ -1005,17 +1110,18 @@ function ExpandedSidebar({
   tourRefs, tourOrdersHref,
 }: any) {
   const rtl = isRTL();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   // Panel-aware sidebar tonları
   const isStation = panelType === 'station';
   const logoSquareBg = isStation ? '#0F2840' : '#0A0A0A'; // station: koyu denim
-  const activeRowBg  = palette?.panelBg ?? '#FBFAF6';      // station: F4F8FC (mavi soluk)
+  const activeRowBg  = isDark ? 'rgba(255,255,255,0.07)' : (palette?.panelBg ?? '#FBFAF6');      // station: F4F8FC (mavi soluk)
   return (
     <View
-      className="rounded-[20px] p-3.5 pt-5 border border-black/[0.05]"
+      className="rounded-[20px] p-3.5 pt-5 border border-black/[0.05] dark:border-white/[0.06]"
       style={{
         width: 220,
         flex: 1,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: palette?.panelBg ?? '#FFFFFF',
         // @ts-ignore web shadow
         boxShadow: '0 4px 16px rgba(0,0,0,0.04)',
       }}
@@ -1062,10 +1168,10 @@ function ExpandedSidebar({
             )}
           </Pressable>
           <View className="flex-1">
-            <Text numberOfLines={1} className="text-[16px] font-bold text-ink-900" style={{ letterSpacing: -0.3 }}>
+            <Text numberOfLines={1} className="text-[16px] font-bold text-ink-900 dark:text-white/90" style={{ letterSpacing: -0.3 }}>
               {brand.name}
             </Text>
-            {brand.sub ? <Text numberOfLines={1} className="text-[10px] text-ink-400">{brand.sub}</Text> : null}
+            {brand.sub ? <Text numberOfLines={1} className="text-[10px] text-ink-400 dark:text-white/45">{brand.sub}</Text> : null}
           </View>
         </View>
       )}
@@ -1082,7 +1188,7 @@ function ExpandedSidebar({
       ) : null}
 
       {/* Section label */}
-      <Text className="text-[10px] font-semibold uppercase text-ink-400 px-2.5 pt-1 pb-2" style={{ letterSpacing: 1 }}>
+      <Text className="text-[10px] font-semibold uppercase text-ink-400 dark:text-white/40 px-2.5 pt-1 pb-2" style={{ letterSpacing: 1 }}>
         Çalışma alanı
       </Text>
 
@@ -1105,8 +1211,8 @@ function ExpandedSidebar({
             onPress={onPressMessages}
             className={`px-3 ${rtl ? "py-2" : "py-2.5"} rounded-[10px] flex-row items-center gap-2.5`}
           >
-            <MessageSquare size={15} color="#2C2C2C" strokeWidth={1.8} />
-            <Text className="flex-1 text-[13px] text-ink-700">Mesajlar</Text>
+            <MessageSquare size={15} color={isDark ? "#B8B2A6" : "#2C2C2C"} strokeWidth={1.8} />
+            <Text className="flex-1 text-[13px] text-ink-700 dark:text-white/70">Mesajlar</Text>
             {messagesUnreadCount > 0 && (
               <View
                 style={{
@@ -1129,7 +1235,7 @@ function ExpandedSidebar({
           flex-row CSS'te yön duyarlı olduğu için RTL'de sıra ters dönüyor ve
           "SIMAN Powered by" çıkıyordu; row-reverse bunu geri çevirir. */}
       <View className="items-center gap-1.5 pt-3 mt-1" style={[{ flexDirection: rtl ? 'row-reverse' : 'row' }, rtl ? { paddingRight: 10, paddingLeft: 56 } : { paddingLeft: 10, paddingRight: 56 }]}>
-        <Text className="text-[9.5px] text-ink-400" numberOfLines={1}>Powered by</Text>
+        <Text className="text-[9.5px] text-ink-400 dark:text-white/40" numberOfLines={1}>Powered by</Text>
         <SimanWordmark height={9} color="#9A9A9A" />
       </View>
     </View>
@@ -1142,15 +1248,16 @@ function CollapsedSidebar({
   onExpand, onPressMessages, messagesUnreadCount, hideSidebarMessages, newOrderHref, router,
   tourRefs, tourOrdersHref,
 }: any) {
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const logoSquareBg = panelType === 'station' ? '#0F2840' : '#0A0A0A';
-  const activeRowBg  = palette?.panelBg ?? '#FBFAF6';
+  const activeRowBg  = isDark ? 'rgba(255,255,255,0.07)' : (palette?.panelBg ?? '#FBFAF6');
   return (
     <View
-      className="rounded-[20px] py-4 items-center border border-black/[0.05]"
+      className="rounded-[20px] py-4 items-center border border-black/[0.05] dark:border-white/[0.06]"
       style={{
         width: 64,
         flex: 1,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: palette?.panelBg ?? '#FFFFFF',
         // @ts-ignore web shadow
         boxShadow: '0 4px 16px rgba(0,0,0,0.04)',
       }}
@@ -1208,7 +1315,7 @@ function CollapsedSidebar({
                     style={{ top: 8, bottom: 8, width: 2.5, backgroundColor: accentColor }}
                   />
                 )}
-                <IconCmp size={16} color={active ? '#0A0A0A' : '#2C2C2C'} strokeWidth={1.8} />
+                <IconCmp size={16} color={active ? (isDark ? "#F7F2E9" : "#0A0A0A") : (isDark ? "#B8B2A6" : "#2C2C2C")} strokeWidth={1.8} />
                 {item.badgeCount != null && item.badgeCount > 0 && (
                   <View
                     className="absolute min-w-[16px] h-4 px-1 rounded-full border-2 border-white items-center justify-center"

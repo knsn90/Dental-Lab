@@ -89,5 +89,15 @@ export const useAuthStore = create<AuthState>((set) => ({
   signOut: async () => {
     await supabase.auth.signOut();
     set({ session: null, profile: null });
+    // Bayat panel durumunu temizle — farklı hesapla tekrar girişte optimistik
+    // yönlendirmenin yanlış (önceki kullanıcının) paneline gidip self-heal
+    // döngüsüne (max update depth) girmesini önler.
+    try { useLastPanelStore.getState().clear(); } catch { /* noop */ }
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.removeItem('lastPanel');
+        window.localStorage.removeItem('nx_panel');
+      }
+    } catch { /* noop */ }
   },
 }));

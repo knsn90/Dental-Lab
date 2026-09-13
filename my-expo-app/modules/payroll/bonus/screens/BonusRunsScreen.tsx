@@ -10,9 +10,12 @@ import { View, Text, Pressable, ScrollView, Modal } from 'react-native';
 import {
   CheckCircle2, RotateCcw, Send, Undo2, X, Filter, ChevronDown,
   AlertTriangle, Wallet, ChevronLeft, ChevronRight,
-} from 'lucide-react-native';
+} from '../../../../core/ui/icons';
 
 import { DS } from '../../../../core/theme/dsTokens';
+import { useInkUI } from '../../../../core/theme/inkScale';
+import { useMobileTokens } from '../../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../../core/store/themeModeStore';
 import { supabase } from '../../../../core/api/supabase';
 import {
   listPolicies, approveBonusRun, postBonusRun, unpostBonusRun, revertBonusRunToDraft,
@@ -37,6 +40,9 @@ const STATUS_FILTERS: { key: RunStatus | 'all'; label: string }[] = [
 type Props = { onOpenTechnician?: (id: string, name?: string) => void };
 
 export default function BonusRunsScreen({ onOpenTechnician }: Props = {}) {
+  const U = useInkUI();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [runs, setRuns] = useState<BonusRun[]>([]);
   const [policies, setPolicies] = useState<BonusPolicy[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,21 +88,21 @@ export default function BonusRunsScreen({ onOpenTechnician }: Props = {}) {
       {/* HEADER */}
       <View style={{ marginBottom: 16, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
         <View style={{ flex: 1, minWidth: 280 }}>
-          <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 1.2, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 10 }}>
+          <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 1.2, textTransform: 'uppercase', color: U.ink[500], marginBottom: 10 }}>
             Hesaplamalar
           </Text>
-          <Text style={{ ...DISPLAY, fontSize: 36, letterSpacing: -1, lineHeight: 38, color: DS.ink[900] }}>
+          <Text style={{ ...DISPLAY, fontSize: 36, letterSpacing: -1, lineHeight: 38, color: U.ink[900] }}>
             {filtered.length} run
           </Text>
-          <Text style={{ fontSize: 14, color: DS.ink[500], marginTop: 8 }}>
+          <Text style={{ fontSize: 14, color: U.ink[500], marginTop: 8 }}>
             Hesaplanan tüm prim run'ları. Tıklayarak detayları gör, onayla, yansıt.
           </Text>
         </View>
         <PillButton
           variant="light"
           onPress={() => setShowFilters(s => !s)}
-          leftIcon={<Filter size={14} color={DS.ink[900]} />}
-          rightIcon={<ChevronDown size={12} color={DS.ink[400]} />}
+          leftIcon={<Filter size={14} color={U.ink[900]} />}
+          rightIcon={<ChevronDown size={12} color={U.ink[400]} />}
         >
           Filtre
         </PillButton>
@@ -105,12 +111,12 @@ export default function BonusRunsScreen({ onOpenTechnician }: Props = {}) {
       {/* FILTERS */}
       {showFilters ? (
         <View style={{
-          backgroundColor: '#FFF', borderRadius: 18,
-          borderWidth: 1, borderColor: DS.ink[200],
+          backgroundColor: U.surface, borderRadius: 18,
+          borderWidth: 1, borderColor: U.ink[200],
           padding: 18, marginBottom: 16, gap: 16,
         }}>
           <View>
-            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 8 }}>
+            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase', color: U.ink[500], marginBottom: 8 }}>
               Durum
             </Text>
             <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
@@ -122,7 +128,7 @@ export default function BonusRunsScreen({ onOpenTechnician }: Props = {}) {
             </View>
           </View>
           <View>
-            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 8 }}>
+            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase', color: U.ink[500], marginBottom: 8 }}>
               Policy
             </Text>
             <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
@@ -158,8 +164,8 @@ export default function BonusRunsScreen({ onOpenTechnician }: Props = {}) {
                 key={r.id}
                 onPress={() => setSelectedRun(r)}
                 style={({ pressed }) => ({
-                  backgroundColor: '#FFF', borderRadius: 18,
-                  borderWidth: 1, borderColor: DS.ink[200],
+                  backgroundColor: U.surface, borderRadius: 18,
+                  borderWidth: 1, borderColor: U.ink[200],
                   padding: 18,
                   flexDirection: 'row', alignItems: 'center', gap: 14,
                   opacity: pressed ? 0.85 : 1,
@@ -167,27 +173,27 @@ export default function BonusRunsScreen({ onOpenTechnician }: Props = {}) {
               >
                 {/* Big month/year */}
                 <View style={{ width: 56, alignItems: 'center' }}>
-                  <Text style={{ ...DISPLAY, fontSize: 28, color: DS.ink[900], letterSpacing: -0.8, lineHeight: 30 }}>
+                  <Text style={{ ...DISPLAY, fontSize: 28, color: U.ink[900], letterSpacing: -0.8, lineHeight: 30 }}>
                     {String(r.period_month).padStart(2, '0')}
                   </Text>
-                  <Text style={{ fontSize: 10, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, marginTop: 2 }}>
+                  <Text style={{ fontSize: 10, color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, marginTop: 2 }}>
                     {r.period_year}
                   </Text>
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+                    <Text style={{ fontSize: 15, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>
                       {policy?.name ?? '?'}
                     </Text>
                     <StatusChip status={r.status} />
                   </View>
-                  <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 4 }}>
+                  <Text style={{ fontSize: 12, color: U.ink[500], marginTop: 4 }}>
                     {r.total_units === 1 ? `1 ${autoT('işlem')}` : `${r.total_units} ${autoT('üye')}`} · {rows.length} kişi ·{' '}
                     {new Date(r.calculated_at).toLocaleDateString(localeTag())}
                   </Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={{ ...DISPLAY, fontSize: 22, color: DS.ink[900], letterSpacing: -0.7 }}>
+                  <Text style={{ ...DISPLAY, fontSize: 22, color: U.ink[900], letterSpacing: -0.7 }}>
                     {TRY(r.total_payout)}
                   </Text>
                   {r.posted_at ? (
@@ -200,8 +206,8 @@ export default function BonusRunsScreen({ onOpenTechnician }: Props = {}) {
                     </Text>
                   ) : null}
                 </View>
-                {isRTL() ? <ChevronLeft size={16} color={DS.ink[400]} />
-                         : <ChevronRight size={16} color={DS.ink[400]} />}
+                {isRTL() ? <ChevronLeft size={16} color={U.ink[400]} />
+                         : <ChevronRight size={16} color={U.ink[400]} />}
               </Pressable>
             );
           })}
@@ -228,7 +234,10 @@ export default function BonusRunsScreen({ onOpenTechnician }: Props = {}) {
 
 function BonusRunDetailModal({ run, policy, onClose, onChanged, onOpenTechnician }:
   { run: BonusRun | null; policy: BonusPolicy | null; onClose: () => void; onChanged: (r: BonusRun) => void; onOpenTechnician?: (id: string, name?: string) => void }) {
+  const U = useInkUI();
 
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -245,21 +254,21 @@ function BonusRunDetailModal({ run, policy, onClose, onChanged, onOpenTechnician
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-        <View style={{ backgroundColor: '#FFF', borderRadius: 22, width: '100%', maxWidth: 960, maxHeight: '92%', overflow: 'hidden' }}>
+      <View style={{ flex: 1, backgroundColor: U.scrim, alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+        <View style={{ backgroundColor: U.surface, borderRadius: 22, width: '100%', maxWidth: 960, maxHeight: '92%', overflow: 'hidden', ...(U.isDark ? { borderWidth: 1, borderColor: U.hairline } : {}) }}>
           {/* Header */}
-          <View style={{ padding: 22, borderBottomWidth: 1, borderBottomColor: DS.ink[100], flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+          <View style={{ padding: 22, borderBottomWidth: 1, borderBottomColor: U.ink[100], flexDirection: 'row', alignItems: 'center', gap: 14 }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 10, fontWeight: '500', letterSpacing: 1.1, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 6 }}>
+              <Text style={{ fontSize: 10, fontWeight: '500', letterSpacing: 1.1, textTransform: 'uppercase', color: U.ink[500], marginBottom: 6 }}>
                 {policy?.name ?? 'Bonus Run'}
               </Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <Text style={{ ...DISPLAY, fontSize: 28, color: DS.ink[900], letterSpacing: -0.9, lineHeight: 32 }}>
+                <Text style={{ ...DISPLAY, fontSize: 28, color: U.ink[900], letterSpacing: -0.9, lineHeight: 32 }}>
                   {MONTH_LABELS[run.period_month - 1]} {run.period_year}
                 </Text>
                 <StatusChip status={run.status} />
               </View>
-              <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 4 }}>
+              <Text style={{ fontSize: 11, color: U.ink[500], marginTop: 4 }}>
                 Hesaplandı: {new Date(run.calculated_at).toLocaleString('tr-TR')}
                 {run.approved_at ? ` · ${autoT('Onaylandı:')} ${new Date(run.approved_at).toLocaleDateString(localeTag())}` : ''}
                 {run.posted_at ? ` · ${autoT('Yansıtıldı:')} ${new Date(run.posted_at).toLocaleDateString(localeTag())}` : ''}
@@ -267,10 +276,10 @@ function BonusRunDetailModal({ run, policy, onClose, onChanged, onOpenTechnician
             </View>
             <Pressable onPress={onClose} style={({ pressed }) => ({
               width: 36, height: 36, borderRadius: 18,
-              backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center',
+              backgroundColor: U.ink[100], alignItems: 'center', justifyContent: 'center',
               opacity: pressed ? 0.7 : 1,
             })}>
-              <X size={18} color={DS.ink[700]} />
+              <X size={18} color={U.ink[700]} />
             </Pressable>
           </View>
 
@@ -286,18 +295,18 @@ function BonusRunDetailModal({ run, policy, onClose, onChanged, onOpenTechnician
 
           {/* Breakdown */}
           <ScrollView style={{ paddingHorizontal: 22, maxHeight: 380 }}>
-            <View style={{ flexDirection: 'row', gap: 8, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: DS.ink[200] }}>
-              <Text style={{ width: 28, fontSize: 9, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>#</Text>
-              <Text style={{ flex: 1, fontSize: 9, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Teknisyen</Text>
-              <Text style={{ width: 50, textAlign: 'end' as any, fontSize: 9, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Üye</Text>
-              <Text style={{ width: 50, textAlign: 'end' as any, fontSize: 9, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Puan</Text>
-              <Text style={{ width: 70, textAlign: 'end' as any, fontSize: 9, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Bireysel</Text>
-              <Text style={{ width: 70, textAlign: 'end' as any, fontSize: 9, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Havuz</Text>
-              <Text style={{ width: 50, textAlign: 'end' as any, fontSize: 9, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Kalite</Text>
-              <Text style={{ width: 80, textAlign: 'end' as any, fontSize: 9, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Toplam</Text>
+            <View style={{ flexDirection: 'row', gap: 8, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: U.ink[200] }}>
+              <Text style={{ width: 28, fontSize: 9, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>#</Text>
+              <Text style={{ flex: 1, fontSize: 9, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Teknisyen</Text>
+              <Text style={{ width: 50, textAlign: 'end' as any, fontSize: 9, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Üye</Text>
+              <Text style={{ width: 50, textAlign: 'end' as any, fontSize: 9, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Puan</Text>
+              <Text style={{ width: 70, textAlign: 'end' as any, fontSize: 9, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Bireysel</Text>
+              <Text style={{ width: 70, textAlign: 'end' as any, fontSize: 9, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Havuz</Text>
+              <Text style={{ width: 50, textAlign: 'end' as any, fontSize: 9, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Kalite</Text>
+              <Text style={{ width: 80, textAlign: 'end' as any, fontSize: 9, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Toplam</Text>
             </View>
             {rows.length === 0 ? (
-              <Text style={{ padding: 24, textAlign: 'center', fontSize: 12, color: DS.ink[400], fontStyle: 'italic' }}>Breakdown verisi yok.</Text>
+              <Text style={{ padding: 24, textAlign: 'center', fontSize: 12, color: U.ink[400], fontStyle: 'italic' }}>Breakdown verisi yok.</Text>
             ) : rows.map((r: any, i: number) => (
               <Pressable
                 key={r.employee_id || i}
@@ -305,23 +314,23 @@ function BonusRunDetailModal({ run, policy, onClose, onChanged, onOpenTechnician
                 disabled={!onOpenTechnician}
                 style={({ pressed }) => ({
                   flexDirection: 'row', gap: 8, paddingVertical: 10,
-                  borderBottomWidth: 1, borderBottomColor: DS.ink[100],
+                  borderBottomWidth: 1, borderBottomColor: U.ink[100],
                   opacity: pressed ? 0.7 : 1,
                 })}
               >
-                <Text style={{ width: 28, fontSize: 12, color: DS.ink[500] }}>{i + 1}</Text>
+                <Text style={{ width: 28, fontSize: 12, color: U.ink[500] }}>{i + 1}</Text>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>
                     {r.employee_name || '?'}
                   </Text>
                   {r.error ? <Text style={{ fontSize: 10, color: TH.danger }}>{r.error}</Text>
-                  : r.station_code ? <Text style={{ fontSize: 10, color: DS.ink[400] }}>{r.station_code}</Text> : null}
+                  : r.station_code ? <Text style={{ fontSize: 10, color: U.ink[400] }}>{r.station_code}</Text> : null}
                 </View>
-                <Text style={{ width: 50, textAlign: 'end' as any, fontSize: 12, color: DS.ink[700] }}>{r.units}</Text>
-                <Text style={{ width: 50, textAlign: 'end' as any, fontSize: 12, color: DS.ink[700] }}>{(r.points ?? 0).toFixed?.(1) ?? r.points}</Text>
-                <Text style={{ width: 70, textAlign: 'end' as any, fontSize: 12, color: DS.ink[700] }}>{TRY(r.individual_bonus)}</Text>
-                <Text style={{ width: 70, textAlign: 'end' as any, fontSize: 12, color: DS.ink[700] }}>{TRY(r.pool_share)}</Text>
-                <Text style={{ width: 50, textAlign: 'end' as any, fontSize: 12, color: DS.ink[700] }}>
+                <Text style={{ width: 50, textAlign: 'end' as any, fontSize: 12, color: U.ink[700] }}>{r.units}</Text>
+                <Text style={{ width: 50, textAlign: 'end' as any, fontSize: 12, color: U.ink[700] }}>{(r.points ?? 0).toFixed?.(1) ?? r.points}</Text>
+                <Text style={{ width: 70, textAlign: 'end' as any, fontSize: 12, color: U.ink[700] }}>{TRY(r.individual_bonus)}</Text>
+                <Text style={{ width: 70, textAlign: 'end' as any, fontSize: 12, color: U.ink[700] }}>{TRY(r.pool_share)}</Text>
+                <Text style={{ width: 50, textAlign: 'end' as any, fontSize: 12, color: U.ink[700] }}>
                   {(r.quality_multiplier ?? 1).toFixed?.(2) ?? r.quality_multiplier}×
                 </Text>
                 <Text style={{ width: 80, textAlign: 'end' as any, ...DISPLAY, fontSize: 14, color: '#1F6B47' }}>{TRY(r.total_bonus)}</Text>
@@ -330,7 +339,7 @@ function BonusRunDetailModal({ run, policy, onClose, onChanged, onOpenTechnician
           </ScrollView>
 
           {/* Actions */}
-          <View style={{ padding: 18, borderTopWidth: 1, borderTopColor: DS.ink[100], backgroundColor: DS.ink[50], flexDirection: 'row', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          <View style={{ padding: 18, borderTopWidth: 1, borderTopColor: U.ink[100], backgroundColor: U.ink[50], flexDirection: 'row', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
             {run.status === 'draft' && (
               <PillButton
                 variant="success"
@@ -348,7 +357,7 @@ function BonusRunDetailModal({ run, policy, onClose, onChanged, onOpenTechnician
                   variant="light"
                   disabled={busy === 'revert'}
                   onPress={() => guard('revert', () => revertBonusRunToDraft(run.id))}
-                  leftIcon={<RotateCcw size={14} color={DS.ink[900]} />}
+                  leftIcon={<RotateCcw size={14} color={U.ink[900]} />}
                 >
                   Taslağa Dön
                 </PillButton>
@@ -382,6 +391,9 @@ function BonusRunDetailModal({ run, policy, onClose, onChanged, onOpenTechnician
 }
 
 function Mini({ label, value, accent }: { label: string; value: string; accent: string }) {
+  const U = useInkUI();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <View style={{
       flex: 1, minWidth: 140,
@@ -391,7 +403,7 @@ function Mini({ label, value, accent }: { label: string; value: string; accent: 
       <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.7, textTransform: 'uppercase', color: accent, marginBottom: 6 }}>
         {label}
       </Text>
-      <Text style={{ ...DISPLAY, fontSize: 22, color: DS.ink[900], letterSpacing: -0.6 }}>{value}</Text>
+      <Text style={{ ...DISPLAY, fontSize: 22, color: U.ink[900], letterSpacing: -0.6 }}>{value}</Text>
     </View>
   );
 }

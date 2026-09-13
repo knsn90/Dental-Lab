@@ -12,12 +12,16 @@ import { autoT } from '../../../core/i18n/autoTranslate';
  *     Tur 4: Action handlers + permissions + edge cases
  */
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { View, Text, ScrollView, Pressable, Platform, Modal, useWindowDimensions, Image, ActivityIndicator, TextInput, Alert, Linking } from 'react-native';
+import { View, Text, ScrollView, Pressable, Platform, Modal, useWindowDimensions, Image, ActivityIndicator, TextInput, Alert, Linking, Animated } from 'react-native';
 import { useLocalSearchParams, useRouter, useSegments } from 'expo-router';
 import { safeBack } from '../../../core/util/safeBack';
+import { webTitle } from '../../../core/util/webTitle';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAnimatedKeyboardHeight } from '../../../core/ui/useAnimatedKeyboardHeight';
 import { useAuthStore } from '../../../core/store/authStore';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { supabase } from '../../../core/api/supabase';
 import { buildOrderPrintDoc } from '../lib/buildOrderPrintDoc';
 import { getSignedUrls } from '../../../lib/photos';
@@ -25,8 +29,9 @@ import { useOrderDetail } from '../hooks/useOrderDetail';
 import { SupportButton } from '../../support/components/SupportButton';
 import { useOrderStages } from '../hooks/useOrderStages';
 import { LivingToothChart } from '../components/LivingToothChart';
+import { readImplantInfo, groupImplantTeeth } from '../implantInfo';
 import { LinearProgressX, PercentRingX, StepsTimelineX } from '../../../core/ui/ProgressX';
-import { Bell, Printer, Check, ArrowUpRight, ChevronLeft, ChevronRight, Phone, MapPin, Download, MessageSquare, FileText, Image as ImageIcon, File as FileIcon, RotateCcw, UserCheck, Upload, AlertTriangle, CircleCheck, Circle, Clock, ChevronDown, ChevronUp, ListChecks, Play, Truck, Eye, Trash2, Plus, SkipForward, Pause, Layers, CornerUpLeft, User } from 'lucide-react-native';
+import { Bell, Printer, Check, ArrowUpRight, ChevronLeft, ChevronRight, Phone, MapPin, Download, MessageSquare, FileText, Image as ImageIcon, File as FileIcon, RotateCcw, UserCheck, Upload, AlertTriangle, CircleCheck, Circle, Clock, ChevronDown, ChevronUp, ListChecks, Play, Truck, Eye, Trash2, Plus, SkipForward, Pause, Layers, CornerUpLeft, User } from '../../../core/ui/icons';
 
 // Lazy viewer-3d (three.js ayrı chunk) — tek paylaşılan retry'lı lazy instance.
 import { Viewer3DModalLazy as Viewer3DModal } from '../../viewer-3d/Viewer3DLazy';
@@ -37,13 +42,6 @@ import { holdOrder, resumeOrder, HOLD_CATEGORIES, holdCategoryLabel, holdDays } 
 // (web'de iframe kullanılır, require çağrılmaz → web bundle'ı etkilenmez).
 const HtmlWebView: any = Platform.OS !== 'web' ? require('react-native-webview').WebView : null;
 
-function is3DFileExt(path: string): 'stl' | 'ply' | 'obj' | null {
-  const ext = path.toLowerCase().split('.').pop();
-  if (ext === 'stl') return 'stl';
-  if (ext === 'ply') return 'ply';
-  if (ext === 'obj') return 'obj';
-  return null;
-}
 
 /** patient_dob (YYYY-MM-DD) → yaş. */
 function ageFromDob(dob?: string | null): number | null {
@@ -80,30 +78,36 @@ import { StageWorkflowTimeline } from '../components/StageWorkflowTimeline';
 import { OriginFillButton, OriginFillPressable } from '../../../core/ui/OriginFillButton';
 import { RevisionModal } from '../components/RevisionModal';
 import { useContinuationOrder } from '../useContinuationOrder';
+import { useNewOrderModalStore } from '../../../core/store/newOrderModalStore';
 import { AddStageModal } from '../components/AddStageModal';
 import { DeliveryModal } from '../components/DeliveryModal';
 import { DeliveryFeeModal } from '../components/DeliveryFeeModal';
 import { OrderLogisticsCard } from '../components/OrderLogisticsCard';
+import { OrderCourierTrackingModal } from '../components/OrderCourierTrackingModal';
 import { CURRENCY_META, type Currency } from '../../../core/money/currency';
 import { CourierLiveMap } from '../../courier/CourierLiveMap';
 import { DoctorChangeModal } from '../components/DoctorChangeModal';
-import { Pencil } from 'lucide-react-native';
-import { Star } from 'lucide-react-native';
+import { Pencil } from '../../../core/ui/icons';
+import { Star } from '../../../core/ui/icons';
 import { hexA } from '../../../core/theme/stationPalette';
-import { DS } from '../../../core/theme/dsTokens';
+import { DS, dsTheme } from '../../../core/theme/dsTokens';
 import { ReviewModal } from '../../reviews/components/ReviewModal';
 import { OrderReviewsSection } from '../../reviews/components/OrderReviewsSection';
 import { getMyReviewForOrder, listReviewsForOrder } from '../../reviews/api';
 import type { OrderReview } from '../../reviews/types';
 import { LoadingSpinner } from '../../../components/ui/LoadingSpinner';
 import { ChatDetail } from '../components/MessagesPopup';
+import { ImplantNotesSection } from '../components/ImplantNotesSection';
+import { fetchNotePhotosAsFiles } from '../implantNotes';
+import { OrderAiSummaryCard } from '../../denty/components/OrderAiSummaryCard';
 import { useChatMessages } from '../hooks/useChatMessages';
 import { toast } from '../../../core/ui/Toast';
+import { useSpotlightSurface, NeonPulse, useAccentTones, NAVY_SWEEP } from '../../../core/ui/HeroGlow';
 import { ImageLightbox } from '../../../core/ui/ImageLightbox';
 import { saveMeshThumb } from '../../../lib/photos';
 import { NativeImageViewer } from '../../../core/ui/mobile/NativeImageViewer';
 import MobileViewer3D from '../../viewer-3d/mobile/MobileViewer3D';
-import { X as CloseIcon } from 'lucide-react-native';
+import { X as CloseIcon } from '../../../core/ui/icons';
 import { QCRejectModal } from '../components/QCRejectModal';
 import { ReassignModal } from '../components/ReassignModal';
 import { TriageModal } from '../components/TriageModal';
@@ -111,6 +115,7 @@ import { ReplanModal } from '../components/ReplanModal';
 import { AdminDangerSection } from '../components/AdminDangerSection';
 import { OrderClientActions } from '../components/OrderClientActions';
 import { StageFileUpload } from '../components/StageFileUpload';
+import { FilesList } from '../components/FilesList';
 import { FaceScanButton } from '../components/FaceScanButton';
 import { formatDuration } from '../stations/stageStates';
 import { STAGE_ORDER, STAGE_LABEL, STAGE_COLOR, legacyStatusToStage } from '../stages';
@@ -143,6 +148,11 @@ const fmtTL = (n: unknown) =>
 
 /** Sipariş detayındaki "Mali Bilgi" kartı — geçici olarak kapalı (istek üzerine). */
 const SHOW_FINANCIAL_CARD = false;
+
+// İmplant vurgu rengi — yeni-sipariş diş şemasındaki implant rengiyle AYNI
+// (NewOrderScreen IMPLANT_TOOTH_COLOR). Hekim orada turuncu işaretliyor.
+const IMPLANT_COLOR = '#F97316';
+const IMPLANT_DEEP  = '#C2410C';
 
 const DISPLAY = { fontFamily: 'Inter Tight, Inter, system-ui, sans-serif' as const, fontWeight: '300' as const };
 
@@ -203,13 +213,16 @@ function statusStep(status: string | null | undefined, elden: boolean): number |
 // Panel → patterns DS theme (renk paleti)
 // Aktif panel route segments primary signal — role değil, hangi panelin
 // içinde gezildiği önemli (admin lab paneline girince saffron görmeli).
-type PanelTheme = 'lab' | 'clinic' | 'doctor' | 'exec';
+type PanelTheme = 'lab' | 'clinic' | 'doctor' | 'exec' | 'tech';
 function panelToTheme(userType?: string | null, panelGroup?: string): PanelTheme {
   // Önce route segment kontrol et (hangi panelde gezildiğini gösterir)
   if (panelGroup === '(lab)')      return 'lab';
   if (panelGroup === '(clinic)')   return 'clinic';
   if (panelGroup === '(doctor)')   return 'doctor';
   if (panelGroup === '(admin)')    return 'exec';
+  // Teknisyen istasyonu + kurye = tech mavi (DESIGN_LANGUAGE §1). Bunlar user_type='lab'
+  // olduğu için segment yakalanmazsa yanlışlıkla saffron'a düşerdi.
+  if (panelGroup === '(station)' || panelGroup === '(courier)') return 'tech';
   // Segment yoksa user_type'a düş
   if (userType === 'lab')          return 'lab';
   if (userType === 'clinic_admin') return 'clinic';
@@ -222,6 +235,7 @@ function themeAccent(theme: PanelTheme): string {
   if (theme === 'clinic') return '#32BB78';
   if (theme === 'doctor') return '#32BB78';
   if (theme === 'exec')   return '#4771AB';
+  if (theme === 'tech')   return '#3B82F6';
   return '#F5C24B';
 }
 function themeHero(theme: PanelTheme): { bg: string; gradEnd: string; kicker: string; dark: boolean } {
@@ -229,7 +243,9 @@ function themeHero(theme: PanelTheme): { bg: string; gradEnd: string; kicker: st
   if (theme === 'clinic') return { bg: '#32BB78', gradEnd: '#0C8F56', kicker: 'rgba(255,255,255,0.92)', dark: true };
   if (theme === 'doctor') return { bg: '#32BB78', gradEnd: '#0C8F56', kicker: 'rgba(255,255,255,0.92)', dark: true };
   if (theme === 'exec')   return { bg: '#FFFFFF', gradEnd: '#FFFFFF', kicker: '#9C3814', dark: false };
-  return { bg: '#FFF6D9', gradEnd: '#F5C24B', kicker: '#6B5A1F', dark: false };
+  if (theme === 'tech')   return { bg: '#EAF2FA', gradEnd: '#D2E1F0', kicker: '#1E5FBF', dark: false };
+  // lab/default: beyaz hero (exec gibi) — krem sayfa zemininde beyaz kart olarak ayrışır.
+  return { bg: '#FFFFFF', gradEnd: '#FFFFFF', kicker: '#6B5A1F', dark: false };
 }
 // Sayfa zemin rengi — panel theme'iyle uyumlu (hero altındaki kısım)
 // Önemli: beyaz kartlar sayfa zemininden ayrışsın diye HER panel için
@@ -239,7 +255,8 @@ function themePage(theme: PanelTheme): string {
   // Bakınız: MOBILE_PANEL_THEMES.{klinik,doctor,exec,lab}.bgPage
   if (theme === 'clinic' || theme === 'doctor') return '#F9FAFB';   // emerald panel off-white
   if (theme === 'exec')                         return '#F7F9FC';   // exec kobalt off-white (tek zemin)
-  return '#FAF6E8'; // lab/default cream (saffron — shell ile aynı)
+  if (theme === 'tech')                         return '#F5F9FD';   // istasyon mavi off-white (shell ile aynı)
+  return '#F5F1EB'; // lab/default cream — shell (MOBILE_PANEL_THEMES.lab.bgPage) ile BİREBİR (eskiden #FAF6E8 idi, iki-ton bölünme yapıyordu)
 }
 
 function fmtDate(s?: string | null) {
@@ -251,11 +268,21 @@ function daysBetween(a: Date, b: Date) {
   return Math.round((b.getTime() - a.getTime()) / 86_400_000);
 }
 
-export function OrderDetailScreenV2() {
-  const { id, triage: triageParam } = useLocalSearchParams<{ id: string; triage?: string }>();
+export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClose, onOpenRelated }: {
+  /** Modal'da başka bir siparişi göstermek için (route param yerine). */
+  idOverride?: string;
+  /** Popup içinde render — başlık/shell dolgusu atlanır, ilgili tıklama parent'a bildirilir. */
+  embedded?: boolean;
+  onRequestClose?: () => void;
+  onOpenRelated?: (id: string) => void;
+} = {}) {
+  const { id: _routeId, triage: triageParam } = useLocalSearchParams<{ id: string; triage?: string }>();
+  const id = idOverride ?? _routeId;
   const router = useRouter();
   const { profile } = useAuthStore();
   const insets = useSafeAreaInsets();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const { order, signedUrls, thumbUrls, loading, error, refetch } = useOrderDetail(id);
   const { stages: orderStages, activeStage, completedCount, totalStages, lanes, isMultiLane, refetch: refetchStages } = useOrderStages(id ?? undefined);
   // "Atanmamış" senaryosu — aktif yoksa ilk bekliyor aşamayı reassign hedefi olarak kullan
@@ -279,7 +306,8 @@ export function OrderDetailScreenV2() {
   const [holdReason, setHoldReason] = useState('');
   const [holdBusy, setHoldBusy]     = useState(false);
   const [holdErr, setHoldErr]       = useState<string | null>(null);
-  const [sideTab, setSideTab] = useState<'doctor_note' | 'files'>('doctor_note');
+  // Dosyalar ilk sekme ve varsayılan: sipariş açılınca ilk bakılan şey tarama/STL.
+  const [sideTab, setSideTab] = useState<'doctor_note' | 'lab_note' | 'files'>('files');
   const [chatOpen, setChatOpen] = useState(false);
   const [profit, setProfit] = useState<ProfitData | null>(null);
   const [related, setRelated] = useState<Array<{ id: string; order_number: string; work_type: string | null; status: string; delivery_date: string | null; }>>([]);
@@ -302,6 +330,9 @@ export function OrderDetailScreenV2() {
   const [togglingUrgent, setTogglingUrgent] = useState(false);
   const [qcRejectOpen, setQcRejectOpen] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
+  // Menüden seçilen spesifik aşamayı devretmek için (global "ilk bekleyen" yerine).
+  const [reassignStage, setReassignStage] = useState<any>(null);
+  const openReassign = (stg: any) => { setReassignStage(stg ?? null); setReassignOpen(true); };
   const [deliveryModalOpen, setDeliveryModalOpen] = useState(false);
   // Revizyon (teslim sonrası yeniden yapım) — modal + karşılıklı bağlantı rozetleri
   const [revisionOpen, setRevisionOpen] = useState(false);
@@ -310,10 +341,24 @@ export function OrderDetailScreenV2() {
   const [revLinks, setRevLinks] = useState<{ parent: RevisionLink | null; children: RevisionLink[] }>({ parent: null, children: [] });
   // Devam siparişi (tedavi zinciri) bağlantıları — bu iş neyin devamı + bundan açılan devamlar
   const [contLinks, setContLinks] = useState<{ parent: { id: string; order_number: string } | null; children: { id: string; order_number: string }[] }>({ parent: null, children: [] });
+  // Devam siparişi mobilde global yeni-sipariş MODAL'ında oluşturuluyor; detay
+  // ekranı mount kalıyor ve zincir bir daha çekilmiyordu → yeni kayıt görünmüyordu.
+  // Modal kapanınca (true→false) zinciri tazele.
+  const newOrderModalOpen = useNewOrderModalStore(s => s.open);
+  const [chainTick, setChainTick] = useState(0);
+  const prevNewOrderOpen = useRef(newOrderModalOpen);
+  useEffect(() => {
+    if (prevNewOrderOpen.current && !newOrderModalOpen) setChainTick(t => t + 1);
+    prevNewOrderOpen.current = newOrderModalOpen;
+  }, [newOrderModalOpen]);
   const [doctorChangeOpen, setDoctorChangeOpen] = useState(false);
   const [activeDelivery, setActiveDelivery] = useState<any | null>(null);
   /** Siparişin TÜM kurye hareketleri (final teslimat + ara bacaklar), yeniden eskiye. */
   const [deliveryLegs, setDeliveryLegs] = useState<any[]>([]);
+  // Kurye takip modalı — lojistik haritasına tıklanınca sayfadan ayrılmadan açılır.
+  const [trackingLeg, setTrackingLeg] = useState<any | null>(null);
+  // İlgili sipariş önizleme modalı — "İlgili siparişler"e tıklanınca popup açılır.
+  const [previewOrderId, setPreviewOrderId] = useState<string | null>(null);
   const [callCourierOpen, setCallCourierOpen] = useState(false);   // ara hareket modalı
   const [feeTarget, setFeeTarget] = useState<any | null>(null);     // ücret gir/düzelt
   const [legsTick, setLegsTick]   = useState(0);                    // manuel yenileme tetiği
@@ -419,6 +464,25 @@ export function OrderDetailScreenV2() {
     return () => { cancelled = true; };
   }, [(order as any)?.revision_of_id, (order as any)?.continues_order_id]);
 
+  // İmplant parça notlarına iliştirilen görseller Dosyalar sekmesinde de görünür.
+  // Ayrı tabloda duruyorlar ama kullanıcı için "siparişe eklenmiş dosya"; okuma
+  // anında listeye katılır (kopyalama yok), silme hâlâ yalnız notun üstünden.
+  const [notesTick, setNotesTick] = useState(0);
+  const [notePhotoFiles, setNotePhotoFiles] = useState<{ photos: any[]; urls: Record<string, string> }>({ photos: [], urls: {} });
+  useEffect(() => {
+    const oid = (order as any)?.id as string | undefined;
+    if (!oid) { setNotePhotoFiles({ photos: [], urls: {} }); return; }
+    let cancelled = false;
+    (async () => {
+      const files = await fetchNotePhotosAsFiles(oid);
+      if (cancelled) { return; }
+      if (files.length === 0) { setNotePhotoFiles({ photos: [], urls: {} }); return; }
+      const urls = await getSignedUrls(files.map(f => f.storage_path));
+      if (!cancelled) setNotePhotoFiles({ photos: files, urls });
+    })().catch(() => { /* parça görselleri opsiyonel — liste yine çalışır */ });
+    return () => { cancelled = true; };
+  }, [(order as any)?.id, notesTick]);
+
   // Revizyon bağlantıları — bu sipariş neyin revizyonu + bundan açılan revizyonlar
   useEffect(() => {
     const oid = (order as any)?.id as string | undefined;
@@ -451,7 +515,7 @@ export function OrderDetailScreenV2() {
       });
     })().catch(() => { /* rozet opsiyonel — sessiz geç */ });
     return () => { cancelled = true; };
-  }, [(order as any)?.id, (order as any)?.continues_order_id]);
+  }, [(order as any)?.id, (order as any)?.continues_order_id, chainTick]);
 
   // (LAB-2026-0042). history.replaceState → remount/refetch YOK, expo-router
   // state korunur; eski UUID linkleri/QR'lar çalışmaya devam eder.
@@ -686,12 +750,41 @@ export function OrderDetailScreenV2() {
   const panelGroup = segments?.[0] ?? '';
   const panelTheme = panelToTheme(profile?.user_type, panelGroup);
   const panelAccent = themeAccent(panelTheme);
-  const heroPalette = themeHero(panelTheme);
+  // Operasyon kartı yüzeyi (koyu tema) — Hızlı İşlem kartıyla ortak dil.
+  const spotlight = useSpotlightSurface(panelAccent);
+  // Koyu temada eski kobalt yerine yeni lacivert: dolgu #004B87, metin/ikon #5AA9E6.
+  const accentTone = useAccentTones(panelAccent);
+  const accentFill = accentTone.fill;
+  const accentInk  = accentTone.ink;
+  let heroPalette = themeHero(panelTheme);
+  // Koyu modda hero HER PANELDE koyu yüzeye döner. Klinik/hekimin canlı zümrüt
+  // hero'su bir süre koyuda da renkli bırakılmıştı; ekranın en büyük yüzeyi
+  // olduğu için göz yoruyordu (kullanıcı geri bildirimi). Artık tek kural:
+  // koyu tema = koyu hero. Renk kimliği kicker/rozet/aksan detaylarında kalır.
+  const heroOnDarkSurface = isDark;
+  if (isDark) {
+    heroPalette = { bg: T.card, gradEnd: T.card, kicker: 'rgba(255,255,255,0.70)', dark: true };
+  }
+  // Floating logo header (PanelTopHeader) yalnız station/admin/clinic/doctor'da var;
+  // lab kendi header'ını kullanır. İçerik bu header'ın ALTINDAN başlamalı, yoksa
+  // hero logonun arkasına girip blur şeridinden sızar (hayalet sipariş kodu).
+  const hasFloatingHeader = panelGroup === '(station)' || panelGroup === '(admin)'
+    || panelGroup === '(clinic)' || panelGroup === '(doctor)';
   // İç yumuşak-panel dolgusu — panel-uyumlu. Klinik/hekim: yeşil-50 (#EDFCF3);
   // diğer paneller mevcut krem (#FAF8F4) tonunda kalır. (bg-cream-panel yerine)
-  const softPanelBg = (panelTheme === 'clinic' || panelTheme === 'doctor') ? '#EDFCF3'
+  const softPanelBg = isDark ? T.cardSoft
+    : (panelTheme === 'clinic' || panelTheme === 'doctor') ? '#EDFCF3'
     : panelTheme === 'exec' ? '#F7F9FC'
     : '#FAF8F4';
+
+  // ── Lab notu görünürlüğü ────────────────────────────────────────────
+  // İç nottur. Lab/admin/istasyon her zaman görür; klinik-hekim yalnız lab
+  // "müşteriye görünür" (lab_notes_visible) işaretlediyse görür.
+  const isClientPanel   = panelGroup === '(clinic)' || panelGroup === '(doctor)';
+  const labNoteText     = String((order as any)?.lab_notes ?? '').trim();
+  const labNoteVisibleToMe = isClientPanel
+    ? (!!(order as any)?.lab_notes_visible && !!labNoteText)
+    : true;
   // ProgressX (DsTheme) 'doctor' bilmiyor → 'tech' (mavi tonu) ile eşle
   const progressTheme: 'lab' | 'clinic' | 'exec' | 'tech' = panelTheme === 'doctor' ? 'tech' : panelTheme;
 
@@ -699,6 +792,7 @@ export function OrderDetailScreenV2() {
   const { setTitle: setPageTitle, clear: clearPageTitle } = usePageTitleStore();
   const _clinic = order?.doctor?.clinic_name ?? order?.doctor?.clinic?.name ?? '';
   useEffect(() => {
+    if (embedded) return;   // popup içinde shell başlığını ezme
     if (order) {
       setPageTitle(
         order.order_number,
@@ -706,7 +800,7 @@ export function OrderDetailScreenV2() {
       );
     }
     return () => clearPageTitle();
-  }, [order?.order_number, _clinic, panelGroup]);
+  }, [order?.order_number, _clinic, panelGroup, embedded]);
 
   // Derived ────────────────────────────────────────────────────────
   const isElden = (order as any)?.delivery_method === 'elden';
@@ -756,12 +850,35 @@ export function OrderDetailScreenV2() {
   }, [order, statusIdx, combinedStages, activeStage, nowTick]);
 
   const allTeeth = order?.tooth_numbers ?? [];
+
+  // ── İmplant bilgisi ────────────────────────────────────────────────
+  // Hekim sipariş sırasında implant marka/tür/abutment/vida giriyor ama bu
+  // ekranda hiç gösterilmiyordu (yalnız order_items.notes içinde düz metin
+  // olarak duruyordu). Yapısal kolonlar öncelikli, eski kayıtlar not fallback'i.
+  const implantInfo = useMemo(
+    () => readImplantInfo(order as any, ((order as any)?.order_items ?? []) as any[]),
+    [order],
+  );
   const upperTeeth = useMemo(() => allTeeth.filter(t => t < 30), [allTeeth]);
   const lowerTeeth = useMemo(() => allTeeth.filter(t => t >= 30), [allTeeth]);
   const visibleTeethCount =
     jawView === 'upper' ? upperTeeth.length :
     jawView === 'lower' ? lowerTeeth.length :
                           allTeeth.length;
+
+  // ── İmplant parçaları (scan body, dijital analog …) ──────────────────────
+  // Aynı bileşen hem masaüstü İMPLANT şeridinde hem mobil handoff'ta kullanılır →
+  // iki panelde görünüm birebir aynı kalır.
+  // order burada henüz null olabilir (erken dönüş aşağıda) → guard.
+  const implantPartsNode = !order ? null : (
+    <ImplantNotesSection
+      orderId={order.id}
+      parentOrderId={contLinks.parent?.id ?? null}
+      parentOrderNumber={contLinks.parent?.order_number ?? null}
+      currentUserId={profile?.id ?? null}
+      onChange={() => setNotesTick(t => t + 1)}
+    />
+  );
 
   // Tooth chart hep tüm dişleri alır — jawView gösterimi forceJawMode ile yapılır
   const toothChartOrder = useMemo(() => ({
@@ -856,8 +973,8 @@ export function OrderDetailScreenV2() {
   }
   if (error || !order) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center" style={{ backgroundColor: themePage(panelTheme) }}>
-        <Text className="text-[14px] text-ink-500">Sipariş bulunamadı.</Text>
+      <SafeAreaView className="flex-1 items-center justify-center" style={{ backgroundColor: T.bg }}>
+        <Text className="text-[14px] text-ink-500 dark:text-white/55">Sipariş bulunamadı.</Text>
       </SafeAreaView>
     );
   }
@@ -1040,7 +1157,7 @@ export function OrderDetailScreenV2() {
       handleAdminCompleteStage={handleAdminCompleteStage}
       handleAdminActivateStage={handleAdminActivateStage}
       handleAdminSkipStage={handleAdminSkipStage} handleRemoveStage={handleRemoveStage}
-      setReassignOpen={setReassignOpen} setAddStageOpen={setAddStageOpen}
+      setReassignOpen={setReassignOpen} openReassign={openReassign} setAddStageOpen={setAddStageOpen}
       refetch={refetch} refetchStages={refetchStages}
       fmtDate={fmtDate} isLaneOpen={isLaneOpen} toggleLane={toggleLane}
       activeDelivery={activeDelivery} setDeliveryModalOpen={setDeliveryModalOpen} stageCompleting={stageCompleting}
@@ -1145,6 +1262,8 @@ export function OrderDetailScreenV2() {
         orderNumber={String((order as any).order_number ?? order.id)}
         patient={(order as any).patient_name ?? 'Hasta'}
         toothCount={(order.tooth_numbers ?? []).length}
+        implant={implantInfo}
+        implantParts={implantPartsNode}
         isUrgent={!!order.is_urgent}
         doctorName={doctorName}
         clinicName={clinicName}
@@ -1170,6 +1289,16 @@ export function OrderDetailScreenV2() {
           ...revLinks.children.map(ch => ({
             id: ch.id, kind: 'child' as const,
             label: `Revizyon: ${ch.order_number}${ch.revision_responsible === 'lab' ? ' · garanti' : ''}`,
+          })),
+          // Tedavi zinciri — masaüstü hero'sundaki mavi "Asıl iş / Devam" çipleri
+          // mobilde de görünsün (devam siparişi oluşunca yeni kayıt buradan açılır).
+          ...(contLinks.parent ? [{
+            id: contLinks.parent.id, kind: 'parent' as const, tone: 'continuation' as const,
+            label: `${autoT('Asıl iş')}: ${contLinks.parent.order_number}`,
+          }] : []),
+          ...contLinks.children.map(ch => ({
+            id: ch.id, kind: 'child' as const, tone: 'continuation' as const,
+            label: `${autoT('Devam')}: ${ch.order_number}`,
           })),
         ]}
         onOpenRelated={handleNavigateRelated}
@@ -1197,8 +1326,8 @@ export function OrderDetailScreenV2() {
         attachments={[]}
         attachmentsNode={
           <FilesList
-            photos={[...(order.photos ?? []), ...inheritedFiles.photos]}
-            signedUrls={{ ...(signedUrls ?? {}), ...inheritedFiles.urls }}
+            photos={[...(order.photos ?? []), ...notePhotoFiles.photos, ...inheritedFiles.photos]}
+            signedUrls={{ ...(signedUrls ?? {}), ...notePhotoFiles.urls, ...inheritedFiles.urls }}
             thumbUrls={thumbUrls}
             workOrderId={order.id}
             accentColor={panelAccent}
@@ -1236,13 +1365,7 @@ export function OrderDetailScreenV2() {
             mapsApiKey={mapsApiKey}
             labAddress={labAddress}
             clinicAddress={clinicAddress}
-            onOpenTracking={leg => {
-              // courier-tracking rotası yalnız bu dört panelde var; istasyon vb.
-              // panellerden gelindiğinde lab'a düşülür.
-              const hasRoute = ['(admin)', '(lab)', '(clinic)', '(doctor)'].includes(panelGroup);
-              const base = hasRoute ? panelGroup : '(lab)';
-              router.push(`/${base}/courier-tracking?delivery=${leg.id}` as any);
-            }}
+            onOpenTracking={leg => setTrackingLeg(leg)}
             clientView={panelGroup === '(clinic)' || panelGroup === '(doctor)'}
             frameless
           />
@@ -1357,6 +1480,14 @@ export function OrderDetailScreenV2() {
           onSaved={() => { setLegsTick(t => t + 1); refetch(); }}
         />
       )}
+      <OrderCourierTrackingModal
+        visible={!!trackingLeg}
+        leg={trackingLeg}
+        onClose={() => setTrackingLeg(null)}
+        labAddress={labAddress}
+        clinicAddress={clinicAddress}
+        accent={panelAccent}
+      />
       </>
     );
   }
@@ -1428,7 +1559,7 @@ export function OrderDetailScreenV2() {
   };
 
   return (
-    <ScrollView className="flex-1" style={{ backgroundColor: themePage(panelTheme) }} contentContainerStyle={{ padding: 16, paddingTop: insets.top + 8, paddingBottom: 120 }}>
+    <ScrollView className="flex-1" style={{ backgroundColor: T.bg }} contentContainerStyle={{ padding: 16, paddingTop: embedded ? 14 : insets.top + 16, paddingBottom: embedded ? 40 : 120 }}>
       <View
         className={`w-full gap-4 ${isDesktop ? 'flex-row' : 'flex-col'}`}
       >
@@ -1442,12 +1573,17 @@ export function OrderDetailScreenV2() {
             <Pressable onPress={() => setReviewOpen(true)} style={{ cursor: 'pointer' as any }}>
               <View style={{
                 borderRadius: 28, overflow: 'hidden', position: 'relative',
-                backgroundColor: '#0C8F56',
+                // Koyu temada hero gibi: dolu accent yüzey yerine koyu kart +
+                // accent kenarlık (büyük renkli yüzey koyu ekranda göz yoruyor).
+                backgroundColor: isDark ? T.card : '#0C8F56',
+                ...(isDark ? { borderWidth: 1, borderColor: hexA(accentInk, 0.35) } : {}),
                 // @ts-ignore web gradient — panel accent (deep → primary)
-                backgroundImage: `linear-gradient(135deg, #0C8F56 0%, ${panelAccent} 100%)`,
+                backgroundImage: isDark
+                  ? `linear-gradient(135deg, ${hexA(accentInk, 0.14)} 0%, rgba(0,0,0,0) 60%)`
+                  : `linear-gradient(135deg, #0C8F56 0%, ${panelAccent} 100%)`,
               }}>
                 {/* Ambient glow */}
-                <View pointerEvents="none" style={{ position: 'absolute', top: -30, end: -30, width: 160, height: 160, borderRadius: 80, backgroundColor: '#FFFFFF', opacity: 0.12 }} />
+                <View pointerEvents="none" style={{ position: 'absolute', top: -30, end: -30, width: 160, height: 160, borderRadius: 80, backgroundColor: isDark ? accentInk : '#FFFFFF', opacity: isDark ? 0.10 : 0.12 }} />
 
                 <View style={{ paddingHorizontal: 20, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
                   <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' }}>
@@ -1482,19 +1618,27 @@ export function OrderDetailScreenV2() {
           )}
 
           {/* DEĞERLENDİRME (salt-okunur) — lab/admin teslim edilen işin puanını görür (Faz 4) */}
-          {order?.status === 'teslim_edildi' && !_isDoctorOrClinic && (
+          {/* Admin(exec)+lab'da gizli: puanlama zaten operasyon kartında görünüyor. */}
+          {order?.status === 'teslim_edildi' && !_isDoctorOrClinic
+            && panelTheme !== 'lab' && panelTheme !== 'exec' && (
             <OrderReviewsSection workOrderId={id} accent={panelAccent} />
           )}
 
           {/* HERO — Clean paper aesthetic: cream zemin + coral accent stripe + soft glow */}
           <View
-            className="rounded-[28px] p-8 overflow-hidden relative border border-black/[0.06]"
+            className="rounded-[28px] p-8 overflow-hidden relative"
             style={{
               backgroundColor: heroPalette.bg,
-              // @ts-ignore web gradient
-              backgroundImage: panelTheme === 'exec'
+              // Border className (border-black/[0.06] dark:border-white/10) NativeWind v4'te keyfi-opaklıkla
+              // güvenilir derlenmiyordu → sert siyah stroke. Inline rgba ile garanti.
+              borderWidth: 1,
+              borderColor: heroPalette.dark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)',
+              // @ts-ignore web gradient — beyaz hero'larda (exec/lab) gradient yok
+              backgroundImage: (panelTheme === 'exec' || panelTheme === 'lab')
                 ? undefined
                 : `linear-gradient(180deg, ${heroPalette.bg} 0%, ${heroPalette.gradEnd} 200%)`,
+              // Gradient + rounded + border: köşelerde border'ın altına taşmasın.
+              ...(Platform.OS === 'web' ? { backgroundClip: 'padding-box' } as any : {}),
             }}
           >
             <View className="flex-row justify-between items-start mb-6 flex-wrap gap-4">
@@ -1562,7 +1706,9 @@ export function OrderDetailScreenV2() {
                 {(contLinks.parent || contLinks.children.length > 0) && (
                   <View className="flex-row flex-wrap items-center mt-2.5" style={{ gap: 6 }}>
                     {contLinks.parent && (
-                      <Pressable onPress={() => handleNavigateRelated(contLinks.parent!.id)}>
+                      // Asıl iş, "İlgili siparişler" gibi TAM detay popup'ında açılır
+                      // (sayfa değişmez); popup içindeyken popup'ın id'si değişir.
+                      <Pressable onPress={() => { if (embedded) onOpenRelated?.(contLinks.parent!.id); else setPreviewOrderId(contLinks.parent!.id); }}>
                         <View className="flex-row items-center gap-1.5 px-2.5 py-1 rounded-full"
                           style={{ backgroundColor: heroPalette.dark ? 'rgba(255,255,255,0.16)' : 'rgba(53,99,168,0.12)',
                                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
@@ -1587,9 +1733,66 @@ export function OrderDetailScreenV2() {
                     ))}
                   </View>
                 )}
+
+                {/* SİPARİŞ BİLGİLERİ — sihirbazda toplanıp detayda hiç gösterilmeyen
+                    alanlar (hasta kimliği, ölçü tipi, scan body, onay gerekliliği).
+                    Hero'nun mevcut pill diliyle: yalnız SİNYAL taşıyanlar basılır —
+                    "onay gerekmiyor" gibi negatifler hero'da gürültü olur. */}
+                {(() => {
+                  const heroChipBg = heroPalette.dark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.05)';
+                  const heroChipFg = heroPalette.dark ? '#FFFFFF' : '#2C2C2C';
+                  const chips: Array<{ k: string; text: string; tone?: 'ok' | 'warn' }> = [];
+
+                  const pid = String((order as any).patient_id ?? '').trim();
+                  if (pid) chips.push({ k: 'tc', text: `${autoT('TC')} ${pid}` });
+                  const nat = String((order as any).patient_nationality ?? '').trim();
+                  if (nat) chips.push({ k: 'nat', text: `${autoT('Uyruk')}: ${nat}` });
+
+                  const mt = (order as any).measurement_type;
+                  if (mt === 'digital')      chips.push({ k: 'mt', text: autoT('Dijital tarama') });
+                  else if (mt === 'manual')  chips.push({ k: 'mt', text: autoT('Fiziksel ölçü') });
+
+                  // Scan body yalnız dijital ölçüde anlamlı; teslim edilmediyse
+                  // üretim bloke olabileceği için uyarı tonunda.
+                  const sb = !!(order as any).scan_bodies_delivered;
+                  if (sb) chips.push({ k: 'sb', text: `${autoT('Scan body')}: ${autoT('teslim edildi')}`, tone: 'ok' });
+                  else if (mt === 'digital') chips.push({ k: 'sb', text: `${autoT('Scan body')}: ${autoT('teslim edilmedi')}`, tone: 'warn' });
+
+                  if ((order as any).doctor_approval_required) {
+                    chips.push({ k: 'appr', text: autoT('Tasarım onayı gerekli'), tone: 'warn' });
+                  }
+
+                  if (chips.length === 0) return null;
+                  return (
+                    <View className="flex-row flex-wrap items-center mt-2.5" style={{ gap: 6 }}>
+                      {chips.map(c => {
+                        const tint = c.tone === 'ok' ? '#2D9A6B' : c.tone === 'warn' ? '#E89B2A' : null;
+                        return (
+                          <View
+                            key={c.k}
+                            className="flex-row items-center gap-1.5 px-2.5 py-1 rounded-full"
+                            style={{
+                              backgroundColor: tint
+                                ? (heroPalette.dark ? 'rgba(255,255,255,0.16)' : tint + '1F')
+                                : heroChipBg,
+                            }}
+                          >
+                            {!!tint && <View style={{ width: 6, height: 6, borderRadius: 999, backgroundColor: heroPalette.dark ? tint : tint }} />}
+                            <Text className="text-[11.5px] font-medium" style={{ color: tint && !heroPalette.dark ? tint : heroChipFg }}>
+                              {c.text}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  );
+                })()}
               </View>
-              {/* İşi beklemede — gecikme yerine BEKLEMEDE + neden (sayaç durdu) */}
-              {onHold && order.status !== 'teslim_edildi' && order.status !== 'iptal' && (
+              {/* İşi beklemede — gecikme yerine BEKLEMEDE + neden (sayaç durdu).
+                  Duraklama, statü ne olursa olsun önceliklidir (Siparişler listesi +
+                  OrderStatusInfo ile birebir): asılı kalan bir hold, "teslim edildi"
+                  görünse bile burada gösterilir ki liste/detay çelişmesin. */}
+              {onHold && order.status !== 'iptal' && (
                 <View className="items-end" style={{ flexShrink: 0, maxWidth: 260 }}>
                   <Text className="text-[11px] font-semibold uppercase" style={{ letterSpacing: 1.32, color: '#E89B2A' }}>
                     Beklemede
@@ -1703,8 +1906,8 @@ export function OrderDetailScreenV2() {
                     stageKey={stageName}
                     subjectHint={`Vaka #${(order as any).order_number ?? ''} · `}
                   />
-                  <Pressable onPress={handlePrintFull} className={`w-8 h-8 rounded-full items-center justify-center ${heroPalette.dark ? 'bg-white/20' : 'bg-black/[0.06]'}`}>
-                    <Printer size={14} color={heroPalette.dark ? '#FFFFFF' : '#0A0A0A'} strokeWidth={1.8} />
+                  <Pressable onPress={handlePrintFull} className={`w-8 h-8 rounded-full items-center justify-center ${heroOnDarkSurface ? 'bg-white/[0.06]' : heroPalette.dark ? 'bg-white/20' : 'bg-black/[0.06]'}`} {...webTitle(autoT('İş emrini yazdır'))}>
+                    <Printer size={14} color={heroOnDarkSurface ? 'rgba(255,255,255,0.55)' : heroPalette.dark ? '#FFFFFF' : '#0A0A0A'} strokeWidth={1.8} />
                   </Pressable>
                   <OrderClientActions order={order as any} panelGroup={panelGroup} compact onChanged={refetch} onDark={heroPalette.dark} />
                   {/* İşi Beklet / Devam ettir — lab tarafı. Hekim kaynaklı beklemede
@@ -1712,11 +1915,11 @@ export function OrderDetailScreenV2() {
                   {(panelGroup === '(lab)' || panelGroup === '(admin)')
                     && order.status !== 'teslim_edildi' && order.status !== 'iptal' && (
                     onHold ? (
-                                              <PillBtn onDark={heroPalette.dark} variant="primary" size="sm" icon={Play} onPress={submitResume} disabled={holdBusy}>
+                                              <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="primary" size="sm" icon={Play} onPress={submitResume} disabled={holdBusy}>
                           {holdBusy ? 'Devam ediliyor…' : 'Devam ettir'}
                         </PillBtn>
                     ) : (
-                                              <PillBtn onDark={heroPalette.dark} variant="surface" size="sm" icon={Pause} onPress={() => { setHoldErr(null); setHoldOpen(true); }}>
+                                              <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm" icon={Pause} onPress={() => { setHoldErr(null); setHoldOpen(true); }}>
                           İşi beklet
                         </PillBtn>
                     )
@@ -1727,14 +1930,14 @@ export function OrderDetailScreenV2() {
                       if (_panelGroupEarly === '(lab)' || _panelGroupEarly === '(admin)') router.push(`/${_panelGroupEarly}/order/plan/${id}` as any);
                       else setTriageOpen(true);
                     }}>
-                      <PillBtn onDark={heroPalette.dark} variant="primary" size="sm" icon={ListChecks}>
+                      <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="primary" size="sm" icon={ListChecks}>
                         Planlamayı yap & başlat
                       </PillBtn>
                     </Pressable>
                   )}
                   {/* Yeniden Planla — triajlı + üretim başlamamış (manager/admin) */}
                   {canReplan && !needsTriage && (
-                                          <PillBtn onDark={heroPalette.dark} variant="surface" size="sm" icon={ListChecks} onPress={() => setReplanOpen(true)}>
+                                          <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm" icon={ListChecks} onPress={() => setReplanOpen(true)}>
                         Yeniden Planla
                       </PillBtn>
                   )}
@@ -1747,7 +1950,7 @@ export function OrderDetailScreenV2() {
                   )}
                   {/* Hekim Onayına Gönder — lab manager, triajlı, henüz pending/approved değil */}
                   {canSendDesignApproval && !needsTriage && (
-                                          <PillBtn onDark={heroPalette.dark} variant="surface" size="sm" icon={UserCheck} onPress={handleSendDesignApproval} disabled={sendingApproval}>
+                                          <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm" icon={UserCheck} onPress={handleSendDesignApproval} disabled={sendingApproval}>
                         {sendingApproval ? 'Gönderiliyor…' : 'Hekim Onayına Gönder'}
                       </PillBtn>
                   )}
@@ -1758,7 +1961,7 @@ export function OrderDetailScreenV2() {
                       atlayarak teslimat kaydı oluşturmadan siparişi teslim edilmiş yapıyordu. */}
                   {canAdvance && nextStatus && !needsTriage && !hasPendingProductionStages && !activeDelivery && !designApprovalPending
                     && (order.status as string) !== 'teslimata_hazir' && (
-                                          <PillBtn onDark={heroPalette.dark} variant="primary" size="sm" icon={Check} onPress={handleAdvanceStage} disabled={advancing}>
+                                          <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="primary" size="sm" icon={Check} onPress={handleAdvanceStage} disabled={advancing}>
                         {advancing ? 'Güncelleniyor…' : `${nextStatusLabel}'a geç`}
                       </PillBtn>
                   )}
@@ -1771,16 +1974,23 @@ export function OrderDetailScreenV2() {
                       </Text>
                     </View>
                   )}
-                  {!nextStatus && (
-                    <View className="flex-row items-center gap-1.5 px-3 py-1 rounded-full" style={{ backgroundColor: heroPalette.dark ? 'rgba(255,255,255,0.20)' : 'rgba(16,185,129,0.12)' }}>
-                      <Check size={12} color={heroPalette.dark ? '#FFFFFF' : '#0F6E50'} strokeWidth={2.4} />
-                      <Text className="text-[12px] font-medium" style={{ color: heroPalette.dark ? '#FFFFFF' : '#0F6E50' }}>Teslim edildi</Text>
+                  {!nextStatus && !onHold && (
+                    // Aksiyon DEĞİL — durum bilgisi. Koyu temada sessiz badge:
+                    // yumuşak yüzey + ince kenar + yeşil check + açık gri yazı.
+                    <View className="flex-row items-center gap-1.5 px-3 py-1 rounded-full"
+                      style={{
+                        backgroundColor: heroOnDarkSurface ? 'rgba(255,255,255,0.08)' : heroPalette.dark ? 'rgba(255,255,255,0.20)' : 'rgba(16,185,129,0.12)',
+                        borderWidth: heroOnDarkSurface ? 1 : 0,
+                        borderColor: 'rgba(255,255,255,0.10)',
+                      }}>
+                      <Check size={12} color={heroOnDarkSurface ? '#32BB78' : heroPalette.dark ? '#FFFFFF' : '#0F6E50'} strokeWidth={2.4} />
+                      <Text className="text-[12px] font-medium" style={{ color: heroOnDarkSurface ? '#D2D0CA' : heroPalette.dark ? '#FFFFFF' : '#0F6E50' }}>Teslim edildi</Text>
                     </View>
                   )}
                   {/* Revizyon oluştur — teslim edilmiş siparişte hekim revize isterse.
                       Orijinal kapalı kalır, bağlı yeni sipariş planlamaya düşer. */}
                   {isManager && (order.status as string) === 'teslim_edildi' && (
-                                          <PillBtn onDark={heroPalette.dark} variant="ghost" size="sm" icon={RotateCcw} onPress={() => setRevisionOpen(true)}>
+                                          <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="ghost" size="sm" icon={RotateCcw} onPress={() => setRevisionOpen(true)}>
                         Revizyon Oluştur
                       </PillBtn>
                   )}
@@ -1788,7 +1998,7 @@ export function OrderDetailScreenV2() {
                       geçici→nihai). Revizyon DEĞİL: hasta+diş+dosyalar dolu gelir,
                       iş tipi/materyal sıfırdan seçilir; tam ücretli yeni sipariş. */}
                   {(isManager || _isDoctorOrClinic) && (order.status as string) === 'teslim_edildi' && (
-                                          <PillBtn onDark={heroPalette.dark} variant="ghost" size="sm" icon={Layers} onPress={() => startContinuation(order.id)} disabled={!!contStarting}>
+                                          <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="ghost" size="sm" icon={Layers} onPress={() => startContinuation(order.id)} disabled={!!contStarting}>
                         {contStarting ? 'Açılıyor…' : 'Devam Siparişi'}
                       </PillBtn>
                   )}
@@ -1808,12 +2018,12 @@ export function OrderDetailScreenV2() {
                           refetch();
                         }}
                       >
-                        <PillBtn onDark={heroPalette.dark} variant="primary" size="sm" icon={Check}>
+                        <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="primary" size="sm" icon={Check}>
                           Elden Teslim Edildi
                         </PillBtn>
                       </Pressable>
                     ) : (
-                                              <PillBtn onDark={heroPalette.dark} variant="primary" size="sm" onPress={() => setDeliveryModalOpen(true)}>
+                                              <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="primary" size="sm" onPress={() => setDeliveryModalOpen(true)}>
                           Kuryeye Gönder
                         </PillBtn>
                     )
@@ -1837,7 +2047,7 @@ export function OrderDetailScreenV2() {
                         refetch();
                       }}
                     >
-                      <PillBtn onDark={heroPalette.dark} variant="primary" size="sm" icon={Check}>
+                      <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="primary" size="sm" icon={Check}>
                         Teslim Edildi
                       </PillBtn>
                     </Pressable>
@@ -1851,7 +2061,7 @@ export function OrderDetailScreenV2() {
                         setDeliveryModalOpen(true);
                       }}
                     >
-                      <PillBtn onDark={heroPalette.dark} variant="surface" size="sm" icon={Pencil}>Düzenle</PillBtn>
+                      <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm" icon={Pencil}>Düzenle</PillBtn>
                     </Pressable>
                   )}
                   {/* BanaBiKurye — canlı durum senkronu (polling) */}
@@ -1883,7 +2093,7 @@ export function OrderDetailScreenV2() {
                         }
                       }}
                     >
-                      <PillBtn onDark={heroPalette.dark} variant="surface" size="sm" icon={RotateCcw}>
+                      <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm" icon={RotateCcw}>
                         {bbkTracking ? 'Sorgulanıyor…' : 'Durumu Güncelle'}
                       </PillBtn>
                     </Pressable>
@@ -1916,7 +2126,7 @@ export function OrderDetailScreenV2() {
                         }
                       }}
                     >
-                      <PillBtn onDark={heroPalette.dark} variant="surface" size="sm" icon={RotateCcw}>
+                      <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm" icon={RotateCcw}>
                         {shpBusy ? 'Sorgulanıyor…' : 'Durumu Güncelle'}
                       </PillBtn>
                     </Pressable>
@@ -1951,7 +2161,7 @@ export function OrderDetailScreenV2() {
                         else await Linking.openURL(url);
                       }}
                     >
-                      <PillBtn onDark={heroPalette.dark} variant="surface" size="sm" icon={Printer}>
+                      <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm" icon={Printer}>
                         {shpBusy ? 'Alınıyor…' : 'Kargo Etiketi'}
                       </PillBtn>
                     </Pressable>
@@ -1988,7 +2198,7 @@ export function OrderDetailScreenV2() {
                         refetch(); refetchStages();
                       }}
                     >
-                      <PillBtn onDark={heroPalette.dark} variant="surface" size="sm" icon={CloseIcon}>
+                      <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm" icon={CloseIcon}>
                         {cancelingDelivery ? 'İptal ediliyor…' : 'Teslimatı İptal Et'}
                       </PillBtn>
                     </Pressable>
@@ -2002,10 +2212,33 @@ export function OrderDetailScreenV2() {
               current={statusIdx}
               theme={progressTheme}
               variant={heroPalette.dark ? 'dark' : 'light'}
+              // Koyu tema (T.card hero): koyu daire + yeşil check, açık aktif daire + yeşil ikon.
+              surfaceDark={heroOnDarkSurface}
               // Renkli (yeşil) hero'da accent = hero-bg olacağından daireler kaybolur:
-              // beyaz daire + koyu-yeşil işaret kullan.
-              accentColor={heroPalette.dark ? '#FFFFFF' : undefined}
-              markColor={heroPalette.dark ? '#0C8F56' : undefined}
+              // beyaz daire + koyu-yeşil işaret. Koyu yüzeyde canlı yeşil işaret.
+              accentColor={heroPalette.dark && !heroOnDarkSurface ? '#FFFFFF' : undefined}
+              markColor={heroOnDarkSurface ? '#32BB78' : heroPalette.dark ? '#0C8F56' : undefined}
+              // Koyu temada yeşil "tamamlandı" dili yerine Özet'teki CANLI kartının
+              // lacivert/neon dili: işaretler mavi, aktif adıma giren çizgide ışık akar.
+              flowColor={isDark ? accentInk : undefined}
+              // Işık süpürmesi AÇIK temada da akar. flowColor açık temada
+              // verilemiyor (tamamlanan çizgi/işaret rengini de değiştirir), o
+              // yüzden süpürme ayrı prop'tan sürülüyor. Renk hero zeminine göre:
+              // renkli/koyu hero'da (klinik-hekim zümrüt) beyaz, beyaz/açık
+              // hero'da (lab-admin-istasyon) panel accent'i okunur kalıyor.
+              // Beyaz/açık hero'da accent'in KOYU tonu kullanılır: lab safranı
+              // (#F5C24B) beyaz üstünde bant olarak okunmuyor. Renkli/koyu
+              // hero'da (klinik-hekim zümrüt) beyaz ışık.
+              sweepColor={
+                isDark ? accentInk
+                : heroPalette.dark ? '#FFFFFF'
+                // Mavi panellerde (admin/istasyon) lacivert ailesinden neon ton;
+                // panelin kendi primaryDeep'i (#314F7E) beyaz üstünde sert duruyordu.
+                : (progressTheme === 'exec' || progressTheme === 'tech') ? NAVY_SWEEP
+                : dsTheme(progressTheme).primaryDeep
+              }
+              // Işık düğümlerin ARKASINDAN geçsin: düğümler hero yüzeyiyle opak boyanır.
+              surfaceBg={heroPalette.bg as string}
             />
 
 
@@ -2045,6 +2278,7 @@ export function OrderDetailScreenV2() {
             style={{
               backgroundColor: panelTheme === 'exec' ? '#141C2B'
                 : (panelTheme === 'clinic' || panelTheme === 'doctor') ? '#2F313F'
+                : panelTheme === 'lab' ? '#3A2E10'   // lab: koyu safran (bgHero), siyah değil
                 : '#0A0A0A',
               ...(panelTheme === 'exec' && Platform.OS === 'web'
                 ? {
@@ -2060,13 +2294,29 @@ export function OrderDetailScreenV2() {
               ...((panelTheme === 'clinic' || panelTheme === 'doctor') && Platform.OS === 'web'
                 ? { backgroundImage: `linear-gradient(135deg, #2F313F 0%, #0C8F5633 100%)` } as any
                 : {}),
+              // Lab — koyu safran + safran glow (exec kobalt kartının safran karşılığı)
+              ...(panelTheme === 'lab' && Platform.OS === 'web'
+                ? {
+                    // @ts-ignore
+                    backgroundImage: [
+                      `radial-gradient(circle at 95% 5%, rgba(245,194,75,0.30) 0%, rgba(245,194,75,0) 50%)`,
+                      `radial-gradient(circle at 0% 100%, rgba(224,168,46,0.16) 0%, rgba(224,168,46,0) 45%)`,
+                      `linear-gradient(135deg, #4A3A14 0%, #241A08 100%)`,
+                    ].join(', '),
+                  } as any
+                : {}),
+              // KOYU TEMA — en sonda: yukarıdaki panel gradyanlarını EZER.
+              // Hızlı İşlem kartıyla aynı dil: siyah → lacivert (#001F3F → #002A5C)
+              // gradyan, üstten yayılan ışık ve nabız atan neon kenar.
+              ...(spotlight ? spotlight.surface : {}),
             }}
           >
+            {spotlight && <NeonPulse radius={24} color={spotlight.glow} />}
             {/* Üst sıra — şu an + sorumlu */}
             <View className="p-6 flex-row items-center gap-5 flex-wrap">
               <PercentRingX value={progressPct} size={88} theme={progressTheme} />
               <View className="flex-1" style={{ minWidth: 160 }}>
-                <Text className="text-[11px] font-semibold uppercase" style={{ letterSpacing: 1.1, color: panelAccent }}>
+                <Text className="text-[11px] font-semibold uppercase" style={{ letterSpacing: 1.1, color: accentInk }}>
                   Şu an
                 </Text>
                 <Text className="text-white mt-0.5" style={{ ...DISPLAY, fontSize: 24, letterSpacing: -0.4 }}>
@@ -2151,11 +2401,11 @@ export function OrderDetailScreenV2() {
                     <View key={l.lane} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                       <View style={{ minWidth: 58, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                         <Text style={{ fontSize: 9, color: 'rgba(255,255,255,0.45)', fontWeight: '700' }}>DİŞ</Text>
-                        <Text numberOfLines={1} style={{ color: panelAccent, fontSize: 12, fontWeight: '800', letterSpacing: 0.3, fontFamily: Platform.OS === 'web' ? 'monospace' : undefined }}>{laneTeethLabel(l.lane)}</Text>
+                        <Text numberOfLines={1} style={{ color: accentInk, fontSize: 12, fontWeight: '800', letterSpacing: 0.3, fontFamily: Platform.OS === 'web' ? 'monospace' : undefined }}>{laneTeethLabel(l.lane)}</Text>
                       </View>
                       <Text numberOfLines={1} style={{ flex: 1, color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>{st}</Text>
                       <View style={{ width: 96, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.14)', overflow: 'hidden' }}>
-                        <View style={{ width: `${l.progressPct}%`, height: 6, borderRadius: 3, backgroundColor: panelAccent }} />
+                        <View style={{ width: `${l.progressPct}%`, height: 6, borderRadius: 3, backgroundColor: accentFill }} />
                       </View>
                       <Text style={{ width: 36, textAlign: 'end' as any, color: 'rgba(255,255,255,0.9)', fontSize: 11.5, fontWeight: '700' }}>{l.progressPct}%</Text>
                     </View>
@@ -2232,7 +2482,7 @@ export function OrderDetailScreenV2() {
               };
 
               const breakdownCells = [
-                { key: 'active',  label: 'Operatör', value: sumActive,  color: panelAccent,             show: true },
+                { key: 'active',  label: 'Operatör', value: sumActive,  color: accentInk,             show: true },
                 { key: 'machine', label: 'Makine',   value: sumMachine, color: '#67E8F9',               show: sumMachine > 0 },
                 { key: 'queue',   label: 'Kuyruk',   value: sumQueue,   color: 'rgba(255,255,255,0.6)', show: true },
                 { key: 'pause',   label: 'Pause',    value: sumPause,   color: '#FCD34D',               show: sumPause > 0 },
@@ -2279,7 +2529,7 @@ export function OrderDetailScreenV2() {
                     )}
                     {stageStart && (
                       <View style={{ minWidth: 140 }}>
-                        <Text style={{ fontSize: 9.5, fontWeight: '700', color: panelAccent, letterSpacing: 0.8, textTransform: 'uppercase' }}>
+                        <Text style={{ fontSize: 9.5, fontWeight: '700', color: accentInk, letterSpacing: 0.8, textTransform: 'uppercase' }}>
                           Bu Aşama
                         </Text>
                         <Text style={{ fontSize: 18, fontWeight: '700', color: '#FFFFFF', letterSpacing: -0.3, marginTop: 2, fontVariant: ['tabular-nums'] }}>
@@ -2320,10 +2570,10 @@ export function OrderDetailScreenV2() {
           </View>
 
           {/* ÇALIŞMALAR TABLOSU — basit (gerçek work item modeli yok, tooth listesi tek satır) */}
-          <View className="bg-white rounded-3xl border border-black/[0.06] overflow-hidden">
+          <View className="bg-white dark:bg-[#1B1916] rounded-3xl border border-black/[0.06] dark:border-white/10 overflow-hidden">
             <View className="px-6 py-5 flex-row items-center flex-wrap gap-3">
-              <Text className="text-[11px] font-semibold uppercase text-ink-400" style={{ letterSpacing: 1.1 }}>Çalışma</Text>
-              <View className="px-2 py-0.5 rounded-full bg-ink-50">
+              <Text className="text-[11px] font-semibold uppercase text-ink-400 dark:text-white/45" style={{ letterSpacing: 1.1 }}>Çalışma</Text>
+              <View className="px-2 py-0.5 rounded-full bg-ink-50 dark:bg-white/10">
                 <Text className="text-[11px] font-medium">{allTeeth.length} diş</Text>
               </View>
               <View className="flex-1" />
@@ -2346,7 +2596,7 @@ export function OrderDetailScreenV2() {
               {['DİŞ', 'ÇALIŞMA', 'ADET', 'İLERLEME', ''].map((h, i) => (
                 <Text
                   key={i}
-                  className="text-[10px] font-semibold uppercase text-ink-500"
+                  className="text-[10px] font-semibold uppercase text-ink-500 dark:text-white/55"
                   style={{
                     flex: i === 1 ? 2 : i === 3 ? 1.4 : i === 4 ? 0.4 : 1,
                     letterSpacing: 0.8,
@@ -2381,7 +2631,7 @@ export function OrderDetailScreenV2() {
                 <View key={row.key} className="flex-row px-4 py-3.5 items-center border-t border-black/[0.04]">
                   <View className="flex-1 flex-row gap-1 flex-wrap">
                     {row.teeth.length === 0 ? (
-                      <Text className="text-[11px] text-ink-400">—</Text>
+                      <Text className="text-[11px] text-ink-400 dark:text-white/45">—</Text>
                     ) : (
                       row.teeth.slice(0, 8).map(t => {
                         const toothColor = toothColorMap[t] ?? panelAccent;
@@ -2403,43 +2653,97 @@ export function OrderDetailScreenV2() {
                       })
                     )}
                     {row.teeth.length > 8 && (
-                      <Text className="text-[11px] text-ink-500" style={{ alignSelf: 'center' }}>+{row.teeth.length - 8}</Text>
+                      <Text className="text-[11px] text-ink-500 dark:text-white/55" style={{ alignSelf: 'center' }}>+{row.teeth.length - 8}</Text>
                     )}
                   </View>
                   <View style={{ flex: 2 }}>
-                    <Text className="text-[13px] font-medium text-ink-900" numberOfLines={2}>{row.name}</Text>
+                    <Text className="text-[13px] font-medium text-ink-900 dark:text-[#F7F2E9]" numberOfLines={2}>{row.name}</Text>
                     {isMultiLane && laneStation && (
-                      <Text className="text-[10.5px] text-ink-500" numberOfLines={1} style={{ marginTop: 2 }}>
+                      <Text className="text-[10.5px] text-ink-500 dark:text-white/55" numberOfLines={1} style={{ marginTop: 2 }}>
                         {laneStation}
                       </Text>
                     )}
                   </View>
-                  <Text className="text-[13px] text-ink-500" style={{ flex: 1 }}>{row.qty} {row.teeth.length > 0 ? 'diş' : 'adet'}</Text>
+                  <Text className="text-[13px] text-ink-500 dark:text-white/55" style={{ flex: 1 }}>{row.qty} {row.teeth.length > 0 ? 'diş' : 'adet'}</Text>
                   <View className="flex-row items-center gap-2.5" style={{ flex: 1.4 }}>
                     <View className="flex-1">
                       <LinearProgressX value={rowPct} theme={progressTheme} compact hideLabel animate />
                     </View>
-                    <Text className="text-[11px] text-ink-500" style={{ textAlign: 'end' as any, width: 32 }}>{rowPct}%</Text>
+                    <Text className="text-[11px] text-ink-500 dark:text-white/55" style={{ textAlign: 'end' as any, width: 32 }}>{rowPct}%</Text>
                   </View>
                   <View className="items-end" style={{ flex: 0.4 }}>
-                    <ArrowUpRight size={16} color="#9A9A9A" strokeWidth={1.6} />
+                    <ArrowUpRight size={16} color={isDark ? (T.ink3 as string) : "#9A9A9A"} strokeWidth={1.6} />
                   </View>
                 </View>
                 );
               });
             })()}
+
+            {/* İMPLANT — çalışma satırlarının hemen altında, aynı kartın içinde.
+                Ayrı kart yapılmadı: teknisyen "hangi dişte ne var" sorusunu diş
+                listesiyle yan yana okuyor. */}
+            {implantInfo.hasAny && (
+              <View className="px-4 py-3.5 border-t border-black/[0.04]" style={{ backgroundColor: IMPLANT_COLOR + '0D' }}>
+                <View className="flex-row items-center gap-2 mb-2.5">
+                  <View className="w-2 h-2 rounded-full" style={{ backgroundColor: IMPLANT_COLOR }} />
+                  <Text className="text-[11px] font-semibold uppercase text-ink-500 dark:text-white/55" style={{ letterSpacing: 1 }}>
+                    {autoT('İmplant')}
+                  </Text>
+                  {!!implantInfo.brand && (
+                    <View className="px-2 py-0.5 rounded-full" style={{ backgroundColor: IMPLANT_COLOR + '22' }}>
+                      <Text className="text-[11px] font-semibold" style={{ color: IMPLANT_DEEP }}>{implantInfo.brand}</Text>
+                    </View>
+                  )}
+                </View>
+                {/* Aynı detaydaki dişler tek satırda — tam çenede 12 kez
+                    "Neodent" yazmak okumayı kolaylaştırmıyor. */}
+                <View className="gap-1.5">
+                  {groupImplantTeeth(implantInfo).map(g => (
+                    <View key={g.teeth.join('-')} className="flex-row items-start gap-2.5">
+                      <View className="flex-row flex-wrap items-center gap-1" style={{ maxWidth: '55%' }}>
+                        {g.teeth.map(t => (
+                          <View
+                            key={t}
+                            className="px-2 py-0.5 rounded-md items-center"
+                            style={{ backgroundColor: IMPLANT_COLOR + '26', minWidth: 30 }}
+                          >
+                            <Text
+                              className="text-[11px] font-bold"
+                              style={{ color: IMPLANT_DEEP, fontFamily: Platform.OS === 'web' ? 'monospace' : undefined }}
+                            >
+                              {t}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                      <Text
+                        className={`text-[12px] flex-1 ${g.detail ? 'text-ink-800 dark:text-white/75' : 'text-ink-400 dark:text-white/45 italic'}`}
+                        style={{ lineHeight: 17, paddingTop: 1 }}
+                      >
+                        {g.detail || autoT('detay girilmedi')}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+
+                {/* Parçalar — scan body / dijital analog … (implant satırlarının altında) */}
+                <View className="mt-3 pt-3 border-t border-black/[0.06] dark:border-white/10">
+                  {implantPartsNode}
+                </View>
+              </View>
+            )}
           </View>
 
           {/* MATERYAL HAREKETLERİ */}
           {materials.length > 0 && (
-            <View className="bg-white rounded-3xl border border-black/[0.06] p-6">
+            <View className="bg-white dark:bg-[#1B1916] rounded-3xl border border-black/[0.06] dark:border-white/10 p-6">
               <View className="flex-row items-center mb-3.5">
-                <Text className="text-[11px] font-semibold uppercase text-ink-400" style={{ letterSpacing: 1.1 }}>
+                <Text className="text-[11px] font-semibold uppercase text-ink-400 dark:text-white/45" style={{ letterSpacing: 1.1 }}>
                   Materyal hareketleri
                 </Text>
                 <View className="flex-1" />
-                <View className="px-2 py-0.5 rounded-full bg-ink-50">
-                  <Text className="text-[11px] font-medium text-ink-700">
+                <View className="px-2 py-0.5 rounded-full bg-ink-50 dark:bg-white/10">
+                  <Text className="text-[11px] font-medium text-ink-700 dark:text-white/70">
                     {materials.length} kalem
                   </Text>
                 </View>
@@ -2451,15 +2755,15 @@ export function OrderDetailScreenV2() {
                     className="flex-1 px-4 py-3.5 rounded-2xl"
                     style={{ backgroundColor: softPanelBg, minWidth: 200 }}
                   >
-                    <Text numberOfLines={1} className="text-[13px] font-medium text-ink-900">
+                    <Text numberOfLines={1} className="text-[13px] font-medium text-ink-900 dark:text-[#F7F2E9]">
                       {m.name}
                     </Text>
                     <View className="flex-row justify-between mt-2">
-                      <Text className="text-[11px] text-ink-500">
+                      <Text className="text-[11px] text-ink-500 dark:text-white/55">
                         {m.quantity} {m.unit ?? ''}
                       </Text>
                       {isManager && (
-                        <Text className="text-[11px] font-medium text-ink-900">
+                        <Text className="text-[11px] font-medium text-ink-900 dark:text-[#F7F2E9]">
                           ₺ {fmtTL(m.line_cost)}
                         </Text>
                       )}
@@ -2471,8 +2775,8 @@ export function OrderDetailScreenV2() {
           )}
 
           {/* HIZLI İŞLEM · ETİKETLER */}
-          <View className="bg-white rounded-3xl border border-black/[0.06] p-5">
-            <Text className="text-[11px] font-semibold uppercase text-ink-400 mb-3" style={{ letterSpacing: 1.1 }}>
+          <View className="bg-white dark:bg-[#1B1916] rounded-3xl border border-black/[0.06] dark:border-white/10 p-5">
+            <Text className="text-[11px] font-semibold uppercase text-ink-400 dark:text-white/45 mb-3" style={{ letterSpacing: 1.1 }}>
               Hızlı işlem · etiket
             </Text>
             <View className="flex-row flex-wrap gap-2">
@@ -2500,35 +2804,39 @@ export function OrderDetailScreenV2() {
         {/* ═══════════ SAĞ KOLON ═══════════ */}
         <View className="gap-4" style={{ width: isDesktop ? 360 : undefined }}>
 
+          {/* SİMANTY ÖZETİ — sağ kolon en üstü: vakayı okumadan önce "neyle karşı
+              karşıyayım" cevabı. Kayıt değil özet; kaynaklar altında yazar. */}
+          <OrderAiSummaryCard orderId={order.id} accent={accentInk} />
+
           {/* MESAJ KUTUSU — sağ kolon en üstünde (QR hero'ya taşındı)
               Eskiden kartın altında tam genişlikte dolu bir "Mesaj gönder"
               çubuğu vardı; hemen altındaki Lojistik kartının "Kurye çağır"
               çubuğuyla birlikte sağ kolon iki kalın butona dönüşüyordu. Artık
               eylem içeriğin kendisinde: boşken satırın tamamı tıklanır, dolu
               iken son mesaj önizlemesi zaten sohbeti açar. */}
-          <View className="bg-white rounded-3xl border border-black/[0.06] p-5">
+          <View className="bg-white dark:bg-[#1B1916] rounded-3xl border border-black/[0.06] dark:border-white/10 p-5">
             <View className="flex-row items-center gap-2 mb-3.5">
-              <MessageSquare size={12} color="#9A9A9A" strokeWidth={1.8} />
-              <Text className="text-[11px] font-semibold uppercase text-ink-400" style={{ letterSpacing: 1.1 }}>
+              <MessageSquare size={12} color={isDark ? (T.ink3 as string) : "#9A9A9A"} strokeWidth={1.8} />
+              <Text className="text-[11px] font-semibold uppercase text-ink-400 dark:text-white/45" style={{ letterSpacing: 1.1 }}>
                 Mesaj kutusu
               </Text>
               <View className="flex-1" />
               {chatMessages.length > 0 && (
                 <>
-                  <Text className="text-[11px] font-medium text-ink-400">{chatMessages.length} mesaj</Text>
+                  <Text className="text-[11px] font-medium text-ink-400 dark:text-white/45">{chatMessages.length} mesaj</Text>
                   <Pressable
                     onPress={() => setChatOpen(true)}
                     style={({ pressed }: any) => ({
                       flexDirection: 'row', alignItems: 'center', gap: 4,
                       paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
-                      backgroundColor: hexA(panelAccent, 0.10),
+                      backgroundColor: hexA(accentInk, 0.10),
                       opacity: pressed ? 0.6 : 1,
                       transform: [{ scale: pressed ? 0.96 : 1 }],
                       ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                     })}
                   >
-                    <Text className="text-[11.5px] font-semibold" style={{ color: panelAccent }}>Aç</Text>
-                    <ChevronRight size={12} color={panelAccent} strokeWidth={2.4} />
+                    <Text className="text-[11.5px] font-semibold" style={{ color: accentInk }}>Aç</Text>
+                    <ChevronRight size={12} color={accentInk} strokeWidth={2.4} />
                   </Pressable>
                 </>
               )}
@@ -2550,15 +2858,15 @@ export function OrderDetailScreenV2() {
                   >
                     <View
                       className="w-[34px] h-[34px] rounded-full items-center justify-center"
-                      style={{ backgroundColor: hexA(panelAccent, 0.12) }}
+                      style={{ backgroundColor: hexA(accentInk, 0.12) }}
                     >
-                      <MessageSquare size={16} color={panelAccent} strokeWidth={1.9} />
+                      <MessageSquare size={16} color={accentInk} strokeWidth={1.9} />
                     </View>
                     <View className="flex-1 min-w-0">
-                      <Text className="text-[13px] font-semibold text-ink-900">İlk mesajı yaz</Text>
-                      <Text className="text-[11.5px] text-ink-400 mt-px">Bu vaka için henüz mesaj yok</Text>
+                      <Text className="text-[13px] font-semibold text-ink-900 dark:text-[#F7F2E9]">İlk mesajı yaz</Text>
+                      <Text className="text-[11.5px] text-ink-400 dark:text-white/45 mt-px">Bu vaka için henüz mesaj yok</Text>
                     </View>
-                    <ChevronRight size={15} color="#9A9A9A" strokeWidth={2} />
+                    <ChevronRight size={15} color={isDark ? (T.ink3 as string) : "#9A9A9A"} strokeWidth={2} />
                   </Pressable>
                 );
               }
@@ -2577,18 +2885,18 @@ export function OrderDetailScreenV2() {
                   <View className="flex-row items-center gap-2 mb-1.5">
                     <View
                       className="w-6 h-6 rounded-full items-center justify-center"
-                      style={{ backgroundColor: hexA(panelAccent, 0.14) }}
+                      style={{ backgroundColor: hexA(accentInk, 0.14) }}
                     >
-                      <Text className="text-[10px] font-semibold" style={{ color: panelAccent }}>
+                      <Text className="text-[10px] font-semibold" style={{ color: accentInk }}>
                         {who.trim().charAt(0).toUpperCase() || '?'}
                       </Text>
                     </View>
-                    <Text className="text-[12px] font-medium text-ink-900 flex-1" numberOfLines={1}>
+                    <Text className="text-[12px] font-medium text-ink-900 dark:text-[#F7F2E9] flex-1" numberOfLines={1}>
                       {who}
                     </Text>
-                    <Text className="text-[10.5px] text-ink-400">{fmtDate(last.created_at)}</Text>
+                    <Text className="text-[10.5px] text-ink-400 dark:text-white/45">{fmtDate(last.created_at)}</Text>
                   </View>
-                  <Text className="text-[12.5px] text-ink-700 leading-5" numberOfLines={3}>
+                  <Text className="text-[12.5px] text-ink-700 dark:text-white/70 leading-5" numberOfLines={3}>
                     {body}
                   </Text>
                 </Pressable>
@@ -2609,30 +2917,24 @@ export function OrderDetailScreenV2() {
             mapsApiKey={mapsApiKey}
             labAddress={labAddress}
             clinicAddress={clinicAddress}
-            onOpenTracking={leg => {
-              // courier-tracking rotası yalnız bu dört panelde var; istasyon vb.
-              // panellerden gelindiğinde lab'a düşülür.
-              const hasRoute = ['(admin)', '(lab)', '(clinic)', '(doctor)'].includes(panelGroup);
-              const base = hasRoute ? panelGroup : '(lab)';
-              router.push(`/${base}/courier-tracking?delivery=${leg.id}` as any);
-            }}
+            onOpenTracking={leg => setTrackingLeg(leg)}
             clientView={panelGroup === '(clinic)' || panelGroup === '(doctor)'}
           />
 
           {/* DİŞ ŞEMASI */}
           <View
-            className="bg-white rounded-3xl border border-black/[0.06] p-4"
+            className="bg-white dark:bg-[#1B1916] rounded-3xl border border-black/[0.06] dark:border-white/10 p-4"
             onLayout={e => {
               const w = e.nativeEvent.layout.width - 32;
               if (w > 0 && Math.abs(w - chartW) > 2) setChartW(w);
             }}
           >
             <View className="flex-row items-center mb-2.5 px-1">
-              <Text className="text-[11px] font-semibold uppercase text-ink-400" style={{ letterSpacing: 1.1 }}>
+              <Text className="text-[11px] font-semibold uppercase text-ink-400 dark:text-white/45" style={{ letterSpacing: 1.1 }}>
                 Diş Şeması
               </Text>
               <View className="flex-1" />
-              <Text className="text-[11px] text-ink-500">{visibleTeethCount} diş</Text>
+              <Text className="text-[11px] text-ink-500 dark:text-white/55">{visibleTeethCount} diş</Text>
             </View>
 
             <LivingToothChart
@@ -2657,11 +2959,11 @@ export function OrderDetailScreenV2() {
                   <Pressable
                     key={opt.id}
                     onPress={() => setJawView(opt.id)}
-                    className={`py-1 px-2.5 rounded-full items-center ${active ? 'bg-ink-900' : ''}`}
+                    className={`py-1 px-2.5 rounded-full items-center ${active ? 'bg-ink-900 dark:bg-white/15' : ''}`}
                   >
-                    <Text className={`text-[9px] font-semibold ${active ? 'text-white' : 'text-ink-500'}`}>
+                    <Text className={`text-[9px] font-semibold ${active ? 'text-white' : 'text-ink-500 dark:text-white/55'}`}>
                       {opt.label}{' '}
-                      <Text className={active ? 'text-white/60' : 'text-ink-400'}>({opt.count})</Text>
+                      <Text className={active ? 'text-white/60' : 'text-ink-400 dark:text-white/45'}>({opt.count})</Text>
                     </Text>
                   </Pressable>
                 );
@@ -2670,8 +2972,8 @@ export function OrderDetailScreenV2() {
 
             {/* Diş detay paneli — tıklanan diş */}
             {activeTooth && (
-              <View className="mt-3 p-4 rounded-2xl border border-black/[0.06]" style={{ backgroundColor: '#FBFAF6' }}>
-                <View className="flex-row items-center justify-between mb-3">
+              <View className="mt-3 p-3.5 rounded-2xl border border-black/[0.06] dark:border-white/10" style={{ backgroundColor: isDark ? T.cardSoft : '#FBFAF6' }}>
+                <View className="flex-row items-center justify-between mb-2.5">
                   <View className="flex-row items-center gap-2.5">
                     <View
                       className="w-9 h-9 rounded-xl items-center justify-center"
@@ -2682,8 +2984,8 @@ export function OrderDetailScreenV2() {
                       </Text>
                     </View>
                     <View>
-                      <Text className="text-[14px] font-semibold text-ink-900">Diş #{activeTooth}</Text>
-                      <Text className="text-[11px] text-ink-400">
+                      <Text className="text-[14px] font-semibold text-ink-900 dark:text-[#F7F2E9]">Diş #{activeTooth}</Text>
+                      <Text className="text-[11px] text-ink-400 dark:text-white/45">
                         {activeTooth >= 11 && activeTooth <= 28 ? 'Üst çene' : 'Alt çene'}
                         {' · '}
                         {activeTooth >= 11 && activeTooth <= 18 ? 'Sağ' :
@@ -2692,15 +2994,20 @@ export function OrderDetailScreenV2() {
                       </Text>
                     </View>
                   </View>
-                  <Pressable onPress={() => setActiveTooth(null)} className="w-7 h-7 rounded-full bg-black/[0.06] items-center justify-center">
-                    <Text className="text-[12px] text-ink-500">✕</Text>
+                  <Pressable
+                    onPress={() => setActiveTooth(null)}
+                    className="w-8 h-8 rounded-full items-center justify-center web:hover:opacity-80"
+                    style={{ backgroundColor: isDark ? '#292825' : 'rgba(0,0,0,0.06)' }}
+                    {...webTitle(autoT('Kapat'))}
+                  >
+                    <CloseIcon size={15} color={isDark ? '#96948E' : '#64748B'} strokeWidth={2} />
                   </Pressable>
                 </View>
 
                 <View className="gap-2">
-                  <View className="flex-row items-center justify-between py-2 border-t border-black/[0.06]">
-                    <Text className="text-[12px] text-ink-500">Çalışma</Text>
-                    <Text className="text-[12px] font-medium text-ink-900" style={{ maxWidth: 220, textAlign: 'end' as any }}>
+                  <View className="flex-row items-center justify-between py-1.5 border-t border-black/[0.06] dark:border-white/10">
+                    <Text className="text-[12px] text-ink-500 dark:text-[#96948E]">Çalışma</Text>
+                    <Text className="text-[12px] font-medium text-ink-900 dark:text-[#E5E3DE]" style={{ maxWidth: 220, textAlign: 'end' as any }}>
                       {(() => {
                         // Aktif dişe ait spesifik işlem — 3 katmanlı resolve
                         if (activeTooth == null) return order.work_type || '—';
@@ -2724,31 +3031,36 @@ export function OrderDetailScreenV2() {
                     </Text>
                   </View>
                   {order.shade && (
-                    <View className="flex-row items-center justify-between py-2 border-t border-black/[0.06]">
-                      <Text className="text-[12px] text-ink-500">Renk</Text>
+                    <View className="flex-row items-center justify-between py-1.5 border-t border-black/[0.06] dark:border-white/10">
+                      <Text className="text-[12px] text-ink-500 dark:text-[#96948E]">Renk</Text>
                       <View className="flex-row items-center gap-1.5">
                         <View className="w-3 h-3 rounded-full" style={{ backgroundColor: VITA_SHADE_HEX[order.shade] ?? '#CCC' }} />
-                        <Text className="text-[12px] font-medium text-ink-900">{order.shade}</Text>
+                        <Text className="text-[12px] font-medium text-ink-900 dark:text-[#E5E3DE]">{order.shade}</Text>
                       </View>
                     </View>
                   )}
-                  <View className="flex-row items-center justify-between py-2 border-t border-black/[0.06]">
-                    <Text className="text-[12px] text-ink-500">Aşama</Text>
-                    <Text className="text-[12px] font-medium text-ink-900">{getOrderStageLabel(order as any)}</Text>
+                  <View className="flex-row items-center justify-between py-1.5 border-t border-black/[0.06] dark:border-white/10">
+                    <Text className="text-[12px] text-ink-500 dark:text-[#96948E]">Aşama</Text>
+                    <Text className="text-[12px] font-medium text-ink-900 dark:text-[#E5E3DE]">{getOrderStageLabel(order as any)}</Text>
                   </View>
-                  <View className="flex-row items-center justify-between py-2 border-t border-black/[0.06]">
-                    <Text className="text-[12px] text-ink-500">İlerleme</Text>
-                    <View className="flex-row items-center gap-2" style={{ width: 120 }}>
-                      <View className="flex-1">
-                        <LinearProgressX value={progressPct} theme={progressTheme} compact hideLabel animate />
+                  <View className="flex-row items-center justify-between py-1.5 border-t border-black/[0.06] dark:border-white/10">
+                    <Text className="text-[12px] text-ink-500 dark:text-[#96948E]">İlerleme</Text>
+                    <View className="flex-row items-center gap-2" style={{ width: 130 }}>
+                      {/* Düz progress bar — knob yok (interaktif değil). */}
+                      <View className="flex-1 rounded-full overflow-hidden" style={{ height: 6, backgroundColor: isDark ? '#30302D' : 'rgba(15,23,42,0.08)' }}>
+                        <View style={{ height: '100%', width: `${progressPct}%`, borderRadius: 999, backgroundColor: isDark ? '#4B78B8' : panelAccent }} />
                       </View>
-                      <Text className="text-[11px] text-ink-500">{progressPct}%</Text>
+                      <Text className="text-[11px]" style={{ color: isDark ? '#A7A5A0' : '#64748B' }}>{progressPct}%</Text>
                     </View>
                   </View>
                   {order.machine_type && (
-                    <View className="flex-row items-center justify-between py-2 border-t border-black/[0.06]">
-                      <Text className="text-[12px] text-ink-500">Makine</Text>
-                      <Text className="text-[12px] font-medium text-ink-900">{order.machine_type}</Text>
+                    <View className="flex-row items-center justify-between py-1.5 border-t border-black/[0.06] dark:border-white/10">
+                      <Text className="text-[12px] text-ink-500 dark:text-[#96948E]">Makine</Text>
+                      <Text className="text-[12px] font-medium text-ink-900 dark:text-[#E5E3DE]">
+                        {order.machine_type === 'milling' ? autoT('Frezeleme')
+                          : order.machine_type === '3d_printing' ? autoT('3D Baskı')
+                          : order.machine_type}
+                      </Text>
                     </View>
                   )}
                 </View>
@@ -2757,26 +3069,32 @@ export function OrderDetailScreenV2() {
           </View>
 
           {/* TABS — Aktivite / Dosyalar / Yorumlar */}
-          <View className="bg-white rounded-3xl border border-black/[0.06] p-5">
+          <View className="bg-white dark:bg-[#1B1916] rounded-3xl border border-black/[0.06] dark:border-white/10 p-5">
             <View className="flex-row gap-1 p-1 rounded-xl mb-3.5" style={{ backgroundColor: softPanelBg }}>
               {([
+                { id: 'files',       label: 'Dosyalar',     count: (order.photos ?? []).length + notePhotoFiles.photos.length },
                 { id: 'doctor_note', label: 'Hekim Notu', count: (order.notes && String(order.notes).trim().length > 0) ? 1 : 0 },
-                { id: 'files',       label: 'Dosyalar',     count: (order.photos ?? []).length },
+                // Lab notu İÇ nottur: klinik/hekim yalnız lab "müşteriye görünür"
+                // işaretlediyse (lab_notes_visible) görebilir. Sekme aksi hâlde
+                // hiç basılmaz — varlığı bile sızmasın.
+                ...(labNoteVisibleToMe
+                  ? [{ id: 'lab_note' as const, label: 'Lab Notu', count: labNoteText ? 1 : 0 }]
+                  : []),
               ] as const).map(tb => {
                 const active = sideTab === tb.id;
                 return (
                   <Pressable
                     key={tb.id}
                     onPress={() => setSideTab(tb.id)}
-                    className={`flex-1 px-2.5 py-2 rounded-[9px] flex-row items-center justify-center gap-1.5 ${active ? 'bg-white' : ''}`}
+                    className={`flex-1 px-2.5 py-2 rounded-[9px] flex-row items-center justify-center gap-1.5 ${active ? 'bg-white dark:bg-white/10' : ''}`}
                     style={active ? ({ /* @ts-ignore */ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' } as any) : undefined}
                   >
-                    <Text className={`text-[12px] font-medium ${active ? 'text-ink-900' : 'text-ink-500'}`}>
+                    <Text className={`text-[12px] font-medium ${active ? 'text-ink-900 dark:text-[#F7F2E9]' : 'text-ink-500 dark:text-white/55'}`}>
                       {tb.label}
                     </Text>
                     {tb.count > 0 && (
-                      <View className={`px-1.5 py-px rounded-full ${active ? 'bg-ink-900' : 'bg-black/5'}`}>
-                        <Text className={`text-[10px] font-semibold ${active ? 'text-white' : 'text-ink-500'}`}>
+                      <View className={`px-1.5 py-px rounded-full ${active ? 'bg-ink-900 dark:bg-white/20' : 'bg-black/5 dark:bg-white/10'}`}>
+                        <Text className={`text-[10px] font-semibold ${active ? 'text-white' : 'text-ink-500 dark:text-white/55'}`}>
                           {tb.count}
                         </Text>
                       </View>
@@ -2789,23 +3107,46 @@ export function OrderDetailScreenV2() {
             {sideTab === 'doctor_note' && (
               order.notes && String(order.notes).trim().length > 0 ? (
                 <View className="rounded-2xl p-4" style={{ backgroundColor: softPanelBg }}>
-                  <Text className="text-[11px] font-semibold uppercase text-ink-400 mb-2" style={{ letterSpacing: 1.1 }}>
+                  <Text className="text-[11px] font-semibold uppercase text-ink-400 dark:text-white/45 mb-2" style={{ letterSpacing: 1.1 }}>
                     Hekim Notu
                   </Text>
-                  <Text className="text-[13px] text-ink-900 leading-5">
+                  <Text className="text-[13px] text-ink-900 dark:text-[#F7F2E9] leading-5">
                     {order.notes}
                   </Text>
                 </View>
               ) : (
-                <Text className="text-[12px] text-ink-400 italic px-1 py-3">
+                <Text className="text-[12px] text-ink-400 dark:text-white/45 italic px-1 py-3">
                   Hekim henüz not eklemedi.
+                </Text>
+              )
+            )}
+            {sideTab === 'lab_note' && labNoteVisibleToMe && (
+              labNoteText ? (
+                <View className="rounded-2xl p-4" style={{ backgroundColor: softPanelBg }}>
+                  <View className="flex-row items-center gap-2 mb-2">
+                    <Text className="text-[11px] font-semibold uppercase text-ink-400 dark:text-white/45" style={{ letterSpacing: 1.1 }}>
+                      {autoT('Lab Notu')}
+                    </Text>
+                    {!isClientPanel && (
+                      <View className="px-2 py-0.5 rounded-full" style={{ backgroundColor: softPanelBg, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' }}>
+                        <Text className="text-[9.5px] font-semibold text-ink-500 dark:text-white/55">
+                          {(order as any).lab_notes_visible ? autoT('Müşteriye görünür') : autoT('Yalnız lab')}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text className="text-[13px] text-ink-900 dark:text-[#F7F2E9] leading-5">{labNoteText}</Text>
+                </View>
+              ) : (
+                <Text className="text-[12px] text-ink-400 dark:text-white/45 italic px-1 py-3">
+                  {autoT('Lab notu eklenmedi.')}
                 </Text>
               )
             )}
             {sideTab === 'files' && (
               <FilesList
-                photos={[...(order.photos ?? []), ...inheritedFiles.photos]}
-                signedUrls={{ ...(signedUrls ?? {}), ...inheritedFiles.urls }}
+                photos={[...(order.photos ?? []), ...notePhotoFiles.photos, ...inheritedFiles.photos]}
+                signedUrls={{ ...(signedUrls ?? {}), ...notePhotoFiles.urls, ...inheritedFiles.urls }}
                 thumbUrls={thumbUrls}
                 workOrderId={order.id}
                 accentColor={panelAccent}
@@ -2827,10 +3168,10 @@ export function OrderDetailScreenV2() {
                 <View className="flex-1" />
                 <View
                   className="flex-row items-center gap-1.5 px-2 py-0.5 rounded-full"
-                  style={{ backgroundColor: panelAccent + '33' }}
+                  style={{ backgroundColor: accentFill + '33' }}
                 >
-                  <View className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: panelAccent }} />
-                  <Text className="text-[10px] font-medium" style={{ color: panelAccent }}>
+                  <View className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: accentFill }} />
+                  <Text className="text-[10px] font-medium" style={{ color: accentInk }}>
                     {(Number(profit.sale_price) || 0) > 0 ? 'Tanımlı' : 'Beklemede'}
                   </Text>
                 </View>
@@ -2872,8 +3213,8 @@ export function OrderDetailScreenV2() {
                 )}
                 <View className="h-px bg-white/10 my-0.5" />
                 <View className="flex-row justify-between items-baseline">
-                  <Text className="text-[12px]" style={{ color: panelAccent }}>Net kâr</Text>
-                  <Text style={{ ...DISPLAY, fontSize: 28, letterSpacing: -0.84, color: panelAccent }}>
+                  <Text className="text-[12px]" style={{ color: accentInk }}>Net kâr</Text>
+                  <Text style={{ ...DISPLAY, fontSize: 28, letterSpacing: -0.84, color: accentInk }}>
                     {profitSym} {fmtTL(profit.profit)}
                   </Text>
                 </View>
@@ -2887,41 +3228,42 @@ export function OrderDetailScreenV2() {
           )}
 
           {/* DOKTOR & KLİNİK — QR ile yer değiştirildi, alta taşındı */}
-          <View className="bg-white rounded-3xl border border-black/[0.06] p-5">
-            <Text className="text-[11px] font-semibold uppercase text-ink-400 mb-3.5" style={{ letterSpacing: 1.1 }}>
+          <View className="bg-white dark:bg-[#1B1916] rounded-3xl border border-black/[0.06] dark:border-white/10 p-5">
+            <Text className="text-[11px] font-semibold uppercase text-ink-400 dark:text-white/45 mb-3.5" style={{ letterSpacing: 1.1 }}>
               Doktor & Klinik
             </Text>
             <View className="flex-row items-center gap-3 mb-3">
               <Avatar name={doctorName} size={40} bg="#3B82F6" fg="#FFF" />
               <View className="flex-1">
-                <Text className="text-[13px] font-medium text-ink-900">{doctorName}</Text>
-                <Text className="text-[11px] text-ink-500">{clinicName}</Text>
+                <Text className="text-[13px] font-medium text-ink-900 dark:text-[#F7F2E9]">{doctorName}</Text>
+                <Text className="text-[11px] text-ink-500 dark:text-white/55">{clinicName}</Text>
               </View>
               {isManager && (
                 <Pressable
                   onPress={() => setDoctorChangeOpen(true)}
                   className="w-8 h-8 rounded-lg border border-black/[0.08] items-center justify-center"
                   style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}}
+                  {...webTitle(autoT('Hekim değiştir'))}
                 >
-                  <Pencil size={14} color="#0A0A0A" strokeWidth={1.8} />
+                  <Pencil size={14} color={isDark ? (T.ink as string) : "#0A0A0A"} strokeWidth={1.8} />
                 </Pressable>
               )}
-              <Pressable className="w-8 h-8 rounded-lg border border-black/[0.08] items-center justify-center">
-                <Bell size={15} color="#0A0A0A" strokeWidth={1.6} />
+              <Pressable className="w-8 h-8 rounded-lg border border-black/[0.08] items-center justify-center" {...webTitle(autoT('Hatırlatıcı'))}>
+                <Bell size={15} color={isDark ? (T.ink as string) : "#0A0A0A"} strokeWidth={1.6} />
               </Pressable>
             </View>
             {(doctorPhone || clinicName) && (
               <View className="px-3 py-2.5 rounded-[10px] gap-2" style={{ backgroundColor: softPanelBg }}>
                 {doctorPhone ? (
                   <View className="flex-row items-center gap-1.5">
-                    <Phone size={11} color="#6B6B6B" strokeWidth={1.8} />
-                    <Text className="text-[11px] text-ink-500">{doctorPhone}</Text>
+                    <Phone size={11} color={isDark ? (T.ink3 as string) : "#6B6B6B"} strokeWidth={1.8} />
+                    <Text className="text-[11px] text-ink-500 dark:text-white/55">{doctorPhone}</Text>
                   </View>
                 ) : null}
                 {clinicName ? (
                   <View className="flex-row items-start gap-1.5">
-                    <View className="mt-0.5"><MapPin size={11} color="#6B6B6B" strokeWidth={1.8} /></View>
-                    <Text className="flex-1 text-[11px] text-ink-500 leading-4">{clinicName}</Text>
+                    <View className="mt-0.5"><MapPin size={11} color={isDark ? (T.ink3 as string) : "#6B6B6B"} strokeWidth={1.8} /></View>
+                    <Text className="flex-1 text-[11px] text-ink-500 dark:text-white/55 leading-4">{clinicName}</Text>
                   </View>
                 ) : null}
               </View>
@@ -2929,9 +3271,9 @@ export function OrderDetailScreenV2() {
           </View>
 
           {/* İLGİLİ SİPARİŞLER */}
-          {related.length > 0 && (
-            <View className="bg-white rounded-3xl border border-black/[0.06] p-5">
-              <Text className="text-[11px] font-semibold uppercase text-ink-400 mb-3" style={{ letterSpacing: 1.1 }}>
+          {related.length > 0 && !embedded && (
+            <View className="bg-white dark:bg-[#1B1916] rounded-3xl border border-black/[0.06] dark:border-white/10 p-5">
+              <Text className="text-[11px] font-semibold uppercase text-ink-400 dark:text-white/45 mb-3" style={{ letterSpacing: 1.1 }}>
                 İlgili siparişler
               </Text>
               {related.map((o, i) => {
@@ -2939,18 +3281,18 @@ export function OrderDetailScreenV2() {
                 return (
                   <Pressable
                     key={o.id}
-                    onPress={() => handleNavigateRelated(o.id)}
+                    onPress={() => { if (embedded) onOpenRelated?.(o.id); else setPreviewOrderId(o.id); }}
                     className={`px-3 py-2.5 rounded-xl flex-row items-center gap-2.5 ${i > 0 ? 'mt-2' : ''}`}
                     style={{ backgroundColor: softPanelBg }}
                   >
                     <View className="flex-1">
-                      <Text className="text-[11px] font-mono text-ink-400">{o.order_number}</Text>
-                      <Text className="text-[12px] font-medium text-ink-900 mt-0.5">
+                      <Text className="text-[11px] font-mono text-ink-400 dark:text-white/45">{o.order_number}</Text>
+                      <Text className="text-[12px] font-medium text-ink-900 dark:text-[#F7F2E9] mt-0.5">
                         {o.work_type ?? '—'}
                       </Text>
                     </View>
                     <View className="items-end">
-                      <Text className="text-[11px] text-ink-500">{fmtDate(o.delivery_date)}</Text>
+                      <Text className="text-[11px] text-ink-500 dark:text-white/55">{fmtDate(o.delivery_date)}</Text>
                       <View
                         className="px-1.5 py-px rounded mt-0.5"
                         style={{ backgroundColor: (cfg?.color ?? '#94A3B8') + '20' }}
@@ -3070,19 +3412,79 @@ export function OrderDetailScreenV2() {
         />
       )}
 
-      {/* Reassign Modal — aktif stage yoksa ilk bekliyor stage'i hedef al */}
-      {isManager && reassignTargetStage && (
-        <ReassignModal
-          visible={reassignOpen}
-          stageId={reassignTargetStage.id}
-          stage={legacyStatusToStage(order.status)}
-          stationId={(reassignTargetStage as any).station?.id ?? (reassignTargetStage as any).station_id ?? null}
-          labId={profile?.lab_id ?? profile?.id ?? ''}
-          currentOwnerId={reassignTargetStage.technician?.id}
-          onClose={() => setReassignOpen(false)}
-          onReassigned={() => { refetch(); refetchStages(); }}
-        />
+      <OrderCourierTrackingModal
+        visible={!!trackingLeg}
+        leg={trackingLeg}
+        onClose={() => setTrackingLeg(null)}
+        labAddress={labAddress}
+        clinicAddress={clinicAddress}
+        accent={panelAccent}
+      />
+
+      {/* İlgili sipariş → TAM detay popup: OrderDetailScreenV2'yi kendi içinde
+          (embedded) render eder. İçindeki "ilgili"ye tıklama modal'daki id'yi
+          değiştirir (aynı pencerede gezinti). embedded değilken render edilir. */}
+      {!embedded && (
+        <Modal visible={!!previewOrderId} transparent animationType="fade" onRequestClose={() => setPreviewOrderId(null)}>
+          <Pressable
+            onPress={() => setPreviewOrderId(null)}
+            style={{
+              flex: 1, backgroundColor: 'rgba(10,10,10,0.5)',
+              ...(Platform.OS === 'web' ? { backdropFilter: 'blur(2px)' } as any : {}),
+              alignItems: 'center', justifyContent: 'center', padding: isDesktop ? 24 : 0,
+            }}
+          >
+            <Pressable
+              onPress={(e) => (e as any).stopPropagation?.()}
+              style={{
+                width: '100%', maxWidth: 1240, height: isDesktop ? '94%' : '100%',
+                borderRadius: isDesktop ? 24 : 0, overflow: 'hidden',
+                backgroundColor: T.bg, position: 'relative',
+                ...(Platform.OS === 'web' ? { boxShadow: '0 20px 50px rgba(15,23,42,0.28)' } as any : {}),
+              }}
+            >
+              {previewOrderId ? (
+                <OrderDetailScreenV2
+                  idOverride={previewOrderId}
+                  embedded
+                  onRequestClose={() => setPreviewOrderId(null)}
+                  onOpenRelated={(rid) => setPreviewOrderId(rid)}
+                />
+              ) : null}
+              <Pressable
+                onPress={() => setPreviewOrderId(null)}
+                style={{
+                  position: 'absolute', top: 12, end: 12, zIndex: 50,
+                  width: 38, height: 38, borderRadius: 19, backgroundColor: isDark ? T.card : '#FFFFFF',
+                  alignItems: 'center', justifyContent: 'center',
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer', boxShadow: '0 4px 14px rgba(15,23,42,0.2)' } as any : {}),
+                }}
+                accessibilityLabel={autoT('Kapat')}
+              >
+                <CloseIcon size={18} color={isDark ? T.ink : '#0F172A'} strokeWidth={2} />
+              </Pressable>
+            </Pressable>
+          </Pressable>
+        </Modal>
       )}
+
+      {/* Reassign Modal — menüden seçilen aşama (yoksa aktif ?? ilk bekleyen) */}
+      {(() => {
+        const target = reassignStage ?? reassignTargetStage;
+        if (!isManager || !target) return null;
+        return (
+          <ReassignModal
+            visible={reassignOpen}
+            stageId={target.id}
+            stage={legacyStatusToStage(order.status)}
+            stationId={(target as any).station?.id ?? (target as any).station_id ?? null}
+            labId={profile?.lab_id ?? profile?.id ?? ''}
+            currentOwnerId={target.technician?.id}
+            onClose={() => { setReassignOpen(false); setReassignStage(null); }}
+            onReassigned={() => { refetch(); refetchStages(); }}
+          />
+        );
+      })()}
 
       {/* Aşama ekle modal — müdür/admin: istasyon + konum seç */}
       {isManager && order && (
@@ -3134,17 +3536,17 @@ export function OrderDetailScreenV2() {
       {/* İşi Beklet — neden + kategori. Müşteri kaynaklıysa devam edince teslim ötelenir. */}
       <Modal visible={holdOpen} transparent animationType="fade" onRequestClose={() => setHoldOpen(false)}>
         <Pressable onPress={() => setHoldOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <Pressable onPress={() => {}} style={{ width: '100%', maxWidth: 480, backgroundColor: '#FFFFFF', borderRadius: 20, padding: 20, gap: 14 }}>
+          <Pressable onPress={() => {}} style={{ width: '100%', maxWidth: 480, backgroundColor: isDark ? T.card : '#FFFFFF', borderRadius: 20, padding: 20, gap: 14 }}>
             <View style={{ gap: 4 }}>
-              <Text style={{ fontSize: 17, fontWeight: '700', color: '#0A0A0A' }}>İşi beklet</Text>
-              <Text style={{ fontSize: 12.5, color: '#6B6B6B', lineHeight: 18 }}>
+              <Text style={{ fontSize: 17, fontWeight: '700', color: isDark ? T.ink : '#0A0A0A' }}>İşi beklet</Text>
+              <Text style={{ fontSize: 12.5, color: isDark ? T.ink3 : '#6B6B6B', lineHeight: 18 }}>
                 Beklerken gecikme sayacı durur. Bekleme hekim/klinik kaynaklıysa devam ettirdiğinde
                 teslim tarihi bekleme süresi kadar ötelenir — gecikme lab'a yazılmaz.
               </Text>
             </View>
 
             <View style={{ gap: 6 }}>
-              <Text style={{ fontSize: 12, fontWeight: '600', color: '#0A0A0A' }}>Neden kategorisi</Text>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: isDark ? T.ink : '#0A0A0A' }}>Neden kategorisi</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                 {HOLD_CATEGORIES.map(c => {
                   const sel = holdCat === c.key;
@@ -3153,19 +3555,19 @@ export function OrderDetailScreenV2() {
                       style={{
                         flexDirection: 'row', alignItems: 'center', gap: 6,
                         paddingHorizontal: 11, paddingVertical: 7, borderRadius: 999,
-                        backgroundColor: sel ? panelAccent : '#F1F5F9',
-                        borderWidth: 1, borderColor: sel ? panelAccent : 'rgba(0,0,0,0.08)',
+                        backgroundColor: sel ? panelAccent : (isDark ? T.cardSoft : '#F1F5F9'),
+                        borderWidth: 1, borderColor: sel ? panelAccent : (isDark ? T.hairline : 'rgba(0,0,0,0.08)'),
                         ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                       }}>
-                      <Text style={{ fontSize: 12, fontWeight: '600', color: sel ? '#FFFFFF' : '#334155' }}>{c.label}</Text>
-                      <Text style={{ fontSize: 9.5, fontWeight: '700', color: sel ? 'rgba(255,255,255,0.8)' : '#9A9A9A' }}>
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: sel ? '#FFFFFF' : (isDark ? T.ink2 : '#334155') }}>{c.label}</Text>
+                      <Text style={{ fontSize: 9.5, fontWeight: '700', color: sel ? 'rgba(255,255,255,0.8)' : (isDark ? T.ink3 : '#9A9A9A') }}>
                         {c.responsible === 'client' ? 'MÜŞTERİ' : 'LAB'}
                       </Text>
                     </Pressable>
                   );
                 })}
               </View>
-              <Text style={{ fontSize: 11, color: '#9A9A9A' }}>
+              <Text style={{ fontSize: 11, color: (isDark ? T.ink3 : '#9A9A9A') }}>
                 {HOLD_CATEGORIES.find(c => c.key === holdCat)?.responsible === 'client'
                   ? 'Müşteri kaynaklı → teslim tarihi ötelenecek, hekime bildirim gider.'
                   : 'Lab kaynaklı → teslim tarihi ÖTELENMEZ, gecikme lab\'da kalır.'}
@@ -3173,25 +3575,25 @@ export function OrderDetailScreenV2() {
             </View>
 
             <View style={{ gap: 6 }}>
-              <Text style={{ fontSize: 12, fontWeight: '600', color: '#0A0A0A' }}>Açıklama</Text>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: isDark ? T.ink : '#0A0A0A' }}>Açıklama</Text>
               <TextInput
                 value={holdReason}
                 onChangeText={setHoldReason}
                 placeholder="Örn: Üst çene taraması eksik, hekimden bekleniyor"
-                placeholderTextColor="#9A9A9A"
+                placeholderTextColor={isDark ? (T.ink3 as string) : '#9A9A9A'}
                 multiline
-                style={{ minHeight: 72, borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)', borderRadius: 14, padding: 12, fontSize: 13, color: '#0A0A0A', textAlignVertical: 'top' }}
+                style={{ minHeight: 72, borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.12)', borderRadius: 14, padding: 12, fontSize: 13, color: isDark ? T.ink : '#0A0A0A', textAlignVertical: 'top' }}
               />
             </View>
 
             {!!holdErr && <Text style={{ fontSize: 12, color: '#D94B4B' }}>{holdErr}</Text>}
 
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10 }}>
-              <Pressable onPress={() => setHoldOpen(false)} style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)' }}>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: '#334155' }}>Vazgeç</Text>
+              <Pressable onPress={() => setHoldOpen(false)} style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.12)' }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: isDark ? T.ink2 : '#334155' }}>Vazgeç</Text>
               </Pressable>
               <Pressable onPress={submitHold} disabled={holdBusy || !holdReason.trim()}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 12, backgroundColor: panelAccent, opacity: (holdBusy || !holdReason.trim()) ? 0.5 : 1 }}>
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 12, backgroundColor: accentFill, opacity: (holdBusy || !holdReason.trim()) ? 0.5 : 1 }}>
                 <Pause size={14} color="#FFF" strokeWidth={2} />
                 <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFF' }}>{holdBusy ? 'Bekletiliyor…' : 'Beklet'}</Text>
               </Pressable>
@@ -3488,7 +3890,7 @@ function ActivityFeed({ history }: { history: StatusHistory[] }) {
   if (history.length === 0) {
     return (
       <View className="py-6 items-center">
-        <Text className="text-[12px] text-ink-400">Henüz aktivite kaydı yok</Text>
+        <Text className="text-[12px] text-ink-400 dark:text-white/45">Henüz aktivite kaydı yok</Text>
       </View>
     );
   }
@@ -3497,7 +3899,7 @@ function ActivityFeed({ history }: { history: StatusHistory[] }) {
   );
   return (
     <View className="relative">
-      <View className="absolute bg-black/[0.06]" style={{ start: 13, top: 14, bottom: 14, width: 1.5 }} />
+      <View className="absolute bg-black/[0.06] dark:bg-white/10" style={{ start: 13, top: 14, bottom: 14, width: 1.5 }} />
       {sorted.map((h, i) => {
         const who = (h as any).changer?.full_name ?? 'Sistem';
         const newCfg = STATUS_CONFIG[h.new_status];
@@ -3516,13 +3918,13 @@ function ActivityFeed({ history }: { history: StatusHistory[] }) {
             </View>
             <View className="flex-1">
               <Text className="text-[12px]">
-                <Text className="font-medium text-ink-900">{who}</Text>{' '}
-                <Text className="text-ink-500">{action}</Text>
+                <Text className="font-medium text-ink-900 dark:text-[#F7F2E9]">{who}</Text>{' '}
+                <Text className="text-ink-500 dark:text-white/55">{action}</Text>
               </Text>
               {h.note ? (
-                <Text className="text-[11px] text-ink-700 mt-1">{h.note}</Text>
+                <Text className="text-[11px] text-ink-700 dark:text-white/70 mt-1">{h.note}</Text>
               ) : null}
-              <Text className="text-[11px] text-ink-400 mt-0.5">{time}</Text>
+              <Text className="text-[11px] text-ink-400 dark:text-white/45 mt-0.5">{time}</Text>
             </View>
           </View>
         );
@@ -3532,669 +3934,6 @@ function ActivityFeed({ history }: { history: StatusHistory[] }) {
 }
 
 /** Accent üzerinde okunabilir ön-plan: açık accent'te (lab safranı) ink, koyuda beyaz. */
-function onAccent(hex: string): string {
-  const h = hex.replace('#', '');
-  if (h.length !== 6) return '#FFFFFF';
-  const lin = (v: number) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
-  const L = 0.2126 * lin(parseInt(h.slice(0, 2), 16))
-          + 0.7152 * lin(parseInt(h.slice(2, 4), 16))
-          + 0.0722 * lin(parseInt(h.slice(4, 6), 16));
-  return L > 0.5 ? '#0A0A0A' : '#FFFFFF';
-}
-/** #RRGGBB → rgba(...) */
-function alphaOf(hex: string, a: number): string {
-  const h = hex.replace('#', '');
-  if (h.length !== 6) return hex;
-  return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`;
-}
-
-// Dosya kategorisi — Taramalar (3D/zip) · Fotoğraflar (görsel) · Belgeler (diğer)
-type FileCat = 'scan' | 'photo' | 'doc';
-function fileCategoryOf(pathOrName: string): FileCat {
-  const p = (pathOrName || '').toLowerCase();
-  if (/\.(stl|ply|obj|zip|3mf|dcm)$/.test(p)) return 'scan';
-  if (/\.(jpe?g|png|webp|gif|bmp|heic|heif|avif|svg)$/.test(p)) return 'photo';
-  return 'doc';
-}
-/** Galeri ileri/geri düğmesi — görselin dikey ortasında yüzer. */
-const galleryNavBtn = {
-  position: 'absolute' as const,
-  top: '50%' as any, marginTop: -15,
-  width: 30, height: 30, borderRadius: 15,
-  alignItems: 'center' as const, justifyContent: 'center' as const,
-  backgroundColor: 'rgba(255,255,255,0.92)',
-  ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 2px 8px rgba(15,23,42,0.16)' } as any) : {}),
-};
-
-const FILE_CAT_META: { key: FileCat; label: string }[] = [
-  { key: 'scan',  label: 'Taramalar' },
-  { key: 'photo', label: 'Fotoğraflar' },
-  { key: 'doc',   label: 'Belgeler' },
-];
-
-function FilesList({
-  photos, signedUrls, thumbUrls, workOrderId, accentColor, onUploaded,
-}: {
-  photos: WorkOrderPhoto[];
-  signedUrls: Record<string, string>;
-  /** Küçük boy URL'ler (Supabase render/image). Boşsa tam boya düşülür. */
-  thumbUrls?: Record<string, string>;
-  workOrderId: string;
-  accentColor: string;
-  onUploaded?: () => void;
-}) {
-  const insets = useSafeAreaInsets();
-  // Kategori aç/kapa durumu (varsayılan: KAPALI — kullanıcı isterse açar)
-  const [openCats, setOpenCats] = useState<Record<string, boolean>>({});
-  // 3D viewer state
-  const [viewer3DFile, setViewer3DFile] = useState<{ id: string; name: string; url: string; format: 'stl'|'ply'|'obj'; textureUrl?: string|null } | null>(null);
-  // Uygulama-içi görsel / HTML tasarım önizleme (yeni tab yerine popup) — dosya modalı ile aynı davranış
-  const [imageViewer, setImageViewer] = useState<{ url: string; name: string } | null>(null);
-  const [htmlViewer, setHtmlViewer]   = useState<{ url?: string; html?: string; name: string } | null>(null);
-  // Zip tarama arşivi: açılıyor göstergesi + zip içi görseller + revoke edilecek blob URL'ler
-  const [extractingId, setExtractingId] = useState<string | null>(null);
-  const [zipImages, setZipImages] = useState<{ url: string; name: string }[] | null>(null);
-  const zipUrlsRef = useRef<string[]>([]);
-  const revokeZipUrls = () => {
-    zipUrlsRef.current.forEach(u => { try { URL.revokeObjectURL(u); } catch {} });
-    zipUrlsRef.current = [];
-  };
-  const closeHtmlViewer = () => {
-    if (htmlViewer?.url?.startsWith('blob:')) { try { URL.revokeObjectURL(htmlViewer.url); } catch {} }
-    setHtmlViewer(null);
-  };
-
-  // OBJ'nin AYNI KLASÖRÜNDEKİ texture (PNG/JPG) signed URL'ini bul.
-  // Object Capture çıktısı: facescan-{ts}/baked_mesh.obj + baked_mesh_tex0.png
-  const siblingTextureUrl = (objPath: string): string | null => {
-    const slash = objPath.lastIndexOf('/');
-    if (slash < 0) return null;
-    const dir = objPath.slice(0, slash);
-    const tex = photos.find(p =>
-      p.storage_path.startsWith(dir + '/') && /\.(png|jpe?g)$/i.test(p.storage_path)
-    );
-    if (!tex) return null;
-    return signedUrls[tex.storage_path] ?? (tex as any).signed_url ?? null;
-  };
-
-  // İndirme dosya adı — caption'da uzantı yoksa gerçek uzantıyı ekle (zip zip iner).
-  const zipDownloadName = (f: WorkOrderPhoto): string => {
-    const base = f.storage_path.split('/').pop() ?? 'file';
-    const realExt = base.includes('.') ? base.split('.').pop()!.toLowerCase() : '';
-    let name = (f.caption?.trim() || base);
-    if (realExt && !name.toLowerCase().endsWith('.' + realExt)) name = `${name}.${realExt}`;
-    return name;
-  };
-
-  const openPreview = (f: WorkOrderPhoto) => {
-    const url = signedUrls[f.storage_path] ?? (f as any).signed_url ?? null;
-    // İmzalı URL yok (henüz yüklenmedi ya da storage erişimi yok) → sessiz kalma.
-    if (!url) { toast.error('Dosyaya erişilemedi. Birazdan tekrar deneyin.'); return; }
-    const filename = f.caption ?? f.storage_path.split('/').pop() ?? '';
-    const ext = (f.storage_path.split('.').pop() || '').toLowerCase();
-    // Görsel → uygulama-içi lightbox (web + native). SVG native'de RN Image ile
-    // render olmaz → native'de aşağıdaki sistem-tarayıcı yoluna düşer.
-    const isRasterImg = ['jpg','jpeg','png','gif','webp','bmp','heic','heif','avif'].includes(ext);
-    if (isRasterImg || (ext === 'svg' && Platform.OS === 'web')) {
-      setImageViewer({ url, name: filename });
-      return;
-    }
-    // 3D (STL/PLY/OBJ) → uygulama-içi viewer (web three.js · native WebView+three.js).
-    const fmt = is3DFileExt(f.storage_path);
-    if (fmt) {
-      const textureUrl = fmt === 'obj' ? siblingTextureUrl(f.storage_path) : null;
-      setViewer3DFile({ id: f.id, name: filename, url, format: fmt, textureUrl });
-      return;
-    }
-    // ZIP → native: fflate ile aç (data-URI), içindeki mesh'leri 3D viewer'da göster.
-    if (isArchiveExt(f.storage_path) && Platform.OS !== 'web') {
-      setExtractingId(f.id);
-      (async () => {
-        try {
-          const r = await unzipToViewerNative(url, { idPrefix: f.id });
-          if (r.files.length > 0) {
-            setZipImages(r.images.length ? r.images : null);
-            setZipSource({ url, name: zipDownloadName(f) });   // indirme → kaynak zip
-            setViewerAll(r.files);
-          } else if (r.images.length > 0) {
-            setZipImages(r.images);
-            setImageViewer(r.images[0]);
-          } else {
-            openFileUrl(url);
-          }
-        } catch { openFileUrl(url); }
-        finally { setExtractingId(null); }
-      })();
-      return;
-    }
-    // HTML tasarım (exocad web viewer) → uygulama-içi görüntüleyici (web: iframe · native: WebView).
-    // content-type text olabildiği için içeriği çekip gömüyoruz (yazı değil tasarım render edilir).
-    // Desktop/webapp ile birebir: dosya dışarı çıkmadan uygulama içinde açılır.
-    if (ext === 'html' || ext === 'htm') {
-      setExtractingId(f.id);
-      (async () => {
-        try {
-          const res = await fetch(url); const text = await res.text();
-          if (Platform.OS === 'web') {
-            setHtmlViewer({ url: URL.createObjectURL(new Blob([text], { type: 'text/html' })), name: filename });
-          } else {
-            setHtmlViewer({ html: text, name: filename });
-          }
-        } catch { openFileUrl(url); }
-        finally { setExtractingId(null); }
-      })();
-      return;
-    }
-    // Native: kalan tipler (PDF vb.) için web-içi görüntüleyici yok → sistem tarayıcısı.
-    if (Platform.OS !== 'web') { openFileUrl(url); return; }
-    // ZIP → tarayıcı içinde aç, içindeki mesh'leri 3D viewer'da göster (klinikler tüm
-    // taramaları tek zip içine koyuyor). Mesh yoksa görsel lightbox, o da yoksa indir.
-    if (isArchiveExt(f.storage_path) && Platform.OS === 'web') {
-      setExtractingId(f.id);
-      (async () => {
-        try {
-          revokeZipUrls();
-          const r = await unzipToViewer(url, { idPrefix: f.id });
-          zipUrlsRef.current = r.objectUrls;
-          if (r.files.length > 0) {
-            setZipImages(r.images.length ? r.images : null);
-            setZipSource({ url, name: zipDownloadName(f) });   // indirme → kaynak zip
-            setViewerAll(r.files);
-          } else if (r.images.length > 0) {
-            setZipImages(r.images);
-            setImageViewer(r.images[0]);
-          } else if (typeof window !== 'undefined') {
-            window.open(url, '_blank');
-          }
-        } catch { if (typeof window !== 'undefined') window.open(url, '_blank'); }
-        finally { setExtractingId(null); }
-      })();
-      return;
-    }
-    if (typeof window !== 'undefined') window.open(url, '_blank');
-  };
-
-  const forceDownload = async (f: WorkOrderPhoto) => {
-    const url = signedUrls[f.storage_path] ?? (f as any).signed_url ?? null;
-    if (!url) return;
-    // Dosya adı — caption'da uzantı yoksa gerçek uzantıyı ekle (ör. "Üst Çene · OrthoCAD" → ".zip").
-    // Böylece ZIP, ZIP olarak iner (içi AÇILMAZ) — tüm platformlarda ham dosya.
-    const base = f.storage_path.split('/').pop() ?? 'file';
-    const realExt = (base.includes('.') ? base.split('.').pop()! : '').toLowerCase();
-    let name = (f.caption?.trim() || base);
-    if (realExt && !name.toLowerCase().endsWith('.' + realExt)) name = `${name}.${realExt}`;
-    // Supabase signed URL'e `download` parametresi → sunucu Content-Disposition: attachment
-    // döner; tarayıcı ham dosyayı İNDİRİR (blob/CORS/iOS-PWA sorunları olmadan, zip açılmadan).
-    const dlUrl = url + (url.includes('?') ? '&' : '?') + 'download=' + encodeURIComponent(name);
-    // Native: sistem indiricisi/tarayıcısı. Web (desktop + PWA): <a download> ile tetikle.
-    if (Platform.OS !== 'web' || typeof document === 'undefined') { openFileUrl(dlUrl); return; }
-    try {
-      const a = document.createElement('a');
-      a.href = dlUrl;
-      a.download = name;
-      a.rel = 'noopener';
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => { try { document.body.removeChild(a); } catch {} }, 100);
-    } catch {
-      try { window.open(dlUrl, '_blank'); } catch {}
-    }
-  };
-
-  // Multi-file viewer (tüm 3D dosyaları üst üste aç) — Faz 7
-  const [viewerAll, setViewerAll] = useState<Array<{ id: string; name: string; url: string; format: 'stl'|'ply'|'obj'; textureUrl?: string|null }> | null>(null);
-  // ZIP'ten açılan viewer'da indirme kaynağı (mesh yerine kaynak zip insin)
-  const [zipSource, setZipSource] = useState<{ url: string; name: string } | null>(null);
-  const all3DFiles = useMemo(() => {
-    return photos
-      .map(f => {
-        const filename = f.caption ?? f.storage_path.split('/').pop() ?? '';
-        const fmt = is3DFileExt(f.storage_path);
-        const url = signedUrls[f.storage_path] ?? (f as any).signed_url ?? null;
-        if (!fmt || !url) return null;
-        const textureUrl = fmt === 'obj' ? siblingTextureUrl(f.storage_path) : null;
-        return { id: f.id, name: filename, url, format: fmt, textureUrl };
-      })
-      .filter(Boolean) as Array<{ id: string; name: string; url: string; format: 'stl'|'ply'|'obj'; textureUrl?: string|null }>;
-  }, [photos, signedUrls]);
-
-  // 2D referans fotoğraflar — gülüş tasarımı / ekartörlü resim vb. (jpg/png)
-  const referenceImages = useMemo(() => {
-    return photos
-      .map(f => {
-        const filename = f.caption ?? f.storage_path.split('/').pop() ?? 'Resim';
-        const isImg = /\.(png|jpe?g|webp|gif|heic|heif|bmp)$/i.test(f.storage_path);
-        const url = signedUrls[f.storage_path] ?? (f as any).signed_url ?? null;
-        // Lightbox alt şeridi küçük boyu kullanır; yoksa tam boya düşer.
-        const thumb = (thumbUrls ?? {})[f.storage_path] ?? url;
-        return isImg && url ? { id: f.id, name: filename, url, thumb } : null;
-      })
-      .filter(Boolean) as Array<{ id: string; name: string; url: string; thumb: string }>;
-  }, [photos, signedUrls]);
-
-  // Kategori grupları — Taramalar / Fotoğraflar / Belgeler (boş olanlar gizli)
-  // Fotoğraf kategorisi galeri olarak gösterilir: üstte büyük görsel, altta
-  // küçük karolar. Silme YOK — detay ekranı okuma/inceleme alanı.
-  const [galleryId, setGalleryId] = useState<string | null>(null);
-
-  const photoGroups = useMemo(() => {
-    const by: Record<FileCat, WorkOrderPhoto[]> = { scan: [], photo: [], doc: [] };
-    for (const f of photos) by[fileCategoryOf(f.caption || f.storage_path)].push(f);
-    return FILE_CAT_META.map(m => ({ ...m, files: by[m.key] })).filter(g => g.files.length > 0);
-  }, [photos]);
-
-  // ÖNEMLİ: StageFileUpload her zaman aynı JSX pozisyonunda render edilmeli;
-  // photos.length 0→1 geçişinde unmount olmamalı. Aksi halde modalOpen state
-  // sıfırlanır ve modal kapanır.
-  return (
-    <View className="gap-3">
-      {/* Multi-file "Tümünü 3D Aç" butonu — 2+ STL/PLY/OBJ varsa görünür (web + native).
-          Tüm taramaları tek sahnede katmanlar halinde açar (desktop paritesi). */}
-      {all3DFiles.length >= 2 && (() => {
-        // Panel accent'li pill CTA (tasarım dili: radius 999, accent = panel primary,
-        // accent-tonlu yumuşak gölge). Ön-plan kontrast-farkında: lab safranında ink.
-        const fg = onAccent(accentColor);
-        return (
-          <Pressable
-            onPress={() => { setZipSource(null); setViewerAll(all3DFiles); }}
-            android_ripple={{ color: alphaOf(fg, 0.12) }}
-            /* NOT: object style ZORUNLU — NativeWind v4'te fonksiyon-stilli Pressable
-               native'de backgroundColor'ı düşürüyor (buton beyaz kalıyordu). */
-            style={{
-              alignSelf: 'center',
-              flexDirection: 'row', alignItems: 'center', gap: 9,
-              height: 40, paddingHorizontal: 13, borderRadius: 999,
-              backgroundColor: accentColor,
-              shadowColor: accentColor, shadowOpacity: 0.30, shadowRadius: 12, shadowOffset: { width: 0, height: 4 },
-              elevation: 3,
-              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-            }}
-          >
-            <Layers size={16} color={fg} strokeWidth={2.2} />
-            <Text style={{ fontSize: 13.5, fontWeight: '700', color: fg, letterSpacing: -0.2 }} numberOfLines={1}>
-              Tümünü 3D Aç
-            </Text>
-            <View style={{ minWidth: 20, height: 20, paddingHorizontal: 6, borderRadius: 10, backgroundColor: alphaOf(fg, 0.20), alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ fontSize: 11.5, fontWeight: '800', color: fg }}>{all3DFiles.length}</Text>
-            </View>
-          </Pressable>
-        );
-      })()}
-      {photos.length === 0 ? (
-        <View className="py-4 items-center">
-          <Text className="text-[12px] text-ink-400">Bu siparişe henüz dosya eklenmedi</Text>
-        </View>
-      ) : (
-        <View>
-          {photoGroups.map((g) => {
-          const isCollapsed = !openCats[g.key];
-          const catColor = g.key === 'photo' ? '#10B981' : g.key === 'scan' ? '#3B82F6' : '#6B7280';
-          return (
-          <View key={g.key} style={{ marginBottom: 2 }}>
-            {/* Kategori başlığı — tıklayınca aç/kapa (varsayılan kapalı) */}
-            <Pressable
-              onPress={() => setOpenCats(s => ({ ...s, [g.key]: !s[g.key] }))}
-              hitSlop={4}
-              /* NOT: object style ZORUNLU — NativeWind v4'te fonksiyon-stilli
-                 Pressable native'de stili düşürüp satırı column'a çeviriyor;
-                 rozet tam-genişlik bar oluyordu (web'de sorun yok). */
-              style={{
-                flexDirection: 'row', alignItems: 'center', gap: 7,
-                paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8,
-                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-              }}
-            >
-              {isCollapsed ? <ChevronRight size={14} color="#64748B" strokeWidth={2} /> : <ChevronDown size={14} color="#64748B" strokeWidth={2} />}
-              <Text style={{ flex: 1, fontSize: 11, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase', color: '#475569' }}>{g.label}</Text>
-              <View style={{ minWidth: 20, height: 18, paddingHorizontal: 6, borderRadius: 9, backgroundColor: catColor + '1A', alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontSize: 10, fontWeight: '800', color: catColor }}>{g.files.length}</Text>
-              </View>
-            </Pressable>
-            {!isCollapsed && g.key === 'photo' && (() => {
-              // İmzalı URL'i olan görseller — henüz gelmemiş olanlar atlanır,
-              // boş kutu göstermek yerine geldiğinde kendiliğinden belirir.
-              const imgs = g.files
-                .map(f => ({
-                  f,
-                  url: signedUrls[f.storage_path] ?? (f as any).signed_url ?? null,
-                  // Şerit karoları küçük boyu kullanır; henüz gelmediyse tam boya düşer.
-                  thumb: (thumbUrls ?? {})[f.storage_path] ?? signedUrls[f.storage_path] ?? (f as any).signed_url ?? null,
-                }))
-                .filter(x => !!x.url) as Array<{ f: typeof g.files[number]; url: string; thumb: string }>;
-              if (!imgs.length) return null;
-              const cur = imgs.find(x => x.f.id === galleryId) ?? imgs[0];
-              const idx = imgs.findIndex(x => x.f.id === cur.f.id);
-              const step = (d: number) => setGalleryId(imgs[(idx + d + imgs.length) % imgs.length].f.id);
-              return (
-                <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
-                  {/* Büyük görsel — tıklayınca mevcut önizleyici açılır */}
-                  <View style={{ position: 'relative' }}>
-                    <Pressable
-                      onPress={() => openPreview(cur.f)}
-                      style={{
-                        width: '100%', height: 220, borderRadius: 12, overflow: 'hidden',
-                        backgroundColor: '#0F172A08',
-                        ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                      }}
-                    >
-                      <Image source={{ uri: cur.url }} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
-                    </Pressable>
-                    {imgs.length > 1 && (
-                      <>
-                        {/* Konum start/end ile aynalanır; ok da aynalanmazsa
-                            RTL'de "geri" düğmesi ileri ok gösterirdi. */}
-                        <Pressable onPress={() => step(-1)} style={[galleryNavBtn, isRTL() ? { right: 8 } : { left: 8 }]} hitSlop={8}>
-                          {isRTL()
-                            ? <ChevronRight size={16} color="#0F172A" strokeWidth={2} />
-                            : <ChevronLeft size={16} color="#0F172A" strokeWidth={2} />}
-                        </Pressable>
-                        <Pressable onPress={() => step(1)} style={[galleryNavBtn, isRTL() ? { left: 8 } : { right: 8 }]} hitSlop={8}>
-                          {isRTL()
-                            ? <ChevronLeft size={16} color="#0F172A" strokeWidth={2} />
-                            : <ChevronRight size={16} color="#0F172A" strokeWidth={2} />}
-                        </Pressable>
-                        <View style={{
-                          position: 'absolute', bottom: 8, alignSelf: 'center',
-                          paddingHorizontal: 9, paddingVertical: 3, borderRadius: 999,
-                          backgroundColor: 'rgba(15,23,42,0.72)',
-                        }}>
-                          <Text style={{ fontSize: 10.5, color: '#FFF', fontWeight: '600' }}>{idx + 1} / {imgs.length}</Text>
-                        </View>
-                      </>
-                    )}
-                  </View>
-                  {/* Şerit — tek sıra, bitişik karolar; seçili olan genişler.
-                      Sarmalayan ızgara yerine yatay kaydırma: 20 fotoğrafta bile
-                      tek satır kalır, büyük görselin altındaki yükseklik sabit. */}
-                  {imgs.length > 1 && (
-                    /* Sabit genişlik + yatay kaydırma yerine ESNEK pay: kaç
-                       fotoğraf olursa olsun hepsi tek sıraya sığar, taşma yok.
-                       Seçili karo 2.4 kat pay alıp öne çıkar.
-                       Aradaki beyaz çizgi: satır zemini beyaz + 2px gap. */
-                    <View style={{
-                      flexDirection: 'row', marginTop: 8, gap: 2,
-                      borderRadius: 8, overflow: 'hidden', backgroundColor: '#FFFFFF',
-                    }}>
-                      {imgs.map(x => {
-                        const active = x.f.id === cur.f.id;
-                        return (
-                          <Pressable
-                            key={x.f.id}
-                            onPress={() => setGalleryId(x.f.id)}
-                            style={{
-                              flex: active ? 2.4 : 1,
-                              height: 68, minWidth: 0,
-                              backgroundColor: '#EEF2F6',
-                              opacity: active ? 1 : 0.78,
-                              ...(Platform.OS === 'web'
-                                ? ({ cursor: 'pointer',
-                                     transition: 'flex-grow 220ms ease-out, opacity 220ms ease-out' } as any)
-                                : {}),
-                            }}
-                          >
-                            <Image source={{ uri: x.thumb }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  )}
-                </View>
-              );
-            })()}
-            {!isCollapsed && g.key !== 'photo' && g.files.map((f) => {
-            const ext = (f.storage_path.split('.').pop() ?? '').toUpperCase().slice(0, 4);
-            const isImage = /\.(jpe?g|png|webp|gif|bmp)$/i.test(f.storage_path);
-            // Tür ayrımı: STL/PLY/OBJ, ZIP, HTML ve PDF ayrı renk+ikon alır.
-            // Öncesinde görsel olmayan her şey aynı mavi dosya ikonuydu.
-            const lowExt = ext.toLowerCase();
-            const isMesh = ['stl', 'ply', 'obj', '3mf'].includes(lowExt);
-            const isZip  = ['zip', 'rar', '7z', 'gz'].includes(lowExt);
-            const isHtml = ['html', 'htm'].includes(lowExt);
-            const isPdf  = lowExt === 'pdf';
-            const color = isImage ? '#10B981'
-                        : isMesh ? '#3B82F6'
-                        : isZip  ? '#D97706'
-                        : isHtml ? '#8B5CF6'
-                        : isPdf  ? '#DC2626'
-                        : '#64748B';
-            const Icon = isImage ? ImageIcon : isMesh ? Layers : FileIcon;
-            const filename = f.caption ?? f.storage_path.split('/').pop() ?? '—';
-            return (
-              <View
-                key={f.id}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 9,
-                  paddingHorizontal: 12, paddingVertical: 5, paddingStart: 28,
-                }}
-              >
-                <View
-                  style={{
-                    width: 22, height: 22, borderRadius: 6,
-                    alignItems: 'center', justifyContent: 'center',
-                    backgroundColor: color + '1A',
-                    borderWidth: 1, borderColor: color + '33',
-                  }}
-                >
-                  <Icon size={11} color={color} strokeWidth={1.8} />
-                </View>
-                <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-                  <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '600', color: '#0A0A0A', flexShrink: 1 }}>
-                    {filename}
-                  </Text>
-                  <Text style={{ fontSize: 10, color: '#9A9A9A', flexShrink: 0 }} numberOfLines={1}>
-                    {ext}{f.tooth_number != null ? ` · Diş ${f.tooth_number}` : ''}
-                  </Text>
-                </View>
-                {/* Preview button — STL/PLY/OBJ ise 3D viewer, zip ise açıp 3D, diğerleri yeni tab */}
-                <Pressable
-                  onPress={() => openPreview(f)}
-                  disabled={extractingId === f.id}
-                  hitSlop={6}
-                  // @ts-ignore web tooltip
-                  title={isArchiveExt(f.storage_path) ? 'Zip aç ve 3D göster' : 'Önizle'}
-                  style={{
-                    width: 24, height: 24, borderRadius: 6,
-                    alignItems: 'center', justifyContent: 'center',
-                    ...(Platform.OS === 'web' && extractingId !== f.id ? { cursor: 'pointer' } as any : {}),
-                  }}
-                >
-                  {extractingId === f.id
-                    ? <ActivityIndicator size="small" color="#475569" />
-                    : <Eye size={12} color="#475569" strokeWidth={1.8} />}
-                </Pressable>
-                {/* Download button — zorla indirme */}
-                <Pressable
-                  onPress={() => forceDownload(f)}
-                  hitSlop={6}
-                  // @ts-ignore web tooltip
-                  title="İndir"
-                  style={{
-                    width: 24, height: 24, borderRadius: 6,
-                    alignItems: 'center', justifyContent: 'center',
-                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                  }}
-                >
-                  <Download size={12} color="#475569" strokeWidth={1.8} />
-                </Pressable>
-              </View>
-            );
-            })}
-          </View>
-          );
-          })}
-        </View>
-      )}
-      {/* 3D Yüz Tarama — sadece TrueDepth'li iPhone'larda görünür, diğer
-          platformlarda null döner. Mevcut StageFileUpload akışını bozmaz. */}
-      <FaceScanButton
-        workOrderId={workOrderId}
-        accentColor={accentColor}
-        onUploaded={onUploaded}
-      />
-
-      {/* StageFileUpload sabit pozisyon — re-render'da unmount olmaz.
-          triggerStyle='row': iç içe kart yerine inline trigger satırı (üstteki foto listesiyle aynı tarz). */}
-      <StageFileUpload
-        workOrderId={workOrderId}
-        accentColor={accentColor}
-        onUploaded={onUploaded}
-        hideFileList
-        triggerStyle="row"
-      />
-
-      {/* 3D Viewer Modal — STL/PLY/OBJ önizleme için lazy chunk */}
-      {viewer3DFile && Platform.OS === 'web' && (
-        <React.Suspense fallback={null}>
-          <Viewer3DModal
-            visible={!!viewer3DFile}
-            files={[viewer3DFile]}
-            referenceImages={referenceImages}
-            title={viewer3DFile.name}
-            onClose={() => setViewer3DFile(null)}
-          />
-        </React.Suspense>
-      )}
-      {/* 3D Viewer — native (WebView + three.js) */}
-      {viewer3DFile && Platform.OS !== 'web' && (
-        <MobileViewer3D
-          visible={!!viewer3DFile}
-          files={[viewer3DFile]}
-          title={viewer3DFile.name}
-          onClose={() => setViewer3DFile(null)}
-          onThumbnail={(dataUrl) => {
-            // Mesh zaten yüklü — küçük resmi bir kez üretip sakla. Sonraki
-            // açılışlarda dosya listesi 16-29 MB indirmeden önizleme gösterir.
-            const f = photos.find(p => p.id === viewer3DFile.id);
-            if (f?.storage_path) void saveMeshThumb(f.storage_path, dataUrl);
-          }}
-        />
-      )}
-
-      {/* Görsel önizleme — zoom (scroll/pinch) + pan + next/prev + safe-area (uygulama-içi).
-          Zip içi görseller varsa onlar arasında gezilir. */}
-      {imageViewer && (() => {
-        const src = (zipImages ?? referenceImages) as Array<{ url: string; name: string; thumb?: string }>;
-        const lbImages = src.length
-          ? src.map(r => ({ url: r.url, name: r.name, thumb: r.thumb }))
-          : [imageViewer];
-        let lbIndex = lbImages.findIndex(im => im.url === imageViewer.url);
-        if (lbIndex < 0) { lbImages.unshift(imageViewer); lbIndex = 0; }
-        const close = () => { setImageViewer(null); if (zipImages) { setZipImages(null); revokeZipUrls(); } };
-        return (
-          <Modal visible transparent animationType="fade" onRequestClose={close} statusBarTranslucent>
-            {Platform.OS === 'web' ? (
-              <ImageLightbox
-                images={lbImages}
-                index={lbIndex}
-                topInset={insets.top}
-                onClose={close}
-                onIndexChange={(i) => setImageViewer({ url: lbImages[i].url, name: lbImages[i].name })}
-              />
-            ) : (
-              <NativeImageViewer
-                images={lbImages}
-                index={lbIndex}
-                topInset={insets.top}
-                onClose={close}
-                onIndexChange={(i) => setImageViewer({ url: lbImages[i].url, name: lbImages[i].name })}
-              />
-            )}
-          </Modal>
-        );
-      })()}
-
-      {/* HTML tasarım önizleme — exocad web viewer iframe (uygulama-içi) */}
-      {htmlViewer && Platform.OS === 'web' && (
-        <Modal visible transparent animationType="fade" onRequestClose={closeHtmlViewer}>
-          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 16,
-            // env() CSS fallback — modal context'inde insets.top 0 dönse bile notch'u temizler
-            paddingTop: (`max(${Math.max(16, insets.top + 8)}px, calc(env(safe-area-inset-top, 0px) + 12px))`) as any,
-            paddingBottom: (`max(${Math.max(16, insets.bottom)}px, calc(env(safe-area-inset-bottom, 0px) + 12px))`) as any }}>
-            <View style={{ flex: 1, borderRadius: 16, overflow: 'hidden', backgroundColor: '#FFFFFF' }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' }}>
-                <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: '#0A0A0A' }} numberOfLines={1}>{htmlViewer.name}</Text>
-                <Pressable onPress={() => window.open(htmlViewer.url, '_blank')} hitSlop={8} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: '#F1F5F9' }}>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#334155' }}>Yeni sekmede aç</Text>
-                </Pressable>
-                <Pressable onPress={closeHtmlViewer} hitSlop={10} style={{ width: 32, height: 32, borderRadius: 999, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}>
-                  <Text style={{ fontSize: 18, lineHeight: 18, color: '#334155' }}>×</Text>
-                </Pressable>
-              </View>
-              <View style={{ flex: 1 }}>
-                {React.createElement('iframe', {
-                  src: htmlViewer.url,
-                  style: { flex: 1, width: '100%', height: '100%', border: 0, backgroundColor: '#FFFFFF' },
-                  title: htmlViewer.name,
-                })}
-              </View>
-            </View>
-          </View>
-        </Modal>
-      )}
-
-      {/* HTML tasarım önizleme — native (WebView, uygulama-içi exocad viewer) */}
-      {htmlViewer && Platform.OS !== 'web' && HtmlWebView && (
-        <Modal visible transparent animationType="fade" onRequestClose={closeHtmlViewer}>
-          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 12,
-            paddingTop: Math.max(insets.top, 12) + 8, paddingBottom: Math.max(insets.bottom, 12) }}>
-            <View style={{ flex: 1, borderRadius: 16, overflow: 'hidden', backgroundColor: '#FFFFFF' }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' }}>
-                <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: '#0A0A0A' }} numberOfLines={1}>{htmlViewer.name}</Text>
-                <Pressable onPress={closeHtmlViewer} hitSlop={10} style={{ width: 32, height: 32, borderRadius: 999, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}>
-                  <Text style={{ fontSize: 18, lineHeight: 18, color: '#334155' }}>×</Text>
-                </Pressable>
-              </View>
-              <View style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
-                <HtmlWebView
-                  originWhitelist={['*']}
-                  source={{ html: htmlViewer.html ?? '' }}
-                  style={{ flex: 1, backgroundColor: '#FFFFFF' }}
-                  javaScriptEnabled
-                  domStorageEnabled
-                  allowFileAccess
-                  allowUniversalAccessFromFileURLs
-                  originAllowsMixedContent
-                  scalesPageToFit
-                  startInLoadingState
-                  renderLoading={() => (
-                    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
-                      <ActivityIndicator size="large" color="#4771AB" />
-                    </View>
-                  )}
-                />
-              </View>
-            </View>
-          </View>
-        </Modal>
-      )}
-
-      {/* Multi-file viewer — "Tümünü 3D Aç" veya zip'ten çıkan mesh'ler tek sahnede.
-          Zip'ten geldiyse referans görseller zip içindekiler olur. */}
-      {viewerAll && Platform.OS === 'web' && (
-        <React.Suspense fallback={null}>
-          <Viewer3DModal
-            visible={!!viewerAll}
-            files={viewerAll}
-            referenceImages={zipImages ?? referenceImages}
-            title={`${viewerAll.length} dosya birlikte`}
-            sourceDownload={zipSource ?? undefined}
-            onClose={() => { setViewerAll(null); setZipImages(null); setZipSource(null); revokeZipUrls(); }}
-          />
-        </React.Suspense>
-      )}
-      {/* ZIP taraması / çoklu 3D — native (WebView + three.js) */}
-      {viewerAll && Platform.OS !== 'web' && (
-        <MobileViewer3D
-          visible={!!viewerAll}
-          files={viewerAll}
-          title={`${viewerAll.length} dosya birlikte`}
-          onClose={() => { setViewerAll(null); setZipImages(null); setZipSource(null); }}
-        />
-      )}
-    </View>
-  );
-}
-
 function timeAgo(iso: string): string {
   const d = new Date(iso);
   const diff = (Date.now() - d.getTime()) / 1000;
@@ -4218,6 +3957,11 @@ function OrderChatPopup({
   viewerType: any;
   panelAccent: string;
 }) {
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const T = useMobileTokens();
+  // Klavye açılınca ortalanmış kart yerinde kalıyor ve composer klavyenin altında
+  // kalıyordu (MessagesPopup ile aynı hata) → kartı klavye kadar kısalt.
+  const { height: kbHeight } = useAnimatedKeyboardHeight();
   // ChatDetail'in beklediği "selectedOrder" şekline çevir.
   // Inbox listesi item'ı gibi davranır — work_order_id zorunlu.
   const selectedOrder = useMemo(() => ({
@@ -4237,10 +3981,14 @@ function OrderChatPopup({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View
-        className="flex-1 items-center justify-center"
+      <Animated.View
+        // NativeWind className RN Animated.View'e UYGULANMAZ (kayıtlı bileşen değil) →
+        // flex-1/ortalama düşüyor, karartma içerik boyuna küçülüp panel sol üste
+        // yapışıyordu. Yerleşim açık style ile verilir.
         style={{
+          flex: 1, alignItems: 'center', justifyContent: 'center',
           backgroundColor: 'rgba(10,14,26,0.52)',
+          ...(Platform.OS !== 'web' ? { paddingBottom: kbHeight as any } : {}),
           // Global mesaj popup'ıyla tutarlı koyu+blur zemin. animationType="fade"
           // Modal'ın kendisini fade'ler; backdrop'ta element-opacity animasyonu
           // olmadığı için backdropFilter arkadaki uygulamayı bulanıklaştırabiliyor.
@@ -4250,7 +3998,7 @@ function OrderChatPopup({
         }}
       >
         <View
-          className="bg-white rounded-3xl border border-black/[0.06] overflow-hidden"
+          className="bg-white dark:bg-[#1B1916] rounded-3xl border border-black/[0.06] dark:border-white/10 overflow-hidden"
           style={{
             width: '94%', maxWidth: 720, height: '88%', maxHeight: 880,
             // @ts-ignore web shadow
@@ -4260,14 +4008,14 @@ function OrderChatPopup({
           {/* Patterns kapatma butonu — sağ üstte yüzer */}
           <Pressable
             onPress={onClose}
-            className="absolute z-10 w-9 h-9 rounded-full items-center justify-center bg-white border border-black/[0.06]"
+            className="absolute z-10 w-9 h-9 rounded-full items-center justify-center bg-white dark:bg-[#1B1916] border border-black/[0.06] dark:border-white/10"
             style={{
               top: 14, end: 14,
               // @ts-ignore web shadow
               boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
             }}
           >
-            <CloseIcon size={16} color="#0A0A0A" strokeWidth={2} />
+            <CloseIcon size={16} color={isDark ? T.ink : '#0A0A0A'} strokeWidth={2} />
           </Pressable>
 
           {/* Ana ChatDetail — tüm özellikleriyle */}
@@ -4278,7 +4026,7 @@ function OrderChatPopup({
             viewerType={viewerType}
           />
         </View>
-      </View>
+      </Animated.View>
     </Modal>
   );
 }
@@ -4582,23 +4330,30 @@ function Chip({ children, tone, dot = false, icon: Icon }: {
       </View>
     );
   }
-  const cls = tone === 'neutral' ? 'bg-black/5' : 'bg-transparent border border-ink-300';
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const cls = tone === 'neutral' ? 'bg-black/5 dark:bg-white/10' : 'bg-transparent border border-ink-300 dark:border-white/20';
   return (
     <View className={`flex-row items-center gap-1.5 px-3 py-1 rounded-full ${cls}`}>
-      {Icon && <Icon size={12} color="#0A0A0A" strokeWidth={1.8} />}
-      {dot && <View className="w-1.5 h-1.5 rounded-full bg-ink-900" />}
-      <Text className="text-[12px] font-medium text-ink-900">{children}</Text>
+      {Icon && <Icon size={12} color={isDark ? '#F7F2E9' : '#0A0A0A'} strokeWidth={1.8} />}
+      {dot && <View className="w-1.5 h-1.5 rounded-full bg-ink-900 dark:bg-white/80" />}
+      <Text className="text-[12px] font-medium text-ink-900 dark:text-[#F7F2E9]">{children}</Text>
     </View>
   );
 }
 
-function PillBtn({ children, variant = 'primary', size = 'md', icon: Icon, onDark = false, onPress, disabled }: {
+function PillBtn({ children, variant = 'primary', size = 'md', icon: Icon, onDark = false, surfaceDark = false, onPress, disabled }: {
   children: React.ReactNode;
   variant?: 'primary' | 'surface' | 'ghost';
   size?: 'sm' | 'md';
   icon?: any; // Lucide ForwardRefExoticComponent — accept any to avoid type friction
   /** Renkli/koyu zemin (yeşil hero) üstünde: primary→beyaz pill + yeşil metin, surface→şeffaf-beyaz outline. */
   onDark?: boolean;
+  /**
+   * Gerçek koyu tema yüzeyi (T.card hero). Buton hiyerarşisi yeniden kurulur:
+   * primary/surface → yükseltilmiş koyu buton (#2A2926 zemin, #77756F kenar, #F4F3EF metin);
+   * ghost → düz metin aksiyonu (#D2D0CA). Emerald hero (onDark ama surfaceDark değil) davranışı korunur.
+   */
+  surfaceDark?: boolean;
   /** Verilirse buton kendisi basılabilir olur + origin-fill efekti kazanır. */
   onPress?: () => void;
   disabled?: boolean;
@@ -4606,41 +4361,56 @@ function PillBtn({ children, variant = 'primary', size = 'md', icon: Icon, onDar
   const sizeCls = size === 'sm' ? 'px-3 py-1.5' : 'px-4 py-2';
   const textSize = size === 'sm' ? 'text-[12px]' : 'text-[13px]';
   const iconSize = size === 'sm' ? 14 : 16;
-  const variantCls = onDark
+  let variantCls = onDark
     ? (variant === 'primary' ? 'bg-white border-white' :
        variant === 'surface' ? 'bg-white/15 border-white/40' :
                                'bg-transparent border-transparent')
     : (variant === 'primary' ? 'bg-ink-900 border-ink-900' :
        variant === 'surface' ? 'bg-white border-ink-200' :
                                'bg-transparent border-transparent');
-  const fgClass = onDark
+  let fgClass = onDark
     ? (variant === 'primary' ? 'text-[#0C8F56]' : 'text-white')
-    : (variant === 'primary' ? 'text-white' : 'text-ink-900');
-  const fgHex = onDark
+    : (variant === 'primary' ? 'text-white' : 'text-ink-900 dark:text-[#F7F2E9]');
+  let fgHex = onDark
     ? (variant === 'primary' ? '#0C8F56' : '#FFFFFF')
     : (variant === 'primary' ? '#FFFFFF' : '#0A0A0A');
 
   // variantCls NativeWind class'ı; OriginFillPressable style aldığı için
   // aynı değerleri hex olarak da tutuyoruz.
-  const bgHex = onDark
+  let bgHex = onDark
     ? (variant === 'primary' ? '#FFFFFF' : variant === 'surface' ? 'rgba(255,255,255,0.15)' : 'transparent')
     : (variant === 'primary' ? '#0A0A0A' : variant === 'surface' ? '#FFFFFF' : 'transparent');
-  const bdHex = onDark
+  let bdHex = onDark
     ? (variant === 'primary' ? '#FFFFFF' : variant === 'surface' ? 'rgba(255,255,255,0.40)' : 'transparent')
     : (variant === 'primary' ? '#0A0A0A' : variant === 'surface' ? '#EAEAEA' : 'transparent');
 
   // Dolgu rengi = mevcut zeminin tersi. Beyaza dönen varyantlarda buton beyaz
   // kart üstünde kaybolmasın diye dolu haldeyken ince bir kenar gösterilir.
-  const fillHex = onDark
+  let fillHex = onDark
     ? (variant === 'primary' ? '#0C8F56' : '#FFFFFF')
     : (variant === 'primary' ? '#FFFFFF' : '#0A0A0A');
-  const fillFgHex = onDark
+  let fillFgHex = onDark
     ? (variant === 'primary' ? '#FFFFFF' : '#0A0A0A')
     : (variant === 'primary' ? '#0A0A0A' : '#FFFFFF');
   // Açık dolgu (beyaz) → stroke şart; koyu dolguda gerekmiyor.
-  const fillBorder = fillHex === '#FFFFFF'
+  let fillBorder: string | undefined = fillHex === '#FFFFFF'
     ? (onDark ? 'rgba(255,255,255,0.55)' : '#EAEAEA')
     : undefined;
+
+  // ── Gerçek koyu tema hiyerarşisi (surfaceDark) ────────────────────────────
+  // primary/surface = yükseltilmiş koyu buton (net ama sarıya boğmayan); ghost = metin.
+  // Hover/press → hafif açık yüzey dolgusu (saffron flood yok).
+  if (surfaceDark) {
+    const elevated = variant !== 'ghost';
+    bgHex   = elevated ? '#2A2926' : 'transparent';
+    bdHex   = elevated ? '#77756F' : 'transparent';
+    fgHex   = elevated ? '#F4F3EF' : '#D2D0CA';
+    fillHex = elevated ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.10)';
+    fillFgHex  = '#FFFFFF';
+    fillBorder = elevated ? 'rgba(255,255,255,0.22)' : undefined;
+    variantCls = elevated ? 'border' : 'bg-transparent border-transparent';
+    fgClass = '';
+  }
 
   const inner = (color: string) => (
     <View className={`flex-row items-center gap-1.5 ${sizeCls}`}>
@@ -4652,9 +4422,12 @@ function PillBtn({ children, variant = 'primary', size = 'md', icon: Icon, onDar
   // onPress verilmediyse (salt görsel kullanım) eski davranış: düz View.
   if (!onPress) {
     return (
-      <View className={`flex-row items-center gap-1.5 rounded-full border ${sizeCls} ${variantCls}`}>
+      <View
+        className={`flex-row items-center gap-1.5 rounded-full border ${sizeCls} ${surfaceDark ? '' : variantCls}`}
+        style={surfaceDark ? { borderWidth: 1, backgroundColor: bgHex, borderColor: bdHex } : undefined}
+      >
         {Icon && <Icon size={iconSize} color={fgHex} strokeWidth={1.8} />}
-        <Text className={`font-medium ${textSize} ${fgClass}`}>{children}</Text>
+        <Text className={`font-medium ${textSize} ${fgClass}`} style={surfaceDark ? { color: fgHex } : undefined}>{children}</Text>
       </View>
     );
   }

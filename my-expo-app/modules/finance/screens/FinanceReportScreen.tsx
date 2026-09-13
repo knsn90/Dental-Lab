@@ -25,7 +25,7 @@ import {
 import {
   BarChart2, TrendingUp, TrendingDown, CheckCircle,
   Bell, Calendar, Building2, FileText, Inbox, Printer,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { Platform } from 'react-native';
 
 import { HubContext } from '../../../core/ui/HubContext';
@@ -33,6 +33,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DS } from '../../../core/theme/dsTokens';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { supabase } from '../../../core/api/supabase';
@@ -714,6 +715,7 @@ function MonthRow({ data, scaleByCcy, isLast, isDesktop }: {
   isDesktop: boolean;
 }) {
   const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const rows = [...data.rows].sort((a, b) => CCY_ORDER.indexOf(a.currency) - CCY_ORDER.indexOf(b.currency));
   const multi = rows.length > 1;
 
@@ -744,7 +746,7 @@ function MonthRow({ data, scaleByCcy, isLast, isDesktop }: {
             {/* Para birimi rozeti + net kâr chip */}
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               {multi ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.05)' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' }}>
                   <Text style={{ fontSize: 11, fontWeight: '700', color: T.ink2 }}>{sym}</Text>
                   <Text style={{ fontSize: 10, fontWeight: '700', color: T.ink3, letterSpacing: 0.3 }}>{m.currency}</Text>
                 </View>

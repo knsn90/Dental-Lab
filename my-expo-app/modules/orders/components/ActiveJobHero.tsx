@@ -5,7 +5,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { View, Text, Platform, useWindowDimensions } from 'react-native';
-import { AlertTriangle, Calendar, Clock, Inbox, Pause, Play, Zap } from 'lucide-react-native';
+import { AlertTriangle, Calendar, Clock, Inbox, Pause, Play, Zap } from '../../../core/ui/icons';
 import { useStationTheme, hexA } from '../../../core/theme/stationPalette';
 import { getStationDescriptor } from '../stations/registry';
 import { WorkflowTimeline, type TimelineStage } from './WorkflowTimeline';

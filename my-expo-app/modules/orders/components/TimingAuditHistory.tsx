@@ -10,7 +10,7 @@ import React, { useEffect, useState } from 'react';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { isRTL } from '../../../core/i18n';
 import { View, Text, Pressable } from 'react-native';
-import { Activity, ArrowRight, ArrowLeft, Settings, ChevronDown, ChevronRight, ChevronLeft } from 'lucide-react-native';
+import { Activity, ArrowRight, ArrowLeft, Settings, ChevronDown, ChevronRight, ChevronLeft } from '../../../core/ui/icons';
 import { supabase } from '../../../core/api/supabase';
 import { useStationTheme, hexA, type StationPalette } from '../../../core/theme/stationPalette';
 import { formatDuration, getStageStateMeta } from '../stations/stageStates';

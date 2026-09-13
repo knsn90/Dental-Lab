@@ -16,10 +16,10 @@ import { useRouter } from 'expo-router';
 import {
   Inbox, MessageCircle, Phone, Camera, Check, X, AlertCircle,
   ChevronRight, ChevronLeft, Sparkles, Calendar, Building2, MessageSquare, ScanLine,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { supabase } from '../../../core/api/supabase';
 import { useAuthStore } from '../../../core/store/authStore';
-import { DS } from '../../../core/theme/dsTokens';
+import { useInkUI } from '../../../core/theme/inkScale';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { toast } from '../../../core/ui/Toast';
 
@@ -48,10 +48,36 @@ const SOURCE_LABELS: Record<string, { label: string; icon: any; color: string }>
   courier:  { label: 'Kurye',    icon: Camera,        color: '#0EA5E9' },
 };
 
+/** Marka rengini beyazla karıştırır — hue korunur, koyu zeminde okunur olur. */
+function lightenRGB(hex: string, amount: number) {
+  const h = hex.replace('#', '');
+  const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+  const n = parseInt(full, 16);
+  const mix = (c: number) => Math.round(c + (255 - c) * amount);
+  return [mix((n >> 16) & 255), mix((n >> 8) & 255), mix(n & 255)] as const;
+}
+
+/**
+ * Kaynak/marka rozeti tonu. Açık tema BİREBİR eski değer (`renk + '14'` zemin,
+ * markanın kendi rengi metin). Koyu temada marka rengi korunur ama zemin
+ * yarı saydam + metin açık tona taşınır (pastel-on-dark leke olmasın).
+ */
+function brandTone(hex: string, isDark: boolean) {
+  if (!isDark) return { bg: hex + '14', fg: hex };
+  const [r, g, b] = lightenRGB(hex, 0.45);
+  return { bg: `rgba(${r},${g},${b},0.24)`, fg: `rgb(${r},${g},${b})` };
+}
+
 export function PendingPaperOrdersScreen() {
   const router = useRouter();
   const { profile } = useAuthStore();
   const labId = (profile as any)?.lab_id ?? profile?.id ?? null;
+  const U = useInkUI();
+  // Teal (0F766E) status tonu — koyu zeminde açılır, açık temada aynen kalır.
+  const tealFg = U.isDark ? '#5EC9BA' : '#0F766E';
+  const tealBg = U.isDark ? 'rgba(15,118,110,0.30)' : 'rgba(15,118,110,0.10)';
+  const amberFg = U.isDark ? '#F0C078' : '#9C5E0E';
+  const dangerFg = U.isDark ? '#F3A0A0' : '#9C2E2E';
 
   const [rows, setRows] = useState<PendingRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -148,7 +174,7 @@ export function PendingPaperOrdersScreen() {
   if (loading) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80 }}>
-        <ActivityIndicator color={DS.ink[400]} />
+        <ActivityIndicator color={U.ink[400]} />
       </View>
     );
   }
@@ -165,23 +191,23 @@ export function PendingPaperOrdersScreen() {
       }
     >
       <View>
-        <Text style={{ fontFamily: Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui' : 'InterTight_300Light', fontWeight: '300', fontSize: 26, letterSpacing: -0.6, color: DS.ink[900] }}>
+        <Text style={{ fontFamily: Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui' : 'InterTight_300Light', fontWeight: '300', fontSize: 26, letterSpacing: -0.6, color: U.ink[900] }}>
           Bekleyen Manuel Siparişler
         </Text>
-        <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 4 }}>
+        <Text style={{ fontSize: 12, color: U.ink[400], marginTop: 4 }}>
           Kliniklerden WhatsApp / mesajla gelen iş emirleri (fotoğraf veya yazılı) — onaylayıp dijital sisteme aktar.
         </Text>
       </View>
 
       {rows.length === 0 ? (
         <View style={{
-          padding: 40, borderRadius: 16, backgroundColor: '#FFFFFF',
+          padding: 40, borderRadius: 16, backgroundColor: U.surface,
           alignItems: 'center', gap: 10, marginTop: 20,
-          borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
+          borderWidth: 1, borderColor: U.hairline,
         }}>
-          <Inbox size={32} color="#CBD5E1" strokeWidth={1.4} />
-          <Text style={{ fontSize: 14, color: DS.ink[500], fontWeight: '600' }}>Bekleyen manuel sipariş yok</Text>
-          <Text style={{ fontSize: 11, color: DS.ink[400], textAlign: 'center', maxWidth: 320, lineHeight: 16 }}>
+          <Inbox size={32} color={U.isDark ? 'rgba(255,255,255,0.24)' : '#CBD5E1'} strokeWidth={1.4} />
+          <Text style={{ fontSize: 14, color: U.ink[500], fontWeight: '600' }}>Bekleyen manuel sipariş yok</Text>
+          <Text style={{ fontSize: 11, color: U.ink[400], textAlign: 'center', maxWidth: 320, lineHeight: 16 }}>
             Klinikler WhatsApp/webhook ile fotoğraf ya da yazılı iş emri gönderdiğinde otomatik burada görünür.{'\n'}
             Kanal kurulumu: Ayarlar → Entegrasyonlar.
           </Text>
@@ -193,8 +219,13 @@ export function PendingPaperOrdersScreen() {
             const SourceIcon = sourceCfg.icon;
             const conf = row.confidence_avg ?? 0;
             const confTone = conf >= 75 ? 'ok' : conf >= 40 ? 'mid' : 'low';
-            const confColor = confTone === 'ok' ? '#0F766E' : confTone === 'mid' ? '#92400E' : '#9C2E2E';
-            const confBg    = confTone === 'ok' ? 'rgba(15,118,110,0.10)' : confTone === 'mid' ? '#FFFBEB' : 'rgba(156,46,46,0.06)';
+            const srcTone = brandTone(sourceCfg.color, U.isDark);
+            const confColor = U.isDark
+              ? (confTone === 'ok' ? tealFg : confTone === 'mid' ? U.chipTones.warning.fg : U.chipTones.danger.fg)
+              : (confTone === 'ok' ? '#0F766E' : confTone === 'mid' ? '#92400E' : '#9C2E2E');
+            const confBg    = U.isDark
+              ? (confTone === 'ok' ? tealBg : confTone === 'mid' ? U.chipTones.warning.bg : U.chipTones.danger.bg)
+              : (confTone === 'ok' ? 'rgba(15,118,110,0.10)' : confTone === 'mid' ? '#FFFBEB' : 'rgba(156,46,46,0.06)');
             const clinicName = row.clinic_id ? clinicMap[row.clinic_id] : null;
             const ocr = row.ocr_data ?? {};
             const teeth: number[] = Array.isArray(ocr.tooth_numbers) ? ocr.tooth_numbers : [];
@@ -203,9 +234,9 @@ export function PendingPaperOrdersScreen() {
               <View
                 key={row.id}
                 style={{
-                  backgroundColor: '#FFFFFF', borderRadius: 16,
+                  backgroundColor: U.surface, borderRadius: 16,
                   padding: 16, gap: 12,
-                  borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
+                  borderWidth: 1, borderColor: U.hairline,
                   ...(Platform.OS === 'web' ? { boxShadow: '0 1px 3px rgba(0,0,0,0.04)' } as any : {}),
                 }}
               >
@@ -214,24 +245,24 @@ export function PendingPaperOrdersScreen() {
                   <View style={{
                     flexDirection: 'row', alignItems: 'center', gap: 5,
                     paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999,
-                    backgroundColor: sourceCfg.color + '14',
+                    backgroundColor: srcTone.bg,
                   }}>
-                    <SourceIcon size={12} color={sourceCfg.color} strokeWidth={2} />
-                    <Text style={{ fontSize: 10.5, fontWeight: '700', color: sourceCfg.color }}>
+                    <SourceIcon size={12} color={srcTone.fg} strokeWidth={2} />
+                    <Text style={{ fontSize: 10.5, fontWeight: '700', color: srcTone.fg }}>
                       {sourceCfg.label}
                     </Text>
                   </View>
-                  <Text style={{ fontSize: 11, color: DS.ink[400] }}>· {fmtRelative(row.created_at)}</Text>
+                  <Text style={{ fontSize: 11, color: U.ink[400] }}>· {fmtRelative(row.created_at)}</Text>
                   <View style={{ flex: 1 }} />
                   {ocr._text_only ? (
                     // Yazıyla gelen sipariş → OCR "kesinlik"i anlamsız; net etiket göster.
                     <View style={{
                       flexDirection: 'row', alignItems: 'center', gap: 5,
                       paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999,
-                      backgroundColor: 'rgba(15,118,110,0.10)',
+                      backgroundColor: tealBg,
                     }}>
-                      <MessageSquare size={11} color="#0F766E" strokeWidth={2} />
-                      <Text style={{ fontSize: 10.5, fontWeight: '700', color: '#0F766E' }}>Yazılı sipariş</Text>
+                      <MessageSquare size={11} color={tealFg} strokeWidth={2} />
+                      <Text style={{ fontSize: 10.5, fontWeight: '700', color: tealFg }}>Yazılı sipariş</Text>
                     </View>
                   ) : (
                     <View style={{
@@ -250,42 +281,42 @@ export function PendingPaperOrdersScreen() {
                   {row.photo_url ? (
                     <Pressable
                       onPress={() => { openFileUrl(row.photo_url); }}
-                      style={{ width: 80, height: 100, borderRadius: 8, overflow: 'hidden', backgroundColor: DS.ink[100], ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                      style={{ width: 80, height: 100, borderRadius: 8, overflow: 'hidden', backgroundColor: U.ink[100], ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
                     >
                       <Image source={{ uri: row.photo_url }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
                     </Pressable>
                   ) : ocr._text_only ? null : (
-                    <View style={{ width: 80, height: 100, borderRadius: 8, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center' }}>
-                      <Camera size={20} color={DS.ink[400]} strokeWidth={1.4} />
+                    <View style={{ width: 80, height: 100, borderRadius: 8, backgroundColor: U.ink[100], alignItems: 'center', justifyContent: 'center' }}>
+                      <Camera size={20} color={U.ink[400]} strokeWidth={1.4} />
                     </View>
                   )}
 
                   <View style={{ flex: 1, gap: 6 }}>
-                    <Text style={{ fontSize: 15, fontWeight: '700', color: DS.ink[900] }} numberOfLines={1}>
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: U.ink[900] }} numberOfLines={1}>
                       {row.patient_name ?? (ocr._text_only ? '— Hasta adı belirtilmemiş —' : '— Hasta adı okunamadı —')}
                     </Text>
 
                     {clinicName ? (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                        <Building2 size={12} color={DS.ink[400]} strokeWidth={1.8} />
-                        <Text style={{ fontSize: 12, color: DS.ink[700], fontWeight: '500' }}>{clinicName}</Text>
+                        <Building2 size={12} color={U.ink[400]} strokeWidth={1.8} />
+                        <Text style={{ fontSize: 12, color: U.ink[700], fontWeight: '500' }}>{clinicName}</Text>
                       </View>
                     ) : ocr.clinic_id ? (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                        <AlertCircle size={12} color="#9C5E0E" strokeWidth={1.8} />
-                        <Text style={{ fontSize: 11, color: '#9C5E0E', fontWeight: '500' }}>Klinik tanınmadı (QR ID geçersiz)</Text>
+                        <AlertCircle size={12} color={amberFg} strokeWidth={1.8} />
+                        <Text style={{ fontSize: 11, color: amberFg, fontWeight: '500' }}>Klinik tanınmadı (QR ID geçersiz)</Text>
                       </View>
                     ) : null}
 
                     {row.sender_phone && (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                        <Phone size={11} color={DS.ink[400]} strokeWidth={1.8} />
-                        <Text style={{ fontSize: 11, color: DS.ink[500] }}>{row.sender_phone}</Text>
+                        <Phone size={11} color={U.ink[400]} strokeWidth={1.8} />
+                        <Text style={{ fontSize: 11, color: U.ink[500] }}>{row.sender_phone}</Text>
                       </View>
                     )}
 
                     {teeth.length > 0 && (
-                      <Text style={{ fontSize: 11.5, color: DS.ink[700], fontVariant: ['tabular-nums'] }}>
+                      <Text style={{ fontSize: 11.5, color: U.ink[700], fontVariant: ['tabular-nums'] }}>
                         Diş: <Text style={{ fontWeight: '600' }}>{teeth.join(', ')}</Text>
                         {ocr.work_type ? ` · ${ocr.work_type}` : ''}
                         {ocr.shade ? ` · ${ocr.shade}` : ''}
@@ -297,10 +328,12 @@ export function PendingPaperOrdersScreen() {
                         alignSelf: 'flex-start',
                         flexDirection: 'row', alignItems: 'center', gap: 4,
                         paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
-                        backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: 'rgba(156,46,46,0.25)',
+                        backgroundColor: U.isDark ? U.chipTones.danger.bg : '#FEF2F2',
+                        borderWidth: 1,
+                        borderColor: U.isDark ? 'rgba(243,160,160,0.35)' : 'rgba(156,46,46,0.25)',
                       }}>
-                        <AlertCircle size={10} color="#9C2E2E" strokeWidth={2} />
-                        <Text style={{ fontSize: 10, fontWeight: '700', color: '#9C2E2E' }}>
+                        <AlertCircle size={10} color={dangerFg} strokeWidth={2} />
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: dangerFg }}>
                           {ocr.urgency === 'cok_acil' ? 'ÇOK ACİL' : 'ACİL'}
                         </Text>
                       </View>
@@ -312,12 +345,14 @@ export function PendingPaperOrdersScreen() {
                 {ocr.sender_note ? (
                   <View style={{
                     flexDirection: 'row', gap: 8, alignItems: 'flex-start',
-                    backgroundColor: 'rgba(37,99,235,0.05)', borderRadius: 10,
-                    padding: 10, borderWidth: 1, borderColor: 'rgba(37,99,235,0.12)',
+                    backgroundColor: U.isDark ? 'rgba(74,143,201,0.18)' : 'rgba(37,99,235,0.05)',
+                    borderRadius: 10,
+                    padding: 10, borderWidth: 1,
+                    borderColor: U.isDark ? 'rgba(155,198,236,0.25)' : 'rgba(37,99,235,0.12)',
                   }}>
-                    <MessageSquare size={13} color="#2563EB" strokeWidth={1.9} style={{ marginTop: 1 }} />
-                    <Text style={{ flex: 1, fontSize: 12, color: DS.ink[700], lineHeight: 17 }}>
-                      <Text style={{ fontWeight: '700', color: '#2563EB' }}>{ocr._text_only ? 'Gelen mesaj: ' : 'Gönderen notu: '}</Text>
+                    <MessageSquare size={13} color={U.isDark ? '#9BC6EC' : '#2563EB'} strokeWidth={1.9} style={{ marginTop: 1 }} />
+                    <Text style={{ flex: 1, fontSize: 12, color: U.ink[700], lineHeight: 17 }}>
+                      <Text style={{ fontWeight: '700', color: U.isDark ? '#9BC6EC' : '#2563EB' }}>{ocr._text_only ? 'Gelen mesaj: ' : 'Gönderen notu: '}</Text>
                       {String(ocr.sender_note)}
                     </Text>
                   </View>
@@ -327,11 +362,13 @@ export function PendingPaperOrdersScreen() {
                 {ocr._ocr_failed ? (
                   <View style={{
                     flexDirection: 'row', gap: 8, alignItems: 'flex-start',
-                    backgroundColor: '#FFFBEB', borderRadius: 10,
-                    padding: 10, borderWidth: 1, borderColor: 'rgba(146,64,14,0.18)',
+                    backgroundColor: U.isDark ? U.chipTones.warning.bg : '#FFFBEB',
+                    borderRadius: 10,
+                    padding: 10, borderWidth: 1,
+                    borderColor: U.isDark ? 'rgba(240,192,120,0.28)' : 'rgba(146,64,14,0.18)',
                   }}>
-                    <ScanLine size={13} color="#92400E" strokeWidth={1.9} style={{ marginTop: 1 }} />
-                    <Text style={{ flex: 1, fontSize: 11.5, color: '#92400E', lineHeight: 16 }}>
+                    <ScanLine size={13} color={U.isDark ? U.chipTones.warning.fg : '#92400E'} strokeWidth={1.9} style={{ marginTop: 1 }} />
+                    <Text style={{ flex: 1, fontSize: 11.5, color: U.isDark ? U.chipTones.warning.fg : '#92400E', lineHeight: 16 }}>
                       Otomatik okuma yapılamadı — fotoğrafı açıp bilgileri elle girin.
                     </Text>
                   </View>
@@ -345,13 +382,13 @@ export function PendingPaperOrdersScreen() {
                       flexDirection: 'row', alignItems: 'center', gap: 6,
                       paddingHorizontal: 14, paddingVertical: 9,
                       borderRadius: 9999,
-                      backgroundColor: '#FFFFFF',
-                      borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
+                      backgroundColor: U.plainBtn.bg,
+                      borderWidth: 1, borderColor: U.isDark ? U.plainBtn.border : 'rgba(0,0,0,0.08)',
                       ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                     }}
                   >
-                    <X size={13} color="#9C2E2E" strokeWidth={2} />
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#9C2E2E' }}>Reddet</Text>
+                    <X size={13} color={dangerFg} strokeWidth={2} />
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: dangerFg }}>Reddet</Text>
                   </Pressable>
                   <View style={{ flex: 1 }} />
                   <Pressable

@@ -12,7 +12,7 @@
  */
 import React, { useState } from 'react';
 import { View, Text, Pressable, Modal, ScrollView, TextInput, ActivityIndicator, Platform } from 'react-native';
-import { X } from 'lucide-react-native';
+import { X } from '../../../core/ui/icons';
 import { createTicket } from '../../support/api';
 import { AUTH, AUTH_FONT } from './AuthShell';
 

@@ -6,7 +6,7 @@ import {
   RefreshControl, useWindowDimensions, Animated, Easing,
 } from 'react-native';
 import { ClinicLogoPicker } from '../components/ClinicLogoPicker';
-import { Search, X, SlidersHorizontal, Plus, Building2, Users, UserPlus, List, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Edit2, Trash2, Phone, Mail, MapPin, RefreshCw, UserX, AlertCircle, Check, Percent, MinusCircle, Briefcase, Stethoscope, Printer, Eye, EyeOff, Link2, Copy } from 'lucide-react-native';
+import { Search, X, SlidersHorizontal, Plus, Building2, Users, UserPlus, List, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Edit2, Trash2, Phone, Mail, MapPin, RefreshCw, UserX, AlertCircle, Check, Percent, MinusCircle, Briefcase, Stethoscope, Printer, Eye, EyeOff, Link2, Copy } from '../../../core/ui/icons';
 import { buildWorkOrderFormHtml } from '../../orders/buildWorkOrderFormHtml';
 import { useSegments } from 'expo-router';
 import { LabConnectionsScreen } from '../../lab-connections/screens/LabConnectionsScreen';
@@ -601,7 +601,7 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
                     key={cat.value}
                     onPress={() => setActiveTab(cat.value)}
                     style={{
-                      ...CARD,
+                      ...CARD, ...(isDark ? { backgroundColor: T.card, borderColor: T.hairline } : {}),
                       backgroundColor: T.card,
                       flex: isDesktop ? 1 : undefined,
                       width: isDesktop ? undefined : '48%',
@@ -711,12 +711,12 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
                     <View style={{ marginTop: 8 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                         <UserX size={12} color={DS.ink[400]} strokeWidth={1.8} />
-                        <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 1.1, textTransform: 'uppercase', color: DS.ink[500] }}>Kliniksiz Hekimler</Text>
-                        <View style={{ backgroundColor: DS.ink[100], borderRadius: R.pill, paddingHorizontal: 7, paddingVertical: 2 }}>
-                          <Text style={{ fontSize: 10, fontWeight: '700', color: DS.ink[700] }}>{unassigned.length}</Text>
+                        <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 1.1, textTransform: 'uppercase', color: isDark ? T.ink3 : DS.ink[500] }}>Kliniksiz Hekimler</Text>
+                        <View style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : DS.ink[100], borderRadius: R.pill, paddingHorizontal: 7, paddingVertical: 2 }}>
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: isDark ? T.ink2 : DS.ink[700] }}>{unassigned.length}</Text>
                         </View>
                       </View>
-                      <View style={{ ...CARD, overflow: 'hidden' }}>
+                      <View style={{ ...CARD, ...(isDark ? { backgroundColor: T.card, borderColor: T.hairline } : {}), overflow: 'hidden' }}>
                         {unassigned.map((d, i) => (
                           <DoctorRow key={d.id} doctor={d} isLast={i === unassigned.length - 1} accentColor={accentColor}
                             onToggle={() => handleToggleDoctor(d)} onEdit={() => openEditDoctor(d)} onDelete={() => handleDeleteDoctor(d)} />
@@ -740,10 +740,10 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
                 />
 
                 {/* Category Breakdown */}
-                <View style={{ ...CARD, padding: 20 }}>
+                <View style={{ ...CARD, ...(isDark ? { backgroundColor: T.card, borderColor: T.hairline } : {}), padding: 20 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
                     <SlidersHorizontal size={13} color={DS.ink[400]} strokeWidth={1.8} />
-                    <Text style={{ fontSize: 10, fontWeight: '500', letterSpacing: 1.2, textTransform: 'uppercase', color: DS.ink[500] }}>Kategoriler</Text>
+                    <Text style={{ fontSize: 10, fontWeight: '500', letterSpacing: 1.2, textTransform: 'uppercase', color: isDark ? T.ink3 : DS.ink[500] }}>Kategoriler</Text>
                   </View>
                   <View style={{ gap: 10 }}>
                     {CLINIC_CATEGORIES.map(cat => {
@@ -756,7 +756,7 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
                               <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: cat.color }} />
                               <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[800] }}>{autoT(cat.label)}</Text>
                             </View>
-                            <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[900] }}>{count}</Text>
+                            <Text style={{ fontSize: 12, fontWeight: '500', color: isDark ? T.ink : DS.ink[900] }}>{count}</Text>
                           </View>
                           <View style={{ height: 4, borderRadius: R.pill, backgroundColor: 'rgba(0,0,0,0.05)', overflow: 'hidden' }}>
                             <View style={{ width: `${pct}%`, height: 4, borderRadius: R.pill, backgroundColor: cat.color } as any} />
@@ -776,12 +776,12 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
       {/* Bağlantı gönder — üretilen davet kodunu kliniğe ilet */}
       <Modal visible={inviteOpen} transparent animationType="fade" onRequestClose={() => setInviteOpen(false)}>
         <Pressable onPress={() => setInviteOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <Pressable onPress={() => {}} style={{ width: '100%', maxWidth: 440, backgroundColor: '#FFFFFF', borderRadius: 20, padding: 20, gap: 14 }}>
+          <Pressable onPress={() => {}} style={{ width: '100%', maxWidth: 440, backgroundColor: isDark ? T.card : '#FFFFFF', borderRadius: 20, padding: 20, gap: 14, ...(isDark ? { borderWidth: 1, borderColor: T.hairline } : {}) }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Link2 size={18} color={DS.ink[900]} strokeWidth={2} />
-              <Text style={{ fontSize: 17, fontWeight: '700', color: DS.ink[900] }}>Bağlantı gönder</Text>
+              <Text style={{ fontSize: 17, fontWeight: '700', color: isDark ? T.ink : DS.ink[900] }}>Bağlantı gönder</Text>
             </View>
-            <Text style={{ fontSize: 12.5, color: DS.ink[500], lineHeight: 18 }}>
+            <Text style={{ fontSize: 12.5, color: isDark ? T.ink3 : DS.ink[500], lineHeight: 18 }}>
               Bu kodu kliniğe ilet. Klinik uygulamada kodu girince laboratuvarınıza anında bağlanır
               (onay gerekmez). Kod 7 gün geçerli ve tek kullanımlıktır.
             </Text>
@@ -794,11 +794,11 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
               <Text style={{ fontSize: 13, color: '#DC2626' }}>{inviteErr}</Text>
             ) : inviteCode ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 14, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E5E7EB' }}>
-                <Text selectable style={{ flex: 1, fontSize: 24, fontWeight: '800', letterSpacing: 3, color: DS.ink[900], textAlign: rtl ? 'right' : undefined, fontFamily: Platform.OS === 'web' ? 'JetBrains Mono, monospace' : undefined }}>
+                <Text selectable style={{ flex: 1, fontSize: 24, fontWeight: '800', letterSpacing: 3, color: isDark ? T.ink : DS.ink[900], textAlign: rtl ? 'right' : undefined, fontFamily: Platform.OS === 'web' ? 'JetBrains Mono, monospace' : undefined }}>
                   {inviteCode}
                 </Text>
                 <Pressable onPress={copyInvite}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5E7EB', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: isDark ? T.cardSoft : '#FFFFFF', borderWidth: 1, borderColor: isDark ? T.hairline : '#E5E7EB', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
                   {inviteCopied ? <Check size={14} color="#059669" strokeWidth={2.2} /> : <Copy size={14} color={DS.ink[500]} strokeWidth={1.9} />}
                   <Text style={{ fontSize: 12.5, fontWeight: '600', color: inviteCopied ? '#059669' : DS.ink[500] }}>
                     {inviteCopied ? 'Kopyalandı' : 'Kopyala'}
@@ -935,27 +935,31 @@ function AnimatedQuickActions({ accentColor, onAddClinic, onAddDoctor, onShowDoc
 }
 
 function QuickAction({ icon, iconBg, label, onPress }: { icon: React.ReactNode; iconBg: string; label: string; onPress: () => void }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
   return (
     <Pressable onPress={onPress}
       style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 8, borderRadius: R.md }}>
       <View style={{ width: 28, height: 28, borderRadius: R.sm, backgroundColor: iconBg, alignItems: 'center', justifyContent: 'center' }}>
         {icon}
       </View>
-      <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[900] }}>{label}</Text>
+      <Text style={{ fontSize: 13, fontWeight: '500', color: isDark ? T.ink : DS.ink[900] }}>{label}</Text>
     </Pressable>
   );
 }
 
 function EmptyState({ hasSearch, search, accentColor, onAdd }: { hasSearch: boolean; search: string; accentColor: string; onAdd: () => void }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
   return (
-    <View style={{ ...CARD, alignItems: 'center', paddingVertical: 60 }}>
+    <View style={{ ...CARD, ...(isDark ? { backgroundColor: T.card, borderColor: T.hairline } : {}), alignItems: 'center', paddingVertical: 60 }}>
       <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: hasSearch ? DS.ink[100] : accentColor + '14', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
         {hasSearch
           ? <Search size={24} color={DS.ink[300]} strokeWidth={1.5} />
           : <Building2 size={24} color={accentColor} strokeWidth={1.5} />}
       </View>
-      <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>{hasSearch ? 'Sonuç bulunamadı' : 'Henüz klinik eklenmemiş'}</Text>
-      <Text style={{ fontSize: 13, color: DS.ink[500], marginTop: 6 }}>{hasSearch ? `"${search}" ${autoT('ile eşleşen kayıt yok')}` : 'İlk kliniği ekleyerek başlayın'}</Text>
+      <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: isDark ? T.ink : DS.ink[900] }}>{hasSearch ? 'Sonuç bulunamadı' : 'Henüz klinik eklenmemiş'}</Text>
+      <Text style={{ fontSize: 13, color: isDark ? T.ink3 : DS.ink[500], marginTop: 6 }}>{hasSearch ? `"${search}" ${autoT('ile eşleşen kayıt yok')}` : 'İlk kliniği ekleyerek başlayın'}</Text>
       {!hasSearch && (
         <Pressable onPress={onAdd}
           style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 20, paddingVertical: 10, borderRadius: R.pill, backgroundColor: DS.ink[900], marginTop: 16 }}>
@@ -972,6 +976,8 @@ function DoctorsTable({ doctors, clinics, search, accentColor, onAdd, onEdit, on
   doctors: Doctor[]; clinics: Clinic[]; search: string; accentColor: string;
   onAdd: () => void; onEdit: (d: Doctor) => void; onToggle: (d: Doctor) => void; onDelete: (d: Doctor) => void;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
   const rtl = isRTL();
   const align = rtl ? ('right' as const) : undefined;
   const filtered = doctors.filter(d => {
@@ -980,12 +986,12 @@ function DoctorsTable({ doctors, clinics, search, accentColor, onAdd, onEdit, on
   });
 
   if (filtered.length === 0) return (
-    <View style={{ ...CARD, alignItems: 'center', paddingVertical: 60 }}>
-      <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-        {search ? <Search size={24} color={DS.ink[300]} strokeWidth={1.5} /> : <Users size={24} color={DS.ink[300]} strokeWidth={1.5} />}
+    <View style={{ ...CARD, ...(isDark ? { backgroundColor: T.card, borderColor: T.hairline } : {}), alignItems: 'center', paddingVertical: 60 }}>
+      <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: isDark ? T.cardSoft : DS.ink[100], alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+        {search ? <Search size={24} color={isDark ? T.ink3 : DS.ink[300]} strokeWidth={1.5} /> : <Users size={24} color={isDark ? T.ink3 : DS.ink[300]} strokeWidth={1.5} />}
       </View>
-      <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>{search ? 'Sonuç bulunamadı' : 'Henüz hekim eklenmemiş'}</Text>
-      <Text style={{ fontSize: 13, color: DS.ink[500], marginTop: 6 }}>{search ? `"${search}" ${autoT('ile eşleşen hekim yok')}` : 'İlk hekimi ekleyerek başlayın'}</Text>
+      <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: isDark ? T.ink : DS.ink[900] }}>{search ? 'Sonuç bulunamadı' : 'Henüz hekim eklenmemiş'}</Text>
+      <Text style={{ fontSize: 13, color: isDark ? T.ink3 : DS.ink[500], marginTop: 6 }}>{search ? `"${search}" ${autoT('ile eşleşen hekim yok')}` : 'İlk hekimi ekleyerek başlayın'}</Text>
       {!search && (
         <Pressable onPress={onAdd}
           style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 20, paddingVertical: 10, borderRadius: R.pill, backgroundColor: DS.ink[900], marginTop: 16 }}>
@@ -997,14 +1003,14 @@ function DoctorsTable({ doctors, clinics, search, accentColor, onAdd, onEdit, on
   );
 
   return (
-    <View style={{ ...CARD, overflow: 'hidden' }}>
+    <View style={{ ...CARD, ...(isDark ? { backgroundColor: T.card, borderColor: T.hairline } : {}), overflow: 'hidden' }}>
       {/* Table header */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: DS.ink[50], borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
-        <Text style={{ flex: 2.8, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textAlign: align }}>HEKİM</Text>
-        <Text style={{ flex: 1.5, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textAlign: align }}>UZMANLIK</Text>
-        <Text style={{ flex: 1.8, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textAlign: align }}>KLİNİK</Text>
-        <Text style={{ flex: 1.4, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textAlign: align }}>TELEFON</Text>
-        <Text style={{ flex: 0.9, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textAlign: 'center' }}>DURUM</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: isDark ? T.cardSoft : DS.ink[50], borderBottomWidth: 1, borderBottomColor: isDark ? T.hairline : 'rgba(0,0,0,0.06)' }}>
+        <Text style={{ flex: 2.8, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: isDark ? T.ink3 : DS.ink[500], textAlign: align }}>HEKİM</Text>
+        <Text style={{ flex: 1.5, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: isDark ? T.ink3 : DS.ink[500], textAlign: align }}>UZMANLIK</Text>
+        <Text style={{ flex: 1.8, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: isDark ? T.ink3 : DS.ink[500], textAlign: align }}>KLİNİK</Text>
+        <Text style={{ flex: 1.4, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: isDark ? T.ink3 : DS.ink[500], textAlign: align }}>TELEFON</Text>
+        <Text style={{ flex: 0.9, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: isDark ? T.ink3 : DS.ink[500], textAlign: 'center' }}>DURUM</Text>
         <View style={{ width: 76 }} />
       </View>
       {filtered.map((d, i) => {
@@ -1022,7 +1028,7 @@ function DoctorsTable({ doctors, clinics, search, accentColor, onAdd, onEdit, on
                 <Text style={{ fontSize: 12, fontWeight: '600', color: accentColor }}>{d.full_name.charAt(0).toUpperCase()}</Text>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[900], textAlign: align }} numberOfLines={1}>{d.full_name}</Text>
+                <Text style={{ fontSize: 13, fontWeight: '500', color: isDark ? T.ink : DS.ink[900], textAlign: align }} numberOfLines={1}>{d.full_name}</Text>
                 {!d.is_active && (
                   <View style={{ backgroundColor: 'rgba(217,75,75,0.12)', borderRadius: R.pill, paddingHorizontal: 6, paddingVertical: 1, alignSelf: 'flex-start', marginTop: 2 }}>
                     <Text style={{ fontSize: 9, fontWeight: '700', color: '#9C2E2E', letterSpacing: 0.5 }}>PASİF</Text>
@@ -1038,7 +1044,7 @@ function DoctorsTable({ doctors, clinics, search, accentColor, onAdd, onEdit, on
             </View>
             <View style={{ width: 76, flexDirection: 'row', justifyContent: 'flex-end', gap: 2 }}>
               <Pressable style={{ width: 28, height: 28, borderRadius: R.sm, alignItems: 'center', justifyContent: 'center' }} onPress={() => onEdit(d)}>
-                <Edit2 size={14} color={DS.ink[500]} strokeWidth={1.8} />
+                <Edit2 size={14} color={isDark ? T.ink2 : DS.ink[500]} strokeWidth={1.8} />
               </Pressable>
               <Pressable style={{ width: 28, height: 28, borderRadius: R.sm, alignItems: 'center', justifyContent: 'center' }} onPress={() => onDelete(d)}>
                 <Trash2 size={14} color="#9C2E2E" strokeWidth={1.8} />
@@ -1048,8 +1054,8 @@ function DoctorsTable({ doctors, clinics, search, accentColor, onAdd, onEdit, on
         );
       })}
       {/* Footer */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)', backgroundColor: DS.ink[50] }}>
-        <Text style={{ fontSize: 11, color: DS.ink[500] }}>{filtered.length} hekim</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderTopWidth: 1, borderTopColor: isDark ? T.hairline : 'rgba(0,0,0,0.06)', backgroundColor: isDark ? T.cardSoft : DS.ink[50] }}>
+        <Text style={{ fontSize: 11, color: isDark ? T.ink3 : DS.ink[500] }}>{filtered.length} hekim</Text>
         <View style={{ flex: 1 }} />
         <Pressable onPress={onAdd}
           style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 6, borderRadius: R.pill, backgroundColor: DS.ink[900] }}>
@@ -1087,6 +1093,8 @@ function ClinicRow({
   onPrintForm: () => void;
 }) {
   const rtl = isRTL();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
   const cat = CLINIC_CATEGORIES.find(c => c.value === (clinic.category ?? 'klinik')) ?? CLINIC_CATEGORIES[0];
   const primaryDoctor = doctors[0];
   const extraDoctors  = Math.max(0, doctors.length - 1);
@@ -1094,7 +1102,7 @@ function ClinicRow({
   const { width: _vw } = useWindowDimensions();
   const isNarrow = _vw < 560;
   return (
-    <View style={{ ...CARD, padding: isNarrow ? 12 : 18, borderRadius: isNarrow ? 14 : R.xl, opacity: clinic.is_active ? 1 : 0.7 }}>
+    <View style={{ ...CARD, ...(isDark ? { backgroundColor: T.card, borderColor: T.hairline } : {}), padding: isNarrow ? 12 : 18, borderRadius: isNarrow ? 14 : R.xl, opacity: clinic.is_active ? 1 : 0.7 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: isNarrow ? 10 : 14 }}>
         {/* Icon — logo varsa logo, yoksa kategori ikonu */}
         <View style={{ width: isNarrow ? 36 : 48, height: isNarrow ? 36 : 48, borderRadius: R.md, overflow: 'hidden', backgroundColor: (clinic as any).logo_url ? '#FFFFFF' : (clinic.is_active ? cat.bg : DS.ink[100]), borderWidth: (clinic as any).logo_url ? 1 : 0, borderColor: 'rgba(0,0,0,0.06)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -1117,10 +1125,10 @@ function ClinicRow({
               </View>
             )}
           </View>
-          <Text style={{ fontSize: isNarrow ? 14 : 16, fontWeight: '700', color: DS.ink[900], letterSpacing: -0.2, lineHeight: isNarrow ? 18 : 21, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{clinic.name}</Text>
+          <Text style={{ fontSize: isNarrow ? 14 : 16, fontWeight: '700', color: isDark ? T.ink : DS.ink[900], letterSpacing: -0.2, lineHeight: isNarrow ? 18 : 21, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{clinic.name}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 }}>
             <Users size={11} color={DS.ink[400]} strokeWidth={1.8} />
-            <Text style={{ fontSize: 11, color: DS.ink[500], flex: 1 }} numberOfLines={1}>
+            <Text style={{ fontSize: 11, color: isDark ? T.ink3 : DS.ink[500], flex: 1 }} numberOfLines={1}>
               {primaryDoctor
                 ? (extraDoctors > 0 ? `${primaryDoctor.full_name} · +${extraDoctors}` : primaryDoctor.full_name)
                 : (clinic.contact_person || 'Henüz hekim eklenmemiş')}
@@ -1136,7 +1144,7 @@ function ClinicRow({
               onPress={onPrintForm}
               accessibilityLabel={autoT('Klinik için iş emri formu yazdır')}
             >
-              <Printer size={14} color={DS.ink[500]} strokeWidth={1.8} />
+              <Printer size={14} color={isDark ? T.ink2 : DS.ink[500]} strokeWidth={1.8} />
             </Pressable>
             <Pressable style={{ width: 32, height: 32, borderRadius: R.sm, alignItems: 'center', justifyContent: 'center' }} onPress={onEditClinic}>
               <Edit2 size={14} color={DS.ink[500]} strokeWidth={1.8} />
@@ -1144,12 +1152,16 @@ function ClinicRow({
             <Pressable style={{ width: 32, height: 32, borderRadius: R.sm, alignItems: 'center', justifyContent: 'center' }} onPress={onDeleteClinic}>
               <Trash2 size={14} color="#9C2E2E" strokeWidth={1.8} />
             </Pressable>
-            <Pressable style={{ width: 34, height: 34, borderRadius: 17, ...(rtl ? { marginRight: 4 } : { marginLeft: 4 }), alignItems: 'center', justifyContent: 'center', backgroundColor: isExpanded ? accentColor + '14' : DS.ink[100] }} onPress={onToggleExpand}>
+            {/* Koyu temada DS.ink[100] (#F5F5F5) beyaz kalıp göz yoruyordu →
+                bir kademe KOYU yüzey + hairline (BEYAZ BUTON KURALI). */}
+            <Pressable style={{ width: 34, height: 34, borderRadius: 17, ...(rtl ? { marginRight: 4 } : { marginLeft: 4 }), alignItems: 'center', justifyContent: 'center',
+              backgroundColor: isExpanded ? accentColor + (isDark ? '2E' : '14') : (isDark ? T.cardSoft : DS.ink[100]),
+              ...(isDark ? { borderWidth: 1, borderColor: T.hairline } : {}) }} onPress={onToggleExpand}>
               {isExpanded
                 ? <ChevronUp size={16} color={accentColor} strokeWidth={1.8} />
                 : rtl
-                  ? <ChevronLeft size={16} color={DS.ink[500]} strokeWidth={1.8} />
-                  : <ChevronRight size={16} color={DS.ink[500]} strokeWidth={1.8} />}
+                  ? <ChevronLeft size={16} color={isDark ? T.ink2 : DS.ink[500]} strokeWidth={1.8} />
+                  : <ChevronRight size={16} color={isDark ? T.ink2 : DS.ink[500]} strokeWidth={1.8} />}
             </Pressable>
           </View>
         ) : (
@@ -1177,8 +1189,8 @@ function ClinicRow({
 
           {doctors.length > 0 && (
             <View>
-              <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textTransform: 'uppercase', marginTop: 4, marginBottom: 8 }}>Hekimler</Text>
-              <View style={{ backgroundColor: DS.ink[50], borderRadius: R.md, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }}>
+              <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: isDark ? T.ink3 : DS.ink[500], textTransform: 'uppercase', marginTop: 4, marginBottom: 8 }}>Hekimler</Text>
+              <View style={{ backgroundColor: isDark ? T.cardSoft : DS.ink[50], borderRadius: R.md, overflow: 'hidden', borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.05)' }}>
                 {doctors.map((d, i) => (
                   <DoctorRow key={d.id} doctor={d} isLast={i === doctors.length - 1} accentColor={accentColor}
                     onToggle={() => onToggleDoctor(d)} onEdit={() => onEditDoctor(d)} onDelete={() => onDeleteDoctor(d)} />
@@ -1190,12 +1202,12 @@ function ClinicRow({
           {members.length > 0 && (
             <View>
               <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 4, marginBottom: 8 }}>
-                <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textTransform: 'uppercase' }}>
+                <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: isDark ? T.ink3 : DS.ink[500], textTransform: 'uppercase' }}>
                   Yönetici & Sekreter
                 </Text>
-                <Text style={{ fontSize: 10, color: DS.ink[400] }}>{members.length} kişi</Text>
+                <Text style={{ fontSize: 10, color: isDark ? T.ink3 : DS.ink[400] }}>{members.length} kişi</Text>
               </View>
-              <View style={{ backgroundColor: DS.ink[50], borderRadius: R.md, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }}>
+              <View style={{ backgroundColor: isDark ? T.cardSoft : DS.ink[50], borderRadius: R.md, overflow: 'hidden', borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.05)' }}>
                 {members.map((m, i) => (
                   <ClinicMemberRow key={m.id} member={m} isLast={i === members.length - 1} />
                 ))}
@@ -1214,7 +1226,7 @@ function ClinicRow({
             </Pressable>
             <View style={{ flex: 1 }} />
             <AppSwitch value={clinic.is_active} onValueChange={onToggleClinic} accentColor={accentColor} />
-            <Text style={{ fontSize: 12, color: DS.ink[500], fontWeight: '500' }}>Aktif</Text>
+            <Text style={{ fontSize: 12, color: isDark ? T.ink3 : DS.ink[500], fontWeight: '500' }}>Aktif</Text>
           </View>
         </View>
       )}
@@ -1227,6 +1239,8 @@ function DoctorRow({ doctor, isLast, accentColor, onToggle, onEdit, onDelete }: 
   doctor: Doctor; isLast?: boolean; accentColor: string;
   onToggle: () => void; onEdit: () => void; onDelete: () => void;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
   const rtl = isRTL();
   return (
     <View style={{
@@ -1241,7 +1255,7 @@ function DoctorRow({ doctor, isLast, accentColor, onToggle, onEdit, onDelete }: 
       <View style={{ flex: 1, gap: 1 }}>
         <Text style={{ fontSize: 13, fontWeight: '600', color: doctor.is_active ? DS.ink[900] : DS.ink[400], textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{doctor.full_name}</Text>
         {(doctor.specialty || doctor.phone) && (
-          <Text style={{ fontSize: 11, color: DS.ink[400], textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{[doctor.specialty, doctor.phone].filter(Boolean).join(' · ')}</Text>
+          <Text style={{ fontSize: 11, color: isDark ? T.ink3 : DS.ink[400], textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{[doctor.specialty, doctor.phone].filter(Boolean).join(' · ')}</Text>
         )}
       </View>
       <AppSwitch value={doctor.is_active} onValueChange={onToggle} accentColor={accentColor} />
@@ -1257,6 +1271,8 @@ function DoctorRow({ doctor, isLast, accentColor, onToggle, onEdit, onDelete }: 
 
 // ─── Clinic Member Row (Yönetici / Sekreter) ─────────────────────────
 function ClinicMemberRow({ member, isLast }: { member: ClinicMember; isLast?: boolean }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
   const rtl = isRTL();
   const isAdmin = member.user_type === 'clinic_admin';
   const accent  = isAdmin ? '#6BA888' : '#7C3AED';
@@ -1272,9 +1288,9 @@ function ClinicMemberRow({ member, isLast }: { member: ClinicMember; isLast?: bo
         <Text style={{ fontSize: 12, fontWeight: '700', color: accent }}>{(member.full_name || '?').charAt(0).toUpperCase()}</Text>
       </View>
       <View style={{ flex: 1, gap: 1 }}>
-        <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900], textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{member.full_name}</Text>
+        <Text style={{ fontSize: 13, fontWeight: '600', color: isDark ? T.ink : DS.ink[900], textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{member.full_name}</Text>
         {(member.email || member.phone) && (
-          <Text style={{ fontSize: 11, color: DS.ink[400], textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{[member.email, member.phone].filter(Boolean).join(' · ')}</Text>
+          <Text style={{ fontSize: 11, color: isDark ? T.ink3 : DS.ink[400], textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{[member.email, member.phone].filter(Boolean).join(' · ')}</Text>
         )}
       </View>
       <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: `${accent}1A` }}>
@@ -1282,7 +1298,7 @@ function ClinicMemberRow({ member, isLast }: { member: ClinicMember; isLast?: bo
       </View>
       {member.is_active === false && (
         <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: 'rgba(0,0,0,0.06)' }}>
-          <Text style={{ fontSize: 9, color: DS.ink[500], fontWeight: '600' }}>PASİF</Text>
+          <Text style={{ fontSize: 9, color: isDark ? T.ink3 : DS.ink[500], fontWeight: '600' }}>PASİF</Text>
         </View>
       )}
     </View>
@@ -1290,11 +1306,13 @@ function ClinicMemberRow({ member, isLast }: { member: ClinicMember; isLast?: bo
 }
 
 function InfoRow({ icon, text }: { icon: React.ReactNode; text: string }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
   const rtl = isRTL();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
       {icon}
-      <Text style={{ fontSize: 12, color: DS.ink[500], flex: 1, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{text}</Text>
+      <Text style={{ fontSize: 12, color: isDark ? T.ink3 : DS.ink[500], flex: 1, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{text}</Text>
     </View>
   );
 }
@@ -1306,15 +1324,17 @@ function FilterPanel({ visible, activeFilterCount, draftCategory, draftStatus, o
   onDraftCategory: (v: ClinicCategory | 'all') => void; onDraftStatus: (v: 'all' | 'active' | 'inactive') => void;
   onApply: () => void; onClose: () => void;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
   const rtl = isRTL();
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(10,10,10,0.2)', alignItems: 'flex-end', paddingTop: 116, ...(rtl ? { paddingLeft: 16 } : { paddingRight: 16 }) }} activeOpacity={1} onPress={onClose}>
-        <View style={{ width: 310, ...CARD, overflow: 'hidden' }} onStartShouldSetResponder={() => true}>
+        <View style={{ width: 310, ...CARD, ...(isDark ? { backgroundColor: T.card, borderColor: T.hairline } : {}), overflow: 'hidden' }} onStartShouldSetResponder={() => true}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <SlidersHorizontal size={15} color={DS.ink[900]} strokeWidth={1.8} />
-              <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: DS.ink[900] }}>Filtrele</Text>
+              <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: isDark ? T.ink : DS.ink[900] }}>Filtrele</Text>
               {activeFilterCount > 0 && (
                 <View style={{ backgroundColor: DS.ink[900], borderRadius: R.pill, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 }}>
                   <Text style={{ fontSize: 9, fontWeight: '800', color: '#FFFFFF' }}>{activeFilterCount}</Text>
@@ -1322,12 +1342,12 @@ function FilterPanel({ visible, activeFilterCount, draftCategory, draftStatus, o
               )}
             </View>
             <Pressable onPress={() => { onDraftCategory('all'); onDraftStatus('all'); }}>
-              <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[400] }}>Temizle</Text>
+              <Text style={{ fontSize: 12, fontWeight: '500', color: isDark ? T.ink3 : DS.ink[400] }}>Temizle</Text>
             </Pressable>
           </View>
           <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.06)' }} />
           <View style={{ paddingHorizontal: 20, paddingVertical: 16 }}>
-            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textTransform: 'uppercase', marginBottom: 10 }}>Kategori</Text>
+            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: isDark ? T.ink3 : DS.ink[500], textTransform: 'uppercase', marginBottom: 10 }}>Kategori</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
               {([{ value: 'all', label: 'Tümü' }, ...CLINIC_CATEGORIES] as const).map(item => {
                 const active = draftCategory === item.value;
@@ -1342,7 +1362,7 @@ function FilterPanel({ visible, activeFilterCount, draftCategory, draftStatus, o
           </View>
           <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.06)' }} />
           <View style={{ paddingHorizontal: 20, paddingVertical: 16 }}>
-            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textTransform: 'uppercase', marginBottom: 10 }}>Durum</Text>
+            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: isDark ? T.ink3 : DS.ink[500], textTransform: 'uppercase', marginBottom: 10 }}>Durum</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
               {([{ value: 'all', label: 'Tümü' }, { value: 'active', label: 'Aktif' }, { value: 'inactive', label: 'Pasif' }] as const).map(item => {
                 const active = draftStatus === item.value;
@@ -1358,7 +1378,7 @@ function FilterPanel({ visible, activeFilterCount, draftCategory, draftStatus, o
           <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.06)' }} />
           <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 20, paddingVertical: 16 }}>
             <Pressable style={{ flex: 1, paddingVertical: 10, borderRadius: R.pill, borderWidth: 1, borderColor: DS.ink[200], alignItems: 'center' }} onPress={onClose}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500] }}>İptal</Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: isDark ? T.ink3 : DS.ink[500] }}>İptal</Text>
             </Pressable>
             <Pressable style={{ flex: 2, paddingVertical: 10, borderRadius: R.pill, backgroundColor: DS.ink[900], alignItems: 'center' }} onPress={onApply}>
               <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFFFFF' }}>Uygula</Text>
@@ -1865,7 +1885,7 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
                   onFocus={() => setNameFocused(true)} onBlur={() => setTimeout(() => setNameFocused(false), 150)}
                   placeholder="Örn: Merkez Diş Kliniği" placeholderTextColor={DS.ink[400]} autoCorrect={false} />
                 {(isDuplicate || (nameFocused && suggestions.length > 0 && !isDuplicate)) && (
-                  <View style={{ borderWidth: 1, borderColor: DS.ink[200], borderRadius: R.sm, backgroundColor: DS.ink[50], marginTop: 4, overflow: 'hidden' }}>
+                  <View style={{ borderWidth: 1, borderColor: isDark ? T.hairline : DS.ink[200], borderRadius: R.sm, backgroundColor: isDark ? T.cardSoft : DS.ink[50], marginTop: 4, overflow: 'hidden' }}>
                     {isDuplicate ? (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 10 }}>
                         <AlertCircle size={12} color="#9C2E2E" strokeWidth={1.8} />
@@ -1879,7 +1899,7 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
                           {catItem && <View style={{ width: 22, height: 22, borderRadius: 6, backgroundColor: catItem.color + '18', alignItems: 'center', justifyContent: 'center' }}>
                             <AppIcon name={catItem.icon as any} size={11} color={catItem.color} />
                           </View>}
-                          <Text style={{ flex: 1, fontSize: 13, fontWeight: '500', color: DS.ink[900], textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{c.name}</Text>
+                          <Text style={{ flex: 1, fontSize: 13, fontWeight: '500', color: isDark ? T.ink : DS.ink[900], textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{c.name}</Text>
                           <View style={{ backgroundColor: DS.lab.bgSoft, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
                             <Text style={{ fontSize: 9, fontWeight: '700', color: '#D97706' }}>Kayıtlı</Text>
                           </View>
@@ -1891,14 +1911,14 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
 
                 {/* ── Google Places autocomplete (öncelikli) — adres + telefon otomatik doldur ── */}
                 {nameFocused && !isDuplicate && (gplaceResults.length > 0 || gplaceLoading) && (
-                  <View style={{ borderWidth: 1, borderColor: DS.ink[200], borderRadius: R.sm, backgroundColor: '#FFFFFF', marginTop: 4, overflow: 'hidden' }}>
+                  <View style={{ borderWidth: 1, borderColor: isDark ? T.hairline : DS.ink[200], borderRadius: R.sm, backgroundColor: isDark ? T.cardSoft : '#FFFFFF', marginTop: 4, overflow: 'hidden' }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: '#F8FAFC', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' }}>
                       <MapPin size={11} color="#1A73E8" strokeWidth={1.8} />
                       <Text style={{ flex: 1, fontSize: 10, fontWeight: '700', color: '#1A73E8', letterSpacing: 0.6, textTransform: 'uppercase' }}>
                         Google Sonuçları
                       </Text>
                       {gplaceLoading && (
-                        <Text style={{ fontSize: 9, color: DS.ink[400], fontStyle: 'italic' }}>aranıyor…</Text>
+                        <Text style={{ fontSize: 9, color: isDark ? T.ink3 : DS.ink[400], fontStyle: 'italic' }}>aranıyor…</Text>
                       )}
                     </View>
                     {gplaceResults.slice(0, 6).map((g, i) => (
@@ -1917,11 +1937,11 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
                             <MapPin size={11} color="#1A73E8" strokeWidth={2} />
                           </View>
                           <View style={{ flex: 1, minWidth: 0 }}>
-                            <Text style={{ fontSize: 12.5, fontWeight: '600', color: DS.ink[900], textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>
+                            <Text style={{ fontSize: 12.5, fontWeight: '600', color: isDark ? T.ink : DS.ink[900], textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>
                               {g.mainText}
                             </Text>
                             {g.secondaryText ? (
-                              <Text style={{ fontSize: 10.5, color: DS.ink[500], marginTop: 1, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>
+                              <Text style={{ fontSize: 10.5, color: isDark ? T.ink3 : DS.ink[500], marginTop: 1, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>
                                 {g.secondaryText}
                               </Text>
                             ) : null}
@@ -2001,7 +2021,7 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
                 </View>
               ) : (
                 <>
-                  <Text style={{ fontSize: 12, color: DS.ink[500], marginBottom: 12 }}>
+                  <Text style={{ fontSize: 12, color: isDark ? T.ink3 : DS.ink[500], marginBottom: 12 }}>
                     {editingClinic
                       ? 'Klinik yetkilisi henüz sisteme kayıtlı değil. E-posta ve şifre vererek hesap oluşturabilirsiniz.'
                       : 'E-posta ve şifre verirseniz klinik yetkilisi sisteme giriş yapabilir. Boş bırakılırsa sadece kurum kaydı oluşur.'}
@@ -2043,7 +2063,7 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
                         }}
                       >
                         <Text style={{ fontSize: 12, fontWeight: '700', color: active ? accentColor : DS.ink[800] }}>{autoT(opt.l)}</Text>
-                        <Text style={{ fontSize: 10, color: DS.ink[500], marginTop: 2 }}>{autoT(opt.d)}</Text>
+                        <Text style={{ fontSize: 10, color: isDark ? T.ink3 : DS.ink[500], marginTop: 2 }}>{autoT(opt.d)}</Text>
                       </Pressable>
                     );
                   })}
@@ -2070,7 +2090,7 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
             {/* Durum */}
             <SectionCard title="">
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[700] }}>Aktif</Text>
+                <Text style={{ fontSize: 13, fontWeight: '500', color: isDark ? T.ink2 : DS.ink[700] }}>Aktif</Text>
                 <AppSwitch value={form.is_active} onValueChange={v => set('is_active', v)} accentColor={accentColor} />
               </View>
             </SectionCard>
@@ -2111,7 +2131,7 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
                 ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
               }}
             >
-              <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[700] }}>İptal</Text>
+              <Text style={{ fontSize: 13, fontWeight: '500', color: isDark ? T.ink2 : DS.ink[700] }}>İptal</Text>
             </Pressable>
             <Pressable
               onPress={handleSave}
@@ -2301,10 +2321,10 @@ export function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, 
                 <Text style={{ fontSize: 11, fontWeight: '600', color: accentColor, letterSpacing: 1.2, textTransform: 'uppercase' }}>
                   Hekim
                 </Text>
-                <Text style={{ ...DISPLAY, fontSize: 26, letterSpacing: -0.6, color: DS.ink[900], lineHeight: 32, marginTop: 2 }}>
+                <Text style={{ ...DISPLAY, fontSize: 26, letterSpacing: -0.6, color: isDark ? T.ink : DS.ink[900], lineHeight: 32, marginTop: 2 }}>
                   {editingDoctor ? 'Hekimi düzenle' : 'Yeni hekim ekle'}
                 </Text>
-                <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 4, lineHeight: 17 }}>
+                <Text style={{ fontSize: 12, color: isDark ? T.ink3 : DS.ink[500], marginTop: 4, lineHeight: 17 }}>
                   Hekim bilgileri, klinik bağlantısı ve giriş hesabı.
                 </Text>
               </View>
@@ -2314,8 +2334,8 @@ export function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, 
               style={{
                 width: 36, height: 36, borderRadius: 12,
                 alignItems: 'center', justifyContent: 'center',
-                backgroundColor: '#FFFFFF',
-                borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)',
+                backgroundColor: isDark ? T.cardSoft : '#FFFFFF',
+                borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.10)',
                 ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
               }}
             >
@@ -2381,7 +2401,7 @@ export function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, 
                 </View>
               ) : (
                 <>
-                  <Text style={{ fontSize: 12, color: DS.ink[500], marginBottom: 12 }}>
+                  <Text style={{ fontSize: 12, color: isDark ? T.ink3 : DS.ink[500], marginBottom: 12 }}>
                     {editingDoctor
                       ? 'Hekim henüz sisteme kayıtlı değil. E-posta ve şifre vererek hesap oluşturabilirsiniz.'
                       : 'E-posta ve şifre verirseniz hekim sisteme giriş yapabilir. Boş bırakılırsa sadece kayıt listesine eklenir.'}
@@ -2403,7 +2423,7 @@ export function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, 
             <SectionCard title="Ek Bilgiler">
               <ModalField label="Notlar"><TextInput style={{ ...inputBase, minHeight: 60, textAlignVertical: 'top' as any }} value={form.notes} onChangeText={v => set('notes', v)} placeholder="İsteğe bağlı notlar..." placeholderTextColor={DS.ink[400]} multiline numberOfLines={3} /></ModalField>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[700] }}>Aktif</Text>
+                <Text style={{ fontSize: 13, fontWeight: '500', color: isDark ? T.ink2 : DS.ink[700] }}>Aktif</Text>
                 <AppSwitch value={form.is_active} onValueChange={v => set('is_active', v)} accentColor={accentColor} />
               </View>
             </SectionCard>
@@ -2426,7 +2446,7 @@ export function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, 
                 ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
               }}
             >
-              <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[700] }}>İptal</Text>
+              <Text style={{ fontSize: 13, fontWeight: '500', color: isDark ? T.ink2 : DS.ink[700] }}>İptal</Text>
             </Pressable>
             <Pressable
               onPress={handleSave}
@@ -2500,6 +2520,8 @@ function DiscountModal({ clinic, currentDiscount, onClose, onSaved }: {
   clinic: { id: string; name: string } | null; currentDiscount: number | null;
   onClose: () => void; onSaved: (clinicId: string, percent: number) => void;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
   const rtl = isRTL();
   const [value, setValue] = React.useState('');
   const [saving, setSaving] = React.useState(false);
@@ -2528,29 +2550,29 @@ function DiscountModal({ clinic, currentDiscount, onClose, onSaved }: {
   return (
     <Modal visible={!!clinic} animationType="fade" transparent onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(10,10,10,0.3)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
-        <View style={{ backgroundColor: '#FFFFFF', borderRadius: R.xl, width: '100%', maxWidth: 380, overflow: 'hidden' }}>
+        <View style={{ backgroundColor: isDark ? T.card : '#FFFFFF', borderRadius: R.xl, width: '100%', maxWidth: 380, overflow: 'hidden', ...(isDark ? { borderWidth: 1, borderColor: T.hairline } : {}) }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
             <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: '#EDE9FE', alignItems: 'center', justifyContent: 'center' }}>
               <Percent size={16} color="#7C3AED" strokeWidth={1.8} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[900] }}>Klinik İndirimi</Text>
-              <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 1 }} numberOfLines={1}>{clinic?.name}</Text>
+              <Text style={{ fontSize: 15, fontWeight: '600', color: isDark ? T.ink : DS.ink[900] }}>Klinik İndirimi</Text>
+              <Text style={{ fontSize: 11, color: isDark ? T.ink3 : DS.ink[500], marginTop: 1 }} numberOfLines={1}>{clinic?.name}</Text>
             </View>
-            <Pressable onPress={onClose} style={{ width: 28, height: 28, borderRadius: R.sm, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center' }}>
-              <X size={14} color={DS.ink[400]} strokeWidth={1.8} />
+            <Pressable onPress={onClose} style={{ width: 28, height: 28, borderRadius: R.sm, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : DS.ink[100], alignItems: 'center', justifyContent: 'center' }}>
+              <X size={14} color={isDark ? T.ink3 : DS.ink[400]} strokeWidth={1.8} />
             </Pressable>
           </View>
           <View style={{ padding: 20, gap: 4 }}>
-            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 8 }}>İndirim Oranı (%)</Text>
+            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: isDark ? T.ink3 : DS.ink[500], marginBottom: 8 }}>İndirim Oranı (%)</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: DS.ink[200], borderRadius: R.md, overflow: 'hidden' }}>
-              <TextInput style={{ flex: 1, fontSize: 22, fontWeight: '800', color: DS.ink[900], paddingHorizontal: 16, paddingVertical: 12, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) } as any}
+              <TextInput style={{ flex: 1, fontSize: 22, fontWeight: '800', color: isDark ? T.ink : DS.ink[900], paddingHorizontal: 16, paddingVertical: 12, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) } as any}
                 value={value} onChangeText={setValue} keyboardType="decimal-pad" placeholder="Örn: 10" placeholderTextColor={DS.ink[400]} maxLength={5} />
-              <View style={{ paddingHorizontal: 16, ...(rtl ? { borderRightWidth: 1, borderRightColor: DS.ink[200] } : { borderLeftWidth: 1, borderLeftColor: DS.ink[200] }), backgroundColor: DS.ink[50] }}>
+              <View style={{ paddingHorizontal: 16, ...(rtl ? { borderRightWidth: 1, borderRightColor: isDark ? T.hairline : DS.ink[200] } : { borderLeftWidth: 1, borderLeftColor: isDark ? T.hairline : DS.ink[200] }), backgroundColor: isDark ? T.cardSoft : DS.ink[50] }}>
                 <Text style={{ fontSize: 20, fontWeight: '800', color: '#7C3AED' }}>%</Text>
               </View>
             </View>
-            <Text style={{ fontSize: 12, color: DS.ink[400], lineHeight: 17, marginTop: 6 }}>Bu oran yeni fatura oluştururken otomatik uygulanır.</Text>
+            <Text style={{ fontSize: 12, color: isDark ? T.ink3 : DS.ink[400], lineHeight: 17, marginTop: 6 }}>Bu oran yeni fatura oluştururken otomatik uygulanır.</Text>
             {currentDiscount != null && currentDiscount > 0 && (
               <Pressable onPress={handleRemove} disabled={saving} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 10, paddingVertical: 7, paddingHorizontal: 10, borderRadius: R.sm, backgroundColor: 'rgba(217,75,75,0.12)', alignSelf: 'flex-start' }}>
                 <Trash2 size={12} color="#9C2E2E" strokeWidth={1.8} />
@@ -2560,7 +2582,7 @@ function DiscountModal({ clinic, currentDiscount, onClose, onSaved }: {
           </View>
           <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 20, paddingVertical: 14, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
             <Pressable style={{ flex: 1, paddingVertical: 10, borderRadius: R.pill, borderWidth: 1, borderColor: DS.ink[200], alignItems: 'center' }} onPress={onClose} disabled={saving}>
-              <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[500] }}>İptal</Text>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: isDark ? T.ink3 : DS.ink[500] }}>İptal</Text>
             </Pressable>
             <Pressable style={{ flex: 2, paddingVertical: 10, borderRadius: R.pill, backgroundColor: '#7C3AED', alignItems: 'center', opacity: saving ? 0.5 : 1 }} onPress={handleSave} disabled={saving}>
               <Text style={{ fontSize: 14, fontWeight: '600', color: '#FFFFFF' }}>{saving ? 'Kaydediliyor…' : 'Kaydet'}</Text>
@@ -2574,22 +2596,24 @@ function DiscountModal({ clinic, currentDiscount, onClose, onSaved }: {
 
 // ─── Managers List (Klinik Yöneticileri) ──────────────────────
 function ManagersList({ managers, accentColor }: { managers: any[]; accentColor: string }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
   const rtl = isRTL();
   if (managers.length === 0) {
     return (
-      <View style={{ ...CARD, padding: 32, alignItems: "center", gap: 12 }}>
-        <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: DS.ink[50], alignItems: "center", justifyContent: "center" }}>
-          <Briefcase size={24} color={DS.ink[400]} strokeWidth={1.6} />
+      <View style={{ ...CARD, ...(isDark ? { backgroundColor: T.card, borderColor: T.hairline } : {}), padding: 32, alignItems: "center", gap: 12 }}>
+        <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: isDark ? T.cardSoft : DS.ink[50], alignItems: "center", justifyContent: "center" }}>
+          <Briefcase size={24} color={isDark ? T.ink3 : DS.ink[400]} strokeWidth={1.6} />
         </View>
-        <Text style={{ ...DISPLAY, fontSize: 20, color: DS.ink[900] }}>Henüz yönetici yok</Text>
-        <Text style={{ fontSize: 13, color: DS.ink[500], textAlign: "center", maxWidth: 320 }}>
+        <Text style={{ ...DISPLAY, fontSize: 20, color: isDark ? T.ink : DS.ink[900] }}>Henüz yönetici yok</Text>
+        <Text style={{ fontSize: 13, color: isDark ? T.ink3 : DS.ink[500], textAlign: "center", maxWidth: 320 }}>
           Klinik yetkilileri yeni kurum eklerken e-posta + şifre alanı doldurularak oluşur.
         </Text>
       </View>
     );
   }
   return (
-    <View style={{ ...CARD, overflow: "hidden" }}>
+    <View style={{ ...CARD, ...(isDark ? { backgroundColor: T.card, borderColor: T.hairline } : {}), overflow: "hidden" }}>
       {managers.map((m: any, i: number) => (
         <View
           key={m.id}
@@ -2605,14 +2629,14 @@ function ManagersList({ managers, accentColor }: { managers: any[]; accentColor:
           </View>
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <Text style={{ fontSize: 14, fontWeight: "600", color: DS.ink[900], textAlign: rtl ? "right" : undefined }} numberOfLines={1}>{m.full_name || "—"}</Text>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: isDark ? T.ink : DS.ink[900], textAlign: rtl ? "right" : undefined }} numberOfLines={1}>{m.full_name || "—"}</Text>
               {m.isFallback && (
                 <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, backgroundColor: "#FEF3C7" }}>
                   <Text style={{ fontSize: 9, fontWeight: "700", color: "#92400E" }}>GEÇİCİ</Text>
                 </View>
               )}
             </View>
-            <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 2, textAlign: rtl ? "right" : undefined }} numberOfLines={1}>
+            <Text style={{ fontSize: 12, color: isDark ? T.ink3 : DS.ink[500], marginTop: 2, textAlign: rtl ? "right" : undefined }} numberOfLines={1}>
               {m.clinic?.name ?? "Klinik atanmamış"}{m.phone ? "  ·  " + m.phone : ""}
               {m.isFallback ? "  ·  " + autoT('ilk hekim') : ""}
             </Text>

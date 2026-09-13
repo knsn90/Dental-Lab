@@ -19,10 +19,13 @@ import {
 import {
   X, Building2, Banknote, CreditCard, FileText, CheckCircle2, AlertCircle,
   ArrowDownToLine, Hash, User as UserIcon,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 
 import { DS } from '../../../core/theme/dsTokens';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { baseSymbol, useBaseCurrency } from '../../../core/money/baseCurrency';
 import { DatePicker } from '../../../core/ui/DatePicker';
 import {
@@ -55,6 +58,8 @@ export function SubmitPaymentModal({
   visible, clinicId, initialInvoiceId, onClose, onSubmitted,
 }: Props) {
   const TH = usePanelTheme();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   useRates();
   useBaseCurrency();
 
@@ -159,30 +164,31 @@ export function SubmitPaymentModal({
           onPress={(e) => e.stopPropagation()}
           style={{
             width: '100%', maxWidth: 560, maxHeight: '92%',
-            backgroundColor: '#FFF', borderRadius: 22,
+            backgroundColor: isDark ? T.card : '#FFF', borderRadius: 22,
             overflow: 'hidden',
+            ...(isDark ? { borderWidth: 1, borderColor: T.hairline } : null),
             ...(Platform.OS === 'web' ? { boxShadow: '0 24px 60px rgba(0,0,0,0.30)' } as any : { elevation: 24 }),
           }}
         >
           {/* Header */}
           <View style={{
             paddingHorizontal: 22, paddingTop: 20, paddingBottom: 16,
-            borderBottomWidth: 1, borderBottomColor: DS.ink[100],
+            borderBottomWidth: 1, borderBottomColor: isDark ? T.hairline : DS.ink[100],
             flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
           }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[500] }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: isDark ? (T.ink3 as string) : DS.ink[500] }}>
                 Ödeme Bildir
               </Text>
-              <Text style={{ ...DISPLAY, fontSize: 22, color: DS.ink[900], letterSpacing: -0.5, marginTop: 4 }}>
+              <Text style={{ ...DISPLAY, fontSize: 22, color: isDark ? T.ink : DS.ink[900], letterSpacing: -0.5, marginTop: 4 }}>
                 Yeni Tahsilat Bildirimi
               </Text>
-              <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 4, lineHeight: 17 }}>
+              <Text style={{ fontSize: 12, color: isDark ? (T.ink3 as string) : DS.ink[500], marginTop: 4, lineHeight: 17 }}>
                 Bilgileri girdikten sonra ödeme admin onayına düşer. Onaylanınca cari hesabınıza işlenir.
               </Text>
             </View>
             <Pressable onPress={onClose} hitSlop={8} style={{ padding: 4, marginStart: 8 }}>
-              <X size={20} color={DS.ink[500]} />
+              <X size={20} color={isDark ? (T.ink3 as string) : DS.ink[500]} />
             </Pressable>
           </View>
 
@@ -198,10 +204,10 @@ export function SubmitPaymentModal({
                 borderWidth: 1, borderColor: 'rgba(45,154,107,0.25)',
               }}>
                 <CheckCircle2 size={36} color="#1F6B47" />
-                <Text style={{ ...DISPLAY, fontSize: 20, color: DS.ink[900], letterSpacing: -0.3 }}>
+                <Text style={{ ...DISPLAY, fontSize: 20, color: isDark ? T.ink : DS.ink[900], letterSpacing: -0.3 }}>
                   Bildirim alındı
                 </Text>
-                <Text style={{ fontSize: 12, color: DS.ink[500], textAlign: 'center', maxWidth: 320 }}>
+                <Text style={{ fontSize: 12, color: isDark ? (T.ink3 as string) : DS.ink[500], textAlign: 'center', maxWidth: 320 }}>
                   Ödemeniz admin onayına gönderildi. Onaylandığında bildirim alacaksınız.
                 </Text>
               </View>
@@ -221,14 +227,14 @@ export function SubmitPaymentModal({
                             flexDirection: 'row', alignItems: 'center', gap: 6,
                             paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10,
                             borderWidth: 1,
-                            borderColor: active ? m.color : DS.ink[200],
-                            backgroundColor: active ? m.color + '14' : '#FFF',
+                            borderColor: active ? m.color : (isDark ? T.hairline : DS.ink[200]),
+                            backgroundColor: active ? m.color + '14' : (isDark ? T.cardSoft : '#FFF'),
                           }}
                         >
-                          <Icon size={13} color={active ? m.color : DS.ink[500]} strokeWidth={2} />
+                          <Icon size={13} color={active ? m.color : (isDark ? (T.ink3 as string) : DS.ink[500])} strokeWidth={2} />
                           <Text style={{
                             fontSize: 12, fontWeight: '600',
-                            color: active ? m.color : DS.ink[700],
+                            color: active ? m.color : (isDark ? (T.ink2 as string) : DS.ink[700]),
                           }}>
                             {m.label}
                           </Text>
@@ -244,39 +250,39 @@ export function SubmitPaymentModal({
                     <Pressable
                       onPress={() => setInvoiceOpen(o => !o)}
                       style={{
-                        borderWidth: 1, borderColor: DS.ink[200], borderRadius: 10,
+                        borderWidth: 1, borderColor: isDark ? T.hairline : DS.ink[200], borderRadius: 10,
                         paddingHorizontal: 12, paddingVertical: 10,
                         flexDirection: 'row', alignItems: 'center', gap: 8,
-                        backgroundColor: '#FFF',
+                        backgroundColor: isDark ? T.cardSoft : '#FFF',
                       }}
                     >
-                      <FileText size={14} color={DS.ink[500]} />
-                      <Text style={{ flex: 1, fontSize: 13, color: selectedInvoice ? DS.ink[900] : DS.ink[400] }}>
+                      <FileText size={14} color={isDark ? (T.ink3 as string) : DS.ink[500]} />
+                      <Text style={{ flex: 1, fontSize: 13, color: selectedInvoice ? (isDark ? T.ink : DS.ink[900]) : (isDark ? (T.ink3 as string) : DS.ink[400]) }}>
                         {selectedInvoice
                           ? `Fatura ${selectedInvoice.invoice_no ?? '—'}${selectedInvoice.patient_name ? ' · ' + selectedInvoice.patient_name : ''} · Kalan ${M(selectedInvoice.remaining, selectedInvoice.currency)}`
                           : 'Fatura seçilmedi (genel ödeme)'}
                       </Text>
-                      <Text style={{ fontSize: 10, color: DS.ink[400] }}>▼</Text>
+                      <Text style={{ fontSize: 10, color: isDark ? (T.ink3 as string) : DS.ink[400] }}>▼</Text>
                     </Pressable>
                     {invoiceOpen && (
                       <View style={{
                         position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4,
-                        backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[200],
+                        backgroundColor: isDark ? T.card : '#FFF', borderWidth: 1, borderColor: isDark ? T.hairline : DS.ink[200],
                         borderRadius: 10, maxHeight: 260, overflow: 'hidden', zIndex: 100,
                         ...(Platform.OS === 'web' ? { boxShadow: '0 12px 32px rgba(0,0,0,0.18)' } as any : { elevation: 12 }),
                       }}>
                         <ScrollView style={{ maxHeight: 260 }}>
                           <Pressable
                             onPress={() => { setInvoiceId(null); setInvoiceOpen(false); }}
-                            style={{ paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: DS.ink[100] }}
+                            style={{ paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: isDark ? T.hairline : DS.ink[100] }}
                           >
-                            <Text style={{ fontSize: 12, color: invoiceId === null ? TH.primary : DS.ink[800] }}>
+                            <Text style={{ fontSize: 12, color: invoiceId === null ? TH.primary : (isDark ? (T.ink2 as string) : DS.ink[800]) }}>
                               Fatura seçme (genel ödeme)
                             </Text>
                           </Pressable>
                           {invoices.length === 0 ? (
                             <View style={{ padding: 14 }}>
-                              <Text style={{ fontSize: 11, color: DS.ink[400] }}>Açık fatura yok.</Text>
+                              <Text style={{ fontSize: 11, color: isDark ? (T.ink3 as string) : DS.ink[400] }}>Açık fatura yok.</Text>
                             </View>
                           ) : invoices.map((inv, i) => {
                             const active = inv.id === invoiceId;
@@ -287,26 +293,26 @@ export function SubmitPaymentModal({
                                 style={{
                                   paddingHorizontal: 12, paddingVertical: 10,
                                   borderBottomWidth: i < invoices.length - 1 ? 1 : 0,
-                                  borderBottomColor: DS.ink[100],
-                                  backgroundColor: active ? TH.bgSoft : '#FFF',
+                                  borderBottomColor: isDark ? T.hairline : DS.ink[100],
+                                  backgroundColor: active ? (isDark ? T.cardSoft : TH.bgSoft) : (isDark ? T.card : '#FFF'),
                                 }}
                               >
                                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                                  <Text style={{ fontSize: 12, fontWeight: '600', color: active ? TH.primary : DS.ink[900] }} numberOfLines={1}>
+                                  <Text style={{ fontSize: 12, fontWeight: '600', color: active ? TH.primary : (isDark ? T.ink : DS.ink[900]) }} numberOfLines={1}>
                                     Fatura {inv.invoice_no ?? '—'}
                                   </Text>
-                                  <Text style={{ ...DISPLAY, fontSize: 14, color: inv.days_overdue > 0 ? '#9C2E2E' : DS.ink[900] }}>
+                                  <Text style={{ ...DISPLAY, fontSize: 14, color: inv.days_overdue > 0 ? '#9C2E2E' : (isDark ? T.ink : DS.ink[900]) }}>
                                     {M(inv.remaining, inv.currency)}
                                   </Text>
                                 </View>
                                 {!!inv.patient_name && (
-                                  <Text style={{ fontSize: 10.5, color: DS.ink[700], marginTop: 2 }} numberOfLines={1}>
+                                  <Text style={{ fontSize: 10.5, color: isDark ? (T.ink2 as string) : DS.ink[700], marginTop: 2 }} numberOfLines={1}>
                                     {[inv.patient_name, inv.order_no].filter(Boolean).join(' · ')}
                                   </Text>
                                 )}
-                                <Text style={{ fontSize: 10, color: inv.days_overdue > 0 ? '#9C2E2E' : DS.ink[500], marginTop: 2 }}>
+                                <Text style={{ fontSize: 10, color: inv.days_overdue > 0 ? '#9C2E2E' : (isDark ? (T.ink3 as string) : DS.ink[500]), marginTop: 2 }}>
                                   Vade {fmtDate(inv.due_date)}
-                                  {inv.days_overdue > 0 ? ` · ${inv.days_overdue} gün gecikme` : ''}
+                                  {inv.days_overdue > 0 ? ` · ${inv.days_overdue} ${autoT('gün gecikme')}` : ''}
                                 </Text>
                               </Pressable>
                             );
@@ -323,20 +329,20 @@ export function SubmitPaymentModal({
                     <FormSection label={`Tutar (${baseSymbol()})`}>
                       <View style={{
                         flexDirection: 'row', alignItems: 'center', gap: 6,
-                        borderWidth: 1, borderColor: parsedAmount > 0 ? TH.primary : DS.ink[200],
+                        borderWidth: 1, borderColor: parsedAmount > 0 ? TH.primary : (isDark ? T.hairline : DS.ink[200]),
                         borderRadius: 10, paddingHorizontal: 12,
-                        backgroundColor: '#FFF',
+                        backgroundColor: isDark ? T.cardSoft : '#FFF',
                       }}>
-                        <Text style={{ fontSize: 16, color: DS.ink[400], fontWeight: '500' }}>{baseSymbol()}</Text>
+                        <Text style={{ fontSize: 16, color: isDark ? (T.ink3 as string) : DS.ink[400], fontWeight: '500' }}>{baseSymbol()}</Text>
                         <TextInput
                           value={amount}
                           onChangeText={setAmount}
                           keyboardType="decimal-pad"
                           placeholder="0,00"
-                          placeholderTextColor={DS.ink[300]}
+                          placeholderTextColor={isDark ? (T.ink3 as string) : DS.ink[300]}
                           style={{
                             flex: 1, fontSize: 16, fontWeight: '500',
-                            color: DS.ink[900], paddingVertical: 9,
+                            color: isDark ? T.ink : DS.ink[900], paddingVertical: 9,
                             outlineStyle: 'none' as any,
                           }}
                         />
@@ -358,10 +364,10 @@ export function SubmitPaymentModal({
 
                 {/* ─── Havale/EFT bilgileri ─── */}
                 {(method === 'havale' || method === 'eft' || method === 'cek') && (
-                  <View style={{ gap: 14, padding: 14, backgroundColor: DS.ink[50], borderRadius: 12, borderWidth: 1, borderColor: DS.ink[200] }}>
+                  <View style={{ gap: 14, padding: 14, backgroundColor: isDark ? T.cardSoft : DS.ink[50], borderRadius: 12, borderWidth: 1, borderColor: isDark ? T.hairline : DS.ink[200] }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Hash size={11} color={DS.ink[500]} />
-                      <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: DS.ink[500] }}>
+                      <Hash size={11} color={isDark ? (T.ink3 as string) : DS.ink[500]} />
+                      <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: isDark ? (T.ink3 as string) : DS.ink[500] }}>
                         {method === 'cek' ? 'Çek Bilgileri' : 'Dekont Bilgileri'}
                       </Text>
                     </View>
@@ -381,7 +387,7 @@ export function SubmitPaymentModal({
                           value={bankName}
                           onChange={setBankName}
                           placeholder="ÖRN: İş Bankası"
-                          leftIcon={<Building2 size={13} color={DS.ink[400]} />}
+                          leftIcon={<Building2 size={13} color={isDark ? (T.ink3 as string) : DS.ink[400]} />}
                         />
                       </View>
                       <View style={{ flex: 1, minWidth: 180 }}>
@@ -390,7 +396,7 @@ export function SubmitPaymentModal({
                           value={senderName}
                           onChange={setSenderName}
                           placeholder="Gönderici isim / firma"
-                          leftIcon={<UserIcon size={13} color={DS.ink[400]} />}
+                          leftIcon={<UserIcon size={13} color={isDark ? (T.ink3 as string) : DS.ink[400]} />}
                         />
                       </View>
                     </View>
@@ -403,14 +409,14 @@ export function SubmitPaymentModal({
                     value={notes}
                     onChangeText={setNotes}
                     placeholder="Eklemek istediğiniz açıklama"
-                    placeholderTextColor={DS.ink[300]}
+                    placeholderTextColor={isDark ? (T.ink3 as string) : DS.ink[300]}
                     multiline
                     style={{
-                      borderWidth: 1, borderColor: DS.ink[200], borderRadius: 10,
+                      borderWidth: 1, borderColor: isDark ? T.hairline : DS.ink[200], borderRadius: 10,
                       paddingHorizontal: 12, paddingVertical: 10,
-                      fontSize: 13, color: DS.ink[900], minHeight: 64,
+                      fontSize: 13, color: isDark ? T.ink : DS.ink[900], minHeight: 64,
                       textAlignVertical: 'top',
-                      backgroundColor: '#FFF',
+                      backgroundColor: isDark ? T.cardSoft : '#FFF',
                       outlineStyle: 'none' as any,
                     }}
                   />
@@ -435,10 +441,10 @@ export function SubmitPaymentModal({
           {!success && (
             <View style={{
               paddingHorizontal: 22, paddingVertical: 14,
-              borderTopWidth: 1, borderTopColor: DS.ink[100],
+              borderTopWidth: 1, borderTopColor: isDark ? T.hairline : DS.ink[100],
               flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10,
             }}>
-              <Text style={{ fontSize: 11, color: DS.ink[500] }}>
+              <Text style={{ fontSize: 11, color: isDark ? (T.ink3 as string) : DS.ink[500] }}>
                 * Zorunlu alan
               </Text>
               <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -467,9 +473,11 @@ export function SubmitPaymentModal({
 /* ──────── form helpers ──────── */
 
 function FormSection({ label, children }: { label: string; children: React.ReactNode }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <View style={{ gap: 6 }}>
-      <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: DS.ink[500] }}>
+      <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: isDark ? (T.ink3 as string) : DS.ink[500] }}>
         {label}
       </Text>
       {children}
@@ -484,25 +492,27 @@ function FormField({
   placeholder?: string; required?: boolean; leftIcon?: React.ReactNode;
 }) {
   const TH = usePanelTheme();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <View style={{ gap: 4 }}>
-      <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.4, color: DS.ink[500] }}>
+      <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.4, color: isDark ? (T.ink3 as string) : DS.ink[500] }}>
         {label}
       </Text>
       <View style={{
         flexDirection: 'row', alignItems: 'center', gap: 6,
-        borderWidth: 1, borderColor: required && !value.trim() ? 'rgba(217,75,75,0.40)' : DS.ink[200],
+        borderWidth: 1, borderColor: required && !value.trim() ? 'rgba(217,75,75,0.40)' : (isDark ? T.hairline : DS.ink[200]),
         borderRadius: 10, paddingHorizontal: 10,
-        backgroundColor: '#FFF',
+        backgroundColor: isDark ? T.cardSoft : '#FFF',
       }}>
         {leftIcon}
         <TextInput
           value={value}
           onChangeText={onChange}
           placeholder={placeholder}
-          placeholderTextColor={DS.ink[300]}
+          placeholderTextColor={isDark ? (T.ink3 as string) : DS.ink[300]}
           style={{
-            flex: 1, fontSize: 13, color: DS.ink[900], paddingVertical: 9,
+            flex: 1, fontSize: 13, color: isDark ? T.ink : DS.ink[900], paddingVertical: 9,
             outlineStyle: 'none' as any,
           }}
         />

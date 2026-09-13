@@ -5,7 +5,7 @@
  */
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, ActivityIndicator, Platform } from 'react-native';
-import { Link2, Copy, Check, X, Clock, ToggleLeft, ToggleRight, Ticket, Building2 } from 'lucide-react-native';
+import { Link2, Copy, Check, X, Clock, ToggleLeft, ToggleRight, Ticket, Building2 } from '../../../core/ui/icons';
 import { ResponsiveCanvas } from '../../../core/layout/ResponsiveCanvas';
 import {
   labCreateInvite, labPublicCode, labSetAutoApprove, labApproveClinic, labRejectClinic,

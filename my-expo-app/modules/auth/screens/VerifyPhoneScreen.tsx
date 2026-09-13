@@ -8,7 +8,7 @@ import {
   View, Text, Pressable, TextInput, Platform, Animated,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Smartphone, AlertCircle, RefreshCw } from 'lucide-react-native';
+import { Smartphone, AlertCircle, RefreshCw } from '../../../core/ui/icons';
 import { AuthShell, AuthButton, AUTH, AUTH_FONT } from '../components/AuthShell';
 
 const OTP_LENGTH = 4;

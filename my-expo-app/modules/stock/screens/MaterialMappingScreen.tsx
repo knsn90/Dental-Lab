@@ -21,10 +21,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View, Text, Pressable, ActivityIndicator, Platform, useWindowDimensions } from 'react-native';
 import { useRouter, useSegments } from 'expo-router';
 import { safeBack } from '../../../core/util/safeBack';
-import { Check, ChevronDown, Inbox, Link2, RefreshCw, Sparkles, X } from 'lucide-react-native';
+import { Check, ChevronDown, Inbox, Link2, RefreshCw, Sparkles, X } from '../../../core/ui/icons';
 import { ResponsiveCanvas } from '../../../core/layout/ResponsiveCanvas';
 import { groupByCategory, CategoryHeaderRow } from '../categoryGroup';
 import { DS } from '../../../core/theme/dsTokens';
+import { useStockUI } from '../stockTheme';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { toast } from '../../../core/ui/Toast';
 import {
   SecHeader, MiniStat, TabPill, SearchField, ProgressRail, ListHeader,
@@ -50,6 +53,7 @@ type SaveState = 'saved' | 'error';
 const PAGE = 80;
 
 export function MaterialMappingScreen({ accentColor = DS.lab.primary, embedded = false }: Props) {
+  const U = useStockUI();
   const router   = useRouter();
   const segments = useSegments();
   const panel    = (segments?.[0] as string) ?? '(lab)';
@@ -187,27 +191,27 @@ export function MaterialMappingScreen({ accentColor = DS.lab.primary, embedded =
       <View style={[cardStyle, { paddingHorizontal: 18, paddingVertical: 14, marginBottom: 16 }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: isNarrow ? 18 : 28, flexWrap: 'wrap' }}>
           <MiniStat value={mappedCount} label="Bağlı"
-                    color={mappedCount > 0 ? DS.lab.success : DS.ink[400]} />
+                    color={mappedCount > 0 ? DS.lab.success : U.ink[400]} />
           <MiniStat value={missingCount} label="Eksik"
-                    color={missingCount > 0 ? DS.lab.warning : DS.ink[400]} />
+                    color={missingCount > 0 ? DS.lab.warning : U.ink[400]} />
           <MiniStat value={pending.length} label="Değişiklik"
-                    color={pending.length > 0 ? accentColor : DS.ink[400]} />
+                    color={pending.length > 0 ? accentColor : U.ink[400]} />
 
           {isNarrow ? null : <View style={{ flex: 1, minWidth: 0 }} />}
 
           <MiniStat value={`%${pct}`} label="Tamamlandı"
-                    color={pct === 100 ? DS.lab.success : DS.ink[900]} />
+                    color={pct === 100 ? DS.lab.success : U.ink[900]} />
 
           <Pressable
             onPress={load}
             style={({ pressed }) => ({
               width: 30, height: 30, borderRadius: 999,
               alignItems: 'center', justifyContent: 'center',
-              backgroundColor: 'rgba(0,0,0,0.05)',
+              backgroundColor: U.chipNeutral,
               opacity: pressed ? 0.6 : 1, ...webCursor,
             })}
           >
-            <RefreshCw size={13} color={DS.ink[500]} strokeWidth={1.8} />
+            <RefreshCw size={13} color={U.ink[500]} strokeWidth={1.8} />
           </Pressable>
         </View>
 
@@ -241,8 +245,8 @@ export function MaterialMappingScreen({ accentColor = DS.lab.primary, embedded =
         <EmptyCard icon={Inbox} title={query ? 'Aramayla eşleşen ürün yok' : 'Bu filtrede kalem yok'} />
       ) : (
         <View style={{
-          backgroundColor: DS.lab.surface, borderRadius: 18,
-          borderWidth: 1, borderColor: DS.ink[200], overflow: 'hidden',
+          backgroundColor: U.surface, borderRadius: 18,
+          borderWidth: 1, borderColor: U.ink[200], overflow: 'hidden',
         }}>
           {/* Kolon başlığı yalnız gerçekten kolon varken anlamlı. */}
           {isNarrow ? null : (
@@ -268,8 +272,8 @@ export function MaterialMappingScreen({ accentColor = DS.lab.primary, embedded =
             const fl      = saveFlash[id];
 
             const bg = changed ? tint(accentColor, 0.06)
-                     : hovered ? DS.ink[50]
-                     : DS.lab.surface;
+                     : hovered ? U.ink[50]
+                     : U.surface;
 
             return (
               <View key={id}>
@@ -280,7 +284,7 @@ export function MaterialMappingScreen({ accentColor = DS.lab.primary, embedded =
                   style={{
                     backgroundColor: bg,
                     borderTopWidth: i === 0 ? 0 : 1,
-                    borderTopColor: DS.ink[100],
+                    borderTopColor: U.ink[100],
                     borderStartWidth: 2,
                     borderStartColor: changed ? accentColor : 'transparent',
                     paddingStart: 16, paddingEnd: 16,
@@ -295,21 +299,21 @@ export function MaterialMappingScreen({ accentColor = DS.lab.primary, embedded =
                     <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
                       <Text numberOfLines={isNarrow ? 2 : 1} style={{
                         fontSize: isNarrow ? 15 : 14, fontWeight: '600',
-                        letterSpacing: -0.2, color: DS.ink[900],
+                        letterSpacing: -0.2, color: U.ink[900],
                         lineHeight: isNarrow ? 20 : undefined,
                       }}>
                         {r.stock_item_name}
                       </Text>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                         {r.category ? (
-                          <Text numberOfLines={1} style={{ fontSize: 12, color: DS.ink[500] }}>
+                          <Text numberOfLines={1} style={{ fontSize: 12, color: U.ink[500] }}>
                             {r.category}
                           </Text>
                         ) : null}
                         {r.unit ? (
                           <Text style={{
                             fontSize: 10, letterSpacing: 0.5, textTransform: 'uppercase',
-                            color: DS.ink[400],
+                            color: U.ink[400],
                           }}>
                             {r.unit}
                           </Text>
@@ -337,7 +341,7 @@ export function MaterialMappingScreen({ accentColor = DS.lab.primary, embedded =
                           paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
                           backgroundColor: tint(accentColor, 0.14),
                         }}>
-                          <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[800] }}>
+                          <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[800] }}>
                             Değişti
                           </Text>
                         </View>
@@ -362,18 +366,18 @@ export function MaterialMappingScreen({ accentColor = DS.lab.primary, embedded =
                         paddingVertical: isNarrow ? 11 : 6,
                         borderRadius: 999,
                         borderWidth: 1,
-                        borderColor: mat ? tint(accentColor, 0.32) : DS.ink[300],
+                        borderColor: mat ? tint(accentColor, 0.32) : U.ink[300],
                         backgroundColor: mat ? tint(accentColor, 0.10) : 'transparent',
                       }}>
-                        <Link2 size={isNarrow ? 13 : 11} color={mat ? DS.ink[800] : DS.ink[400]} strokeWidth={1.8} />
+                        <Link2 size={isNarrow ? 13 : 11} color={mat ? U.ink[800] : U.ink[400]} strokeWidth={1.8} />
                         <Text numberOfLines={1} style={{
                           fontSize: isNarrow ? 13.5 : 12, fontWeight: '500',
                           ...(isNarrow ? { flex: 1 } : { flexShrink: 1 }),
-                          color: mat ? DS.ink[800] : DS.ink[400],
+                          color: mat ? U.ink[800] : U.ink[400],
                         }}>
                           {mat ? mat.name : 'Bağlanmadı'}
                         </Text>
-                        <ChevronDown size={isNarrow ? 14 : 11} color={DS.ink[400]} strokeWidth={1.8} />
+                        <ChevronDown size={isNarrow ? 14 : 11} color={U.ink[400]} strokeWidth={1.8} />
                       </View>
                     </View>
                   </View>
@@ -383,8 +387,8 @@ export function MaterialMappingScreen({ accentColor = DS.lab.primary, embedded =
                 {open ? (
                   <View style={{
                     paddingHorizontal: 18, paddingTop: 4, paddingBottom: 14,
-                    backgroundColor: DS.ink[50],
-                    borderTopWidth: 1, borderTopColor: DS.ink[100],
+                    backgroundColor: U.ink[50],
+                    borderTopWidth: 1, borderTopColor: U.ink[100],
                   }}>
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                       <Pressable
@@ -394,12 +398,12 @@ export function MaterialMappingScreen({ accentColor = DS.lab.primary, embedded =
                           paddingHorizontal: 14,
                           paddingVertical: isNarrow ? 9 : 6,
                           borderRadius: 999,
-                          borderWidth: 1, borderColor: DS.ink[300],
+                          borderWidth: 1, borderColor: U.ink[300],
                           opacity: pressed ? 0.7 : 1, ...webCursor,
                         })}
                       >
-                        <X size={10} color={DS.ink[500]} strokeWidth={2} />
-                        <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[800] }}>
+                        <X size={10} color={U.ink[500]} strokeWidth={2} />
+                        <Text style={{ fontSize: 12, fontWeight: '500', color: U.ink[800] }}>
                           Bağı kaldır
                         </Text>
                       </Pressable>
@@ -413,12 +417,12 @@ export function MaterialMappingScreen({ accentColor = DS.lab.primary, embedded =
                               paddingHorizontal: 14,
                               paddingVertical: isNarrow ? 9 : 6,
                               borderRadius: 999,
-                              backgroundColor: on ? DS.ink[900] : 'rgba(0,0,0,0.05)',
+                              backgroundColor: on ? U.ink[900] : U.hairline,
                               opacity: pressed ? 0.7 : 1, ...webCursor,
                             })}
                           >
                             <Text style={{
-                              fontSize: 12, fontWeight: '500', color: on ? '#FFF' : DS.ink[800],
+                              fontSize: 12, fontWeight: '500', color: on ? U.onDarkPill : U.ink[800],
                             }}>
                               {m.name}
                             </Text>
@@ -442,7 +446,7 @@ export function MaterialMappingScreen({ accentColor = DS.lab.primary, embedded =
         gap: 14, marginTop: 16, marginBottom: 32,
       }}>
         {pending.length > 0 ? (
-          <Text style={{ fontSize: 12, color: DS.ink[500] }}>
+          <Text style={{ fontSize: 12, color: U.ink[500] }}>
             {pending.length} kalem güncellenecek
           </Text>
         ) : null}
@@ -452,7 +456,7 @@ export function MaterialMappingScreen({ accentColor = DS.lab.primary, embedded =
           style={({ pressed }) => ({
             flexDirection: 'row', alignItems: 'center', gap: 8,
             paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999,
-            backgroundColor: DS.ink[900],
+            backgroundColor: U.ink[900],
             opacity: !pending.length || saving ? 0.35 : pressed ? 0.85 : 1,
             ...(Platform.OS === 'web'
               ? ({ cursor: !pending.length ? 'not-allowed' : 'pointer' } as any)
@@ -460,7 +464,7 @@ export function MaterialMappingScreen({ accentColor = DS.lab.primary, embedded =
           })}
         >
           {saving
-            ? <ActivityIndicator size="small" color="#FFF" />
+            ? <ActivityIndicator size="small" color={U.onDarkPill} />
             : <Check size={14} color="#FFF" strokeWidth={2.2} />}
           <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFF' }}>
             {saving ? 'Kaydediliyor…' : 'Eşleştirmeleri onayla'}

@@ -15,7 +15,7 @@ let createPortal: ((children: React.ReactNode, container: Element) => React.Reac
 if (Platform.OS === 'web') {
   try { createPortal = require('react-dom').createPortal; } catch {}
 }
-import { ArrowLeft, ArrowRight, Check, Loader, X, CloudUpload, MessageCircle, Printer } from 'lucide-react-native';
+import { ArrowLeft, ArrowRight, Check, Loader, X, CloudUpload, MessageCircle, Printer } from '../../../core/ui/icons';
 import { useNOTokens } from './NOTokens';
 import { NOActionBar, NOActionBarProps } from './NOActionBar';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
@@ -181,11 +181,11 @@ export function NOPageChrome({
             paddingHorizontal: 16,
             // Buttons row at top:8, height 44 → reserve ~60px so title clears.
             paddingTop: 60,
-            // Mobile: footer inline render edildiği için extra paddingBottom YOK.
-            // Desktop: floating button için 96px safe-zone.
-            paddingBottom: width < PANEL_BREAKPOINT
-              ? 0
-              : insets.bottom + 96,
+            // Floating buton için güvenli alanı ADIMIN KENDİ listesi bırakır
+            // (her adımın ScrollView'ında paddingBottom: 96). Burada bir kez daha
+            // bırakmak scroll alanını kısaltıyor ve formun altında kaydırılamayan
+            // ~96px'lik boş bir şerit oluşturuyordu.
+            paddingBottom: insets.bottom,
           }}>
             {children}
           </View>
@@ -336,18 +336,21 @@ export function NOPageChrome({
               // Dark mode "dark" variant: navbar-style translucent liquid glass
               // (clear effect + low-alpha tint) — buton kart üstünde cam disc gibi durur.
               const isDarkVariant = actionPrimary === 'dark';
+              // Koyu temada eskiden krem METİN + krem-tint CAM (alfa .22) vardı:
+              // ikisi neredeyse aynı renk olduğu için birincil CTA solgun/okunmaz
+              // görünüyordu. Birincil aksiyon belirgin olmalı → DOLU krem zemin +
+              // KOYU metin (ink[900] koyuda kremleştiği için içerik ters çevrilir).
               const primaryColor =
                 actionPrimary === 'success' ? NO.success
                 : actionPrimary === 'saffron' ? NO.saffron
                 : isDark
-                  ? 'rgba(247,242,233,0.22)'  // dark mode: translucent ivory glass tint
+                  ? '#F7F2E9'
                   : '#0A0A0A';
               const textColor =
                 actionPrimary === 'saffron' ? '#0A0A0A'
-                : (isDarkVariant && isDark) ? '#F7F2E9'  // dark mode glass: ivory text
+                : (isDarkVariant && isDark) ? '#141312'
                 : '#FFFFFF';
-              const glassEffect: 'clear' | 'regular' =
-                (isDarkVariant && isDark) ? 'clear' : 'regular';
+              const glassEffect: 'clear' | 'regular' = 'regular';
               const iconNode = loading
                 ? <Loader size={14} color={textColor} strokeWidth={2} />
                 : (actionPrimary === 'success'

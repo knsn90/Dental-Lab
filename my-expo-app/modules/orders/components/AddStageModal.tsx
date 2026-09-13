@@ -4,7 +4,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, Modal, Platform, ActivityIndicator } from 'react-native';
-import { X, Plus, Check } from 'lucide-react-native';
+import { X, Plus, Check } from '../../../core/ui/icons';
 import { supabase } from '../../../core/api/supabase';
 import { toast } from '../../../core/ui/Toast';
 import { addOrderStage } from '../api';

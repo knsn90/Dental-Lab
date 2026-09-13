@@ -21,7 +21,8 @@ import { supabase } from '../api/supabase';
 export type NotificationCategory =
   | 'new_order'    | 'order_status'    | 'chat'      | 'approval'
   | 'payment'      | 'stock'           | 'delivery'  | 'paper_order'
-  | 'material_request' | 'order_watch' | 'stage_critical' | 'stock_count';
+  | 'material_request' | 'order_watch' | 'stage_critical' | 'stock_count'
+  | 'implant_parts' | 'scan_annotation';
 
 export type NotificationChannel = 'in_app' | 'browser_push' | 'email' | 'whatsapp';
 
@@ -53,6 +54,12 @@ const DEFAULT_PREFS: NotificationPrefs = {
     delivery:     { in_app: true,  browser_push: false, email: true,  whatsapp: false },
     paper_order:  { in_app: true,  browser_push: true,  email: false, whatsapp: false },
     material_request: { in_app: true, browser_push: true,  email: false, whatsapp: false },
+    // İmplant parçaları (scan body, dijital analog …) — klinik aksiyon alacak:
+    // talep maili gider, diğer adımlar yalnız uygulama içi.
+    implant_parts: { in_app: true, browser_push: true, email: true, whatsapp: false },
+    // Tarama üzerine 3D kalem notu — karşı taraf için aksiyon işareti, ama
+    // yazışma temposunda geliyor: uygulama içi + push, mail YOK (gürültü).
+    scan_annotation: { in_app: true, browser_push: true, email: false, whatsapp: false },
     // Günlük geciken + beklemedeki iş digest'i (yalnız admin/lab-manager alır) — önemli: in-app + push + email açık, whatsapp opt-in.
     order_watch:  { in_app: true,  browser_push: true,  email: true,  whatsapp: false },
     // Kritik aşama tamamlandı (hekim/klinik/müdür/admin) — önemli kilometre taşı: in-app + push + email açık.

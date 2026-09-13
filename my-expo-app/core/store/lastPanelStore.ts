@@ -29,6 +29,9 @@ interface LastPanelState {
   hydrated: boolean;
   hydrate: () => Promise<void>;
   setPanel: (p: PanelKey) => void;
+  /** Çıkışta çağrılır — bir sonraki (farklı hesap) girişinde bayat panele
+   *  optimistik yönlendirmeyi ve onu izleyen self-heal döngüsünü önler. */
+  clear: () => void;
 }
 
 export const useLastPanelStore = create<LastPanelState>((set) => ({
@@ -48,5 +51,9 @@ export const useLastPanelStore = create<LastPanelState>((set) => ({
   setPanel: (p) => {
     set({ panel: p });
     AsyncStorage.setItem(STORAGE_KEY, p).catch(() => {});
+  },
+  clear: () => {
+    set({ panel: null });
+    AsyncStorage.removeItem(STORAGE_KEY).catch(() => {});
   },
 }));

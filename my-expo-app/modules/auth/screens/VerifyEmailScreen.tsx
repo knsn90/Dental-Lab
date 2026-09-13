@@ -9,7 +9,7 @@ import {
   View, Text, Pressable, TextInput, Platform, Animated,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Mail, AlertCircle, RefreshCw, CheckCircle2 } from 'lucide-react-native';
+import { Mail, AlertCircle, RefreshCw, CheckCircle2 } from '../../../core/ui/icons';
 import { AuthShell, AuthButton, AUTH, AUTH_FONT } from '../components/AuthShell';
 import { supabase } from '../../../core/api/supabase';
 

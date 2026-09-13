@@ -9,7 +9,7 @@
  */
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { View, Text, TextInput as RNTextInput, Pressable, ActivityIndicator, Platform } from 'react-native';
-import { Building2, MapPin, Search } from 'lucide-react-native';
+import { Building2, MapPin, Search } from '../../../core/ui/icons';
 import { AUTH, AUTH_FONT } from './AuthShell';
 import { searchPlaces, getPlaceDetails, startPlaceSession, PlaceSuggestion, PlaceDetails } from '../api/places';
 

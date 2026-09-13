@@ -9,7 +9,7 @@ import React from 'react';
 import { View, Text, ScrollView, Pressable } from 'react-native';
 import { Svg, Path, Circle } from 'react-native-svg';
 import { DS } from '../../../core/theme/dsTokens';
-import { Bell, ArrowUpRight, Play, Pause, Square } from 'lucide-react-native';
+import { Bell, ArrowUpRight, Play, Pause, Square } from '../../../core/ui/icons';
 
 const T = DS.lab;
 const DISPLAY = { fontFamily: 'Inter Tight, Inter, system-ui, sans-serif' as const, fontWeight: '300' as const };

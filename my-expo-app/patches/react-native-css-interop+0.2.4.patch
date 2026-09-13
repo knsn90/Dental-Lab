@@ -50,3 +50,42 @@ index bf095a5..45aadba 100644
      if (aspectRatio.ratio[0] === aspectRatio.ratio[1]) {
        return 1;
      } else {
+diff --git a/node_modules/react-native-css-interop/dist/runtime/native/native-interop.js b/node_modules/react-native-css-interop/dist/runtime/native/native-interop.js
+index 254b7ba..b51acf4 100644
+--- a/node_modules/react-native-css-interop/dist/runtime/native/native-interop.js
++++ b/node_modules/react-native-css-interop/dist/runtime/native/native-interop.js
+@@ -13,7 +13,15 @@ const styles_1 = require("./styles");
+ function interop(component, configs, originalProps, ref) {
+     const inheritedVariables = (0, react_1.useContext)(styles_1.VariableContext);
+     const inheritedContainers = (0, react_1.useContext)(globals_1.containerContext);
++    // [siman-patch] Pressable'ın fonksiyon stili ({ pressed, hovered }) => ({...})
++    // inline "kural" olarak toplanıp applyRules'ta `{ ...declaration }` ile yayılıyor,
++    // fonksiyon yayılınca `{}` oluyor ve nihai props'ta orijinal stili EZİYORDU →
++    // native'de her fonksiyon-stilli Pressable zemini/kenarlığı/row düzenini kaybediyordu.
++    // Fonksiyonu hesaplama yolundan ayır, render'da hesaplanan stille birleştir.
++    const styleFn = typeof originalProps?.style === "function" ? originalProps.style : undefined;
+     const props = { ...originalProps };
++    if (styleFn)
++        delete props.style;
+     const sharedState = (0, react_1.useState)({
+         initialRender: true,
+         originalProps,
+@@ -168,7 +176,17 @@ function interop(component, configs, originalProps, ref) {
+     }, []);
+     sharedState.originalProps = originalProps;
+     sharedState.initialRender = false;
+-    return (0, render_component_1.renderComponent)(component, sharedState, { ref, ...props, ...memoOutput.handlers }, memoOutput.possiblyAnimatedProps, variables, containers);
++    let outputProps = memoOutput.possiblyAnimatedProps;
++    if (styleFn) {
++        const computed = outputProps.style;
++        outputProps = {
++            ...outputProps,
++            style: computed && !sharedState.animated
++                ? (interactionState) => [computed, styleFn(interactionState)]
++                : sharedState.animated ? computed : styleFn,
++        };
++    }
++    return (0, render_component_1.renderComponent)(component, sharedState, { ref, ...props, ...memoOutput.handlers }, outputProps, variables, containers);
+ }
+ function initReducer({ dispatch, config, reducer, className, }) {
+     return reducer({

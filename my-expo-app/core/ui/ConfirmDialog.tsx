@@ -32,10 +32,12 @@
  */
 import React from 'react';
 import { View, Text, Pressable, Modal, Platform } from 'react-native';
-import { AlertCircle, AlertTriangle, Info } from 'lucide-react-native';
+import { AlertCircle, AlertTriangle, Info } from './icons';
 
 import { DS } from '../theme/dsTokens';
 import { MODAL_BACKDROP_COLOR, MODAL_OVERLAY_WEB } from './ModalBackdrop';
+import { useMobileTokens } from '../theme/mobileDesignTokens';
+import { useThemeModeStore } from '../store/themeModeStore';
 
 const DISPLAY = {
   fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
@@ -75,6 +77,8 @@ export function ConfirmDialog({
   state: ConfirmState | null;
   onClose: () => void;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const tone = state ? VARIANT_TONES[state.variant] : VARIANT_TONES.danger;
   const Icon = state ? VARIANT_ICON[state.variant] : AlertCircle;
   const confirmLabel = state?.label ?? (state?.variant === 'danger' ? 'Evet, sil' : 'Onayla');
@@ -98,10 +102,10 @@ export function ConfirmDialog({
             onStartShouldSetResponder={() => true}
             style={{
               width: '100%', maxWidth: 480,
-              backgroundColor: '#FFFFFF',
+              backgroundColor: isDark ? T.card : '#FFFFFF',
               borderRadius: 24,
               paddingHorizontal: 28, paddingTop: 28, paddingBottom: 22,
-              borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
+              borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.05)',
               ...Platform.select({
                 web:     { boxShadow: '0 24px 80px rgba(0,0,0,0.18)' },
                 default: { shadowColor: '#000', shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.16, shadowRadius: 48, elevation: 12 },
@@ -119,15 +123,15 @@ export function ConfirmDialog({
             </View>
 
             {/* Title */}
-            <Text style={{ ...DISPLAY, fontSize: 26, lineHeight: 30, letterSpacing: -0.6, color: DS.ink[900] }}>
+            <Text style={{ ...DISPLAY, fontSize: 26, lineHeight: 30, letterSpacing: -0.6, color: isDark ? T.ink : DS.ink[900] }}>
               {state.title}
             </Text>
 
             {/* Message — highlight (bold) + body (gray) */}
-            <Text style={{ fontSize: 14, lineHeight: 21, color: DS.ink[500], marginTop: 8 }}>
+            <Text style={{ fontSize: 14, lineHeight: 21, color: isDark ? T.ink3 : DS.ink[500], marginTop: 8 }}>
               {state.highlight ? (
                 <>
-                  <Text style={{ fontWeight: '700', color: DS.ink[900] }}>{state.highlight}</Text>
+                  <Text style={{ fontWeight: '700', color: isDark ? T.ink : DS.ink[900] }}>{state.highlight}</Text>
                   {' '}
                 </>
               ) : null}
@@ -144,7 +148,7 @@ export function ConfirmDialog({
                 onPress={onClose}
                 style={{ paddingVertical: 8, paddingHorizontal: 4, cursor: 'pointer' as any }}
               >
-                <Text style={{ fontSize: 14, fontWeight: '500', color: DS.ink[500] }}>{cancelLabel}</Text>
+                <Text style={{ fontSize: 14, fontWeight: '500', color: isDark ? T.ink3 : DS.ink[500] }}>{cancelLabel}</Text>
               </Pressable>
 
               {/* Confirm — dark filled pill */}

@@ -15,7 +15,7 @@ import {
   Search, X, Paperclip, Mic, Play, Pin, CheckCheck, Smile,
   UserPlus, Check, Wrench, Stethoscope, Building2, ShieldCheck, UserCog,
   Receipt, Truck, Sparkles, Headphones, GraduationCap, Calendar,
-} from 'lucide-react-native';
+} from '../../core/ui/icons';
 import { DatePicker } from '../../core/ui/DatePicker';
 import PatternsMobileScreen from './patterns-mobile';
 

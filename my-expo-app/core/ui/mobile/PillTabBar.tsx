@@ -1,12 +1,20 @@
 // core/ui/mobile/PillTabBar.tsx
-// Adaptive Pill bottom tab bar — Twitter/X & iOS 18 style.
-// Inactive cells: icon-only. Active cell: spring-expands to a pill showing
-// icon + label with a soft accent-tinted background. Single row, no labels
-// under inactive icons. Liquid-glass / blurred container.
+// Floating pill bottom navigation — Apple iOS 26 "liquid glass" dilinde.
+//
+// Kompozisyon (değişmedi):  [ HOME · İŞLER · ONAY · ARA · DAHA ]   ( + )
+// Pasif hücreler ikon-only; aktif hücre spring ile açılıp ikon + etiket
+// gösterir; arkasındaki cam mercek hücreler arasında KAYAR (sıçramaz).
+//
+// Materyal ve geometri bu dosyada SABİT DEĞİL — tek kaynak `navGlass.ts`.
+// Üç platform kolu aynı formülü paylaşır:
+//   • iOS 26+  → @callstack/liquid-glass (gerçek native cam, refraksiyon)
+//   • iOS/Android → expo-blur ultra-thin material + ince tül
+//   • web      → backdrop-filter blur + saturate
+// Scroll farkındalığı `navScroll.ts` üzerinden gelir (bkz. wrap transform).
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
-  View, Text, Pressable, StyleSheet, Platform, Animated, TextInput, Keyboard,
+  View, Text, Pressable, StyleSheet, Platform, Animated, TextInput, Keyboard, Easing,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import {
@@ -16,12 +24,16 @@ import {
 } from '@callstack/liquid-glass';
 import { usePathname, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { LucideIcon } from 'lucide-react-native';
-import { Search, X, CornerDownLeft, CornerDownRight } from 'lucide-react-native';
+import type { LucideIcon } from '../icons';
+import { Search, X, CornerDownLeft, CornerDownRight } from '../icons';
 import { isRTL } from '../../i18n';
 import { autoT } from '../../i18n/autoTranslate';
 import { useThemeModeStore } from '../../store/themeModeStore';
 import { useCommandPalette } from '../../store/commandPaletteStore';
+import { useUiOverlayStore } from '../../store/uiOverlayStore';
+import { NAV, NAV_BAR_H, FAB_DOME, cellHitSlop, edgeSeparation, navGlass, navIndicator, navSurfaceStyle, useReduceTransparency, type NavGlass } from './navGlass';
+import { navCollapse, useNavScrollBridge, resetNavScroll } from './navScroll';
+import { GlassBlurLayer } from './GlassBlurLayer';
 
 export interface PillSearchItem {
   label: string;
@@ -37,7 +49,15 @@ export interface PillTabItem {
   onPress?: () => void;
   /** Numeric badge */
   badgeCount?: number;
+  /**
+   * Bu hücre MoreMenuSheet'in çapasıdır (••• gibi): menü bu hücrenin üstünden
+   * açılır ve açıkken hücre seçili görünür. 'more' routeName'i zaten çapadır;
+   * etiketli hücreler (ör. teknisyen "Talepler") için bu bayrak kullanılır.
+   */
+  menuAnchor?: boolean;
 }
+
+const isMenuAnchor = (it: PillTabItem) => it.routeName === 'more' || !!it.menuAnchor;
 
 interface Props {
   items: PillTabItem[];
@@ -66,8 +86,62 @@ interface Props {
 // iOS 26+ native liquid glass available? (via @callstack/liquid-glass)
 const LIQUID_GLASS = Platform.OS === 'ios' && !!isLiquidGlassSupported;
 
+/**
+ * Aktif mercek en az bu kadar geniş olur. Bar 60pt ve mercek 7pt içeriden
+ * oturduğu için yüksekliği 46: etiketsiz hücrede (••• gibi) mercek TAM DAİRE
+ * olsun diye alt sınır da 46.
+ */
+const INDICATOR_MIN = 46;
+
 /** Sayı rozetinin yatay konumu — `end:` inline stili bu projede güvenilir değil. */
 const badgeSideStyle = () => (isRTL() ? { left: -7 } : { right: -7 });
+
+/**
+ * TopLight — üstten gelen ışık (cam kabarcık hissi).
+ *   web    → tek CSS linear-gradient: gerçek yumuşak geçiş, ekstra View yok
+ *   native → gradient paketi YOK, o yüzden azalan opaklıkta ÜÇ bant
+ *
+ * Neden üç bant: tek bir "yarım yüzey" katmanı %50'de SERT bir çizgi bırakıyor
+ * ve daireyi/pill'i iki tonlu gösteriyordu (ilk denemede FAB tam ortadan
+ * bölünmüş görünüyordu). Üç kademe, kenarı gözle görülmez hâle getiriyor.
+ * pointerEvents none: dokunma her zaman altındaki hücreye gider.
+ */
+const BANDS: Array<[string, number]> = [['22%', 1], ['38%', 0.6], ['56%', 0.3]];
+
+function TopLight({ webGradient, tint, radius = NAV.radius }: { webGradient: string; tint: string; radius?: number }) {
+  if (Platform.OS === 'web') {
+    return (
+      <View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFillObject, { borderRadius: radius, backgroundImage: webGradient } as any]}
+      />
+    );
+  }
+  return (
+    <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { borderRadius: radius, overflow: 'hidden' }]}>
+      {BANDS.map(([h, o]) => (
+        <View key={h} style={{ position: 'absolute', top: 0, left: 0, right: 0, height: h as any, backgroundColor: tint, opacity: o }} />
+      ))}
+    </View>
+  );
+}
+
+/** Bar yüzeyi: üst ışık + üst kenar hairline (cam kenarı). */
+function Specular({ g, radius = NAV.radius }: { g: NavGlass; radius?: number }) {
+  return (
+    <>
+      <TopLight webGradient={g.webSpecular} tint={g.specularWash} radius={radius} />
+      {Platform.OS !== 'web' && (
+        <View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFillObject, { borderRadius: radius, overflow: 'hidden' }]}
+        >
+          <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: g.specularTop }} />
+        </View>
+      )}
+    </>
+  );
+}
 
 export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems, onSearchNavigate, getItemRef }: Props) {
   const pathname = usePathname();
@@ -115,8 +189,26 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
     );
   }, [searchItems, query]);
 
+  // Menü açıkken ••• SEÇİLİ görünür: menü oradan açıldı ama rota değişmedi,
+  // dolayısıyla pathname'den anlaşılamaz. Kayan mercek de oraya kayar.
+  const moreMenuOpen = useUiOverlayStore(st => st.moreMenuOpen);
+
   const activeIdx = (() => {
-    if (pathname === baseRoute || pathname === baseRoute + '/') return 0;
+    if (moreMenuOpen) {
+      const mi = items.findIndex(isMenuAnchor);
+      if (mi >= 0) return mi;
+    }
+    // Grup segmentleri ('/(admin)') URL'de GÖRÜNMEZ: panel kökünde usePathname
+    // '/' döndürürken baseRoute '/(admin)' geliyordu → eşitlik hiç tutmuyor,
+    // hiçbir sekme eşleşmiyor ve fallback "Daha"yı aktif gösteriyordu
+    // (Özet'te bile ••• seçili duruyordu). İki tarafı da normalize et.
+    const norm = (p: string) => (p ?? '').replace(/\/\([^)]*\)/g, '').replace(/\/+$/, '');
+    const path = norm(pathname);
+    const base = norm(baseRoute);
+    if (path === base) {
+      const idx = items.findIndex(it => it.routeName === 'index');
+      return idx >= 0 ? idx : 0;
+    }
     for (let i = 0; i < items.length; i++) {
       if (items[i].onPress) continue;
       const seg = items[i].routeName;
@@ -135,16 +227,46 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
     return moreIdx >= 0 ? moreIdx : 0;
   })();
 
+  // "Daha (•••)" hücresinin ekran-uzayı merkezi — "Tüm Menü" popover'ı buradan
+  // yukarı açılır ve kuyruğunu bu x'e hizalar. Hücre genişliği sekme sayısına
+  // göre değiştiği için (space-evenly) sabit hesap yetmiyor, ÖLÇÜYORUZ.
+  const moreNode = useRef<any>(null);
+  const setMoreAnchorX = useUiOverlayStore(st => st.setMoreAnchorX);
+  const publishMoreAnchor = React.useCallback(() => {
+    const node = moreNode.current;
+    if (!node?.measureInWindow) return;
+    try {
+      node.measureInWindow((x: number, _y: number, w: number) => {
+        if (typeof x === 'number' && w > 0) setMoreAnchorX(x + w / 2);
+      });
+    } catch { /* ölçülemezse menü varsayılan konumu kullanır */ }
+  }, [setMoreAnchorX]);
+
   const handle = (item: PillTabItem) => {
     // Search tab → navbar'ı arama çubuğuna dönüştür (prop verildiyse)
     if (item.routeName === 'search' && searchEnabled) { openSearch(); return; }
+    // Menü açılmadan HEMEN ÖNCE ölç: bar scroll ile geri çekilmiş olabilir,
+    // kuyruk yine •••'nin tam altına düşsün.
+    if (isMenuAnchor(item)) publishMoreAnchor();
     if (item.onPress) { item.onPress(); return; }
     if (item.routeName === 'index') router.push(baseRoute as any);
     else router.push(`${baseRoute}/${item.routeName}` as any);
   };
 
-  const bottomOffset = Math.max(insets.bottom, 8) + 6;
+  // Home indicator ile bar arasında nefes — bar ekranın altına YAPIŞMAZ.
+  const bottomOffset = Math.max(insets.bottom, 8) + 8;
   const accent = accentColor ?? '#32BB78';
+  // İnce materyal (küçük, etkileşimli chrome). Erişilebilirlikte saydamlık
+  // kapalıysa opak yüzeye düşer.
+  const solidGlass = useReduceTransparency();
+  const glass = navGlass(dark, 'thin', solidGlass);
+  const ind = navIndicator(dark, accent);
+
+  // Scroll farkındalığı — web'de tek capture dinleyicisi tüm ekranları kapsar;
+  // native'de ekranlar `useNavScrollProps()` ile besler (bkz. navScroll.ts).
+  useNavScrollBridge();
+  // Rota değişince bar açık başlar (yeni sayfa tepeden açılıyor).
+  useEffect(() => { resetNavScroll(); }, [pathname]);
 
   // ─── WhatsApp-style sliding indicator pill ─────────────────────────────
   // Her hücrenin layout'u (x + width) ölçülür; aktif hücre değişince tek bir
@@ -159,13 +281,17 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
   useEffect(() => {
     const rect = cellRects[activeIdx];
     if (!rect) return;
+    // Gösterge hücrenin MERKEZİNE çapalanır. Eskiden sol kenardan başlayıp
+    // stilde minWidth ile genişletiliyordu; etiketsiz "•••" hücresi 38pt
+    // olduğu için daire 8pt sağa taşıyor ve noktalar merkezden kayıyordu.
+    const w = Math.max(rect.w, INDICATOR_MIN);
     Animated.parallel([
       Animated.spring(indicatorX, {
-        toValue: rect.x, damping: 18, stiffness: 220, mass: 0.9,
+        toValue: rect.x + rect.w / 2 - w / 2, damping: 18, stiffness: 220, mass: 0.9,
         useNativeDriver: false,
       }),
       Animated.spring(indicatorW, {
-        toValue: rect.w, damping: 18, stiffness: 220, mass: 0.9,
+        toValue: w, damping: 18, stiffness: 220, mass: 0.9,
         useNativeDriver: false,
       }),
       Animated.timing(indicatorOpacity, {
@@ -174,7 +300,44 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
     ]).start();
   }, [activeIdx, cellRects, indicatorX, indicatorW, indicatorOpacity]);
 
+  /**
+   * Hücre DOM/host düğümleri — mercek konumunu ölçmek için.
+   *
+   * NEDEN gerekli (web-only hata): react-native-web'de `onLayout`
+   * ResizeObserver ile uygulanıyor → eleman YER DEĞİŞTİRDİĞİNDE tetiklenmiyor,
+   * yalnız BOYUTU değişince. Aktif etiket açılıp kapandığında (space-evenly)
+   * diğer hücreler kayar ama boyutları aynı kalır; onLayout hiç gelmez ve
+   * önbellekteki x bayatlar. Ölçülen sonuç: ••• hücresi 259.5'te, mercek
+   * 275'te — 15.5px sağda. Bu yüzden web'de konumu doğrudan `offsetLeft`
+   * ile okuyoruz (RNW View'ları `position:relative` olduğu için offsetParent
+   * bar'ın kendisi; `left:` ile AYNI referans).
+   */
+  const cellEls = useRef<any[]>([]);
+  const remeasureCells = React.useCallback(() => {
+    if (Platform.OS !== 'web') return;
+    setCellRects(prev => {
+      const next = prev.slice();
+      let changed = false;
+      for (let i = 0; i < cellEls.current.length; i++) {
+        const el = cellEls.current[i];
+        if (!el || typeof el.offsetLeft !== 'number' || !el.offsetWidth) continue;
+        const x = el.offsetLeft;
+        const w = el.offsetWidth;
+        const cur = next[i];
+        if (!cur || Math.abs(cur.x - x) > 0.5 || Math.abs(cur.w - w) > 0.5) {
+          next[i] = { x, w };
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, []);
+
   const handleCellLayout = (idx: number) => (e: any) => {
+    // Web: olayın koordinatı bayat olabilir → tüm hücreleri birlikte oku.
+    // (Aktif hücrenin etiketi her karede yeniden boyutlanır, bu yüzden bu
+    // geri çağrı animasyon boyunca tetiklenir ve senkron kalır.)
+    if (Platform.OS === 'web') { remeasureCells(); return; }
     const { x, width } = e.nativeEvent.layout;
     setCellRects(prev => {
       const cur = prev[idx];
@@ -185,56 +348,66 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
     });
   };
 
-  const pillBg = accent + (dark ? '33' : '22');
+  // Aktif sekme değişti → etiket açılma/kapanma animasyonu bitene kadar
+  // güvenlik ağı olarak birkaç kez daha ölç (ResizeObserver kaçırırsa).
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const ids = [0, 60, 180, 360, 560].map(ms => setTimeout(remeasureCells, ms));
+    return () => ids.forEach(clearTimeout);
+  }, [activeIdx, items.length, remeasureCells]);
 
-  // iOS 26+: active tab lens — exactly the bar's height (no overflow).
-  // Neutral glass, no accent tint.
-  const slidingIndicator = LIQUID_GLASS ? (
+  // Aktif sekme göstergesi — TEK katman: accent tint + ince kenar.
+  //
+  // Bilinçli olarak İKİNCİ bir cam/materyal DEĞİL (iOS 26'da da LiquidGlassView
+  // kullanılmıyordu artık): sheet camı + bar camı + öğe camı üst üste
+  // gelince yüzeyler bulanık bir çorbaya dönüşüyor, ikonların netliği
+  // düşüyor ve her katman ayrıca GPU yakıyor. Cam işini BAR yapar; seçili öğe
+  // yalnız "burada duruyorsun" der.
+  const slidingIndicator = (
     <Animated.View
       pointerEvents="none"
       style={{
         position: 'absolute',
-        top: 0, bottom: 0,
+        top: 7, bottom: 7,
         left: indicatorX,
+        // Genişlik + konum effect'te birlikte hesaplanıyor (hücre merkezine
+        // hizalı, en az 46 → etiketsiz hücrede tam daire). Burada minWidth
+        // VERİLMEZ: verilirse konum hesabıyla çelişip ikonu kaydırır.
         width: indicatorW,
         opacity: indicatorOpacity,
-        borderRadius: 999,
-      }}
-    >
-      <LiquidGlassView
-        effect="regular"
-        colorScheme={dark ? 'dark' : 'light'}
-        tintColor={dark ? 'rgba(60,55,50,0.75)' : 'rgba(255,255,255,0.85)'}
-        style={[StyleSheet.absoluteFillObject, { borderRadius: 999 }]}
-      />
-    </Animated.View>
-  ) : (
-    <Animated.View
-      pointerEvents="none"
-      style={{
-        position: 'absolute',
-        top: 6, bottom: 6,
-        left: indicatorX,
-        width: indicatorW,
-        opacity: indicatorOpacity,
-        backgroundColor: pillBg,
-        borderRadius: 999,
+        borderRadius: NAV.radius,
+        backgroundColor: ind.fill,
+        borderWidth: 1,
+        borderColor: ind.border,
       }}
     />
   );
 
-  const cells = items.map((item, i) => (
-    <PillCell
-      key={item.routeName + i}
-      item={item}
-      active={i === activeIdx}
-      accentColor={accent}
-      dark={dark}
-      onPress={() => handle(item)}
-      onLayout={handleCellLayout(i)}
-      itemRef={getItemRef?.(item.routeName)}
-    />
-  ));
+  const cells = items.map((item, i) => {
+    const tourRef = getItemRef?.(item.routeName);
+    // "Daha" hücresinde İKİ ref birlikte: onboarding spotlight'ı (varsa) ve
+    // popover çapası. Biri diğerini ezmemeli.
+    const cellRef = (node: any) => {
+      cellEls.current[i] = node;
+      if (isMenuAnchor(item)) moreNode.current = node;
+      tourRef?.(node);
+    };
+    return (
+      <PillCell
+        key={item.routeName + i}
+        item={item}
+        active={i === activeIdx}
+        accentColor={accent}
+        dark={dark}
+        onPress={() => handle(item)}
+        onLayout={(e: any) => {
+          handleCellLayout(i)(e);
+          if (isMenuAnchor(item)) publishMoreAnchor();
+        }}
+        itemRef={cellRef}
+      />
+    );
+  });
 
   // ─── Search-morph: bar içeriği aktifken arama satırına dönüşür ───────────
   const searchRow = (
@@ -320,50 +493,40 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
     : (fabItem ? { flex: 1, justifyContent: 'space-evenly', gap: 0 } : null);
   const barContent =
     LIQUID_GLASS ? (
+      // iOS 26+ — gerçek liquid glass: arkadaki içerik materyalin içinde
+      // kırılır. `clear` + hafif nötr tül: yüzey okunur ama opak değil.
       <LiquidGlassView
         effect="clear"
         colorScheme={dark ? 'dark' : 'light'}
         interactive
-        // Light translucent tint so the bar still reads as a surface but
-        // page bg refracts through more visibly than the default regular.
-        tintColor={dark ? 'rgba(27,25,22,0.45)' : 'rgba(255,255,255,0.7)'}
-        style={[s.bar, barFlex, { overflow: 'visible' }]}
+        tintColor={glass.liquidTint}
+        style={[s.bar, barFlex, glass.nativeShadow, { overflow: 'visible' }]}
       >
-        <View pointerEvents="none" style={s.innerHighlight} />
+        <Specular g={glass} />
         {barInner}
       </LiquidGlassView>
     ) : Platform.OS === 'ios' || Platform.OS === 'android' ? (
+      // iOS < 26 / Android — ultra-thin material + okunabilirliğin izin
+      // verdiği EN AZ tül. (Eskiden %86 beyaz tüldü: cam değil, beyaz pill.)
       <BlurView
-        intensity={dark ? 70 : 80}
-        tint={dark ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'}
-        style={[s.bar, barFlex]}
+        intensity={glass.blurIntensity}
+        tint={glass.blurTint}
+        style={[s.bar, barFlex, glass.nativeShadow]}
       >
+        <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: glass.veil }]} />
         <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, {
-          backgroundColor: dark ? 'rgba(20,20,20,0.45)' : 'rgba(255,255,255,0.86)',
-        }]} />
-        <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, {
-          borderRadius: 999,
+          borderRadius: NAV.radius,
           borderWidth: StyleSheet.hairlineWidth,
-          borderColor: dark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)',
+          borderColor: glass.border,
         }]} />
-        <View pointerEvents="none" style={s.innerHighlight} />
+        <Specular g={glass} />
         {barInner}
       </BlurView>
     ) : (
-      <View style={[s.bar, barFlex, {
-        // Glass — CourierTrackingScreen kartlarıyla BİREBİR aynı formül
-        backgroundColor: dark ? 'rgba(20,20,20,0.30)' : 'rgba(255,255,255,0.92)',
-        borderWidth: 1,
-        borderColor: dark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.85)',
-        ...(Platform.OS === 'web' ? ({
-          backdropFilter: 'blur(10px) saturate(130%)',
-          WebkitBackdropFilter: 'blur(10px) saturate(130%)',
-          boxShadow: dark
-            ? '0 12px 32px rgba(0,0,0,0.30), inset 0 1px 0 rgba(255,255,255,0.18)'
-            : '0 12px 32px rgba(15,23,42,0.18), inset 0 1px 0 rgba(255,255,255,0.6)',
-        } as any) : {}),
-      }]}>
-        <View pointerEvents="none" style={s.innerHighlight} />
+      // web — iki katmanlı cam: ebeveyn refraksiyon (mercek), çocuk blur+renk
+      <View style={[s.bar, barFlex, navSurfaceStyle(glass)]}>
+        <GlassBlurLayer glass={glass} radius={NAV.radius} />
+        <Specular g={glass} />
         {barInner}
       </View>
     );
@@ -388,11 +551,78 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
     ? kbHeight + 8
     : bottomOffset;
 
+  // Scroll-aware geri çekilme — YALNIZ transform + opacity: animasyon
+  // compositor/native driver'da koşar, scroll sırasında tek re-render yok.
+  // Arama açıkken kilitli (bar klavyenin üstüne taşınmışken küçülmemeli).
+  const collapseStyle = searchActive
+    ? null
+    : {
+        // Ölçek alt kenardan büyür/küçülür → bar "aşağı çekiliyor" gibi
+        // okunur, ortadan büzülmüş gibi değil.
+        transformOrigin: 'center bottom',
+        opacity: navCollapse.interpolate({ inputRange: [0, 1], outputRange: [1, NAV.collapse.opacity] }),
+        transform: [
+          { translateY: navCollapse.interpolate({ inputRange: [0, 1], outputRange: [0, NAV.collapse.translateY] }) },
+          { scale: navCollapse.interpolate({ inputRange: [0, 1], outputRange: [1, NAV.collapse.scale] }) },
+        ],
+      };
+
+  // Ayrım bölgesi — içerik yüzen chrome'a değdiği yerde geri çekilir
+  // (Apple'ın scroll-edge effect ilkesi). Koyu katman/ağır gradyan YOK:
+  // maske şeridi yukarı doğru tamamen kaybolur. Yalnız web (native'de
+  // backdrop-filter yok).
+  const edge = edgeSeparation(dark);
+
   return (
-    <View pointerEvents="box-none" style={[s.wrap, { bottom: wrapBottom }]}>
+    <>
+    {/* Navbar üstünde biten katman (Mesajlar) açıkken barın ARKASINDAKİ şeridi
+        aynı tonla karart — katmanın karartması bar üst kenarında kesilmesin. */}
+    <NavDimStrip height={bottomOffset + NAV_BAR_H} />
+    <Animated.View pointerEvents="box-none" style={[s.wrap, { bottom: wrapBottom }, collapseStyle as any]}>
+      {edge && !searchActive ? (
+        <View
+          pointerEvents="none"
+          // 16px: barın üstünde kalan boşluğa sığar. Daha uzunu, üstteki
+          // yüzeyin (kurye sheet'i) yuvarlak alt köşesini bulandırıyordu.
+          style={[{ position: 'absolute', left: 0, right: 0, bottom: '100%' as any, height: 16 }, edge]}
+        />
+      ) : null}
       {resultsOverlay}
       {content}
-    </View>
+    </Animated.View>
+    </>
+  );
+}
+
+// ─── Navbar arkası karartma şeridi ──────────────────────────────────────────
+// MessagesPopup'ın backdrop'ıyla BİREBİR: aynı renk, web'de aynı blur, aynı
+// açılış/kapanış süresi → iki karartma bar üst kenarında dikişsiz birleşir.
+const DIM_COLOR = 'rgba(10,14,26,0.52)';
+function NavDimStrip({ height }: { height: number }) {
+  const close = useUiOverlayStore(st => st.navDimClose);
+  const on = !!close;
+  const anim = useRef(new Animated.Value(0)).current;
+  const [render, setRender] = useState(on);
+  useEffect(() => {
+    if (on) {
+      setRender(true);
+      Animated.timing(anim, { toValue: 1, duration: 260, easing: Easing.bezier(0.16, 1, 0.3, 1), useNativeDriver: Platform.OS !== 'web' }).start();
+    } else {
+      Animated.timing(anim, { toValue: 0, duration: 180, easing: Easing.bezier(0.4, 0, 1, 1), useNativeDriver: Platform.OS !== 'web' })
+        .start(({ finished }) => { if (finished) setRender(false); });
+    }
+  }, [on, anim]);
+  if (!render) return null;
+  return (
+    <Animated.View
+      pointerEvents={on ? 'auto' : 'none'}
+      style={[{
+        position: 'absolute', left: 0, right: 0, bottom: 0, height,
+        backgroundColor: DIM_COLOR, opacity: anim,
+      }, Platform.OS === 'web' ? ({ backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' } as any) : null]}
+    >
+      <Pressable style={StyleSheet.absoluteFill} onPress={() => close?.()} accessibilityLabel={autoT('Kapat')} />
+    </Animated.View>
   );
 }
 
@@ -506,15 +736,22 @@ function SearchAboveFab({ accentColor }: { accentColor?: string }) {
 
 // ─── Side FAB — separate accent-filled circle next to the pill ──────────────
 function FabButton({ item, accentColor, itemRef }: { item: PillTabItem; accentColor: string; itemRef?: (node: any) => void }) {
-  const scale = useRef(new Animated.Value(1)).current;
+  // Tek değer → scale + opacity: fiziksel basma hissi, iki ayrı animasyon yok.
+  const pressAnim = useRef(new Animated.Value(0)).current;
   const Icon  = item.icon;
   const badgeSide = badgeSideStyle();
+  const scale = pressAnim.interpolate({ inputRange: [0, 1], outputRange: [1, NAV.press.fab] });
+  const opacity = pressAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.9] });
+  const a11yLabel = item.badgeCount && item.badgeCount > 0
+    ? `${item.label}, ${item.badgeCount}`
+    : item.label;
+
+  // Basıldığı an hızla çöker, bırakılınca spring ile geri gelir (Apple hissi:
+  // hızlı, kısa, fiziksel — abartılı zıplama değil).
+  const down = () => Animated.spring(pressAnim, { toValue: 1, damping: 26, stiffness: 520, mass: 0.6, useNativeDriver: true }).start();
+  const up   = () => Animated.spring(pressAnim, { toValue: 0, damping: 15, stiffness: 320, mass: 0.7, useNativeDriver: true }).start();
 
   const handle = () => {
-    Animated.sequence([
-      Animated.timing(scale, { toValue: 0.88, duration: 60, useNativeDriver: true }),
-      Animated.spring(scale, { toValue: 1, damping: 11, stiffness: 280, useNativeDriver: true }),
-    ]).start();
     if (item.onPress) item.onPress();
   };
 
@@ -523,16 +760,24 @@ function FabButton({ item, accentColor, itemRef }: { item: PillTabItem; accentCo
   // onto nearby glass surfaces (search button) via screen-pixel refraction.
   if (LIQUID_GLASS) {
     return (
-      <Pressable ref={itemRef} onPress={handle} hitSlop={6}>
+      <Pressable
+        ref={itemRef} onPress={handle} hitSlop={6}
+        onPressIn={down} onPressOut={up}
+        accessibilityRole="button"
+        accessibilityLabel={a11yLabel}
+      >
         <Animated.View
           style={[
             s.fab,
             {
               transform: [{ scale }],
+              opacity,
+              // Gölge NÖTR kalır: accent renkli gölge, yandaki cam yüzeylere
+              // ekran-pikseli kırılmasıyla sızıp onları renklendiriyor.
               shadowColor: '#000',
-              shadowOpacity: 0.18,
-              shadowRadius: 10,
-              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: 0.20,
+              shadowRadius: 14,
+              shadowOffset: { width: 0, height: 8 },
               overflow: 'hidden',
             },
           ]}
@@ -541,9 +786,9 @@ function FabButton({ item, accentColor, itemRef }: { item: PillTabItem; accentCo
             effect="regular"
             tintColor={accentColor}
             interactive
-            style={[StyleSheet.absoluteFillObject, { borderRadius: 28 }]}
+            style={[StyleSheet.absoluteFillObject, { borderRadius: NAV.fab / 2 }]}
           />
-          <Icon size={26} color="#FFFFFF" strokeWidth={2.6} />
+          <Icon size={NAV.fabIcon} color="#FFFFFF" strokeWidth={2.4} />
           {!!item.badgeCount && item.badgeCount > 0 && (
             <View style={[s.countBadge, badgeSide, { borderColor: accentColor }]}>
               <Text style={s.countBadgeText}>
@@ -557,23 +802,35 @@ function FabButton({ item, accentColor, itemRef }: { item: PillTabItem; accentCo
   }
 
   return (
-    <Pressable ref={itemRef} onPress={handle} hitSlop={6}>
+    <Pressable
+      ref={itemRef} onPress={handle} hitSlop={6}
+      onPressIn={down} onPressOut={up}
+      accessibilityRole="button"
+      accessibilityLabel={a11yLabel}
+    >
       <Animated.View
         style={[
           s.fab,
-          { backgroundColor: accentColor, transform: [{ scale }] },
+          { backgroundColor: accentColor, transform: [{ scale }], opacity, overflow: 'hidden' },
           Platform.OS === 'web'
-            ? ({ boxShadow: `0 8px 22px ${accentColor}60` } as any)
+            ? ({
+                // Accent'li ama YUMUŞAK: geniş yayılım + düşük opaklık, üstüne
+                // nötr bir derinlik gölgesi. Barla aynı ışık ailesinden.
+                boxShadow: `0 12px 30px -8px ${accentColor}70, 0 4px 12px -4px rgba(15,23,42,0.18), inset 0 1px 0 rgba(255,255,255,0.28)`,
+              } as any)
             : {
                 shadowColor: accentColor,
-                shadowOpacity: 0.55,
-                shadowRadius: 14,
+                shadowOpacity: 0.42,
+                shadowRadius: 16,
                 shadowOffset: { width: 0, height: 8 },
-                elevation: 10,
+                elevation: 12,
               },
         ]}
       >
-        <Icon size={26} color="#FFFFFF" strokeWidth={2.6} />
+        {/* Kubbe ışığı — dolu daire "düz mavi disk" değil, ışık alan bir kubbe
+            gibi okunur; barın cam diliyle aynı ışık ailesinden. */}
+        <TopLight webGradient={FAB_DOME} tint="rgba(255,255,255,0.10)" radius={NAV.fab / 2} />
+        <Icon size={NAV.fabIcon} color="#FFFFFF" strokeWidth={2.4} />
         {!!item.badgeCount && item.badgeCount > 0 && (
           <View style={[s.countBadge, badgeSide, { borderColor: accentColor }]}>
             <Text style={s.countBadgeText}>
@@ -599,7 +856,10 @@ function PillCell({
   itemRef?: (node: any) => void;
 }) {
   const Icon  = item.icon;
-  const scale = useRef(new Animated.Value(1)).current;
+  // Basma fiziği tek değerden (scale + opacity) — native driver.
+  const pressAnim = useRef(new Animated.Value(0)).current;
+  const scale = pressAnim.interpolate({ inputRange: [0, 1], outputRange: [1, NAV.press.cell] });
+  const pressOpacity = pressAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.82] });
   const expand = useRef(new Animated.Value(active ? 1 : 0)).current;
   const rtl = isRTL();
   const badgeSide = badgeSideStyle();
@@ -614,16 +874,13 @@ function PillCell({
     }).start();
   }, [active, expand]);
 
-  const tapAnim = () => {
-    Animated.sequence([
-      Animated.timing(scale, { toValue: 0.94, duration: 60, useNativeDriver: true }),
-      Animated.spring(scale, { toValue: 1, damping: 12, stiffness: 280, useNativeDriver: true }),
-    ]).start();
-    onPress();
-  };
+  const down = () => Animated.spring(pressAnim, { toValue: 1, damping: 26, stiffness: 520, mass: 0.6, useNativeDriver: true }).start();
+  const up   = () => Animated.spring(pressAnim, { toValue: 0, damping: 15, stiffness: 320, mass: 0.7, useNativeDriver: true }).start();
 
   // Inactive tints
-  const inactiveTint = dark ? 'rgba(255,255,255,0.78)' : 'rgba(45,45,45,0.88)';
+  // Cam üzerinde alfa'lı gri "solgun" okunuyor: yarı saydam yüzeyde metin/ikon
+  // DAHA yüksek kontrast ister (apple-design §12 vibrancy). Alfa yerine net ink.
+  const inactiveTint = dark ? '#EFE9DF' : '#26262A';
 
   // Interpolations from `expand` (0 → 1)
   const labelOpacity = expand.interpolate({
@@ -639,17 +896,40 @@ function PillCell({
     outputRange: [0, 6],
   });
 
+  // Rozet sayısı etikete katılır: ekran okuyucu "Siparişler, 3" duyurur.
+  const a11yLabel = item.badgeCount && item.badgeCount > 0
+    ? `${item.label}, ${item.badgeCount}`
+    : item.label;
+
   return (
-    <Pressable ref={itemRef} onPress={tapAnim} style={s.cellPressable} onLayout={onLayout}>
-      <Animated.View style={[s.cellInner, { transform: [{ scale }] }]}>
+    <Pressable
+      ref={itemRef}
+      onPress={onPress}
+      onPressIn={down}
+      onPressOut={up}
+      // Hücre görsel olarak 38 geniş (6 sekmeli panelde bar taşmasın); eksik
+      // pay hitSlop ile 44pt dokunma hedefine tamamlanır.
+      hitSlop={cellHitSlop}
+      style={s.cellPressable}
+      onLayout={onLayout}
+      accessibilityRole="tab"
+      accessibilityState={{ selected: active }}
+      // RNW bu sürümde accessibilityState.selected'ı DOM'a yazmıyor (ölçüldü:
+      // aria-selected null geliyordu) → web'de ARIA'yı doğrudan ver, yoksa
+      // ekran okuyucu hangi sekmede olduğunu söylemiyor.
+      {...(Platform.OS === 'web' ? ({ 'aria-selected': active } as any) : null)}
+      accessibilityLabel={a11yLabel}
+    >
+      <Animated.View style={[s.cellInner, { transform: [{ scale }], opacity: pressOpacity }]}>
         {/* NOTE: Pill background artık parent'taki shared sliding indicator
             tarafından çiziliyor (WhatsApp-style smooth motion). */}
 
         <View style={s.iconWrap}>
           <Icon
-            size={active ? 20 : 21}
+            size={NAV.icon}
             color={active ? accentColor : inactiveTint}
-            strokeWidth={active ? 2.2 : 1.9}
+            // Aktif ikon bir tık daha belirgin; ikonlar KALIN değil (Apple dili)
+            strokeWidth={active ? 2.1 : 1.8}
           />
           {!!item.badgeCount && item.badgeCount > 0 && (
             <View style={[s.countBadge, badgeSide, { borderColor: dark ? '#0A0A0A' : '#FFFFFF' }]}>
@@ -690,7 +970,7 @@ const s = StyleSheet.create({
     position: 'absolute',
     start: 0,
     end: 0,
-    paddingHorizontal: 16,
+    paddingHorizontal: NAV.wrapPadH,
     alignItems: 'center',
     backgroundColor: 'transparent',
   },
@@ -703,20 +983,14 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     alignSelf: 'center',
     gap: 12,
-    paddingVertical: 7,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    maxWidth: 420,
+    // 8 + 44 (hücre) + 8 = 60pt bar — kapsül yarıçapı yüksekliğin yarısı.
+    paddingVertical: NAV.barPadV,
+    paddingHorizontal: NAV.barPadH + 2,
+    borderRadius: NAV.radius,
+    maxWidth: NAV.barMaxW,
     overflow: 'hidden',
-    ...(Platform.OS === 'web'
-      ? {}
-      : {
-          shadowColor: '#000',
-          shadowOpacity: 0.30,
-          shadowRadius: 22,
-          shadowOffset: { width: 0, height: 10 },
-          elevation: 16,
-        }),
+    // Gölge platforma göre navGlass'tan gelir (koyu/açık farklı) — burada
+    // sabit gölge YOK, yoksa iki gölge üst üste biner.
   },
 
   // ─── Search-morph: bar içi arama satırı + sonuç kartı ───
@@ -779,8 +1053,12 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
+    gap: NAV.rowGap,
     width: '100%',
+    // Tablet/geniş ekranda küme ortada ve kompakt kalır — kenardan kenara
+    // yayılan bir footer'a dönüşmez.
+    maxWidth: NAV.barMaxW + NAV.rowGap + NAV.fab,
+    alignSelf: 'center',
   },
 
   // FAB column — search button above, FAB below (legacy, unused with new layout)
@@ -789,11 +1067,11 @@ const s = StyleSheet.create({
     gap: 8,
   },
 
-  // Side FAB circle — solid accent
+  // Yan FAB — bardan (60) bir tık büyük daire: ana aksiyon hiyerarşisi
   fab: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: NAV.fab,
+    height: NAV.fab,
+    borderRadius: NAV.fab / 2,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
@@ -808,17 +1086,6 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  innerHighlight: {
-    position: 'absolute',
-    top: 0,
-    start: 0,
-    end: 0,
-    height: '50%',
-    borderTopLeftRadius: 999,
-    borderTopRightRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-  },
-
   // Each cell is a touch surface (Pressable) wrapping the layout View
   cellPressable: {
     // no flex — cells take only space their content needs
@@ -828,18 +1095,19 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    // Pasif hücreler daraltıldı (12→8 / 44→38) → aktif "Siparişler" pill'i + ••• sığsın,
-    // sona taşma / sıkışma olmasın.
-    paddingHorizontal: 8,
-    paddingVertical: 9,
-    borderRadius: 999,
-    minWidth: 38,
+    // Yatay ölçüler DARALTILMIŞ kalır (12→8 / 44→38): 6 sekmeli panelde aktif
+    // etiket + ••• aynı bara sığsın, kenara taşmasın. Dokunma hedefi hitSlop
+    // ile 44pt'a tamamlanır (bkz. cellHitSlop).
+    paddingHorizontal: NAV.cellPadH,
+    paddingVertical: NAV.cellPadV,
+    borderRadius: NAV.radius,
+    minWidth: NAV.cellMinW,
     overflow: 'hidden',
   },
 
   iconWrap: {
-    width: 22,
-    height: 22,
+    width: NAV.iconBox,
+    height: NAV.iconBox,
     alignItems: 'center',
     justifyContent: 'center',
   },

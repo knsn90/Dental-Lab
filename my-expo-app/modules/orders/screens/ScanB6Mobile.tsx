@@ -1,20 +1,22 @@
 /**
- * ScanB6Mobile — Variant B B6 full-bleed camera scan.
- * Animated scanline · L-corner reticle · sliding bottom sheet result.
+ * ScanB6Mobile — tüm panellerin QR tarayıcısı (iOS Kod Tarayıcısı düzeni).
+ * Tam ekran kamera · dört yuvarlak köşe çerçevesi · altta fener · sonuç için koyu cam kart.
  */
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, Pressable, StyleSheet, Animated, Easing, Platform, Linking, } from 'react-native';
-import { X, Check, ChevronRight, ChevronLeft, Camera as CameraIcon, AlertCircle } from 'lucide-react-native';
+  View, Text, Pressable, StyleSheet, Animated, Platform, Linking, useWindowDimensions, } from 'react-native';
+import { X, Check, ChevronRight, ChevronLeft, Camera as CameraIcon, AlertCircle, Flashlight } from '../../../core/ui/icons';
+import Svg, { Path } from 'react-native-svg';
+import { BlurView } from 'expo-blur';
 import { isRTL } from '../../../core/i18n';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { autoT } from '../../../core/i18n/autoTranslate';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // expo-camera sadece native'de import edilsin (web bundle'a girmesin / hatasız patlasın)
 const isWeb = Platform.OS === 'web';
 const _cam: any = isWeb ? { CameraView: () => null, useCameraPermissions: () => [null, () => {}] } : require('expo-camera');
 const CameraView = _cam.CameraView;
 const useCameraPermissions = _cam.useCameraPermissions as () => [null | { granted: boolean; canAskAgain: boolean }, () => Promise<any>];
 import { supabase } from '../../../core/api/supabase';
-import { DS } from '../../../core/theme/dsTokens';
 import { MFONT, useMobileTheme } from '../../../core/theme/mobileTheme';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 
@@ -32,7 +34,13 @@ interface Props {
 }
 
 // ─── Web kamera scanner — Safari/Chrome PWA için getUserMedia + jsQR ────────
-function WebQrScanner({ onScan, paused }: { onScan: (code: string) => void; paused: boolean }) {
+function WebQrScanner({ onScan, paused, torch, onTorchSupport, onError }: {
+  onScan: (code: string) => void;
+  paused: boolean;
+  torch: boolean;
+  onTorchSupport: (ok: boolean) => void;
+  onError: () => void;
+}) {
   const videoRef = useRef<any>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +48,18 @@ function WebQrScanner({ onScan, paused }: { onScan: (code: string) => void; paus
   const streamRef = useRef<MediaStream | null>(null);
   const pausedRef = useRef(paused);
   useEffect(() => { pausedRef.current = paused; }, [paused]);
+  // Callback'ler ref'te: ebeveyn yeniden çizilince (tarama/fener durumu) kamera akışı yeniden başlamasın.
+  const onScanRef = useRef(onScan);
+  onScanRef.current = onScan;
+  const onTorchSupportRef = useRef(onTorchSupport);
+  onTorchSupportRef.current = onTorchSupport;
+  // Fener: yalnız torch yeteneği olan kameralarda (Android Chrome); iOS Safari'de yok.
+  useEffect(() => {
+    const track: any = streamRef.current?.getVideoTracks?.()[0];
+    if (!track?.applyConstraints) return;
+    track.applyConstraints({ advanced: [{ torch }] }).catch(() => {});
+  }, [torch]);
+  useEffect(() => { if (error) onError(); }, [error, onError]);
 
   useEffect(() => {
     let cancelled = false;
@@ -57,6 +77,10 @@ function WebQrScanner({ onScan, paused }: { onScan: (code: string) => void; paus
         });
         if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
         streamRef.current = stream;
+        try {
+          const caps: any = (stream.getVideoTracks()[0] as any)?.getCapabilities?.();
+          if (caps?.torch) onTorchSupportRef.current(true);
+        } catch { /* yetenek sorgusu desteklenmiyor */ }
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           videoRef.current.setAttribute('playsinline', 'true');
@@ -73,16 +97,19 @@ function WebQrScanner({ onScan, paused }: { onScan: (code: string) => void; paus
           jsQR = (await import('jsqr')).default;
         }
 
+        // Okumadan sonra döngü DURMAZ (tekrar tara / "bulunamadı" sonrası yeniden okuyabilsin);
+        // aynı kodu art arda göndermemek için kısa bekleme.
+        let cooldownUntil = 0;
         const tick = async () => {
           if (cancelled) return;
           const v = videoRef.current;
-          if (v && v.readyState === 4 && !pausedRef.current) {
+          if (v && v.readyState === 4 && !pausedRef.current && Date.now() > cooldownUntil) {
             try {
               if (detector) {
                 const codes = await detector.detect(v);
                 if (codes && codes[0]?.rawValue) {
-                  onScan(String(codes[0].rawValue));
-                  return;
+                  cooldownUntil = Date.now() + 1800;
+                  onScanRef.current(String(codes[0].rawValue));
                 }
               } else if (jsQR) {
                 const w = v.videoWidth, h = v.videoHeight;
@@ -96,8 +123,8 @@ function WebQrScanner({ onScan, paused }: { onScan: (code: string) => void; paus
                     const imgData = ctx.getImageData(0, 0, w, h);
                     const result = jsQR(imgData.data, w, h, { inversionAttempts: 'dontInvert' });
                     if (result?.data) {
-                      onScan(result.data);
-                      return;
+                      cooldownUntil = Date.now() + 1800;
+                      onScanRef.current(result.data);
                     }
                   }
                 }
@@ -120,7 +147,7 @@ function WebQrScanner({ onScan, paused }: { onScan: (code: string) => void; paus
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
       if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
     };
-  }, [onScan]);
+  }, []);
 
   if (error) {
     return (
@@ -149,34 +176,29 @@ function WebQrScanner({ onScan, paused }: { onScan: (code: string) => void; paus
 export function ScanB6Mobile({ onClose, onOpenOrder, onUpdateStatus }: Props) {
   const insets = useSafeAreaInsets();
   const theme = useMobileTheme();
+  const { width: winW } = useWindowDimensions();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState<ScanResult | null>(null);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // iOS Kod Tarayıcısı düzeni: yalnız kamera + köşe çerçevesi + fener.
+  const [torch, setTorch] = useState(false);
+  const [webTorchOk, setWebTorchOk] = useState(false);
+  const [webCamError, setWebCamError] = useState(false);
 
-  // ── Scanline animation ────────────────────────────────────────────
-  const scanlineY = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(scanlineY, { toValue: 1, duration: 1400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(scanlineY, { toValue: 0, duration: 1400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [scanlineY]);
+  const cameraLive = isWeb ? !webCamError : !!permission?.granted;
+  const torchAvailable = isWeb ? webTorchOk : cameraLive;
+  const RETICLE = Math.min(Math.round(winW * 0.62), 280);
 
-  // ── Bottom sheet animation ───────────────────────────────────────
-  const sheetY = useRef(new Animated.Value(1)).current; // 1 = hidden offset
+  // ── Sonuç kartı + çerçeve animasyonu (tek değer, spring) ─────────
+  const found = useRef(new Animated.Value(0)).current; // 0 = tarıyor, 1 = bulundu
   useEffect(() => {
-    Animated.timing(sheetY, {
-      toValue: scanned ? 0 : 1,
-      duration: 400,
-      easing: Easing.out(Easing.ease),
+    Animated.spring(found, {
+      toValue: scanned ? 1 : 0,
+      damping: 22, stiffness: 260, mass: 0.8,
       useNativeDriver: true,
     }).start();
-  }, [scanned, sheetY]);
+  }, [scanned, found]);
 
   // ── Permission flow — sadece bir kez iste ────────────────────────
   const askedRef = useRef(false);
@@ -249,15 +271,25 @@ export function ScanB6Mobile({ onClose, onOpenOrder, onUpdateStatus }: Props) {
     }
   };
 
+  const reticleScale = found.interpolate({ inputRange: [0, 1], outputRange: [1, 0.9] });
+  const cardY = found.interpolate({ inputRange: [0, 1], outputRange: [40, 0] });
+
   return (
     <View style={styles.root}>
       {/* Camera or permission UI */}
       {isWeb ? (
-        <WebQrScanner onScan={handleQr} paused={!!scanned || scanning} />
+        <WebQrScanner
+          onScan={handleQr}
+          paused={!!scanned || scanning}
+          torch={torch}
+          onTorchSupport={setWebTorchOk}
+          onError={() => setWebCamError(true)}
+        />
       ) : permission?.granted ? (
         <CameraView
           style={StyleSheet.absoluteFill}
           facing="back"
+          enableTorch={torch}
           onBarcodeScanned={scanned ? undefined : ({ data }: { data: string }) => handleQr(data)}
           barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
         />
@@ -265,7 +297,7 @@ export function ScanB6Mobile({ onClose, onOpenOrder, onUpdateStatus }: Props) {
         <View style={[StyleSheet.absoluteFill, styles.fallbackBg]}>
           {permission == null ? (
             <View style={styles.permWrap}>
-              <ActivityIndicator color={theme.primary} />
+              <ActivityIndicator color="#FFFFFF" />
               <Text style={styles.permSub}>Kamera hazırlanıyor…</Text>
             </View>
           ) : (
@@ -291,175 +323,140 @@ export function ScanB6Mobile({ onClose, onOpenOrder, onUpdateStatus }: Props) {
                     Linking.openSettings().catch(() => {});
                   }
                 }}
-                style={[styles.permBtn, { backgroundColor: theme.primary }]}
+                style={styles.permBtn}
               >
                 <Text style={styles.permBtnText}>
                   {permission.canAskAgain ? 'İzin Ver' : 'Ayarları Aç'}
                 </Text>
               </Pressable>
-              {error && (
-                <Text style={{ marginTop: 12, color: '#F87171', fontSize: 13 }}>{error}</Text>
-              )}
             </View>
           )}
         </View>
       )}
 
-      {/* Vignette overlays */}
-      <View style={styles.vignetteTop} pointerEvents="none" />
-      <View style={styles.vignetteBottom} pointerEvents="none" />
-
-      <SafeAreaView edges={['top']} style={{ flex: 1 }}>
-        {/* Top header — explicit insets.top so dynamic island / status bar
-            don't overlap with X button even in fullScreen modal presentation. */}
-        <View style={[styles.topRow, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
-          <Pressable onPress={onClose} style={styles.ghostCircle} hitSlop={16}>
-            <X size={22} color="#FFF" strokeWidth={2.2} />
-          </Pressable>
-          <View style={styles.modePill}>
-            <View style={[styles.modePillDot, { backgroundColor: theme.primary }]} />
-            <Text style={styles.modePillText}>OTOMATIK TARA</Text>
-          </View>
-          <View style={styles.ghostCircle} />
-        </View>
-
-        {/* Reticle area */}
+      {/* Köşe çerçevesi — iOS Kod Tarayıcısı: yalnız dört yuvarlak köşe */}
+      {cameraLive && (
         <View style={styles.reticleWrap} pointerEvents="none">
-          {!scanned ? (
-            <View style={styles.reticle}>
-              {/* L-corner brackets */}
-              {(['tl', 'tr', 'bl', 'br'] as const).map(corner => (
-                <CornerBracket key={corner} corner={corner} color={theme.primary} />
-              ))}
-              {/* Scanline */}
-              <Animated.View
-                style={[
-                  styles.scanline,
-                  {
-                    backgroundColor: theme.primary,
-                    transform: [{
-                      translateY: scanlineY.interpolate({ inputRange: [0, 1], outputRange: [12, 240] }),
-                    }],
-                    ...(Platform.OS === 'web'
-                      ? ({ boxShadow: `0 0 24px ${theme.primary}` } as any)
-                      : {
-                          shadowColor: theme.primary,
-                          shadowOpacity: 0.9,
-                          shadowRadius: 18,
-                          shadowOffset: { width: 0, height: 0 },
-                        }),
-                  },
-                ]}
-              />
+          <Animated.View style={{ width: RETICLE, height: RETICLE, transform: [{ scale: reticleScale }] }}>
+            <ReticleCorners size={RETICLE} />
+            <View style={styles.reticleCenter}>
+              {scanning ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : scanned ? (
+                <View style={styles.successBurst}>
+                  <Check size={30} color="#0A0A0A" strokeWidth={2.6} />
+                </View>
+              ) : null}
             </View>
-          ) : (
-            <View style={[styles.successBurst, {
-              backgroundColor: theme.success ?? '#2D9A6B',
-              ...(Platform.OS === 'web'
-                ? ({ boxShadow: `0 0 40px ${theme.success ?? '#2D9A6B'}99` } as any)
-                : { shadowColor: theme.success ?? '#2D9A6B', shadowOpacity: 0.6, shadowRadius: 28, shadowOffset: { width: 0, height: 0 } }),
-            }]}>
-              <Check size={36} color="#FFF" strokeWidth={2.6} />
+          </Animated.View>
+          {error && (
+            <View style={styles.errorToast}>
+              <Text style={styles.errorToastText}>{error}</Text>
             </View>
           )}
         </View>
+      )}
 
-        {/* Permission denied banner */}
-        {permission && !permission.granted && (
-          <View style={styles.permBanner}>
-            <Text style={styles.permTitle}>Kamera izni gerekli</Text>
-            <Text style={styles.permSub}>QR kod taramak için kamera erişimine izin verin.</Text>
-            <Pressable
-              onPress={() => requestPermission()}
-              style={[styles.permBtn, { backgroundColor: theme.primary }]}
-            >
-              <Text style={[styles.permBtnText, { color: theme.accent }]}>İzin ver</Text>
-            </Pressable>
-          </View>
-        )}
-
-        {/* Error toast */}
-        {error && (
-          <View style={styles.errorToast}>
-            <Text style={styles.errorToastText}>{error}</Text>
-          </View>
-        )}
-      </SafeAreaView>
-
-      {/* Bottom sheet */}
-      <Animated.View
-        style={[
-          styles.sheet,
-          {
-            transform: [{
-              translateY: sheetY.interpolate({ inputRange: [0, 1], outputRange: [0, 220] }),
-            }],
-            opacity: sheetY.interpolate({ inputRange: [0, 1], outputRange: [1, 0.5] }),
-          },
-        ]}
+      {/* Kapat — dynamic island'dan uzak, güvenli alanın içinde */}
+      <Pressable
+        onPress={onClose}
+        hitSlop={12}
+        accessibilityRole="button"
+        accessibilityLabel={autoT('Kapat')}
+        style={[styles.closeBtn, { top: Math.max(insets.top, 12) + 8 }]}
       >
-        {scanned ? (
-          <>
-            <View style={styles.sheetHandle} />
-            <Text style={styles.sheetEyebrow}>VAKA BULUNDU</Text>
-            <Text style={styles.sheetHeadline} numberOfLines={2}>{scanned.workType}</Text>
-            <Text style={styles.sheetMeta}>{scanned.clinic} · #{scanned.orderNumber}</Text>
+        <GlassFill />
+        {/* Web'de absolute cam dolgusu statik svg'nin ÜSTÜNE boyanır (CSS istif
+            sırası) → ikon kendi View'ında (RNW View = position:relative). */}
+        <View><X size={20} color="#FFFFFF" strokeWidth={2.2} /></View>
+      </Pressable>
 
-            <View style={styles.sheetActions}>
-              <Pressable
-                onPress={() => onOpenOrder(scanned.workOrderId)}
-                style={[styles.primaryBtn, { backgroundColor: theme.accent }]}
-              >
-                <Text style={styles.primaryBtnText}>Vakayı aç</Text>
-                {isRTL()
-                  ? <ChevronLeft size={16} color="#FFF" strokeWidth={2} />
-                  : <ChevronRight size={16} color="#FFF" strokeWidth={2} />}
+      {/* Fener — altta ortada tek buton (sonuç kartı açıkken gizli) */}
+      {cameraLive && torchAvailable && !scanned && (
+        <Pressable
+          onPress={() => setTorch(v => !v)}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel={autoT(torch ? 'Feneri kapat' : 'Feneri aç')}
+          accessibilityState={{ selected: torch }}
+          style={[styles.torchBtn, { bottom: insets.bottom + 72 }, torch && styles.torchBtnOn]}
+        >
+          {!torch && <GlassFill />}
+          <View><Flashlight size={22} color={torch ? '#0A0A0A' : '#FFFFFF'} strokeWidth={2} /></View>
+        </Pressable>
+      )}
+
+      {/* Sonuç kartı — koyu cam, yalnız bir vaka bulununca */}
+      {scanned && (
+        <Animated.View
+          style={[
+            styles.resultCard,
+            { bottom: insets.bottom + 16, opacity: found, transform: [{ translateY: cardY }] },
+          ]}
+        >
+          <GlassFill radius={26} />
+          <Text style={styles.sheetEyebrow}>VAKA BULUNDU</Text>
+          <Text style={styles.sheetHeadline} numberOfLines={2}>{scanned.workType}</Text>
+          <Text style={styles.sheetMeta}>{scanned.clinic} · #{scanned.orderNumber}</Text>
+
+          <View style={styles.sheetActions}>
+            <Pressable onPress={() => onOpenOrder(scanned.workOrderId)} style={styles.primaryBtn}>
+              <Text style={styles.primaryBtnText}>Vakayı aç</Text>
+              {isRTL()
+                ? <ChevronLeft size={16} color="#0A0A0A" strokeWidth={2} />
+                : <ChevronRight size={16} color="#0A0A0A" strokeWidth={2} />}
+            </Pressable>
+            {onUpdateStatus && (
+              <Pressable onPress={() => onUpdateStatus(scanned.workOrderId)} style={styles.surfaceBtn}>
+                <Text style={styles.surfaceBtnText}>Durum güncelle</Text>
               </Pressable>
-              {onUpdateStatus && (
-                <Pressable
-                  onPress={() => onUpdateStatus(scanned.workOrderId)}
-                  style={styles.surfaceBtn}
-                >
-                  <Text style={styles.surfaceBtnText}>Durum güncelle</Text>
-                </Pressable>
-              )}
-            </View>
-          </>
-        ) : (
-          <>
-            <View style={styles.sheetHandle} />
-            <Text style={styles.sheetEyebrow}>HAZIR</Text>
-            <Text style={styles.sheetHint}>QR kodu çerçeveye tutun…</Text>
-          </>
-        )}
-      </Animated.View>
+            )}
+          </View>
+          <Pressable onPress={() => { setScanned(null); setError(null); }} hitSlop={8} style={styles.rescanBtn}>
+            <Text style={styles.rescanText}>Tekrar tara</Text>
+          </Pressable>
+        </Animated.View>
+      )}
     </View>
   );
 }
 
-// ─── Corner bracket ──────────────────────────────────────────────────────────
-function CornerBracket({ corner, color }: { corner: 'tl' | 'tr' | 'bl' | 'br'; color: string }) {
-  const SIZE = 50;
-  const STROKE = 3;
-  const RADIUS = 14;
-  const positionStyle = {
-    tl: { top: 0, start: 0,    borderTopWidth: STROKE, borderStartWidth: STROKE, borderTopStartRadius: RADIUS },
-    tr: { top: 0, end: 0,   borderTopWidth: STROKE, borderEndWidth: STROKE, borderTopEndRadius: RADIUS },
-    bl: { bottom: 0, start: 0, borderBottomWidth: STROKE, borderStartWidth: STROKE, borderBottomStartRadius: RADIUS },
-    br: { bottom: 0, end: 0, borderBottomWidth: STROKE, borderEndWidth: STROKE, borderBottomEndRadius: RADIUS },
-  }[corner];
+// ─── Koyu cam dolgu — iOS sistem materyali (blur + gri tül) ──────────────────
+function GlassFill({ radius = 999 }: { radius?: number }) {
   return (
-    <View style={[
-      { position: 'absolute', width: SIZE, height: SIZE, borderColor: color },
-      positionStyle,
-    ]} />
+    <View style={[StyleSheet.absoluteFill, { borderRadius: radius, overflow: 'hidden' }]} pointerEvents="none">
+      <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(72,72,74,0.55)' }]} />
+    </View>
+  );
+}
+
+// ─── Köşe çerçevesi — yuvarlak uçlu, geniş yarıçaplı dört köşe ────────────────
+function ReticleCorners({ size }: { size: number }) {
+  const S = 5;                        // çizgi kalınlığı
+  const h = S / 2;                    // çizgi yarısı — kenardan taşmasın
+  const arm = Math.round(size * 0.2); // köşe kolu
+  const r = Math.round(arm * 0.62);   // köşe yarıçapı
+  const e = size - h;
+  const paths = [
+    `M ${h} ${arm} L ${h} ${h + r} A ${r} ${r} 0 0 1 ${h + r} ${h} L ${arm} ${h}`,
+    `M ${size - arm} ${h} L ${e - r} ${h} A ${r} ${r} 0 0 1 ${e} ${h + r} L ${e} ${arm}`,
+    `M ${e} ${size - arm} L ${e} ${e - r} A ${r} ${r} 0 0 1 ${e - r} ${e} L ${size - arm} ${e}`,
+    `M ${arm} ${e} L ${h + r} ${e} A ${r} ${r} 0 0 1 ${h} ${e - r} L ${h} ${size - arm}`,
+  ];
+  return (
+    <Svg width={size} height={size} style={StyleSheet.absoluteFill}>
+      {paths.map((d, i) => (
+        <Path key={i} d={d} stroke="#FFFFFF" strokeWidth={S} strokeLinecap="round" fill="none" />
+      ))}
+    </Svg>
   );
 }
 
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#0A0A0A',
+    backgroundColor: '#000000',
   },
   fallbackBg: {
     backgroundColor: '#0A0A0A',
@@ -478,108 +475,6 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     marginBottom: 4,
   },
-  permBody: {
-    fontSize: 13, color: '#9A9A9A', lineHeight: 19,
-    textAlign: 'center' as const,
-  },
-
-  vignetteTop: {
-    position: 'absolute',
-    top: 0,
-    start: 0,
-    end: 0,
-    height: 200,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-  },
-  vignetteBottom: {
-    position: 'absolute',
-    bottom: 0,
-    start: 0,
-    end: 0,
-    height: 280,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-  },
-
-  topRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 18,
-    // Dynamic island bölgesinden uzaklaştır — X butonu rahat tıklanabilsin.
-    paddingTop: 16,
-    paddingBottom: 4,
-  },
-  ghostCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  modePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  modePillDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  modePillText: {
-    color: '#FFF',
-    fontFamily: MFONT.uiSemibold,
-    fontSize: 10,
-    letterSpacing: 1.0,
-  },
-
-  reticleWrap: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  reticle: {
-    width: 260,
-    height: 260,
-    position: 'relative',
-  },
-  scanline: {
-    position: 'absolute',
-    start: 8,
-    end: 8,
-    height: 2,
-  },
-
-  successBurst: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // Permission banner
-  permBanner: {
-    position: 'absolute',
-    top: 80,
-    start: 24,
-    end: 24,
-    padding: 18,
-    borderRadius: 22,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
-  },
   permTitle: {
     color: '#FFF',
     fontFamily: MFONT.uiSemibold,
@@ -592,93 +487,109 @@ const styles = StyleSheet.create({
     marginTop: 6,
     lineHeight: 18,
   },
+  permBody: {
+    fontSize: 13, color: '#9A9A9A', lineHeight: 19,
+    textAlign: 'center' as const,
+  },
   permBtn: {
-    alignSelf: 'flex-start',
-    marginTop: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 14,
+    marginTop: 4,
+    paddingVertical: 12,
+    paddingHorizontal: 22,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
   },
   permBtnText: {
     fontFamily: MFONT.uiSemibold,
-    fontSize: 13,
+    fontSize: 14,
+    color: '#0A0A0A',
   },
 
-  // Error toast
-  errorToast: {
+  reticleWrap: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reticleCenter: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  successBurst: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  closeBtn: {
     position: 'absolute',
-    top: 100,
+    start: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  torchBtn: {
+    position: 'absolute',
     alignSelf: 'center',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  torchBtnOn: {
+    backgroundColor: '#FFFFFF',
+  },
+
+  // Hata — çerçevenin hemen altında küçük hap
+  errorToast: {
+    marginTop: 28,
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 999,
-    backgroundColor: 'rgba(217,75,75,0.9)',
+    backgroundColor: 'rgba(217,75,75,0.92)',
   },
   errorToastText: {
     color: '#FFF',
     fontFamily: MFONT.uiSemibold,
-    fontSize: 12,
+    fontSize: 13,
   },
 
-  // Bottom sheet
-  sheet: {
+  // Sonuç kartı — koyu cam (kamera üstünde her iki temada aynı)
+  resultCard: {
     position: 'absolute',
-    start: 0,
-    end: 0,
-    bottom: 0,
-    paddingTop: 12,
-    paddingHorizontal: 24,
-    paddingBottom: Platform.OS === 'ios' ? 32 : 22,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    backgroundColor: '#FFFFFF',
-    ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 -8px 24px rgba(0,0,0,0.18)' } as any)
-      : {
-          shadowColor: '#000',
-          shadowOpacity: 0.18,
-          shadowRadius: 18,
-          shadowOffset: { width: 0, height: -8 },
-          elevation: 12,
-        }),
-  },
-  sheetHandle: {
-    alignSelf: 'center',
-    width: 44,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(0,0,0,0.10)',
-    marginBottom: 14,
+    start: 16,
+    end: 16,
+    paddingTop: 18,
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+    borderRadius: 26,
+    overflow: 'hidden',
   },
   sheetEyebrow: {
-    fontFamily: MFONT.uiMedium,
+    fontFamily: MFONT.uiSemibold,
     fontSize: 11,
-    color: DS.ink[500],
-    letterSpacing: 0.66,
+    color: 'rgba(255,255,255,0.60)',
+    letterSpacing: 1.1,
   },
   sheetHeadline: {
     fontFamily: MFONT.uiLight,
     fontWeight: '300',
     fontSize: 24,
-    color: DS.ink[900],
-    letterSpacing: -0.84,
-    lineHeight: 28,
-    marginTop: 4,
-  },
-  sheetHint: {
-    fontFamily: MFONT.uiLight,
-    fontWeight: '300',
-    fontSize: 18,
-    color: DS.ink[700],
-    letterSpacing: -0.45,
-    lineHeight: 24,
+    color: '#FFFFFF',
+    letterSpacing: -0.6,
+    lineHeight: 29,
     marginTop: 4,
   },
   sheetMeta: {
     fontFamily: MFONT.uiRegular,
     fontSize: 13,
-    color: DS.ink[500],
-    marginTop: 6,
+    color: 'rgba(255,255,255,0.72)',
+    marginTop: 4,
   },
   sheetActions: {
     marginTop: 16,
@@ -692,10 +603,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     paddingVertical: 14,
-    borderRadius: 14,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
   },
   primaryBtnText: {
-    color: '#FFF',
+    color: '#0A0A0A',
     fontFamily: MFONT.uiSemibold,
     fontSize: 14,
     letterSpacing: -0.2,
@@ -703,17 +615,26 @@ const styles = StyleSheet.create({
   surfaceBtn: {
     flex: 1,
     paddingVertical: 14,
-    borderRadius: 14,
+    borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFF',
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
+    backgroundColor: 'rgba(255,255,255,0.14)',
   },
   surfaceBtnText: {
     fontFamily: MFONT.uiSemibold,
     fontSize: 14,
-    color: DS.ink[900],
+    color: '#FFFFFF',
     letterSpacing: -0.2,
+  },
+  rescanBtn: {
+    alignSelf: 'center',
+    marginTop: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  rescanText: {
+    fontFamily: MFONT.uiSemibold,
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.72)',
   },
 });

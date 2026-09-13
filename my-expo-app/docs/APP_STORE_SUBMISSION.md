@@ -1,8 +1,11 @@
 # App Store Başvuru Rehberi — Siman (iOS)
 
-> Build 22 (production) EAS'te derleniyor. Bu doküman App Store Connect'te
-> **elle doldurulacak** her alanı paste-edilebilir halde verir. Sıra: metadata gir →
-> build TestFlight'a düşünce seç → Review'a gönder.
+> Bu doküman App Store Connect'te **elle doldurulacak** her alanı paste-edilebilir
+> halde verir. Sıra: metadata gir → build TestFlight'a düşünce seç → Review'a gönder.
+>
+> **⚠️ build 24+ gerekiyor:** Arka plan konumu (`UIBackgroundModes: location` + Always
+> izni) ve Universal Links bu sürümde eklendi → yeni bir EAS production build alınmalı;
+> App Privacy'de **Precise Location** beyanı + §10 arka plan gerekçesi ZORUNLU (aksi hâlde ret).
 
 ---
 
@@ -101,10 +104,17 @@ Toplanan veriler (hepsi **App Functionality** amaçlı, kullanıcıya **bağlı*
 
 | Veri türü | Örnek |
 |---|---|
+| **Location (Precise)** | **Kurye rolünde, yalnız aktif teslimat sırasında (arka plan dahil) konum** |
 | Contact Info | Ad-soyad, e-posta, telefon |
 | User Content | İş emri/tarama fotoğrafları, mesajlar |
 | Identifiers | Kullanıcı ID |
 | Usage Data | Uygulama içi işlem/aktivite logları |
+
+> **⚠️ Konum ZORUNLU beyan (build 24+ ile eklendi):** Uygulama artık kurye rolünde
+> **arka plan konumu** (`UIBackgroundModes: location`) toplar. Bu yüzden App Privacy
+> anketinde **Precise Location → App Functionality → kullanıcıya bağlı, izleme DEĞİL**
+> işaretlenmelidir. Beyan edilmezse Apple reddeder. Konum yalnız aktif teslimat taşıyan
+> kurye için toplanır; diğer roller için HİÇ toplanmaz. (§10 review notuna gerekçe eklendi.)
 
 > **⟦KARAR⟧ Sağlık verisi:** Uygulama hastaya ait sınırlı üretim bilgisi (vaka referansı,
 > diş no, renk) tutar. Bu kullanıcının _kendi_ sağlık verisi değil, profesyonelin girdiği
@@ -132,9 +142,22 @@ The app stores limited dental production data (case reference, tooth number, sha
 entered by professionals to fulfill lab orders. This is not the user's own health
 data and HealthKit is not used. All data is protected with row-level security.
 
+Background location (couriers only): a user with the Courier role can share precise
+location — including while the app is backgrounded — ONLY when they are carrying an
+active delivery, so the lab and clinic can track the shipment in real time. Tracking
+starts when a delivery is picked up and stops automatically once no active delivery
+remains. Location is never collected for any other role and is never used for
+advertising or tracking. To test: sign in with the courier demo account, open an
+assigned delivery, and mark it picked up.
+
 Payments for lab services are handled B2B outside the App Store (no in-app purchases).
-Account deletion is available in-app (Profile → Delete Account), compliant with 5.1.1(v).
+Account deletion is available in-app (Profile → Delete Account; couriers: Performance →
+Settings → Delete Account), compliant with 5.1.1(v).
 ```
+
+> **Not (build 24+):** Universal Links de eklendi — `siman.app/order/*` ve
+> `/delivery/*` derin bağlantıları uygulamayı açar (AASA canlı: `siman.app/.well-known/
+> apple-app-site-association`). Bu review'da alan gerektirmez; yalnız native build'de aktifleşir.
 
 ---
 

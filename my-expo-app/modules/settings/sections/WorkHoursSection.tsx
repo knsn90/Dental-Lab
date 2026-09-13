@@ -4,7 +4,7 @@
 // Bu saatler: oto-durdur/devam + net-süre analiz (lab_working_seconds) için kullanılır.
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Platform } from 'react-native';
-import { Plus, X, Clock, Check } from 'lucide-react-native';
+import { Plus, X, Clock, Check } from '../../../core/ui/icons';
 import { supabase } from '../../../core/api/supabase';
 import { useAuthStore } from '../../../core/store/authStore';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';

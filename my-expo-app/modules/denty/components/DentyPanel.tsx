@@ -8,7 +8,7 @@ import React, { useRef, useState, useCallback, useEffect } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput, Platform, Animated, Easing, StyleSheet,
 } from 'react-native';
-import { ArrowUp, X, RotateCcw, Check, ShieldQuestion, FilePlus2, Wallet, Search, GraduationCap, Mic, Paperclip, FileText, Image as ImageIcon, Box, Film } from 'lucide-react-native';
+import { ArrowUp, X, RotateCcw, Check, ShieldQuestion, FilePlus2, Wallet, Search, GraduationCap, Mic, Paperclip, FileText, Image as ImageIcon, Box, Film } from '../../../core/ui/icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { useDentyPalette } from '../theme';
 import { DentyVoiceMode } from './DentyVoiceMode';
@@ -353,6 +353,16 @@ export function DentyPanel() {
     },
     [ctx.systemPrompt, toolkit, applyOutcome],
   );
+
+  // Sipariş detayındaki "Özet çıkar" butonu paneli hazır istemle açar →
+  // panel görünür olunca o istemi bir kez otomatik gönder.
+  // Panel yalnız açıkken MOUNT ediliyor (FAB Modal içinde) → mount = görünür.
+  const seed = useDentyStore((st) => st.seed);
+  useEffect(() => {
+    if (!seed) return;
+    const text = useDentyStore.getState().consumeSeed();
+    if (text) void send(text);
+  }, [seed, send]);
 
   const decide = useCallback(
     async (cardId: string, confirmed: boolean) => {

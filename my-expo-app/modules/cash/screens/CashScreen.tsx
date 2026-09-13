@@ -24,6 +24,10 @@ import {
 } from '../api';
 import { DS } from '../../../core/theme/dsTokens';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { useInkUI } from '../../../core/theme/inkScale';
+import { HeroGlow, useHeroSurface } from '../../../core/ui/HeroGlow';
 import { confirmAsync } from '../../../core/util/confirm';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { DatePicker } from '../../../core/ui/DatePicker';
@@ -38,7 +42,7 @@ import {
   Receipt, Building, Users, Wrench, Package,
   CircleDot, ChevronRight, Banknote, CreditCard,
   ArrowDown, ArrowUp,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 
 // ── Patterns tokens ─────────────────────────────────────────────────
 const DISPLAY = {
@@ -82,6 +86,13 @@ const ACCOUNT_COLORS: Record<AccountType, string> = {
   banka: '#1F5689',
 };
 
+// Koyu temada aynı kimliğin AÇIK ucu — #1F6B47/#1F5689 koyu zeminde okunmuyor.
+const ACCOUNT_COLORS_DARK: Record<AccountType, string> = {
+  kasa:  '#7BD8AC',
+  banka: '#9BC6EC',
+};
+const accountColor = (t: AccountType, isDark: boolean) => (isDark ? ACCOUNT_COLORS_DARK : ACCOUNT_COLORS)[t];
+
 // ── Movement category → Lucide ──────────────────────────────────────
 const CAT_ICON: Record<MovementCategory, React.ComponentType<any>> = {
   tahsilat: Banknote,
@@ -95,6 +106,8 @@ const CAT_ICON: Record<MovementCategory, React.ComponentType<any>> = {
 
 const CATEGORIES: MovementCategory[] = ['tahsilat', 'odeme', 'maas', 'kira', 'malzeme', 'vergi', 'diger'];
 const DIRECTION_COLORS = { giris: '#1F6B47', cikis: '#9C2E2E' };
+const DIRECTION_COLORS_DARK = { giris: '#7BD8AC', cikis: '#F3A0A0' };
+const directionColor = (d: 'giris' | 'cikis', isDark: boolean) => (isDark ? DIRECTION_COLORS_DARK : DIRECTION_COLORS)[d];
 
 // ── Helpers ──────────────────────────────────────────────────────────
 // Her hesap KENDİ para biriminde gösterilir (katı per-currency — base'e çevrilmez).
@@ -115,21 +128,29 @@ function PillBtn({ icon: Icon, label, onPress, variant = 'dark', size = 'md', di
   icon: React.ComponentType<any>; label: string; onPress: () => void;
   variant?: 'dark' | 'ghost'; size?: 'sm' | 'md'; disabled?: boolean;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const U = useInkUI();
   const dark = variant === 'dark';
   const h = size === 'sm' ? 32 : 38;
+  // BEYAZ/KOYU BUTON KURALI: koyu temada siyah pill kartın (ve lacivert hero'nun)
+  // üstünde kayboluyor → bir kademe koyu zemin + hairline kenarlık + krem metin.
+  const solidBg = isDark ? U.plainBtn.bg : DS.ink[900];
+  const solidFg = isDark ? U.ink[900]    : '#FFF';
   return (
     <Pressable
       onPress={onPress} disabled={disabled}
       style={{
         flexDirection: 'row', alignItems: 'center', gap: 6,
         height: h, paddingHorizontal: size === 'sm' ? 12 : 16, borderRadius: 999,
-        backgroundColor: dark ? DS.ink[900] : 'transparent',
-        borderWidth: dark ? 0 : 1, borderColor: 'rgba(0,0,0,0.10)',
+        backgroundColor: dark ? solidBg : 'transparent',
+        borderWidth: dark ? (isDark ? 1 : 0) : 1,
+        borderColor: dark ? U.plainBtn.border : T.hairline,
         opacity: disabled ? 0.5 : 1, cursor: 'pointer' as any,
       }}
     >
-      <Icon size={size === 'sm' ? 13 : 15} color={dark ? '#FFF' : DS.ink[700]} strokeWidth={1.8} />
-      <Text style={{ fontSize: size === 'sm' ? 11 : 13, fontWeight: '600', color: dark ? '#FFF' : DS.ink[700] }}>
+      <Icon size={size === 'sm' ? 13 : 15} color={dark ? solidFg : T.ink2} strokeWidth={1.8} />
+      <Text style={{ fontSize: size === 'sm' ? 11 : 13, fontWeight: '600', color: dark ? solidFg : T.ink2 }}>
         {label}
       </Text>
     </Pressable>
@@ -140,11 +161,18 @@ function PillBtn({ icon: Icon, label, onPress, variant = 'dark', size = 'md', di
 // MAIN
 // ═════════════════════════════════════════════════════════════════════
 export function CashScreen() {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const U = useInkUI();
+  // Koyu temada rozet/metin tonları saydam zemin + açık metne döner (light birebir aynı).
+  const CT = U.chipTones;
   useBaseCurrency();
   const isEmbedded = useContext(HubContext);
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
   const TH = usePanelTheme();    // panel rotasına göre renk paleti (admin=mercan, lab=saffron, vs.)
+  // Koyu temada hero lacivert gradyana iner; açık temada mevcut soluk TH.bg zemini KORUNUR.
+  const heroBg = useHeroSurface(TH.primary);
 
   const { accounts, loading, refetch } = useCashAccounts();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -212,17 +240,28 @@ export function CashScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* ── Hero — §10 glassmorphism ─────────────────────────── */}
+        {/* Koyu tema: soluk TH.bg zemin + soluk ink metni beyaz leke gibi patlıyordu →
+            lacivert hero yüzeyi + beyaz metin. Açık tema birebir korunur. */}
         <View style={{
           borderRadius: 28, overflow: 'hidden',
-          backgroundColor: TH.bg, padding: 16,
+          ...(isDark ? heroBg : { backgroundColor: TH.bg }), padding: 16,
           position: 'relative',
         }}>
-          <View style={{ position: 'absolute', top: -40, end: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: TH.bgDeep, opacity: 0.6 }} />
-          <View style={{ position: 'absolute', bottom: -50, start: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: TH.bgDeep, opacity: 0.4 }} />
+          {isDark ? (
+            <>
+              <HeroGlow size={180} opacity={0.18} delay={0}    style={{ top: -40, end: -40 }} />
+              <HeroGlow size={140} opacity={0.10} delay={1400} style={{ bottom: -50, start: -20 }} />
+            </>
+          ) : (
+            <>
+              <View style={{ position: 'absolute', top: -40, end: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: TH.bgDeep, opacity: 0.6 }} />
+              <View style={{ position: 'absolute', bottom: -50, start: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: TH.bgDeep, opacity: 0.4 }} />
+            </>
+          )}
 
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
             <View style={{ flex: 1, minWidth: 220 }}>
-              <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 12 }}>
+              <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: isDark ? 'rgba(255,255,255,0.85)' : T.ink3, marginBottom: 12 }}>
                 Toplam Bakiye
               </Text>
               {/* Katı per-currency: her para birimi ayrı kart, asla tek toplama indirilmez */}
@@ -233,7 +272,7 @@ export function CashScreen() {
                 colorBySign
                 accentColor={TH.primary}
               />
-              <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 8 }}>
+              <Text style={{ fontSize: 12, color: isDark ? 'rgba(255,255,255,0.60)' : T.ink3, marginTop: 8 }}>
                 {accounts.length} hesap
               </Text>
             </View>
@@ -248,8 +287,8 @@ export function CashScreen() {
           <View style={{ flexDirection: 'row', gap: 24, marginTop: 20, flexWrap: 'wrap' }}>
             <View style={{ gap: 4 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Wallet size={11} color={ACCOUNT_COLORS.kasa} strokeWidth={1.8} />
-                <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: DS.ink[400] }}>
+                <Wallet size={11} color={accountColor('kasa', isDark)} strokeWidth={1.8} />
+                <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: isDark ? 'rgba(255,255,255,0.85)' : T.ink3 }}>
                   Kasa
                 </Text>
               </View>
@@ -257,8 +296,8 @@ export function CashScreen() {
             </View>
             <View style={{ gap: 4 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Landmark size={11} color={ACCOUNT_COLORS.banka} strokeWidth={1.8} />
-                <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: DS.ink[400] }}>
+                <Landmark size={11} color={accountColor('banka', isDark)} strokeWidth={1.8} />
+                <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: isDark ? 'rgba(255,255,255,0.85)' : T.ink3 }}>
                   Banka
                 </Text>
               </View>
@@ -271,15 +310,15 @@ export function CashScreen() {
         {isDesktop ? (
           <View style={{ flexDirection: 'row', gap: 16 }}>
             {/* Left: Accounts table */}
-            <View style={{ flex: 1, ...tableCard }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
-                <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>Hesaplar</Text>
+            <View style={{ flex: 1, ...tableCard, backgroundColor: T.card, borderColor: T.hairline }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, borderBottomWidth: 1, borderBottomColor: T.hairline }}>
+                <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: T.ink }}>Hesaplar</Text>
                 <View style={{ flex: 1 }} />
-                <Text style={{ fontSize: 12, color: DS.ink[400] }}>{accounts.length} hesap</Text>
+                <Text style={{ fontSize: 12, color: T.ink3 }}>{accounts.length} hesap</Text>
               </View>
 
               {/* Table header */}
-              <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: '#FAFAFA', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+              <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: isDark ? T.cardSoft : '#FAFAFA', borderBottomWidth: 1, borderBottomColor: T.hairline }}>
                 {[
                   { label: 'HESAP',    flex: 2 },
                   { label: 'TÜR',      flex: 1 },
@@ -289,7 +328,7 @@ export function CashScreen() {
                   { label: 'BAKİYE',  flex: 1.2, align: 'right' as const },
                   { label: 'İŞLEM',   flex: 0.8 },
                 ].map((h, i) => (
-                  <Text key={i} style={{ flex: h.flex, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textAlign: h.align }}>
+                  <Text key={i} style={{ flex: h.flex, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: T.ink3, textAlign: h.align }}>
                     {h.label}
                   </Text>
                 ))}
@@ -297,13 +336,13 @@ export function CashScreen() {
 
               {accounts.length === 0 ? (
                 <View style={{ alignItems: 'center', paddingVertical: 48, gap: 10 }}>
-                  <Inbox size={32} color={DS.ink[300]} strokeWidth={1.4} />
-                  <Text style={{ fontSize: 14, fontWeight: '500', color: DS.ink[400] }}>Henüz hesap yok</Text>
+                  <Inbox size={32} color={T.ink3} strokeWidth={1.4} />
+                  <Text style={{ fontSize: 14, fontWeight: '500', color: T.ink3 }}>Henüz hesap yok</Text>
                 </View>
               ) : accounts.map((acc, i) => {
                 const isActive = acc.id === activeAccountId;
                 const Icon = ACCOUNT_ICON[acc.account_type];
-                const color = ACCOUNT_COLORS[acc.account_type];
+                const color = accountColor(acc.account_type, isDark);
                 const bal = Number(acc.balance ?? 0);
                 return (
                   <Pressable
@@ -313,8 +352,8 @@ export function CashScreen() {
                       flexDirection: 'row', alignItems: 'center',
                       paddingHorizontal: 20, paddingVertical: 14,
                       borderBottomWidth: i < accounts.length - 1 ? 1 : 0,
-                      borderBottomColor: 'rgba(0,0,0,0.04)',
-                      backgroundColor: isActive ? 'rgba(74,143,201,0.06)' : 'transparent',
+                      borderBottomColor: T.hairline,
+                      backgroundColor: isActive ? isDark ? 'rgba(255,255,255,0.05)' : 'rgba(74,143,201,0.06)' : 'transparent',
                       cursor: 'pointer' as any,
                     }}
                   >
@@ -322,44 +361,44 @@ export function CashScreen() {
                       <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: `${color}18`, alignItems: 'center', justifyContent: 'center' }}>
                         <Icon size={16} color={color} strokeWidth={1.6} />
                       </View>
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink }} numberOfLines={1}>
                         {acc.name}
                       </Text>
                     </View>
                     <View style={{ flex: 1 }}>
                       <View style={{
                         alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
-                        backgroundColor: acc.account_type === 'kasa' ? CHIP_TONES.success.bg : CHIP_TONES.info.bg,
+                        backgroundColor: acc.account_type === 'kasa' ? CT.success.bg : CT.info.bg,
                       }}>
-                        <Text style={{ fontSize: 10, fontWeight: '600', color: acc.account_type === 'kasa' ? CHIP_TONES.success.fg : CHIP_TONES.info.fg }}>
+                        <Text style={{ fontSize: 10, fontWeight: '600', color: acc.account_type === 'kasa' ? CT.success.fg : CT.info.fg }}>
                           {ACCOUNT_TYPE_LABELS[acc.account_type]}
                         </Text>
                       </View>
                     </View>
-                    <Text style={{ flex: 1.5, fontSize: 12, color: DS.ink[500] }} numberOfLines={1}>
+                    <Text style={{ flex: 1.5, fontSize: 12, color: T.ink3 }} numberOfLines={1}>
                       {acc.bank_name || '—'}
                     </Text>
-                    <Text style={{ flex: 1, fontSize: 12, fontWeight: '500', color: CHIP_TONES.success.fg, textAlign: 'end' as any }}>
+                    <Text style={{ flex: 1, fontSize: 12, fontWeight: '500', color: CT.success.fg, textAlign: 'end' as any }}>
                       {acc.total_in ? fmtCur(acc.total_in, acc.currency) : '—'}
                     </Text>
-                    <Text style={{ flex: 1, fontSize: 12, fontWeight: '500', color: CHIP_TONES.danger.fg, textAlign: 'end' as any }}>
+                    <Text style={{ flex: 1, fontSize: 12, fontWeight: '500', color: CT.danger.fg, textAlign: 'end' as any }}>
                       {acc.total_out ? fmtCur(acc.total_out, acc.currency) : '—'}
                     </Text>
-                    <Text style={{ flex: 1.2, fontSize: 13, fontWeight: '700', color: bal >= 0 ? DS.ink[900] : CHIP_TONES.danger.fg, textAlign: 'end' as any }}>
+                    <Text style={{ flex: 1.2, fontSize: 13, fontWeight: '700', color: bal >= 0 ? (isDark ? T.ink : DS.ink[900]) : CT.danger.fg, textAlign: 'end' as any }}>
                       {fmtCur(bal, acc.currency)}
                     </Text>
                     <View style={{ flex: 0.8, flexDirection: 'row', gap: 4 }}>
                       <Pressable
                         onPress={() => setEditAccount(acc)}
-                        style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: DS.ink[50], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                        style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: isDark ? T.cardSoft : DS.ink[50], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
                       >
-                        <Pencil size={13} color={DS.ink[500]} strokeWidth={1.6} />
+                        <Pencil size={13} color={T.ink3} strokeWidth={1.6} />
                       </Pressable>
                       <Pressable
                         onPress={() => handleDeleteAccount(acc)}
-                        style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: CHIP_TONES.danger.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                        style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: CT.danger.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
                       >
-                        <Trash2 size={13} color={CHIP_TONES.danger.fg} strokeWidth={1.6} />
+                        <Trash2 size={13} color={CT.danger.fg} strokeWidth={1.6} />
                       </Pressable>
                     </View>
                   </Pressable>
@@ -368,14 +407,14 @@ export function CashScreen() {
             </View>
 
             {/* Right: Movements for selected account */}
-            <View style={{ flex: 1.3, ...tableCard }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+            <View style={{ flex: 1.3, ...tableCard, backgroundColor: T.card, borderColor: T.hairline }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, borderBottomWidth: 1, borderBottomColor: T.hairline }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>
+                  <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: T.ink }}>
                     {selectedAccount?.name ?? 'Hareketler'}
                   </Text>
                   {selectedAccount && (
-                    <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 2 }}>
+                    <Text style={{ fontSize: 12, color: T.ink3, marginTop: 2 }}>
                       Bakiye: {fmtCur(selectedAccount.balance, selectedAccount.currency)}
                     </Text>
                   )}
@@ -390,19 +429,19 @@ export function CashScreen() {
                 <View style={{
                   flexDirection: 'row', alignItems: 'center', gap: 10,
                   height: 40, paddingHorizontal: 16, marginHorizontal: 16, marginTop: 12, marginBottom: 4,
-                  borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#FFF',
+                  borderRadius: 14, borderWidth: 1, borderColor: T.hairline, backgroundColor: isDark ? T.cardSoft : (isDark ? T.card : '#FFF'),
                 }}>
-                  <Search size={14} color={DS.ink[400]} strokeWidth={1.8} />
+                  <Search size={14} color={T.ink3} strokeWidth={1.8} />
                   <TextInput
-                    style={{ flex: 1, fontSize: 13, color: DS.ink[900], outline: 'none' as any }}
+                    style={{ flex: 1, fontSize: 13, color: T.ink, outline: 'none' as any }}
                     placeholder="Hareket ara..."
-                    placeholderTextColor={DS.ink[400]}
+                    placeholderTextColor={isDark ? (T.ink3 as string) : DS.ink[400]}
                     value={search}
                     onChangeText={setSearch}
                   />
                   {search.length > 0 && (
                     <Pressable onPress={() => setSearch('')} style={{ cursor: 'pointer' as any }}>
-                      <X size={13} color={DS.ink[400]} strokeWidth={2} />
+                      <X size={13} color={T.ink3} strokeWidth={2} />
                     </Pressable>
                   )}
                 </View>
@@ -410,7 +449,7 @@ export function CashScreen() {
 
               {/* Movement table header */}
               {activeAccountId && (
-                <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: '#FAFAFA', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)', marginTop: 8 }}>
+                <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: isDark ? T.cardSoft : '#FAFAFA', borderBottomWidth: 1, borderBottomColor: T.hairline, marginTop: 8 }}>
                   {[
                     { label: 'TARİH',     flex: 1 },
                     { label: 'KATEGORİ',  flex: 1 },
@@ -418,7 +457,7 @@ export function CashScreen() {
                     { label: 'TUTAR',     flex: 1, align: 'right' as const },
                     { label: 'İŞLEM',     flex: 0.5 },
                   ].map((h, i) => (
-                    <Text key={i} style={{ flex: h.flex, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textAlign: h.align }}>
+                    <Text key={i} style={{ flex: h.flex, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: T.ink3, textAlign: h.align }}>
                       {h.label}
                     </Text>
                   ))}
@@ -428,39 +467,39 @@ export function CashScreen() {
               {/* Movement rows */}
               {!activeAccountId ? (
                 <View style={{ alignItems: 'center', paddingVertical: 48, gap: 10 }}>
-                  <Wallet size={32} color={DS.ink[300]} strokeWidth={1.4} />
-                  <Text style={{ fontSize: 14, fontWeight: '500', color: DS.ink[400] }}>Hesap seçin</Text>
+                  <Wallet size={32} color={T.ink3} strokeWidth={1.4} />
+                  <Text style={{ fontSize: 14, fontWeight: '500', color: T.ink3 }}>Hesap seçin</Text>
                 </View>
               ) : movLoading ? (
                 <ActivityIndicator style={{ marginTop: 40 }} color={TH.primary} />
               ) : filteredMovements.length === 0 ? (
                 <View style={{ alignItems: 'center', paddingVertical: 48, gap: 10 }}>
-                  <Inbox size={32} color={DS.ink[300]} strokeWidth={1.4} />
-                  <Text style={{ fontSize: 14, fontWeight: '500', color: DS.ink[400] }}>Hareket yok</Text>
+                  <Inbox size={32} color={T.ink3} strokeWidth={1.4} />
+                  <Text style={{ fontSize: 14, fontWeight: '500', color: T.ink3 }}>Hareket yok</Text>
                 </View>
               ) : (
                 <ScrollView style={{ maxHeight: 500 }} showsVerticalScrollIndicator={false}>
                   {filteredMovements.map((mv, i) => {
                     const isIn = mv.direction === 'giris';
-                    const color = isIn ? DIRECTION_COLORS.giris : DIRECTION_COLORS.cikis;
+                    const color = directionColor(isIn ? 'giris' : 'cikis', isDark);
                     const CIcon = CAT_ICON[mv.category as MovementCategory] ?? CircleDot;
                     return (
                       <View key={mv.id} style={{
                         flexDirection: 'row', alignItems: 'center',
                         paddingHorizontal: 20, paddingVertical: 14,
                         borderBottomWidth: i < filteredMovements.length - 1 ? 1 : 0,
-                        borderBottomColor: 'rgba(0,0,0,0.04)',
+                        borderBottomColor: T.hairline,
                       }}>
-                        <Text style={{ flex: 1, fontSize: 12, color: DS.ink[500], fontFamily: 'monospace' }}>
+                        <Text style={{ flex: 1, fontSize: 12, color: T.ink3, fontFamily: 'monospace' }}>
                           {fmtDate(mv.movement_date)}
                         </Text>
                         <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                           <CIcon size={13} color={color} strokeWidth={1.6} />
-                          <Text style={{ fontSize: 12, color: DS.ink[700] }}>
+                          <Text style={{ fontSize: 12, color: T.ink2 }}>
                             {MOVEMENT_CATEGORY_LABELS[mv.category as MovementCategory] ?? mv.category}
                           </Text>
                         </View>
-                        <Text style={{ flex: 2, fontSize: 12, color: DS.ink[700] }} numberOfLines={1}>
+                        <Text style={{ flex: 2, fontSize: 12, color: T.ink2 }} numberOfLines={1}>
                           {mv.description}
                         </Text>
                         <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color, textAlign: 'end' as any }}>
@@ -469,9 +508,9 @@ export function CashScreen() {
                         <View style={{ flex: 0.5, alignItems: 'flex-end' }}>
                           <Pressable
                             onPress={() => handleDeleteMovement(mv.id)}
-                            style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: DS.ink[50], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                            style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: isDark ? T.cardSoft : DS.ink[50], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
                           >
-                            <Trash2 size={12} color={DS.ink[400]} strokeWidth={1.6} />
+                            <Trash2 size={12} color={T.ink3} strokeWidth={1.6} />
                           </Pressable>
                         </View>
                       </View>
@@ -489,14 +528,14 @@ export function CashScreen() {
               {accounts.map(acc => {
                 const isActive = acc.id === activeAccountId;
                 const Icon = ACCOUNT_ICON[acc.account_type];
-                const color = ACCOUNT_COLORS[acc.account_type];
+                const color = accountColor(acc.account_type, isDark);
                 const bal = Number(acc.balance ?? 0);
                 return (
                   <Pressable
                     key={acc.id}
                     onPress={() => setSelectedId(acc.id)}
                     style={{
-                      ...cardSolid,
+                      ...cardSolid, backgroundColor: T.card,
                       padding: 16, width: 180,
                       borderWidth: isActive ? 1.5 : 0,
                       borderColor: isActive ? color : 'transparent',
@@ -508,34 +547,34 @@ export function CashScreen() {
                         <Icon size={14} color={color} strokeWidth={1.6} />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>{acc.name}</Text>
-                        <Text style={{ fontSize: 10, color: DS.ink[400] }}>{ACCOUNT_TYPE_LABELS[acc.account_type]}</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: T.ink }} numberOfLines={1}>{acc.name}</Text>
+                        <Text style={{ fontSize: 10, color: T.ink3 }}>{ACCOUNT_TYPE_LABELS[acc.account_type]}</Text>
                       </View>
                     </View>
-                    <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.5, color: bal >= 0 ? DS.ink[900] : CHIP_TONES.danger.fg }}>
+                    <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.5, color: bal >= 0 ? (isDark ? T.ink : DS.ink[900]) : CT.danger.fg }}>
                       {fmtCur(bal, acc.currency)}
                     </Text>
                     <View style={{ flexDirection: 'row', gap: 4, marginTop: 8 }}>
                       <Pressable
                         onPress={() => setEditAccount(acc)}
-                        style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: DS.ink[50], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                        style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: isDark ? T.cardSoft : DS.ink[50], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
                       >
-                        <Pencil size={12} color={DS.ink[500]} strokeWidth={1.6} />
+                        <Pencil size={12} color={T.ink3} strokeWidth={1.6} />
                       </Pressable>
                       <Pressable
                         onPress={() => handleDeleteAccount(acc)}
-                        style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: CHIP_TONES.danger.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                        style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: CT.danger.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
                       >
-                        <Trash2 size={12} color={CHIP_TONES.danger.fg} strokeWidth={1.6} />
+                        <Trash2 size={12} color={CT.danger.fg} strokeWidth={1.6} />
                       </Pressable>
                     </View>
                   </Pressable>
                 );
               })}
               {accounts.length === 0 && (
-                <View style={{ ...cardSolid, alignItems: 'center', paddingVertical: 32, paddingHorizontal: 32, gap: 8 }}>
-                  <Wallet size={28} color={DS.ink[300]} strokeWidth={1.4} />
-                  <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[400] }}>Henüz hesap yok</Text>
+                <View style={{ ...cardSolid, backgroundColor: T.card, borderColor: T.hairline, alignItems: 'center', paddingVertical: 32, paddingHorizontal: 32, gap: 8 }}>
+                  <Wallet size={28} color={T.ink3} strokeWidth={1.4} />
+                  <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink3 }}>Henüz hesap yok</Text>
                 </View>
               )}
             </ScrollView>
@@ -545,10 +584,10 @@ export function CashScreen() {
               <View style={{ gap: 10 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: T.ink }}>
                       {selectedAccount?.name} Hareketleri
                     </Text>
-                    <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 1 }}>
+                    <Text style={{ fontSize: 12, color: T.ink3, marginTop: 1 }}>
                       Bakiye: {fmtCur(selectedAccount?.balance, selectedAccount?.currency)}
                     </Text>
                   </View>
@@ -559,19 +598,19 @@ export function CashScreen() {
                 <View style={{
                   flexDirection: 'row', alignItems: 'center', gap: 10,
                   height: 44, paddingHorizontal: 14, borderRadius: 14,
-                  borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#FFF',
+                  borderWidth: 1, borderColor: T.hairline, backgroundColor: isDark ? T.cardSoft : (isDark ? T.card : '#FFF'),
                 }}>
-                  <Search size={15} color={DS.ink[400]} strokeWidth={1.8} />
+                  <Search size={15} color={T.ink3} strokeWidth={1.8} />
                   <TextInput
-                    style={{ flex: 1, fontSize: 14, color: DS.ink[900], outline: 'none' as any }}
+                    style={{ flex: 1, fontSize: 14, color: T.ink, outline: 'none' as any }}
                     placeholder="Hareket ara..."
-                    placeholderTextColor={DS.ink[400]}
+                    placeholderTextColor={isDark ? (T.ink3 as string) : DS.ink[400]}
                     value={search}
                     onChangeText={setSearch}
                   />
                   {search.length > 0 && (
                     <Pressable onPress={() => setSearch('')} style={{ cursor: 'pointer' as any }}>
-                      <X size={14} color={DS.ink[400]} strokeWidth={2} />
+                      <X size={14} color={T.ink3} strokeWidth={2} />
                     </Pressable>
                   )}
                 </View>
@@ -579,27 +618,27 @@ export function CashScreen() {
                 {movLoading ? (
                   <ActivityIndicator style={{ marginTop: 24 }} color={TH.primary} />
                 ) : filteredMovements.length === 0 ? (
-                  <View style={{ ...cardSolid, alignItems: 'center', paddingVertical: 36, gap: 10 }}>
-                    <Inbox size={28} color={DS.ink[300]} strokeWidth={1.4} />
-                    <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[400] }}>Hareket yok</Text>
+                  <View style={{ ...cardSolid, backgroundColor: T.card, borderColor: T.hairline, alignItems: 'center', paddingVertical: 36, gap: 10 }}>
+                    <Inbox size={28} color={T.ink3} strokeWidth={1.4} />
+                    <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink3 }}>Hareket yok</Text>
                   </View>
                 ) : filteredMovements.map(mv => {
                   const isIn = mv.direction === 'giris';
-                  const color = isIn ? DIRECTION_COLORS.giris : DIRECTION_COLORS.cikis;
+                  const color = directionColor(isIn ? 'giris' : 'cikis', isDark);
                   const CIcon = CAT_ICON[mv.category as MovementCategory] ?? CircleDot;
                   return (
                     <View key={mv.id} style={{
-                      ...cardSolid, padding: 16,
+                      ...cardSolid, backgroundColor: T.card, borderColor: T.hairline, padding: 16,
                       flexDirection: 'row', alignItems: 'center', gap: 12,
                     }}>
                       <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: `${color}14`, alignItems: 'center', justifyContent: 'center' }}>
                         <CIcon size={16} color={color} strokeWidth={1.6} />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink }} numberOfLines={1}>
                           {mv.description}
                         </Text>
-                        <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 2 }}>
+                        <Text style={{ fontSize: 11, color: T.ink3, marginTop: 2 }}>
                           {MOVEMENT_CATEGORY_LABELS[mv.category as MovementCategory]} · {fmtDate(mv.movement_date)}
                         </Text>
                       </View>
@@ -609,9 +648,9 @@ export function CashScreen() {
                         </Text>
                         <Pressable
                           onPress={() => handleDeleteMovement(mv.id)}
-                          style={{ width: 26, height: 26, borderRadius: 8, backgroundColor: DS.ink[50], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                          style={{ width: 26, height: 26, borderRadius: 8, backgroundColor: isDark ? T.cardSoft : DS.ink[50], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
                         >
-                          <Trash2 size={11} color={DS.ink[400]} strokeWidth={1.6} />
+                          <Trash2 size={11} color={T.ink3} strokeWidth={1.6} />
                         </Pressable>
                       </View>
                     </View>
@@ -655,6 +694,9 @@ function AccountModal({
   visible: boolean; account: CashAccount | null;
   onClose: () => void; onSaved: () => void;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const U = useInkUI();
   useBaseCurrency();
   const [name, setName]           = useState('');
   const [type, setType]           = useState<AccountType>('kasa');
@@ -698,9 +740,9 @@ function AccountModal({
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(10,10,10,0.45)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
         <View style={{
-          backgroundColor: '#FFF', borderRadius: 24, width: '100%', maxWidth: 480,
+          backgroundColor: T.card, borderRadius: 24, width: '100%', maxWidth: 480,
           maxHeight: '90%', overflow: 'hidden',
-          borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
+          borderWidth: 1, borderColor: T.hairline,
           // @ts-ignore web
           boxShadow: modalShadow,
         }}>
@@ -708,26 +750,26 @@ function AccountModal({
           <View style={{
             flexDirection: 'row', alignItems: 'center', gap: 12,
             paddingHorizontal: 24, paddingTop: 22, paddingBottom: 16,
-            borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
+            borderBottomWidth: 1, borderBottomColor: T.hairline,
           }}>
-            <Text style={{ ...DISPLAY, flex: 1, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>
+            <Text style={{ ...DISPLAY, flex: 1, fontSize: 22, letterSpacing: -0.4, color: T.ink }}>
               {account ? 'Hesabı Düzenle' : 'Yeni Hesap'}
             </Text>
-            <Pressable onPress={onClose} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}>
-              <X size={16} color={DS.ink[500]} strokeWidth={2} />
+            <Pressable onPress={onClose} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: isDark ? T.cardSoft : DS.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}>
+              <X size={16} color={T.ink3} strokeWidth={2} />
             </Pressable>
           </View>
 
           {/* Body */}
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 24, gap: 4 }}>
-            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 8 }}>
+          <ScrollView style={{ flexGrow: 0, flexShrink: 1 }} contentContainerStyle={{ padding: 24, gap: 4 }}>
+            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: T.ink3, marginBottom: 8 }}>
               Hesap Türü
             </Text>
             <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
               {(['kasa', 'banka'] as AccountType[]).map(t => {
                 const active = type === t;
                 const Icon = ACCOUNT_ICON[t];
-                const color = ACCOUNT_COLORS[t];
+                const color = accountColor(t, isDark);
                 return (
                   <Pressable
                     key={t}
@@ -736,13 +778,13 @@ function AccountModal({
                       flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
                       paddingVertical: 12, borderRadius: 14,
                       borderWidth: 1.5,
-                      borderColor: active ? color : 'rgba(0,0,0,0.08)',
-                      backgroundColor: active ? `${color}12` : '#FFF',
+                      borderColor: active ? color : T.hairline,
+                      backgroundColor: active ? `${color}12` : (isDark ? T.card : '#FFF'),
                       cursor: 'pointer' as any,
                     }}
                   >
-                    <Icon size={16} color={active ? color : DS.ink[400]} strokeWidth={1.6} />
-                    <Text style={{ fontSize: 13, fontWeight: active ? '700' : '500', color: active ? color : DS.ink[500] }}>
+                    <Icon size={16} color={active ? color : T.ink3} strokeWidth={1.6} />
+                    <Text style={{ fontSize: 13, fontWeight: active ? '700' : '500', color: active ? color : T.ink3 }}>
                       {ACCOUNT_TYPE_LABELS[t]}
                     </Text>
                   </Pressable>
@@ -750,52 +792,52 @@ function AccountModal({
               })}
             </View>
 
-            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 6 }}>
+            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: T.ink3, marginBottom: 6 }}>
               Hesap Adı *
             </Text>
             <TextInput
               style={{
-                height: 44, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
-                paddingHorizontal: 14, fontSize: 14, color: DS.ink[900], backgroundColor: '#FFF',
+                height: 44, borderRadius: 14, borderWidth: 1, borderColor: T.hairline,
+                paddingHorizontal: 14, fontSize: 14, color: T.ink, backgroundColor: isDark ? T.cardSoft : (isDark ? T.card : '#FFF'),
                 marginBottom: 14,
               }}
               value={name} onChangeText={setName}
-              placeholder="Örn: Ana Kasa, İş Bankası Hesabı" placeholderTextColor={DS.ink[400]}
+              placeholder="Örn: Ana Kasa, İş Bankası Hesabı" placeholderTextColor={isDark ? (T.ink3 as string) : DS.ink[400]}
             />
 
             {type === 'banka' && (
               <>
-                <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 6 }}>
+                <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: T.ink3, marginBottom: 6 }}>
                   Banka Adı
                 </Text>
                 <TextInput
                   style={{
-                    height: 44, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
-                    paddingHorizontal: 14, fontSize: 14, color: DS.ink[900], backgroundColor: '#FFF',
+                    height: 44, borderRadius: 14, borderWidth: 1, borderColor: T.hairline,
+                    paddingHorizontal: 14, fontSize: 14, color: T.ink, backgroundColor: isDark ? T.cardSoft : (isDark ? T.card : '#FFF'),
                     marginBottom: 14,
                   }}
                   value={bankName} onChangeText={setBankName}
-                  placeholder="Örn: İş Bankası" placeholderTextColor={DS.ink[400]}
+                  placeholder="Örn: İş Bankası" placeholderTextColor={isDark ? (T.ink3 as string) : DS.ink[400]}
                 />
 
-                <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 6 }}>
+                <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: T.ink3, marginBottom: 6 }}>
                   IBAN
                 </Text>
                 <TextInput
                   style={{
-                    height: 44, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
-                    paddingHorizontal: 14, fontSize: 14, color: DS.ink[900], backgroundColor: '#FFF',
+                    height: 44, borderRadius: 14, borderWidth: 1, borderColor: T.hairline,
+                    paddingHorizontal: 14, fontSize: 14, color: T.ink, backgroundColor: isDark ? T.cardSoft : (isDark ? T.card : '#FFF'),
                     marginBottom: 14,
                   }}
                   value={iban} onChangeText={setIban}
-                  placeholder="TR00 0000 0000 0000 0000 0000 00" placeholderTextColor={DS.ink[400]}
+                  placeholder="TR00 0000 0000 0000 0000 0000 00" placeholderTextColor={isDark ? (T.ink3 as string) : DS.ink[400]}
                   autoCapitalize="characters"
                 />
               </>
             )}
 
             {/* Para birimi — hesap KENDİ para biriminde tutulur (katı per-currency) */}
-            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 6 }}>
+            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: T.ink3, marginBottom: 6 }}>
               Para Birimi
             </Text>
             <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
@@ -808,15 +850,16 @@ function AccountModal({
                     style={{
                       flexDirection: 'row', alignItems: 'center', gap: 6,
                       paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, borderWidth: 1.5,
-                      borderColor: active ? DS.ink[900] : 'rgba(0,0,0,0.08)',
-                      backgroundColor: active ? DS.ink[900] : '#FFF',
+                      borderColor: active ? U.ink[900] : T.hairline,
+                      backgroundColor: active ? U.ink[900] : (isDark ? T.card : '#FFF'),
                       cursor: 'pointer' as any,
                     }}
                   >
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: active ? '#FFF' : DS.ink[500] }}>
+                    {/* İkiz tuzak: ink[900] zemin koyu temada krem → metin onDarkPill olmalı. */}
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: active ? U.onDarkPill : T.ink3 }}>
                       {CURRENCY_META[cur].symbol}
                     </Text>
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: active ? '#FFF' : DS.ink[700] }}>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: active ? U.onDarkPill : T.ink2 }}>
                       {cur}
                     </Text>
                   </Pressable>
@@ -824,16 +867,16 @@ function AccountModal({
               })}
             </View>
 
-            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 6 }}>
+            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: T.ink3, marginBottom: 6 }}>
               Açılış Bakiyesi ({CURRENCY_META[currency].symbol})
             </Text>
             <TextInput
               style={{
-                height: 44, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
-                paddingHorizontal: 14, fontSize: 14, color: DS.ink[900], backgroundColor: '#FFF',
+                height: 44, borderRadius: 14, borderWidth: 1, borderColor: T.hairline,
+                paddingHorizontal: 14, fontSize: 14, color: T.ink, backgroundColor: isDark ? T.cardSoft : (isDark ? T.card : '#FFF'),
               }}
               value={opening} onChangeText={setOpening}
-              placeholder="0,00" placeholderTextColor={DS.ink[400]} keyboardType="decimal-pad"
+              placeholder="0,00" placeholderTextColor={isDark ? (T.ink3 as string) : DS.ink[400]} keyboardType="decimal-pad"
             />
           </ScrollView>
 
@@ -841,7 +884,7 @@ function AccountModal({
           <View style={{
             flexDirection: 'row', justifyContent: 'flex-end', gap: 8,
             paddingHorizontal: 24, paddingVertical: 16,
-            borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
+            borderTopWidth: 1, borderTopColor: T.hairline,
           }}>
             <PillBtn icon={X} label="İptal" variant="ghost" onPress={onClose} disabled={saving} />
             <Pressable
@@ -849,14 +892,14 @@ function AccountModal({
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 6,
                 height: 38, paddingHorizontal: 18, borderRadius: 999,
-                backgroundColor: DS.ink[900], opacity: saving ? 0.5 : 1,
+                backgroundColor: U.ink[900], opacity: saving ? 0.5 : 1,
                 cursor: 'pointer' as any,
               }}
             >
               {saving ? (
-                <ActivityIndicator color="#FFF" size="small" />
+                <ActivityIndicator color={U.onDarkPill} size="small" />
               ) : (
-                <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFF' }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: U.onDarkPill }}>
                   {account ? 'Güncelle' : 'Oluştur'}
                 </Text>
               )}
@@ -877,6 +920,11 @@ function MovementModal({
   visible: boolean; accountId: string; accountName: string; accountCurrency: string;
   onClose: () => void; onSaved: () => void;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const U = useInkUI();
+  const dirIn  = directionColor('giris', isDark);
+  const dirOut = directionColor('cikis', isDark);
   const curSymbol = CURRENCY_META[((accountCurrency || 'TRY') as Currency)]?.symbol ?? '₺';
   const [direction, setDirection] = useState<MovementDirection>('giris');
   const [amount, setAmount]       = useState('');
@@ -920,9 +968,9 @@ function MovementModal({
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(10,10,10,0.45)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
         <View style={{
-          backgroundColor: '#FFF', borderRadius: 24, width: '100%', maxWidth: 480,
+          backgroundColor: T.card, borderRadius: 24, width: '100%', maxWidth: 480,
           maxHeight: '90%', overflow: 'hidden',
-          borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
+          borderWidth: 1, borderColor: T.hairline,
           // @ts-ignore web
           boxShadow: modalShadow,
         }}>
@@ -930,23 +978,23 @@ function MovementModal({
           <View style={{
             flexDirection: 'row', alignItems: 'center', gap: 12,
             paddingHorizontal: 24, paddingTop: 22, paddingBottom: 16,
-            borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
+            borderBottomWidth: 1, borderBottomColor: T.hairline,
           }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>
+              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: T.ink }}>
                 Hareket Ekle
               </Text>
-              <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 2 }}>{accountName}</Text>
+              <Text style={{ fontSize: 12, color: T.ink3, marginTop: 2 }}>{accountName}</Text>
             </View>
-            <Pressable onPress={onClose} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}>
-              <X size={16} color={DS.ink[500]} strokeWidth={2} />
+            <Pressable onPress={onClose} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: isDark ? T.cardSoft : DS.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}>
+              <X size={16} color={T.ink3} strokeWidth={2} />
             </Pressable>
           </View>
 
           {/* Body */}
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 24, gap: 4 }}>
+          <ScrollView style={{ flexGrow: 0, flexShrink: 1 }} contentContainerStyle={{ padding: 24, gap: 4 }}>
             {/* Direction toggle */}
-            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 8 }}>
+            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: T.ink3, marginBottom: 8 }}>
               Hareket Türü
             </Text>
             <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
@@ -955,13 +1003,13 @@ function MovementModal({
                 style={{
                   flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
                   paddingVertical: 12, borderRadius: 14, borderWidth: 1.5,
-                  borderColor: direction === 'giris' ? DIRECTION_COLORS.giris : 'rgba(0,0,0,0.08)',
-                  backgroundColor: direction === 'giris' ? `${DIRECTION_COLORS.giris}12` : '#FFF',
+                  borderColor: direction === 'giris' ? dirIn : T.hairline,
+                  backgroundColor: direction === 'giris' ? `${dirIn}12` : (isDark ? T.card : '#FFF'),
                   cursor: 'pointer' as any,
                 }}
               >
-                <ArrowDownCircle size={16} color={direction === 'giris' ? DIRECTION_COLORS.giris : DS.ink[400]} strokeWidth={1.6} />
-                <Text style={{ fontSize: 13, fontWeight: direction === 'giris' ? '700' : '500', color: direction === 'giris' ? DIRECTION_COLORS.giris : DS.ink[500] }}>
+                <ArrowDownCircle size={16} color={direction === 'giris' ? dirIn : T.ink3} strokeWidth={1.6} />
+                <Text style={{ fontSize: 13, fontWeight: direction === 'giris' ? '700' : '500', color: direction === 'giris' ? dirIn : T.ink3 }}>
                   Para Girişi
                 </Text>
               </Pressable>
@@ -970,34 +1018,34 @@ function MovementModal({
                 style={{
                   flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
                   paddingVertical: 12, borderRadius: 14, borderWidth: 1.5,
-                  borderColor: direction === 'cikis' ? DIRECTION_COLORS.cikis : 'rgba(0,0,0,0.08)',
-                  backgroundColor: direction === 'cikis' ? `${DIRECTION_COLORS.cikis}12` : '#FFF',
+                  borderColor: direction === 'cikis' ? dirOut : T.hairline,
+                  backgroundColor: direction === 'cikis' ? `${dirOut}12` : (isDark ? T.card : '#FFF'),
                   cursor: 'pointer' as any,
                 }}
               >
-                <ArrowUpCircle size={16} color={direction === 'cikis' ? DIRECTION_COLORS.cikis : DS.ink[400]} strokeWidth={1.6} />
-                <Text style={{ fontSize: 13, fontWeight: direction === 'cikis' ? '700' : '500', color: direction === 'cikis' ? DIRECTION_COLORS.cikis : DS.ink[500] }}>
+                <ArrowUpCircle size={16} color={direction === 'cikis' ? dirOut : T.ink3} strokeWidth={1.6} />
+                <Text style={{ fontSize: 13, fontWeight: direction === 'cikis' ? '700' : '500', color: direction === 'cikis' ? dirOut : T.ink3 }}>
                   Para Çıkışı
                 </Text>
               </Pressable>
             </View>
 
             {/* Amount */}
-            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 6 }}>
+            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: T.ink3, marginBottom: 6 }}>
               Tutar ({curSymbol})
             </Text>
             <TextInput
               style={{
-                height: 44, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
-                paddingHorizontal: 14, fontSize: 14, color: DS.ink[900], backgroundColor: '#FFF',
+                height: 44, borderRadius: 14, borderWidth: 1, borderColor: T.hairline,
+                paddingHorizontal: 14, fontSize: 14, color: T.ink, backgroundColor: isDark ? T.cardSoft : (isDark ? T.card : '#FFF'),
                 marginBottom: 14,
               }}
               value={amount} onChangeText={setAmount}
-              placeholder="0,00" placeholderTextColor={DS.ink[400]} keyboardType="decimal-pad"
+              placeholder="0,00" placeholderTextColor={isDark ? (T.ink3 as string) : DS.ink[400]} keyboardType="decimal-pad"
             />
 
             {/* Category pills */}
-            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 8 }}>
+            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: T.ink3, marginBottom: 8 }}>
               Kategori
             </Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
@@ -1012,13 +1060,13 @@ function MovementModal({
                       flexDirection: 'row', alignItems: 'center', gap: 5,
                       paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
                       borderWidth: 1,
-                      borderColor: active ? DS.ink[900] : 'rgba(0,0,0,0.08)',
-                      backgroundColor: active ? DS.ink[50] : '#FFF',
+                      borderColor: active ? (isDark ? T.ink : DS.ink[900]) : T.hairline,
+                      backgroundColor: active ? (isDark ? T.cardSoft : DS.ink[50]) : (isDark ? T.card : '#FFF'),
                       cursor: 'pointer' as any,
                     }}
                   >
-                    <CIcon size={12} color={active ? DS.ink[900] : DS.ink[400]} strokeWidth={1.6} />
-                    <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? DS.ink[900] : DS.ink[500] }}>
+                    <CIcon size={12} color={active ? (isDark ? T.ink : DS.ink[900]) : T.ink3} strokeWidth={1.6} />
+                    <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? (isDark ? T.ink : DS.ink[900]) : T.ink3 }}>
                       {MOVEMENT_CATEGORY_LABELS[cat]}
                     </Text>
                   </Pressable>
@@ -1027,21 +1075,21 @@ function MovementModal({
             </View>
 
             {/* Description */}
-            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 6 }}>
+            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: T.ink3, marginBottom: 6 }}>
               Açıklama *
             </Text>
             <TextInput
               style={{
-                height: 44, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
-                paddingHorizontal: 14, fontSize: 14, color: DS.ink[900], backgroundColor: '#FFF',
+                height: 44, borderRadius: 14, borderWidth: 1, borderColor: T.hairline,
+                paddingHorizontal: 14, fontSize: 14, color: T.ink, backgroundColor: isDark ? T.cardSoft : (isDark ? T.card : '#FFF'),
                 marginBottom: 14,
               }}
               value={desc} onChangeText={setDesc}
-              placeholder="Kısa not…" placeholderTextColor={DS.ink[400]}
+              placeholder="Kısa not…" placeholderTextColor={isDark ? (T.ink3 as string) : DS.ink[400]}
             />
 
             {/* Date */}
-            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 6 }}>
+            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: T.ink3, marginBottom: 6 }}>
               Tarih
             </Text>
             <DatePicker value={date} onChange={setDate} placeholder="Tarih seç" />
@@ -1051,7 +1099,7 @@ function MovementModal({
           <View style={{
             flexDirection: 'row', justifyContent: 'flex-end', gap: 8,
             paddingHorizontal: 24, paddingVertical: 16,
-            borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
+            borderTopWidth: 1, borderTopColor: T.hairline,
           }}>
             <PillBtn icon={X} label="İptal" variant="ghost" onPress={onClose} disabled={saving} />
             <Pressable
@@ -1059,15 +1107,17 @@ function MovementModal({
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 6,
                 height: 38, paddingHorizontal: 18, borderRadius: 999,
-                backgroundColor: direction === 'cikis' ? CHIP_TONES.danger.fg : DS.ink[900],
+                // Çıkış = kırmızı (status rengi, koyuda da beyaz metinle okunur);
+                // giriş = nötr pill → koyu temada krem zemin + koyu metin.
+                backgroundColor: direction === 'cikis' ? '#9C2E2E' : U.ink[900],
                 opacity: saving ? 0.5 : 1,
                 cursor: 'pointer' as any,
               }}
             >
               {saving ? (
-                <ActivityIndicator color="#FFF" size="small" />
+                <ActivityIndicator color={direction === 'cikis' ? '#FFF' : U.onDarkPill} size="small" />
               ) : (
-                <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFF' }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: direction === 'cikis' ? '#FFF' : U.onDarkPill }}>
                   Kaydet
                 </Text>
               )}

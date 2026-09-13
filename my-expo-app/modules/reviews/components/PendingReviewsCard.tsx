@@ -4,7 +4,7 @@
 // Tıklayınca bekleyen işleri SIRAYLA değerlendirme modalı açılır.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, Animated, Easing } from 'react-native';
-import { Star, ArrowUpRight, ArrowUpLeft } from 'lucide-react-native';
+import { Star, ArrowUpRight, ArrowUpLeft } from '../../../core/ui/icons';
 import { isRTL } from '../../../core/i18n';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { AlertPillX } from '../../../core/ui/AlertPillX';

@@ -26,10 +26,11 @@ import { safeBack } from '../../../core/util/safeBack';
 import {
   AlertTriangle, ChevronLeft, ChevronRight, Inbox, Layers, RefreshCw, Search,
   ShoppingCart, TrendingDown, X,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { ResponsiveCanvas } from '../../../core/layout/ResponsiveCanvas';
 import { groupByCategory, CategoryHeaderRow } from '../categoryGroup';
 import { DS } from '../../../core/theme/dsTokens';
+import { useStockUI, type StockUI } from '../stockTheme';
 import { isRTL } from '../../../core/i18n';
 import { toast } from '../../../core/ui/Toast';
 import {
@@ -44,13 +45,14 @@ const DISPLAY = {
 };
 
 /** DESIGN_LANGUAGE §3 — radius.card 18 + 1px ink[200], gölge yok */
-const CARD: any = {
-  backgroundColor: '#FFF',
+/** Tema-farkında kart — yüzey/kenarlık useStockUI()'den gelir. */
+const card = (U: StockUI): any => ({
+  backgroundColor: U.surface,
   borderRadius: 18,
   borderWidth: 1,
-  borderColor: DS.ink[200],
+  borderColor: U.ink[200],
   overflow: 'hidden',
-};
+});
 
 interface Props {
   accentColor?: string;
@@ -80,6 +82,7 @@ function tint(hex: string, alpha: number): string {
 }
 
 function MiniStat({ value, label, color }: { value: React.ReactNode; label: string; color: string }) {
+  const U = useStockUI();
   return (
     <View style={{ gap: 2 }}>
       <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.6, lineHeight: 24, color }}>
@@ -87,7 +90,7 @@ function MiniStat({ value, label, color }: { value: React.ReactNode; label: stri
       </Text>
       <Text style={{
         fontSize: 10, fontWeight: '500', letterSpacing: 0.8,
-        textTransform: 'uppercase', color: DS.ink[400],
+        textTransform: 'uppercase', color: U.ink[400],
       }}>
         {label}
       </Text>
@@ -97,10 +100,11 @@ function MiniStat({ value, label, color }: { value: React.ReactNode; label: stri
 
 /** Güven rozeti — StatusChip spec, sakin tonlar */
 function ConfidenceChip({ level }: { level: ReorderRow['confidence'] }) {
+  const U = useStockUI();
   const map = {
-    orta:  { bg: 'rgba(45,154,107,0.12)', fg: '#1F6B47', label: 'Orta güven' },
-    düşük: { bg: 'rgba(232,155,42,0.15)', fg: '#9C5E0E', label: 'Düşük güven' },
-    yok:   { bg: 'rgba(0,0,0,0.05)',      fg: DS.ink[500], label: 'Veri yok' },
+    orta:  { bg: U.chipTones.success.bg, fg: U.chipTones.success.fg, label: 'Orta güven' },
+    düşük: { bg: U.chipTones.warning.bg, fg: U.chipTones.warning.fg, label: 'Düşük güven' },
+    yok:   { bg: U.hairline,      fg: U.ink[500], label: 'Veri yok' },
   } as const;
   const t = map[level] ?? map.yok;
   return (
@@ -113,6 +117,7 @@ function ConfidenceChip({ level }: { level: ReorderRow['confidence'] }) {
 }
 
 export function FifoReorderScreen({ accentColor = DS.lab.primary, embedded = false, view }: Props) {
+  const U = useStockUI();
   const router   = useRouter();
   const segments = useSegments();
   const panel    = (segments?.[0] as string) ?? '(lab)';
@@ -193,15 +198,15 @@ export function FifoReorderScreen({ accentColor = DS.lab.primary, embedded = fal
           onPress={goBack}
           style={({ pressed }) => ({
             width: 30, height: 30, borderRadius: 999, alignItems: 'center',
-            justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.05)',
+            justifyContent: 'center', backgroundColor: U.chipNeutral,
             opacity: pressed ? 0.6 : 1, ...webCursor,
           })}
         >
-          {isRTL() ? <ChevronRight size={16} color={DS.ink[700]} strokeWidth={1.8} /> : <ChevronLeft size={16} color={DS.ink[700]} strokeWidth={1.8} />}
+          {isRTL() ? <ChevronRight size={16} color={U.ink[700]} strokeWidth={1.8} /> : <ChevronLeft size={16} color={U.ink[700]} strokeWidth={1.8} />}
         </Pressable>
         <Text style={{
           fontSize: 11, fontWeight: '500', letterSpacing: 1.4,
-          textTransform: 'uppercase', color: DS.ink[500],
+          textTransform: 'uppercase', color: U.ink[500],
         }}>
           Envanter · FIFO
         </Text>
@@ -209,10 +214,10 @@ export function FifoReorderScreen({ accentColor = DS.lab.primary, embedded = fal
 
       {/* ── Başlık ─────────────────────────────────────────────── */}
       <View style={{ gap: 6, marginBottom: 16 }}>
-        <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.5, lineHeight: 26, color: DS.ink[900] }}>
+        <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.5, lineHeight: 26, color: U.ink[900] }}>
           Stok Değeri ve Sipariş Önerisi
         </Text>
-        <Text style={{ fontSize: 13, color: DS.ink[500], lineHeight: 19, maxWidth: 640 }}>
+        <Text style={{ fontSize: 13, color: U.ink[500], lineHeight: 19, maxWidth: 640 }}>
           Maliyet ilk giren ilk çıkar yöntemiyle hesaplanır: aynı ürün farklı tarihlerde
           farklı fiyata alındıysa tüketim en eski katmandan maliyetlenir. Ortalama maliyet
           kullanılmaz.
@@ -223,29 +228,29 @@ export function FifoReorderScreen({ accentColor = DS.lab.primary, embedded = fal
 
       {/* ── Özet — scroll'da yapışık (yalnız web) ──────────────── */}
       <View style={{
-        ...CARD, paddingHorizontal: 20, paddingVertical: 16, marginBottom: 16,
+        ...card(U), paddingHorizontal: 20, paddingVertical: 16, marginBottom: 16,
         ...(Platform.OS === 'web' ? ({ position: 'sticky', top: 8, zIndex: 5 } as any) : {}),
       }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 26, flexWrap: 'wrap' }}>
           {totals.length === 0 ? (
-            <MiniStat value="—" label="FIFO stok değeri" color={DS.ink[400]} />
+            <MiniStat value="—" label="FIFO stok değeri" color={U.ink[400]} />
           ) : totals.map(([ccy, v]) => (
             <MiniStat
               key={ccy}
               value={`${fmt(v)} ${ccy}`}
               label="FIFO stok değeri"
-              color={DS.ink[900]}
+              color={U.ink[900]}
             />
           ))}
           <MiniStat
             value={urgent}
             label="14 günde bitecek"
-            color={urgent > 0 ? DS.lab.danger : DS.ink[400]}
+            color={urgent > 0 ? DS.lab.danger : U.ink[400]}
           />
           <MiniStat
             value={uncovered}
             label="Karşılıksız tüketim"
-            color={uncovered > 0 ? DS.lab.warning : DS.ink[400]}
+            color={uncovered > 0 ? DS.lab.warning : U.ink[400]}
           />
 
           <View style={{ flex: 1, minWidth: 0 }} />
@@ -254,11 +259,11 @@ export function FifoReorderScreen({ accentColor = DS.lab.primary, embedded = fal
             onPress={load}
             style={({ pressed }) => ({
               width: 30, height: 30, borderRadius: 999, alignItems: 'center',
-              justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.05)',
+              justifyContent: 'center', backgroundColor: U.chipNeutral,
               opacity: pressed ? 0.6 : 1, ...webCursor,
             })}
           >
-            <RefreshCw size={13} color={DS.ink[500]} strokeWidth={1.8} />
+            <RefreshCw size={13} color={U.ink[500]} strokeWidth={1.8} />
           </Pressable>
         </View>
 
@@ -266,10 +271,10 @@ export function FifoReorderScreen({ accentColor = DS.lab.primary, embedded = fal
           <View style={{
             flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 14,
             paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14,
-            backgroundColor: 'rgba(232,155,42,0.10)',
+            backgroundColor: U.chipTones.warning.bg,
           }}>
-            <AlertTriangle size={13} color="#9C5E0E" strokeWidth={1.9} />
-            <Text style={{ fontSize: 12, color: '#9C5E0E', flex: 1, lineHeight: 18 }}>
+            <AlertTriangle size={13} color={U.chipTones.warning.fg} strokeWidth={1.9} />
+            <Text style={{ fontSize: 12, color: U.chipTones.warning.fg, flex: 1, lineHeight: 18 }}>
               {uncovered} tüketim için yeterli stok katmanı yoktu — maliyetleri son bilinen
               birim fiyattan tahmin edildi. Bu, satın alınandan fazla tüketim veya eksik alış
               kaydı anlamına gelir.
@@ -294,15 +299,15 @@ export function FifoReorderScreen({ accentColor = DS.lab.primary, embedded = fal
                 style={({ pressed }) => ({
                   flexDirection: 'row', alignItems: 'center', gap: 7,
                   paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
-                  backgroundColor: on ? DS.ink[900] : 'rgba(0,0,0,0.05)',
+                  backgroundColor: on ? U.ink[900] : U.hairline,
                   opacity: pressed ? 0.7 : 1, ...webCursor,
                 })}
               >
-                <Icon size={13} color={on ? '#FFF' : DS.ink[700]} strokeWidth={1.8} />
-                <Text style={{ fontSize: 12, fontWeight: '500', color: on ? '#FFF' : DS.ink[800] }}>
+                <Icon size={13} color={on ? U.onDarkPill : U.ink[700]} strokeWidth={1.8} />
+                <Text style={{ fontSize: 12, fontWeight: '500', color: on ? U.onDarkPill : U.ink[800] }}>
                   {t.l}
                 </Text>
-                <Text style={{ fontSize: 11, color: on ? 'rgba(255,255,255,0.6)' : DS.ink[400] }}>
+                <Text style={{ fontSize: 11, color: on ? U.onDarkPillMuted : U.ink[400] }}>
                   {t.n}
                 </Text>
               </Pressable>
@@ -313,23 +318,23 @@ export function FifoReorderScreen({ accentColor = DS.lab.primary, embedded = fal
         <View style={{
           flexDirection: 'row', alignItems: 'center', gap: 8,
           paddingHorizontal: 14, height: 36, borderRadius: 999,
-          backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[200],
+          backgroundColor: U.surface, borderWidth: 1, borderColor: U.ink[200],
           flexGrow: 1, flexBasis: 220, minWidth: 0,
         }}>
-          <Search size={14} color={DS.ink[400]} strokeWidth={1.8} />
+          <Search size={14} color={U.ink[400]} strokeWidth={1.8} />
           <TextInput
             value={q}
             onChangeText={t => { setQ(t); setLimit(PAGE); }}
             placeholder="Ürün ara..."
-            placeholderTextColor={DS.ink[400]}
+            placeholderTextColor={U.ink[400]}
             style={{
-              flex: 1, fontSize: 13, color: DS.ink[900],
+              flex: 1, fontSize: 13, color: U.ink[900],
               ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
             }}
           />
           {q.length > 0 ? (
             <Pressable onPress={() => setQ('')} style={webCursor}>
-              <X size={13} color={DS.ink[400]} strokeWidth={2} />
+              <X size={13} color={U.ink[400]} strokeWidth={2} />
             </Pressable>
           ) : null}
         </View>
@@ -337,36 +342,36 @@ export function FifoReorderScreen({ accentColor = DS.lab.primary, embedded = fal
 
       {/* ── Liste ──────────────────────────────────────────────── */}
       {list.length === 0 ? (
-        <View style={{ ...CARD, paddingVertical: 48, alignItems: 'center', gap: 10 }}>
+        <View style={{ ...card(U), paddingVertical: 48, alignItems: 'center', gap: 10 }}>
           <View style={{
             width: 44, height: 44, borderRadius: 999, alignItems: 'center',
-            justifyContent: 'center', backgroundColor: DS.ink[100],
+            justifyContent: 'center', backgroundColor: U.ink[100],
           }}>
-            <Inbox size={19} color={DS.ink[400]} strokeWidth={1.6} />
+            <Inbox size={19} color={U.ink[400]} strokeWidth={1.6} />
           </View>
-          <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900] }}>
             {q ? 'Aramayla eşleşen ürün yok'
                : tab === 'reorder' ? 'Öneri yok — tüketim verisi birikmemiş'
                : 'Açık FIFO katmanı yok'}
           </Text>
         </View>
       ) : (
-        <View style={CARD}>
+        <View style={card(U)}>
           {/* Sütun başlıkları */}
           <View style={{
             flexDirection: 'row', alignItems: 'center',
             paddingHorizontal: 20, paddingVertical: 10,
-            backgroundColor: DS.ink[50], borderBottomWidth: 1, borderBottomColor: DS.ink[100],
+            backgroundColor: U.ink[50], borderBottomWidth: 1, borderBottomColor: U.ink[100],
           }}>
             <Text style={{
               flex: 1, fontSize: 10, fontWeight: '500', letterSpacing: 1.2,
-              textTransform: 'uppercase', color: DS.ink[400],
+              textTransform: 'uppercase', color: U.ink[400],
             }}>
               Ürün
             </Text>
             <Text style={{
               width: 200, textAlign: 'end' as any, fontSize: 10, fontWeight: '500',
-              letterSpacing: 1.2, textTransform: 'uppercase', color: DS.ink[400],
+              letterSpacing: 1.2, textTransform: 'uppercase', color: U.ink[400],
             }}>
               {tab === 'reorder' ? 'Tükeniş / Sipariş' : 'FIFO değeri'}
             </Text>
@@ -387,8 +392,8 @@ export function FifoReorderScreen({ accentColor = DS.lab.primary, embedded = fal
                     onHoverIn={() => setHoverId(r.stock_item_id)}
                     onHoverOut={() => setHoverId(p => (p === r.stock_item_id ? null : p))}
                     style={{
-                      backgroundColor: hovered ? DS.ink[50] : '#FFF',
-                      borderTopWidth: i === 0 ? 0 : 1, borderTopColor: DS.ink[100],
+                      backgroundColor: hovered ? U.rowHover : U.surface,
+                      borderTopWidth: i === 0 ? 0 : 1, borderTopColor: U.ink[100],
                       borderStartWidth: 2,
                       borderStartColor: soon ? tint(DS.lab.danger, 0.55) : 'transparent',
                       paddingStart: 18, paddingEnd: 20, paddingVertical: 13,
@@ -399,50 +404,50 @@ export function FifoReorderScreen({ accentColor = DS.lab.primary, embedded = fal
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                           <Text numberOfLines={1} style={{
                             fontSize: 14, fontWeight: '600', letterSpacing: -0.2,
-                            color: DS.ink[900], flexShrink: 1,
+                            color: U.ink[900], flexShrink: 1,
                           }}>
                             {r.item_name}
                           </Text>
                           <ConfidenceChip level={r.confidence} />
                         </View>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-                          <Text style={{ fontSize: 12, color: DS.ink[500] }}>
+                          <Text style={{ fontSize: 12, color: U.ink[500] }}>
                             Kalan{' '}
-                            <Text style={{ fontWeight: '600', color: DS.ink[800] }}>
+                            <Text style={{ fontWeight: '600', color: U.ink[800] }}>
                               {fmt(r.qty_on_hand, 3)} {r.unit ?? ''}
                             </Text>
                           </Text>
-                          <Text style={{ fontSize: 12, color: DS.ink[500] }}>
+                          <Text style={{ fontSize: 12, color: U.ink[500] }}>
                             Hız{' '}
-                            <Text style={{ fontWeight: '600', color: DS.ink[800] }}>
+                            <Text style={{ fontWeight: '600', color: U.ink[800] }}>
                               {fmt(r.daily_rate, 3)}/gün
                             </Text>
                           </Text>
                         </View>
-                        <Text style={{ fontSize: 11, color: DS.ink[400] }}>{r.reason}</Text>
+                        <Text style={{ fontSize: 11, color: U.ink[400] }}>{r.reason}</Text>
                       </View>
 
                       <View style={{ width: 200, alignItems: 'flex-end', gap: 3 }}>
                         {r.depletion_date ? (
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                            <TrendingDown size={12} color={soon ? DS.lab.danger : DS.ink[400]} strokeWidth={2} />
+                            <TrendingDown size={12} color={soon ? DS.lab.danger : U.ink[400]} strokeWidth={2} />
                             <Text style={{
                               fontSize: 13, fontWeight: '600',
-                              color: soon ? DS.lab.danger : DS.ink[800],
+                              color: soon ? DS.lab.danger : U.ink[800],
                             }}>
                               {r.depletion_date}
                             </Text>
                           </View>
                         ) : (
-                          <Text style={{ fontSize: 12, color: DS.ink[300] }}>tahmin yok</Text>
+                          <Text style={{ fontSize: 12, color: U.ink[300] }}>tahmin yok</Text>
                         )}
                         {r.days_to_empty != null ? (
-                          <Text style={{ fontSize: 11, color: DS.ink[400] }}>
+                          <Text style={{ fontSize: 11, color: U.ink[400] }}>
                             {fmt(r.days_to_empty, 0)} gün kaldı
                           </Text>
                         ) : null}
                         {r.suggested_order_date ? (
-                          <Text style={{ fontSize: 11, color: DS.ink[500] }}>
+                          <Text style={{ fontSize: 11, color: U.ink[500] }}>
                             Sipariş: {r.suggested_order_date}
                           </Text>
                         ) : null}
@@ -451,7 +456,7 @@ export function FifoReorderScreen({ accentColor = DS.lab.primary, embedded = fal
                             paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
                             backgroundColor: tint(accentColor, 0.14), marginTop: 2,
                           }}>
-                            <Text style={{ fontSize: 11, fontWeight: '600', color: DS.ink[800] }}>
+                            <Text style={{ fontSize: 11, fontWeight: '600', color: U.ink[800] }}>
                               Öneri: {fmt(r.suggested_qty, 2)} {r.unit ?? ''}
                             </Text>
                           </View>
@@ -474,19 +479,19 @@ export function FifoReorderScreen({ accentColor = DS.lab.primary, embedded = fal
                     onHoverIn={() => setHoverId(s.stock_item_id)}
                     onHoverOut={() => setHoverId(p => (p === s.stock_item_id ? null : p))}
                     style={{
-                      backgroundColor: hovered ? DS.ink[50] : '#FFF',
-                      borderTopWidth: i === 0 ? 0 : 1, borderTopColor: DS.ink[100],
+                      backgroundColor: hovered ? U.rowHover : U.surface,
+                      borderTopWidth: i === 0 ? 0 : 1, borderTopColor: U.ink[100],
                       paddingHorizontal: 20, paddingVertical: 13,
                       flexDirection: 'row', alignItems: 'center', gap: 14,
                     }}
                   >
                     <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
                       <Text numberOfLines={1} style={{
-                        fontSize: 14, fontWeight: '600', letterSpacing: -0.2, color: DS.ink[900],
+                        fontSize: 14, fontWeight: '600', letterSpacing: -0.2, color: U.ink[900],
                       }}>
                         {s.item_name}
                       </Text>
-                      <Text numberOfLines={1} style={{ fontSize: 12, color: DS.ink[500] }}>
+                      <Text numberOfLines={1} style={{ fontSize: 12, color: U.ink[500] }}>
                         {s.open_layers} açık katman
                         {s.oldest_layer ? ` · en eski ${s.oldest_layer}` : ''}
                         {s.next_unit_cost != null
@@ -495,13 +500,13 @@ export function FifoReorderScreen({ accentColor = DS.lab.primary, embedded = fal
                       </Text>
                     </View>
                     <View style={{ width: 200, alignItems: 'flex-end', gap: 2 }}>
-                      <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }}>
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900] }}>
                         {fmt(s.fifo_value)}{' '}
-                        <Text style={{ fontSize: 11, fontWeight: '400', color: DS.ink[500] }}>
+                        <Text style={{ fontSize: 11, fontWeight: '400', color: U.ink[500] }}>
                           {s.currency ?? ''}
                         </Text>
                       </Text>
-                      <Text style={{ fontSize: 11, color: DS.ink[400] }}>
+                      <Text style={{ fontSize: 11, color: U.ink[400] }}>
                         {fmt(s.qty_on_hand, 3)} {s.unit ?? ''}
                       </Text>
                     </View>
@@ -514,11 +519,11 @@ export function FifoReorderScreen({ accentColor = DS.lab.primary, embedded = fal
               onPress={() => setLimit(v => v + PAGE * 2)}
               style={({ pressed }) => ({
                 paddingVertical: 14, alignItems: 'center',
-                borderTopWidth: 1, borderTopColor: DS.ink[100],
+                borderTopWidth: 1, borderTopColor: U.ink[100],
                 opacity: pressed ? 0.6 : 1, ...webCursor,
               })}
             >
-              <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[700] }}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: U.ink[700] }}>
                 {list.length - shown.length} kalem daha göster
               </Text>
             </Pressable>

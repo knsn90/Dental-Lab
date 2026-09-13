@@ -26,9 +26,10 @@ import { useRouter, useSegments } from 'expo-router';
 import { safeBack } from '../../../core/util/safeBack';
 import {
   AlertTriangle, ArrowRight, ArrowLeft, Check, ChevronLeft, ChevronRight, Copy, Link2, RefreshCw, Sparkles,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { ResponsiveCanvas } from '../../../core/layout/ResponsiveCanvas';
 import { DS } from '../../../core/theme/dsTokens';
+import { useStockUI } from '../stockTheme';
 import { isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { toast } from '../../../core/ui/Toast';
@@ -75,6 +76,7 @@ function severity(r: CoverageRow): number {
 
 /** Küçültülmüş BigStat — özet şeridi için */
 function MiniStat({ value, label, color }: { value: React.ReactNode; label: string; color: string }) {
+  const U = useStockUI();
   return (
     <View style={{ gap: 2 }}>
       <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.6, lineHeight: 24, color }}>
@@ -82,7 +84,7 @@ function MiniStat({ value, label, color }: { value: React.ReactNode; label: stri
       </Text>
       <Text style={{
         fontSize: 10, fontWeight: '500', letterSpacing: 0.8,
-        textTransform: 'uppercase', color: DS.ink[400],
+        textTransform: 'uppercase', color: U.ink[400],
       }}>
         {label}
       </Text>
@@ -92,11 +94,12 @@ function MiniStat({ value, label, color }: { value: React.ReactNode; label: stri
 
 /** Durum rozeti — StatusChip spec (pill, küçük, sakin renk) */
 function Badge({ label, tone }: { label: string; tone: 'danger' | 'warning' | 'info' | 'muted' }) {
+  const U = useStockUI();
   const tones = {
     danger:  { bg: 'rgba(217,75,75,0.12)',  fg: '#9C2E2E' },
     warning: { bg: 'rgba(232,155,42,0.15)', fg: '#9C5E0E' },
     info:    { bg: 'rgba(74,143,201,0.12)', fg: '#1F5689' },
-    muted:   { bg: 'rgba(0,0,0,0.05)',      fg: DS.ink[500] },
+    muted:   { bg: U.hairline,      fg: U.ink[500] },
   } as const;
   const t = tones[tone];
   return (
@@ -109,6 +112,7 @@ function Badge({ label, tone }: { label: string; tone: 'danger' | 'warning' | 'i
 }
 
 export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedded = false }: Props) {
+  const U = useStockUI();
   const router   = useRouter();
   const segments = useSegments();
   const panel    = (segments?.[0] as string) ?? '(lab)';
@@ -223,16 +227,16 @@ export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedde
           style={({ pressed }) => ({
             width: 30, height: 30, borderRadius: 999,
             alignItems: 'center', justifyContent: 'center',
-            backgroundColor: 'rgba(0,0,0,0.05)', opacity: pressed ? 0.6 : 1, ...webCursor,
+            backgroundColor: U.chipNeutral, opacity: pressed ? 0.6 : 1, ...webCursor,
           })}
         >
           {isRTL()
-            ? <ChevronRight size={16} color={DS.ink[700]} strokeWidth={1.8} />
-            : <ChevronLeft size={16} color={DS.ink[700]} strokeWidth={1.8} />}
+            ? <ChevronRight size={16} color={U.ink[700]} strokeWidth={1.8} />
+            : <ChevronLeft size={16} color={U.ink[700]} strokeWidth={1.8} />}
         </Pressable>
         <Text style={{
           fontSize: 10, fontWeight: '500', letterSpacing: 1.2,
-          textTransform: 'uppercase', color: DS.ink[500],
+          textTransform: 'uppercase', color: U.ink[500],
         }}>
           Envanter · Profil
         </Text>
@@ -240,10 +244,10 @@ export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedde
 
       {/* ── Başlık ─────────────────────────────────────────────── */}
       <View style={{ gap: 6, marginBottom: 16 }}>
-        <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.5, lineHeight: 26, color: DS.ink[900] }}>
+        <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.5, lineHeight: 26, color: U.ink[900] }}>
           Standart Tüketim Profili
         </Text>
-        <Text style={{ fontSize: 13, color: DS.ink[500], lineHeight: 19, maxWidth: 640 }}>
+        <Text style={{ fontSize: 13, color: U.ink[500], lineHeight: 19, maxWidth: 640 }}>
           Teknisyen miktar girmez; tüketimi bu kurallar hesaplar. Kuralı olmayan bir malzeme
           seçilirse stok düşmez — seçim "profil eksik" olarak kaydedilir ve buraya düşer.
         </Text>
@@ -254,19 +258,19 @@ export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedde
       {profile === null ? (
         /* ── Profil yok: tek eylem ────────────────────────────── */
         <View style={{
-          backgroundColor: DS.lab.surface, borderRadius: 18, borderWidth: 1,
-          borderColor: DS.ink[200], padding: 24, gap: 12, alignItems: 'flex-start',
+          backgroundColor: U.surface, borderRadius: 18, borderWidth: 1,
+          borderColor: U.ink[200], padding: 24, gap: 12, alignItems: 'flex-start',
         }}>
           <View style={{
             width: 44, height: 44, borderRadius: 999, alignItems: 'center',
             justifyContent: 'center', backgroundColor: tint(accentColor, 0.14),
           }}>
-            <Copy size={19} color={DS.ink[800]} strokeWidth={1.6} />
+            <Copy size={19} color={U.ink[800]} strokeWidth={1.6} />
           </View>
-          <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[900] }}>
+          <Text style={{ fontSize: 15, fontWeight: '600', color: U.ink[900] }}>
             Henüz lab profiliniz yok
           </Text>
-          <Text style={{ fontSize: 13, color: DS.ink[500], lineHeight: 19, maxWidth: 520 }}>
+          <Text style={{ fontSize: 13, color: U.ink[500], lineHeight: 19, maxWidth: 520 }}>
             SIMAN standart şablonundan kendi kopyanızı oluşturun. Şablon salt okunurdur;
             düzenlemeleriniz yalnız sizin kopyanıza işlenir.
           </Text>
@@ -276,14 +280,14 @@ export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedde
             style={({ pressed }) => ({
               flexDirection: 'row', alignItems: 'center', gap: 8,
               paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999,
-              backgroundColor: DS.ink[900], marginTop: 4,
+              backgroundColor: U.ink[900], marginTop: 4,
               opacity: cloning ? 0.5 : pressed ? 0.85 : 1, ...webCursor,
             })}
           >
             {cloning
-              ? <ActivityIndicator size="small" color="#FFF" />
-              : <Copy size={14} color="#FFF" strokeWidth={1.9} />}
-            <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFF' }}>
+              ? <ActivityIndicator size="small" color={U.onDarkPill} />
+              : <Copy size={14} color={U.onDarkPill} strokeWidth={1.9} />}
+            <Text style={{ fontSize: 13, fontWeight: '600', color: U.onDarkPill }}>
               {cloning ? 'Kopyalanıyor…' : 'Şablondan profil oluştur'}
             </Text>
           </Pressable>
@@ -292,8 +296,8 @@ export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedde
         <>
       {/* ── Özet — scroll'da yapışık kalır (yalnız web) ─────── */}
           <View style={{
-            backgroundColor: DS.lab.surface, borderRadius: 18, borderWidth: 1,
-            borderColor: DS.ink[200], paddingHorizontal: 18, paddingVertical: 14,
+            backgroundColor: U.surface, borderRadius: 18, borderWidth: 1,
+            borderColor: U.ink[200], paddingHorizontal: 18, paddingVertical: 14,
             marginBottom: 16,
             ...(Platform.OS === 'web'
               ? ({ position: 'sticky', top: 8, zIndex: 5 } as any)
@@ -302,7 +306,7 @@ export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedde
             <View style={{
               flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12,
             }}>
-              <Text numberOfLines={1} style={{ flex: 1, fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>
+              <Text numberOfLines={1} style={{ flex: 1, fontSize: 13, fontWeight: '600', color: U.ink[900] }}>
                 {profile.profile_name} · v{profile.version_no}
               </Text>
               <View style={{
@@ -319,29 +323,29 @@ export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedde
                 onPress={load}
                 style={({ pressed }) => ({
                   width: 30, height: 30, borderRadius: 999, alignItems: 'center',
-                  justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.05)',
+                  justifyContent: 'center', backgroundColor: U.chipNeutral,
                   opacity: pressed ? 0.6 : 1, ...webCursor,
                 })}
               >
-                <RefreshCw size={13} color={DS.ink[500]} strokeWidth={1.8} />
+                <RefreshCw size={13} color={U.ink[500]} strokeWidth={1.8} />
               </Pressable>
             </View>
 
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 26, flexWrap: 'wrap' }}>
               <MiniStat value={`%${stats.pct}`} label="Tamamlandı"
-                        color={stats.pct >= 80 ? DS.lab.success : DS.ink[900]} />
-              <MiniStat value={`${stats.withRule}/${stats.total}`} label="Kural tanımlı" color={DS.ink[900]} />
+                        color={stats.pct >= 80 ? DS.lab.success : U.ink[900]} />
+              <MiniStat value={`${stats.withRule}/${stats.total}`} label="Kural tanımlı" color={U.ink[900]} />
               <MiniStat value={stats.noRule} label="Kural yok"
-                        color={stats.noRule > 0 ? DS.lab.danger : DS.ink[400]} />
+                        color={stats.noRule > 0 ? DS.lab.danger : U.ink[400]} />
               <MiniStat value={stats.noMapping} label="Ürün bağlanmamış"
-                        color={stats.noMapping > 0 ? DS.lab.warning : DS.ink[400]} />
+                        color={stats.noMapping > 0 ? DS.lab.warning : U.ink[400]} />
               <MiniStat value={stats.assumed} label="Varsayım"
-                        color={stats.assumed > 0 ? DS.lab.info : DS.ink[400]} />
+                        color={stats.assumed > 0 ? DS.lab.info : U.ink[400]} />
             </View>
 
             <View style={{
               height: 3, borderRadius: 999, marginTop: 14,
-              backgroundColor: DS.ink[100], overflow: 'hidden',
+              backgroundColor: U.ink[100], overflow: 'hidden',
             }}>
               <View style={{
                 height: '100%', borderRadius: 999, width: `${stats.pct}%`,
@@ -350,7 +354,7 @@ export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedde
             </View>
 
             {stats.pct < 80 ? (
-              <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 10, lineHeight: 18 }}>
+              <Text style={{ fontSize: 12, color: U.ink[500], marginTop: 10, lineHeight: 18 }}>
                 {autoT('Miktarsız akış için önerilen eşik %80. Eksik kalan {a} kombinasyonun {b} tanesinde kural yok, {c} tanesine hiç stok kalemi bağlanmamış.')
                   .replace('{a}', String(stats.total - stats.usable))
                   .replace('{b}', String(stats.noRule))
@@ -361,8 +365,8 @@ export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedde
 
           {/* ── Kural listesi ──────────────────────────────────── */}
           <View style={{
-            backgroundColor: DS.lab.surface, borderRadius: 18, borderWidth: 1,
-            borderColor: DS.ink[200], overflow: 'hidden',
+            backgroundColor: U.surface, borderRadius: 18, borderWidth: 1,
+            borderColor: U.ink[200], overflow: 'hidden',
           }}>
             {ordered.map((r, i) => {
               const key     = rowKey(r);
@@ -378,8 +382,8 @@ export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedde
 
               // Tamamlanan satırlar görsel olarak geri çekilir
               const bg = dirty ? tint(accentColor, 0.06)
-                       : hovered ? DS.ink[50]
-                       : DS.lab.surface;
+                       : hovered ? U.ink[50]
+                       : U.surface;
 
               return (
                 <Pressable
@@ -389,7 +393,7 @@ export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedde
                   style={{
                     backgroundColor: bg,
                     borderTopWidth: i === 0 ? 0 : 1,
-                    borderTopColor: DS.ink[100],
+                    borderTopColor: U.ink[100],
                     borderStartWidth: 2,
                     borderStartColor: dirty ? accentColor
                                    : noRule ? tint(DS.lab.danger, 0.55)
@@ -403,11 +407,11 @@ export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedde
                     <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
                       <Text numberOfLines={1} style={{
                         fontSize: 14, fontWeight: '600', letterSpacing: -0.2,
-                        color: done ? DS.ink[700] : DS.ink[900],
+                        color: done ? U.ink[700] : U.ink[900],
                       }}>
                         {r.production_name}
                       </Text>
-                      <Text numberOfLines={1} style={{ fontSize: 12, color: DS.ink[500] }}>
+                      <Text numberOfLines={1} style={{ fontSize: 12, color: U.ink[500] }}>
                         {r.station_name}
                       </Text>
                     </View>
@@ -440,12 +444,12 @@ export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedde
                           onPress={() => setDraft(p => ({ ...p, [key]: { qty: qtyText, model: m } }))}
                           style={({ pressed }) => ({
                             paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999,
-                            backgroundColor: on ? DS.ink[900] : 'rgba(0,0,0,0.04)',
+                            backgroundColor: on ? U.ink[900] : U.hairlineSoft,
                             opacity: pressed ? 0.7 : 1, ...webCursor,
                           })}
                         >
                           <Text style={{
-                            fontSize: 12, fontWeight: '500', color: on ? '#FFF' : DS.ink[700],
+                            fontSize: 12, fontWeight: '500', color: on ? U.onDarkPill : U.ink[700],
                           }}>
                             {CALC_MODEL_LABEL[m]}
                           </Text>
@@ -462,15 +466,15 @@ export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedde
                       onChangeText={t => setDraft(p => ({ ...p, [key]: { qty: t, model } }))}
                       keyboardType="decimal-pad"
                       placeholder="0"
-                      placeholderTextColor={DS.ink[300]}
+                      placeholderTextColor={U.ink[300]}
                       style={{
                         width: 104, paddingHorizontal: 12, paddingVertical: 8,
-                        borderRadius: 12, borderWidth: 1, borderColor: DS.ink[300],
-                        fontSize: 13, color: DS.ink[900], backgroundColor: DS.lab.surface,
+                        borderRadius: 12, borderWidth: 1, borderColor: U.ink[300],
+                        fontSize: 13, color: U.ink[900], backgroundColor: U.surface,
                         ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
                       }}
                     />
-                    <Text style={{ fontSize: 12, color: DS.ink[500] }}>{r.unit ?? ''}</Text>
+                    <Text style={{ fontSize: 12, color: U.ink[500] }}>{r.unit ?? ''}</Text>
 
                     {/* Her sorunun bir sonraki adımı var — çıkmaz uyarı yok */}
                     {noMap ? (
@@ -479,17 +483,17 @@ export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedde
                         style={({ pressed }) => ({
                           flexDirection: 'row', alignItems: 'center', gap: 6,
                           paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999,
-                          borderWidth: 1, borderColor: DS.ink[300],
+                          borderWidth: 1, borderColor: U.ink[300],
                           opacity: pressed ? 0.7 : 1, ...webCursor,
                         })}
                       >
-                        <Link2 size={11} color={DS.ink[700]} strokeWidth={1.8} />
-                        <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[800] }}>
+                        <Link2 size={11} color={U.ink[700]} strokeWidth={1.8} />
+                        <Text style={{ fontSize: 12, fontWeight: '500', color: U.ink[800] }}>
                           Ürün eşleştir
                         </Text>
                         {isRTL()
-                          ? <ArrowLeft size={11} color={DS.ink[500]} strokeWidth={1.8} />
-                          : <ArrowRight size={11} color={DS.ink[500]} strokeWidth={1.8} />}
+                          ? <ArrowLeft size={11} color={U.ink[500]} strokeWidth={1.8} />
+                          : <ArrowRight size={11} color={U.ink[500]} strokeWidth={1.8} />}
                       </Pressable>
                     ) : noRule ? (
                       <Pressable
@@ -497,12 +501,12 @@ export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedde
                         style={({ pressed }) => ({
                           flexDirection: 'row', alignItems: 'center', gap: 6,
                           paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999,
-                          borderWidth: 1, borderColor: DS.ink[300],
+                          borderWidth: 1, borderColor: U.ink[300],
                           opacity: pressed ? 0.7 : 1, ...webCursor,
                         })}
                       >
                         <AlertTriangle size={11} color="#9C5E0E" strokeWidth={1.9} />
-                        <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[800] }}>
+                        <Text style={{ fontSize: 12, fontWeight: '500', color: U.ink[800] }}>
                           Kuralı tanımla
                         </Text>
                       </Pressable>
@@ -513,7 +517,7 @@ export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedde
 
                     {r.note ? (
                       <Text numberOfLines={1} style={{
-                        flex: 1, minWidth: 120, fontSize: 11, color: DS.ink[400],
+                        flex: 1, minWidth: 120, fontSize: 11, color: U.ink[400],
                       }}>
                         {r.note}
                       </Text>
@@ -527,14 +531,14 @@ export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedde
                         style={({ pressed }) => ({
                           flexDirection: 'row', alignItems: 'center', gap: 6,
                           paddingHorizontal: 16, paddingVertical: 8, borderRadius: 999,
-                          backgroundColor: DS.ink[900],
+                          backgroundColor: U.ink[900],
                           opacity: savingKey === key ? 0.5 : pressed ? 0.85 : 1, ...webCursor,
                         })}
                       >
                         {savingKey === key
-                          ? <ActivityIndicator size="small" color="#FFF" />
-                          : <Check size={12} color="#FFF" strokeWidth={2.4} />}
-                        <Text style={{ fontSize: 12, fontWeight: '600', color: '#FFF' }}>
+                          ? <ActivityIndicator size="small" color={U.onDarkPill} />
+                          : <Check size={12} color={U.onDarkPill} strokeWidth={2.4} />}
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: U.onDarkPill }}>
                           Kaydet
                         </Text>
                       </Pressable>

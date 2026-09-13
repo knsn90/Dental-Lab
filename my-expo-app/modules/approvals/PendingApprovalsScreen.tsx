@@ -15,11 +15,12 @@ import {
 import {
   UserCheck, Clock, Phone, Building2, X, Check,
   Undo2, CheckCircle2, XCircle, History, ChevronDown,
-} from 'lucide-react-native';
+} from '../../core/ui/icons';
 import { toast } from '../../core/ui/Toast';
 import { supabase } from '../../core/api/supabase';
 import { Profile } from '../../lib/types';
 import { DS } from '../../core/theme/dsTokens';
+import { useInkUI } from '../../core/theme/inkScale';
 import { useMobileTokens } from '../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../core/store/themeModeStore';
 
@@ -52,6 +53,7 @@ interface PendingDoctor extends Profile {
 }
 
 export function PendingApprovalsScreen() {
+  const U = useInkUI();
   const [pending, setPending]       = useState<PendingDoctor[]>([]);
   const [history, setHistory]       = useState<PendingDoctor[]>([]);
   const [loading, setLoading]       = useState(true);
@@ -157,7 +159,7 @@ export function PendingApprovalsScreen() {
   if (loading) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color={DS.ink[500]} />
+        <ActivityIndicator size="large" color={U.ink[500]} />
       </View>
     );
   }
@@ -174,7 +176,7 @@ export function PendingApprovalsScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() => { setRefreshing(true); load(); }}
-            tintColor={DS.ink[500]}
+            tintColor={U.ink[500]}
           />
         }
         ListHeaderComponent={
@@ -298,6 +300,7 @@ function DoctorCard({
   onApprove: () => void;
   onReject: () => void;
 }) {
+  const U = useInkUI();
   const initial = doctor.full_name?.charAt(0)?.toUpperCase() ?? 'H';
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
@@ -379,7 +382,7 @@ function DoctorCard({
           style={({ hovered }: any) => ({
             flex: 1.4, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
             height: 32, borderRadius: R.pill,
-            backgroundColor: actioning ? DS.ink[400] : (hovered ? DS.ink[700] : DS.ink[900]),
+            backgroundColor: actioning ? U.ink[400] : (hovered ? U.ink[700] : U.ink[900]),
             opacity: actioning ? 0.6 : 1,
             ...(Platform.OS === 'web' ? { cursor: actioning ? 'wait' : 'pointer' } as any : {}),
           })}
@@ -406,6 +409,7 @@ function HistoryCard({
   actioning: boolean;
   onUndo: () => void;
 }) {
+  const U = useInkUI();
   const initial = doctor.full_name?.charAt(0)?.toUpperCase() ?? 'H';
   const isApproved = doctor.approval_status === 'approved';
   const T = useMobileTokens();
@@ -464,13 +468,13 @@ function HistoryCard({
         style={({ hovered }: any) => ({
           width: 30, height: 30, borderRadius: 9,
           alignItems: 'center', justifyContent: 'center',
-          backgroundColor: hovered ? DS.ink[100] : 'transparent',
-          borderWidth: 1, borderColor: hovered ? DS.ink[300] : 'rgba(15,23,42,0.08)',
+          backgroundColor: hovered ? U.ink[100] : 'transparent',
+          borderWidth: 1, borderColor: hovered ? U.ink[300] : U.fieldBorder,
           opacity: actioning ? 0.5 : 1,
           ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
         })}
       >
-        {actioning ? <ActivityIndicator size="small" color={DS.ink[500]} /> : <Undo2 size={12} color={DS.ink[500]} strokeWidth={1.8} />}
+        {actioning ? <ActivityIndicator size="small" color={U.ink[500]} /> : <Undo2 size={12} color={U.ink[500]} strokeWidth={1.8} />}
       </Pressable>
     </View>
   );

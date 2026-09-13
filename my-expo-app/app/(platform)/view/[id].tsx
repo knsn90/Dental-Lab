@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, ActivityIndicator, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Eye, AlertTriangle } from 'lucide-react-native';
+import { Eye, AlertTriangle } from '../../../core/ui/icons';
 import { labSnapshot, type LabSnapshot } from '../../../modules/platform/api';
 import { C, FONT, SERIF, Kpi, Panel, SectionLabel, Chip, hexA } from '../../../modules/platform/ui';
 import { autoT } from '../../../core/i18n/autoTranslate';

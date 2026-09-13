@@ -11,6 +11,8 @@ import { View, Text } from 'react-native';
 import Svg, { Rect, G, Line, Text as SvgText, Path, Circle } from 'react-native-svg';
 import { DS } from '../../../core/theme/dsTokens';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { baseSymbol, getBaseCurrency } from '../../../core/money/baseCurrency';
 import { CURRENCY_META, type Currency } from '../../../core/money/currency';
 import { DISPLAY } from './atoms';
@@ -31,6 +33,8 @@ const compactCur = (nRaw: number, cur?: string): string => {
 
 export function MonthlyFlowChart({ data, height = 220, currency }: { data: MonthlyFlowPoint[]; height?: number; currency?: string }) {
   const TH = usePanelTheme();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const W = 600;           // viewBox width — responsive via preserveAspectRatio
   const H = height;
   const PAD_T = 24, PAD_B = 36, PAD_L = 48, PAD_R = 12;
@@ -61,8 +65,8 @@ export function MonthlyFlowChart({ data, height = 220, currency }: { data: Month
         {/* Grid */}
         {grids.map((g, i) => (
           <G key={i}>
-            <Line x1={PAD_L} y1={g.y} x2={W - PAD_R} y2={g.y} stroke={DS.ink[100]} strokeWidth={1} />
-            <SvgText x={PAD_L - 6} y={g.y + 3} fontSize={9} fill={DS.ink[400]} textAnchor="end">
+            <Line x1={PAD_L} y1={g.y} x2={W - PAD_R} y2={g.y} stroke={isDark ? (T.hairline as string) : DS.ink[100]} strokeWidth={1} />
+            <SvgText x={PAD_L - 6} y={g.y + 3} fontSize={9} fill={isDark ? (T.ink3 as string) : DS.ink[400]} textAnchor="end">
               {compactCur(g.v, currency)}
             </SvgText>
           </G>
@@ -100,7 +104,7 @@ export function MonthlyFlowChart({ data, height = 220, currency }: { data: Month
                 x={x0}
                 y={H - PAD_B + 18}
                 fontSize={11}
-                fill={DS.ink[500]}
+                fill={isDark ? (T.ink3 as string) : DS.ink[500]}
                 fontWeight="600"
                 textAnchor="middle"
               >
@@ -115,11 +119,11 @@ export function MonthlyFlowChart({ data, height = 220, currency }: { data: Month
       <View style={{ flexDirection: 'row', gap: 16, marginTop: 6, paddingStart: 4 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: DS.ink[800] }} />
-          <Text style={{ fontSize: 11, color: DS.ink[700], fontWeight: '500' }}>Kesilen Fatura</Text>
+          <Text style={{ fontSize: 11, color: isDark ? (T.ink2 as string) : DS.ink[700], fontWeight: '500' }}>Kesilen Fatura</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: TH.primary }} />
-          <Text style={{ fontSize: 11, color: DS.ink[700], fontWeight: '500' }}>Tahsil Edilen</Text>
+          <Text style={{ fontSize: 11, color: isDark ? (T.ink2 as string) : DS.ink[700], fontWeight: '500' }}>Tahsil Edilen</Text>
         </View>
       </View>
     </View>
@@ -137,11 +141,13 @@ const AGING_COLORS: Record<AgingBucket['key'], string> = {
 };
 
 export function AgingBarChart({ buckets, currency }: { buckets: AgingBucket[]; currency?: string }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const total = buckets.reduce((s, b) => s + b.amount, 0);
   if (total === 0) {
     return (
       <View style={{ paddingVertical: 14, alignItems: 'center' }}>
-        <Text style={{ fontSize: 12, color: DS.ink[400] }}>Açık fatura yok</Text>
+        <Text style={{ fontSize: 12, color: isDark ? (T.ink3 as string) : DS.ink[400] }}>Açık fatura yok</Text>
       </View>
     );
   }
@@ -151,7 +157,7 @@ export function AgingBarChart({ buckets, currency }: { buckets: AgingBucket[]; c
       {/* Stacked bar */}
       <View style={{
         flexDirection: 'row', height: 22, borderRadius: 11, overflow: 'hidden',
-        borderWidth: 1, borderColor: DS.ink[100],
+        borderWidth: 1, borderColor: isDark ? T.hairline : DS.ink[100],
       }}>
         {buckets.map(b => {
           const pct = (b.amount / total) * 100;
@@ -175,12 +181,12 @@ export function AgingBarChart({ buckets, currency }: { buckets: AgingBucket[]; c
           return (
             <View key={b.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: AGING_COLORS[b.key] }} />
-              <Text style={{ flex: 1, fontSize: 12, color: DS.ink[800], fontWeight: '500' }}>{b.label}</Text>
-              <Text style={{ fontSize: 11, color: DS.ink[500], width: 60, textAlign: 'end' as any }}>{b.count} fat.</Text>
-              <Text style={{ ...DISPLAY, fontSize: 13, color: DS.ink[900], width: 90, textAlign: 'end' as any, letterSpacing: -0.2 }}>
+              <Text style={{ flex: 1, fontSize: 12, color: isDark ? (T.ink2 as string) : DS.ink[800], fontWeight: '500' }}>{b.label}</Text>
+              <Text style={{ fontSize: 11, color: isDark ? (T.ink3 as string) : DS.ink[500], width: 60, textAlign: 'end' as any }}>{b.count} fat.</Text>
+              <Text style={{ ...DISPLAY, fontSize: 13, color: isDark ? T.ink : DS.ink[900], width: 90, textAlign: 'end' as any, letterSpacing: -0.2 }}>
                 {compactCur(b.amount, currency)}
               </Text>
-              <Text style={{ fontSize: 10, color: DS.ink[400], width: 38, textAlign: 'end' as any }}>%{pct.toFixed(0)}</Text>
+              <Text style={{ fontSize: 10, color: isDark ? (T.ink3 as string) : DS.ink[400], width: 38, textAlign: 'end' as any }}>%{pct.toFixed(0)}</Text>
             </View>
           );
         })}
@@ -194,12 +200,14 @@ export function AgingBarChart({ buckets, currency }: { buckets: AgingBucket[]; c
 const DONUT_PALETTE = ['#0F172A', '#0EA5E9', '#7C3AED', '#D97706', '#059669', '#DC2626'];
 
 export function MethodDonut({ slices, size = 160, currency }: { slices: MethodSlice[]; size?: number; currency?: string }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const total = slices.reduce((s, x) => s + x.amount, 0);
 
   if (total === 0) {
     return (
       <View style={{ paddingVertical: 14, alignItems: 'center' }}>
-        <Text style={{ fontSize: 12, color: DS.ink[400] }}>Tahsilat yok</Text>
+        <Text style={{ fontSize: 12, color: isDark ? (T.ink3 as string) : DS.ink[400] }}>Tahsilat yok</Text>
       </View>
     );
   }
@@ -238,22 +246,22 @@ export function MethodDonut({ slices, size = 160, currency }: { slices: MethodSl
     <View style={{ flexDirection: 'row', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
       <Svg width={size} height={size}>
         {segs.map((s, i) => <Path key={i} d={s.d} fill={s.color} />)}
-        <Circle cx={cx} cy={cy} r={inner - 1} fill="#FFF" />
+        <Circle cx={cx} cy={cy} r={inner - 1} fill={isDark ? (T.card as string) : '#FFF'} />
       </Svg>
       <View style={{ flex: 1, minWidth: 160, gap: 6 }}>
-        <Text style={{ fontSize: 10, color: DS.ink[400], textTransform: 'uppercase', letterSpacing: 0.7, fontWeight: '700' }}>
+        <Text style={{ fontSize: 10, color: isDark ? (T.ink3 as string) : DS.ink[400], textTransform: 'uppercase', letterSpacing: 0.7, fontWeight: '700' }}>
           Toplam · son 90 gün
         </Text>
-        <Text style={{ ...DISPLAY, fontSize: 22, color: DS.ink[900], letterSpacing: -0.5 }}>
+        <Text style={{ ...DISPLAY, fontSize: 22, color: isDark ? T.ink : DS.ink[900], letterSpacing: -0.5 }}>
           {compactCur(total, currency)}
         </Text>
         <View style={{ marginTop: 6, gap: 4 }}>
           {segs.map((s, i) => (
             <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <View style={{ width: 9, height: 9, borderRadius: 2, backgroundColor: s.color }} />
-              <Text style={{ flex: 1, fontSize: 11, color: DS.ink[700], fontWeight: '500' }}>{s.slice.label}</Text>
-              <Text style={{ fontSize: 11, color: DS.ink[500] }}>{compactCur(s.slice.amount, currency)}</Text>
-              <Text style={{ fontSize: 10, color: DS.ink[400], width: 36, textAlign: 'end' as any }}>
+              <Text style={{ flex: 1, fontSize: 11, color: isDark ? (T.ink2 as string) : DS.ink[700], fontWeight: '500' }}>{s.slice.label}</Text>
+              <Text style={{ fontSize: 11, color: isDark ? (T.ink3 as string) : DS.ink[500] }}>{compactCur(s.slice.amount, currency)}</Text>
+              <Text style={{ fontSize: 10, color: isDark ? (T.ink3 as string) : DS.ink[400], width: 36, textAlign: 'end' as any }}>
                 %{((s.slice.amount / total) * 100).toFixed(0)}
               </Text>
             </View>

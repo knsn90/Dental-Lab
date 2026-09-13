@@ -5,7 +5,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, Platform } from 'react-native';
-import { CreditCard, Link2, ExternalLink, Copy, Sparkles } from 'lucide-react-native';
+import { CreditCard, Link2, ExternalLink, Copy, Sparkles } from '../../../core/ui/icons';
 
 import { DS } from '../../../core/theme/dsTokens';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';

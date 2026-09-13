@@ -18,6 +18,8 @@ import {
   getConsumption, isValidConsumption,
   type MaterialLite, type ConsumptionType,
 } from '../materialConsumption';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -61,6 +63,8 @@ export function MaterialConsumptionModal({
   visible, workOrderId, stage, managerId, toothCount, caseType,
   onClose, onApproved,
 }: Props) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving]   = useState(false);
   const [rows, setRows]       = useState<RowState[]>([]);
@@ -195,19 +199,19 @@ export function MaterialConsumptionModal({
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <View style={s.backdrop}>
-        <View style={s.sheet}>
+        <View style={[s.sheet, isDark && { backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline }]}>
           {/* Header */}
           <View style={s.header}>
             <View style={[s.stagePill, { backgroundColor: stageColor + '14' }]}>
               <Text style={[s.stagePillText, { color: stageColor }]}>{STAGE_LABEL[stage]}</Text>
             </View>
-            <Text style={s.title}>Kullanılan Materyaller</Text>
-            <TouchableOpacity onPress={onClose} style={s.closeBtn}>
-              <AppIcon name="x" size={18} color="#64748B" />
+            <Text style={[s.title, isDark && { color: T.ink }]}>Kullanılan Materyaller</Text>
+            <TouchableOpacity onPress={onClose} style={[s.closeBtn, isDark && { backgroundColor: T.cardSoft }]}>
+              <AppIcon name="x" size={18} color={isDark ? (T.ink3 as string) : '#64748B'} />
             </TouchableOpacity>
           </View>
 
-          <Text style={s.subtitle}>
+          <Text style={[s.subtitle, isDark && { color: T.ink3 }]}>
             Bu aşama tamamlanmadan önce stoktan düşülecek miktarları onaylayın.
           </Text>
 
@@ -216,9 +220,9 @@ export function MaterialConsumptionModal({
             <View style={s.center}><ActivityIndicator size="large" color="#7C3AED" /></View>
           ) : rows.length === 0 ? (
             <View style={s.empty}>
-              <AppIcon name="package" size={28} color="#CBD5E1" />
-              <Text style={s.emptyText}>Bu aşama için tanımlı materyal yok</Text>
-              <Text style={s.emptyHint}>Stage doğrudan onaylanabilir.</Text>
+              <AppIcon name="package" size={28} color={isDark ? (T.ink3 as string) : '#CBD5E1'} />
+              <Text style={[s.emptyText, isDark && { color: T.ink }]}>Bu aşama için tanımlı materyal yok</Text>
+              <Text style={[s.emptyHint, isDark && { color: T.ink3 }]}>Stage doğrudan onaylanabilir.</Text>
             </View>
           ) : (
             <ScrollView style={{ maxHeight: 400 }} contentContainerStyle={{ paddingVertical: 4 }}>
@@ -230,13 +234,13 @@ export function MaterialConsumptionModal({
                 return (
                   <View
                     key={r.material.id}
-                    style={[s.row, !isLast && s.rowDivider, r.alreadyDone && { opacity: 0.55 }]}
+                    style={[s.row, !isLast && s.rowDivider, isDark && !isLast && { borderBottomColor: T.hairline }, r.alreadyDone && { opacity: 0.55 }]}
                   >
                     <View style={s.rowHead}>
-                      <Text style={s.rowName} numberOfLines={1}>{r.material.name}</Text>
+                      <Text style={[s.rowName, isDark && { color: T.ink }]} numberOfLines={1}>{r.material.name}</Text>
                       {r.material.type && (
-                        <View style={s.typePill}>
-                          <Text style={s.typePillText}>{r.material.type.toUpperCase()}</Text>
+                        <View style={[s.typePill, isDark && { backgroundColor: T.cardSoft }]}>
+                          <Text style={[s.typePillText, isDark && { color: T.ink2 }]}>{r.material.type.toUpperCase()}</Text>
                         </View>
                       )}
                       {r.alreadyDone && (
@@ -246,7 +250,7 @@ export function MaterialConsumptionModal({
                       )}
                     </View>
 
-                    <Text style={s.rowMeta}>
+                    <Text style={[s.rowMeta, isDark && { color: T.ink3 }]}>
                       {r.basis}
                       {' · stok: '}{r.material.quantity}{r.material.unit ? ` ${r.material.unit}` : ''}
                     </Text>
@@ -259,18 +263,20 @@ export function MaterialConsumptionModal({
                           editable={r.editable}
                           keyboardType="numeric"
                           placeholder={r.requires_input ? 'Manuel miktar girin' : '0'}
-                          placeholderTextColor="#CBD5E1"
+                          placeholderTextColor={isDark ? (T.ink3 as string) : '#CBD5E1'}
                           style={[
                             s.qtyInput,
+                            isDark && { borderColor: T.hairline, color: T.ink, backgroundColor: T.cardSoft },
                             !r.editable && s.qtyInputLocked,
+                            !r.editable && isDark && { backgroundColor: T.cardSoft, color: T.ink2 },
                             insufficient && s.qtyInputBad,
                           ]}
                         />
                         {r.material.unit && (
-                          <Text style={s.unit}>{r.material.unit}</Text>
+                          <Text style={[s.unit, isDark && { color: T.ink3 }]}>{r.material.unit}</Text>
                         )}
                         {qty > 0 && (
-                          <Text style={[s.afterStock, insufficient && { color: '#DC2626' }]}>
+                          <Text style={[s.afterStock, isDark && { color: T.ink3 }, insufficient && { color: '#DC2626' }]}>
                             → kalan: {stockAfter}
                           </Text>
                         )}
@@ -288,13 +294,13 @@ export function MaterialConsumptionModal({
           <View style={s.footer}>
             <View style={{ flex: 1 }}>
               {total > 0 && (
-                <Text style={s.totalText}>
-                  Tahmini maliyet: <Text style={{ color: '#0F172A', fontWeight: '800' }}>~{total.toLocaleString('tr-TR')} ₺</Text>
+                <Text style={[s.totalText, isDark && { color: T.ink3 }]}>
+                  Tahmini maliyet: <Text style={{ color: isDark ? T.ink : '#0F172A', fontWeight: '800' }}>~{total.toLocaleString('tr-TR')} ₺</Text>
                 </Text>
               )}
             </View>
-            <TouchableOpacity onPress={onClose} style={s.cancelBtn} disabled={saving}>
-              <Text style={s.cancelText}>Vazgeç</Text>
+            <TouchableOpacity onPress={onClose} style={[s.cancelBtn, isDark && { backgroundColor: T.cardSoft }]} disabled={saving}>
+              <Text style={[s.cancelText, isDark && { color: T.ink2 }]}>Vazgeç</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleConfirm}

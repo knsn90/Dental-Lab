@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import { View, Text, Pressable, ScrollView, RefreshControl, StyleSheet } from 'react-native';
-import { ArrowLeft, ArrowRight, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { ArrowLeft, ArrowRight, Sparkles, ChevronLeft, ChevronRight } from './icons';
 import Svg, { Polyline, Circle as SvgCircle } from 'react-native-svg';
 import { DS } from '../theme/dsTokens';
 import { MFONT, MSIZE, useMobileTheme, type MobileRole } from '../theme/mobileTheme';
@@ -58,6 +58,7 @@ export interface HomeB1Props {
 // ─── Component ───────────────────────────────────────────────────────────────
 export function HomeB1(props: HomeB1Props) {
   const theme = useMobileTheme();
+  const isDark = theme.isDark;
   const { kicker, headline, headlineAccent, sub, primaryAction, secondaryAction,
           kpis, priority, onOpenOrder, onSeeAllOrders, insight, refreshing, onRefresh } = props;
 
@@ -80,21 +81,21 @@ export function HomeB1(props: HomeB1Props) {
           {/* Eyebrow pill */}
           <View style={[styles.eyebrowPill, { backgroundColor: theme.accent }]}>
             <View style={[styles.eyebrowDot, { backgroundColor: theme.primary }]} />
-            <Text style={styles.eyebrowText}>{kicker}</Text>
+            <Text style={[styles.eyebrowText, isDark && { color: theme.surface }]}>{kicker}</Text>
           </View>
 
           {/* Headline */}
-          <Text style={styles.headline}>
+          <Text style={[styles.headline, isDark && { color: theme.text }]}>
             {headline}
             {headlineAccent ? (
-              <Text style={[styles.headlineAccent, { color: DS.ink[500] }]}>
+              <Text style={[styles.headlineAccent, { color: isDark ? theme.textMuted : DS.ink[500] }]}>
                 {' '}{headlineAccent}
               </Text>
             ) : null}
           </Text>
 
           {/* Sub */}
-          <Text style={styles.sub}>{sub}</Text>
+          <Text style={[styles.sub, isDark && { color: theme.textMuted }]}>{sub}</Text>
 
           {/* Action row */}
           {(primaryAction || secondaryAction) && (
@@ -114,9 +115,9 @@ export function HomeB1(props: HomeB1Props) {
               {secondaryAction && (
                 <Pressable
                   onPress={secondaryAction.onPress}
-                  style={styles.surfaceBtn}
+                  style={[styles.surfaceBtn, isDark && { backgroundColor: theme.surface, borderColor: theme.border }]}
                 >
-                  <Text style={styles.surfaceBtnText}>{secondaryAction.label}</Text>
+                  <Text style={[styles.surfaceBtnText, isDark && { color: theme.text }]}>{secondaryAction.label}</Text>
                 </Pressable>
               )}
             </View>
@@ -127,12 +128,12 @@ export function HomeB1(props: HomeB1Props) {
       {/* ════ KPI RIBBON (overlapping) ════ */}
       {kpis.length > 0 && (
         <View style={styles.kpiWrap}>
-          <View style={styles.kpiCard}>
+          <View style={[styles.kpiCard, isDark && { backgroundColor: theme.surface, borderColor: theme.border }]}>
             <View style={styles.kpiGrid}>
               {kpis.slice(0, 4).map((k, i) => (
                 <View key={i} style={styles.kpiCell}>
-                  <Text style={styles.kpiLabel}>{k.label.toUpperCase()}</Text>
-                  <Text style={styles.kpiValue}>{k.value}</Text>
+                  <Text style={[styles.kpiLabel, isDark && { color: theme.textMuted }]}>{k.label.toUpperCase()}</Text>
+                  <Text style={[styles.kpiValue, isDark && { color: theme.text }]}>{k.value}</Text>
                   {(k.spark || k.delta) && (
                     <View style={styles.kpiDeltaRow}>
                       {k.spark && k.spark.length > 1 && (
@@ -157,8 +158,8 @@ export function HomeB1(props: HomeB1Props) {
         <View style={{ paddingTop: 24 }}>
           <View style={styles.sectionHead}>
             <View>
-              <Text style={styles.sectionEyebrow}>ÖNCELİK</Text>
-              <Text style={styles.sectionTitle}>Bugünün vakaları</Text>
+              <Text style={[styles.sectionEyebrow, isDark && { color: theme.textMuted }]}>ÖNCELİK</Text>
+              <Text style={[styles.sectionTitle, isDark && { color: theme.text }]}>Bugünün vakaları</Text>
             </View>
             {onSeeAllOrders && (
               <Pressable onPress={onSeeAllOrders} hitSlop={8}>
@@ -184,10 +185,10 @@ export function HomeB1(props: HomeB1Props) {
       {/* ════ INSIGHT BLOCK ════ */}
       {insight && (
         <View style={{ padding: 24, paddingTop: 24 }}>
-          <View style={[styles.insightCard, { backgroundColor: theme.bgSoft }]}>
+          <View style={[styles.insightCard, { backgroundColor: theme.bgSoft }, isDark && { borderColor: theme.border }]}>
             <Sparkles size={18} color={theme.accent} strokeWidth={1.8} />
-            <Text style={styles.insightEyebrow}>İÇGÖRÜ</Text>
-            <Text style={styles.insightBody}>{insight}</Text>
+            <Text style={[styles.insightEyebrow, isDark && { color: theme.textMuted }]}>İÇGÖRÜ</Text>
+            <Text style={[styles.insightBody, isDark && { color: theme.text }]}>{insight}</Text>
           </View>
         </View>
       )}
@@ -204,18 +205,20 @@ function PriorityCard({
   theme: { accent: string; primary: string; surface: string };
   onPress?: () => void;
 }) {
+  const md = useMobileTheme();
+  const isDark = md.isDark;
   const dark = index === 0;
   const primary = index === 1;
   const surfaceCard = index === 2;
 
   const bg = dark ? theme.accent : primary ? theme.primary : theme.surface;
-  const fg = dark ? theme.surface : DS.ink[900];
-  const meta = dark ? 'rgba(255,255,255,0.7)' : DS.ink[500];
-  const subMeta = dark ? 'rgba(255,255,255,0.75)' : DS.ink[700];
+  const fg = dark ? theme.surface : (surfaceCard && isDark ? md.text : DS.ink[900]);
+  const meta = dark ? 'rgba(255,255,255,0.7)' : (surfaceCard && isDark ? md.textMuted : DS.ink[500]);
+  const subMeta = dark ? 'rgba(255,255,255,0.75)' : (surfaceCard && isDark ? md.textMuted : DS.ink[700]);
 
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [{ opacity: pressed ? 0.92 : 1 }]}>
-      <View style={[styles.priorityCard, { backgroundColor: bg, borderWidth: surfaceCard ? 1 : 0, borderColor: 'rgba(0,0,0,0.06)' }]}>
+      <View style={[styles.priorityCard, { backgroundColor: bg, borderWidth: surfaceCard ? 1 : 0, borderColor: surfaceCard && isDark ? md.border : 'rgba(0,0,0,0.06)' }]}>
         {/* Watermark id */}
         <Text style={[styles.priorityWatermark, {
           color: fg,
@@ -234,8 +237,8 @@ function PriorityCard({
           </Text>
 
           <View style={styles.priorityFooter}>
-            <View style={[styles.priorityAvatar, { backgroundColor: dark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)' }]}>
-              <Text style={[styles.priorityAvatarText, { color: dark ? '#FFF' : DS.ink[900] }]}>
+            <View style={[styles.priorityAvatar, { backgroundColor: dark ? 'rgba(255,255,255,0.15)' : (surfaceCard && isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)') }]}>
+              <Text style={[styles.priorityAvatarText, { color: dark ? '#FFF' : (surfaceCard && isDark ? md.text : DS.ink[900]) }]}>
                 {order.avatar}
               </Text>
             </View>

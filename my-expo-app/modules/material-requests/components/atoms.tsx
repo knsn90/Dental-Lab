@@ -11,9 +11,10 @@ import { View, Text, Pressable, ActivityIndicator, type StyleProp, type ViewStyl
 import {
   Clock, Hourglass, ShieldCheck, CheckCircle2, XCircle, Truck, PackageCheck,
   AlertOctagon, Slash, ArrowUp, Equal, ArrowDown, Flame,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import type { RequestStatus, RequestUrgency } from '../api';
 
 export const DISPLAY = {
@@ -48,22 +49,35 @@ export const fmtDateTime = (iso: string | null | undefined): string => {
 
 /* ─────────────────────────────  StatusChip  ─────────────────────────── */
 
-export const makeStatusCfg = (t: ReturnType<typeof useMobileTokens>): Record<RequestStatus, { label: string; fg: string; bg: string; icon: any }> => ({
-  draft:            { label: 'Taslak',           fg: t.ink2,      bg: t.cardSoft,              icon: Clock        },
-  submitted:        { label: 'Müdür Onayında',   fg: '#9C5E0E',   bg: 'rgba(232,155,42,0.15)', icon: Hourglass    },
-  forwarded_admin:  { label: 'Admin Onayında',   fg: '#1D4ED8',   bg: 'rgba(29,78,216,0.12)',  icon: ShieldCheck  },
-  rejected_manager: { label: 'Müdür Reddetti',   fg: '#9C2E2E',   bg: 'rgba(217,75,75,0.12)',  icon: XCircle      },
-  rejected_admin:   { label: 'Admin Reddetti',   fg: '#9C2E2E',   bg: 'rgba(217,75,75,0.12)',  icon: XCircle      },
-  approved:         { label: 'Onaylandı',        fg: '#1F6B47',   bg: 'rgba(45,154,107,0.14)', icon: CheckCircle2 },
-  ordered:          { label: 'Sipariş Verildi',  fg: '#7C3AED',   bg: 'rgba(124,58,237,0.12)', icon: Truck        },
-  received:         { label: 'Teslim Alındı',    fg: '#0EA5E9',   bg: 'rgba(14,165,233,0.12)', icon: PackageCheck },
-  cancelled:        { label: 'İptal',            fg: t.ink3,      bg: t.cardSoft,              icon: Slash        },
-  closed:           { label: 'Kapandı',          fg: t.ink2,      bg: t.cardSoft,              icon: CheckCircle2 },
+// Koyu YÜZEYDE koyu status/durum ön-plan renkleri okunmaz → koyuda aç.
+// Zemin (rgba tint) korunur; sadece fg açılır.
+const DARK_FG: Record<string, string> = {
+  '#9C5E0E': '#E8B45E', // amber
+  '#1D4ED8': '#93C5FD', // blue
+  '#9C2E2E': '#FCA5A5', // red
+  '#1F6B47': '#6EE7B7', // green
+  '#7C3AED': '#C4B5FD', // violet
+  '#0EA5E9': '#7DD3FC', // sky
+};
+export const openFg = (fg: string, isDark: boolean): string => (isDark ? (DARK_FG[fg] ?? fg) : fg);
+
+export const makeStatusCfg = (t: ReturnType<typeof useMobileTokens>, isDark = false): Record<RequestStatus, { label: string; fg: string; bg: string; icon: any }> => ({
+  draft:            { label: 'Taslak',           fg: t.ink2,               bg: t.cardSoft,              icon: Clock        },
+  submitted:        { label: 'Müdür Onayında',   fg: openFg('#9C5E0E', isDark),   bg: 'rgba(232,155,42,0.15)', icon: Hourglass    },
+  forwarded_admin:  { label: 'Admin Onayında',   fg: openFg('#1D4ED8', isDark),   bg: 'rgba(29,78,216,0.12)',  icon: ShieldCheck  },
+  rejected_manager: { label: 'Müdür Reddetti',   fg: openFg('#9C2E2E', isDark),   bg: 'rgba(217,75,75,0.12)',  icon: XCircle      },
+  rejected_admin:   { label: 'Admin Reddetti',   fg: openFg('#9C2E2E', isDark),   bg: 'rgba(217,75,75,0.12)',  icon: XCircle      },
+  approved:         { label: 'Onaylandı',        fg: openFg('#1F6B47', isDark),   bg: 'rgba(45,154,107,0.14)', icon: CheckCircle2 },
+  ordered:          { label: 'Sipariş Verildi',  fg: openFg('#7C3AED', isDark),   bg: 'rgba(124,58,237,0.12)', icon: Truck        },
+  received:         { label: 'Teslim Alındı',    fg: openFg('#0EA5E9', isDark),   bg: 'rgba(14,165,233,0.12)', icon: PackageCheck },
+  cancelled:        { label: 'İptal',            fg: t.ink3,               bg: t.cardSoft,              icon: Slash        },
+  closed:           { label: 'Kapandı',          fg: t.ink2,               bg: t.cardSoft,              icon: CheckCircle2 },
 });
 
 export function StatusChip({ status, size = 'md' }: { status: RequestStatus; size?: 'sm' | 'md' }) {
   const T = useMobileTokens();
-  const STATUS_CFG = makeStatusCfg(T);
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
+  const STATUS_CFG = makeStatusCfg(T, isDark);
   const c = STATUS_CFG[status] ?? STATUS_CFG.submitted;
   const Icon = c.icon;
   const fz = size === 'sm' ? 9 : 10;
@@ -86,16 +100,17 @@ export function StatusChip({ status, size = 'md' }: { status: RequestStatus; siz
 
 /* ─────────────────────────────  UrgencyChip  ────────────────────────── */
 
-export const makeUrgencyCfg = (t: ReturnType<typeof useMobileTokens>): Record<RequestUrgency, { label: string; fg: string; bg: string; icon: any }> => ({
-  low:      { label: 'Düşük',  fg: t.ink3,      bg: t.cardSoft,               icon: ArrowDown   },
-  normal:   { label: 'Normal', fg: '#1D4ED8',   bg: 'rgba(29,78,216,0.10)',   icon: Equal       },
-  high:     { label: 'Yüksek', fg: '#9C5E0E',   bg: 'rgba(232,155,42,0.15)',  icon: ArrowUp     },
-  critical: { label: 'Kritik', fg: '#9C2E2E',   bg: 'rgba(217,75,75,0.12)',   icon: Flame       },
+export const makeUrgencyCfg = (t: ReturnType<typeof useMobileTokens>, isDark = false): Record<RequestUrgency, { label: string; fg: string; bg: string; icon: any }> => ({
+  low:      { label: 'Düşük',  fg: t.ink3,                    bg: t.cardSoft,               icon: ArrowDown   },
+  normal:   { label: 'Normal', fg: openFg('#1D4ED8', isDark), bg: 'rgba(29,78,216,0.10)',   icon: Equal       },
+  high:     { label: 'Yüksek', fg: openFg('#9C5E0E', isDark), bg: 'rgba(232,155,42,0.15)',  icon: ArrowUp     },
+  critical: { label: 'Kritik', fg: openFg('#9C2E2E', isDark), bg: 'rgba(217,75,75,0.12)',   icon: Flame       },
 });
 
 export function UrgencyChip({ urgency, size = 'md' }: { urgency: RequestUrgency; size?: 'sm' | 'md' }) {
   const T = useMobileTokens();
-  const URGENCY_CFG = makeUrgencyCfg(T);
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
+  const URGENCY_CFG = makeUrgencyCfg(T, isDark);
   const c = URGENCY_CFG[urgency] ?? URGENCY_CFG.normal;
   const Icon = c.icon;
   const fz = size === 'sm' ? 9 : 10;
@@ -232,14 +247,16 @@ export function Loader() {
 }
 
 export function ErrorBar({ message }: { message: string }) {
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
+  const fg = openFg('#9C2E2E', isDark);
   return (
     <View style={{
       flexDirection: 'row', alignItems: 'center', gap: 10,
       backgroundColor: 'rgba(217,75,75,0.08)', borderColor: 'rgba(217,75,75,0.25)',
       borderWidth: 1, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 16,
     }}>
-      <AlertOctagon size={14} color="#9C2E2E" />
-      <Text style={{ flex: 1, fontSize: 13, color: '#9C2E2E' }}>{message}</Text>
+      <AlertOctagon size={14} color={fg} />
+      <Text style={{ flex: 1, fontSize: 13, color: fg }}>{message}</Text>
     </View>
   );
 }
@@ -285,8 +302,9 @@ export function MiniKPI({ icon: Icon, label, value, accent, onPress, alert }: {
 }) {
   const Wrapper: any = onPress ? Pressable : View;
   const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
   const isAlert = !!alert;
-  const fg = isAlert ? '#9C2E2E' : accent;
+  const fg = isAlert ? openFg('#9C2E2E', isDark) : accent;
   return (
     <Wrapper
       onPress={onPress}
@@ -313,7 +331,7 @@ export function MiniKPI({ icon: Icon, label, value, accent, onPress, alert }: {
           {label}
         </Text>
       </View>
-      <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.7, lineHeight: 26, color: isAlert ? '#9C2E2E' : T.ink }}>
+      <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.7, lineHeight: 26, color: isAlert ? fg : T.ink }}>
         {value}
       </Text>
     </Wrapper>

@@ -6,7 +6,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, Pressable, Modal, TextInput, ScrollView, Platform,
 } from 'react-native';
-import { Search, X, UserCheck, Check, Building2 } from 'lucide-react-native';
+import { Search, X, UserCheck, Check, Building2 } from '../../../core/ui/icons';
 import { supabase } from '../../../core/api/supabase';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 

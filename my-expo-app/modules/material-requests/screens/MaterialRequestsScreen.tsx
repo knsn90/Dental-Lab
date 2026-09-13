@@ -8,15 +8,19 @@
  * Ortak: arama, tab bar (status grupları), detay drawer, aksiyon modal'ı.
  */
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useContext } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Platform } from 'react-native';
 import {
   Wrench, Search, X, Hourglass, ShieldCheck, CheckCircle2, Truck, PackageCheck,
   XCircle, ArrowLeft, ArrowRight, RefreshCcw, Filter as FilterIcon,
   ChevronLeft, ChevronRight,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 
 import { DS } from '../../../core/theme/dsTokens';
+import { HeroGlow, useHeroSurface } from '../../../core/ui/HeroGlow';
+import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
+import { HubContext } from '../../../core/ui/HubContext';
+import { useStockUI } from '../../stock/stockTheme';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { useAuthStore } from '../../../core/store/authStore';
 import { isRTL } from '../../../core/i18n';
@@ -25,7 +29,7 @@ import {
   type MaterialRequestRow, type RequestStatus, type RequestCounts,
 } from '../api';
 import {
-  DISPLAY, TRY, fmtDate, PAGE_PADDING,
+  DISPLAY, TRY, fmtDate,
   ErrorBar, Loader, Card, EmptyCard, PillButton, MiniKPI,
   StatusChip, UrgencyChip,
 } from '../components/atoms';
@@ -48,8 +52,15 @@ const TAB_DEFS: { key: TabKey; label: string; statuses: RequestStatus[]; icon: a
 ];
 
 export function MaterialRequestsScreen() {
+  const U = useStockUI();
   const TH = usePanelTheme();
+  const heroBg = useHeroSurface(TH.primary);
   const { profile } = useAuthStore();
+  /* §1b — sayfa kenarı HER ZAMAN 16 (PAGE_PADDING). Bu ekran hem Stok hub'ında
+     hem Onaylar sekmesinde render ediliyor; hub kabı kenarı zaten verdiği için
+     orada yatay dolgu EKLENMEZ (yoksa kartlar 32'de kalır). */
+  const isEmbedded = useContext(HubContext);
+  const edge = isEmbedded ? 0 : PAGE_PADDING;
 
   const isAdmin   = profile?.user_type === 'admin';
   const isManager = profile?.user_type === 'lab' && (profile as any)?.role === 'manager';
@@ -86,17 +97,19 @@ export function MaterialRequestsScreen() {
   return (
     <ScrollView
       style={{ flex: 1 }}
-      contentContainerStyle={{ padding: PAGE_PADDING, paddingBottom: 48, gap: 16 }}
+      contentContainerStyle={{ paddingHorizontal: edge, paddingTop: PAGE_PADDING, paddingBottom: 48, gap: 16 }}
       showsVerticalScrollIndicator={false}
     >
       {/* F2 Hero — full-bleed accent + dekoratif daireler + alt mini-stat şeridi */}
       <View style={{
-        borderRadius: 28, padding: 28, backgroundColor: TH.primary,
+        borderRadius: 28, padding: 28, ...heroBg,
         position: 'relative', overflow: 'hidden',
       }}>
         {/* Dekoratif daireler */}
-        <View style={{ position: 'absolute', top: -40, end: -40, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(255,255,255,0.15)' }} pointerEvents="none" />
-        <View style={{ position: 'absolute', bottom: -60, start: -20, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(0,0,0,0.05)' }} pointerEvents="none" />
+        <HeroGlow size={220} opacity={0.15} delay={0} style={{ top: -40, end: -40 }} />
+        {/* İkinci küre de HeroGlow — `U.chipNeutral` accent zeminde nötr/soluk bir
+            leke bırakıyordu; hero dili beyaz ışık (koyu temada blur ile yayılır). */}
+        <HeroGlow size={180} opacity={0.10} delay={1400} style={{ bottom: -60, start: -20 }} />
 
         {/* Üst satır — kicker + title + ikon kapsülü */}
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
@@ -113,30 +126,34 @@ export function MaterialRequestsScreen() {
                 : 'Teknisyen tarafından açılan sarf/alet talebini incele, admin\'e yönlendir veya reddet.'}
             </Text>
           </View>
-          <View style={{
-            width: 56, height: 56, borderRadius: 16,
-            backgroundColor: 'rgba(255,255,255,0.20)',
-            borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)',
-            alignItems: 'center', justifyContent: 'center',
-          }}>
-            <Wrench size={26} color="#FFF" strokeWidth={1.7} />
-          </View>
-        </View>
-
-        {/* Aksiyonlar */}
-        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 18 }}>
-          <Pressable
-            onPress={load}
-            style={{
-              flexDirection: 'row', alignItems: 'center', gap: 6,
-              paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999,
-              backgroundColor: 'rgba(255,255,255,0.16)',
+          {/* Yenile + ikon kapsülü TEK satırda. Eskiden ikon üstte, Yenile
+              altında ayrı bir satırdaydı; hero boşuna ~50px uzuyordu.
+              Pressable'a OBJECT style veriliyor — fonksiyon-stili native'de
+              flexDirection:'row'u düşürüp ikonu etiketin üstüne alıyor
+              (bkz. modules/settings/sections/ProfileSection.tsx). */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Pressable
+              onPress={load}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 6,
+                paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999,
+                backgroundColor: 'rgba(255,255,255,0.16)',
+                borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)',
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
+              }}
+            >
+              <RefreshCcw size={13} color="#FFF" strokeWidth={2} />
+              <Text style={{ fontSize: 13, fontWeight: '500', color: '#FFF' }}>Yenile</Text>
+            </Pressable>
+            <View style={{
+              width: 56, height: 56, borderRadius: 16,
+              backgroundColor: 'rgba(255,255,255,0.20)',
               borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)',
-            }}
-          >
-            <RefreshCcw size={13} color="#FFF" strokeWidth={2} />
-            <Text style={{ fontSize: 13, fontWeight: '500', color: '#FFF' }}>Yenile</Text>
-          </Pressable>
+              alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Wrench size={26} color="#FFF" strokeWidth={1.7} />
+            </View>
+          </View>
         </View>
 
         {/* Alt mini-stat şeridi — 4 tile */}
@@ -151,7 +168,7 @@ export function MaterialRequestsScreen() {
       </View>
 
       {/* Tab bar — segmented */}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, padding: 4, backgroundColor: DS.ink[50], borderRadius: 12, borderWidth: 1, borderColor: DS.ink[200] }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, padding: 4, backgroundColor: U.ink[50], borderRadius: 12, borderWidth: 1, borderColor: U.ink[200] }}>
         {TAB_DEFS.map(t => {
           const active = tab === t.key;
           const Icon = t.icon;
@@ -162,12 +179,12 @@ export function MaterialRequestsScreen() {
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 6,
                 paddingHorizontal: 11, paddingVertical: 7, borderRadius: 8,
-                backgroundColor: active ? '#FFF' : 'transparent',
+                backgroundColor: active ? U.segActive : 'transparent',
                 ...(active && Platform.OS === 'web' ? { boxShadow: '0 1px 3px rgba(0,0,0,0.08)' } as any : null),
               }}
             >
-              <Icon size={12} color={active ? t.accent : DS.ink[500]} strokeWidth={2} />
-              <Text style={{ fontSize: 11.5, fontWeight: active ? '700' : '500', color: active ? DS.ink[900] : DS.ink[500] }}>
+              <Icon size={12} color={active ? t.accent : U.ink[500]} strokeWidth={2} />
+              <Text style={{ fontSize: 11.5, fontWeight: active ? '700' : '500', color: active ? U.ink[900] : U.ink[500] }}>
                 {t.label}
               </Text>
             </Pressable>
@@ -178,19 +195,19 @@ export function MaterialRequestsScreen() {
       {/* Search */}
       <View style={{
         flexDirection: 'row', alignItems: 'center', gap: 8,
-        backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[200], borderRadius: 12,
+        backgroundColor: U.surface, borderWidth: 1, borderColor: U.ink[200], borderRadius: 12,
         paddingHorizontal: 12, paddingVertical: 7,
       }}>
-        <Search size={13} color={DS.ink[400]} />
+        <Search size={13} color={U.ink[400]} />
         <TextInput
           value={search}
           onChangeText={setSearch}
           placeholder="Talep no veya başlık ara…"
-          placeholderTextColor={DS.ink[400]}
-          style={{ flex: 1, fontSize: 13, color: DS.ink[900], paddingVertical: 4, outlineStyle: 'none' as any }}
+          placeholderTextColor={U.ink[400]}
+          style={{ flex: 1, fontSize: 13, color: U.ink[900], paddingVertical: 4, outlineStyle: 'none' as any }}
         />
         {search.length > 0 && (
-          <Pressable onPress={() => setSearch('')}><X size={13} color={DS.ink[400]} /></Pressable>
+          <Pressable onPress={() => setSearch('')}><X size={13} color={U.ink[400]} /></Pressable>
         )}
       </View>
 
@@ -245,24 +262,32 @@ export function MaterialRequestsScreen() {
 function HeroMiniStat({
   icon: Icon, label, value, onPress, alert,
 }: { icon: any; label: string; value: number | string; onPress?: () => void; alert?: boolean }) {
+  const [hovered, setHovered] = useState(false);
   const Wrapper: any = onPress ? Pressable : View;
+  /* OBJECT style — fonksiyon-stili iki yönden riskli: (1) native'de satır
+     yerleşimini düşürüyor, (2) `Wrapper` View'a düştüğünde View bir fonksiyonu
+     stil olarak ÇAĞIRMAZ ve tüm yerleşim kaybolur. Hover kaldırması yerel
+     state ile korundu. Beyaz metin/ikon accent hero üzerinde kalır (§ istisna). */
+  const tileStyle: any = {
+    flex: 1, minWidth: 110,
+    paddingVertical: 12, paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: alert ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.16)',
+    borderWidth: 1, borderColor: alert ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.20)',
+    gap: 4,
+    ...(Platform.OS === 'web' ? {
+      cursor: onPress ? 'pointer' : 'default',
+      transform: [{ translateY: hovered && onPress ? -1 : 0 }],
+      transition: 'transform 180ms ease',
+    } : null),
+  };
   return (
     <Wrapper
       onPress={onPress}
-      style={({ pressed, hovered }: any) => ({
-        flexGrow: 1, flexBasis: 130, minWidth: 130,
-        paddingVertical: 12, paddingHorizontal: 12,
-        borderRadius: 14,
-        backgroundColor: alert ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.18)',
-        borderWidth: 1, borderColor: alert ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.20)',
-        gap: 4,
-        opacity: onPress && pressed ? 0.85 : 1,
-        // @ts-ignore
-        transform: [{ translateY: hovered && onPress ? -1 : 0 }],
-        cursor: onPress ? ('pointer' as any) : ('default' as any),
-        // @ts-ignore
-        transition: 'transform 180ms ease',
-      })}
+      {...(onPress && Platform.OS === 'web'
+        ? { onHoverIn: () => setHovered(true), onHoverOut: () => setHovered(false) }
+        : null)}
+      style={tileStyle}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         <Icon size={12} color="rgba(255,255,255,0.92)" strokeWidth={2} />
@@ -288,6 +313,7 @@ function RequestCard({
   onOpenDetail: () => void;
   onAction: (a: ApprovalAction) => void;
 }) {
+  const U = useStockUI();
   const TH = usePanelTheme();
   const itemCount = row.item_count ?? row.items?.length ?? 0;
   const est = row.est_total ?? 0;
@@ -310,35 +336,35 @@ function RequestCard({
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.4 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: U.ink[400], letterSpacing: 0.4 }}>
                 {row.request_no}
               </Text>
               <StatusChip status={row.status} size="sm" />
               <UrgencyChip urgency={row.urgency} size="sm" />
             </View>
-            <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900], marginTop: 4 }} numberOfLines={1}>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900], marginTop: 4 }} numberOfLines={1}>
               {row.title}
             </Text>
-            <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 3 }}>
+            <Text style={{ fontSize: 11, color: U.ink[500], marginTop: 3 }}>
               {row.requester?.full_name ?? '—'}
               {' · '}{itemCount} kalem
               {est > 0 ? `  ·  ${TRY(est)} tahmini` : ''}
               {row.needed_by ? `  ·  İhtiyaç: ${fmtDate(row.needed_by)}` : ''}
             </Text>
             {row.manager_note && (
-              <Text style={{ fontSize: 10, color: DS.ink[500], marginTop: 4, fontStyle: 'italic' }} numberOfLines={1}>
+              <Text style={{ fontSize: 10, color: U.ink[500], marginTop: 4, fontStyle: 'italic' }} numberOfLines={1}>
                 Müdür: {row.manager_note}
               </Text>
             )}
           </View>
-          {isRTL() ? <ChevronLeft size={14} color={DS.ink[300]} /> : <ChevronRight size={14} color={DS.ink[300]} />}
+          {isRTL() ? <ChevronLeft size={14} color={U.ink[300]} /> : <ChevronRight size={14} color={U.ink[300]} />}
         </View>
 
         {/* Aksiyon barı — yetkiye göre */}
         {(canManagerAct || canAdminApprove || canOrder || canReceive) && (
           <View style={{
             flexDirection: 'row', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end',
-            borderTopWidth: 1, borderTopColor: DS.ink[100], paddingTop: 10, marginTop: 4,
+            borderTopWidth: 1, borderTopColor: U.ink[100], paddingTop: 10, marginTop: 4,
           }}>
             {canManagerAct && (
               <>

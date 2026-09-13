@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  RefreshControl, TextInput,
+  RefreshControl, TextInput, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
@@ -12,6 +12,10 @@ import { SlideTabBar } from '../../core/ui/SlideTabBar';
 
 import { AppIcon } from '../../core/ui/AppIcon';
 import { ActivityIndicator } from '../../core/ui/teethCompat';
+import { useMobileTokens } from '../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../core/store/themeModeStore';
+import { useInkUI } from '../../core/theme/inkScale';
+import { LogDetail, logSummaryLine, fullTimestamp, ENTITY_LABEL } from '../../modules/logs/logDetail';
 
 type LogTab = 'all' | 'users' | 'technicians' | 'clinics' | 'doctors';
 
@@ -80,7 +84,14 @@ function actionMeta(action: string): { icon: string; color: string; bg: string }
 
 function LogRow({ log, isLast }: { log: ActivityLog; isLast: boolean }) {
   const { t, i18n } = useTranslation();
+  const T = useMobileTokens();
+  const U = useInkUI();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  // Ayrıntı VARSAYILAN kapalı: liste taranabilir kalsın, isteyen satırı açsın.
+  const [open, setOpen] = useState(false);
   const meta = actionMeta(log.action);
+  const summary = logSummaryLine(log);
+  const entityName = log.entity_type ? (ENTITY_LABEL[log.entity_type] ?? log.entity_type) : null;
   const at = normType(log.actor_type);
   const badge =
     at === 'admin'      ? { label: t('admin.logs.actor.admin'),      bg: '#FEF3C7', text: '#92400E' } :
@@ -91,7 +102,18 @@ function LogRow({ log, isLast }: { log: ActivityLog; isLast: boolean }) {
                           { label: t('admin.logs.actor.lab'),        bg: '#DCFCE7', text: '#166534' };
 
   return (
-    <View style={[lr.row, !isLast && lr.rowBorder]}>
+    <TouchableOpacity
+      activeOpacity={0.75}
+      onPress={() => setOpen(v => !v)}
+      accessibilityLabel={open ? 'Ayrıntıyı kapat' : 'Ayrıntıyı aç'}
+      style={[
+        lr.row,
+        !isLast && lr.rowBorder,
+        !isLast && isDark && { borderBottomColor: T.hairline },
+        open && { backgroundColor: U.rowHover },
+        Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null,
+      ]}
+    >
       {/* Icon */}
       <View style={[lr.iconWrap, { backgroundColor: meta.bg }]}>
         <AppIcon name={meta.icon as any} size={17} color={meta.color} />
@@ -100,21 +122,41 @@ function LogRow({ log, isLast }: { log: ActivityLog; isLast: boolean }) {
       {/* Content */}
       <View style={lr.content}>
         <View style={lr.topLine}>
-          <Text style={lr.name} numberOfLines={1}>{log.actor_name}</Text>
+          <Text style={[lr.name, isDark && { color: T.ink }]} numberOfLines={1}>{log.actor_name}</Text>
           <View style={[lr.badge, { backgroundColor: badge.bg }]}>
             <Text style={[lr.badgeText, { color: badge.text }]}>{badge.label}</Text>
           </View>
-          <Text style={lr.time}>{timeAgo(log.created_at, t, i18n.language)}</Text>
-        </View>
-        <Text style={lr.action}>{log.action}</Text>
-        {log.entity_label ? (
-          <Text style={lr.entity}>
-            {log.entity_type === 'work_order' ? '📋 ' : log.entity_type === 'clinic' ? '🏥 ' : log.entity_type === 'doctor' ? '👨‍⚕️ ' : ''}
-            {log.entity_label}
+          {/* Göreli zamanın yanında TAM zaman damgası — "3 gün önce" denetim için yetmez */}
+          <Text style={[lr.time, isDark && { color: T.ink3 }]} numberOfLines={1}>
+            {timeAgo(log.created_at, t, i18n.language)}
           </Text>
+        </View>
+        <Text style={[lr.action, isDark && { color: T.ink2 }]}>{log.action}</Text>
+
+        {/* Bağlam şeridi — açmadan da hangi sipariş/hasta/aşama olduğu görünsün */}
+        {(log.entity_label || summary) ? (
+          <View style={lr.metaLine}>
+            {entityName ? (
+              <View style={[lr.chip, { backgroundColor: U.chipNeutral }]}>
+                <Text style={[lr.chipText, { color: U.ink[500] }]}>{entityName}</Text>
+              </View>
+            ) : null}
+            <Text style={[lr.entity, isDark && { color: T.ink3 }]} numberOfLines={1}>
+              {[log.entity_label, summary].filter(Boolean).join(' · ')}
+            </Text>
+          </View>
         ) : null}
+
+        <View style={lr.footLine}>
+          <Text style={[lr.stamp, { color: U.ink[400] }]}>{fullTimestamp(log.created_at)}</Text>
+          <Text style={[lr.toggle, { color: U.ink[500] }]}>
+            {open ? 'Ayrıntıyı gizle ▴' : 'Ayrıntı ▾'}
+          </Text>
+        </View>
+
+        {open && <LogDetail log={log} />}
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -129,13 +171,21 @@ const lr = StyleSheet.create({
   badgeText: { fontSize: 10, fontWeight: '700' },
   time:      { fontSize: 11, color: '#AEAEB2', marginStart: 'auto' as any },
   action:    { fontSize: 13, color: '#6C6C70', marginBottom: 2 },
-  entity:    { fontSize: 11, color: '#AEAEB2' },
+  entity:    { fontSize: 11, color: '#AEAEB2', flexShrink: 1 },
+  metaLine:  { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1 },
+  chip:      { paddingHorizontal: 6, paddingVertical: 1.5, borderRadius: 5, flexShrink: 0 },
+  chipText:  { fontSize: 9.5, fontWeight: '700', letterSpacing: 0.3 },
+  footLine:  { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  stamp:     { fontSize: 10.5 },
+  toggle:    { fontSize: 10.5, fontWeight: '700', marginStart: 'auto' as any },
 });
 
 // ─── Screen ──────────────────────────────────────────────────────────────────
 
 export default function AdminLogsScreen() {
   const { t } = useTranslation();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [logs,          setLogs]          = useState<ActivityLog[]>([]);
   const [loading,       setLoading]       = useState(true);
   const [refreshing,    setRefreshing]    = useState(false);
@@ -182,7 +232,11 @@ export default function AdminLogsScreen() {
     if (tab === 'clinics'     && at !== 'clinic')     return false;
     if (tab === 'doctors'     && at !== 'doctor')     return false;
     if (!q) return true;
-    return l.actor_name.toLowerCase().includes(q) || l.action.toLowerCase().includes(q) || l.entity_label?.toLowerCase().includes(q);
+    // Arama artık metadata'nın İÇİNDE de dolaşır: hasta adı, sipariş no,
+    // malzeme, istasyon, not… hepsi aranabilir hâle gelir.
+    const meta = l.metadata ? JSON.stringify(l.metadata).toLowerCase() : '';
+    return l.actor_name.toLowerCase().includes(q) || l.action.toLowerCase().includes(q)
+      || l.entity_label?.toLowerCase().includes(q) || meta.includes(q);
   });
 
   const TABS: { key: LogTab; label: string }[] = [
@@ -194,21 +248,21 @@ export default function AdminLogsScreen() {
   ];
 
   return (
-    <SafeAreaView style={s.safe} edges={['bottom']}>
+    <SafeAreaView style={[s.safe, isDark && { backgroundColor: T.bg }]} edges={['bottom']}>
 
       {/* Header (non-scrollable) */}
-      <View style={s.header}>
+      <View style={[s.header, isDark && { borderBottomColor: T.hairline }]}>
 
         {/* Toolbar row */}
         <View style={s.toolbarRow}>
           <View style={s.rightGroup}>
             <IconBtn active={searchExpanded || search.length > 0} onPress={() => setSearchExpanded(!searchExpanded)}>
-              <AppIcon name="search" size={20} color={(searchExpanded || search.length > 0) ? '#0F172A' : '#64748B'} />
+              <AppIcon name="search" size={20} color={(searchExpanded || search.length > 0) ? (isDark ? (T.ink as string) : '#0F172A') : (isDark ? (T.ink3 as string) : '#64748B')} />
             </IconBtn>
             <IconBtn onPress={() => loadLogs(true)}>
               {refreshing
-                ? <ActivityIndicator size="small" color="#64748B" />
-                : <AppIcon name="refresh-cw" size={20} color="#64748B" />}
+                ? <ActivityIndicator size="small" color={isDark ? (T.ink3 as string) : '#64748B'} />
+                : <AppIcon name="refresh-cw" size={20} color={isDark ? (T.ink3 as string) : '#64748B'} />}
             </IconBtn>
           </View>
         </View>
@@ -224,22 +278,22 @@ export default function AdminLogsScreen() {
         {/* Search */}
         {(searchExpanded || search.length > 0) && (
           <View style={s.searchRow}>
-            <View style={[s.searchWrap, searchFocused && s.searchWrapFocused]}>
-              <AppIcon name="search" size={16} color={searchFocused ? '#0F172A' : '#AEAEB2'} />
+            <View style={[s.searchWrap, isDark && { backgroundColor: T.cardSoft, borderColor: T.hairline }, searchFocused && s.searchWrapFocused, searchFocused && isDark && { borderColor: 'rgba(255,255,255,0.25)' }]}>
+              <AppIcon name="search" size={16} color={searchFocused ? (isDark ? (T.ink as string) : '#0F172A') : (isDark ? (T.ink3 as string) : '#AEAEB2')} />
               <TextInput
-                style={s.searchInput}
+                style={[s.searchInput, isDark && { color: T.ink }]}
                 value={search}
                 onChangeText={setSearch}
                 onFocus={() => setSearchFocused(true)}
                 onBlur={() => setSearchFocused(false)}
                 placeholder={t('admin.logs.searchPlaceholder')}
-                placeholderTextColor="#AEAEB2"
+                placeholderTextColor={isDark ? (T.ink3 as string) : '#AEAEB2'}
                 returnKeyType="search"
                 autoFocus={searchExpanded && search.length === 0}
               />
               {search.length > 0 && (
                 <TouchableOpacity onPress={() => { setSearch(''); setSearchExpanded(false); }}>
-                  <AppIcon name="x-circle" size={15} color="#AEAEB2" />
+                  <AppIcon name="x-circle" size={15} color={isDark ? (T.ink3 as string) : '#AEAEB2'} />
                 </TouchableOpacity>
               )}
             </View>
@@ -250,28 +304,28 @@ export default function AdminLogsScreen() {
       {/* Content */}
       {loading ? (
         <View style={s.center}>
-          <ActivityIndicator size="large" color="#0F172A" />
-          <Text style={s.loadingText}>{t('admin.logs.loading')}</Text>
+          <ActivityIndicator size="large" color={isDark ? (T.ink as string) : '#0F172A'} />
+          <Text style={[s.loadingText, isDark && { color: T.ink3 }]}>{t('admin.logs.loading')}</Text>
         </View>
       ) : (
         <ScrollView
           style={s.scroll}
           contentContainerStyle={s.scrollContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadLogs(true)} tintColor="#0F172A" />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadLogs(true)} tintColor={isDark ? (T.ink as string) : '#0F172A'} />}
           showsVerticalScrollIndicator={false}
         >
           {filtered.length === 0 ? (
             <View style={s.empty}>
-              <AppIcon name="clipboard-text-off-outline" size={44} color="#AEAEB2" />
-              <Text style={s.emptyTitle}>{t('admin.logs.empty.title')}</Text>
-              <Text style={s.emptySub}>{q ? t('admin.logs.empty.noMatch', { query: q }) : t('admin.logs.empty.noActions')}</Text>
+              <AppIcon name="clipboard-text-off-outline" size={44} color={isDark ? (T.ink3 as string) : '#AEAEB2'} />
+              <Text style={[s.emptyTitle, isDark && { color: T.ink }]}>{t('admin.logs.empty.title')}</Text>
+              <Text style={[s.emptySub, isDark && { color: T.ink3 }]}>{q ? t('admin.logs.empty.noMatch', { query: q }) : t('admin.logs.empty.noActions')}</Text>
             </View>
           ) : (
-            <View style={s.card}>
+            <View style={[s.card, isDark && { backgroundColor: T.card, borderColor: T.hairline }]}>
               {/* Header */}
-              <View style={s.cardHeader}>
-                <Text style={s.hCell} numberOfLines={1}>{t('admin.logs.table.user')}</Text>
-                <Text style={[s.hCell, { marginStart: 'auto' as any }]}>{t('admin.logs.table.recordsRealtime', { count: logs.length })}</Text>
+              <View style={[s.cardHeader, isDark && { backgroundColor: T.cardSoft, borderBottomColor: T.hairline }]}>
+                <Text style={[s.hCell, isDark && { color: T.ink3 }]} numberOfLines={1}>{t('admin.logs.table.user')}</Text>
+                <Text style={[s.hCell, { marginStart: 'auto' as any }, isDark && { color: T.ink3 }]}>{t('admin.logs.table.recordsRealtime', { count: logs.length })}</Text>
               </View>
               {filtered.map((log, i) => (
                 <LogRow key={log.id} log={log} isLast={i === filtered.length - 1} />

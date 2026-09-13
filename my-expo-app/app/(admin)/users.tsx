@@ -28,6 +28,8 @@ import { AppIcon } from '../../core/ui/AppIcon';
 import { ActivityIndicator } from '../../core/ui/teethCompat';
 import { confirmAsync } from '../../core/util/confirm';
 import { autoT } from '../../core/i18n/autoTranslate';
+import { useMobileTokens } from '../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../core/store/themeModeStore';
 
 type FilterType = 'all' | 'admin' | 'lab' | 'doctor' | 'clinic_admin';
 type StatusFilter = 'all' | 'active' | 'inactive';
@@ -65,6 +67,10 @@ interface UserStats {
 export default function AdminUsersScreen() {
   const { width } = useWindowDimensions();
   const isWide = width >= 1100;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const styles = makeStyles(T, isDark);
+  const fp = makeFp(T, isDark);
 
   // localStorage cache — 2. ziyarette anında render, arka planda taze veri.
   const LS_KEY_USERS = 'admin_users_cache_v1';
@@ -520,6 +526,9 @@ function DetailPanel({
   primary: string;
   onClose: () => void;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const dp = makeDp(T, isDark);
   const productivity = stats && stats.total > 0
     ? Math.round(((stats.total - stats.active) / stats.total) * 100)
     : null;
@@ -527,7 +536,7 @@ function DetailPanel({
   return (
     <View style={dp.card}>
       <TouchableOpacity style={dp.closeBtn} onPress={onClose} activeOpacity={0.7} hitSlop={10}>
-        <AppIcon name="x" size={14} color="#64748B" />
+        <AppIcon name="x" size={14} color={isDark ? (T.ink3 as string) : '#64748B'} />
       </TouchableOpacity>
 
       <View style={dp.hero}>
@@ -566,7 +575,7 @@ function DetailPanel({
                   <Text style={dp.orderNo}>{o.order_number}</Text>
                   <Text style={dp.orderItem} numberOfLines={1}>{o.item}</Text>
                 </View>
-                <AppIcon name="chevron-right" size={14} color="#CBD5E1" />
+                <AppIcon name="chevron-right" size={14} color={isDark ? (T.ink3 as string) : '#CBD5E1'} />
               </View>
             ))}
           </View>
@@ -579,6 +588,9 @@ function DetailPanel({
 function MetricCell({ label, value, icon, tint, accent }: {
   label: string; value: string; icon: string; tint: string; accent?: boolean;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const dp = makeDp(T, isDark);
   return (
     <View style={dp.metric}>
       <View style={dp.metricIconWrap}>
@@ -601,6 +613,9 @@ function EditUserModal({
   onClose: () => void;
   onSuccess: (updated: Profile) => void;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const m = makeM(T, isDark);
   const [fullName,    setFullName]    = useState('');
   const [email,       setEmail]       = useState('');
   const [phone,       setPhone]       = useState('');
@@ -833,6 +848,9 @@ function AddUserModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const m = makeM(T, isDark);
   const [fullName, setFullName] = useState('');
   const [email,    setEmail]    = useState('');
   const [password, setPassword] = useState('');
@@ -1090,18 +1108,18 @@ function AddUserModal({
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
-  safe:      { flex: 1, backgroundColor: BG },
+const makeStyles = (T: any, isDark: boolean) => StyleSheet.create({
+  safe:      { flex: 1, backgroundColor: isDark ? T.bg : BG },
   container: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 60, maxWidth: 1440, width: '100%', alignSelf: 'center' },
 
   pageHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 28 },
-  pageTitle:  { fontSize: 34, fontWeight: '800', color: K, letterSpacing: -0.8, lineHeight: 40 },
-  pageSub:    { fontSize: 11, fontWeight: '700', color: '#94A3B8', letterSpacing: 1.2, marginTop: 4 },
+  pageTitle:  { fontSize: 34, fontWeight: '800', color: isDark ? T.ink : K, letterSpacing: -0.8, lineHeight: 40 },
+  pageSub:    { fontSize: 11, fontWeight: '700', color: isDark ? T.ink3 : '#94A3B8', letterSpacing: 1.2, marginTop: 4 },
 
-  headerActions:    { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(226,232,240,0.4)', padding: 6, borderRadius: 14 },
-  headerBtn:        { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFFFFF', paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10 },
-  headerBtnActive:  { backgroundColor: '#F1F5F9' },
-  headerBtnText:    { fontSize: 13, fontWeight: '600', color: K },
+  headerActions:    { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(226,232,240,0.4)', padding: 6, borderRadius: 14 },
+  headerBtn:        { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: isDark ? T.card : '#FFFFFF', paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10 },
+  headerBtnActive:  { backgroundColor: isDark ? T.cardSoft : '#F1F5F9' },
+  headerBtnText:    { fontSize: 13, fontWeight: '600', color: isDark ? T.ink : K },
   headerBtnBadge:   { backgroundColor: K, borderRadius: 10, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5, marginStart: 2 },
   headerBtnBadgeText: { fontSize: 10, fontWeight: '800', color: '#FFFFFF' },
   addBtn:           { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: K, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 10 },
@@ -1109,13 +1127,13 @@ const styles = StyleSheet.create({
 
   subToolbar:      { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 20 },
   tabBar:          { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  searchToggle:       { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F2F4F6' },
-  searchToggleActive: { backgroundColor: '#E6E8EA' },
+  searchToggle:       { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? T.cardSoft : '#F2F4F6' },
+  searchToggleActive: { backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : '#E6E8EA' },
 
   searchRow:         { marginBottom: 12 },
-  searchWrap:        { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: '#F1F5F9', paddingHorizontal: 12, height: 42 },
-  searchWrapFocused: { borderColor: '#CBD5E1' },
-  searchInput:       { flex: 1, fontSize: 14, color: K, height: 42, outlineStyle: 'none' } as any,
+  searchWrap:        { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: isDark ? T.cardSoft : '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: isDark ? T.hairline : '#F1F5F9', paddingHorizontal: 12, height: 42 },
+  searchWrapFocused: { borderColor: isDark ? 'rgba(255,255,255,0.25)' : '#CBD5E1' },
+  searchInput:       { flex: 1, fontSize: 14, color: isDark ? T.ink : K, height: 42, outlineStyle: 'none' } as any,
 
   grid:        { gap: 24 },
   gridWide:    { flexDirection: 'row', alignItems: 'flex-start' },
@@ -1126,12 +1144,12 @@ const styles = StyleSheet.create({
 
   cardList:    { gap: 12 },
   card:        {
-    backgroundColor: '#F2F4F6', borderRadius: 14, padding: 16, paddingStart: 20,
+    backgroundColor: isDark ? T.cardSoft : '#F2F4F6', borderRadius: 14, padding: 16, paddingStart: 20,
     flexDirection: 'row', alignItems: 'center', gap: 14, position: 'relative', overflow: 'hidden',
   } as any,
   cardSelected: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2, borderColor: 'rgba(15,23,42,0.15)',
+    backgroundColor: isDark ? T.card : '#FFFFFF',
+    borderWidth: 2, borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(15,23,42,0.15)',
     boxShadow: '0 8px 32px rgba(15,23,42,0.05)',
   } as any,
   cardAccent:   { position: 'absolute', start: 0, top: 0, bottom: 0, width: 3, backgroundColor: K },
@@ -1140,171 +1158,172 @@ const styles = StyleSheet.create({
   avatarImg:    { width: 52, height: 52, borderRadius: 26 },
   avatarText:   { fontSize: 17, fontWeight: '800' },
   cardInfo:     { flex: 1, gap: 6, minWidth: 0 },
-  cardName:     { fontSize: 16, fontWeight: '800', color: K, letterSpacing: -0.3 },
+  cardName:     { fontSize: 16, fontWeight: '800', color: isDark ? T.ink : K, letterSpacing: -0.3 },
   cardMetaRow:  { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
   typeBadge:    { borderRadius: 100, paddingHorizontal: 8, paddingVertical: 3 },
   typeBadgeText:{ fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
-  cardEmail:    { fontSize: 13, color: '#64748B', fontWeight: '500', flexShrink: 1 },
+  cardEmail:    { fontSize: 13, color: isDark ? T.ink3 : '#64748B', fontWeight: '500', flexShrink: 1 },
 
   cardRight:       { flexDirection: 'row', alignItems: 'center', gap: 14 },
   toggleCluster:   { flexDirection: 'row', alignItems: 'center', gap: 8 },
   toggleLabel:     { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
-  toggleLabelActive:   { color: K },
-  toggleLabelInactive: { color: '#94A3B8' },
+  toggleLabelActive:   { color: isDark ? T.ink : K },
+  toggleLabelInactive: { color: isDark ? T.ink3 : '#94A3B8' },
   actionCluster:   { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  actionBtn:       { width: 32, height: 32, borderRadius: 8, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
+  actionBtn:       { width: 32, height: 32, borderRadius: 8, backgroundColor: isDark ? T.card : '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
 
   empty:      { alignItems: 'center', paddingTop: 60, gap: 10 },
-  emptyTitle: { fontSize: 16, fontWeight: '700', color: K },
-  emptySub:   { fontSize: 13, color: '#AEAEB2' },
+  emptyTitle: { fontSize: 16, fontWeight: '700', color: isDark ? T.ink : K },
+  emptySub:   { fontSize: 13, color: isDark ? T.ink3 : '#AEAEB2' },
 });
 
-const dp = StyleSheet.create({
+const makeDp = (T: any, isDark: boolean) => StyleSheet.create({
   card: {
-    backgroundColor: '#FFFFFF', borderRadius: 16,
-    borderWidth: 1, borderColor: '#F1F5F9',
+    backgroundColor: isDark ? T.card : '#FFFFFF', borderRadius: 16,
+    borderWidth: 1, borderColor: isDark ? T.hairline : '#F1F5F9',
     overflow: 'hidden',
     boxShadow: '0 16px 40px rgba(15,23,42,0.04)',
   } as any,
-  closeBtn: { position: 'absolute', top: 12, end: 12, zIndex: 2, width: 28, height: 28, borderRadius: 8, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
+  closeBtn: { position: 'absolute', top: 12, end: 12, zIndex: 2, width: 28, height: 28, borderRadius: 8, backgroundColor: isDark ? T.cardSoft : '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
 
-  hero: { padding: 28, paddingBottom: 20, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  hero: { padding: 28, paddingBottom: 20, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: isDark ? T.hairline : '#F1F5F9' },
   avatarWrap: { width: 96, height: 96, alignItems: 'center', justifyContent: 'center', marginBottom: 14, position: 'relative' },
   avatarGlow: { position: 'absolute', inset: 0, borderRadius: 48, opacity: 0.18, filter: 'blur(20px)' } as any,
-  avatar:     { width: 88, height: 88, borderRadius: 44, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderWidth: 4, borderColor: '#FFFFFF', boxShadow: '0 8px 24px rgba(15,23,42,0.08)' } as any,
+  avatar:     { width: 88, height: 88, borderRadius: 44, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderWidth: 4, borderColor: isDark ? T.card : '#FFFFFF', boxShadow: '0 8px 24px rgba(15,23,42,0.08)' } as any,
   avatarImg:  { width: 88, height: 88, borderRadius: 44 },
   avatarText: { fontSize: 28, fontWeight: '800' },
-  name:       { fontSize: 22, fontWeight: '800', color: K, letterSpacing: -0.5, marginBottom: 2 },
+  name:       { fontSize: 22, fontWeight: '800', color: isDark ? T.ink : K, letterSpacing: -0.5, marginBottom: 2 },
   role:       { fontSize: 12, fontWeight: '700', letterSpacing: 1.0, marginBottom: 6 },
-  joined:     { fontSize: 12, color: '#94A3B8', fontWeight: '500' },
+  joined:     { fontSize: 12, color: isDark ? T.ink3 : '#94A3B8', fontWeight: '500' },
 
   metricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, padding: 20 },
   metric: {
     flexGrow: 1, flexBasis: '45%', minWidth: 120,
-    backgroundColor: '#F8FAFC', borderRadius: 12,
+    backgroundColor: isDark ? T.cardSoft : '#F8FAFC', borderRadius: 12,
     padding: 14, paddingEnd: 16, height: 92,
     justifyContent: 'space-between', position: 'relative', overflow: 'hidden',
   },
   metricIconWrap: { position: 'absolute', top: -10, end: -10 },
-  metricLabel:    { fontSize: 10, fontWeight: '800', color: '#64748B', letterSpacing: 0.5, textTransform: 'uppercase' },
-  metricValue:    { fontSize: 22, fontWeight: '800', color: K, letterSpacing: -0.5 },
+  metricLabel:    { fontSize: 10, fontWeight: '800', color: isDark ? T.ink3 : '#64748B', letterSpacing: 0.5, textTransform: 'uppercase' },
+  metricValue:    { fontSize: 22, fontWeight: '800', color: isDark ? T.ink : K, letterSpacing: -0.5 },
 
   listSection: { paddingHorizontal: 20, paddingBottom: 20 },
-  listTitle:   { fontSize: 10, fontWeight: '800', color: '#64748B', letterSpacing: 0.8, marginBottom: 12 },
-  listEmpty:   { fontSize: 13, color: '#94A3B8', paddingVertical: 6 },
-  orderRow:    { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#F1F5F9', borderRadius: 10, padding: 12 },
+  listTitle:   { fontSize: 10, fontWeight: '800', color: isDark ? T.ink3 : '#64748B', letterSpacing: 0.8, marginBottom: 12 },
+  listEmpty:   { fontSize: 13, color: isDark ? T.ink3 : '#94A3B8', paddingVertical: 6 },
+  orderRow:    { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: isDark ? T.cardSoft : '#F1F5F9', borderRadius: 10, padding: 12 },
   dot:         { width: 8, height: 8, borderRadius: 4 },
-  orderNo:     { fontSize: 13, fontWeight: '800', color: K },
-  orderItem:   { fontSize: 11, color: '#64748B', marginTop: 2 },
+  orderNo:     { fontSize: 13, fontWeight: '800', color: isDark ? T.ink : K },
+  orderItem:   { fontSize: 11, color: isDark ? T.ink3 : '#64748B', marginTop: 2 },
 });
 
-const fp = StyleSheet.create({
+const makeFp = (T: any, isDark: boolean) => StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.25)', alignItems: 'flex-end', paddingTop: 70, paddingEnd: 24 },
-  panel:    { width: 300, backgroundColor: '#FFFFFF', borderRadius: 18, overflow: 'hidden',
+  panel:    { width: 300, backgroundColor: isDark ? T.card : '#FFFFFF', borderRadius: 18, overflow: 'hidden', borderWidth: isDark ? 1 : 0, borderColor: isDark ? T.hairline : 'transparent',
               shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.15, shadowRadius: 32 },
   header:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14 },
   headerLeft:  { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headerTitle: { fontSize: 15, fontWeight: '700', color: K },
+  headerTitle: { fontSize: 15, fontWeight: '700', color: isDark ? T.ink : K },
   countBadge:  { backgroundColor: K, borderRadius: 10, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
   countBadgeText: { fontSize: 10, fontWeight: '800', color: '#FFFFFF' },
-  clearText:   { fontSize: 13, fontWeight: '500', color: '#94A3B8' },
-  divider:     { height: 1, backgroundColor: '#F1F5F9' },
+  clearText:   { fontSize: 13, fontWeight: '500', color: isDark ? T.ink3 : '#94A3B8' },
+  divider:     { height: 1, backgroundColor: isDark ? T.hairline : '#F1F5F9' },
   section:     { paddingHorizontal: 16, paddingVertical: 14 },
-  sectionLabel:{ fontSize: 11, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 10 },
+  sectionLabel:{ fontSize: 11, fontWeight: '700', color: isDark ? T.ink3 : '#94A3B8', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 10 },
   chipRow:     { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  chip:        { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, borderWidth: 1.5, borderColor: '#F1F5F9', backgroundColor: '#FAFAFA' },
-  chipActive:  { borderColor: K, backgroundColor: '#F1F5F9' },
-  chipText:    { fontSize: 13, fontWeight: '500', color: '#94A3B8' },
-  chipTextActive: { color: K, fontWeight: '600' },
+  chip:        { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, borderWidth: 1.5, borderColor: isDark ? T.hairline : '#F1F5F9', backgroundColor: isDark ? T.cardSoft : '#FAFAFA' },
+  chipActive:  { borderColor: K, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9' },
+  chipText:    { fontSize: 13, fontWeight: '500', color: isDark ? T.ink3 : '#94A3B8' },
+  chipTextActive: { color: isDark ? T.ink : K, fontWeight: '600' },
   footer:      { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 14 },
-  cancelBtn:   { flex: 1, paddingVertical: 11, borderRadius: 10, borderWidth: 1.5, borderColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
-  cancelText:  { fontSize: 14, fontWeight: '600', color: '#6C6C70' },
+  cancelBtn:   { flex: 1, paddingVertical: 11, borderRadius: 10, borderWidth: 1.5, borderColor: isDark ? T.hairline : '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
+  cancelText:  { fontSize: 14, fontWeight: '600', color: isDark ? T.ink2 : '#6C6C70' },
   applyBtn:    { flex: 2, paddingVertical: 11, borderRadius: 10, backgroundColor: K, alignItems: 'center', justifyContent: 'center' },
   applyText:   { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
 });
 
-const m = StyleSheet.create({
+const makeM = (T: any, isDark: boolean) => StyleSheet.create({
   overlay: {
     flex: 1, backgroundColor: 'rgba(15,23,42,0.4)',
     justifyContent: 'center', alignItems: 'center', padding: 20,
   },
   popup: {
-    backgroundColor: '#FFFFFF', borderRadius: 16,
+    backgroundColor: isDark ? T.card : '#FFFFFF', borderRadius: 16,
     width: '100%', maxWidth: 520, maxHeight: '92%', overflow: 'hidden',
+    borderWidth: isDark ? 1 : 0, borderColor: isDark ? T.hairline : 'transparent',
     shadowColor: '#000', shadowOffset: { width: 0, height: 20 },
     shadowOpacity: 0.15, shadowRadius: 48,
   } as any,
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 24, paddingTop: 22, paddingBottom: 18,
-    borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
+    borderBottomWidth: 1, borderBottomColor: isDark ? T.hairline : '#F1F5F9',
   },
-  title:    { fontSize: 18, fontWeight: '700', color: K },
-  subtitle: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
+  title:    { fontSize: 18, fontWeight: '700', color: isDark ? T.ink : K },
+  subtitle: { fontSize: 12, color: isDark ? T.ink3 : '#94A3B8', marginTop: 2 },
   body: { padding: 20 },
 
   sectionLabel: {
-    fontSize: 11, fontWeight: '600', color: '#64748B',
+    fontSize: 11, fontWeight: '600', color: isDark ? T.ink3 : '#64748B',
     letterSpacing: 0.5, marginBottom: 10, marginTop: 4,
   },
-  fieldLabel: { fontSize: 11, fontWeight: '500', color: '#64748B', marginBottom: 7, letterSpacing: 0.5 },
+  fieldLabel: { fontSize: 11, fontWeight: '500', color: isDark ? T.ink3 : '#64748B', marginBottom: 7, letterSpacing: 0.5 },
   input: {
-    borderWidth: 1, borderColor: '#F1F5F9', borderRadius: 10,
-    paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, color: K,
-    backgroundColor: '#FFFFFF', marginBottom: 14, outlineStyle: 'none',
+    borderWidth: 1, borderColor: isDark ? T.hairline : '#F1F5F9', borderRadius: 10,
+    paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, color: isDark ? T.ink : K,
+    backgroundColor: isDark ? T.cardSoft : '#FFFFFF', marginBottom: 14, outlineStyle: 'none',
   } as any,
 
-  closeBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
+  closeBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: isDark ? T.cardSoft : '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
   roleGrid: { flexDirection: 'row', gap: 8, marginBottom: 20 },
   roleRow:  { flexDirection: 'row', gap: 8, marginBottom: 20 },
   roleCard: {
-    flex: 1, borderRadius: 12, padding: 12, borderWidth: 1.5, borderColor: '#E5E7EB',
-    backgroundColor: '#FAFAFA', alignItems: 'center', gap: 4,
+    flex: 1, borderRadius: 12, padding: 12, borderWidth: 1.5, borderColor: isDark ? T.hairline : '#E5E7EB',
+    backgroundColor: isDark ? T.cardSoft : '#FAFAFA', alignItems: 'center', gap: 4,
   },
   roleCardActive: { backgroundColor: K, borderColor: K },
-  roleLabel: { fontSize: 12, fontWeight: '700', color: '#374151', textAlign: 'center' },
+  roleLabel: { fontSize: 12, fontWeight: '700', color: isDark ? T.ink2 : '#374151', textAlign: 'center' },
   roleLabelActive: { color: '#FFFFFF' },
-  roleSub: { fontSize: 10, color: '#9CA3AF', textAlign: 'center' },
+  roleSub: { fontSize: 10, color: isDark ? T.ink3 : '#9CA3AF', textAlign: 'center' },
   roleSubActive: { color: 'rgba(255,255,255,0.6)' },
 
   toggleRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#F9FAFB', borderRadius: 10, padding: 14,
-    borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 16,
+    backgroundColor: isDark ? T.cardSoft : '#F9FAFB', borderRadius: 10, padding: 14,
+    borderWidth: 1, borderColor: isDark ? T.hairline : '#E5E7EB', marginBottom: 16,
   },
-  toggleLabel: { fontSize: 14, fontWeight: '600', color: K, marginBottom: 2 },
-  toggleSub:   { fontSize: 12, color: '#9CA3AF' },
+  toggleLabel: { fontSize: 14, fontWeight: '600', color: isDark ? T.ink : K, marginBottom: 2 },
+  toggleSub:   { fontSize: 12, color: isDark ? T.ink3 : '#9CA3AF' },
 
   inputRow: {
     flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4,
   },
   eyeBtn: {
-    padding: 11, borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10,
-    backgroundColor: '#FAFAFA',
+    padding: 11, borderWidth: 1, borderColor: isDark ? T.hairline : '#E5E7EB', borderRadius: 10,
+    backgroundColor: isDark ? T.cardSoft : '#FAFAFA',
   },
-  hint: { fontSize: 11, color: '#AEAEB2', marginBottom: 14, marginTop: 2 },
+  hint: { fontSize: 11, color: isDark ? T.ink3 : '#AEAEB2', marginBottom: 14, marginTop: 2 },
 
   errorBox: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#FEF2F2', borderRadius: 8, padding: 10, marginBottom: 12,
+    backgroundColor: isDark ? 'rgba(220,38,38,0.12)' : '#FEF2F2', borderRadius: 8, padding: 10, marginBottom: 12,
   },
   errorText: { fontSize: 13, color: ERR, flex: 1 },
 
   successBox: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#F0FDF4', borderRadius: 8, padding: 10, marginBottom: 12,
+    backgroundColor: isDark ? 'rgba(22,163,74,0.14)' : '#F0FDF4', borderRadius: 8, padding: 10, marginBottom: 12,
   },
   successText: { fontSize: 13, color: '#16A34A', flex: 1 },
 
   footer: {
     flexDirection: 'row', gap: 10, padding: 16,
-    borderTopWidth: 1, borderTopColor: '#F3F4F6',
+    borderTopWidth: 1, borderTopColor: isDark ? T.hairline : '#F3F4F6',
   },
   cancelBtn: {
-    flex: 1, borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10,
+    flex: 1, borderWidth: 1, borderColor: isDark ? T.hairline : '#E5E7EB', borderRadius: 10,
     paddingVertical: 13, alignItems: 'center',
   },
-  cancelText: { fontSize: 14, fontWeight: '600', color: '#374151' },
+  cancelText: { fontSize: 14, fontWeight: '600', color: isDark ? T.ink2 : '#374151' },
   saveBtn: {
     flex: 2, backgroundColor: K, borderRadius: 10,
     paddingVertical: 13, alignItems: 'center', flexDirection: 'row',

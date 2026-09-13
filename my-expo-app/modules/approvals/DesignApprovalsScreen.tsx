@@ -6,11 +6,12 @@
  */
 import React from 'react';
 import { View, Text, FlatList, RefreshControl, useWindowDimensions } from 'react-native';
-import { ClipboardCheck } from 'lucide-react-native';
+import { ClipboardCheck } from '../../core/ui/icons';
 import { usePendingApprovals } from './hooks/usePendingApprovals';
 import { ApprovalCard } from './components/ApprovalCard';
 import { useAuthStore } from '../../core/store/authStore';
 import { DS } from '../../core/theme/dsTokens';
+import { useInkUI } from '../../core/theme/inkScale';
 import { ActivityIndicator } from '../../core/ui/teethCompat';
 import { useMobileTokens } from '../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../core/store/themeModeStore';
@@ -18,6 +19,7 @@ import { useThemeModeStore } from '../../core/store/themeModeStore';
 const DISPLAY: any = { fontFamily: DS.font.display, fontWeight: '300' };
 
 export function DesignApprovalsScreen() {
+  const U = useInkUI();
   const { profile } = useAuthStore();
   const { approvals, loading, refetch } = usePendingApprovals();
   const isAdmin = profile?.user_type === 'admin';
@@ -30,7 +32,7 @@ export function DesignApprovalsScreen() {
     <View style={{ flex: 1 }}>
       {loading ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator size="large" color={DS.ink[500]} />
+          <ActivityIndicator size="large" color={U.ink[500]} />
         </View>
       ) : approvals.length === 0 ? (
         /* ── Empty state — kompakt dashed card ── */
@@ -69,7 +71,7 @@ export function DesignApprovalsScreen() {
           }}
           columnWrapperStyle={isDesktop ? { gap: 10 } : undefined}
           refreshControl={
-            <RefreshControl refreshing={false} onRefresh={refetch} tintColor={DS.ink[500]} />
+            <RefreshControl refreshing={false} onRefresh={refetch} tintColor={U.ink[500]} />
           }
           renderItem={({ item }) => (
             <View style={isDesktop ? { flex: 1, maxWidth: '50%' } : undefined}>

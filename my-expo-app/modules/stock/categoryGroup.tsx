@@ -12,6 +12,8 @@
 import React from 'react';
 import { View, Text } from 'react-native';
 import { DS } from '../../core/theme/dsTokens';
+import { useMobileTokens } from '../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../core/store/themeModeStore';
 
 export type GroupEntry<T> =
   | { kind: 'header'; label: string; count: number; key: string }
@@ -57,20 +59,22 @@ export function groupByCategory<T>(
 export function CategoryHeaderRow({
   label, count, first,
 }: { label: string; count: number; first?: boolean }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <View style={{
       flexDirection: 'row', alignItems: 'center', gap: 8,
       paddingHorizontal: 18, paddingTop: first ? 12 : 18, paddingBottom: 8,
-      backgroundColor: DS.ink[50],
-      borderTopWidth: first ? 0 : 1, borderTopColor: DS.ink[100],
+      backgroundColor: (isDark ? T.cardSoft : DS.ink[50]),
+      borderTopWidth: first ? 0 : 1, borderTopColor: (isDark ? T.hairline : DS.ink[100]),
     }}>
       <Text style={{
         fontSize: 10, fontWeight: '600', letterSpacing: 1.2,
-        textTransform: 'uppercase', color: DS.ink[500],
+        textTransform: 'uppercase', color: (isDark ? T.ink3 : DS.ink[500]),
       }}>
         {label}
       </Text>
-      <Text style={{ fontSize: 10, color: DS.ink[400] }}>{count}</Text>
+      <Text style={{ fontSize: 10, color: (isDark ? T.ink3 : DS.ink[400]) }}>{count}</Text>
     </View>
   );
 }

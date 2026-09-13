@@ -10,6 +10,7 @@
 import { supabase } from '../../core/api/supabase';
 import { fetchStationSkillsMap } from '../../core/api/stationSkills';
 import { getStationKind, type StationKind } from '../orders/stations/registry';
+import type { ImplantDetail } from '../orders/implantInfo';
 
 export interface TriageStation {
   id: string;
@@ -75,6 +76,10 @@ export interface TriageOrderSummary {
   lab_notes: string | null;
   doctor_id: string | null;
   measurement_type: 'manual' | 'digital' | null;
+  // ── İmplant (yapısal alanlar; eski kayıtlarda null → kalem notu fallback) ──
+  implant_brand: string | null;
+  implant_teeth: number[] | null;
+  implant_details: Record<string, ImplantDetail> | null;
 }
 
 export interface TriageFile {
@@ -84,6 +89,9 @@ export interface TriageFile {
   signed_url: string | null;
   is3d: boolean;
   isImage: boolean;
+  /** Galeri (FilesList) için — WorkOrderPhoto'ya eşlenir */
+  work_order_id?: string;
+  created_at?: string;
 }
 
 export interface TriageOrderItem {
@@ -92,6 +100,9 @@ export interface TriageOrderItem {
   quantity: number;
   /** Bu kalemin uygulandığı dişler (FDI) — diş↔işlem şeması için */
   tooth_numbers: number[] | null;
+  /** Kalem detayı: "Marka: X · Tür: Y · Materyal: Z · İmplant pozisyonları: …".
+   *  2026-09 öncesi siparişlerde implant bilgisinin TEK kaynağı burasıdır. */
+  notes: string | null;
 }
 
 export interface TriageMessage {
@@ -140,7 +151,7 @@ export async function fetchTriageData(orderId: string, labId: string): Promise<T
   // 1) Sipariş
   const { data: ord } = await supabase
     .from('work_orders')
-    .select('order_number, patient_name, patient_gender, work_type, tooth_numbers, shade, model_type, machine_type, is_urgent, delivery_date, created_at, notes, lab_notes, doctor_id, measurement_type, revision_of_id, continues_order_id')
+    .select('order_number, patient_name, patient_gender, work_type, tooth_numbers, shade, model_type, machine_type, is_urgent, delivery_date, created_at, notes, lab_notes, doctor_id, measurement_type, implant_brand, implant_teeth, implant_details, revision_of_id, continues_order_id')
     .eq('id', orderId)
     .maybeSingle();
 
@@ -259,7 +270,7 @@ export async function fetchTriageData(orderId: string, labId: string): Promise<T
   // 6) Dosyalar (work_order_photos) + imzalı URL
   const { data: ph } = await supabase
     .from('work_order_photos')
-    .select('id, storage_path, caption')
+    .select('id, storage_path, caption, work_order_id, created_at')
     .in('work_order_id', fileOrderIds)
     .order('created_at', { ascending: true });
   const files: TriageFile[] = await Promise.all(((ph ?? []) as any[]).map(async (f) => {
@@ -268,6 +279,7 @@ export async function fetchTriageData(orderId: string, labId: string): Promise<T
     return {
       id: f.id, name, storage_path: f.storage_path,
       signed_url: signed?.signedUrl ?? null,
+      work_order_id: f.work_order_id, created_at: f.created_at,
       is3d: /\.(stl|ply|obj)$/i.test(f.storage_path) || /\.(stl|ply|obj)$/i.test(name),
       isImage: /\.(png|jpe?g|webp|gif|heic|heif|bmp)$/i.test(f.storage_path),
     };
@@ -276,12 +288,13 @@ export async function fetchTriageData(orderId: string, labId: string): Promise<T
   // 6b) Sipariş kalemleri (order_items) — diş↔işlem şeması için
   const { data: oi } = await supabase
     .from('order_items')
-    .select('id, name, quantity, tooth_numbers')
+    .select('id, name, quantity, tooth_numbers, notes')
     .eq('work_order_id', orderId)
     .order('created_at', { ascending: true });
   const items: TriageOrderItem[] = ((oi ?? []) as any[]).map((it) => ({
     id: it.id, name: it.name ?? '', quantity: it.quantity ?? 1,
     tooth_numbers: Array.isArray(it.tooth_numbers) ? it.tooth_numbers : null,
+    notes: it.notes ?? null,
   }));
 
   // 7) Hekim/klinik mesajları (order_messages) — sender user_type doctor | clinic_admin

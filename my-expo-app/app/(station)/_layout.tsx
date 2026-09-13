@@ -2,23 +2,25 @@
 // Teknisyen istasyon paneli — desktop'ta PatternsShell, mobilde Stack + adaptive PillTabBar.
 
 import React, { useEffect, useState } from 'react';
-import { Modal, View, Text, Pressable, Platform } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Modal, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 const MessagesPopup: any = React.lazy(() => import('../../modules/orders/components/MessagesPopup').then(m => ({ default: (m as any).MessagesPopup })));
 const ScanB6Mobile: any = React.lazy(() => import('../../modules/orders/screens/ScanB6Mobile').then(m => ({ default: (m as any).ScanB6Mobile })));
+// Malzeme Talebi — Talepler sheet'inden doğrudan ortada popup olarak açılır (tam sayfa yerine).
+// Talepler menüsü — admin "Devam" menüsüyle aynı popover
+const MoreMenuSheet: any = React.lazy(() => import('../../core/ui/mobile/MoreMenuSheet').then(m => ({ default: (m as any).MoreMenuSheet })));
+const NewRequestModal: any = React.lazy(() => import('../../modules/material-requests/components/NewRequestModal').then(m => ({ default: (m as any).NewRequestModal })));
 import { useOrderChatInbox } from '../../modules/orders/hooks/useOrderChatInbox';
 import { Tabs, Slot, useRouter, Redirect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Home, ListChecks, QrCode, History, User, Search, Inbox, Wrench, Wallet, CalendarDays, ChevronRight, ChevronLeft } from 'lucide-react-native';
-import { isRTL } from '../../core/i18n';
+import { Home, ListChecks, QrCode, History, User, Search, Inbox, Wrench, Wallet, CalendarDays } from '../../core/ui/icons';
 import { CommandPalette } from '../../core/ui/CommandPalette';
 import { useCommandPalette } from '../../core/store/commandPaletteStore';
 import { PatternsShell, useIsDesktop } from '../../core/layout/PatternsShell';
 import { PillTabBar, type PillTabItem } from '../../core/ui/mobile/PillTabBar';
 import { TopActionBar } from '../../core/ui/mobile/TopActionBar';
 import { PanelTopHeader } from '../../core/ui/mobile/PanelTopHeader';
-import { MOBILE_PANEL_THEMES, useMobileTokens } from '../../core/theme/mobileDesignTokens';
+import { MOBILE_PANEL_THEMES } from '../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../core/store/themeModeStore';
 import { useAuthStore } from '../../core/store/authStore';
 import { usePermissionStore } from '../../core/store/permissionStore';
@@ -32,7 +34,6 @@ export default function StationLayout() {
   const { t } = useTranslation();
   const router = useRouter();
   const isDesktop = useIsDesktop();
-  const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const { profile, loading } = useAuthStore();
   const { fetchForPanel } = usePermissionStore();
@@ -42,8 +43,8 @@ export default function StationLayout() {
   const setScanOpen = useScanStore(s => s.setOpen);
   const [messagesOpen, setMessagesOpen] = useState(false);
   const [talepOpen, setTalepOpen] = useState(false);
+  const [matReqOpen, setMatReqOpen] = useState(false);
   const { totalUnread: chatUnread } = useOrderChatInbox();
-  const insets = useSafeAreaInsets();
 
   // Talepler — mobil sheet ve sidebar grubunda ortak liste
   const TALEP_LINKS = [
@@ -115,7 +116,7 @@ export default function StationLayout() {
     { routeName: 'index',    label: t('nav.items.summary'),     icon: Home },
     { routeName: 'jobs',     label: t('nav.items.myJobs'), icon: ListChecks },
     { routeName: 'history',  label: t('nav.items.history'),  icon: History },
-    { routeName: 'talepler', label: t('nav.items.requests'), icon: Inbox, onPress: () => setTalepOpen(true) },
+    { routeName: 'talepler', label: t('nav.items.requests'), icon: Inbox, menuAnchor: true, onPress: () => setTalepOpen(v => !v) },
     // Profil artık üst bardaki (TopActionBar) profil butonunda — bu slot Ara oldu.
     { routeName: 'search',   label: t('nav.items.search'),     icon: Search, onPress: () => { try { useCommandPalette.getState().openPalette(); } catch { /* noop */ } } },
   ];
@@ -188,39 +189,33 @@ export default function StationLayout() {
       />
     </View>
 
-    {/* Talepler — mobil alt sayfa (bottom sheet): Malzeme / Avans / İzin */}
-    <Modal visible={talepOpen} transparent animationType="slide" onRequestClose={() => setTalepOpen(false)}>
-      <Pressable onPress={() => setTalepOpen(false)} style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.40)' }}>
-        <Pressable onPress={(e: any) => e.stopPropagation?.()} style={{ backgroundColor: (T as any).card ?? '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 10, paddingBottom: insets.bottom + 16, paddingHorizontal: 16 }}>
-          <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: (T as any).hairline ?? 'rgba(0,0,0,0.12)', marginBottom: 12 }} />
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, paddingHorizontal: 4 }}>
-            <Inbox size={18} color={TEKNISYEN.primary} strokeWidth={1.9} />
-            <Text style={{ fontSize: 16, fontWeight: '700', color: (T as any).ink ?? '#0A0A0A' }}>{t('nav.items.requests')}</Text>
-          </View>
-          {TALEP_LINKS.map((l) => {
-            const LIcon = l.icon;
-            return (
-              <Pressable
-                key={l.href}
-                onPress={() => { setTalepOpen(false); router.push(l.href as any); }}
-                style={({ pressed }: any) => ({
-                  flexDirection: 'row', alignItems: 'center', gap: 12,
-                  paddingVertical: 14, paddingHorizontal: 10, borderRadius: 14,
-                  backgroundColor: pressed ? 'rgba(59,130,246,0.12)' : 'transparent',
-                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                })}
-              >
-                <View style={{ width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(59,130,246,0.14)' }}>
-                  <LIcon size={18} color={TEKNISYEN.primary} strokeWidth={1.9} />
-                </View>
-                <Text style={{ flex: 1, fontSize: 14.5, fontWeight: '600', color: (T as any).ink2 ?? '#2C2C2C' }}>{l.label}</Text>
-                {isRTL() ? <ChevronLeft size={18} color={(T as any).ink3 ?? '#9A9A9A'} strokeWidth={2} /> : <ChevronRight size={18} color={(T as any).ink3 ?? '#9A9A9A'} strokeWidth={2} />}
-              </Pressable>
-            );
-          })}
-        </Pressable>
-      </Pressable>
-    </Modal>
+    {/* Talepler — admin'deki Devam menüsü gibi navbar'daki Talepler hücresinden
+        yukarı açılan popover (MoreMenuSheet, altında "Powered by Siman"). */}
+    <React.Suspense fallback={null}>
+      <MoreMenuSheet
+        visible={talepOpen}
+        onClose={() => setTalepOpen(false)}
+        title={t('nav.items.requests')}
+        items={TALEP_LINKS.map(l => ({
+          key: l.href,
+          label: l.label,
+          icon: l.icon,
+          // Malzeme Talebi → ortada popup (NewRequestModal); diğerleri tam sayfa rota.
+          onPress: () => {
+            if (l.href === '/(station)/material-requests') { setMatReqOpen(true); return; }
+            router.push(l.href as any);
+          },
+        }))}
+        accentColor={TEKNISYEN.primary}
+      />
+    </React.Suspense>
+
+    {/* Malzeme Talebi — ortada popup (Talepler sheet'ten doğrudan) */}
+    {matReqOpen && (
+      <React.Suspense fallback={null}>
+        <NewRequestModal visible={matReqOpen} onClose={() => setMatReqOpen(false)} />
+      </React.Suspense>
+    )}
 
     {/* Scan (B6) — Tara FAB → kamera + QR scan (check-in token detected by ScanB6Mobile) */}
     <Modal

@@ -4,7 +4,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
-import { Gauge, ArrowLeft, ArrowRight } from 'lucide-react-native';
+import { Gauge, ArrowLeft, ArrowRight } from '../../../core/ui/icons';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../../core/api/supabase';
 import { useAuthStore } from '../../../core/store/authStore';

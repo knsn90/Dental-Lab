@@ -9,7 +9,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, Pressable, ScrollView, TextInput, Modal, KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { Wallet, Plus, Check, X, Trash2, Users, Calendar, Banknote, FileText } from 'lucide-react-native';
+import { Wallet, Plus, Check, X, Trash2, Users, Calendar, Banknote, FileText } from '../../../core/ui/icons';
 import { supabase } from '../../../core/api/supabase';
 import { toast } from '../../../core/ui/Toast';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,6 +25,7 @@ import { CenteredLoader } from '../../../core/ui/CenteredLoader';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { HeroGlow, useHeroSurface } from '../../../core/ui/HeroGlow';
 import { groupByCurrency, type CurrencyTotal } from '../../../core/money/aggregations';
 import { MoneyMultiX } from '../../../core/money/MoneyMultiX';
 import { formatMoney, CURRENCY_META, SUPPORTED_CURRENCIES, type Currency } from '../../../core/money/currency';
@@ -57,6 +58,8 @@ export function SalariesScreen() {
   const insets = useSafeAreaInsets();
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
+  // Koyu temada hero accent yerine lacivert gradyana iner; açık temada accent birebir korunur.
+  const heroBg = useHeroSurface(PANEL_PRIMARY);
   const LS_KEY = 'salaries_screen_v1';
   const loadCached = (): { employees: EmpRow[]; recent: SalaryRow[]; allPaidSlices?: CurrencyTotal[] } | null => {
     if (typeof window === 'undefined' || !window.localStorage) return null;
@@ -154,10 +157,10 @@ export function SalariesScreen() {
         return (
           <View style={{
             borderRadius: 20, overflow: 'hidden',
-            backgroundColor: ACCENT, padding: 18, position: 'relative',
+            ...heroBg, padding: 18, position: 'relative',
           }}>
-            <View style={{ position: 'absolute', top: -40, end: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
-            <View style={{ position: 'absolute', bottom: -50, start: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+            <HeroGlow size={160} opacity={0.18} delay={0}    style={{ top: -40, end: -40 }} />
+            <HeroGlow size={140} opacity={0.12} delay={1400} style={{ bottom: -50, start: -20 }} />
 
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
               <View style={{ flex: 1, minWidth: 0 }}>
@@ -218,11 +221,13 @@ export function SalariesScreen() {
           employees.map((e, i) => {
             const isPassive = (e as any).is_active === false;
             return (
-            <View key={e.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: i < employees.length - 1 ? 1 : 0, borderBottomColor: T.hairline2, opacity: isPassive ? 0.62 : 1 }}>
-              <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: isPassive ? T.hairline2 : '#7C3AED15', alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: isPassive ? T.ink3 : '#7C3AED' }}>{(e.full_name?.[0] ?? '?').toUpperCase()}</Text>
+            <View key={e.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: i < employees.length - 1 ? 1 : 0, borderBottomColor: T.hairline2, opacity: isPassive ? 0.62 : 1 }}>
+              <View style={{ flexShrink: 0, width: 38, height: 38, borderRadius: 19, backgroundColor: isPassive ? T.hairline2 : (isDark ? 'rgba(167,139,250,0.22)' : '#7C3AED15'), alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: isPassive ? T.ink3 : (isDark ? '#C4B5FD' : '#7C3AED') }}>{(e.full_name?.[0] ?? '?').toUpperCase()}</Text>
               </View>
-              <View style={{ flex: 1 }}>
+              {/* Ad + meta bloğu: flex:1 + minWidth → dar ekranda kelime-kelime sarılmak
+                  yerine gerçek genişliği kullanır; sığmazsa sağdaki kontroller alt satıra iner. */}
+              <View style={{ flex: 1, minWidth: 150 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <Text style={{ fontSize: 14, fontWeight: '600', color: T.ink }} numberOfLines={1}>{e.full_name}</Text>
                   {isPassive && (
@@ -236,27 +241,33 @@ export function SalariesScreen() {
                   {e.last_payment ? `  ·  Son: ${MONTH_NAMES[e.last_payment.month - 1]} ${e.last_payment.year}` : '  ·  ödeme yok'}
                 </Text>
               </View>
-              <View style={{ alignItems: 'flex-end' }}>
-                <Text style={{ fontSize: 11, color: T.ink3 }}>Toplam ödenen</Text>
-                <MoneyMultiX slices={e.salaryByCcy ?? []} variant="inline" colorBySign={false} />
+              {/* Sağ blok tek parça: kendi arasında sıkışmaz, gerekirse toptan alt satıra iner. */}
+              <View style={{ flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <View style={{ alignItems: 'flex-end', flexShrink: 0 }}>
+                  <Text style={{ fontSize: 11, color: T.ink3 }}>Toplam ödenen</Text>
+                  <MoneyMultiX slices={e.salaryByCcy ?? []} variant="inline" colorBySign={false} />
+                </View>
+                {/* Object style — fonksiyon-stilli Pressable native'de row layout'u düşürüyor. */}
+                <Pressable
+                  onPress={() => setStatementOf(e as StatementEmployee)}
+                  style={{
+                    flexShrink: 0,
+                    flexDirection: 'row', alignItems: 'center', gap: 4,
+                    paddingHorizontal: 11, paddingVertical: 8, borderRadius: 999,
+                    borderWidth: 1, borderColor: T.hairline,
+                    backgroundColor: 'transparent',
+                    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+                  }}
+                >
+                  <FileText size={12} color={T.ink2} strokeWidth={1.8} />
+                  <Text style={{ fontSize: 12, fontWeight: '500', color: T.ink2 }}>Döküm</Text>
+                </Pressable>
+                {/* İkiz tuzak: zemin koyu temada KREM olur → ikon da metinle aynı koyu tona iner. */}
+                <Pressable onPress={() => setPayOpen(e)} style={{ flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: T.ink }}>
+                  <Plus size={12} color={isDark ? (T.bg as string) : '#FFFFFF'} strokeWidth={2} />
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: T.bg }}>Maaş Öde</Text>
+                </Pressable>
               </View>
-              <Pressable
-                onPress={() => setStatementOf(e as StatementEmployee)}
-                style={({ hovered }: any) => ({
-                  flexDirection: 'row', alignItems: 'center', gap: 4,
-                  paddingHorizontal: 11, paddingVertical: 8, borderRadius: 999,
-                  borderWidth: 1, borderColor: T.hairline,
-                  backgroundColor: hovered ? T.hairline2 : 'transparent',
-                  ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
-                })}
-              >
-                <FileText size={12} color={T.ink2} strokeWidth={1.8} />
-                <Text style={{ fontSize: 12, fontWeight: '500', color: T.ink2 }}>Döküm</Text>
-              </Pressable>
-              <Pressable onPress={() => setPayOpen(e)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: T.ink }}>
-                <Plus size={12} color="#FFFFFF" strokeWidth={2} />
-                <Text style={{ fontSize: 12, fontWeight: '600', color: T.bg }}>Maaş Öde</Text>
-              </Pressable>
             </View>
             );
           })
@@ -330,6 +341,7 @@ function KPI({ label, value, accent }: { label: string; value: string; accent: s
 
 function PaySalaryModal({ employee, onClose, onSaved }: { employee: Employee; onClose: () => void; onSaved: () => void }) {
   const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const today = new Date();
   const [month, setMonth] = useState(String(today.getMonth() + 1));
   const [year, setYear] = useState(String(today.getFullYear()));
@@ -438,7 +450,8 @@ function PaySalaryModal({ employee, onClose, onSaved }: { employee: Employee; on
               <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink2 }}>İptal</Text>
             </Pressable>
             <Pressable onPress={handleSave} disabled={saving} style={{ flex: 2, paddingVertical: 12, borderRadius: 999, backgroundColor: T.ink, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6, opacity: saving ? 0.6 : 1 }}>
-              <Check size={14} color="#FFFFFF" strokeWidth={2} />
+              {/* İkiz tuzak: T.ink zemin koyu temada krem olur → beyaz ikon kaybolur. */}
+              <Check size={14} color={isDark ? (T.bg as string) : '#FFFFFF'} strokeWidth={2} />
               <Text style={{ fontSize: 13, fontWeight: '600', color: T.bg }}>Kaydet</Text>
             </Pressable>
           </View>

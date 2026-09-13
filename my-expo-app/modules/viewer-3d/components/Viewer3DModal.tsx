@@ -10,9 +10,9 @@
  * Web only — Native'de Platform.OS guard ile çağıran component'te kapatılır.
  */
 import React, { useState, useMemo, useRef } from 'react';
-import { View, Text, Pressable, Modal, Platform } from 'react-native';
+import { View, Text, Pressable, Modal, Platform, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { X, Download } from 'lucide-react-native';
+import { X, Download } from '../../../core/ui/icons';
 import type { Viewer3DProps, LayerStyle, Measurement, CutAxis } from '../types';
 import { ThreeScene, type ThreeSceneHandle } from './ThreeScene';
 import { LayerPanel } from './LayerPanel';
@@ -27,6 +27,11 @@ import { useViewerTheme } from '../lib/viewerTheme';
 import { toast } from '../../../core/ui/Toast';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { DentyFAB } from '../../denty/components/DentyFAB';
+import { useSuppressDentyFab } from '../../../core/store/uiOverlayStore';
+import { useScanAnnotations } from '../annotations/useScanAnnotations';
+import { PEN_COLORS, PEN_WIDTHS } from '../annotations/types';
+import type { AnnotationCamera, AnnotationKind, Point3 } from '../annotations/types';
+import { PenOptionsBar, NoteTextPrompt } from './PenControls';
 
 function Viewer3DModal(props: Viewer3DProps) {
   // Native (iOS / Android) → WebView wrapper (Faz 5).
@@ -37,9 +42,11 @@ function Viewer3DModal(props: Viewer3DProps) {
     return <Mobile {...props} />;
   }
 
-  const { visible, files, title, onClose, referenceImages = [], sourceDownload, onThumbnail } = props;
+  const { visible, files, title, onClose, referenceImages = [], sourceDownload, onThumbnail, orderId } = props;
   const T = useViewerTheme();
   const insets = useSafeAreaInsets(); // mobil-web çentik/status bar boşluğu
+  const { width: winW } = useWindowDimensions();
+  const isNarrow = winW < 768;
 
   const sceneRef = useRef<ThreeSceneHandle | null>(null);
   const [fov, setFov] = useState(35);
@@ -51,8 +58,25 @@ function Viewer3DModal(props: Viewer3DProps) {
   const [cutPosition, setCutPosition] = useState(0);
   // Grid
   const [showGrid, setShowGrid] = useState(false);
-  // Layers popup
-  const [layersOpen, setLayersOpen] = useState(true);
+  // Layers popup — telefonda KAPALI açılır: panel + dock birlikte modeli
+  // tamamen gizliyordu. Katmanlar dock'taki katman düğmesinden açılır.
+  const [layersOpen, setLayersOpen] = useState(() => winW >= 768);
+  // Telefonda katman sayfası alt şerit olarak açılıyor; Simanty orb'u tam onun
+  // üstüne (sağ alt) düşüp göz/kilit düğmelerini kapatıyordu. Panel açıkken
+  // orb gizlenir, kapanınca geri gelir.
+  useSuppressDentyFab(isNarrow && layersOpen);
+  // ── 3D kalem (tarama üzerine not) ───────────────────────────────────────
+  // Notlar siparişe bağlı saklanıyor; orderId yoksa özellik kapalı.
+  const annots = useScanAnnotations(orderId, visible);
+  const [penMode, setPenMode] = useState(false);
+  const [penKind, setPenKind] = useState<AnnotationKind>('stroke');
+  const [penColor, setPenColor] = useState<string>(PEN_COLORS[0]);
+  const [penWidth, setPenWidth] = useState<number>(PEN_WIDTHS[1]);
+  // "note" yakalandı → metin sorulur, sonra kaydedilir
+  const [noteDraft, setNoteDraft] = useState<{
+    fileName: string | null; points: Point3[]; camera: AnnotationCamera;
+  } | null>(null);
+  const [noteText, setNoteText] = useState('');
   // S4: X-ray mode + mesh diagnostics
   const [xrayMode, setXrayMode] = useState(false);
   const [diagnostics, setDiagnostics] = useState<Record<string, MeshDiagnostics>>({});
@@ -343,6 +367,27 @@ function Viewer3DModal(props: Viewer3DProps) {
                   xrayMode={xrayMode}
                   autoAlign={autoAlign}
                   onDiagnostics={(id, d) => setDiagnostics(prev => ({ ...prev, [id]: d }))}
+                  penMode={penMode && annots.enabled}
+                  penKind={penKind}
+                  penColor={penColor}
+                  penWidth={penWidth}
+                  annotations={annots.annotations}
+                  annotationsVisible={annots.visible}
+                  onPenCapture={(cap) => {
+                    if (penKind === 'note') {
+                      setNoteText('');
+                      setNoteDraft(cap);
+                      return;
+                    }
+                    void annots.add({
+                      kind: penKind,
+                      points: cap.points,
+                      fileName: cap.fileName,
+                      color: penColor,
+                      width: penWidth,
+                      camera: cap.camera,
+                    });
+                  }}
                 />
                 {layersOpen && visibleFiles.length >= 1 && (
                   <LayerPanel
@@ -352,6 +397,11 @@ function Viewer3DModal(props: Viewer3DProps) {
                     onChange={patchLayer}
                     onSetAllVisible={setAllVisible}
                     onClose={() => setLayersOpen(false)}
+                    notes={annots.enabled ? {
+                      count: annots.annotations.length,
+                      visible: annots.visible,
+                      onToggle: () => annots.setVisible(!annots.visible),
+                    } : undefined}
                   />
                 )}
 
@@ -409,7 +459,13 @@ function Viewer3DModal(props: Viewer3DProps) {
                   onFit={() => sceneRef.current?.fit()}
                   onReset={() => sceneRef.current?.reset()}
                   measureMode={measureMode}
-                  onToggleMeasure={() => setMeasureMode(v => !v)}
+                  onToggleMeasure={() => { setPenMode(false); setMeasureMode(v => !v); }}
+                  {...(annots.enabled ? {
+                    penMode,
+                    // Kalem ve ölçüm aynı sürüklemeyi kullanıyor → karşılıklı dışlar
+                    onTogglePen: () => { setMeasureMode(false); setPenMode(v => !v); },
+                    penCount: annots.annotations.length,
+                  } : null)}
                   onClearMeasurements={() => setMeasurements([])}
                   measurementCount={measurements.length}
                   cutAxis={cutAxis}
@@ -577,6 +633,25 @@ function Viewer3DModal(props: Viewer3DProps) {
                   </View>
                 )}
 
+                {/* 3D kalem seçenekleri — kalem açıkken alt-orta */}
+                {penMode && annots.enabled && (
+                  <PenOptionsBar
+                    kind={penKind}
+                    onKind={setPenKind}
+                    color={penColor}
+                    onColor={setPenColor}
+                    width={penWidth}
+                    onWidth={setPenWidth}
+                    count={annots.annotations.length}
+                    canUndo={annots.annotations.length > 0}
+                    onUndo={() => {
+                      const last = annots.annotations[annots.annotations.length - 1];
+                      if (last) void annots.remove(last.id);
+                    }}
+                    onClose={() => setPenMode(false)}
+                  />
+                )}
+
                 {/* Measurement mode hint */}
                 {measureMode && (
                   <View style={{
@@ -596,17 +671,44 @@ function Viewer3DModal(props: Viewer3DProps) {
           </View>
         </View>
 
-        {/* Footer hint */}
-        <View style={{
-          paddingHorizontal: 16, paddingVertical: 10,
-          backgroundColor: T.headerBg,
-          borderTopWidth: 1, borderTopColor: T.divider,
-        }}>
-          <Text style={{ color: T.panelLabelMuted, fontSize: 10, textAlign: 'center', letterSpacing: 0.5 }}>
-            Sürükle: döndür · Tekerlek: yakınlaştır · Sağ tık: kaydır
-          </Text>
-        </View>
+        {/* Footer hint — dokunmatikte yanlış ve yer yiyor ("tekerlek"/"sağ tık"
+            yok): yalnız geniş/fare ekranlarında gösterilir. */}
+        {!isNarrow && (
+          <View style={{
+            paddingHorizontal: 16, paddingVertical: 10,
+            backgroundColor: T.headerBg,
+            borderTopWidth: 1, borderTopColor: T.divider,
+          }}>
+            <Text style={{ color: T.panelLabelMuted, fontSize: 10, textAlign: 'center', letterSpacing: 0.5 }}>
+              Sürükle: döndür · Tekerlek: yakınlaştır · Sağ tık: kaydır
+            </Text>
+          </View>
+        )}
       </View>
+
+      {/* Metin notu — nokta yakalandıktan sonra metin sorulur */}
+      <NoteTextPrompt
+        visible={!!noteDraft}
+        value={noteText}
+        onChange={setNoteText}
+        onCancel={() => { setNoteDraft(null); setNoteText(''); }}
+        onSave={() => {
+          const draft = noteDraft;
+          const text = noteText.trim();
+          setNoteDraft(null);
+          setNoteText('');
+          if (!draft || !text) return;
+          void annots.add({
+            kind: 'note',
+            points: draft.points,
+            fileName: draft.fileName,
+            color: penColor,
+            width: penWidth,
+            text,
+            camera: draft.camera,
+          });
+        }}
+      />
 
       {/* Simanty asistanı — modal içine mount (global FAB modalın altında kalır).
           DentyFAB kendi içinde panel'i (doctor/clinic) gate'ler; 3D araçları

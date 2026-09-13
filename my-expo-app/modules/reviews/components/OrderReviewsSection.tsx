@@ -2,19 +2,22 @@ import { localeTag } from '../../../core/i18n';
 // OrderReviewsSection — lab/admin tarafı: bir işe gelen değerlendirmeleri salt-okunur gösterir (Faz 4).
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, Pressable, ActivityIndicator, Image } from 'react-native';
-import { Star, CornerDownRight, CornerDownLeft } from 'lucide-react-native';
+import { Star, CornerDownRight, CornerDownLeft } from '../../../core/ui/icons';
 import { isRTL } from '../../../core/i18n';
 import { DS } from '../../../core/theme/dsTokens';
 import { hexA } from '../../../core/theme/stationPalette';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useInkUI } from '../../../core/theme/inkScale';
 import { REVIEW_DIMENSIONS } from '../constants';
 import { listReviewsForOrder, setLabReply, signReviewPhotos } from '../api';
 import type { OrderReview } from '../types';
 
 function Stars({ value, color, size = 14 }: { value: number; color: string; size?: number }) {
+  const T = useMobileTokens();
   return (
     <View style={{ flexDirection: 'row', gap: 2 }}>
       {[1, 2, 3, 4, 5].map(n => (
-        <Star key={n} size={size} strokeWidth={1.6} color={value >= n ? color : DS.ink[300]} fill={value >= n ? color : 'transparent'} />
+        <Star key={n} size={size} strokeWidth={1.6} color={value >= n ? color : (T.ink3 as string)} fill={value >= n ? color : 'transparent'} />
       ))}
     </View>
   );
@@ -26,6 +29,7 @@ function fmtWhen(d: string): string {
 }
 
 export function OrderReviewsSection({ workOrderId, accent }: { workOrderId: string; accent: string }) {
+  const T = useMobileTokens();
   const [reviews, setReviews] = useState<OrderReview[]>([]);
   const [signed, setSigned] = useState<Record<string, string>>({});
   const [loaded, setLoaded] = useState(false);
@@ -45,22 +49,22 @@ export function OrderReviewsSection({ workOrderId, accent }: { workOrderId: stri
   if (!loaded) return null;
 
   return (
-    <View style={{ backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: hexA(accent, 0.18), gap: 12 }}>
+    <View style={{ backgroundColor: T.card, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: hexA(accent, 0.18), gap: 12 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <Star size={16} color={accent} strokeWidth={2} />
-        <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>Değerlendirme</Text>
+        <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: T.ink }}>Değerlendirme</Text>
       </View>
 
       {reviews.length === 0 ? (
-        <Text style={{ fontSize: 13, color: DS.ink[400] }}>Henüz değerlendirilmedi.</Text>
+        <Text style={{ fontSize: 13, color: T.ink3 }}>Henüz değerlendirilmedi.</Text>
       ) : reviews.map((r, i) => (
-        <View key={r.id} style={{ gap: 10, paddingTop: i === 0 ? 0 : 12, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: DS.ink[100] }}>
+        <View key={r.id} style={{ gap: 10, paddingTop: i === 0 ? 0 : 12, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: T.hairline }}>
           {/* Genel + kim/ne zaman */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <Stars value={r.overall} color="#E89B2A" size={16} />
-            <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900] }}>{r.overall.toFixed(1)}</Text>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: T.ink }}>{r.overall.toFixed(1)}</Text>
             <View style={{ flex: 1 }} />
-            <Text style={{ fontSize: 11, color: DS.ink[400] }}>
+            <Text style={{ fontSize: 11, color: T.ink3 }}>
               {r.rater_role === 'clinic' ? 'Klinik' : 'Hekim'} · {fmtWhen(r.created_at)}
             </Text>
           </View>
@@ -71,10 +75,10 @@ export function OrderReviewsSection({ workOrderId, accent }: { workOrderId: stri
               const v = (r as any)[d.key] as number | null;
               if (v == null) return null;
               return (
-                <View key={d.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: DS.ink[50], borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 }}>
-                  <Text style={{ fontSize: 11, color: DS.ink[700] }}>{d.label}</Text>
+                <View key={d.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: T.cardSoft, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 }}>
+                  <Text style={{ fontSize: 11, color: T.ink2 }}>{d.label}</Text>
                   <Star size={10} color="#E89B2A" strokeWidth={1.8} fill="#E89B2A" />
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: DS.ink[800] }}>{v}</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: T.ink2 }}>{v}</Text>
                 </View>
               );
             })}
@@ -82,7 +86,7 @@ export function OrderReviewsSection({ workOrderId, accent }: { workOrderId: stri
 
           {/* Yorum */}
           {r.comment ? (
-            <Text style={{ fontSize: 13, color: DS.ink[700], lineHeight: 18 }}>{r.comment}</Text>
+            <Text style={{ fontSize: 13, color: T.ink2, lineHeight: 18 }}>{r.comment}</Text>
           ) : null}
 
           {/* Ağız içi (klinik) fotoğraflar — lab için değerli, vurgulu */}
@@ -91,7 +95,7 @@ export function OrderReviewsSection({ workOrderId, accent }: { workOrderId: stri
               <Text style={{ fontSize: 11, fontWeight: '700', color: accent, textTransform: 'uppercase', letterSpacing: 0.4 }}>Ağız İçi Fotoğrafı</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 {r.clinical_photos.map(p => (
-                  <View key={p} style={{ width: 80, height: 80, borderRadius: 12, overflow: 'hidden', backgroundColor: DS.ink[100], borderWidth: 1.5, borderColor: hexA(accent, 0.3) }}>
+                  <View key={p} style={{ width: 80, height: 80, borderRadius: 12, overflow: 'hidden', backgroundColor: T.cardSoft, borderWidth: 1.5, borderColor: hexA(accent, 0.3) }}>
                     {signed[p] ? <Image source={{ uri: signed[p] }} style={{ width: '100%', height: '100%' }} resizeMode="cover" /> : null}
                   </View>
                 ))}
@@ -103,7 +107,7 @@ export function OrderReviewsSection({ workOrderId, accent }: { workOrderId: stri
           {(r.photos?.length ?? 0) > 0 && (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {r.photos.map(p => (
-                <View key={p} style={{ width: 72, height: 72, borderRadius: 10, overflow: 'hidden', backgroundColor: DS.ink[100] }}>
+                <View key={p} style={{ width: 72, height: 72, borderRadius: 10, overflow: 'hidden', backgroundColor: T.cardSoft }}>
                   {signed[p] ? <Image source={{ uri: signed[p] }} style={{ width: '100%', height: '100%' }} resizeMode="cover" /> : null}
                 </View>
               ))}
@@ -120,6 +124,7 @@ export function OrderReviewsSection({ workOrderId, accent }: { workOrderId: stri
 
 /** Lab yanıtı — mevcut yanıtı gösterir; düzenle/yaz. */
 function LabReplyBlock({ review, accent, onUpdated }: { review: OrderReview; accent: string; onUpdated: (r: OrderReview) => void }) {
+  const U = useInkUI();
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(review.lab_reply ?? '');
   const [saving, setSaving] = useState(false);
@@ -142,7 +147,7 @@ function LabReplyBlock({ review, accent, onUpdated }: { review: OrderReview; acc
               : <CornerDownRight size={14} color={accent} strokeWidth={1.8} style={{ marginTop: 1 }} />}
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 11, fontWeight: '700', color: accent, marginBottom: 2 }}>Lab yanıtı</Text>
-              <Text style={{ fontSize: 13, color: DS.ink[700], lineHeight: 18 }}>{review.lab_reply}</Text>
+              <Text style={{ fontSize: 13, color: U.ink[700], lineHeight: 18 }}>{review.lab_reply}</Text>
             </View>
           </View>
         ) : null}
@@ -159,19 +164,19 @@ function LabReplyBlock({ review, accent, onUpdated }: { review: OrderReview; acc
         value={text}
         onChangeText={setText}
         placeholder="Lab yanıtın…"
-        placeholderTextColor={DS.ink[400]}
+        placeholderTextColor={U.ink[400]}
         multiline
         style={{
-          minHeight: 60, fontSize: 13, color: DS.ink[900], textAlignVertical: 'top',
-          backgroundColor: DS.ink[50], borderRadius: 10, padding: 10,
-          borderWidth: 1, borderColor: DS.ink[100],
+          minHeight: 60, fontSize: 13, color: U.ink[900], textAlignVertical: 'top',
+          backgroundColor: U.ink[50], borderRadius: 10, padding: 10,
+          borderWidth: 1, borderColor: U.ink[100],
           // @ts-ignore web
           outline: 'none',
         }}
       />
       <View style={{ flexDirection: 'row', gap: 8 }}>
-        <Pressable onPress={() => setEditing(false)} style={{ paddingHorizontal: 14, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: DS.ink[100], cursor: 'pointer' as any }}>
-          <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[700] }}>Vazgeç</Text>
+        <Pressable onPress={() => setEditing(false)} style={{ paddingHorizontal: 14, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: U.isDark ? U.plainBtn.bg : DS.ink[100], ...(U.isDark ? { borderWidth: 1, borderColor: U.plainBtn.border } : {}), cursor: 'pointer' as any }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: U.isDark ? U.plainBtn.fg : DS.ink[700] }}>Vazgeç</Text>
         </Pressable>
         <Pressable onPress={save} disabled={saving} style={{ paddingHorizontal: 16, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: accent, cursor: 'pointer' as any }}>
           {saving ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>Kaydet</Text>}

@@ -23,7 +23,7 @@ import { safeBack } from '../../../core/util/safeBack';
 import {
   ArrowLeft, ArrowRight, Printer, Building2, Calendar, CreditCard, FileText,
   TriangleAlert, Package, Plus, Trash2, Wrench,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { DS } from '../../../core/theme/dsTokens';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { formatMoney } from '../../../core/money/currency';

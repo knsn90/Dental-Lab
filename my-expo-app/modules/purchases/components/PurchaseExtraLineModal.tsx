@@ -11,7 +11,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   Modal, View, Text, Pressable, TextInput, ScrollView, ActivityIndicator, Platform,
 } from 'react-native';
-import { Check, X } from 'lucide-react-native';
+import { Check, X } from '../../../core/ui/icons';
 import { DS } from '../../../core/theme/dsTokens';
 import { toast } from '../../../core/ui/Toast';
 import {

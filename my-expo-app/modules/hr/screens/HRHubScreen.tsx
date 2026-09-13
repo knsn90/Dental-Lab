@@ -22,7 +22,7 @@ import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import {
   Users, CalendarDays, Trophy, FolderOpen, Plus, Cpu, UserCog,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { EmployeesScreen }   from '../../employees/screens/EmployeesScreen';
@@ -79,6 +79,12 @@ export function HRHubScreen() {
   const activeTab = TABS.find(t => t.key === tab)!;
   const accentColor = theme.primary;
 
+  /** Sekme aksanı: nötr koyu lacivert (#0F172A) koyu zeminde kaybolur → ink'e çevir. */
+  const tabAccent = useCallback(
+    (a: string) => (isDark && a === '#0F172A' ? T.ink : a),
+    [isDark, T.ink],
+  );
+
   const renderContent = () => {
     switch (tab) {
       case 'employees':   return <EmployeesScreen />;
@@ -112,7 +118,8 @@ export function HRHubScreen() {
                     onPress={() => setTab(t.key)}
                     style={{
                       flexDirection: 'row', alignItems: 'center', gap: 5,
-                      paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9999,
+                      // Seçili pill daha geniş dursun (uygulama geneli kural).
+                      paddingHorizontal: active ? 18 : 12, paddingVertical: 8, borderRadius: 9999,
                       backgroundColor: active ? theme.primary : 'transparent',
                     }}
                   >
@@ -167,7 +174,7 @@ export function HRHubScreen() {
                           width: 3,
                           height: 16,
                           borderRadius: 2,
-                          backgroundColor: t.accent,
+                          backgroundColor: tabAccent(t.accent),
                           marginStart: -6,
                           marginEnd: 4,
                         }}
@@ -175,13 +182,13 @@ export function HRHubScreen() {
                     )}
                     <View style={{
                       width: 28, height: 28, borderRadius: 8,
-                      backgroundColor: isActive ? t.accent + '14' : 'transparent',
+                      backgroundColor: isActive ? tabAccent(t.accent) + (isDark ? '1F' : '14') : 'transparent',
                       alignItems: 'center', justifyContent: 'center',
                     }}>
                       <TabIcon
                         size={15}
                         strokeWidth={isActive ? 2 : 1.6}
-                        color={isActive ? t.accent : T.ink3}
+                        color={isActive ? tabAccent(t.accent) : T.ink3}
                       />
                     </View>
                     <Text
@@ -195,7 +202,7 @@ export function HRHubScreen() {
                       {t.label}
                     </Text>
                     {isActive && (
-                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: t.accent }} />
+                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: tabAccent(t.accent) }} />
                     )}
                   </Pressable>
                 );

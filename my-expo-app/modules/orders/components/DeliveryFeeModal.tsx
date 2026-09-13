@@ -4,7 +4,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, Modal, TextInput, Platform } from 'react-native';
-import { X, Check } from 'lucide-react-native';
+import { X, Check } from '../../../core/ui/icons';
 import { setDeliveryFee, DELIVERY_PURPOSE_LABELS, type DeliveryPurpose } from '../api';
 import { useBaseCurrency, CURRENCY_META, SUPPORTED_CURRENCIES, type Currency } from '../../../core/money/currency';
 

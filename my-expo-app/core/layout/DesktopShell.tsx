@@ -41,6 +41,8 @@ import { AppIcon } from '../ui/AppIcon';
 import { PulseRing } from '../ui/PulseRing';
 import { isRTL } from '../i18n';
 import { NotificationPopover } from '../ui/NotificationPopover';
+import { useMobileTokens } from '../theme/mobileDesignTokens';
+import { useThemeModeStore } from '../store/themeModeStore';
 
 // ─── Tokens ───────────────────────────────────────────────────────────────────
 const C = {
@@ -467,6 +469,8 @@ function GlobalSearch({
   const inputRef = useRef<TextInput>(null);
   const isAdmin = userType === 'admin';
   const searchSeq = useRef(0); // yarış koruması: yalnız en güncel isteğin sonucu yazılır
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
 
   useEffect(() => {
     if (!visible) { setQuery(''); setResults([]); }
@@ -542,18 +546,18 @@ function GlobalSearch({
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <TouchableOpacity style={gs.overlay} activeOpacity={1} onPress={onClose}>
-        <View style={gs.panel} onStartShouldSetResponder={() => true}>
+        <View style={[gs.panel, isDark && { backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline }]} onStartShouldSetResponder={() => true}>
 
           {/* Input row */}
           <View style={gs.inputRow}>
             <AppIcon name="search" size={18} color="#AEAEB2" />
             <TextInput
               ref={inputRef}
-              style={gs.input}
+              style={[gs.input, isDark && { color: T.ink }]}
               value={query}
               onChangeText={setQuery}
               placeholder="Klinik, hekim, sipariş, kullanıcı ara..."
-              placeholderTextColor="#AEAEB2"
+              placeholderTextColor={isDark ? (T.ink3 as string) : '#AEAEB2'}
               returnKeyType="search"
               clearButtonMode="never"
             />
@@ -569,7 +573,7 @@ function GlobalSearch({
           </View>
 
           {/* Divider */}
-          <View style={gs.divider} />
+          <View style={[gs.divider, isDark && { backgroundColor: T.hairline }]} />
 
           {/* Results */}
           {results.length > 0 ? (
@@ -579,7 +583,7 @@ function GlobalSearch({
                 return (
                   <TouchableOpacity
                     key={`${r.type}-${r.id}`}
-                    style={gs.row}
+                    style={[gs.row, isDark && { borderBottomColor: T.hairline }]}
                     onPress={() => { router.push(r.href as any); onClose(); }}
                     activeOpacity={0.7}
                   >
@@ -587,8 +591,8 @@ function GlobalSearch({
                       <AppIcon name={r.icon as any} size={15} color={meta.color} />
                     </View>
                     <View style={{ flex: 1, gap: 2 }}>
-                      <Text style={gs.rowTitle} numberOfLines={1}>{r.title}</Text>
-                      {r.subtitle ? <Text style={gs.rowSub} numberOfLines={1}>{r.subtitle}</Text> : null}
+                      <Text style={[gs.rowTitle, isDark && { color: T.ink }]} numberOfLines={1}>{r.title}</Text>
+                      {r.subtitle ? <Text style={[gs.rowSub, isDark && { color: T.ink3 as string }]} numberOfLines={1}>{r.subtitle}</Text> : null}
                     </View>
                     <View style={[gs.badge, { backgroundColor: meta.bg }]}>
                       <Text style={[gs.badgeText, { color: meta.color }]}>{meta.label}</Text>
@@ -681,6 +685,8 @@ export function DesktopShell({ navItems, accentColor = C.primary, onPressMessage
   const pathname = usePathname();
   const { profile, signOut } = useAuthStore();
   const { width } = useWindowDimensions();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
 
   const [hovered,    setHovered]    = useState<string | null>(null);
   const [showSearch, setShowSearch] = useState(false);
@@ -765,10 +771,10 @@ export function DesktopShell({ navItems, accentColor = C.primary, onPressMessage
   void meshBg;
 
   return (
-    <View style={[s.shell, ({ backgroundImage: 'none', backgroundColor: '#F1F5F9' } as any)]}>
+    <View style={[s.shell, ({ backgroundImage: 'none', backgroundColor: isDark ? '#0E0E0E' : '#F1F5F9' } as any)]}>
 
       {/* ── Sidebar ── */}
-      <View style={[s.sidebar, sidebarCollapsed ? s.sidebarCollapsed : s.sidebarExpanded]}>
+      <View style={[s.sidebar, sidebarCollapsed ? s.sidebarCollapsed : s.sidebarExpanded, isDark && { backgroundColor: T.card, borderColor: T.hairline }]}>
 
         {/* Logo */}
         <View style={[s.logoRow, sidebarCollapsed && s.logoRowCollapsed]}>
@@ -778,7 +784,7 @@ export function DesktopShell({ navItems, accentColor = C.primary, onPressMessage
             resizeMode="contain"
           />
           {!sidebarCollapsed && (
-            <Text style={s.logoTitle}>Dental Lab</Text>
+            <Text style={[s.logoTitle, isDark && { color: T.ink }]}>Dental Lab</Text>
           )}
         </View>
 
@@ -813,7 +819,7 @@ export function DesktopShell({ navItems, accentColor = C.primary, onPressMessage
                               ' inset 0 -1px 0 rgba(255,255,255,0.10)',
                           },
                         ],
-                        !active && hover && s.navItemHover,
+                        !active && hover && (isDark ? { backgroundColor: 'rgba(255,255,255,0.06)' } : s.navItemHover),
                       ]}
                       onPress={() => item.onPress ? item.onPress() : router.push(item.href as any)}
                       // @ts-ignore
@@ -828,7 +834,7 @@ export function DesktopShell({ navItems, accentColor = C.primary, onPressMessage
                       <NavIcon item={item} active={active} accentColor={accentColor} showBadge={sidebarCollapsed} />
                       {!sidebarCollapsed && (
                         <>
-                          <Text style={[s.navLabel, active && { color: accentColor, fontWeight: '700' }]}>
+                          <Text style={[s.navLabel, isDark && { color: T.ink2 }, active && { color: accentColor, fontWeight: '700' }]}>
                             {item.label}
                           </Text>
                           {item.badgeCount !== undefined && item.badgeCount > 0 ? (
@@ -852,10 +858,10 @@ export function DesktopShell({ navItems, accentColor = C.primary, onPressMessage
 
         {/* Bottom: just the collapse toggle */}
         <View style={s.sidebarBottom}>
-          <View style={s.navDivider} />
+          <View style={[s.navDivider, isDark && { backgroundColor: T.hairline }]} />
           <TouchableOpacity
             onPress={() => setSidebarCollapsed(v => !v)}
-            style={[s.collapseRow, sidebarCollapsed && s.collapseRowCollapsed]}
+            style={[s.collapseRow, sidebarCollapsed && s.collapseRowCollapsed, isDark && { backgroundColor: 'rgba(255,255,255,0.06)' }]}
             activeOpacity={0.7}
           >
             <AppIcon
@@ -864,7 +870,7 @@ export function DesktopShell({ navItems, accentColor = C.primary, onPressMessage
               color="#94A3B8"
               strokeWidth={2}
             />
-            {!sidebarCollapsed && <Text style={s.collapseLabel}>Daralt</Text>}
+            {!sidebarCollapsed && <Text style={[s.collapseLabel, isDark && { color: T.ink2 }]}>Daralt</Text>}
           </TouchableOpacity>
         </View>
       </View>
@@ -876,47 +882,47 @@ export function DesktopShell({ navItems, accentColor = C.primary, onPressMessage
           <BlurFade key={activeLabel + (activeSubtitle ?? '')}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <View>
-                <Text style={s.headerTitle}>{activeLabel}</Text>
+                <Text style={[s.headerTitle, isDark && { color: T.ink }]}>{activeLabel}</Text>
                 {activeSubtitle ? (
-                  <Text style={s.headerSubtitle} numberOfLines={1}>{activeSubtitle}</Text>
+                  <Text style={[s.headerSubtitle, isDark && { color: T.ink2 }]} numberOfLines={1}>{activeSubtitle}</Text>
                 ) : null}
               </View>
               {activeActions}
             </View>
           </BlurFade>
-          <View style={[s.headerRight, Platform.OS === 'web' ? (isRTL() ? { left: 16 } : { right: 16 }) : null]}>
+          <View style={[s.headerRight, isDark && { backgroundColor: T.card, borderColor: T.hairline }, Platform.OS === 'web' ? (isRTL() ? { left: 16 } : { right: 16 }) : null]}>
             <TouchableOpacity style={s.headerIcon} onPress={() => setShowSearch(true)}>
-              <AppIcon name="search" size={18} color={C.textSecondary} />
+              <AppIcon name="search" size={18} color={isDark ? (T.ink2 as string) : C.textSecondary} />
             </TouchableOpacity>
             {/* Bildirim zili — popover tetikleyici */}
             <TouchableOpacity
-              style={[s.headerIcon, hovered === '__notif' && { backgroundColor: C.navHover }]}
+              style={[s.headerIcon, hovered === '__notif' && { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : C.navHover }]}
               onPress={() => setNotifOpen(v => !v)}
               // @ts-ignore
               onMouseEnter={() => setHovered('__notif')}
               onMouseLeave={() => setHovered(null)}
               accessibilityLabel="Bildirimler"
             >
-              <AppIcon name="bell" size={18} color={hovered === '__notif' ? accentColor : C.textSecondary} />
+              <AppIcon name="bell" size={18} color={hovered === '__notif' ? accentColor : (isDark ? (T.ink2 as string) : C.textSecondary)} />
               <IconBadge count={notificationsCount} />
             </TouchableOpacity>
 
             {/* Mesajlar — popup tetikleyici */}
             {onPressMessages && (
               <TouchableOpacity
-                style={[s.headerIcon, hovered === '__msg' && { backgroundColor: C.navHover }]}
+                style={[s.headerIcon, hovered === '__msg' && { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : C.navHover }]}
                 onPress={onPressMessages}
                 // @ts-ignore
                 onMouseEnter={() => setHovered('__msg')}
                 onMouseLeave={() => setHovered(null)}
                 accessibilityLabel="Mesajlar"
               >
-                <AppIcon name="message-circle" size={18} color={hovered === '__msg' ? accentColor : C.textSecondary} />
+                <AppIcon name="message-circle" size={18} color={hovered === '__msg' ? accentColor : (isDark ? (T.ink2 as string) : C.textSecondary)} />
                 <IconBadge count={messagesUnreadCount} />
               </TouchableOpacity>
             )}
 
-            <View style={s.headerDivider} />
+            <View style={[s.headerDivider, isDark && { backgroundColor: T.hairline }]} />
 
             {/* Profile avatar — tap to open profile */}
             <TouchableOpacity
@@ -937,8 +943,8 @@ export function DesktopShell({ navItems, accentColor = C.primary, onPressMessage
               </View>
               {width >= 1024 && (
                 <View style={s.headerProfileMeta}>
-                  <Text style={s.headerName} numberOfLines={1}>{firstName}</Text>
-                  <Text style={s.headerRole} numberOfLines={1}>
+                  <Text style={[s.headerName, isDark && { color: T.ink }]} numberOfLines={1}>{firstName}</Text>
+                  <Text style={[s.headerRole, isDark && { color: T.ink3 as string }]} numberOfLines={1}>
                     {(profile as any)?.role === 'manager'    ? 'Mesul Müdür'
                      : (profile as any)?.role === 'technician' ? 'Teknisyen'
                      : (profile as any)?.user_type === 'admin' ? 'Yönetici'
@@ -951,14 +957,14 @@ export function DesktopShell({ navItems, accentColor = C.primary, onPressMessage
 
             {/* Logout */}
             <TouchableOpacity
-              style={[s.headerIcon, hovered === '__out' && s.headerIconLogout]}
+              style={[s.headerIcon, hovered === '__out' && (isDark ? { backgroundColor: 'rgba(220,38,38,0.15)' } : s.headerIconLogout)]}
               onPress={signOut}
               // @ts-ignore
               onMouseEnter={() => setHovered('__out')}
               onMouseLeave={() => setHovered(null)}
               accessibilityLabel="Çıkış Yap"
             >
-              <AppIcon name="log-out" size={18} color={hovered === '__out' ? C.danger : C.textSecondary} />
+              <AppIcon name="log-out" size={18} color={hovered === '__out' ? C.danger : (isDark ? (T.ink2 as string) : C.textSecondary)} />
             </TouchableOpacity>
           </View>
         </View>

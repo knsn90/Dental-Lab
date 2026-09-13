@@ -5,7 +5,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, Platform, Modal, TextInput, ScrollView} from 'react-native';
-import { X, Check, Building2 } from 'lucide-react-native';
+import { X, Check, Building2 } from '../../../core/ui/icons';
 import {
   Supplier, SupplierCategory, CATEGORY_LABELS,
   createSupplier, updateSupplier,
@@ -33,11 +33,12 @@ function Section({
   eyebrowStyle: any;
   children: any;
 }) {
+  const T = useMobileTokens();
   return (
     <View style={{ gap: 14 }}>
       <View style={{ gap: 2 }}>
         <Text style={eyebrowStyle}>{title}</Text>
-        {subtitle ? <Text style={{ fontSize: 11, color: '#9A9A9A', fontWeight: '400' }}>{subtitle}</Text> : null}
+        {subtitle ? <Text style={{ fontSize: 11, color: T.ink3, fontWeight: '400' }}>{subtitle}</Text> : null}
       </View>
       <View style={{ gap: 12 }}>{children}</View>
     </View>
@@ -148,7 +149,7 @@ export function SupplierFormModal({ visible, supplier, accentColor = '#0A0A0A', 
                 <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 26, letterSpacing: -0.6, color: T.ink, lineHeight: 32, marginTop: 2 }} numberOfLines={1}>
                   {isEdit ? name || 'Firma' : 'Cari hesap aç'}
                 </Text>
-                <Text style={{ fontSize: 12, color: '#9A9A9A', marginTop: 2 }}>
+                <Text style={{ fontSize: 12, color: T.ink3, marginTop: 2 }}>
                   Bilgileri tamamla — kayıt sonrası firma cari hesap olarak görünür.
                 </Text>
               </View>
@@ -163,11 +164,11 @@ export function SupplierFormModal({ visible, supplier, accentColor = '#0A0A0A', 
                 ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
               }}
             >
-              <X size={15} color="#6B6B6B" strokeWidth={1.8} />
+              <X size={15} color={T.ink3} strokeWidth={1.8} />
             </Pressable>
           </View>
 
-          <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.04)', marginHorizontal: 28 }} />
+          <View style={{ height: 1, backgroundColor: T.hairline, marginHorizontal: 28 }} />
 
           <ScrollView contentContainerStyle={{ paddingHorizontal: 28, paddingTop: 22, paddingBottom: 22, gap: 26 }} showsVerticalScrollIndicator={false}>
 
@@ -175,7 +176,7 @@ export function SupplierFormModal({ visible, supplier, accentColor = '#0A0A0A', 
             <Section title="Kimlik" subtitle="Firma adı ve sınıflandırma" eyebrowStyle={sectionEyebrow}>
               <View>
                 <Text style={label}>Firma adı *</Text>
-                <TextInput style={inputStyle} value={name} onChangeText={setName} placeholder="ABC Dental Tic. Ltd. Şti." placeholderTextColor="#9A9A9A" />
+                <TextInput style={inputStyle} value={name} onChangeText={setName} placeholder="ABC Dental Tic. Ltd. Şti." placeholderTextColor={isDark ? (T.ink3 as string) : '#9A9A9A'} />
               </View>
 
               <View>
@@ -222,34 +223,34 @@ export function SupplierFormModal({ visible, supplier, accentColor = '#0A0A0A', 
                     );
                   })}
                 </View>
-                <Text style={{ fontSize: 11, color: '#9A9A9A', marginTop: 6 }}>
+                <Text style={{ fontSize: 11, color: T.ink3, marginTop: 6 }}>
                   Bu firmadan alış yapılırken otomatik bu para birimi seçilir.
                 </Text>
               </View>
             </Section>
 
-            <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.04)' }} />
+            <View style={{ height: 1, backgroundColor: T.hairline }} />
 
             {/* ── ILETIŞIM ── */}
             <Section title="İletişim" subtitle="Yetkili kişi ve iletişim bilgileri" eyebrowStyle={sectionEyebrow}>
               <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
                 <View style={{ flex: 1, minWidth: 200 }}>
                   <Text style={label}>İlgili kişi</Text>
-                  <TextInput style={inputStyle} value={contactPerson} onChangeText={setContactPerson} placeholder="Ad Soyad" placeholderTextColor="#9A9A9A" />
+                  <TextInput style={inputStyle} value={contactPerson} onChangeText={setContactPerson} placeholder="Ad Soyad" placeholderTextColor={isDark ? (T.ink3 as string) : '#9A9A9A'} />
                 </View>
                 <View style={{ flex: 1, minWidth: 200 }}>
                   <Text style={label}>Telefon</Text>
-                  <TextInput style={inputStyle} value={phone} onChangeText={setPhone} placeholder="+90 5xx…" placeholderTextColor="#9A9A9A" keyboardType="phone-pad" />
+                  <TextInput style={inputStyle} value={phone} onChangeText={setPhone} placeholder="+90 5xx…" placeholderTextColor={isDark ? (T.ink3 as string) : '#9A9A9A'} keyboardType="phone-pad" />
                 </View>
               </View>
               <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
                 <View style={{ flex: 1, minWidth: 200 }}>
                   <Text style={label}>E-posta</Text>
-                  <TextInput style={inputStyle} value={email} onChangeText={setEmail} placeholder="info@firma.com" placeholderTextColor="#9A9A9A" keyboardType="email-address" autoCapitalize="none" />
+                  <TextInput style={inputStyle} value={email} onChangeText={setEmail} placeholder="info@firma.com" placeholderTextColor={isDark ? (T.ink3 as string) : '#9A9A9A'} keyboardType="email-address" autoCapitalize="none" />
                 </View>
                 <View style={{ flex: 1, minWidth: 200 }}>
                   <Text style={label}>Web sitesi</Text>
-                  <TextInput style={inputStyle} value={website} onChangeText={setWebsite} placeholder="firma.com" placeholderTextColor="#9A9A9A" autoCapitalize="none" />
+                  <TextInput style={inputStyle} value={website} onChangeText={setWebsite} placeholder="firma.com" placeholderTextColor={isDark ? (T.ink3 as string) : '#9A9A9A'} autoCapitalize="none" />
                 </View>
               </View>
               <View>
@@ -257,38 +258,38 @@ export function SupplierFormModal({ visible, supplier, accentColor = '#0A0A0A', 
                 <TextInput
                   style={[inputStyle, { height: 64, paddingTop: 11, paddingBottom: 11, textAlignVertical: 'top' }]}
                   value={address} onChangeText={setAddress}
-                  placeholder="Açık adres…" placeholderTextColor="#9A9A9A" multiline
+                  placeholder="Açık adres…" placeholderTextColor={isDark ? (T.ink3 as string) : '#9A9A9A'} multiline
                 />
               </View>
             </Section>
 
-            <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.04)' }} />
+            <View style={{ height: 1, backgroundColor: T.hairline }} />
 
             {/* ── VERGI & BANKA ── */}
             <Section title="Vergi & banka" subtitle="Fatura ve havale için" eyebrowStyle={sectionEyebrow}>
               <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
                 <View style={{ flex: 1, minWidth: 200 }}>
                   <Text style={label}>Vergi no (VKN/TCKN)</Text>
-                  <TextInput style={inputStyle} value={taxNo} onChangeText={setTaxNo} placeholder="1234567890" placeholderTextColor="#9A9A9A" keyboardType="numeric" />
+                  <TextInput style={inputStyle} value={taxNo} onChangeText={setTaxNo} placeholder="1234567890" placeholderTextColor={isDark ? (T.ink3 as string) : '#9A9A9A'} keyboardType="numeric" />
                 </View>
                 <View style={{ flex: 1, minWidth: 200 }}>
                   <Text style={label}>Vergi dairesi</Text>
-                  <TextInput style={inputStyle} value={taxOffice} onChangeText={setTaxOffice} placeholder="örn. Beşiktaş" placeholderTextColor="#9A9A9A" />
+                  <TextInput style={inputStyle} value={taxOffice} onChangeText={setTaxOffice} placeholder="örn. Beşiktaş" placeholderTextColor={isDark ? (T.ink3 as string) : '#9A9A9A'} />
                 </View>
               </View>
               <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
                 <View style={{ flex: 1.4, minWidth: 240 }}>
                   <Text style={label}>IBAN</Text>
-                  <TextInput style={inputStyle} value={iban} onChangeText={setIban} placeholder="TR…" placeholderTextColor="#9A9A9A" autoCapitalize="characters" />
+                  <TextInput style={inputStyle} value={iban} onChangeText={setIban} placeholder="TR…" placeholderTextColor={isDark ? (T.ink3 as string) : '#9A9A9A'} autoCapitalize="characters" />
                 </View>
                 <View style={{ flex: 1, minWidth: 180 }}>
                   <Text style={label}>Banka</Text>
-                  <TextInput style={inputStyle} value={bankName} onChangeText={setBankName} placeholder="örn. Garanti BBVA" placeholderTextColor="#9A9A9A" />
+                  <TextInput style={inputStyle} value={bankName} onChangeText={setBankName} placeholder="örn. Garanti BBVA" placeholderTextColor={isDark ? (T.ink3 as string) : '#9A9A9A'} />
                 </View>
               </View>
             </Section>
 
-            <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.04)' }} />
+            <View style={{ height: 1, backgroundColor: T.hairline }} />
 
             {/* ── ANLAŞMA ── */}
             <Section title="Anlaşma" subtitle="Vade koşulları ve özel notlar" eyebrowStyle={sectionEyebrow}>
@@ -324,7 +325,7 @@ export function SupplierFormModal({ visible, supplier, accentColor = '#0A0A0A', 
                   value={paymentTerms}
                   onChangeText={setPaymentTerms}
                   placeholder="Özel: gün sayısı"
-                  placeholderTextColor="#9A9A9A"
+                  placeholderTextColor={isDark ? (T.ink3 as string) : '#9A9A9A'}
                   keyboardType="numeric"
                 />
               </View>
@@ -334,7 +335,7 @@ export function SupplierFormModal({ visible, supplier, accentColor = '#0A0A0A', 
                 <TextInput
                   style={[inputStyle, { height: 72, paddingTop: 11, paddingBottom: 11, textAlignVertical: 'top' }]}
                   value={notes} onChangeText={setNotes}
-                  placeholder="Hatırlatma, anlaşma şartı vb." placeholderTextColor="#9A9A9A" multiline
+                  placeholder="Hatırlatma, anlaşma şartı vb." placeholderTextColor={isDark ? (T.ink3 as string) : '#9A9A9A'} multiline
                 />
               </View>
             </Section>
@@ -356,7 +357,7 @@ export function SupplierFormModal({ visible, supplier, accentColor = '#0A0A0A', 
           {/* Footer */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 28, paddingVertical: 18, borderTopWidth: 1, borderTopColor: T.hairline2, backgroundColor: isDark ? T.cardSoft : '#FBF9F4' }}>
             {!isEdit ? (
-              <Text style={{ flex: 1, fontSize: 11, color: '#9A9A9A', fontStyle: 'italic' }}>
+              <Text style={{ flex: 1, fontSize: 11, color: T.ink3, fontStyle: 'italic' }}>
                 Kayıt sonrası bu firmaya stok girişi & ödeme yapılabilir.
               </Text>
             ) : <View style={{ flex: 1 }} />}

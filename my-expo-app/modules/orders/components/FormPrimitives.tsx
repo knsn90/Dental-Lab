@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import {
   AlertCircle, Search, Lock, XCircle, Check, Plus, Building2,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { DS } from '../../../core/theme/dsTokens';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
@@ -665,6 +665,9 @@ export function LockedInfoCard({
 }: LockedInfoCardProps) {
   const isClinic = iconVariant === 'clinic';
   const accent = accentColor ?? DS.ink[500];
+  // Kart koyu temada BEYAZ patlıyordu (DS.ink[50] + beyaz ikon kutusu sabitti).
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(st => st.resolvedDark);
 
   return (
     <View
@@ -674,10 +677,10 @@ export function LockedInfoCard({
           flexDirection: 'row',
           alignItems: 'center',
           gap: 12,
-          backgroundColor: isClinic ? DS.ink[50] : `${accent}0F`,
+          backgroundColor: isClinic ? (isDark ? T.cardSoft : DS.ink[50]) : `${accent}${isDark ? '24' : '0F'}`,
           borderRadius: 14,
           borderWidth: 1,
-          borderColor: isClinic ? 'rgba(0,0,0,0.06)' : `${accent}22`,
+          borderColor: isClinic ? (isDark ? T.hairline : 'rgba(0,0,0,0.06)') : `${accent}${isDark ? '3D' : '22'}`,
           paddingHorizontal: 14,
           paddingVertical: 12,
         },
@@ -689,12 +692,12 @@ export function LockedInfoCard({
         <View
           style={{
             width: 40, height: 40, borderRadius: 12,
-            backgroundColor: '#FFFFFF',
+            backgroundColor: isDark ? T.card : '#FFFFFF',
             alignItems: 'center', justifyContent: 'center',
-            borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+            borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.06)',
           }}
         >
-          <Building2 size={18} color={DS.ink[500]} strokeWidth={1.6} />
+          <Building2 size={18} color={isDark ? T.ink2 : DS.ink[500]} strokeWidth={1.6} />
         </View>
       ) : (
         <View
@@ -714,21 +717,21 @@ export function LockedInfoCard({
       <View style={{ flex: 1 }}>
         <Text
           style={{
-            fontSize: 10, fontWeight: '600', color: DS.ink[400],
+            fontSize: 10, fontWeight: '600', color: isDark ? T.ink3 : DS.ink[400],
             letterSpacing: 0.6, textTransform: 'uppercase',
           }}
         >
           {label}
         </Text>
         <Text
-          style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900], marginTop: 2 }}
+          style={{ fontSize: 14, fontWeight: '600', color: isDark ? T.ink : DS.ink[900], marginTop: 2 }}
           numberOfLines={1}
         >
           {value}
         </Text>
         {subtitle && (
           <Text
-            style={{ fontSize: 11, color: DS.ink[500], marginTop: 1 }}
+            style={{ fontSize: 11, color: isDark ? T.ink3 : DS.ink[500], marginTop: 1 }}
             numberOfLines={1}
           >
             {subtitle}
@@ -737,7 +740,7 @@ export function LockedInfoCard({
       </View>
 
       {/* Lock icon */}
-      <Lock size={14} color={DS.ink[400]} strokeWidth={1.6} />
+      <Lock size={14} color={isDark ? T.ink3 : DS.ink[400]} strokeWidth={1.6} />
     </View>
   );
 }

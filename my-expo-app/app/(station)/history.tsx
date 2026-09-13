@@ -8,7 +8,7 @@ import { View, Text, ScrollView, Platform, Pressable, useWindowDimensions, TextI
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { ClipboardList, Calendar, Truck, ArrowUpRight, Search, X, SlidersHorizontal, Check } from 'lucide-react-native';
+import { ClipboardList, Calendar, Truck, ArrowUpRight, Search, X, SlidersHorizontal, Check } from '../../core/ui/icons';
 import { localeTag } from '../../core/i18n';
 import { useAuthStore } from '../../core/store/authStore';
 import { usePageTitleStore } from '../../core/store/pageTitleStore';

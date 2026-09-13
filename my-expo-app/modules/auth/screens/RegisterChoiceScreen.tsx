@@ -5,7 +5,7 @@
 import React from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Building2, User } from 'lucide-react-native';
+import { Building2, User } from '../../../core/ui/icons';
 import { AuthShell, AUTH, AUTH_FONT } from '../components/AuthShell';
 
 // Doctor tonu — AuthShell ile aynı palet

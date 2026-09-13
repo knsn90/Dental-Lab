@@ -28,11 +28,11 @@ export function SectionLabelX({
   return (
     <View className={`flex-row items-end justify-between mb-3 px-0.5 ${className ?? ''}`}>
       <View className="flex-1 min-w-0">
-        <Text className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+        <Text className="text-[11px] font-bold text-slate-400 dark:text-white/45 uppercase tracking-widest">
           {children}
         </Text>
         {sub && (
-          <Text className="text-xs text-slate-500 mt-1">{sub}</Text>
+          <Text className="text-xs text-slate-500 dark:text-white/55 mt-1">{sub}</Text>
         )}
       </View>
       {action && (

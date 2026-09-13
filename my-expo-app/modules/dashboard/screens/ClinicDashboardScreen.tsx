@@ -25,7 +25,7 @@ import {
   Package, Plus, Clock, CheckCircle, Activity, Users,
   Calendar, TrendingUp, AlertTriangle, ArrowUpRight, ArrowUpLeft,
   ArrowRight, ArrowLeft, Check, Layers, CornerDownRight, CornerDownLeft,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import i18n, { isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { useAuthStore } from '../../../core/store/authStore';
@@ -35,6 +35,10 @@ import { useClinicOrders } from '../../clinic/hooks/useClinicOrders';
 import { isOrderOverdue, STATUS_CONFIG } from '../../orders/constants';
 import { WorkOrderStatus } from '../../../lib/types';
 import { DS } from '../../../core/theme/dsTokens';
+import { useSpotlightSurface, NeonPulse, useAccentTones } from '../../../core/ui/HeroGlow';
+import { PipelineFlowRow } from '../../../core/ui/PipelineFlowRow';
+import { useInkUI } from '../../../core/theme/inkScale';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 import { FaceScanQuickAction } from '../../orders/components/FaceScanQuickAction';
 import { titleCaseTR } from '../../../core/utils/textCase';
@@ -61,6 +65,7 @@ const SERIF = {
 const P     = DS.clinic.primary;     // #32BB78
 const P_DEEP = DS.clinic.primaryDeep; // #0C8F56
 const SURFACE_ALT = DS.clinic.surfaceAlt; // #2F313F
+// INK artık tema-farkında: bileşenlerde `U.ink[900]` (useInkUI) kullanılıyor.
 const INK   = DS.ink[900];
 
 const CLR = {
@@ -208,20 +213,22 @@ function PulseDot({ color, size, x, y }: { color: string; size: number; x: numbe
 // ══════════════════════════════════════════════════════════════════
 
 function Card({ children, style }: { children: React.ReactNode; style?: any }) {
+  const T = useMobileTokens();
   return (
-    <View className="bg-white overflow-hidden"
-      style={[{ borderRadius: DS.radius.xl, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }, style]}
+    <View className="overflow-hidden"
+      style={[{ backgroundColor: T.card, borderRadius: DS.radius.xl, borderWidth: 1, borderColor: T.hairline }, style]}
     >{children}</View>
   );
 }
 
 function CardHeader({ title, right, display }: { title: string; right?: React.ReactNode; display?: boolean }) {
+  const U = useInkUI();
   return (
     <View className="flex-row items-center justify-between" style={{ marginBottom: 12 }}>
       {display ? (
-        <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: INK }}>{title}</Text>
+        <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: U.ink[900] }}>{title}</Text>
       ) : (
-        <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500] }}>{title}</Text>
+        <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 0.7, textTransform: 'uppercase', color: U.ink[500] }}>{title}</Text>
       )}
       {right}
     </View>
@@ -229,7 +236,8 @@ function CardHeader({ title, right, display }: { title: string; right?: React.Re
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const c = STATUS_CFG[status] ?? { label: status, color: DS.ink[500], bg: 'rgba(0,0,0,0.05)' };
+  const U = useInkUI();
+  const c = STATUS_CFG[status] ?? { label: status, color: U.ink[500], bg: U.hairline };
   return (
     <View className="flex-row items-center self-start rounded-full"
       style={{ paddingHorizontal: 8, paddingVertical: 4, backgroundColor: c.bg, gap: 4 }}>
@@ -240,9 +248,10 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function StatPill({ label, value, bg, color }: { label: string; value: string; bg: string; color: string }) {
+  const U = useInkUI();
   return (
     <View className="flex-row items-center" style={{ gap: 8 }}>
-      <Text style={{ fontSize: 11, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.66 }}>{label}</Text>
+      <Text style={{ fontSize: 11, color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.66 }}>{label}</Text>
       <View className="rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 3, backgroundColor: bg }}>
         <Text style={{ fontSize: 11, fontWeight: '500', color }}>{value}</Text>
       </View>
@@ -252,20 +261,23 @@ function StatPill({ label, value, bg, color }: { label: string; value: string; b
 
 /** Hero KPI'ları arasındaki saç teli ayraç — sayı bloğu kadar yüksek. */
 function StatDivider() {
-  return <View style={{ width: StyleSheet.hairlineWidth, alignSelf: 'stretch', marginVertical: 2, backgroundColor: 'rgba(0,0,0,0.10)' }} />;
+  const U = useInkUI();
+  return <View style={{ width: StyleSheet.hairlineWidth, alignSelf: 'stretch', marginVertical: 2, backgroundColor: U.fieldBorder }} />;
 }
 
 function BigStat({ value, label }: { value: string | number; label: string }) {
+  const U = useInkUI();
   return (
     <View style={{ alignItems: 'flex-end' }}>
-      <Text style={{ ...SERIF, fontSize: DS.size.h2, letterSpacing: -1, lineHeight: DS.size.h2, color: INK }}>{value}</Text>
-      <Text style={{ fontSize: DS.size.micro, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.66, marginTop: 4 }}>{label}</Text>
+      <Text style={{ ...SERIF, fontSize: DS.size.h2, letterSpacing: -1, lineHeight: DS.size.h2, color: U.ink[900] }}>{value}</Text>
+      <Text style={{ fontSize: DS.size.micro, color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.66, marginTop: 4 }}>{label}</Text>
     </View>
   );
 }
 
 // ── PercentRingHero ──
 function PercentRingHero({ value: targetValue, size = 200, darkText = false }: { value: number; size?: number; darkText?: boolean }) {
+  const U = useInkUI();
   const animatedValue = useCountUp(targetValue, 1400);
   const value = animatedValue;
   const outerStroke = Math.max(8, Math.round(size * 0.12));
@@ -275,15 +287,15 @@ function PercentRingHero({ value: targetValue, size = 200, darkText = false }: {
   const dash = (value / 100) * c;
   const id = `pr-hero-clinic-${targetValue}-${size}`;
   const outerPillColor = darkText ? P + '30' : P + '22';
-  const innerTrackColor = darkText ? 'rgba(0,0,0,0.06)' : P + '15';
+  const innerTrackColor = darkText ? U.hairline : P + '15';
   const angleDeg = (value / 100) * 360 - 90;
   const angleRad = (angleDeg * Math.PI) / 180;
   const knobX = size / 2 + r * Math.cos(angleRad);
   const knobY = size / 2 + r * Math.sin(angleRad);
   const knobR = innerStroke * 0.85;
-  const knobColor = darkText ? INK : '#FFFFFF';
-  const textColor = darkText ? INK : '#FFFFFF';
-  const pctColor = darkText ? DS.ink[400] : P;
+  const knobColor = darkText ? U.ink[900] : '#FFFFFF';
+  const textColor = darkText ? U.ink[900] : '#FFFFFF';
+  const pctColor = darkText ? U.ink[400] : P;
   const displayValue = Math.round(value);
 
   return (
@@ -325,47 +337,35 @@ function PercentRingHero({ value: targetValue, size = 200, darkText = false }: {
 function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, planningWaitingCount, latestOrder, router }: {
   isDesktop: boolean; pipelineCounts: Record<string, number>; planningWaitingCount?: number; latestOrder: any; router: any;
 }) {
+  // Akış izi rengi PANELE uyar: mavi panelde lacivert ailenin açık ucu,
+  // zümrüt/safran panelde accent'in açılmış tonu.
+  const accentTone = useAccentTones(P);
+  const U = useInkUI();
   const dotAnim = useRef(new Animated.Value(0)).current;
-  const glowAnim = useRef(new Animated.Value(0)).current;
-  const breatheAnim = useRef(new Animated.Value(0)).current;
-
+  // Ambient disk + toplu nefes KALDIRILDI: bilgi taşımayan sürekli hareketti.
+  // Yerine PipelineFlowRow (akış izi + değişim parıltısı) — admin Özet ile ortak.
   useEffect(() => {
-    Animated.loop(Animated.sequence([
-      Animated.timing(dotAnim, { toValue: 1, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      Animated.timing(dotAnim, { toValue: 0, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      Animated.delay(400),
-    ])).start();
-    Animated.loop(Animated.sequence([
-      Animated.timing(glowAnim, { toValue: 1, duration: 2400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      Animated.timing(glowAnim, { toValue: 0, duration: 2400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-    ])).start();
-    Animated.loop(Animated.sequence([
-      Animated.timing(breatheAnim, { toValue: 1, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      Animated.timing(breatheAnim, { toValue: 0, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-    ])).start();
-  }, [dotAnim, glowAnim, breatheAnim]);
-
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(dotAnim, { toValue: 1, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(dotAnim, { toValue: 0, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.delay(400),
+      ]),
+    ).start();
+  }, [dotAnim]);
   const dotOpacity = dotAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.3] });
-  // Bulanıklık ışığı geniş alana yayıp kontrastı düşürüyor; parıltı aralığı
-  // 0–0.12'den 0–0.30'a çıkarıldı, yoksa kart soluk/ölü görünüyor.
-  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.30] });
-  const glowScale = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1.2] });
-  const breatheScale = breatheAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
 
   return (
     <Card style={{ flex: isDesktop ? 1.1 : undefined, marginBottom: isDesktop ? 0 : 14 }}>
       <View style={{
         flex: 1,
         // @ts-ignore web gradient
-        backgroundImage: `linear-gradient(180deg, ${DS.ink[700]} 0%, ${DS.ink[900]} 100%)`,
-        backgroundColor: SURFACE_ALT,
+        // Bilinçli KOYU hero bandı — iki temada da siyah (U.ink koyuda krem olur).
+        backgroundImage: 'linear-gradient(180deg, #1A1A1A 0%, #0A0A0A 100%)',
+        backgroundColor: '#0A0A0A',
         alignItems: 'center', justifyContent: 'center',
         minHeight: 160, position: 'relative', overflow: 'hidden',
       }}>
-        <Animated.View style={{
-          position: 'absolute', width: 160, height: 160, borderRadius: 80,
-          backgroundColor: P, opacity: glowOpacity, transform: [{ scale: glowScale }],
-        }} pointerEvents="none" />
         <View className="absolute" style={{
           top: 14, ...(isRTL() ? { right: 14 } : { left: 14 }),
           flexDirection: 'row', alignItems: 'center', gap: 6,
@@ -393,40 +393,31 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, planningWaitingCount
             </View>
           )}
         </View>
-        <View className="flex-row items-center" style={{ gap: 12 }}>
-          {PIPELINE_STAGES.map((stage) => {
-            const count = pipelineCounts[stage.key] ?? 0;
-            const active = count > 0;
-            return (
-              <Pressable key={stage.key} onPress={() => router.push('/(clinic)/orders' as any)} className="items-center" style={{ gap: 4 }}>
-                <Animated.View style={{
-                  width: 40, height: 40, borderRadius: 20,
-                  backgroundColor: active ? hexA(P, 0.2) : 'rgba(255,255,255,0.06)',
-                  borderWidth: active ? 1.5 : 1, borderColor: active ? P : 'rgba(255,255,255,0.1)',
-                  alignItems: 'center', justifyContent: 'center',
-                  transform: active ? [{ scale: breatheScale }] : [],
-                }}>
-                  <Text style={{ ...SERIF, fontSize: 16, letterSpacing: -0.5, color: active ? '#FFF' : 'rgba(255,255,255,0.3)' }}>{count}</Text>
-                </Animated.View>
-                <Text style={{ fontSize: 8, fontWeight: '600', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>{stage.label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        <PipelineFlowRow
+          stages={PIPELINE_STAGES.map(st => ({ key: st.key, label: st.label }))}
+          counts={pipelineCounts}
+          accent={P}
+          flowColor={accentTone.ink}
+          cardMid={U.isDark ? '#141312' : '#1B1B1B'}
+          onPressStage={() => router.push('/(clinic)/orders' as any)}
+          renderValue={(count, active) => (
+            <Text style={{ ...SERIF, fontSize: 16, letterSpacing: -0.5, color: active ? '#FFF' : 'rgba(255,255,255,0.3)' }}>{count}</Text>
+          )}
+        />
       </View>
       <View style={{ padding: 16 }}>
         {latestOrder ? (
           <Pressable onPress={() => router.push(`/(clinic)/order/${latestOrder.id}` as any)} style={{ gap: 2 }}>
-            <Text style={{ fontSize: 15, fontWeight: '500', color: INK, textAlign: isRTL() ? 'right' : undefined }} numberOfLines={1}>
+            <Text style={{ fontSize: 15, fontWeight: '500', color: U.ink[900], textAlign: isRTL() ? 'right' : undefined }} numberOfLines={1}>
               {(latestOrder as any).doctor_profile?.full_name ?? latestOrder.patient_name ?? 'Sipariş'}
             </Text>
-            <Text style={{ fontSize: 11, color: DS.ink[500], marginBottom: 10, textAlign: isRTL() ? 'right' : undefined }} numberOfLines={1}>
+            <Text style={{ fontSize: 11, color: U.ink[500], marginBottom: 10, textAlign: isRTL() ? 'right' : undefined }} numberOfLines={1}>
               #{latestOrder.order_number} · {latestOrder.work_type ?? ''}
             </Text>
             <StatusBadge status={latestOrder.status} />
           </Pressable>
         ) : (
-          <Text style={{ fontSize: 13, color: DS.ink[400] }}>Yükleniyor...</Text>
+          <Text style={{ fontSize: 13, color: U.ink[400] }}>Yükleniyor...</Text>
         )}
       </View>
     </Card>
@@ -435,6 +426,7 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, planningWaitingCount
 
 // ── Üretim Süresi Bar Chart (admin paneli ile aynı pill design) ──
 function ProductionBarChart({ data }: { data: { label: string; count: number }[] }) {
+  const U = useInkUI();
   const max = Math.max(...data.map(d => d.count), 1);
   const highestIdx = data.reduce((best, d, i) => d.count > data[best].count ? i : best, 0);
 
@@ -452,7 +444,7 @@ function ProductionBarChart({ data }: { data: { label: string; count: number }[]
           <View key={i} style={{ flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end', gap: 6 }}>
             <View style={{ width: '100%', maxWidth: 56, flex: 1, justifyContent: 'flex-end', alignItems: 'center' }}>
               {isHighlight && (
-                <View style={{ marginBottom: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[100] }}>
+                <View style={{ marginBottom: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: U.surface, borderWidth: 1, borderColor: U.ink[100] }}>
                   <Text style={{ fontSize: 10, fontWeight: '700', color: FILL_DARK }}>{d.count}</Text>
                 </View>
               )}
@@ -486,7 +478,7 @@ function ProductionBarChart({ data }: { data: { label: string; count: number }[]
             <Text style={{
               fontSize: 11,
               fontWeight: isHighlight ? '700' : '500',
-              color: isHighlight ? INK : DS.ink[400],
+              color: isHighlight ? U.ink[900] : U.ink[400],
               textTransform: 'uppercase',
               letterSpacing: 0.05 * 11,
             }}>
@@ -506,6 +498,7 @@ function WeeklyStrip({ weekDays, weekCounts, weekDone, onPress }: {
   weekDone: Record<string, number>;
   onPress: () => void;
 }) {
+  const U = useInkUI();
   const totalReceived  = Object.values(weekCounts).reduce((a, b) => a + b, 0);
   const totalCompleted = Object.values(weekDone).reduce((a, b) => a + b, 0);
   const SCALE_MAX = 20;
@@ -518,16 +511,16 @@ function WeeklyStrip({ weekDays, weekCounts, weekDone, onPress }: {
   return (
     <Card style={{ padding: 18, flex: 2 }}>
       <View className="flex-row items-center" style={{ gap: 12, marginBottom: 14 }}>
-        <Text style={{ fontSize: 15, fontWeight: '500', color: INK }}>Bu hafta</Text>
+        <Text style={{ fontSize: 15, fontWeight: '500', color: U.ink[900] }}>Bu hafta</Text>
         <View style={{ flex: 1 }} />
         <View className="flex-row items-center" style={{ gap: 10 }}>
           <View className="flex-row items-center" style={{ gap: 5 }}>
             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: SAGE_LIGHT }} />
-            <Text style={{ fontSize: 11, color: DS.ink[500] }}>Alınan {totalReceived} iş</Text>
+            <Text style={{ fontSize: 11, color: U.ink[500] }}>Alınan {totalReceived} iş</Text>
           </View>
           <View className="flex-row items-center" style={{ gap: 5 }}>
             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: SAGE_DARK }} />
-            <Text style={{ fontSize: 11, color: DS.ink[500] }}>Teslim edilen {totalCompleted} iş</Text>
+            <Text style={{ fontSize: 11, color: U.ink[500] }}>Teslim edilen {totalCompleted} iş</Text>
           </View>
         </View>
       </View>
@@ -551,11 +544,11 @@ function WeeklyStrip({ weekDays, weekCounts, weekDone, onPress }: {
                 {/* Sabit yükseklikli etiket zonu — dolu bar üst legend ile çakışmasın */}
                 <View style={{ height: 20, justifyContent: 'center', alignItems: 'center' }}>
                   {showLabel ? (
-                    <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[100] }}>
+                    <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: U.surface, borderWidth: 1, borderColor: U.ink[100] }}>
                       <Text style={{ fontSize: 10, fontWeight: '700', color: SAGE_DARK }}>{ratio}%</Text>
                     </View>
                   ) : !empty ? (
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: day.isToday ? INK : DS.ink[500] }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: day.isToday ? U.ink[900] : U.ink[500] }}>
                       {received}
                     </Text>
                   ) : null}
@@ -605,7 +598,7 @@ function WeeklyStrip({ weekDays, weekCounts, weekDone, onPress }: {
               <Text style={{
                 fontSize: 11,
                 fontWeight: day.isToday ? '700' : '500',
-                color: day.isToday ? INK : DS.ink[400],
+                color: day.isToday ? U.ink[900] : U.ink[400],
                 textTransform: 'uppercase',
                 letterSpacing: 0.05 * 11,
               }}>
@@ -621,30 +614,18 @@ function WeeklyStrip({ weekDays, weekCounts, weekDone, onPress }: {
 
 // ── Animated CTA Card ──
 function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDesktop: boolean }) {
-  const floatAnim = useRef(new Animated.Value(0)).current;
-  const glowAnim = useRef(new Animated.Value(0)).current;
+  const spotlight = useSpotlightSurface(P);
   const arrowAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     Animated.loop(Animated.sequence([
-      Animated.timing(floatAnim, { toValue: 1, duration: 3000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      Animated.timing(floatAnim, { toValue: 0, duration: 3000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-    ])).start();
-    Animated.loop(Animated.sequence([
-      Animated.timing(glowAnim, { toValue: 1, duration: 2200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      Animated.timing(glowAnim, { toValue: 0, duration: 2200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-    ])).start();
-    Animated.loop(Animated.sequence([
       Animated.delay(2000),
       Animated.timing(arrowAnim, { toValue: 1, duration: 400, easing: Easing.out(Easing.ease), useNativeDriver: true }),
       Animated.timing(arrowAnim, { toValue: 0, duration: 400, easing: Easing.in(Easing.ease), useNativeDriver: true }),
     ])).start();
-  }, [floatAnim, glowAnim, arrowAnim]);
+  }, [arrowAnim]);
 
-  const floatY = floatAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 8] });
-  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.10, 0.28] });
-  const glowScale = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.15] });
   // RTL'de "ileri" hareketi sola doğrudur.
   const arrowX = arrowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, isRTL() ? -6 : 6] });
 
@@ -656,60 +637,24 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
       <Animated.View style={{
         flex: 1, borderRadius: DS.radius.xl, padding: 22, position: 'relative', overflow: 'hidden',
         // @ts-ignore web gradient
-        backgroundImage: `linear-gradient(135deg, ${P} 0%, ${P_DEEP} 100%)`,
+        // Koyu tema: admin Özet'teki Hızlı İşlem kartıyla ortak dil — üstten
+        // yayılan ışık + gradyan + nabız atan neon kenar (aksan panelden gelir).
+        // Açık temada da admin ile aynı: üstten yayılan beyaz ışık + accent gradyanı.
+        backgroundImage:
+          'radial-gradient(120% 78% at 50% -10%, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0) 70%), '
+          + `linear-gradient(135deg, ${P} 0%, ${P_DEEP} 100%)`,
         backgroundColor: P, minHeight: isDesktop ? undefined : 160,
+        ...(spotlight ? spotlight.surface : {}),
         transform: [{ scale: scaleAnim }],
       }}>
-        {/* Yüzen ışık lekeleri — web'de BULANIK (aurora hissi).
-            `filter` yalnız web'de var; native'de RN desteklemiyor, orada net
-            daire olarak kalır. Bulanıklık kenara taştığı için kartın
-            `overflow: hidden`'ı onu kırpar — istenen davranış.
-            `willChange: transform` şart: bulanık katman her karede yeniden
-            rasterleştirilirse animasyon pahalıya gelir; katman terfi edilince
-            tarayıcı yalnız transform'u uygular. */}
-        <Animated.View
-          pointerEvents="none"
-          style={{
-            position: 'absolute', top: -20, ...(isRTL() ? { left: -20 } : { right: -20 }),
-            width: 140, height: 140, borderRadius: 70,
-            backgroundColor: '#ABEFC7',
-            opacity: 0.55,
-            transform: [{ translateY: floatY }],
-            ...(Platform.OS === 'web' ? ({ filter: 'blur(18px)', mixBlendMode: 'screen', willChange: 'transform' } as any) : {}),
-          }}
-        />
-        <Animated.View
-          pointerEvents="none"
-          style={{
-            position: 'absolute', top: -40, ...(isRTL() ? { left: -40 } : { right: -40 }),
-            width: 180, height: 180, borderRadius: 90,
-            backgroundColor: 'rgba(255,255,255,1)',
-            opacity: glowOpacity,
-            transform: [{ scale: glowScale }],
-            ...(Platform.OS === 'web' ? ({ filter: 'blur(30px)', mixBlendMode: 'screen', willChange: 'transform, opacity' } as any) : {}),
-          }}
-        />
-        {/* Karşı köşede ikinci, daha geniş leke — tek leke bulanıklaşınca kart
-            tek renkli bir zemine dönüyordu; bu, aurora'daki renk dalgalanmasının
-            yerini tutan derinliği geri veriyor. */}
-        <Animated.View
-          pointerEvents="none"
-          style={{
-            position: 'absolute', bottom: -60, ...(isRTL() ? { right: -40 } : { left: -40 }),
-            width: 200, height: 200, borderRadius: 100,
-            backgroundColor: '#74E1A8',
-            opacity: 0.42,
-            transform: [{ translateY: Animated.multiply(floatY, -1) }],
-            ...(Platform.OS === 'web' ? ({ filter: 'blur(40px)', mixBlendMode: 'screen', willChange: 'transform' } as any) : {}),
-          }}
-        />
+        {spotlight && <NeonPulse radius={DS.radius.xl} color={spotlight.glow} />}
         <View style={{ position: 'relative' }}>
           <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 1.1, textTransform: 'uppercase', color: '#FFF', marginBottom: 14 }}>Hızlı işlem</Text>
           <Text style={{ ...SERIF, fontSize: 32, letterSpacing: -0.64, lineHeight: 35, color: '#FFF', marginBottom: 16 }}>Yeni sipariş{'\n'}oluştur</Text>
           <View className="flex-row items-center self-start rounded-full" style={{ paddingHorizontal: 18, paddingVertical: 10, backgroundColor: '#FFF', gap: 8 }}>
-            <Text style={{ fontSize: 13, fontWeight: '500', color: INK }}>Başla</Text>
+            <Text style={{ fontSize: 13, fontWeight: '500', color: '#0A0A0A' }}>Başla</Text>
             <Animated.View style={{ transform: [{ translateX: arrowX }] }}>
-              {isRTL() ? <ArrowLeft size={14} color={INK} strokeWidth={2} /> : <ArrowRight size={14} color={INK} strokeWidth={2} />}
+              {isRTL() ? <ArrowLeft size={14} color="#0A0A0A" strokeWidth={2} /> : <ArrowRight size={14} color="#0A0A0A" strokeWidth={2} />}
             </Animated.View>
           </View>
         </View>
@@ -724,6 +669,7 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
 // AnimatedAktifVakaCard da kullanıyor.
 const TASKS_SURFACE = '#444652';
 function TasksCard({ tasks }: { tasks: { icon: React.FC<any>; label: string; time: string; done: boolean; onPress?: () => void }[] }) {
+  const U = useInkUI();
   const doneCount = tasks.filter(t => t.done).length;
   return (
     <View style={{
@@ -783,6 +729,7 @@ function StatusDistributionCard({
   total: number;
   isDesktop: boolean;
 }) {
+  const U = useInkUI();
   const segments = byStatus.map(s => ({
     ...s,
     pct: total > 0 ? Math.round((s.count / total) * 100) : 0,
@@ -809,10 +756,10 @@ function StatusDistributionCard({
       {/* Header */}
       <View className="flex-row items-center justify-between" style={{ marginBottom: 20, gap: 12 }}>
         <View style={{ flex: 1 }}>
-          <Text style={{ ...SERIF, fontSize: 26, letterSpacing: -0.5, color: INK }}>
+          <Text style={{ ...SERIF, fontSize: 26, letterSpacing: -0.5, color: U.ink[900] }}>
             Statü Dağılımı
           </Text>
-          <Text style={{ fontSize: 13, color: DS.ink[500], marginTop: 3 }}>
+          <Text style={{ fontSize: 13, color: U.ink[500], marginTop: 3 }}>
             Toplam {total} sipariş
           </Text>
         </View>
@@ -856,17 +803,17 @@ function StatusDistributionCard({
               ) : null)}
             </Svg>
             <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ ...SERIF, fontSize: 40, letterSpacing: -1, lineHeight: 44, color: INK }}>{total}</Text>
-              <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: -2 }}>Toplam</Text>
+              <Text style={{ ...SERIF, fontSize: 40, letterSpacing: -1, lineHeight: 44, color: U.ink[900] }}>{total}</Text>
+              <Text style={{ fontSize: 12, color: U.ink[500], marginTop: -2 }}>Toplam</Text>
             </View>
           </View>
 
           {top && top.count > 0 && (
             <View
               className="rounded-2xl"
-              style={{ marginTop: 16, backgroundColor: '#FFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', padding: 14 }}
+              style={{ marginTop: 16, backgroundColor: U.surface, borderWidth: 1, borderColor: U.hairline, padding: 14 }}
             >
-              <Text style={{ fontSize: 11, color: DS.ink[500] }}>En yüksek oran</Text>
+              <Text style={{ fontSize: 11, color: U.ink[500] }}>En yüksek oran</Text>
               <Text style={{ fontSize: 15, fontWeight: '700', color: '#1F6B47', marginTop: 2 }}>
                 {top.label} (%{top.pct})
               </Text>
@@ -880,16 +827,16 @@ function StatusDistributionCard({
             <View
               key={item.key}
               className="rounded-2xl"
-              style={{ borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', padding: 14, backgroundColor: '#FFF' }}
+              style={{ borderWidth: 1, borderColor: U.hairline, padding: 14, backgroundColor: U.surface }}
             >
               <View className="flex-row items-center justify-between" style={{ marginBottom: 10 }}>
-                <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: DS.ink[800] }} numberOfLines={1}>{item.label}</Text>
+                <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: U.ink[800] }} numberOfLines={1}>{item.label}</Text>
                 <View className="flex-row items-center" style={{ gap: 14 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '800', color: INK }}>{item.count}</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: U.ink[900] }}>{item.count}</Text>
                   <Text style={{ fontSize: 12, fontWeight: '700', color: '#1F6B47', width: 38, textAlign: 'end' as any }}>%{item.pct}</Text>
                 </View>
               </View>
-              <View className="rounded-full overflow-hidden" style={{ height: 8, backgroundColor: DS.ink[100] }}>
+              <View className="rounded-full overflow-hidden" style={{ height: 8, backgroundColor: U.ink[100] }}>
                 <View className="rounded-full" style={{ height: 8, backgroundColor: item.color, width: `${item.pct}%` as any }} />
               </View>
             </View>
@@ -912,6 +859,7 @@ const origSuffix = (cur?: string | null, amt?: number | null) => {
 };
 
 function ClinicFinanceCard({ fin, isDesktop, onPress }: { fin: ClinicBalance | null; isDesktop: boolean; onPress: () => void }) {
+  const U = useInkUI();
   const balance = Number(fin?.balance ?? 0);
   const overdue = Number(fin?.overdue_amount ?? 0);
   const billed = Number(fin?.total_billed ?? 0);
@@ -949,8 +897,8 @@ function ClinicFinanceCard({ fin, isDesktop, onPress }: { fin: ClinicBalance | n
 
   return (
     <Card style={{ flex: isDesktop ? 1 : undefined, marginBottom: isDesktop ? 0 : 14, padding: 0, overflow: 'hidden' }}>
-      <View className="flex-row items-center justify-between" style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
-        <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: INK }}>Mali Durum</Text>
+      <View className="flex-row items-center justify-between" style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
+        <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: U.ink[900] }}>Mali Durum</Text>
         <Pressable onPress={onPress}>
           <Text style={{ fontSize: 13, color: P, fontWeight: '700' }}>Finans →</Text>
         </Pressable>
@@ -959,7 +907,7 @@ function ClinicFinanceCard({ fin, isDesktop, onPress }: { fin: ClinicBalance | n
       <View style={{ padding: 20, gap: 16 }}>
         {/* Bakiye hero */}
         <View>
-          <Text style={{ fontSize: 11, color: DS.ink[500], fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.6 }}>
+          <Text style={{ fontSize: 11, color: U.ink[500], fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.6 }}>
             {owes ? 'Güncel Borç' : 'Bakiye'}
           </Text>
           <Text style={{ ...SERIF, fontSize: 42, letterSpacing: -1.05, lineHeight: 46, color: balColor, marginTop: 4 }}>
@@ -976,14 +924,14 @@ function ClinicFinanceCard({ fin, isDesktop, onPress }: { fin: ClinicBalance | n
         {/* Aging stacked bar */}
         {agTotal > 0.01 && (
           <View style={{ gap: 6 }}>
-            <View className="flex-row" style={{ height: 8, borderRadius: 999, overflow: 'hidden', backgroundColor: DS.ink[100] }}>
+            <View className="flex-row" style={{ height: 8, borderRadius: 999, overflow: 'hidden', backgroundColor: U.ink[100] }}>
               {ag.map(a => a.v > 0 ? <View key={a.k} style={{ flex: a.v / agTotal, backgroundColor: a.c }} /> : null)}
             </View>
             <View className="flex-row flex-wrap" style={{ gap: 10 }}>
               {ag.filter(a => a.v > 0).map(a => (
                 <View key={a.k} className="flex-row items-center" style={{ gap: 4 }}>
                   <View style={{ width: 7, height: 7, borderRadius: 2, backgroundColor: a.c }} />
-                  <Text style={{ fontSize: 10, color: DS.ink[500] }}>{a.k}: {own(a.v)}</Text>
+                  <Text style={{ fontSize: 10, color: U.ink[500] }}>{a.k}: {own(a.v)}</Text>
                 </View>
               ))}
             </View>
@@ -992,12 +940,12 @@ function ClinicFinanceCard({ fin, isDesktop, onPress }: { fin: ClinicBalance | n
 
         {/* Kesilen / Ödenen */}
         <View className="flex-row" style={{ gap: 10 }}>
-          <View style={{ flex: 1, backgroundColor: DS.ink[50], borderRadius: 12, padding: 12 }}>
-            <Text style={{ fontSize: 10, color: DS.ink[500], fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4 }}>Kesilen</Text>
-            <Text style={{ fontSize: 16, fontWeight: '800', color: INK, marginTop: 3 }}>{own(billed, fin?.total_billed_original)}</Text>
+          <View style={{ flex: 1, backgroundColor: U.ink[50], borderRadius: 12, padding: 12 }}>
+            <Text style={{ fontSize: 10, color: U.ink[500], fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4 }}>Kesilen</Text>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: U.ink[900], marginTop: 3 }}>{own(billed, fin?.total_billed_original)}</Text>
           </View>
           <View style={{ flex: 1, backgroundColor: hexA(P, 0.08), borderRadius: 12, padding: 12 }}>
-            <Text style={{ fontSize: 10, color: DS.ink[500], fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4 }}>Tahsil Edilen</Text>
+            <Text style={{ fontSize: 10, color: U.ink[500], fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4 }}>Tahsil Edilen</Text>
             <Text style={{ fontSize: 16, fontWeight: '800', color: '#1F6B47', marginTop: 3 }}>{own(paid, fin?.total_paid_original)}</Text>
           </View>
         </View>
@@ -1010,6 +958,7 @@ function ClinicFinanceCard({ fin, isDesktop, onPress }: { fin: ClinicBalance | n
 //  MAIN SCREEN
 // ══════════════════════════════════════════════════════════════════
 export function ClinicDashboardScreen() {
+  const U = useInkUI();
   const router = useRouter();
   const { profile } = useAuthStore();
   const { orders, loading, refetch } = useClinicOrders();
@@ -1351,20 +1300,20 @@ export function ClinicDashboardScreen() {
             <Text style={{
               ...SERIF, fontSize: isDesktop ? 28 : 24,
               letterSpacing: -0.025 * (isDesktop ? 28 : 24),
-              lineHeight: isDesktop ? 32 : 28, color: INK,
+              lineHeight: isDesktop ? 32 : 28, color: U.ink[900],
             }}>
               Merhaba,{' '}
-              <Text style={{ fontStyle: 'italic', color: DS.ink[400] }}>{clinicName}</Text>
+              <Text style={{ fontStyle: 'italic', color: U.ink[400] }}>{clinicName}</Text>
             </Text>
-            <Text style={{ fontSize: 14, color: DS.ink[500], marginTop: 4 }}>
-              Yetkili: <Text style={{ fontWeight: '600', color: DS.ink[700] }}>{profile?.full_name ?? firstName}</Text>
+            <Text style={{ fontSize: 14, color: U.ink[500], marginTop: 4 }}>
+              Yetkili: <Text style={{ fontWeight: '600', color: U.ink[700] }}>{profile?.full_name ?? firstName}</Text>
             </Text>
             <View className="flex-row flex-wrap items-center" style={{ gap: 14, marginTop: 14 }}>
-              <StatPill label="Üretim" value={`${productionPct}%`} bg={INK} color="#FFF" />
+              <StatPill label="Üretim" value={`${productionPct}%`} bg={U.ink[900]} color={U.onDarkPill} />
               <StatPill label="Aktif" value={`${activeCount}`} bg={P} color="#FFF" />
               {/* "Geciken" burada yok — aşağıdaki kırmızı aksiyon pill'i aynı sayıyı
                   hem söylüyor hem tıklanabilir yapıyor; iki kez yazmak gürültü. */}
-              <StatPill label="Bu ay" value={`${thisMonthNew}`} bg="rgba(0,0,0,0.08)" color={INK} />
+              <StatPill label="Bu ay" value={`${thisMonthNew}`} bg={U.chipNeutral} color={U.ink[900]} />
               {/* Geciken + değerlendirilecek AYNI satırda: eşit ölçülü rozetler. */}
               {overdueCount > 0 && (
                 <AlertPillX
@@ -1402,15 +1351,15 @@ export function ClinicDashboardScreen() {
         <Card style={{ flex: isDesktop ? 1.2 : undefined, padding: 22, marginBottom: isDesktop ? 0 : 14 }}>
           <View className="flex-row items-start justify-between" style={{ marginBottom: 12 }}>
             <View>
-              <Text style={{ fontSize: 18, fontWeight: '500', letterSpacing: -0.27, color: INK }}>Sipariş Trendi</Text>
-              <Text style={{ ...SERIF, fontSize: 42, letterSpacing: -1.05, lineHeight: 42, marginTop: 8, color: INK }}>
+              <Text style={{ fontSize: 18, fontWeight: '500', letterSpacing: -0.27, color: U.ink[900] }}>Sipariş Trendi</Text>
+              <Text style={{ ...SERIF, fontSize: 42, letterSpacing: -1.05, lineHeight: 42, marginTop: 8, color: U.ink[900] }}>
                 {monthly[monthly.length - 1]?.count ?? 0}
-                <Text style={{ fontSize: 14, color: DS.ink[400] }}> üye bu ay</Text>
+                <Text style={{ fontSize: 14, color: U.ink[400] }}> üye bu ay</Text>
               </Text>
-              <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 4 }}>Her diş 1 üye · Son 6 ay</Text>
+              <Text style={{ fontSize: 11, color: U.ink[500], marginTop: 4 }}>Her diş 1 üye · Son 6 ay</Text>
             </View>
-            <Pressable onPress={() => router.push('/(clinic)/orders' as any)} className="items-center justify-center rounded-full" style={{ width: 32, height: 32, backgroundColor: DS.ink[100] }}>
-              {isRTL() ? <ArrowUpLeft size={14} color={DS.ink[500]} strokeWidth={1.8} /> : <ArrowUpRight size={14} color={DS.ink[500]} strokeWidth={1.8} />}
+            <Pressable onPress={() => router.push('/(clinic)/orders' as any)} className="items-center justify-center rounded-full" style={{ width: 32, height: 32, backgroundColor: U.ink[100] }}>
+              {isRTL() ? <ArrowUpLeft size={14} color={U.ink[500]} strokeWidth={1.8} /> : <ArrowUpRight size={14} color={U.ink[500]} strokeWidth={1.8} />}
             </Pressable>
           </View>
           {monthly.length > 0 && <View style={{ flex: 1, minHeight: 120 }}><ProductionBarChart data={monthly} /></View>}
@@ -1418,22 +1367,22 @@ export function ClinicDashboardScreen() {
 
         <Card style={{ flex: isDesktop ? 1 : undefined, padding: 22, alignItems: 'center', marginBottom: isDesktop ? 0 : 14 }}>
           <View className="w-full flex-row items-center justify-between" style={{ marginBottom: 8 }}>
-            <Text style={{ fontSize: 14, fontWeight: '500', color: INK }}>Teslim Oranı</Text>
+            <Text style={{ fontSize: 14, fontWeight: '500', color: U.ink[900] }}>Teslim Oranı</Text>
             <Pressable onPress={() => router.push('/(clinic)/orders' as any)}>
-              {isRTL() ? <ArrowUpLeft size={14} color={DS.ink[500]} strokeWidth={1.8} /> : <ArrowUpRight size={14} color={DS.ink[500]} strokeWidth={1.8} />}
+              {isRTL() ? <ArrowUpLeft size={14} color={U.ink[500]} strokeWidth={1.8} /> : <ArrowUpRight size={14} color={U.ink[500]} strokeWidth={1.8} />}
             </Pressable>
           </View>
           <PercentRingHero value={deliveryPct} size={140} darkText />
           {/* Yüzde tek başına "neyin %11'i?" sorusunu bırakıyordu — payı/paydayı yaz. */}
-          <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[700], marginTop: 10 }}>
+          <Text style={{ fontSize: 13, fontWeight: '500', color: U.ink[700], marginTop: 10 }}>
             {deliveredPipe} / {pipeCount} sipariş
           </Text>
-          <Text style={{ fontSize: 9, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.72, marginTop: 3 }}>
+          <Text style={{ fontSize: 9, color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.72, marginTop: 3 }}>
             Teslim edilen · tüm zamanlar
           </Text>
           <View className="flex-row" style={{ gap: 8, marginTop: 12 }}>
-            <View className="items-center rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: DS.ink[100] }}>
-              <Text style={{ fontSize: 10, fontWeight: '500', color: DS.ink[500] }}>{pipelineCounts['uretimde'] ?? 0} üretimde</Text>
+            <View className="items-center rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: U.ink[100] }}>
+              <Text style={{ fontSize: 10, fontWeight: '500', color: U.ink[500] }}>{pipelineCounts['uretimde'] ?? 0} üretimde</Text>
             </View>
             <View className="items-center rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: hexA(P, 0.15) }}>
               <Text style={{ fontSize: 10, fontWeight: '500', color: P }}>{pipelineCounts['teslimata_hazir'] ?? 0} hazır</Text>
@@ -1458,21 +1407,21 @@ export function ClinicDashboardScreen() {
 
       {/* ════════ ORDERS TABLE ════════ */}
       <Card style={{ marginBottom: 14 }}>
-        <View className="flex-row items-center justify-between" style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
-          <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: INK }}>Son Siparişler</Text>
+        <View className="flex-row items-center justify-between" style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
+          <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: U.ink[900] }}>Son Siparişler</Text>
           <Pressable onPress={() => router.push('/(clinic)/orders' as any)}>
             <Text style={{ fontSize: 13, color: P, fontWeight: '700' }}>Tümünü Gör →</Text>
           </Pressable>
         </View>
-        <View className="flex-row items-center" style={{ paddingHorizontal: 20, paddingVertical: 11, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)', backgroundColor: DS.ink[50] }}>
-          <Text style={{ flex: 1.2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>No</Text>
-          <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Hasta</Text>
-          {isDesktop && <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>İş Tipi</Text>}
-          <Text style={{ flex: 1.4, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Durum</Text>
-          {isDesktop && <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, textAlign: 'end' as any }}>Teslim</Text>}
+        <View className="flex-row items-center" style={{ paddingHorizontal: 20, paddingVertical: 11, borderTopWidth: 1, borderTopColor: U.hairlineSoft, backgroundColor: U.ink[50] }}>
+          <Text style={{ flex: 1.2, fontSize: 10, fontWeight: '600', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>No</Text>
+          <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Hasta</Text>
+          {isDesktop && <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>İş Tipi</Text>}
+          <Text style={{ flex: 1.4, fontSize: 10, fontWeight: '600', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Durum</Text>
+          {isDesktop && <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, textAlign: 'end' as any }}>Teslim</Text>}
         </View>
         {recentOrders.length === 0
-          ? <Text className="p-6 text-center" style={{ fontSize: 13, color: DS.ink[400] }}>{loading ? 'Yükleniyor...' : 'Henüz sipariş yok'}</Text>
+          ? <Text className="p-6 text-center" style={{ fontSize: 13, color: U.ink[400] }}>{loading ? 'Yükleniyor...' : 'Henüz sipariş yok'}</Text>
           : recentRows.map((order: any, idx: number) => {
               const overdue = order.delivery_date < today && order.status !== 'teslim_edildi' && order.status !== 'iptal';
               const isLast = idx === recentRows.length - 1;
@@ -1480,7 +1429,7 @@ export function ClinicDashboardScreen() {
               return (
                 <Pressable key={order.id} className="flex-row items-center" style={{
                   paddingHorizontal: 20, paddingVertical: 13, gap: 8, minHeight: 54,
-                  borderBottomWidth: !isLast ? 1 : 0, borderBottomColor: 'rgba(0,0,0,0.04)',
+                  borderBottomWidth: !isLast ? 1 : 0, borderBottomColor: U.hairlineSoft,
                   backgroundColor: overdue ? 'rgba(217,75,75,0.06)' : undefined,
                 }} onPress={() => router.push(`/(clinic)/order/${order.id}` as any)}>
                   <View style={{ flex: 1.2, flexDirection: 'row', alignItems: 'center', gap: 5, paddingStart: order.__revChild ? 14 : 0 }}>
@@ -1493,13 +1442,13 @@ export function ClinicDashboardScreen() {
                     <View className="items-center justify-center rounded-full" style={{ width: 28, height: 28, backgroundColor: hexA(P, 0.1), borderWidth: 1, borderColor: hexA(P, 0.15) }}>
                       <Text style={{ fontSize: 9, fontWeight: '800', color: P }}>{initials(drName)}</Text>
                     </View>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: INK, textAlign: isRTL() ? 'right' : undefined }} numberOfLines={1}>{drName}</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900], textAlign: isRTL() ? 'right' : undefined }} numberOfLines={1}>{drName}</Text>
                   </View>
-                  {isDesktop && <Text style={{ flex: 2, fontSize: 11, color: DS.ink[500], textAlign: isRTL() ? 'right' : undefined }} numberOfLines={1}>{(order as any).__revChild && (
+                  {isDesktop && <Text style={{ flex: 2, fontSize: 11, color: U.ink[500], textAlign: isRTL() ? 'right' : undefined }} numberOfLines={1}>{(order as any).__revChild && (
                       <Text style={{ fontWeight: '700', color: (order as any).__continuation ? '#3563A8' : '#9C5E0E' }}>{(order as any).__continuation ? 'Devam - ' : 'Revizyon - '}</Text>
                     )}{order.work_type || '--'}</Text>}
                   <View style={{ flex: 1.4 }}><StatusBadge status={order.status} /></View>
-                  {isDesktop && <Text style={{ flex: 1, fontSize: 11, fontWeight: overdue ? '700' : '500', textAlign: 'end' as any, color: overdue ? '#9C2E2E' : DS.ink[400] }}>{fmtDate(order.delivery_date)}</Text>}
+                  {isDesktop && <Text style={{ flex: 1, fontSize: 11, fontWeight: overdue ? '700' : '500', textAlign: 'end' as any, color: overdue ? '#9C2E2E' : U.ink[400] }}>{fmtDate(order.delivery_date)}</Text>}
                 </Pressable>
               );
             })
@@ -1511,8 +1460,8 @@ export function ClinicDashboardScreen() {
         {/* Hekim Performansı */}
         {byDoctor.length > 0 && (
           <Card style={{ flex: isDesktop ? 1 : undefined, marginBottom: isDesktop ? 0 : 14 }}>
-            <View className="flex-row items-center justify-between" style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
-              <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: INK }}>Hekim Performansı</Text>
+            <View className="flex-row items-center justify-between" style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
+              <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: U.ink[900] }}>Hekim Performansı</Text>
               <Pressable onPress={() => router.push('/(clinic)/doctors' as any)}>
                 <Text style={{ fontSize: 13, color: P, fontWeight: '700' }}>Hekimler →</Text>
               </Pressable>
@@ -1522,14 +1471,14 @@ export function ClinicDashboardScreen() {
               return (
                 <View key={d.id} className="flex-row items-center" style={{
                   paddingHorizontal: 20, paddingVertical: 12, gap: 12,
-                  borderBottomWidth: !isLast ? 1 : 0, borderBottomColor: 'rgba(0,0,0,0.04)',
+                  borderBottomWidth: !isLast ? 1 : 0, borderBottomColor: U.hairlineSoft,
                 }}>
                   <View className="items-center justify-center rounded-full" style={{ width: 34, height: 34, backgroundColor: P }}>
                     <Text style={{ fontSize: 12, fontWeight: '800', color: '#FFF' }}>{initials(d.name)}</Text>
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: INK, textAlign: isRTL() ? 'right' : undefined }} numberOfLines={1}>{d.name}</Text>
-                    <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 2 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: U.ink[900], textAlign: isRTL() ? 'right' : undefined }} numberOfLines={1}>{d.name}</Text>
+                    <Text style={{ fontSize: 11, color: U.ink[500], marginTop: 2 }}>
                       {d.total} {autoT('sipariş')} · {d.active} {autoT('aktif')}{d.overdue > 0 ? ` · ${d.overdue} ${autoT('gecikti')}` : ''}
                     </Text>
                   </View>

@@ -10,11 +10,12 @@
  *   • Sliders → accent thumb
  */
 import React, { useMemo, useState } from 'react';
-import { View, Text, Pressable, Platform, ScrollView } from 'react-native';
+import { View, Text, Pressable, Platform, ScrollView, useWindowDimensions } from 'react-native';
 import {
   Eye, EyeOff, Layers, ChevronDown, ChevronRight, ChevronLeft, Box, Grid3x3, X,
-  Lock, Unlock, Focus,
-} from 'lucide-react-native';
+  Lock, Unlock, Focus, PenLine,
+} from '../../../core/ui/icons';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { isRTL } from '../../../core/i18n';
 import type { ViewerFile, LayerStyle } from '../types';
 import { classifyFile, type LayerType } from '../lib/layerMap';
@@ -29,6 +30,8 @@ interface Props {
   onSetAllVisible: (visible: boolean) => void;
   onClose?: () => void;
   diagnostics?: Record<string, MeshDiagnostics>;
+  /** 3D kalem notları — sipariş bağlamı yoksa verilmez (özellik kapalı) */
+  notes?: { count: number; visible: boolean; onToggle: () => void };
 }
 
 interface Group {
@@ -52,7 +55,7 @@ function hexAlpha(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-export function LayerPanel({ files, layerStyles, onChange, onSetAllVisible, onClose, diagnostics }: Props) {
+export function LayerPanel({ files, layerStyles, onChange, onSetAllVisible, onClose, diagnostics, notes }: Props) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>({
     jaws: true, tissue: true, design: true, other: true,
@@ -60,6 +63,10 @@ export function LayerPanel({ files, layerStyles, onChange, onSetAllVisible, onCl
   const [activeId, setActiveId] = useState<string | null>(null);
   const T = useViewerTheme();
   const isDark = useThemeModeStore((s) => s.resolvedDark);
+  // Telefon genişliği: panel 300px kart olarak sol üstte durunca ekranın
+  // yarısını ve modelin tamamını kapatıyor (kullanıcı cihazda gördü).
+  const { width: winW } = useWindowDimensions();
+  const isNarrow = winW < 768;
 
   // Beyaz card paleti — toolbar dock ile uyumlu
   const C = {
@@ -112,8 +119,13 @@ export function LayerPanel({ files, layerStyles, onChange, onSetAllVisible, onCl
 
   return (
     <View style={{
-      position: 'absolute', top: 14, start: 14,
-      width: 300, maxHeight: '85%' as any,
+      position: 'absolute',
+      // Dar ekran (telefon): panel modelin ÜSTÜNÜ kapatmasın → alta yerleşir,
+      // yüksekliği ekranın yarısıyla sınırlı, kenardan kenara. Geniş ekranda
+      // eskisi gibi sol üstte 300px kart.
+      ...(isNarrow
+        ? { left: 10, right: 10, bottom: 12, maxHeight: '46%' as any }
+        : { top: 14, start: 14, width: 300, maxHeight: '85%' as any }),
       backgroundColor: C.cardBg,
       borderRadius: 18,
       borderWidth: 1, borderColor: C.cardBorder,
@@ -186,6 +198,43 @@ export function LayerPanel({ files, layerStyles, onChange, onSetAllVisible, onCl
           C={C}
         />
       </View>
+
+      {/* ── Notlar katmanı ──────────────────────────────────────────────
+          Hekimin/labın 3D kalemle bıraktığı işaretler AYRI bir katman: tarama
+          dosyasına dokunulmuyor, buradan tek dokunuşla gizlenebiliyor. */}
+      {notes && notes.count > 0 && (
+        <Pressable
+          onPress={notes.onToggle}
+          style={({ hovered }: any) => ({
+            flexDirection: 'row', alignItems: 'center', gap: 9,
+            marginHorizontal: 12, marginTop: 8,
+            paddingHorizontal: 10, paddingVertical: 9, borderRadius: 12,
+            backgroundColor: hovered ? C.rowHover : 'transparent',
+            borderWidth: 1, borderColor: C.divider,
+            ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+          })}
+        >
+          <View style={{
+            width: 22, height: 22, borderRadius: 7,
+            backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center',
+          }}>
+            <PenLine size={12} color={C.accent} strokeWidth={2.2} />
+          </View>
+          <Text style={{ flex: 1, color: C.fg, fontSize: 12.5, fontWeight: '600' }} numberOfLines={1}>
+            {autoT('Notlar')}
+          </Text>
+          <Text style={{ color: C.fgMuted, fontSize: 10.5, fontWeight: '700' }}>{notes.count}</Text>
+          <View style={{
+            width: 28, height: 28, borderRadius: 14,
+            alignItems: 'center', justifyContent: 'center',
+            backgroundColor: notes.visible ? C.accent : C.controlBg,
+          }}>
+            {notes.visible
+              ? <Eye size={14} color={C.accentFg} strokeWidth={2} />
+              : <EyeOff size={14} color={C.fgMuted} strokeWidth={2} />}
+          </View>
+        </Pressable>
+      )}
 
       {/* ── Grouped layer list ── */}
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 14, paddingTop: 6 }}>

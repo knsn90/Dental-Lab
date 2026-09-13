@@ -2,7 +2,7 @@
 // Lab tasarımı onaya gönderince burada listelenir; onay/red + not verilir.
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, Pressable, ScrollView, ActivityIndicator, TextInput, Platform, RefreshControl, Image, Modal } from 'react-native';
-import { BadgeCheck, Check, X, Clock, FileSearch, MessageSquare } from 'lucide-react-native';
+import { BadgeCheck, Check, X, Clock, FileSearch, MessageSquare } from '../../core/ui/icons';
 import { usePanelTheme } from '../../core/theme/usePanelTheme';
 import { useMobileTokens } from '../../core/theme/mobileDesignTokens';
 import { hexA } from '../../core/theme/stationPalette';
@@ -40,7 +40,8 @@ export function DesignApprovalInbox({ routePrefix = '/(doctor)' }: { routePrefix
   const T = useMobileTokens();
   const accent = theme.primary;
   const deep = theme.primaryDeep;
-  const pageBg = PAGE_BG[theme.key] ?? '#F0F6F2';
+  // Koyu temada panel krem/açık zemini kalıyordu → token zemin.
+  const pageBg = T.bg ?? PAGE_BG[theme.key] ?? '#F0F6F2';
 
   const [items, setItems] = useState<PendingDesignApproval[]>([]);
   const [loading, setLoading] = useState(true);
@@ -305,6 +306,7 @@ export function DesignApprovalInbox({ routePrefix = '/(doctor)' }: { routePrefix
             visible
             files={viewer3DFiles}
             title={viewer3DFiles.length > 1 ? `${viewer3DFiles.length} tarama birlikte` : viewer3DFiles[0]?.name}
+            orderId={filesFor?.id ?? null}
             onClose={() => setViewer3DFiles(null)}
           />
         </React.Suspense>

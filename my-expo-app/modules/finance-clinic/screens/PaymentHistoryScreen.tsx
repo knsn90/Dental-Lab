@@ -11,7 +11,7 @@ import { View, Text, ScrollView, Pressable } from 'react-native';
 import {
   Banknote, ListChecks, CreditCard, Building2, FileText, ArrowDownToLine,
   Plus, Clock, CheckCircle2, X, AlertCircle, RefreshCcw,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 
 import { DS } from '../../../core/theme/dsTokens';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';

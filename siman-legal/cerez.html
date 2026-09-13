@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Çerez ve Yerel Depolama Politikası — Siman</title>
+<meta name="description" content="Çerez ve Yerel Depolama Politikası — Siman diş laboratuvarı yönetim uygulaması." />
+<style>
+  :root{
+    --bg:#F7F8FA; --card:#FFFFFF; --ink:#14171D; --ink2:#4A5160; --ink3:#7A8291;
+    --line:#E7EAF0; --accent:#4F8EF7; --accent2:#00C2A8; --danger:#B42318;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0B0D12; --card:#14171D; --ink:#F3F5F8; --ink2:#C3C9D4; --ink3:#8A92A1; --line:#232833; --accent:#6EA8FE; }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,system-ui,sans-serif;
+    line-height:1.62;-webkit-text-size-adjust:100%}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 20px 72px}
+  header{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+  .logo{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:800;font-size:20px}
+  h1{font-size:26px;letter-spacing:-.5px;margin:22px 0 4px}
+  h2{font-size:17px;letter-spacing:-.2px;margin:30px 0 8px;color:var(--ink)}
+  h3{font-size:14px;margin:18px 0 6px;color:var(--ink)}
+  .kicker{font-size:12px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--accent2)}
+  .meta{font-size:13px;color:var(--ink3);margin-top:2px}
+  p,li{color:var(--ink2);font-size:15px}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-top:14px}
+  .note{border-left:3px solid var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent);
+    border-radius:10px;padding:12px 14px;font-size:14px;color:var(--ink2);margin-top:12px}
+  .todo{border-left-color:var(--danger);background:color-mix(in srgb,var(--danger) 8%,transparent)}
+  table{width:100%;border-collapse:collapse;margin-top:10px;font-size:14px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--ink3);font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.5px}
+  td:first-child{white-space:nowrap;font-weight:600;color:var(--ink)}
+  .abroad{display:inline-block;font-size:11px;font-weight:700;color:#B42318;background:color-mix(in srgb,var(--danger) 10%,transparent);
+    border-radius:6px;padding:1px 6px;margin-left:4px;letter-spacing:.3px;vertical-align:middle}
+  footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--line);font-size:13px;color:var(--ink3)}
+  .fill{color:var(--danger);font-weight:700}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">S</div>
+    <div><div class="kicker">Siman</div><div class="meta">Diş Laboratuvarı Yönetim Uygulaması</div></div>
+  </header>
+  <h1>Çerez ve Yerel Depolama Politikası</h1>
+  <div class="meta">Sürüm 1.0 · Yürürlük: 23 Temmuz 2026</div>
+
+  <p>Bu politika, Siman uygulaması (<code>siman.app</code>) ve hukuki doküman sitesi için geçerlidir.
+  Siman’da <b>reklam veya izleme amaçlı çerez/teknoloji kullanılmaz.</b></p>
+  <div class="note">Kod incelemesinde reklam/izleme/analitik yazılımı (Google Analytics, Firebase,
+  Sentry, PostHog, Mixpanel, Amplitude, Segment vb.) <b>bulunmamaktadır.</b></div>
+  <h2>1. Kullandığımız Teknolojiler</h2>
+  <table>
+    <tr><th>Teknoloji</th><th>Tür</th><th>Amaç</th><th>Süre</th></tr>
+    <tr><td>Oturum depolaması</td><td>Zorunlu</td><td>Oturumunuzu açık tutmak (giriş jetonu)</td><td>Çıkışa kadar</td></tr>
+    <tr><td>Uygulama tercihleri</td><td>İşlevsel</td><td>Dil, son panel, taslak, arayüz tercihleri</td><td>Temizlenene kadar</td></tr>
+    <tr><td>Reklam/izleme çerezi</td><td>—</td><td><b>Kullanılmıyor</b></td><td>—</td></tr>
+  </table>
+  <p>Siman, oturum bilgisini klasik “çerez” yerine tarayıcı yerel depolaması (localStorage) veya mobil
+  cihaz depolaması üzerinde tutar. Bunlar hizmetin çalışması için zorunlu/işlevsel niteliktedir.</p>
+  <h2>2. Üçüncü Taraf İstekleri</h2>
+  <p>Web’de yazı tipi (Google Fonts), e-postadaki QR görseli ve barındırma (Vercel) gibi hâllerde
+  tarayıcınız üçüncü-taraf sunuculara istek yapabilir; bu istekler IP adresinizi taşıyabilir
+  (çerez tabanlı izleme değildir).</p>
+  <h2>3. Onay</h2>
+  <p>Yalnızca zorunlu/işlevsel teknolojiler kullanıldığından ayrı bir çerez onay bandı hukuken zorunlu
+  değildir. İleride analitik/pazarlama eklenirse bu politika güncellenir ve açık rıza temelli bir onay
+  mekanizması eklenir.</p>
+  <h2>4. Yönetim</h2>
+  <p>Tarayıcı ayarlarınızdan yerel depolamayı temizleyebilir veya çıkış yapabilirsiniz; bu sizi oturumdan
+  düşürür ve tercihlerinizi sıfırlar.</p>
+
+  <footer><a href="./index.html">Gizlilik &amp; KVKK</a> · <a href="./terms.html">Kullanım Koşulları</a> · <a href="./cerez.html">Çerez Politikası</a> · <a href="./ai.html">Yapay Zekâ</a> · <a href="./subisleyenler.html">Alt-İşleyenler</a><br/>Sürüm 2.0 · © 2026 Siman.</footer>
+</div>
+</body>
+</html>

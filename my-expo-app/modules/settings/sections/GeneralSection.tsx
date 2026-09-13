@@ -18,7 +18,8 @@ import {
   ChevronDown, Check, Info, Hash, Percent, Timer, LogOut, List,
   CalendarDays, Watch, UserCheck, Building2, Image as ImageIcon, Upload, Trash2,
   MapPin, Phone, Download,
-} from 'lucide-react-native';
+  Bell, Mail, MessageCircle, Send, AlertTriangle,
+} from '../../../core/ui/icons';
 import { Image as RNImage } from 'react-native';
 import { useAuthStore } from '../../../core/store/authStore';
 import {
@@ -110,8 +111,111 @@ const ITEMS_PER_PAGE: { value: number; label: string }[] = [
   { value: 100, label: '100' },
 ];
 
+// ── Tema önizleme seçici (macOS "Appearance" tarzı) ────────────────────
+//
+// NEDEN: tema, adı okunarak değil GÖRÜLEREK seçilir. Üç mini pencere mockup'ı
+// seçeneğin ne yapacağını kelimeden önce gösterir (Apple: tanıdıklık + kavrama).
+// Karolar BİLEREK sabit renklidir — aktif temayı değil, TEMSİL ETTİKLERİ temayı
+// gösterirler; yalnız çerçeve/etiket/rozet aktif temaya uyar.
+
+const TILE_LIGHT = { shell: '#F1F1F1', card: '#FFFFFF', text: '#0A0A0A', edge: 'rgba(0,0,0,0.07)' };
+const TILE_DARK  = { shell: '#4A4A4A', card: '#171717', text: '#FFFFFF', edge: 'rgba(255,255,255,0.10)' };
+
+/** Tek mini pencere: dış kabuk + sağ-alta taşan iç kart + "Aa". */
+function ThemeTileArt({ tone }: { tone: 'light' | 'dark' }) {
+  const c = tone === 'light' ? TILE_LIGHT : TILE_DARK;
+  return (
+    <View style={{ flex: 1, backgroundColor: c.shell }}>
+      <View
+        style={{
+          position: 'absolute', start: '27%', top: '30%', end: -3, bottom: -3,
+          backgroundColor: c.card,
+          borderTopStartRadius: 10,
+          borderWidth: 1, borderColor: c.edge,
+          paddingStart: 10, paddingTop: 5,
+        }}
+      >
+        <Text style={{ fontSize: 13, fontWeight: '700', color: c.text, letterSpacing: -0.3 }}>Aa</Text>
+      </View>
+    </View>
+  );
+}
+
+/** "Sistem" karosu: aynı mockup ortadan ikiye bölünür — solu koyu, sağı açık. */
+function ThemeTileSplit() {
+  return (
+    <View style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+      <View style={{ position: 'absolute', start: 0, top: 0, bottom: 0, width: '50%', overflow: 'hidden' }}>
+        <View style={{ width: '200%', height: '100%' }}><ThemeTileArt tone="dark" /></View>
+      </View>
+      <View style={{ position: 'absolute', end: 0, top: 0, bottom: 0, width: '50%', overflow: 'hidden' }}>
+        <View style={{ width: '200%', height: '100%', marginStart: '-100%' }}><ThemeTileArt tone="light" /></View>
+      </View>
+    </View>
+  );
+}
+
+export function ThemePreviewPicker({ value, onChange }: {
+  value: ThemeMode; onChange: (v: ThemeMode) => void;
+}) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  // Seçim halkası ve tik rozeti aktif temaya göre: açıkta siyah, koyuda krem.
+  const ring   = T.ink as string;
+  const onRing = isDark ? '#141312' : '#FFFFFF';
+  return (
+    <View style={{ flexDirection: 'row', gap: 8 }}>
+      {THEMES.map(opt => {
+        const active = value === opt.key;
+        return (
+          <Pressable
+            key={opt.key}
+            onPress={() => onChange(opt.key)}
+            accessibilityRole="radio"
+            accessibilityState={{ selected: active }}
+            accessibilityLabel={opt.label}
+            style={Platform.OS === 'web'
+              ? ((({ pressed }: any) => ({
+                  flex: 1, minWidth: 72, gap: 6,
+                  opacity: pressed ? 0.9 : 1,
+                  transform: [{ scale: pressed ? 0.98 : 1 }],
+                  cursor: 'pointer', transitionProperty: 'transform', transitionDuration: '140ms',
+                })) as any)
+              : { flex: 1, minWidth: 72, gap: 6 }}
+          >
+            <View
+              style={{
+                height: 64, borderRadius: 12, overflow: 'hidden',
+                borderWidth: active ? 3 : 1,
+                borderColor: active ? ring : T.hairline,
+                position: 'relative',
+              }}
+            >
+              {opt.key === 'system' ? <ThemeTileSplit /> : <ThemeTileArt tone={opt.key === 'dark' ? 'dark' : 'light'} />}
+              {active && (
+                <View
+                  style={{
+                    position: 'absolute', end: 5, bottom: 5,
+                    width: 18, height: 18, borderRadius: 9,
+                    backgroundColor: ring, alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  <Check size={11} color={onRing} strokeWidth={3} />
+                </View>
+              )}
+            </View>
+            <Text style={{ fontSize: 11.5, fontWeight: active ? '700' : '600', color: active ? (T.ink as string) : (T.ink3 as string) }}>
+              {opt.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 // ── Segment picker (3-option pill) ─────────────────────────────────────
-function SegmentPicker<T extends string>({
+export function SegmentPicker<T extends string>({
   options,
   value,
   onChange,
@@ -123,8 +227,21 @@ function SegmentPicker<T extends string>({
   accentColor: string;
 }) {
   const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  // iOS tarzı segmented: açık gri ray + YÜKSELEN pill + KOYU metin.
+  //
+  // NEDEN (iki ayrı hata birlikte yaşandı):
+  //  1) Pressable'a `className` ile BİRLİKTE fonksiyon-`style` verilince NativeWind
+  //     fonksiyon stilini uygulamıyordu → seçili pill'in zemini hiç çizilmiyordu.
+  //     Bütün stil tek bir düz nesnede toplandı, className kaldırıldı.
+  //  2) Metin accent zeminine göre beyaz seçiliyordu; zemin çizilmeyince beyaz
+  //     yazı açık gri rayın üstünde kayboluyordu. Artık seçili metin `T.ink`
+  //     (açık temada siyah, koyu temada krem) — zemine bağlı tahmin yok.
+  const trackBg  = isDark ? 'rgba(255,255,255,0.07)' : T.hairline2;
+  const pillBg   = isDark ? 'rgba(255,255,255,0.14)' : '#FFFFFF';
+  const pillEdge = isDark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.07)';
   return (
-    <View className="flex-row rounded-xl overflow-hidden" style={{ backgroundColor: T.hairline2 }}>
+    <View style={{ flexDirection: 'row', borderRadius: 12, overflow: 'hidden', backgroundColor: trackBg, padding: 3 }}>
       {options.map(opt => {
         const active = value === opt.key;
         const Icon = opt.icon;
@@ -132,26 +249,40 @@ function SegmentPicker<T extends string>({
           <Pressable
             key={opt.key}
             onPress={() => onChange(opt.key)}
-            className="flex-1 flex-row items-center justify-center gap-1.5 py-2 px-3 rounded-xl"
-            // Seçim anında sertçe yer değiştiriyordu. Basınca hafif küçülme +
-            // 140ms renk geçişi: dokunuşun karşılık bulduğu hissediliyor.
-            style={({ pressed, hovered }: any) => ({
-              backgroundColor: active ? accentColor : hovered ? 'rgba(0,0,0,0.04)' : 'transparent',
-              transform: [{ scale: pressed ? 0.97 : 1 }],
-              ...(Platform.OS === 'web'
-                ? {
-                    cursor: 'pointer',
-                    transitionProperty: 'background-color, transform',
-                    transitionDuration: '140ms',
-                  } as any
-                : {}),
-            })}
+            // 3. HATA (2026-09-10): fonksiyon-`style` native'de layout stilini
+            // düşürüyor → `flex:1` + `flexDirection:'row'` uygulanmıyor, seçenekler
+            // alt alta yığılıp ray taşıyordu. Web'de görünmez. Native'de düz nesne;
+            // hover/scale zaten web kavramı, orada fonksiyon stille yaşıyor.
+            style={Platform.OS === 'web'
+              ? ((({ pressed, hovered }: any) => ({
+                  flex: 1,
+                  flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const,
+                  gap: 6, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 9,
+                  backgroundColor: active
+                    ? pillBg
+                    : hovered ? (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)') : 'transparent',
+                  borderWidth: 1,
+                  borderColor: active ? pillEdge : 'transparent',
+                  transform: [{ scale: pressed ? 0.97 : 1 }],
+                  cursor: 'pointer',
+                  transitionProperty: 'background-color, transform',
+                  transitionDuration: '140ms',
+                  ...(active && !isDark ? { boxShadow: '0 1px 3px rgba(0,0,0,0.10)' } : {}),
+                })) as any)
+              : {
+                  flex: 1,
+                  flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const,
+                  gap: 6, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 9,
+                  backgroundColor: active ? pillBg : 'transparent',
+                  borderWidth: 1,
+                  borderColor: active ? pillEdge : 'transparent',
+                }}
+            // Basma geri bildirimi native'de fonksiyon stille gelemediği için
+            // Android'de ripple; iOS'ta seçili pill'in kendisi zaten net cevap.
+            android_ripple={{ color: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)', borderless: false }}
           >
-            {Icon && <Icon size={13} color={active ? '#FFF' : T.ink3} strokeWidth={1.8} />}
-            <Text
-              className="text-[12px] font-semibold"
-              style={{ color: active ? '#FFF' : T.ink3 }}
-            >
+            {Icon && <Icon size={13} color={active ? (T.ink as string) : (T.ink3 as string)} strokeWidth={active ? 2 : 1.8} />}
+            <Text style={{ fontSize: 12, fontWeight: active ? '700' : '600', color: active ? (T.ink as string) : (T.ink3 as string) }}>
               {opt.label}
             </Text>
           </Pressable>
@@ -162,7 +293,7 @@ function SegmentPicker<T extends string>({
 }
 
 // ── Dropdown select ─────────────────────────────────────────────────────
-function DropdownSelect<T extends string | number>({
+export function DropdownSelect<T extends string | number>({
   options,
   value,
   onChange,
@@ -177,6 +308,7 @@ function DropdownSelect<T extends string | number>({
 }) {
   const [open, setOpen] = useState(false);
   const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const selected = options.find(o => o.key === value);
   const displayLabel = selected ? (renderLabel ? renderLabel(selected) : selected.label) : '';
 
@@ -184,10 +316,10 @@ function DropdownSelect<T extends string | number>({
     <>
       <Pressable
         onPress={() => setOpen(true)}
-        className="flex-row items-center gap-2 border rounded-[14px] px-3.5"
-        style={{ height: 44, borderColor: T.hairline, backgroundColor: T.card }}
+        className="flex-row items-center gap-2 border rounded-[10px] px-3"
+        style={{ height: 36, borderColor: T.hairline, backgroundColor: isDark ? T.cardSoft : T.card }}
       >
-        <Text className="flex-1 text-[14px]" style={{ color: T.ink }}>{displayLabel}</Text>
+        <Text numberOfLines={1} className="flex-1 text-[13px]" style={{ color: T.ink }}>{displayLabel}</Text>
         <ChevronDown size={14} color={T.ink3} strokeWidth={1.8} />
       </Pressable>
 
@@ -243,7 +375,7 @@ function DropdownSelect<T extends string | number>({
  * gelince "hangi ayar nerede" aranarak bulunuyordu. Anlam birimleri:
  * Kimlik · Görünüm · Yerelleştirme · Operasyon.
  */
-function SettingGroup({ title, sub, children, first }: {
+export function SettingGroup({ title, sub, children, first }: {
   title: string; sub?: string; children: React.ReactNode; first?: boolean;
 }) {
   const T = useMobileTokens();
@@ -287,10 +419,10 @@ function SaveHint({ saving, dirty, accentColor }: {
   }, [savedAt]);
 
   if (saving) {
-    return <Text style={{ fontSize: 11.5, color: T.ink3, minWidth: 96 }}>Kaydediliyor…</Text>;
+    return <Text style={{ fontSize: 11.5, color: T.ink3 }}>Kaydediliyor…</Text>;
   }
   if (dirty) {
-    return <Text style={{ fontSize: 11.5, color: accentColor, minWidth: 96 }}>Çıkınca kaydedilir</Text>;
+    return <Text style={{ fontSize: 11.5, color: accentColor }}>Çıkınca kaydedilir</Text>;
   }
   if (savedAt != null) {
     const mins = Math.floor((Date.now() - savedAt) / 60_000);
@@ -303,7 +435,7 @@ function SaveHint({ saving, dirty, accentColor }: {
       </View>
     );
   }
-  return <View style={{ minWidth: 96 }} />;
+  return null;
 }
 
 /**
@@ -313,6 +445,7 @@ function SaveHint({ saving, dirty, accentColor }: {
  */
 function SettingInput({ accentColor, style, multiline, ...rest }: any) {
   const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [focused, setFocused] = useState(false);
   const [hovered, setHovered] = useState(false);
   return (
@@ -328,9 +461,14 @@ function SettingInput({ accentColor, style, multiline, ...rest }: any) {
       style={[
         {
           fontSize: 13, color: T.ink,
-          backgroundColor: focused ? T.card : T.cardSoft,
+          // Zemin HER ZAMAN kart yüzeyi (açık temada beyaz). Koyu temada kartın
+          // üstünde kaybolmasın diye bir kademe koyu yüzey kullanılır.
+          backgroundColor: isDark ? T.cardSoft : T.card,
           borderRadius: 8, borderWidth: 1,
-          borderColor: focused ? accentColor : hovered ? 'rgba(0,0,0,0.18)' : 'rgba(0,0,0,0.08)',
+          borderColor: focused
+            ? accentColor
+            : hovered ? (isDark ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.18)')
+                      : (isDark ? T.hairline : 'rgba(0,0,0,0.08)'),
           ...(Platform.OS === 'web'
             ? {
                 outline: 'none',
@@ -348,14 +486,20 @@ function SettingInput({ accentColor, style, multiline, ...rest }: any) {
 
 // Satır yüksekliği py-3.5 → py-3 (~72px → ~64px): sayfa kompaktlaştı.
 // İkon zemini 0x14 → 0x20, stroke 1.8 → 1.9: eskiden fazla soluktu.
-function SettingRow({
+/**
+ * Kontrol kolonu genişliği — TÜM satırlarda aynı. Satır başına farklı değer
+ * verilince inputlar farklı yerde başlayıp bitiyordu (sayfa dağınık görünüyor).
+ */
+const CONTROL_W = 320;
+
+export function SettingRow({
   icon: Icon,
   label,
   sub,
   accentColor,
   children,
   isLast,
-  controlWidth = 180,
+  controlWidth = CONTROL_W,
 }: {
   icon: any;
   label: string;
@@ -421,6 +565,12 @@ const LOCAL_DEFAULTS = {
   working_hours_end: '18:00',
   auto_logout_minutes: 0,
   items_per_page: 50,
+  technician_name_visibility: 'full',
+  payment_reminder_auto: false,
+  payment_reminder_frequency_days: 7,
+  payment_reminder_channels: ['in_app', 'email', 'whatsapp'] as string[],
+  payment_reminder_tone: 'standard',
+  payment_reminder_min_days_overdue: 1,
 };
 
 // ── Component ───────────────────────────────────────────────────────────
@@ -430,6 +580,7 @@ export function GeneralSection({ panelType, accentColor }: Props) {
   const { t, i18n } = useTranslation();
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
+  const themeMode = useThemeModeStore(s => s.mode);   // toggle bunu sürer; resolvedDark → .dark sınıfı
   const { width: _vw } = useWindowDimensions();
   // Sayfa kenarı: mobilde standart 16, desktop'ta 28
   const sidePad = _vw < 768 ? 16 : 28;
@@ -449,6 +600,12 @@ export function GeneralSection({ panelType, accentColor }: Props) {
         working_hours_end: settings.working_hours_end,
         auto_logout_minutes: settings.auto_logout_minutes,
         items_per_page: settings.items_per_page,
+        technician_name_visibility: settings.technician_name_visibility ?? 'full',
+        payment_reminder_auto: settings.payment_reminder_auto ?? false,
+        payment_reminder_frequency_days: settings.payment_reminder_frequency_days ?? 7,
+        payment_reminder_channels: settings.payment_reminder_channels ?? ['in_app', 'email'],
+        payment_reminder_tone: settings.payment_reminder_tone ?? 'standard',
+        payment_reminder_min_days_overdue: settings.payment_reminder_min_days_overdue ?? 1,
       });
     }
   }, [settings]);
@@ -634,12 +791,16 @@ export function GeneralSection({ panelType, accentColor }: Props) {
           </Text>
         </View>
         <Text className="text-[13px] mb-4" style={{ color: T.ink3 }}>
-          Laboratuvar kimliği, görünüm ve yerelleştirme ayarları.
+          {isLab ? 'Kimlik, görünüm, bölge, iş akışı ve güvenlik ayarları.' : 'Görünüm ve bölge ayarları.'}
         </Text>
 
-        {/* Satırlar üç anlam grubuna ayrıldı: Kimlik · Görünüm · Yerelleştirme.
-            Eskiden 17 satır düz liste hâlindeydi ve "hangi ayar nerede" ancak
-            aranarak bulunuyordu. */}
+        {/* Ayarlar ARTIK ANLAMA göre gruplu — "kim yönetiyor"a göre değil.
+            Eskiden aynı konudaki ayarlar üç ayrı kartta dağılmıştı (Genel /
+            Hekim Ayarları / Laboratuvar Ayarları): tema görünümde, sayfa
+            başına kayıt lab kartında, otomatik çıkış ise hiçbir güvenlik
+            başlığı altında değildi. Tek kart, altı anlam grubu. */}
+
+        {isLab && (
         <SettingGroup title="Laboratuvar Kimliği" sub="Fatura, iş kâğıdı ve yazışmalarda görünen bilgiler" first>
 
         {isLab && canManageSettings && (
@@ -648,9 +809,8 @@ export function GeneralSection({ panelType, accentColor }: Props) {
             label="Laboratuvar İsmi"
             sub="Sidebar, fatura ve yazışmalarda görünür"
             accentColor={accentColor}
-            controlWidth={300}
           >
-            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flex: 1, justifyContent: 'flex-end' }}>
+            <View style={{ gap: 6 }}>
               <SettingInput
                 accentColor={accentColor}
                 value={labNameInput}
@@ -658,13 +818,15 @@ export function GeneralSection({ panelType, accentColor }: Props) {
                 onSubmitEditing={saveLabName}
                 onBlur={saveLabName}
                 placeholder="Laboratuvar adı"
-                style={{ flex: 1, maxWidth: 240, height: 36, paddingHorizontal: 12 }}
+                style={{ width: '100%', height: 36, paddingHorizontal: 12 }}
               />
-              <SaveHint
-                saving={labNameSaving}
-                dirty={!!labNameInput.trim() && labNameInput.trim() !== labNameSaved}
-                accentColor={accentColor}
-              />
+              <View style={{ alignItems: 'flex-end' }}>
+                <SaveHint
+                  saving={labNameSaving}
+                  dirty={!!labNameInput.trim() && labNameInput.trim() !== labNameSaved}
+                  accentColor={accentColor}
+                />
+              </View>
             </View>
           </SettingRow>
         )}
@@ -680,7 +842,6 @@ export function GeneralSection({ panelType, accentColor }: Props) {
             label="Laboratuvar Adresi"
             sub="Kurye teslim noktası, iş kâğıdı ve fatura künyesi"
             accentColor={accentColor}
-            controlWidth={320}
           >
             <View style={{ flex: 1, gap: 8 }}>
               <SettingInput
@@ -690,7 +851,7 @@ export function GeneralSection({ panelType, accentColor }: Props) {
                 onBlur={saveLabContact}
                 placeholder="Mah., Cad., No, İlçe / İl"
                 multiline
-                style={{ minHeight: 44, paddingHorizontal: 12, paddingVertical: 9, textAlignVertical: 'top' }}
+                style={{ width: '100%', minHeight: 44, paddingHorizontal: 12, paddingVertical: 9, textAlignVertical: 'top' }}
               />
 
               {/* Adres zaten kurye ayarında varsa tek tıkla al — iki yere ayrı ayrı
@@ -701,13 +862,18 @@ export function GeneralSection({ panelType, accentColor }: Props) {
                     setLabAddrInput(pickupAddr.address);
                     if (!labPhoneInput.trim() && pickupAddr.phone) setLabPhoneInput(pickupAddr.phone);
                   }}
-                  style={({ pressed }: any) => ({
-                    flexDirection: 'row', alignItems: 'center', gap: 7,
-                    paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8,
-                    backgroundColor: `${accentColor}14`,
-                    opacity: pressed ? 0.6 : 1,
-                    ...(Platform.OS === 'web' ? { cursor: 'pointer' as any } : {}),
-                  })}
+                  style={Platform.OS === 'web'
+                    ? ((({ pressed }: any) => ({
+                        flexDirection: 'row' as const, alignItems: 'center' as const, gap: 7,
+                        paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8,
+                        backgroundColor: `${accentColor}14`,
+                        opacity: pressed ? 0.6 : 1, cursor: 'pointer',
+                      })) as any)
+                    : {
+                        flexDirection: 'row' as const, alignItems: 'center' as const, gap: 7,
+                        paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8,
+                        backgroundColor: `${accentColor}14`,
+                      }}
                 >
                   <Download size={12} color={accentColor} strokeWidth={2} />
                   <Text numberOfLines={1} style={{ flex: 1, fontSize: 11.5, fontWeight: '600', color: accentColor }}>
@@ -716,48 +882,46 @@ export function GeneralSection({ panelType, accentColor }: Props) {
                 </Pressable>
               ) : null}
 
-              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                <View style={{ flex: 1, position: 'relative', justifyContent: 'center' }}>
-                  <View style={{ position: 'absolute', start: 10, zIndex: 1 }} pointerEvents="none">
-                    <Phone size={13} color={T.ink3} strokeWidth={1.8} />
-                  </View>
-                  <SettingInput
-                    accentColor={accentColor}
-                    value={labPhoneInput}
-                    onChangeText={setLabPhoneInput}
-                    onBlur={saveLabContact}
-                    onSubmitEditing={saveLabContact}
-                    placeholder="Telefon"
-                    keyboardType="phone-pad"
-                    style={{ height: 36, paddingStart: 30, paddingEnd: 10 }}
-                  />
+              <View style={{ position: 'relative', justifyContent: 'center' }}>
+                <View style={{ position: 'absolute', start: 10, zIndex: 1 }} pointerEvents="none">
+                  <Phone size={13} color={T.ink3} strokeWidth={1.8} />
                 </View>
-                <SaveHint
-                  saving={labContactSaving}
-                  dirty={labAddrInput.trim() !== labAddrSaved.trim() || labPhoneInput.trim() !== labPhoneSaved.trim() || labSiteInput.trim() !== labSiteSaved.trim()}
+                <SettingInput
                   accentColor={accentColor}
+                  value={labPhoneInput}
+                  onChangeText={setLabPhoneInput}
+                  onBlur={saveLabContact}
+                  onSubmitEditing={saveLabContact}
+                  placeholder="Telefon"
+                  keyboardType="phone-pad"
+                  style={{ width: '100%', height: 36, paddingStart: 30, paddingEnd: 10 }}
                 />
               </View>
 
               {/* Web sitesi — dolu olduğunda kenar çubuğundaki lab logosu bu adrese
                   bağlanır. Protokol yazmak gerekmez, açılırken https:// eklenir. */}
-              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                <View style={{ flex: 1, position: 'relative', justifyContent: 'center' }}>
-                  <View style={{ position: 'absolute', start: 10, zIndex: 1 }} pointerEvents="none">
-                    <Globe size={13} color={T.ink3} strokeWidth={1.8} />
-                  </View>
-                  <SettingInput
-                    accentColor={accentColor}
-                    value={labSiteInput}
-                    onChangeText={setLabSiteInput}
-                    onBlur={saveLabContact}
-                    onSubmitEditing={saveLabContact}
-                    placeholder="Web sitesi (örn. nexadentlab.com)"
-                    autoCapitalize="none"
-                    keyboardType="url"
-                    style={{ height: 36, paddingStart: 30, paddingEnd: 10 }}
-                  />
+              <View style={{ position: 'relative', justifyContent: 'center' }}>
+                <View style={{ position: 'absolute', start: 10, zIndex: 1 }} pointerEvents="none">
+                  <Globe size={13} color={T.ink3} strokeWidth={1.8} />
                 </View>
+                <SettingInput
+                  accentColor={accentColor}
+                  value={labSiteInput}
+                  onChangeText={setLabSiteInput}
+                  onBlur={saveLabContact}
+                  onSubmitEditing={saveLabContact}
+                  placeholder="Web sitesi (örn. nexadentlab.com)"
+                  autoCapitalize="none"
+                  keyboardType="url"
+                  style={{ width: '100%', height: 36, paddingStart: 30, paddingEnd: 10 }}
+                />
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <SaveHint
+                  saving={labContactSaving}
+                  dirty={labAddrInput.trim() !== labAddrSaved.trim() || labPhoneInput.trim() !== labPhoneSaved.trim() || labSiteInput.trim() !== labSiteSaved.trim()}
+                  accentColor={accentColor}
+                />
               </View>
             </View>
           </SettingRow>
@@ -769,90 +933,139 @@ export function GeneralSection({ panelType, accentColor }: Props) {
             label="Laboratuvar Logosu"
             sub="İş emri çıktısı ve yazışmalarda kullanılır"
             accentColor={accentColor}
-            controlWidth={260}
             isLast
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               {/* 44 → 72px: küçük thumbnail'de logonun okunup okunmadığı
                   anlaşılmıyordu. Şeffaflığı göstermek için damalı zemin. */}
-              <View style={{
-                width: 72, height: 72, borderRadius: 12,
-                borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)',
-                backgroundColor: T.cardSoft,
-                alignItems: 'center', justifyContent: 'center',
-                overflow: 'hidden', flexShrink: 0,
-                ...(Platform.OS === 'web' && labLogoUrl
-                  ? {
-                      backgroundImage:
-                        'linear-gradient(45deg,rgba(0,0,0,0.05) 25%,transparent 25%),' +
-                        'linear-gradient(-45deg,rgba(0,0,0,0.05) 25%,transparent 25%),' +
-                        'linear-gradient(45deg,transparent 75%,rgba(0,0,0,0.05) 75%),' +
-                        'linear-gradient(-45deg,transparent 75%,rgba(0,0,0,0.05) 75%)',
-                      backgroundSize: '10px 10px',
-                      backgroundPosition: '0 0, 0 5px, 5px -5px, -5px 0px',
-                    } as any
-                  : {}),
-              }}>
-                {labLogoUrl ? (
-                  <RNImage source={{ uri: labLogoUrl }} style={{ width: 64, height: 64 }} resizeMode="contain" />
-                ) : (
-                  <ImageIcon size={24} color={T.ink3} strokeWidth={1.5} />
-                )}
-              </View>
+              {/* Ayrı "Değiştir" butonu yerine karonun KENDİSİ hedef: eylem
+                  değiştirdiği nesnenin üzerinde durur (Apple: doğrudan manipülasyon). */}
+              <Pressable
+                onPress={pickAndUploadLogo}
+                disabled={logoUploading}
+                accessibilityLabel={labLogoUrl ? 'Logoyu değiştir' : 'Logo yükle'}
+                style={{
+                  width: 84, height: 84, borderRadius: 14,
+                  borderWidth: 1, borderColor: T.hairline,
+                  backgroundColor: T.cardSoft,
+                  alignItems: 'center', justifyContent: 'center',
+                  overflow: 'hidden', flexShrink: 0,
+                  ...(Platform.OS === 'web'
+                    ? { cursor: logoUploading ? 'wait' : 'pointer' } as any
+                    : {}),
+                  ...(Platform.OS === 'web' && labLogoUrl
+                    ? {
+                        backgroundImage:
+                          'linear-gradient(45deg,rgba(0,0,0,0.05) 25%,transparent 25%),' +
+                          'linear-gradient(-45deg,rgba(0,0,0,0.05) 25%,transparent 25%),' +
+                          'linear-gradient(45deg,transparent 75%,rgba(0,0,0,0.05) 75%),' +
+                          'linear-gradient(-45deg,transparent 75%,rgba(0,0,0,0.05) 75%)',
+                        backgroundSize: '10px 10px',
+                        backgroundPosition: '0 0, 0 5px, 5px -5px, -5px 0px',
+                      } as any
+                    : {}),
+                }}
+              >
+                {({ hovered }: any) => {
+                  const show = hovered || logoUploading;
+                  return (
+                    <>
+                      {labLogoUrl ? (
+                        <RNImage source={{ uri: labLogoUrl }} style={{ width: 74, height: 74 }} resizeMode="contain" />
+                      ) : (
+                        <ImageIcon size={24} color={T.ink3} strokeWidth={1.5} />
+                      )}
+                      {/* Kaplama — hover'da (ve yüklerken) tam karoyu örter */}
+                      <View
+                        pointerEvents="none"
+                        style={{
+                          position: 'absolute', top: 0, bottom: 0, start: 0, end: 0,
+                          alignItems: 'center', justifyContent: 'center', gap: 3,
+                          backgroundColor: 'rgba(10,10,10,0.58)',
+                          opacity: show ? 1 : 0,
+                          ...(Platform.OS === 'web'
+                            ? { transitionProperty: 'opacity', transitionDuration: '140ms' } as any
+                            : {}),
+                        }}
+                      >
+                        <Upload size={16} color="#FFFFFF" strokeWidth={2} />
+                        <Text style={{ fontSize: 10.5, fontWeight: '700', color: '#FFFFFF', letterSpacing: 0.2 }}>
+                          {logoUploading ? 'Yükleniyor' : labLogoUrl ? 'Değiştir' : 'Yükle'}
+                        </Text>
+                      </View>
+                      {/* Dokunmatikte hover yok — küçük rozet tıklanabilirliği söyler */}
+                      {!show && Platform.OS !== 'web' && (
+                        <View
+                          pointerEvents="none"
+                          style={{
+                            position: 'absolute', end: 4, bottom: 4,
+                            width: 22, height: 22, borderRadius: 11,
+                            alignItems: 'center', justifyContent: 'center',
+                            backgroundColor: 'rgba(10,10,10,0.62)',
+                          }}
+                        >
+                          <Upload size={11} color="#FFFFFF" strokeWidth={2.2} />
+                        </View>
+                      )}
+                    </>
+                  );
+                }}
+              </Pressable>
               {/* Teknik gereksinimler alt metinde uzun bir cümleydi; okunmuyordu.
                   Rozet olarak durur — logoyu değiştirirken de gerekiyor. */}
               <View style={{ gap: 5, flexShrink: 0 }}>
                 <View style={{ flexDirection: 'row', gap: 4 }}>
                   {['PNG', 'JPG', 'SVG'].map(tag => (
-                    <View key={tag} style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: T.cardSoft, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' }}>
+                    <View key={tag} style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: T.cardSoft, borderWidth: 1, borderColor: T.hairline }}>
                       <Text style={{ fontSize: 9.5, fontWeight: '600', color: T.ink3 }}>{tag}</Text>
                     </View>
                   ))}
                 </View>
                 <Text style={{ fontSize: 10, color: T.ink3 }}>400×400 · şeffaf zemin</Text>
               </View>
-              <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
-                {/* Değiştir — compact icon button, sadece icon */}
+              {labLogoUrl && (
                 <Pressable
-                  onPress={pickAndUploadLogo}
-                  disabled={logoUploading}
-                  accessibilityLabel={labLogoUrl ? 'Logoyu değiştir' : 'Logo yükle'}
-                  style={({ hovered }: any) => ({
-                    flexDirection: 'row', alignItems: 'center', gap: 5,
-                    height: 32, paddingHorizontal: 12, borderRadius: 8,
-                    backgroundColor: hovered ? `${accentColor}E6` : accentColor,
-                    opacity: logoUploading ? 0.6 : 1,
-                    ...(Platform.OS === 'web' ? { cursor: logoUploading ? 'wait' : 'pointer' as any } as any : {}),
-                  })}
+                  onPress={removeLogo}
+                  accessibilityLabel="Logoyu kaldır"
+                  style={Platform.OS === 'web'
+                    ? ((({ hovered }: any) => ({
+                        width: 32, height: 32, borderRadius: 8,
+                        alignItems: 'center' as const, justifyContent: 'center' as const,
+                        backgroundColor: hovered ? (isDark ? 'rgba(217,75,75,0.20)' : '#FEE2E2') : 'transparent',
+                        borderWidth: 1, borderColor: hovered ? (isDark ? 'rgba(217,75,75,0.45)' : '#FCA5A5') : T.hairline,
+                        cursor: 'pointer',
+                      })) as any)
+                    : {
+                        width: 32, height: 32, borderRadius: 8,
+                        alignItems: 'center' as const, justifyContent: 'center' as const,
+                        backgroundColor: 'transparent',
+                        borderWidth: 1, borderColor: T.hairline,
+                      }}
                 >
-                  <Upload size={12} color="#FFFFFF" strokeWidth={2} />
-                  <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#FFFFFF', letterSpacing: 0.1 }}>
-                    {logoUploading ? 'Yükleniyor' : labLogoUrl ? 'Değiştir' : 'Yükle'}
-                  </Text>
+                  <Trash2 size={13} color={isDark ? '#F3A0A0' : '#DC2626'} strokeWidth={1.8} />
                 </Pressable>
-                {labLogoUrl && (
-                  <Pressable
-                    onPress={removeLogo}
-                    accessibilityLabel="Logoyu kaldır"
-                    style={({ hovered }: any) => ({
-                      width: 32, height: 32, borderRadius: 8,
-                      alignItems: 'center', justifyContent: 'center',
-                      backgroundColor: hovered ? '#FEE2E2' : 'transparent',
-                      borderWidth: 1, borderColor: hovered ? '#FCA5A5' : 'rgba(0,0,0,0.08)',
-                      ...(Platform.OS === 'web' ? { cursor: 'pointer' as any } as any : {}),
-                    })}
-                  >
-                    <Trash2 size={13} color="#DC2626" strokeWidth={1.8} />
-                  </Pressable>
-                )}
-              </View>
+              )}
             </View>
           </SettingRow>
         )}
 
         </SettingGroup>
+        )}
 
-        <SettingGroup title="Görünüm" sub="Kenar çubuğu, logo ölçeği ve tema">
+        <SettingGroup title="Görünüm" sub="Tema, kenar çubuğu markası ve liste yoğunluğu" first={!isLab}>
+
+        {/* Tema — görsel önizlemeli seçici, diğer kontrollerle aynı sağ kolonda */}
+        <SettingRow
+          icon={Sun}
+          label="Tema"
+          sub="Arayüz görünüm tercihi"
+          accentColor={accentColor}
+        >
+          <ThemePreviewPicker
+            value={themeMode}
+            onChange={(v) => { useThemeModeStore.getState().setMode(v); handleUpdate({ theme_mode: v }); }}
+          />
+        </SettingRow>
 
         {isLab && canManageSettings && labLogoUrl && (
           <SettingRow
@@ -860,9 +1073,8 @@ export function GeneralSection({ panelType, accentColor }: Props) {
             label="Sidebar Markası"
             sub="Kenar çubuğunda logo nasıl görünsün"
             accentColor={accentColor}
-            controlWidth={240}
           >
-            <View style={{ flexDirection: 'row', gap: 4, padding: 3, borderRadius: 10, backgroundColor: T.cardSoft, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', alignSelf: 'flex-end' }}>
+            <View style={{ flexDirection: 'row', gap: 4, padding: 3, borderRadius: 12, backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : T.hairline2, alignSelf: 'flex-end' }}>
               {([
                 { k: 'logo_text', label: 'Logo + İsim' },
                 { k: 'logo',      label: 'Sadece Logo' },
@@ -872,16 +1084,26 @@ export function GeneralSection({ panelType, accentColor }: Props) {
                   <Pressable
                     key={opt.k}
                     onPress={() => saveBrandMode(opt.k)}
-                    style={({ pressed, hovered }: any) => ({
-                      paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8,
-                      backgroundColor: active ? accentColor : hovered ? 'rgba(0,0,0,0.04)' : 'transparent',
-                      transform: [{ scale: pressed ? 0.97 : 1 }],
-                      ...(Platform.OS === 'web'
-                        ? { cursor: 'pointer', transitionProperty: 'background-color, transform', transitionDuration: '140ms' } as any
-                        : {}),
-                    })}
+                    style={Platform.OS === 'web'
+                      ? ((({ pressed, hovered }: any) => ({
+                          paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8,
+                          backgroundColor: active
+                            ? (isDark ? 'rgba(255,255,255,0.14)' : '#FFFFFF')
+                            : hovered ? (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)') : 'transparent',
+                          borderWidth: 1,
+                          borderColor: active ? (isDark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.07)') : 'transparent',
+                          transform: [{ scale: pressed ? 0.97 : 1 }],
+                          cursor: 'pointer', transitionProperty: 'background-color, transform', transitionDuration: '140ms',
+                          ...(active && !isDark ? { boxShadow: '0 1px 3px rgba(0,0,0,0.10)' } : {}),
+                        })) as any)
+                      : {
+                          paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8,
+                          backgroundColor: active ? (isDark ? 'rgba(255,255,255,0.14)' : '#FFFFFF') : 'transparent',
+                          borderWidth: 1,
+                          borderColor: active ? (isDark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.07)') : 'transparent',
+                        }}
                   >
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: active ? '#FFFFFF' : T.ink2 }}>{opt.label}</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: active ? (T.ink as string) : (T.ink3 as string) }}>{opt.label}</Text>
                   </Pressable>
                 );
               })}
@@ -896,7 +1118,6 @@ export function GeneralSection({ panelType, accentColor }: Props) {
             label="Logo Boyutu"
             sub="Sidebar'daki logonun büyüklüğü"
             accentColor={accentColor}
-            controlWidth={240}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-end', flex: 1, justifyContent: 'flex-end' }}>
               <Text style={{ fontSize: 11, color: T.ink3 }}>Küçük</Text>
@@ -927,63 +1148,25 @@ export function GeneralSection({ panelType, accentColor }: Props) {
           </SettingRow>
         )}
 
-        {/* Tema */}
+        {/* Sayfa Başına Kayıt */}
         <SettingRow
-          icon={Sun}
-          label="Tema"
-          sub="Arayüz görünüm tercihi"
+          icon={List}
+          label="Sayfa Başına Kayıt"
+          sub="Tablo ve listelerde gösterilecek kayıt sayısı"
           accentColor={accentColor}
           isLast
         >
           <SegmentPicker
-            options={THEMES}
-            value={s.theme_mode}
-            onChange={(v) => handleUpdate({ theme_mode: v })}
+            options={ITEMS_PER_PAGE.map(p => ({ key: p.value as any, label: p.label }))}
+            value={s.items_per_page as any}
+            onChange={(v) => handleUpdate({ items_per_page: v })}
             accentColor={accentColor}
           />
         </SettingRow>
 
         </SettingGroup>
 
-        <SettingGroup title="Yerelleştirme" sub="Para birimi, takvim ve tarih/saat biçimi">
-
-        {canManageSettings && (
-          <SettingRow
-            icon={Globe}
-            label="Ana Para Birimi"
-            sub="Varsayılan para birimi (çoklu desteklenir)"
-            accentColor={accentColor}
-          >
-            <DropdownSelect
-              options={CURRENCIES.map(c => ({
-                key: c.code,
-                label: `${c.symbol}  ${c.code}`,
-                sub: c.label,
-              }))}
-              value={s.default_currency}
-              onChange={(v) => handleUpdate({ default_currency: v })}
-              accentColor={accentColor}
-              renderLabel={(opt) => opt.label}
-            />
-          </SettingRow>
-        )}
-
-        {/* Hafta Başlangıcı — manage_settings yetkisi gerekir */}
-        {canManageSettings && (
-          <SettingRow
-            icon={Calendar}
-            label="Hafta Başlangıcı"
-            sub="Takvim ve raporlarda haftanın ilk günü"
-            accentColor={accentColor}
-          >
-            <SegmentPicker
-              options={WEEK_STARTS.map(w => ({ key: w.key, label: w.label }))}
-              value={s.week_start}
-              onChange={(v) => handleUpdate({ week_start: v })}
-              accentColor={accentColor}
-            />
-          </SettingRow>
-        )}
+        <SettingGroup title="Bölge ve Biçim" sub="Dil, mevzuat bölgesi, takvim ve tarih/saat gösterimi">
 
         {/* Uygulama Dili */}
         <SettingRow
@@ -1002,7 +1185,8 @@ export function GeneralSection({ panelType, accentColor }: Props) {
 
         {/* Bölge — mevzuata bağlı özellikleri tek yerden açar/kapatır.
             TR: e-Fatura + iyzico POS + %20 KDV · IR: ikisi de kapalı, %10 KDV.
-            Var olan laboratuvarlar 'TR' olduğu için davranışları değişmez. */}
+            Lab mevzuat ayarı → yalnız lab/admin panelinde; klinik/hekime gösterilmez. */}
+        {isLab && canManageSettings && (
         <SettingRow
           icon={Globe}
           label="Bölge"
@@ -1024,6 +1208,7 @@ export function GeneralSection({ panelType, accentColor }: Props) {
             accentColor={accentColor}
           />
         </SettingRow>
+        )}
 
         {/* Takvim — YALNIZ Farsça'da anlamlı, o yüzden yalnız orada gösterilir.
             Farsça konuşan herkes Şemsi kullanmaz: İran'da resmîdir ama Afgan/
@@ -1047,6 +1232,23 @@ export function GeneralSection({ panelType, accentColor }: Props) {
               ]}
               value={calPref}
               onChange={(v) => { void setCalendarPref(v as CalendarPref); setCalPref(v as CalendarPref); }}
+              accentColor={accentColor}
+            />
+          </SettingRow>
+        )}
+
+        {/* Hafta Başlangıcı — manage_settings yetkisi gerekir */}
+        {canManageSettings && (
+          <SettingRow
+            icon={Calendar}
+            label="Hafta Başlangıcı"
+            sub="Takvim ve raporlarda haftanın ilk günü"
+            accentColor={accentColor}
+          >
+            <DropdownSelect
+              options={WEEK_STARTS.map(w => ({ key: w.key, label: w.label }))}
+              value={s.week_start}
+              onChange={(v) => handleUpdate({ week_start: v })}
               accentColor={accentColor}
             />
           </SettingRow>
@@ -1092,174 +1294,148 @@ export function GeneralSection({ panelType, accentColor }: Props) {
         </SettingRow>
 
         </SettingGroup>
+
+        {isLab && canManageSettings && (
+        <SettingGroup title="İş Akışı" sub="Sipariş numaralandırma ve mesai saatleri">
+
+        {/* Sipariş Prefix */}
+        <SettingRow
+          icon={Hash}
+          label="Sipariş Ön Eki"
+          sub="Sipariş numarası formatı (ör: LAB-2026-0001)"
+          accentColor={accentColor}
+        >
+          <TextInput
+            className="text-[14px] border rounded-[14px] px-3.5"
+            style={{ height: 36, width: '100%', borderColor: T.hairline, backgroundColor: isDark ? T.cardSoft : T.card, color: T.ink, outlineWidth: 0 } as any}
+            value={s.order_prefix}
+            onChangeText={(v) => handleUpdate({ order_prefix: v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) })}
+            placeholder="LAB"
+            placeholderTextColor={T.ink3}
+            maxLength={6}
+            autoCapitalize="characters"
+          />
+        </SettingRow>
+
+        {/* Çalışma Saatleri */}
+        <SettingRow
+          icon={Clock}
+          label="Çalışma Saatleri"
+          sub="Mesai başlangıç ve bitiş saatleri"
+          accentColor={accentColor}
+          isLast
+        >
+          <View className="flex-row items-center gap-1.5">
+            <TextInput
+              className="text-[14px] text-center border rounded-[14px]"
+              style={{ height: 36, width: 84, borderColor: T.hairline, backgroundColor: isDark ? T.cardSoft : T.card, color: T.ink, outlineWidth: 0 } as any}
+              value={s.working_hours_start}
+              onChangeText={(v) => handleUpdate({ working_hours_start: v })}
+              placeholder="08:00"
+              placeholderTextColor={T.ink3}
+              maxLength={5}
+            />
+            <Text className="text-[14px] px-1" style={{ color: T.ink3 }}>–</Text>
+            <TextInput
+              className="text-[14px] text-center border rounded-[14px]"
+              style={{ height: 36, width: 84, borderColor: T.hairline, backgroundColor: isDark ? T.cardSoft : T.card, color: T.ink, outlineWidth: 0 } as any}
+              value={s.working_hours_end}
+              onChangeText={(v) => handleUpdate({ working_hours_end: v })}
+              placeholder="18:00"
+              placeholderTextColor={T.ink3}
+              maxLength={5}
+            />
+          </View>
+        </SettingRow>
+
+        </SettingGroup>
+        )}
+
+        {isLab && canManageSettings && (
+        <SettingGroup title="Gizlilik ve Güvenlik" sub="Teknisyen adı görünürlüğü ve oturum güvenliği">
+
+        {/* Teknisyen adı görünürlüğü — hekim/kliniklere nasıl görünsün */}
+        <SettingRow
+          icon={UserCheck}
+          label="Teknisyen Adı (hekim/klinik)"
+          sub="Sipariş aşamalarında teknisyen adı hekim ve kliniklere nasıl görünsün"
+          accentColor={accentColor}
+        >
+          <SegmentPicker
+            options={[
+              { key: 'full',   label: 'Ad Soyad' },
+              { key: 'first',  label: 'Sadece Ad' },
+              { key: 'hidden', label: 'Gizli' },
+            ]}
+            value={(s.technician_name_visibility ?? 'full') as any}
+            onChange={(v) => handleUpdate({ technician_name_visibility: v })}
+            accentColor={accentColor}
+          />
+        </SettingRow>
+
+        {/* Otomatik Çıkış */}
+        <SettingRow
+          icon={LogOut}
+          label="Otomatik Çıkış"
+          sub="İşlem yapılmadığında otomatik oturum kapatma"
+          accentColor={accentColor}
+          isLast
+        >
+          <DropdownSelect
+            options={AUTO_LOGOUT.map(a => ({ key: a.value, label: a.label }))}
+            value={s.auto_logout_minutes}
+            onChange={(v) => handleUpdate({ auto_logout_minutes: v })}
+            accentColor={accentColor}
+          />
+        </SettingRow>
+
+        </SettingGroup>
+        )}
+
+        {isDoctor && (
+        <SettingGroup title="Hekim Tercihleri" sub="Unvan ve varsayılan laboratuvar">
+
+        {/* Hekim Unvanı */}
+        <SettingRow
+          icon={UserCheck}
+          label="Hekim Unvanı"
+          sub="İsminizin önünde gösterilir (Dt., Diş Hekimi, Prof. Dr., …)"
+          accentColor={accentColor}
+        >
+          <TextInput
+            className="text-[14px] border rounded-[14px] px-3.5"
+            style={{ height: 36, width: '100%', borderColor: T.hairline, backgroundColor: isDark ? T.cardSoft : T.card, color: T.ink, outlineWidth: 0 } as any}
+            value={doctorTitle}
+            onChangeText={(v) => setUserPref('doctor_title', v.slice(0, 30))}
+            placeholder="Örn: Dt."
+            placeholderTextColor={T.ink3}
+            maxLength={30}
+          />
+        </SettingRow>
+
+        {/* Varsayılan Laboratuvar */}
+        <SettingRow
+          icon={Building2}
+          label="Varsayılan Laboratuvar"
+          sub="Yeni siparişlerde otomatik seçili gelir"
+          accentColor={accentColor}
+          isLast
+        >
+          <DropdownSelect
+            options={[
+              { key: '__none__', label: 'Yok', sub: 'Her seferinde seç' },
+              ...labs.map(l => ({ key: l.id, label: l.name, sub: '' })),
+            ]}
+            value={defaultLabId ?? '__none__'}
+            onChange={(v) => setUserPref('default_lab_id', v === '__none__' ? null : v as string)}
+            accentColor={accentColor}
+            renderLabel={(opt) => opt.label}
+          />
+        </SettingRow>
+
+        </SettingGroup>
+        )}
       </View>
-
-      {/* ── Hekim'e Özel Ayarlar kartı ───────────────────────── */}
-      {isDoctor && (
-        <View className="rounded-[24px] p-[22px] mt-4" style={[CARD_SHADOW, { backgroundColor: T.card }]}>
-          <Text style={{ ...DISPLAY_FONT, fontSize: 18, letterSpacing: -0.3, color: T.ink, marginBottom: 4 }}>
-            Hekim Ayarları
-          </Text>
-          <Text className="text-[13px] mb-4" style={{ color: T.ink3 }}>
-            Profil ve varsayılan tercihler.
-          </Text>
-
-          <View className="h-px mb-1" style={{ backgroundColor: T.hairline2 }} />
-
-          {/* Hekim Unvanı */}
-          <SettingRow
-            icon={UserCheck}
-            label="Hekim Unvanı"
-            sub="İsminizin önünde gösterilir (Dt., Diş Hekimi, Prof. Dr., …)"
-            accentColor={accentColor}
-          >
-            <TextInput
-              className="text-[14px] border rounded-[14px] px-3.5"
-              style={{ height: 44, minWidth: 180, borderColor: T.hairline, backgroundColor: T.card, color: T.ink, outlineWidth: 0 } as any}
-              value={doctorTitle}
-              onChangeText={(v) => setUserPref('doctor_title', v.slice(0, 30))}
-              placeholder="Örn: Dt."
-              placeholderTextColor={T.ink3}
-              maxLength={30}
-            />
-          </SettingRow>
-
-          {/* Varsayılan Laboratuvar */}
-          <SettingRow
-            icon={Building2}
-            label="Varsayılan Laboratuvar"
-            sub="Yeni siparişlerde otomatik seçili gelir"
-            accentColor={accentColor}
-            isLast
-          >
-            <DropdownSelect
-              options={[
-                { key: '__none__', label: 'Yok', sub: 'Her seferinde seç' },
-                ...labs.map(l => ({ key: l.id, label: l.name, sub: '' })),
-              ]}
-              value={defaultLabId ?? '__none__'}
-              onChange={(v) => setUserPref('default_lab_id', v === '__none__' ? null : v as string)}
-              accentColor={accentColor}
-              renderLabel={(opt) => opt.label}
-            />
-          </SettingRow>
-        </View>
-      )}
-
-      {/* ── Lab'a Özel Ayarlar kartı — manage_settings yetkisi gerekir ── */}
-      {isLab && canManageSettings && (
-        <View className="rounded-[24px] p-[22px] mt-4" style={[CARD_SHADOW, { backgroundColor: T.card }]}>
-          <Text style={{ ...DISPLAY_FONT, fontSize: 18, letterSpacing: -0.3, color: T.ink, marginBottom: 4 }}>
-            Laboratuvar Ayarları
-          </Text>
-          <Text className="text-[13px] mb-4" style={{ color: T.ink3 }}>
-            Laboratuvara özel iş akışı ve yapılandırma ayarları.
-          </Text>
-
-          <View className="h-px mb-1" style={{ backgroundColor: T.hairline2 }} />
-
-          {/* Sipariş Prefix */}
-          <SettingRow
-            icon={Hash}
-            label="Sipariş Ön Eki"
-            sub="Sipariş numarası formatı (ör: LAB-2026-0001)"
-            accentColor={accentColor}
-          >
-            <TextInput
-              className="text-[14px] border rounded-[14px] px-3.5"
-              style={{ height: 44, borderColor: T.hairline, backgroundColor: T.card, color: T.ink, outlineWidth: 0 } as any}
-              value={s.order_prefix}
-              onChangeText={(v) => handleUpdate({ order_prefix: v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) })}
-              placeholder="LAB"
-              placeholderTextColor={T.ink3}
-              maxLength={6}
-              autoCapitalize="characters"
-            />
-          </SettingRow>
-
-          {/* KDV Oranı */}
-          <SettingRow
-            icon={Percent}
-            label="Varsayılan KDV Oranı"
-            sub="Faturalarda kullanılacak oran"
-            accentColor={accentColor}
-          >
-            <DropdownSelect
-              options={[
-                { key: 0,  label: '%0',  sub: 'KDV yok' },
-                { key: 1,  label: '%1',  sub: 'Düşük oran' },
-                { key: 10, label: '%10', sub: 'İndirimli oran' },
-                { key: 20, label: '%20', sub: 'Genel oran' },
-              ]}
-              value={s.default_tax_rate}
-              onChange={(v) => handleUpdate({ default_tax_rate: v })}
-              accentColor={accentColor}
-            />
-          </SettingRow>
-
-          {/* Çalışma Saatleri */}
-          <SettingRow
-            icon={Clock}
-            label="Çalışma Saatleri"
-            sub="Mesai başlangıç ve bitiş saatleri"
-            accentColor={accentColor}
-            controlWidth={200}
-          >
-            <View className="flex-row items-center gap-1.5">
-              <TextInput
-                className="text-[14px] text-center border rounded-[14px]"
-                style={{ height: 40, width: 80, borderColor: T.hairline, backgroundColor: T.card, color: T.ink, outlineWidth: 0 } as any}
-                value={s.working_hours_start}
-                onChangeText={(v) => handleUpdate({ working_hours_start: v })}
-                placeholder="08:00"
-                placeholderTextColor={T.ink3}
-                maxLength={5}
-              />
-              <Text className="text-[14px] px-1" style={{ color: T.ink3 }}>–</Text>
-              <TextInput
-                className="text-[14px] text-center border rounded-[14px]"
-                style={{ height: 40, width: 80, borderColor: T.hairline, backgroundColor: T.card, color: T.ink, outlineWidth: 0 } as any}
-                value={s.working_hours_end}
-                onChangeText={(v) => handleUpdate({ working_hours_end: v })}
-                placeholder="18:00"
-                placeholderTextColor={T.ink3}
-                maxLength={5}
-              />
-            </View>
-          </SettingRow>
-
-          {/* Otomatik Çıkış */}
-          <SettingRow
-            icon={LogOut}
-            label="Otomatik Çıkış"
-            sub="İşlem yapılmadığında otomatik oturum kapatma"
-            accentColor={accentColor}
-          >
-            <DropdownSelect
-              options={AUTO_LOGOUT.map(a => ({ key: a.value, label: a.label }))}
-              value={s.auto_logout_minutes}
-              onChange={(v) => handleUpdate({ auto_logout_minutes: v })}
-              accentColor={accentColor}
-            />
-          </SettingRow>
-
-          {/* Sayfa Başına Kayıt */}
-          <SettingRow
-            icon={List}
-            label="Sayfa Başına Kayıt"
-            sub="Tablo ve listelerde gösterilecek kayıt sayısı"
-            accentColor={accentColor}
-            isLast
-          >
-            <SegmentPicker
-              options={ITEMS_PER_PAGE.map(p => ({ key: p.value as any, label: p.label }))}
-              value={s.items_per_page as any}
-              onChange={(v) => handleUpdate({ items_per_page: v })}
-              accentColor={accentColor}
-            />
-          </SettingRow>
-        </View>
-      )}
 
       {/* Bilgi notu */}
       <View

@@ -5,18 +5,22 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { localeTag } from '../../core/i18n';
-import { View } from 'react-native';
-import { Tabs, Slot } from 'expo-router';
+import { View, Modal } from 'react-native';
+import { Tabs, Slot, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
   Home, ClipboardList, QrCode, Map as MapIcon, User,
-} from 'lucide-react-native';
+} from '../../core/ui/icons';
 import { PatternsShell, useIsDesktop } from '../../core/layout/PatternsShell';
 import { PillTabBar, type PillTabItem } from '../../core/ui/mobile/PillTabBar';
 import { useAuthStore } from '../../core/store/authStore';
 import { useScanStore } from '../../core/store/scanStore';
 import { DS } from '../../core/theme/dsTokens';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
+import { useCourierTracking } from '../../modules/courier/useCourierTracking';
+
+// QR/kamera tarayıcı — Tara FAB (setScanOpen) ile açılır (station ile aynı).
+const ScanB6Mobile: any = React.lazy(() => import('../../modules/orders/screens/ScanB6Mobile').then(m => ({ default: (m as any).ScanB6Mobile })));
 
 // Kurye paneli — tech mavi accent
 const COURIER_ACCENT = DS.tech.primary; // #3B82F6
@@ -27,7 +31,13 @@ export default function CourierLayout() {
   const isCourier = profile?.user_type === 'lab' && (profile as any)?.role === 'courier';
   const scanOpen    = useScanStore(s => s.open);
   const setScanOpen = useScanStore(s => s.setOpen);
+  const router = useRouter();
   const { t, i18n } = useTranslation();
+
+  // Panel-seviyesi konum takibi — kurye herhangi bir ekrandayken, taşıdığı/yolda
+  // iş varken (ön plan) konumu tüm aktif teslimatlara yazar. (Hook kuralı: early
+  // return'den ÖNCE; kurye değilse null → no-op.)
+  useCourierTracking(isCourier ? profile?.id : null);
 
   if (loading) return <LoadingSpinner fullScreen message={t('common.loading')} />;
   if (!profile || !isCourier) return <Slot />;
@@ -93,6 +103,21 @@ export default function CourierLayout() {
           accentColor={COURIER_ACCENT}
         />
       )}
+
+      {/* QR/kamera tarayıcı — Tara FAB ile tam ekran açılır (station ile aynı desen) */}
+      <Modal
+        visible={scanOpen}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setScanOpen(false)}
+      >
+        <React.Suspense fallback={null}>
+          <ScanB6Mobile
+            onClose={() => setScanOpen(false)}
+            onOpenOrder={(id: string) => { setScanOpen(false); router.push(`/(courier)/delivery/${id}` as any); }}
+          />
+        </React.Suspense>
+      </Modal>
     </View>
   );
 }

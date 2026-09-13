@@ -5,7 +5,7 @@
  */
 import React from 'react';
 import { View, Text } from 'react-native';
-import { Check } from 'lucide-react-native';
+import { Check } from '../../../core/ui/icons';
 import { useNOTokens } from './NOTokens';
 
 export type NOStepState = 'done' | 'current' | 'todo';

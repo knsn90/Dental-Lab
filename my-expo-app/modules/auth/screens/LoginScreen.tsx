@@ -3,10 +3,9 @@
  * Referans: Dribbble Finnger login design
  */
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, Pressable, Platform, Animated, Keyboard, TextInput } from 'react-native';
+import { View, Text, Pressable, Platform, Animated, Keyboard, TextInput, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Mail, Lock, Eye, EyeOff, AlertCircle, Check, WifiOff, ShieldAlert, RefreshCw, X } from 'lucide-react-native';
-import { PaymentBadges } from '../../../core/ui/PaymentBadges';
+import { Mail, Lock, Eye, EyeOff, AlertCircle, ArrowRight, Check, WifiOff, ShieldAlert, RefreshCw, X } from '../../../core/ui/icons';
 
 // "Beni Hatırla" preference — localStorage'da saklanır.
 // OFF olursa: sayfa kapanırken supabase.auth.signOut çağrılır (tab close → logout).
@@ -56,10 +55,18 @@ function clearFailCount(email: string) {
 }
 import { signIn } from '../api';
 import { supabase } from '../../../core/api/supabase';
+import { useKioskMode } from '../../../core/kiosk/kioskModeStore';
 import { AuthShell, AuthInput, AuthButton, AUTH, AUTH_FONT } from '../components/AuthShell';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 export function LoginScreen() {
   const router = useRouter();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  // Mobil sadeleştirme eşiği — AuthShell'deki `narrow` ile aynı (kart kabuğu kalkar)
+  const { width: winW } = useWindowDimensions();
+  const narrow = winW < 560;
 
   const [email,    setEmail]    = useState('');
   const [password, setPassword] = useState('');
@@ -187,7 +194,8 @@ export function LoginScreen() {
       triggerShake();
       return;
     }
-    // İkisi de başarılı: sayaç sıfırla, OTP mode kapat
+    // İkisi de başarılı: sayaç sıfırla, OTP mode kapat + kiosk bayrağını temizle
+    useKioskMode.getState().setKiosk(false);
     setLoading(false);
     clearFailCount(emailLc);
     setOtpMode(false); setOtpCode(''); setOtpSentNotice('');
@@ -282,6 +290,9 @@ export function LoginScreen() {
         triggerShake(); setLoading(false); return;
       }
     }
+    // Normal e-posta/şifre girişi kiosk DEĞİLDİR → cihazda kalmış kiosk bayrağını
+    // temizle (tablet silindiğinde ayarların geri gelmemesi buradan kaynaklanıyordu).
+    useKioskMode.getState().setKiosk(false);
     setLoading(false);
   };
 
@@ -303,13 +314,34 @@ export function LoginScreen() {
     <AuthShell
       eyebrow={forgotMode ? 'Şifre Sıfırlama' : 'Tekrar Hoş Geldin'}
       heading={forgotMode ? 'Şifremi Unuttum' : 'Giriş Yap'}
-      subtitle={forgotMode ? 'Sıfırlama bağlantısı için e-postanı gir.' : 'Hesabına giriş yap.'}
+      subtitle={forgotMode ? 'Sıfırlama bağlantısı için e-postanı gir.' : undefined}
       illustrationCaption="Üretimi yönetir, kârını gösterir."
       footerLink={forgotMode ? undefined : {
         text: 'Hesabın yok mu?',
         linkText: 'Kayıt Ol',
         onPress: () => router.push('/(auth)/register-choice'),
       }}
+      bottomStart={(
+        /* iyzico kriteri: giriş ekranında yasal sayfa linkleri görünür — kartın dışında,
+           sol alt köşede (ödeme logoları fatura sayfasında). */
+        <View style={{
+          flexDirection: 'row', flexWrap: 'wrap', gap: narrow ? 14 : 16,
+          justifyContent: narrow ? 'center' : 'flex-start',
+          maxWidth: 380,
+        }}>
+          {[
+            { href: '/legal/hakkimizda', label: 'Hakkımızda' },
+            { href: '/legal/mesafeli-satis', label: 'Mesafeli Satış' },
+            { href: '/legal/teslimat-iade', label: 'Teslimat & İade' },
+            { href: '/legal/gizlilik', label: 'Gizlilik / KVKK' },
+          ].map(l => (
+            <Pressable key={l.href} onPress={() => router.push(l.href as any)} style={Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : undefined}>
+              {/* Footer karttan daha sessiz: küçük punto, ~%55 ink */}
+              <Text style={{ fontFamily: AUTH_FONT.sans, fontSize: 11.5, fontWeight: '500', color: isDark ? 'rgba(247,242,233,0.50)' : 'rgba(26,22,19,0.55)' }}>{l.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
     >
       <Animated.View style={{ transform: [{ translateX: shakeX }] }}>
         {/* Error banner — premium alert card (3 tipte: network / credentials / generic) */}
@@ -329,7 +361,7 @@ export function LoginScreen() {
           return (
             <View style={{
               flexDirection: 'row', alignItems: 'flex-start', gap: 12,
-              backgroundColor: '#FFFFFF',
+              backgroundColor: isDark ? T.card : '#FFFFFF',
               borderRadius: 14, padding: 14, marginBottom: 16,
               borderWidth: 1, borderColor: toneRing,
               shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 4 },
@@ -348,14 +380,14 @@ export function LoginScreen() {
                   <Text style={{
                     fontFamily: AUTH_FONT.display,
                     fontSize: 13.5, fontWeight: '700',
-                    color: AUTH.ink, letterSpacing: -0.1,
+                    color: isDark ? T.ink : AUTH.ink, letterSpacing: -0.1,
                   }}>
                     {title}
                   </Text>
                 ) : null}
                 <Text style={{
                   fontFamily: AUTH_FONT.sans,
-                  fontSize: 12.5, color: AUTH.inkSoft, lineHeight: 18,
+                  fontSize: 12.5, color: isDark ? T.ink3 : AUTH.inkSoft, lineHeight: 18,
                 }}>
                   {desc}
                 </Text>
@@ -390,11 +422,11 @@ export function LoginScreen() {
                 style={({ hovered }: any) => ({
                   width: 22, height: 22, borderRadius: 11,
                   alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: hovered ? '#F4F4F5' : 'transparent',
+                  backgroundColor: hovered ? (isDark ? 'rgba(255,255,255,0.06)' : '#F4F4F5') : 'transparent',
                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                 })}
               >
-                <X size={12} color={AUTH.inkMuted} strokeWidth={2.2} />
+                <X size={12} color={isDark ? (T.ink3 as string) : AUTH.inkMuted} strokeWidth={2.2} />
               </Pressable>
             </View>
           );
@@ -419,10 +451,10 @@ export function LoginScreen() {
                   <Check size={14} color={AUTH.success} strokeWidth={2.4} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontFamily: AUTH_FONT.display, fontSize: 13, fontWeight: '700', color: AUTH.ink }}>
+                  <Text style={{ fontFamily: AUTH_FONT.display, fontSize: 13, fontWeight: '700', color: isDark ? T.ink : AUTH.ink }}>
                     E-posta gönderildi
                   </Text>
-                  <Text style={{ fontFamily: AUTH_FONT.sans, fontSize: 11, color: AUTH.inkSoft, marginTop: 2 }}>
+                  <Text style={{ fontFamily: AUTH_FONT.sans, fontSize: 11, color: isDark ? T.ink3 : AUTH.inkSoft, marginTop: 2 }}>
                     Gelen kutunu kontrol et.
                   </Text>
                 </View>
@@ -432,7 +464,7 @@ export function LoginScreen() {
                 {/* Bilgilendirme */}
                 <Text style={{
                   fontFamily: AUTH_FONT.sans,
-                  fontSize: 13, color: AUTH.inkSoft,
+                  fontSize: 13, color: isDark ? T.ink3 : AUTH.inkSoft,
                   marginBottom: 14, lineHeight: 19,
                 }}>
                   E-posta adresini gir, sana sıfırlama bağlantısı gönderelim.
@@ -445,12 +477,13 @@ export function LoginScreen() {
                   keyboardType="email-address"
                   autoCapitalize="none"
                   error={forgotError}
-                  icon={<Mail size={15} color={AUTH.inkMuted} strokeWidth={1.8} />}
+                  label="E-posta"
                   autoFocus
                 />
-                {/* Send button */}
-                <View style={{ marginTop: 4 }}>
+                {/* Send button — kompakt pill, sağa yaslı (login CTA ile aynı dizilim) */}
+                <View style={{ marginTop: 4, alignItems: 'flex-end' }}>
                   <AuthButton
+                    compact
                     label={forgotLoading ? 'Gönderiliyor…' : 'Sıfırlama Bağlantısı Gönder'}
                     onPress={handleForgotPassword}
                     loading={forgotLoading}
@@ -466,7 +499,7 @@ export function LoginScreen() {
               >
                 <Text style={{
                   fontFamily: AUTH_FONT.sans,
-                  fontSize: 13, color: AUTH.primary, fontWeight: '700',
+                  fontSize: 13.5, color: isDark ? AUTH.linkDark : AUTH.link, fontWeight: '500',
                 }}>
                   ← Giriş sayfasına dön
                 </Text>
@@ -504,7 +537,8 @@ export function LoginScreen() {
               // yapmıyor, kullanıcı da "Enter ile giriş olmuyor" diyordu.
               onSubmitEditing={() => passRef.current?.focus()}
               error={errors.email}
-              icon={<Mail size={15} color={AUTH.inkMuted} strokeWidth={1.8} />}
+              label="E-posta"
+              icon={<Mail size={16} color={isDark ? (T.ink3 as string) : '#6B7280'} strokeWidth={1.7} />}
             />
 
             {/* OTP mode'da 6-box OTP input + ayrıca Şifre (2 katman) */}
@@ -524,10 +558,10 @@ export function LoginScreen() {
                       style={{
                         width: 36, height: 44, borderRadius: 9,
                         borderWidth: otpDigits[i] ? 1.5 : 1,
-                        borderColor: otpDigits[i] ? AUTH.ink : 'rgba(15,23,42,0.12)',
-                        backgroundColor: '#FFFFFF',
+                        borderColor: otpDigits[i] ? (isDark ? T.ink : AUTH.ink) : (isDark ? T.hairline : 'rgba(15,23,42,0.12)'),
+                        backgroundColor: isDark ? T.cardSoft : '#FFFFFF',
                         textAlign: 'center', fontSize: 17, fontWeight: '700',
-                        color: AUTH.ink,
+                        color: isDark ? T.ink : AUTH.ink,
                         ...(Platform.OS === 'web' ? {
                           outlineStyle: 'none',
                           boxShadow: otpDigits[i] ? `0 0 0 2px ${AUTH.primary}33` : '0 1px 2px rgba(0,0,0,0.03)',
@@ -539,7 +573,7 @@ export function LoginScreen() {
                   ))}
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                  <Text style={{ fontFamily: AUTH_FONT.sans, fontSize: 11.5, color: AUTH.inkSoft }}>
+                  <Text style={{ fontFamily: AUTH_FONT.sans, fontSize: 11.5, color: isDark ? T.ink3 : AUTH.inkSoft }}>
                     {otpSending ? 'Kod gönderiliyor…' : '6 haneli kodu e-postandan al · Şifreni de gir'}
                   </Text>
                   <Pressable
@@ -565,7 +599,8 @@ export function LoginScreen() {
                 returnKeyType="go"
                 onSubmitEditing={otpMode ? handleOtpVerify : handleLogin}
                 error={errors.password}
-                icon={<Lock size={15} color={AUTH.inkMuted} strokeWidth={1.8} />}
+                label="Şifre"
+                icon={<Lock size={16} color={isDark ? (T.ink3 as string) : '#6B7280'} strokeWidth={1.7} />}
                 rightElement={
                   <Pressable
                     onPress={() => setShowPass(!showPass)}
@@ -573,18 +608,15 @@ export function LoginScreen() {
                     style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : undefined}
                   >
                     {showPass
-                      ? <EyeOff size={15} color={AUTH.inkMuted} strokeWidth={1.8} />
-                      : <Eye size={15} color={AUTH.inkMuted} strokeWidth={1.8} />
+                      ? <EyeOff size={15} color={isDark ? (T.ink3 as string) : AUTH.inkSoft} strokeWidth={1.8} />
+                      : <Eye size={15} color={isDark ? (T.ink3 as string) : AUTH.inkSoft} strokeWidth={1.8} />
                     }
                   </Pressable>
                 }
               />
 
-            {/* Beni Hatırla + Şifremi unuttum — bir satır */}
-            <View style={{
-              flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-              marginBottom: 18, marginTop: -4,
-            }}>
+            {/* Beni Hatırla — lacivert checkbox (mobilde ortalı) */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: narrow ? 'center' : 'flex-start', marginTop: -2, marginBottom: narrow ? 18 : 14 }}>
               <Pressable
                 onPress={() => { setRemember(v => { const n = !v; writeRemember(n); return n; }); }}
                 accessibilityRole="checkbox"
@@ -596,40 +628,75 @@ export function LoginScreen() {
                 }}
               >
                 <View style={{
-                  width: 18, height: 18, borderRadius: 5,
+                  width: 16, height: 16, borderRadius: 4,
                   borderWidth: 1.5,
-                  borderColor: remember ? AUTH.primary : 'rgba(15,23,42,0.25)',
-                  backgroundColor: remember ? AUTH.primary : 'transparent',
+                  borderColor: remember
+                    ? (isDark ? AUTH.brandDark : AUTH.brand)
+                    : (isDark ? 'rgba(255,255,255,0.30)' : 'rgba(15,23,42,0.28)'),
+                  backgroundColor: remember ? (isDark ? AUTH.brandDark : AUTH.brand) : 'transparent',
+                  // (Beni Hatırla kutusu da CTA ile aynı lacivert)
                   alignItems: 'center', justifyContent: 'center',
                 }}>
-                  {remember && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
+                  {remember && <Check size={11} color={isDark ? '#0A0A0A' : '#FFFFFF'} strokeWidth={3} />}
                 </View>
                 <Text style={{
                   fontFamily: AUTH_FONT.sans,
-                  fontSize: 13, color: AUTH.inkSoft, fontWeight: '600',
+                  fontSize: 13, color: isDark ? T.ink2 : '#3F3F46', fontWeight: '500',
                 }}>
                   Beni Hatırla
                 </Text>
               </Pressable>
-              <Pressable
-                onPress={() => { setForgotMode(true); setForgotEmail(email); setForgotSent(false); setForgotError(''); }}
-                style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : undefined}
-              >
-                <Text style={{
-                  fontFamily: AUTH_FONT.sans,
-                  fontSize: 13, color: AUTH.primary, fontWeight: '700',
-                }}>
-                  Şifremi unuttum?
-                </Text>
-              </Pressable>
             </View>
 
-            {/* Giriş Yap / OTP Doğrula CTA */}
-            <AuthButton
-              label={otpMode ? 'Kodu Doğrula' : 'Giriş Yap'}
-              onPress={otpMode ? handleOtpVerify : handleLogin}
-              loading={loading || otpSending}
-            />
+            {/* Masaüstü: solda "Şifremi unuttum" + sağda kompakt pill CTA.
+                Mobil (sade): tam genişlik CTA, altında ortalı "Şifremi unuttum". */}
+            {narrow ? (
+              <>
+                <AuthButton
+                  label={otpMode ? 'Kodu Doğrula' : 'Giriş Yap'}
+                  onPress={otpMode ? handleOtpVerify : handleLogin}
+                  loading={loading || otpSending}
+                  rightIcon={<ArrowRight size={16} color={isDark ? '#0A0A0A' : '#FFFFFF'} strokeWidth={2} />}
+                />
+                <View style={{ alignItems: 'center', marginTop: 14 }}>
+                  <Pressable
+                    onPress={() => { setForgotMode(true); setForgotEmail(email); setForgotSent(false); setForgotError(''); }}
+                    hitSlop={6}
+                    style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : undefined}
+                  >
+                    <Text style={{
+                      fontFamily: AUTH_FONT.sans, fontSize: 13.5, fontWeight: '500',
+                      color: isDark ? AUTH.linkDark : AUTH.link,
+                    }}>
+                      Şifremi unuttum
+                    </Text>
+                  </Pressable>
+                </View>
+              </>
+            ) : (
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <Pressable
+                  onPress={() => { setForgotMode(true); setForgotEmail(email); setForgotSent(false); setForgotError(''); }}
+                  hitSlop={6}
+                  style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : undefined}
+                >
+                  <Text style={{
+                    fontFamily: AUTH_FONT.sans,
+                    fontSize: 13.5, fontWeight: '500',
+                    color: isDark ? AUTH.linkDark : AUTH.link,
+                  }}>
+                    Şifremi unuttum
+                  </Text>
+                </Pressable>
+                <AuthButton
+                  compact
+                  label={otpMode ? 'Kodu Doğrula' : 'Giriş Yap'}
+                  onPress={otpMode ? handleOtpVerify : handleLogin}
+                  loading={loading || otpSending}
+                  rightIcon={<ArrowRight size={16} color={isDark ? '#0A0A0A' : '#FFFFFF'} strokeWidth={2} />}
+                />
+              </View>
+            )}
 
             {/* OTP'den şifre moduna dön */}
             {otpMode && (
@@ -641,7 +708,7 @@ export function LoginScreen() {
                   }}
                   style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : undefined}
                 >
-                  <Text style={{ fontFamily: AUTH_FONT.sans, fontSize: 12.5, color: AUTH.inkSoft, fontWeight: '600' }}>
+                  <Text style={{ fontFamily: AUTH_FONT.sans, fontSize: 12.5, color: isDark ? T.ink2 : AUTH.inkSoft, fontWeight: '600' }}>
                     ← Şifre ile giriş yap
                   </Text>
                 </Pressable>
@@ -651,22 +718,6 @@ export function LoginScreen() {
         )}
       </Animated.View>
 
-      {/* iyzico kriteri: giriş ekranında yasal sayfa linkleri + ödeme logoları görünür */}
-      <View style={{ marginTop: 22, alignItems: 'center', gap: 12 }}>
-        <PaymentBadges />
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 12 }}>
-          {[
-            { href: '/legal/hakkimizda', label: 'Hakkımızda' },
-            { href: '/legal/mesafeli-satis', label: 'Mesafeli Satış' },
-            { href: '/legal/teslimat-iade', label: 'Teslimat & İade' },
-            { href: '/legal/gizlilik', label: 'Gizlilik / KVKK' },
-          ].map(l => (
-            <Pressable key={l.href} onPress={() => router.push(l.href as any)} style={Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : undefined}>
-              <Text style={{ fontSize: 9.5, fontWeight: '600', color: '#9A9A9A' }}>{l.label}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
     </AuthShell>
   );
 }

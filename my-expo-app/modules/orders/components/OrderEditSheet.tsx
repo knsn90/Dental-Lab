@@ -11,7 +11,7 @@ import React, { useMemo, useState } from 'react';
 import {
   Modal, View, Text, ScrollView, Pressable, TextInput, Platform, ActivityIndicator, useWindowDimensions,
 } from 'react-native';
-import { X, Save, Trash2, Plus, Send, Info, ChevronDown, Check } from 'lucide-react-native';
+import { X, Save, Trash2, Plus, Send, Info, ChevronDown, Check } from '../../../core/ui/icons';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { ModalCard, MODAL_BACKDROP_COLOR, MODAL_OVERLAY_WEB } from '../../../core/ui/ModalBackdrop';
 import { DatePicker } from '../../../core/ui/DatePicker';

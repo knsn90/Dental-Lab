@@ -14,7 +14,7 @@ import {
   ListChecks, GripVertical, X, Plus, AlertTriangle, Clock, Sparkles,
   ChevronRight, Layers, UserCheck, Save, Play, FileText, Box, Stethoscope,
   Cpu, Wand2, Hammer, Flame, Brush, Info,
-} from 'lucide-react-native';
+} from '../../core/ui/icons';
 import { DS } from '../../core/theme/dsTokens';
 
 const A      = DS.lab.primary;      // safran (lab/müdür paneli accent)

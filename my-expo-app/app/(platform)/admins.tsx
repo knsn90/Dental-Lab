@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Platform } from 'react-native';
-import { UserPlus, Trash2, ShieldCheck } from 'lucide-react-native';
+import { UserPlus, Trash2, ShieldCheck } from '../../core/ui/icons';
 import { listPlatformAdmins, addPlatformAdmin, removePlatformAdmin, type PlatformAdmin } from '../../modules/platform/api';
 import { C, PageHeader, Panel, SectionLabel, IconChip, hexA } from '../../modules/platform/ui';
 

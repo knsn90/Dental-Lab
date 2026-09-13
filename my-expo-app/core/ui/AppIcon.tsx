@@ -1,7 +1,7 @@
 /**
- * AppIcon — Evrensel ikon bileşeni (lucide-react-native)
+ * AppIcon — Evrensel ikon bileşeni (HugeIcons, core/ui/icons üzerinden)
  *
- * Tek kaynak: lucide-react-native (1 400+ minimal stroke icon)
+ * Tek kaynak: core/ui/icons (HugeIcons — 6 000+ stroke ikon)
  * Eski MCI / Feather isimleri geriye dönük compat için harita üzerinden çözülür.
  * `set` prop'u artık gerekmiyor ama eski kodlar kırmamak için kabul edilir (yok sayılır).
  */
@@ -38,10 +38,11 @@ import {
   WifiOff, X, XCircle, Zap,
   Ban, BellOff, FileArchive, Funnel, Link2, ListTodo, ReceiptText,
   Repeat, Repeat2, Wallet, Wrench,
-} from 'lucide-react-native';
+} from './icons';
 // Lucide'de karşılığı olmayan dental ikonlar — createLucideIcon ile üretildi,
 // dolayısıyla yukarıdakilerle birebir aynı props sözleşmesine sahipler.
-import { Tooth, Crown, Implant, ZirconiaDisc, DentalArch } from './dentalIcons';
+import { Tooth, Crown, Implant, ZirconiaDisc, DentalArch, Cube3D, Photogrammetry, ScanBody } from './dentalIcons';
+import { SupportIcon } from './SupportIcon';
 import { WhatsAppGlyph } from './WhatsAppGlyph';
 import { dirIcon } from '../i18n';
 
@@ -76,7 +77,7 @@ const ICONS: Record<string, LucideFC> = {
   'more-horizontal':     MoreHorizontal,
   'panel-left':          PanelLeft,
   'info':                Info,
-  'help-circle':         HelpCircle,
+  'help-circle':         SupportIcon,   // Destek = headset (kullanıcının SVG'si; can simidi anlaşılmıyordu)
   'globe':               Globe,
   'star':                Star,
   'heart':               Heart,
@@ -306,7 +307,10 @@ const ICONS: Record<string, LucideFC> = {
   'close-circle':                    XCircle,
   'cloud-upload-outline':            CloudUpload,
   'content-copy':                    Copy,
-  'cube-scan':                       Box,
+  'cube-scan':                       Cube3D,
+  'cube-3d':                         Cube3D,
+  'photogrammetry':                  Photogrammetry,
+  'scan-body':                       ScanBody,
   'database-outline':                Database,
   'file-document-edit-outline':      FileEdit,
   'file-outline':                    File,

@@ -10,7 +10,7 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, Animated, Easing, Platform } from 'react-native';
-import { X, Mic, MicOff } from 'lucide-react-native';
+import { X, Mic, MicOff } from '../../../core/ui/icons';
 import { useDentyPalette } from '../theme';
 import { useDentyStore } from '../store/dentyStore';
 import { useSpeechRecognition } from '../useSpeechRecognition';

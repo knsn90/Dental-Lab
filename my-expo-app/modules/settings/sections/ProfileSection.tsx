@@ -17,7 +17,7 @@ import {
   Camera, Edit2, Mail, Phone, Lock, LogOut, ChevronLeft, ChevronRight, Eye, EyeOff, X,
   MapPin, User as UserIcon, Hash, MessageCircle, GraduationCap, Briefcase, Building2,
   Receipt, CreditCard, Search, Plus, Calendar,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { useAuthStore } from '../../../core/store/authStore';
 import { supabase } from '../../../core/api/supabase';
 import { ColorOrb } from '../../denty/components/ColorOrb';
@@ -28,6 +28,7 @@ import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { searchPlaces, getPlaceDetails, startPlaceSession, endPlaceSession, type PlaceSuggestion } from '../../auth/api/places';
+import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 const ROLE_LABEL: Record<string, string> = {
@@ -111,12 +112,13 @@ function CardRow({ icon: Icon, iconColor, iconBg, label, value, placeholder, edi
         onPress,
         accessibilityRole: 'button',
         accessibilityLabel: empty ? `${label} ${autoT('ekle')}` : `${label} ${autoT('düzenle')}`,
-        style: ({ pressed }: any) => ({
+        // object style ZORUNLU — fonksiyon-stili native'de flexDirection:'row'yu
+        // düşürüp ikonu etiketin üstüne alıyordu (bkz. [[feedback_native_pressable_row_collapse]]).
+        style: {
           flexDirection: 'row', alignItems: 'center', gap: 12,
           paddingVertical: 8, marginHorizontal: -6, paddingHorizontal: 6, borderRadius: 12,
-          opacity: pressed ? 0.6 : 1,
           ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
-        }),
+        },
       } : { className: 'flex-row items-center gap-3 py-2' })}
     >
       <View className="w-7 h-7 rounded-[9px] items-center justify-center" style={{ backgroundColor: iconBg }}>
@@ -387,7 +389,7 @@ export function ProfileSection({ accentColor }: Props) {
   return (
     <ScrollView
       className="flex-1"
-      contentContainerStyle={{ paddingHorizontal: isNarrow ? 12 : 28, paddingTop: 0, paddingBottom: 120 }}
+      contentContainerStyle={{ paddingHorizontal: isNarrow ? PAGE_PADDING : 28, paddingTop: 0, paddingBottom: 120 }}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
     >
@@ -506,36 +508,21 @@ export function ProfileSection({ accentColor }: Props) {
               </View>
               <Text className="text-[11.5px] mt-2" style={{ color: T.ink3 }}>
                 {completion.missing > 0
-                  ? `${completion.missing} bilgi eksik — tamamlamak için satırlara dokun`
-                  : 'Profilin eksiksiz.'}
+                  ? `${completion.missing} ${autoT('bilgi eksik — tamamlamak için satırlara dokun')}`
+                  : autoT('Profilin eksiksiz.')}
               </Text>
             </View>
 
-            {/* Birincil aksiyon */}
-            <Pressable
-              onPress={() => setEditing(true)}
-              style={({ pressed }: any) => ({
-                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-                paddingVertical: 11, borderRadius: 14, marginTop: 16,
-                backgroundColor: accentColor,
-                opacity: pressed ? 0.85 : 1,
-                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
-              })}
-            >
-              <Edit2 size={13} color="#FFFFFF" strokeWidth={1.8} />
-              <Text className="text-[13px] font-semibold text-white">Profili Düzenle</Text>
-            </Pressable>
-
-            {/* Çıkış */}
+            {/* Çıkış — "Profili Düzenle" kaldırıldı: her satırın kendi kalem düğmesi var,
+                düzenleme oradan açılıyor (mükerrer birincil aksiyon gereksizdi). */}
             <Pressable
               onPress={handleSignOut}
-              style={({ pressed }: any) => ({
+              style={{
                 flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-                paddingVertical: 9, borderRadius: 14, marginTop: 8,
+                paddingVertical: 9, borderRadius: 14, marginTop: 16,
                 borderWidth: 1, borderColor: 'rgba(239,68,68,0.28)',
-                opacity: pressed ? 0.6 : 1,
                 ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
-              })}
+              }}
             >
               <LogOut size={13} color="#EF4444" strokeWidth={1.8} />
               <Text className="text-[13px] font-semibold" style={{ color: '#EF4444' }}>Çıkış Yap</Text>
@@ -612,16 +599,16 @@ export function ProfileSection({ accentColor }: Props) {
               {/* Tek satırlık kart yarım kalıyordu: satıra açıklama eklendi.
                   İki adımlı doğrulama / aktif oturumlar HENÜZ backend'de yok —
                   çalışmayan satır göstermek yerine yer verilmedi. */}
+              {/* object style ZORUNLU — bkz. [[feedback_native_pressable_row_collapse]] */}
               <Pressable
                 onPress={() => setShowPass(v => !v)}
                 accessibilityRole="button"
                 accessibilityState={{ expanded: showPass }}
-                style={({ pressed }: any) => ({
+                style={{
                   flexDirection: 'row', alignItems: 'center', gap: 12,
                   paddingVertical: 8, marginHorizontal: -6, paddingHorizontal: 6, borderRadius: 12,
-                  opacity: pressed ? 0.6 : 1,
                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
-                })}
+                }}
               >
                 <View className="w-7 h-7 rounded-[9px] items-center justify-center" style={{ backgroundColor: 'rgba(217,119,6,0.10)' }}>
                   <Lock size={13} color="#D97706" strokeWidth={1.8} />
@@ -1297,7 +1284,7 @@ function ClinicKurumTab({
                 { icon: Receipt,    label: 'VKN / TCKN',    value: clinic?.vkn, mono: true },
                 { icon: Receipt,    label: 'Vergi Dairesi', value: clinic?.tax_office },
                 { icon: CreditCard, label: 'Fatura Modu',   value: clinic?.billing_mode === 'per_order' ? 'Her Teslimat' : 'Aylık Toplu' },
-                { icon: Calendar,   label: 'Vade',          value: clinic?.default_payment_terms_days != null ? `${clinic.default_payment_terms_days} gün` : null },
+                { icon: Calendar,   label: 'Vade',          value: clinic?.default_payment_terms_days != null ? `${clinic.default_payment_terms_days} ${autoT('gün')}` : null },
               ]}
             />
           </>

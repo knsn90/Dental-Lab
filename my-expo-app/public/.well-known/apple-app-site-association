@@ -1,0 +1,14 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["772P3JLQ7W.com.nexadent.app"],
+        "components": [
+          { "/": "/order/*",     "comment": "Sipariş detay derin bağlantısı" },
+          { "/": "/delivery/*",  "comment": "Teslimat derin bağlantısı" },
+          { "/": "/*",           "comment": "Diğer tüm yollar" }
+        ]
+      }
+    ]
+  }
+}

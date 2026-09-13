@@ -4,7 +4,7 @@
 
 import React from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
-import { Check } from 'lucide-react-native';
+import { Check } from '../../../core/ui/icons';
 import { useStationTheme, hexA } from '../../../core/theme/stationPalette';
 import type { ValidationItem } from '../stations/registry';
 import { NumberTickerX } from '../../../core/ui/NumberTickerX';

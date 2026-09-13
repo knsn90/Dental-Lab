@@ -4,3 +4,10 @@ supabase/.env
 .DS_Store
 my-expo-app/supabase/.temp/
 migration-backup/
+
+# Claude Code ajan worktree kopyaları — EAS arşivine girmesin (.git/info/exclude EAS tarafından okunmaz)
+.claude/worktrees/
+
+# Üçüncü taraf vendored repo (kendi .git'i var) — yanlışlıkla stage edilirse bozuk
+# gitlink oluşturur. Asla stage etme.
+/claude-seo/

@@ -26,9 +26,9 @@ interface Props {
 export function ToothDiagram({ selected, onToggle, primaryColor, variant = 'light' }: Props) {
   const theme = useMobileTheme();
   const primary = primaryColor ?? theme.primary;
-  const inactiveBg = variant === 'dark' ? 'rgba(255,255,255,0.06)' : '#FFFFFF';
-  const inactiveText = variant === 'dark' ? 'rgba(255,255,255,0.55)' : DS.ink[500];
-  const inactiveBorder = variant === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)';
+  const inactiveBg = variant === 'dark' ? 'rgba(255,255,255,0.06)' : (theme.isDark ? theme.surface : '#FFFFFF');
+  const inactiveText = variant === 'dark' ? 'rgba(255,255,255,0.55)' : (theme.isDark ? theme.textMuted : DS.ink[500]);
+  const inactiveBorder = variant === 'dark' ? 'rgba(255,255,255,0.10)' : (theme.isDark ? theme.border : 'rgba(0,0,0,0.06)');
   const activeText = theme.accent;
 
   const renderArch = (numbers: number[]) => (

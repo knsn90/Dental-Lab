@@ -11,17 +11,23 @@
  */
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { View, Text, Pressable, Modal, ScrollView, useWindowDimensions, ActivityIndicator, PanResponder } from 'react-native';
-import { X, Layers, Eye, EyeOff, Maximize2, ExternalLink, Grid3x3, RotateCcw, Box, Camera } from 'lucide-react-native';
+import { X, Layers, Eye, EyeOff, Maximize2, ExternalLink, Grid3x3, RotateCcw, Box, Camera, SlidersHorizontal, ChevronUp, PenLine } from '../../../core/ui/icons';
 import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-import type { Viewer3DProps, LayerStyle } from '../types';
+import type { Viewer3DProps, LayerStyle, ViewerFile } from '../types';
 import { buildViewerHtml } from './htmlTemplate';
 import { classifyFile, paletteColor } from '../lib/layerMap';
 import { openFileUrl } from '../../../core/util/openFile';
 import { toast } from '../../../core/ui/Toast';
 import { autoT } from '../../../core/i18n/autoTranslate';
+import { useViewerTheme } from '../lib/viewerTheme';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { useScanAnnotations } from '../annotations/useScanAnnotations';
+import { PEN_COLORS, PEN_WIDTHS } from '../annotations/types';
+import type { AnnotationCamera, AnnotationKind, Point3 } from '../annotations/types';
+import { PenOptionsBar, NoteTextPrompt } from '../components/PenControls';
 
 // Dental kamera açıları (template SET_PRESET ile birebir eşleşir).
 const CAMERA_PRESETS: { key: string; label: string }[] = [
@@ -34,7 +40,73 @@ const CAMERA_PRESETS: { key: string; label: string }[] = [
   { key: 'iso',      label: 'İzometrik' },
 ];
 
+/** Koyu temanın krem accent'i — light temada panel accent'i kullanılır. */
 const ACCENT = '#E8D5C4';
+
+/**
+ * Native viewer chrome paleti.
+ *
+ * Koyu değerler ESKİSİYLE BİREBİR aynı (viewer koyu temada bit-bit korunur);
+ * açık tema yalnız EKLENDİ. Eskiden bütün yüzeyler `#0e0e0e` / `#1A1A1A` /
+ * beyaz-alfa olarak sabitti → uygulama açık temadayken 3D önizleme tek başına
+ * koyu açılıyordu (kullanıcı cihazda gördü).
+ *
+ * Her alt bileşen (ToolButton, OpacitySlider) bu hook'u KENDİSİ çağırır —
+ * prop ile taşınmaz (bkz. CLAUDE.md koyu tema tuzağı #1).
+ */
+function useViewerChrome() {
+  const T = useViewerTheme();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
+  const sceneHex = '#' + (T.sceneBg >>> 0).toString(16).padStart(6, '0');
+  return isDark
+    ? {
+        isDark: true,
+        page: '#0e0e0e',
+        bar: '#1A1A1A',
+        barBorder: 'rgba(255,255,255,0.06)',
+        accent: ACCENT,
+        accentFg: '#1A1A1A',
+        ink: '#FFFFFF',
+        ink2: 'rgba(255,255,255,0.5)',
+        ink3: 'rgba(255,255,255,0.4)',
+        inkFaint: 'rgba(255,255,255,0.45)',
+        surface: 'rgba(20,20,20,0.97)',
+        surfaceBorder: 'rgba(255,255,255,0.08)',
+        popSurface: 'rgba(28,28,30,0.98)',
+        popBorder: 'rgba(255,255,255,0.12)',
+        chipBg: 'rgba(255,255,255,0.08)',
+        iconBtnBg: 'rgba(255,255,255,0.06)',
+        rowDivider: 'rgba(255,255,255,0.05)',
+        track: 'rgba(255,255,255,0.12)',
+        swatchBorder: 'rgba(255,255,255,0.2)',
+        swatchActive: '#FFFFFF',
+        gridLine: 'rgba(255,255,255,0.07)',
+      }
+    : {
+        isDark: false,
+        // Sahne zemini = aktif panelin sayfa zemini (web viewer ile aynı kural)
+        page: sceneHex,
+        bar: '#FFFFFF',
+        barBorder: 'rgba(0,0,0,0.06)',
+        accent: T.accent,
+        accentFg: '#FFFFFF',
+        ink: '#0A0A0A',
+        ink2: 'rgba(0,0,0,0.55)',
+        ink3: 'rgba(0,0,0,0.45)',
+        inkFaint: 'rgba(0,0,0,0.45)',
+        surface: '#FFFFFF',
+        surfaceBorder: 'rgba(0,0,0,0.10)',
+        popSurface: '#FFFFFF',
+        popBorder: 'rgba(0,0,0,0.10)',
+        chipBg: 'rgba(0,0,0,0.05)',
+        iconBtnBg: 'rgba(0,0,0,0.05)',
+        rowDivider: 'rgba(0,0,0,0.06)',
+        track: 'rgba(0,0,0,0.10)',
+        swatchBorder: 'rgba(0,0,0,0.18)',
+        swatchActive: '#0A0A0A',
+        gridLine: 'rgba(0,0,0,0.08)',
+      };
+}
 
 // Renk paleti — diş taraması/tasarımı için uygun tonlar (alçı, bite, dişeti, tasarım vb.).
 const PALETTE = [
@@ -45,6 +117,7 @@ const PALETTE = [
 
 /** Sürüklenebilir opaklık çubuğu (harici slider paketi yok). 0.1–1.0 arası. */
 function OpacitySlider({ value, color, onChange }: { value: number; color: string; onChange: (v: number) => void }) {
+  const C = useViewerChrome();
   const [w, setW] = useState(0);
   const wRef = useRef(0);
   const emit = useCallback((x: number) => {
@@ -69,41 +142,101 @@ function OpacitySlider({ value, color, onChange }: { value: number; color: strin
         onLayout={(ev) => { const width = ev.nativeEvent.layout.width; wRef.current = width; setW(width); }}
         style={{ flex: 1, height: 26, justifyContent: 'center' }}
       >
-        <View style={{ height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.12)', overflow: 'hidden' }}>
+        <View style={{ height: 6, borderRadius: 3, backgroundColor: C.track, overflow: 'hidden' }}>
           <View style={{ width: `${pct}%`, height: '100%', backgroundColor: color, borderRadius: 3 }} />
         </View>
         {/* knob */}
         <View style={{ position: 'absolute', left: Math.max(0, (w * value) - 8), width: 16, height: 16, borderRadius: 8, backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: color }} />
       </View>
-      <Text style={{ width: 38, textAlign: 'end' as any, color: 'rgba(255,255,255,0.75)', fontSize: 11, fontWeight: '700', fontVariant: ['tabular-nums'] }}>%{pct}</Text>
+      <Text style={{ width: 38, textAlign: 'end' as any, color: C.isDark ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.65)', fontSize: 11, fontWeight: '700', fontVariant: ['tabular-nums'] }}>%{pct}</Text>
     </View>
   );
 }
 
 /** Dikey araç çubuğu butonu (desktop ViewerToolbar paritesi). */
-function ToolButton({ Icon, onPress, active, loading }: { Icon: any; onPress: () => void; active?: boolean; loading?: boolean }) {
+function ToolButton({ Icon, onPress, active, loading, label }: { Icon: any; onPress: () => void; active?: boolean; loading?: boolean; label?: string }) {
+  const C = useViewerChrome();
   return (
     <Pressable
       onPress={onPress}
       hitSlop={6}
-      style={{ width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: active ? ACCENT : 'transparent' }}
+      accessibilityLabel={label}
+      style={{ width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: active ? C.accent : 'transparent' }}
     >
-      {loading ? <ActivityIndicator size="small" color={ACCENT} /> : <Icon size={19} color={active ? '#1A1A1A' : ACCENT} strokeWidth={2} />}
+      {loading ? <ActivityIndicator size="small" color={C.accent} /> : <Icon size={19} color={active ? C.accentFg : C.accent} strokeWidth={2} />}
     </Pressable>
   );
 }
 
-function MobileViewer3D({ visible, files, title, onClose }: Viewer3DProps) {
+/** Dock kapalıyken duran tek başına yuvarlak düğme (web ViewerToolbar paritesi). */
+function RoundButton({ Icon, onPress, active, label }: { Icon: any; onPress: () => void; active?: boolean; label: string }) {
+  const C = useViewerChrome();
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={8}
+      accessibilityLabel={label}
+      style={{
+        width: 44, height: 44, borderRadius: 22,
+        alignItems: 'center', justifyContent: 'center',
+        backgroundColor: active ? C.accent : C.surface,
+        borderWidth: 1, borderColor: C.surfaceBorder,
+        shadowColor: '#000', shadowOpacity: C.isDark ? 0.45 : 0.2, shadowRadius: 16,
+        shadowOffset: { width: 0, height: 8 }, elevation: 8,
+      }}
+    >
+      <Icon size={19} color={active ? C.accentFg : C.accent} strokeWidth={2} />
+    </Pressable>
+  );
+}
+
+function MobileViewer3D({ visible, files: filesProp, title, onClose, zipUrl, orderId }: Viewer3DProps) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
+  const C = useViewerChrome();
   const webviewRef = useRef<WebView | null>(null);
   const [ready, setReady] = useState(false);
+  // ZIP modu: arşiv WebView'de açılır; mesh listesi WebView'den MANIFEST ile gelir.
+  // (Eskiden RN JS thread'inde unzipSync + base64 yapılıyordu → büyük taramada
+  // uygulama dakikalarca donuyor, kapat/navbar bile çalışmıyordu.)
+  const [zipFiles, setZipFiles] = useState<ViewerFile[] | null>(null);
+  const [progress, setProgress] = useState<{ phase: string; pct?: number } | null>(null);
+  const [progressTick, setProgressTick] = useState(0);
+  useEffect(() => { setZipFiles(null); setProgress(null); }, [zipUrl]);
+  const files = zipUrl ? (zipFiles ?? []) : filesProp;
   const [_loadErr, setLoadErr] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [gridOn, setGridOn] = useState(false);
   const [presetOpen, setPresetOpen] = useState(false);
   const [activePreset, setActivePreset] = useState<string | null>(null);
   const [shooting, setShooting] = useState(false);
+  // ── 3D kalem (tarama üzerine not) ───────────────────────────────────────
+  const annots = useScanAnnotations(orderId, visible);
+  const [penMode, setPenMode] = useState(false);
+  const [penKind, setPenKind] = useState<AnnotationKind>('stroke');
+  const [penColor, setPenColor] = useState<string>(PEN_COLORS[0]);
+  const [penWidth, setPenWidth] = useState<number>(PEN_WIDTHS[1]);
+  const [noteDraft, setNoteDraft] = useState<{
+    fileName: string | null; points: Point3[]; camera: AnnotationCamera;
+  } | null>(null);
+  const [noteText, setNoteText] = useState('');
+  // Araç dock'u: kapalı başlar, açıldıktan sonra kendini gizler (web paritesi).
+  const [dockOpen, setDockOpen] = useState(false);
+  const dockTimer = useRef<any>(null);
+  const clearDockTimer = useCallback(() => {
+    if (dockTimer.current) { clearTimeout(dockTimer.current); dockTimer.current = null; }
+  }, []);
+  /** Her dokunuş otomatik gizleme sayacını baştan başlatır. */
+  const bumpDock = useCallback(() => {
+    clearDockTimer();
+    dockTimer.current = setTimeout(() => { setDockOpen(false); setPresetOpen(false); }, 4500);
+  }, [clearDockTimer]);
+  useEffect(() => {
+    // Kamera açıları popup'ı açıkken sayaç DURUR (liste altından kaçmasın).
+    if (dockOpen && !presetOpen) bumpDock();
+    else clearDockTimer();
+    return clearDockTimer;
+  }, [dockOpen, presetOpen, bumpDock, clearDockTimer]);
 
   // Format ayrımı (desktop paritesi): STL/PLY/OBJ farklı koordinat sistemlerinde
   // olabilir → aynı sahnede yanlış hizalanır. Karışık format varsa TEK format göster;
@@ -171,24 +304,62 @@ function MobileViewer3D({ visible, files, title, onClose }: Viewer3DProps) {
     setPresetOpen(false);
   }, [meta]);
 
+  // ZIP modunda HTML yalnız URL'e bağlı: manifest gelince meta değişir ama WebView
+  // YENİDEN YÜKLENMEZ (yoksa arşiv baştan indirilirdi).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const html = useMemo(
-    () => buildViewerHtml({ files: visibleFiles, layerStyles: initialStyles, bg: '#0e0e0e' }),
-    [initialStyles],
+    () => (zipUrl
+      ? buildViewerHtml({ files: [], layerStyles: {}, bg: C.page, gridLine: C.gridLine, zip: { url: zipUrl, idPrefix: 'zip' } })
+      : buildViewerHtml({ files: visibleFiles, layerStyles: initialStyles, bg: C.page, gridLine: C.gridLine })),
+    [zipUrl, zipUrl ? null : initialStyles, C.page, C.gridLine],
   );
 
   // Yükleme zaman aşımı: CDN/three.js 15 sn'de gelmezse hata göster (siyah ekranda takılı kalma).
+  // ZIP modunda her ilerleme mesajı sayacı sıfırlar (büyük arşiv indirilirken hata verme).
   useEffect(() => {
     if (ready) return;
     const t = setTimeout(() => {
       setReady((r) => { if (!r) setLoadErr((e) => e ?? 'zaman-asimi'); return r; });
-    }, 15000);
+    }, zipUrl ? 30000 : 15000);
     return () => clearTimeout(t);
-  }, [ready]);
+  }, [ready, progressTick, zipUrl]);
+
+  // WebView'in bildirdiği mesh listesinden katman stilleri (meta ile aynı kural).
+  const stylesFor = useCallback((list: ViewerFile[]) => {
+    const out: Record<string, LayerStyle> = {};
+    list.forEach((f, i) => {
+      const layer = classifyFile(f.name);
+      out[f.id] = { visible: true, opacity: layer.opacity ?? 1, color: paletteColor(i), wireframe: false };
+    });
+    return out;
+  }, []);
 
   const send = useCallback((msg: object) => {
     webviewRef.current?.postMessage(JSON.stringify(msg));
   }, []);
+
+  // Notları WebView'e gönder. `ready` bağımlılığı ŞART: WebView yeniden
+  // yüklendiğinde (tema/dosya değişimi) sahne boşalıyor, notlar tekrar basılmalı.
+  useEffect(() => {
+    if (!ready) return;
+    send({
+      type: 'ANNOTATIONS',
+      list: annots.annotations.map((a) => ({
+        id: a.id, kind: a.kind, color: a.color, width: a.width,
+        points: a.points, text: a.text, fileName: a.fileName,
+      })),
+    });
+  }, [ready, annots.annotations, send]);
+
+  useEffect(() => {
+    if (!ready) return;
+    send({ type: 'ANNOT_VISIBLE', on: annots.visible });
+  }, [ready, annots.visible, send]);
+
+  useEffect(() => {
+    if (!ready) return;
+    send({ type: 'SET_PEN', on: penMode && annots.enabled, kind: penKind, color: penColor, width: penWidth });
+  }, [ready, penMode, penKind, penColor, penWidth, annots.enabled, send]);
 
   const toggleVisible = useCallback((id: string) => {
     setLayers((prev) => {
@@ -274,36 +445,36 @@ function MobileViewer3D({ visible, files, title, onClose }: Viewer3DProps) {
       onRequestClose={onClose}
       presentationStyle="fullScreen"
     >
-      <View style={{ flex: 1, backgroundColor: '#0e0e0e', paddingTop: insets.top }}>
+      <View style={{ flex: 1, backgroundColor: C.page, paddingTop: insets.top }}>
         {/* Top bar */}
         <View style={{
           flexDirection: 'row', alignItems: 'center', gap: 8,
           paddingHorizontal: 16, paddingVertical: 12,
-          backgroundColor: '#1A1A1A',
-          borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)',
+          backgroundColor: C.bar,
+          borderBottomWidth: 1, borderBottomColor: C.barBorder,
         }}>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: ACCENT, fontSize: 13, fontWeight: '700', letterSpacing: -0.2 }} numberOfLines={1}>
+            <Text style={{ color: C.accent, fontSize: 13, fontWeight: '700', letterSpacing: -0.2 }} numberOfLines={1}>
               3D Viewer
             </Text>
-            <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, marginTop: 2 }} numberOfLines={1}>
+            <Text style={{ color: C.ink2, fontSize: 11, marginTop: 2 }} numberOfLines={1}>
               {title ?? (files.length === 1 ? files[0].name : `${files.length} dosya`)}
             </Text>
           </View>
 
           {multi && (
-            <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.06)' }}>
-              <Text style={{ color: ACCENT, fontSize: 11, fontWeight: '800' }}>{visibleCount}/{files.length}</Text>
+            <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: C.iconBtnBg }}>
+              <Text style={{ color: C.accent, fontSize: 11, fontWeight: '800' }}>{visibleCount}/{files.length}</Text>
             </View>
           )}
 
           <Pressable onPress={onClose} hitSlop={10} style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' }}>
-            <X size={18} color={ACCENT} strokeWidth={2} />
+            <X size={18} color={C.accent} strokeWidth={2} />
           </Pressable>
         </View>
 
         {/* WebView + katman paneli overlay */}
-        <View style={{ flex: 1, backgroundColor: '#0e0e0e' }}>
+        <View style={{ flex: 1, backgroundColor: C.page }}>
           <WebView
             ref={webviewRef}
             originWhitelist={['*']}
@@ -319,12 +490,33 @@ function MobileViewer3D({ visible, files, title, onClose }: Viewer3DProps) {
             scrollEnabled={false}
             bounces={false}
             mixedContentMode="always"
-            style={{ flex: 1, backgroundColor: '#0e0e0e' }}
+            style={{ flex: 1, backgroundColor: C.page }}
             onMessage={(ev) => {
               try {
                 const msg = JSON.parse(ev.nativeEvent.data);
-                if (msg.type === 'READY') setReady(true);
+                if (msg.type === 'READY') { setReady(true); setProgress(null); }
                 if (msg.type === 'ERROR') setLoadErr(msg.message ?? 'Yüklenemedi');
+                if (msg.type === 'PROGRESS') { setProgress({ phase: msg.phase, pct: msg.pct }); setProgressTick((n) => n + 1); }
+                if (msg.type === 'ZIP_EMPTY') setLoadErr('zip-empty');
+                if (msg.type === 'MANIFEST' && Array.isArray(msg.files)) {
+                  const list: ViewerFile[] = msg.files.map((f: any) => ({ id: f.id, name: f.name, format: f.format, url: '' }));
+                  setZipFiles(list);
+                  send({ type: 'LAYER_STYLES', styles: stylesFor(list) });
+                }
+                if (msg.type === 'PEN_CAPTURE' && Array.isArray(msg.points)) {
+                  const cap = {
+                    fileName: (msg.fileName as string) ?? null,
+                    points: msg.points as Point3[],
+                    camera: msg.camera as AnnotationCamera,
+                  };
+                  if (penKind === 'note') { setNoteText(''); setNoteDraft(cap); }
+                  else {
+                    void annots.add({
+                      kind: penKind, points: cap.points, fileName: cap.fileName,
+                      color: penColor, width: penWidth, camera: cap.camera,
+                    });
+                  }
+                }
                 if (msg.type === 'SHOT' && msg.data) saveShot(msg.data);
                 if (msg.type === 'SHOT_ERR') { setShooting(false); toast.error(autoT('Ekran görüntüsü alınamadı.')); }
               } catch { /* noop */ }
@@ -334,25 +526,34 @@ function MobileViewer3D({ visible, files, title, onClose }: Viewer3DProps) {
 
           {/* Yükleme göstergesi — model gelene kadar (siyah ekran yerine) */}
           {!ready && !_loadErr && (
-            <View pointerEvents="none" style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', gap: 14 }}>
-              <ActivityIndicator size="large" color={ACCENT} />
-              <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, fontWeight: '500' }}>3D model yükleniyor…</Text>
+            // Opak: WebView'in kendi yükleme yazısıyla üst üste binmesin.
+            <View pointerEvents="none" style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', gap: 14, backgroundColor: C.page }}>
+              <ActivityIndicator size="large" color={C.accent} />
+              <Text style={{ color: C.isDark ? 'rgba(255,255,255,0.55)' : C.ink2, fontSize: 12, fontWeight: '500' }}>
+                {progress?.phase === 'download'
+                  ? `${autoT('Arşiv indiriliyor…')}${progress.pct != null ? ` %${progress.pct}` : ''}`
+                  : progress?.phase === 'extract'
+                    ? autoT('Arşiv açılıyor…')
+                    : autoT('3D model yükleniyor…')}
+              </Text>
             </View>
           )}
 
           {/* Hata durumu — CDN/motor yüklenemedi → tarayıcıda aç fallback (kullanıcı isteği) */}
           {!!_loadErr && (
             <View style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 16 }}>
-              <Text style={{ color: '#FCA5A5', fontSize: 13, fontWeight: '600', textAlign: 'center', lineHeight: 20 }}>
-                3D önizleme açılamadı{'\n'}(internet bağlantısı gerekiyor)
+              <Text style={{ color: C.isDark ? '#FCA5A5' : '#DC2626', fontSize: 13, fontWeight: '600', textAlign: 'center', lineHeight: 20 }}>
+                {_loadErr === 'zip-empty'
+                  ? autoT('Arşivde 3D model bulunamadı')
+                  : <>3D önizleme açılamadı{'\n'}(internet bağlantısı gerekiyor)</>}
               </Text>
-              {visibleFiles[0]?.url ? (
+              {(zipUrl || visibleFiles[0]?.url) ? (
                 <Pressable
-                  onPress={() => openFileUrl(visibleFiles[0].url)}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 18, paddingVertical: 11, borderRadius: 999, backgroundColor: ACCENT }}
+                  onPress={() => openFileUrl(zipUrl || visibleFiles[0].url)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 18, paddingVertical: 11, borderRadius: 999, backgroundColor: C.accent }}
                 >
-                  <ExternalLink size={15} color="#1A1A1A" strokeWidth={2.2} />
-                  <Text style={{ color: '#1A1A1A', fontSize: 13, fontWeight: '700' }}>Tarayıcıda aç</Text>
+                  <ExternalLink size={15} color={C.accentFg} strokeWidth={2.2} />
+                  <Text style={{ color: C.accentFg, fontSize: 13, fontWeight: '700' }}>Tarayıcıda aç</Text>
                 </Pressable>
               ) : null}
             </View>
@@ -361,7 +562,7 @@ function MobileViewer3D({ visible, files, title, onClose }: Viewer3DProps) {
           {/* Format sekmesi (STL/PLY/OBJ ayrı) — karışık format varsa üst-orta (desktop paritesi) */}
           {multiFormat && ready && (
             <View pointerEvents="box-none" style={{ position: 'absolute', top: 12, left: 0, right: 0, alignItems: 'center' }}>
-              <View style={{ flexDirection: 'row', backgroundColor: 'rgba(20,20,20,0.92)', borderRadius: 999, padding: 3, gap: 2, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
+              <View style={{ flexDirection: 'row', backgroundColor: C.surface, borderRadius: 999, padding: 3, gap: 2, borderWidth: 1, borderColor: C.surfaceBorder }}>
                 {formatsPresent.map((fmt) => {
                   const active = fmt === effectiveFormat;
                   const count = files.filter((f) => f.format === fmt).length;
@@ -369,9 +570,9 @@ function MobileViewer3D({ visible, files, title, onClose }: Viewer3DProps) {
                     <Pressable
                       key={fmt}
                       onPress={() => setActiveFormat(fmt)}
-                      style={{ paddingHorizontal: 16, paddingVertical: 7, borderRadius: 999, backgroundColor: active ? ACCENT : 'transparent' }}
+                      style={{ paddingHorizontal: 16, paddingVertical: 7, borderRadius: 999, backgroundColor: active ? C.accent : 'transparent' }}
                     >
-                      <Text style={{ fontSize: 12, fontWeight: '800', letterSpacing: 0.3, color: active ? '#1A1A1A' : 'rgba(255,255,255,0.6)' }}>
+                      <Text style={{ fontSize: 12, fontWeight: '800', letterSpacing: 0.3, color: active ? C.accentFg : C.ink2 }}>
                         {fmt.toUpperCase()} · {count}
                       </Text>
                     </Pressable>
@@ -381,20 +582,55 @@ function MobileViewer3D({ visible, files, title, onClose }: Viewer3DProps) {
             </View>
           )}
 
-          {/* Sağ dikey araç çubuğu (desktop paritesi) — yalnız model hazırken */}
-          {ready && !_loadErr && (
+          {/* Sağ dikey araç çubuğu — yalnız model hazırken.
+              Dock KAPALI başlar: sürekli açık kaldığında modelin sağ şeridini
+              kapatıyordu. Kapalıyken iki ayrı düğme (Katmanlar · Araçlar),
+              açıldıktan sonra 4.5 sn dokunulmazsa kendi kapanır. */}
+          {ready && !_loadErr && !dockOpen && (
+            <View style={{ position: 'absolute', end: 10, top: 12, gap: 8 }} pointerEvents="box-none">
+              <RoundButton
+                Icon={Layers}
+                active={panelOpen}
+                label={panelOpen ? autoT('Katmanları gizle') : autoT('Katmanlar')}
+                onPress={() => setPanelOpen((v) => !v)}
+              />
+              {annots.enabled && (
+                <RoundButton
+                  Icon={PenLine}
+                  active={penMode}
+                  label={penMode ? autoT('Kalemi kapat') : autoT('Tarama üzerine not')}
+                  onPress={() => setPenMode((v) => !v)}
+                />
+              )}
+              <RoundButton
+                Icon={SlidersHorizontal}
+                label={autoT('Araçları göster')}
+                onPress={() => setDockOpen(true)}
+              />
+            </View>
+          )}
+          {ready && !_loadErr && dockOpen && (
             <View style={{ position: 'absolute', end: 10, top: 0, bottom: 0, justifyContent: 'center' }} pointerEvents="box-none">
               <View style={{
-                backgroundColor: 'rgba(20,20,20,0.92)', borderRadius: 26,
-                borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+                backgroundColor: C.surface, borderRadius: 26,
+                borderWidth: 1, borderColor: C.surfaceBorder,
                 paddingVertical: 8, paddingHorizontal: 5, gap: 4, alignItems: 'center',
               }}>
-                <ToolButton Icon={Maximize2} onPress={() => send({ type: 'FIT' })} />
-                <ToolButton Icon={RotateCcw} onPress={() => send({ type: 'RESET' })} />
-                <ToolButton Icon={Box} active={presetOpen} onPress={() => setPresetOpen((v) => !v)} />
-                <ToolButton Icon={Grid3x3} active={gridOn} onPress={toggleGrid} />
-                <ToolButton Icon={Camera} loading={shooting} onPress={takeScreenshot} />
-                <ToolButton Icon={Layers} active={panelOpen} onPress={() => setPanelOpen((v) => !v)} />
+                <ToolButton Icon={ChevronUp} label={autoT('Araçları gizle')} onPress={() => { setPresetOpen(false); setDockOpen(false); }} />
+                <ToolButton Icon={Maximize2} label={autoT('Sığdır')} onPress={() => { bumpDock(); send({ type: 'FIT' }); }} />
+                <ToolButton Icon={RotateCcw} label={autoT('Sıfırla')} onPress={() => { bumpDock(); send({ type: 'RESET' }); }} />
+                <ToolButton Icon={Box} label={autoT('Görünüm açıları')} active={presetOpen} onPress={() => { bumpDock(); setPresetOpen((v) => !v); }} />
+                <ToolButton Icon={Grid3x3} label={autoT('Izgara')} active={gridOn} onPress={() => { bumpDock(); toggleGrid(); }} />
+                <ToolButton Icon={Camera} label={autoT('Ekran görüntüsü')} loading={shooting} onPress={() => { bumpDock(); takeScreenshot(); }} />
+                <ToolButton Icon={Layers} label={autoT('Katmanlar')} active={panelOpen} onPress={() => { bumpDock(); setPanelOpen((v) => !v); }} />
+                {annots.enabled && (
+                  <ToolButton
+                    Icon={PenLine}
+                    label={penMode ? autoT('Kalemi kapat') : autoT('Tarama üzerine not')}
+                    active={penMode}
+                    onPress={() => { bumpDock(); setPenMode((v) => !v); }}
+                  />
+                )}
               </View>
             </View>
           )}
@@ -403,12 +639,12 @@ function MobileViewer3D({ visible, files, title, onClose }: Viewer3DProps) {
           {presetOpen && ready && (
             <View style={{
               position: 'absolute', end: 64, top: '13%', width: 224,
-              backgroundColor: 'rgba(28,28,30,0.98)', borderRadius: 20,
-              borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+              backgroundColor: C.popSurface, borderRadius: 20,
+              borderWidth: 1, borderColor: C.popBorder,
               paddingVertical: 8, paddingHorizontal: 8,
-              shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 12,
+              shadowColor: '#000', shadowOpacity: C.isDark ? 0.5 : 0.22, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 12,
             }}>
-              <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase', paddingHorizontal: 12, paddingTop: 8, paddingBottom: 8 }}>
+              <Text style={{ color: C.ink3, fontSize: 10, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase', paddingHorizontal: 12, paddingTop: 8, paddingBottom: 8 }}>
                 Kamera Açıları
               </Text>
               {CAMERA_PRESETS.map((p) => {
@@ -420,59 +656,91 @@ function MobileViewer3D({ visible, files, title, onClose }: Viewer3DProps) {
                     style={({ pressed }: any) => ({
                       flexDirection: 'row', alignItems: 'center', gap: 10,
                       paddingHorizontal: 12, paddingVertical: 11, borderRadius: 12, marginBottom: 2,
-                      backgroundColor: active ? 'rgba(232,213,196,0.16)' : (pressed ? 'rgba(255,255,255,0.07)' : 'transparent'),
+                      backgroundColor: active ? C.accent + '2A' : (pressed ? C.iconBtnBg : 'transparent'),
                     })}
                   >
-                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: active ? ACCENT : 'rgba(255,255,255,0.22)' }} />
-                    <Text style={{ flex: 1, color: active ? ACCENT : 'rgba(255,255,255,0.92)', fontSize: 14.5, fontWeight: active ? '700' : '500' }}>{p.label}</Text>
+                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: active ? C.accent : C.ink3 }} />
+                    <Text style={{ flex: 1, color: active ? C.accent : C.ink, fontSize: 14.5, fontWeight: active ? '700' : '500' }}>{p.label}</Text>
                   </Pressable>
                 );
               })}
             </View>
           )}
 
-          {/* Katman / ayar paneli — araç çubuğunun soluna kayan kart (tek dosyada da açılır) */}
+          {/* Katman / ayar paneli — telefonda ALT ŞERİT: sağa yapışık tam boy
+              kart modelin tamamını kapatıyordu. Model üstte açıkta kalır. */}
           {panelOpen && (
             <View
               style={{
-                position: 'absolute', top: 12, end: 64, bottom: 12,
-                width: Math.min(300, width - 86),
-                backgroundColor: 'rgba(20,20,20,0.97)',
-                borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+                position: 'absolute', left: 10, right: 10, bottom: 12, maxHeight: '52%',
+                backgroundColor: C.surface,
+                borderRadius: 18, borderWidth: 1, borderColor: C.surfaceBorder,
                 overflow: 'hidden',
+                shadowColor: '#000', shadowOpacity: C.isDark ? 0.45 : 0.2, shadowRadius: 24,
+                shadowOffset: { width: 0, height: 12 }, elevation: 14,
               }}
             >
               {/* Panel başlık */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.07)' }}>
-                <Layers size={13} color={ACCENT} strokeWidth={2.2} />
-                <Text style={{ flex: 1, color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>{multi ? 'Katmanlar' : 'Katman ayarı'}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.rowDivider }}>
+                <Layers size={13} color={C.accent} strokeWidth={2.2} />
+                <Text style={{ flex: 1, color: C.ink, fontSize: 13, fontWeight: '700' }}>{multi ? 'Katmanlar' : 'Katman ayarı'}</Text>
                 {multi ? (
-                  <Pressable onPress={() => setAllVisible(visibleCount < meta.length)} hitSlop={6} style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.08)' }}>
-                    <Text style={{ color: ACCENT, fontSize: 11, fontWeight: '700' }}>
+                  <Pressable onPress={() => setAllVisible(visibleCount < meta.length)} hitSlop={6} style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: C.iconBtnBg }}>
+                    <Text style={{ color: C.accent, fontSize: 11, fontWeight: '700' }}>
                       {visibleCount < meta.length ? 'Tümünü aç' : 'Tümünü gizle'}
                     </Text>
                   </Pressable>
-                ) : (
-                  <Pressable onPress={() => setPanelOpen(false)} hitSlop={8} style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.08)' }}>
-                    <X size={14} color="rgba(255,255,255,0.7)" strokeWidth={2.2} />
-                  </Pressable>
-                )}
+                ) : null}
+                {/* Kapat — çok dosyalı panelde de olmalı: eskiden yalnız tek
+                    dosyada vardı, çok dosyada paneli kapatmanın tek yolu
+                    dock'taki katman düğmesiydi. */}
+                <Pressable onPress={() => setPanelOpen(false)} hitSlop={8} style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: C.iconBtnBg }}>
+                  <X size={14} color={C.ink2} strokeWidth={2.2} />
+                </Pressable>
               </View>
+
+              {/* Notlar katmanı — 3D kalemle bırakılan işaretler ayrı katman;
+                  tarama dosyasına dokunulmuyor, buradan gizlenebiliyor. */}
+              {annots.enabled && annots.annotations.length > 0 && (
+                <Pressable
+                  onPress={() => annots.setVisible(!annots.visible)}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 9,
+                    paddingHorizontal: 14, paddingVertical: 11,
+                    borderBottomWidth: 1, borderBottomColor: C.rowDivider,
+                  }}
+                >
+                  <PenLine size={14} color={C.accent} strokeWidth={2.2} />
+                  <Text style={{ flex: 1, color: C.ink, fontSize: 12.5, fontWeight: '600' }} numberOfLines={1}>
+                    {autoT('Notlar')}
+                  </Text>
+                  <Text style={{ color: C.ink3, fontSize: 10.5, fontWeight: '700' }}>{annots.annotations.length}</Text>
+                  <View style={{
+                    width: 30, height: 30, borderRadius: 15,
+                    alignItems: 'center', justifyContent: 'center',
+                    backgroundColor: annots.visible ? C.accent : C.iconBtnBg,
+                  }}>
+                    {annots.visible
+                      ? <Eye size={15} color={C.accentFg} strokeWidth={2} />
+                      : <EyeOff size={15} color={C.ink3} strokeWidth={2} />}
+                  </View>
+                </Pressable>
+              )}
 
               <ScrollView showsVerticalScrollIndicator={false}>
                 {meta.map((m) => {
                   const st = layers[m.id] ?? { visible: true, opacity: m.defaultOpacity, color: m.color };
                   return (
-                    <View key={m.id} style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)', opacity: st.visible ? 1 : 0.5 }}>
+                    <View key={m.id} style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.rowDivider, opacity: st.visible ? 1 : 0.5 }}>
                       {/* Başlık satırı: renk noktası + etiket + görünürlük */}
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
-                        <View style={{ width: 14, height: 14, borderRadius: 4, backgroundColor: st.color, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' }} />
+                        <View style={{ width: 14, height: 14, borderRadius: 4, backgroundColor: st.color, borderWidth: 1, borderColor: C.swatchBorder }} />
                         <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '600' }} numberOfLines={1}>{m.label}</Text>
-                          <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, marginTop: 1 }} numberOfLines={1}>{m.name}</Text>
+                          <Text style={{ color: C.ink, fontSize: 12.5, fontWeight: '600' }} numberOfLines={1}>{m.label}</Text>
+                          <Text style={{ color: C.ink3, fontSize: 10, marginTop: 1 }} numberOfLines={1}>{m.name}</Text>
                         </View>
-                        <Pressable onPress={() => toggleVisible(m.id)} hitSlop={8} style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.06)' }}>
-                          {st.visible ? <Eye size={15} color={ACCENT} strokeWidth={2} /> : <EyeOff size={15} color="rgba(255,255,255,0.4)" strokeWidth={2} />}
+                        <Pressable onPress={() => toggleVisible(m.id)} hitSlop={8} style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: C.iconBtnBg }}>
+                          {st.visible ? <Eye size={15} color={C.accent} strokeWidth={2} /> : <EyeOff size={15} color={C.ink3} strokeWidth={2} />}
                         </Pressable>
                       </View>
 
@@ -480,13 +748,13 @@ function MobileViewer3D({ visible, files, title, onClose }: Viewer3DProps) {
                         <>
                           {/* Opaklık — sürüklenebilir çubuk */}
                           <View style={{ marginTop: 12 }}>
-                            <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 9.5, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 6 }}>Opaklık</Text>
+                            <Text style={{ color: C.inkFaint, fontSize: 9.5, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 6 }}>Opaklık</Text>
                             <OpacitySlider value={st.opacity} color={st.color} onChange={(v) => setOpacity(m.id, v)} />
                           </View>
 
                           {/* Renk — palet */}
                           <View style={{ marginTop: 12 }}>
-                            <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 9.5, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 7 }}>Renk</Text>
+                            <Text style={{ color: C.inkFaint, fontSize: 9.5, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 7 }}>Renk</Text>
                             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                               {PALETTE.map((hex) => {
                                 const active = st.color.toUpperCase() === hex.toUpperCase();
@@ -498,7 +766,7 @@ function MobileViewer3D({ visible, files, title, onClose }: Viewer3DProps) {
                                     style={{
                                       width: 24, height: 24, borderRadius: 12, backgroundColor: hex,
                                       borderWidth: active ? 2.5 : 1,
-                                      borderColor: active ? '#FFFFFF' : 'rgba(255,255,255,0.2)',
+                                      borderColor: active ? C.swatchActive : C.swatchBorder,
                                     }}
                                   />
                                 );
@@ -513,16 +781,54 @@ function MobileViewer3D({ visible, files, title, onClose }: Viewer3DProps) {
               </ScrollView>
             </View>
           )}
+
+          {/* 3D kalem seçenekleri — kalem açıkken alt-orta */}
+          {penMode && annots.enabled && ready && !_loadErr && (
+            <PenOptionsBar
+              kind={penKind}
+              onKind={setPenKind}
+              color={penColor}
+              onColor={setPenColor}
+              width={penWidth}
+              onWidth={setPenWidth}
+              count={annots.annotations.length}
+              canUndo={annots.annotations.length > 0}
+              onUndo={() => {
+                const last = annots.annotations[annots.annotations.length - 1];
+                if (last) void annots.remove(last.id);
+              }}
+              onClose={() => setPenMode(false)}
+            />
+          )}
         </View>
+
+        {/* Metin notu — nokta yakalandıktan sonra metin sorulur */}
+        <NoteTextPrompt
+          visible={!!noteDraft}
+          value={noteText}
+          onChange={setNoteText}
+          onCancel={() => { setNoteDraft(null); setNoteText(''); }}
+          onSave={() => {
+            const draft = noteDraft;
+            const text = noteText.trim();
+            setNoteDraft(null);
+            setNoteText('');
+            if (!draft || !text) return;
+            void annots.add({
+              kind: 'note', points: draft.points, fileName: draft.fileName,
+              color: penColor, width: penWidth, text, camera: draft.camera,
+            });
+          }}
+        />
 
         {/* Footer hint */}
         <View style={{
           paddingHorizontal: 16, paddingVertical: 10,
           paddingBottom: Math.max(insets.bottom, 10) + 4,
-          backgroundColor: '#1A1A1A',
-          borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)',
+          backgroundColor: C.bar,
+          borderTopWidth: 1, borderTopColor: C.barBorder,
         }}>
-          <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, textAlign: 'center', letterSpacing: 0.5 }}>
+          <Text style={{ color: C.ink3, fontSize: 10, textAlign: 'center', letterSpacing: 0.5 }}>
             Tek parmakla döndür · Pinch ile yakınlaştır · İki parmakla kaydır
           </Text>
         </View>

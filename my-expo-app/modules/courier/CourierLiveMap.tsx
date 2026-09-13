@@ -6,9 +6,11 @@ import { autoT } from '../../core/i18n/autoTranslate';
 
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Platform, Pressable, Linking } from 'react-native';
-import { Navigation, MapPin, MessageSquare, Phone, Plus, Minus } from 'lucide-react-native';
+import { Navigation, MapPin, MessageSquare, Phone, Plus, Minus } from '../../core/ui/icons';
 import { supabase } from '../../core/api/supabase';
 import { geocodeTR } from './geocoder';
+import { useMobileTokens } from '../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../core/store/themeModeStore';
 
 interface Ping { lat: number; lng: number; recorded_at: string; accuracy_m?: number | null; }
 
@@ -57,6 +59,9 @@ function loadLeaflet(): Promise<any> {
           100% { transform: scale(2.6); opacity: 0; }
         }
         .courier-marker-wrap { position: relative; }
+        /* Koyu tema: OSM tam-renkli tile'ları koyulaştır (yalnız raster katman;
+           marker/rota ayrı pane'lerde → etkilenmez). html.dark reaktif. */
+        html.dark .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.9) saturate(0.85); }
         .courier-marker-pulse {
           position: absolute; inset: -4px;
           border-radius: 50%;
@@ -178,6 +183,11 @@ export function CourierLiveMap({
   courierName: courierNameProp, courierPhone, onMessage,
   compact = false,
 }: Props) {
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const T = useMobileTokens();
+  // Koyu haritada beyaz glass + koyu metin okunmaz → koyu glass + açık ink.
+  const glassBg = isDark ? 'rgba(20,19,18,0.72)' : 'rgba(255,255,255,0.08)';
+  const glassBorder = isDark ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.55)';
   const [lastPing, setLastPing] = useState<Ping | null>(null);
   const [destCoord, setDestCoord] = useState<{ lat: number; lng: number } | null>(null);
   const [routeCoords, setRouteCoords] = useState<[number, number][] | null>(null);
@@ -291,8 +301,8 @@ export function CourierLiveMap({
       if (!mapRef.current) {
         mapRef.current = L.map(containerRef.current, { zoomControl: false, attributionControl: false }).setView([lastPing.lat, lastPing.lng], 14);
         // Positron — minimalist, accent rengi öne çıksın
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-          subdomains: 'abcd',
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          subdomains: 'abc',
           maxZoom: 20,
           attribution: '© OSM contributors © CARTO',
         }).addTo(mapRef.current);
@@ -360,9 +370,9 @@ export function CourierLiveMap({
 
   if (!lastPing) {
     return (
-      <View style={{ height, borderRadius: 16, backgroundColor: '#F4F8FC', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)' }}>
-        <MapPin size={18} color="#94A3B8" strokeWidth={1.8} />
-        <Text style={{ fontSize: 12, color: '#6B6B6B' }}>Kurye henüz konum paylaşmadı</Text>
+      <View style={{ height, borderRadius: 16, backgroundColor: isDark ? T.cardSoft : "#F4F8FC", alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)' }}>
+        <MapPin size={18} color={isDark ? (T.ink3 as string) : "#94A3B8"} strokeWidth={1.8} />
+        <Text style={{ fontSize: 12, color: isDark ? T.ink2 : "#6B6B6B" }}>Kurye henüz konum paylaşmadı</Text>
       </View>
     );
   }
@@ -381,17 +391,23 @@ export function CourierLiveMap({
     teslim_edildi: { label: 'Teslim',     bg: 'rgba(16,185,129,0.16)', fg: '#0F6E50' },
     iptal:         { label: 'İptal',      bg: 'rgba(220,38,38,0.16)',  fg: '#9C2E2E' },
   };
-  const statusCfg = STATUS_LABELS[tripInfo?.status ?? 'beklemede'] ?? STATUS_LABELS.beklemede;
+  const statusCfgRaw = STATUS_LABELS[tripInfo?.status ?? 'beklemede'] ?? STATUS_LABELS.beklemede;
+  const DARK_STATUS_FG: Record<string, string> = {
+    '#9C5E0E': '#F5C24B', '#1E3A8A': '#93C5FD', '#0F6E50': '#6EE7B7', '#9C2E2E': '#FCA5A5',
+  };
+  const statusCfg = isDark
+    ? { ...statusCfgRaw, fg: DARK_STATUS_FG[statusCfgRaw.fg] ?? T.ink2 }
+    : statusCfgRaw;
 
   return (
-    <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: '#FFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', position: 'relative' }}>
+    <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: isDark ? T.card : '#FFF', borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.06)', position: 'relative' }}>
       {Platform.OS === 'web' ? (
         // @ts-ignore — web-only
-        <div ref={containerRef as any} style={{ width: '100%', height, background: '#E2E8F0' }} />
+        <div ref={containerRef as any} style={{ width: '100%', height, background: isDark ? '#0E0E0E' : '#E2E8F0' }} />
       ) : (
-        <View style={{ height, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F4F8FC', gap: 6 }}>
+        <View style={{ height, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? T.cardSoft : "#F4F8FC", gap: 6 }}>
           <Navigation size={20} color={accent} strokeWidth={1.8} />
-          <Text style={{ fontSize: 12, color: '#3C3C3C' }}>
+          <Text style={{ fontSize: 12, color: isDark ? T.ink2 : "#3C3C3C" }}>
             Son konum: {lastPing.lat.toFixed(5)}, {lastPing.lng.toFixed(5)}
           </Text>
           <Pressable onPress={() => Linking.openURL(`https://maps.google.com/?q=${lastPing.lat},${lastPing.lng}`)}>
@@ -408,8 +424,8 @@ export function CourierLiveMap({
             style={{
               width: 38, height: 38, borderRadius: 19,
               alignItems: 'center', justifyContent: 'center',
-              backgroundColor: 'rgba(255,255,255,0.08)',
-              borderWidth: 1, borderColor: 'rgba(255,255,255,0.55)',
+              backgroundColor: glassBg,
+              borderWidth: 1, borderColor: glassBorder,
               ...(Platform.OS === 'web' ? {
                 cursor: 'pointer',
                 backdropFilter: 'blur(3px) saturate(120%)',
@@ -418,15 +434,15 @@ export function CourierLiveMap({
               } as any : {}),
             }}
           >
-            <Plus size={16} color="#0F172A" strokeWidth={2} />
+            <Plus size={16} color={isDark ? (T.ink as string) : "#0F172A"} strokeWidth={2} />
           </Pressable>
           <Pressable
             onPress={() => mapRef.current?.zoomOut()}
             style={{
               width: 38, height: 38, borderRadius: 19,
               alignItems: 'center', justifyContent: 'center',
-              backgroundColor: 'rgba(255,255,255,0.08)',
-              borderWidth: 1, borderColor: 'rgba(255,255,255,0.55)',
+              backgroundColor: glassBg,
+              borderWidth: 1, borderColor: glassBorder,
               ...(Platform.OS === 'web' ? {
                 cursor: 'pointer',
                 backdropFilter: 'blur(3px) saturate(120%)',
@@ -435,7 +451,7 @@ export function CourierLiveMap({
               } as any : {}),
             }}
           >
-            <Minus size={16} color="#0F172A" strokeWidth={2} />
+            <Minus size={16} color={isDark ? (T.ink as string) : "#0F172A"} strokeWidth={2} />
           </Pressable>
         </View>
       )}
@@ -456,8 +472,8 @@ export function CourierLiveMap({
             <View style={{
               flexDirection: 'row', alignItems: 'center', gap: 10,
               paddingHorizontal: 10, paddingVertical: 9, borderRadius: 18,
-              backgroundColor: 'rgba(255,255,255,0.08)',
-              borderWidth: 1, borderColor: 'rgba(255,255,255,0.55)',
+              backgroundColor: glassBg,
+              borderWidth: 1, borderColor: glassBorder,
               // @ts-ignore web — glassmorphism
               backdropFilter: 'blur(3px) saturate(120%)',
               // @ts-ignore web (Safari)
@@ -471,15 +487,15 @@ export function CourierLiveMap({
                 </Text>
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: '#0A0A0A' }} numberOfLines={1}>{courierName}</Text>
-                <Text style={{ fontSize: 10, color: '#9A9A9A' }}>Kurye · {ageLabel}</Text>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? T.ink : "#0A0A0A" }} numberOfLines={1}>{courierName}</Text>
+                <Text style={{ fontSize: 10, color: isDark ? T.ink3 : "#9A9A9A" }}>Kurye · {ageLabel}</Text>
               </View>
               <Pressable
                 onPress={onMessage}
                 style={{
                   width: 32, height: 32, borderRadius: 16,
                   alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: '#0A0A0A',
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.16)' : '#0A0A0A',
                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                 }}
               >
@@ -505,8 +521,8 @@ export function CourierLiveMap({
           {tripInfo && (
             <View style={{
               padding: 14, borderRadius: 20, gap: 10,
-              backgroundColor: 'rgba(255,255,255,0.08)',
-              borderWidth: 1, borderColor: 'rgba(255,255,255,0.55)',
+              backgroundColor: glassBg,
+              borderWidth: 1, borderColor: glassBorder,
               // @ts-ignore web — glassmorphism
               backdropFilter: 'blur(3px) saturate(120%)',
               // @ts-ignore web (Safari)
@@ -520,15 +536,15 @@ export function CourierLiveMap({
                   <Text style={{ fontSize: 10, fontWeight: '700', color: statusCfg.fg }}>{statusCfg.label}</Text>
                 </View>
                 {tripInfo.orderNumber && (
-                  <Text style={{ fontSize: 10, color: '#9A9A9A', fontWeight: '600' }}>#{tripInfo.orderNumber}</Text>
+                  <Text style={{ fontSize: 10, color: isDark ? T.ink3 : "#9A9A9A", fontWeight: '600' }}>#{tripInfo.orderNumber}</Text>
                 )}
               </View>
 
               {/* Route (Lab → Alıcı) */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: '#0A0A0A' }}>Lab</Text>
-                <Text style={{ fontSize: 12, color: '#9A9A9A' }}>→</Text>
-                <Text style={{ flex: 1, fontSize: 13, fontWeight: '700', color: '#0A0A0A' }} numberOfLines={1}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? T.ink : "#0A0A0A" }}>Lab</Text>
+                <Text style={{ fontSize: 12, color: isDark ? T.ink3 : "#9A9A9A" }}>→</Text>
+                <Text style={{ flex: 1, fontSize: 13, fontWeight: '700', color: isDark ? T.ink : "#0A0A0A" }} numberOfLines={1}>
                   {tripInfo.destinationName ?? destinationLabel ?? '—'}
                 </Text>
               </View>
@@ -542,7 +558,7 @@ export function CourierLiveMap({
                 return (
                   <View style={{ position: 'relative', height: 12, justifyContent: 'center' }}>
                     {/* Track */}
-                    <View style={{ height: 4, borderRadius: 2, backgroundColor: 'rgba(15,23,42,0.06)', overflow: 'hidden' }}>
+                    <View style={{ height: 4, borderRadius: 2, backgroundColor: isDark ? "rgba(255,255,255,0.12)" : "rgba(15,23,42,0.06)", overflow: 'hidden' }}>
                       <View style={{ height: '100%', width: `${pct}%`, backgroundColor: accent }} />
                     </View>
                     {/* Animated knob */}
@@ -568,14 +584,14 @@ export function CourierLiveMap({
               {/* Info grid */}
               <View style={{ flexDirection: 'row', gap: 12 }}>
                 <View style={{ flex: 1, gap: 1 }}>
-                  <Text style={{ fontSize: 9, color: '#9A9A9A', fontWeight: '700', letterSpacing: 0.3, textTransform: 'uppercase' }}>Yola Çıktı</Text>
-                  <Text style={{ fontSize: 11, color: '#0A0A0A', fontWeight: '600' }} numberOfLines={1}>
+                  <Text style={{ fontSize: 9, color: isDark ? T.ink3 : "#9A9A9A", fontWeight: '700', letterSpacing: 0.3, textTransform: 'uppercase' }}>Yola Çıktı</Text>
+                  <Text style={{ fontSize: 11, color: isDark ? T.ink : "#0A0A0A", fontWeight: '600' }} numberOfLines={1}>
                     {tripInfo.pickedUpAt ? `${formatElapsed(tripInfo.pickedUpAt)} önce` : '—'}
                   </Text>
                 </View>
                 <View style={{ flex: 1, gap: 1 }}>
-                  <Text style={{ fontSize: 9, color: '#9A9A9A', fontWeight: '700', letterSpacing: 0.3, textTransform: 'uppercase' }}>Tahmini Varış</Text>
-                  <Text style={{ fontSize: 11, color: '#0A0A0A', fontWeight: '600' }} numberOfLines={1}>
+                  <Text style={{ fontSize: 9, color: isDark ? T.ink3 : "#9A9A9A", fontWeight: '700', letterSpacing: 0.3, textTransform: 'uppercase' }}>Tahmini Varış</Text>
+                  <Text style={{ fontSize: 11, color: isDark ? T.ink : "#0A0A0A", fontWeight: '600' }} numberOfLines={1}>
                     {tripInfo.status === 'teslim_edildi'
                       ? 'Teslim edildi'
                       : routeEtaSec != null
@@ -586,13 +602,13 @@ export function CourierLiveMap({
               </View>
               <View style={{ flexDirection: 'row', gap: 12 }}>
                 <View style={{ flex: 1, gap: 1 }}>
-                  <Text style={{ fontSize: 9, color: '#9A9A9A', fontWeight: '700', letterSpacing: 0.3, textTransform: 'uppercase' }}>Mesafe</Text>
-                  <Text style={{ fontSize: 11, color: '#0A0A0A', fontWeight: '600' }}>
+                  <Text style={{ fontSize: 9, color: isDark ? T.ink3 : "#9A9A9A", fontWeight: '700', letterSpacing: 0.3, textTransform: 'uppercase' }}>Mesafe</Text>
+                  <Text style={{ fontSize: 11, color: isDark ? T.ink : "#0A0A0A", fontWeight: '600' }}>
                     {distanceKm != null ? `${distanceKm.toFixed(1)} km` : '—'}
                   </Text>
                 </View>
                 <View style={{ flex: 1, gap: 1 }}>
-                  <Text style={{ fontSize: 9, color: '#9A9A9A', fontWeight: '700', letterSpacing: 0.3, textTransform: 'uppercase' }}>GPS Durumu</Text>
+                  <Text style={{ fontSize: 9, color: isDark ? T.ink3 : "#9A9A9A", fontWeight: '700', letterSpacing: 0.3, textTransform: 'uppercase' }}>GPS Durumu</Text>
                   {(() => {
                     const stale = ageSec > 5 * 60; // 5 dk üstü → eski sinyal
                     const live  = ageSec < 60;
@@ -613,14 +629,14 @@ export function CourierLiveMap({
               {/* Teslim Adresi — bilgi kartına entegre */}
               {destinationLabel && (
                 <>
-                  <View style={{ height: 1, backgroundColor: 'rgba(15,23,42,0.06)', marginTop: 2 }} />
+                  <View style={{ height: 1, backgroundColor: isDark ? "rgba(255,255,255,0.12)" : "rgba(15,23,42,0.06)", marginTop: 2 }} />
                   <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}>
                     <View style={{ width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: `${accent}18`, marginTop: 1 }}>
                       <MapPin size={10} color={accent} strokeWidth={2} />
                     </View>
                     <View style={{ flex: 1, gap: 2 }}>
-                      <Text style={{ fontSize: 9, fontWeight: '700', color: '#9A9A9A', letterSpacing: 0.3, textTransform: 'uppercase' }}>Teslim Adresi</Text>
-                      <Text style={{ fontSize: 10, color: '#0A0A0A', fontWeight: '500', lineHeight: 14 }} numberOfLines={5}>
+                      <Text style={{ fontSize: 9, fontWeight: '700', color: isDark ? T.ink3 : "#9A9A9A", letterSpacing: 0.3, textTransform: 'uppercase' }}>Teslim Adresi</Text>
+                      <Text style={{ fontSize: 10, color: isDark ? T.ink : "#0A0A0A", fontWeight: '500', lineHeight: 14 }} numberOfLines={5}>
                         {destinationLabel}
                       </Text>
                     </View>

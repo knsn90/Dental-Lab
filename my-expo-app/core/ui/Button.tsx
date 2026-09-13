@@ -10,6 +10,7 @@ import {
 import { C } from '../theme/colors';
 import { S } from '../theme/spacing';
 import { ActivityIndicator } from './teethCompat';
+import { useThemeModeStore } from '../store/themeModeStore';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
 type Size = 'sm' | 'md' | 'lg';
@@ -37,6 +38,7 @@ export function Button({
   icon,
   style,
 }: ButtonProps) {
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const isDisabled = disabled || loading;
 
   return (
@@ -47,6 +49,7 @@ export function Button({
         styles.base,
         styles[variant],
         styles[size],
+        variant === 'secondary' && isDark && { borderColor: 'rgba(255,255,255,0.12)' },
         fullWidth && styles.fullWidth,
         isDisabled && styles.disabled,
         style,

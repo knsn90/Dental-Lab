@@ -9,6 +9,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { supabase } from '../../../core/api/supabase';
 import { AppIcon } from '../../../core/ui/AppIcon';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 interface PendingApproval {
   work_order_id: string;
@@ -26,6 +28,8 @@ interface PendingApproval {
 export function DoctorApprovalScreen() {
   const { token } = useLocalSearchParams<{ token: string }>();
   const insets = useSafeAreaInsets();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [data, setData] = useState<PendingApproval | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
@@ -63,20 +67,20 @@ export function DoctorApprovalScreen() {
 
   if (loading) {
     return (
-      <View style={s.center}>
+      <View style={[s.center, { backgroundColor: isDark ? '#0E0E0E' : '#F1F5F9' }]}>
         <ActivityIndicator size="large" color="#7C3AED" />
       </View>
     );
   }
   if (error) {
     return (
-      <View style={s.center}>
-        <View style={s.card}>
+      <View style={[s.center, { backgroundColor: isDark ? '#0E0E0E' : '#F1F5F9' }]}>
+        <View style={[s.card, { backgroundColor: T.card, borderColor: isDark ? T.hairline : 'rgba(255,255,255,0.95)' }]}>
           <View style={[s.iconWrap, { backgroundColor: '#FEE2E2' }]}>
             <AppIcon name="x" size={24} color="#DC2626" />
           </View>
-          <Text style={s.title}>Erişim sağlanamadı</Text>
-          <Text style={s.errorText}>{error}</Text>
+          <Text style={[s.title, { color: T.ink }]}>Erişim sağlanamadı</Text>
+          <Text style={[s.errorText, { color: T.ink3 }]}>{error}</Text>
         </View>
       </View>
     );
@@ -84,15 +88,15 @@ export function DoctorApprovalScreen() {
   if (done) {
     const ok = done === 'approved';
     return (
-      <View style={s.center}>
-        <View style={s.card}>
+      <View style={[s.center, { backgroundColor: isDark ? '#0E0E0E' : '#F1F5F9' }]}>
+        <View style={[s.card, { backgroundColor: T.card, borderColor: isDark ? T.hairline : 'rgba(255,255,255,0.95)' }]}>
           <View style={[s.iconWrap, { backgroundColor: ok ? '#D1FAE5' : '#FEE2E2' }]}>
             <AppIcon name={ok ? 'check' : 'x'} size={28} color={ok ? '#059669' : '#DC2626'} strokeWidth={3} />
           </View>
-          <Text style={s.title}>
+          <Text style={[s.title, { color: T.ink }]}>
             {ok ? 'Tasarım onaylandı' : 'Değişiklik talep edildi'}
           </Text>
-          <Text style={s.subtitle}>
+          <Text style={[s.subtitle, { color: T.ink3 }]}>
             {ok
               ? 'İş bir sonraki aşamaya (CAM) geçirildi.'
               : 'Tasarım ekibi yorumunuzla bilgilendirildi.'}
@@ -107,16 +111,16 @@ export function DoctorApprovalScreen() {
   const hoursLeft = Math.max(0, Math.ceil((expires.getTime() - Date.now()) / 3_600_000));
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: '#F1F5F9' }} contentContainerStyle={{ padding: 20, paddingTop: 20 + insets.top, alignItems: 'center' }}>
-      <View style={[s.card, { width: '100%', maxWidth: 560 }]}>
+    <ScrollView style={{ flex: 1, backgroundColor: isDark ? '#0E0E0E' : '#F1F5F9' }} contentContainerStyle={{ padding: 20, paddingTop: 20 + insets.top, alignItems: 'center' }}>
+      <View style={[s.card, { width: '100%', maxWidth: 560, backgroundColor: T.card, borderColor: isDark ? T.hairline : 'rgba(255,255,255,0.95)' }]}>
         {/* Header */}
         <View style={s.header}>
           <View style={[s.iconWrap, { backgroundColor: '#EDE9FE' }]}>
             <AppIcon name="shield-check-outline" size={22} color="#7C3AED" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={s.title}>Tasarım Onayı</Text>
-            <Text style={s.subtitle}>#{data.order_number}</Text>
+            <Text style={[s.title, { color: T.ink }]}>Tasarım Onayı</Text>
+            <Text style={[s.subtitle, { color: T.ink3 }]}>#{data.order_number}</Text>
           </View>
           <View style={s.timerPill}>
             <AppIcon name="clock-outline" size={11} color="#92400E" />
@@ -136,7 +140,7 @@ export function DoctorApprovalScreen() {
         {/* Reject note */}
         {rejectMode && (
           <View style={{ marginTop: 14 }}>
-            <Text style={s.fieldLabel}>Değişiklik Notu (zorunlu)</Text>
+            <Text style={[s.fieldLabel, { color: T.ink3 }]}>Değişiklik Notu (zorunlu)</Text>
             <TextInput
               value={note}
               onChangeText={setNote}
@@ -144,7 +148,7 @@ export function DoctorApprovalScreen() {
               numberOfLines={4}
               placeholder="Tasarım ekibine iletmek istediğiniz değişiklikler..."
               placeholderTextColor="#94A3B8"
-              style={s.input}
+              style={[s.input, { color: T.ink, borderColor: T.hairline }]}
             />
           </View>
         )}
@@ -179,11 +183,11 @@ export function DoctorApprovalScreen() {
           <View style={s.actions}>
             <TouchableOpacity
               onPress={() => { setRejectMode(false); setNote(''); }}
-              style={s.cancelBtn}
+              style={[s.cancelBtn, { backgroundColor: isDark ? T.cardSoft : '#F1F5F9' }]}
               activeOpacity={0.7}
               disabled={submitting}
             >
-              <Text style={s.cancelText}>Vazgeç</Text>
+              <Text style={[s.cancelText, { color: T.ink3 }]}>Vazgeç</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => decide(false)}
@@ -203,10 +207,12 @@ export function DoctorApprovalScreen() {
 }
 
 function Meta({ label, value, multiline }: { label: string; value: string; multiline?: boolean }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
-    <View style={[s.meta, multiline && { width: '100%' }]}>
-      <Text style={s.metaLabel}>{label}</Text>
-      <Text style={s.metaValue} numberOfLines={multiline ? 0 : 1}>{value}</Text>
+    <View style={[s.meta, { backgroundColor: isDark ? T.cardSoft : '#F8FAFC' }, multiline && { width: '100%' }]}>
+      <Text style={[s.metaLabel, { color: T.ink3 }]}>{label}</Text>
+      <Text style={[s.metaValue, { color: T.ink }]} numberOfLines={multiline ? 0 : 1}>{value}</Text>
     </View>
   );
 }

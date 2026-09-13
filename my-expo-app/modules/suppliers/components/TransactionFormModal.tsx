@@ -4,7 +4,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, Platform, Modal, TextInput, ScrollView} from 'react-native';
-import { X, Check, ArrowDownCircle, ArrowUpCircle, RotateCcw, Settings as Adjust, AlertCircle, FileUp, Sparkles } from 'lucide-react-native';
+import { X, Check, ArrowDownCircle, ArrowUpCircle, RotateCcw, Settings as Adjust, AlertCircle, FileUp, Sparkles } from '../../../core/ui/icons';
 import {
   Supplier, SupplierTransaction, TransactionType, PaymentMethod,
   TX_TYPE_LABELS, PAYMENT_METHOD_LABELS, recordTransaction, updateTransaction,
@@ -259,7 +259,7 @@ export function TransactionFormModal({ visible, type, supplier, editing = null, 
               </View>
             </View>
             <Pressable onPress={onClose} style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: T.cardSoft, borderWidth: 1, borderColor: T.hairline, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-              <X size={14} color="#6B6B6B" strokeWidth={1.8} />
+              <X size={14} color={T.ink3} strokeWidth={1.8} />
             </Pressable>
           </View>
 
@@ -306,7 +306,7 @@ export function TransactionFormModal({ visible, type, supplier, editing = null, 
               borderRadius: 12, borderWidth: 1, borderColor: typeColor + '22',
             }}>
               <AlertCircle size={14} color={typeColor} strokeWidth={1.8} style={{ marginTop: 1 }} />
-              <Text style={{ flex: 1, fontSize: 12, color: '#2C2C2C', lineHeight: 17 }}>{typeHint}</Text>
+              <Text style={{ flex: 1, fontSize: 12, color: T.ink2, lineHeight: 17 }}>{typeHint}</Text>
             </View>
 
             {/* Amount */}
@@ -446,7 +446,7 @@ export function TransactionFormModal({ visible, type, supplier, editing = null, 
             {type === 'PURCHASE' && (
               <View>
                 <Text style={label}>FATURA NO (ops.)</Text>
-                <TextInput style={inputStyle} value={invoiceNo} onChangeText={setInvoiceNo} placeholder="örn. ABC-2026/00123" placeholderTextColor="#9A9A9A" />
+                <TextInput style={inputStyle} value={invoiceNo} onChangeText={setInvoiceNo} placeholder="örn. ABC-2026/00123" placeholderTextColor={isDark ? (T.ink3 as string) : '#9A9A9A'} />
               </View>
             )}
 
@@ -461,7 +461,7 @@ export function TransactionFormModal({ visible, type, supplier, editing = null, 
                       value={bankName}
                       onChangeText={setBankName}
                       placeholder="Vakıf, Ziraat, İş Bankası…"
-                      placeholderTextColor="#9A9A9A"
+                      placeholderTextColor={isDark ? (T.ink3 as string) : '#9A9A9A'}
                     />
                   </View>
                   <View style={{ flex: 1 }}>
@@ -471,7 +471,7 @@ export function TransactionFormModal({ visible, type, supplier, editing = null, 
                       value={referenceNo}
                       onChangeText={setReferenceNo}
                       placeholder="Ref / işlem no"
-                      placeholderTextColor="#9A9A9A"
+                      placeholderTextColor={isDark ? (T.ink3 as string) : '#9A9A9A'}
                     />
                   </View>
                 </View>
@@ -482,7 +482,7 @@ export function TransactionFormModal({ visible, type, supplier, editing = null, 
                     value={iban}
                     onChangeText={setIban}
                     placeholder="TR.. .... .... .... .... .... .."
-                    placeholderTextColor="#9A9A9A"
+                    placeholderTextColor={isDark ? (T.ink3 as string) : '#9A9A9A'}
                     autoCapitalize="characters"
                   />
                 </View>
@@ -497,7 +497,7 @@ export function TransactionFormModal({ visible, type, supplier, editing = null, 
                 value={description}
                 onChangeText={setDescription}
                 placeholder={type === 'PAYMENT' ? 'Havale dekontu, ödeme notu vb.' : 'Açıklama / not'}
-                placeholderTextColor="#9A9A9A"
+                placeholderTextColor={isDark ? (T.ink3 as string) : '#9A9A9A'}
                 multiline
               />
             </View>

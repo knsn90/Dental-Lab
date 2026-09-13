@@ -9,7 +9,7 @@ import { useRouter } from 'expo-router';
 import {
   Mail, Lock, Eye, EyeOff, User as UserIcon, Phone, Building2,
   AlertCircle, ChevronLeft, ChevronRight,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { isRTL } from '../../../core/i18n';
 import { signUpClinic } from '../api';
 import { AddressFields, AddressData, buildAddressString } from '../components/AddressFields';

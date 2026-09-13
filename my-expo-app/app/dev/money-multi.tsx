@@ -8,6 +8,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MoneyMultiX } from '../../core/money/MoneyMultiX';
 import { groupByCurrency } from '../../core/money/aggregations';
 import type { Currency } from '../../core/money/currency';
+import { useMobileTokens } from '../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../core/store/themeModeStore';
 
 // Örnek hareketler (kullanıcının örneği): farklı para birimleri bağımsız
 const TX: { amount: number; currency: Currency }[] = [
@@ -28,22 +30,26 @@ const BAL: { amount: number; currency: Currency }[] = [
 const ACCENT = '#EA7A4C'; // exec/admin mercan — demo
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
-    <View style={{ gap: 10, backgroundColor: '#FFFFFF', borderRadius: 18, padding: 18, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' }}>
-      <Text style={{ fontSize: 11, fontWeight: '700', color: '#9A9A9A', letterSpacing: 1, textTransform: 'uppercase' }}>{title}</Text>
+    <View style={{ gap: 10, backgroundColor: isDark ? T.card : '#FFFFFF', borderRadius: 18, padding: 18, borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.06)' }}>
+      <Text style={{ fontSize: 11, fontWeight: '700', color: isDark ? (T.ink3 as string) : '#9A9A9A', letterSpacing: 1, textTransform: 'uppercase' }}>{title}</Text>
       {children}
     </View>
   );
 }
 
 export default function MoneyMultiPreview() {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const txSlices  = groupByCurrency(TX,  t => ({ amount: t.amount, currency: t.currency }));
   const balSlices = groupByCurrency(BAL, t => ({ amount: t.amount, currency: t.currency }), { keepZero: true });
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#F5F1EB' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? T.bg : '#F5F1EB' }}>
       <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }}>
-        <Text style={{ fontSize: 24, fontWeight: '300', color: '#0A0A0A', fontFamily: 'Inter Tight, Inter, system-ui, sans-serif', letterSpacing: -0.5 }}>
+        <Text style={{ fontSize: 24, fontWeight: '300', color: isDark ? T.ink : '#0A0A0A', fontFamily: 'Inter Tight, Inter, system-ui, sans-serif', letterSpacing: -0.5 }}>
           MoneyMultiX — katı per-currency
         </Text>
 

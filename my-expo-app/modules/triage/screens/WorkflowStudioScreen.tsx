@@ -11,7 +11,7 @@ import {
   Workflow, Cpu, Users, SlidersHorizontal, Plus, X, GripVertical, ChevronUp, ChevronDown,
   Save, Trash2, Copy, Star, AlertTriangle, Sparkles, Clock, Layers, Zap, Check, Lightbulb, ArrowLeft, ArrowRight,
   Pencil, Wrench, Brush, Box, ScanLine, Printer, Gem, Cog, Info, Search, ChevronLeft, ChevronRight,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { DS } from '../../../core/theme/dsTokens';
 import { useAuthStore } from '../../../core/store/authStore';
@@ -29,6 +29,8 @@ import { MATERIAL_CATEGORIES } from '../../../core/materials/stageCategories';
 import { toast } from '../../../core/ui/Toast';
 import { isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 // Yetkinlik ikon paleti (lucide).
 // KATEGORİLİ: on ikon tek sırada dizilince hepsi birbirine benziyordu ve hangisinin
@@ -140,8 +142,10 @@ export function WorkflowStudioScreen({ embedded = false }: {
       sayfa zemini kabın kendisinden gelir, burada tekrarlanmaz. */
   embedded?: boolean;
 } = {}) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const theme = usePanelTheme();
-  const A = theme.primary, A_DEEP = theme.primaryDeep, PAGE = PANEL_BGPAGE[theme.key] ?? theme.bg;
+  const A = theme.primary, A_DEEP = theme.primaryDeep, PAGE = isDark ? '#0E0E0E' : (PANEL_BGPAGE[theme.key] ?? theme.bg);
   const onA = onPrimaryText(A, theme.accent);   // turuncu/mercan zeminde beyaz, açık saffron'da koyu
   const { profile } = useAuthStore();
   const labId = (profile as any)?.lab_id ?? null;
@@ -246,8 +250,8 @@ export function WorkflowStudioScreen({ embedded = false }: {
                 <Icon size={16} color={active ? '#FFFFFF' : A_DEEP} strokeWidth={2} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: active ? '#FFFFFF' : INK[900] }} numberOfLines={1}>{autoT(a.label)}</Text>
-                <Text style={{ fontSize: 10.5, color: active ? 'rgba(255,255,255,0.8)' : INK[400] }} numberOfLines={1}>{autoT(a.hint)}</Text>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: active ? '#FFFFFF' : (isDark ? T.ink : INK[900]) }} numberOfLines={1}>{autoT(a.label)}</Text>
+                <Text style={{ fontSize: 10.5, color: active ? 'rgba(255,255,255,0.8)' : (isDark ? T.ink3 : INK[400]) }} numberOfLines={1}>{autoT(a.hint)}</Text>
               </View>
             </Pressable>
           );
@@ -280,6 +284,8 @@ function BuilderArea({ theme, isNarrow, stations, techs, templates, stationById,
   skillNames: string[]; labId: string | null; onReload: () => void;
 }) {
   const { A, A_DEEP, onA, PAGE } = theme;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
 
   const [draft, setDraft] = useState<Draft | null>(null);
   const [selStage, setSelStage] = useState<string | null>(null);
@@ -387,17 +393,17 @@ function BuilderArea({ theme, isNarrow, stations, techs, templates, stationById,
         <View style={{ gap: 6 }}>
           <Text style={{
             fontSize: 11, fontWeight: '500', letterSpacing: 1.4,
-            textTransform: 'uppercase', color: INK[500],
+            textTransform: 'uppercase', color: (isDark ? T.ink3 : INK[500]),
           }}>
             Üretim · İş Akışları
           </Text>
           <Text style={{
             fontFamily: DISPLAY, fontWeight: '300',
-            fontSize: 22, letterSpacing: -0.5, lineHeight: 26, color: INK[900],
+            fontSize: 22, letterSpacing: -0.5, lineHeight: 26, color: (isDark ? T.ink : INK[900]),
           }}>
             Üretim Akışı Stüdyosu
           </Text>
-          <Text style={{ fontSize: 13, color: INK[500], lineHeight: 19, maxWidth: 640 }}>
+          <Text style={{ fontSize: 13, color: (isDark ? T.ink3 : INK[500]), lineHeight: 19, maxWidth: 640 }}>
             Her iş tipinin hangi aşamalardan geçeceğini burada tasarlarsınız. Aşamaları
             sürükleyerek dizin; süre, yetkinlik ve uygun teknisyen kuralları aşama
             seçildiğinde sağda görünür.
@@ -407,22 +413,22 @@ function BuilderArea({ theme, isNarrow, stations, techs, templates, stationById,
         {/* Özet şeridi — kaç akış, kaç aşama, varsayılan var mı */}
         <View style={{
           flexDirection: 'row', alignItems: 'center', gap: 26, flexWrap: 'wrap',
-          backgroundColor: '#FFFFFF', borderRadius: 24, borderWidth: 1,
-          borderColor: 'rgba(0,0,0,0.05)', paddingHorizontal: 20, paddingVertical: 16,
+          backgroundColor: isDark ? T.card : '#FFFFFF', borderRadius: 24, borderWidth: 1,
+          borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.05)', paddingHorizontal: 20, paddingVertical: 16,
         }}>
           <View style={{ gap: 2 }}>
-            <Text style={{ fontFamily: DISPLAY, fontWeight: '300', fontSize: 20, letterSpacing: -0.6, lineHeight: 24, color: INK[900] }}>
+            <Text style={{ fontFamily: DISPLAY, fontWeight: '300', fontSize: 20, letterSpacing: -0.6, lineHeight: 24, color: (isDark ? T.ink : INK[900]) }}>
               {templates.length}
             </Text>
-            <Text style={{ fontSize: 10, fontWeight: '500', letterSpacing: 0.8, textTransform: 'uppercase', color: INK[400] }}>
+            <Text style={{ fontSize: 10, fontWeight: '500', letterSpacing: 0.8, textTransform: 'uppercase', color: (isDark ? T.ink3 : INK[400]) }}>
               Tanımlı akış
             </Text>
           </View>
           <View style={{ gap: 2 }}>
-            <Text style={{ fontFamily: DISPLAY, fontWeight: '300', fontSize: 20, letterSpacing: -0.6, lineHeight: 24, color: INK[900] }}>
+            <Text style={{ fontFamily: DISPLAY, fontWeight: '300', fontSize: 20, letterSpacing: -0.6, lineHeight: 24, color: (isDark ? T.ink : INK[900]) }}>
               {stations.length}
             </Text>
-            <Text style={{ fontSize: 10, fontWeight: '500', letterSpacing: 0.8, textTransform: 'uppercase', color: INK[400] }}>
+            <Text style={{ fontSize: 10, fontWeight: '500', letterSpacing: 0.8, textTransform: 'uppercase', color: (isDark ? T.ink3 : INK[400]) }}>
               İstasyon
             </Text>
           </View>
@@ -433,7 +439,7 @@ function BuilderArea({ theme, isNarrow, stations, techs, templates, stationById,
             }}>
               {templates.some(t => t.is_default) ? 'Var' : 'Yok'}
             </Text>
-            <Text style={{ fontSize: 10, fontWeight: '500', letterSpacing: 0.8, textTransform: 'uppercase', color: INK[400] }}>
+            <Text style={{ fontSize: 10, fontWeight: '500', letterSpacing: 0.8, textTransform: 'uppercase', color: (isDark ? T.ink3 : INK[400]) }}>
               Varsayılan akış
             </Text>
           </View>
@@ -465,15 +471,15 @@ function BuilderArea({ theme, isNarrow, stations, techs, templates, stationById,
 
         {/* Hazır şablonlar */}
         <View style={{ gap: 8 }}>
-          <Text style={{ fontSize: 10.5, fontWeight: '700', color: INK[400], letterSpacing: 0.5, textTransform: 'uppercase' }}>Hazır Şablonlar — başlangıç için tıkla</Text>
+          <Text style={{ fontSize: 10.5, fontWeight: '700', color: (isDark ? T.ink3 : INK[400]), letterSpacing: 0.5, textTransform: 'uppercase' }}>Hazır Şablonlar — başlangıç için tıkla</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingEnd: 8 }}>
             {WORKFLOW_PRESETS.map(p => (
-              <Pressable key={p.name} onPress={() => applyPreset(p)} style={{ width: 200, padding: 13, borderRadius: 14, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', gap: 7, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+              <Pressable key={p.name} onPress={() => applyPreset(p)} style={{ width: 200, padding: 13, borderRadius: 14, backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.08)', gap: 7, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
                 <View style={{ width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(A, 0.12) }}><Workflow size={16} color={A_DEEP} strokeWidth={2} /></View>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: INK[900] }}>{p.name}</Text>
-                <Text style={{ fontSize: 10.5, color: INK[500] }} numberOfLines={2}>{p.desc}</Text>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: (isDark ? T.ink : INK[900]) }}>{p.name}</Text>
+                <Text style={{ fontSize: 10.5, color: (isDark ? T.ink3 : INK[500]) }} numberOfLines={2}>{p.desc}</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  <Layers size={10} color={INK[400]} strokeWidth={2} /><Text style={{ fontSize: 10, color: INK[400] }}>{p.stages.length} aşama</Text>
+                  <Layers size={10} color={(isDark ? T.ink3 : INK[400])} strokeWidth={2} /><Text style={{ fontSize: 10, color: (isDark ? T.ink3 : INK[400]) }}>{p.stages.length} aşama</Text>
                 </View>
               </Pressable>
             ))}
@@ -481,10 +487,10 @@ function BuilderArea({ theme, isNarrow, stations, techs, templates, stationById,
         </View>
 
         {templates.length === 0 ? (
-          <View style={{ borderRadius: 20, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', padding: 36, alignItems: 'center', gap: 10 }}>
+          <View style={{ borderRadius: 20, backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.06)', padding: 36, alignItems: 'center', gap: 10 }}>
             <View style={{ width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(A, 0.12) }}><Workflow size={24} color={A_DEEP} strokeWidth={1.8} /></View>
-            <Text style={{ fontSize: 16, fontWeight: '700', color: INK[900] }}>Henüz iş akışı yok</Text>
-            <Text style={{ fontSize: 13, color: INK[500], textAlign: 'center', maxWidth: 380 }}>İlk üretim akışını tasarla — aşamaları sürükleyerek diz, her aşamanın süre/yetkinlik kuralını belirle.</Text>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: (isDark ? T.ink : INK[900]) }}>Henüz iş akışı yok</Text>
+            <Text style={{ fontSize: 13, color: (isDark ? T.ink3 : INK[500]), textAlign: 'center', maxWidth: 380 }}>İlk üretim akışını tasarla — aşamaları sürükleyerek diz, her aşamanın süre/yetkinlik kuralını belirle.</Text>
             <Pressable onPress={openNew} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 11, borderRadius: 12, backgroundColor: A, marginTop: 4 }}>
               <Plus size={15} color={onA} strokeWidth={2.2} /><Text style={{ fontSize: 13.5, fontWeight: '800', color: onA }}>İlk Akışı Tasarla</Text>
             </Pressable>
@@ -492,13 +498,13 @@ function BuilderArea({ theme, isNarrow, stations, techs, templates, stationById,
         ) : (
           <View style={{ gap: 12 }}>
             {templates.map(t => (
-              <View key={t.id} style={{ borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.07)', padding: 16 }}>
+              <View key={t.id} style={{ borderRadius: 16, backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.07)', padding: 16 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: INK[900] }}>{t.name}</Text>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: (isDark ? T.ink : INK[900]) }}>{t.name}</Text>
                   {t.is_default && <Badge color={A_DEEP} bg={tint(A, 0.16)} icon={<Star size={9} color={A_DEEP} strokeWidth={2} />} label="VARSAYILAN" />}
-                  {!t.is_active && <Badge color={INK[500]} bg="rgba(0,0,0,0.06)" label="PASİF" />}
+                  {!t.is_active && <Badge color={(isDark ? T.ink3 : INK[500])} bg="rgba(0,0,0,0.06)" label="PASİF" />}
                   <View style={{ flex: 1 }} />
-                  <Text style={{ fontSize: 11, color: INK[400] }}>{t.station_ids.length} aşama</Text>
+                  <Text style={{ fontSize: 11, color: (isDark ? T.ink3 : INK[400]) }}>{t.station_ids.length} aşama</Text>
                 </View>
                 {/* mini pipeline önizleme */}
                 <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 5, marginBottom: 12 }}>
@@ -509,7 +515,7 @@ function BuilderArea({ theme, isNarrow, stations, techs, templates, stationById,
                         : <ArrowRight size={11} color={INK[300]} strokeWidth={2} />)}
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: tint(st.color, 0.10) }}>
                         <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: st.color }} />
-                        <Text style={{ fontSize: 11, fontWeight: '600', color: INK[700] }}>{st.name}</Text>
+                        <Text style={{ fontSize: 11, fontWeight: '600', color: (isDark ? T.ink2 : INK[700]) }}>{st.name}</Text>
                       </View>
                     </View>
                   ); })}
@@ -518,8 +524,8 @@ function BuilderArea({ theme, isNarrow, stations, techs, templates, stationById,
                   <Pressable onPress={() => openEdit(t)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 13, paddingVertical: 8, borderRadius: 10, backgroundColor: A, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
                     <SlidersHorizontal size={13} color={onA} strokeWidth={2} /><Text style={{ fontSize: 12, fontWeight: '700', color: onA }}>Düzenle</Text>
                   </Pressable>
-                  <Pressable onPress={() => openClone(t)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 13, paddingVertical: 8, borderRadius: 10, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-                    <Copy size={13} color={INK[500]} strokeWidth={2} /><Text style={{ fontSize: 12, fontWeight: '700', color: INK[500] }}>Klonla</Text>
+                  <Pressable onPress={() => openClone(t)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 13, paddingVertical: 8, borderRadius: 10, backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.10)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                    <Copy size={13} color={(isDark ? T.ink3 : INK[500])} strokeWidth={2} /><Text style={{ fontSize: 12, fontWeight: '700', color: (isDark ? T.ink3 : INK[500]) }}>Klonla</Text>
                   </Pressable>
                   <View style={{ flex: 1 }} />
                   <Pressable onPress={() => removeCard(t)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 13, paddingVertical: 8, borderRadius: 10, backgroundColor: tint('#D94B4B', 0.10), borderWidth: 1, borderColor: tint('#D94B4B', 0.25), ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
@@ -545,17 +551,17 @@ function BuilderArea({ theme, isNarrow, stations, techs, templates, stationById,
           <Pressable onPress={() => setPresetNote(null)}><X size={13} color={A_DEEP} strokeWidth={2} /></Pressable>
         </View>
       )}
-      <View style={{ borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.07)', padding: 14, gap: 10 }}>
-        <TextInput value={draft.name} onChangeText={t => patch({ name: t })} placeholder="Akış adı (ör. Zirkonyum Köprü)" placeholderTextColor={INK[400]}
-          style={{ fontSize: 15, fontWeight: '700', color: INK[900], backgroundColor: PAGE, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' } as any} />
-        <TextInput value={draft.caseTypesText} onChangeText={t => patch({ caseTypesText: t })} placeholder="Vaka tipleri (virgülle) — eşleşince otomatik uygulanır" placeholderTextColor={INK[400]}
-          style={{ fontSize: 12.5, color: INK[800], backgroundColor: PAGE, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' } as any} />
+      <View style={{ borderRadius: 16, backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.07)', padding: 14, gap: 10 }}>
+        <TextInput value={draft.name} onChangeText={t => patch({ name: t })} placeholder="Akış adı (ör. Zirkonyum Köprü)" placeholderTextColor={(isDark ? T.ink3 : INK[400])}
+          style={{ fontSize: 15, fontWeight: '700', color: (isDark ? T.ink : INK[900]), backgroundColor: PAGE, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.08)' } as any} />
+        <TextInput value={draft.caseTypesText} onChangeText={t => patch({ caseTypesText: t })} placeholder="Vaka tipleri (virgülle) — eşleşince otomatik uygulanır" placeholderTextColor={(isDark ? T.ink3 : INK[400])}
+          style={{ fontSize: 12.5, color: (isDark ? T.ink : INK[800]), backgroundColor: PAGE, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.08)' } as any} />
       </View>
 
       {/* pipeline */}
       <View style={{ gap: 0 }}>
         {draft.stationIds.length === 0 && (
-          <Text style={{ fontSize: 12, color: INK[400], fontStyle: 'italic', paddingVertical: 8 }}>Aşama yok — aşağıdan ekle.</Text>
+          <Text style={{ fontSize: 12, color: (isDark ? T.ink3 : INK[400]), fontStyle: 'italic', paddingVertical: 8 }}>Aşama yok — aşağıdan ekle.</Text>
         )}
         {draft.stationIds.map((sid, i) => {
           const st = stationById.get(sid); if (!st) return null;
@@ -572,25 +578,25 @@ function BuilderArea({ theme, isNarrow, stations, techs, templates, stationById,
                 onDragStart: (e: any) => { try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(i)); } catch {} setDragIdx(i); },
                 onDragEnd: () => { setDragIdx(null); setOverIdx(null); },
                 style: { cursor: 'grab', display: 'flex', alignItems: 'center' },
-              }, <GripVertical size={16} color={INK[400]} strokeWidth={2} />)
+              }, <GripVertical size={16} color={(isDark ? T.ink3 : INK[400])} strokeWidth={2} />)
               : (
                 <View style={{ alignItems: 'center' }}>
-                  <Pressable onPress={() => move(i, -1)} disabled={i === 0} style={{ opacity: i === 0 ? 0.25 : 1 }}><ChevronUp size={14} color={INK[400]} strokeWidth={2} /></Pressable>
-                  <Pressable onPress={() => move(i, 1)} disabled={last} style={{ opacity: last ? 0.25 : 1 }}><ChevronDown size={14} color={INK[400]} strokeWidth={2} /></Pressable>
+                  <Pressable onPress={() => move(i, -1)} disabled={i === 0} style={{ opacity: i === 0 ? 0.25 : 1 }}><ChevronUp size={14} color={(isDark ? T.ink3 : INK[400])} strokeWidth={2} /></Pressable>
+                  <Pressable onPress={() => move(i, 1)} disabled={last} style={{ opacity: last ? 0.25 : 1 }}><ChevronDown size={14} color={(isDark ? T.ink3 : INK[400])} strokeWidth={2} /></Pressable>
                 </View>
               )}
               <View style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(st.color, 0.16) }}>
                 <Text style={{ fontSize: 12, fontWeight: '800', color: st.color, fontFamily: DISPLAY }}>{i + 1}</Text>
               </View>
               <Pressable onPress={() => setSelStage(selected ? null : sid)} style={{ flex: 1, ...(isWeb ? { cursor: 'pointer' } as any : {}) }}>
-                <Text style={{ fontSize: 13.5, fontWeight: '700', color: INK[900] }}>{st.name}</Text>
+                <Text style={{ fontSize: 13.5, fontWeight: '700', color: (isDark ? T.ink : INK[900]) }}>{st.name}</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>
-                  <Text style={{ fontSize: 10.5, color: INK[400] }}>{st.est_duration_min ? fmtDuration(st.est_duration_min) : 'süre yok'}</Text>
+                  <Text style={{ fontSize: 10.5, color: (isDark ? T.ink3 : INK[400]) }}>{st.est_duration_min ? fmtDuration(st.est_duration_min) : 'süre yok'}</Text>
                   {st.required_skills.length > 0 && <Text style={{ fontSize: 10.5, color: A_DEEP, fontWeight: '600' }}>{st.required_skills.length} yetkinlik</Text>}
                   {st.is_critical && <Text style={{ fontSize: 10, fontWeight: '800', color: '#9C2E2E' }}>KRİTİK</Text>}
                 </View>
               </Pressable>
-              <Pressable onPress={() => removeStage(i)} style={{ width: 26, height: 26, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.04)' }}><X size={13} color={INK[400]} strokeWidth={2} /></Pressable>
+              <Pressable onPress={() => removeStage(i)} style={{ width: 26, height: 26, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#292825' : 'rgba(0,0,0,0.04)' }}><X size={13} color={(isDark ? T.ink3 : INK[400])} strokeWidth={2} /></Pressable>
             </View>
           );
           return (
@@ -608,11 +614,11 @@ function BuilderArea({ theme, isNarrow, stations, techs, templates, stationById,
       {/* aşama ekle */}
       {poolStations.length > 0 && (
         <View style={{ gap: 6, marginTop: 4 }}>
-          <Text style={{ fontSize: 10, fontWeight: '700', color: INK[400], letterSpacing: 0.5, textTransform: 'uppercase' }}>Aşama ekle</Text>
+          <Text style={{ fontSize: 10, fontWeight: '700', color: (isDark ? T.ink3 : INK[400]), letterSpacing: 0.5, textTransform: 'uppercase' }}>Aşama ekle</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {poolStations.map(st => (
-              <Pressable key={st.id} onPress={() => addStage(st.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 11, paddingVertical: 7, borderRadius: 999, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-                <Plus size={12} color={INK[500]} strokeWidth={2} /><View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: st.color }} /><Text style={{ fontSize: 12, fontWeight: '600', color: INK[700] }}>{st.name}</Text>
+              <Pressable key={st.id} onPress={() => addStage(st.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 11, paddingVertical: 7, borderRadius: 999, backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.10)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                <Plus size={12} color={(isDark ? T.ink3 : INK[500])} strokeWidth={2} /><View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: st.color }} /><Text style={{ fontSize: 12, fontWeight: '600', color: (isDark ? T.ink2 : INK[700]) }}>{st.name}</Text>
               </Pressable>
             ))}
           </View>
@@ -624,12 +630,12 @@ function BuilderArea({ theme, isNarrow, stations, techs, templates, stationById,
       {/* default + aksiyonlar */}
       <Pressable onPress={() => patch({ isDefault: !draft.isDefault })} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 }}>
         <View style={{ width: 20, height: 20, borderRadius: 6, alignItems: 'center', justifyContent: 'center', backgroundColor: draft.isDefault ? A : '#FFFFFF', borderWidth: 1, borderColor: draft.isDefault ? A : 'rgba(0,0,0,0.15)' }}>{draft.isDefault && <Check size={13} color={onA} strokeWidth={3} />}</View>
-        <Text style={{ fontSize: 12.5, color: INK[800], fontWeight: '600' }}>Varsayılan akış (eşleşme yoksa bu kullanılır)</Text>
+        <Text style={{ fontSize: 12.5, color: (isDark ? T.ink : INK[800]), fontWeight: '600' }}>Varsayılan akış (eşleşme yoksa bu kullanılır)</Text>
       </Pressable>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4, flexWrap: 'wrap' }}>
         {draft.id && <Pressable onPress={remove} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 13, paddingVertical: 10, borderRadius: 11, backgroundColor: tint('#D94B4B', 0.10), borderWidth: 1, borderColor: tint('#D94B4B', 0.25) }}><Trash2 size={14} color="#9C2E2E" strokeWidth={2} /><Text style={{ fontSize: 12.5, fontWeight: '700', color: '#9C2E2E' }}>Sil</Text></Pressable>}
         <View style={{ flex: 1 }} />
-        <Pressable onPress={() => setDraft(null)} style={{ paddingHorizontal: 15, paddingVertical: 10, borderRadius: 11, borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)' }}><Text style={{ fontSize: 12.5, fontWeight: '700', color: INK[500] }}>Geri</Text></Pressable>
+        <Pressable onPress={() => setDraft(null)} style={{ paddingHorizontal: 15, paddingVertical: 10, borderRadius: 11, borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.12)' }}><Text style={{ fontSize: 12.5, fontWeight: '700', color: (isDark ? T.ink3 : INK[500]) }}>Geri</Text></Pressable>
         <Pressable onPress={save} disabled={saving} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 11, backgroundColor: A, opacity: saving ? 0.5 : 1 }}><Save size={15} color={onA} strokeWidth={2.1} /><Text style={{ fontSize: 13, fontWeight: '800', color: onA }}>{saving ? 'Kaydediliyor…' : 'Kaydet'}</Text></Pressable>
       </View>
     </View>
@@ -640,10 +646,10 @@ function BuilderArea({ theme, isNarrow, stations, techs, templates, stationById,
       {selStation ? (
         <StageDetailPanel theme={theme} st={selStation} techs={techs} idx={draft.stationIds.indexOf(selStation.id)} total={draft.stationIds.length} stationById={stationById} draftStationIds={draft.stationIds} />
       ) : (
-        <View style={{ borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.07)', padding: 16, alignItems: 'center', gap: 8 }}>
+        <View style={{ borderRadius: 16, backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.07)', padding: 16, alignItems: 'center', gap: 8 }}>
           <View style={{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(A, 0.10) }}><Layers size={20} color={A_DEEP} strokeWidth={1.8} /></View>
-          <Text style={{ fontSize: 13.5, fontWeight: '700', color: INK[900] }}>Bir aşama seç</Text>
-          <Text style={{ fontSize: 12, color: INK[500], textAlign: 'center' }}>Soldaki akıştan bir aşamaya dokun — süresi, yetkinlikleri ve uygun teknisyenleri burada görünür.</Text>
+          <Text style={{ fontSize: 13.5, fontWeight: '700', color: (isDark ? T.ink : INK[900]) }}>Bir aşama seç</Text>
+          <Text style={{ fontSize: 12, color: (isDark ? T.ink3 : INK[500]), textAlign: 'center' }}>Soldaki akıştan bir aşamaya dokun — süresi, yetkinlikleri ve uygun teknisyenleri burada görünür.</Text>
         </View>
       )}
       <InsightsPanel theme={theme} insights={insights} />
@@ -664,25 +670,27 @@ function StageDetailPanel({ theme, st, techs, idx, total, stationById, draftStat
   stationById: Map<string, TriageStation>; draftStationIds: string[];
 }) {
   const { A, A_DEEP } = theme;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const eligible = techs.filter(t => isQualified(st, t));
   const prev = idx > 0 ? stationById.get(draftStationIds[idx - 1]) : null;
   const next = idx >= 0 && idx < total - 1 ? stationById.get(draftStationIds[idx + 1]) : null;
   return (
-    <View style={{ borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: tint(A, 0.35), padding: 16, gap: 14 }}>
+    <View style={{ borderRadius: 16, backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: 1, borderColor: tint(A, 0.35), padding: 16, gap: 14 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
         <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: st.color }} />
-        <Text style={{ fontSize: 16, fontWeight: '800', color: INK[900], flex: 1 }}>{st.name}</Text>
+        <Text style={{ fontSize: 16, fontWeight: '800', color: (isDark ? T.ink : INK[900]), flex: 1 }}>{st.name}</Text>
         {st.is_critical && <Badge color="#9C2E2E" bg={tint('#D94B4B', 0.12)} icon={<AlertTriangle size={9} color="#9C2E2E" strokeWidth={2} />} label="KRİTİK" />}
       </View>
 
       <DetailRow icon={<Clock size={14} color={A_DEEP} strokeWidth={2} />} label="Tahmini süre"
         value={st.est_duration_min ? fmtDuration(st.est_duration_min) : '— (Kurallar sekmesinden gir)'} />
       <DetailRow icon={<Zap size={14} color={A_DEEP} strokeWidth={2} />} label="Teslim hedefi"
-        value={st.sla_hours ? `${st.sla_hours} saat` : '—'} />
+        value={st.sla_hours ? `${st.sla_hours} ${autoT('saat')}` : '—'} />
 
       <View style={{ gap: 6 }}>
-        <Text style={dlabel}>Gerekli yetkinlikler</Text>
-        {st.required_skills.length === 0 ? <Text style={{ fontSize: 12, color: INK[400], fontStyle: 'italic' }}>Yok — herkes uygun</Text> : (
+        <Text style={[dlabel, isDark && { color: T.ink3 }]}>Gerekli yetkinlikler</Text>
+        {st.required_skills.length === 0 ? <Text style={{ fontSize: 12, color: (isDark ? T.ink3 : INK[400]), fontStyle: 'italic' }}>Yok — herkes uygun</Text> : (
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
             {st.required_skills.map(s => <View key={s} style={{ paddingHorizontal: 9, paddingVertical: 3, borderRadius: 999, backgroundColor: tint(A, 0.12) }}><Text style={{ fontSize: 11, fontWeight: '700', color: A_DEEP }}>{s}</Text></View>)}
           </View>
@@ -690,7 +698,7 @@ function StageDetailPanel({ theme, st, techs, idx, total, stationById, draftStat
       </View>
 
       <View style={{ gap: 6 }}>
-        <Text style={dlabel}>Uygun teknisyenler ({eligible.length})</Text>
+        <Text style={[dlabel, isDark && { color: T.ink3 }]}>Uygun teknisyenler ({eligible.length})</Text>
         {eligible.length === 0 ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, padding: 9, borderRadius: 10, backgroundColor: tint('#D94B4B', 0.08) }}>
             <AlertTriangle size={13} color="#9C2E2E" strokeWidth={2} /><Text style={{ fontSize: 11.5, color: '#9C2E2E', fontWeight: '600' }}>Bu yetkinliğe sahip teknisyen yok!</Text>
@@ -698,9 +706,9 @@ function StageDetailPanel({ theme, st, techs, idx, total, stationById, draftStat
         ) : (
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
             {eligible.slice(0, 8).map(t => (
-              <View key={t.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: PAGE_SOFT, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' }}>
+              <View key={t.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: PAGE_SOFT, borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.06)' }}>
                 <View style={{ width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(A, 0.18) }}><Text style={{ fontSize: 8.5, fontWeight: '800', color: A_DEEP }}>{initials(t.full_name)}</Text></View>
-                <Text style={{ fontSize: 11.5, color: INK[700], fontWeight: '600' }}>{t.full_name}</Text>
+                <Text style={{ fontSize: 11.5, color: (isDark ? T.ink2 : INK[700]), fontWeight: '600' }}>{t.full_name}</Text>
               </View>
             ))}
           </View>
@@ -708,7 +716,7 @@ function StageDetailPanel({ theme, st, techs, idx, total, stationById, draftStat
       </View>
 
       <View style={{ gap: 6 }}>
-        <Text style={dlabel}>Bağımlılıklar</Text>
+        <Text style={[dlabel, isDark && { color: T.ink3 }]}>Bağımlılıklar</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <DepChip label={prev ? prev.name : 'Başlangıç'} color={prev?.color ?? INK[300]} />
           {isRTL() ? <ArrowLeft size={12} color={INK[300]} strokeWidth={2} /> : <ArrowRight size={12} color={INK[300]} strokeWidth={2} />}
@@ -733,6 +741,8 @@ function AiBuilderModal({ visible, theme, stations, skillNames, onClose, onApply
   onClose: () => void; onApply: (r: AiWorkflowResult) => void | Promise<void>;
 }) {
   const { A, A_DEEP, onA, PAGE } = theme;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [phase, setPhase] = useState<'form' | 'loading' | 'review' | 'error'>('form');
   const [services, setServices] = useState<string[]>([]);
   const [techCount, setTechCount] = useState('');
@@ -771,44 +781,44 @@ function AiBuilderModal({ visible, theme, stations, skillNames, onClose, onApply
 
   const yesNo = (label: string, val: boolean, set: (v: boolean) => void) => (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-      <Text style={{ flex: 1, fontSize: 13, color: INK[800], fontWeight: '600' }}>{label}</Text>
+      <Text style={{ flex: 1, fontSize: 13, color: (isDark ? T.ink : INK[800]), fontWeight: '600' }}>{label}</Text>
       {[['Evet', true], ['Hayır', false]].map(([lbl, v]) => { const sel = val === v; return (
         <Pressable key={String(lbl)} onPress={() => set(v as boolean)} style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 9, backgroundColor: sel ? A : '#FFFFFF', borderWidth: 1, borderColor: sel ? A : 'rgba(0,0,0,0.12)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-          <Text style={{ fontSize: 12, fontWeight: '700', color: sel ? onA : INK[500] }}>{lbl as string}</Text>
+          <Text style={{ fontSize: 12, fontWeight: '700', color: sel ? onA : (isDark ? T.ink3 : INK[500]) }}>{lbl as string}</Text>
         </Pressable>
       ); })}
     </View>
   );
   const txt = (label: string, value: string, set: (v: string) => void, ph: string, numeric?: boolean) => (
     <View style={{ gap: 5 }}>
-      <Text style={dlabel}>{label}</Text>
-      <TextInput value={value} onChangeText={set} placeholder={ph} placeholderTextColor={INK[400]} keyboardType={numeric ? 'numeric' : 'default'}
-        style={{ fontSize: 13.5, color: INK[900], backgroundColor: PAGE, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) } as any} />
+      <Text style={[dlabel, isDark && { color: T.ink3 }]}>{label}</Text>
+      <TextInput value={value} onChangeText={set} placeholder={ph} placeholderTextColor={(isDark ? T.ink3 : INK[400])} keyboardType={numeric ? 'numeric' : 'default'}
+        style={{ fontSize: 13.5, color: (isDark ? T.ink : INK[900]), backgroundColor: PAGE, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.08)', ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) } as any} />
     </View>
   );
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 16 }}>
-        <View style={{ maxWidth: 560, width: '100%', alignSelf: 'center', maxHeight: '88%', borderRadius: 20, backgroundColor: '#FFFFFF', overflow: 'hidden' }}>
+        <View style={{ maxWidth: 560, width: '100%', alignSelf: 'center', maxHeight: '88%', borderRadius: 20, backgroundColor: isDark ? T.card : '#FFFFFF', overflow: 'hidden' }}>
           {/* başlık */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
             <View style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(A, 0.12) }}><Sparkles size={17} color={A_DEEP} strokeWidth={2} /></View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 15, fontWeight: '800', color: INK[900] }}>Yapay Zeka ile Akış Kur</Text>
-              <Text style={{ fontSize: 11.5, color: INK[500] }}>Birkaç soru → önerilen üretim akışı</Text>
+              <Text style={{ fontSize: 15, fontWeight: '800', color: (isDark ? T.ink : INK[900]) }}>Yapay Zeka ile Akış Kur</Text>
+              <Text style={{ fontSize: 11.5, color: (isDark ? T.ink3 : INK[500]) }}>Birkaç soru → önerilen üretim akışı</Text>
             </View>
-            <Pressable onPress={onClose} style={{ width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.04)' }}><X size={15} color={INK[500]} strokeWidth={2} /></Pressable>
+            <Pressable onPress={onClose} style={{ width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#292825' : 'rgba(0,0,0,0.04)' }}><X size={15} color={(isDark ? T.ink3 : INK[500])} strokeWidth={2} /></Pressable>
           </View>
 
           <ScrollView contentContainerStyle={{ padding: 16, gap: 14 }}>
             {phase === 'form' && (<>
               <View style={{ gap: 6 }}>
-                <Text style={dlabel}>Hangi hizmetleri sunuyorsun?</Text>
+                <Text style={[dlabel, isDark && { color: T.ink3 }]}>Hangi hizmetleri sunuyorsun?</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                   {AI_SERVICES.map(s => { const sel = services.includes(s); return (
                     <Pressable key={s} onPress={() => toggleSvc(s)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, paddingVertical: 7, borderRadius: 999, backgroundColor: sel ? tint(A, 0.14) : '#FFFFFF', borderWidth: 1, borderColor: sel ? A : 'rgba(0,0,0,0.12)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-                      {sel && <Check size={12} color={A_DEEP} strokeWidth={3} />}<Text style={{ fontSize: 12, fontWeight: '600', color: sel ? A_DEEP : INK[500] }}>{s}</Text>
+                      {sel && <Check size={12} color={A_DEEP} strokeWidth={3} />}<Text style={{ fontSize: 12, fontWeight: '600', color: sel ? A_DEEP : (isDark ? T.ink3 : INK[500]) }}>{s}</Text>
                     </Pressable>
                   ); })}
                 </View>
@@ -833,7 +843,7 @@ function AiBuilderModal({ visible, theme, stations, skillNames, onClose, onApply
             {phase === 'loading' && (
               <View style={{ alignItems: 'center', gap: 12, paddingVertical: 40 }}>
                 <ActivityIndicator size="large" color={A} />
-                <Text style={{ fontSize: 13, color: INK[500], fontWeight: '600' }}>Yapay zeka üretim akışını tasarlıyor…</Text>
+                <Text style={{ fontSize: 13, color: (isDark ? T.ink3 : INK[500]), fontWeight: '600' }}>Yapay zeka üretim akışını tasarlıyor…</Text>
               </View>
             )}
 
@@ -848,20 +858,20 @@ function AiBuilderModal({ visible, theme, stations, skillNames, onClose, onApply
             {phase === 'review' && result && (<>
               {result.summary ? <View style={{ padding: 12, borderRadius: 12, backgroundColor: tint(A, 0.06), borderWidth: 1, borderColor: tint(A, 0.18) }}><Text style={{ fontSize: 12.5, color: A_DEEP, fontWeight: '600', lineHeight: 18 }}>{result.summary}</Text></View> : null}
               <View style={{ gap: 6 }}>
-                <Text style={dlabel}>Önerilen akış ({result.stages?.length ?? 0} aşama)</Text>
+                <Text style={[dlabel, isDark && { color: T.ink3 }]}>Önerilen akış ({result.stages?.length ?? 0} aşama)</Text>
                 {(result.stages ?? []).map((s, i) => (
-                  <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 11, backgroundColor: PAGE, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' }}>
+                  <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 11, backgroundColor: PAGE, borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.06)' }}>
                     <Text style={{ fontSize: 12, fontWeight: '800', color: A_DEEP, width: 18 }}>{i + 1}</Text>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 13, fontWeight: '700', color: INK[900] }}>{s.name}</Text>
-                      <Text style={{ fontSize: 10.5, color: INK[400] }}>{s.est_duration_min ? fmtDuration(s.est_duration_min) : '—'}{s.sla_hours ? ` · hedef ${s.sla_hours}sa` : ''}{s.required_skills?.length ? ` · ${s.required_skills.join(', ')}` : ''}</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: (isDark ? T.ink : INK[900]) }}>{s.name}</Text>
+                      <Text style={{ fontSize: 10.5, color: (isDark ? T.ink3 : INK[400]) }}>{s.est_duration_min ? fmtDuration(s.est_duration_min) : '—'}{s.sla_hours ? ` · hedef ${s.sla_hours}sa` : ''}{s.required_skills?.length ? ` · ${s.required_skills.join(', ')}` : ''}</Text>
                     </View>
                   </View>
                 ))}
               </View>
               {(result.skills?.length ?? 0) > 0 && (
                 <View style={{ gap: 6 }}>
-                  <Text style={dlabel}>Önerilen yetkinlikler (kataloğa eklenir)</Text>
+                  <Text style={[dlabel, isDark && { color: T.ink3 }]}>Önerilen yetkinlikler (kataloğa eklenir)</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                     {result.skills.map((s, i) => <View key={i} style={{ paddingHorizontal: 9, paddingVertical: 3, borderRadius: 999, backgroundColor: tint(s.color ?? A, 0.14) }}><Text style={{ fontSize: 11, fontWeight: '700', color: s.color ?? A_DEEP }}>{s.name}</Text></View>)}
                   </View>
@@ -869,12 +879,12 @@ function AiBuilderModal({ visible, theme, stations, skillNames, onClose, onApply
               )}
               {(result.staffing?.length ?? 0) > 0 && (
                 <View style={{ gap: 6 }}>
-                  <Text style={dlabel}>Personel önerisi</Text>
-                  {result.staffing.map((s, i) => <Text key={i} style={{ fontSize: 12, color: INK[700] }}>• {s.count}× {s.role}{s.skills?.length ? ` (${s.skills.join(', ')})` : ''}</Text>)}
+                  <Text style={[dlabel, isDark && { color: T.ink3 }]}>Personel önerisi</Text>
+                  {result.staffing.map((s, i) => <Text key={i} style={{ fontSize: 12, color: (isDark ? T.ink2 : INK[700]) }}>• {s.count}× {s.role}{s.skills?.length ? ` (${s.skills.join(', ')})` : ''}</Text>)}
                 </View>
               )}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 }}>
-                <Pressable onPress={reset} style={{ paddingHorizontal: 15, paddingVertical: 11, borderRadius: 11, borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)' }}><Text style={{ fontSize: 12.5, fontWeight: '700', color: INK[500] }}>Baştan</Text></Pressable>
+                <Pressable onPress={reset} style={{ paddingHorizontal: 15, paddingVertical: 11, borderRadius: 11, borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.12)' }}><Text style={{ fontSize: 12.5, fontWeight: '700', color: (isDark ? T.ink3 : INK[500]) }}>Baştan</Text></Pressable>
                 <View style={{ flex: 1 }} />
                 <Pressable onPress={apply} disabled={applying} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 18, paddingVertical: 11, borderRadius: 11, backgroundColor: A, opacity: applying ? 0.5 : 1 }}><Check size={15} color={onA} strokeWidth={2.4} /><Text style={{ fontSize: 13, fontWeight: '800', color: onA }}>{applying ? 'Uygulanıyor…' : 'Uygula & Düzenle'}</Text></Pressable>
               </View>
@@ -894,6 +904,8 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
   theme: Theme; labId: string | null; labSkills: LabSkill[]; stations: TriageStation[]; techs: TriageTech[]; onReload: () => void;
 }) {
   const { A, A_DEEP, onA, PAGE } = theme;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [draft, setDraft] = useState<SkillDraft | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -931,12 +943,12 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
           (aynı işi yapan ayrı bir X'e gerek yok). Yıkıcı "Sil" bu satırda DEĞİL —
           en altta, ayraçtan sonra: kaydetmeye giderken yanlışlıkla silinmesin. */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: INK[900] }} numberOfLines={1}>
+        <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: (isDark ? T.ink : INK[900]) }} numberOfLines={1}>
           {draft.id ? 'Yetkinliği Düzenle' : 'Yeni Yetkinlik'}
         </Text>
         <Pressable onPress={() => setDraft(null)}
           style={({ pressed }: any) => ({ paddingHorizontal: 10, paddingVertical: 7, borderRadius: 9, opacity: pressed ? 0.6 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) })}>
-          <Text style={{ fontSize: 12.5, fontWeight: '600', color: INK[500] }}>Vazgeç</Text>
+          <Text style={{ fontSize: 12.5, fontWeight: '600', color: (isDark ? T.ink3 : INK[500]) }}>Vazgeç</Text>
         </Pressable>
         <Pressable onPress={save} disabled={busy}
           style={({ pressed }: any) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: A, opacity: busy ? 0.5 : pressed ? 0.85 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) })}>
@@ -946,18 +958,18 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
       </View>
       {error ? <Text style={{ fontSize: 12, color: '#9C2E2E', fontWeight: '600' }}>{error}</Text> : null}
       <View style={{ gap: 5 }}>
-        <Text style={dlabel}>Ad</Text>
-        <TextInput value={draft.name} onChangeText={t => setDraft(d => d ? { ...d, name: t } : d)} placeholder="ör. İmplant Tasarımı" placeholderTextColor={INK[400]}
-          style={{ fontSize: 14, color: INK[900], backgroundColor: PAGE, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' } as any} />
+        <Text style={[dlabel, isDark && { color: T.ink3 }]}>Ad</Text>
+        <TextInput value={draft.name} onChangeText={t => setDraft(d => d ? { ...d, name: t } : d)} placeholder="ör. İmplant Tasarımı" placeholderTextColor={(isDark ? T.ink3 : INK[400])}
+          style={{ fontSize: 14, color: (isDark ? T.ink : INK[900]), backgroundColor: PAGE, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.08)' } as any} />
       </View>
       <View style={{ gap: 5 }}>
-        <Text style={dlabel}>Açıklama (opsiyonel)</Text>
-        <TextInput value={draft.description} onChangeText={t => setDraft(d => d ? { ...d, description: t } : d)} placeholder="kısa açıklama" placeholderTextColor={INK[400]}
-          style={{ fontSize: 13, color: INK[800], backgroundColor: PAGE, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' } as any} />
+        <Text style={[dlabel, isDark && { color: T.ink3 }]}>Açıklama (opsiyonel)</Text>
+        <TextInput value={draft.description} onChangeText={t => setDraft(d => d ? { ...d, description: t } : d)} placeholder="kısa açıklama" placeholderTextColor={(isDark ? T.ink3 : INK[400])}
+          style={{ fontSize: 13, color: (isDark ? T.ink : INK[800]), backgroundColor: PAGE, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.08)' } as any} />
       </View>
       <View style={{ gap: 6 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Text style={dlabel}>Renk</Text>
+          <Text style={[dlabel, isDark && { color: T.ink3 }]}>Renk</Text>
           {/* Seçili rengin ADI yazılı: çıplak daireler neyi seçtiğini söylemiyordu. */}
           <Text style={{ fontSize: 11, fontWeight: '600', color: draft.color }}>
             {SKILL_COLORS_NAMED.find(c => c.hex === draft.color)?.label ?? ''}
@@ -980,7 +992,7 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
                   ...(Platform.OS === 'web'
                     ? {
                         cursor: 'pointer',
-                        boxShadow: sel ? `0 0 0 3px #FFFFFF, 0 0 0 5px ${c.hex}` : hovered ? `0 0 0 3px ${tint(c.hex, 0.30)}` : 'none',
+                        boxShadow: sel ? `0 0 0 3px ${isDark ? T.card : '#FFFFFF'}, 0 0 0 5px ${c.hex}` : hovered ? `0 0 0 3px ${tint(c.hex, 0.30)}` : 'none',
                         transitionProperty: 'width, height, box-shadow, transform',
                         transitionDuration: '140ms',
                       } as any
@@ -994,12 +1006,12 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
         </View>
       </View>
       <View style={{ gap: 8 }}>
-        <Text style={dlabel}>İkon</Text>
+        <Text style={[dlabel, isDark && { color: T.ink3 }]}>İkon</Text>
         {/* Kategorili + ADLI: on ikon tek sırada dizilince hepsi birbirine
             benziyordu, hangisinin ne olduğu tahmine kalıyordu. */}
         {SKILL_ICON_GROUPS.map(group => (
           <View key={group.label} style={{ gap: 6 }}>
-            <Text style={{ fontSize: 9.5, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: INK[400] }}>
+            <Text style={{ fontSize: 9.5, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: (isDark ? T.ink3 : INK[400]) }}>
               {group.label}
             </Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -1013,9 +1025,9 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
                     style={({ pressed, hovered }: any) => ({
                       alignItems: 'center', gap: 4, width: 62,
                       paddingVertical: 8, borderRadius: 12,
-                      backgroundColor: sel ? tint(draft.color, 0.14) : hovered ? 'rgba(0,0,0,0.03)' : '#FFFFFF',
+                      backgroundColor: sel ? tint(draft.color, 0.14) : hovered ? (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)') : (isDark ? T.cardSoft : '#FFFFFF'),
                       borderWidth: 1,
-                      borderColor: sel ? draft.color : hovered ? 'rgba(0,0,0,0.20)' : 'rgba(0,0,0,0.10)',
+                      borderColor: sel ? draft.color : hovered ? (isDark ? 'rgba(255,255,255,0.24)' : 'rgba(0,0,0,0.20)') : (isDark ? T.hairline : 'rgba(0,0,0,0.10)'),
                       transform: [{ scale: pressed ? 0.96 : 1 }],
                       ...(Platform.OS === 'web'
                         ? {
@@ -1027,8 +1039,8 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
                         : {}),
                     })}
                   >
-                    <SkillIcon name={it.key} size={19} color={sel ? draft.color : INK[500]} strokeWidth={2} />
-                    <Text style={{ fontSize: 9.5, fontWeight: sel ? '700' : '500', color: sel ? draft.color : INK[400] }} numberOfLines={1}>
+                    <SkillIcon name={it.key} size={19} color={sel ? draft.color : (isDark ? T.ink3 : INK[500])} strokeWidth={2} />
+                    <Text style={{ fontSize: 9.5, fontWeight: sel ? '700' : '500', color: sel ? draft.color : (isDark ? T.ink3 : INK[400]) }} numberOfLines={1}>
                       {it.label}
                     </Text>
                   </Pressable>
@@ -1039,7 +1051,7 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
         ))}
       </View>
       <View style={{ gap: 6 }}>
-        <Text style={dlabel}>Sertifika seviyesi (opsiyonel)</Text>
+        <Text style={[dlabel, isDark && { color: T.ink3 }]}>Sertifika seviyesi (opsiyonel)</Text>
         {/* Yıldız SIRAYI, renk KADEMEYİ taşır: düz metin dört seçenek arasında
             bir hiyerarşi olduğunu göstermiyordu. */}
         <View style={{ flexDirection: 'row', gap: 6 }}>
@@ -1051,9 +1063,9 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
                 onPress={() => setDraft(d => d ? { ...d, cert_level: c.key } : d)}
                 style={({ pressed, hovered }: any) => ({
                   flex: 1, paddingVertical: 9, borderRadius: 11, alignItems: 'center', gap: 3,
-                  backgroundColor: sel ? tint(c.color, 0.14) : hovered ? 'rgba(0,0,0,0.03)' : '#FFFFFF',
+                  backgroundColor: sel ? tint(c.color, 0.14) : hovered ? (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)') : (isDark ? T.cardSoft : '#FFFFFF'),
                   borderWidth: 1,
-                  borderColor: sel ? c.color : hovered ? 'rgba(0,0,0,0.20)' : 'rgba(0,0,0,0.10)',
+                  borderColor: sel ? c.color : hovered ? (isDark ? 'rgba(255,255,255,0.24)' : 'rgba(0,0,0,0.20)') : (isDark ? T.hairline : 'rgba(0,0,0,0.10)'),
                   transform: [{ scale: pressed ? 0.97 : 1 }],
                   ...(Platform.OS === 'web'
                     ? { cursor: 'pointer', transitionProperty: 'transform, border-color, background-color', transitionDuration: '120ms' } as any
@@ -1062,12 +1074,12 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
               >
                 <View style={{ flexDirection: 'row', gap: 1, height: 12, alignItems: 'center' }}>
                   {c.stars === 0
-                    ? <Text style={{ fontSize: 11, color: sel ? c.color : INK[300] }}>—</Text>
+                    ? <Text style={{ fontSize: 11, color: sel ? c.color : (isDark ? T.ink3 : INK[300]) }}>—</Text>
                     : Array.from({ length: c.stars }).map((_, i) => (
-                        <Star key={i} size={10} color={sel ? c.color : INK[300]} fill={sel ? c.color : 'transparent'} strokeWidth={2} />
+                        <Star key={i} size={10} color={sel ? c.color : (isDark ? T.ink3 : INK[300])} fill={sel ? c.color : 'transparent'} strokeWidth={2} />
                       ))}
                 </View>
-                <Text style={{ fontSize: 11.5, fontWeight: sel ? '700' : '600', color: sel ? c.color : INK[500] }}>{c.label}</Text>
+                <Text style={{ fontSize: 11.5, fontWeight: sel ? '700' : '600', color: sel ? c.color : (isDark ? T.ink3 : INK[500]) }}>{c.label}</Text>
               </Pressable>
             );
           })}
@@ -1076,7 +1088,7 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
       {/* Yıkıcı eylem: ayraçtan sonra, solda, sessiz. Kaydet'in komşusu değil. */}
       {draft.id && (
         <>
-          <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.07)', marginTop: 4 }} />
+          <View style={{ height: 1, backgroundColor: isDark ? T.hairline : 'rgba(0,0,0,0.07)', marginTop: 4 }} />
           <Pressable onPress={() => del(draft.id!)} disabled={busy}
             style={({ pressed, hovered }: any) => ({
               alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6,
@@ -1095,10 +1107,10 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
 
   // ─── Liste ────────────────────────────────────────────────────────────────
   const listNode = labSkills.length === 0 ? (
-    <View style={{ borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', padding: 30, alignItems: 'center', gap: 8 }}>
+    <View style={{ borderRadius: 16, backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.06)', padding: 30, alignItems: 'center', gap: 8 }}>
       <View style={{ width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(A, 0.12) }}><Cpu size={22} color={A_DEEP} strokeWidth={1.8} /></View>
-      <Text style={{ fontSize: 14, fontWeight: '700', color: INK[900] }}>Henüz yönetilen yetkinlik yok</Text>
-      <Text style={{ fontSize: 12.5, color: INK[500], textAlign: 'center', maxWidth: 340 }}>İlk yetkinliği oluştur — ad, renk, ikon ve sertifika seviyesiyle. Sonra istasyon/teknisyenlere atarsın.</Text>
+      <Text style={{ fontSize: 14, fontWeight: '700', color: (isDark ? T.ink : INK[900]) }}>Henüz yönetilen yetkinlik yok</Text>
+      <Text style={{ fontSize: 12.5, color: (isDark ? T.ink3 : INK[500]), textAlign: 'center', maxWidth: 340 }}>İlk yetkinliği oluştur — ad, renk, ikon ve sertifika seviyesiyle. Sonra istasyon/teknisyenlere atarsın.</Text>
     </View>
   ) : (
     <View style={{ gap: 8 }}>
@@ -1117,13 +1129,13 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
             // kaydın düzenlendiğini yeterince güçlü söylemiyordu.
             style={({ hovered }: any) => ({
               flexDirection: 'row', alignItems: 'center', gap: 11, padding: 12, borderRadius: 13,
-              backgroundColor: active ? tint(A, 0.07) : '#FFFFFF',
+              backgroundColor: active ? tint(A, 0.07) : (isDark ? T.card : '#FFFFFF'),
               borderWidth: 1,
-              borderColor: active ? A : hovered ? tint(A, 0.45) : 'rgba(0,0,0,0.07)',
+              borderColor: active ? A : hovered ? tint(A, 0.45) : (isDark ? T.hairline : 'rgba(0,0,0,0.07)'),
               ...(Platform.OS === 'web'
                 ? {
                     cursor: 'pointer',
-                    boxShadow: active ? `0 6px 18px ${tint(A, 0.20)}` : hovered ? '0 4px 14px rgba(15,23,42,0.07)' : 'none',
+                    boxShadow: active ? `0 6px 18px ${tint(A, 0.20)}` : hovered ? (isDark ? '0 4px 14px rgba(0,0,0,0.45)' : '0 4px 14px rgba(15,23,42,0.07)') : 'none',
                     transitionProperty: 'box-shadow, border-color, background-color',
                     transitionDuration: '140ms',
                   } as any
@@ -1137,7 +1149,7 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
             </View>
             <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                <Text style={{ fontSize: 13.5, fontWeight: '700', color: INK[900] }}>{s.name}</Text>
+                <Text style={{ fontSize: 13.5, fontWeight: '700', color: (isDark ? T.ink : INK[900]) }}>{s.name}</Text>
                 {cert && cert.stars > 0 && (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: tint(cert.color, 0.14) }}>
                     {Array.from({ length: cert.stars }).map((_, i) => (
@@ -1150,7 +1162,7 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
               </View>
               {/* Sayımlar HER ZAMAN görünür — eskiden yalnız açıklama boşsa
                   çıkıyordu, yani en çok bilgi taşıyan satır kayboluyordu. */}
-              <Text style={{ fontSize: 11, color: INK[400] }} numberOfLines={1}>
+              <Text style={{ fontSize: 11, color: (isDark ? T.ink3 : INK[400]) }} numberOfLines={1}>
                 {[
                   `${u.stations} ${autoT('istasyon')}`,
                   `${u.techs} ${autoT('kişi')}`,
@@ -1158,7 +1170,7 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
                 ].filter(Boolean).join(' · ')}
               </Text>
             </View>
-            {isRTL() ? <ChevronLeft size={16} color={active ? A_DEEP : INK[300]} strokeWidth={2} /> : <ChevronRight size={16} color={active ? A_DEEP : INK[300]} strokeWidth={2} />}
+            {isRTL() ? <ChevronLeft size={16} color={active ? A_DEEP : (isDark ? T.ink3 : INK[300])} strokeWidth={2} /> : <ChevronRight size={16} color={active ? A_DEEP : (isDark ? T.ink3 : INK[300])} strokeWidth={2} />}
           </Pressable>
         );
       })}
@@ -1169,8 +1181,8 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
     <View style={{ gap: 12 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 15, fontWeight: '700', color: INK[900] }}>Yetkinlik Kataloğu</Text>
-          <Text style={{ fontSize: 11.5, color: INK[500] }}>İstasyon ve teknisyen becerileri bu kataloğu kullanır.</Text>
+          <Text style={{ fontSize: 15, fontWeight: '700', color: (isDark ? T.ink : INK[900]) }}>Yetkinlik Kataloğu</Text>
+          <Text style={{ fontSize: 11.5, color: (isDark ? T.ink3 : INK[500]) }}>İstasyon ve teknisyen becerileri bu kataloğu kullanır.</Text>
         </View>
         {/* "Yeni Yetkinlik" artık düzenleme sırasında da görünür: form listenin
             üstünü kaplamadığı için gizlemeye gerek kalmadı. */}
@@ -1188,9 +1200,9 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
           {draft && (
             <View style={{
               width: 380,
-              borderRadius: 16, backgroundColor: '#FFFFFF',
+              borderRadius: 16, backgroundColor: isDark ? T.card : '#FFFFFF',
               borderWidth: 1, borderColor: tint(A, 0.35), padding: 16,
-              ...(Platform.OS === 'web' ? { position: 'sticky', top: 12, boxShadow: '0 10px 30px rgba(15,23,42,0.10)' } as any : {}),
+              ...(Platform.OS === 'web' ? { position: 'sticky', top: 12, boxShadow: isDark ? '0 10px 30px rgba(0,0,0,0.5)' : '0 10px 30px rgba(15,23,42,0.10)' } as any : {}),
             }}>
               {editorBody}
             </View>
@@ -1201,9 +1213,9 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
           {listNode}
           <Modal visible={!!draft} transparent animationType="slide" onRequestClose={() => setDraft(null)}>
             <Pressable onPress={() => setDraft(null)} style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.35)', justifyContent: 'flex-end' }}>
-              <Pressable onPress={() => {}} style={{ backgroundColor: '#FFFFFF', borderTopStartRadius: 22, borderTopEndRadius: 22, padding: 18, paddingBottom: 28, maxHeight: '88%' }}>
+              <Pressable onPress={() => {}} style={{ backgroundColor: isDark ? T.card : '#FFFFFF', borderTopStartRadius: 22, borderTopEndRadius: 22, padding: 18, paddingBottom: 28, maxHeight: '88%' }}>
                 <View style={{ alignItems: 'center', marginBottom: 10 }}>
-                  <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(15,23,42,0.15)' }} />
+                  <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: isDark ? 'rgba(255,255,255,0.20)' : 'rgba(15,23,42,0.15)' }} />
                 </View>
                 <ScrollView showsVerticalScrollIndicator={false}>{editorBody}</ScrollView>
               </Pressable>
@@ -1289,19 +1301,21 @@ const PERSON_ROLE_LABEL: Record<string, string> = {
 function FilterChip({ label, on, onPress, accent, accentDeep }: {
   label: string; on: boolean; onPress: () => void; accent: string; accentDeep: string;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed, hovered }: any) => ({
         paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999,
         borderWidth: 1,
-        borderColor: on ? accent : hovered ? 'rgba(0,0,0,0.20)' : 'rgba(0,0,0,0.10)',
-        backgroundColor: on ? tint(accent, 0.12) : '#FFFFFF',
+        borderColor: on ? accent : hovered ? (isDark ? 'rgba(255,255,255,0.24)' : 'rgba(0,0,0,0.20)') : (isDark ? T.hairline : 'rgba(0,0,0,0.10)'),
+        backgroundColor: on ? tint(accent, 0.12) : (isDark ? T.card : '#FFFFFF'),
         opacity: pressed ? 0.65 : 1,
         ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
       })}
     >
-      <Text style={{ fontSize: 11.5, fontWeight: on ? '700' : '500', color: on ? accentDeep : INK[500] }}>{label}</Text>
+      <Text style={{ fontSize: 11.5, fontWeight: on ? '700' : '500', color: on ? accentDeep : (isDark ? T.ink3 : INK[500]) }}>{label}</Text>
     </Pressable>
   );
 }
@@ -1312,6 +1326,10 @@ export function PeopleArea({ theme, techs, stations, stationSkills, onToggleStat
   onToggleStation: (techId: string, stationId: string, currentlyHas: boolean) => void;
 }) {
   const { A, A_DEEP } = theme;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  // Koyu zeminde koyu accent (A_DEEP) okunmuyor → koyuda parlak accent (A).
+  const accentText = isDark ? A : A_DEEP;
   // Teknisyen + YÖNETİCİ görünür (yönetici de istasyonda çalışabilir → yetkinlik
   // alabilir). Kurye hariç: üretim istasyonu yetkinliği alamaz, bu yüzden
   // "Kurye" diye bir filtre de yok — boş liste gösterirdi.
@@ -1389,19 +1407,19 @@ export function PeopleArea({ theme, techs, stations, stationSkills, onToggleStat
         })}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
-          <Info size={15} color={A_DEEP} strokeWidth={1.9} />
-          <Text style={{ flex: 1, fontSize: 12.5, color: INK[700] }} numberOfLines={1}>
+          <Info size={15} color={accentText} strokeWidth={1.9} />
+          <Text style={{ flex: 1, fontSize: 12.5, color: (isDark ? T.ink2 : INK[700]) }} numberOfLines={1}>
             Yetkinlikler otomatik atamayı belirler.
           </Text>
-          <Text style={{ fontSize: 11.5, fontWeight: '600', color: A_DEEP }}>
+          <Text style={{ fontSize: 11.5, fontWeight: '600', color: accentText }}>
             {infoOpen ? 'Kapat' : 'Daha fazla'}
           </Text>
           <View style={{ transform: [{ rotate: infoOpen ? '180deg' : '0deg' }] }}>
-            <ChevronDown size={14} color={A_DEEP} strokeWidth={2} />
+            <ChevronDown size={14} color={accentText} strokeWidth={2} />
           </View>
         </View>
         {infoOpen && (
-          <Text style={{ fontSize: 12, color: INK[500], lineHeight: 18 }}>
+          <Text style={{ fontSize: 12, color: (isDark ? T.ink3 : INK[500]), lineHeight: 18 }}>
             Her personelin (teknisyen + yönetici) hangi istasyonlarda çalışabildiğini işaretle.
             Otomatik atama ve "Yeniden Ata" YALNIZ yetkili personele yapılır; hiç yetkili yoksa
             aşama boş kalır. Pasif personel ve kuryeler listede yer almaz. (Tek yetkinlik kaynağı burası.)
@@ -1418,19 +1436,19 @@ export function PeopleArea({ theme, techs, stations, stationSkills, onToggleStat
           <View style={{
             flex: 1, flexDirection: 'row', alignItems: 'center', gap: 9,
             height: 40, paddingHorizontal: 12, borderRadius: 12,
-            borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)', backgroundColor: '#FFFFFF',
+            borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.10)', backgroundColor: isDark ? T.card : '#FFFFFF',
           }}>
-            <Search size={14} color={INK[400]} strokeWidth={1.8} />
+            <Search size={14} color={(isDark ? T.ink3 : INK[400])} strokeWidth={1.8} />
             <TextInput
               value={search}
               onChangeText={setSearch}
               placeholder="Personel ara…"
-              placeholderTextColor={INK[400]}
-              style={{ flex: 1, fontSize: 13, color: INK[900], ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }}
+              placeholderTextColor={(isDark ? T.ink3 : INK[400])}
+              style={{ flex: 1, fontSize: 13, color: (isDark ? T.ink : INK[900]), ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }}
             />
             {search.length > 0 && (
               <Pressable onPress={() => setSearch('')} style={{ ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-                <X size={13} color={INK[400]} strokeWidth={2} />
+                <X size={13} color={(isDark ? T.ink3 : INK[400])} strokeWidth={2} />
               </Pressable>
             )}
           </View>
@@ -1443,20 +1461,20 @@ export function PeopleArea({ theme, techs, stations, stationSkills, onToggleStat
               flexDirection: 'row', alignItems: 'center', gap: 7,
               height: 40, paddingHorizontal: 12, borderRadius: 12,
               borderWidth: 1,
-              borderColor: chipFilterOn ? A : hovered ? 'rgba(0,0,0,0.20)' : 'rgba(0,0,0,0.10)',
-              backgroundColor: chipFilterOn ? tint(A, 0.10) : '#FFFFFF',
+              borderColor: chipFilterOn ? A : hovered ? (isDark ? 'rgba(255,255,255,0.24)' : 'rgba(0,0,0,0.20)') : (isDark ? T.hairline : 'rgba(0,0,0,0.10)'),
+              backgroundColor: chipFilterOn ? tint(A, 0.10) : (isDark ? T.card : '#FFFFFF'),
               opacity: pressed ? 0.7 : 1,
               ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
             })}
           >
-            <SlidersHorizontal size={14} color={chipFilterOn ? A_DEEP : INK[400]} strokeWidth={1.8} />
-            <Text style={{ fontSize: 12.5, fontWeight: chipFilterOn ? '700' : '500', color: chipFilterOn ? A_DEEP : INK[500] }}>
+            <SlidersHorizontal size={14} color={chipFilterOn ? A_DEEP : (isDark ? T.ink3 : INK[400])} strokeWidth={1.8} />
+            <Text style={{ fontSize: 12.5, fontWeight: chipFilterOn ? '700' : '500', color: chipFilterOn ? A_DEEP : (isDark ? T.ink3 : INK[500]) }}>
               {filterLabel}
             </Text>
-            <ChevronDown size={13} color={chipFilterOn ? A_DEEP : INK[400]} strokeWidth={2} />
+            <ChevronDown size={13} color={chipFilterOn ? A_DEEP : (isDark ? T.ink3 : INK[400])} strokeWidth={2} />
           </Pressable>
 
-          <Text style={{ fontSize: 11, color: INK[400] }}>{visible.length} kişi</Text>
+          <Text style={{ fontSize: 11, color: (isDark ? T.ink3 : INK[400]) }}>{visible.length} kişi</Text>
         </View>
       )}
 
@@ -1467,18 +1485,18 @@ export function PeopleArea({ theme, techs, stations, stationSkills, onToggleStat
           style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.28)', alignItems: 'center', justifyContent: 'center', padding: 20 }}
         >
           <Pressable onPress={() => {}} style={{
-            width: '100%', maxWidth: 380, backgroundColor: '#FFFFFF', borderRadius: 20, padding: 18, gap: 16,
-            ...(Platform.OS === 'web' ? { boxShadow: '0 20px 48px rgba(15,23,42,0.22)' } as any : {}),
+            width: '100%', maxWidth: 380, backgroundColor: isDark ? T.card : '#FFFFFF', borderRadius: 20, padding: 18, gap: 16,
+            ...(Platform.OS === 'web' ? { boxShadow: isDark ? '0 20px 48px rgba(0,0,0,0.6)' : '0 20px 48px rgba(15,23,42,0.22)' } as any : {}),
           }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={{ flex: 1, fontSize: 15, fontWeight: '700', color: INK[900] }}>Filtre</Text>
+              <Text style={{ flex: 1, fontSize: 15, fontWeight: '700', color: (isDark ? T.ink : INK[900]) }}>Filtre</Text>
               <Pressable onPress={() => setFilterOpen(false)} style={{ padding: 4, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-                <X size={16} color={INK[400]} strokeWidth={2} />
+                <X size={16} color={(isDark ? T.ink3 : INK[400])} strokeWidth={2} />
               </Pressable>
             </View>
 
             <View style={{ gap: 8 }}>
-              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: INK[400] }}>Pozisyon</Text>
+              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: (isDark ? T.ink3 : INK[400]) }}>Pozisyon</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                 <FilterChip label="Teknisyen" on={roleF === 'technician'} onPress={() => setRoleF(roleF === 'technician' ? null : 'technician')} accent={A} accentDeep={A_DEEP} />
                 <FilterChip label="Yönetici"  on={roleF === 'manager'}    onPress={() => setRoleF(roleF === 'manager' ? null : 'manager')} accent={A} accentDeep={A_DEEP} />
@@ -1489,7 +1507,7 @@ export function PeopleArea({ theme, techs, stations, stationSkills, onToggleStat
                 anlamı yok (profiles.department çoğu labda boş). */}
             {departments.length > 0 && (
               <View style={{ gap: 8 }}>
-                <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: INK[400] }}>Departman</Text>
+                <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: (isDark ? T.ink3 : INK[400]) }}>Departman</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                   {departments.map(d => (
                     <FilterChip key={d} label={d} on={deptF === d} onPress={() => setDeptF(deptF === d ? null : d)} accent={A} accentDeep={A_DEEP} />
@@ -1499,7 +1517,7 @@ export function PeopleArea({ theme, techs, stations, stationSkills, onToggleStat
             )}
 
             <View style={{ gap: 8 }}>
-              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: INK[400] }}>Durum</Text>
+              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: (isDark ? T.ink3 : INK[400]) }}>Durum</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                 <FilterChip
                   label={`Yetkisi olmayanlar${noSkillCount > 0 ? ` (${noSkillCount})` : ''}`}
@@ -1516,7 +1534,7 @@ export function PeopleArea({ theme, techs, stations, stationSkills, onToggleStat
                 onPress={() => { setRoleF(null); setDeptF(null); setOnlyEmpty(false); }}
                 style={({ pressed }: any) => ({ alignSelf: 'flex-start', paddingVertical: 6, opacity: pressed ? 0.6 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) })}
               >
-                <Text style={{ fontSize: 12, fontWeight: '600', color: INK[500] }}>Filtreleri temizle</Text>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: (isDark ? T.ink3 : INK[500]) }}>Filtreleri temizle</Text>
               </Pressable>
             )}
           </Pressable>
@@ -1530,7 +1548,7 @@ export function PeopleArea({ theme, techs, stations, stationSkills, onToggleStat
           borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
           backgroundColor: tint(A, 0.12), borderWidth: 1, borderColor: tint(A, 0.28),
         }}>
-          <Text style={{ fontSize: 12.5, fontWeight: '700', color: A_DEEP }}>{selected.size} kişi seçildi</Text>
+          <Text style={{ fontSize: 12.5, fontWeight: '700', color: accentText }}>{selected.size} kişi seçildi</Text>
           <View style={{ flex: 1 }} />
           <Pressable
             onPress={() => setBulkOpen(true)}
@@ -1548,17 +1566,17 @@ export function PeopleArea({ theme, techs, stations, stationSkills, onToggleStat
             onPress={() => setSelected(new Set())}
             style={({ pressed }: any) => ({ paddingHorizontal: 8, paddingVertical: 6, opacity: pressed ? 0.6 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) })}
           >
-            <Text style={{ fontSize: 11.5, fontWeight: '600', color: A_DEEP }}>Seçimi bırak</Text>
+            <Text style={{ fontSize: 11.5, fontWeight: '600', color: accentText }}>Seçimi bırak</Text>
           </Pressable>
         </View>
       )}
 
-      {techList.length === 0 && <Text style={{ fontSize: 12, color: INK[400], fontStyle: 'italic' }}>Personel yok.</Text>}
+      {techList.length === 0 && <Text style={{ fontSize: 12, color: (isDark ? T.ink3 : INK[400]), fontStyle: 'italic' }}>Personel yok.</Text>}
       {stations.length === 0 && techList.length > 0 && (
-        <Text style={{ fontSize: 12, color: INK[400], fontStyle: 'italic' }}>Önce "Akış" alanından istasyon ekleyin.</Text>
+        <Text style={{ fontSize: 12, color: (isDark ? T.ink3 : INK[400]), fontStyle: 'italic' }}>Önce "Akış" alanından istasyon ekleyin.</Text>
       )}
       {techList.length > 0 && visible.length === 0 && (
-        <Text style={{ fontSize: 12, color: INK[400], fontStyle: 'italic' }}>Filtreye uyan personel yok.</Text>
+        <Text style={{ fontSize: 12, color: (isDark ? T.ink3 : INK[400]), fontStyle: 'italic' }}>Filtreye uyan personel yok.</Text>
       )}
 
       {visible.map(t => {
@@ -1573,16 +1591,16 @@ export function PeopleArea({ theme, techs, stations, stationSkills, onToggleStat
             // accent kenarlık gelir — eskiden tüm kartlar birbirinin aynısıydı
             // ve tablo gibi duruyordu.
             style={({ hovered }: any) => ({
-              borderRadius: 14, backgroundColor: '#FFFFFF',
+              borderRadius: 14, backgroundColor: isDark ? T.card : '#FFFFFF',
               borderWidth: 1,
-              borderColor: isSel ? A : hovered ? tint(A, 0.45) : 'rgba(0,0,0,0.07)',
+              borderColor: isSel ? A : hovered ? tint(A, 0.45) : (isDark ? T.hairline : 'rgba(0,0,0,0.07)'),
               padding: 14, gap: 10,
               ...(Platform.OS === 'web'
                 ? {
                     cursor: 'pointer',
                     boxShadow: isSel
                       ? `0 6px 20px ${tint(A, 0.22)}`
-                      : hovered ? '0 6px 18px rgba(15,23,42,0.08)' : '0 1px 2px rgba(15,23,42,0.04)',
+                      : hovered ? (isDark ? '0 6px 18px rgba(0,0,0,0.5)' : '0 6px 18px rgba(15,23,42,0.08)') : (isDark ? 'none' : '0 1px 2px rgba(15,23,42,0.04)'),
                     transitionProperty: 'box-shadow, border-color',
                     transitionDuration: '140ms',
                   } as any
@@ -1595,17 +1613,17 @@ export function PeopleArea({ theme, techs, stations, stationSkills, onToggleStat
                 width: 18, height: 18, borderRadius: 6,
                 alignItems: 'center', justifyContent: 'center',
                 backgroundColor: isSel ? A : 'transparent',
-                borderWidth: isSel ? 0 : 1.5, borderColor: 'rgba(0,0,0,0.18)',
+                borderWidth: isSel ? 0 : 1.5, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.18)',
               }}>
                 {isSel && <Check size={11} color={theme.onA} strokeWidth={3} />}
               </View>
               <View style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(A, 0.18) }}>
-                <Text style={{ fontSize: 12, fontWeight: '800', color: A_DEEP }}>{initials(t.full_name)}</Text>
+                <Text style={{ fontSize: 12, fontWeight: '800', color: accentText }}>{initials(t.full_name)}</Text>
               </View>
               {/* Ad + tek satırlık kimlik: rol · baskın uzmanlık. */}
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ fontSize: 14, fontWeight: '700', color: INK[900] }} numberOfLines={1}>{t.full_name}</Text>
-                <Text style={{ fontSize: 11, color: INK[400], marginTop: 1 }} numberOfLines={1}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: (isDark ? T.ink : INK[900]) }} numberOfLines={1}>{t.full_name}</Text>
+                <Text style={{ fontSize: 11, color: (isDark ? T.ink3 : INK[400]), marginTop: 1 }} numberOfLines={1}>
                   {[
                     PERSON_ROLE_LABEL[t.role ?? 'technician'] ?? 'Personel',
                     (t.department ?? '').trim() || null,
@@ -1615,11 +1633,11 @@ export function PeopleArea({ theme, techs, stations, stationSkills, onToggleStat
               </View>
               <View style={{ alignItems: 'flex-end', gap: 4 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}>
-                  <Text style={{ fontSize: 12.5, fontWeight: '700', color: INK[900] }}>{owned.size}</Text>
-                  <Text style={{ fontSize: 11, color: INK[400] }}>/ {stations.length}</Text>
-                  <Text style={{ fontSize: 10.5, color: INK[300] }}>{stations.length > 0 ? `· %${pct}` : ''}</Text>
+                  <Text style={{ fontSize: 12.5, fontWeight: '700', color: (isDark ? T.ink : INK[900]) }}>{owned.size}</Text>
+                  <Text style={{ fontSize: 11, color: (isDark ? T.ink3 : INK[400]) }}>/ {stations.length}</Text>
+                  <Text style={{ fontSize: 10.5, color: (isDark ? T.ink3 : INK[300]) }}>{stations.length > 0 ? `· %${pct}` : ''}</Text>
                 </View>
-                <View style={{ width: 104, height: 5, borderRadius: 3, backgroundColor: 'rgba(0,0,0,0.07)', overflow: 'hidden' }}>
+                <View style={{ width: 104, height: 5, borderRadius: 3, backgroundColor: isDark ? '#30302D' : 'rgba(0,0,0,0.07)', overflow: 'hidden' }}>
                   <View style={{ width: `${pct}%`, height: '100%', borderRadius: 3, backgroundColor: A }} />
                 </View>
               </View>
@@ -1632,11 +1650,11 @@ export function PeopleArea({ theme, techs, stations, stationSkills, onToggleStat
                 return (
                   <View key={group.label} style={{ gap: 6 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Text style={{ fontSize: 9.5, fontWeight: '700', letterSpacing: 0.9, textTransform: 'uppercase', color: INK[400] }}>
+                      <Text style={{ fontSize: 9.5, fontWeight: '700', letterSpacing: 0.9, textTransform: 'uppercase', color: (isDark ? T.ink3 : INK[400]) }}>
                         {group.label}
                       </Text>
                       <Text style={{ fontSize: 9.5, color: INK[300] }}>{groupOwned}/{group.items.length}</Text>
-                      <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(0,0,0,0.06)' }} />
+                      <View style={{ flex: 1, height: 1, backgroundColor: isDark ? T.hairline : 'rgba(0,0,0,0.06)' }} />
                       {/* Grup başına toplu aç/kapat: 5 kapsülü tek tek çevirmek yerine. */}
                       <Pressable
                         onPress={() => group.items.forEach(st => {
@@ -1649,7 +1667,7 @@ export function PeopleArea({ theme, techs, stations, stationSkills, onToggleStat
                           ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                         })}
                       >
-                        <Text style={{ fontSize: 10, fontWeight: '600', color: A_DEEP }}>
+                        <Text style={{ fontSize: 10, fontWeight: '600', color: accentText }}>
                           {allOn ? 'Kaldır' : 'Tümü'}
                         </Text>
                       </Pressable>
@@ -1668,21 +1686,24 @@ export function PeopleArea({ theme, techs, stations, stationSkills, onToggleStat
                               flexDirection: 'row', alignItems: 'center', gap: 5,
                               paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999,
                               borderWidth: 1,
-                              borderColor: has ? A : hovered ? 'rgba(0,0,0,0.24)' : 'rgba(0,0,0,0.12)',
-                              backgroundColor: has ? tint(A, 0.12) : hovered ? 'rgba(0,0,0,0.02)' : '#FFFFFF',
+                              borderColor: has ? A : hovered ? (isDark ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.24)') : (isDark ? T.hairline : 'rgba(0,0,0,0.12)'),
+                              backgroundColor: has ? tint(A, 0.12) : hovered ? (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.02)') : (isDark ? T.cardSoft : '#FFFFFF'),
                               transform: [{ scale: pressed ? 0.96 : 1 }],
                               ...(Platform.OS === 'web'
                                 ? {
                                     cursor: 'pointer',
-                                    boxShadow: hovered ? '0 2px 8px rgba(15,23,42,0.10)' : 'none',
+                                    boxShadow: hovered ? (isDark ? '0 2px 8px rgba(0,0,0,0.5)' : '0 2px 8px rgba(15,23,42,0.10)') : 'none',
                                     transitionProperty: 'transform, box-shadow, border-color, background-color',
                                     transitionDuration: '120ms',
                                   } as any
                                 : {}),
                             })}
                           >
-                            {has && <Check size={12} color={A_DEEP} strokeWidth={3} />}
-                            <Text style={{ fontSize: 11.5, fontWeight: '600', color: has ? A_DEEP : INK[500] }}>{st.name}</Text>
+                            {/* Durum ikonla da okunur: ✓ = yetkin, + = dokununca eklenir. */}
+                            {has
+                              ? <Check size={12} color={accentText} strokeWidth={3} />
+                              : <Plus size={12} color={isDark ? T.ink3 : INK[400]} strokeWidth={2.2} />}
+                            <Text style={{ fontSize: 11.5, fontWeight: has ? '700' : '500', color: has ? A_DEEP : (isDark ? T.ink3 : INK[500]) }}>{st.name}</Text>
                           </Pressable>
                         );
                       })}
@@ -1702,33 +1723,33 @@ export function PeopleArea({ theme, techs, stations, stationSkills, onToggleStat
           style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.30)', alignItems: 'center', justifyContent: 'center', padding: 20 }}
         >
           <Pressable onPress={() => {}} style={{
-            width: '100%', maxWidth: 460, maxHeight: '80%', backgroundColor: '#FFFFFF', borderRadius: 20, padding: 18, gap: 14,
-            ...(Platform.OS === 'web' ? { boxShadow: '0 20px 48px rgba(15,23,42,0.22)' } as any : {}),
+            width: '100%', maxWidth: 460, maxHeight: '80%', backgroundColor: isDark ? T.card : '#FFFFFF', borderRadius: 20, padding: 18, gap: 14,
+            ...(Platform.OS === 'web' ? { boxShadow: isDark ? '0 20px 48px rgba(0,0,0,0.6)' : '0 20px 48px rgba(15,23,42,0.22)' } as any : {}),
           }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={{ flex: 1, fontSize: 15, fontWeight: '700', color: INK[900] }}>
+              <Text style={{ flex: 1, fontSize: 15, fontWeight: '700', color: (isDark ? T.ink : INK[900]) }}>
                 {selected.size} kişi · istasyon ata
               </Text>
               <Pressable onPress={() => setBulkOpen(false)} style={{ padding: 4, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-                <X size={16} color={INK[400]} strokeWidth={2} />
+                <X size={16} color={(isDark ? T.ink3 : INK[400])} strokeWidth={2} />
               </Pressable>
             </View>
-            <Text style={{ fontSize: 12, color: INK[500], lineHeight: 17 }}>
+            <Text style={{ fontSize: 12, color: (isDark ? T.ink3 : INK[500]), lineHeight: 17 }}>
               Seçtiğin istasyon, işaretli herkese verilir ya da hepsinden kaldırılır.
             </Text>
             <ScrollView style={{ maxHeight: 340 }} showsVerticalScrollIndicator={false}>
               <View style={{ gap: 10 }}>
                 {groupStations(stations).map(group => (
                   <View key={group.label} style={{ gap: 6 }}>
-                    <Text style={{ fontSize: 9.5, fontWeight: '700', letterSpacing: 0.9, textTransform: 'uppercase', color: INK[400] }}>
+                    <Text style={{ fontSize: 9.5, fontWeight: '700', letterSpacing: 0.9, textTransform: 'uppercase', color: (isDark ? T.ink3 : INK[400]) }}>
                       {group.label}
                     </Text>
                     {group.items.map(st => {
                       const haveCount = Array.from(selected).filter(id => stationSkills.get(id)?.has(st.id)).length;
                       return (
                         <View key={st.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                          <Text style={{ flex: 1, fontSize: 12.5, color: INK[900] }} numberOfLines={1}>{st.name}</Text>
-                          <Text style={{ fontSize: 10.5, color: INK[300] }}>{haveCount}/{selected.size}</Text>
+                          <Text style={{ flex: 1, fontSize: 12.5, color: (isDark ? T.ink : INK[900]) }} numberOfLines={1}>{st.name}</Text>
+                          <Text style={{ fontSize: 10.5, color: (isDark ? T.ink3 : INK[300]) }}>{haveCount}/{selected.size}</Text>
                           <Pressable
                             onPress={() => applyBulk(st.id, true)}
                             style={({ pressed }: any) => ({
@@ -1737,17 +1758,17 @@ export function PeopleArea({ theme, techs, stations, stationSkills, onToggleStat
                               ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                             })}
                           >
-                            <Text style={{ fontSize: 11, fontWeight: '700', color: A_DEEP }}>Ver</Text>
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: accentText }}>Ver</Text>
                           </Pressable>
                           <Pressable
                             onPress={() => applyBulk(st.id, false)}
                             style={({ pressed }: any) => ({
                               paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
-                              backgroundColor: 'rgba(0,0,0,0.05)', opacity: pressed ? 0.7 : 1,
+                              backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', opacity: pressed ? 0.7 : 1,
                               ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                             })}
                           >
-                            <Text style={{ fontSize: 11, fontWeight: '600', color: INK[500] }}>Kaldır</Text>
+                            <Text style={{ fontSize: 11, fontWeight: '600', color: (isDark ? T.ink3 : INK[500]) }}>Kaldır</Text>
                           </Pressable>
                         </View>
                       );
@@ -1772,32 +1793,34 @@ function RulesArea({ theme, labId, stations, techs, skillCatalog, onStationSkill
   onStationMaterials: (st: TriageStation, cats: string[]) => void;
 }) {
   const { A, A_DEEP } = theme;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <View style={{ gap: 12 }}>
       <AutoTriageToggle labId={labId} theme={theme} />
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         <SlidersHorizontal size={15} color={A_DEEP} strokeWidth={2} />
-        <Text style={{ fontSize: 15, fontWeight: '700', color: INK[900] }}>Aşama Kuralları</Text>
+        <Text style={{ fontSize: 15, fontWeight: '700', color: (isDark ? T.ink : INK[900]) }}>Aşama Kuralları</Text>
       </View>
       {stations.map(st => (
-        <View key={st.id} style={{ borderRadius: 14, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.07)', padding: 14, gap: 12 }}>
+        <View key={st.id} style={{ borderRadius: 14, backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.07)', padding: 14, gap: 12 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: st.color }} />
-            <Text style={{ fontSize: 14, fontWeight: '700', color: INK[900] }}>{st.name}</Text>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: (isDark ? T.ink : INK[900]) }}>{st.name}</Text>
             {st.is_critical && <Badge color="#9C2E2E" bg={tint('#D94B4B', 0.12)} label="KRİTİK" />}
           </View>
           <View style={{ gap: 6 }}>
-            <Text style={dlabel}>Gerekli yetkinlikler</Text>
+            <Text style={[dlabel, isDark && { color: T.ink3 }]}>Gerekli yetkinlikler</Text>
             <ChipEditor values={st.required_skills} suggestions={skillCatalog} theme={theme} onChange={(s) => onStationSkills(st, s)} placeholder="yetkinlik ekle (ör. CAD)" />
           </View>
-          <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.06)' }} />
+          <View style={{ height: 1, backgroundColor: isDark ? T.hairline : 'rgba(0,0,0,0.06)' }} />
           <View style={{ gap: 6 }}>
-            <Text style={dlabel}>Tahmini süre & teslim hedefi</Text>
+            <Text style={[dlabel, isDark && { color: T.ink3 }]}>Tahmini süre & teslim hedefi</Text>
             <TimingFields st={st} theme={theme} onSave={(d, s) => onStationTiming(st, d, s)} />
           </View>
-          <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.06)' }} />
+          <View style={{ height: 1, backgroundColor: isDark ? T.hairline : 'rgba(0,0,0,0.06)' }} />
           <View style={{ gap: 6 }}>
-            <Text style={dlabel}>Kullanılan malzeme kategorileri</Text>
+            <Text style={[dlabel, isDark && { color: T.ink3 }]}>Kullanılan malzeme kategorileri</Text>
             <ChipEditor
               values={st.allowed_material_types}
               suggestions={Array.from(new Set([...MATERIAL_CATEGORIES, ...st.allowed_material_types]))}
@@ -1805,7 +1828,7 @@ function RulesArea({ theme, labId, stations, techs, skillCatalog, onStationSkill
               onChange={(c) => onStationMaterials(st, c)}
               placeholder="kategori ekle (ör. Zirkonyum)"
             />
-            <Text style={{ fontSize: 11, color: st.consumes_materials ? INK[500] : '#9C5E0E' }}>
+            <Text style={{ fontSize: 11, color: st.consumes_materials ? (isDark ? T.ink3 : INK[500]) : '#9C5E0E' }}>
               {st.consumes_materials
                 ? 'Bu aşama tamamlanırken, bu kategorilerdeki stok kalemleri önerilir ve stoktan düşülür.'
                 : 'Kategori eklenmedi → bu aşamada malzeme tüketimi sorulmaz (popup açılmaz).'}
@@ -1842,16 +1865,18 @@ function computeInsights(draft: Draft | null, stationById: Map<string, TriageSta
 }
 function InsightsPanel({ theme, insights }: { theme: Theme; insights: Insight[] }) {
   const { A_DEEP } = theme;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const tones = {
-    info: { bg: 'rgba(0,0,0,0.03)', fg: INK[500], dot: A_DEEP },
+    info: { bg: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', fg: (isDark ? T.ink3 : INK[500]), dot: A_DEEP },
     warn: { bg: tint('#E89B2A', 0.10), fg: '#9A6710', dot: '#E89B2A' },
     bad:  { bg: tint('#D94B4B', 0.10), fg: '#9C2E2E', dot: '#D94B4B' },
   } as const;
   return (
-    <View style={{ borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.07)', padding: 14, gap: 9 }}>
+    <View style={{ borderRadius: 16, backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.07)', padding: 14, gap: 9 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         <Lightbulb size={15} color={A_DEEP} strokeWidth={2} />
-        <Text style={{ fontSize: 13.5, fontWeight: '700', color: INK[900] }}>Akıllı İçgörüler</Text>
+        <Text style={{ fontSize: 13.5, fontWeight: '700', color: (isDark ? T.ink : INK[900]) }}>Akıllı İçgörüler</Text>
       </View>
       {insights.map((it, i) => { const t = tones[it.tone]; return (
         <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 9, borderRadius: 10, backgroundColor: t.bg }}>
@@ -1866,15 +1891,17 @@ function InsightsPanel({ theme, insights }: { theme: Theme; insights: Insight[] 
 // ── Auto-triage toggle ──
 function AutoTriageToggle({ labId, theme }: { labId: string | null; theme: Theme }) {
   const { A, A_DEEP } = theme;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [on, setOn] = useState(false); const [busy, setBusy] = useState(false);
   useEffect(() => { if (!labId) return; let c = false; fetchAutoTriage(labId).then(v => { if (!c) setOn(v); }).catch(() => {}); return () => { c = true; }; }, [labId]);
   const toggle = async () => { if (!labId || busy) return; const n = !on; setOn(n); setBusy(true); const r = await setAutoTriage(labId, n); if ((r as any)?.error) setOn(!n); setBusy(false); };
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.07)' }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.07)' }}>
       <View style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(A, 0.12) }}><Zap size={16} color={A_DEEP} strokeWidth={2} /></View>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontSize: 13, fontWeight: '700', color: INK[900] }}>Sıfır-tıkla oto-triaj</Text>
-        <Text style={{ fontSize: 11.5, color: INK[500] }}>Şablonla güvenle eşleşen sipariş otomatik uygulanır + onaylanır.</Text>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: (isDark ? T.ink : INK[900]) }}>Sıfır-tıkla oto-triaj</Text>
+        <Text style={{ fontSize: 11.5, color: (isDark ? T.ink3 : INK[500]) }}>Şablonla güvenle eşleşen sipariş otomatik uygulanır + onaylanır.</Text>
       </View>
       <Pressable onPress={toggle} style={{ width: 46, height: 28, borderRadius: 999, padding: 3, justifyContent: 'center', backgroundColor: on ? A : INK[200], opacity: busy ? 0.6 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
         <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: '#FFFFFF', alignSelf: on ? 'flex-end' : 'flex-start' }} />
@@ -1891,15 +1918,21 @@ function Badge({ label, color, bg, icon }: { label: string; color: string; bg: s
   return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: bg }}>{icon}<Text style={{ fontSize: 9, fontWeight: '800', color, letterSpacing: 0.3 }}>{label}</Text></View>;
 }
 function DetailRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>{icon}<Text style={{ fontSize: 12, color: INK[500], width: 92 }}>{label}</Text><Text style={{ fontSize: 12.5, fontWeight: '700', color: INK[900], flex: 1 }}>{value}</Text></View>;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>{icon}<Text style={{ fontSize: 12, color: (isDark ? T.ink3 : INK[500]), width: 92 }}>{label}</Text><Text style={{ fontSize: 12.5, fontWeight: '700', color: (isDark ? T.ink : INK[900]), flex: 1 }}>{value}</Text></View>;
 }
 function DepChip({ label, color, strong }: { label: string; color: string; strong?: boolean }) {
-  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: tint(color, strong ? 0.18 : 0.10), borderWidth: strong ? 1 : 0, borderColor: tint(color, 0.4) }}><View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color }} /><Text style={{ fontSize: 11, fontWeight: strong ? '800' : '600', color: INK[700] }}>{label}</Text></View>;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: tint(color, strong ? 0.18 : 0.10), borderWidth: strong ? 1 : 0, borderColor: tint(color, 0.4) }}><View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color }} /><Text style={{ fontSize: 11, fontWeight: strong ? '800' : '600', color: (isDark ? T.ink2 : INK[700]) }}>{label}</Text></View>;
 }
 function initials(name: string) { return (name || '?').trim().split(/\s+/).slice(0, 2).map(p => p[0]?.toUpperCase() ?? '').join(''); }
 
 function ChipEditor({ values, suggestions, theme, onChange, placeholder }: { values: string[]; suggestions: string[]; theme: Theme; onChange: (v: string[]) => void; placeholder: string }) {
   const { A, A_DEEP, onA, PAGE } = theme;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [text, setText] = useState('');
   const add = (raw: string) => { const v = raw.trim(); if (!v || values.includes(v)) { setText(''); return; } onChange([...values, v]); setText(''); };
   const remove = (v: string) => onChange(values.filter(x => x !== v));
@@ -1913,18 +1946,18 @@ function ChipEditor({ values, suggestions, theme, onChange, placeholder }: { val
             <Pressable onPress={() => remove(v)} style={{ ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}><X size={11} color={A_DEEP} strokeWidth={2.4} /></Pressable>
           </View>
         ))}
-        {values.length === 0 && <Text style={{ fontSize: 11.5, color: INK[400], fontStyle: 'italic' }}>Yetkinlik yok — herkes uygun.</Text>}
+        {values.length === 0 && <Text style={{ fontSize: 11.5, color: (isDark ? T.ink3 : INK[400]), fontStyle: 'italic' }}>Yetkinlik yok — herkes uygun.</Text>}
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <TextInput value={text} onChangeText={setText} onSubmitEditing={() => add(text)} placeholder={placeholder} placeholderTextColor={INK[400]}
-          style={{ flex: 1, fontSize: 13, color: INK[900], backgroundColor: PAGE, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' } as any} />
+        <TextInput value={text} onChangeText={setText} onSubmitEditing={() => add(text)} placeholder={placeholder} placeholderTextColor={(isDark ? T.ink3 : INK[400])}
+          style={{ flex: 1, fontSize: 13, color: (isDark ? T.ink : INK[900]), backgroundColor: PAGE, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.08)' } as any} />
         <Pressable onPress={() => add(text)} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: A, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}><Plus size={15} color={onA} strokeWidth={2.4} /></Pressable>
       </View>
       {sugg.length > 0 && (
         <View style={{ gap: 4 }}>
-          <Text style={{ fontSize: 10, fontWeight: '700', color: INK[400], letterSpacing: 0.4, textTransform: 'uppercase' }}>Öneriler — eklemek için tıkla</Text>
+          <Text style={{ fontSize: 10, fontWeight: '700', color: (isDark ? T.ink3 : INK[400]), letterSpacing: 0.4, textTransform: 'uppercase' }}>Öneriler — eklemek için tıkla</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-            {sugg.map(s => <Pressable key={s} onPress={() => add(s)} style={{ paddingHorizontal: 9, paddingVertical: 3, borderRadius: 999, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}><Text style={{ fontSize: 11, color: INK[500], fontWeight: '600' }}>+ {s}</Text></Pressable>)}
+            {sugg.map(s => <Pressable key={s} onPress={() => add(s)} style={{ paddingHorizontal: 9, paddingVertical: 3, borderRadius: 999, backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.10)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}><Text style={{ fontSize: 11, color: (isDark ? T.ink3 : INK[500]), fontWeight: '600' }}>+ {s}</Text></Pressable>)}
           </View>
         </View>
       )}
@@ -1934,6 +1967,8 @@ function ChipEditor({ values, suggestions, theme, onChange, placeholder }: { val
 
 function TimingFields({ st, theme, onSave }: { st: TriageStation; theme: Theme; onSave: (d: number | null, s: number | null) => void }) {
   const { PAGE } = theme;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [dur, setDur] = useState(st.est_duration_min != null ? String(st.est_duration_min) : '');
   const [sla, setSla] = useState(st.sla_hours != null ? String(st.sla_hours) : '');
   useEffect(() => { setDur(st.est_duration_min != null ? String(st.est_duration_min) : ''); }, [st.est_duration_min]);
@@ -1942,11 +1977,11 @@ function TimingFields({ st, theme, onSave }: { st: TriageStation; theme: Theme; 
   const commit = () => onSave(parse(dur), parse(sla));
   const field = (label: string, value: string, set: (v: string) => void, suffix: string) => (
     <View style={{ flex: 1, gap: 4 }}>
-      <Text style={dlabel}>{label}</Text>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: PAGE, borderRadius: 9, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', paddingHorizontal: 10, paddingVertical: 6 }}>
+      <Text style={[dlabel, isDark && { color: T.ink3 }]}>{label}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: PAGE, borderRadius: 9, borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.08)', paddingHorizontal: 10, paddingVertical: 6 }}>
         <TextInput value={value} onChangeText={set} onBlur={commit} onSubmitEditing={commit} placeholder="—" placeholderTextColor={INK[300]} keyboardType="numeric"
-          style={{ flex: 1, fontSize: 14, fontWeight: '700', color: INK[900], ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) } as any} />
-        <Text style={{ fontSize: 11.5, fontWeight: '600', color: INK[400] }}>{suffix}</Text>
+          style={{ flex: 1, fontSize: 14, fontWeight: '700', color: (isDark ? T.ink : INK[900]), ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) } as any} />
+        <Text style={{ fontSize: 11.5, fontWeight: '600', color: (isDark ? T.ink3 : INK[400]) }}>{suffix}</Text>
       </View>
     </View>
   );

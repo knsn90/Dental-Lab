@@ -180,16 +180,44 @@ serve(async (req) => {
   // ── track ──
   if (body.action === 'track') {
     if (!body.order_id) return json({ ok: false, message: 'order_id gerekli' });
+    // /courier → CANLI konum + kimlik. /orders → sipariş + NOKTALAR (alım/teslim
+    // ziyaret zamanları). İkisi ayrı: /courier nokta taşımaz, o yüzden /orders da çekilir.
     const r = await bbkGet(env, token, `/courier?order_id=${encodeURIComponent(body.order_id)}`);
-    let bbkStatus: string | null = r.data?.order?.status ?? r.data?.status ?? null;
     let courier = r.data?.courier ?? (r.data?.order?.courier ?? null);
-    if (!bbkStatus) {
-      const o = await bbkGet(env, token, '/orders');
-      const list = o.data?.orders ?? (Array.isArray(o.data) ? o.data : []);
-      const found = Array.isArray(list)
-        ? list.find((x: any) => x?.order_id === body.order_id || x?.order_name === body.order_id)
-        : null;
-      if (found) { bbkStatus = found.status ?? null; courier = courier ?? found.courier ?? null; }
+
+    const o = await bbkGet(env, token, '/orders');
+    const list = o.data?.orders ?? (Array.isArray(o.data) ? o.data : []);
+    const found = Array.isArray(list)
+      ? list.find((x: any) => x?.order_id === body.order_id || x?.order_name === body.order_id)
+      : null;
+    let bbkStatus: string | null = found?.status ?? r.data?.order?.status ?? r.data?.status ?? null;
+    courier = courier ?? found?.courier ?? null;
+
+    // ── Gerçek ALIM / TESLİM zamanları (noktaların ziyaret damgasından) ──
+    // BanaBiKurye sipariş statüsü kabadır: kurye alıma GİDERKEN de 'active' raporlar,
+    // callback bunu 'yolda'ya çevirir ama picked_up_at boş kalır → çizelge yanlış "alındı"
+    // gösterirdi. Doğru sinyal noktaların `courier_visit_datetime`'ıdır: nokta 0 = alım,
+    // son nokta = teslim. Ziyaret damgası dolduysa gerçek alım/teslim gerçekleşmiştir.
+    const pts: any[] = Array.isArray(found?.points) ? found.points : [];
+    const pickupVisit = pts.length ? (pts[0]?.courier_visit_datetime ?? null) : null;
+    const dropVisit   = pts.length > 1 ? (pts[pts.length - 1]?.courier_visit_datetime ?? null) : null;
+    if (pickupVisit) {
+      // Yalnız boşken yaz — üzerine yazma (idempotent). teslim_alindi'ye de yükselt ki
+      // liste rozeti "ALINDI" göstersin (callback 'completed' gelince teslim_edildi'ye çeker).
+      try {
+        await admin.from('deliveries')
+          .update({ picked_up_at: pickupVisit })
+          .eq('external_tracking_no', String(body.order_id)).eq('mode', 'external')
+          .is('picked_up_at', null);
+      } catch { /* takip yanıtını bozma */ }
+    }
+    if (dropVisit) {
+      try {
+        await admin.from('deliveries')
+          .update({ delivered_at: dropVisit })
+          .eq('external_tracking_no', String(body.order_id)).eq('mode', 'external')
+          .is('delivered_at', null);
+      } catch { /* takip yanıtını bozma */ }
     }
 
     // Kurye kimliğini teslimat kaydına kalıcılaştır — geçmiş gönderilerde
@@ -209,7 +237,14 @@ serve(async (req) => {
       }
     }
 
-    return json({ ok: true, bbk_status: bbkStatus, delivery_status: mapStatus(bbkStatus), courier });
+    return json({
+      ok: true,
+      bbk_status: bbkStatus,
+      delivery_status: mapStatus(bbkStatus),
+      picked_up_at: pickupVisit,
+      delivered_at: dropVisit,
+      courier,
+    });
   }
 
   // ── bank_cards ── hesabın kayıtlı banka kartlarını listeler (bank_card ödemesi için).

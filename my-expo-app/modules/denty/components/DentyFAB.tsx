@@ -17,11 +17,13 @@ import { isRTL } from '../../../core/i18n';
 import {
   View, Text, Pressable, Modal, Platform, Animated, Easing, useWindowDimensions,
 } from 'react-native';
-import { useSegments } from 'expo-router';
+import { useSegments, usePathname } from 'expo-router';
 import { useDentyPalette } from '../theme';
 import { useAuthStore } from '../../../core/store/authStore';
 import { useDentyStore } from '../store/dentyStore';
 import { isDentyPanel, dentyRoleLabel } from '../context';
+import { autoT } from '../../../core/i18n/autoTranslate';
+import { reportIntoPanel } from '../orderReport';
 import { useUiOverlayStore } from '../../../core/store/uiOverlayStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DentyPanel } from './DentyPanel';
@@ -48,6 +50,7 @@ export function DentyFAB() {
   const isWide = width >= 760;
   const insets = useSafeAreaInsets();
   const segments = useSegments() as string[];
+  const pathname = usePathname();
   // Ekranın yapışkan aksiyon çubuğu varsa FAB onun üstüne çıkar
   const bottomBar = useUiOverlayStore((s) => s.bottomBarHeight);
   // Asistanın yardımcı olamayacağı akışlar (ör. sipariş düzenleme sihirbazı)
@@ -86,6 +89,16 @@ export function DentyFAB() {
   // üzerinde çalışır — düzen hesabı yok, daha akıcı. Metin genişliğini ölçmeye
   // de gerek kalmadı (çeviride uzasa bile sorun çıkmaz).
   const [hovered, setHovered] = useState(false);
+
+  // ── Bağlam balonu: sipariş detayındayken bir kez "özet çıkarabilirim" der ──
+  // Kullanıcı kapatınca (ya da Simanty'yi açınca) o oturumda bir daha çıkmaz;
+  // orbun yanında durur, düzeni oynatmaz, tıklanınca özeti başlatır.
+  const userType = (profile as any)?.user_type as string | undefined;
+  const reportAudience: 'lab' | 'clinic' = (userType === 'lab' || userType === 'admin') ? 'lab' : 'clinic';
+  const onOrderDetail = (segments ?? []).includes('order') && (segments ?? []).length > 1;
+  const [hintDismissed, setHintDismissed] = useState(false);
+  const showHint = onOrderDetail && !hintDismissed && !isOpen && isWide;
+  useEffect(() => { setHintDismissed(false); }, [String(segments ?? [])]);
   const hoverAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -182,6 +195,7 @@ export function DentyFAB() {
 
             <ColorOrb size={ORB_SIZE} />
           </Pressable>
+
           ) : (
             <Pressable
               onPress={open}
@@ -190,6 +204,61 @@ export function DentyFAB() {
             >
               <ColorOrb size={56} />
             </Pressable>
+          )}
+          {showHint && (
+            // Simanty'den çıkan konuşma balonu: TEK SATIR (dik durmasın), solda
+            // mini orb (kimin konuştuğu belli olsun) ve sağ kenarda orba bakan kuyruk.
+            <View
+              style={{
+                position: 'absolute', ...(isRTL() ? { left: ORB_SIZE + 14 } : { right: ORB_SIZE + 14 }),
+                bottom: 8, maxWidth: 300,
+              }}
+            >
+              <Pressable
+                onPress={() => {
+                  setHintDismissed(true);
+                  const m = /\/order\/([^/?#]+)/.exec(String(pathname ?? ''));
+                  if (m) void reportIntoPanel(decodeURIComponent(m[1]), reportAudience);
+                }}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 9,
+                  paddingHorizontal: 13, paddingVertical: 9, borderRadius: 16,
+                  backgroundColor: 'rgba(255,255,255,0.94)',
+                  borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)',
+                  ...(Platform.OS === 'web'
+                    ? ({ backdropFilter: 'blur(10px) saturate(140%)',
+                         WebkitBackdropFilter: 'blur(10px) saturate(140%)',
+                         boxShadow: '0 10px 28px rgba(16,24,40,0.14)', cursor: 'pointer',
+                         whiteSpace: 'nowrap' } as any)
+                    : { shadowColor: '#101828', shadowOpacity: 0.14, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 8 }),
+                }}
+              >
+                <ColorOrb size={18} />
+                <Text numberOfLines={1} style={{ fontSize: 12.5, fontWeight: '600', color: INK_900, lineHeight: 17 }}>
+                  {autoT('Bu vakayı özetleyeyim mi?')}
+                </Text>
+                <Pressable
+                  onPress={() => setHintDismissed(true)}
+                  hitSlop={10}
+                  style={{ width: 16, height: 16, alignItems: 'center', justifyContent: 'center', marginStart: 2,
+                           ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                >
+                  <Text style={{ fontSize: 13, color: '#98A2B3', lineHeight: 15 }}>×</Text>
+                </Pressable>
+              </Pressable>
+
+              {/* Kuyruk — orba doğru bakan 45° döndürülmüş kare */}
+              <View
+                pointerEvents="none"
+                style={{
+                  position: 'absolute', bottom: 15,
+                  ...(isRTL() ? { left: -4 } : { right: -4 }),
+                  width: 10, height: 10, borderRadius: 2,
+                  backgroundColor: 'rgba(255,255,255,0.94)',
+                  transform: [{ rotate: '45deg' }],
+                }}
+              />
+            </View>
           )}
         </View>
       )}

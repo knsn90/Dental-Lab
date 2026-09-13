@@ -11,8 +11,9 @@ import {
   Modal, View, Text, Pressable, ScrollView, TextInput,
   ActivityIndicator, useWindowDimensions,
 } from 'react-native';
-import { Check, Search, X, Inbox } from 'lucide-react-native';
+import { Check, Search, X, Inbox } from '../../../../core/ui/icons';
 import { DS } from '../../../../core/theme/dsTokens';
+import { useInkUI } from '../../../../core/theme/inkScale';
 import { DISPLAY, TH, PillButton, EmptyCard } from './atoms';
 import { listAvailableWorkTypesWithCategory, type WorkTypeWithCategory } from '../api';
 
@@ -24,6 +25,7 @@ type Props = {
 };
 
 export default function WorkTypeSelectorModal({ visible, selected, onClose, onApply }: Props) {
+  const U = useInkUI();
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
 
@@ -119,45 +121,46 @@ export default function WorkTypeSelectorModal({ visible, selected, onClose, onAp
     <Modal visible={visible} transparent animationType={isMobile ? 'slide' : 'fade'} onRequestClose={onClose}>
       <View style={{
         flex: 1,
-        backgroundColor: 'rgba(15, 23, 42, 0.45)',
+        backgroundColor: U.scrim,
         alignItems: 'center',
         justifyContent: isMobile ? 'flex-end' : 'center',
         ...overlayStyle,
       }}>
         <View style={{
-          backgroundColor: '#FFF',
+          backgroundColor: U.surface,
           overflow: 'hidden',
+          ...(U.isDark ? { borderWidth: 1, borderColor: U.hairline } : {}),
           ...containerStyle,
         }}>
           {/* HEADER */}
           <View style={{
             padding: isMobile ? 16 : 22,
             borderBottomWidth: 1,
-            borderBottomColor: DS.ink[100],
+            borderBottomColor: U.ink[100],
             flexDirection: 'row',
             alignItems: 'flex-start',
             gap: 12,
           }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ ...DISPLAY, fontSize: isMobile ? 20 : 24, letterSpacing: -0.5, color: DS.ink[900], lineHeight: isMobile ? 24 : 28 }}>
+              <Text style={{ ...DISPLAY, fontSize: isMobile ? 20 : 24, letterSpacing: -0.5, color: U.ink[900], lineHeight: isMobile ? 24 : 28 }}>
                 İş Türü Seçimi
               </Text>
-              <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 4 }}>
+              <Text style={{ fontSize: 12, color: U.ink[500], marginTop: 4 }}>
                 Prim hesaplamasına dahil edilecek iş türlerini seç
               </Text>
             </View>
             <Pressable onPress={onClose} style={{
               width: 36, height: 36, borderRadius: 18,
-              backgroundColor: DS.ink[100],
+              backgroundColor: U.ink[100],
               alignItems: 'center', justifyContent: 'center',
             }}>
-              <X size={16} color={DS.ink[700]} strokeWidth={2.2} />
+              <X size={16} color={U.ink[700]} strokeWidth={2.2} />
             </Pressable>
           </View>
 
           {/* MOBILE: kategori chip stripe (yatay scroll) */}
           {isMobile ? (
-            <View style={{ borderBottomWidth: 1, borderBottomColor: DS.ink[100] }}>
+            <View style={{ borderBottomWidth: 1, borderBottomColor: U.ink[100] }}>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -193,12 +196,12 @@ export default function WorkTypeSelectorModal({ visible, selected, onClose, onAp
               <View style={{
                 width: 260,
                 borderEndWidth: 1,
-                borderEndColor: DS.ink[100],
+                borderEndColor: U.ink[100],
                 padding: 18,
                 gap: 4,
               }}>
                 <Text style={{
-                  fontSize: 10, fontWeight: '700', color: DS.ink[500],
+                  fontSize: 10, fontWeight: '700', color: U.ink[500],
                   textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8,
                 }}>
                   Kategoriler
@@ -231,17 +234,17 @@ export default function WorkTypeSelectorModal({ visible, selected, onClose, onAp
               {/* Search */}
               <View style={{
                 flexDirection: 'row', alignItems: 'center', gap: 8,
-                borderWidth: 1, borderColor: DS.ink[200], borderRadius: 12,
+                borderWidth: 1, borderColor: U.ink[200], borderRadius: 12,
                 paddingHorizontal: 12, paddingVertical: 8,
-                backgroundColor: '#FFF',
+                backgroundColor: U.plainBtn.bg,
               }}>
-                <Search size={16} color={DS.ink[400]} strokeWidth={2} />
+                <Search size={16} color={U.ink[400]} strokeWidth={2} />
                 <TextInput
                   value={searchQuery}
                   onChangeText={setSearchQuery}
                   placeholder="İş türü ara…"
-                  placeholderTextColor={DS.ink[400]}
-                  style={{ flex: 1, fontSize: 14, color: DS.ink[900], outlineStyle: 'none' as any, paddingVertical: 2 }}
+                  placeholderTextColor={U.ink[400]}
+                  style={{ flex: 1, fontSize: 14, color: U.ink[900], outlineStyle: 'none' as any, paddingVertical: 2 }}
                 />
               </View>
 
@@ -254,7 +257,7 @@ export default function WorkTypeSelectorModal({ visible, selected, onClose, onAp
                   {isFlat ? 'Bu seçimi temizle' : 'Seçimi temizle'}
                 </PillButton>
                 <View style={{ flex: 1 }} />
-                <Text style={{ fontSize: 12, color: DS.ink[500] }}>
+                <Text style={{ fontSize: 12, color: U.ink[500] }}>
                   {localSelected.size} seçili
                 </Text>
               </View>
@@ -275,7 +278,7 @@ export default function WorkTypeSelectorModal({ visible, selected, onClose, onAp
                       <View key={cat} style={{ marginBottom: 12 }}>
                         {!isFlat && (
                           <Text style={{
-                            fontSize: 10, fontWeight: '700', color: DS.ink[500],
+                            fontSize: 10, fontWeight: '700', color: U.ink[500],
                             textTransform: 'uppercase', letterSpacing: 0.8,
                             paddingVertical: 8,
                           }}>
@@ -283,7 +286,7 @@ export default function WorkTypeSelectorModal({ visible, selected, onClose, onAp
                           </Text>
                         )}
                         {list.length === 0 ? (
-                          <Text style={{ fontSize: 12, color: DS.ink[400], paddingVertical: 12 }}>
+                          <Text style={{ fontSize: 12, color: U.ink[400], paddingVertical: 12 }}>
                             Sonuç yok
                           </Text>
                         ) : list.map(it => {
@@ -299,8 +302,8 @@ export default function WorkTypeSelectorModal({ visible, selected, onClose, onAp
                                 paddingVertical: isMobile ? 14 : 10,
                                 paddingHorizontal: 12,
                                 borderBottomWidth: 1,
-                                borderBottomColor: DS.ink[100],
-                                backgroundColor: checked ? TH.bgSoft : 'transparent',
+                                borderBottomColor: U.ink[100],
+                                backgroundColor: checked ? (U.isDark ? TH.primary + '1F' : TH.bgSoft) : 'transparent',
                                 borderRadius: 8,
                                 opacity: pressed ? 0.85 : 1,
                               })}
@@ -308,13 +311,13 @@ export default function WorkTypeSelectorModal({ visible, selected, onClose, onAp
                               <View style={{
                                 width: 20, height: 20, borderRadius: 6,
                                 borderWidth: checked ? 0 : 1,
-                                borderColor: DS.ink[300],
-                                backgroundColor: checked ? TH.success : '#FFF',
+                                borderColor: U.ink[300],
+                                backgroundColor: checked ? TH.success : U.plainBtn.bg,
                                 alignItems: 'center', justifyContent: 'center',
                               }}>
                                 {checked && <Check size={13} color="#FFF" strokeWidth={3} />}
                               </View>
-                              <Text style={{ fontSize: 14, color: DS.ink[900], flex: 1 }} numberOfLines={2}>
+                              <Text style={{ fontSize: 14, color: U.ink[900], flex: 1 }} numberOfLines={2}>
                                 {it.name}
                               </Text>
                             </Pressable>
@@ -332,17 +335,17 @@ export default function WorkTypeSelectorModal({ visible, selected, onClose, onAp
           <View style={{
             padding: isMobile ? 14 : 18,
             borderTopWidth: 1,
-            borderTopColor: DS.ink[100],
+            borderTopColor: U.ink[100],
             flexDirection: isMobile ? 'column' : 'row',
             alignItems: isMobile ? 'stretch' : 'center',
             gap: isMobile ? 10 : 12,
           }}>
             {!isMobile ? (
-              <Text style={{ flex: 1, fontSize: 13, color: DS.ink[500] }}>
+              <Text style={{ flex: 1, fontSize: 13, color: U.ink[500] }}>
                 {localSelected.size} iş türü seçili
               </Text>
             ) : (
-              <Text style={{ fontSize: 12, color: DS.ink[500], textAlign: 'center' }}>
+              <Text style={{ fontSize: 12, color: U.ink[500], textAlign: 'center' }}>
                 {localSelected.size} iş türü seçili
               </Text>
             )}
@@ -370,6 +373,7 @@ export default function WorkTypeSelectorModal({ visible, selected, onClose, onAp
 function CategoryRow({ label, count, active, onPress }: {
   label: string; count: number; active: boolean; onPress: () => void;
 }) {
+  const U = useInkUI();
   return (
     <Pressable
       onPress={onPress}
@@ -380,27 +384,27 @@ function CategoryRow({ label, count, active, onPress }: {
         paddingVertical: 8,
         paddingHorizontal: 10,
         borderRadius: 8,
-        backgroundColor: active ? TH.bgSoft : 'transparent',
+        backgroundColor: active ? (U.isDark ? TH.primary + '26' : TH.bgSoft) : 'transparent',
         opacity: pressed ? 0.85 : 1,
       })}
     >
       <Text style={{
         flex: 1,
         fontSize: 13,
-        color: active ? TH.primary : DS.ink[800],
+        color: active ? TH.primary : U.ink[800],
         fontWeight: active ? '600' : '400',
       }} numberOfLines={1}>
         {label}
       </Text>
       <View style={{
-        backgroundColor: active ? '#FFF' : DS.ink[100],
+        backgroundColor: active ? U.segActive : U.ink[100],
         paddingHorizontal: 8,
         paddingVertical: 2,
         borderRadius: 999,
         minWidth: 24,
         alignItems: 'center',
       }}>
-        <Text style={{ fontSize: 10, fontWeight: '700', color: DS.ink[500] }}>{count}</Text>
+        <Text style={{ fontSize: 10, fontWeight: '700', color: U.ink[500] }}>{count}</Text>
       </View>
     </Pressable>
   );
@@ -410,6 +414,7 @@ function CategoryRow({ label, count, active, onPress }: {
 function CategoryChip({ label, count, active, onPress }: {
   label: string; count: number; active: boolean; onPress: () => void;
 }) {
+  const U = useInkUI();
   return (
     <Pressable
       onPress={onPress}
@@ -420,19 +425,19 @@ function CategoryChip({ label, count, active, onPress }: {
         paddingVertical: 8,
         paddingHorizontal: 14,
         borderRadius: 999,
-        backgroundColor: active ? DS.ink[900] : DS.ink[100],
+        backgroundColor: active ? U.ink[900] : U.ink[100],
         opacity: pressed ? 0.85 : 1,
       })}
     >
       <Text style={{
         fontSize: 12,
         fontWeight: active ? '600' : '500',
-        color: active ? '#FFF' : DS.ink[700],
+        color: active ? U.onDarkPill : U.ink[700],
       }} numberOfLines={1}>
         {label}
       </Text>
       <View style={{
-        backgroundColor: active ? 'rgba(255,255,255,0.20)' : DS.ink[200],
+        backgroundColor: active ? (U.isDark ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.20)') : U.ink[200],
         paddingHorizontal: 6,
         paddingVertical: 1,
         borderRadius: 999,
@@ -441,7 +446,7 @@ function CategoryChip({ label, count, active, onPress }: {
       }}>
         <Text style={{
           fontSize: 10, fontWeight: '700',
-          color: active ? '#FFF' : DS.ink[700],
+          color: active ? U.onDarkPill : U.ink[700],
         }}>
           {count}
         </Text>

@@ -11,6 +11,12 @@ import { signalAppReady } from '../core/debug/appReady';
 // Splash kapatma sinyali artık paylaşılan yardımcıda — kök layout da çağırıyor
 // ki derin bağlantılarda (index mount olmadan) splash asılı kalmasın.
 
+// Panel-DIŞI üst-düzey rotalar: bunlar hiçbir panelin alt-yolu DEĞİL (public/oturumsuz).
+// Örn. /kiosk → oturum açılıp '/'ya dönülünce bu yol panel base'ine EKLENMEMELİ
+// (yoksa `/(admin)/kiosk` gibi var olmayan rota → "Unmatched Route").
+const NON_PANEL_TOP = new Set(['kiosk', 'pay', 'doctor-approval', 'checkin', 'c', 'legal', 'auth', 'tv']);
+const firstSegOf = (p: string) => p.replace(/^\/+/, '').split('/')[0];
+
 export default function Index() {
   const { session, profile, loading, fetchProfile } = useAuthStore();
   const lastPanelKey   = useLastPanelStore((s) => s.panel);
@@ -75,7 +81,7 @@ export default function Index() {
   if (lastPanel === 'platform') {
     const wp = (typeof window !== 'undefined' && window.location?.pathname) ? window.location.pathname : '/';
     const wq = (typeof window !== 'undefined' && window.location?.search) ? window.location.search : '';
-    const sub = wp && wp !== '/' && !wp.startsWith('/(') && !wp.startsWith('/index');
+    const sub = wp && wp !== '/' && !wp.startsWith('/(') && !wp.startsWith('/index') && !NON_PANEL_TOP.has(firstSegOf(wp));
     return <Redirect href={(sub ? `/(platform)${wp}${wq}` : '/(platform)') as any} />;
   }
 
@@ -96,7 +102,7 @@ export default function Index() {
   // yol + query'yi koru ki kullanıcı dashboard'a değil bulunduğu sayfaya dönsün.
   const webPath  = (typeof window !== 'undefined' && window.location?.pathname) ? window.location.pathname : '/';
   const webQuery = (typeof window !== 'undefined' && window.location?.search) ? window.location.search : '';
-  const isRealSub = webPath && webPath !== '/' && !webPath.startsWith('/(') && !webPath.startsWith('/index');
+  const isRealSub = webPath && webPath !== '/' && !webPath.startsWith('/(') && !webPath.startsWith('/index') && !NON_PANEL_TOP.has(firstSegOf(webPath));
   const target = isRealSub ? `${base}${webPath}${webQuery}` : base;
 
   return <Redirect href={target as any} />;

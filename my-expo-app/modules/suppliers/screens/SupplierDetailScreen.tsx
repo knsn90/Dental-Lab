@@ -19,7 +19,7 @@ import {
   ArrowLeft, ArrowRight, ArrowDownCircle, ArrowUpCircle, RotateCcw, Settings as Adjust,
   Phone, Mail, Globe, MapPin, Building2, CreditCard, Calendar,
   Pencil, Plus, Receipt, Printer, FileSpreadsheet, Trash2,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { useAuthStore } from '../../../core/store/authStore';
 import { formatMoney, useBaseCurrency, type Currency } from '../../../core/money/currency';
 import { CurrencyBreakdown } from '../../../core/money/CurrencyBreakdown';
@@ -38,6 +38,8 @@ import { CenteredLoader } from '../../../core/ui/CenteredLoader';
 import { buildCariStatementHtml, type CariLine } from '../../../core/util/buildCariStatementHtml';
 import { isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 interface Props {
   supplierId: string;
@@ -46,6 +48,8 @@ interface Props {
 }
 
 export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBack }: Props) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const router     = useRouter();
   const segments   = useSegments();
   const panel      = (segments?.[0] as string) ?? '(lab)';
@@ -90,15 +94,15 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
   };
 
   const PCard = {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: T.card,
     borderRadius: 18,
     padding: 18,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.04)',
+    borderColor: T.hairline,
     ...(Platform.OS === 'web' ? { boxShadow: '0 4px 16px rgba(0,0,0,0.04)' } : {}),
   } as any;
   const DisplayFont = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
-  const eyebrow = { fontSize: 11, fontWeight: '600' as const, color: '#9A9A9A', letterSpacing: 1, textTransform: 'uppercase' as const };
+  const eyebrow = { fontSize: 11, fontWeight: '600' as const, color: T.ink3, letterSpacing: 1, textTransform: 'uppercase' as const };
 
   const load = async () => {
     setLoading(true);
@@ -300,36 +304,36 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <Pressable
           onPress={onBack}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999, backgroundColor: 'rgba(0,0,0,0.04)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999, backgroundColor: T.hairline, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
         >
-          {isRTL() ? <ArrowRight size={14} color="#6B6B6B" strokeWidth={1.8} /> : <ArrowLeft size={14} color="#6B6B6B" strokeWidth={1.8} />}
-          <Text style={{ fontSize: 13, fontWeight: '500', color: '#6B6B6B' }}>Tedarikçiler</Text>
+          {isRTL() ? <ArrowRight size={14} color={T.ink3} strokeWidth={1.8} /> : <ArrowLeft size={14} color={T.ink3} strokeWidth={1.8} />}
+          <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink3 }}>Tedarikçiler</Text>
         </Pressable>
         <View style={{ flexDirection: 'row', gap: 6 }}>
           {Platform.OS === 'web' && (
             <>
               <Pressable
                 onPress={handleExportExcel}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
               >
                 <FileSpreadsheet size={12} color="#1F6B47" strokeWidth={1.8} />
                 <Text style={{ fontSize: 12, fontWeight: '500', color: '#1F6B47' }}>Excel</Text>
               </Pressable>
               <Pressable
                 onPress={handlePrint}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
               >
-                <Printer size={12} color="#6B6B6B" strokeWidth={1.8} />
-                <Text style={{ fontSize: 12, fontWeight: '500', color: '#6B6B6B' }}>Yazdır / PDF</Text>
+                <Printer size={12} color={T.ink3} strokeWidth={1.8} />
+                <Text style={{ fontSize: 12, fontWeight: '500', color: T.ink3 }}>Yazdır / PDF</Text>
               </Pressable>
             </>
           )}
           <Pressable
             onPress={() => setEditOpen(true)}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
           >
-            <Pencil size={12} color="#6B6B6B" strokeWidth={1.8} />
-            <Text style={{ fontSize: 12, fontWeight: '500', color: '#6B6B6B' }}>Düzenle</Text>
+            <Pencil size={12} color={T.ink3} strokeWidth={1.8} />
+            <Text style={{ fontSize: 12, fontWeight: '500', color: T.ink3 }}>Düzenle</Text>
           </Pressable>
         </View>
       </View>
@@ -343,11 +347,11 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
             </View>
             <View style={{ flex: 1 }}>
               <Text style={eyebrow}>{CATEGORY_LABELS[supplier.category]}</Text>
-              <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 28, letterSpacing: -0.8, color: '#0A0A0A', marginTop: 2 }} numberOfLines={2}>
+              <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 28, letterSpacing: -0.8, color: T.ink, marginTop: 2 }} numberOfLines={2}>
                 {supplier.name}
               </Text>
               {supplier.tax_no ? (
-                <Text style={{ fontSize: 12, color: '#6B6B6B', marginTop: 2 }}>
+                <Text style={{ fontSize: 12, color: T.ink3, marginTop: 2 }}>
                   VKN {supplier.tax_no}{supplier.tax_office ? ` · ${supplier.tax_office}` : ''}
                 </Text>
               ) : null}
@@ -361,7 +365,7 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
               {tone === 'zero' ? '—' : balanceText}
             </Text>
             {balance && balance.purchase_count > 0 ? (
-              <Text style={{ fontSize: 11, color: '#9A9A9A' }}>
+              <Text style={{ fontSize: 11, color: T.ink3 }}>
                 {balance.purchase_count} alış · {balance.last_transaction_date ? new Date(balance.last_transaction_date).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short' }) : '—'}
               </Text>
             ) : null}
@@ -379,30 +383,30 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
           </Pressable>
           <Pressable
             onPress={() => setTxOpen({ visible: true, type: 'PURCHASE' })}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 9999, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 9999, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
           >
-            <Receipt size={14} color="#6B6B6B" strokeWidth={1.8} />
-            <Text style={{ fontSize: 13, fontWeight: '500', color: '#6B6B6B' }}>Manuel fatura</Text>
+            <Receipt size={14} color={T.ink3} strokeWidth={1.8} />
+            <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink3 }}>Manuel fatura</Text>
           </Pressable>
           <Pressable
             onPress={() => setTxOpen({ visible: true, type: 'RETURN' })}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 9999, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 9999, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
           >
-            <RotateCcw size={14} color="#6B6B6B" strokeWidth={1.8} />
-            <Text style={{ fontSize: 13, fontWeight: '500', color: '#6B6B6B' }}>İade</Text>
+            <RotateCcw size={14} color={T.ink3} strokeWidth={1.8} />
+            <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink3 }}>İade</Text>
           </Pressable>
           <Pressable
             onPress={() => setTxOpen({ visible: true, type: 'ADJUSTMENT' })}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 9999, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 9999, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
           >
-            <Adjust size={14} color="#6B6B6B" strokeWidth={1.8} />
-            <Text style={{ fontSize: 13, fontWeight: '500', color: '#6B6B6B' }}>Düzeltme</Text>
+            <Adjust size={14} color={T.ink3} strokeWidth={1.8} />
+            <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink3 }}>Düzeltme</Text>
           </Pressable>
         </View>
 
         {/* Summary — Phase 4: currency breakdown popups */}
         {balance && (balance.total_purchases > 0 || balance.total_payments > 0) ? (
-          <View style={{ flexDirection: 'row', gap: 24, paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)', flexWrap: 'wrap' }}>
+          <View style={{ flexDirection: 'row', gap: 24, paddingTop: 10, borderTopWidth: 1, borderTopColor: T.hairline, flexWrap: 'wrap' }}>
             <View>
               <Text style={[eyebrow, { color: '#9C2E2E' }]}>Toplam alış</Text>
               <CurrencyBreakdown
@@ -439,22 +443,22 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
           {supplier.website ? <InfoRow icon={Globe} label="Web" value={supplier.website} /> : null}
           {supplier.address ? <InfoRow icon={MapPin} label="Adres" value={supplier.address} /> : null}
           {supplier.iban ? <InfoRow icon={CreditCard} label={`IBAN${supplier.bank_name ? ` · ${supplier.bank_name}` : ''}`} value={supplier.iban} /> : null}
-          {supplier.payment_terms_days > 0 ? <InfoRow icon={Calendar} label="Vade" value={`${supplier.payment_terms_days} gün`} /> : null}
+          {supplier.payment_terms_days > 0 ? <InfoRow icon={Calendar} label="Vade" value={`${supplier.payment_terms_days} ${autoT('gün')}`} /> : null}
         </View>
       )}
 
       {/* Transactions table */}
       <View style={[PCard, { padding: 0, overflow: 'hidden' }]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 18, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' }}>
-          <Text style={[eyebrow, { color: '#6B6B6B' }]}>Cari hareketler</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 18, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: T.hairline }}>
+          <Text style={[eyebrow, { color: T.ink3 }]}>Cari hareketler</Text>
           <View style={{ flex: 1 }} />
-          <Text style={{ fontSize: 11, color: '#9A9A9A' }}>{transactions.length} kayıt</Text>
+          <Text style={{ fontSize: 11, color: T.ink3 }}>{transactions.length} kayıt</Text>
         </View>
 
         {transactions.length === 0 ? (
           <View style={{ alignItems: 'center', paddingVertical: 40, gap: 8 }}>
-            <Receipt size={28} color="#D9D9D9" strokeWidth={1.4} />
-            <Text style={{ fontSize: 13, color: '#9A9A9A' }}>Henüz cari hareket yok</Text>
+            <Receipt size={28} color={isDark ? (T.ink3 as string) : '#D9D9D9'} strokeWidth={1.4} />
+            <Text style={{ fontSize: 13, color: T.ink3 }}>Henüz cari hareket yok</Text>
           </View>
         ) : transactions.map((t, idx) => {
           const isCredit = t.type === 'PAYMENT' || t.type === 'RETURN';
@@ -482,32 +486,43 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
             <Pressable
               key={t.id}
               onPress={isPurchase ? openPurchasePreview : undefined}
-              style={({ hovered }: any) => ({
-                flexDirection: 'row', alignItems: 'center', gap: 12,
-                paddingHorizontal: 18, paddingVertical: 13,
-                borderBottomWidth: idx < transactions.length - 1 ? 1 : 0,
-                borderBottomColor: 'rgba(0,0,0,0.04)',
-                backgroundColor: isPurchase && hovered ? 'rgba(0,0,0,0.025)' : 'transparent',
-                ...(Platform.OS === 'web' && isPurchase ? { cursor: 'pointer' } as any : {}),
-              })}
+              // ÖNEMLİ: fonksiyon-stilli Pressable native'de row layout'u DÜŞÜRÜYOR
+              // (ikon üstte, tutar ve aksiyonlar alt alta) — web'de görünmez.
+              // Native'de object stil, hover fonksiyon stili yalnız web'de.
+              style={Platform.OS === 'web'
+                ? ((({ hovered }: any) => ({
+                    flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12,
+                    paddingHorizontal: 18, paddingVertical: 13,
+                    borderBottomWidth: idx < transactions.length - 1 ? 1 : 0,
+                    borderBottomColor: T.hairline,
+                    backgroundColor: isPurchase && hovered ? (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.025)') : 'transparent',
+                    ...(isPurchase ? { cursor: 'pointer' } : {}),
+                  })) as any)
+                : {
+                    flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12,
+                    paddingHorizontal: 18, paddingVertical: 13,
+                    borderBottomWidth: idx < transactions.length - 1 ? 1 : 0,
+                    borderBottomColor: T.hairline,
+                    backgroundColor: 'transparent',
+                  }}
             >
-              <View style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: txColor + '14' }}>
+              <View style={{ width: 36, height: 36, borderRadius: 18, flexShrink: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: txColor + '14' }}>
                 <Icon size={16} color={txColor} strokeWidth={1.6} />
               </View>
-              <View style={{ flex: 1 }}>
+              <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#0A0A0A' }}>{TX_TYPE_LABELS[t.type]}</Text>
+                  <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '600', color: T.ink }}>{TX_TYPE_LABELS[t.type]}</Text>
                   {t.invoice_no ? (
-                    <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, backgroundColor: 'rgba(0,0,0,0.04)' }}>
-                      <Text style={{ fontSize: 10, fontWeight: '600', color: '#6B6B6B' }}>#{t.invoice_no}</Text>
+                    <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, backgroundColor: T.hairline }}>
+                      <Text style={{ fontSize: 10, fontWeight: '600', color: T.ink3 }}>#{t.invoice_no}</Text>
                     </View>
                   ) : null}
                   {t.payment_method ? (
-                    <Text style={{ fontSize: 10, color: '#9A9A9A' }}>· {PAYMENT_METHOD_LABELS[t.payment_method]}</Text>
+                    <Text style={{ fontSize: 10, color: T.ink3 }}>· {PAYMENT_METHOD_LABELS[t.payment_method]}</Text>
                   ) : null}
                 </View>
                 {(t.bank_name || t.reference_no || t.iban) ? (
-                  <Text style={{ fontSize: 11, color: '#6B6B6B', marginTop: 1 }} numberOfLines={1}>
+                  <Text style={{ fontSize: 11, color: T.ink3, marginTop: 1 }} numberOfLines={1}>
                     {[
                       t.bank_name,
                       t.reference_no ? `Ref: ${t.reference_no}` : null,
@@ -516,15 +531,15 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
                   </Text>
                 ) : null}
                 {t.description ? (
-                  <Text style={{ fontSize: 11, color: '#6B6B6B', marginTop: 1 }} numberOfLines={1}>{t.description}</Text>
+                  <Text style={{ fontSize: 11, color: T.ink3, marginTop: 1 }} numberOfLines={1}>{t.description}</Text>
                 ) : null}
-                <Text style={{ fontSize: 10, color: '#9A9A9A', marginTop: 1 }}>
+                <Text style={{ fontSize: 10, color: T.ink3, marginTop: 1 }}>
                   {new Date(t.transaction_date).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short', year: 'numeric' })}
                   {t.due_date ? ` · vade: ${new Date(t.due_date).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short' })}` : ''}
                 </Text>
               </View>
-              <View style={{ alignItems: 'flex-end' }}>
-                <Text style={{ fontSize: 14, fontWeight: '600', color: txColor, letterSpacing: -0.2 }}>
+              <View style={{ alignItems: 'flex-end', flexShrink: 0 }}>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: txColor, letterSpacing: -0.2, fontVariant: ['tabular-nums'] }}>
                   {sign > 0 ? '+' : '−'}{formatMoney(t.amount, t.currency, { fractionDigits: 2 })}
                 </Text>
                 {/* İkincil satır CARİNİN para biriminde (amount_account), baz ₺'de değil.
@@ -532,25 +547,25 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
                     da onunla aynı birimde olmalı ki hareketler bakiyeyle kıyaslanabilsin.
                     Çevrim kaydın kendi account_rate_at_time'ıyla yapılmış (yeniden hesap yok). */}
                 {t.currency !== acctCurrency && t.amount_account != null ? (
-                  <Text style={{ fontSize: 10, color: '#9A9A9A', marginTop: 1 }}>
+                  <Text style={{ fontSize: 10, color: T.ink3, marginTop: 1 }}>
                     ≈ {formatMoney(Math.abs(Number(t.amount_account)), acctCurrency, { fractionDigits: 2 })}
                   </Text>
                 ) : null}
               </View>
 
               {/* Edit + Delete actions */}
-              <View style={{ flexDirection: 'row', gap: 4, marginStart: 8 }}>
+              <View style={{ flexDirection: 'row', gap: 4, marginStart: 8, flexShrink: 0 }}>
                 <Pressable
                   onPress={(e: any) => { e?.stopPropagation?.(); handleEditTx(t); }}
                   hitSlop={6}
                   style={{
                     width: 28, height: 28, borderRadius: 14,
                     alignItems: 'center', justifyContent: 'center',
-                    backgroundColor: 'rgba(0,0,0,0.04)',
+                    backgroundColor: T.hairline,
                     ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                   }}
                 >
-                  <Pencil size={12} color="#6B6B6B" strokeWidth={1.8} />
+                  <Pencil size={12} color={T.ink3} strokeWidth={1.8} />
                 </Pressable>
                 <Pressable
                   onPress={(e: any) => { e?.stopPropagation?.(); handleDeleteTx(t); }}
@@ -599,14 +614,15 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
 }
 
 function InfoRow({ icon: Icon, label, value }: { icon: any; label: string; value: string }) {
+  const T = useMobileTokens();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-      <View style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.04)' }}>
-        <Icon size={12} color="#6B6B6B" strokeWidth={1.8} />
+      <View style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: T.hairline }}>
+        <Icon size={12} color={T.ink3} strokeWidth={1.8} />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 11, color: '#9A9A9A', fontWeight: '500' }}>{label}</Text>
-        <Text style={{ fontSize: 13, color: '#2C2C2C', fontWeight: '500', marginTop: 1 }}>{value}</Text>
+        <Text style={{ fontSize: 11, color: T.ink3, fontWeight: '500' }}>{label}</Text>
+        <Text style={{ fontSize: 13, color: T.ink2, fontWeight: '500', marginTop: 1 }}>{value}</Text>
       </View>
     </View>
   );

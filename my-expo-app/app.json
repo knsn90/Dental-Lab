@@ -17,12 +17,18 @@
       "supportsTablet": true,
       "icon": "./assets/images/icon-ios.png",
       "bundleIdentifier": "com.nexadent.app",
+      "config": {
+        "googleMapsApiKey": "AIzaSyAXDmge6BAruuElktwlc018fPTiFZanBlk"
+      },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "İş emri fotoğrafı çekmek, QR okutmak ve 3D yüz tarama (gülüş tasarımı için) yapmak amacıyla kamera erişimi gerekiyor.",
         "NSPhotoLibraryUsageDescription": "Fotoğraf galerinize erişmek için izin gerekiyor.",
+        "NSLocationWhenInUseUsageDescription": "Kurye teslimat takibini paylaşmak ve iş yeri giriş/çıkış (check-in) yapmak için konumunuz kullanılır.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Aktif teslimat sırasında, uygulama arka planda olsa bile konumunuz teslimat takibi için paylaşılır. Yalnız taşıdığınız teslimat varken çalışır.",
         "UIBackgroundModes": [
-          "remote-notification"
+          "remote-notification",
+          "location"
         ]
       }
     },
@@ -39,7 +45,31 @@
         "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.VIBRATE",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "siman.app"
+            },
+            {
+              "scheme": "https",
+              "host": "www.siman.app"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
       ]
     },
     "web": {
@@ -71,7 +101,16 @@
       ],
       "expo-asset",
       "@react-native-community/datetimepicker",
-      "expo-localization"
+      "expo-localization",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Aktif teslimat sırasında, uygulama arka planda olsa bile konumunuz teslimat takibi için paylaşılır. Yalnız taşıdığınız teslimat varken çalışır.",
+          "locationWhenInUsePermission": "Kurye teslimat takibini paylaşmak ve iş yeri giriş/çıkış (check-in) yapmak için konumunuz kullanılır.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

@@ -17,7 +17,7 @@ import {
   Calendar, Layers, Receipt, CircleCheck, CircleX, Inbox,
   CreditCard, Landmark, File, Check, Hand,
   DollarSign, Users,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { toast } from '../../../core/ui/Toast';
 import { useRouter, useSegments } from 'expo-router';
 import { CURRENCY_META, type Currency } from '../../../core/money/currency';
@@ -25,7 +25,8 @@ import { type CurrencyTotal, groupByCurrency } from '../../../core/money/aggrega
 
 import { HubContext } from '../../../core/ui/HubContext';
 import { InvoiceDetailScreen } from './InvoiceDetailScreen';
-import { DS } from '../../../core/theme/dsTokens';
+import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
+import { useInkUI, type InkUI } from '../../../core/theme/inkScale';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 import { useInvoices, useInvoiceStats, useUnbilledWorkOrders } from '../hooks/useInvoices';
@@ -44,32 +45,33 @@ const DISPLAY = {
   fontWeight: '300' as const,
 };
 
-const cardSolid = {
-  backgroundColor: '#FFF',
-  borderRadius: 24,
-  padding: 22,
-  // @ts-ignore web
-  boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)',
-};
+// cardSolid / CHIP_TONES / STATUS_CHIP artık `useInkUI()`ten türetilir — modül
+// seviyesindeki sabitler hook çağıramadığı için koyu temada beyaz kalıyorlardı.
+function chipTones(U: InkUI) {
+  const t = U.chipTones;
+  return {
+    success: { bg: t.success.bg, text: t.success.fg },
+    warning: { bg: t.warning.bg, text: t.warning.fg },
+    danger:  { bg: t.danger.bg,  text: t.danger.fg },
+    info:    { bg: t.info.bg,    text: t.info.fg },
+    neutral: { bg: U.ink[100],   text: U.ink[500] },
+  };
+}
 
-const CHIP_TONES = {
-  success: { bg: 'rgba(45,154,107,0.12)', text: '#1F6B47' },
-  warning: { bg: 'rgba(232,155,42,0.15)', text: '#9C5E0E' },
-  danger:  { bg: 'rgba(217,75,75,0.12)',  text: '#9C2E2E' },
-  info:    { bg: 'rgba(74,143,201,0.12)', text: '#1F5689' },
-  neutral: { bg: DS.ink[100],             text: DS.ink[500] },
-};
+function modalShadowOf(U: InkUI) {
+  return U.isDark ? '0 24px 48px -12px rgba(0,0,0,0.65)' : '0 24px 48px -12px rgba(0,0,0,0.18)';
+}
 
-const modalShadow = '0 24px 48px -12px rgba(0,0,0,0.18)';
-
-// ── Status → CHIP_TONES mapping ─────────────────────────────────────
-const STATUS_CHIP: Record<InvoiceStatus, { bg: string; text: string }> = {
-  taslak:       CHIP_TONES.neutral,
-  kesildi:      CHIP_TONES.info,
-  kismi_odendi: CHIP_TONES.warning,
-  odendi:       CHIP_TONES.success,
-  iptal:        CHIP_TONES.danger,
-};
+function statusChip(U: InkUI): Record<InvoiceStatus, { bg: string; text: string }> {
+  const C = chipTones(U);
+  return {
+    taslak:       C.neutral,
+    kesildi:      C.info,
+    kismi_odendi: C.warning,
+    odendi:       C.success,
+    iptal:        C.danger,
+  };
+}
 
 const STATUS_FILTERS: { value: InvoiceStatus | 'all'; label: string }[] = [
   { value: 'all',          label: 'Tümü' },
@@ -115,6 +117,9 @@ function fmtDate(iso: string | null | undefined): string {
 // MAIN
 // ═════════════════════════════════════════════════════════════════════
 export function InvoicesListScreen() {
+  const U = useInkUI();
+  const CHIP_TONES = chipTones(U);
+  const STATUS_CHIP = statusChip(U);
   const router = useRouter();
   // Aktif panel grubu — faturaya o panelin route'undan git (lab'a zorlama yok,
   // panel teması korunur). Örn admin finans → /(admin)/invoice/...
@@ -174,7 +179,9 @@ export function InvoicesListScreen() {
     return (
       <InvoiceDetailScreen
         invoiceId={openInvoiceId}
-        onBack={() => setOpenInvoiceId(null)}
+        // Detayda iptal/sil/tahsilat olmuş olabilir → dönüşte listeyi tazele
+        // (yoksa iptal edilen fatura TASLAK, silinen fatura listede kalıyordu).
+        onBack={() => { setOpenInvoiceId(null); onRefresh(); }}
       />
     );
   }
@@ -183,11 +190,11 @@ export function InvoicesListScreen() {
     <View style={{ flex: 1 }}>
       {/* ── Header — standalone only ── */}
       {!isEmbedded && (
-        <View style={{ paddingHorizontal: 22, paddingTop: 64, paddingBottom: 6 }}>
-          <Text style={{ ...DISPLAY, fontSize: 24, letterSpacing: -0.5, color: DS.ink[900] }}>
+        <View style={{ paddingHorizontal: PAGE_PADDING, paddingTop: 64, paddingBottom: 6 }}>
+          <Text style={{ ...DISPLAY, fontSize: 24, letterSpacing: -0.5, color: U.ink[900] }}>
             Faturalar
           </Text>
-          <Text style={{ fontSize: 13, color: DS.ink[400], marginTop: 2 }}>
+          <Text style={{ fontSize: 13, color: U.ink[400], marginTop: 2 }}>
             {stats ? `${stats.invoiceCount} fatura` : '...'}
           </Text>
         </View>
@@ -196,7 +203,7 @@ export function InvoicesListScreen() {
       {/* ── Toolbar: Actions row ── */}
       <View style={{
         flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap',
-        gap: 8, paddingHorizontal: 22, paddingTop: 10, paddingBottom: 8,
+        gap: 8, paddingHorizontal: PAGE_PADDING, paddingTop: 10, paddingBottom: 8,
       }}>
         {/* Durum filtresi — uygulamanın ortak sekme çubuğu (sm).
             Siparişler / Onaylar / Kurumlar / Karlılık ile aynı bileşen. */}
@@ -221,10 +228,10 @@ export function InvoicesListScreen() {
             cursor: 'pointer',
           }}
         >
-          <AlertCircle size={12} strokeWidth={1.8} color={overdueOnly ? CHIP_TONES.danger.text : DS.ink[400]} />
+          <AlertCircle size={12} strokeWidth={1.8} color={overdueOnly ? CHIP_TONES.danger.text : U.ink[400]} />
           <Text style={{
             fontSize: 12, fontWeight: overdueOnly ? '600' : '500',
-            color: overdueOnly ? CHIP_TONES.danger.text : DS.ink[500],
+            color: overdueOnly ? CHIP_TONES.danger.text : U.ink[500],
           }}>
             Vadesi Gecen
           </Text>
@@ -266,68 +273,80 @@ export function InvoicesListScreen() {
           style={{
             flexDirection: 'row', alignItems: 'center', gap: 6,
             paddingHorizontal: 14, paddingVertical: 8,
-            borderRadius: 9999, backgroundColor: DS.ink[900],
+            borderRadius: 9999, backgroundColor: U.ink[900],
             // @ts-ignore web
             cursor: 'pointer',
           }}
         >
-          <Layers size={13} strokeWidth={2} color="#FFF" />
-          <Text style={{ fontSize: 12, fontWeight: '600', color: '#FFF' }}>Toplu Fatura</Text>
+          <Layers size={13} strokeWidth={2} color={U.onDarkPill} />
+          <Text style={{ fontSize: 12, fontWeight: '600', color: U.onDarkPill }}>Toplu Fatura</Text>
         </Pressable>
       </View>
 
       {/* ── KPI Row ── */}
-      {stats && (
+      {stats && (() => {
+        // Kartlar aynı boyda dursun: en çok para birimi olan kart kadar yer ayrılır.
+        const kpiRows = Math.max(
+          1,
+          stats.thisMonth.length, stats.outstanding.length,
+          stats.overdue.length, stats.paid.length,
+        );
+        return (
         isDesktop ? (
           // Desktop: düz satır — dikey ScrollView boş alanı doldurup boşluk yaratmasın
-          <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 22, paddingVertical: 8 }}>
-            <KpiMini label="Bu Ay Kesilen" slices={stats.thisMonth} icon={TrendingUp} color="#2563EB" flex />
-            <KpiMini label="Toplam Bakiye" slices={stats.outstanding} icon={Wallet} color={DS.ink[900]} flex />
-            <KpiMini label="Vadesi Gecen" slices={stats.overdue} icon={AlertCircle} color={CHIP_TONES.danger.text} flex />
-            <KpiMini label="Tahsilat (30g)" slices={stats.paid} icon={Banknote} color="#059669" flex />
+          <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: PAGE_PADDING, paddingVertical: 8 }}>
+            <KpiMini label="Bu Ay Kesilen" slices={stats.thisMonth} icon={TrendingUp} color="#2563EB" flex rows={kpiRows} />
+            <KpiMini label="Toplam Bakiye" slices={stats.outstanding} icon={Wallet} color={U.ink[900]} flex rows={kpiRows} />
+            <KpiMini label="Vadesi Gecen" slices={stats.overdue} icon={AlertCircle} color={CHIP_TONES.danger.text} flex rows={kpiRows} />
+            <KpiMini label="Tahsilat (30g)" slices={stats.paid} icon={Banknote} color="#059669" flex rows={kpiRows} />
           </View>
         ) : (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ flexDirection: 'row', gap: 12, paddingHorizontal: 22, paddingVertical: 8 }}
+            // RN'de ScrollView'ın varsayılan stili flexGrow:1 — dikey bir kolonun
+            // içinde YATAY şerit de olsa kalan boşluğu yutuyor, kartlar esneyip
+            // sayfayı kaplıyordu. flexGrow/Shrink 0 → şerit içeriği kadar yüksek.
+            style={{ flexGrow: 0, flexShrink: 0 }}
+            contentContainerStyle={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingHorizontal: PAGE_PADDING, paddingVertical: 8 }}
           >
-            <KpiMini label="Bu Ay Kesilen" slices={stats.thisMonth} icon={TrendingUp} color="#2563EB" />
-            <KpiMini label="Toplam Bakiye" slices={stats.outstanding} icon={Wallet} color={DS.ink[900]} />
-            <KpiMini label="Vadesi Gecen" slices={stats.overdue} icon={AlertCircle} color={CHIP_TONES.danger.text} />
-            <KpiMini label="Tahsilat (30g)" slices={stats.paid} icon={Banknote} color="#059669" />
+            <KpiMini label="Bu Ay Kesilen" slices={stats.thisMonth} icon={TrendingUp} color="#2563EB" rows={kpiRows} />
+            <KpiMini label="Toplam Bakiye" slices={stats.outstanding} icon={Wallet} color={U.ink[900]} rows={kpiRows} />
+            <KpiMini label="Vadesi Gecen" slices={stats.overdue} icon={AlertCircle} color={CHIP_TONES.danger.text} rows={kpiRows} />
+            <KpiMini label="Tahsilat (30g)" slices={stats.paid} icon={Banknote} color="#059669" rows={kpiRows} />
           </ScrollView>
         )
-      )}
+        );
+      })()}
 
       {/* ── Search bar ── */}
-      <View style={{ paddingHorizontal: 22, paddingTop: 4, paddingBottom: 8 }}>
+      <View style={{ paddingHorizontal: PAGE_PADDING, paddingTop: 4, paddingBottom: 8 }}>
         <View style={{
           flexDirection: 'row', alignItems: 'center', gap: 10,
           height: 44, paddingHorizontal: 16,
-          backgroundColor: DS.ink[50], borderRadius: 14,
-          borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+          backgroundColor: U.ink[50], borderRadius: 14,
+          borderWidth: 1, borderColor: U.hairline,
         }}>
-          <Search size={15} strokeWidth={1.6} color={DS.ink[400]} />
+          <Search size={15} strokeWidth={1.6} color={U.ink[400]} />
           <TextInput
             style={{
-              flex: 1, fontSize: 14, color: DS.ink[900],
+              flex: 1, fontSize: 14, color: U.ink[900],
               // @ts-ignore web
               outline: 'none',
             }}
             placeholder="Fatura no, klinik, hekim, hasta..."
-            placeholderTextColor={DS.ink[400]}
+            placeholderTextColor={U.ink[400]}
             value={search}
             onChangeText={setSearch}
           />
           {search.length > 0 && (
             <Pressable onPress={() => setSearch('')} style={{ cursor: 'pointer' as any }}>
-              <X size={15} strokeWidth={1.8} color={DS.ink[400]} />
+              <X size={15} strokeWidth={1.8} color={U.ink[400]} />
             </Pressable>
           )}
           {isDesktop && (
-            <Text style={{ fontSize: 12, color: DS.ink[400], marginStart: 8 }}>
-              <Text style={{ fontWeight: '600', color: DS.ink[900] }}>{filtered.length}</Text> fatura
+            <Text style={{ fontSize: 12, color: U.ink[400], marginStart: 8 }}>
+              <Text style={{ fontWeight: '600', color: U.ink[900] }}>{filtered.length}</Text> fatura
             </Text>
           )}
         </View>
@@ -337,43 +356,43 @@ export function InvoicesListScreen() {
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: 22, paddingTop: 4, paddingBottom: 48, gap: 10 }}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={onRefresh} tintColor={DS.ink[300]} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={onRefresh} tintColor={U.ink[300]} />}
         showsVerticalScrollIndicator={false}
       >
         {loading && filtered.length === 0 ? (
           <View style={{ paddingVertical: 64, alignItems: 'center' }}>
-            <ActivityIndicator color={DS.ink[400]} />
+            <ActivityIndicator color={U.ink[400]} />
           </View>
         ) : filtered.length === 0 ? (
           <EmptyState hasFilter={!!search || overdueOnly || statusFilter !== 'all'} />
         ) : isDesktop ? (
           /* Desktop: table card */
-          <View style={{ ...cardSolid, padding: 0, overflow: 'hidden' }}>
+          <View style={{ ...U.cardSolid, padding: 0, overflow: 'hidden' }}>
             {/* Table header */}
             <View style={{
               flexDirection: 'row', alignItems: 'center',
               paddingHorizontal: 22, paddingVertical: 12,
-              backgroundColor: DS.ink[50],
-              borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
+              backgroundColor: U.ink[50],
+              borderBottomWidth: 1, borderBottomColor: U.hairline,
             }}>
-              <Text style={{ ...colHeader, width: 120 }}>Fatura No</Text>
-              <Text style={{ ...colHeader, flex: 1 }}>Klinik / Hekim</Text>
-              <Text style={{ ...colHeader, width: 100 }}>Tarih</Text>
-              <Text style={{ ...colHeader, width: 100 }}>Vade</Text>
-              <Text style={{ ...colHeader, width: 110, textAlign: 'end' as any }}>Tutar</Text>
-              <Text style={{ ...colHeader, width: 90, textAlign: 'center' }}>Durum</Text>
+              <Text style={{ ...colHeaderOf(U), width: 120 }}>Fatura No</Text>
+              <Text style={{ ...colHeaderOf(U), flex: 1 }}>Klinik / Hekim</Text>
+              <Text style={{ ...colHeaderOf(U), width: 100 }}>Tarih</Text>
+              <Text style={{ ...colHeaderOf(U), width: 100 }}>Vade</Text>
+              <Text style={{ ...colHeaderOf(U), width: 110, textAlign: 'end' as any }}>Tutar</Text>
+              <Text style={{ ...colHeaderOf(U), width: 90, textAlign: 'center' }}>Durum</Text>
               <View style={{ width: 36 }} />
             </View>
             {filtered.map((inv, i) => (
               <InvoiceRow key={inv.id} invoice={inv} isLast={i === filtered.length - 1}
-                onPress={() => openInvoice(inv.id)} />
+                onPress={() => openInvoice(inv.invoice_number ?? inv.id)} />
             ))}
           </View>
         ) : (
           /* Mobile: card list */
           filtered.map(inv => (
             <InvoiceCard key={inv.id} invoice={inv}
-              onPress={() => openInvoice(inv.id)} />
+              onPress={() => openInvoice(inv.invoice_number ?? inv.id)} />
           ))
         )}
       </ScrollView>
@@ -396,16 +415,19 @@ export function InvoicesListScreen() {
   );
 }
 
-// Column header style
-const colHeader = {
-  fontSize: 10, fontWeight: '600' as const, letterSpacing: 0.8,
-  textTransform: 'uppercase' as const, color: DS.ink[500],
-};
+// Column header style (tema-farkında)
+function colHeaderOf(U: InkUI) {
+  return {
+    fontSize: 10, fontWeight: '600' as const, letterSpacing: 0.8,
+    textTransform: 'uppercase' as const, color: U.ink[500],
+  };
+}
 
 // ─── Action Button ──────────────────────────────────────────────────
 function ActionBtn({ icon: Icon, label, color, onPress }: {
   icon: React.ComponentType<any>; label: string; color?: string; onPress: () => void;
 }) {
+  const U = useInkUI();
   return (
     <Pressable
       onPress={onPress}
@@ -413,57 +435,64 @@ function ActionBtn({ icon: Icon, label, color, onPress }: {
         flexDirection: 'row', alignItems: 'center', gap: 6,
         paddingHorizontal: 14, paddingVertical: 8,
         borderRadius: 9999,
-        borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
-        backgroundColor: '#FFF',
+        borderWidth: 1, borderColor: U.plainBtn.border,
+        backgroundColor: U.plainBtn.bg,
         // @ts-ignore web
         cursor: 'pointer',
       }}
     >
-      <Icon size={13} strokeWidth={1.8} color={color ?? DS.ink[900]} />
-      <Text style={{ fontSize: 12, fontWeight: '500', color: color ?? DS.ink[900] }}>{label}</Text>
+      <Icon size={13} strokeWidth={1.8} color={color ?? U.ink[900]} />
+      <Text style={{ fontSize: 12, fontWeight: '500', color: color ?? U.ink[900] }}>{label}</Text>
     </Pressable>
   );
 }
 
 // ─── KPI Mini Card ──────────────────────────────────────────────────
 // Katı per-currency KPI — tek döviz tek büyük rakam; çok döviz alt alta.
-function KpiMini({ label, slices, icon: Icon, color, flex }: {
+function KpiMini({ label, slices, icon: Icon, color, flex, rows = 1 }: {
   label: string; slices: CurrencyTotal[]; icon: React.ComponentType<any>; color: string; flex?: boolean;
+  /** Satırdaki EN ÇOK para birimi sayısı — tüm kartlar aynı yüksekliği ayırsın diye. */
+  rows?: number;
 }) {
+  const U = useInkUI();
+  // Tek para biriminde 20px'lik tek satır, çoklu para biriminde satır başına 20px.
+  const valueBlockHeight = rows <= 1 ? 26 : rows * 20 + 2;
   return (
     <View style={{
-      ...cardSolid, padding: 16, gap: 10,
-      minWidth: flex ? undefined : 160,
-      ...(flex ? { flex: 1 } : {}),
+      ...U.cardSolid, padding: 14, gap: 7, borderRadius: 18,
+      // Yatay şeritte kartlar EŞİT boyda dursun: sabit genişlik + rezerve yükseklik.
+      ...(flex ? { flex: 1 } : { width: 158 }),
     }}>
       <View style={{
-        width: 28, height: 28, borderRadius: 8,
+        width: 26, height: 26, borderRadius: 8,
         backgroundColor: color + '15',
         alignItems: 'center', justifyContent: 'center',
       }}>
-        <Icon size={14} strokeWidth={1.8} color={color} />
+        <Icon size={13} strokeWidth={1.8} color={color} />
       </View>
-      <Text style={{
-        fontSize: 10, fontWeight: '600', letterSpacing: 0.8,
-        textTransform: 'uppercase', color: DS.ink[500],
+      <Text numberOfLines={1} style={{
+        fontSize: 9.5, fontWeight: '600', letterSpacing: 0.7,
+        textTransform: 'uppercase', color: U.ink[500],
       }}>
         {label}
       </Text>
-      {slices.length === 0 ? (
-        <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.5, color: DS.ink[400] }}>—</Text>
-      ) : slices.length === 1 ? (
-        <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.5, color: DS.ink[900] }}>
-          {fmtShort(slices[0].total, slices[0].currency)}
-        </Text>
-      ) : (
-        <View style={{ gap: 2 }}>
-          {slices.map(s => (
-            <Text key={s.currency} style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: DS.ink[900] }}>
-              {fmtShort(s.total, s.currency)}
-            </Text>
-          ))}
-        </View>
-      )}
+      <View style={{ height: valueBlockHeight, justifyContent: 'flex-start' }}>
+        {slices.length === 0 ? (
+          <Text style={{ ...DISPLAY, fontSize: 20, lineHeight: 26, letterSpacing: -0.5, color: U.ink[400] }}>—</Text>
+        ) : slices.length === 1 && rows <= 1 ? (
+          <Text numberOfLines={1} style={{ ...DISPLAY, fontSize: 20, lineHeight: 26, letterSpacing: -0.5, color: U.ink[900], fontVariant: ['tabular-nums'] }}>
+            {fmtShort(slices[0].total, slices[0].currency)}
+          </Text>
+        ) : (
+          <View style={{ gap: 2 }}>
+            {slices.map(s => (
+              <Text key={s.currency} numberOfLines={1} style={{ ...DISPLAY, fontSize: 16, letterSpacing: -0.3, lineHeight: 20, color: U.ink[900], fontVariant: ['tabular-nums'] }}>
+                {fmtShort(s.total, s.currency)}
+              </Text>
+            ))}
+          </View>
+        )}
+      </View>
     </View>
   );
 }
@@ -472,6 +501,9 @@ function KpiMini({ label, slices, icon: Icon, color, flex }: {
 function InvoiceRow({ invoice, isLast, onPress }: {
   invoice: Invoice; isLast: boolean; onPress: () => void;
 }) {
+  const U = useInkUI();
+  const CHIP_TONES = chipTones(U);
+  const STATUS_CHIP = statusChip(U);
   const today = new Date().toISOString().slice(0, 10);
   const isOverdue = invoice.due_date && invoice.due_date < today
     && invoice.status !== 'odendi' && invoice.status !== 'iptal';
@@ -486,23 +518,23 @@ function InvoiceRow({ invoice, isLast, onPress }: {
         flexDirection: 'row', alignItems: 'center',
         paddingHorizontal: 22, paddingVertical: 14,
         borderBottomWidth: isLast ? 0 : 1,
-        borderBottomColor: 'rgba(0,0,0,0.06)',
+        borderBottomColor: U.hairline,
         backgroundColor: isOverdue ? 'rgba(217,75,75,0.03)' : 'transparent',
         // @ts-ignore web
         cursor: 'pointer',
       }}
     >
       <View style={{ width: 120 }}>
-        <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>{invoice.invoice_number}</Text>
+        <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>{invoice.invoice_number}</Text>
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[900] }} numberOfLines={1}>
+        <Text style={{ fontSize: 13, fontWeight: '500', color: U.ink[900] }} numberOfLines={1}>
           {invoice.clinic?.name ?? '—'}
         </Text>
         {/* Hekim isteği: fatura listesinde hasta adı da görünsün. Hekim +
             hasta tek satırda — liste zaten dar, ayrı satır üçüncü kata çıkarıyordu. */}
         {(invoice.doctor?.full_name || invoice.work_order?.patient_name) && (
-          <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }} numberOfLines={1}>
+          <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 1 }} numberOfLines={1}>
             {[
               invoice.doctor?.full_name ? normalizeDoctorName(invoice.doctor.full_name) : null,
               invoice.work_order?.patient_name ?? null,
@@ -510,17 +542,17 @@ function InvoiceRow({ invoice, isLast, onPress }: {
           </Text>
         )}
       </View>
-      <Text style={{ width: 100, fontSize: 12, color: DS.ink[500] }}>{fmtDate(invoice.issue_date)}</Text>
+      <Text style={{ width: 100, fontSize: 12, color: U.ink[500] }}>{fmtDate(invoice.issue_date)}</Text>
       <Text style={{
         width: 100, fontSize: 12,
-        color: isOverdue ? CHIP_TONES.danger.text : DS.ink[500],
+        color: isOverdue ? CHIP_TONES.danger.text : U.ink[500],
         fontWeight: isOverdue ? '600' : '400',
       }}>
         {fmtDate(invoice.due_date)}
       </Text>
       <Text style={{
         width: 110, textAlign: 'end' as any,
-        ...DISPLAY, fontSize: 15, letterSpacing: -0.3, color: DS.ink[900],
+        ...DISPLAY, fontSize: 15, letterSpacing: -0.3, color: U.ink[900],
       }}>
         {fmtMoney(invoice.total, invoice.currency)}
       </Text>
@@ -536,8 +568,8 @@ function InvoiceRow({ invoice, isLast, onPress }: {
       </View>
       <View style={{ width: 36, alignItems: 'center' }}>
         {isRTL()
-          ? <ChevronLeft size={14} strokeWidth={1.6} color={DS.ink[300]} />
-          : <ChevronRight size={14} strokeWidth={1.6} color={DS.ink[300]} />}
+          ? <ChevronLeft size={14} strokeWidth={1.6} color={U.ink[300]} />
+          : <ChevronRight size={14} strokeWidth={1.6} color={U.ink[300]} />}
       </View>
     </Pressable>
   );
@@ -545,6 +577,9 @@ function InvoiceRow({ invoice, isLast, onPress }: {
 
 // ─── Mobile Invoice Card ────────────────────────────────────────────
 function InvoiceCard({ invoice, onPress }: { invoice: Invoice; onPress: () => void }) {
+  const U = useInkUI();
+  const CHIP_TONES = chipTones(U);
+  const STATUS_CHIP = statusChip(U);
   const today = new Date().toISOString().slice(0, 10);
   const isOverdue = invoice.due_date && invoice.due_date < today
     && invoice.status !== 'odendi' && invoice.status !== 'iptal';
@@ -555,7 +590,7 @@ function InvoiceCard({ invoice, onPress }: { invoice: Invoice; onPress: () => vo
     <Pressable
       onPress={onPress}
       style={{
-        ...cardSolid,
+        ...U.cardSolid,
         ...(isOverdue ? {
           backgroundColor: 'rgba(217,75,75,0.04)',
           borderWidth: 1, borderColor: 'rgba(217,75,75,0.15)',
@@ -567,14 +602,14 @@ function InvoiceCard({ invoice, onPress }: { invoice: Invoice; onPress: () => vo
       {/* Top row: number + clinic + amount */}
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>{invoice.invoice_number}</Text>
-          <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 2 }} numberOfLines={1}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>{invoice.invoice_number}</Text>
+          <Text style={{ fontSize: 12, color: U.ink[500], marginTop: 2 }} numberOfLines={1}>
             {invoice.clinic?.name ?? '—'}
             {invoice.doctor?.full_name ? ` · ${normalizeDoctorName(invoice.doctor.full_name)}` : ''}
           </Text>
         </View>
         <View style={{ alignItems: 'flex-end', gap: 6 }}>
-          <Text style={{ ...DISPLAY, fontSize: 17, letterSpacing: -0.3, color: isOverdue ? CHIP_TONES.danger.text : DS.ink[900] }}>
+          <Text style={{ ...DISPLAY, fontSize: 17, letterSpacing: -0.3, color: isOverdue ? CHIP_TONES.danger.text : U.ink[900] }}>
             {fmtMoney(invoice.total, invoice.currency)}
           </Text>
           <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 9999, backgroundColor: chip.bg }}>
@@ -590,15 +625,15 @@ function InvoiceCard({ invoice, onPress }: { invoice: Invoice; onPress: () => vo
         <View style={{
           flexDirection: 'row', alignItems: 'center', gap: 8,
           marginTop: 12, paddingTop: 12,
-          borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
+          borderTopWidth: 1, borderTopColor: U.hairline,
         }}>
-          <Calendar size={11} strokeWidth={1.4} color={DS.ink[400]} />
-          <Text style={{ fontSize: 11, color: DS.ink[500] }}>{fmtDate(invoice.issue_date)}</Text>
+          <Calendar size={11} strokeWidth={1.4} color={U.ink[400]} />
+          <Text style={{ fontSize: 11, color: U.ink[500] }}>{fmtDate(invoice.issue_date)}</Text>
           {invoice.due_date && (
             <>
-              <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: DS.ink[300] }} />
+              <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: U.ink[300] }} />
               <Text style={{
-                fontSize: 11, color: isOverdue ? CHIP_TONES.danger.text : DS.ink[500],
+                fontSize: 11, color: isOverdue ? CHIP_TONES.danger.text : U.ink[500],
                 fontWeight: isOverdue ? '600' : '400',
               }}>
                 Vade: {fmtDate(invoice.due_date)}
@@ -610,7 +645,7 @@ function InvoiceCard({ invoice, onPress }: { invoice: Invoice; onPress: () => vo
               <View style={{ flex: 1 }} />
               <Text style={{
                 fontSize: 11, fontWeight: '600',
-                color: isOverdue ? CHIP_TONES.danger.text : DS.ink[900],
+                color: isOverdue ? CHIP_TONES.danger.text : U.ink[900],
               }}>
                 Kalan: {fmtMoney(balance, invoice.currency)}
               </Text>
@@ -624,17 +659,18 @@ function InvoiceCard({ invoice, onPress }: { invoice: Invoice; onPress: () => vo
 
 // ─── Empty State ────────────────────────────────────────────────────
 function EmptyState({ hasFilter }: { hasFilter: boolean }) {
+  const U = useInkUI();
   return (
-    <View style={{ ...cardSolid, alignItems: 'center', paddingVertical: 56, gap: 12 }}>
+    <View style={{ ...U.cardSolid, alignItems: 'center', paddingVertical: 56, gap: 12 }}>
       {hasFilter ? (
-        <Search size={36} strokeWidth={1.4} color={DS.ink[300]} />
+        <Search size={36} strokeWidth={1.4} color={U.ink[300]} />
       ) : (
-        <Inbox size={36} strokeWidth={1.4} color={DS.ink[300]} />
+        <Inbox size={36} strokeWidth={1.4} color={U.ink[300]} />
       )}
-      <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[900] }}>
+      <Text style={{ fontSize: 15, fontWeight: '600', color: U.ink[900] }}>
         {hasFilter ? 'Sonuç bulunamadı' : 'Henüz fatura yok'}
       </Text>
-      <Text style={{ fontSize: 13, color: DS.ink[400], textAlign: 'center', maxWidth: 300 }}>
+      <Text style={{ fontSize: 13, color: U.ink[400], textAlign: 'center', maxWidth: 300 }}>
         {hasFilter
           ? 'Filtre kriterlerini degistirmeyi deneyin.'
           : 'Bir is emrini teslim ettiginde "Fatura Olustur" ile fatura kesebilirsin.'}
@@ -651,6 +687,9 @@ function BulkInvoiceModal({
 }: {
   visible: boolean; onClose: () => void; onCreated: (invoiceId: string) => void;
 }) {
+  const U = useInkUI();
+  const CHIP_TONES = chipTones(U);
+  const STATUS_CHIP = statusChip(U);
   const { clinics, loading: loadingClinics } = useClinics();
   const [selectedClinicId, setSelectedClinicId] = useState<string | null>(null);
   const [clinicPickerOpen, setClinicPickerOpen] = useState(false);
@@ -744,21 +783,21 @@ function BulkInvoiceModal({
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={handleClose}>
       <View style={{
-        flex: 1, backgroundColor: 'rgba(10,14,26,0.42)',
+        flex: 1, backgroundColor: U.isDark ? 'rgba(0,0,0,0.66)' : 'rgba(10,14,26,0.42)',
         justifyContent: 'center', alignItems: 'center', padding: 24,
         ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}),
       }}>
         <View style={{
-          backgroundColor: '#FFF', borderRadius: 24,
+          backgroundColor: U.surface, borderRadius: 24,
           width: '100%', maxWidth: 620, maxHeight: '90%', overflow: 'hidden',
           // @ts-ignore web
-          boxShadow: modalShadow,
+          boxShadow: modalShadowOf(U),
         }}>
           {/* Header */}
           <View style={{
             flexDirection: 'row', alignItems: 'center', gap: 12,
             paddingHorizontal: 22, paddingTop: 22, paddingBottom: 14,
-            borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
+            borderBottomWidth: 1, borderBottomColor: U.hairline,
           }}>
             <View style={{
               width: 36, height: 36, borderRadius: 10,
@@ -768,15 +807,15 @@ function BulkInvoiceModal({
               <Layers size={18} strokeWidth={1.8} color="#2563EB" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 16, fontWeight: '600', color: DS.ink[900] }}>Toplu Fatura</Text>
-              <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 1 }}>Birden fazla siparisi tek faturada topla</Text>
+              <Text style={{ fontSize: 16, fontWeight: '600', color: U.ink[900] }}>Toplu Fatura</Text>
+              <Text style={{ fontSize: 12, color: U.ink[400], marginTop: 1 }}>Birden fazla siparisi tek faturada topla</Text>
             </View>
             <Pressable onPress={handleClose} style={{
               width: 32, height: 32, borderRadius: 10,
-              backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center',
+              backgroundColor: U.ink[100], alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer' as any,
             }}>
-              <X size={16} strokeWidth={1.8} color={DS.ink[500]} />
+              <X size={16} strokeWidth={1.8} color={U.ink[500]} />
             </Pressable>
           </View>
 
@@ -784,7 +823,7 @@ function BulkInvoiceModal({
           <View style={{ paddingHorizontal: 22, paddingTop: 16 }}>
             <Text style={{
               fontSize: 10, fontWeight: '600', letterSpacing: 0.8,
-              textTransform: 'uppercase', color: DS.ink[500], marginBottom: 6,
+              textTransform: 'uppercase', color: U.ink[500], marginBottom: 6,
             }}>
               Klinik
             </Text>
@@ -793,19 +832,19 @@ function BulkInvoiceModal({
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 10,
                 height: 44, paddingHorizontal: 14,
-                borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
-                backgroundColor: DS.ink[50],
+                borderRadius: 14, borderWidth: 1, borderColor: U.fieldBorder,
+                backgroundColor: U.ink[50],
                 cursor: 'pointer' as any,
               }}
             >
-              <Building2 size={15} strokeWidth={1.6} color={selectedClinic ? '#2563EB' : DS.ink[400]} />
+              <Building2 size={15} strokeWidth={1.6} color={selectedClinic ? '#2563EB' : U.ink[400]} />
               <Text style={{
                 flex: 1, fontSize: 14, fontWeight: selectedClinic ? '600' : '400',
-                color: selectedClinic ? DS.ink[900] : DS.ink[400],
+                color: selectedClinic ? U.ink[900] : U.ink[400],
               }} numberOfLines={1}>
                 {selectedClinic ? selectedClinic.name : 'Klinik secin...'}
               </Text>
-              <ChevronDown size={15} strokeWidth={1.6} color={DS.ink[400]} />
+              <ChevronDown size={15} strokeWidth={1.6} color={U.ink[400]} />
             </Pressable>
           </View>
 
@@ -813,12 +852,12 @@ function BulkInvoiceModal({
           <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
             {!selectedClinicId ? (
               <View style={{ alignItems: 'center', paddingVertical: 40, gap: 10 }}>
-                <Hand size={28} strokeWidth={1.4} color={DS.ink[300]} />
-                <Text style={{ fontSize: 13, color: DS.ink[400] }}>Klinik secerek baslayin</Text>
+                <Hand size={28} strokeWidth={1.4} color={U.ink[300]} />
+                <Text style={{ fontSize: 13, color: U.ink[400] }}>Klinik secerek baslayin</Text>
               </View>
             ) : loadingOrders ? (
               <View style={{ alignItems: 'center', paddingVertical: 40 }}>
-                <ActivityIndicator color={DS.ink[400]} />
+                <ActivityIndicator color={U.ink[400]} />
               </View>
             ) : (
               <View style={{ paddingHorizontal: 22 }}>
@@ -827,20 +866,20 @@ function BulkInvoiceModal({
                   <View style={{
                     flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
                     height: 38, paddingHorizontal: 12,
-                    borderRadius: 10, backgroundColor: DS.ink[50],
-                    borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+                    borderRadius: 10, backgroundColor: U.ink[50],
+                    borderWidth: 1, borderColor: U.hairline,
                   }}>
-                    <Search size={13} strokeWidth={1.6} color={DS.ink[400]} />
+                    <Search size={13} strokeWidth={1.6} color={U.ink[400]} />
                     <TextInput
-                      style={{ flex: 1, fontSize: 13, color: DS.ink[900], outline: 'none' as any }}
+                      style={{ flex: 1, fontSize: 13, color: U.ink[900], outline: 'none' as any }}
                       placeholder="Is no, hasta..."
-                      placeholderTextColor={DS.ink[400]}
+                      placeholderTextColor={U.ink[400]}
                       value={orderSearch}
                       onChangeText={setOrderSearch}
                     />
                     {orderSearch.length > 0 && (
                       <Pressable onPress={() => setOrderSearch('')}>
-                        <X size={13} strokeWidth={1.8} color={DS.ink[400]} />
+                        <X size={13} strokeWidth={1.8} color={U.ink[400]} />
                       </Pressable>
                     )}
                   </View>
@@ -865,7 +904,7 @@ function BulkInvoiceModal({
                 {visibleOrders.length === 0 ? (
                   <View style={{ alignItems: 'center', paddingVertical: 32, gap: 8 }}>
                     <CircleCheck size={28} strokeWidth={1.4} color={CHIP_TONES.success.text} />
-                    <Text style={{ fontSize: 13, color: DS.ink[400] }}>
+                    <Text style={{ fontSize: 13, color: U.ink[400] }}>
                       {orderSearch ? 'Sonuç yok' : 'Faturalanmamis siparis yok'}
                     </Text>
                   </View>
@@ -886,40 +925,40 @@ function BulkInvoiceModal({
                 {selectedOrders.size > 0 && (
                   <View style={{
                     marginTop: 14, padding: 14, borderRadius: 14,
-                    backgroundColor: DS.ink[50], borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+                    backgroundColor: U.ink[50], borderWidth: 1, borderColor: U.hairline,
                   }}>
                     <View style={{ flexDirection: 'row', gap: 12 }}>
                       <View style={{ width: 100 }}>
-                        <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 6 }}>
+                        <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: U.ink[500], marginBottom: 6 }}>
                           Vade (gun)
                         </Text>
                         <TextInput
                           style={{
                             height: 44, paddingHorizontal: 12, borderRadius: 14,
-                            borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
-                            backgroundColor: '#FFF', fontSize: 14, color: DS.ink[900],
+                            borderWidth: 1, borderColor: U.fieldBorder,
+                            backgroundColor: U.isDark ? U.surfaceSoft : '#FFF', fontSize: 14, color: U.ink[900],
                           }}
                           value={dueDays}
                           onChangeText={setDueDays}
                           keyboardType="number-pad"
                           placeholder="30"
-                          placeholderTextColor={DS.ink[400]}
+                          placeholderTextColor={U.ink[400]}
                         />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 6 }}>
+                        <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: U.ink[500], marginBottom: 6 }}>
                           Not (opsiyonel)
                         </Text>
                         <TextInput
                           style={{
                             height: 44, paddingHorizontal: 12, borderRadius: 14,
-                            borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
-                            backgroundColor: '#FFF', fontSize: 14, color: DS.ink[900],
+                            borderWidth: 1, borderColor: U.fieldBorder,
+                            backgroundColor: U.isDark ? U.surfaceSoft : '#FFF', fontSize: 14, color: U.ink[900],
                           }}
                           value={notes}
                           onChangeText={setNotes}
                           placeholder="Or: Mart 2026 toplu"
-                          placeholderTextColor={DS.ink[400]}
+                          placeholderTextColor={U.ink[400]}
                         />
                       </View>
                     </View>
@@ -933,13 +972,13 @@ function BulkInvoiceModal({
           <View style={{
             flexDirection: 'row', alignItems: 'center', gap: 12,
             paddingHorizontal: 22, paddingVertical: 16,
-            borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
+            borderTopWidth: 1, borderTopColor: U.hairline,
           }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 12, color: DS.ink[500] }}>
+              <Text style={{ fontSize: 12, color: U.ink[500] }}>
                 {selectedOrders.size > 0 ? `${selectedOrders.size} siparis` : 'Seçim yok'}
               </Text>
-              <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: DS.ink[900] }}>
+              <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: U.ink[900] }}>
                 {selectedTotalLabelOrders}
               </Text>
             </View>
@@ -949,17 +988,17 @@ function BulkInvoiceModal({
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 7,
                 paddingHorizontal: 20, paddingVertical: 12,
-                borderRadius: 9999, backgroundColor: DS.ink[900],
+                borderRadius: 9999, backgroundColor: U.ink[900],
                 opacity: (selectedOrders.size === 0 || saving) ? 0.4 : 1,
                 cursor: 'pointer' as any,
               }}
             >
               {saving ? (
-                <ActivityIndicator color="#FFF" size="small" />
+                <ActivityIndicator color={U.onDarkPill} size="small" />
               ) : (
                 <>
-                  <Receipt size={14} strokeWidth={1.8} color="#FFF" />
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFF' }}>Fatura Olustur</Text>
+                  <Receipt size={14} strokeWidth={1.8} color={U.onDarkPill} />
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: U.onDarkPill }}>Fatura Olustur</Text>
                 </>
               )}
             </Pressable>
@@ -970,32 +1009,32 @@ function BulkInvoiceModal({
       {/* Clinic picker inner modal */}
       <Modal visible={clinicPickerOpen} animationType="fade" transparent onRequestClose={() => setClinicPickerOpen(false)}>
         <View style={{
-          flex: 1, backgroundColor: 'rgba(10,14,26,0.42)',
+          flex: 1, backgroundColor: U.isDark ? 'rgba(0,0,0,0.66)' : 'rgba(10,14,26,0.42)',
           justifyContent: 'center', alignItems: 'center', padding: 24,
           ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}),
         }}>
           <View style={{
-            backgroundColor: '#FFF', borderRadius: 24,
+            backgroundColor: U.surface, borderRadius: 24,
             width: '100%', maxWidth: 420, maxHeight: 420, overflow: 'hidden',
             // @ts-ignore web
-            boxShadow: modalShadow,
+            boxShadow: modalShadowOf(U),
           }}>
             <View style={{
               flexDirection: 'row', alignItems: 'center',
               paddingHorizontal: 22, paddingVertical: 16,
-              borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
+              borderBottomWidth: 1, borderBottomColor: U.hairline,
             }}>
-              <Text style={{ flex: 1, fontSize: 15, fontWeight: '600', color: DS.ink[900] }}>Klinik Sec</Text>
+              <Text style={{ flex: 1, fontSize: 15, fontWeight: '600', color: U.ink[900] }}>Klinik Sec</Text>
               <Pressable onPress={() => setClinicPickerOpen(false)} style={{
                 width: 30, height: 30, borderRadius: 8,
-                backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center',
+                backgroundColor: U.ink[100], alignItems: 'center', justifyContent: 'center',
                 cursor: 'pointer' as any,
               }}>
-                <X size={14} strokeWidth={1.8} color={DS.ink[500]} />
+                <X size={14} strokeWidth={1.8} color={U.ink[500]} />
               </Pressable>
             </View>
             {loadingClinics ? (
-              <ActivityIndicator color={DS.ink[400]} style={{ padding: 24 }} />
+              <ActivityIndicator color={U.ink[400]} style={{ padding: 24 }} />
             ) : (
               <ScrollView>
                 {clinics.map(cl => {
@@ -1011,16 +1050,16 @@ function BulkInvoiceModal({
                       style={{
                         flexDirection: 'row', alignItems: 'center', gap: 10,
                         paddingHorizontal: 22, paddingVertical: 14,
-                        borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)',
+                        borderBottomWidth: 1, borderBottomColor: U.hairlineSoft,
                         backgroundColor: sel ? CHIP_TONES.info.bg : 'transparent',
                         cursor: 'pointer' as any,
                       }}
                     >
-                      <Building2 size={15} strokeWidth={1.6} color={sel ? '#2563EB' : DS.ink[400]} />
+                      <Building2 size={15} strokeWidth={1.6} color={sel ? '#2563EB' : U.ink[400]} />
                       <Text style={{
                         flex: 1, fontSize: 14,
                         fontWeight: sel ? '600' : '400',
-                        color: sel ? '#2563EB' : DS.ink[900],
+                        color: sel ? '#2563EB' : U.ink[900],
                       }} numberOfLines={1}>
                         {cl.name}
                       </Text>
@@ -1041,13 +1080,16 @@ function BulkInvoiceModal({
 function BulkOrderRow({ order, selected, onToggle }: {
   order: UnbilledWorkOrder; selected: boolean; onToggle: () => void;
 }) {
+  const U = useInkUI();
+  const CHIP_TONES = chipTones(U);
+  const STATUS_CHIP = statusChip(U);
   return (
     <Pressable
       onPress={onToggle}
       style={{
         flexDirection: 'row', alignItems: 'center', gap: 10,
         padding: 12, borderRadius: 14,
-        backgroundColor: selected ? CHIP_TONES.info.bg : DS.ink[50],
+        backgroundColor: selected ? CHIP_TONES.info.bg : U.ink[50],
         borderWidth: 1.5,
         borderColor: selected ? '#2563EB' : 'transparent',
         cursor: 'pointer' as any,
@@ -1056,7 +1098,7 @@ function BulkOrderRow({ order, selected, onToggle }: {
       {/* Checkbox */}
       <View style={{
         width: 20, height: 20, borderRadius: 6,
-        borderWidth: 1.5, borderColor: selected ? '#2563EB' : DS.ink[300],
+        borderWidth: 1.5, borderColor: selected ? '#2563EB' : U.ink[300],
         backgroundColor: selected ? '#2563EB' : 'transparent',
         alignItems: 'center', justifyContent: 'center',
       }}>
@@ -1064,17 +1106,17 @@ function BulkOrderRow({ order, selected, onToggle }: {
       </View>
       <View style={{ flex: 1 }}>
         <Text style={{ fontSize: 12, fontWeight: '600', color: '#2563EB' }}>{order.order_number}</Text>
-        <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[900], marginTop: 1 }} numberOfLines={1}>
+        <Text style={{ fontSize: 12, fontWeight: '500', color: U.ink[900], marginTop: 1 }} numberOfLines={1}>
           {order.patient_name ?? '—'}
           {order.work_type ? ` · ${order.work_type}` : ''}
         </Text>
-        <Text style={{ fontSize: 10, color: DS.ink[400], marginTop: 2 }}>
+        <Text style={{ fontSize: 10, color: U.ink[400], marginTop: 2 }}>
           Teslim: {order.delivered_at
             ? new Date(order.delivered_at).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short' })
             : '—'}
         </Text>
       </View>
-      <Text style={{ ...DISPLAY, fontSize: 14, letterSpacing: -0.3, color: DS.ink[900] }}>
+      <Text style={{ ...DISPLAY, fontSize: 14, letterSpacing: -0.3, color: U.ink[900] }}>
         {/* Kalemin KENDİ para birimi — birden çok döviz varsa alt alta değil,
             yan yana ("7,00 € · ₺1.250,00"). ₺ varsayımı kaldırıldı. */}
         {ccyPairs(order).length === 0
@@ -1100,6 +1142,9 @@ function BulkPaymentModal({
 }: {
   visible: boolean; invoices: Invoice[]; onClose: () => void; onDone: () => void;
 }) {
+  const U = useInkUI();
+  const CHIP_TONES = chipTones(U);
+  const STATUS_CHIP = statusChip(U);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState<'nakit' | 'kart' | 'havale' | 'cek'>('nakit');
@@ -1172,21 +1217,21 @@ function BulkPaymentModal({
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <View style={{
-        flex: 1, backgroundColor: 'rgba(10,14,26,0.42)',
+        flex: 1, backgroundColor: U.isDark ? 'rgba(0,0,0,0.66)' : 'rgba(10,14,26,0.42)',
         justifyContent: 'center', alignItems: 'center', padding: 24,
         ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}),
       }}>
         <View style={{
-          backgroundColor: '#FFF', borderRadius: 24,
+          backgroundColor: U.surface, borderRadius: 24,
           width: '100%', maxWidth: 580, maxHeight: '90%', overflow: 'hidden',
           // @ts-ignore web
-          boxShadow: modalShadow,
+          boxShadow: modalShadowOf(U),
         }}>
           {/* Header */}
           <View style={{
             flexDirection: 'row', alignItems: 'center', gap: 12,
             paddingHorizontal: 22, paddingTop: 22, paddingBottom: 14,
-            borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
+            borderBottomWidth: 1, borderBottomColor: U.hairline,
           }}>
             <View style={{
               width: 36, height: 36, borderRadius: 10,
@@ -1196,20 +1241,20 @@ function BulkPaymentModal({
               <Banknote size={18} strokeWidth={1.8} color={CHIP_TONES.success.text} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 16, fontWeight: '600', color: DS.ink[900] }}>Toplu Tahsilat</Text>
-              <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 1 }}>Birden fazla faturayi tek seferde tahsil et</Text>
+              <Text style={{ fontSize: 16, fontWeight: '600', color: U.ink[900] }}>Toplu Tahsilat</Text>
+              <Text style={{ fontSize: 12, color: U.ink[400], marginTop: 1 }}>Birden fazla faturayi tek seferde tahsil et</Text>
             </View>
             <Pressable onPress={onClose} style={{
               width: 32, height: 32, borderRadius: 10,
-              backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center',
+              backgroundColor: U.ink[100], alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer' as any,
             }}>
-              <X size={16} strokeWidth={1.8} color={DS.ink[500]} />
+              <X size={16} strokeWidth={1.8} color={U.ink[500]} />
             </Pressable>
           </View>
 
           {/* Invoice list */}
-          <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+          <ScrollView style={{ flexGrow: 0, flexShrink: 1 }} showsVerticalScrollIndicator={false}>
             {/* Select all header */}
             <View style={{
               flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -1222,7 +1267,7 @@ function BulkPaymentModal({
                 <View style={{
                   width: 18, height: 18, borderRadius: 5,
                   borderWidth: 1.5,
-                  borderColor: selected.size === sortedInvoices.length && sortedInvoices.length > 0 ? '#059669' : DS.ink[300],
+                  borderColor: selected.size === sortedInvoices.length && sortedInvoices.length > 0 ? '#059669' : U.ink[300],
                   backgroundColor: selected.size === sortedInvoices.length && sortedInvoices.length > 0 ? '#059669' : 'transparent',
                   alignItems: 'center', justifyContent: 'center',
                 }}>
@@ -1234,14 +1279,14 @@ function BulkPaymentModal({
                   {selected.size === sortedInvoices.length && sortedInvoices.length > 0 ? 'Tümünü kaldır' : 'Tümünü seç'}
                 </Text>
               </Pressable>
-              <Text style={{ fontSize: 11, color: DS.ink[400] }}>{sortedInvoices.length} fatura</Text>
+              <Text style={{ fontSize: 11, color: U.ink[400] }}>{sortedInvoices.length} fatura</Text>
             </View>
 
             <View style={{ gap: 6, paddingHorizontal: 22, paddingBottom: 8 }}>
               {sortedInvoices.length === 0 ? (
                 <View style={{ alignItems: 'center', paddingVertical: 32, gap: 8 }}>
                   <CircleCheck size={28} strokeWidth={1.4} color={CHIP_TONES.success.text} />
-                  <Text style={{ fontSize: 13, color: DS.ink[400] }}>Bekleyen fatura yok</Text>
+                  <Text style={{ fontSize: 13, color: U.ink[400] }}>Bekleyen fatura yok</Text>
                 </View>
               ) : sortedInvoices.map(inv => {
                 const bal = Number(inv.total) - Number(inv.paid_amount);
@@ -1258,7 +1303,7 @@ function BulkPaymentModal({
                     style={{
                       flexDirection: 'row', alignItems: 'center', gap: 10,
                       padding: 12, borderRadius: 14,
-                      backgroundColor: sel ? 'rgba(45,154,107,0.06)' : DS.ink[50],
+                      backgroundColor: sel ? 'rgba(45,154,107,0.06)' : U.ink[50],
                       borderWidth: 1.5,
                       borderColor: sel ? '#059669' : overdue && !sel ? 'rgba(217,75,75,0.2)' : 'transparent',
                       cursor: 'pointer' as any,
@@ -1267,29 +1312,29 @@ function BulkPaymentModal({
                     <View style={{
                       width: 20, height: 20, borderRadius: 6,
                       borderWidth: 1.5,
-                      borderColor: sel ? '#059669' : DS.ink[300],
+                      borderColor: sel ? '#059669' : U.ink[300],
                       backgroundColor: sel ? '#059669' : 'transparent',
                       alignItems: 'center', justifyContent: 'center',
                     }}>
                       {sel && <Check size={12} strokeWidth={2.5} color="#FFF" />}
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[900] }}>{inv.invoice_number}</Text>
-                      <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 2 }} numberOfLines={1}>
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: U.ink[900] }}>{inv.invoice_number}</Text>
+                      <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 2 }} numberOfLines={1}>
                         {inv.clinic?.name ?? '—'}
                       </Text>
                     </View>
                     <View style={{ alignItems: 'flex-end' }}>
                       <Text style={{
                         ...DISPLAY, fontSize: 14, letterSpacing: -0.3,
-                        color: overdue ? CHIP_TONES.danger.text : DS.ink[900],
+                        color: overdue ? CHIP_TONES.danger.text : U.ink[900],
                       }}>
                         {fmtMoney(bal, (inv as any).currency || 'TRY')}
                       </Text>
                       {inv.due_date && (
                         <Text style={{
                           fontSize: 10, marginTop: 2,
-                          color: overdue ? CHIP_TONES.danger.text : DS.ink[400],
+                          color: overdue ? CHIP_TONES.danger.text : U.ink[400],
                         }}>
                           {overdue ? 'gecti · ' : ''}{fmtDate(inv.due_date)}
                         </Text>
@@ -1305,34 +1350,34 @@ function BulkPaymentModal({
               <View style={{
                 marginHorizontal: 22, marginTop: 8, marginBottom: 8,
                 padding: 16, borderRadius: 14,
-                backgroundColor: DS.ink[50], borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+                backgroundColor: U.ink[50], borderWidth: 1, borderColor: U.hairline,
                 gap: 12,
               }}>
                 {/* Amount */}
                 <View>
-                  <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 6 }}>
+                  <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: U.ink[500], marginBottom: 6 }}>
                     Odeme Tutari (TL)
                   </Text>
                   <TextInput
                     style={{
                       height: 44, paddingHorizontal: 14, borderRadius: 14,
-                      borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
-                      backgroundColor: '#FFF', fontSize: 14, color: DS.ink[900],
+                      borderWidth: 1, borderColor: U.fieldBorder,
+                      backgroundColor: U.isDark ? U.surfaceSoft : '#FFF', fontSize: 14, color: U.ink[900],
                     }}
                     value={amount}
                     onChangeText={setAmount}
                     placeholder={totalBalance.toFixed(2)}
-                    placeholderTextColor={DS.ink[400]}
+                    placeholderTextColor={U.ink[400]}
                     keyboardType="decimal-pad"
                   />
-                  <Text style={{ fontSize: 10, color: DS.ink[400], marginTop: 4 }}>
+                  <Text style={{ fontSize: 10, color: U.ink[400], marginTop: 4 }}>
                     Secili toplam: {selectedTotalLabel}
                   </Text>
                 </View>
 
                 {/* Method */}
                 <View>
-                  <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 6 }}>
+                  <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: U.ink[500], marginBottom: 6 }}>
                     Yontem
                   </Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
@@ -1348,15 +1393,15 @@ function BulkPaymentModal({
                             paddingHorizontal: 12, paddingVertical: 7,
                             borderRadius: 9999,
                             borderWidth: 1.5,
-                            borderColor: active ? '#059669' : 'rgba(0,0,0,0.08)',
-                            backgroundColor: active ? 'rgba(45,154,107,0.06)' : '#FFF',
+                            borderColor: active ? '#059669' : U.plainBtn.border,
+                            backgroundColor: active ? (U.isDark ? 'rgba(45,154,107,0.22)' : 'rgba(45,154,107,0.06)') : U.plainBtn.bg,
                             cursor: 'pointer' as any,
                           }}
                         >
-                          <MIcon size={13} strokeWidth={1.6} color={active ? '#059669' : DS.ink[400]} />
+                          <MIcon size={13} strokeWidth={1.6} color={active ? '#059669' : U.ink[400]} />
                           <Text style={{
                             fontSize: 12, fontWeight: active ? '600' : '500',
-                            color: active ? '#059669' : DS.ink[500],
+                            color: active ? '#059669' : U.ink[500],
                           }}>
                             {m.l}
                           </Text>
@@ -1368,19 +1413,19 @@ function BulkPaymentModal({
 
                 {/* Notes */}
                 <View>
-                  <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 6 }}>
+                  <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: U.ink[500], marginBottom: 6 }}>
                     Not (opsiyonel)
                   </Text>
                   <TextInput
                     style={{
                       height: 44, paddingHorizontal: 14, borderRadius: 14,
-                      borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
-                      backgroundColor: '#FFF', fontSize: 14, color: DS.ink[900],
+                      borderWidth: 1, borderColor: U.fieldBorder,
+                      backgroundColor: U.isDark ? U.surfaceSoft : '#FFF', fontSize: 14, color: U.ink[900],
                     }}
                     value={notes}
                     onChangeText={setNotes}
                     placeholder="Ödeme notu..."
-                    placeholderTextColor={DS.ink[400]}
+                    placeholderTextColor={U.ink[400]}
                   />
                 </View>
               </View>
@@ -1391,12 +1436,12 @@ function BulkPaymentModal({
           <View style={{
             flexDirection: 'row', alignItems: 'center', gap: 12,
             paddingHorizontal: 22, paddingVertical: 16,
-            borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
+            borderTopWidth: 1, borderTopColor: U.hairline,
           }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 12, color: DS.ink[500] }}>{selected.size} fatura secili</Text>
+              <Text style={{ fontSize: 12, color: U.ink[500] }}>{selected.size} fatura secili</Text>
               {totalBalance > 0 && (
-                <Text style={{ ...DISPLAY, fontSize: 16, letterSpacing: -0.3, color: DS.ink[900] }}>
+                <Text style={{ ...DISPLAY, fontSize: 16, letterSpacing: -0.3, color: U.ink[900] }}>
                   {selectedTotalLabel} toplam
                 </Text>
               )}

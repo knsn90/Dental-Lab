@@ -19,9 +19,11 @@
 import React from 'react';
 import { View, Text, Pressable, TextInput, Platform, ActivityIndicator } from 'react-native';
 import type { ViewStyle, StyleProp } from 'react-native';
-import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, Search, X } from '../icons';
 import { DS } from '../../theme/dsTokens';
 import { isRTL } from '../../i18n';
+import { useMobileTokens } from '../../theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../store/themeModeStore';
 
 /** §2 — display başlıklar daima light (300) */
 export const DISPLAY = {
@@ -56,8 +58,10 @@ export function Card({ children, style, padded = true }: {
   /** false → iç padding yok (liste kartları için) */
   padded?: boolean;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
-    <View style={[cardStyle, padded ? { padding: 18 } : { overflow: 'hidden' }, style]}>
+    <View style={[cardStyle, isDark && { backgroundColor: T.card, borderColor: T.hairline }, padded ? { padding: 18 } : { overflow: 'hidden' }, style]}>
       {children}
     </View>
   );
@@ -72,6 +76,8 @@ export function SecHeader({ eyebrow, title, desc, onBack, action }: {
   onBack?: () => void;
   action?: React.ReactNode;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <View style={{ marginBottom: 16, gap: 6 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -81,16 +87,16 @@ export function SecHeader({ eyebrow, title, desc, onBack, action }: {
             style={({ pressed }) => ({
               width: 30, height: 30, borderRadius: 999,
               alignItems: 'center', justifyContent: 'center',
-              backgroundColor: 'rgba(0,0,0,0.05)',
+              backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
               opacity: pressed ? 0.6 : 1, ...webCursor,
             })}
           >
-            {isRTL() ? <ChevronRight size={16} color={DS.ink[700]} strokeWidth={1.8} /> : <ChevronLeft size={16} color={DS.ink[700]} strokeWidth={1.8} />}
+            {isRTL() ? <ChevronRight size={16} color={isDark ? (T.ink2 as string) : DS.ink[700]} strokeWidth={1.8} /> : <ChevronLeft size={16} color={isDark ? (T.ink2 as string) : DS.ink[700]} strokeWidth={1.8} />}
           </Pressable>
         ) : null}
         <Text style={{
           fontSize: 11, fontWeight: '500', letterSpacing: 1.4,
-          textTransform: 'uppercase', color: DS.ink[500],
+          textTransform: 'uppercase', color: isDark ? (T.ink3 as string) : DS.ink[500],
         }}>
           {eyebrow}
         </Text>
@@ -99,7 +105,7 @@ export function SecHeader({ eyebrow, title, desc, onBack, action }: {
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 12 }}>
         <Text style={{
           ...DISPLAY, fontSize: 22, letterSpacing: -0.5, lineHeight: 26,
-          color: DS.ink[900], flex: 1,
+          color: isDark ? T.ink : DS.ink[900], flex: 1,
         }}>
           {title}
         </Text>
@@ -107,7 +113,7 @@ export function SecHeader({ eyebrow, title, desc, onBack, action }: {
       </View>
 
       {desc ? (
-        <Text style={{ fontSize: 13, color: DS.ink[500], lineHeight: 19, maxWidth: 640 }}>
+        <Text style={{ fontSize: 13, color: isDark ? (T.ink3 as string) : DS.ink[500], lineHeight: 19, maxWidth: 640 }}>
           {desc}
         </Text>
       ) : null}
@@ -120,14 +126,16 @@ export function SecHeader({ eyebrow, title, desc, onBack, action }: {
 export function BigStat({ value, label, color }: {
   value: React.ReactNode; label: string; color?: string;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <View style={{ gap: 4 }}>
-      <Text style={{ ...DISPLAY, fontSize: 40, letterSpacing: -1.4, lineHeight: 44, color: color ?? DS.ink[900] }}>
+      <Text style={{ ...DISPLAY, fontSize: 40, letterSpacing: -1.4, lineHeight: 44, color: color ?? (isDark ? T.ink : DS.ink[900]) }}>
         {value}
       </Text>
       <Text style={{
         fontSize: 10, fontWeight: '500', letterSpacing: 0.8,
-        textTransform: 'uppercase', color: DS.ink[400],
+        textTransform: 'uppercase', color: isDark ? (T.ink3 as string) : DS.ink[400],
       }}>
         {label}
       </Text>
@@ -139,14 +147,16 @@ export function BigStat({ value, label, color }: {
 export function MiniStat({ value, label, color }: {
   value: React.ReactNode; label: string; color?: string;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <View style={{ gap: 2 }}>
-      <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.6, lineHeight: 24, color: color ?? DS.ink[900] }}>
+      <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.6, lineHeight: 24, color: color ?? (isDark ? T.ink : DS.ink[900]) }}>
         {value}
       </Text>
       <Text style={{
         fontSize: 10, fontWeight: '500', letterSpacing: 0.8,
-        textTransform: 'uppercase', color: DS.ink[400],
+        textTransform: 'uppercase', color: isDark ? (T.ink3 as string) : DS.ink[400],
       }}>
         {label}
       </Text>
@@ -179,9 +189,16 @@ export function Chip({ children, tone = 'neutral', accent = DS.lab.primary, onPr
   leftIcon?: React.ReactNode;
   dot?: string;
 }) {
-  const t = active
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  let t = active
     ? { bg: DS.ink[900], fg: '#FFFFFF', border: 'transparent' }
     : CHIP_TONES(accent)[tone];
+  if (isDark && !active) {
+    if (tone === 'neutral')      t = { bg: 'rgba(255,255,255,0.08)', fg: T.ink2 as string, border: 'transparent' };
+    else if (tone === 'outline') t = { bg: 'transparent', fg: T.ink as string, border: T.hairline as string };
+    else if (tone === 'primary') t = { ...t, fg: T.ink as string };
+  }
   const Wrapper: any = onPress ? Pressable : View;
   return (
     <Wrapper
@@ -227,14 +244,16 @@ export function PillButton({
   leftIcon?: React.ReactNode;
   size?: 'sm' | 'md';
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const pad = size === 'sm'
     ? { paddingHorizontal: 14, paddingVertical: 7, fontSize: 12 }
     : { paddingHorizontal: 20, paddingVertical: 10, fontSize: 13 };
   const skin = {
     dark:    { bg: DS.ink[900],   fg: '#FFFFFF',   border: 'transparent' },
     primary: { bg: accent,        fg: DS.ink[900], border: 'transparent' },
-    light:   { bg: '#FFFFFF',     fg: DS.ink[800], border: DS.ink[300] },
-    ghost:   { bg: 'transparent', fg: DS.ink[700], border: 'transparent' },
+    light:   { bg: isDark ? (T.card as string) : '#FFFFFF', fg: isDark ? (T.ink as string) : DS.ink[800], border: isDark ? (T.hairline as string) : DS.ink[300] },
+    ghost:   { bg: 'transparent', fg: isDark ? (T.ink2 as string) : DS.ink[700], border: 'transparent' },
   }[variant];
 
   return (
@@ -269,6 +288,8 @@ export function TabPill<T extends string>({ items, value, onChange }: {
   value: T;
   onChange: (k: T) => void;
 }) {
+  const T2 = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
       {items.map(it => {
@@ -281,16 +302,16 @@ export function TabPill<T extends string>({ items, value, onChange }: {
             style={({ pressed }) => ({
               flexDirection: 'row', alignItems: 'center', gap: 7,
               paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
-              backgroundColor: on ? DS.ink[900] : 'rgba(0,0,0,0.05)',
+              backgroundColor: on ? DS.ink[900] : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'),
               opacity: pressed ? 0.7 : 1, ...webCursor,
             })}
           >
-            {Icon ? <Icon size={13} color={on ? '#FFFFFF' : DS.ink[700]} strokeWidth={1.8} /> : null}
-            <Text style={{ fontSize: 12, fontWeight: '500', color: on ? '#FFFFFF' : DS.ink[800] }}>
+            {Icon ? <Icon size={13} color={on ? '#FFFFFF' : (isDark ? (T2.ink2 as string) : DS.ink[700])} strokeWidth={1.8} /> : null}
+            <Text style={{ fontSize: 12, fontWeight: '500', color: on ? '#FFFFFF' : (isDark ? (T2.ink as string) : DS.ink[800]) }}>
               {it.label}
             </Text>
             {it.count != null ? (
-              <Text style={{ fontSize: 11, color: on ? 'rgba(255,255,255,0.6)' : DS.ink[400] }}>
+              <Text style={{ fontSize: 11, color: on ? 'rgba(255,255,255,0.6)' : (isDark ? (T2.ink3 as string) : DS.ink[400]) }}>
                 {it.count}
               </Text>
             ) : null}
@@ -306,27 +327,29 @@ export function TabPill<T extends string>({ items, value, onChange }: {
 export function SearchField({ value, onChange, placeholder = 'Ara...' }: {
   value: string; onChange: (v: string) => void; placeholder?: string;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <View style={{
       flexDirection: 'row', alignItems: 'center', gap: 8,
       paddingHorizontal: 14, height: 36, borderRadius: 999,
-      backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: DS.ink[200],
+      backgroundColor: isDark ? (T.card as string) : '#FFFFFF', borderWidth: 1, borderColor: isDark ? (T.hairline as string) : DS.ink[200],
       flexGrow: 1, flexBasis: 220, minWidth: 0,
     }}>
-      <Search size={14} color={DS.ink[400]} strokeWidth={1.8} />
+      <Search size={14} color={isDark ? (T.ink3 as string) : DS.ink[400]} strokeWidth={1.8} />
       <TextInput
         value={value}
         onChangeText={onChange}
         placeholder={placeholder}
-        placeholderTextColor={DS.ink[400]}
+        placeholderTextColor={isDark ? (T.ink3 as string) : DS.ink[400]}
         style={{
-          flex: 1, fontSize: 13, color: DS.ink[900],
+          flex: 1, fontSize: 13, color: isDark ? (T.ink as string) : DS.ink[900],
           ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
         }}
       />
       {value.length > 0 ? (
         <Pressable onPress={() => onChange('')} style={webCursor}>
-          <X size={13} color={DS.ink[400]} strokeWidth={2} />
+          <X size={13} color={isDark ? (T.ink3 as string) : DS.ink[400]} strokeWidth={2} />
         </Pressable>
       ) : null}
     </View>
@@ -336,8 +359,9 @@ export function SearchField({ value, onChange, placeholder = 'Ara...' }: {
 /* ──────────────────────────  ProgressRail  ──────────────────────────── */
 /** İnce ilerleme rayı — kart değil, tek çizgi */
 export function ProgressRail({ pct, color }: { pct: number; color: string }) {
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
-    <View style={{ height: 3, borderRadius: 999, backgroundColor: DS.ink[100], overflow: 'hidden' }}>
+    <View style={{ height: 3, borderRadius: 999, backgroundColor: isDark ? '#30302D' : DS.ink[100], overflow: 'hidden' }}>
       <View style={{
         height: '100%', borderRadius: 999,
         width: `${Math.max(0, Math.min(100, pct))}%`, backgroundColor: color,
@@ -351,12 +375,14 @@ export function ProgressRail({ pct, color }: { pct: number; color: string }) {
 export function ListHeader({ columns }: {
   columns: { label: string; width?: number; flex?: number; align?: 'left' | 'right' }[];
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <View style={{
       flexDirection: 'row', alignItems: 'center',
       paddingHorizontal: 18, paddingVertical: 10,
-      backgroundColor: DS.ink[50],
-      borderBottomWidth: 1, borderBottomColor: DS.ink[100],
+      backgroundColor: isDark ? (T.cardSoft as string) : DS.ink[50],
+      borderBottomWidth: 1, borderBottomColor: isDark ? (T.hairline as string) : DS.ink[100],
     }}>
       {columns.map((c, i) => (
         <Text
@@ -365,7 +391,7 @@ export function ListHeader({ columns }: {
             width: c.width, flex: c.flex,
             textAlign: c.align === 'right' ? 'right' : 'left',
             fontSize: 10, fontWeight: '500', letterSpacing: 1.2,
-            textTransform: 'uppercase', color: DS.ink[400],
+            textTransform: 'uppercase', color: isDark ? (T.ink3 as string) : DS.ink[400],
           }}
         >
           {c.label}
@@ -382,17 +408,19 @@ export function EmptyCard({ icon: Icon, title, description, cta }: {
   description?: string;
   cta?: React.ReactNode;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
-    <View style={[cardStyle, { paddingVertical: 48, alignItems: 'center', gap: 10 }]}>
+    <View style={[cardStyle, isDark && { backgroundColor: T.card, borderColor: T.hairline }, { paddingVertical: 48, alignItems: 'center', gap: 10 }]}>
       <View style={{
         width: 44, height: 44, borderRadius: 999, alignItems: 'center',
-        justifyContent: 'center', backgroundColor: DS.ink[100],
+        justifyContent: 'center', backgroundColor: isDark ? (T.cardSoft as string) : DS.ink[100],
       }}>
-        <Icon size={19} color={DS.ink[400]} strokeWidth={1.6} />
+        <Icon size={19} color={isDark ? (T.ink3 as string) : DS.ink[400]} strokeWidth={1.6} />
       </View>
-      <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }}>{title}</Text>
+      <Text style={{ fontSize: 14, fontWeight: '600', color: isDark ? T.ink : DS.ink[900] }}>{title}</Text>
       {description ? (
-        <Text style={{ fontSize: 13, color: DS.ink[500], textAlign: 'center', maxWidth: 380, lineHeight: 19 }}>
+        <Text style={{ fontSize: 13, color: isDark ? (T.ink3 as string) : DS.ink[500], textAlign: 'center', maxWidth: 380, lineHeight: 19 }}>
           {description}
         </Text>
       ) : null}
@@ -403,17 +431,19 @@ export function EmptyCard({ icon: Icon, title, description, cta }: {
 
 /* ─────────────────────────────  LoadMore  ───────────────────────────── */
 export function LoadMore({ remaining, onPress }: { remaining: number; onPress: () => void }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   if (remaining <= 0) return null;
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => ({
         paddingVertical: 14, alignItems: 'center',
-        borderTopWidth: 1, borderTopColor: DS.ink[100],
+        borderTopWidth: 1, borderTopColor: isDark ? (T.hairline as string) : DS.ink[100],
         opacity: pressed ? 0.6 : 1, ...webCursor,
       })}
     >
-      <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[700] }}>
+      <Text style={{ fontSize: 12, fontWeight: '600', color: isDark ? (T.ink2 as string) : DS.ink[700] }}>
         {remaining} kalem daha göster
       </Text>
     </Pressable>

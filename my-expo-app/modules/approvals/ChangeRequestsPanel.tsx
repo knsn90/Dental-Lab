@@ -6,7 +6,7 @@ import { localeTag } from '../../core/i18n';
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, Pressable, Platform, ActivityIndicator, ScrollView } from 'react-native';
-import { Pencil, Check, X } from 'lucide-react-native';
+import { Pencil, Check, X } from '../../core/ui/icons';
 import { usePanelTheme } from '../../core/theme/usePanelTheme';
 import { toast } from '../../core/ui/Toast';
 import {

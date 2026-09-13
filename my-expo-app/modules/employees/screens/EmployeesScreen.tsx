@@ -1,9 +1,11 @@
 import { localeTag, isRTL } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
+import { HeroGlow, useHeroSurface } from '../../../core/ui/HeroGlow';
 /**
  * EmployeesScreen — Ekip (Patterns Design Language)
  *
  * §10 Hero (glassmorphism), §09 tableCard, §05 cardSolid,
- * §04 CHIP_TONES, §05.5 form, §08 dialog, §03 pill buttons,
+ * §04 chip tones, §05.5 form, §08 dialog, §03 pill buttons,
  * Lucide icons.
  */
 import React, { useState, useMemo, useContext, useRef } from 'react';
@@ -22,7 +24,7 @@ import {
   createEmployee, updateEmployee, deleteEmployee,
   createSalaryPayment, deleteSalaryPayment,
   createAdvance, markAdvanceDeducted, deleteAdvance,
-  ROLE_LABELS, ROLE_COLORS, MONTH_NAMES,
+  ROLE_LABELS, roleTone, MONTH_NAMES,
   type Employee, type EmployeeRole, type SalaryPaymentMethod,
 } from '../api';
 import { AddUserModal } from '../../admin/users/LabUsersManagement';
@@ -31,6 +33,7 @@ import { DatePicker } from '../../../core/ui/DatePicker';
 import { usePermissionStore } from '../../../core/store/permissionStore';
 import { STAGE_LABEL, type Stage } from '../../orders/stages';
 import { DS } from '../../../core/theme/dsTokens';
+import { useInkUI } from '../../../core/theme/inkScale';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { useRouter, useSegments } from 'expo-router';
 import {
@@ -38,8 +41,14 @@ import {
   UserPlus, UserX, UserCheck, Users, Phone, Mail, Clock,
   CircleCheck, Banknote, Landmark, CreditCard,
   ChevronRight, ChevronLeft, CircleDollarSign, CheckCircle, Check, MoreHorizontal, SlidersHorizontal, ChevronDown,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { confirmAsync } from '../../../core/util/confirm';
+
+/** Hero kartındaki pill düğme geometrisi (renk çağıranda). */
+const HERO_PILL = {
+  flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6,
+  paddingHorizontal: 16, height: 38, borderRadius: 999,
+};
 
 // Yetkinlik sabitleri
 const SKILL_STAGES: Stage[] = ['TRIAGE', 'DESIGN', 'CAM', 'MILLING', 'SINTER', 'FINISH', 'QC'];
@@ -57,35 +66,11 @@ const DISPLAY = {
   fontWeight: '300' as const,
 };
 
-const cardSolid = {
-  backgroundColor: '#FFF',
-  borderRadius: 24,
-  padding: 22,
-  // @ts-ignore web
-  boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)',
-};
 
-const tableCard = {
-  backgroundColor: '#FFF',
-  borderRadius: 24,
-  borderWidth: 1,
-  borderColor: 'rgba(0,0,0,0.05)',
-  overflow: 'hidden' as const,
-};
 
-const CHIP_TONES = {
-  success: { bg: 'rgba(45,154,107,0.12)', fg: '#1F6B47' },
-  warning: { bg: 'rgba(232,155,42,0.15)', fg: '#9C5E0E' },
-  danger:  { bg: 'rgba(217,75,75,0.12)',  fg: '#9C2E2E' },
-  info:    { bg: 'rgba(74,143,201,0.12)', fg: '#1F5689' },
-};
 
 const modalShadow = '0 8px 40px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08)';
 
-const inputStyle = {
-  height: 44, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
-  paddingHorizontal: 14, fontSize: 14, color: DS.ink[900], backgroundColor: '#FFF',
-};
 
 // ── Helpers ──────────────────────────────────────────────────────────
 function fmtMoney(n: number | null | undefined) {
@@ -113,12 +98,13 @@ function PillBtn({ icon: Icon, label, onPress, variant = 'dark', size = 'md', di
   icon: React.ComponentType<any>; label: string; onPress: () => void;
   variant?: 'dark' | 'ghost' | 'danger' | 'warning'; size?: 'sm' | 'md'; disabled?: boolean;
 }) {
+  const U = useInkUI();
   const dark = variant === 'dark';
   const isDanger = variant === 'danger';
   const isWarning = variant === 'warning';
   const h = size === 'sm' ? 32 : 38;
-  const bg = dark ? DS.ink[900] : isDanger ? CHIP_TONES.danger.bg : isWarning ? CHIP_TONES.warning.bg : 'transparent';
-  const fg = dark ? '#FFF' : isDanger ? CHIP_TONES.danger.fg : isWarning ? CHIP_TONES.warning.fg : DS.ink[700];
+  const bg = dark ? U.ink[900] : isDanger ? U.chipTones.danger.bg : isWarning ? U.chipTones.warning.bg : 'transparent';
+  const fg = dark ? U.onDarkPill : isDanger ? U.chipTones.danger.fg : isWarning ? U.chipTones.warning.fg : U.ink[700];
   return (
     <Pressable
       onPress={onPress} disabled={disabled}
@@ -126,7 +112,7 @@ function PillBtn({ icon: Icon, label, onPress, variant = 'dark', size = 'md', di
         flexDirection: 'row', alignItems: 'center', gap: 6,
         height: h, paddingHorizontal: size === 'sm' ? 12 : 16, borderRadius: 999,
         backgroundColor: bg,
-        borderWidth: dark || isDanger || isWarning ? 0 : 1, borderColor: 'rgba(0,0,0,0.10)',
+        borderWidth: dark || isDanger || isWarning ? 0 : 1, borderColor: U.fieldBorder,
         opacity: disabled ? 0.5 : 1, cursor: 'pointer' as any,
       }}
     >
@@ -137,8 +123,9 @@ function PillBtn({ icon: Icon, label, onPress, variant = 'dark', size = 'md', di
 }
 
 function FieldLabel({ children }: { children: string }) {
+  const U = useInkUI();
   return (
-    <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 6 }}>
+    <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: U.ink[500], marginBottom: 6 }}>
       {children}
     </Text>
   );
@@ -161,6 +148,7 @@ const ROW_MENU_W = 190;
 function RowActionsMenu({ items }: {
   items: { label: string; icon: any; onPress: () => void; danger?: boolean }[];
 }) {
+  const U = useInkUI();
   const btnRef = useRef<any>(null);
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
@@ -192,12 +180,12 @@ function RowActionsMenu({ items }: {
         accessibilityLabel="İşlemler"
         style={({ pressed }: any) => ({
           width: 30, height: 30, borderRadius: 8,
-          backgroundColor: DS.ink[50], alignItems: 'center', justifyContent: 'center',
+          backgroundColor: U.ink[50], alignItems: 'center', justifyContent: 'center',
           opacity: pressed ? 0.6 : 1,
           ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
         })}
       >
-        <MoreHorizontal size={15} color={DS.ink[500]} strokeWidth={1.8} />
+        <MoreHorizontal size={15} color={U.ink[500]} strokeWidth={1.8} />
       </Pressable>
 
       <Modal visible={open} transparent animationType="none" onRequestClose={() => setOpen(false)}>
@@ -205,8 +193,8 @@ function RowActionsMenu({ items }: {
           <Animated.View
             style={{
               position: 'absolute', top: pos.top, left: pos.left, width: ROW_MENU_W,
-              backgroundColor: '#FFFFFF', borderRadius: 14, paddingVertical: 6,
-              borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+              backgroundColor: U.surface, borderRadius: 14, paddingVertical: 6,
+              borderWidth: 1, borderColor: U.hairline,
               opacity: anim,
               transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) }],
               ...(Platform.OS === 'web'
@@ -219,7 +207,7 @@ function RowActionsMenu({ items }: {
               return (
                 <React.Fragment key={it.label}>
                   {it.danger && i > 0 && (
-                    <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.06)', marginVertical: 4 }} />
+                    <View style={{ height: 1, backgroundColor: U.hairline, marginVertical: 4 }} />
                   )}
                   <Pressable
                     onPress={() => { setOpen(false); it.onPress(); }}
@@ -230,8 +218,8 @@ function RowActionsMenu({ items }: {
                       ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
                     })}
                   >
-                    <Icon size={14} color={it.danger ? CHIP_TONES.danger.fg : DS.ink[500]} strokeWidth={1.8} />
-                    <Text style={{ fontSize: 13, fontWeight: '500', color: it.danger ? CHIP_TONES.danger.fg : DS.ink[900] }}>
+                    <Icon size={14} color={it.danger ? U.chipTones.danger.fg : U.ink[500]} strokeWidth={1.8} />
+                    <Text style={{ fontSize: 13, fontWeight: '500', color: it.danger ? U.chipTones.danger.fg : U.ink[900] }}>
                       {it.label}
                     </Text>
                   </Pressable>
@@ -246,11 +234,13 @@ function RowActionsMenu({ items }: {
 }
 
 export function EmployeesScreen() {
+  const U = useInkUI();
   const isEmbedded = useContext(HubContext);
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
   const insets = useSafeAreaInsets();
   const theme = usePanelTheme();
+  const heroBg = useHeroSurface(theme.primary);
 
   const { employees, loading, refetch } = useEmployees();
 
@@ -447,7 +437,7 @@ export function EmployeesScreen() {
           paddingBottom: 120,
           gap: 14,
         }}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={DS.ink[300]} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={U.ink[300]} />}
         showsVerticalScrollIndicator={false}
       >
         {/* ── Ekip özeti şeridi ──
@@ -457,13 +447,13 @@ export function EmployeesScreen() {
             kart küçüldükçe süsün de ölçeği düşmeli, yoksa zemini yutuyor. */}
         <View style={{
           borderRadius: 20, overflow: 'hidden',
-          backgroundColor: theme.primary,
+          ...heroBg,
           paddingHorizontal: isDesktop ? 22 : 18,
           paddingVertical: isDesktop ? 18 : 16,
           position: 'relative',
         }}>
-          <View pointerEvents="none" style={{ position: 'absolute', top: -46, end: -34, width: 130, height: 130, borderRadius: 65, backgroundColor: 'rgba(255,255,255,0.18)' }} />
-          <View pointerEvents="none" style={{ position: 'absolute', bottom: -52, start: -26, width: 110, height: 110, borderRadius: 55, backgroundColor: 'rgba(255,255,255,0.10)' }} />
+          <HeroGlow size={130} opacity={0.18} delay={0} style={{ top: -46, end: -34 }} />
+          <HeroGlow size={110} opacity={0.10} delay={1400} style={{ bottom: -52, start: -26 }} />
 
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
             {/* Sol — kicker + iki metrik yan yana */}
@@ -490,31 +480,32 @@ export function EmployeesScreen() {
             {/* Sağ — aksiyonlar. Basınca geri bildirim parmağın inişinde. */}
             {canManage && (
               <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                {/* Pill düğmeler. Native'de OBJE stil: fonksiyon-stilli Pressable
+                    iOS'ta row düzenini düşürüp ikonu metnin üstüne itiyordu. */}
                 <Pressable
                   onPress={() => { setEditEmp(null); setFormOpen(true); }}
-                  style={({ pressed, hovered }: any) => ({
-                    flexDirection: 'row', alignItems: 'center', gap: 6,
-                    paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999,
-                    backgroundColor: hovered ? '#F5F5F5' : '#FFFFFF',
-                    opacity: pressed ? 0.75 : 1,
-                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                  })}
+                  style={Platform.OS === 'web'
+                    ? ((({ pressed, hovered }: any) => ({
+                        ...HERO_PILL, backgroundColor: hovered ? U.rowHover : U.plainBtn.bg,
+                        opacity: pressed ? 0.75 : 1, cursor: 'pointer',
+                      })) as any)
+                    : { ...HERO_PILL, backgroundColor: U.plainBtn.bg }}
                 >
-                  <UserPlus size={13} color={DS.ink[900]} strokeWidth={2} />
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: DS.ink[900] }}>Personel Ekle</Text>
+                  <UserPlus size={14} color={U.ink[900]} strokeWidth={2} />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: U.ink[900] }}>Personel Ekle</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => setAddUserOpen(true)}
-                  style={({ pressed, hovered }: any) => ({
-                    flexDirection: 'row', alignItems: 'center', gap: 6,
-                    paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999,
-                    backgroundColor: hovered ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.16)',
-                    opacity: pressed ? 0.75 : 1,
-                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                  })}
+                  style={Platform.OS === 'web'
+                    ? ((({ pressed, hovered }: any) => ({
+                        ...HERO_PILL, backgroundColor: hovered ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.16)',
+                        borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
+                        opacity: pressed ? 0.75 : 1, cursor: 'pointer',
+                      })) as any)
+                    : { ...HERO_PILL, backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)' }}
                 >
-                  <UserPlus size={13} color="#FFFFFF" strokeWidth={2} />
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>Hesap ile Ekle</Text>
+                  <UserPlus size={14} color="#FFFFFF" strokeWidth={2} />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>Hesap ile Ekle</Text>
                 </Pressable>
               </View>
             )}
@@ -525,7 +516,7 @@ export function EmployeesScreen() {
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
               {([
                 { label: 'Bu Ay Maaş',     value: fmtMoney(totalSalary)   },
-                { label: 'Ödenmemiş',      value: `${unpaidCount} kişi`   },
+                { label: 'Ödenmemiş',      value: `${unpaidCount} ${autoT('kişi')}`   },
                 { label: 'Bekleyen Avans', value: fmtMoney(totalAdvances) },
               ] as const).map(stat => (
                 <View key={stat.label} style={{
@@ -556,19 +547,19 @@ export function EmployeesScreen() {
           <View style={{
             flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10,
             height: 44, paddingHorizontal: 14, borderRadius: 14,
-            borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#FFF',
+            borderWidth: 1, borderColor: U.fieldBorder, backgroundColor: U.surface,
           }}>
-            <Search size={15} color={DS.ink[400]} strokeWidth={1.8} />
+            <Search size={15} color={U.ink[400]} strokeWidth={1.8} />
             <TextInput
-              style={{ flex: 1, fontSize: 14, color: DS.ink[900], outline: 'none' as any }}
+              style={{ flex: 1, fontSize: 14, color: U.ink[900], outline: 'none' as any }}
               placeholder="Ad veya pozisyon ara..."
-              placeholderTextColor={DS.ink[400]}
+              placeholderTextColor={U.ink[400]}
               value={search}
               onChangeText={setSearch}
             />
             {search.length > 0 && (
               <Pressable onPress={() => setSearch('')} style={{ cursor: 'pointer' as any }}>
-                <X size={14} color={DS.ink[400]} strokeWidth={2} />
+                <X size={14} color={U.ink[400]} strokeWidth={2} />
               </Pressable>
             )}
           </View>
@@ -583,17 +574,17 @@ export function EmployeesScreen() {
               flexDirection: 'row', alignItems: 'center', gap: 8,
               height: 44, paddingHorizontal: 14, borderRadius: 14,
               borderWidth: 1,
-              borderColor: filterHasAny ? DS.ink[900] : 'rgba(0,0,0,0.08)',
-              backgroundColor: filterHasAny ? DS.ink[50] : '#FFF',
+              borderColor: filterHasAny ? U.ink[900] : U.fieldBorder,
+              backgroundColor: filterHasAny ? U.chipNeutral : U.plainBtn.bg,
               opacity: pressed ? 0.7 : 1,
               ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
             })}
           >
-            <SlidersHorizontal size={15} color={filterHasAny ? DS.ink[900] : DS.ink[400]} strokeWidth={1.8} />
-            <Text style={{ fontSize: 13, fontWeight: filterHasAny ? '600' : '500', color: filterHasAny ? DS.ink[900] : DS.ink[500] }}>
+            <SlidersHorizontal size={15} color={filterHasAny ? U.ink[900] : U.ink[400]} strokeWidth={1.8} />
+            <Text style={{ fontSize: 13, fontWeight: filterHasAny ? '600' : '500', color: filterHasAny ? U.ink[900] : U.ink[500] }}>
               {filterLabel}
             </Text>
-            <ChevronDown size={14} color={filterHasAny ? DS.ink[900] : DS.ink[400]} strokeWidth={2} />
+            <ChevronDown size={14} color={filterHasAny ? U.ink[900] : U.ink[400]} strokeWidth={2} />
           </Pressable>
         </View>
 
@@ -604,18 +595,18 @@ export function EmployeesScreen() {
             style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.28)', alignItems: 'center', justifyContent: 'center', padding: 20 }}
           >
             <Pressable onPress={() => {}} style={{
-              width: '100%', maxWidth: 360, backgroundColor: '#FFF', borderRadius: 20, padding: 18, gap: 16,
+              width: '100%', maxWidth: 360, backgroundColor: U.surface, borderRadius: 20, padding: 18, gap: 16,
               ...(Platform.OS === 'web' ? { boxShadow: '0 20px 48px rgba(15,23,42,0.22)' } as any : {}),
             }}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={{ flex: 1, fontSize: 15, fontWeight: '700', color: DS.ink[900] }}>Filtre</Text>
+                <Text style={{ flex: 1, fontSize: 15, fontWeight: '700', color: U.ink[900] }}>Filtre</Text>
                 <Pressable onPress={() => setFilterOpen(false)} style={{ padding: 4, cursor: 'pointer' as any }}>
-                  <X size={16} color={DS.ink[400]} strokeWidth={2} />
+                  <X size={16} color={U.ink[400]} strokeWidth={2} />
                 </Pressable>
               </View>
 
               <View style={{ gap: 8 }}>
-                <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: DS.ink[400] }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: U.ink[400] }}>
                   Pozisyon
                 </Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
@@ -628,13 +619,13 @@ export function EmployeesScreen() {
                         style={({ pressed }: any) => ({
                           paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
                           borderWidth: 1,
-                          borderColor: on ? DS.ink[900] : 'rgba(0,0,0,0.08)',
-                          backgroundColor: on ? DS.ink[50] : '#FFF',
+                          borderColor: on ? U.ink[900] : U.fieldBorder,
+                          backgroundColor: on ? U.chipNeutral : U.plainBtn.bg,
                           opacity: pressed ? 0.7 : 1,
                           ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
                         })}
                       >
-                        <Text style={{ fontSize: 12, fontWeight: on ? '600' : '500', color: on ? DS.ink[900] : DS.ink[500] }}>
+                        <Text style={{ fontSize: 12, fontWeight: on ? '600' : '500', color: on ? U.ink[900] : U.ink[500] }}>
                           {r ? ROLE_LABELS[r] : 'Hepsi'}
                         </Text>
                       </Pressable>
@@ -644,7 +635,7 @@ export function EmployeesScreen() {
               </View>
 
               <View style={{ gap: 8 }}>
-                <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: DS.ink[400] }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: U.ink[400] }}>
                   Durum
                 </Text>
                 <View style={{ flexDirection: 'row', gap: 6 }}>
@@ -660,13 +651,13 @@ export function EmployeesScreen() {
                         style={({ pressed }: any) => ({
                           paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
                           borderWidth: 1,
-                          borderColor: on ? DS.ink[900] : 'rgba(0,0,0,0.08)',
-                          backgroundColor: on ? DS.ink[50] : '#FFF',
+                          borderColor: on ? U.ink[900] : U.fieldBorder,
+                          backgroundColor: on ? U.chipNeutral : U.plainBtn.bg,
                           opacity: pressed ? 0.7 : 1,
                           ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
                         })}
                       >
-                        <Text style={{ fontSize: 12, fontWeight: on ? '600' : '500', color: on ? DS.ink[900] : DS.ink[500] }}>
+                        <Text style={{ fontSize: 12, fontWeight: on ? '600' : '500', color: on ? U.ink[900] : U.ink[500] }}>
                           {f.label}
                         </Text>
                       </Pressable>
@@ -684,7 +675,7 @@ export function EmployeesScreen() {
                     ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
                   })}
                 >
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[500] }}>Filtreleri temizle</Text>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: U.ink[500] }}>Filtreleri temizle</Text>
                 </Pressable>
               )}
             </Pressable>
@@ -693,24 +684,24 @@ export function EmployeesScreen() {
 
         {/* ── Employee list ───────────────────────────────────── */}
         {filtered.length === 0 ? (
-          <View style={{ ...cardSolid, alignItems: 'center', paddingVertical: 48, gap: 10 }}>
-            <Inbox size={32} color={DS.ink[300]} strokeWidth={1.4} />
-            <Text style={{ fontSize: 14, fontWeight: '500', color: DS.ink[400] }}>
+          <View style={{ ...U.cardSolid, alignItems: 'center', paddingVertical: 48, gap: 10 }}>
+            <Inbox size={32} color={U.ink[300]} strokeWidth={1.4} />
+            <Text style={{ fontSize: 14, fontWeight: '500', color: U.ink[400] }}>
               {search ? 'Sonuç bulunamadı' : 'Personel bulunamadı'}
             </Text>
           </View>
         ) : isDesktop ? (
           /* ── Desktop: full-width table (no side detail panel) ── */
           <View>
-            <View style={{ ...tableCard }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
-                <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>Personel</Text>
+            <View style={{ ...U.tableCard }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
+                <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: U.ink[900] }}>Personel</Text>
                 <View style={{ flex: 1 }} />
-                <Text style={{ fontSize: 12, color: DS.ink[400] }}>{filtered.length} kişi</Text>
+                <Text style={{ fontSize: 12, color: U.ink[400] }}>{filtered.length} kişi</Text>
               </View>
 
               {/* Header — MAAŞ + DURUM kolonları sadece view_salaries yetkisinde */}
-              <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: '#FAFAFA', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+              <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: U.surfaceSoft, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
                 {[
                   { label: 'ÇALIŞAN',  flex: 2.5 },
                   { label: 'POZİSYON', flex: 1.2 },
@@ -720,7 +711,7 @@ export function EmployeesScreen() {
                     : []),
                   { label: 'İŞLEM',    flex: 1 },
                 ].map((h, i) => (
-                  <Text key={i} style={{ flex: h.flex, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textAlign: h.align }}>
+                  <Text key={i} style={{ flex: h.flex, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: U.ink[500], textAlign: h.align }}>
                     {h.label}
                   </Text>
                 ))}
@@ -728,7 +719,7 @@ export function EmployeesScreen() {
 
               {/* Rows */}
               {filtered.map((emp, i) => {
-                const role = ROLE_COLORS[emp.role];
+                const role = roleTone(emp.role, U.isDark);
                 const initials = emp.full_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
                 return (
                   <View
@@ -737,7 +728,7 @@ export function EmployeesScreen() {
                       flexDirection: 'row', alignItems: 'center',
                       paddingHorizontal: 20, paddingVertical: 14,
                       borderBottomWidth: i < filtered.length - 1 ? 1 : 0,
-                      borderBottomColor: 'rgba(0,0,0,0.04)',
+                      borderBottomColor: U.hairlineSoft,
                       backgroundColor: 'transparent',
                       opacity: emp.is_active ? 1 : 0.5,
                       cursor: 'pointer' as any,
@@ -752,20 +743,20 @@ export function EmployeesScreen() {
                       </View>
                       <View>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                          <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>{emp.full_name}</Text>
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>{emp.full_name}</Text>
                           {String(emp.id).startsWith('profile-') && (
                             <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: 'rgba(37,99,235,0.10)' }}>
                               <Text style={{ fontSize: 9, fontWeight: '700', color: '#2563EB' }}>Hesap</Text>
                             </View>
                           )}
                           {!emp.is_active && (
-                            <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: DS.ink[100] }}>
-                              <Text style={{ fontSize: 9, fontWeight: '600', color: DS.ink[500] }}>Ayrıldı</Text>
+                            <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: U.ink[100] }}>
+                              <Text style={{ fontSize: 9, fontWeight: '600', color: U.ink[500] }}>Ayrıldı</Text>
                             </View>
                           )}
                         </View>
                         {emp.phone && (
-                          <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }}>{emp.phone}</Text>
+                          <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 1 }}>{emp.phone}</Text>
                         )}
                       </View>
                     </View>
@@ -776,20 +767,20 @@ export function EmployeesScreen() {
                     </View>
                     {canViewSalaries && (
                       <>
-                        <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: DS.ink[900], textAlign: 'end' as any }}>
+                        <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: U.ink[900], textAlign: 'end' as any }}>
                           {fmtMoney(emp.base_salary)}
                         </Text>
                         <View style={{ flex: 1 }}>
                           <View style={{
                             alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 4,
                             paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
-                            backgroundColor: emp.current_month_paid ? CHIP_TONES.success.bg : CHIP_TONES.warning.bg,
+                            backgroundColor: emp.current_month_paid ? U.chipTones.success.bg : U.chipTones.warning.bg,
                           }}>
                             {emp.current_month_paid
-                              ? <CheckCircle size={10} color={CHIP_TONES.success.fg} strokeWidth={2} />
-                              : <Clock size={10} color={CHIP_TONES.warning.fg} strokeWidth={2} />
+                              ? <CheckCircle size={10} color={U.chipTones.success.fg} strokeWidth={2} />
+                              : <Clock size={10} color={U.chipTones.warning.fg} strokeWidth={2} />
                             }
-                            <Text style={{ fontSize: 10, fontWeight: '600', color: emp.current_month_paid ? CHIP_TONES.success.fg : CHIP_TONES.warning.fg }}>
+                            <Text style={{ fontSize: 10, fontWeight: '600', color: emp.current_month_paid ? U.chipTones.success.fg : U.chipTones.warning.fg }}>
                               {emp.current_month_paid ? 'Ödendi' : 'Bekliyor'}
                             </Text>
                           </View>
@@ -820,15 +811,15 @@ export function EmployeesScreen() {
 
           </View>
         ) : (
-          /* ── Mobile: cardSolid ──────────────────────────────── */
+          /* ── Mobile: cardSolid ────────────────────────────────── */
           filtered.map(emp => {
-            const role = ROLE_COLORS[emp.role];
+            const role = roleTone(emp.role, U.isDark);
             const initials = emp.full_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
             const pendAdv = Number(emp.pending_advances ?? 0);
             return (
               <View
                 key={emp.id}
-                style={{ ...cardSolid, padding: 16, opacity: emp.is_active ? 1 : 0.5 }}
+                style={{ ...U.cardSolid, padding: 16, opacity: emp.is_active ? 1 : 0.5 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                   <View style={{ width: 50, height: 50, borderRadius: 15, backgroundColor: role.bg, alignItems: 'center', justifyContent: 'center' }}>
@@ -836,10 +827,10 @@ export function EmployeesScreen() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }}>{emp.full_name}</Text>
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900] }}>{emp.full_name}</Text>
                       {!emp.is_active && (
-                        <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: DS.ink[100] }}>
-                          <Text style={{ fontSize: 9, fontWeight: '600', color: DS.ink[500] }}>Ayrıldı</Text>
+                        <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: U.ink[100] }}>
+                          <Text style={{ fontSize: 9, fontWeight: '600', color: U.ink[500] }}>Ayrıldı</Text>
                         </View>
                       )}
                     </View>
@@ -847,20 +838,20 @@ export function EmployeesScreen() {
                       <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: role.bg }}>
                         <Text style={{ fontSize: 10, fontWeight: '600', color: role.fg }}>{ROLE_LABELS[emp.role]}</Text>
                       </View>
-                      {emp.phone && <Text style={{ fontSize: 11, color: DS.ink[400] }}>{emp.phone}</Text>}
+                      {emp.phone && <Text style={{ fontSize: 11, color: U.ink[400] }}>{emp.phone}</Text>}
                     </View>
                   </View>
                   {canViewSalaries && (
                     <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                      <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: DS.ink[900] }}>
+                      <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: U.ink[900] }}>
                         {fmtMoney(emp.base_salary)}
                       </Text>
                       <View style={{
                         flexDirection: 'row', alignItems: 'center', gap: 4,
                         paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
-                        backgroundColor: emp.current_month_paid ? CHIP_TONES.success.bg : CHIP_TONES.warning.bg,
+                        backgroundColor: emp.current_month_paid ? U.chipTones.success.bg : U.chipTones.warning.bg,
                       }}>
-                        <Text style={{ fontSize: 10, fontWeight: '600', color: emp.current_month_paid ? CHIP_TONES.success.fg : CHIP_TONES.warning.fg }}>
+                        <Text style={{ fontSize: 10, fontWeight: '600', color: emp.current_month_paid ? U.chipTones.success.fg : U.chipTones.warning.fg }}>
                           {emp.current_month_paid ? 'Ödendi' : 'Bekliyor'}
                         </Text>
                       </View>
@@ -873,30 +864,30 @@ export function EmployeesScreen() {
                   <View style={{ flexDirection: 'row', gap: 4, marginTop: 10, justifyContent: 'flex-end' }}>
                     <Pressable
                       onPress={() => { setEditEmp(emp); setFormOpen(true); }}
-                      style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: DS.ink[50], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                      style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: U.ink[50], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
                     >
-                      <Pencil size={13} color={DS.ink[500]} strokeWidth={1.6} />
+                      <Pencil size={13} color={U.ink[500]} strokeWidth={1.6} />
                     </Pressable>
                     {emp.is_active ? (
                       <Pressable
                         onPress={() => handleDeactivate(emp)}
-                        style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: DS.ink[50], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                        style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: U.ink[50], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
                       >
-                        <UserX size={13} color={DS.ink[500]} strokeWidth={1.6} />
+                        <UserX size={13} color={U.ink[500]} strokeWidth={1.6} />
                       </Pressable>
                     ) : (
                       <Pressable
                         onPress={() => handleReactivate(emp)}
-                        style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: CHIP_TONES.success.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                        style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: U.chipTones.success.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
                       >
-                        <UserCheck size={13} color={CHIP_TONES.success.fg} strokeWidth={1.8} />
+                        <UserCheck size={13} color={U.chipTones.success.fg} strokeWidth={1.8} />
                       </Pressable>
                     )}
                     <Pressable
                       onPress={() => handleDelete(emp)}
-                      style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: CHIP_TONES.danger.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                      style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: U.chipTones.danger.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
                     >
-                      <Trash2 size={13} color={CHIP_TONES.danger.fg} strokeWidth={1.6} />
+                      <Trash2 size={13} color={U.chipTones.danger.fg} strokeWidth={1.6} />
                     </Pressable>
                   </View>
                 )}
@@ -936,14 +927,14 @@ export function EmployeesScreen() {
           style={{
             position: 'absolute', bottom: 20, left: 16, right: 16,
             flexDirection: 'row', alignItems: 'center', gap: 12,
-            backgroundColor: DS.ink[900], borderRadius: 16,
+            backgroundColor: U.ink[900], borderRadius: 16,
             paddingStart: 16, paddingEnd: 8, paddingVertical: 12,
             zIndex: 999,
             // @ts-ignore web
             boxShadow: '0 4px 32px rgba(0,0,0,0.25)',
           }}
         >
-          <Text style={{ flex: 1, fontSize: 13, color: '#FFF', fontWeight: '500', lineHeight: 18 }}>
+          <Text style={{ flex: 1, fontSize: 13, color: U.onDarkPill, fontWeight: '500', lineHeight: 18 }}>
             {undoBanner.message}
           </Text>
           <Pressable
@@ -953,7 +944,7 @@ export function EmployeesScreen() {
               backgroundColor: DS.exec.primary, cursor: 'pointer' as any,
             }}
           >
-            <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900] }}>Geri Al</Text>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: U.ink[900] }}>Geri Al</Text>
           </Pressable>
           <Pressable
             onPress={dismissUndoBanner}
@@ -974,8 +965,9 @@ function EmployeeDetailPanel({ employee, onSalaryAdd, onAdvAdd, onRefresh }: {
   employee: Employee;
   onSalaryAdd: () => void; onAdvAdd: () => void; onRefresh: () => void;
 }) {
+  const U = useInkUI();
   const { salaries, advances, loading, refetch } = useEmployeeDetail(employee.id);
-  const role = ROLE_COLORS[employee.role];
+  const role = roleTone(employee.role, U.isDark);
   const initials = employee.full_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 
   const handleDelSalary = async (id: string) => {
@@ -997,18 +989,18 @@ function EmployeeDetailPanel({ employee, onSalaryAdd, onAdvAdd, onRefresh }: {
   return (
     <View style={{ flex: 1 }}>
       {/* Header */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, padding: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, padding: 20, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
         <View style={{ width: 48, height: 48, borderRadius: 14, backgroundColor: role.bg, alignItems: 'center', justifyContent: 'center' }}>
           <Text style={{ fontSize: 17, fontWeight: '800', color: role.fg }}>{initials}</Text>
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 16, fontWeight: '700', color: DS.ink[900] }}>{employee.full_name}</Text>
-          <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 2 }}>{ROLE_LABELS[employee.role]}</Text>
-          {employee.phone && <Text style={{ fontSize: 11, color: CHIP_TONES.info.fg, marginTop: 1 }}>{employee.phone}</Text>}
+          <Text style={{ fontSize: 16, fontWeight: '700', color: U.ink[900] }}>{employee.full_name}</Text>
+          <Text style={{ fontSize: 12, color: U.ink[400], marginTop: 2 }}>{ROLE_LABELS[employee.role]}</Text>
+          {employee.phone && <Text style={{ fontSize: 11, color: U.chipTones.info.fg, marginTop: 1 }}>{employee.phone}</Text>}
         </View>
         <View style={{ alignItems: 'flex-end' }}>
-          <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: DS.ink[400] }}>Maaş</Text>
-          <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.3, color: DS.ink[900] }}>{fmtMoney(employee.base_salary)}</Text>
+          <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: U.ink[400] }}>Maaş</Text>
+          <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.3, color: U.ink[900] }}>{fmtMoney(employee.base_salary)}</Text>
         </View>
       </View>
 
@@ -1020,32 +1012,32 @@ function EmployeeDetailPanel({ employee, onSalaryAdd, onAdvAdd, onRefresh }: {
             {/* ── Maaş Ödemeleri ── */}
             <View>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900] }}>Maaş Ödemeleri</Text>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: U.ink[900] }}>Maaş Ödemeleri</Text>
                 <PillBtn icon={Plus} label="Ödeme Ekle" size="sm" onPress={onSalaryAdd} />
               </View>
               {salaries.length === 0 ? (
-                <Text style={{ fontSize: 12, color: DS.ink[400], fontStyle: 'italic', paddingVertical: 8 }}>Henüz ödeme yok</Text>
+                <Text style={{ fontSize: 12, color: U.ink[400], fontStyle: 'italic', paddingVertical: 8 }}>Henüz ödeme yok</Text>
               ) : salaries.map(sal => (
                 <View key={sal.id} style={{
                   flexDirection: 'row', alignItems: 'center', gap: 10,
-                  backgroundColor: '#FFF', borderRadius: 14, padding: 12, marginBottom: 6,
-                  borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)',
+                  backgroundColor: U.surface, borderRadius: 14, padding: 12, marginBottom: 6,
+                  borderWidth: 1, borderColor: U.hairlineSoft,
                 }}>
-                  <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: CHIP_TONES.success.bg, alignItems: 'center', justifyContent: 'center' }}>
-                    <Banknote size={15} color={CHIP_TONES.success.fg} strokeWidth={1.6} />
+                  <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: U.chipTones.success.bg, alignItems: 'center', justifyContent: 'center' }}>
+                    <Banknote size={15} color={U.chipTones.success.fg} strokeWidth={1.6} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>
                       {MONTH_NAMES[sal.period_month]} {sal.period_year}
                     </Text>
-                    <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 2 }}>
+                    <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 2 }}>
                       {fmtDate(sal.payment_date)} · {sal.payment_method === 'nakit' ? 'Nakit' : sal.payment_method === 'havale' ? 'Havale' : 'Kart'}
                       {sal.deductions > 0 ? ` · Kesinti: ${fmtMoney(sal.deductions)}` : ''}
                     </Text>
                   </View>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: CHIP_TONES.success.fg }}>{fmtMoney(sal.net_amount)}</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: U.chipTones.success.fg }}>{fmtMoney(sal.net_amount)}</Text>
                   <Pressable onPress={() => handleDelSalary(sal.id)} style={{ padding: 4, cursor: 'pointer' as any }}>
-                    <Trash2 size={13} color={DS.ink[300]} strokeWidth={1.6} />
+                    <Trash2 size={13} color={U.ink[300]} strokeWidth={1.6} />
                   </Pressable>
                 </View>
               ))}
@@ -1054,52 +1046,52 @@ function EmployeeDetailPanel({ employee, onSalaryAdd, onAdvAdd, onRefresh }: {
             {/* ── Avanslar ── */}
             <View>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900] }}>Avanslar</Text>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: U.ink[900] }}>Avanslar</Text>
                 <PillBtn icon={CircleDollarSign} label="Avans Ver" size="sm" variant="warning" onPress={onAdvAdd} />
               </View>
               {advances.length === 0 ? (
-                <Text style={{ fontSize: 12, color: DS.ink[400], fontStyle: 'italic', paddingVertical: 8 }}>Avans kaydı yok</Text>
+                <Text style={{ fontSize: 12, color: U.ink[400], fontStyle: 'italic', paddingVertical: 8 }}>Avans kaydı yok</Text>
               ) : advances.map(adv => (
                 <View key={adv.id} style={{
                   flexDirection: 'row', alignItems: 'center', gap: 10,
-                  backgroundColor: '#FFF', borderRadius: 14, padding: 12, marginBottom: 6,
-                  borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)',
+                  backgroundColor: U.surface, borderRadius: 14, padding: 12, marginBottom: 6,
+                  borderWidth: 1, borderColor: U.hairlineSoft,
                   opacity: adv.is_deducted ? 0.5 : 1,
                 }}>
-                  <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: adv.is_deducted ? DS.ink[100] : CHIP_TONES.warning.bg, alignItems: 'center', justifyContent: 'center' }}>
-                    <CircleDollarSign size={15} color={adv.is_deducted ? DS.ink[400] : CHIP_TONES.warning.fg} strokeWidth={1.6} />
+                  <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: adv.is_deducted ? U.ink[100] : U.chipTones.warning.bg, alignItems: 'center', justifyContent: 'center' }}>
+                    <CircleDollarSign size={15} color={adv.is_deducted ? U.ink[400] : U.chipTones.warning.fg} strokeWidth={1.6} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: adv.is_deducted ? DS.ink[400] : DS.ink[900] }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: adv.is_deducted ? U.ink[400] : U.ink[900] }}>
                       {adv.description || 'Avans'}
                     </Text>
-                    <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 2 }}>
+                    <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 2 }}>
                       {fmtDate(adv.advance_date)} · {adv.is_deducted ? 'Kesildi' : 'Bekliyor'}
                     </Text>
                   </View>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: adv.is_deducted ? DS.ink[400] : CHIP_TONES.warning.fg }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: adv.is_deducted ? U.ink[400] : U.chipTones.warning.fg }}>
                     {fmtMoney(adv.amount)}
                   </Text>
                   {!adv.is_deducted && (
                     <Pressable
                       onPress={() => handleMarkDeducted(adv.id)}
-                      style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: CHIP_TONES.warning.bg, cursor: 'pointer' as any }}
+                      style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: U.chipTones.warning.bg, cursor: 'pointer' as any }}
                     >
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: CHIP_TONES.warning.fg }}>Kesildi</Text>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: U.chipTones.warning.fg }}>Kesildi</Text>
                     </Pressable>
                   )}
                   <Pressable onPress={() => handleDelAdv(adv.id)} style={{ padding: 4, cursor: 'pointer' as any }}>
-                    <Trash2 size={13} color={DS.ink[300]} strokeWidth={1.6} />
+                    <Trash2 size={13} color={U.ink[300]} strokeWidth={1.6} />
                   </Pressable>
                 </View>
               ))}
             </View>
 
             {/* ── Özet ── */}
-            <View style={{ ...cardSolid, padding: 16, gap: 6 }}>
-              <SummaryRow label="Toplam Ödenen Maaş" value={fmtMoney(employee.total_salary_paid)} color={CHIP_TONES.success.fg} />
-              <SummaryRow label="Toplam Verilen Avans" value={fmtMoney(employee.total_advances)} color={CHIP_TONES.warning.fg} />
-              <SummaryRow label="Bekleyen Avans" value={fmtMoney(employee.pending_advances)} color={CHIP_TONES.danger.fg} />
+            <View style={{ ...U.cardSolid, padding: 16, gap: 6 }}>
+              <SummaryRow label="Toplam Ödenen Maaş" value={fmtMoney(employee.total_salary_paid)} color={U.chipTones.success.fg} />
+              <SummaryRow label="Toplam Verilen Avans" value={fmtMoney(employee.total_advances)} color={U.chipTones.warning.fg} />
+              <SummaryRow label="Bekleyen Avans" value={fmtMoney(employee.pending_advances)} color={U.chipTones.danger.fg} />
             </View>
           </>
         )}
@@ -1109,9 +1101,10 @@ function EmployeeDetailPanel({ employee, onSalaryAdd, onAdvAdd, onRefresh }: {
 }
 
 function SummaryRow({ label, value, color }: { label: string; value: string; color: string }) {
+  const U = useInkUI();
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
-      <Text style={{ fontSize: 12, color: DS.ink[500], fontWeight: '500' }}>{label}</Text>
+      <Text style={{ fontSize: 12, color: U.ink[500], fontWeight: '500' }}>{label}</Text>
       <Text style={{ fontSize: 13, fontWeight: '700', color }}>{value}</Text>
     </View>
   );
@@ -1124,6 +1117,7 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
   visible: boolean; employee: Employee | null;
   onClose: () => void; onSaved: () => void;
 }) {
+  const U = useInkUI();
   const P = DS.exec.primary; // admin/exec panel accent (#4771AB kobalt) — Ekip HR Hub admin'de
   const router = useRouter();
   const navSegments = useSegments() as string[];
@@ -1397,9 +1391,9 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(10,10,10,0.45)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
         <View style={{
-          backgroundColor: '#FFF', borderRadius: 24, width: '100%', maxWidth: 520,
+          backgroundColor: U.surface, borderRadius: 24, width: '100%', maxWidth: 520,
           maxHeight: '92%', overflow: 'hidden',
-          borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
+          borderWidth: 1, borderColor: U.hairline,
           // @ts-ignore web
           boxShadow: modalShadow,
         }}>
@@ -1407,10 +1401,10 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
           <View style={{
             flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
             paddingHorizontal: 28, paddingTop: 28, paddingBottom: 18,
-            borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
+            borderBottomWidth: 1, borderBottomColor: U.hairline,
           }}>
-            <Text style={{ ...DISPLAY, flex: 1, fontSize: 26, lineHeight: 30, letterSpacing: -0.6, color: DS.ink[900] }}>
-              {employee ? 'Personelı Düzenle' : 'Yeni Personel'}
+            <Text style={{ ...DISPLAY, flex: 1, fontSize: 26, lineHeight: 30, letterSpacing: -0.6, color: U.ink[900] }}>
+              {employee ? 'Personeli Düzenle' : 'Yeni Personel'}
             </Text>
             {/* Outlined X — panel rengiyle */}
             <Pressable
@@ -1421,11 +1415,12 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
             </Pressable>
           </View>
 
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 28, paddingVertical: 20, gap: 16 }} showsVerticalScrollIndicator={false}>
+          {/* flexGrow:0 + flexShrink:1 — kap yalnız maxHeight'lı; flex:1 native'de ScrollView'u 0 yüksekliğe çökertiyordu (form boş görünüyordu) */}
+          <ScrollView style={{ flexGrow: 0, flexShrink: 1 }} contentContainerStyle={{ paddingHorizontal: 28, paddingVertical: 20, gap: 16 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             {/* Pozisyon — pill strip (outlined active) */}
             <View>
               <FieldLabel>Pozisyon</FieldLabel>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, padding: 4, backgroundColor: '#F5F5F5', borderRadius: 999 }}>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, padding: 4, backgroundColor: U.chipNeutral, borderRadius: 999 }}>
                 {ROLES.map(r => {
                   const active = role === r;
                   return (
@@ -1440,7 +1435,7 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
                         cursor: 'pointer' as any,
                       }}
                     >
-                      <Text style={{ fontSize: 12, fontWeight: active ? '700' : '500', color: active ? P : DS.ink[500] }}>
+                      <Text style={{ fontSize: 12, fontWeight: active ? '700' : '500', color: active ? P : U.ink[500] }}>
                         {ROLE_LABELS[r]}
                       </Text>
                     </Pressable>
@@ -1451,20 +1446,20 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
 
             <View>
               <FieldLabel>Ad Soyad *</FieldLabel>
-              <TextInput style={inputStyle} value={name} onChangeText={setName}
-                placeholder="Tam ad giriniz" placeholderTextColor={DS.ink[400]} />
+              <TextInput style={U.inputStyle} value={name} onChangeText={setName}
+                placeholder="Tam ad giriniz" placeholderTextColor={U.ink[400]} />
             </View>
 
             <View style={{ flexDirection: 'row', gap: 12 }}>
               <View style={{ flex: 1 }}>
                 <FieldLabel>Telefon</FieldLabel>
-                <TextInput style={inputStyle} value={phone} onChangeText={setPhone}
-                  placeholder="0555 000 00 00" placeholderTextColor={DS.ink[400]} keyboardType="phone-pad" />
+                <TextInput style={U.inputStyle} value={phone} onChangeText={setPhone}
+                  placeholder="0555 000 00 00" placeholderTextColor={U.ink[400]} keyboardType="phone-pad" />
               </View>
               <View style={{ flex: 1 }}>
                 <FieldLabel>E-posta</FieldLabel>
-                <TextInput style={inputStyle} value={email} onChangeText={setEmail}
-                  placeholder="ad@mail.com" placeholderTextColor={DS.ink[400]} keyboardType="email-address" autoCapitalize="none" />
+                <TextInput style={U.inputStyle} value={email} onChangeText={setEmail}
+                  placeholder="ad@mail.com" placeholderTextColor={U.ink[400]} keyboardType="email-address" autoCapitalize="none" />
               </View>
             </View>
 
@@ -1472,8 +1467,8 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
             {!employee && (
               <View>
                 <FieldLabel>Şifre (sisteme giriş için, opsiyonel)</FieldLabel>
-                <TextInput style={inputStyle} value={password} onChangeText={setPassword}
-                  placeholder="En az 6 karakter — boş bırakırsan login olmaz" placeholderTextColor={DS.ink[400]} secureTextEntry />
+                <TextInput style={U.inputStyle} value={password} onChangeText={setPassword}
+                  placeholder="En az 6 karakter — boş bırakırsan login olmaz" placeholderTextColor={U.ink[400]} secureTextEntry />
               </View>
             )}
 
@@ -1481,8 +1476,8 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
               {canViewSalaries && (
                 <View style={{ flex: 1 }}>
                   <FieldLabel>Maaş (₺/ay) *</FieldLabel>
-                  <TextInput style={inputStyle} value={salary} onChangeText={setSalary}
-                    placeholder="0,00" placeholderTextColor={DS.ink[400]} keyboardType="decimal-pad" />
+                  <TextInput style={U.inputStyle} value={salary} onChangeText={setSalary}
+                    placeholder="0,00" placeholderTextColor={U.ink[400]} keyboardType="decimal-pad" />
                 </View>
               )}
               <View style={{ flex: 1 }}>
@@ -1499,15 +1494,15 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
             <View>
               <FieldLabel>Notlar</FieldLabel>
               <TextInput
-                style={{ ...inputStyle, minHeight: 64, textAlignVertical: 'top' as any, paddingVertical: 12 }}
+                style={{ ...U.inputStyle, minHeight: 64, textAlignVertical: 'top' as any, paddingVertical: 12 }}
                 value={notes} onChangeText={setNotes} placeholder="Ek bilgi…"
-                placeholderTextColor={DS.ink[400]} multiline />
+                placeholderTextColor={U.ink[400]} multiline />
             </View>
 
             {/* ── Yetkinlik (sadece teknisyen + bağlı profil varsa) ─────── */}
             {isTechnician && linkedProfileId && (
-              <View style={{ gap: 14, paddingTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
-                <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginTop: 8 }}>
+              <View style={{ gap: 14, paddingTop: 8, borderTopWidth: 1, borderTopColor: U.hairline }}>
+                <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: U.ink[500], marginTop: 8 }}>
                   Yetkinlik
                 </Text>
 
@@ -1523,12 +1518,12 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
                           onPress={() => setSkillLevel(key)}
                           style={{
                             flex: 1, paddingVertical: 9, borderRadius: 12, alignItems: 'center',
-                            borderWidth: 1, borderColor: active ? '#0A0A0A' : 'rgba(0,0,0,0.08)',
-                            backgroundColor: active ? '#0A0A0A' : '#FAFAFA',
+                            borderWidth: 1, borderColor: active ? U.ink[900] : U.fieldBorder,
+                            backgroundColor: active ? U.ink[900] : U.surfaceSoft,
                             cursor: 'pointer' as any,
                           }}
                         >
-                          <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#FFF' : DS.ink[500] }}>{label}</Text>
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: active ? U.onDarkPill : U.ink[500] }}>{label}</Text>
                         </Pressable>
                       );
                     })}
@@ -1547,7 +1542,7 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
                     })}
                   >
                     <Check size={14} color={P} strokeWidth={2.4} />
-                    <Text style={{ flex: 1, fontSize: 12, color: DS.ink[700], lineHeight: 17 }}>
+                    <Text style={{ flex: 1, fontSize: 12, color: U.ink[700], lineHeight: 17 }}>
                       Teknisyenin hangi istasyonlarda çalışabileceğini <Text style={{ fontWeight: '700', color: P }}>Personel</Text> sekmesinden yönet. Otomatik atama ve "Yeniden Ata" aynı kaynağı kullanır.
                     </Text>
                     {isRTL() ? <ChevronLeft size={18} color={P} strokeWidth={2.2} /> : <ChevronRight size={18} color={P} strokeWidth={2.2} />}
@@ -1578,13 +1573,13 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
                           style={{
                             flexDirection: 'row', alignItems: 'center', gap: 4,
                             paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
-                            borderWidth: 1.5, borderColor: has ? '#0A0A0A' : 'rgba(0,0,0,0.08)',
+                            borderWidth: 1.5, borderColor: has ? U.ink[900] : U.fieldBorder,
                             backgroundColor: 'transparent',
                             cursor: 'pointer' as any,
                           }}
                         >
-                          {has && <Check size={10} color="#0A0A0A" strokeWidth={2.5} />}
-                          <Text style={{ fontSize: 12, fontWeight: '600', color: has ? '#0A0A0A' : DS.ink[500] }}>{ct}</Text>
+                          {has && <Check size={10} color={U.ink[900]} strokeWidth={2.5} />}
+                          <Text style={{ fontSize: 12, fontWeight: '600', color: has ? U.ink[900] : U.ink[500] }}>{ct}</Text>
                         </Pressable>
                       );
                     })}
@@ -1607,27 +1602,27 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
           <View style={{
             flexDirection: 'row', justifyContent: 'flex-end', gap: 8,
             paddingHorizontal: 28, paddingVertical: 16,
-            borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
+            borderTopWidth: 1, borderTopColor: U.hairline,
           }}>
             <Pressable
               onPress={onClose}
               disabled={saving}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999, borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.12)', opacity: saving ? 0.5 : 1, cursor: 'pointer' as any }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999, borderWidth: 1.5, borderColor: U.fieldBorder, opacity: saving ? 0.5 : 1, cursor: 'pointer' as any }}
             >
-              <X size={12} color={DS.ink[500]} strokeWidth={2.5} />
-              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500] }}>İptal</Text>
+              <X size={12} color={U.ink[500]} strokeWidth={2.5} />
+              <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[500] }}>İptal</Text>
             </Pressable>
             <Pressable
               onPress={handleSave} disabled={saving}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 7,
                 paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999,
-                backgroundColor: DS.ink[900], opacity: saving ? 0.5 : 1,
+                backgroundColor: U.ink[900], opacity: saving ? 0.5 : 1,
                 cursor: 'pointer' as any,
               }}
             >
               {saving ? (
-                <ActivityIndicator color="#FFF" size="small" />
+                <ActivityIndicator color={U.onDarkPill} size="small" />
               ) : (
                 <>
                   <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: P }} />
@@ -1650,6 +1645,7 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
 function SalaryModal({ visible, employee, onClose, onSaved }: {
   visible: boolean; employee: Employee; onClose: () => void; onSaved: () => void;
 }) {
+  const U = useInkUI();
   const P = DS.exec.primary; // panel accent — Patterns §13
   const [year,       setYear]       = useState(String(CUR_YEAR));
   const [month,      setMonth]      = useState(String(CUR_MONTH));
@@ -1687,9 +1683,9 @@ function SalaryModal({ visible, employee, onClose, onSaved }: {
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(10,10,10,0.45)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
         <View style={{
-          backgroundColor: '#FFF', borderRadius: 24, width: '100%', maxWidth: 440,
+          backgroundColor: U.surface, borderRadius: 24, width: '100%', maxWidth: 440,
           maxHeight: '90%', overflow: 'hidden',
-          borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
+          borderWidth: 1, borderColor: U.hairline,
           // @ts-ignore web
           boxShadow: modalShadow,
         }}>
@@ -1697,11 +1693,11 @@ function SalaryModal({ visible, employee, onClose, onSaved }: {
           <View style={{
             flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
             paddingHorizontal: 28, paddingTop: 28, paddingBottom: 18,
-            borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
+            borderBottomWidth: 1, borderBottomColor: U.hairline,
           }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ ...DISPLAY, fontSize: 26, lineHeight: 30, letterSpacing: -0.6, color: DS.ink[900] }}>Maaş Ödemesi</Text>
-              <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 4 }}>{employee.full_name}</Text>
+              <Text style={{ ...DISPLAY, fontSize: 26, lineHeight: 30, letterSpacing: -0.6, color: U.ink[900] }}>Maaş Ödemesi</Text>
+              <Text style={{ fontSize: 12, color: U.ink[500], marginTop: 4 }}>{employee.full_name}</Text>
             </View>
             <Pressable
               onPress={onClose}
@@ -1711,21 +1707,21 @@ function SalaryModal({ visible, employee, onClose, onSaved }: {
             </Pressable>
           </View>
 
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 28, paddingVertical: 20, gap: 14 }}>
+          <ScrollView style={{ flexGrow: 0, flexShrink: 1 }} contentContainerStyle={{ paddingHorizontal: 28, paddingVertical: 20, gap: 14 }} keyboardShouldPersistTaps="handled">
             <View style={{ flexDirection: 'row', gap: 12 }}>
               <View style={{ flex: 1 }}>
                 <FieldLabel>Ay (1-12)</FieldLabel>
-                <TextInput style={inputStyle} value={month} onChangeText={setMonth}
-                  placeholder="Ay" placeholderTextColor={DS.ink[400]} keyboardType="number-pad" />
+                <TextInput style={U.inputStyle} value={month} onChangeText={setMonth}
+                  placeholder="Ay" placeholderTextColor={U.ink[400]} keyboardType="number-pad" />
               </View>
               <View style={{ flex: 1 }}>
                 <FieldLabel>Yıl</FieldLabel>
-                <TextInput style={inputStyle} value={year} onChangeText={setYear}
-                  placeholder="Yıl" placeholderTextColor={DS.ink[400]} keyboardType="number-pad" />
+                <TextInput style={U.inputStyle} value={year} onChangeText={setYear}
+                  placeholder="Yıl" placeholderTextColor={U.ink[400]} keyboardType="number-pad" />
               </View>
             </View>
             {parseInt(month) >= 1 && parseInt(month) <= 12 && (
-              <Text style={{ fontSize: 12, fontWeight: '600', color: CHIP_TONES.info.fg }}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: U.chipTones.info.fg }}>
                 {MONTH_NAMES[parseInt(month)]} {year}
               </Text>
             )}
@@ -1733,20 +1729,20 @@ function SalaryModal({ visible, employee, onClose, onSaved }: {
             <View style={{ flexDirection: 'row', gap: 12 }}>
               <View style={{ flex: 1 }}>
                 <FieldLabel>Brüt Maaş (₺)</FieldLabel>
-                <TextInput style={inputStyle} value={gross} onChangeText={setGross}
-                  placeholder="0,00" placeholderTextColor={DS.ink[400]} keyboardType="decimal-pad" />
+                <TextInput style={U.inputStyle} value={gross} onChangeText={setGross}
+                  placeholder="0,00" placeholderTextColor={U.ink[400]} keyboardType="decimal-pad" />
               </View>
               <View style={{ flex: 1 }}>
                 <FieldLabel>Kesintiler (₺)</FieldLabel>
-                <TextInput style={inputStyle} value={deductions} onChangeText={setDeductions}
-                  placeholder="SGK, vergi…" placeholderTextColor={DS.ink[400]} keyboardType="decimal-pad" />
+                <TextInput style={U.inputStyle} value={deductions} onChangeText={setDeductions}
+                  placeholder="SGK, vergi…" placeholderTextColor={U.ink[400]} keyboardType="decimal-pad" />
               </View>
             </View>
 
             {/* Net box */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: CHIP_TONES.success.bg, borderRadius: 14, padding: 14 }}>
-              <Text style={{ fontSize: 12, fontWeight: '600', color: CHIP_TONES.success.fg }}>Net Ödenecek</Text>
-              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.5, color: CHIP_TONES.success.fg }}>{fmtMoney(net)}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: U.chipTones.success.bg, borderRadius: 14, padding: 14 }}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: U.chipTones.success.fg }}>Net Ödenecek</Text>
+              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.5, color: U.chipTones.success.fg }}>{fmtMoney(net)}</Text>
             </View>
 
             {/* Payment method — outlined active = panel rengi */}
@@ -1763,13 +1759,13 @@ function SalaryModal({ visible, employee, onClose, onSaved }: {
                       style={{
                         flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
                         paddingVertical: 10, borderRadius: 12,
-                        borderWidth: 1.5, borderColor: active ? P : 'rgba(0,0,0,0.08)',
+                        borderWidth: 1.5, borderColor: active ? P : U.fieldBorder,
                         backgroundColor: 'transparent',
                         cursor: 'pointer' as any,
                       }}
                     >
-                      <MIcon size={14} color={active ? P : DS.ink[400]} strokeWidth={active ? 2 : 1.6} />
-                      <Text style={{ fontSize: 12, fontWeight: active ? '700' : '500', color: active ? P : DS.ink[500] }}>
+                      <MIcon size={14} color={active ? P : U.ink[400]} strokeWidth={active ? 2 : 1.6} />
+                      <Text style={{ fontSize: 12, fontWeight: active ? '700' : '500', color: active ? P : U.ink[500] }}>
                         {m.l}
                       </Text>
                     </Pressable>
@@ -1780,8 +1776,8 @@ function SalaryModal({ visible, employee, onClose, onSaved }: {
 
             <View>
               <FieldLabel>Ödeme Tarihi</FieldLabel>
-              <TextInput style={inputStyle} value={payDate} onChangeText={setPayDate}
-                placeholder="YYYY-AA-GG" placeholderTextColor={DS.ink[400]} />
+              <TextInput style={U.inputStyle} value={payDate} onChangeText={setPayDate}
+                placeholder="YYYY-AA-GG" placeholderTextColor={U.ink[400]} />
             </View>
           </ScrollView>
 
@@ -1789,29 +1785,29 @@ function SalaryModal({ visible, employee, onClose, onSaved }: {
           <View style={{
             flexDirection: 'row', justifyContent: 'flex-end', gap: 8,
             paddingHorizontal: 28, paddingVertical: 16,
-            borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
+            borderTopWidth: 1, borderTopColor: U.hairline,
           }}>
             <Pressable
               onPress={onClose}
               disabled={saving}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999, borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.12)', opacity: saving ? 0.5 : 1, cursor: 'pointer' as any }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999, borderWidth: 1.5, borderColor: U.fieldBorder, opacity: saving ? 0.5 : 1, cursor: 'pointer' as any }}
             >
-              <X size={12} color={DS.ink[500]} strokeWidth={2.5} />
-              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500] }}>İptal</Text>
+              <X size={12} color={U.ink[500]} strokeWidth={2.5} />
+              <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[500] }}>İptal</Text>
             </Pressable>
             <Pressable
               onPress={handleSave} disabled={saving}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 7,
                 paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999,
-                backgroundColor: DS.ink[900], opacity: saving ? 0.5 : 1,
+                backgroundColor: U.ink[900], opacity: saving ? 0.5 : 1,
                 cursor: 'pointer' as any,
               }}
             >
-              {saving ? <ActivityIndicator color="#FFF" size="small" /> : (
+              {saving ? <ActivityIndicator color={U.onDarkPill} size="small" /> : (
                 <>
                   <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: P }} />
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFF' }}>Ödemeyi Kaydet</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: U.onDarkPill }}>Ödemeyi Kaydet</Text>
                 </>
               )}
             </Pressable>
@@ -1828,6 +1824,7 @@ function SalaryModal({ visible, employee, onClose, onSaved }: {
 function AdvanceModal({ visible, employee, onClose, onSaved }: {
   visible: boolean; employee: Employee; onClose: () => void; onSaved: () => void;
 }) {
+  const U = useInkUI();
   const P = DS.exec.primary; // panel accent — Patterns §13
   const [amount, setAmount] = useState('');
   const [date,   setDate]   = useState(new Date().toISOString().slice(0, 10));
@@ -1855,9 +1852,9 @@ function AdvanceModal({ visible, employee, onClose, onSaved }: {
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(10,10,10,0.45)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
         <View style={{
-          backgroundColor: '#FFF', borderRadius: 24, width: '100%', maxWidth: 400,
+          backgroundColor: U.surface, borderRadius: 24, width: '100%', maxWidth: 400,
           maxHeight: '90%', overflow: 'hidden',
-          borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
+          borderWidth: 1, borderColor: U.hairline,
           // @ts-ignore web
           boxShadow: modalShadow,
         }}>
@@ -1865,11 +1862,11 @@ function AdvanceModal({ visible, employee, onClose, onSaved }: {
           <View style={{
             flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
             paddingHorizontal: 28, paddingTop: 28, paddingBottom: 18,
-            borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
+            borderBottomWidth: 1, borderBottomColor: U.hairline,
           }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ ...DISPLAY, fontSize: 26, lineHeight: 30, letterSpacing: -0.6, color: DS.ink[900] }}>Avans Ver</Text>
-              <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 4 }}>{employee.full_name}</Text>
+              <Text style={{ ...DISPLAY, fontSize: 26, lineHeight: 30, letterSpacing: -0.6, color: U.ink[900] }}>Avans Ver</Text>
+              <Text style={{ fontSize: 12, color: U.ink[500], marginTop: 4 }}>{employee.full_name}</Text>
             </View>
             <Pressable
               onPress={onClose}
@@ -1882,18 +1879,18 @@ function AdvanceModal({ visible, employee, onClose, onSaved }: {
           <View style={{ paddingHorizontal: 28, paddingVertical: 20, gap: 14 }}>
             <View>
               <FieldLabel>Tutar (₺)</FieldLabel>
-              <TextInput style={inputStyle} value={amount} onChangeText={setAmount}
-                placeholder="0,00" placeholderTextColor={DS.ink[400]} keyboardType="decimal-pad" />
+              <TextInput style={U.inputStyle} value={amount} onChangeText={setAmount}
+                placeholder="0,00" placeholderTextColor={U.ink[400]} keyboardType="decimal-pad" />
             </View>
             <View>
               <FieldLabel>Tarih</FieldLabel>
-              <TextInput style={inputStyle} value={date} onChangeText={setDate}
-                placeholder="YYYY-AA-GG" placeholderTextColor={DS.ink[400]} />
+              <TextInput style={U.inputStyle} value={date} onChangeText={setDate}
+                placeholder="YYYY-AA-GG" placeholderTextColor={U.ink[400]} />
             </View>
             <View>
               <FieldLabel>Açıklama (opsiyonel)</FieldLabel>
-              <TextInput style={inputStyle} value={desc} onChangeText={setDesc}
-                placeholder="Kısa not…" placeholderTextColor={DS.ink[400]} />
+              <TextInput style={U.inputStyle} value={desc} onChangeText={setDesc}
+                placeholder="Kısa not…" placeholderTextColor={U.ink[400]} />
             </View>
           </View>
 
@@ -1901,29 +1898,29 @@ function AdvanceModal({ visible, employee, onClose, onSaved }: {
           <View style={{
             flexDirection: 'row', justifyContent: 'flex-end', gap: 8,
             paddingHorizontal: 28, paddingVertical: 16,
-            borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
+            borderTopWidth: 1, borderTopColor: U.hairline,
           }}>
             <Pressable
               onPress={onClose}
               disabled={saving}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999, borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.12)', opacity: saving ? 0.5 : 1, cursor: 'pointer' as any }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999, borderWidth: 1.5, borderColor: U.fieldBorder, opacity: saving ? 0.5 : 1, cursor: 'pointer' as any }}
             >
-              <X size={12} color={DS.ink[500]} strokeWidth={2.5} />
-              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500] }}>İptal</Text>
+              <X size={12} color={U.ink[500]} strokeWidth={2.5} />
+              <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[500] }}>İptal</Text>
             </Pressable>
             <Pressable
               onPress={handleSave} disabled={saving}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 7,
                 paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999,
-                backgroundColor: DS.ink[900], opacity: saving ? 0.5 : 1,
+                backgroundColor: U.ink[900], opacity: saving ? 0.5 : 1,
                 cursor: 'pointer' as any,
               }}
             >
-              {saving ? <ActivityIndicator color="#FFF" size="small" /> : (
+              {saving ? <ActivityIndicator color={U.onDarkPill} size="small" /> : (
                 <>
                   <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: P }} />
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFF' }}>Avansı Kaydet</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: U.onDarkPill }}>Avansı Kaydet</Text>
                 </>
               )}
             </Pressable>

@@ -29,10 +29,12 @@ import {
   Activity, Box, Layers, Hash, User as UserIcon, Briefcase, FlaskConical,
   ListChecks, Eye, FolderOpen, ExternalLink, Timer, Sparkles, Search,
   Check,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { HubContext } from '../../../core/ui/HubContext';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 import { DS } from '../../../core/theme/dsTokens';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { MOBILE_PANEL_THEMES } from '../../../core/theme/mobileDesignTokens';
 import { useAuthStore } from '../../../core/store/authStore';
@@ -66,7 +68,7 @@ import { isScreenRecordingSupported, startScreenRecording } from '../helpers/scr
 import { supabase } from '../../../core/api/supabase';
 import { createAttachmentRecord } from '../api';
 import type { SupportAttachment } from '../types';
-import { Video, Square, Lightbulb } from 'lucide-react-native';
+import { Video, Square, Lightbulb } from '../../../core/ui/icons';
 import {
   SupportTicket, SupportMessage, SupportStatusHistoryEntry,
   SupportCategory, SupportPriority, SupportStatus,
@@ -93,11 +95,15 @@ function hexA(hex: string, a: number) {
 // ─── Operasyonel UI paleti — nötr graphite inks + panel-aware zemin & accent ──
 // `bg` (sayfa zemini) ve `orange` (accent) aktif panele göre güncellenir
 // (applyPanelPalette). Lab/admin sıcak kalır, klinik/hekim yeşil, istasyon mavi.
-const W = {
+const W: Record<string, string> = {
   bg:         '#F5F1EB', // sayfa zemini — panel bgPage ile güncellenir
   soft:       '#FAFAFA', // icon kapsül / hover dolgu — panel bgSoft ile güncellenir
   surface:    '#FFFFFF',
   inkStrong:  DS.ink[900], // #0A0A0A — başlık & koyu CTA
+  // inkStrong ZEMİNLİ pill/balon üzerindeki metin+ikon. Koyu temada inkStrong
+  // KREM olur → '#FFFFFF' kaybolur (CLAUDE.md "ikiz tuzak").
+  onInk:      '#FFFFFF',
+  onInkMute:  'rgba(255,255,255,0.7)',
   ink:        DS.ink[700], // #2C2C2C — gövde
   inkMute:    DS.ink[500], // #6B6B6B — ikincil
   inkSoft:    DS.ink[400], // #9A9A9A — meta / placeholder
@@ -167,7 +173,7 @@ function PillBtn({
   size?: 'sm' | 'md';
 }) {
   const v = {
-    dark:    { bg: W.inkStrong,  fg: '#FFFFFF', border: W.inkStrong, hover: W.ink },
+    dark:    { bg: W.inkStrong,  fg: W.onInk,   border: W.inkStrong, hover: W.ink },
     primary: { bg: W.orange,     fg: '#FFFFFF', border: W.orange,    hover: hexA(W.orange, 0.85) },
     light:   { bg: W.surface,    fg: W.inkStrong, border: W.border,  hover: W.soft },
     ghost:   { bg: 'transparent', fg: W.inkMute, border: 'transparent', hover: W.soft },
@@ -369,6 +375,22 @@ export function SupportScreen() {
   // Panel-aware zemin & accent — klinik yeşil, lab sarı, admin mercan, istasyon mavi
   const panelTheme = usePanelTheme();
   applyPanelPalette(panelTheme.key, panelTheme.primary);
+  // Koyu tema — modül-singleton W'yi (applyPanelPalette deseniyle aynı) tek noktadan
+  // koyuya çevir; tüm W. kullanımları (kart/ink/kenarlık) otomatik döner. Accent (orange)
+  // ve accent-üstü beyaz metin dokunulmaz.
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
+  if (isDark) {
+    W.surface = T.card; W.soft = T.cardSoft; W.bg = T.bg;
+    W.inkStrong = T.ink; W.ink = T.ink2; W.inkMute = T.ink3; W.inkSoft = T.ink3;
+    W.onInk = '#141312'; W.onInkMute = 'rgba(20,19,18,0.62)';
+    W.border = T.hairline; W.borderSoft = T.hairline2; W.cardBorder = T.hairline;
+  } else {
+    W.surface = '#FFFFFF';
+    W.inkStrong = DS.ink[900]; W.ink = DS.ink[700]; W.inkMute = DS.ink[500]; W.inkSoft = DS.ink[400];
+    W.onInk = '#FFFFFF'; W.onInkMute = 'rgba(255,255,255,0.7)';
+    W.border = DS.ink[200]; W.borderSoft = DS.ink[100]; W.cardBorder = 'rgba(0,0,0,0.05)';
+  }
 
   const isAdmin = profile?.user_type === 'admin';
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
@@ -650,9 +672,9 @@ function QueueSidebar({
                 ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
               })}
             >
-              <Text style={{ fontSize: 11.5, fontWeight: '500', color: active ? '#FFFFFF' : W.inkMute }}>{f.label}</Text>
+              <Text style={{ fontSize: 11.5, fontWeight: '500', color: active ? W.onInk : W.inkMute }}>{f.label}</Text>
               {count > 0 && (
-                <Text style={{ fontSize: 10, fontWeight: '700', color: active ? 'rgba(255,255,255,0.7)' : W.inkSoft }}>{count}</Text>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: active ? W.onInkMute : W.inkSoft }}>{count}</Text>
               )}
             </Pressable>
           );
@@ -767,7 +789,7 @@ function QueueEmpty({ onNew, isAdmin }: { onNew: () => void; isAdmin: boolean })
         {isAdmin ? 'Aktif talep yok' : 'Henüz destek talebin yok'}
       </Text>
       {!isAdmin && (
-        <PillBtn variant="dark" size="sm" onPress={onNew} leftIcon={<Plus size={13} color="#FFFFFF" strokeWidth={2.2} />}>Yeni Talep</PillBtn>
+        <PillBtn variant="dark" size="sm" onPress={onNew} leftIcon={<Plus size={13} color={W.onInk} strokeWidth={2.2} />}>Yeni Talep</PillBtn>
       )}
     </View>
   );
@@ -1273,7 +1295,7 @@ function CenterWorkspace({ ticket, isAdmin, onUpdate, onBack, showBack, px }: {
                 };
               }}
             >
-              <Send size={16} color="#FFF" strokeWidth={2} />
+              <Send size={16} color={isInternal ? '#FFF' : W.onInk} strokeWidth={2} />
             </Pressable>
           </View>
         </View>
@@ -1362,7 +1384,7 @@ function MessageBubble({ message, isOwnPanel, attachments = [], onPreviewStl }: 
             </Text>
           </View>
         )}
-        <Text style={{ fontSize: 13.5, lineHeight: 19, color: isOwnPanel && !isInternal ? '#FFF' : W.ink }}>
+        <Text style={{ fontSize: 13.5, lineHeight: 19, color: isOwnPanel && !isInternal ? W.onInk : W.ink }}>
           {message.body}
         </Text>
         {attachments.length > 0 && <AttachmentList attachments={attachments} onPreviewStl={onPreviewStl} />}
@@ -1612,7 +1634,7 @@ function ChecklistSection({ ticket, isAdmin, onUpdate }: { ticket: SupportTicket
                   borderRadius: 12, backgroundColor: hovered ? W.ink : W.inkStrong,
                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                 })}>
-                  <Plus size={13} color="#FFF" strokeWidth={2} />
+                  <Plus size={13} color={W.onInk} strokeWidth={2} />
                 </Pressable>
                 <Pressable onPress={() => { setAdding(false); setNewLabel(''); }} hitSlop={6} style={{ width: 30, alignItems: 'center', justifyContent: 'center' }}>
                   <X size={13} color={W.inkSoft} strokeWidth={1.7} />
@@ -1764,7 +1786,7 @@ function NewTicketModal({ visible, onClose, onCreated, labId, prefill }: {
               variant="dark"
               onPress={handleSubmit}
               disabled={saving}
-              leftIcon={<MessageCirclePlus size={14} color="#FFF" strokeWidth={1.8} />}
+              leftIcon={<MessageCirclePlus size={14} color={W.onInk} strokeWidth={1.8} />}
             >
               {saving ? 'Oluşturuluyor…' : 'Talep Aç'}
             </PillBtn>

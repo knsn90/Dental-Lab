@@ -33,6 +33,9 @@
         "EXPO_PUBLIC_SUPABASE_URL": "https://kjwjxqfdsxkxgcgophdy.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtqd2p4cWZkc3hreGdjZ29waGR5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxODMwODYsImV4cCI6MjA5NDc1OTA4Nn0.JWYGFTRvepDfkfZlvSxqjOm5oEw6RfWwhoz070MBShU",
         "EXPO_PUBLIC_VAPID_PUBLIC_KEY": "BPFYa4FP0L6xMCVatkEUoJLbAOdBiPZW0fIVPxvAVYX81aFAu485caHXm5Uibs1AKKQl5yqHd5v_GuPQdMdMpQ0"
+      },
+      "android": {
+        "buildType": "apk"
       }
     },
     "production": {

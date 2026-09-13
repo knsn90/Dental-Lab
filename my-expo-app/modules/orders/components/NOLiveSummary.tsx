@@ -6,7 +6,7 @@
  */
 import React from 'react';
 import { View, Text } from 'react-native';
-import { Calendar } from 'lucide-react-native';
+import { Calendar } from '../../../core/ui/icons';
 import { NO, NOType, NORadius } from './NOTokens';
 import { NOEyebrow } from './NOFormPrimitives';
 

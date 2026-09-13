@@ -9,9 +9,10 @@
 //   • On press: scale-down spring
 
 import React, { useEffect, useRef } from 'react';
-import { View, Text, Pressable, Platform, Animated, Easing } from 'react-native';
-import { Plus, Sparkles, ArrowRight } from 'lucide-react-native';
+import { View, Text, Pressable, Platform, Animated, Easing, Image } from 'react-native';
+import { Plus, Sparkles, ArrowRight } from '../icons';
 import { autoT } from '../../i18n/autoTranslate';
+import { GradientFill } from '../gradients';
 
 interface Props {
   onPress: () => void;
@@ -23,6 +24,24 @@ interface Props {
   subtitle?: string;
   /** Opsiyonel yan kart — verilirse CTA ¾, slot ¼ genişlikte yan yana dizilir. */
   rightSlot?: React.ReactNode;
+  /**
+   * Opsiyonel 3D illüstrasyon (require'lanmış PNG). Verilirse kartın sonuna
+   * yaslanır ve kartın SINIRINI AŞAR (üstten/alttan taşar) — 3D derinlik hissi.
+   * Görselin kendi "+" rozeti olduğu için beyaz artı dairesi gizlenir.
+   * Verilmezse kart bugünkü davranışını birebir korur (diğer paneller etkilenmez).
+   */
+  art?: any;
+  /**
+   * Opsiyonel gradyan zemin (ör. lacivert HERO_NAVY). Verilmezse kart düz
+   * `accentColor` ile boyanır — diğer paneller bugünkü görünümünü korur.
+   */
+  gradient?: { from: string; to: string; angle?: number };
+  /**
+   * Opsiyonel 3D ikon (require'lanmış PNG) — beyaz artı dairesinin YERİNE kartın
+   * içinde durur (art gibi taşmaz; yan kartlı dar düzen için). Aynı nefes
+   * animasyonunu alır. Verilmezse artı dairesi korunur.
+   */
+  icon?: any;
 }
 
 export function NewOrderCTACard({
@@ -32,6 +51,9 @@ export function NewOrderCTACard({
   title,
   subtitle,
   rightSlot,
+  art,
+  gradient,
+  icon,
 }: Props) {
   // Varsayılan metinler prop olarak gelir → JSX metin düğümü değil, autoT() şart
   const kickerText = kicker ?? autoT('PRIMARY EYLEM');
@@ -82,7 +104,11 @@ export function NewOrderCTACard({
       onPress={onPress}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
-      style={rightSlot ? { flex: 2.4 } : undefined}
+      style={[
+        rightSlot ? { flex: 2.4 } : null,
+        // Görsel karttan taştığı için sonraki kartların ALTINDA kalmamalı
+        art ? ({ zIndex: 3 } as any) : null,
+      ]}
     >
       <Animated.View
         style={{
@@ -90,13 +116,13 @@ export function NewOrderCTACard({
             ? { flex: 1 }
             : { marginHorizontal: 16, marginBottom: 16 }),
           borderRadius: 20,
-          backgroundColor: accentColor,
+          backgroundColor: gradient?.to ?? accentColor,
           overflow: 'hidden',
           transform: [{ scale: pressScale }],
           ...(Platform.OS === 'web'
-            ? ({ boxShadow: `0 8px 22px ${accentColor}40` } as any)
+            ? ({ boxShadow: `0 8px 22px ${(gradient?.to ?? accentColor)}40` } as any)
             : {
-                shadowColor: accentColor,
+                shadowColor: gradient?.to ?? accentColor,
                 shadowOpacity: 0.28,
                 shadowRadius: 14,
                 shadowOffset: { width: 0, height: 6 },
@@ -104,6 +130,9 @@ export function NewOrderCTACard({
               }),
         }}
       >
+        {/* ── Gradyan zemin (verildiyse) ─────────────────────────────── */}
+        {!!gradient && <GradientFill from={gradient.from} to={gradient.to} angle={gradient.angle ?? 135} />}
+
         {/* ── Single background blob (slow drift) ────────────────────── */}
         <Animated.View
           pointerEvents="none"
@@ -160,7 +189,13 @@ export function NewOrderCTACard({
             )}
           </View>
 
-          {/* Right: animated plus circle (smaller, subtle halo) */}
+          {/* Right: 3D görsel varsa yalnız yer tutucu (görsel kartın dışına çizilir),
+              yoksa animasyonlu artı dairesi */}
+          {art ? <View style={{ width: 70 }} /> : icon ? (
+            <Animated.View style={{ width: 54, height: 54, transform: [{ scale: pulseScale }] }}>
+              <Image source={icon} resizeMode="contain" style={{ width: '100%', height: '100%' }} />
+            </Animated.View>
+          ) : (
           <View style={{ width: 48, height: 48, alignItems: 'center', justifyContent: 'center' }}>
             {/* Soft halo behind */}
             <Animated.View
@@ -196,11 +231,28 @@ export function NewOrderCTACard({
                     }),
               }}
             >
-              <Plus size={22} color={accentColor} strokeWidth={2.4} />
+              <Plus size={22} color={gradient?.to ?? accentColor} strokeWidth={2.4} />
             </Animated.View>
           </View>
+          )}
         </View>
       </Animated.View>
+
+      {/* ── 3D illüstrasyon — kartın DIŞINA taşar (üstten/alttan) ───────── */}
+      {!!art && (
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            width: 72, height: 84,
+            // Görsel YALNIZ ÜSTTEN taşar; alt kenarı kartın alt kenarıyla hizalı.
+            // rightSlot yokken kartın 16px alt boşluğu Pressable'ın içinde kalıyor.
+            ...(rightSlot ? { end: 16, bottom: 0 } : { end: 32, bottom: 16 }),
+          }}
+        >
+          <Image source={art} resizeMode="contain" style={{ width: '100%', height: '100%' }} />
+        </View>
+      )}
     </Pressable>
   );
 

@@ -15,11 +15,14 @@ import {
   Search, RefreshCw, PlusCircle, UserCheck, Trash2, ArrowLeftRight,
   Pencil, Info, XCircle, LogIn, MessageCircle, Paperclip, Package,
   ClipboardCheck, Ban,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { supabase } from '../../../core/api/supabase';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { useInkUI } from '../../../core/theme/inkScale';
+import { LogDetail, logSummaryLine, fullTimestamp, ENTITY_LABEL } from '../../logs/logDetail';
+import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 
 // ── Types ───────────────────────────────────────────────────────────────
 type LogTab = 'all' | 'users' | 'technicians' | 'clinics' | 'doctors';
@@ -92,7 +95,12 @@ const CARD_SHADOW = Platform.select({
 // ── LogRow ──────────────────────────────────────────────────────────────
 function LogRow({ log, isLast }: { log: ActivityLog; isLast: boolean }) {
   const T = useMobileTokens();
+  const U = useInkUI();
+  // Ayrıntı varsayılan kapalı — liste taranabilir kalır, isteyen satırı açar.
+  const [open, setOpen] = useState(false);
   const { Icon, color, bg } = actionIcon(log.action);
+  const summary = logSummaryLine(log);
+  const entityName = log.entity_type ? (ENTITY_LABEL[log.entity_type] ?? log.entity_type) : null;
   const at = normType(log.actor_type);
   const badge =
     at === 'admin'      ? { label: 'Admin',     bg: '#FEF3C7', text: '#92400E' } :
@@ -102,7 +110,16 @@ function LogRow({ log, isLast }: { log: ActivityLog; isLast: boolean }) {
     at === 'courier'    ? { label: 'Kurye',     bg: '#FEF3C7', text: '#B45309' } :
                           { label: 'Lab',       bg: '#DCFCE7', text: '#166534' };
   return (
-    <View className="flex-row gap-3 px-4 py-3" style={!isLast ? { borderBottomWidth: 1, borderBottomColor: T.hairline2 } : undefined}>
+    <Pressable
+      onPress={() => setOpen(v => !v)}
+      accessibilityLabel={open ? autoT('Ayrıntıyı gizle') : autoT('Ayrıntı')}
+      className="flex-row gap-3 px-4 py-3"
+      style={({ hovered }: any) => ({
+        ...(!isLast ? { borderBottomWidth: 1, borderBottomColor: T.hairline2 } : {}),
+        backgroundColor: open ? U.rowHover : hovered ? U.rowHover : 'transparent',
+        ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+      })}
+    >
       <View className="w-8 h-8 rounded-lg items-center justify-center" style={{ backgroundColor: bg }}>
         <Icon size={15} color={color} strokeWidth={1.8} />
       </View>
@@ -115,11 +132,31 @@ function LogRow({ log, isLast }: { log: ActivityLog; isLast: boolean }) {
           <Text className="text-[11px] ml-auto" style={{ color: T.ink3 }}>{timeAgo(log.created_at)}</Text>
         </View>
         <Text className="text-[13px]" style={{ color: T.ink2 }}>{log.action}</Text>
-        {log.entity_label ? (
-          <Text className="text-[11px] mt-0.5" style={{ color: T.ink3 }}>{log.entity_label}</Text>
+        {/* Bağlam şeridi — açmadan da hangi kayıt/sipariş/aşama olduğu görünsün */}
+        {(log.entity_label || summary) ? (
+          <View className="flex-row items-center gap-1.5 mt-0.5">
+            {entityName ? (
+              <View style={{ paddingHorizontal: 6, paddingVertical: 1.5, borderRadius: 5, backgroundColor: U.chipNeutral, flexShrink: 0 }}>
+                <Text style={{ fontSize: 9.5, fontWeight: '700', letterSpacing: 0.3, color: U.ink[500] }}>{entityName}</Text>
+              </View>
+            ) : null}
+            <Text className="text-[11px]" style={{ color: T.ink3, flexShrink: 1 }} numberOfLines={1}>
+              {[log.entity_label, summary].filter(Boolean).join(' · ')}
+            </Text>
+          </View>
         ) : null}
+
+        {/* Göreli zaman denetim için yetmez → saniyeli tam damga + ayrıntı düğmesi */}
+        <View className="flex-row items-center gap-2 mt-1">
+          <Text style={{ fontSize: 10.5, color: U.ink[400] }}>{fullTimestamp(log.created_at)}</Text>
+          <Text style={{ fontSize: 10.5, fontWeight: '700', color: U.ink[500], marginStart: 'auto' as any }}>
+            {open ? autoT('Ayrıntıyı gizle') + ' ▴' : autoT('Ayrıntı') + ' ▾'}
+          </Text>
+        </View>
+
+        {open && <LogDetail log={log} />}
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -171,7 +208,9 @@ export function LogsSection({ accentColor = '#4771AB' }: Props) {
     if (tab === 'clinics'     && at !== 'clinic')     return false;
     if (tab === 'doctors'     && at !== 'doctor')     return false;
     if (!q) return true;
-    return l.actor_name.toLowerCase().includes(q) || l.action.toLowerCase().includes(q) || l.entity_label?.toLowerCase().includes(q);
+    const meta = l.metadata ? JSON.stringify(l.metadata).toLowerCase() : '';
+    return l.actor_name.toLowerCase().includes(q) || l.action.toLowerCase().includes(q)
+      || l.entity_label?.toLowerCase().includes(q) || meta.includes(q);
   });
 
   const TABS: { key: LogTab; label: string }[] = [
@@ -257,7 +296,7 @@ export function LogsSection({ accentColor = '#4771AB' }: Props) {
       ) : (
         <ScrollView
           className="flex-1"
-          contentContainerStyle={{ paddingHorizontal: 28, paddingBottom: 120 }}
+          contentContainerStyle={{ paddingHorizontal: PAGE_PADDING, paddingBottom: 120 }}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadLogs(true)} tintColor={accentColor} />}
         >

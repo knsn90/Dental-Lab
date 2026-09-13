@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text } from 'react-native';
+import { useThemeModeStore } from '../store/themeModeStore';
 
 interface Props {
   active: boolean;
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export function TabButton({ active, label, count, onPress, accentColor }: Props) {
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const progress = useRef(new Animated.Value(active ? 1 : 0)).current;
   const hover = useRef(new Animated.Value(0)).current;
 
@@ -23,7 +25,7 @@ export function TabButton({ active, label, count, onPress, accentColor }: Props)
 
   const color = progress.interpolate({
     inputRange: [0, 1],
-    outputRange: ['#64748B', '#FFFFFF'],
+    outputRange: [isDark ? 'rgba(247,242,233,0.45)' : '#64748B', '#FFFFFF'],
   });
   const hoverOpacity = Animated.multiply(hover, Animated.subtract(1, progress));
 
@@ -38,7 +40,7 @@ export function TabButton({ active, label, count, onPress, accentColor }: Props)
       }
       style={styles.pill}
     >
-      <Animated.View style={[styles.pillHoverBg, { opacity: hoverOpacity }]} pointerEvents="none" />
+      <Animated.View style={[styles.pillHoverBg, isDark && { backgroundColor: 'rgba(255,255,255,0.06)' }, { opacity: hoverOpacity }]} pointerEvents="none" />
       <Animated.View
         style={[styles.pillBg, { backgroundColor: accentColor, opacity: progress }]}
         pointerEvents="none"

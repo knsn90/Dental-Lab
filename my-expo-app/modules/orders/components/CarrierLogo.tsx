@@ -16,7 +16,7 @@
 // nötr bir paket ikonuna düşer — liste hiçbir durumda boş kutu göstermez.
 import React, { useState } from 'react';
 import { View, Platform } from 'react-native';
-import { Package } from 'lucide-react-native';
+import { Package } from '../../../core/ui/icons';
 import { SvgUri } from 'react-native-svg';
 
 interface Props {

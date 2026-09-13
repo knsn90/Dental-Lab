@@ -13,6 +13,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, LayoutChangeEvent, Pressable, StyleSheet, View, Text, Platform } from 'react-native';
+import { useThemeModeStore } from '../store/themeModeStore';
 
 export interface SlideTabItem<K extends string = string> {
   key: K;
@@ -52,6 +53,7 @@ export function SlideTabBar<K extends string>({
   size = 'md',
   style,
 }: Props<K>) {
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const SZ = SIZES[size];
   // Her tab'ın ölçümleri — key'e göre Map
   const layoutsRef = useRef<Record<string, Rect>>({});
@@ -133,7 +135,7 @@ export function SlideTabBar<K extends string>({
                 // Cursor altındaki → beyaz. Cursor başka tabdayken AKTİF olan
                 // accent rengiyle koyu kalır: hover sırasında "neredeyim"
                 // bilgisi kaybolmasın, ama gri pasiflerle de karışmasın.
-                { color: underCursor ? '#FFFFFF' : isActive ? accentColor : '#64748B' },
+                { color: underCursor ? '#FFFFFF' : isActive ? accentColor : (isDark ? 'rgba(247,242,233,0.45)' : '#64748B') },
               ]}
             >
               {item.label}

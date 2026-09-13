@@ -15,7 +15,7 @@ export function StatCard({ label, value, accent, accentBg, icon, trend, trendUp 
   const up = trendUp !== false;
   return (
     <View
-      className="flex-1 bg-white rounded-2xl p-4 gap-2 border border-black/[0.06]"
+      className="flex-1 bg-white dark:bg-[#1B1916] rounded-2xl p-4 gap-2 border border-black/[0.06] dark:border-white/10"
       // @ts-ignore web shadow
       style={{ boxShadow: '0 1px 8px rgba(0,0,0,0.06)' }}
     >
@@ -27,7 +27,7 @@ export function StatCard({ label, value, accent, accentBg, icon, trend, trendUp 
       </View>
 
       <View className="flex-row items-center justify-between">
-        <Text className="flex-1 text-[12px] font-medium text-ink-500">{label}</Text>
+        <Text className="flex-1 text-[12px] font-medium text-ink-500 dark:text-white/55">{label}</Text>
         {trend != null && (
           <View
             className="px-1.5 py-0.5 rounded-md"

@@ -14,9 +14,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Pressable, Text, View, ActivityIndicator, Platform,
-  Modal, TextInput, ScrollView,
+  Modal, TextInput, ScrollView, Image,
 } from 'react-native';
-import { ScanFace, X, Search } from 'lucide-react-native';
+import { ScanFace, X, Search } from '../../../core/ui/icons';
 import { toast } from '../../../core/ui/Toast';
 import { useAuthStore } from '../../../core/store/authStore';
 import { isSupported as arSupported, startScanMode, isFrontScanSupported, type ScanMode } from 'ar-scanner';
@@ -185,6 +185,16 @@ function ScanPill({ accentColor, busy, compact, onPress }: {
   );
 }
 
+// 3D yüz tarama ikonları (assets) — kartın accent'ine göre seçilir
+const FACE_SCAN_ICON_GREEN = require('../../../assets/images/icon-3d-face-scan-green.png');
+const FACE_SCAN_ICON_NAVY  = require('../../../assets/images/icon-3d-face-scan-navy.png');
+function isGreenish(hex: string): boolean {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i.exec(hex || '');
+  if (!m) return false;
+  const [r, g, b] = [m[1], m[2], m[3]].map(v => parseInt(v, 16));
+  return g > r && g > b;
+}
+
 // ─── Card variant (dashboard ¼ kart) ────────────────────────────────────────
 // "Yeni vaka oluştur" hero kartının yanında ¼ genişlikte dikey kart.
 // NewOrderCTACard ile aynı tasarım dili: accent zemin, beyaz ikon dairesi,
@@ -230,23 +240,16 @@ function ScanCard({ accentColor, busy, onPress }: {
         }}
       />
 
-      {/* CTA'daki beyaz daire — artı yerine yüz tarama ikonu */}
-      <View
-        style={{
-          width: 44, height: 44, borderRadius: 22,
-          backgroundColor: '#FFFFFF',
-          alignItems: 'center', justifyContent: 'center',
-          ...(Platform.OS === 'web'
-            ? ({ boxShadow: '0 4px 10px rgba(0,0,0,0.14)' } as any)
-            : {
-                shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 7,
-                shadowOffset: { width: 0, height: 3 }, elevation: 4,
-              }),
-        }}
-      >
+      {/* 3D yüz tarama ikonu — yeşil panelde yeşil, diğerlerinde lacivert.
+          (CTA'nın yanındaki kartta yeni-vaka 3D ikonuyla eşleşir.) */}
+      <View style={{ width: 50, height: 50, alignItems: 'center', justifyContent: 'center' }}>
         {busy
-          ? <ActivityIndicator size="small" color={accentColor} />
-          : <ScanFace size={22} color={accentColor} strokeWidth={2.4} />}
+          ? <ActivityIndicator size="small" color="#FFFFFF" />
+          : <Image
+              source={isGreenish(accentColor) ? FACE_SCAN_ICON_GREEN : FACE_SCAN_ICON_NAVY}
+              resizeMode="contain"
+              style={{ width: '100%', height: '100%' }}
+            />}
       </View>
 
       <Text

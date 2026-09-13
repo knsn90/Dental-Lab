@@ -8,7 +8,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, Image, Linking } from 'react-native';
 import { supabase } from '../../../core/api/supabase';
-import { Box, Download, FileText, Image as ImageIcon, FileVideo, FileWarning } from 'lucide-react-native';
+import { Box, Download, FileText, Image as ImageIcon, FileVideo, FileWarning } from '../../../core/ui/icons';
 import type { SupportAttachment, SupportAttachmentKind } from '../types';
 
 const BUCKET = 'support-attachments';

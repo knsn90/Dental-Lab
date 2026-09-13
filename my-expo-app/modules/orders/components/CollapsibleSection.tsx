@@ -3,7 +3,7 @@
 
 import React, { useState } from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
-import { ChevronDown, ChevronRight, ChevronLeft } from 'lucide-react-native';
+import { ChevronDown, ChevronRight, ChevronLeft } from '../../../core/ui/icons';
 import { isRTL } from '../../../core/i18n';
 import { useStationTheme, hexA } from '../../../core/theme/stationPalette';
 

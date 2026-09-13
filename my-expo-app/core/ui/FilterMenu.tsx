@@ -15,7 +15,7 @@
 
 import React, { useRef, useState } from 'react';
 import { View, Text, Pressable, Modal, Platform, Dimensions, ScrollView } from 'react-native';
-import { ChevronDown, Check } from 'lucide-react-native';
+import { ChevronDown, Check } from './icons';
 import { useMobileTokens } from '../theme/mobileDesignTokens';
 
 const webCursor = Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {};

@@ -5,10 +5,12 @@
  */
 import React from 'react';
 import { View, Text, Pressable, Platform, StyleSheet, Modal } from 'react-native';
-import { User as UserIcon, LogOut, ChevronRight, ChevronLeft, Monitor, Sun, Moon } from 'lucide-react-native';
+import { User as UserIcon, LogOut, ChevronRight, ChevronLeft, Monitor, Sun, Moon, KeyRound } from '../icons';
 import { isRTL } from '../../i18n';
 import { autoT } from '../../i18n/autoTranslate';
 import { useThemeModeStore } from '../../store/themeModeStore';
+import { usePanelTheme } from '../../theme/usePanelTheme';
+import { useAccentTones } from '../HeroGlow';
 
 export interface ProfileMenuProps {
   visible: boolean;
@@ -16,13 +18,17 @@ export interface ProfileMenuProps {
   onClose: () => void;
   onProfile: () => void;
   onLogout: () => void;
+  /** Verilirse "Giriş Kodum" (tablet PIN) satırı gösterilir. */
+  onAccessCode?: () => void;
 }
 
-export function ProfileMenu({ visible, anchorTop, onClose, onProfile, onLogout }: ProfileMenuProps) {
+export function ProfileMenu({ visible, anchorTop, onClose, onProfile, onLogout, onAccessCode }: ProfileMenuProps) {
   const rtl = isRTL();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const mode    = useThemeModeStore(s => s.mode);
   const setMode = useThemeModeStore(s => s.setMode);
+  // Seçili tema dairesi panel accent'iyle dolar (koyuda derin karşılığı).
+  const { fill: accentFill } = useAccentTones(usePanelTheme().primary);
 
   const surface = isDark ? '#1B1916' : '#FFFFFF';
   const ink     = isDark ? '#F7F2E9' : '#0E0E0E';
@@ -30,8 +36,6 @@ export function ProfileMenu({ visible, anchorTop, onClose, onProfile, onLogout }
   const ink3    = isDark ? 'rgba(247,242,233,0.45)' : 'rgba(20,16,12,0.5)';
   const hairline = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(20,16,12,0.06)';
   const segBg    = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(20,16,12,0.05)';
-  const activeBg = isDark ? '#2A2724' : '#FFFFFF';
-  const activeBorder = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(20,16,12,0.08)';
 
   const themeOptions: Array<{ value: 'system' | 'light' | 'dark'; icon: any; label: string }> = [
     // Sabit dizideki label alanı JSX değil → autoT() şart
@@ -77,11 +81,15 @@ export function ProfileMenu({ visible, anchorTop, onClose, onProfile, onLogout }
         >
           {/* Theme mode segmented control */}
           <View style={{ paddingHorizontal: 10, paddingTop: 10, paddingBottom: 8 }}>
+            {/* Toggle tarzı: kapsül ray + seçili olan DOLU accent daire
+                (profil kartıyla aynı dil). */}
             <View style={{
               flexDirection: 'row',
+              alignItems: 'center',
+              alignSelf: 'flex-start',
               backgroundColor: segBg,
-              borderRadius: 8,
-              padding: 2,
+              borderRadius: 999,
+              padding: 3,
               gap: 2,
             }}>
               {themeOptions.map(opt => {
@@ -91,21 +99,19 @@ export function ProfileMenu({ visible, anchorTop, onClose, onProfile, onLogout }
                   <Pressable
                     key={opt.value}
                     onPress={() => setMode(opt.value)}
-                    style={{ flex: 1 }}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: isActive }}
                     accessibilityLabel={opt.label}
                   >
                     {({ pressed }: any) => (
                       <View style={{
-                        paddingVertical: 6,
-                        borderRadius: 6,
-                        backgroundColor: isActive ? activeBg : 'transparent',
-                        borderWidth: isActive ? 1 : 0,
-                        borderColor: isActive ? activeBorder : 'transparent',
+                        width: 30, height: 30, borderRadius: 15,
+                        backgroundColor: isActive ? accentFill : 'transparent',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        opacity: pressed ? 0.6 : 1,
+                        opacity: pressed ? 0.75 : 1,
                       }}>
-                        <Icon size={15} color={isActive ? ink : ink2} strokeWidth={isActive ? 2 : 1.8} />
+                        <Icon size={15} color={isActive ? '#FFFFFF' : ink2} strokeWidth={isActive ? 2.2 : 1.8} />
                       </View>
                     )}
                   </Pressable>
@@ -127,6 +133,19 @@ export function ProfileMenu({ visible, anchorTop, onClose, onProfile, onLogout }
             hairline={hairline}
             rtl={rtl}
           />
+          {onAccessCode ? (
+            <Row
+              icon={KeyRound}
+              label={autoT('Giriş Kodum')}
+              iconColor={ink}
+              labelColor={ink}
+              ink3={ink3}
+              onPress={onAccessCode}
+              showDivider
+              hairline={hairline}
+              rtl={rtl}
+            />
+          ) : null}
           <Row
             icon={LogOut}
             label={autoT('Çıkış Yap')}

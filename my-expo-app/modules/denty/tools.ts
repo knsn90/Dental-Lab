@@ -20,6 +20,7 @@ import {
   type ClientOrderEditFields, type ClientOrderEditItem,
 } from '../orders/api';
 import { createChangeRequest } from '../orders/changeRequests';
+import { generateOrderReport } from './orderReport';
 import { adminCompleteStage, assignTechnician } from '../orders/api';
 import { sendMessage as chatSendMessage } from '../orders/chatApi';
 import { createTicket } from '../support/api';
@@ -186,6 +187,18 @@ const TOOL_DEFS: ToolDef[] = [
     description:
       'Laboratuvarın GÜNLÜK DURUM ÖZETİ: gecikmiş sipariş, bugün teslim edilecek, planlama bekleyen, kritik stok ve faturası kesilmemiş teslimat sayıları + ilk birkaç örnek. "bugün ne var", "durum nedir", "özet geç" sorularında ilk bunu çağır. Salt-okunur.',
     input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'siparisRaporu',
+    description:
+      'Bir siparişin TAM ÖZETİNİ üretir: sipariş alanları, mesajlar, dosya adları, aşama geçmişi, ' +
+      'revizyon/devam zinciri ve aynı hastanın önceki işleri. Sonucu KULLANICIYA OLDUĞU GİBİ ilet, ' +
+      'yeniden yazma ve kısaltma. Sipariş numarası verilmezse açık olan sipariş kullanılır.',
+    input_schema: {
+      type: 'object',
+      properties: { siparis_no: { type: 'string', description: 'Sipariş numarası (ör. LAB-2026-0122). Boşsa açık sipariş.' } },
+      required: [],
+    },
   },
   {
     name: 'asamaDurumu',
@@ -664,9 +677,12 @@ async function resolveOrderRef(
   const id = String(input?.siparis_id ?? '').trim();
   const no = String(input?.siparis_no ?? '').replace(/^#/, '').trim();
   let q = supabase.from('work_orders').select('id, order_number, patient_name, status, triaged_at').limit(2);
-  if (id) q = q.eq('id', id);
+  // Rota parametresi UUID de olabilir okunur sipariş NUMARASI da (/order/NEX-2026-0180).
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const asRef = (v: string) => (UUID_RE.test(v) ? 'id' : 'order_number');
+  if (id) q = q.eq(asRef(id), id);
   else if (no) q = q.eq('order_number', no);
-  else if (ctxOrderId) q = q.eq('id', ctxOrderId);
+  else if (ctxOrderId) q = q.eq(asRef(ctxOrderId), ctxOrderId);
   else return { error: 'Hangi siparişi kastettiğini bilmiyorum — sipariş numarasını ver ya da önce siparişi aç.' };
   const { data, error } = await q;
   if (error) return { error: 'Sipariş bulunamadı: ' + error.message };
@@ -1131,6 +1147,21 @@ export function useDentyToolkit(ctx: DentyContext): ToolKit {
   }, []);
 
   /** Bir siparişin aşama zinciri — kim, hangi durumda. */
+  // Sipariş özeti — veriyi toplayıp tek paragraf yazdırır ve kaydeder.
+  // Sonuç modele "olduğu gibi ilet" talimatıyla döner (araç tanımına bakınız).
+  const orderReport = useCallback(async (input: any): Promise<string> => {
+    const ref = await resolveOrderRef({ siparis_no: input?.siparis_no }, ctx.orderId);
+    if ('error' in ref) return ref.error;
+    try {
+      const audience = (ctx.panel === '(lab)' || ctx.panel === '(admin)' || ctx.panel === '(station)') ? 'lab' : 'clinic';
+      const r = await generateOrderReport(ref.row.id, audience);
+      const src = `${r.sources.messages} mesaj · ${r.sources.files} dosya · ${r.sources.linked} bağlı iş · ${r.sources.history} geçmiş iş`;
+      return `#${r.orderNumber} özeti:\n${r.body}\n\n(kaynak: ${src})`;
+    } catch (e: any) {
+      return `Özet üretilemedi: ${e?.message ?? e}`;
+    }
+  }, [ctx.orderId, ctx.panel]);
+
   const stageStatus = useCallback(async (input: any): Promise<string> => {
     const ref = await resolveOrderRef({ siparis_no: input?.siparis_no }, ctx.orderId);
     if ('error' in ref) return ref.error;
@@ -1280,6 +1311,7 @@ export function useDentyToolkit(ctx: DentyContext): ToolKit {
       case 'kapanisAnalizi':return runOcclusion();
       case 'taramaTeshis':  return scanDiagnostics();
       case 'gunlukOzet':    return dailySummary();
+      case 'siparisRaporu': return orderReport(input);
       case 'asamaDurumu':   return stageStatus(input);
       case 'istasyonYuku':  return stationLoad();
       case 'stokDurumu':    return stockStatus();

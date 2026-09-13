@@ -2,10 +2,12 @@
 // Desktop tablonun mobile-uygun karşılığı; 4 panelde (lab/admin/klinik/hekim) paylaşılır.
 // Durum etiketi/rengi çağıran panelde (STATUS_CFG) çözülür; bu bileşen yalnız sunum.
 import React from 'react';
-import { View, Text, Pressable } from 'react-native';
-import { ClipboardList, ChevronRight, ChevronLeft, CornerDownRight, CornerDownLeft } from 'lucide-react-native';
+import { View, Text, Pressable, Image } from 'react-native';
+import { ClipboardList, ChevronRight, ChevronLeft, CornerDownRight, CornerDownLeft } from '../../../core/ui/icons';
 import { isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { lightenForDark } from '../../../core/ui/HeroGlow';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 
 // Tüm sipariş statülerini + duraklatmayı kapsayan çözümleyici (dashboard muted paleti).
@@ -40,8 +42,11 @@ export function resolveOrderStatus(status?: string | null, holdStatus?: string |
 export interface RecentOrderItem {
   id: string;          // db id (navigasyon)
   no: string;          // order_number
-  title: string;       // birincil satır (hekim veya hasta adı)
-  initials: string;    // avatar baş harfleri
+  title: string;       // birincil satır (hasta adı)
+  subtitle?: string;   // ikincil satır (hekim adı) — verilirse title'ın altında
+  initials: string;    // avatar baş harfleri (logo yoksa geri dönüş)
+  /** Siparişin geldiği kliniğin logosu — varsa baş harfler yerine logo gösterilir. */
+  clinicLogoUrl?: string | null;
   workType: string;    // iş tipi
   statusLabel: string;
   statusColor: string;
@@ -76,12 +81,18 @@ function ContinuationTag() {
 }
 
 export function RecentOrdersMobile({
-  items, accent, accentDark, heading, onOpenOrder, onAllOrders,
+  items, accent, accentDark, heading, onOpenOrder, onAllOrders, art,
 }: {
   items: RecentOrderItem[];
   accent: string;
   accentDark: string;
   heading?: string;
+  /**
+   * Opsiyonel 3D başlık görseli (require'lanmış PNG). Verilirse Lucide pano
+   * ikonunun yerine geçer — admin mobil özetteki 3D kart diliyle uyum.
+   * Verilmezse kart bugünkü hâlini korur (lab/klinik/hekim etkilenmez).
+   */
+  art?: any;
   onOpenOrder: (id: string) => void;
   onAllOrders?: () => void;
 }) {
@@ -90,6 +101,10 @@ export function RecentOrdersMobile({
   const Chevron = rtl ? ChevronLeft : ChevronRight;
   const CornerIcon = rtl ? CornerDownLeft : CornerDownRight;
   const headingText = heading ?? autoT('Son Siparişler');
+  // accentDark (zümrütün DERİN tonu) koyu kartta neredeyse görünmezdi —
+  // koyu temada accent'in AÇIK karşılığına çevir (başlık + chevron + baş harfler).
+  const isDark = useThemeModeStore(st => st.resolvedDark);
+  const accentReadable = isDark ? lightenForDark(accent, 0.42) : accentDark;
   if (!items.length) return null;
 
   // Mesajlar kartıyla aynı dil: tek kapsayıcı kart + renkli başlık şeridi +
@@ -109,10 +124,14 @@ export function RecentOrdersMobile({
             backgroundColor: headerBg,
           }}
         >
-          <View style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
-            <ClipboardList size={16} color={accent} strokeWidth={2.2} />
-          </View>
-          <Text style={{ fontSize: 13, fontWeight: '700', color: accentDark, letterSpacing: 0.2 }}>{headingText}</Text>
+          {art ? (
+            <Image source={art} resizeMode="contain" style={{ width: 32, height: 30 }} />
+          ) : (
+            <View style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: T.card, alignItems: 'center', justifyContent: 'center' }}>
+              <ClipboardList size={16} color={accent} strokeWidth={2.2} />
+            </View>
+          )}
+          <Text style={{ fontSize: 13, fontWeight: '700', color: accentReadable, letterSpacing: 0.2 }}>{headingText}</Text>
           {/* Geciken varsa kırmızı rozet — mesajlardaki okunmamış rozetinin karşılığı */}
           {overdueCount > 0 && (
             <View style={{ minWidth: 20, height: 20, paddingHorizontal: 6, borderRadius: 10, backgroundColor: T.ruby, alignItems: 'center', justifyContent: 'center' }}>
@@ -120,7 +139,7 @@ export function RecentOrdersMobile({
             </View>
           )}
           <View style={{ flex: 1 }} />
-          {!!onAllOrders && <Chevron size={18} color={accentDark} strokeWidth={2} />}
+          {!!onAllOrders && <Chevron size={18} color={accentReadable} strokeWidth={2} />}
         </Pressable>
 
         {/* Satırlar — her satır bir VAKA; revizyon geçmişi altında girintili */}
@@ -135,12 +154,17 @@ export function RecentOrdersMobile({
                 backgroundColor: o.overdue ? 'rgba(217,75,75,0.06)' : 'transparent',
               }}
             >
+              {/* Klinik logosu varsa onu göster; yoksa baş harflere düş.
+                  (Kliniklerin bir kısmında logo_url boş.) */}
               <View style={{
                 width: 36, height: 36, borderRadius: 18,
-                backgroundColor: `${accent}1F`,
-                alignItems: 'center', justifyContent: 'center',
+                backgroundColor: o.clinicLogoUrl ? (isDark ? T.cardSoft : '#FFFFFF') : `${accent}1F`,
+                ...(o.clinicLogoUrl ? { borderWidth: 1, borderColor: T.hairline } : {}),
+                alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
               }}>
-                <Text style={{ fontSize: 12, fontWeight: '700', color: accentDark }}>{o.initials}</Text>
+                {o.clinicLogoUrl
+                  ? <Image source={{ uri: o.clinicLogoUrl }} style={{ width: 36, height: 36 }} resizeMode="contain" />
+                  : <Text style={{ fontSize: 12, fontWeight: '700', color: accentReadable }}>{o.initials}</Text>}
               </View>
               {/* Dar ekranda ad, sipariş no, rozet ve durum çipi tek satırda
                   yarışınca hep ad kırpılıyordu ("Dr. Ayl…"). Ada kendi satırı
@@ -158,7 +182,12 @@ export function RecentOrdersMobile({
                   </View>
                 </View>
 
+                {/* Hiyerarşi: Hasta (üstte) → VAKA (ikinci) → Hekim/klinik (üçüncü) */}
                 <Text style={{ fontSize: 12, color: T.ink2 }} numberOfLines={1}>{o.workType}</Text>
+
+                {o.subtitle ? (
+                  <Text style={{ fontSize: 11.5, color: T.ink3, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{o.subtitle}</Text>
+                ) : null}
 
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 }}>
                   <Text style={{ fontSize: 10.5, color: T.ink3, fontFamily: T.mono, flexShrink: 1, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>

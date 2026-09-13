@@ -9,7 +9,8 @@
  */
 import React from 'react';
 import { Pressable, Text, Platform } from 'react-native';
-import { LifeBuoy } from 'lucide-react-native';
+import { SupportIcon } from '../../../core/ui/SupportIcon';
+import { webTitle } from '../../../core/util/webTitle';
 import { openSupport } from '../../../core/store/supportStore';
 import type { SupportContext, SupportCategory, SupportPriority } from '../types';
 
@@ -47,6 +48,7 @@ export function SupportButton({
       <Pressable
         onPress={onPress}
         accessibilityLabel={accessibilityLabel}
+        {...webTitle(accessibilityLabel)}
         style={({ hovered }: any) => ({
           width: dim, height: dim, borderRadius: 9,
           alignItems: 'center', justifyContent: 'center',
@@ -56,7 +58,7 @@ export function SupportButton({
           ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
         })}
       >
-        <LifeBuoy size={size === 'sm' ? 13 : 15} color={color ?? (onDark ? '#FFFFFF' : '#C2410C')} strokeWidth={1.7} />
+        <SupportIcon size={size === 'sm' ? 13 : 15} color={color ?? (onDark ? '#FFFFFF' : '#C2410C')} strokeWidth={1.7} />
       </Pressable>
     );
   }
@@ -75,7 +77,7 @@ export function SupportButton({
           ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
         })}
       >
-        <LifeBuoy size={size === 'sm' ? 12 : 14} color={color ?? '#C2410C'} strokeWidth={1.8} />
+        <SupportIcon size={size === 'sm' ? 12 : 14} color={color ?? '#C2410C'} strokeWidth={1.8} />
         <Text style={{ fontSize: size === 'sm' ? 11 : 12.5, fontWeight: '700', color: color ?? '#0F172A' }}>
           {label ?? 'Destek Aç'}
         </Text>
@@ -96,7 +98,7 @@ export function SupportButton({
         ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
       })}
     >
-      <LifeBuoy size={size === 'sm' ? 10 : 12} color="#C2410C" strokeWidth={1.8} />
+      <SupportIcon size={size === 'sm' ? 10 : 12} color="#C2410C" strokeWidth={1.8} />
       <Text style={{ fontSize: size === 'sm' ? 10.5 : 11.5, fontWeight: '700', color: '#9A3412' }}>
         {label ?? 'Destek Aç'}
       </Text>

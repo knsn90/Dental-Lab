@@ -48,9 +48,35 @@ export function useInvoice(id: string | undefined) {
     setLoading(false);
   }, [id]);
 
+  // Sessiz tazeleme — loading'e DOKUNMAZ (içerik unmount olmaz). Satır-içi düzenlemede
+  // (adet/fiyat/indirim kaydet) tüm ekranın remount olup scroll'un sıfırlanmasını ve
+  // input'un kaybolmasını önler.
+  const loadSilent = useCallback(async () => {
+    if (!id) return;
+    const { data, error: err } = await fetchInvoiceById(id);
+    if (err) setError((err as any).message ?? String(err));
+    setInvoice(data);
+  }, [id]);
+
+  // Tek bir kalemi yerelde güncelle (UPDATE'in döndürdüğü taze satırla) VE fatura
+  // toplamlarını (subtotal/tax_amount/total) DB trigger'ıyla aynı mantıkta yerelde
+  // yeniden hesapla. Fatura sorgusunun gömülü invoice_items(*) embed'i bayat kalsa
+  // bile doğru değer korunur — refetch'e bağımlılık kalkar.
+  const patchItem = useCallback((itemId: string, patch: Record<string, any>) => {
+    setInvoice(inv => {
+      if (!inv) return inv;
+      const items = ((inv as any).items ?? []).map((it: any) => it.id === itemId ? { ...it, ...patch } : it);
+      const subtotal = items.reduce((s: number, it: any) => s + (Number(it.net_total ?? it.total) || 0), 0);
+      const taxRate = Number((inv as any).tax_rate) || 0;
+      const taxAmount = Math.round(subtotal * taxRate) / 100;   // subtotal*rate/100, 2 hane
+      const total = subtotal + taxAmount;
+      return { ...inv, items, subtotal, tax_amount: taxAmount, total } as Invoice;
+    });
+  }, []);
+
   useEffect(() => { void load(); }, [load]);
 
-  return { invoice, loading, error, refetch: load };
+  return { invoice, loading, error, refetch: load, refetchSilent: loadSilent, patchItem };
 }
 
 // ─── Klinik cari özet hook'u ──────────────────────────────────────────────

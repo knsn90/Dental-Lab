@@ -10,11 +10,12 @@
  *   Tema duyarlı: lab / clinic / exec / tech / plum / teal.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, Animated, Easing } from 'react-native';
+import { View, Text, Animated, Easing, Platform } from 'react-native';
 import { Svg, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
-import { Inbox, Cog, ShieldCheck, PackageCheck, Truck, Check, type LucideIcon } from 'lucide-react-native';
+import { Inbox, Cog, ShieldCheck, PackageCheck, Truck, Check, type LucideIcon } from './icons';
 import { DS, dsTheme, type DsTheme } from '../theme/dsTokens';
 import { isRTL } from '../i18n';
+import { useThemeModeStore } from '../store/themeModeStore';
 
 // Sipariş status timeline'ı için varsayılan ikon seti (Alındı→Üretim→QC→Hazır→Teslim)
 const DEFAULT_STATUS_ICONS: LucideIcon[] = [Inbox, Cog, ShieldCheck, PackageCheck, Truck];
@@ -119,30 +120,22 @@ function OrbitingHighlight({ size, radius, color }: { size: number; radius: numb
   );
 }
 
-// Aktif step ikonu — yumuşak rotation + breathing scale
+// Aktif step ikonu — breathing scale (rotation KALDIRILDI: kullanıcı ikonun
+// dönmesini istemedi, sabit yerinde dursun — yalnız nazikçe nefes alır).
 function ActiveStepIcon({ Icon, color = '#FFFFFF' }: { Icon: LucideIcon; color?: string }) {
-  const rot = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    Animated.loop(
-      Animated.timing(rot, {
-        toValue: 1, duration: 4200,
-        easing: Easing.linear, useNativeDriver: true,
-      }),
-    ).start();
     Animated.loop(
       Animated.sequence([
         Animated.timing(scale, { toValue: 1.12, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
         Animated.timing(scale, { toValue: 1,    duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
       ]),
     ).start();
-  }, [rot, scale]);
-
-  const spin = rot.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  }, [scale]);
 
   return (
-    <Animated.View style={{ transform: [{ rotate: spin }, { scale }] }}>
+    <Animated.View style={{ transform: [{ scale }] }}>
       <Icon size={16} color={color} strokeWidth={2.2} />
     </Animated.View>
   );
@@ -233,6 +226,7 @@ export function LinearProgressX({
 }) {
   const t = dsTheme(theme);
   const rtl = isRTL();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const accentFill = fillColor ?? t.accent;
   const knobBg = t.primary;
 
@@ -240,8 +234,9 @@ export function LinearProgressX({
   const value = animate ? animatedValue : targetValue;
   const displayValue = Math.round(value);
 
-  // Theme bazlı pill renkleri
-  const railOuter =
+  // Theme bazlı pill renkleri. Koyu modda açık "beyaz ray" (railOuter) + knob
+  // eski-tip slider hissi veriyordu → koyuda tek koyu track, ray/knob yok.
+  const railOuter = isDark ? 'transparent' :
     theme === 'lab'    ? '#FAF5E8' :
     theme === 'clinic' ? '#EDF2EE' :
     theme === 'exec'   ? '#EEF2F8' :
@@ -249,7 +244,7 @@ export function LinearProgressX({
     theme === 'plum'   ? '#F7F3FA' :
     theme === 'teal'   ? '#F1F8F7' :
                          '#FAFAFA';
-  const trackInner =
+  const trackInner = isDark ? '#30302D' :
     theme === 'lab'    ? '#E8E2C8' :
     theme === 'clinic' ? '#D5E2DA' :
     theme === 'exec'   ? '#E5D4C5' :
@@ -295,21 +290,26 @@ export function LinearProgressX({
           </View>
         </View>
 
-        <PulseLinearHalo color={knobBg} size={knobSize * 1.5} leftPct={value} />
+        {/* Knob + halo — yalnız açık temada. Koyu modda düz progress bar. */}
+        {!isDark && (
+          <>
+            <PulseLinearHalo color={knobBg} size={knobSize * 1.5} leftPct={value} />
 
-        <View style={{
-          position: 'absolute',
-          ...(rtl
-            ? { right: `${value}%` as any, marginRight: -knobSize / 2 }
-            : { left: `${value}%` as any, marginLeft: -knobSize / 2 }),
-          top: '50%',
-          width: knobSize, height: knobSize,
-          marginTop: -knobSize / 2,
-          borderRadius: knobSize / 2,
-          backgroundColor: knobBg,
-          // @ts-ignore web shadow
-          boxShadow: `0 1px 3px rgba(0,0,0,0.15)`,
-        }} />
+            <View style={{
+              position: 'absolute',
+              ...(rtl
+                ? { right: `${value}%` as any, marginRight: -knobSize / 2 }
+                : { left: `${value}%` as any, marginLeft: -knobSize / 2 }),
+              top: '50%',
+              width: knobSize, height: knobSize,
+              marginTop: -knobSize / 2,
+              borderRadius: knobSize / 2,
+              backgroundColor: knobBg,
+              // @ts-ignore web shadow
+              boxShadow: `0 1px 3px rgba(0,0,0,0.15)`,
+            }} />
+          </>
+        )}
       </View>
 
       {compact && !hideLabel && label && (
@@ -443,6 +443,7 @@ export function StepsTimelineX({
   steps, current, theme = 'lab',
   variant = 'dark',
   icons, accentColor, markColor = '#FFFFFF',
+  surfaceDark = false, flowColor, sweepColor, surfaceBg,
 }: {
   steps: string[]; current: number; theme?: DsTheme;
   /** dark = koyu zemin (beyaz label) | light = açık zemin (ink label) */
@@ -453,22 +454,140 @@ export function StepsTimelineX({
   accentColor?: string;
   /** Düğüm içindeki işaret (check / aktif ikon / nokta) rengi. Varsayılan beyaz. */
   markColor?: string;
+  /**
+   * Koyu tema yüzeyi (T.card): görsel dil değişir → tamamlanan daireler KOYU + yeşil check,
+   * aktif daire AÇIK + yeşil ikon, çizgiler koyu gri (tamamlanan hafif yeşil), aktif yazı beyaz.
+   * markColor bu modda "yeşil" olarak verilir.
+   */
+  surfaceDark?: boolean;
+  /**
+   * Verilirse yeşil "tamamlandı" dili yerine bu renk kullanılır (işaret, halo,
+   * tamamlanan çizgi) ve aktif adıma giren bağlayıcıda ışık izi akar.
+   * Koyu temada lacivert/neon mavi için: Özet'teki CANLI kartıyla ortak dil.
+   */
+  flowColor?: string;
+  /**
+   * Işık süpürmesini flowColor'dan BAĞIMSIZ açar. flowColor aynı zamanda
+   * "tamamlandı" renk dilini (çizgi/işaret) değiştirdiği için açık temada
+   * kullanılamıyordu — süpürme için onu vermek tamamlanan çizgilerin rengini de
+   * bozuyordu. Verilmezse flowColor'a düşer (koyu temadaki mevcut davranış).
+   */
+  sweepColor?: string;
+  /**
+   * Timeline'ın ARKASINDAKİ yüzey rengi. Verilirse düğümler OPAK boyanır —
+   * ışık süpürmesi yarı saydam düğümlerin içinden sızmasın, arkalarından geçsin.
+   */
+  surfaceBg?: string;
 }) {
   // Varsayılan ikonlar — 5-adım sipariş status'una uyumlu
   const stepIcons: (LucideIcon | undefined)[] = icons
     ?? (steps.length === DEFAULT_STATUS_ICONS.length ? DEFAULT_STATUS_ICONS : []);
   const t = dsTheme(theme);
   const accent = accentColor ?? t.primary;
-  const labelActive = variant === 'dark' ? '#FFFFFF' : DS.ink[900];
-  const labelRest   = variant === 'dark' ? 'rgba(255,255,255,0.45)' : DS.ink[400];
-  const lineRest    = variant === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)';
+  const green = flowColor ?? (markColor && markColor !== '#FFFFFF' ? markColor : '#32BB78');
+  /** Yarı saydam bir tonu opak zemine karıştırır (cam yerine düz yüzey). */
+  const mixHex = (base: string, over: string, a: number) => {
+    const px = (h: string) => {
+      const m = /^#?([0-9a-f]{6})$/i.exec(h);
+      const n = m ? parseInt(m[1], 16) : 0;
+      return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    };
+    const [br, bg2, bb] = px(base), [or_, og, ob] = px(over);
+    const m2 = (b: number, o: number) => Math.round(b + (o - b) * a);
+    return `#${[m2(br, or_), m2(bg2, og), m2(bb, ob)].map(v => v.toString(16).padStart(2, '0')).join('')}`;
+  };
+
+  const labelActive = surfaceDark ? '#FFFFFF' : variant === 'dark' ? '#FFFFFF' : DS.ink[900];
+  const labelRest   = surfaceDark ? 'rgba(255,255,255,0.50)' : variant === 'dark' ? 'rgba(255,255,255,0.45)' : DS.ink[400];
+  const lineRest    = surfaceDark ? 'rgba(255,255,255,0.14)' : variant === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)';
+  // surfaceDark görsel dili — açık tema/emerald hero davranışını DEĞİŞTİRMEZ.
+  const nodePastBg       = surfaceDark
+                            ? (surfaceBg ? mixHex(surfaceBg, '#FFFFFF', 0.10) : 'rgba(255,255,255,0.10)')
+                            : accent;   // koyu daire (surfaceBg varsa OPAK)
+  const nodeActiveBg     = surfaceDark ? '#F2ECE1' : accent;                   // açık aktif daire
+  const haloColor        = surfaceDark ? green : accent;                       // yeşil halo
+  const nodeFutureBorder = surfaceDark ? 'rgba(255,255,255,0.20)' : lineRest;
+  const lineDone         = flowColor ? `${flowColor}66`
+                          : surfaceDark ? 'rgba(50,187,120,0.55)' : accent;     // tamamlanan hafif yeşil
+  const labelCurrent     = surfaceDark ? '#FFFFFF' : accent;                   // aktif yazı beyaz
 
   const NODE = 36;
   const HALO = 50;
   const GAP  = 8;
 
+  // ── Işık süpürmesi ──────────────────────────────────────────────────────
+  // Segment segment kuyruk DENENDİ ve BIRAKILDI: iz her düğümde sıfırlandığı
+  // için kısa segmentlerde kesik kesik görünüyordu. Bunun yerine şeridin
+  // TAMAMINI bir kez geçen tek parça, yumuşak (blur'lu) bir ışık bandı —
+  // metaldeki parlama gibi. İlk daireden başlar, son daireye varır, söner.
+  const [rowW, setRowW] = useState(0);
+  const sweep = useRef(new Animated.Value(0)).current;
+  const sweepHue = sweepColor ?? flowColor;
+  // Bandın yoğunluğu ZEMİNE göre ayarlanır — aynı ayar iki temada tutmuyor:
+  //   • Koyu kartta neon renk %65 alfayla "parlama" gibi duruyor.
+  //   • Beyaz hero'da aynı alfa önce görünmüyordu; yükseltilince bu sefer sert
+  //     bir lacivert şerit oldu (kullanıcı geri bildirimi). Açık zeminde doğru
+  //     his DÜŞÜK alfa + GENİŞ band + fazla blur: kâğıt üstünden geçen ışık.
+  const sweepOnLight = (() => {
+    const m = /^#?([0-9a-f]{6})$/i.exec(surfaceBg ?? '');
+    if (!m) return false;
+    const n = parseInt(m[1], 16);
+    const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.65;
+  })();
+  const SWEEP_W = sweepOnLight ? 150 : 120;
+  // Açık zeminde band İNCE: çizgiye sarılan küçücük bir bulut. Yüksek/geniş
+  // band denendi, kartın üstünde duran ayrı bir şerit gibi görünüyordu.
+  const SWEEP_H = sweepOnLight ? 6 : 18;
+  const sweepStops = sweepOnLight
+    ? { mid: '26', peak: '66', blur: 6 }    // ~%15 → %40, ince olduğu için biraz doygun
+    : { mid: '59', peak: 'A6', blur: 7 };
+  useEffect(() => {
+    sweep.stopAnimation();
+    sweep.setValue(0);
+    if (!sweepHue || !rowW) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(sweep, { toValue: 1, duration: 4600, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.delay(2800),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [sweep, sweepHue, rowW]);
+
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+    <View
+      style={{ flexDirection: 'row', alignItems: 'flex-start', position: 'relative' }}
+      onLayout={e => setRowW(e.nativeEvent.layout.width)}
+    >
+      {!!sweepHue && rowW > 0 && (
+        <Animated.View pointerEvents="none" style={{
+          position: 'absolute', top: HALO / 2 - SWEEP_H / 2, start: 0,
+          width: SWEEP_W, height: SWEEP_H, borderRadius: SWEEP_H / 2,
+          opacity: sweep.interpolate({
+            inputRange: [0, 0.14, 0.86, 1],
+            outputRange: [0, 1, 1, 0],
+          }),
+          transform: [{
+            translateX: sweep.interpolate({
+              inputRange: [0, 1],
+              // İlk dairenin ÖNÜNDEN değil, ondan SONRAKİ çizginin başından
+              // başlar; SON DAİREDE biter (satırın sağ kenarına taşmaz).
+              // Bandın en parlak noktası ~%65'inde olduğu için bitiş, son
+              // dairenin merkezinden o kadar geri kaydırılır.
+              outputRange: [
+                (current === 0 ? HALO : NODE) + GAP,
+                rowW - (current === steps.length - 1 ? HALO : NODE) / 2 - SWEEP_W * 0.65,
+              ],
+            }),
+          }],
+          ...(Platform.OS === 'web' ? {
+            backgroundImage: `linear-gradient(90deg, ${sweepHue}00 0%, ${sweepHue}${sweepStops.mid} 45%, ${sweepHue}${sweepStops.peak} 70%, ${sweepHue}00 100%)`,
+            filter: `blur(${sweepStops.blur}px)`,
+          } as any : { backgroundColor: `${sweepHue}${sweepOnLight ? '24' : '33'}` }),
+        }} />
+      )}
       {steps.map((step, i) => {
         const isPast    = i < current;
         const isCurrent = i === current;
@@ -482,22 +601,22 @@ export function StepsTimelineX({
             <View style={{ alignItems: 'center', width: nodeW }}>
               {isCurrent && (
                 <View style={{ width: HALO, height: HALO, alignItems: 'center', justifyContent: 'center' }}>
-                  <PulseRing color={accent} size={HALO} />
+                  <PulseRing color={haloColor} size={HALO} />
                   <View style={{
                     position: 'absolute',
                     width: HALO, height: HALO, borderRadius: HALO / 2,
-                    backgroundColor: accent, opacity: 0.18,
+                    backgroundColor: haloColor, opacity: 0.18,
                   }} />
                   <Animated.View style={{
                     width: NODE, height: NODE, borderRadius: NODE / 2,
-                    backgroundColor: accent,
+                    backgroundColor: nodeActiveBg,
                     alignItems: 'center', justifyContent: 'center',
                   }}>
-                    {/* Aktif step — ikon (varsa) ya da beyaz nokta (fallback) */}
+                    {/* Aktif step — ikon (varsa) ya da nokta (fallback) */}
                     {StepIcon ? (
-                      <ActiveStepIcon Icon={StepIcon} color={markColor} />
+                      <ActiveStepIcon Icon={StepIcon} color={surfaceDark ? green : markColor} />
                     ) : (
-                      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: markColor }} />
+                      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: surfaceDark ? green : markColor }} />
                     )}
                   </Animated.View>
                 </View>
@@ -505,28 +624,30 @@ export function StepsTimelineX({
               {isPast && (
                 <View style={{
                   width: NODE, height: NODE, borderRadius: NODE / 2,
-                  backgroundColor: accent, marginTop: (HALO - NODE) / 2,
+                  backgroundColor: nodePastBg, marginTop: (HALO - NODE) / 2,
                   alignItems: 'center', justifyContent: 'center',
                 }}>
                   {/* Tamamlanan step — Lucide check ikonu */}
-                  <Check size={16} color={markColor} strokeWidth={2.5} />
+                  <Check size={16} color={surfaceDark ? green : markColor} strokeWidth={2.5} />
                 </View>
               )}
               {isFuture && (
                 <View style={{
                   width: NODE, height: NODE, borderRadius: NODE / 2,
-                  borderWidth: 2, borderColor: lineRest, marginTop: (HALO - NODE) / 2,
+                  // Opak: süpürme ışığı boş dairelerin içinden görünmesin.
+                  backgroundColor: surfaceBg ?? 'transparent',
+                  borderWidth: 2, borderColor: nodeFutureBorder, marginTop: (HALO - NODE) / 2,
                   alignItems: 'center', justifyContent: 'center',
                 }}>
                   {/* Yaklaşan step — soluk ikon (varsa) */}
                   {StepIcon && (
-                    <StepIcon size={14} color={lineRest} strokeWidth={1.8} />
+                    <StepIcon size={14} color={nodeFutureBorder} strokeWidth={1.8} />
                   )}
                 </View>
               )}
               <Text style={{
                 fontSize: 12, fontWeight: '500',
-                color: isPast ? labelActive : isCurrent ? accent : labelRest,
+                color: isPast ? labelActive : isCurrent ? labelCurrent : labelRest,
                 marginTop: 12, textAlign: 'center',
               }}>
                 {step}
@@ -536,7 +657,7 @@ export function StepsTimelineX({
             {!isLast && (
               <View style={{
                 flex: 1, height: 2,
-                backgroundColor: i < current ? accent : lineRest,
+                backgroundColor: i < current ? lineDone : lineRest,
                 marginTop: HALO / 2 - 1,
                 marginHorizontal: GAP,
               }} />

@@ -4,18 +4,23 @@ import {
   View, Text, StyleSheet, TextInput,
   TouchableOpacity, Animated, Easing, Modal,
   FlatList, ScrollView, useWindowDimensions, Platform,
-  Image, ActivityIndicator, KeyboardAvoidingView, Pressable,
+  Image, ActivityIndicator, KeyboardAvoidingView, Pressable, Alert, Keyboard, BackHandler,
 } from 'react-native';
 import Svg, { Path, Circle, Line, Polyline } from 'react-native-svg';
-import { User as UserIcon } from 'lucide-react-native';
+import { User as UserIcon } from '../../../core/ui/icons';
 import { Tooth } from '../../../core/ui/dentalIcons';
 import { useAuthStore } from '../../../core/store/authStore';
 import { useAnimatedKeyboardHeight } from '../../../core/ui/useAnimatedKeyboardHeight';
 import { useOrderChatInbox } from '../hooks/useOrderChatInbox';
+import { autoT } from '../../../core/i18n/autoTranslate';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import { useChatMessages } from '../hooks/useChatMessages';
 import { uploadChatAttachment, isWithinDeleteWindow } from '../chatApi';
 import { ConfirmDialog, type ConfirmState } from '../../../core/ui/ConfirmDialog';
 import { STATUS_CONFIG } from '../constants';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 // Viewer3D — tek paylaşılan retry'lı lazy (three.js ayrı chunk)
 import { Viewer3DModalLazy as Viewer3DModal } from '../../viewer-3d/Viewer3DLazy';
@@ -28,6 +33,11 @@ function detect3DFmt(name: string): 'stl' | 'ply' | 'obj' | null {
   return null;
 }
 import { UserType, WorkOrderStatus } from '../../../lib/types';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { usePathname } from 'expo-router';
+import { navBarMetrics } from '../../../core/ui/mobile/navGlass';
+import { useUiOverlayStore, useSuppressDentyFab } from '../../../core/store/uiOverlayStore';
+import { NativeImageViewer } from '../../../core/ui/mobile/NativeImageViewer';
 
 // ── Design tokens ────────────────────────────────────────────────────
 const SURFACE = '#FFFFFF';
@@ -44,12 +54,13 @@ type IconName =
   | 'message-circle' | 'video' | 'phone' | 'more-vertical'
   | 'image' | 'file' | 'arrow-left' | 'arrow-right' | 'check' | 'check-check'
   | 'pin' | 'calendar' | 'tooth' | 'palette' | 'cog'
-  | 'play' | 'pause' | 'trash' | 'scan' | 'stop' | 'upload' | 'alert';
+  | 'play' | 'pause' | 'trash' | 'scan' | 'stop' | 'upload' | 'alert' | 'camera' | 'package';
 function Icon({ name, size = 18, color = TEXT, strokeWidth = 1.8 }: {
   name: IconName; size?: number; color?: string; strokeWidth?: number;
 }) {
   const p = { stroke: color, strokeWidth, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' };
   switch (name) {
+    case 'package':        return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" {...p}/><Polyline points="3.27 6.96 12 12.01 20.73 6.96" {...p}/><Line x1="12" y1="22.08" x2="12" y2="12" {...p}/></Svg>;
     case 'x':              return <Svg width={size} height={size} viewBox="0 0 24 24"><Line x1="18" y1="6" x2="6" y2="18" {...p}/><Line x1="6" y1="6" x2="18" y2="18" {...p}/></Svg>;
     case 'search':         return <Svg width={size} height={size} viewBox="0 0 24 24"><Circle cx="11" cy="11" r="8" {...p}/><Line x1="21" y1="21" x2="16.65" y2="16.65" {...p}/></Svg>;
     case 'send':           return <Svg width={size} height={size} viewBox="0 0 24 24"><Line x1="22" y1="2" x2="11" y2="13" {...p}/><Polyline points="22 2 15 22 11 13 2 9 22 2" {...p}/></Svg>;
@@ -77,6 +88,7 @@ function Icon({ name, size = 18, color = TEXT, strokeWidth = 1.8 }: {
     case 'pause':          return <Svg width={size} height={size} viewBox="0 0 24 24"><Line x1="6" y1="4" x2="6" y2="20" {...p} strokeWidth={3.5}/><Line x1="18" y1="4" x2="18" y2="20" {...p} strokeWidth={3.5}/></Svg>;
     case 'trash':          return <Svg width={size} height={size} viewBox="0 0 24 24"><Polyline points="3 6 5 6 21 6" {...p}/><Path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" {...p}/></Svg>;
     case 'scan':           return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2" {...p}/><Path d="M7 12h10M12 7v10" {...p}/></Svg>;
+    case 'camera':         return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" {...p}/><Circle cx="12" cy="13" r="4" {...p}/></Svg>;
     case 'stop':           return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M5 5h14v14H5z" {...p} fill={color} stroke={color}/></Svg>;
     case 'upload':         return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" {...p}/><Polyline points="17 8 12 3 7 8" {...p}/><Line x1="12" y1="3" x2="12" y2="15" {...p}/></Svg>;
     case 'alert':          return <Svg width={size} height={size} viewBox="0 0 24 24"><Circle cx="12" cy="12" r="10" {...p}/><Line x1="12" y1="8" x2="12" y2="12" {...p}/><Line x1="12" y1="16" x2="12.01" y2="16" {...p}/></Svg>;
@@ -214,13 +226,15 @@ function Avatar({ name, color, unreadCount, size = 48, statusColor, avatarUrl, l
   logoMode?: boolean;
 }) {
   const showBadge = (unreadCount ?? 0) > 0;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <View style={{ width: size, height: size, position: 'relative' }}>
       <View style={[
         avs.circle,
         { width: size, height: size, borderRadius: size / 2,
-          backgroundColor: (avatarUrl && logoMode) ? '#FFFFFF' : color },
-        (avatarUrl && logoMode) ? { borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' } : null,
+          backgroundColor: (avatarUrl && logoMode) ? (isDark ? T.card : '#FFFFFF') : color },
+        (avatarUrl && logoMode) ? { borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.08)' } : null,
       ]}>
         {avatarUrl ? (
           <Image
@@ -237,11 +251,11 @@ function Avatar({ name, color, unreadCount, size = 48, statusColor, avatarUrl, l
       {statusColor && (
         <View style={[
           avs.statusDot,
-          { backgroundColor: statusColor, ...(isRTL() ? { left: -1 } : { right: -1 }), bottom: -1, width: size * 0.28, height: size * 0.28, borderRadius: size * 0.14 },
+          { backgroundColor: statusColor, borderColor: isDark ? T.card : '#FFFFFF', ...(isRTL() ? { left: -1 } : { right: -1 }), bottom: -1, width: size * 0.28, height: size * 0.28, borderRadius: size * 0.14 },
         ]} />
       )}
       {showBadge && (
-        <View style={[avs.badge, isRTL() ? { left: -4 } : { right: -4 }]}>
+        <View style={[avs.badge, { borderColor: isDark ? T.card : '#FFFFFF' }, isRTL() ? { left: -4 } : { right: -4 }]}>
           <Text style={avs.badgeText}>{unreadCount! > 99 ? '99+' : unreadCount}</Text>
         </View>
       )}
@@ -281,8 +295,14 @@ interface ChatListItemProps {
   onPress: () => void;
 }
 function ChatListItem({ item, selected, currentUserId, viewerType, accentColor, onPress }: ChatListItemProps) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const { title, subtitle, sub: metaLine } = composeChatLabels(item, viewerType);
-  const statusCfg  = STATUS_CONFIG[item.status as WorkOrderStatus];
+  // Avatardaki nokta eskiden SİPARİŞ DURUMU rengiydi (mavi/turuncu/gri) — listede
+  // durum yazısı olmadığı için "bu renk ne demek?" sorusuna yol açıyordu.
+  // Artık okundu göstergesi: okunmamış kırmızı, okunmuş gri.
+  const hasUnread = (item.unread_for_me ?? 0) > 0;
+  const dotColor  = hasUnread ? '#EF4444' : (isDark ? 'rgba(255,255,255,0.30)' : '#C9CDD3');
 
   // Avatar: son gönderen profil (kendim değilse) → renk + initials/foto.
   // Kendim son gönderdiysem chat'in iş emrini referans alacak şekilde
@@ -313,27 +333,27 @@ function ChatListItem({ item, selected, currentUserId, viewerType, accentColor, 
         logoMode={!!(isLabSide && clinicLogo)}
         color={avatarBg}
         unreadCount={item.unread_for_me}
-        statusColor={statusCfg?.color}
+        statusColor={dotColor}
         size={46}
       />
 
       <View style={{ flex: 1, minWidth: 0 }}>
         <View style={cl.topRow}>
-          <Text style={cl.name} numberOfLines={1}>
+          <Text style={[cl.name, { color: isDark ? T.ink : TEXT }]} numberOfLines={1}>
             {title}
             {item.is_urgent && <Text style={cl.urgent}>  · ACİL</Text>}
           </Text>
-          <Text style={[cl.time, item.unread_for_me > 0 && { color: accentColor, fontWeight: '700' }]}>
+          <Text style={[cl.time, { color: isDark ? T.ink3 : SUBTLE }, item.unread_for_me > 0 && { color: accentColor, fontWeight: '700' }]}>
             {formatTime(item.last_created_at)}
           </Text>
         </View>
         {subtitle ? (
-          <Text style={cl.subtitle} numberOfLines={1}>{subtitle}</Text>
+          <Text style={[cl.subtitle, { color: isDark ? T.ink2 : '#475569' }]} numberOfLines={1}>{subtitle}</Text>
         ) : null}
-        <Text style={[cl.preview, item.unread_for_me > 0 && cl.previewBold]} numberOfLines={1}>
+        <Text style={[cl.preview, { color: isDark ? T.ink3 : MUTED }, item.unread_for_me > 0 && { color: isDark ? T.ink : TEXT, fontWeight: '600' }]} numberOfLines={1}>
           {lastPreview(item, currentUserId)}
         </Text>
-        <Text style={cl.meta} numberOfLines={1}>
+        <Text style={[cl.meta, { color: isDark ? T.ink3 : SUBTLE }]} numberOfLines={1}>
           {metaLine}
         </Text>
       </View>
@@ -354,6 +374,8 @@ const cl = StyleSheet.create({
 
 // ── Audio Player (web) ───────────────────────────────────────────────
 function AudioPlayer({ url, isMine, accentColor }: { url: string; isMine: boolean; accentColor: string }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [playing, setPlaying]         = useState(false);
   const [duration, setDuration]       = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -387,15 +409,15 @@ function AudioPlayer({ url, isMine, accentColor }: { url: string; isMine: boolea
 
   const playBg  = isMine ? 'rgba(255,255,255,0.22)' : accentColor;
   const barOn   = isMine ? '#FFFFFF' : accentColor;
-  const barOff  = isMine ? 'rgba(255,255,255,0.35)' : '#CBD5E1';
-  const timeCol = isMine ? 'rgba(255,255,255,0.78)' : MUTED;
+  const barOff  = isMine ? 'rgba(255,255,255,0.35)' : (isDark ? T.ink3 : '#CBD5E1');
+  const timeCol = isMine ? 'rgba(255,255,255,0.78)' : (isDark ? T.ink3 : MUTED);
 
   // Native fallback: just show a label
   if (Platform.OS !== 'web') {
     return (
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <Icon name="mic" size={16} color={isMine ? '#FFFFFF' : accentColor} strokeWidth={2} />
-        <Text style={{ fontSize: 12, fontWeight: '700', color: isMine ? '#FFFFFF' : TEXT }}>
+        <Text style={{ fontSize: 12, fontWeight: '700', color: isMine ? '#FFFFFF' : (isDark ? T.ink : TEXT) }}>
           Sesli mesaj
         </Text>
       </View>
@@ -452,6 +474,19 @@ function ImageLightbox({ url, onClose }: { url: string; onClose: () => void }) {
   useEffect(() => {
     Image.getSize(url, (w, h) => setImgSize({ w, h }), () => {});
   }, [url]);
+
+  const insets = useSafeAreaInsets();
+
+  // Native: paylaşılan NativeImageViewer — pinch-zoom (ScrollView zoomScale) +
+  // güvenli alana göre konumlanan kapat. Eskiden sabit boyutlu <Image> vardı
+  // (zoom yok) ve ✕ `top` sabitiyle çentik/status bar içine giriyordu.
+  if (Platform.OS !== 'web') {
+    return (
+      <Modal transparent visible statusBarTranslucent onRequestClose={onClose} animationType="fade">
+        <NativeImageViewer images={[{ url, name: '' }]} topInset={insets.top} onClose={onClose} />
+      </Modal>
+    );
+  }
 
   // Max bounds — generous but not full-screen
   const maxW = Math.min(width * 0.88, 620);
@@ -580,11 +615,21 @@ function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor, onIm
   canDelete?: boolean;
   onDelete?: (id: string) => void;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const hasImage = msg.attachment_type === 'image' && msg.attachment_url;
   const hasFile  = msg.attachment_type === 'file'  && msg.attachment_url;
   const hasAudio = msg.attachment_type === 'audio' && msg.attachment_url;
   const isPending  = msg.approval_status === 'pending';
   const isRejected = msg.approval_status === 'rejected';
+
+  // ── Parça mesajı (implant parçaları) ──────────────────────────────────────
+  // İçerik "Parça talebi — 36: Scan body · SB-4.1 ×1; Genel: …" biçiminde saklanır:
+  // eski native sürümlerde düz metin okunur, burada başlık + satır olarak çizilir.
+  const isPartsMsg = msg.message_type === 'parts_request' || msg.message_type === 'parts_status';
+  const partsSplit = isPartsMsg ? String(msg.content ?? '').split(' — ') : [];
+  const partsTitle = isPartsMsg ? (partsSplit[0] || 'Parça') : '';
+  const partsLines = isPartsMsg ? (partsSplit.slice(1).join(' — ').split('; ').filter(Boolean)) : [];
 
   const isWhatsApp = msg.external_source === 'whatsapp';
   // Profil RLS bloklarsa sender null gelir — WhatsApp'ta external_sender, yoksa "Kullanıcı".
@@ -617,6 +662,7 @@ function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor, onIm
         </Pressable>
       )}
 
+      {/* parça mesajları: başlık + satırlar (içerik "Başlık — a; b" biçiminde) */}
       <View style={{ minWidth: 0, maxWidth: '78%', alignItems: isMine ? 'flex-end' : 'flex-start' }}>
         {/* Sender name — her iki taraf için de gösterilir */}
         {showAvatar && (
@@ -661,7 +707,7 @@ function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor, onIm
           mb.bubble,
           isMine
             ? [mb.bubbleMine, { backgroundColor: accentColor }]
-            : mb.bubbleOther,
+            : [mb.bubbleOther, isDark && { backgroundColor: T.card }],
         ]}>
         {hasImage && (
           <TouchableOpacity
@@ -687,11 +733,11 @@ function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor, onIm
           >
             <Icon name="file" size={18} color={isMine ? '#FFFFFF' : accentColor} strokeWidth={2} />
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={[mb.fileName, isMine && { color: '#FFFFFF' }]} numberOfLines={1}>
+              <Text style={[mb.fileName, { color: isDark ? T.ink : TEXT }, isMine && { color: '#FFFFFF' }]} numberOfLines={1}>
                 {msg.attachment_name ?? 'Dosya'}
               </Text>
               {msg.attachment_size && (
-                <Text style={[mb.fileSize, isMine && { color: 'rgba(255,255,255,0.75)' }]}>
+                <Text style={[mb.fileSize, { color: isDark ? T.ink3 : MUTED }, isMine && { color: 'rgba(255,255,255,0.75)' }]}>
                   {Math.round(msg.attachment_size / 1024)} KB
                 </Text>
               )}
@@ -701,8 +747,25 @@ function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor, onIm
         {hasAudio && (
           <AudioPlayer url={msg.attachment_url} isMine={isMine} accentColor={accentColor} />
         )}
-        {msg.content ? (
-          <Text style={[mb.text, isMine && { color: '#FFFFFF' }]}>{msg.content}</Text>
+        {isPartsMsg ? (
+          // Parça talebi/durumu — yapılandırılmış kart. İçerik düz metin olarak da
+          // saklanır (eski native sürümler onu gösterir); burada okunur biçim.
+          <View style={{ gap: 4 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Icon name="package" size={13} color={isMine ? '#FFFFFF' : (isDark ? T.ink2 : SUBTLE)} strokeWidth={1.9} />
+              <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.3,
+                             color: isMine ? '#FFFFFF' : (isDark ? T.ink2 : SUBTLE) }}>
+                {autoT(partsTitle)}
+              </Text>
+            </View>
+            {partsLines.map((ln, i) => (
+              <Text key={i} style={[mb.text, { color: isDark ? T.ink : TEXT }, isMine && { color: '#FFFFFF' }]}>
+                {ln}
+              </Text>
+            ))}
+          </View>
+        ) : msg.content ? (
+          <Text style={[mb.text, { color: isDark ? T.ink : TEXT }, isMine && { color: '#FFFFFF' }]}>{msg.content}</Text>
         ) : null}
         <View style={mb.bubbleFooter}>
           {/* Pending / Rejected badge */}
@@ -718,7 +781,7 @@ function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor, onIm
               <Text style={{ fontSize: 9, fontWeight: '600', color: '#EF4444' }}>Reddedildi</Text>
             </View>
           )}
-          <Text style={[mb.time, isMine && { color: 'rgba(255,255,255,0.75)' }]}>
+          <Text style={[mb.time, { color: isDark ? T.ink3 : SUBTLE }, isMine && { color: 'rgba(255,255,255,0.75)' }]}>
             {formatTimeFull(msg.created_at)}
           </Text>
           {/* placeholder */}
@@ -826,6 +889,8 @@ interface ChatDetailProps {
   onBack?: () => void;
 }
 export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerType, onBack }: ChatDetailProps) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const scrollRef = useRef<ScrollView>(null);
   const [text, setText] = useState('');
   const { profile } = useAuthStore();
@@ -985,12 +1050,12 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
 
   if (!selectedOrder) {
     return (
-      <View style={cd.empty}>
+      <View style={[cd.empty, { backgroundColor: isDark ? T.bg : BG_SOFT }]}>
         <View style={[cd.emptyIcon, { backgroundColor: hexA(accentColor, 0.10) }]}>
           <Icon name="message-circle" size={32} color={accentColor} strokeWidth={1.6} />
         </View>
-        <Text style={cd.emptyTitle}>Bir sohbet seç</Text>
-        <Text style={cd.emptySub}>
+        <Text style={[cd.emptyTitle, { color: isDark ? T.ink : TEXT }]}>Bir sohbet seç</Text>
+        <Text style={[cd.emptySub, { color: isDark ? T.ink3 : MUTED }]}>
           Soldan bir iş emri seç; bu iş için yapılan tüm yazışmalar burada görünür.
         </Text>
       </View>
@@ -1027,6 +1092,52 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
     const files: File[] = Array.from(e.target.files ?? []);
     e.target.value = '';
     enqueueFiles(files);
+  }
+
+  // ── Native (iOS/Android) dosya seçiciler ─────────────────────────
+  // Web'deki <input type=file> native'de yok; ataç düğmesi bu yüzden mobilde
+  // hiç render edilmiyordu. Seçilen dosya web ile AYNI önizleme/gönderme
+  // akışına girsin diye Blob'a isim iliştirilip enqueueFiles'a verilir
+  // (MessagesB5Mobile'daki kanıtlanmış uri→blob→upload yolu).
+  async function enqueueNativeAsset(uri: string, name: string, mime: string, size?: number | null) {
+    const res = await fetch(uri);
+    const blob: any = await res.blob();
+    try { Object.defineProperty(blob, 'name', { value: name, configurable: true }); } catch { /* */ }
+    if (!blob.type && mime) { try { Object.defineProperty(blob, 'type', { value: mime, configurable: true }); } catch { /* */ } }
+    // Native'de URL.createObjectURL güvenilir değil → önizleme için ham uri'yi taşı.
+    try { Object.defineProperty(blob, '__uri', { value: uri, configurable: true }); } catch { /* */ }
+    if (size != null && !blob.size) { try { Object.defineProperty(blob, 'size', { value: size, configurable: true }); } catch { /* */ } }
+    enqueueFiles([blob as File]);
+  }
+
+  async function pickNative(kind: 'camera' | 'library' | 'file') {
+    setAttachOpen(false);
+    try {
+      if (kind === 'camera' || kind === 'library') {
+        if (kind === 'camera') {
+          const perm = await ImagePicker.requestCameraPermissionsAsync();
+          if (!perm.granted) { Alert.alert(autoT('İzin gerekli'), autoT('Fotoğraf çekmek için kamera izni gerekiyor.')); return; }
+        }
+        const res = kind === 'camera'
+          ? await ImagePicker.launchCameraAsync({ quality: 0.85 })
+          : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85 });
+        if (res.canceled || !res.assets?.length) return;
+        const a = res.assets[0];
+        await enqueueNativeAsset(
+          a.uri,
+          a.fileName ?? `foto_${Date.now()}.jpg`,
+          a.mimeType ?? 'image/jpeg',
+          (a as any).fileSize ?? null,
+        );
+        return;
+      }
+      const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true, multiple: false });
+      if (res.canceled || !res.assets?.length) return;
+      const a = res.assets[0];
+      await enqueueNativeAsset(a.uri, a.name ?? `dosya_${Date.now()}`, a.mimeType ?? 'application/octet-stream', a.size ?? null);
+    } catch (e: any) {
+      Alert.alert(autoT('Hata'), e?.message ?? autoT('Dosya eklenemedi.'));
+    }
   }
 
   async function sendPendingFile() {
@@ -1132,32 +1243,32 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
   const isWebPlatform = Platform.OS === 'web';
 
   return (
-    <View style={cd.wrap} ref={dropRef}>
+    <View style={[cd.wrap, { backgroundColor: isDark ? T.bg : BG_SOFT }]} ref={dropRef}>
       {/* Header */}
-      <View style={cd.header}>
+      <View style={[cd.header, { backgroundColor: isDark ? T.card : SURFACE, borderBottomColor: isDark ? T.hairline : BORDER }]}>
         {onBack && (
           <TouchableOpacity onPress={onBack} activeOpacity={0.7} style={cd.iconBtn}>
-            <Icon name={isRTL() ? 'arrow-right' : 'arrow-left'} size={18} color={TEXT} strokeWidth={2} />
+            <Icon name={isRTL() ? 'arrow-right' : 'arrow-left'} size={18} color={isDark ? T.ink : TEXT} strokeWidth={2} />
           </TouchableOpacity>
         )}
         <View style={[
           cd.headerAvatar,
-          { backgroundColor: headerLogo ? '#FFFFFF' : avatarBg },
-          headerLogo ? { borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' } : null,
+          { backgroundColor: headerLogo ? (isDark ? T.card : '#FFFFFF') : avatarBg },
+          headerLogo ? { borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.08)' } : null,
         ]}>
           {headerLogo
             ? <Image source={{ uri: headerLogo }} style={cd.headerAvatarImg} resizeMode="contain" />
             : <Text style={cd.headerAvatarText}>{initials(headerTitle)}</Text>}
           {statusCfg && (
-            <View style={[cd.headerStatusDot, isRTL() ? { left: -1 } : { right: -1 }, { backgroundColor: statusCfg.color }]} />
+            <View style={[cd.headerStatusDot, { borderColor: isDark ? T.card : SURFACE }, isRTL() ? { left: -1 } : { right: -1 }, { backgroundColor: statusCfg.color }]} />
           )}
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={cd.headerTitle} numberOfLines={1}>
+          <Text style={[cd.headerTitle, { color: isDark ? T.ink : TEXT }]} numberOfLines={1}>
             {headerTitle}
             {selectedOrder.is_urgent && <Text style={cd.headerUrgent}>  · ACİL</Text>}
           </Text>
-          <Text style={cd.headerSub} numberOfLines={1}>
+          <Text style={[cd.headerSub, { color: isDark ? T.ink3 : MUTED }]} numberOfLines={1}>
             {headerSub}
             {statusCfg ? `  ·  ${statusCfg.label}` : ''}
           </Text>
@@ -1167,43 +1278,44 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
       {/* Pinned summary — iş açıklaması ve özet (WhatsApp pin tarzı) */}
       {(workType || hasPinDetails) && (
         <View style={[cd.pinWrap,
+          { backgroundColor: isDark ? T.card : SURFACE, borderBottomColor: isDark ? T.hairline : BORDER },
           isRTL() ? { borderRightWidth: 3, borderRightColor: accentColor }
                   : { borderLeftWidth: 3, borderLeftColor: accentColor }]}>
           <View style={cd.pinTopRow}>
             <Icon name="pin" size={12} color={accentColor} strokeWidth={2.2} />
             <Text style={[cd.pinLabel, { color: accentColor }]}>SABİTLENDİ · İş Özeti</Text>
           </View>
-          <Text style={cd.pinTitle} numberOfLines={2}>{workType}</Text>
+          <Text style={[cd.pinTitle, { color: isDark ? T.ink : TEXT }]} numberOfLines={2}>{workType}</Text>
           {hasPinDetails && (
             <View style={cd.pinChipsRow}>
               {teethStr && (
-                <View style={cd.pinChip}>
-                  <Icon name="tooth" size={11} color={MUTED} strokeWidth={2} />
-                  <Text style={cd.pinChipText}>{teethStr}</Text>
+                <View style={[cd.pinChip, { backgroundColor: isDark ? T.cardSoft : BG_SOFT, borderColor: isDark ? T.hairline : BORDER }]}>
+                  <Icon name="tooth" size={11} color={isDark ? T.ink3 : MUTED} strokeWidth={2} />
+                  <Text style={[cd.pinChipText, { color: isDark ? T.ink3 : MUTED }]}>{teethStr}</Text>
                 </View>
               )}
               {selectedOrder.shade && (
-                <View style={cd.pinChip}>
-                  <Icon name="palette" size={11} color={MUTED} strokeWidth={2} />
-                  <Text style={cd.pinChipText}>{selectedOrder.shade}</Text>
+                <View style={[cd.pinChip, { backgroundColor: isDark ? T.cardSoft : BG_SOFT, borderColor: isDark ? T.hairline : BORDER }]}>
+                  <Icon name="palette" size={11} color={isDark ? T.ink3 : MUTED} strokeWidth={2} />
+                  <Text style={[cd.pinChipText, { color: isDark ? T.ink3 : MUTED }]}>{selectedOrder.shade}</Text>
                 </View>
               )}
               {selectedOrder.machine_type && (
-                <View style={cd.pinChip}>
-                  <Icon name="cog" size={11} color={MUTED} strokeWidth={2} />
-                  <Text style={cd.pinChipText}>{selectedOrder.machine_type}</Text>
+                <View style={[cd.pinChip, { backgroundColor: isDark ? T.cardSoft : BG_SOFT, borderColor: isDark ? T.hairline : BORDER }]}>
+                  <Icon name="cog" size={11} color={isDark ? T.ink3 : MUTED} strokeWidth={2} />
+                  <Text style={[cd.pinChipText, { color: isDark ? T.ink3 : MUTED }]}>{selectedOrder.machine_type}</Text>
                 </View>
               )}
               {selectedOrder.delivery_date && (
-                <View style={cd.pinChip}>
-                  <Icon name="calendar" size={11} color={MUTED} strokeWidth={2} />
-                  <Text style={cd.pinChipText}>{formatDateShort(selectedOrder.delivery_date)}</Text>
+                <View style={[cd.pinChip, { backgroundColor: isDark ? T.cardSoft : BG_SOFT, borderColor: isDark ? T.hairline : BORDER }]}>
+                  <Icon name="calendar" size={11} color={isDark ? T.ink3 : MUTED} strokeWidth={2} />
+                  <Text style={[cd.pinChipText, { color: isDark ? T.ink3 : MUTED }]}>{formatDateShort(selectedOrder.delivery_date)}</Text>
                 </View>
               )}
             </View>
           )}
           {selectedOrder.notes && (
-            <Text style={cd.pinNote} numberOfLines={2}>“{selectedOrder.notes}”</Text>
+            <Text style={[cd.pinNote, { color: isDark ? T.ink3 : MUTED }]} numberOfLines={2}>“{selectedOrder.notes}”</Text>
           )}
         </View>
       )}
@@ -1250,7 +1362,7 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
           </View>
         ) : chat.messages.length === 0 ? (
           <View style={cd.noMsgs}>
-            <Text style={cd.noMsgsText}>Henüz mesaj yok. Bir mesaj yazarak başla.</Text>
+            <Text style={[cd.noMsgsText, { color: isDark ? T.ink3 : SUBTLE }]}>Henüz mesaj yok. Bir mesaj yazarak başla.</Text>
           </View>
         ) : (
           chat.messages.map((m, i) => {
@@ -1295,28 +1407,28 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
       {pendingFile ? (
         <Modal transparent animationType="fade" onRequestClose={advancePending}>
           <Pressable style={cd.previewOverlay} onPress={advancePending}>
-            <Pressable style={cd.previewCard} onPress={(e) => e.stopPropagation()}>
-              <View style={cd.previewHeader}>
-                <Text style={cd.previewTitle}>
+            <Pressable style={[cd.previewCard, { backgroundColor: isDark ? T.card : SURFACE }]} onPress={(e) => e.stopPropagation()}>
+              <View style={[cd.previewHeader, { borderBottomColor: isDark ? T.hairline : BORDER }]}>
+                <Text style={[cd.previewTitle, { color: isDark ? T.ink : TEXT }]}>
                   Dosya Gönder
                   {queuedCount > 0 ? ` · sırada ${queuedCount} dosya` : ''}
                 </Text>
                 <TouchableOpacity onPress={advancePending} activeOpacity={0.7}>
-                  <Icon name="x" size={18} color={MUTED} strokeWidth={2} />
+                  <Icon name="x" size={18} color={isDark ? T.ink3 : MUTED} strokeWidth={2} />
                 </TouchableOpacity>
               </View>
               {pendingFile.type.startsWith('image/') ? (
                 <Image
                   // @ts-ignore web blob URL
-                  source={{ uri: typeof URL !== 'undefined' ? URL.createObjectURL(pendingFile) : '' }}
-                  style={cd.previewImage}
+                  source={{ uri: (pendingFile as any).__uri ?? (typeof URL !== 'undefined' ? URL.createObjectURL(pendingFile) : '') }}
+                  style={[cd.previewImage, { backgroundColor: isDark ? T.cardSoft : '#F8FAFC' }]}
                   resizeMode="contain"
                 />
               ) : (
-                <View style={cd.previewFileBox}>
+                <View style={[cd.previewFileBox, { backgroundColor: isDark ? T.cardSoft : '#F8FAFC' }]}>
                   <Icon name="file" size={48} color={accentColor} strokeWidth={1.5} />
-                  <Text style={cd.previewFileName} numberOfLines={2}>{pendingFile.name}</Text>
-                  <Text style={cd.previewFileSize}>
+                  <Text style={[cd.previewFileName, { color: isDark ? T.ink : TEXT }]} numberOfLines={2}>{pendingFile.name}</Text>
+                  <Text style={[cd.previewFileSize, { color: isDark ? T.ink3 : SUBTLE }]}>
                     {pendingFile.size < 1024 * 1024
                       ? `${(pendingFile.size / 1024).toFixed(1)} KB`
                       : `${(pendingFile.size / (1024 * 1024)).toFixed(1)} MB`}
@@ -1324,9 +1436,9 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
                 </View>
               )}
               <TextInput
-                style={cd.previewCaption}
+                style={[cd.previewCaption, { color: isDark ? T.ink : TEXT, backgroundColor: isDark ? T.cardSoft : '#F8FAFC', borderColor: isDark ? T.hairline : BORDER }]}
                 placeholder="Başlık ekle (isteğe bağlı)..."
-                placeholderTextColor={SUBTLE}
+                placeholderTextColor={isDark ? T.ink3 : SUBTLE}
                 value={pendingCaption}
                 onChangeText={setPendingCaption}
               />
@@ -1336,9 +1448,9 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
                   <Text style={cd.previewErrorText}>{uploadError}</Text>
                 </View>
               ) : null}
-              <View style={cd.previewActions}>
-                <TouchableOpacity style={cd.previewCancel} onPress={advancePending} activeOpacity={0.7}>
-                  <Text style={cd.previewCancelText}>
+              <View style={[cd.previewActions, { borderTopColor: isDark ? T.hairline : BORDER }]}>
+                <TouchableOpacity style={[cd.previewCancel, { backgroundColor: isDark ? T.cardSoft : BG_SOFT }]} onPress={advancePending} activeOpacity={0.7}>
+                  <Text style={[cd.previewCancelText, { color: isDark ? T.ink3 : MUTED }]}>
                     {queuedCount > 0 ? 'Atla' : 'İptal'}
                   </Text>
                 </TouchableOpacity>
@@ -1381,9 +1493,9 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
 
       {/* ── Voice: RECORDING state ───────────────────────────────── */}
       {voiceMode === 'recording' && (
-        <View style={cd.inputBar}>
+        <View style={[cd.inputBar, { backgroundColor: isDark ? T.bg : BG_SOFT }]}>
           {/* Island pill: trash + red dot + timer + wave */}
-          <View style={cd.voicePill}>
+          <View style={[cd.voicePill, { backgroundColor: isDark ? T.card : SURFACE, borderColor: isDark ? T.hairline : BORDER }]}>
             <TouchableOpacity onPress={discardRecording} activeOpacity={0.7} style={cd.pillVoiceBtn}>
               <Icon name="trash" size={17} color="#EF4444" strokeWidth={2} />
             </TouchableOpacity>
@@ -1404,9 +1516,9 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
 
       {/* ── Voice: RECORDED / preview state ─────────────────────── */}
       {voiceMode === 'recorded' && recordedUrl && (
-        <View style={cd.inputBar}>
+        <View style={[cd.inputBar, { backgroundColor: isDark ? T.bg : BG_SOFT }]}>
           {/* Island pill: trash + audio player */}
-          <View style={cd.voicePill}>
+          <View style={[cd.voicePill, { backgroundColor: isDark ? T.card : SURFACE, borderColor: isDark ? T.hairline : BORDER }]}>
             <TouchableOpacity onPress={discardRecording} activeOpacity={0.7} style={cd.pillVoiceBtn}>
               <Icon name="trash" size={17} color="#EF4444" strokeWidth={2} />
             </TouchableOpacity>
@@ -1430,42 +1542,58 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
 
       {/* ── Normal composer (idle) — pill design ─────────────────── */}
       {voiceMode === 'idle' && (
-        <View style={cd.inputBar}>
+        <View style={[cd.inputBar, { backgroundColor: isDark ? T.bg : BG_SOFT }]}>
           {/* ── Pill: attach button + text field ─────────────────── */}
-          <View style={cd.inputPill}>
-            {/* Attach menu — web only */}
-            {isWebPlatform ? (
+          <View style={[cd.inputPill, { backgroundColor: isDark ? T.card : SURFACE, borderColor: isDark ? T.hairline : BORDER }]}>
+            {/* Attach menu — web: gizli <input>'ları tetikler; native: expo picker'lar.
+                Eskiden `isWebPlatform ? … : null` idi → iOS/Android'de ataç düğmesi HİÇ
+                render edilmiyordu, mobilde dosya eklemek imkânsızdı. */}
+            {true ? (
               <View style={{ position: 'relative' }}>
                 {attachOpen ? (
                   <>
                     <Pressable style={cd.attachBackdrop} onPress={() => setAttachOpen(false)} />
                     <View style={[cd.attachMenu, isRTL() ? { right: 0 } : { left: 0 }]}>
+                      {!isWebPlatform && (
+                        <TouchableOpacity
+                          style={cd.attachItem}
+                          onPress={() => pickNative('camera')}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={cd.attachItemLabel}>{autoT('Kamera')}</Text>
+                          <View style={[cd.attachIconCircle, { backgroundColor: '#0EA5E9' }]}>
+                            <Icon name="camera" size={20} color="#FFFFFF" strokeWidth={2} />
+                          </View>
+                        </TouchableOpacity>
+                      )}
                       <TouchableOpacity
                         style={cd.attachItem}
-                        onPress={() => { setAttachOpen(false); imageInputRef.current?.click(); }}
+                        onPress={() => { if (isWebPlatform) { setAttachOpen(false); imageInputRef.current?.click(); } else { pickNative('library'); } }}
                         activeOpacity={0.85}
                       >
-                        <Text style={cd.attachItemLabel}>Fotoğraf</Text>
+                        <Text style={cd.attachItemLabel}>{autoT('Fotoğraf')}</Text>
                         <View style={[cd.attachIconCircle, { backgroundColor: '#0F172A' }]}>
                           <Icon name="image" size={20} color="#FFFFFF" strokeWidth={2} />
                         </View>
                       </TouchableOpacity>
+                      {isWebPlatform && (
+                        <TouchableOpacity
+                          style={cd.attachItem}
+                          onPress={() => { setAttachOpen(false); scanInputRef.current?.click(); }}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={cd.attachItemLabel}>{autoT('Dijital Tarama')}</Text>
+                          <View style={[cd.attachIconCircle, { backgroundColor: '#0891B2' }]}>
+                            <Icon name="scan" size={20} color="#FFFFFF" strokeWidth={2} />
+                          </View>
+                        </TouchableOpacity>
+                      )}
                       <TouchableOpacity
                         style={cd.attachItem}
-                        onPress={() => { setAttachOpen(false); scanInputRef.current?.click(); }}
+                        onPress={() => { if (isWebPlatform) { setAttachOpen(false); fileInputRef.current?.click(); } else { pickNative('file'); } }}
                         activeOpacity={0.85}
                       >
-                        <Text style={cd.attachItemLabel}>Dijital Tarama</Text>
-                        <View style={[cd.attachIconCircle, { backgroundColor: '#0891B2' }]}>
-                          <Icon name="scan" size={20} color="#FFFFFF" strokeWidth={2} />
-                        </View>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={cd.attachItem}
-                        onPress={() => { setAttachOpen(false); fileInputRef.current?.click(); }}
-                        activeOpacity={0.85}
-                      >
-                        <Text style={cd.attachItemLabel}>Dosya</Text>
+                        <Text style={cd.attachItemLabel}>{autoT('Dosya')}</Text>
                         <View style={[cd.attachIconCircle, { backgroundColor: '#7C3AED' }]}>
                           <Icon name="file" size={20} color="#FFFFFF" strokeWidth={2} />
                         </View>
@@ -1475,7 +1603,7 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
                 ) : null}
 
                 <TouchableOpacity
-                  style={[cd.pillAttachBtn, attachOpen && cd.pillAttachBtnActive]}
+                  style={[cd.pillAttachBtn, attachOpen && cd.pillAttachBtnActive, attachOpen && isDark && { backgroundColor: T.cardSoft }]}
                   onPress={() => setAttachOpen((v) => !v)}
                   disabled={uploading || chat.sending}
                   activeOpacity={0.7}
@@ -1483,7 +1611,7 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
                   <Icon
                     name={attachOpen ? 'x' : 'paperclip'}
                     size={18}
-                    color={attachOpen ? TEXT : SUBTLE}
+                    color={attachOpen ? (isDark ? T.ink : TEXT) : (isDark ? T.ink3 : SUBTLE)}
                     strokeWidth={2}
                   />
                 </TouchableOpacity>
@@ -1491,11 +1619,11 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
             ) : null}
 
             <TextInput
-              style={cd.pillInput}
+              style={[cd.pillInput, { color: isDark ? T.ink : TEXT }]}
               value={text}
               onChangeText={setText}
               placeholder="Mesaj yaz..."
-              placeholderTextColor={SUBTLE}
+              placeholderTextColor={isDark ? T.ink3 : SUBTLE}
               blurOnSubmit={false}
               onKeyPress={(e: any) => {
                 if (Platform.OS === 'web' && e.nativeEvent?.key === 'Enter' && !e.nativeEvent?.shiftKey) {
@@ -1544,11 +1672,11 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
       {/* pointerEvents="none" şart: katman fare olaylarını yakalarsa altındaki
           node'da dragleave tetiklenir ve katman anında kapanır. */}
       {dragActive && (
-        <View style={cd.dropOverlay} pointerEvents="none">
+        <View style={[cd.dropOverlay, { backgroundColor: isDark ? 'rgba(14,14,14,0.82)' : 'rgba(255,255,255,0.82)' }]} pointerEvents="none">
           <View style={[cd.dropCard, { borderColor: accentColor, backgroundColor: hexA(accentColor, 0.06) }]}>
             <Icon name="upload" size={28} color={accentColor} strokeWidth={1.6} />
             <Text style={[cd.dropTitle, { color: accentColor }]}>Dosyayı buraya bırak</Text>
-            <Text style={cd.dropSub}>Fotoğraf, dijital tarama veya belge · en fazla 100 MB</Text>
+            <Text style={[cd.dropSub, { color: isDark ? T.ink3 : MUTED }]}>Fotoğraf, dijital tarama veya belge · en fazla 100 MB</Text>
           </View>
         </View>
       )}
@@ -1824,10 +1952,75 @@ function _requireB5() {
 }
 
 export function MessagesPopup({ visible, onClose, accentColor, initialOrderId }: MessagesPopupProps) {
+  // Klavye açılınca panel (height %92, dikeyde ortalı) yerinde kalıyor ve alttaki
+  // yazma alanı klavyenin ARKASINDA kalıyordu. WhatsApp davranışı: kart klavye
+  // kadar kısalır, composer klavyenin hemen üstünde durur.
+  const { height: kbHeight } = useAnimatedKeyboardHeight();
+  // Layout'larda popup hep MOUNT duruyor (navbar "Mesajlar" butonu); klavye
+  // dinleyicisi başka ekranlardaki klavyeleri de izliyor ve kaçan bir "hide"
+  // olayı sonrası bayat yükseklik kalıyordu → navbar'dan açılınca panel kısa ve
+  // yukarı kaymış açılıyordu (üst bardan açılan her seferinde taze mount, düzgün).
+  // Açılışta klavye gerçekten kapalıysa değeri sıfırla.
+  useEffect(() => {
+    if (!visible || Platform.OS === 'web') return;
+    if (!(Keyboard as any).isVisible?.()) kbHeight.setValue(0);
+  }, [visible, kbHeight]);
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const { profile } = useAuthStore();
   const { items, loading, totalUnread } = useOrderChatInbox();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 900;
+  const insets = useSafeAreaInsets();
+
+  // ── Mobil: navbar'ın ÜSTÜNDE biten ağaç-içi katman (Modal DEĞİL) ──────────
+  // RN Modal ayrı bir pencere açıp floating navbar'ı da örtüyordu. MoreMenuSheet
+  // gibi ağaç içinde absolute katman: panel ve karartma navbar'ın üst kenarında
+  // biter → navbar görünür VE dokunulabilir kalır (dokunuşlar alttaki şeride
+  // geçer). Masaüstü Modal olarak kalır.
+  const inline = !isDesktop;
+  const nav = navBarMetrics(insets.bottom, 0);
+  const navReserve = nav.top + 10;           // panelin altı: bar üstü + nefes
+  // Klavye açıkken navbar klavyenin arkasında kalır → panel klavyeye göre küçülür
+  // (max(navReserve, klavye + 16)).
+  const inlinePadBottom = kbHeight.interpolate({
+    inputRange: [0, navReserve - 16, navReserve - 16 + 2000],
+    outputRange: [navReserve, navReserve, navReserve + 2000],
+    extrapolate: 'clamp',
+  });
+  // Navbar'dan başka sayfaya geçilince / "Daha" menüsü açılınca kapan.
+  const pathname = usePathname();
+  const openPathRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!visible) { openPathRef.current = null; return; }
+    if (openPathRef.current == null) { openPathRef.current = pathname; return; }
+    if (inline && pathname !== openPathRef.current) onClose();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, pathname]);
+  const moreMenuOpen = useUiOverlayStore(st => st.moreMenuOpen);
+  useEffect(() => {
+    if (inline && visible && moreMenuOpen) onClose();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moreMenuOpen]);
+  // Android geri tuşu — Modal'ın onRequestClose'unun yerine
+  useEffect(() => {
+    if (!inline || !visible || Platform.OS !== 'android') return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => { onClose(); return true; });
+    return () => sub.remove();
+  }, [inline, visible, onClose]);
+  // Simanty FAB'ı (zIndex 9999) navbar'ın hemen üstünde, panelin sağ-alt köşesinde
+  // duruyor → popup açıkken gizle.
+  useSuppressDentyFab(inline && visible);
+  // Karartma navbar'ın arkasına da uzansın: şeridi PillTabBar çizer (bkz. store).
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    if (!inline || !visible) return;
+    const close = () => onCloseRef.current();
+    const st = useUiOverlayStore.getState();
+    st.setNavDim(close);
+    return () => { if (useUiOverlayStore.getState().navDimClose === close) st.setNavDim(null); };
+  }, [inline, visible]);
 
   const [query,    setQuery]    = useState('');
   const [selected, setSelected] = useState<any | null>(null);
@@ -1960,28 +2153,36 @@ export function MessagesPopup({ visible, onClose, accentColor, initialOrderId }:
   // Mobile: tek pane modu — seçim yoksa liste, varsa chat
   const showListOnMobile = !selected;
 
-  return (
-    <Modal
-      visible={mounted}
-      transparent
-      statusBarTranslucent
-      onRequestClose={onClose}
-      animationType="none"
-    >
+  // Karartma mobilde navbar'ın üst kenarında biter (bar karartılmaz, dokunulur).
+  const backdropInline = inline ? { bottom: nav.top } : null;
+  const body = (
+    <>
       {/* Backdrop — web'de plain View + CSS transition (GPU katmanı),
           native'de Animated.View + opacity */}
       {isWeb ? (
-        <View style={[p.backdrop, webBackdropStyle]}>
+        <View style={[p.backdrop, webBackdropStyle, backdropInline]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         </View>
       ) : (
-        <Animated.View style={[p.backdrop, { opacity }]}>
+        <Animated.View style={[p.backdrop, { opacity }, backdropInline]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         </Animated.View>
       )}
 
       {/* Panel */}
-      <View style={p.centerWrap} pointerEvents="box-none">
+      <Animated.View
+        style={[
+          p.centerWrap,
+          inline
+            ? {
+                paddingTop: Math.max(insets.top, 12) + 6,
+                // Web'de klavye düzeni tarayıcıda → yalnız navbar payı.
+                paddingBottom: Platform.OS === 'web' ? navReserve : inlinePadBottom,
+              }
+            : null,
+        ]}
+        pointerEvents="box-none"
+      >
         <Animated.View
           // Web'de Animated.View → RN-web View → div. Style objesi
           // inline style olarak DOM'a basılır; transition/willChange
@@ -1996,29 +2197,30 @@ export function MessagesPopup({ visible, onClose, accentColor, initialOrderId }:
             // Mobil: frosted-glass yerine solid beyaz (gradient arkadan geçmesin).
             // Desktop frosted-glass aynen korunur.
             !isDesktop ? p.panelMobileSolid : null,
+            isDark ? { backgroundColor: T.card } : null,
           ]}
         >
           {/* Desktop: split pane */}
           {isDesktop ? (
-            <View style={[p.split, isRTL() ? { borderLeftWidth: 1, borderLeftColor: Platform.OS === 'web' ? 'rgba(0,0,0,0.06)' : BORDER }
-                                     : { borderRightWidth: 1, borderRightColor: Platform.OS === 'web' ? 'rgba(0,0,0,0.06)' : BORDER }]}>
+            <View style={[p.split, isRTL() ? { borderLeftWidth: 1, borderLeftColor: isDark ? T.hairline : (Platform.OS === 'web' ? 'rgba(0,0,0,0.06)' : BORDER) }
+                                     : { borderRightWidth: 1, borderRightColor: isDark ? T.hairline : (Platform.OS === 'web' ? 'rgba(0,0,0,0.06)' : BORDER) }]}>
               {/* Left: chat list */}
-              <View style={p.left}>
-                <View style={p.listHeader}>
+              <View style={[p.left, { backgroundColor: isDark ? T.card : SURFACE }]}>
+                <View style={[p.listHeader, { backgroundColor: isDark ? T.card : SURFACE, borderBottomColor: isDark ? T.hairline : BORDER }]}>
                   <View style={p.listTitleRow}>
-                    <Text style={p.listTitle}>Mesajlar</Text>
+                    <Text style={[p.listTitle, { color: isDark ? T.ink : TEXT }]}>Mesajlar</Text>
                     {totalUnread > 0 && (
                       <View style={[p.totalBadge, { backgroundColor: accentColor }]}>
                         <Text style={p.totalBadgeText}>{totalUnread > 99 ? '99+' : totalUnread}</Text>
                       </View>
                     )}
                   </View>
-                  <View style={p.searchBar}>
-                    <Icon name="search" size={14} color={SUBTLE} strokeWidth={2} />
+                  <View style={[p.searchBar, isDark && { backgroundColor: T.cardSoft }]}>
+                    <Icon name="search" size={14} color={isDark ? T.ink3 : SUBTLE} strokeWidth={2} />
                     <TextInput
-                      style={p.searchInput}
+                      style={[p.searchInput, { color: isDark ? T.ink : TEXT }]}
                       placeholder="Ara..."
-                      placeholderTextColor={SUBTLE}
+                      placeholderTextColor={isDark ? T.ink3 : SUBTLE}
                       value={query}
                       onChangeText={setQuery}
                     />
@@ -2031,7 +2233,7 @@ export function MessagesPopup({ visible, onClose, accentColor, initialOrderId }:
                   </View>
                 ) : filtered.length === 0 ? (
                   <View style={p.emptyList}>
-                    <Text style={p.emptyListText}>
+                    <Text style={[p.emptyListText, { color: isDark ? T.ink3 : SUBTLE }]}>
                       {query ? 'Sonuç bulunamadı' : 'Henüz mesaj yok'}
                     </Text>
                   </View>
@@ -2049,13 +2251,13 @@ export function MessagesPopup({ visible, onClose, accentColor, initialOrderId }:
                         onPress={() => setSelected(item)}
                       />
                     )}
-                    ItemSeparatorComponent={() => <View style={[p.divider, isRTL() ? { marginRight: 72 } : { marginLeft: 72 }]} />}
+                    ItemSeparatorComponent={() => <View style={[p.divider, isDark && { backgroundColor: T.hairline }, isRTL() ? { marginRight: 72 } : { marginLeft: 72 }]} />}
                   />
                 )}
               </View>
 
               {/* Right: chat detail */}
-              <View style={p.right}>
+              <View style={[p.right, isDark && { backgroundColor: T.bg }]}>
                 <ChatDetail
                   selectedOrder={selected}
                   accentColor={accentColor}
@@ -2069,21 +2271,21 @@ export function MessagesPopup({ visible, onClose, accentColor, initialOrderId }:
             <View style={{ flex: 1 }}>
               {showListOnMobile ? (
                 <View style={{ flex: 1 }}>
-                  <View style={p.listHeader}>
+                  <View style={[p.listHeader, { backgroundColor: isDark ? T.card : SURFACE, borderBottomColor: isDark ? T.hairline : BORDER }]}>
                     <View style={p.listTitleRow}>
-                      <Text style={p.listTitle}>Mesajlar</Text>
+                      <Text style={[p.listTitle, { color: isDark ? T.ink : TEXT }]}>Mesajlar</Text>
                       {totalUnread > 0 && (
                         <View style={[p.totalBadge, { backgroundColor: accentColor }]}>
                           <Text style={p.totalBadgeText}>{totalUnread > 99 ? '99+' : totalUnread}</Text>
                         </View>
                       )}
                     </View>
-                    <View style={p.searchBar}>
-                      <Icon name="search" size={14} color={SUBTLE} strokeWidth={2} />
+                    <View style={[p.searchBar, isDark && { backgroundColor: T.cardSoft }]}>
+                      <Icon name="search" size={14} color={isDark ? T.ink3 : SUBTLE} strokeWidth={2} />
                       <TextInput
-                        style={p.searchInput}
+                        style={[p.searchInput, { color: isDark ? T.ink : TEXT }]}
                         placeholder="Ara..."
-                        placeholderTextColor={SUBTLE}
+                        placeholderTextColor={isDark ? T.ink3 : SUBTLE}
                         value={query}
                         onChangeText={setQuery}
                       />
@@ -2095,7 +2297,7 @@ export function MessagesPopup({ visible, onClose, accentColor, initialOrderId }:
                     </View>
                   ) : filtered.length === 0 ? (
                     <View style={p.emptyList}>
-                      <Text style={p.emptyListText}>
+                      <Text style={[p.emptyListText, { color: isDark ? T.ink3 : SUBTLE }]}>
                         {query ? 'Sonuç bulunamadı' : 'Henüz mesaj yok'}
                       </Text>
                     </View>
@@ -2113,7 +2315,7 @@ export function MessagesPopup({ visible, onClose, accentColor, initialOrderId }:
                           onPress={() => setSelected(item)}
                         />
                       )}
-                      ItemSeparatorComponent={() => <View style={[p.divider, isRTL() ? { marginRight: 72 } : { marginLeft: 72 }]} />}
+                      ItemSeparatorComponent={() => <View style={[p.divider, isDark && { backgroundColor: T.hairline }, isRTL() ? { marginRight: 72 } : { marginLeft: 72 }]} />}
                     />
                   )}
                 </View>
@@ -2133,12 +2335,34 @@ export function MessagesPopup({ visible, onClose, accentColor, initialOrderId }:
           <TouchableOpacity
             onPress={onClose}
             activeOpacity={0.7}
-            style={[p.panelCloseBtn, isRTL() ? { left: 12 } : { right: 12 }]}
+            style={[p.panelCloseBtn, isDark && { backgroundColor: T.cardSoft }, isRTL() ? { left: 12 } : { right: 12 }]}
           >
-            <Icon name="x" size={17} color={MUTED} strokeWidth={2.5} />
+            <Icon name="x" size={17} color={isDark ? T.ink3 : MUTED} strokeWidth={2.5} />
           </TouchableOpacity>
         </Animated.View>
+      </Animated.View>
+    </>
+  );
+
+  if (inline) {
+    return (
+      // Üst aksiyon çubuğunun (zIndex 1200) ve sayfa başlığının üstünde; navbar
+      // şeridini kaplamadığı için bar yine dokunulabilir.
+      <View style={[StyleSheet.absoluteFill, { zIndex: 2000, elevation: 2000 }]} pointerEvents="box-none">
+        {body}
       </View>
+    );
+  }
+
+  return (
+    <Modal
+      visible={mounted}
+      transparent
+      statusBarTranslucent
+      onRequestClose={onClose}
+      animationType="none"
+    >
+      {body}
     </Modal>
   );
 }
@@ -2187,8 +2411,9 @@ const p = StyleSheet.create({
   panelDesktop: {
     width: '95%', maxWidth: 1000, height: '85%', maxHeight: 720,
   },
+  // Mobil: centerWrap'in dolgusu (üst güvenli alan · alt navbar payı) arasını doldurur
   panelMobile: {
-    width: '100%', height: '92%',
+    width: '100%', height: '100%',
   },
   // Mobilde opaque beyaz — frosted-glass blur/şeffaflık iptal (gradient sızmaz)
   panelMobileSolid: Platform.OS === 'web'

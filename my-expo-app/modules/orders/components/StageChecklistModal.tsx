@@ -11,6 +11,8 @@ import { AppIcon } from '../../../core/ui/AppIcon';
 import { STAGE_CHECKLIST, STAGE_LABEL, STAGE_COLOR, type Stage } from '../stages';
 import { MaterialConsumptionModal } from './MaterialConsumptionModal';
 import { StageMaterialModal } from './StageMaterialModal';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 interface Props {
   visible:           boolean;
@@ -36,6 +38,8 @@ export function StageChecklistModal({
   requiresDoctorApproval = false,
   onClose, onApproved,
 }: Props) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const items = STAGE_CHECKLIST[stage] ?? [];
   const [checks, setChecks] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(items.map(i => [i.key, false])),
@@ -141,18 +145,18 @@ export function StageChecklistModal({
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={s.backdrop} onPress={onClose}>
-        <Pressable style={s.card} onPress={(e) => e.stopPropagation?.()}>
+        <Pressable style={[s.card, isDark && { backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline }]} onPress={(e) => e.stopPropagation?.()}>
           {/* Header */}
           <View style={s.header}>
             <View style={[s.iconWrap, { backgroundColor: stageColor + '22' }]}>
               <AppIcon name="shield-check-outline" size={20} color={stageColor} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={s.title}>{STAGE_LABEL[stage]} — QC</Text>
-              <Text style={s.subtitle}>Stage tamamlama kontrol listesi</Text>
+              <Text style={[s.title, isDark && { color: T.ink }]}>{STAGE_LABEL[stage]} — QC</Text>
+              <Text style={[s.subtitle, isDark && { color: T.ink3 }]}>Stage tamamlama kontrol listesi</Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={s.closeBtn}>
-              <AppIcon name="x" size={16} color="#94A3B8" />
+            <TouchableOpacity onPress={onClose} style={[s.closeBtn, isDark && { backgroundColor: T.cardSoft }]}>
+              <AppIcon name="x" size={16} color={isDark ? (T.ink3 as string) : '#94A3B8'} />
             </TouchableOpacity>
           </View>
 
@@ -160,7 +164,7 @@ export function StageChecklistModal({
             {/* Checklist */}
             <View style={s.list}>
               {items.length === 0 ? (
-                <Text style={s.emptyText}>Bu stage için checklist yok</Text>
+                <Text style={[s.emptyText, isDark && { color: T.ink3 }]}>Bu stage için checklist yok</Text>
               ) : items.map((it) => {
                 const checked = !!checks[it.key];
                 return (
@@ -168,14 +172,14 @@ export function StageChecklistModal({
                     key={it.key}
                     onPress={() => toggle(it.key)}
                     activeOpacity={0.7}
-                    style={[s.item, checked && { borderColor: stageColor, backgroundColor: stageColor + '14' }]}
+                    style={[s.item, isDark && { borderColor: T.hairline }, checked && { borderColor: stageColor, backgroundColor: stageColor + '14' }]}
                   >
-                    <View style={[s.checkbox, checked && { backgroundColor: stageColor, borderColor: stageColor }]}>
+                    <View style={[s.checkbox, isDark && { backgroundColor: T.cardSoft, borderColor: T.hairline }, checked && { backgroundColor: stageColor, borderColor: stageColor }]}>
                       {checked && <AppIcon name="check" size={12} color="#FFFFFF" strokeWidth={3} />}
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={[s.itemLabel, checked && { color: '#0F172A' }]}>{it.label}</Text>
-                      {it.hint && <Text style={s.itemHint}>{it.hint}</Text>}
+                      <Text style={[s.itemLabel, isDark && { color: T.ink2 }, checked && { color: isDark ? T.ink : '#0F172A' }]}>{it.label}</Text>
+                      {it.hint && <Text style={[s.itemHint, isDark && { color: T.ink3 }]}>{it.hint}</Text>}
                     </View>
                   </TouchableOpacity>
                 );
@@ -183,23 +187,23 @@ export function StageChecklistModal({
             </View>
 
             {/* Notlar */}
-            <Text style={s.fieldLabel}>Not (opsiyonel)</Text>
+            <Text style={[s.fieldLabel, isDark && { color: T.ink3 }]}>Not (opsiyonel)</Text>
             <TextInput
               value={notes}
               onChangeText={setNotes}
               multiline
               numberOfLines={3}
               placeholder="Ek notlar, uyarılar..."
-              placeholderTextColor="#94A3B8"
-              style={s.input}
+              placeholderTextColor={isDark ? (T.ink3 as string) : '#94A3B8'}
+              style={[s.input, isDark && { borderColor: T.hairline, color: T.ink, backgroundColor: T.cardSoft }]}
             />
 
             {/* DESIGN-only: Hekim onayı toggle */}
             {stage === 'DESIGN' && (
-              <View style={s.doctorRow}>
+              <View style={[s.doctorRow, isDark && { backgroundColor: T.cardSoft }]}>
                 <View style={{ flex: 1 }}>
-                  <Text style={s.doctorTitle}>Hekim onayı iste</Text>
-                  <Text style={s.doctorHint}>
+                  <Text style={[s.doctorTitle, isDark && { color: T.ink }]}>Hekim onayı iste</Text>
+                  <Text style={[s.doctorHint, isDark && { color: T.ink3 }]}>
                     Aktif → Stage durur, hekim approval link ile karar verir
                   </Text>
                 </View>
@@ -215,8 +219,8 @@ export function StageChecklistModal({
 
           {/* Footer */}
           <View style={s.footer}>
-            <TouchableOpacity onPress={onClose} style={s.cancelBtn} activeOpacity={0.7}>
-              <Text style={s.cancelText}>İptal</Text>
+            <TouchableOpacity onPress={onClose} style={[s.cancelBtn, isDark && { backgroundColor: T.cardSoft }]} activeOpacity={0.7}>
+              <Text style={[s.cancelText, isDark && { color: T.ink2 }]}>İptal</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleSave}

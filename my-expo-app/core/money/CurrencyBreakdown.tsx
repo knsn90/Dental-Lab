@@ -13,7 +13,7 @@
 
 import React, { useState } from 'react';
 import { View, Text, Pressable, Platform, Modal, TextStyle } from 'react-native';
-import { ChevronDown, ChevronUp, Globe } from 'lucide-react-native';
+import { ChevronDown, ChevronUp, Globe } from '../ui/icons';
 import { formatMoney, type Currency, CURRENCY_META } from './currency';
 import type { MoneySummary } from './aggregations';
 

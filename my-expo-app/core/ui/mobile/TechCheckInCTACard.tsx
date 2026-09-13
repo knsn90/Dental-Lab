@@ -11,7 +11,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { View, Text, Pressable, Platform, Animated, Easing } from 'react-native';
-import { QrCode, Clock } from 'lucide-react-native';
+import { QrCode, Clock } from '../icons';
 import { autoT } from '../../i18n/autoTranslate';
 
 interface Props {

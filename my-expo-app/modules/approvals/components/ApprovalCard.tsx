@@ -11,7 +11,7 @@ import {
   Clock, CheckCircle2, XCircle, Pencil, Cog,
   Flame, Package, Truck, ScanSearch, FileDown, Box, Gem, CookingPot,
   Check, X,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { toast } from '../../../core/ui/Toast';
 import { Approval } from '../types';
 import { useApprove } from '../hooks/useApprove';
@@ -19,6 +19,7 @@ import { MANUAL_STEPS, DIGITAL_STEPS } from '../../workflow/templates';
 import { DS } from '../../../core/theme/dsTokens';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { useInkUI } from '../../../core/theme/inkScale';
 
 const R = { sm: 8, md: 14, lg: 20, xl: 24, pill: 999 };
 
@@ -62,6 +63,7 @@ export function ApprovalCard({ approval, onResolved, canApprove = false }: Props
   const [reason, setReason]          = useState('');
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
+  const U = useInkUI();
   const CARD = {
     backgroundColor: 'transparent' as const,
     borderRadius: R.xl,
@@ -206,14 +208,14 @@ export function ApprovalCard({ approval, onResolved, canApprove = false }: Props
         }}>
           <TextInput
             style={{
-              backgroundColor: DS.ink[50], borderRadius: R.md,
-              padding: 14, fontSize: 13, color: DS.ink[900],
-              borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+              backgroundColor: U.ink[50], borderRadius: R.md,
+              padding: 14, fontSize: 13, color: U.ink[900],
+              borderWidth: 1, borderColor: isDark ? U.fieldBorder : 'rgba(0,0,0,0.06)',
               minHeight: 72, textAlignVertical: 'top',
               ...(Platform.OS === 'web' ? { outlineStyle: 'none' as any } : {}),
             }}
             placeholder="Red gerekçesi..."
-            placeholderTextColor={DS.ink[400]}
+            placeholderTextColor={U.ink[400]}
             value={reason}
             onChangeText={setReason}
             multiline
@@ -224,10 +226,11 @@ export function ApprovalCard({ approval, onResolved, canApprove = false }: Props
               style={{
                 flex: 1, alignItems: 'center',
                 paddingVertical: 10, borderRadius: R.pill,
-                backgroundColor: DS.ink[100],
+                backgroundColor: isDark ? U.plainBtn.bg : DS.ink[100],
+                ...(isDark ? { borderWidth: 1, borderColor: U.plainBtn.border } : {}),
               }}
             >
-              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500] }}>İptal</Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: isDark ? U.plainBtn.fg : DS.ink[500] }}>İptal</Text>
             </Pressable>
             <Pressable
               onPress={handleReject}

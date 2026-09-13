@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
-import { ShieldAlert, ShieldCheck, KeyRound, MailWarning, Ban, Clock } from 'lucide-react-native';
+import { ShieldAlert, ShieldCheck, KeyRound, MailWarning, Ban, Clock } from '../../core/ui/icons';
 import { securityOverview, type SecurityOverview } from '../../modules/platform/api';
 import { C, PageHeader, Kpi, Banner } from '../../modules/platform/ui';
 

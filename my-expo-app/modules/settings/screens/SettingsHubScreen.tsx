@@ -13,12 +13,13 @@ import { useTranslation } from 'react-i18next';
 import { View, Text, ScrollView, Pressable, useWindowDimensions, Modal, Platform } from 'react-native';
 import { useSegments, useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronLeft, ChevronRight, Menu, X, Check } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, Menu, X, Check } from '../../../core/ui/icons';
 
 import { HubContext } from '../../../core/ui/HubContext';
 import { useColorThemeStore } from '../../../core/store/colorThemeStore';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 import { usePermissionStore } from '../../../core/store/permissionStore';
+import { useAuthStore } from '../../../core/store/authStore';
 
 import { LabUsersManagement } from '../../admin/users/LabUsersManagement';
 import { LabCheckinSettings } from '../../hr/screens/LabCheckinSettings';
@@ -26,6 +27,7 @@ import { StationsSection } from '../sections/StationsSection';
 import { ProfileSection } from '../sections/ProfileSection';
 import { NotificationsSection } from '../sections/NotificationsSection';
 import { GeneralSection } from '../sections/GeneralSection';
+import { FinanceSection } from '../sections/FinanceSection';
 import { IntegrationsScreen } from '../../integrations/screens/IntegrationsScreen';
 import { LogsSection } from '../sections/LogsSection';
 import { CurrencyRatesScreen } from './CurrencyRatesScreen';
@@ -34,7 +36,10 @@ import { PermissionsScreen } from '../../admin/permissions/PermissionsScreen';
 import { WorkflowStudioScreen } from '../../triage/screens/WorkflowStudioScreen';
 import { EquipmentSection } from '../sections/EquipmentSection';
 import { WorkHoursSection } from '../sections/WorkHoursSection';
-import { MOBILE_PANEL_THEMES } from '../../../core/theme/mobileDesignTokens';
+import { MyAccessCodeSection } from '../../kiosk/screens/MyAccessCodeSection';
+import { LabDevicesSection } from '../../kiosk/screens/LabDevicesSection';
+import { useKioskMode } from '../../../core/kiosk/kioskModeStore';
+import { MOBILE_PANEL_THEMES, useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { isRTL } from '../../../core/i18n';
 
@@ -48,8 +53,8 @@ const DISPLAY = {
 type SectionKey =
   | 'profile' | 'notifications' | 'general'
   | 'users'   | 'checkin'    | 'stations'      | 'integrations' | 'logs'
-  | 'permissions' | 'equipment' | 'currency' | 'suppliers' | 'workhours'
-  | 'workflows';
+  | 'permissions' | 'equipment' | 'finance' | 'currency' | 'suppliers' | 'workhours'
+  | 'workflows' | 'mycode' | 'devices';
 
 type PanelKind = 'lab' | 'admin' | 'doctor' | 'clinic' | 'station';
 
@@ -104,6 +109,7 @@ const ACCOUNT_ITEMS: NavItem[] = [
   { key: 'profile',       label: 'Profil',      sub: 'Kişisel bilgiler ve güvenlik', group: 'Hesap' },
   { key: 'notifications', label: 'Bildirimler', sub: 'Uyarı ve bildirim tercihleri' },
   { key: 'general',       label: 'Genel',       sub: 'Dil, saat dilimi, format'     },
+  { key: 'mycode',        label: 'Giriş Kodum', sub: 'Tablet giriş kodu (PIN)'      },
 ];
 
 const LAB_ITEMS: NavItem[] = [
@@ -112,9 +118,10 @@ const LAB_ITEMS: NavItem[] = [
   { key: 'permissions',  label: 'Yetkiler',      sub: 'Rol bazli erisim yonetimi',    requiresPermission: 'manage_settings' },
   { key: 'workhours',    label: 'Çalışma Saatleri', sub: 'Vardiya, öğle, eşzamanlı iş', requiresPermission: 'manage_settings' },
   { key: 'checkin',      label: 'QR Check-in',   sub: 'Mesai takip ayarları',         requiresPermission: 'manage_settings' },
+  { key: 'devices',      label: 'Tabletler',     sub: 'Kiosk cihaz yönetimi',         requiresPermission: 'manage_settings' },
   // ── Operasyon: üretim ve para akışını yapılandıran ayarlar ──
   { key: 'stations',     label: 'İstasyonlar',   sub: 'Üretim aşamaları',             requiresPermission: 'manage_settings', group: 'Operasyon' },
-  { key: 'currency',     label: 'Döviz Kurları',  sub: 'EUR/USD/GBP kur yönetimi',     requiresPermission: 'manage_settings' },
+  { key: 'finance',      label: 'Finans Ayarları', sub: 'Para birimi, KDV, kur, ödeme hatırlatmaları', requiresPermission: 'manage_settings' },
   { key: 'integrations', label: 'Entegrasyonlar', sub: 'e-Fatura & POS ayarları',     requiresPermission: 'manage_settings', trOnly: true },
   // ── Sistem: gözlem ──
   // NOT: "WhatsApp Destek" buradan CIKARILDI — ayar degil, gunluk operasyon
@@ -132,8 +139,10 @@ function getNavItems(panel: PanelKind): NavItem[] {
   if (panel === 'lab' || panel === 'admin') {
     return [...ACCOUNT_ITEMS, ...LAB_ITEMS, ...(panel === 'admin' ? ADMIN_ONLY_ITEMS : [])];
   }
-  // station/doctor/clinic — sadece hesap (Profil + Bildirimler + Genel)
-  return ACCOUNT_ITEMS;
+  // station (teknisyen/kurye) — kiosk tabletinde 'Giriş Kodum' gerekir → tam hesap.
+  if (panel === 'station') return ACCOUNT_ITEMS;
+  // doctor/clinic — kiosk kullanmazlar; 'Giriş Kodum' (tablet PIN) gizli.
+  return ACCOUNT_ITEMS.filter(i => i.key !== 'mycode');
 }
 
 // ── Props ────────────────────────────────────────────────────────────────
@@ -152,13 +161,15 @@ export function SettingsHubScreen({
   const panel = panelTypeProp ?? detectPanel(segments);
   const accent = PANEL_ACCENTS[panel];
   const panelBg = usePanelBg(panel);
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
 
   const { loadTheme } = useColorThemeStore();
   const router = useRouter();
   const params = useLocalSearchParams<{ tab?: string }>();
   const VALID_KEYS: SectionKey[] = [
-    'profile','notifications','general','users','checkin','stations',
-    'integrations','logs','permissions','equipment','currency','suppliers','workflows','workhours',
+    'profile','notifications','general','mycode','devices','users','checkin','stations',
+    'integrations','logs','permissions','equipment','finance','currency','suppliers','workflows','workhours',
   ];
   const initialFromUrl = typeof params.tab === 'string' && (VALID_KEYS as string[]).includes(params.tab)
     ? params.tab as SectionKey
@@ -205,15 +216,36 @@ export function SettingsHubScreen({
 
   const trOnly = useTurkeyOnlyFeatures();
 
+  // Kiosk (paylaşılan tablet) modu: yalnız kişisel HESAP ayarları görünür.
+  // Lab-yönetimi ayarları (Kullanıcılar/Yetkiler/Tabletler/Loglar/Entegrasyonlar…)
+  // paylaşılan tablette gizlenir → oturum açık kalsa bile geri-alınamaz/riskli işlem yapılamaz.
+  const isKiosk = useKioskMode(s => s.isKiosk);
+  const KIOSK_ALLOWED = new Set<SectionKey>(['profile', 'notifications', 'general', 'mycode']);
+
+  // Süper-admin (user_type='admin') TÜM ayarları görür. Not: /settings top-level
+  // route'unda panel 'lab' algılanıp fetchForPanel admin'e lab_manager izinlerini
+  // yüklediğinden RBAC filtresi lab ayarlarını eliyordu; admin için bypass edilir.
+  const isSuperAdmin = useAuthStore(s => s.profile?.user_type) === 'admin';
+
   // Filter nav items by RBAC permissions
-  const allNavItems = getNavItems(panel);
+  const allNavItems = getNavItems(isSuperAdmin && (panel === 'lab' || panel === 'admin') ? 'admin' : panel);
   const navItems = allNavItems.filter(item => {
+    // Kiosk modunda yalnız hesap ayarları
+    if (isKiosk && !KIOSK_ALLOWED.has(item.key)) return false;
     // Bölge süzgeci izinden ÖNCE: İran labında e-Fatura/POS ayarı hiç listelenmez.
     if (item.trOnly && !trOnly) return false;
+    if (isSuperAdmin) return true;      // admin her ayarı görür
     if (!item.requiresPermission) return true;
     if (!permStore.loaded) return true; // show all while loading
     return permStore.permissions.has(item.requiresPermission);
   });
+
+  // Kiosk'ta gizli bir sekmeye deep-link (?tab=users) gelirse boş içerik kalmasın → profile'a düş
+  useEffect(() => {
+    if (isKiosk && !KIOSK_ALLOWED.has(active)) setActiveRaw('profile');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isKiosk, active]);
+
   const activeItem = navItems.find(i => i.key === active);
 
   return (
@@ -238,15 +270,15 @@ export function SettingsHubScreen({
             style={({ pressed }: any) => ({
               width: 36, height: 36, borderRadius: 18,
               alignItems: 'center', justifyContent: 'center',
-              backgroundColor: pressed ? 'rgba(0,0,0,0.06)' : 'transparent',
+              backgroundColor: pressed ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)') : 'transparent',
               // @ts-ignore web
               cursor: 'pointer',
             })}
             accessibilityLabel="Geri"
           >
-            {isRTL() ? <ChevronRight size={22} color="#0A0A0A" strokeWidth={2} /> : <ChevronLeft size={22} color="#0A0A0A" strokeWidth={2} />}
+            {isRTL() ? <ChevronRight size={22} color={isDark ? (T.ink as string) : "#0A0A0A"} strokeWidth={2} /> : <ChevronLeft size={22} color={isDark ? (T.ink as string) : "#0A0A0A"} strokeWidth={2} />}
           </Pressable>
-          <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.4, color: '#0A0A0A' }}>
+          <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.4, color: T.ink }}>
             Ayarlar
           </Text>
         </View>
@@ -268,7 +300,7 @@ export function SettingsHubScreen({
             <View style={{ paddingHorizontal: 12, paddingVertical: 8, backgroundColor: panelBg }}>
               <View style={{
                 flexDirection: 'row', gap: 3, padding: 3,
-                backgroundColor: 'rgba(0,0,0,0.04)', borderRadius: 9999,
+                backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderRadius: 9999,
                 alignItems: 'center',
               }}>
                 {inlineItems.map(item => {
@@ -286,7 +318,7 @@ export function SettingsHubScreen({
                     >
                       <Text style={{
                         fontSize: 12, fontWeight: isActive ? '700' : '600',
-                        color: isActive ? '#FFFFFF' : '#6B6B6B',
+                        color: isActive ? '#FFFFFF' : T.ink3,
                       }}>
                         {navLabel(item.key)}
                       </Text>
@@ -296,7 +328,7 @@ export function SettingsHubScreen({
 
                 {overflowItems.length > 0 ? (
                   <>
-                    <View style={{ width: 1, height: 16, backgroundColor: 'rgba(0,0,0,0.08)', marginHorizontal: 2 }} />
+                    <View style={{ width: 1, height: 16, backgroundColor: T.hairline, marginHorizontal: 2 }} />
                     <Pressable
                       onPress={() => setMenuOpen(true)}
                       style={{
@@ -307,7 +339,7 @@ export function SettingsHubScreen({
                         ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
                       } as any}
                     >
-                      <Menu size={14} color={activeInOverflow ? '#FFFFFF' : '#6B6B6B'} strokeWidth={1.8} />
+                      <Menu size={14} color={activeInOverflow ? '#FFFFFF' : (isDark ? (T.ink3 as string) : '#6B6B6B')} strokeWidth={1.8} />
                       {activeInOverflow ? (
                         <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }} numberOfLines={1}>
                           {activeOverflowLabel}
@@ -332,14 +364,15 @@ export function SettingsHubScreen({
                   />
                   <View style={{
                     width: Math.min(320, _vw * 0.85),
-                    backgroundColor: '#FFFFFF',
+                    backgroundColor: isDark ? T.card : '#FFFFFF',
+                    borderStartWidth: isDark ? 1 : 0, borderStartColor: T.hairline,
                     paddingTop: insets.top + 12,
                     paddingHorizontal: 16,
                     paddingBottom: insets.bottom + 16,
                     ...(Platform.OS === 'web' ? { boxShadow: '-4px 0 24px rgba(0,0,0,0.18)' } as any : {}),
                   }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                      <Text style={{ ...DISPLAY, fontSize: 18, color: '#0A0A0A' }}>
+                      <Text style={{ ...DISPLAY, fontSize: 18, color: T.ink }}>
                         Tüm Ayarlar
                       </Text>
                       <Pressable
@@ -347,7 +380,7 @@ export function SettingsHubScreen({
                         hitSlop={8}
                         style={{ padding: 6, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) } as any}
                       >
-                        <X size={20} color="#6B6B6B" strokeWidth={1.8} />
+                        <X size={20} color={isDark ? (T.ink3 as string) : "#6B6B6B"} strokeWidth={1.8} />
                       </Pressable>
                     </View>
                     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 2 }}>
@@ -368,12 +401,12 @@ export function SettingsHubScreen({
                             <View style={{ flex: 1 }}>
                               <Text style={{
                                 fontSize: 14, fontWeight: isActive ? '700' : '600',
-                                color: isActive ? accent : '#0A0A0A',
+                                color: isActive ? accent : T.ink,
                               }}>
                                 {navLabel(item.key)}
                               </Text>
                               {item.sub ? (
-                                <Text style={{ fontSize: 11, color: '#9A9A9A', marginTop: 2 }} numberOfLines={1}>
+                                <Text style={{ fontSize: 11, color: T.ink3, marginTop: 2 }} numberOfLines={1}>
                                   {navSub(item.key)}
                                 </Text>
                               ) : null}
@@ -407,7 +440,7 @@ export function SettingsHubScreen({
                 {header && (
                   <Text style={{
                     fontSize: 9.5, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase',
-                    color: 'rgba(15,23,42,0.35)',
+                    color: T.ink3,
                     paddingHorizontal: 14, marginTop: idx === 0 ? 0 : 14, marginBottom: 4,
                   }}>
                     {header}
@@ -422,7 +455,7 @@ export function SettingsHubScreen({
                     paddingHorizontal: 14,
                     paddingVertical: 10,
                     borderRadius: 12,
-                    backgroundColor: isActive ? '#FFFFFF' : hovered ? 'rgba(15,23,42,0.04)' : 'transparent',
+                    backgroundColor: isActive ? (isDark ? T.card : '#FFFFFF') : hovered ? (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(15,23,42,0.04)') : 'transparent',
                     opacity: pressed ? 0.7 : 1,
                     ...(Platform.OS === 'web'
                       ? { cursor: 'pointer', transitionProperty: 'background-color', transitionDuration: '120ms' } as any
@@ -441,7 +474,7 @@ export function SettingsHubScreen({
                   <Text style={{
                     fontSize: 13,
                     fontWeight: isActive ? '600' : '400',
-                    color: isActive ? '#0A0A0A' : '#6B6B6B',
+                    color: isActive ? T.ink : T.ink3,
                   }}>
                     {navLabel(item.key)}
                   </Text>
@@ -471,20 +504,20 @@ export function SettingsHubScreen({
                   ...DISPLAY,
                   fontSize: 24,
                   letterSpacing: -0.5,
-                  color: '#0A0A0A',
+                  color: T.ink,
                   marginBottom: 4,
                 }}
               >
                 {navLabel(activeItem.key)}
               </Text>
-              <Text style={{ fontSize: 13, color: '#9A9A9A', lineHeight: 19 }}>
+              <Text style={{ fontSize: 13, color: T.ink3, lineHeight: 19 }}>
                 {navSub(activeItem.key)}
               </Text>
             </View>
           )}
           {activeItem && isNarrow && (
             <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 }}>
-              <Text style={{ fontSize: 12, color: '#9A9A9A', lineHeight: 17 }}>
+              <Text style={{ fontSize: 12, color: T.ink3, lineHeight: 17 }}>
                 {navSub(activeItem.key)}
               </Text>
             </View>
@@ -503,14 +536,17 @@ export function SettingsHubScreen({
                 <GeneralSection panelType={panel} accentColor={accent} />
               )}
               {active === 'users' && <LabUsersManagement accentColor={accent} />}
+              {active === 'mycode' && <MyAccessCodeSection accentColor={accent} />}
+              {active === 'devices' && <LabDevicesSection accentColor={accent} />}
               {active === 'checkin' && (
                 <LabCheckinSettings accentColor={accent} />
               )}
               {active === 'stations' && <StationsSection accentColor={accent} />}
+              {active === 'finance' && <FinanceSection panelType={panel} accentColor={accent} />}
               {active === 'workhours' && <WorkHoursSection accentColor={accent} />}
               {active === 'equipment' && <EquipmentSection accentColor={accent} />}
               {active === 'suppliers' && <SuppliersScreen accentColor={accent} />}
-              {active === 'currency' && <CurrencyRatesScreen accentColor={accent} />}
+              {active === 'currency' && <FinanceSection panelType={panel} accentColor={accent} />}
               {active === 'suppliers' && <SuppliersScreen accentColor={accent} />}
               {active === 'integrations' && <IntegrationsScreen accentColor={accent} />}
               {active === 'logs' && <LogsSection accentColor={accent} />}

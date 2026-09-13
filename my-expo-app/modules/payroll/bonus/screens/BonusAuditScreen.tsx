@@ -7,9 +7,12 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
 import {
   History, User, ChevronDown, ChevronRight, ChevronLeft, Clock, Edit3, Filter,
-} from 'lucide-react-native';
+} from '../../../../core/ui/icons';
 
 import { DS } from '../../../../core/theme/dsTokens';
+import { useInkUI } from '../../../../core/theme/inkScale';
+import { useMobileTokens } from '../../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../../core/store/themeModeStore';
 import { isRTL } from '../../../../core/i18n';
 import { supabase } from '../../../../core/api/supabase';
 import { listPolicies } from '../api';
@@ -63,6 +66,9 @@ const fmtValue = (v: any): string => {
 /* ====================================================================== */
 
 export default function BonusAuditScreen() {
+  const U = useInkUI();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [policies, setPolicies] = useState<BonusPolicy[]>([]);
   const [actors, setActors] = useState<Map<string, string>>(new Map());
@@ -121,21 +127,21 @@ export default function BonusAuditScreen() {
       {/* HEADER */}
       <View style={{ marginBottom: 16, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
         <View style={{ flex: 1, minWidth: 280 }}>
-          <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 1.2, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 10 }}>
+          <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 1.2, textTransform: 'uppercase', color: U.ink[500], marginBottom: 10 }}>
             Değişiklik Geçmişi
           </Text>
-          <Text style={{ ...DISPLAY, fontSize: 36, letterSpacing: -1, lineHeight: 38, color: DS.ink[900] }}>
+          <Text style={{ ...DISPLAY, fontSize: 36, letterSpacing: -1, lineHeight: 38, color: U.ink[900] }}>
             {filtered.length} kayıt
           </Text>
-          <Text style={{ fontSize: 14, color: DS.ink[500], marginTop: 8 }}>
+          <Text style={{ fontSize: 14, color: U.ink[500], marginTop: 8 }}>
             Tüm policy düzenlemelerinin tam audit log'u. Tıkla — alan bazında diff'i gör.
           </Text>
         </View>
         <PillButton
           variant="light"
           onPress={() => setShowFilters(s => !s)}
-          leftIcon={<Filter size={14} color={DS.ink[900]} />}
-          rightIcon={<ChevronDown size={12} color={DS.ink[400]} />}
+          leftIcon={<Filter size={14} color={U.ink[900]} />}
+          rightIcon={<ChevronDown size={12} color={U.ink[400]} />}
         >
           Filtre
         </PillButton>
@@ -144,12 +150,12 @@ export default function BonusAuditScreen() {
       {/* FILTERS */}
       {showFilters ? (
         <View style={{
-          backgroundColor: '#FFF', borderRadius: 18,
-          borderWidth: 1, borderColor: DS.ink[200],
+          backgroundColor: U.surface, borderRadius: 18,
+          borderWidth: 1, borderColor: U.ink[200],
           padding: 18, marginBottom: 16, gap: 16,
         }}>
           <View>
-            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 8 }}>
+            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase', color: U.ink[500], marginBottom: 8 }}>
               Policy
             </Text>
             <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
@@ -161,7 +167,7 @@ export default function BonusAuditScreen() {
           </View>
           {distinctActors.length > 0 ? (
             <View>
-              <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 8 }}>
+              <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase', color: U.ink[500], marginBottom: 8 }}>
                 Aktör
               </Text>
               <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
@@ -191,8 +197,8 @@ export default function BonusAuditScreen() {
             const actorName = e.changed_by ? (actors.get(e.changed_by) ?? e.changed_by.slice(0, 8)) : 'Sistem';
             return (
               <View key={e.id} style={{
-                backgroundColor: '#FFF', borderRadius: 18,
-                borderWidth: 1, borderColor: DS.ink[200], overflow: 'hidden',
+                backgroundColor: U.surface, borderRadius: 18,
+                borderWidth: 1, borderColor: U.ink[200], overflow: 'hidden',
               }}>
                 <Pressable
                   onPress={() => setExpanded(open ? null : e.id)}
@@ -201,24 +207,24 @@ export default function BonusAuditScreen() {
                     opacity: pressed ? 0.85 : 1,
                   })}
                 >
-                  {open ? <ChevronDown size={16} color={DS.ink[500]} /> : (isRTL()
-                    ? <ChevronLeft size={16} color={DS.ink[500]} />
-                    : <ChevronRight size={16} color={DS.ink[500]} />)}
-                  <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: TH.bgSoft, alignItems: 'center', justifyContent: 'center' }}>
+                  {open ? <ChevronDown size={16} color={U.ink[500]} /> : (isRTL()
+                    ? <ChevronLeft size={16} color={U.ink[500]} />
+                    : <ChevronRight size={16} color={U.ink[500]} />)}
+                  <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: U.isDark ? TH.primary + '26' : TH.bgSoft, alignItems: 'center', justifyContent: 'center' }}>
                     <Edit3 size={18} color={TH.primary} strokeWidth={1.8} />
                   </View>
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>
                       {policy?.name ?? '?'}
                     </Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                        <User size={11} color={DS.ink[400]} />
-                        <Text style={{ fontSize: 11, color: DS.ink[500] }}>{actorName}</Text>
+                        <User size={11} color={U.ink[400]} />
+                        <Text style={{ fontSize: 11, color: U.ink[500] }}>{actorName}</Text>
                       </View>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                        <Clock size={11} color={DS.ink[400]} />
-                        <Text style={{ fontSize: 11, color: DS.ink[500] }}>
+                        <Clock size={11} color={U.ink[400]} />
+                        <Text style={{ fontSize: 11, color: U.ink[500] }}>
                           {new Date(e.changed_at).toLocaleString('tr-TR')}
                         </Text>
                       </View>
@@ -232,15 +238,15 @@ export default function BonusAuditScreen() {
                 </Pressable>
 
                 {open ? (
-                  <View style={{ padding: 18, borderTopWidth: 1, borderTopColor: DS.ink[100], backgroundColor: DS.ink[50] }}>
+                  <View style={{ padding: 18, borderTopWidth: 1, borderTopColor: U.ink[100], backgroundColor: U.ink[50] }}>
                     {diff.length === 0 ? (
-                      <Text style={{ fontSize: 12, color: DS.ink[400], fontStyle: 'italic' }}>
+                      <Text style={{ fontSize: 12, color: U.ink[400], fontStyle: 'italic' }}>
                         Görünür değişiklik yok (sadece zaman damgası).
                       </Text>
                     ) : (
                       diff.map(d => (
-                        <View key={d.field} style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: DS.ink[200] }}>
-                          <Text style={{ fontSize: 11, fontWeight: '700', color: DS.ink[700], marginBottom: 8 }}>
+                        <View key={d.field} style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: U.ink[200] }}>
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: U.ink[700], marginBottom: 8 }}>
                             {FIELD_LABELS[d.field] ?? d.field}
                           </Text>
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -250,7 +256,7 @@ export default function BonusAuditScreen() {
                               </Text>
                               <Text style={{ fontSize: 12, color: '#7C2222' }} numberOfLines={3}>{fmtValue(d.before)}</Text>
                             </View>
-                            <Text style={{ fontSize: 14, color: DS.ink[400] }}>→</Text>
+                            <Text style={{ fontSize: 14, color: U.ink[400] }}>→</Text>
                             <View style={{ flex: 1, backgroundColor: 'rgba(45,154,107,0.10)', borderColor: 'rgba(45,154,107,0.25)', borderWidth: 1, borderRadius: 10, padding: 10 }}>
                               <Text style={{ fontSize: 9, fontWeight: '700', color: '#1F6B47', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
                                 Sonra

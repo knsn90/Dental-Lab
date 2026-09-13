@@ -6,11 +6,12 @@
 import React from 'react';
 import { firstName as displayFirstName } from '../../../core/util/personName';
 import { View, Text, Pressable, ScrollView, Platform, RefreshControl } from 'react-native';
+import { useNavScrollProps } from '../../../core/ui/mobile/navScroll';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   QrCode, Flame, FileCheck, ClipboardList, Bell, User as UserIcon,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { isRTL, fmtWeekdayDayMonth } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { MOBILE_PANEL_THEMES, useMobileTokens } from '../../../core/theme/mobileDesignTokens';
@@ -23,6 +24,15 @@ import { useAuthStore } from '../../../core/store/authStore';
 
 import { UnreadMessagesCard } from '../../../core/ui/mobile/UnreadMessagesCard';
 import { RecentOrdersMobile, type RecentOrderItem } from './RecentOrdersMobile';
+
+// Yeni vaka 3D ikonu (yeşil). Hekim accent'i yeşil değilse artı dairesi kalır.
+const NEW_ORDER_ICON_GREEN = require('../../../assets/images/icon-3d-new-order-green.png');
+const isGreenishHex = (hex: string) => {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i.exec(hex || '');
+  if (!m) return false;
+  const [r, g, b] = [m[1], m[2], m[3]].map(v => parseInt(v, 16));
+  return g > r && g > b;
+};
 
 const DOCTOR = MOBILE_PANEL_THEMES.doctor;
 
@@ -88,6 +98,9 @@ export function DoctorMobileDashboard(props: DoctorMobileDashboardProps) {
   const insets = useSafeAreaInsets();
   const { profile } = useAuthStore();
   const T = useMobileTokens();
+  // Floating navbar scroll farkındalığı — aşağı okurken bar geri çekilir,
+  // yukarı kaydırınca açılır (bkz. core/ui/mobile/navScroll.ts).
+  const navScrollProps = useNavScrollProps();
   const faceScanOk = useFaceScanAvailable();
 
   // "Dr." önekini agresif şekilde sök — sonra ilk isim al
@@ -115,6 +128,7 @@ export function DoctorMobileDashboard(props: DoctorMobileDashboardProps) {
       style={{ flex: 1, backgroundColor: T.bg }}
       contentContainerStyle={{ paddingBottom: 120 }}
       refreshControl={<RefreshControl refreshing={!!props.refreshing} onRefresh={props.onRefresh} tintColor={DOCTOR.primary} />}
+      {...navScrollProps}
     >
       {/* ═══ Greeting + notification bell ═══ */}
       <View style={{
@@ -156,6 +170,8 @@ export function DoctorMobileDashboard(props: DoctorMobileDashboardProps) {
             ? `${autoT('BU AY')} ${props.thisMonthNew} ${autoT('YENİ VAKA')}`
             : autoT('YENİ VAKA')}
           rightSlot={faceScanOk ? <FaceScanQuickAction variant="card" accentColor={DOCTOR.primary} /> : undefined}
+          // Beyaz artı dairesi yerine 3D yeni-vaka ikonu (klinik paneliyle aynı)
+          icon={isGreenishHex(DOCTOR.primary) ? NEW_ORDER_ICON_GREEN : undefined}
         />
       )}
 

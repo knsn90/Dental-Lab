@@ -676,6 +676,55 @@ export async function sendPaymentReminder(opts: {
   return data as string;
 }
 
+export type ReminderTone = 'gentle' | 'standard' | 'firm';
+
+/**
+ * Simanty ile kısa hatırlatma mesajı üret (denty-brain proxy → Claude).
+ * Aktif dilde, seçilen tonda 1-2 cümlelik metin döner.
+ * ANTHROPIC_API_KEY sunucuda; anahtar client'a sızmaz.
+ *
+ * NOT: Mesajda tutar/para birimi YAZDIRMIYORUZ — klinik EUR iken model "₺/TL"
+ * uydurabiliyordu. Rakam zaten bildirim gövdesinde; mesaj nazik metin.
+ */
+export async function generateReminderMessage(opts: {
+  clinicName: string;
+  overdueCount?: number | null;
+  tone?: ReminderTone;
+  lang?: string;
+}): Promise<string> {
+  const toneWord =
+    opts.tone === 'firm'   ? 'firm but professional (the payment is overdue)'
+    : opts.tone === 'gentle' ? 'gentle and friendly'
+    : 'polite and standard';
+  const lang = opts.lang || 'tr';
+  const langName =
+    lang === 'en' ? 'English' :
+    lang === 'de' ? 'German' :
+    lang === 'fa' ? 'Persian (Farsi)' : 'Turkish';
+  const facts = [
+    `Clinic name: ${opts.clinicName}`,
+    opts.overdueCount ? `There are overdue invoices (count: ${opts.overdueCount}).` : '',
+  ].filter(Boolean).join('\n');
+
+  const system =
+    `You write a very short payment-reminder message that a dental laboratory sends to a dental clinic. ` +
+    `Output ONLY the message text — no subject line, no signature, no placeholders or brackets, no markdown. ` +
+    `Keep it to 1-2 sentences, at most ~220 characters, ${toneWord} in tone, human and courteous. ` +
+    `IMPORTANT: Do NOT include any monetary amount, number, or currency symbol (no ₺, €, $, TL, EUR). ` +
+    `Refer only to the "outstanding balance" generically. Write it in ${langName}.`;
+  const user = `Write one short reminder message.\n${facts}`;
+
+  const { data, error } = await supabase.functions.invoke('denty-brain', {
+    body: { system, messages: [{ role: 'user', content: user }], max_tokens: 300 },
+  });
+  if (error) throw error;
+  if (!data?.ok) throw new Error(data?.error || 'Simanty mesajı üretemedi');
+  const parts = Array.isArray(data.content) ? data.content : [];
+  const text = parts.map((p: any) => (typeof p?.text === 'string' ? p.text : '')).join('').trim();
+  if (!text) throw new Error('Simanty boş yanıt döndürdü');
+  return text.replace(/^["'\s]+|["'\s]+$/g, '').slice(0, 300);
+}
+
 export async function sendBulkPaymentReminders(opts: {
   message?: string | null;
   severity?: ReminderSeverity;

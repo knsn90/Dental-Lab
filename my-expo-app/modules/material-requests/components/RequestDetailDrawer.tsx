@@ -15,18 +15,19 @@ import {
   X, Wrench, Clock, Calendar as CalendarIcon, User, ArrowRight, ArrowLeft,
   CheckCircle2, XCircle, Truck, PackageCheck, FileText,
   Hourglass, ShieldCheck, Slash,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 
 import { isRTL } from '../../../core/i18n';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import {
   getRequest, getRequestEvents,
   type MaterialRequestRow, type MaterialRequestEventRow,
 } from '../api';
 import {
   DISPLAY, TRY, fmtMoneyDec, fmtDate, fmtDateTime, PillButton, StatusChip, UrgencyChip,
-  CATEGORY_LABEL,
+  CATEGORY_LABEL, openFg,
 } from './atoms';
 import type { ApprovalAction } from './ApprovalActionsModal';
 
@@ -39,19 +40,19 @@ type Props = {
   isManager: boolean;
 };
 
-const makeEventCfg = (t: ReturnType<typeof useMobileTokens>): Record<string, { label: string; icon: any; color: string }> => {
+const makeEventCfg = (t: ReturnType<typeof useMobileTokens>, isDark = false): Record<string, { label: string; icon: any; color: string }> => {
   // "Yönlendirildi" olayı yön BİLDİRİR — RTL'de ok karşı tarafa bakmalı.
   const Fwd = isRTL() ? ArrowLeft : ArrowRight;
   return ({
   created:              { label: 'Talep oluşturuldu',            icon: Wrench,        color: t.ink2      },
-  submitted:            { label: 'Müdür onayına gönderildi',      icon: Hourglass,     color: '#9C5E0E'   },
-  auto_forwarded_self:  { label: 'Otomatik admin yönlendirme',    icon: Fwd,           color: '#1D4ED8'   },
-  forwarded:            { label: 'Admin\'e yönlendirildi',         icon: Fwd,           color: '#1D4ED8'   },
-  rejected_manager:     { label: 'Müdür reddetti',                  icon: XCircle,       color: '#9C2E2E'   },
-  rejected_admin:       { label: 'Admin reddetti',                  icon: XCircle,       color: '#9C2E2E'   },
-  approved:             { label: 'Admin onayladı',                  icon: CheckCircle2,  color: '#1F6B47'   },
-  ordered:              { label: 'Sipariş verildi',                icon: Truck,         color: '#7C3AED'   },
-  received:             { label: 'Teslim alındı',                  icon: PackageCheck,  color: '#0EA5E9'   },
+  submitted:            { label: 'Müdür onayına gönderildi',      icon: Hourglass,     color: openFg('#9C5E0E', isDark)   },
+  auto_forwarded_self:  { label: 'Otomatik admin yönlendirme',    icon: Fwd,           color: openFg('#1D4ED8', isDark)   },
+  forwarded:            { label: 'Admin\'e yönlendirildi',         icon: Fwd,           color: openFg('#1D4ED8', isDark)   },
+  rejected_manager:     { label: 'Müdür reddetti',                  icon: XCircle,       color: openFg('#9C2E2E', isDark)   },
+  rejected_admin:       { label: 'Admin reddetti',                  icon: XCircle,       color: openFg('#9C2E2E', isDark)   },
+  approved:             { label: 'Admin onayladı',                  icon: CheckCircle2,  color: openFg('#1F6B47', isDark)   },
+  ordered:              { label: 'Sipariş verildi',                icon: Truck,         color: openFg('#7C3AED', isDark)   },
+  received:             { label: 'Teslim alındı',                  icon: PackageCheck,  color: openFg('#0EA5E9', isDark)   },
   closed:               { label: 'Kapatıldı',                      icon: CheckCircle2,  color: t.ink2      },
   cancelled:            { label: 'İptal edildi',                  icon: Slash,         color: t.ink3      },
   commented:            { label: 'Yorum eklendi',                 icon: FileText,      color: t.ink3      },
@@ -64,7 +65,8 @@ export function RequestDetailDrawer({
 }: Props) {
   const TH = usePanelTheme();
   const T = useMobileTokens();
-  const EVENT_CFG = makeEventCfg(T);
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
+  const EVENT_CFG = makeEventCfg(T, isDark);
   const [request, setRequest] = useState<MaterialRequestRow | null>(null);
   const [events, setEvents]   = useState<MaterialRequestEventRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -135,7 +137,7 @@ export function RequestDetailDrawer({
           </View>
 
           <ScrollView
-            style={{ flex: 1 }}
+            style={{ flexGrow: 0, flexShrink: 1 }}
             contentContainerStyle={{ paddingHorizontal: 22, paddingVertical: 18, gap: 18 }}
             showsVerticalScrollIndicator={false}
           >
@@ -144,7 +146,7 @@ export function RequestDetailDrawer({
                 <ActivityIndicator color={TH.primary} />
               </View>
             ) : error ? (
-              <Text style={{ fontSize: 13, color: '#9C2E2E' }}>{error}</Text>
+              <Text style={{ fontSize: 13, color: openFg('#9C2E2E', isDark) }}>{error}</Text>
             ) : !r ? null : (
               <>
                 {/* Meta grid */}
@@ -202,7 +204,7 @@ export function RequestDetailDrawer({
                               {it.category ? `${CATEGORY_LABEL[it.category] ?? it.category} · ` : ''}
                               {it.quantity} {it.unit} talep
                               {it.approved_qty != null && it.approved_qty !== it.quantity && (
-                                <Text style={{ color: '#9C5E0E' }}> → {it.approved_qty} onaylı</Text>
+                                <Text style={{ color: openFg('#9C5E0E', isDark) }}> → {it.approved_qty} onaylı</Text>
                               )}
                             </Text>
                           </View>
@@ -280,7 +282,7 @@ export function RequestDetailDrawer({
               {canManagerAct && (
                 <>
                   <PillButton variant="ghost" onPress={() => onAction('manager_reject', r)}
-                    leftIcon={<XCircle size={13} color="#9C2E2E" />}>
+                    leftIcon={<XCircle size={13} color={openFg('#9C2E2E', isDark)} />}>
                     Reddet
                   </PillButton>
                   <PillButton variant="dark" onPress={() => onAction('manager_forward', r)}
@@ -292,7 +294,7 @@ export function RequestDetailDrawer({
               {canAdminApprove && (
                 <>
                   <PillButton variant="ghost" onPress={() => onAction('admin_reject', r)}
-                    leftIcon={<XCircle size={13} color="#9C2E2E" />}>
+                    leftIcon={<XCircle size={13} color={openFg('#9C2E2E', isDark)} />}>
                     Reddet
                   </PillButton>
                   <PillButton variant="success" onPress={() => onAction('admin_approve', r)}
@@ -338,16 +340,18 @@ function Meta({ label, value, sub }: { label: string; value: string; sub?: strin
 
 function NoteBox({ eyebrow, body, danger }: { eyebrow: string; body: string; danger?: boolean }) {
   const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
+  const dangerFg = openFg('#9C2E2E', isDark);
   return (
     <View style={{
       padding: 12, borderRadius: 12,
       backgroundColor: danger ? 'rgba(217,75,75,0.06)' : T.cardSoft,
       borderWidth: 1, borderColor: danger ? 'rgba(217,75,75,0.25)' : T.hairline,
     }}>
-      <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: danger ? '#9C2E2E' : T.ink3 }}>
+      <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: danger ? dangerFg : T.ink3 }}>
         {eyebrow}
       </Text>
-      <Text style={{ fontSize: 13, color: danger ? '#9C2E2E' : T.ink2, marginTop: 4, lineHeight: 19 }}>
+      <Text style={{ fontSize: 13, color: danger ? dangerFg : T.ink2, marginTop: 4, lineHeight: 19 }}>
         {body}
       </Text>
     </View>

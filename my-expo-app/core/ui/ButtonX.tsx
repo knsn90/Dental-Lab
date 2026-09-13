@@ -24,6 +24,7 @@ import React from 'react';
 import { Pressable, Text, View, PressableProps } from 'react-native';
 import { AppIcon } from './AppIcon';
 import { ActivityIndicator } from './teethCompat';
+import { useThemeModeStore } from '../store/themeModeStore';
 
 type Variant = 'default' | 'secondary' | 'destructive' | 'outline' | 'ghost' | 'link';
 type Size    = 'sm' | 'md' | 'lg' | 'icon';
@@ -90,6 +91,7 @@ export function ButtonX({
   fullWidth = false,
   ...rest
 }: ButtonXProps) {
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const v = VARIANTS[variant];
   const sz = SIZES[size];
   const isDisabled = disabled || loading;
@@ -110,25 +112,25 @@ export function ButtonX({
       {...rest}
     >
       {leftIcon && (
-        <AppIcon name={leftIcon as any} size={sz.icon} color={iconColorFor(variant)} strokeWidth={2} />
+        <AppIcon name={leftIcon as any} size={sz.icon} color={iconColorFor(variant, isDark)} strokeWidth={2} />
       )}
       {children !== undefined && (
         <Text className={`${sz.text} ${v.text} ${textClassName ?? ''}`}>{children}</Text>
       )}
       {rightIcon && (
-        <AppIcon name={rightIcon as any} size={sz.icon} color={iconColorFor(variant)} strokeWidth={2} />
+        <AppIcon name={rightIcon as any} size={sz.icon} color={iconColorFor(variant, isDark)} strokeWidth={2} />
       )}
     </Pressable>
   );
 }
 
-function iconColorFor(v: Variant): string {
+function iconColorFor(v: Variant, isDark?: boolean): string {
   switch (v) {
     case 'default':     return '#FFFFFF';
     case 'destructive': return '#FFFFFF';
-    case 'secondary':   return '#0F172A';
-    case 'outline':     return '#0F172A';
-    case 'ghost':       return '#0F172A';
+    case 'secondary':   return isDark ? '#F7F2E9' : '#0F172A';
+    case 'outline':     return isDark ? '#F7F2E9' : '#0F172A';
+    case 'ghost':       return isDark ? '#F7F2E9' : '#0F172A';
     case 'link':        return '#2563EB';
   }
 }

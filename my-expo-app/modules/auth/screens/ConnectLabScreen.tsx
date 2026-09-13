@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
-import { KeyRound } from 'lucide-react-native';
+import { KeyRound } from '../../../core/ui/icons';
 import { useAuthStore } from '../../../store/authStore';
 import { useActiveLabStore } from '../../../core/store/activeLabStore';
 import { clinicAcceptInvite, clinicRequestLab } from '../../lab-connections/api';

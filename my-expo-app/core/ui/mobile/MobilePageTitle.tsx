@@ -1,7 +1,7 @@
 import React, { useContext } from 'react';
 import { View, Text, Platform, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { DS } from '../../theme/dsTokens';
+import { useInkUI } from '../../theme/inkScale';
 import { HubContext } from '../HubContext';
 import { PAGE_PADDING } from '../pageMetrics';
 
@@ -27,6 +27,9 @@ export function MobilePageTitle({
   const { width } = useWindowDimensions();
   const isEmbedded = useContext(HubContext);
   const insets = useSafeAreaInsets();
+  // Başlık rengi tema-farkında olmalı: DS.ink[900] sabit siyahtı → koyu temada
+  // sayfa başlığı görünmez oluyordu (9 mobil ekranın hepsinde). Açık tema aynı.
+  const U = useInkUI();
 
   if (width >= 900 || isEmbedded) return null;
 
@@ -34,11 +37,11 @@ export function MobilePageTitle({
 
   return (
     <View style={{ paddingHorizontal: PAGE_PADDING, paddingTop: pad, paddingBottom: 8 }}>
-      <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 26, letterSpacing: -0.6, color: DS.ink[900] }}>
+      <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 26, letterSpacing: -0.6, color: U.ink[900] }}>
         {title}
       </Text>
       {subtitle ? (
-        <Text style={{ fontSize: 13, color: DS.ink[400], marginTop: 2 }}>{subtitle}</Text>
+        <Text style={{ fontSize: 13, color: U.ink[400], marginTop: 2 }}>{subtitle}</Text>
       ) : null}
     </View>
   );

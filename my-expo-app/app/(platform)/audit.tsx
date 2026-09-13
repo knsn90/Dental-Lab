@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
-import { ScrollText } from 'lucide-react-native';
+import { ScrollText } from '../../core/ui/icons';
 import { auditLog, type AuditRow } from '../../modules/platform/api';
 import { C, FONT, PageHeader, Panel, IconChip } from '../../modules/platform/ui';
 

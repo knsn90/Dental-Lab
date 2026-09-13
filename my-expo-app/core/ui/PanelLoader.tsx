@@ -7,6 +7,7 @@ import { View, Text, Animated, Easing, Platform } from 'react-native';
 import { useSegments } from 'expo-router';
 import { MOBILE_PANEL_THEMES, useMobileTokens, type MobilePanel } from '../theme/mobileDesignTokens';
 import { useAuthStore } from '../store/authStore';
+import { useThemeModeStore } from '../store/themeModeStore';
 import { LabFlowLogo } from './LabFlowLogo';
 
 // SVG path data — image (1).svg
@@ -86,6 +87,7 @@ function profileToPanel(userType?: string | null, role?: string | null): MobileP
 export function PanelLoader({ message, panel, size = 220, fullScreen = false }: PanelLoaderProps) {
   const segments = (useSegments() as string[]) ?? [];
   const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const profile = useAuthStore(s => s.profile);
   const segmentPanel = SEGMENT_TO_PANEL[segments?.[0] ?? ''];
   // Priority: explicit prop → segment → profile.user_type → last-known panel → lab
@@ -128,8 +130,9 @@ export function PanelLoader({ message, panel, size = 220, fullScreen = false }: 
     <View style={{
       flex: fullScreen ? 1 : undefined,
       alignItems: 'center', justifyContent: 'center',
-      // Panel-tinted bg in fullScreen mode; transparent for inline use
-      backgroundColor: fullScreen ? theme.bgPage : 'transparent',
+      // Panel-tinted bg in fullScreen mode; transparent for inline use.
+      // Koyu modda panel bgPage (açık) yerine koyu zemin → beyaz patlama olmaz.
+      backgroundColor: fullScreen ? (isDark ? '#0E0E0E' : theme.bgPage) : 'transparent',
       gap: 18,
       padding: 24,
     }}>

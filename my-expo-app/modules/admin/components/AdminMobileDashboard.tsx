@@ -10,15 +10,17 @@
 
 import React from 'react';
 import { firstName as displayFirstName } from '../../../core/util/personName';
-import { fmtWeekdayDayMonth } from '../../../core/i18n';
+import { fmtWeekdayDayMonth, isRTL } from '../../../core/i18n';
 import { useTranslation } from 'react-i18next';
-import { View, Text, Pressable, ScrollView, Platform, RefreshControl } from 'react-native';
+import { View, Text, Pressable, ScrollView, Platform, RefreshControl, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Bell, QrCode, FileCheck, ClipboardList, User as UserIcon,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { useMobileTokens, MOBILE_PANEL_THEMES } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { HERO_NAVY } from '../../../core/ui/HeroGlow';
 import { Ring } from '../../../core/ui/mobile/Ring';
 import { AnimatedNumber } from '../../../core/ui/mobile/AnimatedNumber';
 import { NewOrderCTACard } from '../../../core/ui/mobile/NewOrderCTACard';
@@ -29,6 +31,26 @@ import { RecentOrdersMobile, type RecentOrderItem } from '../../dashboard/compon
 import { GradientFill, RadialGlow } from '../../../core/ui/gradients';
 
 const EXEC = MOBILE_PANEL_THEMES.exec;
+
+/**
+ * KPI kartlarının 3D illüstrasyonları (admin mobil).
+ * Şeffaf PNG; hem açık hem koyu temada aynı görsel kullanılır — arkasındaki
+ * accent ışıma temaya göre değişir. İkon kuralının (flat 2D line) istisnası:
+ * bunlar ikon değil, karta gömülü ürün illüstrasyonu.
+ *
+ * ÖLÇEK NOTU: kutular bilerek FARKLI (64x58 vs 65x68). Aynı piksel kutusunda
+ * onay-bekleyen görseli daha "dolu" (alfa kaplaması %82) kalırken freze görseli
+ * boşluklu (%68) → biri iri, öteki cılız görünüyordu. Kutular, alfa-ağırlıklı
+ * mürekkep alanları eşitlenecek şekilde (~3050 px²) ve her görselin KENDİ en/boy
+ * oranında verildi; böylece optik ağırlık eşit, alt hizaları da birebir aynı.
+ */
+const KPI_ART = {
+  approvals:  require('../../../assets/images/kpi-3d-approvals.png'),
+  production: require('../../../assets/images/kpi-3d-production.png'),
+  newOrder:   require('../../../assets/images/kpi-3d-new-order.png'),
+  messages:   require('../../../assets/images/kpi-3d-messages.png'),
+  recent:     require('../../../assets/images/kpi-3d-recent-orders.png'),
+} as const;
 
 // Desktop ile aynı format: "Pazartesi, 12 Mayıs"
 function adminTodayLabel(t: (key: string) => string): string {
@@ -86,7 +108,9 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
   const router = useRouter();
   const { profile } = useAuthStore();
   const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const insets = useSafeAreaInsets();
+  const neon = '#38BDF8';
 
   const firstName = displayFirstName(profile?.full_name);
   const greeting  = props.greeting ?? (firstName ? t('dashboard.greetingName', { name: firstName }) : t('dashboard.greeting'));
@@ -153,24 +177,38 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
           onPress={props.onNewOrder}
           kicker={live.total > 0 ? t('admin.cta.ordersToday', { total: live.total }) : t('admin.cta.newOrder')}
           title={t('admin.cta.createNewOrder')}
+          art={KPI_ART.newOrder}
+          // 3D görsel lacivert/mavi → kart da lacivert gradyan (HERO_NAVY)
+          gradient={{ from: HERO_NAVY.light, to: HERO_NAVY.from, angle: 135 }}
         />
       )}
 
-      {/* ═══ Canlı üretim (F2 hero gradient — primary → amber) ═══
+      {/* ═══ Canlı üretim ═══
+           Açık temada panelin kobalt→amber gradyanı (F2 hero) korunur; koyu
+           temada Hızlı İşlem kartıyla (app/(admin)/index.tsx AnimatedCTACard)
+           AYNI dil: siyah→lacivert (HERO_NAVY) + neon mavi kenar/glow.
            Gradyan + ışımalar web ve native'de AYNI (SVG ile) — bkz core/ui/gradients */}
       <View style={{
         marginHorizontal: 16, marginBottom: 16,
         borderRadius: 24, padding: 18,
-        backgroundColor: EXEC.primary, overflow: 'hidden',
+        backgroundColor: isDark ? HERO_NAVY.from : EXEC.primary, overflow: 'hidden',
+        ...(isDark ? { borderWidth: 1, borderColor: hexA(neon, 0.26) } : {}),
       }}>
-        <GradientFill from={EXEC.primary} to="#E89B2A" angle={135} />
+        <GradientFill from={isDark ? '#0A0A0A' : EXEC.primary} to={isDark ? HERO_NAVY.to : '#E89B2A'} angle={isDark ? 160 : 135} />
         {/* Yumuşak, büyük ışık daireleri — kenara doğru tam şeffafa çözülür (keskin görünmez) */}
         <View pointerEvents="none" style={{ position: 'absolute', top: -90, end: -70, width: 300, height: 300 }}>
-          <RadialGlow color="#FFFFFF" opacity={0.20} stopAt={68} />
+          <RadialGlow color={isDark ? neon : '#FFFFFF'} opacity={isDark ? 0.30 : 0.20} stopAt={68} />
         </View>
         <View pointerEvents="none" style={{ position: 'absolute', bottom: -100, start: -60, width: 260, height: 260 }}>
-          <RadialGlow color="#FFFFFF" opacity={0.12} stopAt={70} />
+          <RadialGlow color={isDark ? HERO_NAVY.light : '#FFFFFF'} opacity={isDark ? 0.22 : 0.12} stopAt={70} />
         </View>
+        {isDark && (
+          <View pointerEvents="none" style={{
+            position: 'absolute', top: 0, start: 0, end: 0, bottom: 0,
+            borderRadius: 24, borderWidth: 1, borderColor: neon, opacity: 0.45,
+            ...(Platform.OS === 'web' ? { boxShadow: `0 0 18px ${hexA(neon, 0.35)}, inset 0 0 22px ${hexA(neon, 0.10)}` } as any : {}),
+          }} />
+        )}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <View style={{
@@ -240,7 +278,7 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
       </View>
 
       {/* ═══ KPI 2-grid ═══ */}
-      <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingBottom: 16 }}>
+      <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingBottom: 16, zIndex: 2 }}>
         {/* Onay bekleyen — "Aylık gelir" placeholder'ının yerine geldi (o kart hiç
             bağlanmamıştı, hep '—' gösteriyordu). Veri zaten yükleniyor; kart
             dokunulabilir ve onaylar ekranına gider. Kasıtlı olarak BEYAZ kalır:
@@ -254,6 +292,8 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
             : t('admin.dashboard.approvalsClear')}
           accent={EXEC.primary}
           icon={FileCheck}
+          art={KPI_ART.approvals}
+          artSize={{ w: 64, h: 58 }}
           onPress={props.onApprovals}
         />
 
@@ -266,12 +306,15 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
           dark={(props.activeOrders ?? 0) > 0}
           accent={EXEC.primary}
           icon={ClipboardList}
+          art={KPI_ART.production}
+          artSize={{ w: 65, h: 68 }}
         />
       </View>
 
       {/* ═══ Mesajlar kartı — okunmamışı öne çıkarır (panel accent) ═══ */}
       <UnreadMessagesCard
         accent={EXEC.primary}
+        art={KPI_ART.messages}
         showClinicLogo
         onOpenOrder={(id) => router.push(`/(admin)/order/${id}` as any)}
         onOpenInbox={() => router.push('/(admin)/messages' as any)}
@@ -347,6 +390,7 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
 
       {/* ═══ Son Siparişler — desktop tablonun mobil karşılığı ═══ */}
       <RecentOrdersMobile
+        art={KPI_ART.recent}
         items={props.recentOrders ?? []}
         accent={EXEC.primary}
         accentDark={EXEC.accentDark}
@@ -389,6 +433,15 @@ function TopIconButton({ icon: Icon, onPress, badgeDot }:
   );
 }
 
+function hexA(hex: string, alpha: number): string {
+  try {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  } catch { return hex; }
+}
+
 function onAccentInk(accent: string): string {
   const h = (accent || '#000000').replace('#', '');
   if (h.length < 6) return '#FFFFFF';
@@ -409,11 +462,15 @@ function _mix(hex: string, target: number, t: number): string {
 const deepen  = (hex: string, t: number) => _mix(hex, 0x000000, t);
 const lighten = (hex: string, t: number) => _mix(hex, 0xFFFFFF, t);
 
-function Kpi({ label, numericValue, delta, deltaColor, sub, dark, accent, icon: Icon, onPress }:
-  { label: string; numericValue: number; delta?: string; deltaColor?: string; sub?: string; dark?: boolean; accent?: string; icon?: any; onPress?: () => void }) {
+function Kpi({ label, numericValue, delta, deltaColor, sub, dark, accent, icon: Icon, art, artSize, onPress }:
+  { label: string; numericValue: number; delta?: string; deltaColor?: string; sub?: string; dark?: boolean; accent?: string; icon?: any; art?: any; artSize?: { w: number; h: number }; onPress?: () => void }) {
   const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const rtl = isRTL();
   const acc = accent ?? '#4771AB';
-  const fill = !!dark;
+  // 3D görsel varken accent DOLGU kullanılmaz: mavi illüstrasyon kobalt gradyanın
+  // üstünde eziliyor. Kart nötr yüzeyde kalır, görsel öne çıkar (referans tasarım).
+  const fill = !!dark && !art;
   // Fill (highlight) kartı: flat/muddy coral yerine zengin gradient (parlak→derin
   // terracotta) + derin zemine göre seçilen ink. Daha canlı, kontrastı yüksek.
   const fillDeep = deepen(acc, 0.24);
@@ -428,11 +485,15 @@ function Kpi({ label, numericValue, delta, deltaColor, sub, dark, accent, icon: 
   // Dokunulabilir varyant: object style ZORUNLU (NativeWind v4 fonksiyon-stilli
   // Pressable'da backgroundColor'ı native'de düşürüyor).
   const Wrap: any = onPress ? Pressable : View;
-  return (
+  // Görsel kartın SONUNA (RTL'de başına) yaslanır, kenardan hafif taşar; kart
+  // overflow:hidden olduğu için taşan kısım kırpılır → gömülü/derinlikli durur.
+  const artEdge = rtl ? { left: -6 } : { right: -6 };
+  const card = (
     <Wrap
       {...(onPress ? { onPress, android_ripple: { color: `${acc}1A` } } : {})}
       style={{
-      flex: 1, borderRadius: 24, padding: 16, overflow: 'hidden',
+      flex: 1, borderRadius: 22, padding: art ? 14 : 16, overflow: 'hidden',
+      minHeight: art ? 112 : undefined,
       backgroundColor: fill ? fillDeep : T.card,
       borderWidth: fill ? 0 : 1, borderColor: T.hairline,
       ...(onPress && Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
@@ -443,36 +504,64 @@ function Kpi({ label, numericValue, delta, deltaColor, sub, dark, accent, icon: 
         ? ({ boxShadow: `0 10px 24px -8px ${deepen(acc, 0.12)}66` } as any)
         : {}),
     }}>
+      {/* Görselin arkasında yumuşak accent ışıma — koyu temada derinlik,
+          açık temada görselin beyaz zemine oturmasını sağlar. (Kart içinde kalır.) */}
+      {!!art && (
+        <View pointerEvents="none" style={{ position: 'absolute', bottom: -10, width: 100, height: 100, ...(rtl ? { left: -24 } : { right: -24 }) }}>
+          <RadialGlow color={isDark ? '#4C86D6' : acc} opacity={isDark ? 0.30 : 0.13} stopAt={64} />
+        </View>
+      )}
       <Text style={{ fontSize: 10.5, fontWeight: '600', color: labelColor, letterSpacing: 1, textTransform: 'uppercase' }} numberOfLines={1}>
         {label}
       </Text>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: art ? 4 : 8 }}>
         <AnimatedNumber
           value={numericValue}
           duration={800}
           style={{
-            fontSize: 34, fontWeight: '400', color: valueColor, letterSpacing: -1,
+            fontSize: art ? 30 : 34, fontWeight: '400', color: valueColor, letterSpacing: -1,
             ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
           }}
         />
-        {!!Icon && (
+        {/* 3D görsel varken ikon rozeti çizilmez — görselin üstünde kalıyor. */}
+        {!!Icon && !art && (
           <View style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: iconBg, alignItems: 'center', justifyContent: 'center' }}>
             <Icon size={20} color={iconColor} strokeWidth={2} />
           </View>
         )}
       </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+      <View style={{
+        flexDirection: art ? 'column' : 'row',
+        alignItems: art ? (rtl ? 'flex-end' : 'flex-start') : 'center',
+        justifyContent: art ? 'flex-end' : 'space-between',
+        gap: art ? 1 : 0,
+        marginTop: art ? 'auto' : 8,
+        // Görselin üstüne binmesin (dar kartta yan yana sığmıyor → alt alta)
+        ...(art ? (rtl ? { paddingStart: 46 } : { paddingEnd: 46 }) : {}),
+      }}>
         {!!delta && (
-          <Text style={{ fontSize: 11, fontWeight: '600', color: deltaColorFinal }}>
+          <Text numberOfLines={1} style={{ fontSize: art ? 10.5 : 11, fontWeight: '600', color: deltaColorFinal }}>
             {delta}
           </Text>
         )}
         {!!sub && (
-          <Text style={{ fontSize: 10.5, color: subColor }}>
+          <Text numberOfLines={1} style={{ fontSize: art ? 10 : 10.5, color: subColor }}>
             {sub}
           </Text>
         )}
       </View>
     </Wrap>
+  );
+
+  if (!art) return card;
+  // 3D görsel kartın SINIRINI AŞAR (alta + yana taşar) → kartın üstünde duruyormuş
+  // hissi. Bu yüzden kartın kendisi kırpılırken görsel kardeş katman olarak çizilir.
+  return (
+    <View style={{ flex: 1, zIndex: 2 }}>
+      {card}
+      <View pointerEvents="none" style={{ position: 'absolute', bottom: 6, width: artSize?.w ?? 66, height: artSize?.h ?? 66, ...artEdge }}>
+        <Image source={art} resizeMode="contain" style={{ width: '100%', height: '100%' }} />
+      </View>
+    </View>
   );
 }

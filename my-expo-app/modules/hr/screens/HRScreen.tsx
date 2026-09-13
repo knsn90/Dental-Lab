@@ -1,4 +1,5 @@
 import { localeTag, weekdayOffset } from '../../../core/i18n';
+import { HeroGlow, useHeroSurface } from '../../../core/ui/HeroGlow';
 import React, { useState, useMemo, useContext } from 'react';
 import { HubContext } from '../../../core/ui/HubContext';
 import {
@@ -9,6 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { toast } from '../../../core/ui/Toast';
 import { DS } from '../../../core/theme/dsTokens';
+import { useInkUI, type InkUI } from '../../../core/theme/inkScale';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { DatePicker } from '../../../core/ui/DatePicker';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
@@ -25,14 +27,14 @@ import {
 } from '../api';
 import { useLeaveSummaries, useEmployeeLeaves, useAttendance, usePendingLeaves } from '../hooks/useHR';
 import { useAuthStore } from '../../../core/store/authStore';
-import { ROLE_LABELS, ROLE_COLORS } from '../../employees/api';
+import { ROLE_LABELS, roleTone } from '../../employees/api';
 
 import {
   ChevronLeft, ChevronRight, X, Check, Ban, Trash2,
   CalendarPlus, CalendarCheck, Calendar, CalendarHeart,
   Clock, Info, User, UserRoundSearch, UserX, UserPen,
   Palmtree, MapPinCheck, QrCode, Sparkles,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { getHolidaysForMonth, type TRHoliday } from '../helpers/turkeyHolidays';
 import { confirmAsync } from '../../../core/util/confirm';
 import { isRTL } from '../../../core/i18n';
@@ -62,12 +64,14 @@ const LUCIDE_ICON_MAP: Record<string, React.FC<any>> = {
   'trash-can-outline': Trash2,
 };
 
-function LucideIcon({ name, size = 16, color = DS.ink[500], strokeWidth = 1.6 }: {
+function LucideIcon({ name, size = 16, color, strokeWidth = 1.6 }: {
   name: string; size?: number; color?: string; strokeWidth?: number;
 }) {
+  const U = useInkUI();
+  const tone = color ?? U.ink[500];
   const Icon = LUCIDE_ICON_MAP[name];
   if (!Icon) return null;
-  return <Icon size={size} color={color} strokeWidth={strokeWidth} />;
+  return <Icon size={size} color={tone} strokeWidth={strokeWidth} />;
 }
 
 // ─── Status icon map for leave status cfg ────────────────────────────────────
@@ -90,28 +94,8 @@ const DISPLAY = {
   fontWeight: '300' as const,
 };
 
-const cardSolid = {
-  backgroundColor: '#FFF',
-  borderRadius: 24,
-  padding: 22,
-  // @ts-ignore web
-  boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)',
-};
 
-const tableCard = {
-  backgroundColor: '#FFF',
-  borderRadius: 24,
-  borderWidth: 1,
-  borderColor: 'rgba(0,0,0,0.05)',
-  overflow: 'hidden' as const,
-};
 
-const CHIP_TONES = {
-  success: { bg: 'rgba(45,154,107,0.12)', fg: '#1F6B47' },
-  warning: { bg: 'rgba(232,155,42,0.15)', fg: '#9C5E0E' },
-  danger:  { bg: 'rgba(217,75,75,0.12)',  fg: '#9C2E2E' },
-  info:    { bg: 'rgba(74,143,201,0.12)', fg: '#1F5689' },
-};
 
 // ─── Turkish month helpers ────────────────────────────────────────────────────
 const TR_MONTHS = ['', 'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
@@ -141,6 +125,7 @@ const ATT_WITH_TIME: AttendanceStatus[] = ['normal', 'gec', 'erken_cikis', 'yari
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export function HRScreen() {
+  const U = useInkUI();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 900;
   const isEmbedded = useContext(HubContext);
@@ -326,33 +311,35 @@ export function HRScreen() {
             style={{
               flexDirection: 'row', alignItems: 'center', gap: 6,
               paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9999,
-              borderWidth: 1.5, borderColor: CHIP_TONES.warning.fg,
-              backgroundColor: showOnlyPending ? CHIP_TONES.warning.fg : CHIP_TONES.warning.bg,
+              borderWidth: 1.5, borderColor: U.chipTones.warning.fg,
+              backgroundColor: showOnlyPending ? U.chipTones.warning.fg : U.chipTones.warning.bg,
               ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
             } as any}
             onPress={() => setShowOnlyPending(p => !p)}
           >
             <View style={{
               minWidth: 18, height: 18, borderRadius: 9,
-              backgroundColor: showOnlyPending ? '#fff' : CHIP_TONES.warning.fg,
+              backgroundColor: showOnlyPending ? '#fff' : U.chipTones.warning.fg,
               alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4,
             }}>
-              <Text style={{ fontSize: 10, fontWeight: '800', color: showOnlyPending ? CHIP_TONES.warning.fg : '#fff' }}>{pendingCount}</Text>
+              <Text style={{ fontSize: 10, fontWeight: '800', color: showOnlyPending ? U.chipTones.warning.fg : '#fff' }}>{pendingCount}</Text>
             </View>
-            <Text style={{ fontSize: 12, fontWeight: '700', color: showOnlyPending ? '#fff' : CHIP_TONES.warning.fg }}>Bekliyor</Text>
+            <Text style={{ fontSize: 12, fontWeight: '700', color: showOnlyPending ? '#fff' : U.chipTones.warning.fg }}>Bekliyor</Text>
           </Pressable>
         )}
         <Pressable
           style={{
             flexDirection: 'row', alignItems: 'center', gap: 6,
             paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999,
-            backgroundColor: T.ink,
+            // T.ink KULLANMA: koyu temada krem olur, buton beyaza döner (İkiz
+            // tuzak, bkz CLAUDE.md). Panel accent'i sabit — iki temada da aynı.
+            backgroundColor: theme.primary,
             ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
           } as any}
           onPress={() => setLeaveOpen(true)}
         >
-          <CalendarPlus size={15} color={T.bg} strokeWidth={1.8} />
-          <Text style={{ fontSize: 13, fontWeight: '700', color: T.bg }}>İzin Talebi</Text>
+          <CalendarPlus size={15} color="#FFFFFF" strokeWidth={1.8} />
+          <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>İzin Talebi</Text>
         </Pressable>
       </View>
 
@@ -479,6 +466,7 @@ function EmployeeListPanel({ summaries, selectedId, onSelect, px, gap, loading }
 
 // Skeleton row — yükleniyor görsel
 function EmployeeRowSkeleton() {
+  const U = useInkUI();
   const T = useMobileTokens();
   return (
     <View style={{
@@ -504,9 +492,11 @@ function EmployeeRow({ summary, selected, onPress }: {
   selected: boolean;
   onPress: () => void;
 }) {
+  const U = useInkUI();
   const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
   const theme = usePanelTheme();
-  const role = ROLE_COLORS[summary.role as keyof typeof ROLE_COLORS] ?? { fg: T.ink3, bg: T.cardSoft };
+  const role = roleTone(summary.role as any, isDark) ?? { fg: T.ink3, bg: T.cardSoft };
   const initials = summary.full_name
     .split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase();
   const usedPct = summary.annual_entitlement > 0
@@ -515,17 +505,17 @@ function EmployeeRow({ summary, selected, onPress }: {
 
   // Progress bar rengi — kullanım oranına göre
   const pctNum = Math.round(usedPct * 100);
-  const progColor = pctNum > 80 ? CHIP_TONES.danger.fg
-                  : pctNum > 50 ? CHIP_TONES.warning.fg
-                  : pctNum > 0  ? CHIP_TONES.success.fg
-                  : DS.ink[200];
+  const progColor = pctNum > 80 ? U.chipTones.danger.fg
+                  : pctNum > 50 ? U.chipTones.warning.fg
+                  : pctNum > 0  ? U.chipTones.success.fg
+                  : U.ink[200];
 
   return (
     <Pressable
       onPress={onPress}
       style={({ hovered }: any) => ({
         flexDirection: 'row', alignItems: 'center', gap: 12,
-        backgroundColor: selected ? '#FFFFFF' : (hovered ? '#FAFAF7' : '#FFFFFF'),
+        backgroundColor: selected ? U.surface : (hovered ? U.rowHover : U.surface),
         borderRadius: 16, padding: 12, paddingStart: 14,
         borderWidth: 0,
         // @ts-ignore web — selected = saffron ring + heavier shadow, default = soft shadow
@@ -550,17 +540,17 @@ function EmployeeRow({ summary, selected, onPress }: {
       <View style={{ flex: 1, gap: 5, minWidth: 0 }}>
         {/* Üst satır: isim + iç chip'ler */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900], flexShrink: 1 }} numberOfLines={1}>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? T.ink : U.ink[900], flexShrink: 1 }} numberOfLines={1}>
             {summary.full_name}
           </Text>
           {summary.currently_on_leave && (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 9999, backgroundColor: CHIP_TONES.info.bg }}>
-              <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: CHIP_TONES.info.fg }} />
-              <Text style={{ fontSize: 9.5, fontWeight: '800', color: CHIP_TONES.info.fg, letterSpacing: 0.3 }}>İZİNDE</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 9999, backgroundColor: U.chipTones.info.bg }}>
+              <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: U.chipTones.info.fg }} />
+              <Text style={{ fontSize: 9.5, fontWeight: '800', color: U.chipTones.info.fg, letterSpacing: 0.3 }}>İZİNDE</Text>
             </View>
           )}
           {summary.pending_count > 0 && (
-            <View style={{ minWidth: 16, height: 16, borderRadius: 8, backgroundColor: CHIP_TONES.warning.fg, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}>
+            <View style={{ minWidth: 16, height: 16, borderRadius: 8, backgroundColor: U.chipTones.warning.fg, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}>
               <Text style={{ fontSize: 9, fontWeight: '800', color: '#fff' }}>{summary.pending_count}</Text>
             </View>
           )}
@@ -573,8 +563,8 @@ function EmployeeRow({ summary, selected, onPress }: {
               {ROLE_LABELS[summary.role as keyof typeof ROLE_LABELS] ?? summary.role}
             </Text>
           </View>
-          <Text style={{ fontSize: 10.5, color: DS.ink[500], fontWeight: '600', flex: 1 }} numberOfLines={1}>
-            {summary.annual_used}/{summary.annual_entitlement} <Text style={{ color: DS.ink[400], fontWeight: '500' }}>gün</Text>
+          <Text style={{ fontSize: 10.5, color: isDark ? T.ink3 : U.ink[500], fontWeight: '600', flex: 1 }} numberOfLines={1}>
+            {summary.annual_used}/{summary.annual_entitlement} <Text style={{ color: isDark ? T.ink3 : U.ink[400], fontWeight: '500' }}>gün</Text>
           </Text>
         </View>
 
@@ -586,7 +576,7 @@ function EmployeeRow({ summary, selected, onPress }: {
         </View>
       </View>
 
-      {isRTL() ? <ChevronLeft size={16} color={selected ? DS.ink[700] : DS.ink[300]} strokeWidth={1.7} /> : <ChevronRight size={16} color={selected ? DS.ink[700] : DS.ink[300]} strokeWidth={1.7} />}
+      {isRTL() ? <ChevronLeft size={16} color={selected ? U.ink[700] : U.ink[300]} strokeWidth={1.7} /> : <ChevronRight size={16} color={selected ? U.ink[700] : U.ink[300]} strokeWidth={1.7} />}
     </Pressable>
   );
 }
@@ -604,8 +594,11 @@ function OverviewPanel({
   onSelectEmployee: (id: string) => void;
   px: number;
 }) {
+  const U = useInkUI();
   const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
   const theme = usePanelTheme();
+  const heroBg = useHeroSurface(theme.primary);
   const onLeaveToday = summaries.filter(s => s.currently_on_leave);
   const pendingCount = pendingLeaves.length;
   const totalAnnualRemaining = summaries.reduce((acc, s) => acc + (s.annual_remaining ?? 0), 0);
@@ -627,12 +620,12 @@ function OverviewPanel({
       {/* ── F1 HeroCard — İzin & Devam özeti (saffron bg + white blobs) ── */}
       <View style={{
         borderRadius: 20, overflow: 'hidden',
-        backgroundColor: theme.primary, padding: 18,
+        ...heroBg, padding: 18,
         position: 'relative',
       }}>
         {/* Beyaz dekoratif blob'lar */}
-        <View style={{ position: 'absolute', top: -50, end: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.20)' }} />
-        <View style={{ position: 'absolute', bottom: -60, start: -30, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+        <HeroGlow size={180} opacity={0.20} delay={0} style={{ top: -50, end: -40 }} />
+        <HeroGlow size={150} opacity={0.12} delay={1400} style={{ bottom: -60, start: -30 }} />
 
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14 }}>
           <View style={{ flex: 1, minWidth: 0 }}>
@@ -692,21 +685,21 @@ function OverviewPanel({
       {/* Bekleyen onaylar */}
       {pendingLeaves.length > 0 ? (
         <View style={{
-          ...cardSolid,
-          padding: 0, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', overflow: 'hidden',
+          ...U.cardSolid, ...(isDark ? { backgroundColor: T.card, borderColor: T.hairline, borderWidth: 1 } : {}),
+          padding: 0, borderWidth: 1, borderColor: U.hairline, overflow: 'hidden',
         }}>
           <View style={{ padding: 16, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: CHIP_TONES.warning.bg, alignItems: 'center', justifyContent: 'center' }}>
-              <Clock size={17} color={CHIP_TONES.warning.fg} strokeWidth={1.7} />
+            <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: U.chipTones.warning.bg, alignItems: 'center', justifyContent: 'center' }}>
+              <Clock size={17} color={U.chipTones.warning.fg} strokeWidth={1.7} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>Bekleyen Onaylar</Text>
-              <Text style={{ fontSize: 11.5, color: DS.ink[500], marginTop: 1 }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: isDark ? T.ink : U.ink[900] }}>Bekleyen Onaylar</Text>
+              <Text style={{ fontSize: 11.5, color: isDark ? T.ink3 : U.ink[500], marginTop: 1 }}>
                 {pendingLeaves.length} izin talebi {canApprove ? 'onayını bekliyor' : 'mesul müdür onayı bekliyor'}
               </Text>
             </View>
           </View>
-          <View style={{ borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)' }}>
+          <View style={{ borderTopWidth: 1, borderTopColor: U.hairlineSoft }}>
             {pendingLeaves.slice(0, 6).map((l: any, i: number) => {
               const tc = LEAVE_TYPE_COLORS[l.leave_type as LeaveType];
               const iconName = LEAVE_TYPE_ICONS[l.leave_type as LeaveType];
@@ -716,9 +709,9 @@ function OverviewPanel({
                   onPress={() => onSelectEmployee(l.employee_id)}
                   style={({ hovered }: any) => ({
                     paddingHorizontal: 16, paddingVertical: 12,
-                    borderTopWidth: i === 0 ? 0 : 1, borderTopColor: 'rgba(0,0,0,0.04)',
+                    borderTopWidth: i === 0 ? 0 : 1, borderTopColor: U.hairlineSoft,
                     flexDirection: 'row', alignItems: 'center', gap: 12,
-                    backgroundColor: hovered ? DS.ink[50] : '#FFFFFF',
+                    backgroundColor: hovered ? U.rowHover : U.plainBtn.bg,
                     ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                   })}
                 >
@@ -726,8 +719,8 @@ function OverviewPanel({
                     <LucideIcon name={iconName} size={15} color={tc.fg} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900] }} numberOfLines={1}>{l.employee_name ?? '—'}</Text>
-                    <Text style={{ fontSize: 11.5, color: DS.ink[500], marginTop: 1 }} numberOfLines={1}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? T.ink : U.ink[900] }} numberOfLines={1}>{l.employee_name ?? '—'}</Text>
+                    <Text style={{ fontSize: 11.5, color: isDark ? T.ink3 : U.ink[500], marginTop: 1 }} numberOfLines={1}>
                       {LEAVE_TYPE_LABELS[l.leave_type as LeaveType]} · {fmtDateRange(l.start_date, l.end_date)} · {l.days_count} gün
                     </Text>
                   </View>
@@ -738,22 +731,22 @@ function OverviewPanel({
                         style={({ hovered }: any) => ({
                           width: 32, height: 32, borderRadius: 8,
                           alignItems: 'center', justifyContent: 'center',
-                          backgroundColor: hovered ? CHIP_TONES.success.fg : CHIP_TONES.success.bg,
+                          backgroundColor: hovered ? U.chipTones.success.fg : U.chipTones.success.bg,
                           ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                         })}
                       >
-                        <Check size={15} color={CHIP_TONES.success.fg} strokeWidth={2} />
+                        <Check size={15} color={U.chipTones.success.fg} strokeWidth={2} />
                       </Pressable>
                       <Pressable
                         onPress={(e: any) => { e?.stopPropagation?.(); onReject(l.id); }}
                         style={({ hovered }: any) => ({
                           width: 32, height: 32, borderRadius: 8,
                           alignItems: 'center', justifyContent: 'center',
-                          backgroundColor: hovered ? CHIP_TONES.danger.fg : CHIP_TONES.danger.bg,
+                          backgroundColor: hovered ? U.chipTones.danger.fg : U.chipTones.danger.bg,
                           ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                         })}
                       >
-                        <X size={15} color={CHIP_TONES.danger.fg} strokeWidth={2} />
+                        <X size={15} color={U.chipTones.danger.fg} strokeWidth={2} />
                       </Pressable>
                     </View>
                   )}
@@ -761,8 +754,8 @@ function OverviewPanel({
               );
             })}
             {pendingLeaves.length > 6 && (
-              <View style={{ padding: 12, alignItems: 'center', borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)' }}>
-                <Text style={{ fontSize: 11.5, color: DS.ink[500], fontWeight: '600' }}>+{pendingLeaves.length - 6} talep daha</Text>
+              <View style={{ padding: 12, alignItems: 'center', borderTopWidth: 1, borderTopColor: U.hairlineSoft }}>
+                <Text style={{ fontSize: 11.5, color: isDark ? T.ink3 : U.ink[500], fontWeight: '600' }}>+{pendingLeaves.length - 6} talep daha</Text>
               </View>
             )}
           </View>
@@ -772,16 +765,16 @@ function OverviewPanel({
       {/* Bugün İzinde Olanlar */}
       {onLeaveToday.length > 0 ? (
         <View style={{
-          ...cardSolid,
-          padding: 16, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', gap: 10,
+          ...U.cardSolid, ...(isDark ? { backgroundColor: T.card, borderColor: T.hairline, borderWidth: 1 } : {}),
+          padding: 16, borderWidth: 1, borderColor: U.hairline, gap: 10,
         }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: CHIP_TONES.info.bg, alignItems: 'center', justifyContent: 'center' }}>
-              <Palmtree size={17} color={CHIP_TONES.info.fg} strokeWidth={1.7} />
+            <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: U.chipTones.info.bg, alignItems: 'center', justifyContent: 'center' }}>
+              <Palmtree size={17} color={U.chipTones.info.fg} strokeWidth={1.7} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>Bugün İzinde</Text>
-              <Text style={{ fontSize: 11.5, color: DS.ink[500], marginTop: 1 }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: isDark ? T.ink : U.ink[900] }}>Bugün İzinde</Text>
+              <Text style={{ fontSize: 11.5, color: isDark ? T.ink3 : U.ink[500], marginTop: 1 }}>
                 {onLeaveToday.length} personel izinli — planlama yaparken dikkat
               </Text>
             </View>
@@ -794,16 +787,16 @@ function OverviewPanel({
                 style={({ hovered }: any) => ({
                   flexDirection: 'row', alignItems: 'center', gap: 8,
                   paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9999,
-                  backgroundColor: hovered ? CHIP_TONES.info.fg : CHIP_TONES.info.bg,
+                  backgroundColor: hovered ? U.chipTones.info.fg : U.chipTones.info.bg,
                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                 })}
               >
-                <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
-                  <Text style={{ fontSize: 10, fontWeight: '800', color: CHIP_TONES.info.fg }}>
+                <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: U.plainBtn.bg, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: U.chipTones.info.fg }}>
                     {(s.full_name ?? '?').slice(0, 1).toLocaleUpperCase('tr-TR')}
                   </Text>
                 </View>
-                <Text style={{ fontSize: 12.5, fontWeight: '700', color: CHIP_TONES.info.fg }}>{s.full_name}</Text>
+                <Text style={{ fontSize: 12.5, fontWeight: '700', color: U.chipTones.info.fg }}>{s.full_name}</Text>
               </Pressable>
             ))}
           </View>
@@ -813,16 +806,16 @@ function OverviewPanel({
       {/* Yıllık İzin Top 5 */}
       {topRemaining.length > 0 ? (
         <View style={{
-          ...cardSolid,
-          padding: 16, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', gap: 12,
+          ...U.cardSolid, ...(isDark ? { backgroundColor: T.card, borderColor: T.hairline, borderWidth: 1 } : {}),
+          padding: 16, borderWidth: 1, borderColor: U.hairline, gap: 12,
         }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: T.cardSoft, alignItems: 'center', justifyContent: 'center' }}>
-              <CalendarCheck size={17} color={DS.ink[700]} strokeWidth={1.7} />
+              <CalendarCheck size={17} color={U.ink[700]} strokeWidth={1.7} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>Yıllık İzin Durumu</Text>
-              <Text style={{ fontSize: 11.5, color: DS.ink[500], marginTop: 1 }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: isDark ? T.ink : U.ink[900] }}>Yıllık İzin Durumu</Text>
+              <Text style={{ fontSize: 11.5, color: isDark ? T.ink3 : U.ink[500], marginTop: 1 }}>
                 En çok izin hakkı kalan {Math.min(5, topRemaining.length)} personel
               </Text>
             </View>
@@ -839,22 +832,22 @@ function OverviewPanel({
                   style={({ hovered }: any) => ({
                     gap: 6,
                     paddingVertical: 6, paddingHorizontal: 8, borderRadius: 8,
-                    backgroundColor: hovered ? DS.ink[50] : 'transparent',
+                    backgroundColor: hovered ? U.ink[50] : 'transparent',
                     ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                   })}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>{s.full_name}</Text>
-                    <Text style={{ fontSize: 11.5, fontWeight: '700', color: DS.ink[700] }}>
+                    <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: isDark ? T.ink : U.ink[900] }} numberOfLines={1}>{s.full_name}</Text>
+                    <Text style={{ fontSize: 11.5, fontWeight: '700', color: isDark ? T.ink2 : U.ink[700] }}>
                       {s.annual_remaining}
-                      <Text style={{ color: DS.ink[400], fontWeight: '500' }}>/{s.annual_entitlement} gün</Text>
+                      <Text style={{ color: isDark ? T.ink3 : U.ink[400], fontWeight: '500' }}>/{s.annual_entitlement} gün</Text>
                     </Text>
                   </View>
                   <View style={{ height: 5, borderRadius: 9999, backgroundColor: T.cardSoft, overflow: 'hidden' }}>
                     <View style={{
                       width: `${usedPct}%` as any,
                       height: '100%',
-                      backgroundColor: usedPct > 80 ? CHIP_TONES.danger.fg : usedPct > 50 ? CHIP_TONES.warning.fg : CHIP_TONES.success.fg,
+                      backgroundColor: usedPct > 80 ? U.chipTones.danger.fg : usedPct > 50 ? U.chipTones.warning.fg : U.chipTones.success.fg,
                       borderRadius: 9999,
                     }} />
                   </View>
@@ -869,11 +862,11 @@ function OverviewPanel({
       <View style={{
         flexDirection: 'row', alignItems: 'center', gap: 10,
         padding: 14, borderRadius: 12,
-        backgroundColor: DS.ink[50],
-        borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)',
+        backgroundColor: U.ink[50],
+        borderWidth: 1, borderColor: U.hairlineSoft,
       }}>
-        <UserRoundSearch size={18} color={DS.ink[400]} strokeWidth={1.6} />
-        <Text style={{ flex: 1, fontSize: 12, color: DS.ink[500], lineHeight: 17 }}>
+        <UserRoundSearch size={18} color={U.ink[400]} strokeWidth={1.6} />
+        <Text style={{ flex: 1, fontSize: 12, color: isDark ? T.ink3 : U.ink[500], lineHeight: 17 }}>
           Detaylı izin geçmişi ve devam kayıtları için sol panelden bir personel seç.
         </Text>
       </View>
@@ -890,32 +883,35 @@ function KpiCard({ label, value, total, subtext, icon, tone = 'neutral' }: {
   icon: React.ReactNode;
   tone?: 'neutral' | 'warning' | 'info' | 'success';
 }) {
-  const bg = tone === 'warning' ? CHIP_TONES.warning.bg
-    : tone === 'info' ? CHIP_TONES.info.bg
-    : tone === 'success' ? CHIP_TONES.success.bg
-    : DS.ink[50];
+  const U = useInkUI();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
+  const bg = tone === 'warning' ? U.chipTones.warning.bg
+    : tone === 'info' ? U.chipTones.info.bg
+    : tone === 'success' ? U.chipTones.success.bg
+    : U.ink[50];
   return (
     <View style={{
       flex: 1, minWidth: 140,
       padding: 14, borderRadius: 14,
-      backgroundColor: '#FFFFFF',
-      borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+      backgroundColor: isDark ? T.card : "#FFFFFF",
+      borderWidth: 1, borderColor: U.hairline,
       gap: 8,
     }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Text style={{ fontSize: 10.5, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.6, textTransform: 'uppercase' }}>{label}</Text>
+        <Text style={{ fontSize: 10.5, fontWeight: '700', color: isDark ? T.ink3 : U.ink[400], letterSpacing: 0.6, textTransform: 'uppercase' }}>{label}</Text>
         <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
           {icon}
         </View>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-        <Text style={{ ...DISPLAY, fontSize: 26, fontWeight: '700', color: DS.ink[900], letterSpacing: -0.5 }}>{value}</Text>
+        <Text style={{ ...DISPLAY, fontSize: 26, fontWeight: '700', color: isDark ? T.ink : U.ink[900], letterSpacing: -0.5 }}>{value}</Text>
         {total != null && (
-          <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[400] }}>/{total}</Text>
+          <Text style={{ fontSize: 12, fontWeight: '600', color: isDark ? T.ink3 : U.ink[400] }}>/{total}</Text>
         )}
       </View>
       {subtext && (
-        <Text style={{ fontSize: 11, color: DS.ink[500] }}>{subtext}</Text>
+        <Text style={{ fontSize: 11, color: isDark ? T.ink3 : U.ink[500] }}>{subtext}</Text>
       )}
     </View>
   );
@@ -955,6 +951,7 @@ function RightPanel({
   px: number;
   isDesktop: boolean;
 }) {
+  const U = useInkUI();
   const TABS: { key: 'izinler' | 'devam' | 'ozet'; label: string; icon: React.FC<any>; count?: number }[] = [
     { key: 'devam',   label: 'Devam',       icon: CalendarCheck, count: records.length },
     { key: 'izinler', label: 'İzinler',     icon: Calendar,      count: filteredLeaves.length },
@@ -966,7 +963,8 @@ function RightPanel({
 
   const T = useMobileTokens();
   const theme = usePanelTheme();
-  const roleColor = (ROLE_COLORS as any)[summary.role] ?? { bg: T.cardSoft, fg: T.ink2 };
+  const heroBg = useHeroSurface(theme.primary);
+  const roleColor = (roleTone(summary.role as any, U.isDark) as any) ?? { bg: T.cardSoft, fg: T.ink2 };
   const roleLabel = (ROLE_LABELS as any)[summary.role] ?? summary.role;
   const annualUsedPct = summary.annual_entitlement > 0
     ? Math.min(100, Math.round((summary.annual_used / summary.annual_entitlement) * 100))
@@ -989,12 +987,12 @@ function RightPanel({
       {/* ─── EMPLOYEE HERO — F1 HeroCard (saffron bg + white blobs + white ring) ─── */}
       <View style={{
         borderRadius: 20, overflow: 'hidden',
-        backgroundColor: theme.primary, padding: 20,
+        ...heroBg, padding: 20,
         position: 'relative',
       }}>
         {/* Beyaz dekoratif blob'lar */}
-        <View style={{ position: 'absolute', top: -50, end: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.20)' }} />
-        <View style={{ position: 'absolute', bottom: -60, start: -30, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+        <HeroGlow size={180} opacity={0.20} delay={0} style={{ top: -50, end: -40 }} />
+        <HeroGlow size={150} opacity={0.12} delay={1400} style={{ bottom: -60, start: -30 }} />
 
         {/* Üst row: sol ring + sağ identity */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
@@ -1092,26 +1090,26 @@ function RightPanel({
                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
                 } as any,
                 active && {
-                  backgroundColor: '#FFF',
+                  backgroundColor: U.plainBtn.bg,
                   // @ts-ignore web
                   boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
                 },
               ]}
               onPress={() => setTab(t.key)}
             >
-              <Icon size={14} color={active ? DS.ink[900] : DS.ink[500]} strokeWidth={1.8} />
+              <Icon size={14} color={active ? U.ink[900] : U.ink[500]} strokeWidth={1.8} />
               <Text style={{
                 fontSize: 13,
                 fontWeight: active ? '700' : '600',
-                color: active ? DS.ink[900] : DS.ink[500],
+                color: active ? U.ink[900] : U.ink[500],
               }}>{t.label}</Text>
               {(t.count ?? 0) > 0 && (
                 <View style={{
                   paddingHorizontal: 6, paddingVertical: 1, borderRadius: 9999,
-                  backgroundColor: active ? DS.ink[900] : DS.ink[200],
+                  backgroundColor: active ? U.ink[900] : U.ink[200],
                   minWidth: 18, alignItems: 'center',
                 }}>
-                  <Text style={{ fontSize: 10, fontWeight: '800', color: active ? '#FFFFFF' : DS.ink[500] }}>{t.count}</Text>
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: active ? U.onDarkPill : U.ink[500] }}>{t.count}</Text>
                 </View>
               )}
             </Pressable>
@@ -1158,6 +1156,7 @@ function RightPanel({
 // ─── LeaveRing — Patterns §11.7 PercentRingHero adaptasyonu ──────────────
 // Yıllık izin kullanım oranını büyük ring olarak gösterir
 function LeaveRing({ used, total, usedPct, year, onDark = false }: { used: number; total: number; usedPct: number; year: number | null; onDark?: boolean }) {
+  const U = useInkUI();
   const size = 116;
   const stroke = 10;
   const r = (size - stroke) / 2;
@@ -1166,13 +1165,13 @@ function LeaveRing({ used, total, usedPct, year, onDark = false }: { used: numbe
   // Renk: onDark ise beyaz; aksi halde % bazlı yeşil/turuncu/kırmızı
   const ringColor = onDark
     ? '#FFFFFF'
-    : (usedPct > 80 ? CHIP_TONES.danger.fg
-      : usedPct > 50 ? CHIP_TONES.warning.fg
-      : CHIP_TONES.success.fg);
-  const trackColor = onDark ? 'rgba(255,255,255,0.25)' : DS.ink[100];
-  const textColor      = onDark ? '#FFFFFF'                     : DS.ink[900];
-  const labelColor     = onDark ? 'rgba(255,255,255,0.85)'      : DS.ink[500];
-  const subLabelColor  = onDark ? 'rgba(255,255,255,0.65)'      : DS.ink[400];
+    : (usedPct > 80 ? U.chipTones.danger.fg
+      : usedPct > 50 ? U.chipTones.warning.fg
+      : U.chipTones.success.fg);
+  const trackColor = onDark ? 'rgba(255,255,255,0.25)' : U.ink[100];
+  const textColor      = onDark ? '#FFFFFF'                     : U.ink[900];
+  const labelColor     = onDark ? 'rgba(255,255,255,0.85)'      : U.ink[500];
+  const subLabelColor  = onDark ? 'rgba(255,255,255,0.65)'      : U.ink[400];
 
   if (Platform.OS !== 'web') {
     // Native fallback — basit linear progress dikey kart
@@ -1232,16 +1231,17 @@ function HeroStat({ label, value, unit, tone = 'neutral', icon }: {
   tone?: 'neutral' | 'info' | 'warning' | 'danger' | 'success';
   icon: React.ReactNode;
 }) {
-  const bg = tone === 'warning' ? CHIP_TONES.warning.bg
-    : tone === 'info' ? CHIP_TONES.info.bg
-    : tone === 'danger' ? CHIP_TONES.danger.bg
-    : tone === 'success' ? CHIP_TONES.success.bg
-    : DS.ink[50];
-  const fg = tone === 'warning' ? CHIP_TONES.warning.fg
-    : tone === 'info' ? CHIP_TONES.info.fg
-    : tone === 'danger' ? CHIP_TONES.danger.fg
-    : tone === 'success' ? CHIP_TONES.success.fg
-    : DS.ink[900];
+  const U = useInkUI();
+  const bg = tone === 'warning' ? U.chipTones.warning.bg
+    : tone === 'info' ? U.chipTones.info.bg
+    : tone === 'danger' ? U.chipTones.danger.bg
+    : tone === 'success' ? U.chipTones.success.bg
+    : U.ink[50];
+  const fg = tone === 'warning' ? U.chipTones.warning.fg
+    : tone === 'info' ? U.chipTones.info.fg
+    : tone === 'danger' ? U.chipTones.danger.fg
+    : tone === 'success' ? U.chipTones.success.fg
+    : U.ink[900];
   return (
     <View style={{
       flexBasis: '48%', flexGrow: 1, minWidth: 110,
@@ -1277,7 +1277,9 @@ function LeavesTab({ summary, leaves, leaveFilter, setLeaveFilter, loading, canA
   onDelete: (id: string) => void;
   onAdd: () => void;
 }) {
+  const U = useInkUI();
   const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
   const FILTERS: { key: LeaveStatus | 'tumu'; label: string }[] = [
     { key: 'tumu',       label: 'Tümü' },
     { key: 'bekliyor',   label: 'Bekliyor' },
@@ -1300,7 +1302,7 @@ function LeavesTab({ summary, leaves, leaveFilter, setLeaveFilter, loading, canA
                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
                 } as any,
                 active && {
-                  backgroundColor: '#FFF',
+                  backgroundColor: U.plainBtn.bg,
                   // @ts-ignore web
                   boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
                 },
@@ -1310,7 +1312,7 @@ function LeavesTab({ summary, leaves, leaveFilter, setLeaveFilter, loading, canA
               <Text style={{
                 fontSize: 12,
                 fontWeight: active ? '700' : '600',
-                color: active ? DS.ink[900] : DS.ink[400],
+                color: active ? U.ink[900] : U.ink[400],
               }}>{f.label}</Text>
             </Pressable>
           );
@@ -1319,20 +1321,20 @@ function LeavesTab({ summary, leaves, leaveFilter, setLeaveFilter, loading, canA
 
       {loading ? (
         <View style={{ paddingVertical: 32, alignItems: 'center' }}>
-          <ActivityIndicator color={DS.ink[400]} />
+          <ActivityIndicator color={U.ink[400]} />
         </View>
       ) : leaves.length === 0 ? (
         <View style={{
           alignItems: 'center', paddingVertical: 32, paddingHorizontal: 18, gap: 10,
           borderRadius: 16, borderWidth: 1, borderStyle: 'dashed' as any,
-          borderColor: 'rgba(15,23,42,0.10)',
-          backgroundColor: DS.ink[50],
+          borderColor: U.fieldBorder,
+          backgroundColor: U.ink[50],
         }}>
-          <View style={{ width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)' }}>
-            <Calendar size={22} color={DS.ink[400]} strokeWidth={1.5} />
+          <View style={{ width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? T.cardSoft : "#FFFFFF", borderWidth: 1, borderColor: isDark ? T.hairline : "rgba(15,23,42,0.06)" }}>
+            <Calendar size={22} color={U.ink[400]} strokeWidth={1.5} />
           </View>
-          <Text style={{ fontSize: 14, color: DS.ink[700], fontWeight: '700' }}>Henüz izin talebi yok</Text>
-          <Text style={{ fontSize: 11.5, color: DS.ink[400], textAlign: 'center', lineHeight: 16, maxWidth: 320 }}>
+          <Text style={{ fontSize: 14, color: isDark ? T.ink2 : U.ink[700], fontWeight: '700' }}>Henüz izin talebi yok</Text>
+          <Text style={{ fontSize: 11.5, color: isDark ? T.ink3 : U.ink[400], textAlign: 'center', lineHeight: 16, maxWidth: 320 }}>
             Bu personelin geçmiş veya bekleyen izni bulunmuyor. Yeni bir izin eklemek için aşağıdaki butonu kullan.
           </Text>
           <Pressable
@@ -1340,12 +1342,12 @@ function LeavesTab({ summary, leaves, leaveFilter, setLeaveFilter, loading, canA
             style={({ hovered }: any) => ({
               flexDirection: 'row', alignItems: 'center', gap: 6,
               paddingHorizontal: 16, paddingVertical: 9, borderRadius: 9999,
-              backgroundColor: hovered ? DS.ink[700] : DS.ink[900], marginTop: 4,
+              backgroundColor: hovered ? U.ink[700] : U.ink[900], marginTop: 4,
               ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
             })}
           >
-            <CalendarPlus size={13} color="#FFFFFF" strokeWidth={2} />
-            <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>İzin Talebi Ekle</Text>
+            <CalendarPlus size={13} color={U.onDarkPill} strokeWidth={2} />
+            <Text style={{ fontSize: 12, fontWeight: '700', color: U.onDarkPill }}>İzin Talebi Ekle</Text>
           </Pressable>
         </View>
       ) : (
@@ -1367,14 +1369,14 @@ function LeavesTab({ summary, leaves, leaveFilter, setLeaveFilter, loading, canA
           style={{
             flexDirection: 'row', alignItems: 'center', gap: 8,
             paddingVertical: 14, borderRadius: 9999,
-            borderWidth: 1.5, borderColor: DS.ink[900],
+            borderWidth: 1.5, borderColor: U.ink[900],
             justifyContent: 'center', marginTop: 4,
             ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
           } as any}
           onPress={onAdd}
         >
-          <CalendarPlus size={15} color={DS.ink[900]} strokeWidth={1.8} />
-          <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900] }}>İzin Talebi Ekle</Text>
+          <CalendarPlus size={15} color={U.ink[900]} strokeWidth={1.8} />
+          <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? T.ink : U.ink[900] }}>İzin Talebi Ekle</Text>
         </Pressable>
       )}
     </>
@@ -1390,6 +1392,9 @@ function LeaveCard({ leave, canApprove, onApprove, onReject, onCancel, onDelete 
   onCancel: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
+  const U = useInkUI();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
   const tc = LEAVE_TYPE_COLORS[leave.leave_type];
   const sc2 = LEAVE_STATUS_CFG[leave.status];
   const icon = LEAVE_TYPE_ICONS[leave.leave_type];
@@ -1401,9 +1406,9 @@ function LeaveCard({ leave, canApprove, onApprove, onReject, onCancel, onDelete 
 
   return (
     <View style={{
-      ...cardSolid,
+      ...U.cardSolid, ...(isDark ? { backgroundColor: T.card, borderColor: T.hairline, borderWidth: 1 } : {}),
       padding: 0, overflow: 'hidden',
-      borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+      borderWidth: 1, borderColor: U.hairline,
       borderStartWidth: 3, borderStartColor: tc.fg,
     }}>
       {/* MAIN ROW */}
@@ -1423,7 +1428,7 @@ function LeaveCard({ leave, canApprove, onApprove, onReject, onCancel, onDelete 
           <Text style={{ fontSize: 9.5, fontWeight: '700', color: tc.fg, opacity: 0.75, letterSpacing: 0.6, textTransform: 'uppercase' }}>
             {TR_MONTHS[startD.getMonth() + 1].slice(0, 3)}
           </Text>
-          <View style={{ marginTop: 4, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 9999, backgroundColor: '#FFFFFF' }}>
+          <View style={{ marginTop: 4, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 9999, backgroundColor: U.plainBtn.bg }}>
             <Text style={{ fontSize: 9.5, fontWeight: '800', color: tc.fg }}>{leave.days_count} GÜN</Text>
           </View>
         </View>
@@ -1435,16 +1440,16 @@ function LeaveCard({ leave, canApprove, onApprove, onReject, onCancel, onDelete 
               <View style={{ width: 24, height: 24, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: tc.bg }}>
                 <LucideIcon name={icon} size={13} color={tc.fg} />
               </View>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>{LEAVE_TYPE_LABELS[leave.leave_type]}</Text>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: isDark ? T.ink : U.ink[900] }}>{LEAVE_TYPE_LABELS[leave.leave_type]}</Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 9999, backgroundColor: sc2.bg }}>
               <StatusIcon name={sc2.icon} size={10} color={sc2.fg} />
               <Text style={{ fontSize: 10, fontWeight: '700', color: sc2.fg, letterSpacing: 0.2 }}>{sc2.label}</Text>
             </View>
           </View>
-          <Text style={{ fontSize: 11.5, color: DS.ink[500] }}>{fmtDateRange(leave.start_date, leave.end_date)}</Text>
+          <Text style={{ fontSize: 11.5, color: isDark ? T.ink3 : U.ink[500] }}>{fmtDateRange(leave.start_date, leave.end_date)}</Text>
           {leave.reason ? (
-            <Text style={{ fontSize: 11, color: DS.ink[500], lineHeight: 16, marginTop: 2 }} numberOfLines={3}>
+            <Text style={{ fontSize: 11, color: isDark ? T.ink3 : U.ink[500], lineHeight: 16, marginTop: 2 }} numberOfLines={3}>
               "{leave.reason}"
             </Text>
           ) : null}
@@ -1454,42 +1459,42 @@ function LeaveCard({ leave, canApprove, onApprove, onReject, onCancel, onDelete 
         <Pressable
           style={({ hovered }: any) => ({
             width: 40, alignItems: 'center', justifyContent: 'center',
-            backgroundColor: hovered ? CHIP_TONES.danger.bg : 'transparent',
+            backgroundColor: hovered ? U.chipTones.danger.bg : 'transparent',
             ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
           })}
           onPress={() => onDelete(leave.id)}
         >
-          <Trash2 size={14} color={DS.ink[300]} strokeWidth={1.6} />
+          <Trash2 size={14} color={U.ink[300]} strokeWidth={1.6} />
         </Pressable>
       </View>
 
       {/* ACTION FOOTER */}
       {leave.status === 'bekliyor' && canApprove && (
-        <View style={{ flexDirection: 'row', gap: 0, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
+        <View style={{ flexDirection: 'row', gap: 0, borderTopWidth: 1, borderTopColor: U.hairline }}>
           <Pressable
             style={({ hovered }: any) => ({
               flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
               paddingVertical: 11,
-              backgroundColor: hovered ? CHIP_TONES.success.fg : '#FFFFFF',
-              borderEndWidth: 1, borderEndColor: 'rgba(0,0,0,0.06)',
+              backgroundColor: hovered ? U.chipTones.success.fg : U.plainBtn.bg,
+              borderEndWidth: 1, borderEndColor: U.hairline,
               ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
             })}
             onPress={() => onApprove(leave.id)}
           >
-            <Check size={14} color={CHIP_TONES.success.fg} strokeWidth={2.2} />
-            <Text style={{ fontSize: 12.5, fontWeight: '700', color: CHIP_TONES.success.fg }}>Onayla</Text>
+            <Check size={14} color={U.chipTones.success.fg} strokeWidth={2.2} />
+            <Text style={{ fontSize: 12.5, fontWeight: '700', color: U.chipTones.success.fg }}>Onayla</Text>
           </Pressable>
           <Pressable
             style={({ hovered }: any) => ({
               flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
               paddingVertical: 11,
-              backgroundColor: hovered ? CHIP_TONES.danger.fg : '#FFFFFF',
+              backgroundColor: hovered ? U.chipTones.danger.fg : U.plainBtn.bg,
               ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
             })}
             onPress={() => onReject(leave.id)}
           >
-            <X size={14} color={CHIP_TONES.danger.fg} strokeWidth={2.2} />
-            <Text style={{ fontSize: 12.5, fontWeight: '700', color: CHIP_TONES.danger.fg }}>Reddet</Text>
+            <X size={14} color={U.chipTones.danger.fg} strokeWidth={2.2} />
+            <Text style={{ fontSize: 12.5, fontWeight: '700', color: U.chipTones.danger.fg }}>Reddet</Text>
           </Pressable>
         </View>
       )}
@@ -1497,11 +1502,11 @@ function LeaveCard({ leave, canApprove, onApprove, onReject, onCancel, onDelete 
         <View style={{
           flexDirection: 'row', alignItems: 'center', gap: 8,
           paddingHorizontal: 14, paddingVertical: 10,
-          borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
-          backgroundColor: CHIP_TONES.warning.bg + '40',
+          borderTopWidth: 1, borderTopColor: U.hairline,
+          backgroundColor: U.chipTones.warning.bg + '40',
         }}>
-          <Clock size={13} color={CHIP_TONES.warning.fg} strokeWidth={1.8} />
-          <Text style={{ fontSize: 11.5, color: CHIP_TONES.warning.fg, fontWeight: '600', flex: 1 }}>
+          <Clock size={13} color={U.chipTones.warning.fg} strokeWidth={1.8} />
+          <Text style={{ fontSize: 11.5, color: U.chipTones.warning.fg, fontWeight: '600', flex: 1 }}>
             Mesul müdür / yönetici onayı bekleniyor
           </Text>
         </View>
@@ -1511,27 +1516,27 @@ function LeaveCard({ leave, canApprove, onApprove, onReject, onCancel, onDelete 
           style={({ hovered }: any) => ({
             flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
             paddingVertical: 10,
-            borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
-            backgroundColor: hovered ? DS.ink[100] : '#FFFFFF',
+            borderTopWidth: 1, borderTopColor: U.hairline,
+            backgroundColor: hovered ? U.ink[100] : '#FFFFFF',
             ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
           })}
           onPress={() => onCancel(leave.id)}
         >
-          <Ban size={13} color={DS.ink[500]} strokeWidth={1.8} />
-          <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[500] }}>İzni İptal Et</Text>
+          <Ban size={13} color={U.ink[500]} strokeWidth={1.8} />
+          <Text style={{ fontSize: 12, fontWeight: '600', color: isDark ? T.ink3 : U.ink[500] }}>İzni İptal Et</Text>
         </Pressable>
       )}
       {leave.reject_reason && leave.status === 'reddedildi' && (
         <View style={{
           padding: 12, paddingHorizontal: 14,
-          borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
-          backgroundColor: CHIP_TONES.danger.bg + '50',
+          borderTopWidth: 1, borderTopColor: U.hairline,
+          backgroundColor: U.chipTones.danger.bg + '50',
         }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 3 }}>
-            <X size={11} color={CHIP_TONES.danger.fg} strokeWidth={2.5} />
-            <Text style={{ fontSize: 10, fontWeight: '800', color: CHIP_TONES.danger.fg, letterSpacing: 0.4, textTransform: 'uppercase' }}>Red sebebi</Text>
+            <X size={11} color={U.chipTones.danger.fg} strokeWidth={2.5} />
+            <Text style={{ fontSize: 10, fontWeight: '800', color: U.chipTones.danger.fg, letterSpacing: 0.4, textTransform: 'uppercase' }}>Red sebebi</Text>
           </View>
-          <Text style={{ fontSize: 12, color: CHIP_TONES.danger.fg, lineHeight: 17 }}>{leave.reject_reason}</Text>
+          <Text style={{ fontSize: 12, color: U.chipTones.danger.fg, lineHeight: 17 }}>{leave.reject_reason}</Text>
         </View>
       )}
     </View>
@@ -1550,6 +1555,9 @@ function DevamTab({ currentMonth, monthLabel, prevMonth, nextMonth, records, att
   onDelete: (id: string) => void;
   onAdd: () => void;
 }) {
+  const U = useInkUI();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
   const [y, m] = currentMonth.split('-').map(Number);
   const daysInMonth = new Date(y, m, 0).getDate();
   const rawFirst = new Date(y, m - 1, 1).getDay();
@@ -1584,22 +1592,22 @@ function DevamTab({ currentMonth, monthLabel, prevMonth, nextMonth, records, att
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Pressable
             style={({ hovered }: any) => ({
-              width: 30, height: 30, borderRadius: 9, backgroundColor: hovered ? DS.ink[200] : DS.ink[100], alignItems: 'center', justifyContent: 'center',
+              width: 30, height: 30, borderRadius: 9, backgroundColor: hovered ? U.ink[200] : U.ink[100], alignItems: 'center', justifyContent: 'center',
               ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
             } as any)}
             onPress={prevMonth}
           >
-            {isRTL() ? <ChevronRight size={16} color={DS.ink[700]} strokeWidth={1.8} /> : <ChevronLeft size={16} color={DS.ink[700]} strokeWidth={1.8} />}
+            {isRTL() ? <ChevronRight size={16} color={U.ink[700]} strokeWidth={1.8} /> : <ChevronLeft size={16} color={U.ink[700]} strokeWidth={1.8} />}
           </Pressable>
-          <Text style={{ ...DISPLAY, fontSize: 15, fontWeight: '700', color: DS.ink[900], minWidth: 110, textAlign: 'center' }}>{monthLabel}</Text>
+          <Text style={{ ...DISPLAY, fontSize: 15, fontWeight: '700', color: isDark ? T.ink : U.ink[900], minWidth: 110, textAlign: 'center' }}>{monthLabel}</Text>
           <Pressable
             style={({ hovered }: any) => ({
-              width: 30, height: 30, borderRadius: 9, backgroundColor: hovered ? DS.ink[200] : DS.ink[100], alignItems: 'center', justifyContent: 'center',
+              width: 30, height: 30, borderRadius: 9, backgroundColor: hovered ? U.ink[200] : U.ink[100], alignItems: 'center', justifyContent: 'center',
               ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
             } as any)}
             onPress={nextMonth}
           >
-            {isRTL() ? <ChevronLeft size={16} color={DS.ink[700]} strokeWidth={1.8} /> : <ChevronRight size={16} color={DS.ink[700]} strokeWidth={1.8} />}
+            {isRTL() ? <ChevronLeft size={16} color={U.ink[700]} strokeWidth={1.8} /> : <ChevronRight size={16} color={U.ink[700]} strokeWidth={1.8} />}
           </Pressable>
         </View>
         <Pressable
@@ -1607,13 +1615,13 @@ function DevamTab({ currentMonth, monthLabel, prevMonth, nextMonth, records, att
           style={({ hovered }: any) => ({
             flexDirection: 'row', alignItems: 'center', gap: 5,
             paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9999,
-            borderWidth: 1, borderColor: showCalendar ? DS.ink[900] : DS.ink[200],
-            backgroundColor: showCalendar ? DS.ink[900] : (hovered ? DS.ink[50] : '#FFFFFF'),
+            borderWidth: 1, borderColor: showCalendar ? U.ink[900] : U.ink[200],
+            backgroundColor: showCalendar ? U.ink[900] : (hovered ? U.ink[50] : '#FFFFFF'),
             ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
           } as any)}
         >
-          <Calendar size={12} color={showCalendar ? '#FFFFFF' : DS.ink[700]} strokeWidth={1.8} />
-          <Text style={{ fontSize: 11, fontWeight: '700', color: showCalendar ? '#FFFFFF' : DS.ink[700] }}>
+          <Calendar size={12} color={showCalendar ? '#FFFFFF' : U.ink[700]} strokeWidth={1.8} />
+          <Text style={{ fontSize: 11, fontWeight: '700', color: showCalendar ? '#FFFFFF' : U.ink[700] }}>
             {showCalendar ? 'Takvimi kapat' : 'Takvim görünümü'}
           </Text>
         </Pressable>
@@ -1622,22 +1630,22 @@ function DevamTab({ currentMonth, monthLabel, prevMonth, nextMonth, records, att
       {/* Monthly summary chips */}
       {attSummary && (
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          <MiniStat label="Normal" value={attSummary.normal_days} color={CHIP_TONES.success.fg} />
-          <MiniStat label="Geç Giriş" value={attSummary.late_days} color={CHIP_TONES.warning.fg} />
-          <MiniStat label="Devamsız" value={attSummary.absent_days} color={CHIP_TONES.danger.fg} />
-          <MiniStat label="Toplam Süre" value={fmtMinutes(attSummary.total_work_minutes)} color={DS.ink[500]} isText />
+          <MiniStat label="Normal" value={attSummary.normal_days} color={U.chipTones.success.fg} />
+          <MiniStat label="Geç Giriş" value={attSummary.late_days} color={U.chipTones.warning.fg} />
+          <MiniStat label="Devamsız" value={attSummary.absent_days} color={U.chipTones.danger.fg} />
+          <MiniStat label="Toplam Süre" value={fmtMinutes(attSummary.total_work_minutes)} color={U.ink[500]} isText />
         </View>
       )}
 
       {/* Bu ay Türkiye resmi tatilleri */}
       {monthHolidays.length > 0 && (
         <View style={{
-          ...cardSolid, padding: 12,
-          borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', gap: 6,
+          ...U.cardSolid, ...(isDark ? { backgroundColor: T.card, borderColor: T.hairline, borderWidth: 1 } : {}), padding: 12,
+          borderWidth: 1, borderColor: U.hairline, gap: 6,
         }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Sparkles size={12} color={DS.ink[700]} strokeWidth={1.8} />
-            <Text style={{ fontSize: 10, fontWeight: '800', color: DS.ink[700], letterSpacing: 1, textTransform: 'uppercase' }}>
+            <Sparkles size={12} color={U.ink[700]} strokeWidth={1.8} />
+            <Text style={{ fontSize: 10, fontWeight: '800', color: isDark ? T.ink2 : U.ink[700], letterSpacing: 1, textTransform: 'uppercase' }}>
               Bu Ayki Resmi Tatiller
             </Text>
           </View>
@@ -1645,15 +1653,15 @@ function DevamTab({ currentMonth, monthLabel, prevMonth, nextMonth, records, att
             {monthHolidays.map(h => {
               const d = new Date(h.date + 'T00:00:00');
               const dayOfWeek = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'][d.getDay()];
-              const tone = h.kind === 'arefe' ? CHIP_TONES.warning : h.kind === 'dini' ? CHIP_TONES.info : CHIP_TONES.success;
+              const tone = h.kind === 'arefe' ? U.chipTones.warning : h.kind === 'dini' ? U.chipTones.info : U.chipTones.success;
               return (
                 <View key={h.date} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 }}>
                   <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: tone.fg }} />
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: DS.ink[900], minWidth: 40 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: isDark ? T.ink : U.ink[900], minWidth: 40 }}>
                     {d.getDate()} {TR_MONTHS[m].slice(0,3)}
                   </Text>
-                  <Text style={{ fontSize: 10.5, color: DS.ink[500], minWidth: 70 }}>{dayOfWeek}</Text>
-                  <Text style={{ fontSize: 11.5, color: DS.ink[700], flex: 1 }} numberOfLines={1}>{h.label}</Text>
+                  <Text style={{ fontSize: 10.5, color: isDark ? T.ink3 : U.ink[500], minWidth: 70 }}>{dayOfWeek}</Text>
+                  <Text style={{ fontSize: 11.5, color: isDark ? T.ink2 : U.ink[700], flex: 1 }} numberOfLines={1}>{h.label}</Text>
                 </View>
               );
             })}
@@ -1664,19 +1672,19 @@ function DevamTab({ currentMonth, monthLabel, prevMonth, nextMonth, records, att
       {/* Records list — artık önce gösteriliyor */}
       {loading ? (
         <View style={{ paddingVertical: 32, alignItems: 'center' }}>
-          <ActivityIndicator color={DS.ink[400]} />
+          <ActivityIndicator color={U.ink[400]} />
         </View>
       ) : records.length === 0 ? (
         <View style={{
           alignItems: 'center', paddingVertical: 32, paddingHorizontal: 18, gap: 10,
           borderRadius: 16, borderWidth: 1, borderStyle: 'dashed' as any,
-          borderColor: 'rgba(15,23,42,0.10)', backgroundColor: DS.ink[50],
+          borderColor: 'rgba(15,23,42,0.10)', backgroundColor: U.ink[50],
         }}>
-          <View style={{ width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)' }}>
-            <CalendarCheck size={22} color={DS.ink[400]} strokeWidth={1.5} />
+          <View style={{ width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? T.cardSoft : "#FFFFFF", borderWidth: 1, borderColor: isDark ? T.hairline : "rgba(15,23,42,0.06)" }}>
+            <CalendarCheck size={22} color={U.ink[400]} strokeWidth={1.5} />
           </View>
-          <Text style={{ fontSize: 14, color: DS.ink[700], fontWeight: '700' }}>Bu ay için devam kaydı yok</Text>
-          <Text style={{ fontSize: 11.5, color: DS.ink[400], textAlign: 'center', lineHeight: 16, maxWidth: 320 }}>
+          <Text style={{ fontSize: 14, color: isDark ? T.ink2 : U.ink[700], fontWeight: '700' }}>Bu ay için devam kaydı yok</Text>
+          <Text style={{ fontSize: 11.5, color: isDark ? T.ink3 : U.ink[400], textAlign: 'center', lineHeight: 16, maxWidth: 320 }}>
             Personel QR/GPS check-in yaptıkça kayıtlar buraya düşer. Manuel kayıt eklemek için aşağıdaki butonu kullan.
           </Text>
           <Pressable
@@ -1684,12 +1692,12 @@ function DevamTab({ currentMonth, monthLabel, prevMonth, nextMonth, records, att
             style={({ hovered }: any) => ({
               flexDirection: 'row', alignItems: 'center', gap: 6,
               paddingHorizontal: 16, paddingVertical: 9, borderRadius: 9999,
-              backgroundColor: hovered ? DS.ink[700] : DS.ink[900], marginTop: 4,
+              backgroundColor: hovered ? U.ink[700] : U.ink[900], marginTop: 4,
               ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
             })}
           >
-            <CalendarCheck size={13} color="#FFFFFF" strokeWidth={2} />
-            <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>Devam Kaydı Ekle</Text>
+            <CalendarCheck size={13} color={U.onDarkPill} strokeWidth={2} />
+            <Text style={{ fontSize: 12, fontWeight: '700', color: U.onDarkPill }}>Devam Kaydı Ekle</Text>
           </Pressable>
         </View>
       ) : (
@@ -1701,12 +1709,12 @@ function DevamTab({ currentMonth, monthLabel, prevMonth, nextMonth, records, att
       {/* Calendar grid — opsiyonel, toggle ile aşağıda açılır */}
       {showCalendar && (
         <View style={{
-          ...cardSolid, padding: 12,
-          borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', gap: 8,
+          ...U.cardSolid, ...(isDark ? { backgroundColor: T.card, borderColor: T.hairline, borderWidth: 1 } : {}), padding: 12,
+          borderWidth: 1, borderColor: U.hairline, gap: 8,
         }}>
           <View style={{ flexDirection: 'row', marginBottom: 4 }}>
             {['Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct', 'Pz'].map(d => (
-              <Text key={d} style={{ flex: 1, textAlign: 'center', fontSize: 10, fontWeight: '700', color: DS.ink[400], textTransform: 'uppercase' }}>{d}</Text>
+              <Text key={d} style={{ flex: 1, textAlign: 'center', fontSize: 10, fontWeight: '700', color: isDark ? T.ink3 : U.ink[400], textTransform: 'uppercase' }}>{d}</Text>
             ))}
           </View>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
@@ -1718,7 +1726,7 @@ function DevamTab({ currentMonth, monthLabel, prevMonth, nextMonth, records, att
               const isWeekend = colIdx === 5 || colIdx === 6;
               const cfg = rec ? ATTENDANCE_STATUS_CFG[rec.status] : null;
               const hol = holidayMap[dateStr];
-              const holTone = hol ? (hol.kind === 'arefe' ? CHIP_TONES.warning : hol.kind === 'dini' ? CHIP_TONES.info : CHIP_TONES.success) : null;
+              const holTone = hol ? (hol.kind === 'arefe' ? U.chipTones.warning : hol.kind === 'dini' ? U.chipTones.info : U.chipTones.success) : null;
               return (
                 <View key={dateStr} style={{
                   width: `${100 / 7}%` as any, aspectRatio: 1,
@@ -1728,7 +1736,7 @@ function DevamTab({ currentMonth, monthLabel, prevMonth, nextMonth, records, att
                   borderWidth: hol ? 1 : 0,
                   borderColor: hol ? (holTone!.fg + '30') : 'transparent',
                 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: hol ? holTone!.fg : (rec ? DS.ink[900] : DS.ink[400]) }}>{day}</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: hol ? holTone!.fg : (rec ? U.ink[900] : U.ink[400]) }}>{day}</Text>
                   {cfg && (
                     <>
                       <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: cfg.fg }} />
@@ -1754,14 +1762,14 @@ function DevamTab({ currentMonth, monthLabel, prevMonth, nextMonth, records, att
           style={{
             flexDirection: 'row', alignItems: 'center', gap: 8,
             paddingVertical: 14, borderRadius: 9999,
-            borderWidth: 1.5, borderColor: DS.ink[900],
+            borderWidth: 1.5, borderColor: U.ink[900],
             justifyContent: 'center', marginTop: 4,
             ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
           } as any}
           onPress={onAdd}
         >
-          <CalendarCheck size={15} color={DS.ink[900]} strokeWidth={1.8} />
-          <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900] }}>Devam Kaydı Ekle</Text>
+          <CalendarCheck size={15} color={U.ink[900]} strokeWidth={1.8} />
+          <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? T.ink : U.ink[900] }}>Devam Kaydı Ekle</Text>
         </Pressable>
       )}
     </>
@@ -1771,6 +1779,9 @@ function DevamTab({ currentMonth, monthLabel, prevMonth, nextMonth, records, att
 function MiniStat({ label, value, color, isText = false }: {
   label: string; value: number | string; color: string; isText?: boolean;
 }) {
+  const U = useInkUI();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
   return (
     <View style={{
       flex: 1, borderRadius: 12, padding: 10, borderWidth: 1,
@@ -1778,24 +1789,29 @@ function MiniStat({ label, value, color, isText = false }: {
       borderColor: color + '30', backgroundColor: color + '10',
     }}>
       <Text style={{ fontSize: 15, fontWeight: '800', color }}>{isText ? value : String(value)}</Text>
-      <Text style={{ fontSize: 9, fontWeight: '600', color: DS.ink[500], textAlign: 'center' }}>{label}</Text>
+      <Text style={{ fontSize: 9, fontWeight: '600', color: isDark ? T.ink3 : U.ink[500], textAlign: 'center' }}>{label}</Text>
     </View>
   );
 }
 
-const METHOD_CFG: Record<string, { label: string; fg: string; bg: string; icon: string }> = {
-  qr_gps:  { label: 'QR+GPS',  fg: '#059669', bg: '#D1FAE5', icon: 'map-marker-check' },
-  qr_only: { label: 'QR',      fg: '#7C3AED', bg: '#EDE9FE', icon: 'qrcode' },
-  manual:  { label: 'Manuel',  fg: DS.ink[500], bg: DS.ink[100], icon: 'account-edit' },
-};
+/** Tema-farkında: "Manuel" nötr tonu ink skalasından gelir. */
+const methodCfg = (U: InkUI): Record<string, { label: string; fg: string; bg: string; icon: string }> => ({
+  qr_gps:  { label: 'QR+GPS',  fg: '#059669', bg: U.isDark ? 'rgba(5,150,105,0.22)'  : '#D1FAE5', icon: 'map-marker-check' },
+  qr_only: { label: 'QR',      fg: '#7C3AED', bg: U.isDark ? 'rgba(124,58,237,0.24)' : '#EDE9FE', icon: 'qrcode' },
+  manual:  { label: 'Manuel',  fg: U.ink[500], bg: U.ink[100], icon: 'account-edit' },
+});
 
 function AttendanceRow({ record: r, onDelete }: {
   record: EmployeeAttendance;
   onDelete: (id: string) => void;
 }) {
+  const U = useInkUI();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
   const cfg       = ATTENDANCE_STATUS_CFG[r.status];
-  const methodIn  = r.check_in_method  ? METHOD_CFG[r.check_in_method]  : null;
-  const methodOut = r.check_out_method ? METHOD_CFG[r.check_out_method] : null;
+  const MC = methodCfg(U);
+  const methodIn  = r.check_in_method  ? MC[r.check_in_method]  : null;
+  const methodOut = r.check_out_method ? MC[r.check_out_method] : null;
   const d         = new Date(r.work_date + 'T00:00:00');
   const dayOfWeek = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'][d.getDay()];
   const dayNum    = d.getDate();
@@ -1804,37 +1820,37 @@ function AttendanceRow({ record: r, onDelete }: {
 
   return (
     <View style={{
-      ...cardSolid,
+      ...U.cardSolid, ...(isDark ? { backgroundColor: T.card, borderColor: T.hairline, borderWidth: 1 } : {}),
       padding: 0, overflow: 'hidden',
-      borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+      borderWidth: 1, borderColor: U.hairline,
     }}>
       {/* TOP STRIP: date + status */}
       <View style={{
         flexDirection: 'row', alignItems: 'center', gap: 12,
         paddingHorizontal: 14, paddingVertical: 12,
-        borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)',
+        borderBottomWidth: 1, borderBottomColor: U.hairlineSoft,
         backgroundColor: cfg.bg + '40',
       }}>
         {/* Date chip */}
         <View style={{
           width: 44, height: 44, borderRadius: 12,
-          backgroundColor: '#FFFFFF',
-          borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
+          backgroundColor: isDark ? T.card : "#FFFFFF",
+          borderWidth: 1, borderColor: U.fieldBorder,
           alignItems: 'center', justifyContent: 'center',
         }}>
-          <Text style={{ ...DISPLAY, fontSize: 17, fontWeight: '700', color: DS.ink[900], lineHeight: 18 }}>{dayNum}</Text>
-          <Text style={{ fontSize: 8, fontWeight: '700', color: DS.ink[500], letterSpacing: 0.4, textTransform: 'uppercase' }}>{monthName.slice(0, 3)}</Text>
+          <Text style={{ ...DISPLAY, fontSize: 17, fontWeight: '700', color: isDark ? T.ink : U.ink[900], lineHeight: 18 }}>{dayNum}</Text>
+          <Text style={{ fontSize: 8, fontWeight: '700', color: isDark ? T.ink3 : U.ink[500], letterSpacing: 0.4, textTransform: 'uppercase' }}>{monthName.slice(0, 3)}</Text>
         </View>
         <View style={{ flex: 1, gap: 1 }}>
-          <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900] }}>{dayOfWeek}</Text>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? T.ink : U.ink[900] }}>{dayOfWeek}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 9999, backgroundColor: cfg.bg }}>
               <Text style={{ fontSize: 10, fontWeight: '700', color: cfg.fg, letterSpacing: 0.2 }}>{cfg.label}</Text>
             </View>
             {hasGps && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 9999, backgroundColor: CHIP_TONES.success.bg }}>
-                <MapPinCheck size={10} color={CHIP_TONES.success.fg} strokeWidth={2} />
-                <Text style={{ fontSize: 9, fontWeight: '700', color: CHIP_TONES.success.fg }}>GPS</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 9999, backgroundColor: U.chipTones.success.bg }}>
+                <MapPinCheck size={10} color={U.chipTones.success.fg} strokeWidth={2} />
+                <Text style={{ fontSize: 9, fontWeight: '700', color: U.chipTones.success.fg }}>GPS</Text>
               </View>
             )}
           </View>
@@ -1842,13 +1858,13 @@ function AttendanceRow({ record: r, onDelete }: {
         <Pressable
           style={({ hovered }: any) => ({
             width: 30, height: 30, borderRadius: 8,
-            backgroundColor: hovered ? CHIP_TONES.danger.bg : 'transparent',
+            backgroundColor: hovered ? U.chipTones.danger.bg : 'transparent',
             alignItems: 'center', justifyContent: 'center',
             ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
           })}
           onPress={() => onDelete(r.id)}
         >
-          <Trash2 size={14} color={DS.ink[400]} strokeWidth={1.6} />
+          <Trash2 size={14} color={U.ink[400]} strokeWidth={1.6} />
         </Pressable>
       </View>
 
@@ -1857,10 +1873,10 @@ function AttendanceRow({ record: r, onDelete }: {
         {/* Giriş */}
         <View style={{ flex: 1, padding: 12, gap: 4 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-            <View style={{ width: 6, height: 6, borderRadius: 9999, backgroundColor: CHIP_TONES.success.fg }} />
-            <Text style={{ fontSize: 9.5, fontWeight: '700', color: DS.ink[500], letterSpacing: 1, textTransform: 'uppercase' }}>Giriş</Text>
+            <View style={{ width: 6, height: 6, borderRadius: 9999, backgroundColor: U.chipTones.success.fg }} />
+            <Text style={{ fontSize: 9.5, fontWeight: '700', color: isDark ? T.ink3 : U.ink[500], letterSpacing: 1, textTransform: 'uppercase' }}>Giriş</Text>
           </View>
-          <Text style={{ ...DISPLAY, fontSize: 20, fontWeight: '700', color: r.check_in ? DS.ink[900] : DS.ink[300], letterSpacing: -0.5 }}>
+          <Text style={{ ...DISPLAY, fontSize: 20, fontWeight: '700', color: r.check_in ? U.ink[900] : U.ink[300], letterSpacing: -0.5 }}>
             {r.check_in ? r.check_in.slice(0, 5) : '—'}
           </Text>
           {methodIn && (
@@ -1877,12 +1893,12 @@ function AttendanceRow({ record: r, onDelete }: {
         </View>
 
         {/* Çıkış */}
-        <View style={{ flex: 1, padding: 12, gap: 4, borderStartWidth: 1, borderStartColor: 'rgba(0,0,0,0.04)' }}>
+        <View style={{ flex: 1, padding: 12, gap: 4, borderStartWidth: 1, borderStartColor: U.hairlineSoft }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-            <View style={{ width: 6, height: 6, borderRadius: 9999, backgroundColor: CHIP_TONES.danger.fg }} />
-            <Text style={{ fontSize: 9.5, fontWeight: '700', color: DS.ink[500], letterSpacing: 1, textTransform: 'uppercase' }}>Çıkış</Text>
+            <View style={{ width: 6, height: 6, borderRadius: 9999, backgroundColor: U.chipTones.danger.fg }} />
+            <Text style={{ fontSize: 9.5, fontWeight: '700', color: isDark ? T.ink3 : U.ink[500], letterSpacing: 1, textTransform: 'uppercase' }}>Çıkış</Text>
           </View>
-          <Text style={{ ...DISPLAY, fontSize: 20, fontWeight: '700', color: r.check_out ? DS.ink[900] : DS.ink[300], letterSpacing: -0.5 }}>
+          <Text style={{ ...DISPLAY, fontSize: 20, fontWeight: '700', color: r.check_out ? U.ink[900] : U.ink[300], letterSpacing: -0.5 }}>
             {r.check_out ? r.check_out.slice(0, 5) : '—'}
           </Text>
           {methodOut && (
@@ -1901,14 +1917,14 @@ function AttendanceRow({ record: r, onDelete }: {
         {/* Toplam */}
         <View style={{
           flex: 1, padding: 12, gap: 4,
-          borderStartWidth: 1, borderStartColor: 'rgba(0,0,0,0.04)',
-          backgroundColor: DS.ink[50],
+          borderStartWidth: 1, borderStartColor: U.hairlineSoft,
+          backgroundColor: U.ink[50],
         }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-            <Clock size={9} color={DS.ink[500]} strokeWidth={2} />
-            <Text style={{ fontSize: 9.5, fontWeight: '700', color: DS.ink[500], letterSpacing: 1, textTransform: 'uppercase' }}>Toplam</Text>
+            <Clock size={9} color={U.ink[500]} strokeWidth={2} />
+            <Text style={{ fontSize: 9.5, fontWeight: '700', color: isDark ? T.ink3 : U.ink[500], letterSpacing: 1, textTransform: 'uppercase' }}>Toplam</Text>
           </View>
-          <Text style={{ ...DISPLAY, fontSize: 20, fontWeight: '700', color: r.work_minutes ? DS.ink[900] : DS.ink[300], letterSpacing: -0.5 }}>
+          <Text style={{ ...DISPLAY, fontSize: 20, fontWeight: '700', color: r.work_minutes ? U.ink[900] : U.ink[300], letterSpacing: -0.5 }}>
             {r.work_minutes ? fmtMinutes(r.work_minutes) : '—'}
           </Text>
           {r.overtime_minutes > 0 && (
@@ -1916,9 +1932,9 @@ function AttendanceRow({ record: r, onDelete }: {
               flexDirection: 'row', alignItems: 'center', gap: 4,
               paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5,
               alignSelf: 'flex-start',
-              backgroundColor: CHIP_TONES.warning.bg,
+              backgroundColor: U.chipTones.warning.bg,
             }}>
-              <Text style={{ fontSize: 9, fontWeight: '700', color: CHIP_TONES.warning.fg }}>+{fmtMinutes(r.overtime_minutes)} OT</Text>
+              <Text style={{ fontSize: 9, fontWeight: '700', color: U.chipTones.warning.fg }}>+{fmtMinutes(r.overtime_minutes)} OT</Text>
             </View>
           )}
         </View>
@@ -1928,10 +1944,10 @@ function AttendanceRow({ record: r, onDelete }: {
       {r.notes ? (
         <View style={{
           paddingHorizontal: 14, paddingVertical: 8,
-          borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)',
-          backgroundColor: DS.ink[50],
+          borderTopWidth: 1, borderTopColor: U.hairlineSoft,
+          backgroundColor: U.ink[50],
         }}>
-          <Text style={{ fontSize: 11, color: DS.ink[500], fontStyle: 'italic' }} numberOfLines={2}>{r.notes}</Text>
+          <Text style={{ fontSize: 11, color: isDark ? T.ink3 : U.ink[500], fontStyle: 'italic' }} numberOfLines={2}>{r.notes}</Text>
         </View>
       ) : null}
     </View>
@@ -1943,7 +1959,9 @@ function OzetTab({ summary, attSummary }: {
   summary: LeaveSummary;
   attSummary: AttendanceMonthlySummary | null;
 }) {
+  const U = useInkUI();
   const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
   const usedPct = summary.annual_entitlement > 0
     ? Math.min(summary.annual_used / summary.annual_entitlement, 1)
     : 0;
@@ -1951,83 +1969,83 @@ function OzetTab({ summary, attSummary }: {
   return (
     <>
       {/* Bu Yıl İzin */}
-      <View style={{ ...cardSolid, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', gap: 12 }}>
+      <View style={{ ...U.cardSolid, ...(isDark ? { backgroundColor: T.card, borderColor: T.hairline, borderWidth: 1 } : {}), borderWidth: 1, borderColor: U.hairline, gap: 12 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Palmtree size={16} color={DS.ink[500]} strokeWidth={1.6} />
-          <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>Bu Yıl İzin</Text>
+          <Palmtree size={16} color={U.ink[500]} strokeWidth={1.6} />
+          <Text style={{ fontSize: 14, fontWeight: '700', color: isDark ? T.ink : U.ink[900] }}>Bu Yıl İzin</Text>
         </View>
         <View style={{ gap: 6 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ fontSize: 12, color: DS.ink[500], fontWeight: '500' }}>Kullanılan</Text>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>{summary.annual_used} gün</Text>
+            <Text style={{ fontSize: 12, color: isDark ? T.ink3 : U.ink[500], fontWeight: '500' }}>Kullanılan</Text>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: isDark ? T.ink : U.ink[900] }}>{summary.annual_used} gün</Text>
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ fontSize: 12, color: DS.ink[500], fontWeight: '500' }}>Kalan</Text>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: CHIP_TONES.success.fg }}>{summary.annual_remaining} gün</Text>
+            <Text style={{ fontSize: 12, color: isDark ? T.ink3 : U.ink[500], fontWeight: '500' }}>Kalan</Text>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: U.chipTones.success.fg }}>{summary.annual_remaining} gün</Text>
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ fontSize: 12, color: DS.ink[500], fontWeight: '500' }}>Toplam hak</Text>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[500] }}>{summary.annual_entitlement} gün</Text>
+            <Text style={{ fontSize: 12, color: isDark ? T.ink3 : U.ink[500], fontWeight: '500' }}>Toplam hak</Text>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: isDark ? T.ink3 : U.ink[500] }}>{summary.annual_entitlement} gün</Text>
           </View>
           <View style={{ height: 6, borderRadius: 3, backgroundColor: T.cardSoft }}>
-            <View style={{ height: 6, borderRadius: 3, width: `${usedPct * 100}%` as any, backgroundColor: DS.ink[400] }} />
+            <View style={{ height: 6, borderRadius: 3, width: `${usedPct * 100}%` as any, backgroundColor: U.ink[400] }} />
           </View>
-          <Text style={{ fontSize: 11, color: DS.ink[500], fontWeight: '500' }}>{Math.round(usedPct * 100)}% kullanıldı</Text>
+          <Text style={{ fontSize: 11, color: isDark ? T.ink3 : U.ink[500], fontWeight: '500' }}>{Math.round(usedPct * 100)}% kullanıldı</Text>
         </View>
       </View>
 
       {/* Bu Ay Devam */}
       {attSummary && (
-        <View style={{ ...cardSolid, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', gap: 12 }}>
+        <View style={{ ...U.cardSolid, ...(isDark ? { backgroundColor: T.card, borderColor: T.hairline, borderWidth: 1 } : {}), borderWidth: 1, borderColor: U.hairline, gap: 12 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <CalendarCheck size={16} color={DS.ink[500]} strokeWidth={1.6} />
-            <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>Bu Ay Devam</Text>
+            <CalendarCheck size={16} color={U.ink[500]} strokeWidth={1.6} />
+            <Text style={{ fontSize: 14, fontWeight: '700', color: isDark ? T.ink : U.ink[900] }}>Bu Ay Devam</Text>
           </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <StatGridCell label="Normal" value={attSummary.normal_days} color={CHIP_TONES.success.fg} />
-            <StatGridCell label="Geç" value={attSummary.late_days} color={CHIP_TONES.warning.fg} />
-            <StatGridCell label="Devamsız" value={attSummary.absent_days} color={CHIP_TONES.danger.fg} />
-            <StatGridCell label="İzinli" value={attSummary.leave_days} color={CHIP_TONES.info.fg} />
+            <StatGridCell label="Normal" value={attSummary.normal_days} color={U.chipTones.success.fg} />
+            <StatGridCell label="Geç" value={attSummary.late_days} color={U.chipTones.warning.fg} />
+            <StatGridCell label="Devamsız" value={attSummary.absent_days} color={U.chipTones.danger.fg} />
+            <StatGridCell label="İzinli" value={attSummary.leave_days} color={U.chipTones.info.fg} />
           </View>
         </View>
       )}
 
       {/* Toplam Çalışma */}
       {attSummary && (
-        <View style={{ ...cardSolid, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', gap: 12 }}>
+        <View style={{ ...U.cardSolid, ...(isDark ? { backgroundColor: T.card, borderColor: T.hairline, borderWidth: 1 } : {}), borderWidth: 1, borderColor: U.hairline, gap: 12 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Clock size={16} color={DS.ink[500]} strokeWidth={1.6} />
-            <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>Toplam Çalışma (Bu Ay)</Text>
+            <Clock size={16} color={U.ink[500]} strokeWidth={1.6} />
+            <Text style={{ fontSize: 14, fontWeight: '700', color: isDark ? T.ink : U.ink[900] }}>Toplam Çalışma (Bu Ay)</Text>
           </View>
           <View style={{ gap: 8 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Text style={{ fontSize: 12, color: DS.ink[500], fontWeight: '500' }}>Çalışma süresi</Text>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>{fmtMinutes(attSummary.total_work_minutes)}</Text>
+              <Text style={{ fontSize: 12, color: isDark ? T.ink3 : U.ink[500], fontWeight: '500' }}>Çalışma süresi</Text>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: isDark ? T.ink : U.ink[900] }}>{fmtMinutes(attSummary.total_work_minutes)}</Text>
             </View>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Text style={{ fontSize: 12, color: DS.ink[500], fontWeight: '500' }}>Fazla mesai</Text>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: CHIP_TONES.warning.fg }}>{fmtMinutes(attSummary.total_overtime_minutes)}</Text>
+              <Text style={{ fontSize: 12, color: isDark ? T.ink3 : U.ink[500], fontWeight: '500' }}>Fazla mesai</Text>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: U.chipTones.warning.fg }}>{fmtMinutes(attSummary.total_overtime_minutes)}</Text>
             </View>
           </View>
         </View>
       )}
 
       {/* İzin Bakiyesi */}
-      <View style={{ ...cardSolid, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', gap: 12 }}>
+      <View style={{ ...U.cardSolid, ...(isDark ? { backgroundColor: T.card, borderColor: T.hairline, borderWidth: 1 } : {}), borderWidth: 1, borderColor: U.hairline, gap: 12 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <CalendarHeart size={16} color={DS.ink[500]} strokeWidth={1.6} />
-          <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>İzin Bakiyesi</Text>
+          <CalendarHeart size={16} color={U.ink[500]} strokeWidth={1.6} />
+          <Text style={{ fontSize: 14, fontWeight: '700', color: isDark ? T.ink : U.ink[900] }}>İzin Bakiyesi</Text>
         </View>
         <View style={{ alignItems: 'center', paddingVertical: 12 }}>
           <View style={{
             width: 100, height: 100, borderRadius: 50,
-            borderWidth: 6, borderColor: DS.ink[300],
+            borderWidth: 6, borderColor: U.ink[300],
             alignItems: 'center', justifyContent: 'center', gap: 2,
           }}>
-            <Text style={{ ...DISPLAY, fontSize: 28, fontWeight: '800', color: DS.ink[900] }}>{summary.annual_remaining}</Text>
-            <Text style={{ fontSize: 10, fontWeight: '600', color: DS.ink[500] }}>gün kalan</Text>
+            <Text style={{ ...DISPLAY, fontSize: 28, fontWeight: '800', color: isDark ? T.ink : U.ink[900] }}>{summary.annual_remaining}</Text>
+            <Text style={{ fontSize: 10, fontWeight: '600', color: isDark ? T.ink3 : U.ink[500] }}>gün kalan</Text>
           </View>
-          <Text style={{ fontSize: 12, color: DS.ink[500], fontWeight: '500', marginTop: 10 }}>
+          <Text style={{ fontSize: 12, color: isDark ? T.ink3 : U.ink[500], fontWeight: '500', marginTop: 10 }}>
             Yıllık hak: {summary.annual_entitlement} gün
           </Text>
         </View>
@@ -2037,7 +2055,9 @@ function OzetTab({ summary, attSummary }: {
 }
 
 function StatGridCell({ label, value, color }: { label: string; value: number; color: string }) {
+  const U = useInkUI();
   const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
   return (
     <View style={{
       flex: 1, backgroundColor: T.cardSoft, borderRadius: 12, padding: 10,
@@ -2045,57 +2065,41 @@ function StatGridCell({ label, value, color }: { label: string; value: number; c
       borderTopColor: color, borderTopWidth: 3,
     }}>
       <Text style={{ fontSize: 20, fontWeight: '800', color }}>{value}</Text>
-      <Text style={{ fontSize: 10, fontWeight: '600', color: DS.ink[500] }}>{label}</Text>
+      <Text style={{ fontSize: 10, fontWeight: '600', color: isDark ? T.ink3 : U.ink[500] }}>{label}</Text>
     </View>
   );
 }
 
 // ─── Modal shared styles ─────────────────────────────────────────────────────
-const modalOverlay = {
-  flex: 1, backgroundColor: 'rgba(15,23,42,0.45)',
-  justifyContent: 'center' as const, alignItems: 'center' as const, padding: 24,
-};
-const modalCard = {
-  backgroundColor: '#FFFFFF', borderRadius: 24, width: '100%' as any,
-  maxWidth: 520, maxHeight: '92%' as any, overflow: 'hidden' as const,
-  // @ts-ignore web
-  boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
-};
-const modalHeader = {
-  flexDirection: 'row' as const, alignItems: 'center' as const,
-  paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14,
-  borderBottomWidth: 1, borderBottomColor: DS.ink[100],
-};
-const modalTitle = { flex: 1, fontSize: 16, fontWeight: '700' as const, color: DS.ink[900] };
-const modalCloseBtn = {
-  width: 28, height: 28, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.05)' as string,
-  alignItems: 'center' as const, justifyContent: 'center' as const,
-};
-const modalBody = { padding: 20, gap: 4 };
-const modalLabel = {
-  fontSize: 10, fontWeight: '700' as const, color: DS.ink[500],
-  textTransform: 'uppercase' as const, letterSpacing: 0.5, marginTop: 12, marginBottom: 6,
-};
-const modalInput = {
-  borderWidth: 1, borderColor: DS.ink[200], borderRadius: 12,
-  paddingHorizontal: 12, paddingVertical: 10,
-  fontSize: 14, color: DS.ink[900], backgroundColor: '#FFFFFF',
-};
-const modalFooter = {
-  flexDirection: 'row' as const, gap: 10,
-  paddingHorizontal: 20, paddingVertical: 14,
-  borderTopWidth: 1, borderTopColor: DS.ink[100],
-};
-const modalCancelBtn = {
-  flex: 1, paddingVertical: 12, borderRadius: 9999,
-  borderWidth: 1, borderColor: DS.ink[200], alignItems: 'center' as const,
-};
-const modalCancelText = { fontSize: 14, fontWeight: '600' as const, color: DS.ink[500] };
-const modalSaveBtn = {
-  flex: 2, paddingVertical: 12, borderRadius: 9999,
-  backgroundColor: DS.ink[900], alignItems: 'center' as const,
-};
-const modalSaveText = { fontSize: 14, fontWeight: '700' as const, color: '#fff' };
+// Tema-farkında: modül sabiti hook çağıramadığı için U'yu parametre alır.
+const hrModal = (U: InkUI) => ({
+  body: { padding: 20, gap: 4 },
+  label: {
+    fontSize: 10, fontWeight: '700' as const, color: U.ink[500],
+    textTransform: 'uppercase' as const, letterSpacing: 0.5, marginTop: 12, marginBottom: 6,
+  },
+  input: {
+    borderWidth: 1, borderColor: U.ink[200], borderRadius: 12,
+    paddingHorizontal: 12, paddingVertical: 10,
+    fontSize: 14, color: U.ink[900], backgroundColor: U.isDark ? U.surfaceSoft : U.surface,
+  },
+  footer: {
+    flexDirection: 'row' as const, gap: 10,
+    paddingHorizontal: 20, paddingVertical: 14,
+    borderTopWidth: 1, borderTopColor: U.ink[100],
+  },
+  cancelBtn: {
+    flex: 1, paddingVertical: 12, borderRadius: 9999,
+    borderWidth: 1, borderColor: U.ink[200], alignItems: 'center' as const,
+  },
+  cancelText: { fontSize: 14, fontWeight: '600' as const, color: U.ink[500] },
+  saveBtn: {
+    flex: 2, paddingVertical: 12, borderRadius: 9999,
+    backgroundColor: U.ink[900], alignItems: 'center' as const,
+  },
+  // Kaydet zemini koyu temada krem olur → metin koyu olmalı.
+  saveText: { fontSize: 14, fontWeight: '700' as const, color: U.onDarkPill },
+});
 
 // ─── Leave Form Modal ─────────────────────────────────────────────────────────
 function LeaveFormModal({ visible, summaries, preselectedId, onClose, onSaved }: {
@@ -2106,6 +2110,8 @@ function LeaveFormModal({ visible, summaries, preselectedId, onClose, onSaved }:
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const U = useInkUI();
+  const M = hrModal(U);
   const T = useMobileTokens();
   const today = new Date().toISOString().slice(0, 10);
   const [empId,     setEmpId]     = useState<string | null>(preselectedId);
@@ -2161,30 +2167,30 @@ function LeaveFormModal({ visible, summaries, preselectedId, onClose, onSaved }:
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <View style={modalOverlay}>
-        <View style={modalCard}>
-          <View style={modalHeader}>
-            <Text style={modalTitle}>İzin Talebi</Text>
-            <Pressable style={modalCloseBtn} onPress={onClose}>
-              <X size={18} color={DS.ink[400]} strokeWidth={1.8} />
+      <View style={U.modalOverlay}>
+        <View style={U.modalCard}>
+          <View style={U.modalHeaderRow}>
+            <Text style={U.modalTitle}>İzin Talebi</Text>
+            <Pressable style={U.modalCloseBtn} onPress={onClose}>
+              <X size={18} color={U.ink[400]} strokeWidth={1.8} />
             </Pressable>
           </View>
 
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={modalBody} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'} showsVerticalScrollIndicator={false}>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={M.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'} showsVerticalScrollIndicator={false}>
 
             {/* Employee */}
             {preselectedId && selectedEmp ? (
               <View style={{
                 flexDirection: 'row', alignItems: 'center', gap: 8,
                 padding: 10, borderRadius: 12, backgroundColor: T.cardSoft,
-                borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', marginBottom: 4,
+                borderWidth: 1, borderColor: U.hairline, marginBottom: 4,
               }}>
-                <User size={15} color={DS.ink[500]} strokeWidth={1.8} />
-                <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>{selectedEmp.full_name}</Text>
+                <User size={15} color={U.ink[500]} strokeWidth={1.8} />
+                <Text style={{ fontSize: 14, fontWeight: '700', color: U.ink[900] }}>{selectedEmp.full_name}</Text>
               </View>
             ) : (
               <>
-                <Text style={modalLabel}>Personel *</Text>
+                <Text style={M.label}>Personel *</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
                   <View style={{ flexDirection: 'row', gap: 6 }}>
                     {summaries.map(item => (
@@ -2193,14 +2199,14 @@ function LeaveFormModal({ visible, summaries, preselectedId, onClose, onSaved }:
                         style={{
                           paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999,
                           borderWidth: 1.5,
-                          borderColor: empId === item.employee_id ? DS.ink[900] : DS.ink[200],
-                          backgroundColor: empId === item.employee_id ? DS.ink[50] : '#FFFFFF',
+                          borderColor: empId === item.employee_id ? U.ink[900] : U.ink[200],
+                          backgroundColor: empId === item.employee_id ? U.ink[50] : '#FFFFFF',
                         }}
                         onPress={() => setEmpId(item.employee_id)}
                       >
                         <Text style={{
                           fontSize: 12,
-                          color: empId === item.employee_id ? DS.ink[900] : DS.ink[500],
+                          color: empId === item.employee_id ? U.ink[900] : U.ink[500],
                           fontWeight: empId === item.employee_id ? '700' : '500',
                         }}>
                           {item.full_name}
@@ -2213,7 +2219,7 @@ function LeaveFormModal({ visible, summaries, preselectedId, onClose, onSaved }:
             )}
 
             {/* Leave type */}
-            <Text style={modalLabel}>İzin Türü *</Text>
+            <Text style={M.label}>İzin Türü *</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 {LEAVE_TYPES.map(lt => {
@@ -2226,13 +2232,13 @@ function LeaveFormModal({ visible, summaries, preselectedId, onClose, onSaved }:
                         flexDirection: 'row', alignItems: 'center', gap: 6,
                         paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9999,
                         borderWidth: 1.5,
-                        borderColor: isActive ? tc.fg : DS.ink[200],
+                        borderColor: isActive ? tc.fg : U.ink[200],
                         backgroundColor: isActive ? tc.bg : '#FFFFFF',
                       }}
                       onPress={() => setLeaveType(lt)}
                     >
-                      <LucideIcon name={LEAVE_TYPE_ICONS[lt]} size={14} color={isActive ? tc.fg : DS.ink[400]} />
-                      <Text style={{ fontSize: 12, color: isActive ? tc.fg : DS.ink[400], fontWeight: isActive ? '700' : '500' }}>
+                      <LucideIcon name={LEAVE_TYPE_ICONS[lt]} size={14} color={isActive ? tc.fg : U.ink[400]} />
+                      <Text style={{ fontSize: 12, color: isActive ? tc.fg : U.ink[400], fontWeight: isActive ? '700' : '500' }}>
                         {LEAVE_TYPE_LABELS[lt]}
                       </Text>
                     </Pressable>
@@ -2244,11 +2250,11 @@ function LeaveFormModal({ visible, summaries, preselectedId, onClose, onSaved }:
             {/* Dates */}
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <View style={{ flex: 1 }}>
-                <Text style={modalLabel}>Başlangıç *</Text>
+                <Text style={M.label}>Başlangıç *</Text>
                 <DatePicker value={startDate} onChange={setStartDate} placeholder="Tarih seç" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={modalLabel}>Bitiş *</Text>
+                <Text style={M.label}>Bitiş *</Text>
                 <DatePicker value={endDate} onChange={setEndDate} placeholder="Tarih seç" />
               </View>
             </View>
@@ -2257,37 +2263,37 @@ function LeaveFormModal({ visible, summaries, preselectedId, onClose, onSaved }:
               <View style={{
                 flexDirection: 'row', alignItems: 'center', gap: 6,
                 padding: 10, borderRadius: 12,
-                backgroundColor: T.cardSoft, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', marginTop: 4,
+                backgroundColor: T.cardSoft, borderWidth: 1, borderColor: U.hairline, marginTop: 4,
               }}>
-                <Info size={13} color={DS.ink[500]} strokeWidth={1.8} />
-                <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900] }}>{days} iş günü</Text>
+                <Info size={13} color={U.ink[500]} strokeWidth={1.8} />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: U.ink[900] }}>{days} iş günü</Text>
               </View>
             )}
 
             {/* Reason */}
-            <Text style={modalLabel}>Sebep (opsiyonel)</Text>
+            <Text style={M.label}>Sebep (opsiyonel)</Text>
             <TextInput
-              style={{ ...modalInput, minHeight: 64, textAlignVertical: 'top' }}
+              style={{ ...M.input, minHeight: 64, textAlignVertical: 'top' }}
               value={reason}
               onChangeText={setReason}
               placeholder="İzin sebebi..."
-              placeholderTextColor={DS.ink[400]}
+              placeholderTextColor={U.ink[400]}
               multiline
             />
           </ScrollView>
 
-          <View style={modalFooter}>
-            <Pressable style={modalCancelBtn} onPress={onClose} disabled={saving}>
-              <Text style={modalCancelText}>İptal</Text>
+          <View style={M.footer}>
+            <Pressable style={M.cancelBtn} onPress={onClose} disabled={saving}>
+              <Text style={M.cancelText}>İptal</Text>
             </Pressable>
             <Pressable
-              style={{ ...modalSaveBtn, ...(saving ? { opacity: 0.5 } : {}) }}
+              style={{ ...M.saveBtn, ...(saving ? { opacity: 0.5 } : {}) }}
               onPress={handleSave}
               disabled={saving}
             >
               {saving
                 ? <ActivityIndicator color="#fff" size="small" />
-                : <Text style={modalSaveText}>Talep Oluştur</Text>}
+                : <Text style={M.saveText}>Talep Oluştur</Text>}
             </Pressable>
           </View>
         </View>
@@ -2304,6 +2310,8 @@ function AttendanceModal({ visible, employeeId, employeeName, onClose, onSaved }
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const U = useInkUI();
+  const M = hrModal(U);
   const T = useMobileTokens();
   const today = new Date().toISOString().slice(0, 10);
   const [workDate,  setWorkDate]  = useState(today);
@@ -2364,26 +2372,26 @@ function AttendanceModal({ visible, employeeId, employeeName, onClose, onSaved }
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <View style={modalOverlay}>
-        <View style={modalCard}>
-          <View style={modalHeader}>
+      <View style={U.modalOverlay}>
+        <View style={U.modalCard}>
+          <View style={U.modalHeaderRow}>
             <View style={{ flex: 1 }}>
-              <Text style={modalTitle}>Devam Kaydı</Text>
-              {employeeName ? <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 2 }}>{employeeName}</Text> : null}
+              <Text style={U.modalTitle}>Devam Kaydı</Text>
+              {employeeName ? <Text style={{ fontSize: 12, color: U.ink[500], marginTop: 2 }}>{employeeName}</Text> : null}
             </View>
-            <Pressable style={modalCloseBtn} onPress={onClose}>
-              <X size={18} color={DS.ink[400]} strokeWidth={1.8} />
+            <Pressable style={U.modalCloseBtn} onPress={onClose}>
+              <X size={18} color={U.ink[400]} strokeWidth={1.8} />
             </Pressable>
           </View>
 
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={modalBody} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'} showsVerticalScrollIndicator={false}>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={M.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'} showsVerticalScrollIndicator={false}>
 
             {/* Work date */}
-            <Text style={modalLabel}>Tarih *</Text>
+            <Text style={M.label}>Tarih *</Text>
             <DatePicker value={workDate} onChange={setWorkDate} placeholder="Tarih seç" />
 
             {/* Status grid */}
-            <Text style={modalLabel}>Durum *</Text>
+            <Text style={M.label}>Durum *</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
               {ATT_STATUSES.map(st => {
                 const cfg = ATTENDANCE_STATUS_CFG[st];
@@ -2394,14 +2402,14 @@ function AttendanceModal({ visible, employeeId, employeeName, onClose, onSaved }
                     style={{
                       paddingHorizontal: 10, paddingVertical: 7, borderRadius: 9999,
                       borderWidth: 1.5,
-                      borderColor: isActive ? cfg.fg : DS.ink[200],
+                      borderColor: isActive ? cfg.fg : U.ink[200],
                       backgroundColor: isActive ? cfg.bg : '#FFFFFF',
                     }}
                     onPress={() => setStatus(st)}
                   >
                     <Text style={{
                       fontSize: 11,
-                      color: isActive ? cfg.fg : DS.ink[400],
+                      color: isActive ? cfg.fg : U.ink[400],
                       fontWeight: isActive ? '700' : '500',
                     }}>
                       {cfg.label}
@@ -2415,23 +2423,23 @@ function AttendanceModal({ visible, employeeId, employeeName, onClose, onSaved }
             {showTime && (
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={modalLabel}>Giriş Saati</Text>
+                  <Text style={M.label}>Giriş Saati</Text>
                   <TextInput
-                    style={modalInput}
+                    style={M.input}
                     value={checkIn}
                     onChangeText={setCheckIn}
                     placeholder="09:00"
-                    placeholderTextColor={DS.ink[400]}
+                    placeholderTextColor={U.ink[400]}
                   />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={modalLabel}>Çıkış Saati</Text>
+                  <Text style={M.label}>Çıkış Saati</Text>
                   <TextInput
-                    style={modalInput}
+                    style={M.input}
                     value={checkOut}
                     onChangeText={setCheckOut}
                     placeholder="18:00"
-                    placeholderTextColor={DS.ink[400]}
+                    placeholderTextColor={U.ink[400]}
                   />
                 </View>
               </View>
@@ -2440,42 +2448,42 @@ function AttendanceModal({ visible, employeeId, employeeName, onClose, onSaved }
             {/* Overtime */}
             {status === 'normal' && (
               <>
-                <Text style={modalLabel}>Fazla Mesai (dk)</Text>
+                <Text style={M.label}>Fazla Mesai (dk)</Text>
                 <TextInput
-                  style={modalInput}
+                  style={M.input}
                   value={overtime}
                   onChangeText={setOvertime}
                   placeholder="0"
-                  placeholderTextColor={DS.ink[400]}
+                  placeholderTextColor={U.ink[400]}
                   keyboardType="number-pad"
                 />
               </>
             )}
 
             {/* Notes */}
-            <Text style={modalLabel}>Notlar (opsiyonel)</Text>
+            <Text style={M.label}>Notlar (opsiyonel)</Text>
             <TextInput
-              style={{ ...modalInput, minHeight: 52, textAlignVertical: 'top' }}
+              style={{ ...M.input, minHeight: 52, textAlignVertical: 'top' }}
               value={notes}
               onChangeText={setNotes}
               placeholder="Ek not..."
-              placeholderTextColor={DS.ink[400]}
+              placeholderTextColor={U.ink[400]}
               multiline
             />
           </ScrollView>
 
-          <View style={modalFooter}>
-            <Pressable style={modalCancelBtn} onPress={onClose} disabled={saving}>
-              <Text style={modalCancelText}>İptal</Text>
+          <View style={M.footer}>
+            <Pressable style={M.cancelBtn} onPress={onClose} disabled={saving}>
+              <Text style={M.cancelText}>İptal</Text>
             </Pressable>
             <Pressable
-              style={{ ...modalSaveBtn, ...(saving ? { opacity: 0.5 } : {}) }}
+              style={{ ...M.saveBtn, ...(saving ? { opacity: 0.5 } : {}) }}
               onPress={handleSave}
               disabled={saving}
             >
               {saving
                 ? <ActivityIndicator color="#fff" size="small" />
-                : <Text style={modalSaveText}>Kaydet</Text>}
+                : <Text style={M.saveText}>Kaydet</Text>}
             </Pressable>
           </View>
         </View>
@@ -2490,6 +2498,8 @@ function RejectModal({ visible, onClose, onConfirm }: {
   onClose: () => void;
   onConfirm: (reason: string) => Promise<void>;
 }) {
+  const U = useInkUI();
+  const M = hrModal(U);
   const [reason,  setReason]  = useState('');
   const [saving,  setSaving]  = useState(false);
 
@@ -2503,38 +2513,38 @@ function RejectModal({ visible, onClose, onConfirm }: {
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <View style={modalOverlay}>
-        <View style={{ ...modalCard, maxWidth: 400 }}>
-          <View style={modalHeader}>
-            <Text style={modalTitle}>İzni Reddet</Text>
-            <Pressable style={modalCloseBtn} onPress={onClose}>
-              <X size={18} color={DS.ink[400]} strokeWidth={1.8} />
+      <View style={U.modalOverlay}>
+        <View style={{ ...U.modalCard, maxWidth: 400 }}>
+          <View style={U.modalHeaderRow}>
+            <Text style={U.modalTitle}>İzni Reddet</Text>
+            <Pressable style={U.modalCloseBtn} onPress={onClose}>
+              <X size={18} color={U.ink[400]} strokeWidth={1.8} />
             </Pressable>
           </View>
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={modalBody} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'} showsVerticalScrollIndicator={false}>
-            <Text style={modalLabel}>Red Sebebi</Text>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={M.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'} showsVerticalScrollIndicator={false}>
+            <Text style={M.label}>Red Sebebi</Text>
             <TextInput
-              style={{ ...modalInput, minHeight: 80, textAlignVertical: 'top' }}
+              style={{ ...M.input, minHeight: 80, textAlignVertical: 'top' }}
               value={reason}
               onChangeText={setReason}
               placeholder="Reddetme sebebini yazın..."
-              placeholderTextColor={DS.ink[400]}
+              placeholderTextColor={U.ink[400]}
               multiline
               autoFocus
             />
           </ScrollView>
-          <View style={modalFooter}>
-            <Pressable style={modalCancelBtn} onPress={onClose} disabled={saving}>
-              <Text style={modalCancelText}>İptal</Text>
+          <View style={M.footer}>
+            <Pressable style={M.cancelBtn} onPress={onClose} disabled={saving}>
+              <Text style={M.cancelText}>İptal</Text>
             </Pressable>
             <Pressable
-              style={{ ...modalSaveBtn, backgroundColor: CHIP_TONES.danger.fg, ...(saving ? { opacity: 0.5 } : {}) }}
+              style={{ ...M.saveBtn, backgroundColor: U.chipTones.danger.fg, ...(saving ? { opacity: 0.5 } : {}) }}
               onPress={handleConfirm}
               disabled={saving}
             >
               {saving
                 ? <ActivityIndicator color="#fff" size="small" />
-                : <Text style={modalSaveText}>Reddet</Text>}
+                : <Text style={M.saveText}>Reddet</Text>}
             </Pressable>
           </View>
         </View>

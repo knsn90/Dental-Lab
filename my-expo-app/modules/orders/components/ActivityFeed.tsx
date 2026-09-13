@@ -8,7 +8,7 @@ import { View, Text} from 'react-native';
 import {
   FileUp, Pause, Play, Cog, Hourglass, AlertOctagon, RotateCcw, Check,
   ShieldCheck, Edit3, Beaker, Activity, MessageSquare, Settings,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { supabase } from '../../../core/api/supabase';
 import { useStationTheme, hexA, type StationPalette } from '../../../core/theme/stationPalette';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';

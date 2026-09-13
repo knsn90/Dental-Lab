@@ -11,10 +11,11 @@ import { View, Text, ScrollView, Pressable, TextInput, Modal, Platform, Activity
 import {
   ListChecks, CheckCircle2, X, AlertCircle, Building2, Banknote,
   CreditCard, FileText, ArrowDownToLine, Clock, RefreshCcw,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 
 import { DS } from '../../../core/theme/dsTokens';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { useInkUI } from '../../../core/theme/inkScale';
 import {
   fetchPendingSubmissions, approveSubmission, rejectSubmission,
   type PaymentSubmissionRow,
@@ -40,6 +41,7 @@ const METHOD_LABEL: Record<string, { label: string; icon: any; color: string }> 
 
 export function PaymentApprovalsScreen() {
   const TH = usePanelTheme();
+  const U = useInkUI();
   useRates();
   const isEmbedded = useContext(HubContext);   // FinanceHub içindeyse kendi başlığını gösterme
   const [items, setItems]     = useState<SubmissionWithClinic[]>([]);
@@ -145,9 +147,9 @@ export function PaymentApprovalsScreen() {
                         {s.invoice_no && (
                           <View style={{
                             paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999,
-                            backgroundColor: DS.ink[100],
+                            backgroundColor: U.ink[100],
                           }}>
-                            <Text style={{ fontSize: 9, fontWeight: '700', color: DS.ink[700], letterSpacing: 0.3 }}>
+                            <Text style={{ fontSize: 9, fontWeight: '700', color: U.ink[700], letterSpacing: 0.3 }}>
                               FATURA {s.invoice_no}
                             </Text>
                           </View>
@@ -168,7 +170,7 @@ export function PaymentApprovalsScreen() {
                   {/* Detay grid */}
                   <View style={{
                     marginTop: 12, padding: 12,
-                    backgroundColor: DS.ink[50], borderRadius: 12,
+                    backgroundColor: U.ink[50], borderRadius: 12,
                     flexDirection: 'row', flexWrap: 'wrap', gap: 12,
                   }}>
                     {s.reference_no && (
@@ -272,12 +274,13 @@ export function PaymentApprovalsScreen() {
 }
 
 function DetailItem({ label, value }: { label: string; value: string }) {
+  const U = useInkUI();
   return (
     <View style={{ flex: 1, minWidth: 140 }}>
-      <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: DS.ink[500] }}>
+      <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: U.ink[500] }}>
         {label}
       </Text>
-      <Text style={{ fontSize: 12, color: DS.ink[900], marginTop: 2, fontWeight: '500' }}>
+      <Text style={{ fontSize: 12, color: U.ink[900], marginTop: 2, fontWeight: '500' }}>
         {value}
       </Text>
     </View>

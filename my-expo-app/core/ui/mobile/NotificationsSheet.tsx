@@ -16,8 +16,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isRTL } from '../../i18n';
 import {
   X, FileCheck, Flame, Package, ChevronRight, ChevronLeft, BellOff,
-  ShoppingCart, CreditCard, ClipboardCheck, MessageCircle, Truck, AlertCircle, Inbox, Wrench, AlarmClock, CheckCircle2, ClipboardList
-} from 'lucide-react-native';
+  ShoppingCart, CreditCard, ClipboardCheck, MessageCircle, Truck, AlertCircle, Inbox, Wrench, AlarmClock, CheckCircle2, ClipboardList, PenLine,
+} from '../icons';
 import { useMobileTokens, MOBILE_PANEL_THEMES, type MobilePanel } from '../../theme/mobileDesignTokens';
 import { useNotifications, useNotificationsActions } from '../../store/notificationsStore';
 import type { NotificationCategory } from '../../store/notificationPrefsStore';
@@ -436,6 +436,8 @@ const CATEGORY_CFG: Record<NotificationCategory, { icon: any; color: string; lab
   order_watch:      { icon: AlarmClock, color: '#DC2626', label: 'İş Takibi'  },
   stage_critical:   { icon: CheckCircle2, color: '#0C8F56', label: 'Kritik Aşama' },
   stock_count:      { icon: ClipboardList, color: '#7C3AED', label: 'Stok Sayımı'  },
+  implant_parts:    { icon: Package,     color: '#F97316', label: 'İmplant Parçası' },
+  scan_annotation:  { icon: PenLine,     color: '#2563EB', label: 'Tarama Notu' },
 };
 
 // ── DB feed satırı — okunmamış vurgusu + relative time ─────────────────────

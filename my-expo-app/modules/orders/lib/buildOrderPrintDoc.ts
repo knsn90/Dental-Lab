@@ -12,6 +12,7 @@
  */
 import { supabase } from '../../../core/api/supabase';
 import type { WorkOrder } from '../types';
+import { readImplantInfo } from '../implantInfo';
 
 export interface OrderPrintMessage {
   content: string;
@@ -63,8 +64,14 @@ export async function buildOrderPrintDoc(
   //   2) work_orders.work_type virgülle birleşik segmentler tooth_numbers ile aynı uzunlukta
   //   3) Fallback: tek bir work_type
   const toothNumbersArr = order.tooth_numbers ?? [];
-  const orderItems = (order as any).order_items as Array<{ name: string; quantity: number; tooth_numbers?: number[] | null }> | undefined;
-  let toothOps: Array<{ tooth: number; workType: string; shade?: string | null; material?: string | null }> = [];
+  const orderItems = (order as any).order_items as Array<{ name: string; quantity: number; tooth_numbers?: number[] | null; notes?: string | null }> | undefined;
+  type PrintToothOp = {
+    tooth: number; workType: string;
+    shade?: string | null; material?: string | null;
+    implantSystem?: string | null; implantType?: string | null;
+    abutment?: string | null; screw?: string | null;
+  };
+  let toothOps: PrintToothOp[] = [];
 
   const itemsWithTeeth = (orderItems ?? []).filter(it => Array.isArray(it.tooth_numbers) && it.tooth_numbers!.length > 0);
   if (itemsWithTeeth.length > 0) {
@@ -77,6 +84,32 @@ export async function buildOrderPrintDoc(
     const wtSegs = (order.work_type ?? '').split(/,\s*/).map(s => s.trim()).filter(Boolean);
     if (wtSegs.length === toothNumbersArr.length && wtSegs.length > 0) {
       toothOps = toothNumbersArr.map((t, i) => ({ tooth: t, workType: wtSegs[i], shade: order.shade ?? null }));
+    }
+  }
+
+  // ── İmplant detayını diş satırlarına işle ───────────────────────────────
+  // Şablon implantSystem/implantType/abutment/screw alanlarını zaten basıyordu
+  // ama hiçbir zaman doldurulmuyordu; iş kağıdında implant bilgisi görünmüyordu.
+  // Diş bazlı marka boşsa vaka geneli markaya düşülür (implantLineFor ile aynı kural).
+  {
+    const implant = readImplantInfo(order as any, orderItems ?? []);
+    if (implant.hasAny) {
+      const known = new Set(toothOps.map(o => o.tooth));
+      for (const t of implant.teeth) {
+        const d = implant.details[t];
+        const patch = {
+          implantSystem: (d?.system ?? '').trim() || implant.brand || null,
+          implantType:   (d?.type ?? '').trim() || null,
+          abutment:      (d?.abutment ?? '').trim() || null,
+          screw:         (d?.screw ?? '').trim() || null,
+        };
+        if (known.has(t)) {
+          toothOps.forEach(o => { if (o.tooth === t) Object.assign(o, patch); });
+        } else {
+          // İmplant dişi çalışma satırlarında yoksa da kağıtta görünsün.
+          toothOps.push({ tooth: t, workType: order.work_type ?? '—', shade: order.shade ?? null, ...patch });
+        }
+      }
     }
   }
 

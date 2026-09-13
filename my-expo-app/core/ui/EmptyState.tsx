@@ -12,6 +12,8 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { AppIcon } from './AppIcon';
 import { C } from '../theme/colors';
+import { useMobileTokens } from '../theme/mobileDesignTokens';
+import { useThemeModeStore } from '../store/themeModeStore';
 
 export interface EmptyStateProps {
   /** Lucide ikon adı (yeni API) */
@@ -46,9 +48,11 @@ export function EmptyState({
   variant = 'default',
   style,
 }: EmptyStateProps) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const isError   = variant === 'error';
-  const iconColor = isError ? C.danger   : C.textMuted;
-  const iconBg    = isError ? C.dangerBg : '#F1F5F9';
+  const iconColor = isError ? C.danger   : (isDark ? (T.ink3 as string) : C.textMuted);
+  const iconBg    = isError ? C.dangerBg : (isDark ? T.cardSoft : '#F1F5F9');
 
   // Eski API birleştirme
   const primaryLabel    = ctaLabel  ?? action?.label;
@@ -68,10 +72,10 @@ export function EmptyState({
       )}
 
       {/* ── Title ── */}
-      <Text style={[s.title, isError && { color: C.danger }]}>{title}</Text>
+      <Text style={[s.title, isDark && { color: T.ink }, isError && { color: C.danger }]}>{title}</Text>
 
       {/* ── Subtitle ── */}
-      {subtitle ? <Text style={s.subtitle}>{subtitle}</Text> : null}
+      {subtitle ? <Text style={[s.subtitle, isDark && { color: T.ink2 }]}>{subtitle}</Text> : null}
 
       {/* ── Primary CTA ── */}
       {primaryLabel && primaryOnPress ? (
@@ -87,7 +91,7 @@ export function EmptyState({
       {/* ── Secondary ── */}
       {secondaryLabel && onSecondary ? (
         <TouchableOpacity style={s.secondary} onPress={onSecondary} activeOpacity={0.7}>
-          <Text style={s.secondaryText}>{secondaryLabel}</Text>
+          <Text style={[s.secondaryText, isDark && { color: T.ink3 }]}>{secondaryLabel}</Text>
         </TouchableOpacity>
       ) : null}
     </View>

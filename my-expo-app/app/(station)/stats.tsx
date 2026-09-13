@@ -9,8 +9,10 @@ import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import {
   Check, Clock, Flame, TrendingUp, Calendar, ArrowUpRight, ArrowUpLeft, ListTodo,
-  Wrench, Zap, AlertTriangle, ArrowRight, ArrowLeft,
-} from 'lucide-react-native';
+  Wrench, Zap, AlertTriangle, ArrowRight, ArrowLeft, Play, CheckCircle2,
+} from '../../core/ui/icons';
+import { autoT } from '../../core/i18n/autoTranslate';
+import { resolveDoctorClinicNames } from '../../modules/orders/api';
 import { useAuthStore } from '../../core/store/authStore';
 import { usePermissionStore } from '../../core/store/permissionStore';
 import { usePageTitleStore } from '../../core/store/pageTitleStore';
@@ -202,17 +204,37 @@ function AnimatedActiveJobCard({
               <Text style={{ fontSize: 11, color: P.ink500 }} numberOfLines={1}>
                 #{activeJob.order_number ?? '—'} · {activeJob.work_type ?? ''}
               </Text>
+              {(activeJob.doctor_name || activeJob.clinic_name) && (
+                <Text style={{ fontSize: 11, color: P.ink400 }} numberOfLines={1}>
+                  {[activeJob.doctor_name, activeJob.clinic_name].filter(Boolean).join(' · ')}
+                </Text>
+              )}
             </>
           ) : (
             <Text style={{ fontSize: 13, color: P.ink400 }}>{t('station.dashboard.jobsAppearWhenAssigned')}</Text>
           )}
         </View>
-        <View
-          className="items-center justify-center rounded-full"
-          style={{ width: 32, height: 32, backgroundColor: hexA(STATION_ACCENT, 0.10) }}
-        >
-          {isRTL() ? <ArrowUpLeft size={14} color={STATION_ACCENT} strokeWidth={1.8} /> : <ArrowUpRight size={14} color={STATION_ACCENT} strokeWidth={1.8} />}
-        </View>
+        {activeJob ? (
+          /* Durum-farkında CTA (mobil ile aynı): başlamamışsa İşe Başla, başlamışsa Tamamla.
+             Gerçek akış (malzeme/aktif-limit) İşler ekranında. */
+          <View className="flex-row items-center rounded-full" style={{ gap: 6, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: STATION_ACCENT }}>
+            {activeJob.status === 'durakladi'
+              ? <Play size={15} color="#FFFFFF" strokeWidth={2} />
+              : activeJob.started_at
+                ? <CheckCircle2 size={15} color="#FFFFFF" strokeWidth={2} />
+                : <Play size={15} color="#FFFFFF" strokeWidth={2} />}
+            <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#FFFFFF' }}>
+              {activeJob.status === 'durakladi' ? autoT('Devam et') : activeJob.started_at ? autoT('Tamamla') : autoT('İşe Başla')}
+            </Text>
+          </View>
+        ) : (
+          <View
+            className="items-center justify-center rounded-full"
+            style={{ width: 32, height: 32, backgroundColor: hexA(STATION_ACCENT, 0.10) }}
+          >
+            {isRTL() ? <ArrowUpLeft size={14} color={STATION_ACCENT} strokeWidth={1.8} /> : <ArrowUpRight size={14} color={STATION_ACCENT} strokeWidth={1.8} />}
+          </View>
+        )}
       </Pressable>
     </View>
   );
@@ -235,7 +257,10 @@ interface ActiveJob {
   patient_name: string | null;
   order_number: string | null;
   work_type: string | null;
+  doctor_name: string | null;
+  clinic_name: string | null;
   started_at: string | null;
+  status: string | null;
 }
 interface DayBar {
   date: string;
@@ -383,7 +408,7 @@ export default function StationDashboard() {
           .eq('technician_id', profile.id).in('status', ['tamamlandi','onaylandi'])
           .gte('completed_at', todayStart.toISOString()),
         supabase.from('order_stages').select('id', { count: 'exact', head: true })
-          .eq('technician_id', profile.id).eq('status', 'aktif'),
+          .eq('technician_id', profile.id).in('status', ['aktif', 'durakladi']),
         supabase.from('stock_movements').select('quantity').eq('user_id', profile.id).eq('type', 'WASTE').limit(1000),
         supabase.from('order_stages').select('started_at, completed_at')
           .eq('technician_id', profile.id).in('status', ['tamamlandi','onaylandi'])
@@ -402,11 +427,12 @@ export default function StationDashboard() {
           .limit(5),
         // Aktif iş — animated hero kart için
         supabase.from('order_stages').select(`
-            id, started_at, is_critical,
+            id, started_at, is_critical, status,
             station:lab_stations(name, color, is_critical),
-            work_order:work_orders!work_order_id(order_number, patient_name, work_type)
+            work_order:work_orders!work_order_id(order_number, patient_name, work_type, doctor_id)
           `)
-          .eq('technician_id', profile.id).eq('status', 'aktif')
+          .eq('technician_id', profile.id).in('status', ['aktif', 'durakladi'])
+          .order('status', { ascending: true })
           .order('started_at', { ascending: false })
           .limit(1),
       ]);
@@ -454,8 +480,24 @@ export default function StationDashboard() {
         patient_name:  a.work_order?.patient_name ?? null,
         order_number:  a.work_order?.order_number ?? null,
         work_type:     a.work_order?.work_type ?? null,
+        doctor_name:   null,
+        clinic_name:   null,
         started_at:    a.started_at ?? null,
+        status:        a.status ?? null,
       } : null;
+
+      // Hekim + klinik adını çöz (doctor_id polimorfik). Teknisyen is_lab_user()
+      // TRUE olduğundan doctors/clinics/profiles okuyabilir.
+      const activeDocId = a?.work_order?.doctor_id as string | null | undefined;
+      if (activeJob && activeDocId) {
+        try {
+          const nameMap = await resolveDoctorClinicNames([activeDocId]);
+          const info = nameMap.get(activeDocId);
+          if (info) { activeJob.doctor_name = info.doctorName; activeJob.clinic_name = info.clinicName; }
+        } catch (e) {
+          console.warn('[station-stats] doctor/clinic resolve failed:', (e as any)?.message);
+        }
+      }
 
       setStats({
         completed: totalCompleted,
@@ -498,7 +540,9 @@ export default function StationDashboard() {
       patient:      stats.activeJob.patient_name ?? 'Hasta',
       workType:     stats.activeJob.work_type ?? 'Sipariş',
       stationName:  stats.activeJob.station_name ?? 'İstasyon',
-      status:       'aktif' as const,
+      doctorName:   stats.activeJob.doctor_name,
+      clinicName:   stats.activeJob.clinic_name,
+      status:       stats.activeJob.status ?? 'aktif',
       startedAt:    stats.activeJob.started_at,
       isCritical:   stats.activeJob.is_critical,
     }] : [];

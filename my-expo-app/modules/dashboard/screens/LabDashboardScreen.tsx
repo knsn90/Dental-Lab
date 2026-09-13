@@ -30,11 +30,13 @@ import {
   ChevronRight, ArrowUpRight, ArrowUpLeft, ArrowRight, ArrowLeft, Clock, Trophy,
   Check, Clipboard, Box, Settings, ListChecks, CornerDownRight,
   Receipt, Wallet,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { formatMoney, type Currency } from '../../../core/money/currency';
 
 // DS tokens — single source of truth for all design values
 import { DS } from '../../../core/theme/dsTokens';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { useTodayOrders } from '../../orders/hooks/useTodayOrders';
 import { isOrderOverdue } from '../../orders/constants';
 import { fetchTodayProvas } from '../../provas/api';
@@ -124,6 +126,8 @@ function PulseDot({ color, size, x, y }: { color: string; size: number; x: numbe
 function PercentRingHero({
   value: targetValue, size = 200, weight = '300', animate = true, darkText = false,
 }: { value: number; size?: number; weight?: '200' | '300' | '400' | '500' | '600' | '700'; animate?: boolean; darkText?: boolean }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const animatedValue = useCountUp(targetValue, animate ? 1400 : 0);
   const value = animate ? animatedValue : targetValue;
 
@@ -139,7 +143,7 @@ function PercentRingHero({
 
   // Light bg: daha belirgin track; dark bg: soluk track
   const outerPillColor = darkText ? lightColor + '30' : lightColor + '22';
-  const innerTrackColor = darkText ? 'rgba(0,0,0,0.06)' : lightColor + '15';
+  const innerTrackColor = darkText ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)') : lightColor + '15';
 
   const angleDeg = (value / 100) * 360 - 90;
   const angleRad = (angleDeg * Math.PI) / 180;
@@ -151,9 +155,9 @@ function PercentRingHero({
   const displayValue = Math.round(value);
 
   // Knob & pulse color based on bg
-  const knobColor = darkText ? INK : '#FFFFFF';
-  const textColor = darkText ? INK : '#FFFFFF';
-  const pctColor = darkText ? DS.ink[400] : lightColor;
+  const knobColor = darkText ? (isDark ? T.ink : INK) : '#FFFFFF';
+  const textColor = darkText ? (isDark ? T.ink : INK) : '#FFFFFF';
+  const pctColor = darkText ? T.ink3 : lightColor;
 
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
@@ -297,10 +301,11 @@ function getWeekDays(): { label: string; date: string; isToday: boolean }[] {
 
 /** Generic card — Patterns section 05 "solid": white bg, radius 24, 1px border, NO shadow */
 function Card({ children, style }: { children: React.ReactNode; style?: any }) {
+  const T = useMobileTokens();
   return (
     <View
-      className="bg-white overflow-hidden"
-      style={[{ borderRadius: DS.radius.xl, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }, style]}
+      className="bg-white dark:bg-[#1B1916] overflow-hidden"
+      style={[{ borderRadius: DS.radius.xl, borderWidth: 1, borderColor: T.hairline }, style]}
     >
       {children}
     </View>
@@ -309,12 +314,13 @@ function Card({ children, style }: { children: React.ReactNode; style?: any }) {
 
 /** Card header — Patterns section 05/09: uppercase micro label or display-style title */
 function CardHeader({ title, right, display }: { title: string; right?: React.ReactNode; display?: boolean }) {
+  const T = useMobileTokens();
   return (
     <View className="flex-row items-center justify-between" style={{ marginBottom: 12 }}>
       {display ? (
-        <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>{title}</Text>
+        <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: T.ink }}>{title}</Text>
       ) : (
-        <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500] }}>
+        <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 0.7, textTransform: 'uppercase', color: T.ink3 }}>
           {title}
         </Text>
       )}
@@ -331,6 +337,7 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, plannin
   planningCount?: number;
   router: any;
 }) {
+  const T = useMobileTokens();
   // Pulsing CANLI dot
   const dotAnim = useRef(new Animated.Value(0)).current;
   // Ambient glow behind pipeline circles
@@ -501,16 +508,16 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, plannin
             onPress={() => router.push(`/(lab)/order/${latestOrder.id}` as any)}
             style={{ gap: 2 }}
           >
-            <Text style={{ fontSize: 15, fontWeight: '500', color: INK }} numberOfLines={1}>
+            <Text style={{ fontSize: 15, fontWeight: '500', color: T.ink }} numberOfLines={1}>
               {latestOrder.patient_name ?? (latestOrder.doctor as any)?.full_name ?? 'Sipariş'}
             </Text>
-            <Text style={{ fontSize: 11, color: DS.ink[500], marginBottom: 10 }} numberOfLines={1}>
+            <Text style={{ fontSize: 11, color: T.ink3, marginBottom: 10 }} numberOfLines={1}>
               #{latestOrder.order_number} · {latestOrder.work_type ?? ''}
             </Text>
             <StatusBadge status={latestOrder.status} />
           </Pressable>
         ) : (
-          <Text style={{ fontSize: 13, color: DS.ink[400] }}>Yükleniyor...</Text>
+          <Text style={{ fontSize: 13, color: T.ink3 }}>Yükleniyor...</Text>
         )}
       </View>
     </Card>
@@ -673,9 +680,10 @@ function StatusBadge({ status, holdStatus }: { status: string; holdStatus?: stri
 
 // ── Stat Pill (mockup hero) ──
 function StatPill({ label, value, bg, color }: { label: string; value: string; bg: string; color: string }) {
+  const T = useMobileTokens();
   return (
     <View className="flex-row items-center" style={{ gap: 8 }}>
-      <Text style={{ fontSize: 11, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.06 * 11 }}>
+      <Text style={{ fontSize: 11, color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.06 * 11 }}>
         {label}
       </Text>
       <View className="rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 3, backgroundColor: bg }}>
@@ -688,18 +696,20 @@ function StatPill({ label, value, bg, color }: { label: string; value: string; b
 // ── Big Stat — Patterns section 10, Hero 1 right side ──
 /** Hero KPI'ları arasındaki saç teli ayraç — sayı bloğu kadar yüksek. */
 function StatDivider() {
-  return <View style={{ width: StyleSheet.hairlineWidth, alignSelf: 'stretch', marginVertical: 2, backgroundColor: 'rgba(0,0,0,0.10)' }} />;
+  const T = useMobileTokens();
+  return <View style={{ width: StyleSheet.hairlineWidth, alignSelf: 'stretch', marginVertical: 2, backgroundColor: T.hairline }} />;
 }
 
 function BigStat({ value, label }: { value: string | number; label: string }) {
+  const T = useMobileTokens();
   const isNum = typeof value === 'number';
-  const numStyle = { ...SERIF, fontSize: DS.size.h2, letterSpacing: -0.025 * DS.size.h2, lineHeight: DS.size.h2, color: DS.ink[900] };
+  const numStyle = { ...SERIF, fontSize: DS.size.h2, letterSpacing: -0.025 * DS.size.h2, lineHeight: DS.size.h2, color: T.ink };
   return (
     <View style={{ alignItems: 'flex-end' }}>
       {isNum
         ? <NumberTickerX value={value as number} duration={900} style={numStyle} />
         : <Text style={numStyle}>{value}</Text>}
-      <Text style={{ fontSize: DS.size.micro, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.06 * DS.size.micro, marginTop: 4 }}>
+      <Text style={{ fontSize: DS.size.micro, color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.06 * DS.size.micro, marginTop: 4 }}>
         {label}
       </Text>
     </View>
@@ -708,6 +718,7 @@ function BigStat({ value, label }: { value: string | number; label: string }) {
 
 // ── Üretim Süresi Bar Chart (admin paneli ile aynı pill design) ──
 function ProductionBarChart({ data }: { data: MonthBar[] }) {
+  const T = useMobileTokens();
   const max = Math.max(...data.map(d => d.count), 1);
   const highestIdx = data.reduce((best, d, i) => d.count > data[best].count ? i : best, 0);
 
@@ -729,11 +740,11 @@ function ProductionBarChart({ data }: { data: MonthBar[] }) {
               <View style={{ height: 20, justifyContent: 'center', alignItems: 'center' }}>
                 {d.count > 0 ? (
                   isHighlight ? (
-                    <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[100] }}>
+                    <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline }}>
                       <Text style={{ fontSize: 10, fontWeight: '700', color: FILL_DARK }}>{teeth || d.count}</Text>
                     </View>
                   ) : (
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: DS.ink[500] }}>{teeth || d.count}</Text>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: T.ink3 }}>{teeth || d.count}</Text>
                   )
                 ) : null}
               </View>
@@ -767,7 +778,7 @@ function ProductionBarChart({ data }: { data: MonthBar[] }) {
             <Text style={{
               fontSize: 11,
               fontWeight: isHighlight ? '700' : '500',
-              color: isHighlight ? INK : DS.ink[400],
+              color: isHighlight ? T.ink : T.ink3,
               textTransform: 'uppercase',
               letterSpacing: 0.05 * 11,
             }}>
@@ -790,6 +801,7 @@ function WeeklyStrip({
   weekTeeth?: Record<string, number>;
   onPress: () => void;
 }) {
+  const T = useMobileTokens();
   const totalReceived  = Object.values(weekCounts).reduce((a, b) => a + b, 0);
   const totalCompleted = Object.values(weekDone).reduce((a, b) => a + b, 0);
   const SCALE_MAX = 20;
@@ -802,18 +814,18 @@ function WeeklyStrip({
   return (
     <Card style={{ padding: 18, flex: 1.5 }}>
       <View className="flex-row items-center" style={{ gap: 12, marginBottom: 14 }}>
-        <Text style={{ fontSize: 15, fontWeight: '500', color: INK }}>Bu hafta</Text>
+        <Text style={{ fontSize: 15, fontWeight: '500', color: T.ink }}>Bu hafta</Text>
         <View style={{ flex: 1 }} />
         <View className="flex-row items-center" style={{ gap: 10 }}>
           <View className="flex-row items-center" style={{ gap: 5 }}>
             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: SAGE_LIGHT }} />
-            <Text style={{ fontSize: 11, color: DS.ink[500] }}>Alınan </Text>
-            <NumberTickerX value={totalReceived} duration={700} style={{ fontSize: 11, color: DS.ink[500] } as any} />
+            <Text style={{ fontSize: 11, color: T.ink3 }}>Alınan </Text>
+            <NumberTickerX value={totalReceived} duration={700} style={{ fontSize: 11, color: T.ink3 } as any} />
           </View>
           <View className="flex-row items-center" style={{ gap: 5 }}>
             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: SAGE_DARK }} />
-            <Text style={{ fontSize: 11, color: DS.ink[500] }}>Tamamlanan </Text>
-            <NumberTickerX value={totalCompleted} duration={700} style={{ fontSize: 11, color: DS.ink[500] } as any} />
+            <Text style={{ fontSize: 11, color: T.ink3 }}>Tamamlanan </Text>
+            <NumberTickerX value={totalCompleted} duration={700} style={{ fontSize: 11, color: T.ink3 } as any} />
           </View>
         </View>
       </View>
@@ -839,12 +851,12 @@ function WeeklyStrip({
                     kalır, böylece dolu bar üst legend ile çakışmaz. */}
                 <View style={{ height: 20, justifyContent: 'center', alignItems: 'center' }}>
                   {showLabel ? (
-                    <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[100] }}>
+                    <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline }}>
                       <Text style={{ fontSize: 10, fontWeight: '700', color: SAGE_DARK }}>{ratio}%</Text>
                     </View>
                   ) : !empty ? (
                     // Üye (diş) sayısı — o gün alınan işlerin toplam diş adedi
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: day.isToday ? INK : DS.ink[500] }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: day.isToday ? T.ink : T.ink3 }}>
                       {teeth || received}
                     </Text>
                   ) : null}
@@ -894,7 +906,7 @@ function WeeklyStrip({
               <Text style={{
                 fontSize: 11,
                 fontWeight: day.isToday ? '700' : '500',
-                color: day.isToday ? INK : DS.ink[400],
+                color: day.isToday ? T.ink : T.ink3,
                 textTransform: 'uppercase',
                 letterSpacing: 0.05 * 11,
               }}>
@@ -983,6 +995,7 @@ function TasksCard({
 
 // ── Station Bottleneck ──
 function StationBottleneck({ data }: { data: StationStat[] }) {
+  const T = useMobileTokens();
   if (data.length === 0) return null;
   const maxVal = Math.max(...data.map(d => d.avg_duration_hours), 1);
   return (
@@ -993,13 +1006,13 @@ function StationBottleneck({ data }: { data: StationStat[] }) {
         return (
           <View key={i} style={{ gap: 5 }}>
             <View className="flex-row justify-between items-center">
-              <Text style={{ fontSize: 13, fontWeight: '600', color: INK }} numberOfLines={1}>{st.station_name}</Text>
-              <Text style={{ fontSize: 11, color: DS.ink[500] }}>{st.avg_duration_hours.toFixed(1)}s</Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink }} numberOfLines={1}>{st.station_name}</Text>
+              <Text style={{ fontSize: 11, color: T.ink3 }}>{st.avg_duration_hours.toFixed(1)}s</Text>
             </View>
-            <View className="rounded overflow-hidden" style={{ height: 6, backgroundColor: DS.ink[100] }}>
+            <View className="rounded overflow-hidden" style={{ height: 6, backgroundColor: T.hairline }}>
               <View className="rounded" style={{ height: 6, backgroundColor: color, width: `${pct}%` as any }} />
             </View>
-            <Text style={{ fontSize: 10, color: DS.ink[400] }}>
+            <Text style={{ fontSize: 10, color: T.ink3 }}>
               {st.active_count} aktif · {st.total_processed} işlendi
             </Text>
           </View>
@@ -1011,6 +1024,7 @@ function StationBottleneck({ data }: { data: StationStat[] }) {
 
 // ── Top Technicians ──
 function TopTechnicians({ data }: { data: TechStat[] }) {
+  const T = useMobileTokens();
   if (data.length === 0) return null;
   return (
     <View>
@@ -1024,30 +1038,30 @@ function TopTechnicians({ data }: { data: TechStat[] }) {
             style={{
               paddingVertical: 10, gap: 10,
               borderBottomWidth: i < data.length - 1 ? 1 : 0,
-              borderBottomColor: 'rgba(0,0,0,0.04)',
+              borderBottomColor: T.hairline,
             }}
           >
             <View
               className="items-center justify-center rounded-full"
               style={{
                 width: 26, height: 26,
-                backgroundColor: i === 0 ? hexA(P, 0.2) : 'rgba(0,0,0,0.05)',
+                backgroundColor: i === 0 ? hexA(P, 0.2) : T.cardSoft,
               }}
             >
               {i === 0
                 ? <Trophy size={13} color={P} strokeWidth={2} />
-                : <Text style={{ fontSize: 11, fontWeight: '800', color: DS.ink[500] }}>{i + 1}</Text>
+                : <Text style={{ fontSize: 11, fontWeight: '800', color: T.ink3 }}>{i + 1}</Text>
               }
             </View>
             <View className="flex-1" style={{ gap: 4 }}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: INK }} numberOfLines={1}>{tech.technician_name}</Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink }} numberOfLines={1}>{tech.technician_name}</Text>
               <View className="flex-row items-center" style={{ gap: 6 }}>
-                <View className="flex-1 rounded overflow-hidden" style={{ height: 5, backgroundColor: DS.ink[100] }}>
+                <View className="flex-1 rounded overflow-hidden" style={{ height: 5, backgroundColor: T.hairline }}>
                   <View className="rounded" style={{ height: 5, backgroundColor: barColor, width: `${rate}%` as any }} />
                 </View>
                 <Text style={{ fontSize: 11, fontWeight: '700', color: barColor, width: 30, textAlign: 'end' as any }}>{rate}%</Text>
               </View>
-              <Text style={{ fontSize: 10, color: DS.ink[400] }}>
+              <Text style={{ fontSize: 10, color: T.ink3 }}>
                 {tech.total_assigned} atama · {(tech.avg_work_duration_hours ?? 0).toFixed(1)}s ort.
               </Text>
             </View>
@@ -1078,6 +1092,8 @@ export function LabDashboardScreen() {
   const isDesktop    = width >= 900;
   const insets       = useSafeAreaInsets();
   const { setTitle, clear } = usePageTitleStore();
+  const T            = useMobileTokens();
+  const isDark       = useThemeModeStore(s => s.resolvedDark);
 
   useEffect(() => { setTitle(getTodayLabel(i18n.language)); return clear; }, [i18n.language]);
 
@@ -1191,7 +1207,7 @@ export function LabDashboardScreen() {
         // tam listeye ihtiyaç duymaz). Toplam sayı totalRes'ten, aylık/haftalık
         // seri dashboard_activity_series RPC'sinden geliyor. Eskiden 6 aylık TÜM
         // siparişler 12 kolonla çekilip JS'te gruplanıyordu.
-        .select('id, order_number, work_type, status, hold_status, delivery_date, created_at, patient_name, doctor_id, tooth_numbers, revision_of_id, revision_no, continues_order_id')
+        .select('id, order_number, work_type, status, hold_status, delivery_date, created_at, patient_name, doctor_id, tooth_numbers, is_urgent, revision_of_id, revision_no, continues_order_id')
         .gte('created_at', sixMonthsAgo.toISOString())
         .order('created_at', { ascending: false })
         .limit(5),
@@ -1580,7 +1596,7 @@ export function LabDashboardScreen() {
         label: `Tahsilat yap · ${inv.invoice_number ?? 'fatura'}`,
         time: late ? `${remaining} ${autoT('kaldı')} · ${late} ${autoT('gün vadesi geçti')}` : `${remaining} ${autoT('kaldı')}`,
         done: false,
-        onPress: () => router.push(`/(lab)/invoice/${inv.id}` as any),
+        onPress: () => router.push(`/(lab)/invoice/${inv.invoice_number ?? inv.id}` as any),
       };
     }),
     ...((stockSummary?.lowCount ?? 0) > 0 ? [{
@@ -1680,11 +1696,16 @@ export function LabDashboardScreen() {
       const st = resolveOrderStatus(o.status, o.hold_status);
       const isOverdue = !!o.delivery_date && o.delivery_date < today && o.status !== 'teslim_edildi';
       const drName = (o.doctor as any)?.full_name ?? '—';
+      const ptName = (o.patient_name && String(o.patient_name).trim()) ? String(o.patient_name).trim() : '';
       return {
         id: String(o.id),
         no: String(o.order_number ?? ''),
-        title: drName,
-        initials: initials(drName),
+        title: ptName || drName,        // birincil: HASTA
+        subtitle: ptName ? drName : '', // üçüncü: HEKİM (VAKA ikinci sırada render'da)
+        initials: initials(ptName || drName),
+        // Klinik logosu (yukarıda clinicLogoMap'ten siparişe iliştirildi) —
+        // avatar dairesinde baş harfler yerine logo gösterilsin.
+        clinicLogoUrl: (o as any).clinic_logo_url ?? null,
         workType: o.work_type || '—',
         statusLabel: st.label,
         statusColor: st.color,
@@ -1767,17 +1788,17 @@ export function LabDashboardScreen() {
               letterSpacing: -0.025 * (isDesktop ? 28 : 24),
               // Farsça glifler daha uzun → satır kutusunu gevşet (aksi halde üst/alt kırpılır)
               lineHeight: isRTL(i18n.language) ? (isDesktop ? 44 : 38) : (isDesktop ? 32 : 28),
-              color: INK,
+              color: T.ink,
             }}>
               {t('dashboard.greetingWord')}{' '}
-              <Text style={{ fontStyle: 'italic', color: DS.ink[400] }}>{firstName}</Text>
+              <Text style={{ fontStyle: 'italic', color: T.ink3 }}>{firstName}</Text>
             </Text>
 
             {/* Stat pills row */}
             <View className="flex-row flex-wrap items-center" style={{ gap: 14, marginTop: 14 }}>
               <StatPill label={t('dashboard.stages.production')} value={`${productionPct}%`} bg={INK} color="#FFF" />
               <StatPill label={t('dashboard.delivered')} value={`${deliveryPct}%`} bg={P} color={INK} />
-              <StatPill label={t('dashboard.stages.ready')} value={`${readyPct}%`} bg="rgba(0,0,0,0.08)" color={INK} />
+              <StatPill label={t('dashboard.stages.ready')} value={`${readyPct}%`} bg={isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)'} color={isDark ? T.ink : INK} />
               {/* Geciken AYNI satırda: StatPill ile eşit ölçülü rozet. */}
               {overdueOrders.length > 0 && (
                 <AlertPillX
@@ -1897,8 +1918,8 @@ export function LabDashboardScreen() {
               const ageH = created ? Math.floor((Date.now() - created.getTime()) / 3_600_000) : null;
               const ageLabel = ageH == null ? '' :
                 ageH < 1 ? 'Az önce' :
-                ageH < 24 ? `${ageH} saat önce` :
-                `${Math.floor(ageH / 24)} gün önce`;
+                ageH < 24 ? `${ageH} ${autoT('saat önce')}` :
+                `${Math.floor(ageH / 24)} ${autoT('gün önce')}`;
               const doctorName = (o.doctor as any)?.full_name ?? '—';
 
               return (
@@ -1993,24 +2014,24 @@ export function LabDashboardScreen() {
         <Card style={{ flex: isDesktop ? 1 : undefined, padding: 22, marginBottom: isDesktop ? 0 : 14 }}>
           <View className="flex-row items-start justify-between" style={{ marginBottom: 12 }}>
             <View>
-              <Text style={{ fontSize: 18, fontWeight: '500', letterSpacing: -0.015 * 18, color: INK }}>Sipariş Trendi</Text>
-              <Text style={{ ...SERIF, fontSize: 42, letterSpacing: -0.025 * 42, lineHeight: 42, marginTop: 8, color: INK }}>
+              <Text style={{ fontSize: 18, fontWeight: '500', letterSpacing: -0.015 * 18, color: T.ink }}>Sipariş Trendi</Text>
+              <Text style={{ ...SERIF, fontSize: 42, letterSpacing: -0.025 * 42, lineHeight: 42, marginTop: 8, color: T.ink }}>
                 {monthly[monthly.length - 1]?.count ?? 0}
-                <Text style={{ fontSize: 14, color: DS.ink[400] }}> bu ay</Text>
+                <Text style={{ fontSize: 14, color: T.ink3 }}> bu ay</Text>
               </Text>
-              <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 4 }}>
+              <Text style={{ fontSize: 11, color: T.ink3, marginTop: 4 }}>
                 Son 6 aylık trend
                 {(monthly[monthly.length - 1]?.teeth ?? 0) > 0
-                  ? ` · ${monthly[monthly.length - 1]?.teeth} diş`
+                  ? ` · ${monthly[monthly.length - 1]?.teeth} ${autoT('diş')}`
                   : ''}
               </Text>
             </View>
             <Pressable
               onPress={() => router.push('/(lab)/all-orders' as any)}
               className="items-center justify-center rounded-full"
-              style={{ width: 32, height: 32, backgroundColor: DS.ink[100] }}
+              style={{ width: 32, height: 32, backgroundColor: T.cardSoft }}
             >
-              {isRTL() ? <ArrowUpLeft size={14} color={DS.ink[500]} strokeWidth={1.8} /> : <ArrowUpRight size={14} color={DS.ink[500]} strokeWidth={1.8} />}
+              {isRTL() ? <ArrowUpLeft size={14} color={T.ink3} strokeWidth={1.8} /> : <ArrowUpRight size={14} color={T.ink3} strokeWidth={1.8} />}
             </Pressable>
           </View>
           <View style={{ flex: 1, minHeight: 140 }}>
@@ -2021,21 +2042,21 @@ export function LabDashboardScreen() {
         {/* Card 3: Üretim Ring — PercentRingHero (Patterns 11.7) on white bg */}
         <Card style={{ flex: isDesktop ? 1 : undefined, padding: 22, alignItems: 'center', marginBottom: isDesktop ? 0 : 14 }}>
           <View className="w-full flex-row items-center justify-between" style={{ marginBottom: 8 }}>
-            <Text style={{ fontSize: 14, fontWeight: '500', color: INK }}>Üretim</Text>
+            <Text style={{ fontSize: 14, fontWeight: '500', color: T.ink }}>Üretim</Text>
             <Pressable onPress={() => router.push('/(lab)/all-orders' as any)}>
-              {isRTL() ? <ArrowUpLeft size={14} color={DS.ink[500]} strokeWidth={1.8} /> : <ArrowUpRight size={14} color={DS.ink[500]} strokeWidth={1.8} />}
+              {isRTL() ? <ArrowUpLeft size={14} color={T.ink3} strokeWidth={1.8} /> : <ArrowUpRight size={14} color={T.ink3} strokeWidth={1.8} />}
             </Pressable>
           </View>
           {/* PercentRingHero — card bg (no dark container) */}
           <PercentRingHero value={deliveryPct} size={140} darkText />
           {/* Label */}
-          <Text style={{ fontSize: 9, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.08 * 9, marginTop: 10 }}>
+          <Text style={{ fontSize: 9, color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.08 * 9, marginTop: 10 }}>
             Teslim
           </Text>
           {/* Mini pipeline stats */}
           <View className="flex-row" style={{ gap: 8, marginTop: 12 }}>
-            <View className="items-center rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: DS.ink[100] }}>
-              <Text style={{ fontSize: 10, fontWeight: '500', color: DS.ink[500] }}>
+            <View className="items-center rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: T.cardSoft }}>
+              <Text style={{ fontSize: 10, fontWeight: '500', color: T.ink3 }}>
                 {pipelineCounts['uretimde'] ?? 0} üretimde
               </Text>
             </View>
@@ -2074,8 +2095,8 @@ export function LabDashboardScreen() {
 
       {/* Son Siparişler — Patterns section 09 table */}
       <Card style={{ marginBottom: 14 }}>
-        <View className="flex-row items-center justify-between" style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
-          <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>Son Siparişler</Text>
+        <View className="flex-row items-center justify-between" style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: T.hairline }}>
+          <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: T.ink }}>Son Siparişler</Text>
           <Pressable onPress={() => router.push('/(lab)/all-orders' as any)}>
             <Text style={{ fontSize: 13, color: P, fontWeight: '700' }}>Tümünü Gör →</Text>
           </Pressable>
@@ -2086,19 +2107,19 @@ export function LabDashboardScreen() {
           className="flex-row items-center"
           style={{
             paddingHorizontal: 20, paddingVertical: 11,
-            borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)',
-            backgroundColor: DS.ink[50],
+            borderTopWidth: 1, borderTopColor: T.hairline,
+            backgroundColor: T.cardSoft,
           }}
         >
-          <Text style={{ flex: 1.2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>No</Text>
-          <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Hekim</Text>
-          {isDesktop && <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>İş Tipi</Text>}
-          <Text style={{ flex: 1.4, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Durum</Text>
-          {isDesktop && <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, textAlign: 'end' as any }}>Teslim</Text>}
+          <Text style={{ flex: 1.2, fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.7 }}>No</Text>
+          <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.7 }}>Hekim</Text>
+          {isDesktop && <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.7 }}>İş Tipi</Text>}
+          <Text style={{ flex: 1.4, fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.7 }}>Durum</Text>
+          {isDesktop && <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.7, textAlign: 'end' as any }}>Teslim</Text>}
         </View>
 
         {recentOrders.length === 0
-          ? <Text className="p-6 text-center" style={{ fontSize: 13, color: DS.ink[400] }}>Yükleniyor...</Text>
+          ? <Text className="p-6 text-center" style={{ fontSize: 13, color: T.ink3 }}>Yükleniyor...</Text>
           : recentRows.map((order: any, idx: number) => {
               const onHold  = (order as any).hold_status === 'on_hold';
               const overdue = order.delivery_date < today && order.status !== 'teslim_edildi' && !onHold;
@@ -2111,7 +2132,7 @@ export function LabDashboardScreen() {
                   style={{
                     paddingHorizontal: 20, paddingVertical: 13, gap: 8, minHeight: 54,
                     borderBottomWidth: !isLast ? 1 : 0,
-                    borderBottomColor: 'rgba(0,0,0,0.04)',
+                    borderBottomColor: T.hairline,
                     backgroundColor: overdue
                       ? 'rgba(217,75,75,0.06)'
                       : hovered === order.id
@@ -2129,33 +2150,44 @@ export function LabDashboardScreen() {
                     {(order as any).__revChild && (
                       <CornerDownRight size={12} color={(order as any).__continuation ? '#3563A8' : '#9C5E0E'} strokeWidth={2.2} style={{ flexShrink: 0 }} />
                     )}
-                    <View style={{ flex: 1, minWidth: 0 }}>
+                    <View style={{ minWidth: 0 }}>
                       <Text style={{ fontSize: 12, fontWeight: '800', color: P }} numberOfLines={1}>#{order.order_number}</Text>
                       {(order as any).__revChild ? (
                         <Text style={{ fontSize: 8.5, fontWeight: '700', color: (order as any).__continuation ? '#3563A8' : '#9C5E0E', letterSpacing: 0.4 }}>{(order as any).__continuation ? 'DEVAM' : 'REVİZYON'}</Text>
                       ) : (order as any).__revParent ? (
-                        <Text style={{ fontSize: 8.5, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.4 }}>ORİJİNAL</Text>
+                        <Text style={{ fontSize: 8.5, fontWeight: '700', color: T.ink3, letterSpacing: 0.4 }}>ORİJİNAL</Text>
                       ) : null}
                     </View>
+                    {(order as any).is_urgent && (
+                      <View className="rounded" style={{ paddingHorizontal: 4, paddingVertical: 1, backgroundColor: 'rgba(217,75,75,0.1)', flexShrink: 0 }}>
+                        <Text style={{ fontSize: 9, fontWeight: '800', color: '#D94B4B' }}>{autoT('Acil')}</Text>
+                      </View>
+                    )}
                   </View>
                   <View className="flex-row items-center" style={{ flex: 2, gap: 8 }}>
                     {/* Klinik logosu varsa o, yoksa hekim baş harfleri */}
                     <View
                       className="items-center justify-center rounded-full"
                       style={{ width: 28, height: 28, overflow: 'hidden',
-                        backgroundColor: (order as any).clinic_logo_url ? '#FFFFFF' : hexA(P, 0.1),
-                        borderWidth: 1, borderColor: (order as any).clinic_logo_url ? 'rgba(0,0,0,0.08)' : hexA(P, 0.15) }}
+                        backgroundColor: (order as any).clinic_logo_url ? T.card : hexA(P, 0.1),
+                        borderWidth: 1, borderColor: (order as any).clinic_logo_url ? T.hairline : hexA(P, 0.15) }}
                     >
                       {(order as any).clinic_logo_url ? (
                         <Image source={{ uri: (order as any).clinic_logo_url }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
                       ) : (
-                        <Text style={{ fontSize: 9, fontWeight: '800', color: P }}>{initials(drName)}</Text>
+                        <Text style={{ fontSize: 9, fontWeight: '800', color: P }}>{initials((order as any).patient_name || drName)}</Text>
                       )}
                     </View>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: INK }} numberOfLines={1}>{drName}</Text>
+                    {/* Admin gibi: HASTA birincil, hekim ikincil satır */}
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink }} numberOfLines={1}>{(order as any).patient_name || drName}</Text>
+                      {(order as any).patient_name ? (
+                        <Text style={{ fontSize: 11, color: T.ink3 }} numberOfLines={1}>{drName}</Text>
+                      ) : null}
+                    </View>
                   </View>
                   {isDesktop && (
-                    <Text style={{ flex: 2, fontSize: 11, color: DS.ink[500] }} numberOfLines={1}>{(order as any).__revChild && (
+                    <Text style={{ flex: 2, fontSize: 11, color: T.ink3 }} numberOfLines={1}>{(order as any).__revChild && (
                       <Text style={{ fontWeight: '700', color: (order as any).__continuation ? '#3563A8' : '#9C5E0E' }}>{(order as any).__continuation ? 'Devam - ' : 'Revizyon - '}</Text>
                     )}{order.work_type || '--'}</Text>
                   )}
@@ -2165,7 +2197,7 @@ export function LabDashboardScreen() {
                   {isDesktop && (
                     <Text style={{
                       flex: 1, fontSize: 11, fontWeight: overdue ? '700' : '500', textAlign: 'end' as any,
-                      color: overdue ? '#9C2E2E' : DS.ink[400],
+                      color: overdue ? '#9C2E2E' : T.ink3,
                     }}>
                       {fmtDate(order.delivery_date)}
                     </Text>
@@ -2179,8 +2211,8 @@ export function LabDashboardScreen() {
       {/* Stok & Maliyet — müdür panelinde gösterilmez (yönetici stoğu ayrı sayfadan yönetir) */}
       {stockSummary && !isManager && (
         <Card style={{ marginBottom: 14 }}>
-          <View className="flex-row items-center justify-between" style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
-            <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>Stok & Maliyet</Text>
+          <View className="flex-row items-center justify-between" style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: T.hairline }}>
+            <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: T.ink }}>Stok & Maliyet</Text>
             <Pressable onPress={() => router.push('/(lab)/stock' as any)}>
               <Text style={{ fontSize: 12, color: P, fontWeight: '700' }}>Stoğa git →</Text>
             </Pressable>
@@ -2190,40 +2222,40 @@ export function LabDashboardScreen() {
               className="rounded-xl"
               style={{
                 flex: 1, padding: 12, gap: 4,
-                backgroundColor: stockSummary.lowCount > 0 ? 'rgba(217,75,75,0.06)' : DS.ink[50],
-                borderWidth: 1, borderColor: stockSummary.lowCount > 0 ? 'rgba(217,75,75,0.2)' : 'rgba(0,0,0,0.04)',
+                backgroundColor: stockSummary.lowCount > 0 ? 'rgba(217,75,75,0.06)' : T.cardSoft,
+                borderWidth: 1, borderColor: stockSummary.lowCount > 0 ? 'rgba(217,75,75,0.2)' : T.hairline,
               }}
               onPress={() => router.push('/(lab)/stock' as any)}
             >
-              <Text style={{ fontSize: 18, fontWeight: '800', letterSpacing: -0.4, color: stockSummary.lowCount > 0 ? '#9C2E2E' : INK }}>
+              <Text style={{ fontSize: 18, fontWeight: '800', letterSpacing: -0.4, color: stockSummary.lowCount > 0 ? '#9C2E2E' : T.ink }}>
                 {stockSummary.lowCount}
               </Text>
-              <Text style={{ fontSize: 11, fontWeight: '600', color: DS.ink[500] }}>Kritik Stok</Text>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3 }}>Kritik Stok</Text>
             </Pressable>
 
-            <View className="rounded-xl" style={{ flex: 1, padding: 12, gap: 4, backgroundColor: DS.ink[50], borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)' }}>
-              <Text style={{ fontSize: 18, fontWeight: '800', color: INK, letterSpacing: -0.4 }}>
+            <View className="rounded-xl" style={{ flex: 1, padding: 12, gap: 4, backgroundColor: T.cardSoft, borderWidth: 1, borderColor: T.hairline }}>
+              <Text style={{ fontSize: 18, fontWeight: '800', color: T.ink, letterSpacing: -0.4 }}>
                 {(Number(stockSummary.materialCostMtd) || 0).toLocaleString('tr-TR')} ₺
               </Text>
-              <Text style={{ fontSize: 11, fontWeight: '600', color: DS.ink[500] }}>Materyal Maliyeti</Text>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3 }}>Materyal Maliyeti</Text>
             </View>
 
             <View className="rounded-xl" style={{
               flex: 1, padding: 12, gap: 4,
-              backgroundColor: stockSummary.wasteCostMtd > 0 ? 'rgba(217,75,75,0.06)' : DS.ink[50],
-              borderWidth: 1, borderColor: stockSummary.wasteCostMtd > 0 ? 'rgba(217,75,75,0.2)' : 'rgba(0,0,0,0.04)',
+              backgroundColor: stockSummary.wasteCostMtd > 0 ? 'rgba(217,75,75,0.06)' : T.cardSoft,
+              borderWidth: 1, borderColor: stockSummary.wasteCostMtd > 0 ? 'rgba(217,75,75,0.2)' : T.hairline,
             }}>
-              <Text style={{ fontSize: 18, fontWeight: '800', letterSpacing: -0.4, color: stockSummary.wasteCostMtd > 0 ? '#9C2E2E' : INK }}>
+              <Text style={{ fontSize: 18, fontWeight: '800', letterSpacing: -0.4, color: stockSummary.wasteCostMtd > 0 ? '#9C2E2E' : T.ink }}>
                 {stockSummary.wasteCostMtd > 0 ? '-' : ''}{(Number(stockSummary.wasteCostMtd) || 0).toLocaleString('tr-TR')} ₺
               </Text>
-              <Text style={{ fontSize: 11, fontWeight: '600', color: DS.ink[500] }}>Fire Kaybı</Text>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3 }}>Fire Kaybı</Text>
             </View>
           </View>
           {stockSummary.topUsedName && (
             <View className="flex-row items-center" style={{ paddingHorizontal: 16, paddingBottom: 12, gap: 6 }}>
               <Trophy size={13} color={P} strokeWidth={2} />
-              <Text style={{ fontSize: 11, color: DS.ink[500] }}>
-                En çok kullanılan: <Text style={{ fontWeight: '800', color: INK }}>{stockSummary.topUsedName}</Text>
+              <Text style={{ fontSize: 11, color: T.ink3 }}>
+                En çok kullanılan: <Text style={{ fontWeight: '800', color: T.ink }}>{stockSummary.topUsedName}</Text>
               </Text>
             </View>
           )}

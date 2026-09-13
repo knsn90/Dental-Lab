@@ -18,7 +18,7 @@ import {
 import {
   X, Box, Plus, Minus, Trash2, AlertCircle, AlertTriangle,
   Check, Flame, Package, Search, ChevronDown, PlusCircle, Layers, SkipForward,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { useStageMaterialEstimate } from '../hooks/useStageMaterialEstimate';
 import type { EstimatedMaterialLine } from '../../../core/materials/estimation';
 import { convertQty, isConvertible } from '../../../core/materials/unitConvert';
@@ -27,6 +27,8 @@ import { supabase } from '../../../core/api/supabase';
 import { useAuthStore } from '../../../core/store/authStore';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { CURRENCY_META, type Currency } from '../../../core/money/currency';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 /** Para birimi sembolü (₺/€/$/£) — bilinmeyende kod döner */
 function sym(ccy: string | null | undefined): string {
@@ -59,6 +61,17 @@ const INK = {
   400: '#9A9A9A', 300: '#C8C8C8', 100: '#EFECE5',
 } as const;
 const CREAM = '#FBF9F4';
+
+// Koyu yüzeyde okunmayan koyu status ön-plan renkleri için açık karşılık.
+// Yalnız METİN/İKON rengi olarak kullanılır (accent zemin/buton DEĞİL).
+const DARK_FG: Record<string, string> = {
+  '#9C2E2E': '#FCA5A5', // danger
+  '#9C5E0E': '#E8B45E', // warning
+  '#1F6B47': '#6EE7B7', // success
+};
+function fgTone(hex: string, isDark: boolean): string {
+  return isDark ? (DARK_FG[hex] ?? hex) : hex;
+}
 
 function tint(hex: string, alpha: number): string {
   const m = hex.match(/^#([0-9a-f]{6})$/i);
@@ -112,12 +125,12 @@ function DecimalInput({
 }
 
 // Stok seviyesi → renk (yeşil/sarı/kırmızı)
-function stockTone(current: number | null, needed: number): { bg: string; fg: string; label: string } {
-  if (current == null) return { bg: 'rgba(10,10,10,0.05)', fg: INK[500], label: 'Stok seç' };
-  if (current <= 0) return { bg: 'rgba(220,38,38,0.10)', fg: '#9C2E2E', label: 'Tükenmiş' };
-  if (current < needed) return { bg: 'rgba(220,38,38,0.10)', fg: '#9C2E2E', label: 'Yetersiz' };
-  if (current < needed * 2) return { bg: 'rgba(217,119,6,0.10)', fg: '#9C5E0E', label: 'Az' };
-  return { bg: 'rgba(45,154,107,0.10)', fg: '#1F6B47', label: 'Yeterli' };
+function stockTone(current: number | null, needed: number, isDark = false): { bg: string; fg: string; label: string } {
+  if (current == null) return { bg: 'rgba(10,10,10,0.05)', fg: fgTone(INK[500], isDark), label: 'Stok seç' };
+  if (current <= 0) return { bg: 'rgba(220,38,38,0.10)', fg: fgTone('#9C2E2E', isDark), label: 'Tükenmiş' };
+  if (current < needed) return { bg: 'rgba(220,38,38,0.10)', fg: fgTone('#9C2E2E', isDark), label: 'Yetersiz' };
+  if (current < needed * 2) return { bg: 'rgba(217,119,6,0.10)', fg: fgTone('#9C5E0E', isDark), label: 'Az' };
+  return { bg: 'rgba(45,154,107,0.10)', fg: fgTone('#1F6B47', isDark), label: 'Yeterli' };
 }
 
 // ── Props ────────────────────────────────────────────────────────────
@@ -141,6 +154,8 @@ export function MaterialConfirmModal({
   visible, stageId, accentColor = '#0A0A0A', onClose, onConfirmed,
   advanceStage = true,
 }: Props) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const {
     state, lines, context, totalCost, invalidCount,
     setLine, addLine, removeLine, confirm,
@@ -262,8 +277,9 @@ export function MaterialConfirmModal({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(20,15,10,0.55)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
         <View style={{
-          backgroundColor: '#FFFFFF', borderRadius: 24, width: 720, maxWidth: '100%', maxHeight: '94%',
+          backgroundColor: isDark ? T.card : '#FFFFFF', borderRadius: 24, width: 720, maxWidth: '100%', maxHeight: '94%',
           overflow: 'hidden',
+          ...(isDark ? { borderWidth: 1, borderColor: T.hairline } : {}),
           ...(Platform.OS === 'web' ? { boxShadow: '0 24px 64px rgba(0,0,0,0.22)' } as any : {}),
         }}>
           {/* ═════ HEADER ═════ */}
@@ -281,10 +297,10 @@ export function MaterialConfirmModal({
                 <Text style={{ fontSize: 11, fontWeight: '600', color: accentColor, letterSpacing: 1.2, textTransform: 'uppercase' }}>
                   Malzeme Onayı · {stationName}
                 </Text>
-                <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 26, letterSpacing: -0.6, color: INK[900], lineHeight: 32, marginTop: 2 }}>
+                <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 26, letterSpacing: -0.6, color: T.ink, lineHeight: 32, marginTop: 2 }}>
                   Kullanılan Malzemeler
                 </Text>
-                <Text style={{ fontSize: 12, color: INK[500], marginTop: 4 }}>
+                <Text style={{ fontSize: 12, color: T.ink3, marginTop: 4 }}>
                   {toothCount} diş{showFinance ? ` · Tahmini ~${totalsLabel}` : ''}
                 </Text>
               </View>
@@ -295,22 +311,22 @@ export function MaterialConfirmModal({
               style={{
                 width: 36, height: 36, borderRadius: 12,
                 alignItems: 'center', justifyContent: 'center',
-                backgroundColor: '#FFFFFF',
-                borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)',
+                backgroundColor: isDark ? T.cardSoft : '#FFFFFF',
+                borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.10)',
                 ...(Platform.OS === 'web' ? { cursor: isSaving ? 'not-allowed' : 'pointer' } as any : {}),
               }}
             >
-              <X size={15} color={INK[500]} strokeWidth={1.8} />
+              <X size={15} color={T.ink3} strokeWidth={1.8} />
             </Pressable>
           </View>
 
-          <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.04)', marginHorizontal: 28 }} />
+          <View style={{ height: 1, backgroundColor: isDark ? T.hairline : 'rgba(0,0,0,0.04)', marginHorizontal: 28 }} />
 
           {/* ═════ BODY ═════ */}
           {isLoading ? (
             <View style={{ paddingVertical: 80, alignItems: 'center' }}>
               <ActivityIndicator color={accentColor} />
-              <Text style={{ fontSize: 12, color: INK[400], marginTop: 12 }}>Tahmin yükleniyor…</Text>
+              <Text style={{ fontSize: 12, color: T.ink3, marginTop: 12 }}>Tahmin yükleniyor…</Text>
             </View>
           ) : (
             <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 18, paddingBottom: 22 }}>
@@ -321,19 +337,19 @@ export function MaterialConfirmModal({
                   Hammadde & Tüketim
                 </Text>
                 <View style={{ flex: 1 }} />
-                <Text style={{ fontSize: 11, color: INK[500] }}>
+                <Text style={{ fontSize: 11, color: T.ink3 }}>
                   {lines.length} satır
                 </Text>
               </View>
 
               {/* Lines */}
               {lines.length === 0 ? (
-                <View style={{ paddingVertical: 32, alignItems: 'center', backgroundColor: CREAM, borderRadius: 14, gap: 8 }}>
-                  <Package size={28} color={INK[400]} strokeWidth={1.5} />
-                  <Text style={{ fontSize: 12, color: INK[500] }}>
+                <View style={{ paddingVertical: 32, alignItems: 'center', backgroundColor: isDark ? T.cardSoft : CREAM, borderRadius: 14, gap: 8 }}>
+                  <Package size={28} color={T.ink3} strokeWidth={1.5} />
+                  <Text style={{ fontSize: 12, color: T.ink3 }}>
                     Bu aşama için tahmini malzeme yok
                   </Text>
-                  <Text style={{ fontSize: 11, color: INK[400] }}>
+                  <Text style={{ fontSize: 11, color: T.ink3 }}>
                     Manuel olarak satır ekleyin veya boş bırakıp ilerletin
                   </Text>
                 </View>
@@ -361,13 +377,13 @@ export function MaterialConfirmModal({
                   flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
                   paddingVertical: 12, borderRadius: 12,
                   borderWidth: 1, borderStyle: 'dashed',
-                  borderColor: 'rgba(0,0,0,0.18)',
-                  backgroundColor: '#FFFFFF',
+                  borderColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.18)',
+                  backgroundColor: isDark ? T.card : '#FFFFFF',
                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                 }}
               >
-                <Plus size={14} color={INK[500]} strokeWidth={1.8} />
-                <Text style={{ fontSize: 12, fontWeight: '600', color: INK[700] }}>
+                <Plus size={14} color={T.ink3} strokeWidth={1.8} />
+                <Text style={{ fontSize: 12, fontWeight: '600', color: T.ink2 }}>
                   Yeni satır ekle
                 </Text>
               </Pressable>
@@ -381,8 +397,8 @@ export function MaterialConfirmModal({
                   borderRadius: 12,
                   borderWidth: 1, borderColor: 'rgba(156,46,46,0.18)',
                 }}>
-                  <AlertCircle size={14} color="#9C2E2E" strokeWidth={1.8} />
-                  <Text style={{ flex: 1, fontSize: 12, color: '#9C2E2E', fontWeight: '500' }}>{errorMsg}</Text>
+                  <AlertCircle size={14} color={fgTone('#9C2E2E', isDark)} strokeWidth={1.8} />
+                  <Text style={{ flex: 1, fontSize: 12, color: fgTone('#9C2E2E', isDark), fontWeight: '500' }}>{errorMsg}</Text>
                 </View>
               )}
 
@@ -394,8 +410,8 @@ export function MaterialConfirmModal({
                   borderRadius: 12,
                   borderWidth: 1, borderColor: 'rgba(217,119,6,0.20)',
                 }}>
-                  <AlertTriangle size={14} color="#9C5E0E" strokeWidth={1.8} />
-                  <Text style={{ flex: 1, fontSize: 12, color: '#9C5E0E', fontWeight: '500' }}>
+                  <AlertTriangle size={14} color={fgTone('#9C5E0E', isDark)} strokeWidth={1.8} />
+                  <Text style={{ flex: 1, fontSize: 12, color: fgTone('#9C5E0E', isDark), fontWeight: '500' }}>
                     {invalidCount} satır eksik (isim veya miktar). Onaylamadan önce düzelt.
                   </Text>
                 </View>
@@ -409,8 +425,8 @@ export function MaterialConfirmModal({
                   borderRadius: 12,
                   borderWidth: 1, borderColor: 'rgba(217,119,6,0.20)',
                 }}>
-                  <AlertTriangle size={14} color="#9C5E0E" strokeWidth={1.8} />
-                  <Text style={{ flex: 1, fontSize: 12, color: '#9C5E0E', fontWeight: '500' }}>
+                  <AlertTriangle size={14} color={fgTone('#9C5E0E', isDark)} strokeWidth={1.8} />
+                  <Text style={{ flex: 1, fontSize: 12, color: fgTone('#9C5E0E', isDark), fontWeight: '500' }}>
                     {unlinkedWithQty} satır stok kalemine bağlı değil — "Stoktan seç" ile bağla,
                     yoksa stoktan düşmez.
                   </Text>
@@ -423,16 +439,16 @@ export function MaterialConfirmModal({
           <View style={{
             flexDirection: 'row', alignItems: 'center', gap: 10,
             paddingHorizontal: 28, paddingVertical: 16,
-            borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)',
-            backgroundColor: CREAM,
+            borderTopWidth: 1, borderTopColor: isDark ? T.hairline : 'rgba(0,0,0,0.05)',
+            backgroundColor: isDark ? T.cardSoft : CREAM,
           }}>
             <View style={{ flex: 1 }}>
               {showFinance ? (
                 <>
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: INK[400], letterSpacing: 1.2, textTransform: 'uppercase' }}>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: T.ink3, letterSpacing: 1.2, textTransform: 'uppercase' }}>
                     Toplam
                   </Text>
-                  <Text style={{ fontSize: 16, fontWeight: '700', color: INK[900], fontFamily: DisplayFont }}>
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: T.ink, fontFamily: DisplayFont }}>
                     {totalsLabel}
                   </Text>
                 </>
@@ -443,13 +459,13 @@ export function MaterialConfirmModal({
               disabled={isSaving}
               style={{
                 paddingHorizontal: 18, paddingVertical: 10, borderRadius: 9999,
-                backgroundColor: '#FFFFFF',
-                borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)',
+                backgroundColor: isDark ? T.card : '#FFFFFF',
+                borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.10)',
                 opacity: isSaving ? 0.5 : 1,
                 ...(Platform.OS === 'web' ? { cursor: isSaving ? 'not-allowed' : 'pointer' } as any : {}),
               }}
             >
-              <Text style={{ fontSize: 13, fontWeight: '500', color: INK[700] }}>İptal</Text>
+              <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink2 }}>İptal</Text>
             </Pressable>
             <Pressable
               onPress={() => (nothingEntered ? confirmNoMaterial() : confirm({ advanceStage }))}
@@ -457,9 +473,9 @@ export function MaterialConfirmModal({
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 7,
                 paddingHorizontal: 22, paddingVertical: 11, borderRadius: 9999,
-                backgroundColor: nothingEntered ? '#FFFFFF' : accentColor,
+                backgroundColor: nothingEntered ? (isDark ? T.card : '#FFFFFF') : accentColor,
                 borderWidth: nothingEntered ? 1 : 0,
-                borderColor: nothingEntered ? 'rgba(0,0,0,0.14)' : 'transparent',
+                borderColor: nothingEntered ? (isDark ? T.hairline : 'rgba(0,0,0,0.14)') : 'transparent',
                 opacity: canConfirm ? 1 : 0.45,
                 ...(Platform.OS === 'web' ? {
                   cursor: !canConfirm ? 'not-allowed' : isSaving ? 'wait' : 'pointer',
@@ -468,9 +484,9 @@ export function MaterialConfirmModal({
               }}
             >
               {nothingEntered
-                ? <SkipForward size={14} color={INK[700]} strokeWidth={2.2} />
+                ? <SkipForward size={14} color={T.ink2} strokeWidth={2.2} />
                 : <Check size={14} color="#FFF" strokeWidth={2.4} />}
-              <Text style={{ fontSize: 13, fontWeight: '600', color: nothingEntered ? INK[700] : '#FFF', letterSpacing: 0.2 }}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: nothingEntered ? T.ink2 : '#FFF', letterSpacing: 0.2 }}>
                 {isSaving
                   ? 'Onaylanıyor…'
                   : nothingEntered
@@ -511,8 +527,10 @@ function LineCard({
   onOpenPicker: () => void;
   showFinance?: boolean;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [wasteOpen, setWasteOpen] = useState(line.waste_qty > 0);
-  const stock = stockTone(line.current_stock, line.actual_qty);
+  const stock = stockTone(line.current_stock, line.actual_qty, isDark);
   const totalQty = line.actual_qty + line.waste_qty;
 
   // Paketli kalem: birim maliyet içerik birimi başına (unit_cost ÷ pack_size);
@@ -534,8 +552,8 @@ function LineCard({
 
   const sourceBadge = {
     'item-formula': { label: 'Otomatik', bg: tint(accentColor, 0.10), fg: accentColor },
-    'station-rule': { label: 'Önerilen', bg: 'rgba(217,119,6,0.10)', fg: '#9C5E0E' },
-    'manual':       { label: 'Manuel',   bg: 'rgba(10,10,10,0.06)',  fg: INK[500] },
+    'station-rule': { label: 'Önerilen', bg: 'rgba(217,119,6,0.10)', fg: fgTone('#9C5E0E', isDark) },
+    'manual':       { label: 'Manuel',   bg: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(10,10,10,0.06)',  fg: T.ink3 },
   }[line.source];
 
   return (
@@ -543,8 +561,8 @@ function LineCard({
       style={{
         borderRadius: 14,
         borderWidth: 1,
-        borderColor: line.source === 'manual' ? 'rgba(0,0,0,0.10)' : 'rgba(0,0,0,0.06)',
-        backgroundColor: line.source === 'manual' ? '#FFFFFF' : CREAM,
+        borderColor: isDark ? T.hairline : (line.source === 'manual' ? 'rgba(0,0,0,0.10)' : 'rgba(0,0,0,0.06)'),
+        backgroundColor: line.source === 'manual' ? (isDark ? T.card : '#FFFFFF') : (isDark ? T.cardSoft : CREAM),
         overflow: 'hidden',
       }}
     >
@@ -559,10 +577,10 @@ function LineCard({
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
               >
-                <Text style={{ fontSize: 14, fontWeight: '600', color: INK[900] }} numberOfLines={1}>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: T.ink }} numberOfLines={1}>
                   {line.item_name}
                 </Text>
-                <ChevronDown size={13} color={INK[400]} strokeWidth={2} />
+                <ChevronDown size={13} color={T.ink3} strokeWidth={2} />
               </Pressable>
             ) : (
               <Pressable
@@ -593,7 +611,7 @@ function LineCard({
               </View>
               {/* Note (if any) */}
               {line.note && (
-                <Text style={{ fontSize: 11, color: INK[500], fontStyle: 'italic' }} numberOfLines={1}>
+                <Text style={{ fontSize: 11, color: T.ink3, fontStyle: 'italic' }} numberOfLines={1}>
                   {line.note}
                 </Text>
               )}
@@ -624,7 +642,7 @@ function LineCard({
               ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
             }}
           >
-            <Trash2 size={12} color="#9C2E2E" strokeWidth={1.8} />
+            <Trash2 size={12} color={fgTone('#9C2E2E', isDark)} strokeWidth={1.8} />
           </Pressable>
         </View>
 
@@ -632,28 +650,28 @@ function LineCard({
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           {/* Actual stepper */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Text style={{ fontSize: 11, fontWeight: '600', color: INK[500], textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
               Miktar
             </Text>
             <View style={{
               flexDirection: 'row', alignItems: 'center',
-              backgroundColor: '#FFFFFF',
+              backgroundColor: isDark ? T.card : '#FFFFFF',
               borderRadius: 9999,
-              borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)',
+              borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.10)',
               paddingHorizontal: 4, paddingVertical: 3, gap: 4,
             }}>
               <Pressable
                 onPress={() => stepActual(-0.5)}
-                style={{ width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.04)' }}
+                style={{ width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }}
               >
-                <Minus size={11} color={INK[700]} strokeWidth={2} />
+                <Minus size={11} color={T.ink2} strokeWidth={2} />
               </Pressable>
               <DecimalInput
                 value={line.actual_qty}
                 onChangeNum={(n) => onChange({ actual_qty: n })}
                 style={{
                   minWidth: 50, textAlign: 'center',
-                  fontSize: 13, fontWeight: '700', color: INK[900],
+                  fontSize: 13, fontWeight: '700', color: T.ink,
                   ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
                 }}
               />
@@ -664,14 +682,14 @@ function LineCard({
                 <Plus size={11} color={accentColor} strokeWidth={2} />
               </Pressable>
             </View>
-            <Text style={{ fontSize: 11, color: INK[500] }}>{line.unit ?? '-'}</Text>
+            <Text style={{ fontSize: 11, color: T.ink3 }}>{line.unit ?? '-'}</Text>
           </View>
 
           {/* Unit cost — kalemden otoriter (RPC bunu kullanır); yalnız admin/manager */}
           {showFinance && line.item_id ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Text style={{ fontSize: 11, color: INK[500] }}>×</Text>
-              <Text style={{ fontSize: 12, fontWeight: '600', color: INK[700] }}>
+              <Text style={{ fontSize: 11, color: T.ink3 }}>×</Text>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: T.ink2 }}>
                 {perUnit.toFixed(2)} {curSym}/{line.unit ?? 'birim'}
               </Text>
             </View>
@@ -682,10 +700,10 @@ function LineCard({
           {/* Total cost — yalnız admin/manager */}
           {showFinance && (
             <View style={{ alignItems: 'flex-end' }}>
-              <Text style={{ fontSize: 9, fontWeight: '600', color: INK[400], letterSpacing: 0.7, textTransform: 'uppercase' }}>
+              <Text style={{ fontSize: 9, fontWeight: '600', color: T.ink3, letterSpacing: 0.7, textTransform: 'uppercase' }}>
                 Toplam
               </Text>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: INK[900] }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: T.ink }}>
                 {totalLineCost.toFixed(2)} {curSym}
               </Text>
             </View>
@@ -694,7 +712,7 @@ function LineCard({
 
         {/* Paketli kalem: stoktan ne kadar (kesirli adet) düşeceğini göster */}
         {packaged && totalQty > 0 && (
-          <Text style={{ fontSize: 11, color: INK[500] }}>
+          <Text style={{ fontSize: 11, color: T.ink3 }}>
             ≈ {deductStock.toFixed(3).replace(/\.?0+$/, '')} {line.stock_unit ?? 'adet'} stoktan düşecek
             {' '}(1 {line.stock_unit ?? 'adet'} = {line.pack_size} {line.content_unit ?? line.unit})
           </Text>
@@ -711,13 +729,13 @@ function LineCard({
             alignSelf: 'flex-start',
             flexDirection: 'row', alignItems: 'center', gap: 5,
             paddingHorizontal: 10, paddingVertical: 5, borderRadius: 9999,
-            backgroundColor: wasteOpen ? 'rgba(220,38,38,0.10)' : 'rgba(0,0,0,0.04)',
-            borderWidth: 1, borderColor: wasteOpen ? 'rgba(220,38,38,0.25)' : 'rgba(0,0,0,0.08)',
+            backgroundColor: wasteOpen ? 'rgba(220,38,38,0.10)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'),
+            borderWidth: 1, borderColor: wasteOpen ? 'rgba(220,38,38,0.25)' : (isDark ? T.hairline : 'rgba(0,0,0,0.08)'),
             ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
           }}
         >
-          <Flame size={11} color={wasteOpen ? '#9C2E2E' : INK[500]} strokeWidth={1.8} />
-          <Text style={{ fontSize: 11, fontWeight: '600', color: wasteOpen ? '#9C2E2E' : INK[500] }}>
+          <Flame size={11} color={wasteOpen ? fgTone('#9C2E2E', isDark) : T.ink3} strokeWidth={1.8} />
+          <Text style={{ fontSize: 11, fontWeight: '600', color: wasteOpen ? fgTone('#9C2E2E', isDark) : T.ink3 }}>
             {wasteOpen ? 'Fire açık' : 'Fire ekle'}
           </Text>
         </Pressable>
@@ -731,28 +749,28 @@ function LineCard({
             padding: 10, gap: 10,
           }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <Text style={{ fontSize: 11, fontWeight: '600', color: '#9C2E2E', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: fgTone('#9C2E2E', isDark), textTransform: 'uppercase', letterSpacing: 0.5 }}>
                 Fire miktarı
               </Text>
               <View style={{
                 flexDirection: 'row', alignItems: 'center',
-                backgroundColor: '#FFFFFF',
+                backgroundColor: isDark ? T.card : '#FFFFFF',
                 borderRadius: 9999,
                 borderWidth: 1, borderColor: 'rgba(220,38,38,0.20)',
                 paddingHorizontal: 4, paddingVertical: 3, gap: 4,
               }}>
                 <Pressable
                   onPress={() => stepWaste(-0.5)}
-                  style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.04)' }}
+                  style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }}
                 >
-                  <Minus size={10} color={INK[700]} strokeWidth={2} />
+                  <Minus size={10} color={T.ink2} strokeWidth={2} />
                 </Pressable>
                 <DecimalInput
                   value={line.waste_qty}
                   onChangeNum={(n) => onChange({ waste_qty: n })}
                   style={{
                     minWidth: 40, textAlign: 'center',
-                    fontSize: 12, fontWeight: '700', color: '#9C2E2E',
+                    fontSize: 12, fontWeight: '700', color: fgTone('#9C2E2E', isDark),
                     ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
                   }}
                 />
@@ -760,23 +778,23 @@ function LineCard({
                   onPress={() => stepWaste(0.5)}
                   style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(220,38,38,0.10)' }}
                 >
-                  <Plus size={10} color="#9C2E2E" strokeWidth={2} />
+                  <Plus size={10} color={fgTone('#9C2E2E', isDark)} strokeWidth={2} />
                 </Pressable>
               </View>
-              <Text style={{ fontSize: 11, color: '#9C2E2E' }}>{line.unit ?? '-'}</Text>
+              <Text style={{ fontSize: 11, color: fgTone('#9C2E2E', isDark) }}>{line.unit ?? '-'}</Text>
             </View>
 
             <TextInput
               value={line.waste_reason ?? ''}
               onChangeText={(t) => onChange({ waste_reason: t })}
               placeholder="Sebep — örn: Disc kırıldı, baskı başarısız, yanlış renk"
-              placeholderTextColor={INK[400]}
+              placeholderTextColor={isDark ? (T.ink3 as string) : INK[400]}
               style={{
-                backgroundColor: '#FFFFFF',
+                backgroundColor: isDark ? T.card : '#FFFFFF',
                 borderRadius: 8,
                 borderWidth: 1, borderColor: 'rgba(220,38,38,0.18)',
                 paddingHorizontal: 10, paddingVertical: 8,
-                fontSize: 12, color: INK[900],
+                fontSize: 12, color: T.ink,
                 ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
               }}
             />
@@ -808,6 +826,8 @@ function StockPickerModal({
   onPick: (item: StockPick) => void;
   onCreated: (item: StockPick) => void;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<'list' | 'create'>('list');
   const [saving, setSaving] = useState(false);
@@ -914,27 +934,28 @@ function StockPickerModal({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(20,15,10,0.45)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
         <View style={{
-          backgroundColor: '#FFFFFF', borderRadius: 22, width: 520, maxWidth: '100%', maxHeight: '86%',
+          backgroundColor: isDark ? T.card : '#FFFFFF', borderRadius: 22, width: 520, maxWidth: '100%', maxHeight: '86%',
           overflow: 'hidden',
+          ...(isDark ? { borderWidth: 1, borderColor: T.hairline } : {}),
           ...(Platform.OS === 'web' ? { boxShadow: '0 24px 64px rgba(0,0,0,0.24)' } as any : {}),
         }}>
           {/* Header */}
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 22, paddingTop: 18, paddingBottom: 14, gap: 12 }}>
-            <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 20, letterSpacing: -0.4, color: INK[900] }}>
+            <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 20, letterSpacing: -0.4, color: T.ink }}>
               {mode === 'list' ? 'Stoktan seç' : 'Yeni stok kalemi'}
             </Text>
             <Pressable
               onPress={onClose}
               style={{
                 width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
-                borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)',
+                borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.10)',
                 ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
               }}
             >
-              <X size={14} color={INK[500]} strokeWidth={1.8} />
+              <X size={14} color={T.ink3} strokeWidth={1.8} />
             </Pressable>
           </View>
-          <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.05)' }} />
+          <View style={{ height: 1, backgroundColor: isDark ? T.hairline : 'rgba(0,0,0,0.05)' }} />
 
           {mode === 'list' ? (
             <>
@@ -942,19 +963,19 @@ function StockPickerModal({
               <View style={{ paddingHorizontal: 18, paddingTop: 14, paddingBottom: 10 }}>
                 <View style={{
                   flexDirection: 'row', alignItems: 'center', gap: 8,
-                  backgroundColor: CREAM, borderRadius: 9999,
-                  borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
+                  backgroundColor: isDark ? T.cardSoft : CREAM, borderRadius: 9999,
+                  borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.08)',
                   paddingHorizontal: 14, paddingVertical: 9,
                 }}>
-                  <Search size={15} color={INK[400]} strokeWidth={1.8} />
+                  <Search size={15} color={T.ink3} strokeWidth={1.8} />
                   <TextInput
                     value={query}
                     onChangeText={setQuery}
                     placeholder="Malzeme ara…"
-                    placeholderTextColor={INK[400]}
+                    placeholderTextColor={isDark ? (T.ink3 as string) : INK[400]}
                     autoFocus={Platform.OS === 'web'}
                     style={{
-                      flex: 1, fontSize: 13, color: INK[900],
+                      flex: 1, fontSize: 13, color: T.ink,
                       ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
                     }}
                   />
@@ -963,8 +984,8 @@ function StockPickerModal({
                 {/* Aşama filtresi ipucu + "Tümünü göster" */}
                 {stationName && !q && (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 }}>
-                    <Layers size={12} color={INK[400]} strokeWidth={1.8} />
-                    <Text style={{ flex: 1, fontSize: 11, color: INK[500] }}>
+                    <Layers size={12} color={T.ink3} strokeWidth={1.8} />
+                    <Text style={{ flex: 1, fontSize: 11, color: T.ink3 }}>
                       {showAll
                         ? `Tüm stok gösteriliyor`
                         : `${stationName} aşamasına uygun malzemeler`}
@@ -987,16 +1008,16 @@ function StockPickerModal({
               <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 8 }}>
                 {filtered.length === 0 ? (
                   <View style={{ paddingVertical: 28, alignItems: 'center', gap: 6 }}>
-                    <Package size={26} color={INK[300]} strokeWidth={1.5} />
-                    <Text style={{ fontSize: 12, color: INK[500] }}>
+                    <Package size={26} color={T.ink3} strokeWidth={1.5} />
+                    <Text style={{ fontSize: 12, color: T.ink3 }}>
                       {q ? 'Eşleşen stok kalemi yok' : 'Henüz stok kalemi yok'}
                     </Text>
-                    <Text style={{ fontSize: 11, color: INK[400] }}>Aşağıdan yeni kalem oluşturabilirsin</Text>
+                    <Text style={{ fontSize: 11, color: T.ink3 }}>Aşağıdan yeni kalem oluşturabilirsin</Text>
                   </View>
                 ) : (
                   <View style={{ gap: 6 }}>
                     {filtered.map((it) => {
-                      const tone = stockTone(it.quantity, 0);
+                      const tone = stockTone(it.quantity, 0, isDark);
                       return (
                         <Pressable
                           key={it.id}
@@ -1004,17 +1025,17 @@ function StockPickerModal({
                           style={{
                             flexDirection: 'row', alignItems: 'center', gap: 10,
                             paddingHorizontal: 12, paddingVertical: 11, borderRadius: 12,
-                            borderWidth: 1, borderColor: 'rgba(0,0,0,0.07)',
-                            backgroundColor: '#FFFFFF',
+                            borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.07)',
+                            backgroundColor: isDark ? T.card : '#FFFFFF',
                             ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                           }}
                         >
                           <View style={{ flex: 1, gap: 2 }}>
-                            <Text style={{ fontSize: 13.5, fontWeight: '600', color: INK[900] }} numberOfLines={1}>
+                            <Text style={{ fontSize: 13.5, fontWeight: '600', color: T.ink }} numberOfLines={1}>
                               {it.name}
                             </Text>
                             {(it.category || (it.pack_size && it.pack_size > 0)) ? (
-                              <Text style={{ fontSize: 11, color: INK[500] }} numberOfLines={1}>
+                              <Text style={{ fontSize: 11, color: T.ink3 }} numberOfLines={1}>
                                 {it.category ?? ''}
                                 {it.pack_size && it.pack_size > 0
                                   ? `${it.category ? ' · ' : ''}${it.pack_size} ${it.content_unit ?? ''}/${it.unit ?? 'adet'}`
@@ -1023,7 +1044,7 @@ function StockPickerModal({
                             ) : null}
                           </View>
                           {showFinance && it.unit_cost != null && it.unit_cost > 0 ? (
-                            <Text style={{ fontSize: 11, color: INK[500] }}>
+                            <Text style={{ fontSize: 11, color: T.ink3 }}>
                               {it.unit_cost.toFixed(2)} {sym(it.currency)}
                             </Text>
                           ) : null}
@@ -1044,7 +1065,7 @@ function StockPickerModal({
               </ScrollView>
 
               {/* Create CTA */}
-              <View style={{ paddingHorizontal: 18, paddingVertical: 14, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)', backgroundColor: CREAM }}>
+              <View style={{ paddingHorizontal: 18, paddingVertical: 14, borderTopWidth: 1, borderTopColor: isDark ? T.hairline : 'rgba(0,0,0,0.05)', backgroundColor: isDark ? T.cardSoft : CREAM }}>
                 <Pressable
                   onPress={() => setMode('create')}
                   style={{
@@ -1070,7 +1091,7 @@ function StockPickerModal({
                   borderWidth: 1, borderColor: tint(accentColor, 0.18),
                 }}>
                   <Layers size={13} color={accentColor} strokeWidth={1.8} />
-                  <Text style={{ flex: 1, fontSize: 11.5, color: INK[700] }}>
+                  <Text style={{ flex: 1, fontSize: 11.5, color: T.ink2 }}>
                     Bu malzeme <Text style={{ fontWeight: '700', color: accentColor }}>{stationName}</Text> aşamasına eklenecek — sonra Stok ekranından başka aşamalara da açabilirsin.
                   </Text>
                 </View>
@@ -1093,7 +1114,7 @@ function StockPickerModal({
               <View style={{ gap: 6 }}>
                 <FieldLabel>Paket içeriği (opsiyonel)</FieldLabel>
                 <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-                  <Text style={{ fontSize: 13, color: INK[500] }}>1 {nUnit.trim() || 'Adet'} =</Text>
+                  <Text style={{ fontSize: 13, color: T.ink3 }}>1 {nUnit.trim() || 'Adet'} =</Text>
                   <View style={{ width: 90 }}>
                     <PickerInput value={nPack} onChangeText={setNPack} placeholder="örn. 50" keyboardType="decimal-pad" />
                   </View>
@@ -1101,7 +1122,7 @@ function StockPickerModal({
                     <PickerInput value={nContentUnit} onChangeText={setNContentUnit} placeholder="gr / ml" />
                   </View>
                 </View>
-                <Text style={{ fontSize: 11, color: INK[400] }}>
+                <Text style={{ fontSize: 11, color: T.ink3 }}>
                   Kavanoz/kutu gibi paketlerde doldur — tüketim gram/ml girilir, stoktan kesirli adet düşer. Boş bırakırsan adet=adet.
                 </Text>
               </View>
@@ -1132,12 +1153,12 @@ function StockPickerModal({
                           onPress={() => setNCcy(c)}
                           style={{
                             flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 10,
-                            backgroundColor: on ? tint(accentColor, 0.12) : '#FFFFFF',
-                            borderWidth: 1, borderColor: on ? tint(accentColor, 0.35) : 'rgba(0,0,0,0.12)',
+                            backgroundColor: on ? tint(accentColor, 0.12) : (isDark ? T.card : '#FFFFFF'),
+                            borderWidth: 1, borderColor: on ? tint(accentColor, 0.35) : (isDark ? T.hairline : 'rgba(0,0,0,0.12)'),
                             ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                           }}
                         >
-                          <Text style={{ fontSize: 12.5, fontWeight: on ? '700' : '500', color: on ? accentColor : INK[500] }}>
+                          <Text style={{ fontSize: 12.5, fontWeight: on ? '700' : '500', color: on ? accentColor : T.ink3 }}>
                             {sym(c)} {c}
                           </Text>
                         </Pressable>
@@ -1153,8 +1174,8 @@ function StockPickerModal({
                   backgroundColor: 'rgba(156,46,46,0.06)', borderRadius: 10,
                   borderWidth: 1, borderColor: 'rgba(156,46,46,0.18)',
                 }}>
-                  <AlertCircle size={14} color="#9C2E2E" strokeWidth={1.8} />
-                  <Text style={{ flex: 1, fontSize: 12, color: '#9C2E2E', fontWeight: '500' }}>{error}</Text>
+                  <AlertCircle size={14} color={fgTone('#9C2E2E', isDark)} strokeWidth={1.8} />
+                  <Text style={{ flex: 1, fontSize: 12, color: fgTone('#9C2E2E', isDark), fontWeight: '500' }}>{error}</Text>
                 </View>
               )}
 
@@ -1164,12 +1185,12 @@ function StockPickerModal({
                   disabled={saving}
                   style={{
                     paddingHorizontal: 18, paddingVertical: 11, borderRadius: 9999,
-                    borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)', backgroundColor: '#FFFFFF',
+                    borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.10)', backgroundColor: isDark ? T.card : '#FFFFFF',
                     opacity: saving ? 0.5 : 1,
                     ...(Platform.OS === 'web' ? { cursor: saving ? 'not-allowed' : 'pointer' } as any : {}),
                   }}
                 >
-                  <Text style={{ fontSize: 13, fontWeight: '500', color: INK[700] }}>Geri</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink2 }}>Geri</Text>
                 </Pressable>
                 <Pressable
                   onPress={handleCreate}
@@ -1198,8 +1219,9 @@ function StockPickerModal({
 
 // ── Küçük form yardımcıları (picker create formu) ────────────────────
 function FieldLabel({ children }: { children: React.ReactNode }) {
+  const T = useMobileTokens();
   return (
-    <Text style={{ fontSize: 11, fontWeight: '700', color: INK[500], letterSpacing: 0.5, textTransform: 'uppercase' }}>
+    <Text style={{ fontSize: 11, fontWeight: '700', color: T.ink3, letterSpacing: 0.5, textTransform: 'uppercase' }}>
       {children}
     </Text>
   );
@@ -1214,19 +1236,21 @@ function PickerInput({
   keyboardType?: 'decimal-pad';
   autoFocus?: boolean;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <TextInput
       value={value}
       onChangeText={onChangeText}
       placeholder={placeholder}
-      placeholderTextColor={INK[400]}
+      placeholderTextColor={isDark ? (T.ink3 as string) : INK[400]}
       keyboardType={keyboardType}
       autoFocus={autoFocus && Platform.OS === 'web'}
       style={{
-        backgroundColor: '#FFFFFF', borderRadius: 12,
-        borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)',
+        backgroundColor: isDark ? T.card : '#FFFFFF', borderRadius: 12,
+        borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.12)',
         paddingHorizontal: 12, paddingVertical: 10,
-        fontSize: 13, color: INK[900],
+        fontSize: 13, color: T.ink,
         ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
       }}
     />

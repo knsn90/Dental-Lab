@@ -400,6 +400,10 @@
         "label": "Çalışma Saatleri",
         "sub": "Vardiya, öğle, eşzamanlı iş"
       },
+      "finance": {
+        "label": "Finans Ayarları",
+        "sub": "Para birimi, KDV, ödeme hatırlatmaları"
+      },
       "currency": {
         "label": "Döviz Kurları",
         "sub": "EUR/USD/GBP kur yönetimi"
@@ -415,6 +419,14 @@
       "workflows": {
         "label": "İş Akışları",
         "sub": "Üretim akışı tasarımcısı"
+      },
+      "mycode": {
+        "label": "Giriş Kodum",
+        "sub": "Tablet giriş kodu (PIN)"
+      },
+      "devices": {
+        "label": "Tabletler",
+        "sub": "Kiosk cihaz yönetimi"
       }
     }
   },

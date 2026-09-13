@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 import { AppIcon } from '../../../core/ui/AppIcon';
 import { Shadows, CardSpec } from '../../../core/theme/shadows';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { toast } from '../../../core/ui/Toast';
 import {
   sendInvoice, queryEFaturaStatus, cancelEFatura, fetchEFaturaLogs,
@@ -32,6 +34,8 @@ interface Props {
 }
 
 export function EFaturaPanel({ invoiceId, status, uuid, type, provider, error, onChanged }: Props) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [busy, setBusy] = useState(false);
   const [logs, setLogs] = useState<any[]>([]);
   const cfg = STATUS_LABELS[status ?? 'pending'];
@@ -90,16 +94,16 @@ export function EFaturaPanel({ invoiceId, status, uuid, type, provider, error, o
   };
 
   return (
-    <View style={s.card}>
+    <View style={[s.card, { backgroundColor: T.card, borderColor: T.hairline }]}>
       <View style={s.head}>
         <View style={[s.iconBox, { backgroundColor: cfg.color + '15' }]}>
           <AppIcon name="receipt-text" size={16} color={cfg.color} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={s.title}>
+          <Text style={[s.title, { color: T.ink }]}>
             {type === 'e_arsiv' ? 'e-Arşiv' : 'e-Fatura'}
           </Text>
-          <Text style={s.providerHint}>
+          <Text style={[s.providerHint, { color: T.ink3 }]}>
             Sağlayıcı: {provider ?? providerName}
           </Text>
         </View>
@@ -109,16 +113,16 @@ export function EFaturaPanel({ invoiceId, status, uuid, type, provider, error, o
       </View>
 
       {uuid ? (
-        <View style={s.uuidRow}>
-          <Text style={s.uuidLabel}>UUID</Text>
-          <Text style={s.uuidValue} numberOfLines={1}>{uuid}</Text>
+        <View style={[s.uuidRow, { backgroundColor: isDark ? T.cardSoft : '#F8FAFC' }]}>
+          <Text style={[s.uuidLabel, { color: isDark ? (T.ink3 as string) : '#94A3B8' }]}>UUID</Text>
+          <Text style={[s.uuidValue, { color: isDark ? (T.ink2 as string) : '#475569' }]} numberOfLines={1}>{uuid}</Text>
         </View>
       ) : null}
 
       {error ? (
-        <View style={s.errorBox}>
-          <AppIcon name="alert-circle" size={14} color="#DC2626" />
-          <Text style={s.errorText}>{error}</Text>
+        <View style={[s.errorBox, { backgroundColor: isDark ? 'rgba(217,75,75,0.18)' : '#FEF2F2' }]}>
+          <AppIcon name="alert-circle" size={14} color={isDark ? '#F3A0A0' : '#DC2626'} />
+          <Text style={[s.errorText, { color: isDark ? '#F3A0A0' : '#DC2626' }]}>{error}</Text>
         </View>
       ) : null}
 
@@ -136,27 +140,35 @@ export function EFaturaPanel({ invoiceId, status, uuid, type, provider, error, o
           </TouchableOpacity>
         )}
         {isSent && !isFinal && (
-          <TouchableOpacity style={[s.btn, s.btnOutline]} onPress={handleQuery} disabled={busy}>
-            <AppIcon name="refresh" size={14} color="#0F172A" />
-            <Text style={s.btnOutlineText}>Durum Sorgula</Text>
+          <TouchableOpacity
+            style={[s.btn, s.btnOutline, { backgroundColor: isDark ? T.cardSoft : '#FFFFFF', borderColor: isDark ? T.hairline : '#E2E8F0' }]}
+            onPress={handleQuery}
+            disabled={busy}
+          >
+            <AppIcon name="refresh" size={14} color={isDark ? (T.ink as string) : '#0F172A'} />
+            <Text style={[s.btnOutlineText, { color: isDark ? T.ink : '#0F172A' }]}>Durum Sorgula</Text>
           </TouchableOpacity>
         )}
         {isSent && (
-          <TouchableOpacity style={[s.btn, s.btnDanger]} onPress={handleCancel} disabled={busy}>
-            <AppIcon name="cancel" size={14} color="#DC2626" />
-            <Text style={s.btnDangerText}>İptal Et</Text>
+          <TouchableOpacity
+            style={[s.btn, s.btnDanger, { backgroundColor: isDark ? 'rgba(217,75,75,0.18)' : '#FEF2F2', borderColor: isDark ? 'rgba(217,75,75,0.35)' : '#FECACA' }]}
+            onPress={handleCancel}
+            disabled={busy}
+          >
+            <AppIcon name="cancel" size={14} color={isDark ? '#F3A0A0' : '#DC2626'} />
+            <Text style={[s.btnDangerText, { color: isDark ? '#F3A0A0' : '#DC2626' }]}>İptal Et</Text>
           </TouchableOpacity>
         )}
       </View>
 
       {logs.length > 0 && (
-        <View style={s.logSection}>
-          <Text style={s.logTitle}>Son işlemler</Text>
+        <View style={[s.logSection, { borderTopColor: isDark ? T.hairline : '#F1F5F9' }]}>
+          <Text style={[s.logTitle, { color: isDark ? (T.ink3 as string) : '#94A3B8' }]}>Son işlemler</Text>
           {logs.map(l => (
             <View key={l.id} style={s.logRow}>
               <View style={[s.logDot, { backgroundColor: l.error_message ? '#DC2626' : '#10B981' }]} />
-              <Text style={s.logAction}>{l.action}</Text>
-              <Text style={s.logTime}>{new Date(l.created_at).toLocaleString('tr-TR')}</Text>
+              <Text style={[s.logAction, { color: isDark ? (T.ink2 as string) : '#475569' }]}>{l.action}</Text>
+              <Text style={[s.logTime, { color: isDark ? (T.ink3 as string) : '#94A3B8' }]}>{new Date(l.created_at).toLocaleString('tr-TR')}</Text>
             </View>
           ))}
         </View>

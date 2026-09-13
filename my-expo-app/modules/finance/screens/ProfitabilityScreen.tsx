@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { useRouter, useSegments } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { TrendingUp, TrendingDown, Users, AlertTriangle, Percent, Wallet, Boxes } from 'lucide-react-native';
+import { TrendingUp, TrendingDown, Users, AlertTriangle, Percent, Wallet, Boxes } from '../../../core/ui/icons';
 
 import { supabase } from '../../../core/api/supabase';
 import { useAuthStore } from '../../../core/store/authStore';
@@ -529,7 +529,7 @@ function BreakRow({ label, value }: { label: string; value: number }) {
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
       <Text style={{ fontSize: 12, color: T.ink3, fontWeight: '600' }}>{label}</Text>
-      <Text style={{ fontSize: 12, color: T.ink, fontWeight: '700' }}>{fmt(value)} {baseSymbol()}</Text>
+      <Text style={{ fontSize: 12, color: T.ink, fontWeight: '700' }}>{baseSymbol()}{fmt(value)}</Text>
     </View>
   );
 }
@@ -575,7 +575,7 @@ function OrderListRow({
               const pOrig = (Number(order.revenue_original) || 0) * (order.profit / order.sale_price);
               return `${pOrig >= 0 ? '+' : '−'}${sym}${fmt(Math.abs(pOrig))}`;
             }
-            return `${order.profit >= 0 ? '+' : '−'}${fmt(Math.abs(order.profit))} ${baseSymbol()}`;
+            return `${order.profit >= 0 ? '+' : '−'}${baseSymbol()}${fmt(Math.abs(order.profit))}`;
           })()}
         </Text>
         {order.margin_pct !== null && (
@@ -588,6 +588,7 @@ function OrderListRow({
 
 function TechRowView({ row, isLast }: { row: TechnicianUsageRow; isLast: boolean }) {
   const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const eff = row.efficiency_pct ?? 100;
   const tone = eff < 80 ? 'red' : eff < 95 ? 'yellow' : 'green';
   const chipTone = tone === 'red' ? CHIP_TONES.danger : tone === 'yellow' ? CHIP_TONES.warning : CHIP_TONES.success;
@@ -599,8 +600,8 @@ function TechRowView({ row, isLast }: { row: TechnicianUsageRow; isLast: boolean
         !isLast && { borderBottomWidth: 1, borderBottomColor: T.hairline },
       ]}
     >
-      <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#F5F3FF', alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ fontSize: 12, fontWeight: '800', color: '#7C3AED' }}>
+      <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: isDark ? 'rgba(124,58,237,0.22)' : '#F5F3FF', alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ fontSize: 12, fontWeight: '800', color: isDark ? '#C4B5FD' : '#7C3AED' }}>
           {(row.user_name ?? '??').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
         </Text>
       </View>
@@ -608,7 +609,7 @@ function TechRowView({ row, isLast }: { row: TechnicianUsageRow; isLast: boolean
         <Text style={{ fontSize: 13, fontWeight: '700', color: T.ink }} numberOfLines={1}>{row.user_name ?? '—'}</Text>
         <Text style={{ fontSize: 11, color: T.ink3, marginTop: 1 }} numberOfLines={1}>
           {fmt(row.used_qty)} kullanım  {'·'}  {fmt(row.waste_qty)} fire
-          {row.waste_cost > 0 ? `  ·  ${fmt(row.waste_cost)} ${baseSymbol()} kayıp` : ''}
+          {row.waste_cost > 0 ? `  ·  ${baseSymbol()}${fmt(row.waste_cost)} kayıp` : ''}
         </Text>
       </View>
       <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: DS.radius.pill, alignItems: 'center', minWidth: 90, backgroundColor: chipTone.bg }}>
@@ -639,7 +640,7 @@ function WasteRowView({ row, isLast }: { row: WasteByMaterial; isLast: boolean }
         </Text>
       </View>
       <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: DS.radius.pill, alignItems: 'center', minWidth: 90, backgroundColor: CHIP_TONES.danger.bg }}>
-        <Text style={{ fontSize: 13, fontWeight: '800', color: CHIP_TONES.danger.fg }}>{'−'}{fmt(row.waste_cost)} {baseSymbol()}</Text>
+        <Text style={{ fontSize: 13, fontWeight: '800', color: CHIP_TONES.danger.fg }}>{'−'}{baseSymbol()}{fmt(row.waste_cost)}</Text>
       </View>
     </View>
   );
@@ -647,6 +648,7 @@ function WasteRowView({ row, isLast }: { row: WasteByMaterial; isLast: boolean }
 
 function DoctorRowView({ doc, isLast, revSlices }: { doc: DoctorRow; isLast: boolean; revSlices?: CurrencyTotal[] }) {
   const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const tone = doc.total_profit < 0 ? 'red' : (doc.avg_margin_pct ?? 100) < 20 ? 'yellow' : 'green';
   const chipTone = tone === 'red' ? CHIP_TONES.danger : tone === 'yellow' ? CHIP_TONES.warning : CHIP_TONES.success;
 
@@ -657,8 +659,8 @@ function DoctorRowView({ doc, isLast, revSlices }: { doc: DoctorRow; isLast: boo
         !isLast && { borderBottomWidth: 1, borderBottomColor: T.hairline },
       ]}
     >
-      <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ fontSize: 12, fontWeight: '800', color: '#2563EB' }}>
+      <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: isDark ? 'rgba(37,99,235,0.22)' : '#EFF6FF', alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ fontSize: 12, fontWeight: '800', color: isDark ? '#93C5FD' : '#2563EB' }}>
           {(doc.doctor_name ?? '—').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
         </Text>
       </View>
@@ -669,7 +671,7 @@ function DoctorRowView({ doc, isLast, revSlices }: { doc: DoctorRow; isLast: boo
           {doc.order_count} sipariş {'·'} {
             revSlices && revSlices.length
               ? revSlices.map(s => formatMoney(s.total, s.currency, { fractionDigits: 0 })).join(' · ')
-              : `${fmt(doc.total_revenue)} ${baseSymbol()}${origSuffix(doc.revenue_currency, doc.revenue_original)}`
+              : `${baseSymbol()}${fmt(doc.total_revenue)}${origSuffix(doc.revenue_currency, doc.revenue_original)}`
           } {autoT('gelir')}
         </Text>
       </View>
@@ -683,7 +685,7 @@ function DoctorRowView({ doc, isLast, revSlices }: { doc: DoctorRow; isLast: boo
               const pOrig = (Number(doc.revenue_original) || 0) * (doc.total_profit / doc.total_revenue);
               return `${pOrig >= 0 ? '+' : '−'}${sym}${fmt(Math.abs(pOrig))}`;
             }
-            return `${doc.total_profit >= 0 ? '+' : '−'}${fmt(Math.abs(doc.total_profit))} ${baseSymbol()}`;
+            return `${doc.total_profit >= 0 ? '+' : '−'}${baseSymbol()}${fmt(Math.abs(doc.total_profit))}`;
           })()}
         </Text>
         {doc.avg_margin_pct !== null && (

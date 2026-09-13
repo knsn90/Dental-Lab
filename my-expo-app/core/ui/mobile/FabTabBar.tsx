@@ -10,7 +10,7 @@ import { usePathname, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Home, ListChecks, Plus, MessageSquare, User, type LucideIcon,
-} from 'lucide-react-native';
+} from '../icons';
 import { isRTL } from '../../i18n';
 import { MOBILE_TOKENS, useMobileTokens } from '../../theme/mobileDesignTokens';
 
@@ -103,7 +103,7 @@ function TabCell({
           <Icon size={22} color={tint} strokeWidth={active ? 2.2 : 1.7} />
           {!!item.badgeCount && item.badgeCount > 0 && (
             // `end:` inline stili bu projede güvenilir değil → yönü açıkça seç
-            <View style={[s.countBadge, isRTL() ? { left: -10 } : { right: -10 }]}>
+            <View style={[s.countBadge, { borderColor: T.card }, isRTL() ? { left: -10 } : { right: -10 }]}>
               <Text style={s.countBadgeText}>{item.badgeCount > 99 ? '99+' : String(item.badgeCount)}</Text>
             </View>
           )}

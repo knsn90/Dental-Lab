@@ -265,6 +265,18 @@ function ItemRow({
     return uniq.length > 2 ? `${uniq.slice(0, 2).join(', ')} +${uniq.length - 2}` : uniq.join(', ');
   })();
 
+  // Tek bakışta vaka kimliği: HASTA başlıkta; iş tipi + diş no + renk alt satırda;
+  // hekim + klinik + teknisyen meta satırında. Hasta yoksa iş tipi başlığa düşer.
+  const hasPatient = !!(card.patient_name && card.patient_name.trim());
+  const titleText  = hasPatient ? card.patient_name!.trim() : workTypeLabel;
+  const toothStr   = Array.isArray(card.tooth_numbers) && card.tooth_numbers.length
+    ? card.tooth_numbers.join(', ') : '';
+  const detailLine = [
+    hasPatient ? workTypeLabel : '',
+    toothStr ? `${autoT('Diş')} ${toothStr}` : '',
+    card.shade ? `${autoT('Renk')} ${card.shade}` : '',
+  ].filter(Boolean).join('  ·  ');
+
   return (
     <View style={[r.rowOuter, !isLast && r.rowDivider]}>
       <View style={r.row}>
@@ -276,9 +288,9 @@ function ItemRow({
         {/* Gövde */}
         <TouchableOpacity onPress={onOpen} activeOpacity={0.7} style={r.body}>
           <View style={r.titleRow}>
-            {/* 2 satır: iş tipi adları uzun — başlığı butona sığdırmak için kırpmayız */}
-            <Text style={[r.title, isLate && { color: DANGER }]} numberOfLines={2}>
-              {workTypeLabel}
+            {/* Başlık = HASTA (yoksa iş tipi) — vakayı tanımlayan birincil bilgi */}
+            <Text style={[r.title, isLate && { color: DANGER }]} numberOfLines={1}>
+              {titleText}
             </Text>
             {isLate && (
               <Text style={r.lateText}>+{humanIdle(idleMs)}</Text>
@@ -289,10 +301,16 @@ function ItemRow({
               </View>
             )}
           </View>
+          {detailLine ? (
+            <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '500', color: C.ink2, marginTop: 1 }}>
+              {detailLine}
+            </Text>
+          ) : null}
           <Text style={r.meta} numberOfLines={1}>
             <Text style={r.metaStrong}>#{card.order_number}</Text>
             {card.doctor_name ? `  ·  ${card.doctor_name}` : ''}
-            {card.technician_name ? `  ·  ${card.technician_name}` : '  ·  Atanmadı'}
+            {card.clinic_name ? `  ·  ${card.clinic_name}` : ''}
+            {card.technician_name ? `  ·  ${card.technician_name}` : `  ·  ${autoT('Atanmadı')}`}
             {`  ·  ${deliveryText(card.delivery_date)}`}
           </Text>
         </TouchableOpacity>
@@ -636,7 +654,12 @@ export function ProductionKanbanScreen() {
   // istasyon panelinden tıklayınca kullanıcıyı lab paneline atıyordu.
   const panelBase = String((useSegments() as string[])?.[0] ?? '(lab)');
   const { profile } = useAuthStore();
-  const { width }   = useWindowDimensions();
+  const { width: winWidth } = useWindowDimensions();
+  // Ekran shell içinde (sol menü ~280px). Pencere değil GERÇEK konteyner
+  // genişliği kullanılmazsa rail+kolon hesabı şişer ve kolonlar rail kenarında
+  // kırpılır. onLayout ile ölçülen genişliği kullan (ölçülene dek pencereye düş).
+  const [measuredW, setMeasuredW] = useState(0);
+  const width = measuredW > 0 ? measuredW : winWidth;
   const isDesktop   = width >= 900;
   const isEmbedded  = useContext(HubContext);
 
@@ -763,9 +786,12 @@ export function ProductionKanbanScreen() {
   const visibleCount = filteredColumns.length || 1;
   // Sağ operasyon şeridi 1440px üstünde açılır; genişliği kolon hesabından düşülür.
   const RAIL_W    = 280;
-  const railOn    = isDesktop && width >= 1440;
+  // Rail, gerçek içerik genişliği yeterince genişse açılır ve 2-pane düzeninde
+  // sayfanın EN SAĞINA pinlenir; board solda kalan alanı doldurur (gerekirse
+  // yatay kaydırır). Eşik gerçek konteyner genişliğine göre (onLayout).
+  const railOn    = isDesktop && width >= 1180;
   const available = width - PAD * 2 - COL_GAP * Math.max(visibleCount - 1, 0)
-                    - (railOn ? RAIL_W + COL_GAP : 0);
+                    - (railOn ? RAIL_W + PAD * 2 : 0);
   const fits      = isDesktop && available / visibleCount >= COL_WIDTH;
   const colWidth  = fits ? Math.min(available / visibleCount, COL_MAX) : COL_WIDTH;
   // Kümenin gerçek genişliği — ortalamak için gerekli. `fits` dalında tüm
@@ -811,7 +837,11 @@ export function ProductionKanbanScreen() {
                                         onPress: () => setShowEmpty(v => !v), active: showEmpty });
 
   return (
-    <SafeAreaView style={[s.container]} edges={isEmbedded ? ([] as any) : ['top']}>
+    <SafeAreaView
+      style={[s.container]}
+      edges={isEmbedded ? ([] as any) : ['top']}
+      onLayout={(e) => { const w = e.nativeEvent.layout.width; if (w > 0 && Math.abs(w - measuredW) > 1) setMeasuredW(w); }}
+    >
       {/* ── Tek kontrol çubuğu: durum + arama + filtre + yenile ── */}
       {!loading && !error && (
         <View style={s.bar}>
@@ -885,43 +915,59 @@ export function ProductionKanbanScreen() {
             <Text style={s.retryText}>Tekrar Dene</Text>
           </TouchableOpacity>
         </View>
+      ) : railOn ? (
+        // Geniş içerik (≥1180): kolonlar YATAY kaydırılır, sağ operasyon rail'i
+        // sabit genişlikte EN SAĞA pinlenir → kolonlar rail'le çakışmaz/kırpılmaz.
+        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'stretch' }}>
+          {/* minWidth:0 KRİTİK — web'de flex çocuğu, taşan yatay-scroll içeriği
+              yüzünden min-content'e kadar küçülmüyordu; board sabit kalıp kolonlar
+              rail'in arkasına taşıyordu. minWidth:0 → board kalan alanı alır,
+              içerik kendi içinde kaydırılır; rail en sağda sabit kalır. */}
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={Platform.OS === 'web'}
+              style={{ flex: 1 }}
+              contentContainerStyle={{ padding: PAD, gap: COL_GAP, flexDirection: 'row', alignItems: 'flex-start' }}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={A} />}
+            >
+              {renderColumns()}
+            </ScrollView>
+          </View>
+          <ScrollView
+            // Genişlik = rail (280) + iki yanda 16px → OpsRail padding'i taşmadan
+            // oturur ve SAĞDA 16px sayfa boşluğu (PAGE_PADDING) korunur.
+            style={{ width: RAIL_W + PAD * 2, flexGrow: 0, flexShrink: 0, borderStartWidth: 1, borderStartColor: C.hairline }}
+            contentContainerStyle={{ paddingHorizontal: PAD, paddingVertical: PAD }}
+          >
+            <OpsRail columns={filteredColumns} allColumns={columns} C={C} width={RAIL_W} />
+          </ScrollView>
+        </View>
       ) : fits ? (
+        // Rail yok, tüm kolonlar sığıyor → tek satır, ortalanmış (wrap yok).
         <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={{ padding: PAD }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={A} />}
         >
-          {/* Pano ORTALANIR. Kolonlar `flex:1` içindeyken sola yaslanıyor, şerit
-              sağa çivileniyordu; 2-3 kolonlu günlerde aralarında 500px'lik boş
-              bir kanyon kalıyordu. Küme kendi genişliği kadar yer kaplayıp
-              ortalanınca boşluk iki kenara eşit dağılıyor. */}
           <View style={{
             flexDirection: 'row', gap: COL_GAP, alignItems: 'flex-start',
             alignSelf: 'center', maxWidth: boardWidth, width: '100%',
           }}>
-            <View style={{ flex: 1, flexDirection: 'row', gap: COL_GAP, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-              {renderColumns()}
-            </View>
-            {railOn ? <OpsRail columns={filteredColumns} allColumns={columns} C={C} width={RAIL_W} /> : null}
+            {renderColumns()}
           </View>
         </ScrollView>
       ) : (
-        <View style={{ flex: 1, flexDirection: 'row' }}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={Platform.OS === 'web'}
-            style={{ flex: 1 }}
-            contentContainerStyle={{ padding: PAD, gap: COL_GAP, flexDirection: 'row', alignItems: 'flex-start' }}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={A} />}
-          >
-            {renderColumns()}
-          </ScrollView>
-          {railOn ? (
-            <ScrollView style={{ width: RAIL_W + PAD }} contentContainerStyle={{ paddingEnd: PAD, paddingVertical: PAD }}>
-              <OpsRail columns={filteredColumns} allColumns={columns} C={C} width={RAIL_W} />
-            </ScrollView>
-          ) : null}
-        </View>
+        // Rail yok, sığmıyor → yatay kaydır.
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={Platform.OS === 'web'}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: PAD, gap: COL_GAP, flexDirection: 'row', alignItems: 'flex-start' }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={A} />}
+        >
+          {renderColumns()}
+        </ScrollView>
       )}
 
       {checklistFor && profile && (

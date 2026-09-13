@@ -43,7 +43,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useSegments } from 'expo-router';
-import { Search, X, SlidersHorizontal, ArrowUpDown, ChevronLeft, ChevronRight, Flame, Clock, LayoutList, Columns3, UserCheck, Pencil, Archive, Trash2, RotateCcw, AlertCircle, ShieldAlert, ListChecks, Camera, CornerDownLeft, CornerDownRight, Inbox } from 'lucide-react-native';
+import { Search, X, SlidersHorizontal, ArrowUpDown, ChevronLeft, ChevronRight, Flame, Clock, LayoutList, Columns3, UserCheck, Pencil, Archive, Trash2, RotateCcw, AlertCircle, ShieldAlert, ListChecks, Camera, CornerDownLeft, CornerDownRight, Inbox } from '../../../core/ui/icons';
 import { RowActionsMenu, type RowAction } from '../../../core/ui/RowActionsMenu';
 import { ScanWorkOrderModal } from '../components/ScanWorkOrderModal';
 // Admin düzenleme artık yeni-sipariş SİHİRBAZINI (aynı 4 adım) düzenleme modunda açar.
@@ -55,6 +55,7 @@ import { useAuthStore } from '../../../core/store/authStore';
 import { supabase } from '../../../core/api/supabase';
 import { bootMark } from '../../../core/debug/bootTrace';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useNavScrollProps } from '../../../core/ui/mobile/navScroll';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
@@ -127,6 +128,18 @@ function normaliseClinicOrders(orders: any[]): WorkOrder[] {
 // ── Display font ────────────────────────────────────────────────────
 const DISPLAY = { fontFamily: 'Inter Tight, Inter, system-ui, sans-serif' as const };
 
+// Koyu kartta okunmayan koyu ön-plan (status/accent) renkleri için açık karşılıkları.
+// Yalnız METİN/İKON önplanı için — arka plan/zemin rengi DEĞİŞMEZ.
+const DARK_FG: Record<string, string> = {
+  '#1E3A8A': '#93C5FD', '#1E5A8A': '#93C5FD', '#1F5689': '#93C5FD', '#3563A8': '#93C5FD',
+  '#0F6E50': '#6EE7B7', '#059669': '#6EE7B7', '#1F6B47': '#6EE7B7',
+  '#9C2E2E': '#FCA5A5', '#DC2626': '#FCA5A5',
+  '#92400E': '#E8B45E', '#B45309': '#E8B45E', '#D97706': '#E8B45E', '#9C5E0E': '#E8B45E',
+};
+function darkFg(isDark: boolean, fg: string, fallback?: string): string {
+  return isDark ? (DARK_FG[fg] ?? fallback ?? fg) : fg;
+}
+
 // ── Types ───────────────────────────────────────────────────────────
 type ViewMode = 'list' | 'kanban';
 type SortBy   = 'delivery_date' | 'created_at' | 'order_number' | 'is_urgent';
@@ -187,6 +200,9 @@ export function OrdersListScreenV2() {
   const insets = useSafeAreaInsets();
   // Ana sayfa (Lab/Admin/Doctor/Clinic dashboard) ile aynı bg tonu.
   const T = useMobileTokens();
+  // Floating navbar scroll farkındalığı (bkz. core/ui/mobile/navScroll.ts)
+  const navScrollProps = useNavScrollProps();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   // SlideTabBar cursor'ı beyaz metin basar → koyu ink şart (panel `primary`si
   // lab'da safran sarısı, beyaz yazıyla okunmaz). Ekranda zaten bir `panel`
   // değişkeni var, bu yüzden `panelTheme`.
@@ -257,7 +273,7 @@ export function OrdersListScreenV2() {
   // Page title
   const { setTitle: setPageTitle, clear: clearPageTitle } = usePageTitleStore();
   useEffect(() => {
-    setPageTitle('Siparişler', '');
+    setPageTitle('Siparişler', autoT('Tüm vakaların operasyonel görünümü'));
     return () => clearPageTitle();
   }, []);
 
@@ -486,35 +502,25 @@ export function OrdersListScreenV2() {
 
       {/* ── Unified Filter Bar — DESKTOP ONLY (mobile uses block below) ─── */}
       {isDesktop && (
-      <View className="px-4 pt-3 pb-2">
+      <View className="px-4 pt-3 pb-2" style={{ gap: 14 }}>
+        {/* Row 1 — İş-akışı sekmeleri: Onaylar/Kullanıcılar/Loglar ile AYNI kanonik SlideTabBar.
+            "Manuel" şeridin DIŞINDA (durum değil, ayrı gelen kutusu → Row 2'de). */}
+        <SlideTabBar
+          items={statusFilters.filter(f => f.value !== 'manual').map(f => ({ key: String(f.value), label: f.label, count: statusCounts[f.value] ?? 0 }))}
+          activeKey={String(statusFilter)}
+          onChange={(k) => { setStatusFilter(k as any); setUrgentOnly(false); setOverdueOnly(false); }}
+          accentColor={panelTheme.accent}
+          style={{ marginStart: -4 }}
+        />
+
+        {/* Row 2 — Filtre · sıralama · görünüm (İKİNCİL kontroller) */}
         <View className="flex-row items-center gap-2">
-          {/* Status tabs + Acil/Geciken — tek pill strip */}
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             className="flex-1"
             contentContainerStyle={{ gap: 6 }}
           >
-            {/* Onaylar / Kurumlar / Kullanıcılar ile AYNI bileşen, `sm` boyda —
-                yoğun liste sayfası olduğu için varsayılan boy fazla yer
-                kaplıyordu. "Manuel" ise şeridin DIŞINDA kaldı: o bir durum
-                değil ayrı bir gelen kutusu, sekmelerin arasına karışınca
-                "Teslim"den sonraki bir statü gibi okunuyordu. */}
-            <SlideTabBar
-              size="sm"
-              items={statusFilters
-                .filter(f => f.value !== 'manual')
-                .map(f => ({
-                  key: String(f.value),
-                  label: f.label,
-                  count: statusCounts[f.value] ?? 0,
-                }))}
-              activeKey={String(statusFilter)}
-              onChange={(k) => { setStatusFilter(k as any); setUrgentOnly(false); setOverdueOnly(false); }}
-              accentColor={panelTheme.accent}
-              style={{ marginStart: -3 }}
-            />
-
             {statusFilters.some(f => f.value === 'manual') && (() => {
               // Şeritle tutarlı: durum seçimi Acil/Geciken açıkken de geçerli
               // kalıyor (liste filtresi ikisini birlikte uyguluyor), dolayısıyla
@@ -525,16 +531,16 @@ export function OrdersListScreenV2() {
                   onPress={() => { setStatusFilter('manual'); setUrgentOnly(false); setOverdueOnly(false); }}
                   className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full"
                   style={{
-                    backgroundColor: active ? panelTheme.accent : '#FFFFFF',
-                    borderWidth: 1, borderColor: active ? 'transparent' : 'rgba(0,0,0,0.06)',
+                    backgroundColor: active ? panelTheme.accent : (isDark ? T.card : '#FFFFFF'),
+                    borderWidth: 1, borderColor: active ? 'transparent' : T.hairline,
                   }}
                 >
-                  <Inbox size={12} color={active ? '#FFFFFF' : '#6B6B6B'} strokeWidth={2} />
-                  <Text className="text-[11.5px] font-semibold" style={{ color: active ? '#FFFFFF' : '#6B6B6B' }}>
+                  <Inbox size={12} color={active ? '#FFFFFF' : T.ink2} strokeWidth={2} />
+                  <Text className="text-[11.5px] font-semibold" style={{ color: active ? '#FFFFFF' : T.ink2 }}>
                     Manuel
                   </Text>
                   {paperInboxCount > 0 && (
-                    <Text className="text-[10px] font-bold" style={{ color: active ? 'rgba(255,255,255,0.6)' : '#9A9A9A' }}>
+                    <Text className="text-[10px] font-bold" style={{ color: active ? 'rgba(255,255,255,0.6)' : T.ink3 }}>
                       {paperInboxCount}
                     </Text>
                   )}
@@ -545,15 +551,15 @@ export function OrdersListScreenV2() {
             {/* Acil / Geciken toggle pills */}
             <Pressable
               onPress={() => { setUrgentOnly(v => !v); if (!urgentOnly) setOverdueOnly(false); }}
-              className={`flex-row items-center gap-1.5 px-3 py-1.5 rounded-full ${urgentOnly ? '' : 'bg-white border border-black/[0.06]'}`}
-              style={urgentOnly ? { backgroundColor: 'rgba(217,119,6,0.12)' } : undefined}
+              className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full"
+              style={urgentOnly ? { backgroundColor: 'rgba(217,119,6,0.12)' } : { backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: 1, borderColor: T.hairline }}
             >
-              <Flame size={12} color={urgentOnly ? '#D97706' : '#9A9A9A'} strokeWidth={1.8} />
-              <Text className={`text-[12px] font-semibold ${urgentOnly ? '' : 'text-ink-500'}`} style={urgentOnly ? { color: '#D97706' } : undefined}>
+              <Flame size={12} color={urgentOnly ? '#D97706' : T.ink3} strokeWidth={1.8} />
+              <Text className="text-[12px] font-semibold" style={urgentOnly ? { color: '#D97706' } : { color: T.ink2 }}>
                 Acil
               </Text>
               {urgentCount > 0 && (
-                <Text className={`text-[10px] font-bold ${urgentOnly ? '' : 'text-ink-400'}`} style={urgentOnly ? { color: '#D97706', opacity: 0.7 } : undefined}>
+                <Text className="text-[10px] font-bold" style={urgentOnly ? { color: '#D97706', opacity: 0.7 } : { color: T.ink3 }}>
                   {urgentCount}
                 </Text>
               )}
@@ -561,15 +567,15 @@ export function OrdersListScreenV2() {
 
             <Pressable
               onPress={() => { setOverdueOnly(v => !v); if (!overdueOnly) setUrgentOnly(false); }}
-              className={`flex-row items-center gap-1.5 px-3 py-1.5 rounded-full ${overdueOnly ? '' : 'bg-white border border-black/[0.06]'}`}
-              style={overdueOnly ? { backgroundColor: 'rgba(220,38,38,0.12)' } : undefined}
+              className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full"
+              style={overdueOnly ? { backgroundColor: 'rgba(220,38,38,0.12)' } : { backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: 1, borderColor: T.hairline }}
             >
-              <Clock size={12} color={overdueOnly ? '#DC2626' : '#9A9A9A'} strokeWidth={1.8} />
-              <Text className={`text-[12px] font-semibold ${overdueOnly ? '' : 'text-ink-500'}`} style={overdueOnly ? { color: '#DC2626' } : undefined}>
+              <Clock size={12} color={overdueOnly ? '#DC2626' : T.ink3} strokeWidth={1.8} />
+              <Text className="text-[12px] font-semibold" style={overdueOnly ? { color: '#DC2626' } : { color: T.ink2 }}>
                 Geciken
               </Text>
               {overdueCount > 0 && (
-                <Text className={`text-[10px] font-bold ${overdueOnly ? '' : 'text-ink-400'}`} style={overdueOnly ? { color: '#DC2626', opacity: 0.7 } : undefined}>
+                <Text className="text-[10px] font-bold" style={overdueOnly ? { color: '#DC2626', opacity: 0.7 } : { color: T.ink3 }}>
                   {overdueCount}
                 </Text>
               )}
@@ -582,11 +588,11 @@ export function OrdersListScreenV2() {
                 className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full"
                 style={showArchived
                   ? { backgroundColor: 'rgba(217,119,6,0.14)', borderWidth: 1, borderColor: 'rgba(217,119,6,0.28)' }
-                  : { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' }
+                  : { backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: 1, borderColor: T.hairline }
                 }
               >
-                <Archive size={12} color={showArchived ? '#92400E' : '#9A9A9A'} strokeWidth={1.8} />
-                <Text className="text-[12px] font-semibold" style={{ color: showArchived ? '#92400E' : '#6B6B6B' }}>
+                <Archive size={12} color={showArchived ? '#92400E' : T.ink3} strokeWidth={1.8} />
+                <Text className="text-[12px] font-semibold" style={{ color: showArchived ? '#92400E' : T.ink2 }}>
                   {showArchived ? 'Arşivde' : 'Arşiv'}
                 </Text>
               </Pressable>
@@ -600,39 +606,42 @@ export function OrdersListScreenV2() {
           {/* Search */}
           {searchOpen ? (
             <View
-              className="flex-row items-center gap-2 rounded-full bg-white border border-black/[0.08] px-3 h-8"
+              className="flex-row items-center gap-2 rounded-full px-3 h-8"
               style={{
                 minWidth: 200,
+                backgroundColor: isDark ? T.card : '#FFFFFF',
+                borderWidth: 1, borderColor: T.hairline,
                 // @ts-ignore
-                boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                boxShadow: isDark ? 'none' : '0 2px 8px rgba(0,0,0,0.06)',
               }}
             >
-              <Search size={14} color="#6B6B6B" strokeWidth={1.8} />
+              <Search size={14} color={T.ink2} strokeWidth={1.8} />
               <TextInput
-                className="flex-1 text-[13px] text-ink-900"
+                className="flex-1 text-[13px]"
                 placeholder="Sipariş, hasta, hekim ara..."
-                placeholderTextColor="#9A9A9A"
+                placeholderTextColor={T.ink3 as string}
                 value={search}
                 onChangeText={setSearch}
                 autoFocus
                 returnKeyType="search"
                 onBlur={() => { if (!search) setSearchOpen(false); }}
-                // @ts-ignore web
-                style={{ outlineStyle: 'none' }}
+                style={{ color: T.ink, outlineStyle: 'none' } as any}
               />
               {search.length > 0 && (
                 <Pressable onPress={() => { setSearch(''); setSearchOpen(false); }}>
-                  <X size={13} color="#6B6B6B" strokeWidth={2} />
+                  <X size={13} color={T.ink2} strokeWidth={2} />
                 </Pressable>
               )}
             </View>
           ) : (
             <Pressable
               onPress={() => setSearchOpen(true)}
-              className="w-8 h-8 rounded-full bg-white border border-black/[0.06] items-center justify-center"
+              className="w-8 h-8 rounded-full items-center justify-center"
               style={{
+                backgroundColor: isDark ? T.card : '#FFFFFF',
+                borderWidth: 1, borderColor: T.hairline,
                 // @ts-ignore
-                boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                boxShadow: isDark ? 'none' : '0 2px 8px rgba(0,0,0,0.06)',
               }}
             >
               <Search size={15} color={search ? T.ink : T.ink2} strokeWidth={1.8} />
@@ -642,28 +651,32 @@ export function OrdersListScreenV2() {
           {/* Sort */}
           <Pressable
             onPress={() => setSortOpen(true)}
-            className="w-8 h-8 rounded-full bg-white border border-black/[0.06] items-center justify-center"
+            className="w-8 h-8 rounded-full items-center justify-center"
             style={{
+              backgroundColor: isDark ? T.card : '#FFFFFF',
+              borderWidth: 1, borderColor: T.hairline,
               // @ts-ignore
-              boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+              boxShadow: isDark ? 'none' : '0 2px 8px rgba(0,0,0,0.06)',
             }}
           >
-            <ArrowUpDown size={15} color="#6B6B6B" strokeWidth={1.8} />
+            <ArrowUpDown size={15} color={T.ink2} strokeWidth={1.8} />
           </Pressable>
 
           {/* View toggle */}
-          <View className="flex-row p-0.5 rounded-full bg-cream-panel">
+          <View className="flex-row p-0.5 rounded-full bg-cream-panel" style={isDark ? { backgroundColor: T.cardSoft } : undefined}>
             <Pressable
               onPress={() => setViewMode('list')}
-              className={`px-2 py-1 rounded-full ${viewMode === 'list' ? 'bg-ink-900' : ''}`}
+              className="px-2 py-1 rounded-full"
+              style={{ backgroundColor: viewMode === 'list' ? T.ink : 'transparent' }}
             >
-              <LayoutList size={14} color={viewMode === 'list' ? '#FFF' : '#6B6B6B'} strokeWidth={1.8} />
+              <LayoutList size={14} color={viewMode === 'list' ? '#FFF' : T.ink2} strokeWidth={1.8} />
             </Pressable>
             <Pressable
               onPress={() => setViewMode('kanban')}
-              className={`px-2 py-1 rounded-full ${viewMode === 'kanban' ? 'bg-ink-900' : ''}`}
+              className="px-2 py-1 rounded-full"
+              style={{ backgroundColor: viewMode === 'kanban' ? T.ink : 'transparent' }}
             >
-              <Columns3 size={14} color={viewMode === 'kanban' ? '#FFF' : '#6B6B6B'} strokeWidth={1.8} />
+              <Columns3 size={14} color={viewMode === 'kanban' ? '#FFF' : T.ink2} strokeWidth={1.8} />
             </Pressable>
           </View>
         </View>
@@ -676,30 +689,31 @@ export function OrdersListScreenV2() {
           {/* Search + Sort row */}
           <View className="flex-row items-center" style={{ gap: 8 }}>
             <View
-              className="flex-1 flex-row items-center bg-white rounded-2xl px-3"
-              style={{ height: 40, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' }}
+              className="flex-1 flex-row items-center rounded-2xl px-3"
+              style={{ height: 40, borderWidth: 1, borderColor: T.hairline, backgroundColor: isDark ? T.card : '#FFFFFF' }}
             >
-              <Search size={16} color="#6B6B6B" strokeWidth={1.8} />
+              <Search size={16} color={T.ink2} strokeWidth={1.8} />
               <TextInput
-                className="flex-1 ms-2 text-[14px] text-ink-900"
+                className="flex-1 ms-2 text-[14px]"
                 placeholder="Sipariş, hasta, hekim ara"
-                placeholderTextColor="#9A9A9A"
+                placeholderTextColor={T.ink3 as string}
                 value={search}
                 onChangeText={setSearch}
                 returnKeyType="search"
+                style={{ color: T.ink }}
               />
               {search.length > 0 && (
                 <Pressable onPress={() => setSearch('')} hitSlop={8}>
-                  <X size={15} color="#6B6B6B" strokeWidth={2} />
+                  <X size={15} color={T.ink2} strokeWidth={2} />
                 </Pressable>
               )}
             </View>
             <Pressable
               onPress={() => setSortOpen(true)}
-              className="bg-white items-center justify-center rounded-2xl"
-              style={{ width: 40, height: 40, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' }}
+              className="items-center justify-center rounded-2xl"
+              style={{ width: 40, height: 40, borderWidth: 1, borderColor: T.hairline, backgroundColor: isDark ? T.card : '#FFFFFF' }}
             >
-              <ArrowUpDown size={16} color="#0A0A0A" strokeWidth={1.8} />
+              <ArrowUpDown size={16} color={T.ink} strokeWidth={1.8} />
             </Pressable>
           </View>
 
@@ -716,13 +730,13 @@ export function OrdersListScreenV2() {
                 <Pressable
                   key={f.value}
                   onPress={() => { setStatusFilter(f.value); setUrgentOnly(false); setOverdueOnly(false); }}
-                  className={`flex-row items-center rounded-full px-3.5 ${active ? 'bg-ink-900' : 'bg-white'}`}
-                  style={{ height: 32, borderWidth: 1, borderColor: active ? 'transparent' : 'rgba(0,0,0,0.06)', gap: 6 }}
+                  className="flex-row items-center rounded-full px-3.5"
+                  style={{ height: 32, borderWidth: 1, borderColor: active ? 'transparent' : T.hairline, gap: 6, backgroundColor: active ? T.ink : (isDark ? T.card : '#FFFFFF') }}
                 >
-                  <Text className={`text-[13px] font-semibold ${active ? 'text-white' : 'text-ink-700'}`}>
+                  <Text className="text-[13px] font-semibold" style={{ color: active ? '#FFFFFF' : T.ink2 }}>
                     {f.label}
                   </Text>
-                  <Text className={`text-[11px] font-bold ${active ? 'text-white/60' : 'text-ink-400'}`}>
+                  <Text className="text-[11px] font-bold" style={{ color: active ? 'rgba(255,255,255,0.6)' : T.ink3 }}>
                     {count}
                   </Text>
                 </Pressable>
@@ -738,17 +752,17 @@ export function OrdersListScreenV2() {
               style={{
                 height: 30,
                 gap: 5,
-                backgroundColor: urgentOnly ? 'rgba(217,119,6,0.12)' : '#FFFFFF',
+                backgroundColor: urgentOnly ? 'rgba(217,119,6,0.12)' : (isDark ? T.card : '#FFFFFF'),
                 borderWidth: 1,
-                borderColor: urgentOnly ? 'rgba(217,119,6,0.25)' : 'rgba(0,0,0,0.06)',
+                borderColor: urgentOnly ? 'rgba(217,119,6,0.25)' : T.hairline,
               }}
             >
-              <Flame size={13} color={urgentOnly ? '#D97706' : '#9A9A9A'} strokeWidth={1.8} />
-              <Text className={`text-[12px] font-semibold ${urgentOnly ? '' : 'text-ink-500'}`} style={urgentOnly ? { color: '#D97706' } : undefined}>
+              <Flame size={13} color={urgentOnly ? '#D97706' : T.ink3} strokeWidth={1.8} />
+              <Text className="text-[12px] font-semibold" style={urgentOnly ? { color: '#D97706' } : { color: T.ink2 }}>
                 Acil
               </Text>
               {urgentCount > 0 && (
-                <Text className={`text-[10px] font-bold ${urgentOnly ? '' : 'text-ink-400'}`} style={urgentOnly ? { color: '#D97706', opacity: 0.7 } : undefined}>
+                <Text className="text-[10px] font-bold" style={urgentOnly ? { color: '#D97706', opacity: 0.7 } : { color: T.ink3 }}>
                   {urgentCount}
                 </Text>
               )}
@@ -760,17 +774,17 @@ export function OrdersListScreenV2() {
               style={{
                 height: 30,
                 gap: 5,
-                backgroundColor: overdueOnly ? 'rgba(220,38,38,0.12)' : '#FFFFFF',
+                backgroundColor: overdueOnly ? 'rgba(220,38,38,0.12)' : (isDark ? T.card : '#FFFFFF'),
                 borderWidth: 1,
-                borderColor: overdueOnly ? 'rgba(220,38,38,0.25)' : 'rgba(0,0,0,0.06)',
+                borderColor: overdueOnly ? 'rgba(220,38,38,0.25)' : T.hairline,
               }}
             >
-              <Clock size={13} color={overdueOnly ? '#DC2626' : '#9A9A9A'} strokeWidth={1.8} />
-              <Text className={`text-[12px] font-semibold ${overdueOnly ? '' : 'text-ink-500'}`} style={overdueOnly ? { color: '#DC2626' } : undefined}>
+              <Clock size={13} color={overdueOnly ? '#DC2626' : T.ink3} strokeWidth={1.8} />
+              <Text className="text-[12px] font-semibold" style={overdueOnly ? { color: '#DC2626' } : { color: T.ink2 }}>
                 Geciken
               </Text>
               {overdueCount > 0 && (
-                <Text className={`text-[10px] font-bold ${overdueOnly ? '' : 'text-ink-400'}`} style={overdueOnly ? { color: '#DC2626', opacity: 0.7 } : undefined}>
+                <Text className="text-[10px] font-bold" style={overdueOnly ? { color: '#DC2626', opacity: 0.7 } : { color: T.ink3 }}>
                   {overdueCount}
                 </Text>
               )}
@@ -819,13 +833,14 @@ export function OrdersListScreenV2() {
             paddingTop: 4,
             paddingBottom: 120,
           }}
-          refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor="#0A0A0A" />}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={T.ink as string} />}
           showsVerticalScrollIndicator={false}
+          {...navScrollProps}
         >
           {loading && filtered.length === 0 ? (
             <View className="py-16 items-center">
-              <ActivityIndicator color="#0A0A0A" />
-              <Text className="text-[13px] text-ink-400 mt-3">Yükleniyor…</Text>
+              <ActivityIndicator color={T.ink as string} />
+              <Text className="text-[13px] mt-3" style={{ color: T.ink3 }}>Yükleniyor…</Text>
             </View>
           ) : filtered.length === 0 ? (
             <EmptyStateV2 search={search} hasFilters={urgentOnly || overdueOnly || statusFilter !== 'all'} />
@@ -878,9 +893,18 @@ export function OrdersListScreenV2() {
               return out;
             };
 
-            const mainOrders = nestRevisions(
-              filtered.filter(o => !isTriagePending(o) && !pulledParentIds.has(o.id))
-            );
+            // DÜZ liste (yığma yok): her sipariş kendi satırı. İlişki (devam/revizyon)
+            // bir sonraki adımda HASTA alt-satırı + VAKA meta olarak gösterilir → __relType/__parentNo.
+            const byIdMain = new Map(filtered.map((o: any) => [o.id, o]));
+            const mainOrders = filtered
+              .filter(o => !isTriagePending(o) && !pulledParentIds.has(o.id))
+              .map((o: any) => {
+                const pid = o.revision_of_id ?? o.continues_order_id;
+                if (!pid) return o;
+                const isCont = !o.revision_of_id && !!o.continues_order_id;
+                const parent = byIdMain.get(pid);
+                return { ...o, __relType: isCont ? 'devam' : 'revizyon', __parentNo: parent?.order_number ?? null };
+              });
 
             return (
               <View style={{ gap: 18 }}>
@@ -928,6 +952,7 @@ export function OrdersListScreenV2() {
                       orders={mainOrders}
                       isManager={isManager}
                       isAdmin={isAdmin}
+                      paginate
                       onPress={onCardPress}
                       onAssign={onAssignPress}
                       onEdit={setAdminEditTarget}
@@ -967,15 +992,18 @@ export function OrdersListScreenV2() {
         >
           <Pressable
             onPress={e => e.stopPropagation()}
-            className="bg-white rounded-3xl overflow-hidden w-full"
+            className="rounded-3xl overflow-hidden w-full"
             style={{
               maxWidth: 380,
+              backgroundColor: isDark ? T.card : '#FFFFFF',
+              borderWidth: isDark ? 1 : 0,
+              borderColor: isDark ? T.hairline : 'transparent',
               // @ts-ignore
               boxShadow: '0 24px 64px rgba(0,0,0,0.18)',
             }}
           >
             <View className="px-5 pt-5 pb-3">
-              <Text className="text-[11px] font-semibold uppercase text-ink-400" style={{ letterSpacing: 1.1 }}>
+              <Text className="text-[11px] font-semibold uppercase" style={{ letterSpacing: 1.1, color: T.ink3 }}>
                 Sıralama
               </Text>
             </View>
@@ -985,13 +1013,14 @@ export function OrdersListScreenV2() {
                 <Pressable
                   key={opt.value}
                   onPress={() => setSortBy(opt.value)}
-                  className={`flex-row items-center justify-between px-5 py-3.5 ${i > 0 ? 'border-t border-black/[0.04]' : ''}`}
+                  className="flex-row items-center justify-between px-5 py-3.5"
+                  style={i > 0 ? { borderTopWidth: 1, borderTopColor: T.hairline2 } : undefined}
                 >
-                  <Text className={`text-[14px] ${active ? 'font-semibold text-ink-900' : 'font-medium text-ink-600'}`}>
+                  <Text className={`text-[14px] ${active ? 'font-semibold' : 'font-medium'}`} style={{ color: active ? T.ink : T.ink2 }}>
                     {opt.label}
                   </Text>
                   {active && (
-                    <View className="w-5 h-5 rounded-full bg-ink-900 items-center justify-center">
+                    <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: T.ink }}>
                       <Text className="text-[10px] text-white font-bold">✓</Text>
                     </View>
                   )}
@@ -1000,24 +1029,26 @@ export function OrdersListScreenV2() {
             })}
 
             <View className="px-5 pt-4 pb-2">
-              <Text className="text-[11px] font-semibold uppercase text-ink-400" style={{ letterSpacing: 1.1 }}>
+              <Text className="text-[11px] font-semibold uppercase" style={{ letterSpacing: 1.1, color: T.ink3 }}>
                 Yön
               </Text>
             </View>
             <View className="flex-row gap-2 px-5 pb-4">
               <Pressable
                 onPress={() => setSortDir('asc')}
-                className={`flex-1 py-2.5 rounded-xl items-center ${sortDir === 'asc' ? 'bg-ink-900' : 'bg-cream-panel'}`}
+                className="flex-1 py-2.5 rounded-xl items-center"
+                style={{ backgroundColor: sortDir === 'asc' ? T.ink : T.cardSoft }}
               >
-                <Text className={`text-[13px] font-semibold ${sortDir === 'asc' ? 'text-white' : 'text-ink-700'}`}>
+                <Text className="text-[13px] font-semibold" style={{ color: sortDir === 'asc' ? '#FFFFFF' : T.ink2 }}>
                   Artan ↑
                 </Text>
               </Pressable>
               <Pressable
                 onPress={() => setSortDir('desc')}
-                className={`flex-1 py-2.5 rounded-xl items-center ${sortDir === 'desc' ? 'bg-ink-900' : 'bg-cream-panel'}`}
+                className="flex-1 py-2.5 rounded-xl items-center"
+                style={{ backgroundColor: sortDir === 'desc' ? T.ink : T.cardSoft }}
               >
-                <Text className={`text-[13px] font-semibold ${sortDir === 'desc' ? 'text-white' : 'text-ink-700'}`}>
+                <Text className="text-[13px] font-semibold" style={{ color: sortDir === 'desc' ? '#FFFFFF' : T.ink2 }}>
                   Azalan ↓
                 </Text>
               </Pressable>
@@ -1025,9 +1056,10 @@ export function OrdersListScreenV2() {
 
             <Pressable
               onPress={() => setSortOpen(false)}
-              className="mx-5 mb-5 py-3 rounded-xl bg-cream-panel items-center"
+              className="mx-5 mb-5 py-3 rounded-xl items-center"
+              style={{ backgroundColor: T.cardSoft }}
             >
-              <Text className="text-[14px] font-semibold text-ink-900">Tamam</Text>
+              <Text className="text-[14px] font-semibold" style={{ color: T.ink }}>Tamam</Text>
             </Pressable>
           </Pressable>
         </Pressable>
@@ -1042,26 +1074,29 @@ export function OrdersListScreenV2() {
         >
           <Pressable
             onPress={e => e.stopPropagation()}
-            className="bg-white rounded-3xl overflow-hidden w-full"
+            className="rounded-3xl overflow-hidden w-full"
             style={{
               maxWidth: 380,
+              backgroundColor: isDark ? T.card : '#FFFFFF',
+              borderWidth: isDark ? 1 : 0,
+              borderColor: isDark ? T.hairline : 'transparent',
               // @ts-ignore
               boxShadow: '0 24px 64px rgba(0,0,0,0.18)',
             }}
           >
             <View className="px-5 pt-5 pb-3 flex-row items-center gap-2">
-              <UserCheck size={16} color="#0A0A0A" strokeWidth={1.8} />
-              <Text className="text-[14px] font-semibold text-ink-900">
+              <UserCheck size={16} color={T.ink as string} strokeWidth={1.8} />
+              <Text className="text-[14px] font-semibold" style={{ color: T.ink }}>
                 {assignTarget ? `#${assignTarget.order_number} → Teknisyen` : 'Atama'}
               </Text>
             </View>
             {loadingTechs ? (
               <View className="py-8 items-center">
-                <ActivityIndicator color="#0A0A0A" />
+                <ActivityIndicator color={T.ink as string} />
               </View>
             ) : technicians.length === 0 ? (
               <View className="py-8 items-center">
-                <Text className="text-[13px] text-ink-400">Teknisyen bulunamadı</Text>
+                <Text className="text-[13px]" style={{ color: T.ink3 }}>Teknisyen bulunamadı</Text>
               </View>
             ) : (
               <ScrollView style={{ maxHeight: 360 }}>
@@ -1070,18 +1105,19 @@ export function OrdersListScreenV2() {
                     key={t.id}
                     onPress={() => onAssignConfirm(t.id)}
                     disabled={assigning}
-                    className={`flex-row items-center justify-between px-5 py-3.5 ${i > 0 ? 'border-t border-black/[0.04]' : ''} ${assigning ? 'opacity-50' : ''}`}
+                    className={`flex-row items-center justify-between px-5 py-3.5 ${assigning ? 'opacity-50' : ''}`}
+                    style={i > 0 ? { borderTopWidth: 1, borderTopColor: T.hairline2 } : undefined}
                   >
                     <View className="flex-row items-center gap-2.5">
-                      <View className="w-8 h-8 rounded-full bg-ink-100 items-center justify-center">
-                        <Text className="text-[12px] font-semibold text-ink-700">
+                      <View className="w-8 h-8 rounded-full items-center justify-center" style={{ backgroundColor: T.cardSoft }}>
+                        <Text className="text-[12px] font-semibold" style={{ color: T.ink2 }}>
                           {(t.full_name as string).split(' ').map((p: string) => p[0]).join('').slice(0, 2)}
                         </Text>
                       </View>
-                      <Text className="text-[14px] font-medium text-ink-900">{t.full_name}</Text>
+                      <Text className="text-[14px] font-medium" style={{ color: T.ink }}>{t.full_name}</Text>
                     </View>
                     {t.role === 'manager' && (
-                      <Text className="text-[11px] text-ink-400">Müdür</Text>
+                      <Text className="text-[11px]" style={{ color: T.ink3 }}>Müdür</Text>
                     )}
                   </Pressable>
                 ))}
@@ -1089,9 +1125,10 @@ export function OrdersListScreenV2() {
             )}
             <Pressable
               onPress={() => setAssignModalVisible(false)}
-              className="mx-5 mb-5 mt-2 py-3 rounded-xl bg-cream-panel items-center"
+              className="mx-5 mb-5 mt-2 py-3 rounded-xl items-center"
+              style={{ backgroundColor: T.cardSoft }}
             >
-              <Text className="text-[14px] font-semibold text-ink-900">Kapat</Text>
+              <Text className="text-[14px] font-semibold" style={{ color: T.ink }}>Kapat</Text>
             </Pressable>
           </Pressable>
         </Pressable>
@@ -1111,8 +1148,8 @@ export function OrdersListScreenV2() {
       {adminEditTarget && (
         <Modal visible transparent animationType="fade" onRequestClose={() => setAdminEditTarget(null)}>
           <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', alignItems: 'center', justifyContent: 'center', padding: width >= 768 ? 24 : 0 }}>
-            <View style={{ width: '100%', maxWidth: 1120, flex: 1, maxHeight: width >= 768 ? '94%' : '100%', borderRadius: width >= 768 ? 20 : 0, overflow: 'hidden', backgroundColor: '#F1F5F9', ...(Platform.OS === 'web' ? ({ boxShadow: '0 24px 60px rgba(15,23,42,0.28)' } as any) : {}) }}>
-              <React.Suspense fallback={<View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color="#0A0A0A" /></View>}>
+            <View style={{ width: '100%', maxWidth: 1120, flex: 1, maxHeight: width >= 768 ? '94%' : '100%', borderRadius: width >= 768 ? 20 : 0, overflow: 'hidden', backgroundColor: isDark ? T.bg : '#F1F5F9', ...(Platform.OS === 'web' ? ({ boxShadow: '0 24px 60px rgba(15,23,42,0.28)' } as any) : {}) }}>
+              <React.Suspense fallback={<View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={T.ink as string} /></View>}>
                 <NewOrderEditWizard
                   panel={panel as any}
                   editOrderId={(adminEditTarget as any).id}
@@ -1322,7 +1359,7 @@ const MobileOrderCard = React.memo(function MobileOrderCard({ order, isManager, 
   const dText   = deliveryText(order.delivery_date, order.status, (order as any).hold_status);
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
-  const dColor  = isLate ? '#DC2626' : diff <= 1 && order.status !== 'teslim_edildi' ? '#D97706' : T.ink2;
+  const dColor  = darkFg(isDark, isLate ? '#DC2626' : diff <= 1 && order.status !== 'teslim_edildi' ? '#D97706' : T.ink2 as string);
   const canAssign = isManager && order.status === 'alindi' && !order.assigned_to;
   const needsTriage = order.status === 'alindi' && !(order as any).triaged_at;
 
@@ -1374,13 +1411,13 @@ const MobileOrderCard = React.memo(function MobileOrderCard({ order, isManager, 
         <View className="flex-row items-center gap-2">
           <Text
             className="text-[15px] font-semibold flex-1"
-            style={isLate ? { color: '#DC2626' } : { color: T.ink }}
+            style={isLate ? { color: darkFg(isDark, '#DC2626') } : { color: T.ink }}
             numberOfLines={1}
           >
             {patientTitle}
           </Text>
           {order.is_urgent && (
-            <Text style={{ fontSize: 8.5, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', color: '#9C2E2E' }}>
+            <Text style={{ fontSize: 8.5, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', color: darkFg(isDark, '#9C2E2E') }}>
               Acil
             </Text>
           )}
@@ -1402,7 +1439,7 @@ const MobileOrderCard = React.memo(function MobileOrderCard({ order, isManager, 
           )}
           {!needsTriage && stagesTotal > 0 && (
             <View className="flex-row items-center gap-1.5" style={{ marginStart: 2 }}>
-              <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+              <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: isDark ? '#30302D' : 'rgba(0,0,0,0.08)', overflow: 'hidden' }}>
                 <View style={{ width: `${progressPct}%`, height: '100%', borderRadius: 2, backgroundColor: barColor }} />
               </View>
               <Text style={{ fontSize: 10, fontWeight: '600', color: T.ink3 }}>{isDone ? `${stagesTotal}/${stagesTotal}` : `${stagesDone}/${stagesTotal}`}</Text>
@@ -1416,13 +1453,13 @@ const MobileOrderCard = React.memo(function MobileOrderCard({ order, isManager, 
           {needsTriage ? (
             <View className="px-2 py-0.5 rounded flex-row items-center gap-1" style={{ backgroundColor: '#D97706' }}>
               <Text className="text-[10px] font-bold" style={{ color: '#FFF', letterSpacing: 0.3 }}>
-                PLANLAMA BEKLİYOR
+                {autoT('Planlama Bekliyor').toUpperCase()}
               </Text>
             </View>
           ) : (
             <View className="px-2 py-0.5 rounded" style={{ backgroundColor: (onHold ? '#E89B2A' : stageColor) + '14' }}>
-              <Text className="text-[10px] font-bold" style={{ color: onHold ? '#9C5E0E' : stageColor, letterSpacing: 0.3 }}>
-                {onHold ? 'DURAKLATILDI' : getOrderStageLabel(order as any).toUpperCase()}
+              <Text className="text-[10px] font-bold" style={{ color: onHold ? darkFg(isDark, '#9C5E0E') : stageColor, letterSpacing: 0.3 }}>
+                {(onHold ? autoT('Duraklatıldı') : autoT(getOrderStageLabel(order as any))).toUpperCase()}
               </Text>
             </View>
           )}
@@ -1439,7 +1476,8 @@ const MobileOrderCard = React.memo(function MobileOrderCard({ order, isManager, 
         ) : canAssign ? (
           <Pressable
             onPress={e => { (e as any).stopPropagation?.(); onAssign(order); }}
-            className="px-3 py-1 rounded-full bg-ink-900"
+            className="px-3 py-1 rounded-full"
+            style={{ backgroundColor: T.ink }}
           >
             <Text className="text-[11px] font-semibold text-white">Ata</Text>
           </Pressable>
@@ -1455,7 +1493,7 @@ const MobileOrderCard = React.memo(function MobileOrderCard({ order, isManager, 
 // ═══════════════════════════════════════════════════════════════════════
 // DESKTOP TABLE
 // ═══════════════════════════════════════════════════════════════════════
-function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, onArchive, onDelete, footerTitle, footerColor }: {
+function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, onArchive, onDelete, footerTitle, footerColor, paginate }: {
   orders: WorkOrder[];
   isManager: boolean;
   isAdmin?: boolean;
@@ -1468,12 +1506,24 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
   footerTitle?: string;
   /** Footer title rengi */
   footerColor?: string;
+  /** Ana listede sayfalama (referans: sayfa başına birkaç kayıt, ferah görünüm) */
+  paginate?: boolean;
 }) {
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   // Avatar: lab tarafı panellerde klinik logosu, klinik/hekimde hasta baş harfleri
   const tablePanel = detectPanel(useSegments() as string[]);
   const headColor = T.ink3;
+
+  // ── Sayfalama (yalnız ana liste) ──
+  const PAGE_SIZE = 25;
+  const [page, setPage] = useState(0);
+  const totalPages = paginate ? Math.max(1, Math.ceil(orders.length / PAGE_SIZE)) : 1;
+  const safePage = Math.min(page, totalPages - 1);
+  useEffect(() => { if (page > totalPages - 1) setPage(0); }, [totalPages, page]);
+  const pageOrders = paginate ? orders.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE) : orders;
+  const firstIdx = safePage * PAGE_SIZE;
+
   return (
     <View
       className="rounded-3xl overflow-hidden"
@@ -1481,41 +1531,33 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
     >
       {/* Column header */}
       <View className="flex-row px-5 py-3 border-b" style={{ backgroundColor: isDark ? T.cardSoft : '#FAFAFA', borderBottomColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }}>
-        <Text className="uppercase" style={{ width: 90, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
-          No
-        </Text>
-        <Text className="uppercase" style={{ flex: 2, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
+        <Text className="uppercase" style={{ flex: 30, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
           Hasta
         </Text>
-        <Text className="uppercase" style={{ flex: 1.8, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
+        <Text className="uppercase" style={{ flex: 27, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
           Vaka
         </Text>
-        <Text className="uppercase" style={{ flex: 1.6, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
+        <Text className="uppercase" style={{ flex: 17, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
           Hekim
         </Text>
-        <Text className="uppercase" style={{ flex: 1.2, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
+        <Text className="uppercase" style={{ flex: 12, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
           Oluşturma
         </Text>
-        <Text className="uppercase" style={{ flex: 1.2, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
-          Teslim
-        </Text>
-        <Text className="uppercase" style={{ flex: 1.6, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
+        <Text className="uppercase" style={{ flex: 14, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
           Durum
         </Text>
-        <Text className="uppercase" style={{ textAlign: 'end' as any, width: 92, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
-          {' '}
-        </Text>
+        <View style={{ width: 36 }} />
       </View>
 
       {/* Table body */}
-      {orders.map((order, i) => (
+      {pageOrders.map((order, i) => (
         <DesktopRow
           useClinicLogoAvatar={tablePanel !== 'clinic' && tablePanel !== 'doctor'}
           key={order.id}
           order={order}
           isManager={isManager}
           isAdmin={isAdmin}
-          isLast={i === orders.length - 1}
+          isLast={i === pageOrders.length - 1}
           onPress={() => onPress(order)}
           onAssign={() => onAssign(order)}
           onEdit={onEdit ? () => onEdit(order) : undefined}
@@ -1541,12 +1583,46 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
               fontWeight: '700',
               letterSpacing: 1.4,
               textTransform: 'uppercase',
-              color: footerColor ?? '#9C5E0E',
+              color: darkFg(isDark, footerColor ?? '#9C5E0E'),
               textAlign: 'center',
             }}
           >
             {footerTitle}
           </Text>
+        ) : paginate ? (
+          <>
+            <Text style={{ fontSize: 12, color: T.ink3, flex: 1 }}>
+              {orders.length} {autoT('siparişten')} {orders.length === 0 ? 0 : firstIdx + 1}–{Math.min(firstIdx + PAGE_SIZE, orders.length)} {autoT('gösteriliyor')}
+            </Text>
+            <View className="flex-row items-center gap-1">
+              <Pressable
+                disabled={safePage <= 0}
+                onPress={() => setPage(p => Math.max(0, p - 1))}
+                className="w-8 h-8 rounded-full items-center justify-center"
+                style={{ opacity: safePage <= 0 ? 0.35 : 1, ...(Platform.OS === 'web' ? { cursor: safePage <= 0 ? 'default' : 'pointer' } as any : {}) }}
+              >
+                {isRTL() ? <ChevronRight size={16} color={T.ink2} strokeWidth={2} /> : <ChevronLeft size={16} color={T.ink2} strokeWidth={2} />}
+              </Pressable>
+              {Array.from({ length: totalPages }).map((_, i) => (
+                <Pressable
+                  key={i}
+                  onPress={() => setPage(i)}
+                  className="h-8 rounded-full items-center justify-center"
+                  style={{ minWidth: 32, paddingHorizontal: 8, backgroundColor: i === safePage ? T.ink : 'transparent', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: i === safePage ? '700' : '500', color: i === safePage ? '#FFFFFF' : T.ink2 }}>{i + 1}</Text>
+                </Pressable>
+              ))}
+              <Pressable
+                disabled={safePage >= totalPages - 1}
+                onPress={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                className="w-8 h-8 rounded-full items-center justify-center"
+                style={{ opacity: safePage >= totalPages - 1 ? 0.35 : 1, ...(Platform.OS === 'web' ? { cursor: safePage >= totalPages - 1 ? 'default' : 'pointer' } as any : {}) }}
+              >
+                {isRTL() ? <ChevronLeft size={16} color={T.ink2} strokeWidth={2} /> : <ChevronRight size={16} color={T.ink2} strokeWidth={2} />}
+              </Pressable>
+            </View>
+          </>
         ) : (
           <Text style={{ fontSize: 11, color: T.ink3, flex: 1 }}>
             {orders.length} sipariş gösteriliyor
@@ -1583,13 +1659,16 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
 
-  // Status chip tone — beklemedeki iş her yerde "Duraklatıldı" görünür (gecikme değil)
+  // Durum rozeti rengi = YALNIZ workflow durumu (semantik).
+  // Gecikme/öncelik AYRI boyut → rozeti boyamaz (gecikme VAKA meta'da kırmızı "N gün gecikti",
+  // ACİL Hasta'da etiket). Böylece kırmızı yalnız gerçek problem/iptal içindir.
+  //   bekliyor → amber · işlemde/kontrolde → blue · tamam → green · iptal → red
   const chipTone: 'success' | 'warning' | 'danger' | 'info' =
-    onHold ? 'warning'
-    : isLate ? 'danger'
-    : (order.status === 'teslim_edildi') ? 'success'
-    : (order.status === 'kalite_kontrol' || order.status === 'teslimata_hazir') ? 'warning'
-    : 'info';
+    onHold                             ? 'warning'   // Duraklatıldı (bekliyor)
+    : order.status === 'teslim_edildi' ? 'success'   // Teslim edildi
+    : order.status === 'kalite_kontrol'? 'warning'   // KK bekliyor (kuyrukta)
+    : order.status === 'iptal'         ? 'danger'    // İptal (gerçek problem)
+    : 'info';                                        // Alındı · Üretimde · Teslimata hazır
 
   const CHIP_TONES = {
     success: { bg: 'rgba(45,154,107,0.12)', fg: '#1F6B47' },
@@ -1597,7 +1676,9 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
     danger:  { bg: 'rgba(217,75,75,0.12)',  fg: '#9C2E2E' },
     info:    { bg: 'rgba(74,143,201,0.12)',  fg: '#1F5689' },
   };
-  const tone = CHIP_TONES[chipTone];
+  const toneRaw = CHIP_TONES[chipTone];
+  // Zemin (bg) rgba tonu koyuda da geçerli kalır; yalnız ön-plan metni/nokta rengi açılır (koyu kartta okunmasın diye).
+  const tone = { bg: toneRaw.bg, fg: darkFg(isDark, toneRaw.fg) };
 
   // Patient initials for avatar
   const patientName = order.patient_name ? titleCaseTR(order.patient_name) : '—';
@@ -1605,94 +1686,104 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
   // Lab tarafı panellerde klinik logosu kullanılır; klinik/hekim panelinde hayır.
   const clinicLogo = useClinicLogoAvatar ? ((order as any)?.doctor?.clinic?.logo_url ?? null) : null;
 
+  // VAKA alt satırı: normalde vaka bileşimi (gerçek tooth_numbers → diş sayısı),
+  // dikkat gereken işlerde durum ipucuna döner ("ikisi birden"). Uydurma yok.
+  const teethCount = Array.isArray((order as any).tooth_numbers) ? (order as any).tooth_numbers.length : 0;
+  // İlişki (devam/revizyon): ana listede __relType/__parentNo, planlama bölümünde eski __revChild bayrakları.
+  const relType: 'devam' | 'revizyon' | null =
+    (order as any).__relType ?? ((order as any).__revChild ? ((order as any).__continuation ? 'devam' : 'revizyon') : null);
+  const parentNo: string | null = (order as any).__parentNo ?? null;
+  const relColor = darkFg(isDark, relType === 'devam' ? '#3563A8' : '#9C5E0E');
+  const relLabel = relType === 'devam' ? autoT('Devam siparişi') : autoT('Revizyon');
+  // VAKA meta satırı: yalnız vaka bileşimi + gerekiyorsa dikkat. İlişki (devam/revizyon)
+  // YALNIZ HASTA alt-satırında gösterilir (tek yer) → burada tekrar edilmez.
+  const attentionLabel = onHold ? autoT('Duraklatıldı') : isLate ? `${Math.abs(diff)} ${autoT('gün gecikti')}` : needsTriage ? autoT('planlama bekliyor') : null;
+  const vakaMeta = [teethCount > 0 ? `${teethCount} ${autoT('diş')}` : null, attentionLabel].filter(Boolean).join('   ·   ');
+  const vakaMetaColor = attentionLabel ? darkFg(isDark, (onHold || needsTriage) ? '#9C5E0E' : '#9C2E2E') : T.ink3;
+
   return (
     <Pressable
       onPress={() => onPress(order)}
-      className="flex-row items-center px-5"
-      style={[
-        { paddingVertical: 14 },
-        !isLast && { borderBottomWidth: 1, borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
+      style={({ hovered }: any) => [
+        // NOT: className + style-fonksiyonu birlikte olunca NativeWind style'ı düşürebiliyordu
+        // → padding hiç uygulanmıyordu. Tüm düzen doğrudan style'da (garanti uygulanır).
+        { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 9, minHeight: 66 },
+        !isLast && { borderBottomWidth: 1, borderBottomColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.10)' },
         // Planlama bekleyen — sabit soft amber zemin + sol kenar şeridi (animasyon yok)
         needsTriage && { backgroundColor: 'rgba(217,119,6,0.05)', borderStartWidth: 3, borderStartColor: '#D97706' },
         // Revizyon alt-satırı — girintili (üstteki orijinale bağlı)
         (order as any).__revChild && { paddingStart: 18 },
         // @ts-ignore web hover
         Platform.OS === 'web' ? { cursor: 'pointer', transition: 'background-color 0.15s' } as any : undefined,
+        // Hover — sade zemin (planlama amber'ını ezmeyecek kadar hafif)
+        hovered && !needsTriage && Platform.OS === 'web' ? { backgroundColor: isDark ? 'rgba(255,255,255,0.035)' : 'rgba(0,0,0,0.025)' } as any : undefined,
       ]}
     >
-      {/* No — revizyonda sol üstte bağlantı oku + "revizyon" rozeti */}
-      <View
-        style={{ width: (order as any).__revChild ? 116 : 96, flexShrink: 0 }}
-        className="flex-row items-start gap-1"
-      >
-        {(order as any).__revChild && (
-          isRTL()
-            ? <CornerDownLeft size={13} color={(order as any).__continuation ? '#3563A8' : '#9C5E0E'} strokeWidth={2.2} style={{ marginTop: 1, flexShrink: 0 }} />
-            : <CornerDownRight size={13} color={(order as any).__continuation ? '#3563A8' : '#9C5E0E'} strokeWidth={2.2} style={{ marginTop: 1, flexShrink: 0 }} />
-        )}
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ fontSize: 11, fontFamily: 'monospace', color: T.ink3 }} numberOfLines={1}>
-            #{order.order_number}
-          </Text>
-          {(order as any).__revChild && (
-            <Text style={{ fontSize: 9, fontWeight: '700', color: (order as any).__continuation ? '#3563A8' : '#9C5E0E', letterSpacing: 0.4, marginTop: 1 }}>
-              {(order as any).__continuation ? 'DEVAM SİPARİŞİ' : 'REVİZYON'}
-            </Text>
-          )}
-          {(order as any).__revParent && (
-            <Text style={{ fontSize: 9, fontWeight: '700', color: T.ink3, letterSpacing: 0.4, marginTop: 1 }}>
-              ORİJİNAL
-            </Text>
-          )}
-        </View>
-      </View>
-
-      {/* Hasta — avatar + isim.
-          LAB/ADMIN/TEKNİSYEN: klinik logosu (iş hangi klinikten geldi, bir bakışta belli).
-          KLİNİK/HEKİM: kendi işleri olduğu için eskisi gibi hasta baş harfleri. */}
-      <View style={{ flex: 2, minWidth: 0 }} className="flex-row items-center gap-2.5">
+      {/* Hasta — klinik logosu (hangi klinikten geldiği) + isim + ACİL + #no + ilişki alt-satırı.
+          ACİL = öncelik (durum değil); ilişki (devam/revizyon) = alt-satır. */}
+      <View style={{ flex: 30, minWidth: 0, paddingEnd: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         {clinicLogo ? (
           <View
-            className="w-7 h-7 rounded-full items-center justify-center shrink-0 overflow-hidden"
-            style={{ backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline }}
+            className="items-center justify-center overflow-hidden"
+            style={{ width: 34, height: 34, borderRadius: 17, flexShrink: 0, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline }}
           >
             <Image source={{ uri: clinicLogo }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
           </View>
         ) : (
           <View
-            className="w-7 h-7 rounded-full items-center justify-center shrink-0"
-            style={{ backgroundColor: stageColor + '20' }}
+            className="items-center justify-center"
+            style={{ width: 34, height: 34, borderRadius: 17, flexShrink: 0, backgroundColor: stageColor + '20' }}
           >
-            <Text style={{ fontSize: 10, fontWeight: '600', color: stageColor }}>
-              {initials}
-            </Text>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: stageColor }}>{initials}</Text>
           </View>
         )}
-        <Text
-          style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: '500', color: isLate ? '#DC2626' : T.ink }}
-          numberOfLines={1}
-        >
-          {patientName}
-        </Text>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <View className="flex-row items-center" style={{ gap: 8 }}>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: isLate ? darkFg(isDark, '#DC2626') : T.ink, flexShrink: 1 }} numberOfLines={1}>
+              {patientName}
+            </Text>
+            {order.is_urgent && (
+              <View style={{ backgroundColor: 'rgba(217,75,75,0.12)', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, flexShrink: 0 }}>
+                <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.6, color: '#9C2E2E' }}>ACİL</Text>
+              </View>
+            )}
+          </View>
+          <Text style={{ fontSize: 11.5, fontFamily: 'monospace', color: T.ink3, marginTop: 2 }} numberOfLines={1}>
+            #{order.order_number}
+          </Text>
+          {relType && (
+            <View className="flex-row items-center" style={{ gap: 4, marginTop: 3 }}>
+              {isRTL()
+                ? <CornerDownLeft size={12} color={relColor} strokeWidth={2} style={{ flexShrink: 0 }} />
+                : <CornerDownRight size={12} color={relColor} strokeWidth={2} style={{ flexShrink: 0 }} />}
+              <Text style={{ fontSize: 11, fontWeight: '600', color: relColor }} numberOfLines={1}>
+                {relLabel}{parentNo ? ` · ${autoT('asıl')} #${parentNo}` : ''}
+              </Text>
+            </View>
+          )}
+        </View>
       </View>
 
-      {/* Vaka — revizyonda başına "Revizyon -" öneki */}
-      <Text style={{ flex: 1.8, minWidth: 0, fontSize: 13, color: T.ink }} numberOfLines={1}>
-        {(order as any).__revChild && (
-          <Text style={{ fontWeight: '700', color: (order as any).__continuation ? '#3563A8' : '#9C5E0E' }}>
-            {(order as any).__continuation ? 'Devam - ' : 'Revizyon - '}
+      {/* Vaka — iş tipi (birincil, tek satır → uzun/çok türde "…" ile kesilir, HEKİM'e taşmaz)
+          + meta satırı (diş sayısı · dikkat). */}
+      <View style={{ flex: 27, minWidth: 0, paddingEnd: 20 }}>
+        <Text style={{ fontSize: 13.5, fontWeight: '500', color: T.ink }} numberOfLines={1}>
+          {order.work_type}
+        </Text>
+        {vakaMeta ? (
+          <Text style={{ fontSize: 12, color: vakaMetaColor, marginTop: 3 }} numberOfLines={1}>
+            {vakaMeta}
           </Text>
-        )}
-        {order.work_type}
-      </Text>
+        ) : null}
+      </View>
 
       {/* Hekim */}
-      <Text style={{ flex: 1.6, minWidth: 0, fontSize: 13, color: T.ink2 }} numberOfLines={1}>
+      <Text style={{ flex: 17, minWidth: 0, fontSize: 13, color: T.ink2, paddingEnd: 14 }} numberOfLines={1}>
         {order.doctor?.full_name ?? '—'}
       </Text>
 
       {/* Oluşturma tarihi + saati */}
-      <View style={{ flex: 1.2 }}>
+      <View style={{ flex: 12 }}>
         <Text style={{ fontSize: 13, color: T.ink2 }} numberOfLines={1}>
           {order.created_at ? new Date(order.created_at).toLocaleDateString(localeTag()) : '—'}
         </Text>
@@ -1703,59 +1794,17 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
         )}
       </View>
 
-      {/* Teslim */}
-      <Text
-        style={{
-          flex: 1.2,
-          fontSize: 13,
-          color: isLate ? '#DC2626' : diff <= 1 && order.status !== 'teslim_edildi' ? '#D97706' : T.ink,
-        }}
-      >
-        {dText}
-      </Text>
-
-      {/* Durum — Patterns Chip + üstte küçük "ACİL" / "YENİ" işaretleri */}
-      <View style={{ flex: 1.6, alignItems: 'flex-start', paddingEnd: 8 }}>
-        {/* Üst etiket satırı — birden fazla varsa yan yana */}
-        {(order.is_urgent || needsTriage) && (
-          <View style={{ flexDirection: 'row', gap: 6, marginBottom: 2, marginStart: 6 }}>
-            {order.is_urgent && (
-              <Text
-                style={{
-                  fontSize: 8.5,
-                  fontWeight: '700',
-                  letterSpacing: 1.4,
-                  textTransform: 'uppercase',
-                  color: '#9C2E2E',
-                }}
-              >
-                Acil
-              </Text>
-            )}
-            {needsTriage && (
-              <Text
-                style={{
-                  fontSize: 8.5,
-                  fontWeight: '700',
-                  letterSpacing: 1.4,
-                  textTransform: 'uppercase',
-                  color: '#9C5E0E',
-                  opacity: 0.7,
-                }}
-              >
-                Yeni
-              </Text>
-            )}
-          </View>
-        )}
+      {/* Durum — YALNIZ workflow durumu (Acil=öncelik → Hasta'da; ilişki → Hasta alt-satırı). */}
+      <View style={{ flex: 14, alignItems: 'flex-start', paddingEnd: 8 }}>
         <View className="flex-row items-center gap-1.5 self-start" style={{ maxWidth: '100%' }}>
           <OrderStatusInfo order={order as any} />
+          {/* Durum — yumuşak dolgulu rozet (nokta + etiket) */}
           <View
-            className="flex-row items-center gap-1.5 px-3 py-1 rounded-full"
-            style={{ backgroundColor: tone.bg, flexShrink: 1 }}
+            className="flex-row items-center gap-1.5 rounded-full"
+            style={{ backgroundColor: tone.bg, paddingHorizontal: 10, paddingVertical: 4, flexShrink: 1 }}
           >
-            <View className="w-1.5 h-1.5 rounded-full opacity-80" style={{ backgroundColor: tone.fg, flexShrink: 0 }} />
-            <Text style={{ fontSize: 12, fontWeight: '500', color: tone.fg, flexShrink: 1 }} numberOfLines={1}>
+            <View className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: tone.fg, flexShrink: 0 }} />
+            <Text style={{ fontSize: 12, fontWeight: '600', color: tone.fg, flexShrink: 1 }} numberOfLines={1}>
               {onHold ? 'Duraklatıldı' : getOrderStageLabel(order as any)}
             </Text>
           </View>
@@ -1763,14 +1812,15 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
       </View>
 
       {/* Action */}
-      <View style={{ width: 92 }} className="flex-row items-center justify-end gap-1">
+      <View style={{ width: 36 }} className="flex-row items-center justify-end gap-1">
         {/* Admin işlemleri tek «⋯» menüsünde — üç ayrı ikon satırın sağından
             ~90px yiyordu ve yıkıcı «Sil» her satırda tek tıkla erişilebilirdi. */}
         {isAdmin && <RowActionsMenu actions={rowActions(order, onEdit, onArchive, onDelete)} size={26} />}
         {!isAdmin && (canAssign ? (
           <Pressable
             onPress={e => { (e as any).stopPropagation?.(); onAssign(order); }}
-            className="px-3 py-1 rounded-full bg-ink-900"
+            className="px-3 py-1 rounded-full"
+            style={{ backgroundColor: T.ink }}
           >
             <Text className="text-[10px] font-semibold text-white">Ata</Text>
           </Pressable>

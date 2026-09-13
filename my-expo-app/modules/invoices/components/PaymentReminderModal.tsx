@@ -1,4 +1,5 @@
 import { localeTag } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 /**
  * PaymentReminderModal — Vade geçen fatura için hatırlatma gönderme modalı
  *
@@ -109,7 +110,7 @@ export function PaymentReminderModal({ visible, invoice, clinicName, onClose, on
               <Text style={s.title}>Tahsilat Hatırlatması</Text>
               <Text style={s.subtitle}>
                 {invoice.invoice_number} · {fmtMoney(balance)}
-                {daysOverdue > 0 ? ` · ${daysOverdue} gün gecikmiş` : ''}
+                {daysOverdue > 0 ? ` · ${daysOverdue} ${autoT('gün gecikmiş')}` : ''}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={s.closeBtn}>

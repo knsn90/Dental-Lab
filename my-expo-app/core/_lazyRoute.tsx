@@ -25,14 +25,16 @@ import React from 'react';
 import { View, ActivityIndicator, Text } from 'react-native';
 import { bootMark } from './debug/bootTrace';
 import { maybeReloadOnChunkError } from './ui/RootErrorBoundary';
+import { useThemeModeStore } from './store/themeModeStore';
 
 /** Chunk yüklenirken gösterilen iskelet.
  *
  *  ÖNCEDEN `fallback={null}` idi: sayfa chunk gelene kadar TAMAMEN boş kalıyordu
  *  ve kullanıcı bunu "sayfa açılmıyor" olarak görüyordu. */
 function RouteFallback() {
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 64, gap: 10 }}>
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 64, gap: 10, backgroundColor: isDark ? '#0E0E0E' : 'transparent' }}>
       <ActivityIndicator color="#9A9A9A" />
       <Text style={{ fontSize: 12.5, color: '#9A9A9A' }}>Yükleniyor…</Text>
     </View>

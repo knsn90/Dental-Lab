@@ -9,7 +9,7 @@ import {
   Home, ListChecks, MessageSquare, User, Plus, Bell, Search, Calendar,
   Printer, Mic, Truck, Filter, Check, X, Flame, LogOut, QrCode, ClipboardList,
   AlertTriangle, ChevronRight, FileCheck, SlidersHorizontal,
-} from 'lucide-react-native';
+} from '../../core/ui/icons';
 import Svg, { Circle, Path } from 'react-native-svg';
 import {
   MOBILE_TOKENS as T,

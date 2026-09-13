@@ -400,6 +400,10 @@
         "label": "Working hours",
         "sub": "Shifts, breaks, concurrent work"
       },
+      "finance": {
+        "label": "Finance",
+        "sub": "Currency, tax and payment reminders"
+      },
       "currency": {
         "label": "Exchange rates",
         "sub": "EUR / USD / GBP rate management"

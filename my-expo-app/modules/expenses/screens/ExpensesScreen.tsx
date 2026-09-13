@@ -23,7 +23,6 @@ import {
   EXPENSE_CATEGORY_LABELS, EXPENSE_CATEGORY_COLORS,
   type Expense, type ExpenseCategory, type ExpensePaymentMethod, type CreateExpenseParams,
 } from '../api';
-import { DS } from '../../../core/theme/dsTokens';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { DatePicker } from '../../../core/ui/DatePicker';
 // Phase 3: Multi-currency
@@ -47,12 +46,14 @@ import { useAuthStore } from '../../../core/store/authStore';
 import { toast } from '../../../core/ui/Toast';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { useInkUI } from '../../../core/theme/inkScale';
+import { HeroGlow, useHeroSurface } from '../../../core/ui/HeroGlow';
 import {
   Plus, Search, X, Inbox, Pencil, Trash2,
   Package, Building, Users, Wrench, Receipt, MoreHorizontal, Truck,
   Repeat, FileSpreadsheet, Banknote, CreditCard, Landmark,
   FileText, CircleDot, FileUp, Sparkles, Check, SlidersHorizontal,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { supabase } from '../../../core/api/supabase';
 import { confirmAsync } from '../../../core/util/confirm';
 
@@ -62,28 +63,8 @@ const DISPLAY = {
   fontWeight: '300' as const,
 };
 
-const cardSolid = {
-  backgroundColor: '#FFF',
-  borderRadius: 24,
-  padding: 22,
-  // @ts-ignore web
-  boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)',
-};
-
-const tableCard = {
-  backgroundColor: '#FFF',
-  borderRadius: 24,
-  borderWidth: 1,
-  borderColor: 'rgba(0,0,0,0.05)',
-  overflow: 'hidden' as const,
-};
-
-const CHIP_TONES = {
-  success: { bg: 'rgba(45,154,107,0.12)', fg: '#1F6B47' },
-  warning: { bg: 'rgba(232,155,42,0.15)', fg: '#9C5E0E' },
-  danger:  { bg: 'rgba(217,75,75,0.12)',  fg: '#9C2E2E' },
-  info:    { bg: 'rgba(74,143,201,0.12)', fg: '#1F5689' },
-};
+// Yüzeyler (kart / tablo / chip tonları) tema-farkında `useInkUI()`'den gelir —
+// modül seviyesinde beyaz sabit BIRAKILMAZ (koyu temada hook çağıramaz).
 
 const modalShadow = '0 8px 40px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08)';
 
@@ -122,6 +103,18 @@ function fmtDate(iso: string | null | undefined): string {
   return new Date(iso + 'T00:00:00').toLocaleDateString(localeTag(), { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+/**
+ * Pressable satır stili — fonksiyon-stil YALNIZ web'de verilir.
+ *
+ * NEDEN: fonksiyon-stilli (`style={({hovered}) => …}`) bir Pressable iOS'ta
+ * satır layout'unu düşürüyor — ikon üstte, tutar tam genişlikte kalıyor.
+ * Web'de hover geri bildirimi aynen korunur; native'de basılmamış hâlin
+ * düz nesnesi verilir.
+ */
+function rowStyle(fn: (state: any) => any): any {
+  return Platform.OS === 'web' ? fn : fn({ hovered: false, pressed: false });
+}
+
 // ═════════════════════════════════════════════════════════════════════
 // MAIN
 // ═════════════════════════════════════════════════════════════════════
@@ -130,6 +123,9 @@ export function ExpensesScreen() {
   const segments = useSegments();
   const panel    = (segments?.[0] as string) ?? '(lab)';
   const theme = usePanelTheme();
+  // Koyu tema: nötr yüzeyler + hero lacivert gradyanı (açık temada birebir aynı kalır)
+  const U = useInkUI();
+  const heroBg = useHeroSurface(theme.primary);
   const isEmbedded = useContext(HubContext);
 
   /**
@@ -407,37 +403,48 @@ export function ExpensesScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: isEmbedded ? 'transparent' : '#F5F1EB', paddingTop: topPad }}>
+    <View style={{ flex: 1, backgroundColor: isEmbedded ? 'transparent' : (U.isDark ? '#0E0E0E' : '#F5F1EB'), paddingTop: topPad }}>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 4, paddingBottom: 48, gap: 14 }}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={DS.ink[300]} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={U.ink[300]} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Hero — §10 glassmorphism ────────────────────────── */}
+        {/* ── Hero — paylaşılan kanonik hero (Personel ekranıyla aynı dil) ──
+            Koyu temada zemin `useHeroSurface` ile lacivert gradyana iner
+            (#001F3F → #002A5C → #004B87); açık temada panel accent'i korunur.
+            Dekoratif daireler `HeroGlow` — koyu temada blur ile yayılır. */}
         <View style={{
-          borderRadius: 28, overflow: 'hidden',
-          backgroundColor: theme.primary, padding: 16,
+          borderRadius: 20, overflow: 'hidden',
+          ...heroBg,
+          paddingHorizontal: isDesktop ? 22 : 18,
+          paddingVertical: isDesktop ? 18 : 16,
           position: 'relative',
         }}>
-          <View style={{ position: 'absolute', top: -40, end: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.18)' }} />
-          <View style={{ position: 'absolute', bottom: -50, start: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+          <HeroGlow size={130} opacity={0.18} delay={0} style={{ top: -46, end: -34 }} />
+          <HeroGlow size={110} opacity={0.10} delay={1400} style={{ bottom: -52, start: -26 }} />
 
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
-            <View>
-              <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.78)', marginBottom: 12 }}>
+            <View style={{ flexShrink: 1, minWidth: 210 }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)', marginBottom: 12 }}>
                 Toplam Gider
               </Text>
               {/* Katı per-currency: her para birimi ayrı kart, asla toplanmaz */}
               <MoneyMultiX slices={expByCcy} variant="cards" size="lg" accentColor={theme.primary} emptyText="—" />
-              <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)', marginTop: 8 }}>
+              <Text style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.88)', marginTop: 8 }}>
                 {filtered.length} kayıt
                 {expByCcy.length > 1 ? ` · ${expByCcy.length} para birimi` : ''}
               </Text>
             </View>
 
-            {/* Action buttons */}
-            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+            {/* Aksiyonlar — dar ekranda KENDİ satırına iner. Eskiden aynı satırda
+                kalıp sağdan taşıyordu ve "+ Gider" kapsülü ekran kenarında
+                kesiliyordu; `width:'100%'` + wrap ile hiçbir düğme kırpılmaz. */}
+            <View style={{
+              flexDirection: 'row', gap: 8, flexWrap: 'wrap',
+              flexShrink: 1,
+              ...(isDesktop ? { justifyContent: 'flex-end' } : { width: '100%' }),
+            }}>
               <PillBtn icon={Repeat} label="Otomatik" onPress={() => setRecurringOpen(true)} variant="ghost" onHero heroAccent={theme.primary} />
               <PillBtn icon={FileSpreadsheet} label="Excel" onPress={handleExcel} variant="ghost" onHero heroAccent={theme.primary} />
               <PillBtn icon={Receipt} label="Satın Alma" onPress={() => setPurchaseOpen(true)} variant="ghost" onHero heroAccent={theme.primary} />
@@ -445,31 +452,48 @@ export function ExpensesScreen() {
             </View>
           </View>
 
-          {/* Category breakdown */}
-          <View style={{ flexDirection: 'row', gap: 16, marginTop: 20, flexWrap: 'wrap' }}>
-            {CATEGORIES.map(cat => {
-              const slices = catByCcy[cat] ?? [];
-              if (slices.length === 0) return null;
-              const Icon = CAT_ICON[cat];
-              return (
-                <View key={cat}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <Icon size={11} color="rgba(255,255,255,0.78)" strokeWidth={1.8} />
-                    <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.78)' }}>
-                      {EXPENSE_CATEGORY_LABELS[cat]}
-                    </Text>
-                  </View>
-                  <View style={{ marginTop: 2, gap: 1 }}>
-                    {slices.map(s => (
-                      <Text key={s.currency} style={{ ...DISPLAY, fontSize: 16, letterSpacing: -0.3, color: '#FFFFFF' }}>
-                        {formatMoney(s.total, s.currency, { fractionDigits: 0 })}
-                      </Text>
-                    ))}
-                  </View>
-                </View>
-              );
-            })}
-          </View>
+          {/* Kategori kırılımı — kanonik hero stat tile'ları.
+              Eskiden çıplak metin sütunlarıydı: tutar uzayınca satır kayıyor,
+              tek bir "22.773 €" alt satıra düşüyordu. Tile (flex:1 + minWidth)
+              her kırılımı kendi kutusunda tutar, taşma olmaz. */}
+          {(() => {
+            const tiles = CATEGORIES
+              .map(cat => ({ cat, slices: catByCcy[cat] ?? [] }))
+              .filter(t => t.slices.length > 0);
+            if (tiles.length === 0) return null;
+            return (
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+                {tiles.map(({ cat, slices }) => {
+                  const Icon = CAT_ICON[cat];
+                  return (
+                    <View key={cat} style={{
+                      flex: 1, minWidth: 110,
+                      paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12,
+                      backgroundColor: 'rgba(255,255,255,0.16)',
+                    }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Icon size={10} color="rgba(255,255,255,0.85)" strokeWidth={1.8} />
+                        <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }} numberOfLines={1}>
+                          {EXPENSE_CATEGORY_LABELS[cat]}
+                        </Text>
+                      </View>
+                      <View style={{ marginTop: 3, gap: 1 }}>
+                        {slices.map(sl => (
+                          <Text
+                            key={sl.currency}
+                            style={{ ...DISPLAY, fontSize: 15, letterSpacing: -0.3, lineHeight: 19, color: '#FFFFFF' }}
+                            numberOfLines={1}
+                          >
+                            {formatMoney(sl.total, sl.currency, { fractionDigits: 0 })}
+                          </Text>
+                        ))}
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            );
+          })()}
         </View>
 
         {/* ── Search + Filtre butonu ─────────────────────────── */}
@@ -478,19 +502,19 @@ export function ExpensesScreen() {
             flex: 1,
             flexDirection: 'row', alignItems: 'center', gap: 10,
             height: 44, paddingHorizontal: 14, borderRadius: 14,
-            borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#FFF',
+            borderWidth: 1, borderColor: U.fieldBorder, backgroundColor: U.surface,
           }}>
-            <Search size={15} color={DS.ink[400]} strokeWidth={1.8} />
+            <Search size={15} color={U.ink[400]} strokeWidth={1.8} />
             <TextInput
-              style={{ flex: 1, fontSize: 14, color: DS.ink[900], outline: 'none' as any }}
+              style={{ flex: 1, fontSize: 14, color: U.ink[900], outline: 'none' as any }}
               placeholder="Açıklama ara..."
-              placeholderTextColor={DS.ink[400]}
+              placeholderTextColor={U.ink[400]}
               value={search}
               onChangeText={setSearch}
             />
             {search.length > 0 && (
               <Pressable onPress={() => setSearch('')} style={{ cursor: 'pointer' as any }}>
-                <X size={14} color={DS.ink[400]} strokeWidth={2} />
+                <X size={14} color={U.ink[400]} strokeWidth={2} />
               </Pressable>
             )}
           </View>
@@ -515,13 +539,13 @@ export function ExpensesScreen() {
                 style={{
                   flexDirection: 'row', alignItems: 'center', gap: 6,
                   height: 44, paddingHorizontal: 14, borderRadius: 14,
-                  backgroundColor: hasFilter ? DS.ink[900] : '#FFF',
-                  borderWidth: hasFilter ? 0 : 1, borderColor: 'rgba(0,0,0,0.08)',
+                  backgroundColor: hasFilter ? U.ink[900] : U.plainBtn.bg,
+                  borderWidth: hasFilter ? 0 : 1, borderColor: U.plainBtn.border,
                   cursor: 'pointer' as any,
                 }}
               >
-                <SlidersHorizontal size={14} strokeWidth={1.8} color={hasFilter ? '#FFFFFF' : DS.ink[700]} />
-                <Text style={{ fontSize: 12, fontWeight: hasFilter ? '700' : '600', color: hasFilter ? '#FFFFFF' : DS.ink[700] }}>
+                <SlidersHorizontal size={14} strokeWidth={1.8} color={hasFilter ? U.onDarkPill : U.plainBtn.fg} />
+                <Text style={{ fontSize: 12, fontWeight: hasFilter ? '700' : '600', color: hasFilter ? U.onDarkPill : U.plainBtn.fg }}>
                   Filtre{hasFilter ? ` (${activeCount})` : ''}
                 </Text>
               </Pressable>
@@ -548,12 +572,12 @@ export function ExpensesScreen() {
             <Pressable
               onPress={(e) => e.stopPropagation()}
               style={{
-                backgroundColor: '#FFFFFF',
+                backgroundColor: U.surface,
                 ...(isDesktop
                   ? {
                       width: 460, borderRadius: 18, paddingTop: 16, paddingBottom: 16,
                       maxHeight: 520,
-                      borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+                      borderWidth: 1, borderColor: U.hairline,
                       shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 28, shadowOffset: { width: 0, height: 12 },
                       elevation: 12,
                     }
@@ -566,22 +590,22 @@ export function ExpensesScreen() {
             >
               {/* Sheet tutamacı yalnız mobilde — masaüstü popup'ta anlamsız */}
               {!isDesktop && (
-                <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: DS.ink[200], marginBottom: 14 }} />
+                <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: U.ink[200], marginBottom: 14 }} />
               )}
               <View style={{ paddingHorizontal: 20, paddingBottom: 12, flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={{ fontSize: 18, fontWeight: '700', color: DS.ink[900], flex: 1 }}>Filtrele</Text>
+                <Text style={{ fontSize: 18, fontWeight: '700', color: U.ink[900], flex: 1 }}>Filtrele</Text>
                 <Pressable onPress={() => { setCatFilter('all'); setSortKey('date_desc'); setDateRange('all'); setCustomFrom(''); setCustomTo(''); }} style={{ paddingHorizontal: 10, paddingVertical: 6 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[500] }}>Temizle</Text>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: U.ink[500] }}>Temizle</Text>
                 </Pressable>
-                <Pressable onPress={() => setFilterOpen(false)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', marginStart: 4 }}>
-                  <X size={16} color={DS.ink[700]} strokeWidth={2} />
+                <Pressable onPress={() => setFilterOpen(false)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: U.chipNeutral, alignItems: 'center', justifyContent: 'center', marginStart: 4 }}>
+                  <X size={16} color={U.ink[700]} strokeWidth={2} />
                 </Pressable>
               </View>
 
               <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 12, gap: 18 }}>
                 {/* Sıralama */}
                 <View style={{ gap: 6 }}>
-                  <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[400], paddingHorizontal: 4 }}>Tarih Aralığı</Text>
+                  <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: U.ink[400], paddingHorizontal: 4 }}>Tarih Aralığı</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8, marginBottom: 16 }}>
                     {DATE_OPTIONS.map(opt => {
                       const active = dateRange === opt.key;
@@ -591,12 +615,12 @@ export function ExpensesScreen() {
                           onPress={() => setDateRange(opt.key)}
                           style={{
                             paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999,
-                            backgroundColor: active ? DS.ink[900] : '#FFF',
-                            borderWidth: active ? 0 : 1, borderColor: 'rgba(0,0,0,0.08)',
+                            backgroundColor: active ? U.ink[900] : U.plainBtn.bg,
+                            borderWidth: active ? 0 : 1, borderColor: U.plainBtn.border,
                             ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                           }}
                         >
-                          <Text style={{ fontSize: 12.5, fontWeight: active ? '700' : '500', color: active ? '#FFFFFF' : DS.ink[700] }}>{opt.label}</Text>
+                          <Text style={{ fontSize: 12.5, fontWeight: active ? '700' : '500', color: active ? U.onDarkPill : U.plainBtn.fg }}>{opt.label}</Text>
                         </Pressable>
                       );
                     })}
@@ -604,27 +628,27 @@ export function ExpensesScreen() {
                   {dateRange === 'custom' && (
                     <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 11, color: DS.ink[500], marginBottom: 6 }}>Başlangıç</Text>
+                        <Text style={{ fontSize: 11, color: U.ink[500], marginBottom: 6 }}>Başlangıç</Text>
                         <DatePicker value={customFrom} onChange={setCustomFrom} placeholder="Seç" />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 11, color: DS.ink[500], marginBottom: 6 }}>Bitiş</Text>
+                        <Text style={{ fontSize: 11, color: U.ink[500], marginBottom: 6 }}>Bitiş</Text>
                         <DatePicker value={customTo} onChange={setCustomTo} placeholder="Seç" />
                       </View>
                     </View>
                   )}
-                  <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[400], paddingHorizontal: 4 }}>Sıralama</Text>
+                  <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: U.ink[400], paddingHorizontal: 4 }}>Sıralama</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 2 }}>
                     {SORT_OPTIONS.map(opt => {
                       const active = sortKey === opt.key;
                       return (
                         <Pressable key={opt.key} onPress={() => setSortKey(opt.key)} style={{
                           paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999,
-                          borderWidth: active ? 0 : 1, borderColor: 'rgba(0,0,0,0.08)',
-                          backgroundColor: active ? DS.ink[900] : '#FFF',
+                          borderWidth: active ? 0 : 1, borderColor: U.plainBtn.border,
+                          backgroundColor: active ? U.ink[900] : U.plainBtn.bg,
                           cursor: 'pointer' as any,
                         }}>
-                          <Text style={{ fontSize: 11.5, fontWeight: active ? '700' : '500', color: active ? '#FFFFFF' : DS.ink[700] }} numberOfLines={1}>{opt.label}</Text>
+                          <Text style={{ fontSize: 11.5, fontWeight: active ? '700' : '500', color: active ? U.onDarkPill : U.plainBtn.fg }} numberOfLines={1}>{opt.label}</Text>
                         </Pressable>
                       );
                     })}
@@ -632,15 +656,15 @@ export function ExpensesScreen() {
                 </View>
                 {/* Kategori */}
                 <View style={{ gap: 8 }}>
-                  <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[400], paddingHorizontal: 4 }}>Kategori</Text>
+                  <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: U.ink[400], paddingHorizontal: 4 }}>Kategori</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                     <Pressable onPress={() => setCatFilter('all')} style={{
                       paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999,
-                      borderWidth: catFilter === 'all' ? 0 : 1, borderColor: 'rgba(0,0,0,0.08)',
-                      backgroundColor: catFilter === 'all' ? DS.ink[900] : '#FFF',
+                      borderWidth: catFilter === 'all' ? 0 : 1, borderColor: U.plainBtn.border,
+                      backgroundColor: catFilter === 'all' ? U.ink[900] : U.plainBtn.bg,
                       cursor: 'pointer' as any,
                     }}>
-                      <Text style={{ fontSize: 12.5, fontWeight: catFilter === 'all' ? '700' : '500', color: catFilter === 'all' ? '#FFFFFF' : DS.ink[700] }}>Tümü</Text>
+                      <Text style={{ fontSize: 12.5, fontWeight: catFilter === 'all' ? '700' : '500', color: catFilter === 'all' ? U.onDarkPill : U.plainBtn.fg }}>Tümü</Text>
                     </Pressable>
                     {CATEGORIES.map(cat => {
                       const active = catFilter === cat;
@@ -649,12 +673,12 @@ export function ExpensesScreen() {
                         <Pressable key={cat} onPress={() => setCatFilter(cat)} style={{
                           flexDirection: 'row', alignItems: 'center', gap: 6,
                           paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999,
-                          borderWidth: active ? 0 : 1, borderColor: 'rgba(0,0,0,0.08)',
-                          backgroundColor: active ? DS.ink[900] : '#FFF',
+                          borderWidth: active ? 0 : 1, borderColor: U.plainBtn.border,
+                          backgroundColor: active ? U.ink[900] : U.plainBtn.bg,
                           cursor: 'pointer' as any,
                         }}>
-                          <Icon size={13} color={active ? '#FFFFFF' : DS.ink[400]} strokeWidth={1.8} />
-                          <Text style={{ fontSize: 12.5, fontWeight: active ? '700' : '500', color: active ? '#FFFFFF' : DS.ink[700] }}>
+                          <Icon size={13} color={active ? U.onDarkPill : U.ink[400]} strokeWidth={1.8} />
+                          <Text style={{ fontSize: 12.5, fontWeight: active ? '700' : '500', color: active ? U.onDarkPill : U.plainBtn.fg }}>
                             {EXPENSE_CATEGORY_LABELS[cat]}
                           </Text>
                         </Pressable>
@@ -666,11 +690,11 @@ export function ExpensesScreen() {
 
               <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
                 <Pressable onPress={() => setFilterOpen(false)} style={{
-                  height: 48, borderRadius: 14, backgroundColor: DS.ink[900],
+                  height: 48, borderRadius: 14, backgroundColor: U.ink[900],
                   alignItems: 'center', justifyContent: 'center',
                   cursor: 'pointer' as any,
                 }}>
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>Uygula</Text>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: U.onDarkPill }}>Uygula</Text>
                 </Pressable>
               </View>
             </Pressable>
@@ -679,21 +703,21 @@ export function ExpensesScreen() {
 
         {/* ── Expense list ────────────────────────────────────── */}
         {filtered.length === 0 ? (
-          <View style={{ ...cardSolid, alignItems: 'center', paddingVertical: 48, gap: 10 }}>
-            <Inbox size={32} color={DS.ink[300]} strokeWidth={1.4} />
-            <Text style={{ fontSize: 14, fontWeight: '500', color: DS.ink[400] }}>Gider kaydı bulunamadı</Text>
+          <View style={{ ...U.cardSolid, alignItems: 'center', paddingVertical: 48, gap: 10 }}>
+            <Inbox size={32} color={U.ink[300]} strokeWidth={1.4} />
+            <Text style={{ fontSize: 14, fontWeight: '500', color: U.ink[400] }}>Gider kaydı bulunamadı</Text>
           </View>
         ) : isDesktop ? (
           /* ── Desktop: tableCard §09 ──────────────────────── */
-          <View style={tableCard}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
-              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>Gider Listesi</Text>
+          <View style={U.tableCard}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
+              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: U.ink[900] }}>Gider Listesi</Text>
               <View style={{ flex: 1 }} />
-              <Text style={{ fontSize: 12, color: DS.ink[400] }}>{filtered.length} kayıt</Text>
+              <Text style={{ fontSize: 12, color: U.ink[400] }}>{filtered.length} kayıt</Text>
             </View>
 
             {/* Header */}
-            <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: '#FAFAFA', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+            <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: U.surfaceSoft, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
               {[
                 { label: 'KATEGORİ', flex: 1.2 },
                 { label: 'AÇIKLAMA', flex: 3 },
@@ -702,7 +726,7 @@ export function ExpensesScreen() {
                 { label: 'TUTAR',   flex: 1.2, align: 'end' as const },
                 { label: 'İŞLEM',   flex: 0.8 },
               ].map((h, i) => (
-                <Text key={i} style={{ flex: h.flex, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textAlign: h.align as any }}>
+                <Text key={i} style={{ flex: h.flex, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: U.ink[500], textAlign: h.align as any }}>
                   {h.label}
                 </Text>
               ))}
@@ -715,35 +739,35 @@ export function ExpensesScreen() {
                 <Pressable
                   key={e.id}
                   onPress={() => openExpense(e)}
-                  style={({ hovered }: any) => ({
+                  style={rowStyle(({ hovered }: any) => ({
                     flexDirection: 'row', alignItems: 'center',
                     paddingHorizontal: 20, paddingVertical: 14,
                     borderBottomWidth: i < filtered.length - 1 ? 1 : 0,
-                    borderBottomColor: 'rgba(0,0,0,0.04)',
-                    backgroundColor: hovered ? 'rgba(0,0,0,0.025)' : 'transparent',
+                    borderBottomColor: U.hairlineSoft,
+                    backgroundColor: hovered ? U.rowHover : 'transparent',
                     cursor: 'pointer' as any,
-                  })}
+                  }))}
                 >
                   {/* Category */}
                   <View style={{ flex: 1.2, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center' }}>
-                      <Icon size={13} color={DS.ink[500]} strokeWidth={1.8} />
+                    <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: U.chipNeutral, alignItems: 'center', justifyContent: 'center' }}>
+                      <Icon size={13} color={U.ink[500]} strokeWidth={1.8} />
                     </View>
-                    <Text style={{ fontSize: 11, fontWeight: '600', color: DS.ink[700] }}>{EXPENSE_CATEGORY_LABELS[e.category]}</Text>
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: U.ink[700] }}>{EXPENSE_CATEGORY_LABELS[e.category]}</Text>
                   </View>
 
                   {/* Description */}
-                  <Text style={{ flex: 3, fontSize: 13, color: DS.ink[800] }} numberOfLines={1}>
+                  <Text style={{ flex: 3, fontSize: 13, color: U.ink[800] }} numberOfLines={1}>
                     {e.description}
                   </Text>
 
                   {/* Date */}
-                  <Text style={{ flex: 1.2, fontSize: 12, color: DS.ink[500] }}>
+                  <Text style={{ flex: 1.2, fontSize: 12, color: U.ink[500] }}>
                     {fmtDate(e.expense_date)}
                   </Text>
 
                   {/* Payment method */}
-                  <Text style={{ flex: 1, fontSize: 11, color: DS.ink[400] }}>
+                  <Text style={{ flex: 1, fontSize: 11, color: U.ink[400] }}>
                     {PAY_METHODS.find(m => m.v === e.payment_method)?.l ?? e.payment_method}
                   </Text>
 
@@ -754,7 +778,7 @@ export function ExpensesScreen() {
                       currency={(((e as any).currency as any) ?? 'TRY')}
                       baseAmount={null}
                       mode="original"
-                      style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}
+                      style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}
                     />
                   </View>
 
@@ -762,15 +786,15 @@ export function ExpensesScreen() {
                   <View style={{ flex: 0.8, flexDirection: 'row', gap: 4, justifyContent: 'flex-end' }}>
                     <Pressable
                       onPress={(ev: any) => { ev?.stopPropagation?.(); openEdit(e); }}
-                      style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                      style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: U.chipNeutral, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
                     >
-                      <Pencil size={12} color={DS.ink[500]} strokeWidth={1.8} />
+                      <Pencil size={12} color={U.ink[500]} strokeWidth={1.8} />
                     </Pressable>
                     <Pressable
                       onPress={(ev: any) => { ev?.stopPropagation?.(); handleDelete(e); }}
-                      style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: CHIP_TONES.danger.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                      style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: U.chipTones.danger.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
                     >
-                      <Trash2 size={12} color={CHIP_TONES.danger.fg} strokeWidth={1.8} />
+                      <Trash2 size={12} color={U.chipTones.danger.fg} strokeWidth={1.8} />
                     </Pressable>
                   </View>
                 </Pressable>
@@ -778,10 +802,10 @@ export function ExpensesScreen() {
             })}
 
             {/* Footer */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)', backgroundColor: '#FAFAFA', gap: 10 }}>
-              <Text style={{ fontSize: 11, color: DS.ink[500] }}>{filtered.length} kayıt</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderTopWidth: 1, borderTopColor: U.hairline, backgroundColor: U.surfaceSoft, gap: 10 }}>
+              <Text style={{ fontSize: 11, color: U.ink[500] }}>{filtered.length} kayıt</Text>
               <View style={{ flex: 1 }} />
-              <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[900] }}>Toplam:</Text>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: U.ink[900] }}>Toplam:</Text>
               <MoneyMultiX slices={expByCcy} variant="inline" />
             </View>
           </View>
@@ -794,44 +818,44 @@ export function ExpensesScreen() {
                 <Pressable
                   key={e.id}
                   onPress={() => openExpense(e)}
-                  style={({ hovered }: any) => ({
-                    ...cardSolid,
+                  style={rowStyle(({ hovered }: any) => ({
+                    ...U.cardSolid,
                     flexDirection: 'row', alignItems: 'center', gap: 12,
-                    backgroundColor: hovered ? 'rgba(0,0,0,0.02)' : (cardSolid as any).backgroundColor ?? '#FFF',
+                    backgroundColor: hovered ? U.rowHover : U.surface,
                     cursor: 'pointer' as any,
-                  })}
+                  }))}
                 >
                   <View style={{
                     width: 40, height: 40, borderRadius: 12,
-                    backgroundColor: DS.ink[100],
+                    backgroundColor: U.chipNeutral,
                     alignItems: 'center', justifyContent: 'center',
                   }}>
-                    <Icon size={18} color={DS.ink[500]} strokeWidth={1.6} />
+                    <Icon size={18} color={U.ink[500]} strokeWidth={1.6} />
                   </View>
                   <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>
                       {e.description}
                     </Text>
-                    <Text style={{ fontSize: 11, color: DS.ink[400] }}>
+                    <Text style={{ fontSize: 11, color: U.ink[400] }}>
                       {EXPENSE_CATEGORY_LABELS[e.category]} · {fmtDate(e.expense_date)}
                     </Text>
                   </View>
                   <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                    <Text style={{ ...DISPLAY, fontSize: 16, letterSpacing: -0.3, color: DS.ink[900] }}>
+                    <Text style={{ ...DISPLAY, fontSize: 16, letterSpacing: -0.3, color: U.ink[900] }}>
                       {fmtMoney(e.amount, (e as any).currency ?? 'TRY')}
                     </Text>
                     <View style={{ flexDirection: 'row', gap: 4 }}>
                       <Pressable
                         onPress={(ev: any) => { ev?.stopPropagation?.(); openEdit(e); }}
-                        style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                        style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: U.chipNeutral, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
                       >
-                        <Pencil size={12} color={DS.ink[500]} strokeWidth={1.8} />
+                        <Pencil size={12} color={U.ink[500]} strokeWidth={1.8} />
                       </Pressable>
                       <Pressable
                         onPress={(ev: any) => { ev?.stopPropagation?.(); handleDelete(e); }}
-                        style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: CHIP_TONES.danger.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                        style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: U.chipTones.danger.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
                       >
-                        <Trash2 size={12} color={CHIP_TONES.danger.fg} strokeWidth={1.8} />
+                        <Trash2 size={12} color={U.chipTones.danger.fg} strokeWidth={1.8} />
                       </Pressable>
                     </View>
                   </View>
@@ -1349,29 +1373,34 @@ function PillBtn({ icon: Icon, label, onPress, variant = 'dark', onHero, heroAcc
   onHero?: boolean;
   heroAccent?: string;
 }) {
+  // Her bileşen KENDİ hook'unu alır (prop ile geçirilmez).
+  const U = useInkUI();
   const dark = variant === 'dark';
   let bg: string; let fg: string;
-  let borderColor: string = DS.ink[200];
+  let borderColor: string = U.ink[200];
   let borderWidth = dark ? 0 : 1;
   if (onHero) {
-    if (dark) { bg = '#FFFFFF'; fg = heroAccent ?? DS.ink[900]; borderWidth = 0; }
-    else { bg = 'transparent'; fg = '#FFFFFF'; borderColor = 'rgba(255,255,255,0.55)'; borderWidth = 1; }
+    // Kanonik hero: birincil kapsül düz (beyaz→plainBtn) zemin, ikincil
+    // yarı saydam beyaz. Hero zemini accent/lacivert olduğu için ikincil
+    // kapsülün beyaz metni her iki temada da kalır (CLAUDE.md istisnası).
+    if (dark) { bg = U.plainBtn.bg; fg = U.ink[900]; borderWidth = 0; }
+    else { bg = 'rgba(255,255,255,0.16)'; fg = '#FFFFFF'; borderColor = 'transparent'; borderWidth = 0; }
   } else {
-    bg = dark ? DS.ink[900] : 'transparent';
-    fg = dark ? '#FFF' : DS.ink[700];
+    bg = dark ? U.ink[900] : 'transparent';
+    fg = dark ? U.onDarkPill : U.ink[700];
   }
   return (
     <Pressable
       onPress={onPress}
       style={{
         flexDirection: 'row', alignItems: 'center', gap: 6,
-        paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999,
+        paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999,
         backgroundColor: bg, borderWidth, borderColor,
         cursor: 'pointer' as any,
       }}
     >
-      <Icon size={14} color={fg} strokeWidth={onHero && dark ? 2.2 : 1.8} />
-      <Text style={{ fontSize: 12, fontWeight: onHero && dark ? '700' : '600', color: fg }}>{label}</Text>
+      <Icon size={13} color={fg} strokeWidth={onHero && dark ? 2.2 : 1.8} />
+      <Text style={{ fontSize: 12, fontWeight: '700', color: fg }}>{label}</Text>
     </Pressable>
   );
 }

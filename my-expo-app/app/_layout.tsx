@@ -30,13 +30,19 @@ installGlobalErrorHandler();
 import { GlobalSupportTrigger } from '../modules/support/components/GlobalSupportTrigger';
 import { DentyFAB } from '../modules/denty/components/DentyFAB';
 import { ConsentGuard } from '../modules/auth/components/ConsentGuard';
+// Kurye arka plan konum task'i — iOS cold-relaunch'ta yeniden kayıt için açılışta
+// import edilmeli (native'de defineTask; web'de inert). Bkz. backgroundLocation.ts
+import '../modules/courier/backgroundLocation';
 import { supabase } from '../core/api/supabase';
 import { bootMark } from '../core/debug/bootTrace';
 import { signalAppReady } from '../core/debug/appReady';
 import { BootTracePanel } from '../core/debug/BootTracePanel';
 import { useLabSetupStore } from '../core/store/labSetupStore';
 import { useAuthStore } from '../core/store/authStore';
+import { setPendingRoute, takePendingRoute } from '../core/store/pendingRoute';
 import { usePermissionStore } from '../core/store/permissionStore';
+import { useKioskMode } from '../core/kiosk/kioskModeStore';
+import { useKioskIdleLock } from '../core/kiosk/useKioskIdleLock';
 import { useFonts } from 'expo-font';
 import {
   Outfit_300Light,
@@ -73,6 +79,8 @@ function useWebStyles() {
     document.documentElement.style.setProperty('--app-bg', bg);
     document.documentElement.style.setProperty('color-scheme', resolvedDark ? 'dark' : 'light');
     document.documentElement.setAttribute('data-theme', resolvedDark ? 'dark' : 'light');
+    // NativeWind darkMode:'class' → `.dark` sınıfı `dark:` Tailwind varyantlarını tetikler.
+    document.documentElement.classList.toggle('dark', resolvedDark);
     document.body.style.backgroundColor = bg;
 
     // theme-color meta'larını dinamik güncelle — iOS standalone PWA status bar arkası
@@ -224,6 +232,7 @@ function usePWA() {
 export default function RootLayout() {
   useWebStyles();
   usePWA();
+  const resolvedDark = useThemeModeStore(s => s.resolvedDark);
   // Dil değişince tüm ağacı remount et → runtime sözlük çevirisi anında uygulanır
   const { i18n: _i18nLang } = useTranslation();
 
@@ -316,6 +325,15 @@ export default function RootLayout() {
 
   // Hydrate persisted theme mode (light/dark/system)
   useEffect(() => { useThemeModeStore.getState().hydrate(); }, []);
+  // NativeWind colorScheme'i uygulama toggle'ına bağla → `dark:` Tailwind varyantları
+  // hem web hem native'de tema toggle'ıyla çalışır (sistem colorScheme'inden bağımsız).
+  useEffect(() => {
+    const sync = (dark: boolean) => {
+      try { require('nativewind').colorScheme.set(dark ? 'dark' : 'light'); } catch { /* nativewind yoksa yoksay */ }
+    };
+    sync(useThemeModeStore.getState().resolvedDark);
+    return useThemeModeStore.subscribe((s: any) => sync(s.resolvedDark));
+  }, []);
   // Hydrate son panel (optimistic ilk-açılış routing için)
   useEffect(() => { require('../core/store/lastPanelStore').useLastPanelStore.getState().hydrate(); }, []);
   useEffect(() => {
@@ -456,6 +474,10 @@ export default function RootLayout() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // ── Kiosk (tablet giriş kodu): boşta kilit + mod hidrasyonu ──
+  useKioskIdleLock(!!session);
+  useEffect(() => { useKioskMode.getState().hydrate(); }, []);
+
   useEffect(() => {
     if (loading) return;
     if (!navRef.isReady()) return;
@@ -464,11 +486,26 @@ export default function RootLayout() {
     // Public routes — auth gerekmez (token bazlı erişim + dev showcase)
     // 'checkin' ve 'c': QR check-in akışı token ile çalışır, oturum gerektirmez
     const isPublicRoute = segments[0] === 'pay' || segments[0] === 'doctor-approval' || segments[0] === 'dev'
-      || segments[0] === 'checkin' || segments[0] === 'c' || segments[0] === 'legal';
+      || segments[0] === 'checkin' || segments[0] === 'c' || segments[0] === 'legal' || segments[0] === 'kiosk'
+      // TV modu (/tv): auth'u kendi _layout'u sağlar, panel yönlendirmesini kendi index'i yapar.
+      // Root guard'ın panel-zorlaması buraya karışmamalı (yoksa teknisyen /(station)'a atılır → Unmatched Route).
+      || segments[0] === 'tv';
     if (isPublicRoute) return;
 
     if (!session) {
-      if (!inAuthGroup) router.replace('/(auth)/login');
+      // Kiosk tabletinde oturum kapanınca e-posta login yerine kod ekranına dön.
+      if (useKioskMode.getState().isKiosk) { router.replace('/kiosk' as any); return; }
+      if (!inAuthGroup) {
+        // E-posta/QR derin bağlantısı (ör. /order/<id>) oturumsuz açıldıysa hedefi
+        // sakla — guard'ın paramsız login replace'i redirect'i siliyordu. Web'de
+        // soğuk açılışta OrderRedirect effect'i çalışmadan unmount olabilir; burada
+        // pathname'den yakalamak güvenli. (Yalnız güvenli iç yollar; store filtreler.)
+        if (segments[0] === 'order') {
+          const wp = (typeof window !== 'undefined' && window.location?.pathname) ? window.location.pathname : '';
+          if (wp.startsWith('/order/')) setPendingRoute(wp);
+        }
+        router.replace('/(auth)/login');
+      }
       return;
     }
 
@@ -598,6 +635,11 @@ export default function RootLayout() {
       // Onboarding wizard'da ise kalmasına izin ver
       if (segments[1] === 'setup-wizard') return;
 
+      // E-posta/QR derin bağlantısından gelindiyse (oturumsuz → login) giriş sonrası
+      // panonun ana sayfasına değil, asıl hedefe (ör. /order/<id>) dön. Tek kullanımlık.
+      const pending = takePendingRoute();
+      if (pending) { router.replace(pending as any); return; }
+
       // Auth sayfasındayken oturum açıldıysa doğru panele gönder
       if (userType === 'doctor')                  router.replace('/(doctor)');
       else if (userType === 'admin')              router.replace('/(admin)');
@@ -667,7 +709,7 @@ export default function RootLayout() {
 
   // On native, wait for fonts before rendering
   if (!fontsLoaded && Platform.OS !== 'web') {
-    return <View style={{ flex: 1, backgroundColor: '#FFFFFF' }} />;
+    return <View style={{ flex: 1, backgroundColor: resolvedDark ? '#0E0E0E' : '#FFFFFF' }} />;
   }
 
   // Bakım modu — giriş yapmış, platform-admin OLMAYAN kullanıcıları engelle.
@@ -690,10 +732,13 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
     <RootErrorBoundary key={`${_i18nLang.language}:${isDictReady(_i18nLang.language) ? 'r' : 'w'}`}>
-      <StatusBar style="dark" />
+      <StatusBar style={resolvedDark ? 'light' : 'dark'} />
       <Stack
         screenOptions={{
           headerShown: false,
+          // Sayfalar arası geçişte ekran konteyneri varsayılan BEYAZ zeminle
+          // açılıyordu → koyu modda beyaz patlama. Kök zemine sabitle.
+          contentStyle: { backgroundColor: resolvedDark ? '#0E0E0E' : '#FFFFFF' },
           // iOS 26.4 beta + react-native-screens 4.23 + UIKit keyboard subsystem
           // çakışması: stack transition sırasında login screen kaldırılırken
           // resignFirstResponder zinciri tetikleniyor ve

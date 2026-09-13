@@ -6,6 +6,7 @@ import { StepCard } from './StepCard';
 import { startStep as apiStartStep } from '../api';
 import { completeStep as apiCompleteStep } from '../api';
 import { useAuthStore } from '../../../core/store/authStore';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 
 interface Props {
   steps: CaseStep[];
@@ -14,6 +15,7 @@ interface Props {
 }
 
 export function StepTimeline({ steps, loading, onRefresh }: Props) {
+  const T = useMobileTokens();
   const { profile } = useAuthStore();
   const [activeStepId, setActiveStepId] = useState<string | null>(null);
 
@@ -51,13 +53,13 @@ export function StepTimeline({ steps, loading, onRefresh }: Props) {
     <View style={styles.wrap}>
       {/* Progress bar */}
       <View style={styles.progressRow}>
-        <Text style={styles.progressLabel}>Üretim İlerlemesi</Text>
-        <Text style={styles.progressPct}>{pct}%</Text>
+        <Text style={[styles.progressLabel, { color: T.ink }]}>Üretim İlerlemesi</Text>
+        <Text style={[styles.progressPct, { color: T.ink }]}>{pct}%</Text>
       </View>
-      <View style={styles.progressBg}>
-        <View style={[styles.progressFill, { width: `${pct}%` as any }]} />
+      <View style={[styles.progressBg, { backgroundColor: T.hairline }]}>
+        <View style={[styles.progressFill, { width: `${pct}%` as any, backgroundColor: T.ink }]} />
       </View>
-      <Text style={styles.progressSub}>{done} / {total} adım tamamlandı</Text>
+      <Text style={[styles.progressSub, { color: T.ink3 }]}>{done} / {total} adım tamamlandı</Text>
 
       {/* Steps */}
       <View style={{ marginTop: 12 }}>

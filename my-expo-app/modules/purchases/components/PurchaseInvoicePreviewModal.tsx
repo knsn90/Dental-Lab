@@ -17,7 +17,7 @@ import { localeTag } from '../../../core/i18n';
  */
 import React, { useEffect, useState } from 'react';
 import { Modal, View, Text, Pressable, ScrollView, Platform, ActivityIndicator } from 'react-native';
-import { X, Printer, Download, FileText } from 'lucide-react-native';
+import { X, Printer, Download, FileText } from '../../../core/ui/icons';
 import {
   getPurchaseInvoice,
   getPurchaseInvoiceLines,

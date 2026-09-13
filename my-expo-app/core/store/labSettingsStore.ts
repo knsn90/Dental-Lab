@@ -41,9 +41,23 @@ export interface LabSettings {
   auto_logout_minutes: number;
   items_per_page: number;
 
+  // Ödeme hatırlatma politikası (lab geneli)
+  payment_reminder_auto: boolean;
+  payment_reminder_frequency_days: number;
+  payment_reminder_channels: PaymentReminderChannel[];
+  payment_reminder_tone: PaymentReminderTone;
+  payment_reminder_min_days_overdue: number;
+
+  // Gizlilik: hekim/kliniklere teknisyen adı nasıl görünsün
+  technician_name_visibility: TechNameVisibility;
+
   created_at: string;
   updated_at: string;
 }
+
+export type PaymentReminderChannel = 'in_app' | 'email' | 'whatsapp';
+export type PaymentReminderTone    = 'gentle' | 'standard' | 'firm';
+export type TechNameVisibility     = 'full' | 'first' | 'hidden';
 
 // ── Defaults ────────────────────────────────────────────────────────────
 const DEFAULTS: Omit<LabSettings, 'id' | 'lab_id' | 'created_at' | 'updated_at'> = {
@@ -57,6 +71,12 @@ const DEFAULTS: Omit<LabSettings, 'id' | 'lab_id' | 'created_at' | 'updated_at'>
   working_hours_end: '18:00',
   auto_logout_minutes: 0,
   items_per_page: 50,
+  payment_reminder_auto: false,
+  payment_reminder_frequency_days: 7,
+  payment_reminder_channels: ['in_app', 'email', 'whatsapp'],
+  payment_reminder_tone: 'standard',
+  payment_reminder_min_days_overdue: 1,
+  technician_name_visibility: 'full',
 };
 
 // ── Store ───────────────────────────────────────────────────────────────

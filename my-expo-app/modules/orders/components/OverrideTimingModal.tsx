@@ -5,7 +5,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { View, Text, Modal, Pressable, TextInput, ScrollView, Platform } from 'react-native';
-import { X, Settings, AlertCircle } from 'lucide-react-native';
+import { X, Settings, AlertCircle } from '../../../core/ui/icons';
 import { useStationTheme, hexA } from '../../../core/theme/stationPalette';
 import { toast } from '../../../core/ui/Toast';
 import { overrideStageTiming } from '../api/timing';

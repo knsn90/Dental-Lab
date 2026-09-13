@@ -4,6 +4,7 @@
 
 import React, { useEffect, useId, useRef } from 'react';
 import { Platform, Text, Animated, Easing } from 'react-native';
+import { useThemeModeStore } from '../store/themeModeStore';
 
 interface ShinyTextXProps {
   children:    string;
@@ -23,13 +24,16 @@ interface ShinyTextXProps {
 export function ShinyTextX({
   children,
   duration = 2.4,
-  baseColor = '#9CA3AF',
-  shineColor = '#0F172A',
+  baseColor: baseColorProp,
+  shineColor: shineColorProp,
   fontSize = 14,
   fontWeight = '700',
   letterSpacing = 0.3,
   textTransform = 'uppercase',
 }: ShinyTextXProps) {
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const baseColor  = baseColorProp  ?? (isDark ? 'rgba(247,242,233,0.45)' : '#9CA3AF');
+  const shineColor = shineColorProp ?? (isDark ? '#F7F2E9' : '#0F172A');
   const animId = `shiny-${useId().replace(/:/g, '')}`;
   const opacity = useRef(new Animated.Value(0.7)).current;
 

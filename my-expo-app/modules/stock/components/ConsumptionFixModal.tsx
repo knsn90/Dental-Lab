@@ -16,8 +16,10 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Modal, View, Text, Pressable, TextInput, ScrollView, ActivityIndicator, Platform,
 } from 'react-native';
-import { AlertTriangle, Check, Search, X } from 'lucide-react-native';
+import { AlertTriangle, Check, Search, X } from '../../../core/ui/icons';
 import { DS } from '../../../core/theme/dsTokens';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { toast } from '../../../core/ui/Toast';
 import {
   correctConsumption, fetchOrderStageOptions, fetchItemOptions,
@@ -45,6 +47,8 @@ interface Props {
 type Mode = 'profile' | 'manual';
 
 export function ConsumptionFixModal({ visible, row, accentColor, onClose, onDone }: Props) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [mode, setMode]         = useState<Mode>('profile');
   const [qty, setQty]           = useState('');
   const [note, setNote]         = useState('');
@@ -123,20 +127,20 @@ export function ConsumptionFixModal({ visible, row, accentColor, onClose, onDone
       }}>
         <View style={{
           width: '100%', maxWidth: 560, maxHeight: '92%',
-          backgroundColor: DS.lab.surface, borderRadius: 18,
-          borderWidth: 1, borderColor: DS.ink[200], overflow: 'hidden',
+          backgroundColor: (isDark ? T.card : DS.lab.surface), borderRadius: 18,
+          borderWidth: 1, borderColor: (isDark ? T.hairline : DS.ink[200]), overflow: 'hidden',
         }}>
           {/* Başlık */}
           <View style={{
             flexDirection: 'row', alignItems: 'flex-start', gap: 12,
             paddingHorizontal: 20, paddingVertical: 16,
-            borderBottomWidth: 1, borderBottomColor: DS.ink[100],
+            borderBottomWidth: 1, borderBottomColor: (isDark ? T.hairline : DS.ink[100]),
           }}>
             <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-              <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.4, color: DS.ink[900] }}>
+              <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.4, color: (isDark ? T.ink : DS.ink[900]) }}>
                 Kaydı düzelt
               </Text>
-              <Text numberOfLines={2} style={{ fontSize: 12, color: DS.ink[500] }}>
+              <Text numberOfLines={2} style={{ fontSize: 12, color: (isDark ? T.ink3 : DS.ink[500]) }}>
                 {row.item_name} · {row.order_number ?? '—'} · {row.stage_name ?? 'aşama yok'}
               </Text>
             </View>
@@ -144,11 +148,11 @@ export function ConsumptionFixModal({ visible, row, accentColor, onClose, onDone
               onPress={onClose}
               style={({ pressed }) => ({
                 width: 30, height: 30, borderRadius: 999, alignItems: 'center',
-                justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.05)',
+                justifyContent: 'center', backgroundColor: (isDark ? '#292825' : 'rgba(0,0,0,0.05)'),
                 opacity: pressed ? 0.6 : 1, ...webCursor,
               })}
             >
-              <X size={15} color={DS.ink[700]} strokeWidth={1.9} />
+              <X size={15} color={isDark ? T.ink2 : DS.ink[700]} strokeWidth={1.9} />
             </Pressable>
           </View>
 
@@ -157,29 +161,29 @@ export function ConsumptionFixModal({ visible, row, accentColor, onClose, onDone
             <View style={{
               flexDirection: 'row', alignItems: 'center', gap: 16,
               paddingHorizontal: 16, paddingVertical: 12,
-              borderRadius: 14, backgroundColor: DS.ink[50],
+              borderRadius: 14, backgroundColor: (isDark ? T.cardSoft : DS.ink[50]),
             }}>
               <View style={{ gap: 2 }}>
-                <Text style={{ fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase', color: DS.ink[400] }}>
+                <Text style={{ fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase', color: (isDark ? T.ink3 : DS.ink[400]) }}>
                   Kayıtlı
                 </Text>
-                <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[900] }}>
+                <Text style={{ fontSize: 15, fontWeight: '600', color: (isDark ? T.ink : DS.ink[900]) }}>
                   {fmt(row.recorded_norm)} {row.norm_unit ?? unitLabel}
                 </Text>
               </View>
-              <Text style={{ fontSize: 16, color: DS.ink[300] }}>→</Text>
+              <Text style={{ fontSize: 16, color: (isDark ? T.ink3 : DS.ink[300]) }}>→</Text>
               <View style={{ gap: 2 }}>
-                <Text style={{ fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase', color: DS.ink[400] }}>
+                <Text style={{ fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase', color: (isDark ? T.ink3 : DS.ink[400]) }}>
                   Profil
                 </Text>
-                <Text style={{ fontSize: 15, fontWeight: '600', color: hasExpected ? DS.lab.success : DS.ink[400] }}>
+                <Text style={{ fontSize: 15, fontWeight: '600', color: hasExpected ? DS.lab.success : (isDark ? T.ink3 : DS.ink[400]) }}>
                   {row.expected_norm != null ? `${fmt(row.expected_norm)} ${row.norm_unit ?? unitLabel}` : 'yok'}
                 </Text>
               </View>
             </View>
 
             {row.basis ? (
-              <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: -10 }}>
+              <Text style={{ fontSize: 12, color: (isDark ? T.ink3 : DS.ink[500]), marginTop: -10 }}>
                 Profil gerekçesi: {row.basis}
               </Text>
             ) : null}
@@ -190,7 +194,7 @@ export function ConsumptionFixModal({ visible, row, accentColor, onClose, onDone
                 borderRadius: 14, backgroundColor: 'rgba(232,155,42,0.10)',
               }}>
                 <AlertTriangle size={15} color={DS.lab.warning} strokeWidth={1.8} />
-                <Text style={{ flex: 1, fontSize: 12, color: DS.ink[700], lineHeight: 18 }}>
+                <Text style={{ flex: 1, fontSize: 12, color: (isDark ? T.ink2 : DS.ink[700]), lineHeight: 18 }}>
                   Bu kalemin kuralı henüz varsayım. Profil değeri güvenilir değil —
                   miktarı elle girin ya da önce kuralı onaylayın.
                 </Text>
@@ -199,7 +203,7 @@ export function ConsumptionFixModal({ visible, row, accentColor, onClose, onDone
 
             {/* Miktar kaynağı */}
             <View style={{ gap: 10 }}>
-              <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', color: DS.ink[500] }}>
+              <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', color: (isDark ? T.ink3 : DS.ink[500]) }}>
                 Yeni miktar
               </Text>
               <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -215,12 +219,12 @@ export function ConsumptionFixModal({ visible, row, accentColor, onClose, onDone
                       onPress={() => setMode(o.k)}
                       style={({ pressed }) => ({
                         paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999,
-                        backgroundColor: active ? DS.ink[900] : 'rgba(0,0,0,0.05)',
+                        backgroundColor: active ? DS.ink[900] : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'),
                         opacity: !o.on ? 0.35 : pressed ? 0.7 : 1,
                         ...(Platform.OS === 'web' ? ({ cursor: o.on ? 'pointer' : 'not-allowed' } as any) : {}),
                       })}
                     >
-                      <Text style={{ fontSize: 12, fontWeight: '500', color: active ? '#FFF' : DS.ink[800] }}>
+                      <Text style={{ fontSize: 12, fontWeight: '500', color: active ? '#FFF' : (isDark ? T.ink : DS.ink[800]) }}>
                         {o.l}
                       </Text>
                     </Pressable>
@@ -235,16 +239,16 @@ export function ConsumptionFixModal({ visible, row, accentColor, onClose, onDone
                     onChangeText={setQty}
                     keyboardType="decimal-pad"
                     placeholder="0"
-                    placeholderTextColor={DS.ink[300]}
+                    placeholderTextColor={isDark ? (T.ink3 as string) : DS.ink[300]}
                     style={{
                       width: 140, paddingHorizontal: 14, paddingVertical: 10,
-                      borderRadius: 14, borderWidth: 1, borderColor: DS.ink[300],
-                      fontSize: 14, color: DS.ink[900], textAlign: 'end' as any,
+                      borderRadius: 14, borderWidth: 1, borderColor: (isDark ? T.hairline : DS.ink[300]),
+                      fontSize: 14, color: (isDark ? T.ink : DS.ink[900]), textAlign: 'end' as any,
                       ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
                     }}
                   />
-                  <Text style={{ fontSize: 13, color: DS.ink[500] }}>
-                    {unitLabel} <Text style={{ color: DS.ink[400] }}>(kalem birimi)</Text>
+                  <Text style={{ fontSize: 13, color: (isDark ? T.ink3 : DS.ink[500]) }}>
+                    {unitLabel} <Text style={{ color: (isDark ? T.ink3 : DS.ink[400]) }}>(kalem birimi)</Text>
                   </Text>
                 </View>
               ) : null}
@@ -253,7 +257,7 @@ export function ConsumptionFixModal({ visible, row, accentColor, onClose, onDone
             {/* Aşama düzeltmesi */}
             {stages.length > 0 ? (
               <View style={{ gap: 8 }}>
-                <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', color: DS.ink[500] }}>
+                <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', color: (isDark ? T.ink3 : DS.ink[500]) }}>
                   Aşama {stageId ? '(değiştirildi)' : '(değişmiyor)'}
                 </Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
@@ -265,12 +269,12 @@ export function ConsumptionFixModal({ visible, row, accentColor, onClose, onDone
                         onPress={() => setStageId(s.id === row.stage_id ? null : s.id)}
                         style={({ pressed }) => ({
                           paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
-                          backgroundColor: active ? accentColor + '22' : 'rgba(0,0,0,0.04)',
+                          backgroundColor: active ? accentColor + '22' : (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'),
                           borderWidth: 1, borderColor: active ? accentColor : 'transparent',
                           opacity: pressed ? 0.7 : 1, ...webCursor,
                         })}
                       >
-                        <Text style={{ fontSize: 12, color: DS.ink[800] }}>{s.label}</Text>
+                        <Text style={{ fontSize: 12, color: (isDark ? T.ink : DS.ink[800]) }}>{s.label}</Text>
                       </Pressable>
                     );
                   })}
@@ -281,11 +285,11 @@ export function ConsumptionFixModal({ visible, row, accentColor, onClose, onDone
             {/* Kalem düzeltmesi */}
             <View style={{ gap: 8 }}>
               <Pressable onPress={() => setShowItems(v => !v)} style={{ ...webCursor }}>
-                <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', color: DS.ink[500] }}>
+                <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', color: (isDark ? T.ink3 : DS.ink[500]) }}>
                   Kalem {itemId ? '(değiştirildi)' : '— değiştirmek için dokunun'}
                 </Text>
               </Pressable>
-              <Text numberOfLines={1} style={{ fontSize: 13, color: DS.ink[900] }}>
+              <Text numberOfLines={1} style={{ fontSize: 13, color: (isDark ? T.ink : DS.ink[900]) }}>
                 {currentItem?.name ?? row.item_name}
               </Text>
 
@@ -294,21 +298,21 @@ export function ConsumptionFixModal({ visible, row, accentColor, onClose, onDone
                   <View style={{
                     flexDirection: 'row', alignItems: 'center', gap: 8,
                     paddingHorizontal: 12, height: 36, borderRadius: 999,
-                    borderWidth: 1, borderColor: DS.ink[200],
+                    borderWidth: 1, borderColor: (isDark ? T.hairline : DS.ink[200]),
                   }}>
-                    <Search size={13} color={DS.ink[400]} strokeWidth={1.8} />
+                    <Search size={13} color={isDark ? T.ink3 : DS.ink[400]} strokeWidth={1.8} />
                     <TextInput
                       value={itemQ}
                       onChangeText={setItemQ}
                       placeholder="Kalem ara"
-                      placeholderTextColor={DS.ink[400]}
+                      placeholderTextColor={isDark ? (T.ink3 as string) : DS.ink[400]}
                       style={{
-                        flex: 1, fontSize: 13, color: DS.ink[900],
+                        flex: 1, fontSize: 13, color: (isDark ? T.ink : DS.ink[900]),
                         ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
                       }}
                     />
                   </View>
-                  <View style={{ maxHeight: 180, borderRadius: 14, borderWidth: 1, borderColor: DS.ink[100] }}>
+                  <View style={{ maxHeight: 180, borderRadius: 14, borderWidth: 1, borderColor: (isDark ? T.hairline : DS.ink[100]) }}>
                     <ScrollView>
                       {filteredItems.map(it => {
                         const active = (itemId ?? row.item_id) === it.id;
@@ -318,14 +322,14 @@ export function ConsumptionFixModal({ visible, row, accentColor, onClose, onDone
                             onPress={() => { setItemId(it.id === row.item_id ? null : it.id); setShowItems(false); }}
                             style={({ pressed }) => ({
                               paddingHorizontal: 14, paddingVertical: 10,
-                              backgroundColor: active ? DS.ink[50] : 'transparent',
+                              backgroundColor: active ? (isDark ? T.cardSoft : DS.ink[50]) : 'transparent',
                               opacity: pressed ? 0.7 : 1, ...webCursor,
                             })}
                           >
-                            <Text numberOfLines={1} style={{ fontSize: 13, color: DS.ink[900] }}>
+                            <Text numberOfLines={1} style={{ fontSize: 13, color: (isDark ? T.ink : DS.ink[900]) }}>
                               {it.name}
                             </Text>
-                            <Text style={{ fontSize: 11, color: DS.ink[400] }}>
+                            <Text style={{ fontSize: 11, color: (isDark ? T.ink3 : DS.ink[400]) }}>
                               {it.category ?? '—'} · {it.unit ?? ''}
                             </Text>
                           </Pressable>
@@ -339,17 +343,17 @@ export function ConsumptionFixModal({ visible, row, accentColor, onClose, onDone
 
             {/* Not */}
             <View style={{ gap: 8 }}>
-              <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', color: DS.ink[500] }}>
+              <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', color: (isDark ? T.ink3 : DS.ink[500]) }}>
                 Not (opsiyonel)
               </Text>
               <TextInput
                 value={note}
                 onChangeText={setNote}
                 placeholder="Neden düzeltiliyor?"
-                placeholderTextColor={DS.ink[300]}
+                placeholderTextColor={isDark ? (T.ink3 as string) : DS.ink[300]}
                 style={{
                   paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14,
-                  borderWidth: 1, borderColor: DS.ink[300], fontSize: 13, color: DS.ink[900],
+                  borderWidth: 1, borderColor: (isDark ? T.hairline : DS.ink[300]), fontSize: 13, color: (isDark ? T.ink : DS.ink[900]),
                   ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
                 }}
               />
@@ -360,7 +364,7 @@ export function ConsumptionFixModal({ visible, row, accentColor, onClose, onDone
           <View style={{
             flexDirection: 'row', alignItems: 'center', gap: 10,
             paddingHorizontal: 20, paddingVertical: 14,
-            borderTopWidth: 1, borderTopColor: DS.ink[100], flexWrap: 'wrap',
+            borderTopWidth: 1, borderTopColor: (isDark ? T.hairline : DS.ink[100]), flexWrap: 'wrap',
           }}>
             <Pressable
               onPress={() => apply(false)}
@@ -397,7 +401,7 @@ export function ConsumptionFixModal({ visible, row, accentColor, onClose, onDone
             <View style={{ flex: 1 }} />
 
             <Pressable onPress={onClose} disabled={saving} style={{ ...webCursor }}>
-              <Text style={{ fontSize: 13, color: DS.ink[500] }}>Vazgeç</Text>
+              <Text style={{ fontSize: 13, color: (isDark ? T.ink3 : DS.ink[500]) }}>Vazgeç</Text>
             </Pressable>
           </View>
         </View>

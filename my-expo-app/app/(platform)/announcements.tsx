@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Platform } from 'react-native';
-import { Megaphone, Trash2, Send } from 'lucide-react-native';
+import { Megaphone, Trash2, Send } from '../../core/ui/icons';
 import { listAnnouncements, createAnnouncement, setAnnouncementActive, deleteAnnouncement, type Announcement } from '../../modules/platform/api';
 import { C, PageHeader, Panel, SectionLabel, Chip, IconChip, hexA } from '../../modules/platform/ui';
 

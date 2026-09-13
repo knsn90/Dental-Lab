@@ -163,16 +163,22 @@ export async function dispatchNotification(input: DispatchInput): Promise<Dispat
  * (kullanıcı chat push'unu kapattıysa gönderilmez).
  */
 export async function dispatchChatPush(opts: {
-  userIds:   string[];
-  title:     string;
-  body:      string;
-  actionUrl: string;
-  tag?:      string;
+  userIds:    string[];
+  title:      string;
+  body:       string;
+  actionUrl:  string;
+  tag?:       string;
+  resourceId?: string;   // work_order id → e-postada zengin sipariş kartı
+  senderName?: string;   // "kim gönderdi" → e-posta gövdesinde gösterilir
 }): Promise<void> {
   const userIds = Array.from(new Set(opts.userIds.filter(Boolean)));
   if (userIds.length === 0) return;
 
   const tag = opts.tag ?? 'chat';
+  // E-posta gövdesi: mesajın önüne göndereni ekle ("Ahmet Yılmaz: merhaba …").
+  // Push başlığı zaten "Yeni mesaj · KOD" olduğu için push gövdesi sade kalır.
+  const sender = opts.senderName?.trim();
+  const emailBody = sender ? `${sender}: ${opts.body ?? ''}`.trim() : (opts.body ?? '');
 
   // ─── Web Push (closed-tab) ───────────────────────────────────────
   try {
@@ -221,10 +227,12 @@ export async function dispatchChatPush(opts: {
         category: 'chat',
         payload: {
           title:        opts.title,
-          body:         opts.body ?? '',
+          body:         emailBody,
           actionUrl:    opts.actionUrl,
           resourceType: 'work_order',
-          extra:        { tag },
+          resourceId:   opts.resourceId,   // sipariş kartı + QR bunun için çözülür
+          // NOT: `tag` yalnız push dedup içindir; e-postada "TAG" satırı olarak
+          // görünmesin diye extra'ya KOYMUYORUZ.
         },
       },
     });

@@ -26,13 +26,17 @@ import {
   CreditCard, Calendar, BarChart3, Layers, TrendingUp,
   AlertTriangle, ArrowUpRight, ArrowUpLeft, ArrowRight, ArrowLeft, Check, Trophy, Inbox, Receipt, CornerDownRight,
   Wallet,
-} from 'lucide-react-native';
+  PlusCircle,
+} from '../../core/ui/icons';
 import { useStockAlert } from '../../core/hooks/useStockAlert';
 import { useTranslation } from 'react-i18next';
 import { localeTag, isRTL, weekdayOffset, fmtWeekdayDayMonth } from '../../core/i18n';
 import { supabase } from '../../core/api/supabase';
 import { useRealtimeRefresh } from '../../core/hooks/useRealtimeRefresh';
 import { DS } from '../../core/theme/dsTokens';
+import { HERO_NAVY, prefersReducedMotion, useAccentTones } from '../../core/ui/HeroGlow';
+import { useMobileTokens } from '../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../core/store/themeModeStore';
 import { useIsDesktop } from '../../core/layout/PatternsShell';
 import { usePageTitleStore } from '../../core/store/pageTitleStore';
 import { useAuthStore } from '../../core/store/authStore';
@@ -43,6 +47,7 @@ import { resolveOrderStatus } from '../../modules/dashboard/components/RecentOrd
 import { mapRevisionCases, flattenRevisionCases } from '../../modules/orders/revisionGroups';
 import { useRevisionParents } from '../../modules/orders/hooks/useRevisionParents';
 import { NumberTickerX } from '../../core/ui/NumberTickerX';
+import { PipelineFlowRow } from '../../core/ui/PipelineFlowRow';
 import { groupByCurrency, type CurrencyTotal } from '../../core/money/aggregations';
 import { formatMoney, useBaseCurrency, type Currency } from '../../core/money/currency';
 import { useDashboardCache } from '../../core/store/dashboardCacheStore';
@@ -58,7 +63,17 @@ const SERIF = {
 };
 
 // ── Shorthand aliases from DS tokens ──
-const P   = DS.exec.primary;      // #4771AB kobalt
+const P   = DS.exec.primary;      // #4771AB kobalt (AÇIK tema)
+
+/**
+ * Panel mavisi — koyu temada kobalt (#4771AB) parlak/eski duruyor; yerine yeni
+ * lacivert paletin açık tonu (#004B87) kullanılır. Grafik, halka, rozet ve
+ * ikonların hepsi bundan beslenir ki sayfa tek bir mavi konuşsun.
+ */
+function usePanelBlue(): string {
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  return isDark ? HERO_NAVY.light : P;
+}
 const INK = DS.ink[900];          // #0A0A0A
 
 const CLR = {
@@ -126,6 +141,18 @@ function fmtMoney(n: number) {
     return `${Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')} TL`;
   }
 }
+/** Yarı saydam bir rengi OPAK zemine karıştırır — cam yerine düz yüzey gerekiyorsa. */
+function mixOn(base: string, overlay: string, alpha: number): string {
+  const px = (h: string) => {
+    const m = /^#?([0-9a-f]{6})$/i.exec(h);
+    const n = m ? parseInt(m[1], 16) : 0;
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  };
+  const [br, bg, bb] = px(base), [or_, og, ob] = px(overlay);
+  const mix = (b: number, o: number) => Math.round(b + (o - b) * alpha);
+  return `#${[mix(br, or_), mix(bg, og), mix(bb, ob)].map(v => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
 function hexA(hex: string, alpha: number) {
   try {
     const r = parseInt(hex.slice(1, 3), 16);
@@ -218,10 +245,11 @@ function PulseDot({ color, size, x, y }: { color: string; size: number; x: numbe
 
 /** Generic card — Patterns: white bg, radius xl, 1px border */
 function Card({ children, style }: { children: React.ReactNode; style?: any }) {
+  const T = useMobileTokens();
   return (
     <View
-      className="bg-white overflow-hidden"
-      style={[{ borderRadius: DS.radius.xl, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }, style]}
+      className="overflow-hidden"
+      style={[{ backgroundColor: T.card, borderRadius: DS.radius.xl, borderWidth: 1, borderColor: T.hairline }, style]}
     >
       {children}
     </View>
@@ -246,9 +274,10 @@ const NUM = { fontVariant: ['tabular-nums'] as any };
 /** Yığılmış şerit — segmentler pay oranında yer kaplar (flex = pay).
  *  flexBasis 0 + flexGrow=pay ⇒ segment genişliği doğrudan payın kendisi. */
 function Spine({ segments }: { segments: { color: string; pct: number }[] }) {
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const live = segments.filter(s => s.pct > 0.0001);
   return (
-    <View style={{ flexDirection: 'row', height: 8, borderRadius: 999, overflow: 'hidden', backgroundColor: DS.ink[100], gap: 2, marginTop: 16 }}>
+    <View style={{ flexDirection: 'row', height: 8, borderRadius: 999, overflow: 'hidden', backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : DS.ink[100], gap: 2, marginTop: 16 }}>
       {live.map((s, i) => <View key={i} style={{ flex: s.pct, backgroundColor: s.color }} />)}
     </View>
   );
@@ -265,18 +294,19 @@ function SpineCard({ title, value, unit, segments, zeros, children }: {
   children:  React.ReactNode;
 }) {
   const plain = typeof value === 'string' || typeof value === 'number';
+  const T = useMobileTokens();
   return (
     <Card style={{ padding: 20 }}>
       {/* Başlık solda · toplam sağda — koyu bant yok, kart bağırmıyor */}
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 12 }}>
-        <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+        <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: T.ink }} numberOfLines={1}>
           {title}
         </Text>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
           {plain
-            ? <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.5, color: DS.ink[900], ...NUM }}>{value}</Text>
+            ? <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.5, color: T.ink, ...NUM }}>{value}</Text>
             : value}
-          {unit ? <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[400] }}>{unit}</Text> : null}
+          {unit ? <Text style={{ fontSize: 12, fontWeight: '500', color: T.ink3 }}>{unit}</Text> : null}
         </View>
       </View>
 
@@ -285,7 +315,7 @@ function SpineCard({ title, value, unit, segments, zeros, children }: {
       <View style={{ marginTop: 8 }}>{children}</View>
 
       {zeros && zeros.length > 0 ? (
-        <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 4 }}>
+        <Text style={{ fontSize: 11, color: T.ink3, marginTop: 4 }}>
           {zeros.join(' · ')} — 0
         </Text>
       ) : null}
@@ -303,15 +333,16 @@ function SpineRow({ color, label, value, meta }: {
   meta?:  string;
 }) {
   const plain = typeof value === 'string' || typeof value === 'number';
+  const T = useMobileTokens();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 }}>
       <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color ?? 'transparent' }} />
-      <Text style={{ flex: 1, fontSize: 13, fontWeight: '500', color: DS.ink[700] }} numberOfLines={1}>{label}</Text>
+      <Text style={{ flex: 1, fontSize: 13, fontWeight: '500', color: T.ink2 }} numberOfLines={1}>{label}</Text>
       {plain
-        ? <Text style={{ fontSize: 13, fontWeight: '700', color: INK, ...NUM }}>{value}</Text>
+        ? <Text style={{ fontSize: 13, fontWeight: '700', color: T.ink, ...NUM }}>{value}</Text>
         : value}
       {meta ? (
-        <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[400], minWidth: 36, textAlign: 'end' as any, ...NUM }}>{meta}</Text>
+        <Text style={{ fontSize: 12, fontWeight: '500', color: T.ink3, minWidth: 36, textAlign: 'end' as any, ...NUM }}>{meta}</Text>
       ) : null}
     </View>
   );
@@ -319,12 +350,13 @@ function SpineRow({ color, label, value, meta }: {
 
 /** Card header — display serif or uppercase micro */
 function CardHeader({ title, right, display }: { title: string; right?: React.ReactNode; display?: boolean }) {
+  const T = useMobileTokens();
   return (
     <View className="flex-row items-center justify-between" style={{ marginBottom: 12 }}>
       {display ? (
-        <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>{title}</Text>
+        <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: T.ink }}>{title}</Text>
       ) : (
-        <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500] }}>
+        <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 0.7, textTransform: 'uppercase', color: T.ink3 }}>
           {title}
         </Text>
       )}
@@ -352,9 +384,10 @@ function StatusBadge({ status }: { status: string }) {
 /** Stat Pill (hero) */
 function StatPill({ label, value, bg, color }: { label: string; value: string | number; bg: string; color: string }) {
   const isNum = typeof value === 'number';
+  const T = useMobileTokens();
   return (
     <View className="flex-row items-center" style={{ gap: 8 }}>
-      <Text style={{ fontSize: 11, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.06 * 11 }}>
+      <Text style={{ fontSize: 11, color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.06 * 11 }}>
         {label}
       </Text>
       <View className="rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 3, backgroundColor: bg }}>
@@ -369,18 +402,20 @@ function StatPill({ label, value, bg, color }: { label: string; value: string | 
 /** Big Stat — Patterns hero right side */
 /** Hero KPI'ları arasındaki saç teli ayraç — sayı bloğu kadar yüksek. */
 function StatDivider() {
-  return <View style={{ width: StyleSheet.hairlineWidth, alignSelf: 'stretch', marginVertical: 2, backgroundColor: 'rgba(0,0,0,0.10)' }} />;
+  const T = useMobileTokens();
+  return <View style={{ width: StyleSheet.hairlineWidth, alignSelf: 'stretch', marginVertical: 2, backgroundColor: T.hairline }} />;
 }
 
 function BigStat({ value, label }: { value: string | number; label: string }) {
   const isNum = typeof value === 'number';
-  const numStyle = { ...SERIF, fontSize: DS.size.h2, letterSpacing: -0.025 * DS.size.h2, lineHeight: DS.size.h2, color: DS.ink[900] };
+  const T = useMobileTokens();
+  const numStyle = { ...SERIF, fontSize: DS.size.h2, letterSpacing: -0.025 * DS.size.h2, lineHeight: DS.size.h2, color: T.ink };
   return (
     <View style={{ alignItems: 'flex-end' }}>
       {isNum
         ? <NumberTickerX value={value as number} duration={900} style={numStyle} />
         : <Text style={numStyle}>{value}</Text>}
-      <Text style={{ fontSize: DS.size.micro, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.06 * DS.size.micro, marginTop: 4 }}>
+      <Text style={{ fontSize: DS.size.micro, color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.06 * DS.size.micro, marginTop: 4 }}>
         {label}
       </Text>
     </View>
@@ -391,6 +426,9 @@ function BigStat({ value, label }: { value: string | number; label: string }) {
 function PercentRingHero({
   value: targetValue, size = 200, weight = '300', animate = true, darkText = false,
 }: { value: number; size?: number; weight?: '200' | '300' | '400' | '500' | '600' | '700'; animate?: boolean; darkText?: boolean }) {
+  const PB = usePanelBlue();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const animatedValue = useCountUp(targetValue, animate ? 1400 : 0);
   const value = animate ? animatedValue : targetValue;
 
@@ -400,12 +438,12 @@ function PercentRingHero({
   const c = 2 * Math.PI * r;
   const dash = (value / 100) * c;
 
-  const lightColor = P;
+  const lightColor = PB;
   const deepColor = DS.exec.primaryDeep;
   const id = `pr-hero-exec-${targetValue}-${size}`;
 
   const outerPillColor = darkText ? lightColor + '30' : lightColor + '22';
-  const innerTrackColor = darkText ? 'rgba(0,0,0,0.06)' : lightColor + '15';
+  const innerTrackColor = darkText ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)') : lightColor + '15';
 
   const angleDeg = (value / 100) * 360 - 90;
   const angleRad = (angleDeg * Math.PI) / 180;
@@ -416,9 +454,9 @@ function PercentRingHero({
   const showPulse = size >= 100;
   const displayValue = Math.round(value);
 
-  const knobColor = darkText ? INK : '#FFFFFF';
-  const textColor = darkText ? INK : '#FFFFFF';
-  const pctColor = darkText ? DS.ink[400] : lightColor;
+  const knobColor = darkText ? T.ink : '#FFFFFF';
+  const textColor = darkText ? T.ink : '#FFFFFF';
+  const pctColor = darkText ? T.ink3 : lightColor;
 
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
@@ -488,10 +526,30 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, router 
   latestOrder: any;
   router: any;
 }) {
+  const PB = usePanelBlue();
+  // Akış izi rengi PANELE uyar: mavi panelde lacivert ailenin açık ucu,
+  // zümrüt/safran panelde accent'in açılmış tonu.
+  const accentTone = useAccentTones(PB);
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const { t } = useTranslation();
+  const T = useMobileTokens();
   const dotAnim = useRef(new Animated.Value(0)).current;
-  const glowAnim = useRef(new Animated.Value(0)).current;
-  const breatheAnim = useRef(new Animated.Value(0)).current;
+  // Akış kuyruğu: aşamalar arasındaki çizgide soldan sağa ilerleyen ışık.
+  const flowAnim = useRef(new Animated.Value(0)).current;
+  // Aşama başına "değişim parıltısı" — sayı DEĞİŞİNCE tetiklenir, boşta durur.
+  const flashAnims = useRef(PIPELINE_STAGES.map(() => new Animated.Value(0))).current;
+  const prevCounts = useRef<number[]>(PIPELINE_STAGES.map(st => pipelineCounts[st.key] ?? 0));
+
+  // Geometri sabit: 4 daire (40px) + 12px boşluk → çizgi ilk/son dairenin
+  // merkezleri arasında uzanır. Ölçüm gerekmiyor, layout deterministik.
+  // Kartın daire hizasındaki zemin tonu (ink700→ink900 dikey gradyanın ortası).
+  const CARD_MID = '#1B1B1B';
+  const FLOW = isDark ? '#38BDF8' : PB;
+  const CIRCLE = 40, GAP = 12, STEP = CIRCLE + GAP;
+  const LINE_W = STEP * (PIPELINE_STAGES.length - 1);
+  // İşin BEKLEDİĞİ aşama: dolu olan son aşama (yoksa akış durur).
+  const activeIdx = PIPELINE_STAGES.reduce((acc, st, i) => ((pipelineCounts[st.key] ?? 0) > 0 ? i : acc), -1);
+  const hasFlow = activeIdx >= 0 && !prefersReducedMotion();
 
   useEffect(() => {
     Animated.loop(
@@ -501,28 +559,53 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, router 
         Animated.delay(400),
       ]),
     ).start();
+  }, [dotAnim]);
 
-    Animated.loop(
+  useEffect(() => {
+    // Akış yoksa (hiçbir aşamada iş yok) hareket de yok — kart dürüstçe susar.
+    flowAnim.stopAnimation();
+    flowAnim.setValue(0);
+    if (!hasFlow) return;
+    const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(glowAnim, { toValue: 1, duration: 2400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(glowAnim, { toValue: 0, duration: 2400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(flowAnim, { toValue: 1, duration: 3200, easing: Easing.linear, useNativeDriver: true }),
+        Animated.delay(500),
       ]),
-    ).start();
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [flowAnim, hasFlow, activeIdx]);
 
-    Animated.loop(
+  useEffect(() => {
+    // Sayı değiştiğinde YALNIZ o daire tepki verir (realtime nabzı).
+    PIPELINE_STAGES.forEach((st, i) => {
+      const v = pipelineCounts[st.key] ?? 0;
+      if (v === prevCounts.current[i]) return;
+      prevCounts.current[i] = v;
+      if (prefersReducedMotion()) return;
+      flashAnims[i].setValue(0);
       Animated.sequence([
-        Animated.timing(breatheAnim, { toValue: 1, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(breatheAnim, { toValue: 0, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      ]),
-    ).start();
-  }, [dotAnim, glowAnim, breatheAnim]);
+        Animated.spring(flashAnims[i], { toValue: 1, friction: 5, tension: 220, useNativeDriver: true }),
+        Animated.timing(flashAnims[i], { toValue: 0, duration: 420, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+      ]).start();
+    });
+  }, [pipelineCounts, flashAnims]);
 
   const dotOpacity = dotAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.3] });
-  // Bulanıklık ışığı geniş alana yayıp kontrastı düşürüyor; parıltı aralığı
-  // 0–0.12'den 0–0.30'a çıkarıldı, yoksa kart soluk/ölü görünüyor.
-  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.30] });
-  const glowScale = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1.2] });
-  const breatheScale = breatheAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
+  // Kuyruk aktif aşamada DURAKLAR: yolun ortasında bekleyip parlar, sonra
+  // sona ilerler. "İş şu an burada" bilgisini hareketin kendisi söyler.
+  const activeX = Math.max(0, activeIdx) * STEP;
+  // Duraklama noktası dairenin SOL KENARI (merkezi değil): merkeze durursa
+  // izin çoğu dairenin arkasında kalıp kısa bir çubuk gibi görünüyordu.
+  const holdX = Math.max(0, activeX - CIRCLE / 2 - 2);
+  const flowX = flowAnim.interpolate({
+    inputRange: [0, 0.34, 0.62, 1],
+    outputRange: [0, holdX, holdX, LINE_W],
+  });
+  const flowOpacity = flowAnim.interpolate({
+    inputRange: [0, 0.10, 0.34, 0.62, 0.90, 1],
+    outputRange: [0, 0.55, 1, 1, 0.55, 0],
+  });
 
   return (
     <Card style={{ flex: isDesktop ? 1 : undefined, marginBottom: isDesktop ? 0 : 14 }}>
@@ -530,25 +613,19 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, router 
       <View style={{
         flex: 1,
         // @ts-ignore web gradient
-        backgroundImage: `linear-gradient(180deg, ${DS.ink[700]} 0%, ${DS.ink[900]} 100%)`,
-        backgroundColor: DS.exec.surfaceAlt,
+        // Bilinçli KOYU hero bandı — iki temada da siyah.
+        backgroundImage: 'linear-gradient(180deg, #1A1A1A 0%, #0A0A0A 100%)',
+        backgroundColor: '#0A0A0A',
         alignItems: 'center', justifyContent: 'center',
         minHeight: 160, position: 'relative',
         overflow: 'hidden',
       }}>
-        {/* Ambient glow */}
-        <Animated.View style={{
-          position: 'absolute', width: 160, height: 160, borderRadius: 80,
-          backgroundColor: P,
-          opacity: glowOpacity,
-          transform: [{ scale: glowScale }],
-        }} pointerEvents="none" />
 
         {/* CANLI badge */}
         <View className="absolute rounded-full" style={{
           top: 14, start: 14,
           paddingHorizontal: 10, paddingVertical: 4,
-          backgroundColor: `${P}E6`,
+          backgroundColor: `${PB}E6`,
           flexDirection: 'row', alignItems: 'center', gap: 6,
         }}>
           <Animated.View style={{
@@ -561,44 +638,21 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, router 
           </Text>
         </View>
 
-        {/* Pipeline circles */}
-        <View className="flex-row items-center" style={{ gap: 12 }}>
-          {PIPELINE_STAGES.map((stage) => {
-            const count = pipelineCounts[stage.key] ?? 0;
-            const active = count > 0;
-            return (
-              <Pressable
-                key={stage.key}
-                onPress={() => router.push('/(admin)/orders' as any)}
-                className="items-center"
-                style={{ gap: 4 }}
-              >
-                <Animated.View
-                  style={{
-                    width: 40, height: 40, borderRadius: 20,
-                    backgroundColor: active ? hexA(P, 0.2) : 'rgba(255,255,255,0.06)',
-                    borderWidth: active ? 1.5 : 1,
-                    borderColor: active ? P : 'rgba(255,255,255,0.1)',
-                    alignItems: 'center', justifyContent: 'center',
-                    transform: active ? [{ scale: breatheScale }] : [],
-                  }}
-                >
-                  <NumberTickerX
-                    value={count}
-                    duration={800}
-                    style={{
-                      ...SERIF, fontSize: 16, letterSpacing: -0.5,
-                      color: active ? '#FFF' : 'rgba(255,255,255,0.3)',
-                    } as any}
-                  />
-                </Animated.View>
-                <Text style={{ fontSize: 8, fontWeight: '600', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>
-                  {t(stage.labelKey)}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        <PipelineFlowRow
+          stages={PIPELINE_STAGES.map(st => ({ key: st.key, label: t(st.labelKey) }))}
+          counts={pipelineCounts}
+          accent={PB}
+          flowColor={accentTone.ink}
+          cardMid={CARD_MID}
+          onPressStage={() => router.push('/(admin)/orders' as any)}
+          renderValue={(count, active) => (
+            <NumberTickerX
+              value={count}
+              duration={800}
+              style={{ ...SERIF, fontSize: 16, letterSpacing: -0.5, color: active ? '#FFF' : 'rgba(255,255,255,0.3)' } as any}
+            />
+          )}
+        />
       </View>
 
       {/* White section — latest order info */}
@@ -608,16 +662,16 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, router 
             onPress={() => router.push(`/(admin)/order/${latestOrder.id}` as any)}
             style={{ gap: 2 }}
           >
-            <Text style={{ fontSize: 15, fontWeight: '500', color: INK }} numberOfLines={1}>
+            <Text style={{ fontSize: 15, fontWeight: '500', color: T.ink }} numberOfLines={1}>
               {latestOrder.doctor_name ?? 'Sipariş'}
             </Text>
-            <Text style={{ fontSize: 11, color: DS.ink[500], marginBottom: 10 }} numberOfLines={1}>
+            <Text style={{ fontSize: 11, color: T.ink3, marginBottom: 10 }} numberOfLines={1}>
               #{latestOrder.order_number} · {latestOrder.work_type ?? ''}
             </Text>
             <StatusBadge status={latestOrder.status} />
           </Pressable>
         ) : (
-          <Text style={{ fontSize: 13, color: DS.ink[400] }}>{t('common.loading')}</Text>
+          <Text style={{ fontSize: 13, color: T.ink3 }}>{t('common.loading')}</Text>
         )}
       </View>
     </Card>
@@ -626,13 +680,15 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, router 
 
 // ── Production Bar Chart — hatched-rail pill columns (admin coral) ──
 function ProductionBarChart({ data }: { data: { label: string; count: number }[] }) {
+  const PB = usePanelBlue();
+  const T = useMobileTokens();
   const max = Math.max(...data.map(d => d.count), 1);
   const highestIdx = data.reduce((best, d, i) => d.count > data[best].count ? i : best, 0);
 
-  const FILL_LIGHT = `${P}55`;   // panel soft (semi-transparent)
-  const FILL_DARK  = P;
-  const RAIL_BG    = `${P}08`;
-  const STRIPE_BG  = `repeating-linear-gradient(135deg, ${P}14 0 6px, transparent 6px 12px)`;
+  const FILL_LIGHT = `${PB}55`;   // panel soft (semi-transparent)
+  const FILL_DARK  = PB;
+  const RAIL_BG    = `${PB}08`;
+  const STRIPE_BG  = `repeating-linear-gradient(135deg, ${PB}14 0 6px, transparent 6px 12px)`;
 
   return (
     <View className="flex-row items-end" style={{ flex: 1, gap: 10, minHeight: 120, paddingHorizontal: 2 }}>
@@ -643,7 +699,7 @@ function ProductionBarChart({ data }: { data: { label: string; count: number }[]
           <View key={i} style={{ flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end', gap: 6 }}>
             <View style={{ width: '100%', maxWidth: 56, flex: 1, justifyContent: 'flex-end', alignItems: 'center' }}>
               {isHighlight && (
-                <View style={{ marginBottom: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[100] }}>
+                <View style={{ marginBottom: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline }}>
                   <Text style={{ fontSize: 10, fontWeight: '700', color: FILL_DARK }}>{d.count}</Text>
                 </View>
               )}
@@ -677,7 +733,7 @@ function ProductionBarChart({ data }: { data: { label: string; count: number }[]
             <Text style={{
               fontSize: 11,
               fontWeight: isHighlight ? '700' : '500',
-              color: isHighlight ? INK : DS.ink[400],
+              color: isHighlight ? T.ink : T.ink3,
               textTransform: 'uppercase',
               letterSpacing: 0.05 * 11,
             }}>
@@ -699,32 +755,34 @@ function WeeklyStrip({
   weekDone: Record<string, number>;
   onPress: () => void;
 }) {
+  const PB = usePanelBlue();
   const { t } = useTranslation();
+  const T = useMobileTokens();
   const totalReceived  = Object.values(weekCounts).reduce((a, b) => a + b, 0);
   const totalCompleted = Object.values(weekDone).reduce((a, b) => a + b, 0);
   const SCALE_MAX = 20; // fixed 1..20 jobs scale
 
   // Panel palette — soft panel = received, deep panel = completed
-  const SAGE_LIGHT = `${P}55`;   // panel soft (semi-transparent)
-  const SAGE_DARK  = P;
-  const RAIL_BG    = `${P}08`;
-  const STRIPE_BG  = `repeating-linear-gradient(135deg, ${P}14 0 6px, transparent 6px 12px)`;
+  const SAGE_LIGHT = `${PB}55`;   // panel soft (semi-transparent)
+  const SAGE_DARK  = PB;
+  const RAIL_BG    = `${PB}08`;
+  const STRIPE_BG  = `repeating-linear-gradient(135deg, ${PB}14 0 6px, transparent 6px 12px)`;
 
   return (
     <Card style={{ padding: 18, flex: 1.5 }}>
       <View className="flex-row items-center" style={{ gap: 12, marginBottom: 14 }}>
-        <Text style={{ fontSize: 15, fontWeight: '500', color: INK }}>{t('admin.dashboard.thisWeek')}</Text>
+        <Text style={{ fontSize: 15, fontWeight: '500', color: T.ink }}>{t('admin.dashboard.thisWeek')}</Text>
         <View style={{ flex: 1 }} />
         <View className="flex-row items-center" style={{ gap: 10 }}>
           <View className="flex-row items-center" style={{ gap: 5 }}>
             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: SAGE_LIGHT }} />
-            <Text style={{ fontSize: 11, color: DS.ink[500] }}>{t('admin.dashboard.receivedMembers')} </Text>
-            <NumberTickerX value={totalReceived} duration={700} style={{ fontSize: 11, color: DS.ink[500] } as any} />
+            <Text style={{ fontSize: 11, color: T.ink3 }}>{t('admin.dashboard.receivedMembers')} </Text>
+            <NumberTickerX value={totalReceived} duration={700} style={{ fontSize: 11, color: T.ink3 } as any} />
           </View>
           <View className="flex-row items-center" style={{ gap: 5 }}>
             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: SAGE_DARK }} />
-            <Text style={{ fontSize: 11, color: DS.ink[500] }}>{t('admin.dashboard.deliveredMembers')} </Text>
-            <NumberTickerX value={totalCompleted} duration={700} style={{ fontSize: 11, color: DS.ink[500] } as any} />
+            <Text style={{ fontSize: 11, color: T.ink3 }}>{t('admin.dashboard.deliveredMembers')} </Text>
+            <NumberTickerX value={totalCompleted} duration={700} style={{ fontSize: 11, color: T.ink3 } as any} />
           </View>
         </View>
       </View>
@@ -749,7 +807,7 @@ function WeeklyStrip({
               <View style={{ width: '100%', maxWidth: 56, flex: 1, justifyContent: 'flex-end', alignItems: 'center' }}>
                 {/* Completed label bubble */}
                 {showLabel && (
-                  <View style={{ marginBottom: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[100] }}>
+                  <View style={{ marginBottom: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline }}>
                     <Text style={{ fontSize: 10, fontWeight: '700', color: SAGE_DARK }}>{ratio}%</Text>
                   </View>
                 )}
@@ -799,7 +857,7 @@ function WeeklyStrip({
               <Text style={{
                 fontSize: 11,
                 fontWeight: day.isToday ? '700' : '500',
-                color: day.isToday ? INK : DS.ink[400],
+                color: day.isToday ? T.ink : T.ink3,
                 textTransform: 'uppercase',
                 letterSpacing: 0.05 * 11,
               }}>
@@ -813,49 +871,69 @@ function WeeklyStrip({
   );
 }
 
-// ── Animated CTA Card — floating circle + shimmer glow + arrow bounce ──
+// ── Hızlı İşlem kartı — "kontrol paneli" düzeni ─────────────────────────────
+// Düzen: üstte kimlik + ilerleme halkası + eylem pill'i · ortada iki büyük
+// metrik · altında knob'lu ilerleme çubuğu · en altta accent şeritli mini liste.
+// Koyu temada siyah→lacivert gradyan + üstten yayılan ışık + neon mavi kenar;
+// açık temada panelin kobalt→amber gradyanı korunur (yalnız DÜZEN ortak).
+// ── Hızlı İşlem kartı — CTA ────────────────────────────────────────────────
+// İÇERİK sade kalır (kicker + başlık + "Başla" pill'i). Yalnız YÜZEY tema-farkında:
+// koyu temada siyah→lacivert gradyan, üstten yayılan ışık ve neon mavi kenar;
+// açık temada panelin kobalt→amber gradyanı korunur.
 function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDesktop: boolean }) {
+  const PB = usePanelBlue();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const { t } = useTranslation();
-  const floatAnim = useRef(new Animated.Value(0)).current;
-  const glowAnim = useRef(new Animated.Value(0)).current;
   const arrowAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
+  // Neon kenar + üstteki ışık için yavaş nefes (yalnız opaklık/ölçek → compositor).
+  const pulseAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    // Tek hareket: eylem okunun nazik dürtüsü — kart bir CTA, davet etmeli.
     Animated.loop(
       Animated.sequence([
-        Animated.timing(floatAnim, { toValue: 1, duration: 3000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(floatAnim, { toValue: 0, duration: 3000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(arrowAnim, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(arrowAnim, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.delay(900),
       ]),
     ).start();
 
-    Animated.loop(
+    if (prefersReducedMotion()) { pulseAnim.setValue(1); return; }
+    const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(glowAnim, { toValue: 1, duration: 2200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(glowAnim, { toValue: 0, duration: 2200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 3200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 0, duration: 3200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
       ]),
-    ).start();
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [arrowAnim, pulseAnim]);
 
-    Animated.loop(
-      Animated.sequence([
-        Animated.delay(2000),
-        Animated.timing(arrowAnim, { toValue: 1, duration: 400, easing: Easing.out(Easing.ease), useNativeDriver: true }),
-        Animated.timing(arrowAnim, { toValue: 0, duration: 400, easing: Easing.in(Easing.ease), useNativeDriver: true }),
-      ]),
-    ).start();
-  }, [floatAnim, glowAnim, arrowAnim]);
-
-  const floatY = floatAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 8] });
-  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.10, 0.28] });
-  const glowScale = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.15] });
   const arrowX = arrowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, isRTL() ? -6 : 6] });
+  const handleHoverIn  = () => Animated.spring(scaleAnim, { toValue: 1.02, friction: 8, tension: 200, useNativeDriver: true }).start();
+  const handleHoverOut = () => Animated.spring(scaleAnim, { toValue: 1,    friction: 8, tension: 200, useNativeDriver: true }).start();
 
-  const handleHoverIn = () => {
-    Animated.spring(scaleAnim, { toValue: 1.02, friction: 8, tension: 200, useNativeDriver: true }).start();
-  };
-  const handleHoverOut = () => {
-    Animated.spring(scaleAnim, { toValue: 1, friction: 8, tension: 200, useNativeDriver: true }).start();
-  };
+  const neon = '#38BDF8';
+  const surface: any = isDark
+    ? {
+        backgroundColor: HERO_NAVY.from,
+        ...(Platform.OS === 'web' ? {
+          backgroundImage:
+            `radial-gradient(120% 78% at 50% -10%, ${hexA(HERO_NAVY.light, 0.95)} 0%, ${hexA(HERO_NAVY.to, 0.55)} 42%, rgba(0,0,0,0) 76%), ` +
+            `linear-gradient(160deg, #0A0A0A 0%, ${HERO_NAVY.from} 62%, ${HERO_NAVY.to} 100%)`,
+        } : {}),
+        borderWidth: 1,
+        borderColor: hexA(neon, 0.26),
+      }
+    : {
+        backgroundColor: PB,
+        ...(Platform.OS === 'web' ? {
+          backgroundImage:
+            `radial-gradient(120% 78% at 50% -10%, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0) 70%), ` +
+            `linear-gradient(135deg, ${PB} 0%, ${DS.exec.warning} 100%)`,
+        } : {}),
+      };
 
   return (
     <Pressable onPress={onPress} onHoverIn={handleHoverIn} onHoverOut={handleHoverOut} style={{ flex: 1 }}>
@@ -865,58 +943,33 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
         padding: 22,
         position: 'relative',
         overflow: 'hidden',
-        // @ts-ignore web gradient
-        backgroundImage: `linear-gradient(135deg, ${P} 0%, ${DS.exec.warning} 100%)`,
-        backgroundColor: P,
         minHeight: isDesktop ? undefined : 160,
         transform: [{ scale: scaleAnim }],
+        ...surface,
       }}>
-        {/* Yüzen ışık lekeleri — web'de BULANIK (aurora hissi).
-            Bulanıklık ışığı yaydığı için opaklıklar YÜKSELTİLDİ: ilk denemede
-            eski değerlerle bırakılınca kart soluk ve cansız kaldı. Blur da
-            kısıldı (26→16 / 40→30) — fazlası lekeyi tamamen düz bir sise
-            çeviriyor ve kartın derinliği kayboluyor.
-            `filter` yalnız web'de; native'de RN desteklemiyor, orada net daire
-            kalır. Taşan bulanıklığı kartın `overflow: hidden`'ı kırpar.
-            `willChange` şart: bulanık katman her karede yeniden
-            rasterleştirilirse animasyon pahalıya gelir. */}
-        <Animated.View
-          pointerEvents="none"
-          style={{
-            position: 'absolute', top: -20, end: -20,
-            width: 140, height: 140, borderRadius: 70,
-            backgroundColor: '#CFE0F5',
-            opacity: 0.55,
-            transform: [{ translateY: floatY }],
-            ...(Platform.OS === 'web' ? ({ filter: 'blur(18px)', mixBlendMode: 'screen', willChange: 'transform' } as any) : {}),
-          }}
-        />
-        <Animated.View
-          pointerEvents="none"
-          style={{
-            position: 'absolute', top: -40, end: -40,
-            width: 180, height: 180, borderRadius: 90,
-            backgroundColor: 'rgba(255,255,255,1)',
-            opacity: glowOpacity,
-            transform: [{ scale: glowScale }],
-            ...(Platform.OS === 'web' ? ({ filter: 'blur(30px)', mixBlendMode: 'screen', willChange: 'transform, opacity' } as any) : {}),
-          }}
-        />
-        {/* Karşı köşede ikinci, daha geniş leke — tek leke bulanıklaşınca kart
-            tek renkli bir zemine dönüyordu; bu, aurora'daki renk dalgalanmasının
-            yerini tutan derinliği geri veriyor. */}
-        <Animated.View
-          pointerEvents="none"
-          style={{
-            position: 'absolute', bottom: -60, start: -40,
-            width: 200, height: 200, borderRadius: 100,
-            backgroundColor: '#F2C879',
-            opacity: 0.42,
-            transform: [{ translateY: Animated.multiply(floatY, -1) }],
-            ...(Platform.OS === 'web' ? ({ filter: 'blur(40px)', mixBlendMode: 'screen', willChange: 'transform' } as any) : {}),
-          }}
-        />
-        {/* Content */}
+        {isDark && (
+          <>
+            {/* Üstteki ışık — çok yavaş genişleyip sönümlenir (materyal hissi) */}
+            <Animated.View pointerEvents="none" style={{
+              position: 'absolute', top: 0, start: 0, end: 0, height: '72%',
+              opacity: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] }),
+              transform: [{ scale: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] }) }],
+              ...(Platform.OS === 'web' ? {
+                backgroundImage: `radial-gradient(110% 100% at 50% -10%, ${hexA(neon, 0.28)} 0%, ${hexA(HERO_NAVY.light, 0.35)} 38%, rgba(0,0,0,0) 72%)`,
+              } as any : {}),
+            }} />
+            {/* Neon kenar — nabız yalnız bu katmanın opaklığında */}
+            <Animated.View pointerEvents="none" style={{
+              position: 'absolute', top: 0, start: 0, end: 0, bottom: 0,
+              borderRadius: DS.radius.xl,
+              borderWidth: 1, borderColor: neon,
+              opacity: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0.22, 0.7] }),
+              ...(Platform.OS === 'web'
+                ? { boxShadow: `0 0 18px ${hexA(neon, 0.35)}, inset 0 0 22px ${hexA(neon, 0.10)}` } as any
+                : {}),
+            }} />
+          </>
+        )}
         <View style={{ position: 'relative' }}>
           <Text style={{
             fontSize: 11, fontWeight: '500', letterSpacing: 0.1 * 11,
@@ -945,22 +998,25 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
   );
 }
 
-// ── Bugünkü Görevler — Dark card ──
-// Zemin DS.exec.surfaceAlt'ın (#243041) %10 beyazla karışmış hâli: yandaki
-// kartlarla ağırlık yarışına girmesin diye açıldı. Token'a dokunulmadı.
+
+// ── Bugünkü Görevler — koyu kart ──
 const TASKS_SURFACE = '#3A4554';
 function TasksCard({
   tasks,
 }: {
   tasks: { icon: React.FC<any>; label: string; time: string; done: boolean; onPress?: () => void }[];
 }) {
+  const PB = usePanelBlue();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const { t } = useTranslation();
   const doneCount = tasks.filter(task => task.done).length;
   return (
     <View style={{
-      backgroundColor: TASKS_SURFACE,
+      backgroundColor: isDark ? HERO_NAVY.from : TASKS_SURFACE,
       // @ts-ignore web gradient
-      backgroundImage: `linear-gradient(135deg, ${TASKS_SURFACE} 0%, ${DS.exec.primaryDeep}33 100%)`,
+      backgroundImage: isDark
+        ? `linear-gradient(135deg, ${HERO_NAVY.from} 0%, ${HERO_NAVY.to} 100%)`
+        : `linear-gradient(135deg, ${TASKS_SURFACE} 0%, ${DS.exec.primaryDeep}33 100%)`,
       borderRadius: DS.radius.xl, padding: 22,
       flex: 1, gap: 0,
     }}>
@@ -1004,7 +1060,7 @@ function TasksCard({
               </View>
               <View style={{
                 width: 18, height: 18, borderRadius: 9,
-                backgroundColor: task.done ? P : 'transparent',
+                backgroundColor: task.done ? PB : 'transparent',
                 borderWidth: task.done ? 0 : 1.5,
                 borderColor: task.done ? undefined : 'rgba(255,255,255,0.2)',
                 alignItems: 'center', justifyContent: 'center',
@@ -1117,12 +1173,13 @@ function WorkTypeCard({ data }: { data: { label: string; count: number; unit?: s
 // ── Finance Card ──
 function FinanceCard({ monthly, pending, paid }: { monthly: CurrencyTotal[]; pending: CurrencyTotal[]; paid: number }) {
   const { t } = useTranslation();
+  const T = useMobileTokens();
   const baseCurrency = useBaseCurrency();
 
   /** Para satırı — katı per-currency: her dilim kendi biriminde, asla baz'a çevrilmez. */
   const ccyLine = (slicesRaw: CurrencyTotal[], size: number) => {
     const slices = Array.isArray(slicesRaw) ? slicesRaw : [];
-    const st = { fontSize: size, fontWeight: '700' as const, color: INK, ...NUM };
+    const st = { fontSize: size, fontWeight: '700' as const, color: T.ink, ...NUM };
     return slices.length === 0
       ? <Text style={st}>{formatMoney(0, baseCurrency, { fractionDigits: 0 })}</Text>
       : <View style={{ alignItems: 'flex-end' }}>{slices.map(s => (
@@ -1167,7 +1224,7 @@ function FinanceCard({ monthly, pending, paid }: { monthly: CurrencyTotal[]; pen
       {/* Nokta yok — bu bir sayaç, spine'daki paya dahil değil. */}
       <SpineRow
         label={t('admin.dashboard.paidInvoiceCount')}
-        value={<NumberTickerX value={paid} duration={700} style={{ fontSize: 13, fontWeight: '700', color: INK, ...NUM } as any} />}
+        value={<NumberTickerX value={paid} duration={700} style={{ fontSize: 13, fontWeight: '700', color: T.ink, ...NUM } as any} />}
       />
     </SpineCard>
   );
@@ -1177,12 +1234,15 @@ function FinanceCard({ monthly, pending, paid }: { monthly: CurrencyTotal[]; pen
 //  MAIN SCREEN
 // ══════════════════════════════════════════════════════════════════
 export default function AdminDashboard() {
+  const PB = usePanelBlue();
   const { t, i18n } = useTranslation();
   const router    = useRouter();
   const isDesktop = useIsDesktop();
   const insets    = useSafeAreaInsets();
   const { profile } = useAuthStore();
   const { setTitle, clear } = usePageTitleStore();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const firstName = displayFirstName(profile?.full_name);
 
   useEffect(() => { setTitle(getTodayLabel(t)); return clear; }, [setTitle, clear, t]);
@@ -1307,7 +1367,7 @@ export default function AdminDashboard() {
       setTotalOrders(totalRes.count ?? statuses.reduce((s, _st, i) => s + (results[i].count ?? 0), 0));
 
       setByStatus(statuses.map((k, i) => ({ key: k, label: STATUS_CFG[k]?.labelKey ? t(STATUS_CFG[k].labelKey) : k, count: (results[i].count ?? 0) + (k === 'uretimde' ? asamadaCount : 0) })));
-    } catch (e) { console.error('[AdminDashboard] loadPipeline error:', e); }
+    } catch (e) { if ((e as any)?.code !== '42501') console.error('[AdminDashboard] loadPipeline error:', e); }
   }, [t]);
 
   const loadRecent = useCallback(async () => {
@@ -1318,7 +1378,9 @@ export default function AdminDashboard() {
       .select('id, order_number, work_type, status, hold_status, delivery_date, doctor_id, patient_name, revision_of_id, revision_no, continues_order_id')
       .order('created_at', { ascending: false })
       .limit(8);
-    if (error) { console.error('[AdminDashboard] loadRecent error:', error); return; }
+    // 42501 = oturum kapandıktan sonra (anon) gelen "permission denied" — çıkışta
+    // yarışan bu sorgu beklenen bir durum; gürültü yapmasın (dev LogBox'ta kırmızı kutu).
+    if (error) { if ((error as any)?.code !== '42501') console.error('[AdminDashboard] loadRecent error:', error); return; }
     const rows = data ?? [];
     const doctorIds = Array.from(new Set(rows.map((r: any) => r.doctor_id).filter(Boolean)));
     const nameMap: Record<string, string> = {};
@@ -1353,6 +1415,7 @@ export default function AdminDashboard() {
       revision_of_id: o.revision_of_id ?? null,
       revision_no: o.revision_no ?? null,
       continues_order_id: o.continues_order_id ?? null,
+      patient_name: o.patient_name ?? null,
       doctor_name: nameMap[o.doctor_id] ?? '--',
       clinic_logo_url: logoOf[clinicOf[o.doctor_id] ?? ''] ?? null,
     })));
@@ -1637,7 +1700,7 @@ export default function AdminDashboard() {
       label: `${autoT('Tahsilat yap')} · ${inv.invoice_number ?? autoT('fatura')}`,
       time: late ? `${remaining} ${autoT('kaldı')} · ${late} ${autoT('gün vadesi geçti')}` : `${remaining} ${autoT('kaldı')}`,
       done: false,
-      onPress: () => router.push(`/(admin)/invoice/${inv.id}` as any),
+      onPress: () => router.push(`/(admin)/invoice/${inv.invoice_number ?? inv.id}` as any),
     });
   });
 
@@ -1720,11 +1783,13 @@ export default function AdminDashboard() {
       const st = resolveOrderStatus(o.status, o.hold_status);
       const isOverdue = !!o.delivery_date && o.delivery_date < today && o.status !== 'teslim_edildi';
       const drName = o.doctor_name || '—';
+      const ptName = (o.patient_name && String(o.patient_name).trim()) ? String(o.patient_name).trim() : '';
       return {
         id: String(o.id),
         no: String(o.order_number ?? ''),
-        title: drName,
-        initials: initials(drName),
+        title: ptName || drName,           // birincil: HASTA (yoksa hekim)
+        subtitle: ptName ? drName : '',    // ikincil: HEKİM
+        initials: initials(ptName || drName),
         workType: o.work_type || '—',
         statusLabel: st.label,
         statusColor: st.color,
@@ -1791,7 +1856,7 @@ export default function AdminDashboard() {
         paddingTop: isDesktop ? 16 : insets.top + 8,
         paddingBottom: 120,
       }}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={P} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={PB} />}
     >
       {/* ════════ HERO ════════ */}
       {/* Alt boşluk 16 — hero ile altındaki ilk kart arasındaki mesafe sabit. */}
@@ -1804,17 +1869,17 @@ export default function AdminDashboard() {
               ...SERIF, fontSize: isDesktop ? 28 : 24,
               letterSpacing: -0.025 * (isDesktop ? 28 : 24),
               lineHeight: isDesktop ? 32 : 28,
-              color: INK,
+              color: T.ink,
             }}>
               {t('dashboard.greetingName', { name: '' }).replace(/\s*\.?\s*$/, '')}{' '}
-              <Text style={{ fontStyle: 'italic', color: DS.ink[400] }}>{firstName}</Text>
+              <Text style={{ fontStyle: 'italic', color: T.ink3 }}>{firstName}</Text>
             </Text>
 
             {/* Stat pills row */}
             <View className="flex-row flex-wrap items-center" style={{ gap: 14, marginTop: 14 }}>
-              <StatPill label={t('admin.dashboard.production')} value={`${productionPct}%`} bg={INK} color="#FFF" />
-              <StatPill label={t('admin.dashboard.active')} value={totalActive} bg={P} color="#FFF" />
-              <StatPill label={t('admin.dashboard.today')} value={todayOrders} bg="rgba(0,0,0,0.08)" color={INK} />
+              <StatPill label={t('admin.dashboard.production')} value={`${productionPct}%`} bg={isDark ? 'rgba(255,255,255,0.14)' : INK} color={isDark ? (T.ink as string) : '#FFF'} />
+              <StatPill label={t('admin.dashboard.active')} value={totalActive} bg={PB} color="#FFF" />
+              <StatPill label={t('admin.dashboard.today')} value={todayOrders} bg={isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)'} color={T.ink} />
               {/* Geciken + planlanacak AYNI satırda: StatPill ile eşit ölçülü
                   rozetler. İkinci bir şerit yok; renk tek başına yeter. */}
               {overdueCount > 0 && (
@@ -1839,7 +1904,7 @@ export default function AdminDashboard() {
                   onPress={() => router.push('/(admin)/orders?status=alindi' as any)}
                 />
               )}
-              <FaceScanQuickAction accentColor={P} compact />
+              <FaceScanQuickAction accentColor={PB} compact />
             </View>
 
           </View>
@@ -1874,19 +1939,19 @@ export default function AdminDashboard() {
         <Card style={{ flex: isDesktop ? 1 : undefined, padding: 22, marginBottom: isDesktop ? 0 : 16 }}>
           <View className="flex-row items-start justify-between" style={{ marginBottom: 12 }}>
             <View>
-              <Text style={{ fontSize: 18, fontWeight: '500', letterSpacing: -0.015 * 18, color: INK }}>{t('admin.dashboard.memberTrend')}</Text>
-              <Text style={{ ...SERIF, fontSize: 42, letterSpacing: -0.025 * 42, lineHeight: 42, marginTop: 8, color: INK }}>
+              <Text style={{ fontSize: 18, fontWeight: '500', letterSpacing: -0.015 * 18, color: T.ink }}>{t('admin.dashboard.memberTrend')}</Text>
+              <Text style={{ ...SERIF, fontSize: 42, letterSpacing: -0.025 * 42, lineHeight: 42, marginTop: 8, color: T.ink }}>
                 {monthly[monthly.length - 1]?.count ?? 0}
-                <Text style={{ fontSize: 14, color: DS.ink[400] }}> {t('admin.dashboard.membersThisMonth')}</Text>
+                <Text style={{ fontSize: 14, color: T.ink3 }}> {t('admin.dashboard.membersThisMonth')}</Text>
               </Text>
-              <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 4 }}>{t('admin.dashboard.toothMemberNote')}</Text>
+              <Text style={{ fontSize: 11, color: T.ink3, marginTop: 4 }}>{t('admin.dashboard.toothMemberNote')}</Text>
             </View>
             <Pressable
               onPress={() => router.push('/(admin)/orders' as any)}
               className="items-center justify-center rounded-full"
-              style={{ width: 32, height: 32, backgroundColor: DS.ink[100] }}
+              style={{ width: 32, height: 32, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : DS.ink[100] }}
             >
-              {isRTL() ? <ArrowUpLeft size={14} color={DS.ink[500]} strokeWidth={1.8} /> : <ArrowUpRight size={14} color={DS.ink[500]} strokeWidth={1.8} />}
+              {isRTL() ? <ArrowUpLeft size={14} color={T.ink3} strokeWidth={1.8} /> : <ArrowUpRight size={14} color={T.ink3} strokeWidth={1.8} />}
             </Pressable>
           </View>
           {monthly.length > 0 && (
@@ -1899,28 +1964,28 @@ export default function AdminDashboard() {
         {/* Card 3: Üretim Ring — PercentRingHero on white bg */}
         <Card style={{ flex: isDesktop ? 1 : undefined, padding: 22, alignItems: 'center', marginBottom: isDesktop ? 0 : 16 }}>
           <View className="w-full flex-row items-center justify-between" style={{ marginBottom: 8 }}>
-            <Text style={{ fontSize: 14, fontWeight: '500', color: INK }}>{t('admin.dashboard.deliveryRate')}</Text>
+            <Text style={{ fontSize: 14, fontWeight: '500', color: T.ink }}>{t('admin.dashboard.deliveryRate')}</Text>
             <Pressable onPress={() => router.push('/(admin)/orders' as any)}>
-              {isRTL() ? <ArrowUpLeft size={14} color={DS.ink[500]} strokeWidth={1.8} /> : <ArrowUpRight size={14} color={DS.ink[500]} strokeWidth={1.8} />}
+              {isRTL() ? <ArrowUpLeft size={14} color={T.ink3} strokeWidth={1.8} /> : <ArrowUpRight size={14} color={T.ink3} strokeWidth={1.8} />}
             </Pressable>
           </View>
           <PercentRingHero value={deliveryPct} size={140} darkText />
           {/* Yüzde tek başına "neyin %11'i?" sorusunu bırakıyordu — payı/paydayı yaz. */}
-          <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[700], marginTop: 10 }}>
+          <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink2, marginTop: 10 }}>
             {t('admin.dashboard.ordersOfTotal', { done: deliveredPipe, total: pipeCount })}
           </Text>
-          <Text style={{ fontSize: 9, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.08 * 9, marginTop: 3 }}>
+          <Text style={{ fontSize: 9, color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.08 * 9, marginTop: 3 }}>
             {t('admin.dashboard.deliveredAllTime')}
           </Text>
           {/* Mini pipeline stats */}
           <View className="flex-row" style={{ gap: 8, marginTop: 12 }}>
-            <View className="items-center rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: DS.ink[100] }}>
-              <Text style={{ fontSize: 10, fontWeight: '500', color: DS.ink[500] }}>
+            <View className="items-center rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : DS.ink[100] }}>
+              <Text style={{ fontSize: 10, fontWeight: '500', color: T.ink3 }}>
                 {pipelineCounts['uretimde'] ?? 0} {t('admin.dashboard.inProduction')}
               </Text>
             </View>
-            <View className="items-center rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: hexA(P, 0.15) }}>
-              <Text style={{ fontSize: 10, fontWeight: '500', color: P }}>
+            <View className="items-center rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: hexA(PB, 0.15) }}>
+              <Text style={{ fontSize: 10, fontWeight: '500', color: PB }}>
                 {pipelineCounts['teslimata_hazir'] ?? 0} {t('admin.status.ready')}
               </Text>
             </View>
@@ -1948,16 +2013,16 @@ export default function AdminDashboard() {
 
       {loading ? (
         <View style={{ alignItems: 'center', paddingVertical: 80 }}>
-          <ActivityIndicator color={P} size="large" />
+          <ActivityIndicator color={PB} size="large" />
         </View>
       ) : (
         <>
           {/* Son Siparişler — Patterns table */}
           <Card style={{ marginBottom: 16 }}>
-            <View className="flex-row items-center justify-between" style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
-              <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>{t('admin.dashboard.recentOrders')}</Text>
+            <View className="flex-row items-center justify-between" style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: T.hairline }}>
+              <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: T.ink }}>{t('admin.dashboard.recentOrders')}</Text>
               <Pressable onPress={() => router.push('/(admin)/orders' as any)}>
-                <Text style={{ fontSize: 13, color: P, fontWeight: '700' }}>{t('admin.dashboard.viewAll')}</Text>
+                <Text style={{ fontSize: 13, color: PB, fontWeight: '700' }}>{t('admin.dashboard.viewAll')}</Text>
               </Pressable>
             </View>
 
@@ -1966,19 +2031,19 @@ export default function AdminDashboard() {
               className="flex-row items-center"
               style={{
                 paddingHorizontal: 20, paddingVertical: 11,
-                borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)',
-                backgroundColor: DS.ink[50],
+                borderTopWidth: 1, borderTopColor: T.hairline,
+                backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : DS.ink[50],
               }}
             >
-              <Text style={{ flex: 1.2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>{t('admin.table.no')}</Text>
-              <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>{t('admin.table.doctor')}</Text>
-              {isDesktop && <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>{t('admin.table.workType')}</Text>}
-              <Text style={{ flex: 1.4, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>{t('admin.table.status')}</Text>
-              {isDesktop && <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, textAlign: 'end' as any }}>{t('admin.table.delivery')}</Text>}
+              <Text style={{ flex: 1.2, fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.7 }}>{t('admin.table.no')}</Text>
+              <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.7 }}>{t('admin.table.doctor')}</Text>
+              {isDesktop && <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.7 }}>{t('admin.table.workType')}</Text>}
+              <Text style={{ flex: 1.4, fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.7 }}>{t('admin.table.status')}</Text>
+              {isDesktop && <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.7, textAlign: 'end' as any }}>{t('admin.table.delivery')}</Text>}
             </View>
 
             {recentOrders.length === 0
-              ? <Text className="p-6 text-center" style={{ fontSize: 13, color: DS.ink[400] }}>{loading ? t('common.loading') : t('admin.dashboard.noOrders')}</Text>
+              ? <Text className="p-6 text-center" style={{ fontSize: 13, color: T.ink3 }}>{loading ? t('common.loading') : t('admin.dashboard.noOrders')}</Text>
               : recentRows.map((order: any, idx: number) => {
                   const overdue = order.delivery_date < today && order.status !== 'teslim_edildi';
                   const isLast  = idx === recentRows.length - 1;
@@ -1989,7 +2054,7 @@ export default function AdminDashboard() {
                       style={{
                         paddingHorizontal: 20, paddingVertical: 13, gap: 8, minHeight: 54,
                         borderBottomWidth: !isLast ? 1 : 0,
-                        borderBottomColor: 'rgba(0,0,0,0.04)',
+                        borderBottomColor: T.hairline,
                         backgroundColor: overdue
                           ? 'rgba(217,75,75,0.06)'
                           : hovered === order.id
@@ -2006,11 +2071,11 @@ export default function AdminDashboard() {
                       <View className="flex-row items-center" style={{ flex: 1.2, minWidth: 0, gap: 6, paddingStart: (order as any).__revChild ? 14 : 0 }}>
                         {(order as any).__revChild && <CornerDownRight size={12} color={(order as any).__continuation ? '#3563A8' : '#9C5E0E'} strokeWidth={2} style={{ flexShrink: 0 }} />}
                         <View style={{ minWidth: 0 }}>
-                          <Text style={{ fontSize: 12, fontWeight: '800', color: P }} numberOfLines={1}>#{order.order_number}</Text>
+                          <Text style={{ fontSize: 12, fontWeight: '800', color: PB }} numberOfLines={1}>#{order.order_number}</Text>
                           {(order as any).__revChild ? (
                             <Text style={{ fontSize: 8.5, fontWeight: '700', color: (order as any).__continuation ? '#3563A8' : '#9C5E0E', letterSpacing: 0.4 }}>{(order as any).__continuation ? 'DEVAM' : 'REVİZYON'}</Text>
                           ) : (order as any).__revParent ? (
-                            <Text style={{ fontSize: 8.5, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.4 }}>ORİJİNAL</Text>
+                            <Text style={{ fontSize: 8.5, fontWeight: '700', color: T.ink3, letterSpacing: 0.4 }}>ORİJİNAL</Text>
                           ) : null}
                         </View>
                         {order.is_urgent && (
@@ -2024,19 +2089,24 @@ export default function AdminDashboard() {
                         <View
                           className="items-center justify-center rounded-full"
                           style={{ width: 28, height: 28, overflow: 'hidden',
-                            backgroundColor: (order as any).clinic_logo_url ? '#FFFFFF' : hexA(P, 0.1),
-                            borderWidth: 1, borderColor: (order as any).clinic_logo_url ? 'rgba(0,0,0,0.08)' : hexA(P, 0.15) }}
+                            backgroundColor: (order as any).clinic_logo_url ? T.card : hexA(PB, 0.1),
+                            borderWidth: 1, borderColor: (order as any).clinic_logo_url ? T.hairline : hexA(PB, 0.15) }}
                         >
                           {(order as any).clinic_logo_url ? (
                             <Image source={{ uri: (order as any).clinic_logo_url }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
                           ) : (
-                            <Text style={{ fontSize: 9, fontWeight: '800', color: P }}>{initials(order.doctor_name)}</Text>
+                            <Text style={{ fontSize: 9, fontWeight: '800', color: PB }}>{initials((order as any).patient_name || order.doctor_name)}</Text>
                           )}
                         </View>
-                        <Text style={{ fontSize: 13, fontWeight: '600', color: INK }} numberOfLines={1}>{order.doctor_name}</Text>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink }} numberOfLines={1}>{(order as any).patient_name || order.doctor_name}</Text>
+                          {(order as any).patient_name ? (
+                            <Text style={{ fontSize: 11, color: T.ink3 }} numberOfLines={1}>{order.doctor_name}</Text>
+                          ) : null}
+                        </View>
                       </View>
                       {isDesktop && (
-                        <Text style={{ flex: 2, fontSize: 11, color: DS.ink[500] }} numberOfLines={1}>{(order as any).__revChild && (
+                        <Text style={{ flex: 2, fontSize: 11, color: T.ink3 }} numberOfLines={1}>{(order as any).__revChild && (
                       <Text style={{ fontWeight: '700', color: (order as any).__continuation ? '#3563A8' : '#9C5E0E' }}>{(order as any).__continuation ? 'Devam - ' : 'Revizyon - '}</Text>
                     )}{order.work_type || '--'}</Text>
                       )}
@@ -2046,7 +2116,7 @@ export default function AdminDashboard() {
                       {isDesktop && (
                         <Text style={{
                           flex: 1, fontSize: 11, fontWeight: overdue ? '700' : '500', textAlign: 'end' as any,
-                          color: overdue ? '#9C2E2E' : DS.ink[400],
+                          color: overdue ? '#9C2E2E' : T.ink3,
                         }}>
                           {fmtDate(order.delivery_date)}
                         </Text>
@@ -2085,12 +2155,12 @@ export default function AdminDashboard() {
                 <Text style={{ fontSize: 13, fontWeight: '700', color: '#9C5E0E', letterSpacing: 0.2 }}>
                   {t('admin.dashboard.unbilledDeliveries')}
                 </Text>
-                <Text style={{ fontSize: 12, color: DS.ink[700], marginTop: 2 }}>
-                  <NumberTickerX value={unbilledCount} duration={600} style={{ fontWeight: '700', color: DS.ink[800] } as any} />
+                <Text style={{ fontSize: 12, color: T.ink2, marginTop: 2 }}>
+                  <NumberTickerX value={unbilledCount} duration={600} style={{ fontWeight: '700', color: T.ink } as any} />
                   {` ${t('admin.dashboard.orders')}`}
-                  <NumberTickerX value={unbilledClinics} duration={600} style={{ fontWeight: '700', color: DS.ink[800] } as any} />
+                  <NumberTickerX value={unbilledClinics} duration={600} style={{ fontWeight: '700', color: T.ink } as any} />
                   {` ${t('admin.dashboard.clinicEstimated')}`}
-                  <Text style={{ fontWeight: '700', color: DS.ink[800] }}>
+                  <Text style={{ fontWeight: '700', color: T.ink }}>
                     {Object.entries(unbilledTotals).length === 0
                       ? '—'
                       : Object.entries(unbilledTotals)

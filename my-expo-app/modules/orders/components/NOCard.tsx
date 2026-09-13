@@ -6,7 +6,7 @@
  */
 import React from 'react';
 import { View, Text, Platform } from 'react-native';
-import { Check } from 'lucide-react-native';
+import { Check } from '../../../core/ui/icons';
 import { useNOTokens, NOType, NORadius } from './NOTokens';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';

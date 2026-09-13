@@ -4,7 +4,7 @@
  */
 import React, { useState } from 'react';
 import { View, Text, Pressable, Platform, ScrollView } from 'react-native';
-import { ChevronDown, CheckCircle2 } from 'lucide-react-native';
+import { ChevronDown, CheckCircle2 } from '../../../core/ui/icons';
 
 const W = {
   bg:         '#F4F0EB',

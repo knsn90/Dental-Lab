@@ -9,13 +9,14 @@ import { autoT } from '../../../core/i18n/autoTranslate';
 import {
   View, Text, Pressable, ScrollView, Switch, Platform, Alert, Modal, TextInput, Linking, } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 import { useRouter } from 'expo-router';
 import {
   User as UserIcon, Mail, Phone, MapPin, Building2, Lock, Bell, Moon, Sun,
   Smartphone, ChevronRight, LogOut, ShieldCheck, FileText, HelpCircle, ScrollText,
   X, ChevronLeft, Eye, EyeOff, Check as CheckIcon, Users, FileSpreadsheet, Banknote, Settings,
   Landmark, Package, Wallet, CalendarDays, Trash2, AlertTriangle,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import Constants from 'expo-constants';
 import { MOBILE_PANEL_THEMES, useMobileTokens, type MobilePanel } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
@@ -147,7 +148,7 @@ export function DoctorProfileMobile({ profile, onSignOut, panel = 'doctor' }: Pr
     <View style={{ flex: 1, backgroundColor: T.bg }}>
       <ScrollView contentContainerStyle={{ paddingBottom: 160 }} showsVerticalScrollIndicator={false}>
         {/* ═══ Hero — MobileHeader hidden on profile route, so safe area only ═══ */}
-        <View style={{ paddingHorizontal: 20, paddingTop: insets.top + 72, paddingBottom: 24 }}>
+        <View style={{ paddingHorizontal: PAGE_PADDING, paddingTop: insets.top + 72, paddingBottom: 24 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
             <View style={{
               width: 64, height: 64, borderRadius: 20,
@@ -282,7 +283,7 @@ export function DoctorProfileMobile({ profile, onSignOut, panel = 'doctor' }: Pr
         {/* ═══ GÖRÜNÜM ═══ */}
         <SectionLabel>{t('profile.sections.appearance')}</SectionLabel>
         <CardGroup>
-          <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+          <View style={{ paddingHorizontal: PAGE_PADDING, paddingVertical: 12 }}>
             <Text style={{ fontSize: 11, color: T.ink3, fontWeight: '500', marginBottom: 8, letterSpacing: 0.4, textTransform: 'uppercase' }}>
               {t('profile.theme.title')}
             </Text>
@@ -318,7 +319,7 @@ export function DoctorProfileMobile({ profile, onSignOut, panel = 'doctor' }: Pr
         {/* ═══ DİL / LANGUAGE ═══ */}
         <SectionLabel>{t('profile.sections.language')}</SectionLabel>
         <CardGroup>
-          <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+          <View style={{ paddingHorizontal: PAGE_PADDING, paddingVertical: 12 }}>
             <Text style={{ fontSize: 11, color: T.ink3, fontWeight: '500', marginBottom: 8, letterSpacing: 0.4, textTransform: 'uppercase' }}>
               {t('profile.rows.appLanguage')}
             </Text>
@@ -447,14 +448,14 @@ export function DoctorProfileMobile({ profile, onSignOut, panel = 'doctor' }: Pr
         {/* (modal'lar ScrollView dışına render edilecek — aşağıda) */}
 
         {/* ═══ APP VERSION ═══ */}
-        <View style={{ paddingHorizontal: 16, marginTop: 24 }}>
+        <View style={{ paddingHorizontal: PAGE_PADDING, marginTop: 24 }}>
           <Text style={{ fontSize: 10, color: T.ink3, textAlign: 'center', letterSpacing: 0.4 }}>
             v{APP_VERSION}{profile?.clinic_name ? `  ·  ${profile.clinic_name}` : ''}
           </Text>
         </View>
 
         {/* ═══ SIGN OUT BUTTON — bottom, destructive red ═══ */}
-        <View style={{ paddingHorizontal: 16, marginTop: 16, marginBottom: 8 }}>
+        <View style={{ paddingHorizontal: PAGE_PADDING, marginTop: 16, marginBottom: 8 }}>
           <Pressable
             onPress={handleSignOut}
             style={({ pressed }: any) => [
@@ -488,11 +489,14 @@ export function DoctorProfileMobile({ profile, onSignOut, panel = 'doctor' }: Pr
           <Pressable
             onPress={() => { setDelText(''); setDelError(null); setDelOpen(true); }}
             hitSlop={8}
-            style={({ pressed }: any) => ({
-              flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 10, paddingHorizontal: 16,
-              opacity: pressed ? 0.6 : 1,
-              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-            })}
+            // Fonksiyon-stilli Pressable native'de row'u düşürüyor → object stil.
+            style={Platform.OS === 'web'
+              ? ((({ pressed }: any) => ({
+                  flexDirection: 'row' as const, alignItems: 'center' as const, gap: 7,
+                  paddingVertical: 10, paddingHorizontal: 16,
+                  opacity: pressed ? 0.6 : 1, cursor: 'pointer',
+                })) as any)
+              : { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 7, paddingVertical: 10, paddingHorizontal: 16 }}
           >
             <Trash2 size={15} color="#B42318" strokeWidth={2} />
             <Text style={{ fontSize: 13.5, fontWeight: '600', color: '#B42318' }}>Hesabımı Sil</Text>
@@ -680,7 +684,7 @@ function PasswordModal({ visible, onClose, accent }: { visible: boolean; onClose
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={close}>
       <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: T.bg }}>
         <View style={{
-          paddingHorizontal: 20, paddingTop: 12, paddingBottom: 12,
+          paddingHorizontal: PAGE_PADDING, paddingTop: 12, paddingBottom: 12,
           flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
         }}>
           <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3, letterSpacing: 1.4, textTransform: 'uppercase', fontFamily: T.mono }}>
@@ -690,7 +694,7 @@ function PasswordModal({ visible, onClose, accent }: { visible: boolean; onClose
             <X size={20} color={T.ink} strokeWidth={2} />
           </Pressable>
         </View>
-        <View style={{ paddingHorizontal: 20, paddingTop: 8 }}>
+        <View style={{ paddingHorizontal: PAGE_PADDING, paddingTop: 8 }}>
           <Text style={{
             fontSize: 26, fontWeight: '300', color: T.ink, letterSpacing: -0.4, lineHeight: 30,
             ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
@@ -702,7 +706,7 @@ function PasswordModal({ visible, onClose, accent }: { visible: boolean; onClose
           </Text>
         </View>
 
-        <View style={{ paddingHorizontal: 16, paddingTop: 22, gap: 10 }}>
+        <View style={{ paddingHorizontal: PAGE_PADDING, paddingTop: 22, gap: 10 }}>
           <PasswordInput
             label="Yeni şifre"
             value={newPw}
@@ -820,7 +824,7 @@ function ProfileFieldModal({ visible, field, currentValue, onClose, accent }:
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={close}>
       <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: T.bg }}>
         <View style={{
-          paddingHorizontal: 20, paddingTop: 12, paddingBottom: 12,
+          paddingHorizontal: PAGE_PADDING, paddingTop: 12, paddingBottom: 12,
           flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
         }}>
           <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3, letterSpacing: 1.4, textTransform: 'uppercase', fontFamily: T.mono }}>
@@ -830,7 +834,7 @@ function ProfileFieldModal({ visible, field, currentValue, onClose, accent }:
             <X size={20} color={T.ink} strokeWidth={2} />
           </Pressable>
         </View>
-        <View style={{ paddingHorizontal: 20, paddingTop: 8 }}>
+        <View style={{ paddingHorizontal: PAGE_PADDING, paddingTop: 8 }}>
           <Text style={{
             fontSize: 26, fontWeight: '300', color: T.ink, letterSpacing: -0.4, lineHeight: 30,
             ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
@@ -839,7 +843,7 @@ function ProfileFieldModal({ visible, field, currentValue, onClose, accent }:
           </Text>
         </View>
 
-        <View style={{ paddingHorizontal: 16, paddingTop: 22 }}>
+        <View style={{ paddingHorizontal: PAGE_PADDING, paddingTop: 22 }}>
           <View style={{
             backgroundColor: T.card, borderRadius: T.r2,
             borderWidth: 1, borderColor: T.hairline,
@@ -893,7 +897,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
     <Text style={{
       fontSize: 11, fontWeight: '600', color: T.ink3,
       letterSpacing: 1.2, textTransform: 'uppercase',
-      paddingHorizontal: 20, paddingTop: 26, paddingBottom: 10,
+      paddingHorizontal: PAGE_PADDING, paddingTop: 26, paddingBottom: 10,
       fontFamily: T.mono,
     }}>
       {children}

@@ -13,7 +13,7 @@ import Animated, {
   useSharedValue, useAnimatedStyle, withTiming, withRepeat, withSequence,
   withDelay, Easing,
 } from 'react-native-reanimated';
-import { ChevronLeft, ChevronRight, Check } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, Check } from '../ui/icons';
 import { supabase } from '../api/supabase';
 import { useOnboardingStore } from './onboardingStore';
 import { useNewOrderModalStore } from '../store/newOrderModalStore';

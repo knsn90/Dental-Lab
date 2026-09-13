@@ -1,5 +1,7 @@
 import React from 'react';
 import { StyleSheet, TouchableOpacity, ViewStyle } from 'react-native';
+import { useMobileTokens } from '../theme/mobileDesignTokens';
+import { useThemeModeStore } from '../store/themeModeStore';
 
 interface Props {
   onPress?: () => void;
@@ -10,12 +12,19 @@ interface Props {
 }
 
 export function IconBtn({ onPress, active, children, style, hitSlop }: Props) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.7}
       hitSlop={hitSlop}
-      style={[styles.btn, active && styles.btnActive, style]}
+      style={[
+        styles.btn,
+        { backgroundColor: isDark ? T.cardSoft : '#F1F5F9' },
+        active && { backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : '#E2E8F0' },
+        style,
+      ]}
     >
       {children}
     </TouchableOpacity>

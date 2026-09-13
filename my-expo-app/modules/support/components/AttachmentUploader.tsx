@@ -12,7 +12,7 @@
  */
 import React, { useCallback, useRef, useState } from 'react';
 import { View, Text, Pressable, Platform, ActivityIndicator } from 'react-native';
-import { Paperclip, X, Image as ImageIcon, FileText, Box, FileAudio, FileVideo, FileWarning } from 'lucide-react-native';
+import { Paperclip, X, Image as ImageIcon, FileText, Box, FileAudio, FileVideo, FileWarning } from '../../../core/ui/icons';
 import { supabase } from '../../../core/api/supabase';
 import { createAttachmentRecord } from '../api';
 import type { SupportAttachment, SupportAttachmentKind } from '../types';

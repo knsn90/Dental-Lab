@@ -35,6 +35,9 @@ export interface KanbanCard {
 
   doctor_name:      string | null;
   clinic_name:      string | null;
+  patient_name:     string | null;
+  tooth_numbers:    (string | number)[] | null;
+  shade:            string | null;
 
   // Derived (added in hook)
   current_stage:    Stage;             // checklist/SLA için stage eşlemesi

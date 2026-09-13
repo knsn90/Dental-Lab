@@ -63,6 +63,42 @@ export const ZirconiaDisc = createLucideIcon('ZirconiaDisc', [
   ['path', { d: 'M10.2 3.3 12 5.8l1.8-2.5', key: 'disc-notch' }],
 ]);
 
+/**
+ * 3B model / tarama küpü — izometrik küp (STL/PLY/OBJ tarama dosyaları için).
+ * Lucide `Box` bir paket kutusudur; bu gerçek izometrik küp "3B model" okunur.
+ */
+export const Cube3D = createLucideIcon('Cube3D', [
+  ['path', { d: 'M12 2.5 20.5 7v10L12 21.5 3.5 17V7z', key: 'cube-outline' }],
+  ['path', { d: 'M3.5 7 12 11.5 20.5 7', key: 'cube-top' }],
+  ['path', { d: 'M12 11.5v10', key: 'cube-vertical' }],
+]);
+
+/**
+ * Fotogrametri taraması — izometrik küp + köşe hedef ("capture") çerçevesi.
+ * Çok-fotoğraflı 3B yakalama çıktısını temsil eder; düz görsel ikonundan ayrışır.
+ */
+export const Photogrammetry = createLucideIcon('Photogrammetry', [
+  ['path', { d: 'M3 6.5V4.5a1.5 1.5 0 0 1 1.5-1.5h2', key: 'pg-tl' }],
+  ['path', { d: 'M21 6.5V4.5a1.5 1.5 0 0 0-1.5-1.5h-2', key: 'pg-tr' }],
+  ['path', { d: 'M3 17.5v2A1.5 1.5 0 0 0 4.5 21h2', key: 'pg-bl' }],
+  ['path', { d: 'M21 17.5v2a1.5 1.5 0 0 1-1.5 1.5h-2', key: 'pg-br' }],
+  ['path', { d: 'M12 6.5 17 9v6l-5 2.5L7 15V9z', key: 'pg-cube' }],
+  ['path', { d: 'M7 9l5 2.5L17 9', key: 'pg-cube-top' }],
+  ['path', { d: 'M12 11.5v6', key: 'pg-cube-v' }],
+]);
+
+/**
+ * Scan body — pahlı (açılı düz yüzlü) başlık + flanş + silindirik gövde.
+ * Referans görsele göre: üstte tarayıcının yön okuduğu chamfer'lı head,
+ * ortada platform/flanş, altta silindir gövde ve yuvarlak uç.
+ */
+export const ScanBody = createLucideIcon('ScanBody', [
+  ['path', { d: 'M9.5 4.5 14.5 3v6.5h-5z', key: 'sb-head' }],
+  ['path', { d: 'M9.5 6.6 14.5 5.1', key: 'sb-facet' }],
+  ['path', { d: 'M8 10h8v1.6H8z', key: 'sb-flange' }],
+  ['path', { d: 'M9.9 11.6h4.2v5.4a2.1 2.1 0 0 1-4.2 0z', key: 'sb-shaft' }],
+]);
+
 /** Çene / diş arkı — çift konturlu U bandı (alt/üst çene seçimi için). */
 export const DentalArch = createLucideIcon('DentalArch', [
   ['path', {

@@ -14,9 +14,11 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Modal, View, Text, Pressable, TextInput, ScrollView, ActivityIndicator, Platform,
 } from 'react-native';
-import { Check, Search, X } from 'lucide-react-native';
+import { Check, Search, X } from '../../../core/ui/icons';
 import { supabase } from '../../../core/api/supabase';
 import { DS } from '../../../core/theme/dsTokens';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { toast } from '../../../core/ui/Toast';
 import { formatQty } from '../../../core/util/formatQty';
 import { saveMinLevels } from '../api';
@@ -45,6 +47,8 @@ interface Props {
 }
 
 export function MinLevelBulkModal({ visible, accentColor, onClose, onSaved }: Props) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [rows, setRows]       = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving]   = useState(false);
@@ -128,20 +132,20 @@ export function MinLevelBulkModal({ visible, accentColor, onClose, onSaved }: Pr
       }}>
         <View style={{
           width: '100%', maxWidth: 720, maxHeight: '92%',
-          backgroundColor: DS.lab.surface, borderRadius: 18,
-          borderWidth: 1, borderColor: DS.ink[200], overflow: 'hidden',
+          backgroundColor: (isDark ? T.card : DS.lab.surface), borderRadius: 18,
+          borderWidth: 1, borderColor: (isDark ? T.hairline : DS.ink[200]), overflow: 'hidden',
         }}>
           {/* Başlık */}
           <View style={{
             flexDirection: 'row', alignItems: 'flex-start', gap: 12,
             paddingHorizontal: 20, paddingVertical: 16,
-            borderBottomWidth: 1, borderBottomColor: DS.ink[100],
+            borderBottomWidth: 1, borderBottomColor: (isDark ? T.hairline : DS.ink[100]),
           }}>
             <View style={{ flex: 1, gap: 4 }}>
-              <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.4, color: DS.ink[900] }}>
+              <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.4, color: (isDark ? T.ink : DS.ink[900]) }}>
                 Minimum stok seviyeleri
               </Text>
-              <Text style={{ fontSize: 12, color: DS.ink[500], lineHeight: 18 }}>
+              <Text style={{ fontSize: 12, color: (isDark ? T.ink3 : DS.ink[500]), lineHeight: 18 }}>
                 Minimum girilmemiş kalemlere referans miktarın %10'u otomatik
                 atandı. Gerçek tüketim hızınıza göre düzeltin — kategori başlığına
                 yazdığınız değer o kategorinin tamamına uygulanır.
@@ -151,11 +155,11 @@ export function MinLevelBulkModal({ visible, accentColor, onClose, onSaved }: Pr
               onPress={onClose}
               style={({ pressed }) => ({
                 width: 30, height: 30, borderRadius: 999, alignItems: 'center',
-                justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.05)',
+                justifyContent: 'center', backgroundColor: (isDark ? '#292825' : 'rgba(0,0,0,0.05)'),
                 opacity: pressed ? 0.6 : 1, ...webCursor,
               })}
             >
-              <X size={15} color={DS.ink[700]} strokeWidth={1.9} />
+              <X size={15} color={isDark ? T.ink2 : DS.ink[700]} strokeWidth={1.9} />
             </Pressable>
           </View>
 
@@ -163,21 +167,21 @@ export function MinLevelBulkModal({ visible, accentColor, onClose, onSaved }: Pr
           <View style={{
             flexDirection: 'row', alignItems: 'center', gap: 10,
             paddingHorizontal: 20, paddingVertical: 12,
-            borderBottomWidth: 1, borderBottomColor: DS.ink[100], flexWrap: 'wrap',
+            borderBottomWidth: 1, borderBottomColor: (isDark ? T.hairline : DS.ink[100]), flexWrap: 'wrap',
           }}>
             <View style={{
               flexDirection: 'row', alignItems: 'center', gap: 8,
               paddingHorizontal: 12, height: 34, borderRadius: 999,
-              borderWidth: 1, borderColor: DS.ink[200], flexGrow: 1, flexBasis: 200, minWidth: 0,
+              borderWidth: 1, borderColor: (isDark ? T.hairline : DS.ink[200]), flexGrow: 1, flexBasis: 200, minWidth: 0,
             }}>
-              <Search size={13} color={DS.ink[400]} strokeWidth={1.8} />
+              <Search size={13} color={isDark ? T.ink3 : DS.ink[400]} strokeWidth={1.8} />
               <TextInput
                 value={q}
                 onChangeText={setQ}
                 placeholder="Ürün veya kategori ara"
-                placeholderTextColor={DS.ink[400]}
+                placeholderTextColor={isDark ? (T.ink3 as string) : DS.ink[400]}
                 style={{
-                  flex: 1, fontSize: 13, color: DS.ink[900],
+                  flex: 1, fontSize: 13, color: (isDark ? T.ink : DS.ink[900]),
                   ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
                 }}
               />
@@ -186,11 +190,11 @@ export function MinLevelBulkModal({ visible, accentColor, onClose, onSaved }: Pr
               onPress={() => setOnlyAuto(v => !v)}
               style={({ pressed }) => ({
                 paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
-                backgroundColor: onlyAuto ? DS.ink[900] : 'rgba(0,0,0,0.05)',
+                backgroundColor: onlyAuto ? DS.ink[900] : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'),
                 opacity: pressed ? 0.7 : 1, ...webCursor,
               })}
             >
-              <Text style={{ fontSize: 12, fontWeight: '500', color: onlyAuto ? '#FFF' : DS.ink[800] }}>
+              <Text style={{ fontSize: 12, fontWeight: '500', color: onlyAuto ? '#FFF' : (isDark ? T.ink : DS.ink[800]) }}>
                 Yalnız otomatikler
               </Text>
             </Pressable>
@@ -204,7 +208,7 @@ export function MinLevelBulkModal({ visible, accentColor, onClose, onSaved }: Pr
           ) : (
             <ScrollView contentContainerStyle={{ paddingBottom: 8 }}>
               {groups.length === 0 ? (
-                <Text style={{ fontSize: 13, color: DS.ink[500], textAlign: 'center', paddingVertical: 40 }}>
+                <Text style={{ fontSize: 13, color: (isDark ? T.ink3 : DS.ink[500]), textAlign: 'center', paddingVertical: 40 }}>
                   {onlyAuto ? 'Otomatik eşikli kalem kalmadı' : 'Eşleşen kalem yok'}
                 </Text>
               ) : groups.map(([cat, catRows]) => (
@@ -212,25 +216,25 @@ export function MinLevelBulkModal({ visible, accentColor, onClose, onSaved }: Pr
                   <View style={{
                     flexDirection: 'row', alignItems: 'center', gap: 10,
                     paddingHorizontal: 20, paddingTop: 14, paddingBottom: 8,
-                    backgroundColor: DS.ink[50],
+                    backgroundColor: (isDark ? T.cardSoft : DS.ink[50]),
                   }}>
                     <Text style={{
                       flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 1.2,
-                      textTransform: 'uppercase', color: DS.ink[500],
+                      textTransform: 'uppercase', color: (isDark ? T.ink3 : DS.ink[500]),
                     }}>
-                      {cat} <Text style={{ color: DS.ink[400] }}>{catRows.length}</Text>
+                      {cat} <Text style={{ color: (isDark ? T.ink3 : DS.ink[400]) }}>{catRows.length}</Text>
                     </Text>
-                    <Text style={{ fontSize: 11, color: DS.ink[400] }}>hepsine:</Text>
+                    <Text style={{ fontSize: 11, color: (isDark ? T.ink3 : DS.ink[400]) }}>hepsine:</Text>
                     <TextInput
                       onChangeText={t => applyToCategory(catRows, t)}
                       keyboardType="decimal-pad"
                       placeholder="—"
-                      placeholderTextColor={DS.ink[300]}
+                      placeholderTextColor={isDark ? (T.ink3 as string) : DS.ink[300]}
                       style={{
                         width: 70, paddingHorizontal: 10, paddingVertical: 5,
-                        borderRadius: 10, borderWidth: 1, borderColor: DS.ink[300],
-                        fontSize: 12, color: DS.ink[900], textAlign: 'end' as any,
-                        backgroundColor: DS.lab.surface,
+                        borderRadius: 10, borderWidth: 1, borderColor: (isDark ? T.hairline : DS.ink[300]),
+                        fontSize: 12, color: (isDark ? T.ink : DS.ink[900]), textAlign: 'end' as any,
+                        backgroundColor: (isDark ? T.cardSoft : DS.lab.surface),
                         ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
                       }}
                     />
@@ -246,16 +250,16 @@ export function MinLevelBulkModal({ visible, accentColor, onClose, onSaved }: Pr
                         style={{
                           flexDirection: 'row', alignItems: 'center', gap: 12,
                           paddingHorizontal: 20, paddingVertical: 9,
-                          borderTopWidth: 1, borderTopColor: DS.ink[100],
+                          borderTopWidth: 1, borderTopColor: (isDark ? T.hairline : DS.ink[100]),
                           backgroundColor: dirty ? accentColor + '0F' : 'transparent',
                         }}
                       >
                         <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text numberOfLines={1} style={{ fontSize: 13, color: DS.ink[900] }}>
+                          <Text numberOfLines={1} style={{ fontSize: 13, color: (isDark ? T.ink : DS.ink[900]) }}>
                             {r.name}
                           </Text>
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <Text style={{ fontSize: 11, color: DS.ink[400] }}>
+                            <Text style={{ fontSize: 11, color: (isDark ? T.ink3 : DS.ink[400]) }}>
                               Mevcut: {formatQty(r.quantity)} {r.unit ?? ''}
                             </Text>
                             {r.min_auto && !dirty ? (
@@ -275,16 +279,16 @@ export function MinLevelBulkModal({ visible, accentColor, onClose, onSaved }: Pr
                           onChangeText={t => setDraft(p => ({ ...p, [r.id]: t }))}
                           keyboardType="decimal-pad"
                           placeholder="—"
-                          placeholderTextColor={DS.ink[300]}
+                          placeholderTextColor={isDark ? (T.ink3 as string) : DS.ink[300]}
                           style={{
                             width: 90, paddingHorizontal: 12, paddingVertical: 7,
                             borderRadius: 10, borderWidth: 1,
-                            borderColor: dirty ? accentColor : DS.ink[300],
-                            fontSize: 13, color: DS.ink[900], textAlign: 'end' as any,
+                            borderColor: dirty ? accentColor : (isDark ? T.hairline : DS.ink[300]),
+                            fontSize: 13, color: (isDark ? T.ink : DS.ink[900]), textAlign: 'end' as any,
                             ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
                           }}
                         />
-                        <Text style={{ width: 44, fontSize: 11, color: DS.ink[400] }}>
+                        <Text style={{ width: 44, fontSize: 11, color: (isDark ? T.ink3 : DS.ink[400]) }}>
                           {r.unit ?? ''}
                         </Text>
                       </View>
@@ -299,13 +303,13 @@ export function MinLevelBulkModal({ visible, accentColor, onClose, onSaved }: Pr
           <View style={{
             flexDirection: 'row', alignItems: 'center', gap: 12,
             paddingHorizontal: 20, paddingVertical: 14,
-            borderTopWidth: 1, borderTopColor: DS.ink[100],
+            borderTopWidth: 1, borderTopColor: (isDark ? T.hairline : DS.ink[100]),
           }}>
-            <Text style={{ flex: 1, fontSize: 12, color: DS.ink[500] }}>
+            <Text style={{ flex: 1, fontSize: 12, color: (isDark ? T.ink3 : DS.ink[500]) }}>
               {dirtyCount > 0 ? `${dirtyCount} kalem güncellenecek` : 'Değişiklik yok'}
             </Text>
             <Pressable onPress={onClose} disabled={saving} style={{ ...webCursor }}>
-              <Text style={{ fontSize: 13, color: DS.ink[500] }}>Vazgeç</Text>
+              <Text style={{ fontSize: 13, color: (isDark ? T.ink3 : DS.ink[500]) }}>Vazgeç</Text>
             </Pressable>
             <Pressable
               onPress={save}

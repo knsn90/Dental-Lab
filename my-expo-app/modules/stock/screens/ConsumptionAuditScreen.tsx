@@ -25,10 +25,11 @@ import { useRouter, useSegments } from 'expo-router';
 import { safeBack } from '../../../core/util/safeBack';
 import {
   ChevronLeft, ChevronRight, Inbox, RefreshCw, Search, ShieldCheck, TriangleAlert, Wrench, X,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { ResponsiveCanvas } from '../../../core/layout/ResponsiveCanvas';
 import { groupByCategory, CategoryHeaderRow } from '../categoryGroup';
 import { DS } from '../../../core/theme/dsTokens';
+import { useStockUI } from '../stockTheme';
 import { toast } from '../../../core/ui/Toast';
 import { isRTL } from '../../../core/i18n';
 import { ConsumptionFixModal } from '../components/ConsumptionFixModal';
@@ -81,9 +82,10 @@ const FLAG_LABEL: Record<string, string> = {
 
 /** Sapmanın okunabilir hâli: ×17.5 fazla · %65 eksik · uyumlu */
 function deviationText(r: ConsumptionAuditRow): { text: string; color: string } {
+  const U = useStockUI();
   if (r.ratio == null) {
     if (r.flags.includes('birim_uyusmazligi')) return { text: 'birim farklı', color: DS.lab.danger };
-    return { text: 'karşılaştırılamadı', color: DS.ink[400] };
+    return { text: 'karşılaştırılamadı', color: U.ink[400] };
   }
   const x = Number(r.ratio) || 0;
   if (x >= 1.25) {
@@ -96,9 +98,10 @@ function deviationText(r: ConsumptionAuditRow): { text: string; color: string } 
 }
 
 function severityColor(s: number): string {
+  const U = useStockUI();
   if (s >= 3) return DS.lab.danger;
   if (s === 2) return DS.lab.warning;
-  if (s === 1) return DS.ink[400];
+  if (s === 1) return U.ink[400];
   return DS.lab.success;
 }
 
@@ -114,6 +117,7 @@ function Chip({ label, color }: { label: string; color: string }) {
 }
 
 function MiniStat({ value, label, color }: { value: React.ReactNode; label: string; color: string }) {
+  const U = useStockUI();
   return (
     <View style={{ gap: 2 }}>
       <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.6, lineHeight: 24, color }}>
@@ -121,7 +125,7 @@ function MiniStat({ value, label, color }: { value: React.ReactNode; label: stri
       </Text>
       <Text style={{
         fontSize: 10, fontWeight: '500', letterSpacing: 0.8,
-        textTransform: 'uppercase', color: DS.ink[400],
+        textTransform: 'uppercase', color: U.ink[400],
       }}>
         {label}
       </Text>
@@ -132,6 +136,7 @@ function MiniStat({ value, label, color }: { value: React.ReactNode; label: stri
 type Filter = 'all' | 'deviation' | 'unit' | 'norule' | 'ok';
 
 export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded = false }: Props) {
+  const U = useStockUI();
   const router   = useRouter();
   const segments = useSegments();
   const panel    = (segments?.[0] as string) ?? '(lab)';
@@ -216,15 +221,15 @@ export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded 
           onPress={goBack}
           style={({ pressed }) => ({
             width: 30, height: 30, borderRadius: 999, alignItems: 'center',
-            justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.05)',
+            justifyContent: 'center', backgroundColor: U.chipNeutral,
             opacity: pressed ? 0.6 : 1, ...webCursor,
           })}
         >
-          {isRTL() ? <ChevronRight size={16} color={DS.ink[700]} strokeWidth={1.8} /> : <ChevronLeft size={16} color={DS.ink[700]} strokeWidth={1.8} />}
+          {isRTL() ? <ChevronRight size={16} color={U.ink[700]} strokeWidth={1.8} /> : <ChevronLeft size={16} color={U.ink[700]} strokeWidth={1.8} />}
         </Pressable>
         <Text style={{
           fontSize: 10, fontWeight: '500', letterSpacing: 1.2,
-          textTransform: 'uppercase', color: DS.ink[500],
+          textTransform: 'uppercase', color: U.ink[500],
         }}>
           Envanter · Denetim
         </Text>
@@ -232,10 +237,10 @@ export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded 
 
       {/* ── Başlık ─────────────────────────────────────────────── */}
       <View style={{ gap: 6, marginBottom: 16 }}>
-        <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.5, lineHeight: 26, color: DS.ink[900] }}>
+        <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.5, lineHeight: 26, color: U.ink[900] }}>
           Geçmiş Tüketim Denetimi
         </Text>
-        <Text style={{ fontSize: 13, color: DS.ink[500], lineHeight: 19, maxWidth: 660 }}>
+        <Text style={{ fontSize: 13, color: U.ink[500], lineHeight: 19, maxWidth: 660 }}>
           Girilmiş tüketim kayıtları, standart tüketim profilinin beklediği miktarla
           karşılaştırılır. Bu ekran hiçbir kaydı değiştirmez — yalnız hangi kaydın
           şüpheli olduğunu gösterir.
@@ -246,57 +251,57 @@ export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded 
 
       {/* ── Özet ───────────────────────────────────────────────── */}
       <View style={{
-        backgroundColor: DS.lab.surface, borderRadius: 18, borderWidth: 1,
-        borderColor: DS.ink[200], paddingHorizontal: 18, paddingVertical: 14,
+        backgroundColor: U.surface, borderRadius: 18, borderWidth: 1,
+        borderColor: U.ink[200], paddingHorizontal: 18, paddingVertical: 14,
         marginBottom: 16,
       }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-          <Text numberOfLines={1} style={{ flex: 1, fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>
+          <Text numberOfLines={1} style={{ flex: 1, fontSize: 13, fontWeight: '600', color: U.ink[900] }}>
             {stats.total} tüketim kaydı · {stats.orders} sipariş
           </Text>
           <Pressable
             onPress={load}
             style={({ pressed }) => ({
               width: 30, height: 30, borderRadius: 999, alignItems: 'center',
-              justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.05)',
+              justifyContent: 'center', backgroundColor: U.chipNeutral,
               opacity: pressed ? 0.6 : 1, ...webCursor,
             })}
           >
-            <RefreshCw size={13} color={DS.ink[500]} strokeWidth={1.8} />
+            <RefreshCw size={13} color={U.ink[500]} strokeWidth={1.8} />
           </Pressable>
         </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 26, flexWrap: 'wrap' }}>
           <MiniStat value={stats.deviation} label="Miktar sapması"
-                    color={stats.deviation > 0 ? DS.lab.danger : DS.ink[400]} />
+                    color={stats.deviation > 0 ? DS.lab.danger : U.ink[400]} />
           <MiniStat value={stats.unit} label="Birim uyuşmazlığı"
-                    color={stats.unit > 0 ? DS.lab.danger : DS.ink[400]} />
+                    color={stats.unit > 0 ? DS.lab.danger : U.ink[400]} />
           <MiniStat value={stats.norule} label="Kuralsız"
-                    color={stats.norule > 0 ? DS.lab.warning : DS.ink[400]} />
+                    color={stats.norule > 0 ? DS.lab.warning : U.ink[400]} />
           <MiniStat value={stats.ok} label="Uyumlu"
-                    color={stats.ok > 0 ? DS.lab.success : DS.ink[400]} />
+                    color={stats.ok > 0 ? DS.lab.success : U.ink[400]} />
           <MiniStat value={`${fmt(stats.cost, 2)} ${stats.currency}`} label="Kayıtlı maliyet"
-                    color={DS.ink[900]} />
+                    color={U.ink[900]} />
         </View>
       </View>
 
       {/* ── Boşluk kartı — hiç kayıt girilmemiş aşamalar ───────── */}
       {gapStats.missing > 0 ? (
         <View style={{
-          backgroundColor: DS.lab.surface, borderRadius: 18, borderWidth: 1,
-          borderColor: DS.ink[200], overflow: 'hidden', marginBottom: 16,
+          backgroundColor: U.surface, borderRadius: 18, borderWidth: 1,
+          borderColor: U.ink[200], overflow: 'hidden', marginBottom: 16,
         }}>
           <View style={{
             paddingHorizontal: 18, paddingVertical: 14, gap: 6,
-            borderBottomWidth: 1, borderBottomColor: DS.ink[100],
+            borderBottomWidth: 1, borderBottomColor: U.ink[100],
           }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <TriangleAlert size={15} color={DS.lab.warning} strokeWidth={1.8} />
-              <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900] }}>
                 Kaydı hiç girilmemiş aşamalar
               </Text>
             </View>
-            <Text style={{ fontSize: 12, color: DS.ink[500], lineHeight: 18, maxWidth: 620 }}>
+            <Text style={{ fontSize: 12, color: U.ink[500], lineHeight: 18, maxWidth: 620 }}>
               Tüketen istasyonlarda tamamlanan {gapStats.done} aşamanın {gapStats.missing} tanesinde
               hiç malzeme kaydı yok. Bu aşamalar için düzeltilecek bir miktar da yok —
               eksik stok ancak fiziksel sayımla kapanır.
@@ -313,19 +318,19 @@ export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded 
                 style={{
                   flexDirection: 'row', alignItems: 'center', gap: 12,
                   paddingHorizontal: 18, paddingVertical: 11,
-                  borderTopWidth: i === 0 ? 0 : 1, borderTopColor: DS.ink[100],
+                  borderTopWidth: i === 0 ? 0 : 1, borderTopColor: U.ink[100],
                 }}
               >
-                <Text numberOfLines={1} style={{ flex: 1, fontSize: 13, color: DS.ink[900] }}>
+                <Text numberOfLines={1} style={{ flex: 1, fontSize: 13, color: U.ink[900] }}>
                   {g.station_name}
                 </Text>
-                <View style={{ width: 90, height: 3, borderRadius: 999, backgroundColor: DS.ink[100], overflow: 'hidden' }}>
+                <View style={{ width: 90, height: 3, borderRadius: 999, backgroundColor: U.ink[100], overflow: 'hidden' }}>
                   <View style={{
                     height: '100%', width: `${pct}%`, borderRadius: 999,
-                    backgroundColor: pct >= 80 ? DS.lab.success : pct > 0 ? accentColor : DS.ink[200],
+                    backgroundColor: pct >= 80 ? DS.lab.success : pct > 0 ? accentColor : U.ink[200],
                   }} />
                 </View>
-                <Text style={{ width: 108, textAlign: 'end' as any, fontSize: 12, color: DS.ink[500] }}>
+                <Text style={{ width: 108, textAlign: 'end' as any, fontSize: 12, color: U.ink[500] }}>
                   {g.missing} / {g.done_stages} kayıtsız
                 </Text>
               </View>
@@ -339,23 +344,23 @@ export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded 
         <View style={{
           flexDirection: 'row', alignItems: 'center', gap: 8,
           paddingHorizontal: 14, height: 36, borderRadius: 999,
-          backgroundColor: DS.lab.surface, borderWidth: 1, borderColor: DS.ink[200],
+          backgroundColor: U.surface, borderWidth: 1, borderColor: U.ink[200],
           flexGrow: 1, flexBasis: 240, minWidth: 0,
         }}>
-          <Search size={14} color={DS.ink[400]} strokeWidth={1.8} />
+          <Search size={14} color={U.ink[400]} strokeWidth={1.8} />
           <TextInput
             value={q}
             onChangeText={t => { setQ(t); setLimit(PAGE); }}
             placeholder="Ürün, sipariş no veya istasyon ara"
-            placeholderTextColor={DS.ink[400]}
+            placeholderTextColor={U.ink[400]}
             style={{
-              flex: 1, fontSize: 13, color: DS.ink[900],
+              flex: 1, fontSize: 13, color: U.ink[900],
               ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
             }}
           />
           {q.length > 0 ? (
             <Pressable onPress={() => setQ('')} style={webCursor}>
-              <X size={13} color={DS.ink[400]} strokeWidth={2} />
+              <X size={13} color={U.ink[400]} strokeWidth={2} />
             </Pressable>
           ) : null}
         </View>
@@ -376,14 +381,14 @@ export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded 
                 style={({ pressed }) => ({
                   flexDirection: 'row', alignItems: 'center', gap: 6,
                   paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
-                  backgroundColor: on ? DS.ink[900] : 'rgba(0,0,0,0.05)',
+                  backgroundColor: on ? U.ink[900] : U.hairline,
                   opacity: pressed ? 0.7 : 1, ...webCursor,
                 })}
               >
-                <Text style={{ fontSize: 12, fontWeight: '500', color: on ? '#FFF' : DS.ink[800] }}>
+                <Text style={{ fontSize: 12, fontWeight: '500', color: on ? U.onDarkPill : U.ink[800] }}>
                   {f.l}
                 </Text>
-                <Text style={{ fontSize: 11, color: on ? 'rgba(255,255,255,0.6)' : DS.ink[400] }}>
+                <Text style={{ fontSize: 11, color: on ? 'rgba(255,255,255,0.6)' : U.ink[400] }}>
                   {f.n}
                 </Text>
               </Pressable>
@@ -395,47 +400,47 @@ export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded 
       {/* ── Denetim listesi ────────────────────────────────────── */}
       {visible.length === 0 ? (
         <View style={{
-          backgroundColor: DS.lab.surface, borderRadius: 18, borderWidth: 1,
-          borderColor: DS.ink[200], paddingVertical: 48, alignItems: 'center', gap: 10,
+          backgroundColor: U.surface, borderRadius: 18, borderWidth: 1,
+          borderColor: U.ink[200], paddingVertical: 48, alignItems: 'center', gap: 10,
         }}>
           <View style={{
             width: 44, height: 44, borderRadius: 999, alignItems: 'center',
-            justifyContent: 'center', backgroundColor: DS.ink[100],
+            justifyContent: 'center', backgroundColor: U.ink[100],
           }}>
             {rows.length === 0
-              ? <Inbox size={19} color={DS.ink[400]} strokeWidth={1.6} />
-              : <ShieldCheck size={19} color={DS.ink[400]} strokeWidth={1.6} />}
+              ? <Inbox size={19} color={U.ink[400]} strokeWidth={1.6} />
+              : <ShieldCheck size={19} color={U.ink[400]} strokeWidth={1.6} />}
           </View>
-          <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900] }}>
             {rows.length === 0 ? 'Henüz tüketim kaydı yok' : 'Bu filtrede kayıt yok'}
           </Text>
         </View>
       ) : (
         <View style={{
-          backgroundColor: DS.lab.surface, borderRadius: 18, borderWidth: 1,
-          borderColor: DS.ink[200], overflow: 'hidden',
+          backgroundColor: U.surface, borderRadius: 18, borderWidth: 1,
+          borderColor: U.ink[200], overflow: 'hidden',
         }}>
           {/* Sütun başlıkları */}
           <View style={{
             flexDirection: 'row', alignItems: 'center',
             paddingHorizontal: 18, paddingVertical: 10,
-            backgroundColor: DS.ink[50], borderBottomWidth: 1, borderBottomColor: DS.ink[100],
+            backgroundColor: U.ink[50], borderBottomWidth: 1, borderBottomColor: U.ink[100],
           }}>
             <Text style={{
               flex: 1, fontSize: 10, fontWeight: '500', letterSpacing: 1.2,
-              textTransform: 'uppercase', color: DS.ink[400],
+              textTransform: 'uppercase', color: U.ink[400],
             }}>
               Kayıt
             </Text>
             <Text style={{
               width: 150, textAlign: 'end' as any, fontSize: 10, fontWeight: '500',
-              letterSpacing: 1.2, textTransform: 'uppercase', color: DS.ink[400],
+              letterSpacing: 1.2, textTransform: 'uppercase', color: U.ink[400],
             }}>
               Kayıtlı · Beklenen
             </Text>
             <Text style={{
               width: 110, textAlign: 'end' as any, fontSize: 10, fontWeight: '500',
-              letterSpacing: 1.2, textTransform: 'uppercase', color: DS.ink[400],
+              letterSpacing: 1.2, textTransform: 'uppercase', color: U.ink[400],
             }}>
               Sapma
             </Text>
@@ -455,7 +460,7 @@ export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded 
                 key={r.movement_id}
                 style={{
                   paddingHorizontal: 18, paddingVertical: 12,
-                  borderTopWidth: i === 0 ? 0 : 1, borderTopColor: DS.ink[100],
+                  borderTopWidth: i === 0 ? 0 : 1, borderTopColor: U.ink[100],
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
@@ -468,16 +473,16 @@ export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded 
                   {/* Birincil: ürün · İkincil: sipariş + istasyon */}
                   <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
                     <Text numberOfLines={1} style={{
-                      fontSize: 14, fontWeight: '600', letterSpacing: -0.2, color: DS.ink[900],
+                      fontSize: 14, fontWeight: '600', letterSpacing: -0.2, color: U.ink[900],
                     }}>
                       {r.item_name}
                     </Text>
-                    <Text numberOfLines={1} style={{ fontSize: 12, color: DS.ink[500] }}>
+                    <Text numberOfLines={1} style={{ fontSize: 12, color: U.ink[500] }}>
                       {r.order_number ?? '—'} · {r.stage_name ?? 'aşama yok'}
                       {r.tooth_count > 0 ? ` · ${r.tooth_count} diş` : ''}
                     </Text>
                     {r.basis ? (
-                      <Text numberOfLines={1} style={{ fontSize: 11, color: DS.ink[400] }}>
+                      <Text numberOfLines={1} style={{ fontSize: 11, color: U.ink[400] }}>
                         Profil: {r.basis}
                       </Text>
                     ) : null}
@@ -485,10 +490,10 @@ export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded 
 
                   {/* Kayıtlı vs beklenen — daima ortak birimde */}
                   <View style={{ width: 150, alignItems: 'flex-end', gap: 2 }}>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>
                       {fmt(r.recorded_norm)} {unit}
                     </Text>
-                    <Text style={{ fontSize: 12, color: DS.ink[500] }}>
+                    <Text style={{ fontSize: 12, color: U.ink[500] }}>
                       {r.expected_norm != null ? `${fmt(r.expected_norm)} ${unit}` : 'beklenen yok'}
                     </Text>
                   </View>
@@ -499,7 +504,7 @@ export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded 
                       {dev.text}
                     </Text>
                     {r.cost != null && Number(r.cost) !== 0 ? (
-                      <Text style={{ fontSize: 10, color: DS.ink[400] }}>
+                      <Text style={{ fontSize: 10, color: U.ink[400] }}>
                         {fmt(r.cost, 2)} {r.currency ?? ''}
                       </Text>
                     ) : null}
@@ -512,12 +517,12 @@ export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded 
                       width: 84, flexDirection: 'row', alignItems: 'center',
                       justifyContent: 'center', gap: 6,
                       paddingVertical: 7, borderRadius: 999,
-                      backgroundColor: 'rgba(0,0,0,0.05)',
+                      backgroundColor: U.chipNeutral,
                       opacity: pressed ? 0.7 : 1, ...webCursor,
                     })}
                   >
-                    <Wrench size={12} color={DS.ink[700]} strokeWidth={1.8} />
-                    <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[800] }}>
+                    <Wrench size={12} color={U.ink[700]} strokeWidth={1.8} />
+                    <Text style={{ fontSize: 12, fontWeight: '500', color: U.ink[800] }}>
                       Düzelt
                     </Text>
                   </Pressable>
@@ -535,7 +540,7 @@ export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded 
                         color={
                           f === 'birim_uyusmazligi' || f === 'fazla' ? DS.lab.danger
                           : f === 'eksik' || f === 'kural_yok' || f === 'istasyon_disi' ? DS.lab.warning
-                          : DS.ink[500]
+                          : U.ink[500]
                         }
                       />
                     ))}
@@ -550,11 +555,11 @@ export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded 
               onPress={() => setLimit(v => v + PAGE * 2)}
               style={({ pressed }) => ({
                 paddingVertical: 14, alignItems: 'center',
-                borderTopWidth: 1, borderTopColor: DS.ink[100],
+                borderTopWidth: 1, borderTopColor: U.ink[100],
                 opacity: pressed ? 0.6 : 1, ...webCursor,
               })}
             >
-              <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[700] }}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: U.ink[700] }}>
                 {visible.length - shown.length} kayıt daha göster
               </Text>
             </Pressable>
@@ -565,13 +570,13 @@ export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded 
       {/* ── Sonraki adım — ekranın ne YAPMADIĞINI da söyler ────── */}
       <View style={{
         marginTop: 16, paddingHorizontal: 18, paddingVertical: 14,
-        borderRadius: 18, borderWidth: 1, borderColor: DS.ink[200],
-        backgroundColor: DS.lab.surface, gap: 4,
+        borderRadius: 18, borderWidth: 1, borderColor: U.ink[200],
+        backgroundColor: U.surface, gap: 4,
       }}>
-        <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[900] }}>
+        <Text style={{ fontSize: 12, fontWeight: '600', color: U.ink[900] }}>
           Bu liste bir öneri, hüküm değil
         </Text>
-        <Text style={{ fontSize: 12, color: DS.ink[500], lineHeight: 18, maxWidth: 660 }}>
+        <Text style={{ fontSize: 12, color: U.ink[500], lineHeight: 18, maxWidth: 660 }}>
           "Beklenen" değer profil kurallarından gelir; kural varsayımsa ya da birim
           uyuşmuyorsa sapma gerçek olmayabilir — bu satırlarda profil değeri
           uygulanamaz, miktarı elle girmeniz gerekir. Düzeltme, orijinal kaydı ters

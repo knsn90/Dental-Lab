@@ -7,7 +7,7 @@ import {
   View, Text, Pressable, TextInput, FlatList, Platform,
   useWindowDimensions,
 } from 'react-native';
-import { ChevronDown, ChevronUp, Search, X, Check, AlertCircle } from 'lucide-react-native';
+import { ChevronDown, ChevronUp, Search, X, Check, AlertCircle } from '../../../core/ui/icons';
 import { DS } from '../../../core/theme/dsTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 

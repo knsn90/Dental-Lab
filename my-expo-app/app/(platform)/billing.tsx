@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Platform } from 'react-native';
-import { CreditCard, Check, Ban, RotateCcw, Info } from 'lucide-react-native';
+import { CreditCard, Check, Ban, RotateCcw, Info } from '../../core/ui/icons';
 import { billingOverview, listPlans, setPlanPrice, setPlanLimits, listInvoices, setInvoiceStatus, LIMIT_METRICS, type BillingOverview, type PlanDef, type PlatformInvoice } from '../../modules/platform/api';
 import { C, FONT, PageHeader, Panel, Kpi, Chip, Banner, SectionLabel, IconChip, hexA, fmtMoney } from '../../modules/platform/ui';
 

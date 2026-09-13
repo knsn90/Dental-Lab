@@ -22,9 +22,18 @@ export interface RevisionGroupable {
 }
 
 /** Bu kaydın ASIL işe bağı: revizyon → revision_of_id, devam → continues_order_id. */
-function parentLinkOf(o: RevisionGroupable): string | null {
+function parentLinkOf(o: RevisionGroupable, linkBy: LinkBy = 'all'): string | null {
+  if (linkBy === 'revision') return o.revision_of_id ?? null;
   return o.revision_of_id ?? o.continues_order_id ?? null;
 }
+
+/**
+ * Hangi bağ gruplamayı kurar:
+ *  • 'all'      — revizyon + devam siparişi (varsayılan; vaka çatısı görünümleri)
+ *  • 'revision' — YALNIZ revizyon. Devam siparişi asıl işin yerine GEÇMEZ, ayrı
+ *    bir iştir; listede kendi satırı olmalı (masaüstü Siparişler böyle çalışır).
+ */
+export type LinkBy = 'all' | 'revision';
 
 export interface RevisionCases<T> {
   /** Listede gösterilecek satırlar — her vakadan yalnız en güncel üye. */
@@ -39,7 +48,8 @@ export interface RevisionCases<T> {
  * Ebeveyni listede OLMAYAN revizyon (ör. sayfalama penceresi dışında kaldıysa)
  * kendi başına anchor olur — sessizce kaybolmaz.
  */
-export function buildRevisionCases<T extends RevisionGroupable>(list: T[]): RevisionCases<T> {
+export function buildRevisionCases<T extends RevisionGroupable>(list: T[], opts?: { linkBy?: LinkBy }): RevisionCases<T> {
+  const linkBy: LinkBy = opts?.linkBy ?? 'all';
   const byId = new Map<string, T>();
   list.forEach(o => byId.set(o.id, o));
 
@@ -47,7 +57,7 @@ export function buildRevisionCases<T extends RevisionGroupable>(list: T[]): Revi
   const rootOf = (o: T): string => {
     let cur: T = o;
     for (let hop = 0; hop < 20; hop++) {
-      const parentId = parentLinkOf(cur);
+      const parentId = parentLinkOf(cur, linkBy);
       if (!parentId) break;
       const parent = byId.get(parentId);
       if (!parent) break;          // ebeveyn listede yok → burası kök sayılır

@@ -5,7 +5,7 @@ import React, { useEffect, useState } from 'react';
 import {
   View, Text, Pressable, Modal, TextInput, Platform, ScrollView,
 } from 'react-native';
-import { Truck, User, Building2, X, Check, Search, MapPin, Calendar, Package, Shield, Bike, CreditCard, Banknote, ChevronDown } from 'lucide-react-native';
+import { Truck, User, Building2, X, Check, Search, MapPin, Calendar, Package, Shield, Bike, CreditCard, Banknote, ChevronDown } from '../../../core/ui/icons';
 import { supabase } from '../../../core/api/supabase';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { createDelivery, DELIVERY_PURPOSE_LABELS, type DeliveryPurpose, type DeliveryDirection } from '../api';
@@ -17,6 +17,8 @@ import { BanaBiKuryeLogo } from './BanaBiKuryeLogo';
 import { ShipinkLogo } from './ShipinkLogo';
 import { CarrierLogo } from './CarrierLogo';
 import { FilterMenu } from '../../../core/ui/FilterMenu';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 interface CourierOption { id: string; full_name: string; }
 
@@ -202,14 +204,16 @@ const FONT_MONO = Platform.OS === 'ios' ? 'Menlo' : Platform.OS === 'android' ? 
 function SelectCard({ selected, accent, icon: Icon, title, desc, onPress }: {
   selected: boolean; accent: string; icon: any; title: string; desc: string; onPress: () => void;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }: any) => ({
         flexDirection: 'row', alignItems: 'center', gap: 12,
         padding: 14, borderRadius: 16,
-        borderWidth: 1.5, borderColor: selected ? accent : 'rgba(0,0,0,0.10)',
-        backgroundColor: selected ? `${accent}0F` : '#FFF',
+        borderWidth: 1.5, borderColor: selected ? accent : T.hairline,
+        backgroundColor: selected ? `${accent}0F` : (isDark ? T.card : '#FFF'),
         opacity: pressed ? 0.7 : 1,
         transform: [{ scale: pressed ? 0.99 : 1 }],
         ...webCursor,
@@ -217,18 +221,18 @@ function SelectCard({ selected, accent, icon: Icon, title, desc, onPress }: {
     >
       <View style={{
         width: 34, height: 34, borderRadius: 999,
-        backgroundColor: selected ? `${accent}1F` : 'rgba(0,0,0,0.05)',
+        backgroundColor: selected ? `${accent}1F` : (isDark ? T.cardSoft : 'rgba(0,0,0,0.05)'),
         alignItems: 'center', justifyContent: 'center',
       }}>
-        <Icon size={16} color={selected ? accent : '#6B6B6B'} strokeWidth={1.9} />
+        <Icon size={16} color={selected ? accent : T.ink3} strokeWidth={1.9} />
       </View>
       <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-        <Text style={{ fontSize: 13.5, fontWeight: '700', color: '#0A0A0A' }}>{title}</Text>
-        <Text style={{ fontSize: 11.5, color: '#6B6B6B', lineHeight: 16 }}>{desc}</Text>
+        <Text style={{ fontSize: 13.5, fontWeight: '700', color: T.ink }}>{title}</Text>
+        <Text style={{ fontSize: 11.5, color: T.ink3, lineHeight: 16 }}>{desc}</Text>
       </View>
       <View style={{
         width: 20, height: 20, borderRadius: 999,
-        borderWidth: selected ? 0 : 1.5, borderColor: 'rgba(0,0,0,0.15)',
+        borderWidth: selected ? 0 : 1.5, borderColor: T.hairline,
         backgroundColor: selected ? accent : 'transparent',
         alignItems: 'center', justifyContent: 'center',
       }}>
@@ -245,8 +249,10 @@ function SegmentRow({ items, value, onChange, accent }: {
   onChange: (id: string) => void;
   accent: string;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
-    <View style={{ flexDirection: 'row', gap: 3, padding: 3, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.05)' }}>
+    <View style={{ flexDirection: 'row', gap: 3, padding: 3, borderRadius: 999, backgroundColor: isDark ? T.cardSoft : 'rgba(0,0,0,0.05)' }}>
       {items.map(it => {
         const on = it.id === value;
         return (
@@ -256,15 +262,15 @@ function SegmentRow({ items, value, onChange, accent }: {
             style={({ pressed }: any) => ({
               flex: 1, alignItems: 'center', justifyContent: 'center',
               paddingVertical: 9, borderRadius: 999,
-              backgroundColor: on ? '#FFF' : 'transparent',
+              backgroundColor: on ? (isDark ? T.card : '#FFF') : 'transparent',
               // @ts-ignore web
-              boxShadow: on ? '0 1px 3px rgba(0,0,0,0.10)' : undefined,
+              boxShadow: on ? (isDark ? 'none' : '0 1px 3px rgba(0,0,0,0.10)') : undefined,
               opacity: pressed && !on ? 0.55 : 1,
               transform: [{ scale: pressed ? 0.98 : 1 }],
               ...webCursor,
             })}
           >
-            <Text style={{ fontSize: 12.5, fontWeight: on ? '700' : '500', color: on ? accent : '#6B6B6B' }}>
+            <Text style={{ fontSize: 12.5, fontWeight: on ? '700' : '500', color: on ? accent : T.ink3 }}>
               {it.label}
             </Text>
           </Pressable>
@@ -285,24 +291,26 @@ function Disclosure({ open, onToggle, title, summary, accent, children }: {
   open: boolean; onToggle: () => void; title: string; summary: string;
   accent: string; children: React.ReactNode;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <View style={{
-      borderRadius: 16, borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)',
-      backgroundColor: '#FFF', overflow: 'hidden',
+      borderRadius: 16, borderWidth: 1, borderColor: T.hairline,
+      backgroundColor: isDark ? T.card : '#FFF', overflow: 'hidden',
     }}>
       <Pressable
         onPress={onToggle}
         style={({ pressed }: any) => ({
           flexDirection: 'row', alignItems: 'center', gap: 10,
           paddingHorizontal: 14, paddingVertical: 12,
-          backgroundColor: pressed ? 'rgba(0,0,0,0.03)' : 'transparent',
+          backgroundColor: pressed ? (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)') : 'transparent',
           ...webCursor,
         })}
       >
         <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-          <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#0A0A0A' }}>{title}</Text>
+          <Text style={{ fontSize: 12.5, fontWeight: '700', color: T.ink }}>{title}</Text>
           {!open ? (
-            <Text numberOfLines={1} style={{ fontSize: 11, color: '#6B6B6B' }}>{summary}</Text>
+            <Text numberOfLines={1} style={{ fontSize: 11, color: T.ink3 }}>{summary}</Text>
           ) : null}
         </View>
         <Text style={{ fontSize: 11.5, fontWeight: '600', color: accent }}>
@@ -316,7 +324,7 @@ function Disclosure({ open, onToggle, title, summary, accent, children }: {
         />
       </Pressable>
       {open ? (
-        <View style={{ padding: 14, paddingTop: 4, gap: 14, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
+        <View style={{ padding: 14, paddingTop: 4, gap: 14, borderTopWidth: 1, borderTopColor: T.hairline2 }}>
           {children}
         </View>
       ) : null}
@@ -325,29 +333,34 @@ function Disclosure({ open, onToggle, title, summary, accent, children }: {
 }
 
 /** Kurye sağlayıcı kartı — üçü de aynı anatomi: ikon yuvası + etiket. */
-function ModeCard({ selected, accent, icon: Icon, label, brand, onPress }: {
+function ModeCard({ selected, accent, icon: Icon, label, brand, brandMaxWidth = 84, onPress }: {
   selected: boolean; accent: string; icon?: any; label: string;
-  brand?: React.ReactNode; onPress: () => void;
+  brand?: React.ReactNode; brandMaxWidth?: number; onPress: () => void;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }: any) => ({
         flex: 1, minWidth: 0, paddingVertical: 12, paddingHorizontal: 6, borderRadius: 14,
-        borderWidth: 1.5, borderColor: selected ? accent : 'rgba(0,0,0,0.10)',
-        backgroundColor: selected ? `${accent}0F` : '#FFF',
+        borderWidth: 1.5, borderColor: selected ? accent : T.hairline,
+        backgroundColor: selected ? `${accent}0F` : (isDark ? T.card : '#FFF'),
         alignItems: 'center', justifyContent: 'center', gap: 6,
         opacity: pressed ? 0.7 : 1,
         transform: [{ scale: pressed ? 0.98 : 1 }],
         ...webCursor,
       })}
     >
-      <View style={{ height: 20, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ height: 20, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' }}>
+        {/* Marka logosu kartın iç genişliğine SIĞDIRILIR: dar telefonda 4 kart
+            ~70pt kalıyor, sabit 84pt logo kart kenarından taşıyordu. Logo
+            viewBox'ıyla orantılı küçülür (width/height %100). */}
         {brand
-          ? <View style={{ opacity: selected ? 1 : 0.4 }}>{brand}</View>
-          : <Icon size={18} color={selected ? accent : '#6B6B6B'} strokeWidth={1.8} />}
+          ? <View style={{ width: '100%', maxWidth: brandMaxWidth, height: 16, opacity: selected ? 1 : 0.4 }}>{brand}</View>
+          : <Icon size={18} color={selected ? accent : T.ink3} strokeWidth={1.8} />}
       </View>
-      <Text numberOfLines={1} style={{ fontSize: 11.5, fontWeight: selected ? '700' : '500', color: selected ? accent : '#6B6B6B' }}>
+      <Text numberOfLines={1} style={{ fontSize: 11.5, fontWeight: selected ? '700' : '500', color: selected ? accent : T.ink3 }}>
         {label}
       </Text>
     </Pressable>
@@ -355,6 +368,8 @@ function ModeCard({ selected, accent, icon: Icon, label, brand, onPress }: {
 }
 
 export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated, accentColor = '#0A0A0A', lockExternal = false, editDelivery = null, extraLeg = false, stageSnapshot = null }: Props) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [mode, setMode]         = useState<'internal' | 'external' | 'banabikurye' | 'shipink'>('external');
   const [couriers, setCouriers] = useState<CourierOption[]>([]);
   const [courierId, setCourierId] = useState<string | null>(null);
@@ -968,14 +983,14 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
   // Google Places'ten ünvanla ara + onay (doğru adres)
   const addressBlock = (
             <View style={{ gap: 8 }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: '#6B6B6B', letterSpacing: 0.6, textTransform: 'uppercase' }}>{direction === 'clinic_to_lab' ? 'Alış Adresi (Klinik)' : 'Teslim Adresi'}</Text>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: (T.ink3 as string), letterSpacing: 0.6, textTransform: 'uppercase' }}>{direction === 'clinic_to_lab' ? 'Alış Adresi (Klinik)' : 'Teslim Adresi'}</Text>
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <TextInput
                   value={addrQuery}
                   onChangeText={(t) => { setAddrQuery(t); setAddrTouched(true); }}
                   placeholder="Klinik adı, hekim adı veya adres…"
                   onSubmitEditing={() => handleAddrSearch()}
-                  style={{ flex: 1, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, /* @ts-ignore */ outlineWidth: 0 }}
+                  style={{ flex: 1, borderWidth: 1, borderColor: (T.hairline as string), borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, /* @ts-ignore */ outlineWidth: 0 }}
                 />
                 <Pressable
                   onPress={() => handleAddrSearch()}
@@ -986,14 +1001,14 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                   <Text style={{ fontSize: 12, fontWeight: '700', color: accentColor }}>{addrSearching ? '…' : 'Ara'}</Text>
                 </Pressable>
               </View>
-              <Text style={{ fontSize: 10.5, color: '#9A9A9A' }}>Klinik adı, hekim adı veya adresin bir parçasını yazabilirsin. Seçmezsen kayıtlı klinik adresi kullanılır.</Text>
+              <Text style={{ fontSize: 10.5, color: (T.ink3 as string) }}>Klinik adı, hekim adı veya adresin bir parçasını yazabilirsin. Seçmezsen kayıtlı klinik adresi kullanılır.</Text>
 
               {/* Kayıtlı adresler — sistemdeki klinikler. Google'dan önce
                   gelir: hem daha doğru (bizim doğruladığımız adres) hem
                   anında, hem ücretsiz. */}
               {savedMatches.length > 0 && (
                 <>
-                  <Text style={{ fontSize: 9.5, fontWeight: '700', color: '#9A9A9A', letterSpacing: 0.6, textTransform: 'uppercase', marginTop: 2 }}>Kayıtlı klinikler</Text>
+                  <Text style={{ fontSize: 9.5, fontWeight: '700', color: (T.ink3 as string), letterSpacing: 0.6, textTransform: 'uppercase', marginTop: 2 }}>Kayıtlı klinikler</Text>
                   {savedMatches.map((c) => (
                     <Pressable
                       key={c.id}
@@ -1002,8 +1017,8 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                     >
                       <Building2 size={14} color={accentColor} strokeWidth={1.8} style={{ marginTop: 2 }} />
                       <View style={{ flex: 1 }}>
-                        {!!c.name && <Text style={{ fontSize: 12.5, fontWeight: '600', color: '#0A0A0A' }}>{c.name}</Text>}
-                        <Text style={{ fontSize: 11.5, color: '#6B6B6B', lineHeight: 16 }}>{c.address}</Text>
+                        {!!c.name && <Text style={{ fontSize: 12.5, fontWeight: '600', color: (T.ink as string) }}>{c.name}</Text>}
+                        <Text style={{ fontSize: 11.5, color: (T.ink3 as string), lineHeight: 16 }}>{c.address}</Text>
                       </View>
                     </Pressable>
                   ))}
@@ -1012,18 +1027,18 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
 
               {/* Aday adresler (Google Places autocomplete + text search) */}
               {savedMatches.length > 0 && addrResults.length > 0 && (
-                <Text style={{ fontSize: 9.5, fontWeight: '700', color: '#9A9A9A', letterSpacing: 0.6, textTransform: 'uppercase', marginTop: 2 }}>Haritadan</Text>
+                <Text style={{ fontSize: 9.5, fontWeight: '700', color: (T.ink3 as string), letterSpacing: 0.6, textTransform: 'uppercase', marginTop: 2 }}>Haritadan</Text>
               )}
               {addrResults.map((rsp) => (
                 <Pressable
                   key={rsp.placeId}
                   onPress={() => handleSelectPlace(rsp)}
-                  style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#FFF' }}
+                  style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: (T.hairline as string), backgroundColor: (isDark ? T.card : '#FFF') }}
                 >
                   <MapPin size={14} color={accentColor} strokeWidth={1.8} style={{ marginTop: 2 }} />
                   <View style={{ flex: 1 }}>
-                    {!!rsp.mainText && <Text style={{ fontSize: 12.5, fontWeight: '600', color: '#0A0A0A' }}>{rsp.mainText}</Text>}
-                    {!!rsp.secondaryText && <Text style={{ fontSize: 11.5, color: '#6B6B6B', lineHeight: 16 }}>{rsp.secondaryText}</Text>}
+                    {!!rsp.mainText && <Text style={{ fontSize: 12.5, fontWeight: '600', color: (T.ink as string) }}>{rsp.mainText}</Text>}
+                    {!!rsp.secondaryText && <Text style={{ fontSize: 11.5, color: (T.ink3 as string), lineHeight: 16 }}>{rsp.secondaryText}</Text>}
                   </View>
                 </Pressable>
               ))}
@@ -1034,7 +1049,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                   <Check size={14} color={accentColor} strokeWidth={2.4} style={{ marginTop: 2 }} />
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 10.5, fontWeight: '700', color: accentColor, letterSpacing: 0.4, textTransform: 'uppercase' }}>Seçili teslim adresi</Text>
-                    <Text style={{ fontSize: 12, color: '#0A0A0A', lineHeight: 16, marginTop: 2 }}>{addrSelected.address}</Text>
+                    <Text style={{ fontSize: 12, color: (T.ink as string), lineHeight: 16, marginTop: 2 }}>{addrSelected.address}</Text>
                   </View>
                   <Pressable onPress={() => { setAddrSelected(null); setBbkPrice(null); resetShpRates(); }} hitSlop={8}>
                     <X size={14} color="#9A9A9A" />
@@ -1056,12 +1071,12 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
           onPress={() => { /* swallow */ }}
           style={{
             width: '100%', maxWidth: 520,
-            backgroundColor: '#FFFFFF', borderRadius: 20,
+            backgroundColor: isDark ? T.card : '#FFFFFF', borderRadius: 20,
             ...(Platform.OS === 'web' ? { boxShadow: '0 24px 60px rgba(15,23,42,0.20)' } as any : {}),
           }}
         >
           {/* Header */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 22, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 22, borderBottomWidth: 1, borderBottomColor: (T.hairline as string) }}>
             <View style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(234,122,76,0.12)' }}>
               <Truck size={18} color={accentColor} strokeWidth={1.8} />
             </View>
@@ -1073,11 +1088,11 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                   : extraLeg ? (purpose === FINAL_PURPOSE ? 'Final teslimat' : 'Ara kurye hareketi')
                   : 'Teslimat'}
               </Text>
-              <Text style={{ fontSize: 18, fontWeight: '700', color: '#0A0A0A' }}>
+              <Text style={{ fontSize: 18, fontWeight: '700', color: (T.ink as string) }}>
                 {editDelivery ? 'Teslimatı Düzenle' : extraLeg ? 'Kurye Çağır' : 'Kuryeye Gönder'}
               </Text>
             </View>
-            <Pressable onPress={onClose} style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.04)' }}>
+            <Pressable onPress={onClose} style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: (T.hairline as string) }}>
               <X size={14} color="#6B6B6B" />
             </Pressable>
           </View>
@@ -1087,7 +1102,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
             {extraLeg && !editDelivery && (
               <View style={{ gap: 14 }}>
                 <View style={{ gap: 8 }}>
-                  <Text style={SECTION_LBL}>Neden</Text>
+                  <Text style={[SECTION_LBL, { color: T.ink3 }]}>Neden</Text>
 
                   {/* En sık sebep önce, tek başına ve ne yaptığını yazarak.
                       Diğerleri altında kompakt ızgarada — hiçbiri gizlenmiyor,
@@ -1124,7 +1139,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                 </View>
 
                 <View style={{ gap: 8 }}>
-                  <Text style={SECTION_LBL}>Yön</Text>
+                  <Text style={[SECTION_LBL, { color: T.ink3 }]}>Yön</Text>
                   <SegmentRow
                     accent={accentColor}
                     value={direction}
@@ -1141,7 +1156,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
             {/* Mode segment — Bizim Kurye (lockExternal ise gizli) / Dış Kargo / BanaBiKurye */}
             {!editDelivery && (
             <View style={{ gap: 8 }}>
-              <Text style={SECTION_LBL}>Kim götürsün</Text>
+              <Text style={[SECTION_LBL, { color: T.ink3 }]}>Kim götürsün</Text>
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 {!lockExternal && (
                   <ModeCard
@@ -1168,7 +1183,8 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                   selected={mode === 'banabikurye'}
                   accent={accentColor}
                   label="Entegre"
-                  brand={<BanaBiKuryeLogo width={84} height={16} />}
+                  brand={<BanaBiKuryeLogo width="100%" height="100%" />}
+                  brandMaxWidth={84}
                   onPress={() => { setMode('banabikurye'); setBbkPrice(null); setError(null); }}
                 />
                 {/* Shipink kargo toplayıcı — gruplama yok (tek gönderi, tek iş),
@@ -1177,7 +1193,8 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                   selected={mode === 'shipink'}
                   accent={accentColor}
                   label="Kargo"
-                  brand={<ShipinkLogo width={62} height={16} />}
+                  brand={<ShipinkLogo width="100%" height="100%" />}
+                  brandMaxWidth={62}
                   onPress={() => { setMode('shipink'); setBbkPrice(null); setError(null); setGroupIds([]); resetShpRates(); }}
                 />
               </View>
@@ -1191,16 +1208,16 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                 silinmiş gibi görünüyordu. */}
             {!editDelivery && (mode === 'internal' || mode === 'banabikurye') && (
               <View style={{ gap: 8 }}>
-                <Text style={SECTION_LBL}>Aynı Kuryeyle Gönder</Text>
+                <Text style={[SECTION_LBL, { color: T.ink3 }]}>Aynı Kuryeyle Gönder</Text>
                 {!siblingsLoaded && siblings.length === 0 ? (
-                  <Text style={{ fontSize: 11.5, color: '#9A9A9A' }}>Uygun işler aranıyor…</Text>
+                  <Text style={{ fontSize: 11.5, color: (T.ink3 as string) }}>Uygun işler aranıyor…</Text>
                 ) : siblings.length === 0 ? (
-                  <Text style={{ fontSize: 11.5, color: '#9A9A9A', lineHeight: 16 }}>
+                  <Text style={{ fontSize: 11.5, color: (T.ink3 as string), lineHeight: 16 }}>
                     Şu an aynı kliniğe gidecek, teslime hazır başka iş yok — bu gönderi tek iş içerir.
                   </Text>
                 ) : (
                   <>
-                    <Text style={{ fontSize: 11, color: '#6B6B6B', lineHeight: 16 }}>
+                    <Text style={{ fontSize: 11, color: (T.ink3 as string), lineHeight: 16 }}>
                       Aynı kliniğe gidecek teslime hazır işleri seç — tek kurye, tek ücret. Her iş kendi kaydında bu kuryeyi gösterir.
                     </Text>
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -1213,22 +1230,22 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                             style={{
                               flexDirection: 'row', alignItems: 'center', gap: 6,
                               paddingHorizontal: 11, paddingVertical: 8, borderRadius: 10,
-                              borderWidth: 1.5, borderColor: on ? accentColor : 'rgba(0,0,0,0.08)',
-                              backgroundColor: on ? `${accentColor}0C` : '#FFF',
+                              borderWidth: 1.5, borderColor: on ? accentColor : (T.hairline as string),
+                              backgroundColor: on ? `${accentColor}0C` : (isDark ? T.card : '#FFF'),
                               ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                             }}
                           >
                             {on
                               ? <Check size={13} color={accentColor} strokeWidth={2.6} />
                               : <Package size={13} color="#9A9A9A" strokeWidth={1.8} />}
-                            <Text style={{ fontSize: 12, fontWeight: '700', color: on ? accentColor : '#0A0A0A' }}>
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: on ? accentColor : (T.ink as string) }}>
                               #{sb.order_number ?? '—'}
                             </Text>
                             {!!sb.patient_name && (
-                              <Text style={{ fontSize: 11, color: '#6B6B6B' }}>· {sb.patient_name}</Text>
+                              <Text style={{ fontSize: 11, color: (T.ink3 as string) }}>· {sb.patient_name}</Text>
                             )}
                             {!!sb.doctor_name && (
-                              <Text style={{ fontSize: 10.5, color: '#9A9A9A' }}>· {sb.doctor_name}</Text>
+                              <Text style={{ fontSize: 10.5, color: (T.ink3 as string) }}>· {sb.doctor_name}</Text>
                             )}
                           </Pressable>
                         );
@@ -1247,9 +1264,9 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
             {/* Internal — courier list */}
             {mode === 'internal' && (
               <View style={{ gap: 8 }}>
-                <Text style={{ fontSize: 11, fontWeight: '700', color: '#6B6B6B', letterSpacing: 0.6, textTransform: 'uppercase' }}>Kurye</Text>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: (T.ink3 as string), letterSpacing: 0.6, textTransform: 'uppercase' }}>Kurye</Text>
                 {couriers.length === 0 ? (
-                  <Text style={{ fontSize: 12, color: '#9A9A9A', padding: 12, backgroundColor: '#F4F8FC', borderRadius: 10 }}>
+                  <Text style={{ fontSize: 12, color: (T.ink3 as string), padding: 12, backgroundColor: isDark ? T.cardSoft : '#F4F8FC', borderRadius: 10 }}>
                     Tanımlı kurye yok. Ayarlar → Kullanıcılar'dan rolü "Kurye" olan kullanıcı ekleyin.
                   </Text>
                 ) : (
@@ -1260,14 +1277,14 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                       style={{
                         flexDirection: 'row', alignItems: 'center', gap: 10,
                         padding: 12, borderRadius: 12,
-                        borderWidth: 1, borderColor: courierId === c.id ? accentColor : 'rgba(0,0,0,0.06)',
-                        backgroundColor: courierId === c.id ? `${accentColor}08` : '#FFF',
+                        borderWidth: 1, borderColor: courierId === c.id ? accentColor : (T.hairline as string),
+                        backgroundColor: courierId === c.id ? `${accentColor}08` : (isDark ? T.card : '#FFF'),
                       }}
                     >
                       <View style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor + '22' }}>
                         <Text style={{ fontSize: 11, fontWeight: '700', color: accentColor }}>{c.full_name?.[0] ?? '?'}</Text>
                       </View>
-                      <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: '#0A0A0A' }}>{c.full_name}</Text>
+                      <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: (T.ink as string) }}>{c.full_name}</Text>
                       {courierId === c.id && <Check size={16} color={accentColor} strokeWidth={2.4} />}
                     </Pressable>
                   ))
@@ -1281,7 +1298,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                 {/* 7 firma pill olarak iki satır kaplıyordu. Seçili firma
                     tetikleyicide okunur, liste bir tık geride. */}
                 <View style={{ gap: 8 }}>
-                  <Text style={SECTION_LBL}>Kargo Firması</Text>
+                  <Text style={[SECTION_LBL, { color: T.ink3 }]}>Kargo Firması</Text>
                   <View style={{ alignSelf: 'flex-start' }}>
                     <FilterMenu
                       label="Firma"
@@ -1293,13 +1310,13 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                   </View>
                 </View>
                 <View style={{ gap: 8 }}>
-                  <Text style={SECTION_LBL}>Takip No (opsiyonel)</Text>
+                  <Text style={[SECTION_LBL, { color: T.ink3 }]}>Takip No (opsiyonel)</Text>
                   <TextInput
                     value={tracking}
                     onChangeText={setTracking}
                     placeholder="örn. 1234567890"
                     style={{
-                      borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)', borderRadius: 14,
+                      borderWidth: 1, borderColor: (T.hairline as string), borderRadius: 14,
                       paddingHorizontal: 14, paddingVertical: 11, fontSize: 14,
                       // @ts-ignore web
                       outlineWidth: 0,
@@ -1312,9 +1329,9 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
             {/* BanaBiKurye — fiyat hesapla → onayla → çağır */}
             {mode === 'banabikurye' && (
               <View style={{ gap: 10 }}>
-                <View style={{ padding: 12, borderRadius: 10, backgroundColor: '#F4F8FC', gap: 4 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#0A0A0A' }}>BanaBiKurye ile kurye çağır</Text>
-                  <Text style={{ fontSize: 11.5, color: '#6B6B6B', lineHeight: 17 }}>
+                <View style={{ padding: 12, borderRadius: 10, backgroundColor: isDark ? T.cardSoft : '#F4F8FC', gap: 4 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: (T.ink as string) }}>BanaBiKurye ile kurye çağır</Text>
+                  <Text style={{ fontSize: 11.5, color: (T.ink3 as string), lineHeight: 17 }}>
                     {direction === 'clinic_to_lab'
                       ? 'Alış hekim/klinik adresinden, teslim lab adresine. '
                       : 'Alış lab adresinden, teslim hekim/klinik adresine. '}
@@ -1327,7 +1344,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                   <>
                     {/* Servis / hız */}
                     <View style={{ gap: 8 }}>
-                      <Text style={SECTION_LBL}>Gönderi Türü</Text>
+                      <Text style={[SECTION_LBL, { color: T.ink3 }]}>Gönderi Türü</Text>
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                         {BBK_SERVICES.map(s => {
                           const on = bbkService === s.id;
@@ -1337,19 +1354,19 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                               onPress={() => { setBbkService(s.id); setBbkPrice(null); setBbkBreakdown(null); }}
                               style={{
                                 flexGrow: 1, flexBasis: '30%', minWidth: 130, padding: 11, borderRadius: 12, gap: 4,
-                                borderWidth: 1.5, borderColor: on ? accentColor : 'rgba(0,0,0,0.08)',
-                                backgroundColor: on ? `${accentColor}0C` : '#FFF',
+                                borderWidth: 1.5, borderColor: on ? accentColor : (T.hairline as string),
+                                backgroundColor: on ? `${accentColor}0C` : (isDark ? T.card : '#FFF'),
                               }}
                             >
                               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                <Text style={{ fontSize: 12.5, fontWeight: '800', color: on ? accentColor : '#0A0A0A' }}>{s.label}</Text>
+                                <Text style={{ fontSize: 12.5, fontWeight: '800', color: on ? accentColor : (T.ink as string) }}>{s.label}</Text>
                                 {s.badge && (
                                   <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6, backgroundColor: '#16A34A18' }}>
                                     <Text style={{ fontSize: 8.5, fontWeight: '800', color: '#16A34A' }}>{s.badge}</Text>
                                   </View>
                                 )}
                               </View>
-                              <Text style={{ fontSize: 10.5, color: '#6B6B6B', lineHeight: 14 }}>{s.desc}</Text>
+                              <Text style={{ fontSize: 10.5, color: (T.ink3 as string), lineHeight: 14 }}>{s.desc}</Text>
                             </Pressable>
                           );
                         })}
@@ -1359,7 +1376,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                     {/* İleri zamanlı → tarih-saat */}
                     {bbkService === 'scheduled' && (
                       <View style={{ gap: 6 }}>
-                        <Text style={SECTION_LBL}>Teslim Zamanı</Text>
+                        <Text style={[SECTION_LBL, { color: T.ink3 }]}>Teslim Zamanı</Text>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                           <View style={{ width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: `${accentColor}10` }}>
                             <Calendar size={16} color={accentColor} strokeWidth={1.8} />
@@ -1376,11 +1393,11 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                                 value={bbkSched}
                                 onChangeText={(t) => { setBbkSched(t); setBbkPrice(null); setBbkBreakdown(null); }}
                                 placeholder="2026-07-24T15:30"
-                                style={{ flex: 1, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, /* @ts-ignore */ outlineWidth: 0 }}
+                                style={{ flex: 1, borderWidth: 1, borderColor: (T.hairline as string), borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, /* @ts-ignore */ outlineWidth: 0 }}
                               />
                             )}
                         </View>
-                        <Text style={{ fontSize: 10.5, color: '#9A9A9A' }}>Kurye bu saatten itibaren ~2 saatlik pencerede teslim eder.</Text>
+                        <Text style={{ fontSize: 10.5, color: (T.ink3 as string) }}>Kurye bu saatten itibaren ~2 saatlik pencerede teslim eder.</Text>
                       </View>
                     )}
 
@@ -1403,7 +1420,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                 {!editDelivery && (
                   <View style={{ gap: 8 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Text style={SECTION_LBL}>Ödeme Şekli</Text>
+                      <Text style={[SECTION_LBL, { color: T.ink3 }]}>Ödeme Şekli</Text>
                       <Text style={{ fontSize: 10.5, fontWeight: '700', color: '#D94B4B' }}>zorunlu</Text>
                     </View>
                     <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -1420,14 +1437,14 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                               flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
                               paddingVertical: 11, borderRadius: 12,
                               borderWidth: 1.5,
-                              borderColor: on ? accentColor : bbkPayment == null ? 'rgba(217,75,75,0.45)' : 'rgba(0,0,0,0.08)',
-                              backgroundColor: on ? `${accentColor}0C` : '#FFF',
+                              borderColor: on ? accentColor : bbkPayment == null ? 'rgba(217,75,75,0.45)' : (T.hairline as string),
+                              backgroundColor: on ? `${accentColor}0C` : (isDark ? T.card : '#FFF'),
                               opacity: pressed ? 0.7 : 1,
                               ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                             })}
                           >
-                            <Ico size={15} color={on ? accentColor : '#6B6B6B'} strokeWidth={1.8} />
-                            <Text style={{ fontSize: 12.5, fontWeight: on ? '700' : '600', color: on ? accentColor : '#3C3C3C' }}>{label}</Text>
+                            <Ico size={15} color={on ? accentColor : (T.ink3 as string)} strokeWidth={1.8} />
+                            <Text style={{ fontSize: 12.5, fontWeight: on ? '700' : '600', color: on ? accentColor : (T.ink2 as string) }}>{label}</Text>
                           </Pressable>
                         );
                       })}
@@ -1440,9 +1457,9 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                     {bbkPayment === 'bank_card' && (
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
                         {bbkCardsLoading ? (
-                          <Text style={{ fontSize: 11.5, color: '#9A9A9A' }}>Kartlar yükleniyor…</Text>
+                          <Text style={{ fontSize: 11.5, color: (T.ink3 as string) }}>Kartlar yükleniyor…</Text>
                         ) : bbkBankCards.length === 0 ? (
-                          <Text style={{ fontSize: 11.5, color: '#9A9A9A' }}>Kayıtlı kart yok — BanaBiKurye hesabınızdan ekleyin.</Text>
+                          <Text style={{ fontSize: 11.5, color: (T.ink3 as string) }}>Kayıtlı kart yok — BanaBiKurye hesabınızdan ekleyin.</Text>
                         ) : bbkBankCards.map((c) => {
                           const on = bbkBankCardId === c.id;
                           const lbl = [c.brand, c.last4 ? '•••• ' + c.last4 : (c.name ?? ('Kart ' + c.id))].filter(Boolean).join(' ');
@@ -1452,11 +1469,11 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                               onPress={() => { setBbkBankCardId(c.id); setBbkPrice(null); setBbkBreakdown(null); }}
                               style={{
                                 paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999,
-                                borderWidth: 1, borderColor: on ? accentColor : 'rgba(0,0,0,0.08)',
-                                backgroundColor: on ? `${accentColor}10` : '#FFF',
+                                borderWidth: 1, borderColor: on ? accentColor : (T.hairline as string),
+                                backgroundColor: on ? `${accentColor}10` : (isDark ? T.card : '#FFF'),
                               }}
                             >
-                              <Text style={{ fontSize: 11, fontWeight: '600', color: on ? accentColor : '#6B6B6B' }}>{lbl}</Text>
+                              <Text style={{ fontSize: 11, fontWeight: '600', color: on ? accentColor : (T.ink3 as string) }}>{lbl}</Text>
                             </Pressable>
                           );
                         })}
@@ -1475,7 +1492,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                   >
                     {/* Araç tipi */}
                     <View style={{ gap: 6 }}>
-                      <Text style={SECTION_LBL}>Araç Tipi</Text>
+                      <Text style={[SECTION_LBL, { color: T.ink3 }]}>Araç Tipi</Text>
                       <View style={{ flexDirection: 'row', gap: 8 }}>
                         {BBK_VEHICLES.map(v => {
                           const on = bbkVehicleId === v.id && v.enabled;
@@ -1486,15 +1503,15 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                               onPress={() => { if (v.enabled) { setBbkVehicleId(v.id); setBbkPrice(null); setBbkBreakdown(null); } }}
                               style={{
                                 flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 11, borderRadius: 12,
-                                borderWidth: 1.5, borderColor: on ? accentColor : 'rgba(0,0,0,0.08)',
-                                backgroundColor: on ? `${accentColor}0C` : '#FFF',
+                                borderWidth: 1.5, borderColor: on ? accentColor : (T.hairline as string),
+                                backgroundColor: on ? `${accentColor}0C` : (isDark ? T.card : '#FFF'),
                                 opacity: v.enabled ? 1 : 0.5,
                               }}
                             >
-                              {v.id === 8 ? <Bike size={18} color={on ? accentColor : '#6B6B6B'} strokeWidth={1.8} /> : <Truck size={18} color="#9A9A9A" strokeWidth={1.8} />}
+                              {v.id === 8 ? <Bike size={18} color={on ? accentColor : (T.ink3 as string)} strokeWidth={1.8} /> : <Truck size={18} color="#9A9A9A" strokeWidth={1.8} />}
                               <View style={{ flex: 1 }}>
-                                <Text style={{ fontSize: 12.5, fontWeight: '700', color: on ? accentColor : '#0A0A0A' }}>{v.label}</Text>
-                                <Text style={{ fontSize: 10, color: '#9A9A9A' }}>{v.enabled ? v.cap : 'Yakında'}</Text>
+                                <Text style={{ fontSize: 12.5, fontWeight: '700', color: on ? accentColor : (T.ink as string) }}>{v.label}</Text>
+                                <Text style={{ fontSize: 10, color: (T.ink3 as string) }}>{v.enabled ? v.cap : 'Yakında'}</Text>
                               </View>
                             </Pressable>
                           );
@@ -1502,7 +1519,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                       </View>
                     </View>
                     <View style={{ gap: 6 }}>
-                      <Text style={SECTION_LBL}>Ağırlık</Text>
+                      <Text style={[SECTION_LBL, { color: T.ink3 }]}>Ağırlık</Text>
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                         {BBK_WEIGHTS.map(w => {
                           const on = bbkWeight === w;
@@ -1512,11 +1529,11 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                               onPress={() => { setBbkWeight(w); setBbkPrice(null); setBbkBreakdown(null); }}
                               style={{
                                 paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
-                                borderWidth: 1, borderColor: on ? accentColor : 'rgba(0,0,0,0.08)',
-                                backgroundColor: on ? `${accentColor}10` : '#FFF',
+                                borderWidth: 1, borderColor: on ? accentColor : (T.hairline as string),
+                                backgroundColor: on ? `${accentColor}10` : (isDark ? T.card : '#FFF'),
                               }}
                             >
-                              <Text style={{ fontSize: 11.5, fontWeight: '700', color: on ? accentColor : '#6B6B6B' }}>{w} kg</Text>
+                              <Text style={{ fontSize: 11.5, fontWeight: '700', color: on ? accentColor : (T.ink3 as string) }}>{w} kg</Text>
                             </Pressable>
                           );
                         })}
@@ -1524,7 +1541,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                     </View>
 
                     <View style={{ gap: 6 }}>
-                      <Text style={SECTION_LBL}>İçerik</Text>
+                      <Text style={[SECTION_LBL, { color: T.ink3 }]}>İçerik</Text>
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                         {BBK_CONTENT_TAGS.map(t => {
                           const on = bbkContent === t;
@@ -1535,12 +1552,12 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                               style={{
                                 flexDirection: 'row', alignItems: 'center', gap: 5,
                                 paddingHorizontal: 11, paddingVertical: 7, borderRadius: 999,
-                                borderWidth: 1, borderColor: on ? accentColor : 'rgba(0,0,0,0.08)',
-                                backgroundColor: on ? `${accentColor}10` : '#FFF',
+                                borderWidth: 1, borderColor: on ? accentColor : (T.hairline as string),
+                                backgroundColor: on ? `${accentColor}10` : (isDark ? T.card : '#FFF'),
                               }}
                             >
-                              <Package size={12} color={on ? accentColor : '#9A9A9A'} strokeWidth={1.8} />
-                              <Text style={{ fontSize: 11.5, fontWeight: '600', color: on ? accentColor : '#6B6B6B' }}>{t}</Text>
+                              <Package size={12} color={on ? accentColor : (T.ink3 as string)} strokeWidth={1.8} />
+                              <Text style={{ fontSize: 11.5, fontWeight: '600', color: on ? accentColor : (T.ink3 as string) }}>{t}</Text>
                             </Pressable>
                           );
                         })}
@@ -1549,7 +1566,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
 
                     <View style={{ flexDirection: 'row', gap: 10 }}>
                       <View style={{ flex: 1, gap: 6 }}>
-                        <Text style={SECTION_LBL}>Güvence Bedeli</Text>
+                        <Text style={[SECTION_LBL, { color: T.ink3 }]}>Güvence Bedeli</Text>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                           <Shield size={15} color="#9A9A9A" strokeWidth={1.8} />
                           <TextInput
@@ -1557,18 +1574,18 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                             onChangeText={(t) => { setBbkInsurance(t); setBbkPrice(null); setBbkBreakdown(null); }}
                             placeholder="0 (₺)"
                             keyboardType="decimal-pad"
-                            style={{ flex: 1, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 9, fontSize: 13, /* @ts-ignore */ outlineWidth: 0 }}
+                            style={{ flex: 1, borderWidth: 1, borderColor: (T.hairline as string), borderRadius: 10, paddingHorizontal: 10, paddingVertical: 9, fontSize: 13, /* @ts-ignore */ outlineWidth: 0 }}
                           />
                         </View>
                       </View>
                       <View style={{ flex: 1, gap: 6 }}>
-                        <Text style={SECTION_LBL}>İndirim Kodu</Text>
+                        <Text style={[SECTION_LBL, { color: T.ink3 }]}>İndirim Kodu</Text>
                         <TextInput
                           value={bbkPromo}
                           onChangeText={(t) => { setBbkPromo(t); setBbkPrice(null); setBbkBreakdown(null); }}
                           placeholder="Opsiyonel"
                           autoCapitalize="characters"
-                          style={{ borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 9, fontSize: 13, /* @ts-ignore */ outlineWidth: 0 }}
+                          style={{ borderWidth: 1, borderColor: (T.hairline as string), borderRadius: 10, paddingHorizontal: 10, paddingVertical: 9, fontSize: 13, /* @ts-ignore */ outlineWidth: 0 }}
                         />
                       </View>
                     </View>
@@ -1576,28 +1593,28 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                     {/* Alıcı override + adres detayı (opsiyonel — boşsa kayıtlı bilgi kullanılır) */}
                     <View style={{ flexDirection: 'row', gap: 10 }}>
                       <View style={{ flex: 1, gap: 6 }}>
-                        <Text style={SECTION_LBL}>{direction === 'clinic_to_lab' ? 'Gönderen Adı' : 'Alıcı Adı'}</Text>
+                        <Text style={[SECTION_LBL, { color: T.ink3 }]}>{direction === 'clinic_to_lab' ? 'Gönderen Adı' : 'Alıcı Adı'}</Text>
                         <TextInput
                           value={bbkRecipient}
                           onChangeText={setBbkRecipient}
                           placeholder="Kayıtlı ad"
-                          style={{ borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 9, fontSize: 13, /* @ts-ignore */ outlineWidth: 0 }}
+                          style={{ borderWidth: 1, borderColor: (T.hairline as string), borderRadius: 10, paddingHorizontal: 10, paddingVertical: 9, fontSize: 13, /* @ts-ignore */ outlineWidth: 0 }}
                         />
                       </View>
                       <View style={{ flex: 1, gap: 6 }}>
-                        <Text style={SECTION_LBL}>{direction === 'clinic_to_lab' ? 'Gönderen Telefon' : 'Alıcı Telefon'}</Text>
+                        <Text style={[SECTION_LBL, { color: T.ink3 }]}>{direction === 'clinic_to_lab' ? 'Gönderen Telefon' : 'Alıcı Telefon'}</Text>
                         <TextInput
                           value={bbkRecPhone}
                           onChangeText={setBbkRecPhone}
                           placeholder="Kayıtlı telefon"
                           keyboardType="phone-pad"
-                          style={{ borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 9, fontSize: 13, /* @ts-ignore */ outlineWidth: 0 }}
+                          style={{ borderWidth: 1, borderColor: (T.hairline as string), borderRadius: 10, paddingHorizontal: 10, paddingVertical: 9, fontSize: 13, /* @ts-ignore */ outlineWidth: 0 }}
                         />
                       </View>
                     </View>
 
                     <View style={{ gap: 6 }}>
-                      <Text style={SECTION_LBL}>Adres Detayı (opsiyonel)</Text>
+                      <Text style={[SECTION_LBL, { color: T.ink3 }]}>Adres Detayı (opsiyonel)</Text>
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                         {([
                           { v: bbkBuildingNo, set: setBbkBuildingNo, ph: 'Bina No' },
@@ -1610,7 +1627,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                             value={f.v}
                             onChangeText={f.set}
                             placeholder={f.ph}
-                            style={{ flexGrow: 1, flexBasis: '45%', minWidth: 120, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 9, fontSize: 13, /* @ts-ignore */ outlineWidth: 0 }}
+                            style={{ flexGrow: 1, flexBasis: '45%', minWidth: 120, borderWidth: 1, borderColor: (T.hairline as string), borderRadius: 10, paddingHorizontal: 10, paddingVertical: 9, fontSize: 13, /* @ts-ignore */ outlineWidth: 0 }}
                           />
                         ))}
                       </View>
@@ -1628,14 +1645,14 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                       >
                         <View style={{
                           width: 22, height: 22, borderRadius: 6, alignItems: 'center', justifyContent: 'center',
-                          borderWidth: 1.5, borderColor: t.on ? accentColor : 'rgba(0,0,0,0.18)',
-                          backgroundColor: t.on ? accentColor : '#FFF',
+                          borderWidth: 1.5, borderColor: t.on ? accentColor : (T.hairline as string),
+                          backgroundColor: t.on ? accentColor : (isDark ? T.card : '#FFF'),
                         }}>
                           {t.on && <Check size={13} color="#FFF" strokeWidth={3} />}
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={{ fontSize: 12.5, fontWeight: '600', color: '#0A0A0A' }}>{t.label}</Text>
-                          <Text style={{ fontSize: 10.5, color: '#9A9A9A' }}>{t.hint}</Text>
+                          <Text style={{ fontSize: 12.5, fontWeight: '600', color: (T.ink as string) }}>{t.label}</Text>
+                          <Text style={{ fontSize: 10.5, color: (T.ink3 as string) }}>{t.hint}</Text>
                         </View>
                       </Pressable>
                     ))}
@@ -1656,14 +1673,14 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                           .filter(([, v]) => v != null && v > 0)
                           .map(([lbl, v]) => (
                             <View key={lbl} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                              <Text style={{ fontSize: 11, color: '#6B6B6B' }}>{lbl}</Text>
-                              <Text style={{ fontSize: 11, fontWeight: '600', color: '#3C3C3C' }}>₺{Number(v).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
+                              <Text style={{ fontSize: 11, color: (T.ink3 as string) }}>{lbl}</Text>
+                              <Text style={{ fontSize: 11, fontWeight: '600', color: (T.ink2 as string) }}>₺{Number(v).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
                             </View>
                           ))}
                       </View>
                     )}
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#6B6B6B' }}>Toplam</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: (T.ink3 as string) }}>Toplam</Text>
                       <Text style={{ fontSize: 18, fontWeight: '800', color: accentColor }}>₺{bbkPrice}</Text>
                     </View>
                   </View>
@@ -1674,9 +1691,9 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
             {/* Shipink — fiyat sorgula → taşıyıcı seç → gönderi oluştur */}
             {mode === 'shipink' && (
               <View style={{ gap: 12 }}>
-                <View style={{ padding: 12, borderRadius: 10, backgroundColor: '#F4F8FC', gap: 4 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#0A0A0A' }}>Shipink ile kargo gönder</Text>
-                  <Text style={{ fontSize: 11.5, color: '#6B6B6B', lineHeight: 17 }}>
+                <View style={{ padding: 12, borderRadius: 10, backgroundColor: isDark ? T.cardSoft : '#F4F8FC', gap: 4 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: (T.ink as string) }}>Shipink ile kargo gönder</Text>
+                  <Text style={{ fontSize: 11.5, color: (T.ink3 as string), lineHeight: 17 }}>
                     {direction === 'clinic_to_lab'
                       ? 'Alış hekim/klinik adresinden, teslim lab adresine. '
                       : 'Alış lab adresinden, teslim hekim/klinik adresine. '}
@@ -1690,19 +1707,19 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                     Adres seçilince dolar; kayıtlı düz metin adreslerde boş
                     kalabilir, o yüzden elle düzeltilebilir duruyor. */}
                 <View style={{ gap: 8 }}>
-                  <Text style={SECTION_LBL}>Alıcı İl / İlçe</Text>
+                  <Text style={[SECTION_LBL, { color: T.ink3 }]}>Alıcı İl / İlçe</Text>
                   <View style={{ flexDirection: 'row', gap: 8 }}>
                     <TextInput
                       value={shpState}
                       onChangeText={(t) => { setShpState(t); resetShpRates(); }}
                       placeholder="İl (örn. İstanbul)"
-                      style={{ ...SHP_INPUT, flex: 1 }}
+                      style={{ ...SHP_INPUT, flex: 1, borderColor: T.hairline, color: T.ink }}
                     />
                     <TextInput
                       value={shpCity}
                       onChangeText={(t) => { setShpCity(t); resetShpRates(); }}
                       placeholder="İlçe (örn. Kadıköy)"
-                      style={{ ...SHP_INPUT, flex: 1 }}
+                      style={{ ...SHP_INPUT, flex: 1, borderColor: T.hairline, color: T.ink }}
                     />
                   </View>
                   <TextInput
@@ -1710,29 +1727,29 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                     onChangeText={(t) => { setShpZip(t); resetShpRates(); }}
                     placeholder="Posta kodu (opsiyonel)"
                     keyboardType="number-pad"
-                    style={{ ...SHP_INPUT, alignSelf: 'flex-start', minWidth: 160 }}
+                    style={{ ...SHP_INPUT, alignSelf: 'flex-start', minWidth: 160, borderColor: T.hairline, color: T.ink }}
                   />
                 </View>
 
                 {/* Paket — fiyat doğrudan buna bağlı, değişince tarifeler sıfırlanır */}
                 <View style={{ gap: 8 }}>
-                  <Text style={SECTION_LBL}>Paket</Text>
+                  <Text style={[SECTION_LBL, { color: T.ink3 }]}>Paket</Text>
                   <View style={{ flexDirection: 'row', gap: 8 }}>
                     <View style={{ flex: 1, gap: 4 }}>
-                      <Text style={{ fontSize: 10, color: '#9A9A9A' }}>Ağırlık (kg)</Text>
-                      <TextInput value={shpWeight} onChangeText={(t) => { setShpWeight(t); resetShpRates(); }} keyboardType="decimal-pad" style={SHP_INPUT} />
+                      <Text style={{ fontSize: 10, color: (T.ink3 as string) }}>Ağırlık (kg)</Text>
+                      <TextInput value={shpWeight} onChangeText={(t) => { setShpWeight(t); resetShpRates(); }} keyboardType="decimal-pad" style={{ ...SHP_INPUT, borderColor: T.hairline, color: T.ink }} />
                     </View>
                     <View style={{ flex: 1, gap: 4 }}>
-                      <Text style={{ fontSize: 10, color: '#9A9A9A' }}>Uzunluk (cm)</Text>
-                      <TextInput value={shpLength} onChangeText={(t) => { setShpLength(t); resetShpRates(); }} keyboardType="decimal-pad" style={SHP_INPUT} />
+                      <Text style={{ fontSize: 10, color: (T.ink3 as string) }}>Uzunluk (cm)</Text>
+                      <TextInput value={shpLength} onChangeText={(t) => { setShpLength(t); resetShpRates(); }} keyboardType="decimal-pad" style={{ ...SHP_INPUT, borderColor: T.hairline, color: T.ink }} />
                     </View>
                     <View style={{ flex: 1, gap: 4 }}>
-                      <Text style={{ fontSize: 10, color: '#9A9A9A' }}>Genişlik (cm)</Text>
-                      <TextInput value={shpWidth} onChangeText={(t) => { setShpWidth(t); resetShpRates(); }} keyboardType="decimal-pad" style={SHP_INPUT} />
+                      <Text style={{ fontSize: 10, color: (T.ink3 as string) }}>Genişlik (cm)</Text>
+                      <TextInput value={shpWidth} onChangeText={(t) => { setShpWidth(t); resetShpRates(); }} keyboardType="decimal-pad" style={{ ...SHP_INPUT, borderColor: T.hairline, color: T.ink }} />
                     </View>
                     <View style={{ flex: 1, gap: 4 }}>
-                      <Text style={{ fontSize: 10, color: '#9A9A9A' }}>Yükseklik (cm)</Text>
-                      <TextInput value={shpHeight} onChangeText={(t) => { setShpHeight(t); resetShpRates(); }} keyboardType="decimal-pad" style={SHP_INPUT} />
+                      <Text style={{ fontSize: 10, color: (T.ink3 as string) }}>Yükseklik (cm)</Text>
+                      <TextInput value={shpHeight} onChangeText={(t) => { setShpHeight(t); resetShpRates(); }} keyboardType="decimal-pad" style={{ ...SHP_INPUT, borderColor: T.hairline, color: T.ink }} />
                     </View>
                   </View>
                 </View>
@@ -1740,7 +1757,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                 {/* Taşıyıcı seçimi — yalnız fiyat sorgusundan sonra */}
                 {shpRates.length > 0 && (
                   <View style={{ gap: 8 }}>
-                    <Text style={SECTION_LBL}>Taşıyıcı Seç</Text>
+                    <Text style={[SECTION_LBL, { color: T.ink3 }]}>Taşıyıcı Seç</Text>
                     {shpRates.map((r) => {
                       const id = String(r.carrier_service_id);
                       const on = shpServiceId === id;
@@ -1751,8 +1768,8 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                           onPress={() => setShpServiceId(id)}
                           style={{
                             flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12,
-                            borderWidth: 1.5, borderColor: on ? accentColor : 'rgba(0,0,0,0.08)',
-                            backgroundColor: on ? `${accentColor}0C` : '#FFF',
+                            borderWidth: 1.5, borderColor: on ? accentColor : (T.hairline as string),
+                            backgroundColor: on ? `${accentColor}0C` : (isDark ? T.card : '#FFF'),
                             ...webCursor,
                           }}
                         >
@@ -1761,7 +1778,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                           <CarrierLogo url={r.logo_url} />
                           <View style={{ flex: 1, gap: 2 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                              <Text style={{ fontSize: 13, fontWeight: '700', color: '#0A0A0A' }}>
+                              <Text style={{ fontSize: 13, fontWeight: '700', color: (T.ink as string) }}>
                                 {r.name || 'Taşıyıcı'}
                               </Text>
                               {/* API zaten en ucuz/en hızlıyı işaretliyor — kullanıcı
@@ -1769,12 +1786,12 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                               {r.cheapest && <Badge text="En ucuz" color="#047857" />}
                               {r.fastest && <Badge text="En hızlı" color="#B45309" />}
                             </View>
-                            <Text style={{ fontSize: 11, color: '#6B6B6B' }}>
+                            <Text style={{ fontSize: 11, color: (T.ink3 as string) }}>
                               {deliveryEta(r.delivery_time) ?? '—'}
                             </Text>
                           </View>
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <Text style={{ fontSize: 14, fontWeight: '800', color: on ? accentColor : '#3C3C3C' }}>
+                            <Text style={{ fontSize: 14, fontWeight: '800', color: on ? accentColor : (T.ink2 as string) }}>
                               {r.price != null ? `${sym}${(Number(r.price) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
                             </Text>
                             {on && <Check size={15} color={accentColor} strokeWidth={2.6} />}
@@ -1782,7 +1799,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                         </Pressable>
                       );
                     })}
-                    <Text style={{ fontSize: 10.5, color: '#9A9A9A', lineHeight: 15 }}>
+                    <Text style={{ fontSize: 10.5, color: (T.ink3 as string), lineHeight: 15 }}>
                       Fiyatlar Shipink'in tahmini tarifeleridir; kesin tutar taşıyıcının ölçümüne göre değişebilir.
                     </Text>
                   </View>
@@ -1793,7 +1810,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
             {/* Ücret — BanaBiKurye ve Shipink'te fiyat API'den gelir, elle sorulmaz */}
             {mode !== 'banabikurye' && mode !== 'shipink' && !editDelivery && (
               <View style={{ gap: 6 }}>
-                <Text style={{ fontSize: 11, fontWeight: '700', color: '#6B6B6B', letterSpacing: 0.6, textTransform: 'uppercase' }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: (T.ink3 as string), letterSpacing: 0.6, textTransform: 'uppercase' }}>
                   Kurye Ücreti (opsiyonel)
                 </Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -1806,14 +1823,14 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                     placeholder="0,00"
                     keyboardType="decimal-pad"
                     style={{
-                      flex: 1, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', borderRadius: 10,
+                      flex: 1, borderWidth: 1, borderColor: (T.hairline as string), borderRadius: 10,
                       paddingHorizontal: 12, paddingVertical: 10, fontSize: 14,
                       // @ts-ignore web
                       outlineWidth: 0,
                     }}
                   />
                 </View>
-                <Text style={{ fontSize: 10.5, color: '#9A9A9A' }}>
+                <Text style={{ fontSize: 10.5, color: (T.ink3 as string) }}>
                   Bu siparişin maliyetine eklenir. Sonradan da girilebilir.
                 </Text>
               </View>
@@ -1821,14 +1838,14 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
 
             {/* Notes */}
             <View style={{ gap: 6 }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: '#6B6B6B', letterSpacing: 0.6, textTransform: 'uppercase' }}>Not (opsiyonel)</Text>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: (T.ink3 as string), letterSpacing: 0.6, textTransform: 'uppercase' }}>Not (opsiyonel)</Text>
               <TextInput
                 value={notes}
                 onChangeText={setNotes}
                 placeholder="Teslimat notu, adres tarifi, vb."
                 multiline
                 style={{
-                  borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', borderRadius: 10,
+                  borderWidth: 1, borderColor: (T.hairline as string), borderRadius: 10,
                   paddingHorizontal: 12, paddingVertical: 10, fontSize: 13,
                   minHeight: 70, textAlignVertical: 'top',
                   // @ts-ignore
@@ -1859,7 +1876,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
           </ScrollView>
 
           {/* Footer */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 16, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)', backgroundColor: '#FFFFFF', borderBottomStartRadius: 20, borderBottomEndRadius: 20 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 16, borderTopWidth: 1, borderTopColor: (T.hairline as string), backgroundColor: isDark ? T.card : '#FFFFFF', borderBottomStartRadius: 20, borderBottomEndRadius: 20 }}>
             {/* İptal ikincil bir çıkış — kutulu olduğunda asıl eylemle eşit
                 ağırlıkta görünüyordu. Metin butonu olarak geri çekildi. */}
             <Pressable
@@ -1871,7 +1888,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                 ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
               })}
             >
-              <Text style={{ fontSize: 14, fontWeight: '600', color: '#6B6B6B' }}>İptal</Text>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: (T.ink3 as string) }}>İptal</Text>
             </Pressable>
             <View style={{ flex: 1 }} />
             {mode === 'banabikurye' ? (

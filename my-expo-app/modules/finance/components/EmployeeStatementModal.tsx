@@ -14,9 +14,10 @@
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, Modal, ScrollView, Platform } from 'react-native';
-import { X, Printer, Wallet, Banknote } from 'lucide-react-native';
+import { X, Printer, Wallet, Banknote } from '../../../core/ui/icons';
 import { supabase } from '../../../core/api/supabase';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { formatMoney, type Currency } from '../../../core/money/currency';
 import { buildCariStatementHtml, type CariLine } from '../../../core/util/buildCariStatementHtml';
@@ -58,6 +59,7 @@ export function EmployeeStatementModal({
   employee, onClose,
 }: { employee: StatementEmployee; onClose: () => void }) {
   const T = useMobileTokens();
+  const isDark = useThemeModeStore(st => st.resolvedDark);
   const primary = usePanelTheme().primary;
   const labId = useAuthStore(st => (st.profile as any)?.lab_id) as string | undefined;
 
@@ -304,7 +306,7 @@ export function EmployeeStatementModal({
                       backgroundColor: r.kind === 'advance' ? '#F59E0B18' : `${primary}18`,
                     }}>
                       {r.kind === 'advance'
-                        ? <Banknote size={14} color="#B45309" strokeWidth={1.8} />
+                        ? <Banknote size={14} color={isDark ? '#E8B45E' : '#B45309'} strokeWidth={1.8} />
                         : <Wallet size={14} color={primary} strokeWidth={1.8} />}
                     </View>
                     <View style={{ flex: 1 }}>

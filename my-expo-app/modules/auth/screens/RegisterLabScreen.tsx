@@ -9,7 +9,7 @@ import { useRouter } from 'expo-router';
 import {
   Mail, Lock, Eye, EyeOff, User as UserIcon, Phone,
   AlertCircle, Check, ChevronLeft, ChevronRight,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { signUpLabUser, LabRole } from '../api';
 import { isRTL } from '../../../core/i18n';
 import { AuthShell, AuthInput, AuthButton, AUTH, AUTH_FONT } from '../components/AuthShell';

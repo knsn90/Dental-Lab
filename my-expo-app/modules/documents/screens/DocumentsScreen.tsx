@@ -7,6 +7,7 @@ import {
 import * as DocumentPicker from 'expo-document-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DS } from '../../../core/theme/dsTokens';
+import { useInkUI } from '../../../core/theme/inkScale';
 import { isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
@@ -20,7 +21,7 @@ import {
   Search, FolderOpen, ExternalLink, Pencil, Trash2, ArrowLeft, ArrowRight,
   FileText, CreditCard, Award, Activity, Calendar, DollarSign,
   Paperclip, Shield,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 
 import {
   fetchDocuments, fetchExpiringDocuments, addDocument, updateDocument,
@@ -52,35 +53,16 @@ const DISPLAY = {
   fontWeight: '300' as const,
 };
 
-const cardSolid = {
-  backgroundColor: '#FFF',
-  borderRadius: 24,
-  padding: 22,
-  // @ts-ignore web
-  boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)',
-};
 
-const tableCard = {
-  backgroundColor: '#FFF',
-  borderRadius: 24,
-  borderWidth: 1,
-  borderColor: 'rgba(0,0,0,0.05)',
-  overflow: 'hidden' as const,
-};
 
-const CHIP_TONES = {
-  success: { bg: 'rgba(45,154,107,0.12)', fg: '#1F6B47' },
-  warning: { bg: 'rgba(232,155,42,0.15)', fg: '#9C5E0E' },
-  danger:  { bg: 'rgba(217,75,75,0.12)',  fg: '#9C2E2E' },
-  info:    { bg: 'rgba(74,143,201,0.12)', fg: '#1F5689' },
-};
 
 const WEB_CURSOR = Platform.OS === 'web' ? { cursor: 'pointer' as const } : {};
 
 // ─── ExpiryBadge ─────────────────────────────────────────────────────────────
 function ExpiryBadge({ days }: { days: number | null }) {
+  const U = useInkUI();
   if (days === null) return null;
-  const tone = days <= 7 ? CHIP_TONES.danger : days <= 30 ? CHIP_TONES.warning : CHIP_TONES.success;
+  const tone = days <= 7 ? U.chipTones.danger : days <= 30 ? U.chipTones.warning : U.chipTones.success;
   const label = days <= 0 ? autoT('Süresi doldu') : `${days} ${autoT('gün')}`;
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, backgroundColor: tone.bg }}>
@@ -99,6 +81,7 @@ function DocCard({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const U = useInkUI();
   const cfg  = DOC_TYPE_CFG[doc.doc_type];
   const days = daysUntilExpiry(doc.valid_until);
   const isExp = days !== null && days <= 0;
@@ -106,15 +89,15 @@ function DocCard({
   return (
     <View style={[
       { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingVertical: 14 },
-      !isExp && { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' },
-      isExp && { backgroundColor: CHIP_TONES.danger.bg, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' },
+      !isExp && { borderBottomWidth: 1, borderBottomColor: U.hairline },
+      isExp && { backgroundColor: U.chipTones.danger.bg, borderBottomWidth: 1, borderBottomColor: U.hairline },
     ]}>
-      <View style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexShrink: 0, backgroundColor: DS.ink[100] }}>
-        <DocTypeIcon name={cfg.icon} size={18} color={DS.ink[500]} />
+      <View style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexShrink: 0, backgroundColor: U.ink[100] }}>
+        <DocTypeIcon name={cfg.icon} size={18} color={U.ink[500]} />
       </View>
       <View style={{ flex: 1, gap: 2 }}>
-        <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900] }} numberOfLines={1}>{doc.title}</Text>
-        <Text style={{ fontSize: 12, color: DS.ink[500] }}>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: U.ink[900] }} numberOfLines={1}>{doc.title}</Text>
+        <Text style={{ fontSize: 12, color: U.ink[500] }}>
           {cfg.label}
           {doc.file_size ? `  ·  ${formatFileSize(doc.file_size)}` : ''}
           {doc.valid_until ? `  ·  ${doc.valid_until.slice(0, 10)}` : ''}
@@ -123,13 +106,13 @@ function DocCard({
       </View>
       <View style={{ flexDirection: 'row', gap: 4 }}>
         <Pressable style={{ width: 30, height: 30, alignItems: 'center', justifyContent: 'center', borderRadius: 8, ...WEB_CURSOR } as any} onPress={onOpen}>
-          <ExternalLink size={15} color={DS.ink[500]} strokeWidth={1.6} />
+          <ExternalLink size={15} color={U.ink[500]} strokeWidth={1.6} />
         </Pressable>
         <Pressable style={{ width: 30, height: 30, alignItems: 'center', justifyContent: 'center', borderRadius: 8, ...WEB_CURSOR } as any} onPress={onEdit}>
-          <Pencil size={15} color={DS.ink[500]} strokeWidth={1.6} />
+          <Pencil size={15} color={U.ink[500]} strokeWidth={1.6} />
         </Pressable>
         <Pressable style={{ width: 30, height: 30, alignItems: 'center', justifyContent: 'center', borderRadius: 8, ...WEB_CURSOR } as any} onPress={onDelete}>
-          <Trash2 size={15} color={CHIP_TONES.danger.fg} strokeWidth={1.6} />
+          <Trash2 size={15} color={U.chipTones.danger.fg} strokeWidth={1.6} />
         </Pressable>
       </View>
     </View>
@@ -138,6 +121,7 @@ function DocCard({
 
 // ─── DocTypeGrid ─────────────────────────────────────────────────────────────
 function DocTypeGrid({ selected, onChange }: { selected: DocType; onChange: (t: DocType) => void }) {
+  const U = useInkUI();
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
       {DOC_TYPES.map(t => {
@@ -147,13 +131,13 @@ function DocTypeGrid({ selected, onChange }: { selected: DocType; onChange: (t: 
           <Pressable
             key={t}
             style={[
-              { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9999, borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.08)', ...WEB_CURSOR },
-              sel && { backgroundColor: DS.ink[900], borderColor: DS.ink[900] },
+              { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9999, borderWidth: 1.5, borderColor: U.fieldBorder, ...WEB_CURSOR },
+              sel && { backgroundColor: U.ink[900], borderColor: U.ink[900] },
             ] as any}
             onPress={() => onChange(t)}
           >
-            <DocTypeIcon name={cfg.icon} size={12} color={sel ? '#fff' : DS.ink[500]} />
-            <Text style={{ fontSize: 12, fontWeight: '600', color: sel ? '#fff' : DS.ink[500] }}>{cfg.label}</Text>
+            <DocTypeIcon name={cfg.icon} size={12} color={sel ? '#fff' : U.ink[500]} />
+            <Text style={{ fontSize: 12, fontWeight: '600', color: sel ? '#fff' : U.ink[500] }}>{cfg.label}</Text>
           </Pressable>
         );
       })}
@@ -162,8 +146,8 @@ function DocTypeGrid({ selected, onChange }: { selected: DocType; onChange: (t: 
 }
 
 // ─── Modal shared styles ────────────────────────────────────────────────────
-const modalOverlay = { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', alignItems: 'center' as const, justifyContent: 'center' as const, padding: 24 };
 function useModalStyles() {
+  const U = useInkUI();
   const T = useMobileTokens();
   return {
     modalSheet: {
@@ -186,6 +170,7 @@ function UploadModal({
   visible: boolean; onClose: () => void; employeeId: string;
   labId: string; userId: string; onDone: () => void;
 }) {
+  const U = useInkUI();
   const T = useMobileTokens();
   const { modalSheet, modalHeader, modalBody, modalFooter, modalLabel, modalInput } = useModalStyles();
   const [docType, setDocType] = useState<DocType>('diger');
@@ -231,9 +216,9 @@ function UploadModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={modalOverlay}>
+      <View style={U.modalOverlay}>
         <View style={modalSheet}>
-          <View style={modalHeader}>
+          <View style={U.modalHeaderRow}>
             <Text style={{ fontSize: 16, fontWeight: '700', color: T.ink }}>Belge Yükle</Text>
             <Pressable onPress={onClose} style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: T.cardSoft, borderWidth: 1, borderColor: T.hairline, alignItems: 'center', justifyContent: 'center', ...WEB_CURSOR } as any}>
               <X size={18} color={T.ink3} strokeWidth={1.8} />
@@ -243,19 +228,19 @@ function UploadModal({
 
             <Pressable
               style={[
-                { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 16, borderWidth: 2, borderColor: DS.ink[200], borderStyle: 'dashed' as any, marginBottom: 16, ...WEB_CURSOR },
-                file && { borderStyle: 'solid' as any, borderColor: CHIP_TONES.success.fg, backgroundColor: CHIP_TONES.success.bg },
+                { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 16, borderWidth: 2, borderColor: U.ink[200], borderStyle: 'dashed' as any, marginBottom: 16, ...WEB_CURSOR },
+                file && { borderStyle: 'solid' as any, borderColor: U.chipTones.success.fg, backgroundColor: U.chipTones.success.bg },
               ] as any}
               onPress={pickFile}
             >
               {file
-                ? <CheckCircle size={22} color={CHIP_TONES.success.fg} strokeWidth={1.6} />
-                : <Upload size={22} color={DS.ink[500]} strokeWidth={1.6} />
+                ? <CheckCircle size={22} color={U.chipTones.success.fg} strokeWidth={1.6} />
+                : <Upload size={22} color={U.ink[500]} strokeWidth={1.6} />
               }
-              <Text style={[{ fontSize: 13, color: DS.ink[500], flex: 1 }, file && { color: CHIP_TONES.success.fg }]}>
+              <Text style={[{ fontSize: 13, color: U.ink[500], flex: 1 }, file && { color: U.chipTones.success.fg }]}>
                 {file ? file.name : 'Dosya seç (PDF, görsel, Word vb.)'}
               </Text>
-              {!!file?.size && <Text style={{ fontSize: 12, color: DS.ink[500] }}>{formatFileSize(file.size ?? null)}</Text>}
+              {!!file?.size && <Text style={{ fontSize: 12, color: U.ink[500] }}>{formatFileSize(file.size ?? null)}</Text>}
             </Pressable>
 
             <Text style={modalLabel}>Belge Türü</Text>
@@ -289,12 +274,12 @@ function UploadModal({
               <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink2 }}>İptal</Text>
             </Pressable>
             <Pressable
-              style={[{ flex: 1, padding: 14, borderRadius: 9999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: DS.ink[900], ...WEB_CURSOR }, (!file || !title.trim() || uploading) && { opacity: 0.5 }] as any}
+              style={[{ flex: 1, padding: 14, borderRadius: 9999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: U.ink[900], ...WEB_CURSOR }, (!file || !title.trim() || uploading) && { opacity: 0.5 }] as any}
               onPress={handleUpload} disabled={!file || !title.trim() || uploading}
             >
               {uploading
-                ? <ActivityIndicator color="#fff" size="small" />
-                : <><Upload size={15} color="#fff" strokeWidth={1.6} /><Text style={{ fontSize: 13, fontWeight: '700', color: '#fff' }}>Yükle</Text></>
+                ? <ActivityIndicator color={U.onDarkPill} size="small" />
+                : <><Upload size={15} color={U.onDarkPill} strokeWidth={1.6} /><Text style={{ fontSize: 13, fontWeight: '700', color: U.onDarkPill }}>Yükle</Text></>
               }
             </Pressable>
           </View>
@@ -310,6 +295,7 @@ function EditModal({
 }: {
   visible: boolean; doc: EmployeeDocument | null; onClose: () => void; onDone: () => void;
 }) {
+  const U = useInkUI();
   const T = useMobileTokens();
   const { modalSheet, modalHeader, modalBody, modalFooter, modalLabel, modalInput } = useModalStyles();
   const [title, setTitle]     = useState('');
@@ -334,9 +320,9 @@ function EditModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={modalOverlay}>
+      <View style={U.modalOverlay}>
         <View style={modalSheet}>
-          <View style={modalHeader}>
+          <View style={U.modalHeaderRow}>
             <Text style={{ fontSize: 16, fontWeight: '700', color: T.ink }}>Belgeyi Düzenle</Text>
             <Pressable onPress={onClose} style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: T.cardSoft, borderWidth: 1, borderColor: T.hairline, alignItems: 'center', justifyContent: 'center', ...WEB_CURSOR } as any}>
               <X size={18} color={T.ink3} strokeWidth={1.8} />
@@ -365,10 +351,10 @@ function EditModal({
               <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink2 }}>İptal</Text>
             </Pressable>
             <Pressable
-              style={[{ flex: 1, padding: 14, borderRadius: 9999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: DS.ink[900], ...WEB_CURSOR }, saving && { opacity: 0.5 }] as any}
+              style={[{ flex: 1, padding: 14, borderRadius: 9999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: U.ink[900], ...WEB_CURSOR }, saving && { opacity: 0.5 }] as any}
               onPress={handleSave} disabled={saving}
             >
-              {saving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={{ fontSize: 13, fontWeight: '700', color: '#fff' }}>Kaydet</Text>}
+              {saving ? <ActivityIndicator color={U.onDarkPill} size="small" /> : <Text style={{ fontSize: 13, fontWeight: '700', color: U.onDarkPill }}>Kaydet</Text>}
             </Pressable>
           </View>
         </View>
@@ -379,6 +365,7 @@ function EditModal({
 
 // ─── ExpiryPanel ─────────────────────────────────────────────────────────────
 function ExpiryPanel() {
+  const U = useInkUI();
   const [docs, setDocs]       = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -392,23 +379,23 @@ function ExpiryPanel() {
 
   if (loading) return null;
   if (docs.length === 0) return (
-    <View style={{ flexDirection: 'row', gap: 7, alignItems: 'center', backgroundColor: CHIP_TONES.success.bg, borderRadius: 12, padding: 10, margin: 12 }}>
-      <ShieldCheck size={16} color={CHIP_TONES.success.fg} strokeWidth={1.6} />
-      <Text style={{ fontSize: 12, fontWeight: '600', color: CHIP_TONES.success.fg, flex: 1 }}>Süresi dolmak üzere belge yok</Text>
+    <View style={{ flexDirection: 'row', gap: 7, alignItems: 'center', backgroundColor: U.chipTones.success.bg, borderRadius: 12, padding: 10, margin: 12 }}>
+      <ShieldCheck size={16} color={U.chipTones.success.fg} strokeWidth={1.6} />
+      <Text style={{ fontSize: 12, fontWeight: '600', color: U.chipTones.success.fg, flex: 1 }}>Süresi dolmak üzere belge yok</Text>
     </View>
   );
 
   return (
-    <View style={{ backgroundColor: CHIP_TONES.warning.bg, borderRadius: 12, padding: 10, margin: 12 }}>
+    <View style={{ backgroundColor: U.chipTones.warning.bg, borderRadius: 12, padding: 10, margin: 12 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 8 }}>
-        <AlertTriangle size={14} color={CHIP_TONES.warning.fg} strokeWidth={1.6} />
-        <Text style={{ fontSize: 12, fontWeight: '700', color: CHIP_TONES.warning.fg }}>Dolmak Üzere ({docs.length})</Text>
+        <AlertTriangle size={14} color={U.chipTones.warning.fg} strokeWidth={1.6} />
+        <Text style={{ fontSize: 12, fontWeight: '700', color: U.chipTones.warning.fg }}>Dolmak Üzere ({docs.length})</Text>
       </View>
       {docs.map((d: any) => (
-        <View key={d.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 5, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
+        <View key={d.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 5, borderTopWidth: 1, borderTopColor: U.hairline }}>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>{d.full_name}</Text>
-            <Text style={{ fontSize: 10, color: DS.ink[500] }} numberOfLines={1}>{DOC_TYPE_CFG[d.doc_type as DocType]?.label} — {d.title}</Text>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>{d.full_name}</Text>
+            <Text style={{ fontSize: 10, color: U.ink[500] }} numberOfLines={1}>{DOC_TYPE_CFG[d.doc_type as DocType]?.label} — {d.title}</Text>
           </View>
           <ExpiryBadge days={d.days_until_expiry} />
         </View>
@@ -425,13 +412,14 @@ function EmployeeList({
   search: string; setSearch: (v: string) => void;
   docCounts: Record<string, number>;
 }) {
+  const U = useInkUI();
   const filtered = employees.filter(e => e.full_name?.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <View style={{ flex: 1 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, margin: 10, backgroundColor: DS.ink[100], borderRadius: 12, paddingHorizontal: 10, height: 36 }}>
-        <Search size={14} color={DS.ink[400]} strokeWidth={1.6} />
-        <TextInput style={{ flex: 1, fontSize: 13, color: DS.ink[900], padding: 0 }} placeholder="Personel ara..." value={search} onChangeText={setSearch} placeholderTextColor={DS.ink[400]} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, margin: 10, backgroundColor: U.ink[100], borderRadius: 12, paddingHorizontal: 10, height: 36 }}>
+        <Search size={14} color={U.ink[400]} strokeWidth={1.6} />
+        <TextInput style={{ flex: 1, fontSize: 13, color: U.ink[900], padding: 0 }} placeholder="Personel ara..." value={search} onChangeText={setSearch} placeholderTextColor={U.ink[400]} />
       </View>
       <ScrollView showsVerticalScrollIndicator={false}>
         {filtered.map(emp => {
@@ -442,19 +430,19 @@ function EmployeeList({
               key={emp.id}
               style={[
                 { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 9, marginHorizontal: 6, marginBottom: 2, borderRadius: 12, ...WEB_CURSOR },
-                sel && { backgroundColor: DS.ink[50] },
+                sel && { backgroundColor: U.ink[50] },
               ] as any}
               onPress={() => onSelect(emp.id)}
             >
-              <View style={{ width: 34, height: 34, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexShrink: 0, backgroundColor: DS.ink[100] }}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[500] }}>{emp.full_name?.charAt(0).toUpperCase()}</Text>
+              <View style={{ width: 34, height: 34, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexShrink: 0, backgroundColor: U.ink[100] }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: U.ink[500] }}>{emp.full_name?.charAt(0).toUpperCase()}</Text>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[{ fontSize: 12, fontWeight: '600', color: DS.ink[900] }, sel && { fontWeight: '700' }]} numberOfLines={1}>{emp.full_name}</Text>
-                <Text style={{ fontSize: 10, color: DS.ink[500] }}>{emp.role ?? 'Personel'}</Text>
+                <Text style={[{ fontSize: 12, fontWeight: '600', color: U.ink[900] }, sel && { fontWeight: '700' }]} numberOfLines={1}>{emp.full_name}</Text>
+                <Text style={{ fontSize: 10, color: U.ink[500] }}>{emp.role ?? 'Personel'}</Text>
               </View>
-              <View style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: count > 0 ? DS.ink[200] : DS.ink[100] }}>
-                <Text style={{ fontSize: 10, fontWeight: '700', color: DS.ink[500] }}>{count}</Text>
+              <View style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: count > 0 ? U.ink[200] : U.ink[100] }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: U.ink[500] }}>{count}</Text>
               </View>
             </Pressable>
           );
@@ -470,6 +458,7 @@ function DocumentsDetail({
 }: {
   employee: any; userId: string; labId: string;
 }) {
+  const U = useInkUI();
   const [docs, setDocs]         = useState<EmployeeDocument[]>([]);
   const [loading, setLoading]   = useState(true);
   const [uploadOpen, setUpload] = useState(false);
@@ -525,29 +514,29 @@ function DocumentsDetail({
   return (
     <View style={{ flex: 1 }}>
       {/* Header */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: isEmbedded ? 0 : 24, paddingTop: isEmbedded ? 0 : 70, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: isEmbedded ? 0 : 24, paddingTop: isEmbedded ? 0 : 70, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
         <View>
-          <Text style={{ ...DISPLAY, fontSize: 18, fontWeight: '700', color: DS.ink[900] }}>{employee.full_name}</Text>
-          <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 2 }}>{employee.role ?? 'Personel'}  ·  {docs.length} belge</Text>
+          <Text style={{ ...DISPLAY, fontSize: 18, fontWeight: '700', color: U.ink[900] }}>{employee.full_name}</Text>
+          <Text style={{ fontSize: 12, color: U.ink[500], marginTop: 2 }}>{employee.role ?? 'Personel'}  ·  {docs.length} belge</Text>
         </View>
-        <Pressable style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999, backgroundColor: DS.ink[900], ...WEB_CURSOR } as any} onPress={() => setUpload(true)}>
-          <Upload size={14} color="#fff" strokeWidth={1.6} />
-          <Text style={{ fontSize: 13, fontWeight: '700', color: '#fff' }}>Belge Yükle</Text>
+        <Pressable style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999, backgroundColor: U.ink[900], ...WEB_CURSOR } as any} onPress={() => setUpload(true)}>
+          <Upload size={14} color={U.onDarkPill} strokeWidth={1.6} />
+          <Text style={{ fontSize: 13, fontWeight: '700', color: U.onDarkPill }}>Belge Yükle</Text>
         </Pressable>
       </View>
 
       {/* Expiry warning */}
       {expiring.length > 0 && (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 24, marginTop: 12, backgroundColor: CHIP_TONES.warning.bg, borderRadius: 12, padding: 10 }}>
-          <AlertTriangle size={14} color={CHIP_TONES.warning.fg} strokeWidth={1.6} />
-          <Text style={{ fontSize: 12, fontWeight: '600', color: CHIP_TONES.warning.fg }}>{expiring.length} belge 30 gün içinde sona eriyor</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 24, marginTop: 12, backgroundColor: U.chipTones.warning.bg, borderRadius: 12, padding: 10 }}>
+          <AlertTriangle size={14} color={U.chipTones.warning.fg} strokeWidth={1.6} />
+          <Text style={{ fontSize: 12, fontWeight: '600', color: U.chipTones.warning.fg }}>{expiring.length} belge 30 gün içinde sona eriyor</Text>
         </View>
       )}
 
       {/* Filter pills — pill-group */}
       <View style={{ paddingHorizontal: isEmbedded ? 0 : 24, paddingVertical: 10 }}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={{ flexDirection: 'row', gap: 6, backgroundColor: DS.ink[100], borderRadius: 9999, padding: 4 }}>
+          <View style={{ flexDirection: 'row', gap: 6, backgroundColor: U.ink[100], borderRadius: 9999, padding: 4 }}>
             {([['all', 'Tümü', docs.length]] as any[]).concat(
               DOC_TYPES.filter(t => grouped[t]).map(t => [t, DOC_TYPE_CFG[t].label, grouped[t].length])
             ).map(([t, label, count]: [string, string, number]) => {
@@ -557,12 +546,12 @@ function DocumentsDetail({
                   key={t}
                   style={[
                     { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 9999, ...WEB_CURSOR },
-                    sel && { backgroundColor: '#FFF', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' },
+                    sel && { backgroundColor: U.surface, boxShadow: '0 1px 3px rgba(0,0,0,0.08)' },
                   ] as any}
                   onPress={() => setFilter(t as any)}
                 >
-                  {t !== 'all' && <DocTypeIcon name={DOC_TYPE_CFG[t as DocType]?.icon} size={11} color={sel ? DS.ink[900] : DS.ink[400]} />}
-                  <Text style={{ fontSize: 11, fontWeight: sel ? '700' : '600', color: sel ? DS.ink[900] : DS.ink[400] }}>
+                  {t !== 'all' && <DocTypeIcon name={DOC_TYPE_CFG[t as DocType]?.icon} size={11} color={sel ? U.ink[900] : U.ink[400]} />}
+                  <Text style={{ fontSize: 11, fontWeight: sel ? '700' : '600', color: sel ? U.ink[900] : U.ink[400] }}>
                     {label} ({count})
                   </Text>
                 </Pressable>
@@ -574,16 +563,16 @@ function DocumentsDetail({
 
       {/* Document list */}
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: isEmbedded ? 0 : 24, paddingTop: isDesktop || isEmbedded ? 0 : insets.top + 56, paddingBottom: 120 }}>
-        {loading && <ActivityIndicator color={DS.ink[400]} style={{ marginTop: 40 }} />}
+        {loading && <ActivityIndicator color={U.ink[400]} style={{ marginTop: 40 }} />}
         {!loading && filtered.length === 0 && (
           <View style={{ alignItems: 'center', paddingVertical: 60, gap: 10 }}>
-            <FolderOpen size={32} color={DS.ink[300]} strokeWidth={1.6} />
-            <Text style={{ fontSize: 16, fontWeight: '600', color: DS.ink[500] }}>Henüz belge yok</Text>
-            <Text style={{ fontSize: 13, color: DS.ink[400] }}>Yukarıdan belge yükleyebilirsiniz</Text>
+            <FolderOpen size={32} color={U.ink[300]} strokeWidth={1.6} />
+            <Text style={{ fontSize: 16, fontWeight: '600', color: U.ink[500] }}>Henüz belge yok</Text>
+            <Text style={{ fontSize: 13, color: U.ink[400] }}>Yukarıdan belge yükleyebilirsiniz</Text>
           </View>
         )}
         {!loading && filtered.length > 0 && (
-          <View style={{ ...tableCard } as any}>
+          <View style={{ ...U.tableCard } as any}>
             {filtered.map(doc => (
               <DocCard
                 key={doc.id} doc={doc}
@@ -611,13 +600,14 @@ function DocumentsDetail({
 
 // ─── Placeholder ──────────────────────────────────────────────────────────────
 function SelectEmployeePlaceholder() {
+  const U = useInkUI();
   return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 40 }}>
-      <View style={{ width: 80, height: 80, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: DS.ink[100] }}>
-        <FolderOpen size={40} color={DS.ink[400]} strokeWidth={1.6} />
+      <View style={{ width: 80, height: 80, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: U.ink[100] }}>
+        <FolderOpen size={40} color={U.ink[400]} strokeWidth={1.6} />
       </View>
-      <Text style={{ ...DISPLAY, fontSize: 22, fontWeight: '700', color: DS.ink[900] }}>Personel Dosyaları</Text>
-      <Text style={{ fontSize: 13, color: DS.ink[500], textAlign: 'center', maxWidth: 360 }}>Sol taraftan bir personel seçerek belgelerini görüntüleyin veya yeni belge yükleyin.</Text>
+      <Text style={{ ...DISPLAY, fontSize: 22, fontWeight: '700', color: U.ink[900] }}>Personel Dosyaları</Text>
+      <Text style={{ fontSize: 13, color: U.ink[500], textAlign: 'center', maxWidth: 360 }}>Sol taraftan bir personel seçerek belgelerini görüntüleyin veya yeni belge yükleyin.</Text>
     </View>
   );
 }
@@ -629,6 +619,7 @@ interface DocumentsScreenProps {
 }
 
 export function DocumentsScreen(_props: DocumentsScreenProps = {}) {
+  const U = useInkUI();
   const { profile }   = useAuthStore();
   const { width }     = useWindowDimensions();
   const isDesktop     = width >= 900;
@@ -665,11 +656,11 @@ export function DocumentsScreen(_props: DocumentsScreenProps = {}) {
     return (
       <View style={{ flex: 1, flexDirection: 'row' }}>
         {/* LEFT */}
-        <View style={{ width: 280, borderEndWidth: 1, borderEndColor: 'rgba(0,0,0,0.06)', flexDirection: 'column' }}>
+        <View style={{ width: 280, borderEndWidth: 1, borderEndColor: U.hairline, flexDirection: 'column' }}>
           {!isEmbedded && (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 20, paddingBottom: 4 }}>
-              <FolderOpen size={16} color={DS.ink[500]} strokeWidth={1.6} />
-              <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>Personel Dosyaları</Text>
+              <FolderOpen size={16} color={U.ink[500]} strokeWidth={1.6} />
+              <Text style={{ fontSize: 14, fontWeight: '700', color: U.ink[900] }}>Personel Dosyaları</Text>
             </View>
           )}
           <View style={{ flex: 1 }}>
@@ -700,11 +691,11 @@ export function DocumentsScreen(_props: DocumentsScreenProps = {}) {
   if (selectedEmployee) {
     return (
       <View style={{ flex: 1 }}>
-        <Pressable style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)', ...WEB_CURSOR } as any} onPress={() => setSelectedId(null)}>
+        <Pressable style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 16, borderBottomWidth: 1, borderBottomColor: U.hairline, ...WEB_CURSOR } as any} onPress={() => setSelectedId(null)}>
           {isRTL()
-            ? <ArrowRight size={17} color={DS.ink[500]} strokeWidth={1.6} />
-            : <ArrowLeft size={17} color={DS.ink[500]} strokeWidth={1.6} />}
-          <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500] }}>Geri</Text>
+            ? <ArrowRight size={17} color={U.ink[500]} strokeWidth={1.6} />
+            : <ArrowLeft size={17} color={U.ink[500]} strokeWidth={1.6} />}
+          <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[500] }}>Geri</Text>
         </Pressable>
         <DocumentsDetail employee={selectedEmployee} userId={userId} labId={labId} />
       </View>
@@ -714,8 +705,8 @@ export function DocumentsScreen(_props: DocumentsScreenProps = {}) {
   return (
     <View style={{ flex: 1 }}>
       {!isEmbedded && (
-        <View style={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
-          <Text style={{ ...DISPLAY, fontSize: 22, fontWeight: '700', color: DS.ink[900] }}>Personel Dosyaları</Text>
+        <View style={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
+          <Text style={{ ...DISPLAY, fontSize: 22, fontWeight: '700', color: U.ink[900] }}>Personel Dosyaları</Text>
         </View>
       )}
       <ExpiryPanel />

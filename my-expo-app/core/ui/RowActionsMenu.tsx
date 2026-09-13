@@ -16,7 +16,9 @@
  */
 import React, { useRef, useState } from 'react';
 import { View, Text, Pressable, Modal, Platform, Dimensions } from 'react-native';
-import { MoreHorizontal } from 'lucide-react-native';
+import { MoreHorizontal } from './icons';
+import { useMobileTokens } from '../theme/mobileDesignTokens';
+import { useThemeModeStore } from '../store/themeModeStore';
 
 const webCursor = Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {};
 const MENU_W = 208;
@@ -39,7 +41,15 @@ const TONE = {
   danger:  '#9C2E2E',
 } as const;
 
+const TONE_DARK = {
+  default: '#93C5FD',
+  warning: '#E8B45E',
+  danger:  '#FCA5A5',
+} as const;
+
 export function RowActionsMenu({ actions, size = 26 }: { actions: RowAction[]; size?: number }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const triggerRef = useRef<any>(null);
@@ -80,11 +90,11 @@ export function RowActionsMenu({ actions, size = 26 }: { actions: RowAction[]; s
         style={({ pressed, hovered }: any) => ({
           width: size, height: size, borderRadius: size / 2,
           alignItems: 'center', justifyContent: 'center',
-          backgroundColor: hovered || pressed ? 'rgba(15,23,42,0.08)' : 'transparent',
+          backgroundColor: hovered || pressed ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)') : 'transparent',
           ...webCursor,
         })}
       >
-        <MoreHorizontal size={Math.round(size * 0.62)} color="#6B6B6B" strokeWidth={2} />
+        <MoreHorizontal size={Math.round(size * 0.62)} color={isDark ? (T.ink3 as string) : '#6B6B6B'} strokeWidth={2} />
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
@@ -93,14 +103,14 @@ export function RowActionsMenu({ actions, size = 26 }: { actions: RowAction[]; s
             onPress={(e: any) => e?.stopPropagation?.()}
             style={{
               position: 'absolute', top, right, width: MENU_W,
-              backgroundColor: '#FFFFFF', borderRadius: 14, padding: 6,
-              borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+              backgroundColor: isDark ? T.card : '#FFFFFF', borderRadius: 14, padding: 6,
+              borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.06)',
               shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 24, shadowOffset: { width: 0, height: 8 },
               elevation: 10,
             }}
           >
             {items.map((it, i) => {
-              const color = TONE[it.tone ?? 'default'];
+              const color = (isDark ? TONE_DARK : TONE)[it.tone ?? 'default'];
               const Icon = it.icon;
               // Yıkıcı işlemi bir ayırıcıyla ayır — kaydırırken parmağın/imlecin
               // yanlışlıkla "Sil"e denk gelmesi en pahalı hata.
@@ -108,7 +118,7 @@ export function RowActionsMenu({ actions, size = 26 }: { actions: RowAction[]; s
               return (
                 <React.Fragment key={it.key}>
                   {showDivider && (
-                    <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.06)', marginVertical: 4, marginHorizontal: 6 }} />
+                    <View style={{ height: 1, backgroundColor: isDark ? T.hairline : 'rgba(0,0,0,0.06)', marginVertical: 4, marginHorizontal: 6 }} />
                   )}
                   <Pressable
                     onPress={(e: any) => { e?.stopPropagation?.(); setOpen(false); it.onPress(); }}
@@ -116,7 +126,7 @@ export function RowActionsMenu({ actions, size = 26 }: { actions: RowAction[]; s
                     style={({ pressed, hovered }: any) => ({
                       flexDirection: 'row', alignItems: 'center', gap: 10,
                       height: ITEM_H, paddingHorizontal: 10, borderRadius: 10,
-                      backgroundColor: hovered || pressed ? 'rgba(15,23,42,0.05)' : 'transparent',
+                      backgroundColor: hovered || pressed ? (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(15,23,42,0.05)') : 'transparent',
                       opacity: it.disabled ? 0.45 : 1,
                       ...webCursor,
                     })}

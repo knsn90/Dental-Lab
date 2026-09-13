@@ -6,7 +6,7 @@
 import React, { useEffect } from 'react';
 import { View, Text, Pressable, ActivityIndicator, Platform, Image } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Building2, ChevronLeft, ChevronRight, Clock, Plus } from 'lucide-react-native';
+import { Building2, ChevronLeft, ChevronRight, Clock, Plus } from '../../../core/ui/icons';
 import { useAuthStore } from '../../../store/authStore';
 import { useActiveLabStore } from '../../../core/store/activeLabStore';
 import { AuthShell, AUTH, AUTH_FONT } from '../components/AuthShell';

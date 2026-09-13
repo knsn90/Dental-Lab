@@ -10,11 +10,14 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { View, Text, ScrollView, TextInput, Pressable, Platform } from 'react-native';
 import { useRouter, useSegments } from 'expo-router';
-import { Search, FileText, Banknote, Calendar, User as UserIcon, Filter as FilterIcon, X, FileSpreadsheet, Printer, ChevronRight, ChevronLeft } from 'lucide-react-native';
+import { Search, FileText, Banknote, Calendar, User as UserIcon, Filter as FilterIcon, X, FileSpreadsheet, Printer, ChevronRight, ChevronLeft } from '../../../core/ui/icons';
 import { isRTL } from '../../../core/i18n';
 
 import { DS } from '../../../core/theme/dsTokens';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useInkUI } from '../../../core/theme/inkScale';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { DatePicker } from '../../../core/ui/DatePicker';
 import {
   fetchStatement, fetchClinicDoctors,
@@ -79,6 +82,7 @@ function rangeToDates(key: RangeKey): { from?: string; to?: string } {
 
 export function StatementScreen({ clinicId }: Props) {
   const TH = usePanelTheme();
+  const U = useInkUI();
   useRates();
   const router = useRouter();
   const segments = useSegments();
@@ -395,7 +399,7 @@ export function StatementScreen({ clinicId }: Props) {
           </View>
 
           {/* Tür segment */}
-          <View style={{ flexDirection: 'row', gap: 2, padding: 3, backgroundColor: DS.ink[50], borderRadius: 10, borderWidth: 1, borderColor: DS.ink[200] }}>
+          <View style={{ flexDirection: 'row', gap: 2, padding: 3, backgroundColor: U.ink[50], borderRadius: 10, borderWidth: 1, borderColor: U.ink[200] }}>
             {KIND_OPTIONS.map(opt => {
               const active = kind === opt.key;
               return (
@@ -404,11 +408,11 @@ export function StatementScreen({ clinicId }: Props) {
                   onPress={() => setKind(opt.key)}
                   style={{
                     paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8,
-                    backgroundColor: active ? '#FFF' : 'transparent',
-                    ...(active && Platform.OS === 'web' ? { boxShadow: '0 1px 3px rgba(0,0,0,0.08)' } as any : null),
+                    backgroundColor: active ? U.segActive : 'transparent',
+                    ...(active && !U.isDark && Platform.OS === 'web' ? { boxShadow: '0 1px 3px rgba(0,0,0,0.08)' } as any : null),
                   }}
                 >
-                  <Text style={{ fontSize: 11, fontWeight: active ? '700' : '500', color: active ? DS.ink[900] : DS.ink[500] }}>{opt.label}</Text>
+                  <Text style={{ fontSize: 11, fontWeight: active ? '700' : '500', color: active ? U.ink[900] : U.ink[500] }}>{opt.label}</Text>
                 </Pressable>
               );
             })}
@@ -448,13 +452,13 @@ export function StatementScreen({ clinicId }: Props) {
           <View style={{
             flexDirection: 'row', alignItems: 'center', gap: 12,
             paddingHorizontal: 16, paddingVertical: 10,
-            backgroundColor: DS.ink[50], borderBottomWidth: 1, borderBottomColor: DS.ink[100],
+            backgroundColor: U.ink[50], borderBottomWidth: 1, borderBottomColor: U.ink[100],
           }}>
-            <Text style={{ width: 84, fontSize: 10, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Tarih</Text>
-            <Text style={{ flex: 1, fontSize: 10, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Açıklama</Text>
-            <Text style={{ width: 90, textAlign: 'end' as any, fontSize: 10, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Borç</Text>
-            <Text style={{ width: 90, textAlign: 'end' as any, fontSize: 10, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Alacak</Text>
-            <Text style={{ width: 100, textAlign: 'end' as any, fontSize: 10, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Bakiye</Text>
+            <Text style={{ width: 84, fontSize: 10, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Tarih</Text>
+            <Text style={{ flex: 1, fontSize: 10, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Açıklama</Text>
+            <Text style={{ width: 90, textAlign: 'end' as any, fontSize: 10, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Borç</Text>
+            <Text style={{ width: 90, textAlign: 'end' as any, fontSize: 10, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Alacak</Text>
+            <Text style={{ width: 100, textAlign: 'end' as any, fontSize: 10, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Bakiye</Text>
           </View>
 
           {/* Lines */}
@@ -467,38 +471,38 @@ export function StatementScreen({ clinicId }: Props) {
                 flexDirection: 'row', alignItems: 'center', gap: 12,
                 paddingHorizontal: 16, paddingVertical: 10,
                 borderBottomWidth: i < filtered.length - 1 ? 1 : 0,
-                borderBottomColor: DS.ink[100],
-                backgroundColor: pressed && l.invoice_id ? DS.ink[50] : 'transparent',
+                borderBottomColor: U.ink[100],
+                backgroundColor: pressed && l.invoice_id ? U.rowHover : 'transparent',
               })}
             >
-              <Text style={{ width: 84, fontSize: 11, color: DS.ink[500] }}>{fmtDate(l.date)}</Text>
+              <Text style={{ width: 84, fontSize: 11, color: U.ink[500] }}>{fmtDate(l.date)}</Text>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   {l.kind === 'invoice'
-                    ? <FileText size={12} color={DS.ink[500]} />
+                    ? <FileText size={12} color={U.ink[500]} />
                     : <Banknote size={12} color="#1F6B47" />}
-                  <Text style={{ fontSize: 12, color: DS.ink[800], flex: 1 }} numberOfLines={1}>{l.description}</Text>
+                  <Text style={{ fontSize: 12, color: U.ink[800], flex: 1 }} numberOfLines={1}>{l.description}</Text>
                 </View>
                 {/* Hekim + hasta (+ sipariş no) tek alt satırda — hekim ekstrede
                     hangi hastanın işi olduğunu görmek istiyor. */}
                 {(l.doctor_name || l.patient_name) && (
-                  <Text style={{ fontSize: 10, color: DS.ink[400], marginTop: 2, marginStart: 18 }} numberOfLines={1}>
+                  <Text style={{ fontSize: 10, color: U.ink[400], marginTop: 2, marginStart: 18 }} numberOfLines={1}>
                     {[l.doctor_name, l.patient_name, l.order_no].filter(Boolean).join(' · ')}
                   </Text>
                 )}
               </View>
-              <Text style={{ width: 90, textAlign: 'end' as any, fontSize: 12, color: l.debit > 0 ? DS.ink[900] : DS.ink[300] }}>
+              <Text style={{ width: 90, textAlign: 'end' as any, fontSize: 12, color: l.debit > 0 ? U.ink[900] : U.ink[300] }}>
                 {l.debit > 0 ? Mnat(l.debit, l.currency) : '—'}
               </Text>
-              <Text style={{ width: 90, textAlign: 'end' as any, fontSize: 12, color: l.credit > 0 ? '#1F6B47' : DS.ink[300], fontWeight: l.credit > 0 ? '600' : '400' }}>
+              <Text style={{ width: 90, textAlign: 'end' as any, fontSize: 12, color: l.credit > 0 ? '#1F6B47' : U.ink[300], fontWeight: l.credit > 0 ? '600' : '400' }}>
                 {l.credit > 0 ? Mnat(l.credit, l.currency) : '—'}
               </Text>
-              <Text style={{ width: 100, textAlign: 'end' as any, ...DISPLAY, fontSize: 14, color: l.balance > 0 ? '#9C2E2E' : DS.ink[900], letterSpacing: -0.3 }}>
+              <Text style={{ width: 100, textAlign: 'end' as any, ...DISPLAY, fontSize: 14, color: l.balance > 0 ? '#9C2E2E' : U.ink[900], letterSpacing: -0.3 }}>
                 {Mnat(l.balance, l.currency)}
               </Text>
               {isRTL()
-                ? <ChevronLeft size={14} color={l.invoice_id ? DS.ink[400] : 'transparent'} />
-                : <ChevronRight size={14} color={l.invoice_id ? DS.ink[400] : 'transparent'} />}
+                ? <ChevronLeft size={14} color={l.invoice_id ? U.ink[400] : 'transparent'} />
+                : <ChevronRight size={14} color={l.invoice_id ? U.ink[400] : 'transparent'} />}
             </Pressable>
           ))}
 
@@ -506,13 +510,13 @@ export function StatementScreen({ clinicId }: Props) {
           <View style={{
             flexDirection: 'row', alignItems: 'center', gap: 12,
             paddingHorizontal: 16, paddingVertical: 12,
-            backgroundColor: DS.ink[50], borderTopWidth: 1, borderTopColor: DS.ink[200],
+            backgroundColor: U.ink[50], borderTopWidth: 1, borderTopColor: U.ink[200],
           }}>
-            <Text style={{ width: 84, fontSize: 10, fontWeight: '700', color: DS.ink[700], textTransform: 'uppercase', letterSpacing: 0.7 }}>Toplam</Text>
-            <Text style={{ flex: 1, fontSize: 11, color: DS.ink[500] }}>{filtered.length} hareket</Text>
-            <CcyCol slices={debitByCcy}  color={DS.ink[900]} width={90} />
+            <Text style={{ width: 84, fontSize: 10, fontWeight: '700', color: U.ink[700], textTransform: 'uppercase', letterSpacing: 0.7 }}>Toplam</Text>
+            <Text style={{ flex: 1, fontSize: 11, color: U.ink[500] }}>{filtered.length} hareket</Text>
+            <CcyCol slices={debitByCcy}  color={U.ink[900]} width={90} />
             <CcyCol slices={creditByCcy} color="#1F6B47"    width={90} />
-            <CcyCol slices={netByCcy}    color={DS.ink[900]} width={100} />
+            <CcyCol slices={netByCcy}    color={U.ink[900]} width={100} />
           </View>
         </Card>
       )}

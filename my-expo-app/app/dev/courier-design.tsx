@@ -21,7 +21,7 @@ import {
   ChevronRight, Phone, Camera, PenTool, Bell, Menu, QrCode,
   Home, ClipboardList, Map, BarChart3, HelpCircle, Settings,
   Package, Clock, ArrowLeft, Plus,
-} from 'lucide-react-native';
+} from '../../core/ui/icons';
 import { DS } from '../../core/theme/dsTokens';
 
 /* ──────────────────────  TOKENS  ────────────────────── */

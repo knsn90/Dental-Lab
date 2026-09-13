@@ -5,11 +5,12 @@
  * Uses report_technician_performance RPC for real operational data.
  * Sorting, date range filters, material type filter.
  *
- * Patterns: cardSolid, tableCard (§09), DISPLAY font, DS tokens, CHIP_TONES,
+ * Patterns: cardSolid, tableCard (§09), DISPLAY font, DS tokens, chip tones,
  *           §03 pill buttons, Lucide icons.
  */
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { weekdayOffset } from '../../../core/i18n';
+import { HeroGlow, useHeroSurface } from '../../../core/ui/HeroGlow';
 import { router, useSegments } from 'expo-router';
 import { RemakeQualityCard } from '../components/RemakeQualityCard';
 import {
@@ -21,11 +22,12 @@ import {
   TrendingUp, TrendingDown, Clock, Filter,
   ChevronDown, ChevronUp, BarChart3, Flame,
   DollarSign, Timer, Zap, ArrowUpDown, Star,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 
 import { supabase }     from '../../../core/api/supabase';
 import { useAuthStore } from '../../../core/store/authStore';
 import { DS }           from '../../../core/theme/dsTokens';
+import { useInkUI, type InkUI } from '../../../core/theme/inkScale';
 import { MobilePageTitle } from '../../../core/ui/mobile/MobilePageTitle';
 import { HubContext } from '../../../core/ui/HubContext';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
@@ -38,30 +40,8 @@ const DISPLAY = {
   fontWeight: '300' as const,
 };
 
-const cardSolid: any = {
-  backgroundColor: '#FFF',
-  borderRadius: 24,
-  padding: 22,
-  ...(Platform.OS === 'web'
-    ? { boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)' }
-    : {}),
-};
 
-const tableCard: any = {
-  backgroundColor: '#FFF',
-  borderRadius: 24,
-  borderWidth: 1,
-  borderColor: 'rgba(0,0,0,0.05)',
-  overflow: 'hidden',
-};
 
-const CHIP_TONES = {
-  success: { bg: 'rgba(45,154,107,0.12)', fg: '#1F6B47' },
-  warning: { bg: 'rgba(232,155,42,0.15)', fg: '#9C5E0E' },
-  danger:  { bg: 'rgba(217,75,75,0.12)',  fg: '#9C2E2E' },
-  info:    { bg: 'rgba(74,143,201,0.12)', fg: '#1F5689' },
-  neutral: { bg: 'rgba(0,0,0,0.05)',      fg: DS.ink[800] },
-};
 
 // ── Types ───────────────────────────────────────────────────────────
 interface PerfRow {
@@ -134,23 +114,25 @@ function getRange(r: Range): { from: string | null; to: string | null } {
   return { from: '2000-01-01', to: `${yyyy + 1}-12-31` };
 }
 
-function effTone(eff: number | null) {
-  if (eff === null) return CHIP_TONES.neutral;
-  if (eff < 85) return CHIP_TONES.danger;
-  if (eff < 95) return CHIP_TONES.warning;
-  return CHIP_TONES.success;
+/** Saf yardımcı — hook ÇAĞIRMAZ (koşullu/döngü içinde çağrılıyor); tonları U'dan alır. */
+function effTone(U: InkUI, eff: number | null) {
+  if (eff === null) return U.chipTones.neutral;
+  if (eff < 85) return U.chipTones.danger;
+  if (eff < 95) return U.chipTones.warning;
+  return U.chipTones.success;
 }
 
-function profitTone(p: number) {
-  if (p > 0) return CHIP_TONES.success;
-  if (p < 0) return CHIP_TONES.danger;
-  return CHIP_TONES.neutral;
+function profitTone(U: InkUI, p: number) {
+  if (p > 0) return U.chipTones.success;
+  if (p < 0) return U.chipTones.danger;
+  return U.chipTones.neutral;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
 // MAIN
 // ═══════════════════════════════════════════════════════════════════════
 export function PerformanceScreen() {
+  const U = useInkUI();
   // Sipariş linki AKTİF panelde açılsın (admin panelinden lab'a atmasın)
   const panelBase = String((useSegments() as string[])?.[0] ?? '(lab)');
   const { profile } = useAuthStore();
@@ -160,6 +142,7 @@ export function PerformanceScreen() {
   const isHub       = useHubContext();
   const panelTheme  = usePanelTheme();
   const accentColor = panelTheme.primary;
+  const heroBg = useHeroSurface(accentColor);
   useBaseCurrency();
 
   const [range, setRange]       = useState<Range>('thisMonth');
@@ -339,10 +322,10 @@ export function PerformanceScreen() {
       {totals && !loading && (
         <View style={{
           borderRadius: 20, overflow: 'hidden',
-          backgroundColor: accentColor, padding: 18, position: 'relative',
+          ...heroBg, padding: 18, position: 'relative',
         }}>
-          <View style={{ position: 'absolute', top: -40, end: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
-          <View style={{ position: 'absolute', bottom: -50, start: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+          <HeroGlow size={160} opacity={0.18} delay={0} style={{ top: -40, end: -40 }} />
+          <HeroGlow size={140} opacity={0.12} delay={1400} style={{ bottom: -50, start: -20 }} />
 
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
             <View style={{ flex: 1, minWidth: 0 }}>
@@ -417,14 +400,14 @@ export function PerformanceScreen() {
                 flexDirection: 'row', alignItems: 'center', gap: 6,
                 paddingHorizontal: active ? 14 : 12, paddingVertical: 6,
                 borderRadius: 9999,
-                backgroundColor: active ? DS.ink[900] : '#FFFFFF',
-                borderWidth: active ? 0 : 1, borderColor: DS.ink[300],
+                backgroundColor: active ? U.ink[900] : U.plainBtn.bg,
+                borderWidth: active ? 0 : 1, borderColor: U.ink[300],
                 // @ts-ignore web
                 cursor: 'pointer',
               }}
             >
-              {active && <Calendar size={11} color="#FFFFFF" strokeWidth={2} />}
-              <Text style={{ fontSize: 12, fontWeight: '500', color: active ? '#FFFFFF' : DS.ink[500] }}>
+              {active && <Calendar size={11} color={U.onDarkPill} strokeWidth={2} />}
+              <Text style={{ fontSize: 12, fontWeight: '500', color: active ? U.onDarkPill : U.ink[500] }}>
                 {opt.label}
               </Text>
             </Pressable>
@@ -432,7 +415,7 @@ export function PerformanceScreen() {
         })}
 
         {/* Separator */}
-        <View style={{ width: 1, height: 20, backgroundColor: 'rgba(0,0,0,0.08)', marginHorizontal: 2 }} />
+        <View style={{ width: 1, height: 20, backgroundColor: U.fieldBorder, marginHorizontal: 2 }} />
 
         {/* Materyal dropdown */}
         <View style={{ position: 'relative', zIndex: 30 }}>
@@ -442,24 +425,24 @@ export function PerformanceScreen() {
               flexDirection: 'row', alignItems: 'center', gap: 6,
               paddingHorizontal: 12, paddingVertical: 6,
               borderRadius: 9999,
-              backgroundColor: matType !== 'all' ? DS.ink[900] : '#FFFFFF',
-              borderWidth: matType !== 'all' ? 0 : 1, borderColor: DS.ink[300],
+              backgroundColor: matType !== 'all' ? U.ink[900] : U.plainBtn.bg,
+              borderWidth: matType !== 'all' ? 0 : 1, borderColor: U.ink[300],
               // @ts-ignore web
               cursor: 'pointer',
             }}
           >
-            <Wrench size={11} color={matType !== 'all' ? '#FFFFFF' : DS.ink[500]} strokeWidth={1.8} />
-            <Text style={{ fontSize: 12, fontWeight: '500', color: matType !== 'all' ? '#FFFFFF' : DS.ink[500] }}>
+            <Wrench size={11} color={matType !== 'all' ? U.onDarkPill : U.ink[500]} strokeWidth={1.8} />
+            <Text style={{ fontSize: 12, fontWeight: '500', color: matType !== 'all' ? U.onDarkPill : U.ink[500] }}>
               {MATERIAL_TYPES.find(m => m.key === matType)?.label ?? 'Materyal'}
             </Text>
-            <ChevronDown size={11} color={matType !== 'all' ? '#FFFFFF' : DS.ink[400]} strokeWidth={2} />
+            <ChevronDown size={11} color={matType !== 'all' ? U.onDarkPillMuted : U.ink[400]} strokeWidth={2} />
           </Pressable>
           {matOpen && (
             <View style={{
               position: 'absolute', top: '100%', start: 0, marginTop: 4,
-              backgroundColor: '#FFFFFF', borderRadius: 14,
-              borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
-              ...(Platform.OS === 'web' ? { boxShadow: '0 4px 20px rgba(0,0,0,0.12)' } : {}),
+              backgroundColor: U.surface, borderRadius: 14,
+              borderWidth: 1, borderColor: U.fieldBorder,
+              ...(Platform.OS === 'web' ? { boxShadow: U.isDark ? '0 4px 20px rgba(0,0,0,0.55)' : '0 4px 20px rgba(0,0,0,0.12)' } : {}),
               minWidth: 160, zIndex: 50,
               overflow: 'hidden',
             }}>
@@ -469,7 +452,7 @@ export function PerformanceScreen() {
                   onPress={() => { setMatType(opt.key); setMatOpen(false); }}
                   style={{
                     paddingHorizontal: 14, paddingVertical: 10,
-                    backgroundColor: matType === opt.key ? DS.ink[50] : 'transparent',
+                    backgroundColor: matType === opt.key ? U.ink[50] : 'transparent',
                     // @ts-ignore web
                     cursor: 'pointer',
                   }}
@@ -477,7 +460,7 @@ export function PerformanceScreen() {
                   <Text style={{
                     fontSize: 13,
                     fontWeight: matType === opt.key ? '600' : '400',
-                    color: matType === opt.key ? DS.ink[900] : DS.ink[500],
+                    color: matType === opt.key ? U.ink[900] : U.ink[500],
                   }}>
                     {opt.label}
                   </Text>
@@ -491,39 +474,39 @@ export function PerformanceScreen() {
       {/* ── Table ──────────────────────────────────────────────── */}
       {loading ? (
         <View style={{ paddingVertical: 60, alignItems: 'center', zIndex: 1 }}>
-          <ActivityIndicator color={DS.ink[900]} />
-          <Text style={{ fontSize: 13, color: DS.ink[400], marginTop: 12 }}>Yükleniyor…</Text>
+          <ActivityIndicator color={U.ink[900]} />
+          <Text style={{ fontSize: 13, color: U.ink[400], marginTop: 12 }}>Yükleniyor…</Text>
         </View>
       ) : sorted.length === 0 ? (
-        <View style={{ ...cardSolid, alignItems: 'center', paddingVertical: 60 }}>
+        <View style={{ ...U.cardSolid, alignItems: 'center', paddingVertical: 60 }}>
           <View style={{
             width: 48, height: 48, borderRadius: 24,
-            backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', marginBottom: 12,
+            backgroundColor: U.ink[100], alignItems: 'center', justifyContent: 'center', marginBottom: 12,
           }}>
-            <Users size={22} color={DS.ink[400]} strokeWidth={1.5} />
+            <Users size={22} color={U.ink[400]} strokeWidth={1.5} />
           </View>
-          <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[900], marginBottom: 4 }}>
+          <Text style={{ fontSize: 15, fontWeight: '600', color: U.ink[900], marginBottom: 4 }}>
             Veri yok
           </Text>
-          <Text style={{ fontSize: 13, color: DS.ink[400], textAlign: 'center', maxWidth: 280, lineHeight: 19 }}>
+          <Text style={{ fontSize: 13, color: U.ink[400], textAlign: 'center', maxWidth: 280, lineHeight: 19 }}>
             Bu aralıkta teknisyen aktivitesi bulunamadı.
           </Text>
         </View>
       ) : (
-        <View style={{ ...tableCard, zIndex: 1 }}>
+        <View style={{ ...U.tableCard, zIndex: 1 }}>
 
           {/* Desktop table header */}
           {isWide && (
             <View style={{
               flexDirection: 'row', alignItems: 'center',
               paddingHorizontal: 20, paddingVertical: 10,
-              backgroundColor: '#FAFAFA',
-              borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)',
+              backgroundColor: U.surfaceSoft,
+              borderBottomWidth: 1, borderBottomColor: U.hairlineSoft,
             }}>
-              <Text style={{ ...colH, flex: 2.0 }}>TEKNİSYEN</Text>
+              <Text style={{ ...U.colHeader, flex: 2.0 }}>TEKNİSYEN</Text>
               <SortableHeader label="SİPARİŞ" flex={0.8} sortKey="orders" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} />
               <SortableHeader label="KALİTE" flex={1} sortKey="quality" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="center" />
-              <Text style={{ ...colH, flex: 1, textAlign: 'center' }}>ZAMANIN.</Text>
+              <Text style={{ ...U.colHeader, flex: 1, textAlign: 'center' }}>ZAMANIN.</Text>
               <SortableHeader label="FİRE" flex={1.1} sortKey="waste" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="right" />
               <SortableHeader label="VERİM" flex={1} sortKey="efficiency" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="center" />
               <SortableHeader label="SÜRE" flex={1} sortKey="labor" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="right" />
@@ -541,36 +524,36 @@ export function PerformanceScreen() {
             <View style={{
               flexDirection: 'row', alignItems: 'center',
               paddingHorizontal: 20, paddingVertical: 12,
-              backgroundColor: '#FAFAFA',
-              borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
+              backgroundColor: U.surfaceSoft,
+              borderTopWidth: 1, borderTopColor: U.hairline,
             }}>
-              <Text style={{ ...colH, flex: 2.0, fontSize: 11, fontWeight: '700', color: DS.ink[700] }}>
+              <Text style={{ ...U.colHeader, flex: 2.0, fontSize: 11, fontWeight: '700', color: U.ink[700] }}>
                 TOPLAM ({totals.techCount} teknisyen)
               </Text>
               <View style={{ flex: 0.8, alignItems: 'center' }}>
-                <Text style={{ fontSize: 12, fontWeight: '700', color: DS.ink[700] }}>{fmt(totals.totalOrders)}</Text>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: U.ink[700] }}>{fmt(totals.totalOrders)}</Text>
               </View>
               <View style={{ flex: 1 }} />
               <View style={{ flex: 1 }} />
               <View style={{ flex: 1.1, alignItems: 'flex-end', paddingEnd: 8 }}>
-                <Text style={{ fontSize: 12, fontWeight: '700', color: CHIP_TONES.danger.fg }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: U.chipTones.danger.fg }}>
                   −{fmt(totals.totalWaste)} {baseSymbol()}
                 </Text>
               </View>
               <View style={{ flex: 1, alignItems: 'center' }}>
                 {totals.avgEfficiency !== null && (
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: effTone(totals.avgEfficiency).fg }}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: effTone(U, totals.avgEfficiency).fg }}>
                     %{fmt1(totals.avgEfficiency)}
                   </Text>
                 )}
               </View>
               <View style={{ flex: 1, alignItems: 'flex-end', paddingEnd: 8 }}>
-                <Text style={{ fontSize: 12, fontWeight: '700', color: DS.ink[700] }}>{fmt1(totals.totalLabor)} sa</Text>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: U.ink[700] }}>{fmt1(totals.totalLabor)} sa</Text>
               </View>
               <View style={{ flex: 1.3, alignItems: 'flex-end' }}>
                 <Text style={{
                   fontSize: 13, fontWeight: '700',
-                  color: totals.totalProfit >= 0 ? CHIP_TONES.success.fg : CHIP_TONES.danger.fg,
+                  color: totals.totalProfit >= 0 ? U.chipTones.success.fg : U.chipTones.danger.fg,
                 }}>
                   {totals.totalProfit >= 0 ? '+' : '−'}{fmt(Math.abs(totals.totalProfit))} {baseSymbol()}
                 </Text>
@@ -590,9 +573,10 @@ function KPIChip({ icon: Icon, iconColor, label, value, tone }: {
   label: string; value: string;
   tone: { bg: string; fg: string };
 }) {
+  const U = useInkUI();
   return (
     <View style={{
-      ...cardSolid,
+      ...U.cardSolid,
       padding: 14,
       paddingHorizontal: 16,
       flex: 1,
@@ -601,7 +585,7 @@ function KPIChip({ icon: Icon, iconColor, label, value, tone }: {
     }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         <Icon size={13} color={iconColor} strokeWidth={1.8} />
-        <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[400], letterSpacing: 0.3 }}>
+        <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[400], letterSpacing: 0.3 }}>
           {label}
         </Text>
       </View>
@@ -619,6 +603,7 @@ function SortableHeader({ label, flex, sortKey, currentSort, currentDir, onPress
   onPress: (key: SortKey) => void;
   align?: 'left' | 'center' | 'right';
 }) {
+  const U = useInkUI();
   const active = currentSort === sortKey;
   return (
     <Pressable
@@ -632,35 +617,32 @@ function SortableHeader({ label, flex, sortKey, currentSort, currentDir, onPress
       }}
     >
       <Text style={{
-        ...colH,
-        color: active ? DS.ink[900] : DS.ink[500],
+        ...U.colHeader,
+        color: active ? U.ink[900] : U.ink[500],
         fontWeight: active ? '700' : '600',
       }}>
         {label}
       </Text>
       {active ? (
         currentDir === 'asc'
-          ? <ChevronUp size={10} color={DS.ink[900]} strokeWidth={2.5} />
-          : <ChevronDown size={10} color={DS.ink[900]} strokeWidth={2.5} />
+          ? <ChevronUp size={10} color={U.ink[900]} strokeWidth={2.5} />
+          : <ChevronDown size={10} color={U.ink[900]} strokeWidth={2.5} />
       ) : (
-        <ArrowUpDown size={9} color={DS.ink[300]} strokeWidth={2} />
+        <ArrowUpDown size={9} color={U.ink[300]} strokeWidth={2} />
       )}
     </Pressable>
   );
 }
 
 // ── Column header style ──────────────────────────────────────────────
-const colH: any = {
-  fontSize: 10, fontWeight: '600', letterSpacing: 0.7,
-  textTransform: 'uppercase', color: DS.ink[500],
-};
 
 // ═══════════════════════════════════════════════════════════════════════
 // ROW
 // ═══════════════════════════════════════════════════════════════════════
 function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWide: boolean }) {
+  const U = useInkUI();
   const eff  = row.efficiency_pct;
-  const chip = effTone(eff);
+  const chip = effTone(U, eff);
   const initials = (row.user_name ?? '??').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
   const wasteHigh = row.waste_qty > 0 && (eff ?? 100) < 90;
 
@@ -669,32 +651,32 @@ function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWid
       <View style={{
         flexDirection: 'row', alignItems: 'center',
         paddingHorizontal: 20, paddingVertical: 14,
-        borderBottomWidth: isLast ? 0 : 1, borderBottomColor: 'rgba(0,0,0,0.04)',
+        borderBottomWidth: isLast ? 0 : 1, borderBottomColor: U.hairlineSoft,
       }}>
         {/* Teknisyen */}
         <View style={{ flex: 2.0, flexDirection: 'row', alignItems: 'center', gap: 10, paddingEnd: 8 }}>
           <View style={{
             width: 34, height: 34, borderRadius: 17,
-            backgroundColor: 'rgba(139,92,184,0.12)',
+            backgroundColor: U.isDark ? 'rgba(139,92,184,0.26)' : 'rgba(139,92,184,0.12)',
             alignItems: 'center', justifyContent: 'center',
           }}>
-            <Text style={{ fontSize: 11, fontWeight: '600', color: '#6B3F94' }}>{initials}</Text>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: U.isDark ? '#C9A9E8' : '#6B3F94' }}>{initials}</Text>
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>
               {row.user_name ?? '—'}
             </Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1 }}>
-              <Text style={{ fontSize: 11, color: DS.ink[400] }} numberOfLines={1}>
+              <Text style={{ fontSize: 11, color: U.ink[400] }} numberOfLines={1}>
                 {row.hourly_rate > 0 ? `${fmt(row.hourly_rate)} ${baseSymbol()}/sa` : '—'}
               </Text>
               {row.customer_rating != null && (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
                   <Star size={11} color="#E89B2A" strokeWidth={1.8} fill="#E89B2A" />
-                  <Text style={{ fontSize: 11, fontWeight: '600', color: DS.ink[700] }}>
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: U.ink[700] }}>
                     {row.customer_rating.toFixed(1)}
                   </Text>
-                  <Text style={{ fontSize: 10, color: DS.ink[400] }}>({row.review_count ?? 0})</Text>
+                  <Text style={{ fontSize: 10, color: U.ink[400] }}>({row.review_count ?? 0})</Text>
                 </View>
               )}
             </View>
@@ -703,7 +685,7 @@ function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWid
 
         {/* Sipariş */}
         <View style={{ flex: 0.8, alignItems: 'center' }}>
-          <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }}>{row.orders_worked}</Text>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900] }}>{row.orders_worked}</Text>
         </View>
 
         {/* Kalite (onay/(onay+red)) */}
@@ -711,17 +693,17 @@ function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWid
           {row.quality_pct != null ? (
             <Text style={{
               fontSize: 13, fontWeight: '600',
-              color: row.quality_pct >= 80 ? CHIP_TONES.success.fg
-                   : row.quality_pct >= 60 ? CHIP_TONES.warning.fg
-                   : CHIP_TONES.danger.fg,
+              color: row.quality_pct >= 80 ? U.chipTones.success.fg
+                   : row.quality_pct >= 60 ? U.chipTones.warning.fg
+                   : U.chipTones.danger.fg,
             }}>
               %{Math.round(row.quality_pct)}
             </Text>
           ) : (
-            <Text style={{ fontSize: 11, color: DS.ink[400] }}>—</Text>
+            <Text style={{ fontSize: 11, color: U.ink[400] }}>—</Text>
           )}
           {(row.monthly_rework ?? 0) > 0 && (
-            <Text style={{ fontSize: 10, color: CHIP_TONES.danger.fg, marginTop: 1 }}>
+            <Text style={{ fontSize: 10, color: U.chipTones.danger.fg, marginTop: 1 }}>
               {row.monthly_rework} rework
             </Text>
           )}
@@ -732,14 +714,14 @@ function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWid
           {row.on_time_pct != null ? (
             <Text style={{
               fontSize: 13, fontWeight: '600',
-              color: row.on_time_pct >= 80 ? CHIP_TONES.success.fg
-                   : row.on_time_pct >= 60 ? CHIP_TONES.warning.fg
-                   : CHIP_TONES.danger.fg,
+              color: row.on_time_pct >= 80 ? U.chipTones.success.fg
+                   : row.on_time_pct >= 60 ? U.chipTones.warning.fg
+                   : U.chipTones.danger.fg,
             }}>
               %{Math.round(row.on_time_pct)}
             </Text>
           ) : (
-            <Text style={{ fontSize: 11, color: DS.ink[400] }}>—</Text>
+            <Text style={{ fontSize: 11, color: U.ink[400] }}>—</Text>
           )}
         </View>
 
@@ -747,12 +729,12 @@ function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWid
         <View style={{ flex: 1.1, alignItems: 'flex-end', paddingEnd: 8 }}>
           <Text style={{
             fontSize: 14, fontWeight: '600',
-            color: wasteHigh ? CHIP_TONES.danger.fg : DS.ink[900],
+            color: wasteHigh ? U.chipTones.danger.fg : U.ink[900],
           }}>
             {fmt1(row.waste_qty)}
           </Text>
           {row.waste_cost > 0 && (
-            <Text style={{ fontSize: 11, color: CHIP_TONES.danger.fg, marginTop: 1 }}>
+            <Text style={{ fontSize: 11, color: U.chipTones.danger.fg, marginTop: 1 }}>
               −{fmt(row.waste_cost)} {baseSymbol()}
             </Text>
           )}
@@ -769,17 +751,17 @@ function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWid
               <Text style={{ fontSize: 13, fontWeight: '600', color: chip.fg }}>%{fmt1(eff)}</Text>
             </View>
           ) : (
-            <Text style={{ fontSize: 11, color: DS.ink[400] }}>—</Text>
+            <Text style={{ fontSize: 11, color: U.ink[400] }}>—</Text>
           )}
         </View>
 
         {/* Süre */}
         <View style={{ flex: 1, alignItems: 'flex-end', paddingEnd: 8 }}>
-          <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }}>
-            {fmt1(row.labor_hours)}<Text style={{ fontSize: 10, color: DS.ink[400], fontWeight: '500' }}> sa</Text>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900] }}>
+            {fmt1(row.labor_hours)}<Text style={{ fontSize: 10, color: U.ink[400], fontWeight: '500' }}> sa</Text>
           </Text>
           {row.labor_cost > 0 && (
-            <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }}>{fmt(row.labor_cost)} {baseSymbol()}</Text>
+            <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 1 }}>{fmt(row.labor_cost)} {baseSymbol()}</Text>
           )}
         </View>
 
@@ -787,7 +769,7 @@ function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWid
         <View style={{ flex: 1.3, alignItems: 'flex-end' }}>
           <Text style={{
             fontSize: 14, fontWeight: '600',
-            color: row.profit_contribution >= 0 ? CHIP_TONES.success.fg : CHIP_TONES.danger.fg,
+            color: row.profit_contribution >= 0 ? U.chipTones.success.fg : U.chipTones.danger.fg,
           }}>
             {row.profit_contribution >= 0 ? '+' : '−'}{fmt(Math.abs(row.profit_contribution))} {baseSymbol()}
           </Text>
@@ -798,20 +780,20 @@ function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWid
           {row.composite_score != null ? (
             <View style={{
               paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
-              backgroundColor: row.composite_score >= 75 ? CHIP_TONES.success.bg
-                             : row.composite_score >= 50 ? CHIP_TONES.warning.bg
-                             : CHIP_TONES.danger.bg,
+              backgroundColor: row.composite_score >= 75 ? U.chipTones.success.bg
+                             : row.composite_score >= 50 ? U.chipTones.warning.bg
+                             : U.chipTones.danger.bg,
               minWidth: 50, alignItems: 'center',
             }}>
               <Text style={{
                 fontSize: 13, fontWeight: '700',
-                color: row.composite_score >= 75 ? CHIP_TONES.success.fg
-                     : row.composite_score >= 50 ? CHIP_TONES.warning.fg
-                     : CHIP_TONES.danger.fg,
+                color: row.composite_score >= 75 ? U.chipTones.success.fg
+                     : row.composite_score >= 50 ? U.chipTones.warning.fg
+                     : U.chipTones.danger.fg,
               }}>{row.composite_score}</Text>
             </View>
           ) : (
-            <Text style={{ fontSize: 11, color: DS.ink[400] }}>—</Text>
+            <Text style={{ fontSize: 11, color: U.ink[400] }}>—</Text>
           )}
         </View>
       </View>
@@ -822,22 +804,22 @@ function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWid
   return (
     <View style={{
       paddingHorizontal: 20, paddingVertical: 14, gap: 10,
-      borderBottomWidth: isLast ? 0 : 1, borderBottomColor: 'rgba(0,0,0,0.04)',
+      borderBottomWidth: isLast ? 0 : 1, borderBottomColor: U.hairlineSoft,
     }}>
       {/* Top — avatar + name + efficiency chip */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <View style={{
           width: 34, height: 34, borderRadius: 17,
-          backgroundColor: 'rgba(139,92,184,0.12)',
+          backgroundColor: U.isDark ? 'rgba(139,92,184,0.26)' : 'rgba(139,92,184,0.12)',
           alignItems: 'center', justifyContent: 'center',
         }}>
-          <Text style={{ fontSize: 11, fontWeight: '600', color: '#6B3F94' }}>{initials}</Text>
+          <Text style={{ fontSize: 11, fontWeight: '600', color: U.isDark ? '#C9A9E8' : '#6B3F94' }}>{initials}</Text>
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>
             {row.user_name ?? '—'}
           </Text>
-          <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }}>
+          <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 1 }}>
             {row.orders_worked} sipariş · {row.hourly_rate > 0 ? `${fmt(row.hourly_rate)} ${baseSymbol()}/sa` : '—'}
           </Text>
         </View>
@@ -854,12 +836,12 @@ function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWid
       {/* Bottom — metric strip */}
       <View style={{ flexDirection: 'row', gap: 12, paddingStart: 44 }}>
         <MiniStat label="Kullanım" value={fmt1(row.used_qty)} />
-        <MiniStat label="Fire" value={fmt1(row.waste_qty)} color={wasteHigh ? CHIP_TONES.danger.fg : undefined} />
+        <MiniStat label="Fire" value={fmt1(row.waste_qty)} color={wasteHigh ? U.chipTones.danger.fg : undefined} />
         <MiniStat label="Süre" value={`${fmt1(row.labor_hours)} sa`} />
         <MiniStat
           label="Kar"
           value={`${row.profit_contribution >= 0 ? '+' : '−'}${fmt(Math.abs(row.profit_contribution))}`}
-          color={row.profit_contribution >= 0 ? CHIP_TONES.success.fg : CHIP_TONES.danger.fg}
+          color={row.profit_contribution >= 0 ? U.chipTones.success.fg : U.chipTones.danger.fg}
         />
         {row.customer_rating != null && (
           <MiniStat label="Puan" value={`★ ${row.customer_rating.toFixed(1)}`} color="#E89B2A" />
@@ -871,10 +853,11 @@ function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWid
 
 // ── Mini stat for mobile ─────────────────────────────────────────────
 function MiniStat({ label, value, color }: { label: string; value: string; color?: string }) {
+  const U = useInkUI();
   return (
     <View style={{ gap: 2 }}>
-      <Text style={{ fontSize: 10, color: DS.ink[400], fontWeight: '500', letterSpacing: 0.3 }}>{label}</Text>
-      <Text style={{ fontSize: 13, fontWeight: '600', color: color ?? DS.ink[900] }}>{value}</Text>
+      <Text style={{ fontSize: 10, color: U.ink[400], fontWeight: '500', letterSpacing: 0.3 }}>{label}</Text>
+      <Text style={{ fontSize: 13, fontWeight: '600', color: color ?? U.ink[900] }}>{value}</Text>
     </View>
   );
 }

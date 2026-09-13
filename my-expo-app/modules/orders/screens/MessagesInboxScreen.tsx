@@ -11,6 +11,8 @@ import Svg, { Path, Circle, Line, Polyline } from 'react-native-svg';
 import { useOrderChatInbox } from '../hooks/useOrderChatInbox';
 import { STATUS_CONFIG } from '../constants';
 import { WorkOrderStatus } from '../../../lib/types';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 // ── Tokens (aligned with frontend-design skill) ──────────────────────
 const BG = '#F7F9FB';
@@ -117,6 +119,8 @@ interface InboxRowProps {
   onPress: () => void;
 }
 function InboxRow({ item, accent, currentUserId, side, onPress }: InboxRowProps) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const hasUnread = item.unread_for_me > 0;
   const preview   = lastPreview(item, currentUserId);
   const statusCfg = STATUS_CONFIG[item.status as WorkOrderStatus];
@@ -156,8 +160,8 @@ function InboxRow({ item, accent, currentUserId, side, onPress }: InboxRowProps)
       {/* Avatar — son gönderen profil */}
       <View style={[
         row.avatar,
-        { backgroundColor: (shownAvatar && shownAvatar === clinicLogo) ? '#FFFFFF' : avatarBg, overflow: 'hidden' },
-        (shownAvatar && shownAvatar === clinicLogo) ? { borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' } : null,
+        { backgroundColor: (shownAvatar && shownAvatar === clinicLogo) ? (isDark ? T.card : '#FFFFFF') : avatarBg, overflow: 'hidden' },
+        (shownAvatar && shownAvatar === clinicLogo) ? { borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.08)' } : null,
       ]}>
         {shownAvatar ? (
           <Image
@@ -169,28 +173,28 @@ function InboxRow({ item, accent, currentUserId, side, onPress }: InboxRowProps)
           <Text style={row.avatarText}>{initials(displayName)}</Text>
         )}
         {statusCfg && (
-          <View style={[row.statusDot, { backgroundColor: statusCfg.color, borderColor: '#FFFFFF' }]} />
+          <View style={[row.statusDot, { backgroundColor: statusCfg.color, borderColor: isDark ? T.bg : '#FFFFFF' }]} />
         )}
       </View>
 
       {/* Middle — sender + preview + order context */}
       <View style={{ flex: 1, minWidth: 0 }}>
         <View style={row.topLine}>
-          <Text style={row.title} numberOfLines={1}>
+          <Text style={[row.title, { color: isDark ? T.ink : '#0F172A' }]} numberOfLines={1}>
             {displayName}
             {item.is_urgent && <Text style={row.urgentTag}>  · ACİL</Text>}
           </Text>
-          <Text style={[row.time, hasUnread && { color: accent, fontWeight: '800' }]}>
+          <Text style={[row.time, { color: isDark ? T.ink3 : '#94A3B8' }, hasUnread && { color: accent, fontWeight: '800' }]}>
             {formatTime(item.last_created_at)}
           </Text>
         </View>
 
         {subtitle ? (
-          <Text style={row.subtitle} numberOfLines={1}>{subtitle}</Text>
+          <Text style={[row.subtitle, { color: isDark ? T.ink2 : '#475569' }]} numberOfLines={1}>{subtitle}</Text>
         ) : null}
 
         <View style={row.bottomLine}>
-          <Text style={[row.preview, hasUnread && row.previewUnread, preview.isMine && row.previewMine]} numberOfLines={1}>
+          <Text style={[row.preview, { color: isDark ? T.ink3 : '#64748B' }, hasUnread && { color: isDark ? T.ink : '#0F172A', fontWeight: '600' }, preview.isMine && { color: isDark ? T.ink3 : '#94A3B8' }]} numberOfLines={1}>
             {preview.text}
           </Text>
           {hasUnread ? (
@@ -201,7 +205,7 @@ function InboxRow({ item, accent, currentUserId, side, onPress }: InboxRowProps)
         </View>
 
         <View style={row.metaLine}>
-          <Text style={row.metaText} numberOfLines={1}>
+          <Text style={[row.metaText, { color: isDark ? T.ink3 : '#94A3B8' }]} numberOfLines={1}>
             #{item.order_number}
             {orderTitle ? ` · ${orderTitle}` : ''}
             {/* Lab tarafı: hasta adı meta'da (klinik+hekim başlıkta). Klinik/hekim: hekim adı meta'da (hasta başlıkta). */}
@@ -257,14 +261,16 @@ const row = StyleSheet.create({
 function FilterChip({ label, active, onPress, count, accent }: {
   label: string; active: boolean; onPress: () => void; count?: number; accent: string;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.75}
-      style={[fc.chip, active && { backgroundColor: accent, borderColor: accent }]}
+      style={[fc.chip, { backgroundColor: isDark ? T.card : '#FFFFFF', borderColor: isDark ? T.hairline : '#F1F5F9' }, active && { backgroundColor: accent, borderColor: accent }]}
     >
-      <Text style={[fc.text, active && fc.textActive]}>{label}</Text>
+      <Text style={[fc.text, { color: isDark ? T.ink3 : '#64748B' }, active && fc.textActive]}>{label}</Text>
       {typeof count === 'number' && count > 0 && (
-        <View style={[fc.count, active && fc.countActive]}>
-          <Text style={[fc.countText, active && fc.countTextActive]}>{count > 99 ? '99+' : count}</Text>
+        <View style={[fc.count, { backgroundColor: isDark ? T.cardSoft : '#F1F5F9' }, active && fc.countActive]}>
+          <Text style={[fc.countText, { color: isDark ? T.ink3 : '#64748B' }, active && fc.countTextActive]}>{count > 99 ? '99+' : count}</Text>
         </View>
       )}
     </TouchableOpacity>
@@ -294,6 +300,8 @@ export function MessagesInboxScreen({
   currentUserId = null,
 }: Props) {
   const router = useRouter();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const { items, loading, totalUnread, refetch } = useOrderChatInbox();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 900;
@@ -328,29 +336,29 @@ export function MessagesInboxScreen({
     <View>
       {/* Title block */}
       <View style={s.titleRow}>
-        <Text style={s.title}>Mesajlar</Text>
+        <Text style={[s.title, { color: isDark ? T.ink : '#0F172A' }]}>Mesajlar</Text>
         {totalUnread > 0 && (
           <View style={[s.totalBadge, { backgroundColor: accentColor }]}>
             <Text style={s.totalBadgeText}>{totalUnread > 99 ? '99+' : totalUnread}</Text>
           </View>
         )}
       </View>
-      <Text style={s.subtitle}>Her iş emrinin kendi sohbeti</Text>
+      <Text style={[s.subtitle, { color: isDark ? T.ink3 : '#64748B' }]}>Her iş emrinin kendi sohbeti</Text>
 
       {/* Search bar */}
-      <View style={s.searchBar}>
-        <Icon name="search" size={16} color="#94A3B8" strokeWidth={2} />
+      <View style={[s.searchBar, { backgroundColor: isDark ? T.card : '#FFFFFF', borderColor: isDark ? T.hairline : '#F1F5F9' }]}>
+        <Icon name="search" size={16} color={isDark ? T.ink3 : '#94A3B8'} strokeWidth={2} />
         <TextInput
-          style={s.searchInput}
+          style={[s.searchInput, { color: isDark ? T.ink : '#0F172A' }]}
           placeholder="İş emri, hekim, hasta veya mesaj ara..."
-          placeholderTextColor="#94A3B8"
+          placeholderTextColor={isDark ? T.ink3 : '#94A3B8'}
           value={query}
           onChangeText={setQuery}
           returnKeyType="search"
         />
         {query.length > 0 && (
           <TouchableOpacity onPress={() => setQuery('')} activeOpacity={0.7} style={{ padding: 4 }}>
-            <Icon name="x" size={14} color="#94A3B8" strokeWidth={2.2} />
+            <Icon name="x" size={14} color={isDark ? T.ink3 : '#94A3B8'} strokeWidth={2.2} />
           </TouchableOpacity>
         )}
       </View>
@@ -365,7 +373,7 @@ export function MessagesInboxScreen({
   );
 
   return (
-    <SafeAreaView style={s.safe} edges={['top']}>
+    <SafeAreaView style={[s.safe, { backgroundColor: isDark ? T.bg : BG }]} edges={['top']}>
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.work_order_id}
@@ -379,7 +387,7 @@ export function MessagesInboxScreen({
               side={side}
               onPress={() => router.push(`${routePrefix}/order/${item.work_order_id}` as any)}
             />
-            {index < filtered.length - 1 && <View style={s.divider} />}
+            {index < filtered.length - 1 && <View style={[s.divider, { backgroundColor: isDark ? T.hairline : '#F1F5F9' }]} />}
           </View>
         )}
         contentContainerStyle={s.list}
@@ -391,10 +399,10 @@ export function MessagesInboxScreen({
               <View style={[s.emptyIcon, { backgroundColor: hexA(accentColor, 0.10) }]}>
                 <Icon name="message-circle" size={32} color={accentColor} strokeWidth={1.8} />
               </View>
-              <Text style={s.emptyTitle}>
+              <Text style={[s.emptyTitle, { color: isDark ? T.ink : '#0F172A' }]}>
                 {query || filter !== 'tumu' ? 'Sonuç bulunamadı' : 'Henüz mesaj yok'}
               </Text>
-              <Text style={s.emptySub}>
+              <Text style={[s.emptySub, { color: isDark ? T.ink3 : '#64748B' }]}>
                 {query || filter !== 'tumu'
                   ? 'Filtreyi değiştirmeyi veya aramayı temizlemeyi dene.'
                   : 'Bir iş emri detayına git, chat başlat — mesajlar burada listelenir.'}

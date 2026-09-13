@@ -20,7 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { confirmAsync } from '../../../core/util/confirm';
 import {
   Plus, PieChart, Wallet, Tag, X, Trash2,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 
 import { supabase } from '../../../core/api/supabase';
 import { HubContext } from '../../../core/ui/HubContext';
@@ -334,6 +334,7 @@ function BudgetEditor({
   onSaved: () => void;
 }) {
   const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const panelTheme = usePanelTheme();
   const [category, setCategory] = useState<BudgetCategory>('total');
   const [period, setPeriod]     = useState<BudgetPeriod>('monthly');
@@ -436,7 +437,7 @@ function BudgetEditor({
                         paddingHorizontal: 12, paddingVertical: 7,
                         borderRadius: 9999,
                         borderWidth: 1,
-                        borderColor: active ? color : 'rgba(0,0,0,0.08)',
+                        borderColor: active ? color : T.hairline,
                         backgroundColor: active ? color + '12' : T.card,
                         // @ts-ignore web
                         cursor: 'pointer',
@@ -499,15 +500,18 @@ function BudgetEditor({
                   {
                     flexDirection: 'row', alignItems: 'center', gap: 5,
                     paddingHorizontal: 12, paddingVertical: 9, borderRadius: 14,
-                    borderWidth: 1, borderColor: '#FECACA', backgroundColor: '#FEF2F2', flex: 1,
+                    borderWidth: 1,
+                    borderColor: isDark ? 'rgba(217,75,75,0.30)' : '#FECACA',
+                    backgroundColor: isDark ? 'rgba(217,75,75,0.14)' : '#FEF2F2',
+                    flex: 1,
                   },
                   // @ts-ignore web
                   web({ cursor: 'pointer' }),
                 ]}
                 onPress={handleDelete}
               >
-                <Trash2 size={14} color={CHIP_TONES.danger.fg} strokeWidth={2} />
-                <Text style={{ fontSize: 13, fontWeight: '700', color: CHIP_TONES.danger.fg }}>Sil</Text>
+                <Trash2 size={14} color={isDark ? '#FCA5A5' : CHIP_TONES.danger.fg} strokeWidth={2} />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? '#FCA5A5' : CHIP_TONES.danger.fg }}>Sil</Text>
               </Pressable>
             ) : <View style={{ flex: 1 }} />}
             <Pressable

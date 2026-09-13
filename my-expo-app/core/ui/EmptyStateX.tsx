@@ -34,11 +34,11 @@ export function EmptyStateX({
 }: EmptyStateXProps) {
   const iconBg = variant === 'error' ? 'bg-red-50'
               : variant === 'success' ? 'bg-emerald-50'
-              : 'bg-slate-100';
+              : 'bg-slate-100 dark:bg-white/10';
   const iconColor = variant === 'error' ? '#DC2626'
                  : variant === 'success' ? '#059669'
                  : '#94A3B8';
-  const titleColor = variant === 'error' ? 'text-danger' : 'text-slate-900';
+  const titleColor = variant === 'error' ? 'text-danger' : 'text-slate-900 dark:text-white/90';
 
   return (
     <View className={`items-center ${compact ? 'py-8 px-4' : 'py-14 px-8'}`}>
@@ -59,7 +59,7 @@ export function EmptyStateX({
       </Text>
 
       {subtitle && (
-        <Text className="text-sm text-slate-500 text-center mt-2 max-w-xs leading-relaxed">
+        <Text className="text-sm text-slate-500 dark:text-white/55 text-center mt-2 max-w-xs leading-relaxed">
           {subtitle}
         </Text>
       )}
@@ -82,7 +82,7 @@ export function EmptyStateX({
           onPress={secondary.onPress}
           className="mt-2 px-4 py-2 active:opacity-60 web:cursor-pointer"
         >
-          <Text className="text-slate-500 text-sm underline">{secondary.label}</Text>
+          <Text className="text-slate-500 dark:text-white/55 text-sm underline">{secondary.label}</Text>
         </Pressable>
       )}
     </View>

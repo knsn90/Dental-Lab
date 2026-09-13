@@ -12,14 +12,17 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { View, Text, Pressable, ScrollView, useWindowDimensions } from 'react-native';
 import {
   LayoutDashboard, BookOpen, Clock, AlertCircle, CreditCard, ListChecks,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 
 import { DS } from '../../../core/theme/dsTokens';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { resolveClinicId } from '../api';
 import { Loader, ErrorBar, PAGE_PADDING, DISPLAY } from '../components/atoms';
 
 import { OverviewScreen } from './OverviewScreen';
 import { StatementScreen } from './StatementScreen';
+import { ClinicStatementScreen } from '../../invoices/screens/ClinicStatementScreen';
 import { OpenInvoicesScreen } from './OpenInvoicesScreen';
 import { OverdueScreen } from './OverdueScreen';
 import { OnlinePosScreen } from './OnlinePosScreen';
@@ -53,6 +56,8 @@ export function ClinicFinanceHubScreen() {
     [trOnly],
   );
   const { t } = useTranslation();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const { width } = useWindowDimensions();
   const isDesktop = width >= 900;
 
@@ -111,7 +116,7 @@ export function ClinicFinanceHubScreen() {
   const renderContent = () => {
     switch (tab) {
       case 'overview':  return <OverviewScreen clinicId={clinicId} onJump={setTab} />;
-      case 'statement': return <StatementScreen clinicId={clinicId} />;
+      case 'statement': return <ClinicStatementScreen clinicId={clinicId} selfView />;
       case 'open':      return <OpenInvoicesScreen clinicId={clinicId} />;
       case 'overdue':   return <OverdueScreen clinicId={clinicId} />;
       case 'pos':       return <OnlinePosScreen clinicId={clinicId} />;
@@ -129,7 +134,7 @@ export function ClinicFinanceHubScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 4 }}>
             <View style={{
               flexDirection: 'row', gap: 2, padding: 4,
-              backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 999,
+              backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)', borderRadius: 999,
             }}>
               {TABS.map(t_ => {
                 const active = t_.key === tab;
@@ -140,13 +145,14 @@ export function ClinicFinanceHubScreen() {
                     onPress={() => setTab(t_.key)}
                     style={({ pressed }) => ({
                       flexDirection: 'row', alignItems: 'center', gap: 6,
-                      paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999,
-                      backgroundColor: active ? DS.ink[900] : 'transparent',
+                      // Seçili pill daha geniş dursun (uygulama geneli kural).
+                      paddingHorizontal: active ? 18 : 12, paddingVertical: 8, borderRadius: 999,
+                      backgroundColor: active ? (isDark ? T.card : DS.ink[900]) : 'transparent',
                       opacity: pressed ? 0.85 : 1,
                     })}
                   >
-                    <Icon size={12} color={active ? '#FFF' : DS.ink[700]} strokeWidth={1.8} />
-                    <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? '#FFF' : DS.ink[700] }}>
+                    <Icon size={12} color={active ? (isDark ? (T.ink as string) : '#FFF') : (isDark ? (T.ink2 as string) : DS.ink[700])} strokeWidth={1.8} />
+                    <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? (isDark ? (T.ink as string) : '#FFF') : (isDark ? (T.ink2 as string) : DS.ink[700]) }}>
                       {t(t_.labelKey)}
                     </Text>
                   </Pressable>
@@ -171,19 +177,19 @@ export function ClinicFinanceHubScreen() {
                   style={({ pressed }) => ({
                     flexDirection: 'row', alignItems: 'center', gap: 10,
                     paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12,
-                    backgroundColor: active ? 'rgba(0,0,0,0.05)' : 'transparent',
+                    backgroundColor: active ? (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)') : 'transparent',
                     opacity: pressed ? 0.85 : 1,
                   })}
                 >
                   {active ? (
-                    <View style={{ width: 3, height: 16, borderRadius: 2, backgroundColor: DS.ink[900], marginStart: -6, marginEnd: 4 }} />
+                    <View style={{ width: 3, height: 16, borderRadius: 2, backgroundColor: isDark ? T.ink : DS.ink[900], marginStart: -6, marginEnd: 4 }} />
                   ) : null}
-                  <Icon size={14} color={active ? DS.ink[900] : DS.ink[500]} strokeWidth={1.8} />
+                  <Icon size={14} color={active ? (isDark ? (T.ink as string) : DS.ink[900]) : (isDark ? (T.ink3 as string) : DS.ink[500])} strokeWidth={1.8} />
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 13, fontWeight: active ? '600' : '500', color: active ? DS.ink[900] : DS.ink[700] }}>
+                    <Text style={{ fontSize: 13, fontWeight: active ? '600' : '500', color: active ? (isDark ? T.ink : DS.ink[900]) : (isDark ? (T.ink2 as string) : DS.ink[700]) }}>
                       {t(t_.labelKey)}
                     </Text>
-                    <Text style={{ fontSize: 10, color: DS.ink[400], marginTop: 1 }}>{t(t_.hintKey)}</Text>
+                    <Text style={{ fontSize: 10, color: isDark ? (T.ink3 as string) : DS.ink[400], marginTop: 1 }}>{t(t_.hintKey)}</Text>
                   </View>
                 </Pressable>
               );

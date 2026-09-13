@@ -11,11 +11,12 @@ import {
 } from 'react-native';
 import {
   ChevronLeft, ChevronRight, X, Send, Mic, Camera, Sparkles, Paperclip, Trash2,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import { DS } from '../../../core/theme/dsTokens';
 import { MFONT, useMobileTheme } from '../../../core/theme/mobileTheme';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useOrderChatInbox } from '../hooks/useOrderChatInbox';
 import { useChatMessages } from '../hooks/useChatMessages';
 import { sendMessage, uploadChatAttachment, isWithinDeleteWindow, type AttachmentType } from '../chatApi';
@@ -118,7 +119,7 @@ function InboxView({
         </View>
       ) : items.length === 0 ? (
         <View style={{ padding: 40, alignItems: 'center' }}>
-          <Text style={[styles.subtleText, { textAlign: 'center' }]}>Henüz mesaj yok.</Text>
+          <Text style={[styles.subtleText, { color: theme.textMuted, textAlign: 'center' }]}>Henüz mesaj yok.</Text>
         </View>
       ) : (
         <FlatList
@@ -207,6 +208,8 @@ function ThreadView({
   accentColor?: string;
 }) {
   const theme = useMobileTheme();
+  const T = useMobileTokens();
+  const isDark = theme.isDark;
   const rtl = isRTL();
   const { profile } = useAuthStore();
   const { messages, loading, refetch, remove } = useChatMessages(orderId, profile?.id);
@@ -294,21 +297,21 @@ function ThreadView({
   return (
     <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: threadBg }]}>
       {/* Sticky header */}
-      <View style={styles.threadHead}>
+      <View style={[styles.threadHead, { borderBottomColor: isDark ? T.hairline : 'rgba(0,0,0,0.06)' }]}>
         <Pressable onPress={onBack} hitSlop={8} style={styles.topBtn}>
           {rtl
-            ? <ChevronRight size={22} color={DS.ink[900]} strokeWidth={2} />
-            : <ChevronLeft  size={22} color={DS.ink[900]} strokeWidth={2} />}
+            ? <ChevronRight size={22} color={isDark ? T.ink : DS.ink[900]} strokeWidth={2} />
+            : <ChevronLeft  size={22} color={isDark ? T.ink : DS.ink[900]} strokeWidth={2} />}
         </Pressable>
-        <View style={[styles.threadAvatar, { backgroundColor: 'rgba(0,0,0,0.06)' }]}>
-          <Text style={[styles.threadAvatarText, { color: DS.ink[900] }]}>
+        <View style={[styles.threadAvatar, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
+          <Text style={[styles.threadAvatarText, { color: isDark ? T.ink : DS.ink[900] }]}>
             {senderName.slice(0, 2).toUpperCase()}
           </Text>
-          <View style={[styles.onlineDot, rtl ? { left: 0 } : { right: 0 }]} />
+          <View style={[styles.onlineDot, { borderColor: isDark ? T.card : '#FFF' }, rtl ? { left: 0 } : { right: 0 }]} />
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={[styles.threadName, rtl && { textAlign: 'right' as const }]} numberOfLines={1}>{senderName}</Text>
-          <Text style={[styles.threadSub,  rtl && { textAlign: 'right' as const }]} numberOfLines={1}>{sub}</Text>
+          <Text style={[styles.threadName, { color: isDark ? T.ink : DS.ink[900] }, rtl && { textAlign: 'right' as const }]} numberOfLines={1}>{senderName}</Text>
+          <Text style={[styles.threadSub,  { color: isDark ? T.ink3 : DS.ink[500] }, rtl && { textAlign: 'right' as const }]} numberOfLines={1}>{sub}</Text>
         </View>
       </View>
 
@@ -360,7 +363,7 @@ function ThreadView({
                               : { borderTopRightRadius: 22, borderBottomRightRadius: 6 }),
                           }
                         : {
-                            backgroundColor: '#FFF', borderColor: 'rgba(0,0,0,0.06)', borderWidth: 1,
+                            backgroundColor: isDark ? T.card : '#FFF', borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.06)', borderWidth: 1,
                             ...(rtl
                               ? { borderTopRightRadius: 22, borderBottomRightRadius: 6 }
                               : { borderTopLeftRadius: 22,  borderBottomLeftRadius: 6 }),
@@ -380,7 +383,7 @@ function ThreadView({
                     )}
                     {!!item.content && (
                       <Text style={{
-                        color: mine ? '#FFF' : DS.ink[900],
+                        color: mine ? '#FFF' : (isDark ? T.ink : DS.ink[900]),
                         fontFamily: MFONT.uiRegular,
                         fontSize: 14,
                         lineHeight: 20,
@@ -409,22 +412,22 @@ function ThreadView({
         )}
 
         {/* Composer */}
-        <View style={styles.composer}>
+        <View style={[styles.composer, { backgroundColor: isDark ? T.card : 'rgba(255,255,255,0.7)', borderTopColor: isDark ? T.hairline : 'rgba(0,0,0,0.06)' }]}>
           <Pressable
-            style={styles.composerCircle}
+            style={[styles.composerCircle, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}
             hitSlop={6}
             onPress={handleAttach}
             disabled={uploading}
           >
             {uploading
               ? <ActivityIndicator color={uiAccent} size="small" />
-              : <Paperclip size={18} color={DS.ink[700]} strokeWidth={1.8} />}
+              : <Paperclip size={18} color={isDark ? T.ink2 : DS.ink[700]} strokeWidth={1.8} />}
           </Pressable>
-          <View style={styles.composerInput}>
+          <View style={[styles.composerInput, { backgroundColor: isDark ? T.cardSoft : '#FFF', borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.06)' }]}>
             <TextInput
-              style={styles.composerTextInput}
+              style={[styles.composerTextInput, { color: isDark ? T.ink : DS.ink[900] }]}
               placeholder="Mesaj yaz…"
-              placeholderTextColor={DS.ink[400]}
+              placeholderTextColor={isDark ? T.ink3 : DS.ink[400]}
               value={draft}
               onChangeText={setDraft}
               multiline

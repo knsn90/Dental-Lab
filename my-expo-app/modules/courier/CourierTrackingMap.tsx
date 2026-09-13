@@ -6,10 +6,15 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Platform, Pressable, useWindowDimensions } from 'react-native';
 import { COURIER_ICON_URI } from './courierIcon';
-import { MapPin, Plus, Minus, Locate } from 'lucide-react-native';
+import { MapPin, Plus, Minus, Locate } from '../../core/ui/icons';
 import { supabase } from '../../core/api/supabase';
 import { geocodeTR } from './geocoder';
 import { useThemeModeStore } from '../../core/store/themeModeStore';
+import { useAccentTones } from '../../core/ui/HeroGlow';
+import { CourierTrackingMapGoogle } from './CourierTrackingMapGoogle';
+// Native gerçek harita — react-native-maps'i platforma özel dosyada tutuyoruz
+// (web'de bundle EDİLMEZ; rn-maps'in web desteği yok). Metro .native/.web seçer.
+import { CourierTrackingMapNative } from './CourierTrackingMapNative';
 
 // Kurye konum marker ikonu — kullanıcının assets/courier-pin.png'i 128px'e
 // küçültülüp base64 DATA URI olarak ./courierIcon'a gömüldü (require(png).uri
@@ -35,6 +40,12 @@ interface Props {
   externalPosition?: Coord | null;
   /** Çıkış adresi — koordinat yoksa geokodlanır. Teslim edilmiş gönderilerde rota buradan başlar. */
   originLabel?: string;
+  /**
+   * Haritanın ALTINDA, üzerine binen yüzen panelin kapladığı piksel yüksekliği.
+   * fitBounds bunu pay olarak ekler; yoksa rotanın alt ucu panelin arkasında kalır.
+   * Panel içeriğe göre boyutlandığı için ölçülüp buradan geçirilir.
+   */
+  bottomInset?: number;
   /**
    * Rota hesaplanınca sürüş süresi/mesafesi. `live=true` → rota KURYENİN anlık
    * konumundan başlıyor, yani gerçek tahmini varış. `live=false` → kurye konumu
@@ -242,7 +253,10 @@ function applyRouteGradient(map: any, poly: any, stops: string[]): void {
   if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(set);
 }
 
-export function CourierTrackingMap({
+// Leaflet + OSM uygulaması (fallback + native WebView). Google anahtarı yoksa
+// veya native'de bu kullanılır. Web'de anahtar varsa wrapper Google'ı seçer.
+
+function CourierTrackingMapLeaflet({
   deliveryId, origin, destination, destinationLabel,
   height = '100%', accent = '#2563EB', style, externalPosition, originLabel, onRouteInfo,
 }: Props) {
@@ -258,6 +272,8 @@ export function CourierTrackingMap({
   const originMarkerRef = useRef<any>(null);
   const tileLayerRef = useRef<any>(null);
   const isDark = useThemeModeStore(s => s.resolvedDark);
+  // Rota rengi — koyu haritada lacivert ailenin açık ucu (Google haritayla aynı).
+  const routeColor = useAccentTones(accent).ink;
   const prevPingRef = useRef<{ lat: number; lng: number } | null>(null);
   const headingRef = useRef<number>(0);
   const moveAnimRef = useRef<number | null>(null);
@@ -362,8 +378,14 @@ export function CourierTrackingMap({
     const style = document.createElement('style');
     style.id = 'tracking-map-dark-style';
     style.textContent = `
+      /* OSM tile'ları renkli gelir; eski CARTO Positron'un açık-gri sade görünümünü
+         CSS filtresiyle taklit et. Route/marker'lar tile-pane DIŞINDA olduğu için
+         renkli kalır. Dark modda invert ile koyu harita. */
+      .leaflet-tile-pane {
+        filter: saturate(0.26) brightness(1.05) contrast(0.92);
+      }
       .tracking-map-dark .leaflet-tile-pane {
-        filter: brightness(1.45) saturate(0.85) contrast(0.95);
+        filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9) saturate(0.6);
       }
     `;
     document.head.appendChild(style);
@@ -380,10 +402,10 @@ export function CourierTrackingMap({
         try { mapRef.current.removeLayer(tileLayerRef.current); } catch { /* */ }
       }
       const tileUrl = isDark
-        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-        : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+        ? 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+        : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
       tileLayerRef.current = L.tileLayer(tileUrl, {
-        subdomains: 'abcd', maxZoom: 20,
+        subdomains: 'abc', maxZoom: 20,
       }).addTo(mapRef.current);
     });
   }, [isDark]);
@@ -404,10 +426,10 @@ export function CourierTrackingMap({
         mapRef.current = L.map(containerRef.current, { zoomControl: false, attributionControl: false }).setView(center, 13);
         // Tile layer — dark mode'da dark_matter, light'ta positron (Carto)
         const tileUrl = isDark
-          ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-          : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+          ? 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+          : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
         tileLayerRef.current = L.tileLayer(tileUrl, {
-          subdomains: 'abcd', maxZoom: 20,
+          subdomains: 'abc', maxZoom: 20,
         }).addTo(mapRef.current);
         // Leaflet default zoom kapalı — React tarafında kendi butonlarımız var.
       }
@@ -531,12 +553,12 @@ export function CourierTrackingMap({
       }
       if (pts.length >= 2) {
         routeRef.current = L.polyline(pts, {
-          color: accent, weight: rc ? 7 : 5, opacity: rc ? 1 : 0.9,
+          color: routeColor, weight: rc ? 7 : 5, opacity: rc ? 1 : 0.9,
           lineCap: 'round', lineJoin: 'round',
           dashArray: rc ? undefined : '6 10',
         }).addTo(mapRef.current);
         // Gerçek rota (düz tahmin değil) → panel-renginde gradient stroke.
-        if (rc) applyRouteGradient(mapRef.current, routeRef.current, panelGradientStops(accent));
+        if (rc) applyRouteGradient(mapRef.current, routeRef.current, panelGradientStops(routeColor));
         if (!didFitRef.current) {
           try {
             mapRef.current.invalidateSize();
@@ -568,10 +590,10 @@ export function CourierTrackingMap({
       if (cancelled || !mapRef.current) return;
       if (routeRef.current) { routeRef.current.remove(); routeRef.current = null; }
       routeRef.current = L.polyline(routeCoords, {
-        color: accent, weight: 7, opacity: 1,
+        color: routeColor, weight: 7, opacity: 1,
         lineCap: 'round', lineJoin: 'round',
       }).addTo(mapRef.current);
-      applyRouteGradient(mapRef.current, routeRef.current, panelGradientStops(accent));
+      applyRouteGradient(mapRef.current, routeRef.current, panelGradientStops(routeColor));
       if (!didFitRef.current) {
         try {
           mapRef.current.invalidateSize();
@@ -615,12 +637,12 @@ export function CourierTrackingMap({
     const html = `<!DOCTYPE html><html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<style>html,body,#map{margin:0;height:100%;width:100%;background:${isDark ? '#1A1A1A' : '#E2E8F0'}}</style>
+<style>html,body,#map{margin:0;height:100%;width:100%;background:${isDark ? '#1A1A1A' : '#E2E8F0'}}.leaflet-tile-pane{filter:${isDark ? 'invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9) saturate(0.6)' : 'saturate(0.26) brightness(1.05) contrast(0.92)'}}</style>
 </head><body><div id="map"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 var map=L.map('map',{zoomControl:false,attributionControl:false}).setView([39.0,35.2],6);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/${isDark ? 'dark_all' : 'light_all'}/{z}/{x}/{y}{r}.png',{maxZoom:20,subdomains:'abcd'}).addTo(map);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,subdomains:'abc'}).addTo(map);
 var cM=null,dM=null,oM=null,rL=null,fit=false;
 function ic(c){return L.divIcon({className:'',html:'<div style="width:18px;height:18px;border-radius:50%;background:'+c+';border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.45)"></div>',iconSize:[18,18],iconAnchor:[9,9]});}
 window.__updateMap=function(d){
@@ -729,4 +751,56 @@ window.__updateMap=function(d){
       )}
     </View>
   );
+}
+
+// ─── Yönlendirici ─────────────────────────────────────────────────────────────
+// Web'de aktif "maps" sağlayıcısının (get_active_provider) Google anahtarı varsa
+// GERÇEK Google Maps'i, yoksa Leaflet/OSM fallback'ini kullanır. Native her zaman
+// Leaflet WebView (Google JS SDK web-only). Anahtar sipariş detayıyla aynı kaynak.
+export function CourierTrackingMap(props: Props) {
+  // undefined = henüz kontrol ediliyor, null = anahtar yok, string = anahtar
+  const [mapsKey, setMapsKey] = useState<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') { setMapsKey(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        // ÖNCE dar RPC: get_active_provider lab_id = get_my_lab_id() ile süzüyor,
+        // klinik/hekim profilinde lab_id NULL olduğu için anahtar bulunamıyor ve
+        // harita Leaflet'e düşüyordu. get_maps_browser_key klinik için bağlı
+        // labların anahtarını da çözer (yalnız maps türü; courier/messaging AÇILMAZ).
+        const { data: k, error: kErr } = await supabase.rpc('get_maps_browser_key');
+        if (!kErr && typeof k === 'string' && k.length > 20) {
+          if (!cancelled) setMapsKey(k);
+          return;
+        }
+        // Geri dönüş: RPC henüz yayınlanmadıysa eski yol (lab/admin'de çalışır).
+        const { data } = await supabase.rpc('get_active_provider', { p_type: 'maps' });
+        const m: any = Array.isArray(data) ? data[0] : data;
+        const key = (m?.provider === 'google-maps' && m?.credentials?.api_key) ? String(m.credentials.api_key) : null;
+        if (!cancelled) setMapsKey(key);
+      } catch { if (!cancelled) setMapsKey(null); }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Web'de anahtar çözülene kadar boş gri zemin (yanlış motoru mount edip
+  // hemen değiştirmemek için) — çözüm hızlı, göz kırpması olmaz.
+  if (Platform.OS === 'web' && mapsKey === undefined) {
+    const isDark = (useThemeModeStore.getState?.() as any)?.resolvedDark;
+    return (
+      <View style={[{ height: props.height ?? '100%', borderRadius: 16, overflow: 'hidden', backgroundColor: isDark ? '#1f2226' : '#f6f6f4' }, props.style]} />
+    );
+  }
+
+  if (Platform.OS === 'web' && mapsKey) {
+    return <CourierTrackingMapGoogle {...props} apiKey={mapsKey} />;
+  }
+  // Native (iOS/Android) → gerçek native harita (react-native-maps). Web anahtarsız
+  // → Leaflet fallback korunur. (Leaflet native bileşeni geri dönüş için dosyada kalır.)
+  if (Platform.OS !== 'web') {
+    return <CourierTrackingMapNative {...props} />;
+  }
+  return <CourierTrackingMapLeaflet {...props} />;
 }

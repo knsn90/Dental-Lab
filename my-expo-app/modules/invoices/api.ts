@@ -30,7 +30,7 @@ const INVOICE_DETAIL_SELECT = `
   doctor:doctors!invoices_doctor_id_fkey(id, full_name, phone, clinic_id),
   clinic:clinics!invoices_clinic_id_fkey(id, name, address, phone, email),
   work_order:work_orders!invoices_work_order_id_fkey(id, order_number, patient_name, delivery_date),
-  items:invoice_items(*),
+  items:invoice_items(id, invoice_id, order_item_id, description, quantity, unit_price, total, discount_type, discount_value, net_total, sort_order, created_at),
   payments:payments(*, receiver:profiles!payments_received_by_fkey(id, full_name)),
   linked_orders:invoice_orders(
     invoice_id,
@@ -67,14 +67,35 @@ export async function fetchInvoices(filters: InvoiceListFilters = {}) {
   return q.returns<Invoice[]>();
 }
 
-export async function fetchInvoiceById(id: string) {
-  return supabase
+/** URL/param UUID mi yoksa insan-okur fatura numarası mı (FTR-2026-00035). */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Fatura detayı — parametre UUID ise id, değilse invoice_number ile getirir.
+ * Böylece URL'de okunur fatura no (siman.app/invoice/FTR-2026-00035) kullanılabilir;
+ * eski UUID linkleri, QR ve bildirim deep-link'leri GERİYE DÖNÜK çalışmaya devam eder.
+ * Numara aramasında RLS zaten kullanıcının lab'ına filtreler → kendi faturasını getirir;
+ * lablar arası aynı numara olasılığına karşı limit(1) + maybeSingle güvenli tutar.
+ */
+export async function fetchInvoiceById(idOrNumber: string) {
+  const key = String(idOrNumber ?? '').trim();
+  const base = supabase
     .from('invoices')
     .select(INVOICE_DETAIL_SELECT)
-    .eq('id', id)
     .order('sort_order', { ascending: true, referencedTable: 'invoice_items' })
-    .order('payment_date', { ascending: false, referencedTable: 'payments' })
-    .single()
+    .order('payment_date', { ascending: false, referencedTable: 'payments' });
+
+  if (UUID_RE.test(key)) {
+    return base
+      .eq('id', key)
+      .single()
+      .then(r => r as unknown as { data: Invoice | null; error: any });
+  }
+  return base
+    .eq('invoice_number', key)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
     .then(r => r as unknown as { data: Invoice | null; error: any });
 }
 
@@ -269,12 +290,20 @@ export async function updateInvoice(
     .single();
 }
 
+// RLS bir yazmayı engellerse PostgREST HATA DÖNMEZ, 0 satır etkiler → istemci
+// başarı sanıp "çalışmıyor" hissi veriyordu. Etkilenen satırı geri iste, yoksa hata say.
 export async function setInvoiceStatus(id: string, status: InvoiceStatus) {
-  return supabase.from('invoices').update({ status }).eq('id', id);
+  const { data, error } = await supabase.from('invoices').update({ status }).eq('id', id).select('id');
+  if (error) return { error };
+  if (!data?.length) return { error: new Error('Fatura güncellenemedi (yetki yok ya da kayıt bulunamadı).') };
+  return { error: null };
 }
 
 export async function deleteInvoice(id: string) {
-  return supabase.from('invoices').delete().eq('id', id);
+  const { data, error } = await supabase.from('invoices').delete().eq('id', id).select('id');
+  if (error) return { error };
+  if (!data?.length) return { error: new Error('Fatura silinemedi (yetki yok ya da kayıt bulunamadı).') };
+  return { error: null };
 }
 
 // ─── Invoice items ─────────────────────────────────────────────────────────
@@ -296,7 +325,7 @@ export async function addInvoiceItem(invoiceId: string, item: InvoiceItemInput) 
 
 export async function updateInvoiceItem(
   id: string,
-  patch: Partial<Pick<InvoiceItem, 'description' | 'quantity' | 'unit_price' | 'sort_order'>>,
+  patch: Partial<Pick<InvoiceItem, 'description' | 'quantity' | 'unit_price' | 'sort_order' | 'discount_type' | 'discount_value'>>,
 ) {
   return supabase.from('invoice_items').update(patch).eq('id', id).select().single();
 }

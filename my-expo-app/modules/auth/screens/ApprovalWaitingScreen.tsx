@@ -6,7 +6,7 @@ import React, { useRef, useEffect } from 'react';
 import { View, Text, Pressable, Platform, Animated, Easing } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../../core/api/supabase';
-import { CheckCircle, Clock, ArrowRight, Shield, Mail } from 'lucide-react-native';
+import { CheckCircle, Clock, ArrowRight, Shield, Mail } from '../../../core/ui/icons';
 import { AuthShell, AuthButton, AUTH, AUTH_FONT } from '../components/AuthShell';
 
 function PulsingClock() {

@@ -8,7 +8,7 @@ import {
   Platform, useWindowDimensions,
 } from 'react-native';
 
-import { Users } from 'lucide-react-native';
+import { Users } from '../../../core/ui/icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../../core/api/supabase';
 import { useAuthStore } from '../../../core/store/authStore';

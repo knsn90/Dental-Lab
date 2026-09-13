@@ -15,8 +15,9 @@ import {
   AccessibilityInfo, ScrollView,
 } from 'react-native';
 import { useRouter, useSegments } from 'expo-router';
-import { X, ReceiptText, Phone } from 'lucide-react-native';
+import { X, ReceiptText, Phone } from '../ui/icons';
 import { DS } from '../theme/dsTokens';
+import { useInkUI } from '../theme/inkScale';
 import { autoT } from '../i18n/autoTranslate';
 import { formatMoney, type Currency } from '../money/currency';
 
@@ -56,10 +57,15 @@ function useReducedMotion(): boolean {
 // Uyarı tonu panel accent'i DEĞİL, ortak status rengidir (DS.*.warning) — bu popup
 // klinik ve hekim panellerinin ikisinde de aynı görünmeli. AMBER_TEXT, küçük
 // UPPERCASE etiket açık zeminde okunaklı olsun diye warning'in koyulaştırılmış hâli.
-const AMBER      = DS.clinic.warning;   // #E89B2A — ikon
+const AMBER      = DS.clinic.warning;   // #E89B2A — ikon (iki temada da aynı)
+// Amber yüzey/metin koyu temada TERS çalışır: krem zemin beyaz leke yapar,
+// koyu kahve metin okunmaz. İki set tutulur, bileşende isDark'a göre seçilir.
 const AMBER_TEXT = '#9A6212';           // etiket metni (kontrast)
 const AMBER_SOFT = '#FFFBEB';
 const AMBER_LINE = '#FDE68A';
+const AMBER_TEXT_D = '#F0C078';
+const AMBER_SOFT_D = 'rgba(232,155,42,0.12)';
+const AMBER_LINE_D = 'rgba(232,155,42,0.32)';
 
 const AYLAR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
 
@@ -102,6 +108,10 @@ export function PaymentReminderModal({
   /** Lab'ın iletişim satırı (telefon/e-posta). Yoksa genel metin gösterilir. */
   contactHint?: string | null;
 }) {
+  const U = useInkUI();
+  const amberText = U.isDark ? AMBER_TEXT_D : AMBER_TEXT;
+  const amberSoft = U.isDark ? AMBER_SOFT_D : AMBER_SOFT;
+  const amberLine = U.isDark ? AMBER_LINE_D : AMBER_LINE;
   const reduced = useReducedMotion();
   const anim = useRef(new Animated.Value(0)).current;
   const router = useRouter();
@@ -146,7 +156,7 @@ export function PaymentReminderModal({
       <Animated.View
         style={{
           flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20,
-          backgroundColor: 'rgba(10,10,10,0.42)',
+          backgroundColor: U.isDark ? 'rgba(0,0,0,0.62)' : 'rgba(10,10,10,0.42)',
           opacity: anim,
           ...(Platform.OS === 'web' ? { backdropFilter: 'blur(6px)' } as any : {}),
         }}
@@ -161,7 +171,8 @@ export function PaymentReminderModal({
         <Animated.View
           style={[
             {
-              width: '100%', maxWidth: 460, backgroundColor: '#FFFFFF', borderRadius: 22,
+              width: '100%', maxWidth: 460, backgroundColor: U.surface, borderRadius: 22,
+              ...(U.isDark ? { borderWidth: 1, borderColor: U.hairline } : {}),
               overflow: 'hidden',
               ...(Platform.OS === 'web'
                 ? { boxShadow: '0 28px 70px rgba(15,23,42,0.28)' } as any
@@ -174,7 +185,7 @@ export function PaymentReminderModal({
           <View style={{ paddingTop: 22, paddingHorizontal: 22, paddingBottom: 16, flexDirection: 'row', gap: 14 }}>
             <View style={{
               width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
-              backgroundColor: AMBER_SOFT, borderWidth: 1, borderColor: AMBER_LINE,
+              backgroundColor: amberSoft, borderWidth: 1, borderColor: amberLine,
             }}>
               {/* Takvim 'randevu' çağrıştırıyordu; konu fatura → makbuz ikonu. */}
               <ReceiptText size={21} color={AMBER} strokeWidth={2} />
@@ -182,15 +193,15 @@ export function PaymentReminderModal({
             <View style={{ flex: 1, paddingTop: 1 }}>
               {/* Başlık çerçeveyi kurar (insani), alt satır olguyu söyler.
                   "Ödeme hatırlatması" bir sistem bildirimi gibi okunuyordu. */}
-              <Text style={{ fontSize: 17, fontWeight: '700', color: DS.ink[900], letterSpacing: -0.35, lineHeight: 23 }}>
+              <Text style={{ fontSize: 17, fontWeight: '700', color: U.ink[900], letterSpacing: -0.35, lineHeight: 23 }}>
                 Bakiyeniz hakkında kısa bir hatırlatma
               </Text>
-              <Text style={{ fontSize: 13, lineHeight: 19, color: DS.ink[500], marginTop: 4 }}>
+              <Text style={{ fontSize: 13, lineHeight: 19, color: U.ink[500], marginTop: 4 }}>
                 {labName ? `${labName} ${autoT('hesabınızda')} ` : 'Hesabınızda '}vadesi geçmiş bir tutar görünüyor.
               </Text>
             </View>
             <PressScale onPress={onClose} style={{ padding: 6, borderRadius: 999 }}>
-              <X size={18} color={DS.ink[400]} strokeWidth={2.2} />
+              <X size={18} color={U.ink[400]} strokeWidth={2.2} />
             </PressScale>
           </View>
 
@@ -199,40 +210,40 @@ export function PaymentReminderModal({
             {rows.map((r) => (
               <View
                 key={`${r.lab_id ?? 'x'}-${r.currency}`}
-                style={{ borderRadius: 14, borderWidth: 1, borderColor: AMBER_LINE, backgroundColor: AMBER_SOFT, padding: 14 }}
+                style={{ borderRadius: 14, borderWidth: 1, borderColor: amberLine, backgroundColor: amberSoft, padding: 14 }}
               >
                 {/* HİYERARŞİ: rakam ÖNCE, etiket sonra. Etiket üstteyken göz önce
                     "Vadesi geçen"i okuyup sonra sayıya iniyordu; asıl bilgi sayı.
                     İki tutar yan yana ve yakın boyuttayken hangisinin önemli olduğu
                     belirsizdi — artık geciken tutar tek başına üstte ve iki katı
                     büyüklükte, toplam bakiye ince çizginin altında bağlam olarak durur. */}
-                <Text style={{ fontSize: 32, fontWeight: '700', color: DS.ink[900], letterSpacing: -1.1, lineHeight: 37 }}>
+                <Text style={{ fontSize: 32, fontWeight: '700', color: U.ink[900], letterSpacing: -1.1, lineHeight: 37 }}>
                   {formatMoney(Number(r.overdue_amount) || 0, (r.currency as Currency) ?? 'TRY')}
                 </Text>
-                <Text style={{ fontSize: 10.5, fontWeight: '700', color: AMBER_TEXT, letterSpacing: 0.6, textTransform: 'uppercase', marginTop: 3 }}>
+                <Text style={{ fontSize: 10.5, fontWeight: '700', color: amberText, letterSpacing: 0.6, textTransform: 'uppercase', marginTop: 3 }}>
                   Vadesi geçen
                 </Text>
                 {/* Bağlam olmadan rakam yalnız kaygı üretir. Bu bilgi eskiden
                     butonun ALTINDA duruyordu ve kayboluyordu — tutarla aynı karta
                     alındı, iki kısa satır hâlinde. */}
                 <View style={{ marginTop: 9, gap: 2 }}>
-                  <Text style={{ fontSize: 12, color: DS.ink[700], fontWeight: '600' }}>
+                  <Text style={{ fontSize: 12, color: U.ink[700], fontWeight: '600' }}>
                     {r.overdue_count} fatura
                   </Text>
                   {!!r.oldest_due_date && (
-                    <Text style={{ fontSize: 12, color: DS.ink[500] }}>
+                    <Text style={{ fontSize: 12, color: U.ink[500] }}>
                       En eski: {trDate(r.oldest_due_date)}
                       {r.days_late > 0 ? ` · ${r.days_late} gün geçti` : ''}
                     </Text>
                   )}
                 </View>
 
-                <View style={{ height: 1, backgroundColor: AMBER_LINE, marginTop: 12, marginBottom: 10 }} />
+                <View style={{ height: 1, backgroundColor: amberLine, marginTop: 12, marginBottom: 10 }} />
 
-                <Text style={{ fontSize: 17, fontWeight: '600', color: DS.ink[700], letterSpacing: -0.3 }}>
+                <Text style={{ fontSize: 17, fontWeight: '600', color: U.ink[700], letterSpacing: -0.3 }}>
                   {formatMoney(Number(r.total_balance) || 0, (r.currency as Currency) ?? 'TRY')}
                 </Text>
-                <Text style={{ fontSize: 10.5, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.6, textTransform: 'uppercase', marginTop: 2 }}>
+                <Text style={{ fontSize: 10.5, fontWeight: '700', color: U.ink[400], letterSpacing: 0.6, textTransform: 'uppercase', marginTop: 2 }}>
                   Toplam bakiye
                 </Text>
               </View>
@@ -242,11 +253,11 @@ export function PaymentReminderModal({
           {/* Kapanış mesajı — çözüm yolu gösterir, suçlamaz. */}
           <View style={{ paddingHorizontal: 22, paddingTop: 16 }}>
             <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
-              <Phone size={15} color={DS.ink[400]} strokeWidth={2} style={{ marginTop: 2 }} />
+              <Phone size={15} color={U.ink[400]} strokeWidth={2} style={{ marginTop: 2 }} />
               {/* Uzun paragraf okunmuyordu. İki cümle: biri yanlış alarmı kapatır,
                   biri çıkış yolunu gösterir. Vade planı/tercih detayı buradan çıktı —
                   onu konuşacak kişi zaten yetkiliyle konuşuyor. */}
-              <Text style={{ flex: 1, fontSize: 12.5, lineHeight: 19, color: DS.ink[500] }}>
+              <Text style={{ flex: 1, fontSize: 12.5, lineHeight: 19, color: U.ink[500] }}>
                 Ödemenizi yaptıysanız bu uyarıyı dikkate almayabilirsiniz; kayıtlar kısa süre içinde
                 güncellenir. Ödeme tercihleriniz için laboratuvar yetkilimizle görüşebilirsiniz
                 {contactHint ? `: ${contactHint}` : '.'}
@@ -263,10 +274,10 @@ export function PaymentReminderModal({
               containerStyle={{ flex: 1 }}
               style={{
                 borderRadius: 999, paddingVertical: 13, alignItems: 'center',
-                borderWidth: 1, borderColor: DS.ink[200], backgroundColor: '#FFFFFF',
+                borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg,
               }}
             >
-              <Text style={{ color: DS.ink[700], fontSize: 14, fontWeight: '600', letterSpacing: -0.1 }}>
+              <Text style={{ color: U.ink[700], fontSize: 14, fontWeight: '600', letterSpacing: -0.1 }}>
                 Kapat
               </Text>
             </PressScale>
@@ -275,10 +286,10 @@ export function PaymentReminderModal({
               containerStyle={{ flex: 1.4 }}
               style={{
                 borderRadius: 999, paddingVertical: 13, alignItems: 'center',
-                backgroundColor: DS.ink[900],
+                backgroundColor: U.ink[900],
               }}
             >
-              <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '600', letterSpacing: -0.1 }}>
+              <Text style={{ color: U.onDarkPill, fontSize: 14, fontWeight: '600', letterSpacing: -0.1 }}>
                 Faturaları gör
               </Text>
             </PressScale>

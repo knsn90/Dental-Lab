@@ -15,10 +15,9 @@ import {
   Package as Package2, Building2 as Building22, Truck as Truck2,
   CheckCircle2 as CheckCircle22, Users as Users2, Settings as Settings2,
   TrendingUp as TrendingUp2, FileText as FileText2,  ScanFace,
-} from 'lucide-react-native';
+} from '../../core/ui/icons';
 
 import { TopActionBar } from '../../core/ui/mobile/TopActionBar';
-import { PaymentReminderPreview } from '../../core/finance/PaymentReminderPreview';
 import { bootMark } from '../../core/debug/bootTrace';
 import { PanelTopHeader } from '../../core/ui/mobile/PanelTopHeader';
 import { PatternsShell, useIsDesktop } from '../../core/layout/PatternsShell';
@@ -206,11 +205,13 @@ export default function AdminLayout() {
   const PILL_TABS: PillTabItem[] = [
     { routeName: 'index',     label: t('nav.items.summary'),     icon: Home },
     { routeName: 'orders',    label: t('nav.items.cases'), icon: ClipboardList },
-    { routeName: 'approvals', label: t('nav.items.approvals'), icon: CheckCircle22, badgeCount: pendingCount > 0 ? pendingCount : undefined },
+    // Yüz Tara navbar'a girince 6 hücre pill'e sığmıyor (••• dışarı taşıyordu) →
+    // o cihazlarda Onaylar Devam menüsüne geçer, rozeti •••'ye taşınır.
+    ...(!faceScanOk ? [{ routeName: 'approvals', label: t('nav.items.approvals'), icon: CheckCircle22, badgeCount: pendingCount > 0 ? pendingCount : undefined }] : []),
     { routeName: 'messages',  label: t('nav.items.messages'),   icon: MessageCircle, onPress: () => setMessagesOpen(true), badgeCount: chatUnread },
     // Yalnız TrueDepth'li iPhone'da görünür
     ...(faceScanOk ? [{ routeName: 'face-scan', label: 'Yüz Tara', icon: ScanFace, onPress: () => setFaceScanOpen(true) }] : []),
-    { routeName: 'more',      label: t('nav.items.more'),    icon: MoreHorizontal, onPress: () => setMoreOpen(true) },
+    { routeName: 'more',      label: t('nav.items.more'),    icon: MoreHorizontal, onPress: () => setMoreOpen(true), badgeCount: faceScanOk && pendingCount > 0 ? pendingCount : undefined },
   ];
   const FAB_ITEM: PillTabItem = {
     routeName: 'new',
@@ -222,6 +223,7 @@ export default function AdminLayout() {
 
   // "Daha" bottom-sheet — Onaylar pill'de
   const MORE_ITEMS: import('../../core/ui/mobile/MoreMenuSheet').MoreItem[] = [
+    ...(faceScanOk ? [{ key: 'approvals', label: t('nav.items.approvals'), icon: CheckCircle22 as any, badge: pendingCount > 0 ? pendingCount : undefined, onPress: () => router.push('/(admin)/approvals' as any) }] : []),
     { key: 'clinics',  label: t('nav.items.clinics'), sub: t('admin.more.clinics.sub'),               icon: Building22,onPress: () => router.push('/(admin)/clinics' as any) },
     { key: 'courier',  label: t('nav.items.courier'),      sub: t('admin.more.courier.sub'),                 icon: Truck2,    onPress: () => router.push('/(admin)/courier-tracking' as any) },
     { key: 'finance',  label: t('nav.items.finance'),           sub: t('admin.more.finance.sub'),    icon: Landmark2, onPress: () => router.push('/(admin)/finance' as any) },
@@ -359,10 +361,6 @@ export default function AdminLayout() {
       {/* Sağ üst kalıcı aksiyon butonları (mobile only) — QR · Bell · Profile */}
       {!hideTopActionBar && <TopActionBar routePrefix="/(admin)" accentColor={accentColor} />}
       {!hideTopActionBar && <PanelTopHeader />}
-
-      {/* Ödeme hatırlatma popup'ı ÖNİZLEMESİ — yalnız geliştirmede.
-          Canlıda admin bu popup'ı görmez; o klinik/hekim panelinde çıkar. */}
-      {__DEV__ && <PaymentReminderPreview />}
 
       {/* Command Palette — mobile search FAB üzerinden de erişilebilir */}
       <React.Suspense fallback={null}>

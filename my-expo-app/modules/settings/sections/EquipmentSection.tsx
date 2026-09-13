@@ -14,7 +14,7 @@ import {
   Monitor, Cog, AlertTriangle, CheckCircle, MapPin,
   Flame, Hammer, Drill, Sparkles, Wind, Microwave, Crosshair,
   SlidersHorizontal, QrCode, Printer, Minus,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   IntraoralScannerIcon, Printer3DIcon,
@@ -250,8 +250,8 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
   // Input style helper
   const inputStyle: any = {
     height: 44, borderRadius: 14, paddingHorizontal: 14,
-    backgroundColor: DS.ink[50], fontSize: 14, color: DS.ink[900],
-    borderWidth: 1, borderColor: DS.ink[200],
+    backgroundColor: isDark ? T.cardSoft : DS.ink[50], fontSize: 14, color: isDark ? T.ink : DS.ink[900],
+    borderWidth: 1, borderColor: isDark ? T.hairline : DS.ink[200],
     ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
   };
 
@@ -406,8 +406,8 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
               <Pressable onPress={() => setFilterCat(null)} style={{ paddingHorizontal: 10, paddingVertical: 6 }}>
                 <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[500] }}>Temizle</Text>
               </Pressable>
-              <Pressable onPress={() => setFilterOpen(false)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', marginStart: 4 }}>
-                <X size={16} color={DS.ink[700]} strokeWidth={2} />
+              <Pressable onPress={() => setFilterOpen(false)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : DS.ink[100], alignItems: 'center', justifyContent: 'center', marginStart: 4 }}>
+                <X size={16} color={isDark ? T.ink2 : DS.ink[700]} strokeWidth={2} />
               </Pressable>
             </View>
             <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 12, gap: 18 }}>
@@ -724,8 +724,8 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
                   Atanan Teknisyen
                 </Text>
                 <View style={{
-                  borderRadius: 14, borderWidth: 1, borderColor: DS.ink[200],
-                  backgroundColor: DS.ink[50], overflow: 'hidden',
+                  borderRadius: 14, borderWidth: 1, borderColor: isDark ? T.hairline : DS.ink[200],
+                  backgroundColor: isDark ? T.cardSoft : DS.ink[50], overflow: 'hidden',
                 }}>
                   {/* None option */}
                   <Pressable
@@ -790,9 +790,9 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
                 {stations.length === 0 ? (
                   <View style={{
                     paddingHorizontal: 14, paddingVertical: 14, borderRadius: 14,
-                    backgroundColor: DS.ink[50], borderWidth: 1, borderColor: DS.ink[200],
+                    backgroundColor: isDark ? T.cardSoft : DS.ink[50], borderWidth: 1, borderColor: isDark ? T.hairline : DS.ink[200],
                   }}>
-                    <Text style={{ fontSize: 12, color: DS.ink[400], lineHeight: 17 }}>
+                    <Text style={{ fontSize: 12, color: isDark ? T.ink3 : DS.ink[400], lineHeight: 17 }}>
                       Henüz istasyon tanımlanmamış. Ayarlar → İstasyonlar bölümünden ekleyebilirsiniz.
                     </Text>
                   </View>

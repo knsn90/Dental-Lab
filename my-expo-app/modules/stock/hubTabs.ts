@@ -16,7 +16,7 @@ import {
   Grid3x3, Package, ArrowLeftRight, ShoppingCart, BarChart3,
   MapPin, Layers, TrendingUp, Inbox, Settings,
   Zap, CheckCircle, ScanSearch, Sliders, Coins, List,
-} from 'lucide-react-native';
+} from '../../core/ui/icons';
 
 export type TabKey =
   | 'dashboard' | 'list' | 'movements' | 'orders' | 'analytics'

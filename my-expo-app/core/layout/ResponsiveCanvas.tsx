@@ -28,6 +28,7 @@
 import React, { useContext } from 'react';
 import { View, ScrollView, ScrollViewProps, ViewProps } from 'react-native';
 import { HubContext } from '../ui/HubContext';
+import { mergeNavScroll } from '../ui/mobile/navScroll';
 
 type Size = 'sm' | 'md' | 'lg' | 'xl';
 
@@ -55,7 +56,7 @@ export function ResponsiveCanvas({
   scroll = true,
   children,
   scrollProps,
-  bgClassName = 'bg-page',
+  bgClassName = 'bg-page dark:bg-[#0E0E0E]',
   padClassName,
   className,
   ...rest
@@ -84,6 +85,9 @@ export function ResponsiveCanvas({
       contentContainerStyle={{ flexGrow: 1 }}
       showsVerticalScrollIndicator={false}
       {...scrollProps}
+      // Floating navbar scroll farkındalığı — ekranın kendi onScroll'u varsa
+      // EZİLMEZ, ikisi de çağrılır (bkz. core/ui/mobile/navScroll.ts).
+      {...mergeNavScroll(scrollProps?.onScroll as any)}
     >
       {content}
     </ScrollView>

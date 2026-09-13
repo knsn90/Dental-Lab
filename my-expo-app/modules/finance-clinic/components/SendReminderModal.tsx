@@ -10,11 +10,17 @@ import React, { useEffect, useState } from 'react';
 import {
   View, Text, Modal, Pressable, TextInput, Platform, ActivityIndicator, ScrollView,
 } from 'react-native';
-import { X, Bell, AlertTriangle, CheckCircle2, Info, AlertCircle, Send } from 'lucide-react-native';
+import { X, Bell, AlertTriangle, CheckCircle2, Info, AlertCircle, Send } from '../../../core/ui/icons';
+import { useTranslation } from 'react-i18next';
 
 import { DS } from '../../../core/theme/dsTokens';
-import { sendPaymentReminder, fetchLastReminder, type ReminderSeverity, type LastReminderRow } from '../api';
-import { DISPLAY, TRY, fmtDate, PillButton } from './atoms';
+import { autoT } from '../../../core/i18n/autoTranslate';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { sendPaymentReminder, generateReminderMessage, fetchLastReminder, type ReminderSeverity, type ReminderTone, type LastReminderRow } from '../api';
+import { DISPLAY, fmtDate, PillButton } from './atoms';
+import { ColorOrb } from '../../denty/components/ColorOrb';
+import { formatMoney, CURRENCY_META, type Currency } from '../../../core/money/currency';
 
 type Props = {
   visible: boolean;
@@ -23,6 +29,8 @@ type Props = {
   /** Snapshot — sadece görsel; gerçek değerler RPC'de hesaplanır */
   totalDue?: number;
   overdueCount?: number;
+  /** Kliniğin bakiye para birimi — snapshot ve Simanty için (varsayılan TRY). */
+  currency?: string;
   invoiceId?: string | null;
   invoiceNo?: string | null;
   onClose: () => void;
@@ -36,21 +44,51 @@ const SEVERITY_OPTS: { key: ReminderSeverity; label: string; desc: string; icon:
 ];
 
 export function SendReminderModal({
-  visible, clinicId, clinicName, totalDue, overdueCount, invoiceId, invoiceNo, onClose, onSent,
+  visible, clinicId, clinicName, totalDue, overdueCount, currency, invoiceId, invoiceNo, onClose, onSent,
 }: Props) {
+  const { i18n } = useTranslation();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const money = (v: number) => formatMoney(Number(v) || 0, ((currency || 'TRY') as Currency), { fractionDigits: 2 });
   const [severity, setSeverity] = useState<ReminderSeverity>('warning');
   const [message,  setMessage]  = useState('');
   const [sending,  setSending]  = useState(false);
   const [error,    setError]    = useState<string | null>(null);
   const [success,  setSuccess]  = useState<{ recipients?: number } | null>(null);
   const [last,     setLast]     = useState<LastReminderRow | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiOpen,    setAiOpen]    = useState(false);
+  const [aiTone,    setAiTone]    = useState<ReminderTone>('standard');
 
   useEffect(() => {
     if (!visible) return;
-    setSeverity(overdueCount && overdueCount > 0 ? 'urgent' : 'warning');
-    setMessage(''); setError(null); setSuccess(null);
+    const sev: ReminderSeverity = overdueCount && overdueCount > 0 ? 'urgent' : 'warning';
+    setSeverity(sev);
+    setAiTone(sev === 'urgent' ? 'firm' : 'standard');
+    setMessage(''); setError(null); setSuccess(null); setAiLoading(false); setAiOpen(false);
     fetchLastReminder(clinicId).then(setLast).catch(() => {});
   }, [visible, clinicId, overdueCount]);
+
+  // Simanty: seçilen tonda kısa mesaj üret ve mesaj alanını doldur.
+  const runSimanty = async (tone: ReminderTone) => {
+    setAiTone(tone);
+    setAiOpen(false);            // ton seçildi → çip menüsü kapansın
+    setAiLoading(true); setError(null);
+    try {
+      const text = await generateReminderMessage({
+        clinicName, overdueCount, tone, lang: i18n.language,
+      });
+      setMessage(text);
+    } catch (e: any) {
+      setError(String(e?.message ?? e));
+    } finally { setAiLoading(false); }
+  };
+
+  const AI_TONES: { key: ReminderTone; label: string }[] = [
+    { key: 'gentle',   label: 'Nazik' },
+    { key: 'standard', label: 'Standart' },
+    { key: 'firm',     label: 'Sert' },
+  ];
 
   const handleSend = async () => {
     setSending(true); setError(null);
@@ -85,34 +123,35 @@ export function SendReminderModal({
           onPress={(e) => e.stopPropagation()}
           style={{
             width: '100%', maxWidth: 520, maxHeight: '92%',
-            backgroundColor: '#FFF', borderRadius: 22, overflow: 'hidden',
+            backgroundColor: isDark ? T.card : '#FFF', borderRadius: 22, overflow: 'hidden',
+            ...(isDark ? { borderWidth: 1, borderColor: T.hairline } : null),
             ...(Platform.OS === 'web' ? { boxShadow: '0 24px 60px rgba(0,0,0,0.30)' } as any : { elevation: 24 }),
           }}
         >
           {/* Header */}
           <View style={{
             paddingHorizontal: 22, paddingTop: 20, paddingBottom: 16,
-            borderBottomWidth: 1, borderBottomColor: DS.ink[100],
+            borderBottomWidth: 1, borderBottomColor: isDark ? T.hairline : DS.ink[100],
             flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12,
           }}>
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Bell size={11} color={DS.ink[500]} />
-                <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[500] }}>
+                <Bell size={11} color={isDark ? (T.ink3 as string) : DS.ink[500]} />
+                <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: isDark ? (T.ink3 as string) : DS.ink[500] }}>
                   Ödeme Hatırlatması
                 </Text>
               </View>
-              <Text style={{ ...DISPLAY, fontSize: 22, color: DS.ink[900], letterSpacing: -0.5, marginTop: 4 }} numberOfLines={1}>
+              <Text style={{ ...DISPLAY, fontSize: 22, color: isDark ? T.ink : DS.ink[900], letterSpacing: -0.5, marginTop: 4 }} numberOfLines={1}>
                 {clinicName}
               </Text>
-              <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 4 }}>
+              <Text style={{ fontSize: 12, color: isDark ? (T.ink3 as string) : DS.ink[500], marginTop: 4 }}>
                 {invoiceNo
                   ? `Fatura ${invoiceNo} için bildirim`
                   : 'Tüm açık fatura ve bakiyeler için bildirim'}
               </Text>
             </View>
             <Pressable onPress={onClose} hitSlop={8} style={{ padding: 4 }}>
-              <X size={20} color={DS.ink[500]} />
+              <X size={20} color={isDark ? (T.ink3 as string) : DS.ink[500]} />
             </Pressable>
           </View>
 
@@ -128,10 +167,10 @@ export function SendReminderModal({
                 borderWidth: 1, borderColor: 'rgba(45,154,107,0.25)',
               }}>
                 <CheckCircle2 size={36} color="#1F6B47" />
-                <Text style={{ ...DISPLAY, fontSize: 20, color: DS.ink[900], letterSpacing: -0.3 }}>
+                <Text style={{ ...DISPLAY, fontSize: 20, color: isDark ? T.ink : DS.ink[900], letterSpacing: -0.3 }}>
                   Hatırlatma gönderildi
                 </Text>
-                <Text style={{ fontSize: 12, color: DS.ink[500], textAlign: 'center', maxWidth: 320 }}>
+                <Text style={{ fontSize: 12, color: isDark ? (T.ink3 as string) : DS.ink[500], textAlign: 'center', maxWidth: 320 }}>
                   Klinik kullanıcıları bildirim aldı.
                 </Text>
               </View>
@@ -150,7 +189,7 @@ export function SendReminderModal({
                         Açık Borç
                       </Text>
                       <Text style={{ ...DISPLAY, fontSize: 22, color: cur.fg, letterSpacing: -0.5 }}>
-                        {TRY(totalDue ?? 0)}
+                        {money(totalDue ?? 0)}
                       </Text>
                     </View>
                     {(overdueCount ?? 0) > 0 && (
@@ -175,14 +214,14 @@ export function SendReminderModal({
                   }}>
                     <AlertCircle size={14} color="#9C5E0E" />
                     <Text style={{ flex: 1, fontSize: 11, color: '#9C5E0E' }}>
-                      Bu kliniğe son hatırlatma {recentReminder === 0 ? 'bugün' : `${recentReminder} gün önce`} gönderilmiş.
+                      {autoT('Bu kliniğe son hatırlatma')} {recentReminder === 0 ? autoT('bugün') : `${recentReminder} ${autoT('gün önce')}`} {autoT('gönderilmiş.')}
                     </Text>
                   </View>
                 )}
 
                 {/* Öncelik seçimi */}
                 <View style={{ gap: 6 }}>
-                  <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: DS.ink[500] }}>
+                  <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: isDark ? (T.ink3 as string) : DS.ink[500] }}>
                     Öncelik
                   </Text>
                   <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
@@ -197,18 +236,18 @@ export function SendReminderModal({
                             flexGrow: 1, flexBasis: 130, minWidth: 120,
                             padding: 12, borderRadius: 12,
                             borderWidth: active ? 2 : 1,
-                            borderColor: active ? opt.fg : DS.ink[200],
-                            backgroundColor: active ? opt.bg : '#FFF',
+                            borderColor: active ? opt.fg : (isDark ? T.hairline : DS.ink[200]),
+                            backgroundColor: active ? opt.bg : (isDark ? T.cardSoft : '#FFF'),
                             gap: 4,
                           }}
                         >
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <Icon size={14} color={active ? opt.fg : DS.ink[500]} strokeWidth={2} />
-                            <Text style={{ fontSize: 12, fontWeight: '700', color: active ? opt.fg : DS.ink[700] }}>
+                            <Icon size={14} color={active ? opt.fg : (isDark ? (T.ink3 as string) : DS.ink[500])} strokeWidth={2} />
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: active ? opt.fg : (isDark ? (T.ink2 as string) : DS.ink[700]) }}>
                               {opt.label}
                             </Text>
                           </View>
-                          <Text style={{ fontSize: 10, color: active ? opt.fg : DS.ink[500] }}>
+                          <Text style={{ fontSize: 10, color: active ? opt.fg : (isDark ? (T.ink3 as string) : DS.ink[500]) }}>
                             {opt.desc}
                           </Text>
                         </Pressable>
@@ -219,30 +258,90 @@ export function SendReminderModal({
 
                 {/* Mesaj */}
                 <View style={{ gap: 6 }}>
-                  <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: DS.ink[500] }}>
+                  <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: isDark ? (T.ink3 as string) : DS.ink[500] }}>
                     Özel Mesaj (opsiyonel)
                   </Text>
-                  <TextInput
-                    value={message}
-                    onChangeText={setMessage}
-                    placeholder="Ör: Bu hafta içinde ödemenizi rica ederiz."
-                    placeholderTextColor={DS.ink[300]}
-                    multiline
-                    maxLength={300}
-                    style={{
-                      borderWidth: 1, borderColor: DS.ink[200], borderRadius: 10,
-                      paddingHorizontal: 12, paddingVertical: 10,
-                      fontSize: 13, color: DS.ink[900], minHeight: 80,
-                      textAlignVertical: 'top',
-                      backgroundColor: '#FFF',
-                      outlineStyle: 'none' as any,
-                    }}
-                  />
+
+                  <View style={{ position: 'relative' }}>
+                    <TextInput
+                      value={message}
+                      onChangeText={setMessage}
+                      placeholder="Ör: Bu hafta içinde ödemenizi rica ederiz."
+                      placeholderTextColor={isDark ? (T.ink3 as string) : DS.ink[300]}
+                      multiline
+                      maxLength={300}
+                      style={{
+                        borderWidth: 1, borderColor: isDark ? T.hairline : DS.ink[200], borderRadius: 10,
+                        paddingHorizontal: 12, paddingTop: 10, paddingBottom: 42,
+                        fontSize: 13, color: isDark ? T.ink : DS.ink[900], minHeight: 104,
+                        textAlignVertical: 'top',
+                        backgroundColor: isDark ? T.cardSoft : '#FFF',
+                        outlineStyle: 'none' as any,
+                      }}
+                    />
+
+                    {/* Simanty — kutunun içinde alt-sağ; kutusuz orb + yazı.
+                        Basınca ton çipleri butonun üstünde açılır. */}
+                    <View style={{ position: 'absolute', right: 10, bottom: 8, alignItems: 'flex-end', gap: 6 }}>
+                      {aiOpen && (
+                        <View style={{
+                          flexDirection: 'row', gap: 6, padding: 5, borderRadius: 12,
+                          backgroundColor: isDark ? T.card : '#FFF', borderWidth: 1, borderColor: isDark ? T.hairline : DS.ink[200],
+                          ...(Platform.OS === 'web'
+                            ? { boxShadow: '0 8px 20px rgba(0,0,0,0.12)' } as any
+                            : { elevation: 6 }),
+                        }}>
+                          {AI_TONES.map(tn => {
+                            const active = aiTone === tn.key;
+                            return (
+                              <Pressable
+                                key={tn.key}
+                                disabled={aiLoading || sending}
+                                onPress={() => runSimanty(tn.key)}
+                                style={{
+                                  flexDirection: 'row', alignItems: 'center', gap: 5,
+                                  paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
+                                  backgroundColor: active ? 'rgba(123,97,255,0.12)' : (isDark ? T.cardSoft : '#FFF'),
+                                  borderWidth: 1, borderColor: active ? 'rgba(123,97,255,0.45)' : (isDark ? T.hairline : DS.ink[200]),
+                                  opacity: aiLoading || sending ? 0.7 : 1,
+                                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                                }}
+                              >
+                                {aiLoading && active && <ActivityIndicator size="small" color="#6B4FD8" />}
+                                <Text style={{ fontSize: 12, fontWeight: '700', color: active ? '#6B4FD8' : (isDark ? (T.ink2 as string) : DS.ink[700]) }}>
+                                  {tn.label}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      )}
+
+                      <Pressable
+                        onPress={() => setAiOpen(o => !o)}
+                        disabled={sending || aiLoading}
+                        hitSlop={6}
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', gap: 6,
+                          opacity: sending ? 0.5 : 1,
+                          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                        }}
+                      >
+                        {aiLoading
+                          ? <ActivityIndicator size="small" color="#6B4FD8" />
+                          : <ColorOrb size={24} />}
+                        <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#6B4FD8' }}>
+                          {aiLoading ? 'Yazılıyor…' : 'Simanty ile yaz'}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Text style={{ fontSize: 10, color: DS.ink[400] }}>
+                    <Text style={{ fontSize: 10, color: isDark ? (T.ink3 as string) : DS.ink[400] }}>
                       Klinik kullanıcılarına bildirim olarak iletilir
                     </Text>
-                    <Text style={{ fontSize: 10, color: DS.ink[400] }}>
+                    <Text style={{ fontSize: 10, color: isDark ? (T.ink3 as string) : DS.ink[400] }}>
                       {message.length}/300
                     </Text>
                   </View>
@@ -266,7 +365,7 @@ export function SendReminderModal({
           {!success && (
             <View style={{
               paddingHorizontal: 22, paddingVertical: 14,
-              borderTopWidth: 1, borderTopColor: DS.ink[100],
+              borderTopWidth: 1, borderTopColor: isDark ? T.hairline : DS.ink[100],
               flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 8,
             }}>
               <PillButton variant="ghost" onPress={onClose}>Vazgeç</PillButton>

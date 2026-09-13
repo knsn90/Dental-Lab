@@ -10,11 +10,19 @@
 
 import React, { useState } from 'react';
 import { View, Text, Pressable, Platform, Modal, TextInput, useWindowDimensions } from 'react-native';
-import { ShieldAlert, Archive, RotateCcw, Trash2, AlertCircle, X, Pencil, ChevronRight, ChevronLeft } from 'lucide-react-native';
+import { ShieldAlert, Archive, RotateCcw, Trash2, AlertCircle, X, Pencil, ChevronRight, ChevronLeft, Link2 } from '../../../core/ui/icons';
 import { isRTL } from '../../../core/i18n';
 import { archiveOrder, restoreOrder, hardDeleteOrder } from '../api';
+import { LinkRelationModal } from './LinkRelationModal';
 import { toast } from '../../../core/ui/Toast';
 import { useSegments } from 'expo-router';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
+
+// Koyu modda ikon/metin renkleri (koyu lacivert/amber/yeşil/kırmızı okunmaz → açık tonlar).
+const DARK_FG: Record<string, string> = {
+  '#1F5689': '#93C5FD', '#92400E': '#E8B45E', '#1F6B47': '#6EE7B7', '#9C2E2E': '#FCA5A5',
+};
 // Admin düzenleme artık yeni-sipariş SİHİRBAZINI (aynı 4 adım) düzenleme modunda açar.
 const NewOrderEditWizard: any = React.lazy(() => import('../screens/NewOrderScreen').then((m) => ({ default: (m as any).NewOrderScreen })));
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
@@ -30,10 +38,13 @@ interface Props {
 
 export function AdminDangerSection({ orderId, order, isArchived, onArchived, onDeleted, onEdited }: Props) {
   const segs = useSegments() as string[];
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const editPanel = ((segs?.[0] ?? '').replace(/[()]/g, '') || 'lab') as any; // '(lab)' → 'lab'
   const { width: winW } = useWindowDimensions();
   const [confirmType, setConfirmType] = useState<null | 'archive' | 'restore' | 'delete'>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirmText, setConfirmText] = useState('');
 
@@ -63,7 +74,9 @@ export function AdminDangerSection({ orderId, order, isArchived, onArchived, onD
       <View
         style={{
           borderRadius: 24,
-          backgroundColor: '#FFFFFF',
+          backgroundColor: isDark ? T.card : '#FFFFFF',
+          borderWidth: isDark ? 1 : 0,
+          borderColor: T.hairline,
           padding: 20,
         }}
       >
@@ -85,7 +98,7 @@ export function AdminDangerSection({ orderId, order, isArchived, onArchived, onD
             marginTop: 8, marginBottom: 4,
           }}>
             <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: '#D97706' }} />
-            <Text style={{ fontSize: 10, fontWeight: '600', color: '#92400E', letterSpacing: 0.4 }}>
+            <Text style={{ fontSize: 10, fontWeight: '600', color: isDark ? '#E8B45E' : '#92400E', letterSpacing: 0.4 }}>
               PASİF (ARŞİVDE)
             </Text>
           </View>
@@ -102,6 +115,15 @@ export function AdminDangerSection({ orderId, order, isArchived, onArchived, onD
             sub="Sipariş alanlarını güncelle"
             onPress={() => setEditOpen(true)}
             isFirst
+          />
+          {/* Başka siparişe bağla — devam / revizyon */}
+          <ActionRow
+            icon={Link2}
+            iconColor="#1F5689"
+            iconBg="rgba(31,86,137,0.10)"
+            label="Başka siparişe bağla"
+            sub="Devam ya da revizyon siparişi yap"
+            onPress={() => setLinkOpen(true)}
           />
           {/* Pasife al / Geri yükle */}
           {!isArchived ? (
@@ -141,8 +163,8 @@ export function AdminDangerSection({ orderId, order, isArchived, onArchived, onD
       {editOpen && (
         <Modal visible transparent animationType="fade" onRequestClose={() => setEditOpen(false)}>
           <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', alignItems: 'center', justifyContent: 'center', padding: winW >= 768 ? 24 : 0 }}>
-            <View style={{ width: '100%', maxWidth: 1120, flex: 1, maxHeight: winW >= 768 ? '94%' : '100%', borderRadius: winW >= 768 ? 20 : 0, overflow: 'hidden', backgroundColor: '#F1F5F9', ...(Platform.OS === 'web' ? ({ boxShadow: '0 24px 60px rgba(15,23,42,0.28)' } as any) : {}) }}>
-              <React.Suspense fallback={<View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color="#0A0A0A" /></View>}>
+            <View style={{ width: '100%', maxWidth: 1120, flex: 1, maxHeight: winW >= 768 ? '94%' : '100%', borderRadius: winW >= 768 ? 20 : 0, overflow: 'hidden', backgroundColor: isDark ? '#0E0E0E' : '#F1F5F9', ...(Platform.OS === 'web' ? ({ boxShadow: '0 24px 60px rgba(15,23,42,0.28)' } as any) : {}) }}>
+              <React.Suspense fallback={<View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#0E0E0E' : 'transparent' }}><ActivityIndicator color={isDark ? '#F7F2E9' : '#0A0A0A'} /></View>}>
                 <NewOrderEditWizard
                   panel={editPanel}
                   editOrderId={orderId}
@@ -154,6 +176,16 @@ export function AdminDangerSection({ orderId, order, isArchived, onArchived, onD
           </View>
         </Modal>
       )}
+
+      {/* Başka siparişe bağla — devam / revizyon */}
+      <LinkRelationModal
+        visible={linkOpen}
+        orderId={orderId}
+        orderNumber={order?.order_number}
+        patientName={order?.patient_name}
+        onClose={() => setLinkOpen(false)}
+        onLinked={() => { setLinkOpen(false); onEdited?.(); }}
+      />
 
       {/* Confirmation modal */}
       {confirmType && (
@@ -180,28 +212,34 @@ function ActionRow({
   isFirst?: boolean; isLast?: boolean;
   destructive?: boolean;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const icColor = isDark ? (DARK_FG[iconColor] ?? T.ink2) : iconColor;
+  const labelColor = destructive ? (isDark ? '#FCA5A5' : '#9C2E2E') : (isDark ? T.ink : '#0A0A0A');
   return (
     <Pressable
       onPress={onPress}
       style={({ hovered }: any) => ({
         flexDirection: 'row', alignItems: 'center', gap: 12,
         paddingVertical: 11, paddingHorizontal: 8, borderRadius: 12,
-        backgroundColor: hovered ? (destructive ? 'rgba(156,46,46,0.04)' : 'rgba(0,0,0,0.02)') : 'transparent',
+        backgroundColor: hovered
+          ? (destructive ? (isDark ? 'rgba(252,165,165,0.08)' : 'rgba(156,46,46,0.04)') : (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)'))
+          : 'transparent',
         borderTopWidth: !isFirst ? 1 : 0,
-        borderTopColor: 'rgba(0,0,0,0.04)',
+        borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
         ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'background-color 0.15s' } as any : {}),
       })}
     >
       <View style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: iconBg }}>
-        <Icon size={13} color={iconColor} strokeWidth={1.8} />
+        <Icon size={13} color={icColor} strokeWidth={1.8} />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 13, fontWeight: '600', color: destructive ? '#9C2E2E' : '#0A0A0A' }}>{label}</Text>
+        <Text style={{ fontSize: 13, fontWeight: '600', color: labelColor }}>{label}</Text>
         {sub ? (
-          <Text style={{ fontSize: 11, color: '#9A9A9A', marginTop: 1 }}>{sub}</Text>
+          <Text style={{ fontSize: 11, color: isDark ? T.ink3 : '#9A9A9A', marginTop: 1 }}>{sub}</Text>
         ) : null}
       </View>
-      {isRTL() ? <ChevronLeft size={14} color="#CCC" strokeWidth={1.6} /> : <ChevronRight size={14} color="#CCC" strokeWidth={1.6} />}
+      {isRTL() ? <ChevronLeft size={14} color={isDark ? 'rgba(255,255,255,0.30)' : '#CCC'} strokeWidth={1.6} /> : <ChevronRight size={14} color={isDark ? 'rgba(255,255,255,0.30)' : '#CCC'} strokeWidth={1.6} />}
     </Pressable>
   );
 }
@@ -216,6 +254,8 @@ function ConfirmModal({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const cfg = {
     archive: {
       title: 'Siparişi pasife al',
@@ -257,8 +297,9 @@ function ConfirmModal({
     <Modal visible transparent animationType="fade" onRequestClose={onCancel}>
       <View style={{ flex: 1, backgroundColor: 'rgba(20,15,10,0.55)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
         <View style={{
-          backgroundColor: '#FFFFFF', borderRadius: 24, width: 460, maxWidth: '100%',
+          backgroundColor: isDark ? T.card : '#FFFFFF', borderRadius: 24, width: 460, maxWidth: '100%',
           overflow: 'hidden',
+          borderWidth: isDark ? 1 : 0, borderColor: T.hairline,
           ...(Platform.OS === 'web' ? { boxShadow: '0 24px 64px rgba(0,0,0,0.22)' } as any : {}),
         }}>
           {/* Header */}
@@ -276,7 +317,7 @@ function ConfirmModal({
                 <Text style={{ fontSize: 11, fontWeight: '600', color: cfg.iconColor, letterSpacing: 1.2, textTransform: 'uppercase' }}>
                   Onay gerekli
                 </Text>
-                <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 22, letterSpacing: -0.4, color: '#0A0A0A', lineHeight: 28, marginTop: 2 }}>
+                <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 22, letterSpacing: -0.4, color: isDark ? T.ink : "#0A0A0A", lineHeight: 28, marginTop: 2 }}>
                   {cfg.title}
                 </Text>
               </View>
@@ -284,36 +325,36 @@ function ConfirmModal({
             <Pressable
               onPress={onCancel}
               disabled={busy}
-              style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+              style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? T.cardSoft : "#FFFFFF", borderWidth: 1, borderColor: isDark ? T.hairline : "rgba(0,0,0,0.08)", ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
             >
               <X size={15} color="#6B6B6B" strokeWidth={1.8} />
             </Pressable>
           </View>
 
-          <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.04)', marginHorizontal: 28 }} />
+          <View style={{ height: 1, backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.04)", marginHorizontal: 28 }} />
 
           {/* Body */}
           <View style={{ paddingHorizontal: 28, paddingTop: 22, paddingBottom: 22 }}>
-            <Text style={{ fontSize: 13, color: '#2C2C2C', lineHeight: 19 }}>
+            <Text style={{ fontSize: 13, color: isDark ? T.ink2 : "#2C2C2C", lineHeight: 19 }}>
               {cfg.desc}
             </Text>
 
             {cfg.requireType && (
               <View style={{ marginTop: 16 }}>
-                <Text style={{ fontSize: 11, fontWeight: '600', color: '#9A9A9A', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 7 }}>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: isDark ? T.ink3 : "#9A9A9A", letterSpacing: 1, textTransform: 'uppercase', marginBottom: 7 }}>
                   Onaylamak için <Text style={{ color: cfg.ctaColor, fontWeight: '700' }}>SIL</Text> yazın
                 </Text>
                 <TextInput
                   value={confirmText}
                   onChangeText={onChangeConfirmText}
                   placeholder="SIL"
-                  placeholderTextColor="#9A9A9A"
+                  placeholderTextColor={isDark ? (T.ink3 as string) : "#9A9A9A"}
                   autoCapitalize="characters"
                   style={{
-                    backgroundColor: '#FFFFFF', borderRadius: 12,
-                    borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
+                    backgroundColor: isDark ? T.cardSoft : "#FFFFFF", borderRadius: 12,
+                    borderWidth: 1, borderColor: isDark ? T.hairline : "rgba(0,0,0,0.08)",
                     paddingHorizontal: 14, height: 44,
-                    fontSize: 14, color: '#0A0A0A', fontWeight: '600',
+                    fontSize: 14, color: isDark ? T.ink : "#0A0A0A", fontWeight: '600',
                     ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
                   }}
                 />
@@ -322,14 +363,14 @@ function ConfirmModal({
           </View>
 
           {/* Footer */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 28, paddingVertical: 18, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)', backgroundColor: '#FBF9F4' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 28, paddingVertical: 18, borderTopWidth: 1, borderTopColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.04)", backgroundColor: isDark ? T.cardSoft : "#FBF9F4" }}>
             <View style={{ flex: 1 }} />
             <Pressable
               onPress={onCancel}
               disabled={busy}
-              style={{ paddingHorizontal: 18, paddingVertical: 10, borderRadius: 9999, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+              style={{ paddingHorizontal: 18, paddingVertical: 10, borderRadius: 9999, backgroundColor: isDark ? T.cardSoft : "#FFFFFF", borderWidth: 1, borderColor: isDark ? T.hairline : "rgba(0,0,0,0.08)", ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
             >
-              <Text style={{ fontSize: 13, fontWeight: '500', color: '#6B6B6B' }}>Vazgeç</Text>
+              <Text style={{ fontSize: 13, fontWeight: '500', color: isDark ? T.ink2 : "#6B6B6B" }}>Vazgeç</Text>
             </Pressable>
             <Pressable
               onPress={onConfirm}

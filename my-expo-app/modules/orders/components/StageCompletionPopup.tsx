@@ -5,7 +5,7 @@ import { localeTag, isRTL } from '../../../core/i18n';
 
 import React from 'react';
 import { Modal, View, Text, Pressable, Platform } from 'react-native';
-import { Check, ArrowRight, ArrowLeft, X } from 'lucide-react-native';
+import { Check, ArrowRight, ArrowLeft, X } from '../../../core/ui/icons';
 import { useStationTheme, hexA } from '../../../core/theme/stationPalette';
 
 const SERIF = {

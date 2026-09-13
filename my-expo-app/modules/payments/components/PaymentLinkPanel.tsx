@@ -13,6 +13,8 @@ import {
 } from 'react-native';
 import { AppIcon } from '../../../core/ui/AppIcon';
 import { Shadows, CardSpec } from '../../../core/theme/shadows';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { toast } from '../../../core/ui/Toast';
 import {
   createPaymentLink, fetchIntentsForInvoice, refundIntent, buildPaymentUrl,
@@ -34,6 +36,8 @@ function fmtMoney(n: number): string {
 }
 
 export function PaymentLinkPanel({ invoiceId, balance, onChanged }: Props) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   useBaseCurrency();
   const [intents, setIntents] = useState<PaymentIntent[]>([]);
   const [loading, setLoading] = useState(false);
@@ -87,14 +91,14 @@ export function PaymentLinkPanel({ invoiceId, balance, onChanged }: Props) {
   };
 
   return (
-    <View style={s.card}>
+    <View style={[s.card, { backgroundColor: T.card, borderColor: T.hairline }]}>
       <View style={s.head}>
         <View style={[s.iconBox, { backgroundColor: '#EFF6FF' }]}>
           <AppIcon name="credit-card" size={16} color="#2563EB" />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={s.title}>Online Ödeme</Text>
-          <Text style={s.providerHint}>Sağlayıcı: {providerName}</Text>
+          <Text style={[s.title, { color: T.ink }]}>Online Ödeme</Text>
+          <Text style={[s.providerHint, { color: T.ink3 }]}>Sağlayıcı: {providerName}</Text>
         </View>
       </View>
 
@@ -124,21 +128,21 @@ export function PaymentLinkPanel({ invoiceId, balance, onChanged }: Props) {
           <Text style={s.createText}>Ödeme Linki Oluştur</Text>
         </TouchableOpacity>
       ) : (
-        <Text style={s.noBalanceText}>Bakiye yok — bu fatura tahsil edildi</Text>
+        <Text style={[s.noBalanceText, { color: T.ink3 }]}>Bakiye yok — bu fatura tahsil edildi</Text>
       )}
 
       {/* Geçmiş intent'ler */}
       {intents.length > 0 && (
-        <View style={s.history}>
-          <Text style={s.historyTitle}>Geçmiş ({intents.length})</Text>
+        <View style={[s.history, { borderTopColor: T.hairline }]}>
+          <Text style={[s.historyTitle, { color: T.ink3 }]}>Geçmiş ({intents.length})</Text>
           {intents.slice(0, 5).map(it => {
             const cfg = PAYMENT_STATUS_LABELS[it.status];
             return (
               <View key={it.id} style={s.historyRow}>
                 <View style={[s.statusDot, { backgroundColor: cfg.color }]} />
                 <View style={{ flex: 1 }}>
-                  <Text style={s.historyAmount}>{fmtMoney(Number(it.amount))}</Text>
-                  <Text style={s.historyMeta}>
+                  <Text style={[s.historyAmount, { color: T.ink }]}>{fmtMoney(Number(it.amount))}</Text>
+                  <Text style={[s.historyMeta, { color: T.ink3 }]}>
                     {new Date(it.created_at).toLocaleDateString(localeTag())}
                     {it.installments > 1 ? ` · ${it.installments} taksit` : ''}
                   </Text>
@@ -179,6 +183,8 @@ function CreateLinkModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [amount, setAmount] = useState('');
   const [days, setDays]     = useState('7');
   const [busy, setBusy]     = useState(false);
@@ -209,42 +215,44 @@ function CreateLinkModal({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={mm.overlay}>
-        <View style={mm.sheet}>
-          <View style={mm.header}>
-            <Text style={mm.title}>Ödeme Linki Oluştur</Text>
-            <TouchableOpacity onPress={onClose} style={mm.closeBtn}>
-              <AppIcon name="close" size={18} color="#475569" />
+        <View style={[mm.sheet, { backgroundColor: T.card, borderColor: T.hairline }]}>
+          <View style={[mm.header, { borderBottomColor: T.hairline }]}>
+            <Text style={[mm.title, { color: T.ink }]}>Ödeme Linki Oluştur</Text>
+            <TouchableOpacity onPress={onClose} style={[mm.closeBtn, isDark && { backgroundColor: T.cardSoft }]}>
+              <AppIcon name="close" size={18} color={isDark ? (T.ink3 as string) : '#475569'} />
             </TouchableOpacity>
           </View>
 
           <View style={{ padding: 16, gap: 12 }}>
             <View>
-              <Text style={mm.label}>Tutar ({baseSymbol()})</Text>
+              <Text style={[mm.label, { color: T.ink3 }]}>Tutar ({baseSymbol()})</Text>
               <TextInput
-                style={mm.input}
+                style={[mm.input, { color: T.ink, borderColor: T.hairline, backgroundColor: isDark ? T.cardSoft : '#FFFFFF' }]}
                 value={amount}
                 onChangeText={setAmount}
                 keyboardType="decimal-pad"
                 placeholder="0,00"
+                placeholderTextColor={isDark ? (T.ink3 as string) : undefined}
               />
-              <Text style={mm.hint}>Maksimum bakiye: {defaultAmount.toFixed(2)} {baseSymbol()}</Text>
+              <Text style={[mm.hint, { color: T.ink3 }]}>Maksimum bakiye: {defaultAmount.toFixed(2)} {baseSymbol()}</Text>
             </View>
 
             <View>
-              <Text style={mm.label}>Geçerlilik Süresi (gün)</Text>
+              <Text style={[mm.label, { color: T.ink3 }]}>Geçerlilik Süresi (gün)</Text>
               <TextInput
-                style={mm.input}
+                style={[mm.input, { color: T.ink, borderColor: T.hairline, backgroundColor: isDark ? T.cardSoft : '#FFFFFF' }]}
                 value={days}
                 onChangeText={setDays}
                 keyboardType="number-pad"
                 placeholder="7"
+                placeholderTextColor={isDark ? (T.ink3 as string) : undefined}
               />
             </View>
           </View>
 
-          <View style={mm.footer}>
-            <TouchableOpacity onPress={onClose} style={mm.cancelBtn}>
-              <Text style={mm.cancelText}>İptal</Text>
+          <View style={[mm.footer, { borderTopColor: T.hairline }]}>
+            <TouchableOpacity onPress={onClose} style={[mm.cancelBtn, { borderColor: T.hairline }]}>
+              <Text style={[mm.cancelText, { color: T.ink3 }]}>İptal</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleCreate}

@@ -5,11 +5,11 @@
 // Yeni istasyon (DB seviyesinde) eklendiğinde kind ekle + STATION_REGISTRY'e
 // satır ekle. UI workspace katmanı buradan okur.
 
-import type { LucideIcon } from 'lucide-react-native';
+import type { LucideIcon } from '../../../core/ui/icons';
 import {
   ScanLine, Cpu, Cog, Printer, Flame, Paintbrush, Sparkles, ShieldCheck,
   Box, CircleCheck, Hammer, Droplets, Wrench, Layers, Brush,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 
 /** Standardize edilmiş istasyon türleri (16 kanonik istasyon + GENERIC). */
 export type StationKind =

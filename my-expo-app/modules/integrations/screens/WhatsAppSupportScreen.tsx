@@ -19,11 +19,13 @@
  *
  * whatsapp_sessions RLS: lab manager/admin SELECT+UPDATE (migration 20260728160000).
  */
-import React, { useContext, useEffect, useState, useCallback } from 'react';
+import React, { useContext, useEffect, useState, useCallback } from "react";
+import { useMobileTokens } from "../../../core/theme/mobileDesignTokens";
+import { useThemeModeStore } from "../../../core/store/themeModeStore";
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { View, Text, ScrollView, Pressable, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { MessageCircle, PhoneCall, CheckCircle2, RefreshCw, Bot } from 'lucide-react-native';
+import { MessageCircle, PhoneCall, CheckCircle2, RefreshCw, Bot } from '../../../core/ui/icons';
 
 import { WhatsAppChatModal, type ChatPeer } from '../components/WhatsAppChatModal';
 
@@ -73,6 +75,8 @@ function fmtPhone(p: string): string {
 }
 
 export function WhatsAppSupportScreen({ accentColor = '#F5C24B' }: Props) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
   const isEmbedded = useContext(HubContext);
   const safeEdges = isEmbedded ? ([] as any) : (['top'] as any);
 
@@ -225,15 +229,15 @@ export function WhatsAppSupportScreen({ accentColor = '#F5C24B' }: Props) {
               <WhatsAppGlyph size={17} color={accentColor} />
             </View>
             <View>
-              <Text style={{ ...DISPLAY, fontSize: 18, color: '#0A0A0A' }}>Destek Sohbetleri</Text>
-              <Text style={{ fontSize: 12, color: '#6B6B6B' }}>
+              <Text style={{ ...DISPLAY, fontSize: 18, color: isDark ? T.ink : "#0A0A0A" }}>Destek Sohbetleri</Text>
+              <Text style={{ fontSize: 12, color: isDark ? T.ink2 : "#6B6B6B" }}>
                 {items.length > 0 ? `${items.length} sohbet sizi bekliyor` : 'WhatsApp gelen kutusu'}
               </Text>
             </View>
           </View>
           <Pressable
             onPress={load}
-            style={{ width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#EAEAEA' }}
+            style={{ width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? T.card : "#FFFFFF", borderWidth: 1, borderColor: isDark ? T.hairline : "#EAEAEA" }}
             {...(Platform.OS === 'web' ? { className: 'web:cursor-pointer web:hover:bg-slate-50' } as any : {})}
           >
             <RefreshCw size={16} color="#6B6B6B" strokeWidth={1.8} />
@@ -242,7 +246,7 @@ export function WhatsAppSupportScreen({ accentColor = '#F5C24B' }: Props) {
 
         {/* Bilgi notu */}
         <View style={{ backgroundColor: accentColor + '14', borderRadius: 12, padding: 12 }}>
-          <Text style={{ fontSize: 12.5, color: '#2C2C2C', lineHeight: 18 }}>
+          <Text style={{ fontSize: 12.5, color: isDark ? T.ink2 : "#2C2C2C", lineHeight: 18 }}>
             Simanty <Text style={{ fontWeight: '700' }}>varsayılan olarak kapalı</Text> — gelen mesajlara
             kendiliğinden cevap vermez, buraya düşer. Sohbete tıklayıp yanıtlayın.
             Müşteri <Text style={{ fontWeight: '700' }}>"sipariş"</Text>, "nexadent" ya da "simanty" yazarsa
@@ -257,11 +261,11 @@ export function WhatsAppSupportScreen({ accentColor = '#F5C24B' }: Props) {
           </View>
         ) : items.length === 0 ? (
           <View style={{ paddingVertical: 48, alignItems: 'center', gap: 10 }}>
-            <View style={{ width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F5F5F5' }}>
+            <View style={{ width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? T.cardSoft : "#F5F5F5" }}>
               <CheckCircle2 size={26} color="#9A9A9A" strokeWidth={1.6} />
             </View>
-            <Text style={{ ...DISPLAY, fontSize: 16, color: '#2C2C2C' }}>Bekleyen sohbet yok</Text>
-            <Text style={{ fontSize: 12.5, color: '#9A9A9A', textAlign: 'center', maxWidth: 280 }}>
+            <Text style={{ ...DISPLAY, fontSize: 16, color: isDark ? T.ink2 : "#2C2C2C" }}>Bekleyen sohbet yok</Text>
+            <Text style={{ fontSize: 12.5, color: isDark ? T.ink3 : "#9A9A9A", textAlign: 'center', maxWidth: 280 }}>
               WhatsApp hattınıza bir mesaj geldiğinde burada görünür.
               Simanty kapalı olduğu için mesajlara siz yanıt verirsiniz.
             </Text>
@@ -272,7 +276,7 @@ export function WhatsAppSupportScreen({ accentColor = '#F5C24B' }: Props) {
               key={row.id}
               onPress={() => setChatPeer({ phone: row.sender_phone, isHuman: true })}
               style={{
-                backgroundColor: '#FFFFFF', borderRadius: 14, padding: 14,
+                backgroundColor: isDark ? T.card : "#FFFFFF", borderRadius: 14, padding: 14,
                 borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
                 shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 3 },
                 flexDirection: 'row', alignItems: 'center', gap: 12,
@@ -284,7 +288,7 @@ export function WhatsAppSupportScreen({ accentColor = '#F5C24B' }: Props) {
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
-                  <Text style={{ fontSize: 15, fontWeight: '600', color: '#0A0A0A' }}>{fmtPhone(row.sender_phone)}</Text>
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: isDark ? T.ink : "#0A0A0A" }}>{fmtPhone(row.sender_phone)}</Text>
                   {/* Devri kim başlattı — lab elle yazdıysa "destek talebi" demek yanlış olur */}
                   <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 9999, backgroundColor: row.context?.human_lab ? '#EEF2FF' : '#FEF3C7' }}>
                     <Text style={{ fontSize: 10, fontWeight: '700', color: row.context?.human_lab ? '#4338CA' : '#92400E' }}>
@@ -292,7 +296,7 @@ export function WhatsAppSupportScreen({ accentColor = '#F5C24B' }: Props) {
                     </Text>
                   </View>
                 </View>
-                <Text style={{ fontSize: 12, color: '#6B6B6B', marginTop: 3 }}>
+                <Text style={{ fontSize: 12, color: isDark ? T.ink2 : "#6B6B6B", marginTop: 3 }}>
                   Başladı: {relTime(row.human_since)} · Son mesaj: {relTime(row.last_msg_at)}
                 </Text>
               </View>
@@ -321,7 +325,7 @@ export function WhatsAppSupportScreen({ accentColor = '#F5C24B' }: Props) {
             ancak müşteri destek isteyince ulaşılabiliyordu. */}
         {botItems.length > 0 && (
           <>
-            <Text style={{ ...DISPLAY, fontSize: 14, color: '#6B6B6B', marginTop: 18, marginBottom: 2 }}>
+            <Text style={{ ...DISPLAY, fontSize: 14, color: isDark ? T.ink2 : "#6B6B6B", marginTop: 18, marginBottom: 2 }}>
               Botun yürüttüğü sohbetler
             </Text>
             {botItems.map((row) => (
@@ -329,18 +333,18 @@ export function WhatsAppSupportScreen({ accentColor = '#F5C24B' }: Props) {
                 key={row.id}
                 onPress={() => setChatPeer({ phone: row.sender_phone, isHuman: false })}
                 style={{
-                  backgroundColor: '#FFFFFF', borderRadius: 14, padding: 13,
+                  backgroundColor: isDark ? T.card : "#FFFFFF", borderRadius: 14, padding: 13,
                   borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
                   flexDirection: 'row', alignItems: 'center', gap: 12,
                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                 }}
               >
-                <View style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF2FF' }}>
+                <View style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? T.cardSoft : "#EEF2FF" }}>
                   <Bot size={16} color="#4338CA" strokeWidth={1.8} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ fontSize: 14, fontWeight: '600', color: '#0A0A0A' }}>{fmtPhone(row.sender_phone)}</Text>
-                  <Text style={{ fontSize: 11.5, color: '#9A9A9A', marginTop: 2 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: isDark ? T.ink : "#0A0A0A" }}>{fmtPhone(row.sender_phone)}</Text>
+                  <Text style={{ fontSize: 11.5, color: isDark ? T.ink3 : "#9A9A9A", marginTop: 2 }}>
                     Son mesaj: {relTime(row.last_msg_at)} · Simanty yanıtlıyor
                   </Text>
                 </View>

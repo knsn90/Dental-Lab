@@ -6,25 +6,29 @@ import { autoT } from '../../../core/i18n/autoTranslate';
  * Patterns showcase §05 cardSolid, §09 tablo, §10 hero,
  * §04 chip/tag token'larıyla fatura belge görünümü.
  */
-import React, { useState } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, Pressable, Alert,
   Modal, TextInput, Platform,
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { HubContext } from '../../../core/ui/HubContext';
 import {
   ArrowLeft, ArrowRight, Printer, Banknote, CreditCard, Landmark, File,
   MoreHorizontal, Building2, User, Phone, MapPin, Calendar,
   ClipboardList, Plus, Trash2, Send, BellRing, CircleX,
   CircleCheck, X, AlertCircle, ChevronRight, ChevronLeft, ChevronDown, Check, FileText, Undo2,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { toast } from '../../../core/ui/Toast';
+import { PaymentBadges } from '../../../core/ui/PaymentBadges';
 import { ConfirmDialog, type ConfirmState } from '../../../core/ui/ConfirmDialog';
 import { useRouter, useLocalSearchParams, useSegments } from 'expo-router';
 import { safeBack } from '../../../core/util/safeBack';
 
 import { DS } from '../../../core/theme/dsTokens';
+import { useInkUI, type InkUI } from '../../../core/theme/inkScale';
+import { useHeroSurface } from '../../../core/ui/HeroGlow';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { CURRENCY_META, type Currency } from '../../../core/money/currency';
 import { baseSymbol, getBaseCurrency } from '../../../core/money/baseCurrency';
@@ -41,6 +45,7 @@ import { printInvoice } from '../printInvoice';
 import { PaymentReminderModal } from '../components/PaymentReminderModal';
 import { EFaturaPanel } from '../../efatura/components/EFaturaPanel';
 import { PaymentLinkPanel } from '../../payments/components/PaymentLinkPanel';
+import { OrderDetailScreenV2 } from '../../orders/screens/OrderDetailScreenV2';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { CenteredLoader } from '../../../core/ui/CenteredLoader';
 import { normalizeDoctorName } from '../../../core/utils/textCase';
@@ -51,49 +56,42 @@ const DISPLAY = {
   fontWeight: '300' as const,
 };
 
-const cardSolid = {
-  backgroundColor: '#FFF',
-  borderRadius: 24,
-  padding: 22,
-  // @ts-ignore web
-  boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)',
-};
+// cardSolid / tableCard / CHIP_TONES / TH artık `useInkUI()`ten türetilir —
+// modül seviyesindeki sabitler hook çağıramadığı için koyu temada beyaz kalıyordu.
+function chipTones(U: InkUI) {
+  const t = U.chipTones;
+  return {
+    success: { bg: t.success.bg, text: t.success.fg },
+    warning: { bg: t.warning.bg, text: t.warning.fg },
+    danger:  { bg: t.danger.bg,  text: t.danger.fg },
+    info:    { bg: t.info.bg,    text: t.info.fg },
+    neutral: { bg: U.ink[100],   text: U.ink[500] },
+  };
+}
 
-// §09 tablo kartı — borderWidth variant
-const tableCard = {
-  backgroundColor: '#FFF',
-  borderRadius: 24,
-  borderWidth: 1,
-  borderColor: 'rgba(0,0,0,0.05)',
-  overflow: 'hidden' as const,
-};
+function modalShadowOf(U: InkUI) {
+  return U.isDark ? '0 24px 48px -12px rgba(0,0,0,0.65)' : '0 24px 48px -12px rgba(0,0,0,0.18)';
+}
 
-// §04 chip tones
-const CHIP_TONES = {
-  success: { bg: 'rgba(45,154,107,0.12)', text: '#1F6B47' },
-  warning: { bg: 'rgba(232,155,42,0.15)', text: '#9C5E0E' },
-  danger:  { bg: 'rgba(217,75,75,0.12)',  text: '#9C2E2E' },
-  info:    { bg: 'rgba(74,143,201,0.12)', text: '#1F5689' },
-  neutral: { bg: DS.ink[100],             text: DS.ink[500] },
-};
+function statusChip(U: InkUI): Record<string, { bg: string; text: string }> {
+  const C = chipTones(U);
+  return {
+    taslak:       C.neutral,
+    kesildi:      C.info,
+    kismi_odendi: C.warning,
+    odendi:       C.success,
+    iptal:        C.danger,
+  };
+}
 
-const modalShadow = '0 24px 48px -12px rgba(0,0,0,0.18)';
-
-const STATUS_CHIP: Record<string, { bg: string; text: string }> = {
-  taslak:       CHIP_TONES.neutral,
-  kesildi:      CHIP_TONES.info,
-  kismi_odendi: CHIP_TONES.warning,
-  odendi:       CHIP_TONES.success,
-  iptal:        CHIP_TONES.danger,
-};
-
-// §09 tablo header stili
-const TH = {
-  fontSize: 10 as const,
-  fontWeight: '600' as const,
-  letterSpacing: 0.7,
-  color: DS.ink[500],
-};
+function thOf(U: InkUI) {
+  return {
+    fontSize: 10 as const,
+    fontWeight: '600' as const,
+    letterSpacing: 0.7,
+    color: U.ink[500],
+  };
+}
 
 // ── Helpers ─────────────────────────────────────────────────────────
 function fmtMoneyCur(n: number | string | null | undefined, currency = 'TRY'): string {
@@ -139,8 +137,12 @@ function EditableNum({ value, editable, onSave, fmt, textStyle, inputStyle }: {
   textStyle?: any;
   inputStyle?: any;
 }) {
+  const U = useInkUI();
   const [v, setV] = useState(String(value ?? 0));
-  React.useEffect(() => { setV(String(value ?? 0)); }, [value]);
+  const focusedRef = React.useRef(false);
+  // Input ODAKTAYKEN dış re-render (silent refetch) değeri EZMESİN — kullanıcı yazarken
+  // sıfırlanma buradan oluyordu. Yalnız odak dışıyken prop'tan senkronla.
+  React.useEffect(() => { if (!focusedRef.current) setV(String(value ?? 0)); }, [value]);
   const commit = () => {
     const n = Number(String(v).replace(',', '.'));
     if (Number.isFinite(n) && n !== Number(value)) onSave(n);
@@ -152,14 +154,15 @@ function EditableNum({ value, editable, onSave, fmt, textStyle, inputStyle }: {
     <TextInput
       value={v}
       onChangeText={setV}
-      onBlur={commit}
+      onFocus={() => { focusedRef.current = true; }}
+      onBlur={() => { focusedRef.current = false; commit(); }}
       onSubmitEditing={commit}
       keyboardType={Platform.OS === 'web' ? 'default' : 'decimal-pad'}
       selectTextOnFocus
       style={[{
-        borderWidth: 1, borderColor: 'rgba(0,0,0,0.14)', borderRadius: 8,
-        paddingHorizontal: 8, paddingVertical: 4, fontSize: 13, color: DS.ink[900],
-        backgroundColor: '#FFFFFF',
+        borderWidth: 1, borderColor: U.fieldBorder, borderRadius: 8,
+        paddingHorizontal: 8, paddingVertical: 4, fontSize: 13, color: U.ink[900],
+        backgroundColor: U.isDark ? U.surfaceSoft : '#FFFFFF',
         ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
       }, inputStyle]}
     />
@@ -177,7 +180,12 @@ interface DetailProps {
 }
 
 export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
+  const U = useInkUI();
+  const CHIP_TONES = chipTones(U);
+  const STATUS_CHIP = statusChip(U);
   const theme = usePanelTheme();
+  // Koyu temada parlak accent hero göz yorar → derinleştirilmiş yüzey (HERO kuralı).
+  const heroBg = useHeroSurface(theme.primary);
   const router = useRouter();
   const segments = useSegments();
   const panelBase = String(segments?.[0] ?? '(lab)');
@@ -194,10 +202,14 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   const readOnly = panelBase === '(clinic)' || panelBase === '(doctor)';
   const routeParams = useLocalSearchParams<{ id: string }>();
   const id = invoiceId ?? routeParams.id;
-  const { invoice, loading, refetch } = useInvoice(id);
+  const { invoice, loading, refetch, refetchSilent, patchItem } = useInvoice(id);
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
   const insets = useSafeAreaInsets();
+  // Hub (Finans › Faturalar) içinde gömülüyken üstte hub başlığı + sekmeler zaten
+  // var; çentik payını (insets.top) bir daha eklemek sekmelerin altında ~60pt boşluk
+  // bırakıyordu. Yalnız bağımsız rota (/invoice/[id]) açılışında pay eklenir.
+  const isEmbedded = useContext(HubContext) || !!onBack;
 
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [addItemModalVisible, setAddItemModalVisible] = useState(false);
@@ -206,22 +218,30 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   const [curPickerOpen, setCurPickerOpen] = useState(false);   // taslak para birimi seçici
   const [rateEditOpen, setRateEditOpen] = useState(false);     // kur düzenleme
   const [rateInput, setRateInput] = useState('');
+  const [noteDraft, setNoteDraft] = useState('');
+  const [savingNote, setSavingNote] = useState(false);
+  const [previewOrderId, setPreviewOrderId] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);   // iptal/sil onayı (web-safe)
 
+  // Fatura değiştiğinde not düzenleyicisini o faturanın güncel notuyla başlat.
+  useEffect(() => {
+    setNoteDraft(invoice?.notes ?? '');
+  }, [invoice?.id]);
+
   if (loading) {
-    return <CenteredLoader color={DS.ink[400]} />;
+    return <CenteredLoader color={U.ink[400]} />;
   }
 
   if (!invoice) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-        <AlertCircle size={40} strokeWidth={1.4} color={DS.ink[300]} />
-        <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[900] }}>Fatura bulunamadı</Text>
+        <AlertCircle size={40} strokeWidth={1.4} color={U.ink[300]} />
+        <Text style={{ fontSize: 15, fontWeight: '600', color: U.ink[900] }}>Fatura bulunamadı</Text>
         <Pressable onPress={goBack} style={{
           paddingHorizontal: 20, paddingVertical: 10, borderRadius: 9999,
-          backgroundColor: DS.ink[100], cursor: 'pointer' as any,
+          backgroundColor: U.ink[100], cursor: 'pointer' as any,
         }}>
-          <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>Geri don</Text>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>Geri don</Text>
         </Pressable>
       </View>
     );
@@ -232,9 +252,13 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   const fmtMoney = (n: number | string | null | undefined) => fmtMoneyCur(n, invoice.currency || 'TRY');
 
   // Taslak fatura kalemini inline güncelle (birim fiyat/adet) — toplam trigger'la yeniden hesaplanır.
-  const saveItem = async (id: string, patch: { quantity?: number; unit_price?: number }) => {
-    const { error } = await updateInvoiceItem(id, patch);
-    if (error) toast.error((error as any).message ?? String(error)); else refetch();
+  const saveItem = async (id: string, patch: { quantity?: number; unit_price?: number; discount_type?: 'percent' | 'fixed'; discount_value?: number }) => {
+    const { data, error } = await updateInvoiceItem(id, patch);
+    if (error) { toast.error((error as any).message ?? String(error)); return; }
+    // Kalemi UPDATE'in döndürdüğü TAZE satırla güncelle + toplamları yerelde hesapla.
+    // Fatura sorgusunun gömülü invoice_items(*) embed'i bayat/0 döndürse bile değer
+    // silinmez — refetch KULLANILMAZ (embed staleness sorununu tamamen atlar).
+    if (data) patchItem(id, data as any);
   };
 
   // Taslak faturanın para birimini değiştir (kalemler bu para biriminde gösterilir).
@@ -252,6 +276,20 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
     if (!Number.isFinite(v) || v <= 0) { toast.error('Geçerli bir kur gir.'); return; }
     const { error } = await updateInvoice(invoice.id, { rate_at_time: v });
     if (error) toast.error((error as any).message ?? String(error)); else { toast.success('Kur güncellendi.'); refetch(); }
+  };
+
+  const saveNote = async () => {
+    const notes = noteDraft.trim() || null;
+    if (notes === (invoice.notes ?? null)) return;
+    setSavingNote(true);
+    const { error } = await updateInvoice(invoice.id, { notes });
+    setSavingNote(false);
+    if (error) {
+      toast.error((error as any).message ?? String(error));
+      return;
+    }
+    toast.success(notes ? 'Klinik notu kaydedildi.' : 'Klinik notu kaldırıldı.');
+    refetch();
   };
 
   const base = getBaseCurrency();
@@ -272,10 +310,10 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
     const amber = { bg: 'rgba(232,155,42,0.15)', fg: '#9C5E0E', light: '#FCD34D' };
     const green = { bg: 'rgba(45,154,107,0.12)', fg: '#1F6B47', light: '#86EFAC' };
     const red   = { bg: 'rgba(217,75,75,0.12)',  fg: '#9C2E2E', light: '#FCA5A5' };
-    const none  = { bg: DS.ink[100],             fg: DS.ink[500], light: 'rgba(255,255,255,0.7)' };
+    const none  = { bg: U.ink[100],             fg: U.ink[500], light: 'rgba(255,255,255,0.7)' };
     if (invoice.status === 'odendi') return { text: 'Ödendi', color: '#1F6B47', ...green };
-    if (invoice.status === 'iptal')  return { text: 'İptal',  color: DS.ink[400], ...none };
-    if (!invoice.due_date)           return { text: '—',      color: DS.ink[400], ...none };
+    if (invoice.status === 'iptal')  return { text: 'İptal',  color: U.ink[400], ...none };
+    if (!invoice.due_date)           return { text: '—',      color: U.ink[400], ...none };
     const diff = Math.round(
       (new Date(invoice.due_date + 'T00:00:00').getTime() - new Date(today + 'T00:00:00').getTime()) / 86400000,
     );
@@ -356,10 +394,16 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
       message: 'Bu taslak fatura silinecek. Geri alınamaz.',
       label: 'Evet, sil',
       onConfirm: async () => {
+        setConfirm(null);   // onay diyaloğunu hemen kapat (ConfirmDialog onConfirm sonrası kapatmıyor)
         setBusy(true);
         const { error } = await deleteInvoice(invoice.id);
         setBusy(false);
-        if (error) toast.error((error as any).message ?? String(error)); else goBack();
+        if (error) { toast.error((error as any).message ?? String(error)); return; }
+        toast.success('Taslak fatura silindi.');
+        // Silinen kayda "geri" dönülmez: yığın boşken router.back() sessizce hiçbir şey
+        // yapmıyor, kullanıcı silinmiş faturanın sayfasında kalıyordu → listeye REPLACE.
+        if (onBack) { onBack(); return; }
+        router.replace((panelBase === '(lab)' ? '/(lab)/invoices' : `/${panelBase}/finance?tab=invoices`) as any);
       },
     });
   };
@@ -377,21 +421,21 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
       <View style={{
         flexDirection: 'row', alignItems: 'center', gap: 10,
         paddingHorizontal: isDesktop ? 20 : 12,
-        paddingTop: (isDesktop ? 6 : 6) + (isDesktop ? 0 : insets.top),
+        paddingTop: 6 + (isDesktop || isEmbedded ? 0 : insets.top),
         paddingBottom: isDesktop ? 6 : 8,
       }}>
         <Pressable onPress={goBack} style={{
           width: isDesktop ? 36 : 34, height: isDesktop ? 36 : 34, borderRadius: 10,
           alignItems: 'center', justifyContent: 'center',
-          backgroundColor: '#FFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
+          backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: U.plainBtn.border,
           cursor: 'pointer' as any,
         }}>
-          {isRTL() ? <ArrowRight size={17} strokeWidth={1.8} color={DS.ink[900]} /> : <ArrowLeft size={17} strokeWidth={1.8} color={DS.ink[900]} />}
+          {isRTL() ? <ArrowRight size={17} strokeWidth={1.8} color={U.ink[900]} /> : <ArrowLeft size={17} strokeWidth={1.8} color={U.ink[900]} />}
         </Pressable>
 
         {isDesktop && (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 0 }}>
-            <Text style={{ fontSize: 13, fontFamily: 'monospace', color: DS.ink[700] }} numberOfLines={1}>
+            <Text style={{ fontSize: 13, fontFamily: 'monospace', color: U.ink[700] }} numberOfLines={1}>
               {invoice.invoice_number}
             </Text>
             {(() => {
@@ -406,8 +450,8 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
             })()}
             {!!invoice.clinic?.name && (
               <>
-                <Text style={{ fontSize: 12, color: DS.ink[300] }}>·</Text>
-                <Text style={{ fontSize: 12.5, color: DS.ink[500], flexShrink: 1 }} numberOfLines={1}>
+                <Text style={{ fontSize: 12, color: U.ink[300] }}>·</Text>
+                <Text style={{ fontSize: 12.5, color: U.ink[500], flexShrink: 1 }} numberOfLines={1}>
                   {invoice.clinic.name}
                 </Text>
               </>
@@ -420,10 +464,10 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
           <PillBtn icon={Send} label={isDesktop ? 'Kesildi İşaretle' : undefined} color={CHIP_TONES.info.text} bg={CHIP_TONES.info.bg} onPress={handleMarkSent} disabled={busy} />
         )}
         {!readOnly && (invoice.status === 'kesildi' || invoice.status === 'kismi_odendi') && (
-          <PillBtn icon={BellRing} label={isDesktop ? 'Hatirlatma' : undefined} color={DS.ink[500]} bg={DS.ink[50]} onPress={() => setReminderOpen(true)} disabled={busy} />
+          <PillBtn icon={BellRing} label={isDesktop ? 'Hatirlatma' : undefined} color={U.ink[500]} bg={U.ink[50]} onPress={() => setReminderOpen(true)} disabled={busy} />
         )}
         {!readOnly && invoice.status === 'kesildi' && Number(invoice.paid_amount) === 0 && (
-          <PillBtn icon={Undo2} label={isDesktop ? 'Taslağa Dön' : undefined} color={DS.ink[700]} bg={DS.ink[100]} onPress={handleRevertToDraft} disabled={busy} />
+          <PillBtn icon={Undo2} label={isDesktop ? 'Taslağa Dön' : undefined} color={U.ink[700]} bg={U.ink[100]} onPress={handleRevertToDraft} disabled={busy} />
         )}
         {!readOnly && balance > 0 && invoice.status !== 'iptal' && (
           <PillBtn icon={Banknote} label={isDesktop ? 'Tahsilat Ekle' : undefined} onPress={() => setPaymentModalVisible(true)} dark />
@@ -459,9 +503,10 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
           width: '100%',
           borderRadius: 24,
           padding: 22,
-          backgroundColor: isOverdue ? DS.ink[900] : theme.primary,
+          backgroundColor: isOverdue ? (U.isDark ? '#2A1212' : U.ink[900]) : theme.primary,
+          ...(isOverdue ? {} : heroBg),
           position: 'relative', overflow: 'hidden',
-        }}>
+        } as any}>
           {/* Row 1: FATURA title + number + status */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
             <Text style={{
@@ -589,49 +634,49 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
         </View>
 
         {/* ═══════════════════════════════════════════════════════════
-            §05 cardSolid — Alici bilgileri
+            §05 U.cardSolid — Alici bilgileri
             ═══════════════════════════════════════════════════════════ */}
         <View style={{ width: '100%' }}>
           <View style={{
-            ...cardSolid,
+            ...U.cardSolid,
             flexDirection: isDesktop ? 'row' : 'column',
             gap: isDesktop ? 40 : 16,
           }}>
             {/* Alici */}
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[400], marginBottom: 10 }}>Alici</Text>
-              <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[900] }}>{invoice.clinic?.name ?? '—'}</Text>
+              <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: U.ink[400], marginBottom: 10 }}>Alici</Text>
+              <Text style={{ fontSize: 15, fontWeight: '600', color: U.ink[900] }}>{invoice.clinic?.name ?? '—'}</Text>
               {/* doctors.full_name ZATEN ön ek içeriyor ("Dr. Aylar Teke", "Dt. Beyza…").
                   Düz "Dr. " eklemek "Dr. Dr. Aylar Teke" üretiyordu. normalizeDoctorName
                   ön eki varsa korur, yoksa ekler. */}
-              {invoice.doctor?.full_name && <Text style={{ fontSize: 13, color: DS.ink[500], marginTop: 4 }}>{normalizeDoctorName(invoice.doctor.full_name)}</Text>}
-              {invoice.doctor?.phone && <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 2 }}>{invoice.doctor.phone}</Text>}
-              {invoice.clinic?.address && <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 2, maxWidth: 280 }}>{formatAddress(invoice.clinic.address)}</Text>}
+              {invoice.doctor?.full_name && <Text style={{ fontSize: 13, color: U.ink[500], marginTop: 4 }}>{normalizeDoctorName(invoice.doctor.full_name)}</Text>}
+              {invoice.doctor?.phone && <Text style={{ fontSize: 12, color: U.ink[400], marginTop: 2 }}>{invoice.doctor.phone}</Text>}
+              {invoice.clinic?.address && <Text style={{ fontSize: 12, color: U.ink[400], marginTop: 2, maxWidth: 280 }}>{formatAddress(invoice.clinic.address)}</Text>}
             </View>
 
             {/* Is emirleri */}
             {(invoice.linked_orders?.length || invoice.work_order) && (
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[400], marginBottom: 10 }}>Is Emirleri</Text>
+                <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: U.ink[400], marginBottom: 10 }}>Is Emirleri</Text>
                 {(invoice.linked_orders && invoice.linked_orders.length > 0)
                   ? invoice.linked_orders.map(lo => lo.work_order && (
-                      <Pressable key={lo.work_order_id} onPress={() => router.push(`/${panelBase}/order/${lo.work_order!.id}` as any)}
+                      <Pressable key={lo.work_order_id} onPress={() => setPreviewOrderId(lo.work_order!.id)}
                         style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6, cursor: 'pointer' as any }}>
                         <ClipboardList size={12} strokeWidth={1.6} color="#2563EB" />
                         <Text style={{ fontSize: 13, color: '#2563EB', fontWeight: '500' }}>
                           {lo.work_order.order_number}{lo.work_order.patient_name ? ` · ${lo.work_order.patient_name}` : ''}
                         </Text>
-                        {isRTL() ? <ChevronLeft size={11} strokeWidth={1.4} color={DS.ink[300]} /> : <ChevronRight size={11} strokeWidth={1.4} color={DS.ink[300]} />}
+                        {isRTL() ? <ChevronLeft size={11} strokeWidth={1.4} color={U.ink[300]} /> : <ChevronRight size={11} strokeWidth={1.4} color={U.ink[300]} />}
                       </Pressable>
                     ))
                   : invoice.work_order && (
-                      <Pressable onPress={() => router.push(`/${panelBase}/order/${invoice.work_order!.id}` as any)}
+                      <Pressable onPress={() => setPreviewOrderId(invoice.work_order!.id)}
                         style={{ flexDirection: 'row', alignItems: 'center', gap: 6, cursor: 'pointer' as any }}>
                         <ClipboardList size={12} strokeWidth={1.6} color="#2563EB" />
                         <Text style={{ fontSize: 13, color: '#2563EB', fontWeight: '500' }}>
                           {invoice.work_order.order_number}{invoice.work_order.patient_name ? ` · ${invoice.work_order.patient_name}` : ''}
                         </Text>
-                        {isRTL() ? <ChevronLeft size={11} strokeWidth={1.4} color={DS.ink[300]} /> : <ChevronRight size={11} strokeWidth={1.4} color={DS.ink[300]} />}
+                        {isRTL() ? <ChevronLeft size={11} strokeWidth={1.4} color={U.ink[300]} /> : <ChevronRight size={11} strokeWidth={1.4} color={U.ink[300]} />}
                       </Pressable>
                     )
                 }
@@ -643,63 +688,76 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
         {/* ═══════════════════════════════════════════════════════════
             §09 TABLO — Kalemler
             ═══════════════════════════════════════════════════════════ */}
-        <View style={{ width: '100%', ...tableCard }}>
-          {/* Toolbar */}
-          <View style={{
-            flexDirection: 'row', alignItems: 'center',
-            padding: 20, gap: 12,
-            borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
-          }}>
-            <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900], flex: 1 }}>
-              Fatura Kalemleri
-            </Text>
-            <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: DS.ink[100] }}>
-              <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[500] }}>
-                {items.length} Kalem
-              </Text>
-            </View>
-            {invoice.status === 'taslak' && (
-              <Pressable onPress={() => setCurPickerOpen(true)} style={{
-                flexDirection: 'row', alignItems: 'center', gap: 5,
-                paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
-                borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)', backgroundColor: '#FFF',
-                cursor: 'pointer' as any,
+        <View style={{ width: '100%', ...U.tableCard }}>
+          {/* Toolbar — mobilde tek satıra sığmıyordu (başlık + rozet + kur + "Kalem Ekle"
+              butonu sayfa dışına taşıyordu). Dar ekranda aksiyonlar ALT SATIRA iner. */}
+          {(() => {
+            const itemActions = invoice.status === 'taslak' ? (
+              <>
+                <Pressable onPress={() => setCurPickerOpen(true)} style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 5,
+                  paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
+                  borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg,
+                  cursor: 'pointer' as any,
+                }}>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: U.ink[700] }}>
+                    {CURRENCY_META[(invoice.currency || 'TRY') as Currency]?.symbol ?? '₺'} {invoice.currency || 'TRY'}
+                  </Text>
+                  <ChevronDown size={13} strokeWidth={1.8} color={U.ink[500]} />
+                </Pressable>
+                <Pressable onPress={() => setAddItemModalVisible(true)} style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 5,
+                  paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
+                  backgroundColor: U.ink[900], cursor: 'pointer' as any,
+                }}>
+                  <Plus size={13} strokeWidth={2} color={U.onDarkPill} />
+                  <Text style={{ fontSize: 12, fontWeight: '500', color: U.onDarkPill }}>Kalem Ekle</Text>
+                </Pressable>
+              </>
+            ) : null;
+            return (
+              <View style={{
+                padding: 20, gap: 12,
+                borderBottomWidth: 1, borderBottomColor: U.hairline,
               }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[700] }}>
-                  {CURRENCY_META[(invoice.currency || 'TRY') as Currency]?.symbol ?? '₺'} {invoice.currency || 'TRY'}
-                </Text>
-                <ChevronDown size={13} strokeWidth={1.8} color={DS.ink[500]} />
-              </Pressable>
-            )}
-            {invoice.status === 'taslak' && (
-              <Pressable onPress={() => setAddItemModalVisible(true)} style={{
-                flexDirection: 'row', alignItems: 'center', gap: 5,
-                paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
-                backgroundColor: DS.ink[900], cursor: 'pointer' as any,
-              }}>
-                <Plus size={13} strokeWidth={2} color="#FFF" />
-                <Text style={{ fontSize: 12, fontWeight: '500', color: '#FFF' }}>Kalem Ekle</Text>
-              </Pressable>
-            )}
-          </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Text numberOfLines={1} style={{ ...DISPLAY, fontSize: isDesktop ? 22 : 18, letterSpacing: -0.4, color: U.ink[900], flexShrink: 1 }}>
+                    Fatura Kalemleri
+                  </Text>
+                  <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: U.ink[100] }}>
+                    <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '600', color: U.ink[500] }}>
+                      {items.length} Kalem
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1 }} />
+                  {isDesktop ? itemActions : null}
+                </View>
+                {!isDesktop && itemActions ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                    {itemActions}
+                  </View>
+                ) : null}
+              </View>
+            );
+          })()}
 
           {/* Header — §09 exact: #FAFAFA bg, uppercase 10px */}
           <View style={{
             flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12,
-            backgroundColor: '#FAFAFA',
-            borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
+            backgroundColor: U.surfaceSoft,
+            borderBottomWidth: 1, borderBottomColor: U.hairline,
           }}>
-            <Text style={{ flex: 3, ...TH }}>ACIKLAMA</Text>
-            {isDesktop && <Text style={{ flex: 1, ...TH, textAlign: 'center' }}>ADET</Text>}
-            {isDesktop && <Text style={{ flex: 1.5, ...TH, textAlign: 'end' as any }}>BIRIM FIYAT</Text>}
-            <Text style={{ flex: 1.5, ...TH, textAlign: 'end' as any }}>TOPLAM</Text>
+            <Text style={{ flex: 3, ...thOf(U) }}>ACIKLAMA</Text>
+            {isDesktop && <Text style={{ flex: 1, ...thOf(U), textAlign: 'center' }}>ADET</Text>}
+            {isDesktop && <Text style={{ flex: 1.5, ...thOf(U), textAlign: 'end' as any }}>BIRIM FIYAT</Text>}
+            <Text style={{ flex: 1.5, ...thOf(U), textAlign: 'end' as any }}>TOPLAM</Text>
             {invoice.status === 'taslak' && <View style={{ width: 32 }} />}
           </View>
 
           {/* Rows — §09 exact: paddingHorizontal 20, paddingVertical 14 */}
           {items.length === 0 ? (
             <View style={{ paddingVertical: 32, alignItems: 'center' }}>
-              <Text style={{ fontSize: 13, color: DS.ink[400], fontStyle: 'italic' }}>Kalem eklenmemiş</Text>
+              <Text style={{ fontSize: 13, color: U.ink[400], fontStyle: 'italic' }}>Kalem eklenmemiş</Text>
             </View>
           ) : (
             items.map((it, idx) => (
@@ -707,35 +765,64 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
                 flexDirection: 'row', alignItems: 'center',
                 paddingHorizontal: 20, paddingVertical: 14,
                 borderBottomWidth: idx < items.length - 1 ? 1 : 0,
-                borderBottomColor: 'rgba(0,0,0,0.04)',
+                borderBottomColor: U.hairlineSoft,
               }}>
                 <View style={{ flex: 3 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[900] }}>{it.description}</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '500', color: U.ink[900] }}>{it.description}</Text>
                   {!isDesktop && (
                     invoice.status === 'taslak' ? (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
                         <EditableNum value={Number(it.quantity)} editable onSave={(n) => saveItem(it.id, { quantity: n })} inputStyle={{ width: 48, textAlign: 'center' }} />
-                        <Text style={{ fontSize: 12, color: DS.ink[400] }}>×</Text>
+                        <Text style={{ fontSize: 12, color: U.ink[400] }}>×</Text>
                         <EditableNum value={Number(it.unit_price)} editable onSave={(n) => saveItem(it.id, { unit_price: n })} fmt={fmtMoney} inputStyle={{ width: 96, textAlign: 'end' as any }} />
                       </View>
                     ) : (
-                      <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 2 }}>
+                      <Text style={{ fontSize: 11, color: U.ink[500], marginTop: 2 }}>
                         {Number(it.quantity).toLocaleString('tr-TR')} x {fmtMoney(it.unit_price)}
                       </Text>
                     )
                   )}
+                  {/* Kalem indirimi — % / sabit tutar */}
+                  {invoice.status === 'taslak' ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                      <Text style={{ fontSize: 11, color: U.ink[500] }}>İndirim</Text>
+                      <Pressable
+                        onPress={() => saveItem(it.id, { discount_type: (it.discount_type === 'fixed' ? 'percent' : 'fixed') })}
+                        style={{ paddingHorizontal: 9, paddingVertical: 3, borderRadius: 6, borderWidth: 1, borderColor: U.fieldBorder, cursor: 'pointer' as any }}
+                      >
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: U.ink[700] }}>{it.discount_type === 'fixed' ? 'Tutar' : '%'}</Text>
+                      </Pressable>
+                      <EditableNum value={Number(it.discount_value) || 0} editable onSave={(n) => saveItem(it.id, { discount_value: n })} textStyle={{ fontSize: 12, color: U.ink[800] }} inputStyle={{ width: 60, textAlign: 'center' }} />
+                    </View>
+                  ) : (Number(it.discount_value) || 0) > 0 ? (
+                    <Text style={{ fontSize: 11, color: U.ink[500], marginTop: 2 }}>
+                      İndirim: {it.discount_type === 'fixed' ? `−${fmtMoney(it.discount_value)}` : `%${Number(it.discount_value).toLocaleString('tr-TR')}`}
+                    </Text>
+                  ) : null}
                 </View>
                 {isDesktop && (
                   <View style={{ flex: 1, alignItems: 'center' }}>
-                    <EditableNum value={Number(it.quantity)} editable={invoice.status === 'taslak'} onSave={(n) => saveItem(it.id, { quantity: n })} textStyle={{ fontSize: 13, color: DS.ink[800] }} inputStyle={{ width: 56, textAlign: 'center' }} />
+                    <EditableNum value={Number(it.quantity)} editable={invoice.status === 'taslak'} onSave={(n) => saveItem(it.id, { quantity: n })} textStyle={{ fontSize: 13, color: U.ink[800] }} inputStyle={{ width: 56, textAlign: 'center' }} />
                   </View>
                 )}
                 {isDesktop && (
                   <View style={{ flex: 1.5, alignItems: 'flex-end' }}>
-                    <EditableNum value={Number(it.unit_price)} editable={invoice.status === 'taslak'} onSave={(n) => saveItem(it.id, { unit_price: n })} fmt={fmtMoney} textStyle={{ fontSize: 13, color: DS.ink[800], textAlign: 'end' as any }} inputStyle={{ width: 110, textAlign: 'end' as any }} />
+                    <EditableNum value={Number(it.unit_price)} editable={invoice.status === 'taslak'} onSave={(n) => saveItem(it.id, { unit_price: n })} fmt={fmtMoney} textStyle={{ fontSize: 13, color: U.ink[800], textAlign: 'end' as any }} inputStyle={{ width: 110, textAlign: 'end' as any }} />
                   </View>
                 )}
-                <Text style={{ flex: 1.5, fontSize: 13, fontWeight: '500', color: DS.ink[900], textAlign: 'end' as any }}>{fmtMoney(it.total)}</Text>
+                {(() => {
+                  const gross = Number(it.total) || 0;
+                  const net = it.net_total != null ? Number(it.net_total) : gross;
+                  const discounted = net < gross - 0.001;
+                  return (
+                    <View style={{ flex: 1.5, alignItems: 'flex-end' }}>
+                      {discounted && (
+                        <Text style={{ fontSize: 11, color: U.ink[400], textDecorationLine: 'line-through' }}>{fmtMoney(gross)}</Text>
+                      )}
+                      <Text style={{ fontSize: 13, fontWeight: '500', color: U.ink[900], textAlign: 'end' as any }}>{fmtMoney(net)}</Text>
+                    </View>
+                  );
+                })()}
                 {invoice.status === 'taslak' && (
                   <Pressable onPress={async () => {
                     const { error } = await deleteInvoiceItem(it.id);
@@ -751,23 +838,23 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
           {/* Footer — §09 exact: #FAFAFA bg, borderTop */}
           <View style={{
             paddingHorizontal: 20, paddingVertical: 14,
-            backgroundColor: '#FAFAFA',
-            borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
+            backgroundColor: U.surfaceSoft,
+            borderTopWidth: 1, borderTopColor: U.hairline,
           }}>
             {/* Toplamlar — sağa dayalı */}
             <View style={{ alignSelf: 'flex-end', width: isDesktop ? 260 : '100%', gap: 6 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: 12, color: DS.ink[500] }}>Ara Toplam</Text>
-                <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[900] }}>{fmtMoney(invoice.subtotal)}</Text>
+                <Text style={{ fontSize: 12, color: U.ink[500] }}>Ara Toplam</Text>
+                <Text style={{ fontSize: 13, fontWeight: '500', color: U.ink[900] }}>{fmtMoney(invoice.subtotal)}</Text>
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: 12, color: DS.ink[500] }}>KDV (%{Number(invoice.tax_rate).toLocaleString('tr-TR')})</Text>
-                <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[900] }}>{fmtMoney(invoice.tax_amount)}</Text>
+                <Text style={{ fontSize: 12, color: U.ink[500] }}>KDV (%{Number(invoice.tax_rate).toLocaleString('tr-TR')})</Text>
+                <Text style={{ fontSize: 13, fontWeight: '500', color: U.ink[900] }}>{fmtMoney(invoice.tax_amount)}</Text>
               </View>
-              <View style={{ height: 2, backgroundColor: DS.ink[900], marginVertical: 4 }} />
+              <View style={{ height: 2, backgroundColor: U.ink[900], marginVertical: 4 }} />
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>Genel Toplam</Text>
-                <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.5, color: DS.ink[900] }}>{fmtMoney(invoice.total)}</Text>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>Genel Toplam</Text>
+                <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.5, color: U.ink[900] }}>{fmtMoney(invoice.total)}</Text>
               </View>
               {isForeign && (
                 <Pressable
@@ -775,26 +862,26 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
                   disabled={readOnly}
                   style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, paddingVertical: 4, ...(Platform.OS === 'web' && !readOnly ? { cursor: 'pointer' } as any : {}) }}
                 >
-                  <Text style={{ fontSize: 11, color: DS.ink[500] }}>
+                  <Text style={{ fontSize: 11, color: U.ink[500] }}>
                     Kur: 1 {invoice.currency} = {baseSymbol()}{(Number(rateVal) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 4 })}{!readOnly ? '  · düzenle' : ''}
                   </Text>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: DS.ink[700] }}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: U.ink[700] }}>
                     ≈ {baseSymbol()}{Number(invoice.amount_base ?? 0).toLocaleString('tr-TR', { maximumFractionDigits: 0 })}
                   </Text>
                 </Pressable>
               )}
               {Number(invoice.paid_amount) > 0 && (
                 <>
-                  <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.06)', marginVertical: 2 }} />
+                  <View style={{ height: 1, backgroundColor: U.plainBtn.hoverBg, marginVertical: 2 }} />
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Text style={{ fontSize: 12, color: DS.ink[500] }}>Odenen</Text>
+                    <Text style={{ fontSize: 12, color: U.ink[500] }}>Odenen</Text>
                     <Text style={{ fontSize: 13, fontWeight: '500', color: '#059669' }}>{fmtMoney(invoice.paid_amount)}</Text>
                   </View>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: isOverdue ? CHIP_TONES.danger.text : DS.ink[900] }}>Kalan</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: isOverdue ? CHIP_TONES.danger.text : U.ink[900] }}>Kalan</Text>
                     <Text style={{
                       ...DISPLAY, fontSize: 18, letterSpacing: -0.3,
-                      color: balance <= 0 ? '#059669' : (isOverdue ? CHIP_TONES.danger.text : DS.ink[900]),
+                      color: balance <= 0 ? '#059669' : (isOverdue ? CHIP_TONES.danger.text : U.ink[900]),
                     }}>
                       {fmtMoney(balance)}
                     </Text>
@@ -806,17 +893,17 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
         </View>
 
         {/* ═══════════════════════════════════════════════════════════
-            §05 cardSolid — Tahsilat Gecmisi
+            §05 U.cardSolid — Tahsilat Gecmisi
             ═══════════════════════════════════════════════════════════ */}
         {(invoice.payments ?? []).length > 0 && (
-          <View style={{ width: '100%', ...tableCard }}>
+          <View style={{ width: '100%', ...U.tableCard }}>
             {/* Toolbar */}
             <View style={{
               flexDirection: 'row', alignItems: 'center',
               padding: 20, gap: 12,
-              borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
+              borderBottomWidth: 1, borderBottomColor: U.hairline,
             }}>
-              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>
+              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: U.ink[900] }}>
                 Tahsilat · {invoice.payments!.length}
               </Text>
             </View>
@@ -825,7 +912,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
                 flexDirection: 'row', alignItems: 'center', gap: 12,
                 paddingHorizontal: 20, paddingVertical: 14,
                 borderBottomWidth: idx < invoice.payments!.length - 1 ? 1 : 0,
-                borderBottomColor: 'rgba(0,0,0,0.04)',
+                borderBottomColor: U.hairlineSoft,
               }}>
                 <View style={{
                   width: 32, height: 32, borderRadius: 10,
@@ -836,13 +923,13 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 14, fontWeight: '600', color: CHIP_TONES.success.text }}>{fmtMoney(p.amount)}</Text>
-                  <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 2 }}>
+                  <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 2 }}>
                     {fmtDate(p.payment_date)} · {PAYMENT_METHOD_LABELS[p.payment_method]}
                     {p.reference_no ? ` · ${p.reference_no}` : ''}
                   </Text>
                 </View>
                 {p.receiver?.full_name && (
-                  <Text style={{ fontSize: 11, color: DS.ink[400] }}>{p.receiver.full_name}</Text>
+                  <Text style={{ fontSize: 11, color: U.ink[400] }}>{p.receiver.full_name}</Text>
                 )}
               </View>
             ))}
@@ -856,11 +943,48 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
             arama/profil çubuğu için zaten yeterli boşluk bırakıyor). */}
         <View style={{ width: isDesktop ? 360 : '100%', gap: isDesktop ? 16 : 14 }}>
 
-        {/* ═══ Notlar — cardSolid ═══ */}
-        {invoice.notes && (
-          <View style={{ width: '100%', maxWidth: 800, ...cardSolid }}>
-            <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[400], marginBottom: 8 }}>Notlar</Text>
-            <Text style={{ fontSize: 13, color: DS.ink[700], lineHeight: 20 }}>{invoice.notes}</Text>
+        {/* ═══ Klinik notu — laboratuvar düzenler, klinik fatura detayında görür ═══ */}
+        {(!readOnly || invoice.notes) && (
+          <View style={{ width: '100%', maxWidth: 800, ...U.cardSolid }}>
+            <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: U.ink[400], marginBottom: 8 }}>
+              {readOnly ? 'Fatura Notu' : 'Kliniğe Gösterilecek Not'}
+            </Text>
+            {readOnly ? (
+              <Text style={{ fontSize: 13, color: U.ink[700], lineHeight: 20 }}>{invoice.notes}</Text>
+            ) : (
+              <>
+                <TextInput
+                  value={noteDraft}
+                  onChangeText={setNoteDraft}
+                  multiline
+                  placeholder="Örn. Bu faturaya klinik indirimi uygulanmıştır."
+                  placeholderTextColor={U.ink[400]}
+                  textAlignVertical="top"
+                  style={{
+                    minHeight: 88, paddingHorizontal: 12, paddingVertical: 10,
+                    borderRadius: 10, borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)',
+                    backgroundColor: U.isDark ? U.surfaceSoft : '#FFFFFF', fontSize: 13, lineHeight: 20, color: U.ink[800],
+                    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
+                  }}
+                />
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 10 }}>
+                  <Pressable
+                    onPress={saveNote}
+                    disabled={savingNote || noteDraft.trim() === (invoice.notes ?? '')}
+                    style={({ pressed }) => ({
+                      paddingHorizontal: 13, paddingVertical: 8, borderRadius: 9,
+                      backgroundColor: theme.primary,
+                      opacity: savingNote || noteDraft.trim() === (invoice.notes ?? '') ? 0.45 : pressed ? 0.82 : 1,
+                      ...(Platform.OS === 'web' ? { cursor: savingNote ? 'default' : 'pointer' } as any : {}),
+                    })}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>
+                      {savingNote ? 'Kaydediliyor…' : 'Notu Kaydet'}
+                    </Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
           </View>
         )}
 
@@ -873,13 +997,13 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
               <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center' }}>
                 <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>1</Text>
               </View>
-              <Text style={{ fontSize: 12, fontWeight: '700', color: DS.ink[700], letterSpacing: 0.3 }}>Ödeme Linki</Text>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: U.ink[700], letterSpacing: 0.3 }}>Ödeme Linki</Text>
             </View>
             <PaymentLinkPanel invoiceId={invoice.id} balance={balance} onChanged={refetch} />
 
             {/* Bağlaç ↓ */}
             <View style={{ alignItems: 'center', paddingVertical: 2 }}>
-              <ChevronDown size={16} color={DS.ink[300]} strokeWidth={2.2} />
+              <ChevronDown size={16} color={U.ink[300]} strokeWidth={2.2} />
             </View>
 
             {/* Adım 2 */}
@@ -887,7 +1011,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
               <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center' }}>
                 <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>2</Text>
               </View>
-              <Text style={{ fontSize: 12, fontWeight: '700', color: DS.ink[700], letterSpacing: 0.3 }}>E-Fatura</Text>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: U.ink[700], letterSpacing: 0.3 }}>E-Fatura</Text>
             </View>
             <EFaturaPanel
               invoiceId={invoice.id} status={invoice.efatura_status ?? 'pending'}
@@ -907,10 +1031,10 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
           <View style={{
             width: '100%', maxWidth: isDesktop ? 1180 : 800,
             marginTop: 8, paddingTop: 16,
-            borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.07)',
+            borderTopWidth: 1, borderTopColor: U.hairline,
             flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap',
           }}>
-            <Text style={{ flex: 1, minWidth: 140, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[400] }}>
+            <Text style={{ flex: 1, minWidth: 140, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: U.ink[400] }}>
               Tehlikeli işlemler
             </Text>
             <Pressable onPress={handleCancel} disabled={busy}
@@ -927,9 +1051,73 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
             )}
           </View>
         )}
+
+        {/* ═══ ÖDEME YÖNTEMLERİ — iyzico kriteri: kabul edilen ödeme logoları fatura sayfasında görünür.
+            Marka logoları koyu temada da kendi renklerinde kalır → küçük açık plaka üstünde. */}
+        <View style={{
+          width: '100%', maxWidth: isDesktop ? 1180 : 800,
+          marginTop: 18, paddingTop: 14,
+          borderTopWidth: 1, borderTopColor: U.hairline,
+          flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
+        }}>
+          <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: U.ink[400] }}>
+            Güvenli ödeme
+          </Text>
+          <View style={{
+            // Marka logoları kendi renginde kalmalı → koyu temada okunur bir zemin
+            // şart. Ama tam beyaz levha parlıyordu: kısılmış zemin + hairline çerçeve.
+            paddingHorizontal: U.isDark ? 9 : 0, paddingVertical: U.isDark ? 5 : 0, borderRadius: 10,
+            backgroundColor: U.isDark ? 'rgba(233,233,231,0.80)' : 'transparent',
+            borderWidth: U.isDark ? 1 : 0, borderColor: 'rgba(255,255,255,0.14)',
+          }}>
+            <PaymentBadges height={14} />
+          </View>
+        </View>
       </ScrollView>
 
       {/* Modals */}
+      {/* İş emri, fatura bağlamını korumak için aynı ekranın üzerinde açılır. */}
+      <Modal visible={!!previewOrderId} transparent animationType="fade" onRequestClose={() => setPreviewOrderId(null)}>
+        <Pressable
+          onPress={() => setPreviewOrderId(null)}
+          style={{
+            flex: 1, backgroundColor: U.isDark ? 'rgba(0,0,0,0.72)' : 'rgba(10,14,26,0.52)',
+            ...(Platform.OS === 'web' ? { backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)' } : {}),
+            alignItems: 'center', justifyContent: 'center', padding: isDesktop ? 24 : 0,
+          }}
+        >
+          <Pressable
+            onPress={(e) => (e as any).stopPropagation?.()}
+            style={{
+              width: '100%', maxWidth: 1240, height: isDesktop ? '94%' : '100%',
+              borderRadius: isDesktop ? 24 : 0, overflow: 'hidden', backgroundColor: '#F5F1EB', position: 'relative',
+              ...(Platform.OS === 'web' ? { boxShadow: modalShadowOf(U) } as any : {}),
+            }}
+          >
+            {previewOrderId && (
+              <OrderDetailScreenV2
+                idOverride={previewOrderId}
+                embedded
+                onRequestClose={() => setPreviewOrderId(null)}
+                onOpenRelated={setPreviewOrderId}
+              />
+            )}
+            <Pressable
+              onPress={() => setPreviewOrderId(null)}
+              accessibilityLabel="Sipariş detayını kapat"
+              style={{
+                position: 'absolute', top: 12, end: 12, zIndex: 50,
+                width: 38, height: 38, borderRadius: 19, backgroundColor: U.surface,
+                alignItems: 'center', justifyContent: 'center',
+                ...(Platform.OS === 'web' ? { cursor: 'pointer', boxShadow: '0 4px 14px rgba(15,23,42,0.2)' } as any : {}),
+              }}
+            >
+              <X size={18} color={U.ink[900]} strokeWidth={2} />
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <PaymentModal visible={paymentModalVisible} invoiceId={invoice.id} maxAmount={balance} currency={invoice.currency || 'TRY'}
         onClose={() => setPaymentModalVisible(false)} onDone={() => { setPaymentModalVisible(false); refetch(); }} />
       {/* İptal/Sil onayı — web-safe ConfirmDialog (Alert.alert web'de çalışmıyor) */}
@@ -937,9 +1125,9 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
 
       {/* Para birimi seçici — Modal (clipping/z-index sorunsuz) */}
       <Modal visible={curPickerOpen} transparent animationType="fade" onRequestClose={() => setCurPickerOpen(false)}>
-        <Pressable onPress={() => setCurPickerOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.42)', justifyContent: 'center', alignItems: 'center', padding: 24, ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) }}>
-          <Pressable onPress={() => {}} style={{ backgroundColor: '#FFF', borderRadius: 18, padding: 8, width: 260, ...(Platform.OS === 'web' ? { boxShadow: modalShadow } as any : {}) } as any}>
-            <Text style={{ fontSize: 11, fontWeight: '700', color: DS.ink[400], letterSpacing: 1, textTransform: 'uppercase' as any, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 6 }}>
+        <Pressable onPress={() => setCurPickerOpen(false)} style={{ flex: 1, backgroundColor: U.isDark ? 'rgba(0,0,0,0.66)' : 'rgba(10,14,26,0.42)', justifyContent: 'center', alignItems: 'center', padding: 24, ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) }}>
+          <Pressable onPress={() => {}} style={{ backgroundColor: U.surface, borderRadius: 18, padding: 8, width: 260, ...(Platform.OS === 'web' ? { boxShadow: modalShadowOf(U) } as any : {}) } as any}>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: U.ink[400], letterSpacing: 1, textTransform: 'uppercase' as any, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 6 }}>
               Para Birimi
             </Text>
             {(['TRY', 'EUR', 'USD', 'GBP', 'IRT'] as const).map(c => {
@@ -948,12 +1136,12 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
                 <Pressable key={c} onPress={() => changeCurrency(c)} style={{
                   flexDirection: 'row', alignItems: 'center', gap: 10,
                   paddingHorizontal: 14, paddingVertical: 12, borderRadius: 11,
-                  backgroundColor: active ? DS.ink[50] : 'transparent',
+                  backgroundColor: active ? U.ink[50] : 'transparent',
                   cursor: 'pointer' as any,
                 }}>
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[700], width: 18 }}>{CURRENCY_META[c].symbol}</Text>
-                  <Text style={{ fontSize: 14, fontWeight: active ? '700' : '500', color: DS.ink[900], flex: 1 }}>{c} · {CURRENCY_META[c].label}</Text>
-                  {active && <Check size={16} color={DS.ink[700]} strokeWidth={2} />}
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: U.ink[700], width: 18 }}>{CURRENCY_META[c].symbol}</Text>
+                  <Text style={{ fontSize: 14, fontWeight: active ? '700' : '500', color: U.ink[900], flex: 1 }}>{c} · {CURRENCY_META[c].label}</Text>
+                  {active && <Check size={16} color={U.ink[700]} strokeWidth={2} />}
                 </Pressable>
               );
             })}
@@ -963,24 +1151,24 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
 
       {/* Kur düzenleme — manuel override; trigger amount_base'i yeni kurla hesaplar */}
       <Modal visible={rateEditOpen} transparent animationType="fade" onRequestClose={() => setRateEditOpen(false)}>
-        <Pressable onPress={() => setRateEditOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.42)', justifyContent: 'center', alignItems: 'center', padding: 24, ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) }}>
-          <Pressable onPress={() => {}} style={{ backgroundColor: '#FFF', borderRadius: 18, padding: 18, width: 300, gap: 10, ...(Platform.OS === 'web' ? { boxShadow: modalShadow } as any : {}) } as any}>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: DS.ink[900] }}>Kuru Düzenle</Text>
-            <Text style={{ fontSize: 12, color: DS.ink[500] }}>1 {invoice.currency} kaç {base}? Kaydedince toplamın {base} karşılığı bu kura göre hesaplanır.</Text>
+        <Pressable onPress={() => setRateEditOpen(false)} style={{ flex: 1, backgroundColor: U.isDark ? 'rgba(0,0,0,0.66)' : 'rgba(10,14,26,0.42)', justifyContent: 'center', alignItems: 'center', padding: 24, ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) }}>
+          <Pressable onPress={() => {}} style={{ backgroundColor: U.surface, borderRadius: 18, padding: 18, width: 300, gap: 10, ...(Platform.OS === 'web' ? { boxShadow: modalShadowOf(U) } as any : {}) } as any}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: U.ink[900] }}>Kuru Düzenle</Text>
+            <Text style={{ fontSize: 12, color: U.ink[500] }}>1 {invoice.currency} kaç {base}? Kaydedince toplamın {base} karşılığı bu kura göre hesaplanır.</Text>
             <TextInput
               value={rateInput}
               onChangeText={setRateInput}
               keyboardType="decimal-pad"
               placeholder="örn. 53.21"
-              placeholderTextColor={DS.ink[400]}
-              style={{ borderWidth: 1, borderColor: DS.ink[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 16, color: DS.ink[900], ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }}
+              placeholderTextColor={U.ink[400]}
+              style={{ borderWidth: 1, borderColor: U.ink[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 16, color: U.ink[900], ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }}
             />
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
-              <Pressable onPress={() => setRateEditOpen(false)} style={{ flex: 1, paddingVertical: 11, borderRadius: 999, backgroundColor: DS.ink[100], alignItems: 'center', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[700] }}>Vazgeç</Text>
+              <Pressable onPress={() => setRateEditOpen(false)} style={{ flex: 1, paddingVertical: 11, borderRadius: 999, backgroundColor: U.ink[100], alignItems: 'center', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[700] }}>Vazgeç</Text>
               </Pressable>
-              <Pressable onPress={saveRate} style={{ flex: 1, paddingVertical: 11, borderRadius: 999, backgroundColor: DS.ink[900], alignItems: 'center', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFF' }}>Kaydet</Text>
+              <Pressable onPress={saveRate} style={{ flex: 1, paddingVertical: 11, borderRadius: 999, backgroundColor: U.ink[900], alignItems: 'center', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: U.onDarkPill }}>Kaydet</Text>
               </Pressable>
             </View>
           </Pressable>
@@ -1000,16 +1188,17 @@ function PillBtn({ icon: Icon, label, color, bg, onPress, disabled, dark }: {
   icon: React.ComponentType<any>; label?: string; color?: string; bg?: string;
   onPress: () => void; disabled?: boolean; dark?: boolean;
 }) {
+  const U = useInkUI();
   return (
     <Pressable onPress={onPress} disabled={disabled} style={{
       flexDirection: 'row', alignItems: 'center', gap: 6,
       paddingHorizontal: label ? 14 : 10, paddingVertical: 8, borderRadius: 999,
-      backgroundColor: dark ? DS.ink[900] : (bg ?? '#FFF'),
-      borderWidth: dark || bg ? 0 : 1, borderColor: 'rgba(0,0,0,0.05)',
+      backgroundColor: dark ? U.ink[900] : (bg ?? U.plainBtn.bg),
+      borderWidth: dark || bg ? 0 : 1, borderColor: U.plainBtn.border,
       opacity: disabled ? 0.5 : 1, cursor: 'pointer' as any,
     }}>
-      <Icon size={14} strokeWidth={1.8} color={dark ? '#FFF' : (color ?? DS.ink[900])} />
-      {label && <Text style={{ fontSize: 12, fontWeight: '500', color: dark ? '#FFF' : (color ?? DS.ink[900]) }}>{label}</Text>}
+      <Icon size={14} strokeWidth={1.8} color={dark ? U.onDarkPill : (color ?? U.ink[900])} />
+      {label && <Text style={{ fontSize: 12, fontWeight: '500', color: dark ? U.onDarkPill : (color ?? U.ink[900]) }}>{label}</Text>}
     </Pressable>
   );
 }
@@ -1028,6 +1217,7 @@ const PAYMENT_METHOD_OPTIONS: { v: PaymentMethod; l: string; icon: React.Compone
 function PaymentModal({ visible, invoiceId, maxAmount, currency = 'TRY', onClose, onDone }: {
   visible: boolean; invoiceId: string; maxAmount: number; currency?: string; onClose: () => void; onDone: () => void;
 }) {
+  const U = useInkUI();
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState<PaymentMethod>('nakit');
   const [refNo, setRefNo] = useState('');
@@ -1049,23 +1239,23 @@ function PaymentModal({ visible, invoiceId, maxAmount, currency = 'TRY', onClose
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.42)', justifyContent: 'center', alignItems: 'center', padding: 24, ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) }}>
-        <View style={{ backgroundColor: '#FFF', borderRadius: 24, width: '100%', maxWidth: 520, padding: 28, gap: 8, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', boxShadow: modalShadow } as any}>
+      <View style={{ flex: 1, backgroundColor: U.isDark ? 'rgba(0,0,0,0.66)' : 'rgba(10,14,26,0.42)', justifyContent: 'center', alignItems: 'center', padding: 24, ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) }}>
+        <View style={{ backgroundColor: U.surface, borderRadius: 24, width: '100%', maxWidth: 520, padding: 28, gap: 8, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', boxShadow: modalShadowOf(U) } as any}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>Tahsilat Ekle</Text>
-            <Pressable onPress={onClose} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}>
-              <X size={16} strokeWidth={1.8} color={DS.ink[500]} />
+            <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: U.ink[900] }}>Tahsilat Ekle</Text>
+            <Pressable onPress={onClose} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: U.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}>
+              <X size={16} strokeWidth={1.8} color={U.ink[500]} />
             </Pressable>
           </View>
           <FL>{`Tutar (${CURRENCY_META[currency as Currency]?.symbol ?? '₺'})`}</FL>
           <FI value={amount} onChangeText={setAmount} placeholder="0,00" keyboardType={Platform.OS === 'web' ? 'default' : 'decimal-pad'} />
-          {maxAmount > 0 && <Text style={{ fontSize: 10, color: DS.ink[400], marginTop: -4 }}>Kalan bakiye: {fmtMoneyCur(maxAmount, currency)}</Text>}
+          {maxAmount > 0 && <Text style={{ fontSize: 10, color: U.ink[400], marginTop: -4 }}>Kalan bakiye: {fmtMoneyCur(maxAmount, currency)}</Text>}
           <FL>Yontem</FL>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
             {PAYMENT_METHOD_OPTIONS.map(opt => { const a = method === opt.v; const MI = opt.icon; return (
-              <Pressable key={opt.v} onPress={() => setMethod(opt.v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1.5, borderColor: a ? DS.ink[900] : 'rgba(0,0,0,0.08)', backgroundColor: a ? DS.ink[50] : '#FFF', cursor: 'pointer' as any }}>
-                <MI size={12} strokeWidth={1.6} color={a ? DS.ink[900] : DS.ink[400]} />
-                <Text style={{ fontSize: 12, fontWeight: a ? '600' : '500', color: a ? DS.ink[900] : DS.ink[400] }}>{opt.l}</Text>
+              <Pressable key={opt.v} onPress={() => setMethod(opt.v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1.5, borderColor: a ? U.ink[900] : U.plainBtn.border, backgroundColor: a ? U.ink[50] : U.plainBtn.bg, cursor: 'pointer' as any }}>
+                <MI size={12} strokeWidth={1.6} color={a ? U.ink[900] : U.ink[400]} />
+                <Text style={{ fontSize: 12, fontWeight: a ? '600' : '500', color: a ? U.ink[900] : U.ink[400] }}>{opt.l}</Text>
               </Pressable>
             ); })}
           </View>
@@ -1073,12 +1263,12 @@ function PaymentModal({ visible, invoiceId, maxAmount, currency = 'TRY', onClose
           <FI value={refNo} onChangeText={setRefNo} placeholder="Havale/cek referans no" />
           <FL>Not (ops.)</FL>
           <FI value={notes} onChangeText={setNotes} placeholder="Ek bilgi..." multiline style={{ minHeight: 56, textAlignVertical: 'top' }} />
-          <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end', paddingTop: 16, marginTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
+          <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end', paddingTop: 16, marginTop: 8, borderTopWidth: 1, borderTopColor: U.hairline }}>
             <Pressable onPress={onClose} disabled={busy} style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, cursor: 'pointer' as any }}>
-              <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[500] }}>Vazgec</Text>
+              <Text style={{ fontSize: 13, fontWeight: '500', color: U.ink[500] }}>Vazgec</Text>
             </Pressable>
-            <Pressable onPress={handleSave} disabled={busy} style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, backgroundColor: DS.ink[900], opacity: busy ? 0.5 : 1, cursor: 'pointer' as any }}>
-              <Text style={{ fontSize: 13, fontWeight: '500', color: '#FFF' }}>{busy ? 'Kaydediliyor...' : 'Kaydet'}</Text>
+            <Pressable onPress={handleSave} disabled={busy} style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, backgroundColor: U.ink[900], opacity: busy ? 0.5 : 1, cursor: 'pointer' as any }}>
+              <Text style={{ fontSize: 13, fontWeight: '500', color: U.onDarkPill }}>{busy ? 'Kaydediliyor...' : 'Kaydet'}</Text>
             </Pressable>
           </View>
         </View>
@@ -1093,6 +1283,7 @@ function PaymentModal({ visible, invoiceId, maxAmount, currency = 'TRY', onClose
 function AddItemModal({ visible, invoiceId, currency = 'TRY', onClose, onDone }: {
   visible: boolean; invoiceId: string; currency?: string; onClose: () => void; onDone: () => void;
 }) {
+  const U = useInkUI();
   const curSym = CURRENCY_META[currency as Currency]?.symbol ?? '₺';
   const [desc, setDesc] = useState('');
   const [qty, setQty] = useState('1');
@@ -1114,12 +1305,12 @@ function AddItemModal({ visible, invoiceId, currency = 'TRY', onClose, onDone }:
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.42)', justifyContent: 'center', alignItems: 'center', padding: 24, ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) }}>
-        <View style={{ backgroundColor: '#FFF', borderRadius: 24, width: '100%', maxWidth: 520, padding: 28, gap: 8, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', boxShadow: modalShadow } as any}>
+      <View style={{ flex: 1, backgroundColor: U.isDark ? 'rgba(0,0,0,0.66)' : 'rgba(10,14,26,0.42)', justifyContent: 'center', alignItems: 'center', padding: 24, ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) }}>
+        <View style={{ backgroundColor: U.surface, borderRadius: 24, width: '100%', maxWidth: 520, padding: 28, gap: 8, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', boxShadow: modalShadowOf(U) } as any}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>Kalem Ekle</Text>
-            <Pressable onPress={onClose} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}>
-              <X size={16} strokeWidth={1.8} color={DS.ink[500]} />
+            <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: U.ink[900] }}>Kalem Ekle</Text>
+            <Pressable onPress={onClose} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: U.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}>
+              <X size={16} strokeWidth={1.8} color={U.ink[500]} />
             </Pressable>
           </View>
           <FL>Açıklama</FL>
@@ -1128,12 +1319,12 @@ function AddItemModal({ visible, invoiceId, currency = 'TRY', onClose, onDone }:
             <View style={{ flex: 1 }}><FL>Adet</FL><FI value={qty} onChangeText={setQty} placeholder="1" keyboardType={Platform.OS === 'web' ? 'default' : 'decimal-pad'} /></View>
             <View style={{ flex: 2 }}><FL>{`Birim Fiyat (${curSym})`}</FL><FI value={price} onChangeText={setPrice} placeholder="0,00" keyboardType={Platform.OS === 'web' ? 'default' : 'decimal-pad'} /></View>
           </View>
-          <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end', paddingTop: 16, marginTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
+          <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end', paddingTop: 16, marginTop: 8, borderTopWidth: 1, borderTopColor: U.hairline }}>
             <Pressable onPress={onClose} disabled={busy} style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, cursor: 'pointer' as any }}>
-              <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[500] }}>Vazgec</Text>
+              <Text style={{ fontSize: 13, fontWeight: '500', color: U.ink[500] }}>Vazgec</Text>
             </Pressable>
-            <Pressable onPress={handleSave} disabled={busy} style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, backgroundColor: DS.ink[900], opacity: busy ? 0.5 : 1, cursor: 'pointer' as any }}>
-              <Text style={{ fontSize: 13, fontWeight: '500', color: '#FFF' }}>{busy ? 'Ekleniyor...' : 'Ekle'}</Text>
+            <Pressable onPress={handleSave} disabled={busy} style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, backgroundColor: U.ink[900], opacity: busy ? 0.5 : 1, cursor: 'pointer' as any }}>
+              <Text style={{ fontSize: 13, fontWeight: '500', color: U.onDarkPill }}>{busy ? 'Ekleniyor...' : 'Ekle'}</Text>
             </Pressable>
           </View>
         </View>
@@ -1144,11 +1335,13 @@ function AddItemModal({ visible, invoiceId, currency = 'TRY', onClose, onDone }:
 
 // ─── §05.5 Form field components ────────────────────────────────────
 function FL({ children }: { children: string }) {
-  return <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginTop: 8, marginBottom: 4 }}>{children}</Text>;
+  const U = useInkUI();
+  return <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: U.ink[500], marginTop: 8, marginBottom: 4 }}>{children}</Text>;
 }
 function FI(props: React.ComponentProps<typeof TextInput> & { style?: any }) {
+  const U = useInkUI();
   const { style: extra, ...rest } = props;
-  return <TextInput placeholderTextColor={DS.ink[400]} {...rest} style={[{ height: 44, paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#FFF', fontSize: 15, color: DS.ink[900], outline: 'none' as any }, extra]} />;
+  return <TextInput placeholderTextColor={U.ink[400]} {...rest} style={[{ height: 44, paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, borderColor: U.fieldBorder, backgroundColor: U.isDark ? U.surfaceSoft : '#FFF', fontSize: 15, color: U.ink[900], outline: 'none' as any }, extra]} />;
 }
 
 export default InvoiceDetailScreen;

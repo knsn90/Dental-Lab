@@ -162,9 +162,17 @@ Deno.serve(async (req) => {
   const results: any[] = [];
   for (const pr of (profiles ?? []) as any[]) {
     // Şablon alıcı tipine göre: müşteri (doctor/clinic) → müşteri şablonu (siparis_alindi…);
-    // lab ADMIN → lab şablonu (yeni_siparis_lab, yalnız new_order). Teknisyen/yönetici atlanır.
+    // lab tarafı (admin + lab yöneticisi) → lab şablonu (yeni_siparis_lab, yalnız
+    // new_order). Teknisyen/kurye atlanır.
+    //
+    // NOT: 'lab' eskiden buraya girmiyordu ve "not-client" diye atlanıyordu —
+    // lab müdürleri bildirimi uygulama içinde görüyor ama telefonuna hiç mesaj
+    // gelmiyordu (telefonu kayıtlı olsa bile). Bildirimi zaten yalnız
+    // role='manager' olan lab profilleri alıyor (trg_work_order_notify_new),
+    // yani buraya gelen 'lab' kaydı zaten yöneticidir. Lab şablonu olmayan
+    // kategorilerde aşağıdaki `if (!lt)` ile eskisi gibi atlanır.
     let useTpl = tpl; let useParams = params;
-    if (pr.user_type === 'admin') {
+    if (pr.user_type === 'admin' || pr.user_type === 'lab') {
       const lt = LAB_TEMPLATES[category];
       if (!lt) { results.push({ id: pr.id, skip: 'admin-no-lab-tpl' }); continue; }
       useTpl = lt; useParams = lt.params(extra);

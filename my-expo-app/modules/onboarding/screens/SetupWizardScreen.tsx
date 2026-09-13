@@ -23,7 +23,7 @@ import {
   ChevronRight, ChevronLeft, Check, Sparkles,
   ArrowRight, ArrowLeft, Phone, Mail, MapPin, User,
   CircleCheck, ChevronDown, ChevronUp, AlertCircle,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { DS } from '../../../core/theme/dsTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { isRTL } from '../../../core/i18n';

@@ -17,10 +17,11 @@ import {
   CreditCard, TrendingDown, Landmark, Tag, Wallet, Truck,
   Sparkles, CheckSquare,
   Menu, X,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 
 import { HubContext } from '../../../core/ui/HubContext';
 import { PurchaseInvoiceDetailScreen } from '../../purchases/screens/PurchaseInvoiceDetailScreen';
+import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 import { MobilePageTitle } from '../../../core/ui/mobile/MobilePageTitle';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
@@ -180,7 +181,7 @@ export function FinanceHubScreen({ forceActiveKey, overrideContent }: FinanceHub
           ? PRIMARY_INLINE
           : (activeTab ? [...PRIMARY_INLINE, activeTab] : PRIMARY_INLINE);
         return (
-        <View style={{ paddingHorizontal: 12, paddingTop: 4, paddingBottom: 8 }}>
+        <View style={{ paddingHorizontal: PAGE_PADDING, paddingTop: 4, paddingBottom: 8 }}>
           {/* Full-width pill — inline tab'lar eşit dağılır, sağda hamburger menü */}
           <View style={{ flexDirection: 'row', gap: 3, padding: 3, backgroundColor: T.cardSoft, borderRadius: 9999, alignItems: 'center' }}>
             {inlineTabs.map(tab => {
@@ -191,9 +192,11 @@ export function FinanceHubScreen({ forceActiveKey, overrideContent }: FinanceHub
                   key={tab.key}
                   onPress={() => setActiveKey(tab.key)}
                   style={{
-                    flex: 1,
+                    // Seçili sekme daha çok pay + dolgu alır: "Tedarikçiler" gibi uzun
+                    // etiketler eşit bölüşümde sıkışıyordu. Aktif olan nefes alsın.
+                    flex: active ? 1.55 : 1,
                     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
-                    paddingHorizontal: 8, paddingVertical: 7, borderRadius: 9999,
+                    paddingHorizontal: active ? 12 : 8, paddingVertical: 8, borderRadius: 9999,
                     backgroundColor: active ? theme.primary : 'transparent',
                   }}
                 >

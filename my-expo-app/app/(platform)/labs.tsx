@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Search, Building2, CheckCircle2, PauseCircle, Download, Plus, X } from 'lucide-react-native';
+import { Search, Building2, CheckCircle2, PauseCircle, Download, Plus, X } from '../../core/ui/icons';
 import { listLabs, setLabStatus, createLab, type PlatformLab, type LabRegion } from '../../modules/platform/api';
 import { C, FONT, PageHeader, Panel, Chip, Btn, IconChip, hexA, planTone, downloadCsv } from '../../modules/platform/ui';
 import { autoT } from '../../core/i18n/autoTranslate';

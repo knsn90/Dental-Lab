@@ -1,5 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { useMobileTokens } from '../theme/mobileDesignTokens';
+import { useThemeModeStore } from '../store/themeModeStore';
 
 interface BadgeProps {
   label: string;
@@ -10,13 +12,17 @@ interface BadgeProps {
 
 export function Badge({
   label,
-  color = '#F1F5F9',
-  textColor = '#0F172A',
+  color,
+  textColor,
   size = 'md',
 }: BadgeProps) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const bg = color ?? (isDark ? T.cardSoft : '#F1F5F9');
+  const fg = textColor ?? (isDark ? T.ink : '#0F172A');
   return (
-    <View style={[styles.badge, { backgroundColor: color }, size === 'sm' && styles.badgeSm]}>
-      <Text style={[styles.text, { color: textColor }, size === 'sm' && styles.textSm]}>
+    <View style={[styles.badge, { backgroundColor: bg }, size === 'sm' && styles.badgeSm]}>
+      <Text style={[styles.text, { color: fg }, size === 'sm' && styles.textSm]}>
         {label}
       </Text>
     </View>

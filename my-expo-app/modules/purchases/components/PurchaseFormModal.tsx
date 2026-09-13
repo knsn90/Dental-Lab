@@ -14,7 +14,7 @@ import { View, Text, Pressable, Platform, Modal, TextInput, ScrollView} from 're
 import {
   X, Check, Receipt, Plus, Trash2, ChevronDown, ChevronUp, Search,
   Package, Building2, AlertCircle, FileUp, Sparkles,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { useAuthStore } from '../../../core/store/authStore';
 import { MoneyInput } from '../../../core/money/MoneyInput';
 import { DatePicker } from '../../../core/ui/DatePicker';

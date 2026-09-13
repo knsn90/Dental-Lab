@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
-import { LogOut } from 'lucide-react-native';
+import { LogOut } from '../../core/ui/icons';
 const SetupWizardScreen = lazyRoute(() => import('../../modules/onboarding/screens/SetupWizardScreen'), 'SetupWizardScreen');
 import { useAuthStore } from '../../core/store/authStore';
 import { supabase } from '../../core/api/supabase';

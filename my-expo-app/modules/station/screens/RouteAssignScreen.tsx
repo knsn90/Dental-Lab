@@ -17,6 +17,8 @@ import {
 } from '../api';
 import { AppIcon } from '../../../core/ui/AppIcon';
 import { toast } from '../../../core/ui/Toast';
+import { useMobileTokens, MOBILE_TOKENS_DARK } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 const ACCENT = '#2563EB'; // Lab mavisi
 
@@ -107,12 +109,14 @@ interface PickerModalProps<T> {
 }
 
 function PickerModal<T>({ visible, onClose, title, items, renderItem }: PickerModalProps<T>) {
+  const T2 = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <TouchableOpacity style={pm.overlay} activeOpacity={1} onPress={onClose} />
-      <View style={pm.sheet}>
-        <View style={pm.handle} />
-        <Text style={pm.title}>{title}</Text>
+      <View style={[pm.sheet, isDark && pmd.sheet]}>
+        <View style={[pm.handle, isDark && pmd.handle]} />
+        <Text style={[pm.title, isDark && { color: T2.ink }]}>{title}</Text>
         <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false}>
           {items.map((item, i) => (
             <View key={i}>{renderItem(item)}</View>
@@ -158,12 +162,19 @@ const pm = StyleSheet.create({
   },
 });
 
+const pmd = StyleSheet.create({
+  sheet:  { backgroundColor: MOBILE_TOKENS_DARK.card, borderTopWidth: 1, borderColor: MOBILE_TOKENS_DARK.hairline },
+  handle: { backgroundColor: MOBILE_TOKENS_DARK.hairline },
+});
+
 // ── Ana Ekran ─────────────────────────────────────────────────────────────────
 
 export function RouteAssignScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router  = useRouter();
   const { profile } = useAuthStore();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(st => st.resolvedDark);
 
   // Veriler
   const [order,      setOrder]      = useState<WorkOrderInfo | null>(null);
@@ -341,7 +352,7 @@ export function RouteAssignScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={s.container}>
+      <SafeAreaView style={[s.container, isDark && sd.container]}>
         <ActivityIndicator size="large" color={ACCENT} style={{ marginTop: 60 }} />
       </SafeAreaView>
     );
@@ -349,8 +360,8 @@ export function RouteAssignScreen() {
 
   if (!order) {
     return (
-      <SafeAreaView style={s.container}>
-        <Text style={{ textAlign: 'center', marginTop: 60, color: '#94A3B8' }}>
+      <SafeAreaView style={[s.container, isDark && sd.container]}>
+        <Text style={{ textAlign: 'center', marginTop: 60, color: isDark ? (T.ink3 as string) : '#94A3B8' }}>
           İş emri bulunamadı.
         </Text>
       </SafeAreaView>
@@ -361,15 +372,15 @@ export function RouteAssignScreen() {
   const hasActiveWork = activeStages.length > 0;
 
   return (
-    <SafeAreaView style={s.container} edges={['top']}>
+    <SafeAreaView style={[s.container, isDark && sd.container]} edges={['top']}>
       {/* ── Başlık ── */}
-      <View style={s.header}>
+      <View style={[s.header, isDark && sd.header]}>
         <TouchableOpacity style={s.backBtn} onPress={() => safeBack('/(station)')}>
           <AppIcon name="arrow-left" size={20} color={ACCENT} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={s.headerTitle}>İstasyon Rotası</Text>
-          <Text style={s.headerSub}>#{order.order_number}</Text>
+          <Text style={[s.headerTitle, isDark && { color: T.ink }]}>İstasyon Rotası</Text>
+          <Text style={[s.headerSub, isDark && { color: T.ink3 }]}>#{order.order_number}</Text>
         </View>
         {order.is_rush && (
           <View style={s.rushBadge}>
@@ -384,20 +395,20 @@ export function RouteAssignScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* ── İş Emri Bilgi Kartı ── */}
-        <View style={s.infoCard}>
+        <View style={[s.infoCard, isDark && sd.card]}>
           <View style={s.infoRow}>
-            <AppIcon name="tooth-outline" set="mci" size={15} color="#64748B" />
-            <Text style={s.infoLabel}>İş Türü</Text>
-            <Text style={s.infoVal}>{order.work_type}</Text>
+            <AppIcon name="tooth-outline" set="mci" size={15} color={isDark ? (T.ink3 as string) : '#64748B'} />
+            <Text style={[s.infoLabel, isDark && { color: T.ink3 }]}>İş Türü</Text>
+            <Text style={[s.infoVal, isDark && { color: T.ink }]}>{order.work_type}</Text>
           </View>
           {order.tooth_numbers.length > 0 && (
             <View style={s.infoRow}>
-              <AppIcon name="numeric" set="mci" size={15} color="#64748B" />
-              <Text style={s.infoLabel}>Dişler</Text>
+              <AppIcon name="numeric" set="mci" size={15} color={isDark ? (T.ink3 as string) : '#64748B'} />
+              <Text style={[s.infoLabel, isDark && { color: T.ink3 }]}>Dişler</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
                 {order.tooth_numbers.map(n => (
-                  <View key={n} style={s.toothChip}>
-                    <Text style={s.toothChipText}>{n}</Text>
+                  <View key={n} style={[s.toothChip, isDark && sd.toothChip]}>
+                    <Text style={[s.toothChipText, isDark && { color: '#93C5FD' }]}>{n}</Text>
                   </View>
                 ))}
               </View>
@@ -405,23 +416,23 @@ export function RouteAssignScreen() {
           )}
           {order.shade && (
             <View style={s.infoRow}>
-              <AppIcon name="palette-outline" set="mci" size={15} color="#64748B" />
-              <Text style={s.infoLabel}>Renk</Text>
-              <Text style={s.infoVal}>{order.shade}</Text>
+              <AppIcon name="palette-outline" set="mci" size={15} color={isDark ? (T.ink3 as string) : '#64748B'} />
+              <Text style={[s.infoLabel, isDark && { color: T.ink3 }]}>Renk</Text>
+              <Text style={[s.infoVal, isDark && { color: T.ink }]}>{order.shade}</Text>
             </View>
           )}
           <View style={s.infoRow}>
-            <AppIcon name="calendar-outline" set="mci" size={15} color="#64748B" />
-            <Text style={s.infoLabel}>Teslim</Text>
+            <AppIcon name="calendar-outline" set="mci" size={15} color={isDark ? (T.ink3 as string) : '#64748B'} />
+            <Text style={[s.infoLabel, isDark && { color: T.ink3 }]}>Teslim</Text>
             <Text style={[s.infoVal, { color: '#DC2626' }]}>
               {formatDate(order.delivery_date)}
             </Text>
           </View>
           {order.doctor_name && (
             <View style={s.infoRow}>
-              <AppIcon name="stethoscope" set="mci" size={15} color="#64748B" />
-              <Text style={s.infoLabel}>Hekim</Text>
-              <Text style={s.infoVal}>{order.doctor_name}</Text>
+              <AppIcon name="stethoscope" set="mci" size={15} color={isDark ? (T.ink3 as string) : '#64748B'} />
+              <Text style={[s.infoLabel, isDark && { color: T.ink3 }]}>Hekim</Text>
+              <Text style={[s.infoVal, isDark && { color: T.ink }]}>{order.doctor_name}</Text>
             </View>
           )}
         </View>
@@ -429,12 +440,12 @@ export function RouteAssignScreen() {
         {/* ── Mevcut Aktif Aşamalar (salt okunur) ── */}
         {hasActiveWork && (
           <View style={s.section}>
-            <Text style={s.sectionTitle}>Devam Eden Aşamalar</Text>
+            <Text style={[s.sectionTitle, isDark && { color: T.ink }]}>Devam Eden Aşamalar</Text>
             {activeStages.map((stage, i) => (
-              <View key={stage.id} style={s.existingRow}>
+              <View key={stage.id} style={[s.existingRow, isDark && sd.card]}>
                 <View style={[s.existingDot, { backgroundColor: stage.station?.color ?? '#6B7280' }]} />
-                <Text style={s.existingStation}>{stage.station?.name ?? '—'}</Text>
-                <Text style={s.existingTech}>{stage.technician?.full_name ?? 'Atanmadı'}</Text>
+                <Text style={[s.existingStation, isDark && { color: T.ink }]}>{stage.station?.name ?? '—'}</Text>
+                <Text style={[s.existingTech, isDark && { color: T.ink3 }]}>{stage.technician?.full_name ?? 'Atanmadı'}</Text>
                 <View style={[s.statusPill, { backgroundColor: (STATUS_COLORS[stage.status] ?? '#6B7280') + '20' }]}>
                   <Text style={[s.statusPillText, { color: STATUS_COLORS[stage.status] ?? '#6B7280' }]}>
                     {STATUS_LABELS[stage.status] ?? stage.status}
@@ -448,21 +459,21 @@ export function RouteAssignScreen() {
         {/* ── Rota Editörü ── */}
         <View style={s.section}>
           <View style={s.sectionHeader}>
-            <Text style={s.sectionTitle}>
+            <Text style={[s.sectionTitle, isDark && { color: T.ink }]}>
               {hasActiveWork ? 'Sonraki Bekleyen Aşamalar' : 'Üretim Rotası'}
             </Text>
-            <Text style={s.sectionSub}>{rows.length} aşama</Text>
+            <Text style={[s.sectionSub, isDark && { color: T.ink3 }]}>{rows.length} aşama</Text>
           </View>
 
           {rows.length === 0 && (
-            <View style={s.emptyHint}>
-              <AppIcon name="plus-circle-outline" set="mci" size={32} color="#CBD5E1" />
-              <Text style={s.emptyHintText}>Aşağıdan istasyon ekleyin</Text>
+            <View style={[s.emptyHint, isDark && sd.emptyHint]}>
+              <AppIcon name="plus-circle-outline" set="mci" size={32} color={isDark ? (T.ink3 as string) : '#CBD5E1'} />
+              <Text style={[s.emptyHintText, isDark && { color: T.ink3 }]}>Aşağıdan istasyon ekleyin</Text>
             </View>
           )}
 
           {rows.map((row, index) => (
-            <View key={row.key} style={s.stageRow}>
+            <View key={row.key} style={[s.stageRow, isDark && sd.card]}>
               {/* Sıra numarası */}
               <View style={[s.seqBadge, { backgroundColor: row.station_color || '#E2E8F0' }]}>
                 <Text style={s.seqText}>{index + 1}</Text>
@@ -471,46 +482,46 @@ export function RouteAssignScreen() {
               <View style={{ flex: 1, gap: 8 }}>
                 {/* İstasyon seçici */}
                 <TouchableOpacity
-                  style={[s.picker, row.station_id ? { borderColor: row.station_color } : null]}
+                  style={[s.picker, isDark && sd.picker, row.station_id ? { borderColor: row.station_color } : null]}
                   onPress={() => setStationPickIdx(index)}
                 >
                   {row.station_id ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                       <View style={[s.colorDot, { backgroundColor: row.station_color }]} />
-                      <Text style={s.pickerValue}>{row.station_name}</Text>
+                      <Text style={[s.pickerValue, isDark && { color: T.ink }]}>{row.station_name}</Text>
                     </View>
                   ) : (
-                    <Text style={s.pickerPlaceholder}>İstasyon seç…</Text>
+                    <Text style={[s.pickerPlaceholder, isDark && { color: T.ink3 }]}>İstasyon seç…</Text>
                   )}
-                  <AppIcon name="chevron-down" size={16} color="#94A3B8" />
+                  <AppIcon name="chevron-down" size={16} color={isDark ? (T.ink3 as string) : '#94A3B8'} />
                 </TouchableOpacity>
 
                 {/* Teknisyen seçici */}
                 <TouchableOpacity
-                  style={s.picker}
+                  style={[s.picker, isDark && sd.picker]}
                   onPress={() => setTechPickIdx(index)}
                 >
                   {row.technician_id ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <AppIcon name="account-outline" set="mci" size={15} color="#64748B" />
-                      <Text style={s.pickerValue}>{row.technician_name}</Text>
+                      <AppIcon name="account-outline" set="mci" size={15} color={isDark ? (T.ink3 as string) : '#64748B'} />
+                      <Text style={[s.pickerValue, isDark && { color: T.ink }]}>{row.technician_name}</Text>
                     </View>
                   ) : (
-                    <Text style={s.pickerPlaceholder}>Teknisyen ata (isteğe bağlı)</Text>
+                    <Text style={[s.pickerPlaceholder, isDark && { color: T.ink3 }]}>Teknisyen ata (isteğe bağlı)</Text>
                   )}
-                  <AppIcon name="chevron-down" size={16} color="#94A3B8" />
+                  <AppIcon name="chevron-down" size={16} color={isDark ? (T.ink3 as string) : '#94A3B8'} />
                 </TouchableOpacity>
 
                 {/* Kritik geçiş toggle */}
                 <View style={s.criticalRow}>
-                  <AppIcon name="alert-circle-outline" set="mci" size={14} color={row.is_critical ? '#DC2626' : '#94A3B8'} />
-                  <Text style={[s.criticalLabel, row.is_critical && { color: '#DC2626' }]}>
+                  <AppIcon name="alert-circle-outline" set="mci" size={14} color={row.is_critical ? '#DC2626' : (isDark ? (T.ink3 as string) : '#94A3B8')} />
+                  <Text style={[s.criticalLabel, isDark && { color: T.ink3 }, row.is_critical && { color: '#DC2626' }]}>
                     Kritik geçiş (müdür onayı gerekli)
                   </Text>
                   <Switch
                     value={row.is_critical}
                     onValueChange={(v) => toggleCritical(index, v)}
-                    trackColor={{ false: '#E2E8F0', true: '#FECACA' }}
+                    trackColor={{ false: isDark ? 'rgba(255,255,255,0.16)' : '#E2E8F0', true: '#FECACA' }}
                     thumbColor={row.is_critical ? '#DC2626' : '#fff'}
                     style={{ transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }] }}
                   />
@@ -520,18 +531,18 @@ export function RouteAssignScreen() {
               {/* Sıra + sil butonları */}
               <View style={s.rowActions}>
                 <TouchableOpacity
-                  style={[s.arrowBtn, index === 0 && s.arrowBtnDisabled]}
+                  style={[s.arrowBtn, isDark && sd.arrowBtn, index === 0 && s.arrowBtnDisabled]}
                   onPress={() => moveRow(index, -1)}
                   disabled={index === 0}
                 >
-                  <AppIcon name="chevron-up" size={16} color={index === 0 ? '#CBD5E1' : '#475569'} />
+                  <AppIcon name="chevron-up" size={16} color={index === 0 ? (isDark ? (T.ink3 as string) : '#CBD5E1') : (isDark ? (T.ink2 as string) : '#475569')} />
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[s.arrowBtn, index === rows.length - 1 && s.arrowBtnDisabled]}
+                  style={[s.arrowBtn, isDark && sd.arrowBtn, index === rows.length - 1 && s.arrowBtnDisabled]}
                   onPress={() => moveRow(index, 1)}
                   disabled={index === rows.length - 1}
                 >
-                  <AppIcon name="chevron-down" size={16} color={index === rows.length - 1 ? '#CBD5E1' : '#475569'} />
+                  <AppIcon name="chevron-down" size={16} color={index === rows.length - 1 ? (isDark ? (T.ink3 as string) : '#CBD5E1') : (isDark ? (T.ink2 as string) : '#475569')} />
                 </TouchableOpacity>
                 <TouchableOpacity style={s.deleteBtn} onPress={() => removeRow(index)}>
                   <AppIcon name="trash-2" size={15} color="#EF4444" />
@@ -541,7 +552,7 @@ export function RouteAssignScreen() {
           ))}
 
           {/* + Aşama Ekle */}
-          <TouchableOpacity style={s.addBtn} onPress={addRow}>
+          <TouchableOpacity style={[s.addBtn, isDark && sd.addBtn]} onPress={addRow}>
             <AppIcon name="plus" size={18} color={ACCENT} />
             <Text style={s.addBtnText}>Aşama Ekle</Text>
           </TouchableOpacity>
@@ -564,7 +575,7 @@ export function RouteAssignScreen() {
         </TouchableOpacity>
 
         {rows.length > 0 && (
-          <Text style={s.saveHint}>
+          <Text style={[s.saveHint, isDark && { color: T.ink3 }]}>
             İlk aşama ({rows[0]?.station_name || 'seçilmedi'}) otomatik olarak aktifleştirilecektir.
           </Text>
         )}
@@ -578,12 +589,12 @@ export function RouteAssignScreen() {
         items={stations}
         renderItem={(st) => (
           <TouchableOpacity
-            style={spm.item}
+            style={[spm.item, isDark && spmd.item]}
             onPress={() => stationPickIdx !== null && setRowStation(stationPickIdx, st)}
           >
             <View style={[spm.dot, { backgroundColor: st.color }]} />
             <View style={{ flex: 1 }}>
-              <Text style={spm.name}>{st.name}</Text>
+              <Text style={[spm.name, isDark && { color: T.ink }]}>{st.name}</Text>
               {st.is_critical && (
                 <Text style={spm.critical}>Kritik istasyon</Text>
               )}
@@ -603,16 +614,16 @@ export function RouteAssignScreen() {
         items={[{ id: '', full_name: 'Atanmadan bırak', role: '' } as Technician, ...technicians]}
         renderItem={(tech) => (
           <TouchableOpacity
-            style={spm.item}
+            style={[spm.item, isDark && spmd.item]}
             onPress={() => techPickIdx !== null && setRowTech(techPickIdx, tech.id ? tech : null)}
           >
-            <View style={[spm.avatar, { backgroundColor: tech.id ? ACCENT : '#E2E8F0' }]}>
-              <Text style={[spm.avatarText, { color: tech.id ? '#fff' : '#94A3B8' }]}>
+            <View style={[spm.avatar, { backgroundColor: tech.id ? ACCENT : (isDark ? 'rgba(255,255,255,0.10)' : '#E2E8F0') }]}>
+              <Text style={[spm.avatarText, { color: tech.id ? '#fff' : (isDark ? (T.ink3 as string) : '#94A3B8') }]}>
                 {tech.id ? tech.full_name.charAt(0).toUpperCase() : '—'}
               </Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={spm.name}>{tech.full_name}</Text>
+              <Text style={[spm.name, isDark && { color: T.ink }]}>{tech.full_name}</Text>
               {tech.role === 'manager' && (
                 <Text style={spm.critical}>Mesul Müdür</Text>
               )}
@@ -792,4 +803,19 @@ const spm = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   avatarText: { fontSize: 14, fontWeight: '700' },
+});
+
+// ── Dark-mode override'ları (light dokunulmadı) ─────────────────────────────────
+const sd = StyleSheet.create({
+  container: { backgroundColor: MOBILE_TOKENS_DARK.bg },
+  header:    { backgroundColor: MOBILE_TOKENS_DARK.card, borderBottomColor: MOBILE_TOKENS_DARK.hairline },
+  card:      { backgroundColor: MOBILE_TOKENS_DARK.card, borderColor: MOBILE_TOKENS_DARK.hairline },
+  toothChip: { backgroundColor: 'rgba(59,130,246,0.16)', borderColor: 'rgba(59,130,246,0.35)' },
+  emptyHint: { backgroundColor: MOBILE_TOKENS_DARK.cardSoft, borderColor: MOBILE_TOKENS_DARK.hairline },
+  picker:    { backgroundColor: MOBILE_TOKENS_DARK.cardSoft, borderColor: MOBILE_TOKENS_DARK.hairline },
+  arrowBtn:  { backgroundColor: MOBILE_TOKENS_DARK.cardSoft },
+  addBtn:    { backgroundColor: 'rgba(59,130,246,0.14)', borderColor: 'rgba(59,130,246,0.35)' },
+});
+const spmd = StyleSheet.create({
+  item: { borderBottomColor: MOBILE_TOKENS_DARK.hairline },
 });

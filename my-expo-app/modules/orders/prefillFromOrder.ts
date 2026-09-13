@@ -13,6 +13,16 @@
 //   • ekler, ses notları, sohbet, scan_bodies_delivered — vakaya özgü fiziksel/dosya durumu
 
 import { supabase } from '../../core/api/supabase';
+import {
+  parseItemNotes, parseImplantPositions, parseImplantDetails, readImplantInfo,
+  type ImplantDetail,
+} from './implantInfo';
+
+// Parser'lar implantInfo'ya taşındı (ekranlar da aynı mantığı okuyor).
+// Eski adlarıyla yeniden dışa aktarılır — çağıranlar değişmesin.
+export { parseItemNotes, parseImplantPositions, parseImplantDetails };
+/** @deprecated implantInfo.ImplantDetail kullanın. */
+export type ImplantDetailParsed = ImplantDetail;
 
 export interface PrefillToothOp {
   tooth: number;
@@ -50,6 +60,10 @@ export interface OrderPrefill {
   doctor_approval_required: boolean;
   tooth_ops: PrefillToothOp[];
   pending_items: PrefillPendingItem[];
+  /** Hibrit/implant vakalarında implant diş pozisyonları (item notlarından parse). */
+  implant_teeth?: number[];
+  /** Diş bazında implant detayları (marka/tür/abutment/vida — item notlarından parse). */
+  implant_details?: Record<number, ImplantDetailParsed>;
 
   // ── Devam siparişi (continuation) — YALNIZ "Devam Siparişi" akışında dolu ──
   // Dolu ise NewOrderScreen: hasta bilgisini forma yazar, dişleri seçili gösterir
@@ -70,43 +84,6 @@ export interface OrderPrefill {
   source_notes?: string;
 }
 
-/**
- * order_items.notes, yazma tarafında şu biçimde kodlanır:
- *   "Marka: X · Tür: Y · Abutment: Z · Vida: W · Materyal: M · Renk: R"
- * (NewOrderScreen submit → addOrderItem). Burada tersine çevirilir.
- * Biçim bozuksa sessizce boş döner — kopyalama hiçbir zaman çökmez.
- */
-export function parseItemNotes(notes?: string | null): {
-  implant_system: string; implant_type: string; abutment: string;
-  screw: string; material: string; shade: string;
-} {
-  const out = {
-    implant_system: '', implant_type: '', abutment: '',
-    screw: '', material: '', shade: '',
-  };
-  if (!notes) return out;
-
-  const LABELS: Record<string, keyof typeof out> = {
-    'marka': 'implant_system',
-    'tür': 'implant_type',
-    'tur': 'implant_type',
-    'abutment': 'abutment',
-    'vida': 'screw',
-    'materyal': 'material',
-    'renk': 'shade',
-  };
-
-  for (const part of String(notes).split('·')) {
-    const idx = part.indexOf(':');
-    if (idx === -1) continue;
-    const label = part.slice(0, idx).trim().toLocaleLowerCase('tr');
-    const value = part.slice(idx + 1).trim();
-    const key = LABELS[label];
-    if (key && value) out[key] = value;
-  }
-  return out;
-}
-
 type ItemRow = {
   service_id: string | null;
   name: string | null;
@@ -125,10 +102,16 @@ type ItemRow = {
 export function splitItems(items: ItemRow[], fallbackShade: string) {
   const tooth_ops: PrefillToothOp[] = [];
   const pending_items: PrefillPendingItem[] = [];
+  const implantSet = new Set<number>();
+  const implantDetails: Record<number, ImplantDetailParsed> = {};
 
   for (const it of items) {
     const teeth = Array.isArray(it.tooth_numbers) ? it.tooth_numbers.filter(n => Number.isFinite(n)) : [];
     const name = it.name ?? '';
+
+    // İmplant pozisyonları + diş-bazlı detayları (marka/tür/abutment/vida).
+    for (const t of parseImplantPositions(it.notes)) implantSet.add(t);
+    Object.assign(implantDetails, parseImplantDetails(it.notes));
 
     if (teeth.length > 0) {
       const d = parseItemNotes(it.notes);
@@ -160,7 +143,7 @@ export function splitItems(items: ItemRow[], fallbackShade: string) {
     }
   }
 
-  return { tooth_ops, pending_items };
+  return { tooth_ops, pending_items, implant_teeth: Array.from(implantSet).sort((a, b) => a - b), implant_details: implantDetails };
 }
 
 export interface RecentOrderOption {
@@ -206,7 +189,7 @@ export async function fetchOrderPrefill(orderId: string): Promise<OrderPrefill |
     .select(
       'id, order_number, doctor_id, model_type, machine_type, measurement_type, ' +
       'delivery_method, tags, lab_notes_visible, doctor_approval_required, ' +
-      'work_type, shade, tooth_numbers'
+      'work_type, shade, tooth_numbers, implant_teeth, implant_details'
     )
     .eq('id', orderId)
     .maybeSingle();
@@ -225,7 +208,15 @@ export async function fetchOrderPrefill(orderId: string): Promise<OrderPrefill |
 
   const w: any = wo;
   const fallbackShade = w.shade ?? '';
-  let { tooth_ops, pending_items } = splitItems((itemRows as ItemRow[]) ?? [], fallbackShade);
+  let { tooth_ops, pending_items, implant_teeth, implant_details } = splitItems((itemRows as ItemRow[]) ?? [], fallbackShade);
+
+  // YAPISAL kolonlar öncelikli — splitItems yalnız eski (notes kodlamalı)
+  // kayıtlar için fallback. readImplantInfo ikisini birleştirir.
+  {
+    const info = readImplantInfo(w, (itemRows as ItemRow[]) ?? []);
+    if (info.teeth.length > 0) implant_teeth = info.teeth;
+    if (Object.keys(info.details).length > 0) implant_details = info.details;
+  }
 
   // Kalem yoksa (eski/manuel kayıtlar) iş emrinin kendi alanlarından tek tip
   // diş işlemi üret — kopyalama yine de işe yarasın.
@@ -256,6 +247,8 @@ export async function fetchOrderPrefill(orderId: string): Promise<OrderPrefill |
     doctor_approval_required: !!w.doctor_approval_required,
     tooth_ops,
     pending_items,
+    implant_teeth,
+    implant_details,
   };
 }
 
@@ -352,14 +345,15 @@ export async function fetchOrderEditPrefill(orderId: string): Promise<OrderEditP
   const base = await fetchOrderPrefill(orderId);
   if (!base) return null;
 
-  // NOT: patient_phone ve implant_brand work_orders'ta YOK (migration 004 uygulanmadı) —
-  // select'e eklenirse tüm sorgu patlar → kimlik/vaka alanları boş gelir ("sıfırdan" görünür).
+  // NOT: patient_phone work_orders'ta YOK (migration 004 uygulanmadı) — select'e
+  // eklenirse tüm sorgu patlar → kimlik/vaka alanları boş gelir ("sıfırdan" görünür).
+  // implant_brand ARTIK VAR (migration 20260910090000).
   const { data: wo } = await supabase
     .from('work_orders')
     .select(
       'patient_name, patient_id, patient_gender, patient_dob, ' +
       'patient_nationality, patient_country, patient_city, is_urgent, delivery_date, ' +
-      'notes, lab_notes, scan_bodies_delivered, triaged_at, status'
+      'notes, lab_notes, scan_bodies_delivered, implant_brand, triaged_at, status'
     )
     .eq('id', orderId)
     .maybeSingle();
@@ -383,7 +377,7 @@ export async function fetchOrderEditPrefill(orderId: string): Promise<OrderEditP
     delivery_date: w.delivery_date ?? '',
     notes: w.notes ?? '',
     lab_notes: w.lab_notes ?? '',
-    implant_brand: '',
+    implant_brand: w.implant_brand ?? '',
     scan_bodies_delivered: !!w.scan_bodies_delivered,
   };
 }

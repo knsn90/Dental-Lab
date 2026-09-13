@@ -8,7 +8,7 @@ import { View, Text, Pressable, Platform, useWindowDimensions } from 'react-nati
 import {
   ChevronUp, ChevronDown, CircleCheck, Circle, AlertTriangle,
   Play, Pencil, SkipForward, RotateCcw, Trash2, Check, Plus, Clock, Truck, User, MoreHorizontal,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { confirmAsync } from '../../../core/util/confirm';
 import { forceActivateStage, revertStage, updateDeliveryStatus, advanceOrderStatus } from '../api';
 import { toast } from '../../../core/ui/Toast';
@@ -20,7 +20,7 @@ export function StageWorkflowTimeline(p: any) {
     stageMenuOpen, setStageMenuOpen, completedCount, order, profile, isManager,
     panelAccent, panelTheme,
     handleCompleteProductionStage, handleAdminCompleteStage, handleAdminActivateStage,
-    handleAdminSkipStage, handleRemoveStage, setReassignOpen, setAddStageOpen,
+    handleAdminSkipStage, handleRemoveStage, setReassignOpen, openReassign, setAddStageOpen,
     refetch, refetchStages, fmtDate, isLaneOpen, toggleLane,
     activeDelivery, setDeliveryModalOpen, stageCompleting,
   } = p;
@@ -133,7 +133,10 @@ export function StageWorkflowTimeline(p: any) {
                       if (isManager && !stg.is_virtual) {
                         if (isPending) menu.push({ icon: Play, label: 'Teknisyene gönder', color: 'rgba(255,255,255,0.85)', run: async () => { const r = await forceActivateStage(stg.id); if (!r.ok) { alert(`Aktif edilemedi: ${r.error ?? ''}`); return; } refetch(); refetchStages(); } });
                         else if (!isActive && !isCompleted) menu.push({ icon: Play, label: 'Teknisyene gönder', color: 'rgba(255,255,255,0.85)', run: () => handleAdminActivateStage(stg) });
-                        if (isActive) menu.push({ icon: Pencil, label: 'Düzenle (devret)', color: 'rgba(255,255,255,0.85)', run: () => setReassignOpen(true) });
+                        // Devret: tamamlanmamış HER aşamada (aktif + bekleyen + duraklamış).
+                        // Pasife alınan teknisyene atanmış bekleyen aşama böylece aktif
+                        // bir teknisyene devredilebilir. Seçili aşamayı hedefler.
+                        if (!isCompleted) menu.push({ icon: Pencil, label: 'Düzenle (devret)', color: 'rgba(255,255,255,0.85)', run: () => { if (openReassign) openReassign(stg); else setReassignOpen(true); } });
                         if (!isCompleted) menu.push({ icon: SkipForward, label: 'Aşamayı atla', color: '#FCD34D', run: () => handleAdminSkipStage(stg) });
                         if (isActive && completedCount > 0) menu.push({ icon: RotateCcw, label: 'Önceki aşamaya dön', color: 'rgba(255,255,255,0.85)', run: async () => { if (!order) return; const ok = await confirmAsync('Önceki Aşamaya Dön', 'Bir önceki aşamaya dönülsün mü? Şu anki aşama "bekliyor"a, önceki aşama "aktif"e çevrilir.', { confirmText: 'Geri Al', destructive: true }); if (!ok) return; const r = await revertStage(order.id); if (!r.ok) { alert(`Geri alınamadı: ${r.error}`); return; } refetch(); refetchStages(); } });
                         menu.push({ icon: Trash2, label: 'Aşamayı sil', color: '#FCA5A5', run: () => handleRemoveStage(stg) });
@@ -143,6 +146,9 @@ export function StageWorkflowTimeline(p: any) {
                         menu.unshift({ icon: Check, label: 'Tamamla', color: '#6EE7B7', run: doComplete });
                       }
                       const menuOpen = stageMenuOpen === stg.id;
+                      // Son satırlarda menü AŞAĞI açılırsa alttaki karta girip kırpılıyor →
+                      // üstünde satır varsa (i>0) yukarı aç.
+                      const openUp = i > 0 && i >= displayStages.length - 2;
                       const dropShadow = Platform.OS === 'web'
                         ? { boxShadow: '0 10px 28px rgba(0,0,0,0.5)' }
                         : { shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } };
@@ -151,9 +157,10 @@ export function StageWorkflowTimeline(p: any) {
                         <View style={{
                           // RTL: tetikleyici aynalandığı için hizayı da çevir; yoksa menü
                           // karşı tarafa açılıp kapsayıcının dışında kırpılıyor.
-                          position: 'absolute', top: '100%',
+                          position: 'absolute',
+                          ...(openUp ? { bottom: '100%', marginBottom: 5 } : { top: '100%', marginTop: 5 }),
                           ...((alignRight !== isRTL()) ? { right: 0 } : { left: 0 }),
-                          marginTop: 5, minWidth: 184, zIndex: 50, borderRadius: 9, overflow: 'hidden',
+                          minWidth: 184, zIndex: 50, borderRadius: 9, overflow: 'hidden',
                           backgroundColor: (panelTheme === 'clinic' || panelTheme === 'doctor') ? '#3A3D4C' : '#2A3B57',
                           borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', ...dropShadow,
                         } as any}>

@@ -15,7 +15,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Pressable, Text, ActivityIndicator, Platform } from 'react-native';
-import { ScanFace } from 'lucide-react-native';
+import { ScanFace } from '../../../core/ui/icons';
 import { toast } from '../../../core/ui/Toast';
 import { useAuthStore } from '../../../core/store/authStore';
 import { isSupported as arSupported, startScan } from 'ar-scanner';
@@ -64,25 +64,32 @@ export function FaceScanButton({ workOrderId, accentColor, onUploaded }: Props) 
   }
 
   return (
+    // object style ZORUNLU — fonksiyon-stili native'de düşüp satırı column'a
+    // çeviriyordu (ikon etiketin üstünde kalıyordu). Solid accent pill yerine
+    // yumuşak accent tint: dosya bölümüne uyan, ikincil bir aksiyon gibi durur.
     <Pressable
       onPress={handlePress}
       disabled={busy}
-      style={({ pressed }) => ({
+      style={{
         flexDirection: 'row',
         alignItems: 'center',
+        alignSelf: 'flex-start',
         gap: 8,
         paddingHorizontal: 14,
-        paddingVertical: 10,
+        paddingVertical: 11,
         borderRadius: 12,
-        backgroundColor: busy ? '#94A3B8' : accentColor,
-        opacity: pressed ? 0.85 : 1,
-        alignSelf: 'flex-start',
-      })}
+        borderWidth: 1,
+        borderColor: accentColor + '55',
+        backgroundColor: accentColor + '14',
+        marginBottom: 8,
+        opacity: busy ? 0.6 : 1,
+        ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
+      }}
     >
       {busy
-        ? <ActivityIndicator size="small" color="#FFFFFF" />
-        : <ScanFace size={16} color="#FFFFFF" strokeWidth={1.8} />}
-      <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFFFFF' }}>
+        ? <ActivityIndicator size="small" color={accentColor} />
+        : <ScanFace size={16} color={accentColor} strokeWidth={1.9} />}
+      <Text style={{ fontSize: 13, fontWeight: '700', color: accentColor }}>
         {busy ? 'Taranıyor…' : '3D Yüz Tarama'}
       </Text>
     </Pressable>

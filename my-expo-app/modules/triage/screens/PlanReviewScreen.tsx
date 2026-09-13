@@ -18,7 +18,7 @@ import {
   GripVertical, X, Plus, AlertTriangle, Sparkles, ChevronUp, ChevronDown, ChevronRight, Download,
   Play, FileText, Stethoscope, ChevronDown as Caret, Check, ArrowLeft, Layers, Box, MessageSquare, Save, Clock, Eye, Printer,
   Phone, Mail, User,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { DS } from '../../../core/theme/dsTokens';
 import { useAuthStore } from '../../../core/store/authStore';
@@ -35,11 +35,15 @@ import { getStationKind, type StationKind } from '../../orders/stations/registry
 import { Viewer3DModalLazy as Viewer3DModal } from '../../viewer-3d/Viewer3DLazy';
 import { unzipToViewer, isArchiveExt } from '../../orders/fileArchive';
 import { LivingToothChart } from '../../orders/components/LivingToothChart';
+import { FilesList } from '../../orders/components/FilesList';
+import { readImplantInfo, implantLineFor } from '../../orders/implantInfo';
 import type { WorkOrder } from '../../orders/types';
 // Uygulama-içi görsel önizleme (zoom + ileri/geri + safe-area) — sipariş detayı kalıbı.
 import { ImageLightbox } from '../../../core/ui/ImageLightbox';
 import { useBottomActionBar } from '../../../core/store/uiOverlayStore';
 import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
+import { useInkUI } from '../../../core/theme/inkScale';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 function is3DFileFmt(path: string): 'stl' | 'ply' | 'obj' | null {
   const ext = (path ?? '').toLowerCase().split('.').pop();
@@ -138,7 +142,18 @@ function loadColor(load: number) {
 
 // ── Sunum katmanı ───────────────────────────────────────────────────────────
 // Tek hairline değeri (17 farklı gri yerine). Kart kenarı, ayraç, ızgara.
-const HAIR = 'rgba(0,0,0,0.07)';
+const HAIR_LIGHT = 'rgba(0,0,0,0.07)';
+// Koyu metin tonları (acil/uyarı/iyi) — koyu yüzeyde açık tonlarına döner.
+const fgTones = (dark: boolean) => ({
+  red:   dark ? '#F2A0A0' : '#9C2E2E',
+  amber: dark ? '#F2C66D' : '#9A6710',
+  green: dark ? '#7ED6A8' : '#1F6B47',
+});
+// İmplant vurgu rengi — yeni-sipariş şemasındaki implant rengiyle AYNI
+// (NewOrderScreen IMPLANT_TOOTH_COLOR). Hekim orada turuncu işaretliyor,
+// planlamada başka renkte görünürse aynı şey olduğu anlaşılmıyor.
+const IMPLANT_COLOR = '#F97316';
+const IMPLANT_DEEP  = '#C2410C';
 
 /**
  * Tipografi ölçeği — tracking BOYUTA göre değişir (sabit letter-spacing bir
@@ -163,6 +178,17 @@ const press = (pressed: boolean, scale = 0.97) => ({
 });
 
 /**
+ * Satır stili köprüsü — NATIVE'de fonksiyon-stilli Pressable, gövdesindeki
+ * `flexDirection:'row'`'u düşürüp satırı column'a çeviriyor: ikon etiketin
+ * üstüne biner, `flex:1` metin kaybolur, rozet tam-genişlik bar olur.
+ * Web'de bu sorun YOK, o yüzden orada fonksiyon aynen kalır (hover/press
+ * geri bildirimi); native'de bir kez çalıştırılıp düz object stil verilir.
+ * Bkz [[feedback_native_pressable_row_collapse]].
+ */
+const rowStyle = (fn: (s: any) => any): any =>
+  (Platform.OS === 'web' ? fn : fn({ pressed: false, hovered: false }));
+
+/**
  * İpucu balonu — ikon butonun ne yaptığını söyler.
  *
  * Tarayıcının yerleşik `title` balonu yerine kendimiz çiziyoruz: o balon ~1 sn
@@ -182,6 +208,9 @@ function Tip({ label, children, grow, block }: {
 }) {
   const [on, setOn] = useState(false);
   const [dx, setDx] = useState(0);
+  const U = useInkUI();
+  const INK = U.ink;
+  const SURF = U.surface;
   if (Platform.OS !== 'web') return <>{children}</>;
 
   const HALF = 130;   // balon en fazla 260 geniş
@@ -230,7 +259,7 @@ function Tip({ label, children, grow, block }: {
       >
         <View style={{
           maxWidth: HALF * 2, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9,
-          backgroundColor: '#FFFFFF',
+          backgroundColor: SURF,
           borderWidth: 1, borderColor: 'rgba(15,23,42,0.08)',
           boxShadow: '0 8px 24px rgba(15,23,42,0.16)',
         } as any}>
@@ -275,13 +304,23 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
   // Altta yapışkan aksiyon çubuğu (Tek Tıkla Uygula / Onayla) var → Simanty
   // FAB'ı üstüne kaysın, "Onayla" butonunu kapatmasın.
   useBottomActionBar(84);
+  // Koyu tema: modül seviyesindeki INK/HAIR sabitleri tema-farkında değerlerle
+  // gölgelenir — açık temada U.ink === DS.ink, açık görünüm birebir korunur.
+  const U = useInkUI();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const INK = U.ink;
+  const HAIR = isDark ? U.hairline : HAIR_LIGHT;
+  const SURF = U.surface;
+  const FG = fgTones(isDark);
+  const SEP = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)';
   const router = useRouter();
   const segments = useSegments() as string[];
   const panelGroup = segments?.[0] && segments[0].startsWith('(') ? segments[0] : '(lab)';
   const theme = usePanelTheme();
   const A = theme.primary;
-  const A_DEEP = theme.primaryDeep;
-  const PAGE = PANEL_BGPAGE[theme.key] ?? theme.bg;
+  // Koyu accent metin koyu yüzeyde okunmuyor → koyu temada açık tonu
+  const A_DEEP = isDark ? mixWhite(A, 0.55) : theme.primaryDeep;
+  const PAGE = isDark ? U.pageBg : (PANEL_BGPAGE[theme.key] ?? theme.bg);
   const { profile } = useAuthStore();
   const labId = (profile as any)?.lab_id ?? null;
   const { width: winW } = useWindowDimensions();
@@ -518,7 +557,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
         .from('work_orders')
         // Tek parça string — supabase-js dönüş tipini SELECT literalinden çıkarır,
         // parçalı birleştirme tipi GenericStringError'a düşürüyor.
-        .select('id, lab_id, order_number, created_at, is_urgent, patient_name, patient_gender, work_type, shade, model_type, machine_type, delivery_date, tooth_numbers, notes, lab_notes')
+        .select('id, lab_id, order_number, created_at, is_urgent, patient_name, patient_gender, work_type, shade, model_type, machine_type, delivery_date, tooth_numbers, notes, lab_notes, implant_brand, implant_teeth, implant_details')
         .eq('id', orderId)
         .maybeSingle();
       if (!row) { toast.error('Sipariş okunamadı, yazdırılamadı.'); return; }
@@ -869,6 +908,10 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
     distinctProcs = Array.from(new Set(wtParts));
   }
   const hasToothProc = Object.keys(toothProc).length > 0;
+  // İmplant bilgisi — yapısal kolonlar öncelikli, eski siparişlerde kalem
+  // notlarından çözülür. Teknisyen hangi dişte hangi implant var bilmeden
+  // abutment/vida seçemiyor; planlamada görünmesi şart.
+  const implantInfo = readImplantInfo(o as any, orderItems);
   const PROC_PALETTE = [A, '#3B82F6', '#8B5CB8', '#2BA39B', '#E89B2A', '#D94B4B', '#0EA5E9'];
   const procColor = (p: string) => PROC_PALETTE[Math.max(0, distinctProcs.indexOf(p)) % PROC_PALETTE.length];
   // LivingToothChart için diş→renk (işlem rengi); eşlenmeyen diş = accent
@@ -889,13 +932,13 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
             <Pressable
               onPress={() => safeBack('/')}
               hitSlop={8}
-              style={({ pressed, hovered }: any) => ({
+              style={rowStyle(({ pressed, hovered }: any) => ({
                 flexDirection: 'row', alignItems: 'center', gap: 5,
                 paddingHorizontal: 8, paddingVertical: 6, borderRadius: 999,
                 backgroundColor: hovered ? 'rgba(0,0,0,0.04)' : 'transparent',
                 ...press(pressed),
                 ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-              })}
+              }))}
             >
               <ArrowLeft size={15} color={INK[500]} strokeWidth={2} />
               <Text style={{ ...TYPE.body, color: INK[500], fontWeight: '600' }}>Geri</Text>
@@ -925,7 +968,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
             // Künyedeki butonların ipucu balonu diş şemasının altında kalmasın
             // diye bu kart bir üst basamağa alınır.
             zIndex: 3,
-            backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: tint(A, 0.16),
+            backgroundColor: SURF, borderWidth: 1, borderColor: tint(A, 0.16),
             ...(Platform.OS === 'web' ? {
               backgroundImage: `linear-gradient(150deg, ${tint(A, 0.17)} 0%, ${tint(A, 0.06)} 34%, #FFFFFF 66%)`,
             } as any : {}),
@@ -954,7 +997,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                   {o?.is_urgent && (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: tint('#D94B4B', 0.10) }}>
                       <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: '#D94B4B' }} />
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: '#9C2E2E', letterSpacing: 0.3 }}>Acil</Text>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: FG.red, letterSpacing: 0.3 }}>Acil</Text>
                     </View>
                   )}
                 </View>
@@ -976,13 +1019,13 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                       onPress={handlePrint}
                       disabled={printing}
                       accessibilityLabel="İş kağıdını yazdır"
-                      style={({ pressed, hovered }: any) => ({
+                      style={rowStyle(({ pressed, hovered }: any) => ({
                         flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
                         backgroundColor: hovered && !printing ? 'rgba(0,0,0,0.05)' : 'transparent',
                         borderWidth: 1, borderColor: HAIR, opacity: printing ? 0.55 : 1,
                         ...press(pressed),
                         ...(Platform.OS === 'web' ? { cursor: printing ? 'default' : 'pointer' } as any : {}),
-                      })}
+                      }))}
                     >
                       <Printer size={14} color={INK[700]} strokeWidth={1.9} />
                       <Text style={{ ...TYPE.meta, fontWeight: '600', color: INK[700] }}>{printing ? 'Hazırlanıyor…' : 'Yazdır'}</Text>
@@ -993,12 +1036,12 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                 <Tip label="Hekim ve klinikle bu sipariş üzerinden yazış">
                   <Pressable
                     onPress={() => setChatOpen(true)}
-                    style={({ pressed, hovered }: any) => ({
+                    style={rowStyle(({ pressed, hovered }: any) => ({
                       flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
                       backgroundColor: tint(A, hovered ? 0.18 : 0.11),
                       ...press(pressed),
                       ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'transform 110ms cubic-bezier(0.2,0,0,1), background-color 140ms ease' } as any : {}),
-                    })}
+                    }))}
                   >
                     <MessageSquare size={14} color={A_DEEP} strokeWidth={2} />
                     <Text style={{ ...TYPE.meta, fontWeight: '600', color: A_DEEP }}>Mesaj{(data?.messages.length ?? 0) > 0 ? ` · ${data!.messages.length}` : ''}</Text>
@@ -1011,7 +1054,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                 "3 diş" → "ÜYE". Yedi çerçeve yerine yedi sessiz sütun. */}
             {(() => {
               const meta: { label: string; value: string; accent?: boolean }[] = [
-                ...(teeth.length ? [{ label: 'Üye', value: `${teeth.length} diş` }] : []),
+                ...(teeth.length ? [{ label: autoT('Üye'), value: `${teeth.length} ${autoT('diş')}` }] : []),
                 ...(o?.shade ? [{ label: 'Renk', value: prettyValue(o.shade) }] : []),
                 ...(o?.model_type ? [{ label: 'Model', value: prettyValue(o.model_type) }] : []),
                 ...(o?.machine_type ? [{ label: 'Makine', value: prettyValue(o.machine_type) }] : []),
@@ -1034,10 +1077,10 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                           backgroundColor: tint(o?.is_urgent ? '#D94B4B' : A, 0.10),
                         }}
                       >
-                        <Clock size={14} color={o?.is_urgent ? '#9C2E2E' : A_DEEP} strokeWidth={2} />
+                        <Clock size={14} color={o?.is_urgent ? FG.red : A_DEEP} strokeWidth={2} />
                         <View>
-                          <Text style={{ fontSize: 14, fontWeight: '700', letterSpacing: -0.2, color: o?.is_urgent ? '#9C2E2E' : A_DEEP }}>{m.value}</Text>
-                          <Text style={{ ...TYPE.label, color: o?.is_urgent ? '#9C2E2E' : A_DEEP, opacity: 0.65, marginTop: 1 }}>{m.label}</Text>
+                          <Text style={{ fontSize: 14, fontWeight: '700', letterSpacing: -0.2, color: o?.is_urgent ? FG.red : A_DEEP }}>{m.value}</Text>
+                          <Text style={{ ...TYPE.label, color: o?.is_urgent ? FG.red : A_DEEP, opacity: 0.65, marginTop: 1 }}>{m.label}</Text>
                         </View>
                       </View>
                     ) : (
@@ -1068,13 +1111,13 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                       <Tip key={p} label={active ? 'Vurguyu kaldır' : `Şemada yalnız ${p} dişlerini vurgula`}>
                         <Pressable
                           onPress={() => { setSelProc(active ? null : p); setSelTooth(null); }}
-                          style={({ pressed, hovered }: any) => ({
+                          style={rowStyle(({ pressed, hovered }: any) => ({
                             flexDirection: 'row', alignItems: 'center', gap: 7,
                             paddingHorizontal: 11, paddingVertical: 7, borderRadius: 999,
                             backgroundColor: active ? c : tint(c, hovered ? 0.16 : 0.09),
                             ...press(pressed),
                             ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'transform 110ms cubic-bezier(0.2,0,0,1), background-color 140ms ease' } as any : {}),
-                          })}
+                          }))}
                         >
                           <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: active ? '#FFF' : c }} />
                           <Text style={{ ...TYPE.meta, fontWeight: '600', color: active ? '#FFF' : INK[800] }}>{p}</Text>
@@ -1100,11 +1143,11 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
             )}
           </View>
 
-          {/* ── SAĞ: diş şeması ── */}
-          {teeth.length > 0 && (
+          {/* ── SAĞ: diş şeması + implant ── */}
+          {(teeth.length > 0 || implantInfo.hasAny) && (
           <View style={{ width: isNarrow ? '100%' : 360, gap: 12 }}>
           {teeth.length > 0 && (
-            <View style={{ borderRadius: 22, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: HAIR, padding: 16, gap: 8 }}>
+            <View style={{ borderRadius: 22, backgroundColor: SURF, borderWidth: 1, borderColor: HAIR, padding: 16, gap: 8 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
                 <Text style={{ ...TYPE.label, color: INK[400] }}>Diş Şeması</Text>
                 <Text style={{ ...TYPE.meta, color: INK[400] }}>{teeth.length} diş</Text>
@@ -1125,7 +1168,10 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                 <LivingToothChart
                   order={chartOrder}
                   containerWidth={chartCardW - 28}
-                  containerHeight={210}
+                  // Mobilde yükseklik sınırı YOK: ağız dikey oval olduğu için 210'luk
+                  // kutuda şema kartın üçte birine küçülüyordu. Sipariş detayı gibi
+                  // genişliğe göre orantılı çizilir; masaüstü kompakt 210'da kalır.
+                  containerHeight={isNarrow ? undefined : 210}
                   colorMap={displayColorMap}
                   activeTooth={selTooth}
                   onToothPress={(t) => setSelTooth(selTooth === t ? null : t)}
@@ -1141,6 +1187,52 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
             </View>
           )}
 
+          {/* ── İMPLANT ── Hekimin sipariş sırasında girdiği marka/tür/abutment/
+              vida bilgisi. Planlamada görünmezse teknisyen kütüphane/parça
+              seçemiyor ve iş kliniğe geri soruluyor. */}
+          {implantInfo.hasAny && (
+            <View style={{ borderRadius: 22, backgroundColor: SURF, borderWidth: 1, borderColor: HAIR, padding: 16, gap: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: IMPLANT_COLOR }} />
+                <Text style={{ ...TYPE.label, color: INK[400] }}>{autoT('İmplant')}</Text>
+                <View style={{ flex: 1 }} />
+                {implantInfo.teeth.length > 0 && (
+                  <Text style={{ ...TYPE.meta, color: INK[400] }}>
+                    {implantInfo.teeth.length} {autoT('diş')}
+                  </Text>
+                )}
+              </View>
+
+              {/* Vaka geneli marka — diş bazlı marka girilmediğinde tek kaynak budur. */}
+              {!!implantInfo.brand && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ ...TYPE.meta, color: INK[400] }}>{autoT('Marka')}</Text>
+                  <Text style={{ ...TYPE.body, fontWeight: '600', color: INK[900], flex: 1 }} numberOfLines={2}>
+                    {implantInfo.brand}
+                  </Text>
+                </View>
+              )}
+
+              {implantInfo.teeth.length > 0 && (
+                <View style={{ gap: 6, paddingTop: implantInfo.brand ? 10 : 0, borderTopWidth: implantInfo.brand ? 1 : 0, borderTopColor: HAIR }}>
+                  {implantInfo.teeth.map(t => {
+                    const det = implantLineFor(implantInfo, t);
+                    return (
+                      <View key={t} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+                        <View style={{ minWidth: 30, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, backgroundColor: tint(IMPLANT_COLOR, 0.14), alignItems: 'center' }}>
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: IMPLANT_DEEP, fontFamily: Platform.OS === 'web' ? 'monospace' : undefined }}>{t}</Text>
+                        </View>
+                        <Text style={{ ...TYPE.meta, color: det ? INK[800] : INK[400], flex: 1, lineHeight: 17, fontStyle: det ? 'normal' : 'italic' }}>
+                          {det || autoT('detay girilmedi')}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+          )}
+
           </View>
           )}
         </View>
@@ -1150,7 +1242,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
               zIndex 2: dosya satırlarındaki ipucu balonları sağdaki akış
               kolonunun altında kalmasın (DOM'da akış sonra geliyor). */}
           <View style={{ width: isNarrow ? '100%' : 256, gap: 12, zIndex: 2 }}>
-            <View style={{ borderRadius: 18, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: HAIR, padding: 16, gap: 10 }}>
+            <View style={{ borderRadius: 18, backgroundColor: SURF, borderWidth: 1, borderColor: HAIR, padding: 16, gap: 10 }}>
               <Text style={{ ...TYPE.label, color: INK[400] }}>Hekim & Klinik</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: tint(A, 0.12), alignItems: 'center', justifyContent: 'center' }}>
@@ -1195,13 +1287,13 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                         <Pressable
                           disabled={!l.href}
                           onPress={() => { if (l.href) Linking.openURL(l.href).catch(() => {}); }}
-                          style={({ pressed, hovered }: any) => ({
+                          style={rowStyle(({ pressed, hovered }: any) => ({
                             flexDirection: 'row', alignItems: 'center', gap: 7,
                             paddingHorizontal: 6, paddingVertical: 6, borderRadius: 9, marginHorizontal: -6,
                             backgroundColor: hovered && l.href ? 'rgba(0,0,0,0.035)' : 'transparent',
                             ...press(pressed, 0.99),
                             ...(Platform.OS === 'web' && l.href ? { cursor: 'pointer' } as any : {}),
-                          })}
+                          }))}
                         >
                           {l.icon}
                           <Text style={{ ...TYPE.meta, color: l.href ? INK[800] : INK[500], flex: 1 }} numberOfLines={1}>{l.text}</Text>
@@ -1215,7 +1307,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
             </View>
             {/* Hekim / klinik mesajları */}
             {(data?.messages.length ?? 0) > 0 && (
-              <View style={{ borderRadius: 18, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: HAIR, padding: 16, gap: 12 }}>
+              <View style={{ borderRadius: 18, backgroundColor: SURF, borderWidth: 1, borderColor: HAIR, padding: 16, gap: 12 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
                   <Text style={{ ...TYPE.label, color: INK[400] }}>Hekim Mesajları</Text>
                   <Text style={{ ...TYPE.meta, color: INK[400] }}>{data!.messages.length}</Text>
@@ -1230,7 +1322,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                           if (Platform.OS === 'web' && isImagePath(m.attachment_name ?? '')) { setImageViewer({ url: m.attachment_url, name: m.attachment_name ?? '' }); return; }
                           openFileUrl(m.attachment_url);
                         }}
-                        style={({ pressed }: any) => ({ flexDirection: 'row', alignItems: 'center', gap: 5, ...press(pressed), ...(Platform.OS === 'web' && m.attachment_url ? { cursor: 'pointer' } as any : {}) })}
+                        style={rowStyle(({ pressed }: any) => ({ flexDirection: 'row', alignItems: 'center', gap: 5, ...press(pressed), ...(Platform.OS === 'web' && m.attachment_url ? { cursor: 'pointer' } as any : {}) }))}
                       >
                         <FileText size={11} color={m.attachment_url ? A_DEEP : INK[400]} strokeWidth={1.8} />
                         <Text numberOfLines={1} style={{ ...TYPE.meta, fontWeight: '600', color: m.attachment_url ? A_DEEP : INK[500] }}>{m.attachment_name}</Text>
@@ -1243,7 +1335,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
             )}
 
             {/* Dosyalar */}
-            <View style={{ borderRadius: 18, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: HAIR, padding: 16, gap: 10 }}>
+            <View style={{ borderRadius: 18, backgroundColor: SURF, borderWidth: 1, borderColor: HAIR, padding: 16, gap: 10 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
                 <Text style={{ ...TYPE.label, color: INK[400] }}>Dosyalar</Text>
                 <Text style={{ ...TYPE.meta, color: INK[400] }}>{data?.files.length ?? 0}</Text>
@@ -1257,13 +1349,13 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                 <Pressable
                   onPress={openAllLayered}
                   accessibilityLabel={`${all3DFiles.length} taramayı tek sahnede üst üste aç`}
-                  style={({ pressed, hovered }: any) => ({
+                  style={rowStyle(({ pressed, hovered }: any) => ({
                     alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', gap: 9,
                     paddingStart: 10, paddingEnd: 8, paddingVertical: 9, borderRadius: 12,
                     backgroundColor: tint(A, hovered ? 0.17 : 0.10),
                     ...press(pressed, 0.985),
                     ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'transform 110ms cubic-bezier(0.2,0,0,1), background-color 140ms ease' } as any : {}),
-                  })}
+                  }))}
                 >
                   <Layers size={14} color={A_DEEP} strokeWidth={2} />
                   <Text style={{ ...TYPE.meta, fontWeight: '600', color: A_DEEP, flex: 1 }} numberOfLines={1}>
@@ -1275,7 +1367,22 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                 </Pressable>
                 </Tip>
               )}
-              {(data?.files.length ?? 0) === 0 ? (
+              {Platform.OS !== 'web' ? (
+                // Native: sipariş detayındaki galeriyle AYNI bileşen — fotoğraflar
+                // küçük resim galerisi + uygulama-içi görüntüleyici (önizleme
+                // tarayıcıya/indirmeye gitmez), 3D/zip de uygulama içinde açılır.
+                <FilesList
+                  photos={(data?.files ?? []).map(f => ({
+                    id: f.id, work_order_id: f.work_order_id ?? orderId, storage_path: f.storage_path,
+                    uploaded_by: '', caption: f.name, created_at: f.created_at ?? new Date().toISOString(),
+                    tooth_number: null,
+                  }))}
+                  signedUrls={Object.fromEntries((data?.files ?? []).filter(f => f.signed_url).map(f => [f.id, f.signed_url as string]))}
+                  workOrderId={orderId}
+                  accentColor={A}
+                  onUploaded={load}
+                />
+              ) : (data?.files.length ?? 0) === 0 ? (
                 <Text style={{ ...TYPE.meta, color: INK[400] }}>Dosya yok.</Text>
               ) : (
                 fileGroups.map((g) => {
@@ -1288,13 +1395,13 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                     <Pressable
                       onPress={() => setOpenFileCats(s => ({ ...s, [g.key]: !s[g.key] }))}
                       hitSlop={4}
-                      style={({ pressed, hovered }: any) => ({
+                      style={rowStyle(({ pressed, hovered }: any) => ({
                         flexDirection: 'row', alignItems: 'center', gap: 8,
                         paddingHorizontal: 8, paddingVertical: 8, borderRadius: 10, marginHorizontal: -8,
                         backgroundColor: hovered ? 'rgba(0,0,0,0.035)' : 'transparent',
                         ...press(pressed, 0.985),
                         ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                      })}
+                      }))}
                     >
                       {isCollapsed ? <ChevronRight size={14} color={INK[400]} strokeWidth={2} /> : <ChevronDown size={14} color={INK[400]} strokeWidth={2} />}
                       <Text style={{ flex: 1, ...TYPE.meta, fontWeight: '600', color: INK[700] }}>{g.label}</Text>
@@ -1368,7 +1475,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
             {/* Hekim notu — dosyaların altında. Triaj kararında önce taramaya
                 bakılır, not onu tamamlayan açıklamadır. */}
             {o?.notes ? (
-              <View style={{ borderRadius: 18, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: HAIR, padding: 16, gap: 8 }}>
+              <View style={{ borderRadius: 18, backgroundColor: SURF, borderWidth: 1, borderColor: HAIR, padding: 16, gap: 8 }}>
                 <Text style={{ ...TYPE.label, color: INK[400] }}>Hekim Notu</Text>
                 <Text style={{ ...TYPE.body, color: INK[800], lineHeight: 19 }}>{o.notes}</Text>
               </View>
@@ -1420,13 +1527,13 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
               <>
                 <Tip label="Farklı işlemleri bağımsız yürüyen ayrı şeritlere böl">
                   <Pressable onPress={addLane}
-                    style={({ pressed, hovered }: any) => ({
+                    style={rowStyle(({ pressed, hovered }: any) => ({
                       flexDirection: 'row', alignItems: 'center', gap: 7, paddingStart: 12, paddingEnd: 13, paddingVertical: 9, borderRadius: 999,
-                      backgroundColor: hovered ? tint(A, 0.12) : '#FFFFFF',
+                      backgroundColor: hovered ? tint(A, 0.12) : U.plainBtn.bg,
                       borderWidth: 1, borderColor: HAIR,
                       ...press(pressed, 0.98),
                       ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'transform 110ms cubic-bezier(0.2,0,0,1), background-color 140ms ease' } as any : {}),
-                    })}>
+                    }))}>
                     <Plus size={14} color={A_DEEP} strokeWidth={2.2} />
                     <Text style={{ ...TYPE.meta, fontWeight: '600', color: A_DEEP }}>İş Şeridi</Text>
                   </Pressable>
@@ -1446,14 +1553,14 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                 <Tip block label="Plana girmemiş aşamalardan birini akışın sonuna ekle">
                   <Pressable
                     onPress={() => setAddOpen(o => !o)}
-                    style={({ pressed, hovered }: any) => ({
+                    style={rowStyle(({ pressed, hovered }: any) => ({
                       width: '100%', flexDirection: 'row', alignItems: 'center', gap: 8,
                       paddingStart: 12, paddingEnd: 10, paddingVertical: 9, borderRadius: 999,
-                      backgroundColor: addOpen || hovered ? tint(A, 0.12) : '#FFFFFF',
+                      backgroundColor: addOpen || hovered ? tint(A, 0.12) : U.plainBtn.bg,
                       borderWidth: 1, borderColor: addOpen ? tint(A, 0.35) : HAIR,
                       ...press(pressed, 0.98),
                       ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'transform 110ms cubic-bezier(0.2,0,0,1), background-color 140ms ease, border-color 140ms ease' } as any : {}),
-                    })}
+                    }))}
                   >
                     <Plus size={14} color={A_DEEP} strokeWidth={2.2} />
                     <Text style={{ ...TYPE.meta, fontWeight: '600', color: A_DEEP, flex: 1 }}>Aşama Ekle</Text>
@@ -1467,7 +1574,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                 {addOpen && (
                   <View style={{
                     position: 'absolute', top: '100%', end: 0, minWidth: 244, marginTop: 6, zIndex: 80,
-                    borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: HAIR, padding: 6,
+                    borderRadius: 16, backgroundColor: SURF, borderWidth: 1, borderColor: HAIR, padding: 6,
                     ...(Platform.OS === 'web' ? { boxShadow: '0 16px 40px rgba(15,23,42,0.14)' } as any : {}),
                   }}>
                     <ScrollView style={{ maxHeight: 264 }} showsVerticalScrollIndicator={false}>
@@ -1478,12 +1585,12 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                           <Pressable
                             key={r.stationId}
                             onPress={() => { setActive(r.stationId, true); setAddOpen(false); }}
-                            style={({ pressed, hovered }: any) => ({
+                            style={rowStyle(({ pressed, hovered }: any) => ({
                               flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 10, borderRadius: 12,
                               backgroundColor: hovered ? 'rgba(0,0,0,0.035)' : 'transparent',
                               ...press(pressed, 0.99),
                               ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                            })}
+                            }))}
                           >
                             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: st.color }} />
                             <Text style={{ ...TYPE.body, fontWeight: '600', color: INK[800], flex: 1 }} numberOfLines={1}>{st.name}</Text>
@@ -1513,12 +1620,12 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                 {(data?.items ?? []).map(it => (
                   <Tip key={it.id} label="Bu işlemi bir sonraki şeride taşı">
                   <Pressable onPress={() => cycleItemLane(it.id)}
-                    style={({ pressed, hovered }: any) => ({
+                    style={rowStyle(({ pressed, hovered }: any) => ({
                       flexDirection: 'row', alignItems: 'center', gap: 8, paddingStart: 11, paddingEnd: 6, paddingVertical: 6, borderRadius: 999,
-                      backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: hovered ? tint(A, 0.4) : HAIR,
+                      backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: hovered ? tint(A, 0.4) : HAIR,
                       ...press(pressed),
                       ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'transform 110ms cubic-bezier(0.2,0,0,1), border-color 140ms ease' } as any : {}),
-                    })}>
+                    }))}>
                     <Text style={{ ...TYPE.meta, fontWeight: '600', color: INK[700] }} numberOfLines={1}>
                       {it.name}{it.tooth_numbers?.length ? ` (${it.tooth_numbers.join(',')})` : ''}
                     </Text>
@@ -1538,9 +1645,9 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                 "8 sa pay" zihinsel hesap istiyor; altına tahmini bitiş yazılıyor. */}
             {(planTiming.anyDuration || planTiming.anySla) && (() => {
               const tones = {
-                ok:   { fg: '#1F6B47', dot: '#2D9A6B' },
-                warn: { fg: '#9A6710', dot: '#E89B2A' },
-                late: { fg: '#9C2E2E', dot: '#D94B4B' },
+                ok:   { fg: FG.green, dot: '#2D9A6B' },
+                warn: { fg: FG.amber, dot: '#E89B2A' },
+                late: { fg: FG.red, dot: '#D94B4B' },
               } as const;
               const t = slaStatus ? tones[slaStatus.tone] : null;
               const verdict = slaStatus
@@ -1553,7 +1660,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                 <View style={{
                   flexDirection: 'row', flexWrap: 'wrap', rowGap: 12, columnGap: 28, alignItems: 'center',
                   paddingHorizontal: 16, paddingVertical: 14, borderRadius: 16,
-                  backgroundColor: t ? tint(t.dot, 0.07) : '#FFFFFF',
+                  backgroundColor: t ? tint(t.dot, 0.07) : SURF,
                   borderWidth: 1, borderColor: t ? tint(t.dot, 0.24) : HAIR,
                 }}>
                   {t && verdict && (
@@ -1588,7 +1695,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
             {error ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 11, borderRadius: 12, backgroundColor: tint('#D94B4B', 0.07) }}>
                 <AlertTriangle size={14} color="#9C2E2E" strokeWidth={2} />
-                <Text style={{ ...TYPE.body, color: '#9C2E2E', fontWeight: '600', flex: 1 }}>{error}</Text>
+                <Text style={{ ...TYPE.body, color: FG.red, fontWeight: '600', flex: 1 }}>{error}</Text>
               </View>
             ) : null}
 
@@ -1699,12 +1806,12 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                       {addable.map(s => (
                         <Tip key={s.id} label={`${s.name} aşamasını bu şeride ekle`}>
                         <Pressable onPress={() => addStationToLane(s.id, lane)}
-                          style={({ pressed, hovered }: any) => ({
+                          style={rowStyle(({ pressed, hovered }: any) => ({
                             flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 11, paddingVertical: 7, borderRadius: 999,
-                            backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: hovered ? tint(A, 0.4) : HAIR,
+                            backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: hovered ? tint(A, 0.4) : HAIR,
                             ...press(pressed),
                             ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'transform 110ms cubic-bezier(0.2,0,0,1), border-color 140ms ease' } as any : {}),
-                          })}>
+                          }))}>
                           <Plus size={12} color={INK[500]} strokeWidth={2} />
                           <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: s.color }} />
                           <Text style={{ ...TYPE.meta, fontWeight: '600', color: INK[700] }}>{s.name}</Text>
@@ -1744,7 +1851,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
           <View style={{
             width: '100%', flexDirection: isNarrow ? 'column' : 'row', alignItems: isNarrow ? 'stretch' : 'center', gap: isNarrow ? 12 : 16,
             borderRadius: 22, paddingVertical: 13, paddingHorizontal: 18,
-            backgroundColor: (Platform.OS !== 'web' || solidGlass) ? '#FFFFFF' : 'rgba(255,255,255,0.08)',
+            backgroundColor: (Platform.OS !== 'web' || solidGlass) ? SURF : 'rgba(255,255,255,0.08)',
             ...((Platform.OS !== 'web' || solidGlass) ? {
               borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)',
             } : {}),
@@ -1759,15 +1866,15 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
             {/* Özet — hairline ayraçlı (mobilde sarar) */}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, flexWrap: 'wrap', flexShrink: 1 }}>
             <FooterStat icon={<Layers size={13} color={A} strokeWidth={2} />} label={laneCount > 1 ? 'Şerit·Aşama' : 'Aşama'} value={laneCount > 1 ? `${laneCount}·${planRows.length}` : String(planRows.length)} />
-            <View style={{ width: 1, height: 30, backgroundColor: 'rgba(0,0,0,0.08)' }} />
+            <View style={{ width: 1, height: 30, backgroundColor: SEP }} />
             <FooterStat icon={<Play size={12} color={A} strokeWidth={2} />} label="İlk istasyon" value={firstStation} />
-            <View style={{ width: 1, height: 30, backgroundColor: 'rgba(0,0,0,0.08)' }} />
+            <View style={{ width: 1, height: 30, backgroundColor: SEP }} />
             {planTiming.anyDuration && (<>
               <FooterStat icon={<Clock size={12} color={A} strokeWidth={2} />} label="Tahmini süre" value={fmtDuration(planTiming.totalMin)} />
-              <View style={{ width: 1, height: 30, backgroundColor: 'rgba(0,0,0,0.08)' }} />
+              <View style={{ width: 1, height: 30, backgroundColor: SEP }} />
             </>)}
             <FooterStat
-              icon={<Clock size={12} color={o?.is_urgent ? '#9A6710' : A_DEEP} strokeWidth={2} />}
+              icon={<Clock size={12} color={o?.is_urgent ? FG.amber : A_DEEP} strokeWidth={2} />}
               label="Teslim"
               value={o?.delivery_date ? new Date(o.delivery_date).toLocaleDateString(localeTag()) : '—'}
               warn={o?.is_urgent}
@@ -1776,16 +1883,16 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
             {/* Atanan ekip — avatar yığını */}
             {assignedTechs.length > 0 && (
               <>
-                <View style={{ width: 1, height: 30, backgroundColor: 'rgba(0,0,0,0.08)' }} />
+                <View style={{ width: 1, height: 30, backgroundColor: SEP }} />
                 <View style={{ gap: 4 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     {assignedTechs.slice(0, 4).map((t, i) => (
-                      <View key={t.id} style={{ width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: mixWhite(A, 0.18), borderWidth: 1.5, borderColor: '#FFFFFF', marginStart: i === 0 ? 0 : -8 }}>
+                      <View key={t.id} style={{ width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? tint(A, 0.30) : mixWhite(A, 0.18), borderWidth: 1.5, borderColor: SURF, marginStart: i === 0 ? 0 : -8 }}>
                         <Text style={{ fontSize: 9, fontWeight: '700', color: A_DEEP }}>{initials(t.full_name)}</Text>
                       </View>
                     ))}
                     {assignedTechs.length > 4 && (
-                      <View style={{ width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEEFF1', borderWidth: 1.5, borderColor: '#FFFFFF', marginStart: -8 }}>
+                      <View style={{ width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : '#EEEFF1', borderWidth: 1.5, borderColor: SURF, marginStart: -8 }}>
                         <Text style={{ fontSize: 9, fontWeight: '700', color: INK[500] }}>+{assignedTechs.length - 4}</Text>
                       </View>
                     )}
@@ -1799,7 +1906,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
             {!isNarrow && <View style={{ flex: 1 }} />}
 
             {!isPlanner && (
-              <Text style={{ fontSize: 11, color: '#9A6710', maxWidth: 220, ...(isNarrow ? { width: '100%' } : {}) }}>
+              <Text style={{ fontSize: 11, color: FG.amber, maxWidth: 220, ...(isNarrow ? { width: '100%' } : {}) }}>
                 Üretime başlatmak için yönetici (müdür) veya admin yetkisi gerekir.
               </Text>
             )}
@@ -1813,15 +1920,15 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
               <Pressable
                 disabled={activeRows.length === 0}
                 onPress={openSaveTemplate}
-                style={({ pressed, hovered }: any) => ({
+                style={rowStyle(({ pressed, hovered }: any) => ({
                   height: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
                   paddingHorizontal: 16, borderRadius: 999,
-                  backgroundColor: hovered ? '#F1F2F4' : '#FFFFFF',   // OPAK — cam yalnız barda
+                  backgroundColor: hovered ? (isDark ? U.plainBtn.hoverBg : '#F1F2F4') : U.plainBtn.bg,   // OPAK — cam yalnız barda
                   borderWidth: 1, borderColor: 'rgba(15,23,42,0.08)',
                   opacity: activeRows.length === 0 ? 0.4 : 1,
                   ...press(pressed),
                   ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'transform 110ms cubic-bezier(0.2,0,0,1), background-color 160ms ease' } as any : {}),
-                })}
+                }))}
               >
                 <Save size={14} color={INK[500]} strokeWidth={1.9} />
                 <Text style={{ fontSize: 13, fontWeight: '600', letterSpacing: -0.1, color: INK[700] }}>Şablon Kaydet</Text>
@@ -1833,14 +1940,14 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                 <Pressable
                   disabled={!canStart}
                   onPress={() => confirmAndSave({ approve: true })}
-                  style={({ pressed, hovered }: any) => ({
+                  style={rowStyle(({ pressed, hovered }: any) => ({
                     height: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
                     paddingHorizontal: 16, borderRadius: 999,
-                    backgroundColor: mixWhite(A, hovered ? 0.22 : 0.14),   // OPAK açık accent
+                    backgroundColor: isDark ? tint(A, hovered ? 0.30 : 0.22) : mixWhite(A, hovered ? 0.22 : 0.14),   // OPAK açık accent
                     opacity: !canStart ? 0.4 : 1,
                     ...press(pressed),
                     ...(Platform.OS === 'web' ? { cursor: canStart ? 'pointer' : 'default', transition: 'transform 110ms cubic-bezier(0.2,0,0,1), background-color 160ms ease' } as any : {}),
-                  })}
+                  }))}
                 >
                   <Sparkles size={14} color={A_DEEP} strokeWidth={2} />
                   <Text style={{ fontSize: 13, fontWeight: '600', letterSpacing: -0.1, color: A_DEEP }}>Tek Tıkla Uygula</Text>
@@ -1856,10 +1963,10 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
               <Pressable
                 disabled={!canStart}
                 onPress={() => confirmAndSave()}
-                style={({ pressed, hovered }: any) => ({
+                style={rowStyle(({ pressed, hovered }: any) => ({
                   height: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
                   paddingHorizontal: 20, borderRadius: 999,
-                  backgroundColor: hovered && canStart ? A_DEEP : A,
+                  backgroundColor: hovered && canStart ? theme.primaryDeep : A,
                   opacity: !canStart ? 0.5 : 1,
                   ...(isNarrow ? { flexGrow: 1, width: '100%' as any } : {}),
                   ...press(pressed, 0.98),
@@ -1868,7 +1975,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                     boxShadow: hovered && canStart ? `0 8px 20px ${tint(A, 0.42)}` : `0 3px 10px ${tint(A, 0.26)}`,
                     transition: 'transform 110ms cubic-bezier(0.2,0,0,1), box-shadow 180ms ease, background-color 160ms ease',
                   } as any : {}),
-                })}
+                }))}
               >
                 <Play size={14} color="#FFFFFF" strokeWidth={2.4} />
                 <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFFFFF', letterSpacing: -0.1 }}>{saving ? 'Kaydediliyor…' : 'Onayla & Üretime Başlat'}</Text>
@@ -1883,7 +1990,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
       {/* Şablon kaydet modalı */}
       <Modal visible={tplOpen} transparent animationType="fade" onRequestClose={() => setTplOpen(false)}>
         <Pressable onPress={() => setTplOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <Pressable onPress={() => {}} style={{ width: '100%', maxWidth: 440, backgroundColor: '#FFFFFF', borderRadius: 18, padding: 20, gap: 14 }}>
+          <Pressable onPress={() => {}} style={{ width: '100%', maxWidth: 440, backgroundColor: SURF, borderRadius: 18, padding: 20, gap: 14 }}>
             <View style={{ gap: 3 }}>
               <Text style={{ fontSize: 17, fontWeight: '800', color: INK[900] }}>Şablon olarak kaydet</Text>
               <Text style={{ fontSize: 12.5, color: INK[500] }}>Bu plandaki {activeRows.length} aşamalık akış yeniden kullanılabilir şablon olur.</Text>
@@ -1911,6 +2018,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
       {viewer3DFile && Platform.OS === 'web' && (
         <React.Suspense fallback={null}>
           <Viewer3DModal
+            orderId={orderId}
             visible={!!viewer3DFile}
             files={[viewer3DFile]}
             referenceImages={referenceImages}
@@ -1925,6 +2033,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
       {viewerAll && Platform.OS === 'web' && (
         <React.Suspense fallback={null}>
           <Viewer3DModal
+            orderId={orderId}
             visible={!!viewerAll}
             files={viewerAll}
             referenceImages={zipImages ?? referenceImages}
@@ -1983,7 +2092,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
       {/* Sipariş yazışması modal'ı — sorun olursa hekim/klinikle mesajlaş */}
       <Modal visible={chatOpen} transparent animationType="fade" onRequestClose={() => setChatOpen(false)}>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(10,14,26,0.52)', paddingTop: insets.top, ...(Platform.OS === 'web' ? ({ backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' } as any) : {}) }}>
-          <View style={{ width: '94%', maxWidth: 720, height: '88%', maxHeight: 880, backgroundColor: '#FFFFFF', borderRadius: 24, overflow: 'hidden' }}>
+          <View style={{ width: '94%', maxWidth: 720, height: '88%', maxHeight: 880, backgroundColor: SURF, borderRadius: 24, overflow: 'hidden' }}>
             <ChatDetail
               selectedOrder={{
                 work_order_id: orderId,
@@ -2014,9 +2123,13 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
  * düşer. Değer önce ve ağır, etiket altında hafif geniş tracking ile yazılır.
  */
 function FooterStat({ icon, label, value, warn }: { icon: React.ReactNode; label: string; value: string; warn?: boolean }) {
+  const U = useInkUI();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const INK = U.ink;
+  const FG = fgTones(isDark);
   return (
     <View style={{ gap: 4, minWidth: 0 }}>
-      <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '700', color: warn ? '#9A6710' : INK[900], fontFamily: DISPLAY, letterSpacing: -0.3 }}>{value}</Text>
+      <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '700', color: warn ? FG.amber : INK[900], fontFamily: DISPLAY, letterSpacing: -0.3 }}>{value}</Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
         {icon}
         <Text style={{ fontSize: 9.5, fontWeight: '600', color: INK[500], letterSpacing: 0.9, textTransform: 'uppercase' }}>{label}</Text>
@@ -2288,6 +2401,12 @@ function StageCard({
   onDragStart: () => void; onDragEnter: () => void; onDrop: () => void; onDragEnd: () => void;
 }) {
   const { st, tech, parallelGroup, parallelOn } = entry;
+  const U = useInkUI();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const INK = U.ink;
+  const HAIR = isDark ? U.hairline : HAIR_LIGHT;
+  const SURF = U.surface;
+  const FG = fgTones(isDark);
   const isWeb = Platform.OS === 'web';
   const [hover, setHover] = useState(false);
   const anim = (props: string) => (isWeb && !reduced ? { transition: props } as any : {});
@@ -2319,7 +2438,7 @@ function StageCard({
   // Eskiden ikisi de "Otomatik atanacak · en uygun teknisyen" diyordu; bu cümle
   // "sistem halleder" izlenimi veriyor, oysa aşama atanmamış üretime giriyor.
   const qualifiedExists = technicians.some(t => t.role !== 'courier' && t.is_active !== false && isQualified(st, t));
-  const unassignedTone = qualifiedExists ? '#9A6710' : '#9C2E2E';
+  const unassignedTone = qualifiedExists ? FG.amber : FG.red;
 
   const body = (
     <View style={{
@@ -2330,7 +2449,7 @@ function StageCard({
       // İmleç kartın üstündeyken kart, satırdaki komşularının ÜSTÜNE çıkar:
       // aksi hâlde ipucu balonu DOM'da sonra gelen kartın altında kalıyor.
       zIndex: hover || pickerOpen ? 30 : 0,
-      borderRadius: 18, backgroundColor: '#FFFFFF',
+      borderRadius: 18, backgroundColor: SURF,
       borderWidth: 1, borderColor: hover && !dragging ? 'rgba(0,0,0,0.13)' : HAIR,
       opacity: dragging ? 0.3 : 1,
       // Sürüklenmiyorken transform YOK: sabit bir scale(1) bile CSS'te
@@ -2352,7 +2471,7 @@ function StageCard({
           position: 'absolute', width: NODE, height: NODE, borderRadius: NODE / 2,
           alignItems: 'center', justifyContent: 'center',
           backgroundColor: color,
-          borderWidth: 3, borderColor: '#FFFFFF',
+          borderWidth: 3, borderColor: SURF,
           ...(isWeb ? { boxShadow: `0 2px 8px ${tint(color, 0.35)}` } as any : {}),
           ...(vertical
             ? { top: -NODE / 2, start: 16 }
@@ -2411,7 +2530,7 @@ function StageCard({
             {st.is_critical && (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: '#D94B4B' }} />
-                <Text style={{ fontSize: 10.5, fontWeight: '600', color: '#9C2E2E' }}>Kritik</Text>
+                <Text style={{ fontSize: 10.5, fontWeight: '600', color: FG.red }}>Kritik</Text>
               </View>
             )}
             {parallelGroup != null && (
@@ -2462,13 +2581,13 @@ function StageCard({
         <Tip block label={tech ? 'Bu aşamanın teknisyenini değiştir' : 'Bu aşamaya teknisyen ata'}>
         <Pressable
           onPress={onTogglePicker}
-          style={({ pressed, hovered }: any) => ({
+          style={rowStyle(({ pressed, hovered }: any) => ({
             flexDirection: 'row', alignItems: 'center', gap: 8, padding: 7, borderRadius: 12,
             backgroundColor: hovered || pickerOpen ? 'rgba(0,0,0,0.05)' : 'rgba(0,0,0,0.025)',
             ...press(pressed, 0.985),
             ...anim('transform 110ms cubic-bezier(0.2,0,0,1), background-color 140ms ease'),
             ...(isWeb ? { cursor: 'pointer' } as any : {}),
-          })}
+          }))}
         >
           {tech ? (
             <View style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(color, 0.15) }}>
@@ -2506,18 +2625,18 @@ function StageCard({
       {pickerOpen && (
         <View style={{
           position: 'absolute', top: '100%', left: 0, right: 0, minWidth: 232, marginTop: 6, zIndex: 50,
-          borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: HAIR, padding: 8,
+          borderRadius: 16, backgroundColor: SURF, borderWidth: 1, borderColor: HAIR, padding: 8,
           ...(isWeb ? { boxShadow: '0 16px 40px rgba(0,0,0,0.14)' } as any : {}),
         }}>
           <ScrollView style={{ maxHeight: 268 }} showsVerticalScrollIndicator={false}>
             <Pressable
               onPress={() => onAssign(null)}
-              style={({ pressed, hovered }: any) => ({
+              style={rowStyle(({ pressed, hovered }: any) => ({
                 flexDirection: 'row', alignItems: 'center', gap: 10, padding: 9, borderRadius: 12,
                 backgroundColor: hovered ? 'rgba(0,0,0,0.035)' : 'transparent',
                 ...press(pressed, 0.99),
                 ...(isWeb ? { cursor: 'pointer' } as any : {}),
-              })}
+              }))}
             >
               <View style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderStyle: 'dashed', borderColor: INK[300] }}>
                 <Sparkles size={13} color={INK[400]} strokeWidth={1.8} />
@@ -2536,14 +2655,14 @@ function StageCard({
               const tcap = t.capacity && t.capacity > 0 ? t.capacity : 6;
               return (
                 <Pressable key={t.id} onPress={() => onAssign(t.id)}
-                  style={({ pressed, hovered }: any) => ({
+                  style={rowStyle(({ pressed, hovered }: any) => ({
                     flexDirection: 'row', alignItems: 'center', gap: 10, padding: 9, borderRadius: 12,
                     opacity: qualified ? 1 : 0.5,
                     backgroundColor: sel ? tint(accent, 0.09) : hovered ? 'rgba(0,0,0,0.035)' : 'transparent',
                     ...press(pressed, 0.99),
                     ...anim('background-color 120ms ease, transform 110ms cubic-bezier(0.2,0,0,1)'),
                     ...(isWeb ? { cursor: 'pointer' } as any : {}),
-                  })}>
+                  }))}>
                   <View style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(color, 0.15) }}>
                     <Text style={{ fontSize: 11, fontWeight: '700', color: color }}>{initials(t.full_name)}</Text>
                   </View>

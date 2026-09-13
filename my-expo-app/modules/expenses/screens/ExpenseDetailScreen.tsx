@@ -24,9 +24,11 @@ import {
   FileText, Receipt, User, Phone, MapPin, Hash, Package, Building2,
   CircleCheck, CircleDot, Clock, TriangleAlert, ExternalLink,
   Building, Users, Wrench, MoreHorizontal,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { DS } from '../../../core/theme/dsTokens';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { formatMoney, type Currency } from '../../../core/money/currency';
 import { formatAddress } from '../../../core/util/formatAddress';
 import { safeBack } from '../../../core/util/safeBack';
@@ -77,10 +79,12 @@ function fmtStamp(d?: string | null): string | null {
 }
 
 function Card({ children, style }: { children: React.ReactNode; style?: any }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <View style={[{
-      backgroundColor: DS.lab.surface, borderRadius: 18,
-      borderWidth: 1, borderColor: DS.ink[200], padding: 20,
+      backgroundColor: isDark ? T.card : DS.lab.surface, borderRadius: 18,
+      borderWidth: 1, borderColor: isDark ? T.hairline : DS.ink[200], padding: 20,
     }, style]}>
       {children}
     </View>
@@ -88,10 +92,12 @@ function Card({ children, style }: { children: React.ReactNode; style?: any }) {
 }
 
 function Label({ children }: { children: React.ReactNode }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <Text style={{
       fontSize: 10, fontWeight: '600', letterSpacing: 1.1,
-      textTransform: 'uppercase', color: DS.ink[400], marginBottom: 10,
+      textTransform: 'uppercase', color: isDark ? T.ink3 : DS.ink[400], marginBottom: 10,
     }}>
       {children}
     </Text>
@@ -101,13 +107,15 @@ function Label({ children }: { children: React.ReactNode }) {
 function InfoRow({ icon: Icon, label, value, onPress }: {
   icon: any; label: string; value: string; onPress?: () => void;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const body = (
     <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 5 }}>
-      <Icon size={14} color={DS.ink[400]} strokeWidth={1.7} style={{ marginTop: 2 }} />
-      <Text style={{ fontSize: 12, color: DS.ink[500], width: 110 }}>{label}</Text>
+      <Icon size={14} color={isDark ? T.ink3 : DS.ink[400]} strokeWidth={1.7} style={{ marginTop: 2 }} />
+      <Text style={{ fontSize: 12, color: isDark ? T.ink3 : DS.ink[500], width: 110 }}>{label}</Text>
       <Text style={{
         flex: 1, fontSize: 13,
-        color: onPress ? DS.lab.primaryDeep : DS.ink[900],
+        color: onPress ? DS.lab.primaryDeep : (isDark ? T.ink : DS.ink[900]),
         ...(onPress ? { fontWeight: '600' as const } : {}),
       }}>
         {value}
@@ -124,6 +132,8 @@ function InfoRow({ icon: Icon, label, value, onPress }: {
 
 /** Atandı → Aldı → Teslim edildi (veya İptal) — dolu olan damgalar sırayla. */
 function Timeline({ delivery }: { delivery: ExpenseDelivery }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const steps = [
     { label: 'Atandı',        at: delivery.assigned_at,  icon: CircleDot },
     { label: 'Teslim alındı', at: delivery.picked_up_at, icon: Package },
@@ -140,18 +150,18 @@ function Timeline({ delivery }: { delivery: ExpenseDelivery }) {
       {steps.map((s, i) => {
         const last = i === steps.length - 1;
         const cancelled = s.label === 'İptal edildi';
-        const tone = cancelled ? DS.lab.danger : (last ? DS.lab.success : DS.ink[400]);
+        const tone = cancelled ? DS.lab.danger : (last ? DS.lab.success : (isDark ? T.ink3 : DS.ink[400]));
         return (
           <View key={s.label} style={{ flexDirection: 'row', gap: 12 }}>
             <View style={{ alignItems: 'center', width: 20 }}>
               <s.icon size={14} color={tone} strokeWidth={1.9} />
-              {!last ? <View style={{ flex: 1, width: 1.5, backgroundColor: DS.ink[200], marginVertical: 3 }} /> : null}
+              {!last ? <View style={{ flex: 1, width: 1.5, backgroundColor: isDark ? T.hairline : DS.ink[200], marginVertical: 3 }} /> : null}
             </View>
             <View style={{ flex: 1, paddingBottom: last ? 0 : 14 }}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: cancelled ? DS.lab.danger : DS.ink[900] }}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: cancelled ? DS.lab.danger : (isDark ? T.ink : DS.ink[900]) }}>
                 {s.label}
               </Text>
-              <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 1 }}>{fmtStamp(s.at)}</Text>
+              <Text style={{ fontSize: 11, color: isDark ? T.ink3 : DS.ink[500], marginTop: 1 }}>{fmtStamp(s.at)}</Text>
             </View>
           </View>
         );

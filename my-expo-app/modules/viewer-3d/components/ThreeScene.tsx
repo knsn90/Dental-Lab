@@ -27,6 +27,13 @@ import { analyzeMesh, type MeshDiagnostics } from '../lib/meshDiagnostics';
 import { applyPreset, applyPresetSmooth, type CameraPreset } from '../lib/cameraPresets';
 import { useViewerTheme } from '../lib/viewerTheme';
 import { createPerfMonitor, downsampleGeometry, type PerfStats } from '../lib/perfMonitor';
+import { MeshBVH } from 'three-mesh-bvh';
+import {
+  ANNOT_OBJ_NAME, buildAnnotationObject, disposeAnnotationObject, offsetAlongNormal,
+} from '../annotations/annotationObjects';
+import type {
+  AnnotationCamera, AnnotationKind, Point3, ScanAnnotation,
+} from '../annotations/types';
 
 export interface ThreeSceneHandle {
   fit: () => void;
@@ -81,6 +88,27 @@ interface Props {
   autoAlign?: boolean;
   /** S4: mesh diagnostics callback — yükleme sonrası parent'a haber ver */
   onDiagnostics?: (fileId: string, diag: MeshDiagnostics) => void;
+
+  // ── 3D kalem (tarama üzerine not) ─────────────────────────────────────────
+  /** Kalem aktifken kamera kontrolü kapanır, sürükleme çizgi çizer. */
+  penMode?: boolean;
+  penKind?: AnnotationKind;
+  penColor?: string;
+  /** Tüp yarıçapı (mm) */
+  penWidth?: number;
+  /**
+   * Çizim/dokunma bitti. Noktalar ÇAPA MESH'İN local uzayında ve normal boyunca
+   * dışarı kaydırılmış hâlde gelir; kaydetmeye hazır.
+   */
+  onPenCapture?: (capture: {
+    fileName: string | null;
+    points: Point3[];
+    camera: AnnotationCamera;
+  }) => void;
+  /** Çizilecek kayıtlı notlar */
+  annotations?: ScanAnnotation[];
+  /** Notlar katmanı görünürlüğü (katman panelindeki satır) */
+  annotationsVisible?: boolean;
 }
 
 interface MeshEntry {
@@ -89,7 +117,9 @@ interface MeshEntry {
 }
 
 export const ThreeScene = React.forwardRef<ThreeSceneHandle, Props>(function ThreeScene(
-  { files, onThumbnail, layerStyles, bg = 0x0e0e0e, measureMode, measurements = [], onAddMeasurement, cutAxis = 'none', cutPosition = 0, showGrid = false, xrayMode = false, autoAlign = false, onDiagnostics }: Props,
+  { files, onThumbnail, layerStyles, bg = 0x0e0e0e, measureMode, measurements = [], onAddMeasurement, cutAxis = 'none', cutPosition = 0, showGrid = false, xrayMode = false, autoAlign = false, onDiagnostics,
+    penMode = false, penKind = 'stroke', penColor = '#DC2626', penWidth = 0.35, onPenCapture,
+    annotations = [], annotationsVisible = true }: Props,
   ref,
 ) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -107,6 +137,10 @@ export const ThreeScene = React.forwardRef<ThreeSceneHandle, Props>(function Thr
   const thumbSentRef = useRef(false);
   const perfRef = useRef<ReturnType<typeof createPerfMonitor> | null>(null);
   const T = useViewerTheme();
+
+  // Sahnede duran not nesneleri: id → { obj, sig }. Fark-tabanlı güncelleme
+  // için (her değişimde hepsini yeniden kurmak yanıp sönmeye yol açıyordu).
+  const annotObjsRef = useRef<Map<string, { obj: THREE.Object3D; sig: string }>>(new Map());
 
   // Faz 6: measurement state — bekleyen ilk nokta
   const pendingMeasureA = useRef<THREE.Vector3 | null>(null);
@@ -362,6 +396,8 @@ export const ThreeScene = React.forwardRef<ThreeSceneHandle, Props>(function Thr
         if (sphereBad) mesh.frustumCulled = false;
         mesh.userData.isPointCloud = !!isPointCloud;
         mesh.userData.fileId = file.id;
+        // Not/çizim çapası dosya ADIYLA tutuluyor (id ZIP'te oturuma göre üretilir)
+        mesh.userData.fileName = file.name;
         mesh.userData.layerType = layer.type;
         mesh.userData.layerSize = size; // fit sırasında stack hesabı için
         // PLY vertex-renkleri / OBJ texture olan mesh'ler GERÇEK renklerini korur;
@@ -716,6 +752,307 @@ export const ThreeScene = React.forwardRef<ThreeSceneHandle, Props>(function Thr
     canvas.addEventListener('click', onClick);
     return () => { canvas.removeEventListener('click', onClick); pendingMeasureA.current = null; };
   }, [measureMode, onAddMeasurement]);
+
+  // ── Notlar: kayıtlı çizimleri sahneye bas ───────────────────────
+  //
+  // Nesneler ÇAPA MESH'İN çocuğu olur (noktalar onun local uzayında) → grup
+  // döndürmesi / auto-stack / fit hepsi kendiliğinden doğru çalışır.
+  useEffect(() => {
+    const group = groupRef.current;
+    if (!group) return;
+
+    // FARK-TABANLI güncelleme: her eklemede tüm notları yeniden kurmak hem
+    // israf hem görsel olarak "yanıp sönme" yapıyordu (iyimser ekleme + id
+    // yaması iki tur tetikliyor). Yalnız yeni/değişen/silinen işlenir.
+    const rendered = annotObjsRef.current;
+
+    // Etiket boyu modelin ölçeğinden: 20 mm'lik bir kron ile 120 mm'lik tam
+    // çene taramasında aynı px etiket ya devasa ya görünmez oluyordu.
+    const box = new THREE.Box3().setFromObject(group);
+    const span = box.getSize(new THREE.Vector3()).length() || 50;
+    const labelScale = Math.max(1.5, Math.min(10, span * 0.055));
+
+    const byName = new Map<string, THREE.Mesh>();
+    for (const e of meshesRef.current) {
+      const n = e.mesh.userData.fileName;
+      if (typeof n === 'string' && !byName.has(n)) byName.set(n, e.mesh);
+    }
+
+    /** Görsel imza — değişirse nesne yeniden kurulur. */
+    const sigOf = (a: ScanAnnotation) =>
+      `${a.kind}|${a.color}|${a.width}|${a.text ?? ''}|${a.fileName ?? ''}|${a.points.length}|${labelScale.toFixed(2)}`;
+
+    const live = new Set<string>();
+    for (const a of annotations) {
+      live.add(a.id);
+      const prev = rendered.get(a.id);
+      const sig = sigOf(a);
+      if (prev && prev.sig === sig && prev.obj.parent) { prev.obj.visible = annotationsVisible; continue; }
+      if (prev) { disposeAnnotationObject(prev.obj); rendered.delete(a.id); }
+      const obj = buildAnnotationObject(a, labelScale);
+      if (!obj) continue;
+      obj.visible = annotationsVisible;
+      const anchor = a.fileName ? byName.get(a.fileName) : undefined;
+      // Çapa mesh yoksa (dosya bu sahnede açık değil) gruba düşer: not yine
+      // görünür ama modeli takip etmez. Sessizce yok etmek "notum kayboldu"
+      // hissi verirdi.
+      (anchor ?? group).add(obj);
+      rendered.set(a.id, { obj, sig });
+    }
+    // Silinenler (ve geçici id'nin gerçek id'ye dönüşmesi)
+    for (const [id, entry] of Array.from(rendered.entries())) {
+      if (!live.has(id)) { disposeAnnotationObject(entry.obj); rendered.delete(id); }
+    }
+  }, [annotations, annotationsVisible, loadingIds, files]);
+
+  // Viewer kapanırken / dosya değişirken not nesnelerini serbest bırak
+  useEffect(() => () => {
+    for (const [, entry] of annotObjsRef.current) disposeAnnotationObject(entry.obj);
+    annotObjsRef.current.clear();
+  }, []);
+
+  // Görünürlük anahtarı — yeniden kurmadan (ucuz yol)
+  useEffect(() => {
+    const group = groupRef.current;
+    if (!group) return;
+    group.traverse((o) => { if (o.name === ANNOT_OBJ_NAME) o.visible = annotationsVisible; });
+  }, [annotationsVisible]);
+
+  // ── 3D kalem: canvas üzerinde çizim ─────────────────────────────
+  //
+  // Kalem açıkken ArcballControls KAPANIR: aynı sürükleme hem döndürüp hem
+  // çizerse ikisi de bozulur (ölçüm modundaki kalıbın aynısı).
+  useEffect(() => {
+    if (!penMode || !onPenCapture) return;
+    const canvas = canvasRef.current;
+    const refs = sceneRefs.current;
+    const group = groupRef.current;
+    if (!canvas || !refs || !group) return;
+
+    const prevEnabled = refs.controls.enabled;
+    refs.controls.enabled = false;
+
+    const raycaster = new THREE.Raycaster();
+    const ndc = new THREE.Vector2();
+    // Çizimin çapası: ilk çarpmadaki mesh. Sonraki noktalar başka mesh'e
+    // düşerse atlanır — tek çizgi iki ayrı koordinat sistemine yayılamaz.
+    let anchor: THREE.Mesh | null = null;
+    let localPts: THREE.Vector3[] = [];
+    let preview: THREE.Line | null = null;
+    let drawing = false;
+
+    const radius = Math.max(0.05, Math.min(5, penWidth || 0.35));
+    const minStep = radius * 0.9; // çok yoğun nokta = ağır tüp, gereksiz
+
+    // ── Neden BVH: ham `intersectObjects` her pointermove'da TÜM üçgenleri
+    // gezer. 1.3M üçgenlik bir çenede bu hareket başına ~40-80 ms → kalem
+    // "çok yavaş" (kullanıcı cihazda gördü). MeshBVH ile aynı sorgu ~0.05 ms.
+    // Ağaç geometri üstünde önbelleklenir: ikinci açılışta kurulum yok.
+    const bvhFor = (mesh: THREE.Mesh): MeshBVH | null => {
+      const geom = mesh.geometry as THREE.BufferGeometry;
+      const cached = (geom as any).__penBVH as MeshBVH | undefined;
+      if (cached) return cached;
+      try {
+        const tree = new MeshBVH(geom, { maxLeafSize: 12 });
+        (geom as any).__penBVH = tree;
+        return tree;
+      } catch (e) {
+        console.warn('[pen] BVH kurulamadı, yavaş yola düşülüyor', e);
+        return null;
+      }
+    };
+
+    const invMat = new THREE.Matrix4();
+    const localRay = new THREE.Ray();
+
+    /**
+     * Ekran noktasından en yakın yüzey noktası — BVH ile mesh'in LOCAL
+     * uzayında. Zaten local'e ihtiyacımız var, dünya dönüşümü israf olurdu.
+     */
+    const pickLocal = (
+      clientX: number, clientY: number,
+      only?: THREE.Mesh | null,
+    ): { mesh: THREE.Mesh; point: THREE.Vector3 } | null => {
+      const rect = canvas.getBoundingClientRect();
+      ndc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      ndc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(ndc, refs.camera);
+
+      const targets = only
+        ? [only]
+        : meshesRef.current.map((e) => e.mesh).filter((m) => m.visible);
+
+      let best: { mesh: THREE.Mesh; point: THREE.Vector3; dist: number } | null = null;
+      for (const mesh of targets) {
+        const tree = bvhFor(mesh);
+        if (tree) {
+          invMat.copy(mesh.matrixWorld).invert();
+          localRay.copy(raycaster.ray).applyMatrix4(invMat);
+          const hit = tree.raycastFirst(localRay, THREE.DoubleSide);
+          if (!hit) continue;
+          const n = hit.face?.normal ? hit.face.normal.clone().normalize() : new THREE.Vector3(0, 1, 0);
+          const p = offsetAlongNormal(hit.point, n, radius);
+          if (!best || hit.distance < best.dist) best = { mesh, point: p, dist: hit.distance };
+        } else {
+          // BVH yoksa (bozuk geometri) eski yol — doğruluk aynı, hız düşük
+          const hits = raycaster.intersectObject(mesh, false);
+          if (!hits.length) continue;
+          const h = hits[0];
+          const local = mesh.worldToLocal(h.point.clone());
+          const n = h.face?.normal ? h.face.normal.clone().normalize() : new THREE.Vector3(0, 1, 0);
+          if (!best || h.distance < best.dist) {
+            best = { mesh, point: offsetAlongNormal(local, n, radius), dist: h.distance };
+          }
+        }
+      }
+      return best ? { mesh: best.mesh, point: best.point } : null;
+    };
+
+    // Önizleme tamponu ÖN-TAHSİSLİ: her hareketde yeni BufferGeometry kurmak
+    // (setFromPoints) saniyede 60 kez tahsis + GPU upload demekti; çizim
+    // takılıyordu. Tek buffer + drawRange ile yalnız yeni nokta yazılır.
+    const MAX_PTS = 2048;
+    const previewArr = new Float32Array(MAX_PTS * 3);
+    let previewAttr: THREE.BufferAttribute | null = null;
+
+    const ensurePreview = () => {
+      if (preview || !anchor) return;
+      const geom = new THREE.BufferGeometry();
+      previewAttr = new THREE.BufferAttribute(previewArr, 3);
+      previewAttr.setUsage(THREE.DynamicDrawUsage);
+      geom.setAttribute('position', previewAttr);
+      geom.setDrawRange(0, 0);
+      preview = new THREE.Line(
+        geom,
+        new THREE.LineBasicMaterial({ color: new THREE.Color(penColor), toneMapped: false }),
+      );
+      preview.name = ANNOT_OBJ_NAME;
+      preview.renderOrder = 4;
+      preview.frustumCulled = false; // boş bbox ile kültenip kaybolmasın
+      anchor.add(preview);
+    };
+
+    const refreshPreview = () => {
+      if (!preview || !previewAttr || localPts.length < 2) return;
+      const n = Math.min(localPts.length, MAX_PTS);
+      for (let i = 0; i < n; i++) {
+        const v = localPts[i];
+        previewArr[i * 3] = v.x; previewArr[i * 3 + 1] = v.y; previewArr[i * 3 + 2] = v.z;
+      }
+      previewAttr.needsUpdate = true;
+      preview.geometry.setDrawRange(0, n);
+    };
+
+    const clearPreview = () => {
+      if (preview) { disposeAnnotationObject(preview); preview = null; }
+    };
+
+    const camSnapshot = (): AnnotationCamera => {
+      const p = refs.camera.position;
+      // ArcballControls'ta `target` tipli değil; runtime'da var (gaze point).
+      const t = ((refs.controls as any)?.target as THREE.Vector3 | undefined) ?? new THREE.Vector3();
+      return {
+        pos: [p.x, p.y, p.z],
+        target: [t.x, t.y, t.z],
+        fov: (refs.camera as THREE.PerspectiveCamera).fov,
+      };
+    };
+
+    const finish = () => {
+      if (!drawing) return;
+      drawing = false;
+      clearPreview();
+      const pts: Point3[] = localPts.map((v) => [v.x, v.y, v.z] as Point3);
+      localPts = [];
+      const name = (anchor?.userData?.fileName as string | undefined) ?? null;
+      anchor = null;
+      if (pts.length === 0) return;
+      if (penKind === 'note') {
+        onPenCapture({ fileName: name, points: [pts[0]], camera: camSnapshot() });
+        return;
+      }
+      if (penKind === 'arrow') {
+        if (pts.length < 2) return;
+        onPenCapture({ fileName: name, points: [pts[0], pts[pts.length - 1]], camera: camSnapshot() });
+        return;
+      }
+      if (pts.length < 2) return;
+      onPenCapture({ fileName: name, points: pts, camera: camSnapshot() });
+    };
+
+    const onDown = (ev: PointerEvent) => {
+      if (ev.button !== undefined && ev.button !== 0) return;
+      const hit = pickLocal(ev.clientX, ev.clientY);
+      if (!hit) return;
+      anchor = hit.mesh;
+      localPts = [hit.point];
+      drawing = true;
+      canvas.setPointerCapture?.(ev.pointerId);
+      if (penKind === 'note') { finish(); return; }
+      ensurePreview();
+    };
+
+    // pointermove tarayıcıda 120+/s tetikleniyor; her birinde raycast + GPU
+    // yükleme gereksiz. Son konum saklanır, iş rAF'ta BİR KEZ yapılır →
+    // çizim ekran tazeleme hızında akar.
+    let pendingXY: { x: number; y: number } | null = null;
+    let rafId: number | null = null;
+
+    const consume = () => {
+      rafId = null;
+      const xy = pendingXY;
+      pendingXY = null;
+      if (!xy || !drawing || !anchor) return;
+      const hit = pickLocal(xy.x, xy.y, anchor);
+      if (!hit) return;
+      const p = hit.point;
+      const last = localPts[localPts.length - 1];
+      if (penKind === 'arrow') {
+        // Ok: yalnız uç nokta güncellenir (önizleme düz çizgi)
+        if (localPts.length === 1) localPts.push(p); else localPts[1] = p;
+      } else {
+        if (last && last.distanceTo(p) < minStep) return;
+        if (localPts.length > 2000) return; // DB CHECK sınırı
+        localPts.push(p);
+      }
+      refreshPreview();
+    };
+
+    const onMove = (ev: PointerEvent) => {
+      if (!drawing || !anchor) return;
+      pendingXY = { x: ev.clientX, y: ev.clientY };
+      if (rafId == null) rafId = requestAnimationFrame(consume);
+    };
+
+    const onUp = (ev: PointerEvent) => {
+      try { canvas.releasePointerCapture?.(ev.pointerId); } catch { /* noop */ }
+      if (rafId != null) { cancelAnimationFrame(rafId); rafId = null; }
+      pendingXY = null;
+      finish();
+    };
+
+    // BVH kurulumu 1.3M üçgende ~0.4 s. İlk dokunuşta yapılırsa kalem ilk
+    // çizgide takılıyor → kalem AÇILDIĞINDA, boş bir kare sonra önden kur.
+    const warmId = setTimeout(() => {
+      for (const e of meshesRef.current) if (e.mesh.visible) bvhFor(e.mesh);
+    }, 30);
+
+    canvas.addEventListener('pointerdown', onDown);
+    canvas.addEventListener('pointermove', onMove);
+    canvas.addEventListener('pointerup', onUp);
+    canvas.addEventListener('pointercancel', onUp);
+    return () => {
+      clearTimeout(warmId);
+      canvas.removeEventListener('pointerdown', onDown);
+      canvas.removeEventListener('pointermove', onMove);
+      canvas.removeEventListener('pointerup', onUp);
+      canvas.removeEventListener('pointercancel', onUp);
+      if (rafId != null) cancelAnimationFrame(rafId);
+      clearPreview();
+      // Kalem kapanınca kamera geri gelir (kilitli kalması "viewer dondu" olur)
+      if (sceneRefs.current) sceneRefs.current.controls.enabled = prevEnabled;
+    };
+  }, [penMode, penKind, penColor, penWidth, onPenCapture]);
 
   // ── X-ray sync — global şeffaflık modu ─────────────────────────
   useEffect(() => {

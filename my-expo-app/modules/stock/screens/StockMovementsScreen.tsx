@@ -14,7 +14,7 @@ import { localeTag } from '../../../core/i18n';
  *   • Empty / loading / table-missing state'leri
  *   • Real-time subscribe (insert/update/delete)
  */
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useContext } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TextInput, Pressable,
   RefreshControl, useWindowDimensions, Platform,
@@ -23,8 +23,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ArrowDownCircle, ArrowUpCircle, AlertCircle, SlidersHorizontal,
   Search, X, ArrowLeftRight, Database, Package,
-  TrendingUp, TrendingDown, Activity, Clock,
-} from 'lucide-react-native';
+  TrendingUp, TrendingDown, Activity, Clock, Plus,
+} from '../../../core/ui/icons';
 import { supabase } from '../../../core/api/supabase';
 import { useAuthStore } from '../../../core/store/authStore';
 import { DS } from '../../../core/theme/dsTokens';
@@ -33,6 +33,9 @@ import { CenteredLoader } from '../../../core/ui/CenteredLoader';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { formatQty as fmtQty, formatQtyDual as fmtQtyDual } from '../../../core/util/formatQty';
+import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
+import { HubContext } from '../../../core/ui/HubContext';
+import { HeroGlow, useHeroSurface } from '../../../core/ui/HeroGlow';
 
 const DISPLAY = {
   fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
@@ -97,17 +100,39 @@ const BUCKET_LABEL: Record<string, string> = {
   older:     'Daha önce',
 };
 
+/**
+ * Sayfa kenarı (§1b). Tek sabit: `PAGE_PADDING` (16).
+ * Ekran Stok hub'ının içinde render ediliyor ve hub kabı zaten 16 veriyor —
+ * bir 16 daha eklenirse kartlar 32'de kalır ve başlıkla hizalanmaz. Bu yüzden
+ * hub içinde yatay dolgu SIFIR; kenarı hub verir.
+ */
+function usePageEdge(): number {
+  const isEmbedded = useContext(HubContext);
+  return isEmbedded ? 0 : PAGE_PADDING;
+}
+
 // ═════════════════════════════════════════════════════════════════
 // Screen
 // ═════════════════════════════════════════════════════════════════
-export function StockMovementsScreen({ accentColor = '#6366F1' }: { accentColor?: string }) {
+export function StockMovementsScreen({
+  accentColor = '#6366F1',
+  onNewMovement,
+  newMovementLabel = 'Yeni Hareket',
+}: {
+  accentColor?: string;
+  /** Verilirse hero kartın sağ üstünde birincil eylem olarak görünür (mobil). */
+  onNewMovement?: () => void;
+  newMovementLabel?: string;
+}) {
   const { profile: authProfile } = useAuthStore();
   const labId = (authProfile as any)?.lab_id ?? authProfile?.id ?? null;
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
   const T = useMobileTokens();
   const isDark = useThemeModeStore(st => st.resolvedDark);
-  const s = useMemo(() => makeStyles(T, isDark), [T, isDark]);
+  const edge = usePageEdge();
+  const heroBg = useHeroSurface(accentColor);
+  const s = useMemo(() => makeStyles(T, isDark, edge), [T, isDark, edge]);
 
   const [items, setItems]             = useState<Movement[]>([]);
   const [loading, setLoading]         = useState(true);
@@ -242,19 +267,23 @@ export function StockMovementsScreen({ accentColor = '#6366F1' }: { accentColor?
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} />}
         ListHeaderComponent={
           <View>
-            {/* ── F1 HeroCard — Hareket özeti ── */}
+            {/* ── F1 HeroCard — Hareket özeti ──
+                Zemin `useHeroSurface` ile kurulur: açık temada panel accent'i
+                (birebir eskisi), koyu temada accent'in DERİN tonu/gradyanı —
+                düz safran koyu ekranda soluk bir leke gibi duruyordu.
+                Dekoratif daireler `<HeroGlow>`: koyu temada blur ile yayılır. */}
             <View style={{
               borderRadius: 20, overflow: 'hidden',
-              backgroundColor: accentColor, padding: 18,
+              ...heroBg, padding: 18,
               position: 'relative',
-              marginHorizontal: 12, marginTop: 4,
+              marginHorizontal: edge, marginTop: 4,
             }}>
-              <View style={{ position: 'absolute', top: -40, end: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
-              <View style={{ position: 'absolute', bottom: -50, start: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+              <HeroGlow size={160} opacity={0.18} delay={0} style={{ top: -40, end: -40 }} />
+              <HeroGlow size={140} opacity={0.12} delay={1400} style={{ bottom: -50, start: -20 }} />
 
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.78)', marginBottom: 8 }}>
+                  <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)', marginBottom: 8 }}>
                     Toplam Hareket
                   </Text>
                   <Text style={{ ...DISPLAY, fontSize: 36, color: '#FFFFFF', letterSpacing: -1, lineHeight: 40 }}>
@@ -264,12 +293,33 @@ export function StockMovementsScreen({ accentColor = '#6366F1' }: { accentColor?
                     Bugün {kpi.today} işlem
                   </Text>
                 </View>
-                <View style={{ width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.18)' }}>
-                  <Activity size={20} color="#FFFFFF" strokeWidth={1.6} />
-                </View>
+                {/* Birincil eylem hero'nun içinde (Ürünler hero'suyla aynı kalıp):
+                    accent zeminde beyaz pill, üstte ayrı satır harcanmaz. */}
+                {onNewMovement ? (
+                  <Pressable
+                    onPress={onNewMovement}
+                    accessibilityRole="button"
+                    accessibilityLabel={newMovementLabel}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0,
+                      paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999,
+                      backgroundColor: '#FFFFFF',
+                      ...(Platform.OS === 'web'
+                        ? ({ cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.16)' } as any)
+                        : { shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 3 }),
+                    }}
+                  >
+                    <Plus size={14} color={accentColor} strokeWidth={2.4} />
+                    <Text numberOfLines={1} style={{ fontSize: 12.5, fontWeight: '700', color: accentColor }}>{newMovementLabel}</Text>
+                  </Pressable>
+                ) : (
+                  <View style={{ width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.18)' }}>
+                    <Activity size={20} color="#FFFFFF" strokeWidth={1.6} />
+                  </View>
+                )}
               </View>
 
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 16 }}>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
                 {([
                   { label: 'Bugün',       value: kpi.today,        icon: Clock         },
                   { label: '7G Giriş',    value: kpi.weekIn,       icon: TrendingUp    },
@@ -277,7 +327,7 @@ export function StockMovementsScreen({ accentColor = '#6366F1' }: { accentColor?
                 ] as const).map(stat => {
                   const Icon = stat.icon;
                   return (
-                    <View key={stat.label} style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.16)' }}>
+                    <View key={stat.label} style={{ flex: 1, minWidth: 110, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.16)' }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 }}>
                         <Icon size={11} color="rgba(255,255,255,0.85)" strokeWidth={2} />
                         <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>
@@ -410,7 +460,8 @@ function KPI({ icon: Icon, label, value, accent }: {
 }) {
   const T = useMobileTokens();
   const isDark = useThemeModeStore(st => st.resolvedDark);
-  const s = useMemo(() => makeStyles(T, isDark), [T, isDark]);
+  const edge = usePageEdge();
+  const s = useMemo(() => makeStyles(T, isDark, edge), [T, isDark, edge]);
   return (
     <View style={s.kpiCard}>
       <View style={[s.kpiIcon, { backgroundColor: accent + '14' }]}>
@@ -433,7 +484,8 @@ function FilterPill({ active, label, count, icon: Icon, iconColor, onPress, acce
 }) {
   const T = useMobileTokens();
   const isDark = useThemeModeStore(st => st.resolvedDark);
-  const s = useMemo(() => makeStyles(T, isDark), [T, isDark]);
+  const edge = usePageEdge();
+  const s = useMemo(() => makeStyles(T, isDark, edge), [T, isDark, edge]);
   return (
     <Pressable
       onPress={onPress}
@@ -463,7 +515,8 @@ function DesktopRow({ m }: { m: Movement }) {
   const Icon = cfg.Icon;
   const T = useMobileTokens();
   const isDark = useThemeModeStore(st => st.resolvedDark);
-  const s = useMemo(() => makeStyles(T, isDark), [T, isDark]);
+  const edge = usePageEdge();
+  const s = useMemo(() => makeStyles(T, isDark, edge), [T, isDark, edge]);
 
   return (
     <View style={[s.row, m.is_reversed && { opacity: 0.5 }]}>
@@ -519,7 +572,8 @@ function MobileCard({ m }: { m: Movement }) {
   const Icon = cfg.Icon;
   const T = useMobileTokens();
   const isDark = useThemeModeStore(st => st.resolvedDark);
-  const s = useMemo(() => makeStyles(T, isDark), [T, isDark]);
+  const edge = usePageEdge();
+  const s = useMemo(() => makeStyles(T, isDark, edge), [T, isDark, edge]);
 
   return (
     <View style={[s.card, m.is_reversed && { opacity: 0.5 }]}>
@@ -563,11 +617,13 @@ function MobileCard({ m }: { m: Movement }) {
 function Tag({ label, tone = 'default' }: { label: string; tone?: 'default' | 'muted' | 'success' }) {
   const T = useMobileTokens();
   const isDark = useThemeModeStore(st => st.resolvedDark);
-  const s = useMemo(() => makeStyles(T, isDark), [T, isDark]);
+  const edge = usePageEdge();
+  const s = useMemo(() => makeStyles(T, isDark, edge), [T, isDark, edge]);
   const colors = {
     default: { bg: T.cardSoft, text: T.ink2 },
     muted:   { bg: T.cardSoft, text: T.ink3 },
-    success: { bg: '#ECFDF5', text: '#047857' },
+    // Açık pastel yeşil koyu zeminde beyaz leke gibi patlıyordu (§ avatar/rozet kuralı)
+    success: { bg: isDark ? 'rgba(5,150,105,0.24)' : '#ECFDF5', text: isDark ? '#6EE7B7' : '#047857' },
   }[tone];
   return (
     <View style={[s.tag, { backgroundColor: colors.bg }]}>
@@ -584,7 +640,7 @@ const cardShadow = Platform.OS === 'web'
   ? { boxShadow: '0 1px 3px rgba(0,0,0,0.04)' } as any
   : { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 1 };
 
-const makeStyles = (T: ReturnType<typeof useMobileTokens>, isDark: boolean) => StyleSheet.create({
+const makeStyles = (T: ReturnType<typeof useMobileTokens>, isDark: boolean, edge: number) => StyleSheet.create({
   // Hub içinde embedded olarak renderlandığı için kendi arka planı yok — parent'ın krem/beyaz zemininden yararlanır
   safe:   { flex: 1, backgroundColor: 'transparent' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 40 },
@@ -592,7 +648,7 @@ const makeStyles = (T: ReturnType<typeof useMobileTokens>, isDark: boolean) => S
   // KPI bar
   kpiRow: {
     flexDirection: 'row', gap: 10,
-    paddingHorizontal: 16, paddingTop: 16,
+    paddingHorizontal: edge, paddingTop: 16,
     flexWrap: 'wrap',
   },
   kpiCard: {
@@ -610,7 +666,7 @@ const makeStyles = (T: ReturnType<typeof useMobileTokens>, isDark: boolean) => S
   // Toolbar
   toolbar: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 16, paddingTop: 16, paddingBottom: 4,
+    paddingHorizontal: edge, paddingTop: 16, paddingBottom: 4,
   },
   pillRow: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   pill: {
@@ -637,7 +693,7 @@ const makeStyles = (T: ReturnType<typeof useMobileTokens>, isDark: boolean) => S
   searchBox: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     height: 42, paddingHorizontal: 14,
-    marginHorizontal: 16, marginTop: 8,
+    marginHorizontal: edge, marginTop: 8,
     borderRadius: 14,
     borderWidth: 1, borderColor: T.hairline,
     backgroundColor: T.card,
@@ -650,7 +706,7 @@ const makeStyles = (T: ReturnType<typeof useMobileTokens>, isDark: boolean) => S
   // Section header
   sectionHeader: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingHorizontal: 16, paddingTop: 18, paddingBottom: 8,
+    paddingHorizontal: edge, paddingTop: 18, paddingBottom: 8,
   },
   sectionLabel: {
     fontSize: 11, fontWeight: '700', color: T.ink3,
@@ -662,7 +718,7 @@ const makeStyles = (T: ReturnType<typeof useMobileTokens>, isDark: boolean) => S
   tableHead: {
     flexDirection: 'row', alignItems: 'center',
     paddingVertical: 10, paddingHorizontal: 16,
-    marginHorizontal: 16, marginTop: 16,
+    marginHorizontal: edge, marginTop: 16,
     backgroundColor: T.cardSoft, borderRadius: 12,
   },
   th: { fontSize: 10, fontWeight: '700', color: T.ink3, letterSpacing: 0.7, textTransform: 'uppercase' as const },
@@ -671,7 +727,7 @@ const makeStyles = (T: ReturnType<typeof useMobileTokens>, isDark: boolean) => S
   row: {
     flexDirection: 'row', alignItems: 'center',
     paddingVertical: 12, paddingHorizontal: 14,
-    marginHorizontal: 16, marginBottom: 6,
+    marginHorizontal: edge, marginBottom: 6,
     backgroundColor: T.card, borderRadius: 14,
     borderWidth: 1, borderColor: T.hairline2,
     ...cardShadow,
@@ -686,7 +742,7 @@ const makeStyles = (T: ReturnType<typeof useMobileTokens>, isDark: boolean) => S
 
   // Mobile card
   card: {
-    marginHorizontal: 16, marginBottom: 8,
+    marginHorizontal: edge, marginBottom: 8,
     paddingHorizontal: 14, paddingVertical: 12,
     backgroundColor: T.card, borderRadius: 14,
     borderWidth: 1, borderColor: T.hairline2,

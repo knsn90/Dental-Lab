@@ -8,8 +8,10 @@
 
 import React, { useState, useRef } from 'react';
 import { View, Text, Pressable, Modal, Platform, Dimensions } from 'react-native';
-import { Info, X } from 'lucide-react-native';
+import { Info, X } from './icons';
 import { usePanelTheme } from '../theme/usePanelTheme';
+import { useMobileTokens } from '../theme/mobileDesignTokens';
+import { useThemeModeStore } from '../store/themeModeStore';
 
 export interface OrderStatusInfoOrder {
   status?:        string | null;
@@ -84,6 +86,8 @@ export function OrderStatusInfo({ order, size = 15 }: { order: OrderStatusInfoOr
   const triggerRef = useRef<any>(null);
   const theme = usePanelTheme();
   const accent = theme.primary;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const info = buildInfo(order);
 
   const openPopover = (e: any) => {
@@ -131,8 +135,8 @@ export function OrderStatusInfo({ order, size = 15 }: { order: OrderStatusInfoOr
             onPress={(e: any) => e?.stopPropagation?.()}
             style={{
               position: 'absolute', top, left, width: CARD_W,
-              backgroundColor: '#FFFFFF', borderRadius: 16, padding: 14, gap: 10,
-              borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+              backgroundColor: isDark ? T.card : '#FFFFFF', borderRadius: 16, padding: 14, gap: 10,
+              borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.06)',
               // ağır kart gölgesi (tasarım dili)
               shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: 8 },
               elevation: 8,
@@ -142,16 +146,16 @@ export function OrderStatusInfo({ order, size = 15 }: { order: OrderStatusInfoOr
               <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: `${accent}1F`, alignItems: 'center', justifyContent: 'center' }}>
                 <Info size={14} color={accent} strokeWidth={2} />
               </View>
-              <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: '#0A0A0A' }} numberOfLines={1}>{info.title}</Text>
+              <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: isDark ? T.ink : '#0A0A0A' }} numberOfLines={1}>{info.title}</Text>
               {order.order_number ? (
-                <Text style={{ fontSize: 10.5, color: '#9A9A9A', fontVariant: ['tabular-nums'] as any }}>{order.order_number}</Text>
+                <Text style={{ fontSize: 10.5, color: isDark ? (T.ink3 as string) : '#9A9A9A', fontVariant: ['tabular-nums'] as any }}>{order.order_number}</Text>
               ) : null}
-              <Pressable onPress={() => setOpen(false)} hitSlop={8}><X size={16} color="#9A9A9A" strokeWidth={2} /></Pressable>
+              <Pressable onPress={() => setOpen(false)} hitSlop={8}><X size={16} color={isDark ? (T.ink3 as string) : '#9A9A9A'} strokeWidth={2} /></Pressable>
             </View>
             {info.lines.map((ln, i) => (
               <View key={i} style={{ gap: 1 }}>
-                <Text style={{ fontSize: 9.5, fontWeight: '700', color: '#9A9A9A', letterSpacing: 0.4, textTransform: 'uppercase' }}>{ln.label}</Text>
-                <Text style={{ fontSize: 13.5, color: '#1A1A1A', fontWeight: '500' }}>{ln.value}</Text>
+                <Text style={{ fontSize: 9.5, fontWeight: '700', color: isDark ? (T.ink3 as string) : '#9A9A9A', letterSpacing: 0.4, textTransform: 'uppercase' }}>{ln.label}</Text>
+                <Text style={{ fontSize: 13.5, color: isDark ? T.ink : '#1A1A1A', fontWeight: '500' }}>{ln.value}</Text>
               </View>
             ))}
           </Pressable>

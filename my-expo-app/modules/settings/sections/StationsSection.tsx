@@ -16,8 +16,9 @@ import {
   Printer, Cog, Thermometer, FlaskConical, Palette,
   Wrench, Paintbrush, Microscope, Package, Diamond,
   Crosshair, Hammer, ClipboardCheck, Check,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { DS } from '../../../core/theme/dsTokens';
+import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 import { supabase } from '../../../core/api/supabase';
 import { useAuthStore } from '../../../core/store/authStore';
 import { toast } from '../../../core/ui/Toast';
@@ -78,19 +79,21 @@ function PatternsToggle({ value, onValueChange }: {
   value: boolean;
   onValueChange: (v: boolean) => void;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <Pressable
       onPress={() => onValueChange(!value)}
       style={{
         width: 44, height: 24, borderRadius: 999,
-        backgroundColor: value ? DS.ink[900] : 'rgba(0,0,0,0.15)',
+        backgroundColor: value ? (isDark ? (T.ink as string) : DS.ink[900]) : (isDark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.15)'),
         padding: 2, justifyContent: 'center',
       }}
     >
       <View
         style={{
           width: 20, height: 20, borderRadius: 10,
-          backgroundColor: '#FFF',
+          backgroundColor: isDark ? (T.card as string) : '#FFF',
           alignSelf: value ? 'flex-end' : 'flex-start',
           ...(Platform.OS === 'web'
             ? { boxShadow: '0 1px 3px rgba(0,0,0,0.2)' } as any
@@ -172,6 +175,8 @@ function StationFormModal({
   accentColor: string;
 }) {
   const [form, setForm] = useState<FormData>(initial ?? EMPTY_FORM);
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
 
   useEffect(() => { setForm(initial ?? EMPTY_FORM); }, [initial, visible]);
 
@@ -200,18 +205,18 @@ function StationFormModal({
         onPress={onClose}
       >
         <Pressable
-          style={{ backgroundColor: '#FFF', width: '100%', maxWidth: 520, maxHeight: '88%', borderRadius: 24, overflow: 'hidden' }}
+          style={{ backgroundColor: isDark ? T.card : '#FFF', borderWidth: isDark ? 1 : 0, borderColor: T.hairline, width: '100%', maxWidth: 520, maxHeight: '88%', borderRadius: 24, overflow: 'hidden' }}
           onPress={() => {}}
         >
           {/* ── Header — sabit, scroll dışı ─────────────────── */}
-          <View style={{ padding: 28, paddingBottom: 0, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+          <View style={{ padding: PAGE_PADDING, paddingBottom: 0, borderBottomWidth: 1, borderBottomColor: T.hairline }}>
             {/* Title row */}
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-              <Text style={{ ...DISPLAY_FONT, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>
+              <Text style={{ ...DISPLAY_FONT, fontSize: 22, letterSpacing: -0.4, color: T.ink }}>
                 {initial ? 'İstasyonu Düzenle' : 'Yeni İstasyon Ekle'}
               </Text>
               <Pressable onPress={onClose}>
-                <X size={18} color={DS.ink[400]} strokeWidth={1.8} />
+                <X size={18} color={(isDark ? (T.ink3 as string) : DS.ink[400])} strokeWidth={1.8} />
               </Pressable>
             </View>
 
@@ -219,7 +224,7 @@ function StationFormModal({
             <View style={{
               flexDirection: 'row', alignItems: 'center', gap: 14,
               borderRadius: 14, padding: 14,
-              backgroundColor: 'rgba(0,0,0,0.03)', borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
+              backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', borderWidth: 1, borderColor: T.hairline,
               marginBottom: 16,
             }}>
               <View style={{ width: 3, height: 28, borderRadius: 2, backgroundColor: form.color }} />
@@ -230,11 +235,11 @@ function StationFormModal({
                 <StationIcon name={form.icon} size={18} color={form.color} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 14, fontWeight: '500', color: DS.ink[900] }}>
+                <Text style={{ fontSize: 14, fontWeight: '500', color: T.ink }}>
                   {form.name || 'İstasyon Adı'}
                 </Text>
                 {matchedPreset && (
-                  <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 2 }}>{matchedPreset.info}</Text>
+                  <Text style={{ fontSize: 11, color: T.ink3, marginTop: 2 }}>{matchedPreset.info}</Text>
                 )}
               </View>
               {form.is_critical && (
@@ -254,36 +259,36 @@ function StationFormModal({
             <View style={{ flexDirection: 'row', gap: 20, paddingBottom: 16 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <PatternsToggle value={form.is_critical} onValueChange={v => patch('is_critical', v)} />
-                <Text style={{ fontSize: 13, color: DS.ink[900] }}>Kritik</Text>
+                <Text style={{ fontSize: 13, color: T.ink }}>Kritik</Text>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <PatternsToggle value={form.is_active} onValueChange={v => patch('is_active', v)} />
-                <Text style={{ fontSize: 13, color: DS.ink[900] }}>Aktif</Text>
+                <Text style={{ fontSize: 13, color: T.ink }}>Aktif</Text>
               </View>
             </View>
           </View>
 
           {/* ── Body — scroll alanı ────────────────────────────── */}
           <ScrollView
-            style={{ paddingHorizontal: 28 }}
+            style={{ paddingHorizontal: PAGE_PADDING }}
             contentContainerStyle={{ paddingTop: 24, paddingBottom: 12 }}
             showsVerticalScrollIndicator={false}
           >
             {/* İsim */}
             <View style={{ gap: 6, marginBottom: 24 }}>
-              <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[800] }}>İstasyon Adı</Text>
+              <Text style={{ fontSize: 12, fontWeight: '500', color: T.ink2 }}>İstasyon Adı</Text>
               <TextInput
-                style={INPUT_STYLE}
+                style={[INPUT_STYLE, { backgroundColor: isDark ? T.cardSoft : '#FFFFFF', color: T.ink, borderColor: T.hairline }]}
                 value={form.name}
                 onChangeText={t => patch('name', t)}
                 placeholder="ör. Porselen Atölyesi"
-                placeholderTextColor="#9A9A9A"
+                placeholderTextColor={isDark ? (T.ink3 as string) : "#9A9A9A"}
                 maxLength={60}
                 autoFocus={!initial}
               />
 
               {/* Preset chips */}
-              <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 6, marginBottom: 4 }}>Hazır şablonlar</Text>
+              <Text style={{ fontSize: 11, color: T.ink3, marginTop: 6, marginBottom: 4 }}>Hazır şablonlar</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={{ flexDirection: 'row', gap: 6 }}>
                   {DIGITAL_DENTAL_LAB_STATIONS.map(ds => {
@@ -296,13 +301,13 @@ function StationFormModal({
                           flexDirection: 'row', alignItems: 'center', gap: 6,
                           paddingHorizontal: 10, paddingVertical: 5,
                           borderRadius: 999,
-                          backgroundColor: sel ? `${ds.color}14` : 'rgba(0,0,0,0.04)',
+                          backgroundColor: sel ? `${ds.color}14` : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'),
                           borderWidth: 1,
                           borderColor: sel ? `${ds.color}40` : 'transparent',
                         }}
                       >
-                        <StationIcon name={ds.icon} size={11} color={sel ? ds.color : DS.ink[400]} />
-                        <Text style={{ fontSize: 11, fontWeight: sel ? '500' : '400', color: sel ? ds.color : DS.ink[500] }}>
+                        <StationIcon name={ds.icon} size={11} color={sel ? ds.color : (isDark ? (T.ink3 as string) : DS.ink[400])} />
+                        <Text style={{ fontSize: 11, fontWeight: sel ? '500' : '400', color: sel ? ds.color : (isDark ? (T.ink3 as string) : DS.ink[500]) }}>
                           {ds.name}
                         </Text>
                       </Pressable>
@@ -313,13 +318,13 @@ function StationFormModal({
             </View>
 
             {/* Divider */}
-            <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.06)', marginBottom: 24 }} />
+            <View style={{ height: 1, backgroundColor: T.hairline, marginBottom: 24 }} />
 
             {/* Renk & İkon yan yana */}
             <View style={{ flexDirection: 'row', gap: 24, marginBottom: 12 }}>
               {/* Renk */}
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 10 }}>Renk</Text>
+                <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: T.ink3, marginBottom: 10 }}>Renk</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                   {PRESET_COLORS.map(c => {
                     const sel = form.color === c;
@@ -331,7 +336,7 @@ function StationFormModal({
                           width: 28, height: 28, borderRadius: 14,
                           backgroundColor: c,
                           borderWidth: 2,
-                          borderColor: sel ? DS.ink[900] : 'transparent',
+                          borderColor: sel ? (isDark ? (T.ink as string) : DS.ink[900]) : 'transparent',
                           alignItems: 'center', justifyContent: 'center',
                         }}
                       >
@@ -344,7 +349,7 @@ function StationFormModal({
 
               {/* İkon */}
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 10 }}>İkon</Text>
+                <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: T.ink3, marginBottom: 10 }}>İkon</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                   {PRESET_ICONS.map(ic => {
                     const sel = form.icon === ic;
@@ -354,13 +359,13 @@ function StationFormModal({
                         onPress={() => patch('icon', ic)}
                         style={{
                           width: 36, height: 36, borderRadius: 10,
-                          backgroundColor: sel ? `${form.color}14` : 'rgba(0,0,0,0.03)',
+                          backgroundColor: sel ? `${form.color}14` : (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)'),
                           borderWidth: 1,
                           borderColor: sel ? `${form.color}40` : 'transparent',
                           alignItems: 'center', justifyContent: 'center',
                         }}
                       >
-                        <StationIcon name={ic} size={15} color={sel ? form.color : DS.ink[400]} />
+                        <StationIcon name={ic} size={15} color={sel ? form.color : (isDark ? (T.ink3 as string) : DS.ink[400])} />
                       </Pressable>
                     );
                   })}
@@ -372,8 +377,8 @@ function StationFormModal({
           {/* ── Footer — Patterns pill buttons, right-aligned ──── */}
           <View style={{
             flexDirection: 'row', justifyContent: 'flex-end', gap: 8,
-            paddingHorizontal: 28, paddingVertical: 20,
-            borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
+            paddingHorizontal: PAGE_PADDING, paddingVertical: 20,
+            borderTopWidth: 1, borderTopColor: T.hairline,
           }}>
             <Pressable
               onPress={onClose}
@@ -382,7 +387,7 @@ function StationFormModal({
                 borderRadius: 999, borderWidth: 1, borderColor: 'transparent',
               }}
             >
-              <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[900], letterSpacing: -0.13 }}>Vazgeç</Text>
+              <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink, letterSpacing: -0.13 }}>Vazgeç</Text>
             </Pressable>
             <Pressable
               onPress={handleSave}
@@ -420,6 +425,8 @@ function DefaultStationsPreviewModal({
   saving: boolean;
   accentColor: string;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const toAdd = DIGITAL_DENTAL_LAB_STATIONS.filter(ds => !existingNames.has(ds.name));
   const alreadyAdded = DIGITAL_DENTAL_LAB_STATIONS.filter(ds => existingNames.has(ds.name));
 
@@ -431,12 +438,12 @@ function DefaultStationsPreviewModal({
         onPress={onClose}
       >
         <Pressable
-          className="bg-white w-full overflow-hidden"
+          className="bg-white dark:bg-[#1B1916] w-full overflow-hidden"
           style={{ maxWidth: 540, maxHeight: '90%', borderRadius: 24 }}
           onPress={() => {}}
         >
           {/* Header */}
-          <View className="flex-row items-center gap-3 px-[22px] pt-[22px] pb-3.5" style={{ borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }}>
+          <View className="flex-row items-center gap-3 px-[22px] pt-[22px] pb-3.5" style={{ borderBottomWidth: 1, borderBottomColor: T.hairline }}>
             <View
               className="w-[42px] h-[42px] rounded-xl items-center justify-center"
               style={{ backgroundColor: `${accentColor}14` }}
@@ -444,36 +451,36 @@ function DefaultStationsPreviewModal({
               <Zap size={18} color={accentColor} strokeWidth={1.8} />
             </View>
             <View className="flex-1">
-              <Text style={{ ...DISPLAY_FONT, fontSize: 17, letterSpacing: -0.3, color: '#0A0A0A' }}>
+              <Text style={{ ...DISPLAY_FONT, fontSize: 17, letterSpacing: -0.3, color: T.ink }}>
                 Varsayılan İstasyonlar
               </Text>
-              <Text className="text-[12px] text-ink-400 mt-0.5">Dijital Diş Laboratuvarı Şablonu</Text>
+              <Text className="text-[12px] text-ink-400 dark:text-white/55 mt-0.5">Dijital Diş Laboratuvarı Şablonu</Text>
             </View>
             <Pressable
               onPress={onClose}
               className="w-8 h-8 rounded-lg items-center justify-center"
-              style={{ backgroundColor: 'rgba(0,0,0,0.04)' }}
+              style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }}
             >
-              <X size={16} color="#6B6B6B" strokeWidth={1.8} />
+              <X size={16} color={isDark ? (T.ink3 as string) : "#6B6B6B"} strokeWidth={1.8} />
             </Pressable>
           </View>
 
           <ScrollView
-            style={{ paddingHorizontal: 22 }}
+            style={{ paddingHorizontal: PAGE_PADDING }}
             contentContainerStyle={{ paddingTop: 16, paddingBottom: 4 }}
             showsVerticalScrollIndicator={false}
           >
             {/* To add */}
             {toAdd.length > 0 && (
               <View className="gap-1.5">
-                <Text className="text-[11px] font-semibold text-ink-400 tracking-wider uppercase mb-1">
+                <Text className="text-[11px] font-semibold text-ink-400 dark:text-white/55 tracking-wider uppercase mb-1">
                   Eklenecek ({toAdd.length} istasyon)
                 </Text>
                 {toAdd.map((ds, i) => (
                   <View
                     key={ds.name}
                     className="flex-row items-center gap-2.5 rounded-xl px-3 py-2.5"
-                    style={{ backgroundColor: 'rgba(0,0,0,0.02)', borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)' }}
+                    style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)', borderWidth: 1, borderColor: T.hairline }}
                   >
                     <View
                       className="w-[22px] h-[22px] rounded-full items-center justify-center"
@@ -489,14 +496,14 @@ function DefaultStationsPreviewModal({
                     </View>
                     <View className="flex-1">
                       <View className="flex-row items-center gap-1.5">
-                        <Text style={{ fontSize: 13, fontWeight: '600', color: '#0A0A0A' }}>{ds.name}</Text>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink }}>{ds.name}</Text>
                         {ds.is_critical && (
                           <View className="px-1.5 py-0.5 rounded" style={{ backgroundColor: '#DC262612' }}>
                             <Text style={{ fontSize: 9, fontWeight: '600', color: '#DC2626' }}>Kritik</Text>
                           </View>
                         )}
                       </View>
-                      <Text className="text-[11px] text-ink-400 mt-0.5">{ds.info}</Text>
+                      <Text className="text-[11px] text-ink-400 dark:text-white/55 mt-0.5">{ds.info}</Text>
                     </View>
                     <View style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: ds.color }} />
                   </View>
@@ -507,23 +514,23 @@ function DefaultStationsPreviewModal({
             {/* Already added */}
             {alreadyAdded.length > 0 && (
               <View className="gap-1.5 mt-4">
-                <Text className="text-[11px] font-semibold text-ink-400 tracking-wider uppercase mb-1">
+                <Text className="text-[11px] font-semibold text-ink-400 dark:text-white/55 tracking-wider uppercase mb-1">
                   Zaten Mevcut ({alreadyAdded.length} istasyon)
                 </Text>
                 {alreadyAdded.map(ds => (
                   <View
                     key={ds.name}
                     className="flex-row items-center gap-2.5 rounded-xl px-3 py-2.5"
-                    style={{ opacity: 0.5, backgroundColor: 'rgba(0,0,0,0.02)', borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)' }}
+                    style={{ opacity: 0.5, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)', borderWidth: 1, borderColor: T.hairline }}
                   >
                     <View
                       className="w-[34px] h-[34px] rounded-[10px] items-center justify-center"
-                      style={{ backgroundColor: 'rgba(0,0,0,0.04)' }}
+                      style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }}
                     >
-                      <StationIcon name={ds.icon} size={15} color="#9A9A9A" />
+                      <StationIcon name={ds.icon} size={15} color={isDark ? (T.ink3 as string) : "#9A9A9A"} />
                     </View>
-                    <Text style={{ fontSize: 13, fontWeight: '500', color: '#9A9A9A', flex: 1 }}>{ds.name}</Text>
-                    <CheckCircle size={14} color="#9A9A9A" strokeWidth={1.8} />
+                    <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink3, flex: 1 }}>{ds.name}</Text>
+                    <CheckCircle size={14} color={isDark ? (T.ink3 as string) : "#9A9A9A"} strokeWidth={1.8} />
                   </View>
                 ))}
               </View>
@@ -533,14 +540,14 @@ function DefaultStationsPreviewModal({
           {/* Footer — Patterns pill buttons */}
           <View style={{
             flexDirection: 'row', justifyContent: 'flex-end', gap: 8,
-            paddingHorizontal: 22, paddingVertical: 16,
-            borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
+            paddingHorizontal: PAGE_PADDING, paddingVertical: 16,
+            borderTopWidth: 1, borderTopColor: T.hairline,
           }}>
             <Pressable
               onPress={onClose}
               style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999 }}
             >
-              <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[900], letterSpacing: -0.13 }}>Vazgeç</Text>
+              <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink, letterSpacing: -0.13 }}>Vazgeç</Text>
             </Pressable>
             <Pressable
               onPress={onConfirm}
@@ -709,7 +716,7 @@ export function StationsSection({ accentColor = '#F5C24B' }: Props) {
   return (
     <ScrollView
       className="flex-1"
-      contentContainerStyle={{ paddingHorizontal: 28, paddingTop: 0, paddingBottom: 40 }}
+      contentContainerStyle={{ paddingHorizontal: PAGE_PADDING, paddingTop: 0, paddingBottom: 40 }}
       showsVerticalScrollIndicator={false}
     >
       {/* ── Header row ─────────────────────────────────────── */}

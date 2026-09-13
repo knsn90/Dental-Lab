@@ -27,6 +27,31 @@ interface UiOverlayState {
   dentyFabSuppress: number;
   pushDentyFabSuppress: () => void;
   popDentyFabSuppress: () => void;
+  /**
+   * Navbar'daki "Daha (•••)" hücresinin EKRAN koordinatında yatay merkezi.
+   * "Tüm Menü" popover'ı buradan yukarı doğru açılır ve kuyruğunu bu x'e
+   * hizalar. PillTabBar ölçüp yazar (hücre genişliği sekme sayısına göre
+   * değiştiği için sabit hesap yetmiyor); menü okur. null → güvenli varsayılan
+   * (sağ-alt) kullanılır.
+   */
+  moreAnchorX: number | null;
+  setMoreAnchorX: (x: number | null) => void;
+  /**
+   * "Tüm Menü" popover'ı açık mı. Menü açıkken navbar'da ••• hücresi SEÇİLİ
+   * görünmeli (menü oradan açıldı; rota değişmediği için pathname'den
+   * anlaşılamaz). MoreMenuSheet yazar, PillTabBar okur.
+   */
+  moreMenuOpen: boolean;
+  setMoreMenuOpen: (open: boolean) => void;
+  /**
+   * Navbar'ın ÜSTÜNDE biten bir katman (mobil Mesajlar popup'ı) açıkken onun
+   * kapatma fonksiyonu; null = kapalı. Katman navbar'dan üst katmanda çizildiği
+   * için karartmayı navbar şeridine uzatamaz (navbarı da karartır/dokunuşu keser).
+   * PillTabBar bu değer doluyken barın ARKASINDAKİ şeridi aynı tonla karartır —
+   * karartma kesintisiz görünür, navbar üstte ve dokunulabilir kalır.
+   */
+  navDimClose: (() => void) | null;
+  setNavDim: (close: (() => void) | null) => void;
 }
 
 export const useUiOverlayStore = create<UiOverlayState>((set) => ({
@@ -37,6 +62,12 @@ export const useUiOverlayStore = create<UiOverlayState>((set) => ({
   dentyFabSuppress: 0,
   pushDentyFabSuppress: () => set((s) => ({ dentyFabSuppress: s.dentyFabSuppress + 1 })),
   popDentyFabSuppress: () => set((s) => ({ dentyFabSuppress: Math.max(0, s.dentyFabSuppress - 1) })),
+  moreAnchorX: null,
+  setMoreAnchorX: (x) => set((s) => (s.moreAnchorX === x ? s : { moreAnchorX: x })),
+  moreMenuOpen: false,
+  setMoreMenuOpen: (open) => set((s) => (s.moreMenuOpen === open ? s : { moreMenuOpen: open })),
+  navDimClose: null,
+  setNavDim: (close) => set((s) => (s.navDimClose === close ? s : { navDimClose: close })),
 }));
 
 /**

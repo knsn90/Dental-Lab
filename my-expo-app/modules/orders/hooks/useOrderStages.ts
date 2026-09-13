@@ -42,6 +42,10 @@ export function useOrderStages(workOrderId: string | undefined) {
     if (!workOrderId) return;
     setLoading(true);
 
+    // GİZLİLİK: teknisyen tam adı artık embed'den ÇEKİLMEZ. Hekim/klinik
+    // istemcisine tam ad hiç gitmesin diye adlar ayrı bir SECURITY DEFINER
+    // RPC'den (get_display_tech_names) maskeli olarak alınır. Aşama görünürlüğü
+    // (RLS) bu select ile korunur; RPC yalnız maskeli isim döndürür.
     const { data } = await supabase
       .from('order_stages')
       .select(`
@@ -62,12 +66,27 @@ export function useOrderStages(workOrderId: string | undefined) {
         paused_seconds_total,
         estimated_minutes,
         station:station_id ( id, name, color, icon ),
-        technician:technician_id ( id, full_name )
+        technician_id
       `)
       .eq('work_order_id', workOrderId)
       .order('sequence_order');
 
-    setStages((data ?? []) as unknown as StageInfo[]);
+    const rows = (data ?? []) as any[];
+    const techIds = Array.from(new Set(rows.map(r => r.technician_id).filter(Boolean)));
+    const nameMap: Record<string, string> = {};
+    if (techIds.length) {
+      const { data: names } = await supabase.rpc('get_display_tech_names', { p_ids: techIds });
+      (names as Array<{ id: string; name: string }> | null ?? []).forEach(n => { nameMap[n.id] = n.name; });
+    }
+    const mapped = rows.map(r => ({
+      ...r,
+      // Maskeli ad boş ('') ise UI zaten adı göstermez (gizli mod).
+      technician: r.technician_id
+        ? { id: r.technician_id, full_name: nameMap[r.technician_id] ?? '' }
+        : null,
+    }));
+
+    setStages(mapped as unknown as StageInfo[]);
     setLoading(false);
   }, [workOrderId]);
 

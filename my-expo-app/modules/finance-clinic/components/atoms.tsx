@@ -11,6 +11,8 @@ import { View, Text, Pressable, ActivityIndicator, type StyleProp, type ViewStyl
 import Svg, { Circle } from 'react-native-svg';
 import { DS } from '../../../core/theme/dsTokens';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { baseSymbol, getBaseCurrency } from '../../../core/money/baseCurrency';
 import { rateToBase } from '../../../core/money/rateCache';
 import { CURRENCY_META, type Currency } from '../../../core/money/currency';
@@ -79,11 +81,13 @@ export function PillButton({
   size?: 'sm' | 'md' | 'lg';
 }) {
   const TH = usePanelTheme();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const variants = {
     dark:    { bg: DS.ink[900],   fg: '#FFF',       border: DS.ink[900] },
     primary: { bg: TH.primary,    fg: '#FFF',       border: TH.primary },
-    light:   { bg: '#FFF',        fg: DS.ink[900],  border: DS.ink[300] },
-    ghost:   { bg: 'transparent', fg: DS.ink[900],  border: 'transparent' },
+    light:   { bg: isDark ? T.card : '#FFF', fg: isDark ? T.ink : DS.ink[900], border: isDark ? T.hairline : DS.ink[300] },
+    ghost:   { bg: 'transparent', fg: isDark ? T.ink : DS.ink[900], border: 'transparent' },
     danger:  { bg: '#D94B4B',     fg: '#FFF',       border: '#D94B4B' },
     success: { bg: '#2D9A6B',     fg: '#FFF',       border: '#2D9A6B' },
   } as const;
@@ -119,6 +123,8 @@ export function PillButton({
  * Outer pill kapsül + inner track + gradient progress arc.
  */
 function PercentRing({ value, size = 64, color }: { value: number; size?: number; color: string }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const v = Math.max(0, Math.min(100, value));
   const outerStroke = Math.max(6, Math.round(size * 0.14));
   const innerStroke = outerStroke - 4;
@@ -146,10 +152,10 @@ function PercentRing({ value, size = 64, color }: { value: number; size?: number
       <View style={{ position: 'absolute', alignItems: 'center', justifyContent: 'center' }}>
         <Text style={{
           ...DISPLAY, fontSize: size * 0.30, lineHeight: size * 0.32,
-          letterSpacing: -0.5, color: DS.ink[900],
+          letterSpacing: -0.5, color: isDark ? T.ink : DS.ink[900],
         }}>
           {Math.round(v)}
-          <Text style={{ fontSize: size * 0.16, color: DS.ink[400], fontWeight: '400' }}>%</Text>
+          <Text style={{ fontSize: size * 0.16, color: isDark ? (T.ink3 as string) : DS.ink[400], fontWeight: '400' }}>%</Text>
         </Text>
       </View>
     </View>
@@ -177,6 +183,8 @@ export function KPI({
   /** Trend rozeti — örn. { text: '%48', tone: 'danger' } */
   trend?: { text: string; tone?: 'success' | 'danger' | 'neutral' };
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const isAlert = !!alert;
   const effectiveAccent = isAlert ? '#DC2626' : accent;
   const Wrapper: any = onPress ? Pressable : View;
@@ -194,10 +202,10 @@ export function KPI({
       style={({ pressed, hovered }: any) => ({
         // 4'ü tek satır kalsın: flexBasis 0 ile eşit dağılım, sadece <170px düşerse sarar
         flex: 1, flexBasis: 0, minWidth: 170,
-        backgroundColor: '#FFF',
+        backgroundColor: isDark ? T.card : '#FFF',
         borderRadius: 16,
         borderWidth: 1,
-        borderColor: isAlert ? 'rgba(220,38,38,0.25)' : DS.ink[200],
+        borderColor: isAlert ? 'rgba(220,38,38,0.25)' : (isDark ? T.hairline : DS.ink[200]),
         padding: 14,
         flexDirection: 'row', alignItems: 'center', gap: 12,
         overflow: 'hidden',
@@ -231,11 +239,11 @@ export function KPI({
       <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
         {/* label satırı (chip alta indi) */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, minWidth: 0 }}>
-          <Icon size={10} color={isAlert ? '#9C2E2E' : DS.ink[400]} strokeWidth={2} />
+          <Icon size={10} color={isAlert ? '#9C2E2E' : (isDark ? (T.ink3 as string) : DS.ink[400])} strokeWidth={2} />
           <Text
             style={{
               fontSize: 9, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase',
-              color: isAlert ? '#9C2E2E' : DS.ink[500],
+              color: isAlert ? '#9C2E2E' : (isDark ? (T.ink3 as string) : DS.ink[500]),
               flex: 1,
             }}
             numberOfLines={1}
@@ -247,7 +255,7 @@ export function KPI({
         {/* Display value — slices verilirse katı per-currency */}
         {slices ? (
           slices.length === 0 ? (
-            <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.7, lineHeight: 26, color: DS.ink[400] }}>—</Text>
+            <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.7, lineHeight: 26, color: isDark ? (T.ink3 as string) : DS.ink[400] }}>—</Text>
           ) : (
             <MoneyMultiX slices={slices} variant="inline" colorBySign={false} />
           )
@@ -255,7 +263,7 @@ export function KPI({
           <Text
             style={{
               ...DISPLAY, fontSize: 22, letterSpacing: -0.7, lineHeight: 26,
-              color: isAlert ? '#9C2E2E' : DS.ink[900],
+              color: isAlert ? '#9C2E2E' : (isDark ? T.ink : DS.ink[900]),
             }}
             numberOfLines={1}
             adjustsFontSizeToFit
@@ -268,7 +276,7 @@ export function KPI({
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 }}>
           {sub ? (
             <Text
-              style={{ fontSize: 10, color: DS.ink[500], fontWeight: '500', flex: 1 }}
+              style={{ fontSize: 10, color: isDark ? (T.ink3 as string) : DS.ink[500], fontWeight: '500', flex: 1 }}
               numberOfLines={1}
             >
               {sub}
@@ -344,10 +352,12 @@ export function Loader() {
 
 /* ─────────────────────────────  Card  ───────────────────────────────── */
 export function Card({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <View style={[{
-      backgroundColor: '#FFF', borderRadius: 18,
-      borderWidth: 1, borderColor: DS.ink[200],
+      backgroundColor: isDark ? T.card : '#FFF', borderRadius: 18,
+      borderWidth: 1, borderColor: isDark ? T.hairline : DS.ink[200],
       padding: 16,
     }, style]}>
       {children}
@@ -363,16 +373,18 @@ export function SecHeader({ eyebrow, title, desc, action }: {
   action?: { label: string; onPress: () => void };
 }) {
   const TH = usePanelTheme();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <View style={{ marginBottom: 16, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
       <View style={{ gap: 6, flex: 1 }}>
-        <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: DS.ink[500] }}>
+        <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: isDark ? (T.ink3 as string) : DS.ink[500] }}>
           {eyebrow}
         </Text>
-        <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.5, color: DS.ink[900], lineHeight: 26 }}>
+        <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.5, color: isDark ? T.ink : DS.ink[900], lineHeight: 26 }}>
           {title}
         </Text>
-        {desc ? <Text style={{ fontSize: 13, color: DS.ink[500], lineHeight: 19, maxWidth: 520 }}>{desc}</Text> : null}
+        {desc ? <Text style={{ fontSize: 13, color: isDark ? (T.ink3 as string) : DS.ink[500], lineHeight: 19, maxWidth: 520 }}>{desc}</Text> : null}
       </View>
       {action ? (
         <Pressable onPress={action.onPress} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
@@ -392,23 +404,25 @@ export function HeroF1({ kicker, title, description, stats, actions }: {
   actions?: React.ReactNode;
 }) {
   const TH = usePanelTheme();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
-    <View style={{ borderRadius: 28, overflow: 'hidden', backgroundColor: TH.bg, padding: 14, marginBottom: 16 }}>
+    <View style={{ borderRadius: 28, overflow: 'hidden', backgroundColor: isDark ? T.bg : TH.bg, padding: 14, marginBottom: 16 }}>
       <View style={{
-        backgroundColor: 'rgba(255,255,255,0.55)',
+        backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.55)',
         borderRadius: 22, padding: 22,
-        borderWidth: 1, borderColor: 'rgba(255,255,255,0.7)',
+        borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(255,255,255,0.7)',
       }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 16 }}>
           <View style={{ flex: 1, minWidth: 240 }}>
-            <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 1.1, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 10 }}>
+            <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 1.1, textTransform: 'uppercase', color: isDark ? (T.ink3 as string) : DS.ink[500], marginBottom: 10 }}>
               {kicker}
             </Text>
-            <Text style={{ ...DISPLAY, fontSize: 36, letterSpacing: -1, lineHeight: 40, color: DS.ink[900] }}>
+            <Text style={{ ...DISPLAY, fontSize: 36, letterSpacing: -1, lineHeight: 40, color: isDark ? T.ink : DS.ink[900] }}>
               {title}
             </Text>
             {description ? (
-              <Text style={{ fontSize: 13, color: DS.ink[500], marginTop: 8, maxWidth: 520, lineHeight: 19 }}>
+              <Text style={{ fontSize: 13, color: isDark ? (T.ink3 as string) : DS.ink[500], marginTop: 8, maxWidth: 520, lineHeight: 19 }}>
                 {description}
               </Text>
             ) : null}
@@ -419,9 +433,9 @@ export function HeroF1({ kicker, title, description, stats, actions }: {
                 <View key={s.label} style={{ alignItems: 'flex-end' }}>
                   <Text style={{
                     ...DISPLAY, fontSize: 30, letterSpacing: -1, lineHeight: 32,
-                    color: s.tone === 'danger' ? '#9C2E2E' : s.tone === 'warn' ? '#9C5E0E' : DS.ink[900],
+                    color: s.tone === 'danger' ? '#9C2E2E' : s.tone === 'warn' ? '#9C5E0E' : (isDark ? T.ink : DS.ink[900]),
                   }}>{s.value}</Text>
-                  <Text style={{ fontSize: 10, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, marginTop: 2 }}>{s.label}</Text>
+                  <Text style={{ fontSize: 10, color: isDark ? (T.ink3 as string) : DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, marginTop: 2 }}>{s.label}</Text>
                 </View>
               ))}
             </View>
@@ -441,10 +455,12 @@ export function EmptyCard({ icon: Icon, title, description, cta }: {
   cta?: { label: string; onPress: () => void };
 }) {
   const TH = usePanelTheme();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <View style={{
-      backgroundColor: '#FFF', borderRadius: 18,
-      borderWidth: 1, borderColor: DS.ink[200],
+      backgroundColor: isDark ? T.card : '#FFF', borderRadius: 18,
+      borderWidth: 1, borderColor: isDark ? T.hairline : DS.ink[200],
       padding: 28, alignItems: 'center', gap: 10,
     }}>
       <View style={{
@@ -453,9 +469,9 @@ export function EmptyCard({ icon: Icon, title, description, cta }: {
       }}>
         <Icon size={20} color={TH.primary} strokeWidth={1.8} />
       </View>
-      <Text style={{ ...DISPLAY, fontSize: 18, color: DS.ink[900], letterSpacing: -0.3 }}>{title}</Text>
+      <Text style={{ ...DISPLAY, fontSize: 18, color: isDark ? T.ink : DS.ink[900], letterSpacing: -0.3 }}>{title}</Text>
       {description ? (
-        <Text style={{ fontSize: 12, color: DS.ink[500], textAlign: 'center', maxWidth: 360, lineHeight: 18 }}>
+        <Text style={{ fontSize: 12, color: isDark ? (T.ink3 as string) : DS.ink[500], textAlign: 'center', maxWidth: 360, lineHeight: 18 }}>
           {description}
         </Text>
       ) : null}

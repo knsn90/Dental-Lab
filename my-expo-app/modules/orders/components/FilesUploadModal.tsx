@@ -161,11 +161,14 @@ export interface FilesUploadModalProps {
 
 // ─── Slot etiketleri — TR diş hekimliği terminolojisi, tutarlı genitif kullanımı
 const SMILE_PHOTO_LABELS: ReadonlyArray<string> = ['Ekartörlü Fotoğraf', 'Gülüş Fotoğrafı'];
+const TOOTH_SHADE_PHOTO_LABEL = 'Diş Rengi Fotoğrafı';
 const SMILE_VIDEO_LABEL = 'Gülüş Videosu';
 // Tarama Verileri — hepsi "… Taraması" formatında, parantezsiz
 const SCAN_LABELS:       ReadonlyArray<string> = ['Üst Çene Taraması', 'Alt Çene Taraması', 'Kapanış Taraması', 'Diş Eti Taraması'];
 // Tarayıcıdan çıkan tek ZIP/arşiv (çoklu STL/PLY + meta) — Tarama Verileri grubunda.
 const SCAN_ZIP_LABEL = 'Tarama Arşivi (ZIP)';
+// Fotogrametri taraması — çok-fotoğraflı 3B tarama çıktısı (zip/rar/stl/ply/obj vb.).
+const PHOTOGRAMMETRY_LABEL = 'Fotogrametri Taraması';
 const IMPLANT_SCAN_LABEL = 'Scan Body Taraması';
 const SCAN_PARTS_PHOTO_LABEL = 'Tarama Parçaları Görseli';
 const PDF_LABEL          = 'PDF Belgesi';
@@ -448,7 +451,7 @@ export function FilesUploadModal({
           <View style={{
             width: 30, height: 30, borderRadius: 9,
             borderWidth: 2,
-            borderColor: on ? green : '#94A3B8',
+            borderColor: on ? green : offBorder,
             backgroundColor: on ? green : 'transparent',
             alignItems: 'center', justifyContent: 'center',
             marginBottom: 9,
@@ -497,8 +500,8 @@ export function FilesUploadModal({
   const uploadedGroups = React.useMemo(() => {
     const cats: Array<{ title: string; color: string; labels: string[] }> = [
       ...(extraGroups ?? []).map(g => ({ title: g.title, color: g.color, labels: g.items.map(i => i.label) })),
-      { title: 'Tarama Verileri',   color: '#0EA5E9', labels: [...SCAN_LABELS, SCAN_ZIP_LABEL] },
-      { title: 'Gülüş Tasarımı',    color: P,         labels: [...SMILE_PHOTO_LABELS, SMILE_VIDEO_LABEL] },
+      { title: 'Tarama Verileri',   color: '#0EA5E9', labels: [...SCAN_LABELS, SCAN_ZIP_LABEL, PHOTOGRAMMETRY_LABEL] },
+      { title: 'Fotoğraflar',       color: P,         labels: [...SMILE_PHOTO_LABELS, TOOTH_SHADE_PHOTO_LABEL, SMILE_VIDEO_LABEL] },
       { title: 'İmplant Bilgileri', color: '#8B5CF6', labels: [IMPLANT_SCAN_LABEL, SCAN_PARTS_PHOTO_LABEL] },
       { title: 'Ek Dosyalar',       color: '#F59E0B', labels: [PDF_LABEL, REF_PHOTO_LABEL] },
     ];
@@ -598,20 +601,22 @@ export function FilesUploadModal({
                   )}
                 </View>
                 <View style={s.uploadCardRow}>
-                  {SCAN_LABELS.map(label => renderScanCard(label, '#0EA5E9', 'cube-outline'))}
-                  {onPickZip && renderSlot(SCAN_ZIP_LABEL, '#0EA5E9', 'folder-zip-outline', () => onPickZip(SCAN_ZIP_LABEL))}
+                  {SCAN_LABELS.map(label => renderScanCard(label, '#0EA5E9', 'dental-arch'))}
+                  {renderScanCard(PHOTOGRAMMETRY_LABEL, '#0EA5E9', 'photogrammetry')}
+                  {onPickZip && renderSlot(SCAN_ZIP_LABEL, '#0EA5E9', 'file-archive', () => onPickZip(SCAN_ZIP_LABEL))}
                 </View>
                 {occlusionCta}
               </View>
 
-              {/* ── Grup 2: Gülüş Tasarımı ── */}
+              {/* ── Grup 2: Fotoğraflar ── */}
               <View style={[s.umGroup, themeGroup]}>
                 <View style={s.umGroupHeader}>
                   <View style={[s.umGroupDot, { backgroundColor: P }]} />
-                  <Text style={[s.umGroupTitle, themeGroupTitle]}>Gülüş Tasarımı</Text>
+                  <Text style={[s.umGroupTitle, themeGroupTitle]}>Fotoğraflar</Text>
                 </View>
                 <View style={s.uploadCardRow}>
                   {SMILE_PHOTO_LABELS.map(label => renderPhotoCard(label, P))}
+                  {renderPhotoCard(TOOTH_SHADE_PHOTO_LABEL, P)}
                   {renderVideoCard(SMILE_VIDEO_LABEL, P)}
                 </View>
               </View>
@@ -625,7 +630,7 @@ export function FilesUploadModal({
                 </View>
                 {implantSectionContent ?? (
                   <View style={s.uploadCardRow}>
-                    {renderScanCard(IMPLANT_SCAN_LABEL, '#8B5CF6', 'tooth-outline')}
+                    {renderScanCard(IMPLANT_SCAN_LABEL, '#8B5CF6', 'scan-body')}
                     {renderPhotoCard(SCAN_PARTS_PHOTO_LABEL, '#8B5CF6')}
                     {renderScanDeliveredCard()}
                   </View>
@@ -651,7 +656,7 @@ export function FilesUploadModal({
                 const renderForKind = (label: string, kind: 'image'|'video'|'scan'|'pdf'|'any') => {
                   if (kind === 'video') return renderVideoCard(label, group.color);
                   if (kind === 'pdf')   return renderPdfCard(label, group.color);
-                  if (kind === 'scan')  return renderScanCard(label, group.color, 'cube-outline');
+                  if (kind === 'scan')  return renderScanCard(label, group.color, 'cube-scan');
                   // 'any' = her tür (görsel/STL/PLY/HTML/belge). scan picker'ı ('*/*')
                   // kullanır ama önizleme slotu olduğu için göz ikonu taşır.
                   if (kind === 'any')   return renderScanCard(label, group.color, 'eye-outline');
@@ -692,7 +697,7 @@ export function FilesUploadModal({
               showsVerticalScrollIndicator={false}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                <Text style={{ fontSize: 11, fontFamily: F.bold, color: '#475569', letterSpacing: 1.0, textTransform: 'uppercase' as any }}>
+                <Text style={{ fontSize: 11, fontFamily: F.bold, color: T.ink3, letterSpacing: 1.0, textTransform: 'uppercase' as any }}>
                   Yüklenen Dosyalar
                 </Text>
                 <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: P + '14', borderWidth: 1, borderColor: P + '30' }}>
@@ -712,7 +717,7 @@ export function FilesUploadModal({
                       onPress={() => onPreview?.(heroFile)}
                       style={({ hovered }: any) => ({
                         width: '100%', height: 240, borderRadius: 12, overflow: 'hidden',
-                        backgroundColor: '#0F172A08',
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#0F172A08',
                         ...(Platform.OS === 'web'
                           ? ({ cursor: 'pointer',
                                boxShadow: hovered ? '0 10px 28px rgba(15,23,42,0.18)' : '0 1px 4px rgba(15,23,42,0.08)',
@@ -734,16 +739,16 @@ export function FilesUploadModal({
                     )}
                   </View>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
-                    <Text numberOfLines={1} style={{ flex: 1, fontSize: 11, fontFamily: F.semibold, color: '#475569' }}>
+                    <Text numberOfLines={1} style={{ flex: 1, fontSize: 11, fontFamily: F.semibold, color: T.ink3 }}>
                       {shortLabel(heroFile.name)}
                     </Text>
-                    <Text style={{ fontSize: 10.5, color: '#94A3B8' }}>
+                    <Text style={{ fontSize: 10.5, color: T.ink3 }}>
                       {heroImages.findIndex(a => a.id === heroFile.id) + 1} / {heroImages.length}
                     </Text>
                     {onRemove && heroFile.canRemove && (
                       <TouchableOpacity
                         onPress={() => askRemove(heroFile)}
-                        style={{ width: 26, height: 26, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FEE2E2' }}
+                        style={{ width: 26, height: 26, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? 'rgba(217,75,75,0.22)' : '#FEE2E2' }}
                         accessibilityLabel="Bu fotoğrafı sil"
                       >
                         <AppIcon name={'trash-2' as any} size={13} color="#DC2626" />
@@ -756,7 +761,7 @@ export function FilesUploadModal({
                   {heroImages.length > 1 && (
                     <View style={{
                       flexDirection: 'row', marginTop: 8, gap: 2,
-                      borderRadius: 8, overflow: 'hidden', backgroundColor: '#FFFFFF',
+                      borderRadius: 8, overflow: 'hidden', backgroundColor: isDark ? T.cardSoft : '#FFFFFF',
                     }}>
                       {heroImages.map(a => {
                         const active = a.id === heroFile.id;
@@ -797,13 +802,13 @@ export function FilesUploadModal({
 
               {attachments.length === 0 && !hasUploads ? (
                 <View style={{ paddingVertical: 30, alignItems: 'center', gap: 8 }}>
-                  <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}>
+                  <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: isDark ? T.cardSoft : '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}>
                     <AppIcon name={'file-outline' as any} size={20} color="#94A3B8" />
                   </View>
-                  <Text style={{ fontSize: 12, color: '#64748B', textAlign: 'center', fontFamily: F.regular }}>
+                  <Text style={{ fontSize: 12, color: T.ink2, textAlign: 'center', fontFamily: F.regular }}>
                     Henüz dosya yüklenmedi
                   </Text>
-                  <Text style={{ fontSize: 10.5, color: '#94A3B8', textAlign: 'center', fontFamily: F.regular, maxWidth: 220 }}>
+                  <Text style={{ fontSize: 10.5, color: T.ink3, textAlign: 'center', fontFamily: F.regular, maxWidth: 220 }}>
                     Soldaki kategori kartlarından dosya seç — yüklenince burada listelenir
                   </Text>
                 </View>
@@ -818,7 +823,7 @@ export function FilesUploadModal({
                   <View key={group.title} style={{ marginBottom: 14 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                       <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: group.color }} />
-                      <Text style={{ fontSize: 10.5, fontFamily: F.bold, color: '#0F172A', letterSpacing: 0.6, textTransform: 'uppercase' as any }}>
+                      <Text style={{ fontSize: 10.5, fontFamily: F.bold, color: T.ink2, letterSpacing: 0.6, textTransform: 'uppercase' as any }}>
                         {group.title} · {rest.length}
                       </Text>
                     </View>
@@ -829,8 +834,8 @@ export function FilesUploadModal({
                         style={({ hovered }: any) => ({
                           flexDirection: 'row', alignItems: 'center', gap: 9,
                           paddingHorizontal: 10, paddingVertical: 8, borderRadius: 9,
-                          backgroundColor: hovered ? '#FFFFFF' : 'transparent',
-                          borderWidth: 1, borderColor: hovered ? '#E2E8F0' : 'transparent',
+                          backgroundColor: hovered ? (isDark ? 'rgba(255,255,255,0.06)' : '#FFFFFF') : 'transparent',
+                          borderWidth: 1, borderColor: hovered ? (isDark ? 'rgba(255,255,255,0.12)' : '#E2E8F0') : 'transparent',
                           marginBottom: 4,
                           ...(Platform.OS === 'web' ? { cursor: 'pointer' as any } as any : {}),
                         })}
@@ -841,8 +846,8 @@ export function FilesUploadModal({
                         {isPreviewable(att) ? (
                           <View style={{
                             width: 40, height: 40, borderRadius: 8, overflow: 'hidden',
-                            backgroundColor: '#F1F5F9',
-                            borderWidth: 1, borderColor: '#E2E8F0',
+                            backgroundColor: isDark ? T.cardSoft : '#F1F5F9',
+                            borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.10)' : '#E2E8F0',
                           }}>
                             <Image
                               source={{ uri: att.uri }}
@@ -868,7 +873,7 @@ export function FilesUploadModal({
                           );
                         })()}
                         <Text
-                          style={{ flex: 1, fontSize: 12, fontFamily: F.semibold, color: '#0F172A' }}
+                          style={{ flex: 1, fontSize: 12, fontFamily: F.semibold, color: T.ink }}
                           numberOfLines={1}
                         >
                           {att.name}
@@ -876,7 +881,7 @@ export function FilesUploadModal({
                         {onRemove && att.canRemove && (
                           <TouchableOpacity
                             onPress={(e) => { (e as any).stopPropagation?.(); askRemove(att); }}
-                            style={{ width: 24, height: 24, borderRadius: 6, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FEE2E2' }}
+                            style={{ width: 24, height: 24, borderRadius: 6, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? 'rgba(217,75,75,0.22)' : '#FEE2E2' }}
                           >
                             <AppIcon name={'close' as any} size={11} color="#EF4444" />
                           </TouchableOpacity>
@@ -923,6 +928,7 @@ function UploadProgressRow({
   total?: number;
   theme: DsTheme;
 }) {
+  const T = useMobileTokens();
   const pct = progress != null ? Math.max(0, Math.min(100, Math.round(progress))) : null;
 
   return (
@@ -955,7 +961,7 @@ function UploadProgressRow({
               </Text>
             )}
           </View>
-          <Text style={{ fontSize: 12.5, fontFamily: F.semibold, color: '#0F172A', marginTop: 1 }} numberOfLines={1}>
+          <Text style={{ fontSize: 12.5, fontFamily: F.semibold, color: T.ink, marginTop: 1 }} numberOfLines={1}>
             {filename}
           </Text>
         </View>

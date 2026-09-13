@@ -14,7 +14,7 @@ import {
   View, Text, Pressable, Platform, Modal, ScrollView, Animated, Easing,
 } from 'react-native';
 import { TeethLoader } from '../../../core/ui/TeethLoader';
-import { X, FileUp, Sparkles, Check, AlertCircle, Camera, ArrowRight, ArrowLeft } from 'lucide-react-native';
+import { X, FileUp, Sparkles, Check, AlertCircle, Camera, ArrowRight, ArrowLeft } from '../../../core/ui/icons';
 import { isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { supabase } from '../../../core/api/supabase';

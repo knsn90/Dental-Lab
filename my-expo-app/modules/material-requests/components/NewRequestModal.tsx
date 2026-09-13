@@ -19,17 +19,18 @@ import {
 import {
   X, Wrench, Plus, Trash2, Send, AlertCircle, CheckCircle2, ChevronDown,
   Calendar as CalendarIcon,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { DatePicker } from '../../../core/ui/DatePicker';
 import {
   createRequest, fetchCatalog,
   type CatalogItem, type RequestUrgency, type NewRequestItemInput,
 } from '../api';
 import {
-  DISPLAY, TRY, PillButton, makeUrgencyCfg, UNIT_OPTIONS, CATEGORY_LABEL,
+  DISPLAY, TRY, PillButton, makeUrgencyCfg, UNIT_OPTIONS, CATEGORY_LABEL, openFg,
 } from './atoms';
 
 type Props = {
@@ -49,7 +50,8 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 export function NewRequestModal({ visible, onClose, onSubmitted }: Props) {
   const TH = usePanelTheme();
   const T = useMobileTokens();
-  const URGENCY_CFG = makeUrgencyCfg(T);
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
+  const URGENCY_CFG = makeUrgencyCfg(T, isDark);
 
   // Form
   const [title, setTitle]       = useState('');
@@ -188,7 +190,7 @@ export function NewRequestModal({ visible, onClose, onSubmitted }: Props) {
                 backgroundColor: 'rgba(45,154,107,0.08)', borderRadius: 16,
                 borderWidth: 1, borderColor: 'rgba(45,154,107,0.25)',
               }}>
-                <CheckCircle2 size={36} color="#1F6B47" />
+                <CheckCircle2 size={36} color={openFg('#1F6B47', isDark)} />
                 <Text style={{ ...DISPLAY, fontSize: 20, color: T.ink, letterSpacing: -0.3 }}>
                   Talebiniz oluşturuldu
                 </Text>
@@ -339,8 +341,8 @@ export function NewRequestModal({ visible, onClose, onSubmitted }: Props) {
                     padding: 10, borderRadius: 10,
                     backgroundColor: 'rgba(217,75,75,0.08)', borderWidth: 1, borderColor: 'rgba(217,75,75,0.25)',
                   }}>
-                    <AlertCircle size={14} color="#9C2E2E" />
-                    <Text style={{ flex: 1, fontSize: 12, color: '#9C2E2E' }}>{error}</Text>
+                    <AlertCircle size={14} color={openFg('#9C2E2E', isDark)} />
+                    <Text style={{ flex: 1, fontSize: 12, color: openFg('#9C2E2E', isDark) }}>{error}</Text>
                   </View>
                 )}
               </>
@@ -400,6 +402,7 @@ function ItemRow({
 }) {
   const TH = usePanelTheme();
   const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [unitOpen, setUnitOpen]     = useState(false);
 
@@ -425,7 +428,7 @@ function ItemRow({
         </Text>
         {onRemove && (
           <Pressable onPress={onRemove} hitSlop={6}>
-            <Trash2 size={13} color="#9C2E2E" />
+            <Trash2 size={13} color={openFg('#9C2E2E', isDark)} />
           </Pressable>
         )}
       </View>

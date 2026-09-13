@@ -13,6 +13,8 @@ import { useAuthStore } from '../../../core/store/authStore';
 import { supabase } from '../../../core/api/supabase';
 import { AppIcon } from '../../../core/ui/AppIcon';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
+import { useMobileTokens, MOBILE_TOKENS_DARK } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 const ACCENT = '#2563EB';
 
@@ -151,6 +153,8 @@ function HBarChart({
   maxLabel?: string;
 }) {
   const { width } = useWindowDimensions();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const chartW = Math.min(width - 64, 600);
   const barH   = 22;
   const gap    = 10;
@@ -178,7 +182,7 @@ function HBarChart({
             {/* İstasyon / teknisyen adı */}
             <SvgText
               x={0} y={y + barH / 2 + 4}
-              fontSize={11} fill="#64748B"
+              fontSize={11} fill={isDark ? (T.ink3 as string) : '#64748B'}
               fontWeight="500"
             >
               {label}
@@ -187,7 +191,7 @@ function HBarChart({
             <Rect
               x={labelW} y={y}
               width={barAreaW} height={barH}
-              rx={6} fill="#F1F5F9"
+              rx={6} fill={isDark ? T.cardSoft : '#F1F5F9'}
             />
             {/* Bar */}
             <Rect
@@ -199,7 +203,7 @@ function HBarChart({
             {/* Değer */}
             <SvgText
               x={labelW + barW + 6} y={y + barH / 2 + 4}
-              fontSize={11} fill="#1E293B"
+              fontSize={11} fill={isDark ? T.ink : '#1E293B'}
               fontWeight="700"
             >
               {val}{unit}
@@ -219,14 +223,16 @@ function StatCard({
   label: string; value: string | number;
   sub?: string; color: string; icon: string;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
-    <View style={[sc.card, { borderColor: color + '30' }]}>
+    <View style={[sc.card, { borderColor: color + '30' }, isDark && scd.card]}>
       <View style={[sc.iconWrap, { backgroundColor: color + '15' }]}>
         <AppIcon name={icon as any} set="mci" size={18} color={color} />
       </View>
       <Text style={[sc.value, { color }]}>{value}</Text>
-      <Text style={sc.label}>{label}</Text>
-      {sub && <Text style={sc.sub}>{sub}</Text>}
+      <Text style={[sc.label, isDark && { color: T.ink3 }]}>{label}</Text>
+      {sub && <Text style={[sc.sub, isDark && { color: T.ink3 }]}>{sub}</Text>}
     </View>
   );
 }
@@ -244,25 +250,30 @@ const sc = StyleSheet.create({
   label:    { fontSize: 12, color: '#64748B', fontWeight: '600' },
   sub:      { fontSize: 11, color: '#94A3B8' },
 });
+const scd = StyleSheet.create({
+  card: { backgroundColor: MOBILE_TOKENS_DARK.card },
+});
 
 // ── Teknisyen Satırı ─────────────────────────────────────────────────────────
 
 function TechRow({ tech, rank }: { tech: TechStat; rank: number }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const pct   = tech.approval_rate_pct ?? 0;
   const color = pctColor(tech.approval_rate_pct);
 
   return (
-    <View style={tr.row}>
-      <View style={tr.rank}>
+    <View style={[tr.row, isDark && trd.row]}>
+      <View style={[tr.rank, isDark && trd.rank]}>
         <Text style={tr.rankText}>{rank}</Text>
       </View>
       <View style={{ flex: 1, gap: 2 }}>
-        <Text style={tr.name}>{tech.full_name}</Text>
-        <Text style={tr.meta}>
+        <Text style={[tr.name, isDark && { color: T.ink }]}>{tech.full_name}</Text>
+        <Text style={[tr.meta, isDark && { color: T.ink3 }]}>
           {tech.total_stages} aşama · {tech.approved} onaylı · {tech.rejected} reddedildi
         </Text>
         {/* Onay oranı bar */}
-        <View style={tr.barBg}>
+        <View style={[tr.barBg, isDark && trd.barBg]}>
           <View style={[tr.barFill, { width: `${Math.min(pct, 100)}%` as any, backgroundColor: color }]} />
         </View>
       </View>
@@ -270,7 +281,7 @@ function TechRow({ tech, rank }: { tech: TechStat; rank: number }) {
         <Text style={[tr.pct, { color }]}>
           {tech.approval_rate_pct != null ? `%${tech.approval_rate_pct}` : '—'}
         </Text>
-        <Text style={tr.dur}>{fmtDur(tech.avg_duration_min)}</Text>
+        <Text style={[tr.dur, isDark && { color: T.ink3 }]}>{fmtDur(tech.avg_duration_min)}</Text>
       </View>
     </View>
   );
@@ -287,14 +298,21 @@ const tr = StyleSheet.create({
   pct:      { fontSize: 15, fontWeight: '800' },
   dur:      { fontSize: 11, color: '#94A3B8' },
 });
+const trd = StyleSheet.create({
+  row:   { borderBottomColor: MOBILE_TOKENS_DARK.hairline },
+  rank:  { backgroundColor: 'rgba(59,130,246,0.16)' },
+  barBg: { backgroundColor: MOBILE_TOKENS_DARK.cardSoft },
+});
 
 // ── Bölüm Başlığı ─────────────────────────────────────────────────────────────
 
 function SectionHeader({ title, sub }: { title: string; sub?: string }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <View style={{ marginBottom: 12 }}>
-      <Text style={{ fontSize: 16, fontWeight: '800', color: '#0F172A' }}>{title}</Text>
-      {sub && <Text style={{ fontSize: 12, color: '#94A3B8', marginTop: 2 }}>{sub}</Text>}
+      <Text style={{ fontSize: 16, fontWeight: '800', color: isDark ? T.ink : '#0F172A' }}>{title}</Text>
+      {sub && <Text style={{ fontSize: 12, color: isDark ? (T.ink3 as string) : '#94A3B8', marginTop: 2 }}>{sub}</Text>}
     </View>
   );
 }
@@ -305,6 +323,8 @@ export function AnalyticsScreen() {
   const { profile } = useAuthStore();
   const { width }   = useWindowDimensions();
   const isEmbedded  = useContext(HubContext);
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
 
   const [data,       setData]       = useState<Awaited<ReturnType<typeof fetchAnalytics>> | null>(null);
   const [loading,    setLoading]    = useState(true);
@@ -331,14 +351,14 @@ export function AnalyticsScreen() {
   const isWide = width >= 768;
 
   return (
-    <SafeAreaView style={s.container} edges={isEmbedded ? ([] as any) : ['top']}>
+    <SafeAreaView style={[s.container, isDark && sd.container]} edges={isEmbedded ? ([] as any) : ['top']}>
       {/* Header */}
-      <View style={s.header}>
+      <View style={[s.header, isDark && sd.header]}>
         <View>
-          <Text style={s.title}>Üretim Analitiği</Text>
-          <Text style={s.sub}>İstasyon darboğaz · Teknisyen performansı</Text>
+          <Text style={[s.title, isDark && { color: T.ink }]}>Üretim Analitiği</Text>
+          <Text style={[s.sub, isDark && { color: T.ink3 }]}>İstasyon darboğaz · Teknisyen performansı</Text>
         </View>
-        <TouchableOpacity style={s.refreshBtn} onPress={load}>
+        <TouchableOpacity style={[s.refreshBtn, isDark && sd.refreshBtn]} onPress={load}>
           <AppIcon name="refresh-cw" size={18} color={ACCENT} />
         </TouchableOpacity>
       </View>
@@ -346,7 +366,7 @@ export function AnalyticsScreen() {
       {loading && !refreshing ? (
         <View style={s.center}>
           <ActivityIndicator size="large" color={ACCENT} />
-          <Text style={{ color: '#94A3B8', marginTop: 12 }}>Veriler yükleniyor…</Text>
+          <Text style={{ color: isDark ? (T.ink3 as string) : '#94A3B8', marginTop: 12 }}>Veriler yükleniyor…</Text>
         </View>
       ) : (
         <ScrollView
@@ -392,7 +412,7 @@ export function AnalyticsScreen() {
 
           {/* ── 2. İstasyon Darboğaz Analizi ── */}
           {data && data.stations.length > 0 && (
-            <View style={s.card}>
+            <View style={[s.card, isDark && sd.card]}>
               <SectionHeader
                 title="İstasyon Darboğaz"
                 sub="Ort. süreye göre sıralı — uzun süre = darboğaz"
@@ -406,8 +426,8 @@ export function AnalyticsScreen() {
               {/* Bekleme süreleri */}
               {data.stations.some(st => st.avg_wait_min != null && st.avg_wait_min > 0) && (
                 <>
-                  <View style={{ height: 1, backgroundColor: '#F1F5F9', marginVertical: 16 }} />
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#475569', marginBottom: 10 }}>
+                  <View style={{ height: 1, backgroundColor: isDark ? T.hairline : '#F1F5F9', marginVertical: 16 }} />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? (T.ink2 as string) : '#475569', marginBottom: 10 }}>
                     Ortalama Bekleme Süresi (atama → başlama)
                   </Text>
                   <HBarChart
@@ -424,9 +444,9 @@ export function AnalyticsScreen() {
 
           {/* ── 3. İstasyon Özet Tablosu ── */}
           {data && data.stations.length > 0 && (
-            <View style={s.card}>
+            <View style={[s.card, isDark && sd.card]}>
               <SectionHeader title="İstasyon Özeti" />
-              <View style={tbl.header}>
+              <View style={[tbl.header, isDark && tbld.header]}>
                 <Text style={[tbl.cell, { flex: 2 }]}>İstasyon</Text>
                 <Text style={tbl.cell}>Toplam</Text>
                 <Text style={tbl.cell}>Tamamlandı</Text>
@@ -434,9 +454,9 @@ export function AnalyticsScreen() {
                 <Text style={tbl.cell}>Ort. Süre</Text>
               </View>
               {data.stations.map(st => (
-                <View key={st.station_id} style={tbl.row}>
-                  <Text style={[tbl.cellVal, { flex: 2 }]} numberOfLines={1}>{st.station_name}</Text>
-                  <Text style={tbl.cellVal}>{st.total_stages}</Text>
+                <View key={st.station_id} style={[tbl.row, isDark && tbld.row]}>
+                  <Text style={[tbl.cellVal, { flex: 2 }, isDark && { color: T.ink }]} numberOfLines={1}>{st.station_name}</Text>
+                  <Text style={[tbl.cellVal, isDark && { color: T.ink }]}>{st.total_stages}</Text>
                   <Text style={[tbl.cellVal, { color: '#16A34A' }]}>{st.completed}</Text>
                   <Text style={[tbl.cellVal, { color: st.rejected > 0 ? '#EF4444' : '#94A3B8' }]}>{st.rejected}</Text>
                   <Text style={[tbl.cellVal, { color: ACCENT }]}>{fmtDur(st.avg_duration_min)}</Text>
@@ -447,7 +467,7 @@ export function AnalyticsScreen() {
 
           {/* ── 4. Teknisyen Performansı ── */}
           {data && data.techs.length > 0 && (
-            <View style={s.card}>
+            <View style={[s.card, isDark && sd.card]}>
               <SectionHeader
                 title="Teknisyen Performansı"
                 sub="Onay oranı ve ortalama süre"
@@ -462,7 +482,7 @@ export function AnalyticsScreen() {
                 unit="%"
               />
 
-              <View style={{ height: 1, backgroundColor: '#F1F5F9', marginVertical: 16 }} />
+              <View style={{ height: 1, backgroundColor: isDark ? T.hairline : '#F1F5F9', marginVertical: 16 }} />
 
               {/* Detay listesi */}
               {data.techs.map((t, i) => (
@@ -473,10 +493,10 @@ export function AnalyticsScreen() {
 
           {/* ── 5. Boş durum ── */}
           {data && data.stations.length === 0 && data.techs.length === 0 && (
-            <View style={s.emptyBox}>
-              <AppIcon name="chart-bar-stacked" set="mci" size={48} color="#CBD5E1" />
-              <Text style={s.emptyTitle}>Henüz Veri Yok</Text>
-              <Text style={s.emptySub}>
+            <View style={[s.emptyBox, isDark && sd.card]}>
+              <AppIcon name="chart-bar-stacked" set="mci" size={48} color={isDark ? (T.ink3 as string) : '#CBD5E1'} />
+              <Text style={[s.emptyTitle, isDark && { color: T.ink2 }]}>Henüz Veri Yok</Text>
+              <Text style={[s.emptySub, isDark && { color: T.ink3 }]}>
                 İstasyonlara iş emirleri atandıkça burada analitik veriler görünür.
               </Text>
             </View>
@@ -500,6 +520,10 @@ const tbl = StyleSheet.create({
   },
   cell:    { flex: 1, fontSize: 11, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase' },
   cellVal: { flex: 1, fontSize: 13, fontWeight: '600', color: '#1E293B' },
+});
+const tbld = StyleSheet.create({
+  header: { borderBottomColor: MOBILE_TOKENS_DARK.hairline },
+  row:    { borderBottomColor: MOBILE_TOKENS_DARK.hairline2 },
 });
 
 // ── Ana stiller ───────────────────────────────────────────────────────────────
@@ -530,4 +554,10 @@ const s = StyleSheet.create({
   },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: '#475569' },
   emptySub:   { fontSize: 14, color: '#94A3B8', textAlign: 'center', lineHeight: 22 },
+});
+const sd = StyleSheet.create({
+  container:  { backgroundColor: MOBILE_TOKENS_DARK.bg },
+  header:     { backgroundColor: MOBILE_TOKENS_DARK.card, borderBottomColor: MOBILE_TOKENS_DARK.hairline },
+  refreshBtn: { backgroundColor: 'rgba(59,130,246,0.16)' },
+  card:       { backgroundColor: MOBILE_TOKENS_DARK.card, borderColor: MOBILE_TOKENS_DARK.hairline },
 });

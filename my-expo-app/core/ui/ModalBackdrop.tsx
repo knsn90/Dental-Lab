@@ -16,6 +16,8 @@
 
 import React from 'react';
 import { Pressable, Platform, type ViewStyle } from 'react-native';
+import { useMobileTokens } from '../theme/mobileDesignTokens';
+import { useThemeModeStore } from '../store/themeModeStore';
 
 /* ─── Sabit tokenlar ──────────────────────────────────────────────────── */
 
@@ -99,6 +101,8 @@ type ModalCardProps = {
 };
 
 export function ModalCard({ children, maxWidth = 560, maxHeight = '92%', radius = 22, style }: ModalCardProps) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <Pressable
       onPress={(e) => e.stopPropagation()}
@@ -106,9 +110,10 @@ export function ModalCard({ children, maxWidth = 560, maxHeight = '92%', radius 
         width: '100%',
         maxWidth,
         maxHeight: maxHeight as any,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? T.card : '#FFFFFF',
         borderRadius: radius,
         overflow: 'hidden',
+        ...(isDark ? { borderWidth: 1, borderColor: T.hairline } : {}),
         ...modalCardShadow,
         ...(style ?? {}),
       }}

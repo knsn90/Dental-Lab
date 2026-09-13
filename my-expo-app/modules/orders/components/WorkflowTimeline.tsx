@@ -9,7 +9,7 @@
 
 import React from 'react';
 import { View, Text, ScrollView, Platform } from 'react-native';
-import { ChevronLeft, ChevronRight, Check, Pause, Cog, Hourglass, AlertOctagon, RotateCcw, Ban } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, Check, Pause, Cog, Hourglass, AlertOctagon, RotateCcw, Ban } from '../../../core/ui/icons';
 import { useStationTheme, hexA } from '../../../core/theme/stationPalette';
 import { isRTL } from '../../../core/i18n';
 import { getStageStateMeta, type StageStatus } from '../stations/stageStates';

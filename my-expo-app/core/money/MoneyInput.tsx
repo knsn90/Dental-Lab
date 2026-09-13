@@ -14,7 +14,7 @@
 
 import React, { useState } from 'react';
 import { View, Text, TextInput, Pressable, Platform, Modal } from 'react-native';
-import { ChevronDown, Check } from 'lucide-react-native';
+import { ChevronDown, Check } from '../ui/icons';
 import { Currency, CURRENCY_META, SUPPORTED_CURRENCIES, useExchangeRate, useBaseCurrency, formatMoney } from './currency';
 
 interface Props {

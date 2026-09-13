@@ -356,17 +356,28 @@ async function notifyChatRecipients(
     .eq('id', workOrderId)
     .maybeSingle();
 
+  // Gönderenin adı — e-postada "kim yazdı" bilgisi için. Gönderen = mesajı yollayan
+  // (auth kullanıcısı) olduğu için kendi profilini her zaman okuyabilir (RLS OK).
+  const { data: sp } = await supabase
+    .from('profiles')
+    .select('full_name')
+    .eq('id', senderId)
+    .maybeSingle();
+  const senderName = (sp as any)?.full_name?.trim() || '';
+
   const orderNum = (wo as any)?.order_number ? ` · ${(wo as any).order_number}` : '';
   const preview = content?.trim()
-    ? content.trim().slice(0, 120)
+    ? content.trim().slice(0, 200)
     : (attachment ? 'Ek dosya gönderildi' : 'Yeni mesaj');
 
   await dispatchChatPush({
     userIds,
-    title:     `Yeni mesaj${orderNum}`,
-    body:      preview,
-    actionUrl: `/order/${workOrderId}`,
-    tag:       `chat-${workOrderId}`,
+    title:      `Yeni mesaj${orderNum}`,
+    body:       preview,
+    actionUrl:  `/order/${workOrderId}`,
+    tag:        `chat-${workOrderId}`,
+    resourceId: workOrderId,   // e-postada zengin sipariş kartını çözer (hangi sipariş)
+    senderName,                // e-posta gövdesine "Gönderen: mesaj" olarak girer
   });
 }
 

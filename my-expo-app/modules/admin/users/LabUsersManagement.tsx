@@ -48,12 +48,16 @@ import {
   GraduationCap,
   UserCog,
   Info,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { supabase } from '../../../core/api/supabase';
 import { Profile } from '../../../lib/types';
 import { STAGE_LABEL, STAGE_COLOR, type Stage } from '../../orders/stages';
 import { useAuthStore } from '../../../core/store/authStore';
+import { useInkUI } from '../../../core/theme/inkScale';
+import { useAccentTones } from '../../../core/ui/HeroGlow';
 import { ConfirmDialog, type ConfirmState } from '../../../core/ui/ConfirmDialog';
+import { toast } from '../../../core/ui/Toast';
+import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 
 // ── Design tokens ───────────────────────────────────────────────────────────
 const ERR = '#FF3B30';
@@ -137,19 +141,28 @@ interface UserStats {
 // ── PatternsToggle ──────────────────────────────────────────────────────────
 // 44×24 → 36×20: kart minimal ama toggle en dikkat çeken öğeydi.
 // Renk geçişi 140ms — açma/kapama anında sertçe zıplamasın.
+// NOT: stil OBJE olmalı — fonksiyon-stilli Pressable native'de stili düşürüyor,
+// iOS'ta ray hiç çizilmiyor, yalnız beyaz başparmak kalıyordu. Basılı hal state ile.
 function PatternsToggle({ on, onPress, accentColor }: { on: boolean; onPress: () => void; accentColor: string }) {
+  const U = useInkUI();
+  const [pressed, setPressed] = useState(false);
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }: any) => ({
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      hitSlop={8}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: on }}
+      style={{
         width: 36, height: 20, borderRadius: 999,
-        backgroundColor: on ? accentColor : 'rgba(0,0,0,0.14)',
+        backgroundColor: on ? accentColor : (U.isDark ? 'rgba(255,255,255,0.20)' : 'rgba(0,0,0,0.14)'),
         padding: 2, justifyContent: 'center',
         transform: [{ scale: pressed ? 0.94 : 1 }],
         ...(Platform.OS === 'web'
           ? { cursor: 'pointer', transitionProperty: 'background-color, transform', transitionDuration: '140ms' } as any
           : {}),
-      })}
+      }}
     >
       <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: '#FFF', alignSelf: on ? 'flex-end' : 'flex-start', ...THUMB_SHADOW }} />
     </Pressable>
@@ -168,39 +181,47 @@ function FilterDropdown({ label, value, options, selectedKey, onSelect, accentCo
   onSelect: (k: string) => void;
   accentColor: string;
 }) {
+  const U = useInkUI();
+  const { ink: aInk } = useAccentTones(accentColor);
   const [open, setOpen] = useState(false);
   const on = value != null;
   return (
     <>
       <Pressable
         onPress={() => setOpen(true)}
-        style={({ pressed, hovered }: any) => ({
-          flexDirection: 'row', alignItems: 'center', gap: 6,
-          height: 36, paddingHorizontal: 12, borderRadius: 10,
-          backgroundColor: on ? `${accentColor}14` : hovered ? 'rgba(0,0,0,0.04)' : 'transparent',
-          borderWidth: 1, borderColor: on ? `${accentColor}55` : 'rgba(0,0,0,0.08)',
-          opacity: pressed ? 0.75 : 1,
-          ...(Platform.OS === 'web'
-            ? { cursor: 'pointer', transitionProperty: 'background-color, border-color', transitionDuration: '130ms' } as any
-            : {}),
-        })}
+        style={Platform.OS === 'web'
+          ? ((({ pressed, hovered }: any) => ({
+              flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6,
+              height: 36, paddingHorizontal: 12, borderRadius: 10,
+              backgroundColor: on ? `${accentColor}${U.isDark ? '2E' : '14'}` : hovered ? U.chipNeutral : 'transparent',
+              borderWidth: 1, borderColor: on ? `${accentColor}55` : U.fieldBorder,
+              opacity: pressed ? 0.75 : 1,
+              cursor: 'pointer', transitionProperty: 'background-color, border-color', transitionDuration: '130ms',
+            })) as any)
+          : {
+              flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6,
+              height: 40, paddingHorizontal: 12, borderRadius: 10,
+              backgroundColor: on ? `${accentColor}${U.isDark ? '2E' : '14'}` : 'transparent',
+              borderWidth: 1, borderColor: on ? `${accentColor}55` : U.fieldBorder,
+            }}
       >
-        <Text style={{ fontSize: 12.5, fontWeight: on ? '700' : '500', color: on ? accentColor : '#6B6B6B' }}>
+        <Text style={{ fontSize: 12.5, fontWeight: on ? '700' : '500', color: on ? aInk : U.plainBtn.fgMuted }}>
           {value ?? label}
         </Text>
-        <ChevronDown size={13} color={on ? accentColor : '#9A9A9A'} strokeWidth={2} />
+        <ChevronDown size={13} color={on ? aInk : U.ink[500]} strokeWidth={2} />
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable
           onPress={() => setOpen(false)}
-          style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.28)', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+          style={{ flex: 1, backgroundColor: U.scrim, alignItems: 'center', justifyContent: 'center', padding: 20 }}
         >
           <Pressable onPress={() => {}} style={{
-            width: '100%', maxWidth: 320, maxHeight: '70%', backgroundColor: '#FFFFFF', borderRadius: 18, paddingVertical: 8,
-            ...(Platform.OS === 'web' ? { boxShadow: '0 20px 48px rgba(15,23,42,0.22)' } as any : {}),
+            width: '100%', maxWidth: 320, maxHeight: '70%', backgroundColor: U.surface, borderRadius: 18, paddingVertical: 8,
+            ...(U.isDark ? { borderWidth: 1, borderColor: U.hairline } : {}),
+            ...(Platform.OS === 'web' ? { boxShadow: U.isDark ? '0 20px 48px rgba(0,0,0,0.6)' : '0 20px 48px rgba(15,23,42,0.22)' } as any : {}),
           }}>
-            <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: '#9A9A9A', paddingHorizontal: 16, paddingVertical: 8 }}>
+            <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: U.ink[500], paddingHorizontal: 16, paddingVertical: 8 }}>
               {label}
             </Text>
             <ScrollView showsVerticalScrollIndicator={false}>
@@ -210,19 +231,24 @@ function FilterDropdown({ label, value, options, selectedKey, onSelect, accentCo
                   <Pressable
                     key={opt.key}
                     onPress={() => { onSelect(opt.key); setOpen(false); }}
-                    style={({ pressed, hovered }: any) => ({
-                      flexDirection: 'row', alignItems: 'center', gap: 8,
-                      paddingHorizontal: 16, paddingVertical: 10,
-                      backgroundColor: sel ? `${accentColor}10` : hovered ? 'rgba(0,0,0,0.03)' : 'transparent',
-                      opacity: pressed ? 0.7 : 1,
-                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                    })}
+                    style={Platform.OS === 'web'
+                      ? ((({ pressed, hovered }: any) => ({
+                          flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8,
+                          paddingHorizontal: 16, paddingVertical: 10,
+                          backgroundColor: sel ? `${accentColor}10` : hovered ? U.rowHover : 'transparent',
+                          opacity: pressed ? 0.7 : 1, cursor: 'pointer',
+                        })) as any)
+                      : {
+                          flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8,
+                          paddingHorizontal: 16, paddingVertical: 12,
+                          backgroundColor: sel ? `${accentColor}10` : 'transparent',
+                        }}
                   >
-                    <Text style={{ flex: 1, fontSize: 13, fontWeight: sel ? '700' : '500', color: sel ? accentColor : '#0A0A0A' }}>
+                    <Text style={{ flex: 1, fontSize: 13, fontWeight: sel ? '700' : '500', color: sel ? aInk : U.ink[900] }}>
                       {opt.label}
                     </Text>
-                    <Text style={{ fontSize: 12, color: '#9A9A9A' }}>{opt.count}</Text>
-                    {sel && <Check size={14} color={accentColor} strokeWidth={2.4} />}
+                    <Text style={{ fontSize: 12, color: U.ink[500] }}>{opt.count}</Text>
+                    {sel && <Check size={14} color={aInk} strokeWidth={2.4} />}
                   </Pressable>
                 );
               })}
@@ -251,7 +277,10 @@ function MetricIcon({ name, size, color, style }: { name: string; size: number; 
 // ═════════════════════════════════════════════════════════════════════════════
 
 export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }: { accentColor?: string; labOnly?: boolean }) {
+  const U = useInkUI();
   const P = accentColor;
+  // Koyu temada accent'in dolgu/metin karşılıkları (mavi → lacivert #004B87 / #5AA9E6).
+  const { fill: PFill, ink: PInk } = useAccentTones(P);
   const { width } = useWindowDimensions();
   const isWide = width >= 1100;
   const { profile } = useAuthStore();
@@ -478,13 +507,15 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
         setUpdatingId(profile.id);
         try {
           const { data, error: fnError } = await supabase.functions.invoke('admin-delete-user', { body: { userId: profile.id } });
-          if (fnError || data?.error) Alert.alert('Hata', data?.error ?? fnError?.message ?? 'Silme işlemi başarısız');
+          // Alert.alert web'de (RNW) çoğunlukla görünmez → toast ile göster (sessiz hata bug'ı).
+          if (fnError || data?.error) toast.error(data?.error ?? fnError?.message ?? 'Silme işlemi başarısız');
           else {
             setProfiles(prev => prev.filter(p => p.id !== profile.id));
             if (selectedId === profile.id) { setSelectedId(null); setStats(null); }
+            toast.success('Kullanıcı silindi.');
           }
         } catch (e: any) {
-          Alert.alert('Hata', e.message ?? 'Bir hata oluştu');
+          toast.error(e.message ?? 'Bir hata oluştu');
         } finally { setUpdatingId(null); }
       },
     });
@@ -513,12 +544,17 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
     const selected = selectedId === prof.id;
     const isLabUser = prof.user_type === 'lab';
     const isSynthetic = !!(prof as any).is_unregistered;
+    // Telefon: aksiyon grubu genişliği yiyordu, bilgi satırı flexWrap ile 4 satıra
+    // kırılıp kartı ~120pt'ye çıkarıyordu. Dar ekranda 3 sabit satır + etiketsiz toggle.
+    const compact = width < 720;
+    const clinicName = !!(prof as any).clinic_name && ['clinic_admin', 'clinic_secretary', 'doctor'].includes(prof.user_type ?? '')
+      ? String((prof as any).clinic_name) : null;
     return (
       <Pressable
         key={prof.id}
         onPress={() => handleSelect(prof)}
         style={{
-          backgroundColor: '#FFFFFF',
+          backgroundColor: U.surface,
           borderRadius: 16,
           // 14 → 10: kart ~90px'ten ~74px'e indi, aynı ekrana %20 daha çok kişi.
           padding: 10,
@@ -533,7 +569,7 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
             borderColor: `${P}30`,
           } : {
             borderWidth: 1,
-            borderColor: 'rgba(0,0,0,0.04)',
+            borderColor: U.hairlineSoft,
           }),
           // @ts-ignore web
           cursor: 'pointer',
@@ -555,53 +591,68 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
             style={{
               position: 'absolute', end: -2, bottom: -2,
               width: 11, height: 11, borderRadius: 6,
-              borderWidth: 2, borderColor: '#FFFFFF',
-              backgroundColor: isSynthetic ? '#E89B2A' : (prof.is_active ?? true) ? '#2D9A6B' : '#C4C4C4',
+              borderWidth: 2, borderColor: U.surface,
+              backgroundColor: isSynthetic ? '#E89B2A' : (prof.is_active ?? true) ? '#2D9A6B' : U.ink[300],
             }}
           />
         </View>
         {/* Info */}
         <View className="flex-1" style={{ minWidth: 0, gap: 3 }}>
-          <Text style={{ fontSize: 15, fontWeight: '600', color: '#0A0A0A', letterSpacing: -0.2 }} numberOfLines={1}>{prof.full_name}</Text>
+          <Text style={{ fontSize: 15, fontWeight: '600', color: U.ink[900], letterSpacing: -0.2 }} numberOfLines={1}>{prof.full_name}</Text>
           {/* Okuma sırası: KİM → NE → NEREDE → NASIL ULAŞILIR.
               Eskiden rol rozeti, klinik rozeti ve e-posta tek satırda ve neredeyse
               aynı ağırlıktaydı; 20 kayıtta hepsi tek bir gri şeride dönüşüyordu.
               Rol tek başına kalır (birincil sınıflandırma), klinik ve e-posta
               rozetsiz ve daha soluk bir alt satıra iner. */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <View style={{ borderRadius: 100, paddingHorizontal: 9, paddingVertical: 3, backgroundColor: badge.bg }}>
-              <Text style={{ fontSize: 10.5, fontWeight: '700', letterSpacing: 0.3, color: badge.text }}>{badge.label}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: compact ? 'nowrap' : 'wrap' }}>
+            <View style={{ borderRadius: 100, paddingHorizontal: compact ? 8 : 9, paddingVertical: compact ? 2 : 3, backgroundColor: badge.bg }}>
+              <Text style={{ fontSize: compact ? 10 : 10.5, fontWeight: '700', letterSpacing: 0.3, color: badge.text }}>{badge.label}</Text>
             </View>
+            {compact && isLabUser && (() => {
+              const lvlOpt = SKILL_LEVEL_OPTIONS.find(o => o.key === (((prof as any).skill_level ?? 'mid') as SkillLevel));
+              return (
+                <View style={{ borderRadius: 100, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: `${lvlOpt?.color ?? '#94A3B8'}${U.isDark ? '33' : '18'}` }}>
+                  <Text style={{ fontSize: 10, fontWeight: '600', color: lvlOpt?.color ?? U.ink[400] }}>{lvlOpt?.label}</Text>
+                </View>
+              );
+            })()}
             {!!(prof as any).is_unregistered && (
-              <View style={{ borderRadius: 100, paddingHorizontal: 7, paddingVertical: 2, backgroundColor: 'rgba(245,158,11,0.12)' }}>
-                <Text style={{ fontSize: 10, fontWeight: '600', color: '#92400E' }}>Hesap yok</Text>
+              <View style={{ borderRadius: 100, paddingHorizontal: 7, paddingVertical: 2, backgroundColor: U.isDark ? 'rgba(245,158,11,0.26)' : 'rgba(245,158,11,0.12)' }}>
+                <Text style={{ fontSize: 10, fontWeight: '600', color: U.isDark ? '#F0C078' : '#92400E' }}>Hesap yok</Text>
               </View>
             )}
           </View>
 
+          {compact ? (
+            <Text style={{ fontSize: 12, color: U.ink[400] }} numberOfLines={1}>
+              {clinicName ? <Text style={{ color: U.plainBtn.fgMuted }}>{clinicName}{'  ·  '}</Text> : null}
+              {prof.email ?? '—'}
+            </Text>
+          ) : (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            {!!(prof as any).clinic_name && ['clinic_admin', 'clinic_secretary', 'doctor'].includes(prof.user_type ?? '') && (
+            {clinicName && (
               <>
                 <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: '#6BA888' }} />
-                <Text style={{ fontSize: 12, color: '#6B6B6B', flexShrink: 1, maxWidth: 320 }} numberOfLines={1}>
+                <Text style={{ fontSize: 12, color: U.plainBtn.fgMuted, flexShrink: 1, maxWidth: 320 }} numberOfLines={1}>
                   {(prof as any).clinic_name}
                 </Text>
-                <Text style={{ fontSize: 12, color: '#D4D4D4' }}>·</Text>
+                <Text style={{ fontSize: 12, color: U.ink[300] }}>·</Text>
               </>
             )}
-            <Text style={{ fontSize: 12, color: '#AFAFAF', flexShrink: 1 }} numberOfLines={1}>{prof.email ?? '—'}</Text>
+            <Text style={{ fontSize: 12, color: U.ink[400], flexShrink: 1 }} numberOfLines={1}>{prof.email ?? '—'}</Text>
           </View>
-          {isLabUser && (() => {
+          )}
+          {isLabUser && !compact && (() => {
             const lvl = ((prof as any).skill_level ?? 'mid') as SkillLevel;
             const lvlOpt = SKILL_LEVEL_OPTIONS.find(o => o.key === lvl);
             const stageCount = (skillsMap.get(prof.id) ?? new Set()).size;
             return (
               <View className="flex-row items-center gap-1.5 mt-0.5">
-                <View style={{ borderRadius: 100, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: `${lvlOpt?.color ?? '#94A3B8'}18` }}>
-                  <Text style={{ fontSize: 10, fontWeight: '600', color: lvlOpt?.color ?? '#94A3B8' }}>{lvlOpt?.label}</Text>
+                <View style={{ borderRadius: 100, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: `${lvlOpt?.color ?? '#94A3B8'}${U.isDark ? '33' : '18'}` }}>
+                  <Text style={{ fontSize: 10, fontWeight: '600', color: lvlOpt?.color ?? U.ink[400] }}>{lvlOpt?.label}</Text>
                 </View>
                 {stageCount > 0 && (
-                  <Text style={{ fontSize: 11, color: '#9A9A9A' }}>{stageCount} stage</Text>
+                  <Text style={{ fontSize: 11, color: U.ink[500] }}>{stageCount} stage</Text>
                 )}
               </View>
             );
@@ -612,8 +663,8 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
             kapattığı yazmıyordu. Etiket + ayraç ile gruplandı. */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           {isSynthetic ? (
-            <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.04)' }}>
-              <Text style={{ fontSize: 10, color: '#9A9A9A' }}>Ekip'ten yönet</Text>
+            <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: U.chipNeutral }}>
+              <Text style={{ fontSize: 10, color: U.ink[500] }}>Ekip'ten yönet</Text>
             </View>
           ) : (
             <>
@@ -621,12 +672,12 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
                 <ActivityIndicator size="small" color={P} />
               ) : (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                  <Text style={{
+                  {!compact && <Text style={{
                     fontSize: 11, fontWeight: '600', minWidth: 34, textAlign: 'end' as any,
-                    color: (prof.is_active ?? true) ? '#2D9A6B' : '#9A9A9A',
+                    color: (prof.is_active ?? true) ? '#2D9A6B' : U.ink[500],
                   }}>
                     {(prof.is_active ?? true) ? 'Aktif' : 'Pasif'}
-                  </Text>
+                  </Text>}
                   <PatternsToggle
                     on={prof.is_active ?? true}
                     onPress={() => handleToggleActive(prof)}
@@ -634,35 +685,41 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
                   />
                 </View>
               )}
-              <View style={{ width: 1, height: 18, backgroundColor: 'rgba(0,0,0,0.08)', marginHorizontal: 4 }} />
+              {!compact && <View style={{ width: 1, height: 18, backgroundColor: U.fieldBorder, marginHorizontal: 4 }} />}
               {/* ✎ ve 🗑 tek kapta: iki ayrı yüzen düğme kopuk duruyordu. */}
               <View style={{
                 flexDirection: 'row', alignItems: 'center',
                 borderRadius: 9, overflow: 'hidden',
-                backgroundColor: 'rgba(0,0,0,0.04)',
+                backgroundColor: U.chipNeutral,
               }}>
                 <Pressable
                   onPress={() => setEditingProfile(prof)}
                   accessibilityLabel="Düzenle"
-                  style={({ pressed, hovered }: any) => ({
-                    width: 28, height: 28, alignItems: 'center', justifyContent: 'center',
-                    backgroundColor: hovered ? 'rgba(0,0,0,0.06)' : 'transparent',
-                    opacity: pressed ? 0.6 : 1,
-                    ...(Platform.OS === 'web' ? { cursor: 'pointer', transitionProperty: 'background-color', transitionDuration: '120ms' } as any : {}),
-                  })}
+                  // Fonksiyon-stilli Pressable native'de stili düşürüyor → düğme
+                  // ölçüsüz kalıp ✎ ile 🗑 üst üste biniyordu. Native'de object stil.
+                  style={Platform.OS === 'web'
+                    ? ((({ pressed, hovered }: any) => ({
+                        width: 28, height: 28, alignItems: 'center' as const, justifyContent: 'center' as const,
+                        backgroundColor: hovered ? U.plainBtn.hoverBg : 'transparent',
+                        opacity: pressed ? 0.6 : 1,
+                        cursor: 'pointer', transitionProperty: 'background-color', transitionDuration: '120ms',
+                      })) as any)
+                    : { width: 32, height: 32, alignItems: 'center' as const, justifyContent: 'center' as const, backgroundColor: 'transparent' }}
                 >
-                  <Pencil size={13} color="#6B6B6B" strokeWidth={1.7} />
+                  <Pencil size={13} color={U.plainBtn.fgMuted} strokeWidth={1.7} />
                 </Pressable>
-                <View style={{ width: 1, height: 16, backgroundColor: 'rgba(0,0,0,0.07)' }} />
+                <View style={{ width: 1, height: 16, backgroundColor: U.hairline }} />
                 <Pressable
                   onPress={() => handleDeleteUser(prof)}
                   accessibilityLabel="Sil"
-                  style={({ pressed, hovered }: any) => ({
-                    width: 28, height: 28, alignItems: 'center', justifyContent: 'center',
-                    backgroundColor: hovered ? 'rgba(220,38,38,0.10)' : 'transparent',
-                    opacity: pressed ? 0.6 : 1,
-                    ...(Platform.OS === 'web' ? { cursor: 'pointer', transitionProperty: 'background-color', transitionDuration: '120ms' } as any : {}),
-                  })}
+                  style={Platform.OS === 'web'
+                    ? ((({ pressed, hovered }: any) => ({
+                        width: 28, height: 28, alignItems: 'center' as const, justifyContent: 'center' as const,
+                        backgroundColor: hovered ? 'rgba(220,38,38,0.10)' : 'transparent',
+                        opacity: pressed ? 0.6 : 1,
+                        cursor: 'pointer', transitionProperty: 'background-color', transitionDuration: '120ms',
+                      })) as any)
+                    : { width: 32, height: 32, alignItems: 'center' as const, justifyContent: 'center' as const, backgroundColor: 'transparent' }}
                 >
                   <Trash2 size={13} color="#DC2626" strokeWidth={1.7} />
                 </Pressable>
@@ -717,8 +774,18 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
   const TYPE_TABS = ALL_TYPE_TABS.filter(t => t.key === 'all' || t.count > 0 || typeFilter === t.key);
   // ^ Boş sekmeler gizlenir (0 kişi olan pozisyonlar), aktif filtre her zaman görünür
 
-  // Pozisyon renk/etiket haritası — lab rollerine göre
-  const LAB_ROLE_BADGE: Record<LabRole, { bg: string; text: string }> = {
+  // Pozisyon renk/etiket haritası — lab rollerine göre.
+  // AVATAR & ROZET KURALI: pastel zemin + koyu metin koyu ekranda beyaz leke gibi
+  // patlar. Koyuda yarı saydam accent zemin (alfa .22-.30) + AÇIK accent metin.
+  const LAB_ROLE_BADGE: Record<LabRole, { bg: string; text: string }> = U.isDark ? {
+    manager:      { bg: `${PFill}3D`,            text: PInk },
+    technician:   { bg: 'rgba(59,130,246,0.26)',  text: '#93C5FD' },
+    accounting:   { bg: 'rgba(5,150,105,0.28)',   text: '#6EE7B7' },
+    courier:      { bg: 'rgba(234,122,76,0.28)',  text: '#F5B78E' },
+    service:      { bg: 'rgba(139,92,246,0.26)',  text: '#C9A9E8' },
+    receptionist: { bg: 'rgba(14,165,233,0.26)',  text: '#7DD3FC' },
+    intern:       { bg: 'rgba(245,158,11,0.26)',  text: '#F0C078' },
+  } : {
     manager:      { bg: `${P}18`,               text: P },
     technician:   { bg: 'rgba(59,130,246,0.12)', text: '#1E4FA3' },
     accounting:   { bg: 'rgba(5,150,105,0.12)',  text: '#065F46' },
@@ -729,21 +796,30 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
   };
 
   const typeBadge = (profile: Profile) => {
+    const D = U.isDark;
     if (profile.user_type === 'admin')
-      return { bg: '#0F172A22', text: '#0F172A', label: 'Admin',  avatarBg: '#0F172A18', avatarText: '#0F172A', roleLabel: 'Admin' };
-    if (profile.user_type === 'doctor')
-      return { bg: '#D1FAE5', text: '#065F46', label: 'Hekim',    avatarBg: '#D1FAE5', avatarText: '#065F46', roleLabel: 'Hekim' };
-    if (profile.user_type === 'clinic_admin')
-      return { bg: 'rgba(107,168,136,0.18)', text: '#3F7458', label: 'Yönetici', avatarBg: 'rgba(107,168,136,0.18)', avatarText: '#3F7458', roleLabel: 'Klinik Yöneticisi' };
-    if ((profile.user_type as string) === 'clinic_secretary')
-      return { bg: 'rgba(124,58,237,0.16)',  text: '#5B21B6', label: 'Sekreter', avatarBg: 'rgba(124,58,237,0.16)', avatarText: '#5B21B6', roleLabel: 'Klinik Sekreteri' };
+      return { bg: D ? 'rgba(255,255,255,0.12)' : '#0F172A22', text: U.ink[900], label: 'Admin',
+               avatarBg: D ? 'rgba(255,255,255,0.12)' : '#0F172A18', avatarText: U.ink[900], roleLabel: 'Admin' };
+    if (profile.user_type === 'doctor') {
+      const bg = D ? 'rgba(5,150,105,0.28)' : '#D1FAE5', tx = D ? '#6EE7B7' : '#065F46';
+      return { bg, text: tx, label: 'Hekim', avatarBg: bg, avatarText: tx, roleLabel: 'Hekim' };
+    }
+    if (profile.user_type === 'clinic_admin') {
+      const bg = D ? 'rgba(107,168,136,0.30)' : 'rgba(107,168,136,0.18)', tx = D ? '#9FD9BB' : '#3F7458';
+      return { bg, text: tx, label: 'Yönetici', avatarBg: bg, avatarText: tx, roleLabel: 'Klinik Yöneticisi' };
+    }
+    if ((profile.user_type as string) === 'clinic_secretary') {
+      const bg = D ? 'rgba(124,58,237,0.28)' : 'rgba(124,58,237,0.16)', tx = D ? '#C9A9E8' : '#5B21B6';
+      return { bg, text: tx, label: 'Sekreter', avatarBg: bg, avatarText: tx, roleLabel: 'Klinik Sekreteri' };
+    }
     if (profile.user_type === 'lab' && profile.role) {
       const r = profile.role as LabRole;
-      const colors = LAB_ROLE_BADGE[r] ?? { bg: 'rgba(0,0,0,0.05)', text: '#6B6B6B' };
+      const colors = LAB_ROLE_BADGE[r] ?? { bg: U.chipTones.neutral.bg, text: U.chipTones.neutral.fg };
       const label  = LAB_ROLE_LABELS[r] ?? r;
       return { ...colors, label, avatarBg: colors.bg, avatarText: colors.text, roleLabel: label };
     }
-    return { bg: '#FEF3C7', text: '#92400E', label: 'Bilinmiyor', avatarBg: `${P}14`, avatarText: P, roleLabel: 'Bilinmeyen' };
+    const ubg = D ? 'rgba(245,158,11,0.26)' : '#FEF3C7', utx = D ? '#F0C078' : '#92400E';
+    return { bg: ubg, text: utx, label: 'Bilinmiyor', avatarBg: D ? `${PFill}3D` : `${P}14`, avatarText: D ? PInk : P, roleLabel: 'Bilinmeyen' };
   };
 
   const selectedProfile = useMemo(
@@ -758,80 +834,101 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
     loadStats(profile.id);
   };
 
+  // Dar ekranda (telefon) üst kontrol satırı taşıyordu: iki açılır menü +
+  // 230px sabit arama + "Yeni Kullanıcı" düğmesi ~375px'e sığmıyor, düğme
+  // kesiliyordu. Arama dar ekranda alt satıra tam-genişlik iner. Geniş ekranda
+  // (tablet/masaüstü) satır içinde 230px kalır — davranış değişmez.
+  const narrowControls = width < 720;
+  const renderSearchBox = (fullWidth: boolean) => (
+    <View
+      style={{
+        flexDirection: 'row', alignItems: 'center', gap: 8,
+        paddingHorizontal: 12, height: 36, borderRadius: 10,
+        ...(fullWidth ? { alignSelf: 'stretch' } : { width: 230 }),
+        backgroundColor: U.surface,
+        borderWidth: 1, borderColor: searchFocused ? PInk : U.fieldBorder,
+        ...(Platform.OS === 'web'
+          ? { boxShadow: searchFocused ? `0 0 0 3px ${P}22` : 'none', transitionProperty: 'border-color, box-shadow', transitionDuration: '130ms' } as any
+          : {}),
+      }}
+    >
+      <Search size={15} color={searchFocused ? PInk : U.ink[400]} strokeWidth={1.7} />
+      <TextInput
+        style={{ flex: 1, fontSize: 13, color: U.ink[900], outlineStyle: 'none' } as any}
+        value={search}
+        onChangeText={setSearch}
+        onFocus={() => setSearchFocused(true)}
+        onBlur={() => setSearchFocused(false)}
+        placeholder="Kullanıcı ara…"
+        placeholderTextColor={U.ink[400]}
+        returnKeyType="search"
+      />
+      {search.length > 0 && (
+        <Pressable onPress={() => setSearch('')} hitSlop={8}>
+          <XCircle size={15} color={U.ink[400]} strokeWidth={1.6} />
+        </Pressable>
+      )}
+    </View>
+  );
+
   return (
     <View className="flex-1">
-      <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 60, maxWidth: 1440, width: '100%', alignSelf: 'center' as const }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: PAGE_PADDING, paddingTop: 8, paddingBottom: 60, maxWidth: 1440, width: '100%', alignSelf: 'center' as const }} showsVerticalScrollIndicator={false}>
 
-        {/* Tabs + search + actions — single row */}
-        <View className="flex-row items-center gap-2 mb-5">
-          {/* Rol + Durum açılır menü.
-              Roller çip olarak dizilince satır zaten sıkışıktı; katalogda 10 rol
-              var ve yenisi eklendikçe taşacaktı. Açılır menü rol sayısından
-              bağımsız sabit genişlik verir; seçili filtre düğmenin üstünde
-              görünür, menüyü açmadan ne süzüldüğü okunur. */}
-          <FilterDropdown
-            label="Rol"
-            value={typeFilter === 'all' ? null : (TYPE_TABS.find(t => t.key === typeFilter)?.label ?? null)}
-            accentColor={P}
-            options={TYPE_TABS.map(t => ({ key: String(t.key), label: t.label, count: t.count }))}
-            selectedKey={String(typeFilter)}
-            onSelect={(k) => setTypeFilter(k as FilterType)}
-          />
-          <FilterDropdown
-            label="Durum"
-            value={statusFilter === 'all' ? null : statusFilter === 'active' ? 'Aktif' : 'Pasif'}
-            accentColor={P}
-            options={[
-              { key: 'all',      label: 'Tümü',  count: profiles.length },
-              { key: 'active',   label: 'Aktif', count: profiles.filter(pp => pp.is_active).length },
-              { key: 'inactive', label: 'Pasif', count: profiles.filter(pp => !pp.is_active).length },
-            ]}
-            selectedKey={statusFilter}
-            onSelect={(k) => setStatusFilter(k as StatusFilter)}
-          />
-
-          <View className="flex-1" />
-
-          {/* Arama — ikon-toggle değil, doğrudan alan: en çok kullanılan kontrol
-              bir tık arkasında duruyordu. */}
-          <View
-            style={{
-              flexDirection: 'row', alignItems: 'center', gap: 8,
-              paddingHorizontal: 12, height: 36, borderRadius: 10, width: 230,
-              backgroundColor: '#FFFFFF',
-              borderWidth: 1, borderColor: searchFocused ? P : 'rgba(0,0,0,0.08)',
-              ...(Platform.OS === 'web'
-                ? { boxShadow: searchFocused ? `0 0 0 3px ${P}22` : 'none', transitionProperty: 'border-color, box-shadow', transitionDuration: '130ms' } as any
-                : {}),
-            }}
-          >
-            <Search size={15} color={searchFocused ? P : '#AEAEB2'} strokeWidth={1.7} />
-            <TextInput
-              style={{ flex: 1, fontSize: 13, color: '#0F172A', outlineStyle: 'none' } as any}
-              value={search}
-              onChangeText={setSearch}
-              onFocus={() => setSearchFocused(true)}
-              onBlur={() => setSearchFocused(false)}
-              placeholder="Kullanıcı ara…"
-              placeholderTextColor="#AEAEB2"
-              returnKeyType="search"
+        {/* Tabs + search + actions.
+            Dar ekranda arama alt satıra tam-genişlik iner (düğme kesilmesin);
+            geniş ekranda tek satır kalır. */}
+        <View style={{ marginBottom: 20, gap: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {/* Rol + Durum açılır menü.
+                Roller çip olarak dizilince satır zaten sıkışıktı; katalogda 10 rol
+                var ve yenisi eklendikçe taşacaktı. Açılır menü rol sayısından
+                bağımsız sabit genişlik verir; seçili filtre düğmenin üstünde
+                görünür, menüyü açmadan ne süzüldüğü okunur. */}
+            <FilterDropdown
+              label="Rol"
+              value={typeFilter === 'all' ? null : (TYPE_TABS.find(t => t.key === typeFilter)?.label ?? null)}
+              accentColor={P}
+              options={TYPE_TABS.map(t => ({ key: String(t.key), label: t.label, count: t.count }))}
+              selectedKey={String(typeFilter)}
+              onSelect={(k) => setTypeFilter(k as FilterType)}
             />
-            {search.length > 0 && (
-              <Pressable onPress={() => setSearch('')}>
-                <XCircle size={15} color="#AEAEB2" strokeWidth={1.6} />
-              </Pressable>
-            )}
+            <FilterDropdown
+              label="Durum"
+              value={statusFilter === 'all' ? null : statusFilter === 'active' ? 'Aktif' : 'Pasif'}
+              accentColor={P}
+              options={[
+                { key: 'all',      label: 'Tümü',  count: profiles.length },
+                { key: 'active',   label: 'Aktif', count: profiles.filter(pp => pp.is_active).length },
+                { key: 'inactive', label: 'Pasif', count: profiles.filter(pp => !pp.is_active).length },
+              ]}
+              selectedKey={statusFilter}
+              onSelect={(k) => setStatusFilter(k as StatusFilter)}
+            />
+
+            <View style={{ flex: 1 }} />
+
+            {/* Arama — geniş ekranda burada (230px); dar ekranda aşağı iner. */}
+            {!narrowControls && renderSearchBox(false)}
+
+            {/* Add user button — dar ekranda kısa etiket, kesilmez. */}
+            <Pressable
+              onPress={() => setShowAddModal(true)}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0,
+                paddingHorizontal: 14, height: 36, borderRadius: 12, backgroundColor: P,
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              }}
+            >
+              <UserPlus size={14} color="#FFFFFF" strokeWidth={2} />
+              <Text style={{ fontSize: 12, fontWeight: '600', color: '#FFFFFF' }}>
+                {narrowControls ? 'Yeni' : 'Yeni Kullanıcı'}
+              </Text>
+            </Pressable>
           </View>
 
-          {/* Add user button */}
-          <Pressable
-            onPress={() => setShowAddModal(true)}
-            className="flex-row items-center gap-1.5 px-3.5 py-2 rounded-xl"
-            style={{ backgroundColor: P }}
-          >
-            <UserPlus size={14} color="#FFFFFF" strokeWidth={2} />
-            <Text style={{ fontSize: 12, fontWeight: '600', color: '#FFFFFF' }}>Yeni Kullanıcı</Text>
-          </Pressable>
+          {/* Dar ekran: arama kendi satırında, tam genişlik. */}
+          {narrowControls && renderSearchBox(true)}
         </View>
 
         {/* Grid: list + detail */}
@@ -842,11 +939,11 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
               <ActivityIndicator size="large" color={P} style={{ marginTop: 60 }} />
             ) : filtered.length === 0 ? (
               <View style={{ alignItems: 'center', paddingTop: 64, gap: 10 }}>
-                <UserX size={40} color="#AEAEB2" strokeWidth={1.4} />
-                <Text style={{ fontSize: 16, fontWeight: '700', color: '#0F172A' }}>
+                <UserX size={40} color={U.ink[400]} strokeWidth={1.4} />
+                <Text style={{ fontSize: 16, fontWeight: '700', color: U.ink[900] }}>
                   {q ? 'Sonuç bulunamadı' : 'Kullanıcı bulunamadı'}
                 </Text>
-                {!!q && <Text style={{ fontSize: 13, color: '#AEAEB2' }}>&#34;{q}&#34; ile eşleşen kullanıcı yok</Text>}
+                {!!q && <Text style={{ fontSize: 13, color: U.ink[400] }}>&#34;{q}&#34; ile eşleşen kullanıcı yok</Text>}
               </View>
             ) : isClinicView ? (
               <View style={{ gap: 18 }}>
@@ -859,25 +956,25 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
                       {/* Klinik başlığı */}
                       <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingHorizontal: 4, gap: 12, flexWrap: 'wrap' }}>
                         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, flexShrink: 1 }}>
-                          <Text style={{ fontSize: 18, fontWeight: '700', color: '#0A0A0A', letterSpacing: -0.3 }} numberOfLines={1}>
+                          <Text style={{ fontSize: 18, fontWeight: '700', color: U.ink[900], letterSpacing: -0.3 }} numberOfLines={1}>
                             {group.clinicName}
                           </Text>
-                          <Text style={{ fontSize: 12, color: '#9A9A9A' }}>{group.members.length} kişi</Text>
+                          <Text style={{ fontSize: 12, color: U.ink[500] }}>{group.members.length} kişi</Text>
                         </View>
                         <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
                           {adminCount > 0 && (
-                            <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: 'rgba(107,168,136,0.14)' }}>
-                              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.4, color: '#3F7458' }}>{adminCount} YÖNETİCİ</Text>
+                            <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: U.isDark ? 'rgba(107,168,136,0.28)' : 'rgba(107,168,136,0.14)' }}>
+                              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.4, color: U.isDark ? '#9FD9BB' : '#3F7458' }}>{adminCount} YÖNETİCİ</Text>
                             </View>
                           )}
                           {secCount > 0 && (
-                            <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: 'rgba(124,58,237,0.14)' }}>
-                              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.4, color: '#5B21B6' }}>{secCount} SEKRETER</Text>
+                            <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: U.isDark ? 'rgba(124,58,237,0.28)' : 'rgba(124,58,237,0.14)' }}>
+                              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.4, color: U.isDark ? '#C9A9E8' : '#5B21B6' }}>{secCount} SEKRETER</Text>
                             </View>
                           )}
                           {docCount > 0 && (
-                            <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: 'rgba(14,165,233,0.14)' }}>
-                              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.4, color: '#0369A1' }}>{docCount} HEKİM</Text>
+                            <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: U.isDark ? 'rgba(14,165,233,0.26)' : 'rgba(14,165,233,0.14)' }}>
+                              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.4, color: U.isDark ? '#7DD3FC' : '#0369A1' }}>{docCount} HEKİM</Text>
                             </View>
                           )}
                         </View>
@@ -917,12 +1014,12 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
 
       {/* Filter modal */}
       <Modal visible={showFilter} transparent animationType="fade" onRequestClose={() => setShowFilter(false)}>
-        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', alignItems: 'flex-end', paddingTop: 70, paddingEnd: 24 }} onPress={() => setShowFilter(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: U.scrim, alignItems: 'flex-end', paddingTop: 70, paddingEnd: 24 }} onPress={() => setShowFilter(false)}>
           <View
             onStartShouldSetResponder={() => true}
             style={{
               width: 300,
-              backgroundColor: '#FFFFFF',
+              backgroundColor: U.surface,
               borderRadius: 20,
               overflow: 'hidden',
               ...CARD_SHADOW,
@@ -930,8 +1027,8 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
           >
             <View className="flex-row items-center justify-between px-4 py-3.5">
               <View className="flex-row items-center gap-2">
-                <SlidersHorizontal size={16} color={P} strokeWidth={1.8} />
-                <Text style={{ fontSize: 15, fontWeight: '700', color: '#0F172A' }}>Filtrele</Text>
+                <SlidersHorizontal size={16} color={PInk} strokeWidth={1.8} />
+                <Text style={{ fontSize: 15, fontWeight: '700', color: U.ink[900] }}>Filtrele</Text>
                 {activeFilterCount > 0 && (
                   <View style={{ backgroundColor: P, borderRadius: 10, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 }}>
                     <Text style={{ fontSize: 10, fontWeight: '800', color: '#FFFFFF' }}>{activeFilterCount}</Text>
@@ -939,12 +1036,12 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
                 )}
               </View>
               <Pressable onPress={() => { setDraftStatus('all'); }}>
-                <Text style={{ fontSize: 13, fontWeight: '500', color: '#94A3B8' }}>Temizle</Text>
+                <Text style={{ fontSize: 13, fontWeight: '500', color: U.ink[400] }}>Temizle</Text>
               </Pressable>
             </View>
-            <View className="h-px bg-[#F1F5F9]" />
+            <View style={{ height: 1, backgroundColor: U.ink[100] }} />
             <View className="px-4 py-3.5">
-              <Text style={{ fontSize: 11, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 10 }}>DURUM</Text>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: U.ink[400], letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 10 }}>DURUM</Text>
               <View className="flex-row gap-2 flex-wrap">
                 {([['all','Tümü'],['active','Aktif'],['inactive','Pasif']] as [StatusFilter,string][]).map(([val,lbl]) => (
                   <Pressable
@@ -954,23 +1051,23 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
                       flexDirection: 'row', alignItems: 'center',
                       paddingHorizontal: 12, paddingVertical: 7,
                       borderRadius: 8, borderWidth: 1.5,
-                      borderColor: draftStatus === val ? P : '#F1F5F9',
-                      backgroundColor: draftStatus === val ? '#EFF6FF' : '#FAFAFA',
+                      borderColor: draftStatus === val ? PInk : U.ink[100],
+                      backgroundColor: draftStatus === val ? (U.isDark ? `${PFill}33` : '#EFF6FF') : U.surfaceSoft,
                     }}
                   >
-                    <Text style={{ fontSize: 13, fontWeight: draftStatus === val ? '600' : '500', color: draftStatus === val ? P : '#94A3B8' }}>{lbl}</Text>
+                    <Text style={{ fontSize: 13, fontWeight: draftStatus === val ? '600' : '500', color: draftStatus === val ? PInk : U.ink[400] }}>{lbl}</Text>
                   </Pressable>
                 ))}
               </View>
             </View>
-            <View className="h-px bg-[#F1F5F9]" />
+            <View style={{ height: 1, backgroundColor: U.ink[100] }} />
             <View className="flex-row gap-2 px-4 py-3.5">
               <Pressable
                 onPress={() => setShowFilter(false)}
                 className="flex-1 py-2.5 rounded-[10px] items-center justify-center"
-                style={{ borderWidth: 1.5, borderColor: '#F1F5F9' }}
+                style={{ borderWidth: 1.5, borderColor: U.ink[100] }}
               >
-                <Text style={{ fontSize: 14, fontWeight: '600', color: '#6C6C70' }}>İptal</Text>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[500] }}>İptal</Text>
               </Pressable>
               <Pressable
                 onPress={() => { setStatusFilter(draftStatus); setShowFilter(false); }}
@@ -1023,18 +1120,21 @@ function DetailPanel({
   primary: string;
   onClose: () => void;
 }) {
+  const U = useInkUI();
+  const { ink: pInk } = useAccentTones(primary);
   const productivity = stats && stats.total > 0
     ? Math.round(((stats.total - stats.active) / stats.total) * 100)
     : null;
 
   return (
     <View
-      className="bg-white rounded-[24px] overflow-hidden"
+      className="rounded-[24px] overflow-hidden"
       style={{
+        backgroundColor: U.surface,
         borderWidth: 1,
-        borderColor: '#F1F5F9',
+        borderColor: U.ink[100],
         ...Platform.select({
-          web: { boxShadow: '0 16px 40px rgba(0,0,0,0.06)' },
+          web: { boxShadow: U.isDark ? '0 16px 40px rgba(0,0,0,0.5)' : '0 16px 40px rgba(0,0,0,0.06)' },
           default: { shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 3 },
         }),
       } as any}
@@ -1043,19 +1143,19 @@ function DetailPanel({
       <Pressable
         onPress={onClose}
         className="absolute top-3 end-3 z-10 w-7 h-7 rounded-lg items-center justify-center"
-        style={{ backgroundColor: '#F1F5F9' }}
+        style={{ backgroundColor: U.ink[100] }}
       >
-        <X size={14} color="#64748B" strokeWidth={2} />
+        <X size={14} color={U.ink[500]} strokeWidth={2} />
       </Pressable>
 
       {/* Hero */}
-      <View className="items-center py-7 px-7 pb-5" style={{ borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
+      <View className="items-center py-7 px-7 pb-5" style={{ borderBottomWidth: 1, borderBottomColor: U.ink[100] }}>
         <View style={{ width: 96, height: 96, alignItems: 'center', justifyContent: 'center', marginBottom: 14, position: 'relative' }}>
           <View style={{ position: 'absolute', inset: 0, borderRadius: 48, opacity: 0.22, backgroundColor: primary, ...Platform.select({ web: { filter: 'blur(20px)' }, default: {} }) } as any} />
           <View
             style={{
               width: 88, height: 88, borderRadius: 44, alignItems: 'center', justifyContent: 'center',
-              overflow: 'hidden', borderWidth: 4, borderColor: '#FFFFFF', backgroundColor: badge.avatarBg,
+              overflow: 'hidden', borderWidth: 4, borderColor: U.surface, backgroundColor: badge.avatarBg,
               ...Platform.select({
                 web: { boxShadow: `0 8px 24px ${primary}26` },
                 default: { shadowColor: primary, shadowOpacity: 0.15, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
@@ -1067,38 +1167,38 @@ function DetailPanel({
               : <Text style={{ fontSize: 28, fontWeight: '800', color: badge.avatarText }}>{initials(profile.full_name)}</Text>}
           </View>
         </View>
-        <Text style={{ ...DISPLAY, fontSize: 22, fontWeight: '800', color: '#0A0A0A', letterSpacing: -0.5, marginBottom: 2 }}>{profile.full_name}</Text>
-        <Text style={{ fontSize: 12, fontWeight: '700', letterSpacing: 1.0, marginBottom: 6, color: primary }}>{badge.roleLabel.toUpperCase()}</Text>
-        <Text style={{ fontSize: 12, color: '#94A3B8', fontWeight: '500' }}>Katılım: {fmtDate(profile.created_at)}</Text>
+        <Text style={{ ...DISPLAY, fontSize: 22, fontWeight: '800', color: U.ink[900], letterSpacing: -0.5, marginBottom: 2 }}>{profile.full_name}</Text>
+        <Text style={{ fontSize: 12, fontWeight: '700', letterSpacing: 1.0, marginBottom: 6, color: pInk }}>{badge.roleLabel.toUpperCase()}</Text>
+        <Text style={{ fontSize: 12, color: U.ink[400], fontWeight: '500' }}>Katılım: {fmtDate(profile.created_at)}</Text>
       </View>
 
       {/* Metric grid */}
       <View className="flex-row flex-wrap gap-2.5 p-5">
-        <MetricCell label="Toplam İş" value={loading ? '…' : (stats?.total ?? 0).toString()} icon="flask-outline" tint={primary} />
-        <MetricCell label="Tamamlanma" value={loading ? '…' : productivity !== null ? `${productivity}%` : '—'} icon="chart-line" tint={primary} accent />
+        <MetricCell label="Toplam İş" value={loading ? '…' : (stats?.total ?? 0).toString()} icon="flask-outline" tint={pInk} />
+        <MetricCell label="Tamamlanma" value={loading ? '…' : productivity !== null ? `${productivity}%` : '—'} icon="chart-line" tint={pInk} accent />
         <MetricCell label="Geciken" value={loading ? '…' : (stats?.overdue ?? 0).toString()} icon="alert-outline" tint="#DC2626" />
-        <MetricCell label="Aktif" value={loading ? '…' : (stats?.active ?? 0).toString()} icon="progress-clock" tint="#64748B" />
+        <MetricCell label="Aktif" value={loading ? '…' : (stats?.active ?? 0).toString()} icon="progress-clock" tint={U.ink[500]} />
       </View>
 
       {/* Active orders list */}
       <View className="px-5 pb-5">
-        <Text style={{ fontSize: 10, fontWeight: '800', color: '#64748B', letterSpacing: 0.8, marginBottom: 12 }}>AKTİF İŞLER</Text>
+        <Text style={{ fontSize: 10, fontWeight: '800', color: U.ink[500], letterSpacing: 0.8, marginBottom: 12 }}>AKTİF İŞLER</Text>
         {loading ? (
           <ActivityIndicator size="small" color={primary} style={{ marginTop: 8 }} />
         ) : !stats?.activeOrders?.length ? (
-          <Text style={{ fontSize: 13, color: '#94A3B8', paddingVertical: 6 }}>Aktif iş yok</Text>
+          <Text style={{ fontSize: 13, color: U.ink[400], paddingVertical: 6 }}>Aktif iş yok</Text>
         ) : (
           <View style={{ gap: 8 }}>
             {stats.activeOrders.map(o => (
-              <View key={o.id} className="flex-row items-center gap-2.5 rounded-[10px] p-3" style={{ backgroundColor: '#F1F5F9' }}>
-                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: o.overdue ? '#DC2626' : primary }} />
+              <View key={o.id} className="flex-row items-center gap-2.5 rounded-[10px] p-3" style={{ backgroundColor: U.surfaceSoft, borderWidth: U.isDark ? 1 : 0, borderColor: U.hairline }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: o.overdue ? '#DC2626' : pInk }} />
                 <View className="flex-1">
-                  <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A', textAlign: isRTL() ? 'right' : undefined }}>{o.order_number}</Text>
-                  <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }} numberOfLines={1}>{o.item}</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: U.ink[900], textAlign: isRTL() ? 'right' : undefined }}>{o.order_number}</Text>
+                  <Text style={{ fontSize: 11, color: U.ink[500], marginTop: 2 }} numberOfLines={1}>{o.item}</Text>
                 </View>
                 {isRTL()
-                  ? <ChevronLeft size={14} color="#CBD5E1" strokeWidth={1.8} />
-                  : <ChevronRight size={14} color="#CBD5E1" strokeWidth={1.8} />}
+                  ? <ChevronLeft size={14} color={U.ink[300]} strokeWidth={1.8} />
+                  : <ChevronRight size={14} color={U.ink[300]} strokeWidth={1.8} />}
               </View>
             ))}
           </View>
@@ -1111,11 +1211,12 @@ function DetailPanel({
 function MetricCell({ label, value, icon, tint, accent }: {
   label: string; value: string; icon: string; tint: string; accent?: boolean;
 }) {
+  const U = useInkUI();
   return (
     <View
       style={{
         flexGrow: 1, flexBasis: '45%', minWidth: 120,
-        backgroundColor: '#F8FAFC', borderRadius: 14,
+        backgroundColor: U.surfaceSoft, borderRadius: 14,
         padding: 14, paddingEnd: 16, height: 92,
         justifyContent: 'space-between', position: 'relative', overflow: 'hidden',
       }}
@@ -1123,8 +1224,8 @@ function MetricCell({ label, value, icon, tint, accent }: {
       <View style={{ position: 'absolute', top: -10, end: -10 }}>
         <MetricIcon name={icon} size={64} color={tint} style={{ opacity: 0.1 }} />
       </View>
-      <Text style={{ fontSize: 10, fontWeight: '800', color: '#64748B', letterSpacing: 0.5, textTransform: 'uppercase' }}>{label}</Text>
-      <Text style={{ fontSize: 22, fontWeight: '800', color: accent ? tint : '#0F172A', letterSpacing: -0.5 }}>{value}</Text>
+      <Text style={{ fontSize: 10, fontWeight: '800', color: U.ink[500], letterSpacing: 0.5, textTransform: 'uppercase' }}>{label}</Text>
+      <Text style={{ fontSize: 22, fontWeight: '800', color: accent ? tint : U.ink[900], letterSpacing: -0.5 }}>{value}</Text>
     </View>
   );
 }
@@ -1142,7 +1243,9 @@ function EditUserModal({
   accentColor: string;
   onToggleType: (userId: string, type: string) => void;
 }) {
+  const U = useInkUI();
   const P = accentColor;
+  const { ink: PInk } = useAccentTones(P);
   const [fullName,    setFullName]    = useState('');
   const [email,       setEmail]       = useState('');
   const [phone,       setPhone]       = useState('');
@@ -1252,13 +1355,13 @@ function EditUserModal({
 
   const INPUT_STYLE = {
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
+    borderColor: U.fieldBorder,
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 11,
     fontSize: 14,
-    color: '#0F172A',
-    backgroundColor: '#FFFFFF',
+    color: U.ink[900],
+    backgroundColor: U.surface,
     marginBottom: 14,
     height: 44,
     outlineStyle: 'none',
@@ -1266,11 +1369,13 @@ function EditUserModal({
 
   return (
     <Modal visible={!!profile} transparent animationType="fade" onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: U.scrim, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
         <View
-          className="bg-white rounded-[20px] w-full overflow-hidden"
+          className="rounded-[20px] w-full overflow-hidden"
           style={{
             maxWidth: 520, maxHeight: '92%',
+            backgroundColor: U.surface,
+            ...(U.isDark ? { borderWidth: 1, borderColor: U.hairline } : {}),
             ...Platform.select({
               web: { boxShadow: '0 20px 60px rgba(0,0,0,0.15)' },
               default: { shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.15, shadowRadius: 48, elevation: 10 },
@@ -1278,43 +1383,43 @@ function EditUserModal({
           } as any}
         >
           {/* Header */}
-          <View className="flex-row justify-between items-center px-6 pt-5 pb-4" style={{ borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
+          <View className="flex-row justify-between items-center px-6 pt-5 pb-4" style={{ borderBottomWidth: 1, borderBottomColor: U.ink[100] }}>
             <View>
-              <Text style={{ fontSize: 18, fontWeight: '700', color: '#0F172A' }}>Kullanıcıyı Düzenle</Text>
+              <Text style={{ fontSize: 18, fontWeight: '700', color: U.ink[900] }}>Kullanıcıyı Düzenle</Text>
               {profile && (
-                <Text style={{ fontSize: 12, color: '#94A3B8', marginTop: 2 }}>
+                <Text style={{ fontSize: 12, color: U.ink[400], marginTop: 2 }}>
                   {profile.user_type === 'doctor' ? 'Hekim' : 'Lab Personeli'}
                 </Text>
               )}
             </View>
             <Pressable onPress={onClose} className="w-8 h-8 rounded-lg items-center justify-center" style={{ backgroundColor: `${P}14` }}>
-              <X size={16} color={P} strokeWidth={2} />
+              <X size={16} color={PInk} strokeWidth={2} />
             </Pressable>
           </View>
 
           {/* Body */}
           <ScrollView showsVerticalScrollIndicator={false} style={{ padding: 20 }}>
-            <Text style={{ fontSize: 11, fontWeight: '600', color: '#64748B', letterSpacing: 0.5, marginBottom: 10, marginTop: 4 }}>Kişisel Bilgiler</Text>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: U.ink[500], letterSpacing: 0.5, marginBottom: 10, marginTop: 4 }}>Kişisel Bilgiler</Text>
 
-            <Text style={{ fontSize: 11, fontWeight: '500', color: '#64748B', marginBottom: 7, letterSpacing: 0.5 }}>Ad Soyad *</Text>
+            <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>Ad Soyad *</Text>
             <TextInput style={INPUT_STYLE} value={fullName} onChangeText={setFullName}
-              placeholder="Örn: Ahmet Yılmaz" placeholderTextColor="#AEAEB2" />
+              placeholder="Örn: Ahmet Yılmaz" placeholderTextColor={U.ink[400]} />
 
-            <Text style={{ fontSize: 11, fontWeight: '500', color: '#64748B', marginBottom: 7, letterSpacing: 0.5 }}>Telefon</Text>
+            <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>Telefon</Text>
             <TextInput style={INPUT_STYLE} value={phone} onChangeText={setPhone}
-              placeholder="0555 000 00 00" placeholderTextColor="#AEAEB2" keyboardType="phone-pad" />
+              placeholder="0555 000 00 00" placeholderTextColor={U.ink[400]} keyboardType="phone-pad" />
 
             {isDoctorUser && (
               <>
-                <Text style={{ fontSize: 11, fontWeight: '500', color: '#64748B', marginBottom: 7, letterSpacing: 0.5 }}>Klinik Adı</Text>
+                <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>Klinik Adı</Text>
                 <TextInput style={INPUT_STYLE} value={clinicName} onChangeText={setClinicName}
-                  placeholder="Örn: Sağlık Kliniği" placeholderTextColor="#AEAEB2" />
+                  placeholder="Örn: Sağlık Kliniği" placeholderTextColor={U.ink[400]} />
               </>
             )}
 
             {isLabUser && (
               <>
-                <Text style={{ fontSize: 11, fontWeight: '600', color: '#64748B', letterSpacing: 0.5, marginBottom: 10, marginTop: 4 }}>Rol</Text>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: U.ink[500], letterSpacing: 0.5, marginBottom: 10, marginTop: 4 }}>Rol</Text>
                 <View className="flex-row gap-2 mb-5">
                   {(['manager', 'technician'] as const).map((r) => {
                     const active = role === r;
@@ -1326,21 +1431,21 @@ function EditUserModal({
                         className="flex-1 rounded-[14px] p-3 items-center gap-1"
                         style={{
                           borderWidth: 1.5,
-                          borderColor: active ? P : '#E5E7EB',
-                          backgroundColor: active ? P : '#FAFAFA',
+                          borderColor: active ? P : U.plainBtn.border,
+                          backgroundColor: active ? P : U.plainBtn.bg,
                         }}
                       >
                         {r === 'manager'
-                          ? <UserCircle size={20} color={active ? '#FFF' : '#374151'} strokeWidth={1.6} />
-                          : <Wrench size={20} color={active ? '#FFF' : '#374151'} strokeWidth={1.6} />}
-                        <Text style={{ fontSize: 12, fontWeight: '700', color: active ? '#FFFFFF' : '#374151', textAlign: 'center' }}>{label}</Text>
+                          ? <UserCircle size={20} color={active ? '#FFF' : U.ink[700]} strokeWidth={1.6} />
+                          : <Wrench size={20} color={active ? '#FFF' : U.ink[700]} strokeWidth={1.6} />}
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: active ? '#FFFFFF' : U.ink[700], textAlign: 'center' }}>{label}</Text>
                       </Pressable>
                     );
                   })}
                 </View>
 
                 {/* Seviye */}
-                <Text style={{ fontSize: 11, fontWeight: '600', color: '#64748B', letterSpacing: 0.5, marginBottom: 8, marginTop: 4 }}>Seviye</Text>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: U.ink[500], letterSpacing: 0.5, marginBottom: 8, marginTop: 4 }}>Seviye</Text>
                 <View className="flex-row gap-2 mb-4">
                   {SKILL_LEVEL_OPTIONS.map(opt => {
                     const active = skillLevel === opt.key;
@@ -1351,19 +1456,19 @@ function EditUserModal({
                         className="flex-1 py-2 rounded-xl items-center"
                         style={{
                           borderWidth: 1,
-                          borderColor: active ? opt.color : 'rgba(0,0,0,0.08)',
-                          backgroundColor: active ? opt.color : '#FFFFFF',
+                          borderColor: active ? opt.color : U.plainBtn.border,
+                          backgroundColor: active ? opt.color : U.plainBtn.bg,
                         }}
                       >
-                        <Text style={{ fontSize: 12, fontWeight: '600', color: active ? '#FFFFFF' : '#6B6B6B' }}>{opt.label}</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: active ? '#FFFFFF' : U.plainBtn.fgMuted }}>{opt.label}</Text>
                       </Pressable>
                     );
                   })}
                 </View>
 
                 {/* Stage Yetkileri */}
-                <Text style={{ fontSize: 11, fontWeight: '600', color: '#64748B', letterSpacing: 0.5, marginBottom: 6, marginTop: 4 }}>Stage Yetkileri</Text>
-                <Text style={{ fontSize: 11, color: '#9A9A9A', marginBottom: 8 }}>Hangi aşamayı yapabilir?</Text>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: U.ink[500], letterSpacing: 0.5, marginBottom: 6, marginTop: 4 }}>Stage Yetkileri</Text>
+                <Text style={{ fontSize: 11, color: U.ink[500], marginBottom: 8 }}>Hangi aşamayı yapabilir?</Text>
                 <View className="flex-row flex-wrap gap-1.5 mb-4">
                   {SKILL_STAGES.map(st => {
                     const has = skills.has(st);
@@ -1383,12 +1488,12 @@ function EditUserModal({
                           flexDirection: 'row', alignItems: 'center', gap: 4,
                           paddingHorizontal: 10, paddingVertical: 6,
                           borderRadius: 999,
-                          borderWidth: 1, borderColor: has ? color : 'rgba(0,0,0,0.08)',
-                          backgroundColor: has ? color : '#FFFFFF',
+                          borderWidth: 1, borderColor: has ? color : U.plainBtn.border,
+                          backgroundColor: has ? color : U.plainBtn.bg,
                         }}
                       >
                         {has && <Check size={11} color="#FFFFFF" strokeWidth={3} />}
-                        <Text style={{ fontSize: 11, fontWeight: '600', color: has ? '#FFFFFF' : '#6B6B6B' }}>
+                        <Text style={{ fontSize: 11, fontWeight: '600', color: has ? '#FFFFFF' : U.plainBtn.fgMuted }}>
                           {STAGE_LABEL[st]}
                         </Text>
                       </Pressable>
@@ -1397,7 +1502,7 @@ function EditUserModal({
                 </View>
 
                 {/* Vaka Türleri */}
-                <Text style={{ fontSize: 11, fontWeight: '600', color: '#64748B', letterSpacing: 0.5, marginBottom: 6, marginTop: 4 }}>Vaka Türleri</Text>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: U.ink[500], letterSpacing: 0.5, marginBottom: 6, marginTop: 4 }}>Vaka Türleri</Text>
                 <View className="flex-row flex-wrap gap-1.5 mb-4">
                   {CASE_TYPE_OPTIONS.map(t => {
                     const currentAllowed = (profile as any)?.allowed_types as string[] | null;
@@ -1412,52 +1517,52 @@ function EditUserModal({
                         style={{
                           paddingHorizontal: 10, paddingVertical: 6,
                           borderRadius: 999,
-                          borderWidth: 1, borderColor: has ? '#0A0A0A' : 'rgba(0,0,0,0.08)',
-                          backgroundColor: has ? '#0A0A0A' : '#FFFFFF',
+                          borderWidth: 1, borderColor: has ? U.ink[900] : U.plainBtn.border,
+                          backgroundColor: has ? U.ink[900] : U.plainBtn.bg,
                         }}
                       >
-                        <Text style={{ fontSize: 11, fontWeight: '600', color: has ? '#FFFFFF' : '#6B6B6B' }}>{t}</Text>
+                        <Text style={{ fontSize: 11, fontWeight: '600', color: has ? U.onDarkPill : U.plainBtn.fgMuted }}>{t}</Text>
                       </Pressable>
                     );
                   })}
                 </View>
 
                 {/* Saat Ücreti */}
-                <Text style={{ fontSize: 11, fontWeight: '500', color: '#64748B', marginBottom: 7, letterSpacing: 0.5 }}>Aylık Maaş (₺)</Text>
+                <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>Aylık Maaş (₺)</Text>
                 <TextInput style={INPUT_STYLE} value={salary} onChangeText={setSalary}
-                  placeholder="0" placeholderTextColor="#AEAEB2" keyboardType="numeric" />
+                  placeholder="0" placeholderTextColor={U.ink[400]} keyboardType="numeric" />
               </>
             )}
 
-            <Text style={{ fontSize: 11, fontWeight: '600', color: '#64748B', letterSpacing: 0.5, marginBottom: 10, marginTop: 4 }}>Hesap & Güvenlik</Text>
-            <Text style={{ fontSize: 11, fontWeight: '500', color: '#64748B', marginBottom: 7, letterSpacing: 0.5 }}>E-posta *</Text>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: U.ink[500], letterSpacing: 0.5, marginBottom: 10, marginTop: 4 }}>Hesap & Güvenlik</Text>
+            <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>E-posta *</Text>
             <TextInput style={INPUT_STYLE} value={email} onChangeText={setEmail}
-              placeholder="kullanici@ornek.com" placeholderTextColor="#AEAEB2"
+              placeholder="kullanici@ornek.com" placeholderTextColor={U.ink[400]}
               keyboardType="email-address" autoCapitalize="none" />
 
-            <Text style={{ fontSize: 11, fontWeight: '500', color: '#64748B', marginBottom: 7, letterSpacing: 0.5 }}>Yeni Şifre</Text>
+            <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>Yeni Şifre</Text>
             <View className="flex-row items-center gap-2 mb-1">
               <TextInput style={{ ...INPUT_STYLE, flex: 1, marginBottom: 0 }} value={newPassword} onChangeText={setNewPassword}
-                placeholder="Boş bırakılırsa değişmez" placeholderTextColor="#AEAEB2" secureTextEntry={!showPass} />
-              <Pressable onPress={() => setShowPass(v => !v)} style={{ padding: 11, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', borderRadius: 14, backgroundColor: '#FAFAFA' }}>
-                {showPass ? <EyeOff size={18} color="#AEAEB2" strokeWidth={1.6} /> : <Eye size={18} color="#AEAEB2" strokeWidth={1.6} />}
+                placeholder="Boş bırakılırsa değişmez" placeholderTextColor={U.ink[400]} secureTextEntry={!showPass} />
+              <Pressable onPress={() => setShowPass(v => !v)} style={{ padding: 11, borderWidth: 1, borderColor: U.fieldBorder, borderRadius: 14, backgroundColor: U.surfaceSoft }}>
+                {showPass ? <EyeOff size={18} color={U.ink[400]} strokeWidth={1.6} /> : <Eye size={18} color={U.ink[400]} strokeWidth={1.6} />}
               </Pressable>
             </View>
-            <Text style={{ fontSize: 11, color: '#AEAEB2', marginBottom: 14, marginTop: 2 }}>En az 6 karakter. Boş bırakılırsa şifre değişmez.</Text>
+            <Text style={{ fontSize: 11, color: U.ink[400], marginBottom: 14, marginTop: 2 }}>En az 6 karakter. Boş bırakılırsa şifre değişmez.</Text>
 
             <View
               className="flex-row items-center gap-3 rounded-[14px] p-3.5 mb-4"
-              style={{ backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', marginTop: 16 }}
+              style={{ backgroundColor: U.surfaceSoft, borderWidth: 1, borderColor: U.fieldBorder, marginTop: 16 }}
             >
               <View className="flex-1">
-                <Text style={{ fontSize: 14, fontWeight: '600', color: '#0F172A', marginBottom: 2 }}>Hesap Aktif</Text>
-                <Text style={{ fontSize: 12, color: '#9CA3AF' }}>{isActive ? 'Kullanıcı giriş yapabilir' : 'Kullanıcı giriş yapamaz'}</Text>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900], marginBottom: 2 }}>Hesap Aktif</Text>
+                <Text style={{ fontSize: 12, color: U.ink[400] }}>{isActive ? 'Kullanıcı giriş yapabilir' : 'Kullanıcı giriş yapamaz'}</Text>
               </View>
               <PatternsToggle on={isActive} onPress={() => setIsActive(v => !v)} accentColor={P} />
             </View>
 
             {error ? (
-              <View className="flex-row items-center gap-1.5 rounded-lg p-2.5 mb-3" style={{ backgroundColor: '#FEF2F2' }}>
+              <View className="flex-row items-center gap-1.5 rounded-lg p-2.5 mb-3" style={{ backgroundColor: U.chipTones.danger.bg }}>
                 <AlertCircle size={14} color={ERR} strokeWidth={1.8} />
                 <Text style={{ fontSize: 13, color: ERR, flex: 1 }}>{error}</Text>
               </View>
@@ -1465,9 +1570,9 @@ function EditUserModal({
           </ScrollView>
 
           {/* Footer */}
-          <View className="flex-row gap-2.5 p-4" style={{ borderTopWidth: 1, borderTopColor: '#F3F4F6' }}>
-            <Pressable onPress={onClose} className="flex-1 py-3 rounded-[14px] items-center" style={{ borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' }}>
-              <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151' }}>İptal</Text>
+          <View className="flex-row gap-2.5 p-4" style={{ borderTopWidth: 1, borderTopColor: U.ink[100] }}>
+            <Pressable onPress={onClose} className="flex-1 py-3 rounded-[14px] items-center" style={{ borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[700] }}>İptal</Text>
             </Pressable>
             <Pressable
               onPress={handleSave}
@@ -1518,7 +1623,9 @@ export function AddUserModal({
   visible: boolean; onClose: () => void; onSuccess: () => void;
   accentColor: string; panelBg?: string; labOnly?: boolean;
 }) {
+  const U = useInkUI();
   const P = accentColor;
+  const { ink: PInk } = useAccentTones(P);
   // Panel arka plan rengi — verilmezse accent'in çok hafif tonu kullanılır
   const BG = panelBg ?? P + '0A';
   const [fullName,    setFullName]    = useState('');
@@ -1651,13 +1758,13 @@ export function AddUserModal({
   // Field label: fontSize 12, fontWeight 500, ink[800]
   // Input:       height 44, borderRadius 14, border 1px rgba(0,0,0,0.08), white bg
   // Section:     fontSize 11, fw 600, ls 0.7, uppercase, ink[500]
-  const FL  = { fontSize: 10, fontWeight: '600' as const, letterSpacing: 0.7, textTransform: 'uppercase' as const, color: '#1A1A1A', marginBottom: 6 };
+  const FL  = { fontSize: 10, fontWeight: '600' as const, letterSpacing: 0.7, textTransform: 'uppercase' as const, color: U.ink[800], marginBottom: 6 };
   const SL  = { fontSize: 11, fontWeight: '600' as const, letterSpacing: 0.7,
-                textTransform: 'uppercase' as const, color: '#6B6B6B', marginBottom: 12, marginTop: 20 };
+                textTransform: 'uppercase' as const, color: U.ink[500], marginBottom: 12, marginTop: 20 };
   const INP = {
     height: 44, borderRadius: 14, borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)', paddingHorizontal: 14,
-    fontSize: 14, color: '#0A0A0A', backgroundColor: '#FFFFFF',
+    borderColor: U.fieldBorder, paddingHorizontal: 14,
+    fontSize: 14, color: U.ink[900], backgroundColor: U.isDark ? U.surfaceSoft : '#FFFFFF',
     outlineStyle: 'none',
   } as any;
 
@@ -1673,24 +1780,24 @@ export function AddUserModal({
         <View
           style={{
             width: '100%', maxWidth: 480, maxHeight: '92%',
-            backgroundColor: '#FFFFFF', borderRadius: 24, overflow: 'hidden',
-            borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
+            backgroundColor: U.surface, borderRadius: 24, overflow: 'hidden',
+            borderWidth: 1, borderColor: U.hairline,
             ...Platform.select({
-              web: { boxShadow: '0 24px 80px rgba(0,0,0,0.16), 0 2px 8px rgba(0,0,0,0.06)' },
+              web: { boxShadow: U.isDark ? '0 24px 80px rgba(0,0,0,0.7), 0 2px 8px rgba(0,0,0,0.4)' : '0 24px 80px rgba(0,0,0,0.16), 0 2px 8px rgba(0,0,0,0.06)' },
               default: { shadowColor: '#000', shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.14, shadowRadius: 48, elevation: 12 },
             }),
           } as any}
         >
           {/* ── Header ── */}
-          <View style={{ paddingHorizontal: 28, paddingTop: 28, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)', flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-            <Text style={{ ...DISPLAY, fontSize: 28, letterSpacing: -0.6, color: '#0A0A0A', lineHeight: 32, flex: 1 }}>
+          <View style={{ paddingHorizontal: 28, paddingTop: 28, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: U.hairline, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+            <Text style={{ ...DISPLAY, fontSize: 28, letterSpacing: -0.6, color: U.ink[900], lineHeight: 32, flex: 1 }}>
               Yeni Kullanıcı
             </Text>
             <Pressable
               onPress={handleClose}
               style={{ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: P, cursor: 'pointer' as any, marginStart: 12, marginTop: 2 }}
             >
-              <X size={14} color={P} strokeWidth={2} />
+              <X size={14} color={PInk} strokeWidth={2} />
             </Pressable>
           </View>
 
@@ -1701,7 +1808,7 @@ export function AddUserModal({
             <Text style={SL}>Pozisyon</Text>
 
             {/* §07 Pill nav strip */}
-            <View style={{ flexDirection: 'row', gap: 3, padding: 3, backgroundColor: '#F5F5F5', borderRadius: 999, marginBottom: 14 }}>
+            <View style={{ flexDirection: 'row', gap: 3, padding: 3, backgroundColor: U.surfaceSoft, borderRadius: 999, marginBottom: 14 }}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', gap: 2 }}>
                 {availableRoles.map((opt) => {
                   const active = selectedRole === opt.key;
@@ -1718,8 +1825,8 @@ export function AddUserModal({
                         cursor: 'pointer' as any,
                       }}
                     >
-                      <RoleIcon role={opt.key} color={active ? P : '#6B6B6B'} size={12} sw={2} />
-                      <Text style={{ fontSize: 12, fontWeight: active ? '700' : '500', color: active ? P : '#6B6B6B' }}>
+                      <RoleIcon role={opt.key} color={active ? P : U.ink[500]} size={12} sw={2} />
+                      <Text style={{ fontSize: 12, fontWeight: active ? '700' : '500', color: active ? P : U.ink[500] }}>
                         {opt.label}
                       </Text>
                     </Pressable>
@@ -1729,26 +1836,26 @@ export function AddUserModal({
             </View>
 
             {/* Selected role row — §09 table row style */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14, backgroundColor: '#FAFAFA', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', marginBottom: 4 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14, backgroundColor: U.surfaceSoft, borderWidth: 1, borderColor: U.hairline, marginBottom: 4 }}>
               <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: P + '18', alignItems: 'center', justifyContent: 'center' }}>
-                <RoleIcon role={selectedRole} color={P} size={16} sw={1.8} />
+                <RoleIcon role={selectedRole} color={PInk} size={16} sw={1.8} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: '#0A0A0A' }}>{currentRole.label}</Text>
-                <Text style={{ fontSize: 11, color: '#9A9A9A', marginTop: 1 }}>{currentRole.sub}</Text>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>{currentRole.label}</Text>
+                <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 1 }}>{currentRole.sub}</Text>
               </View>
               {authOptional && (
                 <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, backgroundColor: 'rgba(217,119,6,0.10)' }}>
-                  <Text style={{ fontSize: 10, fontWeight: '600', color: '#92400E' }}>opsiyonel</Text>
+                  <Text style={{ fontSize: 10, fontWeight: '600', color: U.isDark ? '#F0C078' : '#92400E' }}>opsiyonel</Text>
                 </View>
               )}
             </View>
 
             {/* auth-optional note */}
             {authOptional && (
-              <View style={{ flexDirection: 'row', gap: 8, padding: 10, borderRadius: 12, backgroundColor: '#FFFBEB', marginTop: 8, marginBottom: 4 }}>
-                <Info size={13} color="#D97706" strokeWidth={1.8} style={{ flexShrink: 0, marginTop: 1 } as any} />
-                <Text style={{ fontSize: 12, color: '#92400E', lineHeight: 17 }}>
+              <View style={{ flexDirection: 'row', gap: 8, padding: 10, borderRadius: 12, backgroundColor: U.chipTones.warning.bg, marginTop: 8, marginBottom: 4 }}>
+                <Info size={13} color={U.isDark ? '#F0C078' : '#D97706'} strokeWidth={1.8} style={{ flexShrink: 0, marginTop: 1 } as any} />
+                <Text style={{ fontSize: 12, color: U.isDark ? '#F0C078' : '#92400E', lineHeight: 17 }}>
                   Bu pozisyon için e-posta zorunlu değil. Boş bırakılırsa sadece isim kaydedilir.
                 </Text>
               </View>
@@ -1761,7 +1868,7 @@ export function AddUserModal({
               <View>
                 <Text style={FL}>Ad Soyad *</Text>
                 <TextInput style={INP} value={fullName} onChangeText={setFullName}
-                  placeholder={isDoctorType ? 'Dt. Ahmet Yılmaz' : 'Örn: Ahmet Yılmaz'} placeholderTextColor="#AEAEB2" />
+                  placeholder={isDoctorType ? 'Dt. Ahmet Yılmaz' : 'Örn: Ahmet Yılmaz'} placeholderTextColor={U.ink[400]} />
               </View>
 
               {/* Doctor: clinic name full width */}
@@ -1769,7 +1876,7 @@ export function AddUserModal({
                 <View>
                   <Text style={FL}>{selectedRole === 'clinic_admin' ? 'Klinik Adı *' : 'Muayenehane Adı *'}</Text>
                   <TextInput style={INP} value={clinicName} onChangeText={setClinicName}
-                    placeholder="Yılmaz Diş Kliniği" placeholderTextColor="#AEAEB2" />
+                    placeholder="Yılmaz Diş Kliniği" placeholderTextColor={U.ink[400]} />
                 </View>
               )}
 
@@ -1778,7 +1885,7 @@ export function AddUserModal({
                 <View style={{ flex: 1 }}>
                   <Text style={FL}>Telefon</Text>
                   <TextInput style={INP} value={phone} onChangeText={setPhone}
-                    placeholder="0532 000 00 00" placeholderTextColor="#AEAEB2" keyboardType="phone-pad" />
+                    placeholder="0532 000 00 00" placeholderTextColor={U.ink[400]} keyboardType="phone-pad" />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={FL}>
@@ -1786,7 +1893,7 @@ export function AddUserModal({
                   </Text>
                   <TextInput style={INP} value={email} onChangeText={setEmail}
                     placeholder={authOptional ? 'opsiyonel' : 'kullanici@ornek.com'}
-                    placeholderTextColor="#AEAEB2" keyboardType="email-address" autoCapitalize="none" />
+                    placeholderTextColor={U.ink[400]} keyboardType="email-address" autoCapitalize="none" />
                 </View>
               </View>
 
@@ -1795,15 +1902,15 @@ export function AddUserModal({
                 <View>
                   <Text style={FL}>{authOptional ? 'Şifre (opsiyonel)' : 'Şifre *'}</Text>
                   <TextInput style={INP} value={password} onChangeText={setPassword}
-                    placeholder="En az 6 karakter" placeholderTextColor="#AEAEB2" secureTextEntry />
+                    placeholder="En az 6 karakter" placeholderTextColor={U.ink[400]} secureTextEntry />
                 </View>
               )}
             </View>
 
             {isDoctorType && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12, backgroundColor: '#F0FDF4', marginTop: 12 }}>
-                <Check size={13} color="#16A34A" strokeWidth={2.5} />
-                <Text style={{ fontSize: 12, color: '#15803D', flex: 1, lineHeight: 17 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12, backgroundColor: U.chipTones.success.bg, marginTop: 12 }}>
+                <Check size={13} color={U.isDark ? '#6EE7B7' : '#16A34A'} strokeWidth={2.5} />
+                <Text style={{ fontSize: 12, color: U.isDark ? '#6EE7B7' : '#15803D', flex: 1, lineHeight: 17 }}>
                   Hekim/klinik otomatik onaylı oluşturulur. OTP ve e-posta onayı atlanır.
                 </Text>
               </View>
@@ -1826,12 +1933,12 @@ export function AddUserModal({
                             onPress={() => setLevel(key)}
                             style={{
                               flex: 1, paddingVertical: 9, borderRadius: 12, alignItems: 'center',
-                              borderWidth: 1, borderColor: active ? '#0A0A0A' : 'rgba(0,0,0,0.08)',
-                              backgroundColor: active ? '#0A0A0A' : '#FAFAFA',
+                              borderWidth: 1, borderColor: active ? U.ink[900] : U.fieldBorder,
+                              backgroundColor: active ? U.ink[900] : U.surfaceSoft,
                               cursor: 'pointer' as any,
                             }}
                           >
-                            <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#FFF' : '#6B6B6B' }}>{label}</Text>
+                            <Text style={{ fontSize: 13, fontWeight: '600', color: active ? U.onDarkPill : U.ink[500] }}>{label}</Text>
                           </Pressable>
                         );
                       })}
@@ -1841,7 +1948,7 @@ export function AddUserModal({
                   {/* Stage Yetkileri */}
                   <View>
                     <Text style={FL}>Stage Yetkileri</Text>
-                    <Text style={{ fontSize: 11, color: '#9A9A9A', marginBottom: 8, marginTop: -2 }}>Hangi aşamayı yapabilir?</Text>
+                    <Text style={{ fontSize: 11, color: U.ink[400], marginBottom: 8, marginTop: -2 }}>Hangi aşamayı yapabilir?</Text>
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                       {['Triyaj', 'Tasarım', 'CAM', 'Frezeleme', 'Sinterleme', 'Bitiş', 'KK'].map((stage) => {
                         const active = stagePerms.includes(stage);
@@ -1852,13 +1959,13 @@ export function AddUserModal({
                             style={{
                               flexDirection: 'row', alignItems: 'center', gap: 4,
                               paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999,
-                              borderWidth: 1.5, borderColor: active ? P : 'rgba(0,0,0,0.08)',
+                              borderWidth: 1.5, borderColor: active ? P : U.fieldBorder,
                               backgroundColor: 'transparent',
                               cursor: 'pointer' as any,
                             }}
                           >
-                            {active && <Check size={10} color={P} strokeWidth={2.5} />}
-                            <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? P : '#6B6B6B' }}>{stage}</Text>
+                            {active && <Check size={10} color={PInk} strokeWidth={2.5} />}
+                            <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? P : U.ink[500] }}>{stage}</Text>
                           </Pressable>
                         );
                       })}
@@ -1878,13 +1985,13 @@ export function AddUserModal({
                             style={{
                               flexDirection: 'row', alignItems: 'center', gap: 4,
                               paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
-                              borderWidth: 1.5, borderColor: active ? '#0A0A0A' : 'rgba(0,0,0,0.08)',
+                              borderWidth: 1.5, borderColor: active ? U.ink[900] : U.fieldBorder,
                               backgroundColor: 'transparent',
                               cursor: 'pointer' as any,
                             }}
                           >
-                            {active && <Check size={10} color="#0A0A0A" strokeWidth={2.5} />}
-                            <Text style={{ fontSize: 12, fontWeight: '600', color: active ? '#0A0A0A' : '#6B6B6B' }}>{ct}</Text>
+                            {active && <Check size={10} color={U.ink[900]} strokeWidth={2.5} />}
+                            <Text style={{ fontSize: 12, fontWeight: '600', color: active ? U.ink[900] : U.ink[500] }}>{ct}</Text>
                           </Pressable>
                         );
                       })}
@@ -1895,14 +2002,14 @@ export function AddUserModal({
                   <View>
                     <Text style={FL}>Aylık Maaş (₺)</Text>
                     <TextInput style={INP} value={salary} onChangeText={setSalary}
-                      placeholder="0" placeholderTextColor="#AEAEB2" keyboardType="numeric" />
+                      placeholder="0" placeholderTextColor={U.ink[400]} keyboardType="numeric" />
                   </View>
                 </View>
               </>
             )}
 
             {!!error && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12, padding: 12, backgroundColor: '#FEF2F2', marginTop: 14 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12, padding: 12, backgroundColor: U.chipTones.danger.bg, marginTop: 14 }}>
                 <AlertCircle size={14} color={ERR} strokeWidth={1.8} />
                 <Text style={{ fontSize: 13, color: ERR, flex: 1 }}>{error}</Text>
               </View>
@@ -1913,29 +2020,29 @@ export function AddUserModal({
           <View style={{
             flexDirection: 'row', justifyContent: 'flex-end', gap: 10,
             paddingHorizontal: 28, paddingVertical: 20,
-            borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
+            borderTopWidth: 1, borderTopColor: U.hairline,
           }}>
             {/* Ghost cancel */}
             <Pressable
               onPress={handleClose}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.12)', cursor: 'pointer' as any }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, borderWidth: 1.5, borderColor: U.fieldBorder, cursor: 'pointer' as any }}
             >
-              <X size={12} color="#6B6B6B" strokeWidth={2.5} />
-              <Text style={{ fontSize: 13, fontWeight: '600', color: '#6B6B6B' }}>İptal</Text>
+              <X size={12} color={U.ink[500]} strokeWidth={2.5} />
+              <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[500] }}>İptal</Text>
             </Pressable>
             {/* Primary action — dark pill (Patterns §03) with accent dot */}
             <Pressable
               onPress={handleSave}
               disabled={saving}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, backgroundColor: '#0A0A0A', opacity: saving ? 0.6 : 1, cursor: 'pointer' as any }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, backgroundColor: U.ink[900], opacity: saving ? 0.6 : 1, cursor: 'pointer' as any }}
             >
               {saving ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
+                <ActivityIndicator size="small" color={U.onDarkPill} />
               ) : (
                 <>
                   {/* Accent dot — panel rengi */}
                   <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: P }} />
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>Kullanıcı Ekle</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: U.onDarkPill }}>Kullanıcı Ekle</Text>
                 </>
               )}
             </Pressable>

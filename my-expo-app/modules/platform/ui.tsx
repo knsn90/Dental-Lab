@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, Pressable, Platform, ScrollView, TextInput } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
-import { LayoutGrid, Building2, ScrollText, ShieldCheck, LogOut, LifeBuoy, Activity, Megaphone, CreditCard, Users, Settings, ShieldAlert, Plug, Search, ChevronDown } from 'lucide-react-native';
+import { LayoutGrid, Building2, ScrollText, ShieldCheck, LogOut, Activity, Megaphone, CreditCard, Users, Settings, ShieldAlert, Plug, Search, ChevronDown } from '../../core/ui/icons';
+import { SupportIcon } from '../../core/ui/SupportIcon';
 import { supabase } from '../../core/api/supabase';
 import { SimanWordmark } from '../../core/ui/SimanWordmark';
 import { DS } from '../../core/theme/dsTokens';
-import { MOBILE_PANEL_THEMES } from '../../core/theme/mobileDesignTokens';
+import { MOBILE_PANEL_THEMES, useMobileTokens } from '../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../core/store/themeModeStore';
 import { listLabs } from './api';
 
 // Platform konsolu — "exec/admin" (Kobalt) kimliği. Accent + zemin + statü
@@ -34,6 +36,25 @@ export function hexA(hex: string, a: number) {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 }
 
+// Koyu-farkında C — açık modda birebir C, koyuda yüzey/ink/line token'a döner.
+// Accent/status/marka renkleri (accent/green/amber/red/violet) korunur.
+export function useC(): typeof C {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
+  if (!isDark) return C;
+  return {
+    ...C,
+    bg: T.bg,
+    card: T.card,
+    cardHover: 'rgba(255,255,255,0.05)',
+    line: T.hairline,
+    ink: T.ink,
+    ink2: T.ink2 as string,
+    ink3: T.ink3 as string,
+    soft: T.cardSoft,
+  } as unknown as typeof C;
+}
+
 export const planTone = (p: string) =>
   p === 'active' || p === 'pro' || p === 'enterprise' ? C.green : p === 'suspended' ? C.red : C.amber;
 
@@ -42,7 +63,7 @@ const NAV = [
   { key: 'labs', label: "Lab'lar", icon: Building2, href: '/(platform)/labs' },
   { key: 'users', label: 'Kullanıcılar', icon: Users, href: '/(platform)/users' },
   { key: 'billing', label: 'Faturalama', icon: CreditCard, href: '/(platform)/billing' },
-  { key: 'support', label: 'Destek', icon: LifeBuoy, href: '/(platform)/support' },
+  { key: 'support', label: 'Destek', icon: SupportIcon, href: '/(platform)/support' },
   { key: 'announcements', label: 'Duyuru', icon: Megaphone, href: '/(platform)/announcements' },
   { key: 'security', label: 'Güvenlik', icon: ShieldAlert, href: '/(platform)/security' },
   { key: 'health', label: 'Sağlık', icon: Activity, href: '/(platform)/health' },
@@ -65,6 +86,7 @@ export function PlatformNav(_: { active: string }) { return null; }
 
 /** Platform konsolu sol menüsü — (platform)/_layout içinde kalıcı. */
 export function PlatformSidebar() {
+  const C = useC();
   const router = useRouter();
   const active = usePlatformActive();
   return (
@@ -113,6 +135,7 @@ export function PlatformSidebar() {
 
 /** Üst-bar — sağ üstte lab arama + profil kartı (siman shell deseni). */
 export function PlatformTopBar() {
+  const C = useC();
   const router = useRouter();
   const [q, setQ] = useState('');
   const [labs, setLabs] = useState<{ id: string; name: string; slug: string }[]>([]);
@@ -221,22 +244,26 @@ export function IconChip({ icon: Icon, tone = C.accent, size = 34 }: { icon: any
 }
 
 /** Yumuşak accent tonlu chip (opsiyonel dot) */
-export function Chip({ tone = C.ink2, dot, children }: { tone?: string; dot?: boolean; children: React.ReactNode }) {
+export function Chip({ tone, dot, children }: { tone?: string; dot?: boolean; children: React.ReactNode }) {
+  const C = useC();
+  const tn = tone ?? C.ink2;
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: hexA(tone, 0.12), borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
-      {dot ? <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: tone }} /> : null}
-      <Text style={{ color: tone, fontSize: 11.5, fontWeight: '700' }}>{children}</Text>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: hexA(tn, 0.12), borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+      {dot ? <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: tn }} /> : null}
+      <Text style={{ color: tn, fontSize: 11.5, fontWeight: '700' }}>{children}</Text>
     </View>
   );
 }
 
 /** Beyaz kart yüzeyi — radius + hairline + yumuşak gölge */
 export function Panel({ children, style, padding = 20 }: { children: React.ReactNode; style?: any; padding?: number }) {
+  const C = useC();
   return <View style={[{ backgroundColor: C.card, borderRadius: 18, borderWidth: 1, borderColor: C.line, padding, ...CARD_SHADOW }, style]}>{children}</View>;
 }
 
 /** Bölüm başlığı — 11px/700 UPPERCASE ink-400 + opsiyonel ikon/aksiyon */
 export function SectionLabel({ icon: Icon, tone, children, action }: { icon?: any; tone?: string; children: React.ReactNode; action?: { label: string; onPress: () => void } }) {
+  const C = useC();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12, marginTop: 4 }}>
       {Icon ? <Icon size={14} color={tone ?? C.ink3} strokeWidth={2} /> : null}
@@ -252,22 +279,27 @@ export function SectionLabel({ icon: Icon, tone, children, action }: { icon?: an
 }
 
 /** Ghost dairesel ikon butonu (kart köşesi ok'u vb.) */
-export function IconBtn({ icon: Icon, onPress, tone = C.ink3, size = 32 }: { icon: any; onPress?: () => void; tone?: string; size?: number }) {
+export function IconBtn({ icon: Icon, onPress, tone, size = 32 }: { icon: any; onPress?: () => void; tone?: string; size?: number }) {
+  const C = useC();
+  const tn = tone ?? C.ink3;
   return (
     <Pressable onPress={onPress} style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: C.cardHover, alignItems: 'center', justifyContent: 'center', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}) }}>
-      <Icon size={Math.round(size * 0.44)} color={tone} strokeWidth={1.9} />
+      <Icon size={Math.round(size * 0.44)} color={tn} strokeWidth={1.9} />
     </Pressable>
   );
 }
 
 /** Küçük stat: etiket + pill değeri (hero altı — ÜRETİM 20% gibi) */
-export function StatPill({ label, value, tone = C.ink }: { label: string; value: React.ReactNode; tone?: string }) {
-  const dark = tone === C.ink;
+export function StatPill({ label, value, tone }: { label: string; value: React.ReactNode; tone?: string }) {
+  const C = useC();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
+  const tn = tone ?? C.ink;
+  const emphasized = tn === C.ink;
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
       <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', color: C.ink3 }}>{label}</Text>
-      <View style={{ backgroundColor: dark ? C.ink : hexA(tone, 0.14), borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3, minWidth: 24, alignItems: 'center' }}>
-        <Text style={{ ...NUM, fontSize: 11.5, fontWeight: '700', color: dark ? '#FFFFFF' : tone }}>{value}</Text>
+      <View style={{ backgroundColor: emphasized ? (isDark ? 'rgba(255,255,255,0.12)' : C.ink) : hexA(tn, 0.14), borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3, minWidth: 24, alignItems: 'center' }}>
+        <Text style={{ ...NUM, fontSize: 11.5, fontWeight: '700', color: emphasized ? (isDark ? C.ink : '#FFFFFF') : tn }}>{value}</Text>
       </View>
     </View>
   );
@@ -275,6 +307,7 @@ export function StatPill({ label, value, tone = C.ink }: { label: string; value:
 
 /** Büyük stat kümesi öğesi — ince display değer + uppercase etiket (hero sağı) */
 export function BigStat({ label, value, tone }: { label: string; value: React.ReactNode; tone?: string }) {
+  const C = useC();
   return (
     <View>
       <Text style={{ fontSize: 10.5, fontWeight: '700', letterSpacing: 0.9, textTransform: 'uppercase', color: C.ink3, marginBottom: 5 }}>{label}</Text>
@@ -284,12 +317,14 @@ export function BigStat({ label, value, tone }: { label: string; value: React.Re
 }
 
 /** Full-bleed accent uyarı banner'ı (yumuşak tonlu, ikon çipi + opsiyonel aksiyon) */
-export function Banner({ tone = C.accent, icon: Icon, title, children, action }: { tone?: string; icon?: any; title?: string; children?: React.ReactNode; action?: React.ReactNode }) {
+export function Banner({ tone, icon: Icon, title, children, action }: { tone?: string; icon?: any; title?: string; children?: React.ReactNode; action?: React.ReactNode }) {
+  const C = useC();
+  const tn = tone ?? C.accent;
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: hexA(tone, 0.10), borderWidth: 1, borderColor: hexA(tone, 0.22), borderRadius: 18, paddingVertical: 15, paddingHorizontal: 16, marginBottom: 24 }}>
-      {Icon ? <IconChip icon={Icon} tone={tone} size={40} /> : null}
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: hexA(tn, 0.10), borderWidth: 1, borderColor: hexA(tn, 0.22), borderRadius: 18, paddingVertical: 15, paddingHorizontal: 16, marginBottom: 24 }}>
+      {Icon ? <IconChip icon={Icon} tone={tn} size={40} /> : null}
       <View style={{ flex: 1, minWidth: 0 }}>
-        {title ? <Text style={{ color: tone, fontSize: 14, fontWeight: '700' }}>{title}</Text> : null}
+        {title ? <Text style={{ color: tn, fontSize: 14, fontWeight: '700' }}>{title}</Text> : null}
         {children ? <Text style={{ color: C.ink2, fontSize: 13, marginTop: title ? 2 : 0 }}>{children}</Text> : null}
       </View>
       {action}
@@ -303,6 +338,7 @@ export function PageHeader({ eyebrow, title, accent: accentWord, description, ac
   stats?: { label: string; value: React.ReactNode; tone?: string }[];
   pills?: { label: string; value: React.ReactNode; tone?: string }[];
 }) {
+  const C = useC();
   return (
     <View style={{ paddingBottom: 24, marginBottom: 28, borderBottomWidth: 1, borderBottomColor: C.line }}>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 32, flexWrap: 'wrap' }}>
@@ -339,6 +375,7 @@ export function PageHeader({ eyebrow, title, accent: accentWord, description, ac
 export function Btn({ children, onPress, variant = 'primary', icon: Icon, disabled, size = 'md' }: {
   children: React.ReactNode; onPress?: () => void; variant?: 'primary' | 'danger' | 'outline' | 'ghost'; icon?: any; disabled?: boolean; size?: 'sm' | 'md';
 }) {
+  const C = useC();
   const ph = size === 'sm' ? 14 : 18, pv = size === 'sm' ? 8 : 10, fs = size === 'sm' ? 13 : 14;
   const s = variant === 'primary' ? { bg: C.accent, hov: C.accentDeep, fg: '#FFFFFF', bd: C.accent }
     : variant === 'danger' ? { bg: C.red, hov: '#C13B3B', fg: '#FFFFFF', bd: C.red }
@@ -359,6 +396,7 @@ export function Btn({ children, onPress, variant = 'primary', icon: Icon, disabl
 /** KPI kartı — editorial hiyerarşi: micro etiket ÜSTTE, devasa ince display
  * metrik ALTINDA; opsiyonel alt satır hairline ayraçla ayrılır. */
 export function Kpi({ label, value, tone, icon: Icon, sub }: { label: string; value: string | number; tone?: string; icon?: any; sub?: string }) {
+  const C = useC();
   return (
     <View style={{ flex: 1, minWidth: 156, backgroundColor: C.card, borderRadius: 18, borderWidth: 1, borderColor: C.line, padding: 18, ...CARD_SHADOW }}>
       {/* Eyebrow etiket + opsiyonel ince ikon */}

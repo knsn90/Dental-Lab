@@ -14,7 +14,7 @@ import {
   View, Text, Pressable, Modal, TextInput, ScrollView, Image, Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { Search, Building2, X, Camera } from 'lucide-react-native';
+import { Search, Building2, X, Camera } from '../../../core/ui/icons';
 import { supabase } from '../../../core/api/supabase';
 import { toast } from '../../../core/ui/Toast';
 import { autoT } from '../../../core/i18n/autoTranslate';

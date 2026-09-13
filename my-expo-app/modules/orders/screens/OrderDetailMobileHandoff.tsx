@@ -18,11 +18,14 @@ import { StepsTimelineX } from '../../../core/ui/ProgressX';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ChevronLeft, ChevronRight, Printer, MoreHorizontal, Play, Pause, AlertCircle,
-  Paperclip, Plus, MessageCircle, Mic, Truck, Check, ChevronDown, RotateCcw, Star,
-} from 'lucide-react-native';
+  Paperclip, Plus, MessageCircle, Mic, Truck, Check, ChevronDown, RotateCcw, Star, Layers, CornerUpLeft,
+} from '../../../core/ui/icons';
 import Svg, { Circle } from 'react-native-svg';
 import { MOBILE_PANEL_THEMES, useMobileTokens, type MobilePanel } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { isRTL } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
+import { groupImplantTeeth, type ImplantInfo } from '../implantInfo';
 
 const STAGES = [
   { key: 'in',    label: 'Alındı' },
@@ -31,6 +34,10 @@ const STAGES = [
   { key: 'mill',  label: 'Frezeleme' },
   { key: 'sin',   label: 'Sinter' },
 ];
+
+// İmplant vurgu rengi — yeni-sipariş diş şemasındaki implant rengiyle AYNI.
+const IMPLANT_COLOR = '#F97316';
+const IMPLANT_DEEP  = '#C2410C';
 
 export interface OrderDetailMobileHandoffProps {
   panel?: MobilePanel;
@@ -101,8 +108,12 @@ export interface OrderDetailMobileHandoffProps {
   onAddAttachment?: () => void;
   /** Revizyon oluştur — teslim edilmiş siparişte (lab yöneticisi). Verilmezse buton çıkmaz. */
   onCreateRevision?: () => void;
-  /** Revizyon bağlantı rozetleri (karşılıklı) — tıklanınca onOpenRelated çağrılır. */
-  revisionLinks?: { id: string; label: string; kind: 'parent' | 'child' }[];
+  /**
+   * Bağlantı rozetleri (karşılıklı) — tıklanınca onOpenRelated çağrılır.
+   * tone: 'revision' (varsayılan, nötr) · 'continuation' = tedavi zinciri (mavi,
+   * masaüstü hero'sundaki "Asıl iş / Devam" çipleriyle aynı dil).
+   */
+  revisionLinks?: { id: string; label: string; kind: 'parent' | 'child'; tone?: 'revision' | 'continuation' }[];
   onOpenRelated?: (id: string) => void;
   /** Teslimat aksiyonu — "Kuryeye Gönder" / "Elden Teslim Edildi" / "Teslim Edildi" (desktop ile aynı mantık) */
   deliveryButton?: { label: string; icon?: 'truck' | 'check'; onPress: () => void } | null;
@@ -121,10 +132,15 @@ export interface OrderDetailMobileHandoffProps {
     itemName?: string;
     price?: number;
   } | null;
+  /** İmplant bilgisi (marka + diş bazlı detay). hasAny=false ise bölüm gizlenir. */
+  implant?: ImplantInfo | null;
+  /** İmplant parça notları bölümü (ImplantNotesSection) — ekran üstünden hazır gelir. */
+  implantParts?: React.ReactNode;
 }
 
 export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
   const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const insets = useSafeAreaInsets();
   const theme = MOBILE_PANEL_THEMES[props.panel ?? 'lab'];
   const accent = theme.primary;
@@ -213,7 +229,7 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
 
         {/* ═══ 2. HERO — patient + countdown + timeline (panel-themed gradient) ═══ */}
         <View style={{
-          marginHorizontal: 14, marginTop: 6, marginBottom: 12,
+          marginHorizontal: 16, marginTop: 6, marginBottom: 12,
           padding: 20, paddingBottom: 18, borderRadius: 26,
           overflow: 'hidden',
           // Diğer detay kartlarıyla (tooth chart / materyal / ekler) BİREBİR aynı
@@ -292,21 +308,29 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
           {/* Revizyon bağlantıları — desktop ile aynı bilgi, karşılıklı ve tıklanabilir */}
           {(props.revisionLinks?.length ?? 0) > 0 && (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
-              {props.revisionLinks!.map(l => (
+              {props.revisionLinks!.map(l => {
+                // Tedavi zinciri (devam siparişi) mavi; ebeveyn ↖, devam ⧉ ikonu.
+                const cont = l.tone === 'continuation';
+                const fg = cont ? (isDark ? '#93B4E6' : '#3563A8') : (isDark ? T.ink : T.ink);
+                const LinkIcon = cont ? (l.kind === 'parent' ? CornerUpLeft : Layers) : RotateCcw;
+                return (
                 <Pressable
                   key={l.id}
                   onPress={() => props.onOpenRelated?.(l.id)}
                   style={{
                     flexDirection: 'row', alignItems: 'center', gap: 5,
                     paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999,
-                    backgroundColor: 'rgba(0,0,0,0.05)',
+                    backgroundColor: cont
+                      ? (isDark ? 'rgba(147,180,230,0.18)' : 'rgba(53,99,168,0.12)')
+                      : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'),
                     ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                   }}
                 >
-                  <RotateCcw size={10} color={T.ink3} strokeWidth={2} />
-                  <Text style={{ fontSize: 11, fontWeight: '500', color: T.ink }}>{l.label}</Text>
+                  <LinkIcon size={10} color={cont ? fg : T.ink3} strokeWidth={2} />
+                  <Text style={{ fontSize: 11, fontWeight: cont ? '600' : '500', color: fg }}>{l.label}</Text>
                 </Pressable>
-              ))}
+                );
+              })}
             </View>
           )}
 
@@ -316,7 +340,12 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
               steps={props.timelineSteps ?? ['Alındı', 'Üretim', 'Final QC', 'Kurye', 'Teslim']}
               current={props.timelineCurrent ?? props.currentStageIdx}
               theme={props.timelineTheme ?? 'lab'}
-              variant="light"
+              // Hero kartı T.card (koyu modda #1B1916); önceden hep variant="light"
+              // sabitti → koyu temada geçmiş adım etiketleri DS.ink[900] (siyaha
+              // yakın) rengiyle neredeyse görünmez oluyordu. Kart yüzeyiyle eşleşsin.
+              variant={isDark ? 'dark' : 'light'}
+              surfaceDark={isDark}
+              surfaceBg={isDark ? T.card : undefined}
             />
           </View>
         </View>
@@ -324,7 +353,7 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
         {/* ═══ 3. Production control panel — dark (lab/admin/teknisyen) ═══ */}
         {showProductionPanel && (
         <View style={{
-          marginHorizontal: 14, marginBottom: 12,
+          marginHorizontal: 16, marginBottom: 12,
           padding: 18, paddingHorizontal: 20, borderRadius: 26,
           backgroundColor: theme.bgHero, overflow: 'hidden',
         }}>
@@ -631,7 +660,7 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
 
         {/* ═══ 4. Diş şeması — full chart kartı ═══ */}
         {props.toothChart && (
-          <View style={{ paddingHorizontal: 14, marginBottom: 12 }}>
+          <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
             <View style={{ padding: 14, borderRadius: 20, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                 <Text style={{ fontSize: 9.5, fontWeight: '600', color: T.ink3, letterSpacing: 1, textTransform: 'uppercase' }}>
@@ -738,8 +767,69 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
           </View>
         )}
 
+        {/* ═══ 4b. İmplant ═══ Hekimin siparişte girdiği marka/tür/abutment/vida.
+             Şema kartının hemen altında: "hangi dişte ne var" aynı bağlamda okunur. */}
+        {props.implant?.hasAny && (
+          <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
+            <View style={{ padding: 14, borderRadius: 20, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                  <View style={{ width: 7, height: 7, borderRadius: 999, backgroundColor: IMPLANT_COLOR }} />
+                  <Text style={{ fontSize: 9.5, fontWeight: '600', color: T.ink3, letterSpacing: 1, textTransform: 'uppercase' }}>
+                    {autoT('İmplant')}
+                  </Text>
+                </View>
+                {props.implant.teeth.length > 0 && (
+                  <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: IMPLANT_COLOR + '1F' }}>
+                    <Text style={{ fontSize: 10, fontWeight: '600', color: IMPLANT_DEEP, fontFamily: T.mono }}>
+                      {props.implant.teeth.length} {autoT('diş')}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {!!props.implant.brand && (
+                <Text style={{
+                  fontSize: 15, fontWeight: '500', color: T.ink, marginBottom: 10,
+                  ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
+                }} numberOfLines={2}>
+                  {props.implant.brand}
+                </Text>
+              )}
+
+              {/* Aynı detaydaki dişler tek satırda toplanır (web ile aynı kural) */}
+              <View style={{ gap: 8 }}>
+                {groupImplantTeeth(props.implant).map(g => (
+                  <View key={g.teeth.join('-')} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, maxWidth: '55%' }}>
+                      {g.teeth.map(t => (
+                        <View key={t} style={{
+                          minWidth: 32, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8,
+                          backgroundColor: IMPLANT_COLOR + '1F', alignItems: 'center',
+                        }}>
+                          <Text style={{ fontSize: 10.5, fontWeight: '700', color: IMPLANT_DEEP, fontFamily: T.mono }}>{t}</Text>
+                        </View>
+                      ))}
+                    </View>
+                    <Text style={{ fontSize: 12, color: g.detail ? T.ink2 : T.ink3, flex: 1, lineHeight: 17, paddingTop: 2, fontStyle: g.detail ? 'normal' : 'italic' }}>
+                      {g.detail || autoT('detay girilmedi')}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* Parçalar — scan body / dijital analog … */}
+              {!!props.implantParts && (
+                <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: T.hairline }}>
+                  {props.implantParts}
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
         {/* ═══ 5. Materyal + Renk ═══ */}
-        <View style={{ paddingHorizontal: 14, marginBottom: 12, flexDirection: 'row', gap: 10 }}>
+        <View style={{ paddingHorizontal: 16, marginBottom: 12, flexDirection: 'row', gap: 10 }}>
           <View style={{ flex: 1.4, padding: 12, paddingHorizontal: 14, borderRadius: 20, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline }}>
             <Text style={{ fontSize: 9.5, fontWeight: '600', color: T.ink3, letterSpacing: 1, textTransform: 'uppercase' }}>
               Materyal
@@ -775,7 +865,7 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
         </View>
 
         {/* ═══ 5. Attachments thumb grid + voice ═══ */}
-        <View style={{ paddingHorizontal: 14, marginBottom: 12 }}>
+        <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
           <View style={{ padding: 14, borderRadius: 20, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
               <Text style={{ fontSize: 9.5, fontWeight: '600', color: T.ink3, letterSpacing: 1, textTransform: 'uppercase' }}>
@@ -814,7 +904,7 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
 
         {/* Lojistik — kurye hareketleri + "Kurye çağır" (desktop ile aynı bileşen) */}
         {props.logisticsNode ? (
-          <View style={{ paddingHorizontal: 14, marginBottom: 12 }}>
+          <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
             <View style={{ padding: 14, borderRadius: 20, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline }}>
               {props.logisticsNode}
             </View>
@@ -823,12 +913,12 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
 
         {/* İptal talebi (klinik/hekim) */}
         {props.cancelNode ? (
-          <View style={{ paddingHorizontal: 14, marginBottom: 12 }}>{props.cancelNode}</View>
+          <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>{props.cancelNode}</View>
         ) : null}
 
         {/* ═══ 6. Progress slider (operatör — lab/admin/teknisyen) ═══ */}
         {showOperatorProgress && (
-        <View style={{ paddingHorizontal: 14, marginBottom: 12 }}>
+        <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
           <View style={{ padding: 14, paddingHorizontal: 16, borderRadius: 20, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
               <View>
@@ -855,7 +945,7 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
         )}
 
         {/* ═══ 7. Activity log ═══ */}
-        <View style={{ paddingHorizontal: 14, marginBottom: 12 }}>
+        <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 6, paddingBottom: 8 }}>
             <Text style={{
               fontSize: 16, fontWeight: '500', color: T.ink, letterSpacing: -0.2,
@@ -917,7 +1007,7 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
 
         {/* ═══ 8. QC quick tags (lab/admin/teknisyen — lab internal) ═══ */}
         {showQcTags && (
-        <View style={{ paddingHorizontal: 14, paddingBottom: 14 }}>
+        <View style={{ paddingHorizontal: 16, paddingBottom: 14 }}>
           <Text style={{
             fontSize: 9.5, fontWeight: '600', color: T.ink3, letterSpacing: 1, textTransform: 'uppercase',
             paddingHorizontal: 6, paddingBottom: 8,

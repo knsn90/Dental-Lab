@@ -14,6 +14,8 @@ import { STATUS_CONFIG, getNextStatus } from '../constants';
 import { C } from '../../../core/theme/colors';
 
 import { AppIcon } from '../../../core/ui/AppIcon';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 interface StatusUpdateModalProps {
   visible: boolean;
@@ -28,6 +30,8 @@ export function StatusUpdateModal({
   onConfirm,
   onClose,
 }: StatusUpdateModalProps) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -51,20 +55,20 @@ export function StatusUpdateModal({
         style={m.overlay}
       >
         <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={onClose} activeOpacity={1} />
-        <View style={m.sheet}>
+        <View style={[m.sheet, isDark && { backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline }]}>
 
           {/* Header */}
-          <View style={m.header}>
-            <Text style={m.title}>Durumu Güncelle</Text>
-            <TouchableOpacity style={m.closeBtn} onPress={onClose}>
-              <AppIcon name="x" size={16} color="#64748B" />
+          <View style={[m.header, isDark && { borderBottomColor: T.hairline }]}>
+            <Text style={[m.title, isDark && { color: T.ink }]}>Durumu Güncelle</Text>
+            <TouchableOpacity style={[m.closeBtn, isDark && { backgroundColor: T.cardSoft }]} onPress={onClose}>
+              <AppIcon name="x" size={16} color={isDark ? (T.ink3 as string) : '#64748B'} />
             </TouchableOpacity>
           </View>
 
           <View style={m.body}>
             {/* New status */}
-            <View style={m.sectionCard}>
-              <Text style={m.sectionTitle}>Yeni Durum</Text>
+            <View style={[m.sectionCard, isDark && { backgroundColor: T.card, borderColor: T.hairline }]}>
+              <Text style={[m.sectionTitle, isDark && { color: T.ink2 }]}>Yeni Durum</Text>
               <View style={[m.statusBadge, { backgroundColor: nextConfig.bgColor }]}>
                 <AppIcon name={nextConfig.ionIcon as any} size={18} color={nextConfig.color} />
                 <Text style={[m.statusBadgeText, { color: nextConfig.color }]}>{nextConfig.label}</Text>
@@ -72,16 +76,16 @@ export function StatusUpdateModal({
             </View>
 
             {/* Note */}
-            <View style={m.sectionCard}>
-              <Text style={m.sectionTitle}>Not</Text>
+            <View style={[m.sectionCard, isDark && { backgroundColor: T.card, borderColor: T.hairline }]}>
+              <Text style={[m.sectionTitle, isDark && { color: T.ink2 }]}>Not</Text>
               <View style={m.fieldWrap}>
-                <Text style={m.fieldLabel}>Not (isteğe bağlı)</Text>
+                <Text style={[m.fieldLabel, isDark && { color: T.ink3 }]}>Not (isteğe bağlı)</Text>
                 <TextInput
-                  style={[m.fieldInput, { minHeight: 80, textAlignVertical: 'top' }]}
+                  style={[m.fieldInput, { minHeight: 80, textAlignVertical: 'top' }, isDark && { borderColor: T.hairline, color: T.ink, backgroundColor: T.cardSoft }]}
                   value={note}
                   onChangeText={setNote}
                   placeholder="Ek not ekle..."
-                  placeholderTextColor="#C7C7CC"
+                  placeholderTextColor={isDark ? (T.ink3 as string) : '#C7C7CC'}
                   multiline
                   numberOfLines={3}
                 />

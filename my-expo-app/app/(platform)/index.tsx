@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, Pressable, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
-import { AlertTriangle, TrendingUp, Filter as FunnelIcon, Repeat, ArrowUpRight, ArrowUpLeft, Clock, Inbox, Moon } from 'lucide-react-native';
+import { AlertTriangle, TrendingUp, Filter as FunnelIcon, Repeat, ArrowUpRight, ArrowUpLeft, Clock, Inbox, Moon } from '../../core/ui/icons';
 import { isRTL } from '../../core/i18n';
 import { autoT } from '../../core/i18n/autoTranslate';
 import { PercentRingX } from '../../core/ui/ProgressX';

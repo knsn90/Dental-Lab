@@ -17,7 +17,7 @@ import { View, Text, Pressable, Platform, ScrollView, Modal, TextInput, useWindo
 import {
   Plus, X, Check, RefreshCw, Globe, AlertCircle,
   Calendar, ArrowRight, ArrowLeft, ChevronDown, History,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { supabase } from '../../../core/api/supabase';
 import { useAuthStore } from '../../../core/store/authStore';
 import {
@@ -25,12 +25,19 @@ import {
   ExchangeRate, listRates, upsertRate, fetchRatesFromTCMB,
 } from '../../../core/money/currency';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 interface Props {
   accentColor?: string;
+  /** Başka bir ScrollView içine gömülünce (ör. Finans Ayarları) kendi ScrollView'ini
+      açma — düz View dön; iç içe scroll'u önler. */
+  embedded?: boolean;
 }
 
-export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
+export function CurrencyRatesScreen({ accentColor = '#0A0A0A', embedded = false }: Props) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const { width: _vw } = useWindowDimensions();
   const isNarrow = _vw < 560;
   const profile = useAuthStore(s => s.profile);
@@ -46,15 +53,15 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
 
   // ── Patterns design tokens ──
   const PCard = {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: T.card,
     borderRadius: 18,
     padding: 18,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.04)',
+    borderColor: T.hairline,
     ...(Platform.OS === 'web' ? { boxShadow: '0 4px 16px rgba(0,0,0,0.04)' } : {}),
   } as any;
   const DisplayFont = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
-  const eyebrow = { fontSize: 11, fontWeight: '600' as const, color: '#9A9A9A', letterSpacing: 1, textTransform: 'uppercase' as const };
+  const eyebrow = { fontSize: 11, fontWeight: '600' as const, color: T.ink3, letterSpacing: 1, textTransform: 'uppercase' as const };
 
   // ── Load ──
   const load = useCallback(async () => {
@@ -124,17 +131,21 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
     load();
   };
 
+  const Wrap: any = embedded ? View : ScrollView;
+  const wrapProps: any = embedded
+    ? { style: { gap: 14 } }
+    : { contentContainerStyle: { padding: isNarrow ? 12 : 20, paddingBottom: 120, gap: 14 } };
   return (
-    <ScrollView contentContainerStyle={{ padding: isNarrow ? 12 : 20, paddingBottom: 120, gap: 14 }}>
+    <Wrap {...wrapProps}>
       {/* ── Hero: base currency + actions ── */}
       <View style={[PCard, { gap: 14, padding: isNarrow ? 14 : 18 }]}>
         <View style={{ flexDirection: isNarrow ? 'column' : 'row', alignItems: isNarrow ? 'stretch' : 'flex-start', justifyContent: 'space-between', gap: isNarrow ? 12 : 16 }}>
           <View style={{ flex: 1 }}>
             <Text style={eyebrow}>Para birimi yönetimi</Text>
-            <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: isNarrow ? 22 : 28, letterSpacing: -0.6, color: '#0A0A0A', marginTop: 4 }}>
+            <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: isNarrow ? 22 : 28, letterSpacing: -0.6, color: T.ink, marginTop: 4 }}>
               Döviz kurları
             </Text>
-            <Text style={{ fontSize: 13, color: '#9A9A9A', marginTop: 4, lineHeight: 19 }}>
+            <Text style={{ fontSize: 13, color: T.ink3, marginTop: 4, lineHeight: 19 }}>
               Sarf alımları, giderler ve satış fiyatları için günlük kur yönetimi.
               Movement girişinde günün kuru dondurulur — geçmiş kayıtlar etkilenmez.
             </Text>
@@ -162,28 +173,28 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
         <View style={{
           flexDirection: 'row', alignItems: 'center', gap: 12,
           paddingHorizontal: 14, paddingVertical: 12,
-          backgroundColor: '#FBF9F4', borderRadius: 12,
-          borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)',
+          backgroundColor: isDark ? T.cardSoft : '#FBF9F4', borderRadius: 12,
+          borderWidth: 1, borderColor: T.hairline,
         }}>
-          <Globe size={16} color="#6B6B6B" strokeWidth={1.6} />
+          <Globe size={16} color={isDark ? (T.ink3 as string) : "#6B6B6B"} strokeWidth={1.6} />
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontSize: 12, color: '#6B6B6B', fontWeight: '500' }} numberOfLines={1}>Raporlama para birimi</Text>
-            <Text style={{ fontSize: 11, color: '#9A9A9A', marginTop: 1 }} numberOfLines={2}>Tüm raporlar bu birime çevrilir</Text>
+            <Text style={{ fontSize: 12, color: T.ink3, fontWeight: '500' }} numberOfLines={1}>Raporlama para birimi</Text>
+            <Text style={{ fontSize: 11, color: T.ink3, marginTop: 1 }} numberOfLines={2}>Tüm raporlar bu birime çevrilir</Text>
           </View>
           <Pressable
             onPress={() => setBasePickerOpen(true)}
             style={{
               flexDirection: 'row', alignItems: 'center', gap: 6,
               paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999,
-              backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+              backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: 1, borderColor: T.hairline,
               ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
             }}
           >
-            <View style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.05)' }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: '#6B6B6B' }}>{CURRENCY_META[baseCurrency].symbol}</Text>
+            <View style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: T.ink3 }}>{CURRENCY_META[baseCurrency].symbol}</Text>
             </View>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: '#0A0A0A', letterSpacing: 0.4 }}>{baseCurrency}</Text>
-            <ChevronDown size={12} color="#6B6B6B" strokeWidth={1.8} />
+            <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink, letterSpacing: 0.4 }}>{baseCurrency}</Text>
+            <ChevronDown size={12} color={isDark ? (T.ink3 as string) : "#6B6B6B"} strokeWidth={1.8} />
           </Pressable>
         </View>
       </View>
@@ -214,22 +225,22 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
                     </View>
                     <View style={{ flex: 1, minWidth: 0, marginStart: 10 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-                        <Text style={{ fontSize: 14, fontWeight: '700', color: '#0A0A0A', letterSpacing: 0.3 }}>{currency}</Text>
-                        <Text style={{ fontSize: 11, color: '#9A9A9A' }} numberOfLines={1}>{m.label}</Text>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: T.ink, letterSpacing: 0.3 }}>{currency}</Text>
+                        <Text style={{ fontSize: 11, color: T.ink3 }} numberOfLines={1}>{m.label}</Text>
                       </View>
                       {rate ? (
-                        <Text style={{ fontSize: 11, color: '#6B6B6B', marginTop: 2 }} numberOfLines={1}>
+                        <Text style={{ fontSize: 11, color: T.ink3, marginTop: 2 }} numberOfLines={1}>
                           {new Date(rate.effectiveDate).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short' })} · {rate.source.toUpperCase()}
                         </Text>
                       ) : (
-                        <Text style={{ fontSize: 11, color: '#D97706', marginTop: 2 }}>Tanımlı değil</Text>
+                        <Text style={{ fontSize: 11, color: isDark ? '#E8B45E' : '#D97706', marginTop: 2 }}>Tanımlı değil</Text>
                       )}
                     </View>
                     <View style={{ alignItems: 'flex-end' }}>
                       <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 20, letterSpacing: -0.4, color: isStale ? '#9A9A9A' : '#0A0A0A', lineHeight: 24 }}>
                         {rate ? rate.rate.toFixed(2) : '—'}
                       </Text>
-                      <Text style={{ fontSize: 10, color: '#9A9A9A', fontWeight: '500' }}>{baseCurrency}</Text>
+                      <Text style={{ fontSize: 10, color: T.ink3, fontWeight: '500' }}>{baseCurrency}</Text>
                     </View>
                     {isStale && <AlertCircle size={14} color="#D97706" strokeWidth={1.8} style={{ marginStart: 6 }} />}
                   </>
@@ -241,8 +252,8 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
                           <Text style={{ fontSize: 14, fontWeight: '700', color: accentColor, letterSpacing: 0.4 }}>{m.symbol}</Text>
                         </View>
                         <View>
-                          <Text style={{ fontSize: 14, fontWeight: '600', color: '#0A0A0A', letterSpacing: 0.4 }}>{currency}</Text>
-                          <Text style={{ fontSize: 11, color: '#9A9A9A' }}>{m.label}</Text>
+                          <Text style={{ fontSize: 14, fontWeight: '600', color: T.ink, letterSpacing: 0.4 }}>{currency}</Text>
+                          <Text style={{ fontSize: 11, color: T.ink3 }}>{m.label}</Text>
                         </View>
                       </View>
                       {isStale && <AlertCircle size={14} color="#D97706" strokeWidth={1.8} />}
@@ -252,27 +263,27 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
                       <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 32, letterSpacing: -1, color: isStale ? '#9A9A9A' : '#0A0A0A', lineHeight: 38 }}>
                         {rate ? rate.rate.toFixed(2) : '—'}
                       </Text>
-                      <Text style={{ fontSize: 13, color: '#9A9A9A', fontWeight: '500' }}>{baseCurrency}</Text>
+                      <Text style={{ fontSize: 13, color: T.ink3, fontWeight: '500' }}>{baseCurrency}</Text>
                     </View>
 
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                      <Text style={{ fontSize: 11, color: '#6B6B6B' }}>1 {currency}</Text>
+                      <Text style={{ fontSize: 11, color: T.ink3 }}>1 {currency}</Text>
                       {isRTL()
-                        ? <ArrowLeft size={10} color="#9A9A9A" strokeWidth={1.6} />
-                        : <ArrowRight size={10} color="#9A9A9A" strokeWidth={1.6} />}
-                      <Text style={{ fontSize: 11, color: '#6B6B6B' }}>
+                        ? <ArrowLeft size={10} color={isDark ? (T.ink3 as string) : "#9A9A9A"} strokeWidth={1.6} />
+                        : <ArrowRight size={10} color={isDark ? (T.ink3 as string) : "#9A9A9A"} strokeWidth={1.6} />}
+                      <Text style={{ fontSize: 11, color: T.ink3 }}>
                         {rate ? `${rate.rate.toFixed(2)} ${baseCurrency}` : '—'}
                       </Text>
                     </View>
 
                     {rate && (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 }}>
-                        <Calendar size={10} color="#9A9A9A" strokeWidth={1.6} />
-                        <Text style={{ fontSize: 10, color: '#9A9A9A' }}>
+                        <Calendar size={10} color={isDark ? (T.ink3 as string) : "#9A9A9A"} strokeWidth={1.6} />
+                        <Text style={{ fontSize: 10, color: T.ink3 }}>
                           {new Date(rate.effectiveDate).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short', year: 'numeric' })}
                         </Text>
-                        <View style={{ width: 1, height: 10, backgroundColor: 'rgba(0,0,0,0.1)' }} />
-                        <Text style={{ fontSize: 10, color: '#9A9A9A', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                        <View style={{ width: 1, height: 10, backgroundColor: T.hairline }} />
+                        <Text style={{ fontSize: 10, color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>
                           {rate.source}
                         </Text>
                       </View>
@@ -280,7 +291,7 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
                   </>
                 )}
                 {isStale && (
-                  <Text style={{ fontSize: 11, color: '#D97706', marginTop: 4 }}>
+                  <Text style={{ fontSize: 11, color: isDark ? '#E8B45E' : '#D97706', marginTop: 4 }}>
                     Henüz tanımlı değil — düzenlemek için tıkla
                   </Text>
                 )}
@@ -296,7 +307,7 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
         style={{
           flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
           paddingVertical: 12, borderRadius: 14,
-          backgroundColor: '#FFFFFF',
+          backgroundColor: isDark ? T.card : '#FFFFFF',
           borderWidth: 1, borderStyle: 'dashed', borderColor: accentColor + '55',
           ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
         }}
@@ -310,12 +321,12 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
         <View style={{
           flexDirection: 'row', alignItems: 'center', gap: 8,
           paddingHorizontal: 18, paddingVertical: 14,
-          borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)',
+          borderBottomWidth: 1, borderBottomColor: T.hairline,
         }}>
-          <History size={14} color="#6B6B6B" strokeWidth={1.6} />
-          <Text style={[eyebrow, { color: '#6B6B6B' }]}>Kur geçmişi</Text>
+          <History size={14} color={isDark ? (T.ink3 as string) : "#6B6B6B"} strokeWidth={1.6} />
+          <Text style={[eyebrow, { color: T.ink3 }]}>Kur geçmişi</Text>
           <View style={{ flex: 1 }} />
-          <Text style={{ fontSize: 11, color: '#9A9A9A' }}>{rates.length} kayıt</Text>
+          <Text style={{ fontSize: 11, color: T.ink3 }}>{rates.length} kayıt</Text>
         </View>
 
         {loading ? (
@@ -324,8 +335,8 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
           </View>
         ) : rates.length === 0 ? (
           <View style={{ paddingVertical: 40, alignItems: 'center', gap: 8 }}>
-            <Globe size={28} color="#D9D9D9" strokeWidth={1.4} />
-            <Text style={{ fontSize: 13, color: '#9A9A9A' }}>Henüz kur kaydı yok</Text>
+            <Globe size={28} color={isDark ? (T.ink3 as string) : "#D9D9D9"} strokeWidth={1.4} />
+            <Text style={{ fontSize: 13, color: T.ink3 }}>Henüz kur kaydı yok</Text>
           </View>
         ) : (
           rates.slice(0, 30).map((r, idx) => (
@@ -334,19 +345,19 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: isNarrow ? 8 : 10,
                 paddingHorizontal: isNarrow ? 12 : 18, paddingVertical: isNarrow ? 9 : 11,
-                ...(idx < rates.slice(0, 30).length - 1 ? { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.03)' } : {}),
+                ...(idx < rates.slice(0, 30).length - 1 ? { borderBottomWidth: 1, borderBottomColor: T.hairline } : {}),
               }}
             >
-              <View style={{ width: isNarrow ? 26 : 28, height: isNarrow ? 26 : 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.04)' }}>
-                <Text style={{ fontSize: 12, fontWeight: '700', color: '#6B6B6B' }}>{CURRENCY_META[r.currency].symbol}</Text>
+              <View style={{ width: isNarrow ? 26 : 28, height: isNarrow ? 26 : 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: T.ink3 }}>{CURRENCY_META[r.currency].symbol}</Text>
               </View>
               <View style={{ width: isNarrow ? 38 : 50 }}>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: '#0A0A0A', letterSpacing: 0.3 }}>{r.currency}</Text>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink, letterSpacing: 0.3 }}>{r.currency}</Text>
               </View>
-              <Text style={{ flex: 1, fontSize: 13, color: '#0A0A0A', fontWeight: '500' }} numberOfLines={1}>
+              <Text style={{ flex: 1, fontSize: 13, color: T.ink, fontWeight: '500' }} numberOfLines={1}>
                 {isNarrow ? r.rate.toFixed(2) : `${r.rate.toFixed(4)} ${r.baseCurrency}`}
               </Text>
-              <Text style={{ fontSize: 11, color: '#9A9A9A' }} numberOfLines={1}>
+              <Text style={{ fontSize: 11, color: T.ink3 }} numberOfLines={1}>
                 {new Date(r.effectiveDate).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short', year: isNarrow ? '2-digit' : 'numeric' })}
               </Text>
               {!isNarrow && (
@@ -356,7 +367,7 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
                 }}>
                   <Text style={{
                     fontSize: 10, fontWeight: '600', letterSpacing: 0.3, textTransform: 'uppercase',
-                    color: r.source === 'tcmb' ? '#1F5689' : r.source === 'manual' ? accentColor : '#6B6B6B',
+                    color: r.source === 'tcmb' ? (isDark ? '#93C5FD' : '#1F5689') : r.source === 'manual' ? accentColor : T.ink3,
                   }}>
                     {r.source}
                   </Text>
@@ -397,8 +408,8 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
           onPress={() => setBasePickerOpen(false)}
           style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.42)', justifyContent: 'center', alignItems: 'center', padding: 20, ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) }}
         >
-          <Pressable onPress={() => {}} style={{ backgroundColor: '#FFFFFF', borderRadius: 18, padding: 8, width: 280, ...(Platform.OS === 'web' ? { boxShadow: '0 12px 32px rgba(0,0,0,0.16)' } as any : {}) }}>
-            <Text style={{ fontSize: 11, fontWeight: '600', color: '#9A9A9A', letterSpacing: 1, textTransform: 'uppercase', paddingHorizontal: 14, paddingTop: 10, paddingBottom: 6 }}>
+          <Pressable onPress={() => {}} style={{ backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: isDark ? 1 : 0, borderColor: T.hairline, borderRadius: 18, padding: 8, width: 280, ...(Platform.OS === 'web' ? { boxShadow: '0 12px 32px rgba(0,0,0,0.16)' } as any : {}) }}>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3, letterSpacing: 1, textTransform: 'uppercase', paddingHorizontal: 14, paddingTop: 10, paddingBottom: 6 }}>
               Base currency seç
             </Text>
             {SUPPORTED_CURRENCIES.map(c => {
@@ -420,7 +431,7 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 14, fontWeight: '600', color: active ? accentColor : '#0A0A0A' }}>{m.code} · {m.symbol}</Text>
-                    <Text style={{ fontSize: 11, color: '#6B6B6B', marginTop: 1 }}>{m.label}</Text>
+                    <Text style={{ fontSize: 11, color: T.ink3, marginTop: 1 }}>{m.label}</Text>
                   </View>
                   {active && <Check size={16} color={accentColor} strokeWidth={2} />}
                 </Pressable>
@@ -429,7 +440,7 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
           </Pressable>
         </Pressable>
       </Modal>
-    </ScrollView>
+    </Wrap>
   );
 }
 
@@ -453,6 +464,8 @@ function RateEditModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
 
   useEffect(() => {
     if (visible) {
@@ -485,19 +498,19 @@ function RateEditModal({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.42)', justifyContent: 'center', alignItems: 'center', padding: 20, ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) }}>
         <View style={{
-          backgroundColor: '#FFFFFF', borderRadius: 20, width: 420, maxWidth: '100%',
+          backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: isDark ? 1 : 0, borderColor: T.hairline, borderRadius: 20, width: 420, maxWidth: '100%',
           ...(Platform.OS === 'web' ? { boxShadow: '0 16px 48px rgba(0,0,0,0.2)' } as any : {}),
         }}>
           {/* Header */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: T.hairline }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 11, fontWeight: '600', color: '#9A9A9A', letterSpacing: 1, textTransform: 'uppercase' }}>Manuel kur</Text>
-              <Text style={{ fontFamily: Platform.OS === 'web' ? 'Inter Tight, system-ui, sans-serif' : 'InterTight_300Light', fontWeight: '300', fontSize: 22, letterSpacing: -0.4, color: '#0A0A0A', marginTop: 2 }}>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3, letterSpacing: 1, textTransform: 'uppercase' }}>Manuel kur</Text>
+              <Text style={{ fontFamily: Platform.OS === 'web' ? 'Inter Tight, system-ui, sans-serif' : 'InterTight_300Light', fontWeight: '300', fontSize: 22, letterSpacing: -0.4, color: T.ink, marginTop: 2 }}>
                 Kur ekle / güncelle
               </Text>
             </View>
-            <Pressable onPress={onClose} style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.04)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-              <X size={14} color="#6B6B6B" strokeWidth={1.8} />
+            <Pressable onPress={onClose} style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+              <X size={14} color={isDark ? (T.ink3 as string) : "#6B6B6B"} strokeWidth={1.8} />
             </Pressable>
           </View>
 
@@ -505,14 +518,14 @@ function RateEditModal({
           <View style={{ padding: 20, gap: 14 }}>
             {/* Currency */}
             <View>
-              <Text style={{ fontSize: 11, fontWeight: '600', color: '#6B6B6B', letterSpacing: 0.6, marginBottom: 6 }}>PARA BİRİMİ</Text>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3, letterSpacing: 0.6, marginBottom: 6 }}>PARA BİRİMİ</Text>
               <Pressable
                 onPress={() => setPickerOpen(true)}
                 style={{
                   flexDirection: 'row', alignItems: 'center', gap: 10,
                   paddingHorizontal: 14, height: 46,
-                  backgroundColor: '#FFFFFF',
-                  borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
+                  backgroundColor: isDark ? T.cardSoft : '#FFFFFF',
+                  borderRadius: 12, borderWidth: 1, borderColor: T.hairline,
                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                 }}
               >
@@ -520,26 +533,26 @@ function RateEditModal({
                   <Text style={{ fontSize: 12, fontWeight: '700', color: accentColor }}>{m.symbol}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 14, fontWeight: '600', color: '#0A0A0A' }}>{m.code} · {m.symbol}</Text>
-                  <Text style={{ fontSize: 11, color: '#9A9A9A' }}>{m.label}</Text>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: T.ink }}>{m.code} · {m.symbol}</Text>
+                  <Text style={{ fontSize: 11, color: T.ink3 }}>{m.label}</Text>
                 </View>
-                <ChevronDown size={14} color="#6B6B6B" strokeWidth={1.8} />
+                <ChevronDown size={14} color={isDark ? (T.ink3 as string) : "#6B6B6B"} strokeWidth={1.8} />
               </Pressable>
             </View>
 
             {/* Rate */}
             <View>
-              <Text style={{ fontSize: 11, fontWeight: '600', color: '#6B6B6B', letterSpacing: 0.6, marginBottom: 6 }}>KUR (1 {currency} = X {baseCurrency})</Text>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3, letterSpacing: 0.6, marginBottom: 6 }}>KUR (1 {currency} = X {baseCurrency})</Text>
               <TextInput
                 value={rate}
                 onChangeText={setRate}
                 placeholder={`Örn: 38.50`}
-                placeholderTextColor="#9A9A9A"
+                placeholderTextColor={isDark ? (T.ink3 as string) : "#9A9A9A"}
                 keyboardType="decimal-pad"
                 style={{
                   paddingHorizontal: 14, height: 46, fontSize: 15, fontWeight: '500',
-                  backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
-                  color: '#0A0A0A',
+                  backgroundColor: isDark ? T.cardSoft : '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: T.hairline,
+                  color: T.ink,
                   ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
                 }}
               />
@@ -547,16 +560,16 @@ function RateEditModal({
 
             {/* Date */}
             <View>
-              <Text style={{ fontSize: 11, fontWeight: '600', color: '#6B6B6B', letterSpacing: 0.6, marginBottom: 6 }}>GEÇERLİ TARİH</Text>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3, letterSpacing: 0.6, marginBottom: 6 }}>GEÇERLİ TARİH</Text>
               <TextInput
                 value={date}
                 onChangeText={setDate}
                 placeholder="YYYY-MM-DD"
-                placeholderTextColor="#9A9A9A"
+                placeholderTextColor={isDark ? (T.ink3 as string) : "#9A9A9A"}
                 style={{
                   paddingHorizontal: 14, height: 46, fontSize: 14,
-                  backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
-                  color: '#0A0A0A',
+                  backgroundColor: isDark ? T.cardSoft : '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: T.hairline,
+                  color: T.ink,
                   ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
                 }}
               />
@@ -564,16 +577,16 @@ function RateEditModal({
 
             {/* Notes (optional) */}
             <View>
-              <Text style={{ fontSize: 11, fontWeight: '600', color: '#6B6B6B', letterSpacing: 0.6, marginBottom: 6 }}>NOT (opsiyonel)</Text>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3, letterSpacing: 0.6, marginBottom: 6 }}>NOT (opsiyonel)</Text>
               <TextInput
                 value={notes}
                 onChangeText={setNotes}
                 placeholder="Örn: Sarf alımı için sabit kur"
-                placeholderTextColor="#9A9A9A"
+                placeholderTextColor={isDark ? (T.ink3 as string) : "#9A9A9A"}
                 style={{
                   paddingHorizontal: 14, paddingVertical: 11, fontSize: 13, minHeight: 46,
-                  backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
-                  color: '#0A0A0A',
+                  backgroundColor: isDark ? T.cardSoft : '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: T.hairline,
+                  color: T.ink,
                   ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
                 }}
                 multiline
@@ -581,17 +594,17 @@ function RateEditModal({
             </View>
 
             {error ? (
-              <Text style={{ fontSize: 12, color: '#9C2E2E', fontWeight: '500' }}>{error}</Text>
+              <Text style={{ fontSize: 12, color: isDark ? '#FCA5A5' : '#9C2E2E', fontWeight: '500' }}>{error}</Text>
             ) : null}
           </View>
 
           {/* Footer */}
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, padding: 16, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)' }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, padding: 16, borderTopWidth: 1, borderTopColor: T.hairline }}>
             <Pressable
               onPress={onClose}
-              style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 9999, backgroundColor: 'rgba(0,0,0,0.04)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+              style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 9999, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
             >
-              <Text style={{ fontSize: 13, fontWeight: '500', color: '#6B6B6B' }}>Vazgeç</Text>
+              <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink3 }}>Vazgeç</Text>
             </Pressable>
             <Pressable
               onPress={handleSave}
@@ -609,7 +622,7 @@ function RateEditModal({
               onPress={() => setPickerOpen(false)}
               style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 20 }}
             >
-              <Pressable onPress={() => {}} style={{ backgroundColor: '#FFFFFF', borderRadius: 18, padding: 8, width: 280, ...(Platform.OS === 'web' ? { boxShadow: '0 12px 32px rgba(0,0,0,0.16)' } as any : {}) }}>
+              <Pressable onPress={() => {}} style={{ backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: isDark ? 1 : 0, borderColor: T.hairline, borderRadius: 18, padding: 8, width: 280, ...(Platform.OS === 'web' ? { boxShadow: '0 12px 32px rgba(0,0,0,0.16)' } as any : {}) }}>
                 {SUPPORTED_CURRENCIES.filter(c => c !== baseCurrency).map(c => {
                   const cm = CURRENCY_META[c];
                   const active = c === currency;
@@ -629,7 +642,7 @@ function RateEditModal({
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={{ fontSize: 14, fontWeight: '600', color: active ? accentColor : '#0A0A0A' }}>{cm.code}</Text>
-                        <Text style={{ fontSize: 11, color: '#6B6B6B', marginTop: 1 }}>{cm.label}</Text>
+                        <Text style={{ fontSize: 11, color: T.ink3, marginTop: 1 }}>{cm.label}</Text>
                       </View>
                       {active && <Check size={16} color={accentColor} strokeWidth={2} />}
                     </Pressable>

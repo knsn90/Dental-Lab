@@ -7,15 +7,18 @@ import React from 'react';
 import { firstName as displayFirstName } from '../../../core/util/personName';
 import { useTranslation } from 'react-i18next';
 import { localeTag, isRTL } from '../../../core/i18n';
+import { RadialGlow } from '../../../core/ui/gradients';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { View, Text, Pressable, ScrollView, Platform, RefreshControl, Image } from 'react-native';
+import { useNavScrollProps } from '../../../core/ui/mobile/navScroll';
 import Svg, { Defs, Pattern, Rect, Line, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { HeroGlowOverlay } from '../../../core/ui/mobile/HeroGlowOverlay';
+import { deepenForDark, lightenForDark } from '../../../core/ui/HeroGlow';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   QrCode, Flame, CheckCircle2, ClipboardList, Bell, AlertTriangle, User,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { MOBILE_PANEL_THEMES, useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { UnreadMessagesCard } from '../../../core/ui/mobile/UnreadMessagesCard';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
@@ -26,6 +29,31 @@ import { useAuthStore } from '../../../core/store/authStore';
 import { RecentOrdersMobile, type RecentOrderItem } from './RecentOrdersMobile';
 
 const LAB = MOBILE_PANEL_THEMES.lab;
+
+/**
+ * Lab mobil özet kartlarının 3D illüstrasyonları (safran paleti).
+ * Admin'deki lacivert setin lab karşılığı; ikon değil kart kimliği (bkz. CLAUDE.md
+ * İkon Kuralı istisnası). Kutu ölçüleri alfa-ağırlıklı mürekkep alanı eşitlenerek
+ * (~3050 px²) ve her görselin KENDİ en/boy oranında verildi → optik ağırlık eşit.
+ */
+const LAB_ART = {
+  newOrder:  require('../../../assets/images/kpi-3d-lab-new-order.png'),
+  active:    require('../../../assets/images/kpi-3d-lab-active.png'),
+  doneToday: require('../../../assets/images/kpi-3d-lab-done-today.png'),
+  messages:  require('../../../assets/images/kpi-3d-lab-messages.png'),
+  recent:    require('../../../assets/images/kpi-3d-lab-recent-orders.png'),
+} as const;
+// Koyu temada Hızlı İşlem kartıyla ortak neon dili — lacivert yerine PANELİN
+// safran'ı: siyah→derin safran gradyan + safranın neon karşılığıyla kenar/glow.
+const LAB_DEEP  = deepenForDark(LAB.primary, 0.42);
+const LAB_DEEP2 = deepenForDark(LAB.primary, 0.30);
+const LAB_NEON  = lightenForDark(LAB.primary, 0.18);
+function hexA(hex: string, a: number): string {
+  try {
+    const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${a})`;
+  } catch { return hex; }
+}
 
 // Hafta şeridi kolon etiketleri — ilk harf gösterilir; çeviri sonrası ilk harf
 // alınır (fa: دوشنبه → د), Türkçe görünüm birebir korunur.
@@ -87,6 +115,9 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
   const { profile } = useAuthStore();
   const { t, i18n } = useTranslation();
   const T = useMobileTokens();
+  // Floating navbar scroll farkındalığı — aşağı okurken bar geri çekilir,
+  // yukarı kaydırınca açılır (bkz. core/ui/mobile/navScroll.ts).
+  const navScrollProps = useNavScrollProps();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const rtl = isRTL(i18n.language);
 
@@ -110,6 +141,7 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
       style={{ flex: 1, backgroundColor: T.bg }}
       contentContainerStyle={{ paddingBottom: 120 }}
       refreshControl={<RefreshControl refreshing={!!props.refreshing} onRefresh={props.onRefresh} tintColor={LAB.primary} />}
+      {...navScrollProps}
     >
       {/* ═══ Greeting + top icons ═══ */}
       <View style={{
@@ -149,6 +181,7 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
           accentColor={LAB.primary}
           onPress={props.onNewOrder}
           kicker={(props.weekCompleted ?? 0) > 0 ? t('dashboard.weekDoneKicker', { count: props.weekCompleted }) : t('dashboard.newOrderKicker')}
+          art={LAB_ART.newOrder}
         />
       )}
 
@@ -156,17 +189,28 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
       <View style={{
         marginHorizontal: 16, marginBottom: 16,
         borderRadius: 24, padding: 18,
-        backgroundColor: '#C26A12',
+        backgroundColor: isDark ? LAB_DEEP : '#C26A12',
         overflow: 'hidden',
+        ...(isDark ? { borderWidth: 1, borderColor: hexA(LAB_NEON, 0.26) } : {}),
+        ...(isDark && Platform.OS === 'web' ? {
+          backgroundImage:
+            `radial-gradient(120% 78% at 50% -10%, ${hexA(LAB_NEON, 0.30)} 0%, ${hexA(LAB_DEEP2, 0.55)} 42%, rgba(0,0,0,0) 76%), ` +
+            `linear-gradient(160deg, #0A0A0A 0%, ${LAB_DEEP} 62%, ${LAB_DEEP2} 100%)`,
+          boxShadow: `0 0 18px ${hexA(LAB_NEON, 0.35)}, inset 0 0 22px ${hexA(LAB_NEON, 0.10)}`,
+        } as any : {}),
       }}>
-        {/* Arka plan görseli — saffron gradient */}
-        <Image
-          source={require('../../../assets/images/efficiency-bg-saffron.png')}
-          resizeMode="cover"
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0.92, ...({ pointerEvents: 'none' } as any) }}
-        />
+        {/* Arka plan görseli — yalnız AÇIK temada; koyuda siyah→safran gradyan var */}
+        {!isDark && (
+          <Image
+            source={require('../../../assets/images/efficiency-bg-saffron.png')}
+            resizeMode="cover"
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0.92, ...({ pointerEvents: 'none' } as any) }}
+          />
+        )}
         {/* Panel saffron tint — turuncu görseli panelin sarı-saffron tonuna çeker */}
-        <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: LAB.primary, opacity: 0.34 }} />
+        {!isDark && (
+          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: LAB.primary, opacity: 0.34 }} />
+        )}
         {/* Beyaz dikey sheen — üstte hafif ışık */}
         <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
           <Svg width="100%" height="100%" preserveAspectRatio="none">
@@ -256,6 +300,8 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
           sub={props.avgDurationHours != null ? `${autoT('ort')} ${Math.round(props.avgDurationHours)}${autoT('sa')}` : undefined}
           deltaColor={overdue > 0 ? T.ruby : T.jade}
           icon={ClipboardList}
+          art={LAB_ART.active}
+          artSize={{ w: 68, h: 66 }}
         />
         <Kpi
           label={t('dashboard.doneToday')}
@@ -264,12 +310,15 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
           dark={(props.todayCompleted ?? 0) > 0}
           accent={LAB.primary}
           icon={CheckCircle2}
+          art={LAB_ART.doneToday}
+          artSize={{ w: 61, h: 63 }}
         />
       </View>
 
       {/* ═══ Mesajlar kartı — okunmamışı öne çıkarır (panel accent) ═══ */}
       <UnreadMessagesCard
         accent={LAB.primary}
+        art={LAB_ART.messages}
         showClinicLogo
         onOpenOrder={(id) => router.push(`/(lab)/order/${id}` as any)}
         onOpenInbox={() => router.push('/(lab)/messages' as any)}
@@ -497,6 +546,7 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
 
       {/* ═══ Son Siparişler — desktop tablonun mobil karşılığı (paylaşılan bileşen) ═══ */}
       <RecentOrdersMobile
+        art={LAB_ART.recent}
         items={recent}
         accent={LAB.primary}
         accentDark={LAB.accentDark}
@@ -548,14 +598,16 @@ function onAccentInk(accent: string): string {
   return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#0A0A0A' : '#FFFFFF';
 }
 
-function Kpi({ label, numericValue, delta, deltaColor, sub, dark, accent, icon: Icon }:
-  { label: string; numericValue: number; delta?: string; deltaColor?: string; sub?: string; dark?: boolean; accent?: string; icon?: any }) {
+function Kpi({ label, numericValue, delta, deltaColor, sub, dark, accent, icon: Icon, art, artSize }:
+  { label: string; numericValue: number; delta?: string; deltaColor?: string; sub?: string; dark?: boolean; accent?: string; icon?: any; art?: any; artSize?: { w: number; h: number } }) {
   const T = useMobileTokens();
   const isDarkMode = useThemeModeStore(s => s.resolvedDark);
+  const rtl = isRTL();
   const acc = accent ?? '#F5C24B';
 
   // Vurgulu kart (dark) = accent-dolu (her panel kendi rengi). Dark mode'da accent-ring.
-  const fill = !!dark && !isDarkMode;
+  // 3D görsel varken accent DOLGU kullanılmaz: safran görsel safran zeminde kayboluyor.
+  const fill = !!dark && !isDarkMode && !art;
   const onAcc = onAccentInk(acc);
 
   const bg = fill ? acc : T.card;
@@ -568,40 +620,67 @@ function Kpi({ label, numericValue, delta, deltaColor, sub, dark, accent, icon: 
   const iconBg = fill ? `${onAcc}26` : `${acc}1A`;
   const iconColor = fill ? onAcc : acc;
 
-  return (
+  const artEdge = rtl ? { left: -6 } : { right: -6 };
+  const card = (
     <View style={{
-      flex: 1, borderRadius: 24, padding: 16,
+      flex: 1, borderRadius: art ? 22 : 24, padding: art ? 14 : 16, overflow: 'hidden',
+      minHeight: art ? 112 : undefined,
       backgroundColor: bg, borderWidth, borderColor,
     }}>
-      <Text style={{ fontSize: 11, fontWeight: '600', color: labelColor, letterSpacing: 1, textTransform: 'uppercase' }} numberOfLines={1}>
+      {/* Görselin arkasında yumuşak accent ışıma (kart içinde kalır) */}
+      {!!art && (
+        <View pointerEvents="none" style={{ position: 'absolute', bottom: -16, width: 100, height: 100, ...(rtl ? { left: -24 } : { right: -24 }) }}>
+          <RadialGlow color={acc} opacity={isDarkMode ? 0.26 : 0.16} stopAt={64} />
+        </View>
+      )}
+      <Text style={{ fontSize: 10.5, fontWeight: '600', color: labelColor, letterSpacing: 1, textTransform: 'uppercase' }} numberOfLines={1}>
         {label}
       </Text>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: art ? 4 : 8 }}>
         <AnimatedNumber
           value={numericValue}
           duration={800}
           style={{
-            fontSize: 34, fontWeight: '400', color: valueColor, letterSpacing: -1,
+            fontSize: art ? 30 : 34, fontWeight: '400', color: valueColor, letterSpacing: -1,
             ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
           }}
         />
-        {!!Icon && (
+        {/* 3D görsel varken ikon rozeti çizilmez */}
+        {!!Icon && !art && (
           <View style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: iconBg, alignItems: 'center', justifyContent: 'center' }}>
             <Icon size={20} color={iconColor} strokeWidth={2} />
           </View>
         )}
       </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+      <View style={{
+        flexDirection: art ? 'column' : 'row',
+        alignItems: art ? (rtl ? 'flex-end' : 'flex-start') : 'center',
+        justifyContent: art ? 'flex-end' : 'space-between',
+        gap: art ? 1 : 0,
+        marginTop: art ? 'auto' : 8,
+        ...(art ? (rtl ? { paddingStart: 46 } : { paddingEnd: 46 }) : {}),
+      }}>
         {!!delta && (
-          <Text style={{ fontSize: 11, fontWeight: '600', color: deltaColorFinal }}>
+          <Text numberOfLines={1} style={{ fontSize: art ? 10.5 : 11, fontWeight: '600', color: deltaColorFinal }}>
             {delta}
           </Text>
         )}
         {!!sub && (
-          <Text style={{ fontSize: 10.5, color: subColor }}>
+          <Text numberOfLines={1} style={{ fontSize: art ? 10 : 10.5, color: subColor }}>
             {sub}
           </Text>
         )}
+      </View>
+    </View>
+  );
+
+  if (!art) return card;
+  // Görsel kartın SINIRINI kontrollü aşar (yandan 6px), alt kenarla arasında 6px pay.
+  return (
+    <View style={{ flex: 1, zIndex: 2 }}>
+      {card}
+      <View pointerEvents="none" style={{ position: 'absolute', bottom: 6, width: artSize?.w ?? 66, height: artSize?.h ?? 66, ...artEdge }}>
+        <Image source={art} resizeMode="contain" style={{ width: '100%', height: '100%' }} />
       </View>
     </View>
   );

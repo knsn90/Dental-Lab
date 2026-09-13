@@ -6,7 +6,7 @@ import { autoT } from '../../../core/i18n/autoTranslate';
 
 import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
-import { CheckCircle2, ArrowRight, ArrowLeft, Clock, ChevronDown } from 'lucide-react-native';
+import { CheckCircle2, ArrowRight, ArrowLeft, Clock, ChevronDown } from '../../../core/ui/icons';
 import { isRTL } from '../../../core/i18n';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../../core/api/supabase';

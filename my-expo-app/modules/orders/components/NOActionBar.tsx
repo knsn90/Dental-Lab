@@ -6,7 +6,7 @@
  */
 import React from 'react';
 import { View, Text, Pressable, ActivityIndicator } from 'react-native';
-import { ArrowRight, ArrowLeft, Check } from 'lucide-react-native';
+import { ArrowRight, ArrowLeft, Check } from '../../../core/ui/icons';
 import { useNOTokens, NORadius } from './NOTokens';
 import { isRTL } from '../../../core/i18n';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';

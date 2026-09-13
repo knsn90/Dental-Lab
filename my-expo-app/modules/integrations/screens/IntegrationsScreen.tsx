@@ -17,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ReceiptText, CreditCard, ShieldAlert, Plus,
   Zap, Check, Trash2, X, Truck, MessageCircle,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 
 import { HubContext } from '../../../core/ui/HubContext';
 import { toast } from '../../../core/ui/Toast';
@@ -241,17 +241,27 @@ function Section({
           <Pressable
             key={r.id}
             onPress={() => onEdit(r)}
-            style={({ hovered }: any) => ({
-              flexDirection: 'row', alignItems: 'center', gap: 12,
-              paddingHorizontal: 12, paddingVertical: 12, borderRadius: 12,
-              backgroundColor: hovered ? '#FAFAFA' : '#FFFFFF',
-              borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
-              ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
-            })}
+            // Fonksiyon-stilli Pressable native'de row layout'u düşürüyor
+            // (renk çubuğu / ad / rozetler / aksiyonlar alt alta dizilir, kart
+            // çerçevesi kaybolur). Native'de object stil, hover yalnız web'de.
+            style={Platform.OS === 'web'
+              ? ((({ hovered }: any) => ({
+                  flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12,
+                  paddingHorizontal: 12, paddingVertical: 12, borderRadius: 12,
+                  backgroundColor: hovered ? '#FAFAFA' : '#FFFFFF',
+                  borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+                  cursor: 'pointer',
+                })) as any)
+              : {
+                  flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12,
+                  paddingHorizontal: 12, paddingVertical: 12, borderRadius: 12,
+                  backgroundColor: '#FFFFFF',
+                  borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+                }}
           >
             {/* Env indicator bar */}
             <View style={{
-              width: 4, height: 32, borderRadius: 2,
+              width: 4, height: 32, borderRadius: 2, flexShrink: 0,
               backgroundColor: isProd ? '#DC2626' : '#10B981',
             }} />
 
@@ -292,7 +302,7 @@ function Section({
             </View>
 
             {/* Action icons */}
-            <View style={{ flexDirection: 'row', gap: 4 }}>
+            <View style={{ flexDirection: 'row', gap: 4, flexShrink: 0 }}>
               <ActionIcon Icon={Zap} color="#0EA5E9" onPress={() => onTest(r)} />
               {!r.is_active && (
                 <ActionIcon Icon={Check} color="#10B981" onPress={() => onActivate(r)} />

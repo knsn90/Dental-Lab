@@ -7,10 +7,11 @@ import { localeTag } from '../../../core/i18n';
 import React, { useMemo, useState } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput,
-  RefreshControl, StyleSheet, Modal, Image,
+  RefreshControl, StyleSheet, Modal, Image, Platform,
 } from 'react-native';
-import { Search, X, SlidersHorizontal, Hash, CalendarDays, Clock, CornerDownRight, CornerDownLeft } from 'lucide-react-native';
+import { Search, X, SlidersHorizontal, Hash, CalendarDays, Clock, CornerDownRight, CornerDownLeft } from '../../../core/ui/icons';
 import { isRTL } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSegments } from 'expo-router';
 import { DS } from '../../../core/theme/dsTokens';
@@ -20,6 +21,7 @@ import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import Svg, { Defs, Rect, RadialGradient, Stop } from 'react-native-svg';
 import type { WorkOrder } from '../types';
 import { buildRevisionCases } from '../revisionGroups';
+import { getOrderStageLabel } from '../utils/currentStage';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 void DS;
 
@@ -280,6 +282,9 @@ function ListView({
   // Klinik/Hekim panelinde kendi işleri → hasta baş harfleri.
   const segments = useSegments() as string[];
   const useClinicLogoAvatar = segments?.[0] === '(lab)' || segments?.[0] === '(admin)';
+  // Teslim Edilen İşler (tarihçe) çok uzayabilir → ilk N kayıt + "hepsini gör".
+  const [showAllDelivered, setShowAllDelivered] = useState(false);
+  const DELIVERED_PREVIEW = 5;
 
   // Group orders by lane — TÜM hook'lar early return'den ÖNCE (Rules of Hooks)
   //
@@ -287,8 +292,15 @@ function ListView({
   // gruplarına ayrılır. Kulvara YALNIZ en güncel üye (anchor) girer; eski
   // revizyonlar onun kartının altında girintili alt-liste olur. Böylece devam
   // eden revizyon "Tamamlandı" kulvarına gömülmez.
-  const { groups, revChildren } = useMemo(() => {
-    const { anchors, children: revChildren } = buildRevisionCases(orders as any[]);
+  const { groups, revChildren, numById } = useMemo(() => {
+    // YALNIZ revizyon gruplanır. Devam siparişi asıl işin yerine geçmez —
+    // ayrı (ama bağlantılı) bir iştir; masaüstündeki gibi kendi kartı olmalı.
+    // Eskiden 'all' bağıyla gruplanıyordu: devam siparişi asıl işin altına
+    // "geçmiş" olarak katlanıyor ve yeni kayıt listede hiç görünmüyordu.
+    const { anchors, children: revChildren } = buildRevisionCases(orders as any[], { linkBy: 'revision' });
+    // Devam siparişi kartında asıl işin numarası (masaüstü: "Devam siparişi · no")
+    const numById = new Map<string, string>();
+    (orders as any[]).forEach(o => numById.set(String(o.id), String(o.order_number ?? '')));
     const recent = (o: WorkOrder) => {
       const t = (o as any).created_at ? Date.parse((o as any).created_at) : NaN;
       return Number.isNaN(t) ? String((o as any).order_number ?? '') : t;
@@ -319,7 +331,7 @@ function ListView({
     (anchors as WorkOrder[]).forEach(o => { byKey[bucketOf(o)].push(o); });
     Object.values(byKey).forEach(arr => arr.sort(byNewest));
     const groups = defs.filter(d => byKey[d.key].length > 0).map(d => ({ ...d, items: byKey[d.key] }));
-    return { groups, revChildren };
+    return { groups, revChildren, numById };
   }, [orders, theme.primary]);
 
   if (orders.length === 0) {
@@ -345,9 +357,21 @@ function ListView({
     const isDone = (o as any).status === 'teslim_edildi';
     // Bölüm kalktı → durum rengi + etiketi karttan (order'dan) türetilir.
     const lane = laneOf(o);
-    const laneColor = lane ? (lane.dot === 'PRIMARY' ? theme.primary : lane.dot) : (isDone ? '#64748B' : theme.primary);
+    // 'alindi' İKİ farklı anı kapsar: planlama BEKLEYEN (triaged_at boş) ve
+    // planlaması yapılmış ama üretime başlamamış iş. Şerit başlığı ikisine de
+    // "Planlama" diyordu → planlaması bitmiş işler mobilde hâlâ "PLANLAMA"
+    // görünüyordu (masaüstü/liste rozeti "Alındı" diyor). Etiket artık tek
+    // yetkili kaynaktan gelir (getOrderStageLabel: triage-farkında + üretimde
+    // aktif istasyon adı), renk de buna göre.
+    const triagePending = (o as any).status === 'alindi' && !(o as any).triaged_at;
+    const planned = (o as any).status === 'alindi' && !triagePending;
+    const laneColor = planned
+      ? '#4A8FC9'                                    // alındı (planlaması yapıldı) → bilgi mavisi
+      : lane ? (lane.dot === 'PRIMARY' ? theme.primary : lane.dot) : (isDone ? '#64748B' : theme.primary);
     const dot = onHold ? '#E89B2A' : laneColor;
-    const badgeLabel = (onHold ? 'Duraklatıldı' : (lane?.title ?? (isDone ? 'Teslim' : 'İşlemde'))).toLocaleUpperCase('tr');
+    // autoT ile aktif dile çevir, SONRA aktif dilin locale'inde büyüt (uppercase,
+    // autoT sözlük eşleşmesini bozduğu için önce çeviri şart).
+    const badgeLabel = autoT(onHold ? 'Duraklatıldı' : (getOrderStageLabel(o as any) || lane?.title || (isDone ? 'Teslim' : 'İşlemde'))).toLocaleUpperCase(localeTag());
     const dd = (o as any).delivery_date;
     const dleft = dd ? Math.ceil((new Date(dd + 'T00:00:00').getTime() - Date.now()) / 86_400_000) : null;
     const due = onHold ? 'Beklemede' : (dd ? formatDue(dd) : '—');
@@ -387,6 +411,12 @@ function ListView({
                     <Text style={{ fontSize: 8.5, fontWeight: '800', color: '#9C5E0E', letterSpacing: 0.4 }}>REVİZYON</Text>
                   </View>
                 )}
+                {/* Devam siparişi — masaüstü listesiyle aynı mavi kimlik */}
+                {!(o as any).revision_of_id && !!(o as any).continues_order_id && (
+                  <View style={{ paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 6, backgroundColor: 'rgba(53,99,168,0.14)', flexShrink: 0 }}>
+                    <Text style={{ fontSize: 8.5, fontWeight: '800', color: '#3563A8', letterSpacing: 0.4 }}>{autoT('DEVAM')}</Text>
+                  </View>
+                )}
               </View>
               <Text style={styles.histSub} numberOfLines={1}>{workType}</Text>
               {!!who && (<Text style={styles.histWho} numberOfLines={1}>{who}</Text>)}
@@ -403,11 +433,16 @@ function ListView({
               <Hash size={12.5} color={T.ink3} strokeWidth={1.8} />
               <Text style={styles.histMetaText} numberOfLines={1}>{orderNum}</Text>
             </View>
+            {/* Üretim panosunda asıl soru "ne zaman teslim etmeliyim?" →
+                aktif işlerde TERMİN, teslim edilenlerde TESLİM olarak etiketle. */}
             <View style={styles.histMeta}>
               <CalendarDays size={13} color={dueColor} strokeWidth={1.8} />
-              <Text style={[styles.histMetaText, { color: dueColor, fontFamily: MFONT.uiSemibold }]} numberOfLines={1}>{due}</Text>
+              <Text style={[styles.histMetaText, { color: dueColor, fontFamily: MFONT.uiSemibold }]} numberOfLines={1}>
+                {onHold ? due : `${isDone ? autoT('Teslim') : autoT('Termin')} ${due}`}
+              </Text>
             </View>
-            {createdTime && (
+            {/* Oluşturma saati yalnız teslim edilenlerde (tarihçe); aktif işte termin öne çıksın. */}
+            {isDone && createdTime && (
               <View style={styles.histMeta}>
                 <Clock size={12.5} color={T.ink3} strokeWidth={1.8} />
                 <Text style={styles.histMetaText} numberOfLines={1}>{createdTime}</Text>
@@ -416,6 +451,17 @@ function ListView({
             {toothCount > 0 && (
               <View style={styles.histMeta}>
                 <Text style={styles.histMetaText} numberOfLines={1}>{`${toothCount} diş`}</Text>
+              </View>
+            )}
+            {/* Devam siparişinde asıl işin numarası (masaüstü paritesi) */}
+            {!(o as any).revision_of_id && !!(o as any).continues_order_id && !!numById.get(String((o as any).continues_order_id)) && (
+              <View style={styles.histMeta}>
+                {isRTL()
+                  ? <CornerDownLeft size={12.5} color="#3563A8" strokeWidth={1.8} />
+                  : <CornerDownRight size={12.5} color="#3563A8" strokeWidth={1.8} />}
+                <Text style={[styles.histMetaText, { color: '#3563A8' }]} numberOfLines={1}>
+                  {numById.get(String((o as any).continues_order_id))}
+                </Text>
               </View>
             )}
           </View>
@@ -452,18 +498,37 @@ function ListView({
 
   return (
     <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
-      {groups.map((g, gi) => (
+      {groups.map((g, gi) => {
+        // Teslim Edilen İşler (tarihçe) → aktif operasyon ekranını boğmasın: ilk N + "gör".
+        const isDelivered = g.key === 'teslim';
+        const collapsed = isDelivered && !showAllDelivered && g.items.length > DELIVERED_PREVIEW;
+        const shown = collapsed ? g.items.slice(0, DELIVERED_PREVIEW) : g.items;
+        const hiddenCount = g.items.length - shown.length;
+        return (
         <View key={g.key} style={{ marginTop: gi === 0 ? 4 : 22 }}>
           <View style={styles.sectionHead}>
             <View style={[styles.sectionDot, { backgroundColor: g.dot }]} />
             <Text style={[styles.sectionTitle, (g.key === 'planlama' || g.key === 'bekletilen') && { color: '#9C5E0E' }]}>
-              {g.title.toLocaleUpperCase('tr')}
+              {autoT(g.title).toLocaleUpperCase(localeTag())}
             </Text>
             <Text style={styles.sectionCount}>{`(${g.items.length})`}</Text>
           </View>
-          <View style={{ gap: 20 }}>{g.items.map(renderCard)}</View>
+          <View style={{ gap: 20 }}>{shown.map(renderCard)}</View>
+          {isDelivered && g.items.length > DELIVERED_PREVIEW && (
+            <Pressable
+              onPress={() => setShowAllDelivered(v => !v)}
+              style={{ paddingVertical: 12, alignItems: 'center', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: '600', color: theme.primary }}>
+                {showAllDelivered
+                  ? autoT('Daha az göster')
+                  : `${hiddenCount} ${autoT('teslim edilen işi gör')} →`}
+              </Text>
+            </Pressable>
+          )}
         </View>
-      ))}
+        );
+      })}
     </View>
   );
 }

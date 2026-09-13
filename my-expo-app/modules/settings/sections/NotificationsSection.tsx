@@ -19,8 +19,8 @@ import {
   ClipboardList, RefreshCw, MessageCircle, CheckCircle,
   CreditCard, Package, Truck, Camera, Wrench,
   Mail, Smartphone, Bell, BellOff, Volume2, AlertTriangle,
-  Shield, Check, X, AlarmClock, ClipboardCheck
-} from 'lucide-react-native';
+  Shield, Check, X, AlarmClock, ClipboardCheck, PenLine,
+} from '../../../core/ui/icons';
 import { supabase } from '../../../core/api/supabase';
 import { toE164 } from '../../../core/utils/format';
 import {
@@ -35,7 +35,9 @@ import { useAuthStore } from '../../../core/store/authStore';
 import { getWebPushState, unsubscribeWebPush } from '../../../core/notifications/webPush';
 import { registerForNativePush, unregisterNativePush, getNativePushState } from '../../../core/notifications/nativePush';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { WhatsAppGlyph } from '../../../core/ui/WhatsAppGlyph';
+import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 
 interface Props {
   panelType: string;
@@ -58,6 +60,8 @@ const ALL_GROUPS: {
       { key: 'paper_order',  icon: Camera,        label: 'Kağıt Inbox',          sub: 'OCR sonrası bekleyen sipariş' },
       { key: 'approval',     icon: CheckCircle,   label: 'Onay Bekleyenler',     sub: 'Tasarım/üretim onayı gerektiğinde' },
       { key: 'delivery',     icon: Truck,         label: 'Teslimat & Kurye',     sub: 'Kurye atama/teslim olayları' },
+      { key: 'implant_parts', icon: Package,      label: 'İmplant Parçaları',    sub: 'Scan body, dijital analog … talep ve teslim' },
+      { key: 'scan_annotation', icon: PenLine,    label: 'Tarama Notları',       sub: '3D tarama üzerine çizim/not eklendiğinde' },
     ],
   },
   {
@@ -88,6 +92,7 @@ function getGroupsForRole(userType?: string | null, role?: string | null) {
   const hideForClient = new Set<NotificationCategory>([
     'paper_order',       // OCR sipariş inbox — lab içi
     'stock',             // stok seviyesi — lab içi
+    'stock_count',       // stok sayımı hatırlatma — lab içi
     'material_request',  // sarf/alet talebi — lab içi
     'order_watch',       // günlük geciken/beklemede digest — yalnız admin/lab-manager
   ]);
@@ -136,13 +141,14 @@ const THUMB_SHADOW = Platform.select({
 });
 
 function Toggle({ on, disabled, onPress, accentColor }: { on: boolean; disabled?: boolean; onPress: () => void; accentColor: string }) {
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <Pressable
       disabled={disabled}
       onPress={onPress}
       style={{
         width: 44, height: 24, borderRadius: 999,
-        backgroundColor: on ? accentColor : 'rgba(0,0,0,0.12)',
+        backgroundColor: on ? accentColor : (isDark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.12)'),
         padding: 2, justifyContent: 'center',
         opacity: disabled ? 0.45 : 1,
         ...(Platform.OS === 'web' ? { cursor: disabled ? 'not-allowed' : 'pointer' } as any : {}),
@@ -168,6 +174,7 @@ export function NotificationsSection({ accentColor }: Props) {
   const { width: _vw } = useWindowDimensions();
   const isNarrow = _vw < 560;
   const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const inkPrimary  = T.ink;
   const inkMuted    = T.ink3;
   const surface     = T.card;
@@ -341,7 +348,7 @@ export function NotificationsSection({ accentColor }: Props) {
   return (
     <ScrollView
       className="flex-1"
-      contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 0, paddingBottom: 120 }}
+      contentContainerStyle={{ paddingHorizontal: PAGE_PADDING, paddingTop: 0, paddingBottom: 120 }}
       showsVerticalScrollIndicator={false}
     >
       {/* ═════ HERO — Master switch ═════ */}
@@ -366,7 +373,7 @@ export function NotificationsSection({ accentColor }: Props) {
             <Text style={{ fontSize: 16, fontWeight: '700', color: inkPrimary, letterSpacing: -0.2 }}>
               {prefs.master_enabled ? 'Bildirimler açık' : 'Tüm bildirimler kapalı'}
             </Text>
-            <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>
+            <Text style={{ fontSize: 12, color: T.ink3, marginTop: 2 }}>
               {prefs.master_enabled
                 ? 'Aşağıdaki tercihlerine göre bildirim alıyorsun.'
                 : 'Hiçbir bildirim almıyorsun. Açmak için sağdaki anahtarı kullan.'}
@@ -382,18 +389,18 @@ export function NotificationsSection({ accentColor }: Props) {
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: `${accentColor}26` }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: surface }}>
               <Text style={{ fontSize: 12, fontWeight: '700', color: inkPrimary }}>{activeChannelCount}</Text>
-              <Text style={{ fontSize: 11.5, color: '#6B7280' }}>kanal aktif</Text>
+              <Text style={{ fontSize: 11.5, color: T.ink3 }}>kanal aktif</Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: surface }}>
               <Text style={{ fontSize: 12, fontWeight: '700', color: inkPrimary }}>{activeRuleCount}</Text>
-              <Text style={{ fontSize: 11.5, color: '#6B7280' }}>bildirim kuralı aktif</Text>
+              <Text style={{ fontSize: 11.5, color: T.ink3 }}>bildirim kuralı aktif</Text>
             </View>
           </View>
         )}
       </View>
 
       {/* ═════ KANAL TERCİHLERİ ═════ */}
-      <Text style={{ fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 1.2, textTransform: 'uppercase', marginTop: 28, marginBottom: 10 }}>
+      <Text style={{ fontSize: 10, fontWeight: '700', color: T.ink3, letterSpacing: 1.2, textTransform: 'uppercase', marginTop: 28, marginBottom: 10 }}>
         Bildirim Kanalları
       </Text>
       <View style={{ backgroundColor: surface, borderRadius: 20, padding: 18, ...CARD_SHADOW }}>
@@ -429,7 +436,7 @@ export function NotificationsSection({ accentColor }: Props) {
                       </View>
                     )}
                   </View>
-                  <Text style={{ fontSize: 11.5, color: '#6B7280', marginTop: 2 }}>{ch.sub}</Text>
+                  <Text style={{ fontSize: 11.5, color: T.ink3, marginTop: 2 }}>{ch.sub}</Text>
                 </View>
                 {isPush && browserPerm !== 'granted' && browserPerm !== 'unsupported' ? (
                   <Pressable
@@ -457,7 +464,7 @@ export function NotificationsSection({ accentColor }: Props) {
                   ilişki: numara, açtığın kanalın hemen altında. */}
               {ch.key === 'whatsapp' && on && (
                 <View style={{ marginStart: 48, marginBottom: 12, gap: 8 }}>
-                  <Text style={{ fontSize: 11, color: '#6B7280' }}>
+                  <Text style={{ fontSize: 11, color: T.ink3 }}>
                     Telefon numarası — uluslararası biçim, örn. +905551112233
                   </Text>
                   <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
@@ -465,7 +472,7 @@ export function NotificationsSection({ accentColor }: Props) {
                       value={waPhone}
                       onChangeText={setWaPhone}
                       placeholder="+90..."
-                      placeholderTextColor="#9CA3AF"
+                      placeholderTextColor={isDark ? (T.ink3 as string) : "#9CA3AF"}
                       keyboardType="phone-pad"
                       autoCapitalize="none"
                       style={{
@@ -506,7 +513,7 @@ export function NotificationsSection({ accentColor }: Props) {
           {/* Grup başlığı + toplu işlemler. Çok sayıda anahtar tek tek
               çevrilmek zorunda kalmasın diye. */}
           <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 26, marginBottom: 10, gap: 12 }}>
-            <Text style={{ flex: 1, fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 1.2, textTransform: 'uppercase' }}>
+            <Text style={{ flex: 1, fontSize: 10, fontWeight: '700', color: T.ink3, letterSpacing: 1.2, textTransform: 'uppercase' }}>
               {group.title}
             </Text>
             <Pressable
@@ -529,7 +536,7 @@ export function NotificationsSection({ accentColor }: Props) {
                 ...(Platform.OS === 'web' ? { cursor: prefs.master_enabled ? 'pointer' : 'not-allowed' } as any : {}),
               })}
             >
-              <Text style={{ fontSize: 11, fontWeight: '600', color: '#6B7280' }}>Tümünü kapat</Text>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3 }}>Tümünü kapat</Text>
             </Pressable>
           </View>
           <View style={{ backgroundColor: surface, borderRadius: 20, padding: isNarrow ? 12 : 18, ...CARD_SHADOW }}>
@@ -541,7 +548,7 @@ export function NotificationsSection({ accentColor }: Props) {
                    kanalın kendi ikonu zaten yukarıdaki kanal listesinde
                    öğrenildi, burada onu tekrarlamak yeter. */
                 <View key={ch.key} style={{ width: COL_W, alignItems: 'center' }} accessibilityLabel={ch.label}>
-                  <ch.icon size={14} color="#94A3B8" strokeWidth={1.9} />
+                  <ch.icon size={14} color={isDark ? (T.ink3 as string) : "#94A3B8"} strokeWidth={1.9} />
                 </View>
               ))}
             </View>
@@ -561,7 +568,7 @@ export function NotificationsSection({ accentColor }: Props) {
                     </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={{ fontSize: 13.5, fontWeight: '600', color: inkPrimary }} numberOfLines={1}>{item.label}</Text>
-                      <Text style={{ fontSize: 11.5, color: '#6B7280', marginTop: 1 }} numberOfLines={isNarrow ? 2 : undefined}>{item.sub}</Text>
+                      <Text style={{ fontSize: 11.5, color: T.ink3, marginTop: 1 }} numberOfLines={isNarrow ? 2 : undefined}>{item.sub}</Text>
                     </View>
                     {CHANNEL_META.filter(ch => (VISIBLE_CHANNELS as readonly string[]).includes(ch.key)).map(ch => {
                       const on = categoryEnabled(item.key, ch.key);

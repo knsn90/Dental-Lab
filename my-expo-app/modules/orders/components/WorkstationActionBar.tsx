@@ -10,7 +10,7 @@ import React, { useState } from 'react';
 import { View, Text, Pressable, Platform, Modal, TextInput } from 'react-native';
 import {
   Pause, Play, AlertOctagon, Check, Clock, Cog,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { useStationTheme, hexA } from '../../../core/theme/stationPalette';
 import { toast } from '../../../core/ui/Toast';
 import { pauseStage, resumeStage, transitionStageState, startStage } from '../api/timing';

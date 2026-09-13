@@ -9,7 +9,7 @@
  */
 import React, { useRef, useState } from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
-import { Image as ImageIcon, FlipHorizontal2, X, RotateCw, Spline, Eraser, MoveHorizontal, Sparkles, Loader2 } from 'lucide-react-native';
+import { Image as ImageIcon, FlipHorizontal2, X, RotateCw, Spline, Eraser, MoveHorizontal, Sparkles, Loader2 } from '../../../core/ui/icons';
 import type { ReferenceImage } from '../types';
 import { detectFace, type FaceLandmarks } from '../lib/faceDetect';
 

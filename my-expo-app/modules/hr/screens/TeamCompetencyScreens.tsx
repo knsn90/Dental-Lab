@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View } from 'react-native';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { useAuthStore } from '../../../core/store/authStore';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { fetchStationSkillsMap, toggleUserStationSkill } from '../../../core/api/stationSkills';
@@ -18,7 +19,10 @@ import {
 function usePanelChrome() {
   const theme = usePanelTheme();
   const A = theme.primary, A_DEEP = theme.primaryDeep;
-  const PAGE = PANEL_BGPAGE[theme.key] ?? theme.bg;
+  // WorkflowStudioScreen ile aynı kural: koyu temada PAGE sayfa zemini olur
+  // (SkillsArea/PeopleArea input+chip zeminlerini PAGE'den alıyor).
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const PAGE = isDark ? '#0E0E0E' : (PANEL_BGPAGE[theme.key] ?? theme.bg);
   const onA = onPrimaryText(A, theme.accent);
   const { profile } = useAuthStore();
   const labId = (profile as any)?.lab_id ?? null;

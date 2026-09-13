@@ -12,7 +12,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, Platform, Pressable } from 'react-native';
-import { MapPin, Home, AlertCircle, Search } from 'lucide-react-native';
+import { MapPin, Home, AlertCircle, Search } from '../../../core/ui/icons';
 import { DS } from '../../../core/theme/dsTokens';
 import { ILLER, ILCELER } from '../../../core/data/turkeyLocations';
 import { DropdownField } from './DropdownField';

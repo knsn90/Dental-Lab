@@ -9,9 +9,12 @@ import { View, Text, Pressable, ScrollView } from 'react-native';
 import {
   ArrowLeft, ArrowRight, ChevronLeft, Wallet, TrendingUp, Activity, ShieldCheck, Sparkles,
   Trophy, ChevronDown, ChevronRight,
-} from 'lucide-react-native';
+} from '../../../../core/ui/icons';
 
 import { DS } from '../../../../core/theme/dsTokens';
+import { useInkUI } from '../../../../core/theme/inkScale';
+import { useMobileTokens } from '../../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../../core/store/themeModeStore';
 import { isRTL } from '../../../../core/i18n';
 import { supabase } from '../../../../core/api/supabase';
 import { listPolicies } from '../api';
@@ -40,6 +43,9 @@ type Props = {
 };
 
 export default function TechnicianBonusScreen({ employeeId, initialName, onBack }: Props) {
+  const U = useInkUI();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [employeeName, setEmployeeName] = useState<string>(initialName ?? '');
   const [employeeMeta, setEmployeeMeta] = useState<{ role?: string; station?: string; email?: string } | null>(null);
   const [runs, setRuns] = useState<BonusRun[]>([]);
@@ -128,7 +134,7 @@ export default function TechnicianBonusScreen({ employeeId, initialName, onBack 
       {/* Back nav */}
       {onBack ? (
         <View style={{ marginBottom: 16 }}>
-          <PillButton variant="light" onPress={onBack} leftIcon={isRTL() ? <ArrowRight size={14} color={DS.ink[900]} /> : <ArrowLeft size={14} color={DS.ink[900]} />}>
+          <PillButton variant="light" onPress={onBack} leftIcon={isRTL() ? <ArrowRight size={14} color={U.ink[900]} /> : <ArrowLeft size={14} color={U.ink[900]} />}>
             Geri
           </PillButton>
         </View>
@@ -152,8 +158,8 @@ export default function TechnicianBonusScreen({ employeeId, initialName, onBack 
 
       {/* AYLIK BAR CHART */}
       <View style={{
-        backgroundColor: '#FFF', borderRadius: 18,
-        borderWidth: 1, borderColor: DS.ink[200],
+        backgroundColor: U.surface, borderRadius: 18,
+        borderWidth: 1, borderColor: U.ink[200],
         padding: 22, marginBottom: 16,
       }}>
         <SecHeader eyebrow="Trend" title="Aylık prim trendi" />
@@ -163,7 +169,7 @@ export default function TechnicianBonusScreen({ employeeId, initialName, onBack 
             const isBest = bestMonth?.key === m.key && m.total_bonus > 0;
             return (
               <View key={m.key} style={{ flex: 1, alignItems: 'center' }}>
-                <Text style={{ fontSize: 9, fontWeight: '700', color: DS.ink[700], marginBottom: 4 }}>
+                <Text style={{ fontSize: 9, fontWeight: '700', color: U.ink[700], marginBottom: 4 }}>
                   {m.total_bonus > 0 ? Math.round(m.total_bonus / 1000) + 'K' : ''}
                 </Text>
                 <View style={{
@@ -172,7 +178,7 @@ export default function TechnicianBonusScreen({ employeeId, initialName, onBack 
                   height: h, minHeight: 2,
                   opacity: m.total_bonus === 0 ? 0.2 : 1,
                 }} />
-                <Text style={{ fontSize: 9, color: DS.ink[500], marginTop: 4 }}>
+                <Text style={{ fontSize: 9, color: U.ink[500], marginTop: 4 }}>
                   {String(m.month).padStart(2, '0')}
                 </Text>
               </View>
@@ -184,8 +190,8 @@ export default function TechnicianBonusScreen({ employeeId, initialName, onBack 
       {/* NEDEN BU KADAR */}
       {latestActive && latestActive.rows.length > 0 ? (
         <View style={{
-          backgroundColor: '#FFF', borderRadius: 18,
-          borderWidth: 1, borderColor: DS.ink[200],
+          backgroundColor: U.surface, borderRadius: 18,
+          borderWidth: 1, borderColor: U.ink[200],
           padding: 22, marginBottom: 16,
         }}>
           <SecHeader
@@ -200,8 +206,8 @@ export default function TechnicianBonusScreen({ employeeId, initialName, onBack 
             <ExplainTile icon={Wallet}      label="Havuz Payı"  value={TRY(latestActive.pool_share)}           accent={TH.warning} />
             <ExplainTile icon={ShieldCheck} label="Remake"      value={String(latestActive.rejects)}           accent={TH.danger} />
           </View>
-          <View style={{ backgroundColor: DS.ink[50], borderRadius: 12, padding: 12 }}>
-            <Text style={{ fontSize: 12, color: DS.ink[700], lineHeight: 18 }}>
+          <View style={{ backgroundColor: U.ink[50], borderRadius: 12, padding: 12 }}>
+            <Text style={{ fontSize: 12, color: U.ink[700], lineHeight: 18 }}>
               <Text style={{ fontWeight: '700' }}>Toplam: </Text>
               Bireysel {TRY(latestActive.individual_bonus)} + Aşama {TRY(latestActive.stage_bonus)} +
               Havuz {TRY(latestActive.pool_share)} ={' '}
@@ -210,7 +216,7 @@ export default function TechnicianBonusScreen({ employeeId, initialName, onBack 
               </Text>
             </Text>
             {latestActive.rows[0]?.row.quality_multiplier !== undefined ? (
-              <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 4 }}>
+              <Text style={{ fontSize: 11, color: U.ink[500], marginTop: 4 }}>
                 Kalite çarpanı bireysel kalemde uygulandı:
                 {' '}× {(latestActive.rows[0].row.quality_multiplier ?? 1).toFixed(2)}
                 {latestActive.rows[0].row.remake_pct ? ` (${(latestActive.rows[0].row.remake_pct ?? 0).toFixed(1)}% remake)` : ''}
@@ -222,20 +228,20 @@ export default function TechnicianBonusScreen({ employeeId, initialName, onBack 
 
       {/* AY BAZINDA DETAY */}
       <View style={{
-        backgroundColor: '#FFF', borderRadius: 18,
-        borderWidth: 1, borderColor: DS.ink[200],
+        backgroundColor: U.surface, borderRadius: 18,
+        borderWidth: 1, borderColor: U.ink[200],
         padding: 22,
       }}>
         <SecHeader eyebrow="Detay" title="Ay bazında dökümü" />
         {monthly.filter(m => m.rows.length > 0).length === 0 ? (
-          <Text style={{ fontSize: 13, color: DS.ink[400], fontStyle: 'italic', textAlign: 'center', paddingVertical: 24 }}>
+          <Text style={{ fontSize: 13, color: U.ink[400], fontStyle: 'italic', textAlign: 'center', paddingVertical: 24 }}>
             Son 12 ayda bu teknisyene ait kayıt yok.
           </Text>
         ) : (
           monthly.filter(m => m.rows.length > 0).map(m => {
             const open = expanded === m.key;
             return (
-              <View key={m.key} style={{ borderBottomWidth: 1, borderBottomColor: DS.ink[100] }}>
+              <View key={m.key} style={{ borderBottomWidth: 1, borderBottomColor: U.ink[100] }}>
                 <Pressable
                   onPress={() => setExpanded(open ? null : m.key)}
                   style={({ pressed }) => ({
@@ -243,12 +249,12 @@ export default function TechnicianBonusScreen({ employeeId, initialName, onBack 
                     opacity: pressed ? 0.85 : 1,
                   })}
                 >
-                  {open ? <ChevronDown size={16} color={DS.ink[500]} /> : (isRTL() ? <ChevronLeft size={16} color={DS.ink[500]} /> : <ChevronRight size={16} color={DS.ink[500]} />)}
+                  {open ? <ChevronDown size={16} color={U.ink[500]} /> : (isRTL() ? <ChevronLeft size={16} color={U.ink[500]} /> : <ChevronRight size={16} color={U.ink[500]} />)}
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }}>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900] }}>
                       {MONTH_LABELS[m.month - 1]} {m.year}
                     </Text>
-                    <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 2 }}>
+                    <Text style={{ fontSize: 11, color: U.ink[500], marginTop: 2 }}>
                       {m.units === 1 ? `1 ${autoT('işlem')}` : `${m.units} ${autoT('üye')}`} · {m.points.toFixed(1)} puan · {m.rows.length} policy
                     </Text>
                   </View>
@@ -259,19 +265,19 @@ export default function TechnicianBonusScreen({ employeeId, initialName, onBack 
                 {open ? (
                   <View style={{ paddingStart: 28, paddingBottom: 14, gap: 8 }}>
                     {m.rows.map(({ run, policy, row }, i) => (
-                      <View key={i} style={{ backgroundColor: DS.ink[50], borderRadius: 12, padding: 12 }}>
+                      <View key={i} style={{ backgroundColor: U.ink[50], borderRadius: 12, padding: 12 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                          <Text style={{ fontSize: 12, fontWeight: '700', color: DS.ink[800], flex: 1 }}>
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: U.ink[800], flex: 1 }}>
                             {policy?.name ?? 'Policy'}
                           </Text>
-                          <Text style={{ fontSize: 10, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                          <Text style={{ fontSize: 10, color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.5 }}>
                             {STATUS_LABEL[run.status] ?? run.status}
                           </Text>
                           <Text style={{ ...DISPLAY, fontSize: 14, color: '#1F6B47', letterSpacing: -0.3 }}>
                             {TRY(row.total_bonus)}
                           </Text>
                         </View>
-                        <Text style={{ fontSize: 10, color: DS.ink[500], marginTop: 4 }}>
+                        <Text style={{ fontSize: 10, color: U.ink[500], marginTop: 4 }}>
                           {row.units === 1 ? `1 ${autoT('işlem')}` : `${row.units} ${autoT('üye')}`} · {(row.points ?? 0).toFixed?.(1) ?? row.points} puan ·{' '}
                           Bireysel {TRY(row.individual_bonus)} · Aşama {TRY(row.stage_bonus)} ·{' '}
                           Havuz {TRY(row.pool_share)} · Kalite ×{(row.quality_multiplier ?? 1).toFixed?.(2) ?? row.quality_multiplier}
@@ -293,6 +299,9 @@ export default function TechnicianBonusScreen({ employeeId, initialName, onBack 
 
 function ExplainTile({ icon: Icon, label, value, accent }:
   { icon: any; label: string; value: string; accent: string }) {
+  const U = useInkUI();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <View style={{
       flex: 1, minWidth: 140,
@@ -304,7 +313,7 @@ function ExplainTile({ icon: Icon, label, value, accent }:
           {label}
         </Text>
       </View>
-      <Text style={{ ...DISPLAY, fontSize: 22, color: DS.ink[900], letterSpacing: -0.6 }}>{value}</Text>
+      <Text style={{ ...DISPLAY, fontSize: 22, color: U.ink[900], letterSpacing: -0.6 }}>{value}</Text>
     </View>
   );
 }

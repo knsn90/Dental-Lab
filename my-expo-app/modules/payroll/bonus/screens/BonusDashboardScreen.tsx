@@ -11,9 +11,13 @@ import { useRouter } from 'expo-router';
 import {
   Wallet, TrendingUp, Users, Trophy, ChevronRight, Activity,
   RefreshCw, ChevronLeft, Sparkles, Layers, Plus, Check,
-} from 'lucide-react-native';
+} from '../../../../core/ui/icons';
 
 import { DS } from '../../../../core/theme/dsTokens';
+import { useMobileTokens } from '../../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../../core/store/themeModeStore';
+import { useInkUI } from '../../../../core/theme/inkScale';
+import { HeroGlow, useHeroSurface, NAVY_INK } from '../../../../core/ui/HeroGlow';
 import { listPolicies, calculateBonusRun, type CalcResult } from '../api';
 import { supabase } from '../../../../core/api/supabase';
 import {
@@ -22,7 +26,7 @@ import {
 } from '../types';
 import {
   DISPLAY, TH, TRY, MONTH_LABELS,
-  PillButton, StatusChip, HeroF1, Loader, ErrorBar,
+  PillButton, Loader, ErrorBar,
   usePagePadding,
 } from '../components/atoms';
 
@@ -42,6 +46,13 @@ type Props = {
 export default function BonusDashboardScreen({
   onOpenPolicies, onOpenEditor, onOpenRuns, onOpenTechnician,
 }: Props) {
+  const U = useInkUI();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  // Koyu temada accent hero lacivert gradyana iner; açık temada TH.primary birebir korunur.
+  const heroBg = useHeroSurface(TH.primary);
+  // Kobalt accent koyu zeminde okunmuyor → metin/ikon için açık lacivert ucu.
+  const accentInk = isDark ? NAVY_INK : TH.primary;
   const router = useRouter();
   const now = new Date();
   const [year, setYear]   = useState(now.getFullYear());
@@ -124,13 +135,15 @@ export default function BonusDashboardScreen({
   };
 
   const pad = usePagePadding();
+  // PillButton 'light'/'ghost' koyu temada koyu zemine döner → ikon da krem olmalı.
+  const heroIcon: string = isDark ? (T.ink as string) : U.ink[900];
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: 'transparent' }} contentContainerStyle={{ padding: pad, paddingBottom: 80 }}>
       {/* ═════ F1 HERO ═════ */}
-      <HeroF1
+      <DashHero
         kicker={`${autoT('Prim Motoru')} · ${autoT(MONTH_LABELS[month - 1])} ${year}`}
-        title={<>{autoT('Bu ay')} <Text style={{ color: TH.primary }}>{TRY(totals.payout)}</Text></>}
+        title={<>{autoT('Bu ay')} <Text style={{ color: accentInk }}>{TRY(totals.payout)}</Text></>}
         description={
           `${summaries.length} ${autoT('aktif politika')} · ${totals.earners}/${totals.techs} ${autoT('teknisyen prim hak etti')} · ${autoT('ortalama')} ${TRY(totals.avg)}.` +
           (totals.pool > 0 ? ` ${autoT('Havuz dağıtımı:')} ${TRY(totals.pool)}.` : '')
@@ -142,13 +155,13 @@ export default function BonusDashboardScreen({
         ]}
         actions={
           <>
-            <PillButton variant="light" onPress={() => stepMonth(-1)} leftIcon={isRTL() ? <ChevronRight size={14} color={DS.ink[900]} /> : <ChevronLeft size={14} color={DS.ink[900]} />}>
+            <PillButton variant="light" onPress={() => stepMonth(-1)} leftIcon={isRTL() ? <ChevronRight size={14} color={heroIcon} /> : <ChevronLeft size={14} color={heroIcon} />}>
               Önceki ay
             </PillButton>
-            <PillButton variant="light" onPress={() => stepMonth(1)} rightIcon={isRTL() ? <ChevronLeft size={14} color={DS.ink[900]} /> : <ChevronRight size={14} color={DS.ink[900]} />}>
+            <PillButton variant="light" onPress={() => stepMonth(1)} rightIcon={isRTL() ? <ChevronLeft size={14} color={heroIcon} /> : <ChevronRight size={14} color={heroIcon} />}>
               Sonraki ay
             </PillButton>
-            <PillButton variant="ghost" onPress={load} leftIcon={<RefreshCw size={14} color={DS.ink[900]} />}>
+            <PillButton variant="ghost" onPress={load} leftIcon={<RefreshCw size={14} color={heroIcon} />}>
               Yenile
             </PillButton>
             <View style={{ flex: 1 }} />
@@ -167,12 +180,12 @@ export default function BonusDashboardScreen({
 
       {/* ═════ KPI SHELF — F1c Full-bleed Stat Hero ═════ */}
       <View style={{
-        borderRadius: 20, backgroundColor: TH.primary, padding: 22,
+        borderRadius: 20, ...heroBg, padding: 22,
         position: 'relative', overflow: 'hidden', marginBottom: 16,
       }}>
-        {/* Dekoratif daireler */}
-        <View style={{ position: 'absolute', top: -40, end: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
-        <View style={{ position: 'absolute', bottom: -50, start: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(0,0,0,0.05)' }} />
+        {/* Dekoratif ışık lekeleri — koyu temada blur ile yayılır, nefes alır. */}
+        <HeroGlow size={160} opacity={0.18} delay={0}    style={{ top: -40, end: -40 }} />
+        <HeroGlow size={140} opacity={0.10} delay={1400} style={{ bottom: -50, start: -20 }} />
 
         {/* 4 mini-stat tile — mobile'da 2x2, tablet+ 1x4 */}
         <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
@@ -197,10 +210,10 @@ export default function BonusDashboardScreen({
               {summaries.length > 0 ? (
                 <View className="flex-row items-end justify-between">
                   <View>
-                    <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: DS.ink[500] }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: isDark ? T.ink3 : U.ink[500] }}>
                       Aktif Politikalar
                     </Text>
-                    <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.4, color: DS.ink[900], marginTop: 2 }}>
+                    <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.4, color: isDark ? T.ink : U.ink[900], marginTop: 2 }}>
                       {summaries.length} politika simüle edildi
                     </Text>
                   </View>
@@ -209,7 +222,7 @@ export default function BonusDashboardScreen({
                       onPress={onOpenPolicies}
                       className="active:opacity-60 web:hover:opacity-70"
                     >
-                      <Text style={{ fontSize: 12, fontWeight: '600', color: TH.primary }}>Tümü →</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: accentInk }}>Tümü →</Text>
                     </Pressable>
                   ) : null}
                 </View>
@@ -218,17 +231,17 @@ export default function BonusDashboardScreen({
               {summaries.length === 0 ? (
                 <View
                   className="flex-col sm:flex-row items-start gap-4 p-5 sm:p-6 rounded-2xl border"
-                  style={{ backgroundColor: '#FFF', borderColor: DS.ink[200] }}
+                  style={{ backgroundColor: isDark ? T.card : '#FFF', borderColor: isDark ? T.hairline : U.ink[200] }}
                 >
-                  <View style={{ width: 48, height: 48, borderRadius: 14, backgroundColor: TH.bgSoft, alignItems: 'center', justifyContent: 'center' }}>
-                    <Sparkles size={22} color={TH.primary} strokeWidth={1.8} />
+                  <View style={{ width: 48, height: 48, borderRadius: 14, backgroundColor: isDark ? 'rgba(90,169,230,0.16)' : TH.bgSoft, alignItems: 'center', justifyContent: 'center' }}>
+                    <Sparkles size={22} color={accentInk} strokeWidth={1.8} />
                   </View>
                   <View className="flex-1 gap-3">
                     <View>
-                      <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.5, color: DS.ink[900], lineHeight: 26 }}>
+                      <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.5, color: isDark ? T.ink : U.ink[900], lineHeight: 26 }}>
                         Prim Motoru'na hoş geldin
                       </Text>
-                      <Text style={{ fontSize: 13, color: DS.ink[500], marginTop: 6, lineHeight: 18 }}>
+                      <Text style={{ fontSize: 13, color: isDark ? T.ink3 : U.ink[500], marginTop: 6, lineHeight: 18 }}>
                         Bir prim politikası tanımla; aylık prim simülasyonu ve sıralama burada görünsün.
                       </Text>
                     </View>
@@ -264,34 +277,34 @@ export default function BonusDashboardScreen({
                           web:cursor-pointer web:hover:opacity-95
                           web:focus-visible:ring-2 web:focus-visible:ring-success/40
                         "
-                        style={{ backgroundColor: '#FFF', borderColor: DS.ink[200] }}
+                        style={{ backgroundColor: isDark ? T.card : '#FFF', borderColor: isDark ? T.hairline : U.ink[200] }}
                       >
                         {/* Top row: name + mode chip + payout */}
                         <View className="flex-row items-start gap-3">
                           <View
                             className="items-center justify-center"
-                            style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: TH.bgSoft }}
+                            style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: isDark ? 'rgba(90,169,230,0.16)' : TH.bgSoft }}
                           >
-                            <Wallet size={16} color={TH.primary} strokeWidth={1.8} />
+                            <Wallet size={16} color={accentInk} strokeWidth={1.8} />
                           </View>
                           <View className="flex-1 min-w-0">
                             <View className="flex-row items-center gap-2 flex-wrap">
                               <Text
-                                style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900], letterSpacing: -0.2 }}
+                                style={{ fontSize: 14, fontWeight: '600', color: isDark ? T.ink : U.ink[900], letterSpacing: -0.2 }}
                                 numberOfLines={1}
                               >
                                 {s.policy.name}
                               </Text>
                               <View
                                 className="px-1.5 py-0.5 rounded-full"
-                                style={{ backgroundColor: DS.ink[100] }}
+                                style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : U.ink[100] }}
                               >
-                                <Text style={{ fontSize: 9, fontWeight: '700', color: DS.ink[700], letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                                <Text style={{ fontSize: 9, fontWeight: '700', color: isDark ? T.ink2 : U.ink[700], letterSpacing: 0.5, textTransform: 'uppercase' }}>
                                   {MODE_LABELS[s.policy.mode]}
                                 </Text>
                               </View>
                             </View>
-                            <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 4 }} numberOfLines={1}>
+                            <Text style={{ fontSize: 11, color: isDark ? T.ink3 : U.ink[500], marginTop: 4 }} numberOfLines={1}>
                               {earnerCount}/{techCount} kişi prim aldı
                               {s.policy.mode !== 'individual' && (r?.total_pool ?? 0) > 0
                                 ? ` · ${autoT('havuz')} ${TRY(r?.total_pool)}`
@@ -302,14 +315,14 @@ export default function BonusDashboardScreen({
                             ) : null}
                           </View>
                           <View className="items-end">
-                            <Text style={{ ...DISPLAY, fontSize: 22, color: DS.ink[900], letterSpacing: -0.7, lineHeight: 24 }}>
+                            <Text style={{ ...DISPLAY, fontSize: 22, color: isDark ? T.ink : U.ink[900], letterSpacing: -0.7, lineHeight: 24 }}>
                               {TRY(r?.total_payout)}
                             </Text>
-                            <Text style={{ fontSize: 9, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.6, textTransform: 'uppercase', marginTop: 2 }}>
+                            <Text style={{ fontSize: 9, fontWeight: '700', color: isDark ? T.ink3 : U.ink[400], letterSpacing: 0.6, textTransform: 'uppercase', marginTop: 2 }}>
                               Bu Ay
                             </Text>
                           </View>
-                          {isRTL() ? <ChevronLeft size={14} color={DS.ink[400]} /> : <ChevronRight size={14} color={DS.ink[400]} />}
+                          {isRTL() ? <ChevronLeft size={14} color={isDark ? (T.ink3 as string) : U.ink[400]} /> : <ChevronRight size={14} color={isDark ? (T.ink3 as string) : U.ink[400]} />}
                         </View>
 
                         {/* Progress bar — hak eden oranı */}
@@ -317,7 +330,7 @@ export default function BonusDashboardScreen({
                           <View className="mt-3">
                             <View
                               className="rounded-full overflow-hidden"
-                              style={{ height: 4, backgroundColor: DS.ink[100] }}
+                              style={{ height: 4, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : U.ink[100] }}
                             >
                               <View
                                 style={{
@@ -341,10 +354,10 @@ export default function BonusDashboardScreen({
               <View className="gap-3">
                 <View className="flex-row items-end justify-between">
                   <View>
-                    <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: DS.ink[500] }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: isDark ? T.ink3 : U.ink[500] }}>
                       Son Hesaplamalar
                     </Text>
-                    <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.4, color: DS.ink[900], marginTop: 2 }}>
+                    <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.4, color: isDark ? T.ink : U.ink[900], marginTop: 2 }}>
                       {runs.length === 1 ? 'Son hesaplama' : `Son ${runs.length} hesaplama`}
                     </Text>
                   </View>
@@ -353,14 +366,14 @@ export default function BonusDashboardScreen({
                       onPress={onOpenRuns}
                       className="active:opacity-60 web:hover:opacity-70"
                     >
-                      <Text style={{ fontSize: 12, fontWeight: '600', color: TH.primary }}>Tümü →</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: accentInk }}>Tümü →</Text>
                     </Pressable>
                   ) : null}
                 </View>
 
                 <View
                   className="rounded-2xl border overflow-hidden"
-                  style={{ backgroundColor: '#FFF', borderColor: DS.ink[200] }}
+                  style={{ backgroundColor: isDark ? T.card : '#FFF', borderColor: isDark ? T.hairline : U.ink[200] }}
                 >
                   {runs.map((r, i) => {
                     const breakdownLen = (Array.isArray(r.breakdown) ? r.breakdown : (r.breakdown?.rows ?? [])).length;
@@ -374,35 +387,35 @@ export default function BonusDashboardScreen({
                         "
                         style={{
                           borderBottomWidth: i < runs.length - 1 ? 1 : 0,
-                          borderBottomColor: DS.ink[100],
+                          borderBottomColor: isDark ? T.hairline2 : U.ink[100],
                         }}
                       >
                         {/* Timeline indicator */}
                         <View className="items-center" style={{ width: 32 }}>
-                          <Text style={{ ...DISPLAY, fontSize: 18, color: DS.ink[900], letterSpacing: -0.5, lineHeight: 20 }}>
+                          <Text style={{ ...DISPLAY, fontSize: 18, color: isDark ? T.ink : U.ink[900], letterSpacing: -0.5, lineHeight: 20 }}>
                             {String(r.period_month).padStart(2, '0')}
                           </Text>
-                          <Text style={{ fontSize: 9, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.6 }}>
+                          <Text style={{ fontSize: 9, fontWeight: '700', color: isDark ? T.ink3 : U.ink[400], letterSpacing: 0.6 }}>
                             {String(r.period_year).slice(-2)}
                           </Text>
                         </View>
 
                         <View className="flex-1 min-w-0">
                           <View className="flex-row items-center gap-2">
-                            <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+                            <Text style={{ fontSize: 13, fontWeight: '600', color: isDark ? T.ink : U.ink[900] }} numberOfLines={1}>
                               {MONTH_LABELS[r.period_month - 1]} {r.period_year}
                             </Text>
-                            <StatusChip status={r.status} />
+                            <RunStatusChip status={r.status} />
                           </View>
-                          <Text style={{ fontSize: 10, color: DS.ink[500], marginTop: 2 }}>
+                          <Text style={{ fontSize: 10, color: isDark ? T.ink3 : U.ink[500], marginTop: 2 }}>
                             {new Date(r.calculated_at).toLocaleDateString(localeTag())} · {breakdownLen} kişi
                           </Text>
                         </View>
 
-                        <Text style={{ ...DISPLAY, fontSize: 18, color: DS.ink[900], letterSpacing: -0.5 }}>
+                        <Text style={{ ...DISPLAY, fontSize: 18, color: isDark ? T.ink : U.ink[900], letterSpacing: -0.5 }}>
                           {TRY(r.total_payout)}
                         </Text>
-                        {isRTL() ? <ChevronLeft size={14} color={DS.ink[400]} /> : <ChevronRight size={14} color={DS.ink[400]} />}
+                        {isRTL() ? <ChevronLeft size={14} color={isDark ? (T.ink3 as string) : U.ink[400]} /> : <ChevronRight size={14} color={isDark ? (T.ink3 as string) : U.ink[400]} />}
                       </Pressable>
                     );
                   })}
@@ -416,18 +429,18 @@ export default function BonusDashboardScreen({
           <View style={{ flexGrow: 1, flexBasis: 280, minWidth: 280, maxWidth: 400 }}>
             <View className="flex-row items-end justify-between mb-3">
               <View>
-                <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: DS.ink[500] }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: isDark ? T.ink3 : U.ink[500] }}>
                   Sıralama · {MONTH_LABELS[month - 1]}
                 </Text>
-                <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.4, color: DS.ink[900], marginTop: 2 }}>
+                <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.4, color: isDark ? T.ink : U.ink[900], marginTop: 2 }}>
                   Liderler
                 </Text>
               </View>
               <View
                 className="px-2 py-0.5 rounded-full"
-                style={{ backgroundColor: TH.bgSoft }}
+                style={{ backgroundColor: isDark ? 'rgba(90,169,230,0.16)' : TH.bgSoft }}
               >
-                <Text style={{ fontSize: 10, fontWeight: '700', color: TH.primary }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: accentInk }}>
                   {ranking.length} kişi
                 </Text>
               </View>
@@ -435,15 +448,15 @@ export default function BonusDashboardScreen({
 
             <View
               className="rounded-2xl border overflow-hidden"
-              style={{ backgroundColor: '#FFF', borderColor: DS.ink[200] }}
+              style={{ backgroundColor: isDark ? T.card : '#FFF', borderColor: isDark ? T.hairline : U.ink[200] }}
             >
                 {/* ─── PODIUM — top 3 ─── */}
                 {ranking.length >= 1 ? (
                   <View
                     className="px-4 pt-4 pb-3"
-                    style={{ backgroundColor: TH.bg }}
+                    style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : TH.bg }}
                   >
-                    <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: DS.ink[700], marginBottom: 12, textAlign: 'center' }}>
+                    <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: isDark ? T.ink2 : U.ink[700], marginBottom: 12, textAlign: 'center' }}>
                       Bu Ayın Lideri
                     </Text>
                     <View className="flex-row items-end justify-center gap-3">
@@ -463,7 +476,7 @@ export default function BonusDashboardScreen({
                         row={ranking[0]}
                         onPress={() => onOpenTechnician?.(ranking[0].employee_id, ranking[0].employee_name)}
                         height={76}
-                        medalColor={TH.primary}
+                        medalColor={accentInk}
                         big
                       />
                       {/* 3rd place */}
@@ -473,7 +486,7 @@ export default function BonusDashboardScreen({
                           row={ranking[2]}
                           onPress={() => onOpenTechnician?.(ranking[2].employee_id, ranking[2].employee_name)}
                           height={42}
-                          medalColor={TH.primaryDeep}
+                          medalColor={isDark ? '#3E85C6' : TH.primaryDeep}
                         />
                       ) : <View style={{ flex: 1 }} />}
                     </View>
@@ -497,30 +510,30 @@ export default function BonusDashboardScreen({
                           style={{
                             borderTopWidth: i === 0 ? 1 : 0,
                             borderBottomWidth: i < Math.min(12, ranking.length - 3) - 1 ? 1 : 0,
-                            borderColor: DS.ink[100],
+                            borderColor: isDark ? T.hairline2 : U.ink[100],
                           }}
                         >
-                          <Text style={{ width: 22, fontSize: 11, fontWeight: '700', color: DS.ink[400], textAlign: 'center' }}>
+                          <Text style={{ width: 22, fontSize: 11, fontWeight: '700', color: isDark ? T.ink3 : U.ink[400], textAlign: 'center' }}>
                             {rank}
                           </Text>
                           <View
                             className="items-center justify-center"
-                            style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: DS.ink[100] }}
+                            style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : U.ink[100] }}
                           >
-                            <Text style={{ fontSize: 10, fontWeight: '700', color: DS.ink[700] }}>
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: isDark ? T.ink2 : U.ink[700] }}>
                               {initials(r.employee_name)}
                             </Text>
                           </View>
                           <View className="flex-1 min-w-0">
-                            <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+                            <Text style={{ fontSize: 12, fontWeight: '600', color: isDark ? T.ink : U.ink[900] }} numberOfLines={1}>
                               {r.employee_name || '—'}
                             </Text>
-                            <Text style={{ fontSize: 10, color: DS.ink[500] }}>
+                            <Text style={{ fontSize: 10, color: isDark ? T.ink3 : U.ink[500] }}>
                               {(r.points ?? 0).toFixed?.(1) ?? r.points} puan
                               {r.rejects ? ` · ${r.rejects} yenileme` : ''}
                             </Text>
                           </View>
-                          <Text style={{ ...DISPLAY, fontSize: 14, color: DS.ink[900], letterSpacing: -0.3 }}>
+                          <Text style={{ ...DISPLAY, fontSize: 14, color: isDark ? T.ink : U.ink[900], letterSpacing: -0.3 }}>
                             {TRY(r.total_bonus)}
                           </Text>
                         </Pressable>
@@ -532,9 +545,9 @@ export default function BonusDashboardScreen({
                 {ranking.length > 15 ? (
                   <View
                     className="px-4 py-2.5"
-                    style={{ borderTopWidth: 1, borderColor: DS.ink[100], backgroundColor: DS.ink[50] }}
+                    style={{ borderTopWidth: 1, borderColor: isDark ? T.hairline2 : U.ink[100], backgroundColor: isDark ? T.cardSoft : U.ink[50] }}
                   >
-                    <Text style={{ fontSize: 10, fontWeight: '600', color: DS.ink[500], textAlign: 'center', letterSpacing: 0.3 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '600', color: isDark ? T.ink3 : U.ink[500], textAlign: 'center', letterSpacing: 0.3 }}>
                       +{ranking.length - 15} kişi daha
                     </Text>
                   </View>
@@ -550,17 +563,20 @@ export default function BonusDashboardScreen({
 
 /* ─── OnboardingStep — empty state quick-start row ──────────────────── */
 function OnboardingStep({ n, title, hint }: { n: number; title: string; hint: string }) {
+  const U = useInkUI();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <View className="flex-row items-center gap-3">
       <View
         className="items-center justify-center"
-        style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: DS.ink[100] }}
+        style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : U.ink[100] }}
       >
-        <Text style={{ fontSize: 11, fontWeight: '700', color: DS.ink[700] }}>{n}</Text>
+        <Text style={{ fontSize: 11, fontWeight: '700', color: isDark ? T.ink2 : U.ink[700] }}>{n}</Text>
       </View>
       <View className="flex-1">
-        <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>{title}</Text>
-        <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 1 }}>{hint}</Text>
+        <Text style={{ fontSize: 13, fontWeight: '600', color: isDark ? T.ink : U.ink[900] }}>{title}</Text>
+        <Text style={{ fontSize: 11, color: isDark ? T.ink3 : U.ink[500], marginTop: 1 }}>{hint}</Text>
       </View>
     </View>
   );
@@ -585,6 +601,9 @@ function PodiumSlot({ rank, row, onPress, height, medalColor, big }: {
   medalColor: string;
   big?: boolean;
 }) {
+  const U = useInkUI();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const avatarSize = big ? 44 : 36;
   const initialsSize = big ? 13 : 11;
   return (
@@ -601,11 +620,11 @@ function PodiumSlot({ rank, row, onPress, height, medalColor, big }: {
           className="items-center justify-center"
           style={{
             width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2,
-            backgroundColor: '#FFF',
+            backgroundColor: isDark ? T.card : '#FFF',
             borderWidth: 2, borderColor: medalColor,
           }}
         >
-          <Text style={{ fontSize: initialsSize, fontWeight: '700', color: DS.ink[900] }}>
+          <Text style={{ fontSize: initialsSize, fontWeight: '700', color: isDark ? T.ink : U.ink[900] }}>
             {initials(row.employee_name)}
           </Text>
         </View>
@@ -615,7 +634,7 @@ function PodiumSlot({ rank, row, onPress, height, medalColor, big }: {
             position: 'absolute', bottom: -4, end: -4,
             width: 18, height: 18, borderRadius: 9,
             backgroundColor: medalColor,
-            borderWidth: 2, borderColor: '#FFF',
+            borderWidth: 2, borderColor: isDark ? (T.card as string) : '#FFF',
           }}
         >
           <Text style={{ fontSize: 9, fontWeight: '700', color: '#FFF' }}>{rank}</Text>
@@ -624,13 +643,13 @@ function PodiumSlot({ rank, row, onPress, height, medalColor, big }: {
 
       {/* Name + bonus */}
       <Text
-        style={{ fontSize: 11, fontWeight: '600', color: DS.ink[900], textAlign: 'center' }}
+        style={{ fontSize: 11, fontWeight: '600', color: isDark ? T.ink : U.ink[900], textAlign: 'center' }}
         numberOfLines={1}
       >
         {row.employee_name || '—'}
       </Text>
       <Text
-        style={{ ...DISPLAY, fontSize: big ? 16 : 13, color: DS.ink[900], letterSpacing: -0.3, lineHeight: big ? 18 : 15 }}
+        style={{ ...DISPLAY, fontSize: big ? 16 : 13, color: isDark ? T.ink : U.ink[900], letterSpacing: -0.3, lineHeight: big ? 18 : 15 }}
         numberOfLines={1}
       >
         {TRY(row.total_bonus)}
@@ -684,6 +703,118 @@ function HeroTile({ icon: Icon, label, value, sub }:
       {sub ? (
         <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.72)' }} numberOfLines={1}>{sub}</Text>
       ) : null}
+    </View>
+  );
+}
+
+
+/* ─── DashHero — F1 hero (atoms/HeroF1'in tema-farkında yerel kopyası) ────
+   Açık tema BİREBİR eskisi gibi (soluk TH.bg zemin + %55 beyaz cam kart).
+   Koyu temada kart komple beyaz patlıyor, üstündeki BigStat metni krem olduğu
+   için de görünmez oluyordu → lacivert hero yüzeyi + beyaz metin + saydam
+   istatistik kutucukları. */
+function DashHero({ kicker, title, description, stats, actions }: {
+  kicker: string;
+  title: React.ReactNode;
+  description?: React.ReactNode;
+  stats?: { value: string; label: string }[];
+  actions?: React.ReactNode;
+}) {
+  const U = useInkUI();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const heroBg = useHeroSurface(TH.primary);
+
+  const kickerColor = isDark ? 'rgba(255,255,255,0.85)' : U.ink[500];
+  const titleColor  = isDark ? '#FFFFFF' : U.ink[900];
+  const descColor   = isDark ? 'rgba(255,255,255,0.60)' : U.ink[500];
+
+  return (
+    <View style={{
+      borderRadius: 28, overflow: 'hidden', padding: 14, marginBottom: 16,
+      position: 'relative',
+      ...(isDark ? heroBg : { backgroundColor: TH.bg }),
+    }}>
+      {isDark ? (
+        <>
+          <HeroGlow size={130} opacity={0.18} delay={0}    style={{ top: -46, end: -34 }} />
+          <HeroGlow size={110} opacity={0.10} delay={1400} style={{ bottom: -52, start: -26 }} />
+        </>
+      ) : null}
+      <View style={{
+        backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.55)',
+        borderRadius: 22, padding: 26,
+        borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.7)',
+      }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 16 }}>
+          <View style={{ flex: 1, minWidth: 260 }}>
+            <Text style={{
+              fontSize: 11, fontWeight: '500', letterSpacing: 1.1,
+              textTransform: 'uppercase', color: kickerColor, marginBottom: 12,
+            }}>
+              {kicker}
+            </Text>
+            <Text style={{ ...DISPLAY, fontSize: 44, letterSpacing: -1.5, lineHeight: 48, color: titleColor }}>
+              {title}
+            </Text>
+            {description ? (
+              <Text style={{ fontSize: 14, color: descColor, marginTop: 12, maxWidth: 520, lineHeight: 21 }}>
+                {description}
+              </Text>
+            ) : null}
+          </View>
+          {stats && stats.length > 0 ? (
+            <View style={{ flexDirection: 'row', gap: isDark ? 8 : 28, flexWrap: 'wrap' }}>
+              {stats.map(st => (
+                <View
+                  key={st.label}
+                  style={{
+                    alignItems: 'flex-end',
+                    ...(isDark ? {
+                      minWidth: 92, paddingVertical: 8, paddingHorizontal: 12,
+                      borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.16)',
+                    } : null),
+                  }}
+                >
+                  <Text style={{ ...DISPLAY, fontSize: 40, letterSpacing: -1.4, lineHeight: 40, color: titleColor }}>
+                    {st.value}
+                  </Text>
+                  <Text style={{ fontSize: 10, color: kickerColor, textTransform: 'uppercase', letterSpacing: 0.7, marginTop: 4 }}>
+                    {st.label}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </View>
+        {actions ? (
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
+            {actions}
+          </View>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+
+/* ─── RunStatusChip — atoms/StatusChip'in tema-farkında yerel kopyası ────
+   Pastel zemin + koyu metin koyu ekranda beyaz leke gibi patlıyordu; koyu
+   temada `U.chipTones` (saydam zemin + açık metin). Açık değerler birebir. */
+function RunStatusChip({ status }: { status: string }) {
+  const U = useInkUI();
+  const CFG: Record<string, { light: { bg: string; fg: string }; tone: keyof typeof U.chipTones; label: string }> = {
+    draft:    { light: { bg: 'rgba(0,0,0,0.05)',      fg: U.ink[700] }, tone: 'neutral', label: 'TASLAK' },
+    approved: { light: { bg: 'rgba(232,155,42,0.15)', fg: '#9C5E0E'   }, tone: 'warning', label: 'ONAYLI' },
+    posted:   { light: { bg: 'rgba(45,154,107,0.12)', fg: '#1F6B47'   }, tone: 'success', label: 'YANSITILDI' },
+    voided:   { light: { bg: 'rgba(217,75,75,0.12)',  fg: '#9C2E2E'   }, tone: 'danger',  label: 'İPTAL' },
+    active:   { light: { bg: 'rgba(45,154,107,0.12)', fg: '#1F6B47'   }, tone: 'success', label: 'AKTİF' },
+    archived: { light: { bg: 'rgba(0,0,0,0.05)',      fg: U.ink[500] }, tone: 'neutral', label: 'ARŞİV' },
+  };
+  const c = CFG[status] ?? CFG.draft;
+  const tone = U.isDark ? U.chipTones[c.tone] : c.light;
+  return (
+    <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: tone.bg }}>
+      <Text style={{ fontSize: 10, fontWeight: '700', color: tone.fg, letterSpacing: 0.4 }}>{autoT(c.label)}</Text>
     </View>
   );
 }

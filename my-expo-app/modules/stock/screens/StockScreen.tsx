@@ -1,4 +1,5 @@
 import { localeTag, isRTL, weekdayOffset } from '../../../core/i18n';
+import { HeroGlow, useHeroSurface } from '../../../core/ui/HeroGlow';
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View, Text, ScrollView, Pressable,
@@ -18,6 +19,7 @@ import { MaterialRequestsScreen } from '../../material-requests/screens/Material
 import { WasteReportModal } from '../components/WasteReportModal';
 import { useAuthStore } from '../../../core/store/authStore';
 import { DS } from '../../../core/theme/dsTokens';
+import { useStockUI, type StockUI } from '../stockTheme';
 import { formatQty as fmtQty, formatQtyDual as fmtQtyDual } from '../../../core/util/formatQty';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
@@ -60,129 +62,15 @@ import {
   TrendingDown, Flame, PlusCircle, Check, ArrowLeftRight,
   DatabaseZap, Inbox, BarChart3, TrendingUp, Users,
   Calendar, Zap, Layers, MapPin, QrCode, Copy, Warehouse, ScanSearch,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 
 // ─── Patterns Design Language Tokens ─────────────────────────────────────────
+// Yüzey/ink stilleri artık `useStockUI()` (modules/stock/stockTheme.ts) — açık
+// temada değerler birebir aynı, koyu temada kart/metin/kenarlık çevrilir.
 
 const DISPLAY = {
   fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
   fontWeight: '300' as const,
-};
-
-const cardSolid: any = {
-  backgroundColor: '#FFF',
-  borderRadius: 24,
-  padding: 22,
-  ...(Platform.OS === 'web' ? { boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)' } : {}),
-};
-
-const tableCard: any = {
-  backgroundColor: '#FFF',
-  borderRadius: 24,
-  borderWidth: 1,
-  borderColor: 'rgba(0,0,0,0.05)',
-  overflow: 'hidden',
-};
-
-const CHIP_TONES = {
-  success: { bg: 'rgba(45,154,107,0.12)', fg: '#1F6B47' },
-  warning: { bg: 'rgba(232,155,42,0.15)', fg: '#9C5E0E' },
-  danger:  { bg: 'rgba(217,75,75,0.12)',  fg: '#9C2E2E' },
-  info:    { bg: 'rgba(74,143,201,0.12)', fg: '#1F5689' },
-  neutral: { bg: 'rgba(0,0,0,0.05)',      fg: '#0A0A0A' },
-};
-
-const modalOverlay: any = {
-  flex: 1,
-  backgroundColor: 'rgba(15,23,42,0.4)',
-  justifyContent: 'center',
-  alignItems: 'center',
-  padding: 24,
-};
-
-const modalSheet: any = {
-  backgroundColor: '#FFFFFF',
-  borderRadius: 24,
-  width: '100%',
-  maxWidth: 540,
-  maxHeight: '92%',
-  overflow: 'hidden',
-  borderWidth: 1,
-  borderColor: 'rgba(0,0,0,0.05)',
-  ...(Platform.OS === 'web' ? { boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)' } : {}),
-};
-
-const modalHeader: any = {
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  paddingHorizontal: 24,
-  paddingTop: 22,
-  paddingBottom: 18,
-  borderBottomWidth: 1,
-  borderBottomColor: 'rgba(0,0,0,0.04)',
-};
-
-const modalFooter: any = {
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'flex-end',
-  gap: 10,
-  paddingHorizontal: 24,
-  paddingVertical: 16,
-  borderTopWidth: 1,
-  borderTopColor: 'rgba(0,0,0,0.04)',
-};
-
-const fieldInput: any = {
-  height: 44,
-  borderRadius: 14,
-  borderWidth: 1,
-  borderColor: 'rgba(0,0,0,0.08)',
-  paddingHorizontal: 14,
-  fontSize: 14,
-  color: DS.ink[900],
-  backgroundColor: '#FFFFFF',
-  ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
-};
-
-const ghostBtn: any = {
-  paddingHorizontal: 14,
-  paddingVertical: 6,
-  borderRadius: 9999,
-  borderWidth: 1,
-  borderColor: 'rgba(0,0,0,0.08)',
-  ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
-};
-
-const darkPillBtn: any = {
-  paddingHorizontal: 14,
-  paddingVertical: 6,
-  borderRadius: 9999,
-  backgroundColor: DS.ink[900],
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: 6,
-  minWidth: 80,
-  justifyContent: 'center',
-  ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
-};
-
-const colHeader: any = {
-  textTransform: 'uppercase',
-  fontSize: 10,
-  fontWeight: '600',
-  letterSpacing: 0.7,
-  color: DS.ink[500],
-};
-
-const sectionCard: any = {
-  backgroundColor: '#FFFFFF',
-  borderRadius: 14,
-  borderWidth: 1,
-  borderColor: 'rgba(0,0,0,0.05)',
-  padding: 16,
-  marginBottom: 12,
 };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -252,13 +140,14 @@ interface StockHeroProps {
 }
 // Yetki yok ekranı — kullanıcı RBAC'sı sekme için yeterli değilse
 function NoAccessView({ accentColor }: { accentColor: string }) {
+  const U = useStockUI();
   return (
     <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 80, gap: 12 }}>
       <View style={{ width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor + '14' }}>
         <Settings size={26} color={accentColor} strokeWidth={1.4} />
       </View>
-      <Text style={{ fontSize: 16, fontWeight: '700', color: DS.ink[900] }}>Erişim yetkiniz yok</Text>
-      <Text style={{ fontSize: 13, color: DS.ink[400], textAlign: 'center', maxWidth: 320 }}>
+      <Text style={{ fontSize: 16, fontWeight: '700', color: U.ink[900] }}>Erişim yetkiniz yok</Text>
+      <Text style={{ fontSize: 13, color: U.ink[400], textAlign: 'center', maxWidth: 320 }}>
         Bu sekmeyi görüntüleme yetkiniz bulunmuyor. Yetkili bir yöneticiyle iletişime geçin.
       </Text>
     </View>
@@ -266,11 +155,13 @@ function NoAccessView({ accentColor }: { accentColor: string }) {
 }
 
 function StockHeroCard({ accentColor, eyebrow, value, sub, icon: HeadIcon, stats = [] }: StockHeroProps) {
+  const U = useStockUI();
+  const heroBg = useHeroSurface(accentColor);
   const DisplayFont = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
   return (
-    <View style={{ borderRadius: 20, overflow: 'hidden', backgroundColor: accentColor, padding: 18, position: 'relative' }}>
-      <View style={{ position: 'absolute', top: -50, end: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.20)' }} />
-      <View style={{ position: 'absolute', bottom: -60, start: -30, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+    <View style={{ borderRadius: 20, overflow: 'hidden', ...heroBg, padding: 18, position: 'relative' }}>
+      <HeroGlow size={180} opacity={0.20} delay={0} style={{ top: -50, end: -40 }} />
+      <HeroGlow size={150} opacity={0.12} delay={1400} style={{ bottom: -60, start: -30 }} />
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
         <View style={{ flex: 1, minWidth: 220 }}>
           <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)', marginBottom: 8 }}>{eyebrow}</Text>
@@ -306,6 +197,7 @@ function StockHeroCard({ accentColor, eyebrow, value, sub, icon: HeadIcon, stats
 // ─── StatusBadge ──────────────────────────────────────────────────────────────
 
 function StatusBadge({ quantity, min }: { quantity: number; min: number }) {
+  const U = useStockUI();
   const pct = min > 0 ? quantity / min : 1;
   const make = (label: string, fg: string, bg: string) => (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 9999, paddingHorizontal: 10, paddingVertical: 3, backgroundColor: bg }}>
@@ -313,18 +205,19 @@ function StatusBadge({ quantity, min }: { quantity: number; min: number }) {
       <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.2, color: fg }}>{label}</Text>
     </View>
   );
-  if (quantity === 0) return make('Tükendi', CHIP_TONES.danger.fg, CHIP_TONES.danger.bg);
-  if (pct < 1)        return make('Kritik',  CHIP_TONES.warning.fg, CHIP_TONES.warning.bg);
-  return                     make('Normal',  CHIP_TONES.success.fg, CHIP_TONES.success.bg);
+  if (quantity === 0) return make('Tükendi', U.chipTones.danger.fg, U.chipTones.danger.bg);
+  if (pct < 1)        return make('Kritik',  U.chipTones.warning.fg, U.chipTones.warning.bg);
+  return                     make('Normal',  U.chipTones.success.fg, U.chipTones.success.bg);
 }
 
 // ─── StockBar ─────────────────────────────────────────────────────────────────
 
 function StockBar({ quantity, min }: { quantity: number; min: number }) {
+  const U = useStockUI();
   const pct = min > 0 ? Math.min(quantity / min, 1) : 1;
-  const barColor = pct === 0 ? CHIP_TONES.danger.fg : pct < 1 ? CHIP_TONES.warning.fg : CHIP_TONES.success.fg;
+  const barColor = pct === 0 ? U.chipTones.danger.fg : pct < 1 ? U.chipTones.warning.fg : U.chipTones.success.fg;
   return (
-    <View style={{ height: 5, backgroundColor: 'rgba(0,0,0,0.04)', borderRadius: 999, overflow: 'hidden', flex: 1, minWidth: 48 }}>
+    <View style={{ height: 5, backgroundColor: U.hairlineSoft, borderRadius: 999, overflow: 'hidden', flex: 1, minWidth: 48 }}>
       <View style={{ height: 5, borderRadius: 999, width: `${Math.round(pct * 100)}%` as any, backgroundColor: barColor }} />
     </View>
   );
@@ -345,6 +238,7 @@ interface ProductModalProps {
 }
 
 function ProductModal({ visible, item, accentColor, existingCategories, existingBrands, labId, onClose, onSaved }: ProductModalProps) {
+  const U = useStockUI();
   const isEdit = item !== null;
   const [name, setName]         = useState('');
   const [category, setCategory] = useState('');
@@ -486,55 +380,55 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={modalOverlay}>
-        <View style={modalSheet}>
-          <View style={modalHeader}>
-            <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.3, color: DS.ink[900] }}>
+      <View style={U.modalOverlay}>
+        <View style={U.modalSheet}>
+          <View style={U.modalHeader}>
+            <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.3, color: U.ink[900] }}>
               {isEdit ? 'Ürünü Düzenle' : 'Yeni Ürün Ekle'}
             </Text>
             <Pressable
               onPress={onClose}
-              style={{ width: 32, height: 32, borderRadius: 9999, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+              style={{ width: 32, height: 32, borderRadius: 9999, backgroundColor: U.ink[100], alignItems: 'center', justifyContent: 'center', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
             >
-              <X size={16} color={DS.ink[500]} strokeWidth={1.6} />
+              <X size={16} color={U.ink[500]} strokeWidth={1.6} />
             </Pressable>
           </View>
 
           <ScrollView style={{ padding: 16 }} showsVerticalScrollIndicator={false}>
-            <View style={sectionCard}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[800], marginBottom: 14 }}>Ürün Bilgileri</Text>
+            <View style={U.sectionCard}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[800], marginBottom: 14 }}>Ürün Bilgileri</Text>
 
               {/* Ürün Adı */}
               <View style={{ marginBottom: 12 }}>
-                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>
-                  ÜRÜN ADI <Text style={{ color: CHIP_TONES.danger.fg }}>*</Text>
+                <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>
+                  ÜRÜN ADI <Text style={{ color: U.chipTones.danger.fg }}>*</Text>
                 </Text>
-                <TextInput style={fieldInput} value={name} onChangeText={setName} placeholder="orn. Zirkonyum Blok" placeholderTextColor={DS.ink[400]} />
+                <TextInput style={U.fieldInput} value={name} onChangeText={setName} placeholder="orn. Zirkonyum Blok" placeholderTextColor={U.ink[400]} />
               </View>
 
               {/* Kategori dropdown */}
               <View style={{ marginBottom: 12 }}>
-                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>KATEGORI</Text>
+                <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>KATEGORI</Text>
                 <Pressable
                   onPress={() => { setCatDropOpen(v => !v); setBrandDropOpen(false); }}
-                  style={{ ...fieldInput, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                  style={{ ...U.fieldInput, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                 >
-                  <Text style={category ? { fontSize: 14, color: DS.ink[900] } : { fontSize: 14, color: DS.ink[400] }}>
+                  <Text style={category ? { fontSize: 14, color: U.ink[900] } : { fontSize: 14, color: U.ink[400] }}>
                     {category || 'Kategori seçin veya yazın...'}
                   </Text>
                   {catDropOpen
-                    ? <ChevronUp size={14} color={DS.ink[400]} strokeWidth={1.6} />
-                    : <ChevronDown size={14} color={DS.ink[400]} strokeWidth={1.6} />
+                    ? <ChevronUp size={14} color={U.ink[400]} strokeWidth={1.6} />
+                    : <ChevronDown size={14} color={U.ink[400]} strokeWidth={1.6} />
                   }
                 </Pressable>
                 {catDropOpen && (
-                  <View style={{ marginTop: 6, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', borderRadius: 14, backgroundColor: '#FFFFFF', overflow: 'hidden' }}>
+                  <View style={{ marginTop: 6, borderWidth: 1, borderColor: U.fieldBorder, borderRadius: 14, backgroundColor: U.surface, overflow: 'hidden' }}>
                     <TextInput
-                      style={{ ...fieldInput, borderWidth: 0, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)', borderRadius: 0 }}
+                      style={{ ...U.fieldInput, borderWidth: 0, borderBottomWidth: 1, borderBottomColor: U.hairlineSoft, borderRadius: 0 }}
                       value={catSearch}
                       onChangeText={setCatSearch}
                       placeholder="Ara veya yeni ekle..."
-                      placeholderTextColor={DS.ink[400]}
+                      placeholderTextColor={U.ink[400]}
                       autoFocus
                     />
                     <ScrollView style={{ maxHeight: 180 }} keyboardShouldPersistTaps="handled">
@@ -543,16 +437,16 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                         .map(c => (
                           <Pressable
                             key={c}
-                            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 11, backgroundColor: category === c ? DS.ink[50] : 'transparent', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 11, backgroundColor: category === c ? U.ink[50] : 'transparent', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                             onPress={() => { setCategory(c); setCatSearch(''); setCatDropOpen(false); }}
                           >
-                            <Text style={{ fontSize: 14, color: category === c ? accentColor : DS.ink[700], fontWeight: category === c ? '700' : '500' }}>{c}</Text>
+                            <Text style={{ fontSize: 14, color: category === c ? accentColor : U.ink[700], fontWeight: category === c ? '700' : '500' }}>{c}</Text>
                             {category === c && <Check size={13} color={accentColor} strokeWidth={2} />}
                           </Pressable>
                         ))}
                       {!!catSearch.trim() && !existingCategories.some(c => c.toLowerCase() === catSearch.trim().toLowerCase()) && (
                         <Pressable
-                          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 11, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 11, borderTopWidth: 1, borderTopColor: U.hairlineSoft, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                           onPress={() => { setCategory(catSearch.trim()); setCatSearch(''); setCatDropOpen(false); }}
                         >
                           <PlusCircle size={14} color={accentColor} strokeWidth={1.6} />
@@ -560,15 +454,15 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                         </Pressable>
                       )}
                       {existingCategories.filter(c => !catSearch || c.toLowerCase().includes(catSearch.toLowerCase())).length === 0 && !catSearch.trim() && (
-                        <Text style={{ paddingHorizontal: 14, paddingVertical: 14, fontSize: 13, color: DS.ink[400], textAlign: 'center' }}>Henüz kategori yok</Text>
+                        <Text style={{ paddingHorizontal: 14, paddingVertical: 14, fontSize: 13, color: U.ink[400], textAlign: 'center' }}>Henüz kategori yok</Text>
                       )}
                     </ScrollView>
                     {category ? (
                       <Pressable
-                        style={{ borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)', paddingHorizontal: 14, paddingVertical: 10, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                        style={{ borderTopWidth: 1, borderTopColor: U.hairlineSoft, paddingHorizontal: 14, paddingVertical: 10, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                         onPress={() => { setCategory(''); setCatDropOpen(false); }}
                       >
-                        <Text style={{ fontSize: 13, color: DS.ink[400], fontWeight: '500' }}>Temizle</Text>
+                        <Text style={{ fontSize: 13, color: U.ink[400], fontWeight: '500' }}>Temizle</Text>
                       </Pressable>
                     ) : null}
                   </View>
@@ -577,27 +471,27 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
 
               {/* Marka dropdown */}
               <View style={{ marginBottom: 12 }}>
-                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>MARKA</Text>
+                <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>MARKA</Text>
                 <Pressable
                   onPress={() => { setBrandDropOpen(v => !v); setCatDropOpen(false); }}
-                  style={{ ...fieldInput, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                  style={{ ...U.fieldInput, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                 >
-                  <Text style={brand ? { fontSize: 14, color: DS.ink[900] } : { fontSize: 14, color: DS.ink[400] }}>
+                  <Text style={brand ? { fontSize: 14, color: U.ink[900] } : { fontSize: 14, color: U.ink[400] }}>
                     {brand || 'Marka seçin veya yazın...'}
                   </Text>
                   {brandDropOpen
-                    ? <ChevronUp size={14} color={DS.ink[400]} strokeWidth={1.6} />
-                    : <ChevronDown size={14} color={DS.ink[400]} strokeWidth={1.6} />
+                    ? <ChevronUp size={14} color={U.ink[400]} strokeWidth={1.6} />
+                    : <ChevronDown size={14} color={U.ink[400]} strokeWidth={1.6} />
                   }
                 </Pressable>
                 {brandDropOpen && (
-                  <View style={{ marginTop: 6, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', borderRadius: 14, backgroundColor: '#FFFFFF', overflow: 'hidden' }}>
+                  <View style={{ marginTop: 6, borderWidth: 1, borderColor: U.fieldBorder, borderRadius: 14, backgroundColor: U.surface, overflow: 'hidden' }}>
                     <TextInput
-                      style={{ ...fieldInput, borderWidth: 0, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)', borderRadius: 0 }}
+                      style={{ ...U.fieldInput, borderWidth: 0, borderBottomWidth: 1, borderBottomColor: U.hairlineSoft, borderRadius: 0 }}
                       value={brandSearch}
                       onChangeText={setBrandSearch}
                       placeholder="Ara veya yeni ekle..."
-                      placeholderTextColor={DS.ink[400]}
+                      placeholderTextColor={U.ink[400]}
                       autoFocus
                     />
                     <ScrollView style={{ maxHeight: 180 }} keyboardShouldPersistTaps="handled">
@@ -606,16 +500,16 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                         .map(b => (
                           <Pressable
                             key={b}
-                            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 11, backgroundColor: brand === b ? DS.ink[50] : 'transparent', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 11, backgroundColor: brand === b ? U.ink[50] : 'transparent', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                             onPress={() => { setBrand(b); setBrandSearch(''); setBrandDropOpen(false); }}
                           >
-                            <Text style={{ fontSize: 14, color: brand === b ? accentColor : DS.ink[700], fontWeight: brand === b ? '700' : '500' }}>{b}</Text>
+                            <Text style={{ fontSize: 14, color: brand === b ? accentColor : U.ink[700], fontWeight: brand === b ? '700' : '500' }}>{b}</Text>
                             {brand === b && <Check size={13} color={accentColor} strokeWidth={2} />}
                           </Pressable>
                         ))}
                       {!!brandSearch.trim() && !existingBrands.some(b => b.toLowerCase() === brandSearch.trim().toLowerCase()) && (
                         <Pressable
-                          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 11, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 11, borderTopWidth: 1, borderTopColor: U.hairlineSoft, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                           onPress={() => { setBrand(brandSearch.trim()); setBrandSearch(''); setBrandDropOpen(false); }}
                         >
                           <PlusCircle size={14} color={accentColor} strokeWidth={1.6} />
@@ -623,15 +517,15 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                         </Pressable>
                       )}
                       {existingBrands.filter(b => !brandSearch || b.toLowerCase().includes(brandSearch.toLowerCase())).length === 0 && !brandSearch.trim() && (
-                        <Text style={{ paddingHorizontal: 14, paddingVertical: 14, fontSize: 13, color: DS.ink[400], textAlign: 'center' }}>Henüz marka yok</Text>
+                        <Text style={{ paddingHorizontal: 14, paddingVertical: 14, fontSize: 13, color: U.ink[400], textAlign: 'center' }}>Henüz marka yok</Text>
                       )}
                     </ScrollView>
                     {brand ? (
                       <Pressable
-                        style={{ borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)', paddingHorizontal: 14, paddingVertical: 10, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                        style={{ borderTopWidth: 1, borderTopColor: U.hairlineSoft, paddingHorizontal: 14, paddingVertical: 10, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                         onPress={() => { setBrand(''); setBrandDropOpen(false); }}
                       >
-                        <Text style={{ fontSize: 13, color: DS.ink[400], fontWeight: '500' }}>Temizle</Text>
+                        <Text style={{ fontSize: 13, color: U.ink[400], fontWeight: '500' }}>Temizle</Text>
                       </Pressable>
                     ) : null}
                   </View>
@@ -639,25 +533,25 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
               </View>
 
               <View style={{ marginBottom: 12 }}>
-                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>BİRİM</Text>
+                <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>BİRİM</Text>
                 <Pressable
                   onPress={() => setUnitDropOpen(v => !v)}
                   style={{
-                    ...fieldInput,
+                    ...U.fieldInput,
                     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
                     ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                   }}
                 >
-                  <Text style={unit ? { fontSize: 14, color: DS.ink[900], fontWeight: '500' } : { fontSize: 14, color: DS.ink[400] }}>
+                  <Text style={unit ? { fontSize: 14, color: U.ink[900], fontWeight: '500' } : { fontSize: 14, color: U.ink[400] }}>
                     {UNIT_OPTIONS.find(o => o.value === unit)?.label ?? unit ?? 'Birim seçin...'}
                   </Text>
                   {unitDropOpen
-                    ? <ChevronUp size={15} color={DS.ink[400]} strokeWidth={1.6} />
-                    : <ChevronDown size={15} color={DS.ink[400]} strokeWidth={1.6} />
+                    ? <ChevronUp size={15} color={U.ink[400]} strokeWidth={1.6} />
+                    : <ChevronDown size={15} color={U.ink[400]} strokeWidth={1.6} />
                   }
                 </Pressable>
                 {unitDropOpen && (
-                  <View style={{ marginTop: 6, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', borderRadius: 14, backgroundColor: '#FFFFFF', overflow: 'hidden', ...(Platform.OS === 'web' ? { boxShadow: '0 8px 24px rgba(0,0,0,0.08)' } as any : {}) }}>
+                  <View style={{ marginTop: 6, borderWidth: 1, borderColor: U.fieldBorder, borderRadius: 14, backgroundColor: U.surface, overflow: 'hidden', ...(Platform.OS === 'web' ? { boxShadow: '0 8px 24px rgba(0,0,0,0.08)' } as any : {}) }}>
                     <ScrollView style={{ maxHeight: 240 }} keyboardShouldPersistTaps="handled">
                       {UNIT_OPTIONS.map((opt, idx) => {
                         const active = unit === opt.value;
@@ -670,15 +564,15 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                               paddingHorizontal: 14, paddingVertical: 11,
                               backgroundColor: active ? accentColor + '14' : 'transparent',
                               borderBottomWidth: idx < UNIT_OPTIONS.length - 1 ? 1 : 0,
-                              borderBottomColor: 'rgba(0,0,0,0.04)',
+                              borderBottomColor: U.hairlineSoft,
                               ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
                             }}
                           >
                             <View style={{ flex: 1 }}>
-                              <Text style={{ fontSize: 14, fontWeight: active ? '600' : '500', color: active ? accentColor : DS.ink[900], letterSpacing: 0.2 }}>
+                              <Text style={{ fontSize: 14, fontWeight: active ? '600' : '500', color: active ? accentColor : U.ink[900], letterSpacing: 0.2 }}>
                                 {opt.label}
                               </Text>
-                              <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }}>{opt.hint}</Text>
+                              <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 1 }}>{opt.hint}</Text>
                             </View>
                             {active && <Check size={14} color={accentColor} strokeWidth={2} />}
                           </Pressable>
@@ -687,82 +581,82 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                     </ScrollView>
                   </View>
                 )}
-                <Text style={{ fontSize: 10, color: DS.ink[400], marginTop: 6, fontStyle: 'italic' }}>
+                <Text style={{ fontSize: 10, color: U.ink[400], marginTop: 6, fontStyle: 'italic' }}>
                   Bu birim, diş başına tüketim hesaplamasında kullanılır (örn. 0,5 gr/diş).
                 </Text>
               </View>
               <View style={{ marginBottom: 0 }}>
-                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>TEDARİKÇİ</Text>
-                <TextInput style={fieldInput} value={supplier} onChangeText={setSupplier} placeholder="Tedarikçi firma adı..." placeholderTextColor={DS.ink[400]} />
+                <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>TEDARİKÇİ</Text>
+                <TextInput style={U.fieldInput} value={supplier} onChangeText={setSupplier} placeholder="Tedarikçi firma adı..." placeholderTextColor={U.ink[400]} />
               </View>
             </View>
 
             {/* Konum & Barkod */}
-            <View style={sectionCard}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[800], marginBottom: 14 }}>Konum & Barkod</Text>
+            <View style={U.sectionCard}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[800], marginBottom: 14 }}>Konum & Barkod</Text>
               <View style={{ flexDirection: 'row', gap: 12 }}>
                 <View style={{ flex: 1, marginBottom: 0 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>LOKASYON / RAF</Text>
-                  <TextInput style={fieldInput} value={location} onChangeText={setLocation} placeholder="orn. A-1, Raf B-3" placeholderTextColor={DS.ink[400]} />
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>LOKASYON / RAF</Text>
+                  <TextInput style={U.fieldInput} value={location} onChangeText={setLocation} placeholder="orn. A-1, Raf B-3" placeholderTextColor={U.ink[400]} />
                 </View>
                 <View style={{ flex: 1, marginBottom: 0 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>BARKOD / QR</Text>
-                  <TextInput style={fieldInput} value={barcode} onChangeText={setBarcode} placeholder="orn. STK-00123" placeholderTextColor={DS.ink[400]} />
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>BARKOD / QR</Text>
+                  <TextInput style={U.fieldInput} value={barcode} onChangeText={setBarcode} placeholder="orn. STK-00123" placeholderTextColor={U.ink[400]} />
                 </View>
               </View>
             </View>
 
             {/* Paket İçeriği (opsiyonel) — 1 sayım-birimi (Adet/Kutu) = N içerik-birimi (gr/ml) */}
-            <View style={sectionCard}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[800], marginBottom: 4 }}>Paket İçeriği (opsiyonel)</Text>
-              <Text style={{ fontSize: 11, color: DS.ink[500], marginBottom: 14 }}>
+            <View style={U.sectionCard}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[800], marginBottom: 4 }}>Paket İçeriği (opsiyonel)</Text>
+              <Text style={{ fontSize: 11, color: U.ink[500], marginBottom: 14 }}>
                 Kavanoz/paket ise doldurun: 1 {unit || 'Adet'} = paket boyutu × içerik birimi (ör. 50 gr).
                 Tüketim içerik biriminde girilir, stoktan kesirli {unit || 'adet'} düşer.
               </Text>
               <View style={{ flexDirection: 'row', gap: 12 }}>
                 <View style={{ flex: 1, marginBottom: 0 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>PAKET BOYUTU</Text>
-                  <TextInput style={fieldInput} value={packSize} onChangeText={setPackSize} keyboardType="numeric" placeholder="orn. 50" placeholderTextColor={DS.ink[400]} />
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>PAKET BOYUTU</Text>
+                  <TextInput style={U.fieldInput} value={packSize} onChangeText={setPackSize} keyboardType="numeric" placeholder="orn. 50" placeholderTextColor={U.ink[400]} />
                 </View>
                 <View style={{ flex: 1, marginBottom: 0 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>İÇERİK BİRİMİ</Text>
-                  <TextInput style={fieldInput} value={contentUnit} onChangeText={setContentUnit} placeholder="orn. gr, ml" placeholderTextColor={DS.ink[400]} />
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>İÇERİK BİRİMİ</Text>
+                  <TextInput style={U.fieldInput} value={contentUnit} onChangeText={setContentUnit} placeholder="orn. gr, ml" placeholderTextColor={U.ink[400]} />
                 </View>
               </View>
             </View>
 
             {/* Stok Miktarlari */}
-            <View style={sectionCard}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[800], marginBottom: 14 }}>Stok Miktarlari</Text>
+            <View style={U.sectionCard}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[800], marginBottom: 14 }}>Stok Miktarlari</Text>
               <View style={{ flexDirection: 'row', gap: 12 }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>
-                    {isEdit ? 'MEVCUT MIKTAR' : 'BASLANGIC MIKTARI'} <Text style={{ color: CHIP_TONES.danger.fg }}>*</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>
+                    {isEdit ? 'MEVCUT MIKTAR' : 'BASLANGIC MIKTARI'} <Text style={{ color: U.chipTones.danger.fg }}>*</Text>
                   </Text>
-                  <TextInput style={fieldInput} value={quantity} onChangeText={setQuantity} keyboardType="numeric" placeholder="0" placeholderTextColor={DS.ink[400]} />
+                  <TextInput style={U.fieldInput} value={quantity} onChangeText={setQuantity} keyboardType="numeric" placeholder="0" placeholderTextColor={U.ink[400]} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>
-                    MINIMUM STOK <Text style={{ color: CHIP_TONES.danger.fg }}>*</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>
+                    MINIMUM STOK <Text style={{ color: U.chipTones.danger.fg }}>*</Text>
                   </Text>
-                  <TextInput style={fieldInput} value={minQty} onChangeText={setMinQty} keyboardType="numeric" placeholder="0" placeholderTextColor={DS.ink[400]} />
+                  <TextInput style={U.fieldInput} value={minQty} onChangeText={setMinQty} keyboardType="numeric" placeholder="0" placeholderTextColor={U.ink[400]} />
                 </View>
               </View>
               {error ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(217,75,75,0.08)', borderRadius: 14, padding: 12, marginTop: 10 }}>
-                  <AlertCircle size={14} color={CHIP_TONES.danger.fg} strokeWidth={1.6} />
-                  <Text style={{ fontSize: 13, color: CHIP_TONES.danger.fg, flex: 1 }}>{error}</Text>
+                  <AlertCircle size={14} color={U.chipTones.danger.fg} strokeWidth={1.6} />
+                  <Text style={{ fontSize: 13, color: U.chipTones.danger.fg, flex: 1 }}>{error}</Text>
                 </View>
               ) : null}
             </View>
 
             {/* Uretim Entegrasyonu */}
-            <View style={sectionCard}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[800], marginBottom: 14 }}>Uretim Entegrasyonu</Text>
+            <View style={U.sectionCard}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[800], marginBottom: 14 }}>Uretim Entegrasyonu</Text>
 
               {/* Usage category */}
               <View style={{ marginBottom: 12 }}>
-                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>KULLANIM KATEGORISI</Text>
+                <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>KULLANIM KATEGORISI</Text>
                 <View style={{ flexDirection: 'row', gap: 6 }}>
                   {(['production', 'office', 'misc'] as const).map(cat => {
                     const active = usageCategory === cat;
@@ -775,12 +669,12 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                           paddingHorizontal: 14, paddingVertical: 6,
                           borderRadius: 9999,
                           borderWidth: 1,
-                          borderColor: active ? DS.ink[900] : 'rgba(0,0,0,0.08)',
-                          backgroundColor: active ? DS.ink[900] : '#FFFFFF',
+                          borderColor: active ? U.ink[900] : U.fieldBorder,
+                          backgroundColor: active ? U.ink[900] : U.plainBtn.bg,
                           ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
                         }}
                       >
-                        <Text style={{ fontSize: 13, fontWeight: active ? '700' : '500', color: active ? '#FFFFFF' : DS.ink[700] }}>
+                        <Text style={{ fontSize: 13, fontWeight: active ? '700' : '500', color: active ? U.onDarkPill : U.ink[700] }}>
                           {label}
                         </Text>
                       </Pressable>
@@ -791,15 +685,15 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
 
               {/* Material type */}
               <View style={{ marginBottom: 12 }}>
-                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>MATERYAL TURU</Text>
+                <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>MATERYAL TURU</Text>
                 <TextInput
-                  style={fieldInput}
+                  style={U.fieldInput}
                   value={matType}
                   onChangeText={setMatType}
                   placeholder="zirconia / metal / emax / pmma / glaze..."
-                  placeholderTextColor={DS.ink[400]}
+                  placeholderTextColor={U.ink[400]}
                 />
-                <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 4 }}>
+                <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 4 }}>
                   {'Sipariş türüyle eşleşir (zirconia siparişi → zirconia disk).'}
                 </Text>
               </View>
@@ -807,7 +701,7 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
               {/* Consumption type */}
               {usageCategory === 'production' && (
                 <View style={{ marginBottom: 12 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>TUKETIM MODELI</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>TUKETIM MODELI</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                     {([
                       { key: 'per_tooth',     label: 'Dis Basi',  hint: 'tooth x units' },
@@ -823,19 +717,19 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                             paddingHorizontal: 10, paddingVertical: 6,
                             borderRadius: 9999,
                             borderWidth: 1,
-                            borderColor: active ? DS.ink[900] : 'rgba(0,0,0,0.08)',
-                            backgroundColor: active ? DS.ink[900] : '#FFFFFF',
+                            borderColor: active ? U.ink[900] : U.fieldBorder,
+                            backgroundColor: active ? U.ink[900] : U.plainBtn.bg,
                             ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
                           }}
                         >
-                          <Text style={{ fontSize: 12, fontWeight: active ? '700' : '500', color: active ? '#FFFFFF' : DS.ink[700] }}>
+                          <Text style={{ fontSize: 12, fontWeight: active ? '700' : '500', color: active ? U.onDarkPill : U.ink[700] }}>
                             {opt.label}
                           </Text>
                         </Pressable>
                       );
                     })}
                   </View>
-                  <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 4 }}>
+                  <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 4 }}>
                     {consumptionType === 'per_tooth' && 'Dis sayisi x dis basina tuketim formulu.'}
                     {consumptionType === 'fixed'     && 'Asama tamamlaninca 1 birim duser.'}
                     {consumptionType === 'manual'    && 'Her asamada manuel miktar girilir.'}
@@ -866,7 +760,7 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
 
                     {discMat && (
                       <>
-                        <Text style={{ fontSize: 11, color: DS.ink[500], marginBottom: 8 }}>
+                        <Text style={{ fontSize: 11, color: U.ink[500], marginBottom: 8 }}>
                           Disk kalınlığını seçin — diş başına tüketim otomatik hesaplanır.
                         </Text>
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
@@ -884,15 +778,15 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                                 style={{
                                   paddingHorizontal: 12, paddingVertical: 7,
                                   borderRadius: 9999, borderWidth: 1,
-                                  borderColor: active ? '#2563EB' : 'rgba(0,0,0,0.10)',
-                                  backgroundColor: active ? '#2563EB' : '#FFFFFF',
+                                  borderColor: active ? '#2563EB' : U.fieldBorder,
+                                  backgroundColor: active ? '#2563EB' : U.plainBtn.bg,
                                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
                                 }}
                               >
-                                <Text style={{ fontSize: 12, fontWeight: active ? '700' : '600', color: active ? '#FFFFFF' : DS.ink[700] }}>
+                                <Text style={{ fontSize: 12, fontWeight: active ? '700' : '600', color: active ? '#FFFFFF' : U.ink[700] }}>
                                   {row.label}
                                 </Text>
-                                <Text style={{ fontSize: 9, color: active ? 'rgba(255,255,255,0.85)' : DS.ink[400], marginTop: 1 }}>
+                                <Text style={{ fontSize: 9, color: active ? 'rgba(255,255,255,0.85)' : U.ink[400], marginTop: 1 }}>
                                   ≈{crownsMid} kron
                                 </Text>
                               </Pressable>
@@ -914,7 +808,7 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                       const g = porcelainUnitsPerTooth();
                       return (
                         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                          <Text style={{ fontSize: 11, color: DS.ink[500], flex: 1 }}>
+                          <Text style={{ fontSize: 11, color: U.ink[500], flex: 1 }}>
                             Porselen: tek kron için ~0,3–1 gr (ortalama {fmt(g)} gr).
                           </Text>
                           <Pressable
@@ -931,7 +825,7 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                       const b = glassCeramicUnitsPerTooth();
                       return (
                         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                          <Text style={{ fontSize: 11, color: DS.ink[500], flex: 1 }}>
+                          <Text style={{ fontSize: 11, color: U.ink[500], flex: 1 }}>
                             Cam seramik: 1 blok → 1 iş (kron / veneer / inlay-onlay).
                           </Text>
                           <Pressable
@@ -946,17 +840,17 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
 
                     {isModel && !discMat && !isPorc && !isGlass && (
                       <>
-                        <Text style={{ fontSize: 11, color: DS.ink[500], marginBottom: 6 }}>
+                        <Text style={{ fontSize: 11, color: U.ink[500], marginBottom: 6 }}>
                           Model reçinesi çene/vaka başına tüketilir (diş sayısına bağlı değil):
                         </Text>
                         <View style={{ flexDirection: 'row', gap: 8, marginBottom: 6 }}>
-                          <View style={{ flex: 1, padding: 8, borderRadius: 10, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' }}>
-                            <Text style={{ fontSize: 10, color: DS.ink[400] }}>Tek çene</Text>
-                            <Text style={{ fontSize: 15, fontWeight: '700', color: DS.ink[900] }}>{MODEL_RESIN_ML.singleJaw} ml</Text>
+                          <View style={{ flex: 1, padding: 8, borderRadius: 10, backgroundColor: U.surfaceSoft, borderWidth: 1, borderColor: U.fieldBorder }}>
+                            <Text style={{ fontSize: 10, color: U.ink[400] }}>Tek çene</Text>
+                            <Text style={{ fontSize: 15, fontWeight: '700', color: U.ink[900] }}>{MODEL_RESIN_ML.singleJaw} ml</Text>
                           </View>
-                          <View style={{ flex: 1, padding: 8, borderRadius: 10, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' }}>
-                            <Text style={{ fontSize: 10, color: DS.ink[400] }}>Alt + üst</Text>
-                            <Text style={{ fontSize: 15, fontWeight: '700', color: DS.ink[900] }}>{MODEL_RESIN_ML.bothJaws} ml</Text>
+                          <View style={{ flex: 1, padding: 8, borderRadius: 10, backgroundColor: U.surfaceSoft, borderWidth: 1, borderColor: U.fieldBorder }}>
+                            <Text style={{ fontSize: 10, color: U.ink[400] }}>Alt + üst</Text>
+                            <Text style={{ fontSize: 15, fontWeight: '700', color: U.ink[900] }}>{MODEL_RESIN_ML.bothJaws} ml</Text>
                           </View>
                         </View>
                         <Text style={{ fontSize: 10, color: '#92400E' }}>
@@ -973,34 +867,34 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                 <>
                   <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>
-                        DİŞ BAŞINA TÜKETİM {unit?.trim() ? <Text style={{ color: DS.ink[400] }}>({unit.trim()})</Text> : null}
+                      <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>
+                        DİŞ BAŞINA TÜKETİM {unit?.trim() ? <Text style={{ color: U.ink[400] }}>({unit.trim()})</Text> : null}
                       </Text>
                       <View style={{
                         flexDirection: 'row', alignItems: 'center', gap: 0,
-                        backgroundColor: '#FFFFFF',
+                        backgroundColor: U.surface,
                         borderRadius: 14,
                         borderWidth: 1,
-                        borderColor: 'rgba(0,0,0,0.08)',
+                        borderColor: U.fieldBorder,
                         height: 46,
                         overflow: 'hidden',
                       }}>
                         <TextInput
-                          style={{ flex: 1, paddingHorizontal: 14, fontSize: 14, color: DS.ink[900], fontWeight: '500', ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }}
+                          style={{ flex: 1, paddingHorizontal: 14, fontSize: 14, color: U.ink[900], fontWeight: '500', ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }}
                           value={unitsPerTooth}
                           onChangeText={setUnitsPerTooth}
                           keyboardType="decimal-pad"
                           placeholder="0,5"
-                          placeholderTextColor={DS.ink[400]}
+                          placeholderTextColor={U.ink[400]}
                         />
                         {unit?.trim() ? (
                           <View style={{
                             paddingHorizontal: 14, height: '100%',
                             justifyContent: 'center',
-                            borderStartWidth: 1, borderStartColor: 'rgba(0,0,0,0.06)',
-                            backgroundColor: 'rgba(0,0,0,0.02)',
+                            borderStartWidth: 1, borderStartColor: U.hairline,
+                            backgroundColor: U.hairlineSoft,
                           }}>
-                            <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[700], letterSpacing: 0.4 }}>
+                            <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[700], letterSpacing: 0.4 }}>
                               {unit.trim()}/diş
                             </Text>
                           </View>
@@ -1008,7 +902,7 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                           <View style={{
                             paddingHorizontal: 12, height: '100%',
                             justifyContent: 'center',
-                            borderStartWidth: 1, borderStartColor: 'rgba(0,0,0,0.06)',
+                            borderStartWidth: 1, borderStartColor: U.hairline,
                             backgroundColor: 'rgba(217,119,6,0.06)',
                           }}>
                             <Text style={{ fontSize: 11, fontWeight: '600', color: '#92400E' }}>
@@ -1024,7 +918,7 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                       )}
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>TUKETIM ASAMASI</Text>
+                      <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>TUKETIM ASAMASI</Text>
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
                         {STAGE_OPTIONS.map(st => {
                           const active = consumeStage === st;
@@ -1036,12 +930,12 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                                 paddingHorizontal: 8, paddingVertical: 4,
                                 borderRadius: 9999,
                                 borderWidth: 1,
-                                borderColor: active ? DS.ink[900] : 'rgba(0,0,0,0.08)',
-                                backgroundColor: active ? DS.ink[900] : '#FFFFFF',
+                                borderColor: active ? U.ink[900] : U.fieldBorder,
+                                backgroundColor: active ? U.ink[900] : U.plainBtn.bg,
                                 ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
                               }}
                             >
-                              <Text style={{ fontSize: 11, fontWeight: '700', color: active ? '#FFFFFF' : DS.ink[400] }}>
+                              <Text style={{ fontSize: 11, fontWeight: '700', color: active ? U.onDarkPill : U.ink[400] }}>
                                 {st}
                               </Text>
                             </Pressable>
@@ -1050,20 +944,20 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                       </View>
                     </View>
                   </View>
-                  <Text style={{ fontSize: 11, color: DS.ink[400], marginBottom: 12 }}>
+                  <Text style={{ fontSize: 11, color: U.ink[400], marginBottom: 12 }}>
                     Siparis bu asamayi tamamlayinca: dis sayisi x tuketim = stoktan otomatik dusulur.
                   </Text>
 
                   {/* Hangi aşamalarda kullanılır — malzeme onayı picker'ı bunu filtreler */}
                   <View style={{ marginBottom: 12 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 3, letterSpacing: 0.5 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 3, letterSpacing: 0.5 }}>
                       HANGİ AŞAMALARDA KULLANILIR
                     </Text>
-                    <Text style={{ fontSize: 11, color: DS.ink[400], marginBottom: 7 }}>
+                    <Text style={{ fontSize: 11, color: U.ink[400], marginBottom: 7 }}>
                       İşaretlenen aşamaların malzeme onayında bu malzeme öne çıkar. Boş bırakılırsa her aşamada görünür.
                     </Text>
                     {stationOpts.length === 0 ? (
-                      <Text style={{ fontSize: 11, color: DS.ink[400], fontStyle: 'italic' }}>
+                      <Text style={{ fontSize: 11, color: U.ink[400], fontStyle: 'italic' }}>
                         Malzeme tüketen istasyon bulunamadı.
                       </Text>
                     ) : (
@@ -1080,14 +974,14 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                                 paddingHorizontal: 10, paddingVertical: 5,
                                 borderRadius: 9999,
                                 borderWidth: 1,
-                                borderColor: active ? accentColor : 'rgba(0,0,0,0.10)',
-                                backgroundColor: active ? accentColor : '#FFFFFF',
+                                borderColor: active ? accentColor : U.fieldBorder,
+                                backgroundColor: active ? accentColor : U.plainBtn.bg,
                                 flexDirection: 'row', alignItems: 'center', gap: 5,
                                 ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
                               }}
                             >
                               {active && <Check size={11} color="#FFFFFF" strokeWidth={2.4} />}
-                              <Text style={{ fontSize: 11.5, fontWeight: active ? '700' : '500', color: active ? '#FFFFFF' : DS.ink[500] }}>
+                              <Text style={{ fontSize: 11.5, fontWeight: active ? '700' : '500', color: active ? '#FFFFFF' : U.ink[500] }}>
                                 {st}
                               </Text>
                             </Pressable>
@@ -1101,7 +995,7 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
 
               {/* Varsayılan alış para birimi (cost'un kendisi DEĞİL) */}
               <View style={{ marginBottom: 0 }}>
-                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>VARSAYILAN ALIŞ PARA BİRİMİ</Text>
+                <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>VARSAYILAN ALIŞ PARA BİRİMİ</Text>
                 <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
                   {(['TRY','EUR','USD','GBP'] as const).map(c => {
                     const active = purchaseCurrency === c;
@@ -1112,12 +1006,12 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                         style={{
                           flexDirection: 'row', alignItems: 'center', gap: 6,
                           paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9999,
-                          backgroundColor: active ? accentColor : '#FFFFFF',
-                          borderWidth: 1, borderColor: active ? accentColor : 'rgba(0,0,0,0.08)',
+                          backgroundColor: active ? accentColor : U.plainBtn.bg,
+                          borderWidth: 1, borderColor: active ? accentColor : U.fieldBorder,
                           ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
                         }}
                       >
-                        <Text style={{ fontSize: 12, fontWeight: active ? '700' : '500', color: active ? '#FFF' : DS.ink[700], letterSpacing: 0.3 }}>
+                        <Text style={{ fontSize: 12, fontWeight: active ? '700' : '500', color: active ? '#FFF' : U.ink[700], letterSpacing: 0.3 }}>
                           {c}
                         </Text>
                       </Pressable>
@@ -1136,14 +1030,14 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                     <Text style={{ fontSize: 10, fontWeight: '700', color: accentColor }}>i</Text>
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 12, color: DS.ink[800], fontWeight: '600', lineHeight: 17 }}>
+                    <Text style={{ fontSize: 12, color: U.ink[800], fontWeight: '600', lineHeight: 17 }}>
                       Birim maliyet otomatik hesaplanır
                     </Text>
-                    <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 2, lineHeight: 16 }}>
+                    <Text style={{ fontSize: 11, color: U.ink[500], marginTop: 2, lineHeight: 16 }}>
                       Stok girişi (alış) sırasında girilen fatura tutarı kullanılır.
                       Maliyet, son alıştaki fiyat üzerinden hesaplanır — fiyatlar sürekli değişebilir.
                     </Text>
-                    <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 4, lineHeight: 16 }}>
+                    <Text style={{ fontSize: 11, color: U.ink[500], marginTop: 4, lineHeight: 16 }}>
                       İş başına tüketim miktarı (yukarıdaki <Text style={{ fontWeight: '700' }}>diş başına tüketim</Text>) ve birim ({unit || 'gr/adet/ml'}) sayesinde, üretim sırasında ne kadar harcandığı doğru bilinir.
                     </Text>
                   </View>
@@ -1152,22 +1046,22 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
             </View>
           </ScrollView>
 
-          <View style={modalFooter}>
+          <View style={U.modalFooter}>
             {isEdit && (
               <Pressable
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 9999, borderWidth: 1, borderColor: 'rgba(217,75,75,0.2)', backgroundColor: 'rgba(217,75,75,0.08)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                 onPress={handleDelete}
                 disabled={deleting}
               >
-                {deleting ? <ActivityIndicator size="small" color={CHIP_TONES.danger.fg} /> : <Trash2 size={14} color={CHIP_TONES.danger.fg} strokeWidth={1.6} />}
-                <Text style={{ fontSize: 13, fontWeight: '600', color: CHIP_TONES.danger.fg }}>Sil</Text>
+                {deleting ? <ActivityIndicator size="small" color={U.chipTones.danger.fg} /> : <Trash2 size={14} color={U.chipTones.danger.fg} strokeWidth={1.6} />}
+                <Text style={{ fontSize: 13, fontWeight: '600', color: U.chipTones.danger.fg }}>Sil</Text>
               </Pressable>
             )}
             <View style={{ flex: 1 }} />
-            <Pressable style={ghostBtn} onPress={onClose}>
-              <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[700] }}>Iptal</Text>
+            <Pressable style={U.ghostBtn} onPress={onClose}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[700] }}>Iptal</Text>
             </Pressable>
-            <Pressable style={{ ...darkPillBtn, backgroundColor: accentColor }} onPress={handleSave} disabled={saving}>
+            <Pressable style={{ ...U.darkPillBtn, backgroundColor: accentColor }} onPress={handleSave} disabled={saving}>
               {saving ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>{isEdit ? 'Güncelle' : 'Ekle'}</Text>}
             </Pressable>
           </View>
@@ -1179,10 +1073,11 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
 
 // ─── MovementModal ────────────────────────────────────────────────────────────
 
-const MOV_TYPES: { key: MovType; label: string; color: string; bg: string }[] = [
-  { key: 'IN',    label: 'Giriş',  color: CHIP_TONES.success.fg, bg: CHIP_TONES.success.bg },
-  { key: 'OUT',   label: 'Çıkış',  color: CHIP_TONES.info.fg,    bg: CHIP_TONES.info.bg },
-  { key: 'WASTE', label: 'Fire',   color: CHIP_TONES.danger.fg,  bg: CHIP_TONES.danger.bg },
+/** Tema-farkında: tonlar useStockUI()'den gelir (koyu temada açık tonlar). */
+const movTypes = (U: StockUI): { key: MovType; label: string; color: string; bg: string }[] => [
+  { key: 'IN',    label: 'Giriş',  color: U.chipTones.success.fg, bg: U.chipTones.success.bg },
+  { key: 'OUT',   label: 'Çıkış',  color: U.chipTones.info.fg,    bg: U.chipTones.info.bg },
+  { key: 'WASTE', label: 'Fire',   color: U.chipTones.danger.fg,  bg: U.chipTones.danger.bg },
 ];
 
 interface MovementModalProps {
@@ -1196,6 +1091,7 @@ interface MovementModalProps {
 }
 
 function MovementModal({ visible, item, items = [], accentColor, defaultType = 'IN', onClose, onSaved }: MovementModalProps) {
+  const U = useStockUI();
   const standalone = item === null;
   const [selectedId, setSelectedId] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -1329,50 +1225,50 @@ function MovementModal({ visible, item, items = [], accentColor, defaultType = '
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={modalOverlay}>
-        <View style={{ ...modalSheet, maxWidth: 420 }}>
-          <View style={modalHeader}>
+      <View style={U.modalOverlay}>
+        <View style={{ ...U.modalSheet, maxWidth: 420 }}>
+          <View style={U.modalHeader}>
             <View>
-              <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.3, color: DS.ink[900] }}>Stok Hareketi</Text>
-              {resolvedItem && <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 2 }}>{resolvedItem.name}</Text>}
+              <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.3, color: U.ink[900] }}>Stok Hareketi</Text>
+              {resolvedItem && <Text style={{ fontSize: 12, color: U.ink[400], marginTop: 2 }}>{resolvedItem.name}</Text>}
             </View>
             <Pressable
               onPress={onClose}
-              style={{ width: 32, height: 32, borderRadius: 9999, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+              style={{ width: 32, height: 32, borderRadius: 9999, backgroundColor: U.ink[100], alignItems: 'center', justifyContent: 'center', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
             >
-              <X size={16} color={DS.ink[500]} strokeWidth={1.6} />
+              <X size={16} color={U.ink[500]} strokeWidth={1.6} />
             </Pressable>
           </View>
 
           <View style={{ padding: 16, paddingBottom: 0 }}>
             {/* Item picker */}
             {standalone && (
-              <View style={sectionCard}>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[800], marginBottom: 14 }}>
-                  Ürün Seç <Text style={{ color: CHIP_TONES.danger.fg }}>*</Text>
+              <View style={U.sectionCard}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[800], marginBottom: 14 }}>
+                  Ürün Seç <Text style={{ color: U.chipTones.danger.fg }}>*</Text>
                 </Text>
                 <Pressable
-                  style={{ ...fieldInput, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                  style={{ ...U.fieldInput, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                   onPress={() => setPickerOpen(v => !v)}
                 >
-                  <Text style={resolvedItem ? { fontSize: 14, color: DS.ink[900] } : { fontSize: 14, color: DS.ink[400] }}>
+                  <Text style={resolvedItem ? { fontSize: 14, color: U.ink[900] } : { fontSize: 14, color: U.ink[400] }}>
                     {resolvedItem ? resolvedItem.name : 'Ürün seçin...'}
                   </Text>
                   {pickerOpen
-                    ? <ChevronUp size={15} color={DS.ink[400]} strokeWidth={1.6} />
-                    : <ChevronDown size={15} color={DS.ink[400]} strokeWidth={1.6} />
+                    ? <ChevronUp size={15} color={U.ink[400]} strokeWidth={1.6} />
+                    : <ChevronDown size={15} color={U.ink[400]} strokeWidth={1.6} />
                   }
                 </Pressable>
                 {pickerOpen && (
-                  <View style={{ borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', borderRadius: 14, backgroundColor: DS.ink[50], marginTop: 4, overflow: 'hidden' }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' }}>
-                      <Search size={13} color={DS.ink[400]} strokeWidth={1.6} />
+                  <View style={{ borderWidth: 1, borderColor: U.hairline, borderRadius: 14, backgroundColor: U.ink[50], marginTop: 4, overflow: 'hidden' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: U.hairlineSoft }}>
+                      <Search size={13} color={U.ink[400]} strokeWidth={1.6} />
                       <TextInput
-                        style={{ flex: 1, fontSize: 13, color: DS.ink[900], ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) } as any}
+                        style={{ flex: 1, fontSize: 13, color: U.ink[900], ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) } as any}
                         value={pickerSearch}
                         onChangeText={setPickerSearch}
                         placeholder="Ürün ara..."
-                        placeholderTextColor={DS.ink[400]}
+                        placeholderTextColor={U.ink[400]}
                         autoFocus
                       />
                     </View>
@@ -1380,11 +1276,11 @@ function MovementModal({ visible, item, items = [], accentColor, defaultType = '
                       {pickerItems.map((i, idx) => (
                         <Pressable
                           key={i.id}
-                          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: idx < pickerItems.length - 1 ? 1 : 0, borderBottomColor: 'rgba(0,0,0,0.04)', backgroundColor: selectedId === i.id ? DS.ink[50] : 'transparent', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: idx < pickerItems.length - 1 ? 1 : 0, borderBottomColor: U.hairlineSoft, backgroundColor: selectedId === i.id ? U.ink[50] : 'transparent', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                           onPress={() => { setSelectedId(i.id); setPickerOpen(false); setPickerSearch(''); }}
                         >
-                          <Text style={{ fontSize: 14, color: DS.ink[900], fontWeight: selectedId === i.id ? '600' : '400' }}>{i.name}</Text>
-                          {selectedId === i.id && <Check size={14} color={DS.ink[900]} strokeWidth={2} />}
+                          <Text style={{ fontSize: 14, color: U.ink[900], fontWeight: selectedId === i.id ? '600' : '400' }}>{i.name}</Text>
+                          {selectedId === i.id && <Check size={14} color={U.ink[900]} strokeWidth={2} />}
                         </Pressable>
                       ))}
                     </ScrollView>
@@ -1394,44 +1290,44 @@ function MovementModal({ visible, item, items = [], accentColor, defaultType = '
             )}
 
             {/* Type selector */}
-            <View style={sectionCard}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[800], marginBottom: 14 }}>İşlem Tipi</Text>
+            <View style={U.sectionCard}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[800], marginBottom: 14 }}>İşlem Tipi</Text>
               <View style={{ flexDirection: 'row', gap: 8 }}>
-                {MOV_TYPES.map(t => (
+                {movTypes(U).map(t => (
                   <Pressable
                     key={t.key}
                     style={{
                       flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
                       paddingVertical: 10, borderRadius: 14, borderWidth: 1.5,
-                      borderColor: type === t.key ? t.color : 'rgba(0,0,0,0.08)',
-                      backgroundColor: type === t.key ? t.bg : DS.ink[50],
+                      borderColor: type === t.key ? t.color : U.fieldBorder,
+                      backgroundColor: type === t.key ? t.bg : U.ink[50],
                       ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
                     }}
                     onPress={() => setType(t.key)}
                   >
-                    {t.key === 'IN' && <ArrowDownCircle size={15} color={type === t.key ? t.color : DS.ink[400]} strokeWidth={1.6} />}
-                    {t.key === 'OUT' && <ArrowUpCircle size={15} color={type === t.key ? t.color : DS.ink[400]} strokeWidth={1.6} />}
-                    {t.key === 'WASTE' && <AlertCircle size={15} color={type === t.key ? t.color : DS.ink[400]} strokeWidth={1.6} />}
-                    <Text style={{ fontSize: 12, fontWeight: type === t.key ? '700' : '500', color: type === t.key ? t.color : DS.ink[400] }}>{t.label}</Text>
+                    {t.key === 'IN' && <ArrowDownCircle size={15} color={type === t.key ? t.color : U.ink[400]} strokeWidth={1.6} />}
+                    {t.key === 'OUT' && <ArrowUpCircle size={15} color={type === t.key ? t.color : U.ink[400]} strokeWidth={1.6} />}
+                    {t.key === 'WASTE' && <AlertCircle size={15} color={type === t.key ? t.color : U.ink[400]} strokeWidth={1.6} />}
+                    <Text style={{ fontSize: 12, fontWeight: type === t.key ? '700' : '500', color: type === t.key ? t.color : U.ink[400] }}>{t.label}</Text>
                   </Pressable>
                 ))}
               </View>
             </View>
 
             {/* Quantity + Cost (IN) + Note */}
-            <View style={sectionCard}>
+            <View style={U.sectionCard}>
               <View style={{ marginBottom: 12 }}>
-                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>
+                <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>
                   MİKTAR{(() => {
                     const packaged = !!resolvedItem?.pack_size && resolvedItem.pack_size > 0;
                     const consumeContent = packaged && (type === 'OUT' || type === 'WASTE');
                     const u = consumeContent ? (resolvedItem?.content_unit ?? '') : (resolvedItem?.unit ?? '');
                     return u ? ` (${u})` : '';
-                  })()} <Text style={{ color: CHIP_TONES.danger.fg }}>*</Text>
+                  })()} <Text style={{ color: U.chipTones.danger.fg }}>*</Text>
                 </Text>
-                <TextInput style={fieldInput} value={qty} onChangeText={setQty} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={DS.ink[400]} />
+                <TextInput style={U.fieldInput} value={qty} onChangeText={setQty} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={U.ink[400]} />
                 {!!resolvedItem?.pack_size && resolvedItem.pack_size > 0 && (type === 'OUT' || type === 'WASTE') && (
-                  <Text style={{ fontSize: 10.5, color: DS.ink[400], marginTop: 5 }}>
+                  <Text style={{ fontSize: 10.5, color: U.ink[400], marginTop: 5 }}>
                     Paketli kalem: {resolvedItem.content_unit ?? 'içerik'} gir → stoktan {qty ? `${(parseFloat(qty.replace(',','.')) / (resolvedItem.pack_size as number) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 4 })} ` : ''}{resolvedItem.unit ?? 'adet'} düşer (1 {resolvedItem.unit ?? 'adet'} = {resolvedItem.pack_size} {resolvedItem.content_unit ?? ''}).
                   </Text>
                 )}
@@ -1440,7 +1336,7 @@ function MovementModal({ visible, item, items = [], accentColor, defaultType = '
               {/* IN için birim maliyet + currency (Phase 2) */}
               {isInbound && (
                 <View style={{ marginBottom: 12 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>
                     BİRİM MALİYET
                   </Text>
                   <MoneyInput
@@ -1456,27 +1352,27 @@ function MovementModal({ visible, item, items = [], accentColor, defaultType = '
               )}
 
               <View style={{ marginBottom: 0 }}>
-                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>NOT</Text>
+                <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>NOT</Text>
                 <TextInput
-                  style={{ ...fieldInput, height: undefined, minHeight: 56 }}
+                  style={{ ...U.fieldInput, height: undefined, minHeight: 56 }}
                   value={note} onChangeText={setNote}
-                  placeholder="İsteğe bağlı açıklama..." placeholderTextColor={DS.ink[400]} multiline
+                  placeholder="İsteğe bağlı açıklama..." placeholderTextColor={U.ink[400]} multiline
                 />
               </View>
               {error ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(217,75,75,0.08)', borderRadius: 14, padding: 12, marginTop: 10 }}>
-                  <AlertCircle size={14} color={CHIP_TONES.danger.fg} strokeWidth={1.6} />
-                  <Text style={{ fontSize: 13, color: CHIP_TONES.danger.fg, flex: 1 }}>{error}</Text>
+                  <AlertCircle size={14} color={U.chipTones.danger.fg} strokeWidth={1.6} />
+                  <Text style={{ fontSize: 13, color: U.chipTones.danger.fg, flex: 1 }}>{error}</Text>
                 </View>
               ) : null}
             </View>
           </View>
 
-          <View style={modalFooter}>
-            <Pressable style={ghostBtn} onPress={onClose}>
-              <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[700] }}>Iptal</Text>
+          <View style={U.modalFooter}>
+            <Pressable style={U.ghostBtn} onPress={onClose}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[700] }}>Iptal</Text>
             </Pressable>
-            <Pressable style={{ ...darkPillBtn, backgroundColor: accentColor }} onPress={handleSave} disabled={saving}>
+            <Pressable style={{ ...U.darkPillBtn, backgroundColor: accentColor }} onPress={handleSave} disabled={saving}>
               {saving ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>Kaydet</Text>}
             </Pressable>
           </View>
@@ -1489,13 +1385,14 @@ function MovementModal({ visible, item, items = [], accentColor, defaultType = '
 // ─── DonutChart ──────────────────────────────────────────────────────────────
 
 function DonutChart({ pct, color, size = 80, stroke = 9 }: { pct: number; color: string; size?: number; stroke?: number }) {
+  const U = useStockUI();
   const r    = (size - stroke) / 2;
   const cx   = size / 2;
   const circ = 2 * Math.PI * r;
   const off  = circ * (1 - Math.min(Math.max(pct, 0), 1));
   return (
     <Svg width={size} height={size}>
-      <Circle cx={cx} cy={cx} r={r} fill="none" stroke={DS.ink[100]} strokeWidth={stroke} />
+      <Circle cx={cx} cy={cx} r={r} fill="none" stroke={U.ink[100]} strokeWidth={stroke} />
       <Circle
         cx={cx} cy={cx} r={r}
         fill="none"
@@ -1512,7 +1409,7 @@ function DonutChart({ pct, color, size = 80, stroke = 9 }: { pct: number; color:
 
 // ─── PetalChart ──────────────────────────────────────────────────────────────
 
-const PIE_COLORS = [DS.ink[900], '#2563EB', CHIP_TONES.success.fg, CHIP_TONES.warning.fg, CHIP_TONES.danger.fg];
+const pieColors = (U: StockUI) => [U.ink[900], '#2563EB', U.chipTones.success.fg, U.chipTones.warning.fg, U.chipTones.danger.fg];
 
 function polarXY(cx: number, cy: number, r: number, deg: number) {
   const rad = (deg * Math.PI) / 180;
@@ -1520,6 +1417,7 @@ function polarXY(cx: number, cy: number, r: number, deg: number) {
 }
 
 function PetalChart({ data, size = 216 }: { data: { label: string; value: number; color: string }[]; size?: number }) {
+  const U = useStockUI();
   const cx     = size / 2;
   const maxR   = cx - 8;
   const innerR = maxR * 0.25;
@@ -1558,7 +1456,7 @@ function PetalChart({ data, size = 216 }: { data: { label: string; value: number
 
           return (
             <React.Fragment key={idx}>
-              <Path d={bgPath}  fill="none" stroke={DS.ink[200]} strokeWidth={bgStroke} strokeLinecap="round" />
+              <Path d={bgPath}  fill="none" stroke={U.ink[200]} strokeWidth={bgStroke} strokeLinecap="round" />
               <Path d={valPath} fill="none" stroke={d.color} strokeWidth={sw}       strokeLinecap="round" />
             </React.Fragment>
           );
@@ -1601,6 +1499,8 @@ interface DashboardProps {
 }
 
 function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditProduct }: DashboardProps) {
+  const U = useStockUI();
+  const heroBg = useHeroSurface(accentColor);
   const [recentCount, setRecentCount] = useState<number | null>(null);
   const [alerts, setAlerts] = useState<StockDashboardAlerts | null>(null);
   const [minModal, setMinModal] = useState(false);
@@ -1649,12 +1549,14 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
 
   // ── Patterns design tokens ──
   const PCard = {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: U.surface,
     borderRadius: 18,
     padding: 18,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.04)',
-    ...(Platform.OS === 'web' ? { boxShadow: '0 4px 16px rgba(0,0,0,0.04)' } : { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 2 }),
+    borderColor: U.hairline,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: U.isDark ? '0 4px 16px rgba(0,0,0,0.35)' : '0 4px 16px rgba(0,0,0,0.04)' }
+      : { shadowColor: '#000', shadowOpacity: U.isDark ? 0.4 : 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 2 }),
   } as any;
   const DisplayFont = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
   const accSoft = accentColor + '14'; // %8 alpha tinted bg
@@ -1665,8 +1567,8 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
         <View style={{ width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: accSoft }}>
           <Package size={32} color={accentColor} strokeWidth={1.4} />
         </View>
-        <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 24, letterSpacing: -0.6, color: '#0A0A0A' }}>Henüz ürün yok</Text>
-        <Text style={{ fontSize: 13, color: '#9A9A9A', textAlign: 'center', maxWidth: 320, lineHeight: 19 }}>
+        <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 24, letterSpacing: -0.6, color: U.ink[900] }}>Henüz ürün yok</Text>
+        <Text style={{ fontSize: 13, color: U.ink[400], textAlign: 'center', maxWidth: 320, lineHeight: 19 }}>
           Stok yönetimine başlamak için ilk ürününüzü ekleyin.
         </Text>
         <Pressable
@@ -1681,19 +1583,19 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
   }
 
   // ── Eyebrow style ──
-  const eyebrow = { fontSize: 11, fontWeight: '600' as const, color: '#9A9A9A', letterSpacing: 1, textTransform: 'uppercase' as const };
+  const eyebrow = { fontSize: 11, fontWeight: '600' as const, color: U.ink[400], letterSpacing: 1, textTransform: 'uppercase' as const };
 
   return (
     <View style={{ gap: 14 }}>
       {/* ── F1 HeroCard — Stok özeti (accent bg + white blobs) ── */}
       <View style={{
         borderRadius: 20, overflow: 'hidden',
-        backgroundColor: accentColor, padding: 18,
+        ...heroBg, padding: 18,
         position: 'relative',
       }}>
         {/* Dekoratif beyaz bloblar */}
-        <View style={{ position: 'absolute', top: -50, end: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.20)' }} />
-        <View style={{ position: 'absolute', bottom: -60, start: -30, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+        <HeroGlow size={180} opacity={0.20} delay={0} style={{ top: -50, end: -40 }} />
+        <HeroGlow size={150} opacity={0.12} delay={1400} style={{ bottom: -60, start: -30 }} />
 
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
           <View style={{ flex: 1, minWidth: 220 }}>
@@ -1710,9 +1612,29 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
               {catMap.size} kategori · {recentCount != null ? `${recentCount} son 7 günde hareket` : 'son 7 gün —'}
             </Text>
           </View>
-          <View style={{ width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.18)' }}>
-            <Package size={20} color="#FFFFFF" strokeWidth={1.6} />
-          </View>
+          {/* Birincil eylem hero'nun içinde (Ürünler/Hareketler ile aynı kalıp). */}
+          {onAddProduct ? (
+            <Pressable
+              onPress={onAddProduct}
+              accessibilityRole="button"
+              accessibilityLabel={autoT('Yeni Ürün')}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0,
+                paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999,
+                backgroundColor: '#FFFFFF',
+                ...(Platform.OS === 'web'
+                  ? ({ cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.16)' } as any)
+                  : { shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 3 }),
+              }}
+            >
+              <Plus size={14} color={accentColor} strokeWidth={2.4} />
+              <Text numberOfLines={1} style={{ fontSize: 12.5, fontWeight: '700', color: accentColor }}>{autoT('Yeni Ürün')}</Text>
+            </Pressable>
+          ) : (
+            <View style={{ width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.18)' }}>
+              <Package size={20} color="#FFFFFF" strokeWidth={1.6} />
+            </View>
+          )}
         </View>
 
         {/* KPI strip — beyaz pill stat cards */}
@@ -1791,9 +1713,9 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
 
         if (tasks.length === 0) return null;
         const TONE = {
-          warning: CHIP_TONES.warning,
-          danger:  CHIP_TONES.danger,
-          info:    CHIP_TONES.info ?? CHIP_TONES.warning,
+          warning: U.chipTones.warning,
+          danger:  U.chipTones.danger,
+          info:    U.chipTones.info ?? U.chipTones.warning,
         } as any;
 
         return (
@@ -1808,7 +1730,7 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
                 style={{
                   flexDirection: 'row', alignItems: 'center', gap: 12,
                   paddingHorizontal: 18, paddingVertical: 12,
-                  borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)',
+                  borderTopWidth: 1, borderTopColor: U.hairlineSoft,
                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                 }}
               >
@@ -1819,10 +1741,10 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
                   <Text style={{ fontSize: 12, fontWeight: '700', color: TONE[t.tone].fg }}>{t.count}</Text>
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '600', color: '#0A0A0A' }}>{t.label}</Text>
-                  <Text numberOfLines={1} style={{ fontSize: 11, color: '#9A9A9A' }}>{t.detail}</Text>
+                  <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>{t.label}</Text>
+                  <Text numberOfLines={1} style={{ fontSize: 11, color: U.ink[400] }}>{t.detail}</Text>
                 </View>
-                {isRTL() ? <ChevronLeft size={15} color="#9A9A9A" strokeWidth={1.8} /> : <ChevronRight size={15} color="#9A9A9A" strokeWidth={1.8} />}
+                {isRTL() ? <ChevronLeft size={15} color={U.ink[400]} strokeWidth={1.8} /> : <ChevronRight size={15} color={U.ink[400]} strokeWidth={1.8} />}
               </Pressable>
             ))}
           </View>
@@ -1836,7 +1758,7 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <View style={{ gap: 2 }}>
                 <Text style={eyebrow}>Kategori dağılımı</Text>
-                <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 22, letterSpacing: -0.4, color: '#0A0A0A' }}>
+                <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 22, letterSpacing: -0.4, color: U.ink[900] }}>
                   {catMap.size > catStats.length ? `İlk ${catStats.length} kategori` : 'Tüm kategoriler'}
                 </Text>
               </View>
@@ -1851,10 +1773,10 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
                 return (
                   <View key={cat} style={{ gap: 6 }}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text style={{ fontSize: 13, fontWeight: '500', color: '#2C2C2C', flex: 1 }} numberOfLines={1}>{cat}</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '500', color: U.ink[700], flex: 1 }} numberOfLines={1}>{cat}</Text>
                       <Text style={{ fontSize: 12, fontWeight: '600', color: accentColor }}>{count}</Text>
                     </View>
-                    <View style={{ height: 6, backgroundColor: 'rgba(0,0,0,0.04)', borderRadius: 3, overflow: 'hidden' }}>
+                    <View style={{ height: 6, backgroundColor: U.hairlineSoft, borderRadius: 3, overflow: 'hidden' }}>
                       <View style={{ height: 6, borderRadius: 3, width: `${Math.round(pctVal * 100)}%` as any, backgroundColor: accentColor }} />
                     </View>
                   </View>
@@ -1871,21 +1793,21 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
           <View style={{ position: 'relative', width: 160, height: 160, alignItems: 'center', justifyContent: 'center', marginVertical: 4 }}>
             <DonutChart pct={total > 0 ? normal.length / total : 0} color={accentColor} size={160} stroke={14} />
             <View style={{ position: 'absolute', alignItems: 'center' }}>
-              <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 44, letterSpacing: -1.4, color: '#0A0A0A', lineHeight: 50 }}>
+              <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 44, letterSpacing: -1.4, color: U.ink[900], lineHeight: 50 }}>
                 {total > 0 ? Math.round(normal.length / total * 100) : 0}
-                <Text style={{ fontSize: 18, fontWeight: '400', color: '#9A9A9A' }}>%</Text>
+                <Text style={{ fontSize: 18, fontWeight: '400', color: U.ink[400] }}>%</Text>
               </Text>
-              <Text style={{ fontSize: 11, color: '#9A9A9A', fontWeight: '500', letterSpacing: 0.6, textTransform: 'uppercase', marginTop: -2 }}>Normal</Text>
+              <Text style={{ fontSize: 11, color: U.ink[400], fontWeight: '500', letterSpacing: 0.6, textTransform: 'uppercase', marginTop: -2 }}>Normal</Text>
             </View>
           </View>
           {noMinCount > 0 || autoMinCount > 0 ? (
             <View style={{
               width: '100%', flexDirection: 'row', gap: 8, marginTop: 12,
               paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12,
-              backgroundColor: CHIP_TONES.warning.bg,
+              backgroundColor: U.chipTones.warning.bg,
             }}>
-              <AlertTriangle size={13} color={CHIP_TONES.warning.fg} strokeWidth={1.9} />
-              <Text style={{ flex: 1, fontSize: 11, lineHeight: 16, color: CHIP_TONES.warning.fg }}>
+              <AlertTriangle size={13} color={U.chipTones.warning.fg} strokeWidth={1.9} />
+              <Text style={{ flex: 1, fontSize: 11, lineHeight: 16, color: U.chipTones.warning.fg }}>
                 {noMinCount > 0
                   ? `${noMinCount} kalemde minimum seviye yok — bu kalemler asla "kritik" görünmez.`
                   : `${autoMinCount} kalemin minimumu otomatik atandı (referansın %10'u). Gerçek tüketiminize göre gözden geçirin.`}
@@ -1896,13 +1818,13 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
           <View style={{ width: '100%', gap: 9, marginTop: 10 }}>
             {([
               { label: 'Normal',  count: normal.length,   color: accentColor },
-              { label: 'Kritik',  count: critical.length, color: CHIP_TONES.warning.fg },
-              { label: 'Tükendi', count: empty.length,    color: CHIP_TONES.danger.fg },
+              { label: 'Kritik',  count: critical.length, color: U.chipTones.warning.fg },
+              { label: 'Tükendi', count: empty.length,    color: U.chipTones.danger.fg },
             ] as const).map(l => (
               <View key={l.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <View style={{ width: 8, height: 8, borderRadius: 4, flexShrink: 0, backgroundColor: l.color }} />
-                <Text style={{ fontSize: 12, fontWeight: '500', color: '#2C2C2C', flex: 1 }}>{l.label}</Text>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#9A9A9A' }}>{l.count}</Text>
+                <Text style={{ fontSize: 12, fontWeight: '500', color: U.ink[700], flex: 1 }}>{l.label}</Text>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: U.ink[400] }}>{l.count}</Text>
               </View>
             ))}
           </View>
@@ -1922,21 +1844,21 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
             <View style={{ gap: 2 }}>
               <Text style={eyebrow}>Acil dikkat</Text>
-              <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 22, letterSpacing: -0.4, color: '#0A0A0A' }}>Sipariş bekleyen ürünler</Text>
+              <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 22, letterSpacing: -0.4, color: U.ink[900] }}>Sipariş bekleyen ürünler</Text>
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: CHIP_TONES.danger.bg, borderRadius: 9999, paddingHorizontal: 10, paddingVertical: 4 }}>
-              <AlertCircle size={11} color={CHIP_TONES.danger.fg} strokeWidth={1.8} />
-              <Text style={{ fontSize: 11, fontWeight: '600', color: CHIP_TONES.danger.fg }}>{urgentItems.length} ürün</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: U.chipTones.danger.bg, borderRadius: 9999, paddingHorizontal: 10, paddingVertical: 4 }}>
+              <AlertCircle size={11} color={U.chipTones.danger.fg} strokeWidth={1.8} />
+              <Text style={{ fontSize: 11, fontWeight: '600', color: U.chipTones.danger.fg }}>{urgentItems.length} ürün</Text>
             </View>
           </View>
           <View style={{ gap: 4 }}>
             {urgentItems.map((item, idx) => {
               const isEmpty = item.quantity === 0;
               const isLast  = idx === urgentItems.length - 1;
-              const clr     = isEmpty ? CHIP_TONES.danger.fg : CHIP_TONES.warning.fg;
-              const bg      = isEmpty ? CHIP_TONES.danger.bg : CHIP_TONES.warning.bg;
+              const clr     = isEmpty ? U.chipTones.danger.fg : U.chipTones.warning.fg;
+              const bg      = isEmpty ? U.chipTones.danger.bg : U.chipTones.warning.bg;
               return (
-                <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, ...(!isLast ? { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' } : {}) }}>
+                <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, ...(!isLast ? { borderBottomWidth: 1, borderBottomColor: U.hairlineSoft } : {}) }}>
                   <View style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', flexShrink: 0, backgroundColor: bg }}>
                     {isEmpty
                       ? <AlertCircle size={17} color={clr} strokeWidth={1.6} />
@@ -1944,8 +1866,8 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
                     }
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#0A0A0A' }} numberOfLines={1}>{item.name}</Text>
-                    <Text style={{ fontSize: 11, color: '#9A9A9A', fontWeight: '500', marginTop: 1 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>{item.name}</Text>
+                    <Text style={{ fontSize: 11, color: U.ink[400], fontWeight: '500', marginTop: 1 }}>
                       {isEmpty ? 'Stok tükendi' : `${fmtQtyDual(item.quantity, item.unit, item.pack_size, item.content_unit)} kaldı · minimum ${fmtQty(item.min_quantity)}`}
                     </Text>
                   </View>
@@ -1970,8 +1892,8 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
             <ArrowLeftRight size={16} color={accentColor} strokeWidth={1.6} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: '#0A0A0A' }}>Son 7 gün hareketi</Text>
-            <Text style={{ fontSize: 11, color: '#9A9A9A', marginTop: 1 }}>Giriş, çıkış ve fire kayıtları toplamı</Text>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>Son 7 gün hareketi</Text>
+            <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 1 }}>Giriş, çıkış ve fire kayıtları toplamı</Text>
           </View>
           <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 28, letterSpacing: -0.8, color: accentColor }}>{recentCount}</Text>
         </View>
@@ -2001,6 +1923,7 @@ function BrandModal({ visible, brand, accentColor, onClose, onSaved }: {
   visible: boolean; brand: BrandRecord | null; accentColor: string;
   onClose: () => void; onSaved: (oldName?: string) => void;
 }) {
+  const U = useStockUI();
   const isEdit = brand !== null;
   const [name, setName]                 = useState('');
   const [supplier, setSupplier]         = useState('');
@@ -2061,11 +1984,11 @@ function BrandModal({ visible, brand, accentColor, onClose, onSaved }: {
     placeholder?: string; keyboard?: any; multiline?: boolean;
   }) => (
     <View style={{ marginBottom: 12 }}>
-      <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>{label}</Text>
+      <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>{label}</Text>
       <TextInput
-        style={{ ...fieldInput, ...(multiline ? { height: undefined, minHeight: 80, textAlignVertical: 'top', paddingTop: 10 } : {}) }}
+        style={{ ...U.fieldInput, ...(multiline ? { height: undefined, minHeight: 80, textAlignVertical: 'top', paddingTop: 10 } : {}) }}
         value={value} onChangeText={onChange}
-        placeholder={placeholder} placeholderTextColor={DS.ink[400]}
+        placeholder={placeholder} placeholderTextColor={U.ink[400]}
         keyboardType={keyboard} multiline={multiline}
       />
     </View>
@@ -2073,76 +1996,76 @@ function BrandModal({ visible, brand, accentColor, onClose, onSaved }: {
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={modalOverlay}>
-        <View style={modalSheet}>
-          <View style={modalHeader}>
-            <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.3, color: DS.ink[900] }}>
+      <View style={U.modalOverlay}>
+        <View style={U.modalSheet}>
+          <View style={U.modalHeader}>
+            <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.3, color: U.ink[900] }}>
               {isEdit ? 'Markayı Düzenle' : 'Yeni Marka Ekle'}
             </Text>
             <Pressable
               onPress={onClose}
-              style={{ width: 32, height: 32, borderRadius: 9999, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+              style={{ width: 32, height: 32, borderRadius: 9999, backgroundColor: U.ink[100], alignItems: 'center', justifyContent: 'center', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
             >
-              <X size={16} color={DS.ink[500]} strokeWidth={1.6} />
+              <X size={16} color={U.ink[500]} strokeWidth={1.6} />
             </Pressable>
           </View>
 
           <ScrollView style={{ padding: 16 }} showsVerticalScrollIndicator={false}>
-            <View style={sectionCard}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[800], marginBottom: 14 }}>Marka Bilgileri</Text>
+            <View style={U.sectionCard}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[800], marginBottom: 14 }}>Marka Bilgileri</Text>
               <View style={{ marginBottom: 12 }}>
-                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>
-                  MARKA ADI <Text style={{ color: CHIP_TONES.danger.fg }}>*</Text>
+                <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>
+                  MARKA ADI <Text style={{ color: U.chipTones.danger.fg }}>*</Text>
                 </Text>
-                <TextInput style={fieldInput} value={name} onChangeText={t => { setName(t); setError(''); }}
-                  placeholder="orn. 3M, GC, Vita..." placeholderTextColor={DS.ink[400]} />
+                <TextInput style={U.fieldInput} value={name} onChangeText={t => { setName(t); setError(''); }}
+                  placeholder="orn. 3M, GC, Vita..." placeholderTextColor={U.ink[400]} />
               </View>
               <BrandField label="SATICI / DISTRIBUTOR" value={supplier} onChange={setSupplier} placeholder="Turkiye distributoru..." />
             </View>
 
-            <View style={sectionCard}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[800], marginBottom: 14 }}>Iletisim Bilgileri</Text>
+            <View style={U.sectionCard}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[800], marginBottom: 14 }}>Iletisim Bilgileri</Text>
               <BrandField label="ILETISIM KISISI" value={contactPerson} onChange={setContactPerson} placeholder="Ad Soyad..." />
               <View style={{ flexDirection: 'row', gap: 12 }}>
                 <View style={{ flex: 1, marginBottom: 12 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>TELEFON</Text>
-                  <TextInput style={fieldInput} value={phone} onChangeText={setPhone}
-                    placeholder="+90 5XX..." placeholderTextColor={DS.ink[400]} keyboardType="phone-pad" />
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>TELEFON</Text>
+                  <TextInput style={U.fieldInput} value={phone} onChangeText={setPhone}
+                    placeholder="+90 5XX..." placeholderTextColor={U.ink[400]} keyboardType="phone-pad" />
                 </View>
                 <View style={{ flex: 1, marginBottom: 12 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>E-POSTA</Text>
-                  <TextInput style={fieldInput} value={email} onChangeText={setEmail}
-                    placeholder="info@..." placeholderTextColor={DS.ink[400]} keyboardType="email-address" />
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>E-POSTA</Text>
+                  <TextInput style={U.fieldInput} value={email} onChangeText={setEmail}
+                    placeholder="info@..." placeholderTextColor={U.ink[400]} keyboardType="email-address" />
                 </View>
               </View>
               <BrandField label="WEB SITESI" value={website} onChange={setWebsite} placeholder="www.marka.com" />
             </View>
 
-            <View style={{ ...sectionCard, marginBottom: 0 }}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[800], marginBottom: 14 }}>Ek Bilgiler</Text>
+            <View style={{ ...U.sectionCard, marginBottom: 0 }}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[800], marginBottom: 14 }}>Ek Bilgiler</Text>
               <View style={{ marginBottom: 0 }}>
-                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>NOTLAR</Text>
-                <TextInput style={{ ...fieldInput, height: undefined, minHeight: 80, textAlignVertical: 'top', paddingTop: 10 }}
+                <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>NOTLAR</Text>
+                <TextInput style={{ ...U.fieldInput, height: undefined, minHeight: 80, textAlignVertical: 'top', paddingTop: 10 }}
                   value={notes} onChangeText={setNotes}
                   placeholder="Siparis kosullari, indirim orani, teslimat suresi..."
-                  placeholderTextColor={DS.ink[400]} multiline />
+                  placeholderTextColor={U.ink[400]} multiline />
               </View>
             </View>
 
             {error ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(217,75,75,0.08)', borderRadius: 14, padding: 12, marginTop: 12 }}>
-                <AlertCircle size={14} color={CHIP_TONES.danger.fg} strokeWidth={1.6} />
-                <Text style={{ fontSize: 13, color: CHIP_TONES.danger.fg, flex: 1 }}>{error}</Text>
+                <AlertCircle size={14} color={U.chipTones.danger.fg} strokeWidth={1.6} />
+                <Text style={{ fontSize: 13, color: U.chipTones.danger.fg, flex: 1 }}>{error}</Text>
               </View>
             ) : null}
           </ScrollView>
 
-          <View style={modalFooter}>
+          <View style={U.modalFooter}>
             <View style={{ flex: 1 }} />
-            <Pressable style={ghostBtn} onPress={onClose}>
-              <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[700] }}>Iptal</Text>
+            <Pressable style={U.ghostBtn} onPress={onClose}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[700] }}>Iptal</Text>
             </Pressable>
-            <Pressable style={{ ...darkPillBtn, backgroundColor: accentColor }} onPress={handleSave} disabled={saving}>
+            <Pressable style={{ ...U.darkPillBtn, backgroundColor: accentColor }} onPress={handleSave} disabled={saving}>
               {saving ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>{isEdit ? 'Güncelle' : 'Ekle'}</Text>}
             </Pressable>
           </View>
@@ -2155,6 +2078,7 @@ function BrandModal({ visible, brand, accentColor, onClose, onSaved }: {
 // ── BrandsList ────────────────────────────────────────────────────────────────
 
 function BrandsList({ accentColor, onReload }: { accentColor: string; onReload: () => void }) {
+  const U = useStockUI();
   const [brands, setBrands]   = useState<BrandRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal]     = useState<{ visible: boolean; brand: BrandRecord | null }>({ visible: false, brand: null });
@@ -2177,15 +2101,15 @@ function BrandsList({ accentColor, onReload }: { accentColor: string; onReload: 
 
   return (
     <>
-      <View style={tableCard}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' }}>
+      <View style={U.tableCard}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: U.hairlineSoft }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <View style={{ width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor + '12' }}>
               <Tag size={14} color={accentColor} strokeWidth={1.6} />
             </View>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: DS.ink[900] }}>Markalar</Text>
-            <View style={{ backgroundColor: DS.ink[100], borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2 }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: DS.ink[500] }}>{brands.length}</Text>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: U.ink[900] }}>Markalar</Text>
+            <View style={{ backgroundColor: U.ink[100], borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: U.ink[500] }}>{brands.length}</Text>
             </View>
           </View>
           {canManage && (
@@ -2202,19 +2126,19 @@ function BrandsList({ accentColor, onReload }: { accentColor: string; onReload: 
         {loading ? (
           <ActivityIndicator size="small" color={accentColor} style={{ marginVertical: 20 }} />
         ) : brands.length === 0 ? (
-          <Text style={{ fontSize: 13, color: DS.ink[400], textAlign: 'center', paddingVertical: 24 }}>Henüz marka yok</Text>
+          <Text style={{ fontSize: 13, color: U.ink[400], textAlign: 'center', paddingVertical: 24 }}>Henüz marka yok</Text>
         ) : (
           brands.map((b, idx) => {
             const isLast = idx === brands.length - 1;
             return (
-              <View key={b.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingVertical: 14, ...(!isLast ? { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' } : {}) }}>
-                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: DS.ink[50], alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Tag size={13} color={DS.ink[500]} strokeWidth={1.6} />
+              <View key={b.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingVertical: 14, ...(!isLast ? { borderBottomWidth: 1, borderBottomColor: U.hairlineSoft } : {}) }}>
+                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: U.ink[50], alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Tag size={13} color={U.ink[500]} strokeWidth={1.6} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[800] }} numberOfLines={1}>{b.name}</Text>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[800] }} numberOfLines={1}>{b.name}</Text>
                   {(b.supplier || b.contact_person || b.phone) && (
-                    <Text style={{ fontSize: 12, color: DS.ink[400], fontWeight: '500', marginTop: 1 }} numberOfLines={1}>
+                    <Text style={{ fontSize: 12, color: U.ink[400], fontWeight: '500', marginTop: 1 }} numberOfLines={1}>
                       {[b.supplier, b.contact_person, b.phone].filter(Boolean).join(' - ')}
                     </Text>
                   )}
@@ -2222,16 +2146,16 @@ function BrandsList({ accentColor, onReload }: { accentColor: string; onReload: 
                 {canManage && (
                   <>
                     <Pressable
-                      style={{ width: 30, height: 30, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: DS.ink[50], ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                      style={{ width: 30, height: 30, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: U.ink[50], ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                       onPress={() => setModal({ visible: true, brand: b })}
                     >
-                      <Pencil size={13} color={DS.ink[500]} strokeWidth={1.6} />
+                      <Pencil size={13} color={U.ink[500]} strokeWidth={1.6} />
                     </Pressable>
                     <Pressable
-                      style={{ width: 30, height: 30, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: CHIP_TONES.danger.bg, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                      style={{ width: 30, height: 30, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: U.chipTones.danger.bg, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                       onPress={() => handleDelete(b.id, b.name)}
                     >
-                      <Trash2 size={13} color={CHIP_TONES.danger.fg} strokeWidth={1.6} />
+                      <Trash2 size={13} color={U.chipTones.danger.fg} strokeWidth={1.6} />
                     </Pressable>
                   </>
                 )}
@@ -2255,6 +2179,7 @@ function BrandsList({ accentColor, onReload }: { accentColor: string; onReload: 
 // ── CategoryList ──────────────────────────────────────────────────────────────
 
 function CategoryList({ accentColor, onReload }: { accentColor: string; onReload: () => void }) {
+  const U = useStockUI();
   const [rows, setRows]         = useState<string[]>([]);
   const [loading, setLoading]   = useState(true);
   const [addMode, setAddMode]   = useState(false);
@@ -2306,15 +2231,15 @@ function CategoryList({ accentColor, onReload }: { accentColor: string; onReload
   };
 
   return (
-    <View style={tableCard}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' }}>
+    <View style={U.tableCard}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: U.hairlineSoft }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <View style={{ width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor + '12' }}>
             <Grid3x3 size={14} color={accentColor} strokeWidth={1.6} />
           </View>
-          <Text style={{ fontSize: 15, fontWeight: '700', color: DS.ink[900] }}>Kategoriler</Text>
-          <View style={{ backgroundColor: DS.ink[100], borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2 }}>
-            <Text style={{ fontSize: 11, fontWeight: '700', color: DS.ink[500] }}>{rows.length}</Text>
+          <Text style={{ fontSize: 15, fontWeight: '700', color: U.ink[900] }}>Kategoriler</Text>
+          <View style={{ backgroundColor: U.ink[100], borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2 }}>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: U.ink[500] }}>{rows.length}</Text>
           </View>
         </View>
         {canManage && (
@@ -2329,11 +2254,11 @@ function CategoryList({ accentColor, onReload }: { accentColor: string; onReload
       </View>
 
       {canManage && addMode && (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)', backgroundColor: DS.ink[50] }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: U.hairlineSoft, backgroundColor: U.ink[50] }}>
           <TextInput
-            style={{ ...fieldInput, flex: 1 }}
+            style={{ ...U.fieldInput, flex: 1 }}
             value={addText} onChangeText={t => { setAddText(t); setError(''); }}
-            placeholder="Kategori adı..." placeholderTextColor={DS.ink[400]} autoFocus onSubmitEditing={handleAdd}
+            placeholder="Kategori adı..." placeholderTextColor={U.ink[400]} autoFocus onSubmitEditing={handleAdd}
           />
           <Pressable
             style={{ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
@@ -2342,30 +2267,30 @@ function CategoryList({ accentColor, onReload }: { accentColor: string; onReload
             {saving ? <ActivityIndicator size="small" color="#FFF" /> : <Check size={14} color="#FFFFFF" strokeWidth={2} />}
           </Pressable>
           <Pressable
-            style={{ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: DS.ink[100], ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+            style={{ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: U.ink[100], ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
             onPress={() => { setAddMode(false); setError(''); }}
           >
-            <X size={14} color={DS.ink[400]} strokeWidth={1.6} />
+            <X size={14} color={U.ink[400]} strokeWidth={1.6} />
           </Pressable>
         </View>
       )}
 
-      {error ? <Text style={{ fontSize: 12, color: CHIP_TONES.danger.fg, paddingHorizontal: 20, paddingBottom: 8 }}>{error}</Text> : null}
+      {error ? <Text style={{ fontSize: 12, color: U.chipTones.danger.fg, paddingHorizontal: 20, paddingBottom: 8 }}>{error}</Text> : null}
 
       {loading ? (
         <ActivityIndicator size="small" color={accentColor} style={{ marginVertical: 20 }} />
       ) : rows.length === 0 && !addMode ? (
-        <Text style={{ fontSize: 13, color: DS.ink[400], textAlign: 'center', paddingVertical: 24 }}>Henüz kategori yok</Text>
+        <Text style={{ fontSize: 13, color: U.ink[400], textAlign: 'center', paddingVertical: 24 }}>Henüz kategori yok</Text>
       ) : (
         rows.map((name, idx) => {
           const isEditing = editName === name;
           const isLast = idx === rows.length - 1;
           return (
-            <View key={name} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingVertical: 14, ...(!isLast ? { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' } : {}) }}>
+            <View key={name} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingVertical: 14, ...(!isLast ? { borderBottomWidth: 1, borderBottomColor: U.hairlineSoft } : {}) }}>
               {isEditing ? (
                 <>
                   <TextInput
-                    style={{ ...fieldInput, flex: 1 }}
+                    style={{ ...U.fieldInput, flex: 1 }}
                     value={editText}
                     onChangeText={t => { setEditText(t); setError(''); }}
                     autoFocus onSubmitEditing={handleEdit}
@@ -2377,28 +2302,28 @@ function CategoryList({ accentColor, onReload }: { accentColor: string; onReload
                     {saving ? <ActivityIndicator size="small" color="#FFF" /> : <Check size={14} color="#FFFFFF" strokeWidth={2} />}
                   </Pressable>
                   <Pressable
-                    style={{ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: DS.ink[100], ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                    style={{ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: U.ink[100], ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                     onPress={() => { setEditName(null); setError(''); }}
                   >
-                    <X size={14} color={DS.ink[400]} strokeWidth={1.6} />
+                    <X size={14} color={U.ink[400]} strokeWidth={1.6} />
                   </Pressable>
                 </>
               ) : (
                 <>
-                  <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[800], flex: 1 }} numberOfLines={1}>{name}</Text>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[800], flex: 1 }} numberOfLines={1}>{name}</Text>
                   {canManage && (
                     <>
                       <Pressable
-                        style={{ width: 30, height: 30, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: DS.ink[50], ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                        style={{ width: 30, height: 30, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: U.ink[50], ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                         onPress={() => { setEditName(name); setEditText(name); setError(''); setAddMode(false); }}
                       >
-                        <Pencil size={13} color={DS.ink[500]} strokeWidth={1.6} />
+                        <Pencil size={13} color={U.ink[500]} strokeWidth={1.6} />
                       </Pressable>
                       <Pressable
-                        style={{ width: 30, height: 30, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: CHIP_TONES.danger.bg, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                        style={{ width: 30, height: 30, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: U.chipTones.danger.bg, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                         onPress={() => handleDelete(name)}
                       >
-                        <Trash2 size={13} color={CHIP_TONES.danger.fg} strokeWidth={1.6} />
+                        <Trash2 size={13} color={U.chipTones.danger.fg} strokeWidth={1.6} />
                       </Pressable>
                     </>
                   )}
@@ -2421,20 +2346,26 @@ function CategoryList({ accentColor, onReload }: { accentColor: string; onReload
  * önerisi arasındaki fark yalnız burada görünür.
  */
 function SubTabStrip({
-  tabs, value, onChange, numbered,
+  tabs, value, onChange, numbered, trailing,
 }: {
   tabs: SubTabDef[];
   value: string;
   onChange: (k: string) => void;
   /** Sıralı bir akışsa (kurulum adımları) numara gösterilir */
   numbered?: boolean;
+  /** Şeridin sağ ucunda AYNI satırda duran sabit slot (ör. "+ Yeni Ürün"). */
+  trailing?: React.ReactNode;
 }) {
+  const U = useStockUI();
   const active = tabs.find(t => t.key === value) ?? tabs[0];
   return (
     <View style={{ paddingHorizontal: PAGE_PADDING, paddingBottom: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
+        // Satırda kalan genişliği alır ve kendi içinde kaydırır; trailing sabit.
+        style={{ flex: 1 }}
         contentContainerStyle={{ gap: 8, paddingVertical: 2 }}
       >
         {tabs.map((t, i) => {
@@ -2446,23 +2377,24 @@ function SubTabStrip({
               onPress={() => onChange(t.key)}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 8,
-                paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999,
-                backgroundColor: on ? DS.ink[900] : 'rgba(0,0,0,0.05)',
+                // CLAUDE.md §1c — seçili pill daha geniş.
+                paddingHorizontal: on ? 18 : 12, paddingVertical: 8, borderRadius: 999,
+                backgroundColor: on ? U.ink[900] : U.chipNeutral,
                 ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
               }}
             >
               {numbered ? (
                 <Text style={{
                   fontSize: 11, fontWeight: '600',
-                  color: on ? 'rgba(255,255,255,0.5)' : DS.ink[400],
+                  color: on ? U.onDarkPillMuted : U.ink[400],
                 }}>
                   {i + 1}
                 </Text>
               ) : null}
-              <Icon size={14} strokeWidth={on ? 2 : 1.7} color={on ? '#FFF' : DS.ink[500]} />
+              <Icon size={14} strokeWidth={on ? 2 : 1.7} color={on ? U.onDarkPill : U.ink[500]} />
               <Text style={{
                 fontSize: 13, fontWeight: on ? '600' : '500',
-                color: on ? '#FFF' : DS.ink[800],
+                color: on ? U.onDarkPill : U.ink[800],
               }}>
                 {t.label}
               </Text>
@@ -2470,7 +2402,46 @@ function SubTabStrip({
           );
         })}
       </ScrollView>
-      <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 8 }}>{active?.hint}</Text>
+      {trailing ? <View style={{ flexShrink: 0 }}>{trailing}</View> : null}
+      </View>
+      <Text style={{ fontSize: 12, color: U.ink[500], marginTop: 8 }}>{active?.hint}</Text>
+    </View>
+  );
+}
+
+// ── SubTabPills — SubTabStrip'in yalnız pill'leri (hint yok) ─────────────────
+// Ürünler/Lokasyon geçişi arama satırının SOLUNDA durur: hero'nun üstünde ayrı
+// bir satır harcamak yerine, ait olduğu araç çubuğunda.
+function SubTabPills({
+  tabs, value, onChange,
+}: { tabs: SubTabDef[]; value: string; onChange: (k: string) => void }) {
+  const U = useStockUI();
+  return (
+    <View style={{ flexDirection: 'row', gap: 6, flexShrink: 0 }}>
+      {tabs.map(t => {
+        const on = t.key === value;
+        const Icon = t.icon;
+        return (
+          <Pressable
+            key={t.key}
+            onPress={() => onChange(t.key)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: on }}
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 6,
+              // CLAUDE.md §1c — seçili pill daha geniş. h=44 → dokunma hedefi.
+              paddingHorizontal: on ? 16 : 12, height: 44, borderRadius: 9999,
+              backgroundColor: on ? U.ink[900] : U.chipNeutral,
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+            }}
+          >
+            <Icon size={14} strokeWidth={on ? 2 : 1.7} color={on ? U.onDarkPill : U.ink[500]} />
+            <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: on ? '600' : '500', color: on ? U.onDarkPill : U.ink[800] }}>
+              {t.label}
+            </Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -2478,6 +2449,7 @@ function SubTabStrip({
 // ── StockSettings container ───────────────────────────────────────────────────
 
 function StockSettings({ accentColor, onReload }: { accentColor: string; onReload: () => void }) {
+  const U = useStockUI();
   return (
     <View style={{ gap: 16 }}>
       {/* Tüketim kurulumu artık kenar çubuğunda ayrı bir sekme —
@@ -2507,6 +2479,7 @@ function SuggestionsTab({
   accentColor: string;
   onMovement: (item: StockItem, defaultType: MovType) => void;
 }) {
+  const U = useStockUI();
   const [consumptionMap, setConsumptionMap] = useState<Record<string, number>>({});
   const [loadingConsumption, setLoadingConsumption] = useState(true);
 
@@ -2567,25 +2540,27 @@ function SuggestionsTab({
 
   // ── Patterns design tokens ──
   const PCard = {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: U.surface,
     borderRadius: 18,
     padding: 18,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.04)',
-    ...(Platform.OS === 'web' ? { boxShadow: '0 4px 16px rgba(0,0,0,0.04)' } : { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 2 }),
+    borderColor: U.hairline,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: U.isDark ? '0 4px 16px rgba(0,0,0,0.35)' : '0 4px 16px rgba(0,0,0,0.04)' }
+      : { shadowColor: '#000', shadowOpacity: U.isDark ? 0.4 : 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 2 }),
   } as any;
   const DisplayFont = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
-  const eyebrow = { fontSize: 11, fontWeight: '600' as const, color: '#9A9A9A', letterSpacing: 1, textTransform: 'uppercase' as const };
+  const eyebrow = { fontSize: 11, fontWeight: '600' as const, color: U.ink[400], letterSpacing: 1, textTransform: 'uppercase' as const };
   const accSoft = accentColor + '14';
 
   if (suggestions.length === 0) {
     return (
       <View style={{ alignItems: 'center', paddingVertical: 60, gap: 14 }}>
-        <View style={{ width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: CHIP_TONES.success.bg }}>
-          <CheckCircle size={32} color={CHIP_TONES.success.fg} strokeWidth={1.4} />
+        <View style={{ width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: U.chipTones.success.bg }}>
+          <CheckCircle size={32} color={U.chipTones.success.fg} strokeWidth={1.4} />
         </View>
-        <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 24, letterSpacing: -0.6, color: '#0A0A0A' }}>Tüm stoklar yeterli</Text>
-        <Text style={{ fontSize: 13, color: '#9A9A9A', textAlign: 'center', maxWidth: 320, lineHeight: 19 }}>Minimum seviyenin altında ürün bulunmuyor.</Text>
+        <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 24, letterSpacing: -0.6, color: U.ink[900] }}>Tüm stoklar yeterli</Text>
+        <Text style={{ fontSize: 13, color: U.ink[400], textAlign: 'center', maxWidth: 320, lineHeight: 19 }}>Minimum seviyenin altında ürün bulunmuyor.</Text>
       </View>
     );
   }
@@ -2610,7 +2585,7 @@ function SuggestionsTab({
       {/* ── Table ── */}
       <View style={[PCard, { padding: 0, overflow: 'hidden' }]}>
         {/* Header row */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, backgroundColor: '#FBF9F4', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, backgroundColor: U.surfaceSoft, borderBottomWidth: 1, borderBottomColor: U.hairlineSoft }}>
           <Text style={{ ...eyebrow, flex: 2.5 }}>Ürün</Text>
           <Text style={{ ...eyebrow, flex: 0.8, textAlign: 'center' }}>Mevcut</Text>
           <Text style={{ ...eyebrow, flex: 0.8, textAlign: 'center' }}>Min</Text>
@@ -2632,43 +2607,43 @@ function SuggestionsTab({
               style={{
                 flexDirection: 'row', alignItems: 'center',
                 paddingHorizontal: 20, paddingVertical: 14,
-                ...(!isLast ? { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' } : {}),
+                ...(!isLast ? { borderBottomWidth: 1, borderBottomColor: U.hairlineSoft } : {}),
               }}
             >
               <View style={{ flex: 2.5 }}>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900], letterSpacing: -0.1 }} numberOfLines={1}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900], letterSpacing: -0.1 }} numberOfLines={1}>
                   {s.item.name}
                 </Text>
                 {(s.item.brand || s.item.unit) && (
-                  <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }} numberOfLines={1}>
+                  <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 1 }} numberOfLines={1}>
                     {[s.item.brand, s.item.unit].filter(Boolean).join(' - ')}
                   </Text>
                 )}
               </View>
-              <Text style={{ flex: 0.8, textAlign: 'center', fontSize: 13, fontWeight: isEmpty ? '700' : '500', color: isEmpty ? CHIP_TONES.danger.fg : DS.ink[700] }}>
+              <Text style={{ flex: 0.8, textAlign: 'center', fontSize: 13, fontWeight: isEmpty ? '700' : '500', color: isEmpty ? U.chipTones.danger.fg : U.ink[700] }}>
                 {fmtQty(s.item.quantity)}
               </Text>
-              <Text style={{ flex: 0.8, textAlign: 'center', fontSize: 13, color: DS.ink[500] }}>
+              <Text style={{ flex: 0.8, textAlign: 'center', fontSize: 13, color: U.ink[500] }}>
                 {fmtQty(s.item.min_quantity)}
               </Text>
-              <Text style={{ flex: 0.8, textAlign: 'center', fontSize: 13, fontWeight: '700', color: CHIP_TONES.danger.fg }}>
+              <Text style={{ flex: 0.8, textAlign: 'center', fontSize: 13, fontWeight: '700', color: U.chipTones.danger.fg }}>
                 {s.missing}
               </Text>
-              <Text style={{ flex: 1, textAlign: 'center', fontSize: 12, color: DS.ink[500] }}>
+              <Text style={{ flex: 1, textAlign: 'center', fontSize: 12, color: U.ink[500] }}>
                 {s.item.unit_cost != null ? `${s.item.unit_cost.toLocaleString('tr-TR')} ${curSym(itemCcy(s.item))}` : '-'}
               </Text>
-              <Text style={{ flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '600', color: DS.ink[900] }}>
+              <Text style={{ flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '600', color: U.ink[900] }}>
                 {s.estimatedCost > 0 ? `${s.estimatedCost.toLocaleString('tr-TR')} ${curSym(itemCcy(s.item))}` : '-'}
               </Text>
               <View style={{ flex: 1, alignItems: 'center' }}>
                 {s.daysRemaining === null ? (
-                  <Text style={{ fontSize: 16, color: DS.ink[400] }}>{'∞'}</Text>
+                  <Text style={{ fontSize: 16, color: U.ink[400] }}>{'∞'}</Text>
                 ) : (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                    <Clock size={11} color={s.daysRemaining < 3 ? CHIP_TONES.danger.fg : s.daysRemaining < 7 ? CHIP_TONES.warning.fg : DS.ink[500]} strokeWidth={1.6} />
+                    <Clock size={11} color={s.daysRemaining < 3 ? U.chipTones.danger.fg : s.daysRemaining < 7 ? U.chipTones.warning.fg : U.ink[500]} strokeWidth={1.6} />
                     <Text style={{
                       fontSize: 12, fontWeight: '600',
-                      color: s.daysRemaining < 3 ? CHIP_TONES.danger.fg : s.daysRemaining < 7 ? CHIP_TONES.warning.fg : DS.ink[700],
+                      color: s.daysRemaining < 3 ? U.chipTones.danger.fg : s.daysRemaining < 7 ? U.chipTones.warning.fg : U.ink[700],
                     }}>
                       {Math.round(s.daysRemaining)} gun
                     </Text>
@@ -2752,6 +2727,7 @@ const fmt = (n: number | null | undefined) => (Number(n) || 0).toLocaleString('t
 const fmt1 = (n: number | null | undefined) => (Number(n) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 1 });
 
 function AnalyticsTab({ accentColor }: { accentColor: string }) {
+  const U = useStockUI();
   const { profile } = useAuthStore();
   const { width } = useWindowDimensions();
   const isWide = width >= 900;
@@ -2825,23 +2801,25 @@ function AnalyticsTab({ accentColor }: { accentColor: string }) {
   if (loading) {
     return (
       <View style={{ paddingVertical: 60, alignItems: 'center' }}>
-        <ActivityIndicator color={DS.ink[900]} />
-        <Text style={{ fontSize: 13, color: DS.ink[400], marginTop: 12 }}>Analiz yükleniyor…</Text>
+        <ActivityIndicator color={U.ink[900]} />
+        <Text style={{ fontSize: 13, color: U.ink[400], marginTop: 12 }}>Analiz yükleniyor…</Text>
       </View>
     );
   }
 
   // ── Patterns design tokens ──
   const PCard = {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: U.surface,
     borderRadius: 18,
     padding: 18,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.04)',
-    ...(Platform.OS === 'web' ? { boxShadow: '0 4px 16px rgba(0,0,0,0.04)' } : { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 2 }),
+    borderColor: U.hairline,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: U.isDark ? '0 4px 16px rgba(0,0,0,0.35)' : '0 4px 16px rgba(0,0,0,0.04)' }
+      : { shadowColor: '#000', shadowOpacity: U.isDark ? 0.4 : 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 2 }),
   } as any;
   const DisplayFont = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
-  const eyebrow = { fontSize: 11, fontWeight: '600' as const, color: '#9A9A9A', letterSpacing: 1, textTransform: 'uppercase' as const };
+  const eyebrow = { fontSize: 11, fontWeight: '600' as const, color: U.ink[400], letterSpacing: 1, textTransform: 'uppercase' as const };
   const accSoft = accentColor + '14';
 
   return (
@@ -2858,14 +2836,14 @@ function AnalyticsTab({ accentColor }: { accentColor: string }) {
                 flexDirection: 'row', alignItems: 'center', gap: 6,
                 paddingHorizontal: active ? 14 : 12, paddingVertical: 7,
                 borderRadius: 9999,
-                backgroundColor: active ? accentColor : '#FFFFFF',
-                borderWidth: 1, borderColor: active ? accentColor : 'rgba(0,0,0,0.05)',
+                backgroundColor: active ? accentColor : U.plainBtn.bg,
+                borderWidth: 1, borderColor: active ? accentColor : U.hairline,
                 // @ts-ignore web
                 cursor: 'pointer',
               }}
             >
               {active && <Calendar size={11} color="#FFFFFF" strokeWidth={2} />}
-              <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? '#FFFFFF' : '#6B6B6B' }}>
+              <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? '#FFFFFF' : U.ink[500] }}>
                 {opt.label}
               </Text>
             </Pressable>
@@ -2889,20 +2867,20 @@ function AnalyticsTab({ accentColor }: { accentColor: string }) {
 
       {/* ── Daily Consumption Bar Chart ────────────────────────── */}
       {dailyData.length > 0 && (
-        <View style={{ ...cardSolid, padding: 20, gap: 14 }}>
+        <View style={{ ...U.cardSolid, padding: 20, gap: 14 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <BarChart3 size={15} color={DS.ink[700]} strokeWidth={1.8} />
-              <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }}>Günlük Tüketim</Text>
+              <BarChart3 size={15} color={U.ink[700]} strokeWidth={1.8} />
+              <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900] }}>Günlük Tüketim</Text>
             </View>
             <View style={{ flexDirection: 'row', gap: 12 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: CHIP_TONES.info.fg }} />
-                <Text style={{ fontSize: 10, color: DS.ink[400] }}>Kullanım</Text>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: U.chipTones.info.fg }} />
+                <Text style={{ fontSize: 10, color: U.ink[400] }}>Kullanım</Text>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: CHIP_TONES.danger.fg }} />
-                <Text style={{ fontSize: 10, color: DS.ink[400] }}>Fire</Text>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: U.chipTones.danger.fg }} />
+                <Text style={{ fontSize: 10, color: U.ink[400] }}>Fire</Text>
               </View>
             </View>
           </View>
@@ -2919,15 +2897,15 @@ function AnalyticsTab({ accentColor }: { accentColor: string }) {
                       {d.waste_qty > 0 && (
                         <View style={{
                           width: isWide ? 18 : 14, height: Math.max(wasteH, 2),
-                          backgroundColor: CHIP_TONES.danger.fg, borderRadius: 3,
+                          backgroundColor: U.chipTones.danger.fg, borderRadius: 3,
                         }} />
                       )}
                       <View style={{
                         width: isWide ? 18 : 14, height: Math.max(outH, 2),
-                        backgroundColor: CHIP_TONES.info.fg, borderRadius: 3,
+                        backgroundColor: U.chipTones.info.fg, borderRadius: 3,
                       }} />
                     </View>
-                    <Text style={{ fontSize: 8, color: DS.ink[400], transform: [{ rotate: '-45deg' }] }}>
+                    <Text style={{ fontSize: 8, color: U.ink[400], transform: [{ rotate: '-45deg' }] }}>
                       {dayLabel}
                     </Text>
                   </View>
@@ -2942,61 +2920,61 @@ function AnalyticsTab({ accentColor }: { accentColor: string }) {
       <View style={{ flexDirection: isWide ? 'row' : 'column', gap: 12 }}>
 
         {/* Teknisyen Bazlı Kullanım */}
-        <View style={{ ...tableCard, flex: 1 }}>
+        <View style={{ ...U.tableCard, flex: 1 }}>
           <View style={{
             flexDirection: 'row', alignItems: 'center', gap: 8,
             paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12,
           }}>
-            <Users size={14} color={DS.ink[700]} strokeWidth={1.8} />
-            <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }}>Teknisyen Kullanımı</Text>
+            <Users size={14} color={U.ink[700]} strokeWidth={1.8} />
+            <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900] }}>Teknisyen Kullanımı</Text>
           </View>
 
           {/* Header */}
           <View style={{
             flexDirection: 'row', alignItems: 'center',
             paddingHorizontal: 20, paddingVertical: 8,
-            backgroundColor: '#FAFAFA',
-            borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)',
+            backgroundColor: U.surfaceSoft,
+            borderBottomWidth: 1, borderBottomColor: U.hairlineSoft,
           }}>
-            <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500] }}>TEKNİSYEN</Text>
-            <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], textAlign: 'end' as any }}>KULLANIM</Text>
-            <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], textAlign: 'end' as any }}>FİRE</Text>
-            <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], textAlign: 'center' }}>VERİM</Text>
+            <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: U.ink[500] }}>TEKNİSYEN</Text>
+            <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: U.ink[500], textAlign: 'end' as any }}>KULLANIM</Text>
+            <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: U.ink[500], textAlign: 'end' as any }}>FİRE</Text>
+            <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: U.ink[500], textAlign: 'center' }}>VERİM</Text>
           </View>
 
           {techRows.length === 0 ? (
             <View style={{ paddingVertical: 30, alignItems: 'center' }}>
-              <Text style={{ fontSize: 13, color: DS.ink[400] }}>Bu dönemde veri yok</Text>
+              <Text style={{ fontSize: 13, color: U.ink[400] }}>Bu dönemde veri yok</Text>
             </View>
           ) : (
             techRows
               .sort((a, b) => (a.efficiency_pct ?? 100) - (b.efficiency_pct ?? 100))
               .map((row, i) => {
                 const eff = row.efficiency_pct;
-                const effChip = eff === null ? CHIP_TONES.neutral
-                  : eff < 85 ? CHIP_TONES.danger
-                  : eff < 95 ? CHIP_TONES.warning
-                  : CHIP_TONES.success;
+                const effChip = eff === null ? U.chipTones.neutral
+                  : eff < 85 ? U.chipTones.danger
+                  : eff < 95 ? U.chipTones.warning
+                  : U.chipTones.success;
                 return (
                   <View key={row.user_id} style={{
                     flexDirection: 'row', alignItems: 'center',
                     paddingHorizontal: 20, paddingVertical: 12,
                     borderBottomWidth: i < techRows.length - 1 ? 1 : 0,
-                    borderBottomColor: 'rgba(0,0,0,0.04)',
+                    borderBottomColor: U.hairlineSoft,
                   }}>
                     <View style={{ flex: 2 }}>
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>{row.user_name}</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>{row.user_name}</Text>
                     </View>
                     <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>{fmt1(row.used_qty)}</Text>
-                      <Text style={{ fontSize: 10, color: DS.ink[400] }}>{fmt(row.used_cost)} ₺</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>{fmt1(row.used_qty)}</Text>
+                      <Text style={{ fontSize: 10, color: U.ink[400] }}>{fmt(row.used_cost)} ₺</Text>
                     </View>
                     <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: row.waste_qty > 0 ? CHIP_TONES.danger.fg : DS.ink[900] }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: row.waste_qty > 0 ? U.chipTones.danger.fg : U.ink[900] }}>
                         {fmt1(row.waste_qty)}
                       </Text>
                       {row.waste_cost > 0 && (
-                        <Text style={{ fontSize: 10, color: CHIP_TONES.danger.fg }}>−{fmt(row.waste_cost)} ₺</Text>
+                        <Text style={{ fontSize: 10, color: U.chipTones.danger.fg }}>−{fmt(row.waste_cost)} ₺</Text>
                       )}
                     </View>
                     <View style={{ flex: 1, alignItems: 'center' }}>
@@ -3008,7 +2986,7 @@ function AnalyticsTab({ accentColor }: { accentColor: string }) {
                           <Text style={{ fontSize: 12, fontWeight: '600', color: effChip.fg }}>%{fmt1(eff)}</Text>
                         </View>
                       ) : (
-                        <Text style={{ fontSize: 11, color: DS.ink[400] }}>—</Text>
+                        <Text style={{ fontSize: 11, color: U.ink[400] }}>—</Text>
                       )}
                     </View>
                   </View>
@@ -3018,30 +2996,30 @@ function AnalyticsTab({ accentColor }: { accentColor: string }) {
         </View>
 
         {/* Materyal Bazlı Fire */}
-        <View style={{ ...tableCard, flex: 1 }}>
+        <View style={{ ...U.tableCard, flex: 1 }}>
           <View style={{
             flexDirection: 'row', alignItems: 'center', gap: 8,
             paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12,
           }}>
-            <Flame size={14} color={CHIP_TONES.danger.fg} strokeWidth={1.8} />
-            <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }}>Materyal Bazlı Fire</Text>
+            <Flame size={14} color={U.chipTones.danger.fg} strokeWidth={1.8} />
+            <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900] }}>Materyal Bazlı Fire</Text>
           </View>
 
           {/* Header */}
           <View style={{
             flexDirection: 'row', alignItems: 'center',
             paddingHorizontal: 20, paddingVertical: 8,
-            backgroundColor: '#FAFAFA',
-            borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)',
+            backgroundColor: U.surfaceSoft,
+            borderBottomWidth: 1, borderBottomColor: U.hairlineSoft,
           }}>
-            <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500] }}>MATERYAL</Text>
-            <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], textAlign: 'end' as any }}>MİKTAR</Text>
-            <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], textAlign: 'end' as any }}>MALİYET</Text>
+            <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: U.ink[500] }}>MATERYAL</Text>
+            <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: U.ink[500], textAlign: 'end' as any }}>MİKTAR</Text>
+            <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: U.ink[500], textAlign: 'end' as any }}>MALİYET</Text>
           </View>
 
           {wasteRows.length === 0 ? (
             <View style={{ paddingVertical: 30, alignItems: 'center' }}>
-              <Text style={{ fontSize: 13, color: DS.ink[400] }}>Bu dönemde fire kaydı yok</Text>
+              <Text style={{ fontSize: 13, color: U.ink[400] }}>Bu dönemde fire kaydı yok</Text>
             </View>
           ) : (
             wasteRows
@@ -3051,21 +3029,21 @@ function AnalyticsTab({ accentColor }: { accentColor: string }) {
                   flexDirection: 'row', alignItems: 'center',
                   paddingHorizontal: 20, paddingVertical: 12,
                   borderBottomWidth: i < wasteRows.length - 1 ? 1 : 0,
-                  borderBottomColor: 'rgba(0,0,0,0.04)',
+                  borderBottomColor: U.hairlineSoft,
                 }}>
                   <View style={{ flex: 2 }}>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>{row.item_name}</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>{row.item_name}</Text>
                     {row.type && (
-                      <Text style={{ fontSize: 10, color: DS.ink[400], marginTop: 1 }}>{row.type}</Text>
+                      <Text style={{ fontSize: 10, color: U.ink[400], marginTop: 1 }}>{row.type}</Text>
                     )}
                   </View>
                   <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: CHIP_TONES.danger.fg }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: U.chipTones.danger.fg }}>
                       {fmt1(row.waste_qty)}{row.unit ? ` ${row.unit}` : ''}
                     </Text>
                   </View>
                   <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: CHIP_TONES.danger.fg }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: U.chipTones.danger.fg }}>
                       −{fmt(row.waste_cost)} ₺
                     </Text>
                   </View>
@@ -3078,19 +3056,19 @@ function AnalyticsTab({ accentColor }: { accentColor: string }) {
             <View style={{
               flexDirection: 'row', alignItems: 'center',
               paddingHorizontal: 20, paddingVertical: 12,
-              backgroundColor: '#FAFAFA',
-              borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
+              backgroundColor: U.surfaceSoft,
+              borderTopWidth: 1, borderTopColor: U.hairline,
             }}>
-              <Text style={{ flex: 2, fontSize: 11, fontWeight: '700', color: DS.ink[700], letterSpacing: 0.5, textTransform: 'uppercase' }}>
+              <Text style={{ flex: 2, fontSize: 11, fontWeight: '700', color: U.ink[700], letterSpacing: 0.5, textTransform: 'uppercase' }}>
                 TOPLAM ({wasteRows.length} materyal)
               </Text>
               <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                <Text style={{ fontSize: 12, fontWeight: '700', color: CHIP_TONES.danger.fg }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: U.chipTones.danger.fg }}>
                   {fmt1(totals.totalWaste)}
                 </Text>
               </View>
               <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                <Text style={{ fontSize: 12, fontWeight: '700', color: CHIP_TONES.danger.fg }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: U.chipTones.danger.fg }}>
                   −{fmt(totals.totalWasteCost)} ₺
                 </Text>
               </View>
@@ -3117,6 +3095,7 @@ interface ForecastRow {
 }
 
 function ForecastTab({ items, accentColor }: { items: StockItem[]; accentColor: string }) {
+  const U = useStockUI();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
 
@@ -3257,17 +3236,17 @@ function ForecastTab({ items, accentColor }: { items: StockItem[]; accentColor: 
   if (loading) return <ActivityIndicator size="large" color={accentColor} style={{ marginTop: 60 }} />;
 
   const getRiskColor = (days: number | null) => {
-    if (days === null) return DS.ink[400];
-    if (days <= 7) return CHIP_TONES.danger.fg;
-    if (days <= 30) return CHIP_TONES.warning.fg;
-    return CHIP_TONES.success.fg;
+    if (days === null) return U.ink[400];
+    if (days <= 7) return U.chipTones.danger.fg;
+    if (days <= 30) return U.chipTones.warning.fg;
+    return U.chipTones.success.fg;
   };
 
   const getRiskBg = (days: number | null) => {
-    if (days === null) return DS.ink[100];
-    if (days <= 7) return CHIP_TONES.danger.bg;
-    if (days <= 30) return CHIP_TONES.warning.bg;
-    return CHIP_TONES.success.bg;
+    if (days === null) return U.ink[100];
+    if (days <= 7) return U.chipTones.danger.bg;
+    if (days <= 30) return U.chipTones.warning.bg;
+    return U.chipTones.success.bg;
   };
 
   const getRiskLabel = (days: number | null) => {
@@ -3280,15 +3259,17 @@ function ForecastTab({ items, accentColor }: { items: StockItem[]; accentColor: 
 
   // ── Patterns design tokens ──
   const PCard = {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: U.surface,
     borderRadius: 18,
     padding: 18,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.04)',
-    ...(Platform.OS === 'web' ? { boxShadow: '0 4px 16px rgba(0,0,0,0.04)' } : { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 2 }),
+    borderColor: U.hairline,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: U.isDark ? '0 4px 16px rgba(0,0,0,0.35)' : '0 4px 16px rgba(0,0,0,0.04)' }
+      : { shadowColor: '#000', shadowOpacity: U.isDark ? 0.4 : 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 2 }),
   } as any;
   const DisplayFont = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
-  const eyebrow = { fontSize: 11, fontWeight: '600' as const, color: '#9A9A9A', letterSpacing: 1, textTransform: 'uppercase' as const };
+  const eyebrow = { fontSize: 11, fontWeight: '600' as const, color: U.ink[400], letterSpacing: 1, textTransform: 'uppercase' as const };
 
   return (
     <View style={{ gap: 14 }}>
@@ -3322,12 +3303,12 @@ function ForecastTab({ items, accentColor }: { items: StockItem[]; accentColor: 
                 onPress={() => setRangeDays(r.days)}
                 style={{
                   paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999,
-                  backgroundColor: active ? accentColor : '#FFFFFF',
-                  borderWidth: 1, borderColor: active ? accentColor : 'rgba(0,0,0,0.05)',
+                  backgroundColor: active ? accentColor : U.plainBtn.bg,
+                  borderWidth: 1, borderColor: active ? accentColor : U.hairline,
                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
                 }}
               >
-                <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? '#FFF' : '#6B6B6B' }}>{r.label}</Text>
+                <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? '#FFFFFF' : U.ink[500] }}>{r.label}</Text>
               </Pressable>
             );
           })}
@@ -3335,9 +3316,9 @@ function ForecastTab({ items, accentColor }: { items: StockItem[]; accentColor: 
         <View style={{ flexDirection: 'row', gap: 4, marginStart: isDesktop ? 12 : 0 }}>
           {([
             { key: 'all' as const,      label: 'Tümü',    count: forecasts.length, color: accentColor },
-            { key: 'critical' as const, label: 'Kritik',  count: criticalCount,    color: CHIP_TONES.danger.fg },
-            { key: 'warning' as const,  label: 'Uyarı',   count: warningCount,     color: CHIP_TONES.warning.fg },
-            { key: 'safe' as const,     label: 'Güvenli', count: safeCount,        color: CHIP_TONES.success.fg },
+            { key: 'critical' as const, label: 'Kritik',  count: criticalCount,    color: U.chipTones.danger.fg },
+            { key: 'warning' as const,  label: 'Uyarı',   count: warningCount,     color: U.chipTones.warning.fg },
+            { key: 'safe' as const,     label: 'Güvenli', count: safeCount,        color: U.chipTones.success.fg },
           ]).map(f => {
             const active = filterRisk === f.key;
             return (
@@ -3346,13 +3327,13 @@ function ForecastTab({ items, accentColor }: { items: StockItem[]; accentColor: 
                 onPress={() => setFilterRisk(f.key)}
                 style={{
                   paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9999,
-                  backgroundColor: active ? f.color : '#FFFFFF',
-                  borderWidth: 1, borderColor: active ? f.color : 'rgba(0,0,0,0.05)',
+                  backgroundColor: active ? f.color : U.plainBtn.bg,
+                  borderWidth: 1, borderColor: active ? f.color : U.hairline,
                   flexDirection: 'row', alignItems: 'center', gap: 5,
                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
                 }}
               >
-                <Text style={{ fontSize: 11, fontWeight: active ? '600' : '500', color: active ? '#FFF' : '#6B6B6B' }}>{f.label}</Text>
+                <Text style={{ fontSize: 11, fontWeight: active ? '600' : '500', color: active ? '#FFFFFF' : U.ink[500] }}>{f.label}</Text>
                 <Text style={{ fontSize: 10, fontWeight: '600', color: active ? 'rgba(255,255,255,0.75)' : '#9A9A9A' }}>{f.count}</Text>
               </Pressable>
             );
@@ -3362,9 +3343,9 @@ function ForecastTab({ items, accentColor }: { items: StockItem[]; accentColor: 
 
       {/* Forecast cards */}
       {filtered.length === 0 ? (
-        <View style={{ ...cardSolid, alignItems: 'center', paddingVertical: 48, gap: 12 }}>
-          <CheckCircle size={36} color={DS.ink[200]} strokeWidth={1.2} />
-          <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[800] }}>Bu filtrede ürün yok</Text>
+        <View style={{ ...U.cardSolid, alignItems: 'center', paddingVertical: 48, gap: 12 }}>
+          <CheckCircle size={36} color={U.ink[200]} strokeWidth={1.2} />
+          <Text style={{ fontSize: 15, fontWeight: '600', color: U.ink[800] }}>Bu filtrede ürün yok</Text>
         </View>
       ) : (
         <View style={{ gap: 8 }}>
@@ -3374,37 +3355,37 @@ function ForecastTab({ items, accentColor }: { items: StockItem[]; accentColor: 
             const maxWeekly = Math.max(...f.weeklyTrend, 1);
 
             return (
-              <View key={f.item.id} style={{ ...cardSolid, padding: 16 }}>
+              <View key={f.item.id} style={{ ...U.cardSolid, padding: 16 }}>
                 <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: isDesktop ? 20 : 12 }}>
                   {/* Left: Item info */}
                   <View style={{ flex: 1 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                      <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }}>{f.item.name}</Text>
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900] }}>{f.item.name}</Text>
                       {f.trendDirection === 'up' && (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: CHIP_TONES.danger.bg, borderRadius: 9999, paddingHorizontal: 6, paddingVertical: 1 }}>
-                          <TrendingUp size={9} color={CHIP_TONES.danger.fg} strokeWidth={2} />
-                          <Text style={{ fontSize: 9, fontWeight: '700', color: CHIP_TONES.danger.fg }}>Artiyor</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: U.chipTones.danger.bg, borderRadius: 9999, paddingHorizontal: 6, paddingVertical: 1 }}>
+                          <TrendingUp size={9} color={U.chipTones.danger.fg} strokeWidth={2} />
+                          <Text style={{ fontSize: 9, fontWeight: '700', color: U.chipTones.danger.fg }}>Artiyor</Text>
                         </View>
                       )}
                       {f.trendDirection === 'down' && (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: CHIP_TONES.success.bg, borderRadius: 9999, paddingHorizontal: 6, paddingVertical: 1 }}>
-                          <TrendingDown size={9} color={CHIP_TONES.success.fg} strokeWidth={2} />
-                          <Text style={{ fontSize: 9, fontWeight: '700', color: CHIP_TONES.success.fg }}>Azaliyor</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: U.chipTones.success.bg, borderRadius: 9999, paddingHorizontal: 6, paddingVertical: 1 }}>
+                          <TrendingDown size={9} color={U.chipTones.success.fg} strokeWidth={2} />
+                          <Text style={{ fontSize: 9, fontWeight: '700', color: U.chipTones.success.fg }}>Azaliyor</Text>
                         </View>
                       )}
                     </View>
                     <View style={{ flexDirection: 'row', gap: 12 }}>
-                      <Text style={{ fontSize: 12, color: DS.ink[500] }}>
-                        Stok: <Text style={{ fontWeight: '600', color: DS.ink[800] }}>{fmtQty(f.item.quantity)} {f.item.unit || 'adet'}</Text>
+                      <Text style={{ fontSize: 12, color: U.ink[500] }}>
+                        Stok: <Text style={{ fontWeight: '600', color: U.ink[800] }}>{fmtQty(f.item.quantity)} {f.item.unit || 'adet'}</Text>
                       </Text>
-                      <Text style={{ fontSize: 12, color: DS.ink[500] }}>
-                        Gunluk tuketim: <Text style={{ fontWeight: '600', color: DS.ink[800] }}>{f.dailyRate.toFixed(1)}</Text>
+                      <Text style={{ fontSize: 12, color: U.ink[500] }}>
+                        Gunluk tuketim: <Text style={{ fontWeight: '600', color: U.ink[800] }}>{f.dailyRate.toFixed(1)}</Text>
                       </Text>
                     </View>
                     {f.upcomingNeed > 0 && (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
-                        <ShoppingCart size={11} color={CHIP_TONES.info.fg} strokeWidth={1.6} />
-                        <Text style={{ fontSize: 11, color: CHIP_TONES.info.fg }}>
+                        <ShoppingCart size={11} color={U.chipTones.info.fg} strokeWidth={1.6} />
+                        <Text style={{ fontSize: 11, color: U.chipTones.info.fg }}>
                           Bekleyen siparişler için tahmini ihtiyaç: <Text style={{ fontWeight: '600' }}>{f.upcomingNeed.toFixed(1)}</Text>
                         </Text>
                       </View>
@@ -3413,14 +3394,14 @@ function ForecastTab({ items, accentColor }: { items: StockItem[]; accentColor: 
 
                   {/* Middle: Mini sparkline (4 weeks) */}
                   <View style={{ width: isDesktop ? 100 : undefined, alignItems: 'center' }}>
-                    <Text style={{ fontSize: 9, color: DS.ink[400], marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: '600' }}>Haftalik Tuketim</Text>
+                    <Text style={{ fontSize: 9, color: U.ink[400], marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: '600' }}>Haftalik Tuketim</Text>
                     <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: 32 }}>
                       {f.weeklyTrend.map((w, idx) => (
                         <View key={idx} style={{
                           width: 14,
                           height: Math.max((w / maxWeekly) * 28, 2),
                           borderRadius: 3,
-                          backgroundColor: idx === 3 ? riskColor : DS.ink[200],
+                          backgroundColor: idx === 3 ? riskColor : U.ink[200],
                         }} />
                       ))}
                     </View>
@@ -3463,6 +3444,7 @@ interface CostTabProps {
 }
 
 function CostTab({ items, accentColor }: CostTabProps) {
+  const U = useStockUI();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
 
@@ -3534,15 +3516,17 @@ function CostTab({ items, accentColor }: CostTabProps) {
 
   // ── Patterns design tokens ──
   const PCard = {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: U.surface,
     borderRadius: 18,
     padding: 18,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.04)',
-    ...(Platform.OS === 'web' ? { boxShadow: '0 4px 16px rgba(0,0,0,0.04)' } : { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 2 }),
+    borderColor: U.hairline,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: U.isDark ? '0 4px 16px rgba(0,0,0,0.35)' : '0 4px 16px rgba(0,0,0,0.04)' }
+      : { shadowColor: '#000', shadowOpacity: U.isDark ? 0.4 : 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 2 }),
   } as any;
   const DisplayFont = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
-  const eyebrow = { fontSize: 11, fontWeight: '600' as const, color: '#9A9A9A', letterSpacing: 1, textTransform: 'uppercase' as const };
+  const eyebrow = { fontSize: 11, fontWeight: '600' as const, color: U.ink[400], letterSpacing: 1, textTransform: 'uppercase' as const };
 
   return (
     <View style={{ gap: 14 }}>
@@ -3561,7 +3545,7 @@ function CostTab({ items, accentColor }: CostTabProps) {
 
       {/* ── Sort pills ── */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <Text style={{ fontSize: 12, color: '#9A9A9A', marginEnd: 4, fontWeight: '500' }}>Sırala:</Text>
+        <Text style={{ fontSize: 12, color: U.ink[400], marginEnd: 4, fontWeight: '500' }}>Sırala:</Text>
         {([
           { key: 'value' as const, label: 'Değer' },
           { key: 'cost' as const,  label: 'Birim maliyet' },
@@ -3574,12 +3558,12 @@ function CostTab({ items, accentColor }: CostTabProps) {
               onPress={() => setSortBy(s.key)}
               style={{
                 paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999,
-                backgroundColor: active ? accentColor : '#FFFFFF',
-                borderWidth: 1, borderColor: active ? accentColor : 'rgba(0,0,0,0.05)',
+                backgroundColor: active ? accentColor : U.plainBtn.bg,
+                borderWidth: 1, borderColor: active ? accentColor : U.hairline,
                 ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
               }}
             >
-              <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? '#FFF' : '#6B6B6B' }}>
+              <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? '#FFFFFF' : U.ink[500] }}>
                 {s.label}
               </Text>
             </Pressable>
@@ -3588,20 +3572,20 @@ function CostTab({ items, accentColor }: CostTabProps) {
       </View>
 
       {/* Cost Table */}
-      <View style={tableCard}>
+      <View style={U.tableCard}>
         {/* Header */}
         <View style={{
           flexDirection: 'row', alignItems: 'center',
           paddingHorizontal: 16, paddingVertical: 10,
-          backgroundColor: '#FAFAFA',
-          borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)',
+          backgroundColor: U.surfaceSoft,
+          borderBottomWidth: 1, borderBottomColor: U.hairlineSoft,
         }}>
-          <Text style={{ ...colHeader, flex: 1 }}>ÜRÜN</Text>
-          {isDesktop && <Text style={{ ...colHeader, width: 100 }}>KATEGORI</Text>}
-          <Text style={{ ...colHeader, width: 100, textAlign: 'end' as any }}>BIRIM MALIYET</Text>
-          <Text style={{ ...colHeader, width: 80, textAlign: 'end' as any }}>MIKTAR</Text>
-          <Text style={{ ...colHeader, width: 110, textAlign: 'end' as any }}>TOPLAM DEGER</Text>
-          {isDesktop && <Text style={{ ...colHeader, width: 80, textAlign: 'center' }}>DEGISIM</Text>}
+          <Text style={{ ...U.colHeader, flex: 1 }}>ÜRÜN</Text>
+          {isDesktop && <Text style={{ ...U.colHeader, width: 100 }}>KATEGORI</Text>}
+          <Text style={{ ...U.colHeader, width: 100, textAlign: 'end' as any }}>BIRIM MALIYET</Text>
+          <Text style={{ ...U.colHeader, width: 80, textAlign: 'end' as any }}>MIKTAR</Text>
+          <Text style={{ ...U.colHeader, width: 110, textAlign: 'end' as any }}>TOPLAM DEGER</Text>
+          {isDesktop && <Text style={{ ...U.colHeader, width: 80, textAlign: 'center' }}>DEGISIM</Text>}
         </View>
 
         {/* Rows */}
@@ -3612,25 +3596,25 @@ function CostTab({ items, accentColor }: CostTabProps) {
             style={{
               flexDirection: 'row', alignItems: 'center',
               paddingHorizontal: 16, paddingVertical: 10,
-              borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)',
+              borderBottomWidth: 1, borderBottomColor: U.hairlineSoft,
               backgroundColor: selectedItem === item.id ? 'rgba(99,102,241,0.04)' : 'transparent',
               ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
             }}
           >
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[900] }} numberOfLines={1}>{item.name}</Text>
-              {item.brand && <Text style={{ fontSize: 10, color: DS.ink[400], marginTop: 1 }}>{item.brand}</Text>}
+              <Text style={{ fontSize: 13, fontWeight: '500', color: U.ink[900] }} numberOfLines={1}>{item.name}</Text>
+              {item.brand && <Text style={{ fontSize: 10, color: U.ink[400], marginTop: 1 }}>{item.brand}</Text>}
             </View>
             {isDesktop && (
-              <Text style={{ width: 100, fontSize: 12, color: DS.ink[500] }} numberOfLines={1}>{item.category || '—'}</Text>
+              <Text style={{ width: 100, fontSize: 12, color: U.ink[500] }} numberOfLines={1}>{item.category || '—'}</Text>
             )}
-            <Text style={{ width: 100, textAlign: 'end' as any, fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>
+            <Text style={{ width: 100, textAlign: 'end' as any, fontSize: 13, fontWeight: '600', color: U.ink[900] }}>
               {item.unit_cost != null && item.unit_cost > 0 ? `${fmt(item.unit_cost)} ${curSym(itemCcy(item))}` : '—'}
             </Text>
-            <Text style={{ width: 80, textAlign: 'end' as any, fontSize: 13, color: DS.ink[700] }}>
+            <Text style={{ width: 80, textAlign: 'end' as any, fontSize: 13, color: U.ink[700] }}>
               {fmtQtyDual(item.quantity, item.unit, item.pack_size, item.content_unit)}
             </Text>
-            <Text style={{ width: 110, textAlign: 'end' as any, fontSize: 13, fontWeight: '700', color: item.totalValue > 0 ? '#059669' : DS.ink[400] }}>
+            <Text style={{ width: 110, textAlign: 'end' as any, fontSize: 13, fontWeight: '700', color: item.totalValue > 0 ? '#059669' : U.ink[400] }}>
               {item.totalValue > 0 ? `${fmt(item.totalValue)} ${curSym(itemCcy(item))}` : '—'}
             </Text>
             {isDesktop && (
@@ -3639,23 +3623,23 @@ function CostTab({ items, accentColor }: CostTabProps) {
                   <View style={{
                     flexDirection: 'row', alignItems: 'center', gap: 3,
                     borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2,
-                    backgroundColor: item.costChange > 0 ? CHIP_TONES.danger.bg : item.costChange < 0 ? CHIP_TONES.success.bg : DS.ink[100],
+                    backgroundColor: item.costChange > 0 ? U.chipTones.danger.bg : item.costChange < 0 ? U.chipTones.success.bg : U.ink[100],
                   }}>
                     {item.costChange > 0
-                      ? <TrendingUp size={10} color={CHIP_TONES.danger.fg} strokeWidth={2} />
+                      ? <TrendingUp size={10} color={U.chipTones.danger.fg} strokeWidth={2} />
                       : item.costChange < 0
-                        ? <TrendingDown size={10} color={CHIP_TONES.success.fg} strokeWidth={2} />
+                        ? <TrendingDown size={10} color={U.chipTones.success.fg} strokeWidth={2} />
                         : null
                     }
                     <Text style={{
                       fontSize: 10, fontWeight: '700',
-                      color: item.costChange > 0 ? CHIP_TONES.danger.fg : item.costChange < 0 ? CHIP_TONES.success.fg : DS.ink[500],
+                      color: item.costChange > 0 ? U.chipTones.danger.fg : item.costChange < 0 ? U.chipTones.success.fg : U.ink[500],
                     }}>
                       {item.costChange > 0 ? '+' : ''}{item.costChange.toFixed(1)}%
                     </Text>
                   </View>
                 ) : (
-                  <Text style={{ fontSize: 10, color: DS.ink[300] }}>—</Text>
+                  <Text style={{ fontSize: 10, color: U.ink[300] }}>—</Text>
                 )}
               </View>
             )}
@@ -3666,13 +3650,13 @@ function CostTab({ items, accentColor }: CostTabProps) {
         <View style={{
           flexDirection: 'row', alignItems: 'center',
           paddingHorizontal: 16, paddingVertical: 12,
-          backgroundColor: '#FAFAFA',
-          borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
+          backgroundColor: U.surfaceSoft,
+          borderTopWidth: 1, borderTopColor: U.hairline,
         }}>
-          <Text style={{ flex: 1, fontSize: 13, fontWeight: '700', color: DS.ink[900] }}>TOPLAM</Text>
+          <Text style={{ flex: 1, fontSize: 13, fontWeight: '700', color: U.ink[900] }}>TOPLAM</Text>
           {isDesktop && <View style={{ width: 100 }} />}
           <View style={{ width: 100 }} />
-          <Text style={{ width: 80, textAlign: 'end' as any, fontSize: 13, fontWeight: '600', color: DS.ink[700] }}>
+          <Text style={{ width: 80, textAlign: 'end' as any, fontSize: 13, fontWeight: '600', color: U.ink[700] }}>
             {items.length} ürün
           </Text>
           <Text style={{ minWidth: 110, textAlign: 'end' as any, fontSize: 13, fontWeight: '800', color: '#059669' }} numberOfLines={1}>
@@ -3684,14 +3668,14 @@ function CostTab({ items, accentColor }: CostTabProps) {
 
       {/* Price History Detail — when an item is selected */}
       {selectedItem && selectedHistory.length > 0 && (
-        <View style={cardSolid}>
+        <View style={U.cardSolid}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 }}>
             <Clock size={16} color="#6366F1" strokeWidth={1.6} />
-            <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[900] }}>
+            <Text style={{ fontSize: 15, fontWeight: '600', color: U.ink[900] }}>
               Fiyat Gecmisi — {items.find(i => i.id === selectedItem)?.name ?? ''}
             </Text>
             <Pressable onPress={() => setSelectedItem(null)} style={{ marginStart: 'auto', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}>
-              <X size={14} color={DS.ink[400]} strokeWidth={1.6} />
+              <X size={14} color={U.ink[400]} strokeWidth={1.6} />
             </Pressable>
           </View>
 
@@ -3708,7 +3692,7 @@ function CostTab({ items, accentColor }: CostTabProps) {
                       backgroundColor: '#6366F1',
                       minWidth: 6,
                     }} />
-                    <Text style={{ fontSize: 8, color: DS.ink[400], marginTop: 3 }} numberOfLines={1}>
+                    <Text style={{ fontSize: 8, color: U.ink[400], marginTop: 3 }} numberOfLines={1}>
                       {new Date(h.created_at).toLocaleDateString(localeTag(), { day: '2-digit', month: '2-digit' })}
                     </Text>
                   </View>
@@ -3718,23 +3702,23 @@ function CostTab({ items, accentColor }: CostTabProps) {
           </View>
 
           {/* History table */}
-          <View style={{ borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)', overflow: 'hidden' }}>
-            <View style={{ flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#FAFAFA' }}>
-              <Text style={{ ...colHeader, flex: 1 }}>TARIH</Text>
-              <Text style={{ ...colHeader, width: 80, textAlign: 'end' as any }}>MIKTAR</Text>
-              <Text style={{ ...colHeader, width: 100, textAlign: 'end' as any }}>BIRIM FIYAT</Text>
-              <Text style={{ ...colHeader, width: 100, textAlign: 'end' as any }}>TOPLAM</Text>
+          <View style={{ borderRadius: 14, borderWidth: 1, borderColor: U.hairlineSoft, overflow: 'hidden' }}>
+            <View style={{ flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 8, backgroundColor: U.surfaceSoft }}>
+              <Text style={{ ...U.colHeader, flex: 1 }}>TARIH</Text>
+              <Text style={{ ...U.colHeader, width: 80, textAlign: 'end' as any }}>MIKTAR</Text>
+              <Text style={{ ...U.colHeader, width: 100, textAlign: 'end' as any }}>BIRIM FIYAT</Text>
+              <Text style={{ ...U.colHeader, width: 100, textAlign: 'end' as any }}>TOPLAM</Text>
             </View>
             {selectedHistory.slice().reverse().slice(0, 20).map((h, idx) => (
               <View key={idx} style={{
                 flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 8,
-                borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)',
+                borderTopWidth: 1, borderTopColor: U.hairlineSoft,
               }}>
-                <Text style={{ flex: 1, fontSize: 12, color: DS.ink[700] }}>
+                <Text style={{ flex: 1, fontSize: 12, color: U.ink[700] }}>
                   {new Date(h.created_at).toLocaleDateString(localeTag(), { day: '2-digit', month: '2-digit', year: 'numeric' })}
                 </Text>
-                <Text style={{ width: 80, textAlign: 'end' as any, fontSize: 12, color: DS.ink[700] }}>{fmtQty(h.quantity)}</Text>
-                <Text style={{ width: 100, textAlign: 'end' as any, fontSize: 12, fontWeight: '600', color: DS.ink[900] }}>{fmt(h.unit_cost)} {curSym(itemCcy(items.find(it => it.id === selectedItem)))}</Text>
+                <Text style={{ width: 80, textAlign: 'end' as any, fontSize: 12, color: U.ink[700] }}>{fmtQty(h.quantity)}</Text>
+                <Text style={{ width: 100, textAlign: 'end' as any, fontSize: 12, fontWeight: '600', color: U.ink[900] }}>{fmt(h.unit_cost)} {curSym(itemCcy(items.find(it => it.id === selectedItem)))}</Text>
                 <Text style={{ width: 100, textAlign: 'end' as any, fontSize: 12, fontWeight: '600', color: '#059669' }}>{fmt(h.unit_cost * h.quantity)} {curSym(itemCcy(items.find(it => it.id === selectedItem)))}</Text>
               </View>
             ))}
@@ -3753,9 +3737,12 @@ interface LocationsTabProps {
   onEditProduct: (item: StockItem) => void;
   /** Düzenleme/silme yetkisi — yoksa satır tıklamaz, edit modal açılmaz. */
   canEdit?: boolean;
+  /** Araç çubuğunun soluna eklenen slot (Liste/Lokasyon alt sekme pill'leri). */
+  leading?: React.ReactNode;
 }
 
-function LocationsTab({ items, accentColor, onEditProduct, canEdit = true }: LocationsTabProps) {
+function LocationsTab({ items, accentColor, onEditProduct, canEdit = true, leading }: LocationsTabProps) {
+  const U = useStockUI();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
   const [locSearch, setLocSearch] = useState('');
@@ -3806,15 +3793,17 @@ function LocationsTab({ items, accentColor, onEditProduct, canEdit = true }: Loc
 
   // ── Patterns design tokens ──
   const PCard = {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: U.surface,
     borderRadius: 18,
     padding: 18,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.04)',
-    ...(Platform.OS === 'web' ? { boxShadow: '0 4px 16px rgba(0,0,0,0.04)' } : { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 2 }),
+    borderColor: U.hairline,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: U.isDark ? '0 4px 16px rgba(0,0,0,0.35)' : '0 4px 16px rgba(0,0,0,0.04)' }
+      : { shadowColor: '#000', shadowOpacity: U.isDark ? 0.4 : 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 2 }),
   } as any;
   const DisplayFont = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
-  const eyebrow = { fontSize: 11, fontWeight: '600' as const, color: '#9A9A9A', letterSpacing: 1, textTransform: 'uppercase' as const };
+  const eyebrow = { fontSize: 11, fontWeight: '600' as const, color: U.ink[400], letterSpacing: 1, textTransform: 'uppercase' as const };
 
   return (
     <View style={{ gap: 14 }}>
@@ -3833,24 +3822,25 @@ function LocationsTab({ items, accentColor, onEditProduct, canEdit = true }: Loc
       />
 
       {/* ── Toolbar ── */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        {leading}
         <View style={{
-          flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
-          backgroundColor: '#FFFFFF', borderRadius: 14, borderWidth: 1,
-          borderColor: 'rgba(0,0,0,0.05)', paddingHorizontal: 12, height: 44,
+          flex: 1, minWidth: 180, flexDirection: 'row', alignItems: 'center', gap: 8,
+          backgroundColor: U.surface, borderRadius: 14, borderWidth: 1,
+          borderColor: U.hairline, paddingHorizontal: 12, height: 44,
           ...(Platform.OS === 'web' ? { boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)' } : {}),
         }}>
-          <Search size={15} color={DS.ink[400]} strokeWidth={1.6} />
+          <Search size={15} color={U.ink[400]} strokeWidth={1.6} />
           <TextInput
-            style={{ flex: 1, fontSize: 14, color: DS.ink[900], height: 44, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) } as any}
+            style={{ flex: 1, fontSize: 14, color: U.ink[900], height: 44, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) } as any}
             value={locSearch}
             onChangeText={setLocSearch}
             placeholder="Lokasyon, ürün veya barkod ara..."
-            placeholderTextColor={DS.ink[400]}
+            placeholderTextColor={U.ink[400]}
           />
           {locSearch.length > 0 && (
             <Pressable onPress={() => setLocSearch('')} hitSlop={8} style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}}>
-              <X size={14} color={DS.ink[400]} strokeWidth={1.6} />
+              <X size={14} color={U.ink[400]} strokeWidth={1.6} />
             </Pressable>
           )}
         </View>
@@ -3864,12 +3854,12 @@ function LocationsTab({ items, accentColor, onEditProduct, canEdit = true }: Loc
                   onPress={() => setViewMode(m)}
                   style={{
                     paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9999,
-                    backgroundColor: active ? accentColor : '#FFFFFF',
-                    borderWidth: 1, borderColor: active ? accentColor : 'rgba(0,0,0,0.05)',
+                    backgroundColor: active ? accentColor : U.plainBtn.bg,
+                    borderWidth: 1, borderColor: active ? accentColor : U.hairline,
                     ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
                   }}
                 >
-                  <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? '#FFF' : '#6B6B6B' }}>
+                  <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? '#FFFFFF' : U.ink[500] }}>
                     {m === 'grid' ? 'Grid' : 'Tablo'}
                   </Text>
                 </Pressable>
@@ -3883,10 +3873,10 @@ function LocationsTab({ items, accentColor, onEditProduct, canEdit = true }: Loc
       {viewMode === 'grid' ? (
         <View style={{ gap: 12 }}>
           {locationGroups.length === 0 ? (
-            <View style={{ ...cardSolid, alignItems: 'center', paddingVertical: 48, gap: 12 }}>
-              <MapPin size={36} color={DS.ink[200]} strokeWidth={1.2} />
-              <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[800] }}>Lokasyon bulunamadı</Text>
-              <Text style={{ fontSize: 13, color: DS.ink[400], textAlign: 'center', maxWidth: 280 }}>
+            <View style={{ ...U.cardSolid, alignItems: 'center', paddingVertical: 48, gap: 12 }}>
+              <MapPin size={36} color={U.ink[200]} strokeWidth={1.2} />
+              <Text style={{ fontSize: 15, fontWeight: '600', color: U.ink[800] }}>Lokasyon bulunamadı</Text>
+              <Text style={{ fontSize: 13, color: U.ink[400], textAlign: 'center', maxWidth: 280 }}>
                 {'Ürünlere lokasyon atamak için ürün düzenle ekranından "Lokasyon / Raf" alanını doldurun.'}
               </Text>
             </View>
@@ -3898,7 +3888,7 @@ function LocationsTab({ items, accentColor, onEditProduct, canEdit = true }: Loc
             const emptyInLoc = locItems.filter(i => i.quantity === 0).length;
 
             return (
-              <View key={loc} style={cardSolid}>
+              <View key={loc} style={U.cardSolid}>
                 {/* Location header */}
                 <Pressable
                   onPress={() => toggleLoc(loc)}
@@ -3906,29 +3896,29 @@ function LocationsTab({ items, accentColor, onEditProduct, canEdit = true }: Loc
                 >
                   <View style={{
                     width: 36, height: 36, borderRadius: 18,
-                    backgroundColor: isUnassigned ? DS.ink[100] : accentColor + '14',
+                    backgroundColor: isUnassigned ? U.ink[100] : accentColor + '14',
                     alignItems: 'center', justifyContent: 'center',
                   }}>
                     {isUnassigned
-                      ? <AlertTriangle size={16} color={DS.ink[400]} strokeWidth={1.6} />
+                      ? <AlertTriangle size={16} color={U.ink[400]} strokeWidth={1.6} />
                       : <MapPin size={16} color={accentColor} strokeWidth={1.6} />
                     }
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[900] }}>{label}</Text>
+                    <Text style={{ fontSize: 15, fontWeight: '600', color: U.ink[900] }}>{label}</Text>
                     <View style={{ flexDirection: 'row', gap: 10, marginTop: 2 }}>
-                      <Text style={{ fontSize: 11, color: DS.ink[400] }}>{locItems.length} ürün</Text>
+                      <Text style={{ fontSize: 11, color: U.ink[400] }}>{locItems.length} ürün</Text>
                       {criticalInLoc > 0 && (
-                        <Text style={{ fontSize: 11, color: CHIP_TONES.warning.fg }}>{criticalInLoc} kritik</Text>
+                        <Text style={{ fontSize: 11, color: U.chipTones.warning.fg }}>{criticalInLoc} kritik</Text>
                       )}
                       {emptyInLoc > 0 && (
-                        <Text style={{ fontSize: 11, color: CHIP_TONES.danger.fg }}>{emptyInLoc} tukendi</Text>
+                        <Text style={{ fontSize: 11, color: U.chipTones.danger.fg }}>{emptyInLoc} tukendi</Text>
                       )}
                     </View>
                   </View>
                   {expanded
-                    ? <ChevronUp size={16} color={DS.ink[400]} strokeWidth={1.6} />
-                    : <ChevronDown size={16} color={DS.ink[400]} strokeWidth={1.6} />
+                    ? <ChevronUp size={16} color={U.ink[400]} strokeWidth={1.6} />
+                    : <ChevronDown size={16} color={U.ink[400]} strokeWidth={1.6} />
                   }
                 </Pressable>
 
@@ -3947,27 +3937,27 @@ function LocationsTab({ items, accentColor, onEditProduct, canEdit = true }: Loc
                             flexDirection: 'row', alignItems: 'center', gap: 12,
                             paddingVertical: 10,
                             borderTopWidth: idx > 0 ? 1 : 0,
-                            borderTopColor: 'rgba(0,0,0,0.04)',
+                            borderTopColor: U.hairlineSoft,
                             ...(Platform.OS === 'web' ? { cursor: (canEdit ? 'pointer' : 'default') as any } : {}),
                           }}
                         >
                           <View style={{ flex: 1 }}>
-                            <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>{item.name}</Text>
+                            <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>{item.name}</Text>
                             <View style={{ flexDirection: 'row', gap: 8, marginTop: 3 }}>
                               {item.category && (
-                                <Text style={{ fontSize: 10, color: DS.ink[400] }}>{item.category}</Text>
+                                <Text style={{ fontSize: 10, color: U.ink[400] }}>{item.category}</Text>
                               )}
                               {item.barcode && (
                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                                  <QrCode size={9} color={DS.ink[400]} strokeWidth={1.6} />
-                                  <Text style={{ fontSize: 10, color: DS.ink[400], fontFamily: Platform.OS === 'web' ? 'monospace' : undefined }}>{item.barcode}</Text>
+                                  <QrCode size={9} color={U.ink[400]} strokeWidth={1.6} />
+                                  <Text style={{ fontSize: 10, color: U.ink[400], fontFamily: Platform.OS === 'web' ? 'monospace' : undefined }}>{item.barcode}</Text>
                                 </View>
                               )}
                             </View>
                           </View>
                           <View style={{ alignItems: 'flex-end', gap: 4 }}>
-                            <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900] }}>
-                              {item.quantity} <Text style={{ fontSize: 11, fontWeight: '400', color: DS.ink[400] }}>{item.unit || 'adet'}</Text>
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: U.ink[900] }}>
+                              {item.quantity} <Text style={{ fontSize: 11, fontWeight: '400', color: U.ink[400] }}>{item.unit || 'adet'}</Text>
                             </Text>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                               <StockBar quantity={item.quantity} min={item.min_quantity} />
@@ -3985,20 +3975,20 @@ function LocationsTab({ items, accentColor, onEditProduct, canEdit = true }: Loc
         </View>
       ) : (
         /* Table View */
-        <View style={tableCard}>
+        <View style={U.tableCard}>
           {/* Header */}
           <View style={{
             flexDirection: 'row', alignItems: 'center',
             paddingHorizontal: 16, paddingVertical: 10,
-            backgroundColor: '#FAFAFA',
-            borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)',
+            backgroundColor: U.surfaceSoft,
+            borderBottomWidth: 1, borderBottomColor: U.hairlineSoft,
           }}>
-            <Text style={{ ...colHeader, width: 120 }}>LOKASYON</Text>
-            <Text style={{ ...colHeader, flex: 1 }}>ÜRÜN</Text>
-            <Text style={{ ...colHeader, width: 100 }}>KATEGORI</Text>
-            <Text style={{ ...colHeader, width: 130 }}>BARKOD</Text>
-            <Text style={{ ...colHeader, width: 90, textAlign: 'end' as any }}>MIKTAR</Text>
-            <Text style={{ ...colHeader, width: 80, textAlign: 'center' }}>DURUM</Text>
+            <Text style={{ ...U.colHeader, width: 120 }}>LOKASYON</Text>
+            <Text style={{ ...U.colHeader, flex: 1 }}>ÜRÜN</Text>
+            <Text style={{ ...U.colHeader, width: 100 }}>KATEGORI</Text>
+            <Text style={{ ...U.colHeader, width: 130 }}>BARKOD</Text>
+            <Text style={{ ...U.colHeader, width: 90, textAlign: 'end' as any }}>MIKTAR</Text>
+            <Text style={{ ...U.colHeader, width: 80, textAlign: 'center' }}>DURUM</Text>
           </View>
 
           {/* Rows */}
@@ -4011,22 +4001,22 @@ function LocationsTab({ items, accentColor, onEditProduct, canEdit = true }: Loc
                 style={{
                   flexDirection: 'row', alignItems: 'center',
                   paddingHorizontal: 16, paddingVertical: 10,
-                  borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)',
+                  borderBottomWidth: 1, borderBottomColor: U.hairlineSoft,
                   ...(Platform.OS === 'web' ? { cursor: (canEdit ? 'pointer' : 'default') as any } : {}),
                 }}
               >
                 <View style={{ width: 120, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <MapPin size={12} color={loc === '__unassigned__' ? DS.ink[300] : accentColor} strokeWidth={1.6} />
-                  <Text style={{ fontSize: 12, color: loc === '__unassigned__' ? DS.ink[400] : DS.ink[800], fontWeight: '500' }} numberOfLines={1}>
+                  <MapPin size={12} color={loc === '__unassigned__' ? U.ink[300] : accentColor} strokeWidth={1.6} />
+                  <Text style={{ fontSize: 12, color: loc === '__unassigned__' ? U.ink[400] : U.ink[800], fontWeight: '500' }} numberOfLines={1}>
                     {loc === '__unassigned__' ? '—' : loc}
                   </Text>
                 </View>
-                <Text style={{ flex: 1, fontSize: 13, fontWeight: '500', color: DS.ink[900] }} numberOfLines={1}>{item.name}</Text>
-                <Text style={{ width: 100, fontSize: 12, color: DS.ink[500] }} numberOfLines={1}>{item.category || '—'}</Text>
+                <Text style={{ flex: 1, fontSize: 13, fontWeight: '500', color: U.ink[900] }} numberOfLines={1}>{item.name}</Text>
+                <Text style={{ width: 100, fontSize: 12, color: U.ink[500] }} numberOfLines={1}>{item.category || '—'}</Text>
                 <View style={{ width: 130, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                   {item.barcode ? (
                     <>
-                      <Text style={{ fontSize: 11, color: DS.ink[500], fontFamily: Platform.OS === 'web' ? 'monospace' : undefined }} numberOfLines={1}>
+                      <Text style={{ fontSize: 11, color: U.ink[500], fontFamily: Platform.OS === 'web' ? 'monospace' : undefined }} numberOfLines={1}>
                         {item.barcode}
                       </Text>
                       <Pressable
@@ -4034,14 +4024,14 @@ function LocationsTab({ items, accentColor, onEditProduct, canEdit = true }: Loc
                         hitSlop={6}
                         style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}}
                       >
-                        <Copy size={11} color={DS.ink[400]} strokeWidth={1.6} />
+                        <Copy size={11} color={U.ink[400]} strokeWidth={1.6} />
                       </Pressable>
                     </>
                   ) : (
-                    <Text style={{ fontSize: 11, color: DS.ink[300] }}>—</Text>
+                    <Text style={{ fontSize: 11, color: U.ink[300] }}>—</Text>
                   )}
                 </View>
-                <Text style={{ width: 90, textAlign: 'end' as any, fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>
+                <Text style={{ width: 90, textAlign: 'end' as any, fontSize: 13, fontWeight: '600', color: U.ink[900] }}>
                   {item.quantity} {item.unit || ''}
                 </Text>
                 <View style={{ width: 80, alignItems: 'center' }}>
@@ -4052,8 +4042,8 @@ function LocationsTab({ items, accentColor, onEditProduct, canEdit = true }: Loc
           )}
           {locationGroups.length === 0 && (
             <View style={{ padding: 32, alignItems: 'center', gap: 8 }}>
-              <MapPin size={28} color={DS.ink[200]} strokeWidth={1.2} />
-              <Text style={{ fontSize: 13, color: DS.ink[400] }}>Sonuç bulunamadı</Text>
+              <MapPin size={28} color={U.ink[200]} strokeWidth={1.2} />
+              <Text style={{ fontSize: 13, color: U.ink[400] }}>Sonuç bulunamadı</Text>
             </View>
           )}
         </View>
@@ -4065,7 +4055,8 @@ function LocationsTab({ items, accentColor, onEditProduct, canEdit = true }: Loc
 // ─── Tab Definitions (Patterns — icon + accent per panel) ───────────────────
 
 import { HubContext } from '../../../core/ui/HubContext';
-import { Settings } from 'lucide-react-native';
+import { Settings, Menu } from '../../../core/ui/icons';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { PAGE_PADDING, PAGE_BLEED } from '../../../core/ui/pageMetrics';
 
 const SIDEBAR_ACCENT = '#F5C24B';
@@ -4078,9 +4069,11 @@ interface StockScreenProps {
 }
 
 export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {}) {
+  const U = useStockUI();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
   const insets = useSafeAreaInsets();
+  const [stockMenuOpen, setStockMenuOpen] = useState(false);
   const { setTitle, clear } = usePageTitleStore();
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
@@ -4158,6 +4151,7 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
   // Panel accent verilmişse tüm sayfa onu kullanır; aksi halde her tab'ın
   // kendi accent'i devrede kalır.
   const accentColor = panelAccent ?? activeTab.accent;
+  const heroBg = useHeroSurface(accentColor);
   // Tab listesindeki accent'leri de override etmek için yardımcı
   const tabAccent = (t: typeof STOCK_TABS[number]) => panelAccent ?? t.accent;
 
@@ -4309,7 +4303,13 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
           onMovement={(item, dt) => { if (canManageStock) setMovModal({ visible: true, item, defaultType: dt }); }}
           onAddProduct={() => { if (canManageStock) setProductModal({ visible: true, item: null }); }}
           onEditProduct={item => { if (canManageStock) setProductModal({ visible: true, item }); }} />;
-    if (tab === 'movements') return <StockMovementsScreen accentColor={accentColor} />;
+    if (tab === 'movements') return (
+      <StockMovementsScreen
+        accentColor={accentColor}
+        onNewMovement={showCta && !isDesktop ? ctaAction : undefined}
+        newMovementLabel={ctaLabel}
+      />
+    );
     if (tab === 'analytics') return <AnalyticsTab accentColor={accentColor} />;
     if (tab === 'material_requests') return <MaterialRequestsScreen />;
 
@@ -4342,6 +4342,9 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
     if (tab === 'list' && activeSub === 'locations') return loading ? spin
       : <LocationsTab items={items} accentColor={accentColor}
           canEdit={can('manage_stock') || can('manage_stock_locations')}
+          leading={subTabs.length > 1 && activeSub
+            ? <SubTabPills tabs={subTabs} value={activeSub} onChange={setSub} />
+            : null}
           onEditProduct={item => setProductModal({ visible: true, item })} />;
 
     // list tab (default)
@@ -4370,12 +4373,12 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
         {/* ── F1 HeroCard — Ürünler özeti (accent bg + white blobs) ── */}
         <View style={{
           borderRadius: 20, overflow: 'hidden',
-          backgroundColor: accentColor, padding: 18,
+          ...heroBg, padding: 18,
           position: 'relative',
         }}>
           {/* Dekoratif beyaz bloblar */}
-          <View style={{ position: 'absolute', top: -50, end: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.20)' }} />
-          <View style={{ position: 'absolute', bottom: -60, start: -30, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+          <HeroGlow size={180} opacity={0.20} delay={0} style={{ top: -50, end: -40 }} />
+          <HeroGlow size={150} opacity={0.12} delay={1400} style={{ bottom: -60, start: -30 }} />
 
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
             <View style={{ flex: 1, minWidth: 220 }}>
@@ -4392,9 +4395,31 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
                 {filtered.length === total ? `${total} ürün listede` : `${filtered.length} / ${total} ürün gösteriliyor`}
               </Text>
             </View>
-            <View style={{ width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.18)' }}>
-              <Package size={20} color="#FFFFFF" strokeWidth={1.6} />
-            </View>
+            {/* Birincil eylem hero'nun içinde: accent zeminde beyaz pill en
+                yüksek kontrastlı yer, ayrıca üstte ayrı bir satır harcamıyor.
+                Dekoratif ikon yalnız CTA yokken görünür. */}
+            {showCta && !isDesktop ? (
+              <Pressable
+                onPress={ctaAction}
+                accessibilityRole="button"
+                accessibilityLabel={ctaLabel}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0,
+                  paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999,
+                  backgroundColor: '#FFFFFF',
+                  ...(Platform.OS === 'web'
+                    ? ({ cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.16)' } as any)
+                    : { shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 3 }),
+                }}
+              >
+                <Plus size={14} color={accentColor} strokeWidth={2.4} />
+                <Text numberOfLines={1} style={{ fontSize: 12.5, fontWeight: '700', color: accentColor }}>{ctaLabel}</Text>
+              </Pressable>
+            ) : (
+              <View style={{ width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.18)' }}>
+                <Package size={20} color="#FFFFFF" strokeWidth={1.6} />
+              </View>
+            )}
           </View>
 
           {/* KPI strip — beyaz pill stat cards */}
@@ -4456,7 +4481,12 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
               </Pressable>
             </View>
           ) : (
-            <View style={{ flex: 1 }} />
+            <>
+              {subTabs.length > 1 && activeSub ? (
+                <SubTabPills tabs={subTabs} value={activeSub} onChange={setSub} />
+              ) : null}
+              <View style={{ flex: 1 }} />
+            </>
           )}
 
           <Pressable
@@ -4495,12 +4525,12 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
               flexDirection: 'row', alignItems: 'center', gap: 6,
               paddingHorizontal: 14, height: 44,
               borderRadius: 9999,
-              backgroundColor: CHIP_TONES.danger.bg, borderWidth: 1, borderColor: CHIP_TONES.danger.fg + '33',
+              backgroundColor: U.chipTones.danger.bg, borderWidth: 1, borderColor: U.chipTones.danger.fg + '33',
               ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
             }}
           >
-            <Flame size={13} color={CHIP_TONES.danger.fg} strokeWidth={1.8} />
-            <Text style={{ fontSize: 12, fontWeight: '600', color: CHIP_TONES.danger.fg }}>Fire bildir</Text>
+            <Flame size={13} color={U.chipTones.danger.fg} strokeWidth={1.8} />
+            <Text style={{ fontSize: 12, fontWeight: '600', color: U.chipTones.danger.fg }}>Fire bildir</Text>
           </Pressable>
         </View>
 
@@ -4561,9 +4591,9 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
                     <Text style={{ fontSize: 12, color: T.ink3, fontWeight: '500' }}>{groupItems.length} ürün</Text>
                     <View style={{ flex: 1 }} />
                     {groupCrit > 0 && (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: CHIP_TONES.warning.bg, borderRadius: 9999, paddingHorizontal: 10, paddingVertical: 3, borderWidth: 1, borderColor: CHIP_TONES.warning.fg + '22' }}>
-                        <AlertTriangle size={10} color={CHIP_TONES.warning.fg} strokeWidth={1.8} />
-                        <Text style={{ fontSize: 11, fontWeight: '600', color: CHIP_TONES.warning.fg }}>{groupCrit} kritik</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: U.chipTones.warning.bg, borderRadius: 9999, paddingHorizontal: 10, paddingVertical: 3, borderWidth: 1, borderColor: U.chipTones.warning.fg + '22' }}>
+                        <AlertTriangle size={10} color={U.chipTones.warning.fg} strokeWidth={1.8} />
+                        <Text style={{ fontSize: 11, fontWeight: '600', color: U.chipTones.warning.fg }}>{groupCrit} kritik</Text>
                       </View>
                     )}
                   </Pressable>
@@ -4572,13 +4602,13 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
                     const isCritical = item.quantity < item.min_quantity;
                     const isEmpty    = item.quantity === 0;
                     const isLast     = idx === groupItems.length - 1;
-                    const dotColor   = isEmpty ? CHIP_TONES.danger.fg : isCritical ? CHIP_TONES.warning.fg : CHIP_TONES.success.fg;
+                    const dotColor   = isEmpty ? U.chipTones.danger.fg : isCritical ? U.chipTones.warning.fg : U.chipTones.success.fg;
 
                     return (
                       <View key={item.id} style={{
                         flexDirection: 'row', alignItems: 'center',
                         paddingStart: 16, paddingEnd: 16, paddingVertical: 11, minHeight: 48,
-                        ...(!isLast ? { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' } : {}),
+                        ...(!isLast ? { borderBottomWidth: 1, borderBottomColor: U.hairlineSoft } : {}),
                       }}>
                         {/* Status dot — yuvarlak, soft halo */}
                         <View style={{ width: 8, height: 8, borderRadius: 4, marginEnd: 12, backgroundColor: dotColor }} />
@@ -4586,26 +4616,26 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
                         <View style={{ flex: 2.8, flexDirection: 'row', alignItems: 'center' }}>
                           <View style={{ flex: 1 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                              <Text style={{ fontSize: 13, fontWeight: '600', color: '#0A0A0A', letterSpacing: -0.1 }} numberOfLines={1}>{item.name}</Text>
+                              <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900], letterSpacing: -0.1 }} numberOfLines={1}>{item.name}</Text>
                               {item.usage_category === 'production' && (
                                 <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 9999, backgroundColor: 'rgba(124,58,237,0.08)' }}>
                                   <Text style={{ fontSize: 9, fontWeight: '600', color: '#7C3AED', letterSpacing: 0.5 }}>ÜRETİM</Text>
                                 </View>
                               )}
                               {item.type && (
-                                <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 9999, backgroundColor: 'rgba(0,0,0,0.04)' }}>
-                                  <Text style={{ fontSize: 9, fontWeight: '600', color: '#6B6B6B', letterSpacing: 0.5 }}>{item.type.toUpperCase()}</Text>
+                                <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 9999, backgroundColor: U.hairlineSoft }}>
+                                  <Text style={{ fontSize: 9, fontWeight: '600', color: U.ink[500], letterSpacing: 0.5 }}>{item.type.toUpperCase()}</Text>
                                 </View>
                               )}
                               {(wasteMap[item.id]?.cost ?? 0) > 0 && (
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 9999, backgroundColor: CHIP_TONES.danger.bg }}>
-                                  <Flame size={8} color={CHIP_TONES.danger.fg} strokeWidth={2} />
-                                  <Text style={{ fontSize: 9, fontWeight: '600', color: CHIP_TONES.danger.fg, letterSpacing: 0.3 }}>{Math.round(wasteMap[item.id].cost).toLocaleString('tr-TR')} {curSym(itemCcy(item))}</Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 9999, backgroundColor: U.chipTones.danger.bg }}>
+                                  <Flame size={8} color={U.chipTones.danger.fg} strokeWidth={2} />
+                                  <Text style={{ fontSize: 9, fontWeight: '600', color: U.chipTones.danger.fg, letterSpacing: 0.3 }}>{Math.round(wasteMap[item.id].cost).toLocaleString('tr-TR')} {curSym(itemCcy(item))}</Text>
                                 </View>
                               )}
                             </View>
                             {(item.brand || item.unit || item.supplier || item.units_per_tooth) && (
-                              <Text style={{ fontSize: 11, color: '#9A9A9A', marginTop: 2, fontWeight: '400' }} numberOfLines={1}>
+                              <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 2, fontWeight: '400' }} numberOfLines={1}>
                                 {[item.brand, item.unit, item.supplier, item.units_per_tooth ? `${item.units_per_tooth}/diş → ${item.consume_at_stage ?? 'MILLING'}` : null].filter(Boolean).join(' · ')}
                               </Text>
                             )}
@@ -4614,11 +4644,11 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
                         {isDesktop && (
                           <View style={{ flex: 2.2, paddingEnd: 16, gap: 3 }}>
                             <StockBar quantity={item.quantity} min={item.min_quantity} />
-                            <Text style={{ fontSize: 10, color: DS.ink[400], fontWeight: '500' }}>{item.quantity} / {item.min_quantity}{item.unit ? ` ${item.unit}` : ''}</Text>
+                            <Text style={{ fontSize: 10, color: U.ink[400], fontWeight: '500' }}>{item.quantity} / {item.min_quantity}{item.unit ? ` ${item.unit}` : ''}</Text>
                           </View>
                         )}
                         <View style={{ flex: 1, alignItems: 'center' }}>
-                          <Text style={{ fontSize: 13, color: (isCritical || isEmpty) ? dotColor : DS.ink[700], fontWeight: (isCritical || isEmpty) ? '700' : '500' }}>{item.quantity}</Text>
+                          <Text style={{ fontSize: 13, color: (isCritical || isEmpty) ? dotColor : U.ink[700], fontWeight: (isCritical || isEmpty) ? '700' : '500' }}>{item.quantity}</Text>
                         </View>
                         <View style={{ flex: 1.2, alignItems: 'center' }}>
                           <StatusBadge quantity={item.quantity} min={item.min_quantity} />
@@ -4633,10 +4663,10 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
                                 <ArrowLeftRight size={13} color={accentColor} strokeWidth={1.8} />
                               </Pressable>
                               <Pressable
-                                style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FBF9F4', borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                                style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: U.surfaceSoft, borderWidth: 1, borderColor: U.hairline, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                                 onPress={() => setProductModal({ visible: true, item })}
                               >
-                                <Pencil size={12} color="#6B6B6B" strokeWidth={1.8} />
+                                <Pencil size={12} color={U.ink[500]} strokeWidth={1.8} />
                               </Pressable>
                             </>
                           )}
@@ -4660,14 +4690,110 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
 
       {/* ── Mobile: Horizontal pill bar ─────────────────────────── */}
       {/* TopActionBar (QR/Bell/Profile) sağ üst absolute → tab bar onun altına */}
-      {!isDesktop && (
-        <View style={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8 }}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 6, alignItems: 'center' }}
-          >
-            <View style={{ flexDirection: 'row', gap: 3, padding: 3, backgroundColor: T.cardSoft, borderRadius: 9999 }}>
+      {!isDesktop && (() => {
+        /* Finans/Onaylar ile AYNI kalıp: 3 birincil sekme inline + hamburger.
+           Sekiz sekme yatay kaydırmada ekran dışına taşıyordu; kullanıcı
+           kaydırmadan neyin var olduğunu göremiyordu. */
+        const PRIMARY_KEYS: TabKey[] = ['dashboard', 'list', 'movements'];
+        const PRIMARY_INLINE = PRIMARY_KEYS
+          .map(k => visibleTabs.find(t => t.key === k))
+          .filter((t): t is typeof visibleTabs[number] => !!t);
+        const activeInPrimary = PRIMARY_INLINE.some(t => t.key === tab);
+        const activeTab = visibleTabs.find(t => t.key === tab);
+        const inlineTabs = activeInPrimary
+          ? PRIMARY_INLINE
+          : (activeTab ? [...PRIMARY_INLINE, activeTab] : PRIMARY_INLINE);
+        const overflowTabs = visibleTabs.filter(t => !inlineTabs.some(i => i.key === t.key));
+
+        return (
+        <View style={{ paddingHorizontal: PAGE_PADDING, paddingTop: 4, paddingBottom: 8 }}>
+          <View style={{
+            flexDirection: 'row', gap: 3, padding: 3, alignItems: 'center',
+            backgroundColor: T.cardSoft, borderRadius: 9999,
+          }}>
+            {inlineTabs.map(t => {
+              const active = t.key === tab;
+              const TabIcon = t.icon;
+              const tAcc = tabAccent(t);
+              return (
+                <Pressable
+                  key={t.key}
+                  onPress={() => setTab(t.key)}
+                  style={{
+                    // CLAUDE.md §1c — seçili pill daha çok pay + dolgu alır.
+                    flex: active ? 1.55 : 1,
+                    minWidth: 0,
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+                    paddingHorizontal: active ? 12 : 8, paddingVertical: 8, borderRadius: 9999,
+                    backgroundColor: active ? tAcc : 'transparent',
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  }}
+                >
+                  <TabIcon size={12} strokeWidth={active ? 2.2 : 1.8} color={active ? '#FFFFFF' : tAcc} />
+                  <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: active ? '700' : '600', color: active ? '#FFFFFF' : T.ink3, flexShrink: 1 }}>
+                    {t.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+
+            {overflowTabs.length > 0 && (
+              <>
+                <View style={{ width: 1, height: 16, backgroundColor: T.hairline, marginHorizontal: 2 }} />
+                <Pressable
+                  onPress={() => setStockMenuOpen(true)}
+                  accessibilityLabel={autoT('Diğer stok bölümleri')}
+                  style={{
+                    alignItems: 'center', justifyContent: 'center',
+                    width: 36, height: 30, borderRadius: 9999,
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  }}
+                >
+                  <Menu size={16} strokeWidth={2} color={panelAccent ?? T.ink2} />
+                </Pressable>
+              </>
+            )}
+          </View>
+        </View>
+        );
+      })()}
+
+      {/* ── Stok hamburger çekmecesi — Finans hub'ıyla aynı ── */}
+      <Modal visible={stockMenuOpen} transparent animationType="fade" onRequestClose={() => setStockMenuOpen(false)}>
+        <View style={{ flex: 1, flexDirection: 'row' }}>
+          <Pressable
+            onPress={() => setStockMenuOpen(false)}
+            style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.45)' }}
+            accessibilityLabel={autoT('Menüyü kapat')}
+          />
+          <View style={{
+            width: Math.min(320, width * 0.85), height: '100%',
+            backgroundColor: T.card,
+            paddingTop: Math.max(insets.top, 12) + 8,
+            paddingBottom: Math.max(insets.bottom, 16) + 12,
+            ...(Platform.OS === 'web'
+              ? ({ boxShadow: '-4px 0 24px rgba(15,23,42,0.18)' } as any)
+              : { shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 24, shadowOffset: { width: -4, height: 0 }, elevation: 20 }),
+          }}>
+            <View style={{ paddingHorizontal: 20, paddingBottom: 14, flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: T.ink3, marginBottom: 2 }}>
+                  {autoT('Stok & Depo')}
+                </Text>
+                <Text style={{ fontSize: 17, fontWeight: '700', color: T.ink }}>{autoT('Bölümler')}</Text>
+              </View>
+              <Pressable
+                onPress={() => setStockMenuOpen(false)}
+                style={{
+                  width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: T.cardSoft,
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                }}
+              >
+                <X size={16} strokeWidth={2} color={T.ink3} />
+              </Pressable>
+            </View>
+            <ScrollView contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 12, gap: 4 }}>
               {visibleTabs.map(t => {
                 const active = t.key === tab;
                 const TabIcon = t.icon;
@@ -4675,28 +4801,32 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
                 return (
                   <Pressable
                     key={t.key}
-                    onPress={() => setTab(t.key)}
+                    onPress={() => { setTab(t.key); setStockMenuOpen(false); }}
                     style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 5,
-                      paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9999,
-                      backgroundColor: active ? tAcc : 'transparent',
+                      flexDirection: 'row', alignItems: 'center', gap: 12,
+                      paddingHorizontal: 12, paddingVertical: 12, borderRadius: 14,
+                      backgroundColor: active ? T.cardSoft : 'transparent',
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                     }}
                   >
-                    <TabIcon
-                      size={12}
-                      strokeWidth={active ? 2.2 : 1.8}
-                      color={active ? '#FFFFFF' : tAcc}
-                    />
-                    <Text style={{ fontSize: 11, fontWeight: active ? '700' : '600', color: active ? '#FFFFFF' : T.ink3 }}>
-                      {t.label}
-                    </Text>
+                    <View style={{
+                      width: 34, height: 34, borderRadius: 11, flexShrink: 0,
+                      alignItems: 'center', justifyContent: 'center',
+                      backgroundColor: active ? tAcc : T.cardSoft,
+                    }}>
+                      <TabIcon size={16} strokeWidth={1.9} color={active ? '#FFFFFF' : tAcc} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: active ? '700' : '600', color: T.ink }}>{t.label}</Text>
+                      <Text numberOfLines={1} style={{ fontSize: 11, color: T.ink3, marginTop: 1 }}>{t.hint}</Text>
+                    </View>
                   </Pressable>
                 );
               })}
-            </View>
-          </ScrollView>
+            </ScrollView>
+          </View>
         </View>
-      )}
+      </Modal>
 
       {/* ── Layout ──────────────────────────────────────────────── */}
       {isDesktop ? (
@@ -4835,23 +4965,8 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
       ) : (
         /* ── Mobile: full-width content ─────────────────────────── */
         <View style={{ flex: 1, paddingHorizontal: PAGE_PADDING, paddingTop: 4 }}>
-          {/* Mobile CTA */}
-          {showCta && (
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 10 }}>
-              <Pressable
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 6,
-                  paddingHorizontal: 14, paddingVertical: 6,
-                  borderRadius: 9999, backgroundColor: accentColor,
-                }}
-                onPress={ctaAction}
-              >
-                <Plus size={15} color="#FFFFFF" strokeWidth={2} />
-                <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>{ctaLabel}</Text>
-              </Pressable>
-            </View>
-          )}
-          {subTabs.length > 1 && activeSub ? (
+          {/* 'list' sekmesinde alt sekmeler araç çubuğuna (aramanın soluna) taşındı. */}
+          {subTabs.length > 1 && activeSub && tab !== 'list' ? (
             <View style={{ marginHorizontal: PAGE_BLEED }}>
               <SubTabStrip
                 tabs={subTabs}
@@ -4906,12 +5021,12 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
 
       {/* ── Filter Modal ────────────────────────────────────────── */}
       <Modal visible={showFilter} transparent animationType="fade" onRequestClose={() => setShowFilter(false)}>
-        <Pressable style={modalOverlay} onPress={() => setShowFilter(false)}>
-          <View style={{ ...modalSheet, maxWidth: 420, maxHeight: undefined }} onStartShouldSetResponder={() => true}>
+        <Pressable style={U.modalOverlay} onPress={() => setShowFilter(false)}>
+          <View style={{ ...U.modalSheet, maxWidth: 420, maxHeight: undefined }} onStartShouldSetResponder={() => true}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <Filter size={15} color={accentColor} strokeWidth={1.6} />
-                <Text style={{ fontSize: 15, fontWeight: '700', color: DS.ink[900] }}>Filtrele</Text>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: U.ink[900] }}>Filtrele</Text>
                 {activeFilterCount > 0 && (
                   <View style={{ backgroundColor: accentColor, borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2 }}>
                     <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>{activeFilterCount}</Text>
@@ -4922,13 +5037,13 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
                 onPress={() => { setDraftStatus('all'); setDraftCat('all'); setDraftBrand('all'); setDraftUsage('all'); }}
                 style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}}
               >
-                <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500] }}>Temizle</Text>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[500] }}>Temizle</Text>
               </Pressable>
             </View>
-            <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.04)' }} />
+            <View style={{ height: 1, backgroundColor: U.hairlineSoft }} />
 
             <View style={{ paddingHorizontal: 20, paddingVertical: 16, gap: 12 }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.8, textTransform: 'uppercase' }}>Durum</Text>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: U.ink[400], letterSpacing: 0.8, textTransform: 'uppercase' }}>Durum</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 {([
                   { value: 'all', label: 'Tumu' },
@@ -4940,19 +5055,19 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
                   return (
                     <Pressable
                       key={it.value}
-                      style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9999, backgroundColor: active ? accentColor : DS.ink[100], ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                      style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9999, backgroundColor: active ? accentColor : U.ink[100], ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                       onPress={() => setDraftStatus(it.value)}
                     >
-                      <Text style={{ fontSize: 13, fontWeight: active ? '600' : '500', color: active ? '#FFFFFF' : DS.ink[500] }}>{it.label}</Text>
+                      <Text style={{ fontSize: 13, fontWeight: active ? '600' : '500', color: active ? '#FFFFFF' : U.ink[500] }}>{it.label}</Text>
                     </Pressable>
                   );
                 })}
               </View>
             </View>
 
-            <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.04)' }} />
+            <View style={{ height: 1, backgroundColor: U.hairlineSoft }} />
             <View style={{ paddingHorizontal: 20, paddingVertical: 16, gap: 12 }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.8, textTransform: 'uppercase' }}>Kullanim</Text>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: U.ink[400], letterSpacing: 0.8, textTransform: 'uppercase' }}>Kullanim</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 {([
                   { value: 'all',        label: 'Tumu'    },
@@ -4964,10 +5079,10 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
                   return (
                     <Pressable
                       key={it.value}
-                      style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9999, backgroundColor: active ? accentColor : DS.ink[100], ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                      style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9999, backgroundColor: active ? accentColor : U.ink[100], ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                       onPress={() => setDraftUsage(it.value)}
                     >
-                      <Text style={{ fontSize: 13, fontWeight: active ? '600' : '500', color: active ? '#FFFFFF' : DS.ink[500] }}>{it.label}</Text>
+                      <Text style={{ fontSize: 13, fontWeight: active ? '600' : '500', color: active ? '#FFFFFF' : U.ink[500] }}>{it.label}</Text>
                     </Pressable>
                   );
                 })}
@@ -4976,19 +5091,19 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
 
             {categories.length > 1 && (
               <>
-                <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.04)' }} />
+                <View style={{ height: 1, backgroundColor: U.hairlineSoft }} />
                 <View style={{ paddingHorizontal: 20, paddingVertical: 16, gap: 12 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.8, textTransform: 'uppercase' }}>Kategori</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: U.ink[400], letterSpacing: 0.8, textTransform: 'uppercase' }}>Kategori</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                     {categories.map(cat => {
                       const active = draftCat === cat;
                       return (
                         <Pressable
                           key={cat}
-                          style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9999, backgroundColor: active ? accentColor : DS.ink[100], ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                          style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9999, backgroundColor: active ? accentColor : U.ink[100], ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                           onPress={() => setDraftCat(cat)}
                         >
-                          <Text style={{ fontSize: 13, fontWeight: active ? '600' : '500', color: active ? '#FFFFFF' : DS.ink[500] }}>{cat === 'all' ? 'Tumu' : cat}</Text>
+                          <Text style={{ fontSize: 13, fontWeight: active ? '600' : '500', color: active ? '#FFFFFF' : U.ink[500] }}>{cat === 'all' ? 'Tumu' : cat}</Text>
                         </Pressable>
                       );
                     })}
@@ -4999,19 +5114,19 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
 
             {brands.length > 0 && (
               <>
-                <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.04)' }} />
+                <View style={{ height: 1, backgroundColor: U.hairlineSoft }} />
                 <View style={{ paddingHorizontal: 20, paddingVertical: 16, gap: 12 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.8, textTransform: 'uppercase' }}>Marka</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: U.ink[400], letterSpacing: 0.8, textTransform: 'uppercase' }}>Marka</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                     {(['all', ...brands]).map(b => {
                       const active = draftBrand === b;
                       return (
                         <Pressable
                           key={b}
-                          style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9999, backgroundColor: active ? accentColor : DS.ink[100], ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                          style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9999, backgroundColor: active ? accentColor : U.ink[100], ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                           onPress={() => setDraftBrand(b)}
                         >
-                          <Text style={{ fontSize: 13, fontWeight: active ? '600' : '500', color: active ? '#FFFFFF' : DS.ink[500] }}>{b === 'all' ? 'Tumu' : b}</Text>
+                          <Text style={{ fontSize: 13, fontWeight: active ? '600' : '500', color: active ? '#FFFFFF' : U.ink[500] }}>{b === 'all' ? 'Tumu' : b}</Text>
                         </Pressable>
                       );
                     })}
@@ -5020,12 +5135,12 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
               </>
             )}
 
-            <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.04)' }} />
+            <View style={{ height: 1, backgroundColor: U.hairlineSoft }} />
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 10, paddingHorizontal: 20, paddingVertical: 16 }}>
-              <Pressable style={ghostBtn} onPress={() => setShowFilter(false)}>
-                <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[700] }}>Iptal</Text>
+              <Pressable style={U.ghostBtn} onPress={() => setShowFilter(false)}>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[700] }}>Iptal</Text>
               </Pressable>
-              <Pressable style={{ ...darkPillBtn, backgroundColor: accentColor }} onPress={applyFilter}>
+              <Pressable style={{ ...U.darkPillBtn, backgroundColor: accentColor }} onPress={applyFilter}>
                 <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>Uygula</Text>
               </Pressable>
             </View>

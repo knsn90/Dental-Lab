@@ -15,9 +15,13 @@ import {
   Save, Trash2, Plus, X, CheckCircle2, ArrowLeft,
   Users, ListChecks, Layers, Sparkles, ShieldCheck, Settings2,
   ChevronDown, ChevronRight, ChevronLeft, Play,
-} from 'lucide-react-native';
+} from '../../../../core/ui/icons';
 
 import { DS } from '../../../../core/theme/dsTokens';
+import { useInkUI } from '../../../../core/theme/inkScale';
+import { useHeroSurface } from '../../../../core/ui/HeroGlow';
+import { useMobileTokens } from '../../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../../core/store/themeModeStore';
 import { isRTL } from '../../../../core/i18n';
 import { autoT } from '../../../../core/i18n/autoTranslate';
 import { CURRENCY_META, type Currency } from '../../../../core/money/currency';
@@ -55,10 +59,13 @@ const num = (v: string): number => {
 /* ====================================================================== */
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
+  const U = useInkUI();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <Text style={{
       fontSize: 10, fontWeight: '600', letterSpacing: 0.8,
-      textTransform: 'uppercase', color: DS.ink[500], marginBottom: 6,
+      textTransform: 'uppercase', color: U.ink[500], marginBottom: 6,
     }}>
       {children}
     </Text>
@@ -67,19 +74,22 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 
 function TextField({ value, onChange, placeholder, keyboardType = 'default', width, multiline }:
   { value: string; onChange: (v: string) => void; placeholder?: string; keyboardType?: any; width?: number; multiline?: boolean }) {
+  const U = useInkUI();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <TextInput
       value={value}
       onChangeText={onChange}
       placeholder={placeholder}
-      placeholderTextColor={DS.ink[400]}
+      placeholderTextColor={isDark ? (T.ink3 as string) : U.ink[400]}
       keyboardType={keyboardType}
       multiline={multiline}
       style={{
-        borderWidth: 1, borderColor: DS.ink[200], borderRadius: 12,
+        borderWidth: 1, borderColor: isDark ? T.hairline : U.ink[200], borderRadius: 12,
         paddingHorizontal: 14, paddingVertical: 10,
-        fontSize: 14, color: DS.ink[900],
-        backgroundColor: '#FFF',
+        fontSize: 14, color: isDark ? T.ink : U.ink[900],
+        backgroundColor: isDark ? T.cardSoft : '#FFF',
         ...(width ? { width } : {}),
         ...(multiline ? { minHeight: 60, textAlignVertical: 'top' as const } : {}),
       }}
@@ -89,11 +99,14 @@ function TextField({ value, onChange, placeholder, keyboardType = 'default', wid
 
 function SectionCard({ icon: Icon, title, hint, children, defaultOpen = true }:
   { icon: any; title: string; hint?: string; children: React.ReactNode; defaultOpen?: boolean }) {
+  const U = useInkUI();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [open, setOpen] = useState(defaultOpen);
   return (
     <View style={{
-      backgroundColor: '#FFF', borderRadius: 18,
-      borderWidth: 1, borderColor: DS.ink[200], overflow: 'hidden',
+      backgroundColor: U.surface, borderRadius: 18,
+      borderWidth: 1, borderColor: U.ink[200], overflow: 'hidden',
     }}>
       <Pressable onPress={() => setOpen(o => !o)} style={({ pressed }) => ({
         flexDirection: 'row', alignItems: 'center', gap: 14,
@@ -101,20 +114,20 @@ function SectionCard({ icon: Icon, title, hint, children, defaultOpen = true }:
       })}>
         <View style={{
           width: 40, height: 40, borderRadius: 12,
-          backgroundColor: TH.bgSoft, alignItems: 'center', justifyContent: 'center',
+          backgroundColor: U.isDark ? TH.primary + '26' : TH.bgSoft, alignItems: 'center', justifyContent: 'center',
         }}>
           <Icon size={18} color={TH.primary} strokeWidth={1.8} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[900], letterSpacing: -0.2 }}>
+          <Text style={{ fontSize: 15, fontWeight: '600', color: U.ink[900], letterSpacing: -0.2 }}>
             {title}
           </Text>
-          {hint ? <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 2 }}>{hint}</Text> : null}
+          {hint ? <Text style={{ fontSize: 12, color: U.ink[500], marginTop: 2 }}>{hint}</Text> : null}
         </View>
-        {open ? <ChevronDown size={18} color={DS.ink[500]} /> : isRTL() ? <ChevronLeft size={18} color={DS.ink[500]} /> : <ChevronRight size={18} color={DS.ink[500]} />}
+        {open ? <ChevronDown size={18} color={U.ink[500]} /> : isRTL() ? <ChevronLeft size={18} color={U.ink[500]} /> : <ChevronRight size={18} color={U.ink[500]} />}
       </Pressable>
       {open ? (
-        <View style={{ padding: 18, paddingTop: 4, borderTopWidth: 1, borderTopColor: DS.ink[100] }}>
+        <View style={{ padding: 18, paddingTop: 4, borderTopWidth: 1, borderTopColor: U.ink[100] }}>
           {children}
         </View>
       ) : null}
@@ -136,12 +149,13 @@ function RowRemoveBtn({ onPress }: { onPress: () => void }) {
 }
 
 function AddRowBtn({ label, onPress }: { label: string; onPress: () => void }) {
+  const U = useInkUI();
   return (
     <Pressable onPress={onPress} style={({ pressed }) => ({
       flexDirection: 'row', alignItems: 'center', gap: 6,
       alignSelf: 'flex-start', marginTop: 12,
       paddingHorizontal: 14, paddingVertical: 8,
-      borderRadius: 999, backgroundColor: TH.bgSoft,
+      borderRadius: 999, backgroundColor: U.isDark ? TH.primary + '26' : TH.bgSoft,
       opacity: pressed ? 0.8 : 1,
     })}>
       <Plus size={14} color={TH.primary} strokeWidth={2.2} />
@@ -154,19 +168,20 @@ function AddRowBtn({ label, onPress }: { label: string; onPress: () => void }) {
 /*  Quality Rules Card — Production Quality Engine                        */
 /* ====================================================================== */
 
-function describeEffect(mult: number): { text: string; color: string; bg: string } {
+/** `dark` → koyu temada açık-tema fg'leri (#1F6B47 vb.) okunmaz; chipTones karşılıkları. */
+function describeEffect(mult: number, dark = false): { text: string; color: string; bg: string } {
   if (mult >= 1.01) {
     const pct = Math.round((mult - 1) * 100);
-    return { text: `+%${pct} ${autoT('ek prim')}`,   color: '#1F6B47', bg: 'rgba(45,154,107,0.12)' };
+    return { text: `+%${pct} ${autoT('ek prim')}`,   color: dark ? '#7BD8AC' : '#1F6B47', bg: dark ? 'rgba(45,154,107,0.22)' : 'rgba(45,154,107,0.12)' };
   }
   if (Math.abs(mult - 1) < 0.005) {
-    return { text: 'Tam prim',            color: TH.info,   bg: 'rgba(74,143,201,0.12)' };
+    return { text: 'Tam prim',            color: dark ? '#9BC6EC' : TH.info,   bg: dark ? 'rgba(74,143,201,0.22)' : 'rgba(74,143,201,0.12)' };
   }
   if (mult > 0) {
     const pct = Math.round((1 - mult) * 100);
-    return { text: `−%${pct} kesinti`,    color: '#9C5E0E', bg: 'rgba(232,155,42,0.15)' };
+    return { text: `−%${pct} kesinti`,    color: dark ? '#F0C078' : '#9C5E0E', bg: dark ? 'rgba(232,155,42,0.22)' : 'rgba(232,155,42,0.15)' };
   }
-  return { text: 'Prim yok',              color: '#9C2E2E', bg: 'rgba(217,75,75,0.12)' };
+  return { text: 'Prim yok',              color: dark ? '#F3A0A0' : '#9C2E2E', bg: dark ? 'rgba(217,75,75,0.22)' : 'rgba(217,75,75,0.12)' };
 }
 
 function matchRule(rules: PolicyFull['quality'], pct: number) {
@@ -223,6 +238,9 @@ function QualityRulesCard({
   onPolicyPatch: (p: Partial<PolicyFull['policy']>) => void;
   onRulesChange: (next: PolicyFull['quality']) => void;
 }) {
+  const U = useInkUI();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [open, setOpen] = useState(true);
   const [testPct, setTestPct] = useState(5);
   const sym = CURRENCY_META[policy.currency as Currency]?.symbol ?? baseSymbol();
@@ -231,7 +249,7 @@ function QualityRulesCard({
   const matched = useMemo(() => matchRule(rules, testPct), [rules, testPct]);
   const simulatedBase = 1000;
   const simulatedResult = matched ? Math.round(simulatedBase * matched.multiplier) : simulatedBase;
-  const matchedEffect = matched ? describeEffect(matched.multiplier) : null;
+  const matchedEffect = matched ? describeEffect(matched.multiplier, U.isDark) : null;
 
   const updateRule = (i: number, patch: Partial<PolicyFull['quality'][number]>) =>
     onRulesChange(rules.map((x, ix) => ix === i ? { ...x, ...patch } : x));
@@ -249,8 +267,8 @@ function QualityRulesCard({
 
   return (
     <View style={{
-      backgroundColor: '#FFF', borderRadius: 18,
-      borderWidth: 1, borderColor: DS.ink[200], overflow: 'hidden',
+      backgroundColor: U.surface, borderRadius: 18,
+      borderWidth: 1, borderColor: U.ink[200], overflow: 'hidden',
     }}>
       {/* HEADER */}
       <Pressable onPress={() => setOpen(o => !o)} style={({ pressed }) => ({
@@ -259,34 +277,34 @@ function QualityRulesCard({
       })}>
         <View style={{
           width: 40, height: 40, borderRadius: 12,
-          backgroundColor: TH.bgSoft, alignItems: 'center', justifyContent: 'center',
+          backgroundColor: U.isDark ? TH.primary + '26' : TH.bgSoft, alignItems: 'center', justifyContent: 'center',
         }}>
           <ShieldCheck size={18} color={TH.primary} strokeWidth={1.8} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[900], letterSpacing: -0.2 }}>
+          <Text style={{ fontSize: 15, fontWeight: '600', color: U.ink[900], letterSpacing: -0.2 }}>
             Kalite Kuralları
           </Text>
-          <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 2 }}>
+          <Text style={{ fontSize: 12, color: U.ink[500], marginTop: 2 }}>
             Üretim kalite motoru · {rules.length} kural · pencere: {QUALITY_WINDOW_LABELS[policy.quality_window]}
           </Text>
         </View>
-        {open ? <ChevronDown size={18} color={DS.ink[500]} /> : isRTL() ? <ChevronLeft size={18} color={DS.ink[500]} /> : <ChevronRight size={18} color={DS.ink[500]} />}
+        {open ? <ChevronDown size={18} color={U.ink[500]} /> : isRTL() ? <ChevronLeft size={18} color={U.ink[500]} /> : <ChevronRight size={18} color={U.ink[500]} />}
       </Pressable>
 
       {!open ? null : (
-        <View style={{ borderTopWidth: 1, borderTopColor: DS.ink[100] }}>
+        <View style={{ borderTopWidth: 1, borderTopColor: U.ink[100] }}>
 
           {/* SETTINGS STRIP — compact, two-row stacked */}
           <View style={{
             paddingHorizontal: 18, paddingVertical: 12,
-            backgroundColor: DS.ink[50],
-            borderBottomWidth: 1, borderBottomColor: DS.ink[100],
+            backgroundColor: U.ink[50],
+            borderBottomWidth: 1, borderBottomColor: U.ink[100],
             gap: 8,
           }}>
             {/* Row 1: Pencere */}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Text style={{ width: 64, fontSize: 10, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>
+              <Text style={{ width: 64, fontSize: 10, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>
                 Pencere
               </Text>
               <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
@@ -296,11 +314,11 @@ function QualityRulesCard({
                     <Pressable key={w} onPress={() => onPolicyPatch({ quality_window: w })}
                       style={({ pressed }) => ({
                         paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
-                        backgroundColor: active ? DS.ink[900] : '#FFF',
-                        borderWidth: 1, borderColor: active ? DS.ink[900] : DS.ink[200],
+                        backgroundColor: active ? U.ink[900] : U.plainBtn.bg,
+                        borderWidth: 1, borderColor: active ? U.ink[900] : U.plainBtn.border,
                         opacity: pressed ? 0.8 : 1,
                       })}>
-                      <Text style={{ fontSize: 11, fontWeight: active ? '600' : '500', color: active ? '#FFF' : DS.ink[700] }}>
+                      <Text style={{ fontSize: 11, fontWeight: active ? '600' : '500', color: active ? U.onDarkPill : U.ink[700] }}>
                         {SHORT_WINDOW_LABELS[w]}
                       </Text>
                     </Pressable>
@@ -311,7 +329,7 @@ function QualityRulesCard({
 
             {/* Row 2: Ceza */}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <Text style={{ width: 64, fontSize: 10, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>
+              <Text style={{ width: 64, fontSize: 10, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>
                 Ceza
               </Text>
               <View style={{ flexDirection: 'row', gap: 4 }}>
@@ -321,11 +339,11 @@ function QualityRulesCard({
                     <Pressable key={m} onPress={() => onPolicyPatch({ remake_penalty: m })}
                       style={({ pressed }) => ({
                         paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
-                        backgroundColor: active ? DS.ink[900] : '#FFF',
-                        borderWidth: 1, borderColor: active ? DS.ink[900] : DS.ink[200],
+                        backgroundColor: active ? U.ink[900] : U.plainBtn.bg,
+                        borderWidth: 1, borderColor: active ? U.ink[900] : U.plainBtn.border,
                         opacity: pressed ? 0.8 : 1,
                       })}>
-                      <Text style={{ fontSize: 11, fontWeight: active ? '600' : '500', color: active ? '#FFF' : DS.ink[700] }}>
+                      <Text style={{ fontSize: 11, fontWeight: active ? '600' : '500', color: active ? U.onDarkPill : U.ink[700] }}>
                         {REMAKE_LABELS[m]}
                       </Text>
                     </Pressable>
@@ -333,21 +351,21 @@ function QualityRulesCard({
                 })}
               </View>
               {policy.remake_penalty === 'penalty' ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginStart: 4, paddingStart: 8, borderStartWidth: 1, borderStartColor: DS.ink[200] }}>
-                  <Text style={{ fontSize: 11, color: DS.ink[500] }}>−</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginStart: 4, paddingStart: 8, borderStartWidth: 1, borderStartColor: U.ink[200] }}>
+                  <Text style={{ fontSize: 11, color: U.ink[500] }}>−</Text>
                   <TextInput
                     value={String(policy.remake_penalty_points ?? 0)}
                     onChangeText={v => onPolicyPatch({ remake_penalty_points: num(v) })}
                     keyboardType="numeric"
                     style={{
                       width: 48,
-                      borderWidth: 1, borderColor: DS.ink[200], borderRadius: 8,
+                      borderWidth: 1, borderColor: U.ink[200], borderRadius: 8,
                       paddingHorizontal: 8, paddingVertical: 4,
-                      fontSize: 12, color: DS.ink[900], backgroundColor: '#FFF',
+                      fontSize: 12, color: U.ink[900], backgroundColor: U.plainBtn.bg,
                       textAlign: 'end' as any,
                     }}
                   />
-                  <Text style={{ fontSize: 11, color: DS.ink[500] }}>puan / yenileme</Text>
+                  <Text style={{ fontSize: 11, color: U.ink[500] }}>puan / yenileme</Text>
                 </View>
               ) : null}
             </View>
@@ -360,13 +378,13 @@ function QualityRulesCard({
               <View style={{
                 flexDirection: 'row', alignItems: 'center', gap: 10,
                 paddingHorizontal: 12, paddingBottom: 8,
-                borderBottomWidth: 1, borderBottomColor: DS.ink[100],
+                borderBottomWidth: 1, borderBottomColor: U.ink[100],
                 marginBottom: 4,
               }}>
-                <Text style={{ flex: 1, fontSize: 10, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>
+                <Text style={{ flex: 1, fontSize: 10, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>
                   Kalite Eşikleri ({rules.length})
                 </Text>
-                <Text style={{ fontSize: 10, fontWeight: '600', color: DS.ink[400] }}>
+                <Text style={{ fontSize: 10, fontWeight: '600', color: U.ink[400] }}>
                   En düşük eşik öncelikli
                 </Text>
               </View>
@@ -378,7 +396,7 @@ function QualityRulesCard({
                 {/* Preset templates */}
                 <View style={{ gap: 8 }}>
                   <Text style={{
-                    fontSize: 10, fontWeight: '700', color: DS.ink[500],
+                    fontSize: 10, fontWeight: '700', color: U.ink[500],
                     textTransform: 'uppercase', letterSpacing: 0.7,
                   }}>
                     Hızlı Başlangıç
@@ -393,25 +411,25 @@ function QualityRulesCard({
                         style={({ pressed }) => ({
                           flex: 1, minWidth: 180,
                           paddingHorizontal: 14, paddingVertical: 12,
-                          borderRadius: 12, backgroundColor: '#FFF',
-                          borderWidth: 1, borderColor: DS.ink[200],
+                          borderRadius: 12, backgroundColor: U.surfaceSoft,
+                          borderWidth: 1, borderColor: U.ink[200],
                           opacity: pressed ? 0.85 : 1,
                         })}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                           <Sparkles size={12} color={TH.primary} strokeWidth={2.2} />
-                          <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>
                             {preset.label}
                           </Text>
                           <View style={{
                             paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999,
-                            backgroundColor: DS.ink[100], marginStart: 'auto' as any,
+                            backgroundColor: U.ink[100], marginStart: 'auto' as any,
                           }}>
-                            <Text style={{ fontSize: 10, fontWeight: '700', color: DS.ink[500] }}>
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: U.ink[500] }}>
                               {preset.rules.length}
                             </Text>
                           </View>
                         </View>
-                        <Text style={{ fontSize: 11, color: DS.ink[500], lineHeight: 15 }}>
+                        <Text style={{ fontSize: 11, color: U.ink[500], lineHeight: 15 }}>
                           {preset.hint}
                         </Text>
                       </Pressable>
@@ -423,11 +441,11 @@ function QualityRulesCard({
                 <Pressable onPress={addRule} style={({ pressed }) => ({
                   flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
                   paddingVertical: 12,
-                  borderWidth: 1, borderStyle: 'dashed', borderColor: DS.ink[300], borderRadius: 12,
+                  borderWidth: 1, borderStyle: 'dashed', borderColor: U.ink[300], borderRadius: 12,
                   opacity: pressed ? 0.7 : 1,
                 })}>
-                  <Plus size={14} color={DS.ink[500]} strokeWidth={2.2} />
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[500] }}>
+                  <Plus size={14} color={U.ink[500]} strokeWidth={2.2} />
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: U.ink[500] }}>
                     Veya boş bir kuralla başla
                   </Text>
                 </Pressable>
@@ -435,12 +453,12 @@ function QualityRulesCard({
             ) : (
               <View>
                 {rules.map((q, i) => {
-                  const eff = describeEffect(q.multiplier);
+                  const eff = describeEffect(q.multiplier, U.isDark);
                   return (
                     <View key={i} style={{
                       paddingHorizontal: 12, paddingVertical: 12,
                       borderBottomWidth: i < rules.length - 1 ? 1 : 0,
-                      borderBottomColor: DS.ink[100],
+                      borderBottomColor: U.ink[100],
                       gap: 10,
                     }}>
                       {/* Top: Etki badge + sil */}
@@ -467,9 +485,9 @@ function QualityRulesCard({
                         <View style={{
                           flexDirection: 'row', alignItems: 'center', gap: 4,
                           paddingHorizontal: 10, paddingVertical: 4,
-                          borderRadius: 8, backgroundColor: DS.ink[50],
+                          borderRadius: 8, backgroundColor: U.ink[50],
                         }}>
-                          <Text style={{ fontSize: 11, color: DS.ink[500] }}>≤</Text>
+                          <Text style={{ fontSize: 11, color: U.ink[500] }}>≤</Text>
                           <TextInput
                             value={String(q.max_remake_pct)}
                             onChangeText={v => updateRule(i, { max_remake_pct: num(v) })}
@@ -477,21 +495,21 @@ function QualityRulesCard({
                             style={{
                               width: 44,
                               paddingVertical: 4,
-                              fontSize: 14, fontWeight: '600', color: DS.ink[900],
+                              fontSize: 14, fontWeight: '600', color: U.ink[900],
                               textAlign: 'end' as any,
                             }}
                           />
-                          <Text style={{ fontSize: 11, color: DS.ink[500] }}>%</Text>
+                          <Text style={{ fontSize: 11, color: U.ink[500] }}>%</Text>
                         </View>
 
                         {/* Çarpan */}
                         <View style={{
                           flexDirection: 'row', alignItems: 'center', gap: 4,
                           paddingHorizontal: 10, paddingVertical: 4,
-                          borderRadius: 8, backgroundColor: DS.ink[50],
+                          borderRadius: 8, backgroundColor: U.ink[50],
                         }}>
-                          <Text style={{ fontSize: 11, color: DS.ink[500] }}>çarpan</Text>
-                          <Text style={{ fontSize: 11, color: DS.ink[400] }}>×</Text>
+                          <Text style={{ fontSize: 11, color: U.ink[500] }}>çarpan</Text>
+                          <Text style={{ fontSize: 11, color: U.ink[400] }}>×</Text>
                           <TextInput
                             value={String(q.multiplier)}
                             onChangeText={v => updateRule(i, { multiplier: num(v) })}
@@ -499,7 +517,7 @@ function QualityRulesCard({
                             style={{
                               width: 52,
                               paddingVertical: 4,
-                              fontSize: 14, fontWeight: '600', color: DS.ink[900],
+                              fontSize: 14, fontWeight: '600', color: U.ink[900],
                               textAlign: 'end' as any,
                             }}
                           />
@@ -510,12 +528,12 @@ function QualityRulesCard({
                           value={q.label ?? ''}
                           onChangeText={v => updateRule(i, { label: v })}
                           placeholder="Etiket (isteğe bağlı)"
-                          placeholderTextColor={DS.ink[400]}
+                          placeholderTextColor={U.ink[400]}
                           style={{
                             flex: 1, minWidth: 120,
-                            borderWidth: 1, borderColor: DS.ink[200], borderRadius: 8,
+                            borderWidth: 1, borderColor: U.ink[200], borderRadius: 8,
                             paddingHorizontal: 10, paddingVertical: 6,
-                            fontSize: 13, color: DS.ink[900], backgroundColor: '#FFF',
+                            fontSize: 13, color: U.ink[900], backgroundColor: U.plainBtn.bg,
                           }}
                         />
                       </View>
@@ -531,7 +549,7 @@ function QualityRulesCard({
           {rules.length > 0 ? (
             <View style={{
               marginHorizontal: 16, marginBottom: 16,
-              backgroundColor: TH.bgSoft, borderRadius: 14, padding: 16,
+              backgroundColor: U.isDark ? U.surfaceSoft : TH.bgSoft, borderRadius: 14, padding: 16,
               borderWidth: 1, borderColor: 'rgba(71,113,171,0.18)',
             }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}>
@@ -544,19 +562,19 @@ function QualityRulesCard({
               {/* Test slider */}
               <View style={{ marginBottom: 12 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <Text style={{ fontSize: 12, color: DS.ink[700] }}>
-                    Test remake oranı: <Text style={{ fontWeight: '700', color: DS.ink[900] }}>%{testPct}</Text>
+                  <Text style={{ fontSize: 12, color: U.ink[700] }}>
+                    Test remake oranı: <Text style={{ fontWeight: '700', color: U.ink[900] }}>%{testPct}</Text>
                   </Text>
                   <View style={{ flexDirection: 'row', gap: 4 }}>
                     {[0, 3, 5, 10, 20, 50].map(v => (
                       <Pressable key={v} onPress={() => setTestPct(v)}
                         style={({ pressed }) => ({
                           paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
-                          backgroundColor: testPct === v ? DS.ink[900] : '#FFF',
-                          borderWidth: 1, borderColor: testPct === v ? DS.ink[900] : DS.ink[200],
+                          backgroundColor: testPct === v ? U.ink[900] : U.plainBtn.bg,
+                          borderWidth: 1, borderColor: testPct === v ? U.ink[900] : U.ink[200],
                           opacity: pressed ? 0.7 : 1,
                         })}>
-                        <Text style={{ fontSize: 10, fontWeight: '700', color: testPct === v ? '#FFF' : DS.ink[700] }}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: testPct === v ? U.onDarkPill : U.ink[700] }}>
                           %{v}
                         </Text>
                       </Pressable>
@@ -566,12 +584,12 @@ function QualityRulesCard({
                 {/* Visual bar */}
                 <View style={{
                   height: 6, borderRadius: 3,
-                  backgroundColor: 'rgba(0,0,0,0.06)',
+                  backgroundColor: U.isDark ? U.chipNeutral : 'rgba(0,0,0,0.06)',
                   overflow: 'hidden',
                 }}>
                   <View style={{
                     width: `${Math.min(100, testPct)}%`, height: '100%',
-                    backgroundColor: matched ? describeEffect(matched.multiplier).color : DS.ink[400],
+                    backgroundColor: matched ? describeEffect(matched.multiplier, U.isDark).color : U.ink[400],
                   }} />
                 </View>
               </View>
@@ -580,7 +598,7 @@ function QualityRulesCard({
               {matched && matchedEffect ? (
                 <View style={{
                   flexDirection: 'row', alignItems: 'center', gap: 10,
-                  backgroundColor: '#FFF', borderRadius: 10, padding: 12,
+                  backgroundColor: U.surface, borderRadius: 10, padding: 12,
                 }}>
                   <View style={{
                     paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
@@ -590,24 +608,24 @@ function QualityRulesCard({
                       Aktif Kural
                     </Text>
                   </View>
-                  <Text style={{ fontSize: 12, color: DS.ink[700] }}>
+                  <Text style={{ fontSize: 12, color: U.ink[700] }}>
                     ≤%{matched.max_remake_pct} → ×{matched.multiplier.toFixed(2)}
                   </Text>
                   <View style={{ flex: 1 }} />
-                  <Text style={{ fontSize: 12, color: DS.ink[500] }}>{sym}1.000 →</Text>
+                  <Text style={{ fontSize: 12, color: U.ink[500] }}>{sym}1.000 →</Text>
                   <Text style={{ ...DISPLAY, fontSize: 22, color: matchedEffect.color, letterSpacing: -0.5 }}>
                     {sym}{(Number(simulatedResult) || 0).toLocaleString('tr-TR')}
                   </Text>
                 </View>
               ) : (
-                <View style={{ backgroundColor: '#FFF', borderRadius: 10, padding: 12 }}>
-                  <Text style={{ fontSize: 12, color: DS.ink[500] }}>
+                <View style={{ backgroundColor: U.surface, borderRadius: 10, padding: 12 }}>
+                  <Text style={{ fontSize: 12, color: U.ink[500] }}>
                     Bu remake oranı için tanımlı kural yok — varsayılan: tam prim.
                   </Text>
                 </View>
               )}
 
-              <Text style={{ fontSize: 10, color: DS.ink[500], marginTop: 8, lineHeight: 14 }}>
+              <Text style={{ fontSize: 10, color: U.ink[500], marginTop: 8, lineHeight: 14 }}>
                 Örnek prim {sym}1.000 baz alınarak hesaplandı. Gerçek hesaplama, kişinin üye ve aşama primlerine bu çarpan uygulanarak yapılır.
               </Text>
             </View>
@@ -637,9 +655,14 @@ function PlanBuilderCard({
   thresholdCount: number;
   onPolicyPatch: (p: Partial<PolicyFull['policy']>) => void;
 }) {
+  const U = useInkUI();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [open, setOpen] = useState(true);
   const [statusOpen, setStatusOpen] = useState(false);
-  const tone = STATUS_TONE[policy.status];
+  const toneBase = STATUS_TONE[policy.status];
+  const darkTone = U.chipTones[policy.status === 'active' ? 'success' : policy.status === 'archived' ? 'danger' : 'neutral'];
+  const tone = U.isDark ? { ...toneBase, bg: darkTone.bg, fg: darkTone.fg } : toneBase;
 
   // Auto summary
   const baseRate = policy.base_rate ?? 0;
@@ -656,8 +679,8 @@ function PlanBuilderCard({
 
   return (
     <View style={{
-      backgroundColor: '#FFF', borderRadius: 18,
-      borderWidth: 1, borderColor: DS.ink[200], overflow: 'hidden',
+      backgroundColor: U.surface, borderRadius: 18,
+      borderWidth: 1, borderColor: U.ink[200], overflow: 'hidden',
     }}>
       {/* HEADER — title + auto-summary + status badge */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18 }}>
@@ -666,15 +689,15 @@ function PlanBuilderCard({
         })}>
           <View style={{
             width: 40, height: 40, borderRadius: 12,
-            backgroundColor: TH.bgSoft, alignItems: 'center', justifyContent: 'center',
+            backgroundColor: U.isDark ? TH.primary + '26' : TH.bgSoft, alignItems: 'center', justifyContent: 'center',
           }}>
             <Settings2 size={18} color={TH.primary} strokeWidth={1.8} />
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[900], letterSpacing: -0.2 }}>
+            <Text style={{ fontSize: 15, fontWeight: '600', color: U.ink[900], letterSpacing: -0.2 }}>
               Plan Tasarımı
             </Text>
-            <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 2 }} numberOfLines={1}>
+            <Text style={{ fontSize: 12, color: U.ink[500], marginTop: 2 }} numberOfLines={1}>
               {summary}
             </Text>
           </View>
@@ -694,7 +717,7 @@ function PlanBuilderCard({
         </Pressable>
 
         <Pressable onPress={() => setOpen(o => !o)} style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}>
-          {open ? <ChevronDown size={18} color={DS.ink[500]} /> : isRTL() ? <ChevronLeft size={18} color={DS.ink[500]} /> : <ChevronRight size={18} color={DS.ink[500]} />}
+          {open ? <ChevronDown size={18} color={U.ink[500]} /> : isRTL() ? <ChevronLeft size={18} color={U.ink[500]} /> : <ChevronRight size={18} color={U.ink[500]} />}
         </Pressable>
       </View>
 
@@ -703,7 +726,7 @@ function PlanBuilderCard({
         <View style={{
           marginHorizontal: 16, marginBottom: 16,
           padding: 4, borderRadius: 12,
-          backgroundColor: DS.ink[50], borderWidth: 1, borderColor: DS.ink[200],
+          backgroundColor: U.ink[50], borderWidth: 1, borderColor: U.ink[200],
           flexDirection: 'row', gap: 4, alignSelf: 'flex-end',
         }}>
           {(['draft', 'active', 'archived'] as PolicyStatus[]).map(s => {
@@ -718,7 +741,7 @@ function PlanBuilderCard({
                   opacity: pressed ? 0.7 : 1,
                 })}>
                 <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: t.dot }} />
-                <Text style={{ fontSize: 11, fontWeight: active ? '700' : '500', color: active ? t.fg : DS.ink[700] }}>
+                <Text style={{ fontSize: 11, fontWeight: active ? '700' : '500', color: active ? t.fg : U.ink[700] }}>
                   {STATUS_LABELS[s]}
                 </Text>
               </Pressable>
@@ -728,26 +751,26 @@ function PlanBuilderCard({
       ) : null}
 
       {!open ? null : (
-        <View style={{ borderTopWidth: 1, borderTopColor: DS.ink[100] }}>
+        <View style={{ borderTopWidth: 1, borderTopColor: U.ink[100] }}>
 
           {/* OVERVIEW STRIP — 4 KPI tiles */}
           <View style={{
             flexDirection: 'row', flexWrap: 'wrap',
-            backgroundColor: DS.ink[50],
-            borderBottomWidth: 1, borderBottomColor: DS.ink[100],
+            backgroundColor: U.ink[50],
+            borderBottomWidth: 1, borderBottomColor: U.ink[100],
           }}>
             <OverviewTile label="Dağılım"     value={MODE_LABELS[policy.mode]} accent={TH.primary} />
             <OverviewTile label="Üye oranı"  value={`${currency} ${baseRate}`} accent={TH.success} />
             <OverviewTile
               label="Kalite kuralı"
               value={qualityCount > 0 ? `${qualityCount} ${autoT('eşik')}` : 'Henüz yok'}
-              accent={qualityCount > 0 ? TH.info : DS.ink[400]}
+              accent={qualityCount > 0 ? TH.info : U.ink[400]}
               muted={qualityCount === 0}
             />
             <OverviewTile
               label="Zorluk çarpanı"
               value={difficultyCount > 0 ? `${difficultyCount} ${autoT('kayıt')}` : 'Henüz yok'}
-              accent={difficultyCount > 0 ? '#7C3AED' : DS.ink[400]}
+              accent={difficultyCount > 0 ? '#7C3AED' : U.ink[400]}
               muted={difficultyCount === 0}
               last
             />
@@ -758,10 +781,10 @@ function PlanBuilderCard({
 
             {/* DAĞILIM MODU — segmented control */}
             <View>
-              <Text style={{ fontSize: 10, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 8 }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 8 }}>
                 Dağılım modu
               </Text>
-              <View style={{ flexDirection: 'row', borderRadius: 12, backgroundColor: DS.ink[50], padding: 4, alignSelf: 'flex-start' }}>
+              <View style={{ flexDirection: 'row', borderRadius: 12, backgroundColor: U.ink[50], padding: 4, alignSelf: 'flex-start' }}>
                 {(['individual', 'pool', 'hybrid'] as BonusMode[]).map(m => {
                   const active = policy.mode === m;
                   const shortLabel = m === 'hybrid' ? 'Karma' : MODE_LABELS[m];
@@ -769,21 +792,21 @@ function PlanBuilderCard({
                     <Pressable key={m} onPress={() => onPolicyPatch({ mode: m })}
                       style={({ pressed }) => ({
                         paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10,
-                        backgroundColor: active ? '#FFF' : 'transparent',
+                        backgroundColor: active ? U.segActive : 'transparent',
                         opacity: pressed ? 0.85 : 1,
                         ...(active ? {
                           shadowColor: '#000', shadowOpacity: 0.06,
                           shadowOffset: { width: 0, height: 1 }, shadowRadius: 3,
                         } : {}),
                       })}>
-                      <Text style={{ fontSize: 13, fontWeight: active ? '700' : '500', color: active ? DS.ink[900] : DS.ink[700] }}>
+                      <Text style={{ fontSize: 13, fontWeight: active ? '700' : '500', color: active ? U.ink[900] : U.ink[700] }}>
                         {shortLabel}
                       </Text>
                     </Pressable>
                   );
                 })}
               </View>
-              <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 6 }}>
+              <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 6 }}>
                 {policy.mode === 'individual' && 'Her çalışan kendi ürettiği üye üzerinden prim alır.'}
                 {policy.mode === 'pool'       && 'Toplam prim havuza eklenir, seçilen yönteme göre dağıtılır.'}
                 {policy.mode === 'hybrid'     && 'Bireysel prim + havuz payı birlikte verilir.'}
@@ -792,13 +815,13 @@ function PlanBuilderCard({
 
             {/* BİRİM ORANI — amount + currency inline */}
             <View>
-              <Text style={{ fontSize: 10, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 8 }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 8 }}>
                 Üye başına oran
               </Text>
               <View style={{
                 flexDirection: 'row', alignItems: 'stretch',
-                borderWidth: 1, borderColor: DS.ink[200], borderRadius: 12,
-                backgroundColor: '#FFF',
+                borderWidth: 1, borderColor: U.ink[200], borderRadius: 12,
+                backgroundColor: U.plainBtn.bg,
                 alignSelf: 'flex-start',
                 overflow: 'hidden',
               }}>
@@ -807,26 +830,26 @@ function PlanBuilderCard({
                   onChangeText={v => onPolicyPatch({ base_rate: num(v) })}
                   keyboardType="numeric"
                   placeholder="0"
-                  placeholderTextColor={DS.ink[400]}
+                  placeholderTextColor={U.ink[400]}
                   style={{
                     width: 140,
                     paddingHorizontal: 14, paddingVertical: 10,
-                    fontSize: 18, fontWeight: '600', color: DS.ink[900],
+                    fontSize: 18, fontWeight: '600', color: U.ink[900],
                     textAlign: 'end' as any,
                   }}
                 />
-                <View style={{ width: 1, backgroundColor: DS.ink[200] }} />
-                <View style={{ flexDirection: 'row', backgroundColor: DS.ink[50] }}>
+                <View style={{ width: 1, backgroundColor: U.ink[200] }} />
+                <View style={{ flexDirection: 'row', backgroundColor: U.ink[50] }}>
                   {(['TRY', 'USD', 'EUR', 'GBP'] as const).map(c => {
                     const active = currency === c;
                     return (
                       <Pressable key={c} onPress={() => onPolicyPatch({ currency: c })}
                         style={({ pressed }) => ({
                           paddingHorizontal: 12, justifyContent: 'center',
-                          backgroundColor: active ? DS.ink[900] : 'transparent',
+                          backgroundColor: active ? U.ink[900] : 'transparent',
                           opacity: pressed ? 0.85 : 1,
                         })}>
-                        <Text style={{ fontSize: 12, fontWeight: '700', color: active ? '#FFF' : DS.ink[700], letterSpacing: 0.5 }}>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: active ? U.onDarkPill : U.ink[700], letterSpacing: 0.5 }}>
                           {c}
                         </Text>
                       </Pressable>
@@ -834,7 +857,7 @@ function PlanBuilderCard({
                   })}
                 </View>
               </View>
-              <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 8 }}>
+              <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 8 }}>
                 Eşik tanımlanmadığında her üye için bu tutar ödenir.
               </Text>
             </View>
@@ -847,22 +870,23 @@ function PlanBuilderCard({
 
 function OverviewTile({ label, value, accent, muted, last }:
   { label: string; value: string; accent: string; muted?: boolean; last?: boolean }) {
+  const U = useInkUI();
   return (
     <View style={{
       flex: 1, minWidth: 120,
       paddingVertical: 12, paddingHorizontal: 16,
-      borderEndWidth: last ? 0 : 1, borderEndColor: DS.ink[100],
-      borderBottomWidth: 1, borderBottomColor: DS.ink[100],
+      borderEndWidth: last ? 0 : 1, borderEndColor: U.ink[100],
+      borderBottomWidth: 1, borderBottomColor: U.ink[100],
     }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
         <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: accent }} />
-        <Text style={{ fontSize: 10, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>
+        <Text style={{ fontSize: 10, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>
           {label}
         </Text>
       </View>
       <Text style={{
         fontSize: 14, fontWeight: '700',
-        color: muted ? DS.ink[400] : DS.ink[900],
+        color: muted ? U.ink[400] : U.ink[900],
         fontStyle: muted ? 'italic' : 'normal',
       }} numberOfLines={1}>
         {value}
@@ -878,6 +902,8 @@ function OverviewTile({ label, value, accent, muted, last }:
 type Props = { embeddedId?: string; onBack?: () => void };
 
 export default function BonusPolicyEditorScreen({ embeddedId, onBack }: Props = {}) {
+  const U = useInkUI();
+  const heroSurface = useHeroSurface(TH.primary);
   const params = useLocalSearchParams<{ id?: string }>();
   const policyId = embeddedId ?? String(params.id || '');
   const router = useRouter();
@@ -973,7 +999,7 @@ export default function BonusPolicyEditorScreen({ embeddedId, onBack }: Props = 
 
       {/* F1c HERO — politika başlığı */}
       <View style={{
-        borderRadius: 20, backgroundColor: TH.primary, padding: 22,
+        borderRadius: 20, ...heroSurface, padding: 22,
         position: 'relative', overflow: 'hidden', marginBottom: 16,
       }}>
         <View style={{ position: 'absolute', top: -40, end: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
@@ -1053,7 +1079,7 @@ export default function BonusPolicyEditorScreen({ embeddedId, onBack }: Props = 
               if (selectedCount === 0) {
                 return (
                   <View style={{ marginTop: 14, alignItems: 'flex-start', gap: 12 }}>
-                    <Text style={{ fontSize: 13, color: DS.ink[500] }}>
+                    <Text style={{ fontSize: 13, color: U.ink[500] }}>
                       Henüz iş türü dahil edilmedi. Hesaplama tüm iş türlerini sayar.
                     </Text>
                     <PillButton variant="dark" onPress={() => setPickerOpen(true)}
@@ -1069,21 +1095,21 @@ export default function BonusPolicyEditorScreen({ embeddedId, onBack }: Props = 
                 <View style={{ marginTop: 14, gap: 12 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 18, flexWrap: 'wrap' }}>
                     <View>
-                      <Text style={{ ...DISPLAY, fontSize: 36, color: DS.ink[900], letterSpacing: -1, lineHeight: 38 }}>
+                      <Text style={{ ...DISPLAY, fontSize: 36, color: U.ink[900], letterSpacing: -1, lineHeight: 38 }}>
                         {selectedCount}
                       </Text>
-                      <Text style={{ fontSize: 11, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, marginTop: 2 }}>
+                      <Text style={{ fontSize: 11, color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, marginTop: 2 }}>
                         iş türü seçili
                       </Text>
                     </View>
                     <View style={{ flex: 1, minWidth: 200 }}>
-                      <Text style={{ fontSize: 12, color: DS.ink[500], lineHeight: 18 }}>
+                      <Text style={{ fontSize: 12, color: U.ink[500], lineHeight: 18 }}>
                         {previewNames.join(' · ')}{remaining > 0 ? ` · +${remaining} daha` : ''}
                       </Text>
                     </View>
                   </View>
                   <PillButton variant="light" onPress={() => setPickerOpen(true)}
-                              leftIcon={<Settings2 size={14} color={DS.ink[900]} strokeWidth={2.2} />}>
+                              leftIcon={<Settings2 size={14} color={U.ink[900]} strokeWidth={2.2} />}>
                     Seçimi Düzenle
                   </PillButton>
                 </View>
@@ -1104,13 +1130,13 @@ export default function BonusPolicyEditorScreen({ embeddedId, onBack }: Props = 
           <SectionCard icon={Layers} title="Eşik Tablosu" hint="Üye sayısına göre artan oranlar">
             <View style={{ marginTop: 14 }}>
               <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 4, marginBottom: 6 }}>
-                <Text style={{ width: 100, fontSize: 10, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>En az üye</Text>
-                <Text style={{ width: 120, fontSize: 10, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Üye başına oran</Text>
-                <Text style={{ flex: 1, fontSize: 10, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Etiket</Text>
+                <Text style={{ width: 100, fontSize: 10, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>En az üye</Text>
+                <Text style={{ width: 120, fontSize: 10, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Üye başına oran</Text>
+                <Text style={{ flex: 1, fontSize: 10, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Etiket</Text>
                 <View style={{ width: 32 }} />
               </View>
               {full.thresholds.length === 0 ? (
-                <Text style={{ fontSize: 12, color: DS.ink[400], fontStyle: 'italic', padding: 12 }}>
+                <Text style={{ fontSize: 12, color: U.ink[400], fontStyle: 'italic', padding: 12 }}>
                   Eşik tanımlı değil — taban oran kullanılır.
                 </Text>
               ) : full.thresholds.map((t, i) => (
@@ -1147,7 +1173,7 @@ export default function BonusPolicyEditorScreen({ embeddedId, onBack }: Props = 
           <SectionCard icon={Sparkles} title="Zorluk Çarpanları" hint="İş türüne göre puan çarpanı (varsayılan 1.0)" defaultOpen={false}>
             <View style={{ marginTop: 14 }}>
               {full.difficulty.length === 0 ? (
-                <Text style={{ fontSize: 12, color: DS.ink[400], fontStyle: 'italic', padding: 12 }}>
+                <Text style={{ fontSize: 12, color: U.ink[400], fontStyle: 'italic', padding: 12 }}>
                   Tanımlı değil — tüm iş türleri 1.0 çarpanla sayılır.
                 </Text>
               ) : full.difficulty.map((d, i) => (
@@ -1176,7 +1202,7 @@ export default function BonusPolicyEditorScreen({ embeddedId, onBack }: Props = 
           <SectionCard icon={Layers} title="Aşama Primleri" hint="Aşama başına ek ödeme (üye başına)" defaultOpen={false}>
             <View style={{ marginTop: 14 }}>
               {full.stage_rates.length === 0 ? (
-                <Text style={{ fontSize: 12, color: DS.ink[400], fontStyle: 'italic', padding: 12 }}>
+                <Text style={{ fontSize: 12, color: U.ink[400], fontStyle: 'italic', padding: 12 }}>
                   Tanımlı değil — aşama bonusu yok.
                 </Text>
               ) : full.stage_rates.map((s, i) => (
@@ -1186,7 +1212,7 @@ export default function BonusPolicyEditorScreen({ embeddedId, onBack }: Props = 
                                onChange={v => setFull(prev => prev ? {
                                  ...prev, stage_rates: prev.stage_rates.map((x, ix) => ix === i ? { ...x, amount_per_unit: num(v) } : x),
                                } : prev)} />
-                    <Text style={{ fontSize: 11, color: DS.ink[500] }}>{sym} / üye</Text>
+                    <Text style={{ fontSize: 11, color: U.ink[500] }}>{sym} / üye</Text>
                     <View style={{ flex: 1 }} />
                     <RowRemoveBtn onPress={() => setFull(prev => prev ? {
                       ...prev, stage_rates: prev.stage_rates.filter((_, ix) => ix !== i),
@@ -1233,7 +1259,7 @@ export default function BonusPolicyEditorScreen({ embeddedId, onBack }: Props = 
 
                 {p.distribution_method === 'flat_per_member' ? (
                   <View style={{
-                    backgroundColor: TH.bgSoft, borderRadius: 14, padding: 14,
+                    backgroundColor: U.isDark ? U.surfaceSoft : TH.bgSoft, borderRadius: 14, padding: 14,
                   }}>
                     <FieldLabel>Kişi başı sabit tutar ({p.currency ?? 'TRY'})</FieldLabel>
                     <TextField
@@ -1243,7 +1269,7 @@ export default function BonusPolicyEditorScreen({ embeddedId, onBack }: Props = 
                       width={180}
                       placeholder="0"
                     />
-                    <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 8, lineHeight: 16 }}>
+                    <Text style={{ fontSize: 11, color: U.ink[500], marginTop: 8, lineHeight: 16 }}>
                       Her hak eden çalışana, havuzdan bu sabit tutar ödenir.
                       Toplam havuz = hak eden kişi sayısı × bu tutar.
                     </Text>
@@ -1256,7 +1282,7 @@ export default function BonusPolicyEditorScreen({ embeddedId, onBack }: Props = 
           <SectionCard icon={Users} title="Atanan Çalışanlar" hint="Bu politikadan kimler yararlanır?" defaultOpen={false}>
             <View style={{ marginTop: 14, flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {employees.length === 0 ? (
-                <Text style={{ fontSize: 12, color: DS.ink[400], fontStyle: 'italic' }}>
+                <Text style={{ fontSize: 12, color: U.ink[400], fontStyle: 'italic' }}>
                   Çalışan listesi boş.
                 </Text>
               ) : (
@@ -1279,15 +1305,15 @@ export default function BonusPolicyEditorScreen({ embeddedId, onBack }: Props = 
                       style={({ pressed }) => ({
                         paddingHorizontal: 14, paddingVertical: 10,
                         borderRadius: 12,
-                        backgroundColor: active ? TH.success : '#FFF',
-                        borderWidth: 1, borderColor: active ? TH.success : DS.ink[200],
+                        backgroundColor: active ? TH.success : U.plainBtn.bg,
+                        borderWidth: 1, borderColor: active ? TH.success : U.ink[200],
                         opacity: pressed ? 0.85 : 1,
                       })}
                     >
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#FFF' : DS.ink[900] }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#FFF' : U.ink[900] }}>
                         {emp.full_name}
                       </Text>
-                      <Text style={{ fontSize: 10, color: active ? 'rgba(255,255,255,0.85)' : DS.ink[400], marginTop: 2 }}>
+                      <Text style={{ fontSize: 10, color: active ? 'rgba(255,255,255,0.85)' : U.ink[400], marginTop: 2 }}>
                         {emp.role ?? '—'}
                       </Text>
                     </Pressable>
@@ -1295,7 +1321,7 @@ export default function BonusPolicyEditorScreen({ embeddedId, onBack }: Props = 
                 })
               )}
             </View>
-            <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 12 }}>
+            <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 12 }}>
               {full.assignments.length} çalışan atandı
             </Text>
           </SectionCard>
@@ -1304,13 +1330,13 @@ export default function BonusPolicyEditorScreen({ embeddedId, onBack }: Props = 
         {/* RIGHT — CANLI ÖNİZLEME */}
         <View style={{ flex: 1, minWidth: 280, maxWidth: 420, gap: 16 }}>
           <View style={{
-            backgroundColor: '#FFF', borderRadius: 18,
-            borderWidth: 1, borderColor: DS.ink[200],
+            backgroundColor: U.surface, borderRadius: 18,
+            borderWidth: 1, borderColor: U.ink[200],
             padding: 18,
           }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
               <Play size={16} color={TH.success} strokeWidth={2.5} />
-              <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[900] }}>Canlı Önizleme</Text>
+              <Text style={{ fontSize: 15, fontWeight: '600', color: U.ink[900] }}>Canlı Önizleme</Text>
             </View>
 
             <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
@@ -1332,25 +1358,25 @@ export default function BonusPolicyEditorScreen({ embeddedId, onBack }: Props = 
               <ErrorBar message={sim.error} />
             ) : sim.result ? (
               <>
-                <View style={{ backgroundColor: TH.bgSoft, borderRadius: 14, padding: 14, marginBottom: 14 }}>
+                <View style={{ backgroundColor: U.isDark ? U.surfaceSoft : TH.bgSoft, borderRadius: 14, padding: 14, marginBottom: 14 }}>
                   <Text style={{ fontSize: 10, fontWeight: '700', color: TH.primary, letterSpacing: 0.7, textTransform: 'uppercase', marginBottom: 6 }}>
                     Toplam Prim
                   </Text>
-                  <Text style={{ ...DISPLAY, fontSize: 32, color: DS.ink[900], letterSpacing: -1, lineHeight: 36 }}>
+                  <Text style={{ ...DISPLAY, fontSize: 32, color: U.ink[900], letterSpacing: -1, lineHeight: 36 }}>
                     {TRY(sim.result.total_payout)}
                   </Text>
                   <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
-                    <Text style={{ fontSize: 11, color: DS.ink[500] }}>{fmtUnit(sim.result.total_units)}</Text>
+                    <Text style={{ fontSize: 11, color: U.ink[500] }}>{fmtUnit(sim.result.total_units)}</Text>
                     {sim.result.total_pool > 0 ? (
                       <>
-                        <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: DS.ink[300], alignSelf: 'center' }} />
-                        <Text style={{ fontSize: 11, color: DS.ink[500] }}>Havuz {TRY(sim.result.total_pool)}</Text>
+                        <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: U.ink[300], alignSelf: 'center' }} />
+                        <Text style={{ fontSize: 11, color: U.ink[500] }}>Havuz {TRY(sim.result.total_pool)}</Text>
                       </>
                     ) : null}
                   </View>
                 </View>
 
-                <Text style={{ fontSize: 10, fontWeight: '700', color: DS.ink[500], letterSpacing: 0.7, textTransform: 'uppercase', marginBottom: 8 }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: U.ink[500], letterSpacing: 0.7, textTransform: 'uppercase', marginBottom: 8 }}>
                   Çalışan Dağılımı
                 </Text>
                 {(sim.result.breakdown ?? []).slice(0, 10).map((r: any, i: number) => (
@@ -1358,20 +1384,20 @@ export default function BonusPolicyEditorScreen({ embeddedId, onBack }: Props = 
                     flexDirection: 'row', alignItems: 'center', gap: 8,
                     paddingVertical: 8,
                     borderBottomWidth: i < Math.min(10, (sim.result?.breakdown?.length ?? 0)) - 1 ? 1 : 0,
-                    borderBottomColor: DS.ink[100],
+                    borderBottomColor: U.ink[100],
                   }}>
                     <View style={{
                       width: 22, height: 22, borderRadius: 11,
-                      backgroundColor: DS.ink[100],
+                      backgroundColor: U.ink[100],
                       alignItems: 'center', justifyContent: 'center',
                     }}>
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: DS.ink[700] }}>{i + 1}</Text>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: U.ink[700] }}>{i + 1}</Text>
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>
                         {r.employee_name || '—'}
                       </Text>
-                      <Text style={{ fontSize: 10, color: DS.ink[500] }}>
+                      <Text style={{ fontSize: 10, color: U.ink[500] }}>
                         {fmtUnit(r.units)} · {(r.points ?? 0).toFixed?.(1) ?? r.points} puan
                       </Text>
                       {r.error ? <Text style={{ fontSize: 9, color: TH.danger }}>{r.error}</Text> : null}
@@ -1382,21 +1408,21 @@ export default function BonusPolicyEditorScreen({ embeddedId, onBack }: Props = 
                   </View>
                 ))}
                 {(sim.result.breakdown?.length ?? 0) === 0 ? (
-                  <Text style={{ fontSize: 12, color: DS.ink[400], fontStyle: 'italic', textAlign: 'center', paddingVertical: 16 }}>
+                  <Text style={{ fontSize: 12, color: U.ink[400], fontStyle: 'italic', textAlign: 'center', paddingVertical: 16 }}>
                     Bu ay için veri yok.
                   </Text>
                 ) : null}
                 {(sim.result.breakdown?.length ?? 0) > 10 ? (
-                  <Text style={{ fontSize: 11, color: DS.ink[400], textAlign: 'center', marginTop: 8 }}>
+                  <Text style={{ fontSize: 11, color: U.ink[400], textAlign: 'center', marginTop: 8 }}>
                     +{(sim.result.breakdown?.length ?? 0) - 10} kişi daha
                   </Text>
                 ) : null}
               </>
             ) : (
-              <Text style={{ fontSize: 12, color: DS.ink[400] }}>Önizleme yükleniyor…</Text>
+              <Text style={{ fontSize: 12, color: U.ink[400] }}>Önizleme yükleniyor…</Text>
             )}
 
-            <View style={{ marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: DS.ink[100] }}>
+            <View style={{ marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: U.ink[100] }}>
               <PillButton
                 variant="success"
                 leftIcon={<CheckCircle2 size={14} color="#FFF" />}

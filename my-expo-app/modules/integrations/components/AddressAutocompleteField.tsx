@@ -6,7 +6,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TextInput, Pressable, ActivityIndicator, Platform } from 'react-native';
-import { MapPin, Search } from 'lucide-react-native';
+import { MapPin, Search } from '../../../core/ui/icons';
 import { supabase } from '../../../core/api/supabase';
 import { DS } from '../../../core/theme/dsTokens';
 

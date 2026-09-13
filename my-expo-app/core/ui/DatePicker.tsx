@@ -20,8 +20,10 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { autoT } from '../i18n/autoTranslate';
 import { View, Text, Pressable, ScrollView, Modal, Platform } from 'react-native';
-import { Calendar, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react-native';
+import { Calendar, ChevronLeft, ChevronRight, ChevronDown } from './icons';
 import { DS } from '../theme/dsTokens';
+import { useMobileTokens } from '../theme/mobileDesignTokens';
+import { useThemeModeStore } from '../store/themeModeStore';
 import { isRTL, weekStartsOn, weekdayOffset } from '../i18n';
 
 const MONTHS_TR = [
@@ -89,6 +91,8 @@ export function DatePicker({
   /** Daha kısa trigger (height 36 / radius 10) — dar formlar için */
   compact?: boolean;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const selected = useMemo(() => parseISODate(value), [value]);
   const minD = useMemo(() => parseISODate(minDate), [minDate]);
   const maxD = useMemo(() => parseISODate(maxDate), [maxDate]);
@@ -199,14 +203,14 @@ export function DatePicker({
           height: compact ? 36 : 44,
           paddingHorizontal: compact ? 12 : 14,
           borderRadius: compact ? 10 : 14,
-          borderWidth: 1, borderColor: open ? accent : 'rgba(0,0,0,0.08)',
-          backgroundColor: '#FFF',
+          borderWidth: 1, borderColor: open ? accent : (isDark ? T.hairline : 'rgba(0,0,0,0.08)'),
+          backgroundColor: isDark ? T.cardSoft : '#FFF',
           opacity: disabled ? 0.6 : 1,
           cursor: (disabled ? 'not-allowed' : 'pointer') as any,
         }}
       >
-        <Calendar size={compact ? 14 : 15} color={selected ? DS.ink[700] : DS.ink[400]} strokeWidth={1.7} />
-        <Text style={{ flex: 1, fontSize: compact ? 13 : 14, color: selected ? DS.ink[900] : DS.ink[400] }}>
+        <Calendar size={compact ? 14 : 15} color={selected ? (isDark ? (T.ink2 as string) : DS.ink[700]) : (isDark ? (T.ink3 as string) : DS.ink[400])} strokeWidth={1.7} />
+        <Text style={{ flex: 1, fontSize: compact ? 13 : 14, color: selected ? (isDark ? T.ink : DS.ink[900]) : (isDark ? (T.ink3 as string) : DS.ink[400]) }}>
           {selected ? formatDisplay(value) : placeholder}
         </Text>
       </Pressable>
@@ -222,11 +226,11 @@ export function DatePicker({
             style={[
               {
                 width: POPOVER_W,
-                backgroundColor: '#FFFFFF',
+                backgroundColor: isDark ? T.card : '#FFFFFF',
                 borderRadius: 18,
                 padding: 14,
                 borderWidth: 1,
-                borderColor: 'rgba(0,0,0,0.05)',
+                borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.05)',
                 ...Platform.select({
                   web:     { boxShadow: '0 16px 40px rgba(0,0,0,0.15), 0 2px 6px rgba(0,0,0,0.06)' } as any,
                   default: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.14, shadowRadius: 24, elevation: 8 },
@@ -239,11 +243,11 @@ export function DatePicker({
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}>
               <Pressable
                 onPress={goPrev}
-                style={{ width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FAFAFA' }}
+                style={{ width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? T.cardSoft : '#FAFAFA' }}
               >
                 {isRTL()
-                  ? <ChevronRight size={15} color={DS.ink[700]} strokeWidth={1.8} />
-                  : <ChevronLeft size={15} color={DS.ink[700]} strokeWidth={1.8} />}
+                  ? <ChevronRight size={15} color={isDark ? (T.ink2 as string) : DS.ink[700]} strokeWidth={1.8} />
+                  : <ChevronLeft size={15} color={isDark ? (T.ink2 as string) : DS.ink[700]} strokeWidth={1.8} />}
               </Pressable>
 
               {/* Ay trigger */}
@@ -253,13 +257,13 @@ export function DatePicker({
                   flex: 1,
                   flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
                   paddingHorizontal: 8, paddingVertical: 6, borderRadius: 8,
-                  backgroundColor: monthDropOpen ? '#F5F5F5' : 'transparent',
+                  backgroundColor: monthDropOpen ? (isDark ? 'rgba(255,255,255,0.06)' : '#F5F5F5') : 'transparent',
                 }}
               >
-                <Text style={{ ...DISPLAY, fontSize: 15, color: DS.ink[900], letterSpacing: -0.2 }}>
+                <Text style={{ ...DISPLAY, fontSize: 15, color: isDark ? T.ink : DS.ink[900], letterSpacing: -0.2 }}>
                   {autoT(MONTHS_TR[viewMonth])}
                 </Text>
-                <ChevronDown size={12} color={DS.ink[500]} strokeWidth={2} />
+                <ChevronDown size={12} color={isDark ? (T.ink3 as string) : DS.ink[500]} strokeWidth={2} />
               </Pressable>
 
               {/* Yıl trigger */}
@@ -269,22 +273,22 @@ export function DatePicker({
                   width: 80,
                   flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
                   paddingHorizontal: 8, paddingVertical: 6, borderRadius: 8,
-                  backgroundColor: yearDropOpen ? '#F5F5F5' : 'transparent',
+                  backgroundColor: yearDropOpen ? (isDark ? 'rgba(255,255,255,0.06)' : '#F5F5F5') : 'transparent',
                 }}
               >
-                <Text style={{ ...DISPLAY, fontSize: 15, color: DS.ink[900], letterSpacing: -0.2 }}>
+                <Text style={{ ...DISPLAY, fontSize: 15, color: isDark ? T.ink : DS.ink[900], letterSpacing: -0.2 }}>
                   {viewYear}
                 </Text>
-                <ChevronDown size={12} color={DS.ink[500]} strokeWidth={2} />
+                <ChevronDown size={12} color={isDark ? (T.ink3 as string) : DS.ink[500]} strokeWidth={2} />
               </Pressable>
 
               <Pressable
                 onPress={goNext}
-                style={{ width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FAFAFA' }}
+                style={{ width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? T.cardSoft : '#FAFAFA' }}
               >
                 {isRTL()
-                  ? <ChevronLeft size={15} color={DS.ink[700]} strokeWidth={1.8} />
-                  : <ChevronRight size={15} color={DS.ink[700]} strokeWidth={1.8} />}
+                  ? <ChevronLeft size={15} color={isDark ? (T.ink2 as string) : DS.ink[700]} strokeWidth={1.8} />
+                  : <ChevronRight size={15} color={isDark ? (T.ink2 as string) : DS.ink[700]} strokeWidth={1.8} />}
               </Pressable>
             </View>
 
@@ -295,7 +299,7 @@ export function DatePicker({
                   key={autoT(wRaw)}
                   style={{
                     flex: 1, textAlign: 'center', fontSize: 10, fontWeight: '600',
-                    letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[400],
+                    letterSpacing: 0.7, textTransform: 'uppercase', color: isDark ? (T.ink3 as string) : DS.ink[400],
                   }}
                 >
                   {autoT(wRaw)}
@@ -330,7 +334,7 @@ export function DatePicker({
                         style={{
                           fontSize: 13,
                           fontWeight: isSelected ? '700' : isToday ? '600' : '500',
-                          color: isSelected ? '#FFF' : isToday ? accent : DS.ink[800],
+                          color: isSelected ? '#FFF' : isToday ? accent : (isDark ? T.ink : DS.ink[800]),
                         }}
                       >
                         {cell.day}
@@ -345,11 +349,11 @@ export function DatePicker({
             <View style={{
               flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
               marginTop: 10, paddingTop: 10,
-              borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
+              borderTopWidth: 1, borderTopColor: isDark ? T.hairline : 'rgba(0,0,0,0.06)',
             }}>
               <Pressable
                 onPress={() => pick(new Date())}
-                style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: '#FAFAFA' }}
+                style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: isDark ? T.cardSoft : '#FAFAFA' }}
               >
                 <Text style={{ fontSize: 12, fontWeight: '600', color: accent }}>Bugün</Text>
               </Pressable>
@@ -357,7 +361,7 @@ export function DatePicker({
                 onPress={() => setOpen(false)}
                 style={{ paddingHorizontal: 12, paddingVertical: 6 }}
               >
-                <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[500] }}>Kapat</Text>
+                <Text style={{ fontSize: 12, fontWeight: '500', color: isDark ? (T.ink3 as string) : DS.ink[500] }}>Kapat</Text>
               </Pressable>
             </View>
 
@@ -366,8 +370,8 @@ export function DatePicker({
               <Pressable
                 onPress={() => setMonthDropOpen(false)}
                 style={{ position: 'absolute', top: 56, start: 50, width: 140, maxHeight: 240,
-                  backgroundColor: '#FFFFFF', borderRadius: 12,
-                  borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
+                  backgroundColor: isDark ? T.card : '#FFFFFF', borderRadius: 12,
+                  borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.08)',
                   paddingVertical: 4, overflow: 'hidden',
                   ...Platform.select({
                     web:     { boxShadow: '0 8px 24px rgba(0,0,0,0.15)' } as any,
@@ -384,10 +388,10 @@ export function DatePicker({
                         onPress={() => { setViewMonth(idx); setMonthDropOpen(false); }}
                         style={{
                           paddingHorizontal: 14, paddingVertical: 9,
-                          backgroundColor: active ? accent + '14' : '#FFFFFF',
+                          backgroundColor: active ? accent + '14' : (isDark ? T.card : '#FFFFFF'),
                         }}
                       >
-                        <Text style={{ fontSize: 13, fontWeight: active ? '700' : '500', color: active ? accent : DS.ink[800] }}>
+                        <Text style={{ fontSize: 13, fontWeight: active ? '700' : '500', color: active ? accent : (isDark ? T.ink : DS.ink[800]) }}>
                           {autoT(m)}
                         </Text>
                       </Pressable>
@@ -401,8 +405,8 @@ export function DatePicker({
               <Pressable
                 onPress={() => setYearDropOpen(false)}
                 style={{ position: 'absolute', top: 56, end: 50, width: 100, maxHeight: 240,
-                  backgroundColor: '#FFFFFF', borderRadius: 12,
-                  borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
+                  backgroundColor: isDark ? T.card : '#FFFFFF', borderRadius: 12,
+                  borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.08)',
                   paddingVertical: 4, overflow: 'hidden',
                   ...Platform.select({
                     web:     { boxShadow: '0 8px 24px rgba(0,0,0,0.15)' } as any,
@@ -420,10 +424,10 @@ export function DatePicker({
                         style={{
                           paddingHorizontal: 14, paddingVertical: 9,
                           alignItems: 'center',
-                          backgroundColor: active ? accent + '14' : '#FFFFFF',
+                          backgroundColor: active ? accent + '14' : (isDark ? T.card : '#FFFFFF'),
                         }}
                       >
-                        <Text style={{ fontSize: 13, fontWeight: active ? '700' : '500', color: active ? accent : DS.ink[800] }}>
+                        <Text style={{ fontSize: 13, fontWeight: active ? '700' : '500', color: active ? accent : (isDark ? T.ink : DS.ink[800]) }}>
                           {y}
                         </Text>
                       </Pressable>

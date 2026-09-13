@@ -9,7 +9,7 @@ import React from 'react';
 import { View, Text, Platform } from 'react-native';
 import {
   Inbox, ListTodo, Cog, ShieldCheck, PackageCheck, Truck, Check,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { useStationTheme, hexA } from '../../../core/theme/stationPalette';
 
 // Active step için web-only keyframe — bir kez document'e inject

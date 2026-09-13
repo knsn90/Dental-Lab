@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, ActivityIndicator, Platform } from 'react-native';
-import { Plug, ToggleLeft, ToggleRight } from 'lucide-react-native';
+import { Plug, ToggleLeft, ToggleRight } from '../../core/ui/icons';
 import { listIntegrations, setIntegration, type Integration } from '../../modules/platform/api';
 import { C, PageHeader, Panel, Chip, IconChip } from '../../modules/platform/ui';
 

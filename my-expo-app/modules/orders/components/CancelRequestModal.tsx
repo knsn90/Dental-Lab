@@ -4,7 +4,7 @@
  */
 import React, { useState } from 'react';
 import { Modal, View, Text, Pressable, TextInput, Platform, ActivityIndicator } from 'react-native';
-import { X, Check, Ban } from 'lucide-react-native';
+import { X, Check, Ban } from '../../../core/ui/icons';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { useAuthStore } from '../../../core/store/authStore';
 import { toast } from '../../../core/ui/Toast';

@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Plus, Search, Building2, AlertCircle, ArrowDownCircle, ArrowUpCircle,
   Phone, Mail, Filter, Pencil, Trash2, SlidersHorizontal, X,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { useAuthStore } from '../../../core/store/authStore';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 import { formatMoney, useBaseCurrency, type Currency } from '../../../core/money/currency';
@@ -37,6 +37,7 @@ import { SupplierFormModal } from '../components/SupplierFormModal';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { CenteredLoader } from '../../../core/ui/CenteredLoader';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 interface Props {
   accentColor?: string;
@@ -44,6 +45,7 @@ interface Props {
 
 export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
   const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const profile = useAuthStore(s => s.profile);
   const labId = (profile as any)?.lab_id ?? null;
   const baseCurrency = useBaseCurrency();
@@ -64,15 +66,15 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
 
   // ── Patterns design tokens ──
   const PCard = {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: T.card,
     borderRadius: 18,
     padding: 18,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.04)',
+    borderColor: T.hairline,
     ...(Platform.OS === 'web' ? { boxShadow: '0 4px 16px rgba(0,0,0,0.04)' } : {}),
   } as any;
   const DisplayFont = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
-  const eyebrow = { fontSize: 11, fontWeight: '600' as const, color: '#9A9A9A', letterSpacing: 1, textTransform: 'uppercase' as const };
+  const eyebrow = { fontSize: 11, fontWeight: '600' as const, color: T.ink3, letterSpacing: 1, textTransform: 'uppercase' as const };
 
   const load = async () => {
     setLoading(true);
@@ -274,10 +276,10 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
           <View style={{ width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor + '14' }}>
             <Building2 size={28} color={accentColor} strokeWidth={1.4} />
           </View>
-          <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 22, letterSpacing: -0.4, color: '#0A0A0A' }}>
+          <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 22, letterSpacing: -0.4, color: T.ink }}>
             {suppliers.length === 0 ? 'Henüz tedarikçi yok' : 'Sonuç bulunamadı'}
           </Text>
-          <Text style={{ fontSize: 13, color: '#9A9A9A', textAlign: 'center', maxWidth: 320, lineHeight: 19 }}>
+          <Text style={{ fontSize: 13, color: T.ink3, textAlign: 'center', maxWidth: 320, lineHeight: 19 }}>
             {suppliers.length === 0 ? 'Sarf, ekipman ve hizmet aldığınız firmaları kaydedin; cari hesap otomatik oluşturulur.' : 'Arama veya filtre kriterlerini değiştirin.'}
           </Text>
         </View>
@@ -285,7 +287,7 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
         isDesktop ? (
           <View style={[PCard, { padding: 0, overflow: 'hidden' }]}>
             {/* Desktop Header row */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 12, backgroundColor: '#FBF9F4', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 12, backgroundColor: isDark ? T.cardSoft : '#FBF9F4', borderBottomWidth: 1, borderBottomColor: T.hairline }}>
               <Text style={[eyebrow, { flex: 2.5 }]}>Firma</Text>
               <Text style={[eyebrow, { flex: 1.2 }]}>Kategori</Text>
               <Text style={[eyebrow, { flex: 1.2 }]}>Son hareket</Text>
@@ -315,41 +317,41 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
                     flexDirection: 'row', alignItems: 'center',
                     paddingHorizontal: 18, paddingVertical: 14,
                     borderBottomWidth: idx < filtered.length - 1 ? 1 : 0,
-                    borderBottomColor: 'rgba(0,0,0,0.04)',
+                    borderBottomColor: T.hairline,
                     ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
                   }}
                 >
                   <View style={{ flex: 2.5, opacity: s.is_active ? 1 : 0.6 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: '#0A0A0A', flexShrink: 1 }} numberOfLines={1}>{s.name}</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink, flexShrink: 1 }} numberOfLines={1}>{s.name}</Text>
                       {!s.is_active && (
-                        <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.06)' }}>
-                          <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase', color: '#6B6B6B' }}>Pasif</Text>
+                        <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: T.hairline }}>
+                          <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase', color: T.ink3 }}>Pasif</Text>
                         </View>
                       )}
                     </View>
                     <View style={{ flexDirection: 'row', gap: 8, marginTop: 2 }}>
                       {s.contact_person ? (
-                        <Text style={{ fontSize: 11, color: '#9A9A9A' }} numberOfLines={1}>{s.contact_person}</Text>
+                        <Text style={{ fontSize: 11, color: T.ink3 }} numberOfLines={1}>{s.contact_person}</Text>
                       ) : null}
                       {s.phone ? (
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                          <Phone size={9} color="#9A9A9A" strokeWidth={1.8} />
-                          <Text style={{ fontSize: 11, color: '#9A9A9A' }}>{s.phone}</Text>
+                          <Phone size={9} color={T.ink3} strokeWidth={1.8} />
+                          <Text style={{ fontSize: 11, color: T.ink3 }}>{s.phone}</Text>
                         </View>
                       ) : null}
                     </View>
                   </View>
                   <View style={{ flex: 1.2 }}>
-                    <Text style={{ fontSize: 11, color: '#6B6B6B', fontWeight: '500' }}>{CATEGORY_LABELS[s.category]}</Text>
+                    <Text style={{ fontSize: 11, color: T.ink3, fontWeight: '500' }}>{CATEGORY_LABELS[s.category]}</Text>
                     {s.default_currency !== baseCurrency ? (
-                      <Text style={{ fontSize: 10, color: '#9A9A9A', marginTop: 1 }}>{s.default_currency}</Text>
+                      <Text style={{ fontSize: 10, color: T.ink3, marginTop: 1 }}>{s.default_currency}</Text>
                     ) : null}
                   </View>
                   <View style={{ flex: 1.2 }}>
-                    <Text style={{ fontSize: 11, color: '#6B6B6B' }}>{lastDate ?? '—'}</Text>
+                    <Text style={{ fontSize: 11, color: T.ink3 }}>{lastDate ?? '—'}</Text>
                     {bal && bal.purchase_count > 0 ? (
-                      <Text style={{ fontSize: 10, color: '#9A9A9A', marginTop: 1 }}>{bal.purchase_count} alış</Text>
+                      <Text style={{ fontSize: 10, color: T.ink3, marginTop: 1 }}>{bal.purchase_count} alış</Text>
                     ) : null}
                   </View>
                   <View style={{ flex: 1.5, alignItems: 'flex-end' }}>
@@ -357,7 +359,7 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
                       {tone === 'zero' ? '—' : balanceText}
                     </Text>
                     {tone !== 'zero' && origText ? (
-                      <Text style={{ fontSize: 11, color: '#9A9A9A', marginTop: 1 }}>({origText})</Text>
+                      <Text style={{ fontSize: 11, color: T.ink3, marginTop: 1 }}>({origText})</Text>
                     ) : null}
                     {tone !== 'zero' ? (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
@@ -423,8 +425,8 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
                   key={s.id}
                   onPress={() => setActiveId(s.id)}
                   style={{
-                    backgroundColor: '#FFFFFF', borderRadius: 16,
-                    borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
+                    backgroundColor: T.card, borderRadius: 16,
+                    borderWidth: 1, borderColor: T.hairline,
                     padding: 14, gap: 10,
                     ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
                   }}
@@ -433,14 +435,14 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
                   <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
                     <View style={{ flex: 1, minWidth: 0, opacity: s.is_active ? 1 : 0.6 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        <Text style={{ fontSize: 14, fontWeight: '700', color: '#0A0A0A', flexShrink: 1 }} numberOfLines={2}>{s.name}</Text>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: T.ink, flexShrink: 1 }} numberOfLines={2}>{s.name}</Text>
                         {!s.is_active && (
-                          <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.06)' }}>
-                            <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase', color: '#6B6B6B' }}>Pasif</Text>
+                          <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: T.hairline }}>
+                            <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase', color: T.ink3 }}>Pasif</Text>
                           </View>
                         )}
                       </View>
-                      <Text style={{ fontSize: 11, color: '#6B6B6B', marginTop: 2 }}>
+                      <Text style={{ fontSize: 11, color: T.ink3, marginTop: 2 }}>
                         {CATEGORY_LABELS[s.category]}
                         {s.default_currency !== baseCurrency ? ` · ${s.default_currency}` : ''}
                       </Text>
@@ -450,7 +452,7 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
                         {tone === 'zero' ? '—' : balanceText}
                       </Text>
                       {tone !== 'zero' && origText ? (
-                        <Text style={{ fontSize: 11, color: '#9A9A9A', marginTop: 1 }}>({origText})</Text>
+                        <Text style={{ fontSize: 11, color: T.ink3, marginTop: 1 }}>({origText})</Text>
                       ) : null}
                       {tone !== 'zero' ? (
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
@@ -462,21 +464,21 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
                   </View>
 
                   {/* Alt satır: son hareket + actions */}
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: T.hairline }}>
                     <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={{ fontSize: 11, color: '#6B6B6B' }} numberOfLines={1}>
+                      <Text style={{ fontSize: 11, color: T.ink3 }} numberOfLines={1}>
                         {lastDate ?? 'Henüz hareket yok'}
                         {bal && bal.purchase_count > 0 ? ` · ${bal.purchase_count} alış` : ''}
                       </Text>
                       {(s.contact_person || s.phone) && (
                         <View style={{ flexDirection: 'row', gap: 8, marginTop: 2 }}>
                           {s.contact_person ? (
-                            <Text style={{ fontSize: 10, color: '#9A9A9A' }} numberOfLines={1}>{s.contact_person}</Text>
+                            <Text style={{ fontSize: 10, color: T.ink3 }} numberOfLines={1}>{s.contact_person}</Text>
                           ) : null}
                           {s.phone ? (
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                              <Phone size={9} color="#9A9A9A" strokeWidth={1.8} />
-                              <Text style={{ fontSize: 10, color: '#9A9A9A' }}>{s.phone}</Text>
+                              <Phone size={9} color={T.ink3} strokeWidth={1.8} />
+                              <Text style={{ fontSize: 10, color: T.ink3 }}>{s.phone}</Text>
                             </View>
                           ) : null}
                         </View>

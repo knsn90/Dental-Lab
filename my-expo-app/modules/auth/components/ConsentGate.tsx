@@ -14,7 +14,7 @@
  */
 import React from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
-import { Check } from 'lucide-react-native';
+import { Check } from '../../../core/ui/icons';
 import { AUTH, AUTH_FONT } from './AuthShell';
 import { LegalDocModal } from './LegalDocModal';
 // Hukuki URL'ler tek kaynaktan (core/legal.ts). Branded dom'e geçiş orada tek satır.

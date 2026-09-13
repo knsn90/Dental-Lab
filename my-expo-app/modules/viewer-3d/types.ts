@@ -50,6 +50,13 @@ export interface Viewer3DProps {
   referenceImages?: ReferenceImage[];
   /** Modal title (e.g., order number / patient name) */
   title?: string;
+  /**
+   * Siparişin id'si. Verilirse 3D KALEM (tarama üzerine çizim/not) açılır;
+   * verilmezse özellik tamamen kapalıdır — notlar siparişe bağlı saklanıyor
+   * (order_scan_annotations) ve sipariş dışından açılan bir önizlemede
+   * bağlanacakları kayıt yok.
+   */
+  orderId?: string | null;
   /** Kaynak dosya indirme — ZIP'ten açıldıysa indirme butonu tek tek mesh (ply)
    *  yerine KAYNAK dosyayı (zip) indirir. url = imzalı URL, name = kayıt adı. */
   sourceDownload?: { url: string; name: string };
@@ -59,6 +66,13 @@ export interface Viewer3DProps {
    * çağıran taraf bunu depolayabilir.
    */
   onThumbnail?: (dataUrl: string) => void;
+  /**
+   * Native: ZIP arşivinin imzalı URL'i. Verilirse arşiv uygulamanın JS
+   * thread'inde DEĞİL, 3D görüntüleyicinin WebView'inde indirilip açılır
+   * (büyük taramalarda uygulama donmasın). `files` bu modda yok sayılır.
+   * Web viewer kullanmaz.
+   */
+  zipUrl?: string;
   /** Called when modal close requested */
   onClose: () => void;
 }

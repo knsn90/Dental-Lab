@@ -10,7 +10,7 @@ import { DS } from '../../../core/theme/dsTokens';
 import { LivingToothChart } from '../components/LivingToothChart';
 import type { WorkOrder } from '../types';
 import { LinearProgressX, PercentRingX, StepsTimelineX } from '../../../core/ui/ProgressX';
-import { Bell, Printer, Check, ArrowUpRight, Download, ChevronRight } from 'lucide-react-native';
+import { Bell, Printer, Check, ArrowUpRight, Download, ChevronRight } from '../../../core/ui/icons';
 
 const T = DS.lab;
 const DISPLAY = { fontFamily: 'Inter Tight, Inter, system-ui, sans-serif' as const, fontWeight: '300' as const };

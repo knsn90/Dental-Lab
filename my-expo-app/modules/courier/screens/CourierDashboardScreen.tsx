@@ -17,24 +17,34 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { firstName as displayFirstName } from '../../../core/util/personName';
 import { useTranslation } from 'react-i18next';
 import { localeTag } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import {
-  View, Text, ScrollView, Pressable, Platform, useWindowDimensions, RefreshControl,
+  View, Text, ScrollView, Pressable, Platform, useWindowDimensions, RefreshControl, Image, Linking, Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
   Truck, Navigation, Check, Timer, MapPin, Bell, QrCode,
   ChevronRight, ChevronLeft, Map as MapIcon, TrendingUp, Phone, Camera, MessageCircle,
-  Clock, CheckCircle2, AlertCircle, Calendar, Target, Activity,
-} from 'lucide-react-native';
+  Clock, CheckCircle2, AlertCircle, Calendar, Target, Activity, Package, ArrowRight,
+} from '../../../core/ui/icons';
 import { DS } from '../../../core/theme/dsTokens';
+import { useInkUI } from '../../../core/theme/inkScale';
+import { useHeroSurface } from '../../../core/ui/HeroGlow';
 import { useAuthStore } from '../../../core/store/authStore';
 import { useScanStore } from '../../../core/store/scanStore';
 import { fetchMyDeliveries, type CourierDelivery } from '../api';
+import { updateDeliveryStatus } from '../../orders/api';
+import { useCourierTrackingStore } from '../../../core/store/courierTrackingStore';
 import { PremiumKPI } from '../components/PremiumKPI';
 import { CourierLiveMap } from '../CourierLiveMap';
 import { formatAddress } from '../../../core/util/formatAddress';
 import { isRTL } from '../../../core/i18n';
+import { supabase } from '../../../core/api/supabase';
+import { SvgCss } from 'react-native-svg/css';
+import { NotificationsSheet } from '../../../core/ui/mobile/NotificationsSheet';
+import { ProfileMenu } from '../../../core/ui/mobile/ProfileMenu';
+import { confirmAsync } from '../../../core/util/confirm';
 
 const TH = DS.tech;
 const DISPLAY = {
@@ -57,6 +67,41 @@ const STATUS_COLOR: Record<string, string> = {
   teslim_alindi: TH.primary, yolda: WARNING,
   teslim_edildi: SUCCESS, iptal: DANGER,
 };
+
+const PURPOSE_LABEL: Record<string, string> = {
+  teslimat: 'Teslimat', model_alma: 'Model alma', eksik_parca: 'Eksik parça', diger: 'Diğer',
+};
+
+/**
+ * Kurye bacağı — "şimdi ne yapmalı" akışı.
+ *   • Henüz ALINMADIYSA (atandi/beklemede) → origin'e git, AL. (sonra hedefe gider)
+ *   • ALINDIYSA (teslim_alindi/yolda)      → hedefe git, BIRAK.
+ * origin/destination adı yoksa yönden türet (lab_to_clinic → Lab'dan Klinik'e).
+ */
+type Leg = { action: 'pickup' | 'dropoff'; point: string; address: string | null; toName: string | null };
+const legOf = (d: CourierDelivery): Leg => {
+  const originName = d.origin_name ?? (d.direction === 'clinic_to_lab' ? 'Klinik' : 'Laboratuvar');
+  const destName   = d.destination_name ?? (d.direction === 'clinic_to_lab' ? 'Laboratuvar' : 'Klinik');
+  const notPicked  = d.status === 'atandi' || d.status === 'beklemede';
+  return notPicked
+    ? { action: 'pickup',  point: originName, address: d.origin_address,      toName: destName }
+    : { action: 'dropoff', point: destName,   address: d.destination_address, toName: null };
+};
+
+// Tek-dokunuş navigasyon: web → Google Maps yeni sekme; native → cihaz haritası.
+const openMapsTo = (address: any) => {
+  const q = encodeURIComponent(formatAddress(address) || '');
+  if (!q) return;
+  const url = `https://www.google.com/maps/dir/?api=1&destination=${q}`;
+  if (Platform.OS === 'web') { try { window.open(url, '_blank'); } catch { /* noop */ } }
+  else Linking.openURL(url).catch(() => { /* noop */ });
+};
+
+// Kurye bacağına göre ilerletme: AL → teslim_alindi · BIRAK → teslim_edildi (yolda atlanır).
+const advanceOf = (d: CourierDelivery): { next: 'teslim_alindi' | 'teslim_edildi'; label: string } =>
+  legOf(d).action === 'pickup'
+    ? { next: 'teslim_alindi', label: 'Aldım' }
+    : { next: 'teslim_edildi', label: 'Teslim Et' };
 
 const fmtElapsedFrom = (iso?: string | null): string => {
   if (!iso) return '—';
@@ -128,8 +173,15 @@ export function CourierDashboardScreen() {
     const totalToday = todayAssigned.length || todayDelivered.length + todayInProgress.length + pending.length;
     const progress = totalToday > 0 ? Math.round((todayDelivered.length / totalToday) * 100) : 0;
 
-    // Aktif iş (en başta gösterilecek)
-    const active = todayInProgress[0] ?? null;
+    // Toplu rota: TAŞINAN (alınmış, teslim edilmemiş) + SIRADAKI (atanmış, alınmamış · FIFO)
+    const carried = todayInProgress
+      .slice()
+      .sort((a, b) => (a.picked_up_at ?? a.assigned_at ?? '').localeCompare(b.picked_up_at ?? b.assigned_at ?? ''));
+    const queue = pending
+      .slice()
+      .sort((a, b) => (a.assigned_at ?? '').localeCompare(b.assigned_at ?? '')); // FIFO — ilk atanan önce
+    // Aktif iş (en başta gösterilecek): önce taşınan, yoksa sıradaki ilk alım
+    const active = carried[0] ?? null;
 
     // İlk başlangıç (vardiyaya kaç saat var)
     const firstPickedAt = todayDelivered.concat(todayInProgress)
@@ -164,6 +216,7 @@ export function CourierDashboardScreen() {
 
     return {
       todayAssigned, todayDelivered, todayInProgress, pending,
+      carried, queue,
       avgMin, progress, active, totalToday, hoursWorked,
       weekDelivered, weekAvg, weekFastest, last7Days, max7,
     };
@@ -189,14 +242,73 @@ export function CourierDashboardScreen() {
  *  - "Bugün Tamamlanan" 18px gray section + check rows
  */
 
+/* ─── Bağlı laboratuvar logosu (get_lab_brand RPC — kurye lab_id) ─── */
+function LabLogo({ labId }: { labId: string | null }) {
+  const [logo, setLogo] = useState<string | null>(null);
+  const [logoXml, setLogoXml] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!labId) { if (alive) setLogo(null); return; }
+      const { data } = await supabase.rpc('get_lab_brand', { p_lab_id: labId }).maybeSingle();
+      if (alive) setLogo((data as any)?.logo_url ?? null);
+    })();
+    return () => { alive = false; };
+  }, [labId]);
+
+  const isSvg = !!logo && /\.svg(\?|$)/i.test(logo);
+  useEffect(() => {
+    if (Platform.OS === 'web' || !logo || !isSvg) { setLogoXml(null); return; }
+    let alive = true;
+    fetch(logo).then(r => r.text()).then(txt => { if (alive) setLogoXml(txt); }).catch(() => {});
+    return () => { alive = false; };
+  }, [logo, isSvg]);
+
+  if (!logo) return null;
+  const H = 22, W = 92;
+  // Native SVG: <Image> SVG çizmez → SvgCss xml; raster + web (img SVG'yi çizer): <Image>
+  if (isSvg && Platform.OS !== 'web') {
+    return logoXml ? <View style={{ marginLeft: 8 }}><SvgCss xml={logoXml} width={W} height={H} /></View> : null;
+  }
+  return <Image source={{ uri: logo }} style={{ width: W, height: H, marginLeft: 8 }} resizeMode="contain" />;
+}
+
 function MobileView({ profile, items, dash, loading, router, onRefresh, onScan, onActive }: any) {
+  const U = useInkUI();
+  const heroSurface = useHeroSurface(TH.primary);
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const onLogout = async () => {
+    setProfileMenuOpen(false);
+    const ok = await confirmAsync(
+      autoT('Çıkış Yap'),
+      autoT('Hesabınızdan çıkış yapmak istediğinize emin misiniz?'),
+      { confirmText: autoT('Çıkış Yap'), destructive: true },
+    );
+    if (!ok) return;
+    try { await useAuthStore.getState().signOut(); } catch { /* noop */ }
+  };
+
+  // Tek-dokunuş durum ilerletme (AL→alındı · BIRAK→teslim). Kart üstünden, detaya girmeden.
+  const [actBusy, setActBusy] = useState<string | null>(null);
+  const doAdvance = async (d: CourierDelivery) => {
+    if (actBusy) return;
+    const { next } = advanceOf(d);
+    setActBusy(d.id);
+    const r = await updateDeliveryStatus(d.id, next);
+    setActBusy(null);
+    if (!r.ok) { Alert.alert(autoT('Hata'), r.error ?? autoT('İşlem başarısız')); return; }
+    onRefresh();
+  };
+
   const todayLabel = new Date().toLocaleDateString(localeTag(i18n.language), { day: '2-digit', month: 'long' }).toUpperCase();
 
   return (
     <ScrollView
-      style={{ flex: 1, backgroundColor: TH.bg }}
+      style={{ flex: 1, backgroundColor: U.isDark ? U.pageBg : '#F5F9FD' /* istasyon bgPage (DESIGN_LANGUAGE §2) */ }}
       contentContainerStyle={{ paddingBottom: 110 }}
       refreshControl={<RefreshControl refreshing={loading} onRefresh={onRefresh} tintColor={TH.primary} />}
     >
@@ -205,180 +317,247 @@ function MobileView({ profile, items, dash, loading, router, onRefresh, onScan, 
         paddingTop: insets.top + 12, paddingHorizontal: 16, paddingBottom: 8,
         flexDirection: 'row', alignItems: 'center', gap: 8,
       }}>
-        <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: TH.primary, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFF' }}>{initials(profile?.full_name)}</Text>
-        </View>
+        {/* Bağlı laboratuvar logosu — sol marka kimliği (get_lab_brand RPC) */}
+        <LabLogo labId={(profile as any)?.lab_id ?? null} />
         <View style={{ flex: 1 }} />
-        <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-          <Bell size={15} color={DS.ink[800]} />
+        <Pressable
+          onPress={() => setNotifOpen(true)}
+          style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: U.plainBtn.bg, borderWidth: U.isDark ? 1 : 0, borderColor: U.plainBtn.border, alignItems: 'center', justifyContent: 'center', position: 'relative' }}
+        >
+          <Bell size={15} color={U.ink[800]} />
           {dash.pending.length > 0 && (
             <View style={{ position: 'absolute', top: -2, end: -2, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: DANGER, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}>
               <Text style={{ fontSize: 9, fontWeight: '800', color: '#FFF' }}>{dash.pending.length}</Text>
             </View>
           )}
-        </View>
-        <Pressable onPress={onScan} style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center' }}>
-          <QrCode size={15} color={DS.ink[800]} />
+        </Pressable>
+        <Pressable onPress={onScan} style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: U.plainBtn.bg, borderWidth: U.isDark ? 1 : 0, borderColor: U.plainBtn.border, alignItems: 'center', justifyContent: 'center' }}>
+          <QrCode size={15} color={U.ink[800]} />
+        </Pressable>
+        {/* Profil — en sağda (diğer panellerle aynı); menü: Profil + Çıkış Yap */}
+        <Pressable
+          onPress={() => setProfileMenuOpen(true)}
+          style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: TH.primary, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFF' }}>{initials(profile?.full_name)}</Text>
         </Pressable>
       </View>
 
+      {/* Bildirim paneli — istasyon (tech) teması, DB feed */}
+      <NotificationsSheet
+        visible={notifOpen}
+        onClose={() => setNotifOpen(false)}
+        onOpenOrder={() => { setNotifOpen(false); router.push('/(courier)/deliveries' as any); }}
+        panel="teknisyen"
+      />
+
+      {/* Profil menüsü — Profil (ayarlar/dil hub'ı) + Çıkış Yap */}
+      <ProfileMenu
+        visible={profileMenuOpen}
+        anchorTop={insets.top + 12 + 36 + 8}
+        onClose={() => setProfileMenuOpen(false)}
+        onProfile={() => { setProfileMenuOpen(false); router.push('/(courier)/stats' as any); }}
+        onLogout={onLogout}
+      />
+
       {/* ── Page Title — desktop ile aynı greeting + name + tarih ── */}
       <View style={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 16 }}>
-        <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: DS.ink[500] }}>
-          {greeting(t).toLocaleUpperCase(localeTag(i18n.language))} 👋
+        <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: U.ink[500] }}>
+          {greeting(t).toLocaleUpperCase(localeTag(i18n.language))}
         </Text>
         <Text
-          style={{ ...DISPLAY, fontSize: 30, color: DS.ink[900], letterSpacing: -0.9, lineHeight: 34, marginTop: 4 }}
+          style={{ ...DISPLAY, fontSize: 30, color: U.ink[900], letterSpacing: -0.9, lineHeight: 34, marginTop: 4 }}
           numberOfLines={1}
         >
           Merhaba, <Text style={{ color: TH.primary }}>{displayFirstName(profile?.full_name, 'Kurye')}</Text>
         </Text>
-        <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 4, textTransform: 'capitalize' }}>
+        <Text style={{ fontSize: 12, color: U.ink[500], marginTop: 4, textTransform: 'capitalize' }}>
           {new Date().toLocaleDateString(localeTag(i18n.language), { weekday: 'long', day: '2-digit', month: 'long' })}
           {dash.hoursWorked > 0 && ` · ${dash.hoursWorked.toFixed(1)} sa vardiyadasın`}
         </Text>
+        <LiveLocationBadge />
       </View>
 
       <View style={{ paddingHorizontal: 16, gap: 16 }}>
-        {/* ── F2 Hero — Full-bleed Gradient (büyük statement + dark CTA içeride) ── */}
-        <View style={{
-          borderRadius: 28, padding: 28, backgroundColor: TH.primary,
-          position: 'relative', overflow: 'hidden',
-        }}>
-          {/* Dekoratif daireler — gradient hissi için blur uygulanmış (mobile F2) */}
-          <BlurOrb
-            position="top-right"
-            size={260}
-            color="rgba(255,255,255,0.30)"
-            offset={{ top: -80, right: -60 }}
-          />
-          <BlurOrb
-            position="bottom-left"
-            size={220}
-            color="rgba(15,40,64,0.20)"
-            offset={{ bottom: -80, left: -40 }}
-          />
-          <BlurOrb
-            position="center-right"
-            size={140}
-            color="rgba(255,255,255,0.18)"
-            offset={{ top: 40, right: 30 }}
-          />
+        {/* ── HERO F1c — kompakt aktif görev (DESIGN_LANGUAGE §4.4): sade daireler,
+              medium başlık, hem "teslim et" hem "sıradaki alım" durumu + dark CTA ── */}
+        {(() => {
+          const a = dash.active;                                   // taşınan[0]
+          const nextPickup = !a && dash.queue.length > 0 ? dash.queue[0] : null;
+          const focus = a ?? nextPickup;
+          const isPickup = !!nextPickup;
+          const kicker = a ? 'ŞU AN · TESLİM ET' : nextPickup ? 'SIRADAKI · TESLİM AL' : 'HAZIRSIN';
+          const title = a
+            ? (a.destination_name ?? a.order_number ?? '—')
+            : nextPickup
+              ? (nextPickup.origin_name ?? (nextPickup.direction === 'clinic_to_lab' ? 'Klinik' : 'Laboratuvar'))
+              : (dash.todayDelivered.length > 0 ? autoT('Bugünlük tamam') : autoT('Görev bekleniyor'));
+          const addr = focus ? (formatAddress(isPickup ? focus.origin_address : focus.destination_address) || null) : null;
+          return (
+            <View style={{ borderRadius: 24, padding: 22, ...heroSurface, position: 'relative', overflow: 'hidden' }}>
+              {/* Dekoratif daireler — blur'lu + yayvan (yumuşak gradient hissi) */}
+              <BlurOrb size={250} color="rgba(255,255,255,0.32)" offset={{ top: -85, right: -60 }} />
+              <BlurOrb size={210} color="rgba(255,255,255,0.10)" offset={{ bottom: -85, left: -55 }} />
+              <BlurOrb size={140} color="rgba(255,255,255,0.20)" offset={{ top: 24, right: 34 }} />
 
-          {/* Eyebrow */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFF' }} />
-            <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>
-              {dash.active ? `AKTİF · ${STATUS_LABEL[dash.active.status] ?? dash.active.status}` : 'BUGÜN ÖZET'}
-            </Text>
-          </View>
-
-          {/* Huge Display Title */}
-          <Text style={{ ...DISPLAY, fontSize: 44, color: '#FFF', letterSpacing: -1.8, lineHeight: 48, marginTop: 10 }} numberOfLines={2}>
-            {dash.active
-              ? (dash.active.destination_name ?? dash.active.order_number ?? '—')
-              : (dash.pending.length > 0 ? t('courier.pending', { count: dash.pending.length }) : t('courier.ready'))}
-          </Text>
-
-          {/* Body description */}
-          {dash.active ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 }}>
-              <MapPin size={12} color="rgba(255,255,255,0.85)" />
-              <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.85)', flex: 1, lineHeight: 18 }} numberOfLines={2}>
-                {formatAddress(dash.active.destination_address) || '—'}
-              </Text>
-            </View>
-          ) : (
-            <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.85)', marginTop: 10, lineHeight: 18 }}>
-              {t('courier.dashboard.completedCount', { count: dash.todayDelivered.length })}
-              {dash.pending.length > 0 && ` ${t('courier.dashboard.pickTaskStart')}`}
-            </Text>
-          )}
-
-          {/* 3 mini-stat (translucent, F2 içinde) */}
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 20 }}>
-            {[
-              { label: t('courier.dashboard.active'),  value: String(dash.todayInProgress.length) },
-              { label: t('courier.dashboard.pending'), value: String(dash.pending.length) },
-              { label: t('courier.dashboard.today'),  value: String(dash.todayDelivered.length) },
-            ].map(s => (
-              <View key={s.label} style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.16)' }}>
-                <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)', marginBottom: 4 }}>{s.label}</Text>
-                <Text style={{ ...DISPLAY, fontSize: 18, color: '#FFF', letterSpacing: -0.4, lineHeight: 22 }}>{s.value}</Text>
+              {/* Üst satır: kicker + başlık + adres | ikon kapsülü */}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFF' }} />
+                    <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>{autoT(kicker)}</Text>
+                  </View>
+                  <Text style={{ ...DISPLAY, fontSize: 30, color: '#FFF', letterSpacing: -1, lineHeight: 34 }} numberOfLines={2}>{title}</Text>
+                  {addr && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 }}>
+                      <MapPin size={12} color="rgba(255,255,255,0.8)" />
+                      <Text style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.85)', flex: 1, lineHeight: 17 }} numberOfLines={1}>{addr}</Text>
+                    </View>
+                  )}
+                </View>
+                <View style={{ width: 46, height: 46, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' }}>
+                  {isPickup ? <Package size={22} color="#FFF" strokeWidth={1.7} /> : focus ? <Navigation size={22} color="#FFF" strokeWidth={1.7} /> : <Truck size={22} color="#FFF" strokeWidth={1.7} />}
+                </View>
               </View>
-            ))}
-          </View>
 
-          {/* Dark CTA pill (F2 standardı — hero içinde) */}
-          {dash.active && (
-            <Pressable
-              onPress={onActive}
-              style={({ pressed }: any) => ({
-                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-                paddingVertical: 14, paddingHorizontal: 18, borderRadius: 999,
-                backgroundColor: DS.ink[900], marginTop: 20,
-                opacity: pressed ? 0.88 : 1,
-              })}
-            >
-              <Navigation size={15} color="#FFF" strokeWidth={2} />
-              <Text style={{ fontSize: 14, fontWeight: '600', color: '#FFF' }}>{t('courier.dashboard.startNavigation')}</Text>
-            </Pressable>
-          )}
-        </View>
+              {/* Mini-stat şeridi — Taşınan / Sırada / Bugün */}
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 18 }}>
+                {[
+                  { label: autoT('Taşınan'), value: String(dash.carried.length) },
+                  { label: autoT('Sırada'),  value: String(dash.queue.length) },
+                  { label: autoT('Bugün'),   value: String(dash.todayDelivered.length) },
+                ].map(s => (
+                  <View key={s.label} style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.16)' }}>
+                    <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)', marginBottom: 4 }}>{s.label}</Text>
+                    <Text style={{ ...DISPLAY, fontSize: 18, color: '#FFF', letterSpacing: -0.4, lineHeight: 22 }}>{s.value}</Text>
+                  </View>
+                ))}
+              </View>
 
-        {/* ── Eyebrow BUGÜN · 18 MART ── */}
-        <View>
-          <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: DS.ink[500] }}>
-            {t('courier.dashboard.todayDate', { date: todayLabel })}
-          </Text>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 4 }}>
-            <Text style={{ ...DISPLAY, fontSize: 22, color: DS.ink[900], letterSpacing: -0.5 }}>{t('courier.dashboard.nextDeliveries')}</Text>
-            {dash.pending.length > 0 && (
-              <Pressable onPress={() => router.push('/(courier)/deliveries' as any)}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: TH.primary }}>{t('courier.dashboard.viewAll')}</Text>
-              </Pressable>
-            )}
-          </View>
-        </View>
+              {/* İki-buton hızlı aksiyon — detaya girmeden: Yol tarifi + Aldım/Teslim Et */}
+              {focus && (() => {
+                const adv = advanceOf(focus);
+                const busy = actBusy === focus.id;
+                return (
+                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+                    {/* Yol tarifi — ikincil (cam ton) */}
+                    <Pressable
+                      onPress={() => openMapsTo(legOf(focus).address)}
+                      style={({ pressed }: any) => ({
+                        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                        paddingVertical: 13, paddingHorizontal: 18, borderRadius: 999,
+                        backgroundColor: 'rgba(255,255,255,0.18)', opacity: pressed ? 0.8 : 1,
+                      })}
+                    >
+                      <Navigation size={15} color="#FFF" strokeWidth={2} />
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: '#FFF' }}>{autoT('Yol tarifi')}</Text>
+                    </Pressable>
+                    {/* Aldım / Teslim Et — birincil (koyu), tek dokunuş durumu ilerletir */}
+                    <Pressable
+                      onPress={() => doAdvance(focus)}
+                      disabled={busy}
+                      style={({ pressed }: any) => ({
+                        flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                        paddingVertical: 13, borderRadius: 999, backgroundColor: U.ink[900],
+                        opacity: busy ? 0.6 : pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.99 : 1 }],
+                      })}
+                    >
+                      {adv.next === 'teslim_edildi'
+                        ? <Check size={16} color={U.onDarkPill} strokeWidth={2.4} />
+                        : <Package size={15} color={U.onDarkPill} strokeWidth={2} />}
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: U.onDarkPill }}>{autoT(adv.label)}</Text>
+                    </Pressable>
+                  </View>
+                );
+              })()}
+            </View>
+          );
+        })()}
 
-        {/* ── Delivery cards (max 4) ── */}
-        {dash.pending.length === 0 ? (
-          <View style={{ padding: 24, alignItems: 'center', gap: 8, borderRadius: 18, borderWidth: 1, borderColor: DS.ink[200], backgroundColor: '#FFF' }}>
-            <CheckCircle2 size={24} color={SUCCESS} strokeWidth={1.6} />
-            <Text style={{ fontSize: 13, color: DS.ink[500] }}>{t('courier.dashboard.noPendingDeliveries')}</Text>
-          </View>
-        ) : (
+        {/* ── TAŞIDIKLARIM — alınmış, teslim edilmemiş → BIRAK (yükün üzerinde) ── */}
+        {dash.carried.length > 0 && (
           <View style={{ gap: 12 }}>
-            {dash.pending.slice(0, 4).map((d: CourierDelivery, i: number) => (
-              <PreviewDeliveryCard
+            <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+              <View>
+                <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: WARNING }}>
+                  {autoT('TESLİM EDİLECEK')}
+                </Text>
+                <Text style={{ ...DISPLAY, fontSize: 22, color: U.ink[900], letterSpacing: -0.5, marginTop: 2 }}>{autoT('Taşıdıklarım')}</Text>
+              </View>
+              <View style={{ minWidth: 26, height: 26, paddingHorizontal: 8, borderRadius: 999, backgroundColor: WARNING + '18', alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: WARNING }}>{dash.carried.length}</Text>
+              </View>
+            </View>
+            {dash.carried.map((d: CourierDelivery) => (
+              <LegCard
                 key={d.id}
-                index={i + 1}
                 delivery={d}
                 onPress={() => router.push(`/(courier)/delivery/${d.id}` as any)}
+                onAdvance={doAdvance}
+                onNavigate={(x) => openMapsTo(legOf(x).address)}
+                busy={actBusy === d.id}
               />
             ))}
           </View>
         )}
 
+        {/* ── SIRADAKI — atanmış, alınmamış · FIFO → AL (git, teslim al) ── */}
+        <View style={{ gap: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+            <View>
+              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: U.ink[500] }}>
+                {t('courier.dashboard.todayDate', { date: todayLabel })}
+              </Text>
+              <Text style={{ ...DISPLAY, fontSize: 22, color: U.ink[900], letterSpacing: -0.5, marginTop: 2 }}>{autoT('Sıradaki alımlar')}</Text>
+            </View>
+            {dash.queue.length > 6 && (
+              <Pressable onPress={() => router.push('/(courier)/deliveries' as any)}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: TH.primary }}>{t('courier.dashboard.viewAll')}</Text>
+              </Pressable>
+            )}
+          </View>
+
+          {dash.queue.length === 0 ? (
+            <View style={{ padding: 24, alignItems: 'center', gap: 8, borderRadius: 18, borderWidth: 1, borderColor: U.ink[200], backgroundColor: U.surface }}>
+              <CheckCircle2 size={24} color={SUCCESS} strokeWidth={1.6} />
+              <Text style={{ fontSize: 13, color: U.ink[500] }}>
+                {dash.carried.length > 0 ? autoT('Sırada bekleyen alım yok') : t('courier.dashboard.noPendingDeliveries')}
+              </Text>
+            </View>
+          ) : (
+            dash.queue.slice(0, 6).map((d: CourierDelivery, i: number) => (
+              <LegCard
+                key={d.id}
+                delivery={d}
+                index={i + 1}
+                onPress={() => router.push(`/(courier)/delivery/${d.id}` as any)}
+                onAdvance={doAdvance}
+                onNavigate={(x) => openMapsTo(legOf(x).address)}
+                busy={actBusy === d.id}
+              />
+            ))
+          )}
+        </View>
+
         {/* ── Bugün Tamamlanan ── */}
         {dash.todayDelivered.length > 0 && (
           <>
-            <Text style={{ ...DISPLAY, fontSize: 18, color: DS.ink[700], letterSpacing: -0.3, marginTop: 4 }}>{t('courier.dashboard.completedToday')}</Text>
+            <Text style={{ ...DISPLAY, fontSize: 18, color: U.ink[700], letterSpacing: -0.3, marginTop: 4 }}>{t('courier.dashboard.completedToday')}</Text>
             <View style={{ gap: 8 }}>
               {dash.todayDelivered.slice(0, 4).map((d: CourierDelivery) => (
                 <View key={d.id} style={{
                   flexDirection: 'row', alignItems: 'center', gap: 12,
                   padding: 12, borderRadius: 14,
-                  borderWidth: 1, borderColor: DS.ink[100], backgroundColor: '#FFF',
+                  borderWidth: 1, borderColor: U.ink[100], backgroundColor: U.surface,
                 }}>
                   <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(45,154,107,0.14)', alignItems: 'center', justifyContent: 'center' }}>
                     <Check size={14} color={SUCCESS} strokeWidth={2.4} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[800] }} numberOfLines={1}>
+                    <Text style={{ fontSize: 13, fontWeight: '500', color: U.ink[800] }} numberOfLines={1}>
                       {d.destination_name ?? '—'}
                     </Text>
-                    <Text style={{ fontSize: 10, color: DS.ink[500] }}>
+                    <Text style={{ fontSize: 10, color: U.ink[500] }}>
                       {d.delivered_at ? new Date(d.delivered_at).toLocaleTimeString(localeTag(i18n.language), { hour: '2-digit', minute: '2-digit' }) : '—'}
                       {d.picked_up_at && d.delivered_at && ` · ${Math.round((new Date(d.delivered_at).getTime() - new Date(d.picked_up_at).getTime()) / 60000)} dk`}
                     </Text>
@@ -389,65 +568,53 @@ function MobileView({ profile, items, dash, loading, router, onRefresh, onScan, 
           </>
         )}
 
-        {/* ── İstatistik · Bu Hafta ── */}
+        {/* ── Performans özeti — kompakt kart; detaylı grafik/KPI Profil ekranında ── */}
         {dash.weekDelivered.length > 0 && (
-          <>
-            <View>
-              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: DS.ink[500] }}>
-                {t('courier.dashboard.statisticsThisWeek')}
-              </Text>
-              <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 4 }}>
-                <Text style={{ ...DISPLAY, fontSize: 22, color: DS.ink[900], letterSpacing: -0.5 }}>{t('courier.dashboard.myPerformance')}</Text>
-                <Pressable onPress={() => router.push('/(courier)/stats' as any)}>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: TH.primary }}>{t('courier.dashboard.details')}</Text>
-                </Pressable>
-              </View>
-            </View>
-
-            {/* 2×2 PremiumKPI grid */}
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-              <PremiumKPI size="sm" icon={CheckCircle2} label={t('courier.kpi.delivered')}      value={dash.weekDelivered.length}  accent={SUCCESS}   sub={`${dash.todayDelivered.length} bugün`} />
-              <PremiumKPI size="sm" icon={Timer}        label={t('courier.kpi.averageTime')}   value={`${dash.weekAvg} dk`}        accent={TH.primary} sub={dash.weekFastest > 0 ? `En hızlı ${dash.weekFastest} dk` : '—'} />
-              <PremiumKPI size="sm" icon={Activity}     label={t('courier.kpi.active')}       value={dash.todayInProgress.length} accent={WARNING}    sub={t('courier.dashboard.onTheWayNow')} />
-              <PremiumKPI size="sm" icon={AlertCircle}  label={t('courier.kpi.waiting')}    value={dash.pending.length}         accent="#7C3AED"    sub="Sıradaki görev" />
-            </View>
-
-            {/* 7-gün mini bar chart */}
-            <View style={{ borderRadius: 18, backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[200], padding: 16, gap: 10 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' }}>
-                <View>
-                  <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: DS.ink[500] }}>{t('courier.dashboard.last7Days')}</Text>
-                  <Text style={{ ...DISPLAY, fontSize: 18, color: DS.ink[900], letterSpacing: -0.4, marginTop: 2 }}>{t('courier.dashboard.dailyTrend')}</Text>
-                </View>
-                <Text style={{ fontSize: 11, color: DS.ink[500], fontWeight: '600' }}>
-                  {dash.last7Days.reduce((s: number, d: any) => s + d.count, 0)} {t('courier.dashboard.deliveredMetric')}
+          <Pressable
+            onPress={() => router.push('/(courier)/stats' as any)}
+            style={({ pressed }: any) => ({
+              backgroundColor: U.surface, borderRadius: 18, borderWidth: 1, borderColor: U.ink[200],
+              padding: 16, opacity: pressed ? 0.9 : 1,
+            })}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <View>
+                <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: U.ink[500] }}>
+                  {t('courier.dashboard.statisticsThisWeek')}
                 </Text>
+                <Text style={{ ...DISPLAY, fontSize: 20, color: U.ink[900], letterSpacing: -0.5, marginTop: 2 }}>{t('courier.dashboard.myPerformance')}</Text>
               </View>
-              <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6, height: 80, marginTop: 6 }}>
-                {dash.last7Days.map((d: any, i: number) => (
-                  <View key={i} style={{ flex: 1, alignItems: 'center', gap: 4 }}>
-                    <View style={{
-                      width: '100%',
-                      height: Math.max(3, (d.count / dash.max7) * 64),
-                      backgroundColor: d.count > 0 ? TH.primary : DS.ink[100],
-                      borderRadius: 3,
-                    }} />
-                    <Text style={{ fontSize: 9, color: DS.ink[500], fontWeight: '600' }}>{d.label}</Text>
-                  </View>
-                ))}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: TH.primary }}>{t('courier.dashboard.details')}</Text>
+                {isRTL() ? <ChevronLeft size={14} color={TH.primary} /> : <ChevronRight size={14} color={TH.primary} />}
               </View>
             </View>
-          </>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              {[
+                { label: t('courier.kpi.delivered'),    value: String(dash.weekDelivered.length),                     accent: SUCCESS },
+                { label: t('courier.kpi.averageTime'),  value: `${dash.weekAvg} dk`,                                  accent: TH.primary },
+                { label: autoT('En hızlı'),             value: dash.weekFastest > 0 ? `${dash.weekFastest} dk` : '—', accent: '#7C3AED' },
+              ].map(s => (
+                <View key={s.label} style={{ flex: 1 }}>
+                  <Text style={{ ...DISPLAY, fontSize: 24, color: U.ink[900], letterSpacing: -0.6, lineHeight: 28 }} numberOfLines={1}>{s.value}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 }}>
+                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: s.accent }} />
+                    <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.3, textTransform: 'uppercase', color: U.ink[500] }} numberOfLines={1}>{s.label}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </Pressable>
         )}
 
         {/* ── Empty state ── */}
         {!loading && items.length === 0 && (
-          <View style={{ padding: 40, alignItems: 'center', gap: 12, backgroundColor: '#FFF', borderRadius: 22, borderWidth: 1, borderColor: DS.ink[200] }}>
-            <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: TH.bgSoft, alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ padding: 40, alignItems: 'center', gap: 12, backgroundColor: U.surface, borderRadius: 22, borderWidth: 1, borderColor: U.ink[200] }}>
+            <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: U.isDark ? TH.primary + '26' : TH.bgSoft, alignItems: 'center', justifyContent: 'center' }}>
               <Truck size={26} color={TH.primary} strokeWidth={1.6} />
             </View>
-            <Text style={{ ...DISPLAY, fontSize: 22, color: DS.ink[900], letterSpacing: -0.5 }}>{t('courier.dashboard.noTasksYet')}</Text>
-            <Text style={{ fontSize: 12, color: DS.ink[500], textAlign: 'center', maxWidth: 280 }}>
+            <Text style={{ ...DISPLAY, fontSize: 22, color: U.ink[900], letterSpacing: -0.5 }}>{t('courier.dashboard.noTasksYet')}</Text>
+            <Text style={{ fontSize: 12, color: U.ink[500], textAlign: 'center', maxWidth: 280 }}>
               {t('courier.dashboard.notifyOnNewDelivery')}
             </Text>
           </View>
@@ -459,23 +626,24 @@ function MobileView({ profile, items, dash, loading, router, onRefresh, onScan, 
 
 /* PreviewDeliveryCard — courier-design preview kart anatomisi (number badge + chip + adres + time) */
 function PreviewDeliveryCard({ index, delivery, onPress }: { index: number; delivery: CourierDelivery; onPress: () => void }) {
+  const U = useInkUI();
   const tagLabel = STATUS_LABEL[delivery.status] ?? delivery.status;
   const tagColor = STATUS_COLOR[delivery.status] ?? DS.ink[500];
   const timeLabel = fmtElapsedFrom(delivery.assigned_at);
-  const timeTone = delivery.status === 'yolda' ? WARNING : DS.ink[500];
+  const timeTone = delivery.status === 'yolda' ? WARNING : U.ink[500];
 
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }: any) => ({
         padding: 14, borderRadius: 18,
-        backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[200],
+        backgroundColor: U.surface, borderWidth: 1, borderColor: U.ink[200],
         opacity: pressed ? 0.85 : 1,
       })}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         {/* Sol: 44×44 numara badge */}
-        <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: TH.bgSoft, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: U.isDark ? TH.primary + '26' : TH.bgSoft, alignItems: 'center', justifyContent: 'center' }}>
           <Text style={{ ...DISPLAY, fontSize: 18, color: TH.primary, letterSpacing: -0.3 }}>{index}</Text>
         </View>
 
@@ -484,10 +652,10 @@ function PreviewDeliveryCard({ index, delivery, onPress }: { index: number; deli
           <View style={{ flexDirection: 'row', gap: 4, marginBottom: 4 }}>
             <Chip label={tagLabel} color={tagColor} />
           </View>
-          <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>
             {delivery.destination_name ?? delivery.order_number ?? '—'}
           </Text>
-          <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 2 }} numberOfLines={1}>
+          <Text style={{ fontSize: 12, color: U.ink[500], marginTop: 2 }} numberOfLines={1}>
             {formatAddress(delivery.destination_address) || '—'}
           </Text>
         </View>
@@ -497,9 +665,106 @@ function PreviewDeliveryCard({ index, delivery, onPress }: { index: number; deli
           <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: timeTone + '14' }}>
             <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, color: timeTone }}>{timeLabel.toUpperCase()}</Text>
           </View>
-          {isRTL() ? <ChevronLeft size={14} color={DS.ink[400]} /> : <ChevronRight size={14} color={DS.ink[400]} />}
+          {isRTL() ? <ChevronLeft size={14} color={U.ink[400]} /> : <ChevronRight size={14} color={U.ink[400]} />}
         </View>
       </View>
+    </Pressable>
+  );
+}
+
+/* LegCard — kurye bacağı: AL (origin'e git, teslim al) · BIRAK (hedefe git, teslim et).
+   SIRADAKI → pickup (mavi/AL); TAŞIDIKLARIM → dropoff (turuncu/BIRAK). */
+function LegCard({ delivery, index, onPress, onAdvance, onNavigate, busy }: {
+  delivery: CourierDelivery; index?: number; onPress: () => void;
+  onAdvance?: (d: CourierDelivery) => void; onNavigate?: (d: CourierDelivery) => void; busy?: boolean;
+}) {
+  const U = useInkUI();
+  const leg = legOf(delivery);
+  const isPickup = leg.action === 'pickup';
+  const accent = isPickup ? TH.primary : WARNING;
+  const Icon = isPickup ? Package : MapPin;
+  const actionLabel = isPickup ? 'AL' : 'BIRAK';
+  const adv = advanceOf(delivery);
+  const statusLabel = STATUS_LABEL[delivery.status] ?? delivery.status;
+  const statusColor = STATUS_COLOR[delivery.status] ?? DS.ink[500];
+  const purposeLabel = delivery.purpose ? (PURPOSE_LABEL[delivery.purpose] ?? null) : null;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }: any) => ({
+        padding: 14, borderRadius: 18,
+        backgroundColor: U.surface, borderWidth: 1, borderColor: U.ink[200],
+        opacity: pressed ? 0.85 : 1,
+      })}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        {/* Sol: aksiyon badge (AL/BIRAK) */}
+        <View style={{ width: 46, height: 46, borderRadius: 13, backgroundColor: accent + '14', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+          <Icon size={16} color={accent} strokeWidth={2} />
+          <Text style={{ fontSize: 8, fontWeight: '800', letterSpacing: 0.5, color: accent }}>{autoT(actionLabel)}</Text>
+        </View>
+
+        {/* Orta: durum/amaç + gidilecek nokta + (alım ise → hedef, teslim ise adres) */}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+            <Chip label={statusLabel} color={statusColor} />
+            {purposeLabel && <Text style={{ fontSize: 10, color: U.ink[400] }}>· {autoT(purposeLabel)}</Text>}
+          </View>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>{leg.point}</Text>
+          {isPickup && leg.toName ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+              <ArrowRight size={11} color={U.ink[400]} />
+              <Text style={{ fontSize: 12, color: U.ink[500], flex: 1 }} numberOfLines={1}>{leg.toName}</Text>
+            </View>
+          ) : (
+            <Text style={{ fontSize: 12, color: U.ink[500], marginTop: 2 }} numberOfLines={1}>
+              {formatAddress(leg.address) || '—'}
+            </Text>
+          )}
+        </View>
+
+        {/* Sağ: FIFO sıra no + chevron */}
+        <View style={{ alignItems: 'flex-end', gap: 6 }}>
+          {index != null && (
+            <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: U.isDark ? TH.primary + '26' : TH.bgSoft, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: TH.primary }}>{index}</Text>
+            </View>
+          )}
+          {isRTL() ? <ChevronLeft size={14} color={U.ink[400]} /> : <ChevronRight size={14} color={U.ink[400]} />}
+        </View>
+      </View>
+
+      {/* İnline hızlı aksiyon — kart üstünden, detaya girmeden: Yol tarifi + AL/BIRAK */}
+      {(onAdvance || onNavigate) && (
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+          <Pressable
+            onPress={(e: any) => { e?.stopPropagation?.(); onNavigate?.(delivery); }}
+            style={({ pressed }: any) => ({
+              flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+              paddingVertical: 10, paddingHorizontal: 16, borderRadius: 999,
+              backgroundColor: U.ink[100], opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <Navigation size={14} color={U.ink[800]} strokeWidth={2} />
+            <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[800] }}>{autoT('Yol tarifi')}</Text>
+          </Pressable>
+          <Pressable
+            onPress={(e: any) => { e?.stopPropagation?.(); onAdvance?.(delivery); }}
+            disabled={busy}
+            style={({ pressed }: any) => ({
+              flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+              paddingVertical: 10, borderRadius: 999, backgroundColor: accent,
+              opacity: busy ? 0.6 : pressed ? 0.9 : 1,
+            })}
+          >
+            {adv.next === 'teslim_edildi'
+              ? <Check size={14} color="#FFF" strokeWidth={2.4} />
+              : <Package size={14} color="#FFF" strokeWidth={2} />}
+            <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFF' }}>{autoT(adv.label)}</Text>
+          </Pressable>
+        </View>
+      )}
     </Pressable>
   );
 }
@@ -507,6 +772,8 @@ function PreviewDeliveryCard({ index, delivery, onPress }: { index: number; deli
 /* ══════════════════════════ DESKTOP ══════════════════════════ */
 
 function DesktopView({ profile, items, dash, loading, router, onRefresh, onScan, onActive }: any) {
+  const U = useInkUI();
+  const heroSurface = useHeroSurface(TH.primary);
   const { t, i18n } = useTranslation();
   return (
     <ScrollView
@@ -517,34 +784,34 @@ function DesktopView({ profile, items, dash, loading, router, onRefresh, onScan,
       {/* Page title — greeting + courier ismi */}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <View>
-          <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[500] }}>
-            {greeting(t).toLocaleUpperCase(localeTag(i18n.language))} 👋
+          <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: U.ink[500] }}>
+            {greeting(t).toLocaleUpperCase(localeTag(i18n.language))}
           </Text>
           <Text
-            style={{ ...DISPLAY, fontSize: 36, color: DS.ink[900], letterSpacing: -1, lineHeight: 40, marginTop: 6 }}
+            style={{ ...DISPLAY, fontSize: 36, color: U.ink[900], letterSpacing: -1, lineHeight: 40, marginTop: 6 }}
             numberOfLines={1}
           >
             Merhaba, <Text style={{ color: TH.primary }}>{displayFirstName(profile?.full_name, 'Kurye')}</Text>
           </Text>
-          <Text style={{ fontSize: 13, color: DS.ink[500], marginTop: 6, textTransform: 'capitalize' }}>{fmtTodayDate(i18n.language)}</Text>
+          <Text style={{ fontSize: 13, color: U.ink[500], marginTop: 6, textTransform: 'capitalize' }}>{fmtTodayDate(i18n.language)}</Text>
         </View>
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          <Pressable onPress={onScan} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999, backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[200] }}>
-            <QrCode size={14} color={DS.ink[800]} />
-            <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[800] }}>QR Tara</Text>
+          <Pressable onPress={onScan} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999, backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: U.plainBtn.border }}>
+            <QrCode size={14} color={U.ink[800]} />
+            <Text style={{ fontSize: 12, fontWeight: '600', color: U.ink[800] }}>QR Tara</Text>
           </Pressable>
         </View>
       </View>
 
       {/* Bugün özet kart — progress ring + KPI shelf birleşik */}
-      <View style={{ borderRadius: 22, backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[200], padding: 20, flexDirection: 'row', alignItems: 'center', gap: 24 }}>
+      <View style={{ borderRadius: 22, backgroundColor: U.surface, borderWidth: 1, borderColor: U.ink[200], padding: 20, flexDirection: 'row', alignItems: 'center', gap: 24 }}>
         <ProgressRing value={dash.progress} size={88} />
         <View style={{ flex: 0.4, minWidth: 0 }}>
-          <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[500] }}>{t('courier.dashboard.todayProgress')}</Text>
-          <Text style={{ ...DISPLAY, fontSize: 28, color: DS.ink[900], letterSpacing: -0.8, marginTop: 2 }}>
+          <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: U.ink[500] }}>{t('courier.dashboard.todayProgress')}</Text>
+          <Text style={{ ...DISPLAY, fontSize: 28, color: U.ink[900], letterSpacing: -0.8, marginTop: 2 }}>
             {dash.todayDelivered.length}/{dash.totalToday}
           </Text>
-          <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 4 }}>
+          <Text style={{ fontSize: 12, color: U.ink[500], marginTop: 4 }}>
             {dash.hoursWorked > 0 ? t('courier.hoursWorked', { h: dash.hoursWorked.toFixed(1) }) : t('courier.shiftNotStarted')}
           </Text>
         </View>
@@ -561,7 +828,7 @@ function DesktopView({ profile, items, dash, loading, router, onRefresh, onScan,
         <Pressable
           onPress={onActive}
           style={({ pressed }: any) => ({
-            borderRadius: 28, padding: 48, backgroundColor: TH.primary,
+            borderRadius: 28, padding: 48, ...heroSurface,
             position: 'relative', overflow: 'hidden',
             opacity: pressed ? 0.96 : 1,
           })}
@@ -598,9 +865,9 @@ function DesktopView({ profile, items, dash, loading, router, onRefresh, onScan,
 
               {/* Dark CTA pill + elapsed sub */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 24 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 999, backgroundColor: DS.ink[900] }}>
-                  <Navigation size={13} color="#FFF" strokeWidth={2.2} />
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFF' }}>{t('courier.dashboard.startDetails')}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 999, backgroundColor: U.ink[900] }}>
+                  <Navigation size={13} color={U.onDarkPill} strokeWidth={2.2} />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: U.onDarkPill }}>{t('courier.dashboard.startDetails')}</Text>
                 </View>
                 {dash.active.picked_up_at && (
                   <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>
@@ -636,7 +903,7 @@ function DesktopView({ profile, items, dash, loading, router, onRefresh, onScan,
       {/* F2 — Aktif yoksa varyant (Bugün özet) */}
       {!dash.active && (
         <View style={{
-          borderRadius: 28, padding: 48, backgroundColor: TH.primary,
+          borderRadius: 28, padding: 48, ...heroSurface,
           position: 'relative', overflow: 'hidden',
         }}>
           <View style={{ position: 'absolute', top: -40, end: -40, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(255,255,255,0.15)' }} pointerEvents="none" />
@@ -655,8 +922,8 @@ function DesktopView({ profile, items, dash, loading, router, onRefresh, onScan,
                 {dash.pending.length > 0 && ' Bir görev seçip başlayabilirsin.'}
               </Text>
               {dash.pending.length > 0 && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 999, backgroundColor: DS.ink[900], marginTop: 24, alignSelf: 'flex-start' }}>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFF' }}>Listeyi Aç →</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 999, backgroundColor: U.ink[900], marginTop: 24, alignSelf: 'flex-start' }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: U.onDarkPill }}>Listeyi Aç →</Text>
                 </View>
               )}
             </View>
@@ -678,13 +945,13 @@ function DesktopView({ profile, items, dash, loading, router, onRefresh, onScan,
           <SecHeader eyebrow={t('courier.section.list')} title={t('courier.dashboard.nextDeliveries')} />
           {dash.pending.length === 0 ? (
             <Card padding={32}>
-              <Text style={{ fontSize: 13, color: DS.ink[500], textAlign: 'center' }}>{t('courier.delivery.noPending')}</Text>
+              <Text style={{ fontSize: 13, color: U.ink[500], textAlign: 'center' }}>{t('courier.delivery.noPending')}</Text>
             </Card>
           ) : (
             <Card padding={0}>
-              <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: DS.ink[50], borderBottomWidth: 1, borderBottomColor: DS.ink[100], gap: 12 }}>
+              <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: U.ink[50], borderBottomWidth: 1, borderBottomColor: U.ink[100], gap: 12 }}>
                 {[t('courier.table.customer'), t('courier.table.address'), t('courier.table.phone'), t('courier.table.assigned'), t('courier.table.status'), ''].map((h, i) => (
-                  <Text key={h} style={{ flex: i === 1 ? 2 : 1, fontSize: 10, fontWeight: '700', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.6 }}>{h}</Text>
+                  <Text key={h} style={{ flex: i === 1 ? 2 : 1, fontSize: 10, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.6 }}>{h}</Text>
                 ))}
               </View>
               {dash.pending.map((d: CourierDelivery, i: number, arr: CourierDelivery[]) => (
@@ -693,18 +960,18 @@ function DesktopView({ profile, items, dash, loading, router, onRefresh, onScan,
                   onPress={() => router.push(`/(courier)/delivery/${d.id}` as any)}
                   style={({ hovered }: any) => ({
                     flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 14, gap: 12, alignItems: 'center',
-                    borderBottomWidth: i < arr.length - 1 ? 1 : 0, borderBottomColor: DS.ink[100],
-                    backgroundColor: hovered ? DS.ink[50] : '#FFF',
+                    borderBottomWidth: i < arr.length - 1 ? 1 : 0, borderBottomColor: U.ink[100],
+                    backgroundColor: hovered ? U.rowHover : U.surface,
                   })}
                 >
-                  <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+                  <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>
                     {d.destination_name ?? d.order_number ?? '—'}
                   </Text>
-                  <Text style={{ flex: 2, fontSize: 12, color: DS.ink[500] }} numberOfLines={1}>{formatAddress(d.destination_address) || '—'}</Text>
-                  <Text style={{ flex: 1, fontSize: 12, color: DS.ink[700] }} numberOfLines={1}>{d.destination_phone ?? '—'}</Text>
-                  <Text style={{ flex: 1, fontSize: 11, color: DS.ink[500] }}>{fmtElapsedFrom(d.assigned_at)} önce</Text>
+                  <Text style={{ flex: 2, fontSize: 12, color: U.ink[500] }} numberOfLines={1}>{formatAddress(d.destination_address) || '—'}</Text>
+                  <Text style={{ flex: 1, fontSize: 12, color: U.ink[700] }} numberOfLines={1}>{d.destination_phone ?? '—'}</Text>
+                  <Text style={{ flex: 1, fontSize: 11, color: U.ink[500] }}>{fmtElapsedFrom(d.assigned_at)} önce</Text>
                   <View style={{ flex: 1 }}><Chip label={STATUS_LABEL[d.status] ?? d.status} color={STATUS_COLOR[d.status] ?? DS.ink[500]} /></View>
-                  {isRTL() ? <ChevronLeft size={14} color={DS.ink[300]} /> : <ChevronRight size={14} color={DS.ink[300]} />}
+                  {isRTL() ? <ChevronLeft size={14} color={U.ink[300]} /> : <ChevronRight size={14} color={U.ink[300]} />}
                 </Pressable>
               ))}
             </Card>
@@ -714,24 +981,24 @@ function DesktopView({ profile, items, dash, loading, router, onRefresh, onScan,
         <View style={{ flex: 4 }}>
           <SecHeader eyebrow={t('courier.section.location')} title={t('courier.map.liveMap')} />
           <Card padding={0} style={{ overflow: 'hidden' }}>
-            <View style={{ padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: 1, borderBottomColor: DS.ink[100] }}>
+            <View style={{ padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: 1, borderBottomColor: U.ink[100] }}>
               <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: SUCCESS }} />
-              <Text style={{ fontSize: 11, fontWeight: '600', color: DS.ink[700] }}>{t('courier.map.liveLocationActive')}</Text>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: U.ink[700] }}>{t('courier.map.liveLocationActive')}</Text>
             </View>
-            <View style={{ height: 360, backgroundColor: TH.bgSoft, position: 'relative', overflow: 'hidden' }}>
+            <View style={{ height: 360, backgroundColor: U.isDark ? U.surfaceSoft : TH.bgSoft, position: 'relative', overflow: 'hidden' }}>
               {dash.active ? (
                 <CourierLiveMap deliveryId={dash.active.id} height={360} accent={TH.primary} compact />
               ) : (
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                  <MapIcon size={28} color={DS.ink[300]} strokeWidth={1.4} />
-                  <Text style={{ fontSize: 12, color: DS.ink[500] }}>{t('courier.map.noActiveTask')}</Text>
+                  <MapIcon size={28} color={U.ink[300]} strokeWidth={1.4} />
+                  <Text style={{ fontSize: 12, color: U.ink[500] }}>{t('courier.map.noActiveTask')}</Text>
                 </View>
               )}
             </View>
             <View style={{ padding: 12 }}>
-              <Pressable onPress={() => router.push('/(courier)/map' as any)} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 999, backgroundColor: DS.ink[900] }}>
-                <MapIcon size={13} color="#FFF" />
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#FFF' }}>{t('courier.map.fullScreen')}</Text>
+              <Pressable onPress={() => router.push('/(courier)/map' as any)} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 999, backgroundColor: U.ink[900] }}>
+                <MapIcon size={13} color={U.onDarkPill} />
+                <Text style={{ fontSize: 12, fontWeight: '600', color: U.onDarkPill }}>{t('courier.map.fullScreen')}</Text>
               </Pressable>
             </View>
           </Card>
@@ -747,17 +1014,17 @@ function DesktopView({ profile, items, dash, loading, router, onRefresh, onScan,
               <View key={d.id} style={{
                 flexDirection: 'row', alignItems: 'center', gap: 12,
                 paddingHorizontal: 16, paddingVertical: 12,
-                borderBottomWidth: i < arr.length - 1 ? 1 : 0, borderBottomColor: DS.ink[100],
+                borderBottomWidth: i < arr.length - 1 ? 1 : 0, borderBottomColor: U.ink[100],
               }}>
                 <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(45,154,107,0.14)', alignItems: 'center', justifyContent: 'center' }}>
                   <Check size={14} color={SUCCESS} strokeWidth={2.4} />
                 </View>
-                <Text style={{ flex: 2, fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>{d.destination_name ?? '—'}</Text>
-                <Text style={{ flex: 2, fontSize: 12, color: DS.ink[500] }} numberOfLines={1}>{formatAddress(d.destination_address) || '—'}</Text>
-                <Text style={{ flex: 1, fontSize: 12, color: DS.ink[700] }}>
+                <Text style={{ flex: 2, fontSize: 13, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>{d.destination_name ?? '—'}</Text>
+                <Text style={{ flex: 2, fontSize: 12, color: U.ink[500] }} numberOfLines={1}>{formatAddress(d.destination_address) || '—'}</Text>
+                <Text style={{ flex: 1, fontSize: 12, color: U.ink[700] }}>
                   {d.delivered_at ? new Date(d.delivered_at).toLocaleTimeString(localeTag(i18n.language), { hour: '2-digit', minute: '2-digit' }) : '—'}
                 </Text>
-                <Text style={{ flex: 1, fontSize: 12, color: DS.ink[500] }}>
+                <Text style={{ flex: 1, fontSize: 12, color: U.ink[500] }}>
                   {d.picked_up_at && d.delivered_at
                     ? `${Math.round((new Date(d.delivered_at).getTime() - new Date(d.picked_up_at).getTime()) / 60000)} dk`
                     : '—'}
@@ -774,6 +1041,7 @@ function DesktopView({ profile, items, dash, loading, router, onRefresh, onScan,
 /* ════════════════════════ ATOMS ════════════════════════ */
 
 function ProgressRing({ value, size = 68 }: { value: number; size?: number }) {
+  const U = useInkUI();
   // Saf View ile percentage ring (gerçek SVG yerine donut)
   const radius = size / 2;
   const stroke = size * 0.10;
@@ -782,7 +1050,7 @@ function ProgressRing({ value, size = 68 }: { value: number; size?: number }) {
       {/* Outer ring track */}
       <View style={{
         width: size, height: size, borderRadius: radius,
-        borderWidth: stroke, borderColor: TH.bgDeep,
+        borderWidth: stroke, borderColor: U.isDark ? U.ink[100] : TH.bgDeep,
         position: 'absolute',
       }} />
       {/* Progress dial — conic-gradient (web) or arc rotation */}
@@ -798,64 +1066,67 @@ function ProgressRing({ value, size = 68 }: { value: number; size?: number }) {
       }} />
       {/* Center text */}
       <View style={{ position: 'absolute', alignItems: 'center' }}>
-        <Text style={{ ...DISPLAY, fontSize: size * 0.32, color: DS.ink[900], letterSpacing: -0.6, lineHeight: size * 0.36 }}>
+        <Text style={{ ...DISPLAY, fontSize: size * 0.32, color: U.ink[900], letterSpacing: -0.6, lineHeight: size * 0.36 }}>
           {value}
         </Text>
-        <Text style={{ fontSize: size * 0.13, fontWeight: '700', color: DS.ink[500], letterSpacing: 0.4 }}>%</Text>
+        <Text style={{ fontSize: size * 0.13, fontWeight: '700', color: U.ink[500], letterSpacing: 0.4 }}>%</Text>
       </View>
     </View>
   );
 }
 
 function MiniKpi({ icon: Icon, label, value, accent }: { icon: any; label: string; value: string; accent: string }) {
+  const U = useInkUI();
   return (
     <View style={{ flex: 1, padding: 10, borderRadius: 12, backgroundColor: accent + '08', borderWidth: 1, borderColor: accent + '14' }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
         <Icon size={11} color={accent} strokeWidth={2.2} />
         <Text style={{ fontSize: 8, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: accent }}>{label}</Text>
       </View>
-      <Text style={{ ...DISPLAY, fontSize: 18, color: DS.ink[900], letterSpacing: -0.5, lineHeight: 20 }}>{value}</Text>
+      <Text style={{ ...DISPLAY, fontSize: 18, color: U.ink[900], letterSpacing: -0.5, lineHeight: 20 }}>{value}</Text>
     </View>
   );
 }
 
 function QuickAction({ icon: Icon, label, color, onPress }: { icon: any; label: string; color: string; onPress?: () => void }) {
+  const U = useInkUI();
   return (
-    <Pressable onPress={onPress} style={{ flex: 1, alignItems: 'center', gap: 6, paddingVertical: 12, borderRadius: 16, backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[200] }}>
+    <Pressable onPress={onPress} style={{ flex: 1, alignItems: 'center', gap: 6, paddingVertical: 12, borderRadius: 16, backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: U.plainBtn.border }}>
       <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: color + '14', alignItems: 'center', justifyContent: 'center' }}>
         <Icon size={16} color={color} strokeWidth={2.2} />
       </View>
-      <Text style={{ fontSize: 10, fontWeight: '600', color: DS.ink[700], textAlign: 'center' }} numberOfLines={1}>{label}</Text>
+      <Text style={{ fontSize: 10, fontWeight: '600', color: U.ink[700], textAlign: 'center' }} numberOfLines={1}>{label}</Text>
     </Pressable>
   );
 }
 
 function DeliveryRow({ index, delivery, onPress }: { index: number; delivery: CourierDelivery; onPress: () => void }) {
+  const U = useInkUI();
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }: any) => ({
         padding: 14, borderRadius: 16,
-        backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[200],
+        backgroundColor: U.surface, borderWidth: 1, borderColor: U.ink[200],
         opacity: pressed ? 0.85 : 1,
       })}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: TH.bgSoft, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: U.isDark ? TH.primary + '26' : TH.bgSoft, alignItems: 'center', justifyContent: 'center' }}>
           <Text style={{ ...DISPLAY, fontSize: 17, color: TH.primary, letterSpacing: -0.3 }}>{index}</Text>
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>
             {delivery.destination_name ?? delivery.order_number ?? '—'}
           </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-            <MapPin size={10} color={DS.ink[400]} />
-            <Text style={{ fontSize: 11, color: DS.ink[500], flex: 1 }} numberOfLines={1}>{formatAddress(delivery.destination_address) || '—'}</Text>
+            <MapPin size={10} color={U.ink[400]} />
+            <Text style={{ fontSize: 11, color: U.ink[500], flex: 1 }} numberOfLines={1}>{formatAddress(delivery.destination_address) || '—'}</Text>
           </View>
         </View>
         <View style={{ alignItems: 'flex-end', gap: 4 }}>
           <Chip label={STATUS_LABEL[delivery.status] ?? delivery.status} color={STATUS_COLOR[delivery.status] ?? DS.ink[500]} />
-          {isRTL() ? <ChevronLeft size={13} color={DS.ink[400]} /> : <ChevronRight size={13} color={DS.ink[400]} />}
+          {isRTL() ? <ChevronLeft size={13} color={U.ink[400]} /> : <ChevronRight size={13} color={U.ink[400]} />}
         </View>
       </View>
     </Pressable>
@@ -863,7 +1134,8 @@ function DeliveryRow({ index, delivery, onPress }: { index: number; delivery: Co
 }
 
 function Card({ children, padding = 16, style }: any) {
-  return <View style={[{ backgroundColor: '#FFF', borderRadius: 18, borderWidth: 1, borderColor: DS.ink[200], padding }, style]}>{children}</View>;
+  const U = useInkUI();
+  return <View style={[{ backgroundColor: U.surface, borderRadius: 18, borderWidth: 1, borderColor: U.ink[200], padding }, style]}>{children}</View>;
 }
 
 function Chip({ label, color }: { label: string; color: string }) {
@@ -874,23 +1146,40 @@ function Chip({ label, color }: { label: string; color: string }) {
   );
 }
 
+/** Canlı konum göstergesi — taşınan/yolda iş varken kuryeye konumunun paylaşıldığını bildirir (şeffaflık). */
+function LiveLocationBadge() {
+  const active = useCourierTrackingStore(s => s.active);
+  const lastPingAt = useCourierTrackingStore(s => s.lastPingAt);
+  if (!active) return null;
+  const m = lastPingAt != null ? Math.floor((Date.now() - lastPingAt) / 60000) : null;
+  const when = m == null ? '' : (m < 1 ? ` · ${autoT('az önce')}` : ` · ${m} ${autoT('dk önce')}`);
+  return (
+    <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: SUCCESS + '14' }}>
+      <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: SUCCESS }} />
+      <Text style={{ fontSize: 11, fontWeight: '600', color: SUCCESS }}>{autoT('Canlı konum paylaşılıyor')}{when}</Text>
+    </View>
+  );
+}
+
 function KPIDesktop({ icon: Icon, label, value, accent }: { icon: any; label: string; value: string; accent: string }) {
+  const U = useInkUI();
   return (
     <View style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: accent + '08', borderWidth: 1, borderColor: accent + '14' }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         <Icon size={13} color={accent} strokeWidth={2.2} />
         <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: accent }}>{label}</Text>
       </View>
-      <Text style={{ ...DISPLAY, fontSize: 22, color: DS.ink[900], letterSpacing: -0.6, lineHeight: 26, marginTop: 4 }}>{value}</Text>
+      <Text style={{ ...DISPLAY, fontSize: 22, color: U.ink[900], letterSpacing: -0.6, lineHeight: 26, marginTop: 4 }}>{value}</Text>
     </View>
   );
 }
 
 function SecHeader({ eyebrow, title }: { eyebrow: string; title: string }) {
+  const U = useInkUI();
   return (
     <View style={{ marginBottom: 12 }}>
-      <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[500] }}>{eyebrow}</Text>
-      <Text style={{ ...DISPLAY, fontSize: 22, color: DS.ink[900], letterSpacing: -0.5, marginTop: 4 }}>{title}</Text>
+      <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: U.ink[500] }}>{eyebrow}</Text>
+      <Text style={{ ...DISPLAY, fontSize: 22, color: U.ink[900], letterSpacing: -0.5, marginTop: 4 }}>{title}</Text>
     </View>
   );
 }

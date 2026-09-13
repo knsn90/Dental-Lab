@@ -223,6 +223,34 @@ async function attachDoctors(rows: any[]): Promise<any[]> {
   return rows.map(r => ({ ...r, doctor: r.doctor_id ? (map.get(r.doctor_id) ?? null) : null }));
 }
 
+/**
+ * Bir dizi (polimorfik) doctor_id için hekim + klinik ADINI tek batch'te çözer.
+ * work_orders.doctor_id doctors.id VEYA profiles.id olabilir; doctors önceliklidir,
+ * yoksa profiles (app kullanıcısı) fallback. Logo çözmez — sade metin için.
+ * Teknisyen paneli gibi yalnız ada ihtiyaç duyan yerler kullanır.
+ */
+export async function resolveDoctorClinicNames(
+  ids: string[],
+): Promise<Map<string, { doctorName: string | null; clinicName: string | null }>> {
+  const out = new Map<string, { doctorName: string | null; clinicName: string | null }>();
+  const uniq = Array.from(new Set(ids.filter(Boolean)));
+  if (uniq.length === 0) return out;
+
+  const [docsRes, profsRes] = await Promise.all([
+    supabase.from('doctors').select('id, full_name, clinic:clinics(name)').in('id', uniq),
+    supabase.from('profiles').select('id, full_name, clinic_name').in('id', uniq),
+  ]);
+
+  for (const d of (docsRes.data ?? []) as any[]) {
+    out.set(d.id, { doctorName: d.full_name ?? null, clinicName: d.clinic?.name ?? null });
+  }
+  for (const p of (profsRes.data ?? []) as any[]) {
+    if (out.has(p.id)) continue;                 // doctors önceliği
+    out.set(p.id, { doctorName: p.full_name ?? null, clinicName: p.clinic_name ?? null });
+  }
+  return out;
+}
+
 export async function fetchWorkOrdersForDoctor(_doctorId: string) {
   // NOT: work_orders.doctor_id POLİMORFİK (doctors.id VEYA profiles.id). Sipariş
   // oluşturulurken doctor_id doctors-satırına çevriliyor, bu yüzden `.eq('doctor_id',
@@ -359,6 +387,47 @@ export async function createRevisionOrder(
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true, id: data as string };
+}
+
+/** Mevcut bir siparişi başka siparişin DEVAM'ı veya REVİZYON'u yap (geriye dönük bağ). */
+export async function linkOrderRelation(
+  orderId: string,
+  parentId: string,
+  type: 'continuation' | 'revision',
+  reason?: string | null,
+  responsible?: 'lab' | 'client' | null,
+  faultStationId?: string | null,
+): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.rpc('link_order_relation', {
+    p_order_id:         orderId,
+    p_parent_id:        parentId,
+    p_type:             type,
+    p_reason:           reason ?? null,
+    p_responsible:      responsible ?? null,
+    p_fault_station_id: faultStationId ?? null,
+  });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+export interface LinkableOrder {
+  id: string; order_number: string; patient_name: string | null; status: string | null; created_at: string;
+  work_type: string | null; delivery_date: string | null;
+}
+/** Bağlanacak ebeveyn sipariş araması — sipariş no/hasta ile (RLS lab'a sınırlar). */
+export async function searchLinkableOrders(query: string, excludeId?: string, patientName?: string | null): Promise<LinkableOrder[]> {
+  const q = query.trim();
+  let req = supabase.from('work_orders')
+    .select('id, order_number, patient_name, status, created_at, work_type, delivery_date')
+    .or('is_archived.is.null,is_archived.eq.false')
+    .order('created_at', { ascending: false })
+    .limit(50);
+  // Devam/revizyon aynı hastaya bağlanır → yalnız aynı hasta adındaki siparişler.
+  const pn = patientName?.trim();
+  if (pn) req = req.ilike('patient_name', pn);   // wildcard yok = case-insensitive tam eşleşme
+  if (q) req = req.or(`order_number.ilike.%${q}%,patient_name.ilike.%${q}%`);
+  const { data } = await req;
+  return ((data ?? []) as LinkableOrder[]).filter(o => o.id !== excludeId);
 }
 
 export interface RevisionLink {
@@ -754,6 +823,10 @@ export interface ClientOrderEditFields {
   is_urgent?: boolean | null;
   notes?: string | null;
   tooth_numbers?: number[];
+  /** İmplant alanları — anahtar gönderilirse yazılır (null = temizle). */
+  implant_brand?: string | null;
+  implant_teeth?: number[] | null;
+  implant_details?: Record<string, { system: string; type: string; abutment: string; screw: string }> | null;
 }
 
 export interface ClientOrderEditItem {

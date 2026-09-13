@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Search, SlidersHorizontal, Plus, AlertTriangle, ChevronRight, ChevronLeft, Inbox,
   Flame, Clock, CheckCircle2, ClipboardList, CornerDownRight, CornerDownLeft,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { MOBILE_PANEL_THEMES, type StatusKind, useMobileTokens, useStatusTokens } from '../../../core/theme/mobileDesignTokens';
 import { isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
@@ -136,7 +136,10 @@ export function DoctorOrdersMobile({ orders, loading, refetch, onOpenOrder, onNe
 
     // Revizyonlar: vaka grubu tek satır olur; gruba YALNIZ en güncel üye girer,
     // eskiler onun altında alt-liste olarak çizilir (bkz. revisionGroups).
-    const { anchors, children } = buildRevisionCases(filtered as any[]);
+    // YALNIZ revizyon gruplanır: devam siparişi asıl işin yerine geçmez, ayrı
+    // (bağlantılı) bir iştir → masaüstündeki gibi kendi kartı olur. 'all' bağıyla
+    // asıl işin altına katlanıyor ve yeni kayıt listede görünmüyordu.
+    const { anchors, children } = buildRevisionCases(filtered as any[], { linkBy: 'revision' });
     for (const o of anchors as WorkOrder[]) {
       if (o.status === 'teslim_edildi') { delivered.push(o); continue; }
       if (isOverdue(o) || o.is_urgent)  { urgent.push(o);    continue; }
@@ -502,6 +505,12 @@ function OrderCard({ order, overdue, onPress, history, onOpenOrder }:
             </Text>
             {order.is_urgent && (
               <AlertTriangle size={11} color={T.ruby} strokeWidth={2.2} />
+            )}
+            {/* Devam siparişi — masaüstü listesiyle aynı mavi kimlik */}
+            {!(order as any).revision_of_id && !!(order as any).continues_order_id && (
+              <View style={{ paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 6, backgroundColor: 'rgba(53,99,168,0.14)', flexShrink: 0 }}>
+                <Text style={{ fontSize: 8.5, fontWeight: '800', color: '#3563A8', letterSpacing: 0.4 }}>{autoT('DEVAM')}</Text>
+              </View>
             )}
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 }}>

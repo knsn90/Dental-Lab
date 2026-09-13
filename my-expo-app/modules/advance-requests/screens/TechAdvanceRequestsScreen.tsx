@@ -8,7 +8,7 @@ import {
   View, Text, Pressable, ScrollView, TextInput, Modal, Platform, RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Wallet, Plus, X, Clock, CheckCircle2, XCircle, Ban } from 'lucide-react-native';
+import { Wallet, Plus, X, Clock, CheckCircle2, XCircle, Ban } from '../../../core/ui/icons';
 import { useAuthStore } from '../../../core/store/authStore';
 import { resolveMyEmployeeId } from '../../../core/api/resolveEmployee';
 import { useStationTheme, hexA } from '../../../core/theme/stationPalette';

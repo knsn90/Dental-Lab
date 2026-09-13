@@ -7,11 +7,13 @@
  *   • Hover'da sağa kayan tooltip pill (dock'un dışında, soldan görünür)
  *   • Gruplar arası ekstra dikey boşluk, separator yok
  */
-import React, { useState } from 'react';
-import { View, Text, Pressable, Platform } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { View, Text, Pressable, Platform, useWindowDimensions } from 'react-native';
 import {
   Maximize2, RotateCcw, Box, ImageDown, Ruler, Scissors, Grid3x3, Layers, ScanLine, Magnet, Image as ImageIcon, Activity, Waves,
-} from 'lucide-react-native';
+  SlidersHorizontal, ChevronUp, PenLine,
+} from '../../../core/ui/icons';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { PRESETS, type CameraPreset } from '../lib/cameraPresets';
 import type { CutAxis } from '../types';
 import { useViewerTheme } from '../lib/viewerTheme';
@@ -49,6 +51,10 @@ interface Props {
   /** Yüzey dalgalanma analizi aç/kapat */
   wavinessActive?: boolean;
   onToggleWaviness?: () => void;
+  /** 3D kalem (tarama üzerine not) — yalnız sipariş bağlamında verilir */
+  penMode?: boolean;
+  onTogglePen?: () => void;
+  penCount?: number;
 }
 
 interface DockColors {
@@ -102,6 +108,7 @@ export function ViewerToolbar({
   smileOpen, onToggleSmile,
   occlusionActive, onToggleOcclusion,
   wavinessActive, onToggleWaviness,
+  penMode, onTogglePen, penCount = 0,
 }: Props) {
   const [presetMenuOpen, setPresetMenuOpen] = useState(false);
   const [fovOpen, setFovOpen] = useState(false);
@@ -110,6 +117,80 @@ export function ViewerToolbar({
   const D = useDockColors(T.accent);
 
   const closeMenus = () => { setPresetMenuOpen(false); setFovOpen(false); setCutOpen(false); };
+
+  // ── Dar ekranda açılır/kapanır + kendini gizleyen dock ───────────────────
+  // Telefonda dikey dock modelin sağ yarısını kalıcı olarak kapatıyordu. Artık
+  // tek bir düğmeye çekilir; açıldıktan sonra 4.5 sn dokunulmazsa kendi
+  // kapanır (dokunma her seferinde sayacı sıfırlar).
+  const { width: winW } = useWindowDimensions();
+  const isNarrow = winW < 768;
+  const [dockOpen, setDockOpen] = useState(!isNarrow);
+  const hideTimer = useRef<any>(null);
+
+  const clearHide = useCallback(() => {
+    if (hideTimer.current) { clearTimeout(hideTimer.current); hideTimer.current = null; }
+  }, []);
+
+  /** Etkileşim oldu → otomatik gizleme sayacını baştan başlat. */
+  const bump = useCallback(() => {
+    if (!isNarrow) return;
+    clearHide();
+    hideTimer.current = setTimeout(() => {
+      setDockOpen(false);
+      setPresetMenuOpen(false); setFovOpen(false); setCutOpen(false);
+    }, 4500);
+  }, [isNarrow, clearHide]);
+
+  // Genişlik eşiği değişince (döndürme / tablet) doğru varsayılana dön
+  useEffect(() => { setDockOpen(!isNarrow); }, [isNarrow]);
+
+  // Dock açıkken sayaç işler; kapanınca/unmount'ta temizlenir.
+  // Açık bir popover (kamera açıları / FOV / kesit kaydırıcısı) varken sayaç
+  // DURUR: kullanıcı kaydırıcıyı sürüklerken dock'un altından kaçması olmaz.
+  const menuBusy = presetMenuOpen || fovOpen || cutOpen;
+  useEffect(() => {
+    if (isNarrow && dockOpen && !menuBusy) bump();
+    else clearHide();
+    return clearHide;
+  }, [isNarrow, dockOpen, menuBusy, bump, clearHide]);
+
+  // Kapalıyken: İKİ ayrı yuvarlak düğme — Katmanlar ve Araçlar. Katmanlar en
+  // sık kullanılan kontrol; dock'u açıp içinden bulmak yerine doğrudan erişilir.
+  if (isNarrow && !dockOpen) {
+    return (
+      <View
+        pointerEvents="box-none"
+        style={{ position: 'absolute', top: 14, end: 14, gap: 8, zIndex: 15 } as any}
+      >
+        {onToggleLayers && (
+          <RoundButton
+            Icon={Layers}
+            label={layersOpen ? autoT('Katmanları gizle') : autoT('Katmanlar')}
+            active={!!layersOpen}
+            onPress={onToggleLayers}
+            D={D}
+          />
+        )}
+        {/* Kalem dar ekranda da tek dokunuşta: hekimin ana eylemi */}
+        {onTogglePen && (
+          <RoundButton
+            Icon={PenLine}
+            label={penMode ? autoT('Kalemi kapat') : autoT('Tarama üzerine not')}
+            active={!!penMode}
+            onPress={onTogglePen}
+            D={D}
+          />
+        )}
+        <RoundButton
+          Icon={SlidersHorizontal}
+          label={autoT('Araçları göster')}
+          active={false}
+          onPress={() => setDockOpen(true)}
+          D={D}
+        />
+      </View>
+    );
+  }
 
   // Tool tanım listesi — gruplar arası ufak boşluk için "groupGap" işareti.
   type Item =
@@ -127,6 +208,15 @@ export function ViewerToolbar({
     },
     { kind: 'gap' },
     // ANALYSIS
+    ...(onTogglePen ? [{
+      kind: 'btn' as const,
+      icon: PenLine,
+      label: penMode
+        ? autoT('Kalemi kapat')
+        : `${autoT('Tarama üzerine not')}${penCount ? ` (${penCount})` : ''}`,
+      active: !!penMode,
+      onPress: onTogglePen!,
+    }] : []),
     ...(onToggleMeasure ? [{
       kind: 'btn' as const,
       icon: Ruler,
@@ -201,6 +291,19 @@ export function ViewerToolbar({
         shadowOpacity: 0.22, shadowRadius: 24, shadowOffset: { width: 0, height: 12 },
         zIndex: 15,
       } as any}>
+        {/* Dar ekran: dock'u elle kapat (otomatik gizlenmeyi beklemeden) */}
+        {isNarrow && (
+          <>
+            <DockButton
+              Icon={ChevronUp}
+              label={autoT('Araçları gizle')}
+              active={false}
+              onPress={() => { closeMenus(); setDockOpen(false); }}
+              D={D}
+            />
+            <View style={{ height: 6 }} />
+          </>
+        )}
         {items.map((it, idx) => {
           if (it.kind === 'gap') return <View key={`g${idx}`} style={{ height: 10 }} />;
           return (
@@ -209,7 +312,7 @@ export function ViewerToolbar({
               Icon={it.icon}
               label={it.label}
               active={!!it.active}
-              onPress={it.onPress}
+              onPress={() => { bump(); it.onPress(); }}
               D={D}
             />
           );
@@ -311,6 +414,31 @@ export function ViewerToolbar({
         </PopCard>
       )}
     </>
+  );
+}
+
+/* ──────────────────── RoundButton (dar ekran, dock kapalı) ────────────────
+   Dock'un kapsül gövdesi olmadan tek başına duran 44pt düğme: dokunma hedefi
+   tam, model üstündeki iz en az. */
+function RoundButton({ Icon, label, active, onPress, D }: {
+  Icon: any; label: string; active: boolean; onPress: () => void; D: DockColors;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityLabel={label}
+      hitSlop={8}
+      style={{
+        width: 44, height: 44, borderRadius: 22,
+        backgroundColor: active ? D.activeBg : D.dockBg,
+        alignItems: 'center', justifyContent: 'center',
+        shadowColor: '#000',
+        shadowOpacity: 0.22, shadowRadius: 18, shadowOffset: { width: 0, height: 8 },
+        ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+      } as any}
+    >
+      <Icon size={18} color={active ? D.activeFg : D.dockFg} strokeWidth={2} />
+    </Pressable>
   );
 }
 

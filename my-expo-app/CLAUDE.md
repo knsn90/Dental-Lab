@@ -72,6 +72,132 @@ Desteklenen diller: **tr** (kaynak) · **en** · **de** · **fa**
 **Kontrol:** değişiklikten sonra üç sözlüğün de aynı anahtarları içerdiğini
 doğrula. Eksik dil bırakma.
 
+## 🌙 Koyu Tema Kuralı (ZORUNLU)
+
+**Yeni bir özellik, sayfa, ekran, kart, modal veya bileşen eklenirken KOYU TEMA
+AYNI ANDA yapılır.** Tıpkı çok dillilik gibi: "sonra dark ekleriz" diye
+bırakılmaz. Bırakılan her yüzey koyu modda beyaz patlar / metin görünmez olur ve
+kullanıcı ekranı açana kadar fark edilmez. **Koyu-tema-farkında olmayan yeni UI
+kodu tamamlanmış sayılmaz.**
+
+Kural, çok dillilikle **eş güçtedir**: her yeni `<Text>`/`<View>`/yüzey/metin,
+eklendiği anda hem açık hem koyu temada doğru görünmelidir.
+
+**Toggle altyapısı (hazır, değiştirme):** `useThemeModeStore` (light/dark/system,
+kalıcı) · `resolvedDark` = etkin dark. `app/_layout.tsx` `resolvedDark`'ta `<html>`'e
+`.dark` sınıfı + `color-scheme` + kök zemin + Stack `contentStyle` ekler; NativeWind
+`colorScheme.set()` ile `dark:` sınıfları toggle'a bağlı.
+
+### İki kanal (bir yüzeyi koyu-farkında yapmanın yolları)
+
+1. **className (Tailwind) → `dark:` varyant ekle.**
+   ```tsx
+   <View className="bg-white dark:bg-[#1B1916] border border-black/[0.06] dark:border-white/10">
+     <Text className="text-slate-900 dark:text-[#F7F2E9]">…</Text>
+   ```
+2. **inline style → `useMobileTokens()` (otomatik flip).**
+   ```tsx
+   const T = useMobileTokens();
+   const isDark = useThemeModeStore(s => s.resolvedDark);
+   <View style={{ backgroundColor: T.card, borderColor: T.hairline }}>
+     <Text style={{ color: T.ink }}>…</Text>   {/* T.ink2 / T.ink3 ikincil/meta */}
+   ```
+   Her değişiklik ya **token** (light'ta ~orijinal) ya da **`isDark ? koyu : açık`**.
+   Panel accent'i `usePanelTheme()`, status rozetleri `useStatusTokens()` verir.
+
+**Koyu palet (`MOBILE_TOKENS_DARK`):** zemin `#0E0E0E` · kart `#1B1916` · sub-card
+`#141312` · ink `#F7F2E9` · ink2/3 kısık · hairline beyaz-alfa. Değiştirme; token kullan.
+
+### Hazır token katmanı — `useInkUI()` (core/theme/inkScale.ts)
+
+`DS.ink[…]` kullanan (veya modül seviyesinde beyaz stil sabiti olan) ekranlar için
+tema-farkında set. **Açık temadaki değerler birebir `DS.ink`** → light hiç değişmez.
+
+```tsx
+const U = useInkUI();
+<View style={U.cardSolid}><Text style={{ color: U.ink[900] }}>…</Text></View>
+```
+
+Verdikleri: `ink[900…50]` · `surface` · `surfaceSoft` · `hairline` · `hairlineSoft` ·
+`fieldBorder` · `chipNeutral` · `rowHover` · `segActive` · `scrim` · `chipTones` ·
+`plainBtn` · `onDarkPill(+Muted)` ve hazır yüzeyler `cardSolid / tableCard /
+sectionCard / inputStyle / colHeader / modalOverlay / modalCard / modalHeaderRow /
+modalTitle / modalCloseBtn`. (Stok hub'ı bunu `useStockUI()` ile sarar.)
+
+### 🔘 BEYAZ BUTON KURALI (ZORUNLU)
+
+Açık temada `#FFFFFF` zemin + ince kenarlıklı **her buton/kapsül** koyu temada
+`U.plainBtn` kullanır. **Kart yüzeyini (`surface`) buton zemini yapma** — buton
+çoğu zaman kartın ÜSTÜNDE durur, aynı ton olunca kaybolur; bir kademe KOYU zemin
++ hairline kenarlık + krem metin okunur ve dokunulabilir durur.
+
+```tsx
+<Pressable style={{ backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: U.plainBtn.border }}>
+  <Text style={{ color: U.plainBtn.fg }}>Belge Ekle</Text>   {/* ikincil: fgMuted */}
+```
+Koyu değerler: zemin `#141312` · hover `rgba(255,255,255,0.06)` · kenarlık
+`rgba(255,255,255,0.10)` · metin `#F7F2E9`.
+
+**İkiz tuzak:** zemini `U.ink[900]` (koyu-pill) olan butonun metni/ikonu
+`'#FFFFFF'` KALAMAZ — `ink[900]` koyu temada KREM olur, beyaz metin kaybolur.
+Bu butonlarda içerik `U.onDarkPill` (ikincil: `U.onDarkPillMuted`).
+
+### 👤 AVATAR & ROL/DURUM ETİKETİ KURALI (ZORUNLU)
+
+Pastel zemin + koyu metinli rozetler (`#DBEAFE`/`#F1F5F9` + `#0F172A` gibi) koyu
+ekranda **beyaz leke** gibi patlar ve metni okunmaz. Koyu temada: **yarı saydam
+accent zemin + AÇIK accent metin.** Avatar karesi de aynı tondan beslenir.
+
+- Personel rolleri: `roleTone(role, isDark)` (modules/employees/api.ts) — açık
+  `ROLE_COLORS`, koyu `ROLE_COLORS_DARK`. `ROLE_COLORS[…]` doğrudan KULLANMA.
+- Genel durum rozetleri: `U.chipTones` (success/warning/danger/info/neutral).
+- Yeni bir rozet paleti eklerken iki varyantı BİRLİKTE yaz (koyuda alfa 0.22-0.30
+  zemin + 300-400 tonu metin).
+
+### 🌊 HERO / ACCENT YÜZEY KURALI
+
+**Koyu tema lacivert paleti (`HERO_NAVY`, core/ui/HeroGlow.tsx):**
+`from #001F3F` (en derin, gradyan başı/zemin) · `to #002A5C` (orta ton, düz zemin)
+· `light #004B87` (açık ton — gradyan bitişi, hover, vurgu). Koyu temada mavi
+gerektiren her yeni yüzeyde bu üçlüyü kullan; eski kobalt (`#4771AB`/`#2563EB`)
+koyu zeminde parlak kalıyor.
+
+Accent zeminli hero kartları koyu temada `useHeroSurface(accent)` ile kurulur
+(`...heroBg` olarak yayılır): mavi accent'lerde **lacivert gradyan
+`#001F3F → #002A5C → #004B87`**, diğer panellerde accent'in derin tonu
+(safran/zümrüt kimliği korunur). Sidebar'daki "Yeni sipariş" ve daralt butonu da aynı yüzeyi
+kullanır. Admin Özet'teki "Hızlı işlem" kartı koyu temada siyah→lacivert gradyan
++ neon mavi (`rgba(56,189,248,…)`) kenar/glow ile çizilir. Hero içindeki beyaz
+dekoratif daireler `<HeroGlow />` ile çizilir —
+koyu temada blur ile yayılır, yavaşça nefes alır, `prefers-reduced-motion`'da durur.
+
+### DEĞİŞTİRME (koyu modda BIRAK — yanlış çevirme)
+- Status renkleri (yeşil/kırmızı/amber/mavi tonları), marka renkleri (WhatsApp vb.),
+  panel accent'i (safran/zümrüt/kobalt…) ve accent bg üzerindeki **beyaz metin/ikon**.
+- Yazdırma/İş-Kağıdı/PDF şablonları (kağıt = hep açık) · QR kare zemini (beyaz zorunlu)
+  · bilerek-koyu hero/bant bölümleri.
+- Koyu accent metin/ikon KOYU YÜZEYDE okunmuyorsa aç: `isDark ? '#93C5FD' : '<accent>'`.
+
+### ⚠️ Tuzaklar (bu projede gerçekten yaşandı — tekrarlama)
+1. **Her (alt)bileşen KENDİ hook'unu almalı** (`const T`/`const isDark`), koşulsuz, JSX'ten
+   önce, ilk ifade olarak. Prop ile geçirme.
+2. **Modül-seviye stil sabiti hook kullanamaz** (`const CARD = { backgroundColor:'#FFFFFF' }`
+   gibi). Bunu `isDark ? T.card` yapMAYA çalışma → derlenmez. Ya **kullanım yerinde override**
+   et (`{...CARD, ...(isDark ? {backgroundColor:T.card, borderColor:T.hairline} : {})}`) ya da
+   statik açık bırak (modalın tamamı tutarlı açık kalır).
+3. **Çift hook = crash.** Aynı bileşene iki kez `const T = useMobileTokens()` girme (redeclare →
+   "Internal React error"). Kısmen çevrilmiş dosyada önce mevcut hook'u kontrol et.
+4. **Yüzey koyu ama metin koyu kalırsa görünmez.** Bir kartın bg'sini koyu yaptıysan
+   içindeki TÜM metni de (`DS.ink[900]`/`#0A0A0A` → `isDark ? T.ink`) çevir. Tersi de geçerli:
+   yüzey açık kalıyorsa metin de açık kalmalı.
+5. **Toplu perl büyük dosyalarda risklidir** (yukarıdaki 4 tuzağı tetikler). Klinikler/HR
+   gibi çok-bileşenli ekranları **bileşen-bileşen, `tsc` ile doğrulayarak** çevir; kör toplu
+   dönüşüm + çok-ajanlı süpürme dosya bozar.
+
+**Doğrulama:** değişiklikten sonra `tsc --noEmit` **0 hata** + ekranı koyu modda gözden
+geçir (görünmez metin / beyaz patlama yok). Açık tema **bit-bit korunmalı** — koyu davranış
+yalnızca EKLENİR, açık değer değişmez.
+
 ## 🚀 Deploy Kuralı (ZORUNLU)
 
 **Kullanıcı açıkça "deploy" (veya "deploy et / yayınla / online güncelle")
@@ -132,6 +258,13 @@ import { PAGE_PADDING, PAGE_BLEED } from 'core/ui/pageMetrics';
 
 `PAGE_PADDING 16` · `PAGE_BLEED -16` · `CARD_GAP 12` · `CARD_PADDING 18`
 
+**Platform-genel kural:** kartların sayfanın sağından/solundan mesafesi
+**HER ZAMAN 16px** — iOS, Android ve webapp'in TAMAMINDA aynı sabit
+(`PAGE_PADDING`), çıplak `14`/`20` gibi komşu değerler YASAK. Kartlar
+birbirinden `CARD_GAP` (12px) mesafede kalır — bu değer AYRI bir sabittir,
+16 ile karıştırılmaz. (2026-09-08: `OrderDetailMobileHandoff.tsx`'te 10
+yerde kenar boşluğu yanlışlıkla 14px yazılmıştı — düzeltildi, örnek olay.)
+
 **İki tuzak — ikisi de bu projede gerçekten yaşandı:**
 
 1. **Komşu dosyadan kopyalama.** Değer her ekranda elle yazıldığı için 17 farklı
@@ -142,6 +275,24 @@ import { PAGE_PADDING, PAGE_BLEED } from 'core/ui/pageMetrics';
    **ekleme**; `useContext(HubContext)` ile sıfırla.
 
 Ayrıntı ve gerçek vaka: `docs/DESIGN_LANGUAGE.md` §3.
+
+### 1c. Pill / sekme çubuğu ölçüsü (ZORUNLU)
+
+**Seçili pill, seçili olmayanlardan belirgin biçimde GENİŞ olur.** Eşit dolgulu
+pill'lerde uzun etiketler (ör. "Tedarikçiler") sıkışıyor ve seçili olan öne
+çıkmıyor. Aktif duruma yer vermek hem hiyerarşi hem okunabilirlik kazandırır.
+
+| Bar tipi | Pasif | Aktif |
+|---|---|---|
+| Kaydırmalı şerit (içerik genişliği) | `paddingHorizontal: 12` | `paddingHorizontal: 18` |
+| Tam genişlik / eşit bölüşüm (`flex`) | `flex: 1`, `paddingHorizontal: 8` | `flex: 1.55`, `paddingHorizontal: 12` |
+
+Her iki tipte de `paddingVertical: 8` (dokunma yüksekliği). Değerleri komşu
+dosyadan kopyalama — buradan al.
+
+**İstisna:** `SlideTabBar` — kayan cursor'ı pill'leri `onLayout` ile ölçtüğü
+için aktif pill'in genişliğini değiştirmek cursor'ı zıplatır. O bileşende
+dolgu tek tiptir (`md` 22 / `sm` 13), değiştirme.
 
 ### 2. Canonical bileşenleri kullan
 
@@ -339,7 +490,7 @@ görsel olarak inceleyebilirsin. Yeni komponent eklediğinde buraya örneğini e
 ekranlardaki her ikon bu stilde olmalı.
 
 - ✅ **Kullanılacak**: tek renk, ince stroke, dolgusuz / hafif dolgulu line ikonlar
-  (Lucide, Feather, Tabler Icons, Heroicons outline)
+  (HugeIcons stroke — proje kaynağı)
 - ❌ **Kullanılmayacak**:
   - Emoji (🔔, ⚗, ↗, ✓ vb.) — production veya pattern showcase'inde **yasak**
   - Solid / filled ikon (Material filled, FontAwesome solid)
@@ -347,11 +498,34 @@ ekranlardaki her ikon bu stilde olmalı.
   - Skeuomorphic veya gradient'li ikonlar
   - Hand-drawn SVG path'leri (önceki AppIcon glyph'leri yerine library tercih edilecek)
 
-Tek tip kütüphane: **Lucide React Native** (proje standardı). Boyut, stroke-width,
-renk panel accent'inden gelir.
+Tek tip kütüphane: **HugeIcons**, ve TEK giriş kapısı `core/ui/icons`. Boyut,
+stroke-width, renk panel accent'inden gelir.
+
+**`lucide-react-native`'den import ETME.** Çağrı yerleri Lucide ADLARINI kullanmaya
+devam eder (`<Bell size={16} …/>`); bu adlar `core/ui/icons.tsx` adaptöründe
+HugeIcons ikonlarına bağlıdır. Yeni bir ikon gerekiyorsa adaptöre ekle:
 
 ```tsx
-import { Bell, Printer, Check, ArrowUpRight } from 'lucide-react-native';
+// core/ui/icons.tsx
+import CalendarIcon from '@hugeicons/core-free-icons/Calendar01Icon';
+export const Calendar = make(CalendarIcon, 'Calendar');
+```
+
+İkonlar TEK TEK alt yoldan import edilir; paketin index'i 7 MB ve Metro ağaç
+budamıyor — oradan almak bundle'a 6 000 ikonun hepsini sokar. Elle çizilmiş
+dental ikonlar (Tooth/Crown/Implant…) `core/ui/dentalIcons.tsx`'te kalır.
+
+**İstisna — 3D ürün illüstrasyonu (İKON DEĞİL):** dashboard kartlarına gömülen
+büyük 3D render'lar (`assets/images/kpi-3d-*.png`) bu yasağın dışındadır. Bunlar
+bir eylemi temsil eden ikon değil, kartın görsel kimliğidir; kullanıcı tarafından
+onaylanmış tasarım yönüdür (admin mobil: Onay bekleyen · Aktif sipariş · Yeni iş
+emri). Kural: **şeffaf PNG**, kartın SONUNA yaslı, kart sınırını 6-20px AŞAR
+(3D derinlik hissi → kart `overflow:'hidden'` kalır, görsel kardeş katman olarak
+çizilir), arkasında yumuşak accent ışıma (`RadialGlow`), her iki temada AYNI
+görsel. Arayüz eylemleri (buton, sekme, satır ikonu) hâlâ yalnız HugeIcons line.
+
+```tsx
+import { Bell, Printer, Check, ArrowUpRight } from 'core/ui/icons';   // göreli yol
 <Bell size={16} color={DS.lab.accent} strokeWidth={1.6} />
 ```
 
@@ -500,7 +674,7 @@ Canonical `X`-suffix bileşenleri kullan; aşağıdaki kalıplar showcase'de tan
 
 ## 8. İkonlar
 
-Yalnız **Lucide React Native**, flat 2D line/stroke, `strokeWidth` 1.6–2.2,
+Yalnız **HugeIcons** (`core/ui/icons` üzerinden), flat 2D line/stroke, `strokeWidth` 1.6–2.2,
 renk panel accent'inden veya ink skaladan. Emoji/solid/3D/gradient ikon YASAK
 (detay: §İkon Kuralı).
 

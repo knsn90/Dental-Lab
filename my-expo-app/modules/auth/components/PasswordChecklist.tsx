@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import { View, Text } from 'react-native';
-import { Check, Circle } from 'lucide-react-native';
+import { Check, Circle } from '../../../core/ui/icons';
 import { AUTH, AUTH_FONT } from './AuthShell';
 
 interface Props {

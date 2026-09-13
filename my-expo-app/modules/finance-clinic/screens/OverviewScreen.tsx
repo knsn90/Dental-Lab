@@ -13,11 +13,13 @@ import Svg, { Defs, LinearGradient, Stop, Path, Circle } from 'react-native-svg'
 import {
   Wallet, AlertCircle, Clock, CheckCircle2, FileText, ArrowRight, ArrowLeft, CreditCard,
   BarChart3, PieChart, TrendingUp,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 
 import { DS } from '../../../core/theme/dsTokens';
 import { isRTL } from '../../../core/i18n';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import {
   fetchOverview, fetchOpenInvoices, fetchOverviewCharts,
   type FinanceOverview, type ClinicInvoiceRow, type OverviewCharts,
@@ -39,6 +41,8 @@ type Props = {
 
 export function OverviewScreen({ clinicId, onJump }: Props) {
   const TH = usePanelTheme();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   useRates();
   const [data, setData]     = useState<FinanceOverview | null>(null);
   const [items, setItems]   = useState<ClinicInvoiceRow[]>([]);
@@ -167,7 +171,7 @@ export function OverviewScreen({ clinicId, onJump }: Props) {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: TH.bgSoft }}>
                   <Text style={{ fontSize: 13, fontWeight: '800', color: TH.primary }}>{sym}</Text>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: DS.ink[700], letterSpacing: 0.3 }}>{cc.currency}</Text>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: isDark ? (T.ink2 as string) : DS.ink[700], letterSpacing: 0.3 }}>{cc.currency}</Text>
                 </View>
               </View>
             )}
@@ -183,8 +187,8 @@ export function OverviewScreen({ clinicId, onJump }: Props) {
                       <BarChart3 size={14} color={TH.primary} strokeWidth={2} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 11, color: DS.ink[500], fontWeight: '500' }}>Tahsilat oranı</Text>
-                      <Text style={{ ...DISPLAY, fontSize: 20, color: DS.ink[900], letterSpacing: -0.4 }}>%{rate}</Text>
+                      <Text style={{ fontSize: 11, color: isDark ? (T.ink3 as string) : DS.ink[500], fontWeight: '500' }}>Tahsilat oranı</Text>
+                      <Text style={{ ...DISPLAY, fontSize: 20, color: isDark ? T.ink : DS.ink[900], letterSpacing: -0.4 }}>%{rate}</Text>
                     </View>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                       <TrendingUp size={11} color={rate >= 70 ? '#059669' : '#D97706'} />
@@ -208,8 +212,8 @@ export function OverviewScreen({ clinicId, onJump }: Props) {
                       <AlertCircle size={14} color="#9C2E2E" strokeWidth={2} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 11, color: DS.ink[500], fontWeight: '500' }}>Riskli (60+ gün)</Text>
-                      <Text style={{ ...DISPLAY, fontSize: 18, color: DS.ink[900], letterSpacing: -0.3 }}>
+                      <Text style={{ fontSize: 11, color: isDark ? (T.ink3 as string) : DS.ink[500], fontWeight: '500' }}>Riskli (60+ gün)</Text>
+                      <Text style={{ ...DISPLAY, fontSize: 18, color: isDark ? T.ink : DS.ink[900], letterSpacing: -0.3 }}>
                         {formatMoney(risk, (cc.currency as Currency), { fractionDigits: 0 })}
                       </Text>
                     </View>
@@ -225,7 +229,7 @@ export function OverviewScreen({ clinicId, onJump }: Props) {
                     <View style={{ width: 28, height: 28, borderRadius: 9, backgroundColor: TH.bgSoft, alignItems: 'center', justifyContent: 'center' }}>
                       <PieChart size={14} color={TH.primary} strokeWidth={2} />
                     </View>
-                    <Text style={{ flex: 1, fontSize: 12, color: DS.ink[700], fontWeight: '500' }}>Yöntem analizi</Text>
+                    <Text style={{ flex: 1, fontSize: 12, color: isDark ? (T.ink2 as string) : DS.ink[700], fontWeight: '500' }}>Yöntem analizi</Text>
                   </View>
                   <MethodDonut slices={cc.payment_methods} size={140} currency={cc.currency} />
                 </Card>
@@ -251,19 +255,19 @@ export function OverviewScreen({ clinicId, onJump }: Props) {
                   flexDirection: 'row', alignItems: 'center', gap: 12,
                   paddingHorizontal: 16, paddingVertical: 14,
                   borderBottomWidth: i < overdueItems.length - 1 ? 1 : 0,
-                  borderBottomColor: DS.ink[100],
+                  borderBottomColor: isDark ? T.hairline : DS.ink[100],
                 }}
               >
                 <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(217,75,75,0.10)', alignItems: 'center', justifyContent: 'center' }}>
                   <AlertCircle size={16} color="#9C2E2E" strokeWidth={2} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: isDark ? T.ink : DS.ink[900] }} numberOfLines={1}>
                     Fatura {inv.invoice_no ?? '—'}
                   </Text>
                   {/* Hekim isteği: hangi hastanın faturası olduğu özet listelerinde de görünsün. */}
                   {!!inv.patient_name && (
-                    <Text style={{ fontSize: 11.5, color: DS.ink[700], marginTop: 2 }} numberOfLines={1}>
+                    <Text style={{ fontSize: 11.5, color: isDark ? (T.ink2 as string) : DS.ink[700], marginTop: 2 }} numberOfLines={1}>
                       {[inv.patient_name, inv.order_no].filter(Boolean).join(' · ')}
                     </Text>
                   )}
@@ -297,7 +301,7 @@ export function OverviewScreen({ clinicId, onJump }: Props) {
                   flexDirection: 'row', alignItems: 'center', gap: 12,
                   paddingHorizontal: 16, paddingVertical: 14,
                   borderBottomWidth: i < upcomingItems.length - 1 ? 1 : 0,
-                  borderBottomColor: DS.ink[100],
+                  borderBottomColor: isDark ? T.hairline : DS.ink[100],
                   opacity: pressed ? 0.85 : 1,
                 })}
               >
@@ -305,23 +309,23 @@ export function OverviewScreen({ clinicId, onJump }: Props) {
                   <FileText size={16} color={TH.primary} strokeWidth={2} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: isDark ? T.ink : DS.ink[900] }} numberOfLines={1}>
                     Fatura {inv.invoice_no ?? '—'}
                   </Text>
                   {/* Hekim isteği: hangi hastanın faturası olduğu özet listelerinde de görünsün. */}
                   {!!inv.patient_name && (
-                    <Text style={{ fontSize: 11.5, color: DS.ink[700], marginTop: 2 }} numberOfLines={1}>
+                    <Text style={{ fontSize: 11.5, color: isDark ? (T.ink2 as string) : DS.ink[700], marginTop: 2 }} numberOfLines={1}>
                       {[inv.patient_name, inv.order_no].filter(Boolean).join(' · ')}
                     </Text>
                   )}
-                  <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 2 }}>
+                  <Text style={{ fontSize: 11, color: isDark ? (T.ink3 as string) : DS.ink[500], marginTop: 2 }}>
                     Vade {fmtDate(inv.due_date)} · {Math.abs(inv.days_overdue)} gün kaldı
                   </Text>
                 </View>
-                <Text style={{ ...DISPLAY, fontSize: 18, color: DS.ink[900], letterSpacing: -0.5 }}>
+                <Text style={{ ...DISPLAY, fontSize: 18, color: isDark ? T.ink : DS.ink[900], letterSpacing: -0.5 }}>
                   {Mnat(inv.remaining, inv.currency)}
                 </Text>
-                {isRTL() ? <ArrowLeft size={14} color={DS.ink[400]} /> : <ArrowRight size={14} color={DS.ink[400]} />}
+                {isRTL() ? <ArrowLeft size={14} color={isDark ? (T.ink3 as string) : DS.ink[400]} /> : <ArrowRight size={14} color={isDark ? (T.ink3 as string) : DS.ink[400]} />}
               </Pressable>
             ))}
           </Card>
@@ -349,12 +353,14 @@ function PremiumHero({
   onPay: () => void; onStatement: () => void;
 }) {
   const TH = usePanelTheme();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const hasDebt = totalDue > 0;
 
   return (
     <View style={{
       borderRadius: 28, overflow: 'hidden',
-      backgroundColor: TH.bg, padding: 14,
+      backgroundColor: isDark ? T.bg : TH.bg, padding: 14,
       marginBottom: 4,
     }}>
       {/* Outer container shows panel theme; inner glass card sits on top */}
@@ -378,28 +384,30 @@ function PremiumHero({
         </Svg>
 
         <View style={{
-          backgroundColor: 'rgba(255,255,255,0.62)',
+          backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.62)',
           borderRadius: 22, padding: 22,
-          borderWidth: 1, borderColor: 'rgba(255,255,255,0.7)',
+          borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(255,255,255,0.7)',
           gap: 18,
         }}>
           {/* Top row: kicker + status chip */}
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 1.1, textTransform: 'uppercase', color: DS.ink[500] }}>
+            <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 1.1, textTransform: 'uppercase', color: isDark ? (T.ink3 as string) : DS.ink[500] }}>
               Mali İşlemler · Anlık Durum
             </Text>
             <View style={{
               flexDirection: 'row', alignItems: 'center', gap: 5,
               paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999,
-              backgroundColor: hasDebt && overdue > 0 ? 'rgba(217,75,75,0.10)' : 'rgba(5,150,105,0.10)',
+              backgroundColor: hasDebt && overdue > 0
+                ? (isDark ? 'rgba(217,75,75,0.22)' : 'rgba(217,75,75,0.10)')
+                : (isDark ? 'rgba(5,150,105,0.24)' : 'rgba(5,150,105,0.10)'),
             }}>
               <View style={{
                 width: 6, height: 6, borderRadius: 3,
-                backgroundColor: hasDebt && overdue > 0 ? '#9C2E2E' : '#059669',
+                backgroundColor: hasDebt && overdue > 0 ? (isDark ? '#F3A0A0' : '#9C2E2E') : (isDark ? '#6EE7B7' : '#059669'),
               }} />
               <Text style={{
                 fontSize: 10, fontWeight: '700', letterSpacing: 0.4,
-                color: hasDebt && overdue > 0 ? '#9C2E2E' : '#059669',
+                color: hasDebt && overdue > 0 ? (isDark ? '#F3A0A0' : '#9C2E2E') : (isDark ? '#6EE7B7' : '#059669'),
               }}>
                 {hasDebt && overdue > 0 ? 'GECİKEN ÖDEME' : hasDebt ? 'GÜNCEL' : 'TEMİZ'}
               </Text>
@@ -409,12 +417,12 @@ function PremiumHero({
           {/* Main: big number + side stats */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 20 }}>
             <View style={{ flex: 1, minWidth: 260 }}>
-              <Text style={{ fontSize: 11, color: DS.ink[500], fontWeight: '500', marginBottom: 4 }}>
+              <Text style={{ fontSize: 11, color: isDark ? (T.ink3 as string) : DS.ink[500], fontWeight: '500', marginBottom: 4 }}>
                 Toplam Borç
               </Text>
               <MoneyMultiX slices={dueCcy} variant="cards" size="lg" accentColor={TH.primary} emptyText="—" />
               <View style={{ height: 4 }} />
-              <Text style={{ fontSize: 13, color: DS.ink[500], marginTop: 6, lineHeight: 19, maxWidth: 520 }}>
+              <Text style={{ fontSize: 13, color: isDark ? (T.ink3 as string) : DS.ink[500], marginTop: 6, lineHeight: 19, maxWidth: 520 }}>
                 {totalDue === 0
                   ? 'Şu anda ödenmemiş fatura yok. Tüm hesaplar güncel.'
                   : `${openCount} açık fatura · ${overdueCount} vadesi geçen · ${upcomingCount} yaklaşan vade`}
@@ -424,13 +432,13 @@ function PremiumHero({
             <View style={{ flexDirection: 'row', gap: 22 }}>
               <View style={{ alignItems: 'flex-end' }}>
                 <MoneyMultiX slices={overdueCcy} variant="inline" />
-                <Text style={{ fontSize: 10, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, marginTop: 2, fontWeight: '600' }}>
+                <Text style={{ fontSize: 10, color: isDark ? (T.ink3 as string) : DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, marginTop: 2, fontWeight: '600' }}>
                   Geciken
                 </Text>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
                 <MoneyMultiX slices={paidCcy} variant="inline" />
-                <Text style={{ fontSize: 10, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, marginTop: 2, fontWeight: '600' }}>
+                <Text style={{ fontSize: 10, color: isDark ? (T.ink3 as string) : DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, marginTop: 2, fontWeight: '600' }}>
                   Bu Ay Öden.
                 </Text>
               </View>
@@ -450,7 +458,7 @@ function PremiumHero({
                   const hI = Math.max(2, (m.invoiced / max) * 32);
                   return (
                     <View key={i} style={{ flex: 1, flexDirection: 'row', alignItems: 'flex-end', gap: 2 }}>
-                      <View style={{ flex: 1, height: hI, backgroundColor: 'rgba(15,23,42,0.18)', borderRadius: 2 }} />
+                      <View style={{ flex: 1, height: hI, backgroundColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(15,23,42,0.18)', borderRadius: 2 }} />
                       <View style={{ flex: 1, height: hP, backgroundColor: TH.primary, borderRadius: 2 }} />
                     </View>
                   );
@@ -466,7 +474,7 @@ function PremiumHero({
                 Online Ödeme Yap
               </PillButton>
             )}
-            <PillButton variant="light" leftIcon={<FileText size={13} color={DS.ink[800]} />} onPress={onStatement}>
+            <PillButton variant="light" leftIcon={<FileText size={13} color={isDark ? T.ink : DS.ink[800]} />} onPress={onStatement}>
               Cari Ekstre
             </PillButton>
           </View>

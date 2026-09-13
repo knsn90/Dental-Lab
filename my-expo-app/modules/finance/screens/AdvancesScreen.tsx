@@ -11,7 +11,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, Pressable, ScrollView, TextInput, Modal, KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { Banknote, Plus, Check, X, Trash2, CheckCircle2, Users, Clock, Wallet } from 'lucide-react-native';
+import { Banknote, Plus, Check, X, Trash2, CheckCircle2, Users, Clock, Wallet } from '../../../core/ui/icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../../core/api/supabase';
 import { toast } from '../../../core/ui/Toast';

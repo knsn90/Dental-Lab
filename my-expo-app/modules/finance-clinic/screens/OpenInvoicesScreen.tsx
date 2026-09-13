@@ -3,7 +3,7 @@
  */
 
 import React from 'react';
-import { Clock } from 'lucide-react-native';
+import { Clock } from '../../../core/ui/icons';
 import { InvoiceListBase } from './_InvoiceListBase';
 
 export function OpenInvoicesScreen({ clinicId }: { clinicId: string }) {

@@ -14,18 +14,20 @@ import {
 } from 'react-native';
 import {
   X, CheckCircle2, AlertCircle, Send, Truck, PackageCheck, ArrowRight, ArrowLeft,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 
 import { DS } from '../../../core/theme/dsTokens';
 import { isRTL } from '../../../core/i18n';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { DatePicker } from '../../../core/ui/DatePicker';
 import {
   managerForward, managerReject, adminApprove, adminReject,
   markOrdered, markReceived,
   type MaterialRequestRow, type AdminApproveItem,
 } from '../api';
-import { DISPLAY, TRY, PillButton } from './atoms';
+import { DISPLAY, TRY, PillButton, openFg } from './atoms';
 
 export type ApprovalAction =
   | 'manager_forward'
@@ -61,6 +63,9 @@ const ACTION_CFG: Record<ApprovalAction, {
 
 export function ApprovalActionsModal({ visible, action, request, onClose, onDone }: Props) {
   const TH = usePanelTheme();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
+  const dangerFg = openFg('#9C2E2E', isDark);
 
   // State
   const [note, setNote]         = useState('');
@@ -146,35 +151,35 @@ export function ApprovalActionsModal({ visible, action, request, onClose, onDone
           onPress={(e) => e.stopPropagation()}
           style={{
             width: '100%', maxWidth: 560, maxHeight: '92%',
-            backgroundColor: '#FFF', borderRadius: 22, overflow: 'hidden',
+            backgroundColor: isDark ? T.card : '#FFF', borderRadius: 22, overflow: 'hidden',
             ...(Platform.OS === 'web' ? { boxShadow: '0 24px 60px rgba(0,0,0,0.30)' } as any : { elevation: 24 }),
           }}
         >
           {/* Header */}
           <View style={{
             paddingHorizontal: 22, paddingTop: 20, paddingBottom: 16,
-            borderBottomWidth: 1, borderBottomColor: DS.ink[100],
+            borderBottomWidth: 1, borderBottomColor: T.hairline,
             flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12,
           }}>
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Icon size={11} color={cfg.destructive ? '#9C2E2E' : DS.ink[500]} />
+                <Icon size={11} color={cfg.destructive ? dangerFg : T.ink3} />
                 <Text style={{
                   fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase',
-                  color: cfg.destructive ? '#9C2E2E' : DS.ink[500],
+                  color: cfg.destructive ? dangerFg : T.ink3,
                 }}>
                   {cfg.eyebrow}
                 </Text>
               </View>
-              <Text style={{ ...DISPLAY, fontSize: 22, color: DS.ink[900], letterSpacing: -0.5, marginTop: 4 }}>
+              <Text style={{ ...DISPLAY, fontSize: 22, color: T.ink, letterSpacing: -0.5, marginTop: 4 }}>
                 {cfg.title}
               </Text>
-              <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 4 }} numberOfLines={1}>
+              <Text style={{ fontSize: 12, color: T.ink3, marginTop: 4 }} numberOfLines={1}>
                 {request.request_no} · {request.title}
               </Text>
             </View>
             <Pressable onPress={onClose} hitSlop={8} style={{ padding: 4 }}>
-              <X size={20} color={DS.ink[500]} />
+              <X size={20} color={T.ink3} />
             </Pressable>
           </View>
 
@@ -189,8 +194,8 @@ export function ApprovalActionsModal({ visible, action, request, onClose, onDone
                 backgroundColor: 'rgba(45,154,107,0.08)', borderRadius: 16,
                 borderWidth: 1, borderColor: 'rgba(45,154,107,0.25)',
               }}>
-                <CheckCircle2 size={36} color="#1F6B47" />
-                <Text style={{ ...DISPLAY, fontSize: 18, color: DS.ink[900], letterSpacing: -0.3 }}>
+                <CheckCircle2 size={36} color={openFg('#1F6B47', isDark)} />
+                <Text style={{ ...DISPLAY, fontSize: 18, color: T.ink, letterSpacing: -0.3 }}>
                   İşlem tamam
                 </Text>
               </View>
@@ -199,26 +204,26 @@ export function ApprovalActionsModal({ visible, action, request, onClose, onDone
                 {/* Action-specific body */}
                 {action === 'admin_approve' && request.items && (
                   <View style={{ gap: 8 }}>
-                    <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: DS.ink[500] }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: T.ink3 }}>
                       Kalemler ({request.items.length})
                     </Text>
                     {request.items.map(it => {
                       const ap = approveItems.find(a => a.id === it.id);
                       return (
                         <View key={it.id} style={{
-                          padding: 10, borderWidth: 1, borderColor: DS.ink[200], borderRadius: 10,
-                          backgroundColor: '#FFF', gap: 6,
+                          padding: 10, borderWidth: 1, borderColor: T.hairline, borderRadius: 10,
+                          backgroundColor: isDark ? T.cardSoft : '#FFF', gap: 6,
                         }}>
-                          <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+                          <Text style={{ fontSize: 12, fontWeight: '600', color: T.ink }} numberOfLines={1}>
                             {it.name}
                           </Text>
-                          <Text style={{ fontSize: 10, color: DS.ink[500] }}>
+                          <Text style={{ fontSize: 10, color: T.ink3 }}>
                             Talep edilen: {it.quantity} {it.unit}
                             {it.est_unit_cost != null ? `  ·  ${TRY(it.est_unit_cost)}/br tahmini` : ''}
                           </Text>
                           <View style={{ flexDirection: 'row', gap: 6 }}>
                             <View style={{ flex: 1 }}>
-                              <Text style={{ fontSize: 9, fontWeight: '600', color: DS.ink[500], marginBottom: 2 }}>
+                              <Text style={{ fontSize: 9, fontWeight: '600', color: T.ink3, marginBottom: 2 }}>
                                 ONAYLI MİKTAR
                               </Text>
                               <TextInput
@@ -228,15 +233,15 @@ export function ApprovalActionsModal({ visible, action, request, onClose, onDone
                                 ))}
                                 keyboardType="decimal-pad"
                                 style={{
-                                  borderWidth: 1, borderColor: DS.ink[200], borderRadius: 8,
+                                  borderWidth: 1, borderColor: T.hairline, borderRadius: 8,
                                   paddingHorizontal: 10, paddingVertical: 6,
-                                  fontSize: 13, color: DS.ink[900],
+                                  fontSize: 13, color: T.ink,
                                   outlineStyle: 'none' as any,
                                 }}
                               />
                             </View>
                             <View style={{ flex: 1 }}>
-                              <Text style={{ fontSize: 9, fontWeight: '600', color: DS.ink[500], marginBottom: 2 }}>
+                              <Text style={{ fontSize: 9, fontWeight: '600', color: T.ink3, marginBottom: 2 }}>
                                 GERÇEK ₺/BR
                               </Text>
                               <TextInput
@@ -245,12 +250,12 @@ export function ApprovalActionsModal({ visible, action, request, onClose, onDone
                                   x.id === it.id ? { ...x, actual_unit_cost: v.trim() ? Number(v.replace(',', '.')) || null : null } : x
                                 ))}
                                 placeholder="—"
-                                placeholderTextColor={DS.ink[300]}
+                                placeholderTextColor={isDark ? (T.ink3 as string) : DS.ink[300]}
                                 keyboardType="decimal-pad"
                                 style={{
-                                  borderWidth: 1, borderColor: DS.ink[200], borderRadius: 8,
+                                  borderWidth: 1, borderColor: T.hairline, borderRadius: 8,
                                   paddingHorizontal: 10, paddingVertical: 6,
-                                  fontSize: 13, color: DS.ink[900],
+                                  fontSize: 13, color: T.ink,
                                   outlineStyle: 'none' as any,
                                 }}
                               />
@@ -266,36 +271,36 @@ export function ApprovalActionsModal({ visible, action, request, onClose, onDone
                   <View style={{ gap: 10 }}>
                     <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
                       <View style={{ flex: 1, minWidth: 180, gap: 4 }}>
-                        <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: DS.ink[500] }}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: T.ink3 }}>
                           Sipariş Tarihi
                         </Text>
                         <DatePicker value={orderedAt} onChange={setOrderedAt} accent={TH.primary} compact maxDate={todayISO()} />
                       </View>
                       <View style={{ flex: 1, minWidth: 180, gap: 4 }}>
-                        <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: DS.ink[500] }}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: T.ink3 }}>
                           Tahmini Teslim
                         </Text>
                         <DatePicker value={expectedAt} onChange={(iso) => setExpectedAt(iso || null)} accent={TH.primary} compact minDate={orderedAt} />
                       </View>
                     </View>
                     <View style={{ gap: 4 }}>
-                      <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: DS.ink[500] }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: T.ink3 }}>
                         Toplam Tutar (opsiyonel)
                       </Text>
                       <View style={{
                         flexDirection: 'row', alignItems: 'center', gap: 4,
-                        borderWidth: 1, borderColor: DS.ink[200], borderRadius: 10, paddingHorizontal: 12,
-                        backgroundColor: '#FFF',
+                        borderWidth: 1, borderColor: T.hairline, borderRadius: 10, paddingHorizontal: 12,
+                        backgroundColor: isDark ? T.cardSoft : '#FFF',
                       }}>
-                        <Text style={{ fontSize: 14, color: DS.ink[400] }}>₺</Text>
+                        <Text style={{ fontSize: 14, color: T.ink3 }}>₺</Text>
                         <TextInput
                           value={totalCost}
                           onChangeText={setTotalCost}
                           keyboardType="decimal-pad"
                           placeholder="0,00"
-                          placeholderTextColor={DS.ink[300]}
+                          placeholderTextColor={isDark ? (T.ink3 as string) : DS.ink[300]}
                           style={{
-                            flex: 1, fontSize: 14, color: DS.ink[900], paddingVertical: 9,
+                            flex: 1, fontSize: 14, color: T.ink, paddingVertical: 9,
                             outlineStyle: 'none' as any,
                           }}
                         />
@@ -306,7 +311,7 @@ export function ApprovalActionsModal({ visible, action, request, onClose, onDone
 
                 {action === 'admin_receive' && (
                   <View style={{ gap: 4 }}>
-                    <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: DS.ink[500] }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: T.ink3 }}>
                       Teslim Tarihi
                     </Text>
                     <DatePicker value={receivedAt} onChange={setReceivedAt} accent={TH.primary} compact maxDate={todayISO()} />
@@ -315,23 +320,23 @@ export function ApprovalActionsModal({ visible, action, request, onClose, onDone
 
                 {/* Note / Reason (her aksiyonda) */}
                 <View style={{ gap: 4 }}>
-                  <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: DS.ink[500] }}>
+                  <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: T.ink3 }}>
                     {cfg.needsReason ? 'Red Sebebi *' : 'Not (opsiyonel)'}
                   </Text>
                   <TextInput
                     value={note}
                     onChangeText={setNote}
                     placeholder={cfg.needsReason ? 'Kısa ve net bir gerekçe yazın' : 'Eklemek istediğiniz açıklama'}
-                    placeholderTextColor={DS.ink[300]}
+                    placeholderTextColor={isDark ? (T.ink3 as string) : DS.ink[300]}
                     multiline
                     maxLength={400}
                     style={{
                       borderWidth: 1,
-                      borderColor: cfg.needsReason && note.trim().length < 4 ? 'rgba(217,75,75,0.40)' : DS.ink[200],
+                      borderColor: cfg.needsReason && note.trim().length < 4 ? 'rgba(217,75,75,0.40)' : T.hairline,
                       borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10,
-                      fontSize: 13, color: DS.ink[900], minHeight: 72,
+                      fontSize: 13, color: T.ink, minHeight: 72,
                       textAlignVertical: 'top',
-                      backgroundColor: '#FFF',
+                      backgroundColor: isDark ? T.cardSoft : '#FFF',
                       outlineStyle: 'none' as any,
                     }}
                   />
@@ -343,8 +348,8 @@ export function ApprovalActionsModal({ visible, action, request, onClose, onDone
                     padding: 10, borderRadius: 10,
                     backgroundColor: 'rgba(217,75,75,0.08)', borderWidth: 1, borderColor: 'rgba(217,75,75,0.25)',
                   }}>
-                    <AlertCircle size={14} color="#9C2E2E" />
-                    <Text style={{ flex: 1, fontSize: 12, color: '#9C2E2E' }}>{error}</Text>
+                    <AlertCircle size={14} color={dangerFg} />
+                    <Text style={{ flex: 1, fontSize: 12, color: dangerFg }}>{error}</Text>
                   </View>
                 )}
               </>
@@ -354,7 +359,7 @@ export function ApprovalActionsModal({ visible, action, request, onClose, onDone
           {!success && (
             <View style={{
               paddingHorizontal: 22, paddingVertical: 14,
-              borderTopWidth: 1, borderTopColor: DS.ink[100],
+              borderTopWidth: 1, borderTopColor: T.hairline,
               flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 8,
             }}>
               <PillButton variant="ghost" onPress={onClose}>Vazgeç</PillButton>

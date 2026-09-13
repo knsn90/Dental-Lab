@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, ActivityIndicator, Platform } from 'react-native';
-import { LifeBuoy } from 'lucide-react-native';
+import { SupportIcon } from '../../core/ui/SupportIcon';
 import { supportTickets, type SupportTicket } from '../../modules/platform/api';
 import { C, FONT, PageHeader, Panel, Chip, IconChip } from '../../modules/platform/ui';
 
@@ -38,7 +38,7 @@ export default function PlatformSupport() {
           <View style={{ paddingVertical: 48, alignItems: 'center' }}><ActivityIndicator color={C.accent} /></View>
         ) : filtered.length === 0 ? (
           <Panel style={{ alignItems: 'center', paddingVertical: 44, gap: 10 }}>
-            <IconChip icon={LifeBuoy} tone={C.ink3} size={52} /><Text style={{ color: C.ink3, fontSize: 14 }}>Talep yok</Text>
+            <IconChip icon={SupportIcon} tone={C.ink3} size={52} /><Text style={{ color: C.ink3, fontSize: 14 }}>Talep yok</Text>
           </Panel>
         ) : (
           <Panel padding={0}>

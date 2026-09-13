@@ -145,7 +145,7 @@ export function ToothNumberPicker({
   const { width: screenWidth } = useWindowDimensions();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   // Unselected tooth tones — dark mode'da daha görünür beyaz alpha kullan
-  const UNSEL_STROKE = isDark ? 'rgba(247,242,233,0.45)' : 'rgba(148,163,184,0.35)';
+  const UNSEL_STROKE = isDark ? '#686761' : 'rgba(148,163,184,0.35)';
   const UNSEL_DETAIL = isDark ? 'rgba(247,242,233,0.35)' : 'rgba(148,163,184,0.35)';
   const UNSEL_TEXT   = isDark ? 'rgba(247,242,233,0.75)' : 'rgba(71,85,105,0.45)';
   const ACTIVE_FILL  = isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9';
@@ -295,7 +295,7 @@ export function ToothNumberPicker({
       : isSelected || isActive
       ? PRIMARY
       : isHovered
-      ? '#93C5FD'
+      ? (isDark ? '#85837C' : '#93C5FD')
       : UNSEL_STROKE;
 
     const strokeWidth = isSelectedDark
@@ -315,7 +315,7 @@ export function ToothNumberPicker({
     const textColor = confirmedColor
       ? '#FFFFFF'
       : isSelected
-      ? (isDark ? PRIMARY : '#FFFFFF')  // dark: accent text; light: beyaz on solid
+      ? '#FFFFFF'  // seçili diş numarası beyaz (hem açık hem koyu)
       : isActive
       ? ACTIVE_TEXT
       : UNSEL_TEXT;
@@ -362,10 +362,10 @@ export function ToothNumberPicker({
             d={paths[0]}
             fill="none"
             stroke="#93C5FD"
-            strokeWidth={SW_MAIN * 5}
+            strokeWidth={SW_MAIN * (isDark ? 3.5 : 5)}
             strokeLinejoin="round"
             strokeLinecap="round"
-            opacity={0.4}
+            opacity={isDark ? 0.22 : 0.4}
           />
         )}
 
@@ -377,7 +377,7 @@ export function ToothNumberPicker({
             d={paths[0]}
             fill="none"
             stroke={confirmedColor ?? PRIMARY}
-            strokeWidth={SW_MAIN * 4}
+            strokeWidth={SW_MAIN * (isDark ? 2.5 : 4)}
             strokeLinejoin="round"
             strokeLinecap="round"
             opacity={0}

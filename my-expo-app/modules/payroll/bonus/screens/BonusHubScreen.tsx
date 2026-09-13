@@ -5,10 +5,13 @@
 
 import React, { useState } from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
-import { ArrowLeft, ArrowRight } from 'lucide-react-native';
+import { ArrowLeft, ArrowRight } from '../../../../core/ui/icons';
 import { isRTL } from '../../../../core/i18n';
 
 import { DS } from '../../../../core/theme/dsTokens';
+import { useInkUI } from '../../../../core/theme/inkScale';
+import { useMobileTokens } from '../../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../../core/store/themeModeStore';
 import { usePanelTheme } from '../../../../core/theme/usePanelTheme';
 import { SlideTabBar } from '../../../../core/ui/SlideTabBar';
 
@@ -31,6 +34,9 @@ const TABS: { key: TabKey; label: string }[] = [
 ];
 
 export default function BonusHubScreen() {
+  const U = useInkUI();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [mode, setMode] = useState<Mode>('dashboard');
   // SlideTabBar cursor'ı beyaz metin basar → koyu ink şart.
   const panelTheme = usePanelTheme();
@@ -66,13 +72,13 @@ export default function BonusHubScreen() {
             style={({ pressed }) => ({
               flexDirection: 'row', alignItems: 'center', gap: 6,
               alignSelf: 'flex-start',
-              backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[300],
+              backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: U.isDark ? U.plainBtn.border : U.ink[300],
               paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
               opacity: pressed ? 0.7 : 1,
             })}
           >
-            {isRTL() ? <ArrowRight size={14} color={DS.ink[900]} /> : <ArrowLeft size={14} color={DS.ink[900]} />}
-            <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[900] }}>Politikalara dön</Text>
+            {isRTL() ? <ArrowRight size={14} color={U.ink[900]} /> : <ArrowLeft size={14} color={U.ink[900]} />}
+            <Text style={{ fontSize: 12, fontWeight: '500', color: U.ink[900] }}>Politikalara dön</Text>
           </Pressable>
         ) : null}
       </View>

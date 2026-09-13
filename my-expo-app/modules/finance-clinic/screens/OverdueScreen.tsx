@@ -3,7 +3,7 @@
  */
 
 import React from 'react';
-import { CheckCircle2 } from 'lucide-react-native';
+import { CheckCircle2 } from '../../../core/ui/icons';
 import { InvoiceListBase } from './_InvoiceListBase';
 
 export function OverdueScreen({ clinicId }: { clinicId: string }) {

@@ -9,19 +9,19 @@ import { autoT } from '../../../core/i18n/autoTranslate';
  *      (STAGE_REGISTRY) bu kabuğun içine plug-in olur.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, Pressable, Platform, useWindowDimensions, Modal } from 'react-native';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
+import { View, Text, ScrollView, Pressable, Platform, useWindowDimensions, Modal, findNodeHandle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Check, ChevronRight, ChevronLeft, ChevronDown, Clock, Calendar,
   Inbox, Flame, Play,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { supabase } from '../../../core/api/supabase';
 import { useAppResume } from '../../../core/hooks/useAppResume';
 import { toast } from '../../../core/ui/Toast';
 import { useAuthStore } from '../../../core/store/authStore';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
-import { fetchStageMaterialContext, confirmStageMaterials } from '../api';
+import { fetchStageMaterialContext, confirmStageMaterials, resolveDoctorClinicNames } from '../api';
 import { recordStageActivity, completeStageResilient, startStage } from '../api/timing';
 import { StageMaterialModal } from '../components/StageMaterialModal';
 import { ValidationChecklistModal } from '../components/ValidationChecklistModal';
@@ -35,12 +35,15 @@ import { ActiveJobHero, type ActiveJobHeroData } from '../components/ActiveJobHe
 import { TimingBreakdown } from '../components/TimingBreakdown';
 import { WorkstationActionBar } from '../components/WorkstationActionBar';
 import { CollapsibleSection } from '../components/CollapsibleSection';
-import { Activity, MessageSquare } from 'lucide-react-native';
+import { Activity, MessageSquare, Paperclip, FileText } from '../../../core/ui/icons';
 import { ChatDetail } from '../components/MessagesPopup';
 import { ActivityFeed } from '../components/ActivityFeed';
 import { MachineStatusCard } from '../components/MachineStatusCard';
 import { TimingAuditHistory } from '../components/TimingAuditHistory';
 import { StageFileUpload } from '../components/StageFileUpload';
+import { FilesList } from '../components/FilesList';
+import { getSignedUrls } from '../../../lib/photos';
+import type { WorkOrderPhoto } from '../../../lib/types';
 import { RecentCompletedList } from '../components/RecentCompletedList';
 import { StageCompletionPopup, type StageCompletionInfo } from '../components/StageCompletionPopup';
 import { deriveMasterStep } from '../components/MasterWorkflowTimeline';
@@ -59,9 +62,9 @@ function humanIdle(ms: number): string {
   if (ms < 86_400_000) {
     const h = Math.floor(ms / 3_600_000);
     const m = Math.floor((ms % 3_600_000) / 60_000);
-    return m > 0 ? `${h} saat ${m} dk` : `${h} saat`;
+    return m > 0 ? `${h} ${autoT('saat')} ${m}${autoT('dk')}` : `${h} ${autoT('saat')}`;
   }
-  return `${Math.floor(ms / 86_400_000)} gün`;
+  return `${Math.floor(ms / 86_400_000)} ${autoT('gün')}`;
 }
 
 interface AssignedJob {
@@ -89,6 +92,7 @@ interface AssignedJob {
   model_type:      string | null;
   notes:           string | null;
   lab_notes:       string | null;
+  doctor_id:       string | null;
   doctor_name:     string | null;
   clinic_name:     string | null;
   // Phase A timing fields
@@ -331,7 +335,8 @@ export function OperatorScreen() {
         model_type:      r.work_order?.model_type ?? null,
         notes:           r.work_order?.notes ?? null,
         lab_notes:       r.work_order?.lab_notes ?? null,
-        // doctor_id raw — adı/klinik adı RLS izinleri için ayrı sorguda toplanır
+        // doctor_id raw — adı/klinik adı aşağıda tek batch'te çözülür
+        doctor_id:       r.work_order?.doctor_id ?? null,
         doctor_name:     null,
         clinic_name:     null,
         // Timing
@@ -346,6 +351,22 @@ export function OperatorScreen() {
         last_activity_at:        r.last_activity_at ?? null,
       };
     });
+
+    // Hekim + klinik adlarını tek batch'te çöz (doctor_id polimorfik: doctors.id
+    // VEYA profiles.id). Teknisyen user_type='lab' olduğundan is_lab_user() TRUE
+    // → doctors/clinics/profiles okuma izni var.
+    const docIds = list.map(j => j.doctor_id).filter(Boolean) as string[];
+    if (docIds.length) {
+      try {
+        const nameMap = await resolveDoctorClinicNames(docIds);
+        for (const j of list) {
+          const info = j.doctor_id ? nameMap.get(j.doctor_id) : null;
+          if (info) { j.doctor_name = info.doctorName; j.clinic_name = info.clinicName; }
+        }
+      } catch (e) {
+        console.warn('[operator] doctor/clinic name resolve failed:', (e as any)?.message);
+      }
+    }
 
     // Sıralama: aktif → sonra sequence_order. Aktif iş her zaman en üstte.
     const statusRank: Record<string, number> = {
@@ -573,6 +594,31 @@ export function OperatorScreen() {
   // CTA butonu popup açar — gate'leri burada koymuyoruz; tıklamada hata toast verilir.
   const canComplete = !!selected && !submitting && selected.status === 'aktif' && !!selected.started_at;
 
+  // Hero araç çubuğu — chat state + bölüm ref'leri bu seviyede (hero ile SelectedJobDetail'in ortak parent'ı).
+  const scrollRef = useRef<ScrollView>(null);
+  const notesRef  = useRef<View>(null);
+  const filesRef  = useRef<View>(null);
+  const [chatOpen, setChatOpen] = useState(false);
+  useEffect(() => { setChatOpen(false); }, [selected?.stage_id]);
+  const scrollToEl = (r: React.RefObject<View | null>) => {
+    const el: any = r.current;
+    if (!el) return;
+    // WEB: findNodeHandle desteklenmiyor → RNW ref'i DOM node'una scrollIntoView uygula.
+    if (Platform.OS === 'web') {
+      const domNode = typeof el.scrollIntoView === 'function' ? el : (el.getNode?.() ?? null);
+      domNode?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    // NATIVE: measureLayout ile ScrollView'a göre y bul, oraya kaydır.
+    const node = scrollRef.current ? findNodeHandle(scrollRef.current) : null;
+    if (node == null) return;
+    el.measureLayout?.(
+      node,
+      (_x: number, y: number) => scrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true }),
+      () => {},
+    );
+  };
+
   // Hero'nun action slot'u — birincil aksiyon (İşe Başla / Tamamla)
   /**
    * Bu işi bekleten aşama: seçilinin sıra numarasından ÖNCE gelen, henüz
@@ -590,38 +636,62 @@ export function OperatorScreen() {
 
   const heroActionSlot = useMemo(() => {
     if (!selected || !selectedDesc) return null;
+    const hasNotes = !!(selected.notes && selected.notes.trim()) || !!((selected as any).lab_notes && (selected as any).lab_notes.trim());
     return (
-      <WorkstationActionBar
-        stageId={selected.stage_id}
-        status={selected.status}
-        startedAt={selected.started_at}
-        ctaLabel={selectedDesc.ctaLabel}
-        canComplete={canComplete}
-        validationReady={true}
-        submitting={submitting}
-        onComplete={async () => {
-          // Dosya zorunluysa → tıklama anında canlı sorgu yap (state stale olabilir)
-          if (selectedDesc.requiresFileUpload && selected.started_at) {
-            const { count, error } = await supabase
-              .from('work_order_photos')
-              .select('id', { count: 'exact', head: true })
-              .eq('work_order_id', selected.work_order_id);
-            if (error) {
-              toast.error('Dosya kontrolü başarısız: ' + error.message);
-              return;
+      <View style={{ gap: 12 }}>
+        <WorkstationActionBar
+          stageId={selected.stage_id}
+          status={selected.status}
+          startedAt={selected.started_at}
+          ctaLabel={selectedDesc.ctaLabel}
+          canComplete={canComplete}
+          validationReady={true}
+          submitting={submitting}
+          onComplete={async () => {
+            // Dosya zorunluysa → tıklama anında canlı sorgu yap (state stale olabilir)
+            if (selectedDesc.requiresFileUpload && selected.started_at) {
+              const { count, error } = await supabase
+                .from('work_order_photos')
+                .select('id', { count: 'exact', head: true })
+                .eq('work_order_id', selected.work_order_id);
+              if (error) {
+                toast.error('Dosya kontrolü başarısız: ' + error.message);
+                return;
+              }
+              if (!count || count === 0) {
+                toast.error('Tasarım dosyası yüklenmedi');
+                return;
+              }
             }
-            if (!count || count === 0) {
-              toast.error('Tasarım dosyası yüklenmedi');
-              return;
-            }
-          }
-          setChecklistOpen(true);
-        }}
-        onStarted={() => load()}
-        onStateChanged={() => load()}
-        waitingHint={selectedDesc.waitingHint}
-        blockedBy={blockedBy}
-      />
+            setChecklistOpen(true);
+          }}
+          onStarted={() => load()}
+          onStateChanged={() => load()}
+          waitingHint={selectedDesc.waitingHint}
+          blockedBy={blockedBy}
+        />
+        {/* Hero araç çubuğu — mavi alanda: Dosyalar / Hekim Notu ilgili bölüme kaydırır, Mesajlar sohbeti açar. */}
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          {([
+            { Icon: Paperclip, label: autoT('Dosyalar'), onPress: () => scrollToEl(filesRef) },
+            ...(hasNotes ? [{ Icon: FileText, label: autoT('Hekim Notu'), onPress: () => scrollToEl(notesRef) }] : []),
+            { Icon: MessageSquare, label: autoT('Mesajlar'), onPress: () => setChatOpen(true) },
+          ]).map((x, i) => (
+            <Pressable
+              key={i}
+              onPress={x.onPress}
+              style={{
+                flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                paddingVertical: 10, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.16)',
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              }}
+            >
+              <x.Icon size={15} color="#FFFFFF" strokeWidth={2} />
+              <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#FFFFFF' }}>{x.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.stage_id, selected?.status, selected?.started_at, selectedDesc, canComplete, submitting, stageFileCount, blockedBy]);
@@ -650,6 +720,7 @@ export function OperatorScreen() {
   const insets = useSafeAreaInsets();
   return (
     <ScrollView
+      ref={scrollRef}
       style={{ flex: 1, backgroundColor: P.pageBg }}
       contentContainerStyle={{
         paddingStart: 16,
@@ -845,6 +916,10 @@ export function OperatorScreen() {
               checked={checked}
               onToggleCheck={toggleCheck}
               onFilesChanged={() => setFileRefreshTick(t => t + 1)}
+              filesRef={filesRef}
+              notesRef={notesRef}
+              chatOpen={chatOpen}
+              onChatOpen={setChatOpen}
             />
           ) : isWide ? (
             <View style={{
@@ -962,7 +1037,7 @@ export function OperatorScreen() {
 
 // ── SelectedJobDetail subcomponent ───────────────────────────────────
 function SelectedJobDetail({
-  job, isManager, onTimingChanged, checked, onToggleCheck, onFilesChanged,
+  job, isManager, onTimingChanged, checked, onToggleCheck, onFilesChanged, filesRef, notesRef, chatOpen, onChatOpen,
 }: {
   job: AssignedJob;
   isManager: boolean;
@@ -970,11 +1045,17 @@ function SelectedJobDetail({
   checked: Set<string>;
   onToggleCheck: (key: string) => void;
   onFilesChanged?: () => void;
+  /** Hero araç çubuğundaki "Dosyalar" bu bölüme kaydırsın diye ref (parent'ta). */
+  filesRef?: React.RefObject<View | null>;
+  /** Hero araç çubuğundaki "Hekim Notu" bu bölüme kaydırsın diye ref (parent'ta). */
+  notesRef?: React.RefObject<View | null>;
+  /** Mesaj kutusu görünürlüğü — hero araç çubuğundan kontrol edilir (parent state). */
+  chatOpen?: boolean;
+  onChatOpen?: (v: boolean) => void;
 }) {
   const P = useStationTheme();
   const desc = getStationDescriptor(job.station_name);
   const { profile } = useAuthStore();
-  const [chatOpen, setChatOpen] = useState(false);   // bu işin mesaj kutusu
 
   const dueLabel = useMemo(() => {
     if (!job.delivery_date) return null;
@@ -1000,9 +1081,14 @@ function SelectedJobDetail({
          sadece destekleyici içerik: notlar / dosyalar / workspace / checklist.
          DIŞ KART YOK — her bölüm bağımsız. */}
 
+        {/* ═══ Sipariş dosyaları — hero araç çubuğundaki "Dosyalar" buraya kaydırır ═══ */}
+        <View ref={filesRef}>
+          <FilesAndToothSplit job={job} onFilesChanged={onFilesChanged} />
+        </View>
+
         {/* ═══ Notlar (sadece varsa) ═══ */}
         {hasNotes && (
-          <View style={panelCardStyle(P)}>
+          <View ref={notesRef} style={panelCardStyle(P)}>
             {job.notes && job.notes.trim() && (
               <View style={{
                 paddingHorizontal: 14, paddingVertical: 11,
@@ -1042,9 +1128,6 @@ function SelectedJobDetail({
           </View>
         )}
 
-        {/* ═══ 3. Sipariş dosyaları + Diş şeması — split row ═══ */}
-        <FilesAndToothSplit job={job} onFilesChanged={onFilesChanged} />
-
         {/* ═══ 4. İstasyon-spesifik workspace (varsa) ═══ */}
         {Workspace && (
           <Workspace
@@ -1068,7 +1151,7 @@ function SelectedJobDetail({
             talimata, sonra dosyalara, sonra tezgâha ihtiyacı var; yazışma
             destekleyici bir eylem. Sıralama düzeltildi, ağırlık hafifletildi. */}
         <Pressable
-          onPress={() => setChatOpen(true)}
+          onPress={() => onChatOpen?.(true)}
           style={({ pressed }: any) => ({
             flexDirection: 'row', alignItems: 'center', gap: 10,
             paddingHorizontal: 14, paddingVertical: 11, borderRadius: 14,
@@ -1126,7 +1209,7 @@ function SelectedJobDetail({
         )}
 
         {/* ═══ Mesaj kutusu modal'ı — teknisyen bu iş hakkında yazışabilir ═══ */}
-        <Modal visible={chatOpen} transparent animationType="fade" onRequestClose={() => setChatOpen(false)}>
+        <Modal visible={!!chatOpen} transparent animationType="fade" onRequestClose={() => onChatOpen?.(false)}>
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(10,14,26,0.52)', ...(Platform.OS === 'web' ? ({ backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' } as any) : {}) }}>
             <View style={{ width: '94%', maxWidth: 720, height: '88%', maxHeight: 880, backgroundColor: '#FFFFFF', borderRadius: 24, overflow: 'hidden' }}>
               <ChatDetail
@@ -1139,7 +1222,7 @@ function SelectedJobDetail({
                 accentColor={P.accent}
                 currentUserId={profile?.id ?? null}
                 viewerType={(profile as any)?.user_type ?? null}
-                onBack={() => setChatOpen(false)}
+                onBack={() => onChatOpen?.(false)}
               />
             </View>
           </View>
@@ -1158,6 +1241,27 @@ function FilesAndToothSplit({ job, onFilesChanged }: { job: AssignedJob; onFiles
   const [activeTooth, setActiveTooth] = useState<number | null>(null);
   // job değişince seçimi sıfırla
   useEffect(() => { setActiveTooth(null); }, [job.stage_id]);
+
+  // Sipariş dosyaları + imzalı URL'ler — FilesList (kategori+galeri) için
+  // (sipariş detayındaki dosya bölümünün AYNISI). Yükleme sonrası fileTick ile tazelenir.
+  const [jobPhotos, setJobPhotos] = useState<WorkOrderPhoto[]>([]);
+  const [jobUrls, setJobUrls]     = useState<Record<string, string>>({});
+  const [fileTick, setFileTick]   = useState(0);
+  useEffect(() => {
+    if (!job.work_order_id) { setJobPhotos([]); setJobUrls({}); return; }
+    let alive = true;
+    (async () => {
+      const { data } = await supabase
+        .from('work_order_photos')
+        .select('*')
+        .eq('work_order_id', job.work_order_id)
+        .order('created_at', { ascending: false });
+      const ph = (data ?? []) as WorkOrderPhoto[];
+      const urls = await getSignedUrls(ph.map(p => p.storage_path));
+      if (alive) { setJobPhotos(ph); setJobUrls(urls); }
+    })();
+    return () => { alive = false; };
+  }, [job.work_order_id, fileTick]);
 
   // Tooth chart için minimal "order" payload
   const toothOrder = useMemo(() => ({
@@ -1182,16 +1286,27 @@ function FilesAndToothSplit({ job, onFilesChanged }: { job: AssignedJob; onFiles
       flexDirection: isWide && hasTeeth ? 'row' : 'column',
       gap: 16, alignItems: 'stretch',
     }}>
-      {/* Sol — Sipariş dosyaları (esnek genişlik, sağ kart ile aynı yükseklikte) */}
-      <View style={{ flex: 1, minWidth: 0, alignSelf: 'stretch' }}>
-        <StageFileUpload
-          stageId={job.stage_id}
-          workOrderId={job.work_order_id}
-          stationName={job.station_name}
-          accentColor={P.accent}
-          fillHeight={isWide}
-          onUploaded={onFilesChanged}
-        />
+      {/* Sol — Sipariş dosyaları: kategori + galeri (sipariş detayı ile AYNI FilesList) */}
+      <View style={[panelCardStyle(P), { flex: 1, minWidth: 0, alignSelf: 'stretch' }]}>
+        <View style={PANEL_HEADER_STYLE}>
+          <Text style={panelHeaderLabel(P)}>{autoT('Sipariş Dosyaları')}</Text>
+          {jobPhotos.length > 0 && (
+            <Text style={{ fontSize: 11, fontWeight: '600', color: P.accentDeep }}>
+              {jobPhotos.length} {autoT('dosya')}
+            </Text>
+          )}
+        </View>
+        <View style={{ padding: 12 }}>
+          <FilesList
+            photos={jobPhotos}
+            signedUrls={jobUrls}
+            workOrderId={job.work_order_id}
+            accentColor={P.accent}
+            stageId={job.stage_id ?? undefined}
+            stationName={job.station_name ?? undefined}
+            onUploaded={() => { setFileTick(t => t + 1); onFilesChanged?.(); }}
+          />
+        </View>
       </View>
 
       {/* Sağ — Diş şeması (büyütüldü, üst kart ile aynı dikey hizada) */}
@@ -1268,6 +1383,8 @@ function FilesAndToothSplit({ job, onFilesChanged }: { job: AssignedJob; onFiles
               <ToothDetailRow label="Çalışma" value={workTypeLabel(job.work_type) ?? job.work_type ?? '—'} />
               {job.shade && <ToothDetailRow label="Renk" value={job.shade} />}
               <ToothDetailRow label="Hasta" value={job.patient_name ?? '—'} />
+              {job.doctor_name && <ToothDetailRow label="Hekim" value={job.doctor_name} />}
+              {job.clinic_name && <ToothDetailRow label="Klinik" value={job.clinic_name} />}
               {job.machine_type && <ToothDetailRow label="Makine" value={job.machine_type} />}
               <ToothDetailRow label="İstasyon" value={job.station_name ?? '—'} />
               <ToothDetailRow
@@ -1594,6 +1711,11 @@ function QueueCard({
           {job.patient_name ?? '—'}
           {job.order_number ? `  ·  ${job.order_number}` : ''}
         </Text>
+        {(job.doctor_name || job.clinic_name) && (
+          <Text style={{ fontSize: 11.5, color: P.ink400 }} numberOfLines={1}>
+            {[job.doctor_name, job.clinic_name].filter(Boolean).join('  ·  ')}
+          </Text>
+        )}
       </View>
 
       {/* Sağ küme — durum göstergesi + chevron, TEK satır, asla sıkışmaz/sarmaz */}

@@ -15,7 +15,7 @@ import {
   Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Flame, ChevronRight, ChevronLeft, Clock } from 'lucide-react-native';
+import { Flame, ChevronRight, ChevronLeft, Clock } from '../../../core/ui/icons';
 import { isRTL } from '../../../core/i18n';
 import { WorkOrder, WorkOrderStatus } from '../types';
 import { STATUS_CONFIG, isOrderOverdue, getNextStatus } from '../constants';

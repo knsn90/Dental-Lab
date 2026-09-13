@@ -51,6 +51,10 @@ export interface WorkOrder {
   hold_responsible?: 'client' | 'lab' | null;
   hold_started_at?: string | null;
   hold_by?: string | null;
+  // ── İmplant (yapısal alanlar; eski kayıtlarda null → order_items.notes fallback) ──
+  implant_brand?: string | null;
+  implant_teeth?: number[] | null;
+  implant_details?: Record<string, ImplantDetail> | null;
   created_at: string;
   updated_at: string;
   // Joined relations (optional)
@@ -99,9 +103,23 @@ export interface CreateWorkOrderParams {
   patient_city?: string;
   lab_notes_visible?: boolean;
   scan_bodies_delivered?: boolean;
+  /** Vakanın genel implant markası (sihirbaz adım 4). Diş bazlı marka implant_details'te. */
+  implant_brand?: string | null;
+  /** İmplant bulunan diş pozisyonları (FDI) — fiyata etki etmez, üretim bilgisidir. */
+  implant_teeth?: number[] | null;
+  /** Diş bazlı implant detayı: { "23": { system, type, abutment, screw } } */
+  implant_details?: Record<string, ImplantDetail> | null;
   /** Devam siparişi — bu iş emri, teslim edilmiş başka bir siparişin planlı devamı
    *  (ör. geçici→nihai). Revizyon DEĞİL. Bkz. work_orders.continues_order_id. */
   continues_order_id?: string | null;
+}
+
+/** Tek bir dişteki implant bilgisi (work_orders.implant_details değeri). */
+export interface ImplantDetail {
+  system: string;
+  type: string;
+  abutment: string;
+  screw: string;
 }
 
 export interface PendingItem {

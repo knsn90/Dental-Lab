@@ -12,6 +12,8 @@
 import React from 'react';
 import { ScrollView, TouchableOpacity, Text, StyleSheet, View, ViewStyle } from 'react-native';
 import { ymdLocal } from '../../../core/util/dates';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 export type RangeKey = 'this_month' | 'last_month' | 'this_year' | 'last_12_months' | 'all';
 
@@ -74,6 +76,8 @@ export function DateRangePicker({
   style,
   options = RANGE_OPTIONS,
 }: DateRangePickerProps) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(st => st.resolvedDark);
   return (
     <ScrollView
       horizontal
@@ -85,11 +89,11 @@ export function DateRangePicker({
         return (
           <TouchableOpacity
             key={opt.key}
-            style={[s.chip, active && { backgroundColor: accent, borderColor: accent }]}
+            style={[s.chip, isDark && { backgroundColor: T.card, borderColor: T.hairline }, active && { backgroundColor: accent, borderColor: accent }]}
             onPress={() => onChange(opt.key)}
             activeOpacity={0.85}
           >
-            <Text style={[s.chipText, active && { color: '#FFFFFF' }]}>{opt.label}</Text>
+            <Text style={[s.chipText, isDark && { color: T.ink3 }, active && { color: '#FFFFFF' }]}>{opt.label}</Text>
           </TouchableOpacity>
         );
       })}

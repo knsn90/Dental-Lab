@@ -22,7 +22,7 @@ platform :ios, podfile_properties['ios.deploymentTarget'] || '15.1'
 
 prepare_react_native_project!
 
-target 'LabFlow' do
+target 'Siman' do
   use_expo_modules!
 
   if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] == '1'
@@ -41,6 +41,17 @@ target 'LabFlow' do
     ]
   end
 
+# @generated begin react-native-maps - expo prebuild (DO NOT MODIFY) sync-e9cc66c360abe50bc66d89fffb3c55b034d7d369
+  # ELLE DÜZELTİLDİ (2026-09-08): @expo/config-plugins@55.0.10 eski pod adını
+  # üretiyor ("react-native-google-maps") ama react-native-maps@1.27.2'nin
+  # podspec'i artık "react-native-maps" adında (s.name = "react-native-maps").
+  # `expo prebuild --clean` tekrar çalışırsa bu satır eski haline döner —
+  # pod install "No podspec found for react-native-google-maps" hatası verirse
+  # burayı tekrar düzelt.
+  # 'Google' subspec ŞART: varsayılan subspec 'Maps' Apple Haritalar'la derler
+  # (HAVE_GOOGLE_MAPS=0) ve PROVIDER_GOOGLE sessizce Apple'a düşer.
+  pod 'react-native-maps', :subspecs => ['Google'], :path => File.dirname(`node --print "require.resolve('react-native-maps/package.json')"`)
+# @generated end react-native-maps
   config = use_native_modules!(config_command)
 
   use_frameworks! :linkage => podfile_properties['ios.useFrameworks'].to_sym if podfile_properties['ios.useFrameworks']

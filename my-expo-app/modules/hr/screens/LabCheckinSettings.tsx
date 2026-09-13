@@ -8,7 +8,9 @@
  *  • Display 300 başlık + soft tinted ikon dairesi
  *  • Yetki: sadece manager veya admin görebilir
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from "react";
+import { useMobileTokens } from "../../../core/theme/mobileDesignTokens";
+import { useThemeModeStore } from "../../../core/store/themeModeStore";
 import {
   View, Text, ScrollView, Pressable, TextInput,
   ActivityIndicator, Platform, Share,
@@ -17,7 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   QrCode, MapPin, Crosshair, Share2, RefreshCw,
   Save, Info, AlertCircle, Printer,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import * as Location from 'expo-location';
 
 import { BrandedQR } from '../../../core/ui/BrandedQR';
@@ -48,6 +50,8 @@ interface Props {
 }
 
 export function LabCheckinSettings({ accentColor = '#4771AB' }: Props) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
   const [lab, setLab]         = useState<LabLocation | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving]   = useState(false);
@@ -177,20 +181,20 @@ export function LabCheckinSettings({ accentColor = '#4771AB' }: Props) {
             <QrCode size={20} color={accentColor} strokeWidth={1.8} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ ...DISPLAY, fontSize: 22, color: DS.ink[900], letterSpacing: -0.4 }}>
+            <Text style={{ ...DISPLAY, fontSize: 22, color: isDark ? T.ink : DS.ink[900], letterSpacing: -0.4 }}>
               QR Check-in
             </Text>
-            <Text style={{ fontSize: 13, color: DS.ink[500], marginTop: 2 }}>
+            <Text style={{ fontSize: 13, color: isDark ? T.ink3 : DS.ink[500], marginTop: 2 }}>
               Ekip bu QR kodu okutarak giriş/çıkış yapar
             </Text>
           </View>
         </View>
 
         {/* ── QR Code Card ──────────────────────────────────────────── */}
-        <View style={cardStyle}>
+        <View style={[cardStyle, isDark ? { backgroundColor: T.card, borderColor: T.hairline } : null]}>
           <View style={{ marginBottom: 12 }}>
-            <Text style={{ ...DISPLAY, fontSize: 18, color: DS.ink[900], letterSpacing: -0.3 }}>QR Kodu</Text>
-            <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 3 }}>
+            <Text style={{ ...DISPLAY, fontSize: 18, color: isDark ? T.ink : DS.ink[900], letterSpacing: -0.3 }}>QR Kodu</Text>
+            <Text style={{ fontSize: 12, color: isDark ? T.ink3 : DS.ink[500], marginTop: 3 }}>
               Bu kodu lab girişine asın veya yazdırın
             </Text>
           </View>
@@ -199,9 +203,9 @@ export function LabCheckinSettings({ accentColor = '#4771AB' }: Props) {
           <View style={{
             alignSelf: 'center',
             padding: 20,
-            backgroundColor: '#FFFFFF',
+            backgroundColor: isDark ? T.card : "#FFFFFF",
             borderRadius: 16,
-            borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+            borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.06)',
             marginBottom: 14,
           }}>
             {lab?.checkin_token ? (
@@ -213,8 +217,8 @@ export function LabCheckinSettings({ accentColor = '#4771AB' }: Props) {
               />
             ) : (
               <View style={{ width: 200, height: 200, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-                <AlertCircle size={32} color={DS.ink[300]} strokeWidth={1.6} />
-                <Text style={{ fontSize: 13, color: DS.ink[400] }}>QR token yükleniyor…</Text>
+                <AlertCircle size={32} color={isDark ? T.ink3 : DS.ink[300]} strokeWidth={1.6} />
+                <Text style={{ fontSize: 13, color: isDark ? T.ink3 : DS.ink[400] }}>QR token yükleniyor…</Text>
               </View>
             )}
           </View>
@@ -223,14 +227,14 @@ export function LabCheckinSettings({ accentColor = '#4771AB' }: Props) {
           {lab?.checkin_token && (
             <View style={{
               flexDirection: 'row', alignItems: 'center', gap: 10,
-              backgroundColor: '#FAFAFA', borderRadius: 10,
+              backgroundColor: isDark ? T.cardSoft : "#FAFAFA", borderRadius: 10,
               paddingHorizontal: 12, paddingVertical: 10,
               marginBottom: 12,
             }}>
-              <Text style={{ fontSize: 10, fontWeight: '700', color: DS.ink[500], letterSpacing: 0.6, textTransform: 'uppercase' }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', color: isDark ? T.ink3 : DS.ink[500], letterSpacing: 0.6, textTransform: 'uppercase' }}>
                 Token
               </Text>
-              <Text style={{ flex: 1, fontSize: 12, color: DS.ink[800], fontFamily: Platform.OS === 'web' ? 'monospace' : undefined }} numberOfLines={1}>
+              <Text style={{ flex: 1, fontSize: 12, color: isDark ? T.ink : DS.ink[800], fontFamily: Platform.OS === 'web' ? 'monospace' : undefined }} numberOfLines={1}>
                 {lab.checkin_token.slice(0, 18)}…
               </Text>
             </View>
@@ -285,13 +289,13 @@ export function LabCheckinSettings({ accentColor = '#4771AB' }: Props) {
                     flex: 1,
                     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
                     paddingVertical: 11, borderRadius: 12,
-                    borderWidth: 1, borderColor: DS.ink[200],
-                    backgroundColor: '#FFFFFF',
+                    borderWidth: 1, borderColor: isDark ? T.hairline : DS.ink[200],
+                    backgroundColor: isDark ? T.card : "#FFFFFF",
                     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
                   }}
                 >
-                  <Printer size={14} color={DS.ink[700]} strokeWidth={1.8} />
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[800] }}>{sz} Poster</Text>
+                  <Printer size={14} color={isDark ? T.ink2 : DS.ink[700]} strokeWidth={1.8} />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? T.ink : DS.ink[800] }}>{sz} Poster</Text>
                 </Pressable>
               ))}
             </View>
@@ -299,16 +303,16 @@ export function LabCheckinSettings({ accentColor = '#4771AB' }: Props) {
         </View>
 
         {/* ── GPS Location Card ──────────────────────────────────────── */}
-        <View style={cardStyle}>
+        <View style={[cardStyle, isDark ? { backgroundColor: T.card, borderColor: T.hairline } : null]}>
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <MapPin size={16} color={accentColor} strokeWidth={1.8} />
-                <Text style={{ ...DISPLAY, fontSize: 18, color: DS.ink[900], letterSpacing: -0.3 }}>
+                <Text style={{ ...DISPLAY, fontSize: 18, color: isDark ? T.ink : DS.ink[900], letterSpacing: -0.3 }}>
                   GPS Konumu
                 </Text>
               </View>
-              <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 4 }}>
+              <Text style={{ fontSize: 12, color: isDark ? T.ink3 : DS.ink[500], marginTop: 4 }}>
                 Konum girilmeli — boş bırakılırsa QR ile giriş reddedilir (mesafe kontrolü zorunlu)
               </Text>
             </View>
@@ -329,41 +333,41 @@ export function LabCheckinSettings({ accentColor = '#4771AB' }: Props) {
           {/* Lat / Lng */}
           <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
             <View style={{ flex: 1 }}>
-              <Text style={fieldLabel}>Enlem (Latitude)</Text>
+              <Text style={[fieldLabel, isDark ? { color: T.ink3 } : null]}>Enlem (Latitude)</Text>
               <TextInput
-                style={inputStyle}
+                style={[inputStyle, isDark ? { backgroundColor: T.cardSoft, borderColor: T.hairline, color: T.ink } : null]}
                 value={lat}
                 onChangeText={setLat}
                 placeholder="41.0082376"
                 keyboardType="decimal-pad"
-                placeholderTextColor={DS.ink[400]}
+                placeholderTextColor={isDark ? T.ink3 : DS.ink[400]}
               />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={fieldLabel}>Boylam (Longitude)</Text>
+              <Text style={[fieldLabel, isDark ? { color: T.ink3 } : null]}>Boylam (Longitude)</Text>
               <TextInput
-                style={inputStyle}
+                style={[inputStyle, isDark ? { backgroundColor: T.cardSoft, borderColor: T.hairline, color: T.ink } : null]}
                 value={lng}
                 onChangeText={setLng}
                 placeholder="28.9783589"
                 keyboardType="decimal-pad"
-                placeholderTextColor={DS.ink[400]}
+                placeholderTextColor={isDark ? T.ink3 : DS.ink[400]}
               />
             </View>
           </View>
 
           {/* Radius */}
           <View>
-            <Text style={fieldLabel}>İzin Verilen Yarıçap (metre)</Text>
+            <Text style={[fieldLabel, isDark ? { color: T.ink3 } : null]}>İzin Verilen Yarıçap (metre)</Text>
             <TextInput
-              style={[inputStyle, { width: 160 }]}
+              style={[inputStyle, { width: 160 }, isDark ? { backgroundColor: T.cardSoft, borderColor: T.hairline, color: T.ink } : null]}
               value={radius}
               onChangeText={setRadius}
               placeholder="150"
               keyboardType="number-pad"
-              placeholderTextColor={DS.ink[400]}
+              placeholderTextColor={isDark ? T.ink3 : DS.ink[400]}
             />
-            <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 6, lineHeight: 16 }}>
+            <Text style={{ fontSize: 11, color: isDark ? T.ink3 : DS.ink[400], marginTop: 6, lineHeight: 16 }}>
               Varsayılan 150m. QR tarandığında personelın bu mesafe içinde olması gerekir.
             </Text>
           </View>
@@ -384,7 +388,7 @@ export function LabCheckinSettings({ accentColor = '#4771AB' }: Props) {
           }}>
             <Info size={14} color={accentColor} strokeWidth={1.8} />
           </View>
-          <Text style={{ flex: 1, fontSize: 12, color: DS.ink[700], lineHeight: 18 }}>
+          <Text style={{ flex: 1, fontSize: 12, color: isDark ? T.ink2 : DS.ink[700], lineHeight: 18 }}>
             GPS'siz check-in için personelın sadece QR'ı okuması yeterlidir.
             GPS etkinleştirilirse, personelın konum izni vermesi gerekir ve
             belirlenen yarıçap dışındaysa giriş reddedilir.
@@ -429,7 +433,7 @@ export function LabCheckinSettings({ accentColor = '#4771AB' }: Props) {
 
 // ─── Style helpers ──────────────────────────────────────────────────────────
 const cardStyle: any = {
-  backgroundColor: '#FFFFFF',
+  backgroundColor: "#FFFFFF",
   borderRadius: 18,
   padding: 18,
   borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
@@ -451,6 +455,6 @@ const inputStyle: any = {
   borderColor: 'rgba(0,0,0,0.08)',
   paddingHorizontal: 14,
   fontSize: 14, color: DS.ink[900],
-  backgroundColor: '#FFFFFF',
+  backgroundColor: "#FFFFFF",
   ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
 };

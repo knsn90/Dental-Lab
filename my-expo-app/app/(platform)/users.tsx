@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Platform } from 'react-native';
-import { Search, Users as UsersIcon, Mail, ChevronDown, UserX, ArrowRightLeft, Power, LogOut } from 'lucide-react-native';
+import { Search, Users as UsersIcon, Mail, ChevronDown, UserX, ArrowRightLeft, Power, LogOut } from '../../core/ui/icons';
 import { listUsers, setUserActive, setUserRole, moveUserLab, anonymizeUser, sendPasswordReset, signoutUser, listLabs, USER_ROLES, type PlatformUser, type PlatformLab } from '../../modules/platform/api';
 import { C, PageHeader, Panel, Chip, IconChip, hexA } from '../../modules/platform/ui';
 

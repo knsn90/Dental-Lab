@@ -3,10 +3,12 @@
 // Veriyi useOrderChatInbox'tan çeker (realtime); mesaj yoksa hiç render etmez.
 import React from 'react';
 import { View, Text, Pressable, Image } from 'react-native';
-import { MessageCircle, ChevronRight, ChevronLeft } from 'lucide-react-native';
+import { MessageCircle, ChevronRight, ChevronLeft } from '../icons';
 import { isRTL } from '../../i18n';
 import { autoT } from '../../i18n/autoTranslate';
 import { useMobileTokens } from '../../theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../store/themeModeStore';
+import { lightenForDark } from '../HeroGlow';
 import { useOrderChatInbox } from '../../../modules/orders/hooks/useOrderChatInbox';
 
 function relTime(iso: string | null): string {
@@ -39,11 +41,18 @@ function initials(name: string): string {
 
 export function UnreadMessagesCard({
   accent,
+  art,
   onOpenOrder,
   onOpenInbox,
   showClinicLogo = false,
 }: {
   accent: string;
+  /**
+   * Opsiyonel 3D başlık görseli (require'lanmış PNG). Verilirse Lucide balon
+   * ikonunun yerine geçer — admin mobil özet sayfasındaki 3D kart diliyle uyum.
+   * Verilmezse kart bugünkü hâlini birebir korur (lab/klinik/hekim etkilenmez).
+   */
+  art?: any;
   onOpenOrder?: (workOrderId: string) => void;
   onOpenInbox?: () => void;
   /** Lab/admin tarafında avatar yerine kliniğin logosu gösterilir (karşı taraf klinik).
@@ -51,6 +60,7 @@ export function UnreadMessagesCard({
   showClinicLogo?: boolean;
 }) {
   const T = useMobileTokens();
+  const isDark = useThemeModeStore(st => st.resolvedDark);
   const rtl = isRTL();
   // Kart başlığındaki chevron yön bildirir → RTL'de aynalanır
   const Chevron = rtl ? ChevronLeft : ChevronRight;
@@ -74,7 +84,9 @@ export function UnreadMessagesCard({
   // Başlık şeridi: yumuşak accent zemin + koyulaştırılmış accent metin.
   // Dolu accent + beyaz metin denenmedi çünkü lab safranında kontrast düşük kalıyor.
   const headerBg  = `${accent}14`;
-  const headerInk = deepen(accent);
+  // Koyu temada koyulaştırılmış accent (deepen) koyu şerit üstünde okunmuyordu.
+  // "Son Siparişler" kartıyla BİREBİR aynı hesap: koyuda açılmış accent.
+  const headerInk = isDark ? lightenForDark(accent, 0.42) : deepen(accent);
 
   return (
     <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
@@ -88,9 +100,13 @@ export function UnreadMessagesCard({
             backgroundColor: headerBg,
           }}
         >
-          <View style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
-            <MessageCircle size={16} color={accent} strokeWidth={2.2} />
-          </View>
+          {art ? (
+            <Image source={art} resizeMode="contain" style={{ width: 34, height: 29 }} />
+          ) : (
+            <View style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: T.card, alignItems: 'center', justifyContent: 'center' }}>
+              <MessageCircle size={16} color={accent} strokeWidth={2.2} />
+            </View>
+          )}
           <Text style={{ fontSize: 13, fontWeight: '700', color: headerInk, letterSpacing: 0.2 }}>{autoT('Mesajlar')}</Text>
           {totalUnread > 0 && (
             <View style={{ minWidth: 20, height: 20, paddingHorizontal: 6, borderRadius: 10, backgroundColor: accent, alignItems: 'center', justifyContent: 'center' }}>

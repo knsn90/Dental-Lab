@@ -113,6 +113,25 @@ export const ROLE_COLORS: Record<EmployeeRole, { fg: string; bg: string }> = {
   diger:        { fg: '#64748B', bg: '#F8FAFC' },
 };
 
+/**
+ * Koyu tema rol tonları — açık paletin pastel zeminleri (#DBEAFE, #F1F5F9…)
+ * koyu ekranda beyaz leke gibi patlıyor, koyu metinleri (#0F172A) de okunmuyor.
+ * Koyuda: yarı saydam accent zemin + AÇIK accent metin.
+ */
+export const ROLE_COLORS_DARK: Record<EmployeeRole, { fg: string; bg: string }> = {
+  teknisyen:    { fg: '#93C5FD', bg: 'rgba(37,99,235,0.24)' },
+  sef_teknisyen:{ fg: '#C9A9E8', bg: 'rgba(124,58,237,0.26)' },
+  muhasebe:     { fg: '#6EE7B7', bg: 'rgba(4,120,87,0.30)' },
+  sekreter:     { fg: '#F0C078', bg: 'rgba(180,83,9,0.30)' },
+  yonetici:     { fg: '#F7F2E9', bg: 'rgba(255,255,255,0.12)' },
+  diger:        { fg: 'rgba(247,242,233,0.72)', bg: 'rgba(255,255,255,0.08)' },
+};
+
+/** Rol rozeti/avatar tonu — tema-farkında tek giriş noktası. */
+export function roleTone(role: EmployeeRole, isDark: boolean) {
+  return (isDark ? ROLE_COLORS_DARK : ROLE_COLORS)[role] ?? (isDark ? ROLE_COLORS_DARK : ROLE_COLORS).diger;
+}
+
 export const MONTH_NAMES = [
   '', 'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
   'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık',

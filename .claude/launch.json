@@ -30,6 +30,13 @@
       "autoPort": false
     },
     {
+      "name": "esenkim-motion",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "/Users/saber/Downloads/esenkim-motion", "run", "dev", "--", "--port", "8914", "--strictPort"],
+      "port": 8914,
+      "autoPort": false
+    },
+    {
       "name": "nexadent-catalog",
       "runtimeExecutable": "npx",
       "runtimeArgs": ["-y", "serve", "nexadent-catalog", "-l", "8912"],

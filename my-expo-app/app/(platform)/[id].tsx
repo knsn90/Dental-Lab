@@ -1,10 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ChevronRight, Users, Building2, FileText, ClipboardList, CalendarClock, Save, LogOut, Eye, ToggleLeft, ToggleRight } from 'lucide-react-native';
+import { ChevronRight, Users, Building2, FileText, ClipboardList, CalendarClock, Save, LogOut, Eye, ToggleLeft, ToggleRight } from '../../core/ui/icons';
 import { labDetail, createLabOwner, setLabStatus, setLabPlan, extendTrial, updateLabMeta, offboardLab, labFlags, setLabFlag, labBilling, createInvoice, setInvoiceStatus, exportLabData, purgeLabPii, labUsage, setLabLimits, LIMIT_METRICS, labNotes, addLabNote, deleteLabNote, listLabApiKeys, createLabApiKey, revokeApiKey, PLANS, type PlatformLabDetail, type Plan, type LabFlag, type LabBilling, type LabUsage, type LabNote, type ApiKey } from '../../modules/platform/api';
 import { C, FONT, SERIF, CARD_SHADOW, Kpi, Chip, hexA, planTone, fmtMoney, downloadJson } from '../../modules/platform/ui';
-import { Check, Download, Send, Trash2, KeyRound, Copy } from 'lucide-react-native';
+import { Check, Download, Send, Trash2, KeyRound, Copy } from '../../core/ui/icons';
 import { isRTL } from '../../core/i18n';
 
 export default function PlatformLabDetail() {

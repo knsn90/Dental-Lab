@@ -6,10 +6,13 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { View, Text, ScrollView, Pressable } from 'react-native';
 import { useRouter, useSegments } from 'expo-router';
-import { FileText, AlertCircle, CreditCard, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { FileText, AlertCircle, CreditCard, ChevronLeft, ChevronRight } from '../../../core/ui/icons';
 import { isRTL } from '../../../core/i18n';
+import { autoT } from '../../../core/i18n/autoTranslate';
 
 import { DS } from '../../../core/theme/dsTokens';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { fetchOpenInvoices, type ClinicInvoiceRow } from '../api';
 import {
   DISPLAY, TRY, M, Mnat, fmtDate, PAGE_PADDING,
@@ -34,6 +37,8 @@ export function InvoiceListBase({
   clinicId, filter, title, eyebrow, emptyTitle, emptyDescription, emptyIcon,
 }: Props) {
   useRates();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const router = useRouter();
   const segments = useSegments();
   const panelBase = String(segments?.[0] ?? '(clinic)');
@@ -82,63 +87,63 @@ export function InvoiceListBase({
       {filtered.length === 0 ? (
         <EmptyCard icon={emptyIcon} title={emptyTitle} description={emptyDescription} />
       ) : (
-        <Card style={{ padding: 0, overflow: 'hidden', borderColor: filter === 'overdue' ? 'rgba(217,75,75,0.30)' : DS.ink[200] }}>
+        <Card style={{ padding: 0, overflow: 'hidden', borderColor: filter === 'overdue' ? 'rgba(217,75,75,0.30)' : (isDark ? T.hairline : DS.ink[200]) }}>
           {filtered.map((inv, i) => {
             const isOverdue = inv.days_overdue > 0;
             return (
               <Pressable
                 key={inv.id}
-                onPress={() => router.push(`/${panelBase}/invoice/${inv.id}` as any)}
+                onPress={() => router.push(`/${panelBase}/invoice/${inv.invoice_no ?? inv.id}` as any)}
                 style={({ pressed }) => ({
                   flexDirection: 'row', alignItems: 'center', gap: 12,
                   paddingHorizontal: 16, paddingVertical: 14,
                   borderBottomWidth: i < filtered.length - 1 ? 1 : 0,
-                  borderBottomColor: DS.ink[100],
-                  backgroundColor: pressed ? DS.ink[50] : 'transparent',
+                  borderBottomColor: isDark ? T.hairline : DS.ink[100],
+                  backgroundColor: pressed ? (isDark ? 'rgba(255,255,255,0.05)' : DS.ink[50]) : 'transparent',
                 })}
               >
                 <View style={{
                   width: 40, height: 40, borderRadius: 12,
-                  backgroundColor: isOverdue ? 'rgba(217,75,75,0.10)' : DS.ink[100],
+                  backgroundColor: isOverdue ? (isDark ? 'rgba(217,75,75,0.24)' : 'rgba(217,75,75,0.10)') : (isDark ? T.cardSoft : DS.ink[100]),
                   alignItems: 'center', justifyContent: 'center',
                 }}>
                   {isOverdue
                     ? <AlertCircle size={18} color="#9C2E2E" strokeWidth={2} />
-                    : <FileText size={18} color={DS.ink[700]} strokeWidth={2} />}
+                    : <FileText size={18} color={isDark ? (T.ink2 as string) : DS.ink[700]} strokeWidth={2} />}
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: isDark ? T.ink : DS.ink[900] }} numberOfLines={1}>
                       Fatura {inv.invoice_no ?? '—'}
                     </Text>
                     <StatusChip status={inv.status} />
                   </View>
                   {/* Hekim isteği: faturanın hangi hastaya ait olduğu her sekmede görünsün. */}
                   {!!inv.patient_name && (
-                    <Text style={{ fontSize: 11.5, color: DS.ink[700], marginTop: 2 }} numberOfLines={1}>
+                    <Text style={{ fontSize: 11.5, color: isDark ? (T.ink2 as string) : DS.ink[700], marginTop: 2 }} numberOfLines={1}>
                       {[inv.patient_name, inv.order_no].filter(Boolean).join(' · ')}
                     </Text>
                   )}
-                  <Text style={{ fontSize: 11, color: isOverdue ? '#9C2E2E' : DS.ink[500], marginTop: 4 }}>
+                  <Text style={{ fontSize: 11, color: isOverdue ? (isDark ? '#F3A0A0' : '#9C2E2E') : (isDark ? (T.ink3 as string) : DS.ink[500]), marginTop: 4 }}>
                     {isOverdue
-                      ? `${inv.days_overdue} gün gecikmiş · vade ${fmtDate(inv.due_date)}`
-                      : `Vade ${fmtDate(inv.due_date)} · ${Math.abs(inv.days_overdue)} gün kaldı`}
-                    {inv.paid_amount > 0 ? `  ·  ${Mnat(inv.paid_amount, inv.currency)} ödendi` : ''}
+                      ? `${inv.days_overdue} ${autoT('gün gecikmiş')} · ${autoT('vade')} ${fmtDate(inv.due_date)}`
+                      : `${autoT('Vade')} ${fmtDate(inv.due_date)} · ${Math.abs(inv.days_overdue)} ${autoT('gün kaldı')}`}
+                    {inv.paid_amount > 0 ? `  ·  ${Mnat(inv.paid_amount, inv.currency)} ${autoT('ödendi')}` : ''}
                   </Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={{ ...DISPLAY, fontSize: 20, color: isOverdue ? '#9C2E2E' : DS.ink[900], letterSpacing: -0.5 }}>
+                  <Text style={{ ...DISPLAY, fontSize: 20, color: isOverdue ? (isDark ? '#F3A0A0' : '#9C2E2E') : (isDark ? T.ink : DS.ink[900]), letterSpacing: -0.5 }}>
                     {Mnat(inv.remaining, inv.currency)}
                   </Text>
-                  <Text style={{ fontSize: 9, color: DS.ink[400], textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 2 }}>
+                  <Text style={{ fontSize: 9, color: isDark ? (T.ink3 as string) : DS.ink[400], textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 2 }}>
                     Kalan
                   </Text>
                 </View>
                 <PillButton variant={isOverdue ? 'danger' : 'dark'} size="sm" leftIcon={<CreditCard size={12} color="#FFF" />}>
                   Öde
                 </PillButton>
-                {isRTL() ? <ChevronLeft size={16} color={DS.ink[400]} />
-                         : <ChevronRight size={16} color={DS.ink[400]} />}
+                {isRTL() ? <ChevronLeft size={16} color={isDark ? (T.ink3 as string) : DS.ink[400]} />
+                         : <ChevronRight size={16} color={isDark ? (T.ink3 as string) : DS.ink[400]} />}
               </Pressable>
             );
           })}

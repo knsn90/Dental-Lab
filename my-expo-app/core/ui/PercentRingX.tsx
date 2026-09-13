@@ -15,6 +15,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Platform } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
+import { useThemeModeStore } from '../store/themeModeStore';
 
 interface Props {
   /** 0-100 arası değer */
@@ -93,6 +94,7 @@ export function PercentRingX({
   animate = true,
   duration = 1400,
 }: Props) {
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const target = Math.max(0, Math.min(100, value));
   const animatedValue = useCountUp(target, duration, animate);
   const v = animate ? animatedValue : target;
@@ -169,15 +171,15 @@ export function PercentRingX({
           fontFamily: DISPLAY_FONT,
           fontWeight: '300',
           fontSize: numFontSize,
-          color: '#0A0A0A',
+          color: isDark ? '#F7F2E9' : '#0A0A0A',
           letterSpacing: numFontSize > 30 ? -1.4 : -0.5,
           lineHeight: numFontSize,
         }}>
           {Math.round(v)}
-          <Text style={{ fontSize: numFontSize * 0.5, color: '#9A9A9A', fontWeight: '400' }}>%</Text>
+          <Text style={{ fontSize: numFontSize * 0.5, color: isDark ? 'rgba(247,242,233,0.45)' : '#9A9A9A', fontWeight: '400' }}>%</Text>
         </Text>
         {label && isLarge && (
-          <Text style={{ fontSize: 10, color: '#6B6B6B', textTransform: 'uppercase', letterSpacing: 0.8, fontWeight: '600', marginTop: 8 }}>
+          <Text style={{ fontSize: 10, color: isDark ? 'rgba(247,242,233,0.45)' : '#6B6B6B', textTransform: 'uppercase', letterSpacing: 0.8, fontWeight: '600', marginTop: 8 }}>
             {label}
           </Text>
         )}

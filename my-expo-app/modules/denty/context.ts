@@ -4,7 +4,7 @@
  *
  * Faz 0+1: salt-okunur + yönlendirme + eğitim. Henüz veri yazma yok.
  */
-import { useSegments, useLocalSearchParams } from 'expo-router';
+import { useSegments, useLocalSearchParams, useGlobalSearchParams, usePathname } from 'expo-router';
 import { useAuthStore } from '../../core/store/authStore';
 import { usePermissionStore } from '../../core/store/permissionStore';
 import { getActiveViewer } from '../viewer-3d/viewerBridge';
@@ -87,7 +87,16 @@ export function useDentyContext(): DentyContext {
 
   const panel: PanelGroup | null = isDentyPanel(segments?.[0]) ? (segments[0] as PanelGroup) : null;
   const route = '/' + (segments ?? []).join('/');
-  const orderId = (params?.id as string) ?? null;
+  // DentyFAB KÖK yerleşimde (app/_layout) duruyor → useLocalSearchParams orada boş
+  // dönebiliyor ve asistan "açık sipariş yok" diyordu. Global parametre ve son çare
+  // olarak yol adresi de denenir. Değer UUID ya da sipariş NUMARASI olabilir.
+  const globalParams = useGlobalSearchParams<{ id?: string }>();
+  const pathname = usePathname();
+  const orderFromPath = (() => {
+    const m = /\/order\/([^/?#]+)/.exec(String(pathname ?? ''));
+    return m ? decodeURIComponent(m[1]) : null;
+  })();
+  const orderId = (params?.id as string) || (globalParams?.id as string) || orderFromPath || null;
 
   const userName = (profile as any)?.full_name ?? 'Kullanıcı';
   const userType = (profile as any)?.user_type ?? 'bilinmiyor';
@@ -134,6 +143,11 @@ export function useDentyContext(): DentyContext {
     '- Kısa ve net ol, gereksiz uzatma. Arada hafif sıcak bir ton (ama abartılı emoji/yapmacık değil). En fazla bir tane uygun emoji.',
     '- Diş hekimliği / laboratuvar terminolojisini bilirsin (kron, köprü, zirkonyum, ölçü, Vita renk skalası vb.) — kullanıcının dilinden konuş.',
     '- Emin olmadığında uydurma — dostça sor ya da "bundan emin değilim" de.',
+    '',
+    'ÖZET ARACI (siparisRaporu) — ÇIKTIYI DEĞİŞTİRME:',
+    '- siparisRaporu zaten bitmiş, tek paragraflık bir rapor döndürür. Onu KELİMESİ KELİMESİNE ilet.',
+    '- Üstüne başlık, madde listesi, kalın yazı, emoji veya "işte özet" gibi giriş cümlesi EKLEME; veriyi tekrar listeleme.',
+    '- Kullanıcı bir siparişin özetini/raporunu isterse başka araçlarla veri toplayıp kendin özet yazma — siparisRaporu\'nu çağır.',
     '',
     'GÜVENLİK KURALLARI (çok önemli):',
     '- VERİ YAZAN işlemlerde (sipariş oluşturma, destek talebi açma, mesaj gönderme) aracı çağırırsın ama işlem HEMEN gerçekleşmez: kullanıcıya bir ONAY KARTI gösterilir, ancak "Onayla" derse uygulanır. Onay akışını sistem yönetir — sen sadece doğru araç ve parametrelerle çağır.',

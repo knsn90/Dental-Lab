@@ -16,7 +16,7 @@ import {
   View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Modal, Platform,
   KeyboardAvoidingView,
 } from 'react-native';
-import { X, Send, Bot, User } from 'lucide-react-native';
+import { X, Send, Bot, User } from '../../../core/ui/icons';
 
 import { supabase } from '../../../core/api/supabase';
 import { toast } from '../../../core/ui/Toast';

@@ -11,7 +11,7 @@ import {
   X, Send, MessageCirclePlus,
   Bug, FileWarning, Cog, Truck, Receipt, Plug, GraduationCap, ShieldAlert, ShieldCheck,
   Layers, AlertCircle, Briefcase,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { useSupportStore } from '../../../core/store/supportStore';
 import { useAuthStore } from '../../../core/store/authStore';
 import { toast } from '../../../core/ui/Toast';

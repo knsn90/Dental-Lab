@@ -23,8 +23,10 @@ import {
 } from 'react-native';
 import { C } from '../theme/colors';
 import { S } from '../theme/spacing';
+import { useMobileTokens } from '../theme/mobileDesignTokens';
+import { useThemeModeStore } from '../store/themeModeStore';
 
-import { AlertCircle, AlertTriangle, CheckCircle2, Info, X as XIcon } from 'lucide-react-native';
+import { AlertCircle, AlertTriangle, CheckCircle2, Info, X as XIcon } from './icons';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
@@ -82,6 +84,8 @@ const DISPLAY = {
 
 // ─── Single Toast Item ────────────────────────────────────────────────────────
 function ToastItem({ msg, onDismiss }: { msg: ToastMessage; onDismiss: (id: string) => void }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const cfg = CFG[msg.type];
   const anim = useRef(new Animated.Value(0)).current;
   const opac = useRef(new Animated.Value(0)).current;
@@ -114,6 +118,7 @@ function ToastItem({ msg, onDismiss }: { msg: ToastMessage; onDismiss: (id: stri
     <Animated.View
       style={[
         styles.item,
+        isDark && { backgroundColor: T.card, borderColor: T.hairline },
         { opacity: opac, transform: [{ translateY }] },
       ]}
     >
@@ -131,15 +136,15 @@ function ToastItem({ msg, onDismiss }: { msg: ToastMessage; onDismiss: (id: stri
         </View>
 
         <View style={styles.textBlock}>
-          <Text style={styles.title}>{msg.title ?? cfg.titleDefault}</Text>
+          <Text style={[styles.title, isDark && { color: T.ink }]}>{msg.title ?? cfg.titleDefault}</Text>
           {!!msg.message && (
-            <Text style={styles.message} numberOfLines={3}>{msg.message}</Text>
+            <Text style={[styles.message, isDark && { color: T.ink3 as string }]} numberOfLines={3}>{msg.message}</Text>
           )}
         </View>
       </Pressable>
 
       <Pressable onPress={dismiss} hitSlop={10} style={styles.close}>
-        <XIcon size={14} color="#9A9A9A" strokeWidth={2} />
+        <XIcon size={14} color={isDark ? (T.ink3 as string) : '#9A9A9A'} strokeWidth={2} />
       </Pressable>
     </Animated.View>
   );

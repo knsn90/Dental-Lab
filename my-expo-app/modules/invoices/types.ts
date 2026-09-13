@@ -130,7 +130,10 @@ export interface InvoiceItem {
   description: string;
   quantity: number;
   unit_price: number;
-  total: number;                     // generated = qty * unit_price
+  total: number;                     // generated = qty * unit_price (BRÜT)
+  discount_type?: 'percent' | 'fixed';
+  discount_value?: number;
+  net_total?: number;                // generated = brüt - indirim
   sort_order: number;
   created_at: string;
 }

@@ -29,6 +29,8 @@ export interface PrintOrderInput {
     shade?: string | null;
     material?: string | null;
     implantSystem?: string | null;
+    /** İmplant türü — Bone Level / Tissue Level / Mini. */
+    implantType?: string | null;
     abutment?: string | null;
     screw?: string | null;
   }>;
@@ -130,11 +132,11 @@ export function buildOrderPrintHtml(input: PrintOrderInput): string {
   // ── Op table rows — aynı işlem değerlerine sahip dişler tek satırda ──
   const ops = toothOps && toothOps.length > 0
     ? [...toothOps].sort((a, b) => a.tooth - b.tooth)
-    : toothNumbers.map(t => ({ tooth: t, workType, shade: shade ?? null, material: null, implantSystem: null, abutment: null, screw: null }));
+    : toothNumbers.map(t => ({ tooth: t, workType, shade: shade ?? null, material: null, implantSystem: null, implantType: null, abutment: null, screw: null }));
 
   const groupKeyOf = (o: typeof ops[number]) => [
     o.workType ?? '', o.shade ?? '', o.material ?? '',
-    o.implantSystem ?? '', o.abutment ?? '', o.screw ?? '',
+    o.implantSystem ?? '', o.implantType ?? '', o.abutment ?? '', o.screw ?? '',
   ].join('||');
   const opGroupMap = new Map<string, { ops: typeof ops; teeth: number[] }>();
   ops.forEach(o => {
@@ -167,7 +169,7 @@ export function buildOrderPrintHtml(input: PrintOrderInput): string {
 
   const opTableRows = opGroups.length > 0 ? opGroups.map(g => {
     const op = g.ops[0];
-    const det = [op.workType, op.shade, op.material, op.implantSystem, op.abutment, op.screw]
+    const det = [op.workType, op.shade, op.material, op.implantSystem, op.implantType, op.abutment, op.screw]
       .filter(Boolean).join(' · ') || '—';
     const teethLabel = formatTeethRangeHtml(g.teeth);
     const count = g.ops.length;

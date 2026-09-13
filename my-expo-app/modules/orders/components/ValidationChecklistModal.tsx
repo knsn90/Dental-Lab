@@ -4,7 +4,7 @@
 
 import React from 'react';
 import { Modal, View, Text, Pressable, Platform, ScrollView} from 'react-native';
-import { X, Check, ShieldCheck } from 'lucide-react-native';
+import { X, Check, ShieldCheck } from '../../../core/ui/icons';
 import { useStationTheme, hexA } from '../../../core/theme/stationPalette';
 import { StageValidationChecklist } from './StageValidationChecklist';
 import type { ValidationItem as VI } from '../stations/registry';

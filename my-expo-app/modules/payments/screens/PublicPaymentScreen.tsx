@@ -19,6 +19,8 @@ import { useLocalSearchParams } from 'expo-router';
 
 import { AppIcon } from '../../../core/ui/AppIcon';
 import { Shadows, CardSpec } from '../../../core/theme/shadows';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { fetchPublicIntent, chargeWithCard, confirmPayment, PAYMENT_STATUS_LABELS } from '../api';
 import type { PublicPaymentIntent, CardInput } from '../types';
 
@@ -28,6 +30,8 @@ function fmtMoney(n: number, cur = 'TRY'): string {
 }
 
 export function PublicPaymentScreen() {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const { token } = useLocalSearchParams<{ token: string }>();
   const [intent, setIntent] = useState<PublicPaymentIntent | null>(null);
   const [loading, setLoading] = useState(true);
@@ -116,7 +120,7 @@ export function PublicPaymentScreen() {
   // ─── Render ────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <SafeAreaView style={s.safe}>
+      <SafeAreaView style={[s.safe, { backgroundColor: T.bg }]}>
         <View style={s.center}>
           <ActivityIndicator color="#2563EB" size="large" />
         </View>
@@ -126,13 +130,13 @@ export function PublicPaymentScreen() {
 
   if (error || !intent) {
     return (
-      <SafeAreaView style={s.safe}>
+      <SafeAreaView style={[s.safe, { backgroundColor: T.bg }]}>
         <View style={s.center}>
           <View style={[s.iconCircle, { backgroundColor: '#FEF2F2' }]}>
             <AppIcon name="alert-circle" size={36} color="#DC2626" />
           </View>
-          <Text style={s.bigTitle}>Ödeme Bulunamadı</Text>
-          <Text style={s.bigSub}>{error ?? 'Bu link geçersiz veya süresi dolmuş.'}</Text>
+          <Text style={[s.bigTitle, { color: T.ink }]}>Ödeme Bulunamadı</Text>
+          <Text style={[s.bigSub, { color: T.ink3 }]}>{error ?? 'Bu link geçersiz veya süresi dolmuş.'}</Text>
         </View>
       </SafeAreaView>
     );
@@ -141,16 +145,16 @@ export function PublicPaymentScreen() {
   // Success view
   if (stage === 'success' || intent.status === 'paid') {
     return (
-      <SafeAreaView style={s.safe}>
+      <SafeAreaView style={[s.safe, { backgroundColor: T.bg }]}>
         <View style={s.center}>
           <View style={[s.iconCircle, { backgroundColor: '#ECFDF5' }]}>
             <AppIcon name="check-circle" size={48} color="#059669" />
           </View>
-          <Text style={s.bigTitle}>Ödemeniz Alındı</Text>
-          <Text style={s.bigSub}>
+          <Text style={[s.bigTitle, { color: T.ink }]}>Ödemeniz Alındı</Text>
+          <Text style={[s.bigSub, { color: T.ink3 }]}>
             {fmtMoney(Number(intent.amount), intent.currency)} · {intent.invoice_number}
           </Text>
-          <Text style={[s.bigSub, { marginTop: 12, fontSize: 13 }]}>
+          <Text style={[s.bigSub, { color: T.ink3, marginTop: 12, fontSize: 13 }]}>
             Teşekkürler! Makbuz e-postanıza gönderilecektir.
           </Text>
         </View>
@@ -161,7 +165,7 @@ export function PublicPaymentScreen() {
   // 3DS view (web iframe)
   if (stage === '3ds' && threedsHtml) {
     return (
-      <SafeAreaView style={s.safe}>
+      <SafeAreaView style={[s.safe, { backgroundColor: T.bg }]}>
         <View style={s.threedsWrap}>
           {Platform.OS === 'web' ? (
             // @ts-ignore — web only
@@ -171,7 +175,7 @@ export function PublicPaymentScreen() {
               sandbox="allow-scripts allow-forms allow-same-origin"
             />
           ) : (
-            <Text style={s.bigSub}>3DS doğrulama yalnızca web'de destekleniyor (mobilde Edge Function callback gerekli)</Text>
+            <Text style={[s.bigSub, { color: T.ink3 }]}>3DS doğrulama yalnızca web'de destekleniyor (mobilde Edge Function callback gerekli)</Text>
           )}
         </View>
       </SafeAreaView>
@@ -181,13 +185,13 @@ export function PublicPaymentScreen() {
   // Fail view
   if (stage === 'fail') {
     return (
-      <SafeAreaView style={s.safe}>
+      <SafeAreaView style={[s.safe, { backgroundColor: T.bg }]}>
         <View style={s.center}>
           <View style={[s.iconCircle, { backgroundColor: '#FEF2F2' }]}>
             <AppIcon name="close-circle" size={48} color="#DC2626" />
           </View>
-          <Text style={s.bigTitle}>Ödeme Başarısız</Text>
-          <Text style={s.bigSub}>{failMessage ?? 'Bilinmeyen hata'}</Text>
+          <Text style={[s.bigTitle, { color: T.ink }]}>Ödeme Başarısız</Text>
+          <Text style={[s.bigSub, { color: T.ink3 }]}>{failMessage ?? 'Bilinmeyen hata'}</Text>
           <TouchableOpacity style={s.retryBtn} onPress={() => { setStage('form'); setFailMessage(null); }}>
             <Text style={s.retryText}>Tekrar Dene</Text>
           </TouchableOpacity>
@@ -199,95 +203,95 @@ export function PublicPaymentScreen() {
   // Form view
   const cfg = PAYMENT_STATUS_LABELS[intent.status];
   return (
-    <SafeAreaView style={s.safe}>
+    <SafeAreaView style={[s.safe, { backgroundColor: T.bg }]}>
       <ScrollView contentContainerStyle={s.scroll}>
         {/* Lab başlık */}
         <View style={s.labHead}>
-          <Text style={s.labName}>{intent.lab_name}</Text>
+          <Text style={[s.labName, { color: T.ink }]}>{intent.lab_name}</Text>
           <View style={[s.statusPill, { backgroundColor: cfg.color + '15' }]}>
             <Text style={[s.statusPillText, { color: cfg.color }]}>{cfg.label}</Text>
           </View>
         </View>
 
         {/* Fatura kartı */}
-        <View style={s.invCard}>
-          <Text style={s.invLabel}>Fatura</Text>
-          <Text style={s.invNumber}>{intent.invoice_number}</Text>
-          <Text style={s.amountBig}>{fmtMoney(Number(intent.amount), intent.currency)}</Text>
-          {intent.clinic_name && <Text style={s.invMeta}>{intent.clinic_name}</Text>}
-          {intent.doctor_name && <Text style={s.invMeta}>Hekim: {intent.doctor_name}</Text>}
+        <View style={[s.invCard, { backgroundColor: T.card, borderColor: T.hairline }]}>
+          <Text style={[s.invLabel, { color: T.ink3 }]}>Fatura</Text>
+          <Text style={[s.invNumber, { color: T.ink3 }]}>{intent.invoice_number}</Text>
+          <Text style={[s.amountBig, { color: T.ink }]}>{fmtMoney(Number(intent.amount), intent.currency)}</Text>
+          {intent.clinic_name && <Text style={[s.invMeta, { color: T.ink3 }]}>{intent.clinic_name}</Text>}
+          {intent.doctor_name && <Text style={[s.invMeta, { color: T.ink3 }]}>Hekim: {intent.doctor_name}</Text>}
           {intent.invoice_due_date && (
-            <Text style={s.invMeta}>
+            <Text style={[s.invMeta, { color: T.ink3 }]}>
               Vade: {new Date(intent.invoice_due_date + 'T00:00:00').toLocaleDateString('tr-TR')}
             </Text>
           )}
         </View>
 
         {/* Kart formu */}
-        <View style={s.cardForm}>
-          <Text style={s.formTitle}>Kart Bilgileri</Text>
+        <View style={[s.cardForm, { backgroundColor: T.card, borderColor: T.hairline }]}>
+          <Text style={[s.formTitle, { color: T.ink }]}>Kart Bilgileri</Text>
 
           <Field label="Kart Sahibi">
             <TextInput
-              style={s.input}
+              style={[s.input, { color: T.ink, borderColor: T.hairline, backgroundColor: isDark ? T.cardSoft : "#FFFFFF" }]}
               value={card.holder_name}
               onChangeText={v => setCard({ ...card, holder_name: v })}
               placeholder="AD SOYAD"
               autoCapitalize="characters"
-              placeholderTextColor="#94A3B8"
+              placeholderTextColor={isDark ? (T.ink3 as string) : "#94A3B8"}
             />
           </Field>
 
           <Field label="Kart Numarası">
             <TextInput
-              style={s.input}
+              style={[s.input, { color: T.ink, borderColor: T.hairline, backgroundColor: isDark ? T.cardSoft : "#FFFFFF" }]}
               value={card.number}
               onChangeText={v => setCard({ ...card, number: v.replace(/\D/g, '').slice(0, 16) })}
               placeholder="1234 5678 9012 3456"
               keyboardType="number-pad"
               maxLength={16}
-              placeholderTextColor="#94A3B8"
+              placeholderTextColor={isDark ? (T.ink3 as string) : "#94A3B8"}
             />
           </Field>
 
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <Field label="Ay" style={{ flex: 1 }}>
               <TextInput
-                style={s.input}
+                style={[s.input, { color: T.ink, borderColor: T.hairline, backgroundColor: isDark ? T.cardSoft : "#FFFFFF" }]}
                 value={card.expire_month}
                 onChangeText={v => setCard({ ...card, expire_month: v.replace(/\D/g, '').slice(0, 2) })}
                 placeholder="MM"
                 keyboardType="number-pad"
                 maxLength={2}
-                placeholderTextColor="#94A3B8"
+                placeholderTextColor={isDark ? (T.ink3 as string) : "#94A3B8"}
               />
             </Field>
             <Field label="Yıl" style={{ flex: 1 }}>
               <TextInput
-                style={s.input}
+                style={[s.input, { color: T.ink, borderColor: T.hairline, backgroundColor: isDark ? T.cardSoft : "#FFFFFF" }]}
                 value={card.expire_year}
                 onChangeText={v => setCard({ ...card, expire_year: v.replace(/\D/g, '').slice(0, 4) })}
                 placeholder="YYYY"
                 keyboardType="number-pad"
                 maxLength={4}
-                placeholderTextColor="#94A3B8"
+                placeholderTextColor={isDark ? (T.ink3 as string) : "#94A3B8"}
               />
             </Field>
             <Field label="CVC" style={{ flex: 1 }}>
               <TextInput
-                style={s.input}
+                style={[s.input, { color: T.ink, borderColor: T.hairline, backgroundColor: isDark ? T.cardSoft : "#FFFFFF" }]}
                 value={card.cvc}
                 onChangeText={v => setCard({ ...card, cvc: v.replace(/\D/g, '').slice(0, 4) })}
                 placeholder="123"
                 keyboardType="number-pad"
                 maxLength={4}
                 secureTextEntry
-                placeholderTextColor="#94A3B8"
+                placeholderTextColor={isDark ? (T.ink3 as string) : "#94A3B8"}
               />
             </Field>
           </View>
 
-          <Text style={s.demoHint}>
+          <Text style={[s.demoHint, { color: T.ink3 }]}>
             🧪 Sandbox: CVC 000 → fail · 999 → 3DS · diğer → success
           </Text>
         </View>
@@ -306,7 +310,7 @@ export function PublicPaymentScreen() {
           </Text>
         </TouchableOpacity>
 
-        <Text style={s.secureHint}>
+        <Text style={[s.secureHint, { color: T.ink3 }]}>
           🔒 Kart bilgileriniz GİB onaylı 3D Secure altyapısı ile güvence altındadır.
         </Text>
       </ScrollView>
@@ -315,9 +319,10 @@ export function PublicPaymentScreen() {
 }
 
 function Field({ label, children, style }: { label: string; children: React.ReactNode; style?: any }) {
+  const T = useMobileTokens();
   return (
     <View style={[{ marginBottom: 12 }, style]}>
-      <Text style={s.fieldLabel}>{label}</Text>
+      <Text style={[s.fieldLabel, { color: T.ink3 }]}>{label}</Text>
       {children}
     </View>
   );

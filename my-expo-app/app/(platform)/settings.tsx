@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Platform } from 'react-native';
-import { ToggleLeft, ToggleRight, AlertTriangle } from 'lucide-react-native';
+import { ToggleLeft, ToggleRight, AlertTriangle } from '../../core/ui/icons';
 import { getSettings, setSetting, type PlatformSettings } from '../../modules/platform/api';
 import { C, PageHeader, SectionLabel, hexA } from '../../modules/platform/ui';
 import { autoT } from '../../core/i18n/autoTranslate';

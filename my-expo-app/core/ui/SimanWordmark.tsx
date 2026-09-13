@@ -9,6 +9,7 @@
 import React from 'react';
 import { View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
+import { useThemeModeStore } from '../store/themeModeStore';
 
 const VB_W = 357.65;
 const VB_H = 46.8;
@@ -29,13 +30,15 @@ export interface SimanWordmarkProps {
   color?: string;
 }
 
-export function SimanWordmark({ height = 22, color = '#0A0A0A' }: SimanWordmarkProps) {
+export function SimanWordmark({ height = 22, color }: SimanWordmarkProps) {
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const fill = color ?? (isDark ? '#F7F2E9' : '#0A0A0A');
   const width = height * RATIO;
   return (
     <View style={{ width, height }}>
       <Svg width={width} height={height} viewBox={`0 0 ${VB_W} ${VB_H}`}>
         {PATHS.map((d, i) => (
-          <Path key={i} d={d} fill={color} />
+          <Path key={i} d={d} fill={fill} />
         ))}
       </Svg>
     </View>

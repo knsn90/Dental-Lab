@@ -9,10 +9,12 @@
 
 import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, Modal, TextInput, Platform, ActivityIndicator } from 'react-native';
-import { RotateCcw, X, Check, Building2, Stethoscope } from 'lucide-react-native';
+import { RotateCcw, X, Check, Building2, Stethoscope } from '../../../core/ui/icons';
 import { createRevisionOrder, type RevisionResponsible } from '../api';
 import { supabase } from '../../../core/api/supabase';
 import { toast } from '../../../core/ui/Toast';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 interface Props {
   visible: boolean;
@@ -34,6 +36,8 @@ const RESPONSIBLE_OPTS: Array<{
 ];
 
 export function RevisionModal({ visible, orderId, orderNumber, labId, accentColor = '#2563EB', onClose, onCreated }: Props) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [reason, setReason] = useState('');
   const [responsible, setResponsible] = useState<RevisionResponsible | null>(null);
   const [faultStation, setFaultStation] = useState<string | null>(null);
@@ -76,7 +80,7 @@ export function RevisionModal({ visible, orderId, orderNumber, labId, accentColo
       >
         <Pressable
           onPress={(e: any) => e.stopPropagation?.()}
-          style={{ width: '100%', maxWidth: 460, backgroundColor: '#FFFFFF', borderRadius: 20, padding: 22, gap: 16 }}
+          style={{ width: '100%', maxWidth: 460, backgroundColor: isDark ? T.card : '#FFFFFF', borderRadius: 20, padding: 22, gap: 16, ...(isDark ? { borderWidth: 1, borderColor: T.hairline } : {}) }}
         >
           {/* Başlık */}
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
@@ -84,20 +88,20 @@ export function RevisionModal({ visible, orderId, orderNumber, labId, accentColo
               <RotateCcw size={18} color={accentColor} strokeWidth={2} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 17, fontWeight: '700', color: '#0A0A0A', letterSpacing: -0.3 }}>Revizyon Oluştur</Text>
-              <Text style={{ fontSize: 12.5, color: '#6B6B6B', marginTop: 2, lineHeight: 18 }}>
+              <Text style={{ fontSize: 17, fontWeight: '700', color: isDark ? T.ink : '#0A0A0A', letterSpacing: -0.3 }}>Revizyon Oluştur</Text>
+              <Text style={{ fontSize: 12.5, color: isDark ? T.ink3 : '#6B6B6B', marginTop: 2, lineHeight: 18 }}>
                 {orderNumber} bağlı yeni sipariş olarak yeniden açılır. Orijinal sipariş
                 teslim edilmiş olarak kalır; revizyon normal planlamaya düşer.
               </Text>
             </View>
             <Pressable onPress={onClose} style={{ padding: 4, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-              <X size={18} color="#9A9A9A" strokeWidth={2} />
+              <X size={18} color={isDark ? (T.ink3 as string) : '#9A9A9A'} strokeWidth={2} />
             </Pressable>
           </View>
 
           {/* Sorumluluk */}
           <View style={{ gap: 8 }}>
-            <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.8, color: '#9A9A9A', textTransform: 'uppercase' }}>
+            <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.8, color: isDark ? T.ink3 : '#9A9A9A', textTransform: 'uppercase' }}>
               Sorumluluk
             </Text>
             <View style={{ gap: 8 }}>
@@ -112,15 +116,15 @@ export function RevisionModal({ visible, orderId, orderNumber, labId, accentColo
                       flexDirection: 'row', alignItems: 'center', gap: 10,
                       paddingHorizontal: 12, paddingVertical: 11, borderRadius: 12,
                       borderWidth: 1.5,
-                      borderColor: active ? accentColor : '#EAEAEA',
-                      backgroundColor: active ? accentColor + '0F' : '#FFFFFF',
+                      borderColor: active ? accentColor : (isDark ? T.hairline : '#EAEAEA'),
+                      backgroundColor: active ? accentColor + '0F' : (isDark ? T.cardSoft : '#FFFFFF'),
                       ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                     }}
                   >
-                    <Icon size={16} color={active ? accentColor : '#9A9A9A'} strokeWidth={1.9} />
+                    <Icon size={16} color={active ? accentColor : (isDark ? (T.ink3 as string) : '#9A9A9A')} strokeWidth={1.9} />
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 13.5, fontWeight: '600', color: active ? '#0A0A0A' : '#2C2C2C' }}>{opt.label}</Text>
-                      <Text style={{ fontSize: 11.5, color: '#6B6B6B', marginTop: 1 }}>{opt.hint}</Text>
+                      <Text style={{ fontSize: 13.5, fontWeight: '600', color: active ? (isDark ? T.ink : '#0A0A0A') : (isDark ? T.ink2 : '#2C2C2C') }}>{opt.label}</Text>
+                      <Text style={{ fontSize: 11.5, color: isDark ? T.ink3 : '#6B6B6B', marginTop: 1 }}>{opt.hint}</Text>
                     </View>
                     {active && <Check size={16} color={accentColor} strokeWidth={2.4} />}
                   </Pressable>
@@ -132,7 +136,7 @@ export function RevisionModal({ visible, orderId, orderNumber, labId, accentColo
           {/* Hatalı istasyon — yalnız lab kaynaklıda, opsiyonel (KPI kırılımı) */}
           {responsible === 'lab' && stations.length > 0 && (
             <View style={{ gap: 8 }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.8, color: '#9A9A9A', textTransform: 'uppercase' }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.8, color: isDark ? T.ink3 : '#9A9A9A', textTransform: 'uppercase' }}>
                 Hata hangi aşamada? (opsiyonel)
               </Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
@@ -146,18 +150,18 @@ export function RevisionModal({ visible, orderId, orderNumber, labId, accentColo
                         flexDirection: 'row', alignItems: 'center', gap: 5,
                         paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999,
                         borderWidth: 1,
-                        borderColor: active ? accentColor : '#EAEAEA',
-                        backgroundColor: active ? accentColor : '#FFFFFF',
+                        borderColor: active ? accentColor : (isDark ? T.hairline : '#EAEAEA'),
+                        backgroundColor: active ? accentColor : (isDark ? T.cardSoft : '#FFFFFF'),
                         ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                       }}
                     >
                       {active && <Check size={11} color="#FFFFFF" strokeWidth={2.6} />}
-                      <Text style={{ fontSize: 12, fontWeight: '600', color: active ? '#FFFFFF' : '#2C2C2C' }}>{st.name}</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: active ? '#FFFFFF' : (isDark ? T.ink2 : '#2C2C2C') }}>{st.name}</Text>
                     </Pressable>
                   );
                 })}
               </View>
-              <Text style={{ fontSize: 11, color: '#9A9A9A' }}>
+              <Text style={{ fontSize: 11, color: isDark ? T.ink3 : '#9A9A9A' }}>
                 Yeniden-yapım raporunda "nerede hata oluyor" kırılımını besler.
               </Text>
             </View>
@@ -165,19 +169,20 @@ export function RevisionModal({ visible, orderId, orderNumber, labId, accentColo
 
           {/* Sebep */}
           <View style={{ gap: 6 }}>
-            <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.8, color: '#9A9A9A', textTransform: 'uppercase' }}>
+            <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.8, color: isDark ? T.ink3 : '#9A9A9A', textTransform: 'uppercase' }}>
               Revizyon sebebi *
             </Text>
             <TextInput
               value={reason}
               onChangeText={(t) => { setReason(t); setError(''); }}
               placeholder="Hekimin talebi / tespit edilen sorun…"
-              placeholderTextColor="#9A9A9A"
+              placeholderTextColor={isDark ? (T.ink3 as string) : '#9A9A9A'}
               multiline
               style={{
-                borderWidth: 1, borderColor: '#EAEAEA', borderRadius: 12,
+                borderWidth: 1, borderColor: isDark ? T.hairline : '#EAEAEA', borderRadius: 12,
                 paddingHorizontal: 12, paddingVertical: 10,
-                fontSize: 13.5, color: '#0A0A0A', minHeight: 76, textAlignVertical: 'top',
+                fontSize: 13.5, color: isDark ? T.ink : '#0A0A0A', minHeight: 76, textAlignVertical: 'top',
+                ...(isDark ? { backgroundColor: T.cardSoft } : {}),
                 ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
               } as any}
             />
@@ -191,9 +196,9 @@ export function RevisionModal({ visible, orderId, orderNumber, labId, accentColo
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <Pressable
               onPress={onClose}
-              style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: '#EAEAEA', alignItems: 'center', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+              style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: isDark ? T.hairline : '#EAEAEA', alignItems: 'center', ...(isDark ? { backgroundColor: T.cardSoft } : {}), ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
             >
-              <Text style={{ fontSize: 14, fontWeight: '600', color: '#2C2C2C' }}>Vazgeç</Text>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: isDark ? T.ink2 : '#2C2C2C' }}>Vazgeç</Text>
             </Pressable>
             <Pressable
               onPress={handleCreate}

@@ -10,7 +10,7 @@ import { Slot, Tabs, useRouter, usePathname, Redirect } from 'expo-router';
 import {
   Home, ClipboardList, QrCode, MessageCircle, User, Plus, MoreHorizontal, Search, Users,
   Stethoscope as Stethoscope2, Truck as Truck2, Settings as Settings2,
-} from 'lucide-react-native';
+} from '../../core/ui/icons';
 
 import { TopActionBar } from '../../core/ui/mobile/TopActionBar';
 import { PanelTopHeader } from '../../core/ui/mobile/PanelTopHeader';

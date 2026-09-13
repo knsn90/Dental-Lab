@@ -9,10 +9,11 @@ import { View, Text, Pressable, Platform, Linking, Modal, Image } from 'react-na
 import { useSegments } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import { FileUp, FileText, Image as ImageIcon, FileBox, Eye, Trash2, UploadCloud, Download, UserCheck, Clock as ClockIcon, ChevronDown } from 'lucide-react-native';
+import { FileUp, FileText, Image as ImageIcon, FileBox, Eye, Trash2, UploadCloud, Download, UserCheck, Clock as ClockIcon, ChevronDown } from '../../../core/ui/icons';
 import { supabase } from '../../../core/api/supabase';
 import { useStationTheme, hexA } from '../../../core/theme/stationPalette';
 import { toast } from '../../../core/ui/Toast';
+import { confirmAsync } from '../../../core/util/confirm';
 import { useAuthStore } from '../../../core/store/authStore';
 import { recordStageActivity } from '../api/timing';
 import { requestDesignApproval, resetDesignApproval } from '../api';
@@ -23,6 +24,7 @@ import { ActivityIndicator } from '../../../core/ui/teethCompat';
 
 // Viewer3D — tek paylaşılan lazy (retry'lı; Metro dev async-chunk {} sorununa dayanıklı)
 import { Viewer3DModalLazy as Viewer3DModal } from '../../viewer-3d/Viewer3DLazy';
+import { unzipToViewer, isArchiveExt } from '../fileArchive';
 
 // HTML tasarım (exocad) native önizleme — sadece native'de WebView yükle (web iframe kullanır).
 const HtmlWebView: any = Platform.OS !== 'web' ? require('react-native-webview').WebView : null;
@@ -250,7 +252,10 @@ export function StageFileUpload({
   // 3D viewer state (STL/PLY/OBJ dosyaları için)
   const [viewer3DFile, setViewer3DFile] = useState<{ id: string; name: string; url: string; format: 'stl'|'ply'|'obj' } | null>(null);
   // Çoklu 3D viewer — tüm taramaları üst üste aç
+  const [zipViewer, setZipViewer] = useState<{ url: string; name: string } | null>(null);
   const [viewer3DFiles, setViewer3DFiles] = useState<Array<{ id: string; name: string; url: string; format: 'stl'|'ply'|'obj' }> | null>(null);
+  // ZIP açılırken (extract) yükleniyor göstergesi
+  const [extractingId, setExtractingId] = useState<string | null>(null);
   // Uygulama-içi görsel önizleme (yeni tab yerine popup)
   const [imageViewer, setImageViewer] = useState<{ url: string; name: string } | null>(null);
   // Uygulama-içi HTML tasarım önizleme (exocad web viewer — web: iframe · native: WebView)
@@ -331,7 +336,7 @@ export function StageFileUpload({
       name:      f.caption?.trim() || f.filename,
       uri:       '',
       kind:      detectKind(f.storage_path) || detectKind(f.filename),
-      canRemove: f.__inherited ? false : canRemoveFile(f.uploaded_by),
+      canRemove: f.__inherited ? isAdmin : canRemoveFile(f.uploaded_by),
       filename:  f.storage_path,  // 3D format tespiti için gerçek uzantılı path
       created_at: f.created_at,
     }) as UploadAttachment);
@@ -350,7 +355,7 @@ export function StageFileUpload({
         name:      f.caption?.trim() || f.filename,
         uri:       urlByPath[f.storage_path] ?? '',
         kind:      detectKind(f.storage_path) || detectKind(f.filename),
-        canRemove: f.__inherited ? false : canRemoveFile(f.uploaded_by),
+        canRemove: f.__inherited ? isAdmin : canRemoveFile(f.uploaded_by),
         filename:  f.storage_path,
         created_at: f.created_at,
       })));
@@ -379,6 +384,24 @@ export function StageFileUpload({
     const fmt = is3DFile(file.storage_path) || is3DFile(file.filename);
     if (fmt && Platform.OS === 'web') {
       setViewer3DFile({ id: file.id, name: file.filename, url: data.signedUrl, format: fmt });
+      return;
+    }
+    // ZIP/arşiv (ör. OrthoCAD export) → içindeki mesh'leri TARAYICI İÇİNDE çıkar ve 3D
+    // viewer'da göster (indirme DEĞİL). Mesh yoksa görsel, o da yoksa indirmeye düş.
+    if (isArchiveExt(file.storage_path) || isArchiveExt(file.filename)) {
+      // Native: arşiv 3D görüntüleyicinin WebView'inde açılır (RN JS thread'inde
+      // unzipSync büyük taramada uygulamayı donduruyordu; üstelik çoklu viewer
+      // native'de hiç çizilmiyordu).
+      if (Platform.OS !== 'web') { setZipViewer({ url: data.signedUrl, name: file.filename }); return; }
+      setExtractingId(file.id);
+      try {
+        const r = await unzipToViewer(data.signedUrl, { idPrefix: file.id });
+        if (r.files.length > 0) { setViewer3DFiles(r.files); return; }
+        if (r.images.length > 0) { setImageViewer(r.images[0]); return; }
+        if (Platform.OS === 'web') window.open(data.signedUrl, '_blank'); else Linking.openURL(data.signedUrl);
+      } catch {
+        if (Platform.OS === 'web') window.open(data.signedUrl, '_blank'); else Linking.openURL(data.signedUrl);
+      } finally { setExtractingId(null); }
       return;
     }
     const ext = (file.storage_path.split('.').pop() || '').toLowerCase();
@@ -441,10 +464,19 @@ export function StageFileUpload({
   async function handleDelete(file: StageFile) {
     if (uploading) return;
     if (file.__inherited) {
-      toast.error('Asıl işin dosyası — revizyondan silinemez');
-      return;
-    }
-    if (!canRemoveFile(file.uploaded_by)) {
+      if (!isAdmin) {
+        toast.error('Asıl işin dosyası — revizyondan silinemez');
+        return;
+      }
+      // Admin devralınan dosyayı da silebilir — ama bu ASIL siparişin gerçek
+      // dosyası (aynı DB satırı + storage); silmek onu asıl siparişten de kaldırır.
+      const ok = await confirmAsync(
+        'Devralınan dosyayı sil',
+        'Bu dosya asıl siparişe ait. Silersen ASIL siparişten de kalıcı olarak kalkar. Devam edilsin mi?',
+        { confirmText: 'Sil', destructive: true },
+      );
+      if (!ok) return;
+    } else if (!canRemoveFile(file.uploaded_by)) {
       toast.error('Bu dosyayı silme yetkiniz yok');
       return;
     }
@@ -683,6 +715,7 @@ export function StageFileUpload({
   const viewer3DEl = viewer3DFile && Platform.OS === 'web' ? (
     <React.Suspense fallback={null}>
       <Viewer3DModal
+        orderId={workOrderId}
         visible={!!viewer3DFile}
         files={[viewer3DFile]}
         title={viewer3DFile.name}
@@ -694,12 +727,25 @@ export function StageFileUpload({
   const viewer3DAllEl = viewer3DFiles && Platform.OS === 'web' ? (
     <React.Suspense fallback={null}>
       <Viewer3DModal
+        orderId={workOrderId}
         visible={!!viewer3DFiles}
         files={viewer3DFiles}
         title={`${viewer3DFiles.length} tarama birlikte`}
         onClose={() => setViewer3DFiles(null)}
       />
     </React.Suspense>
+  ) : null;
+
+  // Native ZIP — arşiv görüntüleyicinin WebView'inde indirilip açılır
+  const zipViewerEl = zipViewer && Platform.OS !== 'web' ? (
+    <Viewer3DModal
+      orderId={workOrderId}
+      visible={!!zipViewer}
+      files={[]}
+      zipUrl={zipViewer.url}
+      title={zipViewer.name}
+      onClose={() => setZipViewer(null)}
+    />
   ) : null;
 
   // Uygulama-içi görsel önizleme — koyu zemin, dosyaya/dışına dokununca kapanır.
@@ -823,6 +869,7 @@ export function StageFileUpload({
         {modalEl}
         {viewer3DEl}
         {viewer3DAllEl}
+        {zipViewerEl}
         {imageViewerEl}
         {htmlViewerEl}
       </>
@@ -980,16 +1027,19 @@ export function StageFileUpload({
                 <Pressable
                   onPress={() => handleOpen(f)}
                   hitSlop={6}
+                  disabled={extractingId === f.id}
                   style={({ hovered }: any) => ({
                     width: 22, height: 22, borderRadius: 6,
                     alignItems: 'center', justifyContent: 'center',
                     backgroundColor: hovered ? P.ink50 : 'transparent',
-                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                    ...(Platform.OS === 'web' && extractingId !== f.id ? { cursor: 'pointer' } as any : {}),
                   })}
                   // @ts-ignore web tooltip
-                  title="Önizle"
+                  title={isArchiveExt(f.storage_path) || isArchiveExt(f.filename) ? 'Aç ve 3D göster' : 'Önizle'}
                 >
-                  <Eye size={11} color={P.ink500} strokeWidth={1.8} />
+                  {extractingId === f.id
+                    ? <ActivityIndicator size="small" color={P.ink500} />
+                    : <Eye size={11} color={P.ink500} strokeWidth={1.8} />}
                 </Pressable>
                 <Pressable
                   onPress={() => handleDownload(f)}
@@ -1005,7 +1055,7 @@ export function StageFileUpload({
                 >
                   <Download size={11} color={P.ink500} strokeWidth={1.8} />
                 </Pressable>
-                {!f.__inherited && canRemoveFile(f.uploaded_by) && (
+                {(f.__inherited ? isAdmin : canRemoveFile(f.uploaded_by)) && (
                   <Pressable
                     onPress={() => handleDelete(f)}
                     hitSlop={6}
@@ -1032,6 +1082,7 @@ export function StageFileUpload({
       {modalEl}
       {viewer3DEl}
       {viewer3DAllEl}
+        {zipViewerEl}
       {imageViewerEl}
       {htmlViewerEl}
     </View>

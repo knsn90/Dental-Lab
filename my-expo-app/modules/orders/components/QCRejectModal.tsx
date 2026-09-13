@@ -11,6 +11,8 @@ import { supabase } from '../../../core/api/supabase';
 import { toast } from '../../../core/ui/Toast';
 import { AppIcon } from '../../../core/ui/AppIcon';
 import { STAGE_LABEL, STAGE_COLOR, type Stage } from '../stages';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 interface Props {
   visible:        boolean;
@@ -25,6 +27,8 @@ interface Props {
 export function QCRejectModal({
   visible, workOrderId, rejectedBy, availableStages, onClose, onDone,
 }: Props) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [toStage, setToStage] = useState<Stage | null>(null);
   const [reason,  setReason]  = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -53,24 +57,24 @@ export function QCRejectModal({
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={s.backdrop} onPress={onClose}>
-        <Pressable style={s.card} onPress={(e) => e.stopPropagation?.()}>
+        <Pressable style={[s.card, isDark && { backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline }]} onPress={(e) => e.stopPropagation?.()}>
           {/* Header */}
           <View style={s.header}>
             <View style={s.iconWrap}>
               <AppIcon name="x" size={20} color="#DC2626" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={s.title}>QC Red — Geri Gönder</Text>
-              <Text style={s.subtitle}>Sebep + dönüş aşaması zorunlu</Text>
+              <Text style={[s.title, isDark && { color: T.ink }]}>QC Red — Geri Gönder</Text>
+              <Text style={[s.subtitle, isDark && { color: T.ink3 }]}>Sebep + dönüş aşaması zorunlu</Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={s.closeBtn}>
-              <AppIcon name="x" size={16} color="#94A3B8" />
+            <TouchableOpacity onPress={onClose} style={[s.closeBtn, isDark && { backgroundColor: T.cardSoft }]}>
+              <AppIcon name="x" size={16} color={isDark ? (T.ink3 as string) : '#94A3B8'} />
             </TouchableOpacity>
           </View>
 
           <ScrollView style={{ maxHeight: 460 }} showsVerticalScrollIndicator={false}>
             {/* Dönüş aşaması */}
-            <Text style={s.fieldLabel}>Dönüş Aşaması</Text>
+            <Text style={[s.fieldLabel, isDark && { color: T.ink3 }]}>Dönüş Aşaması</Text>
             <View style={s.stageGrid}>
               {availableStages.map(st => {
                 const active = toStage === st;
@@ -82,10 +86,11 @@ export function QCRejectModal({
                     activeOpacity={0.75}
                     style={[
                       s.stageChip,
+                      isDark && { borderColor: T.hairline, backgroundColor: T.cardSoft },
                       active && { backgroundColor: color, borderColor: color },
                     ]}
                   >
-                    <Text style={[s.stageChipText, active && { color: '#FFFFFF' }]}>
+                    <Text style={[s.stageChipText, isDark && { color: T.ink2 }, active && { color: '#FFFFFF' }]}>
                       {STAGE_LABEL[st]}
                     </Text>
                   </TouchableOpacity>
@@ -94,22 +99,22 @@ export function QCRejectModal({
             </View>
 
             {/* Sebep */}
-            <Text style={[s.fieldLabel, { marginTop: 16 }]}>Sebep (zorunlu)</Text>
+            <Text style={[s.fieldLabel, { marginTop: 16 }, isDark && { color: T.ink3 }]}>Sebep (zorunlu)</Text>
             <TextInput
               value={reason}
               onChangeText={setReason}
               multiline
               numberOfLines={4}
               placeholder="Hangi sorun var? Ne düzeltilecek?"
-              placeholderTextColor="#94A3B8"
-              style={s.input}
+              placeholderTextColor={isDark ? (T.ink3 as string) : '#94A3B8'}
+              style={[s.input, isDark && { borderColor: T.hairline, color: T.ink, backgroundColor: T.cardSoft }]}
             />
           </ScrollView>
 
           {/* Footer */}
           <View style={s.footer}>
-            <TouchableOpacity onPress={onClose} style={s.cancelBtn} activeOpacity={0.7} disabled={submitting}>
-              <Text style={s.cancelText}>İptal</Text>
+            <TouchableOpacity onPress={onClose} style={[s.cancelBtn, isDark && { backgroundColor: T.cardSoft }]} activeOpacity={0.7} disabled={submitting}>
+              <Text style={[s.cancelText, isDark && { color: T.ink2 }]}>İptal</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleSubmit}

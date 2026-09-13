@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
-import { ShieldCheck, ShieldAlert, Database, Clock, Puzzle } from 'lucide-react-native';
+import { ShieldCheck, ShieldAlert, Database, Clock, Puzzle } from '../../core/ui/icons';
 import { systemHealth, type SystemHealth } from '../../modules/platform/api';
 import { C, FONT, SERIF, PageHeader, Panel, SectionLabel, Chip } from '../../modules/platform/ui';
 

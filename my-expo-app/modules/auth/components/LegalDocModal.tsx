@@ -9,7 +9,7 @@
  */
 import React from 'react';
 import { View, Text, Pressable, Modal, Platform, Linking, ActivityIndicator } from 'react-native';
-import { X, ExternalLink } from 'lucide-react-native';
+import { X, ExternalLink } from '../../../core/ui/icons';
 import { AUTH, AUTH_FONT } from './AuthShell';
 
 function WebFrame({ url }: { url: string }) {

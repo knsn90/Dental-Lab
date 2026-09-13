@@ -13,7 +13,7 @@ import {
   Landmark as Landmark2, FileSpreadsheet as FileSpreadsheet2, Banknote as Banknote2,
   Package as Package2, Building2 as Building22, Truck as Truck2,
   CheckCircle2 as CheckCircle22, Camera as Camera2, Users as Users2, Settings as Settings2, ScanFace,
-} from 'lucide-react-native';
+} from '../../core/ui/icons';
 
 import { PatternsShell, useIsDesktop } from '../../core/layout/PatternsShell';
 import { usePendingApprovals as useDesignPending } from '../../modules/approvals/hooks/usePendingApprovals';
@@ -244,14 +244,16 @@ export default function LabLayout() {
     { routeName: 'index',      label: t('nav.items.summary'),     icon: Home },
     // Yeni gelen siparişler (alindi / atama_bekleniyor) → sipariş ikonunda rozet
     { routeName: 'all-orders', requires: 'view_orders',    label: t('nav.items.cases'), icon: ClipboardList, badgeCount: pendingActionCount > 0 ? pendingActionCount : undefined },
-    { routeName: 'approvals',  requires: 'view_approvals', label: t('nav.items.approvals'), icon: CheckCircle22, badgeCount: pendingCount > 0 ? pendingCount : undefined },
+    // Yüz Tara navbar'a girince 6 hücre pill'e sığmıyor (••• dışarı taşıyordu) →
+    // o cihazlarda Onaylar Devam menüsüne geçer, rozeti •••'ye eklenir.
+    ...(!faceScanOk ? [{ routeName: 'approvals',  requires: 'view_approvals', label: t('nav.items.approvals'), icon: CheckCircle22, badgeCount: pendingCount > 0 ? pendingCount : undefined }] : []),
     // Mesaj artık üst bardaki (TopActionBar) butonda — bu slot Ara oldu.
     { routeName: 'search',     label: t('nav.items.search'),     icon: Search },
     // "Daha" → ekstra menüleri bottom sheet'te açar. Mesajlar bu menünün içinde
     // olduğu için okunmamış mesaj sayısı burada rozetlenir.
     // Yalnız TrueDepth'li iPhone'da görünür — desteklenmeyen cihazda slot yer kaplamaz
     ...(faceScanOk ? [{ routeName: 'face-scan', label: 'Yüz Tara', icon: ScanFace, onPress: () => setFaceScanOpen(true) }] : []),
-    { routeName: 'more',       label: t('nav.items.more'),    icon: MoreHorizontal, onPress: () => setMoreOpen(true), badgeCount: chatUnread > 0 ? chatUnread : undefined },
+    { routeName: 'more',       label: t('nav.items.more'),    icon: MoreHorizontal, onPress: () => setMoreOpen(true), badgeCount: (() => { const n = (chatUnread || 0) + (faceScanOk && (!permLoaded || canPerm('view_approvals')) ? pendingCount : 0); return n > 0 ? n : undefined; })() },
   ] as any[]).filter((it: any) => !permLoaded || !it.requires || canPerm(it.requires));
   const SEARCH_ITEMS = filteredNavForPalette.map((n: any) => ({ label: n.label, href: n.href, sublabel: n.sectionLabel }));
   const FAB_ITEM: PillTabItem = {
@@ -264,6 +266,7 @@ export default function LabLayout() {
   // "Daha" bottom-sheet'inde gösterilecek ekstra menüler — Onaylar pill'de
   // RBAC: yetkisi kapalı olan menü öğesi HİÇ gösterilmez (clinics/courier perm'siz → hep görünür).
   const MORE_ITEMS: import('../../core/ui/mobile/MoreMenuSheet').MoreItem[] = ([
+    ...(faceScanOk ? [{ key: 'approvals', requires: 'view_approvals', label: t('nav.items.approvals'), icon: CheckCircle22, badge: pendingCount > 0 ? pendingCount : undefined, onPress: () => router.push('/(lab)/approvals' as any) }] : []),
     { key: 'paper',    requires: 'view_orders',     label: t('nav.items.paperInbox'),     sub: 'OCR · WhatsApp',                 icon: Camera2,   badge: pendingPaperCount > 0 ? pendingPaperCount : undefined, onPress: () => router.push('/(lab)/pending-paper' as any) },
     { key: 'clinics',                               label: t('nav.items.clinics'),sub: 'Klinik & hekimler',              icon: Building22,onPress: () => router.push('/(lab)/clinics' as any) },
     { key: 'courier',                               label: t('nav.items.courier'),     sub: 'Teslimat akışı',                 icon: Truck2,    onPress: () => router.push('/(lab)/courier-tracking' as any) },

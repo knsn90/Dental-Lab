@@ -14,7 +14,7 @@ import { PillTabBar, type PillTabItem } from '../../core/ui/mobile/PillTabBar';
 import {
   Home, ClipboardList, MessageCircle, User, Plus, MoreHorizontal, Search,
   Truck as Truck2, Settings as Settings2,
-} from 'lucide-react-native';
+} from '../../core/ui/icons';
 
 import { TopActionBar } from '../../core/ui/mobile/TopActionBar';
 import { PanelTopHeader } from '../../core/ui/mobile/PanelTopHeader';

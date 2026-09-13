@@ -98,14 +98,25 @@ export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
     ? items
         .slice()
         .sort((a, b) => a.sort_order - b.sort_order)
-        .map((it, i) => `
+        .map((it, i) => {
+          const gross = Number(it.total) || 0;
+          const net = (it as any).net_total != null ? Number((it as any).net_total) : gross;
+          const disc = (Number((it as any).discount_value) || 0) > 0;
+          const descHtml = disc
+            ? `${esc(it.description)}<br/><span style="font-size:11px;color:#64748B;">${autoT('İndirim')}: ${(it as any).discount_type === 'fixed' ? `−${fmtMoney((it as any).discount_value, currency)}` : `%${Number((it as any).discount_value).toLocaleString(printLocale())}`}</span>`
+            : esc(it.description);
+          const totalHtml = disc
+            ? `<span style="text-decoration:line-through;color:#94A3B8;font-weight:400;">${fmtMoney(gross, currency)}</span> <b>${fmtMoney(net, currency)}</b>`
+            : `<b>${fmtMoney(gross, currency)}</b>`;
+          return `
           <tr>
             <td class="num">${i + 1}</td>
-            <td>${esc(it.description)}</td>
+            <td>${descHtml}</td>
             <td class="num">${Number(it.quantity).toLocaleString(printLocale())}</td>
             <td class="num">${fmtMoney(it.unit_price, currency)}</td>
-            <td class="num right"><b>${fmtMoney(it.total, currency)}</b></td>
-          </tr>`).join('')
+            <td class="num right">${totalHtml}</td>
+          </tr>`;
+        }).join('')
     : `<tr><td colspan="5" class="empty">${autoT('Kalem eklenmemiş')}</td></tr>`;
 
   // Ödeme satırları (varsa)

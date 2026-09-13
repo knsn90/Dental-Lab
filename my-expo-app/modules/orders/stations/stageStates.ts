@@ -4,11 +4,11 @@
 //                         skipped, durakladi, makine_bekliyor, onay_bekliyor,
 //                         bloklu, yeniden
 
-import type { LucideIcon } from 'lucide-react-native';
+import type { LucideIcon } from '../../../core/ui/icons';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import {
   Clock, Play, Pause, Check, ShieldCheck, AlertOctagon, Cog, Hourglass, RotateCcw, SkipForward,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 
 export type StageStatus =
   | 'bekliyor'

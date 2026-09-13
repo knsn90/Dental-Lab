@@ -4,7 +4,7 @@
 
 import React, { useState } from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
-import { Clock, Cog, Hourglass, Pause, Pencil } from 'lucide-react-native';
+import { Clock, Cog, Hourglass, Pause, Pencil } from '../../../core/ui/icons';
 import { useStationTheme, hexA } from '../../../core/theme/stationPalette';
 import { formatDuration } from '../stations/stageStates';
 import { OverrideTimingModal, type OverridableField } from './OverrideTimingModal';

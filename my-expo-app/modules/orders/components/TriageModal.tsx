@@ -24,11 +24,13 @@ import {
   Sparkles, Layers, AlertTriangle, ListPlus, Hourglass,
   ArrowRight, ArrowLeft, FileText, ClipboardList,
   Eye, Download, Box, Paperclip, MessageSquare,
-} from 'lucide-react-native';
+} from '../../../core/ui/icons';
 import { supabase } from '../../../core/api/supabase';
 import { isRTL } from '../../../core/i18n';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { useAuthStore } from '../../../core/store/authStore';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { ChatDetail } from './MessagesPopup';
 
 // Viewer3D — lazy chunk (three.js sadece STL/PLY/OBJ açılınca yüklenir)
@@ -173,6 +175,15 @@ export function TriageModal({
   onClose, onSaved,
 }: Props) {
   const { profile } = useAuthStore();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  // Koyu temada nötr INK tonlarını T.ink/ink2/ink3'e çevirir; açık temada INK aynı kalır.
+  const TX = (level: 900 | 700 | 500 | 400 | 300): string => {
+    if (!isDark) return INK[level];
+    if (level === 900) return T.ink;
+    if (level === 700) return T.ink2;
+    return T.ink3; // 500 / 400 / 300 — ikincil/meta
+  };
   const [chatOpen, setChatOpen] = useState(false);   // sipariş yazışması modal'ı
   // localStorage cache (per lab) — popup ikinci açılışta anında render.
   const LS_KEY_TRIAGE = labId ? `triage_modal_v1:${labId}` : null;
@@ -543,16 +554,16 @@ export function TriageModal({
   // ── Subcomponents ──
   const SummaryField = ({ label, value, accent }: { label: string; value: string; accent: string }) => (
     <View style={{ gap: 2 }}>
-      <Text style={{ fontSize: 9.5, fontWeight: '700', color: INK[400], letterSpacing: 0.8, textTransform: 'uppercase' }}>
+      <Text style={{ fontSize: 9.5, fontWeight: '700', color: TX(400), letterSpacing: 0.8, textTransform: 'uppercase' }}>
         {label}
       </Text>
-      <Text style={{ fontSize: 13, fontWeight: '600', color: INK[900] }}>{value}</Text>
+      <Text style={{ fontSize: 13, fontWeight: '600', color: TX(900) }}>{value}</Text>
     </View>
   );
 
   const CompactField = ({ label, value }: { label: string; value: string }) => (
-    <Text style={{ fontSize: 11.5, color: INK[500] }}>
-      {label}: <Text style={{ color: INK[900], fontWeight: '600' }}>{value}</Text>
+    <Text style={{ fontSize: 11.5, color: TX(500) }}>
+      {label}: <Text style={{ color: TX(900), fontWeight: '600' }}>{value}</Text>
     </Text>
   );
 
@@ -570,7 +581,7 @@ export function TriageModal({
         <Text style={{ fontSize: 10, fontWeight: '700', color: accentColor, letterSpacing: 1.2, textTransform: 'uppercase' }}>
           {num} · {title}
         </Text>
-        <Text style={{ fontSize: 12, color: INK[500], marginTop: 2 }}>{sub}</Text>
+        <Text style={{ fontSize: 12, color: TX(500), marginTop: 2 }}>{sub}</Text>
       </View>
     </View>
   );
@@ -579,8 +590,9 @@ export function TriageModal({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(20,15,10,0.55)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
         <View style={{
-          backgroundColor: '#FFFFFF', borderRadius: 24, width: 760, maxWidth: '100%', maxHeight: '94%',
+          backgroundColor: isDark ? T.card : '#FFFFFF', borderRadius: 24, width: 760, maxWidth: '100%', maxHeight: '94%',
           overflow: 'hidden',
+          ...(isDark ? { borderWidth: 1, borderColor: T.hairline } as any : {}),
           ...(Platform.OS === 'web' ? { boxShadow: '0 24px 64px rgba(0,0,0,0.22)' } as any : {}),
         }}>
 
@@ -604,11 +616,11 @@ export function TriageModal({
                 </Text>
                 <Text style={{
                   fontFamily: DisplayFont, fontWeight: '300', fontSize: 26,
-                  letterSpacing: -0.6, color: INK[900], lineHeight: 32, marginTop: 2,
+                  letterSpacing: -0.6, color: TX(900), lineHeight: 32, marginTop: 2,
                 }}>
                   Aşamaları seç & üretime başlat
                 </Text>
-                <Text style={{ fontSize: 12, color: INK[500], marginTop: 4, lineHeight: 17 }}>
+                <Text style={{ fontSize: 12, color: TX(500), marginTop: 4, lineHeight: 17 }}>
                   Bu siparişte yapılacak aşamaları işaretle. Atlanan aşamalar için sebep gir.
                 </Text>
               </View>
@@ -631,12 +643,12 @@ export function TriageModal({
               style={{
                 width: 36, height: 36, borderRadius: 12,
                 alignItems: 'center', justifyContent: 'center',
-                backgroundColor: '#FFFFFF',
-                borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)',
+                backgroundColor: isDark ? T.card : '#FFFFFF',
+                borderWidth: 1, borderColor: (isDark ? T.hairline : 'rgba(0,0,0,0.10)'),
                 ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
               }}
             >
-              <X size={15} color={INK[500]} strokeWidth={1.8} />
+              <X size={15} color={TX(500)} strokeWidth={1.8} />
             </Pressable>
           </View>
 
@@ -646,8 +658,8 @@ export function TriageModal({
             paddingHorizontal: 28, paddingBottom: 16,
           }}>
             {[
-              { n: 1, label: 'Sipariş özeti', icon: <ClipboardList size={13} color={step === 1 ? '#FFF' : INK[500]} strokeWidth={1.8} /> },
-              { n: 2, label: 'Planlama', icon: <ListChecks size={13} color={step === 2 ? '#FFF' : INK[500]} strokeWidth={1.8} /> },
+              { n: 1, label: 'Sipariş özeti', icon: <ClipboardList size={13} color={step === 1 ? '#FFF' : TX(500)} strokeWidth={1.8} /> },
+              { n: 2, label: 'Planlama', icon: <ListChecks size={13} color={step === 2 ? '#FFF' : TX(500)} strokeWidth={1.8} /> },
             ].map((s, idx) => {
               const active = step === s.n;
               const done = step > s.n;
@@ -656,9 +668,9 @@ export function TriageModal({
                   <View style={{
                     flexDirection: 'row', alignItems: 'center', gap: 8,
                     paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999,
-                    backgroundColor: active ? accentColor : done ? tint(accentColor, 0.10) : '#FFFFFF',
+                    backgroundColor: active ? accentColor : done ? tint(accentColor, 0.10) : (isDark ? T.card : '#FFFFFF'),
                     borderWidth: 1,
-                    borderColor: active ? accentColor : done ? tint(accentColor, 0.30) : 'rgba(0,0,0,0.10)',
+                    borderColor: active ? accentColor : done ? tint(accentColor, 0.30) : (isDark ? T.hairline : 'rgba(0,0,0,0.10)'),
                   }}>
                     <View style={{
                       width: 20, height: 20, borderRadius: 10,
@@ -667,11 +679,11 @@ export function TriageModal({
                     }}>
                       {done
                         ? <Check size={11} color="#FFF" strokeWidth={2.4} />
-                        : <Text style={{ fontSize: 10, fontWeight: '700', color: active ? '#FFF' : INK[500] }}>{s.n}</Text>}
+                        : <Text style={{ fontSize: 10, fontWeight: '700', color: active ? '#FFF' : TX(500) }}>{s.n}</Text>}
                     </View>
                     <Text style={{
                       fontSize: 11.5, fontWeight: '600',
-                      color: active ? '#FFF' : done ? accentColor : INK[500],
+                      color: active ? '#FFF' : done ? accentColor : TX(500),
                     }}>
                       {s.label}
                     </Text>
@@ -696,24 +708,24 @@ export function TriageModal({
             }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: accentColor }} />
-                <Text style={{ fontSize: 12, fontWeight: '600', color: INK[900] }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: TX(900) }}>
                   {activeStages.length} aktif aşama
                 </Text>
               </View>
-              <View style={{ width: 1, height: 16, backgroundColor: 'rgba(0,0,0,0.10)' }} />
+              <View style={{ width: 1, height: 16, backgroundColor: (isDark ? T.hairline : 'rgba(0,0,0,0.10)') }} />
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <SkipForward size={11} color={INK[500]} strokeWidth={1.8} />
-                <Text style={{ fontSize: 12, fontWeight: '500', color: INK[500] }}>
+                <SkipForward size={11} color={TX(500)} strokeWidth={1.8} />
+                <Text style={{ fontSize: 12, fontWeight: '500', color: TX(500) }}>
                   {skippedCount} atlanacak
                 </Text>
               </View>
               {firstActiveStation && (
                 <>
-                  <View style={{ width: 1, height: 16, backgroundColor: 'rgba(0,0,0,0.10)' }} />
+                  <View style={{ width: 1, height: 16, backgroundColor: (isDark ? T.hairline : 'rgba(0,0,0,0.10)') }} />
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-                    <Hourglass size={11} color={INK[500]} strokeWidth={1.8} />
-                    <Text style={{ fontSize: 12, fontWeight: '500', color: INK[500] }} numberOfLines={1}>
-                      İlk aşama: <Text style={{ color: INK[900], fontWeight: '600' }}>{firstActiveStation.name}</Text>
+                    <Hourglass size={11} color={TX(500)} strokeWidth={1.8} />
+                    <Text style={{ fontSize: 12, fontWeight: '500', color: TX(500) }} numberOfLines={1}>
+                      İlk aşama: <Text style={{ color: TX(900), fontWeight: '600' }}>{firstActiveStation.name}</Text>
                     </Text>
                   </View>
                 </>
@@ -724,7 +736,7 @@ export function TriageModal({
           {loading ? (
             <View style={{ paddingVertical: 80, alignItems: 'center' }}>
               <ActivityIndicator color={accentColor} />
-              <Text style={{ fontSize: 12, color: INK[400], marginTop: 12 }}>İstasyonlar yükleniyor…</Text>
+              <Text style={{ fontSize: 12, color: TX(400), marginTop: 12 }}>İstasyonlar yükleniyor…</Text>
             </View>
           ) : step === 1 ? (
             <ScrollView
@@ -734,7 +746,7 @@ export function TriageModal({
               {summaryLoading && !orderSummary ? (
                 <View style={{ paddingVertical: 60, alignItems: 'center' }}>
                   <ActivityIndicator color={accentColor} />
-                  <Text style={{ fontSize: 12, color: INK[400], marginTop: 12 }}>Sipariş yükleniyor…</Text>
+                  <Text style={{ fontSize: 12, color: TX(400), marginTop: 12 }}>Sipariş yükleniyor…</Text>
                 </View>
               ) : orderSummary ? (
                 <View style={{ gap: 14 }}>
@@ -750,7 +762,7 @@ export function TriageModal({
                         borderWidth: 1, borderColor: tint(accentColor, 0.20),
                       }}>
                         <Sparkles size={14} color={accentColor} strokeWidth={1.8} />
-                        <Text style={{ flex: 1, fontSize: 12, color: INK[700], lineHeight: 17 }}>
+                        <Text style={{ flex: 1, fontSize: 12, color: TX(700), lineHeight: 17 }}>
                           Bu sipariş için <Text style={{ color: accentColor, fontWeight: '700' }}>{matched.case_type_label}</Text> şablonu önerildi — planlamada gözden geçirin.
                         </Text>
                       </View>
@@ -789,7 +801,7 @@ export function TriageModal({
                             </View>
                           )}
                           <View style={{ flex: 1 }} />
-                          <Text style={{ fontSize: 11, fontWeight: '600', color: INK[500] }}>
+                          <Text style={{ fontSize: 11, fontWeight: '600', color: TX(500) }}>
                             {orderSummary.order_number}
                           </Text>
                         </View>
@@ -798,7 +810,7 @@ export function TriageModal({
                         <View style={{ gap: 3 }}>
                           {uniqueItems.map(([name, n]) => (
                             <View key={name} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                              <Text style={{ fontSize: 14, fontWeight: '600', color: INK[900], flex: 1 }} numberOfLines={2}>
+                              <Text style={{ fontSize: 14, fontWeight: '600', color: TX(900), flex: 1 }} numberOfLines={2}>
                                 {name}
                               </Text>
                               {n > 1 && (
@@ -824,14 +836,14 @@ export function TriageModal({
 
                         {orderSummary.tooth_numbers.length > 0 && (
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                            <Text style={{ fontSize: 9.5, fontWeight: '700', color: INK[500], letterSpacing: 0.8, textTransform: 'uppercase' }}>
+                            <Text style={{ fontSize: 9.5, fontWeight: '700', color: TX(500), letterSpacing: 0.8, textTransform: 'uppercase' }}>
                               Dişler ({orderSummary.tooth_numbers.length})
                             </Text>
                             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 3 }}>
                               {orderSummary.tooth_numbers.map(t => (
                                 <View key={t} style={{
                                   paddingHorizontal: 6, paddingVertical: 1.5, borderRadius: 6,
-                                  backgroundColor: '#FFFFFF',
+                                  backgroundColor: isDark ? T.card : '#FFFFFF',
                                   borderWidth: 1, borderColor: tint(accentColor, 0.20),
                                 }}>
                                   <Text style={{ fontSize: 10, fontWeight: '700', color: accentColor }}>{t}</Text>
@@ -848,39 +860,39 @@ export function TriageModal({
                   <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
                     <View style={{
                       flex: 1, minWidth: 240, borderRadius: 14, padding: 14, gap: 8,
-                      backgroundColor: CREAM,
-                      borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+                      backgroundColor: isDark ? T.cardSoft : CREAM,
+                      borderWidth: 1, borderColor: (isDark ? T.hairline : 'rgba(0,0,0,0.06)'),
                     }}>
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: INK[500], letterSpacing: 1.2, textTransform: 'uppercase' }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: TX(500), letterSpacing: 1.2, textTransform: 'uppercase' }}>
                         Hasta
                       </Text>
-                      <Text style={{ fontSize: 15, fontWeight: '600', color: INK[900] }}>
+                      <Text style={{ fontSize: 15, fontWeight: '600', color: TX(900) }}>
                         {orderSummary.patient_name || '—'}
                       </Text>
                       <View style={{ gap: 3 }}>
                         {orderSummary.patient_gender && (
-                          <Text style={{ fontSize: 12, color: INK[500] }}>Cinsiyet: <Text style={{ color: INK[700] }}>{orderSummary.patient_gender}</Text></Text>
+                          <Text style={{ fontSize: 12, color: TX(500) }}>Cinsiyet: <Text style={{ color: TX(700) }}>{orderSummary.patient_gender}</Text></Text>
                         )}
                       </View>
                     </View>
 
                     <View style={{
                       flex: 1, minWidth: 240, borderRadius: 14, padding: 14, gap: 8,
-                      backgroundColor: CREAM,
-                      borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+                      backgroundColor: isDark ? T.cardSoft : CREAM,
+                      borderWidth: 1, borderColor: (isDark ? T.hairline : 'rgba(0,0,0,0.06)'),
                     }}>
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: INK[500], letterSpacing: 1.2, textTransform: 'uppercase' }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: TX(500), letterSpacing: 1.2, textTransform: 'uppercase' }}>
                         Hekim & klinik
                       </Text>
-                      <Text style={{ fontSize: 15, fontWeight: '600', color: INK[900] }}>
+                      <Text style={{ fontSize: 15, fontWeight: '600', color: TX(900) }}>
                         {orderSummary.doctor_name || '—'}
                       </Text>
                       <View style={{ gap: 3 }}>
                         {orderSummary.clinic_name && (
-                          <Text style={{ fontSize: 12, color: INK[500] }}>Klinik: <Text style={{ color: INK[700] }}>{orderSummary.clinic_name}</Text></Text>
+                          <Text style={{ fontSize: 12, color: TX(500) }}>Klinik: <Text style={{ color: TX(700) }}>{orderSummary.clinic_name}</Text></Text>
                         )}
                         {orderSummary.doctor_phone && (
-                          <Text style={{ fontSize: 12, color: INK[500] }}>Tel: <Text style={{ color: INK[700] }}>{orderSummary.doctor_phone}</Text></Text>
+                          <Text style={{ fontSize: 12, color: TX(500) }}>Tel: <Text style={{ color: TX(700) }}>{orderSummary.doctor_phone}</Text></Text>
                         )}
                       </View>
                     </View>
@@ -890,8 +902,8 @@ export function TriageModal({
                   {(orderSummary.notes || doctorMessages.length > 0) && (
                     <View style={{ gap: 8 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <ClipboardList size={12} color={INK[500]} strokeWidth={1.8} />
-                        <Text style={{ fontSize: 10, fontWeight: '700', color: INK[500], letterSpacing: 1.2, textTransform: 'uppercase' }}>
+                        <ClipboardList size={12} color={TX(500)} strokeWidth={1.8} />
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: TX(500), letterSpacing: 1.2, textTransform: 'uppercase' }}>
                           Hekim talepleri · İş emri
                         </Text>
                       </View>
@@ -901,10 +913,10 @@ export function TriageModal({
                         <View style={{
                           flexDirection: 'row', gap: 10, alignItems: 'baseline',
                           paddingVertical: 6,
-                          borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
+                          borderBottomWidth: 1, borderBottomColor: (isDark ? T.hairline : 'rgba(0,0,0,0.06)'),
                         }}>
-                          <Text style={{ width: 50, fontSize: 10, fontWeight: '700', color: INK[400], letterSpacing: 0.5 }}>NOT</Text>
-                          <Text style={{ flex: 1, fontSize: 13, color: INK[900], lineHeight: 19 }}>
+                          <Text style={{ width: 50, fontSize: 10, fontWeight: '700', color: TX(400), letterSpacing: 0.5 }}>NOT</Text>
+                          <Text style={{ flex: 1, fontSize: 13, color: TX(900), lineHeight: 19 }}>
                             {orderSummary.notes}
                           </Text>
                         </View>
@@ -916,14 +928,14 @@ export function TriageModal({
                           flexDirection: 'row', gap: 10, alignItems: 'baseline',
                           paddingVertical: 6,
                           borderBottomWidth: idx < doctorMessages.length - 1 ? 1 : 0,
-                          borderBottomColor: 'rgba(0,0,0,0.06)',
+                          borderBottomColor: (isDark ? T.hairline : 'rgba(0,0,0,0.06)'),
                         }}>
-                          <Text style={{ width: 50, fontSize: 10, color: INK[400], letterSpacing: 0.3 }}>
+                          <Text style={{ width: 50, fontSize: 10, color: TX(400), letterSpacing: 0.3 }}>
                             {fmtDateTime(m.created_at).split(' ')[1] ?? ''}
                           </Text>
                           <View style={{ flex: 1, gap: 2 }}>
                             {m.content ? (
-                              <Text style={{ fontSize: 13, color: INK[900], lineHeight: 19 }}>{m.content}</Text>
+                              <Text style={{ fontSize: 13, color: TX(900), lineHeight: 19 }}>{m.content}</Text>
                             ) : null}
                             {m.attachment_name && (
                               <Pressable
@@ -939,11 +951,11 @@ export function TriageModal({
                                   opacity: hovered && m.attachment_url ? 0.7 : 1,
                                 })}
                               >
-                                <Paperclip size={10} color={m.attachment_url ? accentColor : INK[500]} strokeWidth={1.8} />
+                                <Paperclip size={10} color={m.attachment_url ? accentColor : TX(500)} strokeWidth={1.8} />
                                 <Text
                                   style={{
                                     fontSize: 11,
-                                    color: m.attachment_url ? accentColor : INK[500],
+                                    color: m.attachment_url ? accentColor : TX(500),
                                     fontStyle: 'italic',
                                     textDecorationLine: m.attachment_url ? 'underline' : 'none',
                                   }}
@@ -953,7 +965,7 @@ export function TriageModal({
                                 </Text>
                               </Pressable>
                             )}
-                            <Text style={{ fontSize: 10, color: INK[400] }}>
+                            <Text style={{ fontSize: 10, color: TX(400) }}>
                               {m.sender_name || 'Hekim'} · {fmtDateTime(m.created_at)}
                             </Text>
                           </View>
@@ -966,16 +978,16 @@ export function TriageModal({
                   {orderSummary.lab_notes ? (
                     <View style={{
                       borderRadius: 14, padding: 14, gap: 6,
-                      backgroundColor: CREAM,
-                      borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
+                      backgroundColor: isDark ? T.cardSoft : CREAM,
+                      borderWidth: 1, borderColor: (isDark ? T.hairline : 'rgba(0,0,0,0.08)'),
                     }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <FileText size={12} color={INK[500]} strokeWidth={1.8} />
-                        <Text style={{ fontSize: 10, fontWeight: '700', color: INK[500], letterSpacing: 1.2, textTransform: 'uppercase' }}>
+                        <FileText size={12} color={TX(500)} strokeWidth={1.8} />
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: TX(500), letterSpacing: 1.2, textTransform: 'uppercase' }}>
                           Laboratuvar notu
                         </Text>
                       </View>
-                      <Text style={{ fontSize: 13, color: INK[700], lineHeight: 19 }}>
+                      <Text style={{ fontSize: 13, color: TX(700), lineHeight: 19 }}>
                         {orderSummary.lab_notes}
                       </Text>
                     </View>
@@ -984,15 +996,15 @@ export function TriageModal({
                   {/* Dosyalar */}
                   <View style={{
                     borderRadius: 14, padding: 14, gap: 10,
-                    backgroundColor: CREAM,
-                    borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+                    backgroundColor: isDark ? T.cardSoft : CREAM,
+                    borderWidth: 1, borderColor: (isDark ? T.hairline : 'rgba(0,0,0,0.06)'),
                   }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <FileText size={12} color={INK[500]} strokeWidth={1.8} />
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: INK[500], letterSpacing: 1.2, textTransform: 'uppercase' }}>
+                      <FileText size={12} color={TX(500)} strokeWidth={1.8} />
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: TX(500), letterSpacing: 1.2, textTransform: 'uppercase' }}>
                         Tarama & dosyalar
                       </Text>
-                      <Text style={{ fontSize: 11, color: INK[400] }}>({photos.length})</Text>
+                      <Text style={{ fontSize: 11, color: TX(400) }}>({photos.length})</Text>
                       {/* Çoklu 3D dosya varsa "Tümünü 3D aç" butonu */}
                       {(() => {
                         const all3D = photos
@@ -1026,7 +1038,7 @@ export function TriageModal({
                       })()}
                     </View>
                     {photos.length === 0 ? (
-                      <Text style={{ fontSize: 12, color: INK[400], fontStyle: 'italic' }}>
+                      <Text style={{ fontSize: 12, color: TX(400), fontStyle: 'italic' }}>
                         Hekim henüz dosya yüklemedi.
                       </Text>
                     ) : (
@@ -1042,8 +1054,8 @@ export function TriageModal({
                               key={f.id}
                               style={{
                                 width: 110, borderRadius: 10, overflow: 'hidden',
-                                backgroundColor: '#FFFFFF',
-                                borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
+                                backgroundColor: isDark ? T.card : '#FFFFFF',
+                                borderWidth: 1, borderColor: (isDark ? T.hairline : 'rgba(0,0,0,0.08)'),
                               }}
                             >
                               {/* Önizleme alanı — tıklanabilir */}
@@ -1062,7 +1074,7 @@ export function TriageModal({
                                 }}
                               >
                                 {isImg && f.signed_url ? (
-                                  <View style={{ width: '100%', height: '100%', backgroundColor: INK[100] }}>
+                                  <View style={{ width: '100%', height: '100%', backgroundColor: isDark ? T.cardSoft : INK[100] }}>
                                     {Platform.OS === 'web' ? (
                                       // eslint-disable-next-line @typescript-eslint/no-explicit-any
                                       React.createElement('img' as any, {
@@ -1073,10 +1085,10 @@ export function TriageModal({
                                     ) : null}
                                   </View>
                                 ) : (
-                                  <View style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: INK[100] }}>
+                                  <View style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? T.cardSoft : INK[100] }}>
                                     {fmt3D
                                       ? <Box size={22} color={accentColor} strokeWidth={1.8} />
-                                      : <FileText size={20} color={INK[500]} strokeWidth={1.6} />}
+                                      : <FileText size={20} color={TX(500)} strokeWidth={1.6} />}
                                   </View>
                                 )}
                                 {/* 3D format badge */}
@@ -1093,14 +1105,14 @@ export function TriageModal({
                                 )}
                               </Pressable>
                               <View style={{ paddingHorizontal: 7, paddingTop: 5, paddingBottom: 4 }}>
-                                <Text numberOfLines={1} style={{ fontSize: 10, fontWeight: '600', color: INK[700] }}>
+                                <Text numberOfLines={1} style={{ fontSize: 10, fontWeight: '600', color: TX(700) }}>
                                   {filename}
                                 </Text>
                               </View>
                               {/* Aksiyon butonları */}
                               <View style={{
                                 flexDirection: 'row',
-                                borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
+                                borderTopWidth: 1, borderTopColor: (isDark ? T.hairline : 'rgba(0,0,0,0.06)'),
                               }}>
                                 {canPreview && (
                                   <Pressable
@@ -1141,13 +1153,13 @@ export function TriageModal({
                                     flex: 1, paddingVertical: 6, flexDirection: 'row',
                                     alignItems: 'center', justifyContent: 'center', gap: 4,
                                     borderStartWidth: canPreview ? 1 : 0,
-                                    borderStartColor: 'rgba(0,0,0,0.06)',
-                                    backgroundColor: hovered ? INK[100] : 'transparent',
+                                    borderStartColor: (isDark ? T.hairline : 'rgba(0,0,0,0.06)'),
+                                    backgroundColor: hovered ? (isDark ? 'rgba(255,255,255,0.05)' : INK[100]) : 'transparent',
                                     ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                                   })}
                                 >
-                                  <Download size={11} color={INK[500]} strokeWidth={2} />
-                                  <Text style={{ color: INK[500], fontSize: 9.5, fontWeight: '700' }}>
+                                  <Download size={11} color={TX(500)} strokeWidth={2} />
+                                  <Text style={{ color: TX(500), fontSize: 9.5, fontWeight: '700' }}>
                                     İndir
                                   </Text>
                                 </Pressable>
@@ -1161,8 +1173,8 @@ export function TriageModal({
                 </View>
               ) : (
                 <View style={{ paddingVertical: 60, alignItems: 'center' }}>
-                  <AlertCircle size={20} color={INK[400]} strokeWidth={1.6} />
-                  <Text style={{ fontSize: 12, color: INK[500], marginTop: 8 }}>Sipariş bulunamadı</Text>
+                  <AlertCircle size={20} color={TX(400)} strokeWidth={1.6} />
+                  <Text style={{ fontSize: 12, color: TX(500), marginTop: 8 }}>Sipariş bulunamadı</Text>
                 </View>
               )}
             </ScrollView>
@@ -1191,8 +1203,8 @@ export function TriageModal({
                             flexDirection: 'row', alignItems: 'center', gap: 6,
                             paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999,
                             borderWidth: 1,
-                            borderColor: active ? accentColor : 'rgba(0,0,0,0.10)',
-                            backgroundColor: active ? accentColor : '#FFFFFF',
+                            borderColor: active ? accentColor : (isDark ? T.hairline : 'rgba(0,0,0,0.10)'),
+                            backgroundColor: active ? accentColor : (isDark ? T.card : '#FFFFFF'),
                             ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                           }}
                         >
@@ -1200,7 +1212,7 @@ export function TriageModal({
                           <Text style={{
                             fontSize: 12,
                             fontWeight: active ? '600' : '500',
-                            color: active ? '#FFF' : INK[700],
+                            color: active ? '#FFF' : TX(700),
                           }}>
                             {p.case_type_label}
                           </Text>
@@ -1231,20 +1243,20 @@ export function TriageModal({
                     style={{
                       flexDirection: 'row', alignItems: 'center', gap: 6,
                       paddingHorizontal: 12, paddingVertical: 6, borderRadius: 9999,
-                      backgroundColor: showAll ? tint(accentColor, 0.10) : '#FFFFFF',
+                      backgroundColor: showAll ? tint(accentColor, 0.10) : (isDark ? T.card : '#FFFFFF'),
                       borderWidth: 1,
-                      borderColor: showAll ? tint(accentColor, 0.30) : 'rgba(0,0,0,0.10)',
+                      borderColor: showAll ? tint(accentColor, 0.30) : (isDark ? T.hairline : 'rgba(0,0,0,0.10)'),
                       ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                     }}
                   >
                     <Text style={{
                       fontSize: 11, fontWeight: '600',
-                      color: showAll ? accentColor : INK[500],
+                      color: showAll ? accentColor : TX(500),
                     }}>
                       {showAll ? `Sadece alakalı (${visibleStations.length - hiddenCount})` : `Tüm istasyonları göster (+${hiddenCount})`}
                     </Text>
                   </Pressable>
-                  <Text style={{ fontSize: 11, color: INK[400], fontStyle: 'italic' }}>
+                  <Text style={{ fontSize: 11, color: TX(400), fontStyle: 'italic' }}>
                     Vaka tipi: <Text style={{ color: accentColor, fontWeight: '600', fontStyle: 'normal' }}>{workCategory}</Text>
                   </Text>
                 </View>
@@ -1257,39 +1269,39 @@ export function TriageModal({
                   style={{
                     flexDirection: 'row', alignItems: 'center', gap: 5,
                     paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999,
-                    backgroundColor: '#FFFFFF',
-                    borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)',
+                    backgroundColor: isDark ? T.card : '#FFFFFF',
+                    borderWidth: 1, borderColor: (isDark ? T.hairline : 'rgba(0,0,0,0.10)'),
                     ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                   }}
                 >
-                  <ListPlus size={11} color={INK[500]} strokeWidth={1.8} />
-                  <Text style={{ fontSize: 11, fontWeight: '500', color: INK[700] }}>Tümü aktif</Text>
+                  <ListPlus size={11} color={TX(500)} strokeWidth={1.8} />
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: TX(700) }}>Tümü aktif</Text>
                 </Pressable>
                 <Pressable
                   onPress={setOnlyCritical}
                   style={{
                     flexDirection: 'row', alignItems: 'center', gap: 5,
                     paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999,
-                    backgroundColor: '#FFFFFF',
-                    borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)',
+                    backgroundColor: isDark ? T.card : '#FFFFFF',
+                    borderWidth: 1, borderColor: (isDark ? T.hairline : 'rgba(0,0,0,0.10)'),
                     ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                   }}
                 >
                   <AlertTriangle size={11} color="#92400E" strokeWidth={1.8} />
-                  <Text style={{ fontSize: 11, fontWeight: '500', color: INK[700] }}>Sadece kritik</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: TX(700) }}>Sadece kritik</Text>
                 </Pressable>
                 <Pressable
                   onPress={setAllSkipped}
                   style={{
                     flexDirection: 'row', alignItems: 'center', gap: 5,
                     paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999,
-                    backgroundColor: '#FFFFFF',
-                    borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)',
+                    backgroundColor: isDark ? T.card : '#FFFFFF',
+                    borderWidth: 1, borderColor: (isDark ? T.hairline : 'rgba(0,0,0,0.10)'),
                     ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                   }}
                 >
-                  <SkipForward size={11} color={INK[500]} strokeWidth={1.8} />
-                  <Text style={{ fontSize: 11, fontWeight: '500', color: INK[700] }}>Hepsini atla</Text>
+                  <SkipForward size={11} color={TX(500)} strokeWidth={1.8} />
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: TX(700) }}>Hepsini atla</Text>
                 </Pressable>
               </View>
 
@@ -1315,8 +1327,8 @@ export function TriageModal({
                       style={{
                         borderRadius: 14,
                         borderWidth: 1,
-                        borderColor: isActive ? tint(accentColor, 0.30) : 'rgba(0,0,0,0.07)',
-                        backgroundColor: isActive ? tint(accentColor, 0.05) : CREAM,
+                        borderColor: isActive ? tint(accentColor, 0.30) : (isDark ? T.hairline : 'rgba(0,0,0,0.07)'),
+                        backgroundColor: isActive ? tint(accentColor, 0.05) : (isDark ? T.cardSoft : CREAM),
                         overflow: 'hidden',
                         // İstasyonu tanıyan ince renk şeridi (sol kenar)
                         ...(isActive ? {
@@ -1330,15 +1342,15 @@ export function TriageModal({
                         <View style={{
                           width: 36, height: 36, borderRadius: 12,
                           alignItems: 'center', justifyContent: 'center',
-                          backgroundColor: isActive ? tint(accentColor, 0.14) : '#FFFFFF',
-                          borderWidth: 1, borderColor: isActive ? tint(accentColor, 0.28) : 'rgba(0,0,0,0.08)',
+                          backgroundColor: isActive ? tint(accentColor, 0.14) : (isDark ? T.card : '#FFFFFF'),
+                          borderWidth: 1, borderColor: isActive ? tint(accentColor, 0.28) : (isDark ? T.hairline : 'rgba(0,0,0,0.08)'),
                         }}>
                           {isActive ? (
                             <Text style={{ fontSize: 13, fontWeight: '700', color: accentColor, fontFamily: DisplayFont }}>
                               {seqNum}
                             </Text>
                           ) : (
-                            <SkipForward size={13} color={INK[400]} strokeWidth={1.8} />
+                            <SkipForward size={13} color={TX(400)} strokeWidth={1.8} />
                           )}
                         </View>
 
@@ -1352,7 +1364,7 @@ export function TriageModal({
                           }} />
                           <Text style={{
                             fontSize: 14, fontWeight: '600',
-                            color: isActive ? INK[900] : INK[500],
+                            color: isActive ? TX(900) : TX(500),
                           }} numberOfLines={1}>
                             {st.name}
                           </Text>
@@ -1385,9 +1397,9 @@ export function TriageModal({
                         {/* Aktif/Atla segmented control */}
                         <View style={{
                           flexDirection: 'row',
-                          backgroundColor: '#FFFFFF',
+                          backgroundColor: isDark ? T.card : '#FFFFFF',
                           borderRadius: 9999,
-                          borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
+                          borderWidth: 1, borderColor: (isDark ? T.hairline : 'rgba(0,0,0,0.08)'),
                           padding: 3,
                         }}>
                           <Pressable
@@ -1400,7 +1412,7 @@ export function TriageModal({
                           >
                             <Text style={{
                               fontSize: 11, fontWeight: '600',
-                              color: isActive ? '#FFF' : INK[500],
+                              color: isActive ? '#FFF' : TX(500),
                             }}>
                               Aktif
                             </Text>
@@ -1415,7 +1427,7 @@ export function TriageModal({
                           >
                             <Text style={{
                               fontSize: 11, fontWeight: '600',
-                              color: !isActive ? '#FFF' : INK[500],
+                              color: !isActive ? '#FFF' : TX(500),
                             }}>
                               Atla
                             </Text>
@@ -1427,22 +1439,22 @@ export function TriageModal({
                       {!isActive && (
                         <View style={{
                           paddingHorizontal: 14, paddingBottom: 12, paddingTop: 12,
-                          borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)',
+                          borderTopWidth: 1, borderTopColor: (isDark ? T.hairline : 'rgba(0,0,0,0.04)'),
                         }}>
-                          <Text style={{ fontSize: 10, fontWeight: '600', color: INK[400], letterSpacing: 0.6, marginBottom: 6, textTransform: 'uppercase' }}>
+                          <Text style={{ fontSize: 10, fontWeight: '600', color: TX(400), letterSpacing: 0.6, marginBottom: 6, textTransform: 'uppercase' }}>
                             Atlama sebebi <Text style={{ color: '#9C2E2E' }}>*</Text>
                           </Text>
                           <TextInput
                             value={state.skippedReason}
                             onChangeText={(t) => updateStage(st.id, { skippedReason: t })}
                             placeholder="örn. Bu sipariş tipinde bu aşama gerekmez"
-                            placeholderTextColor={INK[400]}
+                            placeholderTextColor={TX(400)}
                             style={{
-                              backgroundColor: '#FFFFFF',
+                              backgroundColor: isDark ? T.cardSoft : '#FFFFFF',
                               borderRadius: 10,
-                              borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)',
+                              borderWidth: 1, borderColor: (isDark ? T.hairline : 'rgba(0,0,0,0.10)'),
                               paddingHorizontal: 12, height: 38,
-                              fontSize: 13, color: INK[900],
+                              fontSize: 13, color: TX(900),
                               ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
                             }}
                           />
@@ -1453,11 +1465,11 @@ export function TriageModal({
                       {state.decision === 'aktif' && (
                         <View style={{
                           paddingHorizontal: 14, paddingBottom: 12,
-                          borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)',
+                          borderTopWidth: 1, borderTopColor: (isDark ? T.hairline : 'rgba(0,0,0,0.04)'),
                           paddingTop: 12,
                         }}>
-                          <Text style={{ fontSize: 10, fontWeight: '600', color: INK[400], letterSpacing: 0.6, marginBottom: 6, textTransform: 'uppercase' }}>
-                            Teknisyen ata <Text style={{ color: INK[300] }}>(boşsa otomatik atanır)</Text>
+                          <Text style={{ fontSize: 10, fontWeight: '600', color: TX(400), letterSpacing: 0.6, marginBottom: 6, textTransform: 'uppercase' }}>
+                            Teknisyen ata <Text style={{ color: TX(300) }}>(boşsa otomatik atanır)</Text>
                           </Text>
                           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
                             <Pressable
@@ -1466,14 +1478,14 @@ export function TriageModal({
                                 paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999,
                                 backgroundColor: state.technicianId === null ? INK[900] : '#FFFFFF',
                                 borderWidth: 1,
-                                borderColor: state.technicianId === null ? INK[900] : 'rgba(0,0,0,0.10)',
+                                borderColor: state.technicianId === null ? INK[900] : (isDark ? T.hairline : 'rgba(0,0,0,0.10)'),
                                 ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                               }}
                             >
                               <Text style={{
                                 fontSize: 11,
                                 fontWeight: state.technicianId === null ? '600' : '500',
-                                color: state.technicianId === null ? '#FFF' : INK[500],
+                                color: state.technicianId === null ? '#FFF' : TX(500),
                               }}>
                                 Otomatik
                               </Text>
@@ -1487,17 +1499,17 @@ export function TriageModal({
                                   style={{
                                     flexDirection: 'row', alignItems: 'center', gap: 5,
                                     paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999,
-                                    backgroundColor: active ? accentColor : '#FFFFFF',
+                                    backgroundColor: active ? accentColor : (isDark ? T.card : '#FFFFFF'),
                                     borderWidth: 1,
-                                    borderColor: active ? accentColor : 'rgba(0,0,0,0.10)',
+                                    borderColor: active ? accentColor : (isDark ? T.hairline : 'rgba(0,0,0,0.10)'),
                                     ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                                   }}
                                 >
-                                  <UserCheck size={11} color={active ? '#FFF' : INK[500]} strokeWidth={1.8} />
+                                  <UserCheck size={11} color={active ? '#FFF' : TX(500)} strokeWidth={1.8} />
                                   <Text style={{
                                     fontSize: 11,
                                     fontWeight: active ? '600' : '500',
-                                    color: active ? '#FFF' : INK[700],
+                                    color: active ? '#FFF' : TX(700),
                                   }}>
                                     {tech.full_name}
                                   </Text>
@@ -1532,12 +1544,12 @@ export function TriageModal({
           <View style={{
             flexDirection: 'row', alignItems: 'center', gap: 12,
             paddingHorizontal: 28, paddingVertical: 16,
-            borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)',
-            backgroundColor: CREAM,
+            borderTopWidth: 1, borderTopColor: (isDark ? T.hairline : 'rgba(0,0,0,0.05)'),
+            backgroundColor: isDark ? T.cardSoft : CREAM,
           }}>
             <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <AlertCircle size={12} color={INK[400]} strokeWidth={1.8} />
-              <Text style={{ flex: 1, fontSize: 11, color: INK[500], fontStyle: 'italic' }}>
+              <AlertCircle size={12} color={TX(400)} strokeWidth={1.8} />
+              <Text style={{ flex: 1, fontSize: 11, color: TX(500), fontStyle: 'italic' }}>
                 {step === 1
                   ? 'Önce siparişi inceleyin, ardından planlamaya geçin.'
                   : 'Planlama bir kez yapılır — kayıttan sonra aşamalar değiştirilemez.'}
@@ -1549,25 +1561,25 @@ export function TriageModal({
                 style={{
                   flexDirection: 'row', alignItems: 'center', gap: 6,
                   paddingHorizontal: 16, paddingVertical: 10, borderRadius: 9999,
-                  backgroundColor: '#FFFFFF',
-                  borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)',
+                  backgroundColor: isDark ? T.card : '#FFFFFF',
+                  borderWidth: 1, borderColor: (isDark ? T.hairline : 'rgba(0,0,0,0.10)'),
                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                 }}
               >
-                {isRTL() ? <ArrowRight size={13} color={INK[700]} strokeWidth={1.8} /> : <ArrowLeft size={13} color={INK[700]} strokeWidth={1.8} />}
-                <Text style={{ fontSize: 13, fontWeight: '500', color: INK[700] }}>Geri</Text>
+                {isRTL() ? <ArrowRight size={13} color={TX(700)} strokeWidth={1.8} /> : <ArrowLeft size={13} color={TX(700)} strokeWidth={1.8} />}
+                <Text style={{ fontSize: 13, fontWeight: '500', color: TX(700) }}>Geri</Text>
               </Pressable>
             )}
             <Pressable
               onPress={onClose}
               style={{
                 paddingHorizontal: 18, paddingVertical: 10, borderRadius: 9999,
-                backgroundColor: '#FFFFFF',
-                borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)',
+                backgroundColor: isDark ? T.card : '#FFFFFF',
+                borderWidth: 1, borderColor: (isDark ? T.hairline : 'rgba(0,0,0,0.10)'),
                 ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
               }}
             >
-              <Text style={{ fontSize: 13, fontWeight: '500', color: INK[700] }}>Sonra</Text>
+              <Text style={{ fontSize: 13, fontWeight: '500', color: TX(700) }}>Sonra</Text>
             </Pressable>
             {step === 1 ? (
               <Pressable
@@ -1618,6 +1630,7 @@ export function TriageModal({
       {viewer3DFile && Platform.OS === 'web' && (
         <React.Suspense fallback={null}>
           <Viewer3DModal
+            orderId={orderId}
             visible={!!viewer3DFile}
             files={[viewer3DFile]}
             title={viewer3DFile.name}
@@ -1629,6 +1642,7 @@ export function TriageModal({
       {viewer3DFiles && Platform.OS === 'web' && (
         <React.Suspense fallback={null}>
           <Viewer3DModal
+            orderId={orderId}
             visible={!!viewer3DFiles}
             files={viewer3DFiles}
             title={`${viewer3DFiles.length} dosya birlikte`}
@@ -1640,7 +1654,7 @@ export function TriageModal({
       {/* Sipariş yazışması — sorun olursa hekim/klinikle mesajlaş */}
       <Modal visible={chatOpen} transparent animationType="fade" onRequestClose={() => setChatOpen(false)}>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(10,14,26,0.52)', ...(Platform.OS === 'web' ? ({ backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' } as any) : {}) }}>
-          <View style={{ width: '94%', maxWidth: 720, height: '88%', maxHeight: 880, backgroundColor: '#FFFFFF', borderRadius: 24, overflow: 'hidden' }}>
+          <View style={{ width: '94%', maxWidth: 720, height: '88%', maxHeight: 880, backgroundColor: isDark ? T.card : '#FFFFFF', borderRadius: 24, overflow: 'hidden' }}>
             <ChatDetail
               selectedOrder={{
                 work_order_id: orderId,

@@ -5,7 +5,7 @@ import { localeTag } from '../../../core/i18n';
 
 import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
-import { Cog, Activity, AlertOctagon, Wifi, WifiOff, Play, Square, Hammer } from 'lucide-react-native';
+import { Cog, Activity, AlertOctagon, Wifi, WifiOff, Play, Square, Hammer } from '../../../core/ui/icons';
 import { supabase } from '../../../core/api/supabase';
 import { useStationTheme, hexA, type StationPalette } from '../../../core/theme/stationPalette';
 import { formatDuration } from '../stations/stageStates';
