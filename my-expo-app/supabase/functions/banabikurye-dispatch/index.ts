@@ -99,6 +99,25 @@ serve(async (req) => {
   });
   const admin = createClient(SUPABASE_URL, SRV_KEY, { auth: { persistSession: false } });
 
+  // ── Kiracı doğrulaması ──────────────────────────────────────────────────────
+  // Gövdeden gelen work_order_id / extra_work_order_ids çağıranın lab'ına ait mi?
+  // Kontrol RLS-kapsamlı userClient ile yapılır: satır YALNIZ çağıranın kiracısına
+  // aitse döner (tenant yoksa/başka lab'sa boş) → servis-rol (admin) çağrısı
+  // YAPILMADAN 403 ile reddedilir. Böylece başka bir lab'ın work_order_id'siyle
+  // hekim/klinik PII'si (ad/telefon/adres) sızdırılamaz.
+  const denyTenant = () => json({ ok: false, error: 'Bu kayıt sizin laboratuvarınıza ait değil', message: 'Bu kayıt sizin laboratuvarınıza ait değil' }, 403);
+  const ownsWorkOrder = async (id?: string): Promise<boolean> => {
+    if (!id) return false;
+    const { data } = await userClient.from('work_orders').select('id').eq('id', id).maybeSingle();
+    return !!data;
+  };
+  const ownsWorkOrders = async (ids: string[]): Promise<boolean> => {
+    const uniq = [...new Set(ids.filter(Boolean))];
+    if (!uniq.length) return true;
+    const { data } = await userClient.from('work_orders').select('id').in('id', uniq);
+    return (data?.length ?? 0) === uniq.length;
+  };
+
   // ── places_search: Google Places ile ünvandan adres ara (lab maps anahtarı) ──
   if (body.action === 'places_search') {
     const { data: mapsRows } = await userClient.rpc('get_active_provider', { p_type: 'maps' });
@@ -109,6 +128,7 @@ serve(async (req) => {
     }
     let q = (body.query ?? '').trim();
     if (!q && body.work_order_id) {
+      if (!(await ownsWorkOrder(body.work_order_id))) return denyTenant();
       const dst = await resolveDest(admin, body.work_order_id);
       q = [dst.clinic, dst.address].filter(Boolean).join(' ').trim() || dst.name;
     }
@@ -265,6 +285,7 @@ serve(async (req) => {
 
   // ── calculate / create ──
   if (!body.work_order_id) return json({ ok: false, message: 'work_order_id gerekli' });
+  if (!(await ownsWorkOrder(body.work_order_id))) return denyTenant();
   const dst = await resolveDest(admin, body.work_order_id);
 
   // Aynı kuryeyle giden ek işler (aynı klinik): rota/fiyat değişmez, sadece
@@ -272,6 +293,7 @@ serve(async (req) => {
   let orderLabel = String(dst.order_number ?? body.work_order_id);
   const extraIds = Array.isArray(body.extra_work_order_ids) ? body.extra_work_order_ids.filter(Boolean) : [];
   if (extraIds.length) {
+    if (!(await ownsWorkOrders(extraIds))) return denyTenant();
     const { data: extras } = await admin.from('work_orders').select('order_number').in('id', extraIds);
     const nums = (extras ?? []).map((x: any) => x.order_number).filter(Boolean);
     if (nums.length) orderLabel += ', ' + nums.join(', ');

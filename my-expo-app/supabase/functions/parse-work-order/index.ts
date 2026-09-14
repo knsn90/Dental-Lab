@@ -19,6 +19,7 @@
 // }
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { timingSafeEqualStr, isServiceRoleBearer } from '../_shared/security.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -31,9 +32,9 @@ const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const NOTIFY_FN_SECRET = Deno.env.get('NOTIFY_FN_SECRET') ?? '';
 async function assertCallerAuthorized(req: Request): Promise<boolean> {
   const secret = req.headers.get('x-notify-secret');
-  if (NOTIFY_FN_SECRET && secret === NOTIFY_FN_SECRET) return true;
+  if (NOTIFY_FN_SECRET && secret != null && timingSafeEqualStr(secret, NOTIFY_FN_SECRET)) return true;
   const auth = req.headers.get('Authorization') ?? '';
-  if (auth === `Bearer ${SERVICE_ROLE_KEY}`) return true;
+  if (isServiceRoleBearer(auth, SERVICE_ROLE_KEY)) return true;
   try {
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
     const userClient = createClient(SUPABASE_URL, anonKey, { global: { headers: { Authorization: auth } } });

@@ -148,6 +148,24 @@ serve(async (req) => {
   const cEnv: Env = cred.environment === 'production' ? 'production' : 'sandbox';
   const c = (cred.credentials ?? {}) as Record<string, any>;
 
+  // ── Kiracı doğrulaması ──────────────────────────────────────────────────────
+  // Gövdeden gelen work_order_id / delivery_id çağıranın lab'ına ait mi? Kontrol
+  // RLS-kapsamlı userClient ile yapılır: satır YALNIZ çağıranın kiracısına aitse
+  // döner (tenant yoksa/başka lab'sa boş) → servis-rol (admin) okuma/yazması
+  // YAPILMADAN 403 ile reddedilir. Böylece başka lab'ın work_order'ından hekim/
+  // klinik PII'si okunamaz veya başka lab'ın teslimat kaydı değiştirilemez.
+  const denyTenant = () => json({ ok: false, error: 'Bu kayıt sizin laboratuvarınıza ait değil', message: 'Bu kayıt sizin laboratuvarınıza ait değil' }, 403);
+  const ownsWorkOrder = async (id?: string): Promise<boolean> => {
+    if (!id) return true;
+    const { data } = await userClient.from('work_orders').select('id').eq('id', id).maybeSingle();
+    return !!data;
+  };
+  const ownsDelivery = async (id?: string): Promise<boolean> => {
+    if (!id) return true;
+    const { data } = await userClient.from('deliveries').select('id').eq('id', id).maybeSingle();
+    return !!data;
+  };
+
   const tok = await getToken(admin, cred.id, cEnv, c);
   if (!tok.ok) return json({ ok: false, message: tok.message });
   const token = tok.token!;
@@ -198,6 +216,8 @@ serve(async (req) => {
       return json({ ok: false, message: 'Gönderici adresi henüz Navlungo adres defterine kaydedilmemiş. Önce "Alış adresini gönder" adımını çalıştırın.' });
     }
     if (!body.work_order_id) return json({ ok: false, message: 'work_order_id gerekli' });
+    if (!(await ownsWorkOrder(body.work_order_id))) return denyTenant();
+    if (!(await ownsDelivery(body.delivery_id)))    return denyTenant();
 
     const dest = await resolveDest(admin, body.work_order_id);
     const city     = (body.recipient_city ?? '').trim();
@@ -264,6 +284,7 @@ serve(async (req) => {
   if (body.action === 'check') {
     const no = (body.post_number ?? '').trim();
     if (!no) return json({ ok: false, message: 'post_number gerekli' });
+    if (!(await ownsDelivery(body.delivery_id))) return denyTenant();
     const r = await call(cEnv, token, 'GET', `/post/check/${encodeURIComponent(no)}`);
     if (!r.ok) return json({ ok: false, message: errText(r) });
 
@@ -295,6 +316,7 @@ serve(async (req) => {
   if (body.action === 'cancel') {
     const no = (body.post_number ?? '').trim();
     if (!no) return json({ ok: false, message: 'post_number gerekli' });
+    if (!(await ownsDelivery(body.delivery_id))) return denyTenant();
     const r = await call(cEnv, token, 'POST', '/post/cancel', { post_number: no });
     if (!r.ok) return json({ ok: false, message: errText(r) });
     if (body.delivery_id) {

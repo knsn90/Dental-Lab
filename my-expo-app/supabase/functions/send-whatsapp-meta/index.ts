@@ -17,6 +17,7 @@
 //   verilirse header eşleşmesi aranır.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { timingSafeEqualStr } from '../_shared/security.ts';
 
 const GRAPH_VERSION = 'v20.0';
 
@@ -110,10 +111,16 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ ok: false, error: 'method' }, 405);
 
-  // Opsiyonel iç-secret kontrolü
-  if (NOTIFY_SECRET) {
+  // İç-secret ZORUNLU (fail closed). Bu uç anon anahtarıyla çağrılabildiği için
+  // secret olmadan herkes müşteriye şablon mesajı attırabilir + lab hedefleyebilirdi.
+  // Sabit-zamanlı karşılaştırma.
+  if (!NOTIFY_SECRET) {
+    console.error('[send-whatsapp-meta] NOTIFY_FN_SECRET tanımlı değil — istek reddedildi');
+    return json({ ok: false, error: 'not_configured' }, 503);
+  }
+  {
     const given = req.headers.get('x-notify-secret') ?? '';
-    if (given !== NOTIFY_SECRET) return json({ ok: false, error: 'forbidden' }, 401);
+    if (!timingSafeEqualStr(given, NOTIFY_SECRET)) return json({ ok: false, error: 'forbidden' }, 401);
   }
 
   let body: any;
@@ -130,14 +137,19 @@ Deno.serve(async (req) => {
   const resourceType = String(body?.resource_type ?? '');
   const resourceId   = body?.resource_id ?? null;
 
-  // Gönderen lab'ı work_order'dan çöz (otoriter). Yoksa null → atla.
+  // Gönderen lab'ı SERVER-SIDE, güvenilir kaynak tablosundan çöz (payload'dan DEĞİL).
   let labId: string | null = null;
   if (resourceType === 'work_order' && resourceId) {
     const { data: wo } = await admin.from('work_orders').select('lab_id').eq('id', resourceId).maybeSingle();
     labId = (wo as any)?.lab_id ?? null;
+  } else if (resourceType === 'invoice' && resourceId) {
+    const { data: inv } = await admin.from('invoices').select('lab_id').eq('id', resourceId).maybeSingle();
+    labId = (inv as any)?.lab_id ?? null;
   }
-  // work_order olmayan kategoriler (ör. payment → invoice/clinic_balance): trigger'ın
-  // payload'a kattığı __lab_id'yi kullan.
+  // clinic_balance gibi server-side lab kaynağı OLMAYAN kategoriler: bu uç artık
+  // ZORUNLU x-notify-secret ile korunuyor (yalnız DB trigger'ımız çağırabilir),
+  // dolayısıyla payload'daki __lab_id GÜVENİLİR çağırandan gelir — attacker-kontrollü
+  // değil. Sadece bu güvenli bağlamda ve yalnız son çare olarak kabul edilir.
   if (!labId && extra?.__lab_id) labId = String(extra.__lab_id) || null;
   if (!labId) return json({ ok: true, sent: 0, skipped: 'no-lab' });
 

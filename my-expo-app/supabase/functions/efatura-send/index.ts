@@ -43,6 +43,39 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
+    // ── Yetki: çağıranı doğrula + lab'ını KENDİ profilinden çöz (body'den DEĞİL) ──
+    // Fatura, çağıranın lab'ına ait olmalı. Aksi hâlde başka labın faturası
+    // gönderilemez. Platform admin istisna.
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(JSON.stringify({ ok: false, error: 'Yetkisiz erişim' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const callerClient = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } },
+    );
+    const { data: userData, error: authErr } = await callerClient.auth.getUser();
+    if (authErr || !userData?.user) {
+      return new Response(JSON.stringify({ ok: false, error: 'Yetkisiz erişim' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const callerId = userData.user.id;
+    const { data: callerProfile } = await supabase
+      .from('profiles').select('lab_id, user_type').eq('id', callerId).single();
+    const { data: platRow } = await supabase
+      .from('platform_admins').select('user_id').eq('user_id', callerId).maybeSingle();
+    const callerIsPlatformAdmin = !!platRow;
+    const callerLabId = callerProfile?.lab_id ?? null;
+    if (!callerIsPlatformAdmin && !callerLabId) {
+      return new Response(JSON.stringify({ ok: false, error: 'Hesabınıza bağlı laboratuvar yok' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // 1) Faturayı + lab_id'yi çek
     const { data: invoice, error: invErr } = await supabase
       .from('invoices')
@@ -52,6 +85,13 @@ serve(async (req) => {
     if (invErr || !invoice) {
       return new Response(JSON.stringify({ ok: false, error: invErr?.message ?? 'Fatura bulunamadı' }), {
         status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // ── Tenant kapısı: fatura çağıranın lab'ına mı ait? ──
+    if (!callerIsPlatformAdmin && (invoice as any).lab_id !== callerLabId) {
+      return new Response(JSON.stringify({ ok: false, error: 'Bu fatura sizin laboratuvarınıza ait değil' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 

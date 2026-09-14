@@ -32,9 +32,11 @@
  */
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { authorizeNotification } from '../_shared/notify-authz.ts';
 
 const supabaseUrl    = Deno.env.get('SUPABASE_URL')!;
 const supabaseSrvKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const anonKey        = Deno.env.get('SUPABASE_ANON_KEY')!;
 const resendApiKey   = Deno.env.get('RESEND_API_KEY')   ?? '';
 const resendFrom     = Deno.env.get('RESEND_FROM')      ?? 'Siman <noreply@nexadentlab.com>';
 const appPublicUrl   = (Deno.env.get('APP_PUBLIC_URL')  ?? 'https://siman.app').replace(/\/$/, '');
@@ -48,20 +50,8 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-// ── Yetki: iç çağrı (paylaşılan gizli / service-role) veya oturumlu kullanıcı ──
+// ── Yetki: paylaşılan authorizeNotification helper'ı (F-01 düzeltmesi) ──
 const NOTIFY_FN_SECRET = Deno.env.get('NOTIFY_FN_SECRET') ?? '';
-async function assertCallerAuthorized(req: Request): Promise<boolean> {
-  const secret = req.headers.get('x-notify-secret');
-  if (NOTIFY_FN_SECRET && secret === NOTIFY_FN_SECRET) return true;
-  const auth = req.headers.get('Authorization') ?? '';
-  if (auth === `Bearer ${supabaseSrvKey}`) return true;
-  try {
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
-    const userClient = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: auth } } });
-    const { data, error } = await userClient.auth.getUser();
-    return !error && !!data?.user;
-  } catch { return false; }
-}
 
 interface EmailPayload {
   title:        string;
@@ -86,10 +76,6 @@ interface RequestBody {
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
-  if (!(await assertCallerAuthorized(req))) {
-    return new Response(JSON.stringify({ error: 'Yetkisiz erişim' }), { status: 401, headers: { ...CORS, 'Content-Type': 'application/json' } });
-  }
-
   if (!resendApiKey) {
     return json({ error: 'RESEND_API_KEY env not set' }, 500);
   }
@@ -102,17 +88,23 @@ serve(async (req) => {
     return json({ error: 'userIds[], category, payload.title required' }, 400);
   }
 
+  // ── Yetkilendirme: çağıran yalnız YETKİLİ alıcılara gönderebilir (F-01) ──
+  const authz = await authorizeNotification({
+    supabaseUrl, anonKey, serviceKey: supabaseSrvKey,
+    authHeader: req.headers.get('Authorization') ?? '',
+    internalSecret: NOTIFY_FN_SECRET || undefined,
+    internalSecretHeader: req.headers.get('x-notify-secret'),
+    requestedUserIds: body.userIds ?? [],
+    resourceType: body.payload?.resourceType, resourceId: body.payload?.resourceId,
+  });
+  if (!authz.ok) return json({ ok: false, error: authz.error }, authz.status);
+  const recipients = authz.recipients;
+  if (!recipients.length) return json({ ok: true, sent: 0, skipped: (body.userIds?.length ?? 0), reason: 'no_authorized_recipients' });
+
   const supabase = createClient(supabaseUrl, supabaseSrvKey);
 
-  // 1. Profiller + email + prefs çek
-  const { data: profiles, error: profErr } = await supabase
-    .from('profiles')
-    .select('id, email, full_name, notification_prefs, lab_id')
-    .in('id', body.userIds);
-
-  if (profErr) return json({ error: profErr.message }, 500);
-
-  const targets = (profiles ?? []).filter((p: any) => {
+  // 1. Yetkili alıcılar arasında email + pref opt-out filtresi
+  const targets = recipients.filter((p: any) => {
     if (!p.email) return false;
     const prefs = p.notification_prefs;
     if (!prefs || prefs.master_enabled === false) return false;
@@ -126,51 +118,27 @@ serve(async (req) => {
     return json({ ok: true, sent: 0, skipped: body.userIds.length, reason: 'no_targets' });
   }
 
-  // Lab markası (isim + logo) — her e-posta alıcının kendi lab'ının markasını taşır.
-  // Caller extra.labName/labLogoUrl verirse o öncelikli; yoksa labs tablosundan çözülür.
-  const labIds = [...new Set(targets.map((t: any) => t.lab_id).filter(Boolean))];
-  const labBrand = new Map<string, { name: string; logo: string }>();
-  if (labIds.length > 0) {
-    const { data: labs } = await supabase.from('labs').select('id, name, logo_url').in('id', labIds);
-    for (const l of labs ?? []) labBrand.set(l.id, { name: l.name ?? '', logo: l.logo_url ?? '' });
-  }
+  // Lab markası (isim + logo) — helper'ın YETKİLENDİRDİĞİ tek marka kaynağı.
+  // Alıcının lab_id'sinden veya body'den TÜRETİLMEZ (cross-tenant sızıntı önlenir).
+  const brand = authz.brandLab ? { name: authz.brandLab.name, logo: authz.brandLab.logo } : undefined;
 
-  // Sipariş e-postalarını OTOMATİK zenginleştir: resourceType='work_order' ise
-  // client ne gönderirse göndersin sipariş satırından detaylı kart üretilir
-  // (yeni sipariş, beklemede vb. hepsi tek yerden zengin olur — caller'a dokunmadan).
+  // Sipariş e-postasını OTOMATİK zenginleştir: helper yetkili WorkOrderLite döndürür
+  // (yalnız çağıran o kaynağa yetkiliyse non-null). work_orders/doctors/clinics'e
+  // TEKRAR sorgu YOK — detay kartı yalnız authz.workOrder alanlarından kurulur.
   let orderDetail: Record<string, string> | null = null;
   let orderUrgent = false;
-  const woId = body.payload.resourceType === 'work_order' ? String(body.payload.resourceId ?? '').trim() : '';
-  if (woId) {
-    try {
-      const { data: wo } = await supabase.from('work_orders')
-        .select('order_number, patient_name, work_type, tooth_numbers, shade, delivery_date, is_urgent, status, current_stage_name, doctor_id')
-        .eq('id', woId).maybeSingle();
-      if (wo) {
-        let clinicName = '';
-        if ((wo as any).doctor_id) {
-          const { data: doc } = await supabase.from('doctors').select('clinic:clinics(name)').eq('id', (wo as any).doctor_id).maybeSingle();
-          clinicName = (doc as any)?.clinic?.name ?? '';
-        }
-        orderUrgent = !!(wo as any).is_urgent;
-        const teeth = Array.isArray((wo as any).tooth_numbers) ? (wo as any).tooth_numbers : [];
-        const dd = (wo as any).delivery_date ? new Date(String((wo as any).delivery_date) + 'T00:00:00') : null;
-        orderDetail = {};
-        if ((wo as any).patient_name) orderDetail['Hasta'] = String((wo as any).patient_name);
-        if (clinicName)               orderDetail['Klinik'] = clinicName;
-        if ((wo as any).work_type)    orderDetail['Çalışma'] = String((wo as any).work_type);
-        if (teeth.length)             orderDetail['Diş No'] = teeth.join(', ');
-        if ((wo as any).shade)        orderDetail['Renk'] = String((wo as any).shade);
-        if (dd)                       orderDetail['Teslim tarihi'] = dd.toLocaleDateString('tr-TR', { day:'2-digit', month:'long', year:'numeric' });
-        // "Durum: Aşamada" belirsiz → üretimdeyse HANGİ aşamada olduğunu (güncel aşama adı) göster.
-        const st = String((wo as any).status ?? '');
-        const stageName = String((wo as any).current_stage_name ?? '').trim();
-        if (st && stageName && (st === 'asamada' || st === 'uretimde'))
-                                      orderDetail['Güncel aşama'] = stageName;
-        else if (st)                  orderDetail['Durum'] = STATUS_LABEL[st] ?? st;
-        if (Object.keys(orderDetail).length === 0) orderDetail = null;
-      }
-    } catch { orderDetail = null; }
+  const wo = authz.workOrder;
+  if (wo) {
+    orderUrgent = !!wo.is_urgent;
+    const dd = wo.delivery_date ? new Date(String(wo.delivery_date) + 'T00:00:00') : null;
+    orderDetail = {};
+    if (wo.patient_name) orderDetail['Hasta'] = String(wo.patient_name);
+    if (wo.clinic_name)  orderDetail['Klinik'] = String(wo.clinic_name);
+    if (wo.work_type)    orderDetail['Çalışma'] = String(wo.work_type);
+    if (dd)              orderDetail['Teslim tarihi'] = dd.toLocaleDateString('tr-TR', { day:'2-digit', month:'long', year:'numeric' });
+    const st = String(wo.status ?? '');
+    if (st)              orderDetail['Durum'] = STATUS_LABEL[st] ?? st;
+    if (Object.keys(orderDetail).length === 0) orderDetail = null;
   }
 
   // 2. Template render + email_notifications.insert (pending)
@@ -196,7 +164,6 @@ serve(async (req) => {
   // 3. Resend'e gönder (paralel)
   const results = await Promise.all((insertedRows ?? auditRows).map(async (audit: any, idx: number) => {
     const target = targets[idx] as any;
-    const brand = target?.lab_id ? labBrand.get(target.lab_id) : undefined;
     const html = renderHtmlBody({
       category: body.category,
       payload:  body.payload,
