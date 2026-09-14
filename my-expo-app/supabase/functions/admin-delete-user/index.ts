@@ -5,6 +5,20 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Klinik, çağıranın lab'ına bağlı mı? (clinics.lab_id VEYA clinic_lab_memberships).
+async function clinicInCallerLab(adminClient: any, clinicId: string | null, callerLabId: string | null): Promise<boolean> {
+  if (!clinicId || !callerLabId) return false;
+  const { data: c } = await adminClient.from('clinics').select('lab_id').eq('id', clinicId).maybeSingle();
+  if (c?.lab_id && c.lab_id === callerLabId) return true;
+  const { data: m } = await adminClient
+    .from('clinic_lab_memberships')
+    .select('id')
+    .eq('lab_id', callerLabId)
+    .eq('member_clinic_id', clinicId)
+    .maybeSingle();
+  return !!m;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -33,10 +47,15 @@ Deno.serve(async (req: Request) => {
       .eq('id', callerId)
       .single();
 
+    // Platform admin? (yalnız o cross-tenant silebilir)
+    const { data: callerPlatRow } = await adminClient
+      .from('platform_admins').select('user_id').eq('user_id', callerId).maybeSingle();
+    const callerIsPlatformAdmin = !!callerPlatRow;
+
     const callerIsClinicAdmin = callerProfile?.role === 'clinic_admin' || callerProfile?.user_type === 'clinic_admin';
-    const callerIsAdmin = callerProfile?.user_type === 'admin';
+    const callerIsExecAdmin = callerProfile?.user_type === 'admin';   // lab-başına exec rolü (cross-tenant DEĞİL)
     const callerIsLabManager = callerProfile?.user_type === 'lab' && callerProfile?.role === 'manager';
-    if (!callerProfile || !(callerIsAdmin || callerIsLabManager || callerIsClinicAdmin)) {
+    if (!callerProfile || !(callerIsPlatformAdmin || callerIsExecAdmin || callerIsLabManager || callerIsClinicAdmin)) {
       throw new Error('Yetkiniz yok');
     }
 
@@ -62,8 +81,17 @@ Deno.serve(async (req: Request) => {
         .maybeSingle();
       if (!doctorRow) throw new Error('Kullanıcı bulunamadı');
 
-      if (callerIsClinicAdmin && doctorRow.clinic_id !== callerProfile.clinic_id) {
-        throw new Error('Bu kullanıcı sizin kliniğinizde değil');
+      // Tenant kapısı: clinic_admin kendi kliniği; lab müdürü/exec kendi lab'ı;
+      // platform admin serbest.
+      if (!callerIsPlatformAdmin) {
+        if (callerIsClinicAdmin) {
+          if (doctorRow.clinic_id !== callerProfile.clinic_id) {
+            throw new Error('Bu kullanıcı sizin kliniğinizde değil');
+          }
+        } else {
+          const inLab = await clinicInCallerLab(adminClient, doctorRow.clinic_id, callerProfile.lab_id);
+          if (!inLab) throw new Error('Bu kullanıcı sizin laboratuvarınıza bağlı değil');
+        }
       }
 
       await adminClient.from('doctors').delete().eq('id', targetId);
@@ -73,23 +101,36 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Yetki: clinic_admin sadece kendi kliniğindeki rolleri silebilir
-    if (callerIsClinicAdmin && !callerIsAdmin) {
-      if (target.clinic_id !== callerProfile.clinic_id) {
-        throw new Error('Bu kullanıcı sizin kliniğinizde değil');
-      }
-      if (!['doctor', 'clinic_admin', 'clinic_secretary'].includes(target.user_type)) {
-        throw new Error('Bu kullanıcı türünü silemezsiniz');
-      }
-    }
+    // Tenant + rol-hiyerarşisi (platform admin dışında herkese uygulanır).
+    if (!callerIsPlatformAdmin) {
+      // Hedef platform admin mi? (daha yüksek yetki — silinemez)
+      const { data: targetPlatRow } = await adminClient
+        .from('platform_admins').select('user_id').eq('user_id', targetId).maybeSingle();
+      if (targetPlatRow) throw new Error('Bu kullanıcıyı silemezsiniz');
 
-    // Yetki: lab müdürü admin (exec) hesabı silemez; lab hedefi kendi lab'ında olmalı
-    if (callerIsLabManager && !callerIsAdmin) {
-      if (!['lab', 'doctor', 'clinic_admin', 'clinic_secretary'].includes(target.user_type)) {
-        throw new Error('Bu kullanıcı türünü silme yetkiniz yok');
-      }
-      if (target.user_type === 'lab' && target.lab_id !== callerProfile.lab_id) {
-        throw new Error('Bu kullanıcı sizin laboratuvarınızda değil');
+      if (callerIsClinicAdmin) {
+        if (target.clinic_id !== callerProfile.clinic_id) {
+          throw new Error('Bu kullanıcı sizin kliniğinizde değil');
+        }
+        if (!['doctor', 'clinic_admin', 'clinic_secretary'].includes(target.user_type)) {
+          throw new Error('Bu kullanıcı türünü silemezsiniz');
+        }
+      } else {
+        // Lab müdürü / exec admin: exec 'admin' hesabı silemez; kendi lab kapsamı.
+        if (target.user_type === 'admin') {
+          throw new Error('Bu kullanıcı türünü silemezsiniz');
+        }
+        if (!['lab', 'doctor', 'clinic_admin', 'clinic_secretary'].includes(target.user_type)) {
+          throw new Error('Bu kullanıcı türünü silme yetkiniz yok');
+        }
+        if (target.user_type === 'lab') {
+          if (!callerProfile.lab_id || target.lab_id !== callerProfile.lab_id) {
+            throw new Error('Bu kullanıcı sizin laboratuvarınızda değil');
+          }
+        } else {
+          const inLab = await clinicInCallerLab(adminClient, target.clinic_id, callerProfile.lab_id);
+          if (!inLab) throw new Error('Bu kullanıcı sizin laboratuvarınıza bağlı değil');
+        }
       }
     }
 

@@ -13,9 +13,11 @@
 //
 // Input: { lab_id, sender_phone?, sender_name?, text, channel_msg_id?, context_wamid? }
 
+import { isServiceRoleBearer, timingSafeEqualStr } from '../_shared/security.ts';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-webhook-secret',
 };
 
 const FINAL_STATUSES = ['teslim_edildi', 'iptal', 'iptal_edildi', 'reddedildi', 'tamamlandi'];
@@ -39,6 +41,24 @@ Deno.serve(async (req: Request) => {
 
   const url = Deno.env.get('SUPABASE_URL')!;
   const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+  // ── Yetki (DAHİLİ uç): bu fonksiyon body.lab_id'ye güvenir → yalnız güvenilen
+  // çağıran erişebilmeli. FAIL CLOSED: geçerli service-role bearer VEYA (tanımlıysa)
+  // INBOUND_WEBHOOK_SECRET eşleşmesi şart. Aksi hâlde forged lab_id reddedilir.
+  // whatsapp-webhook bu fonksiyonu `Authorization: Bearer <service_role>` ile çağırır.
+  {
+    const inboundSecret = Deno.env.get('INBOUND_WEBHOOK_SECRET') ?? '';
+    const authHeader    = req.headers.get('Authorization');
+    const givenSecret   = req.headers.get('x-webhook-secret')
+      ?? new URL(req.url).searchParams.get('secret') ?? '';
+    const authorized =
+      isServiceRoleBearer(authHeader, key) ||
+      (!!inboundSecret && timingSafeEqualStr(givenSecret, inboundSecret));
+    if (!authorized) {
+      return json({ ok: false, error: 'Yetkisiz erişim' }, 401);
+    }
+  }
+
   const H = { apikey: key, Authorization: `Bearer ${key}` };
   const HJ = { ...H, 'content-type': 'application/json' };
 

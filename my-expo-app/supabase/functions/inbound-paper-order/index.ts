@@ -25,9 +25,11 @@
 // Yetkilendirme: Authorization header şart değil — SERVICE_ROLE anahtarı ENV'den.
 // Public webhook kullanılacaksa fonksiyon "Public" olarak deploy edilmeli (--no-verify-jwt).
 
+import { isServiceRoleBearer, timingSafeEqualStr } from '../_shared/security.ts';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-webhook-secret',
 };
 
 interface InboundBody {
@@ -119,11 +121,20 @@ function avgConfidence(ocr: any): number {
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
-  // ── Yetki: dış webhook — INBOUND_WEBHOOK_SECRET tanımlıysa header/query secret eşleşmeli ──
-  const inboundSecret = Deno.env.get('INBOUND_WEBHOOK_SECRET') ?? '';
-  if (inboundSecret) {
+  // ── Yetki (FAIL CLOSED): body.lab_id'ye güvenilir → çağıran doğrulanmalı.
+  // Geçerli service-role bearer (dahili: whatsapp-webhook) VEYA (dış vendor-webhook
+  // için) INBOUND_WEBHOOK_SECRET eşleşmesi ŞART. Sabit-zamanlı karşılaştırma.
+  // Not: INBOUND_WEBHOOK_SECRET tanımsızsa dış çağıran doğrulanamaz → yalnız
+  // dahili service-role çağrılar geçer (forged lab_id kapalı).
+  {
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const inboundSecret  = Deno.env.get('INBOUND_WEBHOOK_SECRET') ?? '';
+    const authHeader     = req.headers.get('Authorization');
     const given = req.headers.get('x-webhook-secret') ?? new URL(req.url).searchParams.get('secret') ?? '';
-    if (given !== inboundSecret) {
+    const authorized =
+      isServiceRoleBearer(authHeader, serviceRoleKey) ||
+      (!!inboundSecret && timingSafeEqualStr(given, inboundSecret));
+    if (!authorized) {
       return new Response(JSON.stringify({ error: 'Yetkisiz erişim' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
   }

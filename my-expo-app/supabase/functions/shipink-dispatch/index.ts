@@ -163,6 +163,24 @@ serve(async (req) => {
   const cEnv: Env = cred.environment === 'sandbox' ? 'sandbox' : 'production';
   const c = (cred.credentials ?? {}) as Record<string, any>;
 
+  // ── Kiracı doğrulaması ──────────────────────────────────────────────────────
+  // Gövdeden gelen work_order_id / delivery_id çağıranın lab'ına ait mi? Kontrol
+  // RLS-kapsamlı userClient ile yapılır: satır YALNIZ çağıranın kiracısına aitse
+  // döner (tenant yoksa/başka lab'sa boş) → servis-rol (admin) okuma/yazması
+  // YAPILMADAN 403 ile reddedilir. Böylece başka lab'ın work_order'ından hekim/
+  // klinik PII'si okunamaz veya başka lab'ın teslimat kaydı değiştirilemez.
+  const denyTenant = () => json({ ok: false, error: 'Bu kayıt sizin laboratuvarınıza ait değil', message: 'Bu kayıt sizin laboratuvarınıza ait değil' }, 403);
+  const ownsWorkOrder = async (id?: string): Promise<boolean> => {
+    if (!id) return true;   // work_order_id opsiyonel akışlarda (rates) admin okuması yapılmaz
+    const { data } = await userClient.from('work_orders').select('id').eq('id', id).maybeSingle();
+    return !!data;
+  };
+  const ownsDelivery = async (id?: string): Promise<boolean> => {
+    if (!id) return true;
+    const { data } = await userClient.from('deliveries').select('id').eq('id', id).maybeSingle();
+    return !!data;
+  };
+
   const tok = await getToken(admin, cred.id, cEnv, c);
   if (!tok.ok) return json({ ok: false, message: tok.message });
   const token = tok.token!;
@@ -197,6 +215,7 @@ serve(async (req) => {
 
   // ── rates: fiyat sorgula (gönderi oluşturmaz) ──
   if (body.action === 'rates') {
+    if (!(await ownsWorkOrder(body.work_order_id))) return denyTenant();
     const w = await ensureWarehouse(admin, cEnv, token, cred.id, c, false);
     if (!w.ok) return json({ ok: false, message: w.message, debug: w.debug });
 
@@ -226,6 +245,8 @@ serve(async (req) => {
   if (body.action === 'create') {
     if (!body.work_order_id)      return json({ ok: false, message: 'work_order_id gerekli' });
     if (!body.carrier_service_id) return json({ ok: false, message: 'Taşıyıcı hizmeti seçilmedi' });
+    if (!(await ownsWorkOrder(body.work_order_id))) return denyTenant();
+    if (!(await ownsDelivery(body.delivery_id)))    return denyTenant();
 
     const w = await ensureWarehouse(admin, cEnv, token, cred.id, c, false);
     if (!w.ok) return json({ ok: false, message: w.message, debug: w.debug });
@@ -343,6 +364,7 @@ serve(async (req) => {
   if (body.action === 'check') {
     const no = (body.tracking_number ?? '').trim();
     if (!no) return json({ ok: false, message: 'tracking_number gerekli' });
+    if (!(await ownsDelivery(body.delivery_id))) return denyTenant();
     const r = await call(cEnv, token, 'GET', `/trackings/${encodeURIComponent(no)}`);
     if (!r.ok) return json({ ok: false, message: errText(r), debug: dbg(r) });
 
@@ -373,6 +395,7 @@ serve(async (req) => {
   if (body.action === 'cancel') {
     const id = (body.shipment_id ?? '').trim();
     if (!id) return json({ ok: false, message: 'shipment_id gerekli' });
+    if (!(await ownsDelivery(body.delivery_id))) return denyTenant();
     const r = await call(cEnv, token, 'DELETE', `/shipments/${encodeURIComponent(id)}`);
     if (!r.ok) return json({ ok: false, message: errText(r), debug: dbg(r) });
     if (body.delivery_id) {

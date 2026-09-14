@@ -20,9 +20,17 @@
 //  üzerinden yapılır. Her lab kendi Meta numarasının token'ını Entegrasyonlar
 //  ekranından girer.
 //
-// Deploy: public (--no-verify-jwt) — Meta imzasız çağırır.
+// Deploy: public (--no-verify-jwt) — Meta JWT göndermez.
 //   supabase functions deploy whatsapp-webhook --no-verify-jwt \
 //     --project-ref kjwjxqfdsxkxgcgophdy --workdir .../my-expo-app --use-api
+//
+// GÜVENLIK (2026 remediation): Gelen Meta POST'ları X-Hub-Signature-256 ile
+//   HAM gövde üzerinden doğrulanır (WHATSAPP_APP_SECRET / META_APP_SECRET).
+//   İmza eksik/yanlış → 401 ve HİÇBİR işlem (sipariş açma / mesaj gönderme) yok.
+//   Secret tanımsızsa FAIL CLOSED. Siman UI'dan gelen action:* yönetim çağrıları
+//   Meta imzalı değildir (kendi access_token'larını taşırlar) → ayrı yolda.
+
+import { verifyMetaSignature, timingSafeEqualStr } from '../_shared/security.ts';
 
 const GRAPH_VERSION = 'v20.0';
 
@@ -1852,10 +1860,14 @@ Deno.serve(async (req: Request) => {
       return new Response('Bad Request', { status: 400 });
     }
     // Global env VEYA herhangi bir lab'ın kayıtlı verify_token'ı ile eşleş
-    let ok = !!globalVerify && token === globalVerify;
+    // (sabit-zamanlı). Yalnız hub.challenge düz metin döner — secret sızmaz.
+    let ok = !!globalVerify && timingSafeEqualStr(token, globalVerify);
     if (!ok) {
       const creds = await fetchWaCredentials(supabaseUrl, serviceRoleKey, false);
-      ok = creds.some(c => (c.credentials?.verify_token ?? '') === token && token !== '');
+      ok = creds.some(c => {
+        const vt = c.credentials?.verify_token ?? '';
+        return vt !== '' && timingSafeEqualStr(token, vt);
+      });
     }
     if (!ok) return new Response('Forbidden', { status: 403 });
     return new Response(challenge, { status: 200, headers: { 'content-type': 'text/plain' } });
@@ -1868,7 +1880,43 @@ Deno.serve(async (req: Request) => {
   // ── POST: gelen mesaj(lar) ─────────────────────────────────────────────────
   // Meta non-200'de tekrar dener → her durumda 200 dön, işi dedupe'a bırak.
   try {
-    const payload = await req.json();
+    // HAM gövdeyi ÖNCE oku — Meta imzası tam bu bytes üzerinden doğrulanır.
+    const rawBody = await req.text();
+    let payload: any;
+    try { payload = rawBody ? JSON.parse(rawBody) : {}; }
+    catch { return new Response('bad body', { status: 400 }); }
+
+    // ── Action allow-list — `action` ATTACKER-CONTROLLED kabul edilir (B-01) ──
+    // Bilinen yönetim action'ları (Siman UI) Meta-imzalı DEĞİLDİR; kendi
+    // access_token'larını taşır ve aşağıdaki KENDİ dallarında ele alınır
+    // (processIncoming'e ULAŞMAZ). Meta mesaj payload'ında action YOKTUR → İMZA
+    // ZORUNLU. Bilinmeyen/geçersiz-tip action imzayı ATLAYAMAZ, İŞLENMEZ.
+    const KNOWN_ACTIONS = new Set(['test', 'send_test', 'subscribe', 'sub_status']);
+    const rawAction = (payload as any)?.action;
+    const hasActionField = rawAction !== undefined && rawAction !== null && rawAction !== '';
+    const isKnownAction = typeof rawAction === 'string' && KNOWN_ACTIONS.has(rawAction);
+
+    // Bilinmeyen action VEYA string olmayan action tipi → 4xx, ASLA bypass/işleme.
+    if (hasActionField && !isKnownAction) {
+      console.error('[whatsapp-webhook] unsupported action — rejected');
+      return new Response('unsupported action', { status: 400, headers: corsHeaders });
+    }
+
+    // Meta mesaj payload'ı (bilinen bir action DEĞİL) → İMZA ZORUNLU (fail-closed).
+    if (!isKnownAction) {
+      const appSecret = Deno.env.get('WHATSAPP_APP_SECRET')
+        ?? Deno.env.get('META_APP_SECRET')
+        ?? '';
+      const sigHeader = req.headers.get('x-hub-signature-256')
+        ?? req.headers.get('X-Hub-Signature-256');
+      const sigOk = await verifyMetaSignature(rawBody, sigHeader, appSecret);
+      if (!sigOk) {
+        // İmza yok/yanlış/gövde kurcalanmış VEYA secret tanımsız → FAIL CLOSED.
+        // Doğrulanmamış payload için sipariş açma / mesaj gönderme YAPILMAZ.
+        console.error('[whatsapp-webhook] invalid X-Hub-Signature-256 — rejected');
+        return new Response('signature invalid', { status: 401 });
+      }
+    }
 
     // ── action:'test' → Siman Entegrasyonlar "Test" butonu (Meta payload'ı değil) ──
     // Graph API'den numarayı sorgulayarak token + phone_number_id geçerliliğini doğrular.

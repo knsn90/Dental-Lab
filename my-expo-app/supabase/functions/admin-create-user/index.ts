@@ -5,6 +5,22 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Klinik, çağıranın lab'ına bağlı mı? (doğrudan clinics.lab_id VEYA
+// clinic_lab_memberships onaylı üyeliği). Lab yoksa/klinik yoksa false.
+// admin-update-user / admin-delete-user ile birebir aynı kapı (B-02).
+async function clinicInCallerLab(adminClient: any, clinicId: string | null, callerLabId: string | null): Promise<boolean> {
+  if (!clinicId || !callerLabId) return false;
+  const { data: c } = await adminClient.from('clinics').select('lab_id').eq('id', clinicId).maybeSingle();
+  if (c?.lab_id && c.lab_id === callerLabId) return true;
+  const { data: m } = await adminClient
+    .from('clinic_lab_memberships')
+    .select('id')
+    .eq('lab_id', callerLabId)
+    .eq('member_clinic_id', clinicId)
+    .maybeSingle();
+  return !!m;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -33,22 +49,27 @@ Deno.serve(async (req: Request) => {
       .eq('id', userData.user.id)
       .single();
 
+    // Platform admin? (yalnız o başka bir lab'ı hedefleyebilir)
+    const { data: callerPlatRow } = await adminClient
+      .from('platform_admins').select('user_id').eq('user_id', userData.user.id).maybeSingle();
+    const callerIsPlatformAdmin = !!callerPlatRow;
+
     // Admin / lab MÜDÜRÜ / clinic_admin (kendi hekimini ekleyebilir)
     const callerIsClinicAdmin = callerProfile?.role === 'clinic_admin' || callerProfile?.user_type === 'clinic_admin';
-    const callerIsAdmin = callerProfile?.user_type === 'admin';
+    const callerIsExecAdmin = callerProfile?.user_type === 'admin';   // lab-başına exec rolü
     const callerIsLabManager = callerProfile?.user_type === 'lab' && callerProfile?.role === 'manager';
-    if (!callerProfile || !(callerIsAdmin || callerIsLabManager || callerIsClinicAdmin)) {
+    if (!callerProfile || !(callerIsPlatformAdmin || callerIsExecAdmin || callerIsLabManager || callerIsClinicAdmin)) {
       throw new Error('Yetkiniz yok');
     }
 
     const body = await req.json();
 
     // Yeni lab kullanıcısı caller'ın lab_id'sini miras alır.
-    // İSTİSNA: platform yöneticisi (user_type='admin') başka bir lab için hesap
-    // açabilmeli — konsoldan lab kurup sahibine giriş bilgisi vermek için. Onun
-    // kendi lab_id'si yok, o yüzden miras işe yaramaz; hedef lab body'den gelir.
-    // Yalnız platform yöneticisine açık: lab müdürü kendi labının dışına çıkamaz.
-    const inheritedLabId = (callerIsAdmin && body.target_lab_id)
+    // İSTİSNA: YALNIZ platform yöneticisi başka bir lab için hesap açabilir
+    // (konsoldan lab kurup sahibine giriş bilgisi vermek için). Lab müdürü ve
+    // lab-başına exec 'admin' body.target_lab_id ile KENDİ labının dışına ÇIKAMAZ
+    // → target_lab_id yok sayılır, caller'ın kendi lab_id'si kullanılır.
+    const inheritedLabId = (callerIsPlatformAdmin && body.target_lab_id)
       ? String(body.target_lab_id)
       : (callerProfile.lab_id ?? null);
     const { email, password, full_name, user_type, role, phone, address, clinic_type, specialty, department, level, monthly_salary, clinic_permissions, skip_doctor_row } = body;
@@ -56,7 +77,7 @@ Deno.serve(async (req: Request) => {
 
     // Lab müdürü admin (exec) hesabı AÇAMAZ; yalnız kendi ekibi + klinik hesapları
     const LAB_MANAGER_TYPES_ALLOWED = ['lab', 'doctor', 'clinic_admin', 'clinic_secretary'];
-    if (callerIsLabManager && !callerIsAdmin && !LAB_MANAGER_TYPES_ALLOWED.includes(user_type)) {
+    if (callerIsLabManager && !callerIsPlatformAdmin && !LAB_MANAGER_TYPES_ALLOWED.includes(user_type)) {
       throw new Error('Bu kullanıcı tipini oluşturma yetkiniz yok');
     }
 
@@ -69,6 +90,20 @@ Deno.serve(async (req: Request) => {
       clinic_id = callerProfile.clinic_id ?? clinic_id;
       if (!clinic_id) {
         throw new Error('Hesabınıza bağlı klinik bulunamadı — destekle iletişime geçin');
+      }
+    }
+
+    // B-02: bir kliniğe kullanıcı BAĞLAMA yalnız caller'ın kendi tenant'ına ait
+    // klinikle olur. body.clinic_id / body.lab_id tenant sahipliği KANITI DEĞİLDİR;
+    // clinic.lab_id (veya onaylı clinic_lab_memberships) server-side doğrulanır.
+    // Platform admin muaf (meşru cross-lab kurulum). clinic_admin zaten yukarıda
+    // kendi profilinin clinic_id'sine sabitlendi. Lab müdürü / exec 'admin' için
+    // body'den gelen clinic_id başka bir lab'a AİT OLAMAZ. Bu kontrol createUser'dan
+    // ÖNCE çalışır → red durumunda hiçbir kullanıcı/profil/klinik oluşmaz.
+    if (clinic_id && !callerIsPlatformAdmin && !callerIsClinicAdmin) {
+      const ok = await clinicInCallerLab(adminClient, String(clinic_id), callerProfile.lab_id ?? null);
+      if (!ok) {
+        throw new Error('Bu kliniğe kullanıcı ekleme yetkiniz yok (klinik sizin laboratuvarınıza bağlı değil)');
       }
     }
 

@@ -36,9 +36,11 @@
  */
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { authorizeNotification } from '../_shared/notify-authz.ts';
 
 const supabaseUrl    = Deno.env.get('SUPABASE_URL')!;
 const supabaseSrvKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const anonKey        = Deno.env.get('SUPABASE_ANON_KEY')!;
 const twilioSid      = Deno.env.get('TWILIO_ACCOUNT_SID')  ?? '';
 const twilioToken    = Deno.env.get('TWILIO_AUTH_TOKEN')   ?? '';
 const twilioFrom     = Deno.env.get('TWILIO_WHATSAPP_FROM') ?? '';
@@ -57,20 +59,8 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-// ── Yetki: iç çağrı (paylaşılan gizli / service-role) veya oturumlu kullanıcı ──
+// ── Yetki: paylaşılan authorizeNotification helper'ı (F-01 düzeltmesi) ──
 const NOTIFY_FN_SECRET = Deno.env.get('NOTIFY_FN_SECRET') ?? '';
-async function assertCallerAuthorized(req: Request): Promise<boolean> {
-  const secret = req.headers.get('x-notify-secret');
-  if (NOTIFY_FN_SECRET && secret === NOTIFY_FN_SECRET) return true;
-  const auth = req.headers.get('Authorization') ?? '';
-  if (auth === `Bearer ${supabaseSrvKey}`) return true;
-  try {
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
-    const userClient = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: auth } } });
-    const { data, error } = await userClient.auth.getUser();
-    return !error && !!data?.user;
-  } catch { return false; }
-}
 
 interface WaPayload {
   title:      string;
@@ -110,10 +100,6 @@ function normalizePhone(raw: string, defaultCc = '90'): string {
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
-  if (!(await assertCallerAuthorized(req))) {
-    return new Response(JSON.stringify({ error: 'Yetkisiz erişim' }), { status: 401, headers: { ...CORS, 'Content-Type': 'application/json' } });
-  }
-
   if (!twilioSid || !twilioToken || !twilioFrom) {
     return json({ error: 'twilio_not_configured' }, 200);
   }
@@ -124,13 +110,28 @@ serve(async (req) => {
 
   if (!body.userIds?.length) return json({ ok: true, sent: 0, reason: 'no_users' });
 
+  // ── Yetkilendirme: çağıran yalnız YETKİLİ alıcılara gönderebilir (F-01) ──
+  const authz = await authorizeNotification({
+    supabaseUrl, anonKey, serviceKey: supabaseSrvKey,
+    authHeader: req.headers.get('Authorization') ?? '',
+    internalSecret: NOTIFY_FN_SECRET || undefined,
+    internalSecretHeader: req.headers.get('x-notify-secret'),
+    requestedUserIds: body.userIds ?? [],
+    resourceType: (body.payload as any)?.resourceType, resourceId: (body.payload as any)?.resourceId,
+  });
+  if (!authz.ok) return json({ ok: false, error: authz.error }, authz.status);
+  const recipients = authz.recipients;
+  if (!recipients.length) return json({ ok: true, sent: 0, skipped: (body.userIds?.length ?? 0), reason: 'no_authorized_recipients' });
+
   const supabase = createClient(supabaseUrl, supabaseSrvKey);
 
-  // 1. Profiller + whatsapp_phone + prefs çek; pref + numara filtrele
+  // 1. Yetkili alıcıların whatsapp_phone + prefs bilgisi (recipients numara taşımaz);
+  //    yalnız authz'ın döndürdüğü id'ler sorgulanır — pref + numara filtrelenir.
+  const recipientIds = recipients.map((r) => r.id);
   const { data: profiles, error: profErr } = await supabase
     .from('profiles')
     .select('id, full_name, whatsapp_phone, notification_prefs')
-    .in('id', body.userIds);
+    .in('id', recipientIds);
 
   if (profErr) return json({ error: profErr.message }, 500);
 

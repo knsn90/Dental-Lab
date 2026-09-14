@@ -24,6 +24,7 @@
 // Secrets: ANTHROPIC_API_KEY, WA_BRAIN_SECRET (opsiyonel — varsa zorunlu kılınır)
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { timingSafeEqualStr } from '../_shared/security.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -57,7 +58,7 @@ Deno.serve(async (req: Request) => {
       console.error('[wa-brain] WA_BRAIN_SECRET tanımlı değil — istek reddedildi');
       return json({ ok: false, error: 'not_configured' }, 503);
     }
-    if (req.headers.get('x-wa-secret') !== expected) {
+    if (!timingSafeEqualStr(req.headers.get('x-wa-secret') ?? '', expected)) {
       return json({ ok: false, error: 'unauthorized' }, 401);
     }
 

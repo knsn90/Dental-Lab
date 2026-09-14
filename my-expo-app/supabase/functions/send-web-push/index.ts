@@ -28,10 +28,12 @@
  */
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { authorizeNotification } from '../_shared/notify-authz.ts';
 import webpush from 'https://esm.sh/web-push@3.6.7';
 
 const supabaseUrl     = Deno.env.get('SUPABASE_URL')!;
 const supabaseSrvKey  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const anonKey         = Deno.env.get('SUPABASE_ANON_KEY')!;
 const vapidPublicKey  = Deno.env.get('VAPID_PUBLIC_KEY')  ?? '';
 const vapidPrivateKey = Deno.env.get('VAPID_PRIVATE_KEY') ?? '';
 const vapidSubject    = Deno.env.get('VAPID_SUBJECT')    ?? 'mailto:noreply@siman.app';
@@ -46,20 +48,8 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-// ── Yetki: iç çağrı (paylaşılan gizli / service-role) veya oturumlu kullanıcı ──
+// ── Yetki: paylaşılan authorizeNotification helper'ı (F-01 düzeltmesi) ──
 const NOTIFY_FN_SECRET = Deno.env.get('NOTIFY_FN_SECRET') ?? '';
-async function assertCallerAuthorized(req: Request): Promise<boolean> {
-  const secret = req.headers.get('x-notify-secret');
-  if (NOTIFY_FN_SECRET && secret === NOTIFY_FN_SECRET) return true;
-  const auth = req.headers.get('Authorization') ?? '';
-  if (auth === `Bearer ${supabaseSrvKey}`) return true;
-  try {
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
-    const userClient = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: auth } } });
-    const { data, error } = await userClient.auth.getUser();
-    return !error && !!data?.user;
-  } catch { return false; }
-}
 
 interface PushPayload {
   title:  string;
@@ -85,10 +75,6 @@ serve(async (req) => {
     return new Response('ok', { headers: CORS });
   }
 
-  if (!(await assertCallerAuthorized(req))) {
-    return new Response(JSON.stringify({ error: 'Yetkisiz erişim' }), { status: 401, headers: { ...CORS, 'Content-Type': 'application/json' } });
-  }
-
   if (!vapidPublicKey || !vapidPrivateKey) {
     return json({ error: 'VAPID keys missing — set VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY in edge function secrets' }, 500);
   }
@@ -104,17 +90,23 @@ serve(async (req) => {
     return json({ error: 'userIds[] and payload.title required' }, 400);
   }
 
+  // ── Yetkilendirme: çağıran yalnız YETKİLİ alıcılara gönderebilir (F-01) ──
+  const authz = await authorizeNotification({
+    supabaseUrl, anonKey, serviceKey: supabaseSrvKey,
+    authHeader: req.headers.get('Authorization') ?? '',
+    internalSecret: NOTIFY_FN_SECRET || undefined,
+    internalSecretHeader: req.headers.get('x-notify-secret'),
+    requestedUserIds: body.userIds ?? [],
+    resourceType: (body.payload as any)?.resourceType, resourceId: (body.payload as any)?.resourceId,
+  });
+  if (!authz.ok) return json({ ok: false, error: authz.error }, authz.status);
+  const recipients = authz.recipients;
+  if (!recipients.length) return json({ ok: true, sent: 0, skipped: (body.userIds?.length ?? 0), reason: 'no_authorized_recipients' });
+
   const supabase = createClient(supabaseUrl, supabaseSrvKey);
 
-  // 1. Pref kontrolü: hangi kullanıcılar browser_push almak istiyor?
-  const { data: profiles, error: profErr } = await supabase
-    .from('profiles')
-    .select('id, notification_prefs')
-    .in('id', body.userIds);
-
-  if (profErr) return json({ error: profErr.message }, 500);
-
-  const allowedUserIds = (profiles ?? [])
+  // 1. Pref kontrolü: yetkili alıcılar arasında browser_push isteyenler
+  const allowedUserIds = recipients
     .filter((p: any) => {
       const prefs = p.notification_prefs;
       if (!prefs || prefs.master_enabled === false) return false;
