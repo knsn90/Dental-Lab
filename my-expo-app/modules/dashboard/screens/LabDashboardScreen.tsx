@@ -32,6 +32,7 @@ import {
   Receipt, Wallet,
 } from '../../../core/ui/icons';
 import { formatMoney, type Currency } from '../../../core/money/currency';
+import { baseSymbol } from '../../../core/money/baseCurrency';
 
 // DS tokens — single source of truth for all design values
 import { DS } from '../../../core/theme/dsTokens';
@@ -2235,7 +2236,7 @@ export function LabDashboardScreen() {
 
             <View className="rounded-xl" style={{ flex: 1, padding: 12, gap: 4, backgroundColor: T.cardSoft, borderWidth: 1, borderColor: T.hairline }}>
               <Text style={{ fontSize: 18, fontWeight: '800', color: T.ink, letterSpacing: -0.4 }}>
-                {(Number(stockSummary.materialCostMtd) || 0).toLocaleString('tr-TR')} ₺
+                {(Number(stockSummary.materialCostMtd) || 0).toLocaleString('tr-TR')} {baseSymbol()}
               </Text>
               <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3 }}>Materyal Maliyeti</Text>
             </View>
@@ -2246,7 +2247,7 @@ export function LabDashboardScreen() {
               borderWidth: 1, borderColor: stockSummary.wasteCostMtd > 0 ? 'rgba(217,75,75,0.2)' : T.hairline,
             }}>
               <Text style={{ fontSize: 18, fontWeight: '800', letterSpacing: -0.4, color: stockSummary.wasteCostMtd > 0 ? '#9C2E2E' : T.ink }}>
-                {stockSummary.wasteCostMtd > 0 ? '-' : ''}{(Number(stockSummary.wasteCostMtd) || 0).toLocaleString('tr-TR')} ₺
+                {stockSummary.wasteCostMtd > 0 ? '-' : ''}{(Number(stockSummary.wasteCostMtd) || 0).toLocaleString('tr-TR')} {baseSymbol()}
               </Text>
               <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3 }}>Fire Kaybı</Text>
             </View>

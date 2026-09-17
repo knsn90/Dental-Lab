@@ -6,11 +6,11 @@
  * import edilebilir bir paket oluşturur (üçü aynı klasördedir).
  */
 export type FaceScanResult = {
-  /** ASCII STL — TrueDepth fallback'te dolu, Object Capture'da null. */
+  /** ASCII STL — kullanılmıyor (her modda null). */
   asciiSTL: string | null;
-  /** Binary STL — TrueDepth fallback'te dolu, Object Capture'da null. */
+  /** Binary STL — arka kamera modlarında dolu; ön kamerada null. */
   binarySTL: string | null;
-  /** Wavefront OBJ — TrueDepth fallback'te dolu. */
+  /** Wavefront OBJ — arka kamera modlarında dolu; ön kamerada null. */
   obj: string | null;
   /** OBJ ile aynı klasörde MTL (texture referansı). */
   mtl: string | null;
@@ -18,6 +18,6 @@ export type FaceScanResult = {
   texturePNG: string | null;
   /** Object Capture (LiDAR fotogrametri) USDZ — gömülü texture'lı yüksek kalite mesh. */
   usdz: string | null;
-  /** Vertex renkli PLY — tek dosya, exocad uyumlu, texture gömülü (Object Capture nihai çıktısı). */
+  /** Köşe renkli binary PLY (mm) — ön kamera (TrueDepth) modunun TEK çıktısı; exocad uyumlu. */
   ply: string | null;
 };

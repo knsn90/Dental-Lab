@@ -1,5 +1,4 @@
 import { localeTag, isRTL } from '../../../core/i18n';
-import { safeBack } from '../../../core/util/safeBack';
 /**
  * ClinicStatementScreen — Klinik Hesap Ekstresi (Patterns Design Language)
  *
@@ -547,7 +546,11 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
       }}>
         {!selfView && (
           <Pressable
-            onPress={() => safeBack('/')}
+            // Ekstre Finans hub'ının "Sağlık Kurumları" sekmesinin alt sayfası.
+            // Geçmişe dönmek (safeBack) mobilde Özet'e düşüyordu: sekme
+            // navigatörü geri tuşunu ilk sekmeye yönlendiriyor. Hiyerarşik
+            // "yukarı" hedefi sabit: ekstrenin ait olduğu liste.
+            onPress={() => router.replace(`/${panelBase}/finance?tab=clinic_balance` as any)}
             style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: U.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
           >
             {isRTL() ? <ArrowRight size={18} color={U.ink[900]} strokeWidth={1.8} /> : <ArrowLeft size={18} color={U.ink[900]} strokeWidth={1.8} />}

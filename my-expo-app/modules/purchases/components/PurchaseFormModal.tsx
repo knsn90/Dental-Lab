@@ -10,7 +10,9 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, Pressable, Platform, Modal, TextInput, ScrollView} from 'react-native';
+import { View, Text, Pressable, Platform, Modal, TextInput, ScrollView, useWindowDimensions } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import { File as FSFile } from 'expo-file-system';
 import {
   X, Check, Receipt, Plus, Trash2, ChevronDown, ChevronUp, Search,
   Package, Building2, AlertCircle, FileUp, Sparkles,
@@ -88,6 +90,12 @@ const newLine = (defaultVat = ''): Line => ({
 export function PurchaseFormModal({ visible, accentColor = '#0A0A0A', onClose, onSaved }: Props) {
   const profile = useAuthStore(s => s.profile);
   const labId = (profile as any)?.lab_id ?? null;
+  // Telefon genişliği: masaüstü tablo düzeni (sabit 70/64/110px sütunlar) 390pt
+  // ekrana sığmıyordu; ürün kutusu 40px'e çöküp kutular iç içe giriyordu
+  // (kullanıcı cihazda gördü) → dar ekranda satırlar etiketli kart olur.
+  const { width: winW } = useWindowDimensions();
+  const narrow = winW < 640;
+  const padX = narrow ? 16 : 28;
 
   // ── Header state ──
   const [supplierId, setSupplierId] = useState<string | null>(null);
@@ -185,16 +193,37 @@ export function PurchaseFormModal({ visible, accentColor = '#0A0A0A', onClose, o
     }
   };
 
-  const handlePickPdf = () => {
-    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'application/pdf';
-    input.onchange = () => {
-      const f = input.files?.[0];
-      if (f) handleParseInvoice(f);
-    };
-    input.click();
+  const handlePickPdf = async () => {
+    if (Platform.OS === 'web') {
+      if (typeof document === 'undefined') return;
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'application/pdf';
+      input.onchange = () => {
+        const f = input.files?.[0];
+        if (f) handleParseInvoice(f);
+      };
+      input.click();
+      return;
+    }
+    // Native: sistem dosya seçici (Dosyalar / iCloud / e-posta eki). Masaüstündeki
+    // "PDF yükle" ile AYNI parse-invoice akışı — buton eskiden yalnız web'de vardı.
+    try {
+      const r = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', multiple: false, copyToCacheDirectory: true });
+      if (r.canceled || !r.assets?.length) return;
+      const a = r.assets[0];
+      const fsFile = new FSFile(a.uri);
+      // File-benzeri sarmalayıcı: parse + arşiv yükleme kodu yalnız
+      // name/type/arrayBuffer kullanıyor → iki platformda tek kod yolu kalır.
+      const shim = {
+        name: a.name || 'fatura.pdf',
+        type: a.mimeType || 'application/pdf',
+        arrayBuffer: () => fsFile.arrayBuffer(),
+      } as unknown as File;
+      await handleParseInvoice(shim);
+    } catch (e: any) {
+      setError('PDF açılamadı: ' + (e?.message ?? 'bilinmeyen hata'));
+    }
   };
 
   useEffect(() => {
@@ -398,14 +427,14 @@ export function PurchaseFormModal({ visible, accentColor = '#0A0A0A', onClose, o
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.42)', justifyContent: 'center', alignItems: 'center', padding: 20, ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) }}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.42)', justifyContent: 'center', alignItems: 'center', padding: narrow ? 12 : 20, ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) }}>
         <View style={{
           backgroundColor: '#FFFFFF', borderRadius: 24, width: 880, maxWidth: '100%', maxHeight: '94%',
           overflow: 'hidden',
           ...(Platform.OS === 'web' ? { boxShadow: '0 24px 64px rgba(0,0,0,0.22)' } as any : {}),
         }}>
           {/* Header */}
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingHorizontal: 28, paddingTop: 24, paddingBottom: 18, gap: 16 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingHorizontal: padX, paddingTop: narrow ? 18 : 24, paddingBottom: narrow ? 14 : 18, gap: narrow ? 12 : 16 }}>
             <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
               <View style={{
                 width: 44, height: 44, borderRadius: 22,
@@ -441,16 +470,16 @@ export function PurchaseFormModal({ visible, accentColor = '#0A0A0A', onClose, o
             </Pressable>
           </View>
 
-          <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.04)', marginHorizontal: 28 }} />
+          <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.04)', marginHorizontal: padX }} />
 
-          <ScrollView contentContainerStyle={{ paddingHorizontal: 28, paddingTop: 22, paddingBottom: 22 }} showsVerticalScrollIndicator={false}>
+          <ScrollView contentContainerStyle={{ paddingHorizontal: padX, paddingTop: narrow ? 16 : 22, paddingBottom: 22 }} showsVerticalScrollIndicator={false}>
 
             {/* ── A. FATURA BİLGİSİ ── */}
             <Text style={sectionEyebrow}>A · Fatura bilgisi</Text>
             <Text style={sectionSubtitle}>Tedarikçi, fatura numarası, tarih, ödeme</Text>
 
-            {/* PDF Yükle + OCR */}
-            {Platform.OS === 'web' && (
+            {/* PDF Yükle + OCR — web: dosya girişi · native: sistem dosya seçici */}
+            {(
               <View style={{ marginBottom: 14 }}>
                 <Pressable
                   onPress={handlePickPdf}
@@ -678,7 +707,8 @@ export function PurchaseFormModal({ visible, accentColor = '#0A0A0A', onClose, o
               </Pressable>
             </View>
 
-            {/* Header row */}
+            {/* Header row — dar ekranda gizli: kartta her alanın kendi etiketi var */}
+            {!narrow && (
             <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#FBF9F4', borderRadius: 12, gap: 8, marginBottom: 6 }}>
               <Text style={{ flex: 2.2, ...fieldLabel, marginBottom: 0 }}>Ürün</Text>
               <Text style={{ width: 70, ...fieldLabel, marginBottom: 0 }}>Miktar</Text>
@@ -688,6 +718,7 @@ export function PurchaseFormModal({ visible, accentColor = '#0A0A0A', onClose, o
               <Text style={{ width: 110, ...fieldLabel, marginBottom: 0, textAlign: 'end' as any }}>Toplam</Text>
               <View style={{ width: 32 }} />
             </View>
+            )}
 
             {/* Lines — zIndex: ürün arama dropdown'ı (satır içinde absolute) alttaki
                 Not/uyarı bölümlerinin ÜSTÜNDE çizilsin diye blok yükseltilir. */}
@@ -706,6 +737,7 @@ export function PurchaseFormModal({ visible, accentColor = '#0A0A0A', onClose, o
                     accentColor={accentColor}
                     cellInput={cellInput}
                     defaultVat={vatRate}
+                    narrow={narrow}
                     onChange={(patch) => updateLine(l.id, patch)}
                     onRemove={lines.length > 1 ? () => removeLine(l.id) : undefined}
                     lineTotal={lineTotal}
@@ -740,9 +772,9 @@ export function PurchaseFormModal({ visible, accentColor = '#0A0A0A', onClose, o
           </ScrollView>
 
           {/* Footer with totals */}
-          <View style={{ paddingHorizontal: 28, paddingTop: 14, paddingBottom: 18, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)', backgroundColor: '#FBF9F4' }}>
+          <View style={{ paddingHorizontal: padX, paddingTop: 14, paddingBottom: 18, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)', backgroundColor: '#FBF9F4' }}>
             {/* Totals row */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 24, marginBottom: 12, flexWrap: 'wrap' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: narrow ? 16 : 24, marginBottom: 12, flexWrap: 'wrap' }}>
               <View>
                 <Text style={{ fontSize: 10, color: '#9A9A9A', fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase' }}>Ara toplam</Text>
                 <Text style={{ fontSize: 14, fontWeight: '600', color: '#2C2C2C', marginTop: 2 }}>{formatMoney(totals.subtotal, currency)}</Text>
@@ -765,13 +797,23 @@ export function PurchaseFormModal({ visible, accentColor = '#0A0A0A', onClose, o
             </View>
 
             {/* Action buttons */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Text style={{ flex: 1, fontSize: 11, color: '#9A9A9A', fontStyle: 'italic' }}>
+            {/* Dar ekranda açıklama butonların ÜSTÜNDE tam genişlik: yan yana
+                kalınca ~60px'lik sütuna sıkışıp satır satır kırılıyordu. */}
+            {narrow && (
+              <Text style={{ fontSize: 11, color: '#9A9A9A', fontStyle: 'italic', marginBottom: 10 }}>
                 Kaydedince stok girişi, cari hesap borcu ve operasyonel maliyet otomatik güncellenir.
               </Text>
+            )}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              {!narrow && (
+                <Text style={{ flex: 1, fontSize: 11, color: '#9A9A9A', fontStyle: 'italic' }}>
+                  Kaydedince stok girişi, cari hesap borcu ve operasyonel maliyet otomatik güncellenir.
+                </Text>
+              )}
               <Pressable
                 onPress={onClose}
                 style={{
+                  ...(narrow ? { flex: 1, alignItems: 'center' as const } : {}),
                   paddingHorizontal: 18, paddingVertical: 10, borderRadius: 9999,
                   backgroundColor: '#FFFFFF',
                   borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
@@ -784,6 +826,7 @@ export function PurchaseFormModal({ visible, accentColor = '#0A0A0A', onClose, o
                 onPress={handleSave}
                 disabled={saving}
                 style={{
+                  ...(narrow ? { flex: 1.6, justifyContent: 'center' as const } : {}),
                   flexDirection: 'row', alignItems: 'center', gap: 7,
                   paddingHorizontal: 22, paddingVertical: 11, borderRadius: 9999,
                   backgroundColor: accentColor, opacity: saving ? 0.5 : 1,
@@ -804,7 +847,7 @@ export function PurchaseFormModal({ visible, accentColor = '#0A0A0A', onClose, o
 // ─── Line row ────────────────────────────────────────────────────────────────
 
 function LineRow({
-  line, idx, items, currency, accentColor, cellInput, defaultVat, onChange, onRemove, lineTotal,
+  line, idx, items, currency, accentColor, cellInput, defaultVat, onChange, onRemove, lineTotal, narrow = false,
 }: {
   line: Line;
   idx: number;
@@ -816,6 +859,8 @@ function LineRow({
   onChange: (patch: Partial<Line>) => void;
   onRemove?: () => void;
   lineTotal: number;
+  /** Telefon: sütun tablo yerine etiketli kart düzeni */
+  narrow?: boolean;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [search, setSearch] = useState(line.item_name);
@@ -829,6 +874,9 @@ function LineRow({
   // gösterilmez; aksi hâlde seçimden sonra bile açık kalıp altını örtüyordu.
   const exact = filtered.length === 1 && filtered[0].name.toLowerCase() === search.trim().toLowerCase();
   const showList = pickerOpen && filtered.length > 0 && !exact;
+  // Dar ekran kartı: sayı alanları yarım genişlik + kendi etiketi
+  const miniLabel: any = { fontSize: 9.5, fontWeight: '600', color: '#9A9A9A', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 4 };
+  const cellNarrow: any = { flexBasis: '46%', flexGrow: 1 };
 
   return (
     // YIĞIN SIRASI: dropdown mutlak konumlu ve zIndex'i yüksek olsa da, ATA
@@ -837,9 +885,9 @@ function LineRow({
     // altında kalıyordu. Açıkken kökü + satır kabını + input sarmalayıcısını
     // birlikte yükseltmek gerekir; tek katmanda zIndex vermek yetmiyor.
     <View style={{ position: 'relative' as any, zIndex: pickerOpen ? 3000 : 1, ...(Platform.OS === 'android' ? { elevation: pickerOpen ? 24 : 0 } : {}) }}>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', position: 'relative' as any, zIndex: pickerOpen ? 3000 : 1 }}>
-        {/* Item name + picker */}
-        <View style={{ flex: 2.2 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', position: 'relative' as any, zIndex: pickerOpen ? 3000 : 1, flexWrap: narrow ? 'wrap' : 'nowrap', rowGap: narrow ? 10 : 8 }}>
+        {/* Item name + picker — dar ekranda tam genişlik ilk satır */}
+        <View style={narrow ? { flexBasis: '100%' } : { flex: 2.2 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Text style={{ fontSize: 10, color: '#9A9A9A', fontWeight: '600', minWidth: 14 }}>#{idx}</Text>
             <View style={{ flex: 1, position: 'relative' as any, zIndex: pickerOpen ? 3000 : 1 }}>
@@ -877,6 +925,16 @@ function LineRow({
                 </View>
               )}
             </View>
+            {/* Dar ekranda sil düğmesi ürün satırının sonunda (ayrı sütun yok) */}
+            {narrow && onRemove ? (
+              <Pressable
+                onPress={onRemove}
+                hitSlop={6}
+                style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(156,46,46,0.08)', borderWidth: 1, borderColor: 'rgba(156,46,46,0.22)' }}
+              >
+                <Trash2 size={13} color="#9C2E2E" strokeWidth={1.8} />
+              </Pressable>
+            ) : null}
           </View>
           {line.item_id ? (
             <Text style={{ fontSize: 10, color: '#1F6B47', fontWeight: '600', marginTop: 3, marginStart: 20 }}>✓ Mevcut ürüne bağlandı</Text>
@@ -886,7 +944,8 @@ function LineRow({
         </View>
 
         {/* Quantity */}
-        <View style={{ width: 70 }}>
+        <View style={narrow ? cellNarrow : { width: 70 }}>
+          {narrow && <Text style={miniLabel}>Miktar</Text>}
           <TextInput
             style={cellInput}
             value={line.quantity}
@@ -898,7 +957,8 @@ function LineRow({
         </View>
 
         {/* Unit */}
-        <View style={{ width: 64 }}>
+        <View style={narrow ? cellNarrow : { width: 64 }}>
+          {narrow && <Text style={miniLabel}>Birim</Text>}
           <TextInput
             style={cellInput}
             value={line.unit}
@@ -909,7 +969,8 @@ function LineRow({
         </View>
 
         {/* Unit price */}
-        <View style={{ width: 110 }}>
+        <View style={narrow ? cellNarrow : { width: 110 }}>
+          {narrow && <Text style={miniLabel}>Birim fiyat</Text>}
           <TextInput
             style={cellInput}
             value={line.unit_price}
@@ -921,7 +982,8 @@ function LineRow({
         </View>
 
         {/* Line VAT % */}
-        <View style={{ width: 64 }}>
+        <View style={narrow ? cellNarrow : { width: 64 }}>
+          {narrow && <Text style={miniLabel}>KDV %</Text>}
           <TextInput
             style={cellInput}
             value={line.vat_rate}
@@ -932,15 +994,18 @@ function LineRow({
           />
         </View>
 
-        {/* Line total */}
-        <View style={{ width: 110, height: 38, alignItems: 'flex-end', justifyContent: 'center' }}>
+        {/* Line total — dar ekranda kartın altında sağa yaslı */}
+        <View style={narrow
+          ? { flexBasis: '100%', flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 6 }
+          : { width: 110, height: 38, alignItems: 'flex-end', justifyContent: 'center' }}>
+          {narrow && <Text style={{ ...miniLabel, marginBottom: 0 }}>Toplam</Text>}
           <Text style={{ fontSize: 13, fontWeight: '600', color: '#0A0A0A' }}>
             {lineTotal > 0 ? formatMoney(lineTotal, currency, { fractionDigits: 2 }) : '—'}
           </Text>
         </View>
 
-        {/* Remove */}
-        <View style={{ width: 32, height: 38, alignItems: 'center', justifyContent: 'center' }}>
+        {/* Remove — dar ekranda ürün satırına taşındı */}
+        <View style={narrow ? { display: 'none' } : { width: 32, height: 38, alignItems: 'center', justifyContent: 'center' }}>
           {onRemove ? (
             <Pressable
               onPress={onRemove}
@@ -961,7 +1026,7 @@ function LineRow({
           backgroundColor: line.needs_review ? 'rgba(217,119,6,0.08)' : 'rgba(15,118,110,0.06)',
           borderWidth: 1,
           borderColor: line.needs_review ? 'rgba(217,119,6,0.25)' : 'rgba(15,118,110,0.20)',
-          flexDirection: 'row', alignItems: 'center', gap: 8,
+          flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap',
         }}>
           {line.needs_review && (
             <Text style={{ fontSize: 11, fontWeight: '700', color: '#9C5E0E' }}>⚠ Tipi belirsiz —</Text>
@@ -992,7 +1057,7 @@ function LineRow({
             })}
           </View>
           {line.item_kind === 'equipment' && (
-            <View style={{ flexDirection: 'row', gap: 8, flex: 1, marginStart: 8 }}>
+            <View style={narrow ? { flexDirection: 'row', gap: 8, flexBasis: '100%' } : { flexDirection: 'row', gap: 8, flex: 1, marginStart: 8 }}>
               <TextInput
                 style={{ ...cellInput, flex: 1 }}
                 value={line.model ?? ''}

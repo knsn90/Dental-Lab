@@ -1,5 +1,6 @@
 // modules/courier/api.ts — Kurye paneli için API yardımcıları
 import { supabase } from '../../core/api/supabase';
+import { deliveryRef } from '../delivery/label';
 
 export interface CourierDelivery {
   id:                   string;
@@ -28,7 +29,7 @@ export async function fetchMyDeliveries(courierId: string): Promise<CourierDeliv
   const { data, error } = await supabase
     .from('deliveries')
     .select(`
-      id, work_order_id, status, assigned_at, picked_up_at, delivered_at,
+      id, work_order_id, shipment_no, status, assigned_at, picked_up_at, delivered_at,
       destination_name, destination_address, destination_phone, notes,
       purpose, direction, origin_name, origin_address, mode,
       work_order:work_orders!work_order_id(order_number, patient_name)
@@ -52,7 +53,7 @@ export async function fetchMyDeliveries(courierId: string): Promise<CourierDeliv
     origin_name:         r.origin_name,
     origin_address:      r.origin_address,
     mode:                r.mode,
-    order_number:        r.work_order?.order_number ?? null,
+    order_number:        deliveryRef(r),
     patient_name:        r.work_order?.patient_name ?? null,
   }));
 }

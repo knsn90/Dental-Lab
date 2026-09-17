@@ -87,7 +87,9 @@ async function fetchAnalytics(labId: string) {
     // Teslimat özeti (son 30 gün)
     supabase
       .from('deliveries')
+      // Serbest gönderi sipariş teslimatı değil — teslimat performansına girmez.
       .select('status, delivered_at')
+      .not('work_order_id', 'is', null)
       .gte('assigned_at', month30),
   ]);
 

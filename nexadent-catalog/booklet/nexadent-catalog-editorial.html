@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nexadent · Kurumsal Katalog 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Hallmark · macrostructure: Editorial Monograph (Swiss) · tone: editorial / precise / austere
+ * theme: custom brand-navy on paper · display=high-contrast-serif (Fraunces) · body=grotesk (Inter) · mono=IBM Plex Mono
+ * anchor hue: navy 264 · axes: paper=light / display=serif / accent=cool
+ * pre-emit critique: P5 H5 E5 S5 R5 V5
+ */
+:root{
+  --paper:    oklch(96.8% 0.006 258);
+  --paper-2:  oklch(93.5% 0.010 258);
+  --ink:      oklch(23%   0.024 264);
+  --navy:     oklch(35%   0.108 264);
+  --navy-deep:oklch(24%   0.070 264);
+  --muted:    oklch(50%   0.020 264);
+  --faint:    oklch(85%   0.014 264);
+  --folio:    oklch(90%   0.020 264);
+  --serif:'Fraunces', Georgia, serif;
+  --sans:'Inter', system-ui, sans-serif;
+  --mono:'IBM Plex Mono', ui-monospace, monospace;
+  --stage:#23262e;
+}
+*,*::before,*::after{ box-sizing:border-box; }
+html,body{ margin:0; }
+body{ background:var(--stage); display:flex; flex-direction:column; align-items:center; gap:22px; padding:26px 16px;
+  -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+
+.pg{ width:210mm; height:297mm; position:relative; overflow:hidden;
+  background:var(--paper); color:var(--ink); font-family:var(--sans);
+  box-shadow:0 20px 60px rgba(0,0,0,.4); display:flex; flex-direction:column;
+  padding:20mm 20mm 16mm; }
+
+.mono{ font-family:var(--mono); font-weight:400; letter-spacing:.14em; text-transform:uppercase; }
+.uu{ text-transform:none; }
+.rule{ height:1px; background:var(--faint); width:100%; }
+.grow{ flex:1 1 auto; min-height:0; }
+em{ font-style:normal; color:var(--navy); }
+
+/* running header + footer */
+.rh{ display:flex; align-items:flex-start; justify-content:space-between; }
+.rh .mark{ height:16px; width:auto; }
+.rh .rl{ font-family:var(--mono); font-size:8px; letter-spacing:.2em; text-transform:uppercase; color:var(--muted); }
+.rf{ display:flex; align-items:flex-end; justify-content:space-between; }
+.rf .fol{ font-family:var(--serif); font-weight:400; font-size:52px; line-height:.8; color:var(--folio); }
+.rf .rr{ font-family:var(--mono); font-size:8px; letter-spacing:.2em; text-transform:uppercase; color:var(--muted); text-align:right; }
+
+/* section header block (big folio + serif title) */
+.head{ display:grid; grid-template-columns:auto 1fr; gap:22px; align-items:end; margin-top:14mm; }
+.head .big-fol{ font-family:var(--serif); font-weight:300; font-size:120px; line-height:.72; color:var(--folio); letter-spacing:-.03em; }
+.head .ttl h2{ font-family:var(--serif); font-weight:400; font-size:44px; line-height:.98; letter-spacing:-.02em; margin:0; color:var(--ink); }
+.head .ttl .lbl{ font-family:var(--mono); font-size:8.5px; letter-spacing:.24em; text-transform:uppercase; color:var(--navy); margin-bottom:10px; }
+.intro{ font-family:var(--sans); font-size:10px; line-height:1.8; color:var(--muted); max-width:64ch; margin-top:9mm; }
+
+/* duotone rectangular photo */
+.tone{ position:relative; overflow:hidden; }
+.tone img{ filter:grayscale(1) contrast(1.04) brightness(1.02); display:block; }
+.tone::after{ content:''; position:absolute; inset:0; background:var(--navy); mix-blend-mode:multiply; opacity:.6; pointer-events:none; }
+.tone::before{ content:''; position:absolute; inset:0; background:var(--paper); mix-blend-mode:screen; opacity:.12; z-index:1; pointer-events:none; }
+
+/* ============ COVER ============ */
+.cover{ padding:20mm; }
+.cover .top{ display:flex; align-items:flex-start; justify-content:space-between; z-index:2; }
+.cover .top .mark{ height:58px; }
+.cover .top .meta{ display:flex; flex-direction:column; gap:3px; text-align:right; }
+.cover .top .meta span{ font-family:var(--mono); font-size:8px; letter-spacing:.2em; text-transform:uppercase; color:var(--muted); }
+.cover .top .meta span:first-child{ color:var(--ink); }
+.cover .implant{ position:absolute; right:6mm; top:24mm; height:168mm; width:auto; z-index:1; filter:drop-shadow(0 24px 40px rgba(20,31,60,.14)); }
+.cover .stage-area{ position:relative; flex:1; display:flex; flex-direction:column; justify-content:flex-end; z-index:2; }
+.cover .kick{ font-size:9px; color:var(--navy); letter-spacing:.24em; }
+.cover h1{ font-family:var(--serif); font-weight:400; font-size:112px; line-height:.9; letter-spacing:-.02em; margin:16px 0 0; color:var(--ink); }
+.cover h1 em{ display:block; color:var(--navy); font-weight:400; }
+.cover .note{ font-family:var(--mono); font-size:9px; line-height:1.9; letter-spacing:.04em; text-transform:none; color:var(--muted); max-width:52ch; margin-top:22px; }
+.cover .precision{ position:absolute; left:20mm; top:39%; z-index:3; display:flex; align-items:center; gap:10px; }
+.cover .precision .tk{ width:34px; height:1px; background:var(--navy); position:relative; }
+.cover .precision .tk::before,.cover .precision .tk::after{ content:''; position:absolute; top:-3px; width:1px; height:7px; background:var(--navy); }
+.cover .precision .tk::before{ left:0; } .cover .precision .tk::after{ right:0; }
+.cover .precision span{ font-family:var(--mono); font-size:8px; letter-spacing:.16em; text-transform:none; color:var(--navy); }
+.cover .foot .row{ display:flex; align-items:center; justify-content:space-between; margin-top:9px; }
+.cover .foot .row span{ font-family:var(--mono); font-size:8px; letter-spacing:.18em; text-transform:uppercase; color:var(--muted); }
+
+/* ============ ABOUT ============ */
+.body-grid{ display:grid; grid-template-columns:1fr 1fr; gap:22mm; margin-top:12mm; align-items:start; }
+.col p{ font-family:var(--sans); font-size:10px; line-height:1.85; color:var(--ink); margin:0; max-width:46ch; }
+.col p + p{ margin-top:12px; }
+.pull{ font-family:var(--serif); font-weight:400; font-size:22px; line-height:1.26; letter-spacing:-.01em; color:var(--navy); }
+.pull .a{ font-family:var(--mono); display:block; font-size:8px; letter-spacing:.24em; text-transform:uppercase; color:var(--muted); margin-bottom:12px; }
+.band{ margin-top:11mm; }
+.band .fig{ overflow:hidden; height:148px; display:flex; align-items:center; justify-content:center; }
+.band .fig img{ max-height:130px; width:auto; }
+.band .cap{ display:flex; justify-content:space-between; margin-top:8px; }
+.band .cap span{ font-family:var(--mono); font-size:8px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); }
+
+.spec{ display:grid; grid-template-columns:repeat(4,1fr); margin-top:11mm; border-top:1px solid var(--ink); }
+.spec .s{ padding:16px 16px 0 0; border-right:1px solid var(--faint); }
+.spec .s:last-child{ border-right:0; }
+.spec .n{ font-family:var(--serif); font-weight:400; font-size:48px; line-height:.9; letter-spacing:-.02em; color:var(--ink); }
+.spec .n u{ font-family:var(--sans); font-size:16px; font-weight:500; text-decoration:none; color:var(--navy); margin-left:4px; }
+.spec .k{ font-family:var(--mono); font-size:8px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); margin-top:12px; line-height:1.6; }
+
+/* ============ INDEX (equipment / services) ============ */
+.two{ display:grid; grid-template-columns:1fr 1fr; gap:16mm; margin-top:11mm; align-items:start; }
+.lead{ overflow:hidden; height:250px; display:flex; align-items:center; justify-content:center; }
+.lead img{ max-height:224px; width:auto; }
+.lead-cap{ display:flex; justify-content:space-between; margin-top:8px; }
+.lead-cap span{ font-family:var(--mono); font-size:8px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); }
+.idx{ display:flex; flex-direction:column; }
+.ix{ display:grid; grid-template-columns:auto 1fr; gap:14px; padding:14px 0; border-top:1px solid var(--faint); }
+.ix:first-child{ border-top:1px solid var(--ink); }
+.ix .ixn{ font-family:var(--serif); font-size:22px; color:var(--navy); line-height:1; }
+.ix .ixt{ font-family:var(--sans); font-size:13px; font-weight:600; color:var(--ink); letter-spacing:-.01em; }
+.ix .ixs{ font-family:var(--mono); font-size:8px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin-top:6px; }
+/* device showcase */
+.devs{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-top:9mm; }
+.dev{ display:flex; flex-direction:column; }
+.dev .di{ height:128px; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+.dev .di img{ max-height:120px; max-width:94%; width:auto; object-fit:contain; }
+.dev .di svg{ width:82%; height:auto; color:var(--navy); opacity:.85; }
+.dev .dh{ border-top:1px solid var(--ink); padding-top:11px; margin-top:12px; display:flex; align-items:baseline; gap:8px; }
+.dev .dn{ font-family:var(--serif); font-size:19px; color:var(--navy); line-height:1; }
+.dev .dt{ font-family:var(--sans); font-size:11px; font-weight:600; color:var(--ink); line-height:1.16; }
+.dev .ds{ font-family:var(--mono); font-size:7.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin-top:8px; line-height:1.7; }
+
+/* output / plate strip */
+.strip-h{ display:flex; align-items:baseline; justify-content:space-between; margin-top:12mm; padding-bottom:9px; border-bottom:1px solid var(--ink); }
+.strip-h .st{ font-family:var(--serif); font-size:17px; color:var(--ink); }
+.strip-h .sl{ font-family:var(--mono); font-size:8px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); }
+.strip{ display:grid; grid-template-columns:repeat(5,1fr); gap:9px; margin-top:12px; }
+.strip .p .im{ height:84px; overflow:hidden; background:var(--paper-2); border:1px solid var(--faint); border-radius:2px; }
+.strip .p .im img{ width:100%; height:100%; object-fit:cover; display:block; }
+.strip .p .pc{ margin-top:7px; }
+.strip .p .pc b{ font-family:var(--sans); font-size:9.5px; font-weight:600; color:var(--ink); display:block; }
+.strip .p .pc span{ font-family:var(--mono); font-size:7px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); }
+
+/* ============ SERVICES ============ */
+.svc-hero{ margin-top:10mm; height:150px; overflow:hidden; }
+.svc-hero img{ width:100%; height:100%; object-fit:cover; object-position:50% 42%; }
+.svc-cap{ display:flex; justify-content:space-between; margin-top:8px; }
+.svc-cap span{ font-family:var(--mono); font-size:8px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); }
+.svc-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:12mm; }
+.svc-col{ border-top:1px solid var(--ink); padding-top:12px; }
+.svc-col .sn{ font-family:var(--serif); font-size:20px; color:var(--navy); }
+.svc-col .st{ font-family:var(--sans); font-size:12px; font-weight:600; color:var(--ink); margin-top:4px; line-height:1.2; }
+.svc-col ul{ list-style:none; margin:12px 0 0; padding:0; }
+.svc-col li{ font-family:var(--sans); font-size:9.5px; color:var(--muted); padding:6px 0; border-top:1px solid var(--faint); }
+.svc-col li:first-child{ border-top:0; }
+
+/* ============ PHOTOGRAMMETRY (dark) ============ */
+.pg.dark{ background:var(--navy-deep); color:var(--paper); }
+.dark .rh .rl,.dark .rf .rr{ color:oklch(72% 0.04 264); }
+.dark .rule{ background:color-mix(in oklch, var(--paper) 18%, transparent); }
+.dark .head .big-fol{ color:color-mix(in oklch, var(--paper) 14%, transparent); }
+.dark .head .ttl h2{ color:var(--paper); } .dark .head .ttl h2 em{ color:oklch(74% 0.075 264); }
+.dark .head .ttl .lbl{ color:oklch(74% 0.075 264); }
+.dark .intro{ color:oklch(76% 0.03 264); }
+.dark .rf .fol{ color:color-mix(in oklch, var(--paper) 14%, transparent); }
+.pgrid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:11mm; }
+.pfig{ overflow:hidden; background:rgba(0,0,0,.2); }
+.pfig img{ width:100%; height:132px; object-fit:cover; display:block; }
+.pfig .c{ font-family:var(--mono); font-size:8px; letter-spacing:.14em; text-transform:uppercase; color:oklch(70% 0.04 264); padding:8px 2px 0; }
+.pwide{ margin-top:10px; overflow:hidden; }
+.pwide img{ width:100%; height:150px; object-fit:cover; display:block; }
+.pfeat{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-top:11mm; }
+.pfeat .f{ border-top:1px solid color-mix(in oklch, var(--paper) 20%, transparent); padding-top:11px; }
+.pfeat .ft{ font-family:var(--sans); font-size:11px; font-weight:600; color:var(--paper); }
+.pfeat .fd{ font-family:var(--sans); font-size:8.5px; line-height:1.55; color:oklch(74% 0.03 264); margin-top:7px; }
+.pstat{ display:grid; grid-template-columns:repeat(3,1fr); margin-top:auto; border-top:1px solid color-mix(in oklch, var(--paper) 30%, transparent); }
+.pstat .s{ padding:16px 16px 0 0; }
+.pstat .n{ font-family:var(--serif); font-size:46px; line-height:.9; color:var(--paper); }
+.pstat .n u{ font-family:var(--sans); font-size:15px; font-weight:500; text-decoration:none; color:oklch(74% 0.075 264); margin-left:4px; }
+.pstat .k{ font-family:var(--mono); font-size:8px; letter-spacing:.16em; text-transform:uppercase; color:oklch(72% 0.03 264); margin-top:10px; }
+
+/* ============ WORKFLOW ============ */
+.proc{ display:grid; grid-template-columns:1fr 1fr; gap:0 18mm; margin-top:11mm; }
+.pr{ display:grid; grid-template-columns:auto 1fr; gap:16px; padding:13px 0; border-top:1px solid var(--faint); }
+.pr .prn{ font-family:var(--serif); font-size:26px; color:var(--navy); line-height:.9; }
+.pr .prt{ font-family:var(--sans); font-size:12px; font-weight:600; color:var(--ink); }
+.pr .prd{ font-family:var(--sans); font-size:9px; line-height:1.55; color:var(--muted); margin-top:3px; }
+.siman{ display:grid; grid-template-columns:auto 1fr; gap:18px; align-items:center; margin-top:11mm; border:1px solid var(--faint); padding:16px 18px; }
+.siman .lg{ width:74px; height:74px; background:var(--paper-2); display:flex; align-items:center; justify-content:center; }
+.siman .lg img{ width:56px; height:auto; }
+.siman .sl{ font-family:var(--mono); font-size:8px; letter-spacing:.2em; text-transform:uppercase; color:var(--navy); }
+.siman h3{ font-family:var(--serif); font-weight:400; font-size:20px; color:var(--ink); margin:4px 0 0; }
+.siman p{ font-family:var(--sans); font-size:9px; line-height:1.6; color:var(--muted); margin:6px 0 0; max-width:82ch; }
+.chips{ display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; align-items:center; }
+.chips .cl{ font-family:var(--mono); font-size:7.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--navy); margin-right:4px; }
+.chip{ font-family:var(--mono); font-size:7.5px; letter-spacing:.06em; color:var(--muted); padding:3px 8px; border:1px solid var(--faint); }
+
+/* ============ GALLERY ============ */
+.plates{ display:grid; grid-template-columns:1.55fr 1fr; gap:12mm 10mm; margin-top:11mm; }
+.plate .im{ overflow:hidden; background:var(--paper-2); }
+.plate .im img{ width:100%; height:100%; object-fit:cover; display:block; }
+.plate.tall .im{ height:224px; }
+.plate .pc{ display:flex; align-items:baseline; gap:10px; margin-top:9px; padding-top:8px; border-top:1px solid var(--faint); }
+.plate .pc .no{ font-family:var(--serif); font-size:15px; color:var(--navy); line-height:1; }
+.plate .pc .t{ font-family:var(--mono); font-size:8px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); }
+.gal-2{ display:grid; grid-template-columns:1fr 1fr; gap:10mm; margin-top:11mm; }
+.pack{ margin-top:11mm; }
+.pack .grid{ display:grid; grid-template-columns:1fr 1fr; gap:10mm; margin-top:12px; }
+.pack .pf{ height:132px; overflow:hidden; background:var(--paper-2); display:flex; align-items:center; justify-content:center; }
+.pack .pf img{ max-height:120px; width:auto; }
+.pack .cap{ display:flex; justify-content:space-between; margin-top:8px; }
+.pack .cap span{ font-family:var(--mono); font-size:8px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); }
+
+/* ============ WHY + CONTACT ============ */
+.cmp{ width:100%; border-collapse:collapse; margin-top:11mm; }
+.cmp th,.cmp td{ text-align:left; padding:11px 6px; }
+.cmp thead th{ font-family:var(--mono); font-size:8px; letter-spacing:.18em; text-transform:uppercase; color:var(--muted); border-bottom:1px solid var(--ink); }
+.cmp thead th:not(:first-child),.cmp td.nx,.cmp td.tr{ text-align:center; }
+.cmp tbody td{ border-bottom:1px solid var(--faint); font-family:var(--sans); font-size:10.5px; }
+.cmp td.k{ color:var(--ink); }
+.cmp td.nx{ font-family:var(--serif); font-size:15px; color:var(--navy); }
+.cmp td.tr{ color:var(--muted); }
+.partners{ margin-top:11mm; }
+.partners .lb{ font-family:var(--mono); font-size:8px; letter-spacing:.18em; text-transform:uppercase; color:var(--muted); }
+.partners .pr2{ display:flex; align-items:center; justify-content:space-between; gap:18px; margin-top:14px; }
+.partners img{ height:18px; width:auto; opacity:.5; filter:grayscale(1); }
+.cta{ margin-top:auto; display:grid; grid-template-columns:1.5fr auto; gap:16mm; align-items:end; padding-top:12mm; border-top:1px solid var(--ink); }
+.cta h2{ font-family:var(--serif); font-weight:400; font-size:52px; line-height:.94; letter-spacing:-.02em; margin:0; color:var(--ink); }
+.cta h2 em{ display:block; color:var(--navy); }
+.cta .cx{ display:grid; grid-template-columns:1fr 1fr; gap:12px 20px; margin-top:14px; max-width:98mm; }
+.cta .c .k{ font-family:var(--mono); font-size:7.5px; letter-spacing:.18em; text-transform:uppercase; color:var(--muted); }
+.cta .c .v{ font-family:var(--sans); font-size:11px; font-weight:500; color:var(--ink); margin-top:3px; line-height:1.4; }
+.qr{ text-align:center; }
+.qr img{ width:112px; height:112px; display:block; border:1px solid var(--faint); }
+.qr b{ font-family:var(--sans); font-size:10px; font-weight:600; color:var(--ink); display:block; margin-top:9px; }
+.qr span{ font-family:var(--mono); font-size:7px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); }
+
+@page{ size:A4; margin:0; }
+@media print{ body{ background:#fff; padding:0; gap:0; } .pg{ box-shadow:none; break-after:page; } .pg:last-child{ break-after:auto; } }
+</style>
+</head>
+<body>
+
+<!-- ============ 1 · COVER ============ -->
+<section class="pg cover">
+  <div class="top">
+    <img class="mark" src="img/nexadent-logo.svg" alt="Nexadent">
+    <div class="meta"><span>Kurumsal Katalog</span><span>N°01 — 2026</span><span>Digital Dental Lab</span></div>
+  </div>
+  <img class="implant" src="img/cover-hero.png" alt="İmplant üstü restorasyon">
+  <div class="precision"><span>&lt; 10 μm · ÜRETİM TOLERANSI</span><span class="tk"></span></div>
+  <div class="stage-area">
+    <span class="mono kick">CAD/CAM · 3D · Photogrammetry</span>
+    <h1>Dijital<em>Hassasiyet.</em></h1>
+    <p class="note">Kliniğiniz için tam dijital iş akışıyla üretilen, yüksek hassasiyetli sabit ve implant üstü restorasyonlar — tasarımdan teslimata ölçülebilir kalite.</p>
+  </div>
+  <div class="foot"><div class="rule"></div><div class="row"><span>www.nexadentlab.com</span><span>Precision · Dental · Technology</span></div></div>
+</section>
+
+<!-- ============ 2 · HAKKINDA ============ -->
+<section class="pg">
+  <div class="rh"><img class="mark" src="img/nexadent-logo.svg" alt="Nexadent"><span class="rl">Hakkımızda — About</span></div>
+  <div class="rule" style="margin-top:8px"></div>
+  <div class="head">
+    <div class="big-fol">01</div>
+    <div class="ttl"><div class="lbl">Hakkında</div><h2>Ölçülebilir<br><em>hassasiyet.</em></h2></div>
+  </div>
+  <div class="body-grid">
+    <div class="col">
+      <p>Nexadent, dijital diş hekimliğinin sunduğu hassasiyeti klinik pratiğe taşıyan bir üretim laboratuvarıdır. Intraoral tarama verisinden başlayıp CAD/CAM üretim, 3D baskı ve photogrammetry teknolojilerini tek bir kontrollü iş akışında birleştiririz.</p>
+      <p>Hekimin tasarım onayından nihai teslimata kadar her adımı izlenebilir, tekrarlanabilir ve ölçülebilir hâle getirir; kliniklere tutarlı, öngörülebilir sonuçlar sunarız. Her vaka dijital olarak arşivlenir ve aynı standartta yeniden üretilebilir.</p>
+    </div>
+    <div class="col"><div class="pull"><span class="a">Misyonumuz</span>Dijital hassasiyeti, her klinik için erişilebilir ve güvenilir bir standart hâline getirmek.</div></div>
+  </div>
+  <div class="band">
+    <div class="fig"><img src="img/ecosystem.png" alt="Dijital üretim ekosistemi"></div>
+    <div class="cap"><span>Fig. 01 — Dijital Üretim Ekosistemi</span><span>SprintRay · Subtractive + Additive</span></div>
+  </div>
+  <div class="spec">
+    <div class="s"><div class="n">&lt;10<u>μm</u></div><div class="k">Üretim<br>Toleransı</div></div>
+    <div class="s"><div class="n">%100</div><div class="k">Dijital<br>İş Akışı</div></div>
+    <div class="s"><div class="n">48<u>sa</u></div><div class="k">Tipik<br>Teslim Süresi</div></div>
+    <div class="s"><div class="n">5<u>eksen</u></div><div class="k">CAD/CAM<br>Kazıma</div></div>
+  </div>
+  <div class="grow"></div>
+  <div class="rule"></div>
+  <div class="rf" style="margin-top:6px"><div class="fol">02</div><div class="rr">Nexadent — Kurumsal Katalog 2026</div></div>
+</section>
+
+<!-- ============ 3 · TEKNOLOJİ & ÜRETİM ============ -->
+<section class="pg">
+  <div class="rh"><img class="mark" src="img/nexadent-logo.svg" alt="Nexadent"><span class="rl">Teknoloji — Altyapı</span></div>
+  <div class="rule" style="margin-top:8px"></div>
+  <div class="head">
+    <div class="big-fol">02</div>
+    <div class="ttl"><div class="lbl">Altyapı</div><h2>Teknolojik<br><em>altyapımız.</em></h2></div>
+  </div>
+  <p class="intro">Hassasiyeti garanti altına alan ekipman parkurumuz; tarama, tasarım, kazıma, 3D baskı ve sinterleme süreçlerini kalibre edilmiş bir bütün olarak çalıştırır.</p>
+  <div class="devs">
+    <div class="dev">
+      <div class="di"><svg viewBox="0 0 120 90" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="14" y="12" width="92" height="56" rx="4"/><line x1="60" y1="12" x2="60" y2="30"/>
+        <circle cx="60" cy="38" r="10"/><circle cx="60" cy="38" r="2.4" fill="currentColor" stroke="none"/>
+        <line x1="30" y1="60" x2="90" y2="60"/><circle cx="34" cy="78" r="3"/><line x1="46" y1="78" x2="92" y2="78"/></svg></div>
+      <div class="dh"><span class="dn">01</span><span class="dt">5 Eksen CAD/CAM Kazıma</span></div>
+      <div class="ds">Subtractive · ZrO₂ / Ti / PMMA · &lt;10<span class="uu">μm</span></div>
+    </div>
+    <div class="dev">
+      <div class="di"><img src="img/sprintray.png" alt="SprintRay Pro 2"></div>
+      <div class="dh"><span class="dn">02</span><span class="dt">SprintRay Pro 2</span></div>
+      <div class="ds">3D Baskı / DLP · 50<span class="uu">μm</span></div>
+    </div>
+    <div class="dev">
+      <div class="di"><img src="img/medit-cut.png" alt="Medit i900 Mobility"></div>
+      <div class="dh"><span class="dn">03</span><span class="dt">Medit i900 Mobility</span></div>
+      <div class="ds">İntraoral · iPad · STL / PLY</div>
+    </div>
+    <div class="dev">
+      <div class="di"><img src="img/ivoclar-cut.png" alt="Ivoclar Programat P310"></div>
+      <div class="dh"><span class="dn">04</span><span class="dt">Ivoclar Programat P310</span></div>
+      <div class="ds">Porselen Fırını · Pişirme / Cila</div>
+    </div>
+  </div>
+  <div class="strip-h"><span class="st">Additive Üretim · SprintRay Ekosistemi</span><span class="sl">Açık .STL Akışı · 50 <span class="uu">μm</span></span></div>
+  <div class="strip">
+    <div class="p"><div class="im"><img src="img/out-guide.jpg" alt=""></div><div class="pc"><b>Cerrahi Rehber</b><span>Surgical Guide</span></div></div>
+    <div class="p"><div class="im"><img src="img/out-models.jpg" alt=""></div><div class="pc"><b>Dental Modeller</b><span>Models</span></div></div>
+    <div class="p"><div class="im"><img src="img/out-crownbridge.jpg" alt=""></div><div class="pc"><b>Kron & Köprü</b><span>Crown & Bridge</span></div></div>
+    <div class="p"><div class="im"><img src="img/out-splint.jpg" alt=""></div><div class="pc"><b>Gece Plağı</b><span>Nightguard</span></div></div>
+    <div class="p"><div class="im"><img src="img/out-aligner.jpg" alt=""></div><div class="pc"><b>Şeffaf Plak</b><span>Clear Aligner</span></div></div>
+  </div>
+  <div class="grow"></div>
+  <div class="rule"></div>
+  <div class="rf" style="margin-top:6px"><div class="fol">03</div><div class="rr">Subtractive + Additive</div></div>
+</section>
+
+<!-- ============ 4 · HİZMETLER ============ -->
+<section class="pg">
+  <div class="rh"><img class="mark" src="img/nexadent-logo.svg" alt="Nexadent"><span class="rl">Hizmetler — Services</span></div>
+  <div class="rule" style="margin-top:8px"></div>
+  <div class="head">
+    <div class="big-fol">03</div>
+    <div class="ttl"><div class="lbl">Hizmetlerimiz</div><h2>Restorasyon<br><em>çözümleri.</em></h2></div>
+  </div>
+  <div class="svc-hero"><img src="img/services-hero.jpg" alt="Zirkonya köprü"></div>
+  <div class="svc-cap"><span>Fig. 03 — Multilayer Zirkonya · Sabit Köprü</span><span>Tam Dijital İş Akışı</span></div>
+  <div class="svc-grid">
+    <div class="svc-col"><div class="sn">01</div><div class="st">Sabit Restorasyonlar</div><ul><li>Monolitik Zirkonya</li><li>Multilayer Zirkonya</li><li>E.max</li><li>Veneer</li><li>Inlay / Onlay</li></ul></div>
+    <div class="svc-col"><div class="sn">02</div><div class="st">İmplant Çözümleri</div><ul><li>Vida Tutuculu</li><li>Ti-Base</li><li>Kişiye Özel Abutment</li><li>Full Arch</li></ul></div>
+    <div class="svc-col"><div class="sn">03</div><div class="st">Dijital Tasarım</div><ul><li>Smile Design</li><li>Mockup</li><li>Photogrammetry</li></ul></div>
+    <div class="svc-col"><div class="sn">04</div><div class="st">3D Üretim</div><ul><li>Cerrahi Rehber</li><li>Modeller</li><li>Geçici Restorasyonlar</li></ul></div>
+  </div>
+  <div class="grow"></div>
+  <div class="rule"></div>
+  <div class="rf" style="margin-top:6px"><div class="fol">04</div><div class="rr">Fixed · Implant · Digital · 3D</div></div>
+</section>
+
+<!-- ============ 5 · PHOTOGRAMMETRY (dark) ============ -->
+<section class="pg dark">
+  <div class="rh"><img class="mark" src="img/nexadent-logo-white.svg" alt="Nexadent" style="height:14px"><span class="rl">Photogrammetry — Full Arch</span></div>
+  <div class="rule" style="margin-top:8px"></div>
+  <div class="head">
+    <div class="big-fol">04</div>
+    <div class="ttl"><div class="lbl">Full Arch</div><h2>Photogrammetry<br><em>çözümleri.</em></h2></div>
+  </div>
+  <div class="pgrid">
+    <div class="pfig"><img src="img/photo-cam.jpg" alt=""><div class="c">iCam4D · Optik Photogrammetry</div></div>
+    <div class="pfig"><img src="img/photo-ioconnect.jpg" alt=""><div class="c">iO Connect · Dijital Verifikasyon</div></div>
+  </div>
+  <div class="pwide"><img src="img/photo-verify.jpg" alt=""></div>
+  <div class="pfeat">
+    <div class="f"><div class="ft">Full Arch İş Akışı</div><div class="fd">Dijital doğrulanmış implant pozisyonları ile tek seferde doğru altyapı.</div></div>
+    <div class="f"><div class="ft">Passive Fit</div><div class="fd">Gerilimsiz, pasif uyum; vidalama sırasında kuvvetleri en aza indirir.</div></div>
+    <div class="f"><div class="ft">İmplant Verifikasyonu</div><div class="fd">İmplant açısı ve konumu üretim öncesi objektif olarak doğrulanır.</div></div>
+    <div class="f"><div class="ft">Hassasiyet Avantajı</div><div class="fd">Geleneksel ölçü hatalarını, tekrar üretimini ve klinik düzeltmeleri azaltır.</div></div>
+  </div>
+  <div class="grow"></div>
+  <div class="pstat">
+    <div class="s"><div class="n">&lt;10<u>μm</u></div><div class="k">Konum Doğruluğu</div></div>
+    <div class="s"><div class="n">%100</div><div class="k">Pasif Uyum Hedefi</div></div>
+    <div class="s"><div class="n">1</div><div class="k">Seferde Doğru Altyapı</div></div>
+  </div>
+  <div class="rule" style="margin-top:11mm"></div>
+  <div class="rf" style="margin-top:6px"><div class="fol">05</div><div class="rr">Optik Verifikasyon</div></div>
+</section>
+
+<!-- ============ 6 · İŞ AKIŞI & SIMAN ============ -->
+<section class="pg">
+  <div class="rh"><img class="mark" src="img/nexadent-logo.svg" alt="Nexadent"><span class="rl">İş Akışı — Süreç</span></div>
+  <div class="rule" style="margin-top:8px"></div>
+  <div class="head">
+    <div class="big-fol">05</div>
+    <div class="ttl"><div class="lbl">Süreç</div><h2>Dijital<br><em>iş akışı.</em></h2></div>
+  </div>
+  <p class="intro">Her vaka, tarama verisinin alınmasından teslimata kadar yedi kontrollü aşamadan geçer; süreç boyunca veriler dijital olarak izlenir ve onaylanır.</p>
+  <div class="proc">
+    <div class="pr"><span class="prn">01</span><div><div class="prt">Intraoral Tarama</div><div class="prd">Klinikte alınan dijital ölçü ile fiziksel ölçü ihtiyacı ortadan kalkar.</div></div></div>
+    <div class="pr"><span class="prn">02</span><div><div class="prt">STL Transferi</div><div class="prd">Tarama dosyaları güvenli şekilde laboratuvara aktarılır ve doğrulanır.</div></div></div>
+    <div class="pr"><span class="prn">03</span><div><div class="prt">CAD Tasarım</div><div class="prd">Restorasyon, anatomik ve fonksiyonel kriterlere göre dijital tasarlanır.</div></div></div>
+    <div class="pr"><span class="prn">04</span><div><div class="prt">Hekim Onayı</div><div class="prd">Tasarım, üretim öncesi hekim ile paylaşılır ve onaylanır.</div></div></div>
+    <div class="pr"><span class="prn">05</span><div><div class="prt">Üretim</div><div class="prd">Kazıma veya 3D baskı ile yüksek hassasiyetli üretim gerçekleştirilir.</div></div></div>
+    <div class="pr"><span class="prn">06</span><div><div class="prt">Kalite Kontrol</div><div class="prd">Uyum, marjin ve estetik kriterler ölçülerek doğrulanır.</div></div></div>
+    <div class="pr"><span class="prn">07</span><div><div class="prt">Teslimat</div><div class="prd">Onaylı restorasyon, planlanan takvimde kliniğe teslim edilir.</div></div></div>
+    <div class="pr"><span class="prn" style="color:var(--muted)">✳</span><div><div class="prt">Dijital Arşiv</div><div class="prd">Her vaka arşivlenir; aynı standartta yeniden üretilebilir.</div></div></div>
+  </div>
+  <div class="siman">
+    <div class="lg"><img src="img/siman.jpg" alt="SIMAN"></div>
+    <div>
+      <span class="sl">Dijital Platform</span>
+      <h3>SIMAN Dijital Altyapısı</h3>
+      <p>Laboratuvarımız tüm dijital operasyonlarını SIMAN platformu üzerinden yönetir. Kliniklerle iletişim, vaka yönetimi, üretim planlaması, kalite kontrol ve teslimat tek bir dijital ekosistem içinde yürütülür.</p>
+      <div class="chips"><span class="cl">Simanty · Yapay Zekâ Asistanı</span><span class="chip">Yeni Sipariş</span><span class="chip">Sipariş Takibi</span><span class="chip">Finansal İşlemler</span><span class="chip">Vaka Durumu</span></div>
+    </div>
+  </div>
+  <div class="grow"></div>
+  <div class="rule"></div>
+  <div class="rf" style="margin-top:6px"><div class="fol">06</div><div class="rr">Yedi Aşamalı Süreç</div></div>
+</section>
+
+<!-- ============ 7 · PORTFOLYO & PAKETLEME ============ -->
+<section class="pg">
+  <div class="rh"><img class="mark" src="img/nexadent-logo.svg" alt="Nexadent"><span class="rl">Portfolyo — Case Gallery</span></div>
+  <div class="rule" style="margin-top:8px"></div>
+  <div class="head">
+    <div class="big-fol">06</div>
+    <div class="ttl"><div class="lbl">Vaka Galerisi</div><h2>Restorasyon<br><em>olarak zanaat.</em></h2></div>
+  </div>
+  <div class="plates">
+    <div class="plate tall"><div class="im"><img src="img/case-01.jpg" alt=""></div><div class="pc"><span class="no">01</span><span class="t">Full Arch · Monolitik Zirkonya</span></div></div>
+    <div class="plate"><div class="im" style="height:150px"><img src="img/case-03.jpg" alt=""></div><div class="pc"><span class="no">02</span><span class="t">Kron & Köprü · Multilayer</span></div></div>
+  </div>
+  <div class="gal-2">
+    <div class="plate"><div class="im" style="height:132px"><img src="img/case-04.jpg" alt=""></div><div class="pc"><span class="no">03</span><span class="t">Anterior · Estetik Tabaka</span></div></div>
+    <div class="plate"><div class="im" style="height:132px"><img src="img/macro-2.jpg" alt="" style="object-position:50% 40%"></div><div class="pc"><span class="no">04</span><span class="t">Oklüzal Detay · Makro</span></div></div>
+  </div>
+  <div class="pack">
+    <div class="strip-h"><span class="st">Premium Paketleme & Teslimat</span><span class="sl">Marka Deneyimi · İzlenebilir Kargo</span></div>
+    <div class="grid">
+      <div><div class="pf"><img src="img/pack-kit.png" alt=""></div><div class="cap"><span>Premium Ambalaj · Marka Kiti</span></div></div>
+      <div><div class="pf"><img src="img/pack-case.png" alt=""></div><div class="cap"><span>Premium Taşıma Kutusu</span></div></div>
+    </div>
+  </div>
+  <div class="grow"></div>
+  <div class="rule"></div>
+  <div class="rf" style="margin-top:6px"><div class="fol">07</div><div class="rr">Monolitik & Multilayer Zirkonya</div></div>
+</section>
+
+<!-- ============ 8 · NEDEN NEXADENT & İLETİŞİM ============ -->
+<section class="pg">
+  <div class="rh"><img class="mark" src="img/nexadent-logo.svg" alt="Nexadent"><span class="rl">Neden Nexadent — İletişim</span></div>
+  <div class="rule" style="margin-top:8px"></div>
+  <div class="head">
+    <div class="big-fol">07</div>
+    <div class="ttl"><div class="lbl">Avantajlar</div><h2>Neden<br><em>Nexadent?</em></h2></div>
+  </div>
+  <table class="cmp">
+    <thead><tr><th>Kriter</th><th>Nexadent</th><th>Geleneksel</th></tr></thead>
+    <tbody>
+      <tr><td class="k">Dijital iş akışı</td><td class="nx">Uçtan uca</td><td class="tr">Kısmi</td></tr>
+      <tr><td class="k">Üretim toleransı</td><td class="nx">&lt; 10 μm</td><td class="tr">Değişken</td></tr>
+      <tr><td class="k">Vaka arşivi & tekrar üretim</td><td class="nx">Var</td><td class="tr">Sınırlı</td></tr>
+      <tr><td class="k">Full arch doğrulama</td><td class="nx">Photogrammetry</td><td class="tr">Manuel</td></tr>
+    </tbody>
+  </table>
+  <div class="partners">
+    <div class="lb">Donanım ve Materyal Partnerleri</div>
+    <div class="pr2">
+      <img src="img/pt-sprintray.png" alt="SprintRay"><img src="img/pt-medit.png" alt="Medit"><img src="img/pt-ivoclar.png" alt="Ivoclar"><img src="img/pt-noritake.png" alt="Noritake"><img src="img/pt-gc.png" alt="GC"><img src="img/pt-kavo.png" alt="KaVo"><img src="img/pt-zahndent.png" alt="Zahndent">
+    </div>
+  </div>
+  <div class="cta">
+    <div>
+      <div class="lbl mono" style="font-size:8.5px;letter-spacing:.24em;color:var(--navy);margin-bottom:10px">İletişim · Contact</div>
+      <h2>Birlikte<em>çalışalım.</em></h2>
+      <div class="cx">
+        <div class="c"><div class="k">Telefon</div><div class="v">+90 216 606 6611</div></div>
+        <div class="c"><div class="k">WhatsApp</div><div class="v">+90 216 606 6611</div></div>
+        <div class="c"><div class="k">E-posta</div><div class="v">info@nexadentlab.com</div></div>
+        <div class="c"><div class="k">Web</div><div class="v">www.nexadentlab.com</div></div>
+        <div class="c"><div class="k">Instagram</div><div class="v">@nexadentlab</div></div>
+        <div class="c"><div class="k">Adres</div><div class="v">Atatürk Mah. Vatan Cad. No:21 D:2, Ataşehir / İstanbul</div></div>
+      </div>
+    </div>
+    <div class="qr"><img src="img/qr.png" alt="QR"><b>nexadentlab.com</b><span>Vaka Gönderimi</span></div>
+  </div>
+  <div class="rule" style="margin-top:10mm"></div>
+  <div class="rf" style="margin-top:6px"><div class="fol">08</div><div class="rr">Dijital Hassasiyet · Kusursuz Sonuçlar · 2026</div></div>
+</section>
+
+</body>
+</html>

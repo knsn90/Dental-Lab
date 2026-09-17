@@ -83,7 +83,7 @@ import CircleIcon from '@hugeicons/core-free-icons/CircleIcon';
 import CircleXIcon from '@hugeicons/core-free-icons/CircleXIcon';
 import ClipboardCheckIcon from '@hugeicons/core-free-icons/ClipboardCheckIcon';
 import ClipboardIcon from '@hugeicons/core-free-icons/ClipboardIcon';
-import ClipboardListIcon from '@hugeicons/core-free-icons/ClipboardListIcon';
+import Task01Icon from '@hugeicons/core-free-icons/Task01Icon';
 import ClipboardXIcon from '@hugeicons/core-free-icons/ClipboardXIcon';
 import Clock01Icon from '@hugeicons/core-free-icons/Clock01Icon';
 import CloudUploadIcon from '@hugeicons/core-free-icons/CloudUploadIcon';
@@ -388,7 +388,11 @@ export const CircleDot = make(CircleDotIcon, 'CircleDot');
 export const CircleX = make(CircleXIcon, 'CircleX');
 export const Clipboard = make(ClipboardIcon, 'Clipboard');
 export const ClipboardCheck = make(ClipboardCheckIcon, 'ClipboardCheck');
-export const ClipboardList = make(ClipboardListIcon, 'ClipboardList');
+// ClipboardListIcon DEĞİL: onun pano gövdesi DOLGULU bir şekil (fill) ve
+// HugeiconsIcon strokeWidth/stroke'u dolgulu parçalara da yayıyor → gövde
+// ~3.3 kalınlığa çıkıp navbar'da diğer ikonlardan belirgin KALIN görünüyordu
+// (kullanıcı cihazda gördü). Task01 yalnız çizgi; strokeWidth'e uyar.
+export const ClipboardList = make(Task01Icon, 'ClipboardList');
 export const ClipboardX = make(ClipboardXIcon, 'ClipboardX');
 export const Clock = make(Clock01Icon, 'Clock');
 export const CloudUpload = make(CloudUploadIcon, 'CloudUpload');

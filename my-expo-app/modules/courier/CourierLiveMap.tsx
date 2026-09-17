@@ -11,6 +11,7 @@ import { supabase } from '../../core/api/supabase';
 import { geocodeTR } from './geocoder';
 import { useMobileTokens } from '../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../core/store/themeModeStore';
+import { deliveryRef } from '../delivery/label';
 
 interface Ping { lat: number; lng: number; recorded_at: string; accuracy_m?: number | null; }
 
@@ -221,6 +222,7 @@ export function CourierLiveMap({
       .select(`
         status, picked_up_at, assigned_at, external_provider, destination_name,
         courier:profiles!deliveries_courier_profiles_fkey(full_name, phone),
+        shipment_no,
         work_order:work_orders!work_order_id(order_number)
       `)
       .eq('id', deliveryId)
@@ -231,7 +233,7 @@ export function CourierLiveMap({
         if (!courierPhone && data.courier?.phone) setCourierPhoneState(data.courier.phone);
         setTripInfo({
           status: data.status ?? null,
-          orderNumber: data.work_order?.order_number ?? null,
+          orderNumber: deliveryRef(data as any),
           destinationName: data.destination_name ?? null,
           pickedUpAt: data.picked_up_at ?? null,
           assignedAt: data.assigned_at ?? null,

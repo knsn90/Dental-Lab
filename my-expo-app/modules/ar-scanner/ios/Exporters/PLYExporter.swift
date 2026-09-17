@@ -110,6 +110,50 @@ enum PLYExporter {
         try out.write(to: plyURL, atomically: true, encoding: .utf8)
     }
 
+    /// Köşe renkli ağı binary (little-endian) PLY olarak yazar. Birim: mm
+    /// (exocad/3Shape mm bekler; ağ metre tutulduğu için ×1000). Binary, ASCII'nin
+    /// ~yarısı boyutta; exocad, MeshLab ve three.js PLYLoader okur.
+    static func writeBinary(_ mesh: ColoredMesh, to plyURL: URL, unitScale: Float = 1000) throws {
+        let header = """
+        ply
+        format binary_little_endian 1.0
+        comment Siman face scan (vertex-colored, mm)
+        element vertex \(mesh.positions.count)
+        property float x
+        property float y
+        property float z
+        property uchar red
+        property uchar green
+        property uchar blue
+        element face \(mesh.triangleCount)
+        property list uchar int vertex_indices
+        end_header
+
+        """
+        var bytes = [UInt8](header.utf8)
+        bytes.reserveCapacity(bytes.count + mesh.positions.count * 15 + mesh.triangleCount * 13)
+
+        func appendLE<T: FixedWidthInteger>(_ value: T) {
+            withUnsafeBytes(of: value.littleEndian) { bytes.append(contentsOf: $0) }
+        }
+
+        for i in mesh.positions.indices {
+            let p = mesh.positions[i] * unitScale
+            appendLE(p.x.bitPattern); appendLE(p.y.bitPattern); appendLE(p.z.bitPattern)
+            let c = mesh.colors[i]
+            bytes.append(c.x); bytes.append(c.y); bytes.append(c.z)
+        }
+        var t = 0
+        while t + 2 < mesh.triangles.count {
+            bytes.append(3)
+            appendLE(Int32(mesh.triangles[t]))
+            appendLE(Int32(mesh.triangles[t + 1]))
+            appendLE(Int32(mesh.triangles[t + 2]))
+            t += 3
+        }
+        try Data(bytes).write(to: plyURL, options: .atomic)
+    }
+
     // MARK: Texture sampling
 
     private struct Texture { let pixels: [UInt8]; let width: Int; let height: Int }

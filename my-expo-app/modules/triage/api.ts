@@ -747,6 +747,38 @@ export async function fetchLabSkills(labId: string) {
   return supabase.from('lab_skills').select('id, lab_id, name, description, color, icon, cert_level, sort_order')
     .eq('lab_id', labId).order('sort_order', { ascending: true }).order('name');
 }
+/**
+ * Lab istasyon kataloğuna yeni istasyon ekler.
+ *
+ * NEDEN: "Yapay Zeka ile Akış Kur" önerdiği aşamaları yalnız MEVCUT istasyonlarla
+ * eşleştiriyordu; istasyon kataloğu boş olan labda (ör. Demo) eşleşme sıfır çıkıyor,
+ * akış boş kalıyor ve hiçbir şey kaydedilmiyordu. Artık eksik aşamalar istasyon
+ * olarak oluşturulur. Tenant kolonu `lab_profile_id` (StationsSection ile aynı sözleşme).
+ */
+export interface LabStationInput {
+  name: string;
+  color?: string | null;
+  icon?: string | null;
+  sequence_hint?: number | null;
+  is_critical?: boolean;
+  is_active?: boolean;
+  est_duration_min?: number | null;
+  sla_hours?: number | null;
+  required_skills?: string[] | null;
+}
+export async function createLabStation(labId: string, s: LabStationInput) {
+  return supabase
+    .from('lab_stations')
+    .insert({
+      lab_profile_id: labId,
+      is_active: true,
+      is_critical: false,
+      ...s,
+    })
+    .select('id, name')
+    .single();
+}
+
 export async function createLabSkill(labId: string, s: LabSkillInput) {
   return supabase.from('lab_skills').insert({ lab_id: labId, ...s }).select().single();
 }

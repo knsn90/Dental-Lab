@@ -1,5 +1,6 @@
 import { localeTag, isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
+import { authErrorText } from '../../../core/api/authErrors';
 import { HeroGlow, useHeroSurface } from '../../../core/ui/HeroGlow';
 /**
  * EmployeesScreen — Ekip (Patterns Design Language)
@@ -1369,13 +1370,8 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
         },
       });
       if (fnErr || (fnData as any)?.error) {
-        const rawMsg = (fnData as any)?.error ?? fnErr?.message ?? 'Bilinmeyen hata';
-        const friendly =
-          /already (been )?registered|user already exists|email.*exists/i.test(rawMsg)
-            ? 'Bu e-posta zaten kullanılıyor. Farklı bir e-posta deneyin.'
-          : /password.*(short|weak)|en az 6/i.test(rawMsg)
-            ? 'Şifre çok zayıf — en az 6 karakter olmalı.'
-          : rawMsg;
+        const rawMsg = (fnData as any)?.error ?? fnErr?.message ?? '';
+        const friendly = authErrorText(rawMsg);
         setSaving(false);
         toast.error(`Personel eklendi, ancak giriş hesabı oluşturulamadı: ${friendly}`);
         return;

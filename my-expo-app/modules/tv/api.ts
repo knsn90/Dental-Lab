@@ -145,7 +145,7 @@ export async function fetchBoard(): Promise<BoardData> {
       .select('work_order_id, status, sequence_order, started_at, technician_id, station:lab_stations(name)')
       .in('status', OPEN_STATUSES)
       .limit(1500),
-    supabase.from('deliveries').select('id', { count: 'exact', head: true }).eq('status', 'teslim_edildi').gte('delivered_at', todayISO),
+    supabase.from('deliveries').select('id', { count: 'exact', head: true }).not('work_order_id', 'is', null).eq('status', 'teslim_edildi').gte('delivered_at', todayISO),
   ]);
 
   const wos = (woRes.data ?? []) as any[];

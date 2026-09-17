@@ -440,6 +440,33 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
     return () => { supabase.removeChannel(ch); };
   }, [orderUuid, legsTick]);
 
+  /**
+   * Nihai bacağı zaten teslim edilmiş siparişi kapatır. Teslim tarihi olarak
+   * "şimdi" değil BACAĞIN gerçek teslim anı yazılır — sipariş raporlarda
+   * gerçekte teslim edildiği günde görünsün. Asılı kalan bekletme alanları da
+   * temizlenir (update_delivery_status ile aynı kural).
+   */
+  const closeDeliveredOrder = async () => {
+    if (!order || !activeDelivery) return;
+    const ok = await confirmAsync(
+      'Teslim Edildi',
+      autoT('Kurye teslimatı tamamlanmış. Sipariş teslim edildi olarak kapatılsın mı?'),
+      { confirmText: 'Teslim Edildi' },
+    );
+    if (!ok) return;
+    const { error: e } = await supabase
+      .from('work_orders')
+      .update({
+        status: 'teslim_edildi',
+        delivered_at: activeDelivery.delivered_at ?? new Date().toISOString(),
+        hold_status: null, hold_reason: null, hold_category: null,
+        hold_responsible: null, hold_started_at: null, hold_by: null,
+      } as any)
+      .eq('id', (order as any).id);
+    if (e) { alert(`Hata: ${e.message}`); return; }
+    refetch();
+  };
+
   // Adres çubuğu kozmetiği (yalnız web): /order/<uuid> → /order/<order_number>.
   // fetchWorkOrderById ikisini de çözer; bu yalnız GÖRÜNEN URL'yi okunur yapar
   // Revizyonda orijinalin DOSYALARI devralınır — kopyalanmaz, salt okunur gösterilir.
@@ -1011,10 +1038,11 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
     ));
     return names.length ? names.join(' · ') : `Şerit ${lane}`;
   };
-  // Çok-şeritte VARSAYILAN: tüm şeritler açık → her şeridin aşamaları ayrı ayrı
-  // görünür (yalnız aktif şerit açık değil). Kullanıcı istediğini kapatabilir.
-  const isLaneOpen = (lane: number) => expandedLanes[lane] ?? true;
-  const toggleLane = (lane: number) => setExpandedLanes(p => ({ ...p, [lane]: !(p[lane] ?? true) }));
+  // Çok-şeritte VARSAYILAN: tüm şeritler KAPALI. İki-üç şeridin aşamaları birden
+  // açık gelince liste uzayıp hangi işin nerede olduğu kayboluyordu; başlık satırı
+  // (diş + istasyon + done/total) zaten özeti veriyor, ayrıntıyı kullanıcı açar.
+  const isLaneOpen = (lane: number) => expandedLanes[lane] ?? false;
+  const toggleLane = (lane: number) => setExpandedLanes(p => ({ ...p, [lane]: !(p[lane] ?? false) }));
 
   // Faz 4b: AŞAMA DETAYLARI görüntü listesi — çok-şeritte iş (şerit) başına
   // collapse grup başlığı + (açıksa) o şeridin aşamaları; sonda teslimat virtual'ları.
@@ -1236,6 +1264,12 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
       } else {
         mDeliveryButton = { label: 'Kuryeye Gönder', icon: 'truck', onPress: () => setDeliveryModalOpen(true) };
       }
+    }
+    // Çıkmaz durum (masaüstüyle aynı): nihai bacak teslim edilmiş ama sipariş açık.
+    if (isManager && (order.status as string) === 'teslimata_hazir'
+        && activeDelivery && activeDelivery.status === 'teslim_edildi'
+        && (activeDelivery.direction ?? 'lab_to_clinic') === 'lab_to_clinic') {
+      mDeliveryButton = { label: 'Teslim Edildi', icon: 'check', onPress: () => { void closeDeliveredOrder(); } };
     }
     if (activeDelivery && activeDelivery.status !== 'teslim_edildi') {
       mDeliveryStatusLabel = activeDelivery.mode === 'external'
@@ -2027,6 +2061,19 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                           Kuryeye Gönder
                         </PillBtn>
                     )
+                  )}
+                  {/* ÇIKMAZ DURUM: nihai teslimat bacağı ZATEN teslim edilmiş ama sipariş
+                      açık (teslimata_hazir). Kurye, sipariş hâlâ üretimdeyken teslim
+                      ettiğinde kapı siparişi kapatmıyor (doğru); sipariş sonradan
+                      teslimata_hazir'a gelince de bacak tekrar kontrol edilmiyordu.
+                      Önceki iki blok bu durumda HİÇ buton üretmiyordu. */}
+                  {isManager && (order.status as string) === 'teslimata_hazir'
+                    && activeDelivery && activeDelivery.status === 'teslim_edildi'
+                    && (activeDelivery.direction ?? 'lab_to_clinic') === 'lab_to_clinic' && (
+                    <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="primary" size="sm" icon={Check}
+                      onPress={() => { void closeDeliveredOrder(); }}>
+                      Teslim Edildi
+                    </PillBtn>
                   )}
                   {/* Aktif teslimat varsa status + manuel "Teslim edildi" */}
                   {activeDelivery && activeDelivery.status !== 'teslim_edildi' && (

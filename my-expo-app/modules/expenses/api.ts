@@ -161,7 +161,7 @@ export async function fetchExpenseDetail(id: string): Promise<{
       const { data } = await supabase
         .from('deliveries')
         .select(`
-          id, work_order_id, status, mode, purpose, direction,
+          id, work_order_id, shipment_no, status, mode, purpose, direction,
           external_provider, external_tracking_no, external_tracking_code,
           fee_amount, fee_currency, fee_source, stage_snapshot,
           assigned_at, picked_up_at, delivered_at, cancelled_at, cancel_reason,

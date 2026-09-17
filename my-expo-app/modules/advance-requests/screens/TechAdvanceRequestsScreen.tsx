@@ -1,4 +1,5 @@
 import { localeTag } from '../../../core/i18n';
+import { baseSymbol } from '../../../core/money/baseCurrency';
 // modules/advance-requests/screens/TechAdvanceRequestsScreen.tsx
 // Teknisyen — kendi avans taleplerini görür ve yeni talep oluşturur.
 // employee_id, profile.employee_id'den çözülür. Bağ yoksa nazik boş durum.
@@ -19,7 +20,7 @@ import {
   ADVANCE_STATUS_CFG, type AdvanceRequest, type AdvanceStatus,
 } from '../api';
 
-const fmtTL = (n: number) => `₺${(n ?? 0).toLocaleString('tr-TR')}`;
+const fmtTL = (n: number) => `${baseSymbol()}${(n ?? 0).toLocaleString('tr-TR')}`;
 const fmtDate = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
@@ -236,7 +237,7 @@ function NewAdvanceModal({ visible, onClose, onSubmit }: {
             <Pressable onPress={onClose} style={{ ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}><X size={20} color={P.ink400} /></Pressable>
           </View>
           <View>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: P.ink500, marginBottom: 6 }}>Tutar (₺)</Text>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: P.ink500, marginBottom: 6 }}>{`Tutar (${baseSymbol()})`}</Text>
             <TextInput
               value={amount} onChangeText={setAmount} keyboardType="numeric" placeholder="Örn. 5000" placeholderTextColor={P.ink400}
               style={{ borderWidth: 1, borderColor: P.ink100, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 16, fontWeight: '700', color: P.ink900, backgroundColor: P.surfaceAlt }}

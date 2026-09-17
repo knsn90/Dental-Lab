@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { baseSymbol } from '../../../core/money/baseCurrency';
 import { isRTL, fmtDayMonthYear } from '../../../core/i18n';
 import {
   View,
@@ -1528,7 +1529,7 @@ function EditUserModal({
                 </View>
 
                 {/* Saat Ücreti */}
-                <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>Aylık Maaş (₺)</Text>
+                <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>{`Aylık Maaş (${baseSymbol()})`}</Text>
                 <TextInput style={INPUT_STYLE} value={salary} onChangeText={setSalary}
                   placeholder="0" placeholderTextColor={U.ink[400]} keyboardType="numeric" />
               </>
@@ -2000,7 +2001,7 @@ export function AddUserModal({
 
                   {/* Maaş */}
                   <View>
-                    <Text style={FL}>Aylık Maaş (₺)</Text>
+                    <Text style={FL}>{`Aylık Maaş (${baseSymbol()})`}</Text>
                     <TextInput style={INP} value={salary} onChangeText={setSalary}
                       placeholder="0" placeholderTextColor={U.ink[400]} keyboardType="numeric" />
                   </View>

@@ -9,7 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Search, MapPin, ArrowRight, ArrowLeft, MessageSquare, Phone, ChevronRight, ChevronLeft, Clock,
   QrCode, Bell, User as UserIcon, X, Package, PackageCheck, Trash2,
-  ChevronDown, Check,
+  ChevronDown, Check, Plus,
 } from '../../core/ui/icons';
 import { isRTL } from '../../core/i18n';
 import { autoT } from '../../core/i18n/autoTranslate';
@@ -24,6 +24,8 @@ import { toast } from '../../core/ui/Toast';
 import { navBarMetrics, navGlass, navSurfaceStyle, useReduceTransparency } from '../../core/ui/mobile/navGlass';
 import { GlassBlurLayer } from '../../core/ui/mobile/GlassBlurLayer';
 import { prefersReducedMotion } from '../../core/ui/mobile/navScroll';
+import { deliveryRef } from '../delivery/label';
+import { NewShipmentModal } from './components/NewShipmentModal';
 
 const INK_900 = '#0A0A0A';
 const INK_500 = '#6B6B6B';
@@ -232,6 +234,8 @@ interface Props {
 
 export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix, courierId }: Props) {
   const isDark = useThemeModeStore(s => s.resolvedDark);
+  // Siparişten bağımsız gönderi formu — yalnız lab/admin panelinde (kurye panelinde courierId dolu).
+  const [newShipOpen, setNewShipOpen] = useState(false);
   const C = useCourierInk();
   const insets = useSafeAreaInsets();
   const emptyBg   = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.4)';
@@ -293,7 +297,7 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
         destination_name, destination_address, destination_phone, direction, purpose,
         origin_name, origin_address, origin_lat, origin_lng, dest_lat, dest_lng,
         ext_courier_name, ext_courier_phone, ext_courier_photo,
-        picked_up_at, delivered_at, assigned_at, work_order_id,
+        picked_up_at, delivered_at, assigned_at, work_order_id, shipment_no,
         work_order:work_orders!work_order_id(order_number, patient_name, doctor_id),
         courier:profiles!deliveries_courier_profiles_fkey(id, full_name)
       `);
@@ -327,7 +331,7 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
       const doc = r.work_order?.doctor_id ? docMap.get(r.work_order.doctor_id) : null;
       return {
         ...r,
-        order_number: r.work_order?.order_number ?? null,
+        order_number: deliveryRef(r),
         patient_name: r.work_order?.patient_name ?? null,
         courier_name: r.courier?.full_name ?? null,
         doctor_name:    doc?.name ?? null,
@@ -753,6 +757,21 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
             </View>
           )}
           <View {...(isNarrow ? headerPan.panHandlers : {})} style={{ padding: 12, paddingTop: isNarrow ? 6 : 12, gap: 10 }}>
+            {/* Serbest gönderi butonu KENDİ satırında: arama çubuğuyla aynı satıra
+                konduğunda dar sheet'te arama kutusunu eziyordu. */}
+            {!courierId && (
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+                <Pressable
+                  onPress={() => setNewShipOpen(true)}
+                  accessibilityLabel={autoT('Yeni gönderi')}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: accent,
+                           ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                >
+                  <Plus size={14} color="#FFFFFF" strokeWidth={2.2} />
+                  <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#FFFFFF' }}>{autoT('Yeni gönderi')}</Text>
+                </Pressable>
+              </View>
+            )}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 11, paddingVertical: 7, borderRadius: 999, backgroundColor: pillBg, borderWidth: 1, borderColor: pillBorder }}>
               <Search size={14} color={inkMutedDark} strokeWidth={1.8} />
               <TextInput
@@ -1199,6 +1218,14 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Siparişten bağımsız gönderi — kaydı aynı listeye düşer */}
+      <NewShipmentModal
+        visible={newShipOpen}
+        onClose={() => setNewShipOpen(false)}
+        onCreated={() => { setNewShipOpen(false); void load(true); }}
+        accent={accent}
+      />
     </View>
   );
 }

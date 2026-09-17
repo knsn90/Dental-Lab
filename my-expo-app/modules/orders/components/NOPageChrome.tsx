@@ -39,6 +39,13 @@ export interface NOPageChromeProps {
   onNext?: () => void;
   nextLabel?: string;
   actionPrimary?: NOActionBarProps['primary'];
+  /**
+   * Adım geçersizken butonun ÜSTÜNDE görünen özet uyarı.
+   * Neden: alan hataları yalnız ilgili kartta çiziliyordu; o kart kapalıyken
+   * (ör. implant markası hatası, "İş detayı" kartı diş seçili değilken hiç
+   * render edilmiyor) "İleri" sessizce duruyor, kullanıcı sebebi göremiyordu.
+   */
+  nextError?: string;
   loading?: boolean;
   savedTime?: string;
   /** Step 4 right panel */
@@ -77,6 +84,7 @@ export function NOPageChrome({
   onNext,
   nextLabel,
   actionPrimary,
+  nextError,
   loading,
   savedTime,
   rightPanel,
@@ -235,6 +243,27 @@ export function NOPageChrome({
               }
         }
       >
+        {/* Sessiz kilit kalkanı: adım geçersizken sebebi burada YAZAR. */}
+        {nextError ? (
+          <View
+            style={{
+              alignSelf: 'flex-end',
+              maxWidth: 320,
+              marginBottom: 8,
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              borderRadius: 12,
+              backgroundColor: '#FEF2F2',
+              borderWidth: 1,
+              borderColor: 'rgba(220,38,38,0.25)',
+              ...((Platform.OS as string) === 'web'
+                ? ({ boxShadow: '0 8px 24px rgba(15,23,42,0.14)' } as any)
+                : { shadowColor: '#0F172A', shadowOpacity: 0.16, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 5 }),
+            }}
+          >
+            <Text style={{ fontSize: 12, fontWeight: '600', color: '#991B1B' }}>{nextError}</Text>
+          </View>
+        ) : null}
         {(onBack || onNext) && (
           <View
             style={

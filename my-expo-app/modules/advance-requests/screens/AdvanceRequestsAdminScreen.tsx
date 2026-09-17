@@ -1,4 +1,5 @@
 import { localeTag } from '../../../core/i18n';
+import { baseSymbol } from '../../../core/money/baseCurrency';
 // modules/advance-requests/screens/AdvanceRequestsAdminScreen.tsx
 // Admin — avans taleplerini listeler, onaylar/reddeder.
 // Onaylanınca employee_advances defterine kayıt düşer (api.approveAdvanceRequest).
@@ -20,7 +21,7 @@ import {
   ADVANCE_STATUS_CFG, type AdvanceRequestWithEmployee, type AdvanceStatus,
 } from '../api';
 
-const fmtTL = (n: number) => `₺${(n ?? 0).toLocaleString('tr-TR')}`;
+const fmtTL = (n: number) => `${baseSymbol()}${(n ?? 0).toLocaleString('tr-TR')}`;
 const fmtDate = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 const STATUS_ICON: Record<AdvanceStatus, any> = { bekliyor: Clock, onaylandi: CheckCircle2, reddedildi: XCircle, iptal: Ban };

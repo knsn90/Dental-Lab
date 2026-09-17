@@ -28,6 +28,7 @@ import { useInkUI } from '../../../core/theme/inkScale';
 import { localeTag, isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { formatAddress } from '../../../core/util/formatAddress';
+import { deliveryRef } from '../../delivery/label';
 
 const TH = DS.tech;
 const DISPLAY = {
@@ -95,7 +96,7 @@ export function CourierDeliveryDetailScreen() {
     const { data } = await supabase
       .from('deliveries')
       .select(`
-        id, work_order_id, status, assigned_at, picked_up_at, delivered_at,
+        id, work_order_id, shipment_no, status, assigned_at, picked_up_at, delivered_at,
         destination_name, destination_address, destination_phone, notes,
         origin_name, origin_address, direction, purpose,
         work_order:work_orders!work_order_id(order_number, patient_name)
@@ -105,7 +106,7 @@ export function CourierDeliveryDetailScreen() {
     if (data) {
       setD({
         ...(data as any),
-        order_number: (data as any).work_order?.order_number ?? null,
+        order_number: deliveryRef(data as any),
         patient_name: (data as any).work_order?.patient_name ?? null,
       });
     }

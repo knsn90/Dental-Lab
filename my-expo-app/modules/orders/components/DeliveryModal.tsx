@@ -456,7 +456,51 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
     : [];
   // Ara hareket: amaç + yön + ücret (masraf her zaman lab gideri, işe yazılır)
   const [purpose, setPurpose]     = useState<DeliveryPurpose>('teslimat');
+  /**
+   * Amaç BİLİNÇLİ seçildi mi? "Teslimat" önceden seçili gelince kullanıcı farkında
+   * olmadan siparişin FİNAL teslimatını açıyordu (ara hareket sanıp). Artık hiçbir
+   * neden seçili gelmez; seçilmeden kurye çağrılamaz. `purpose` yine geçerli bir
+   * değer tutar (payload'lar bozulmasın), seçim durumunu bu bayrak taşır.
+   */
+  const [purposeChosen, setPurposeChosen] = useState(false);
+  /** Dış servis yönü seçilince "Ara hareket" menüsünü açan sinyal (sayaç). */
+  const [araOpenSignal, setAraOpenSignal] = useState(0);
   const [direction, setDirection] = useState<DeliveryDirection>('lab_to_clinic');
+  /** Karşı taraf klinik değil DIŞ SERVİS mi (milling, döküm, lehim…)? */
+  const isExtParty = direction === 'lab_to_other' || direction === 'other_to_lab';
+  /** Laba GELEN yön mü (klinikten ya da dış servisten)? Etiketleri buna göre yazıyoruz. */
+  const isIncoming = direction === 'clinic_to_lab' || direction === 'other_to_lab';
+  /**
+   * Edge fonksiyonları (BanaBiKurye/Shipink) yalnız lab_to_clinic ve clinic_to_lab
+   * biliyor. Dış servis yönleri oraya çevrilmeli; çevrilmezse "alım" teslim
+   * sanılıp kurye ters uca gönderilir.
+   */
+  const apiDirection = (): DeliveryDirection => (isIncoming ? 'clinic_to_lab' : 'lab_to_clinic');
+  /**
+   * Dış servis bacağında karşı taraf klinik DEĞİL — sunucu adresi siparişten
+   * türetemez, formdaki adres taşınmalı. Üç oluşturma yolu (iç kurye,
+   * BanaBiKurye, Shipink) da bunu kullanır; biri atlanırsa kurye çağrılır ama
+   * teslimat kaydı açılmaz (2026-09-16'da bu yaşandı).
+   */
+  const extPartyFields = () => (isExtParty && addrSelected ? {
+    partyName:    addrSelected.name || 'Dış servis',
+    partyAddress: addrSelected.address,
+    partyPhone:   addrSelected.phone || undefined,
+    partyLat:     addrSelected.lat ? Number(addrSelected.lat) : null,
+    partyLng:     addrSelected.lng ? Number(addrSelected.lng) : null,
+  } : {});
+  /**
+   * Dış serviste adres + ALICI ADI + TELEFON olmadan çağrı yapılmaz.
+   * Ad/telefon eksikse edge function alıcıyı siparişin kliniğinden çözüyordu →
+   * kurye yanlış kişiyi arıyordu (2026-09-16, BanaBiKurye 7276572).
+   */
+  const extPartyMissing = () =>
+    isExtParty && (!addrSelected?.address || !addrSelected?.name?.trim() || !addrSelected?.phone?.trim());
+  /** Eksik alanı adıyla söyle — "adres seçin" deyip telefonu kastetmek kafa karıştırıyor. */
+  const extPartyMissingMsg = () =>
+    !addrSelected?.address ? 'Dış servis için adres seçin.'
+    : !addrSelected?.name?.trim() ? 'Dış servis için alıcı adı girin.'
+    : 'Dış servis için alıcı telefonu girin.';
   const [fee, setFee]             = useState<string>('');
   const baseCurrency = useBaseCurrency();
   const feeSymbol = CURRENCY_META[baseCurrency]?.symbol ?? baseCurrency;
@@ -497,8 +541,11 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
     setShpWeight('1'); setShpLength('20'); setShpWidth('15'); setShpHeight('10');
     setShpState(''); setShpCity(''); setShpZip('');
     setFee('');
-    // Varsayılan her iki akışta da 'teslimat' — en sık sebep bu.
+    // Hiçbir neden SEÇİLİ gelmez — kullanıcı bilinçli seçsin (yanlışlıkla final
+    // teslimat açılmasın). `purpose` yalnız teknik varsayılan.
     setPurpose('teslimat');
+    setPurposeChosen(false);
+    setAraOpenSignal(0);
     setDirection('lab_to_clinic');
     setAddrQuery(''); setAddrResults([]); setAddrSelected(null); setAddrTouched(false);
     // Kayıtlı klinik adresleri + arama için lab konumu (ikisi de tek seferlik)
@@ -604,16 +651,26 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
       .then(({ data }) => setCouriers((data ?? []) as CourierOption[]));
   }, [visible, labId]);
 
+  /** Neden seçilmeden kurye çağrılmaz (varsayılan 'teslimat' kaldırıldı). */
+  const purposeMissing = () => extraLeg && !editDelivery && !purposeChosen;
+
   async function handleSubmit() {
     setError(null);
+    if (purposeMissing()) { setError('Neden seçin (teslimat ya da ara hareket).'); return; }
     if (mode === 'banabikurye') return; // BanaBiKurye kendi akışını kullanır (handleBbkCreate)
     if (mode === 'shipink') return;     // Shipink kendi akışını kullanır (handleShpCreate)
     if (mode === 'internal' && !courierId) { setError('Kurye seçin'); return; }
     if (mode === 'external' && !provider && !tracking) { setError('Firma veya takip no girin'); return; }
     setSaving(true);
+    // Dış serviste adres klinik kaydından TÜRETİLEMEZ — formda seçilen adres
+    // sunucuya taşınır; aksi hâlde kurye klinik adresine gönderilirdi.
+    if (extPartyMissing()) {
+      setSaving(false); setError(extPartyMissingMsg()); return;
+    }
     const res = await createDelivery({
       workOrderId,
       mode,
+      ...extPartyFields(),
       courierId:          mode === 'internal' ? courierId ?? undefined : undefined,
       externalProvider:   mode === 'external' ? (provider || undefined) : undefined,
       externalTrackingNo: mode === 'external' ? (tracking || undefined) : undefined,
@@ -718,6 +775,12 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
       dest_lat: addrSelected.lat ?? undefined,
       dest_lng: addrSelected.lng ?? undefined,
       dest_phone: addrSelected.phone || undefined,
+      // Alıcı ADI da taşınmalı: edge function dest_name gelmezse alıcıyı
+      // SİPARİŞİN kliniğinden çözüyor. Dış servise (milling merkezi vb.) giden
+      // gönderide kuryeye klinik adı görünüyordu — adres doğru, alıcı yanlıştı.
+      // Kullanıcının elle yazdığı "alıcı adı" override'ı bbkOptions'ta sonra
+      // uygulandığı için üstte kalır.
+      dest_name: addrSelected.name || undefined,
     };
   }
 
@@ -747,7 +810,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
     if (bbkIntercom.trim())   opts.dest_intercom = bbkIntercom.trim();
     if (bbkLoaders) opts.loaders_count = 1;
     opts.notify_recipient = bbkNotify;
-    opts.direction = direction; // alım/teslim ucunu belirler (klinikten alımda ters)
+    opts.direction = apiDirection(); // alım/teslim ucunu belirler (dış servis yönleri çevrilir)
     if (bbkPayment === 'bank_card') {
       opts.payment_method = 'bank_card';
       if (bbkBankCardId != null) opts.bank_card_id = bbkBankCardId;
@@ -805,8 +868,10 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
 
   // BanaBiKurye — onayla & kurye çağır (gerçek/ücretli işlem)
   async function handleBbkCreate() {
+    if (purposeMissing()) { setError('Neden seçin (teslimat ya da ara hareket).'); return; }
     // İkinci kapı: "Fiyat Hesapla"dan sonra ödeme şekli sıfırlanmış olabilir.
     if (bbkPayment == null) { setError('Ödeme şeklini seçin (nakit veya banka kartı).'); return; }
+    if (extPartyMissing()) { setError(extPartyMissingMsg()); return; }
     setError(null); setErrDetail(null); setErrOpen(false); setBbkBusy(true);
     const { data, error: err } = await supabase.functions.invoke('banabikurye-dispatch', {
       body: { action: 'create', work_order_id: workOrderId, extra_work_order_ids: groupIds.length ? groupIds : undefined, notes: notes.trim() || undefined, ...destOverride(), ...bbkOptions() },
@@ -829,12 +894,20 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
       notes: notes.trim() || undefined,
       purpose,
       direction,
+      ...extPartyFields(),
       feeAmount:     bbkFee,
       feeCurrency:   bbkFee != null ? 'TRY' : null,
       feeSource:     bbkFee != null ? 'banabikurye' : undefined,
       stageSnapshot: stageSnapshot ?? undefined,
     });
-    if (!res.ok) { setBbkBusy(false); setError('Kurye çağrıldı ama teslimat kaydı oluşmadı: ' + (res.error ?? '')); return; }
+    if (!res.ok) {
+      setBbkBusy(false);
+      // Kurye GERÇEKTEN çağrıldı; kullanıcı kaydı elle tamamlayabilsin diye takip
+      // numarasını mesajda veriyoruz (aksi hâlde çağrı görünmez kalıyor).
+      setError('Kurye çağrıldı ama teslimat kaydı oluşmadı: ' + (res.error ?? '')
+        + (orderId ? ` · Takip no: ${orderId} — "Dış Kargo" modunda bu numarayla kaydı elle açabilirsiniz.` : ''));
+      return;
+    }
     // Aynı kuryeyle giden ek işler: her biri için AYRI teslimat satırı — aynı takip no
     // (kurye/durum takip handler'ında external_tracking_no ile hepsine yayılır),
     // ÜCRET YOK (fee null → gider trigger'ı satır oluşturmaz, tek gider birincilde kalır).
@@ -872,7 +945,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
   function shpBody() {
     return {
       work_order_id: workOrderId,
-      direction,
+      direction: apiDirection(),
       note: notes.trim() || undefined,
       recipient_name:   addrSelected?.name || undefined,
       recipient_phone:  addrSelected?.phone || undefined,
@@ -914,6 +987,8 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
 
   /** Shipink — seçili taşıyıcıyla gönderi oluştur (GERÇEK, ücretli işlem). */
   async function handleShpCreate() {
+    if (purposeMissing()) { setError('Neden seçin (teslimat ya da ara hareket).'); return; }
+    if (extPartyMissing()) { setError(extPartyMissingMsg()); return; }
     if (!shpServiceId) { setError('Taşıyıcı seçin.'); return; }
     setError(null); setErrDetail(null); setErrOpen(false); setShpBusy(true);
     const rate = shpRates.find((r) => String(r.carrier_service_id) === shpServiceId) ?? null;
@@ -942,6 +1017,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
       workOrderId,
       mode: 'external',
       externalProvider: 'Shipink',
+      ...extPartyFields(),
       externalTrackingNo: d.tracking_number ? String(d.tracking_number) : undefined,
       notes: notes.trim() || undefined,
       purpose,
@@ -983,7 +1059,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
   // Google Places'ten ünvanla ara + onay (doğru adres)
   const addressBlock = (
             <View style={{ gap: 8 }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: (T.ink3 as string), letterSpacing: 0.6, textTransform: 'uppercase' }}>{direction === 'clinic_to_lab' ? 'Alış Adresi (Klinik)' : 'Teslim Adresi'}</Text>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: (T.ink3 as string), letterSpacing: 0.6, textTransform: 'uppercase' }}>{isIncoming ? (isExtParty ? 'Alış Adresi (Dış servis)' : 'Alış Adresi (Klinik)') : (isExtParty ? 'Teslim Adresi (Dış servis)' : 'Teslim Adresi')}</Text>
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <TextInput
                   value={addrQuery}
@@ -1050,6 +1126,29 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 10.5, fontWeight: '700', color: accentColor, letterSpacing: 0.4, textTransform: 'uppercase' }}>Seçili teslim adresi</Text>
                     <Text style={{ fontSize: 12, color: (T.ink as string), lineHeight: 16, marginTop: 2 }}>{addrSelected.address}</Text>
+                    {/* Dış serviste alıcı adı/telefonu ZORUNLU: Google Places çoğu
+                        işletmede telefon vermiyor ve bu alanlar boş kalınca kurye
+                        alıcıyı siparişin kliniğinden çözüp yanlış kişiyi arıyordu.
+                        Düzenlenebilir olmaları şart — yoksa gönderi hiç yapılamazdı. */}
+                    {isExtParty && (
+                      <View style={{ flexDirection: 'row', gap: 6, marginTop: 8 }}>
+                        <TextInput
+                          value={addrSelected.name}
+                          onChangeText={(t) => setAddrSelected((a) => (a ? { ...a, name: t } : a))}
+                          placeholder="Alıcı adı"
+                          placeholderTextColor={(T.ink3 as string)}
+                          style={{ flex: 1, borderWidth: 1, borderColor: (T.hairline as string), borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, fontSize: 12, backgroundColor: isDark ? (T.card as string) : '#FFFFFF', color: (T.ink as string), /* @ts-ignore */ outlineWidth: 0 }}
+                        />
+                        <TextInput
+                          value={addrSelected.phone}
+                          onChangeText={(t) => setAddrSelected((a) => (a ? { ...a, phone: t } : a))}
+                          placeholder="Alıcı telefonu"
+                          placeholderTextColor={(T.ink3 as string)}
+                          keyboardType="phone-pad"
+                          style={{ flex: 1, borderWidth: 1, borderColor: (T.hairline as string), borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, fontSize: 12, backgroundColor: isDark ? (T.card as string) : '#FFFFFF', color: (T.ink as string), /* @ts-ignore */ outlineWidth: 0 }}
+                        />
+                      </View>
+                    )}
                   </View>
                   <Pressable onPress={() => { setAddrSelected(null); setBbkPrice(null); resetShpRates(); }} hitSlop={8}>
                     <X size={14} color="#9A9A9A" />
@@ -1108,34 +1207,14 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                       Diğerleri altında kompakt ızgarada — hiçbiri gizlenmiyor,
                       yalnız sıra doğru. */}
                   <SelectCard
-                    selected={purpose === FINAL_PURPOSE}
+                    selected={purposeChosen && purpose === FINAL_PURPOSE}
                     accent={accentColor}
                     icon={Package}
                     title="Teslimat"
                     desc="Biten işi kliniğe gönder · siparişin final teslimatı olarak kaydedilir"
-                    onPress={() => { setPurpose(FINAL_PURPOSE); setDirection(DEFAULT_DIRECTION.teslimat); setBbkPrice(null); setBbkBreakdown(null); resetShpRates(); }}
+                    onPress={() => { setPurpose(FINAL_PURPOSE); setPurposeChosen(true); setDirection(DEFAULT_DIRECTION.teslimat); setBbkPrice(null); setBbkBreakdown(null); resetShpRates(); }}
                   />
 
-                  {/* Altı ara hareket pill olarak iki satır kaplıyordu ve asıl
-                      seçim olan Teslimat kartını aşağı itiyordu. Menüye alındı:
-                      seçili olan tetikleyicide okunur, hiçbir seçenek kaybolmaz.
-                      "Seçilmedi" → final teslimata (üstteki kart) geri döner. */}
-                  <View style={{ alignSelf: 'flex-start' }}>
-                    <FilterMenu
-                      label="Ara hareket"
-                      items={[
-                        { key: '', label: 'Seçilmedi' },
-                        ...EXTRA_PURPOSES.map(p => ({ key: p, label: DELIVERY_PURPOSE_LABELS[p] })),
-                      ]}
-                      active={purpose === FINAL_PURPOSE ? '' : purpose}
-                      onChange={(k) => {
-                        const np = (k || FINAL_PURPOSE) as DeliveryPurpose;
-                        setPurpose(np); setDirection(DEFAULT_DIRECTION[np]);
-                        setBbkPrice(null); setBbkBreakdown(null); resetShpRates();
-                      }}
-                      accent={accentColor}
-                    />
-                  </View>
                 </View>
 
                 <View style={{ gap: 8 }}>
@@ -1143,12 +1222,48 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                   <SegmentRow
                     accent={accentColor}
                     value={direction}
-                    onChange={(v) => { setDirection(v as DeliveryDirection); setBbkPrice(null); setBbkBreakdown(null); resetShpRates(); }}
+                    onChange={(v) => {
+                      setDirection(v as DeliveryDirection); setBbkPrice(null); setBbkBreakdown(null); resetShpRates();
+                      // Dış servis bacağı final teslimat olamaz — sıradaki adım
+                      // "hangi ara hareket?" olduğu için menü kendiliğinden açılır.
+                      if (v === 'lab_to_other' || v === 'other_to_lab') setAraOpenSignal((n) => n + 1);
+                    }}
                     items={[
                       { id: 'lab_to_clinic', label: 'Lab → Klinik' },
                       { id: 'clinic_to_lab', label: 'Klinik → Lab' },
+                      // Dış servis (milling, döküm, lehim…): aynı satırda sekme.
+                      // Etiket kısa — dört sekme tek satırı eşit bölüşüyor; hangi
+                      // adresin istendiği adres başlığında yazıyor ("… (Dış servis)").
+                      { id: 'lab_to_other', label: 'Lab → Dış' },
+                      { id: 'other_to_lab', label: 'Dış → Lab' },
                     ]}
                   />
+
+                  {/* Ara hareket SADECE dış servis yönlerinde ve YÖN sekmelerinin
+                      ALTINDA: sıra "yönü seç → hangi ara hareket?" diye ilerliyor,
+                      menü de seçimle birlikte kendiliğinden açılıyor. Normal
+                      Lab↔Klinik akışında neden zaten "Teslimat", menü görünmez. */}
+                  <View style={{ alignSelf: 'flex-start', display: isExtParty ? 'flex' : 'none' }}>
+                    <FilterMenu
+                      label="Ara hareket"
+                      items={[
+                        { key: '', label: 'Seçilmedi' },
+                        ...EXTRA_PURPOSES.map(p => ({ key: p, label: DELIVERY_PURPOSE_LABELS[p] })),
+                      ]}
+                      active={!purposeChosen || purpose === FINAL_PURPOSE ? '' : purpose}
+                      openSignal={araOpenSignal}
+                      onChange={(k) => {
+                        setBbkPrice(null); setBbkBreakdown(null); resetShpRates();
+                        const np = (k || FINAL_PURPOSE) as DeliveryPurpose;
+                        setPurpose(np);
+                        // "Seçilmedi" → seçim yapılmamış hâle dön (kart da seçili görünmesin).
+                        setPurposeChosen(!!k);
+                        // Dış servis yönü kullanıcının SEÇİMİ — amaç değişince ezme.
+                        if (!isExtParty) setDirection(DEFAULT_DIRECTION[np]);
+                      }}
+                      accent={accentColor}
+                    />
+                  </View>
                 </View>
               </View>
             )}
@@ -1332,9 +1447,9 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                 <View style={{ padding: 12, borderRadius: 10, backgroundColor: isDark ? T.cardSoft : '#F4F8FC', gap: 4 }}>
                   <Text style={{ fontSize: 12, fontWeight: '700', color: (T.ink as string) }}>BanaBiKurye ile kurye çağır</Text>
                   <Text style={{ fontSize: 11.5, color: (T.ink3 as string), lineHeight: 17 }}>
-                    {direction === 'clinic_to_lab'
-                      ? 'Alış hekim/klinik adresinden, teslim lab adresine. '
-                      : 'Alış lab adresinden, teslim hekim/klinik adresine. '}
+                    {isIncoming
+                      ? `Alış ${isExtParty ? 'dış servis' : 'hekim/klinik'} adresinden, teslim lab adresine. `
+                      : `Alış lab adresinden, teslim ${isExtParty ? 'dış servis' : 'hekim/klinik'} adresine. `}
                     Önce fiyat hesaplanır; onayladığında gerçek kurye çağrılır (ücret lab'a aittir).
                   </Text>
                 </View>
@@ -1593,7 +1708,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                     {/* Alıcı override + adres detayı (opsiyonel — boşsa kayıtlı bilgi kullanılır) */}
                     <View style={{ flexDirection: 'row', gap: 10 }}>
                       <View style={{ flex: 1, gap: 6 }}>
-                        <Text style={[SECTION_LBL, { color: T.ink3 }]}>{direction === 'clinic_to_lab' ? 'Gönderen Adı' : 'Alıcı Adı'}</Text>
+                        <Text style={[SECTION_LBL, { color: T.ink3 }]}>{isIncoming ? 'Gönderen Adı' : 'Alıcı Adı'}</Text>
                         <TextInput
                           value={bbkRecipient}
                           onChangeText={setBbkRecipient}
@@ -1602,7 +1717,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                         />
                       </View>
                       <View style={{ flex: 1, gap: 6 }}>
-                        <Text style={[SECTION_LBL, { color: T.ink3 }]}>{direction === 'clinic_to_lab' ? 'Gönderen Telefon' : 'Alıcı Telefon'}</Text>
+                        <Text style={[SECTION_LBL, { color: T.ink3 }]}>{isIncoming ? 'Gönderen Telefon' : 'Alıcı Telefon'}</Text>
                         <TextInput
                           value={bbkRecPhone}
                           onChangeText={setBbkRecPhone}
@@ -1896,16 +2011,22 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                 onPress={editDelivery ? handleBbkEdit : (bbkPrice == null ? handleBbkCalculate : handleBbkCreate)}
                 disabled={bbkBusy || (!editDelivery && bbkPayment == null)}
                 style={({ pressed }: any) => ({
-                  flex: 3, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-                  paddingVertical: 13, borderRadius: 999, backgroundColor: accentColor,
+                  // flex:3 idi: buton her zaman boşluğun 3/4'ünü kaplıyordu ve yazı
+                  // "İşleniyor…"a kısalınca orantısız büyük görünüyordu. Artık
+                  // genişlik YAZIYA göre; minWidth küçük etiketlerde dar kalmasını önler.
+                  flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+                  paddingVertical: 13, paddingHorizontal: 22, minWidth: 190,
+                  borderRadius: 999, backgroundColor: accentColor,
                   opacity: (bbkBusy || (!editDelivery && bbkPayment == null)) ? 0.45 : pressed ? 0.85 : 1,
                   transform: [{ scale: pressed ? 0.98 : 1 }],
                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                 })}
               >
-                {bbkBusy
-                  ? <ActivityIndicator color="#FFF" />
-                  : <Truck size={14} color="#FFF" strokeWidth={2} />}
+                <View style={{ width: 16, height: 16, alignItems: 'center', justifyContent: 'center' }}>
+                  {bbkBusy
+                    ? <ActivityIndicator size="small" color="#FFF" />
+                    : <Truck size={14} color="#FFF" strokeWidth={2} />}
+                </View>
                 <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFF' }}>
                   {bbkBusy ? 'İşleniyor…'
                     : editDelivery ? 'Düzenle & Kaydet'
@@ -1918,16 +2039,22 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                 onPress={shpRates.length === 0 ? handleShpRates : handleShpCreate}
                 disabled={shpBusy || (shpRates.length > 0 && !shpServiceId)}
                 style={({ pressed }: any) => ({
-                  flex: 3, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-                  paddingVertical: 13, borderRadius: 999, backgroundColor: accentColor,
+                  // flex:3 idi: buton her zaman boşluğun 3/4'ünü kaplıyordu ve yazı
+                  // "İşleniyor…"a kısalınca orantısız büyük görünüyordu. Artık
+                  // genişlik YAZIYA göre; minWidth küçük etiketlerde dar kalmasını önler.
+                  flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+                  paddingVertical: 13, paddingHorizontal: 22, minWidth: 190,
+                  borderRadius: 999, backgroundColor: accentColor,
                   opacity: (shpBusy || (shpRates.length > 0 && !shpServiceId)) ? 0.45 : pressed ? 0.85 : 1,
                   transform: [{ scale: pressed ? 0.98 : 1 }],
                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                 })}
               >
-                {shpBusy
-                  ? <ActivityIndicator color="#FFF" />
-                  : <Truck size={14} color="#FFF" strokeWidth={2} />}
+                <View style={{ width: 16, height: 16, alignItems: 'center', justifyContent: 'center' }}>
+                  {shpBusy
+                    ? <ActivityIndicator size="small" color="#FFF" />
+                    : <Truck size={14} color="#FFF" strokeWidth={2} />}
+                </View>
                 <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFF' }}>
                   {shpBusy ? 'İşleniyor…'
                     : shpRates.length === 0 ? 'Fiyat Sorgula'
@@ -1940,8 +2067,12 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                 onPress={handleSubmit}
                 disabled={saving}
                 style={({ pressed }: any) => ({
-                  flex: 3, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-                  paddingVertical: 13, borderRadius: 999, backgroundColor: accentColor,
+                  // flex:3 idi: buton her zaman boşluğun 3/4'ünü kaplıyordu ve yazı
+                  // "İşleniyor…"a kısalınca orantısız büyük görünüyordu. Artık
+                  // genişlik YAZIYA göre; minWidth küçük etiketlerde dar kalmasını önler.
+                  flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+                  paddingVertical: 13, paddingHorizontal: 22, minWidth: 190,
+                  borderRadius: 999, backgroundColor: accentColor,
                   opacity: saving ? 0.6 : pressed ? 0.85 : 1,
                   transform: [{ scale: pressed ? 0.98 : 1 }],
                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),

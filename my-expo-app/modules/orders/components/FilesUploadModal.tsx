@@ -481,7 +481,9 @@ export function FilesUploadModal({
       message: 'dosyası siparişten kaldırılacak. Bu işlem geri alınamaz.',
       variant: 'danger',
       label: 'Evet, sil',
-      onConfirm: () => { onRemove?.(att.id); },
+      // ConfirmDialog onayda kendini KAPATMAZ (kapatma çağırana bırakılmış) —
+      // burada kapatılmazsa dosya silinse de pencere ekranda asılı kalıyordu.
+      onConfirm: () => { setConfirm(null); onRemove?.(att.id); },
     });
   }, [onRemove]);
   const heroImages = React.useMemo(() => attachments.filter(isPreviewable), [attachments]);

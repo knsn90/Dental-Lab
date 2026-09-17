@@ -602,7 +602,8 @@ export type DeliveryPurpose =
   | 'teslimat' | 'model_alma' | 'eksik_parca'
   | 'prova_gidis' | 'prova_donus' | 'iade' | 'diger';
 
-export type DeliveryDirection = 'lab_to_clinic' | 'clinic_to_lab';
+// lab_to_other / other_to_lab: serbest gönderi (siparişsiz). Sipariş teslimatı bu ikisini kullanmaz.
+export type DeliveryDirection = 'lab_to_clinic' | 'clinic_to_lab' | 'lab_to_other' | 'other_to_lab';
 
 export const DELIVERY_PURPOSE_LABELS: Record<DeliveryPurpose, string> = {
   teslimat:    'Teslimat',
@@ -616,7 +617,8 @@ export const DELIVERY_PURPOSE_LABELS: Record<DeliveryPurpose, string> = {
 
 /** Teslimat oluştur (internal kurye veya external firma). */
 export async function createDelivery(params: {
-  workOrderId: string;
+  /** Serbest gönderide null — sipariş teslimatında zorunlu. */
+  workOrderId?: string | null;
   mode: 'internal' | 'external';
   courierId?: string;
   externalProvider?: string;
@@ -632,9 +634,15 @@ export async function createDelivery(params: {
   feeSource?: 'banabikurye' | 'manuel' | 'shipink';
   /** Çağrı anındaki üretim aşaması adı. */
   stageSnapshot?: string | null;
+  /** Serbest gönderi: karşı taraf (yöne göre alıcı ya da gönderen). */
+  partyName?: string;
+  partyAddress?: string;
+  partyPhone?: string;
+  partyLat?: number | null;
+  partyLng?: number | null;
 }): Promise<{ ok: boolean; deliveryId?: string; error?: string }> {
   const { data, error } = await supabase.rpc('create_delivery', {
-    p_work_order_id:        params.workOrderId,
+    p_work_order_id:        params.workOrderId ?? null,
     p_mode:                 params.mode,
     p_courier_id:           params.courierId ?? null,
     p_external_provider:    params.externalProvider ?? null,
@@ -646,6 +654,11 @@ export async function createDelivery(params: {
     p_fee_currency:         params.feeCurrency ?? null,
     p_fee_source:           params.feeSource ?? null,
     p_stage_snapshot:       params.stageSnapshot ?? null,
+    p_party_name:           params.partyName ?? null,
+    p_party_address:        params.partyAddress ?? null,
+    p_party_phone:          params.partyPhone ?? null,
+    p_party_lat:            params.partyLat ?? null,
+    p_party_lng:            params.partyLng ?? null,
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true, deliveryId: data as string };

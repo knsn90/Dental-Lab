@@ -31,6 +31,7 @@ import { searchPlaces, getPlaceDetails, startPlaceSession, endPlaceSession, type
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
+import { authErrorText } from '../../../core/api/authErrors';
 
 // ── Design tokens ───────────────────────────────────────────────────
 const DISPLAY = {
@@ -1747,14 +1748,9 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
           },
         });
         if (fnErr || (fnData as any)?.error) {
-          const rawMsg = (fnData as any)?.error ?? fnErr?.message ?? 'Bilinmeyen hata';
-          // Bilinen hataları kullanıcı dostu mesaja çevir
-          const friendly =
-            /already (been )?registered|user already exists|email.*exists/i.test(rawMsg)
-              ? 'Bu e-posta zaten kullanılıyor. Farklı bir e-posta deneyin.'
-            : /password.*(short|weak)|en az 6/i.test(rawMsg)
-              ? 'Şifre çok zayıf — en az 6 karakter olmalı.'
-            : rawMsg;
+          const rawMsg = (fnData as any)?.error ?? fnErr?.message ?? '';
+          // Kısa + çevrilmiş mesaj (Supabase'in uzun İngilizce şifre kuralı dahil).
+          const friendly = authErrorText(rawMsg);
           const fullMsg = `${autoT('Yetkili kaydı başarısız')}: ${friendly}`;
           setError(fullMsg);
           toast.error(fullMsg);
@@ -2282,14 +2278,8 @@ export function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, 
           },
         });
         if (fnErr || (fnData as any)?.error) {
-          const rawMsg = (fnData as any)?.error ?? fnErr?.message ?? 'Bilinmeyen hata';
-          const friendly =
-            /already (been )?registered|user already exists|email.*exists/i.test(rawMsg)
-              ? 'Bu e-posta zaten kullanılıyor. Farklı bir e-posta deneyin.'
-            : /password.*(short|weak)|en az 6/i.test(rawMsg)
-              ? 'Şifre çok zayıf — en az 6 karakter olmalı.'
-            : rawMsg;
-          setError(`${autoT('Hekim kaydedildi, ancak giriş hesabı oluşturulamadı')}: ${friendly}`);
+          const rawMsg = (fnData as any)?.error ?? fnErr?.message ?? '';
+          setError(`${autoT('Hekim kaydedildi, ancak giriş hesabı oluşturulamadı')}: ${authErrorText(rawMsg)}`);
           return;
         }
       }

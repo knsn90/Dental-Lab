@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nexadent · Kurumsal Katalog 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Hallmark · macrostructure: Editorial Document (per-page rhythm variety) · tone: professional / modern-minimal / precise
+ * theme: custom (vibe: "digital dental precision · calm navy" · paper oklch(99% .002 264) · accent oklch(72% .08 264) cool · Space Grotesk + Inter)
+ * anchor hue: navy 264  ·  axes: paper=light / display=grotesk-sans / accent=cool
+ * pre-emit critique: P5 H5 E4 S5 R4 V5
+ */
+
+:root{
+  /* paper + ink */
+  --paper:      oklch(99%  0.003 264);
+  --paper-2:    oklch(97%  0.008 264);
+  --paper-3:    oklch(94.5% 0.013 264);
+  --line:       oklch(90%  0.017 264);
+  --line-soft:  oklch(93%  0.012 264);
+  --ink:        oklch(30%  0.093 266);   /* deep navy — headings */
+  --ink-2:      oklch(45%  0.045 266);   /* body */
+  --ink-3:      oklch(60%  0.030 266);   /* muted labels */
+  --accent:     oklch(60%  0.115 266);   /* primary accent (light bg) */
+  --accent-2:   oklch(74%  0.075 266);   /* periwinkle (dark bg) */
+  /* dark surfaces */
+  --navy-0:     oklch(20%  0.055 264);
+  --navy-1:     oklch(26%  0.075 264);
+  --navy-2:     oklch(34%  0.090 264);
+  --navy-line:  color-mix(in oklch, var(--accent-2) 22%, transparent);
+  --on-navy:    oklch(96%  0.010 264);
+  --on-navy-2:  oklch(78%  0.030 264);
+  --on-navy-3:  oklch(66%  0.045 266);
+  /* type */
+  --disp: 'Space Grotesk', system-ui, sans-serif;
+  --body: 'Inter', system-ui, sans-serif;
+  /* fixed print scale (A4 portrait ≈ 794 × 1123 px @ 96dpi) */
+  --stage:#2a2f3a;
+  --radius: 4px;
+}
+
+*,*::before,*::after{ box-sizing:border-box; }
+html,body{ margin:0; }
+body{
+  background:var(--stage);
+  font-family:var(--body);
+  -webkit-print-color-adjust:exact; print-color-adjust:exact;
+  display:flex; flex-direction:column; align-items:center; gap:22px;
+  padding:26px 16px;
+}
+
+/* ---- page shell ---- */
+.page{
+  width:210mm; height:297mm; position:relative; overflow:hidden;
+  background:var(--paper); color:var(--ink-2);
+  box-shadow:0 20px 60px rgba(0,0,0,.38);
+  display:flex; flex-direction:column;
+  padding:17mm 16mm 13mm;
+}
+.page.dark{
+  color:var(--on-navy);
+  background:
+    radial-gradient(120% 90% at 78% 6%, var(--navy-2) 0%, var(--navy-1) 45%, var(--navy-0) 100%);
+}
+.grow{ flex:1 1 auto; min-height:0; }
+
+/* ---- running header / footer ---- */
+.rhead{ display:flex; align-items:center; justify-content:space-between; margin-bottom:2mm; }
+.rhead img{ height:15px; width:auto; display:block; }
+.rhead .sec{ font-family:var(--disp); font-size:8.5px; font-weight:500; letter-spacing:.28em; color:var(--ink-3); text-transform:uppercase; }
+.rfoot{ display:flex; align-items:center; justify-content:space-between; padding-top:5mm; }
+.rfoot span{ font-family:var(--disp); font-size:8px; font-weight:500; letter-spacing:.24em; color:var(--ink-3); text-transform:uppercase; }
+.rfoot .pg b{ color:var(--ink); font-weight:600; }
+.dark .rhead .sec, .dark .rfoot span{ color:var(--on-navy-3); }
+.dark .rfoot .pg b{ color:var(--on-navy); }
+.hair{ height:1px; background:var(--line); }
+.dark .hair{ background:var(--navy-line); }
+
+/* ---- eyebrow (stacked: number+rule+label ABOVE heading) ---- */
+.eyebrow{ display:flex; align-items:center; gap:11px; }
+.eyebrow .n{ font-family:var(--disp); font-size:10px; font-weight:600; letter-spacing:.12em; color:var(--accent); }
+.eyebrow .r{ width:26px; height:1px; background:var(--line); }
+.eyebrow .l{ font-family:var(--disp); font-size:9.5px; font-weight:500; letter-spacing:.28em; text-transform:uppercase; color:var(--ink-3); }
+.dark .eyebrow .n{ color:var(--accent-2); }
+.dark .eyebrow .r{ background:var(--navy-line); }
+.dark .eyebrow .l{ color:var(--on-navy-3); }
+
+/* ---- headings ---- */
+h1,h2,h3{ font-family:var(--disp); font-weight:700; color:var(--ink); margin:0; letter-spacing:-.02em; line-height:1.04; }
+.dark h1,.dark h2,.dark h3{ color:var(--on-navy); }
+.h-xl{ font-size:41px; }
+.h-lg{ font-size:33px; }
+.h-md{ font-size:23px; letter-spacing:-.015em; line-height:1.1; }
+.sub{ font-family:var(--disp); font-size:12px; font-weight:500; color:var(--accent); margin-top:8px; letter-spacing:0; }
+p{ margin:0; font-size:10.5px; line-height:1.7; color:var(--ink-2); }
+.dark p{ color:var(--on-navy-2); }
+.lead{ font-size:11px; line-height:1.7; max-width:66ch; }
+.label{ font-family:var(--disp); font-size:8.5px; font-weight:500; letter-spacing:.2em; text-transform:uppercase; color:var(--ink-3); }
+.dark .label{ color:var(--on-navy-3); }
+
+/* ================= PAGE 1 · COVER ================= */
+.cover{ padding:16mm 16mm 12mm; }
+.cover .top{ display:flex; align-items:flex-start; justify-content:space-between; z-index:2; }
+.cover .top img{ height:30px; width:auto; }
+.cover .top .meta{ text-align:right; font-family:var(--disp); font-size:9px; font-weight:500; letter-spacing:.26em; color:var(--on-navy-2); line-height:1.9; text-transform:uppercase; }
+.cover .hero-img{ position:absolute; right:6mm; top:16mm; height:calc(297mm - 30mm); width:auto; z-index:1;
+  filter:drop-shadow(0 30px 50px rgba(0,0,0,.45)); }
+.cover .body{ margin-top:auto; z-index:2; max-width:118mm; }
+.cover h1{ font-size:62px; line-height:.98; letter-spacing:-.03em; margin:14px 0 0; }
+.cover h1 .soft{ color:var(--accent-2); font-weight:500; }
+.cover .lead{ color:var(--on-navy-2); margin-top:16px; max-width:74ch; }
+.cover .topics{ display:grid; grid-template-columns:1fr 1fr; gap:11px 26px; margin-top:26px; max-width:112mm; }
+.cover .topic{ display:flex; align-items:center; gap:11px; padding-top:11px; border-top:1px solid var(--navy-line); }
+.cover .topic .tn{ font-family:var(--disp); font-size:10px; font-weight:600; color:var(--accent-2); letter-spacing:.1em; }
+.cover .topic .tt{ font-size:11px; font-weight:500; color:var(--on-navy); }
+.cover .cfoot{ display:flex; align-items:center; justify-content:space-between; margin-top:26px; z-index:2; }
+.cover .cfoot span{ font-family:var(--disp); font-size:9px; font-weight:500; letter-spacing:.24em; color:var(--on-navy-3); text-transform:uppercase; }
+
+/* ================= PAGE 2 · ABOUT ================= */
+.intro{ display:grid; grid-template-columns:1.05fr .95fr; gap:12mm; align-items:start; margin-top:8mm; }
+.intro .col p + p{ margin-top:11px; }
+.mission{ margin-top:16px; padding:14px 16px; background:var(--paper-2); border-left:2.5px solid var(--accent); }
+.mission .label{ color:var(--accent); }
+.mission q,.mission .q{ display:block; font-family:var(--disp); font-size:13px; font-weight:500; line-height:1.4; color:var(--ink); margin-top:7px; letter-spacing:-.01em; }
+.figure{ border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; background:var(--paper-2); }
+.figure img{ width:100%; height:auto; display:block; }
+.figure .cap{ font-family:var(--disp); font-size:8px; font-weight:500; letter-spacing:.18em; text-transform:uppercase; color:var(--ink-3); padding:9px 12px; border-top:1px solid var(--line); }
+
+.stat-band{ display:grid; grid-template-columns:repeat(4,1fr); background:var(--ink);
+  border-radius:var(--radius); overflow:hidden; margin-top:9mm; }
+.stat-band .s{ padding:16px 18px; border-right:1px solid color-mix(in oklch,white 12%,transparent); }
+.stat-band .s:last-child{ border-right:0; }
+.stat-band .v{ font-family:var(--disp); font-weight:700; font-size:30px; color:#fff; letter-spacing:-.02em; }
+.stat-band .v u{ font-size:15px; font-weight:500; text-decoration:none; color:var(--accent-2); margin-left:2px; }
+.stat-band .k{ font-family:var(--disp); font-size:8px; font-weight:500; letter-spacing:.18em; text-transform:uppercase; color:var(--on-navy-2); margin-top:6px; line-height:1.5; }
+
+.feat-row{ display:grid; grid-template-columns:repeat(5,1fr); gap:0; margin-top:9mm; }
+.feat{ padding:0 14px; border-left:1px solid var(--line); }
+.feat:first-child{ padding-left:0; border-left:0; }
+.feat .fn{ font-family:var(--disp); font-size:9px; font-weight:600; color:var(--accent); letter-spacing:.06em; }
+.feat .ft{ font-family:var(--disp); font-size:11.5px; font-weight:600; color:var(--ink); margin-top:8px; line-height:1.2; }
+.feat .fd{ font-size:9px; line-height:1.55; color:var(--ink-3); margin-top:6px; }
+
+/* ================= PAGE 3 · TECH & PRODUCTION ================= */
+.bento{ display:grid; grid-template-columns:1.15fr 1fr 1fr; grid-template-rows:auto auto; gap:9px; margin-top:7mm; }
+.card{ border:1px solid var(--line); border-radius:var(--radius); background:var(--paper); padding:14px; display:flex; flex-direction:column; }
+.card .kh{ display:flex; align-items:center; justify-content:space-between; }
+.card .kn{ font-family:var(--disp); font-size:10px; font-weight:600; color:var(--ink-3); letter-spacing:.08em; }
+.card .kl{ font-family:var(--disp); font-size:8px; font-weight:500; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-3); }
+.card .cimg{ flex:1; display:flex; align-items:center; justify-content:center; padding:8px 0; min-height:0; }
+.card .cimg img{ max-width:100%; max-height:96px; width:auto; object-fit:contain; }
+.card .ct{ font-family:var(--disp); font-size:14px; font-weight:600; color:var(--ink); letter-spacing:-.01em; }
+.card .cs{ font-family:var(--disp); font-size:8px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); margin-top:5px; }
+.spec{ margin-top:8px; }
+.spec .row{ display:flex; justify-content:space-between; gap:8px; padding:5px 0; border-top:1px solid var(--line-soft); font-size:9.5px; }
+.spec .row .rk{ color:var(--ink-3); }
+.spec .row .rv{ font-family:var(--disp); font-weight:600; color:var(--ink); }
+.card.big{ grid-row:span 2; background:var(--ink); border-color:var(--ink); color:#fff; padding:18px; }
+.card.big .kn{ color:#fff; }
+.card.big .kl{ color:var(--on-navy-2); }
+.card.big .cimg{ align-items:center; }
+.card.big .cimg svg{ width:78%; height:auto; opacity:.9; }
+.card.big .ct{ color:#fff; font-size:20px; }
+.card.big .cs{ color:var(--accent-2); }
+.card.big .spec .row{ border-top-color:color-mix(in oklch,white 14%,transparent); font-size:10px; }
+.card.big .spec .row .rk{ color:var(--on-navy-2); }
+.card.big .spec .row .rv{ color:#fff; }
+
+.outputs{ margin-top:8mm; }
+.out-head{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:10px; }
+.out-head .ot{ font-family:var(--disp); font-size:13px; font-weight:600; color:var(--ink); }
+.out-grid{ display:grid; grid-template-columns:repeat(5,1fr); gap:9px; }
+.out{ border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; }
+.out img{ width:100%; height:76px; object-fit:cover; display:block; }
+.out .ol{ padding:8px 10px; }
+.out .ol b{ font-family:var(--disp); font-size:10px; font-weight:600; color:var(--ink); }
+.out .ol span{ display:block; font-family:var(--disp); font-size:7px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-3); margin-top:3px; }
+
+/* ================= PAGE 4 · SERVICES ================= */
+.svc-hero{ margin-top:6mm; border-radius:var(--radius); overflow:hidden; border:1px solid var(--line); }
+.svc-hero img{ width:100%; height:150px; object-fit:cover; object-position:50% 42%; display:block; }
+.svc-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:9px; margin-top:8mm; }
+.svc{ display:flex; flex-direction:column; }
+.svc .sh{ display:flex; align-items:baseline; gap:8px; }
+.svc .sn{ font-family:var(--disp); font-size:11px; font-weight:700; color:var(--accent); }
+.svc .st{ font-family:var(--disp); font-size:11px; font-weight:600; color:var(--ink); letter-spacing:.01em; line-height:1.15; }
+.svc .simg{ height:112px; margin:10px 0; display:flex; align-items:center; justify-content:center;
+  background:var(--paper-2); border:1px solid var(--line); border-radius:var(--radius); }
+.svc .simg img{ max-height:96px; max-width:86%; width:auto; object-fit:contain; }
+.svc ul{ list-style:none; margin:0; padding:0; }
+.svc li{ font-size:9.5px; color:var(--ink-2); padding:5px 0 5px 12px; position:relative; border-top:1px solid var(--line-soft); }
+.svc li:first-child{ border-top:0; }
+.svc li::before{ content:""; position:absolute; left:0; top:10px; width:4px; height:4px; border-radius:50%; background:var(--accent); }
+
+/* ================= PAGE 5 · PHOTOGRAMMETRY (dark) ================= */
+.pg-top{ display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-top:6mm; }
+.pg-fig{ border-radius:var(--radius); overflow:hidden; border:1px solid var(--navy-line); background:rgba(0,0,0,.2); }
+.pg-fig img{ width:100%; height:142px; object-fit:cover; display:block; }
+.pg-fig .cap{ font-family:var(--disp); font-size:8px; font-weight:500; letter-spacing:.16em; text-transform:uppercase; color:var(--on-navy-3); padding:8px 11px; }
+.pg-wide{ margin-top:9px; border-radius:var(--radius); overflow:hidden; border:1px solid var(--navy-line); }
+.pg-wide img{ width:100%; height:172px; object-fit:cover; display:block; }
+.pg-wide .cap{ display:flex; justify-content:space-between; padding:8px 12px; background:rgba(0,0,0,.25); }
+.pg-wide .cap span{ font-family:var(--disp); font-size:8px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--on-navy-3); }
+.pg-wide .cap b{ color:var(--on-navy); font-weight:600; }
+.pg-feats{ display:grid; grid-template-columns:repeat(4,1fr); gap:0; margin-top:8mm; }
+.pg-feats .f{ padding:0 13px; border-left:1px solid var(--navy-line); }
+.pg-feats .f:first-child{ padding-left:0; border-left:0; }
+.pg-feats .ft{ font-family:var(--disp); font-size:11.5px; font-weight:600; color:var(--on-navy); }
+.pg-feats .fd{ font-size:9px; line-height:1.55; color:var(--on-navy-2); margin-top:7px; }
+.pg-stats{ display:grid; grid-template-columns:repeat(3,1fr); gap:9px; margin-top:auto; }
+.pg-stats .s{ border:1px solid var(--navy-line); border-radius:var(--radius); padding:15px 18px; background:rgba(255,255,255,.03); }
+.pg-stats .v{ font-family:var(--disp); font-weight:700; font-size:27px; color:var(--on-navy); letter-spacing:-.02em; }
+.pg-stats .v u{ font-size:14px; font-weight:500; text-decoration:none; color:var(--accent-2); }
+.pg-stats .k{ font-family:var(--disp); font-size:8px; font-weight:500; letter-spacing:.16em; text-transform:uppercase; color:var(--on-navy-2); margin-top:6px; }
+
+/* ================= PAGE 6 · WORKFLOW & SIMAN ================= */
+.timeline{ display:flex; align-items:flex-start; justify-content:space-between; margin-top:8mm; position:relative; }
+.timeline::before{ content:""; position:absolute; left:5%; right:5%; top:13px; height:1px; background:var(--line); z-index:0; }
+.tstep{ display:flex; flex-direction:column; align-items:center; gap:8px; position:relative; z-index:1; width:13%; }
+.tstep .dot{ width:27px; height:27px; border-radius:50%; background:var(--ink); color:#fff;
+  font-family:var(--disp); font-size:11px; font-weight:600; display:flex; align-items:center; justify-content:center; }
+.tstep.done .dot{ background:var(--accent-2); color:var(--ink); }
+.tstep .tt{ font-family:var(--disp); font-size:9px; font-weight:600; color:var(--ink); text-align:center; line-height:1.2; }
+.tstep .ts{ font-family:var(--disp); font-size:7px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-3); }
+.steps{ display:grid; grid-template-columns:1fr 1fr; gap:0 14mm; margin-top:8mm; }
+.step{ display:flex; gap:11px; padding:11px 0; border-top:1px solid var(--line-soft); }
+.step .sn{ font-family:var(--disp); font-size:9px; font-weight:600; color:var(--accent); flex:0 0 auto; padding-top:2px; }
+.step .stt{ font-family:var(--disp); font-size:11.5px; font-weight:600; color:var(--ink); }
+.step .std{ font-size:9px; line-height:1.5; color:var(--ink-2); margin-top:3px; }
+.siman{ margin-top:auto; display:grid; grid-template-columns:auto 1fr; gap:16px; align-items:center;
+  background:var(--ink); border-radius:var(--radius); padding:16px 18px; color:#fff; }
+.siman .logo{ width:78px; height:78px; border-radius:8px; background:#fff; display:flex; align-items:center; justify-content:center; }
+.siman .logo img{ width:60px; height:auto; }
+.siman .sl{ font-family:var(--disp); font-size:8px; font-weight:500; letter-spacing:.2em; text-transform:uppercase; color:var(--on-navy-2); }
+.siman h3{ color:#fff; font-size:15px; margin-top:4px; }
+.siman p{ color:var(--on-navy-2); font-size:9.5px; margin-top:6px; max-width:78ch; }
+.chips{ display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; align-items:center; }
+.chips .cl{ font-family:var(--disp); font-size:8px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:var(--accent-2); margin-right:4px; }
+.chip{ font-family:var(--disp); font-size:8.5px; font-weight:500; color:var(--on-navy); padding:3px 9px; border:1px solid var(--navy-line); border-radius:100px; }
+
+/* ================= PAGE 7 · PORTFOLIO & PACKAGING ================= */
+.gal{ display:grid; grid-template-columns:repeat(4,1fr); grid-auto-rows:96px; gap:8px; margin-top:6mm; }
+.gal .g{ position:relative; border-radius:var(--radius); overflow:hidden; border:1px solid var(--line); background:var(--paper-2); }
+.gal .g img{ width:100%; height:100%; object-fit:cover; display:block; }
+.gal .g .num{ position:absolute; top:7px; right:7px; font-family:var(--disp); font-size:8px; font-weight:600;
+  color:#fff; background:rgba(15,22,45,.6); padding:2px 6px; border-radius:3px; letter-spacing:.08em; }
+.gal .w2{ grid-column:span 2; } .gal .h2{ grid-row:span 2; }
+.pack{ margin-top:8mm; }
+.pack-grid{ display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-top:10px; }
+.pack .pf{ border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; background:var(--paper-2); }
+.pack .pf img{ width:100%; height:130px; object-fit:contain; display:block; padding:8px; }
+.pack .pf .cap{ font-family:var(--disp); font-size:8px; font-weight:500; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-3); padding:8px 12px; border-top:1px solid var(--line); }
+
+/* ================= PAGE 8 · WHY + CONTACT ================= */
+.p8{ padding:0; }
+.p8 .light{ padding:17mm 16mm 9mm; display:flex; flex-direction:column; }
+.p8 .dark-band{ background:radial-gradient(120% 120% at 82% 0%, var(--navy-2) 0%, var(--navy-1) 48%, var(--navy-0) 100%);
+  color:var(--on-navy); padding:12mm 16mm 12mm; margin-top:auto; }
+.cmp{ width:100%; border-collapse:collapse; margin-top:6mm; }
+.cmp th,.cmp td{ text-align:left; padding:9px 12px; font-size:10px; border-bottom:1px solid var(--line); }
+.cmp thead th{ font-family:var(--disp); font-size:8.5px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:#fff; background:var(--ink); }
+.cmp thead th:not(:first-child){ text-align:center; }
+.cmp td.k{ color:var(--ink-2); }
+.cmp td.nx{ text-align:center; font-family:var(--disp); font-weight:600; color:var(--ink); }
+.cmp td.tr{ text-align:center; color:var(--ink-3); }
+.partners{ margin-top:8mm; }
+.partners .pr{ display:flex; align-items:center; justify-content:space-between; gap:20px; margin-top:12px; }
+.partners img{ height:19px; width:auto; opacity:.62; filter:grayscale(1); }
+.contact-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px 26px; margin-top:6mm; max-width:120mm; }
+.cx .k{ font-family:var(--disp); font-size:8px; font-weight:500; letter-spacing:.2em; text-transform:uppercase; color:var(--on-navy-3); }
+.cx .v{ font-size:12px; font-weight:500; color:var(--on-navy); margin-top:3px; line-height:1.45; }
+.p8 .cta-wrap{ display:grid; grid-template-columns:1.4fr auto; gap:20mm; align-items:center; }
+.p8 h2.cta{ font-size:40px; line-height:1; }
+.p8 h2.cta .soft{ color:var(--accent-2); font-weight:500; }
+.p8 .cta-lead{ color:var(--on-navy-2); font-size:10.5px; line-height:1.7; margin-top:14px; max-width:60ch; }
+.qr{ background:#fff; border-radius:10px; padding:14px; text-align:center; }
+.qr img{ width:120px; height:120px; display:block; }
+.qr b{ display:block; font-family:var(--disp); font-size:10px; font-weight:600; color:var(--ink); margin-top:9px; }
+.qr span{ font-family:var(--disp); font-size:7px; font-weight:500; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-3); }
+.p8 .clfoot{ display:flex; align-items:center; justify-content:space-between; margin-top:11mm; padding-top:6mm; border-top:1px solid var(--navy-line); }
+.p8 .clfoot img{ height:22px; }
+.p8 .clfoot .r{ text-align:right; }
+.p8 .clfoot .r span{ display:block; font-family:var(--disp); font-size:8px; font-weight:500; letter-spacing:.22em; text-transform:uppercase; color:var(--on-navy-3); line-height:1.9; }
+
+/* ---- print ---- */
+@page{ size:A4; margin:0; }
+@media print{
+  body{ background:#fff; padding:0; gap:0; }
+  .page{ box-shadow:none; break-after:page; }
+  .page:last-child{ break-after:auto; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============ PAGE 1 · KAPAK ============ -->
+<section class="page dark cover">
+  <div class="top">
+    <img src="img/logo-white.png" alt="Nexadent">
+    <div class="meta">Kurumsal Katalog<br>2026 · Digital Dental Lab</div>
+  </div>
+  <img class="hero-img" src="img/cover-hero.png" alt="İmplant üstü restorasyon">
+  <div class="body">
+    <div class="eyebrow"><span class="r" style="width:22px"></span><span class="l">CAD/CAM · 3D · Photogrammetry</span></div>
+    <h1>Dijital<br>Hassasiyet.<br><span class="soft">Kusursuz Sonuçlar.</span></h1>
+    <p class="lead">Kliniğiniz için tam dijital iş akışıyla üretilen, yüksek hassasiyetli sabit ve implant üstü restorasyonlar. Tasarımdan teslimata her aşamada ölçülebilir kalite.</p>
+    <div class="topics">
+      <div class="topic"><span class="tn">01</span><span class="tt">CAD/CAM Üretim</span></div>
+      <div class="topic"><span class="tn">02</span><span class="tt">3D Baskı Teknolojileri</span></div>
+      <div class="topic"><span class="tn">03</span><span class="tt">Photogrammetry</span></div>
+      <div class="topic"><span class="tn">04</span><span class="tt">Dijital Vaka Yönetimi</span></div>
+    </div>
+  </div>
+  <div class="cfoot">
+    <span>www.nexadentlab.com</span>
+    <span>Precision · Dental · Technology</span>
+  </div>
+</section>
+
+<!-- ============ PAGE 2 · HAKKINDA ============ -->
+<section class="page">
+  <div class="rhead"><img src="img/logo-dark.png" alt="Nexadent"><span class="sec">Hakkımızda</span></div>
+  <div class="hair"></div>
+  <div style="margin-top:9mm">
+    <div class="eyebrow"><span class="n">01</span><span class="r"></span><span class="l">Hakkında</span></div>
+    <h1 class="h-lg" style="margin-top:14px">Nexadent Hakkında</h1>
+    <div class="sub">Dijital teknoloji ile güvenilir restorasyonlar</div>
+  </div>
+
+  <div class="intro">
+    <div class="col">
+      <p>Nexadent, dijital diş hekimliğinin sunduğu hassasiyeti klinik pratiğe taşıyan bir üretim laboratuvarıdır. Intraoral tarama verisinden başlayıp CAD/CAM üretim, 3D baskı ve photogrammetry teknolojilerini tek bir kontrollü iş akışında birleştiririz.</p>
+      <p>Hekimin tasarım onayından nihai teslimata kadar her adımı izlenebilir, tekrarlanabilir ve ölçülebilir hâle getirir; kliniklere tutarlı, öngörülebilir sonuçlar sunarız. Her vaka dijital olarak arşivlenir ve aynı standartta yeniden üretilebilir.</p>
+      <div class="mission">
+        <span class="label">Misyonumuz</span>
+        <span class="q">“Dijital hassasiyeti, her klinik için erişilebilir ve güvenilir bir standart hâline getirmek.”</span>
+      </div>
+    </div>
+    <div class="figure">
+      <img src="img/ecosystem.png" alt="Dijital üretim ekosistemi">
+      <div class="cap">Dijital Üretim Ekosistemi · SprintRay</div>
+    </div>
+  </div>
+
+  <div class="stat-band">
+    <div class="s"><div class="v">&lt;10<u>μm</u></div><div class="k">Üretim<br>Toleransı</div></div>
+    <div class="s"><div class="v">%100</div><div class="k">Dijital<br>İş Akışı</div></div>
+    <div class="s"><div class="v">48<u>sa</u></div><div class="k">Tipik<br>Teslim Süresi</div></div>
+    <div class="s"><div class="v">5<u>Eksen</u></div><div class="k">CAD/CAM<br>Kazıma</div></div>
+  </div>
+
+  <div class="feat-row">
+    <div class="feat"><div class="fn">01</div><div class="ft">Dijital İş Akışı</div><div class="fd">Uçtan uca tek dijital zincir.</div></div>
+    <div class="feat"><div class="fn">02</div><div class="ft">Yüksek Hassasiyetli Üretim</div><div class="fd">Mikron seviyesinde işleme.</div></div>
+    <div class="feat"><div class="fn">03</div><div class="ft">Kalite Kontrol</div><div class="fd">Her vakada doğrulama.</div></div>
+    <div class="feat"><div class="fn">04</div><div class="ft">Hızlı Teslimat</div><div class="fd">Öngörülebilir teslim takvimi.</div></div>
+    <div class="feat"><div class="fn">05</div><div class="ft">Hekim Odaklı Hizmet</div><div class="fd">Vaka bazlı iletişim.</div></div>
+  </div>
+
+  <div class="grow"></div>
+  <div class="hair"></div>
+  <div class="rfoot"><span>Kurumsal Katalog · 2026</span><span class="pg"><b>02</b> / 08</span></div>
+</section>
+
+<!-- ============ PAGE 3 · TEKNOLOJİ & ÜRETİM ============ -->
+<section class="page">
+  <div class="rhead"><img src="img/logo-dark.png" alt="Nexadent"><span class="sec">Teknoloji</span></div>
+  <div class="hair"></div>
+  <div style="margin-top:9mm">
+    <div class="eyebrow"><span class="n">02</span><span class="r"></span><span class="l">Altyapı</span></div>
+    <h1 class="h-lg" style="margin-top:14px">Teknolojik Altyapımız</h1>
+    <p class="lead" style="margin-top:12px">Hassasiyeti garanti altına alan ekipman parkurumuz; tarama, tasarım, kazıma, 3D baskı ve sinterleme süreçlerini kalibre edilmiş bir bütün olarak çalıştırır.</p>
+  </div>
+
+  <div class="bento">
+    <div class="card big">
+      <div class="kh"><span class="kn">01</span><span class="kl">Subtractive · Milling</span></div>
+      <div class="cimg">
+        <svg viewBox="0 0 120 90" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".85">
+          <rect x="14" y="12" width="92" height="56" rx="4"/><line x1="60" y1="12" x2="60" y2="30"/>
+          <circle cx="60" cy="38" r="10"/><circle cx="60" cy="38" r="2.5" fill="currentColor" stroke="none"/>
+          <line x1="30" y1="60" x2="90" y2="60"/><circle cx="34" cy="78" r="3"/><line x1="46" y1="78" x2="92" y2="78"/>
+        </svg>
+      </div>
+      <div class="ct">5 Eksen CAD/CAM Kazıma</div>
+      <div class="cs">Zirkonya · Cam Seramik · Titanyum</div>
+      <div class="spec">
+        <div class="row"><span class="rk">Eksen</span><span class="rv">5</span></div>
+        <div class="row"><span class="rk">Tolerans</span><span class="rv">&lt; 10 μm</span></div>
+        <div class="row"><span class="rk">Malzeme</span><span class="rv">ZrO₂ / Ti / PMMA</span></div>
+        <div class="row"><span class="rk">İşleme</span><span class="rv">Islak & Kuru</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="kh"><span class="kn">02</span></div>
+      <div class="cimg"><img src="img/sprintray.png" alt="SprintRay Pro 2"></div>
+      <div class="ct">SprintRay Pro 2</div>
+      <div class="cs">3D Baskı / DLP</div>
+      <div class="spec">
+        <div class="row"><span class="rk">Çözünürlük</span><span class="rv">50 μm</span></div>
+        <div class="row"><span class="rk">Uygulama</span><span class="rv">Guide / Model</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="kh"><span class="kn">03</span></div>
+      <div class="cimg"><img src="img/medit-scan.jpg" alt="Medit i900" style="border-radius:3px;max-height:82px"></div>
+      <div class="ct" style="font-size:13px">Medit i900 Mobility</div>
+      <div class="cs">İntraoral · iPad Tabanlı</div>
+      <div class="spec">
+        <div class="row"><span class="rk">FOV</span><span class="rv">18 × 15 mm</span></div>
+        <div class="row"><span class="rk">Çıktı</span><span class="rv">STL / PLY</span></div>
+      </div>
+    </div>
+
+    <div class="card" style="grid-column:2 / span 2">
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:center;height:100%">
+        <img src="img/ivoclar.jpg" alt="Ivoclar P310" style="width:90px;height:auto;border-radius:3px">
+        <div>
+          <div class="kl" style="margin-bottom:4px">05 · Porselen Fırını</div>
+          <div class="ct">Ivoclar Programat P310</div>
+          <div class="cs">Pişirme / Cila</div>
+          <p style="font-size:9px;margin-top:7px;color:var(--ink-3)">Sinterleme ve glazür süreçleri; renk ve yüzey tutarlılığı için kalibre edilmiş fırınlama.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="outputs">
+    <div class="out-head">
+      <span class="ot">Additive Üretim · SprintRay Ekosistemi</span>
+      <span class="label">Açık .STL Akışı · 50 μm Katman</span>
+    </div>
+    <div class="out-grid">
+      <div class="out"><img src="img/out-guide.jpg" alt=""><div class="ol"><b>Cerrahi Rehber</b><span>Surgical Guide</span></div></div>
+      <div class="out"><img src="img/out-models.jpg" alt=""><div class="ol"><b>Dental Modeller</b><span>Dental Models</span></div></div>
+      <div class="out"><img src="img/out-crownbridge.jpg" alt=""><div class="ol"><b>Kron & Köprü</b><span>Crown & Bridge</span></div></div>
+      <div class="out"><img src="img/out-splint.jpg" alt=""><div class="ol"><b>Gece Plağı & Splint</b><span>Nightguard</span></div></div>
+      <div class="out"><img src="img/out-aligner.jpg" alt=""><div class="ol"><b>Şeffaf Plak</b><span>Clear Aligner</span></div></div>
+    </div>
+  </div>
+
+  <div class="grow"></div>
+  <div class="hair"></div>
+  <div class="rfoot"><span>Subtractive + Additive</span><span class="pg"><b>03</b> / 08</span></div>
+</section>
+
+<!-- ============ PAGE 4 · HİZMETLER ============ -->
+<section class="page">
+  <div class="rhead"><img src="img/logo-dark.png" alt="Nexadent"><span class="sec">Hizmetler</span></div>
+  <div class="hair"></div>
+  <div style="margin-top:9mm">
+    <div class="eyebrow"><span class="n">03</span><span class="r"></span><span class="l">Hizmetlerimiz</span></div>
+    <h1 class="h-md" style="margin-top:14px;max-width:130mm">Tam dijital iş akışıyla üretilen yüksek hassasiyetli restorasyon çözümleri</h1>
+  </div>
+
+  <div class="svc-hero"><img src="img/services-hero.jpg" alt="Zirkonya köprü restorasyonu"></div>
+
+  <div class="svc-grid">
+    <div class="svc">
+      <div class="sh"><span class="sn">01</span><span class="st">Sabit Restorasyonlar</span></div>
+      <div class="simg"><img src="img/svc-fixed.png" alt=""></div>
+      <ul><li>Monolitik Zirkonya</li><li>Multilayer Zirkonya</li><li>E.max</li><li>Veneer</li><li>Inlay / Onlay</li></ul>
+    </div>
+    <div class="svc">
+      <div class="sh"><span class="sn">02</span><span class="st">İmplant Çözümleri</span></div>
+      <div class="simg"><img src="img/svc-implant.png" alt=""></div>
+      <ul><li>Vida Tutuculu</li><li>Ti-Base</li><li>Kişiye Özel Abutment</li><li>Full Arch</li></ul>
+    </div>
+    <div class="svc">
+      <div class="sh"><span class="sn">03</span><span class="st">Dijital Tasarım</span></div>
+      <div class="simg"><img src="img/svc-design.png" alt=""></div>
+      <ul><li>Smile Design</li><li>Mockup</li><li>Photogrammetry</li></ul>
+    </div>
+    <div class="svc">
+      <div class="sh"><span class="sn">04</span><span class="st">3D Üretim</span></div>
+      <div class="simg"><img src="img/svc-3d.png" alt=""></div>
+      <ul><li>Cerrahi Rehber</li><li>Modeller</li><li>Geçici Restorasyonlar</li></ul>
+    </div>
+  </div>
+
+  <div class="grow"></div>
+  <div class="hair"></div>
+  <div class="rfoot"><span>Fixed · Implant · Digital · 3D</span><span class="pg"><b>04</b> / 08</span></div>
+</section>
+
+<!-- ============ PAGE 5 · PHOTOGRAMMETRY ============ -->
+<section class="page dark">
+  <div class="rhead"><img src="img/logo-white.png" alt="Nexadent" style="height:14px"><span class="sec">Photogrammetry</span></div>
+  <div class="hair"></div>
+  <div style="margin-top:9mm">
+    <div class="eyebrow"><span class="n">04</span><span class="r"></span><span class="l">Full Arch</span></div>
+    <h1 class="h-lg" style="margin-top:14px">Photogrammetry Çözümleri</h1>
+    <p class="lead" style="margin-top:12px">Full arch implant vakalarında pasif uyumu garanti altına almak için optik photogrammetry ile implant pozisyonlarını mikron seviyesinde doğrularız.</p>
+  </div>
+
+  <div class="pg-top">
+    <div class="pg-fig"><img src="img/photo-cam.jpg" alt="iCam4D"><div class="cap">iCam4D · Optik Photogrammetry</div></div>
+    <div class="pg-fig"><img src="img/photo-ioconnect.jpg" alt="iO Connect"><div class="cap">iO Connect · Dijital Verifikasyon</div></div>
+  </div>
+  <div class="pg-wide">
+    <img src="img/photo-verify.jpg" alt="Photogrammetry doğrulama">
+    <div class="cap"><b>Photogrammetry Doğrulama · Full Arch İmplant Modeli</b><span>Fiziksel Model → Dijital Ölçüm</span></div>
+  </div>
+
+  <div class="pg-feats">
+    <div class="f"><div class="ft">Full Arch İş Akışı</div><div class="fd">Tam çene vakalarında dijital olarak doğrulanmış implant pozisyonları ile tek seferde doğru altyapı.</div></div>
+    <div class="f"><div class="ft">Passive Fit Kavramı</div><div class="fd">Gerilimsiz, pasif uyum; vidalama sırasında implant ve protez üzerindeki kuvvetleri en aza indirir.</div></div>
+    <div class="f"><div class="ft">İmplant Verifikasyonu</div><div class="fd">Optik ölçüm ile implant açısı ve konumu üretim öncesinde objektif olarak doğrulanır.</div></div>
+    <div class="f"><div class="ft">Hassasiyet Avantajı</div><div class="fd">Geleneksel ölçü hatalarını ortadan kaldırarak tekrar üretimini ve klinik düzeltmeleri azaltır.</div></div>
+  </div>
+
+  <div class="grow"></div>
+  <div class="pg-stats">
+    <div class="s"><div class="v">&lt;10<u>μm</u></div><div class="k">Konum Doğruluğu</div></div>
+    <div class="s"><div class="v">%100</div><div class="k">Pasif Uyum Hedefi</div></div>
+    <div class="s"><div class="v">1</div><div class="k">Seferde Doğru Altyapı</div></div>
+  </div>
+  <div class="hair" style="margin-top:6mm"></div>
+  <div class="rfoot"><span>Optik Verifikasyon</span><span class="pg"><b>05</b> / 08</span></div>
+</section>
+
+<!-- ============ PAGE 6 · İŞ AKIŞI & SIMAN ============ -->
+<section class="page">
+  <div class="rhead"><img src="img/logo-dark.png" alt="Nexadent"><span class="sec">İş Akışı</span></div>
+  <div class="hair"></div>
+  <div style="margin-top:9mm">
+    <div class="eyebrow"><span class="n">05</span><span class="r"></span><span class="l">Süreç</span></div>
+    <h1 class="h-lg" style="margin-top:14px">Dijital İş Akışı</h1>
+    <p class="lead" style="margin-top:12px">Her vaka, tarama verisinin alınmasından teslimata kadar yedi kontrollü aşamadan geçer. Süreç boyunca veriler dijital olarak izlenir ve onaylanır.</p>
+  </div>
+
+  <div class="timeline">
+    <div class="tstep"><div class="dot">1</div><div class="tt">Intraoral Tarama</div><div class="ts">Scan</div></div>
+    <div class="tstep"><div class="dot">2</div><div class="tt">STL Transferi</div><div class="ts">Transfer</div></div>
+    <div class="tstep"><div class="dot">3</div><div class="tt">CAD Tasarım</div><div class="ts">Design</div></div>
+    <div class="tstep"><div class="dot">4</div><div class="tt">Hekim Onayı</div><div class="ts">Approval</div></div>
+    <div class="tstep"><div class="dot">5</div><div class="tt">Üretim</div><div class="ts">Production</div></div>
+    <div class="tstep"><div class="dot">6</div><div class="tt">Kalite Kontrol</div><div class="ts">QC</div></div>
+    <div class="tstep done"><div class="dot">7</div><div class="tt">Teslimat</div><div class="ts">Delivery</div></div>
+  </div>
+
+  <div class="steps">
+    <div class="step"><span class="sn">01</span><div><div class="stt">Intraoral Tarama</div><div class="std">Klinikte alınan dijital ölçü ile fiziksel ölçü ihtiyacı ortadan kalkar.</div></div></div>
+    <div class="step"><span class="sn">02</span><div><div class="stt">STL Transferi</div><div class="std">Tarama dosyaları güvenli şekilde laboratuvara aktarılır ve doğrulanır.</div></div></div>
+    <div class="step"><span class="sn">03</span><div><div class="stt">CAD Tasarım</div><div class="std">Restorasyon, anatomik ve fonksiyonel kriterlere göre dijital tasarlanır.</div></div></div>
+    <div class="step"><span class="sn">04</span><div><div class="stt">Hekim Onayı</div><div class="std">Tasarım, üretim öncesi hekim ile paylaşılır ve onaylanır.</div></div></div>
+    <div class="step"><span class="sn">05</span><div><div class="stt">Üretim</div><div class="std">Kazıma veya 3D baskı ile yüksek hassasiyetli üretim gerçekleştirilir.</div></div></div>
+    <div class="step"><span class="sn">06</span><div><div class="stt">Kalite Kontrol</div><div class="std">Uyum, marjin ve estetik kriterler ölçülerek doğrulanır.</div></div></div>
+    <div class="step"><span class="sn">07</span><div><div class="stt">Teslimat</div><div class="std">Onaylı restorasyon, planlanan takvimde kliniğe teslim edilir.</div></div></div>
+    <div class="step"><span class="sn" style="color:var(--ink-3)">✳</span><div><div class="stt">Dijital Arşiv</div><div class="std">Her vaka arşivlenir; aynı standartta yeniden üretilebilir.</div></div></div>
+  </div>
+
+  <div class="siman">
+    <div class="logo"><img src="img/siman.jpg" alt="SIMAN"></div>
+    <div>
+      <span class="sl">Dijital Platform</span>
+      <h3>SIMAN Dijital Altyapısı</h3>
+      <p>Laboratuvarımız tüm dijital operasyonlarını SIMAN platformu üzerinden yönetir. Kliniklerle iletişim, vaka yönetimi, üretim planlaması, kalite kontrol ve teslimat süreçleri tek bir dijital ekosistem içinde yürütülür.</p>
+      <div class="chips">
+        <span class="cl">Simanty · Yapay Zekâ Asistanı</span>
+        <span class="chip">Yeni Sipariş</span><span class="chip">Sipariş Takibi</span><span class="chip">Finansal İşlemler</span><span class="chip">Vaka Durumu</span><span class="chip">ve daha fazlası</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="hair" style="margin-top:7mm"></div>
+  <div class="rfoot"><span>Yedi Aşamalı Süreç</span><span class="pg"><b>06</b> / 08</span></div>
+</section>
+
+<!-- ============ PAGE 7 · PORTFOLYO & PAKETLEME ============ -->
+<section class="page">
+  <div class="rhead"><img src="img/logo-dark.png" alt="Nexadent"><span class="sec">Portfolyo</span></div>
+  <div class="hair"></div>
+  <div style="margin-top:9mm">
+    <div class="eyebrow"><span class="n">06</span><span class="r"></span><span class="l">Vaka Galerisi</span></div>
+    <h1 class="h-lg" style="margin-top:14px">Vaka Galerisi</h1>
+    <p class="lead" style="margin-top:12px">Dijital iş akışımızla üretilen monolitik ve multilayer zirkonya restorasyonlardan ve oklüzal yüzey detaylarından seçilmiş örnekler.</p>
+  </div>
+
+  <div class="gal">
+    <div class="g w2 h2"><img src="img/case-01.jpg" alt=""><span class="num">01</span></div>
+    <div class="g"><img src="img/case-02.jpg" alt=""><span class="num">02</span></div>
+    <div class="g"><img src="img/case-03.jpg" alt=""><span class="num">03</span></div>
+    <div class="g"><img src="img/case-04.jpg" alt=""><span class="num">04</span></div>
+    <div class="g"><img src="img/case-05.jpg" alt=""><span class="num">05</span></div>
+    <div class="g"><img src="img/case-06.jpg" alt=""><span class="num">06</span></div>
+    <div class="g w2"><img src="img/macro-1.jpg" alt="" style="object-position:50% 62%"><span class="num">07</span></div>
+    <div class="g h2"><img src="img/macro-2.jpg" alt=""><span class="num">08</span></div>
+  </div>
+
+  <div class="pack">
+    <div class="out-head">
+      <span class="ot">Premium Paketleme & Teslimat</span>
+      <span class="label">Marka Deneyimi · Uçtan Uca İzlenebilir</span>
+    </div>
+    <div class="pack-grid">
+      <div class="pf"><img src="img/pack-kit.png" alt="Premium ambalaj"><div class="cap">Premium Ambalaj · Marka Kiti</div></div>
+      <div class="pf"><img src="img/pack-case.png" alt="Premium taşıma kutusu"><div class="cap">Premium Taşıma Kutusu</div></div>
+    </div>
+  </div>
+
+  <div class="grow"></div>
+  <div class="hair"></div>
+  <div class="rfoot"><span>Monolitik & Multilayer Zirkonya</span><span class="pg"><b>07</b> / 08</span></div>
+</section>
+
+<!-- ============ PAGE 8 · NEDEN NEXADENT & İLETİŞİM ============ -->
+<section class="page p8">
+  <div class="light grow">
+    <div class="rhead"><img src="img/logo-dark.png" alt="Nexadent"><span class="sec">Neden Nexadent</span></div>
+    <div class="hair"></div>
+    <div style="margin-top:9mm">
+      <div class="eyebrow"><span class="n">07</span><span class="r"></span><span class="l">Avantajlar</span></div>
+      <h1 class="h-lg" style="margin-top:14px">Neden Nexadent?</h1>
+      <p class="lead" style="margin-top:12px">Kliniğinizin ilk vakasından itibaren öngörülebilir bir laboratuvar deneyimi: dijital, ölçülebilir ve tutarlı.</p>
+    </div>
+
+    <table class="cmp">
+      <thead><tr><th>Kriter</th><th>Nexadent</th><th>Geleneksel</th></tr></thead>
+      <tbody>
+        <tr><td class="k">Dijital iş akışı</td><td class="nx">Uçtan uca</td><td class="tr">Kısmi</td></tr>
+        <tr><td class="k">Üretim toleransı</td><td class="nx">&lt; 10 μm</td><td class="tr">Değişken</td></tr>
+        <tr><td class="k">Vaka arşivi & tekrar üretim</td><td class="nx">Var</td><td class="tr">Sınırlı</td></tr>
+        <tr><td class="k">Full arch doğrulama</td><td class="nx">Photogrammetry</td><td class="tr">Manuel</td></tr>
+      </tbody>
+    </table>
+
+    <div class="partners">
+      <span class="label">Donanım ve Materyal Partnerleri · Kalibre Edilmiş Bir Ekosistem</span>
+      <div class="pr">
+        <img src="img/pt-sprintray.png" alt="SprintRay">
+        <img src="img/pt-medit.png" alt="Medit">
+        <img src="img/pt-ivoclar.png" alt="Ivoclar">
+        <img src="img/pt-noritake.png" alt="Noritake">
+        <img src="img/pt-gc.png" alt="GC">
+        <img src="img/pt-kavo.png" alt="KaVo">
+        <img src="img/pt-zahndent.png" alt="Zahndent">
+      </div>
+    </div>
+  </div>
+
+  <div class="dark-band">
+    <div class="cta-wrap">
+      <div>
+        <div class="eyebrow"><span class="r" style="width:22px"></span><span class="l">İletişim · Contact</span></div>
+        <h2 class="cta" style="margin-top:12px">Birlikte<br><span class="soft">Çalışalım.</span></h2>
+        <p class="cta-lead">İlk vakanızı dijital iş akışımıza taşıyın. Tarama dosyanızı gönderin; tasarım, onay ve üretim sürecini sizin için yönetelim. Premium kaliteyi kendi kliniğinizde deneyimleyin.</p>
+        <div class="contact-grid">
+          <div class="cx"><div class="k">Telefon</div><div class="v">+90 216 606 6611</div></div>
+          <div class="cx"><div class="k">WhatsApp</div><div class="v">+90 216 606 6611</div></div>
+          <div class="cx"><div class="k">E-posta</div><div class="v">info@nexadentlab.com</div></div>
+          <div class="cx"><div class="k">Web</div><div class="v">www.nexadentlab.com</div></div>
+          <div class="cx"><div class="k">Instagram</div><div class="v">@nexadentlab</div></div>
+          <div class="cx"><div class="k">Adres</div><div class="v">Atatürk Mah. Vatan Cad. No:21 D:2, Ataşehir / İstanbul</div></div>
+        </div>
+      </div>
+      <div class="qr">
+        <img src="img/qr.png" alt="Vaka gönderimi QR">
+        <b>nexadentlab.com</b>
+        <span>Vaka Gönderimi · Web</span>
+      </div>
+    </div>
+    <div class="clfoot">
+      <img src="img/logo-white.png" alt="Nexadent">
+      <div class="r"><span>Dijital Hassasiyet · Kusursuz Sonuçlar</span><span>08 / 08 · 2026</span></div>
+    </div>
+  </div>
+</section>
+
+</body>
+</html>

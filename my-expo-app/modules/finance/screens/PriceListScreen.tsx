@@ -803,17 +803,17 @@ function buildPriceListPdfHtml(opts: {
     const sym = ccySymbol(isCustom ? (ov?.currency || sv.currency) : sv.currency);
     const baseSym = ccySymbol(sv.currency);
     const priceStr = `${sym}${(Number(effective) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 })}`;
+    // Üstü çizili standart fiyat YALNIZ indirimde anlamlı. Zamda (özel fiyat
+    // standarttan yüksek) üstü çizili daha DÜŞÜK bir tutar basmak mantıksızdı.
+    // Farklı para biriminde karşılaştırma anlamsız → orada da basılmaz.
+    const baseStr = `${baseSym}${base.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}`;
+    const struck = isCustom && sym === baseSym && (Number(effective) || 0) < base
+      ? ` <span style="font-size:9px;color:#94A3B8;text-decoration:line-through;margin-left:6px">${baseStr}</span>`
+      : '';
     if (isCustom && ov?.discountPercent != null) {
-      const baseStr = `${baseSym}${base.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}`;
-      return `${priceStr}${u} <span style="font-size:9px;color:#94A3B8;text-decoration:line-through;margin-left:6px">${baseStr}</span> <span style="font-size:9px;color:${accent};font-weight:700;margin-left:4px">-%${ov.discountPercent}</span>`;
+      return `${priceStr}${u}${struck} <span style="font-size:9px;color:${accent};font-weight:700;margin-left:4px">-%${ov.discountPercent}</span>`;
     }
-    // Özel fiyat standarttan farklıysa (tutar ya da para birimi) bunu göster —
-    // aksi halde klinik listesi standart listeyle birebir aynı görünüyordu.
-    if (isCustom && (effective !== base || sym !== baseSym)) {
-      const baseStr = `${baseSym}${base.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}`;
-      return `${priceStr}${u} <span style="font-size:9px;color:#94A3B8;text-decoration:line-through;margin-left:6px">${baseStr}</span>`;
-    }
-    return priceStr + u;
+    return `${priceStr}${u}${struck}`;
   };
 
   // Kategori bazlı grupla (sadece aktif) — istenirse kategori filtresi uygula
@@ -2264,16 +2264,24 @@ function CustomTab() {
               if (!catSvcs.length) return null;
               return (
                 <View key={cat}>
+                  {/* Standart sekmeyle AYNI görünüm: başlık + adet, satırlar beyaz kart içinde. */}
                   <View style={s.groupHeader}>
-                    <Text style={s.groupTitle}>{cat}</Text>
+                    <Text style={[s.groupTitle, isDark && { color: T.ink2 }]}>{cat}</Text>
+                    <Text style={[s.groupCount, isDark && { color: T.ink3 }]}>{catSvcs.length} hizmet</Text>
                   </View>
-                  {catSvcs.map((sv) => {
+                  <View style={[s.catCard, isDark && { backgroundColor: T.card, borderColor: T.hairline }] as any}>
+                  {catSvcs.map((sv, idx) => {
                     const override = overrides.find((o) => o.service_id === sv.id);
                     const effPrice = getEffectivePrice(sv, override);
                     return (
                       <Pressable
                         key={sv.id}
-                        style={s.overrideRow as any}
+                        style={[
+                          s.serviceRow,
+                          isDark && { borderBottomColor: T.hairline2 },
+                          idx === catSvcs.length - 1 && { borderBottomWidth: 0 },
+                          Platform.OS === 'web' ? { cursor: 'pointer' } : null,
+                        ] as any}
                         onPress={() => openEditOverride(sv)}
                       >
                         <View style={{ flex: 1 }}>
@@ -2282,7 +2290,11 @@ function CustomTab() {
                             {effPrice != null ? (
                               <>
                                 <Text style={s.overridePrice}>{(Number(effPrice) || 0).toLocaleString('tr-TR')} {priceSym(override?.custom_price != null ? (override.currency || sv.currency) : sv.currency)}</Text>
-                                <Text style={s.standardPrice}>{(Number(sv.price) || 0).toLocaleString('tr-TR')} {priceSym(sv.currency)}</Text>
+                                {/* Üstü çizili standart fiyat yalnız İNDİRİMDE gösterilir (zamda mantıksız). */}
+                                {(override?.custom_price != null ? (override.currency || sv.currency) : sv.currency) === sv.currency
+                                  && (Number(effPrice) || 0) < (Number(sv.price) || 0) && (
+                                  <Text style={s.standardPrice}>{(Number(sv.price) || 0).toLocaleString('tr-TR')} {priceSym(sv.currency)}</Text>
+                                )}
                                 {override?.discount_percent != null && (
                                   <View style={s.discountBadge}>
                                     <Text style={s.discountText}>-{override.discount_percent}%</Text>
@@ -2301,6 +2313,7 @@ function CustomTab() {
                       </Pressable>
                     );
                   })}
+                  </View>
                 </View>
               );
               });
@@ -3188,46 +3201,23 @@ function PriceListBuilderModal({
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
     setGenerating(true);
     try {
-      const html = buildHtml();
-      const iframe = document.createElement('iframe');
-      iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:820px;height:auto;border:none;';
-      document.body.appendChild(iframe);
-      const doc = iframe.contentDocument!;
-      doc.open(); doc.write(html); doc.close();
-
-      await new Promise<void>((resolve) => {
-        const imgs = Array.from(doc.images);
-        if (imgs.length === 0) return resolve();
-        let loaded = 0;
-        const tick = () => { if (++loaded >= imgs.length) resolve(); };
-        imgs.forEach(img => { if (img.complete) tick(); else { img.onload = tick; img.onerror = tick; } });
-        setTimeout(resolve, 5000);
-      });
-      await new Promise(r => setTimeout(r, 300));
-
-      const target = (doc.querySelector('.doc') as HTMLElement | null) ?? doc.body;
-      const html2pdfMod: any = await import('html2pdf.js');
-      const html2pdf = html2pdfMod.default ?? html2pdfMod;
+      // PDF = ÖNİZLEMENİN BİREBİR KENDİSİ. html2canvas rasterleştirmesi flex/tablo
+      // düzenini çökertiyordu (logo dev, sütunlar alt alta). Aynı HTML'i tarayıcının
+      // kendi yazdırma motoruna veriyoruz → "PDF olarak kaydet" önizlemeyle aynı.
+      // Pencere tıklama jesti İÇİNDE açılmalı, yoksa popup engelleyici keser.
+      const w = window.open('', '_blank');
+      if (!w) { window.alert('Açılır pencere engellendi — bu siteye izin verip tekrar deneyin.'); return; }
       // Aynı klinik için iki belge de indirilebildiğinden ad kaynağı belirtir —
       // yoksa "…_FiyatListesi_2026-08.pdf" ikisinde de aynı olup üzerine yazardı.
       const baseName = activeClinicName ? `${lab.name || 'Lab'}_${activeClinicName}` : (lab.name || 'Lab');
       const safeName = baseName.replace(/[^\wÀ-ſĞğŞşİıÇçÜüÖö -]/g, '').trim() || 'FiyatListesi';
       const kind = activeOverrides ? 'OzelFiyatListesi' : 'FiyatListesi';
-      const fileName = `${safeName}_${kind}_${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}.pdf`;
-
-      await html2pdf()
-        .from(target)
-        .set({
-          margin: [12, 10, 12, 10],
-          filename: fileName,
-          image: { type: 'jpeg', quality: 0.95 },
-          html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#FFFFFF', logging: false },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-          pagebreak: { mode: ['css', 'avoid-all'] },
-        })
-        .save();
-
-      document.body.removeChild(iframe);
+      // Yazdırma diyaloğu dosya adını <title>'dan alır.
+      const docTitle = `${safeName}_${kind}_${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+      const html = buildHtml()
+        .replace(/<title>[\s\S]*?<\/title>/, `<title>${docTitle}</title>`)
+        .replace('</body>', '<script>window.onload=function(){setTimeout(function(){window.focus();window.print();},350)}<\/script></body>');
+      w.document.write(html); w.document.close();
     } catch (e: any) {
       console.error('PDF üretim hatası', e);
       if (Platform.OS === 'web') window.alert(`PDF oluşturulamadı: ${e?.message ?? 'bilinmeyen hata'}`);

@@ -1,0 +1,332 @@
+name: Performance
+
+# Phase 13 — performance gates in CI.
+#
+#   · Every PR                → smoke (read-only, ~1 min). Fails the PR on breach.
+#   · Manual / pre-deploy     → load at a chosen profile. Fails the deploy on breach.
+#   · Nightly                 → load profile B against staging, results archived.
+#
+# Required repository secrets:
+#   PERF_STAGING_URL            https://iluffzlykfyrfnvtftwd.supabase.co
+#                               (persistent staging branch, created 2026-08-02;
+#                                20 tenants × 10 users, 10k orders, 10k stages)
+#   PERF_STAGING_ANON_KEY       staging anon key (Supabase dashboard → API)
+#   PERF_STAGING_USERS_JSON     contents of tests/performance/seed/users.json
+#                               (200 synthetic users, password is the same for all)
+#
+# ⚠️ The staging branch is a MICRO instance — 60 connections, same as production.
+# Load results above ~300 VUs measure that tier's ceiling, not the product's.
+# Isolation, RLS and data-volume tests ARE meaningful there; raw concurrency is not.
+#   PERF_PROD_URL               (optional) production URL — smoke only, read-only
+#   PERF_PROD_ANON_KEY          (optional)
+#   PERF_PROD_USERS_JSON        (optional) a single read-only production account
+#
+# Writes never run against production: config.js throws if ALLOW_WRITES=true and
+# TARGET_ENV=production, and this workflow never sets both.
+
+on:
+  pull_request:
+    paths:
+      - 'my-expo-app/modules/**'
+      - 'my-expo-app/core/**'
+      - 'my-expo-app/lib/**'
+      - 'my-expo-app/app/**'
+      - 'my-expo-app/supabase/migrations/**'
+      - 'my-expo-app/tests/performance/**'
+      - '.github/workflows/performance.yml'
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: 'Scenario to run'
+        required: true
+        default: 'load'
+        type: choice
+        options: [smoke, load, stress, spike, soak, multitenant]
+      profile:
+        description: 'Load profile (A=20 B=100 C=300 D=1000 E=3000 F=5000)'
+        required: false
+        default: 'B'
+        type: choice
+        options: [A, B, C, D, E, F]
+      allow_writes:
+        description: 'Enable write flows (staging only)'
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    # 02:00 UTC nightly — off-peak for a Turkey-based user base.
+    #
+    # 2026-08-06: this used to ALSO drive the `scenario` job against the
+    # `staging` preview branch. That branch was deleted (it sat at 19/162
+    # tables — MIGRATIONS_FAILED — so no scenario could give a meaningful
+    # result, while its compute was billed around the clock).
+    #
+    # The cron stays because `prod-probe` does NOT need staging: 1 VU,
+    # read-only against production, `continue-on-error`, and it skips itself
+    # when PERF_PROD_USERS_JSON is unset. Dropping the schedule would have
+    # thrown away a working, harmless canary for no gain.
+    #
+    # `scenario` (load/stress/spike/soak/multitenant) is now manual-only. To
+    # bring the nightly load test back: recreate a staging branch, seed it
+    # (my-expo-app/tests/performance/seed/), restore the PERF_STAGING_*
+    # secrets, then re-add `schedule` to that job's `if:`.
+    - cron: '0 2 * * *'
+
+concurrency:
+  # Never run two load tests against the same environment at once; the results
+  # would be meaningless and the staging DB would take the double hit.
+  group: perf-${{ github.event.inputs.scenario || 'smoke' }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: my-expo-app
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # PR gate: smoke only. Read-only, fast, and fails the PR on any breach.
+  # ──────────────────────────────────────────────────────────────────────────
+  smoke:
+    if: github.event_name == 'pull_request'
+    name: Smoke (PR gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring \
+            --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+            --keyserver hkp://keyserver.ubuntu.com:80 \
+            --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
+            | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update -qq && sudo apt-get install -y k6
+          k6 version
+
+      - name: Write users file
+        env:
+          USERS_JSON: ${{ secrets.PERF_STAGING_USERS_JSON }}
+        run: |
+          if [ -z "$USERS_JSON" ]; then
+            echo "::error::PERF_STAGING_USERS_JSON secret is not set — the smoke test cannot authenticate."
+            exit 1
+          fi
+          printf '%s' "$USERS_JSON" > tests/performance/seed/users.json
+          echo "users: $(python3 -c 'import json,sys;print(len(json.load(open("tests/performance/seed/users.json"))))')"
+
+      - name: Run smoke
+        env:
+          BASE_URL: ${{ secrets.PERF_STAGING_URL }}
+          ANON_KEY: ${{ secrets.PERF_STAGING_ANON_KEY }}
+        run: |
+          mkdir -p tests/performance/results
+          k6 run \
+            -e BASE_URL="$BASE_URL" \
+            -e ANON_KEY="$ANON_KEY" \
+            -e TARGET_ENV=staging \
+            -e SMOKE_VUS=2 \
+            -e SMOKE_ITERATIONS=2 \
+            tests/performance/smoke.js
+
+      - name: Remove credentials
+        if: always()
+        run: rm -f tests/performance/seed/users.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-results-${{ github.run_id }}
+          path: my-expo-app/tests/performance/results/
+          retention-days: 14
+
+      - name: Comment results on PR
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const p = 'my-expo-app/tests/performance/results/smoke-summary.json';
+            if (!fs.existsSync(p)) return;
+            const r = JSON.parse(fs.readFileSync(p, 'utf8'));
+            const rows = Object.entries(r.flows || {})
+              .sort((a, b) => (b[1].p95 || 0) - (a[1].p95 || 0))
+              .map(([n, f]) =>
+                `| \`${n}\` | ${Math.round(f.p50 ?? 0)} | ${Math.round(f.p95 ?? 0)} | ` +
+                `${((f.error_rate ?? 0) * 100).toFixed(2)}% | ${(f.avg_requests ?? 0).toFixed(1)} |`)
+              .join('\n');
+            const body = [
+              '### ⚡ Performance smoke',
+              '',
+              `**${r.thresholds_passed ? '✅ All thresholds passed' : '❌ Threshold breach'}** · ` +
+              `global p95 **${Math.round(r.global.p95 ?? 0)} ms** · ` +
+              `errors ${((r.global.failure_rate ?? 0) * 100).toFixed(2)}%`,
+              '',
+              '| Flow | p50 (ms) | p95 (ms) | err% | reqs |',
+              '|---|---|---|---|---|',
+              rows,
+              '',
+              '<sub>SLOs: [docs/performance-targets.md](docs/performance-targets.md)</sub>',
+            ].join('\n');
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Manual only: full scenarios against staging.
+  #
+  # Was also nightly; the staging branch it targeted is gone (see `schedule`
+  # above). Running it on a cron now would fail every night against a database
+  # that does not exist, and a permanently red workflow is one nobody reads.
+  # ──────────────────────────────────────────────────────────────────────────
+  scenario:
+    if: github.event_name == 'workflow_dispatch'
+    name: ${{ github.event.inputs.scenario || 'load' }} (${{ github.event.inputs.profile || 'B' }})
+    runs-on: ubuntu-latest
+    # Soak needs its own long budget; everything else fits well inside 90 min.
+    timeout-minutes: ${{ github.event.inputs.scenario == 'soak' && 1500 || 90 }}
+    environment: performance-staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring \
+            --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+            --keyserver hkp://keyserver.ubuntu.com:80 \
+            --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
+            | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update -qq && sudo apt-get install -y k6
+
+      - name: Raise file-descriptor limit
+        # A 1000+ VU run opens thousands of sockets; the default 1024 is the
+        # first thing that breaks and it looks like a server-side failure.
+        run: |
+          ulimit -n 65536 || true
+          echo "ulimit -n = $(ulimit -n)"
+
+      - name: Write users file
+        env:
+          USERS_JSON: ${{ secrets.PERF_STAGING_USERS_JSON }}
+        run: |
+          printf '%s' "$USERS_JSON" > tests/performance/seed/users.json
+
+      - name: Run ${{ github.event.inputs.scenario || 'load' }}
+        env:
+          BASE_URL: ${{ secrets.PERF_STAGING_URL }}
+          ANON_KEY: ${{ secrets.PERF_STAGING_ANON_KEY }}
+          SCENARIO: ${{ github.event.inputs.scenario || 'load' }}
+          PROFILE: ${{ github.event.inputs.profile || 'B' }}
+          ALLOW_WRITES: ${{ github.event.inputs.allow_writes || 'false' }}
+        run: |
+          mkdir -p tests/performance/results
+          ulimit -n 65536 || true
+          k6 run \
+            -e BASE_URL="$BASE_URL" \
+            -e ANON_KEY="$ANON_KEY" \
+            -e TARGET_ENV=staging \
+            -e LOAD_PROFILE="$PROFILE" \
+            -e ALLOW_WRITES="$ALLOW_WRITES" \
+            -e RUN_TAG="ci-${GITHUB_RUN_ID}" \
+            "tests/performance/${SCENARIO}.js"
+
+      - name: Clean up synthetic data
+        # Always runs — a failed load test still leaves rows behind.
+        if: always() && github.event.inputs.allow_writes == 'true'
+        env:
+          BASE_URL: ${{ secrets.PERF_STAGING_URL }}
+          ANON_KEY: ${{ secrets.PERF_STAGING_ANON_KEY }}
+        run: |
+          k6 run \
+            -e BASE_URL="$BASE_URL" \
+            -e ANON_KEY="$ANON_KEY" \
+            -e TARGET_ENV=staging \
+            -e ALLOW_WRITES=true \
+            -e RUN_TAG="ci-${GITHUB_RUN_ID}" \
+            tests/performance/lib/cleanup.js || echo "::warning::cleanup failed — check for leftover k6 rows"
+
+      - name: Remove credentials
+        if: always()
+        run: rm -f tests/performance/seed/users.json
+
+      - name: Generate report
+        if: always()
+        run: node scripts/perf-report.mjs || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: perf-${{ github.event.inputs.scenario || 'load' }}-${{ github.run_id }}
+          path: |
+            my-expo-app/tests/performance/results/
+            my-expo-app/docs/performance-report.md
+          retention-days: 90
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Production probe: smoke only, read-only, no writes, ever.
+  # ──────────────────────────────────────────────────────────────────────────
+  prod-probe:
+    if: github.event_name == 'schedule'
+    name: Production smoke probe (read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring \
+            --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+            --keyserver hkp://keyserver.ubuntu.com:80 \
+            --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
+            | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update -qq && sudo apt-get install -y k6
+
+      - name: Write users file
+        env:
+          USERS_JSON: ${{ secrets.PERF_PROD_USERS_JSON }}
+        run: |
+          if [ -z "$USERS_JSON" ]; then
+            echo "PERF_PROD_USERS_JSON not configured — skipping production probe."
+            exit 0
+          fi
+          printf '%s' "$USERS_JSON" > tests/performance/seed/users.json
+
+      - name: Probe production (1 VU, read-only)
+        if: hashFiles('my-expo-app/tests/performance/seed/users.json') != ''
+        env:
+          BASE_URL: ${{ secrets.PERF_PROD_URL }}
+          ANON_KEY: ${{ secrets.PERF_PROD_ANON_KEY }}
+        run: |
+          # ALLOW_WRITES is deliberately absent. config.js also refuses the
+          # production+writes combination outright.
+          k6 run \
+            -e BASE_URL="$BASE_URL" \
+            -e ANON_KEY="$ANON_KEY" \
+            -e TARGET_ENV=production \
+            -e PROD_ACK=yes-i-accept-production-load \
+            -e SMOKE_VUS=1 \
+            -e SMOKE_ITERATIONS=1 \
+            -e SKIP_REALTIME=true \
+            tests/performance/smoke.js
+
+      - name: Remove credentials
+        if: always()
+        run: rm -f tests/performance/seed/users.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: prod-probe-${{ github.run_id }}
+          path: my-expo-app/tests/performance/results/
+          retention-days: 30

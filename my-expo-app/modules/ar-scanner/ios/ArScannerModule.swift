@@ -215,14 +215,15 @@ public class ArScannerModule: Module {
             case .none:
                 promise.resolve(NSNull())
             case .some(.success(let files)):
+                // Tek dosya: köşe renkli PLY (önizlemede onaylanan ağın aynısı)
                 let dict: [String: Any] = [
-                    "asciiSTL": files.asciiSTL.path,
-                    "binarySTL": files.binarySTL.path,
-                    "obj": files.obj.path,
-                    "mtl": files.mtl?.path ?? NSNull(),
-                    "texturePNG": files.texturePNG?.path ?? NSNull(),
-                    "usdz": files.usdz?.path ?? NSNull(),
-                    "ply": NSNull(),
+                    "asciiSTL": NSNull(),
+                    "binarySTL": NSNull(),
+                    "obj": NSNull(),
+                    "mtl": NSNull(),
+                    "texturePNG": NSNull(),
+                    "usdz": NSNull(),
+                    "ply": files.ply.path,
                 ]
                 promise.resolve(dict)
             case .some(.failure(let err)):

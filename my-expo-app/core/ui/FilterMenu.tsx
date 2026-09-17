@@ -13,7 +13,7 @@
  * ekran kenarına taşarsa kırpılır, altta yer yoksa yukarı açılır.
  */
 
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, Modal, Platform, Dimensions, ScrollView } from 'react-native';
 import { ChevronDown, Check } from './icons';
 import { useMobileTokens } from '../theme/mobileDesignTokens';
@@ -34,9 +34,15 @@ interface Props {
   onChange: (key: string) => void;
   /** Seçili öğe accent'i (tik + vurgu). Verilmezse nötr mürekkep. */
   accent?: string;
+  /**
+   * Dışarıdan açtırma: değeri her DEĞİŞTİĞİNDE menü açılır (sayaç gibi artır).
+   * Kullanıcı başka bir alanda seçim yapınca "sıradaki adım burası" demek için.
+   * 0/undefined ilk render'da açmaz.
+   */
+  openSignal?: number;
 }
 
-export function FilterMenu({ label, items, active, onChange, accent }: Props) {
+export function FilterMenu({ label, items, active, onChange, accent, openSignal }: Props) {
   const T = useMobileTokens();
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -57,6 +63,13 @@ export function FilterMenu({ label, items, active, onChange, accent }: Props) {
       setOpen(true);
     }
   };
+
+  // Dışarıdan açtırma sinyali — ilk render'da (0/undefined) açmaz.
+  useEffect(() => {
+    if (openSignal) openMenu();
+    // openMenu yalnız ref okur; sinyal dışındaki bağımlılıklar menüyü tekrar açmamalı.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openSignal]);
 
   const win = Dimensions.get('window');
   const estH = Math.min(items.length * 40 + 12, 320);

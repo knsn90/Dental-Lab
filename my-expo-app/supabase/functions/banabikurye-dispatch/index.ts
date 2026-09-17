@@ -284,13 +284,19 @@ serve(async (req) => {
   }
 
   // ── calculate / create ──
-  if (!body.work_order_id) return json({ ok: false, message: 'work_order_id gerekli' });
+  // SERBEST GÖNDERİ: sipariş olmadan da çağrılabilir. O durumda teslim noktası
+  // gövdeden gelen dest_* alanlarından kurulur; adres yoksa anlamlı hata döner.
+  if (!body.work_order_id && !(body.dest_address ?? '').trim()) {
+    return json({ ok: false, message: 'work_order_id ya da dest_address gerekli' });
+  }
   if (!(await ownsWorkOrder(body.work_order_id))) return denyTenant();
-  const dst = await resolveDest(admin, body.work_order_id);
+  const dst = body.work_order_id
+    ? await resolveDest(admin, body.work_order_id)
+    : { name: 'Alıcı', phone: '', address: '', clinic: '', order_number: null as any };
 
   // Aynı kuryeyle giden ek işler (aynı klinik): rota/fiyat değişmez, sadece
   // sipariş konusuna (matter) tüm sipariş no'ları yazılır ki kurye ne taşıdığını görsün.
-  let orderLabel = String(dst.order_number ?? body.work_order_id);
+  let orderLabel = String(dst.order_number ?? body.work_order_id ?? 'serbest gönderi');
   const extraIds = Array.isArray(body.extra_work_order_ids) ? body.extra_work_order_ids.filter(Boolean) : [];
   if (extraIds.length) {
     if (!(await ownsWorkOrders(extraIds))) return denyTenant();
@@ -301,8 +307,16 @@ serve(async (req) => {
 
   // Teslim adresi: override (lab Google Places'ten onayladı) > klinik kaydı
   const destAddr  = (body.dest_address ?? '').trim() || dst.address;
-  const destPhone = normPhone((body.dest_phone ?? '').trim() || dst.phone);
-  const destName  = dst.name;
+  // Adres OVERRIDE edilmişse alıcı, siparişin kliniği DEĞİLDİR (dış servis, milling
+  // merkezi, serbest gönderi…). O durumda ad/telefon klinikten düşerse kurye yanlış
+  // kişiyi arar (2026-09-16, gönderi 7276572: adres Pi Milling, alıcı klinikti).
+  // Bilinmiyorsa kliniğe değil LABA düş — en azından gönderiyi yapan taraf.
+  const addrOverridden = !!(body.dest_address ?? '').trim();
+  const labContactName = cred.pickup_contact_name || 'Laboratuvar';
+  const destPhone = normPhone(
+    (body.dest_phone ?? '').trim() || (addrOverridden ? (cred.pickup_phone ?? '') : dst.phone),
+  );
+  const destName  = addrOverridden ? labContactName : dst.name;
 
   if (!destAddr) return json({ ok: false, message: 'Teslim adresi yok — Google Places ile arayıp seçin ya da kliniğe adres girin.' });
   if (!destPhone) return json({ ok: false, message: 'Teslim telefonu yok — hekim telefonu tanımlı değil.' });
@@ -349,7 +363,13 @@ serve(async (req) => {
 
   const orderBody: any = {
     type: svcType,
-    matter: [`Siman teslimat — ${orderLabel}${dst.clinic ? ' · ' + dst.clinic : ''}`, pointComment].filter(Boolean).join(' · ').slice(0, 250),
+    matter: (() => {
+      const base = [`Siman teslimat — ${orderLabel}${dst.clinic ? ' · ' + dst.clinic : ''}`, pointComment]
+        .filter(Boolean).join(' · ');
+      if (body.action !== 'create') return base.slice(0, 250);
+      const tag = attemptTag(`${body.work_order_id ?? ''}|${orderLabel}`);
+      return `${base.slice(0, 240)} · #${tag}`;
+    })(),
     vehicle_type_id: body.vehicle_type_id ?? 8,
     is_contact_person_notification_enabled: body.notify_recipient !== false,
     points: [pickupPoint, deliveryPoint],
@@ -461,6 +481,22 @@ async function bbkPost(env: string, token: string, path: string, payload: unknow
     return { ok: resp.ok, status: resp.status, data };
   } catch (e: any) { return { ok: false, status: 0, data: null, netErr: e?.message ?? String(e) }; }
 }
+/**
+ * Çağrı eki — aynı DAKİKA içinde aynı iş için aynı değer, dakika değişince yeni.
+ *
+ * BanaBiKurye aynı konu + aynı noktalarla gelen ikinci siparişi `order_is_duplicate`
+ * ile reddediyor. Bu koruma çift tıklamada işimize yarıyor, ama ödeme hatası gibi
+ * GERÇEK bir başarısızlıktan sonra tekrar denemeyi de imkânsız kılıyordu. Dakika
+ * kovası ikisini ayırır: saniyeler içindeki tekrar hâlâ engellenir, sonraki
+ * dakikadaki yeniden deneme geçer.
+ */
+function attemptTag(seed: string): string {
+  const bucket = Math.floor(Date.now() / 60000);
+  let h = 2166136261;
+  for (const ch of `${seed}|${bucket}`) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
+  return (h >>> 0).toString(16).padStart(8, '0').slice(0, 4);
+}
+
 function bbkErr(r: any): string {
   if (r?.netErr) return 'Ağ hatası: ' + r.netErr;
   const d = r?.data;
@@ -482,7 +518,12 @@ function bbkErr(r: any): string {
     push(d.errors ?? d.error ?? d.messages ?? null);
     // Alan bazlı hatalar: { points: [null, {comment:["unknown"]}] } gibi → "comment: unknown"
     push(d.parameter_errors ?? d.validation_errors ?? null);
-    if (parts.length) return parts.slice(0, 8).join(' · ');
+    // Ham kodlar ("order_is_duplicate") kullanıcıya bir şey anlatmıyor.
+    const TR: Record<string, string> = {
+      order_is_duplicate:  'Aynı içerikli sipariş az önce gönderilmiş; BanaBiKurye ikincisini engelledi. Bir dakika bekleyip tekrar deneyin ya da panelde bekleyen sipariş varsa iptal edin.',
+      card_payment_failed: 'Kart ödemesi başarısız oldu. Kartı kontrol edin ya da ödeme şeklini Nakit seçin.',
+    };
+    if (parts.length) return parts.map(p => TR[p] ?? p).slice(0, 8).join(' · ');
     if (d.message) return String(d.message);
     // Bilinmeyen şekil → ham JSON (kısaltılmış) ki hangi alanın sorunlu olduğu görülsün.
     try { return JSON.stringify(d).slice(0, 500); } catch { /* */ }

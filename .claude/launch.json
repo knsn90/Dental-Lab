@@ -37,6 +37,20 @@
       "autoPort": false
     },
     {
+      "name": "palomar-hero",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "/Users/saber/palomar-hero", "run", "dev"],
+      "port": 5190,
+      "autoPort": false
+    },
+    {
+      "name": "pluskimya-onizleme",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "serve", "/Users/saber/pluskimya/onizleme", "-l", "8920"],
+      "port": 8920,
+      "autoPort": false
+    },
+    {
       "name": "nexadent-catalog",
       "runtimeExecutable": "npx",
       "runtimeArgs": ["-y", "serve", "nexadent-catalog", "-l", "8912"],

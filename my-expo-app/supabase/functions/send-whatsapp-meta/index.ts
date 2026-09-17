@@ -165,10 +165,14 @@ Deno.serve(async (req) => {
   const params = tpl.params(extra);
 
   // Alıcı profillerini çek
+  // PASİF kullanıcıya hiçbir kanaldan bildirim gitmez (kullanıcı kararı 2026-09-16).
+  // is_active NULL olan eski kayıtlar AKTİF sayılır — aksi halde tüm eski profiller
+  // sessizce bildirim almayı keserdi.
   const { data: profiles } = await admin
     .from('profiles')
-    .select('id, user_type, whatsapp_phone, phone, notification_prefs')
-    .in('id', userIds);
+    .select('id, user_type, whatsapp_phone, phone, notification_prefs, is_active')
+    .in('id', userIds)
+    .or('is_active.is.null,is_active.eq.true');
 
   let sent = 0;
   const results: any[] = [];
@@ -184,10 +188,21 @@ Deno.serve(async (req) => {
     // yani buraya gelen 'lab' kaydı zaten yöneticidir. Lab şablonu olmayan
     // kategorilerde aşağıdaki `if (!lt)` ile eskisi gibi atlanır.
     let useTpl = tpl; let useParams = params;
+    // ADMİN NÜSHASI (ödeme hatırlatması): kullanıcı kararı — kliniğe giden her
+    // hatırlatmanın bir kopyası lab yöneticilerine WhatsApp'tan GİDER. payment için
+    // ayrı lab şablonu yok (Meta onayı gerekir); onaylı müşteri şablonu kullanılır,
+    // {{detay}} başına "Nüsha · <Klinik>:" eklenir ki kime gittiği görülsün.
+    const adminCopy = category === 'payment' && extra?.__admin_copy === true;
     if (pr.user_type === 'admin' || pr.user_type === 'lab') {
-      const lt = LAB_TEMPLATES[category];
-      if (!lt) { results.push({ id: pr.id, skip: 'admin-no-lab-tpl' }); continue; }
-      useTpl = lt; useParams = lt.params(extra);
+      if (adminCopy) {
+        const txt = `Nüsha · ${String(extra.__clinic_name ?? 'Klinik')}: ${String(extra.__body ?? '')}`
+          .replace(/[\t\n\r]+/g, ' ').replace(/ {2,}/g, ' ').trim();
+        useTpl = tpl; useParams = [{ name: 'detay', text: txt.length ? txt.slice(0, 700) : '—' }];
+      } else {
+        const lt = LAB_TEMPLATES[category];
+        if (!lt) { results.push({ id: pr.id, skip: 'admin-no-lab-tpl' }); continue; }
+        useTpl = lt; useParams = lt.params(extra);
+      }
     } else if (!['doctor', 'clinic', 'clinic_admin', 'clinic_secretary'].includes(pr.user_type)) {
       results.push({ id: pr.id, skip: 'not-client' }); continue;
     }
@@ -195,7 +210,9 @@ Deno.serve(async (req) => {
     const phone = normalizePhoneTR(pr.whatsapp_phone || pr.phone);
     if (!phone) { results.push({ id: pr.id, skip: 'no-phone' }); continue; }
     // Opt-out
-    const optedOut = pr?.notification_prefs?.categories?.[category]?.whatsapp === false;
+    // Admin nüshası "kesinlikle" gitsin (kullanıcı kararı) → kişisel WhatsApp kapatma
+    // tercihi bu kopyayı durdurmaz; müşteri mesajlarında opt-out aynen geçerli.
+    const optedOut = !adminCopy && pr?.notification_prefs?.categories?.[category]?.whatsapp === false;
     if (optedOut) { results.push({ id: pr.id, skip: 'opted-out' }); continue; }
 
     try {

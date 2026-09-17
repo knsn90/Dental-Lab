@@ -12,5 +12,11 @@ struct MeshSnapshot {
         self.triangleIndices = faceGeometry.triangleIndices
     }
 
+    init(vertices: [SIMD3<Float>], textureCoordinates: [SIMD2<Float>], triangleIndices: [Int16]) {
+        self.vertices = vertices
+        self.textureCoordinates = textureCoordinates
+        self.triangleIndices = triangleIndices
+    }
+
     var triangleCount: Int { triangleIndices.count / 3 }
 }

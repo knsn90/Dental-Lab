@@ -86,6 +86,7 @@ import { NO, NOType, NORadius, useNOTokens } from '../components/NOTokens';
 import { NOCard, NOCardHead } from '../components/NOCard';
 import { NOStepHeader, NOEmText, NOLabel, NOEyebrow, NOSegment, NOToggle, NOField as NOFieldPrimitive } from '../components/NOFormPrimitives';
 import { NOPageChrome } from '../components/NOPageChrome';
+import { addBusinessDays } from '../../../core/util/businessDays';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { TeethLoader } from '../../../core/ui/TeethLoader';
@@ -742,6 +743,17 @@ export function NewOrderScreen({
   }, []);
 
   const goToStep = (s: Step) => {
+    // İLERİ ATLAMA KİLİDİ: adım başlığına tıklayıp eksik adımı atlamak mümkündü.
+    // Geriye dönüş serbest (kullanıcı düzeltmeye gidiyor); ileri giderken aradaki
+    // ilk geçersiz adımda durur ve hatası görünür olur.
+    if (s > step) {
+      const blocking = ([1, 2, 3] as Step[]).filter(x => x < s).find(x => !isStepValid(x));
+      if (blocking) {
+        setStepAttempted(p => ({ ...p, [blocking]: true }));
+        setStep(blocking);
+        return;
+      }
+    }
     if (Platform.OS === 'web') {
       try {
         sessionStorage.setItem('new_order_step', String(s));
@@ -1641,19 +1653,20 @@ export function NewOrderScreen({
       if (!hasFile && !inheritsFiles) e.attachments = 'Bu model tipi için dosya yüklemelisiniz (STL / CAD / 3D)';
     }
     // Teslim tarihi kuralları YALNIZ yeni siparişte geçerli. Düzenlemede iş çoktan
-    // bitmiş olabiliyor (geçmiş teslim tarihi) — zorunluluk da "en az 72 saat sonra"
+    // bitmiş olabiliyor (geçmiş teslim tarihi) — zorunluluk da "en az 5 iş günü sonra"
     // kuralı da düzenlemeyi kilitliyordu.
     if (!isEdit) {
       if (!form.delivery_date)   e.delivery_date     = 'Teslim tarihi seçin';
       else {
-        // Normal vakada 72 saat (3 gün), acil vakada 1 gün (yarından itibaren)
-        const minDays = form.is_urgent ? 1 : 3;
-        const earliest = new Date(); earliest.setHours(0, 0, 0, 0); earliest.setDate(earliest.getDate() + minDays);
+        // Normal vakada 5 İŞ GÜNÜ, acil vakada 1 iş günü. Hafta sonu sayılmaz:
+        // lab Cumartesi/Pazar üretmediği için takvim günüyle verilen taahhüt
+        // hafta sonuna denk geldiğinde fiilen 2 gün eksik süre bırakıyordu.
+        const earliest = addBusinessDays(new Date(), form.is_urgent ? 1 : 5);
         const sel = new Date(form.delivery_date); sel.setHours(0, 0, 0, 0);
         if (sel < earliest) {
           e.delivery_date = form.is_urgent
-            ? 'Acil vakada teslim tarihi en erken yarın olabilir'
-            : 'Teslim tarihi en az 72 saat sonra olmalı';
+            ? 'Acil vakada teslim tarihi en erken bir sonraki iş günü olabilir'
+            : 'Teslim tarihi en az 5 iş günü sonra olmalı';
         }
       }
     }
@@ -2511,6 +2524,15 @@ export function NewOrderScreen({
   const handleSubmit = async () => {
     if (isEdit) return handleSaveEdit();
     if (!profile) return;
+    // GÖNDERİM KAPISI: adım başlıklarına tıklayarak doğrulama atlanabiliyordu;
+    // hastasız/hekimsiz/işsiz sipariş oluşuyordu (17.09.2026 · NEX-2026-0182 →
+    // patient_name boş, work_type "Belirtilmedi", bildirimler de boş gitti).
+    if (!isFormValid) {
+      setStepAttempted({ 1: true, 2: true, 3: true, 4: true });
+      const firstBad = ([1, 2, 3] as Step[]).find(s => !isStepValid(s));
+      if (firstBad) goToStep(firstBad);
+      return;
+    }
     setLoading(true);
 
     // tooth_numbers DB'de unique diş listesi — SADECE iş türü ATANMIŞ dişler
@@ -3762,6 +3784,8 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
         onStepPress={(s) => goToStep(s as Step)}
         onBack={step > 1 ? () => goToStep((step - 1) as Step) : undefined}
         onNext={step < 4 ? handleNext : handleSubmit}
+        // Adımı kilitleyen hata, ilgili kart kapalı olsa bile butonun üstünde görünür.
+        nextError={stepAttempted[step] ? STEP_FIELDS[step].map(k => errors[k]).find(Boolean) : undefined}
         nextLabel={step < 4 ? 'İleri' : (isEdit ? 'Kaydet' : (isDesktop ? theme.submitLabel : 'Gönder'))}
         actionPrimary={step === 4 ? 'success' : 'dark'}
         loading={loading || (isEdit && !editReady)}
@@ -4117,14 +4141,10 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                     label={isEdit ? 'Teslim tarihi' : '* Teslim tarihi'}
                     value={form.delivery_date}
                     onChange={set('delivery_date')}
-                    // Normal vakada en erken 72 saat sonra; acil vakada yarından itibaren.
-                    // Düzenlemede alt sınır YOK — bitmiş işin teslim tarihi geçmişte kalıyor.
-                    minDate={isEdit ? undefined : (() => {
-                      const d = new Date();
-                      d.setHours(0, 0, 0, 0);
-                      d.setDate(d.getDate() + (form.is_urgent ? 1 : 3));
-                      return d;
-                    })()}
+                    // Normal vakada en erken 5 iş günü sonra; acil vakada bir sonraki
+                    // iş günü (hafta sonu sayılmaz). Düzenlemede alt sınır YOK —
+                    // bitmiş işin teslim tarihi geçmişte kalıyor.
+                    minDate={isEdit ? undefined : addBusinessDays(new Date(), form.is_urgent ? 1 : 5)}
                     error={fe('delivery_date')}
                     accentColor={P}
                   />
@@ -4644,7 +4664,10 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                     // ── İkinci işlem prompt ─────────────────────────────────
                     // Eğer kullanıcı tek bir confirmed/dolu dişe tekrar tıkladıysa:
                     // bunu "ikinci işlem eklemek istiyorum" niyeti olarak yorumla.
-                    if (removed.length === 1 && added.length === 0) {
+                    // Yerinde düzenlemede şemaya tıklamak = kalemden diş çıkarmak
+                    // (ikinci işlem sorulmaz). Son diş çıkarılamaz — kalem silmek için × var.
+                    if (editingOp && removed.length > 0 && editingOp.teeth.every(t => removed.includes(t))) return;
+                    if (!editingOp && removed.length === 1 && added.length === 0) {
                       const t = removed[0];
                       const hasWork = form.tooth_ops.some(o => o.tooth === t && !!o.work_type);
                       if (hasWork) {
@@ -6628,14 +6651,25 @@ function NewOrderSuccess({
   const primaryLabel = panel === 'doctor' || panel === 'clinic' ? 'Vakayı gör' : 'Detayı aç';
 
   return (
+    // PORTAL ŞART: DesktopShell'in kaplarında transform/backdrop-filter var ve bu
+    // özellikler `position: fixed` için yeni bir containing block yaratıyor —
+    // portalsız overlay sidebar/header'ın altında kalırdı. body'ye taşınınca
+    // ekranda gerçekten YALNIZ bu kart kalıyor. Native'de WebPortal şeffaftır.
+    <WebPortal>
     <View
       style={{
-        position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-        zIndex: 200,
-        backgroundColor: 'rgba(15,23,42,0.55)',
+        // TAM EKRAN: web'de `fixed` — `absolute` en yakın konumlandırılmış ataya
+        // (form içerik kabı) hizalandığı için sidebar, header ve "İleri" butonu
+        // örtülmeden kalıyordu. Sipariş bitince ekranda YALNIZ bu kart olmalı.
+        position: (Platform.OS === 'web' ? 'fixed' : 'absolute') as any,
+        top: 0, left: 0, right: 0, bottom: 0,
+        // 10000: "İleri" aksiyon çubuğu da body'ye portal ile 9999'da basılıyor;
+        // eşit z-index'te DOM sırası belirleyici olurdu, bir tık üste çıkıyoruz.
+        zIndex: 10000,
+        backgroundColor: 'rgba(15,23,42,0.72)',
         alignItems: 'center', justifyContent: 'center',
         paddingHorizontal: 24,
-        ...(Platform.OS === 'web' ? { backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' } as any : {}),
+        ...(Platform.OS === 'web' ? { backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' } as any : {}),
       } as any}
     >
       {/* Backdrop click closes */}
@@ -6736,6 +6770,7 @@ function NewOrderSuccess({
         </View>
       </View>
     </View>
+    </WebPortal>
   );
 }
 

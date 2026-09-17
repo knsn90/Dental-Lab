@@ -1,4 +1,5 @@
 import { localeTag } from '../../../core/i18n';
+import { baseSymbol } from '../../../core/money/baseCurrency';
 /**
  * Malzeme Talepleri — paylaşılan tasarım atom'ları.
  *
@@ -25,10 +26,10 @@ export const DISPLAY = {
 export const PAGE_PADDING = 16;
 
 export const TRY = (n: number | null | undefined) =>
-  '₺' + (Number(n ?? 0)).toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  baseSymbol() + (Number(n ?? 0)).toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
 export const fmtMoneyDec = (n: number | null | undefined) =>
-  '₺' + (Number(n ?? 0)).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  baseSymbol() + (Number(n ?? 0)).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export const fmtDate = (iso: string | null | undefined): string => {
   if (!iso) return '—';

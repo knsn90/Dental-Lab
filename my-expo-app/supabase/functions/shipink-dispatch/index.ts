@@ -78,6 +78,8 @@ interface ReqBody {
   recipient_name?: string;
   recipient_phone?: string;
   recipient_email?: string;
+  /** TCKN (11) ya da VKN (10) — bazı taşıyıcılar zorunlu tutuyor (RECIPIENT_TAX_ID_INVALID). */
+  recipient_tax_id?: string;
   recipient_street?: string;
   recipient_city?: string;      // İLÇE
   recipient_state?: string;     // İL
@@ -243,7 +245,8 @@ serve(async (req) => {
 
   // ── create: sipariş + gönderi ──
   if (body.action === 'create') {
-    if (!body.work_order_id)      return json({ ok: false, message: 'work_order_id gerekli' });
+    // SERBEST GÖNDERİ: sipariş zorunlu değil — alıcı alanları gövdeden gelir ve
+    // aşağıdaki missingAddress / ad / açık adres kontrolleri zaten koruyor.
     if (!body.carrier_service_id) return json({ ok: false, message: 'Taşıyıcı hizmeti seçilmedi' });
     if (!(await ownsWorkOrder(body.work_order_id))) return denyTenant();
     if (!(await ownsDelivery(body.delivery_id)))    return denyTenant();
@@ -271,6 +274,12 @@ serve(async (req) => {
     }
 
     // Shipink'in kendi taşıyıcı hesabında ödeme kartı zorunlu.
+    // KART HER ZAMAN GÖNDERİLİR. Shipink kontratında card_id olmadan istek
+    // "A card must be linked to your account…" ile reddediliyor — bakiyeden
+    // ödenecek olsa bile. Kart güvencedir: bakiye doluysa ücret bakiyeden düşer,
+    // boşsa karttan çekilir ve 250 TL üstünde 3D Secure'a takılır
+    // (SHIPMENT_PAYMENT_FAILED). `pay_with` yalnız teşhis içindir.
+    const payWithBalance = (body as any).pay_with === 'balance';
     let cardId: string | null = body.card_id ?? c.card_id ?? null;
     if (needsCard && !cardId) {
       const rc = await call(cEnv, token, 'GET', '/cards');
@@ -286,18 +295,32 @@ serve(async (req) => {
     const value    = Number(body.declared_value ?? c.declared_value ?? 0) || 0;
 
     // 1) Sipariş — gönderi bir siparişe bağlanmak zorunda.
+    // NOT: `sales_channel` Shipink şemasında OPSİYONEL ve NESNE. Buraya
+    // 'siman' diye METİN gönderiliyordu ve her create çağrısı
+    // INVALID_REQUEST_BODY / "error parsing request params" ile dönüyordu —
+    // entegrasyon bu yüzden hiç çalışmamıştı (38 dış teslimatın tamamı
+    // BanaBiKurye). Alan gerekli olmadığı için tamamen çıkarıldı.
     const orderPayload = {
-      sales_channel: 'siman',
       customer: {
         name:  dest.name,
-        email: { main: dest.email, work: '' },
+        // E-posta siparişli akışta hekim kaydından gelir; serbest gönderide boş
+        // kalıyor ve Shipink BOŞ e-postayı "error parsing request params" ile
+        // reddediyor → alanı hiç göndermiyoruz.
+        ...(dest.email.trim() ? { email: { main: dest.email.trim(), work: '' } } : {}),
+        // Bazı taşıyıcılar (RECIPIENT_TAX_ID_INVALID) 10/11 haneli numara istiyor;
+        // geçersiz uzunluk gönderilmez, taşıyıcı kendi hatasını döndürür.
+        ...([10, 11].includes(dest.taxId.length) ? { tax_id: dest.taxId } : {}),
         phone: { main: dest.phone, work: '', cell: '', code: '' },
         address: {
           street:       dest.street,
           city:         dest.city,     // İLÇE
           state:        dest.state,    // İL
-          zip:          dest.zip,
+          ...(dest.zip.trim() ? { zip: dest.zip.trim() } : {}),
           country_code: dest.country,
+          // Şemada tax_id DÖRT yerde var (customer, customer.address, billing,
+          // billing.address). Yalnız customer.tax_id yetmedi — taşıyıcı teslim
+          // ADRESİNDEKİ numaraya bakıyor (RECIPIENT_TAX_ID_INVALID). İkisine de yazılır.
+          ...([10, 11].includes(dest.taxId.length) ? { tax_id: dest.taxId } : {}),
         },
       },
       items: [{
@@ -331,7 +354,13 @@ serve(async (req) => {
       // Sipariş oluştu ama gönderi olmadı → yarım kayıt Shipink panelinde
       // görünmesin diye siparişi geri al (başarısız olursa sessiz geç).
       await call(cEnv, token, 'DELETE', `/orders/${encodeURIComponent(String(orderId))}`);
-      return json({ ok: false, message: 'Gönderi oluşturulamadı: ' + errText(rs), debug: dbg(rs, shipPayload) });
+      // Ödeme hatalarında hangi kart/hesapla denendiği görünmezse teşhis
+      // tahmine kalıyor — kart id'si ve kart çekimi gerekip gerekmediği eklenir.
+      return json({
+        ok: false,
+        message: 'Gönderi oluşturulamadı: ' + errText(rs),
+        debug: { ...dbg(rs, shipPayload), used_card_id: cardId, needs_card: needsCard, pay_with: payWithBalance ? 'balance' : 'card', carrier_account_id: accountId, tax_id_len: dest.taxId.length, tax_id_sent: [10, 11].includes(dest.taxId.length) },
+      });
     }
 
     const sh   = rs.data?.data ?? rs.data ?? {};
@@ -585,6 +614,7 @@ interface Dest {
   name: string; phone: string; email: string;
   street: string; city: string; state: string; zip: string; country: string;
   orderNumber: string | null;
+  taxId: string;
 }
 
 /**
@@ -603,6 +633,7 @@ async function resolveRecipient(admin: any, body: ReqBody): Promise<Dest> {
     zip:     (body.recipient_zip     ?? '').trim(),
     country: (body.recipient_country ?? 'TR').trim().toUpperCase(),
     orderNumber: null,
+    taxId: String(body.recipient_tax_id ?? '').replace(/\D/g, ''),
   };
   if (!body.work_order_id) return dest;
 
@@ -612,17 +643,21 @@ async function resolveRecipient(admin: any, body: ReqBody): Promise<Dest> {
   dest.orderNumber = wo.order_number != null ? String(wo.order_number) : null;
 
   const { data: doc } = await admin.from('doctors')
-    .select('full_name, phone, email, clinic_id').eq('id', wo.doctor_id).maybeSingle();
+    .select('full_name, phone, email, clinic_id, tckn').eq('id', wo.doctor_id).maybeSingle();
   if (doc) {
     if (!dest.name)  dest.name  = doc.full_name ?? '';
     if (!dest.phone) dest.phone = doc.phone ?? '';
     if (!dest.email) dest.email = doc.email ?? '';
+    if (!dest.taxId) dest.taxId = String(doc.tckn ?? '').replace(/\D/g, '');
     if (doc.clinic_id) {
       const { data: cl } = await admin.from('clinics')
-        .select('name, address, phone').eq('id', doc.clinic_id).maybeSingle();
+        .select('name, address, phone, vkn').eq('id', doc.clinic_id).maybeSingle();
       if (cl) {
         if (!dest.name)  dest.name  = cl.name ?? dest.name;
         if (!dest.phone) dest.phone = cl.phone ?? '';
+        // Klinik vergi no hekim TCKN'sinden önceliklidir — fatura muhatabı klinik.
+        const vkn = String(cl.vkn ?? '').replace(/\D/g, '');
+        if (vkn && !String(body.recipient_tax_id ?? '').trim()) dest.taxId = vkn;
         // clinics.address polimorfik (düz metin veya {il, ilce, ...} JSON).
         // Yalnız istemci adres göndermediyse kullanılır.
         if (!dest.street || !dest.city || !dest.state) {

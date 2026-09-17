@@ -137,6 +137,9 @@ interface StockHeroProps {
   sub?: string;                // metrik altı açıklama
   icon?: React.ComponentType<any>;
   stats?: Array<{ label: string; value: string | number; icon?: React.ComponentType<any> }>;
+  /** Kartın EN ALTINDA duran serbest slot — alt sekme şeridi buraya girer.
+   *  Gezinme, başlığın altında ayrı bir satır harcamak yerine kartın içinde. */
+  footer?: React.ReactNode;
 }
 // Yetki yok ekranı — kullanıcı RBAC'sı sekme için yeterli değilse
 function NoAccessView({ accentColor }: { accentColor: string }) {
@@ -154,7 +157,7 @@ function NoAccessView({ accentColor }: { accentColor: string }) {
   );
 }
 
-function StockHeroCard({ accentColor, eyebrow, value, sub, icon: HeadIcon, stats = [] }: StockHeroProps) {
+function StockHeroCard({ accentColor, eyebrow, value, sub, icon: HeadIcon, stats = [], footer }: StockHeroProps) {
   const U = useStockUI();
   const heroBg = useHeroSurface(accentColor);
   const DisplayFont = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
@@ -190,6 +193,7 @@ function StockHeroCard({ accentColor, eyebrow, value, sub, icon: HeadIcon, stats
           })}
         </View>
       )}
+      {footer}
     </View>
   );
 }
@@ -2346,7 +2350,7 @@ function CategoryList({ accentColor, onReload }: { accentColor: string; onReload
  * önerisi arasındaki fark yalnız burada görünür.
  */
 function SubTabStrip({
-  tabs, value, onChange, numbered, trailing,
+  tabs, value, onChange, numbered, trailing, onAccent, accent,
 }: {
   tabs: SubTabDef[];
   value: string;
@@ -2355,11 +2359,17 @@ function SubTabStrip({
   numbered?: boolean;
   /** Şeridin sağ ucunda AYNI satırda duran sabit slot (ör. "+ Yeni Ürün"). */
   trailing?: React.ReactNode;
+  /** Hero kartının accent zemininde: seçili pill beyaz, pasifler yarı saydam.
+   *  Siyah (ink[900]) pill lacivert hero üzerinde delik gibi duruyordu. */
+  onAccent?: boolean;
+  /** onAccent iken beyaz pill üzerindeki metin/ikon rengi (panel accent'i). */
+  accent?: string;
 }) {
   const U = useStockUI();
   const active = tabs.find(t => t.key === value) ?? tabs[0];
+  const accentInk = accent ?? U.ink[900];
   return (
-    <View style={{ paddingHorizontal: PAGE_PADDING, paddingBottom: 8 }}>
+    <View style={onAccent ? { marginTop: 16 } : { paddingHorizontal: PAGE_PADDING, paddingBottom: 8 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
       <ScrollView
         horizontal
@@ -2379,7 +2389,9 @@ function SubTabStrip({
                 flexDirection: 'row', alignItems: 'center', gap: 8,
                 // CLAUDE.md §1c — seçili pill daha geniş.
                 paddingHorizontal: on ? 18 : 12, paddingVertical: 8, borderRadius: 999,
-                backgroundColor: on ? U.ink[900] : U.chipNeutral,
+                backgroundColor: onAccent
+                  ? (on ? '#FFFFFF' : 'rgba(255,255,255,0.16)')
+                  : (on ? U.ink[900] : U.chipNeutral),
                 ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
               }}
             >
@@ -2391,10 +2403,14 @@ function SubTabStrip({
                   {i + 1}
                 </Text>
               ) : null}
-              <Icon size={14} strokeWidth={on ? 2 : 1.7} color={on ? U.onDarkPill : U.ink[500]} />
+              <Icon
+                size={14}
+                strokeWidth={on ? 2 : 1.7}
+                color={onAccent ? (on ? accentInk : 'rgba(255,255,255,0.9)') : (on ? U.onDarkPill : U.ink[500])}
+              />
               <Text style={{
                 fontSize: 13, fontWeight: on ? '600' : '500',
-                color: on ? U.onDarkPill : U.ink[800],
+                color: onAccent ? (on ? accentInk : '#FFFFFF') : (on ? U.onDarkPill : U.ink[800]),
               }}>
                 {t.label}
               </Text>
@@ -2404,7 +2420,7 @@ function SubTabStrip({
       </ScrollView>
       {trailing ? <View style={{ flexShrink: 0 }}>{trailing}</View> : null}
       </View>
-      <Text style={{ fontSize: 12, color: U.ink[500], marginTop: 8 }}>{active?.hint}</Text>
+      <Text style={{ fontSize: 12, color: onAccent ? 'rgba(255,255,255,0.78)' : U.ink[500], marginTop: 8 }}>{active?.hint}</Text>
     </View>
   );
 }
@@ -3819,11 +3835,12 @@ function LocationsTab({ items, accentColor, onEditProduct, canEdit = true, leadi
           { label: 'Konumsuz',   value: unassignedCount,  icon: AlertTriangle  },
           { label: 'Barkodlu',   value: barcodeCount,     icon: QrCode         },
         ]}
+        /* Alt sekme şeridi kartın içinde — Liste sekmesiyle aynı yer. */
+        footer={leading}
       />
 
       {/* ── Toolbar ── */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        {leading}
         <View style={{
           flex: 1, minWidth: 180, flexDirection: 'row', alignItems: 'center', gap: 8,
           backgroundColor: U.surface, borderRadius: 14, borderWidth: 1,
@@ -4306,7 +4323,7 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
     if (tab === 'movements') return (
       <StockMovementsScreen
         accentColor={accentColor}
-        onNewMovement={showCta && !isDesktop ? ctaAction : undefined}
+        onNewMovement={showCta ? ctaAction : undefined}
         newMovementLabel={ctaLabel}
       />
     );
@@ -4343,7 +4360,7 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
       : <LocationsTab items={items} accentColor={accentColor}
           canEdit={can('manage_stock') || can('manage_stock_locations')}
           leading={subTabs.length > 1 && activeSub
-            ? <SubTabPills tabs={subTabs} value={activeSub} onChange={setSub} />
+            ? <SubTabStrip tabs={subTabs} value={activeSub} onChange={setSub} onAccent accent={accentColor} />
             : null}
           onEditProduct={item => setProductModal({ visible: true, item })} />;
 
@@ -4398,7 +4415,7 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
             {/* Birincil eylem hero'nun içinde: accent zeminde beyaz pill en
                 yüksek kontrastlı yer, ayrıca üstte ayrı bir satır harcamıyor.
                 Dekoratif ikon yalnız CTA yokken görünür. */}
-            {showCta && !isDesktop ? (
+            {showCta ? (
               <Pressable
                 onPress={ctaAction}
                 accessibilityRole="button"
@@ -4453,6 +4470,19 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
             })}
           </View>
 
+          {/* Alt sekme şeridi (Liste / Lokasyon) hero kartının İÇİNDE: gezinme,
+              ait olduğu başlığın altında ayrı bir satır harcamak yerine kartın
+              zemininde durur. Accent zeminde seçili pill beyaz. */}
+          {subTabs.length > 1 && activeSub ? (
+            <SubTabStrip
+              tabs={subTabs}
+              value={activeSub}
+              onChange={setSub}
+              onAccent
+              accent={accentColor}
+            />
+          ) : null}
+
         </View>
 
         {/* ── Toolbar ── */}
@@ -4482,9 +4512,7 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
             </View>
           ) : (
             <>
-              {subTabs.length > 1 && activeSub ? (
-                <SubTabPills tabs={subTabs} value={activeSub} onChange={setSub} />
-              ) : null}
+              {/* Şerit hero kartının içine taşındı — araç çubuğunda tekrar etmez. */}
               <View style={{ flex: 1 }} />
             </>
           )}
@@ -4925,24 +4953,17 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
                   {activeTab.hint}
                 </Text>
               </View>
-              {showCta && (
-                <Pressable
-                  style={{
-                    flexDirection: 'row', alignItems: 'center', gap: 7,
-                    paddingHorizontal: 16, paddingVertical: 9,
-                    borderRadius: 9999, backgroundColor: accentColor,
-                    marginTop: 18,
-                    ...(Platform.OS === 'web' ? { cursor: 'pointer', boxShadow: `0 4px 16px ${accentColor}33` } : {}),
-                  }}
-                  onPress={ctaAction}
-                >
-                  <Plus size={14} color="#FFFFFF" strokeWidth={2} />
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFFFFF' }}>{ctaLabel}</Text>
-                </Pressable>
-              )}
+              {/* Birincil eylem BAŞLIKTA DEĞİL, hero kartının içinde durur.
+                  Burada da çizilince Dashboard'da iki "Yeni Ürün" yan yana
+                  görünüyordu; Ürünler/Hareketler'de ise hero'daki buton
+                  masaüstünde kapalı olduğu için eylem kartın dışına düşüyordu.
+                  Tek yer = hero (aşağıdaki showCta'lar masaüstünde de açık). */}
             </View>
 
-            {subTabs.length > 1 && activeSub ? (
+            {/* Ürünler'de şerit hero kartının İÇİNDE (durum kartlarının altında);
+                burada tekrar çizilmez. Diğer sekmelerin bir kısmında hero yok,
+                onlarda şerit başlığın altında kalmaya devam ediyor. */}
+            {subTabs.length > 1 && activeSub && tab !== 'list' ? (
               <SubTabStrip
                 tabs={subTabs}
                 value={activeSub}

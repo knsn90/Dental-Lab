@@ -748,6 +748,24 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
   const handleSave = async (opts?: { approve?: boolean }) => {
     setError('');
 
+    // Farklı işlem = ayrı şerit (ZORUNLU). Hem şerit sayısı hem de dağılım
+    // denetlenir: iki farklı işlem aynı şeride atanmışsa kayıt yapılmaz.
+    const saveProcs = procNamesOf(data?.items as any);
+    if (saveProcs.length > 1) {
+      if (laneCount < saveProcs.length) {
+        setError('Farklı işlemler ayrı şeritte planlanmalı'); return false;
+      }
+      const laneProc: Record<number, string> = {};
+      for (const it of (data?.items ?? [])) {
+        if (!Array.isArray(it.tooth_numbers) || it.tooth_numbers!.length === 0) continue;
+        const ln = itemLaneOf(it.id);
+        if (laneProc[ln] && laneProc[ln] !== it.name) {
+          setError('Farklı işlemler ayrı şeritte planlanmalı'); return false;
+        }
+        laneProc[ln] = it.name;
+      }
+    }
+
     // Faz 2: ÇOK-ŞERİT kaydı — her şerit kendi 1..n sequence'ı, lane damgalı satırlar.
     // Tek-şerit (laneCount===1) yola hiç girmez → bugünkü davranış birebir korunur.
     if (laneCount > 1) {
@@ -856,6 +874,42 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
     handleSave({ approve: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, autoTriage, matchedTpl, activeRows.length]);
+
+  // ── ZORUNLU ŞERİT AYRIMI ────────────────────────────────────────────────────
+  // Aynı siparişte farklı işlemler varsa (ör. 26 Zirkon Kron + 46 Inlay/Onlay Cam
+  // Seramik) aşama dizileri de farklıdır. Tek hatta planlanınca işlerden biri
+  // yanlış istasyonlardan geçiyordu — 2026-09-16'da NEX-2026-0179 tam olarak
+  // böyle Sinterleme + Porselen hattına düşmüştü. Artık şeritler işlem sayısına
+  // göre KENDİLİĞİNDEN kurulur ve tek şeride indirilemez.
+  /** Dişe uygulanan kalemlerin benzersiz işlem adları — kurye/teslim gibi hizmet
+   *  kalemleri (tooth_numbers boş) işlem sayılmaz, hep şerit 1'de kalır. */
+  const procNamesOf = (items: { id: string; name: string; tooth_numbers?: number[] | null }[] | undefined) =>
+    Array.from(new Set((items ?? [])
+      .filter(it => Array.isArray(it.tooth_numbers) && it.tooth_numbers!.length > 0)
+      .map(it => it.name)));
+  const requiredProcs = procNamesOf(data?.items as any);
+  const lanesRequired = requiredProcs.length > 1;
+  const laneAutoRef = useRef(false);
+
+  useEffect(() => {
+    if (loading || laneAutoRef.current) return;
+    if (!lanesRequired || activeRows.length === 0) return;
+    laneAutoRef.current = true;
+    // Her şerit, onaylanan tek-şerit planının kopyasıyla başlar; operatör kendi
+    // şeridinden gereksiz istasyonları çıkarır (cam seramikte Sinterleme gibi).
+    const base = activeRows.map(r => ({ uid: newLaneUid(), stationId: r.stationId, lane: 1, technicianId: r.technicianId }));
+    const rows = [...base];
+    for (let lane = 2; lane <= requiredProcs.length; lane++) {
+      base.forEach(r => rows.push({ uid: newLaneUid(), stationId: r.stationId, lane, technicianId: r.technicianId }));
+    }
+    const il: Record<string, number> = {};
+    (data?.items ?? []).forEach(it => {
+      const idx = requiredProcs.indexOf(it.name);
+      il[it.id] = idx >= 0 ? idx + 1 : 1;
+    });
+    setLaneRows(rows); setItemLanes(il); setLaneCount(requiredProcs.length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, lanesRequired, activeRows.length]);
 
   // Mevcut aktif aşama sırasını yeniden kullanılabilir şablon olarak kaydet
   const openSaveTemplate = () => {
@@ -1538,7 +1592,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                     <Text style={{ ...TYPE.meta, fontWeight: '600', color: A_DEEP }}>İş Şeridi</Text>
                   </Pressable>
                 </Tip>
-                {laneCount > 1 && (
+                {laneCount > 1 && !lanesRequired && (
                   <Tip label="Şeritleri birleştir, tek sıraya dön">
                     <Pressable onPress={resetToSingleLane} hitSlop={6}
                       style={({ pressed }: any) => ({ paddingHorizontal: 4, paddingVertical: 6, ...press(pressed), ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) })}>
@@ -1611,7 +1665,9 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
 
             {/* Çok-şeritteyken işlem→şerit atamasının nasıl yapıldığını söyler */}
             {laneCount > 1 && (
-              <Text style={{ ...TYPE.meta, color: INK[400] }}>İşlem çipine dokunup şeridini değiştir</Text>
+              <Text style={{ ...TYPE.meta, color: INK[400] }}>
+                {lanesRequired ? 'İşlemler farklı olduğu için şeritler otomatik ayrıldı' : 'İşlem çipine dokunup şeridini değiştir'}
+              </Text>
             )}
 
             {/* Faz 2: işlem→şerit çipleri (yalnız çok-şerit) */}

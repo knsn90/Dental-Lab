@@ -22,7 +22,7 @@ import {
   fetchStudioData, fetchSkillsData, createTemplate, updateTemplate, deleteTemplate,
   updateStationSkills, updateStationTiming, updateStationMaterials, updateTechSkills, fetchAutoTriage, setAutoTriage, fmtDuration,
   fetchLabSkills, createLabSkill, updateLabSkill, deleteLabSkill, aiBuildWorkflow,
-  generateTemplatesFromServices,
+  generateTemplatesFromServices, createLabStation,
   type StudioTemplate, type TriageStation, type TriageTech, type LabSkill, type AiWorkflowResult,
 } from '../api';
 import { MATERIAL_CATEGORIES } from '../../../core/materials/stageCategories';
@@ -297,22 +297,69 @@ function BuilderArea({ theme, isNarrow, stations, techs, templates, stationById,
   const [aiOpen, setAiOpen] = useState(false);
 
   // AI önerisini uygula: yeni yetkinlikleri oluştur + aşamaları mevcut istasyonlarla eşleştirip builder'a yükle
-  const applyAi = async (r: AiWorkflowResult) => {
-    if (labId) {
-      const existing = new Set(skillNames.map(s => s.toLocaleLowerCase('tr-TR')));
-      for (const sk of (r.skills ?? [])) {
-        if (sk?.name && !existing.has(sk.name.toLocaleLowerCase('tr-TR'))) {
-          await createLabSkill(labId, { name: sk.name, description: sk.description ?? null, color: sk.color ?? null, icon: sk.icon ?? null, cert_level: sk.cert_level ?? null });
-        }
+  /**
+   * AI önerisini GERÇEKTEN uygular: yetkinlikleri ekler, eksik aşamaları istasyon
+   * olarak oluşturur ve akışı KAYDEDER.
+   *
+   * Eskiden yalnız mevcut istasyonlarla eşleştirip bir taslak açıyordu; istasyon
+   * kataloğu boş olan labda (Demo) eşleşme sıfır çıkıyor, taslak boş kalıyor ve
+   * hiçbir akış oluşmuyordu — üstelik hata kontrol edilmediği için popup sessizce
+   * kapanıyordu ("uygula dedim, hiçbir şey olmadı").
+   */
+  const applyAi = async (r: AiWorkflowResult): Promise<{ ok: boolean; error?: string }> => {
+    if (!labId) return { ok: false, error: autoT('Lab bulunamadı') };
+
+    // 1) Yetkinlikler kataloğa
+    const existing = new Set(skillNames.map(s => s.toLocaleLowerCase('tr-TR')));
+    for (const sk of (r.skills ?? [])) {
+      if (sk?.name && !existing.has(sk.name.toLocaleLowerCase('tr-TR'))) {
+        await createLabSkill(labId, { name: sk.name, description: sk.description ?? null, color: sk.color ?? null, icon: sk.icon ?? null, cert_level: sk.cert_level ?? null });
       }
     }
-    const stageNames = (r.stages ?? []).map(s => s.name);
-    const { ids, matched } = matchPresetStations(stageNames, stations);
+
+    // 2) Aşamalar → istasyon: eşleşen kullanılır, eşleşmeyen KATALOĞA EKLENİR.
+    const low = (s: string) => s.toLocaleLowerCase('tr-TR');
+    const used = new Set<string>();
+    let hint = stations.reduce((m, s) => Math.max(m, s.sequence_hint ?? 0), 0);
+    const ids: string[] = [];
+    let createdStations = 0;
+    for (const stage of (r.stages ?? [])) {
+      const key = low(stage.name);
+      const hit = stations.find(st => !used.has(st.id) && (low(st.name).includes(key) || key.includes(low(st.name))));
+      if (hit) { used.add(hit.id); ids.push(hit.id); continue; }
+      hint += 10;
+      const res: any = await createLabStation(labId, {
+        name: stage.name,
+        sequence_hint: hint,
+        est_duration_min: stage.est_duration_min ?? null,
+        sla_hours: stage.sla_hours ?? null,
+        required_skills: stage.required_skills ?? [],
+      });
+      const newId = res?.data?.id as string | undefined;
+      if (res?.error || !newId) {
+        return { ok: false, error: `${autoT('İstasyon eklenemedi')}: ${stage.name} — ${res?.error?.message ?? ''}`.trim() };
+      }
+      used.add(newId); ids.push(newId); createdStations++;
+    }
+    if (ids.length === 0) return { ok: false, error: autoT('Öneride aşama yok') };
+
+    // 3) Akışı KAYDET (taslak bırakmak yerine).
+    const tplRes: any = await createTemplate(labId, {
+      name: 'Yapay Zeka Önerisi',
+      description: r.summary || undefined,
+      case_types: [],
+      station_ids: ids,
+      is_default: false,
+      is_active: true,
+    });
+    if (tplRes?.error) return { ok: false, error: tplRes.error.message ?? autoT('Akış kaydedilemedi') };
+
     setAiOpen(false);
-    setPresetNote(`${autoT('Yapay zeka önerisi')}: ${matched}/${stageNames.length} ${autoT('aşama mevcut istasyonlarınla eşleşti')}${r.summary ? ' — ' + r.summary : ''}. ${autoT('Yetkinlikler kataloğa eklendi.')}`);
-    setDraft({ id: null, name: 'Yapay Zeka Önerisi', caseTypesText: '', stationIds: ids, isDefault: false, isActive: true });
+    setPresetNote(`${autoT('Yapay zeka akışı kaydedildi')} — ${ids.length} ${autoT('aşama')}${createdStations ? `, ${createdStations} ${autoT('yeni istasyon eklendi')}` : ''}.`);
+    setDraft(null);
     setSelStage(null);
     onReload();
+    return { ok: true };
   };
 
   const openNew = () => { setDraft({ ...EMPTY_DRAFT }); setSelStage(null); setPresetNote(null); };
@@ -738,7 +785,7 @@ function StageDetailPanel({ theme, st, techs, idx, total, stationById, draftStat
 const AI_SERVICES = ['Zirkonyum', 'Metal-Seramik', 'E-max', 'İmplant Üstü', 'Hareketli Protez', 'Ortodonti', 'Geçici Kron'];
 function AiBuilderModal({ visible, theme, stations, skillNames, onClose, onApply }: {
   visible: boolean; theme: Theme; stations: TriageStation[]; skillNames: string[];
-  onClose: () => void; onApply: (r: AiWorkflowResult) => void | Promise<void>;
+  onClose: () => void; onApply: (r: AiWorkflowResult) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const { A, A_DEEP, onA, PAGE } = theme;
   const T = useMobileTokens();
@@ -777,7 +824,16 @@ function AiBuilderModal({ visible, theme, stations, skillNames, onClose, onApply
     if (!res.ok || !res.data) { setErr(res.error ?? 'Yapay zeka önerisi alınamadı. Tekrar dene.'); setPhase('error'); return; }
     setResult(res.data); setPhase('review');
   };
-  const apply = async () => { if (!result) return; setApplying(true); await onApply(result); setApplying(false); reset(); };
+  const apply = async () => {
+    if (!result) return;
+    setApplying(true);
+    const res = await onApply(result);
+    setApplying(false);
+    // Başarısızsa modal KAPANMAZ. Eskiden sonuç hiç kontrol edilmiyordu: hata olsa
+    // bile reset() çalışıp popup kapanıyor, kullanıcı "uygulandı" sanıyordu.
+    if (res && !res.ok) { setErr(res.error ?? autoT('Akış oluşturulamadı')); return; }
+    reset();
+  };
 
   const yesNo = (label: string, val: boolean, set: (v: boolean) => void) => (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
