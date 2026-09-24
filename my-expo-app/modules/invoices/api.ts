@@ -617,3 +617,29 @@ export async function fetchClinicReceipts(clinicId?: string): Promise<ClinicRece
   if (error) throw new Error(error.message);
   return (data ?? []) as unknown as ClinicReceipt[];
 }
+
+/** Fişi düzeltir — satırlar tamamen değiştirilir. Dağıtılmış fiş reddedilir. */
+export async function updateClinicReceipt(p: {
+  receiptId: string;
+  lines: ReceiptLine[];
+  receiptDate?: string;
+  method?: string;
+  referenceNo?: string | null;
+  notes?: string | null;
+}): Promise<ReceiptResult> {
+  const { data, error } = await supabase.rpc('update_clinic_receipt', {
+    p_receipt_id: p.receiptId,
+    p_lines: p.lines,
+    p_receipt_date: p.receiptDate ?? null,
+    p_payment_method: p.method ?? null,
+    p_reference_no: p.referenceNo ?? null,
+    p_notes: p.notes ?? null,
+  });
+  if (error) throw new Error(error.message);
+  return data as ReceiptResult;
+}
+
+export async function deleteClinicReceipt(receiptId: string): Promise<void> {
+  const { error } = await supabase.rpc('delete_clinic_receipt', { p_receipt_id: receiptId });
+  if (error) throw new Error(error.message);
+}

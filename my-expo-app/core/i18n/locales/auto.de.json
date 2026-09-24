@@ -8606,5 +8606,16 @@
   "Ekstreyi Excel dosyası olarak indir": "Den Kontoauszug als Excel-Datei herunterladen",
   "Ekstreyi yazdır veya PDF olarak kaydet": "Kontoauszug drucken oder als PDF speichern",
   "Fatura seçmeden, birden çok para biriminde tahsilat gir": "Eine Zahlung in mehreren Währungen erfassen, ohne eine Rechnung zu wählen",
-  "Sağlık kurumu listesine dön": "Zurück zur Klinikliste"
+  "Sağlık kurumu listesine dön": "Zurück zur Klinikliste",
+  "Alınan tutar": "Erhaltener Betrag",
+  "Bu belge elektronik ortamda üretilmiştir.": "Dieses Dokument wurde elektronisch erstellt.",
+  "Bu tahsilat için PDF makbuz oluştur": "Einen PDF-Beleg für diese Zahlung erstellen",
+  "Karşılığı": "Gegenwert",
+  "Makbuz": "Beleg",
+  "Makbuz oluşturulamadı": "Der Beleg konnte nicht erstellt werden",
+  "Tahsilat Makbuzu": "Zahlungsbeleg",
+  "Teslim eden": "Übergeben von",
+  "Vergi No": "Steuernummer",
+  "Tahsilatı düzenle": "Zahlung bearbeiten",
+  "Tahsilat güncellendi": "Zahlung aktualisiert"
 }

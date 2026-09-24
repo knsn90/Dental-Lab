@@ -8618,5 +8618,16 @@
   "Ekstreyi Excel dosyası olarak indir": "Download the statement as an Excel file",
   "Ekstreyi yazdır veya PDF olarak kaydet": "Print the statement or save it as a PDF",
   "Fatura seçmeden, birden çok para biriminde tahsilat gir": "Record a payment in several currencies without picking an invoice",
-  "Sağlık kurumu listesine dön": "Back to the clinic list"
+  "Sağlık kurumu listesine dön": "Back to the clinic list",
+  "Alınan tutar": "Amount received",
+  "Bu belge elektronik ortamda üretilmiştir.": "This document was generated electronically.",
+  "Bu tahsilat için PDF makbuz oluştur": "Create a PDF receipt for this payment",
+  "Karşılığı": "Equivalent",
+  "Makbuz": "Receipt",
+  "Makbuz oluşturulamadı": "The receipt could not be created",
+  "Tahsilat Makbuzu": "Payment Receipt",
+  "Teslim eden": "Delivered by",
+  "Vergi No": "Tax No",
+  "Tahsilatı düzenle": "Edit payment",
+  "Tahsilat güncellendi": "Payment updated"
 }

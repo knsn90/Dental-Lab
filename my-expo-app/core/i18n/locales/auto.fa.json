@@ -8589,5 +8589,16 @@
   "Ekstreyi Excel dosyası olarak indir": "صورتحساب را به صورت فایل اکسل دانلود کن",
   "Ekstreyi yazdır veya PDF olarak kaydet": "صورتحساب را چاپ کن یا به صورت PDF ذخیره کن",
   "Fatura seçmeden, birden çok para biriminde tahsilat gir": "بدون انتخاب فاکتور، دریافت را به چند ارز ثبت کن",
-  "Sağlık kurumu listesine dön": "بازگشت به فهرست مراکز درمانی"
+  "Sağlık kurumu listesine dön": "بازگشت به فهرست مراکز درمانی",
+  "Alınan tutar": "مبلغ دریافتی",
+  "Bu belge elektronik ortamda üretilmiştir.": "این سند به صورت الکترونیکی تولید شده است.",
+  "Bu tahsilat için PDF makbuz oluştur": "برای این دریافت رسید PDF بساز",
+  "Karşılığı": "معادل",
+  "Makbuz": "رسید",
+  "Makbuz oluşturulamadı": "رسید ساخته نشد",
+  "Tahsilat Makbuzu": "رسید دریافت",
+  "Teslim eden": "تحویل‌دهنده",
+  "Vergi No": "شماره مالیاتی",
+  "Tahsilatı düzenle": "ویرایش دریافت",
+  "Tahsilat güncellendi": "دریافت به‌روزرسانی شد"
 }

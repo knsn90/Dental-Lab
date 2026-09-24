@@ -26,6 +26,7 @@ import * as Sharing from 'expo-sharing';
 
 import { fetchInvoicesForClinic, fetchClinicBalance, fetchUnbilledWorkOrders, createInvoiceFromOrder, fetchClinicPriceCurrency, fetchClinicReceipts } from '../api';
 import { buildStatementLines, buildStatementHtml } from '../buildStatementHtml';
+import { buildReceiptVoucherHtml } from '../buildReceiptVoucherHtml';
 import { ClinicReceiptModal } from '../components/ClinicReceiptModal';
 import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
@@ -284,6 +285,8 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
   const [receiptOpen, setReceiptOpen] = useState(false);
   /** Faturaya bağlanmamış tahsilat fişleri — ekstrede kendi satırları olur. */
   const [receipts, setReceipts] = useState<ClinicReceipt[]>([]);
+  /** Düzenlenen fiş — null ise pencere "yeni tahsilat" modunda açılır. */
+  const [editingReceipt, setEditingReceipt] = useState<ClinicReceipt | null>(null);
   /** Tahsilat sonrası ekstreyi yeniden çekmek için sayaç. */
   const [reloadTick, setReloadTick] = useState(0);
   const heroInk = useWhiteHeroInk();
@@ -454,11 +457,14 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
 
   // Ekstre defter satırından fatura detayına git (fatura & tahsilat satırı ilgili faturaya)
   const openLine = useCallback((line: StatementLine) => {
-    // Fiş satırının faturası yok → açılacak detay da yok.
-    if (line.id && !line.id.startsWith('rcpt-')) {
-      router.push(`/${panelBase}/invoice/${line.id}` as any);
+    // Fiş satırının faturası yok → tıklayınca kendi düzenleme penceresi açılır.
+    if (line.id?.startsWith('rcpt-')) {
+      const r = receipts.find(x => `rcpt-${x.id}` === line.id);
+      if (r) { setEditingReceipt(r); setReceiptOpen(true); }
+      return;
     }
-  }, [panelBase, router]);
+    if (line.id) router.push(`/${panelBase}/invoice/${line.id}` as any);
+  }, [panelBase, router, receipts]);
 
   // Build statement (orijinal tutarda) — yalnız seçili dövizin faturaları.
   //
@@ -575,6 +581,39 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
   }, [clinicInfo, filtered, dateFrom, dateTo, selectedCcy, selfView]);
 
   // ── Excel ──────────────────────────────────────────────
+  /** Tahsilat makbuzu (PDF) — ekstre yazdırmayla aynı yol. */
+  const printVoucher = useCallback(async (r: ClinicReceipt) => {
+    try {
+      const lab = selfView ? await fetchSelfViewLab() : await fetchLab();
+      const html = buildReceiptVoucherHtml(clinicInfo?.clinic_name ?? 'Klinik', {
+        id: r.id, receipt_date: r.receipt_date, payment_method: r.payment_method,
+        reference_no: r.reference_no, notes: r.notes,
+        base_currency: r.base_currency, total_base: Number(r.total_base) || 0,
+        lines: (r.lines ?? []).map(l => ({
+          currency: l.currency, amount: Number(l.amount) || 0,
+          rate: Number(l.rate) || 0, amount_base: Number(l.amount_base) || 0,
+        })),
+      }, lab);
+      if (Platform.OS === 'web') {
+        const w = window.open('', '_blank');
+        if (!w) { toast.error(autoT('Pop-up engellendi')); return; }
+        w.document.write(html); w.document.close();
+        try { w.focus(); } catch {}
+      } else {
+        const { uri } = await Print.printToFileAsync({ html });
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(uri, {
+            mimeType: 'application/pdf',
+            dialogTitle: `Tahsilat-Makbuzu-${r.id.split('-')[0]}.pdf`,
+            UTI: 'com.adobe.pdf',
+          });
+        }
+      }
+    } catch (e: any) {
+      toast.error(e?.message ?? autoT('Makbuz oluşturulamadı'));
+    }
+  }, [clinicInfo?.clinic_name, selfView]);
+
   const handleExcel = useCallback(() => {
     if (Platform.OS !== 'web') {
       toast.info('Excel dışa aktarma web üzerinde desteklenir');
@@ -691,7 +730,7 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
             {!selfView && (
               <GlassTooltip title={autoT('Tahsilat ekle')}
                             text={autoT('Fatura seçmeden, birden çok para biriminde tahsilat gir')}>
-                <PillBtn icon={Wallet} label={isDesktop ? "Tahsilat ekle" : ""} onPress={() => setReceiptOpen(true)} />
+                <PillBtn icon={Wallet} label={isDesktop ? "Tahsilat ekle" : ""} onPress={() => { setEditingReceipt(null); setReceiptOpen(true); }} />
               </GlassTooltip>
             )}
             <GlassTooltip title={autoT('Yazdır / PDF')} text={autoT('Ekstreyi yazdır veya PDF olarak kaydet')}>
@@ -1107,7 +1146,9 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
         visible={receiptOpen}
         clinicId={clinicId ?? null}
         clinicName={clinicName}
-        onClose={() => setReceiptOpen(false)}
+        editing={editingReceipt}
+        onPrintVoucher={printVoucher}
+        onClose={() => { setReceiptOpen(false); setEditingReceipt(null); }}
         onSaved={() => setReloadTick(t => t + 1)}
       />
     </View>

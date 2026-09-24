@@ -14,15 +14,15 @@ import {
   KeyboardAvoidingView, useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { X, Plus, Trash2 } from '../../../core/ui/icons';
+import { X, Plus, Trash2, Printer } from '../../../core/ui/icons';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { useInkUI } from '../../../core/theme/inkScale';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { toast } from '../../../core/ui/Toast';
 import { getRate } from '../../../core/money/currency';
 import { getBaseCurrency } from '../../../core/money/baseCurrency';
-import { previewClinicReceipt, recordClinicReceipt } from '../api';
-import type { ReceiptLine, ReceiptResult } from '../types';
+import { previewClinicReceipt, recordClinicReceipt, updateClinicReceipt } from '../api';
+import type { ReceiptLine, ReceiptResult, ClinicReceipt } from '../types';
 
 const CCY: ReceiptLine['currency'][] = ['TRY', 'EUR', 'USD', 'GBP'];
 const METHODS = ['nakit', 'kart', 'havale', 'cek', 'diger'] as const;
@@ -36,13 +36,17 @@ const num = (v: string) => Number(String(v ?? '').replace(',', '.'));
 const fmt = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function ClinicReceiptModal({
-  visible, clinicId, clinicName, onClose, onSaved,
+  visible, clinicId, clinicName, onClose, onSaved, editing, onPrintVoucher,
 }: {
   visible: boolean;
   clinicId: string | null;
   clinicName?: string;
   onClose: () => void;
   onSaved?: (r: ReceiptResult) => void;
+  /** Verilirse pencere DÜZENLEME modunda açılır ve bu fişi günceller. */
+  editing?: ClinicReceipt | null;
+  /** Düzenlenen fişin PDF makbuzunu üretir (yalnız düzenleme modunda görünür). */
+  onPrintVoucher?: (r: ClinicReceipt) => void;
 }) {
   const U = useInkUI();
   const insets = useSafeAreaInsets();
@@ -63,10 +67,23 @@ export function ClinicReceiptModal({
   useEffect(() => {
     if (!visible) return;
     idemRef.current = `rcpt-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    setRows([{ currency: base as any, amount: '', rate: '1' }]);
-    setPreview(null); setRefNo(''); setNotes(''); setMethod('nakit'); setBusy(false);
-    setDate(new Date().toISOString().slice(0, 10));
-  }, [visible, base]);
+    setPreview(null); setBusy(false);
+    if (editing) {
+      // Düzenleme: kayıtlı satırları olduğu gibi göster — kur dahil, çünkü
+      // tahsilat o gün o kurdan alındı; bugünün kuruyla ezmek yanlış olur.
+      setRows((editing.lines ?? []).map(l => ({
+        currency: l.currency as any, amount: String(l.amount), rate: String(l.rate),
+      })));
+      setDate(editing.receipt_date);
+      setMethod(editing.payment_method || 'nakit');
+      setRefNo(editing.reference_no ?? '');
+      setNotes(editing.notes ?? '');
+    } else {
+      setRows([{ currency: base as any, amount: '', rate: '1' }]);
+      setRefNo(''); setNotes(''); setMethod('nakit');
+      setDate(new Date().toISOString().slice(0, 10));
+    }
+  }, [visible, base, editing]);
 
   /** Para birimi değişince kuru o günün kuruyla DOLDUR — üzerine yazılabilir. */
   const setRowCurrency = useCallback(async (i: number, c: ReceiptLine['currency']) => {
@@ -103,12 +120,17 @@ export function ClinicReceiptModal({
     if (lines.length === 0) { toast.error(autoT('En az bir tahsilat satırı gerekli')); return; }
     setBusy(true);
     try {
-      const res = await recordClinicReceipt({
-        clinicId, lines, receiptDate: date, method,
-        referenceNo: refNo.trim() || null, notes: notes.trim() || null,
-        idempotencyKey: idemRef.current,
-      });
-      toast.success(autoT('Tahsilat kaydedildi'));
+      const res = editing
+        ? await updateClinicReceipt({
+            receiptId: editing.id, lines, receiptDate: date, method,
+            referenceNo: refNo.trim() || null, notes: notes.trim() || null,
+          })
+        : await recordClinicReceipt({
+            clinicId, lines, receiptDate: date, method,
+            referenceNo: refNo.trim() || null, notes: notes.trim() || null,
+            idempotencyKey: idemRef.current,
+          });
+      toast.success(autoT(editing ? 'Tahsilat güncellendi' : 'Tahsilat kaydedildi'));
       onSaved?.(res);
       onClose();
     } catch (e: any) {
@@ -147,7 +169,9 @@ export function ClinicReceiptModal({
           {/* Başlık */}
           <View style={U.modalHeaderRow}>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={U.modalTitle} numberOfLines={1}>Tahsilat ekle</Text>
+              <Text style={U.modalTitle} numberOfLines={1}>
+                {autoT(editing ? 'Tahsilatı düzenle' : 'Tahsilat ekle')}
+              </Text>
               {clinicName ? (
                 <Text style={{ fontSize: 12, color: U.ink[400], marginTop: 2 }} numberOfLines={1}>
                   {clinicName}
@@ -338,12 +362,28 @@ export function ClinicReceiptModal({
 
           {/* Alt bar */}
           <View style={{
-            flexDirection: 'row', gap: 8, justifyContent: 'flex-end',
+            flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'flex-end',
             paddingHorizontal: 18, paddingTop: 14,
             // Home indicator'un altinda kalmasin.
             paddingBottom: 14 + (Platform.OS === 'web' ? 0 : insets.bottom),
             borderTopWidth: 1, borderTopColor: U.hairline,
           }}>
+            {/* Makbuz yalnız KAYITLI fiş için anlamlı — yeni kayıtta henüz
+                belgeleneck bir tahsilat yok. */}
+            {editing && onPrintVoucher ? (
+              <GlassTooltip title={autoT('Makbuz')} text={autoT('Bu tahsilat için PDF makbuz oluştur')}>
+                <Pressable onPress={() => onPrintVoucher(editing)}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 6, marginEnd: 'auto' as any,
+                    paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999,
+                    borderWidth: 1, borderColor: U.hairline, backgroundColor: U.surfaceSoft,
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  }}>
+                  <Printer size={14} color={U.ink[700]} strokeWidth={1.8} />
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[700] }}>Makbuz</Text>
+                </Pressable>
+              </GlassTooltip>
+            ) : null}
             <Pressable onPress={onClose}
               style={{
                 paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999,
