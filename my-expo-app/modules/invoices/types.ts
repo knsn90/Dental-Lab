@@ -248,3 +248,45 @@ export interface InvoiceListFilters {
   overdue_only?: boolean;
   search?: string;                   // invoice_number veya hasta adı
 }
+
+// ── Klinik toplu tahsilatı (fatura-bağımsız, çoklu döviz) ────────────────
+// Fiş satırı kasaya giren GERÇEK parayı tutar (800 USD, 600 TL); faturaya
+// yazılan tahsis ayrı bir payments satırıdır ve faturanın para birimindedir.
+
+/** Tahsilat fişinde bir para birimi satırı — 800 USD @34 gibi. */
+export type ReceiptLine = {
+  currency: 'TRY' | 'EUR' | 'USD' | 'GBP';
+  amount: number;
+  /** 1 birim `currency`nin baz para birimi karşılığı. */
+  rate: number;
+};
+
+export type ReceiptAllocation = {
+  invoice_id: string;
+  invoice_no: string | null;
+  amount: number;
+  currency: string;
+};
+
+export type ReceiptResult = {
+  receipt_id: string;
+  total_base: number;
+  allocated_base: number;
+  credit_base: number;
+  allocations: ReceiptAllocation[];
+  /** Aynı idempotency anahtarıyla ikinci çağrı ise true. */
+  duplicate?: boolean;
+};
+
+export type ClinicReceipt = {
+  id: string;
+  clinic_id: string;
+  receipt_date: string;
+  payment_method: string;
+  reference_no: string | null;
+  notes: string | null;
+  base_currency: string;
+  total_base: number;
+  allocated_base: number;
+  lines: { currency: string; amount: number; rate: number; amount_base: number }[];
+};

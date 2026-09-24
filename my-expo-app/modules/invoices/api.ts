@@ -10,6 +10,7 @@ import { dispatchToClinic } from '../../core/notifications/dispatch';
 import type {
   Invoice, InvoiceItem, Payment, ClinicBalance, ClinicBalanceCcy, InvoiceStatus,
   CreateInvoiceParams, InvoiceItemInput, RecordPaymentParams,
+  ReceiptLine, ReceiptResult, ClinicReceipt,
   InvoiceListFilters, CreateBulkInvoiceParams, UnbilledWorkOrder,
   LinkedWorkOrder,
 } from './types';
@@ -547,4 +548,72 @@ export async function fetchInvoiceStats(): Promise<InvoiceStats> {
     paid:        groupByCurrency(nonCancelled, r => ({ amount: Number(r.paid_amount) || 0, currency: cur(r) })),
     invoiceCount: nonCancelled.length,
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Klinik toplu tahsilatı — fatura seçmeden, çoklu döviz
+//
+//  Dağıtımın tek kaynağı sunucudaki RPC'ler. İstemci ikinci bir hesap YAPMAZ;
+//  yapsaydı iki hesap zamanla ayrışırdı. Önizleme de aynı SQL yolundan geçer.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Yazmadan dağıtım önizlemesi — pencere, kaydetmeden önce bunu gösterir. */
+export async function previewClinicReceipt(
+  clinicId: string, lines: ReceiptLine[],
+): Promise<ReceiptResult> {
+  const { data, error } = await supabase.rpc('preview_clinic_receipt', {
+    p_clinic_id: clinicId,
+    p_lines: lines,
+  });
+  if (error) throw new Error(error.message);
+  return data as ReceiptResult;
+}
+
+export async function recordClinicReceipt(p: {
+  clinicId: string;
+  lines: ReceiptLine[];
+  receiptDate?: string;
+  method?: string;
+  referenceNo?: string | null;
+  notes?: string | null;
+  /** Çift tıklama tek fiş üretsin diye pencere açılışında üretilir. */
+  idempotencyKey?: string;
+}): Promise<ReceiptResult> {
+  const { data, error } = await supabase.rpc('record_clinic_receipt', {
+    p_clinic_id: p.clinicId,
+    p_lines: p.lines,
+    p_receipt_date: p.receiptDate ?? new Date().toISOString().slice(0, 10),
+    p_payment_method: p.method ?? 'nakit',
+    p_reference_no: p.referenceNo ?? null,
+    p_notes: p.notes ?? null,
+    p_idempotency_key: p.idempotencyKey ?? null,
+  });
+  if (error) throw new Error(error.message);
+  return data as ReceiptResult;
+}
+
+/** Klinikte duran kullanılmamış alacağı açık faturalara uygular. */
+export async function applyClinicCredit(
+  clinicId: string, receiptId?: string | null,
+): Promise<{ applied_base: number; receipts_touched: number }> {
+  const { data, error } = await supabase.rpc('apply_clinic_credit', {
+    p_clinic_id: clinicId,
+    p_receipt_id: receiptId ?? null,
+  });
+  if (error) throw new Error(error.message);
+  return data as { applied_base: number; receipts_touched: number };
+}
+
+export async function fetchClinicReceipts(clinicId?: string): Promise<ClinicReceipt[]> {
+  let q = supabase
+    .from('clinic_receipts')
+    .select('id, clinic_id, receipt_date, payment_method, reference_no, notes, '
+          + 'base_currency, total_base, allocated_base, '
+          + 'lines:clinic_receipt_lines(currency, amount, rate, amount_base)')
+    .order('receipt_date', { ascending: false })
+    .limit(200);
+  if (clinicId) q = q.eq('clinic_id', clinicId);
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
+  return (data ?? []) as unknown as ClinicReceipt[];
 }
