@@ -315,11 +315,12 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
   // Klinik değişince seçim yeniden hesaplansın.
   useEffect(() => { setCcyPinned(false); }, [clinicId]);
 
+  // Sayfa basligi BOLUM adidir, kayit adi degil: klinik adi hem en ustte hem
+  // satir basliginda hem hero'da ucurdu. Kimlik hero'da, konum en ustte.
   useEffect(() => {
-    const name = clinicInfo?.clinic_name ?? 'Hesap Ekstresi';
-    setTitle(name, 'Hesap Ekstresi');
+    setTitle('Finans', 'Hesap Ekstresi');
     return clear;
-  }, [clinicInfo?.clinic_name]);
+  }, []);
 
   // Faturalardaki para birimleri (katı per-currency — ekstre tek dövizde)
   // + faturalanmamış işlerin para birimleri: aksi halde yalnız EUR işi olan
@@ -573,17 +574,9 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
           </Pressable>
         )}
 
-        <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Building2 size={16} color={U.ink[400]} strokeWidth={1.6} />
-            <Text style={{ ...DISPLAY, fontSize: isDesktop ? 22 : 18, letterSpacing: -0.4, color: U.ink[900] }}>
-              {clinicName}
-            </Text>
-          </View>
-          <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 2, marginStart: 24 }}>
-            Hesap Ekstresi · {allLines.length} hareket
-          </Text>
-        </View>
+        {/* Klinik adi HERO'da; burada yalnizca geri + eylemler kaliyor ki ayni
+            ad ust uste uc kez yazilmasin. */}
+        <View style={{ flex: 1 }} />
 
         {/* Action buttons */}
         <View style={{ flexDirection: 'row', gap: 6 }}>
@@ -650,9 +643,10 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
             serit birakiyordu; hero ikisini tek blokta topluyor. */}
         <WhiteHero
           kicker={autoT('Hesap Ekstresi')}
-          title={<>{fmtMoney(balance, selectedCcy)} <Text style={{ color: heroInk.inkSoft, fontSize: 20 }}>{autoT('bakiye')}</Text></>}
+          title={clinicName || autoT('Sağlık Kurumu')}
           description={`${allLines.length} ${autoT('hareket')}${overdue > 0 ? ` · ${fmtMoney(overdue, selectedCcy)} ${autoT('gecikmiş')}` : ''}`}
           stats={[
+            { value: fmtMoney(balance, selectedCcy),     label: autoT('Bakiye') },
             { value: fmtMoney(totalBilled, selectedCcy), label: autoT('Kesilen') },
             { value: fmtMoney(totalPaid, selectedCcy),   label: autoT('Tahsil edilen') },
           ]}
