@@ -481,27 +481,13 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
               </Pressable>
             }
             kicker={`${autoT('Fatura')} · ${invoice.invoice_number}`}
-            /* Belge eylemleri hero'nun alt sağ şeridinde: ayrı araç çubuğu
-               satırı, sayfa başlığıyla hero arasında boş bir bant bırakıyordu. */
-            actionsAlign="end"
-            actions={<>
-              {!readOnly && invoice.status === 'taslak' && (
-                <PillBtn icon={Send} label={isDesktop ? 'Kesildi İşaretle' : undefined} color={CHIP_TONES.info.text} bg={CHIP_TONES.info.bg} onPress={handleMarkSent} disabled={busy} />
-              )}
-              {!readOnly && (invoice.status === 'kesildi' || invoice.status === 'kismi_odendi') && (
-                <PillBtn icon={BellRing} label={isDesktop ? 'Hatirlatma' : undefined} color={U.ink[500]} bg={U.ink[50]} onPress={() => setReminderOpen(true)} disabled={busy} />
-              )}
-              {!readOnly && invoice.status === 'kesildi' && Number(invoice.paid_amount) === 0 && (
-                <PillBtn icon={Undo2} label={isDesktop ? 'Taslağa Dön' : undefined} color={U.ink[700]} bg={U.ink[100]} onPress={handleRevertToDraft} disabled={busy} />
-              )}
-              {!readOnly && balance > 0 && invoice.status !== 'iptal' && (
-                <PillBtn icon={Banknote} label={isDesktop ? 'Tahsilat Ekle' : undefined} onPress={() => setPaymentModalVisible(true)} dark />
-              )}
-              <PillBtn icon={Printer} onPress={handlePrint} />
-            </>}
             title={fmtMoney(balance)}
             description={autoT('Kalan')}
+            /* Durum rozeti + belge eylemleri kartın SAĞ ÜST köşesinde, yani
+               tutarın ÖNÜNDE: alt şeride sarkınca kart uzuyor, eylemler de
+               zaman çizelgesinin altında kalıp gözden kaçıyordu. */
             cta={
+              <View style={{ alignItems: 'flex-end', gap: 9 }}>
               <View style={{
                 flexDirection: 'row', alignItems: 'center', gap: 5,
                 paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
@@ -522,6 +508,22 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
                 }}>
                   {isOverdue ? 'Vadesi Geçti' : INVOICE_STATUS_LABELS[invoice.status]}
                 </Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    {!readOnly && invoice.status === 'taslak' && (
+                      <PillBtn icon={Send} label={isDesktop ? 'Kesildi İşaretle' : undefined} color={CHIP_TONES.info.text} bg={CHIP_TONES.info.bg} onPress={handleMarkSent} disabled={busy} />
+                    )}
+                    {!readOnly && (invoice.status === 'kesildi' || invoice.status === 'kismi_odendi') && (
+                      <PillBtn icon={BellRing} label={isDesktop ? 'Hatirlatma' : undefined} color={U.ink[500]} bg={U.ink[50]} onPress={() => setReminderOpen(true)} disabled={busy} />
+                    )}
+                    {!readOnly && invoice.status === 'kesildi' && Number(invoice.paid_amount) === 0 && (
+                      <PillBtn icon={Undo2} label={isDesktop ? 'Taslağa Dön' : undefined} color={U.ink[700]} bg={U.ink[100]} onPress={handleRevertToDraft} disabled={busy} />
+                    )}
+                    {!readOnly && balance > 0 && invoice.status !== 'iptal' && (
+                      <PillBtn icon={Banknote} label={isDesktop ? 'Tahsilat Ekle' : undefined} onPress={() => setPaymentModalVisible(true)} dark />
+                    )}
+                    <PillBtn icon={Printer} onPress={handlePrint} />
+              </View>
               </View>
             }
           >
