@@ -469,7 +469,7 @@
       "received": "Received",
       "production": "In production",
       "qualityControl": "Quality control",
-      "readyForDelivery": "Handed to courier",
+      "readyForDelivery": "Ready for Delivery",
       "delivered": "Delivered",
       "qcShort": "QC",
       "ready": "Ready",
@@ -478,7 +478,9 @@
       "newWorkKicker": "NEW WORK",
       "overdueOrder": "overdue order",
       "urgent": "URGENT",
-      "toPlanShort": "To plan"
+      "toPlanShort": "To plan",
+      "withCourier": "With Courier",
+      "waitingCourier": "Waiting for Courier"
     },
     "months": {
       "short": "Jan, Feb, Mar, Apr, May, Jun, Jul, Aug, Sep, Oct, Nov, Dec",

@@ -477,7 +477,7 @@
       "received": "Alındı",
       "production": "Üretimde",
       "qualityControl": "Kalite Kontrol",
-      "readyForDelivery": "Kuryeye Teslim Edildi",
+      "readyForDelivery": "Teslime Hazır",
       "delivered": "Teslim Edildi",
       "qcShort": "KK",
       "ready": "Hazır",
@@ -486,7 +486,9 @@
       "newWorkKicker": "YENİ İŞ",
       "overdueOrder": "geciken sipariş",
       "urgent": "ACİL",
-      "toPlanShort": "Planlanacak"
+      "toPlanShort": "Planlanacak",
+      "withCourier": "Kuryede",
+      "waitingCourier": "Kurye Bekleniyor"
     },
     "months": {
       "short": "Oca, Şub, Mar, Nis, May, Haz, Tem, Ağu, Eyl, Eki, Kas, Ara",

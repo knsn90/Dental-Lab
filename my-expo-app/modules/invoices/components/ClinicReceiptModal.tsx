@@ -11,10 +11,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, Modal, Pressable, TextInput, Platform, ActivityIndicator, ScrollView,
+  KeyboardAvoidingView, useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X, Plus, Trash2 } from '../../../core/ui/icons';
 import { autoT } from '../../../core/i18n/autoTranslate';
-import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useInkUI } from '../../../core/theme/inkScale';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { toast } from '../../../core/ui/Toast';
 import { getRate } from '../../../core/money/currency';
@@ -42,7 +44,10 @@ export function ClinicReceiptModal({
   onClose: () => void;
   onSaved?: (r: ReceiptResult) => void;
 }) {
-  const T = useMobileTokens();
+  const U = useInkUI();
+  const insets = useSafeAreaInsets();
+  const { width: winW } = useWindowDimensions();
+  const narrow = winW < 560;
   const base = getBaseCurrency();
   const [rows, setRows]       = useState<Row[]>([{ currency: base as any, amount: '', rate: '1' }]);
   const [date, setDate]       = useState(new Date().toISOString().slice(0, 10));
@@ -113,46 +118,47 @@ export function ClinicReceiptModal({
 
   const totalBase = validLines().reduce((s, l) => s + l.amount * l.rate, 0);
 
-  const label: any = { fontSize: 11.5, fontWeight: '700', color: T.ink3, marginBottom: 5 };
-  const input: any = {
-    height: 40, borderRadius: 12, paddingHorizontal: 12, fontSize: 14,
-    backgroundColor: T.cardSoft, color: T.ink,
-    borderWidth: 1, borderColor: T.hairline,
-    ...(Platform.OS === 'web' ? { outlineWidth: 0 } as any : {}),
-  };
+  // Uygulama genelindeki modal standardi: useInkUI'nin hazir yuzeyleri.
+  // useMobileTokens panel zeminini kullaniyor, finans panelinde o mavimsi
+  // ciktigi icin form "siteye uygun" gorunmuyordu.
+  const label: any = { ...U.colHeader, marginBottom: 6 };
+  const input: any = U.inputStyle;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      {/* Uygulama modal standardi: U.modalOverlay / modalCard / modalHeaderRow.
+          Arka plan ayrica bulaniklastirilir (site geneli popup kalibi). */}
+      {/* iOS'ta klavye alt alanlari (tutar/kur/not) kapatiyordu → kart yukari
+          kaysin. Dar ekranda overlay dolgusu 24 -> 12: 24 kart genisligini
+          gereksiz kirpiyordu. */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
       <View style={{
-        flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16,
-        backgroundColor: 'rgba(10,14,26,0.52)',
+        ...U.modalOverlay,
+        padding: narrow ? 12 : 24,
         ...(Platform.OS === 'web'
           ? { backdropFilter: 'blur(10px) saturate(120%)',
               WebkitBackdropFilter: 'blur(10px) saturate(120%)' } as any
           : null),
       }}>
-        <View style={{
-          width: '100%', maxWidth: 520, maxHeight: '88%', borderRadius: 22,
-          backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline, overflow: 'hidden',
-        }}>
+        <View style={[U.modalCard, narrow ? { maxHeight: '94%' } : null]}>
           {/* Başlık */}
-          <View style={{
-            flexDirection: 'row', alignItems: 'center', gap: 8,
-            paddingHorizontal: 18, paddingVertical: 14,
-            borderBottomWidth: 1, borderBottomColor: T.hairline,
-          }}>
+          <View style={U.modalHeaderRow}>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ fontSize: 15, fontWeight: '700', color: T.ink }} numberOfLines={1}>
-                Tahsilat ekle
-              </Text>
+              <Text style={U.modalTitle} numberOfLines={1}>Tahsilat ekle</Text>
               {clinicName ? (
-                <Text style={{ fontSize: 12, color: T.ink3 }} numberOfLines={1}>{clinicName}</Text>
+                <Text style={{ fontSize: 12, color: U.ink[400], marginTop: 2 }} numberOfLines={1}>
+                  {clinicName}
+                </Text>
               ) : null}
             </View>
             <GlassTooltip title={autoT('Kapat')} text={autoT('Pencereyi kaydetmeden kapat')} placement="bottom">
               <Pressable onPress={onClose} hitSlop={8}
-                style={{ padding: 6, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-                <X size={18} color={T.ink3} strokeWidth={2} />
+                style={{ ...U.modalCloseBtn,
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer', outlineStyle: 'none' } as any : {}) }}>
+                <X size={15} color={U.ink[500]} strokeWidth={2} />
               </Pressable>
             </GlassTooltip>
           </View>
@@ -163,12 +169,12 @@ export function ClinicReceiptModal({
               <View style={{ flex: 1 }}>
                 <Text style={label}>Tarih</Text>
                 <TextInput value={date} onChangeText={setDate} style={input}
-                  placeholder="YYYY-AA-GG" placeholderTextColor={T.ink3} />
+                  placeholder="YYYY-AA-GG" placeholderTextColor={U.ink[400]} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={label}>Referans</Text>
                 <TextInput value={refNo} onChangeText={setRefNo} style={input}
-                  placeholder={autoT('Dekont no')} placeholderTextColor={T.ink3} />
+                  placeholder={autoT('Dekont no')} placeholderTextColor={U.ink[400]} />
               </View>
             </View>
 
@@ -181,12 +187,12 @@ export function ClinicReceiptModal({
                     <Pressable key={m} onPress={() => setMethod(m)}
                       style={{
                         paddingHorizontal: on ? 14 : 11, paddingVertical: 7, borderRadius: 999,
-                        backgroundColor: on ? T.ink : T.cardSoft,
-                        borderWidth: 1, borderColor: on ? T.ink : T.hairline,
+                        backgroundColor: on ? U.ink[900] : U.surfaceSoft,
+                        borderWidth: 1, borderColor: on ? U.ink[900] : U.hairline,
                         ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                       }}>
                       <Text style={{ fontSize: 12.5, fontWeight: on ? '700' : '500',
-                                     color: on ? T.card : T.ink2 }}>
+                                     color: on ? U.surface : U.ink[700] }}>
                         {autoT(METHOD_LABEL[m])}
                       </Text>
                     </Pressable>
@@ -203,43 +209,46 @@ export function ClinicReceiptModal({
                   const b = num(r.amount) * num(r.rate);
                   return (
                     <View key={i} style={{ gap: 6 }}>
-                      <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
-                        <View style={{ flexDirection: 'row', gap: 4 }}>
+                      {/* Para birimi cipleri AYRI satirda: tek satirda ciplerle
+                          birlikte tutar+kur+sil sigmiyor, sil dugmesi karttan
+                          disari tasiyordu. */}
+                      <View style={{ flexDirection: 'row', gap: 4, flexWrap: 'wrap' }}>
                           {CCY.map(c => {
                             const on = r.currency === c;
                             return (
                               <Pressable key={c} onPress={() => setRowCurrency(i, c)}
                                 style={{
                                   paddingHorizontal: 9, paddingVertical: 7, borderRadius: 9,
-                                  backgroundColor: on ? `${T.ink}14` : 'transparent',
-                                  borderWidth: 1, borderColor: on ? T.ink2 : T.hairline,
+                                  backgroundColor: on ? `${U.ink[900]}14` : 'transparent',
+                                  borderWidth: 1, borderColor: on ? U.ink[700] : U.hairline,
                                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                                 }}>
                                 <Text style={{ fontSize: 11.5, fontWeight: on ? '700' : '500',
-                                               color: on ? T.ink : T.ink3 }}>{c}</Text>
+                                               color: on ? U.ink[900] : U.ink[400] }}>{c}</Text>
                               </Pressable>
                             );
                           })}
-                        </View>
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
                         <TextInput value={r.amount} keyboardType="decimal-pad"
                           onChangeText={v => setRows(p => p.map((x, k) => k === i ? { ...x, amount: v } : x))}
-                          style={[input, { flex: 1 }]} placeholder={autoT('Tutar')}
-                          placeholderTextColor={T.ink3} />
+                          style={[input, { flex: 1, minWidth: 0 }]} placeholder={autoT('Tutar')}
+                          placeholderTextColor={U.ink[400]} />
                         <TextInput value={r.rate} keyboardType="decimal-pad"
                           onChangeText={v => setRows(p => p.map((x, k) => k === i ? { ...x, rate: v } : x))}
-                          style={[input, { width: 90 }]} placeholder={autoT('Kur')}
-                          placeholderTextColor={T.ink3} />
+                          style={[input, { width: 104, flexShrink: 0 }]} placeholder={autoT('Kur')}
+                          placeholderTextColor={U.ink[400]} />
                         {rows.length > 1 ? (
                           <GlassTooltip title={autoT('Satırı sil')} text={autoT('Bu para birimi satırını kaldır')}>
                             <Pressable onPress={() => setRows(p => p.filter((_, k) => k !== i))} hitSlop={6}
                               style={{ padding: 6, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-                              <Trash2 size={15} color={T.ink3} strokeWidth={1.9} />
+                              <Trash2 size={15} color={U.ink[400]} strokeWidth={1.9} />
                             </Pressable>
                           </GlassTooltip>
                         ) : null}
                       </View>
                       {b > 0 ? (
-                        <Text style={{ fontSize: 11, color: T.ink3, marginStart: 4 }}>
+                        <Text style={{ fontSize: 11, color: U.ink[400], marginStart: 4 }}>
                           {autoT('Baz karşılığı')}: {fmt(b)} {base}
                         </Text>
                       ) : null}
@@ -253,32 +262,32 @@ export function ClinicReceiptModal({
                   style={{
                     flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8,
                     alignSelf: 'flex-start', paddingHorizontal: 11, paddingVertical: 7,
-                    borderRadius: 999, backgroundColor: T.cardSoft,
-                    borderWidth: 1, borderColor: T.hairline,
+                    borderRadius: 999, backgroundColor: U.surfaceSoft,
+                    borderWidth: 1, borderColor: U.hairline,
                     ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                   }}>
-                  <Plus size={13} color={T.ink2} strokeWidth={2.2} />
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: T.ink2 }}>Satır ekle</Text>
+                  <Plus size={13} color={U.ink[700]} strokeWidth={2.2} />
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: U.ink[700] }}>Satır ekle</Text>
                 </Pressable>
               </GlassTooltip>
             </View>
 
             {/* Dağıtım önizlemesi — sunucudan */}
             <View style={{
-              borderRadius: 14, backgroundColor: T.cardSoft,
-              borderWidth: 1, borderColor: T.hairline, padding: 14, gap: 8,
+              borderRadius: 14, backgroundColor: U.surfaceSoft,
+              borderWidth: 1, borderColor: U.hairline, padding: 14, gap: 8,
             }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Text style={{ fontSize: 10.5, fontWeight: '700', color: T.ink3,
+                <Text style={{ fontSize: 10.5, fontWeight: '700', color: U.ink[400],
                                letterSpacing: 0.4, textTransform: 'uppercase', flex: 1 }}>
                   Dağıtım
                 </Text>
-                {loadingPrev ? <ActivityIndicator size="small" color={T.ink3} /> : null}
+                {loadingPrev ? <ActivityIndicator size="small" color={U.ink[400]} /> : null}
               </View>
 
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: 12.5, color: T.ink2 }}>Toplam tahsilat</Text>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink }}>
+                <Text style={{ fontSize: 12.5, color: U.ink[700] }}>Toplam tahsilat</Text>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>
                   {fmt(totalBase)} {base}
                 </Text>
               </View>
@@ -286,17 +295,17 @@ export function ClinicReceiptModal({
               {(preview?.allocations ?? []).map(a => (
                 <View key={a.invoice_id}
                   style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ fontSize: 12.5, color: T.ink3 }} numberOfLines={1}>
+                  <Text style={{ fontSize: 12.5, color: U.ink[400] }} numberOfLines={1}>
                     {a.invoice_no ?? '—'}
                   </Text>
-                  <Text style={{ fontSize: 12.5, color: T.ink2 }}>
+                  <Text style={{ fontSize: 12.5, color: U.ink[700] }}>
                     {fmt(Number(a.amount) || 0)} {a.currency}
                   </Text>
                 </View>
               ))}
 
               {preview && (preview.allocations ?? []).length === 0 ? (
-                <Text style={{ fontSize: 12, color: T.ink3 }}>
+                <Text style={{ fontSize: 12, color: U.ink[400] }}>
                   Kapatılacak açık fatura yok
                 </Text>
               ) : null}
@@ -304,12 +313,12 @@ export function ClinicReceiptModal({
               {preview ? (
                 <View style={{
                   flexDirection: 'row', justifyContent: 'space-between',
-                  borderTopWidth: 1, borderTopColor: T.hairline, paddingTop: 8,
+                  borderTopWidth: 1, borderTopColor: U.hairline, paddingTop: 8,
                 }}>
-                  <Text style={{ fontSize: 12.5, fontWeight: '600', color: T.ink2 }}>
+                  <Text style={{ fontSize: 12.5, fontWeight: '600', color: U.ink[700] }}>
                     Kalan alacak
                   </Text>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: T.ink }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: U.ink[900] }}>
                     {fmt(Number(preview.credit_base) || 0)} {base}
                   </Text>
                 </View>
@@ -318,24 +327,30 @@ export function ClinicReceiptModal({
 
             <View>
               <Text style={label}>Not</Text>
-              <TextInput value={notes} onChangeText={setNotes} style={[input, { height: 68 }]}
-                multiline placeholder={autoT('İsteğe bağlı')} placeholderTextColor={T.ink3} />
+              {/* Cok satirli girdide metin dikeyde ORTALANMAZ; ustten dolgu
+                  verilmezse imlec ve yer tutucu kenara yapisiyor. */}
+              <TextInput value={notes} onChangeText={setNotes} multiline
+                style={[input, { height: 78, paddingTop: 12, paddingBottom: 12,
+                                 textAlignVertical: 'top' as any }]}
+                placeholder={autoT('İsteğe bağlı')} placeholderTextColor={U.ink[400]} />
             </View>
           </ScrollView>
 
           {/* Alt bar */}
           <View style={{
             flexDirection: 'row', gap: 8, justifyContent: 'flex-end',
-            paddingHorizontal: 18, paddingVertical: 14,
-            borderTopWidth: 1, borderTopColor: T.hairline,
+            paddingHorizontal: 18, paddingTop: 14,
+            // Home indicator'un altinda kalmasin.
+            paddingBottom: 14 + (Platform.OS === 'web' ? 0 : insets.bottom),
+            borderTopWidth: 1, borderTopColor: U.hairline,
           }}>
             <Pressable onPress={onClose}
               style={{
                 paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999,
-                borderWidth: 1, borderColor: T.hairline, backgroundColor: T.cardSoft,
+                borderWidth: 1, borderColor: U.hairline, backgroundColor: U.surfaceSoft,
                 ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
               }}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink2 }}>Vazgeç</Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[700] }}>Vazgeç</Text>
             </Pressable>
             <GlassTooltip title={autoT('Kaydet')}
               text={autoT('Tahsilatı kaydet ve en eski faturadan başlayarak dağıt')}
@@ -344,16 +359,17 @@ export function ClinicReceiptModal({
                 style={{
                   flexDirection: 'row', alignItems: 'center', gap: 7,
                   paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999,
-                  backgroundColor: T.ink, opacity: busy ? 0.6 : 1,
+                  backgroundColor: U.ink[900], opacity: busy ? 0.6 : 1,
                   ...(Platform.OS === 'web' ? { cursor: busy ? 'not-allowed' : 'pointer' } as any : {}),
                 }}>
-                {busy ? <ActivityIndicator size="small" color={T.card} /> : null}
-                <Text style={{ fontSize: 13, fontWeight: '700', color: T.card }}>Kaydet</Text>
+                {busy ? <ActivityIndicator size="small" color={U.surface} /> : null}
+                <Text style={{ fontSize: 13, fontWeight: '700', color: U.surface }}>Kaydet</Text>
               </Pressable>
             </GlassTooltip>
           </View>
         </View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

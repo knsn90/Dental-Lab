@@ -469,7 +469,7 @@
       "received": "دریافت‌شده",
       "production": "در حال ساخت",
       "qualityControl": "کنترل کیفیت",
-      "readyForDelivery": "تحویل به پیک",
+      "readyForDelivery": "آماده تحویل",
       "delivered": "تحویل‌شده",
       "qcShort": "کنترل کیفیت",
       "ready": "آماده",
@@ -478,7 +478,9 @@
       "newWorkKicker": "کار جدید",
       "overdueOrder": "سفارش عقب‌افتاده",
       "urgent": "فوری",
-      "toPlanShort": "برای برنامه‌ریزی"
+      "toPlanShort": "برای برنامه‌ریزی",
+      "withCourier": "نزد پیک",
+      "waitingCourier": "در انتظار پیک"
     },
     "months": {
       "short": "ژانویه, فوریه, مارس, آوریل, مه, ژوئن, ژوئیه, اوت, سپتامبر, اکتبر, نوامبر, دسامبر",

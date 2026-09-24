@@ -8614,5 +8614,9 @@
   "Tahsilat kaydedilemedi": "Payment could not be recorded",
   "Tahsilatı kaydet ve en eski faturadan başlayarak dağıt": "Record the payment and allocate it starting from the oldest invoice",
   "Toplam tahsilat": "Total received",
-  "bakiye": "balance"
+  "bakiye": "balance",
+  "Ekstreyi Excel dosyası olarak indir": "Download the statement as an Excel file",
+  "Ekstreyi yazdır veya PDF olarak kaydet": "Print the statement or save it as a PDF",
+  "Fatura seçmeden, birden çok para biriminde tahsilat gir": "Record a payment in several currencies without picking an invoice",
+  "Sağlık kurumu listesine dön": "Back to the clinic list"
 }

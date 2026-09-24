@@ -553,49 +553,15 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
 
   return (
     <View style={{ flex: 1 }}>
-      {/* ── Header ────────────────────────────────────────── */}
-      <View style={{
-        flexDirection: 'row', alignItems: 'center', gap: 12,
-        paddingHorizontal: 16,
-        paddingTop: isDesktop || isEmbedded ? (isEmbedded && !isDesktop ? 4 : 16) : 16 + insets.top,
-        paddingBottom: isEmbedded && !isDesktop ? 12 : 16,
-        borderBottomWidth: 1, borderBottomColor: U.hairline,
-      }}>
-        {!selfView && (
-          <Pressable
-            // Ekstre Finans hub'ının "Sağlık Kurumları" sekmesinin alt sayfası.
-            // Geçmişe dönmek (safeBack) mobilde Özet'e düşüyordu: sekme
-            // navigatörü geri tuşunu ilk sekmeye yönlendiriyor. Hiyerarşik
-            // "yukarı" hedefi sabit: ekstrenin ait olduğu liste.
-            onPress={() => router.replace(`/${panelBase}/finance?tab=clinic_balance` as any)}
-            style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: U.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
-          >
-            {isRTL() ? <ArrowRight size={18} color={U.ink[900]} strokeWidth={1.8} /> : <ArrowLeft size={18} color={U.ink[900]} strokeWidth={1.8} />}
-          </Pressable>
-        )}
-
-        {/* Klinik adi HERO'da; burada yalnizca geri + eylemler kaliyor ki ayni
-            ad ust uste uc kez yazilmasin. */}
-        <View style={{ flex: 1 }} />
-
-        {/* Action buttons */}
-        <View style={{ flexDirection: 'row', gap: 6 }}>
-          {/* Fatura secmeden, cok dovizli toplu tahsilat. Klinik portalinda
-              (selfView) gosterilmez: tahsilati lab girer. */}
-          {!selfView && (
-            <PillBtn icon={Wallet} label={isDesktop ? 'Tahsilat ekle' : ''}
-                     onPress={() => setReceiptOpen(true)} />
-          )}
-          <PillBtn icon={Printer} label={isDesktop ? 'Yazdır / PDF' : ''} onPress={handlePrint} busy={exporting} variant="ghost" />
-          {Platform.OS === 'web' && (
-            <PillBtn icon={FileSpreadsheet} label={isDesktop ? 'Excel' : ''} onPress={handleExcel} variant="ghost" />
-          )}
-        </View>
-      </View>
-
+      {/* Ayrı başlık şeridi YOK: içinde yalnız geri düğmesi kalınca boş bir
+          bant + çizgi olarak duruyordu. Geri düğmesi hero'nun içinde. */}
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 16, paddingBottom: scrollPadBottom, gap: 16 }}
+        contentContainerStyle={{
+          padding: 16, paddingBottom: scrollPadBottom, gap: 16,
+          // Baslik seridi kaldirildi; ust centik payi artik burada.
+          paddingTop: (isDesktop || isEmbedded) ? 16 : 16 + insets.top,
+        }}
         showsVerticalScrollIndicator={false}
       >
         {/* ── Para birimi seçici (çok dövizli klinikte) ──────── */}
@@ -641,6 +607,31 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
         {/* ── Beyaz hero — ozet kartlari icine alindi ──────────
             Ayri duran bes kutu, baslikla ekstre tablosu arasinda kopuk bir
             serit birakiyordu; hero ikisini tek blokta topluyor. */}
+        {/* Geri: hero'nun USTUNDE gercek bir dugme. Baslik icine metin oku
+            koymak dokunma hedefi birakmiyordu (mobilde 44px'lik alan sart). */}
+        {!selfView && (
+          <GlassTooltip title={autoT('Geri')} text={autoT('Sağlık kurumu listesine dön')} placement="bottom">
+            <Pressable
+              // Ekstre, Finans hub'ının "Sağlık Kurumları" sekmesinin alt sayfası.
+              // safeBack mobilde Özet'e düşüyordu (sekme navigatörü geri tuşunu
+              // ilk sekmeye yönlendiriyor); hiyerarşik "yukarı" hedefi sabit.
+              onPress={() => router.replace(`/${panelBase}/finance?tab=clinic_balance` as any)}
+              accessibilityRole="button"
+              accessibilityLabel={autoT('Geri')}
+              style={{
+                width: 40, height: 40, borderRadius: 12, alignSelf: 'flex-start',
+                alignItems: 'center', justifyContent: 'center',
+                backgroundColor: U.surface, borderWidth: 1, borderColor: U.hairline,
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              }}
+            >
+              {isRTL()
+                ? <ArrowRight size={18} color={U.ink[900]} strokeWidth={1.8} />
+                : <ArrowLeft size={18} color={U.ink[900]} strokeWidth={1.8} />}
+            </Pressable>
+          </GlassTooltip>
+        )}
+
         <WhiteHero
           kicker={autoT('Hesap Ekstresi')}
           title={clinicName || autoT('Sağlık Kurumu')}
@@ -650,6 +641,25 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
             { value: fmtMoney(totalBilled, selectedCcy), label: autoT('Kesilen') },
             { value: fmtMoney(totalPaid, selectedCcy),   label: autoT('Tahsil edilen') },
           ]}
+          actionsAlign="end"
+          actions={<>
+            {/* Fatura secmeden, cok dovizli toplu tahsilat. Klinik portalinda
+                (selfView) gosterilmez: tahsilati lab girer. */}
+            {!selfView && (
+              <GlassTooltip title={autoT('Tahsilat ekle')}
+                            text={autoT('Fatura seçmeden, birden çok para biriminde tahsilat gir')}>
+                <PillBtn icon={Wallet} label={isDesktop ? "Tahsilat ekle" : ""} onPress={() => setReceiptOpen(true)} />
+              </GlassTooltip>
+            )}
+            <GlassTooltip title={autoT('Yazdır / PDF')} text={autoT('Ekstreyi yazdır veya PDF olarak kaydet')}>
+              <PillBtn icon={Printer} label={isDesktop ? "Yazdır / PDF" : ""} onPress={handlePrint} busy={exporting} variant="ghost" />
+            </GlassTooltip>
+            {Platform.OS === 'web' && (
+              <GlassTooltip title={autoT('Excel')} text={autoT('Ekstreyi Excel dosyası olarak indir')}>
+                <PillBtn icon={FileSpreadsheet} label={isDesktop ? "Excel" : ""} onPress={handleExcel} variant="ghost" />
+              </GlassTooltip>
+            )}
+          </>}
         >
           {/* Tahsilat orani — hero icinde tam genislikte ray */}
           <View style={{ marginTop: 16, gap: 6 }}>

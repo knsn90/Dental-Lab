@@ -27,7 +27,9 @@ import { HubContext } from '../../../core/ui/HubContext';
 import { InvoiceDetailScreen } from './InvoiceDetailScreen';
 import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 import { useInkUI, type InkUI } from '../../../core/theme/inkScale';
-import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
+import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
+import { MoneyMultiX } from '../../../core/money/MoneyMultiX';
 import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 import { useInvoices, useInvoiceStats, useUnbilledWorkOrders } from '../hooks/useInvoices';
 import { createBulkInvoice, bulkRecordPayment } from '../api';
@@ -127,6 +129,10 @@ export function InvoicesListScreen() {
   const panelBase = String(segments?.[0] ?? '(lab)');
   // SlideTabBar cursor'ı beyaz metin basar → koyu ink şart.
   const panelTheme = usePanelTheme();
+  // Tablo başlığı düz panel accent'i (uygulama genelinde aynı dil).
+  const tblAccent = panelTheme.primary;
+  const tblInk = onAccentInk(tblAccent);
+  const heroInk = useWhiteHeroInk(tblAccent);
   const invoiceHref = (id: string) => `/${panelBase}/invoice/${id}`;
   /**
    * Fatura hub içinde açılır — ayrı route'a gitmek finans kenar çubuğunu
@@ -149,6 +155,12 @@ export function InvoicesListScreen() {
 
   const { invoices, loading, refetch } = useInvoices();
   const { stats, refetch: refetchStats } = useInvoiceStats();
+  // Beyaz hero başlığı: çoklu-döviz TOPLANMAZ → en büyük dilim başlıkta.
+  const outLead       = stats?.outstanding[0] ?? null;
+  const outRest       = stats?.outstanding.slice(1) ?? [];
+  const overdueLead   = stats?.overdue[0] ?? null;
+  const thisMonthLead = stats?.thisMonth[0] ?? null;
+  const paidLead      = stats?.paid[0] ?? null;
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -283,48 +295,76 @@ export function InvoicesListScreen() {
         </Pressable>
       </View>
 
-      {/* ── KPI Row ── */}
-      {stats && (() => {
-        // Kartlar aynı boyda dursun: en çok para birimi olan kart kadar yer ayrılır.
-        const kpiRows = Math.max(
-          1,
-          stats.thisMonth.length, stats.outstanding.length,
-          stats.overdue.length, stats.paid.length,
-        );
-        return (
-        isDesktop ? (
-          // Desktop: düz satır — dikey ScrollView boş alanı doldurup boşluk yaratmasın
-          <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: PAGE_PADDING, paddingVertical: 8 }}>
-            <KpiMini label="Bu Ay Kesilen" slices={stats.thisMonth} icon={TrendingUp} color="#2563EB" flex rows={kpiRows} />
-            <KpiMini label="Toplam Bakiye" slices={stats.outstanding} icon={Wallet} color={U.ink[900]} flex rows={kpiRows} />
-            <KpiMini label="Vadesi Gecen" slices={stats.overdue} icon={AlertCircle} color={CHIP_TONES.danger.text} flex rows={kpiRows} />
-            <KpiMini label="Tahsilat (30g)" slices={stats.paid} icon={Banknote} color="#059669" flex rows={kpiRows} />
-          </View>
-        ) : (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            // RN'de ScrollView'ın varsayılan stili flexGrow:1 — dikey bir kolonun
-            // içinde YATAY şerit de olsa kalan boşluğu yutuyor, kartlar esneyip
-            // sayfayı kaplıyordu. flexGrow/Shrink 0 → şerit içeriği kadar yüksek.
-            style={{ flexGrow: 0, flexShrink: 0 }}
-            contentContainerStyle={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingHorizontal: PAGE_PADDING, paddingVertical: 8 }}
+      {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ─────────────────
+          Dört eşit ağırlıklı KPI kartı yerine Prim Motoru hiyerarşisi: kicker →
+          44px tek büyük rakam (toplam bakiye) → bağlam cümlesi → sağda 40px
+          stat'lar → altta kırılım şeridi. Rakam TOPLANMAZ; başlık en büyük
+          para birimi dilimini gösterir, kalanlar chip şeridinde. */}
+      {stats && (
+        <View style={{ paddingHorizontal: PAGE_PADDING, paddingVertical: 8 }}>
+          <WhiteHero
+            kicker="Faturalar"
+            accent={tblAccent}
+            title={
+              outLead ? (
+                <>Toplam bakiye <Text style={{ color: heroInk.accentInk }}>{fmtMoney(outLead.total, outLead.currency)}</Text></>
+              ) : '—'
+            }
+            description={
+              `${stats.invoiceCount} fatura` +
+              (overdueLead ? ` · vadesi geçen ${fmtMoney(overdueLead.total, overdueLead.currency)}` : ' · vadesi geçen yok')
+            }
+            stats={[
+              { value: String(stats.invoiceCount), label: 'Fatura' },
+              ...(thisMonthLead ? [{ value: fmtMoney(thisMonthLead.total, thisMonthLead.currency), label: 'Bu Ay' }] : []),
+              ...(paidLead ? [{ value: fmtMoney(paidLead.total, paidLead.currency), label: 'Tahsilat' }] : []),
+            ]}
           >
-            <KpiMini label="Bu Ay Kesilen" slices={stats.thisMonth} icon={TrendingUp} color="#2563EB" rows={kpiRows} />
-            <KpiMini label="Toplam Bakiye" slices={stats.outstanding} icon={Wallet} color={U.ink[900]} rows={kpiRows} />
-            <KpiMini label="Vadesi Gecen" slices={stats.overdue} icon={AlertCircle} color={CHIP_TONES.danger.text} rows={kpiRows} />
-            <KpiMini label="Tahsilat (30g)" slices={stats.paid} icon={Banknote} color="#059669" rows={kpiRows} />
-          </ScrollView>
-        )
-        );
-      })()}
+            {outRest.length > 0 && (
+              <View style={{ marginTop: 10 }}>
+                <MoneyMultiX slices={outRest} variant="inline" onAccent={heroInk.moneyOnAccent} />
+              </View>
+            )}
+
+            {/* Kırılım şeridi — büyük rakamı "nereden geldi"ye açar. */}
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+              {([
+                { label: 'Bu Ay Kesilen', slices: stats.thisMonth },
+                { label: 'Vadesi Geçen',  slices: stats.overdue },
+                { label: 'Tahsilat (30g)', slices: stats.paid },
+              ]).map(t => (
+                <View key={t.label} style={{
+                  flex: 1, minWidth: 110,
+                  paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12,
+                  backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder,
+                }}>
+                  <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: heroInk.inkSoft }} numberOfLines={1}>
+                    {t.label}
+                  </Text>
+                  {t.slices.length === 0 ? (
+                    <Text style={{ fontSize: 15, color: heroInk.inkFaint, marginTop: 3 }}>—</Text>
+                  ) : (
+                    <View style={{ marginTop: 3, gap: 1 }}>
+                      {t.slices.map(sl => (
+                        <Text key={sl.currency} numberOfLines={1} style={{ fontSize: 15, fontWeight: '300', letterSpacing: -0.3, lineHeight: 19, color: heroInk.ink }}>
+                          {fmtMoney(sl.total, sl.currency)}
+                        </Text>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              ))}
+            </View>
+          </WhiteHero>
+        </View>
+      )}
 
       {/* ── Search bar ── */}
       <View style={{ paddingHorizontal: PAGE_PADDING, paddingTop: 4, paddingBottom: 8 }}>
         <View style={{
           flexDirection: 'row', alignItems: 'center', gap: 10,
           height: 44, paddingHorizontal: 16,
-          backgroundColor: U.ink[50], borderRadius: 14,
+          backgroundColor: U.surface, borderRadius: 9999,
           borderWidth: 1, borderColor: U.hairline,
         }}>
           <Search size={15} strokeWidth={1.6} color={U.ink[400]} />
@@ -372,15 +412,14 @@ export function InvoicesListScreen() {
             <View style={{
               flexDirection: 'row', alignItems: 'center',
               paddingHorizontal: 22, paddingVertical: 12,
-              backgroundColor: U.ink[50],
-              borderBottomWidth: 1, borderBottomColor: U.hairline,
+              backgroundColor: tblAccent,
             }}>
-              <Text style={{ ...colHeaderOf(U), width: 120 }}>Fatura No</Text>
-              <Text style={{ ...colHeaderOf(U), flex: 1 }}>Klinik / Hekim</Text>
-              <Text style={{ ...colHeaderOf(U), width: 100 }}>Tarih</Text>
-              <Text style={{ ...colHeaderOf(U), width: 100 }}>Vade</Text>
-              <Text style={{ ...colHeaderOf(U), width: 110, textAlign: 'end' as any }}>Tutar</Text>
-              <Text style={{ ...colHeaderOf(U), width: 90, textAlign: 'center' }}>Durum</Text>
+              <Text style={{ ...colHeaderOf(U), color: tblInk, width: 120 }}>Fatura No</Text>
+              <Text style={{ ...colHeaderOf(U), color: tblInk, flex: 1 }}>Klinik / Hekim</Text>
+              <Text style={{ ...colHeaderOf(U), color: tblInk, width: 100 }}>Tarih</Text>
+              <Text style={{ ...colHeaderOf(U), color: tblInk, width: 100 }}>Vade</Text>
+              <Text style={{ ...colHeaderOf(U), color: tblInk, width: 110, textAlign: 'end' as any }}>Tutar</Text>
+              <Text style={{ ...colHeaderOf(U), color: tblInk, width: 90, textAlign: 'center' }}>Durum</Text>
               <View style={{ width: 36 }} />
             </View>
             {filtered.map((inv, i) => (
@@ -866,7 +905,7 @@ function BulkInvoiceModal({
                   <View style={{
                     flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
                     height: 38, paddingHorizontal: 12,
-                    borderRadius: 10, backgroundColor: U.ink[50],
+                    borderRadius: 9999, backgroundColor: U.surface,
                     borderWidth: 1, borderColor: U.hairline,
                   }}>
                     <Search size={13} strokeWidth={1.6} color={U.ink[400]} />

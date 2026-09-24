@@ -8585,5 +8585,9 @@
   "Tahsilat kaydedilemedi": "دریافت ثبت نشد",
   "Tahsilatı kaydet ve en eski faturadan başlayarak dağıt": "دریافت را ثبت کن و از قدیمی‌ترین فاکتور شروع به تخصیص کن",
   "Toplam tahsilat": "مجموع دریافتی",
-  "bakiye": "مانده"
+  "bakiye": "مانده",
+  "Ekstreyi Excel dosyası olarak indir": "صورتحساب را به صورت فایل اکسل دانلود کن",
+  "Ekstreyi yazdır veya PDF olarak kaydet": "صورتحساب را چاپ کن یا به صورت PDF ذخیره کن",
+  "Fatura seçmeden, birden çok para biriminde tahsilat gir": "بدون انتخاب فاکتور، دریافت را به چند ارز ثبت کن",
+  "Sağlık kurumu listesine dön": "بازگشت به فهرست مراکز درمانی"
 }

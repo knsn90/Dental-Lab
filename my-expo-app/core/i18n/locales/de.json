@@ -469,7 +469,7 @@
       "received": "Eingegangen",
       "production": "In Produktion",
       "qualityControl": "Qualitätskontrolle",
-      "readyForDelivery": "An Kurier übergeben",
+      "readyForDelivery": "Lieferbereit",
       "delivered": "Geliefert",
       "qcShort": "QK",
       "ready": "Bereit",
@@ -478,7 +478,9 @@
       "newWorkKicker": "NEUE ARBEIT",
       "overdueOrder": "überfälliger Auftrag",
       "urgent": "DRINGEND",
-      "toPlanShort": "Zu planen"
+      "toPlanShort": "Zu planen",
+      "withCourier": "Beim Kurier",
+      "waitingCourier": "Wartet auf Kurier"
     },
     "months": {
       "short": "Jan, Feb, Mär, Apr, Mai, Jun, Jul, Aug, Sep, Okt, Nov, Dez",

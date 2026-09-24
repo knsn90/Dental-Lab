@@ -8602,5 +8602,9 @@
   "Tahsilat kaydedilemedi": "Zahlung konnte nicht erfasst werden",
   "Tahsilatı kaydet ve en eski faturadan başlayarak dağıt": "Zahlung erfassen und ab der ältesten Rechnung verteilen",
   "Toplam tahsilat": "Gesamt erhalten",
-  "bakiye": "Saldo"
+  "bakiye": "Saldo",
+  "Ekstreyi Excel dosyası olarak indir": "Den Kontoauszug als Excel-Datei herunterladen",
+  "Ekstreyi yazdır veya PDF olarak kaydet": "Kontoauszug drucken oder als PDF speichern",
+  "Fatura seçmeden, birden çok para biriminde tahsilat gir": "Eine Zahlung in mehreren Währungen erfassen, ohne eine Rechnung zu wählen",
+  "Sağlık kurumu listesine dön": "Zurück zur Klinikliste"
 }

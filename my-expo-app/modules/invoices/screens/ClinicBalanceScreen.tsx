@@ -28,8 +28,8 @@ import { createBulkInvoice } from '../api';
 import { supabase } from '../../../core/api/supabase';
 import { toast } from '../../../core/ui/Toast';
 import { useInkUI } from '../../../core/theme/inkScale';
-import { HeroGlow, useHeroSurface } from '../../../core/ui/HeroGlow';
-import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
+import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
 import { HubContext } from '../../../core/ui/HubContext';
 import { useBaseCurrency } from '../../../core/money/baseCurrency';
 import { formatMoney, CURRENCY_META, type Currency } from '../../../core/money/currency';
@@ -70,7 +70,10 @@ export function ClinicBalanceScreen() {
   // Koyu tema: tüm nötr yüzey/metin buradan gelir (açık değerler DS.ink ile birebir).
   const U = useInkUI();
   // Hero — açık temada panel accent'i, koyu temada lacivert gradyan (HERO_NAVY).
-  const heroBg = useHeroSurface(theme.primary);
+  const heroInk = useWhiteHeroInk(theme.primary);
+  // Tablo kartı başlığı düz panel accent'i (uygulama genelinde aynı dil).
+  const tblAccent = theme.primary;
+  const tblInk = onAccentInk(tblAccent);
   const router = useRouter();
   const panelBase = String((useSegments() as string[])?.[0] ?? '(lab)');
   const isEmbedded = useContext(HubContext);
@@ -181,6 +184,12 @@ export function ClinicBalanceScreen() {
   const overdueByCcy = groupByCurrency(rows, b => ({ amount: Number(b.overdue_amount), currency: b.currency as Currency }));
   const overdueExists = rows.some(b => Number(b.overdue_amount) > 0);
 
+  // Beyaz hero başlığı: çoklu-döviz TOPLANMAZ → en büyük dilim başlıkta,
+  // kalanlar altında inline chip.
+  const lead = balanceByCcy[0] ?? null;
+  const rest = balanceByCcy.slice(1);
+  const overdueCount = rows.filter(b => Number(b.overdue_amount) > 0).length;
+
   // Yaşlandırma — para birimi başına (her döviz kendi bar'ı)
   const agingByCcy = useMemo(() => {
     const m = new Map<string, { currency: string; current: number; d30: number; d60: number; d90: number }>();
@@ -228,29 +237,35 @@ export function ClinicBalanceScreen() {
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={U.ink[300]} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Hero — kanonik accent yüzey (§ HERO / ACCENT YÜZEY KURALI) ──
-            Açık temada panel accent'i; koyu temada `useHeroSurface` lacivert
-            gradyanı (#001F3F → #002A5C → #004B87). Dekoratif daireler artık
-            <HeroGlow /> — koyu temada blur ile yayılır, yavaşça nefes alır.
-            Üstündeki beyaz metin/ikon bilinçli olarak BEYAZ kalır. */}
-        <View style={{
-          borderRadius: 20, overflow: 'hidden',
-          ...heroBg,
-          paddingHorizontal: isDesktop ? 22 : 18,
-          paddingVertical: isDesktop ? 18 : 16,
-          position: 'relative',
-        }}>
-          <HeroGlow size={130} opacity={0.18} delay={0} style={{ top: -46, end: -34 }} />
-          <HeroGlow size={110} opacity={0.10} delay={1400} style={{ bottom: -52, start: -26 }} />
+        {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ─────────────────
+            Prim Motoru hiyerarşisi: kicker → 44px tek büyük rakam → bağlam
+            cümlesi → sağda 40px stat'lar. Rakam TOPLANMAZ; başlık en büyük
+            para birimi dilimini, kalanlar altındaki chip şeridini kullanır. */}
+        <WhiteHero
+          kicker="Sağlık Kurumu Bakiyeleri"
+          accent={theme.primary}
+          title={
+            lead ? (
+              <>Toplam alacak <Text style={{ color: heroInk.accentInk }}>{formatMoney(lead.total, lead.currency, { fractionDigits: 0 })}</Text></>
+            ) : '—'
+          }
+          description={
+            `${filtered.length} kurum` +
+            (overdueCount ? ` · ${overdueCount} tanesinin vadesi geçmiş` : ' · vadesi geçen yok')
+          }
+          stats={[
+            { value: String(filtered.length), label: 'Kurum' },
+            { value: String(overdueCount),    label: 'Gecikmiş' },
+            ...(rest.length ? [{ value: String(rest.length + 1), label: 'Para Birimi' }] : []),
+          ]}
+        >
+          {rest.length > 0 && (
+            <View style={{ marginTop: 10 }}>
+              <MoneyMultiX slices={rest} variant="inline" colorBySign onAccent={heroInk.moneyOnAccent} />
+            </View>
+          )}
 
-          <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)', marginBottom: 12 }}>
-            Toplam Alacak
-          </Text>
-          {/* Katı per-currency: her para birimi ayrı kart, asla toplanmaz.
-              MoneyMultiX kendi tema-farkında yüzeyini kullanır (paylaşılan bileşen). */}
-          <MoneyMultiX slices={balanceByCcy} variant="cards" size="lg" colorBySign accentColor={theme.primary} emptyText="—" />
-
-          {/* Kesilen / Tahsil / Vadesi Geçen — kanonik hero stat kutucukları. */}
+          {/* Kesilen / Tahsil / Vadesi Geçen — toplamı "nereden geldi"ye açar. */}
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
             <HeroCcyStat label="Kesilen" slices={billedByCcy} />
             <HeroCcyStat label="Tahsil Edilen" slices={paidByCcy} />
@@ -258,15 +273,15 @@ export function ClinicBalanceScreen() {
           </View>
 
           {hasAging && (
-            <View style={{ marginTop: 18, paddingTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.18)', gap: 14 }}>
-              <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>Yaşlandırma</Text>
+            <View style={{ marginTop: 18, paddingTop: 16, borderTopWidth: 1, borderTopColor: heroInk.tileBorder, gap: 14 }}>
+              <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: heroInk.inkSoft }}>Yaşlandırma</Text>
               {agingByCcy.map(g => {
                 const total = g.current + g.d30 + g.d60 + g.d90;
                 const sym = CURRENCY_META[(g.currency as Currency)]?.symbol ?? g.currency;
                 return (
                   <View key={g.currency} style={{ gap: 8 }}>
-                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#FFFFFF', letterSpacing: 0.5 }}>{sym} {g.currency}</Text>
-                    <View style={{ flexDirection: 'row', height: 6, borderRadius: 3, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.18)' }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: heroInk.ink, letterSpacing: 0.5 }}>{sym} {g.currency}</Text>
+                    <View style={{ flexDirection: 'row', height: 6, borderRadius: 3, overflow: 'hidden', backgroundColor: heroInk.tileBg }}>
                       {[
                         { v: g.current, color: '#2D9A6B' },
                         { v: g.d30,     color: '#E89B2A' },
@@ -289,7 +304,7 @@ export function ClinicBalanceScreen() {
               })}
             </View>
           )}
-        </View>
+        </WhiteHero>
 
         {/* ── Search + Filter — §05.5 ───────────────────────────
             LAYOUT: satır `flexWrap` idi YOK'tu; dar ekranda "Vadesi Geçenleri
@@ -300,7 +315,7 @@ export function ClinicBalanceScreen() {
           <View style={{
             flexGrow: 1, flexShrink: 1, flexBasis: 220, minWidth: 180,
             flexDirection: 'row', alignItems: 'center', gap: 10,
-            height: 44, paddingHorizontal: 14, borderRadius: 14,
+            height: 44, paddingHorizontal: 14, borderRadius: 9999,
             borderWidth: 1, borderColor: U.fieldBorder,
             backgroundColor: U.inputStyle.backgroundColor,
           }}>
@@ -328,7 +343,7 @@ export function ClinicBalanceScreen() {
               style={{
                 flexShrink: 1,
                 flexDirection: 'row', alignItems: 'center', gap: 6,
-                height: 44, paddingHorizontal: 14, borderRadius: 14,
+                height: 44, paddingHorizontal: 14, borderRadius: 9999,
                 backgroundColor: bulkSending ? U.chipNeutral : U.chipTones.danger.bg,
                 borderWidth: 1, borderColor: U.isDark ? 'rgba(217,75,75,0.45)' : 'rgba(217,75,75,0.30)',
                 ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
@@ -349,7 +364,7 @@ export function ClinicBalanceScreen() {
                 onPress={() => setFilterOpen(true)}
                 style={{
                   flexDirection: 'row', alignItems: 'center', gap: 6,
-                  height: 44, paddingHorizontal: 14, borderRadius: 14,
+                  height: 44, paddingHorizontal: 14, borderRadius: 9999,
                   // Beyaz buton kuralı: pasifken kart yüzeyi DEĞİL, bir kademe koyu plainBtn.
                   backgroundColor: hasFilter ? U.ink[900] : U.plainBtn.bg,
                   borderWidth: hasFilter ? 0 : 1, borderColor: U.fieldBorder,
@@ -378,12 +393,12 @@ export function ClinicBalanceScreen() {
           /* ── Desktop: tableCard §09 ──────────────────────────── */
           <View style={U.tableCard}>
             {/* Toolbar */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
-              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: U.ink[900] }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, backgroundColor: tblAccent }}>
+              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: tblInk }}>
                 Sağlık Kurumu Bakiyeleri
               </Text>
               <View style={{ flex: 1 }} />
-              <Text style={{ fontSize: 12, color: U.ink[400] }}>
+              <Text style={{ fontSize: 12, color: tblInk, opacity: 0.75 }}>
                 {filtered.length} kurum
               </Text>
             </View>
@@ -535,13 +550,13 @@ export function ClinicBalanceScreen() {
             })}
 
             {/* Footer */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderTopWidth: 1, borderTopColor: U.hairline, backgroundColor: U.surfaceSoft, gap: 10 }}>
-              <Text style={{ fontSize: 11, color: U.ink[500] }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, backgroundColor: tblAccent, gap: 10, paddingEnd: 76 }}>
+              <Text style={{ fontSize: 11, color: tblInk, opacity: 0.75 }}>
                 {new Set(filtered.map(f => f.clinic_id)).size} sağlık kurumu
               </Text>
               <View style={{ flex: 1 }} />
-              <Text style={{ fontSize: 12, fontWeight: '600', color: U.ink[900] }}>Toplam:</Text>
-              <MoneyMultiX slices={balanceByCcy} variant="inline" colorBySign />
+              <Text style={{ fontSize: 12, fontWeight: '600', color: tblInk }}>Toplam:</Text>
+              <MoneyMultiX slices={balanceByCcy} variant="inline" onAccent={tblInk} colorBySign />
             </View>
           </View>
         ) : (
@@ -748,11 +763,12 @@ function HeroStat({ label, value, color }: { label: string; value: string; color
 
 // ─── Aging Legend (hero bar) ─────────────────────────────────────────
 function AgingLegend({ label, value, color }: { label: string; value: string; color: string }) {
+  const heroInk = useWhiteHeroInk();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
       <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color }} />
-      <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.78)', fontWeight: '500' }}>{label}</Text>
-      <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>{value}</Text>
+      <Text style={{ fontSize: 11, color: heroInk.inkSoft, fontWeight: '500' }}>{label}</Text>
+      <Text style={{ fontSize: 11, fontWeight: '700', color: heroInk.ink }}>{value}</Text>
     </View>
   );
 }
@@ -774,21 +790,22 @@ function CcyBadge({ currency }: { currency: string }) {
 // zemin + beyaz metin). Hero accent/lacivert zemin üstünde bilinçli olarak
 // beyaz kalır (CLAUDE.md accent istisnası).
 function HeroCcyStat({ label, slices }: { label: string; slices: { currency: Currency; total: number }[] }) {
+  const heroInk = useWhiteHeroInk();
   return (
     <View style={{
       flex: 1, minWidth: 110,
       paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12,
-      backgroundColor: 'rgba(255,255,255,0.16)',
+      backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder,
     }}>
-      <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>
+      <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: heroInk.inkSoft }}>
         {label}
       </Text>
       {slices.length === 0 ? (
-        <Text style={{ ...DISPLAY, fontSize: 15, color: 'rgba(255,255,255,0.60)', letterSpacing: -0.3, lineHeight: 19, marginTop: 3 }}>—</Text>
+        <Text style={{ ...DISPLAY, fontSize: 15, color: heroInk.inkFaint, letterSpacing: -0.3, lineHeight: 19, marginTop: 3 }}>—</Text>
       ) : (
         <View style={{ marginTop: 3, gap: 1 }}>
           {slices.map(s => (
-            <Text key={s.currency} numberOfLines={1} style={{ ...DISPLAY, fontSize: 15, letterSpacing: -0.3, lineHeight: 19, color: '#FFFFFF' }}>
+            <Text key={s.currency} numberOfLines={1} style={{ ...DISPLAY, fontSize: 15, letterSpacing: -0.3, lineHeight: 19, color: heroInk.ink }}>
               {formatMoney(s.total, s.currency, { fractionDigits: 0 })}
             </Text>
           ))}
