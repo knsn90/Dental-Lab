@@ -180,7 +180,7 @@ export function ClinicBalanceScreen() {
   // Hero & footer için per-currency gruplar (KATI — asla toplanmaz)
   const balanceByCcy = groupByCurrency(rows, b => ({ amount: Number(b.balance), currency: b.currency as Currency }), { keepZero: true });
   const billedByCcy  = groupByCurrency(rows, b => ({ amount: Number(b.total_billed), currency: b.currency as Currency }));
-  const paidByCcy    = groupByCurrency(rows, b => ({ amount: Number(b.total_paid), currency: b.currency as Currency }));
+  const paidByCcy    = groupByCurrency(rows, b => ({ amount: Number(b.total_paid) + Number(b.unallocated_credit ?? 0), currency: b.currency as Currency }));
   const overdueByCcy = groupByCurrency(rows, b => ({ amount: Number(b.overdue_amount), currency: b.currency as Currency }));
   const overdueExists = rows.some(b => Number(b.overdue_amount) > 0);
 
@@ -426,7 +426,8 @@ export function ClinicBalanceScreen() {
               const overdue = Number(b.overdue_amount);
               const hasOverdue = overdue > 0;
               const billed = Number(b.total_billed);
-              const paid = Number(b.total_paid);
+              // Tahsil = faturaya yazilan odemeler + faturaya baglanmamis tahsilat.
+              const paid = Number(b.total_paid) + Number(b.unallocated_credit ?? 0);
               const pct = billed > 0 ? Math.min(100, (paid / billed) * 100) : 0;
 
               return (
@@ -567,7 +568,8 @@ export function ClinicBalanceScreen() {
               const overdue = Number(b.overdue_amount);
               const hasOverdue = overdue > 0;
               const billed = Number(b.total_billed);
-              const paid = Number(b.total_paid);
+              // Tahsil = faturaya yazilan odemeler + faturaya baglanmamis tahsilat.
+              const paid = Number(b.total_paid) + Number(b.unallocated_credit ?? 0);
               const pct = billed > 0 ? Math.min(100, (paid / billed) * 100) : 0;
 
               return (

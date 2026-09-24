@@ -194,6 +194,8 @@ export interface ClinicBalanceCcy {
   aging_60: number;
   aging_90: number;
   oldest_overdue_date: string | null;
+  /** Faturaya bağlanmamış tahsilat (baz para biriminde). Bakiyeden düşülür. */
+  unallocated_credit?: number;
 }
 
 // ─── Form / Create parametreleri ───────────────────────────────────────────
