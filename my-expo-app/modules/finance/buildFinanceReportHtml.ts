@@ -203,14 +203,15 @@ export function buildFinanceReportHtml(input: FinanceReportInput): string {
     border: 1px solid var(--line);
   }
 
-  .brand-bar {
-    background: var(--ink-900); color: #FFFFFF;
-    padding: 14px 36px;
-    display: flex; justify-content: space-between; align-items: center;
-  }
-  .brand-name { font-size: 13px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; }
-  .brand-name img { height: 22px; max-width: 200px; object-fit: contain; filter: brightness(0) invert(1); }
-  .brand-meta { font-size: 10px; color: rgba(255,255,255,0.6); letter-spacing: 0.4px; text-transform: uppercase; }
+  /* Siyah marka şeridi kaldırıldı: belgenin en üstünde geniş bir renk bandı
+     antetli kağıt geleneğine uymuyordu. Logo artık doğrudan kağıt üzerinde ve
+     BÜYÜK; ayrıca kendi renklerinde basılıyor (önce brightness(0)+invert(1)
+     ile tek renge zorlanıyordu, çok renkli logolar siluete dönüyordu). */
+  .brand-head { margin-bottom: 18px; }
+  .brand-head img { height: 46px; max-width: 280px; object-fit: contain; display: block; }
+  .brand-head .brand-text { font-size: 17px; font-weight: 700; letter-spacing: -0.2px; }
+  .brand-head .brand-sub { font-size: 9.5px; color: var(--ink-400);
+                           letter-spacing: 0.6px; margin-top: 5px; }
 
   .title-block {
     padding: 32px 36px 22px;
@@ -474,13 +475,14 @@ export function buildFinanceReportHtml(input: FinanceReportInput): string {
 </div>
 
 <div class="page">
-  <div class="brand-bar">
-    <div class="brand-name">${input.lab.logoUrl ? `<img src="${esc(input.lab.logoUrl)}" alt="" />` : esc(input.lab.name)}</div>
-    <div class="brand-meta">${input.lab.taxNo ? `VKN ${esc(input.lab.taxNo)}` : ''}</div>
-  </div>
-
   <div class="title-block">
     <div>
+      <div class="brand-head">
+        ${input.lab.logoUrl
+          ? `<img src="${esc(input.lab.logoUrl)}" alt="${esc(input.lab.name)}" />`
+          : `<div class="brand-text">${esc(input.lab.name)}</div>`}
+        ${input.lab.taxNo ? `<div class="brand-sub">VKN ${esc(input.lab.taxNo)}</div>` : ''}
+      </div>
       <div class="doc-name">Mali Performans Raporu</div>
       <div class="doc-title-main">${autoT('Gelir / Gider Analizi')}</div>
     </div>

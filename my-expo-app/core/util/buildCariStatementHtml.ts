@@ -153,8 +153,6 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
   const L = input.labels ?? {};
   const neutralTone = input.balanceTone === 'neutral';
   const hideBa = input.hideBaBadges === true;
-  const brandBg = input.accentColor ?? '#0A0A0A';
-  const brandFg = readableOn(brandBg);
   const addressLines = (input.holder.addressLines ?? []).filter(Boolean) as string[];
   const yearNow = new Date().getFullYear();
   const copyrightText = input.copyright ?? `© ${esc(input.lab.name)} ${yearNow}`;
@@ -221,9 +219,6 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
     --bg:      #F8F9FB;
     --paper:   #FFFFFF;
     --accent:  #0B1220;
-    --brand-bg: ${brandBg};
-    --brand-fg: ${brandFg};
-    --brand-meta: ${brandFg === '#FFFFFF' ? 'rgba(255,255,255,0.62)' : 'rgba(10,10,10,0.55)'};
     --debit:   #D94B4B;
     --credit:  #2D9A6B;
   }
@@ -281,31 +276,20 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
   }
 
   /* ───── Brand bar (top, accent strip) ───── */
-  .brand-bar {
-    background: var(--brand-bg);
-    color: var(--brand-fg);
-    padding: 14px 36px;
-    display: flex; justify-content: space-between; align-items: center;
-  }
-  .brand-name {
-    font-size: 13px; font-weight: 600; letter-spacing: 0.4px;
-    text-transform: uppercase;
-  }
   /* Logo KENDİ renkleriyle basılır. Önce brightness(0)+invert(1) ile tek renge
      zorlanıyordu; çok renkli logolarda (lacivert işaret + gri yazı) her şey düz
      beyaz siluete dönüp marka tanınmaz oluyordu. Bunun yerine logo beyaz bir
      çipin üzerine oturur — böylece marka çubuğu hangi renk olursa olsun okunur. */
-  .brand-logo-chip {
-    display: inline-flex; align-items: center;
-    background: #FFFFFF; border-radius: 8px; padding: 5px 9px;
-  }
-  .brand-name img { height: 22px; max-width: 200px; object-fit: contain; display: block; }
-  .brand-meta {
-    font-size: 10px; color: var(--brand-meta);
-    letter-spacing: 0.4px; text-transform: uppercase;
-  }
 
   /* ───── Document title ───── */
+  /* Siyah marka seridi kaldirildi: belgenin en ustunde genis bir renk
+     bandi, antetli kagit gelenegine uymuyordu ve logonun kendi renklerini
+     bogayordu. Logo artik dogrudan kagit uzerinde ve BUYUK. */
+  .brand-head { margin-bottom: 18px; }
+  .brand-head img { height: 46px; max-width: 280px; object-fit: contain; display: block; }
+  .brand-head .brand-text { font-size: 17px; font-weight: 700; letter-spacing: -0.2px; }
+  .brand-head .brand-sub { font-size: 9.5px; color: var(--ink-400);
+                           letter-spacing: 0.6px; margin-top: 5px; }
   .title-block {
     padding: 32px 36px 20px;
     display: flex; justify-content: space-between; align-items: flex-end;
@@ -486,18 +470,15 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
 
 <div class="page">
   <!-- Brand strip -->
-  <div class="brand-bar">
-    <div class="brand-name">
-      ${input.lab.logoUrl
-        ? `<span class="brand-logo-chip"><img src="${esc(input.lab.logoUrl)}" alt="${esc(input.lab.name)}" /></span>`
-        : esc(input.lab.name)}
-    </div>
-    <div class="brand-meta">${input.lab.taxNo ? `VKN ${esc(input.lab.taxNo)}` : ''}</div>
-  </div>
-
   <!-- Document title block -->
   <div class="title-block">
     <div>
+      <div class="brand-head">
+        ${input.lab.logoUrl
+          ? `<img src="${esc(input.lab.logoUrl)}" alt="${esc(input.lab.name)}" />`
+          : `<div class="brand-text">${esc(input.lab.name)}</div>`}
+        ${input.lab.taxNo ? `<div class="brand-sub">VKN ${esc(input.lab.taxNo)}</div>` : ''}
+      </div>
       <div class="doc-name">${esc(docTitle)}</div>
       <div class="doc-title-main">${esc(input.holder.name)}</div>
     </div>

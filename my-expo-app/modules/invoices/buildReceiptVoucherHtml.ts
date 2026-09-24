@@ -103,15 +103,11 @@ export function buildReceiptVoucherHtml(
     .page { width: auto; min-height: 0; margin: 0; box-shadow: none; }
   }
 
-  .brand-bar { background: var(--brand-bg); color: var(--brand-fg);
-               padding: 14px 36px; display: flex; justify-content: space-between; align-items: center; }
-  .brand-name { font-size: 13px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; }
-  /* Logo KENDİ renkleriyle basılır; beyaz çip üzerinde her marka çubuğunda okunur. */
-  .brand-logo-chip { display: inline-flex; align-items: center;
-                     background: #FFFFFF; border-radius: 8px; padding: 5px 9px; }
-  .brand-name img { height: 22px; max-width: 200px; object-fit: contain; display: block; }
-  .brand-meta { font-size: 10px; color: rgba(255,255,255,0.62);
-                letter-spacing: 0.4px; text-transform: uppercase; }
+  /* Siyah marka şeridi yok: logo doğrudan kağıdın üstünde, kendi renklerinde
+     ve büyük — antetli kağıt gibi. Diğer çıktılarla (ekstre, mali rapor) aynı. */
+  .brand-head { margin-bottom: 18px; }
+  .brand-head img { height: 46px; max-width: 280px; object-fit: contain; display: block; }
+  .brand-head .brand-text { font-size: 17px; font-weight: 700; letter-spacing: -0.2px; }
 
   .title-block { padding: 32px 36px 20px; display: flex;
                  justify-content: space-between; align-items: flex-end;
@@ -161,22 +157,19 @@ export function buildReceiptVoucherHtml(
 </style></head>
 <body>
 <div class="page">
-  <div class="brand-bar">
-    <div class="brand-name">
-      ${lab?.logo_url
-        ? `<span class="brand-logo-chip"><img src="${esc(lab.logo_url)}" alt="${esc(lab?.name ?? '')}" /></span>`
-        : esc(lab?.name ?? '')}
-    </div>
-    <div class="brand-meta">${lab?.tax_number ? `VKN ${esc(lab.tax_number)}` : ''}</div>
-  </div>
-
   <div class="title-block">
     <div>
+      <div class="brand-head">
+        ${lab?.logo_url
+          ? `<img src="${esc(lab.logo_url)}" alt="${esc(lab?.name ?? '')}" />`
+          : `<div class="brand-text">${esc(lab?.name ?? '')}</div>`}
+      </div>
       <div class="doc-name">${autoT('Tahsilat Makbuzu')}</div>
       <div class="doc-title-main">${esc(clinicName)}</div>
     </div>
     <div class="doc-meta">
-      <div class="lbl">${autoT('Makbuz No')}</div>
+      ${lab?.tax_number ? `<div class="lbl">VKN</div><div class="val">${esc(lab.tax_number)}</div>` : ''}
+      <div class="lbl" style="margin-top:8px">${autoT('Makbuz No')}</div>
       <div class="val">#${esc(voucherNo)}</div>
       <div class="lbl" style="margin-top:8px">${autoT('Tarih')}</div>
       <div class="val">${fmtDateLong(receipt.receipt_date)}</div>
