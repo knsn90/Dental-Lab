@@ -8629,5 +8629,8 @@
   "Teslim eden": "Delivered by",
   "Vergi No": "Tax No",
   "Tahsilatı düzenle": "Edit payment",
-  "Tahsilat güncellendi": "Payment updated"
+  "Tahsilat güncellendi": "Payment updated",
+  "Bu tahsilatın bilgilerini değiştir": "Change the details of this payment",
+  "Makbuz No": "Receipt No",
+  "Düzenleyen": "Issued by"
 }

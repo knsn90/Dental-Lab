@@ -61,6 +61,9 @@ export function ClinicReceiptModal({
   const [preview, setPreview] = useState<ReceiptResult | null>(null);
   const [busy, setBusy]       = useState(false);
   const [loadingPrev, setLoadingPrev] = useState(false);
+  /** Kayıtlı bir fiş SALT-OKUNUR açılır; düzenlemek ayrı bir adımdır.
+   *  Yanlışlıkla üzerine yazmak, kayıtlı bir tahsilatta ucuz bir hata olmamalı. */
+  const [locked, setLocked] = useState(false);
   const idemRef = useRef<string>('');
   const debRef  = useRef<any>(null);
 
@@ -68,6 +71,7 @@ export function ClinicReceiptModal({
     if (!visible) return;
     idemRef.current = `rcpt-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     setPreview(null); setBusy(false);
+    setLocked(!!editing);
     if (editing) {
       // Düzenleme: kayıtlı satırları olduğu gibi göster — kur dahil, çünkü
       // tahsilat o gün o kurdan alındı; bugünün kuruyla ezmek yanlış olur.
@@ -144,7 +148,11 @@ export function ClinicReceiptModal({
   // useMobileTokens panel zeminini kullaniyor, finans panelinde o mavimsi
   // ciktigi icin form "siteye uygun" gorunmuyordu.
   const label: any = { ...U.colHeader, marginBottom: 6 };
-  const input: any = U.inputStyle;
+  // Kilitliyken alan DUZENLENEBILIR gorunmemeli: ayni beyaz kutu, dokunulunca
+  // hicbir sey olmuyor -> kullanici bozuk saniyor.
+  const input: any = locked
+    ? { ...U.inputStyle, backgroundColor: U.surfaceSoft, color: U.ink[700], borderColor: U.hairline }
+    : U.inputStyle;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -170,7 +178,7 @@ export function ClinicReceiptModal({
           <View style={U.modalHeaderRow}>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={U.modalTitle} numberOfLines={1}>
-                {autoT(editing ? 'Tahsilatı düzenle' : 'Tahsilat ekle')}
+                {autoT(editing ? (locked ? 'Tahsilat' : 'Tahsilatı düzenle') : 'Tahsilat ekle')}
               </Text>
               {clinicName ? (
                 <Text style={{ fontSize: 12, color: U.ink[400], marginTop: 2 }} numberOfLines={1}>
@@ -192,12 +200,12 @@ export function ClinicReceiptModal({
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <View style={{ flex: 1 }}>
                 <Text style={label}>Tarih</Text>
-                <TextInput value={date} onChangeText={setDate} style={input}
+                <TextInput value={date} onChangeText={setDate} style={input} editable={!locked}
                   placeholder="YYYY-AA-GG" placeholderTextColor={U.ink[400]} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={label}>Referans</Text>
-                <TextInput value={refNo} onChangeText={setRefNo} style={input}
+                <TextInput value={refNo} onChangeText={setRefNo} style={input} editable={!locked}
                   placeholder={autoT('Dekont no')} placeholderTextColor={U.ink[400]} />
               </View>
             </View>
@@ -208,11 +216,12 @@ export function ClinicReceiptModal({
                 {METHODS.map(m => {
                   const on = method === m;
                   return (
-                    <Pressable key={m} onPress={() => setMethod(m)}
+                    <Pressable key={m} onPress={() => setMethod(m)} disabled={locked}
                       style={{
                         paddingHorizontal: on ? 14 : 11, paddingVertical: 7, borderRadius: 999,
                         backgroundColor: on ? U.ink[900] : U.surfaceSoft,
                         borderWidth: 1, borderColor: on ? U.ink[900] : U.hairline,
+                        opacity: locked && !on ? 0.35 : 1,
                         ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                       }}>
                       <Text style={{ fontSize: 12.5, fontWeight: on ? '700' : '500',
@@ -240,11 +249,12 @@ export function ClinicReceiptModal({
                           {CCY.map(c => {
                             const on = r.currency === c;
                             return (
-                              <Pressable key={c} onPress={() => setRowCurrency(i, c)}
+                              <Pressable key={c} onPress={() => setRowCurrency(i, c)} disabled={locked}
                                 style={{
                                   paddingHorizontal: 9, paddingVertical: 7, borderRadius: 9,
                                   backgroundColor: on ? `${U.ink[900]}14` : 'transparent',
                                   borderWidth: 1, borderColor: on ? U.ink[700] : U.hairline,
+                                  opacity: locked && !on ? 0.35 : 1,
                                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                                 }}>
                                 <Text style={{ fontSize: 11.5, fontWeight: on ? '700' : '500',
@@ -256,13 +266,15 @@ export function ClinicReceiptModal({
                       <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
                         <TextInput value={r.amount} keyboardType="decimal-pad"
                           onChangeText={v => setRows(p => p.map((x, k) => k === i ? { ...x, amount: v } : x))}
+                          editable={!locked}
                           style={[input, { flex: 1, minWidth: 0 }]} placeholder={autoT('Tutar')}
                           placeholderTextColor={U.ink[400]} />
                         <TextInput value={r.rate} keyboardType="decimal-pad"
                           onChangeText={v => setRows(p => p.map((x, k) => k === i ? { ...x, rate: v } : x))}
+                          editable={!locked}
                           style={[input, { width: 104, flexShrink: 0 }]} placeholder={autoT('Kur')}
                           placeholderTextColor={U.ink[400]} />
-                        {rows.length > 1 ? (
+                        {rows.length > 1 && !locked ? (
                           <GlassTooltip title={autoT('Satırı sil')} text={autoT('Bu para birimi satırını kaldır')}>
                             <Pressable onPress={() => setRows(p => p.filter((_, k) => k !== i))} hitSlop={6}
                               style={{ padding: 6, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
@@ -280,6 +292,7 @@ export function ClinicReceiptModal({
                   );
                 })}
               </View>
+              {!locked && (
               <GlassTooltip title={autoT('Satır ekle')} text={autoT('Farklı para biriminden alınan tutar için satır ekle')}>
                 <Pressable
                   onPress={() => setRows(p => [...p, { currency: base as any, amount: '', rate: '1' }])}
@@ -294,6 +307,7 @@ export function ClinicReceiptModal({
                   <Text style={{ fontSize: 12, fontWeight: '600', color: U.ink[700] }}>Satır ekle</Text>
                 </Pressable>
               </GlassTooltip>
+              )}
             </View>
 
             {/* Dağıtım önizlemesi — sunucudan */}
@@ -353,7 +367,7 @@ export function ClinicReceiptModal({
               <Text style={label}>Not</Text>
               {/* Cok satirli girdide metin dikeyde ORTALANMAZ; ustten dolgu
                   verilmezse imlec ve yer tutucu kenara yapisiyor. */}
-              <TextInput value={notes} onChangeText={setNotes} multiline
+              <TextInput value={notes} onChangeText={setNotes} multiline editable={!locked}
                 style={[input, { height: 78, paddingTop: 12, paddingBottom: 12,
                                  textAlignVertical: 'top' as any }]}
                 placeholder={autoT('İsteğe bağlı')} placeholderTextColor={U.ink[400]} />
@@ -390,8 +404,22 @@ export function ClinicReceiptModal({
                 borderWidth: 1, borderColor: U.hairline, backgroundColor: U.surfaceSoft,
                 ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
               }}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[700] }}>Vazgeç</Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[700] }}>
+                {autoT(locked ? 'Kapat' : 'Vazgeç')}
+              </Text>
             </Pressable>
+            {locked ? (
+              <GlassTooltip title={autoT('Düzenle')} text={autoT('Bu tahsilatın bilgilerini değiştir')}>
+                <Pressable onPress={() => setLocked(false)}
+                  style={{
+                    paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999,
+                    backgroundColor: U.ink[900],
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: U.onDarkPill }}>Düzenle</Text>
+                </Pressable>
+              </GlassTooltip>
+            ) : (
             <GlassTooltip title={autoT('Kaydet')}
               text={autoT('Tahsilatı kaydet ve en eski faturadan başlayarak dağıt')}
               enabled={!busy}>
@@ -403,9 +431,10 @@ export function ClinicReceiptModal({
                   ...(Platform.OS === 'web' ? { cursor: busy ? 'not-allowed' : 'pointer' } as any : {}),
                 }}>
                 {busy ? <ActivityIndicator size="small" color={U.surface} /> : null}
-                <Text style={{ fontSize: 13, fontWeight: '700', color: U.surface }}>Kaydet</Text>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: U.onDarkPill }}>Kaydet</Text>
               </Pressable>
             </GlassTooltip>
+            )}
           </View>
         </View>
       </View>
