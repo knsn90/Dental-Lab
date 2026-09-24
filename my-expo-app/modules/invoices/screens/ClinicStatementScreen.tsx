@@ -16,8 +16,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, useSegments } from 'expo-router';
 import {
-  ArrowLeft, ArrowRight, Printer, Download, FileSpreadsheet,
-  Calendar, Search, X, Filter, ArrowUpRight, ArrowDownLeft,
+  ArrowLeft, ArrowRight, Printer, Download, FileSpreadsheet, Wallet,
+  Calendar, Search, X, Filter, SlidersHorizontal, ArrowUpRight, ArrowDownLeft,
   Minus, Banknote, CreditCard, Landmark, FileText,
   Inbox, Building2, ChevronDown, FileClock, ChevronRight, ChevronLeft,
 } from '../../../core/ui/icons';
@@ -26,6 +26,10 @@ import * as Sharing from 'expo-sharing';
 
 import { fetchInvoicesForClinic, fetchClinicBalance, fetchUnbilledWorkOrders, createInvoiceFromOrder, fetchClinicPriceCurrency } from '../api';
 import { buildStatementLines, buildStatementHtml } from '../buildStatementHtml';
+import { ClinicReceiptModal } from '../components/ClinicReceiptModal';
+import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import type { StatementLine } from '../buildStatementHtml';
 import type { Invoice, InvoiceStatus, PaymentMethod, ClinicBalance, UnbilledWorkOrder } from '../types';
 import {
@@ -42,6 +46,7 @@ import { CenteredLoader } from '../../../core/ui/CenteredLoader';
 import { useBaseCurrency } from '../../../core/money/baseCurrency';
 import { CURRENCY_META, formatMoney, type Currency } from '../../../core/money/currency';
 import { useInkUI, type InkUI } from '../../../core/theme/inkScale';
+import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
 import { HubContext } from '../../../core/ui/HubContext';
 import { navBarMetrics } from '../../../core/ui/mobile/navGlass';
 
@@ -225,6 +230,9 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
   selfView?: boolean;
 } = {}) {
   const U = useInkUI();
+  // Tablo kartı başlığı düz panel accent'i (uygulama genelinde aynı dil).
+  const tblAccent = usePanelTheme().primary;
+  const tblInk = onAccentInk(tblAccent);
   const STATUS_CHIP = statusChip(U);
   useBaseCurrency();
   const router = useRouter();
@@ -272,6 +280,11 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
   const [ccyPinned, setCcyPinned] = useState(false);
   /** Kliniğin fiyat listesi para birimi — varsayılan sekmenin ilk tercihi. */
   const [priceCcy, setPriceCcy] = useState<string | null>(null);
+  /** Fatura-bağımsız toplu tahsilat penceresi. */
+  const [receiptOpen, setReceiptOpen] = useState(false);
+  /** Tahsilat sonrası ekstreyi yeniden çekmek için sayaç. */
+  const [reloadTick, setReloadTick] = useState(0);
+  const heroInk = useWhiteHeroInk();
 
   useEffect(() => {
     if (!clinicId) return;
@@ -297,7 +310,7 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
     });
 
     return () => { cancelled = true; };
-  }, [clinicId]);
+  }, [clinicId, reloadTick]);
 
   // Klinik değişince seçim yeniden hesaplansın.
   useEffect(() => { setCcyPinned(false); }, [clinicId]);
@@ -469,6 +482,9 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
     });
   }, [allLines, dateFrom, dateTo, typeFilter, searchTerm]);
 
+  /** Filtre düğmesindeki sayaç — kaç ölçüt etkin. */
+  const activeFilterCount = (dateFrom ? 1 : 0) + (dateTo ? 1 : 0) + (typeFilter !== 'all' ? 1 : 0);
+
   // Totals for filtered
   const totals = useMemo(() => {
     const debit = filtered.reduce((s, l) => s + l.debit, 0);
@@ -571,7 +587,13 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
 
         {/* Action buttons */}
         <View style={{ flexDirection: 'row', gap: 6 }}>
-          <PillBtn icon={Printer} label={isDesktop ? 'Yazdır / PDF' : ''} onPress={handlePrint} busy={exporting} />
+          {/* Fatura secmeden, cok dovizli toplu tahsilat. Klinik portalinda
+              (selfView) gosterilmez: tahsilati lab girer. */}
+          {!selfView && (
+            <PillBtn icon={Wallet} label={isDesktop ? 'Tahsilat ekle' : ''}
+                     onPress={() => setReceiptOpen(true)} />
+          )}
+          <PillBtn icon={Printer} label={isDesktop ? 'Yazdır / PDF' : ''} onPress={handlePrint} busy={exporting} variant="ghost" />
           {Platform.OS === 'web' && (
             <PillBtn icon={FileSpreadsheet} label={isDesktop ? 'Excel' : ''} onPress={handleExcel} variant="ghost" />
           )}
@@ -623,22 +645,32 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
           </View>
         )}
 
-        {/* ── Summary KPIs ─────────────────────────────────── */}
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-          <MiniKPI label="Kesilen" value={fmtMoney(totalBilled, selectedCcy)} color={U.ink[900]} />
-          <MiniKPI label="Tahsil Edilen" value={fmtMoney(totalPaid, selectedCcy)} color={U.chipTones.success.fg} />
-          <MiniKPI label="Bakiye" value={fmtMoney(balance, selectedCcy)} color={overdue > 0 ? U.chipTones.danger.fg : U.ink[900]} />
-          {overdue > 0 && <MiniKPI label="Gecikmiş" value={fmtMoney(overdue, selectedCcy)} color={U.chipTones.danger.fg} />}
-          <View style={{ flex: 1, minWidth: 120, backgroundColor: U.surface, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: U.hairline }}>
-            <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: U.ink[400], marginBottom: 6 }}>
-              Tahsilat
-            </Text>
-            <View style={{ height: 6, borderRadius: 3, backgroundColor: U.ink[200], overflow: 'hidden' }}>
+        {/* ── Beyaz hero — ozet kartlari icine alindi ──────────
+            Ayri duran bes kutu, baslikla ekstre tablosu arasinda kopuk bir
+            serit birakiyordu; hero ikisini tek blokta topluyor. */}
+        <WhiteHero
+          kicker={autoT('Hesap Ekstresi')}
+          title={<>{fmtMoney(balance, selectedCcy)} <Text style={{ color: heroInk.inkSoft, fontSize: 20 }}>{autoT('bakiye')}</Text></>}
+          description={`${allLines.length} ${autoT('hareket')}${overdue > 0 ? ` · ${fmtMoney(overdue, selectedCcy)} ${autoT('gecikmiş')}` : ''}`}
+          stats={[
+            { value: fmtMoney(totalBilled, selectedCcy), label: autoT('Kesilen') },
+            { value: fmtMoney(totalPaid, selectedCcy),   label: autoT('Tahsil edilen') },
+          ]}
+        >
+          {/* Tahsilat orani — hero icinde tam genislikte ray */}
+          <View style={{ marginTop: 16, gap: 6 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.7,
+                             textTransform: 'uppercase', color: heroInk.inkSoft }}>
+                Tahsilat oranı
+              </Text>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: heroInk.ink }}>{pct.toFixed(0)}%</Text>
+            </View>
+            <View style={{ height: 6, borderRadius: 3, backgroundColor: heroInk.tileBg, overflow: 'hidden' }}>
               <View style={{ width: `${pct}%` as any, height: '100%', borderRadius: 3, backgroundColor: '#2D9A6B' }} />
             </View>
-            <Text style={{ fontSize: 11, fontWeight: '600', color: U.ink[700], marginTop: 4 }}>{pct.toFixed(0)}%</Text>
           </View>
-        </View>
+        </WhiteHero>
 
         {/* ── Faturalanmamış işler ─────────────────────────────
             Teslim edilmiş ama faturaya bağlanmamış siparişler.
@@ -726,7 +758,7 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <View style={{
               flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10,
-              height: 44, paddingHorizontal: 14, borderRadius: 14,
+              height: 44, paddingHorizontal: 14, borderRadius: 9999,
               borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg,
             }}>
               <Search size={15} color={U.ink[400]} strokeWidth={1.8} />
@@ -743,24 +775,32 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
                 </Pressable>
               )}
             </View>
-            <Pressable
-              onPress={() => setShowFilters(v => !v)}
-              style={{
-                flexDirection: 'row', alignItems: 'center', gap: 6,
-                height: 44, paddingHorizontal: 14, borderRadius: 14,
-                borderWidth: 1,
-                borderColor: showFilters ? U.ink[900] : U.plainBtn.border,
-                backgroundColor: showFilters ? U.ink[50] : U.plainBtn.bg,
-                cursor: 'pointer' as any,
-              }}
-            >
-              <Filter size={14} color={showFilters ? U.ink[900] : U.ink[400]} strokeWidth={1.8} />
-              {isDesktop && (
-                <Text style={{ fontSize: 13, fontWeight: showFilters ? '600' : '500', color: showFilters ? U.ink[900] : U.ink[500] }}>
-                  Filtre
-                </Text>
-              )}
-            </Pressable>
+            {/* Site geneli filtre dugmesi: SlidersHorizontal + "Filtrele" +
+                aktif filtre sayaci (Klinikler/Stok ile ayni kalip). */}
+            <GlassTooltip title={autoT('Filtrele')} text={autoT('Hareketleri tarihe ve türe göre süz')}>
+              <Pressable
+                onPress={() => setShowFilters(v => !v)}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  height: 44, paddingHorizontal: 14, borderRadius: 9999,
+                  borderWidth: 1,
+                  borderColor: activeFilterCount > 0 ? U.ink[900] : U.plainBtn.border,
+                  backgroundColor: activeFilterCount > 0 ? U.ink[50] : U.plainBtn.bg,
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                }}
+              >
+                <SlidersHorizontal size={14} color={activeFilterCount > 0 ? U.ink[900] : U.ink[400]} strokeWidth={1.8} />
+                {isDesktop && (
+                  <Text style={{ fontSize: 13, fontWeight: activeFilterCount > 0 ? '600' : '500',
+                                 color: activeFilterCount > 0 ? U.ink[900] : U.ink[500] }}>
+                    Filtrele{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+                  </Text>
+                )}
+                {!isDesktop && activeFilterCount > 0 && (
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: U.ink[900] }}>{activeFilterCount}</Text>
+                )}
+              </Pressable>
+            </GlassTooltip>
           </View>
 
           {/* Extended filters */}
@@ -867,12 +907,12 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
           /* ── Desktop table ─────────────────────────────────── */
           <View style={U.tableCard}>
             {/* Toolbar */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
-              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: U.ink[900] }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, backgroundColor: tblAccent }}>
+              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: tblInk }}>
                 Ekstre
               </Text>
               <View style={{ flex: 1 }} />
-              <Text style={{ fontSize: 12, color: U.ink[400] }}>
+              <Text style={{ fontSize: 12, color: tblInk, opacity: 0.75 }}>
                 {filtered.length} hareket
                 {(dateFrom || dateTo) ? ` · ${dateFrom || '...'} → ${dateTo || '...'}` : ''}
               </Text>
@@ -1010,6 +1050,14 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
           </View>
         )}
       </ScrollView>
+
+      <ClinicReceiptModal
+        visible={receiptOpen}
+        clinicId={clinicId ?? null}
+        clinicName={clinicName}
+        onClose={() => setReceiptOpen(false)}
+        onSaved={() => setReloadTick(t => t + 1)}
+      />
     </View>
   );
 }
