@@ -109,7 +109,9 @@ export function buildStatementLines(
         // Alacak: original ise ödemenin kendi tutarı; değilse faturanın kuruyla baz'a çevrilir.
         const creditVal = original ? p.amount : p.amount * rate;
         lines.push({
-          id: inv.id,
+          // Odemenin KENDI id'si: fatura id'si kullanilinca fatura satiriyla
+          // ayni React key olusuyordu.
+          id: p.id ?? `${inv.id}-pay-${p.payment_date}-${p.amount}`,
           date: p.payment_date,
           type: 'payment',
           description: `Tahsilat — ${inv.invoice_number}`,

@@ -24,14 +24,14 @@ import {
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 
-import { fetchInvoicesForClinic, fetchClinicBalance, fetchUnbilledWorkOrders, createInvoiceFromOrder, fetchClinicPriceCurrency } from '../api';
+import { fetchInvoicesForClinic, fetchClinicBalance, fetchUnbilledWorkOrders, createInvoiceFromOrder, fetchClinicPriceCurrency, fetchClinicReceipts } from '../api';
 import { buildStatementLines, buildStatementHtml } from '../buildStatementHtml';
 import { ClinicReceiptModal } from '../components/ClinicReceiptModal';
 import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import type { StatementLine } from '../buildStatementHtml';
-import type { Invoice, InvoiceStatus, PaymentMethod, ClinicBalance, UnbilledWorkOrder } from '../types';
+import type { Invoice, InvoiceStatus, PaymentMethod, ClinicBalance, UnbilledWorkOrder, ClinicReceipt } from '../types';
 import {
   INVOICE_STATUS_LABELS,
   PAYMENT_METHOD_LABELS,
@@ -282,6 +282,8 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
   const [priceCcy, setPriceCcy] = useState<string | null>(null);
   /** Fatura-bağımsız toplu tahsilat penceresi. */
   const [receiptOpen, setReceiptOpen] = useState(false);
+  /** Faturaya bağlanmamış tahsilat fişleri — ekstrede kendi satırları olur. */
+  const [receipts, setReceipts] = useState<ClinicReceipt[]>([]);
   /** Tahsilat sonrası ekstreyi yeniden çekmek için sayaç. */
   const [reloadTick, setReloadTick] = useState(0);
   const heroInk = useWhiteHeroInk();
@@ -300,12 +302,14 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
       // Varsayılan sekmenin ilk tercihi; başarısız olursa null döner ve
       // aşağıdaki sıralama bir sonraki ölçüte düşer.
       fetchClinicPriceCurrency(clinicId).catch(() => null),
-    ]).then(([invRes, balRes, unbRes, pCcy]) => {
+      fetchClinicReceipts(clinicId).catch(() => [] as ClinicReceipt[]),
+    ]).then(([invRes, balRes, unbRes, pCcy, rcpts]) => {
       if (cancelled) return;
       setInvoices((invRes.data ?? []) as Invoice[]);
       setClinicInfo((balRes.data ?? null) as ClinicBalance | null);
       setUnbilled((unbRes.data ?? []) as UnbilledWorkOrder[]);
       setPriceCcy((pCcy as string | null) ?? null);
+      setReceipts((rcpts as ClinicReceipt[]) ?? []);
       setLoading(false);
     });
 
@@ -450,11 +454,46 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
 
   // Ekstre defter satırından fatura detayına git (fatura & tahsilat satırı ilgili faturaya)
   const openLine = useCallback((line: StatementLine) => {
-    if (line.id) router.push(`/${panelBase}/invoice/${line.id}` as any);
+    // Fiş satırının faturası yok → açılacak detay da yok.
+    if (line.id && !line.id.startsWith('rcpt-')) {
+      router.push(`/${panelBase}/invoice/${line.id}` as any);
+    }
   }, [panelBase, router]);
 
-  // Build statement (orijinal tutarda) — yalnız seçili dövizin faturaları
-  const allLines = useMemo(() => buildStatementLines(postedInvoices, { original: true }), [postedInvoices]);
+  // Build statement (orijinal tutarda) — yalnız seçili dövizin faturaları.
+  //
+  // Faturaya BAĞLANMAYAN toplu tahsilatlar da ekstreye girer: fiş hiçbir
+  // faturaya yazılmadığı için `payments` üzerinden gelmiyor, ama bakiyeyi
+  // düşürüyor. Listeye koymazsak para ortadan kaybolmuş gibi görünürdü.
+  //
+  // Fişin tutarı BAZ para birimindedir; ekstre ise seçili dövizde yürüyor.
+  // Bu yüzden fişler yalnız baz döviz sekmesinde listelenir — başka bir
+  // sekmede göstermek yanlış para biriminde bir rakam olurdu.
+  const allLines = useMemo(() => {
+    const invLines = buildStatementLines(postedInvoices, { original: true });
+    const rcptLines: StatementLine[] = receipts
+      .filter(r => (r.base_currency ?? '') === selectedCcy)
+      .map(r => ({
+        id: `rcpt-${r.id}`,
+        date: r.receipt_date,
+        type: 'payment' as const,
+        description: autoT('Tahsilat'),
+        method: r.payment_method,
+        debit: 0,
+        credit: Number(r.total_base) || 0,
+        balance: 0,
+        // Fişin hangi paralardan oluştuğu alt satırda görünsün.
+        patientName: (r.lines ?? [])
+          .map(l => `${Number(l.amount).toLocaleString('tr-TR')} ${l.currency}`)
+          .join(' + ') || null,
+      }));
+    if (rcptLines.length === 0) return invLines;
+    // Tarihe göre birleştir ve yürüyen bakiyeyi yeniden hesapla.
+    const merged = [...invLines, ...rcptLines]
+      .sort((a, b) => a.date.localeCompare(b.date));
+    let run = 0;
+    return merged.map(l => { run += l.debit - l.credit; return { ...l, balance: run }; });
+  }, [postedInvoices, receipts, selectedCcy]);
 
   // KPI'lar seçili dövizde, kesilmiş faturalardan hesaplanır (clinicInfo base'di → kullanılmaz)
   const kpis = useMemo(() => {
@@ -607,33 +646,32 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
         {/* ── Beyaz hero — ozet kartlari icine alindi ──────────
             Ayri duran bes kutu, baslikla ekstre tablosu arasinda kopuk bir
             serit birakiyordu; hero ikisini tek blokta topluyor. */}
-        {/* Geri: hero'nun USTUNDE gercek bir dugme. Baslik icine metin oku
-            koymak dokunma hedefi birakmiyordu (mobilde 44px'lik alan sart). */}
-        {!selfView && (
-          <GlassTooltip title={autoT('Geri')} text={autoT('Sağlık kurumu listesine dön')} placement="bottom">
-            <Pressable
-              // Ekstre, Finans hub'ının "Sağlık Kurumları" sekmesinin alt sayfası.
-              // safeBack mobilde Özet'e düşüyordu (sekme navigatörü geri tuşunu
-              // ilk sekmeye yönlendiriyor); hiyerarşik "yukarı" hedefi sabit.
-              onPress={() => router.replace(`/${panelBase}/finance?tab=clinic_balance` as any)}
-              accessibilityRole="button"
-              accessibilityLabel={autoT('Geri')}
-              style={{
-                width: 40, height: 40, borderRadius: 12, alignSelf: 'flex-start',
-                alignItems: 'center', justifyContent: 'center',
-                backgroundColor: U.surface, borderWidth: 1, borderColor: U.hairline,
-                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-              }}
-            >
-              {isRTL()
-                ? <ArrowRight size={18} color={U.ink[900]} strokeWidth={1.8} />
-                : <ArrowLeft size={18} color={U.ink[900]} strokeWidth={1.8} />}
-            </Pressable>
-          </GlassTooltip>
-        )}
-
         <WhiteHero
           kicker={autoT('Hesap Ekstresi')}
+          /* Geri, kicker'in solunda: ayri bir satirda dururken hero'dan kopuk
+             bir kutu gibi duruyordu. */
+          leading={!selfView ? (
+            <GlassTooltip title={autoT('Geri')} text={autoT('Sağlık kurumu listesine dön')} placement="bottom">
+              <Pressable
+                // Ekstre, Finans hub'ının "Sağlık Kurumları" sekmesinin alt sayfası.
+                // safeBack mobilde Özet'e düşüyordu; hiyerarşik "yukarı" sabit.
+                onPress={() => router.replace(`/${panelBase}/finance?tab=clinic_balance` as any)}
+                accessibilityRole="button"
+                accessibilityLabel={autoT('Geri')}
+                hitSlop={8}
+                style={{
+                  width: 30, height: 30, borderRadius: 9,
+                  alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: U.surface, borderWidth: 1, borderColor: U.hairline,
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                }}
+              >
+                {isRTL()
+                  ? <ArrowRight size={15} color={U.ink[900]} strokeWidth={1.9} />
+                  : <ArrowLeft size={15} color={U.ink[900]} strokeWidth={1.9} />}
+              </Pressable>
+            </GlassTooltip>
+          ) : null}
           title={clinicName || autoT('Sağlık Kurumu')}
           description={`${allLines.length} ${autoT('hareket')}${overdue > 0 ? ` · ${fmtMoney(overdue, selectedCcy)} ${autoT('gecikmiş')}` : ''}`}
           stats={[
@@ -978,8 +1016,13 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
               const isInvoice = line.type === 'invoice';
               const Icon = isInvoice ? ArrowUpRight : ArrowDownLeft;
               const chip = isInvoice && line.status ? STATUS_CHIP[line.status as InvoiceStatus] : null;
-              const mTitle = [line.invoiceNo, line.patientName].filter(Boolean).join(' · ') || line.description;
-              const mSub = [line.orderNo, line.doctorName].filter(Boolean).join(' · ');
+              const mIsInvoice = line.type === 'invoice';
+              const mTitle = mIsInvoice
+                ? ([line.invoiceNo, line.patientName].filter(Boolean).join(' · ') || line.description)
+                : autoT('Tahsilat');
+              const mSub = mIsInvoice
+                ? [line.orderNo, line.doctorName].filter(Boolean).join(' · ')
+                : [line.invoiceNo, line.patientName].filter(Boolean).join(' · ');
 
               return (
                 <Pressable key={line.id ?? i}
@@ -1075,10 +1118,16 @@ function StatementRow({ line, last, currency, onOpen }: { line: StatementLine; l
   const chip = isInvoice && line.status ? STATUS_CHIP[line.status as InvoiceStatus] : null;
   const MIcon = !isInvoice && line.method ? METHOD_ICON[line.method as PaymentMethod] : null;
   const clickable = !!onOpen;
-  // Başlık: sipariş no + hasta · Alt satır: klinik + hekim (yoksa description'a düş)
-  // Fatura no (FTR-) birincil; sipariş no (LAB-) + hekim alt satırda. İkisi de görünür.
-  const rowTitle = [line.invoiceNo, line.patientName].filter(Boolean).join(' · ') || line.description;
-  const rowSub = [line.orderNo, line.doctorName].filter(Boolean).join(' · ');
+  // Fatura satiri: fatura no + hasta birincil, siparis no + hekim alt satirda.
+  // Odeme satiri KENDI kimligiyle yazilir ("Tahsilat"); hangi faturayi
+  // kapattigi alt satira duser. Onceden odeme, faturanin metnini birebir
+  // tekrarladigi icin ayni fatura listede iki kez gorunuyordu.
+  const rowTitle = isInvoice
+    ? ([line.invoiceNo, line.patientName].filter(Boolean).join(' · ') || line.description)
+    : autoT('Tahsilat');
+  const rowSub = isInvoice
+    ? [line.orderNo, line.doctorName].filter(Boolean).join(' · ')
+    : [line.invoiceNo, line.patientName].filter(Boolean).join(' · ');
 
   return (
     <Pressable
