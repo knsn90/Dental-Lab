@@ -185,6 +185,13 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   const CHIP_TONES = chipTones(U);
   const STATUS_CHIP = statusChip(U);
   const theme = usePanelTheme();
+  // HOOK: erken return'lerden ÖNCE ve koşulsuz. Aşağıda (isOverdue'nun
+  // yanında) çağrılınca 'Rendered more hooks than during the previous
+  // render' hatası veriyordu — yükleme/bulunamadı dallarında hiç
+  // çalışmıyor, faturalı dalda çalışıyordu. Döndürdüğü değerlerden
+  // kullandıklarım (tileBg/tileBorder/ink/inkFaint/isDark) accent'e
+  // bağlı değil, o yüzden argümansız çağrılabiliyor.
+  const hInk = useWhiteHeroInk();
   // Koyu temada parlak accent hero göz yorar → derinleştirilmiş yüzey (HERO kuralı).
   const heroBg = useHeroSurface(theme.primary);
   const router = useRouter();
@@ -305,7 +312,6 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   /** Gecikmede hero tehlike rengine döner; hero içindeki her vurgu bundan
    *  beslenir (düğümler, bağlaç çizgileri, durum rozeti). */
   const heroAccent = isOverdue ? '#D94B4B' : theme.primary;
-  const hInk = useWhiteHeroInk(heroAccent);
 
   // Zaman şeridi — oluşturuldu · son ödeme · vade baskısı (kullanıcı zaman baskısını da yönetir)
   const createdDate = (invoice.created_at ? String(invoice.created_at).slice(0, 10) : invoice.issue_date);
