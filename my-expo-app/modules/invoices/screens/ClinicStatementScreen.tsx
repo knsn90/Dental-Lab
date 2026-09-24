@@ -473,6 +473,11 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
     const invLines = buildStatementLines(postedInvoices, { original: true });
     const rcptLines: StatementLine[] = receipts
       .filter(r => (r.base_currency ?? '') === selectedCcy)
+      // Fişin FATURAYA YAZILMIŞ kısmı zaten ödeme satırı olarak görünüyor
+      // (eski, dağıtımlı kayıtlar). Burada yalnız kalan kısmı göster; aksi
+      // halde aynı para hem fiş hem ödeme satırında iki kez sayılırdı.
+      .map(r => ({ ...r, credit_base: (Number(r.total_base) || 0) - (Number(r.allocated_base) || 0) }))
+      .filter(r => r.credit_base > 0.004)
       .map(r => ({
         id: `rcpt-${r.id}`,
         date: r.receipt_date,
@@ -480,7 +485,7 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
         description: autoT('Tahsilat'),
         method: r.payment_method,
         debit: 0,
-        credit: Number(r.total_base) || 0,
+        credit: r.credit_base,
         balance: 0,
         // Fişin hangi paralardan oluştuğu alt satırda görünsün.
         patientName: (r.lines ?? [])
