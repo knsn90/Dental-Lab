@@ -106,6 +106,10 @@ export function buildStatementLines(
     });
     if (inv.payments) {
       for (const p of inv.payments) {
+        // Toplu tahsilattan gelen ödemeler defterde TEK bir fiş satırı olarak
+        // görünür (ekran fişi ayrıca ekler). Burada da yazsaydık aynı para
+        // hem fiş hem fatura-başı ödeme olarak iki kez sayılırdı.
+        if ((p as any).receipt_id) continue;
         // Alacak: original ise ödemenin kendi tutarı; değilse faturanın kuruyla baz'a çevrilir.
         const creditVal = original ? p.amount : p.amount * rate;
         lines.push({
