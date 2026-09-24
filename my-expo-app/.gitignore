@@ -35,3 +35,6 @@ google-play-service-account.json
 tests/performance/seed/users.json
 tests/performance/seed/tenants.json
 tests/performance/results/
+
+# Geçici SQL doğrulama betikleri (canlıya yazmaz, commit edilmez)
+scratch/
