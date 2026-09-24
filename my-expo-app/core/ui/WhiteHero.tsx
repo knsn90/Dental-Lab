@@ -59,6 +59,12 @@ export interface WhiteHeroProps {
   /** Alt şeridin hizası: `start` (varsayılan, sol) · `end` (alt sağ köşe). */
   actionsAlign?: 'start' | 'end';
   /**
+   * Başlık ve rakamları bir kademe küçültür. Rakamın kendisi değil, ÇEVRESİ
+   * bilgi taşıyan hero'larda (ör. fatura özeti: durum, yaşam döngüsü) 44px
+   * başlık kartı eziyordu. Verilmezse ölçüler hiç değişmez.
+   */
+  compact?: boolean;
+  /**
    * Kartın SAĞ ÜST köşesindeki birincil eylem. `actions` alt şeride yayılır;
    * tek bir CTA varsa şerit açmak yerine başlık hizasında durması istenir.
    */
@@ -80,7 +86,7 @@ export interface WhiteHeroProps {
 }
 
 export function WhiteHero({
-  kicker, leading, title, description, stats, actions, actionsAlign = 'start', cta, children, accent, tint, style,
+  kicker, leading, title, description, stats, actions, actionsAlign = 'start', compact, cta, children, accent, tint, style,
 }: WhiteHeroProps) {
   const U = useInkUI();
   const isDark = useThemeModeStore(s => s.resolvedDark);
@@ -129,7 +135,11 @@ export function WhiteHero({
               </Text>
             </View>
             {title ? (
-              <Text style={{ ...WHITE_HERO_DISPLAY, fontSize: narrow ? 30 : 44, letterSpacing: narrow ? -0.9 : -1.5, lineHeight: narrow ? 34 : 48, color: titleColor }}>
+              <Text style={{ ...WHITE_HERO_DISPLAY,
+                fontSize: narrow ? (compact ? 24 : 30) : (compact ? 32 : 44),
+                letterSpacing: narrow ? -0.7 : (compact ? -1 : -1.5),
+                lineHeight: narrow ? (compact ? 28 : 34) : (compact ? 36 : 48),
+                color: titleColor }}>
                 {title}
               </Text>
             ) : null}
@@ -162,7 +172,11 @@ export function WhiteHero({
                 >
                   <Text
                     numberOfLines={1}
-                    style={{ ...WHITE_HERO_DISPLAY, fontSize: narrow ? 22 : 40, letterSpacing: narrow ? -0.6 : -1.4, lineHeight: narrow ? 26 : 40, color: titleColor }}
+                    style={{ ...WHITE_HERO_DISPLAY,
+                      fontSize: narrow ? (compact ? 18 : 22) : (compact ? 24 : 40),
+                      letterSpacing: narrow ? -0.5 : (compact ? -0.7 : -1.4),
+                      lineHeight: narrow ? (compact ? 22 : 26) : (compact ? 28 : 40),
+                      color: titleColor }}
                   >
                     {st.value}
                   </Text>

@@ -8632,5 +8632,8 @@
   "Tahsilat güncellendi": "Payment updated",
   "Bu tahsilatın bilgilerini değiştir": "Change the details of this payment",
   "Makbuz No": "Receipt No",
-  "Düzenleyen": "Issued by"
+  "Düzenleyen": "Issued by",
+  "İş emirleri": "Work orders",
+  "Bağlı iş emri yok": "No linked work order",
+  "tahsil edildi": "collected"
 }

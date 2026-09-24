@@ -192,6 +192,14 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   // kullandıklarım (tileBg/tileBorder/ink/inkFaint/isDark) accent'e
   // bağlı değil, o yüzden argümansız çağrılabiliyor.
   const hInk = useWhiteHeroInk();
+  // İş emri bağlantıları hero zemininde: koyu temada kobalt sönük kalıyor.
+  const linkInk = hInk.isDark ? '#93C5FD' : '#2563EB';
+
+  /** Hero içi sütun başlığı — üç sütunda da birebir aynı ölçü. */
+  const HERO_LBL = (h: { inkFaint: string }) => ({
+    fontSize: 9, fontWeight: '700' as const, letterSpacing: 1,
+    textTransform: 'uppercase' as const, color: h.inkFaint, marginBottom: 6,
+  });
   // Koyu temada parlak accent hero göz yorar → derinleştirilmiş yüzey (HERO kuralı).
   const heroBg = useHeroSurface(theme.primary);
   const router = useRouter();
@@ -340,6 +348,15 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   const _cancelled = invoice.status === 'iptal';
   type LcState = 'done' | 'active' | 'pending';
   const _dueVisible = _issued && !_paid && !_cancelled && !!invoice.due_date;
+  // Bağlı iş emirleri TEK listede: çoklu bağlantı (linked_orders) yoksa
+  // eski tek-emirli faturalar work_order alanını kullanıyor.
+  const orderLinks = (invoice.linked_orders?.length
+    ? invoice.linked_orders.map(lo => lo.work_order).filter(Boolean)
+    : (invoice.work_order ? [invoice.work_order] : [])) as NonNullable<typeof invoice.work_order>[];
+  // Tahsilat yüzdesi 0-100'e kıstırılır: fazla tahsilatta çubuk taşmasın.
+  const paidPct = Math.max(0, Math.min(100, Number(invoice.total) > 0
+    ? Math.round((Number(invoice.paid_amount) / Number(invoice.total)) * 100) : 0));
+
   const lifecycle: {
     label: string; short: string; state: LcState; date?: string | null;
     dueCaption?: string | null; badge?: { text: string; bg: string; fg: string } | null;
@@ -424,79 +441,256 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   return (
     <View style={{ flex: 1 }}>
 
-      {/* ── Toolbar — solda belge kimliği, sağda eylemler ──
-          Eskiden yalnız geri oku + sağda butonlar vardı; satırın ortası bomboş
-          kalıyor, üstündeki dikey pay ile birlikte ~180px boşluk oluşuyordu.
-          Belge kimliği (numara + durum) buraya taşındı: sayfa kaydırılıp hero
-          ekrandan çıktığında da "hangi faturadayım" görünür kalır. */}
-      <View style={{
-        flexDirection: 'row', alignItems: 'center', gap: 10,
-        paddingHorizontal: isDesktop ? 20 : 12,
-        paddingTop: 6 + (isDesktop || isEmbedded ? 0 : insets.top),
-        paddingBottom: isDesktop ? 6 : 8,
-      }}>
-        <Pressable onPress={goBack} style={{
-          width: isDesktop ? 36 : 34, height: isDesktop ? 36 : 34, borderRadius: 10,
-          alignItems: 'center', justifyContent: 'center',
-          backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: U.plainBtn.border,
-          cursor: 'pointer' as any,
-        }}>
-          {isRTL() ? <ArrowRight size={17} strokeWidth={1.8} color={U.ink[900]} /> : <ArrowLeft size={17} strokeWidth={1.8} color={U.ink[900]} />}
-        </Pressable>
-
-        {isDesktop && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 0 }}>
-            <Text style={{ fontSize: 13, fontFamily: 'monospace', color: U.ink[700] }} numberOfLines={1}>
-              {invoice.invoice_number}
-            </Text>
-            {(() => {
-              const chip = isOverdue ? CHIP_TONES.danger : (STATUS_CHIP[invoice.status] ?? CHIP_TONES.neutral);
-              return (
-                <View style={{ paddingHorizontal: 8, paddingVertical: 2.5, borderRadius: 999, backgroundColor: chip.bg }}>
-                  <Text style={{ fontSize: 9.5, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: chip.text }}>
-                    {isOverdue ? 'Vadesi Geçti' : INVOICE_STATUS_LABELS[invoice.status]}
-                  </Text>
-                </View>
-              );
-            })()}
-            {!!invoice.clinic?.name && (
-              <>
-                <Text style={{ fontSize: 12, color: U.ink[300] }}>·</Text>
-                <Text style={{ fontSize: 12.5, color: U.ink[500], flexShrink: 1 }} numberOfLines={1}>
-                  {invoice.clinic.name}
-                </Text>
-              </>
-            )}
-          </View>
-        )}
-
-        <View style={{ flex: 1 }} />
-        {!readOnly && invoice.status === 'taslak' && (
-          <PillBtn icon={Send} label={isDesktop ? 'Kesildi İşaretle' : undefined} color={CHIP_TONES.info.text} bg={CHIP_TONES.info.bg} onPress={handleMarkSent} disabled={busy} />
-        )}
-        {!readOnly && (invoice.status === 'kesildi' || invoice.status === 'kismi_odendi') && (
-          <PillBtn icon={BellRing} label={isDesktop ? 'Hatirlatma' : undefined} color={U.ink[500]} bg={U.ink[50]} onPress={() => setReminderOpen(true)} disabled={busy} />
-        )}
-        {!readOnly && invoice.status === 'kesildi' && Number(invoice.paid_amount) === 0 && (
-          <PillBtn icon={Undo2} label={isDesktop ? 'Taslağa Dön' : undefined} color={U.ink[700]} bg={U.ink[100]} onPress={handleRevertToDraft} disabled={busy} />
-        )}
-        {!readOnly && balance > 0 && invoice.status !== 'iptal' && (
-          <PillBtn icon={Banknote} label={isDesktop ? 'Tahsilat Ekle' : undefined} onPress={() => setPaymentModalVisible(true)} dark />
-        )}
-        <PillBtn icon={Printer} onPress={handlePrint} />
-      </View>
-
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{
           alignItems: isDesktop ? 'center' : 'stretch',
           paddingHorizontal: isDesktop ? 32 : 12,
-          paddingTop: 0,
+          /* Eylemler hero'ya taşındığı için üstteki araç çubuğu kalktı;
+             çentik payı buraya geçti, aksi halde içerik saat/çentiğin altına
+             giriyordu. */
+          paddingTop: isDesktop || isEmbedded ? 8 : insets.top + 8,
           paddingBottom: 80,
           gap: isDesktop ? 20 : 14,
         }}
         showsVerticalScrollIndicator={false}
       >
+        {/* Hero TAM GENİŞLİK: split satırının üstünde, iki kolonu birden
+            kapsar. Sağ kolon kartları bu yüzden hero'nun altından başlar. */}
+        <View style={{ width: '100%', maxWidth: isDesktop ? 1180 : 800 }}>
+          {/* ═══════════════════════════════════════════════════════════
+              §10 HERO — Fatura özet kartı (koşullu: overdue=dark, normal=panel)
+              ═══════════════════════════════════════════════════════════ */}
+          <WhiteHero
+            /* Gecikmede accent tehlike rengine döner: hero zemini, düğümler ve
+               bağlaç çizgileri hep bu accent'ten beslenir, tek yerden. */
+            accent={heroAccent}
+            compact
+            leading={
+              <Pressable onPress={goBack} accessibilityRole="button"
+                accessibilityLabel={autoT('Geri')} hitSlop={8}
+                style={{
+                  width: 30, height: 30, borderRadius: 9,
+                  alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: U.surface, borderWidth: 1, borderColor: U.hairline,
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                }}>
+                {isRTL()
+                  ? <ArrowRight size={15} strokeWidth={1.9} color={U.ink[900]} />
+                  : <ArrowLeft size={15} strokeWidth={1.9} color={U.ink[900]} />}
+              </Pressable>
+            }
+            kicker={`${autoT('Fatura')} · ${invoice.invoice_number}`}
+            /* Belge eylemleri hero'nun alt sağ şeridinde: ayrı araç çubuğu
+               satırı, sayfa başlığıyla hero arasında boş bir bant bırakıyordu. */
+            actionsAlign="end"
+            actions={<>
+              {!readOnly && invoice.status === 'taslak' && (
+                <PillBtn icon={Send} label={isDesktop ? 'Kesildi İşaretle' : undefined} color={CHIP_TONES.info.text} bg={CHIP_TONES.info.bg} onPress={handleMarkSent} disabled={busy} />
+              )}
+              {!readOnly && (invoice.status === 'kesildi' || invoice.status === 'kismi_odendi') && (
+                <PillBtn icon={BellRing} label={isDesktop ? 'Hatirlatma' : undefined} color={U.ink[500]} bg={U.ink[50]} onPress={() => setReminderOpen(true)} disabled={busy} />
+              )}
+              {!readOnly && invoice.status === 'kesildi' && Number(invoice.paid_amount) === 0 && (
+                <PillBtn icon={Undo2} label={isDesktop ? 'Taslağa Dön' : undefined} color={U.ink[700]} bg={U.ink[100]} onPress={handleRevertToDraft} disabled={busy} />
+              )}
+              {!readOnly && balance > 0 && invoice.status !== 'iptal' && (
+                <PillBtn icon={Banknote} label={isDesktop ? 'Tahsilat Ekle' : undefined} onPress={() => setPaymentModalVisible(true)} dark />
+              )}
+              <PillBtn icon={Printer} onPress={handlePrint} />
+            </>}
+            title={fmtMoney(balance)}
+            description={autoT('Kalan')}
+            cta={
+              <View style={{
+                flexDirection: 'row', alignItems: 'center', gap: 5,
+                paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
+                backgroundColor: hInk.tileBg, borderWidth: 1, borderColor: hInk.tileBorder,
+              }}>
+                {(() => {
+                  const SIcon = isOverdue ? AlertCircle
+                    : invoice.status === 'odendi' ? CircleCheck
+                    : invoice.status === 'kesildi' ? Check
+                    : invoice.status === 'kismi_odendi' ? Check
+                    : invoice.status === 'iptal' ? X
+                    : FileText;
+                  return <SIcon size={11} color={isOverdue ? heroAccent : hInk.ink} strokeWidth={2.6} />;
+                })()}
+                <Text style={{
+                  fontSize: 9.5, fontWeight: '700', letterSpacing: 0.5,
+                  textTransform: 'uppercase', color: isOverdue ? heroAccent : hInk.ink,
+                }}>
+                  {isOverdue ? 'Vadesi Geçti' : INVOICE_STATUS_LABELS[invoice.status]}
+                </Text>
+              </View>
+            }
+          >
+            {/* ═══ BİLGİ ŞERİDİ — alıcı · bağlı iş emirleri · tahsilat ═══
+                Üç sütun eşit ağırlıkta: "kime kestim", "neyin karşılığı",
+                "ne kadarı tahsil edildi". Dar ekranda alt alta iner. */}
+            <View style={{
+              marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: hInk.tileBorder,
+              flexDirection: isDesktop ? 'row' : 'column',
+              gap: isDesktop ? 22 : 14,
+            }}>
+              {/* ── Alıcı ── */}
+              <View style={{ flex: isDesktop ? 1.2 : undefined, minWidth: 0, flexDirection: 'row', gap: 11 }}>
+                {/* Monogram: klinik adının baş harfleri — logo yoksa kimliği
+                    taşıyan tek görsel çapa. */}
+                <View style={{
+                  width: 34, height: 34, borderRadius: 11, marginTop: 1,
+                  alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: hInk.tileBg, borderWidth: 1, borderColor: hInk.tileBorder,
+                }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: hInk.ink }}>
+                    {(invoice.clinic?.name ?? '—').split(/\s+/).slice(0, 2).map(w => w.charAt(0)).join('').toUpperCase()}
+                  </Text>
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={HERO_LBL(hInk)}>{autoT('Alıcı')}</Text>
+                  <Text numberOfLines={1} style={{ fontSize: 14.5, fontWeight: '600', color: hInk.ink }}>
+                    {invoice.clinic?.name ?? '—'}
+                  </Text>
+                  {/* doctors.full_name ZATEN ön ek içeriyor ("Dt. Beyza…") →
+                      normalizeDoctorName ön eki varsa korur, yoksa ekler. */}
+                  {invoice.doctor?.full_name ? (
+                    <Text numberOfLines={1} style={{ fontSize: 12.5, color: hInk.inkSoft, marginTop: 2 }}>
+                      {normalizeDoctorName(invoice.doctor.full_name)}
+                    </Text>
+                  ) : null}
+                  {invoice.doctor?.phone ? (
+                    <Text numberOfLines={1} style={{ fontSize: 11.5, color: hInk.inkFaint, marginTop: 2 }}>
+                      {invoice.doctor.phone}
+                    </Text>
+                  ) : null}
+                  {invoice.clinic?.address ? (
+                    <Text numberOfLines={2} style={{ fontSize: 11.5, color: hInk.inkFaint, marginTop: 2, lineHeight: 15 }}>
+                      {formatAddress(invoice.clinic.address)}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+
+              {/* ── Bağlı iş emirleri (kapsül, düz satır değil) ── */}
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={HERO_LBL(hInk)}>{autoT('İş emirleri')}</Text>
+                {orderLinks.length > 0 ? (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                    {orderLinks.map(o => (
+                      <Pressable key={o.id} onPress={() => setPreviewOrderId(o.id)}
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', gap: 6,
+                          paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999,
+                          maxWidth: '100%',
+                          backgroundColor: hInk.tileBg, borderWidth: 1, borderColor: hInk.tileBorder,
+                          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                        }}>
+                        <ClipboardList size={12} strokeWidth={1.7} color={linkInk} />
+                        <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '600', color: linkInk, flexShrink: 1 }}>
+                          {o.order_number}{o.patient_name ? ` · ${o.patient_name}` : ''}
+                        </Text>
+                        {isRTL()
+                          ? <ChevronLeft size={11} strokeWidth={1.6} color={hInk.inkFaint} />
+                          : <ChevronRight size={11} strokeWidth={1.6} color={hInk.inkFaint} />}
+                      </Pressable>
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={{ fontSize: 12, color: hInk.inkFaint }}>{autoT('Bağlı iş emri yok')}</Text>
+                )}
+              </View>
+
+              {/* ── Tahsilat ilerlemesi ── */}
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={HERO_LBL(hInk)}>{autoT('Tahsilat')}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: hInk.ink }}>%{paidPct}</Text>
+                  <Text style={{ fontSize: 11.5, color: hInk.inkFaint, flexShrink: 1 }} numberOfLines={1}>
+                    {autoT('tahsil edildi')}
+                  </Text>
+                </View>
+                {/* Ray accent'in soluk tonu: gecikmede kırmızı, normalde panel
+                    rengi — kartın geri kalanıyla aynı kaynaktan beslenir. */}
+                <View style={{
+                  height: 6, borderRadius: 999, marginTop: 8, overflow: 'hidden',
+                  backgroundColor: hInk.isDark ? 'rgba(255,255,255,0.18)' : `${heroAccent}24`,
+                }}>
+                  <View style={{ width: `${paidPct}%`, height: '100%', borderRadius: 999, backgroundColor: heroAccent }} />
+                </View>
+                <View style={{ marginTop: 8, gap: 3 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
+                    <Text style={{ fontSize: 11.5, color: hInk.inkFaint }}>{autoT('Toplam')}</Text>
+                    <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '600', color: hInk.ink }}>{fmtMoney(invoice.total)}</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
+                    <Text style={{ fontSize: 11.5, color: hInk.inkFaint }}>{autoT('Ödenen')}</Text>
+                    <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '600', color: hInk.ink }}>{fmtMoney(invoice.paid_amount)}</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            {/* ═══ YATAY YAŞAM DÖNGÜSÜ ŞERİDİ (✓ done · ● active · ○ pending) ═══ */}
+            <View style={{
+              marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: hInk.tileBorder,
+              flexDirection: 'row', alignItems: 'flex-start',
+            }}>
+              {lifecycle.map((st, i) => {
+                const done = st.state === 'done';
+                const active = st.state === 'active';
+                const prevDone = i > 0 && lifecycle[i - 1].state === 'done';
+                const isLast = i === lifecycle.length - 1;
+                const lineOn = hInk.isDark ? 'rgba(255,255,255,0.45)' : `${heroAccent}66`;
+                const lineOff = hInk.isDark ? 'rgba(255,255,255,0.16)' : `${heroAccent}1F`;
+                return (
+                  // minWidth:0 şart — web'de flex öğesinin varsayılan min-width'i
+                  // "auto"dur, yani hücre içeriğinden (ör. "29 gün kaldı" rozeti)
+                  // daha dar olamaz. Rozetli adım genişleyince bağlaç çizgileri
+                  // eşitliğini kaybediyor ve son aralık kırık görünüyordu.
+                  <View key={st.label} style={{ flex: 1, minWidth: 0, alignItems: 'center' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%' }}>
+                      <View style={{ flex: 1, height: 1.5, backgroundColor: i === 0 ? 'transparent' : (prevDone ? lineOn : lineOff) }} />
+                      {/* Düğüm yuvası SABİT 18px. Bekleyen daire 14px çizilir ama
+                          yuvası 18 kalır; aksi halde çizgiler flex:1 olduğu için
+                          küçük düğümün iki yanındaki aralık uzuyor ve bağlaçlar
+                          farklı boylarda görünüyordu. */}
+                      <View style={{ width: 18, height: 18, alignItems: 'center', justifyContent: 'center' }}>
+                        {done ? (
+                          <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: heroAccent, alignItems: 'center', justifyContent: 'center' }}>
+                            <Check size={12} color={onAccentInk(heroAccent)} strokeWidth={3} />
+                          </View>
+                        ) : active ? (
+                          <View style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: heroAccent, alignItems: 'center', justifyContent: 'center' }}>
+                            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: heroAccent }} />
+                          </View>
+                        ) : (
+                          <View style={{ width: 14, height: 14, borderRadius: 7, borderWidth: 1.5, borderColor: hInk.inkFaint }} />
+                        )}
+                      </View>
+                      <View style={{ flex: 1, height: 1.5, backgroundColor: isLast ? 'transparent' : (done ? lineOn : lineOff) }} />
+                    </View>
+                    <Text numberOfLines={1} style={{
+                      maxWidth: '100%', fontSize: 9.5, fontWeight: active ? '700' : '600',
+                      letterSpacing: 0.2, marginTop: 6,
+                      color: done || active ? hInk.ink : hInk.inkFaint,
+                    }}>
+                      {st.short}
+                    </Text>
+                    {st.badge ? (
+                      <Text numberOfLines={1} style={{
+                        maxWidth: '100%', fontSize: 9, fontWeight: '700',
+                        color: st.badge.fg, marginTop: 2,
+                      }}>
+                        {st.badge.text}
+                      </Text>
+                    ) : null}
+                  </View>
+                );
+              })}
+            </View>
+          </WhiteHero>
+        </View>
+
         {/* Split: desktop'ta sol=fatura içeriği · sağ=aksiyonlar; mobilde tek kolon */}
         <View style={{
           width: '100%', maxWidth: isDesktop ? 1180 : 800,
@@ -507,155 +701,6 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
         {/* ═══ SOL KOLON — fatura içeriği (maxWidth TEK yerde: tüm kartlar width:100% → aynı sol hiza) ═══ */}
         <View style={{ flex: isDesktop ? 1 : undefined, width: '100%', minWidth: 0, maxWidth: 800, gap: isDesktop ? 20 : 14 }}>
 
-        {/* ═══════════════════════════════════════════════════════════
-            §10 HERO — Fatura özet kartı (koşullu: overdue=dark, normal=panel)
-            ═══════════════════════════════════════════════════════════ */}
-        <WhiteHero
-          /* Gecikmede accent tehlike rengine döner: hero zemini, düğümler ve
-             bağlaç çizgileri hep bu accent'ten beslenir, tek yerden. */
-          accent={heroAccent}
-          kicker={`${autoT('Fatura')} · ${invoice.invoice_number}`}
-          title={fmtMoney(balance)}
-          description={autoT('Kalan')}
-          cta={
-            <View style={{
-              flexDirection: 'row', alignItems: 'center', gap: 5,
-              paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
-              backgroundColor: hInk.tileBg, borderWidth: 1, borderColor: hInk.tileBorder,
-            }}>
-              {(() => {
-                const SIcon = isOverdue ? AlertCircle
-                  : invoice.status === 'odendi' ? CircleCheck
-                  : invoice.status === 'kesildi' ? Check
-                  : invoice.status === 'kismi_odendi' ? Check
-                  : invoice.status === 'iptal' ? X
-                  : FileText;
-                return <SIcon size={11} color={isOverdue ? heroAccent : hInk.ink} strokeWidth={2.6} />;
-              })()}
-              <Text style={{
-                fontSize: 9.5, fontWeight: '700', letterSpacing: 0.5,
-                textTransform: 'uppercase', color: isOverdue ? heroAccent : hInk.ink,
-              }}>
-                {isOverdue ? 'Vadesi Geçti' : INVOICE_STATUS_LABELS[invoice.status]}
-              </Text>
-            </View>
-          }
-          stats={[
-            { value: fmtMoney(invoice.total), label: autoT('Toplam') },
-            { value: fmtMoney(invoice.paid_amount), label: autoT('Ödenen') },
-          ]}
-        >
-          {/* ═══ YATAY YAŞAM DÖNGÜSÜ ŞERİDİ (✓ done · ● active · ○ pending) ═══ */}
-          <View style={{
-            marginTop: 18, paddingTop: 16, borderTopWidth: 1, borderTopColor: hInk.tileBorder,
-            flexDirection: 'row', alignItems: 'flex-start',
-          }}>
-            {lifecycle.map((st, i) => {
-              const done = st.state === 'done';
-              const active = st.state === 'active';
-              const prevDone = i > 0 && lifecycle[i - 1].state === 'done';
-              const isLast = i === lifecycle.length - 1;
-              const lineOn = hInk.isDark ? 'rgba(255,255,255,0.45)' : `${heroAccent}66`;
-              const lineOff = hInk.isDark ? 'rgba(255,255,255,0.16)' : `${heroAccent}1F`;
-              return (
-                // minWidth:0 şart — web'de flex öğesinin varsayılan min-width'i
-                // "auto"dur, yani hücre içeriğinden (ör. "29 gün kaldı" rozeti)
-                // daha dar olamaz. Rozetli adım genişleyince bağlaç çizgileri
-                // eşitliğini kaybediyor ve son aralık kırık görünüyordu.
-                <View key={st.label} style={{ flex: 1, minWidth: 0, alignItems: 'center' }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%' }}>
-                    <View style={{ flex: 1, height: 1.5, backgroundColor: i === 0 ? 'transparent' : (prevDone ? lineOn : lineOff) }} />
-                    {/* Düğüm yuvası SABİT 18px. Bekleyen daire 14px çizilir ama
-                        yuvası 18 kalır; aksi halde çizgiler flex:1 olduğu için
-                        küçük düğümün iki yanındaki aralık uzuyor ve bağlaçlar
-                        farklı boylarda görünüyordu. */}
-                    <View style={{ width: 18, height: 18, alignItems: 'center', justifyContent: 'center' }}>
-                      {done ? (
-                        <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: heroAccent, alignItems: 'center', justifyContent: 'center' }}>
-                          <Check size={12} color={onAccentInk(heroAccent)} strokeWidth={3} />
-                        </View>
-                      ) : active ? (
-                        <View style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: heroAccent, alignItems: 'center', justifyContent: 'center' }}>
-                          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: heroAccent }} />
-                        </View>
-                      ) : (
-                        <View style={{ width: 14, height: 14, borderRadius: 7, borderWidth: 1.5, borderColor: hInk.inkFaint }} />
-                      )}
-                    </View>
-                    <View style={{ flex: 1, height: 1.5, backgroundColor: isLast ? 'transparent' : (done ? lineOn : lineOff) }} />
-                  </View>
-                  <Text numberOfLines={1} style={{
-                    maxWidth: '100%', fontSize: 9.5, fontWeight: active ? '700' : '600',
-                    letterSpacing: 0.2, marginTop: 6,
-                    color: done || active ? hInk.ink : hInk.inkFaint,
-                  }}>
-                    {st.short}
-                  </Text>
-                  {st.badge ? (
-                    <Text numberOfLines={1} style={{
-                      maxWidth: '100%', fontSize: 9, fontWeight: '700',
-                      color: st.badge.fg, marginTop: 2,
-                    }}>
-                      {st.badge.text}
-                    </Text>
-                  ) : null}
-                </View>
-              );
-            })}
-          </View>
-        </WhiteHero>
-
-        {/* ═══════════════════════════════════════════════════════════
-            §05 U.cardSolid — Alici bilgileri
-            ═══════════════════════════════════════════════════════════ */}
-        <View style={{ width: '100%' }}>
-          <View style={{
-            ...U.cardSolid,
-            flexDirection: isDesktop ? 'row' : 'column',
-            gap: isDesktop ? 40 : 16,
-          }}>
-            {/* Alici */}
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: U.ink[400], marginBottom: 10 }}>Alici</Text>
-              <Text style={{ fontSize: 15, fontWeight: '600', color: U.ink[900] }}>{invoice.clinic?.name ?? '—'}</Text>
-              {/* doctors.full_name ZATEN ön ek içeriyor ("Dr. Aylar Teke", "Dt. Beyza…").
-                  Düz "Dr. " eklemek "Dr. Dr. Aylar Teke" üretiyordu. normalizeDoctorName
-                  ön eki varsa korur, yoksa ekler. */}
-              {invoice.doctor?.full_name && <Text style={{ fontSize: 13, color: U.ink[500], marginTop: 4 }}>{normalizeDoctorName(invoice.doctor.full_name)}</Text>}
-              {invoice.doctor?.phone && <Text style={{ fontSize: 12, color: U.ink[400], marginTop: 2 }}>{invoice.doctor.phone}</Text>}
-              {invoice.clinic?.address && <Text style={{ fontSize: 12, color: U.ink[400], marginTop: 2, maxWidth: 280 }}>{formatAddress(invoice.clinic.address)}</Text>}
-            </View>
-
-            {/* Is emirleri */}
-            {(invoice.linked_orders?.length || invoice.work_order) && (
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: U.ink[400], marginBottom: 10 }}>Is Emirleri</Text>
-                {(invoice.linked_orders && invoice.linked_orders.length > 0)
-                  ? invoice.linked_orders.map(lo => lo.work_order && (
-                      <Pressable key={lo.work_order_id} onPress={() => setPreviewOrderId(lo.work_order!.id)}
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6, cursor: 'pointer' as any }}>
-                        <ClipboardList size={12} strokeWidth={1.6} color="#2563EB" />
-                        <Text style={{ fontSize: 13, color: '#2563EB', fontWeight: '500' }}>
-                          {lo.work_order.order_number}{lo.work_order.patient_name ? ` · ${lo.work_order.patient_name}` : ''}
-                        </Text>
-                        {isRTL() ? <ChevronLeft size={11} strokeWidth={1.4} color={U.ink[300]} /> : <ChevronRight size={11} strokeWidth={1.4} color={U.ink[300]} />}
-                      </Pressable>
-                    ))
-                  : invoice.work_order && (
-                      <Pressable onPress={() => setPreviewOrderId(invoice.work_order!.id)}
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 6, cursor: 'pointer' as any }}>
-                        <ClipboardList size={12} strokeWidth={1.6} color="#2563EB" />
-                        <Text style={{ fontSize: 13, color: '#2563EB', fontWeight: '500' }}>
-                          {invoice.work_order.order_number}{invoice.work_order.patient_name ? ` · ${invoice.work_order.patient_name}` : ''}
-                        </Text>
-                        {isRTL() ? <ChevronLeft size={11} strokeWidth={1.4} color={U.ink[300]} /> : <ChevronRight size={11} strokeWidth={1.4} color={U.ink[300]} />}
-                      </Pressable>
-                    )
-                }
-              </View>
-            )}
-          </View>
-        </View>
 
         {/* ═══════════════════════════════════════════════════════════
             §09 TABLO — Kalemler
@@ -911,8 +956,8 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
         </View>{/* ═══ /SOL KOLON ═══ */}
 
         {/* ═══ SAĞ KOLON — aksiyonlar (Notlar · Ödeme · e-Fatura · tehlikeli) ═══ */}
-        {/* Sağ kolon ilk kartı hero ile AYNI hizadan başlar (fatura toolbar'ı yüzen
-            arama/profil çubuğu için zaten yeterli boşluk bırakıyor). */}
+        {/* Hero artık iki kolonun üstünde tam genişlik olduğu için sağ kolon
+            kartları kalem tablosuyla aynı hizadan, hero'nun ALTINDAN başlar. */}
         <View style={{ width: isDesktop ? 360 : '100%', gap: isDesktop ? 16 : 14 }}>
 
         {/* ═══ Klinik notu — laboratuvar düzenler, klinik fatura detayında görür ═══ */}

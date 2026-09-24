@@ -280,10 +280,10 @@ const s = StyleSheet.create({
   activeLabel: { fontSize: 10, fontWeight: '700', color: '#1E40AF', textTransform: 'uppercase', letterSpacing: 0.4 },
   activeUrl: { fontSize: 12, color: '#1E40AF', fontFamily: 'monospace' as any, marginTop: 4 },
   activeMeta: { fontSize: 11, color: '#3B82F6', marginTop: 4 },
-  copyBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8, backgroundColor: '#2563EB' },
+  copyBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8, backgroundColor: '#314F7E' },
   copyText: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
 
-  createBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 10, backgroundColor: '#2563EB' },
+  createBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 9999, backgroundColor: '#314F7E' },
   createText: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
 
   noBalanceText: { fontSize: 13, color: '#64748B', textAlign: 'center', paddingVertical: 8 },
@@ -311,6 +311,6 @@ const mm = StyleSheet.create({
   footer:  { flexDirection: 'row', gap: 10, padding: 14, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
   cancelBtn:  { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0' },
   cancelText: { fontSize: 14, fontWeight: '600', color: '#475569' },
-  primaryBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10, backgroundColor: '#2563EB' },
+  primaryBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 9999, backgroundColor: '#314F7E' },
   primaryText:{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
 });

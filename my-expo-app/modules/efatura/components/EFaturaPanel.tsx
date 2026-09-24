@@ -202,8 +202,8 @@ const s = StyleSheet.create({
   errorText: { flex: 1, fontSize: 12, color: '#DC2626', fontWeight: '600' },
 
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  btn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10 },
-  btnPrimary: { backgroundColor: '#2563EB' },
+  btn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 9999 },
+  btnPrimary: { backgroundColor: '#314F7E' },
   btnPrimaryText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
   btnOutline: { borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#FFFFFF' },
   btnOutlineText: { fontSize: 13, fontWeight: '700', color: '#0F172A' },

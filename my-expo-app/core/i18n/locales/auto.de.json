@@ -8620,5 +8620,8 @@
   "Tahsilat güncellendi": "Zahlung aktualisiert",
   "Bu tahsilatın bilgilerini değiştir": "Die Angaben dieser Zahlung ändern",
   "Makbuz No": "Belegnummer",
-  "Düzenleyen": "Ausgestellt von"
+  "Düzenleyen": "Ausgestellt von",
+  "İş emirleri": "Arbeitsaufträge",
+  "Bağlı iş emri yok": "Kein verknüpfter Arbeitsauftrag",
+  "tahsil edildi": "eingezogen"
 }
