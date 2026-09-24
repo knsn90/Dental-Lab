@@ -27,9 +27,10 @@ import { useRouter, useLocalSearchParams, useSegments } from 'expo-router';
 import { safeBack } from '../../../core/util/safeBack';
 
 import { DS } from '../../../core/theme/dsTokens';
+import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
 import { useInkUI, type InkUI } from '../../../core/theme/inkScale';
 import { useHeroSurface } from '../../../core/ui/HeroGlow';
-import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
 import { CURRENCY_META, type Currency } from '../../../core/money/currency';
 import { baseSymbol, getBaseCurrency } from '../../../core/money/baseCurrency';
 import { useInvoice } from '../hooks/useInvoices';
@@ -301,6 +302,10 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   const today = new Date().toISOString().slice(0, 10);
   const isOverdue = invoice.due_date && invoice.due_date < today
     && invoice.status !== 'odendi' && invoice.status !== 'iptal';
+  /** Gecikmede hero tehlike rengine döner; hero içindeki her vurgu bundan
+   *  beslenir (düğümler, bağlaç çizgileri, durum rozeti). */
+  const heroAccent = isOverdue ? '#D94B4B' : theme.primary;
+  const hInk = useWhiteHeroInk(heroAccent);
 
   // Zaman şeridi — oluşturuldu · son ödeme · vade baskısı (kullanıcı zaman baskısını da yönetir)
   const createdDate = (invoice.created_at ? String(invoice.created_at).slice(0, 10) : invoice.issue_date);
@@ -499,26 +504,18 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
         {/* ═══════════════════════════════════════════════════════════
             §10 HERO — Fatura özet kartı (koşullu: overdue=dark, normal=panel)
             ═══════════════════════════════════════════════════════════ */}
-        <View style={{
-          width: '100%',
-          borderRadius: 24,
-          padding: 22,
-          backgroundColor: isOverdue ? (U.isDark ? '#2A1212' : U.ink[900]) : theme.primary,
-          ...(isOverdue ? {} : heroBg),
-          position: 'relative', overflow: 'hidden',
-        } as any}>
-          {/* Row 1: FATURA title + number + status */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
-            <Text style={{
-              ...DISPLAY, fontSize: isDesktop ? 32 : 20, letterSpacing: -1,
-              color: '#FFFFFF',
-            }}>
-              FATURA
-            </Text>
+        <WhiteHero
+          /* Gecikmede accent tehlike rengine döner: hero zemini, düğümler ve
+             bağlaç çizgileri hep bu accent'ten beslenir, tek yerden. */
+          accent={heroAccent}
+          kicker={`${autoT('Fatura')} · ${invoice.invoice_number}`}
+          title={fmtMoney(balance)}
+          description={autoT('Kalan')}
+          cta={
             <View style={{
-              flexDirection: 'row', alignItems: 'center', gap: 4,
-              paddingHorizontal: 9, paddingVertical: 3, borderRadius: 999,
-              backgroundColor: 'rgba(255,255,255,0.22)',
+              flexDirection: 'row', alignItems: 'center', gap: 5,
+              paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
+              backgroundColor: hInk.tileBg, borderWidth: 1, borderColor: hInk.tileBorder,
             }}>
               {(() => {
                 const SIcon = isOverdue ? AlertCircle
@@ -526,103 +523,73 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
                   : invoice.status === 'kesildi' ? Check
                   : invoice.status === 'kismi_odendi' ? Check
                   : invoice.status === 'iptal' ? X
-                  : FileText; // taslak
-                return <SIcon size={11} color="#FFFFFF" strokeWidth={2.6} />;
+                  : FileText;
+                return <SIcon size={11} color={isOverdue ? heroAccent : hInk.ink} strokeWidth={2.6} />;
               })()}
               <Text style={{
-                fontSize: 9.5, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase',
-                color: '#FFFFFF',
+                fontSize: 9.5, fontWeight: '700', letterSpacing: 0.5,
+                textTransform: 'uppercase', color: isOverdue ? heroAccent : hInk.ink,
               }}>
                 {isOverdue ? 'Vadesi Geçti' : INVOICE_STATUS_LABELS[invoice.status]}
               </Text>
             </View>
-          </View>
-          <Text style={{
-            fontSize: 12, fontFamily: 'monospace',
-            color: 'rgba(255,255,255,0.72)',
-            marginBottom: isDesktop ? 12 : 10,
-          }}>
-            {invoice.invoice_number}
-          </Text>
-
-          {/* Row 2: HİYERARŞİ — Kalan birincil (büyük), Toplam & Ödenen ikincil (küçük kolonlar) */}
+          }
+          stats={[
+            { value: fmtMoney(invoice.total), label: autoT('Toplam') },
+            { value: fmtMoney(invoice.paid_amount), label: autoT('Ödenen') },
+          ]}
+        >
+          {/* ═══ YATAY YAŞAM DÖNGÜSÜ ŞERİDİ (✓ done · ● active · ○ pending) ═══ */}
           <View style={{
-            flexDirection: isDesktop ? 'row' : 'column',
-            alignItems: isDesktop ? 'flex-end' : 'stretch',
-            gap: isDesktop ? 40 : 28,
+            marginTop: 18, paddingTop: 16, borderTopWidth: 1, borderTopColor: hInk.tileBorder,
+            flexDirection: 'row', alignItems: 'flex-start',
           }}>
-            {/* PRIMARY — Kalan */}
-            <View style={{ flex: isDesktop ? 1 : undefined, minWidth: 0 }}>
-              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.75)', marginBottom: 4 }}>
-                Kalan
-              </Text>
-              <Text numberOfLines={1} adjustsFontSizeToFit style={{ ...DISPLAY, fontSize: isDesktop ? 46 : 32, letterSpacing: -1.2, color: '#FFFFFF' }}>
-                {fmtMoney(balance)}
-              </Text>
-            </View>
-            {/* SECONDARY — Toplam · Ödenen (küçük, eşit kolonlar) */}
-            <View style={{ flexDirection: 'row', alignItems: 'stretch' }}>
-              {[
-                { label: 'Toplam', value: fmtMoney(invoice.total) },
-                { label: 'Ödenen', value: fmtMoney(invoice.paid_amount) },
-              ].map((s, i) => (
-                <View key={s.label} style={{
-                  minWidth: isDesktop ? 96 : 0, flex: isDesktop ? undefined : 1,
-                  paddingStart: i === 0 ? 0 : 16, paddingEnd: i === 0 ? 16 : 0,
-                  borderStartWidth: i === 0 ? 0 : 1, borderStartColor: 'rgba(255,255,255,0.15)',
-                }}>
-                  <Text style={{ fontSize: 9.5, fontWeight: '600', letterSpacing: 0.9, textTransform: 'uppercase', color: 'rgba(255,255,255,0.60)', marginBottom: 3 }}>
-                    {s.label}
-                  </Text>
-                  <Text numberOfLines={1} adjustsFontSizeToFit style={{ ...DISPLAY, fontSize: isDesktop ? 18 : 17, letterSpacing: -0.4, color: 'rgba(255,255,255,0.90)' }}>
-                    {s.value}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </View>
-
-          {/* ═══ YATAY YAŞAM DÖNGÜSÜ ŞERİDİ — hero içinde (✓ done · ● active · ○ pending) ═══ */}
-          <View style={{ marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.15)', flexDirection: 'row', alignItems: 'flex-start' }}>
             {lifecycle.map((st, i) => {
               const done = st.state === 'done';
               const active = st.state === 'active';
               const prevDone = i > 0 && lifecycle[i - 1].state === 'done';
               const isLast = i === lifecycle.length - 1;
+              const lineOn = hInk.isDark ? 'rgba(255,255,255,0.45)' : `${heroAccent}66`;
+              const lineOff = hInk.isDark ? 'rgba(255,255,255,0.16)' : `${heroAccent}1F`;
               return (
                 // minWidth:0 şart — web'de flex öğesinin varsayılan min-width'i
                 // "auto"dur, yani hücre içeriğinden (ör. "29 gün kaldı" rozeti)
                 // daha dar olamaz. Rozetli adım genişleyince bağlaç çizgileri
                 // eşitliğini kaybediyor ve son aralık kırık görünüyordu.
                 <View key={st.label} style={{ flex: 1, minWidth: 0, alignItems: 'center' }}>
-                  {/* Düğüm + bağlaç çizgileri */}
                   <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%' }}>
-                    <View style={{ flex: 1, height: 1.5, backgroundColor: i === 0 ? 'transparent' : (prevDone ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.16)') }} />
+                    <View style={{ flex: 1, height: 1.5, backgroundColor: i === 0 ? 'transparent' : (prevDone ? lineOn : lineOff) }} />
                     {/* Düğüm yuvası SABİT 18px. Bekleyen daire 14px çizilir ama
-                        yuvası 18 kalır. Aksi halde çizgiler flex:1 olduğu için
-                        küçük düğümün iki yanındaki aralık 4px uzuyor ve bağlaç
-                        çizgileri farklı boylarda görünüyordu (daire merkezleri
-                        eşit aralıklı olsa bile). */}
+                        yuvası 18 kalır; aksi halde çizgiler flex:1 olduğu için
+                        küçük düğümün iki yanındaki aralık uzuyor ve bağlaçlar
+                        farklı boylarda görünüyordu. */}
                     <View style={{ width: 18, height: 18, alignItems: 'center', justifyContent: 'center' }}>
                       {done ? (
-                        <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
-                          <Check size={12} color={theme.primary} strokeWidth={3} />
+                        <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: heroAccent, alignItems: 'center', justifyContent: 'center' }}>
+                          <Check size={12} color={onAccentInk(heroAccent)} strokeWidth={3} />
                         </View>
                       ) : active ? (
-                        <View style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
-                          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFFFFF' }} />
+                        <View style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: heroAccent, alignItems: 'center', justifyContent: 'center' }}>
+                          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: heroAccent }} />
                         </View>
                       ) : (
-                        <View style={{ width: 14, height: 14, borderRadius: 7, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.40)' }} />
+                        <View style={{ width: 14, height: 14, borderRadius: 7, borderWidth: 1.5, borderColor: hInk.inkFaint }} />
                       )}
                     </View>
-                    <View style={{ flex: 1, height: 1.5, backgroundColor: isLast ? 'transparent' : (done ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.16)') }} />
+                    <View style={{ flex: 1, height: 1.5, backgroundColor: isLast ? 'transparent' : (done ? lineOn : lineOff) }} />
                   </View>
-                  <Text numberOfLines={1} style={{ maxWidth: '100%', fontSize: 9.5, fontWeight: active ? '700' : '600', letterSpacing: 0.2, color: done || active ? '#FFFFFF' : 'rgba(255,255,255,0.5)', marginTop: 6 }}>
+                  <Text numberOfLines={1} style={{
+                    maxWidth: '100%', fontSize: 9.5, fontWeight: active ? '700' : '600',
+                    letterSpacing: 0.2, marginTop: 6,
+                    color: done || active ? hInk.ink : hInk.inkFaint,
+                  }}>
                     {st.short}
                   </Text>
                   {st.badge ? (
-                    <Text numberOfLines={1} style={{ maxWidth: '100%', fontSize: 9, fontWeight: '700', color: duePressure.light, marginTop: 2 }}>
+                    <Text numberOfLines={1} style={{
+                      maxWidth: '100%', fontSize: 9, fontWeight: '700',
+                      color: st.badge.fg, marginTop: 2,
+                    }}>
                       {st.badge.text}
                     </Text>
                   ) : null}
@@ -630,8 +597,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
               );
             })}
           </View>
-
-        </View>
+        </WhiteHero>
 
         {/* ═══════════════════════════════════════════════════════════
             §05 U.cardSolid — Alici bilgileri
