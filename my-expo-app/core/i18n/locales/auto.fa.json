@@ -8606,5 +8606,15 @@
   "Düzenleyen": "صادرکننده",
   "İş emirleri": "سفارش‌های کار",
   "Bağlı iş emri yok": "سفارش کاری متصل نیست",
-  "tahsil edildi": "وصول شده"
+  "tahsil edildi": "وصول شده",
+  "Belge işlemleri": "عملیات سند",
+  "Fatura notu": "یادداشت فاکتور",
+  "Kliniğe gösterilecek not": "یادداشت قابل نمایش به کلینیک",
+  "Fatura çıktısında ve klinik ekranında görünür": "در خروجی فاکتور و صفحه کلینیک دیده می‌شود",
+  "Örn. Bu faturaya klinik indirimi uygulanmıştır.": "مثلاً برای این فاکتور تخفیف کلینیک اعمال شده است.",
+  "Notu Kaydet": "ذخیره یادداشت",
+  "Aktif link": "لینک فعال",
+  "son": "تا",
+  "taksit": "قسط",
+  "Maksimum bakiye": "حداکثر مانده"
 }

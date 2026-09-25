@@ -1,19 +1,24 @@
 /**
- * EFaturaPanel — InvoiceDetail içine yerleştirilen e-Fatura durum kartı
+ * EFaturaPanel — fatura detayındaki "e-Fatura" bölümü.
  *
- *   • Mevcut durum (efatura_status) badge'i
- *   • UUID (varsa) kopyala butonu
- *   • "e-Fatura Gönder" / "Durum Sorgula" / "İptal" aksiyonları
- *   • Gönderim geçmişi (efatura_logs son 5 kayıt)
+ *   • Mevcut durum (efatura_status) rozeti
+ *   • UUID (varsa) tek satırda, kopyalanabilir
+ *   • Gönder / Durum Sorgula / İptal aksiyonları
+ *   • Gönderim geçmişi (efatura_logs son 5 kayıt) katlanır listede
+ *
+ * KART DEĞİL BÖLÜMDÜR: InvoiceActionsCard içindeki tek kartın üçüncü
+ * bölümü olarak çizilir — kendi gölgesi/kenarlığı yoktur, yatay dolgusu
+ * kartla ortaktır (SECTION_PAD). Tek kullanıcısı o karttır.
  */
 import React, { useEffect, useState } from 'react';
+import { View, Text, Pressable, Platform } from 'react-native';
+import { autoT } from '../../../core/i18n/autoTranslate';
+import { localeTag } from '../../../core/i18n';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert,
-} from 'react-native';
-import { AppIcon } from '../../../core/ui/AppIcon';
-import { Shadows, CardSpec } from '../../../core/theme/shadows';
-import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
-import { useThemeModeStore } from '../../../core/store/themeModeStore';
+  Send, RefreshCw, Ban, AlertCircle, Copy, ChevronDown, ChevronRight,
+} from '../../../core/ui/icons';
+import { useInkUI } from '../../../core/theme/inkScale';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { toast } from '../../../core/ui/Toast';
 import {
   sendInvoice, queryEFaturaStatus, cancelEFatura, fetchEFaturaLogs,
@@ -22,6 +27,9 @@ import {
 import { getActiveProvider } from '../providers';
 import type { EFaturaStatus } from '../types';
 import { confirmAsync } from '../../../core/util/confirm';
+import {
+  ActionSectionHead, NavyButton, SECTION_PAD,
+} from '../../invoices/components/InvoiceActionsCard';
 
 interface Props {
   invoiceId:   string;
@@ -30,15 +38,24 @@ interface Props {
   type?:       'e_fatura' | 'e_arsiv' | null;
   provider?:   string | null;
   error?:      string | null;
+  /** Kart içindeki sıra numarası (akış: 1 not → 2 ödeme → 3 e-fatura). */
+  step?:       number;
   onChanged?:  () => void;
 }
 
-export function EFaturaPanel({ invoiceId, status, uuid, type, provider, error, onChanged }: Props) {
-  const T = useMobileTokens();
-  const isDark = useThemeModeStore(s => s.resolvedDark);
+/** Durum → kart tonu. Ham `cfg.color` koyu temada sönük kalıyordu. */
+const TONE_OF: Record<string, 'success' | 'warning' | 'danger' | 'info' | 'neutral'> = {
+  accepted: 'success', sent: 'info', rejected: 'danger',
+  cancelled: 'neutral', pending: 'neutral', error: 'danger',
+};
+
+export function EFaturaPanel({ invoiceId, status, uuid, type, provider, error, step, onChanged }: Props) {
+  const U = useInkUI();
   const [busy, setBusy] = useState(false);
   const [logs, setLogs] = useState<any[]>([]);
+  const [logsOpen, setLogsOpen] = useState(false);
   const cfg = STATUS_LABELS[status ?? 'pending'];
+  const tone = U.chipTones[TONE_OF[status ?? 'pending'] ?? 'neutral'];
   const [providerName, setProviderName] = useState<string>('Demo (Sandbox)');
   useEffect(() => {
     getActiveProvider().then(p => setProviderName(p.displayName));
@@ -93,82 +110,127 @@ export function EFaturaPanel({ invoiceId, status, uuid, type, provider, error, o
     onChanged?.();
   };
 
+  const handleCopyUuid = () => {
+    if (!uuid) return;
+    if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(uuid);
+      toast.success('UUID panoya kopyalandı');
+    } else {
+      toast.info(uuid);
+    }
+  };
+
   return (
-    <View style={[s.card, { backgroundColor: T.card, borderColor: T.hairline }]}>
-      <View style={s.head}>
-        <View style={[s.iconBox, { backgroundColor: cfg.color + '15' }]}>
-          <AppIcon name="receipt-text" size={16} color={cfg.color} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={[s.title, { color: T.ink }]}>
-            {type === 'e_arsiv' ? 'e-Arşiv' : 'e-Fatura'}
-          </Text>
-          <Text style={[s.providerHint, { color: T.ink3 }]}>
-            Sağlayıcı: {provider ?? providerName}
-          </Text>
-        </View>
-        <View style={[s.statusBadge, { backgroundColor: cfg.color + '15' }]}>
-          <Text style={[s.statusText, { color: cfg.color }]}>{cfg.label}</Text>
-        </View>
-      </View>
+    <View style={{ paddingHorizontal: SECTION_PAD, paddingVertical: 14, gap: 12 }}>
+      <ActionSectionHead
+        step={step}
+        title={type === 'e_arsiv' ? 'e-Arşiv' : 'e-Fatura'}
+        hint={`${autoT('Sağlayıcı')}: ${provider ?? providerName}`}
+        right={
+          <View style={{ paddingHorizontal: 9, paddingVertical: 3.5, borderRadius: 999, backgroundColor: tone.bg }}>
+            <Text style={{ fontSize: 9.5, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: tone.fg }}>
+              {cfg.label}
+            </Text>
+          </View>
+        }
+      />
 
       {uuid ? (
-        <View style={[s.uuidRow, { backgroundColor: isDark ? T.cardSoft : '#F8FAFC' }]}>
-          <Text style={[s.uuidLabel, { color: isDark ? (T.ink3 as string) : '#94A3B8' }]}>UUID</Text>
-          <Text style={[s.uuidValue, { color: isDark ? (T.ink2 as string) : '#475569' }]} numberOfLines={1}>{uuid}</Text>
-        </View>
+        <Pressable
+          onPress={handleCopyUuid}
+          style={{
+            flexDirection: 'row', alignItems: 'center', gap: 8,
+            paddingHorizontal: 12, paddingVertical: 9, borderRadius: 12,
+            backgroundColor: U.surfaceSoft, borderWidth: 1, borderColor: U.hairlineSoft,
+            ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+          }}>
+          <Text style={{ fontSize: 9.5, fontWeight: '700', letterSpacing: 0.6, color: U.ink[400] }}>UUID</Text>
+          <Text numberOfLines={1} style={{ flex: 1, fontSize: 11, fontFamily: 'monospace' as any, color: U.ink[700] }}>
+            {uuid}
+          </Text>
+          <Copy size={12} strokeWidth={1.8} color={U.ink[400]} />
+        </Pressable>
       ) : null}
 
       {error ? (
-        <View style={[s.errorBox, { backgroundColor: isDark ? 'rgba(217,75,75,0.18)' : '#FEF2F2' }]}>
-          <AppIcon name="alert-circle" size={14} color={isDark ? '#F3A0A0' : '#DC2626'} />
-          <Text style={[s.errorText, { color: isDark ? '#F3A0A0' : '#DC2626' }]}>{error}</Text>
+        <View style={{
+          flexDirection: 'row', alignItems: 'center', gap: 8,
+          padding: 10, borderRadius: 12, backgroundColor: U.chipTones.danger.bg,
+        }}>
+          <AlertCircle size={14} strokeWidth={1.9} color={U.chipTones.danger.fg} />
+          <Text style={{ flex: 1, fontSize: 12, fontWeight: '600', color: U.chipTones.danger.fg }}>{error}</Text>
         </View>
       ) : null}
 
-      <View style={s.actions}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {!isSent && (
-          <TouchableOpacity
-            style={[s.btn, s.btnPrimary, busy && { opacity: 0.6 }]}
-            disabled={busy}
-            onPress={handleSend}
-          >
-            {busy
+          <NavyButton
+            label={busy ? autoT('Gönderiliyor...') : autoT('Gönder')}
+            icon={busy
               ? <ActivityIndicator size="small" color="#FFFFFF" />
-              : <AppIcon name="send" size={14} color="#FFFFFF" />}
-            <Text style={s.btnPrimaryText}>{busy ? 'Gönderiliyor...' : 'Gönder'}</Text>
-          </TouchableOpacity>
+              : <Send size={13} strokeWidth={1.9} color="#FFFFFF" />}
+            onPress={handleSend}
+            disabled={busy}
+          />
         )}
         {isSent && !isFinal && (
-          <TouchableOpacity
-            style={[s.btn, s.btnOutline, { backgroundColor: isDark ? T.cardSoft : '#FFFFFF', borderColor: isDark ? T.hairline : '#E2E8F0' }]}
+          <Pressable
             onPress={handleQuery}
             disabled={busy}
-          >
-            <AppIcon name="refresh" size={14} color={isDark ? (T.ink as string) : '#0F172A'} />
-            <Text style={[s.btnOutlineText, { color: isDark ? T.ink : '#0F172A' }]}>Durum Sorgula</Text>
-          </TouchableOpacity>
+            style={({ pressed }) => ({
+              flexDirection: 'row', alignItems: 'center', gap: 6,
+              paddingHorizontal: 16, paddingVertical: 10, borderRadius: 9999,
+              backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: U.plainBtn.border,
+              opacity: busy ? 0.5 : pressed ? 0.85 : 1,
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+            })}>
+            <RefreshCw size={13} strokeWidth={1.9} color={U.plainBtn.fg} />
+            <Text style={{ fontSize: 13, fontWeight: '700', color: U.plainBtn.fg }}>{autoT('Durum Sorgula')}</Text>
+          </Pressable>
         )}
         {isSent && (
-          <TouchableOpacity
-            style={[s.btn, s.btnDanger, { backgroundColor: isDark ? 'rgba(217,75,75,0.18)' : '#FEF2F2', borderColor: isDark ? 'rgba(217,75,75,0.35)' : '#FECACA' }]}
+          <Pressable
             onPress={handleCancel}
             disabled={busy}
-          >
-            <AppIcon name="cancel" size={14} color={isDark ? '#F3A0A0' : '#DC2626'} />
-            <Text style={[s.btnDangerText, { color: isDark ? '#F3A0A0' : '#DC2626' }]}>İptal Et</Text>
-          </TouchableOpacity>
+            style={({ pressed }) => ({
+              flexDirection: 'row', alignItems: 'center', gap: 6,
+              paddingHorizontal: 16, paddingVertical: 10, borderRadius: 9999,
+              backgroundColor: U.chipTones.danger.bg,
+              opacity: busy ? 0.5 : pressed ? 0.85 : 1,
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+            })}>
+            <Ban size={13} strokeWidth={1.9} color={U.chipTones.danger.fg} />
+            <Text style={{ fontSize: 13, fontWeight: '700', color: U.chipTones.danger.fg }}>{autoT('İptal Et')}</Text>
+          </Pressable>
         )}
       </View>
 
       {logs.length > 0 && (
-        <View style={[s.logSection, { borderTopColor: isDark ? T.hairline : '#F1F5F9' }]}>
-          <Text style={[s.logTitle, { color: isDark ? (T.ink3 as string) : '#94A3B8' }]}>Son işlemler</Text>
-          {logs.map(l => (
-            <View key={l.id} style={s.logRow}>
-              <View style={[s.logDot, { backgroundColor: l.error_message ? '#DC2626' : '#10B981' }]} />
-              <Text style={[s.logAction, { color: isDark ? (T.ink2 as string) : '#475569' }]}>{l.action}</Text>
-              <Text style={[s.logTime, { color: isDark ? (T.ink3 as string) : '#94A3B8' }]}>{new Date(l.created_at).toLocaleString('tr-TR')}</Text>
+        <View style={{ gap: 7 }}>
+          <Pressable
+            onPress={() => setLogsOpen(o => !o)}
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 6,
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+            }}>
+            {logsOpen
+              ? <ChevronDown size={13} strokeWidth={2} color={U.ink[400]} />
+              : <ChevronRight size={13} strokeWidth={2} color={U.ink[400]} />}
+            <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: U.ink[400] }}>
+              {autoT('Son işlemler')} ({logs.length})
+            </Text>
+          </Pressable>
+
+          {logsOpen && logs.map(l => (
+            <View key={l.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View style={{
+                width: 6, height: 6, borderRadius: 3,
+                backgroundColor: l.error_message ? U.chipTones.danger.fg : U.chipTones.success.fg,
+              }} />
+              <Text style={{ flex: 1, fontSize: 12, fontWeight: '600', color: U.ink[700] }}>{l.action}</Text>
+              <Text style={{ fontSize: 10.5, color: U.ink[400] }}>
+                {new Date(l.created_at).toLocaleString(localeTag())}
+              </Text>
             </View>
           ))}
         </View>
@@ -176,44 +238,3 @@ export function EFaturaPanel({ invoiceId, status, uuid, type, provider, error, o
     </View>
   );
 }
-
-const s = StyleSheet.create({
-  card: {
-    backgroundColor: CardSpec.bg,
-    borderRadius:    CardSpec.radius,
-    borderWidth:     1,
-    borderColor:     CardSpec.border,
-    padding:         13,
-    gap:             10,
-    ...Shadows.card,
-  } as any,
-  head: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-  iconBox: { width: 28, height: 28, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 14, fontWeight: '800', color: '#0F172A' },
-  providerHint: { fontSize: 11, color: '#94A3B8', marginTop: 2 },
-  statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
-  statusText: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4 },
-
-  uuidRow: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, backgroundColor: '#F8FAFC', borderRadius: 10 },
-  uuidLabel: { fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.5 },
-  uuidValue: { flex: 1, fontSize: 11, color: '#475569', fontFamily: 'monospace' as any },
-
-  errorBox: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, backgroundColor: '#FEF2F2', borderRadius: 10 },
-  errorText: { flex: 1, fontSize: 12, color: '#DC2626', fontWeight: '600' },
-
-  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  btn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 9999 },
-  btnPrimary: { backgroundColor: '#314F7E' },
-  btnPrimaryText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
-  btnOutline: { borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#FFFFFF' },
-  btnOutlineText: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
-  btnDanger: { borderWidth: 1, borderColor: '#FECACA', backgroundColor: '#FEF2F2' },
-  btnDangerText: { fontSize: 13, fontWeight: '700', color: '#DC2626' },
-
-  logSection: { gap: 6, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
-  logTitle: { fontSize: 10, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.4 },
-  logRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  logDot: { width: 6, height: 6, borderRadius: 3 },
-  logAction: { flex: 1, fontSize: 12, color: '#475569', fontWeight: '600' },
-  logTime: { fontSize: 11, color: '#94A3B8' },
-});

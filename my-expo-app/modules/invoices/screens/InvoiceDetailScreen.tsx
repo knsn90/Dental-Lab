@@ -44,8 +44,7 @@ import {
 } from '../types';
 import { printInvoice } from '../printInvoice';
 import { PaymentReminderModal } from '../components/PaymentReminderModal';
-import { EFaturaPanel } from '../../efatura/components/EFaturaPanel';
-import { PaymentLinkPanel } from '../../payments/components/PaymentLinkPanel';
+import { InvoiceActionsCard } from '../components/InvoiceActionsCard';
 import { OrderDetailScreenV2 } from '../../orders/screens/OrderDetailScreenV2';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { CenteredLoader } from '../../../core/ui/CenteredLoader';
@@ -962,83 +961,28 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
             kartları kalem tablosuyla aynı hizadan, hero'nun ALTINDAN başlar. */}
         <View style={{ width: isDesktop ? 360 : '100%', gap: isDesktop ? 16 : 14 }}>
 
-        {/* ═══ Klinik notu — laboratuvar düzenler, klinik fatura detayında görür ═══ */}
+        {/* ═══ BELGE İŞLEMLERİ — not · ödeme linki · e-fatura TEK kartta ═══
+            Üç ayrı gölgeli kart üç ayrı tasarım dili kullanıyor ve kolonu
+            uzatıyordu; numaralı bölümler akışı ("önce hangisi?") koruyor. */}
         {(!readOnly || invoice.notes) && (
-          <View style={{ width: '100%', maxWidth: 800, ...U.cardSolid }}>
-            <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: U.ink[400], marginBottom: 8 }}>
-              {readOnly ? 'Fatura Notu' : 'Kliniğe Gösterilecek Not'}
-            </Text>
-            {readOnly ? (
-              <Text style={{ fontSize: 13, color: U.ink[700], lineHeight: 20 }}>{invoice.notes}</Text>
-            ) : (
-              <>
-                <TextInput
-                  value={noteDraft}
-                  onChangeText={setNoteDraft}
-                  multiline
-                  placeholder="Örn. Bu faturaya klinik indirimi uygulanmıştır."
-                  placeholderTextColor={U.ink[400]}
-                  textAlignVertical="top"
-                  style={{
-                    minHeight: 88, paddingHorizontal: 12, paddingVertical: 10,
-                    borderRadius: 10, borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)',
-                    backgroundColor: U.isDark ? U.surfaceSoft : '#FFFFFF', fontSize: 13, lineHeight: 20, color: U.ink[800],
-                    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
-                  }}
-                />
-                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 10 }}>
-                  <Pressable
-                    onPress={saveNote}
-                    disabled={savingNote || noteDraft.trim() === (invoice.notes ?? '')}
-                    style={({ pressed }) => ({
-                      paddingHorizontal: 13, paddingVertical: 8, borderRadius: 9,
-                      backgroundColor: theme.primary,
-                      opacity: savingNote || noteDraft.trim() === (invoice.notes ?? '') ? 0.45 : pressed ? 0.82 : 1,
-                      ...(Platform.OS === 'web' ? { cursor: savingNote ? 'default' : 'pointer' } as any : {}),
-                    })}
-                  >
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>
-                      {savingNote ? 'Kaydediliyor…' : 'Notu Kaydet'}
-                    </Text>
-                  </Pressable>
-                </View>
-              </>
-            )}
-          </View>
-        )}
-
-        {/* ═══ Paneller ═══ (lab/admin) — AKIŞ: 1) Ödeme Linki → 2) E-Fatura
-            (numaralı adımlar "önce hangisi?" belirsizliğini giderir) */}
-        {!readOnly && (
-          <View style={{ width: '100%', gap: 6 }}>
-            {/* Adım 1 */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-              <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>1</Text>
-              </View>
-              <Text style={{ fontSize: 12, fontWeight: '700', color: U.ink[700], letterSpacing: 0.3 }}>Ödeme Linki</Text>
-            </View>
-            <PaymentLinkPanel invoiceId={invoice.id} balance={balance} onChanged={refetch} />
-
-            {/* Bağlaç ↓ */}
-            <View style={{ alignItems: 'center', paddingVertical: 2 }}>
-              <ChevronDown size={16} color={U.ink[300]} strokeWidth={2.2} />
-            </View>
-
-            {/* Adım 2 */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-              <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>2</Text>
-              </View>
-              <Text style={{ fontSize: 12, fontWeight: '700', color: U.ink[700], letterSpacing: 0.3 }}>E-Fatura</Text>
-            </View>
-            <EFaturaPanel
-              invoiceId={invoice.id} status={invoice.efatura_status ?? 'pending'}
-              uuid={invoice.efatura_uuid ?? null} type={invoice.efatura_type ?? null}
-              provider={invoice.efatura_provider ?? null} error={invoice.efatura_error ?? null}
-              onChanged={refetch}
-            />
-          </View>
+          <InvoiceActionsCard
+            invoiceId={invoice.id}
+            balance={balance}
+            notes={invoice.notes}
+            readOnly={readOnly}
+            noteDraft={noteDraft}
+            onNoteChange={setNoteDraft}
+            onSaveNote={saveNote}
+            savingNote={savingNote}
+            efatura={{
+              status: invoice.efatura_status ?? 'pending',
+              uuid: invoice.efatura_uuid ?? null,
+              type: invoice.efatura_type ?? null,
+              provider: invoice.efatura_provider ?? null,
+              error: invoice.efatura_error ?? null,
+            }}
+            onChanged={refetch}
+          />
         )}
 
         </View>{/* ═══ /SAĞ KOLON ═══ */}

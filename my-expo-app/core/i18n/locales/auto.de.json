@@ -8623,5 +8623,15 @@
   "Düzenleyen": "Ausgestellt von",
   "İş emirleri": "Arbeitsaufträge",
   "Bağlı iş emri yok": "Kein verknüpfter Arbeitsauftrag",
-  "tahsil edildi": "eingezogen"
+  "tahsil edildi": "eingezogen",
+  "Belge işlemleri": "Belegaktionen",
+  "Fatura notu": "Rechnungsnotiz",
+  "Kliniğe gösterilecek not": "Für die Klinik sichtbare Notiz",
+  "Fatura çıktısında ve klinik ekranında görünür": "Erscheint auf dem Rechnungsausdruck und im Klinikbildschirm",
+  "Örn. Bu faturaya klinik indirimi uygulanmıştır.": "Z. B. Auf diese Rechnung wurde ein Klinikrabatt angewendet.",
+  "Notu Kaydet": "Notiz speichern",
+  "Aktif link": "Aktiver Link",
+  "son": "bis",
+  "taksit": "Raten",
+  "Maksimum bakiye": "Maximaler Saldo"
 }

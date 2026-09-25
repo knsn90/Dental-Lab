@@ -8635,5 +8635,15 @@
   "Düzenleyen": "Issued by",
   "İş emirleri": "Work orders",
   "Bağlı iş emri yok": "No linked work order",
-  "tahsil edildi": "collected"
+  "tahsil edildi": "collected",
+  "Belge işlemleri": "Document actions",
+  "Fatura notu": "Invoice note",
+  "Kliniğe gösterilecek not": "Note shown to the clinic",
+  "Fatura çıktısında ve klinik ekranında görünür": "Appears on the printed invoice and the clinic screen",
+  "Örn. Bu faturaya klinik indirimi uygulanmıştır.": "E.g. A clinic discount was applied to this invoice.",
+  "Notu Kaydet": "Save note",
+  "Aktif link": "Active link",
+  "son": "until",
+  "taksit": "installments",
+  "Maksimum bakiye": "Maximum balance"
 }
