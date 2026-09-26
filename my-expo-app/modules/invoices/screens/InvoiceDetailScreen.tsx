@@ -45,6 +45,7 @@ import {
 import { printInvoice } from '../printInvoice';
 import { PaymentReminderModal } from '../components/PaymentReminderModal';
 import { InvoiceActionsCard } from '../components/InvoiceActionsCard';
+import { startMyInvoicePayment } from '../../payments/api';
 import { OrderDetailScreenV2 } from '../../orders/screens/OrderDetailScreenV2';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { CenteredLoader } from '../../../core/ui/CenteredLoader';
@@ -373,6 +374,19 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
       date: _paid ? lastPaymentDate : null },
   ];
 
+  // Klinik/hekim kendi faturasını öder: RPC intent açar (tutar SUNUCUDA
+  // hesaplanır), sonra halka açık ödeme sayfasına gidilir. Aynı fatura için
+  // geçerli bir intent varsa yenisi açılmaz, mevcut token döner.
+  const [payBusy, setPayBusy] = useState(false);
+  const handleClientPay = async () => {
+    if (payBusy) return;
+    setPayBusy(true);
+    const r = await startMyInvoicePayment(invoice.id);
+    setPayBusy(false);
+    if (r.error || !r.token) { toast.error(r.error ?? 'Ödeme başlatılamadı'); return; }
+    router.push(`/pay/${r.token}` as any);
+  };
+
   const handlePrint = async () => {
     const res = await printInvoice(invoice);
     if (!res.ok && res.error) toast.error(res.error);
@@ -509,6 +523,18 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
                 </Text>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    {/* Klinik/hekim: fatura bazında online ödeme. Gecikmede
+                        kırmızı — listedeki "Öde" kapsülüyle aynı kural. */}
+                    {readOnly && balance > 0 && invoice.status !== 'iptal' && invoice.status !== 'taslak' && (
+                      <PillBtn
+                        icon={CreditCard}
+                        label={payBusy ? autoT('Açılıyor…') : autoT('Öde')}
+                        bg={isOverdue ? '#D94B4B' : '#314F7E'}
+                        color="#FFFFFF"
+                        onPress={handleClientPay}
+                        disabled={payBusy}
+                      />
+                    )}
                     {!readOnly && invoice.status === 'taslak' && (
                       <PillBtn icon={Send} label={isDesktop ? 'Kesildi İşaretle' : undefined} color={CHIP_TONES.info.text} bg={CHIP_TONES.info.bg} onPress={handleMarkSent} disabled={busy} />
                     )}

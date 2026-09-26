@@ -64,6 +64,34 @@ export async function createPaymentLink(params: {
   return { error: null, intent: data as PaymentIntent };
 }
 
+// ─── Klinik/hekim: kendi faturası için ödeme başlat ──────────────────────
+//
+// Klinik kullanıcısının `payment_intents` üzerinde RLS yetkisi YOK (tablo
+// lab'a kapalı; profiles.lab_id klinikte NULL). Bu yüzden intent'i
+// SECURITY DEFINER RPC açar: sahipliği kendi doğrular ve tutarı SUNUCUDA
+// (total − paid_amount) hesaplar — istemciden tutar alınmaz.
+//
+// Aynı fatura için geçerli bekleyen intent varsa yenisi açılmaz, mevcut
+// token döner (`reused`).
+export async function startMyInvoicePayment(invoiceId: string): Promise<{
+  error: string | null;
+  token: string | null;
+  amount?: number;
+  currency?: string;
+}> {
+  const { data, error } = await supabase
+    .rpc('create_my_invoice_payment_intent', { p_invoice_id: invoiceId });
+  if (error) return { error: error.message, token: null };
+  const row: any = Array.isArray(data) ? data[0] : data;
+  if (!row?.public_token) return { error: 'Ödeme başlatılamadı', token: null };
+  return {
+    error: null,
+    token: String(row.public_token),
+    amount: Number(row.amount) || 0,
+    currency: String(row.currency ?? 'TRY'),
+  };
+}
+
 // ─── Halka açık ödeme intent'i çek ────────────────────────────────────────
 export async function fetchPublicIntent(token: string) {
   const { data, error } = await supabase
