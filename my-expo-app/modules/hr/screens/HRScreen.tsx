@@ -1,5 +1,7 @@
 import { localeTag, weekdayOffset } from '../../../core/i18n';
-import { HeroGlow, useHeroSurface } from '../../../core/ui/HeroGlow';
+import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import React, { useState, useMemo, useContext } from 'react';
 import { HubContext } from '../../../core/ui/HubContext';
 import {
@@ -11,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { toast } from '../../../core/ui/Toast';
 import { DS } from '../../../core/theme/dsTokens';
 import { useInkUI, type InkUI } from '../../../core/theme/inkScale';
-import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
 import { DatePicker } from '../../../core/ui/DatePicker';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
@@ -280,6 +282,7 @@ export function HRScreen() {
       onApprove={handleApprove}
       onReject={handleReject}
       onSelectEmployee={handleSelectEmployee}
+      onNewLeave={() => setLeaveOpen(true)}
       px={px}
     />
   );
@@ -301,11 +304,12 @@ export function HRScreen() {
         </View>
       )}
 
-      {/* Action bar — always visible */}
+      {/* Action bar — içeriği yoksa (masaüstü özet: düğme hero'da, bekleyen yok)
+          hiç çizilmez; boş şerit başlıkla hero arasında fazladan boşluk bırakıyordu. */}
+      {(pendingCount > 0 || !(isDesktop && !selectedSummary)) && (
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', paddingHorizontal: px, paddingVertical: 8, gap: 8 }}>
-        <Text style={{ flex: 1, fontSize: 13, color: T.ink3 }}>
-          {summaries.length} personel · {onLeaveCount > 0 ? `${onLeaveCount} izinde` : 'izinde kimse yok'}
-        </Text>
+        {/* Özet metni kaldırıldı — aynı bilgi hero'da (kullanıcı isteği). */}
+        <View style={{ flex: 1 }} />
         {pendingCount > 0 && (
           <Pressable
             style={{
@@ -327,6 +331,8 @@ export function HRScreen() {
             <Text style={{ fontSize: 12, fontWeight: '700', color: showOnlyPending ? '#fff' : U.chipTones.warning.fg }}>Bekliyor</Text>
           </Pressable>
         )}
+        {/* Masaüstü özet görünümünde bu düğme hero'nun sağ üstünde (OverviewPanel cta). */}
+        {!(isDesktop && !selectedSummary) && (
         <Pressable
           style={{
             flexDirection: 'row', alignItems: 'center', gap: 6,
@@ -341,7 +347,9 @@ export function HRScreen() {
           <CalendarPlus size={15} color="#FFFFFF" strokeWidth={1.8} />
           <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>İzin Talebi</Text>
         </Pressable>
+        )}
       </View>
+      )}
 
       {/* Body */}
       {isDesktop ? (
@@ -428,7 +436,7 @@ function EmployeeListPanel({ summaries, selectedId, onSelect, px, gap, loading }
     return (
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: px, paddingBottom: 120, gap}}
+        contentContainerStyle={{ padding: px, paddingTop: px === 24 ? 8 : px, paddingBottom: 120, gap}}
         showsVerticalScrollIndicator={false}
       >
         {[0, 1, 2, 3, 4, 5].map(i => (
@@ -449,7 +457,7 @@ function EmployeeListPanel({ summaries, selectedId, onSelect, px, gap, loading }
   return (
     <ScrollView
       style={{ flex: 1 }}
-      contentContainerStyle={{ padding: px, paddingBottom: 120, gap}}
+      contentContainerStyle={{ padding: px, paddingTop: px === 24 ? 8 : px, paddingBottom: 120, gap}}
       showsVerticalScrollIndicator={false}
     >
       {summaries.map(item => (
@@ -584,8 +592,9 @@ function EmployeeRow({ summary, selected, onPress }: {
 // ─── Right Panel ──────────────────────────────────────────────────────────────
 // ─── Overview Panel — boş seçim yerine bugün özeti + bekleyen onaylar ────
 function OverviewPanel({
-  summaries, pendingLeaves, canApprove, onApprove, onReject, onSelectEmployee, px,
+  summaries, pendingLeaves, canApprove, onApprove, onReject, onSelectEmployee, onNewLeave, px,
 }: {
+  onNewLeave: () => void;
   summaries: LeaveSummary[];
   pendingLeaves: any[];
   canApprove: boolean;
@@ -598,7 +607,7 @@ function OverviewPanel({
   const T = useMobileTokens();
   const isDark = useThemeModeStore((s) => s.resolvedDark);
   const theme = usePanelTheme();
-  const heroBg = useHeroSurface(theme.primary);
+  const heroInk = useWhiteHeroInk(theme.primary);
   const onLeaveToday = summaries.filter(s => s.currently_on_leave);
   const pendingCount = pendingLeaves.length;
   const totalAnnualRemaining = summaries.reduce((acc, s) => acc + (s.annual_remaining ?? 0), 0);
@@ -614,42 +623,42 @@ function OverviewPanel({
   return (
     <ScrollView
       style={{ flex: 1 }}
-      contentContainerStyle={{ padding: px, paddingBottom: 60, gap: 16 }}
+      contentContainerStyle={{ padding: px, paddingTop: px === 24 ? 8 : px, paddingBottom: 60, gap: 16 }}
       showsVerticalScrollIndicator={false}
     >
-      {/* ── F1 HeroCard — İzin & Devam özeti (saffron bg + white blobs) ── */}
-      <View style={{
-        borderRadius: 20, overflow: 'hidden',
-        ...heroBg, padding: 18,
-        position: 'relative',
-      }}>
-        {/* Beyaz dekoratif blob'lar */}
-        <HeroGlow size={180} opacity={0.20} delay={0} style={{ top: -50, end: -40 }} />
-        <HeroGlow size={150} opacity={0.12} delay={1400} style={{ bottom: -60, start: -30 }} />
-
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14 }}>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)', marginBottom: 8 }}>
-              Bugün İzinde
-            </Text>
-            <Text
-              style={{ ...DISPLAY, fontWeight: '300', fontSize: 38, color: '#FFFFFF', letterSpacing: -1.2, lineHeight: 42 }}
-              numberOfLines={1}
+      {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ─────────────────
+          Prim Motoru hiyerarşisi: kicker → 44px bugün izinde olan sayısı →
+          bağlam cümlesi → sağda 40px stat'lar → altta kutucuk şeridi. */}
+      <WhiteHero
+        kicker="İzin & Devam"
+        accent={theme.primary}
+        title={<>Bugün izinde <Text style={{ color: heroInk.accentInk }}>{onLeaveToday.length}</Text> kişi</>}
+        description={
+          (onLeaveToday.length === 0 ? 'Bugün herkes işbaşında' : `${summaries.length} kişilik ekipten ${onLeaveToday.length} personel izinli`) +
+          (pendingCount > 0 ? ` · ${pendingCount} talep onay bekliyor` : '')
+        }
+        stats={[
+          { value: String(onLeaveToday.length), label: 'İzinde' },
+          { value: String(summaries.length),    label: 'Ekip' },
+          { value: `%${usagePct}`,              label: 'Yıllık Kullanım' },
+        ]}
+        cta={
+          <GlassTooltip placement="bottom" title={autoT('İzin talebi')} text={autoT('Bir personel için yeni izin talebi oluştur')}>
+            <Pressable
+              onPress={onNewLeave}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 6,
+                paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999,
+                backgroundColor: theme.primary,
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              }}
             >
-              {onLeaveToday.length}
-              <Text style={{ fontSize: 16, color: 'rgba(255,255,255,0.72)' }}> / {summaries.length}</Text>
-            </Text>
-            <Text style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.78)', marginTop: 4 }}>
-              {onLeaveToday.length === 0 ? 'Bugün herkes işbaşında' : `${onLeaveToday.length} personel izinli`}
-              {pendingCount > 0 ? ` · ${pendingCount} talep onay bekliyor` : ''}
-            </Text>
-          </View>
-          <View style={{ width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.18)' }}>
-            <Palmtree size={20} color="#FFFFFF" strokeWidth={1.6} />
-          </View>
-        </View>
-
-        {/* Stat pill row — beyaz transparan kapsüller */}
+              <CalendarPlus size={15} color={onAccentInk(theme.primary)} strokeWidth={1.8} />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: onAccentInk(theme.primary) }}>İzin Talebi</Text>
+            </Pressable>
+          </GlassTooltip>
+        }
+      >
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
           {([
             { label: 'Bekleyen Onay',  value: String(pendingCount),                                       icon: Clock         },
@@ -662,16 +671,16 @@ function OverviewPanel({
               <View key={stat.label} style={{
                 flex: 1, minWidth: 110,
                 paddingVertical: 10, paddingHorizontal: 12, borderRadius: 14,
-                backgroundColor: 'rgba(255,255,255,0.16)',
+                backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder,
               }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 }}>
-                  <Icon size={11} color="rgba(255,255,255,0.85)" strokeWidth={2} />
-                  <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>
+                  <Icon size={11} color={heroInk.inkSoft} strokeWidth={2} />
+                  <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: heroInk.inkSoft }}>
                     {stat.label}
                   </Text>
                 </View>
                 <Text
-                  style={{ ...DISPLAY, fontWeight: '300', fontSize: 16, color: '#FFFFFF', letterSpacing: -0.3, lineHeight: 20 }}
+                  style={{ ...DISPLAY, fontWeight: '300', fontSize: 16, color: heroInk.ink, letterSpacing: -0.3, lineHeight: 20 }}
                   numberOfLines={1}
                 >
                   {stat.value}
@@ -680,7 +689,7 @@ function OverviewPanel({
             );
           })}
         </View>
-      </View>
+      </WhiteHero>
 
       {/* Bekleyen onaylar */}
       {pendingLeaves.length > 0 ? (
@@ -963,7 +972,7 @@ function RightPanel({
 
   const T = useMobileTokens();
   const theme = usePanelTheme();
-  const heroBg = useHeroSurface(theme.primary);
+  const heroInk = useWhiteHeroInk(theme.primary);
   const roleColor = (roleTone(summary.role as any, U.isDark) as any) ?? { bg: T.cardSoft, fg: T.ink2 };
   const roleLabel = (ROLE_LABELS as any)[summary.role] ?? summary.role;
   const annualUsedPct = summary.annual_entitlement > 0
@@ -984,96 +993,72 @@ function RightPanel({
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
     >
-      {/* ─── EMPLOYEE HERO — F1 HeroCard (saffron bg + white blobs + white ring) ─── */}
-      <View style={{
-        borderRadius: 20, overflow: 'hidden',
-        ...heroBg, padding: 20,
-        position: 'relative',
-      }}>
-        {/* Beyaz dekoratif blob'lar */}
-        <HeroGlow size={180} opacity={0.20} delay={0} style={{ top: -50, end: -40 }} />
-        <HeroGlow size={150} opacity={0.12} delay={1400} style={{ bottom: -60, start: -30 }} />
-
-        {/* Üst row: sol ring + sağ identity */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
+      {/* ─── EMPLOYEE HERO — "BEYAZ HERO" (core/ui/WhiteHero) ───
+           Liste hero'suyla aynı dil. Halka artık `onDark` değil: beyaz yüzeyde
+           beyaz halka görünmez, kullanım yüzdesine göre yeşil/turuncu/kırmızı
+           döner — renk zaten anlam taşıyordu, accent zeminde bastırılmıştı. */}
+      <WhiteHero
+        kicker={roleLabel}
+        accent={theme.primary}
+        title={<Text numberOfLines={1}>{summary.full_name}</Text>}
+        description={`${startDate}${tenureYears > 0 ? ` · ${tenureYears} yıllık` : ''}`}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 18, flexWrap: 'wrap', marginTop: 14 }}>
           <LeaveRing
             used={summary.annual_used}
             total={summary.annual_entitlement}
             usedPct={annualUsedPct}
             year={startYear}
-            onDark
           />
           <View style={{ flex: 1, minWidth: 220, gap: 8 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <View style={{
-                width: 44, height: 44, borderRadius: 13,
-                backgroundColor: 'rgba(255,255,255,0.20)',
-                alignItems: 'center', justifyContent: 'center',
-              }}>
-                <Text style={{ fontSize: 18, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.5 }}>
-                  {(summary.full_name ?? '?').slice(0, 1).toLocaleUpperCase('tr-TR')}
-                </Text>
-              </View>
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text style={{ ...DISPLAY, fontSize: 18, fontWeight: '700', color: '#FFFFFF', letterSpacing: -0.3 }} numberOfLines={1}>
-                  {summary.full_name}
-                </Text>
-                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.78)' }} numberOfLines={1}>
-                  {startDate}{tenureYears > 0 ? ` · ${tenureYears} yıllık` : ''}
-                </Text>
-              </View>
-            </View>
-            {/* Chip row — beyaz transparan pill'ler */}
+            {/* Durum çipleri */}
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-              <View style={{ paddingHorizontal: 9, paddingVertical: 3, borderRadius: 9999, backgroundColor: 'rgba(255,255,255,0.20)' }}>
-                <Text style={{ fontSize: 10.5, fontWeight: '700', color: '#FFFFFF', letterSpacing: 0.2 }}>{roleLabel}</Text>
-              </View>
               {summary.currently_on_leave && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 3, borderRadius: 9999, backgroundColor: '#FFFFFF' }}>
-                  <Palmtree size={10} color={theme.primary} strokeWidth={2} />
-                  <Text style={{ fontSize: 10, fontWeight: '800', color: theme.primary }}>BUGÜN İZİNDE</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 3, borderRadius: 9999, backgroundColor: theme.primary }}>
+                  <Palmtree size={10} color={onAccentInk(theme.primary)} strokeWidth={2} />
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: onAccentInk(theme.primary) }}>BUGÜN İZİNDE</Text>
                 </View>
               )}
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 3, borderRadius: 9999, backgroundColor: 'rgba(255,255,255,0.20)' }}>
-                <Calendar size={10} color="#FFFFFF" strokeWidth={1.8} />
-                <Text style={{ fontSize: 10, fontWeight: '700', color: '#FFFFFF' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 3, borderRadius: 9999, backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder }}>
+                <Calendar size={10} color={heroInk.inkSoft} strokeWidth={1.8} />
+                <Text style={{ fontSize: 10, fontWeight: '700', color: heroInk.ink }}>
                   {summary.annual_remaining}/{summary.annual_entitlement} gün kaldı
                 </Text>
               </View>
             </View>
+
+            {/* 2×2 KPI grid */}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {([
+                { label: 'Bu Ay İzin', value: summary.leave_days_this_month ?? 0, unit: 'gün',   icon: Calendar },
+                { label: 'Bekleyen',   value: summary.pending_count ?? 0,         unit: 'talep', icon: Clock    },
+                { label: 'Geç Giriş',  value: attSummary?.late_days ?? 0,         unit: 'gün',   icon: Clock    },
+                { label: 'Devamsız',   value: attSummary?.absent_days ?? 0,       unit: 'gün',   icon: UserX    },
+              ] as const).map(stat => {
+                const Icon = stat.icon;
+                return (
+                  <View key={stat.label} style={{
+                    flexBasis: '48%', flexGrow: 1, minWidth: 110,
+                    paddingVertical: 10, paddingHorizontal: 12, borderRadius: 14,
+                    backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder,
+                  }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 }}>
+                      <Icon size={11} color={heroInk.inkSoft} strokeWidth={2} />
+                      <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: heroInk.inkSoft }} numberOfLines={1}>
+                        {stat.label}
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
+                      <Text style={{ ...DISPLAY, fontSize: 22, fontWeight: '300', color: heroInk.ink, letterSpacing: -0.6, lineHeight: 26 }}>{stat.value}</Text>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: heroInk.inkFaint }}>{stat.unit}</Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
           </View>
         </View>
-
-        {/* 2×2 KPI grid — beyaz transparan pill'ler */}
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16 }}>
-          {([
-            { label: 'Bu Ay İzin', value: summary.leave_days_this_month ?? 0, unit: 'gün',   icon: Calendar },
-            { label: 'Bekleyen',   value: summary.pending_count ?? 0,         unit: 'talep', icon: Clock    },
-            { label: 'Geç Giriş',  value: attSummary?.late_days ?? 0,         unit: 'gün',   icon: Clock    },
-            { label: 'Devamsız',   value: attSummary?.absent_days ?? 0,       unit: 'gün',   icon: UserX    },
-          ] as const).map(stat => {
-            const Icon = stat.icon;
-            return (
-              <View key={stat.label} style={{
-                flexBasis: '48%', flexGrow: 1, minWidth: 110,
-                paddingVertical: 10, paddingHorizontal: 12, borderRadius: 14,
-                backgroundColor: 'rgba(255,255,255,0.16)',
-              }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 }}>
-                  <Icon size={11} color="rgba(255,255,255,0.85)" strokeWidth={2} />
-                  <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }} numberOfLines={1}>
-                    {stat.label}
-                  </Text>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
-                  <Text style={{ ...DISPLAY, fontSize: 22, fontWeight: '300', color: '#FFFFFF', letterSpacing: -0.6, lineHeight: 26 }}>{stat.value}</Text>
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(255,255,255,0.72)' }}>{stat.unit}</Text>
-                </View>
-              </View>
-            );
-          })}
-        </View>
-      </View>
+      </WhiteHero>
 
       {/* ─── TAB BAR (2 tab: İzinler / Devam) ─── */}
       <View style={{ flexDirection: 'row', backgroundColor: T.cardSoft, borderRadius: 9999, padding: 4 }}>

@@ -234,7 +234,7 @@ export default function WorkTypeSelectorModal({ visible, selected, onClose, onAp
               {/* Search */}
               <View style={{
                 flexDirection: 'row', alignItems: 'center', gap: 8,
-                borderWidth: 1, borderColor: U.ink[200], borderRadius: 12,
+                borderWidth: 1, borderColor: U.ink[200], borderRadius: 9999,
                 paddingHorizontal: 12, paddingVertical: 8,
                 backgroundColor: U.plainBtn.bg,
               }}>

@@ -6,7 +6,7 @@ import {
   RefreshControl, useWindowDimensions, Animated, Easing,
 } from 'react-native';
 import { ClinicLogoPicker } from '../components/ClinicLogoPicker';
-import { Search, X, SlidersHorizontal, Plus, Building2, Users, UserPlus, List, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Edit2, Trash2, Phone, Mail, MapPin, RefreshCw, UserX, AlertCircle, Check, Percent, MinusCircle, Briefcase, Stethoscope, Printer, Eye, EyeOff, Link2, Copy } from '../../../core/ui/icons';
+import { Search, X, SlidersHorizontal, Plus, Building2, Users, UserPlus, List, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Edit2, Trash2, Phone, Mail, MapPin, RefreshCw, UserX, AlertCircle, Check, Percent, MinusCircle, Briefcase, Stethoscope, ClipboardList, FileText, Eye, EyeOff, Link2, Copy } from '../../../core/ui/icons';
 import { buildWorkOrderFormHtml } from '../../orders/buildWorkOrderFormHtml';
 import { useSegments } from 'expo-router';
 import { LabConnectionsScreen } from '../../lab-connections/screens/LabConnectionsScreen';
@@ -24,6 +24,9 @@ import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { SlideTabBar } from '../../../core/ui/SlideTabBar';
+import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { useNeonNavy, NeonPulse } from '../../../core/ui/HeroGlow';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { useColorThemeStore } from '../../../core/store/colorThemeStore';
 import { titleCaseTR as titleCaseTRShared, normalizeDoctorName } from '../../../core/utils/textCase';
@@ -61,6 +64,8 @@ type Clinic = {
   id: string; name: string;
   category?: ClinicCategory | null;
   phone?: string | null; email?: string | null;
+  /** Kurumun ortak WhatsApp hattı — bildirimler önce buraya (kişisel whatsapp_phone korunur). */
+  whatsapp_phone?: string | null;
   address?: string | null; contact_person?: string | null;
   notes?: string | null; is_active: boolean;
   billing_mode?: 'per_order' | 'monthly_bulk' | null;
@@ -74,6 +79,7 @@ type Doctor = {
 };
 type ClinicForm = {
   name: string; category: ClinicCategory; phone: string; email: string;
+  whatsapp_phone: string;
   il: string; ilce: string; mahalle: string;
   sokak: string; bina_no: string; posta_kodu: string;  // geocoding doğruluğu için
   contact_person: string; notes: string; is_active: boolean;
@@ -91,7 +97,7 @@ type DoctorForm = {
 };
 
 const EMPTY_CLINIC: ClinicForm = {
-  name: '', category: 'klinik', phone: '', email: '',
+  name: '', category: 'klinik', phone: '', email: '', whatsapp_phone: '',
   il: '', ilce: '', mahalle: '', sokak: '', bina_no: '', posta_kodu: '',
   contact_person: '', notes: '', is_active: true,
   vkn: '', tax_office: '', admin_email: '', admin_password: '',
@@ -165,6 +171,8 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
   // lab'da safran sarısı, beyazla okunmaz).
   const panel = usePanelTheme();
   const isDark = useThemeModeStore(s => s.resolvedDark);
+  // Beyaz hero içindeki KPI kutucuklarının mürekkep/zemin renkleri.
+  const HI = useWhiteHeroInk();
 
   // localStorage cache — 2. ziyarette anında render, arka planda taze veri.
   const LS_CACHE_KEY = 'clinics_screen_cache_v1';
@@ -196,6 +204,9 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
   const [activeTab,       setActiveTab]       = useState<'all' | ClinicCategory | 'doctors' | 'managers' | 'connections'>('all');
   // "Bağlantı gönder" CTA — tek kullanımlık davet kodu üret + kopyala
   const [inviteOpen,   setInviteOpen]   = useState(false);
+  // İş emri formu yazdır → önce hangi klinik için olduğunu sor.
+  const [printPickOpen, setPrintPickOpen] = useState(false);
+  const [printPickSearch, setPrintPickSearch] = useState('');
   const [inviteCode,   setInviteCode]   = useState<string | null>(null);
   const [inviteBusy,   setInviteBusy]   = useState(false);
   const [inviteErr,    setInviteErr]    = useState<string | null>(null);
@@ -225,7 +236,7 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
   // ── Page title ──
   const { setTitle: setPageTitle, clear: clearPageTitle } = usePageTitleStore();
   useEffect(() => {
-    setPageTitle('Klinikler', '');
+    setPageTitle('Sağlık Kurumları', '');
     return () => clearPageTitle();
   }, []);
 
@@ -471,106 +482,6 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
           />
         </ScrollView>
 
-        {/* Row 2: Actions — Ara / Filtrele / Kurum (her zaman 36px, kompakt).
-            Bağlantılar sekmesi klinik listesi değil → arama/filtre/ekle gizlenir. */}
-        {activeTab !== 'connections' && (
-        <View className="flex-row items-center gap-2">
-          {/* Search — daima açık, sol-hizalı, sabit yükseklik */}
-          <View
-            style={{
-              flex: 1,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 8,
-              height: 36,
-              paddingHorizontal: 12,
-              borderRadius: 9999,
-              backgroundColor: T.card,
-              borderWidth: 1,
-              borderColor: T.hairline,
-            }}
-          >
-            <Search size={13} color={T.ink3} strokeWidth={1.8} />
-            <TextInput
-              style={{
-                flex: 1,
-                fontSize: 13,
-                color: T.ink,
-                ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
-              }}
-              value={search}
-              onChangeText={setSearch}
-              placeholder={activeTab === 'doctors' ? 'Hekim ara...' : activeTab === 'managers' ? 'Yönetici ara...' : 'Klinik ara...'}
-              placeholderTextColor={T.ink3}
-              returnKeyType="search"
-            />
-            {!!search && (
-              <Pressable onPress={() => setSearch('')} hitSlop={8}>
-                <X size={12} color={T.ink3} strokeWidth={1.8} />
-              </Pressable>
-            )}
-          </View>
-
-          {/* Filter — 36px height */}
-          {activeTab !== 'doctors' && (
-            <Pressable
-              onPress={openFilter}
-              style={{
-                flexDirection: 'row', alignItems: 'center', gap: 6,
-                height: 36, paddingHorizontal: 12, borderRadius: 9999,
-                borderWidth: 1,
-                borderColor: activeFilterCount > 0 ? T.ink : T.hairline,
-                backgroundColor: activeFilterCount > 0 ? T.cardSoft : T.card,
-                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-              }}
-            >
-              <SlidersHorizontal size={13} color={activeFilterCount > 0 ? T.ink : T.ink2} strokeWidth={1.8} />
-              {!isNarrow && (
-                <Text style={{ fontSize: 12, fontWeight: '600', color: activeFilterCount > 0 ? T.ink : T.ink2 }}>
-                  Filtrele{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
-                </Text>
-              )}
-              {isNarrow && activeFilterCount > 0 && (
-                <Text style={{ fontSize: 11, fontWeight: '700', color: T.ink }}>{activeFilterCount}</Text>
-              )}
-            </Pressable>
-          )}
-
-          {/* Bağlantı gönder — tek kullanımlık davet kodu üret, kliniğe ilet.
-              Klinik kodu girince bu lab'a anında bağlanır (Bağlantılar sekmesi = tam yönetim). */}
-          <Pressable
-            onPress={sendInvite}
-            style={({ hovered }: any) => ({
-              flexDirection: 'row', alignItems: 'center', gap: 6,
-              height: 36, paddingHorizontal: 14, borderRadius: 9999,
-              backgroundColor: hovered ? T.bgDeep : T.card,
-              borderWidth: 1, borderColor: T.hairline,
-              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-            })}
-          >
-            <Link2 size={13} color={T.ink} strokeWidth={2} />
-            <Text style={{ fontSize: 12, fontWeight: '700', color: T.ink }}>
-              {isNarrow ? '' : 'Bağlantı gönder'}
-            </Text>
-          </Pressable>
-
-          {/* Add clinic — 36px height */}
-          <Pressable
-            onPress={() => { setEditingClinic(null); setShowClinicModal(true); }}
-            style={({ hovered }: any) => ({
-              flexDirection: 'row', alignItems: 'center', gap: 6,
-              height: 36, paddingHorizontal: 14, borderRadius: 9999,
-              backgroundColor: hovered ? '#1F2937' : '#0A0A0A',
-              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-            })}
-          >
-            <Plus size={13} color="#FFFFFF" strokeWidth={2.2} />
-            <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>
-              {isNarrow ? '' : 'Kurum'}
-            </Text>
-          </Pressable>
-        </View>
-        )}
       </View>
 
       {/* ── Content ──────────────────────────────────────────────── */}
@@ -595,38 +506,161 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
             {/* ── Main Column ── */}
             <View style={{ flex: isDesktop ? 1 : undefined, width: isDesktop ? undefined : '100%', minWidth: 0, gap: 12 }}>
 
-              {/* KPI strip — mobilde 2x2 grid, masaüstünde row */}
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: isDesktop ? 10 : 8 }}>
-                {CLINIC_CATEGORIES.map(cat => (
-                  <Pressable
-                    key={cat.value}
-                    onPress={() => setActiveTab(cat.value)}
+              {/* BEYAZ HERO — kurum özeti. Eski tek başına duran KPI kartları hero'nun
+                  İÇİNE alındı (kullanıcı isteği): kategori kutucukları hâlâ tıklanınca
+                  o sekmeye geçer, seçili olan kategori renginde çerçevelenir. */}
+              <WhiteHero
+                kicker={autoT('Sağlık Kurumları')}
+                title={<>{clinics.length} <Text style={{ color: HI.accentInk }}>{autoT('kurum')}</Text></>}
+                description={`${clinics.filter(c => c.is_active).length} ${autoT('aktif kurum')} · ${doctors.length} ${autoT('hekim')}`}
+              >
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: isDesktop ? 10 : 8, marginTop: 20 }}>
+                  {CLINIC_CATEGORIES.map(cat => {
+                    const active = activeTab === cat.value;
+                    return (
+                      <Pressable
+                        key={cat.value}
+                        onPress={() => setActiveTab(cat.value)}
+                        style={{
+                          flex: isDesktop ? 1 : undefined,
+                          width: isDesktop ? undefined : '48%',
+                          minWidth: isDesktop ? 150 : 0,
+                          padding: isDesktop ? 14 : 10,
+                          borderRadius: 16,
+                          backgroundColor: HI.tileBg,
+                          borderWidth: active ? 1.5 : 1,
+                          borderColor: active ? cat.color : HI.tileBorder,
+                          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                        }}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: isDesktop ? 8 : 4 }}>
+                          <View style={{ width: isDesktop ? 24 : 20, height: isDesktop ? 24 : 20, borderRadius: R.sm, backgroundColor: cat.bg, alignItems: 'center', justifyContent: 'center' }}>
+                            <AppIcon name={cat.icon as any} size={isDesktop ? 12 : 11} color={cat.color} />
+                          </View>
+                          <Text style={{ fontSize: 10.5, fontWeight: '500', letterSpacing: 0.6, textTransform: 'uppercase', color: HI.inkSoft }} numberOfLines={1}>{autoT(cat.label)}</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+                          <Text style={{ ...DISPLAY, fontSize: isDesktop ? 30 : 22, letterSpacing: -0.6, color: HI.ink }}>{categoryCounts[cat.value] ?? 0}</Text>
+                          <Text style={{ fontSize: 10, color: HI.inkFaint }}>
+                            / {clinics.filter(c => (c.category ?? 'klinik') === cat.value && c.is_active).length} {autoT('aktif')}
+                          </Text>
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </WhiteHero>
+
+              {/* Arama + filtre hero'nun ALTINDA (üst şeritten taşındı). */}
+              <View className="flex-row items-center gap-2">
+                {/* Search — daima açık, sol-hizalı, sabit yükseklik */}
+                <View
+                  style={{
+                    flex: 1,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                    height: 36,
+                    paddingHorizontal: 12,
+                    borderRadius: 9999,
+                    backgroundColor: T.card,
+                    borderWidth: 1,
+                    borderColor: T.hairline,
+                  }}
+                >
+                  <Search size={13} color={T.ink3} strokeWidth={1.8} />
+                  <TextInput
                     style={{
-                      ...CARD, ...(isDark ? { backgroundColor: T.card, borderColor: T.hairline } : {}),
-                      backgroundColor: T.card,
-                      flex: isDesktop ? 1 : undefined,
-                      width: isDesktop ? undefined : '48%',
-                      minWidth: isDesktop ? 170 : 0,
-                      padding: isDesktop ? 16 : 10,
-                      borderRadius: isDesktop ? 24 : 14,
-                      borderColor: activeTab === cat.value ? cat.color : T.hairline,
-                      borderWidth: activeTab === cat.value ? 1.5 : 1,
+                      flex: 1,
+                      fontSize: 13,
+                      color: T.ink,
+                      ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
                     }}
+                    value={search}
+                    onChangeText={setSearch}
+                    placeholder={activeTab === 'doctors' ? 'Hekim ara...' : activeTab === 'managers' ? 'Yönetici ara...' : 'Klinik ara...'}
+                    placeholderTextColor={T.ink3}
+                    returnKeyType="search"
+                  />
+                  {!!search && (
+                    <GlassTooltip title={autoT('Temizle')} text={autoT('Aramayı temizle')}>
+                      <Pressable onPress={() => setSearch('')} hitSlop={8}>
+                        <X size={12} color={T.ink3} strokeWidth={1.8} />
+                      </Pressable>
+                    </GlassTooltip>
+                  )}
+                </View>
+
+                {/* Filter — 36px height */}
+                {activeTab !== 'doctors' && (
+                  <GlassTooltip title={autoT('Filtrele')} text={autoT('Kurumları kategori ve duruma göre süz')}>
+                    <Pressable
+                      onPress={openFilter}
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 6,
+                        height: 36, paddingHorizontal: 12, borderRadius: 9999,
+                        borderWidth: 1,
+                        borderColor: activeFilterCount > 0 ? T.ink : T.hairline,
+                        backgroundColor: activeFilterCount > 0 ? T.cardSoft : T.card,
+                        ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                      }}
+                    >
+                      <SlidersHorizontal size={13} color={activeFilterCount > 0 ? T.ink : T.ink2} strokeWidth={1.8} />
+                      {!isNarrow && (
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: activeFilterCount > 0 ? T.ink : T.ink2 }}>
+                          Filtrele{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+                        </Text>
+                      )}
+                      {isNarrow && activeFilterCount > 0 && (
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: T.ink }}>{activeFilterCount}</Text>
+                      )}
+                    </Pressable>
+                  </GlassTooltip>
+                )}
+
+                {/* Kurum ekle / Bağlantı gönder masaüstünde sağ kolondaki Hızlı İşlemler ve
+                    Belgeler kartlarında. Mobilde o kolon yok → burada kalır. */}
+                {!isDesktop && (
+                <>
+                {/* Bağlantı gönder — tek kullanımlık davet kodu üret, kliniğe ilet.
+                    Klinik kodu girince bu lab'a anında bağlanır (Bağlantılar sekmesi = tam yönetim). */}
+                <GlassTooltip title={autoT('Bağlantı gönder')} text={autoT('Tek kullanımlık davet kodu üret; klinik kodu girince laboratuvarına bağlanır')}>
+                  <Pressable
+                    onPress={sendInvite}
+                    style={({ hovered }: any) => ({
+                      flexDirection: 'row', alignItems: 'center', gap: 6,
+                      height: 36, paddingHorizontal: 14, borderRadius: 9999,
+                      backgroundColor: hovered ? T.bgDeep : T.card,
+                      borderWidth: 1, borderColor: T.hairline,
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                    })}
                   >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: isDesktop ? 10 : 4 }}>
-                      <View style={{ width: isDesktop ? 26 : 20, height: isDesktop ? 26 : 20, borderRadius: R.sm, backgroundColor: cat.bg, alignItems: 'center', justifyContent: 'center' }}>
-                        <AppIcon name={cat.icon as any} size={isDesktop ? 13 : 11} color={cat.color} />
-                      </View>
-                      <Text style={{ fontSize: isDesktop ? 11 : 10, fontWeight: '500', letterSpacing: 0.5, textTransform: 'uppercase', color: T.ink3 }} numberOfLines={1}>{autoT(cat.label)}</Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-                      <Text style={{ ...DISPLAY, fontSize: isDesktop ? 28 : 20, letterSpacing: -0.4, color: T.ink }}>{categoryCounts[cat.value] ?? 0}</Text>
-                      <Text style={{ fontSize: 10, color: T.ink3 }}>
-                        / {clinics.filter(c => (c.category ?? 'klinik') === cat.value && c.is_active).length} aktif
-                      </Text>
-                    </View>
+                    <Link2 size={13} color={T.ink} strokeWidth={2} />
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: T.ink }}>
+                      {isNarrow ? '' : 'Bağlantı gönder'}
+                    </Text>
                   </Pressable>
-                ))}
+                </GlassTooltip>
+
+                {/* Add clinic — 36px height */}
+                <GlassTooltip title={autoT('Yeni kurum')} text={autoT('Yeni klinik ya da sağlık kurumu ekle')}>
+                  <Pressable
+                    onPress={() => { setEditingClinic(null); setShowClinicModal(true); }}
+                    style={({ hovered }: any) => ({
+                      flexDirection: 'row', alignItems: 'center', gap: 6,
+                      height: 36, paddingHorizontal: 14, borderRadius: 9999,
+                      backgroundColor: hovered ? '#1F2937' : '#0A0A0A',
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                    })}
+                  >
+                    <Plus size={13} color="#FFFFFF" strokeWidth={2.2} />
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>
+                      {isNarrow ? '' : 'Kurum'}
+                    </Text>
+                  </Pressable>
+                </GlassTooltip>
+                </>
+                )}
               </View>
 
               {/* Content card */}
@@ -734,39 +768,17 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
               <View style={{ width: 300, flexShrink: 0, gap: 12, position: 'sticky' as any, top: 12 }}>
                 {/* Quick Actions — animated accent card */}
                 <AnimatedQuickActions
-                  accentColor={accentColor}
                   onAddClinic={() => { setEditingClinic(null); setShowClinicModal(true); }}
                   onAddDoctor={() => openAddDoctor('')}
                   onShowDoctors={() => setActiveTab('doctors')}
                 />
 
-                {/* Category Breakdown */}
-                <View style={{ ...CARD, ...(isDark ? { backgroundColor: T.card, borderColor: T.hairline } : {}), padding: 20 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                    <SlidersHorizontal size={13} color={DS.ink[400]} strokeWidth={1.8} />
-                    <Text style={{ fontSize: 10, fontWeight: '500', letterSpacing: 1.2, textTransform: 'uppercase', color: isDark ? T.ink3 : DS.ink[500] }}>Kategoriler</Text>
-                  </View>
-                  <View style={{ gap: 10 }}>
-                    {CLINIC_CATEGORIES.map(cat => {
-                      const count = categoryCounts[cat.value] ?? 0;
-                      const pct = clinics.length > 0 ? Math.round((count / clinics.length) * 100) : 0;
-                      return (
-                        <View key={cat.value} style={{ gap: 5 }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                              <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: cat.color }} />
-                              <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[800] }}>{autoT(cat.label)}</Text>
-                            </View>
-                            <Text style={{ fontSize: 12, fontWeight: '500', color: isDark ? T.ink : DS.ink[900] }}>{count}</Text>
-                          </View>
-                          <View style={{ height: 4, borderRadius: R.pill, backgroundColor: 'rgba(0,0,0,0.05)', overflow: 'hidden' }}>
-                            <View style={{ width: `${pct}%`, height: 4, borderRadius: R.pill, backgroundColor: cat.color } as any} />
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </View>
-                </View>
+                {/* Belgeler — iş emri formu vb. CTA'lar. Eski "Kategoriler" kartı hero'daki
+                    kategori kutucuklarını tekrarlıyordu, kaldırıldı. */}
+                <DocumentActionsCard
+                  onPrintForm={() => { setPrintPickSearch(''); setPrintPickOpen(true); }}
+                  onSendInvite={sendInvite}
+                />
               </View>
             )}
           </View>
@@ -774,6 +786,16 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
       </ScrollView>
 
       {/* ── Modals ─────────────────────────────────────────────── */}
+      <ClinicPickModal
+        visible={printPickOpen}
+        title={autoT('İş emri formu yazdır')}
+        hint={autoT('Formun hangi kurum için basılacağını seç. Kurum adı ve hekimleri forma önceden yazılır.')}
+        clinics={clinics.filter(c => c.is_active)}
+        search={printPickSearch}
+        onSearch={setPrintPickSearch}
+        onClose={() => setPrintPickOpen(false)}
+        onPick={c => { setPrintPickOpen(false); handlePrintClinicForm(c); }}
+      />
       {/* Bağlantı gönder — üretilen davet kodunu kliniğe ilet */}
       <Modal visible={inviteOpen} transparent animationType="fade" onRequestClose={() => setInviteOpen(false)}>
         <Pressable onPress={() => setInviteOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
@@ -851,24 +873,118 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
 // SUB COMPONENTS
 // ═══════════════════════════════════════════════════════════════════════
 
-// ─── Animated Quick Actions Card ─────────────────────────────────────
-function AnimatedQuickActions({ accentColor, onAddClinic, onAddDoctor, onShowDoctors }: {
-  accentColor: string; onAddClinic: () => void; onAddDoctor: () => void; onShowDoctors: () => void;
+// ─── Belgeler kartı (sağ kolon) ──────────────────────────────────────
+function DocumentActionsCard({ onPrintForm, onSendInvite }: { onPrintForm: () => void; onSendInvite: () => void }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
+  const accent = usePanelTheme().primary;
+  const rows = [
+    { icon: ClipboardList, label: 'İş emri formu yazdır', sub: 'Kurum seç, boş formu bas', tip: 'Seçtiğin kurum için boş iş emri formu yazdırır', onPress: onPrintForm },
+    { icon: Link2, label: 'Bağlantı davet kodu', sub: 'Kliniği laboratuvarına bağla', tip: 'Tek kullanımlık davet kodu üret; klinik kodu girince laboratuvarına bağlanır', onPress: onSendInvite },
+  ];
+  return (
+    <View style={{ ...CARD, ...(isDark ? { backgroundColor: T.card, borderColor: T.hairline } : {}), padding: 20 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <FileText size={13} color={isDark ? T.ink3 : DS.ink[400]} strokeWidth={1.8} />
+        <Text style={{ fontSize: 10, fontWeight: '500', letterSpacing: 1.2, textTransform: 'uppercase', color: isDark ? T.ink3 : DS.ink[500] }}>Belgeler</Text>
+      </View>
+      <View style={{ gap: 6 }}>
+        {rows.map(r => {
+          const Icon = r.icon;
+          return (
+            <GlassTooltip key={r.label} style={{ alignSelf: 'stretch' }} title={autoT(r.label)} text={autoT(r.tip)}>
+              <Pressable
+                onPress={r.onPress}
+                style={({ hovered }: any) => ({
+                  flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, borderRadius: R.md,
+                  backgroundColor: hovered ? (isDark ? 'rgba(255,255,255,0.05)' : DS.ink[50]) : 'transparent',
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                })}
+              >
+                <View style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: accent + (isDark ? '2E' : '14') }}>
+                  <Icon size={16} color={isDark ? T.ink : accent} strokeWidth={1.8} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: isDark ? T.ink : DS.ink[900] }} numberOfLines={1}>{r.label}</Text>
+                  <Text style={{ fontSize: 11.5, color: isDark ? T.ink3 : DS.ink[500], marginTop: 1 }} numberOfLines={1}>{r.sub}</Text>
+                </View>
+                {isRTL() ? <ChevronLeft size={15} color={isDark ? T.ink3 : DS.ink[400]} strokeWidth={1.8} /> : <ChevronRight size={15} color={isDark ? T.ink3 : DS.ink[400]} strokeWidth={1.8} />}
+              </Pressable>
+            </GlassTooltip>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+// ─── Kurum seçici (iş emri formu vb. için) ───────────────────────────
+function ClinicPickModal({ visible, title, hint, clinics, search, onSearch, onClose, onPick }: {
+  visible: boolean; title: string; hint: string; clinics: Clinic[];
+  search: string; onSearch: (v: string) => void; onClose: () => void; onPick: (c: Clinic) => void;
 }) {
-  const rtl = isRTL();
-  const glowAnim = useRef(new Animated.Value(0)).current;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
+  const q = search.trim().toLocaleLowerCase('tr');
+  const list = q ? clinics.filter(c => c.name.toLocaleLowerCase('tr').includes(q)) : clinics;
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+        <Pressable onPress={() => {}} style={{ width: '100%', maxWidth: 460, maxHeight: '80%' as any, backgroundColor: isDark ? T.card : '#FFFFFF', borderRadius: 20, padding: 20, gap: 12, ...(isDark ? { borderWidth: 1, borderColor: T.hairline } : {}) }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <ClipboardList size={18} color={isDark ? T.ink : DS.ink[900]} strokeWidth={2} />
+            <Text style={{ flex: 1, fontSize: 17, fontWeight: '700', color: isDark ? T.ink : DS.ink[900] }}>{title}</Text>
+            <Pressable onPress={onClose} hitSlop={8} style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : DS.ink[100] }}>
+              <X size={14} color={isDark ? T.ink2 : DS.ink[500]} strokeWidth={2} />
+            </Pressable>
+          </View>
+          <Text style={{ fontSize: 12.5, color: isDark ? T.ink3 : DS.ink[500], lineHeight: 18 }}>{hint}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 38, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: isDark ? T.hairline : DS.ink[200], backgroundColor: isDark ? T.cardSoft : '#FFFFFF' }}>
+            <Search size={14} color={isDark ? T.ink3 : DS.ink[400]} strokeWidth={1.8} />
+            <TextInput
+              value={search}
+              onChangeText={onSearch}
+              placeholder="Kurum ara..."
+              placeholderTextColor={isDark ? T.ink3 : DS.ink[400]}
+              autoFocus
+              style={{ flex: 1, fontSize: 13, color: isDark ? T.ink : DS.ink[900], ...(Platform.OS === 'web' ? { outlineWidth: 0 } as any : {}) }}
+            />
+          </View>
+          <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={{ gap: 2 }}>
+            {list.length === 0 ? (
+              <Text style={{ fontSize: 12.5, color: isDark ? T.ink3 : DS.ink[500], paddingVertical: 20, textAlign: 'center' }}>Eşleşen kurum yok</Text>
+            ) : list.map(c => {
+              const cat = CLINIC_CATEGORIES.find(k => k.value === c.category);
+              return (
+                <Pressable key={c.id} onPress={() => onPick(c)}
+                  style={({ hovered }: any) => ({
+                    flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 10, borderRadius: 12,
+                    backgroundColor: hovered ? (isDark ? 'rgba(255,255,255,0.05)' : DS.ink[50]) : 'transparent',
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  })}>
+                  <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: cat?.color ?? DS.ink[300] }} />
+                  <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '500', color: isDark ? T.ink : DS.ink[900] }} numberOfLines={1}>{c.name}</Text>
+                  {cat ? <Text style={{ fontSize: 11.5, color: isDark ? T.ink3 : DS.ink[500] }}>{autoT(cat.label)}</Text> : null}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+
+// ─── Animated Quick Actions Card ─────────────────────────────────────
+function AnimatedQuickActions({ onAddClinic, onAddDoctor, onShowDoctors }: {
+  onAddClinic: () => void; onAddDoctor: () => void; onShowDoctors: () => void;
+}) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(glowAnim, { toValue: 1, duration: 2500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(glowAnim, { toValue: 0, duration: 2500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      ]),
-    ).start();
-  }, [glowAnim]);
-
-  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.18] });
+  // "Neon navy" (kullanıcı kararı, 22.09.2026 — önceki düz klinik yeşilinin yerine):
+  // açık temada DÜZ panel rengi (yönetimde lacivert), koyu temada neon yüzey.
+  // Metin/kapsül renkleri de hook'tan gelir, sabit beyaz yazılmaz.
+  const nn = useNeonNavy(usePanelTheme().primary);
 
   const handleHoverIn = () => {
     Animated.spring(scaleAnim, { toValue: 1.02, friction: 8, tension: 200, useNativeDriver: true }).start();
@@ -884,52 +1000,45 @@ function AnimatedQuickActions({ accentColor, onAddClinic, onAddDoctor, onShowDoc
       onMouseLeave={handleHoverOut}
       style={{
         borderRadius: R.xl,
-        backgroundColor: accentColor,
+        ...nn.surface,
         padding: 20,
         overflow: 'hidden',
         transform: [{ scale: scaleAnim }],
       }}
     >
-      {/* Shimmer glow */}
-      <Animated.View style={{
-        position: 'absolute', top: -20, ...(rtl ? { left: -20 } : { right: -20 }),
-        width: 100, height: 100, borderRadius: 50,
-        backgroundColor: '#FFFFFF',
-        opacity: glowOpacity,
-      }} pointerEvents="none" />
-      <Animated.View style={{
-        position: 'absolute', bottom: -30, ...(rtl ? { right: -10 } : { left: -10 }),
-        width: 80, height: 80, borderRadius: 40,
-        backgroundColor: '#FFFFFF',
-        opacity: glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.05, 0.12] }),
-      }} pointerEvents="none" />
-
+      {!nn.flat && <NeonPulse radius={R.xl} color={nn.glow} />}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-        <Building2 size={14} color="rgba(255,255,255,0.6)" strokeWidth={1.8} />
-        <Text style={{ fontSize: 10, fontWeight: '500', letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)' }}>Hızlı İşlemler</Text>
+        <Building2 size={14} color={nn.inkFaint} strokeWidth={1.8} />
+        <Text style={{ fontSize: 10, fontWeight: '500', letterSpacing: 1.2, textTransform: 'uppercase', color: nn.inkFaint }}>Hızlı İşlemler</Text>
       </View>
       <View style={{ gap: 4 }}>
-        <Pressable onPress={onAddClinic}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 8, borderRadius: R.md, backgroundColor: 'rgba(255,255,255,0.12)' }}>
-          <View style={{ width: 28, height: 28, borderRadius: R.sm, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }}>
-            <Plus size={14} color="#FFFFFF" strokeWidth={1.8} />
-          </View>
-          <Text style={{ fontSize: 13, fontWeight: '500', color: '#FFFFFF' }}>Yeni Kurum Ekle</Text>
-        </Pressable>
-        <Pressable onPress={onAddDoctor}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 8, borderRadius: R.md, backgroundColor: 'rgba(255,255,255,0.12)' }}>
-          <View style={{ width: 28, height: 28, borderRadius: R.sm, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }}>
-            <UserPlus size={14} color="#FFFFFF" strokeWidth={1.8} />
-          </View>
-          <Text style={{ fontSize: 13, fontWeight: '500', color: '#FFFFFF' }}>Hekim Ekle</Text>
-        </Pressable>
-        <Pressable onPress={onShowDoctors}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 8, borderRadius: R.md, backgroundColor: 'rgba(255,255,255,0.12)' }}>
-          <View style={{ width: 28, height: 28, borderRadius: R.sm, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }}>
-            <List size={14} color="#FFFFFF" strokeWidth={1.8} />
-          </View>
-          <Text style={{ fontSize: 13, fontWeight: '500', color: '#FFFFFF' }}>Tüm Hekimleri Gör</Text>
-        </Pressable>
+        <GlassTooltip style={{ alignSelf: 'stretch' }} title={autoT('Yeni kurum ekle')} text={autoT('Kurum ekleme formunu açar')}>
+          <Pressable onPress={onAddClinic}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 8, borderRadius: R.md, backgroundColor: nn.ghostBg }}>
+            <View style={{ width: 28, height: 28, borderRadius: R.sm, backgroundColor: nn.ghostBorder, alignItems: 'center', justifyContent: 'center' }}>
+              <Plus size={14} color={nn.ink} strokeWidth={1.8} />
+            </View>
+            <Text style={{ fontSize: 13, fontWeight: '500', color: nn.ink }}>Yeni Kurum Ekle</Text>
+          </Pressable>
+        </GlassTooltip>
+        <GlassTooltip style={{ alignSelf: 'stretch' }} title={autoT('Hekim ekle')} text={autoT('Bir kliniğe yeni hekim ekler')}>
+          <Pressable onPress={onAddDoctor}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 8, borderRadius: R.md, backgroundColor: nn.ghostBg }}>
+            <View style={{ width: 28, height: 28, borderRadius: R.sm, backgroundColor: nn.ghostBorder, alignItems: 'center', justifyContent: 'center' }}>
+              <UserPlus size={14} color={nn.ink} strokeWidth={1.8} />
+            </View>
+            <Text style={{ fontSize: 13, fontWeight: '500', color: nn.ink }}>Hekim Ekle</Text>
+          </Pressable>
+        </GlassTooltip>
+        <GlassTooltip style={{ alignSelf: 'stretch' }} title={autoT('Tüm hekimleri gör')} text={autoT('Hekimler listesine geçer')}>
+          <Pressable onPress={onShowDoctors}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 8, borderRadius: R.md, backgroundColor: nn.ghostBg }}>
+            <View style={{ width: 28, height: 28, borderRadius: R.sm, backgroundColor: nn.ghostBorder, alignItems: 'center', justifyContent: 'center' }}>
+              <List size={14} color={nn.ink} strokeWidth={1.8} />
+            </View>
+            <Text style={{ fontSize: 13, fontWeight: '500', color: nn.ink }}>Tüm Hekimleri Gör</Text>
+          </Pressable>
+        </GlassTooltip>
       </View>
     </Animated.View>
   );
@@ -1044,12 +1153,16 @@ function DoctorsTable({ doctors, clinics, search, accentColor, onAdd, onEdit, on
               <AppSwitch value={d.is_active} onValueChange={() => onToggle(d)} accentColor={accentColor} />
             </View>
             <View style={{ width: 76, flexDirection: 'row', justifyContent: 'flex-end', gap: 2 }}>
-              <Pressable style={{ width: 28, height: 28, borderRadius: R.sm, alignItems: 'center', justifyContent: 'center' }} onPress={() => onEdit(d)}>
-                <Edit2 size={14} color={isDark ? T.ink2 : DS.ink[500]} strokeWidth={1.8} />
-              </Pressable>
-              <Pressable style={{ width: 28, height: 28, borderRadius: R.sm, alignItems: 'center', justifyContent: 'center' }} onPress={() => onDelete(d)}>
-                <Trash2 size={14} color="#9C2E2E" strokeWidth={1.8} />
-              </Pressable>
+              <GlassTooltip title={autoT('Düzenle')} text={autoT('Hekim bilgilerini düzenle')}>
+                <Pressable style={{ width: 28, height: 28, borderRadius: R.sm, alignItems: 'center', justifyContent: 'center' }} onPress={() => onEdit(d)}>
+                  <Edit2 size={14} color={isDark ? T.ink2 : DS.ink[500]} strokeWidth={1.8} />
+                </Pressable>
+              </GlassTooltip>
+              <GlassTooltip title={autoT('Sil')} text={autoT('Hekimi sil')}>
+                <Pressable style={{ width: 28, height: 28, borderRadius: R.sm, alignItems: 'center', justifyContent: 'center' }} onPress={() => onDelete(d)}>
+                  <Trash2 size={14} color="#9C2E2E" strokeWidth={1.8} />
+                </Pressable>
+              </GlassTooltip>
             </View>
           </View>
         );
@@ -1058,11 +1171,13 @@ function DoctorsTable({ doctors, clinics, search, accentColor, onAdd, onEdit, on
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderTopWidth: 1, borderTopColor: isDark ? T.hairline : 'rgba(0,0,0,0.06)', backgroundColor: isDark ? T.cardSoft : DS.ink[50] }}>
         <Text style={{ fontSize: 11, color: isDark ? T.ink3 : DS.ink[500] }}>{filtered.length} hekim</Text>
         <View style={{ flex: 1 }} />
-        <Pressable onPress={onAdd}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 6, borderRadius: R.pill, backgroundColor: DS.ink[900] }}>
-          <Plus size={12} color="#FFFFFF" strokeWidth={2} />
-          <Text style={{ fontSize: 12, fontWeight: '600', color: '#FFFFFF' }}>Hekim Ekle</Text>
-        </Pressable>
+        <GlassTooltip title={autoT('Hekim ekle')} text={autoT('Yeni hekim kaydı oluştur')}>
+          <Pressable onPress={onAdd}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 6, borderRadius: R.pill, backgroundColor: DS.ink[900] }}>
+            <Plus size={12} color="#FFFFFF" strokeWidth={2} />
+            <Text style={{ fontSize: 12, fontWeight: '600', color: '#FFFFFF' }}>Hekim Ekle</Text>
+          </Pressable>
+        </GlassTooltip>
       </View>
     </View>
   );
@@ -1140,36 +1255,46 @@ function ClinicRow({
         {/* Actions */}
         {clinic.is_active ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-            <Pressable
-              style={{ width: 32, height: 32, borderRadius: R.sm, alignItems: 'center', justifyContent: 'center' }}
-              onPress={onPrintForm}
-              accessibilityLabel={autoT('Klinik için iş emri formu yazdır')}
-            >
-              <Printer size={14} color={isDark ? T.ink2 : DS.ink[500]} strokeWidth={1.8} />
-            </Pressable>
-            <Pressable style={{ width: 32, height: 32, borderRadius: R.sm, alignItems: 'center', justifyContent: 'center' }} onPress={onEditClinic}>
-              <Edit2 size={14} color={DS.ink[500]} strokeWidth={1.8} />
-            </Pressable>
-            <Pressable style={{ width: 32, height: 32, borderRadius: R.sm, alignItems: 'center', justifyContent: 'center' }} onPress={onDeleteClinic}>
-              <Trash2 size={14} color="#9C2E2E" strokeWidth={1.8} />
-            </Pressable>
+            <GlassTooltip title={autoT('İş emri formu')} text={autoT('Bu klinik için boş iş emri formu yazdır')}>
+              <Pressable
+                style={{ width: 32, height: 32, borderRadius: R.sm, alignItems: 'center', justifyContent: 'center' }}
+                onPress={onPrintForm}
+                accessibilityLabel={autoT('Klinik için iş emri formu yazdır')}
+              >
+                <ClipboardList size={14} color={isDark ? T.ink2 : DS.ink[500]} strokeWidth={1.8} />
+              </Pressable>
+            </GlassTooltip>
+            <GlassTooltip title={autoT('Düzenle')} text={autoT('Kurum bilgilerini düzenle')}>
+              <Pressable style={{ width: 32, height: 32, borderRadius: R.sm, alignItems: 'center', justifyContent: 'center' }} onPress={onEditClinic}>
+                <Edit2 size={14} color={DS.ink[500]} strokeWidth={1.8} />
+              </Pressable>
+            </GlassTooltip>
+            <GlassTooltip title={autoT('Sil')} text={autoT('Kurumu sil')}>
+              <Pressable style={{ width: 32, height: 32, borderRadius: R.sm, alignItems: 'center', justifyContent: 'center' }} onPress={onDeleteClinic}>
+                <Trash2 size={14} color="#9C2E2E" strokeWidth={1.8} />
+              </Pressable>
+            </GlassTooltip>
             {/* Koyu temada DS.ink[100] (#F5F5F5) beyaz kalıp göz yoruyordu →
                 bir kademe KOYU yüzey + hairline (BEYAZ BUTON KURALI). */}
-            <Pressable style={{ width: 34, height: 34, borderRadius: 17, ...(rtl ? { marginRight: 4 } : { marginLeft: 4 }), alignItems: 'center', justifyContent: 'center',
-              backgroundColor: isExpanded ? accentColor + (isDark ? '2E' : '14') : (isDark ? T.cardSoft : DS.ink[100]),
-              ...(isDark ? { borderWidth: 1, borderColor: T.hairline } : {}) }} onPress={onToggleExpand}>
-              {isExpanded
-                ? <ChevronUp size={16} color={accentColor} strokeWidth={1.8} />
-                : rtl
-                  ? <ChevronLeft size={16} color={isDark ? T.ink2 : DS.ink[500]} strokeWidth={1.8} />
-                  : <ChevronRight size={16} color={isDark ? T.ink2 : DS.ink[500]} strokeWidth={1.8} />}
-            </Pressable>
+            <GlassTooltip title={autoT('Ayrıntılar')} text={autoT('Hekimleri, iletişim bilgilerini ve indirimi göster ya da gizle')}>
+              <Pressable style={{ width: 34, height: 34, borderRadius: 17, ...(rtl ? { marginRight: 4 } : { marginLeft: 4 }), alignItems: 'center', justifyContent: 'center',
+                backgroundColor: isExpanded ? accentColor + (isDark ? '2E' : '14') : (isDark ? T.cardSoft : DS.ink[100]),
+                ...(isDark ? { borderWidth: 1, borderColor: T.hairline } : {}) }} onPress={onToggleExpand}>
+                {isExpanded
+                  ? <ChevronUp size={16} color={accentColor} strokeWidth={1.8} />
+                  : rtl
+                    ? <ChevronLeft size={16} color={isDark ? T.ink2 : DS.ink[500]} strokeWidth={1.8} />
+                    : <ChevronRight size={16} color={isDark ? T.ink2 : DS.ink[500]} strokeWidth={1.8} />}
+              </Pressable>
+            </GlassTooltip>
           </View>
         ) : (
-          <Pressable onPress={onToggleClinic} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: R.pill, borderWidth: 1, borderColor: DS.ink[200] }}>
-            <RefreshCw size={13} color={accentColor} strokeWidth={1.8} />
-            <Text style={{ fontSize: 13, fontWeight: '600', color: accentColor }}>Aktif Et</Text>
-          </Pressable>
+          <GlassTooltip title={autoT('Aktif et')} text={autoT('Pasif kurumu yeniden aktif eder')}>
+            <Pressable onPress={onToggleClinic} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: R.pill, borderWidth: 1, borderColor: DS.ink[200] }}>
+              <RefreshCw size={13} color={accentColor} strokeWidth={1.8} />
+              <Text style={{ fontSize: 13, fontWeight: '600', color: accentColor }}>Aktif Et</Text>
+            </Pressable>
+          </GlassTooltip>
         )}
       </View>
 
@@ -1217,14 +1342,18 @@ function ClinicRow({
           )}
 
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 }}>
-            <Pressable onPress={onAddDoctor} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 5 }}>
-              <UserPlus size={13} color={accentColor} strokeWidth={1.8} />
-              <Text style={{ fontSize: 13, fontWeight: '600', color: accentColor }}>Bu kliniğe hekim ekle</Text>
-            </Pressable>
-            <Pressable onPress={onSetDiscount} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: R.sm, backgroundColor: '#EDE9FE', ...(rtl ? { marginRight: 4 } : { marginLeft: 4 }) }}>
-              <Percent size={12} color="#7C3AED" strokeWidth={1.8} />
-              <Text style={{ fontSize: 11, fontWeight: '600', color: '#7C3AED' }}>{discountPercent != null && discountPercent > 0 ? `%${discountPercent} ${autoT('İndirim')}` : 'İndirim Ekle'}</Text>
-            </Pressable>
+            <GlassTooltip title={autoT('Hekim ekle')} text={autoT('Bu kliniğe yeni hekim ekler')}>
+              <Pressable onPress={onAddDoctor} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 5 }}>
+                <UserPlus size={13} color={accentColor} strokeWidth={1.8} />
+                <Text style={{ fontSize: 13, fontWeight: '600', color: accentColor }}>Bu kliniğe hekim ekle</Text>
+              </Pressable>
+            </GlassTooltip>
+            <GlassTooltip title={autoT('İndirim')} text={autoT('Bu kliniğe özel indirim oranı tanımla')}>
+              <Pressable onPress={onSetDiscount} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: R.sm, backgroundColor: '#EDE9FE', ...(rtl ? { marginRight: 4 } : { marginLeft: 4 }) }}>
+                <Percent size={12} color="#7C3AED" strokeWidth={1.8} />
+                <Text style={{ fontSize: 11, fontWeight: '600', color: '#7C3AED' }}>{discountPercent != null && discountPercent > 0 ? `%${discountPercent} ${autoT('İndirim')}` : 'İndirim Ekle'}</Text>
+              </Pressable>
+            </GlassTooltip>
             <View style={{ flex: 1 }} />
             <AppSwitch value={clinic.is_active} onValueChange={onToggleClinic} accentColor={accentColor} />
             <Text style={{ fontSize: 12, color: isDark ? T.ink3 : DS.ink[500], fontWeight: '500' }}>Aktif</Text>
@@ -1260,12 +1389,16 @@ function DoctorRow({ doctor, isLast, accentColor, onToggle, onEdit, onDelete }: 
         )}
       </View>
       <AppSwitch value={doctor.is_active} onValueChange={onToggle} accentColor={accentColor} />
-      <Pressable style={{ width: 28, height: 28, borderRadius: R.sm, alignItems: 'center', justifyContent: 'center' }} onPress={onEdit}>
-        <Edit2 size={13} color={DS.ink[500]} strokeWidth={1.8} />
-      </Pressable>
-      <Pressable style={{ width: 28, height: 28, borderRadius: R.sm, alignItems: 'center', justifyContent: 'center' }} onPress={onDelete}>
-        <Trash2 size={13} color="#9C2E2E" strokeWidth={1.8} />
-      </Pressable>
+      <GlassTooltip title={autoT('Düzenle')} text={autoT('Hekim bilgilerini düzenle')}>
+        <Pressable style={{ width: 28, height: 28, borderRadius: R.sm, alignItems: 'center', justifyContent: 'center' }} onPress={onEdit}>
+          <Edit2 size={13} color={DS.ink[500]} strokeWidth={1.8} />
+        </Pressable>
+      </GlassTooltip>
+      <GlassTooltip title={autoT('Sil')} text={autoT('Hekimi sil')}>
+        <Pressable style={{ width: 28, height: 28, borderRadius: R.sm, alignItems: 'center', justifyContent: 'center' }} onPress={onDelete}>
+          <Trash2 size={13} color="#9C2E2E" strokeWidth={1.8} />
+        </Pressable>
+      </GlassTooltip>
     </View>
   );
 }
@@ -1660,6 +1793,7 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
       setForm({
         name: editingClinic.name, category: editingClinic.category ?? 'klinik',
         phone: editingClinic.phone ?? '', email: editingClinic.email ?? '',
+        whatsapp_phone: editingClinic.whatsapp_phone ?? '',
         il: addr.il, ilce: addr.ilce, mahalle: addr.mahalle,
         sokak: addr.sokak, bina_no: addr.bina_no, posta_kodu: addr.posta_kodu,
         contact_person: editingClinic.contact_person ?? '',
@@ -1683,6 +1817,10 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
     if (!form.contact_person.trim()) { setError('İrtibat kişisi zorunludur'); return; }
     if (!form.phone.trim()) { setError('Telefon zorunludur'); return; }
     if (!form.email.trim()) { setError('E-posta zorunludur'); return; }
+    // WhatsApp opsiyonel; girildiyse en az 10 hane (05xx… / 5xx… / 905xx…).
+    if (form.whatsapp_phone.trim() && form.whatsapp_phone.replace(/\D/g, '').length < 10) {
+      setError('Geçerli bir WhatsApp numarası girin'); return;
+    }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) { setError('Geçerli bir e-posta girin'); return; }
     if (!form.il.trim()) { setError('İl zorunludur'); return; }
     if (!form.ilce.trim()) { setError('İlçe zorunludur'); return; }
@@ -1706,6 +1844,7 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
       const cleanedContact = titleCaseTR(form.contact_person);
       const payload = { name: form.name.trim().replace(/\s+/g, ' '), category: form.category, phone: form.phone.trim(),
         email: form.email.trim() || null,
+        whatsapp_phone: form.whatsapp_phone.trim() || null,
         address: JSON.stringify({
           il:         form.il.trim(),
           ilce:       form.ilce.trim(),
@@ -1954,6 +2093,15 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
               </ModalField>
               <ModalField label="İrtibat Kişisi" required><TextInput style={inputBase} value={form.contact_person} onChangeText={v => set('contact_person', v)} placeholder="Örn: Mehmet Bey" placeholderTextColor={DS.ink[400]} /></ModalField>
               <ModalField label="Telefon" required><TextInput style={inputBase} value={form.phone} onChangeText={v => set('phone', v)} placeholder="0555 000 00 00" placeholderTextColor={DS.ink[400]} keyboardType="phone-pad" /></ModalField>
+              {/* WhatsApp hattı — kurum kullanıcılarına giden WhatsApp bildirimleri
+                  önce buraya gider (hekimin kendi girdiği WhatsApp numarası korunur).
+                  Kapatma kişinin kendi Ayarlar → Bildirimler'inde. */}
+              <ModalField
+                label="WhatsApp Numarası"
+                hint="Kurum bildirimleri bu numaraya gider. İsteyen kullanıcı kendi Ayarlar → Bildirimler bölümünden kapatabilir."
+              >
+                <TextInput style={inputBase} value={form.whatsapp_phone} onChangeText={v => set('whatsapp_phone', v)} placeholder="0555 000 00 00" placeholderTextColor={DS.ink[400]} keyboardType="phone-pad" />
+              </ModalField>
               <ModalField label="E-posta" required last><TextInput style={inputBase} value={form.email} onChangeText={v => set('email', v)} placeholder="info@klinik.com" placeholderTextColor={DS.ink[400]} keyboardType="email-address" autoCapitalize="none" /></ModalField>
             </SectionCard>
 

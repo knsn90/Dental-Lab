@@ -49,7 +49,7 @@ interface Props {
   accentColor?: string;
 }
 
-export function LabCheckinSettings({ accentColor = '#4771AB' }: Props) {
+export function LabCheckinSettings({ accentColor = '#004B87' }: Props) {
   const T = useMobileTokens();
   const isDark = useThemeModeStore((s) => s.resolvedDark);
   const [lab, setLab]         = useState<LabLocation | null>(null);

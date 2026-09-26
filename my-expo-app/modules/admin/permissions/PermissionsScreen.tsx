@@ -325,7 +325,7 @@ export function PermissionsSection(props: PermissionsScreenProps) {
   return <PermissionsScreen {...props} />;
 }
 
-export function PermissionsScreen({ embedded = false, accentColor = '#4771AB' }: PermissionsScreenProps = {}) {
+export function PermissionsScreen({ embedded = false, accentColor = '#004B87' }: PermissionsScreenProps = {}) {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
   const { setTitle, clear } = usePageTitleStore();
@@ -790,7 +790,7 @@ export function PermissionsScreen({ embedded = false, accentColor = '#4771AB' }:
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <View style={{
             flexDirection: 'row', alignItems: 'center', gap: 8,
-            height: 36, paddingHorizontal: 12, borderRadius: 10, flex: 1, minWidth: 200,
+            height: 36, paddingHorizontal: 12, borderRadius: 9999, flex: 1, minWidth: 200,
             backgroundColor: U.isDark ? U.surfaceSoft : '#FFFFFF', borderWidth: 1, borderColor: U.isDark ? U.hairline : 'rgba(0,0,0,0.08)',
           }}>
             <Search size={14} color={U.ink[400]} strokeWidth={1.8} />
@@ -1197,9 +1197,22 @@ export function PermissionsScreen({ embedded = false, accentColor = '#4771AB' }:
       {isDesktop ? (
         <View style={{ flex: 1, flexDirection: 'row' }}>
           {/* Sidebar */}
-          <View style={{ width: 220, paddingTop: 24, paddingBottom: 16 }}>
+          {/* Sidebar sayfa ile birlikte kaymaz — ana kenar çubuğu gibi yerinde durur. */}
+          <View
+            style={{
+              width: 220, paddingTop: 24, paddingBottom: 16,
+              // maxHeight yalnız rol modunda: orada liste kendi içinde kayar.
+              // Kullanıcı modunda açılır menüler var, yükseklik sınırlamıyoruz.
+              ...(Platform.OS === 'web'
+                ? {
+                    position: 'sticky', top: 0, alignSelf: 'flex-start',
+                    ...(mode === 'role' ? { maxHeight: '100vh' } : null),
+                  } as any
+                : null),
+            }}
+          >
             {mode === 'role' ? (
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 2, paddingHorizontal: 10 }}>
+              <ScrollView showsVerticalScrollIndicator={false} style={{ flexShrink: 1, minHeight: 0 }} contentContainerStyle={{ gap: 2, paddingHorizontal: 10 }}>
                 {ROLE_CONFIG.map(renderRoleItem)}
               </ScrollView>
             ) : (

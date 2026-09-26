@@ -24,7 +24,7 @@ import {
 import { useRouter, useSegments } from 'expo-router';
 import { safeBack } from '../../../core/util/safeBack';
 import {
-  AlertTriangle, ChevronLeft, ChevronRight, Inbox, Layers, RefreshCw, Search,
+  AlertTriangle, ChevronLeft, ChevronRight, Inbox, Layers, RefreshCw, Search, SlidersHorizontal,
   ShoppingCart, TrendingDown, X,
 } from '../../../core/ui/icons';
 import { ResponsiveCanvas } from '../../../core/layout/ResponsiveCanvas';
@@ -33,6 +33,10 @@ import { DS } from '../../../core/theme/dsTokens';
 import { useStockUI, type StockUI } from '../stockTheme';
 import { isRTL } from '../../../core/i18n';
 import { toast } from '../../../core/ui/Toast';
+import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
+import { onAccentInk } from '../../../core/theme/usePanelTheme';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import {
   fetchFifoStock, fetchReorderSuggestions, fetchUncoveredCount,
   type FifoStockRow, type ReorderRow,
@@ -58,6 +62,8 @@ interface Props {
   accentColor?: string;
   /** Hub içinde sekme olarak render ediliyor — kendi başlığını/geri butonunu gizler */
   embedded?: boolean;
+  /** Alt sekme şeridi — hero'nun içinde durur. */
+  tabsNode?: React.ReactNode;
   /**
    * Dışarıdan sabitlenen görünüm. Verilirse ekranın kendi sekme şeridi gizlenir —
    * hub bu iki görünümü ayrı üst sekmelere dağıttığı için ikinci bir şerit
@@ -116,7 +122,10 @@ function ConfidenceChip({ level }: { level: ReorderRow['confidence'] }) {
   );
 }
 
-export function FifoReorderScreen({ accentColor = DS.lab.primary, embedded = false, view }: Props) {
+export function FifoReorderScreen({ accentColor = DS.lab.primary, embedded = false, view, tabsNode }: Props) {
+  const heroInk = useWhiteHeroInk(accentColor);
+  // Tablo başlığı düz panel accent'i — metin luminance ile seçilir.
+  const tblInk = onAccentInk(accentColor);
   const U = useStockUI();
   const router   = useRouter();
   const segments = useSegments();
@@ -129,6 +138,8 @@ export function FifoReorderScreen({ accentColor = DS.lab.primary, embedded = fal
   const [rows, setRows]       = useState<ReorderRow[]>([]);
   const [uncovered, setUncovered] = useState(0);
   const [q, setQ]             = useState('');
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [catFilter, setCatFilter]   = useState<string>('all');
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [limit, setLimit]     = useState(PAGE);
 
@@ -158,20 +169,30 @@ export function FifoReorderScreen({ accentColor = DS.lab.primary, embedded = fal
 
   const urgent = rows.filter(r => r.days_to_empty != null && r.days_to_empty <= 14).length;
 
+  // Filtre çubuğundaki kategori listesi — görünen sekmenin verisinden.
+  const categories = useMemo(() => {
+    const src = tab === 'reorder' ? rows.map(r => r.category) : stock.map(x => x.category);
+    return [...new Set(src.filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b, 'tr'));
+  }, [tab, rows, stock]);
+
   const visibleReorder = useMemo(() => {
     const s = q.trim().toLowerCase();
-    if (!s) return rows;
-    return rows.filter(r =>
-      r.item_name.toLowerCase().includes(s) || (r.category ?? '').toLowerCase().includes(s));
-  }, [rows, q]);
+    return rows.filter(r => {
+      if (catFilter !== 'all' && (r.category ?? '') !== catFilter) return false;
+      if (!s) return true;
+      return r.item_name.toLowerCase().includes(s) || (r.category ?? '').toLowerCase().includes(s);
+    });
+  }, [rows, q, catFilter]);
 
   const visibleFifo = useMemo(() => {
     const s = q.trim().toLowerCase();
-    const base = stock.filter(x => x.open_layers > 0);
-    if (!s) return base;
-    return base.filter(x =>
-      x.item_name.toLowerCase().includes(s) || (x.category ?? '').toLowerCase().includes(s));
-  }, [stock, q]);
+    return stock.filter(x => {
+      if (x.open_layers <= 0) return false;
+      if (catFilter !== 'all' && (x.category ?? '') !== catFilter) return false;
+      if (!s) return true;
+      return x.item_name.toLowerCase().includes(s) || (x.category ?? '').toLowerCase().includes(s);
+    });
+  }, [stock, q, catFilter]);
 
   const list  = tab === 'reorder' ? visibleReorder : visibleFifo;
   const shown = list.slice(0, limit);
@@ -180,7 +201,7 @@ export function FifoReorderScreen({ accentColor = DS.lab.primary, embedded = fal
 
   if (loading) {
     return (
-      <ResponsiveCanvas size="lg" bgClassName="bg-transparent">
+      <ResponsiveCanvas size="lg" bgClassName="bg-transparent" padClassName={embedded ? 'pb-4' : undefined}>
         <View style={{ paddingVertical: 96, alignItems: 'center' }}>
           <ActivityIndicator color={accentColor} />
         </View>
@@ -189,7 +210,7 @@ export function FifoReorderScreen({ accentColor = DS.lab.primary, embedded = fal
   }
 
   return (
-    <ResponsiveCanvas size="lg" bgClassName="bg-transparent">
+    <ResponsiveCanvas size="lg" bgClassName="bg-transparent" padClassName={embedded ? 'pb-4' : undefined}>
       {!embedded ? (
         <>
       {/* ── Geri + eyebrow ─────────────────────────────────────── */}
@@ -226,119 +247,148 @@ export function FifoReorderScreen({ accentColor = DS.lab.primary, embedded = fal
         </>
       ) : null}
 
-      {/* ── Özet — scroll'da yapışık (yalnız web) ──────────────── */}
-      <View style={{
-        ...card(U), paddingHorizontal: 20, paddingVertical: 16, marginBottom: 16,
-        ...(Platform.OS === 'web' ? ({ position: 'sticky', top: 8, zIndex: 5 } as any) : {}),
-      }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 26, flexWrap: 'wrap' }}>
-          {totals.length === 0 ? (
-            <MiniStat value="—" label="FIFO stok değeri" color={U.ink[400]} />
-          ) : totals.map(([ccy, v]) => (
-            <MiniStat
-              key={ccy}
-              value={`${fmt(v)} ${ccy}`}
-              label="FIFO stok değeri"
-              color={U.ink[900]}
-            />
-          ))}
-          <MiniStat
-            value={urgent}
-            label="14 günde bitecek"
-            color={urgent > 0 ? DS.lab.danger : U.ink[400]}
-          />
-          <MiniStat
-            value={uncovered}
-            label="Karşılıksız tüketim"
-            color={uncovered > 0 ? DS.lab.warning : U.ink[400]}
-          />
-
-          <View style={{ flex: 1, minWidth: 0 }} />
-
+      {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ─────────────────
+          Üç eşit MiniStat yan yana duruyordu ve hangisinin asıl cevap olduğu
+          belli değildi. Prim Motoru hiyerarşisi: kicker → 44px FIFO stok
+          değeri → bağlam cümlesi → sağda 40px stat'lar. Para birimleri
+          TOPLANMAZ; başlık ilk dövizi gösterir, kalanlar kutucuk şeridinde. */}
+      <WhiteHero
+        kicker="Envanter · FIFO"
+        accent={accentColor}
+        title={
+          totals.length > 0
+            ? <Text style={{ color: heroInk.accentInk }}>{`${fmt(totals[0][1])} ${totals[0][0]}`}</Text>
+            : '—'
+        }
+        description={
+          `FIFO stok değeri` +
+          (urgent > 0 ? ` · ${urgent} ürün 14 günde bitecek` : ' · 14 günde bitecek ürün yok') +
+          (uncovered > 0 ? ` · ${uncovered} karşılıksız tüketim` : '')
+        }
+        stats={[
+          { value: String(urgent),    label: '14 Günde' },
+          { value: String(uncovered), label: 'Karşılıksız' },
+        ]}
+        cta={
           <Pressable
             onPress={load}
             style={({ pressed }) => ({
-              width: 30, height: 30, borderRadius: 999, alignItems: 'center',
-              justifyContent: 'center', backgroundColor: U.chipNeutral,
+              width: 34, height: 34, borderRadius: 999, alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder,
               opacity: pressed ? 0.6 : 1, ...webCursor,
             })}
           >
-            <RefreshCw size={13} color={U.ink[500]} strokeWidth={1.8} />
+            <RefreshCw size={14} color={heroInk.inkSoft} strokeWidth={1.8} />
           </Pressable>
-        </View>
+        }
+      >
+        {/* Diğer para birimleri — toplanmaz, her biri kendi kutucuğunda. */}
+        {totals.length > 1 && (
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
+            {totals.slice(1).map(([ccy, v]) => (
+              <View key={ccy} style={{
+                flex: 1, minWidth: 110, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12,
+                backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder,
+              }}>
+                <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: heroInk.inkSoft }}>
+                  {ccy}
+                </Text>
+                <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.6, lineHeight: 24, color: heroInk.ink }}>
+                  {fmt(v)}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
 
         {uncovered > 0 ? (
           <View style={{
             flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 14,
-            paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14,
+            paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12,
             backgroundColor: U.chipTones.warning.bg,
           }}>
-            <AlertTriangle size={13} color={U.chipTones.warning.fg} strokeWidth={1.9} />
             <Text style={{ fontSize: 12, color: U.chipTones.warning.fg, flex: 1, lineHeight: 18 }}>
-              {uncovered} tüketim için yeterli stok katmanı yoktu — maliyetleri son bilinen
-              birim fiyattan tahmin edildi. Bu, satın alınandan fazla tüketim veya eksik alış
-              kaydı anlamına gelir.
+              {`${uncovered} tüketim FIFO katmanıyla karşılanamadı — alış kaydı girilmemiş olabilir.`}
             </Text>
           </View>
         ) : null}
+        {tabsNode}
+      </WhiteHero>
+
+      {/* ── Toolbar — uygulama genelindeki arama/filtre dili ── */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 }}>
+        <View style={{
+          flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
+          height: 38, paddingHorizontal: 12, borderRadius: 9999,
+          backgroundColor: U.surface, borderWidth: 1, borderColor: U.hairline,
+        }}>
+          <Search size={14} color={U.ink[400]} strokeWidth={1.8} />
+          <TextInput
+            style={{ flex: 1, fontSize: 13, color: U.ink[900], ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) } as any}
+            value={q}
+            onChangeText={setQ}
+            placeholder="Ürün veya kategori ara..."
+            placeholderTextColor={U.ink[400]}
+          />
+          {q.length > 0 && (
+            <GlassTooltip title={autoT('Temizle')} text={autoT('Aramayı temizle')}>
+              <Pressable onPress={() => setQ('')} hitSlop={8} style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}}>
+                <X size={13} color={U.ink[400]} strokeWidth={2} />
+              </Pressable>
+            </GlassTooltip>
+          )}
+        </View>
+
+        <GlassTooltip title={autoT('Filtrele')} text={autoT('Kategoriye göre süz')}>
+          <Pressable
+            onPress={() => setFilterOpen(v => !v)}
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 6,
+              height: 38, paddingHorizontal: 14, borderRadius: 9999,
+              backgroundColor: catFilter !== 'all' ? accentColor + '14' : U.surface,
+              borderWidth: 1, borderColor: catFilter !== 'all' || filterOpen ? accentColor : U.hairline,
+              ...webCursor,
+            }}
+          >
+            <SlidersHorizontal size={14} color={catFilter !== 'all' ? accentColor : U.ink[500]} strokeWidth={1.8} />
+            <Text style={{ fontSize: 12.5, fontWeight: '600', color: catFilter !== 'all' ? accentColor : U.ink[500] }}>
+              {autoT('Filtrele')}{catFilter !== 'all' ? ' (1)' : ''}
+            </Text>
+          </Pressable>
+        </GlassTooltip>
       </View>
 
-      {/* ── Sekme + arama ──────────────────────────────────────── */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, display: view ? 'none' : 'flex' }}>
-          {([
-            { k: 'reorder', l: 'Sipariş Önerisi', icon: ShoppingCart, n: rows.length },
-            { k: 'fifo',    l: 'FIFO Katmanları', icon: Layers,       n: visibleFifo.length },
-          ] as const).map(t => {
-            const on = tab === t.k;
-            const Icon = t.icon;
+      {filterOpen && (
+        <View style={{ marginTop: 8, padding: 12, borderRadius: 14, backgroundColor: U.surface, borderWidth: 1, borderColor: U.hairline, flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <Text style={{ fontSize: 12, color: U.ink[400], marginEnd: 4, fontWeight: '500' }}>Kategori:</Text>
+          {['all', ...categories].map(c => {
+            const active = catFilter === c;
             return (
               <Pressable
-                key={t.k}
-                onPress={() => { setTab(t.k); setLimit(PAGE); }}
-                style={({ pressed }) => ({
-                  flexDirection: 'row', alignItems: 'center', gap: 7,
-                  paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
-                  backgroundColor: on ? U.ink[900] : U.hairline,
-                  opacity: pressed ? 0.7 : 1, ...webCursor,
-                })}
+                key={c}
+                onPress={() => setCatFilter(c)}
+                style={{
+                  paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999,
+                  backgroundColor: active ? accentColor : U.plainBtn.bg,
+                  borderWidth: 1, borderColor: active ? accentColor : U.hairline,
+                  ...webCursor,
+                }}
               >
-                <Icon size={13} color={on ? U.onDarkPill : U.ink[700]} strokeWidth={1.8} />
-                <Text style={{ fontSize: 12, fontWeight: '500', color: on ? U.onDarkPill : U.ink[800] }}>
-                  {t.l}
-                </Text>
-                <Text style={{ fontSize: 11, color: on ? U.onDarkPillMuted : U.ink[400] }}>
-                  {t.n}
+                <Text style={{ fontSize: 12, fontWeight: active ? '700' : '500', color: active ? onAccentInk(accentColor) : U.ink[700] }}>
+                  {c === 'all' ? autoT('Tümü') : c}
                 </Text>
               </Pressable>
             );
           })}
+          {categories.length === 0 && (
+            <Text style={{ fontSize: 12, color: U.ink[400] }}>Kategori bilgisi yok</Text>
+          )}
         </View>
+      )}
 
-        <View style={{
-          flexDirection: 'row', alignItems: 'center', gap: 8,
-          paddingHorizontal: 14, height: 36, borderRadius: 999,
-          backgroundColor: U.surface, borderWidth: 1, borderColor: U.ink[200],
-          flexGrow: 1, flexBasis: 220, minWidth: 0,
-        }}>
-          <Search size={14} color={U.ink[400]} strokeWidth={1.8} />
-          <TextInput
-            value={q}
-            onChangeText={t => { setQ(t); setLimit(PAGE); }}
-            placeholder="Ürün ara..."
-            placeholderTextColor={U.ink[400]}
-            style={{
-              flex: 1, fontSize: 13, color: U.ink[900],
-              ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
-            }}
-          />
-          {q.length > 0 ? (
-            <Pressable onPress={() => setQ('')} style={webCursor}>
-              <X size={13} color={U.ink[400]} strokeWidth={2} />
-            </Pressable>
-          ) : null}
-        </View>
-      </View>
+      {/* Araç çubuğu ile tablo arası nefes (kullanıcı isteği). */}
+      <View style={{ height: 14 }} />
 
       {/* ── Liste ──────────────────────────────────────────────── */}
       {list.length === 0 ? (
@@ -358,20 +408,21 @@ export function FifoReorderScreen({ accentColor = DS.lab.primary, embedded = fal
       ) : (
         <View style={card(U)}>
           {/* Sütun başlıkları */}
+          {/* Başlık şeridi düz panel accent'i — uygulama genelinde aynı dil. */}
           <View style={{
             flexDirection: 'row', alignItems: 'center',
             paddingHorizontal: 20, paddingVertical: 10,
-            backgroundColor: U.ink[50], borderBottomWidth: 1, borderBottomColor: U.ink[100],
+            backgroundColor: accentColor,
           }}>
             <Text style={{
               flex: 1, fontSize: 10, fontWeight: '500', letterSpacing: 1.2,
-              textTransform: 'uppercase', color: U.ink[400],
+              textTransform: 'uppercase', color: tblInk,
             }}>
               Ürün
             </Text>
             <Text style={{
               width: 200, textAlign: 'end' as any, fontSize: 10, fontWeight: '500',
-              letterSpacing: 1.2, textTransform: 'uppercase', color: U.ink[400],
+              letterSpacing: 1.2, textTransform: 'uppercase', color: tblInk,
             }}>
               {tab === 'reorder' ? 'Tükeniş / Sipariş' : 'FIFO değeri'}
             </Text>

@@ -9,6 +9,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { SUPPORTED_CURRENCIES, CURRENCY_META } from '../../../core/money/currency';
 import { autoT } from '../../../core/i18n/autoTranslate';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { useTranslation } from 'react-i18next';
 import { setLanguage, SUPPORTED, type Lang,
          getCalendarPref, setCalendarPref, usesPersianCalendar, type CalendarPref } from '../../../core/i18n';
@@ -857,29 +858,31 @@ export function GeneralSection({ panelType, accentColor }: Props) {
               {/* Adres zaten kurye ayarında varsa tek tıkla al — iki yere ayrı ayrı
                   yazdırmak hataya davetiye. */}
               {pickupAddr && !labAddrInput.trim() ? (
-                <Pressable
-                  onPress={() => {
-                    setLabAddrInput(pickupAddr.address);
-                    if (!labPhoneInput.trim() && pickupAddr.phone) setLabPhoneInput(pickupAddr.phone);
-                  }}
-                  style={Platform.OS === 'web'
-                    ? ((({ pressed }: any) => ({
-                        flexDirection: 'row' as const, alignItems: 'center' as const, gap: 7,
-                        paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8,
-                        backgroundColor: `${accentColor}14`,
-                        opacity: pressed ? 0.6 : 1, cursor: 'pointer',
-                      })) as any)
-                    : {
-                        flexDirection: 'row' as const, alignItems: 'center' as const, gap: 7,
-                        paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8,
-                        backgroundColor: `${accentColor}14`,
-                      }}
-                >
-                  <Download size={12} color={accentColor} strokeWidth={2} />
-                  <Text numberOfLines={1} style={{ flex: 1, fontSize: 11.5, fontWeight: '600', color: accentColor }}>
-                    Kurye ayarındaki alış adresini kullan
-                  </Text>
-                </Pressable>
+                <GlassTooltip title={autoT('Adresi kullan')} text={autoT('Kurye ayarındaki alış adresini laboratuvar adresi alanına kopyalar')}>
+                  <Pressable
+                    onPress={() => {
+                      setLabAddrInput(pickupAddr.address);
+                      if (!labPhoneInput.trim() && pickupAddr.phone) setLabPhoneInput(pickupAddr.phone);
+                    }}
+                    style={Platform.OS === 'web'
+                      ? ((({ pressed }: any) => ({
+                          flexDirection: 'row' as const, alignItems: 'center' as const, gap: 7,
+                          paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8,
+                          backgroundColor: `${accentColor}14`,
+                          opacity: pressed ? 0.6 : 1, cursor: 'pointer',
+                        })) as any)
+                      : {
+                          flexDirection: 'row' as const, alignItems: 'center' as const, gap: 7,
+                          paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8,
+                          backgroundColor: `${accentColor}14`,
+                        }}
+                  >
+                    <Download size={12} color={accentColor} strokeWidth={2} />
+                    <Text numberOfLines={1} style={{ flex: 1, fontSize: 11.5, fontWeight: '600', color: accentColor }}>
+                      Kurye ayarındaki alış adresini kullan
+                    </Text>
+                  </Pressable>
+                </GlassTooltip>
               ) : null}
 
               <View style={{ position: 'relative', justifyContent: 'center' }}>
@@ -940,77 +943,79 @@ export function GeneralSection({ panelType, accentColor }: Props) {
                   anlaşılmıyordu. Şeffaflığı göstermek için damalı zemin. */}
               {/* Ayrı "Değiştir" butonu yerine karonun KENDİSİ hedef: eylem
                   değiştirdiği nesnenin üzerinde durur (Apple: doğrudan manipülasyon). */}
-              <Pressable
-                onPress={pickAndUploadLogo}
-                disabled={logoUploading}
-                accessibilityLabel={labLogoUrl ? 'Logoyu değiştir' : 'Logo yükle'}
-                style={{
-                  width: 84, height: 84, borderRadius: 14,
-                  borderWidth: 1, borderColor: T.hairline,
-                  backgroundColor: T.cardSoft,
-                  alignItems: 'center', justifyContent: 'center',
-                  overflow: 'hidden', flexShrink: 0,
-                  ...(Platform.OS === 'web'
-                    ? { cursor: logoUploading ? 'wait' : 'pointer' } as any
-                    : {}),
-                  ...(Platform.OS === 'web' && labLogoUrl
-                    ? {
-                        backgroundImage:
-                          'linear-gradient(45deg,rgba(0,0,0,0.05) 25%,transparent 25%),' +
-                          'linear-gradient(-45deg,rgba(0,0,0,0.05) 25%,transparent 25%),' +
-                          'linear-gradient(45deg,transparent 75%,rgba(0,0,0,0.05) 75%),' +
-                          'linear-gradient(-45deg,transparent 75%,rgba(0,0,0,0.05) 75%)',
-                        backgroundSize: '10px 10px',
-                        backgroundPosition: '0 0, 0 5px, 5px -5px, -5px 0px',
-                      } as any
-                    : {}),
-                }}
-              >
-                {({ hovered }: any) => {
-                  const show = hovered || logoUploading;
-                  return (
-                    <>
-                      {labLogoUrl ? (
-                        <RNImage source={{ uri: labLogoUrl }} style={{ width: 74, height: 74 }} resizeMode="contain" />
-                      ) : (
-                        <ImageIcon size={24} color={T.ink3} strokeWidth={1.5} />
-                      )}
-                      {/* Kaplama — hover'da (ve yüklerken) tam karoyu örter */}
-                      <View
-                        pointerEvents="none"
-                        style={{
-                          position: 'absolute', top: 0, bottom: 0, start: 0, end: 0,
-                          alignItems: 'center', justifyContent: 'center', gap: 3,
-                          backgroundColor: 'rgba(10,10,10,0.58)',
-                          opacity: show ? 1 : 0,
-                          ...(Platform.OS === 'web'
-                            ? { transitionProperty: 'opacity', transitionDuration: '140ms' } as any
-                            : {}),
-                        }}
-                      >
-                        <Upload size={16} color="#FFFFFF" strokeWidth={2} />
-                        <Text style={{ fontSize: 10.5, fontWeight: '700', color: '#FFFFFF', letterSpacing: 0.2 }}>
-                          {logoUploading ? 'Yükleniyor' : labLogoUrl ? 'Değiştir' : 'Yükle'}
-                        </Text>
-                      </View>
-                      {/* Dokunmatikte hover yok — küçük rozet tıklanabilirliği söyler */}
-                      {!show && Platform.OS !== 'web' && (
+              <GlassTooltip title={autoT('Logo yükle')} text={autoT('Laboratuvar logosunu yükler veya mevcut logoyu değiştirir')} enabled={!logoUploading}>
+                <Pressable
+                  onPress={pickAndUploadLogo}
+                  disabled={logoUploading}
+                  accessibilityLabel={labLogoUrl ? 'Logoyu değiştir' : 'Logo yükle'}
+                  style={{
+                    width: 84, height: 84, borderRadius: 14,
+                    borderWidth: 1, borderColor: T.hairline,
+                    backgroundColor: T.cardSoft,
+                    alignItems: 'center', justifyContent: 'center',
+                    overflow: 'hidden', flexShrink: 0,
+                    ...(Platform.OS === 'web'
+                      ? { cursor: logoUploading ? 'wait' : 'pointer' } as any
+                      : {}),
+                    ...(Platform.OS === 'web' && labLogoUrl
+                      ? {
+                          backgroundImage:
+                            'linear-gradient(45deg,rgba(0,0,0,0.05) 25%,transparent 25%),' +
+                            'linear-gradient(-45deg,rgba(0,0,0,0.05) 25%,transparent 25%),' +
+                            'linear-gradient(45deg,transparent 75%,rgba(0,0,0,0.05) 75%),' +
+                            'linear-gradient(-45deg,transparent 75%,rgba(0,0,0,0.05) 75%)',
+                          backgroundSize: '10px 10px',
+                          backgroundPosition: '0 0, 0 5px, 5px -5px, -5px 0px',
+                        } as any
+                      : {}),
+                  }}
+                >
+                  {({ hovered }: any) => {
+                    const show = hovered || logoUploading;
+                    return (
+                      <>
+                        {labLogoUrl ? (
+                          <RNImage source={{ uri: labLogoUrl }} style={{ width: 74, height: 74 }} resizeMode="contain" />
+                        ) : (
+                          <ImageIcon size={24} color={T.ink3} strokeWidth={1.5} />
+                        )}
+                        {/* Kaplama — hover'da (ve yüklerken) tam karoyu örter */}
                         <View
                           pointerEvents="none"
                           style={{
-                            position: 'absolute', end: 4, bottom: 4,
-                            width: 22, height: 22, borderRadius: 11,
-                            alignItems: 'center', justifyContent: 'center',
-                            backgroundColor: 'rgba(10,10,10,0.62)',
+                            position: 'absolute', top: 0, bottom: 0, start: 0, end: 0,
+                            alignItems: 'center', justifyContent: 'center', gap: 3,
+                            backgroundColor: 'rgba(10,10,10,0.58)',
+                            opacity: show ? 1 : 0,
+                            ...(Platform.OS === 'web'
+                              ? { transitionProperty: 'opacity', transitionDuration: '140ms' } as any
+                              : {}),
                           }}
                         >
-                          <Upload size={11} color="#FFFFFF" strokeWidth={2.2} />
+                          <Upload size={16} color="#FFFFFF" strokeWidth={2} />
+                          <Text style={{ fontSize: 10.5, fontWeight: '700', color: '#FFFFFF', letterSpacing: 0.2 }}>
+                            {logoUploading ? 'Yükleniyor' : labLogoUrl ? 'Değiştir' : 'Yükle'}
+                          </Text>
                         </View>
-                      )}
-                    </>
-                  );
-                }}
-              </Pressable>
+                        {/* Dokunmatikte hover yok — küçük rozet tıklanabilirliği söyler */}
+                        {!show && Platform.OS !== 'web' && (
+                          <View
+                            pointerEvents="none"
+                            style={{
+                              position: 'absolute', end: 4, bottom: 4,
+                              width: 22, height: 22, borderRadius: 11,
+                              alignItems: 'center', justifyContent: 'center',
+                              backgroundColor: 'rgba(10,10,10,0.62)',
+                            }}
+                          >
+                            <Upload size={11} color="#FFFFFF" strokeWidth={2.2} />
+                          </View>
+                        )}
+                      </>
+                    );
+                  }}
+                </Pressable>
+              </GlassTooltip>
               {/* Teknik gereksinimler alt metinde uzun bir cümleydi; okunmuyordu.
                   Rozet olarak durur — logoyu değiştirirken de gerekiyor. */}
               <View style={{ gap: 5, flexShrink: 0 }}>
@@ -1024,26 +1029,28 @@ export function GeneralSection({ panelType, accentColor }: Props) {
                 <Text style={{ fontSize: 10, color: T.ink3 }}>400×400 · şeffaf zemin</Text>
               </View>
               {labLogoUrl && (
-                <Pressable
-                  onPress={removeLogo}
-                  accessibilityLabel="Logoyu kaldır"
-                  style={Platform.OS === 'web'
-                    ? ((({ hovered }: any) => ({
-                        width: 32, height: 32, borderRadius: 8,
-                        alignItems: 'center' as const, justifyContent: 'center' as const,
-                        backgroundColor: hovered ? (isDark ? 'rgba(217,75,75,0.20)' : '#FEE2E2') : 'transparent',
-                        borderWidth: 1, borderColor: hovered ? (isDark ? 'rgba(217,75,75,0.45)' : '#FCA5A5') : T.hairline,
-                        cursor: 'pointer',
-                      })) as any)
-                    : {
-                        width: 32, height: 32, borderRadius: 8,
-                        alignItems: 'center' as const, justifyContent: 'center' as const,
-                        backgroundColor: 'transparent',
-                        borderWidth: 1, borderColor: T.hairline,
-                      }}
-                >
-                  <Trash2 size={13} color={isDark ? '#F3A0A0' : '#DC2626'} strokeWidth={1.8} />
-                </Pressable>
+                <GlassTooltip title={autoT('Logoyu kaldır')} text={autoT('Yüklü laboratuvar logosunu siler')}>
+                  <Pressable
+                    onPress={removeLogo}
+                    accessibilityLabel="Logoyu kaldır"
+                    style={Platform.OS === 'web'
+                      ? ((({ hovered }: any) => ({
+                          width: 32, height: 32, borderRadius: 8,
+                          alignItems: 'center' as const, justifyContent: 'center' as const,
+                          backgroundColor: hovered ? (isDark ? 'rgba(217,75,75,0.20)' : '#FEE2E2') : 'transparent',
+                          borderWidth: 1, borderColor: hovered ? (isDark ? 'rgba(217,75,75,0.45)' : '#FCA5A5') : T.hairline,
+                          cursor: 'pointer',
+                        })) as any)
+                      : {
+                          width: 32, height: 32, borderRadius: 8,
+                          alignItems: 'center' as const, justifyContent: 'center' as const,
+                          backgroundColor: 'transparent',
+                          borderWidth: 1, borderColor: T.hairline,
+                        }}
+                  >
+                    <Trash2 size={13} color={isDark ? '#F3A0A0' : '#DC2626'} strokeWidth={1.8} />
+                  </Pressable>
+                </GlassTooltip>
               )}
             </View>
           </SettingRow>
@@ -1131,12 +1138,16 @@ export function GeneralSection({ panelType, accentColor }: Props) {
                 })
               ) : (
                 <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <Pressable onPress={() => saveLogoScale(logoScale - 0.1)} disabled={logoScale <= 0.6} style={{ width: 34, height: 34, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: T.cardSoft, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', opacity: logoScale <= 0.6 ? 0.4 : 1 }}>
-                    <Text style={{ fontSize: 18, fontWeight: '700', color: T.ink, marginTop: -2 }}>−</Text>
-                  </Pressable>
-                  <Pressable onPress={() => saveLogoScale(logoScale + 0.1)} disabled={logoScale >= 1.8} style={{ width: 34, height: 34, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: T.cardSoft, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', opacity: logoScale >= 1.8 ? 0.4 : 1 }}>
-                    <Text style={{ fontSize: 18, fontWeight: '700', color: T.ink, marginTop: -2 }}>+</Text>
-                  </Pressable>
+                  <GlassTooltip title={autoT('Küçült')} text={autoT('Kenar çubuğundaki logoyu bir kademe küçültür')} enabled={logoScale > 0.6}>
+                    <Pressable onPress={() => saveLogoScale(logoScale - 0.1)} disabled={logoScale <= 0.6} style={{ width: 34, height: 34, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: T.cardSoft, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', opacity: logoScale <= 0.6 ? 0.4 : 1 }}>
+                      <Text style={{ fontSize: 18, fontWeight: '700', color: T.ink, marginTop: -2 }}>−</Text>
+                    </Pressable>
+                  </GlassTooltip>
+                  <GlassTooltip title={autoT('Büyüt')} text={autoT('Kenar çubuğundaki logoyu bir kademe büyütür')} enabled={logoScale < 1.8}>
+                    <Pressable onPress={() => saveLogoScale(logoScale + 0.1)} disabled={logoScale >= 1.8} style={{ width: 34, height: 34, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: T.cardSoft, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', opacity: logoScale >= 1.8 ? 0.4 : 1 }}>
+                      <Text style={{ fontSize: 18, fontWeight: '700', color: T.ink, marginTop: -2 }}>+</Text>
+                    </Pressable>
+                  </GlassTooltip>
                 </View>
               )}
               <Text style={{ fontSize: 11, color: T.ink3 }}>Büyük</Text>

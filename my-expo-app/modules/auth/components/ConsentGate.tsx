@@ -18,13 +18,13 @@ import { Check } from '../../../core/ui/icons';
 import { AUTH, AUTH_FONT } from './AuthShell';
 import { LegalDocModal } from './LegalDocModal';
 // Hukuki URL'ler tek kaynaktan (core/legal.ts). Branded dom'e geçiş orada tek satır.
-import { LEGAL_PRIVACY_URL, LEGAL_TERMS_URL } from '../../../core/legal';
+import { LEGAL_PRIVACY_URL, LEGAL_TERMS_URL, LEGAL_DOC_VERSION } from '../../../core/legal';
 
 /** Yayınlanmış hukuki doküman sürümleri.
  *  siman-legal/ içeriği her değiştiğinde BURASI da artırılmalı — kullanıcıya
  *  hangi metnin gösterildiği bu değerle kayda geçer.
  *  v2.0 (2026-07-23): tüm alıcılar + yurt dışı aktarım + AI + KVKK m.11 eklendi. */
-export const LEGAL_DOC_VERSION = '2.0';
+export { LEGAL_DOC_VERSION };
 
 export { LEGAL_PRIVACY_URL, LEGAL_TERMS_URL };
 

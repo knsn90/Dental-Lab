@@ -22,10 +22,10 @@ import {
 } from '../../employees/api';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { CenteredLoader } from '../../../core/ui/CenteredLoader';
-import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
+import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
-import { HeroGlow, useHeroSurface } from '../../../core/ui/HeroGlow';
 import { groupByCurrency, type CurrencyTotal } from '../../../core/money/aggregations';
 import { MoneyMultiX } from '../../../core/money/MoneyMultiX';
 import { formatMoney, CURRENCY_META, SUPPORTED_CURRENCIES, type Currency } from '../../../core/money/currency';
@@ -55,11 +55,13 @@ interface SalaryRow {
 
 export function SalariesScreen() {
   const PANEL_PRIMARY = usePanelTheme().primary;
+  // Tablo kartı başlığı düz panel accent'i (uygulama genelinde aynı dil).
+  const tblInk = onAccentInk(PANEL_PRIMARY);
   const insets = useSafeAreaInsets();
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   // Koyu temada hero accent yerine lacivert gradyana iner; açık temada accent birebir korunur.
-  const heroBg = useHeroSurface(PANEL_PRIMARY);
+  const heroInk = useWhiteHeroInk(PANEL_PRIMARY);
   const LS_KEY = 'salaries_screen_v1';
   const loadCached = (): { employees: EmpRow[]; recent: SalaryRow[]; allPaidSlices?: CurrencyTotal[] } | null => {
     if (typeof window === 'undefined' || !window.localStorage) return null;
@@ -145,72 +147,49 @@ export function SalariesScreen() {
   );
   const activeCount = useMemo(() => employees.filter(e => (e as any).is_active !== false).length, [employees]);
 
+  // Beyaz hero başlığı: çoklu-döviz TOPLANMAZ → en büyük dilim başlıkta.
+  const salaryLead = salaryAllByCcy[0] ?? null;
+  const salaryRest = salaryAllByCcy.slice(1);
+
   if (loading) {
     return <CenteredLoader color={T.ink3} />;
   }
 
   return (
     <ScrollView contentContainerStyle={{ paddingHorizontal: 12, paddingTop: insets.top + 8, paddingBottom: 120, gap: 14 }}>
-      {/* F1 HeroCard — Maaş özeti */}
-      {(() => {
-        const ACCENT = PANEL_PRIMARY;
-        return (
-          <View style={{
-            borderRadius: 20, overflow: 'hidden',
-            ...heroBg, padding: 18, position: 'relative',
-          }}>
-            <HeroGlow size={160} opacity={0.18} delay={0}    style={{ top: -40, end: -40 }} />
-            <HeroGlow size={140} opacity={0.12} delay={1400} style={{ bottom: -50, start: -20 }} />
-
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.78)', marginBottom: 8 }}>
-                  Toplam Ödenen Maaş
-                </Text>
-                {/* Katı per-currency: her para birimi ayrı kart, asla toplanmaz */}
-                <MoneyMultiX slices={salaryAllByCcy} variant="cards" size="lg" accentColor={ACCENT} emptyText="—" />
-                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.72)', marginTop: 8 }}>
-                  {activeCount} aktif personel
-                </Text>
-              </View>
-              <View style={{ width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.18)' }}>
-                <Wallet size={20} color="#FFFFFF" strokeWidth={1.6} />
-              </View>
-            </View>
-
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 16 }}>
-              {([
-                { label: 'Personel',     value: String(activeCount),                 icon: Users    },
-                { label: 'Para Birimi',  value: String(salaryAllByCcy.length || 1),  icon: Banknote },
-                { label: 'Ödeme',        value: String(recent.length),               icon: Calendar },
-              ] as const).map(stat => {
-                const Icon = stat.icon;
-                return (
-                  <View key={stat.label} style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.16)' }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 }}>
-                      <Icon size={11} color="rgba(255,255,255,0.85)" strokeWidth={2} />
-                      <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>
-                        {stat.label}
-                      </Text>
-                    </View>
-                    <Text
-                      style={{ ...DISPLAY, fontSize: 16, color: '#FFFFFF', letterSpacing: -0.3, lineHeight: 20 }}
-                      numberOfLines={1}
-                    >
-                      {stat.value}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
+      {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ─────────────────
+          Prim Motoru hiyerarşisi: kicker → 44px tek büyük rakam → bağlam
+          cümlesi → sağda 40px stat'lar. Rakam TOPLANMAZ; başlık en büyük
+          para birimi dilimini gösterir, kalanlar altındaki chip şeridinde. */}
+      <WhiteHero
+        kicker="Maaşlar"
+        accent={PANEL_PRIMARY}
+        title={
+          salaryLead ? (
+            <>Ödenen <Text style={{ color: heroInk.accentInk }}>{formatMoney(salaryLead.total, salaryLead.currency, { fractionDigits: 0 })}</Text></>
+          ) : '—'
+        }
+        description={
+          `${activeCount} aktif personel · ${recent.length} maaş ödemesi` +
+          (salaryRest.length ? ` · ${salaryRest.length + 1} para birimi` : '')
+        }
+        stats={[
+          { value: String(activeCount),   label: 'Personel' },
+          { value: String(recent.length), label: 'Ödeme' },
+          { value: String(salaryAllByCcy.length || 1), label: 'Para Birimi' },
+        ]}
+      >
+        {salaryRest.length > 0 && (
+          <View style={{ marginTop: 10 }}>
+            <MoneyMultiX slices={salaryRest} variant="inline" onAccent={heroInk.moneyOnAccent} />
           </View>
-        );
-      })()}
+        )}
+      </WhiteHero>
 
       {/* Ekip listesi */}
       <View style={{ backgroundColor: T.card, borderRadius: 16, borderWidth: 1, borderColor: T.hairline, overflow: 'hidden' }}>
-        <View style={{ paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: T.hairline }}>
-          <Text style={{ ...DISPLAY, fontSize: 18, color: T.ink }}>Ekip ve Maaş Durumu</Text>
+        <View style={{ paddingHorizontal: 16, paddingVertical: 14, backgroundColor: PANEL_PRIMARY }}>
+          <Text style={{ ...DISPLAY, fontSize: 18, color: tblInk }}>Ekip ve Maaş Durumu</Text>
         </View>
         {employees.length === 0 ? (
           <View style={{ padding: 32, alignItems: 'center', gap: 8 }}>
@@ -276,8 +255,8 @@ export function SalariesScreen() {
 
       {/* Son ödemeler */}
       <View style={{ backgroundColor: T.card, borderRadius: 16, borderWidth: 1, borderColor: T.hairline, overflow: 'hidden' }}>
-        <View style={{ paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: T.hairline }}>
-          <Text style={{ ...DISPLAY, fontSize: 18, color: T.ink }}>Son Maaş Ödemeleri</Text>
+        <View style={{ paddingHorizontal: 16, paddingVertical: 14, backgroundColor: PANEL_PRIMARY }}>
+          <Text style={{ ...DISPLAY, fontSize: 18, color: tblInk }}>Son Maaş Ödemeleri</Text>
         </View>
         {recent.length === 0 ? (
           <View style={{ padding: 32, alignItems: 'center' }}>

@@ -1,0 +1,55 @@
+/**
+ * PaymentSheetModal — uygulama içi ödeme.
+ *
+ * Klinik "Öde" dediğinde ayrı bir sayfaya gitmek yerine aynı akış modalde
+ * açılır: kullanıcı listeden/faturadan kopmaz, ödeme bitince olduğu yerde
+ * kalır ve liste tazelenir. Ayrı sayfada "geri" sorunu da böylece kalkar.
+ *
+ * Gövde `PublicPaymentScreen` ile AYNI bileşendir (`embedded`) — kart formu,
+ * 3DS iframe'i ve sonuç ekranları tek yerde durur. /pay/<token> rotası
+ * KALIR: lab'ın e-posta/WhatsApp ile gönderdiği link oturumsuz açılır.
+ */
+import React from 'react';
+import { View, Text, Modal, Pressable, Platform } from 'react-native';
+import { X } from '../../../core/ui/icons';
+import { useInkUI } from '../../../core/theme/inkScale';
+import { autoT } from '../../../core/i18n/autoTranslate';
+import { PublicPaymentScreen } from '../screens/PublicPaymentScreen';
+
+export function PaymentSheetModal({
+  token, onClose, onPaid,
+}: {
+  /** null → modal kapalı. */
+  token: string | null;
+  onClose: () => void;
+  /** Ödeme tamamlandığında çağrılır (liste/fatura tazelensin diye). */
+  onPaid?: () => void;
+}) {
+  const U = useInkUI();
+
+  return (
+    <Modal visible={!!token} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={U.modalOverlay}>
+        <View style={[U.modalCard, { maxWidth: 520, height: '88%' }]}>
+          <View style={U.modalHeaderRow}>
+            <Text style={U.modalTitle}>{autoT('Online Ödeme')}</Text>
+            <Pressable
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel={autoT('Kapat')}
+              style={U.modalCloseBtn}>
+              <X size={15} color={U.ink[500]} strokeWidth={2} />
+            </Pressable>
+          </View>
+
+          {/* Akışın kendisi; kabuk çizmesin diye embedded. */}
+          <View style={{ flex: 1, ...(Platform.OS === 'web' ? { overflow: 'hidden' } as any : {}) }}>
+            {token ? (
+              <PublicPaymentScreen token={token} embedded onPaid={onPaid} />
+            ) : null}
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}

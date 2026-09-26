@@ -36,6 +36,7 @@ import { DS } from '../../../core/theme/dsTokens';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { WhiteHero } from '../../../core/ui/WhiteHero';
 import { MOBILE_PANEL_THEMES } from '../../../core/theme/mobileDesignTokens';
 import { useAuthStore } from '../../../core/store/authStore';
 import { toast } from '../../../core/ui/Toast';
@@ -110,9 +111,9 @@ const W: Record<string, string> = {
   border:     DS.ink[200], // #EAEAEA — standart kart kenarı
   borderSoft: DS.ink[100], // #F5F5F5 — iç ayraç
   cardBorder: 'rgba(0,0,0,0.05)', // büyük kapsayıcı kart — ev stili ince hairline
-  orange:     '#4771AB', // panel primary ile güncellenir
-  primaryDeep:'#314F7E', // panel primaryDeep ile güncellenir (gradient ucu)
-  orangeSoft: hexA('#4771AB', 0.12),
+  orange:     '#004B87', // panel primary ile güncellenir
+  primaryDeep:'#001F3F', // panel primaryDeep ile güncellenir (gradient ucu)
+  orangeSoft: hexA('#004B87', 0.12),
 };
 
 // Aktif panel paletini W'ye uygula. Tek anda tek panel render edildiği için
@@ -222,53 +223,6 @@ function HeroGlass({ kicker, title, description, actions, footer }: {
         ) : null}
         {actions ? <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 2 }}>{actions}</View> : null}
         {footer}
-      </View>
-    </View>
-  );
-}
-
-/** Premium gradient hero şeridi — panel primary→primaryDeep + glow + KPI tile'ları.
- *  Dashboard'daki gradient kart estetiğini taşır (ev stili). */
-function HeroStrip({ kpis, onNew, isAdmin }: {
-  kpis: { label: string; value: number; alert?: boolean }[];
-  onNew: () => void;
-  isAdmin: boolean;
-}) {
-  return (
-    <View style={{
-      borderRadius: 28, padding: 22, overflow: 'hidden',
-      backgroundColor: W.orange,
-      ...(Platform.OS === 'web'
-        ? { backgroundImage: `linear-gradient(135deg, ${W.orange} 0%, ${W.primaryDeep} 100%)` } as any
-        : {}),
-    }}>
-      {/* glow daireleri */}
-      <View style={{ position: 'absolute', top: -50, end: -30, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.16)' }} />
-      <View style={{ position: 'absolute', bottom: -60, start: -20, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(0,0,0,0.05)' }} />
-
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-        <View style={{ flexShrink: 1, minWidth: 200 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-            <Sparkles size={12} color="rgba(255,255,255,0.92)" strokeWidth={1.8} />
-            <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>
-              Üretim Destek Merkezi
-            </Text>
-          </View>
-          <Text style={{ ...DISPLAY, fontSize: 26, color: '#FFFFFF', letterSpacing: -0.6, lineHeight: 30 }}>
-            {isAdmin ? 'Vakaları yönet' : 'Vakanı birlikte çözelim'}
-          </Text>
-          {/* "Yeni Talep" CTA tek yerde (sol liste başlığı) — tekrar kaldırıldı. */}
-        </View>
-
-        {/* KPI tile'ları */}
-        <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
-          {kpis.map(k => (
-            <View key={k.label} style={{ minWidth: 88, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.16)' }}>
-              <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: 'rgba(255,255,255,0.82)', marginBottom: 4 }}>{k.label}</Text>
-              <Text style={{ ...DISPLAY, fontSize: 26, color: '#FFFFFF', letterSpacing: -0.8, lineHeight: 28 }}>{k.value}</Text>
-            </View>
-          ))}
-        </View>
       </View>
     </View>
   );
@@ -503,12 +457,16 @@ export function SupportScreen() {
     );
   }
 
-  // Desktop / tablet — inbox: premium hero şeridi + 2-pane (liste + detay)
+  // Desktop / tablet — inbox: beyaz hero + 2-pane (liste + detay)
   return (
     <Wrapper {...wrapperProps}>
       <View style={{ flex: 1, padding: 16, gap: 16, backgroundColor: W.bg }}>
-        {/* Premium hero şeridi */}
-        <HeroStrip kpis={heroKpis} onNew={() => openNew()} isAdmin={isAdmin} />
+        {/* Beyaz hero — panel accent'inden zemin, sağda KPI rakamları */}
+        <WhiteHero
+          kicker={autoT('Üretim Destek Merkezi')}
+          title={isAdmin ? autoT('Vakaları yönet') : autoT('Vakanı birlikte çözelim')}
+          stats={heroKpis.map(k => ({ value: String(k.value), label: autoT(k.label) }))}
+        />
 
         {/* 2-pane: sol liste kartı + sağ detay kartı */}
         <View style={{ flex: 1, flexDirection: 'row', gap: 16, minHeight: 0 }}>

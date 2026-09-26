@@ -34,6 +34,7 @@ import { formatAddress } from '../../../core/util/formatAddress';
 import { safeBack } from '../../../core/util/safeBack';
 import { localeTag, isRTL } from '../../../core/i18n';
 import { DELIVERY_PURPOSE_LABELS, type DeliveryPurpose } from '../../orders/api';
+import { isIncomingLeg, isFreeLeg } from '../../delivery/direction';
 import { DELIVERY_STATUS_CFG } from '../../orders/components/OrderLogisticsCard';
 import {
   fetchExpenseDetail, EXPENSE_CATEGORY_LABELS, EXPENSE_CATEGORY_COLORS,
@@ -242,7 +243,10 @@ export function ExpenseDetailScreen({ expenseId, onBack, onOpenInvoice }: Props 
   const purposeLabel = delivery?.purpose
     ? (DELIVERY_PURPOSE_LABELS[delivery.purpose as DeliveryPurpose] ?? delivery.purpose)
     : null;
-  const outbound = delivery?.direction !== 'clinic_to_lab';
+  // Gelen bacak yalnız 'clinic_to_lab' değil: serbest ALIM ('other_to_lab') da
+  // laboratuvara doğrudur — eskiden o gönderiler "Lab → Klinik" yazıyordu.
+  const outbound = !isIncomingLeg(delivery?.direction);
+  const freeLeg  = isFreeLeg(delivery?.direction);
 
   const courierName  = delivery?.ext_courier_name ?? delivery?.courier?.full_name ?? null;
   const courierPhone = delivery?.ext_courier_phone ?? delivery?.courier?.phone ?? null;
@@ -264,7 +268,8 @@ export function ExpenseDetailScreen({ expenseId, onBack, onOpenInvoice }: Props 
   const callPhone = (p: string) => { Linking.openURL(`tel:${p.replace(/\s/g, '')}`).catch(() => {}); };
 
   const originLine = delivery
-    ? (formatAddress(delivery.origin_address) || delivery.origin_name || (outbound ? 'Laboratuvar' : 'Klinik'))
+    ? (formatAddress(delivery.origin_address) || delivery.origin_name
+        || (outbound ? 'Laboratuvar' : freeLeg ? 'Alım noktası' : 'Klinik'))
     : '';
   const destLine = delivery ? formatAddress(delivery.destination_address) : '';
 
@@ -409,7 +414,9 @@ export function ExpenseDetailScreen({ expenseId, onBack, onOpenInvoice }: Props 
                 : <ArrowLeftRight size={14} color={DS.ink[400]} strokeWidth={1.7} />}
               <Text style={{ fontSize: 12, color: DS.ink[500], width: 110 }}>Yön</Text>
               <Text style={{ flex: 1, fontSize: 13, color: DS.ink[900] }}>
-                {outbound ? 'Lab → Klinik' : 'Klinik → Lab'}
+                {freeLeg
+                  ? (outbound ? 'Lab → Dış nokta' : 'Dış nokta → Lab')
+                  : (outbound ? 'Lab → Klinik' : 'Klinik → Lab')}
               </Text>
             </View>
             <InfoRow
@@ -460,7 +467,7 @@ export function ExpenseDetailScreen({ expenseId, onBack, onOpenInvoice }: Props 
                   <View style={{ flex: 1, gap: 2 }}>
                     <Text style={{ fontSize: 11, color: DS.ink[500] }}>Çıkış</Text>
                     <Text style={{ fontSize: 13, color: DS.ink[900] }}>
-                      {delivery.origin_name ?? (outbound ? 'Laboratuvar' : 'Klinik')}
+                      {delivery.origin_name ?? (outbound ? 'Laboratuvar' : freeLeg ? 'Alım noktası' : 'Klinik')}
                     </Text>
                     {originLine && originLine !== delivery.origin_name ? (
                       <Text style={{ fontSize: 12, color: DS.ink[500], lineHeight: 18 }}>{originLine}</Text>
@@ -475,7 +482,7 @@ export function ExpenseDetailScreen({ expenseId, onBack, onOpenInvoice }: Props 
                   <View style={{ flex: 1, gap: 2 }}>
                     <Text style={{ fontSize: 11, color: DS.ink[500] }}>Varış</Text>
                     <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>
-                      {delivery.destination_name ?? (outbound ? 'Klinik' : 'Laboratuvar')}
+                      {delivery.destination_name ?? (outbound ? (freeLeg ? 'Teslim noktası' : 'Klinik') : 'Laboratuvar')}
                     </Text>
                     {destLine ? (
                       <Text style={{ fontSize: 12, color: DS.ink[500], lineHeight: 18 }}>{destLine}</Text>

@@ -13,6 +13,7 @@
  */
 import { supabase } from '../../lib/supabase';
 import { useDentyStore } from './store/dentyStore';
+import { ensureAiConsent } from '../../core/ai/aiConsent';
 
 export type ReportAudience = 'lab' | 'clinic';
 
@@ -194,6 +195,8 @@ export async function generateOrderReport(
   orderId: string, audience: ReportAudience,
 ): Promise<{ body: string; sources: Record<string, number>; orderNumber: string }> {
   const g = await gather(orderId);
+  // App Store 5.1.2(i): kişisel veri Claude'a gitmeden ÖNCE açık izin.
+  if (!(await ensureAiConsent())) throw new Error('Yapay zekâ izni verilmedi');
 
   const { data, error } = await supabase.functions.invoke('denty-brain', {
     body: {

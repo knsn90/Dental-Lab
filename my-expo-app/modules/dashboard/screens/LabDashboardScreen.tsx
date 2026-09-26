@@ -10,6 +10,7 @@
  * Patterns NativeWind — NO StyleSheet.create().
  */
 import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { HatchFill } from '../../../core/ui/HatchFill';
 import { firstName as displayFirstName } from '../../../core/util/personName';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { useTranslation } from 'react-i18next';
@@ -50,6 +51,8 @@ import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 import { useDashboardCache } from '../../../core/store/dashboardCacheStore';
 import { useUiOverlayStore } from '../../../core/store/uiOverlayStore';
 import { useNewOrderModalStore } from '../../../core/store/newOrderModalStore';
+import { useNeonNavy, NeonPulse, useAccentTones } from '../../../core/ui/HeroGlow';
+import { PipelineFlowRow } from '../../../core/ui/PipelineFlowRow';
 import { FaceScanQuickAction } from '../../orders/components/FaceScanQuickAction';
 import { resolveOrderStatus } from '../components/RecentOrdersMobile';
 import { mapRevisionCases, flattenRevisionCases } from '../../orders/revisionGroups';
@@ -243,7 +246,7 @@ const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> =
   kurye_bekleniyor:{ label: 'Kurye Bekleniyor',color: '#1F5689',       bg: 'rgba(74,143,201,0.12)' },
   kuryede:         { label: 'Kuryede',         color: '#1F5689',       bg: 'rgba(74,143,201,0.12)' },
   iptal:           { label: 'İptal',           color: '#B91C1C',       bg: 'rgba(220,38,38,0.10)' },
-  teslimata_hazir: { label: 'Kuryeye Teslim Edildi', color: '#1F6B47',       bg: 'rgba(45,154,107,0.12)' },
+  teslimata_hazir: { label: 'Teslime Hazır',       color: '#1F6B47',       bg: 'rgba(45,154,107,0.12)' },
   teslim_edildi:   { label: 'Teslim Edildi',   color: DS.ink[400],bg: 'rgba(0,0,0,0.04)' },
 };
 
@@ -330,7 +333,17 @@ function CardHeader({ title, right, display }: { title: string; right?: React.Re
   );
 }
 
-// ── Animated Aktif Vaka Card — pulsing CANLI dot + glow + breathing circles ──
+// ── Animated Aktif Vaka Card — "CANLI" üretim şeridi ──
+/**
+ * Yönetim/klinik/hekim Özet'teki CANLI kartıyla AYNI kart (kullanıcı kararı,
+ * 19.09.2026). Buradaki eski sürümde safran ışık lekeleri, nefes alan daireler
+ * ve sürekli parlayan bir disk vardı; hiçbiri veri taşımıyordu.
+ *
+ * Şerit tek kaynaktan gelir: `PipelineFlowRow` — ışık izi işin BEKLEDİĞİ
+ * aşamada duraklar, bir aşamanın sayısı değişince yalnız o daire parlar, iş
+ * yoksa hiç kıpırdamaz. Renk panelden (safran) gelir, hero bandı bilinçli
+ * olarak iki temada da siyahtır.
+ */
 function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, planningCount = 0, router }: {
   isDesktop: boolean;
   pipelineCounts: Record<string, number>;
@@ -339,15 +352,13 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, plannin
   router: any;
 }) {
   const T = useMobileTokens();
-  // Pulsing CANLI dot
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  // Akış izi rengi PANELE uyar: safranın açılmış tonu (siyah bantta okunur).
+  const accentTone = useAccentTones(P);
+  // Tek kalan kart-içi hareket: CANLI rozetinin nabzı.
   const dotAnim = useRef(new Animated.Value(0)).current;
-  // Ambient glow behind pipeline circles
-  const glowAnim = useRef(new Animated.Value(0)).current;
-  // Breathing scale on active pipeline circles
-  const breatheAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // CANLI dot pulse — opacity blink
     Animated.loop(
       Animated.sequence([
         Animated.timing(dotAnim, { toValue: 1, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
@@ -355,151 +366,73 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, plannin
         Animated.delay(400),
       ]),
     ).start();
-
-    // Ambient glow — slow pulse
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(glowAnim, { toValue: 1, duration: 2400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(glowAnim, { toValue: 0, duration: 2400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      ]),
-    ).start();
-
-    // Breathing circles — subtle scale
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(breatheAnim, { toValue: 1, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(breatheAnim, { toValue: 0, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      ]),
-    ).start();
-  }, [dotAnim, glowAnim, breatheAnim]);
+  }, [dotAnim]);
 
   const dotOpacity = dotAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.3] });
-  // Bulanıklık ışığı geniş alana yayıp kontrastı düşürüyor; parıltı aralığı
-  // 0–0.12'den 0–0.30'a çıkarıldı, yoksa kart soluk/ölü görünüyor.
-  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.30] });
-  const glowScale = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1.2] });
-  const breatheScale = breatheAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
 
   return (
     <Card style={{ flex: isDesktop ? 1.1 : undefined, marginBottom: isDesktop ? 0 : 14 }}>
-      {/* Dark section — native gradient via SVG */}
+      {/* Koyu hero bandı — iki temada da siyah (T.ink koyuda krem olur). */}
       <View style={{
         flex: 1,
         // @ts-ignore web gradient
-        backgroundImage: `linear-gradient(180deg, ${DS.ink[700]} 0%, ${DS.ink[900]} 100%)`,
-        backgroundColor: DS.ink[900], // fallback solid
+        backgroundImage: 'linear-gradient(180deg, #1A1A1A 0%, #0A0A0A 100%)',
+        backgroundColor: '#0A0A0A',
         alignItems: 'center', justifyContent: 'center',
-        minHeight: 160, position: 'relative',
-        overflow: 'hidden',
+        minHeight: 160, position: 'relative', overflow: 'hidden',
       }}>
-        {/* Native gradient — saffron radial-ish overlay (sol üstte sıcak) */}
-        {Platform.OS !== 'web' && (
-          <>
-            <View
-              pointerEvents="none"
-              style={{
-                position: 'absolute',
-                top: -80, start: -50,
-                width: 200, height: 200, borderRadius: 100,
-                backgroundColor: P, opacity: 0.55,
-              }}
-            />
-            <View
-              pointerEvents="none"
-              style={{
-                position: 'absolute',
-                top: -130, start: -100,
-                width: 320, height: 320, borderRadius: 160,
-                backgroundColor: P, opacity: 0.20,
-              }}
-            />
-          </>
-        )}
-        {/* Ambient glow behind circles */}
-        <Animated.View style={{
-          position: 'absolute', width: 160, height: 160, borderRadius: 80,
-          backgroundColor: P,
-          opacity: glowOpacity,
-          transform: [{ scale: glowScale }],
-        }} pointerEvents="none" />
-
-        {/* CANLI badge with animated dot */}
-        <View className="absolute rounded-full" style={{
-          top: 14, start: 14,
-          paddingHorizontal: 10, paddingVertical: 4,
-          backgroundColor: `${P}E6`,
+        <View className="absolute" style={{
+          top: 14, ...(isRTL() ? { right: 14 } : { left: 14 }),
           flexDirection: 'row', alignItems: 'center', gap: 6,
         }}>
-          <Animated.View style={{
-            width: 6, height: 6, borderRadius: 3,
-            backgroundColor: INK,
-            opacity: dotOpacity,
-          }} />
-          <Text style={{ fontSize: 10, fontWeight: '500', color: INK, letterSpacing: 0.05 * 10 }}>
-            CANLI
-          </Text>
+          {/* CANLI rozeti — safran zeminde mürekkep siyah (luminans). */}
+          <View className="rounded-full" style={{
+            paddingHorizontal: 10, paddingVertical: 4,
+            backgroundColor: `${P}E6`, flexDirection: 'row', alignItems: 'center', gap: 6,
+          }}>
+            <Animated.View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: INK, opacity: dotOpacity }} />
+            <Text style={{ fontSize: 10, fontWeight: '500', color: INK, letterSpacing: 0.5 }}>CANLI</Text>
+          </View>
+
+          {/* Planlama bekleyen işler — laba özel, CANLI'nın yanında durur. */}
+          {planningCount > 0 && (
+            <Pressable
+              onPress={() => router.push('/(lab)/all-orders?status=alindi' as any)}
+              className="rounded-full"
+              style={{
+                paddingHorizontal: 10, paddingVertical: 4,
+                backgroundColor: 'rgba(255,255,255,0.12)',
+                borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+                flexDirection: 'row', alignItems: 'center', gap: 5,
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              }}
+            >
+              <Inbox size={11} color={P} strokeWidth={2} />
+              <Text style={{ fontSize: 10, fontWeight: '700', color: '#FFF', fontVariant: ['tabular-nums'] as any }}>
+                {planningCount}
+              </Text>
+              <Text style={{ fontSize: 9.5, fontWeight: '500', color: 'rgba(255,255,255,0.85)', letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                planlama
+              </Text>
+            </Pressable>
+          )}
         </View>
 
-        {/* Planlama bekleyen işler — sağ üst pill */}
-        {planningCount > 0 && (
-          <Pressable
-            onPress={() => router.push('/(lab)/all-orders?status=alindi' as any)}
-            className="absolute rounded-full"
-            style={{
-              top: 14, end: 14,
-              paddingHorizontal: 10, paddingVertical: 4,
-              backgroundColor: 'rgba(255,255,255,0.10)',
-              borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
-              flexDirection: 'row', alignItems: 'center', gap: 5,
-              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-            }}
-          >
-            <Inbox size={11} color={P} strokeWidth={2} />
-            <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFF', fontVariant: ['tabular-nums'] as any }}>
-              {planningCount}
-            </Text>
-            <Text style={{ fontSize: 9, fontWeight: '500', color: 'rgba(255,255,255,0.7)', letterSpacing: 0.5, textTransform: 'uppercase' }}>
-              planlama
-            </Text>
-          </Pressable>
-        )}
-
-        {/* Pipeline circles mini with breathing */}
-        <View className="flex-row items-center" style={{ gap: 12 }}>
-          {PIPELINE_STAGES.slice(0, 4).map((stage) => {
-            const count = pipelineCounts[stage.key] ?? 0;
-            const active = count > 0;
-            return (
-              <Pressable
-                key={stage.key}
-                onPress={() => router.push('/(lab)/all-orders' as any)}
-                className="items-center"
-                style={{ gap: 4 }}
-              >
-                <Animated.View
-                  style={{
-                    width: 40, height: 40, borderRadius: 20,
-                    backgroundColor: active ? hexA(P, 0.2) : 'rgba(255,255,255,0.06)',
-                    borderWidth: active ? 1.5 : 1,
-                    borderColor: active ? P : 'rgba(255,255,255,0.1)',
-                    alignItems: 'center', justifyContent: 'center',
-                    transform: active ? [{ scale: breatheScale }] : [],
-                  }}
-                >
-                  <Text style={{
-                    ...SERIF, fontSize: 16, letterSpacing: -0.5,
-                    color: active ? '#FFF' : 'rgba(255,255,255,0.3)',
-                  }}>
-                    {count}
-                  </Text>
-                </Animated.View>
-                <Text style={{ fontSize: 8, fontWeight: '600', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>
-                  {stage.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        <PipelineFlowRow
+          stages={PIPELINE_STAGES.slice(0, 4).map(st => ({ key: st.key, label: st.label }))}
+          counts={pipelineCounts}
+          accent={P}
+          flowColor={accentTone.ink}
+          cardMid={isDark ? '#141312' : '#1B1B1B'}
+          onPressStage={() => router.push('/(lab)/all-orders' as any)}
+          renderValue={(count, active) => (
+            <NumberTickerX
+              value={count}
+              duration={800}
+              style={{ ...SERIF, fontSize: 16, letterSpacing: -0.5, color: active ? '#FFF' : 'rgba(255,255,255,0.3)' } as any}
+            />
+          )}
+        />
       </View>
 
       {/* White section — latest order info */}
@@ -525,136 +458,68 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, plannin
   );
 }
 
-// ── Animated CTA Card — floating circle + shimmer glow + arrow bounce ──
+// ── Animated CTA Card ──
+/**
+ * "Hızlı işlem" kartı — zemin TEK kaynaktan: `useNeonNavy` (neon navy).
+ *
+ * Eskiden burada safran gradyan + dört animasyonlu bulanık ışık lekesi vardı;
+ * açık temada kart alacalı görünüyordu. Kullanıcı kararı (19.09.2026): açık
+ * temada DÜZ panel rengi, koyu temada neon yüzey + nabız. Diğer panellerin
+ * (yönetim, klinik, hekim) CTA kartları zaten bu kaynağı kullanıyor.
+ *
+ * Metin/pill renkleri de hook'tan gelir: safran açık bir zemin olduğu için
+ * mürekkep siyaha düşer (luminans kuralı) — sabit yazılsaydı koyu temada
+ * siyah-üstüne-siyah kalırdı.
+ */
 function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDesktop: boolean }) {
-  // Floating decorative circle — slow float up/down
-  const floatAnim = useRef(new Animated.Value(0)).current;
-  // Shimmer glow circle — pulsing opacity
-  const glowAnim = useRef(new Animated.Value(0)).current;
-  // Arrow bounce — nudge right periodically
+  const spotlight = useNeonNavy(P);
+  // Ok ucu periyodik olarak ileri doğru dürtülür (tek kalan hareket).
   const arrowAnim = useRef(new Animated.Value(0)).current;
-  // Hover scale (web)
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    // Float: smooth up/down loop
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(floatAnim, { toValue: 1, duration: 3000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(floatAnim, { toValue: 0, duration: 3000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      ]),
-    ).start();
+    Animated.loop(Animated.sequence([
+      Animated.delay(2000),
+      Animated.timing(arrowAnim, { toValue: 1, duration: 400, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+      Animated.timing(arrowAnim, { toValue: 0, duration: 400, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+    ])).start();
+  }, [arrowAnim]);
 
-    // Glow: pulse opacity
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(glowAnim, { toValue: 1, duration: 2200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(glowAnim, { toValue: 0, duration: 2200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      ]),
-    ).start();
-
-    // Arrow: periodic nudge right
-    Animated.loop(
-      Animated.sequence([
-        Animated.delay(2000),
-        Animated.timing(arrowAnim, { toValue: 1, duration: 400, easing: Easing.out(Easing.ease), useNativeDriver: true }),
-        Animated.timing(arrowAnim, { toValue: 0, duration: 400, easing: Easing.in(Easing.ease), useNativeDriver: true }),
-      ]),
-    ).start();
-  }, [floatAnim, glowAnim, arrowAnim]);
-
-  const floatY = floatAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 8] });
-  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.10, 0.28] });
-  const glowScale = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.15] });
+  // RTL'de "ileri" hareketi sola doğrudur.
   const arrowX = arrowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, isRTL() ? -6 : 6] });
 
-  const handleHoverIn = () => {
-    Animated.spring(scaleAnim, { toValue: 1.02, friction: 8, tension: 200, useNativeDriver: true }).start();
-  };
-  const handleHoverOut = () => {
-    Animated.spring(scaleAnim, { toValue: 1, friction: 8, tension: 200, useNativeDriver: true }).start();
-  };
-
   return (
-    <Pressable onPress={onPress} onHoverIn={handleHoverIn} onHoverOut={handleHoverOut} style={{ flex: 1 }}>
+    <Pressable onPress={onPress}
+      onHoverIn={() => Animated.spring(scaleAnim, { toValue: 1.02, friction: 8, tension: 200, useNativeDriver: true }).start()}
+      onHoverOut={() => Animated.spring(scaleAnim, { toValue: 1, friction: 8, tension: 200, useNativeDriver: true }).start()}
+      style={{ flex: 1 }}>
       <Animated.View style={{
-        flex: 1,
-        borderRadius: DS.radius.xl,
-        padding: 22,
-        position: 'relative',
-        overflow: 'hidden',
-        // @ts-ignore web gradient
-        backgroundImage: `linear-gradient(135deg, ${DS.lab.primary} 0%, ${DS.lab.warning} 100%)`,
-        backgroundColor: DS.lab.primary,
+        flex: 1, borderRadius: DS.radius.xl, padding: 22, position: 'relative', overflow: 'hidden',
         minHeight: isDesktop ? undefined : 160,
+        ...spotlight.surface,
         transform: [{ scale: scaleAnim }],
       }}>
-        {/* Yüzen ışık lekeleri — web'de BULANIK (aurora hissi).
-            `filter` yalnız web'de var; native'de RN desteklemiyor, orada net
-            daire olarak kalır. Bulanıklık kenara taşar, kartın `overflow:
-            hidden`'ı kırpar — istenen davranış.
-            `willChange` şart: bulanık katman her karede yeniden
-            rasterleştirilirse animasyon pahalıya gelir; katman terfi edilince
-            tarayıcı yalnız transform/opacity uygular, blur bir kez hesaplanır. */}
-        <Animated.View
-          pointerEvents="none"
-          style={{
-            position: 'absolute', top: -20, end: -20,
-            width: 140, height: 140, borderRadius: 70,
-            // Bulanıklık ışığı yaydığı için opaklık 0.18 → 0.22; aynı değerde
-            // bırakılınca leke soluklaşıyordu.
-            backgroundColor: '#FFF3D0',
-            opacity: 0.55,
-            transform: [{ translateY: floatY }],
-            ...(Platform.OS === 'web' ? ({ filter: 'blur(18px)', mixBlendMode: 'screen', willChange: 'transform' } as any) : {}),
-          }}
-        />
-        <Animated.View
-          pointerEvents="none"
-          style={{
-            position: 'absolute', top: -40, end: -40,
-            width: 180, height: 180, borderRadius: 90,
-            backgroundColor: 'rgba(255,255,255,1)',
-            opacity: glowOpacity,
-            transform: [{ scale: glowScale }],
-            ...(Platform.OS === 'web' ? ({ filter: 'blur(30px)', mixBlendMode: 'screen', willChange: 'transform, opacity' } as any) : {}),
-          }}
-        />
-        {/* Karşı köşede ikinci, daha geniş leke — tek leke bulanıklaşınca kart
-            tek renkli bir zemine dönüyordu; bu, aurora'daki renk dalgalanmasının
-            yerini tutan derinliği geri veriyor. */}
-        <Animated.View
-          pointerEvents="none"
-          style={{
-            position: 'absolute', bottom: -60, start: -40,
-            width: 200, height: 200, borderRadius: 100,
-            backgroundColor: '#F4D078',
-            opacity: 0.42,
-            transform: [{ translateY: Animated.multiply(floatY, -1) }],
-            ...(Platform.OS === 'web' ? ({ filter: 'blur(40px)', mixBlendMode: 'screen', willChange: 'transform' } as any) : {}),
-          }}
-        />
-        {/* Content */}
+        {!spotlight.flat && <NeonPulse radius={DS.radius.xl} color={spotlight.glow} />}
         <View style={{ position: 'relative' }}>
           <Text style={{
-            fontSize: 11, fontWeight: '500', letterSpacing: 0.1 * 11,
-            textTransform: 'uppercase', color: INK, marginBottom: 14,
+            fontSize: 11, fontWeight: '500', letterSpacing: 1.1,
+            textTransform: 'uppercase', color: spotlight.inkSoft, marginBottom: 14,
           }}>
             Hızlı işlem
           </Text>
           <Text style={{
-            ...SERIF, fontSize: 32, letterSpacing: -0.02 * 32, lineHeight: 35,
-            color: INK, marginBottom: 16,
+            ...SERIF, fontSize: 32, letterSpacing: -0.64, lineHeight: 35,
+            color: spotlight.ink, marginBottom: 16,
           }}>
             Yeni sipariş{'\n'}oluştur
           </Text>
           <View
-            className="flex-row items-center self-start rounded-full"
-            style={{ paddingHorizontal: 18, paddingVertical: 10, backgroundColor: INK, gap: 8 }}
+            className="flex-row items-center self-end rounded-full"
+            style={{ paddingHorizontal: 18, paddingVertical: 10, backgroundColor: spotlight.pillBg, gap: 8 }}
           >
-            <Text style={{ fontSize: 13, fontWeight: '500', color: '#FFF' }}>Başla</Text>
+            <Text style={{ fontSize: 13, fontWeight: '500', color: spotlight.pillInk }}>Başla</Text>
             <Animated.View style={{ transform: [{ translateX: arrowX }] }}>
-              {isRTL() ? <ArrowLeft size={14} color="#FFF" strokeWidth={2} /> : <ArrowRight size={14} color="#FFF" strokeWidth={2} />}
+              {isRTL() ? <ArrowLeft size={14} color={spotlight.pillInk} strokeWidth={2} /> : <ArrowRight size={14} color={spotlight.pillInk} strokeWidth={2} />}
             </Animated.View>
           </View>
         </View>
@@ -761,6 +626,8 @@ function ProductionBarChart({ data }: { data: MonthBar[] }) {
                   position: 'relative' as any,
                 }}
               >
+                {/* Native: CSS gradyanı yok → SVG tarama */}
+                <HatchFill color={P} />
                 {d.count > 0 && (
                   <View
                     style={{
@@ -874,6 +741,8 @@ function WeeklyStrip({
                     position: 'relative' as any,
                   }}
                 >
+                  {/* Native: CSS gradyanı yok → SVG tarama */}
+                  <HatchFill color={P} />
                   {!empty && (
                     <View
                       style={{

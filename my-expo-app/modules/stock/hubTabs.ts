@@ -58,8 +58,9 @@ export const LIST_SUBTABS: SubTabDef[] = [
 
 /** Sipariş & Tahmin: üç yöntem, aynı soru — hangisi neye bakıyor yazılı */
 export const ORDER_SUBTABS: SubTabDef[] = [
-  { key: 'critical', label: 'Kritik seviye',   icon: ShoppingCart, hint: 'Minimum eşiğinin altına düşen kalemler' },
+  // Tükeniş tahmini İLK sekme (kullanıcı isteği) → sekmesiz açılışta o gelir.
   { key: 'forecast', label: 'Tükeniş tahmini', icon: TrendingUp,   hint: 'Tüketim hızına göre kaç gün kaldı' },
+  { key: 'critical', label: 'Kritik seviye',   icon: ShoppingCart, hint: 'Minimum eşiğinin altına düşen kalemler' },
   { key: 'fifo',     label: 'FIFO önerisi',    icon: Layers,       hint: 'Gerçek alış katmanları + tüketim hızı' },
 ];
 

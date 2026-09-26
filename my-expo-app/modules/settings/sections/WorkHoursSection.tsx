@@ -9,6 +9,8 @@ import { supabase } from '../../../core/api/supabase';
 import { useAuthStore } from '../../../core/store/authStore';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { toast } from '../../../core/ui/Toast';
 
 interface Win { id: string; start_time: string; end_time: string; }
@@ -142,13 +144,15 @@ export function WorkHoursSection({ accentColor = '#3B82F6' }: { accentColor?: st
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: T.ink }}>{label}</Text>
               {closed && <Text style={{ fontSize: 11, color: T.ink3, marginEnd: 8 }}>Kapalı</Text>}
-              <Pressable
-                onPress={() => addWindow(wd)}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: A + '14', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
-              >
-                <Plus size={13} color={A} strokeWidth={2.4} />
-                <Text style={{ fontSize: 11.5, fontWeight: '700', color: A }}>Pencere</Text>
-              </Pressable>
+              <GlassTooltip title={autoT('Pencere ekle')} text={autoT('Bu güne yeni bir çalışma aralığı ekle; aralıklar arası boşluk mola sayılır')}>
+                <Pressable
+                  onPress={() => addWindow(wd)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: A + '14', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                >
+                  <Plus size={13} color={A} strokeWidth={2.4} />
+                  <Text style={{ fontSize: 11.5, fontWeight: '700', color: A }}>Pencere</Text>
+                </Pressable>
+              </GlassTooltip>
             </View>
             {wins.map(w => (
               <View key={w.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -156,9 +160,11 @@ export function WorkHoursSection({ accentColor = '#3B82F6' }: { accentColor?: st
                 <Text style={{ fontSize: 13, color: T.ink3 }}>–</Text>
                 <TimeBox value={w.end_time} onSave={(v) => saveWindowTime(wd, w.id, 'end_time', v)} T={T} />
                 <View style={{ flex: 1 }} />
-                <Pressable onPress={() => removeWindow(wd, w.id)} hitSlop={8} style={{ width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: T.cardSoft }}>
-                  <X size={14} color={T.ink3} strokeWidth={2} />
-                </Pressable>
+                <GlassTooltip title={autoT('Pencereyi sil')} text={autoT('Bu çalışma aralığını kaldır')}>
+                  <Pressable onPress={() => removeWindow(wd, w.id)} hitSlop={8} style={{ width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: T.cardSoft }}>
+                    <X size={14} color={T.ink3} strokeWidth={2} />
+                  </Pressable>
+                </GlassTooltip>
               </View>
             ))}
           </View>

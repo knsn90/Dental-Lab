@@ -29,6 +29,8 @@ import {
 } from '../../../core/ui/icons';
 import { ResponsiveCanvas } from '../../../core/layout/ResponsiveCanvas';
 import { DS } from '../../../core/theme/dsTokens';
+import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { useStockUI } from '../stockTheme';
 import { isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
@@ -112,6 +114,7 @@ function Badge({ label, tone }: { label: string; tone: 'danger' | 'warning' | 'i
 }
 
 export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedded = false }: Props) {
+  const heroInk = useWhiteHeroInk(accentColor);
   const U = useStockUI();
   const router   = useRouter();
   const segments = useSegments();
@@ -208,7 +211,7 @@ export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedde
 
   if (loading) {
     return (
-      <ResponsiveCanvas size="lg" bgClassName="bg-transparent">
+      <ResponsiveCanvas size="lg" bgClassName="bg-transparent" padClassName={embedded ? 'pb-4' : undefined}>
         <View style={{ paddingVertical: 96, alignItems: 'center' }}>
           <ActivityIndicator color={accentColor} />
         </View>
@@ -217,7 +220,7 @@ export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedde
   }
 
   return (
-    <ResponsiveCanvas size="lg" bgClassName="bg-transparent">
+    <ResponsiveCanvas size="lg" bgClassName="bg-transparent" padClassName={embedded ? 'pb-4' : undefined}>
       {!embedded ? (
         <>
       {/* ── Geri + eyebrow ─────────────────────────────────────── */}
@@ -254,6 +257,70 @@ export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedde
       </View>
         </>
       ) : null}
+
+      {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ───────────────── */}
+      {/* ── Hero — "BEYAZ HERO": profil özeti BURAYA katıldı (kullanıcı isteği);
+          ayrı yapışkan özet kartı kaldırıldı. ── */}
+      <WhiteHero
+        kicker="Kurulum · Tüketim Profili"
+        accent={accentColor}
+        title={<><Text style={{ color: heroInk.accentInk }}>{stats.usable}</Text> çalışan kural</>}
+        description={`${stats.total} üretim malzemesi · ${stats.noRule} kuralsız · ${stats.noMapping} stok eşleşmesi yok`}
+        stats={[
+          { value: `%${stats.pct}`,      label: 'Hazır' },
+          { value: String(stats.noRule), label: 'Kuralsız' },
+        ]}
+        cta={profile ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={{
+              flexDirection: 'row', alignItems: 'center', gap: 6,
+              paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
+              backgroundColor: tint(readinessColor, 0.12),
+            }}>
+              <View style={{ width: 6, height: 6, borderRadius: 999, backgroundColor: readinessColor }} />
+              <Text style={{ fontSize: 11, fontWeight: '600', color: readinessColor }}>{readiness.label}</Text>
+            </View>
+            <GlassTooltip title={autoT('Yenile')} text={autoT('Profil ve kural listesini yeniden yükle')}>
+              <Pressable
+                onPress={load}
+                style={({ pressed }) => ({
+                  width: 34, height: 34, borderRadius: 999, alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder,
+                  opacity: pressed ? 0.6 : 1, ...webCursor,
+                })}
+              >
+                <RefreshCw size={14} color={heroInk.inkSoft} strokeWidth={1.8} />
+              </Pressable>
+            </GlassTooltip>
+          </View>
+        ) : undefined}
+        style={{ marginBottom: 14 }}
+      >
+        {profile ? (
+          <>
+            <Text numberOfLines={1} style={{ fontSize: 12.5, fontWeight: '600', color: heroInk.inkSoft, marginTop: 16 }}>
+              {`${profile.profile_name} · v${profile.version_no}`}
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 26, flexWrap: 'wrap', marginTop: 10 }}>
+              <MiniStat value={`${stats.withRule}/${stats.total}`} label="Kural tanımlı" color={heroInk.ink} />
+              <MiniStat value={stats.noRule}    label="Kural yok"          color={stats.noRule > 0 ? DS.lab.danger : heroInk.inkFaint} />
+              <MiniStat value={stats.noMapping} label="Ürün bağlanmamış"   color={stats.noMapping > 0 ? DS.lab.warning : heroInk.inkFaint} />
+              <MiniStat value={stats.assumed}   label="Varsayım"           color={stats.assumed > 0 ? DS.lab.info : heroInk.inkFaint} />
+            </View>
+            <View style={{ height: 3, borderRadius: 999, marginTop: 14, backgroundColor: heroInk.tileBorder, overflow: 'hidden' }}>
+              <View style={{ height: '100%', borderRadius: 999, width: `${stats.pct}%`, backgroundColor: stats.pct >= 80 ? DS.lab.success : accentColor } as any} />
+            </View>
+            {stats.pct < 80 ? (
+              <Text style={{ fontSize: 12, color: heroInk.inkSoft, marginTop: 10, lineHeight: 18 }}>
+                {autoT('Miktarsız akış için önerilen eşik %80. Eksik kalan {a} kombinasyonun {b} tanesinde kural yok, {c} tanesine hiç stok kalemi bağlanmamış.')
+                  .replace('{a}', String(stats.total - stats.usable))
+                  .replace('{b}', String(stats.noRule))
+                  .replace('{c}', String(stats.noMapping))}
+              </Text>
+            ) : null}
+          </>
+        ) : null}
+      </WhiteHero>
 
       {profile === null ? (
         /* ── Profil yok: tek eylem ────────────────────────────── */
@@ -294,75 +361,6 @@ export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedde
         </View>
       ) : (
         <>
-      {/* ── Özet — scroll'da yapışık kalır (yalnız web) ─────── */}
-          <View style={{
-            backgroundColor: U.surface, borderRadius: 18, borderWidth: 1,
-            borderColor: U.ink[200], paddingHorizontal: 18, paddingVertical: 14,
-            marginBottom: 16,
-            ...(Platform.OS === 'web'
-              ? ({ position: 'sticky', top: 8, zIndex: 5 } as any)
-              : {}),
-          }}>
-            <View style={{
-              flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12,
-            }}>
-              <Text numberOfLines={1} style={{ flex: 1, fontSize: 13, fontWeight: '600', color: U.ink[900] }}>
-                {profile.profile_name} · v{profile.version_no}
-              </Text>
-              <View style={{
-                flexDirection: 'row', alignItems: 'center', gap: 6,
-                paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
-                backgroundColor: tint(readinessColor, 0.12),
-              }}>
-                <View style={{ width: 6, height: 6, borderRadius: 999, backgroundColor: readinessColor }} />
-                <Text style={{ fontSize: 11, fontWeight: '500', color: readinessColor }}>
-                  {readiness.label}
-                </Text>
-              </View>
-              <Pressable
-                onPress={load}
-                style={({ pressed }) => ({
-                  width: 30, height: 30, borderRadius: 999, alignItems: 'center',
-                  justifyContent: 'center', backgroundColor: U.chipNeutral,
-                  opacity: pressed ? 0.6 : 1, ...webCursor,
-                })}
-              >
-                <RefreshCw size={13} color={U.ink[500]} strokeWidth={1.8} />
-              </Pressable>
-            </View>
-
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 26, flexWrap: 'wrap' }}>
-              <MiniStat value={`%${stats.pct}`} label="Tamamlandı"
-                        color={stats.pct >= 80 ? DS.lab.success : U.ink[900]} />
-              <MiniStat value={`${stats.withRule}/${stats.total}`} label="Kural tanımlı" color={U.ink[900]} />
-              <MiniStat value={stats.noRule} label="Kural yok"
-                        color={stats.noRule > 0 ? DS.lab.danger : U.ink[400]} />
-              <MiniStat value={stats.noMapping} label="Ürün bağlanmamış"
-                        color={stats.noMapping > 0 ? DS.lab.warning : U.ink[400]} />
-              <MiniStat value={stats.assumed} label="Varsayım"
-                        color={stats.assumed > 0 ? DS.lab.info : U.ink[400]} />
-            </View>
-
-            <View style={{
-              height: 3, borderRadius: 999, marginTop: 14,
-              backgroundColor: U.ink[100], overflow: 'hidden',
-            }}>
-              <View style={{
-                height: '100%', borderRadius: 999, width: `${stats.pct}%`,
-                backgroundColor: stats.pct >= 80 ? DS.lab.success : accentColor,
-              }} />
-            </View>
-
-            {stats.pct < 80 ? (
-              <Text style={{ fontSize: 12, color: U.ink[500], marginTop: 10, lineHeight: 18 }}>
-                {autoT('Miktarsız akış için önerilen eşik %80. Eksik kalan {a} kombinasyonun {b} tanesinde kural yok, {c} tanesine hiç stok kalemi bağlanmamış.')
-                  .replace('{a}', String(stats.total - stats.usable))
-                  .replace('{b}', String(stats.noRule))
-                  .replace('{c}', String(stats.noMapping))}
-              </Text>
-            ) : null}
-          </View>
-
           {/* ── Kural listesi ──────────────────────────────────── */}
           <View style={{
             backgroundColor: U.surface, borderRadius: 18, borderWidth: 1,

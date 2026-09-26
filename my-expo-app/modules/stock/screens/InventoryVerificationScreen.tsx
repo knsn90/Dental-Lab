@@ -24,11 +24,15 @@ import {
 import { useRouter, useSegments } from 'expo-router';
 import { safeBack } from '../../../core/util/safeBack';
 import {
-  ChevronLeft, ChevronRight, ClipboardList, Inbox, Lock, RefreshCw, Search, TrendingDown, TrendingUp, X,
+  ChevronLeft, ChevronRight, ClipboardList, Inbox, Lock, RefreshCw, Search, SlidersHorizontal, TrendingDown, TrendingUp, X,
 } from '../../../core/ui/icons';
 import { ResponsiveCanvas } from '../../../core/layout/ResponsiveCanvas';
 import { groupByCategory, CategoryHeaderRow } from '../categoryGroup';
 import { DS } from '../../../core/theme/dsTokens';
+import { onAccentInk } from '../../../core/theme/usePanelTheme';
+import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { useStockUI } from '../stockTheme';
 import { toast } from '../../../core/ui/Toast';
 import { isRTL } from '../../../core/i18n';
@@ -92,6 +96,7 @@ function MiniStat({ value, label, color }: { value: React.ReactNode; label: stri
 }
 
 export function InventoryVerificationScreen({ accentColor = DS.lab.primary, embedded = false }: Props) {
+  const heroInk = useWhiteHeroInk(accentColor);
   const U = useStockUI();
   const router   = useRouter();
   const segments = useSegments();
@@ -103,6 +108,7 @@ export function InventoryVerificationScreen({ accentColor = DS.lab.primary, embe
   const [lines, setLines]     = useState<VerificationLine[]>([]);
   const [q, setQ]             = useState('');
   const [filter, setFilter]   = useState<'all' | 'todo' | 'variance'>('all');
+  const [filterOpen, setFilterOpen] = useState(false);
   const [drafts, setDrafts]   = useState<Record<string, string>>({});
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [limit, setLimit]     = useState(PAGE);
@@ -214,7 +220,7 @@ export function InventoryVerificationScreen({ accentColor = DS.lab.primary, embe
 
   if (loading) {
     return (
-      <ResponsiveCanvas size="lg" bgClassName="bg-transparent">
+      <ResponsiveCanvas size="lg" bgClassName="bg-transparent" padClassName={embedded ? 'pb-4' : undefined}>
         <View style={{ paddingVertical: 96, alignItems: 'center' }}>
           <ActivityIndicator color={accentColor} />
         </View>
@@ -231,7 +237,7 @@ export function InventoryVerificationScreen({ accentColor = DS.lab.primary, embe
     : null;
 
   return (
-    <ResponsiveCanvas size="lg" bgClassName="bg-transparent">
+    <ResponsiveCanvas size="lg" bgClassName="bg-transparent" padClassName={embedded ? 'pb-4' : undefined}>
       {!embedded ? (
         <>
       {/* ── Geri + eyebrow ─────────────────────────────────────── */}
@@ -267,6 +273,119 @@ export function InventoryVerificationScreen({ accentColor = DS.lab.primary, embe
       </View>
         </>
       ) : null}
+
+      {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ───────────────── */}
+      {/* ── Hero — "BEYAZ HERO": dönem özeti ve aksiyonlar BURAYA katıldı
+          (kullanıcı isteği); ayrı yapışkan özet kartı kaldırıldı. ── */}
+      <WhiteHero
+        kicker="Kurulum · Stok Sayımı"
+        accent={accentColor}
+        title={<><Text style={{ color: heroInk.accentInk }}>{stats.counted}</Text> sayılan kalem</>}
+        description={`${stats.total} kalem · ${stats.variances} kalemde sapma var`}
+        stats={[
+          { value: `%${stats.pct}`,         label: 'Sayıldı' },
+          { value: String(stats.variances), label: 'Sapma' },
+        ]}
+        cta={active ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {statusChip ? (
+              <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: statusChip.bg }}>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: statusChip.fg }}>{statusChip.label}</Text>
+              </View>
+            ) : null}
+            <GlassTooltip title={autoT('Yenile')} text={autoT('Sayım listesini yeniden yükle')}>
+              <Pressable
+                onPress={load}
+                style={({ pressed }) => ({
+                  width: 34, height: 34, borderRadius: 999, alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder,
+                  opacity: pressed ? 0.6 : 1, ...webCursor,
+                })}
+              >
+                <RefreshCw size={14} color={heroInk.inkSoft} strokeWidth={1.8} />
+              </Pressable>
+            </GlassTooltip>
+          </View>
+        ) : undefined}
+        style={{ marginBottom: 14 }}
+      >
+        {active ? (
+          <>
+            <Text numberOfLines={1} style={{ fontSize: 12.5, fontWeight: '600', color: heroInk.inkSoft, marginTop: 16 }}>
+              {`${active.period_start} → ${active.period_end}`}
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 26, flexWrap: 'wrap', marginTop: 10 }}>
+              <MiniStat value={`${stats.counted}/${stats.total}`} label="Kalem" color={heroInk.ink} />
+              <MiniStat value={stats.variances} label="Sapma"
+                        color={stats.variances > 0 ? DS.lab.warning : heroInk.inkFaint} />
+              <MiniStat
+                value={`${stats.impact > 0 ? '+' : ''}${fmt(stats.impact)}`}
+                label="Parasal etki"
+                color={stats.impact < 0 ? DS.lab.danger : stats.impact > 0 ? DS.lab.success : heroInk.inkFaint}
+              />
+            </View>
+            <View style={{ height: 3, borderRadius: 999, marginTop: 14, backgroundColor: heroInk.tileBorder, overflow: 'hidden' }}>
+              <View style={{ height: '100%', borderRadius: 999, width: `${stats.pct}%`, backgroundColor: stats.pct === 100 ? DS.lab.success : accentColor } as any} />
+            </View>
+              {/* Aksiyon — duruma göre tek net adım */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 14, flexWrap: 'wrap' }}>
+                {isDraft ? (
+                  <>
+                    <Pressable
+                      onPress={approve}
+                      disabled={busy || stats.counted === 0}
+                      style={({ pressed }) => ({
+                        flexDirection: 'row', alignItems: 'center', gap: 8,
+                        paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999,
+                        backgroundColor: U.ink[900],
+                        opacity: busy || stats.counted === 0 ? 0.35 : pressed ? 0.85 : 1,
+                        ...(Platform.OS === 'web'
+                          ? ({ cursor: stats.counted === 0 ? 'not-allowed' : 'pointer' } as any) : {}),
+                      })}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: U.onDarkPill }}>
+                        Onayla ve düzeltmeleri yaz
+                      </Text>
+                    </Pressable>
+                    <Text style={{ fontSize: 12, color: U.ink[500] }}>
+                      {stats.counted === 0
+                        ? 'Önce en az bir kalem sayın'
+                        : `${stats.variances} sapma için düzeltme hareketi yazılacak`}
+                    </Text>
+                  </>
+                ) : active.status === 'approved' ? (
+                  <>
+                    <Pressable
+                      onPress={close}
+                      disabled={busy}
+                      style={({ pressed }) => ({
+                        flexDirection: 'row', alignItems: 'center', gap: 8,
+                        paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999,
+                        backgroundColor: U.ink[900], opacity: busy ? 0.5 : pressed ? 0.85 : 1,
+                        ...webCursor,
+                      })}
+                    >
+                      <Lock size={13} color={U.onDarkPill} strokeWidth={1.9} />
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: U.onDarkPill }}>
+                        Dönemi kilitle
+                      </Text>
+                    </Pressable>
+                    <Text style={{ fontSize: 12, color: U.ink[500] }}>
+                      Kilitledikten sonra bu döneme ait hareketler değiştirilemez
+                    </Text>
+                  </>
+                ) : (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Lock size={13} color={U.ink[500]} strokeWidth={1.9} />
+                    <Text style={{ fontSize: 12, color: U.ink[500] }}>
+                      Bu dönem kilitli — hareketleri değiştirilemez
+                    </Text>
+                  </View>
+                )}
+              </View>
+          </>
+        ) : null}
+      </WhiteHero>
 
       {!active ? (
         /* ── Doğrulama yok: tek eylem ─────────────────────────── */
@@ -307,127 +426,12 @@ export function InventoryVerificationScreen({ accentColor = DS.lab.primary, embe
         </View>
       ) : (
         <>
-      {/* ── Özet — scroll'da yapışık (yalnız web) ──────────── */}
-          <View style={{
-            backgroundColor: U.surface, borderRadius: 18, borderWidth: 1,
-            borderColor: U.ink[200], paddingHorizontal: 18, paddingVertical: 14,
-            marginBottom: 16,
-            ...(Platform.OS === 'web' ? ({ position: 'sticky', top: 8, zIndex: 5 } as any) : {}),
-          }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-              <Text numberOfLines={1} style={{ flex: 1, fontSize: 13, fontWeight: '600', color: U.ink[900] }}>
-                {active.period_start} → {active.period_end}
-              </Text>
-              {statusChip ? (
-                <View style={{
-                  paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
-                  backgroundColor: statusChip.bg,
-                }}>
-                  <Text style={{ fontSize: 11, fontWeight: '500', color: statusChip.fg }}>
-                    {statusChip.label}
-                  </Text>
-                </View>
-              ) : null}
-              <Pressable
-                onPress={load}
-                style={({ pressed }) => ({
-                  width: 30, height: 30, borderRadius: 999, alignItems: 'center',
-                  justifyContent: 'center', backgroundColor: U.chipNeutral,
-                  opacity: pressed ? 0.6 : 1, ...webCursor,
-                })}
-              >
-                <RefreshCw size={13} color={U.ink[500]} strokeWidth={1.8} />
-              </Pressable>
-            </View>
-
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 26, flexWrap: 'wrap' }}>
-              <MiniStat value={`%${stats.pct}`} label="Sayıldı"
-                        color={stats.pct === 100 ? DS.lab.success : U.ink[900]} />
-              <MiniStat value={`${stats.counted}/${stats.total}`} label="Kalem" color={U.ink[900]} />
-              <MiniStat value={stats.variances} label="Sapma"
-                        color={stats.variances > 0 ? DS.lab.warning : U.ink[400]} />
-              <MiniStat
-                value={`${stats.impact > 0 ? '+' : ''}${fmt(stats.impact)}`}
-                label="Parasal etki"
-                color={stats.impact < 0 ? DS.lab.danger : stats.impact > 0 ? DS.lab.success : U.ink[400]}
-              />
-            </View>
-
+          {/* ── Arama + Filtrele (uygulama geneli dil) ────────── */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
             <View style={{
-              height: 3, borderRadius: 999, marginTop: 14,
-              backgroundColor: U.ink[100], overflow: 'hidden',
-            }}>
-              <View style={{
-                height: '100%', borderRadius: 999, width: `${stats.pct}%`,
-                backgroundColor: stats.pct === 100 ? DS.lab.success : accentColor,
-              }} />
-            </View>
-
-            {/* Aksiyon — duruma göre tek net adım */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 14, flexWrap: 'wrap' }}>
-              {isDraft ? (
-                <>
-                  <Pressable
-                    onPress={approve}
-                    disabled={busy || stats.counted === 0}
-                    style={({ pressed }) => ({
-                      flexDirection: 'row', alignItems: 'center', gap: 8,
-                      paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999,
-                      backgroundColor: U.ink[900],
-                      opacity: busy || stats.counted === 0 ? 0.35 : pressed ? 0.85 : 1,
-                      ...(Platform.OS === 'web'
-                        ? ({ cursor: stats.counted === 0 ? 'not-allowed' : 'pointer' } as any) : {}),
-                    })}
-                  >
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: U.onDarkPill }}>
-                      Onayla ve düzeltmeleri yaz
-                    </Text>
-                  </Pressable>
-                  <Text style={{ fontSize: 12, color: U.ink[500] }}>
-                    {stats.counted === 0
-                      ? 'Önce en az bir kalem sayın'
-                      : `${stats.variances} sapma için düzeltme hareketi yazılacak`}
-                  </Text>
-                </>
-              ) : active.status === 'approved' ? (
-                <>
-                  <Pressable
-                    onPress={close}
-                    disabled={busy}
-                    style={({ pressed }) => ({
-                      flexDirection: 'row', alignItems: 'center', gap: 8,
-                      paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999,
-                      backgroundColor: U.ink[900], opacity: busy ? 0.5 : pressed ? 0.85 : 1,
-                      ...webCursor,
-                    })}
-                  >
-                    <Lock size={13} color={U.onDarkPill} strokeWidth={1.9} />
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: U.onDarkPill }}>
-                      Dönemi kilitle
-                    </Text>
-                  </Pressable>
-                  <Text style={{ fontSize: 12, color: U.ink[500] }}>
-                    Kilitledikten sonra bu döneme ait hareketler değiştirilemez
-                  </Text>
-                </>
-              ) : (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Lock size={13} color={U.ink[500]} strokeWidth={1.9} />
-                  <Text style={{ fontSize: 12, color: U.ink[500] }}>
-                    Bu dönem kilitli — hareketleri değiştirilemez
-                  </Text>
-                </View>
-              )}
-            </View>
-          </View>
-
-          {/* ── Arama + filtreler ──────────────────────────────── */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-            <View style={{
-              flexDirection: 'row', alignItems: 'center', gap: 8,
-              paddingHorizontal: 14, height: 36, borderRadius: 999,
-              backgroundColor: U.surface, borderWidth: 1, borderColor: U.ink[200],
-              flexGrow: 1, flexBasis: 240, minWidth: 0,
+              flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
+              height: 38, paddingHorizontal: 12, borderRadius: 9999,
+              backgroundColor: U.surface, borderWidth: 1, borderColor: U.hairline,
             }}>
               <Search size={14} color={U.ink[400]} strokeWidth={1.8} />
               <TextInput
@@ -435,22 +439,45 @@ export function InventoryVerificationScreen({ accentColor = DS.lab.primary, embe
                 onChangeText={t => { setQ(t); setLimit(PAGE); }}
                 placeholder="Ürün adı, kategori veya barkod ara"
                 placeholderTextColor={U.ink[400]}
-                style={{
-                  flex: 1, fontSize: 13, color: U.ink[900],
-                  ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
-                }}
+                style={{ flex: 1, fontSize: 13, color: U.ink[900], ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}) }}
               />
               {q.length > 0 ? (
-                <Pressable onPress={() => setQ('')} style={webCursor}>
-                  <X size={13} color={U.ink[400]} strokeWidth={2} />
-                </Pressable>
+                <GlassTooltip title={autoT('Temizle')} text={autoT('Aramayı temizle')}>
+                  <Pressable onPress={() => setQ('')} hitSlop={8} style={webCursor}>
+                    <X size={13} color={U.ink[400]} strokeWidth={2} />
+                  </Pressable>
+                </GlassTooltip>
               ) : null}
             </View>
 
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <GlassTooltip title={autoT('Filtrele')} text={autoT('Sayılmamış ya da sapmalı kalemleri göster')}>
+              <Pressable
+                onPress={() => setFilterOpen(v => !v)}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  height: 38, paddingHorizontal: 14, borderRadius: 9999,
+                  backgroundColor: filter !== 'all' ? tint(accentColor, 0.10) : U.surface,
+                  borderWidth: 1, borderColor: filter !== 'all' || filterOpen ? accentColor : U.hairline,
+                  ...webCursor,
+                }}
+              >
+                <SlidersHorizontal size={14} color={filter !== 'all' ? accentColor : U.ink[500]} strokeWidth={1.8} />
+                <Text style={{ fontSize: 12.5, fontWeight: '600', color: filter !== 'all' ? accentColor : U.ink[500] }}>
+                  {autoT('Filtrele')}{filter !== 'all' ? ' (1)' : ''}
+                </Text>
+              </Pressable>
+            </GlassTooltip>
+          </View>
+
+          {filterOpen && (
+            <View style={{
+              marginBottom: 16, padding: 12, borderRadius: 14,
+              backgroundColor: U.surface, borderWidth: 1, borderColor: U.hairline,
+              flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+            }}>
               {([
                 { k: 'all',      l: 'Tümü',      n: stats.total },
-                { k: 'todo',     l: 'Sayılmadı', n: stats.total - stats.counted },
+                { k: 'todo',     l: 'Sayılmamış', n: stats.total - stats.counted },
                 { k: 'variance', l: 'Sapmalı',   n: stats.variances },
               ] as const).map(f => {
                 const on = filter === f.k;
@@ -465,17 +492,13 @@ export function InventoryVerificationScreen({ accentColor = DS.lab.primary, embe
                       opacity: pressed ? 0.7 : 1, ...webCursor,
                     })}
                   >
-                    <Text style={{ fontSize: 12, fontWeight: '500', color: on ? U.onDarkPill : U.ink[800] }}>
-                      {f.l}
-                    </Text>
-                    <Text style={{ fontSize: 11, color: on ? 'rgba(255,255,255,0.6)' : U.ink[400] }}>
-                      {f.n}
-                    </Text>
+                    <Text style={{ fontSize: 12, fontWeight: '500', color: on ? U.onDarkPill : U.ink[800] }}>{f.l}</Text>
+                    <Text style={{ fontSize: 11, color: on ? 'rgba(255,255,255,0.6)' : U.ink[400] }}>{f.n}</Text>
                   </Pressable>
                 );
               })}
             </View>
-          </View>
+          )}
 
           {/* ── Sayım listesi ──────────────────────────────────── */}
           {visible.length === 0 ? (
@@ -502,23 +525,23 @@ export function InventoryVerificationScreen({ accentColor = DS.lab.primary, embe
               <View style={{
                 flexDirection: 'row', alignItems: 'center',
                 paddingHorizontal: 18, paddingVertical: 10,
-                backgroundColor: U.ink[50], borderBottomWidth: 1, borderBottomColor: U.ink[100],
+                backgroundColor: accentColor, borderBottomWidth: 0,
               }}>
                 <Text style={{
                   flex: 1, fontSize: 10, fontWeight: '500', letterSpacing: 1.2,
-                  textTransform: 'uppercase', color: U.ink[400],
+                  textTransform: 'uppercase', color: onAccentInk(accentColor),
                 }}>
                   Ürün
                 </Text>
                 <Text style={{
                   width: 108, textAlign: 'end' as any, fontSize: 10, fontWeight: '500',
-                  letterSpacing: 1.2, textTransform: 'uppercase', color: U.ink[400],
+                  letterSpacing: 1.2, textTransform: 'uppercase', color: onAccentInk(accentColor),
                 }}>
                   Sayım
                 </Text>
                 <Text style={{
                   width: 120, textAlign: 'end' as any, fontSize: 10, fontWeight: '500',
-                  letterSpacing: 1.2, textTransform: 'uppercase', color: U.ink[400],
+                  letterSpacing: 1.2, textTransform: 'uppercase', color: onAccentInk(accentColor),
                 }}>
                   Fark
                 </Text>

@@ -51,6 +51,8 @@ export interface PublicPaymentIntent {
   clinic_name:      string | null;
   doctor_name:      string | null;
   lab_name:         string;
+  /** Aktif POS (demo, iyzico…). Test ipuçları yalnız demo'da gösterilir. */
+  provider?:        string | null;
 }
 
 export interface InstallmentOption {

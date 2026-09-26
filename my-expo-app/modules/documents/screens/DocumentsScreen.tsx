@@ -415,9 +415,11 @@ function EmployeeList({
   const U = useInkUI();
   const filtered = employees.filter(e => e.full_name?.toLowerCase().includes(search.toLowerCase()));
 
+  // Hub başlığından 16px: hub 8 verir + burada 8.
+  const isEmbedded = useContext(HubContext);
   return (
     <View style={{ flex: 1 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, margin: 10, backgroundColor: U.ink[100], borderRadius: 12, paddingHorizontal: 10, height: 36 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, margin: 10, marginTop: isEmbedded ? 8 : 10, backgroundColor: U.surface, borderRadius: 9999, paddingHorizontal: 10, height: 36 }}>
         <Search size={14} color={U.ink[400]} strokeWidth={1.6} />
         <TextInput style={{ flex: 1, fontSize: 13, color: U.ink[900], padding: 0 }} placeholder="Personel ara..." value={search} onChangeText={setSearch} placeholderTextColor={U.ink[400]} />
       </View>
@@ -514,7 +516,7 @@ function DocumentsDetail({
   return (
     <View style={{ flex: 1 }}>
       {/* Header */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: isEmbedded ? 0 : 24, paddingTop: isEmbedded ? 0 : 70, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: isEmbedded ? 0 : 24, paddingTop: isEmbedded ? 8 : 70, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
         <View>
           <Text style={{ ...DISPLAY, fontSize: 18, fontWeight: '700', color: U.ink[900] }}>{employee.full_name}</Text>
           <Text style={{ fontSize: 12, color: U.ink[500], marginTop: 2 }}>{employee.role ?? 'Personel'}  ·  {docs.length} belge</Text>

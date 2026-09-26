@@ -4,6 +4,7 @@
 //           → geciken vakalar / positive empty state
 
 import React from 'react';
+import { HatchFill } from '../../../core/ui/HatchFill';
 import { firstName as displayFirstName } from '../../../core/util/personName';
 import { useTranslation } from 'react-i18next';
 import { localeTag, isRTL } from '../../../core/i18n';
@@ -11,7 +12,7 @@ import { RadialGlow } from '../../../core/ui/gradients';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { View, Text, Pressable, ScrollView, Platform, RefreshControl, Image } from 'react-native';
 import { useNavScrollProps } from '../../../core/ui/mobile/navScroll';
-import Svg, { Defs, Pattern, Rect, Line, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
+import Svg, { Defs, Rect, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { HeroGlowOverlay } from '../../../core/ui/mobile/HeroGlowOverlay';
 import { deepenForDark, lightenForDark } from '../../../core/ui/HeroGlow';
 import { useRouter } from 'expo-router';
@@ -387,20 +388,8 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
                           position: 'relative' as any,
                         }}
                       >
-                        {/* Native: SVG diagonal stripes */}
-                        {Platform.OS !== 'web' && (
-                          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
-                            <Svg width="100%" height="100%" preserveAspectRatio="none">
-                              <Defs>
-                                <Pattern id={`stripe-${i}`} patternUnits="userSpaceOnUse" width={12} height={12} patternTransform="rotate(135)">
-                                  <Rect x="0" y="0" width="12" height="12" fill="transparent" />
-                                  <Line x1="0" y1="0" x2="0" y2="12" stroke={LAB.primary} strokeWidth={5} strokeOpacity={0.28} />
-                                </Pattern>
-                              </Defs>
-                              <Rect x="0" y="0" width="100%" height="100%" fill={`url(#stripe-${i})`} />
-                            </Svg>
-                          </View>
-                        )}
+                        {/* Native: CSS gradyanı yok → SVG tarama */}
+                        <HatchFill color={LAB.primary} />
                         {!empty && (
                           <View
                             style={{

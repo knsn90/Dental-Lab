@@ -9,6 +9,7 @@
 //   6) Geciken vakalar list OR positive empty state
 
 import React from 'react';
+import { HatchFill } from '../../../core/ui/HatchFill';
 import { firstName as displayFirstName } from '../../../core/util/personName';
 import { fmtWeekdayDayMonth, isRTL } from '../../../core/i18n';
 import { useTranslation } from 'react-i18next';
@@ -20,7 +21,8 @@ import {
 } from '../../../core/ui/icons';
 import { useMobileTokens, MOBILE_PANEL_THEMES } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
-import { HERO_NAVY } from '../../../core/ui/HeroGlow';
+import { HERO_NAVY, useNeonNavy, NeonPulse } from '../../../core/ui/HeroGlow';
+import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { Ring } from '../../../core/ui/mobile/Ring';
 import { AnimatedNumber } from '../../../core/ui/mobile/AnimatedNumber';
 import { NewOrderCTACard } from '../../../core/ui/mobile/NewOrderCTACard';
@@ -28,7 +30,7 @@ import { useAuthStore } from '../../../core/store/authStore';
 
 import { UnreadMessagesCard } from '../../../core/ui/mobile/UnreadMessagesCard';
 import { RecentOrdersMobile, type RecentOrderItem } from '../../dashboard/components/RecentOrdersMobile';
-import { GradientFill, RadialGlow } from '../../../core/ui/gradients';
+import { RadialGlow } from '../../../core/ui/gradients';
 
 const EXEC = MOBILE_PANEL_THEMES.exec;
 
@@ -111,6 +113,11 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const insets = useSafeAreaInsets();
   const neon = '#38BDF8';
+  // "neon navy" — Hızlı İşlem kartıyla AYNI imza yüzeyi (tek kaynak: useNeonNavy).
+  // Açık temada DÜZ panel accent'i → her panel kendi rengiyle konuşur; koyu
+  // temada lacivert yüzey + nabız atan neon kenar.
+  const panel = usePanelTheme();
+  const nn = useNeonNavy(panel.primary);
 
   const firstName = displayFirstName(profile?.full_name);
   const greeting  = props.greeting ?? (firstName ? t('dashboard.greetingName', { name: firstName }) : t('dashboard.greeting'));
@@ -184,59 +191,44 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
       )}
 
       {/* ═══ Canlı üretim ═══
-           Açık temada panelin kobalt→amber gradyanı (F2 hero) korunur; koyu
-           temada Hızlı İşlem kartıyla (app/(admin)/index.tsx AnimatedCTACard)
-           AYNI dil: siyah→lacivert (HERO_NAVY) + neon mavi kenar/glow.
-           Gradyan + ışımalar web ve native'de AYNI (SVG ile) — bkz core/ui/gradients */}
+           Hızlı İşlem kartıyla AYNI dil (useNeonNavy): açık temada DÜZ panel
+           accent'i — gradyan yok, her panel kendi rengi; koyu temada lacivert
+           yüzey + neon nabız. Metin/halka mürekkebi accent kontrastından gelir
+           (safran gibi AÇIK accent'lerde otomatik koyu ink). */}
       <View style={{
         marginHorizontal: 16, marginBottom: 16,
-        borderRadius: 24, padding: 18,
-        backgroundColor: isDark ? HERO_NAVY.from : EXEC.primary, overflow: 'hidden',
-        ...(isDark ? { borderWidth: 1, borderColor: hexA(neon, 0.26) } : {}),
+        borderRadius: 24, padding: 18, overflow: 'hidden',
+        ...nn.surface,
       }}>
-        <GradientFill from={isDark ? '#0A0A0A' : EXEC.primary} to={isDark ? HERO_NAVY.to : '#E89B2A'} angle={isDark ? 160 : 135} />
-        {/* Yumuşak, büyük ışık daireleri — kenara doğru tam şeffafa çözülür (keskin görünmez) */}
-        <View pointerEvents="none" style={{ position: 'absolute', top: -90, end: -70, width: 300, height: 300 }}>
-          <RadialGlow color={isDark ? neon : '#FFFFFF'} opacity={isDark ? 0.30 : 0.20} stopAt={68} />
-        </View>
-        <View pointerEvents="none" style={{ position: 'absolute', bottom: -100, start: -60, width: 260, height: 260 }}>
-          <RadialGlow color={isDark ? HERO_NAVY.light : '#FFFFFF'} opacity={isDark ? 0.22 : 0.12} stopAt={70} />
-        </View>
-        {isDark && (
-          <View pointerEvents="none" style={{
-            position: 'absolute', top: 0, start: 0, end: 0, bottom: 0,
-            borderRadius: 24, borderWidth: 1, borderColor: neon, opacity: 0.45,
-            ...(Platform.OS === 'web' ? { boxShadow: `0 0 18px ${hexA(neon, 0.35)}, inset 0 0 22px ${hexA(neon, 0.10)}` } as any : {}),
-          }} />
-        )}
+        {!nn.flat && <NeonPulse radius={24} color={nn.glow} />}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <View style={{
               width: 7, height: 7, borderRadius: 4,
-              backgroundColor: '#FFFFFF',
-              ...(Platform.OS === 'web' ? { boxShadow: `0 0 0 4px rgba(255,255,255,0.30)` } as any : {}),
+              backgroundColor: nn.ink,
+              ...(Platform.OS === 'web' ? { boxShadow: `0 0 0 4px ${hexA(nn.ink, 0.30)}` } as any : {}),
             }} />
-            <Text style={{ fontSize: 10.5, fontWeight: '600', color: T.onDark2, letterSpacing: 1.2, textTransform: 'uppercase' }}>
+            <Text style={{ fontSize: 10.5, fontWeight: '600', color: nn.inkSoft, letterSpacing: 1.2, textTransform: 'uppercase' }}>
               {t('admin.dashboard.liveProduction')}
             </Text>
           </View>
-          <Text style={{ fontSize: 10, color: T.onDark3, fontFamily: T.mono }}>
+          <Text style={{ fontSize: 10, color: nn.inkFaint, fontFamily: T.mono }}>
             {live.active}/{live.total}
           </Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 14, marginTop: 14 }}>
-          <Ring value={live.pct} size={108} stroke={9} color="#FFFFFF" track="rgba(255,255,255,0.22)" animatedEndDot>
+          <Ring value={live.pct} size={108} stroke={9} color={nn.ink} track={hexA(nn.ink, 0.22)} animatedEndDot sweep>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 2 }}>
               <AnimatedNumber
                 value={live.pct}
                 duration={900}
                 style={{
-                  fontSize: 32, fontWeight: '400', color: T.onDark, letterSpacing: -0.8, lineHeight: 34,
+                  fontSize: 32, fontWeight: '400', color: nn.ink, letterSpacing: -0.8, lineHeight: 34,
                   ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
                 }}
               />
               <Text style={{
-                fontSize: 14, color: '#FFFFFF', fontWeight: '400',
+                fontSize: 14, color: nn.ink, fontWeight: '400',
                 ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
               }}>%</Text>
             </View>
@@ -253,8 +245,8 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
                   <View style={{
                     width: 44, height: 44, borderRadius: 22,
                     borderWidth: 1.5,
-                    borderColor: s.n > 0 ? '#FFFFFF' : 'rgba(255,255,255,0.18)',
-                    backgroundColor: s.n > 0 ? 'rgba(255,255,255,0.14)' : 'transparent',
+                    borderColor: s.n > 0 ? nn.ink : hexA(nn.ink, 0.18),
+                    backgroundColor: s.n > 0 ? hexA(nn.ink, 0.14) : 'transparent',
                     alignItems: 'center', justifyContent: 'center',
                   }}>
                     <AnimatedNumber
@@ -262,12 +254,12 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
                       duration={700}
                       delay={i * 80}
                       style={{
-                        fontSize: 17, fontWeight: '500', color: s.n > 0 ? T.onDark : T.onDark3,
+                        fontSize: 17, fontWeight: '500', color: s.n > 0 ? nn.ink : nn.inkFaint,
                         ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
                       }}
                     />
                   </View>
-                  <Text style={{ fontSize: 9, color: T.onDark3, letterSpacing: 0.6, textTransform: 'uppercase' }}>
+                  <Text style={{ fontSize: 9, color: nn.inkFaint, letterSpacing: 0.6, textTransform: 'uppercase' }}>
                     {s.l}
                   </Text>
                 </View>
@@ -367,6 +359,8 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
                         ...(Platform.OS === 'web' ? { backgroundImage: STRIPE_BG } as any : {}),
                         overflow: 'hidden', position: 'relative' as any,
                       }}>
+                        {/* Native: CSS gradyanı yok → SVG tarama */}
+                        <HatchFill color={EXEC.primary} />
                         {!empty && (
                           <View style={{
                             position: 'absolute', left: 0, right: 0, bottom: 0,
@@ -467,7 +461,7 @@ function Kpi({ label, numericValue, delta, deltaColor, sub, dark, accent, icon: 
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const rtl = isRTL();
-  const acc = accent ?? '#4771AB';
+  const acc = accent ?? '#004B87';
   // 3D görsel varken accent DOLGU kullanılmaz: mavi illüstrasyon kobalt gradyanın
   // üstünde eziliyor. Kart nötr yüzeyde kalır, görsel öne çıkar (referans tasarım).
   const fill = !!dark && !art;

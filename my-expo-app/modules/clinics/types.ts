@@ -7,6 +7,8 @@ export interface Clinic {
   address: string | null;
   phone: string | null;
   email: string | null;
+  /** Kurumun ortak WhatsApp hattı (migration 20260922120000). */
+  whatsapp_phone?: string | null;
   contact_person: string | null;
   notes: string | null;
   is_active: boolean;

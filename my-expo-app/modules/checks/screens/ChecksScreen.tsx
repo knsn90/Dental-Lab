@@ -23,9 +23,9 @@ import {
   type Check, type CheckStatus, type CreateCheckParams,
 } from '../api';
 import { useClinics } from '../../clinics/hooks/useClinics';
-import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
+import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
 import { useInkUI } from '../../../core/theme/inkScale';
-import { HeroGlow, useHeroSurface } from '../../../core/ui/HeroGlow';
 import { confirmAsync } from '../../../core/util/confirm';
 import { DatePicker } from '../../../core/ui/DatePicker';
 import { groupByCurrency, type CurrencyTotal } from '../../../core/money/aggregations';
@@ -73,14 +73,17 @@ function fmtDate(iso: string | null | undefined): string {
 }
 
 // Hero quick-stat — per-currency, beyaz metin (renkli hero üstünde okunaklı).
+/** Hero tile'ı içindeki para satırları. Renk beyaz hero'dan gelir — sabit
+    beyaz, açık temadaki AÇIK yüzeyde kaybolurdu. */
 function CcyLinesWhite({ slices }: { slices: CurrencyTotal[] }) {
+  const heroInk = useWhiteHeroInk();
   if (!slices || slices.length === 0) {
-    return <Text style={{ ...DISPLAY, fontSize: 15, letterSpacing: -0.3, lineHeight: 19, color: '#FFFFFF', marginTop: 3 }}>—</Text>;
+    return <Text style={{ ...DISPLAY, fontSize: 15, letterSpacing: -0.3, lineHeight: 19, color: heroInk.ink, marginTop: 3 }}>—</Text>;
   }
   return (
     <View style={{ marginTop: 3, gap: 1 }}>
       {slices.map(s => (
-        <Text key={s.currency} numberOfLines={1} style={{ ...DISPLAY, fontSize: 15, letterSpacing: -0.3, lineHeight: 19, color: '#FFFFFF' }}>
+        <Text key={s.currency} numberOfLines={1} style={{ ...DISPLAY, fontSize: 15, letterSpacing: -0.3, lineHeight: 19, color: heroInk.ink }}>
           {formatMoney(s.total, s.currency, { fractionDigits: 0 })}
         </Text>
       ))}
@@ -103,7 +106,10 @@ export function ChecksScreen() {
   const theme = usePanelTheme();
   // Koyu tema: nötr yüzeyler + hero lacivert gradyanı (açık tema birebir korunur)
   const U = useInkUI();
-  const heroBg = useHeroSurface(theme.primary);
+  const heroInk = useWhiteHeroInk(theme.primary);
+  // Tablo kartı başlığı düz panel accent'i (uygulama genelinde aynı dil).
+  const tblAccent = theme.primary;
+  const tblInk = onAccentInk(tblAccent);
   const statusChip = useStatusChip();
   const isEmbedded = useContext(HubContext);
   const { width } = useWindowDimensions();
@@ -134,6 +140,11 @@ export function ChecksScreen() {
     };
   }, [checks, today]);
 
+  // Beyaz hero başlığı: çoklu-döviz TOPLANMAZ → en büyük dilim başlıkta,
+  // kalanlar altında inline chip olarak durur.
+  const lead = stats.pendingByCcy[0] ?? null;
+  const rest = stats.pendingByCcy.slice(1);
+
   const handleStatusChange = async (check: Check, newStatus: CheckStatus) => {
     // Alert.alert web'de no-op → cross-platform confirmAsync
     const ok = await confirmAsync('Durum Güncelle', `"${CHECK_STATUS_LABELS[newStatus]}" ${autoT('olarak işaretlensin mi?')}`, { confirmText: 'Evet' });
@@ -158,79 +169,81 @@ export function ChecksScreen() {
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={U.ink[300]} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Hero — paylaşılan kanonik hero (Personel ekranıyla aynı dil) ──
-            Koyu temada zemin `useHeroSurface` ile lacivert gradyana iner
-            (#001F3F → #002A5C → #004B87); açık temada panel accent'i korunur.
-            Dekoratif daireler `HeroGlow` — koyu temada blur ile yayılır. */}
-        <View style={{
-          borderRadius: 20, overflow: 'hidden',
-          ...heroBg,
-          paddingHorizontal: isDesktop ? 22 : 18,
-          paddingVertical: isDesktop ? 18 : 16,
-          position: 'relative',
-        }}>
-          <HeroGlow size={130} opacity={0.18} delay={0} style={{ top: -46, end: -34 }} />
-          <HeroGlow size={110} opacity={0.10} delay={1400} style={{ bottom: -52, start: -26 }} />
-
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
-            <View style={{ flexShrink: 1, minWidth: 210 }}>
-              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)', marginBottom: 12 }}>
-                Bekleyen Çek / Senet
-              </Text>
-              {/* Katı per-currency: her para birimi ayrı kart, asla toplanmaz */}
-              <MoneyMultiX slices={stats.pendingByCcy} variant="cards" size="lg" accentColor={theme.primary} emptyText="—" />
-              <Text style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.88)', marginTop: 8 }}>
-                {stats.pendingCount} adet beklemede
-              </Text>
-            </View>
-
-            {/* Birincil kapsül — koyu temada kart yüzeyi DEĞİL, bir kademe koyu
-                `plainBtn` zemini (BEYAZ BUTON KURALI). */}
+        {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ─────────────────
+            Prim Motoru hiyerarşisi: kicker → 44px tek büyük rakam → bağlam
+            cümlesi → sağda 40px stat'lar → pill şeridi. Rakam TOPLANMAZ;
+            başlık en büyük para birimi dilimini gösterir, kalanlar altta. */}
+        <WhiteHero
+          kicker="Çek / Senet"
+          accent={theme.primary}
+          title={
+            lead ? (
+              <>Bekleyen <Text style={{ color: heroInk.accentInk }}>{formatMoney(lead.total, lead.currency, { fractionDigits: 0 })}</Text></>
+            ) : '—'
+          }
+          description={
+            `${stats.pendingCount} adet beklemede` +
+            (stats.overdueCount ? ` · ${stats.overdueCount} gecikmiş` : '') +
+            (stats.soonCount ? ` · ${stats.soonCount} tanesi 7 gün içinde vadeli` : '')
+          }
+          stats={[
+            { value: String(stats.pendingCount), label: 'Bekleyen' },
+            { value: String(stats.overdueCount), label: 'Gecikmiş' },
+            { value: String(stats.soonCount),    label: '7 Gün' },
+          ]}
+          actions={
             <Pressable
               onPress={() => setAddOpen(true)}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 6,
                 paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999,
-                backgroundColor: U.plainBtn.bg, cursor: 'pointer' as any,
+                backgroundColor: heroInk.isDark ? U.plainBtn.bg : theme.primary,
+                cursor: 'pointer' as any,
               }}
             >
-              <Plus size={13} color={U.ink[900]} strokeWidth={2.4} />
-              <Text style={{ fontSize: 12, fontWeight: '700', color: U.ink[900] }}>Çek Ekle</Text>
+              <Plus size={13} color={heroInk.isDark ? U.ink[900] : '#FFFFFF'} strokeWidth={2.4} />
+              <Text style={{ fontSize: 12, fontWeight: '700', color: heroInk.isDark ? U.ink[900] : '#FFFFFF' }}>Çek Ekle</Text>
             </Pressable>
-          </View>
+          }
+        >
+          {rest.length > 0 && (
+            <View style={{ marginTop: 10 }}>
+              <MoneyMultiX slices={rest} variant="inline" onAccent={heroInk.moneyOnAccent} />
+            </View>
+          )}
 
-          {/* Hızlı istatistikler — kanonik hero stat tile'ları (para birimi başına). */}
+          {/* Vade kırılımı — başlıktaki toplamı "ne zaman ödenecek"e açar. */}
           {(stats.overdueByCcy.length > 0 || stats.soonByCcy.length > 0) && (
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
               {stats.overdueByCcy.length > 0 && (
                 <View style={{
                   flex: 1, minWidth: 110,
                   paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12,
-                  backgroundColor: 'rgba(255,255,255,0.16)',
+                  backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder,
                 }}>
-                  <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }} numberOfLines={1}>
+                  <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: heroInk.inkSoft }} numberOfLines={1}>
                     Gecikmiş
                   </Text>
                   <CcyLinesWhite slices={stats.overdueByCcy} />
-                  <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.75)' }}>{stats.overdueCount} adet</Text>
+                  <Text style={{ fontSize: 10, color: heroInk.inkFaint }}>{stats.overdueCount} adet</Text>
                 </View>
               )}
               {stats.soonByCcy.length > 0 && (
                 <View style={{
                   flex: 1, minWidth: 110,
                   paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12,
-                  backgroundColor: 'rgba(255,255,255,0.16)',
+                  backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder,
                 }}>
-                  <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }} numberOfLines={1}>
+                  <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: heroInk.inkSoft }} numberOfLines={1}>
                     7 gün içinde
                   </Text>
                   <CcyLinesWhite slices={stats.soonByCcy} />
-                  <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.75)' }}>{stats.soonCount} adet</Text>
+                  <Text style={{ fontSize: 10, color: heroInk.inkFaint }}>{stats.soonCount} adet</Text>
                 </View>
               )}
             </View>
           )}
-        </View>
+        </WhiteHero>
 
         {/* ── Filtre butonu ───────────────────────────────────── */}
         <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
@@ -241,7 +254,7 @@ export function ChecksScreen() {
                 onPress={() => setFilterOpen(true)}
                 style={{
                   flexDirection: 'row', alignItems: 'center', gap: 6,
-                  paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14,
+                  paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9999,
                   backgroundColor: hasFilter ? U.ink[900] : U.plainBtn.bg,
                   borderWidth: hasFilter ? 0 : 1, borderColor: U.plainBtn.border,
                   cursor: 'pointer' as any,
@@ -320,12 +333,12 @@ export function ChecksScreen() {
           /* ── Desktop: tableCard §09 ──────────────────────── */
           <View style={U.tableCard}>
             {/* Toolbar */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
-              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: U.ink[900] }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, backgroundColor: tblAccent }}>
+              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: tblInk }}>
                 Çek / Senet Listesi
               </Text>
               <View style={{ flex: 1 }} />
-              <Text style={{ fontSize: 12, color: U.ink[400] }}>
+              <Text style={{ fontSize: 12, color: tblInk, opacity: 0.75 }}>
                 {checks.length} kayıt
               </Text>
             </View>
@@ -452,11 +465,11 @@ export function ChecksScreen() {
             })}
 
             {/* Footer */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderTopWidth: 1, borderTopColor: U.hairline, backgroundColor: U.surfaceSoft, gap: 10 }}>
-              <Text style={{ fontSize: 11, color: U.ink[500] }}>{checks.length} kayıt</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, backgroundColor: tblAccent, gap: 10, paddingEnd: 76 }}>
+              <Text style={{ fontSize: 11, color: tblInk, opacity: 0.75 }}>{checks.length} kayıt</Text>
               <View style={{ flex: 1 }} />
-              <Text style={{ fontSize: 12, fontWeight: '400', color: U.ink[900] }}>Bekleyen:</Text>
-              <MoneyMultiX slices={stats.pendingByCcy} variant="inline" />
+              <Text style={{ fontSize: 12, fontWeight: '400', color: tblInk }}>Bekleyen:</Text>
+              <MoneyMultiX slices={stats.pendingByCcy} variant="inline" onAccent={tblInk} />
             </View>
           </View>
         ) : (

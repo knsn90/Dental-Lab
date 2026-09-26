@@ -1,5 +1,6 @@
 import { localeTag, isRTL, weekdayOffset } from '../../../core/i18n';
-import { HeroGlow, useHeroSurface } from '../../../core/ui/HeroGlow';
+import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
+import { onAccentInk } from '../../../core/theme/usePanelTheme';
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View, Text, ScrollView, Pressable,
@@ -57,7 +58,7 @@ import {
 import {
   Package, Plus, Search, X, Pencil, Trash2,
   ArrowDownCircle, ArrowUpCircle, AlertTriangle, AlertCircle,
-  CheckCircle, XCircle, Filter, ChevronDown, ChevronUp,
+  CheckCircle, XCircle, Filter, SlidersHorizontal, ChevronDown, ChevronUp,
   ChevronRight, ChevronLeft, Tag, Grid3x3, ShoppingCart, Clock,
   TrendingDown, Flame, PlusCircle, Check, ArrowLeftRight,
   DatabaseZap, Inbox, BarChart3, TrendingUp, Users,
@@ -140,6 +141,8 @@ interface StockHeroProps {
   /** Kartın EN ALTINDA duran serbest slot — alt sekme şeridi buraya girer.
    *  Gezinme, başlığın altında ayrı bir satır harcamak yerine kartın içinde. */
   footer?: React.ReactNode;
+  /** Kartın SAĞ ÜST köşesindeki birincil eylem (ör. "+ Yeni Ürün"). */
+  cta?: React.ReactNode;
 }
 // Yetki yok ekranı — kullanıcı RBAC'sı sekme için yeterli değilse
 function NoAccessView({ accentColor }: { accentColor: string }) {
@@ -157,44 +160,46 @@ function NoAccessView({ accentColor }: { accentColor: string }) {
   );
 }
 
-function StockHeroCard({ accentColor, eyebrow, value, sub, icon: HeadIcon, stats = [], footer }: StockHeroProps) {
-  const U = useStockUI();
-  const heroBg = useHeroSurface(accentColor);
+/**
+ * StockHeroCard — Stok/Depo bölümünün hero'su. Artık "BEYAZ HERO"
+ * (core/ui/WhiteHero) üzerine kurulu: Prim Motoru ile aynı kap ve tipografi.
+ *
+ * Eskiden accent/lacivert zeminli kendi kabıydı ve içindeki metinler sabit
+ * beyazdı. Beyaz hero açık temada AÇIK bir yüzey olduğu için mürekkep
+ * `useWhiteHeroInk()`ten gelir; başlık ikonu düştü (diğer hero'larda da yok).
+ */
+function StockHeroCard({ accentColor, eyebrow, value, sub, stats = [], footer, cta }: StockHeroProps) {
+  const heroInk = useWhiteHeroInk(accentColor);
   const DisplayFont = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
   return (
-    <View style={{ borderRadius: 20, overflow: 'hidden', ...heroBg, padding: 18, position: 'relative' }}>
-      <HeroGlow size={180} opacity={0.20} delay={0} style={{ top: -50, end: -40 }} />
-      <HeroGlow size={150} opacity={0.12} delay={1400} style={{ bottom: -60, start: -30 }} />
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
-        <View style={{ flex: 1, minWidth: 220 }}>
-          <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)', marginBottom: 8 }}>{eyebrow}</Text>
-          <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 44, color: '#FFFFFF', letterSpacing: -1.2, lineHeight: 48 }} numberOfLines={1}>{value}</Text>
-          {sub ? <Text style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.78)', marginTop: 4 }}>{sub}</Text> : null}
-        </View>
-        {HeadIcon ? (
-          <View style={{ width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.18)' }}>
-            <HeadIcon size={20} color="#FFFFFF" strokeWidth={1.6} />
-          </View>
-        ) : null}
-      </View>
+    <WhiteHero
+      kicker={eyebrow}
+      accent={accentColor}
+      title={<Text style={{ color: heroInk.accentInk }}>{value}</Text>}
+      description={sub}
+      cta={cta}
+    >
       {stats.length > 0 && (
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
-          {stats.map((s) => {
-            const SIcon = s.icon;
+          {stats.map((st) => {
+            const SIcon = st.icon;
             return (
-              <View key={s.label} style={{ flex: 1, minWidth: 100, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.16)' }}>
+              <View key={st.label} style={{
+                flex: 1, minWidth: 100, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 14,
+                backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder,
+              }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                  {SIcon ? <SIcon size={11} color="rgba(255,255,255,0.9)" strokeWidth={2} /> : null}
-                  <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>{s.label}</Text>
+                  {SIcon ? <SIcon size={11} color={heroInk.inkSoft} strokeWidth={2} /> : null}
+                  <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: heroInk.inkSoft }}>{st.label}</Text>
                 </View>
-                <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 22, color: '#FFFFFF', letterSpacing: -0.5, lineHeight: 24 }} numberOfLines={1}>{s.value}</Text>
+                <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 22, color: heroInk.ink, letterSpacing: -0.5, lineHeight: 24 }} numberOfLines={1}>{st.value}</Text>
               </View>
             );
           })}
         </View>
       )}
       {footer}
-    </View>
+    </WhiteHero>
   );
 }
 
@@ -1504,7 +1509,7 @@ interface DashboardProps {
 
 function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditProduct }: DashboardProps) {
   const U = useStockUI();
-  const heroBg = useHeroSurface(accentColor);
+  const heroInk = useWhiteHeroInk(accentColor);
   const [recentCount, setRecentCount] = useState<number | null>(null);
   const [alerts, setAlerts] = useState<StockDashboardAlerts | null>(null);
   const [minModal, setMinModal] = useState(false);
@@ -1591,57 +1596,33 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
 
   return (
     <View style={{ gap: 14 }}>
-      {/* ── F1 HeroCard — Stok özeti (accent bg + white blobs) ── */}
-      <View style={{
-        borderRadius: 20, overflow: 'hidden',
-        ...heroBg, padding: 18,
-        position: 'relative',
-      }}>
-        {/* Dekoratif beyaz bloblar */}
-        <HeroGlow size={180} opacity={0.20} delay={0} style={{ top: -50, end: -40 }} />
-        <HeroGlow size={150} opacity={0.12} delay={1400} style={{ bottom: -60, start: -30 }} />
-
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
-          <View style={{ flex: 1, minWidth: 220 }}>
-            <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)', marginBottom: 8 }}>
-              Toplam Stok
-            </Text>
-            <Text
-              style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 44, color: '#FFFFFF', letterSpacing: -1.2, lineHeight: 48 }}
-              numberOfLines={1}
-            >
-              {total}
-            </Text>
-            <Text style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.78)', marginTop: 4 }}>
-              {catMap.size} kategori · {recentCount != null ? `${recentCount} son 7 günde hareket` : 'son 7 gün —'}
-            </Text>
-          </View>
-          {/* Birincil eylem hero'nun içinde (Ürünler/Hareketler ile aynı kalıp). */}
-          {onAddProduct ? (
-            <Pressable
-              onPress={onAddProduct}
-              accessibilityRole="button"
-              accessibilityLabel={autoT('Yeni Ürün')}
-              style={{
-                flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0,
-                paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999,
-                backgroundColor: '#FFFFFF',
-                ...(Platform.OS === 'web'
-                  ? ({ cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.16)' } as any)
-                  : { shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 3 }),
-              }}
-            >
-              <Plus size={14} color={accentColor} strokeWidth={2.4} />
-              <Text numberOfLines={1} style={{ fontSize: 12.5, fontWeight: '700', color: accentColor }}>{autoT('Yeni Ürün')}</Text>
-            </Pressable>
-          ) : (
-            <View style={{ width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.18)' }}>
-              <Package size={20} color="#FFFFFF" strokeWidth={1.6} />
-            </View>
-          )}
-        </View>
-
-        {/* KPI strip — beyaz pill stat cards */}
+      {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ─────────────────
+          Prim Motoru hiyerarşisi: kicker → 44px tek büyük rakam → bağlam
+          cümlesi → altta kutucuk şeridi. Mürekkep `useWhiteHeroInk()`ten
+          gelir; sabit beyaz metin açık yüzeyde kaybolurdu. */}
+      <WhiteHero
+        kicker="Toplam Stok"
+        accent={accentColor}
+        title={<Text style={{ color: heroInk.accentInk }}>{total}</Text>}
+        description={`${catMap.size} kategori · ${recentCount != null ? `${recentCount} son 7 günde hareket` : 'son 7 gün —'}`}
+        cta={onAddProduct ? (
+          <Pressable
+            onPress={onAddProduct}
+            accessibilityRole="button"
+            accessibilityLabel={autoT('Yeni Ürün')}
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0,
+              paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999,
+              backgroundColor: heroInk.isDark ? '#FFFFFF' : accentColor,
+              ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+            }}
+          >
+            <Plus size={14} color={heroInk.isDark ? accentColor : '#FFFFFF'} strokeWidth={2.4} />
+            <Text numberOfLines={1} style={{ fontSize: 12.5, fontWeight: '700', color: heroInk.isDark ? accentColor : '#FFFFFF' }}>{autoT('Yeni Ürün')}</Text>
+          </Pressable>
+        ) : undefined}
+      >
+        {/* Durum kırılımı — büyük rakamı "hangisi kritik"e açar. */}
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
           {([
             { label: 'Normal',   value: normal.length,   icon: CheckCircle    },
@@ -1653,16 +1634,16 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
               <View key={stat.label} style={{
                 flex: 1, minWidth: 100,
                 paddingVertical: 10, paddingHorizontal: 12, borderRadius: 14,
-                backgroundColor: 'rgba(255,255,255,0.16)',
+                backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder,
               }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                  <Icon size={11} color="rgba(255,255,255,0.9)" strokeWidth={2} />
-                  <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>
+                  <Icon size={11} color={heroInk.inkSoft} strokeWidth={2} />
+                  <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: heroInk.inkSoft }}>
                     {stat.label}
                   </Text>
                 </View>
                 <Text
-                  style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 22, color: '#FFFFFF', letterSpacing: -0.5, lineHeight: 24 }}
+                  style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 22, color: heroInk.ink, letterSpacing: -0.5, lineHeight: 24 }}
                   numberOfLines={1}
                 >
                   {stat.value}
@@ -1671,8 +1652,7 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
             );
           })}
         </View>
-
-      </View>
+      </WhiteHero>
 
       {/* ── İşlem bekleyenler — sayı değil, tıklanabilir görev ── */}
       {(() => {
@@ -1724,8 +1704,9 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
 
         return (
           <View style={[PCard, { padding: 0, overflow: 'hidden' }]}>
-            <View style={{ paddingHorizontal: 18, paddingTop: 16, paddingBottom: 10 }}>
-              <Text style={eyebrow}>İşlem bekleyenler</Text>
+            {/* Kart başlığı düz panel accent'i — tablo başlıklarıyla aynı dil. */}
+            <View style={{ paddingHorizontal: 18, paddingVertical: 14, backgroundColor: accentColor }}>
+              <Text style={{ ...eyebrow, color: onAccentInk(accentColor) }}>İşlem bekleyenler</Text>
             </View>
             {tasks.map((t, i) => (
               <Pressable
@@ -2106,23 +2087,24 @@ function BrandsList({ accentColor, onReload }: { accentColor: string; onReload: 
   return (
     <>
       <View style={U.tableCard}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: U.hairlineSoft }}>
+        {/* Başlık şeridi düz panel accent'i — uygulama geneli tablo dili. */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, backgroundColor: accentColor }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <View style={{ width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor + '12' }}>
-              <Tag size={14} color={accentColor} strokeWidth={1.6} />
-            </View>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: U.ink[900] }}>Markalar</Text>
-            <View style={{ backgroundColor: U.ink[100], borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2 }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: U.ink[500] }}>{brands.length}</Text>
+            <Tag size={15} color={onAccentInk(accentColor)} strokeWidth={1.8} />
+            <Text style={{ fontSize: 15, fontWeight: '700', color: onAccentInk(accentColor) }}>Markalar</Text>
+            <View style={{ backgroundColor: onAccentInk(accentColor) === '#FFFFFF' ? 'rgba(255,255,255,0.20)' : 'rgba(10,10,10,0.10)', borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: onAccentInk(accentColor) }}>{brands.length}</Text>
             </View>
           </View>
           {canManage && (
             <Pressable
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 9999, backgroundColor: accentColor, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 9999,
+                       backgroundColor: onAccentInk(accentColor) === '#FFFFFF' ? 'rgba(255,255,255,0.20)' : 'rgba(10,10,10,0.10)',
+                       ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
               onPress={() => setModal({ visible: true, brand: null })}
             >
-              <Plus size={13} color="#FFFFFF" strokeWidth={2} />
-              <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>Ekle</Text>
+              <Plus size={13} color={onAccentInk(accentColor)} strokeWidth={2} />
+              <Text style={{ fontSize: 12, fontWeight: '700', color: onAccentInk(accentColor) }}>Ekle</Text>
             </Pressable>
           )}
         </View>
@@ -2236,23 +2218,24 @@ function CategoryList({ accentColor, onReload }: { accentColor: string; onReload
 
   return (
     <View style={U.tableCard}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: U.hairlineSoft }}>
+      {/* Başlık şeridi düz panel accent'i — Markalar kartıyla aynı dil. */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, backgroundColor: accentColor }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <View style={{ width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor + '12' }}>
-            <Grid3x3 size={14} color={accentColor} strokeWidth={1.6} />
-          </View>
-          <Text style={{ fontSize: 15, fontWeight: '700', color: U.ink[900] }}>Kategoriler</Text>
-          <View style={{ backgroundColor: U.ink[100], borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2 }}>
-            <Text style={{ fontSize: 11, fontWeight: '700', color: U.ink[500] }}>{rows.length}</Text>
+          <Grid3x3 size={15} color={onAccentInk(accentColor)} strokeWidth={1.8} />
+          <Text style={{ fontSize: 15, fontWeight: '700', color: onAccentInk(accentColor) }}>Kategoriler</Text>
+          <View style={{ backgroundColor: onAccentInk(accentColor) === '#FFFFFF' ? 'rgba(255,255,255,0.20)' : 'rgba(10,10,10,0.10)', borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2 }}>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: onAccentInk(accentColor) }}>{rows.length}</Text>
           </View>
         </View>
         {canManage && (
           <Pressable
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 9999, backgroundColor: accentColor, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 9999,
+                     backgroundColor: onAccentInk(accentColor) === '#FFFFFF' ? 'rgba(255,255,255,0.20)' : 'rgba(10,10,10,0.10)',
+                     ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
             onPress={() => { setAddMode(true); setAddText(''); setError(''); setEditName(null); }}
           >
-            <Plus size={13} color="#FFFFFF" strokeWidth={2} />
-            <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>Ekle</Text>
+            <Plus size={13} color={onAccentInk(accentColor)} strokeWidth={2} />
+            <Text style={{ fontSize: 12, fontWeight: '700', color: onAccentInk(accentColor) }}>Ekle</Text>
           </Pressable>
         )}
       </View>
@@ -2350,7 +2333,7 @@ function CategoryList({ accentColor, onReload }: { accentColor: string; onReload
  * önerisi arasındaki fark yalnız burada görünür.
  */
 function SubTabStrip({
-  tabs, value, onChange, numbered, trailing, onAccent, accent,
+  tabs, value, onChange, numbered, trailing, onAccent, accent, align = 'start',
 }: {
   tabs: SubTabDef[];
   value: string;
@@ -2364,18 +2347,27 @@ function SubTabStrip({
   onAccent?: boolean;
   /** onAccent iken beyaz pill üzerindeki metin/ikon rengi (panel accent'i). */
   accent?: string;
+  /**
+   * Şeridin satırdaki hizası. 'start' (varsayılan) kalan genişliği alır;
+   * 'end' hero kartının SAĞ ALT köşesine yaslar — şerit içeriği kadar geniş
+   * kalır, kaydırma yine kendi içinde olur.
+   */
+  align?: 'start' | 'end';
 }) {
   const U = useStockUI();
   const active = tabs.find(t => t.key === value) ?? tabs[0];
   const accentInk = accent ?? U.ink[900];
+  // Hero'nun İÇİNDEYKEN (onAccent veya sağa yaslı) sayfa dolgusu EKLENMEZ —
+  // kart zaten kendi dolgusunu veriyor; eklenirse şerit köşeden içeri kaçar.
   return (
-    <View style={onAccent ? { marginTop: 16 } : { paddingHorizontal: PAGE_PADDING, paddingBottom: 8 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+    <View style={(onAccent || align === 'end') ? { marginTop: 22 } : { paddingHorizontal: PAGE_PADDING, paddingTop: 8, paddingBottom: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, justifyContent: align === 'end' ? 'flex-end' : 'flex-start' }}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        // Satırda kalan genişliği alır ve kendi içinde kaydırır; trailing sabit.
-        style={{ flex: 1 }}
+        // 'start': satırda kalan genişliği alır ve kendi içinde kaydırır.
+        // 'end': içeriği kadar yer kaplar ki sağa yaslanabilsin.
+        style={align === 'end' ? { flexGrow: 0, flexShrink: 1 } : { flex: 1 }}
         contentContainerStyle={{ gap: 8, paddingVertical: 2 }}
       >
         {tabs.map((t, i) => {
@@ -2387,11 +2379,20 @@ function SubTabStrip({
               onPress={() => onChange(t.key)}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 8,
-                // CLAUDE.md §1c — seçili pill daha geniş.
-                paddingHorizontal: on ? 18 : 12, paddingVertical: 8, borderRadius: 999,
-                backgroundColor: onAccent
-                  ? (on ? '#FFFFFF' : 'rgba(255,255,255,0.16)')
-                  : (on ? U.ink[900] : U.chipNeutral),
+                // CLAUDE.md §1c — seçili pill daha geniş. AMA sağa yaslı şeritte
+                // (align='end') dolgu SABİT: aktif pill genişleyince şeridin
+                // toplam genişliği değişiyor ve pill'ler her seçimde kayıyordu.
+                paddingHorizontal: align === 'end' ? 16 : (on ? 18 : 12),
+                paddingVertical: 8, borderRadius: 999,
+                // Sağa yaslı (beyaz hero içi) şeritte palet SABİT: aktif = panel
+                // accent'i, pasif = ince kenarlıklı saydam. Siyah/gri ikilisi
+                // her seçimde kartın rengini değiştiriyormuş gibi duruyordu.
+                backgroundColor: align === 'end'
+                  ? (on ? accentInk : 'transparent')
+                  : onAccent
+                    ? (on ? '#FFFFFF' : 'rgba(255,255,255,0.16)')
+                    : (on ? U.ink[900] : U.chipNeutral),
+                ...(align === 'end' && !on ? { borderWidth: 1, borderColor: U.hairline } : null),
                 ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
               }}
             >
@@ -2406,11 +2407,19 @@ function SubTabStrip({
               <Icon
                 size={14}
                 strokeWidth={on ? 2 : 1.7}
-                color={onAccent ? (on ? accentInk : 'rgba(255,255,255,0.9)') : (on ? U.onDarkPill : U.ink[500])}
+                color={align === 'end'
+                  ? (on ? '#FFFFFF' : U.ink[500])
+                  : onAccent ? (on ? accentInk : 'rgba(255,255,255,0.9)') : (on ? U.onDarkPill : U.ink[500])}
               />
               <Text style={{
-                fontSize: 13, fontWeight: on ? '600' : '500',
-                color: onAccent ? (on ? accentInk : '#FFFFFF') : (on ? U.onDarkPill : U.ink[800]),
+                fontSize: 13,
+                // Ağırlık SABİT: aktif etiket kalınlaşınca metin genişliyor ve
+                // sağa yaslı şerit (align='end') her seçimde yatay kayıyordu.
+                // Aktiflik zaten dolu pill + renk ile okunuyor.
+                fontWeight: align === 'end' ? '600' : (on ? '600' : '500'),
+                color: align === 'end'
+                  ? (on ? '#FFFFFF' : U.ink[800])
+                  : onAccent ? (on ? accentInk : '#FFFFFF') : (on ? U.onDarkPill : U.ink[800]),
               }}>
                 {t.label}
               </Text>
@@ -2420,7 +2429,10 @@ function SubTabStrip({
       </ScrollView>
       {trailing ? <View style={{ flexShrink: 0 }}>{trailing}</View> : null}
       </View>
-      <Text style={{ fontSize: 12, color: onAccent ? 'rgba(255,255,255,0.78)' : U.ink[500], marginTop: 8 }}>{active?.hint}</Text>
+      <Text style={{
+        fontSize: 12, color: onAccent ? 'rgba(255,255,255,0.78)' : U.ink[500],
+        marginTop: 8, textAlign: align === 'end' ? 'right' : 'left',
+      }}>{active?.hint}</Text>
     </View>
   );
 }
@@ -2464,10 +2476,24 @@ function SubTabPills({
 
 // ── StockSettings container ───────────────────────────────────────────────────
 
-function StockSettings({ accentColor, onReload }: { accentColor: string; onReload: () => void }) {
+function StockSettings({ accentColor, onReload, items }: { accentColor: string; onReload: () => void; items: StockItem[] }) {
   const U = useStockUI();
+  const heroInk = useWhiteHeroInk(accentColor);
+  const catCount   = new Set(items.map(i => (i.category ?? '').trim()).filter(Boolean)).size;
+  const brandCount = new Set(items.map(i => (i.brand ?? '').trim()).filter(Boolean)).size;
   return (
     <View style={{ gap: 16 }}>
+      {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ───────────────── */}
+      <WhiteHero
+        kicker="Kurulum · Kategori & Marka"
+        accent={accentColor}
+        title={<><Text style={{ color: heroInk.accentInk }}>{catCount}</Text> kategori</>}
+        description={`${brandCount} marka · ${items.length} stok kalemi bu tanımları kullanıyor`}
+        stats={[
+          { value: String(catCount),   label: 'Kategori' },
+          { value: String(brandCount), label: 'Marka' },
+        ]}
+      />
       {/* Tüketim kurulumu artık kenar çubuğunda ayrı bir sekme —
           burada ikinci bir giriş noktası tutmuyoruz. */}
       <BrandsList accentColor={accentColor} onReload={onReload} />
@@ -2490,12 +2516,17 @@ function SuggestionsTab({
   items,
   accentColor,
   onMovement,
+  tabsNode,
 }: {
   items: StockItem[];
   accentColor: string;
   onMovement: (item: StockItem, defaultType: MovType) => void;
+  /** Alt sekme şeridi — hero'nun içinde durur. */
+  tabsNode?: React.ReactNode;
 }) {
   const U = useStockUI();
+  // Tablo başlığı düz panel accent'i — metin luminance ile seçilir.
+  const tblInk = onAccentInk(accentColor);
   const [consumptionMap, setConsumptionMap] = useState<Record<string, number>>({});
   const [loadingConsumption, setLoadingConsumption] = useState(true);
 
@@ -2589,6 +2620,7 @@ function SuggestionsTab({
       <StockHeroCard
         accentColor={accentColor}
         eyebrow="Sipariş Önerisi"
+        footer={tabsNode}
         value={suggestions.length}
         sub={`Tahmini toplam · ${fmtCcyMap(estByCcy)}`}
         icon={ShoppingCart}
@@ -2601,15 +2633,16 @@ function SuggestionsTab({
       {/* ── Table ── */}
       <View style={[PCard, { padding: 0, overflow: 'hidden' }]}>
         {/* Header row */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, backgroundColor: U.surfaceSoft, borderBottomWidth: 1, borderBottomColor: U.hairlineSoft }}>
-          <Text style={{ ...eyebrow, flex: 2.5 }}>Ürün</Text>
-          <Text style={{ ...eyebrow, flex: 0.8, textAlign: 'center' }}>Mevcut</Text>
-          <Text style={{ ...eyebrow, flex: 0.8, textAlign: 'center' }}>Min</Text>
-          <Text style={{ ...eyebrow, flex: 0.8, textAlign: 'center' }}>Eksik</Text>
-          <Text style={{ ...eyebrow, flex: 1, textAlign: 'center' }}>B. Maliyet</Text>
-          <Text style={{ ...eyebrow, flex: 1, textAlign: 'center' }}>T. Maliyet</Text>
-          <Text style={{ ...eyebrow, flex: 1, textAlign: 'center' }}>Tah. Bitiş</Text>
-          <Text style={{ ...eyebrow, flex: 0.8, textAlign: 'center' }}>Durum</Text>
+        {/* Başlık şeridi düz panel accent'i — uygulama genelinde aynı dil. */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, backgroundColor: accentColor }}>
+          <Text style={{ ...eyebrow, color: tblInk, flex: 2.5 }}>Ürün</Text>
+          <Text style={{ ...eyebrow, color: tblInk, flex: 0.8, textAlign: 'center' }}>Mevcut</Text>
+          <Text style={{ ...eyebrow, color: tblInk, flex: 0.8, textAlign: 'center' }}>Min</Text>
+          <Text style={{ ...eyebrow, color: tblInk, flex: 0.8, textAlign: 'center' }}>Eksik</Text>
+          <Text style={{ ...eyebrow, color: tblInk, flex: 1, textAlign: 'center' }}>B. Maliyet</Text>
+          <Text style={{ ...eyebrow, color: tblInk, flex: 1, textAlign: 'center' }}>T. Maliyet</Text>
+          <Text style={{ ...eyebrow, color: tblInk, flex: 1, textAlign: 'center' }}>Tah. Bitiş</Text>
+          <Text style={{ ...eyebrow, color: tblInk, flex: 0.8, textAlign: 'center' }}>Durum</Text>
           <View style={{ width: 90 }} />
         </View>
 
@@ -2743,6 +2776,8 @@ const fmt = (n: number | null | undefined) => (Number(n) || 0).toLocaleString('t
 const fmt1 = (n: number | null | undefined) => (Number(n) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 1 });
 
 function AnalyticsTab({ accentColor }: { accentColor: string }) {
+  // Kart başlığı düz panel accent'i — metin luminance ile seçilir.
+  const anaInk = onAccentInk(accentColor);
   const U = useStockUI();
   const { profile } = useAuthStore();
   const { width } = useWindowDimensions();
@@ -2840,37 +2875,22 @@ function AnalyticsTab({ accentColor }: { accentColor: string }) {
 
   return (
     <View style={{ gap: 14 }}>
-      {/* ── Range pills (panel accent) ── */}
-      <View style={{ flexDirection: 'row', gap: 6 }}>
-        {ANALYTICS_RANGES.map(opt => {
-          const active = range === opt.key;
-          return (
-            <Pressable
-              key={opt.key}
-              onPress={() => setRange(opt.key)}
-              style={{
-                flexDirection: 'row', alignItems: 'center', gap: 6,
-                paddingHorizontal: active ? 14 : 12, paddingVertical: 7,
-                borderRadius: 9999,
-                backgroundColor: active ? accentColor : U.plainBtn.bg,
-                borderWidth: 1, borderColor: active ? accentColor : U.hairline,
-                // @ts-ignore web
-                cursor: 'pointer',
-              }}
-            >
-              {active && <Calendar size={11} color="#FFFFFF" strokeWidth={2} />}
-              <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? '#FFFFFF' : U.ink[500] }}>
-                {opt.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
+      {/* ── Dönem sekmeleri — uygulama geneli kayan sekme çubuğu ── */}
       {/* ── F1 HeroCard — Analitik özeti ── */}
       <StockHeroCard
         accentColor={accentColor}
         eyebrow="Toplam Kullanım"
+        footer={
+          <View style={{ alignSelf: 'flex-end', marginTop: 18 }}>
+            <SlideTabBar
+              items={ANALYTICS_RANGES.map(o => ({ key: o.key, label: autoT(o.label) }))}
+              activeKey={range}
+              onChange={k => setRange(k as AnalyticsRange)}
+              accentColor={accentColor}
+              size="sm"
+            />
+          </View>
+        }
         value={fmt(totals.totalUsed)}
         sub={`${fmt(totals.totalUsedCost)} ₺ değerinde tüketim · seçili dönem`}
         icon={Layers}
@@ -2937,12 +2957,14 @@ function AnalyticsTab({ accentColor }: { accentColor: string }) {
 
         {/* Teknisyen Bazlı Kullanım */}
         <View style={{ ...U.tableCard, flex: 1 }}>
+          {/* Kart başlığı düz panel accent'i — uygulama genelinde aynı dil. */}
           <View style={{
             flexDirection: 'row', alignItems: 'center', gap: 8,
-            paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12,
+            paddingHorizontal: 20, paddingVertical: 14,
+            backgroundColor: accentColor,
           }}>
-            <Users size={14} color={U.ink[700]} strokeWidth={1.8} />
-            <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900] }}>Teknisyen Kullanımı</Text>
+            <Users size={14} color={anaInk} strokeWidth={1.8} />
+            <Text style={{ fontSize: 14, fontWeight: '600', color: anaInk }}>Teknisyen Kullanımı</Text>
           </View>
 
           {/* Header */}
@@ -3013,12 +3035,14 @@ function AnalyticsTab({ accentColor }: { accentColor: string }) {
 
         {/* Materyal Bazlı Fire */}
         <View style={{ ...U.tableCard, flex: 1 }}>
+          {/* Kart başlığı düz panel accent'i — uygulama genelinde aynı dil. */}
           <View style={{
             flexDirection: 'row', alignItems: 'center', gap: 8,
-            paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12,
+            paddingHorizontal: 20, paddingVertical: 14,
+            backgroundColor: accentColor,
           }}>
-            <Flame size={14} color={U.chipTones.danger.fg} strokeWidth={1.8} />
-            <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900] }}>Materyal Bazlı Fire</Text>
+            <Flame size={14} color={anaInk} strokeWidth={1.8} />
+            <Text style={{ fontSize: 14, fontWeight: '600', color: anaInk }}>Materyal Bazlı Fire</Text>
           </View>
 
           {/* Header */}
@@ -3110,7 +3134,7 @@ interface ForecastRow {
   upcomingNeed: number;    // estimated need from upcoming orders
 }
 
-function ForecastTab({ items, accentColor }: { items: StockItem[]; accentColor: string }) {
+function ForecastTab({ items, accentColor, tabsNode }: { items: StockItem[]; accentColor: string; tabsNode?: React.ReactNode }) {
   const U = useStockUI();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
@@ -3293,6 +3317,7 @@ function ForecastTab({ items, accentColor }: { items: StockItem[]; accentColor: 
       <StockHeroCard
         accentColor={accentColor}
         eyebrow="Tükenme Tahmini"
+        footer={tabsNode}
         value={avgDaysLeft != null ? `${avgDaysLeft} gün` : '—'}
         sub={`${forecasts.length} ürün izleniyor · ortalama kalan süre`}
         icon={Clock}
@@ -3455,12 +3480,16 @@ function ForecastTab({ items, accentColor }: { items: StockItem[]; accentColor: 
 // ─── CostTab ─────────────────────────────────────────────────────────────────
 
 interface CostTabProps {
+  /** Alt sekme şeridi — hero'nun içinde durur. */
+  tabsNode?: React.ReactNode;
   items: StockItem[];
   accentColor: string;
 }
 
-function CostTab({ items, accentColor }: CostTabProps) {
+function CostTab({ items, accentColor, tabsNode }: CostTabProps) {
   const U = useStockUI();
+  // Tablo başlığı düz panel accent'i — metin luminance ile seçilir.
+  const tblInk = onAccentInk(accentColor);
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
 
@@ -3468,6 +3497,10 @@ function CostTab({ items, accentColor }: CostTabProps) {
   const [histLoading, setHistLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'value' | 'cost' | 'name'>('value');
+  // Arama + filtre (uygulama geneli dil): ad araması, fiyat hareketi süzgeci.
+  const [search, setSearch] = useState('');
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [priceFilter, setPriceFilter] = useState<'all' | 'up' | 'down' | 'history'>('all');
 
   // Load IN movements for price history
   useEffect(() => {
@@ -3522,6 +3555,17 @@ function CostTab({ items, accentColor }: CostTabProps) {
     return { rows, valueByCcy, highestValueItem, costIncreased };
   }, [items, priceHistory, sortBy]);
 
+  const visibleRows = useMemo(() => {
+    const q = search.trim().toLocaleLowerCase('tr');
+    return costData.rows.filter(r => {
+      if (q && !r.name.toLocaleLowerCase('tr').includes(q)) return false;
+      if (priceFilter === 'up'      && !(r.costChange != null && r.costChange > 0)) return false;
+      if (priceFilter === 'down'    && !(r.costChange != null && r.costChange < 0)) return false;
+      if (priceFilter === 'history' && !(r.historyCount > 0)) return false;
+      return true;
+    });
+  }, [costData.rows, search, priceFilter]);
+
   // Selected item price history for mini chart
   const selectedHistory = useMemo(() => {
     if (!selectedItem) return [];
@@ -3550,6 +3594,7 @@ function CostTab({ items, accentColor }: CostTabProps) {
       <StockHeroCard
         accentColor={accentColor}
         eyebrow="Toplam Stok Değeri"
+        footer={tabsNode}
         value={fmtCcyMap(costData.valueByCcy)}
         sub={`${costData.rows.length} kalem · döviz-başına`}
         icon={Layers}
@@ -3559,9 +3604,78 @@ function CostTab({ items, accentColor }: CostTabProps) {
         ]}
       />
 
-      {/* ── Sort pills ── */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <Text style={{ fontSize: 12, color: U.ink[400], marginEnd: 4, fontWeight: '500' }}>Sırala:</Text>
+      {/* ── Toolbar — uygulama genelindeki arama/filtre dili ── */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{
+          flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
+          height: 38, paddingHorizontal: 12, borderRadius: 9999,
+          backgroundColor: U.surface, borderWidth: 1, borderColor: U.hairline,
+        }}>
+          <Search size={14} color={U.ink[400]} strokeWidth={1.8} />
+          <TextInput
+            style={{ flex: 1, fontSize: 13, color: U.ink[900], ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) } as any}
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Ürün ara..."
+            placeholderTextColor={U.ink[400]}
+          />
+          {search.length > 0 && (
+            <GlassTooltip title={autoT('Temizle')} text={autoT('Aramayı temizle')}>
+              <Pressable onPress={() => setSearch('')} hitSlop={8} style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}}>
+                <X size={13} color={U.ink[400]} strokeWidth={2} />
+              </Pressable>
+            </GlassTooltip>
+          )}
+        </View>
+
+        <GlassTooltip title={autoT('Filtrele')} text={autoT('Fiyat hareketine göre süz ve sıralamayı değiştir')}>
+          <Pressable
+            onPress={() => setFilterOpen(v => !v)}
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 6,
+              height: 38, paddingHorizontal: 14, borderRadius: 9999,
+              backgroundColor: priceFilter !== 'all' ? accentColor + '14' : U.surface,
+              borderWidth: 1, borderColor: priceFilter !== 'all' || filterOpen ? accentColor : U.hairline,
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+            }}
+          >
+            <SlidersHorizontal size={14} color={priceFilter !== 'all' ? accentColor : U.ink[500]} strokeWidth={1.8} />
+            <Text style={{ fontSize: 12.5, fontWeight: '600', color: priceFilter !== 'all' ? accentColor : U.ink[500] }}>
+              {autoT('Filtrele')}{priceFilter !== 'all' ? ' (1)' : ''}
+            </Text>
+          </Pressable>
+        </GlassTooltip>
+      </View>
+
+      {filterOpen && (
+        <View style={{ padding: 12, borderRadius: 14, backgroundColor: U.surface, borderWidth: 1, borderColor: U.hairline, gap: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <Text style={{ fontSize: 12, color: U.ink[400], marginEnd: 4, fontWeight: '500', width: 60 }}>Fiyat:</Text>
+            {([
+              { key: 'all' as const,     label: 'Tümü' },
+              { key: 'up' as const,      label: 'Fiyatı artan' },
+              { key: 'down' as const,    label: 'Fiyatı düşen' },
+              { key: 'history' as const, label: 'Geçmişi olan' },
+            ]).map(f => {
+              const active = priceFilter === f.key;
+              return (
+                <Pressable
+                  key={f.key}
+                  onPress={() => setPriceFilter(f.key)}
+                  style={{
+                    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999,
+                    backgroundColor: active ? accentColor : U.plainBtn.bg,
+                    borderWidth: 1, borderColor: active ? accentColor : U.hairline,
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: active ? '700' : '500', color: active ? onAccentInk(accentColor) : U.ink[700] }}>{f.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <Text style={{ fontSize: 12, color: U.ink[400], marginEnd: 4, fontWeight: '500', width: 60 }}>Sırala:</Text>
         {([
           { key: 'value' as const, label: 'Değer' },
           { key: 'cost' as const,  label: 'Birim maliyet' },
@@ -3585,7 +3699,9 @@ function CostTab({ items, accentColor }: CostTabProps) {
             </Pressable>
           );
         })}
-      </View>
+          </View>
+        </View>
+      )}
 
       {/* Cost Table */}
       <View style={U.tableCard}>
@@ -3605,7 +3721,7 @@ function CostTab({ items, accentColor }: CostTabProps) {
         </View>
 
         {/* Rows */}
-        {costData.rows.map(item => (
+        {visibleRows.map(item => (
           <Pressable
             key={item.id}
             onPress={() => setSelectedItem(selectedItem === item.id ? null : item.id)}
@@ -3719,11 +3835,11 @@ function CostTab({ items, accentColor }: CostTabProps) {
 
           {/* History table */}
           <View style={{ borderRadius: 14, borderWidth: 1, borderColor: U.hairlineSoft, overflow: 'hidden' }}>
-            <View style={{ flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 8, backgroundColor: U.surfaceSoft }}>
-              <Text style={{ ...U.colHeader, flex: 1 }}>TARIH</Text>
-              <Text style={{ ...U.colHeader, width: 80, textAlign: 'end' as any }}>MIKTAR</Text>
-              <Text style={{ ...U.colHeader, width: 100, textAlign: 'end' as any }}>BIRIM FIYAT</Text>
-              <Text style={{ ...U.colHeader, width: 100, textAlign: 'end' as any }}>TOPLAM</Text>
+            <View style={{ flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 8, backgroundColor: accentColor }}>
+              <Text style={{ ...U.colHeader, color: tblInk, flex: 1 }}>TARIH</Text>
+              <Text style={{ ...U.colHeader, color: tblInk, width: 80, textAlign: 'end' as any }}>MIKTAR</Text>
+              <Text style={{ ...U.colHeader, color: tblInk, width: 100, textAlign: 'end' as any }}>BIRIM FIYAT</Text>
+              <Text style={{ ...U.colHeader, color: tblInk, width: 100, textAlign: 'end' as any }}>TOPLAM</Text>
             </View>
             {selectedHistory.slice().reverse().slice(0, 20).map((h, idx) => (
               <View key={idx} style={{
@@ -3755,9 +3871,11 @@ interface LocationsTabProps {
   canEdit?: boolean;
   /** Araç çubuğunun soluna eklenen slot (Liste/Lokasyon alt sekme pill'leri). */
   leading?: React.ReactNode;
+  /** Hero'nun sağ üstündeki birincil eylem — Liste sekmesiyle AYNI buton. */
+  cta?: React.ReactNode;
 }
 
-function LocationsTab({ items, accentColor, onEditProduct, canEdit = true, leading }: LocationsTabProps) {
+function LocationsTab({ items, accentColor, onEditProduct, canEdit = true, leading, cta }: LocationsTabProps) {
   const U = useStockUI();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
@@ -3837,13 +3955,14 @@ function LocationsTab({ items, accentColor, onEditProduct, canEdit = true, leadi
         ]}
         /* Alt sekme şeridi kartın içinde — Liste sekmesiyle aynı yer. */
         footer={leading}
+        cta={cta}
       />
 
       {/* ── Toolbar ── */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <View style={{
           flex: 1, minWidth: 180, flexDirection: 'row', alignItems: 'center', gap: 8,
-          backgroundColor: U.surface, borderRadius: 14, borderWidth: 1,
+          backgroundColor: U.surface, borderRadius: 9999, borderWidth: 1,
           borderColor: U.hairline, paddingHorizontal: 12, height: 44,
           ...(Platform.OS === 'web' ? { boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)' } : {}),
         }}>
@@ -4072,8 +4191,10 @@ function LocationsTab({ items, accentColor, onEditProduct, canEdit = true, leadi
 // ─── Tab Definitions (Patterns — icon + accent per panel) ───────────────────
 
 import { HubContext } from '../../../core/ui/HubContext';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { Settings, Menu } from '../../../core/ui/icons';
 import { autoT } from '../../../core/i18n/autoTranslate';
+import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 import { PAGE_PADDING, PAGE_BLEED } from '../../../core/ui/pageMetrics';
 
 const SIDEBAR_ACCENT = '#F5C24B';
@@ -4168,7 +4289,9 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
   // Panel accent verilmişse tüm sayfa onu kullanır; aksi halde her tab'ın
   // kendi accent'i devrede kalır.
   const accentColor = panelAccent ?? activeTab.accent;
-  const heroBg = useHeroSurface(accentColor);
+  const heroInk = useWhiteHeroInk(accentColor);
+  // Tablo başlığı düz panel accent'i — metin luminance ile seçilir.
+  const listInk = onAccentInk(accentColor);
   // Tab listesindeki accent'leri de override etmek için yardımcı
   const tabAccent = (t: typeof STOCK_TABS[number]) => panelAccent ?? t.accent;
 
@@ -4181,7 +4304,6 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
   const [dbCategories, setDbCategories]   = useState<string[]>([]);
 
   const [search, setSearch]             = useState('');
-  const [searchExpanded, setSearchExpanded] = useState(false);
   const [searchFocused, setSearchFocused]   = useState(false);
 
   const [showFilter, setShowFilter]     = useState(false);
@@ -4307,7 +4429,40 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
     else setProductModal({ visible: true, item: null });
   };
 
+  // Hero'nun sağ üst köşesindeki birincil eylem. Liste ve Lokasyon alt
+  // sekmeleri AYNI butonu kullanır — eskiden Lokasyon'a geçince buton
+  // kayboluyordu (o sekme ayrı bir hero render ediyor).
+  const heroCta = showCta ? (
+    <Pressable
+      onPress={ctaAction}
+      accessibilityRole="button"
+      accessibilityLabel={ctaLabel}
+      style={{
+        flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0,
+        paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999,
+        backgroundColor: heroInk.isDark ? '#FFFFFF' : accentColor,
+        ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+      }}
+    >
+      <Plus size={14} color={heroInk.isDark ? accentColor : '#FFFFFF'} strokeWidth={2.4} />
+      <Text numberOfLines={1} style={{ fontSize: 12.5, fontWeight: '700', color: heroInk.isDark ? accentColor : '#FFFFFF' }}>{ctaLabel}</Text>
+    </Pressable>
+  ) : undefined;
+
   // ── Tab content renderer ──
+  // Alt sekme şeridi — hero'su olan sekmelerde hero'nun İÇİNDE, olmayanlarda başlık altında.
+  const subStripNode = subTabs.length > 1 && activeSub ? (
+    <View style={{ alignSelf: 'flex-end', marginTop: 18 }}>
+      <SlideTabBar
+        items={subTabs.map(st => ({ key: st.key, label: autoT(st.label) }))}
+        activeKey={activeSub}
+        onChange={k => setSub(k)}
+        accentColor={accentColor}
+        size="sm"
+      />
+    </View>
+  ) : null;
+
   const renderContent = () => {
     const spin = <ActivityIndicator size="large" color={accentColor} style={{ marginTop: 60 }} />;
 
@@ -4333,17 +4488,17 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
     // ── Sipariş & Tahmin — üç yöntem, aynı soru ──
     if (tab === 'orders') {
       if (loading) return spin;
-      if (activeSub === 'forecast') return <ForecastTab items={items} accentColor={accentColor} />;
-      if (activeSub === 'fifo')     return <FifoReorderScreen accentColor={accentColor} embedded view="reorder" />;
-      return <SuggestionsTab items={items} accentColor={accentColor}
+      if (activeSub === 'forecast') return <ForecastTab items={items} accentColor={accentColor} tabsNode={subStripNode} />;
+      if (activeSub === 'fifo')     return <FifoReorderScreen accentColor={accentColor} embedded view="reorder" tabsNode={subStripNode} />;
+      return <SuggestionsTab items={items} accentColor={accentColor} tabsNode={subStripNode}
         onMovement={(item, dt) => { if (canManageStock) setMovModal({ visible: true, item, defaultType: dt }); }} />;
     }
 
     // ── Maliyet — değer FIFO katmanlarından, geçmiş alış hareketlerinden ──
     if (tab === 'cost') {
       if (loading) return spin;
-      if (activeSub === 'history') return <CostTab items={items} accentColor={accentColor} />;
-      return <FifoReorderScreen accentColor={accentColor} embedded view="fifo" />;
+      if (activeSub === 'history') return <CostTab items={items} accentColor={accentColor} tabsNode={subStripNode} />;
+      return <FifoReorderScreen accentColor={accentColor} embedded view="fifo" tabsNode={subStripNode} />;
     }
 
     // ── Kurulum — genel ayarlar + miktarsız tüketim akışının adımları ──
@@ -4352,15 +4507,26 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
       if (activeSub === 'consumption_profile')    return <ConsumptionProfileScreen accentColor={accentColor} embedded />;
       if (activeSub === 'inventory_verification') return <InventoryVerificationScreen accentColor={accentColor} embedded />;
       if (activeSub === 'consumption_audit')      return <ConsumptionAuditScreen accentColor={accentColor} embedded />;
-      return <StockSettings accentColor={accentColor} onReload={load} />;
+      return <StockSettings accentColor={accentColor} onReload={load} items={items} />;
     }
 
     // ── Ürünler: liste ile raf yerleşimi ──
     if (tab === 'list' && activeSub === 'locations') return loading ? spin
       : <LocationsTab items={items} accentColor={accentColor}
           canEdit={can('manage_stock') || can('manage_stock_locations')}
+          cta={heroCta}
           leading={subTabs.length > 1 && activeSub
-            ? <SubTabStrip tabs={subTabs} value={activeSub} onChange={setSub} onAccent accent={accentColor} />
+            ? (
+              <View style={{ alignSelf: 'flex-end', marginTop: 18 }}>
+                <SlideTabBar
+                  items={subTabs.map(st => ({ key: st.key, label: autoT(st.label) }))}
+                  activeKey={activeSub}
+                  onChange={k => setSub(k)}
+                  accentColor={accentColor}
+                  size="sm"
+                />
+              </View>
+            )
             : null}
           onEditProduct={item => setProductModal({ visible: true, item })} />;
 
@@ -4387,59 +4553,37 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
 
     return (
       <View style={{ gap: 14 }}>
-        {/* ── F1 HeroCard — Ürünler özeti (accent bg + white blobs) ── */}
-        <View style={{
-          borderRadius: 20, overflow: 'hidden',
-          ...heroBg, padding: 18,
-          position: 'relative',
-        }}>
-          {/* Dekoratif beyaz bloblar */}
-          <HeroGlow size={180} opacity={0.20} delay={0} style={{ top: -50, end: -40 }} />
-          <HeroGlow size={150} opacity={0.12} delay={1400} style={{ bottom: -60, start: -30 }} />
-
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
-            <View style={{ flex: 1, minWidth: 220 }}>
-              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)', marginBottom: 8 }}>
-                Ürünler
-              </Text>
-              <Text
-                style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 44, color: '#FFFFFF', letterSpacing: -1.2, lineHeight: 48 }}
-                numberOfLines={1}
-              >
-                {total}
-              </Text>
-              <Text style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.78)', marginTop: 4 }}>
-                {filtered.length === total ? `${total} ürün listede` : `${filtered.length} / ${total} ürün gösteriliyor`}
-              </Text>
+        {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ─────────────────
+            Prim Motoru hiyerarşisi: kicker → 44px tek büyük rakam → bağlam
+            cümlesi → altta durum kutucukları ve alt sekme şeridi. */}
+        <WhiteHero
+          kicker="Ürünler"
+          accent={accentColor}
+          title={<Text style={{ color: heroInk.accentInk }}>{total}</Text>}
+          description={filtered.length === total ? `${total} ürün listede` : `${filtered.length} / ${total} ürün gösteriliyor`}
+          // "Fire bildir" birincil eylemin YANINDA (kullanıcı isteği) — araç
+          // çubuğundan hero'ya taşındı.
+          cta={
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <GlassTooltip title={autoT('Fire bildir')} text={autoT('Kırılan ya da bozulan malzemeyi stoktan düş')}>
+                <Pressable
+                  onPress={() => setWasteOpen(true)}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0,
+                    paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999,
+                    backgroundColor: U.chipTones.danger.bg, borderWidth: 1, borderColor: U.chipTones.danger.fg + '33',
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  }}
+                >
+                  <Flame size={13} color={U.chipTones.danger.fg} strokeWidth={1.8} />
+                  <Text style={{ fontSize: 12.5, fontWeight: '700', color: U.chipTones.danger.fg }}>Fire bildir</Text>
+                </Pressable>
+              </GlassTooltip>
+              {heroCta}
             </View>
-            {/* Birincil eylem hero'nun içinde: accent zeminde beyaz pill en
-                yüksek kontrastlı yer, ayrıca üstte ayrı bir satır harcamıyor.
-                Dekoratif ikon yalnız CTA yokken görünür. */}
-            {showCta ? (
-              <Pressable
-                onPress={ctaAction}
-                accessibilityRole="button"
-                accessibilityLabel={ctaLabel}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0,
-                  paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999,
-                  backgroundColor: '#FFFFFF',
-                  ...(Platform.OS === 'web'
-                    ? ({ cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.16)' } as any)
-                    : { shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 3 }),
-                }}
-              >
-                <Plus size={14} color={accentColor} strokeWidth={2.4} />
-                <Text numberOfLines={1} style={{ fontSize: 12.5, fontWeight: '700', color: accentColor }}>{ctaLabel}</Text>
-              </Pressable>
-            ) : (
-              <View style={{ width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.18)' }}>
-                <Package size={20} color="#FFFFFF" strokeWidth={1.6} />
-              </View>
-            )}
-          </View>
-
-          {/* KPI strip — beyaz pill stat cards */}
+          }
+        >
+          {/* Durum kırılımı — büyük rakamı "hangisi kritik"e açar. */}
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
             {([
               { label: 'Normal',   value: normalCount,    icon: CheckCircle    },
@@ -4451,16 +4595,16 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
                 <View key={stat.label} style={{
                   flex: 1, minWidth: 100,
                   paddingVertical: 10, paddingHorizontal: 12, borderRadius: 14,
-                  backgroundColor: 'rgba(255,255,255,0.16)',
+                  backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder,
                 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                    <Icon size={11} color="rgba(255,255,255,0.9)" strokeWidth={2} />
-                    <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>
+                    <Icon size={11} color={heroInk.inkSoft} strokeWidth={2} />
+                    <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: heroInk.inkSoft }}>
                       {stat.label}
                     </Text>
                   </View>
                   <Text
-                    style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 22, color: '#FFFFFF', letterSpacing: -0.5, lineHeight: 24 }}
+                    style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 22, color: heroInk.ink, letterSpacing: -0.5, lineHeight: 24 }}
                     numberOfLines={1}
                   >
                     {stat.value}
@@ -4470,96 +4614,68 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
             })}
           </View>
 
-          {/* Alt sekme şeridi (Liste / Lokasyon) hero kartının İÇİNDE: gezinme,
-              ait olduğu başlığın altında ayrı bir satır harcamak yerine kartın
-              zemininde durur. Accent zeminde seçili pill beyaz. */}
+          {/* Alt sekme şeridi (Liste / Lokasyon) hero'nun İÇİNDE: gezinme ait
+              olduğu başlığın altında, ayrı bir satır harcamadan durur. */}
           {subTabs.length > 1 && activeSub ? (
-            <SubTabStrip
-              tabs={subTabs}
-              value={activeSub}
-              onChange={setSub}
-              onAccent
-              accent={accentColor}
-            />
-          ) : null}
-
-        </View>
-
-        {/* ── Toolbar ── */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          {searchExpanded || search.length > 0 ? (
-            <View style={{
-              flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
-              backgroundColor: T.card, borderRadius: 14, borderWidth: 1,
-              borderColor: searchFocused ? accentColor : T.hairline,
-              paddingHorizontal: 12, height: 44,
-              ...(Platform.OS === 'web' ? { boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)' } : {}),
-            }}>
-              <Search size={15} color={searchFocused ? accentColor : T.ink3} strokeWidth={1.6} />
-              <TextInput
-                autoFocus
-                style={{ flex: 1, fontSize: 14, color: T.ink, height: 44, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) } as any}
-                value={search}
-                onChangeText={setSearch}
-                onFocus={() => setSearchFocused(true)}
-                onBlur={() => { setSearchFocused(false); if (!search) setSearchExpanded(false); }}
-                placeholder="Ürün ara..."
-                placeholderTextColor={T.ink3}
+            /* Hero içinde sağa yaslı kayan sekme çubuğu. */
+            <View style={{ alignSelf: 'flex-end', marginTop: 18 }}>
+              <SlideTabBar
+                items={subTabs.map(st => ({ key: st.key, label: autoT(st.label) }))}
+                activeKey={activeSub}
+                onChange={k => setSub(k)}
+                accentColor={accentColor}
+                size="sm"
               />
-              <Pressable onPress={() => { setSearch(''); setSearchExpanded(false); }} hitSlop={8} style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}}>
-                <X size={14} color={T.ink3} strokeWidth={1.6} />
-              </Pressable>
             </View>
-          ) : (
-            <>
-              {/* Şerit hero kartının içine taşındı — araç çubuğunda tekrar etmez. */}
-              <View style={{ flex: 1 }} />
-            </>
-          )}
+          ) : null}
+        </WhiteHero>
 
-          <Pressable
-            onPress={() => setSearchExpanded(true)}
-            style={{
-              width: 44, height: 44, borderRadius: 9999, alignItems: 'center', justifyContent: 'center',
-              backgroundColor: searchExpanded || search.length > 0 ? accentColor + '14' : T.card,
-              borderWidth: 1, borderColor: searchExpanded || search.length > 0 ? accentColor + '33' : T.hairline,
-              ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
-            }}
-          >
-            <Search size={18} color={searchExpanded || search.length > 0 ? accentColor : T.ink2} strokeWidth={1.6} />
-          </Pressable>
-
-          <Pressable
-            onPress={openFilter}
-            style={{
-              width: 44, height: 44, borderRadius: 9999, alignItems: 'center', justifyContent: 'center',
-              position: 'relative',
-              backgroundColor: activeFilterCount > 0 ? accentColor + '14' : T.card,
-              borderWidth: 1, borderColor: activeFilterCount > 0 ? accentColor + '33' : T.hairline,
-              ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
-            }}
-          >
-            <Filter size={18} color={activeFilterCount > 0 ? accentColor : T.ink2} strokeWidth={1.6} />
-            {activeFilterCount > 0 && (
-              <View style={{ position: 'absolute', top: 3, end: 3, minWidth: 14, height: 14, borderRadius: 7, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3, backgroundColor: accentColor, borderWidth: 1.5, borderColor: '#FFFFFF' }}>
-                <Text style={{ fontSize: 9, fontWeight: '700', color: '#FFFFFF' }}>{activeFilterCount}</Text>
-              </View>
+        {/* ── Toolbar — uygulama genelindeki arama/filtre dili (Klinikler, Ekip):
+            daima açık pill arama + etiketli "Filtrele (n)" düğmesi. ── */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{
+            flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
+            height: 38, paddingHorizontal: 12, borderRadius: 9999,
+            backgroundColor: T.card, borderWidth: 1,
+            borderColor: searchFocused ? accentColor : T.hairline,
+          }}>
+            <Search size={14} color={searchFocused ? accentColor : T.ink3} strokeWidth={1.8} />
+            <TextInput
+              style={{ flex: 1, fontSize: 13, color: T.ink, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) } as any}
+              value={search}
+              onChangeText={setSearch}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+              placeholder="Ürün ara..."
+              placeholderTextColor={T.ink3}
+            />
+            {search.length > 0 && (
+              <GlassTooltip title={autoT('Temizle')} text={autoT('Aramayı temizle')}>
+                <Pressable onPress={() => setSearch('')} hitSlop={8} style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}}>
+                  <X size={13} color={T.ink3} strokeWidth={2} />
+                </Pressable>
+              </GlassTooltip>
             )}
-          </Pressable>
+          </View>
 
-          <Pressable
-            onPress={() => setWasteOpen(true)}
-            style={{
-              flexDirection: 'row', alignItems: 'center', gap: 6,
-              paddingHorizontal: 14, height: 44,
-              borderRadius: 9999,
-              backgroundColor: U.chipTones.danger.bg, borderWidth: 1, borderColor: U.chipTones.danger.fg + '33',
-              ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
-            }}
-          >
-            <Flame size={13} color={U.chipTones.danger.fg} strokeWidth={1.8} />
-            <Text style={{ fontSize: 12, fontWeight: '600', color: U.chipTones.danger.fg }}>Fire bildir</Text>
-          </Pressable>
+          <GlassTooltip title={autoT('Filtrele')} text={autoT('Ürünleri kategoriye ve stok durumuna göre süz')}>
+            <Pressable
+              onPress={openFilter}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 6,
+                height: 38, paddingHorizontal: 14, borderRadius: 9999,
+                backgroundColor: activeFilterCount > 0 ? accentColor + '14' : T.card,
+                borderWidth: 1, borderColor: activeFilterCount > 0 ? accentColor : T.hairline,
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              }}
+            >
+              <SlidersHorizontal size={14} color={activeFilterCount > 0 ? accentColor : T.ink2} strokeWidth={1.8} />
+              <Text style={{ fontSize: 12.5, fontWeight: '600', color: activeFilterCount > 0 ? accentColor : T.ink2 }}>
+                {autoT('Filtrele')}{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+              </Text>
+            </Pressable>
+          </GlassTooltip>
+
         </View>
 
         {/* ── Empty state / List ── */}
@@ -4580,14 +4696,15 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
           </View>
         ) : (
           <>
+            {/* Başlık şeridi düz panel accent'i — uygulama genelinde aynı dil. */}
             <View style={{
               flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12,
-              backgroundColor: T.cardSoft, borderRadius: 14, borderWidth: 1, borderColor: T.hairline2, marginBottom: 4,
+              backgroundColor: accentColor, borderRadius: 14, marginBottom: 4,
             }}>
-              <Text style={{ ...eyebrow, flex: 2.8 }}>Ürün adı</Text>
-              {isDesktop && <Text style={{ ...eyebrow, flex: 2.2 }}>Stok seviyesi</Text>}
-              <Text style={{ ...eyebrow, flex: 1, textAlign: 'center' }}>Miktar</Text>
-              <Text style={{ ...eyebrow, flex: 1.2, textAlign: 'center' }}>Durum</Text>
+              <Text style={{ ...eyebrow, color: listInk, flex: 2.8 }}>Ürün adı</Text>
+              {isDesktop && <Text style={{ ...eyebrow, color: listInk, flex: 2.2 }}>Stok seviyesi</Text>}
+              <Text style={{ ...eyebrow, color: listInk, flex: 1, textAlign: 'center' }}>Miktar</Text>
+              <Text style={{ ...eyebrow, color: listInk, flex: 1.2, textAlign: 'center' }}>Durum</Text>
               <View style={{ width: 76 }} />
             </View>
 
@@ -4598,25 +4715,26 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
 
               return (
                 <View key={groupKey} style={[PCard, { marginBottom: 10, overflow: 'hidden' }]}>
+                  {/* Kategori başlığı (Alçı, Zirkonya…) düz panel accent'i —
+                      tablo başlıklarıyla aynı dil; kart zemininden ayrışır. */}
                   <Pressable
                     style={{
                       flexDirection: 'row', alignItems: 'center', gap: 10,
                       paddingHorizontal: 16, paddingVertical: 14,
-                      backgroundColor: T.card,
-                      borderBottomWidth: collapsed ? 0 : 1, borderBottomColor: T.hairline2,
+                      backgroundColor: accentColor,
                       ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
                     }}
                     onPress={() => toggleGroup(groupKey)}
                   >
                     {collapsed
                       ? (isRTL()
-                          ? <ChevronLeft size={14} color={T.ink3} strokeWidth={1.8} />
-                          : <ChevronRight size={14} color={T.ink3} strokeWidth={1.8} />)
-                      : <ChevronDown size={14} color={T.ink3} strokeWidth={1.8} />
+                          ? <ChevronLeft size={14} color={listInk} strokeWidth={1.8} />
+                          : <ChevronRight size={14} color={listInk} strokeWidth={1.8} />)
+                      : <ChevronDown size={14} color={listInk} strokeWidth={1.8} />
                     }
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: T.ink, letterSpacing: -0.2 }}>{label}</Text>
-                    <Text style={{ fontSize: 12, color: T.ink3, fontWeight: '500' }}>·</Text>
-                    <Text style={{ fontSize: 12, color: T.ink3, fontWeight: '500' }}>{groupItems.length} ürün</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: listInk, letterSpacing: -0.2 }}>{label}</Text>
+                    <Text style={{ fontSize: 12, color: listInk, opacity: 0.7, fontWeight: '500' }}>·</Text>
+                    <Text style={{ fontSize: 12, color: listInk, opacity: 0.7, fontWeight: '500' }}>{groupItems.length} ürün</Text>
                     <View style={{ flex: 1 }} />
                     {groupCrit > 0 && (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: U.chipTones.warning.bg, borderRadius: 9999, paddingHorizontal: 10, paddingVertical: 3, borderWidth: 1, borderColor: U.chipTones.warning.fg + '22' }}>
@@ -4861,9 +4979,18 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
         <View style={{ flex: 1, flexDirection: 'row' }}>
 
           {/* ── Desktop Sidebar ─────────────────────────────────── */}
-          <View style={{ width: 220, paddingTop: 24, paddingBottom: 16 }}>
+          {/* Sidebar sayfa ile birlikte kaymaz — ana kenar çubuğu gibi yerinde durur. */}
+          <View
+            style={{
+              width: 220, paddingTop: 24, paddingBottom: 16,
+              ...(Platform.OS === 'web'
+                ? { position: 'sticky', top: 0, alignSelf: 'flex-start', maxHeight: '100vh' } as any
+                : null),
+            }}
+          >
             <ScrollView
               showsVerticalScrollIndicator={false}
+              style={{ flexShrink: 1, minHeight: 0 }}
               contentContainerStyle={{ gap: 2, paddingHorizontal: 10 }}
             >
               {visibleTabs.map(t => {
@@ -4931,7 +5058,9 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
           {/* ── Desktop Content ──────────────────────────────────── */}
           <View style={{ flex: 1, overflow: 'hidden' }}>
             {/* Title bar — Patterns Display 300 */}
-            <View style={{ paddingHorizontal: 16, paddingTop: 18, paddingBottom: 10, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+            {/* 16px kuralı: başlık → içerik = başlık altı 8 + kaydırma üstü 8. Alt ekranlar
+                hub içinde kendi üst dolgusunu EKLEMEZ. */}
+            <View style={{ paddingHorizontal: 16, paddingTop: 18, paddingBottom: 8, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 }}>
                   Stok &amp; Depo
@@ -4963,13 +5092,19 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
             {/* Ürünler'de şerit hero kartının İÇİNDE (durum kartlarının altında);
                 burada tekrar çizilmez. Diğer sekmelerin bir kısmında hero yok,
                 onlarda şerit başlığın altında kalmaya devam ediyor. */}
-            {subTabs.length > 1 && activeSub && tab !== 'list' ? (
-              <SubTabStrip
-                tabs={subTabs}
-                value={activeSub}
-                onChange={setSub}
-                numbered={tab === 'setup'}
-              />
+            {subTabs.length > 1 && activeSub && tab === 'setup' ? (
+              /* Alt sekmeler: uygulama geneli kayan sekme çubuğu (SlideTabBar). */
+              <View style={{ paddingHorizontal: PAGE_PADDING, paddingTop: 8, paddingBottom: 8 }}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 0 }} contentContainerStyle={{ alignItems: 'center' }}>
+                  <SlideTabBar
+                    items={subTabs.map(st => ({ key: st.key, label: autoT(st.label) }))}
+                    activeKey={activeSub}
+                    onChange={k => setSub(k)}
+                    accentColor={accentColor}
+                    size="sm"
+                  />
+                </ScrollView>
+              </View>
             ) : null}
 
             <HubContext.Provider value={true}>
@@ -4987,14 +5122,20 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
         /* ── Mobile: full-width content ─────────────────────────── */
         <View style={{ flex: 1, paddingHorizontal: PAGE_PADDING, paddingTop: 4 }}>
           {/* 'list' sekmesinde alt sekmeler araç çubuğuna (aramanın soluna) taşındı. */}
-          {subTabs.length > 1 && activeSub && tab !== 'list' ? (
+          {subTabs.length > 1 && activeSub && tab === 'setup' ? (
             <View style={{ marginHorizontal: PAGE_BLEED }}>
-              <SubTabStrip
-                tabs={subTabs}
-                value={activeSub}
-                onChange={setSub}
-                numbered={tab === 'setup'}
-              />
+              /* Alt sekmeler: uygulama geneli kayan sekme çubuğu (SlideTabBar). */
+              <View style={{ paddingHorizontal: PAGE_PADDING, paddingTop: 8, paddingBottom: 8 }}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 0 }} contentContainerStyle={{ alignItems: 'center' }}>
+                  <SlideTabBar
+                    items={subTabs.map(st => ({ key: st.key, label: autoT(st.label) }))}
+                    activeKey={activeSub}
+                    onChange={k => setSub(k)}
+                    accentColor={accentColor}
+                    size="sm"
+                  />
+                </ScrollView>
+              </View>
             </View>
           ) : null}
 

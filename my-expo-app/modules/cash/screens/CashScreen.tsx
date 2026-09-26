@@ -23,7 +23,8 @@ import {
   type CashAccount, type AccountType, type MovementCategory, type MovementDirection,
 } from '../api';
 import { DS } from '../../../core/theme/dsTokens';
-import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
+import { WhiteHero } from '../../../core/ui/WhiteHero';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { useInkUI } from '../../../core/theme/inkScale';
@@ -171,6 +172,9 @@ export function CashScreen() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
   const TH = usePanelTheme();    // panel rotasına göre renk paleti (admin=mercan, lab=saffron, vs.)
+  // Tablo kartı başlığı düz panel accent'i (uygulama genelinde aynı dil).
+  const tblAccent = TH.primary;
+  const tblInk = onAccentInk(tblAccent);
   // Koyu temada hero lacivert gradyana iner; açık temada mevcut soluk TH.bg zemini KORUNUR.
   const heroBg = useHeroSurface(TH.primary);
 
@@ -239,51 +243,32 @@ export function CashScreen() {
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={DS.ink[300]} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Hero — §10 glassmorphism ─────────────────────────── */}
-        {/* Koyu tema: soluk TH.bg zemin + soluk ink metni beyaz leke gibi patlıyordu →
-            lacivert hero yüzeyi + beyaz metin. Açık tema birebir korunur. */}
-        <View style={{
-          borderRadius: 28, overflow: 'hidden',
-          ...(isDark ? heroBg : { backgroundColor: TH.bg }), padding: 16,
-          position: 'relative',
-        }}>
-          {isDark ? (
-            <>
-              <HeroGlow size={180} opacity={0.18} delay={0}    style={{ top: -40, end: -40 }} />
-              <HeroGlow size={140} opacity={0.10} delay={1400} style={{ bottom: -50, start: -20 }} />
-            </>
-          ) : (
-            <>
-              <View style={{ position: 'absolute', top: -40, end: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: TH.bgDeep, opacity: 0.6 }} />
-              <View style={{ position: 'absolute', bottom: -50, start: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: TH.bgDeep, opacity: 0.4 }} />
-            </>
-          )}
+        {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ─────────────
+            Kullanıcının adlandırdığı imza hero dili; Prim Motoru panosuyla
+            aynı kap/tipografi. Para birimi kartları ve Kasa/Banka dökümü
+            başlık bloğunun altına `children` olarak giriyor — bunlar <Text>
+            değil bileşen olduğu için `title` kullanılamaz. */}
+        <WhiteHero
+          kicker="Toplam Bakiye"
+          accent={TH.primary}
+          stats={[
+            { value: String(accounts.length), label: 'Hesap' },
+            { value: String(accounts.filter(a => a.account_type === 'kasa').length), label: 'Kasa' },
+            { value: String(accounts.filter(a => a.account_type === 'banka').length), label: 'Banka' },
+          ]}
+          actions={<PillBtn icon={Plus} label="Hesap Ekle" onPress={() => setAddAccountOpen(true)} />}
+          style={{ marginBottom: 0 }}
+        >
+          <MoneyMultiX
+            slices={balByCurrency}
+            variant="cards"
+            onAccent={isDark ? '#FFFFFF' : undefined}
+            size="lg"
+            colorBySign
+            accentColor={TH.primary}
+          />
 
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
-            <View style={{ flex: 1, minWidth: 220 }}>
-              <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: isDark ? 'rgba(255,255,255,0.85)' : T.ink3, marginBottom: 12 }}>
-                Toplam Bakiye
-              </Text>
-              {/* Katı per-currency: her para birimi ayrı kart, asla tek toplama indirilmez */}
-              <MoneyMultiX
-                slices={balByCurrency}
-                variant="cards"
-                size="lg"
-                colorBySign
-                accentColor={TH.primary}
-              />
-              <Text style={{ fontSize: 12, color: isDark ? 'rgba(255,255,255,0.60)' : T.ink3, marginTop: 8 }}>
-                {accounts.length} hesap
-              </Text>
-            </View>
-
-            {/* Action */}
-            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-              <PillBtn icon={Plus} label="Hesap Ekle" onPress={() => setAddAccountOpen(true)} />
-            </View>
-          </View>
-
-          {/* Kasa / Banka breakdown — her biri kendi para birimlerinde (inline) */}
+          {/* Kasa / Banka dökümü — her biri kendi para birimlerinde (inline) */}
           <View style={{ flexDirection: 'row', gap: 24, marginTop: 20, flexWrap: 'wrap' }}>
             <View style={{ gap: 4 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -304,17 +289,17 @@ export function CashScreen() {
               <MoneyMultiX slices={bankaByCurrency} variant="inline" colorBySign emptyText="—" />
             </View>
           </View>
-        </View>
+        </WhiteHero>
 
         {/* ── Desktop: two-column layout ──────────────────────── */}
         {isDesktop ? (
           <View style={{ flexDirection: 'row', gap: 16 }}>
             {/* Left: Accounts table */}
             <View style={{ flex: 1, ...tableCard, backgroundColor: T.card, borderColor: T.hairline }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, borderBottomWidth: 1, borderBottomColor: T.hairline }}>
-                <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: T.ink }}>Hesaplar</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, backgroundColor: tblAccent }}>
+                <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: tblInk }}>Hesaplar</Text>
                 <View style={{ flex: 1 }} />
-                <Text style={{ fontSize: 12, color: T.ink3 }}>{accounts.length} hesap</Text>
+                <Text style={{ fontSize: 12, color: tblInk, opacity: 0.75 }}>{accounts.length} hesap</Text>
               </View>
 
               {/* Table header */}
@@ -408,13 +393,13 @@ export function CashScreen() {
 
             {/* Right: Movements for selected account */}
             <View style={{ flex: 1.3, ...tableCard, backgroundColor: T.card, borderColor: T.hairline }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, borderBottomWidth: 1, borderBottomColor: T.hairline }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, backgroundColor: tblAccent }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: T.ink }}>
+                  <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: tblInk }}>
                     {selectedAccount?.name ?? 'Hareketler'}
                   </Text>
                   {selectedAccount && (
-                    <Text style={{ fontSize: 12, color: T.ink3, marginTop: 2 }}>
+                    <Text style={{ fontSize: 12, color: tblInk, opacity: 0.75, marginTop: 2 }}>
                       Bakiye: {fmtCur(selectedAccount.balance, selectedAccount.currency)}
                     </Text>
                   )}
@@ -429,7 +414,7 @@ export function CashScreen() {
                 <View style={{
                   flexDirection: 'row', alignItems: 'center', gap: 10,
                   height: 40, paddingHorizontal: 16, marginHorizontal: 16, marginTop: 12, marginBottom: 4,
-                  borderRadius: 14, borderWidth: 1, borderColor: T.hairline, backgroundColor: isDark ? T.cardSoft : (isDark ? T.card : '#FFF'),
+                  borderRadius: 9999, borderWidth: 1, borderColor: T.hairline, backgroundColor: isDark ? T.cardSoft : (isDark ? T.card : '#FFF'),
                 }}>
                   <Search size={14} color={T.ink3} strokeWidth={1.8} />
                   <TextInput
@@ -597,7 +582,7 @@ export function CashScreen() {
                 {/* Search */}
                 <View style={{
                   flexDirection: 'row', alignItems: 'center', gap: 10,
-                  height: 44, paddingHorizontal: 14, borderRadius: 14,
+                  height: 44, paddingHorizontal: 14, borderRadius: 9999,
                   borderWidth: 1, borderColor: T.hairline, backgroundColor: isDark ? T.cardSoft : (isDark ? T.card : '#FFF'),
                 }}>
                   <Search size={15} color={T.ink3} strokeWidth={1.8} />

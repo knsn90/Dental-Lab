@@ -19,7 +19,12 @@ import { toast } from '../../../core/ui/Toast';
 import { formatMoney, type Currency } from '../../../core/money/currency';
 import { fetchMyOpenBalances, startMyBulkPayment, type OpenBalanceRow } from '../../payments/api';
 
-export function BulkPayModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+export function BulkPayModal({ visible, onClose, onStarted }: {
+  visible: boolean;
+  onClose: () => void;
+  /** Intent açıldı → kart ekranını çağıran ekran modalde açar. */
+  onStarted?: (token: string) => void;
+}) {
   const U = useInkUI();
   const theme = usePanelTheme();
   const router = useRouter();
@@ -60,8 +65,9 @@ export function BulkPayModal({ visible, onClose }: { visible: boolean; onClose: 
     const r = await startMyBulkPayment(active.currency, Math.round(amount * 100) / 100);
     setBusy(false);
     if (r.error || !r.token) { toast.error(r.error ?? autoT('Ödeme başlatılamadı')); return; }
+    if (onStarted) { onStarted(r.token); return; }   // modal zinciri
     onClose();
-    router.push(`/pay/${r.token}` as any);
+    router.push(`/pay/${r.token}` as any);           // geri uyumluluk
   };
 
   return (

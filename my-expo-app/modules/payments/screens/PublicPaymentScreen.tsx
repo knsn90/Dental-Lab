@@ -1,5 +1,11 @@
 /**
- * PublicPaymentScreen — /pay/[token] route
+ * PublicPaymentScreen — ödeme akışı.
+ *
+ * İKİ YERDE kullanılır, gövdesi aynıdır:
+ *   • /pay/[token] rotası — halka açık, oturum gerekmez. Lab'ın e-posta ya da
+ *     WhatsApp ile gönderdiği ödeme linki buraya düşer.
+ *   • PaymentSheetModal — uygulama içinden ödeyen klinik sayfadan kopmasın
+ *     diye aynı akış modal içinde çizilir (`embedded`).
  *
  * Auth gerekmez. Token ile intent çekilir, kart bilgisi alınır,
  * 3DS akışı tetiklenir, sonuç gösterilir.
@@ -24,15 +30,33 @@ import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { fetchPublicIntent, chargeWithCard, confirmPayment, PAYMENT_STATUS_LABELS } from '../api';
 import type { PublicPaymentIntent, CardInput } from '../types';
 
+/** Sayfa kabuğu: rotada SafeAreaView, modalda düz View. */
+function Shell({ embedded, bg, children }: { embedded?: boolean; bg: string; children: React.ReactNode }) {
+  return embedded
+    ? <View style={{ flex: 1 }}>{children}</View>
+    : <SafeAreaView style={[s.safe, { backgroundColor: bg }]}>{children}</SafeAreaView>;
+}
+
 function fmtMoney(n: number, cur = 'TRY'): string {
   const sym = cur === 'TRY' ? '₺' : cur === 'USD' ? '$' : '€';
   return sym + (Number(n) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export function PublicPaymentScreen() {
+export function PublicPaymentScreen({
+  token: tokenProp, embedded, onPaid,
+}: {
+  /** Modal kullanımında token prop'tan gelir; rotada adresten okunur. */
+  token?: string;
+  /** true → sayfa kabuğu (SafeAreaView + tam ekran zemin) çizilmez. */
+  embedded?: boolean;
+  /** Ödeme başarıyla tamamlandığında (modalı kapatıp listeyi tazelemek için). */
+  onPaid?: () => void;
+} = {}) {
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
-  const { token } = useLocalSearchParams<{ token: string }>();
+  // Hook koşulsuz çağrılır; modalda parametre yok, prop kazanır.
+  const params = useLocalSearchParams<{ token: string }>();
+  const token = tokenProp ?? params.token;
   const [intent, setIntent] = useState<PublicPaymentIntent | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
@@ -66,7 +90,7 @@ export function PublicPaymentScreen() {
       // postMessage ile gelir. İstemci hiçbir şeyi "ödendi" YAPMAZ, yalnız
       // kaydı yeniden okur — doğruluk kaynağı sunucudaki intent durumudur.
       if (e.data?.type === 'iyzico-3ds-done') {
-        if (e.data.ok) { setStage('success'); load(); }
+        if (e.data.ok) { setStage('success'); load(); onPaid?.(); }
         else { setFailMessage('3DS doğrulaması tamamlanamadı'); setStage('fail'); }
         return;
       }
@@ -107,6 +131,7 @@ export function PublicPaymentScreen() {
     if (result.status === 'paid') {
       setStage('success');
       load();
+      onPaid?.();
       return;
     }
 
@@ -129,17 +154,17 @@ export function PublicPaymentScreen() {
   // ─── Render ────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <SafeAreaView style={[s.safe, { backgroundColor: T.bg }]}>
+      <Shell embedded={embedded} bg={T.bg}>
         <View style={s.center}>
           <ActivityIndicator color="#2563EB" size="large" />
         </View>
-      </SafeAreaView>
+      </Shell>
     );
   }
 
   if (error || !intent) {
     return (
-      <SafeAreaView style={[s.safe, { backgroundColor: T.bg }]}>
+      <Shell embedded={embedded} bg={T.bg}>
         <View style={s.center}>
           <View style={[s.iconCircle, { backgroundColor: '#FEF2F2' }]}>
             <AppIcon name="alert-circle" size={36} color="#DC2626" />
@@ -147,14 +172,14 @@ export function PublicPaymentScreen() {
           <Text style={[s.bigTitle, { color: T.ink }]}>Ödeme Bulunamadı</Text>
           <Text style={[s.bigSub, { color: T.ink3 }]}>{error ?? 'Bu link geçersiz veya süresi dolmuş.'}</Text>
         </View>
-      </SafeAreaView>
+      </Shell>
     );
   }
 
   // Success view
   if (stage === 'success' || intent.status === 'paid') {
     return (
-      <SafeAreaView style={[s.safe, { backgroundColor: T.bg }]}>
+      <Shell embedded={embedded} bg={T.bg}>
         <View style={s.center}>
           <View style={[s.iconCircle, { backgroundColor: '#ECFDF5' }]}>
             <AppIcon name="check-circle" size={48} color="#059669" />
@@ -167,14 +192,14 @@ export function PublicPaymentScreen() {
             Teşekkürler! Makbuz e-postanıza gönderilecektir.
           </Text>
         </View>
-      </SafeAreaView>
+      </Shell>
     );
   }
 
   // 3DS view (web iframe)
   if (stage === '3ds' && threedsHtml) {
     return (
-      <SafeAreaView style={[s.safe, { backgroundColor: T.bg }]}>
+      <Shell embedded={embedded} bg={T.bg}>
         <View style={s.threedsWrap}>
           {Platform.OS === 'web' ? (
             // @ts-ignore — web only
@@ -187,14 +212,14 @@ export function PublicPaymentScreen() {
             <Text style={[s.bigSub, { color: T.ink3 }]}>3DS doğrulama yalnızca web'de destekleniyor (mobilde Edge Function callback gerekli)</Text>
           )}
         </View>
-      </SafeAreaView>
+      </Shell>
     );
   }
 
   // Fail view
   if (stage === 'fail') {
     return (
-      <SafeAreaView style={[s.safe, { backgroundColor: T.bg }]}>
+      <Shell embedded={embedded} bg={T.bg}>
         <View style={s.center}>
           <View style={[s.iconCircle, { backgroundColor: '#FEF2F2' }]}>
             <AppIcon name="close-circle" size={48} color="#DC2626" />
@@ -205,14 +230,14 @@ export function PublicPaymentScreen() {
             <Text style={s.retryText}>Tekrar Dene</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </Shell>
     );
   }
 
   // Form view
   const cfg = PAYMENT_STATUS_LABELS[intent.status];
   return (
-    <SafeAreaView style={[s.safe, { backgroundColor: T.bg }]}>
+    <Shell embedded={embedded} bg={T.bg}>
       <ScrollView contentContainerStyle={s.scroll}>
         {/* Lab başlık */}
         <View style={s.labHead}>
@@ -300,9 +325,13 @@ export function PublicPaymentScreen() {
             </Field>
           </View>
 
-          <Text style={[s.demoHint, { color: T.ink3 }]}>
-            🧪 Sandbox: CVC 000 → fail · 999 → 3DS · diğer → success
-          </Text>
+          {/* Test kuralları YALNIZ demo POS'ta. Canlı sağlayıcıda gerçek
+              kliniğe "CVC'ye 999 yaz" demiş oluyorduk. */}
+          {intent.provider === 'demo' && (
+            <Text style={[s.demoHint, { color: T.ink3 }]}>
+              Sandbox: CVC 000 → başarısız · 999 → 3DS · diğer → başarılı
+            </Text>
+          )}
         </View>
 
         {/* Pay button */}
@@ -323,7 +352,7 @@ export function PublicPaymentScreen() {
           🔒 Kart bilgileriniz GİB onaylı 3D Secure altyapısı ile güvence altındadır.
         </Text>
       </ScrollView>
-    </SafeAreaView>
+    </Shell>
   );
 }
 

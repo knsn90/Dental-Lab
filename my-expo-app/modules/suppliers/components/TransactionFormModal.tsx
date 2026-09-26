@@ -16,6 +16,7 @@ import { type Currency, useExchangeRate , useExchangeRateInfo } from '../../../c
 import { supabase } from '../../../core/api/supabase';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { ensureAiConsent } from '../../../core/ai/aiConsent';
 
 interface Props {
   visible: boolean;
@@ -122,6 +123,8 @@ export function TransactionFormModal({ visible, type, supplier, editing = null, 
 
   // ── Dekont OCR ──
   const handleParseReceipt = async (file: File) => {
+    // App Store 5.1.2(i): kişisel veri Claude'a gitmeden ÖNCE açık izin.
+    if (!(await ensureAiConsent())) return;
     setError(''); setParseInfo(null); setParsing(true);
     try {
       const buf = await file.arrayBuffer();

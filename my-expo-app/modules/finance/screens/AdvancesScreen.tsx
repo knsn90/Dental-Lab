@@ -30,6 +30,8 @@ import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { groupByCurrency, type CurrencyTotal } from '../../../core/money/aggregations';
 import { MoneyMultiX } from '../../../core/money/MoneyMultiX';
 import { formatMoney, CURRENCY_META, SUPPORTED_CURRENCIES, type Currency } from '../../../core/money/currency';
+import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
+import { onAccentInk } from '../../../core/theme/usePanelTheme';
 
 const DISPLAY = { fontFamily: 'Inter Tight, Inter, system-ui, sans-serif', fontWeight: '300' as const };
 // Katı per-currency: tutar KENDİ para biriminde.
@@ -145,73 +147,55 @@ export function AdvancesScreen() {
   const pendAllByCcy = useMemo(() => groupByCurrency(allPendSlices, s => ({ amount: s.total, currency: s.currency as Currency })), [allPendSlices]);
   const activeCount  = useMemo(() => employees.filter(e => (e as any).is_active !== false).length, [employees]);
 
+  // Beyaz hero başlığı: çoklu-döviz TOPLANMAZ → en büyük dilim başlıkta.
+  const heroInk = useWhiteHeroInk(P);
+  const advLead = advAllByCcy[0] ?? null;
+  const advRest = advAllByCcy.slice(1);
+
   if (loading) {
     return <CenteredLoader color={T.ink3} />;
   }
 
   return (
     <ScrollView contentContainerStyle={{ paddingHorizontal: 12, paddingTop: insets.top + 8, paddingBottom: 120, gap: 14 }}>
-      {/* F1 HeroCard — Avans özeti */}
-      <View style={{
-        borderRadius: 20, overflow: 'hidden',
-        backgroundColor: P, padding: 18, position: 'relative',
-      }}>
-        <View style={{ position: 'absolute', top: -40, end: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
-        <View style={{ position: 'absolute', bottom: -50, start: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
-
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.78)', marginBottom: 8 }}>
-              Toplam Verilen Avans
-            </Text>
-            {/* Katı per-currency: her para birimi ayrı kart, asla toplanmaz */}
-            <MoneyMultiX slices={advAllByCcy} variant="cards" size="lg" accentColor={P} emptyText="—" />
-            {pendAllByCcy.length > 0 && (
-              <View style={{ marginTop: 10 }}>
-                <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.72)', marginBottom: 2 }}>Bekleyen</Text>
-                <MoneyMultiX slices={pendAllByCcy} variant="inline" />
-              </View>
-            )}
-            <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.72)', marginTop: 8 }}>
-              {activeCount} aktif personel
-            </Text>
+      {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ─────────────────
+          Prim Motoru hiyerarşisi: kicker → 44px tek büyük rakam → bağlam
+          cümlesi → sağda 40px stat'lar. Rakam TOPLANMAZ. */}
+      <WhiteHero
+        kicker="Avans Talepleri"
+        accent={P}
+        title={
+          advLead ? (
+            <>Verilen <Text style={{ color: heroInk.accentInk }}>{formatMoney(advLead.total, advLead.currency, { fractionDigits: 0 })}</Text></>
+          ) : '—'
+        }
+        description={
+          `${activeCount} aktif personel · ${recent.length} avans kaydı` +
+          (pendAllByCcy.length ? ' · bekleyen talep var' : '')
+        }
+        stats={[
+          { value: String(activeCount),   label: 'Personel' },
+          { value: String(recent.length), label: 'Kayıt' },
+          { value: String(advAllByCcy.length || 1), label: 'Para Birimi' },
+        ]}
+      >
+        {advRest.length > 0 && (
+          <View style={{ marginTop: 10 }}>
+            <MoneyMultiX slices={advRest} variant="inline" onAccent={heroInk.moneyOnAccent} />
           </View>
-          <View style={{ width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.18)' }}>
-            <Wallet size={20} color="#FFFFFF" strokeWidth={1.6} />
+        )}
+        {pendAllByCcy.length > 0 && (
+          <View style={{ marginTop: 12 }}>
+            <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: heroInk.inkSoft, marginBottom: 3 }}>Bekleyen</Text>
+            <MoneyMultiX slices={pendAllByCcy} variant="inline" onAccent={heroInk.moneyOnAccent} />
           </View>
-        </View>
-
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: 16 }}>
-          {([
-            { label: 'Personel',     value: String(activeCount),               icon: Users    },
-            { label: 'Para Birimi',  value: String(advAllByCcy.length || 1),    icon: Banknote },
-            { label: 'Kayıt',        value: String(recent.length),             icon: Clock    },
-          ] as const).map(stat => {
-            const Icon = stat.icon;
-            return (
-              <View key={stat.label} style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.16)' }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 }}>
-                  <Icon size={11} color="rgba(255,255,255,0.85)" strokeWidth={2} />
-                  <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>
-                    {stat.label}
-                  </Text>
-                </View>
-                <Text
-                  style={{ ...DISPLAY, fontSize: 16, color: '#FFFFFF', letterSpacing: -0.3, lineHeight: 20 }}
-                  numberOfLines={1}
-                >
-                  {stat.value}
-                </Text>
-              </View>
-            );
-          })}
-        </View>
-      </View>
+        )}
+      </WhiteHero>
 
       {/* Ekip listesi */}
       <View style={{ backgroundColor: T.card, borderRadius: 16, borderWidth: 1, borderColor: T.hairline, overflow: 'hidden' }}>
-        <View style={{ paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: T.hairline }}>
-          <Text style={{ ...DISPLAY, fontSize: 18, color: T.ink }}>Ekip ve Avans Durumu</Text>
+        <View style={{ paddingHorizontal: 16, paddingVertical: 14, backgroundColor: P }}>
+          <Text style={{ ...DISPLAY, fontSize: 18, color: onAccentInk(P) }}>Ekip ve Avans Durumu</Text>
         </View>
         {employees.length === 0 ? (
           <View style={{ padding: 32, alignItems: 'center', gap: 8 }}>

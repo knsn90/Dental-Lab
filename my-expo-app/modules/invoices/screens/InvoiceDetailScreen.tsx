@@ -46,6 +46,7 @@ import { printInvoice } from '../printInvoice';
 import { PaymentReminderModal } from '../components/PaymentReminderModal';
 import { InvoiceActionsCard } from '../components/InvoiceActionsCard';
 import { startMyInvoicePayment } from '../../payments/api';
+import { PaymentSheetModal } from '../../payments/components/PaymentSheetModal';
 import { OrderDetailScreenV2 } from '../../orders/screens/OrderDetailScreenV2';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { CenteredLoader } from '../../../core/ui/CenteredLoader';
@@ -230,6 +231,8 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   /** Klinik/hekim "Öde" düğmesi — intent açılırken çift tıklamayı engeller. */
   const [payBusy, setPayBusy] = useState(false);
+  /** Açık ödeme modalinin token'ı — null iken modal kapalı. */
+  const [payToken, setPayToken] = useState<string | null>(null);
   const [addItemModalVisible, setAddItemModalVisible] = useState(false);
   const [reminderOpen, setReminderOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -388,7 +391,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
     const r = await startMyInvoicePayment(invoice.id);
     setPayBusy(false);
     if (r.error || !r.token) { toast.error(r.error ?? 'Ödeme başlatılamadı'); return; }
-    router.push(`/pay/${r.token}` as any);
+    setPayToken(r.token);   // ayrı sayfa değil, modal
   };
 
   const handlePrint = async () => {
@@ -994,6 +997,12 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
         {/* ═══ BELGE İŞLEMLERİ — not · ödeme linki · e-fatura TEK kartta ═══
             Üç ayrı gölgeli kart üç ayrı tasarım dili kullanıyor ve kolonu
             uzatıyordu; numaralı bölümler akışı ("önce hangisi?") koruyor. */}
+        <PaymentSheetModal
+          token={payToken}
+          onClose={() => setPayToken(null)}
+          onPaid={() => { setPayToken(null); refetch(); }}
+        />
+
         {(!readOnly || invoice.notes) && (
           <InvoiceActionsCard
             invoiceId={invoice.id}

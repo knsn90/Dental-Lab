@@ -21,6 +21,7 @@ import {
 import { WhiteHero } from '../../../core/ui/WhiteHero';
 import { startMyInvoicePayment } from '../../payments/api';
 import { BulkPayModal } from '../components/BulkPayModal';
+import { PaymentSheetModal } from '../../payments/components/PaymentSheetModal';
 import { toast } from '../../../core/ui/Toast';
 import { useRates, rateToBase } from '../../../core/money/rateCache';
 import { getBaseCurrency } from '../../../core/money/baseCurrency';
@@ -72,6 +73,7 @@ export function InvoiceListBase({ clinicId, initialFilter = 'open' }: Props) {
   // ödeme intent'i açar ve kart sayfasına gider. Sağlayıcı yoksa RPC hata
   // döndürür; kullanıcıyı boş bir kart formuna göndermiyoruz.
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [payToken, setPayToken] = useState<string | null>(null);
   const [payingId, setPayingId] = useState<string | null>(null);
   // "Öde" satırın İÇİNDE; web'de tıklama satıra da sıçrar (DOM bubbling) ve
   // fatura detayı ile ödeme sayfası yarışırdı. Kısa ömürlü bayrak: düğmeye
@@ -85,8 +87,8 @@ export function InvoiceListBase({ clinicId, initialFilter = 'open' }: Props) {
     const r = await startMyInvoicePayment(invoiceId);
     setPayingId(null);
     if (r.error || !r.token) { toast.error(r.error ?? autoT('Ödeme başlatılamadı')); return; }
-    router.push(`/pay/${r.token}` as any);
-  }, [payingId, router]);
+    setPayToken(r.token);   // ayrı sayfa değil, modal
+  }, [payingId]);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -269,7 +271,16 @@ export function InvoiceListBase({ clinicId, initialFilter = 'open' }: Props) {
         </Card>
       )}
 
-      <BulkPayModal visible={bulkOpen} onClose={() => setBulkOpen(false)} />
+      <BulkPayModal
+        visible={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        onStarted={tok => { setBulkOpen(false); setPayToken(tok); }}
+      />
+      <PaymentSheetModal
+        token={payToken}
+        onClose={() => setPayToken(null)}
+        onPaid={() => { setPayToken(null); void load(); }}
+      />
     </ScrollView>
   );
 }

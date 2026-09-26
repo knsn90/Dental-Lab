@@ -16,6 +16,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft, ChevronRight, Menu, X, Check } from '../../../core/ui/icons';
 
 import { HubContext } from '../../../core/ui/HubContext';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { useColorThemeStore } from '../../../core/store/colorThemeStore';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 import { usePermissionStore } from '../../../core/store/permissionStore';
@@ -74,7 +76,7 @@ interface NavItem {
 // ── Panel accent mapping ─────────────────────────────────────────────────
 const PANEL_ACCENTS: Record<PanelKind, string> = {
   lab:     '#F5C24B',
-  admin:   '#4771AB',
+  admin:   '#004B87',
   doctor:  '#32BB78',
   clinic:  '#32BB78',
   station: '#3B82F6',
@@ -265,19 +267,21 @@ export function SettingsHubScreen({
             backgroundColor: panelBg,
           }}
         >
-          <Pressable
-            onPress={() => { try { safeBack('/'); } catch {} }}
-            style={({ pressed }: any) => ({
-              width: 36, height: 36, borderRadius: 18,
-              alignItems: 'center', justifyContent: 'center',
-              backgroundColor: pressed ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)') : 'transparent',
-              // @ts-ignore web
-              cursor: 'pointer',
-            })}
-            accessibilityLabel="Geri"
-          >
-            {isRTL() ? <ChevronRight size={22} color={isDark ? (T.ink as string) : "#0A0A0A"} strokeWidth={2} /> : <ChevronLeft size={22} color={isDark ? (T.ink as string) : "#0A0A0A"} strokeWidth={2} />}
-          </Pressable>
+          <GlassTooltip title={autoT('Geri')} text={autoT('Önceki sayfaya dön')} placement="bottom">
+            <Pressable
+              onPress={() => { try { safeBack('/'); } catch {} }}
+              style={({ pressed }: any) => ({
+                width: 36, height: 36, borderRadius: 18,
+                alignItems: 'center', justifyContent: 'center',
+                backgroundColor: pressed ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)') : 'transparent',
+                // @ts-ignore web
+                cursor: 'pointer',
+              })}
+              accessibilityLabel="Geri"
+            >
+              {isRTL() ? <ChevronRight size={22} color={isDark ? (T.ink as string) : "#0A0A0A"} strokeWidth={2} /> : <ChevronLeft size={22} color={isDark ? (T.ink as string) : "#0A0A0A"} strokeWidth={2} />}
+            </Pressable>
+          </GlassTooltip>
           <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.4, color: T.ink }}>
             Ayarlar
           </Text>
@@ -329,23 +333,25 @@ export function SettingsHubScreen({
                 {overflowItems.length > 0 ? (
                   <>
                     <View style={{ width: 1, height: 16, backgroundColor: T.hairline, marginHorizontal: 2 }} />
-                    <Pressable
-                      onPress={() => setMenuOpen(true)}
-                      style={{
-                        flexDirection: 'row', alignItems: 'center', gap: 4,
-                        paddingHorizontal: 12, paddingVertical: 8,
-                        borderRadius: 9999,
-                        backgroundColor: activeInOverflow ? accent : 'transparent',
-                        ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
-                      } as any}
-                    >
-                      <Menu size={14} color={activeInOverflow ? '#FFFFFF' : (isDark ? (T.ink3 as string) : '#6B6B6B')} strokeWidth={1.8} />
-                      {activeInOverflow ? (
-                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }} numberOfLines={1}>
-                          {activeOverflowLabel}
-                        </Text>
-                      ) : null}
-                    </Pressable>
+                    <GlassTooltip title={autoT('Tüm Ayarlar')} text={autoT('Diğer ayar bölümlerini listele')} placement="bottom">
+                      <Pressable
+                        onPress={() => setMenuOpen(true)}
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', gap: 4,
+                          paddingHorizontal: 12, paddingVertical: 8,
+                          borderRadius: 9999,
+                          backgroundColor: activeInOverflow ? accent : 'transparent',
+                          ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                        } as any}
+                      >
+                        <Menu size={14} color={activeInOverflow ? '#FFFFFF' : (isDark ? (T.ink3 as string) : '#6B6B6B')} strokeWidth={1.8} />
+                        {activeInOverflow ? (
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }} numberOfLines={1}>
+                            {activeOverflowLabel}
+                          </Text>
+                        ) : null}
+                      </Pressable>
+                    </GlassTooltip>
                   </>
                 ) : null}
               </View>
@@ -375,13 +381,15 @@ export function SettingsHubScreen({
                       <Text style={{ ...DISPLAY, fontSize: 18, color: T.ink }}>
                         Tüm Ayarlar
                       </Text>
-                      <Pressable
-                        onPress={() => setMenuOpen(false)}
-                        hitSlop={8}
-                        style={{ padding: 6, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) } as any}
-                      >
-                        <X size={20} color={isDark ? (T.ink3 as string) : "#6B6B6B"} strokeWidth={1.8} />
-                      </Pressable>
+                      <GlassTooltip title={autoT('Kapat')} text={autoT('Menüyü kapat')} placement="bottom">
+                        <Pressable
+                          onPress={() => setMenuOpen(false)}
+                          hitSlop={8}
+                          style={{ padding: 6, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) } as any}
+                        >
+                          <X size={20} color={isDark ? (T.ink3 as string) : "#6B6B6B"} strokeWidth={1.8} />
+                        </Pressable>
+                      </GlassTooltip>
                     </View>
                     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 2 }}>
                       {navItems.map(item => {
@@ -425,9 +433,20 @@ export function SettingsHubScreen({
           );
         })()
       ) : (
-        <View style={{ width: 200, paddingTop: 24, paddingBottom: 16 }}>
+        /* Sidebar sayfa ile birlikte kaymaz: ana kenar çubuğu gibi yerinde durur.
+           Sayfa uzayıp dış ScrollView kaydığında `sticky` menüyü üstte tutar;
+           menü ekrandan uzunsa 100vh'de kapanıp kendi içinde kaydırır. */
+        <View
+          style={{
+            width: 200, paddingTop: 24, paddingBottom: 16,
+            ...(Platform.OS === 'web'
+              ? { position: 'sticky', top: 0, alignSelf: 'flex-start', maxHeight: '100vh' } as any
+              : null),
+          }}
+        >
           <ScrollView
             showsVerticalScrollIndicator={false}
+            style={{ flexShrink: 1, minHeight: 0 }}
             contentContainerStyle={{ gap: 2, paddingHorizontal: 8 }}
           >
             {navItems.map((item, idx) => {

@@ -27,6 +27,8 @@ import {
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { autoT } from '../../../core/i18n/autoTranslate';
 
 interface Props {
   accentColor?: string;
@@ -150,6 +152,12 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A', embedded = false 
               Movement girişinde günün kuru dondurulur — geçmiş kayıtlar etkilenmez.
             </Text>
           </View>
+          <GlassTooltip
+            title={autoT("TCMB'den çek")}
+            text={autoT('Merkez Bankası günlük kurlarını çekip kaydeder')}
+            placement="bottom"
+            enabled={!tcmbLoading}
+          >
           <Pressable
             onPress={handleTCMB}
             disabled={tcmbLoading}
@@ -167,6 +175,7 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A', embedded = false 
               TCMB'den çek
             </Text>
           </Pressable>
+          </GlassTooltip>
         </View>
 
         {/* Base currency picker */}
@@ -181,6 +190,11 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A', embedded = false 
             <Text style={{ fontSize: 12, color: T.ink3, fontWeight: '500' }} numberOfLines={1}>Raporlama para birimi</Text>
             <Text style={{ fontSize: 11, color: T.ink3, marginTop: 1 }} numberOfLines={2}>Tüm raporlar bu birime çevrilir</Text>
           </View>
+          <GlassTooltip
+            title={autoT('Raporlama para birimi')}
+            text={autoT('Tüm raporların çevrileceği ana para birimini seç')}
+            placement="bottom"
+          >
           <Pressable
             onPress={() => setBasePickerOpen(true)}
             style={{
@@ -196,6 +210,7 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A', embedded = false 
             <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink, letterSpacing: 0.4 }}>{baseCurrency}</Text>
             <ChevronDown size={12} color={isDark ? (T.ink3 as string) : "#6B6B6B"} strokeWidth={1.8} />
           </Pressable>
+          </GlassTooltip>
         </View>
       </View>
 
@@ -302,6 +317,10 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A', embedded = false 
       </View>
 
       {/* ── Manuel kur ekle ── */}
+      <GlassTooltip
+        title={autoT('Manuel kur ekle')}
+        text={autoT('Kendi belirlediğin kuru elle girip kaydet')}
+      >
       <Pressable
         onPress={() => setEditModal({ visible: true, currency: null })}
         style={{
@@ -315,6 +334,7 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A', embedded = false 
         <Plus size={14} color={accentColor} strokeWidth={1.8} />
         <Text style={{ fontSize: 13, fontWeight: '600', color: accentColor }}>Manuel kur ekle / güncelle</Text>
       </Pressable>
+      </GlassTooltip>
 
       {/* ── Geçmiş ── */}
       <View style={[PCard, { padding: 0, overflow: 'hidden' }]}>
@@ -509,9 +529,11 @@ function RateEditModal({
                 Kur ekle / güncelle
               </Text>
             </View>
+            <GlassTooltip title={autoT('Kapat')} text={autoT('Pencereyi kapat, değişiklikleri kaydetme')} placement="bottom">
             <Pressable onPress={onClose} style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
               <X size={14} color={isDark ? (T.ink3 as string) : "#6B6B6B"} strokeWidth={1.8} />
             </Pressable>
+            </GlassTooltip>
           </View>
 
           {/* Body */}
@@ -600,12 +622,15 @@ function RateEditModal({
 
           {/* Footer */}
           <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, padding: 16, borderTopWidth: 1, borderTopColor: T.hairline }}>
+            <GlassTooltip title={autoT('Vazgeç')} text={autoT('Kaydetmeden çık')}>
             <Pressable
               onPress={onClose}
               style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 9999, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
             >
               <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink3 }}>Vazgeç</Text>
             </Pressable>
+            </GlassTooltip>
+            <GlassTooltip title={autoT('Kaydet')} text={autoT('Girilen kuru seçilen tarihe kaydet')} enabled={!saving}>
             <Pressable
               onPress={handleSave}
               disabled={saving}
@@ -614,6 +639,7 @@ function RateEditModal({
               <Check size={13} color="#FFF" strokeWidth={2} />
               <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFF' }}>Kaydet</Text>
             </Pressable>
+            </GlassTooltip>
           </View>
 
           {/* Currency picker (nested modal) */}

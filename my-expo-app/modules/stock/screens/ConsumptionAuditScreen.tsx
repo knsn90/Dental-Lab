@@ -24,11 +24,15 @@ import { View, Text, Pressable, TextInput, ActivityIndicator, Platform } from 'r
 import { useRouter, useSegments } from 'expo-router';
 import { safeBack } from '../../../core/util/safeBack';
 import {
-  ChevronLeft, ChevronRight, Inbox, RefreshCw, Search, ShieldCheck, TriangleAlert, Wrench, X,
+  ChevronLeft, ChevronRight, Inbox, RefreshCw, Search, SlidersHorizontal, ShieldCheck, TriangleAlert, Wrench, X,
 } from '../../../core/ui/icons';
 import { ResponsiveCanvas } from '../../../core/layout/ResponsiveCanvas';
 import { groupByCategory, CategoryHeaderRow } from '../categoryGroup';
 import { DS } from '../../../core/theme/dsTokens';
+import { onAccentInk } from '../../../core/theme/usePanelTheme';
+import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { useStockUI } from '../stockTheme';
 import { toast } from '../../../core/ui/Toast';
 import { isRTL } from '../../../core/i18n';
@@ -80,12 +84,14 @@ const FLAG_LABEL: Record<string, string> = {
   ters_cevrildi:     'ters çevrilmiş',
 };
 
-/** Sapmanın okunabilir hâli: ×17.5 fazla · %65 eksik · uyumlu */
-function deviationText(r: ConsumptionAuditRow): { text: string; color: string } {
-  const U = useStockUI();
+/** Sapmanın okunabilir hâli: ×17.5 fazla · %65 eksik · uyumlu
+ *  Bileşen DEĞİL → hook ÇAĞIRAMAZ: satır başına çağrıldığı için hook sayısı
+ *  satır sayısıyla değişiyor ve "Rendered more hooks" hatası veriyordu.
+ *  Nötr rengi çağıran taraf geçer. */
+function deviationText(r: ConsumptionAuditRow, mutedColor: string): { text: string; color: string } {
   if (r.ratio == null) {
     if (r.flags.includes('birim_uyusmazligi')) return { text: 'birim farklı', color: DS.lab.danger };
-    return { text: 'karşılaştırılamadı', color: U.ink[400] };
+    return { text: 'karşılaştırılamadı', color: mutedColor };
   }
   const x = Number(r.ratio) || 0;
   if (x >= 1.25) {
@@ -97,11 +103,11 @@ function deviationText(r: ConsumptionAuditRow): { text: string; color: string } 
   return { text: 'uyumlu', color: DS.lab.success };
 }
 
-function severityColor(s: number): string {
-  const U = useStockUI();
+/** Bileşen DEĞİL → hook yok (bkz. deviationText). */
+function severityColor(s: number, mutedColor: string): string {
   if (s >= 3) return DS.lab.danger;
   if (s === 2) return DS.lab.warning;
-  if (s === 1) return U.ink[400];
+  if (s === 1) return mutedColor;
   return DS.lab.success;
 }
 
@@ -136,6 +142,7 @@ function MiniStat({ value, label, color }: { value: React.ReactNode; label: stri
 type Filter = 'all' | 'deviation' | 'unit' | 'norule' | 'ok';
 
 export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded = false }: Props) {
+  const heroInk = useWhiteHeroInk(accentColor);
   const U = useStockUI();
   const router   = useRouter();
   const segments = useSegments();
@@ -146,6 +153,7 @@ export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded 
   const [gaps, setGaps]       = useState<ConsumptionGapRow[]>([]);
   const [q, setQ]             = useState('');
   const [filter, setFilter]   = useState<Filter>('all');
+  const [filterOpen, setFilterOpen] = useState(false);
   const [limit, setLimit]     = useState(PAGE);
   const [fixRow, setFixRow]   = useState<ConsumptionAuditRow | null>(null);
 
@@ -203,7 +211,7 @@ export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded 
 
   if (loading) {
     return (
-      <ResponsiveCanvas size="lg" bgClassName="bg-transparent">
+      <ResponsiveCanvas size="lg" bgClassName="bg-transparent" padClassName={embedded ? 'pb-4' : undefined}>
         <View style={{ paddingVertical: 96, alignItems: 'center' }}>
           <ActivityIndicator color={accentColor} />
         </View>
@@ -212,7 +220,7 @@ export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded 
   }
 
   return (
-    <ResponsiveCanvas size="lg" bgClassName="bg-transparent">
+    <ResponsiveCanvas size="lg" bgClassName="bg-transparent" padClassName={embedded ? 'pb-4' : undefined}>
       {!embedded ? (
         <>
       {/* ── Geri + eyebrow ─────────────────────────────────────── */}
@@ -249,103 +257,94 @@ export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded 
         </>
       ) : null}
 
-      {/* ── Özet ───────────────────────────────────────────────── */}
-      <View style={{
-        backgroundColor: U.surface, borderRadius: 18, borderWidth: 1,
-        borderColor: U.ink[200], paddingHorizontal: 18, paddingVertical: 14,
-        marginBottom: 16,
-      }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-          <Text numberOfLines={1} style={{ flex: 1, fontSize: 13, fontWeight: '600', color: U.ink[900] }}>
-            {stats.total} tüketim kaydı · {stats.orders} sipariş
-          </Text>
-          <Pressable
-            onPress={load}
-            style={({ pressed }) => ({
-              width: 30, height: 30, borderRadius: 999, alignItems: 'center',
-              justifyContent: 'center', backgroundColor: U.chipNeutral,
-              opacity: pressed ? 0.6 : 1, ...webCursor,
-            })}
-          >
-            <RefreshCw size={13} color={U.ink[500]} strokeWidth={1.8} />
-          </Pressable>
-        </View>
-
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 26, flexWrap: 'wrap' }}>
+      {/* ── Hero — "BEYAZ HERO": özet şeridi BURAYA katıldı (kullanıcı isteği). ── */}
+      <WhiteHero
+        kicker="Kurulum · Tüketim Denetimi"
+        accent={accentColor}
+        title={<><Text style={{ color: heroInk.accentInk }}>{stats.deviation}</Text> sapmalı kayıt</>}
+        description={`${stats.total} tüketim kaydı · ${stats.orders} sipariş · ${stats.norule} kuralsız kalem`}
+        stats={[
+          { value: String(stats.ok),   label: 'Temiz' },
+          { value: String(stats.unit), label: 'Birim Hatası' },
+        ]}
+        cta={
+          <GlassTooltip title={autoT('Yenile')} text={autoT('Listeyi yeniden yükle')}>
+            <Pressable
+              onPress={load}
+              style={({ pressed }) => ({
+                width: 34, height: 34, borderRadius: 999, alignItems: 'center', justifyContent: 'center',
+                backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder,
+                opacity: pressed ? 0.6 : 1, ...webCursor,
+              })}
+            >
+              <RefreshCw size={14} color={heroInk.inkSoft} strokeWidth={1.8} />
+            </Pressable>
+          </GlassTooltip>
+        }
+        style={{ marginBottom: 14 }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 26, flexWrap: 'wrap', marginTop: 16 }}>
           <MiniStat value={stats.deviation} label="Miktar sapması"
-                    color={stats.deviation > 0 ? DS.lab.danger : U.ink[400]} />
+                    color={stats.deviation > 0 ? DS.lab.danger : heroInk.inkFaint} />
           <MiniStat value={stats.unit} label="Birim uyuşmazlığı"
-                    color={stats.unit > 0 ? DS.lab.danger : U.ink[400]} />
+                    color={stats.unit > 0 ? DS.lab.danger : heroInk.inkFaint} />
           <MiniStat value={stats.norule} label="Kuralsız"
-                    color={stats.norule > 0 ? DS.lab.warning : U.ink[400]} />
+                    color={stats.norule > 0 ? DS.lab.warning : heroInk.inkFaint} />
           <MiniStat value={stats.ok} label="Uyumlu"
-                    color={stats.ok > 0 ? DS.lab.success : U.ink[400]} />
+                    color={stats.ok > 0 ? DS.lab.success : heroInk.inkFaint} />
           <MiniStat value={`${fmt(stats.cost, 2)} ${stats.currency}`} label="Kayıtlı maliyet"
-                    color={U.ink[900]} />
+                    color={heroInk.ink} />
         </View>
-      </View>
+      </WhiteHero>
 
-      {/* ── Boşluk kartı — hiç kayıt girilmemiş aşamalar ───────── */}
+      {/* ── Kayıtsız aşamalar — "BEYAZ HERO" (kullanıcı isteği) ── */}
       {gapStats.missing > 0 ? (
-        <View style={{
-          backgroundColor: U.surface, borderRadius: 18, borderWidth: 1,
-          borderColor: U.ink[200], overflow: 'hidden', marginBottom: 16,
-        }}>
-          <View style={{
-            paddingHorizontal: 18, paddingVertical: 14, gap: 6,
-            borderBottomWidth: 1, borderBottomColor: U.ink[100],
-          }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <TriangleAlert size={15} color={DS.lab.warning} strokeWidth={1.8} />
-              <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900] }}>
-                Kaydı hiç girilmemiş aşamalar
-              </Text>
-            </View>
-            <Text style={{ fontSize: 12, color: U.ink[500], lineHeight: 18, maxWidth: 620 }}>
-              Tüketen istasyonlarda tamamlanan {gapStats.done} aşamanın {gapStats.missing} tanesinde
-              hiç malzeme kaydı yok. Bu aşamalar için düzeltilecek bir miktar da yok —
-              eksik stok ancak fiziksel sayımla kapanır.
-            </Text>
-          </View>
-
-          {gaps.map((g, i) => {
-            const pct = g.done_stages > 0
-              ? Math.round((g.with_material / g.done_stages) * 100)
-              : 0;
-            return (
-              <View
-                key={g.station_id}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 12,
-                  paddingHorizontal: 18, paddingVertical: 11,
-                  borderTopWidth: i === 0 ? 0 : 1, borderTopColor: U.ink[100],
-                }}
-              >
-                <Text numberOfLines={1} style={{ flex: 1, fontSize: 13, color: U.ink[900] }}>
-                  {g.station_name}
-                </Text>
-                <View style={{ width: 90, height: 3, borderRadius: 999, backgroundColor: U.ink[100], overflow: 'hidden' }}>
-                  <View style={{
-                    height: '100%', width: `${pct}%`, borderRadius: 999,
-                    backgroundColor: pct >= 80 ? DS.lab.success : pct > 0 ? accentColor : U.ink[200],
-                  }} />
+        <WhiteHero
+          kicker="Denetim · Kayıtsız Aşamalar"
+          accent={accentColor}
+          title={<><Text style={{ color: heroInk.accentInk }}>{gapStats.missing}</Text> kayıtsız aşama</>}
+          description={`Tüketen istasyonlarda tamamlanan ${gapStats.done} aşamanın ${gapStats.missing} tanesinde hiç malzeme kaydı yok. Bu aşamalar için düzeltilecek miktar da yok — eksik stok ancak fiziksel sayımla kapanır.`}
+          stats={[
+            { value: String(gapStats.done),    label: 'Tamamlanan' },
+            { value: String(gapStats.missing), label: 'Kayıtsız' },
+          ]}
+          style={{ marginBottom: 16 }}
+        >
+          <View style={{ marginTop: 16, borderRadius: 14, overflow: 'hidden', backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder }}>
+            {gaps.map((g, i) => {
+              const pct = g.done_stages > 0 ? Math.round((g.with_material / g.done_stages) * 100) : 0;
+              return (
+                <View
+                  key={g.station_id}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 12,
+                    paddingHorizontal: 14, paddingVertical: 10,
+                    borderTopWidth: i === 0 ? 0 : 1, borderTopColor: heroInk.tileBorder,
+                  }}
+                >
+                  <Text numberOfLines={1} style={{ flex: 1, fontSize: 13, color: heroInk.ink }}>{g.station_name}</Text>
+                  <View style={{ width: 90, height: 3, borderRadius: 999, backgroundColor: heroInk.tileBorder, overflow: 'hidden' }}>
+                    <View style={{
+                      height: '100%', width: `${pct}%`, borderRadius: 999,
+                      backgroundColor: pct >= 80 ? DS.lab.success : pct > 0 ? accentColor : heroInk.inkFaint,
+                    } as any} />
+                  </View>
+                  <Text style={{ width: 108, textAlign: 'end' as any, fontSize: 12, color: heroInk.inkSoft }}>
+                    {g.missing} / {g.done_stages} {autoT('kayıtsız')}
+                  </Text>
                 </View>
-                <Text style={{ width: 108, textAlign: 'end' as any, fontSize: 12, color: U.ink[500] }}>
-                  {g.missing} / {g.done_stages} kayıtsız
-                </Text>
-              </View>
-            );
-          })}
-        </View>
+              );
+            })}
+          </View>
+        </WhiteHero>
       ) : null}
 
-      {/* ── Arama + filtreler ──────────────────────────────────── */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+      {/* ── Arama + Filtrele (uygulama geneli dil) ─────────────── */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
         <View style={{
-          flexDirection: 'row', alignItems: 'center', gap: 8,
-          paddingHorizontal: 14, height: 36, borderRadius: 999,
-          backgroundColor: U.surface, borderWidth: 1, borderColor: U.ink[200],
-          flexGrow: 1, flexBasis: 240, minWidth: 0,
+          flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
+          height: 38, paddingHorizontal: 12, borderRadius: 9999,
+          backgroundColor: U.surface, borderWidth: 1, borderColor: U.hairline,
         }}>
           <Search size={14} color={U.ink[400]} strokeWidth={1.8} />
           <TextInput
@@ -353,19 +352,42 @@ export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded 
             onChangeText={t => { setQ(t); setLimit(PAGE); }}
             placeholder="Ürün, sipariş no veya istasyon ara"
             placeholderTextColor={U.ink[400]}
-            style={{
-              flex: 1, fontSize: 13, color: U.ink[900],
-              ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
-            }}
+            style={{ flex: 1, fontSize: 13, color: U.ink[900], ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}) }}
           />
           {q.length > 0 ? (
-            <Pressable onPress={() => setQ('')} style={webCursor}>
-              <X size={13} color={U.ink[400]} strokeWidth={2} />
-            </Pressable>
+            <GlassTooltip title={autoT('Temizle')} text={autoT('Aramayı temizle')}>
+              <Pressable onPress={() => setQ('')} hitSlop={8} style={webCursor}>
+                <X size={13} color={U.ink[400]} strokeWidth={2} />
+              </Pressable>
+            </GlassTooltip>
           ) : null}
         </View>
 
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <GlassTooltip title={autoT('Filtrele')} text={autoT('Kayıtları sapma, birim ve kural durumuna göre süz')}>
+          <Pressable
+            onPress={() => setFilterOpen(v => !v)}
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 6,
+              height: 38, paddingHorizontal: 14, borderRadius: 9999,
+              backgroundColor: filter !== 'all' ? tint(accentColor, 0.10) : U.surface,
+              borderWidth: 1, borderColor: filter !== 'all' || filterOpen ? accentColor : U.hairline,
+              ...webCursor,
+            }}
+          >
+            <SlidersHorizontal size={14} color={filter !== 'all' ? accentColor : U.ink[500]} strokeWidth={1.8} />
+            <Text style={{ fontSize: 12.5, fontWeight: '600', color: filter !== 'all' ? accentColor : U.ink[500] }}>
+              {autoT('Filtrele')}{filter !== 'all' ? ' (1)' : ''}
+            </Text>
+          </Pressable>
+        </GlassTooltip>
+      </View>
+
+      {filterOpen && (
+        <View style={{
+          marginBottom: 16, padding: 12, borderRadius: 14,
+          backgroundColor: U.surface, borderWidth: 1, borderColor: U.hairline,
+          flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+        }}>
           {([
             { k: 'all',       l: 'Tümü',      n: stats.total },
             { k: 'deviation', l: 'Sapmalı',   n: stats.deviation },
@@ -385,17 +407,13 @@ export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded 
                   opacity: pressed ? 0.7 : 1, ...webCursor,
                 })}
               >
-                <Text style={{ fontSize: 12, fontWeight: '500', color: on ? U.onDarkPill : U.ink[800] }}>
-                  {f.l}
-                </Text>
-                <Text style={{ fontSize: 11, color: on ? 'rgba(255,255,255,0.6)' : U.ink[400] }}>
-                  {f.n}
-                </Text>
+                <Text style={{ fontSize: 12, fontWeight: '500', color: on ? U.onDarkPill : U.ink[800] }}>{f.l}</Text>
+                <Text style={{ fontSize: 11, color: on ? 'rgba(255,255,255,0.6)' : U.ink[400] }}>{f.n}</Text>
               </Pressable>
             );
           })}
         </View>
-      </View>
+      )}
 
       {/* ── Denetim listesi ────────────────────────────────────── */}
       {visible.length === 0 ? (
@@ -424,23 +442,24 @@ export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded 
           <View style={{
             flexDirection: 'row', alignItems: 'center',
             paddingHorizontal: 18, paddingVertical: 10,
-            backgroundColor: U.ink[50], borderBottomWidth: 1, borderBottomColor: U.ink[100],
+            /* Başlık şeridi düz panel accent'i — uygulama geneli tablo dili. */
+            backgroundColor: accentColor, borderBottomWidth: 0,
           }}>
             <Text style={{
               flex: 1, fontSize: 10, fontWeight: '500', letterSpacing: 1.2,
-              textTransform: 'uppercase', color: U.ink[400],
+              textTransform: 'uppercase', color: onAccentInk(accentColor),
             }}>
               Kayıt
             </Text>
             <Text style={{
               width: 150, textAlign: 'end' as any, fontSize: 10, fontWeight: '500',
-              letterSpacing: 1.2, textTransform: 'uppercase', color: U.ink[400],
+              letterSpacing: 1.2, textTransform: 'uppercase', color: onAccentInk(accentColor),
             }}>
               Kayıtlı · Beklenen
             </Text>
             <Text style={{
               width: 110, textAlign: 'end' as any, fontSize: 10, fontWeight: '500',
-              letterSpacing: 1.2, textTransform: 'uppercase', color: U.ink[400],
+              letterSpacing: 1.2, textTransform: 'uppercase', color: onAccentInk(accentColor),
             }}>
               Sapma
             </Text>
@@ -453,7 +472,7 @@ export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded 
             }
             const r = entry.item;
             const i = entry.indexInGroup;
-            const dev  = deviationText(r);
+            const dev  = deviationText(r, U.ink[400] as string);
             const unit = r.norm_unit ?? r.item_unit ?? '';
             return (
               <View
@@ -467,7 +486,7 @@ export function ConsumptionAuditScreen({ accentColor = DS.lab.primary, embedded 
                   {/* Şiddet noktası — sol renkli şerit yerine */}
                   <View style={{
                     width: 7, height: 7, borderRadius: 999, marginTop: 6,
-                    backgroundColor: severityColor(r.severity),
+                    backgroundColor: severityColor(r.severity, U.ink[400] as string),
                   }} />
 
                   {/* Birincil: ürün · İkincil: sipariş + istasyon */}

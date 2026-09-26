@@ -21,7 +21,7 @@ import * as ImagePicker from 'expo-image-picker';
 import {
   Camera, Edit2, Mail, Phone, Lock, Bell, User,
   Calendar, LogOut, ChevronRight, ChevronLeft, ChevronUp, Eye, EyeOff, X,
-  Building2, MapPin, Receipt, CreditCard,
+  Building2, MapPin, Receipt, CreditCard, Trash2,
 } from '../../../core/ui/icons';
 import { toast } from '../../../core/ui/Toast';
 import { AppSwitch } from '../../../core/ui/AppSwitch';
@@ -31,6 +31,7 @@ import { supabase } from '../../../core/api/supabase';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { DeleteAccountDialog } from '../components/DeleteAccountDialog';
 
 // ── Display font ─────────────────────────────────────────────────────────
 const DISPLAY = {
@@ -41,7 +42,7 @@ const DISPLAY = {
 // ── Panel accent ─────────────────────────────────────────────────────────
 type PanelKind = 'lab' | 'admin' | 'doctor' | 'clinic' | 'station';
 const PANEL_ACCENTS: Record<PanelKind, string> = {
-  lab: '#F5C24B', admin: '#4771AB', doctor: '#32BB78', clinic: '#32BB78',
+  lab: '#F5C24B', admin: '#004B87', doctor: '#32BB78', clinic: '#32BB78',
   station: '#3B82F6',  // tech-blue
 };
 function detectPanel(segments: string[]): PanelKind {
@@ -243,6 +244,8 @@ export function ProfileScreen() {
   const { profile, signOut, setProfile, session } = useAuthStore() as any;
   // Web/PWA çıkış onayı — Alert.alert web'de çalışmadığı için modal
   const [signOutOpen, setSignOutOpen] = useState(false);
+  // Hesabımı Sil (App Store 5.1.1(v)) — geniş düzen (iPad/desktop)
+  const [deleteOpen, setDeleteOpen] = useState(false);
   // Auth membership email fallback — profile.email NULL ise auth.users'tan al
   const authEmail: string = (session?.user?.email ?? '').trim();
   const roleLabel = getRoleLabel(profile);
@@ -840,6 +843,20 @@ export function ProfileScreen() {
                 Çıkış Yap
               </Text>
             </Pressable>
+
+            {/* ── Hesabımı Sil — sade tehlikeli bağlantı (çıkışla yarışmasın) ── */}
+            <Pressable
+              onPress={() => setDeleteOpen(true)}
+              hitSlop={8}
+              style={{
+                alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 7,
+                paddingVertical: 10, paddingHorizontal: 16,
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              }}
+            >
+              <Trash2 size={15} color={isDark ? '#F87171' : '#B42318'} strokeWidth={2} />
+              <Text style={{ fontSize: 13.5, fontWeight: '600', color: isDark ? '#F87171' : '#B42318' }}>Hesabımı Sil</Text>
+            </Pressable>
           </View>
 
         </View>
@@ -878,6 +895,8 @@ export function ProfileScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <DeleteAccountDialog visible={deleteOpen} onClose={() => setDeleteOpen(false)} onDeleted={signOut} />
     </KeyboardAvoidingView>
   );
 }

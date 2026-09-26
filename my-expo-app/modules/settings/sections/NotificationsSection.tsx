@@ -37,6 +37,9 @@ import { registerForNativePush, unregisterNativePush, getNativePushState } from 
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { WhatsAppGlyph } from '../../../core/ui/WhatsAppGlyph';
+import { WhiteHero } from '../../../core/ui/WhiteHero';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 
 interface Props {
@@ -198,6 +201,9 @@ export function NotificationsSection({ accentColor }: Props) {
 
   // WhatsApp numarası — profiles.whatsapp_phone (E.164)
   const profileWa = useAuthStore(s => (s.profile as any)?.whatsapp_phone ?? '');
+  // Numara girilmemişse kayıtlı cep telefonu kullanılır (send-whatsapp-meta
+  // aynı sırayla bakar: whatsapp_phone → kurum hattı → phone).
+  const profilePhone = useAuthStore(s => (s.profile as any)?.phone ?? '');
   const setProfile = useAuthStore(s => s.setProfile);
   const [waPhone, setWaPhone] = useState<string>(profileWa);
   const [waSaving, setWaSaving] = useState(false);
@@ -351,53 +357,36 @@ export function NotificationsSection({ accentColor }: Props) {
       contentContainerStyle={{ paddingHorizontal: PAGE_PADDING, paddingTop: 0, paddingBottom: 120 }}
       showsVerticalScrollIndicator={false}
     >
-      {/* ═════ HERO — Master switch ═════ */}
-      <View
-        style={{
-          backgroundColor: prefs.master_enabled ? `${accentColor}10` : surfaceSoft,
-          borderRadius: 20, padding: 20, marginTop: 4,
-          borderWidth: 1, borderColor: prefs.master_enabled ? `${accentColor}30` : hairline,
-        }}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-          <View style={{
-            width: 48, height: 48, borderRadius: 14,
-            alignItems: 'center', justifyContent: 'center',
-            backgroundColor: prefs.master_enabled ? accentColor : '#9CA3AF',
-          }}>
-            {prefs.master_enabled
-              ? <Bell size={22} color="#FFFFFF" strokeWidth={1.8} />
-              : <BellOff size={22} color="#FFFFFF" strokeWidth={1.8} />}
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 16, fontWeight: '700', color: inkPrimary, letterSpacing: -0.2 }}>
-              {prefs.master_enabled ? 'Bildirimler açık' : 'Tüm bildirimler kapalı'}
-            </Text>
-            <Text style={{ fontSize: 12, color: T.ink3, marginTop: 2 }}>
+      {/* ═════ BEYAZ HERO — Master switch ═════
+          Durum özeti (kanal + kural sayısı) hero'nun stat sütunlarına taşındı;
+          sayılar aynı kaynaklardan türetilir, elle güncellenen metin değil. */}
+      <WhiteHero
+        accent={accentColor}
+        style={{ marginTop: 4 }}
+        kicker={autoT('Bildirimler')}
+        title={prefs.master_enabled ? autoT('Bildirimler açık') : autoT('Tüm bildirimler kapalı')}
+        description={prefs.master_enabled
+          ? autoT('Aşağıdaki tercihlerine göre bildirim alıyorsun.')
+          : autoT('Hiçbir bildirim almıyorsun. Açmak için sağdaki anahtarı kullan.')}
+        stats={prefs.master_enabled ? [
+          { value: String(activeChannelCount), label: autoT('kanal aktif') },
+          { value: String(activeRuleCount), label: autoT('bildirim kuralı aktif') },
+        ] : undefined}
+        cta={
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={{
+              width: 48, height: 48, borderRadius: 14,
+              alignItems: 'center', justifyContent: 'center',
+              backgroundColor: prefs.master_enabled ? accentColor : '#9CA3AF',
+            }}>
               {prefs.master_enabled
-                ? 'Aşağıdaki tercihlerine göre bildirim alıyorsun.'
-                : 'Hiçbir bildirim almıyorsun. Açmak için sağdaki anahtarı kullan.'}
-            </Text>
-          </View>
-          <Toggle on={prefs.master_enabled} onPress={toggleMaster} accentColor={accentColor} disabled={savingMaster} />
-        </View>
-
-        {/* Durum özeti — "şu an ne oluyor?" sorusunu tek bakışta yanıtlar.
-            Kanal ve kural sayısı aynı kaynaklardan türetilir (aşağıdaki
-            listelerle birebir), elle güncellenen bir metin değil. */}
-        {prefs.master_enabled && (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: `${accentColor}26` }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: surface }}>
-              <Text style={{ fontSize: 12, fontWeight: '700', color: inkPrimary }}>{activeChannelCount}</Text>
-              <Text style={{ fontSize: 11.5, color: T.ink3 }}>kanal aktif</Text>
+                ? <Bell size={22} color="#FFFFFF" strokeWidth={1.8} />
+                : <BellOff size={22} color="#FFFFFF" strokeWidth={1.8} />}
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: surface }}>
-              <Text style={{ fontSize: 12, fontWeight: '700', color: inkPrimary }}>{activeRuleCount}</Text>
-              <Text style={{ fontSize: 11.5, color: T.ink3 }}>bildirim kuralı aktif</Text>
-            </View>
+            <Toggle on={prefs.master_enabled} onPress={toggleMaster} accentColor={accentColor} disabled={savingMaster} />
           </View>
-        )}
-      </View>
+        }
+      />
 
       {/* ═════ KANAL TERCİHLERİ ═════ */}
       <Text style={{ fontSize: 10, fontWeight: '700', color: T.ink3, letterSpacing: 1.2, textTransform: 'uppercase', marginTop: 28, marginBottom: 10 }}>
@@ -439,16 +428,18 @@ export function NotificationsSection({ accentColor }: Props) {
                   <Text style={{ fontSize: 11.5, color: T.ink3, marginTop: 2 }}>{ch.sub}</Text>
                 </View>
                 {isPush && browserPerm !== 'granted' && browserPerm !== 'unsupported' ? (
-                  <Pressable
-                    onPress={handleRequestPush}
-                    style={({ hovered }: any) => ({
-                      paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999,
-                      backgroundColor: hovered ? accentColor : `${accentColor}E0`,
-                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                    })}
-                  >
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>İzin İste</Text>
-                  </Pressable>
+                  <GlassTooltip title={autoT('İzin İste')} text={autoT('Tarayıcıdan bildirim gönderme izni iste')}>
+                    <Pressable
+                      onPress={handleRequestPush}
+                      style={({ hovered }: any) => ({
+                        paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999,
+                        backgroundColor: hovered ? accentColor : `${accentColor}E0`,
+                        ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                      })}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>İzin İste</Text>
+                    </Pressable>
+                  </GlassTooltip>
                 ) : (
                   <Toggle
                     on={on}
@@ -465,13 +456,17 @@ export function NotificationsSection({ accentColor }: Props) {
               {ch.key === 'whatsapp' && on && (
                 <View style={{ marginStart: 48, marginBottom: 12, gap: 8 }}>
                   <Text style={{ fontSize: 11, color: T.ink3 }}>
-                    Telefon numarası — uluslararası biçim, örn. +905551112233
+                    {profileWa
+                      ? autoT('Telefon numarası — uluslararası biçim, örn. +905551112233')
+                      : (profilePhone
+                          ? `${autoT('Boş bırakırsan kayıtlı telefonun kullanılır:')} ${profilePhone}`
+                          : autoT('Telefon numarası — uluslararası biçim, örn. +905551112233'))}
                   </Text>
                   <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
                     <TextInput
                       value={waPhone}
                       onChangeText={setWaPhone}
-                      placeholder="+90..."
+                      placeholder={profilePhone || '+90...'}
                       placeholderTextColor={isDark ? (T.ink3 as string) : "#9CA3AF"}
                       keyboardType="phone-pad"
                       autoCapitalize="none"
@@ -482,19 +477,21 @@ export function NotificationsSection({ accentColor }: Props) {
                         ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
                       }}
                     />
-                    <Pressable
-                      onPress={saveWaPhone}
-                      disabled={!waDirty || waSaving}
-                      style={({ pressed }: any) => ({
-                        height: 42, paddingHorizontal: 18, borderRadius: 12,
-                        alignItems: 'center', justifyContent: 'center',
-                        backgroundColor: (!waDirty || waSaving) ? `${accentColor}55` : accentColor,
-                        opacity: pressed ? 0.85 : 1,
-                        ...(Platform.OS === 'web' ? { cursor: (!waDirty || waSaving) ? 'not-allowed' : 'pointer' } as any : {}),
-                      })}
-                    >
-                      <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>{waSaving ? 'Kaydediliyor…' : 'Kaydet'}</Text>
-                    </Pressable>
+                    <GlassTooltip title={autoT('Kaydet')} text={autoT('WhatsApp bildirimlerinin gideceği numarayı kaydet')} enabled={waDirty && !waSaving}>
+                      <Pressable
+                        onPress={saveWaPhone}
+                        disabled={!waDirty || waSaving}
+                        style={({ pressed }: any) => ({
+                          height: 42, paddingHorizontal: 18, borderRadius: 12,
+                          alignItems: 'center', justifyContent: 'center',
+                          backgroundColor: (!waDirty || waSaving) ? `${accentColor}55` : accentColor,
+                          opacity: pressed ? 0.85 : 1,
+                          ...(Platform.OS === 'web' ? { cursor: (!waDirty || waSaving) ? 'not-allowed' : 'pointer' } as any : {}),
+                        })}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>{waSaving ? 'Kaydediliyor…' : 'Kaydet'}</Text>
+                      </Pressable>
+                    </GlassTooltip>
                   </View>
                 </View>
               )}
@@ -516,28 +513,32 @@ export function NotificationsSection({ accentColor }: Props) {
             <Text style={{ flex: 1, fontSize: 10, fontWeight: '700', color: T.ink3, letterSpacing: 1.2, textTransform: 'uppercase' }}>
               {group.title}
             </Text>
-            <Pressable
-              onPress={() => toggleGroup(group.items, true)}
-              disabled={!prefs.master_enabled}
-              style={({ pressed }: any) => ({
-                paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
-                opacity: !prefs.master_enabled ? 0.4 : pressed ? 0.6 : 1,
-                ...(Platform.OS === 'web' ? { cursor: prefs.master_enabled ? 'pointer' : 'not-allowed' } as any : {}),
-              })}
-            >
-              <Text style={{ fontSize: 11, fontWeight: '600', color: accentColor }}>Tümünü aç</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => toggleGroup(group.items, false)}
-              disabled={!prefs.master_enabled}
-              style={({ pressed }: any) => ({
-                paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
-                opacity: !prefs.master_enabled ? 0.4 : pressed ? 0.6 : 1,
-                ...(Platform.OS === 'web' ? { cursor: prefs.master_enabled ? 'pointer' : 'not-allowed' } as any : {}),
-              })}
-            >
-              <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3 }}>Tümünü kapat</Text>
-            </Pressable>
+            <GlassTooltip title={autoT('Tümünü aç')} text={autoT('Bu gruptaki tüm bildirimleri her kanalda aç')} enabled={prefs.master_enabled}>
+              <Pressable
+                onPress={() => toggleGroup(group.items, true)}
+                disabled={!prefs.master_enabled}
+                style={({ pressed }: any) => ({
+                  paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
+                  opacity: !prefs.master_enabled ? 0.4 : pressed ? 0.6 : 1,
+                  ...(Platform.OS === 'web' ? { cursor: prefs.master_enabled ? 'pointer' : 'not-allowed' } as any : {}),
+                })}
+              >
+                <Text style={{ fontSize: 11, fontWeight: '600', color: accentColor }}>Tümünü aç</Text>
+              </Pressable>
+            </GlassTooltip>
+            <GlassTooltip title={autoT('Tümünü kapat')} text={autoT('Bu gruptaki tüm bildirimleri her kanalda kapat')} enabled={prefs.master_enabled}>
+              <Pressable
+                onPress={() => toggleGroup(group.items, false)}
+                disabled={!prefs.master_enabled}
+                style={({ pressed }: any) => ({
+                  paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
+                  opacity: !prefs.master_enabled ? 0.4 : pressed ? 0.6 : 1,
+                  ...(Platform.OS === 'web' ? { cursor: prefs.master_enabled ? 'pointer' : 'not-allowed' } as any : {}),
+                })}
+              >
+                <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3 }}>Tümünü kapat</Text>
+              </Pressable>
+            </GlassTooltip>
           </View>
           <View style={{ backgroundColor: surface, borderRadius: 20, padding: isNarrow ? 12 : 18, ...CARD_SHADOW }}>
             {/* Kolon başlıkları */}
@@ -600,20 +601,22 @@ export function NotificationsSection({ accentColor }: Props) {
 
       {/* ═════ TEST + bilgi ═════ */}
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 22, flexWrap: 'wrap' }}>
-        <Pressable
-          onPress={sendTest}
-          disabled={!prefs.master_enabled}
-          style={({ hovered }: any) => ({
-            flexDirection: 'row', alignItems: 'center', gap: 8,
-            paddingHorizontal: 14, paddingVertical: 10, borderRadius: 9999,
-            backgroundColor: hovered ? '#0A0A0A' : '#1F2937',
-            opacity: prefs.master_enabled ? 1 : 0.5,
-            ...(Platform.OS === 'web' ? { cursor: prefs.master_enabled ? 'pointer' : 'not-allowed' } as any : {}),
-          })}
-        >
-          <Volume2 size={13} color="#FFFFFF" strokeWidth={1.8} />
-          <Text style={{ fontSize: 12, fontWeight: '600', color: '#FFFFFF' }}>Test bildirimi gönder</Text>
-        </Pressable>
+        <GlassTooltip title={autoT('Test bildirimi')} text={autoT('Açık kanallara örnek bir bildirim gönder')} enabled={prefs.master_enabled}>
+          <Pressable
+            onPress={sendTest}
+            disabled={!prefs.master_enabled}
+            style={({ hovered }: any) => ({
+              flexDirection: 'row', alignItems: 'center', gap: 8,
+              paddingHorizontal: 14, paddingVertical: 10, borderRadius: 9999,
+              backgroundColor: hovered ? '#0A0A0A' : '#1F2937',
+              opacity: prefs.master_enabled ? 1 : 0.5,
+              ...(Platform.OS === 'web' ? { cursor: prefs.master_enabled ? 'pointer' : 'not-allowed' } as any : {}),
+            })}
+          >
+            <Volume2 size={13} color="#FFFFFF" strokeWidth={1.8} />
+            <Text style={{ fontSize: 12, fontWeight: '600', color: '#FFFFFF' }}>Test bildirimi gönder</Text>
+          </Pressable>
+        </GlassTooltip>
       </View>
 
       {/* Info banner */}

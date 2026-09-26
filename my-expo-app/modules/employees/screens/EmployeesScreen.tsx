@@ -1,7 +1,8 @@
 import { localeTag, isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { authErrorText } from '../../../core/api/authErrors';
-import { HeroGlow, useHeroSurface } from '../../../core/ui/HeroGlow';
+import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 /**
  * EmployeesScreen — Ekip (Patterns Design Language)
  *
@@ -35,7 +36,7 @@ import { usePermissionStore } from '../../../core/store/permissionStore';
 import { STAGE_LABEL, type Stage } from '../../orders/stages';
 import { DS } from '../../../core/theme/dsTokens';
 import { useInkUI } from '../../../core/theme/inkScale';
-import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
 import { useRouter, useSegments } from 'expo-router';
 import {
   Plus, Search, X, Inbox, Pencil, Trash2,
@@ -174,20 +175,22 @@ function RowActionsMenu({ items }: {
 
   return (
     <>
-      <Pressable
-        ref={btnRef}
-        onPress={show}
-        accessibilityRole="button"
-        accessibilityLabel="İşlemler"
-        style={({ pressed }: any) => ({
-          width: 30, height: 30, borderRadius: 8,
-          backgroundColor: U.ink[50], alignItems: 'center', justifyContent: 'center',
-          opacity: pressed ? 0.6 : 1,
-          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
-        })}
-      >
-        <MoreHorizontal size={15} color={U.ink[500]} strokeWidth={1.8} />
-      </Pressable>
+      <GlassTooltip title={autoT('İşlemler')} text={autoT('Düzenle, pasife al ya da sil')}>
+        <Pressable
+          ref={btnRef}
+          onPress={show}
+          accessibilityRole="button"
+          accessibilityLabel="İşlemler"
+          style={({ pressed }: any) => ({
+            width: 30, height: 30, borderRadius: 8,
+            backgroundColor: U.ink[50], alignItems: 'center', justifyContent: 'center',
+            opacity: pressed ? 0.6 : 1,
+            ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
+          })}
+        >
+          <MoreHorizontal size={15} color={U.ink[500]} strokeWidth={1.8} />
+        </Pressable>
+      </GlassTooltip>
 
       <Modal visible={open} transparent animationType="none" onRequestClose={() => setOpen(false)}>
         <Pressable style={{ flex: 1 }} onPress={() => setOpen(false)}>
@@ -241,7 +244,7 @@ export function EmployeesScreen() {
   const isDesktop = width >= 1024;
   const insets = useSafeAreaInsets();
   const theme = usePanelTheme();
-  const heroBg = useHeroSurface(theme.primary);
+  const heroInk = useWhiteHeroInk(theme.primary);
 
   const { employees, loading, refetch } = useEmployees();
 
@@ -441,78 +444,63 @@ export function EmployeesScreen() {
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={U.ink[300]} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Ekip özeti şeridi ──
-            Eskiden ~250px'lik bir hero bloktu: tek bir sayı (aktif personel) ve
-            iki buton için ekranın dörtte biri. Sayı + toplam + aksiyonlar TEK
-            satıra alındı, yükseklik ~125px'e indi. Dekoratif blob'lar da küçüldü:
-            kart küçüldükçe süsün de ölçeği düşmeli, yoksa zemini yutuyor. */}
-        <View style={{
-          borderRadius: 20, overflow: 'hidden',
-          ...heroBg,
-          paddingHorizontal: isDesktop ? 22 : 18,
-          paddingVertical: isDesktop ? 18 : 16,
-          position: 'relative',
-        }}>
-          <HeroGlow size={130} opacity={0.18} delay={0} style={{ top: -46, end: -34 }} />
-          <HeroGlow size={110} opacity={0.10} delay={1400} style={{ bottom: -52, start: -26 }} />
-
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-            {/* Sol — kicker + iki metrik yan yana */}
-            <View style={{ minWidth: 210 }}>
-              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>
-                Ekip
-              </Text>
-              {/* Yalnız "6" bağlamsız kalıyordu: oran hem payı hem paydayı tek
-                  okumada verir. Payda daha küçük ve saydam — hangisinin asıl
-                  sayı olduğu tipografiden anlaşılsın, ayrı etiket gerekmesin. */}
-              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 6 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-                  <Text style={{ ...DISPLAY, fontWeight: '300', fontSize: isDesktop ? 34 : 29, color: '#FFFFFF', letterSpacing: -1, lineHeight: isDesktop ? 36 : 31 }}>
-                    {activeCount}
-                  </Text>
-                  <Text style={{ ...DISPLAY, fontWeight: '300', fontSize: isDesktop ? 22 : 19, color: 'rgba(255,255,255,0.60)', letterSpacing: -0.5, lineHeight: isDesktop ? 26 : 23 }}>
-                    {` / ${employees.length}`}
-                  </Text>
-                </View>
-                <Text style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.88)' }}>Aktif Personel</Text>
-              </View>
-            </View>
-
-            {/* Sağ — aksiyonlar. Basınca geri bildirim parmağın inişinde. */}
-            {canManage && (
-              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-                {/* Pill düğmeler. Native'de OBJE stil: fonksiyon-stilli Pressable
-                    iOS'ta row düzenini düşürüp ikonu metnin üstüne itiyordu. */}
+        {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ─────────────────
+            Prim Motoru hiyerarşisi: kicker → 44px aktif personel sayısı →
+            bağlam cümlesi → sağda 40px stat'lar → altta maaş kutucukları.
+            Neon navy yüzeyinden çıkıldı; mürekkep `useWhiteHeroInk()`ten
+            gelir, sabit beyaz metin açık yüzeyde kaybolurdu. */}
+        <WhiteHero
+          kicker="Ekip"
+          accent={theme.primary}
+          title={<><Text style={{ color: heroInk.accentInk }}>{activeCount}</Text> aktif personel</>}
+          description={
+            `${employees.length} kayıtlı kişi` +
+            (employees.length - activeCount > 0 ? ` · ${employees.length - activeCount} pasif` : '') +
+            (canViewSalaries && unpaidCount > 0 ? ` · ${unpaidCount} kişinin maaşı ödenmedi` : '')
+          }
+          stats={[
+            { value: String(activeCount),      label: 'Aktif' },
+            { value: String(employees.length), label: 'Toplam' },
+          ]}
+          // Düğmeler hero'nun ALT SAĞ köşesinde — kullanıcı isteği.
+          actionsAlign="end"
+          actions={canManage ? (
+            <>
+              {/* Pill düğmeler. Native'de OBJE stil: fonksiyon-stilli Pressable
+                  iOS'ta row düzenini düşürüp ikonu metnin üstüne itiyordu. */}
+              <GlassTooltip title={autoT('Personel ekle')} text={autoT('Hesabı olmayan yeni personel kaydı oluştur')}>
                 <Pressable
                   onPress={() => { setEditEmp(null); setFormOpen(true); }}
                   style={Platform.OS === 'web'
                     ? ((({ pressed, hovered }: any) => ({
-                        ...HERO_PILL, backgroundColor: hovered ? U.rowHover : U.plainBtn.bg,
-                        opacity: pressed ? 0.75 : 1, cursor: 'pointer',
+                        ...HERO_PILL, backgroundColor: theme.primary,
+                        opacity: pressed ? 0.75 : hovered ? 0.9 : 1, cursor: 'pointer',
                       })) as any)
-                    : { ...HERO_PILL, backgroundColor: U.plainBtn.bg }}
+                    : { ...HERO_PILL, backgroundColor: theme.primary }}
                 >
-                  <UserPlus size={14} color={U.ink[900]} strokeWidth={2} />
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: U.ink[900] }}>Personel Ekle</Text>
+                  <UserPlus size={14} color={onAccentInk(theme.primary)} strokeWidth={2} />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: onAccentInk(theme.primary) }}>Personel Ekle</Text>
                 </Pressable>
+              </GlassTooltip>
+              <GlassTooltip title={autoT('Hesap ile ekle')} text={autoT('Uygulamaya giriş hesabı olan bir kullanıcıyı personel olarak ekle')}>
                 <Pressable
                   onPress={() => setAddUserOpen(true)}
                   style={Platform.OS === 'web'
                     ? ((({ pressed, hovered }: any) => ({
-                        ...HERO_PILL, backgroundColor: hovered ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.16)',
-                        borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
-                        opacity: pressed ? 0.75 : 1, cursor: 'pointer',
+                        ...HERO_PILL, backgroundColor: heroInk.tileBg,
+                        borderWidth: 1, borderColor: heroInk.tileBorder,
+                        opacity: pressed ? 0.75 : hovered ? 0.85 : 1, cursor: 'pointer',
                       })) as any)
-                    : { ...HERO_PILL, backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)' }}
+                    : { ...HERO_PILL, backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder }}
                 >
-                  <UserPlus size={14} color="#FFFFFF" strokeWidth={2} />
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>Hesap ile Ekle</Text>
+                  <UserPlus size={14} color={heroInk.ink} strokeWidth={2} />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: heroInk.ink }}>Hesap ile Ekle</Text>
                 </Pressable>
-              </View>
-            )}
-          </View>
-
-          {/* Maaş KPI şeridi — gerçek veri taşır, kaldırılmadı; yalnız sıkıştırıldı. */}
+              </GlassTooltip>
+            </>
+          ) : undefined}
+        >
+          {/* Maaş kırılımı — yetkisi olana. */}
           {canViewSalaries && (
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
               {([
@@ -523,13 +511,13 @@ export function EmployeesScreen() {
                 <View key={stat.label} style={{
                   flex: 1, minWidth: 110,
                   paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12,
-                  backgroundColor: 'rgba(255,255,255,0.16)',
+                  backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder,
                 }}>
-                  <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>
+                  <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: heroInk.inkSoft }}>
                     {stat.label}
                   </Text>
                   <Text
-                    style={{ ...DISPLAY, fontWeight: '300', fontSize: 15, color: '#FFFFFF', letterSpacing: -0.3, lineHeight: 19, marginTop: 3 }}
+                    style={{ ...DISPLAY, fontWeight: '300', fontSize: 15, color: heroInk.ink, letterSpacing: -0.3, lineHeight: 19, marginTop: 3 }}
                     numberOfLines={1}
                   >
                     {stat.value}
@@ -538,7 +526,7 @@ export function EmployeesScreen() {
               ))}
             </View>
           )}
-        </View>
+        </WhiteHero>
 
         {/* Aktif/Tümü pill şeridi kaldırıldı — aynı durum artık Filtre
             menüsünde yaşıyor; iki yerde aynı state'i yönetmek karışıklık. */}
@@ -547,7 +535,7 @@ export function EmployeesScreen() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <View style={{
             flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10,
-            height: 44, paddingHorizontal: 14, borderRadius: 14,
+            height: 44, paddingHorizontal: 14, borderRadius: 9999,
             borderWidth: 1, borderColor: U.fieldBorder, backgroundColor: U.surface,
           }}>
             <Search size={15} color={U.ink[400]} strokeWidth={1.8} />
@@ -559,34 +547,38 @@ export function EmployeesScreen() {
               onChangeText={setSearch}
             />
             {search.length > 0 && (
-              <Pressable onPress={() => setSearch('')} style={{ cursor: 'pointer' as any }}>
-                <X size={14} color={U.ink[400]} strokeWidth={2} />
-              </Pressable>
+              <GlassTooltip title={autoT('Temizle')} text={autoT('Aramayı temizle')}>
+                <Pressable onPress={() => setSearch('')} style={{ cursor: 'pointer' as any }}>
+                  <X size={14} color={U.ink[400]} strokeWidth={2} />
+                </Pressable>
+              </GlassTooltip>
             )}
           </View>
 
           {/* Filtre — aktif filtre varsa düğme bunu ÜSTÜNDE taşır; menüyü açıp
               bakmadan neyin süzüldüğü görünsün. */}
-          <Pressable
-            onPress={() => setFilterOpen(true)}
-            accessibilityRole="button"
-            accessibilityLabel="Filtre"
-            style={({ pressed }: any) => ({
-              flexDirection: 'row', alignItems: 'center', gap: 8,
-              height: 44, paddingHorizontal: 14, borderRadius: 14,
-              borderWidth: 1,
-              borderColor: filterHasAny ? U.ink[900] : U.fieldBorder,
-              backgroundColor: filterHasAny ? U.chipNeutral : U.plainBtn.bg,
-              opacity: pressed ? 0.7 : 1,
-              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
-            })}
-          >
-            <SlidersHorizontal size={15} color={filterHasAny ? U.ink[900] : U.ink[400]} strokeWidth={1.8} />
-            <Text style={{ fontSize: 13, fontWeight: filterHasAny ? '600' : '500', color: filterHasAny ? U.ink[900] : U.ink[500] }}>
-              {filterLabel}
-            </Text>
-            <ChevronDown size={14} color={filterHasAny ? U.ink[900] : U.ink[400]} strokeWidth={2} />
-          </Pressable>
+          <GlassTooltip title={autoT('Filtrele')} text={autoT('Personeli pozisyona ve duruma göre süz')}>
+            <Pressable
+              onPress={() => setFilterOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Filtre"
+              style={({ pressed }: any) => ({
+                flexDirection: 'row', alignItems: 'center', gap: 8,
+                height: 44, paddingHorizontal: 14, borderRadius: 9999,
+                borderWidth: 1,
+                borderColor: filterHasAny ? U.ink[900] : U.fieldBorder,
+                backgroundColor: filterHasAny ? U.chipNeutral : U.plainBtn.bg,
+                opacity: pressed ? 0.7 : 1,
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
+              })}
+            >
+              <SlidersHorizontal size={15} color={filterHasAny ? U.ink[900] : U.ink[400]} strokeWidth={1.8} />
+              <Text style={{ fontSize: 13, fontWeight: filterHasAny ? '600' : '500', color: filterHasAny ? U.ink[900] : U.ink[500] }}>
+                {filterLabel}
+              </Text>
+              <ChevronDown size={14} color={filterHasAny ? U.ink[900] : U.ink[400]} strokeWidth={2} />
+            </Pressable>
+          </GlassTooltip>
         </View>
 
         {/* Filtre menüsü — Pozisyon + Durum */}
@@ -695,10 +687,11 @@ export function EmployeesScreen() {
           /* ── Desktop: full-width table (no side detail panel) ── */
           <View>
             <View style={{ ...U.tableCard }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
-                <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: U.ink[900] }}>Personel</Text>
+              {/* Kart başlığı — düz panel accent'i (Son Siparişler tablosuyla aynı dil). */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, backgroundColor: theme.primary }}>
+                <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: onAccentInk(theme.primary) }}>Personel</Text>
                 <View style={{ flex: 1 }} />
-                <Text style={{ fontSize: 12, color: U.ink[400] }}>{filtered.length} kişi</Text>
+                <Text style={{ fontSize: 12, color: onAccentInk(theme.primary), opacity: 0.75 }}>{filtered.length} kişi</Text>
               </View>
 
               {/* Header — MAAŞ + DURUM kolonları sadece view_salaries yetkisinde */}
@@ -707,12 +700,12 @@ export function EmployeesScreen() {
                   { label: 'ÇALIŞAN',  flex: 2.5 },
                   { label: 'POZİSYON', flex: 1.2 },
                   ...(canViewSalaries
-                    ? [{ label: 'MAAŞ', flex: 1, align: 'right' as const },
+                    ? [{ label: 'MAAŞ', flex: 1, align: 'right' as const, pad: 20 },
                        { label: 'DURUM', flex: 1 }]
                     : []),
                   { label: 'İŞLEM',    flex: 1 },
                 ].map((h, i) => (
-                  <Text key={i} style={{ flex: h.flex, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: U.ink[500], textAlign: h.align }}>
+                  <Text key={i} style={{ flex: h.flex, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: U.ink[500], textAlign: h.align, paddingEnd: (h as any).pad }}>
                     {h.label}
                   </Text>
                 ))}
@@ -727,7 +720,7 @@ export function EmployeesScreen() {
                     key={emp.id}
                     style={{
                       flexDirection: 'row', alignItems: 'center',
-                      paddingHorizontal: 20, paddingVertical: 14,
+                      paddingHorizontal: 20, paddingVertical: 9,
                       borderBottomWidth: i < filtered.length - 1 ? 1 : 0,
                       borderBottomColor: U.hairlineSoft,
                       backgroundColor: 'transparent',
@@ -736,11 +729,10 @@ export function EmployeesScreen() {
                     }}
                   >
                     <View style={{ flex: 2.5, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                      {/* 36 → 48: satırın en solundaki kimlik işareti fazla ufaktı.
-                          Yarıçap da ölçekle birlikte büyüdü (10 → 14), yoksa
-                          büyüyen karede köşeler orantısız keskin kalıyor. */}
-                      <View style={{ width: 48, height: 48, borderRadius: 14, backgroundColor: role.bg, alignItems: 'center', justifyContent: 'center' }}>
-                        <Text style={{ fontSize: 15, fontWeight: '800', color: role.fg, letterSpacing: 0.2 }}>{initials}</Text>
+                      {/* 48 → 38: satırlar fazla yüksekti (kullanıcı isteği, ~76 → ~56px).
+                          36'nın altına inme — kimlik işareti yine ufak kalır. */}
+                      <View style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: role.bg, alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ fontSize: 13, fontWeight: '800', color: role.fg, letterSpacing: 0.2 }}>{initials}</Text>
                       </View>
                       <View>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -768,7 +760,7 @@ export function EmployeesScreen() {
                     </View>
                     {canViewSalaries && (
                       <>
-                        <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: U.ink[900], textAlign: 'end' as any }}>
+                        <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: U.ink[900], textAlign: 'end' as any, paddingEnd: 20 }}>
                           {fmtMoney(emp.base_salary)}
                         </Text>
                         <View style={{ flex: 1 }}>
@@ -863,33 +855,41 @@ export function EmployeesScreen() {
                 {/* Action row — sadece manage_employees yetkisi varsa görünür */}
                 {canManage && (
                   <View style={{ flexDirection: 'row', gap: 4, marginTop: 10, justifyContent: 'flex-end' }}>
-                    <Pressable
-                      onPress={() => { setEditEmp(emp); setFormOpen(true); }}
-                      style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: U.ink[50], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
-                    >
-                      <Pencil size={13} color={U.ink[500]} strokeWidth={1.6} />
-                    </Pressable>
-                    {emp.is_active ? (
+                    <GlassTooltip title={autoT('Düzenle')} text={autoT('Personel bilgilerini düzenle')}>
                       <Pressable
-                        onPress={() => handleDeactivate(emp)}
+                        onPress={() => { setEditEmp(emp); setFormOpen(true); }}
                         style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: U.ink[50], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
                       >
-                        <UserX size={13} color={U.ink[500]} strokeWidth={1.6} />
+                        <Pencil size={13} color={U.ink[500]} strokeWidth={1.6} />
                       </Pressable>
+                    </GlassTooltip>
+                    {emp.is_active ? (
+                      <GlassTooltip title={autoT('Pasife al')} text={autoT('Personeli pasife al; kayıtları korunur')}>
+                        <Pressable
+                          onPress={() => handleDeactivate(emp)}
+                          style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: U.ink[50], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                        >
+                          <UserX size={13} color={U.ink[500]} strokeWidth={1.6} />
+                        </Pressable>
+                      </GlassTooltip>
                     ) : (
-                      <Pressable
-                        onPress={() => handleReactivate(emp)}
-                        style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: U.chipTones.success.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
-                      >
-                        <UserCheck size={13} color={U.chipTones.success.fg} strokeWidth={1.8} />
-                      </Pressable>
+                      <GlassTooltip title={autoT('Aktif et')} text={autoT('Pasif personeli yeniden aktif et')}>
+                        <Pressable
+                          onPress={() => handleReactivate(emp)}
+                          style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: U.chipTones.success.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                        >
+                          <UserCheck size={13} color={U.chipTones.success.fg} strokeWidth={1.8} />
+                        </Pressable>
+                      </GlassTooltip>
                     )}
-                    <Pressable
-                      onPress={() => handleDelete(emp)}
-                      style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: U.chipTones.danger.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
-                    >
-                      <Trash2 size={13} color={U.chipTones.danger.fg} strokeWidth={1.6} />
-                    </Pressable>
+                    <GlassTooltip title={autoT('Sil')} text={autoT('Personel kaydını sil')}>
+                      <Pressable
+                        onPress={() => handleDelete(emp)}
+                        style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: U.chipTones.danger.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                      >
+                        <Trash2 size={13} color={U.chipTones.danger.fg} strokeWidth={1.6} />
+                      </Pressable>
+                    </GlassTooltip>
                   </View>
                 )}
               </View>
@@ -1119,7 +1119,7 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
   onClose: () => void; onSaved: () => void;
 }) {
   const U = useInkUI();
-  const P = DS.exec.primary; // admin/exec panel accent (#4771AB kobalt) — Ekip HR Hub admin'de
+  const P = DS.exec.primary; // admin/exec panel accent (#002A5C kobalt) — Ekip HR Hub admin'de
   const router = useRouter();
   const navSegments = useSegments() as string[];
   const navGroup = navSegments?.[0] && navSegments[0].startsWith('(') ? navSegments[0] : '(lab)';

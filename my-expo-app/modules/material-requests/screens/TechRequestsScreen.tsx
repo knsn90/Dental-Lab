@@ -27,6 +27,8 @@ import {
   StatusChip, UrgencyChip,
 } from '../components/atoms';
 import { NewRequestModal } from '../components/NewRequestModal';
+import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
+import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 
 type TabKey = 'open' | 'history' | 'rejected';
 
@@ -43,6 +45,8 @@ const TABS: { key: TabKey; label: string; statuses: RequestStatus[]; icon: any; 
 export function TechRequestsScreen() {
   const TH = usePanelTheme();
   const T = useMobileTokens();
+  // Beyaz hero içi mürekkep/kutucuk renkleri (açık ve koyu temada ayrı).
+  const heroInk = useWhiteHeroInk();
   const [items, setItems]     = useState<MaterialRequestRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
@@ -100,99 +104,55 @@ export function TechRequestsScreen() {
         contentContainerStyle={{ padding: PAGE_PADDING, paddingBottom: 48, gap: 16 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* F2 Hero — full-bleed accent + dekoratif daireler + alt mini-stat şeridi */}
-        <View style={{
-          borderRadius: 28, padding: 28, backgroundColor: TH.primary,
-          position: 'relative', overflow: 'hidden',
-        }}>
-          {/* Dekoratif daireler */}
-          <View style={{ position: 'absolute', top: -40, end: -40, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(255,255,255,0.15)' }} pointerEvents="none" />
-          <View style={{ position: 'absolute', bottom: -60, start: -20, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(0,0,0,0.05)' }} pointerEvents="none" />
-
-          {/* Üst satır — kicker + title + ikon kapsülü */}
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
-            <View style={{ flex: 1, minWidth: 260 }}>
-              <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.82)' }}>
-                Çalışma Alanı · Malzeme Talebi
-              </Text>
-              <Text style={{ ...DISPLAY, fontSize: 40, color: '#FFF', letterSpacing: -1.2, lineHeight: 44, marginTop: 8 }}>
-                Taleplerim
-              </Text>
-              <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.82)', marginTop: 10, maxWidth: 520, lineHeight: 19 }}>
-                Eksilen sarf veya bozulan aleti buradan talep edersiniz. Talep önce mesul müdüre, onaylanırsa admin'e iletilir.
-              </Text>
-            </View>
-            <View style={{
-              width: 56, height: 56, borderRadius: 16,
-              backgroundColor: 'rgba(255,255,255,0.20)',
-              borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)',
-              alignItems: 'center', justifyContent: 'center',
-            }}>
-              <Wrench size={26} color="#FFF" strokeWidth={1.7} />
-            </View>
-          </View>
-
-          {/* Aksiyonlar */}
-          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 18 }}>
+        {/* BEYAZ HERO — eski F2 hero (dolu accent zemin + dekoratif daireler +
+            beyaz kutucuk şeridi) kaldırıldı; uygulama genelindeki "beyaz hero"
+            hiyerarşisi: kicker → lider sayı → bağlam cümlesi → sağda sayılar. */}
+        <WhiteHero
+          kicker="Çalışma Alanı · Malzeme Talebi"
+          title={<>{grouped.open.length} <Text style={{ color: heroInk.accentInk }}>açık talep</Text></>}
+          description="Eksilen sarf veya bozulan aleti buradan talep edersiniz. Talep önce mesul müdüre, onaylanırsa admin'e iletilir."
+          stats={[
+            { value: String(counts.pending),  label: 'Onay Bekleyen' },
+            { value: String(counts.approved), label: 'Onaylı' },
+            { value: String(counts.received), label: 'Teslim Alınan' },
+            { value: String(counts.rejected), label: 'Reddedilen' },
+          ]}
+          cta={
             <Pressable
               onPress={() => setModalOpen(true)}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 6,
                 paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999,
-                backgroundColor: '#FFF',
+                backgroundColor: heroInk.isDark ? '#FFFFFF' : TH.primary,
               }}
             >
-              <Plus size={13} color={TH.primary} strokeWidth={2.2} />
-              <Text style={{ fontSize: 13, fontWeight: '600', color: TH.primary }}>Yeni Talep</Text>
+              <Plus size={13} color={heroInk.isDark ? TH.primary : '#FFFFFF'} strokeWidth={2.2} />
+              <Text style={{ fontSize: 13, fontWeight: '600', color: heroInk.isDark ? TH.primary : '#FFFFFF' }}>Yeni Talep</Text>
             </Pressable>
+          }
+          actions={
             <Pressable
               onPress={load}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 6,
                 paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999,
-                backgroundColor: 'rgba(255,255,255,0.16)',
-                borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)',
+                backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder,
               }}
             >
-              <RefreshCcw size={13} color="#FFF" strokeWidth={2} />
-              <Text style={{ fontSize: 13, fontWeight: '500', color: '#FFF' }}>Yenile</Text>
+              <RefreshCcw size={13} color={heroInk.ink} strokeWidth={2} />
+              <Text style={{ fontSize: 13, fontWeight: '500', color: heroInk.ink }}>Yenile</Text>
             </Pressable>
-          </View>
+          }
+        />
 
-          {/* Alt mini-stat şeridi — 4 tile */}
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 20, flexWrap: 'wrap' }}>
-            <HeroMiniStat icon={Clock}        label="Onay Bekleyen" value={counts.pending}  onPress={() => setTab('open')} />
-            <HeroMiniStat icon={CheckCircle2} label="Onaylı"         value={counts.approved} onPress={() => setTab('open')} />
-            <HeroMiniStat icon={PackageCheck} label="Teslim Alınan"  value={counts.received} onPress={() => setTab('history')} />
-            <HeroMiniStat icon={XCircle}      label="Reddedilen"     value={counts.rejected} onPress={() => setTab('rejected')} />
-          </View>
-        </View>
-
-        {/* Tab bar */}
-        <View style={{ flexDirection: 'row', gap: 4, padding: 4, backgroundColor: T.cardSoft, borderRadius: 12, borderWidth: 1, borderColor: T.hairline, alignSelf: 'flex-start' }}>
-          {TABS.map(t => {
-            const active = tab === t.key;
-            const Icon = t.icon;
-            const n = grouped[t.key].length;
-            return (
-              <Pressable
-                key={t.key}
-                onPress={() => setTab(t.key)}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 6,
-                  paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8,
-                  backgroundColor: active ? T.card : 'transparent',
-                  ...(active && Platform.OS === 'web' ? { boxShadow: '0 1px 3px rgba(0,0,0,0.08)' } as any : null),
-                }}
-              >
-                <Icon size={12} color={active ? t.accent : T.ink3} strokeWidth={2} />
-                <Text style={{ fontSize: 12, fontWeight: active ? '700' : '500', color: active ? T.ink : T.ink3 }}>
-                  {t.label} ({n})
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        {/* Sekmeler — uygulama genelindeki kayan-cursor'lı SlideTabBar. */}
+        <SlideTabBar
+          items={TABS.map(tb => ({ key: tb.key, label: tb.label, count: grouped[tb.key].length }))}
+          activeKey={tab}
+          onChange={(k) => setTab(k as TabKey)}
+          accentColor={TH.primary}
+          style={{ marginStart: -4 }}
+        />
 
         {/* Liste */}
         {list.length === 0 ? (

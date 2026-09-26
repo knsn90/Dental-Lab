@@ -20,6 +20,7 @@ import { useInkUI } from '../../../../core/theme/inkScale';
 import { HeroGlow, useHeroSurface, NAVY_INK } from '../../../../core/ui/HeroGlow';
 import { listPolicies, calculateBonusRun, type CalcResult } from '../api';
 import { supabase } from '../../../../core/api/supabase';
+import { WhiteHero, type WhiteHeroProps } from '../../../../core/ui/WhiteHero';
 import {
   MODE_LABELS, isPolicyActive,
   type BonusPolicy, type BonusRun, type BonusRunBreakdownRow,
@@ -708,92 +709,12 @@ function HeroTile({ icon: Icon, label, value, sub }:
 }
 
 
-/* ─── DashHero — F1 hero (atoms/HeroF1'in tema-farkında yerel kopyası) ────
-   Açık tema BİREBİR eskisi gibi (soluk TH.bg zemin + %55 beyaz cam kart).
-   Koyu temada kart komple beyaz patlıyor, üstündeki BigStat metni krem olduğu
-   için de görünmez oluyordu → lacivert hero yüzeyi + beyaz metin + saydam
-   istatistik kutucukları. */
-function DashHero({ kicker, title, description, stats, actions }: {
-  kicker: string;
-  title: React.ReactNode;
-  description?: React.ReactNode;
-  stats?: { value: string; label: string }[];
-  actions?: React.ReactNode;
-}) {
-  const U = useInkUI();
-  const isDark = useThemeModeStore(s => s.resolvedDark);
-  const heroBg = useHeroSurface(TH.primary);
-
-  const kickerColor = isDark ? 'rgba(255,255,255,0.85)' : U.ink[500];
-  const titleColor  = isDark ? '#FFFFFF' : U.ink[900];
-  const descColor   = isDark ? 'rgba(255,255,255,0.60)' : U.ink[500];
-
-  return (
-    <View style={{
-      borderRadius: 28, overflow: 'hidden', padding: 14, marginBottom: 16,
-      position: 'relative',
-      ...(isDark ? heroBg : { backgroundColor: TH.bg }),
-    }}>
-      {isDark ? (
-        <>
-          <HeroGlow size={130} opacity={0.18} delay={0}    style={{ top: -46, end: -34 }} />
-          <HeroGlow size={110} opacity={0.10} delay={1400} style={{ bottom: -52, start: -26 }} />
-        </>
-      ) : null}
-      <View style={{
-        backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.55)',
-        borderRadius: 22, padding: 26,
-        borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.7)',
-      }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 16 }}>
-          <View style={{ flex: 1, minWidth: 260 }}>
-            <Text style={{
-              fontSize: 11, fontWeight: '500', letterSpacing: 1.1,
-              textTransform: 'uppercase', color: kickerColor, marginBottom: 12,
-            }}>
-              {kicker}
-            </Text>
-            <Text style={{ ...DISPLAY, fontSize: 44, letterSpacing: -1.5, lineHeight: 48, color: titleColor }}>
-              {title}
-            </Text>
-            {description ? (
-              <Text style={{ fontSize: 14, color: descColor, marginTop: 12, maxWidth: 520, lineHeight: 21 }}>
-                {description}
-              </Text>
-            ) : null}
-          </View>
-          {stats && stats.length > 0 ? (
-            <View style={{ flexDirection: 'row', gap: isDark ? 8 : 28, flexWrap: 'wrap' }}>
-              {stats.map(st => (
-                <View
-                  key={st.label}
-                  style={{
-                    alignItems: 'flex-end',
-                    ...(isDark ? {
-                      minWidth: 92, paddingVertical: 8, paddingHorizontal: 12,
-                      borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.16)',
-                    } : null),
-                  }}
-                >
-                  <Text style={{ ...DISPLAY, fontSize: 40, letterSpacing: -1.4, lineHeight: 40, color: titleColor }}>
-                    {st.value}
-                  </Text>
-                  <Text style={{ fontSize: 10, color: kickerColor, textTransform: 'uppercase', letterSpacing: 0.7, marginTop: 4 }}>
-                    {st.label}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          ) : null}
-        </View>
-        {actions ? (
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
-            {actions}
-          </View>
-        ) : null}
-      </View>
-    </View>
-  );
+/* ─── DashHero — "beyaz hero"nun ince sarmalayıcısı ──────────────────────
+   Bu hero'nun stili/tipografisi kullanıcı tarafından BEYAZ HERO olarak
+   adlandırıldı ve `core/ui/WhiteHero` altına taşındı (tek kaynak). Buradaki
+   sarmalayıcı yalnız Prim Motoru'nun sabit Kobalt paletini geçirir. */
+function DashHero(props: WhiteHeroProps) {
+  return <WhiteHero accent={TH.primary} tint={TH.bg} {...props} />;
 }
 
 

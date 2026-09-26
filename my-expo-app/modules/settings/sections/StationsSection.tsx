@@ -6,6 +6,7 @@
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import { autoT } from '../../../core/i18n/autoTranslate';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import {
   View, Text, ScrollView, Pressable,
   TextInput, Modal, ActivityIndicator, Alert, Platform,
@@ -215,9 +216,11 @@ function StationFormModal({
               <Text style={{ ...DISPLAY_FONT, fontSize: 22, letterSpacing: -0.4, color: T.ink }}>
                 {initial ? 'İstasyonu Düzenle' : 'Yeni İstasyon Ekle'}
               </Text>
-              <Pressable onPress={onClose}>
-                <X size={18} color={(isDark ? (T.ink3 as string) : DS.ink[400])} strokeWidth={1.8} />
-              </Pressable>
+              <GlassTooltip title={autoT('Kapat')} text={autoT('Pencereyi kapatır, değişiklikler kaydedilmez')} placement="bottom">
+                <Pressable onPress={onClose}>
+                  <X size={18} color={(isDark ? (T.ink3 as string) : DS.ink[400])} strokeWidth={1.8} />
+                </Pressable>
+              </GlassTooltip>
             </View>
 
             {/* Live preview */}
@@ -380,33 +383,43 @@ function StationFormModal({
             paddingHorizontal: PAGE_PADDING, paddingVertical: 20,
             borderTopWidth: 1, borderTopColor: T.hairline,
           }}>
-            <Pressable
-              onPress={onClose}
-              style={{
-                paddingHorizontal: 20, paddingVertical: 10,
-                borderRadius: 999, borderWidth: 1, borderColor: 'transparent',
-              }}
+            <GlassTooltip title={autoT('Vazgeç')} text={autoT('Değişiklikleri kaydetmeden pencereyi kapatır')}>
+              <Pressable
+                onPress={onClose}
+                style={{
+                  paddingHorizontal: 20, paddingVertical: 10,
+                  borderRadius: 999, borderWidth: 1, borderColor: 'transparent',
+                }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink, letterSpacing: -0.13 }}>Vazgeç</Text>
+              </Pressable>
+            </GlassTooltip>
+            <GlassTooltip
+              title={initial ? autoT('Kaydet') : autoT('İstasyonu Ekle')}
+              text={initial
+                ? autoT('İstasyon bilgilerindeki değişiklikleri kaydeder')
+                : autoT('Yeni istasyonu üretim akışına ekler')}
+              enabled={!saving}
             >
-              <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink, letterSpacing: -0.13 }}>Vazgeç</Text>
-            </Pressable>
-            <Pressable
-              onPress={handleSave}
-              disabled={saving}
-              style={{
-                paddingHorizontal: 20, paddingVertical: 10,
-                borderRadius: 999,
-                backgroundColor: DS.ink[900], borderWidth: 1, borderColor: DS.ink[900],
-                opacity: saving ? 0.6 : 1,
-                flexDirection: 'row', alignItems: 'center', gap: 6,
-              }}
-            >
-              {saving
-                ? <ActivityIndicator size="small" color="#FFF" />
-                : <Text style={{ fontSize: 13, fontWeight: '500', color: '#FFF', letterSpacing: -0.13 }}>
-                    {initial ? 'Kaydet' : 'İstasyonu Ekle'}
-                  </Text>
-              }
-            </Pressable>
+              <Pressable
+                onPress={handleSave}
+                disabled={saving}
+                style={{
+                  paddingHorizontal: 20, paddingVertical: 10,
+                  borderRadius: 999,
+                  backgroundColor: DS.ink[900], borderWidth: 1, borderColor: DS.ink[900],
+                  opacity: saving ? 0.6 : 1,
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                }}
+              >
+                {saving
+                  ? <ActivityIndicator size="small" color="#FFF" />
+                  : <Text style={{ fontSize: 13, fontWeight: '500', color: '#FFF', letterSpacing: -0.13 }}>
+                      {initial ? 'Kaydet' : 'İstasyonu Ekle'}
+                    </Text>
+                }
+              </Pressable>
+            </GlassTooltip>
           </View>
         </Pressable>
       </Pressable>
@@ -456,13 +469,15 @@ function DefaultStationsPreviewModal({
               </Text>
               <Text className="text-[12px] text-ink-400 dark:text-white/55 mt-0.5">Dijital Diş Laboratuvarı Şablonu</Text>
             </View>
-            <Pressable
-              onPress={onClose}
-              className="w-8 h-8 rounded-lg items-center justify-center"
-              style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }}
-            >
-              <X size={16} color={isDark ? (T.ink3 as string) : "#6B6B6B"} strokeWidth={1.8} />
-            </Pressable>
+            <GlassTooltip title={autoT('Kapat')} text={autoT('Varsayılan istasyon listesini kapatır')} placement="bottom">
+              <Pressable
+                onPress={onClose}
+                className="w-8 h-8 rounded-lg items-center justify-center"
+                style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }}
+              >
+                <X size={16} color={isDark ? (T.ink3 as string) : "#6B6B6B"} strokeWidth={1.8} />
+              </Pressable>
+            </GlassTooltip>
           </View>
 
           <ScrollView
@@ -543,33 +558,41 @@ function DefaultStationsPreviewModal({
             paddingHorizontal: PAGE_PADDING, paddingVertical: 16,
             borderTopWidth: 1, borderTopColor: T.hairline,
           }}>
-            <Pressable
-              onPress={onClose}
-              style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999 }}
+            <GlassTooltip title={autoT('Vazgeç')} text={autoT('Hiçbir istasyon eklemeden kapatır')}>
+              <Pressable
+                onPress={onClose}
+                style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999 }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink, letterSpacing: -0.13 }}>Vazgeç</Text>
+              </Pressable>
+            </GlassTooltip>
+            <GlassTooltip
+              title={autoT('Varsayılanları ekle')}
+              text={autoT('Listedeki eksik istasyonları toplu olarak ekler')}
+              enabled={!saving && toAdd.length > 0}
             >
-              <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink, letterSpacing: -0.13 }}>Vazgeç</Text>
-            </Pressable>
-            <Pressable
-              onPress={onConfirm}
-              disabled={saving || toAdd.length === 0}
-              style={{
-                flexDirection: 'row', alignItems: 'center', gap: 6,
-                paddingHorizontal: 20, paddingVertical: 10,
-                borderRadius: 999,
-                backgroundColor: DS.ink[900], borderWidth: 1, borderColor: DS.ink[900],
-                opacity: (saving || toAdd.length === 0) ? 0.6 : 1,
-              }}
-            >
-              {saving
-                ? <ActivityIndicator size="small" color="#FFF" />
-                : <>
-                    <Zap size={13} color="#FFF" strokeWidth={1.8} />
-                    <Text style={{ fontSize: 13, fontWeight: '500', color: '#FFF', letterSpacing: -0.13 }}>
-                      {toAdd.length > 0 ? `${toAdd.length} İstasyonu Ekle` : 'Tümü Zaten Ekli'}
-                    </Text>
-                  </>
-              }
-            </Pressable>
+              <Pressable
+                onPress={onConfirm}
+                disabled={saving || toAdd.length === 0}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  paddingHorizontal: 20, paddingVertical: 10,
+                  borderRadius: 999,
+                  backgroundColor: DS.ink[900], borderWidth: 1, borderColor: DS.ink[900],
+                  opacity: (saving || toAdd.length === 0) ? 0.6 : 1,
+                }}
+              >
+                {saving
+                  ? <ActivityIndicator size="small" color="#FFF" />
+                  : <>
+                      <Zap size={13} color="#FFF" strokeWidth={1.8} />
+                      <Text style={{ fontSize: 13, fontWeight: '500', color: '#FFF', letterSpacing: -0.13 }}>
+                        {toAdd.length > 0 ? `${toAdd.length} İstasyonu Ekle` : 'Tümü Zaten Ekli'}
+                      </Text>
+                    </>
+                }
+              </Pressable>
+            </GlassTooltip>
           </View>
         </Pressable>
       </Pressable>
@@ -731,14 +754,16 @@ export function StationsSection({ accentColor = '#F5C24B' }: Props) {
             }
           </Text>
         </View>
-        <Pressable
-          onPress={() => { setEditing(null); setFormVisible(true); }}
-          className="flex-row items-center gap-2 py-2.5 px-4 rounded-xl"
-          style={{ backgroundColor: accentColor }}
-        >
-          <Plus size={14} color="#FFF" strokeWidth={2} />
-          <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFFFFF' }}>Yeni İstasyon</Text>
-        </Pressable>
+        <GlassTooltip title={autoT('Yeni İstasyon')} text={autoT('Üretim akışına yeni bir istasyon ekler')}>
+          <Pressable
+            onPress={() => { setEditing(null); setFormVisible(true); }}
+            className="flex-row items-center gap-2 py-2.5 px-4 rounded-xl"
+            style={{ backgroundColor: accentColor }}
+          >
+            <Plus size={14} color="#FFF" strokeWidth={2} />
+            <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFFFFF' }}>Yeni İstasyon</Text>
+          </Pressable>
+        </GlassTooltip>
       </View>
 
       {/* ── Empty state ────────────────────────────────────── */}
@@ -761,22 +786,26 @@ export function StationsSection({ accentColor = '#F5C24B' }: Props) {
             Dijital diş laboratuvarı şablonuyla tek tıkla başlayın.
           </Text>
 
-          <Pressable
-            onPress={() => setPreviewVisible(true)}
-            className="flex-row items-center gap-2 py-3 px-7 rounded-2xl mb-2"
-            style={{ backgroundColor: accentColor }}
-          >
-            <Zap size={15} color="#FFF" strokeWidth={1.8} />
-            <Text style={{ fontSize: 14, fontWeight: '600', color: '#FFFFFF' }}>Varsayılan İstasyonları Ekle</Text>
-          </Pressable>
+          <GlassTooltip title={autoT('Varsayılan İstasyonları Ekle')} text={autoT('Dijital diş laboratuvarı şablonunu önizler ve ekler')}>
+            <Pressable
+              onPress={() => setPreviewVisible(true)}
+              className="flex-row items-center gap-2 py-3 px-7 rounded-2xl mb-2"
+              style={{ backgroundColor: accentColor }}
+            >
+              <Zap size={15} color="#FFF" strokeWidth={1.8} />
+              <Text style={{ fontSize: 14, fontWeight: '600', color: '#FFFFFF' }}>Varsayılan İstasyonları Ekle</Text>
+            </Pressable>
+          </GlassTooltip>
 
-          <Pressable
-            onPress={() => { setEditing(null); setFormVisible(true); }}
-            className="flex-row items-center gap-1.5 py-2"
-          >
-            <Plus size={13} color={accentColor} strokeWidth={2} />
-            <Text style={{ fontSize: 13, fontWeight: '600', color: accentColor }}>Manuel Ekle</Text>
-          </Pressable>
+          <GlassTooltip title={autoT('Manuel Ekle')} text={autoT('Adını ve rengini kendin girerek istasyon ekler')}>
+            <Pressable
+              onPress={() => { setEditing(null); setFormVisible(true); }}
+              className="flex-row items-center gap-1.5 py-2"
+            >
+              <Plus size={13} color={accentColor} strokeWidth={2} />
+              <Text style={{ fontSize: 13, fontWeight: '600', color: accentColor }}>Manuel Ekle</Text>
+            </Pressable>
+          </GlassTooltip>
         </View>
       )}
 
@@ -836,36 +865,44 @@ export function StationsSection({ accentColor = '#F5C24B' }: Props) {
 
                 {/* Actions */}
                 <View className="flex-row items-center gap-1">
-                  <Pressable
-                    onPress={() => moveStation(index, -1)}
-                    disabled={index === 0}
-                    className="w-7 h-7 rounded-lg items-center justify-center"
-                    style={{ backgroundColor: T.hairline2, opacity: index === 0 ? 0.3 : 1 }}
-                  >
-                    <ChevronUp size={13} color={T.ink2} strokeWidth={1.8} />
-                  </Pressable>
-                  <Pressable
-                    onPress={() => moveStation(index, 1)}
-                    disabled={index === stations.length - 1}
-                    className="w-7 h-7 rounded-lg items-center justify-center"
-                    style={{ backgroundColor: T.hairline2, opacity: index === stations.length - 1 ? 0.3 : 1 }}
-                  >
-                    <ChevronDown size={13} color={T.ink2} strokeWidth={1.8} />
-                  </Pressable>
-                  <Pressable
-                    onPress={() => { setEditing(station); setFormVisible(true); }}
-                    className="w-8 h-8 rounded-[10px] items-center justify-center ms-1"
-                    style={{ backgroundColor: `${accentColor}14` }}
-                  >
-                    <Pencil size={13} color={accentColor} strokeWidth={1.8} />
-                  </Pressable>
-                  <Pressable
-                    onPress={() => confirmDelete(station)}
-                    className="w-8 h-8 rounded-[10px] items-center justify-center"
-                    style={{ backgroundColor: '#DC262610' }}
-                  >
-                    <Trash2 size={13} color="#DC2626" strokeWidth={1.8} />
-                  </Pressable>
+                  <GlassTooltip title={autoT('Yukarı taşı')} text={autoT('İstasyonu üretim sırasında bir üst sıraya alır')} enabled={index !== 0}>
+                    <Pressable
+                      onPress={() => moveStation(index, -1)}
+                      disabled={index === 0}
+                      className="w-7 h-7 rounded-lg items-center justify-center"
+                      style={{ backgroundColor: T.hairline2, opacity: index === 0 ? 0.3 : 1 }}
+                    >
+                      <ChevronUp size={13} color={T.ink2} strokeWidth={1.8} />
+                    </Pressable>
+                  </GlassTooltip>
+                  <GlassTooltip title={autoT('Aşağı taşı')} text={autoT('İstasyonu üretim sırasında bir alt sıraya alır')} enabled={index !== stations.length - 1}>
+                    <Pressable
+                      onPress={() => moveStation(index, 1)}
+                      disabled={index === stations.length - 1}
+                      className="w-7 h-7 rounded-lg items-center justify-center"
+                      style={{ backgroundColor: T.hairline2, opacity: index === stations.length - 1 ? 0.3 : 1 }}
+                    >
+                      <ChevronDown size={13} color={T.ink2} strokeWidth={1.8} />
+                    </Pressable>
+                  </GlassTooltip>
+                  <GlassTooltip title={autoT('Düzenle')} text={autoT('İstasyonun adını, rengini ve ayarlarını değiştirir')}>
+                    <Pressable
+                      onPress={() => { setEditing(station); setFormVisible(true); }}
+                      className="w-8 h-8 rounded-[10px] items-center justify-center ms-1"
+                      style={{ backgroundColor: `${accentColor}14` }}
+                    >
+                      <Pencil size={13} color={accentColor} strokeWidth={1.8} />
+                    </Pressable>
+                  </GlassTooltip>
+                  <GlassTooltip title={autoT('Sil')} text={autoT('İstasyonu kalıcı olarak siler')}>
+                    <Pressable
+                      onPress={() => confirmDelete(station)}
+                      className="w-8 h-8 rounded-[10px] items-center justify-center"
+                      style={{ backgroundColor: '#DC262610' }}
+                    >
+                      <Trash2 size={13} color="#DC2626" strokeWidth={1.8} />
+                    </Pressable>
+                  </GlassTooltip>
                 </View>
               </View>
             ))}
@@ -875,16 +912,18 @@ export function StationsSection({ accentColor = '#F5C24B' }: Props) {
 
       {/* ── Seed secondary button ──────────────────────────── */}
       {stations.length > 0 && (
-        <Pressable
-          onPress={() => setPreviewVisible(true)}
-          className="flex-row items-center justify-center gap-2 py-3 rounded-2xl mt-3"
-          style={{ borderWidth: 1, borderColor: `${accentColor}40`, backgroundColor: `${accentColor}08` }}
-        >
-          <Zap size={13} color={accentColor} strokeWidth={1.8} />
-          <Text style={{ fontSize: 13, fontWeight: '600', color: accentColor }}>
-            Eksik Varsayılan İstasyonları Gözden Geçir
-          </Text>
-        </Pressable>
+        <GlassTooltip title={autoT('Eksikleri gözden geçir')} text={autoT('Şablonda olup listende olmayan istasyonları gösterir')}>
+          <Pressable
+            onPress={() => setPreviewVisible(true)}
+            className="flex-row items-center justify-center gap-2 py-3 rounded-2xl mt-3"
+            style={{ borderWidth: 1, borderColor: `${accentColor}40`, backgroundColor: `${accentColor}08` }}
+          >
+            <Zap size={13} color={accentColor} strokeWidth={1.8} />
+            <Text style={{ fontSize: 13, fontWeight: '600', color: accentColor }}>
+              Eksik Varsayılan İstasyonları Gözden Geçir
+            </Text>
+          </Pressable>
+        </GlassTooltip>
       )}
 
       {/* ── Modals ─────────────────────────────────────────── */}

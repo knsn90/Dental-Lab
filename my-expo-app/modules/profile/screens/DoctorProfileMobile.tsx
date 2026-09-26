@@ -27,6 +27,7 @@ import { deleteMyAccount } from '../../../lib/auth';
 import { DataRightsRequest } from '../../auth/components/DataRightsRequest';
 // Yasal sayfalar — tek kaynak (core/legal.ts). App Store zorunlu.
 import { LEGAL_PRIVACY_URL, LEGAL_TERMS_URL } from '../../../core/legal';
+import { AiConsentRow } from '../../../core/ai/AiConsentRow';
 
 const APP_VERSION = (Constants?.expoConfig?.version ?? '1.0.0') as string;
 
@@ -482,6 +483,11 @@ export function DoctorProfileMobile({ profile, onSignOut, panel = 'doctor' }: Pr
               Çıkış Yap
             </Text>
           </Pressable>
+        </View>
+
+        {/* Yapay zekâ izni — App Store 5.1.2(i): izin geri alınabilir olmalı */}
+        <View style={{ paddingHorizontal: PAGE_PADDING, marginTop: 16 }}>
+          <AiConsentRow />
         </View>
 
         {/* ═══ HESABIMI SİL — sade tehlikeli bağlantı (çıkışla yarışmasın) ═══ */}

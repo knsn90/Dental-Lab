@@ -24,11 +24,13 @@ import { ColorOrb } from '../../denty/components/ColorOrb';
 import { toast } from '../../../core/ui/Toast';
 import { isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { searchPlaces, getPlaceDetails, startPlaceSession, endPlaceSession, type PlaceSuggestion } from '../../auth/api/places';
 import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
+import { AiConsentRow } from '../../../core/ai/AiConsentRow';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 const ROLE_LABEL: Record<string, string> = {
@@ -170,8 +172,10 @@ interface Props { accentColor: string; }
 // ── Component ────────────────────────────────────────────────────────────
 export function ProfileSection({ accentColor }: Props) {
   const { profile, signOut, setProfile } = useAuthStore() as any;
-  const { width: _vw } = useWindowDimensions();
+  const { width: _vw, height: _vh } = useWindowDimensions();
   const isNarrow = _vw < 900;
+  // Telefon genişliği — düzenleme modalında 2-kolon form tek kolona düşer.
+  const isPhone = _vw < 640;
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const roleLabel = getRoleLabel(profile);
@@ -458,21 +462,23 @@ export function ProfileSection({ accentColor }: Props) {
           >
             {/* Avatar + kimlik */}
             <View className="items-center">
-              <Pressable onPress={handlePickAvatar} className="relative" style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : undefined}>
-                {avatarUri ? (
-                  <Image source={{ uri: avatarUri }} style={{ width: 88, height: 88, borderRadius: 44 }} resizeMode="cover" />
-                ) : (
-                  <View className="items-center justify-center" style={{ width: 88, height: 88, borderRadius: 44, backgroundColor: accentColor }}>
-                    <Text style={{ fontSize: 34, fontWeight: '600', color: '#FFFFFF', letterSpacing: -0.5 }}>{initial}</Text>
+              <GlassTooltip title={autoT('Profil fotoğrafı')} text={autoT('Profil fotoğrafını değiştir')}>
+                <Pressable onPress={handlePickAvatar} className="relative" style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : undefined}>
+                  {avatarUri ? (
+                    <Image source={{ uri: avatarUri }} style={{ width: 88, height: 88, borderRadius: 44 }} resizeMode="cover" />
+                  ) : (
+                    <View className="items-center justify-center" style={{ width: 88, height: 88, borderRadius: 44, backgroundColor: accentColor }}>
+                      <Text style={{ fontSize: 34, fontWeight: '600', color: '#FFFFFF', letterSpacing: -0.5 }}>{initial}</Text>
+                    </View>
+                  )}
+                  <View
+                    className="absolute bottom-0 end-0 w-7 h-7 rounded-full items-center justify-center border-2"
+                    style={{ backgroundColor: accentColor, borderColor: T.card }}
+                  >
+                    <Camera size={12} color="#FFFFFF" strokeWidth={2} />
                   </View>
-                )}
-                <View
-                  className="absolute bottom-0 end-0 w-7 h-7 rounded-full items-center justify-center border-2"
-                  style={{ backgroundColor: accentColor, borderColor: T.card }}
-                >
-                  <Camera size={12} color="#FFFFFF" strokeWidth={2} />
-                </View>
-              </Pressable>
+                </Pressable>
+              </GlassTooltip>
 
               {/* Büyük punto → negatif tracking, sıkı satır yüksekliği */}
               <Text
@@ -515,18 +521,20 @@ export function ProfileSection({ accentColor }: Props) {
 
             {/* Çıkış — "Profili Düzenle" kaldırıldı: her satırın kendi kalem düğmesi var,
                 düzenleme oradan açılıyor (mükerrer birincil aksiyon gereksizdi). */}
-            <Pressable
-              onPress={handleSignOut}
-              style={{
-                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-                paddingVertical: 9, borderRadius: 14, marginTop: 16,
-                borderWidth: 1, borderColor: 'rgba(239,68,68,0.28)',
-                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
-              }}
-            >
-              <LogOut size={13} color="#EF4444" strokeWidth={1.8} />
-              <Text className="text-[13px] font-semibold" style={{ color: '#EF4444' }}>Çıkış Yap</Text>
-            </Pressable>
+            <GlassTooltip title={autoT('Çıkış Yap')} text={autoT('Hesabından güvenli biçimde çık')}>
+              <Pressable
+                onPress={handleSignOut}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  paddingVertical: 9, borderRadius: 14, marginTop: 16,
+                  borderWidth: 1, borderColor: 'rgba(239,68,68,0.28)',
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
+                }}
+              >
+                <LogOut size={13} color="#EF4444" strokeWidth={1.8} />
+                <Text className="text-[13px] font-semibold" style={{ color: '#EF4444' }}>Çıkış Yap</Text>
+              </Pressable>
+            </GlassTooltip>
           </View>
         </View>
 
@@ -560,16 +568,20 @@ export function ProfileSection({ accentColor }: Props) {
                   <Text className="text-[11px] mb-0.5" style={{ color: T.ink3 }}>E-posta</Text>
                   <Text className="text-[14px] font-medium" style={{ color: T.ink }} numberOfLines={1}>{profile?.email ?? '—'}</Text>
                 </View>
-                <Pressable onPress={() => setEditEmail(v => !v)} className="p-1.5">
-                  {editEmail ? <X size={14} color={T.ink3} strokeWidth={1.8} /> : <Edit2 size={14} color={T.ink3} strokeWidth={1.8} />}
-                </Pressable>
+                <GlassTooltip title={editEmail ? autoT('Vazgeç') : autoT('Düzenle')} text={editEmail ? autoT('E-posta düzenlemeyi kapat') : autoT('E-posta adresini düzenle')}>
+                  <Pressable onPress={() => setEditEmail(v => !v)} className="p-1.5">
+                    {editEmail ? <X size={14} color={T.ink3} strokeWidth={1.8} /> : <Edit2 size={14} color={T.ink3} strokeWidth={1.8} />}
+                  </Pressable>
+                </GlassTooltip>
               </View>
               {editEmail && (
                 <View className="mt-3 pt-3.5 gap-3" style={{ borderTopWidth: 1, borderTopColor: T.hairline2 }}>
                   <TextInput className="rounded-xl px-3.5 py-3 text-[14px]" value={email} onChangeText={setEmail} placeholder="yeni@email.com" placeholderTextColor={T.ink3} keyboardType="email-address" autoCapitalize="none" autoFocus style={{ outlineWidth: 0, borderWidth: 1, borderColor: T.hairline, color: T.ink, backgroundColor: T.cardSoft } as any} />
-                  <Pressable onPress={handleSaveEmail} disabled={savingEmail} className="items-center py-3 rounded-xl" style={{ backgroundColor: accentColor, opacity: savingEmail ? 0.6 : 1 }}>
-                    <Text className="text-[13px] font-semibold text-white">Güncelle</Text>
-                  </Pressable>
+                  <GlassTooltip title={autoT('Güncelle')} text={autoT('Yeni e-posta adresini kaydet')} enabled={!savingEmail}>
+                    <Pressable onPress={handleSaveEmail} disabled={savingEmail} className="items-center py-3 rounded-xl" style={{ backgroundColor: accentColor, opacity: savingEmail ? 0.6 : 1 }}>
+                      <Text className="text-[13px] font-semibold text-white">Güncelle</Text>
+                    </Pressable>
+                  </GlassTooltip>
                 </View>
               )}
               <View className="h-px my-2" style={{ backgroundColor: T.hairline2 }} />
@@ -627,27 +639,39 @@ export function ProfileSection({ accentColor }: Props) {
                     <Text className="text-[10px] font-semibold tracking-wider uppercase" style={{ color: T.ink3 }}>Yeni Şifre</Text>
                     <View className="flex-row items-center rounded-xl" style={{ borderWidth: 1, borderColor: T.hairline, backgroundColor: T.cardSoft }}>
                       <TextInput className="flex-1 px-3.5 py-3 text-[14px]" value={newPass} onChangeText={setNewPass} placeholder="En az 6 karakter" placeholderTextColor={T.ink3} secureTextEntry={!showNew} style={{ outlineWidth: 0, color: T.ink } as any} />
-                      <Pressable onPress={() => setShowNew(v => !v)} className="px-3 py-3">
-                        {showNew ? <EyeOff size={15} color={T.ink3} strokeWidth={1.8} /> : <Eye size={15} color={T.ink3} strokeWidth={1.8} />}
-                      </Pressable>
+                      <GlassTooltip title={showNew ? autoT('Gizle') : autoT('Göster')} text={autoT('Şifreyi göster veya gizle')}>
+                        <Pressable onPress={() => setShowNew(v => !v)} className="px-3 py-3">
+                          {showNew ? <EyeOff size={15} color={T.ink3} strokeWidth={1.8} /> : <Eye size={15} color={T.ink3} strokeWidth={1.8} />}
+                        </Pressable>
+                      </GlassTooltip>
                     </View>
                   </View>
                   <View className="gap-1.5">
                     <Text className="text-[10px] font-semibold tracking-wider uppercase" style={{ color: passNoMatch ? '#EF4444' : T.ink3 }}>Şifre Tekrar</Text>
                     <View className="flex-row items-center rounded-xl" style={{ borderWidth: 1, borderColor: passNoMatch ? '#EF4444' : T.hairline, backgroundColor: T.cardSoft }}>
                       <TextInput className="flex-1 px-3.5 py-3 text-[14px]" value={confirmPass} onChangeText={setConfirmPass} placeholder="Tekrar girin" placeholderTextColor={T.ink3} secureTextEntry={!showConfirm} style={{ outlineWidth: 0, color: passNoMatch ? '#EF4444' : T.ink } as any} />
-                      <Pressable onPress={() => setShowConfirm(v => !v)} className="px-3 py-3">
-                        {showConfirm ? <EyeOff size={15} color={T.ink3} strokeWidth={1.8} /> : <Eye size={15} color={T.ink3} strokeWidth={1.8} />}
-                      </Pressable>
+                      <GlassTooltip title={showConfirm ? autoT('Gizle') : autoT('Göster')} text={autoT('Şifre tekrarını göster veya gizle')}>
+                        <Pressable onPress={() => setShowConfirm(v => !v)} className="px-3 py-3">
+                          {showConfirm ? <EyeOff size={15} color={T.ink3} strokeWidth={1.8} /> : <Eye size={15} color={T.ink3} strokeWidth={1.8} />}
+                        </Pressable>
+                      </GlassTooltip>
                     </View>
                     {passNoMatch && <Text className="text-[11px] text-red-500 mt-0.5">Şifreler eşleşmiyor</Text>}
                   </View>
-                  <Pressable onPress={handleChangePassword} disabled={savingPass} className="items-center py-3 rounded-xl" style={{ backgroundColor: accentColor, opacity: savingPass ? 0.6 : 1 }}>
-                    <Text className="text-[13px] font-semibold text-white">Güncelle</Text>
-                  </Pressable>
+                  <GlassTooltip title={autoT('Güncelle')} text={autoT('Yeni şifreyi kaydet')} enabled={!savingPass}>
+                    <Pressable onPress={handleChangePassword} disabled={savingPass} className="items-center py-3 rounded-xl" style={{ backgroundColor: accentColor, opacity: savingPass ? 0.6 : 1 }}>
+                      <Text className="text-[13px] font-semibold text-white">Güncelle</Text>
+                    </Pressable>
+                  </GlassTooltip>
                 </View>
               )}
             </View>
+          </View>
+
+          {/* Gizlilik — yapay zekâ izni (App Store 5.1.2(i): geri alınabilir) */}
+          <View className="rounded-[24px] p-[22px]" style={[CARD_SHADOW, { backgroundColor: T.card } as any]}>
+            <Text className="text-[10px] font-semibold tracking-wider uppercase mb-3" style={{ color: T.ink3 }}>Gizlilik</Text>
+            <AiConsentRow accentColor={accentColor} />
           </View>
 
 
@@ -665,7 +689,7 @@ export function ProfileSection({ accentColor }: Props) {
         <Pressable
           onPress={handleCancelEdit}
           className="flex-1 items-center justify-center"
-          style={{ backgroundColor: 'rgba(10,14,26,0.42)', ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } as any : {}) }}
+          style={{ backgroundColor: 'rgba(10,14,26,0.42)', paddingHorizontal: 16, ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } as any : {}) }}
         >
           <Pressable
             onPress={() => {}}
@@ -677,13 +701,19 @@ export function ProfileSection({ accentColor }: Props) {
               <Text style={{ fontFamily: 'Inter Tight, Inter, system-ui, sans-serif', fontWeight: '300', fontSize: 20, letterSpacing: -0.4, color: '#0A0A0A' }}>
                 Profili Düzenle
               </Text>
-              <Pressable onPress={handleCancelEdit} className="w-8 h-8 rounded-full items-center justify-center bg-black/[0.04]">
-                <X size={16} color="#6B6B6B" strokeWidth={2} />
-              </Pressable>
+              <GlassTooltip title={autoT('Kapat')} text={autoT('Pencereyi kapat, değişiklikleri kaydetme')} placement="bottom">
+                <Pressable onPress={handleCancelEdit} className="w-8 h-8 rounded-full items-center justify-center bg-black/[0.04]">
+                  <X size={16} color="#6B6B6B" strokeWidth={2} />
+                </Pressable>
+              </GlassTooltip>
             </View>
 
             <ScrollView
-              className="flex-1"
+              // WEB: flex:1 çalışır. NATIVE: kartın yüksekliği içerikten belirlendiği
+              // için flex:1 olan çocuk 0 yüksekliğe düşüyordu → modalde yalnız başlık
+              // şeridi görünüyordu (2026-09-24). Native'de üst sınırı biz veriyoruz.
+              className={Platform.OS === 'web' ? 'flex-1' : undefined}
+              style={Platform.OS === 'web' ? undefined : { maxHeight: Math.round(_vh * 0.85) - 72 - 76 }}
               contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 24 }}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
@@ -691,19 +721,22 @@ export function ProfileSection({ accentColor }: Props) {
               {/* Kişisel */}
               <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: '#6B6B6B', marginTop: 12, marginBottom: 8 }}>Kişisel Bilgiler</Text>
               {/* 2-kolon form grid */}
-              <View className="flex-row gap-4">
-                <View className="flex-1 gap-4">
+              <View style={{ flexDirection: isPhone ? 'column' : 'row', gap: 16 }}>
+                <View className="gap-4" style={{ flex: 1, minWidth: 0 }}>
                   <FormField label="Ad Soyad" value={fullName} onChange={setFullName} placeholder="Ad Soyad" />
                   <FormField label="Doğum Tarihi" value={birthDate} onChange={setBirthDate} placeholder="1990-01-15" />
                   <FormField label="Şehir" value={city} onChange={setCity} placeholder="İstanbul" />
                 </View>
-                <View className="flex-1 gap-4">
-                  <View style={{ gap: 6 }}>
+                <View className="gap-4" style={{ flex: 1, minWidth: 0 }}>
+                  <View style={{ gap: 6, minWidth: 0 }}>
                     <Text style={{ fontSize: 12, fontWeight: '500', color: '#2A2A2A' }}>Cinsiyet</Text>
-                    <View className="flex-row gap-2" style={{ height: 44 }}>
+                    {/* "Belirtilmedi" uzun etiket: flex:1 kutular içerik genişliğinin
+                        altına inemediği için satır kolonu ve kartı SAĞA taşırıyordu
+                        (2026-09-24). minWidth:0 + flexShrink + tek satır metin. */}
+                    <View style={{ flexDirection: 'row', gap: 6, height: 44, minWidth: 0 }}>
                       {GENDER_OPTIONS.map(opt => (
-                        <Pressable key={opt.value} onPress={() => setGender(opt.value)} style={{ flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 14, borderWidth: 1, borderColor: gender === opt.value ? accentColor : 'rgba(0,0,0,0.08)', backgroundColor: gender === opt.value ? `${accentColor}14` : '#FFFFFF' }}>
-                          <Text style={{ fontSize: 13, fontWeight: '500', color: gender === opt.value ? accentColor : '#6B6B6B' }}>{opt.label}</Text>
+                        <Pressable key={opt.value} onPress={() => setGender(opt.value)} style={{ flex: 1, flexShrink: 1, minWidth: 0, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', borderRadius: 14, borderWidth: 1, borderColor: gender === opt.value ? accentColor : 'rgba(0,0,0,0.08)', backgroundColor: gender === opt.value ? `${accentColor}14` : '#FFFFFF' }}>
+                          <Text numberOfLines={1} style={{ fontSize: 12.5, fontWeight: '500', color: gender === opt.value ? accentColor : '#6B6B6B' }}>{opt.label}</Text>
                         </Pressable>
                       ))}
                     </View>
@@ -715,37 +748,50 @@ export function ProfileSection({ accentColor }: Props) {
 
               {/* İletişim */}
               <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: '#6B6B6B', marginTop: 20, marginBottom: 8 }}>İletişim</Text>
-              <View className="flex-row gap-4">
-                <View className="flex-1 gap-4">
+              <View style={{ flexDirection: isPhone ? 'column' : 'row', gap: 16 }}>
+                <View className="gap-4" style={{ flex: 1, minWidth: 0 }}>
                   <FormField label="Telefon" value={phone} onChange={setPhone} placeholder="+90 555 123 45 67" hint="WhatsApp'tan ulaşılabilir" keyboardType="phone-pad" />
                 </View>
-                <View className="flex-1 gap-4">
+                <View className="gap-4" style={{ flex: 1, minWidth: 0 }}>
                   <FormField label="WhatsApp" value={whatsapp} onChange={setWhatsapp} placeholder="+90 555 123 45 67" keyboardType="phone-pad" />
                 </View>
               </View>
 
               {/* Mesleki */}
               <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: '#6B6B6B', marginTop: 20, marginBottom: 8 }}>Mesleki Bilgiler</Text>
-              <View className="flex-row gap-4">
-                <View className="flex-1 gap-4">
+              <View style={{ flexDirection: isPhone ? 'column' : 'row', gap: 16 }}>
+                <View className="gap-4" style={{ flex: 1, minWidth: 0 }}>
                   <FormField label="Uzmanlık" value={specialty} onChange={setSpecialty} placeholder="Protetik Diş Tedavisi" />
                   <FormField label="Diploma No" value={diplomaNo} onChange={setDiplomaNo} placeholder="Diploma numarası" />
                 </View>
-                <View className="flex-1 gap-4">
+                <View className="gap-4" style={{ flex: 1, minWidth: 0 }}>
                   <FormField label="Departman" value={department} onChange={setDepartment} placeholder="Sabit Protez" />
                 </View>
               </View>
 
-              {/* Form footer — patterns style */}
-              <View style={{ flexDirection: 'row', gap: 12, marginTop: 28, paddingTop: 20, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
-                <Pressable onPress={handleCancelEdit} style={{ flex: 1, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#FFFFFF' }}>
+            </ScrollView>
+
+            {/* Form footer — kartın SABİT alt şeridi. Eskiden ScrollView'ın
+                içindeydi: uzun formda aşağı kayıyor, klavye açılınca kayboluyordu
+                (2026-09-24). Artık her zaman görünür. */}
+            <View style={{
+              flexDirection: 'row', gap: 12,
+              paddingHorizontal: 24, paddingTop: 14, paddingBottom: 18,
+              borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
+              backgroundColor: '#FFFFFF',
+              borderBottomLeftRadius: 24, borderBottomRightRadius: 24,
+            }}>
+              <GlassTooltip title={autoT('Vazgeç')} text={autoT('Değişiklikleri kaydetmeden çık')} style={{ flex: 1 }}>
+                <Pressable onPress={handleCancelEdit} style={{ alignSelf: 'stretch', height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#FFFFFF' }}>
                   <Text style={{ fontSize: 14, fontWeight: '600', color: '#6B6B6B' }}>Vazgeç</Text>
                 </Pressable>
-                <Pressable onPress={handleSaveInfo} disabled={savingInfo} style={{ flex: 1, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 14, backgroundColor: accentColor, opacity: savingInfo ? 0.6 : 1 }}>
+              </GlassTooltip>
+              <GlassTooltip title={autoT('Kaydet')} text={autoT('Profil bilgilerini kaydet')} enabled={!savingInfo} style={{ flex: 1 }}>
+                <Pressable onPress={handleSaveInfo} disabled={savingInfo} style={{ alignSelf: 'stretch', height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 14, backgroundColor: accentColor, opacity: savingInfo ? 0.6 : 1 }}>
                   <Text style={{ fontSize: 14, fontWeight: '600', color: '#FFFFFF' }}>Kaydet</Text>
                 </Pressable>
-              </View>
-            </ScrollView>
+              </GlassTooltip>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
@@ -1007,52 +1053,56 @@ function ClinicKurumTab({
       <View style={{ width: isNarrow ? '100%' : 280 }}>
         <View className="rounded-[24px] p-6" style={[CARD_SHADOW, { backgroundColor: T.card, gap: 14 }]}>
           {/* Logo / placeholder — Pressable upload */}
-          <Pressable
-            onPress={handlePickLogo}
-            disabled={uploadingLogo}
-            style={({ hovered }: any) => ({
-              width: 80, height: 80, borderRadius: 20, overflow: 'hidden',
-              alignItems: 'center', justifyContent: 'center',
-              backgroundColor: logoUri ? T.card : `${accentColor}18`,
-              borderWidth: 1, borderColor: logoUri ? T.hairline : `${accentColor}30`,
-              opacity: uploadingLogo ? 0.6 : 1,
-              ...(Platform.OS === 'web' ? {
-                cursor: uploadingLogo ? 'wait' : 'pointer',
-                ...(hovered ? { boxShadow: '0 4px 12px rgba(0,0,0,0.10)' } : {}),
-              } as any : {}),
-            })}
-          >
-            {logoUri ? (
-              <Image source={{ uri: logoUri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-            ) : (
-              <Building2 size={32} color={accentColor} strokeWidth={1.6} />
-            )}
-            {/* Upload overlay badge */}
-            <View style={{
-              position: 'absolute', bottom: -4, end: -4,
-              width: 26, height: 26, borderRadius: 13,
-              backgroundColor: accentColor, alignItems: 'center', justifyContent: 'center',
-              borderWidth: 2, borderColor: T.card,
-            }}>
-              <Camera size={11} color="#FFFFFF" strokeWidth={2.4} />
-            </View>
-          </Pressable>
+          <GlassTooltip title={autoT('Logo Yükle')} text={autoT('Cihazından kurum logosu seç')} enabled={!uploadingLogo} style={{ alignSelf: 'flex-start' }}>
+            <Pressable
+              onPress={handlePickLogo}
+              disabled={uploadingLogo}
+              style={({ hovered }: any) => ({
+                width: 80, height: 80, borderRadius: 20, overflow: 'hidden',
+                alignItems: 'center', justifyContent: 'center',
+                backgroundColor: logoUri ? T.card : `${accentColor}18`,
+                borderWidth: 1, borderColor: logoUri ? T.hairline : `${accentColor}30`,
+                opacity: uploadingLogo ? 0.6 : 1,
+                ...(Platform.OS === 'web' ? {
+                  cursor: uploadingLogo ? 'wait' : 'pointer',
+                  ...(hovered ? { boxShadow: '0 4px 12px rgba(0,0,0,0.10)' } : {}),
+                } as any : {}),
+              })}
+            >
+              {logoUri ? (
+                <Image source={{ uri: logoUri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+              ) : (
+                <Building2 size={32} color={accentColor} strokeWidth={1.6} />
+              )}
+              {/* Upload overlay badge */}
+              <View style={{
+                position: 'absolute', bottom: -4, end: -4,
+                width: 26, height: 26, borderRadius: 13,
+                backgroundColor: accentColor, alignItems: 'center', justifyContent: 'center',
+                borderWidth: 2, borderColor: T.card,
+              }}>
+                <Camera size={11} color="#FFFFFF" strokeWidth={2.4} />
+              </View>
+            </Pressable>
+          </GlassTooltip>
           <Text style={{ fontSize: 11, color: T.ink3, fontStyle: 'italic' }}>
             Logo eklemek için tıkla
           </Text>
           {/* AI ile logo bul (internetten aday + onay) */}
-          <Pressable
-            onPress={openLogoFinder}
-            style={{
-              flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
-              paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
-              backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
-              ...(Platform.OS === 'web' ? { cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' } as any : {}),
-            }}
-          >
-            <ColorOrb size={20} />
-            <Text style={{ fontSize: 12, fontWeight: '700', color: '#0A0A0A' }}>Simanty ile logonu ekle</Text>
-          </Pressable>
+          <GlassTooltip title={autoT('Simanty ile Logo')} text={autoT('Kurumunun logosunu internetten bul')} style={{ alignSelf: 'flex-start' }}>
+            <Pressable
+              onPress={openLogoFinder}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
+                paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
+                backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
+                ...(Platform.OS === 'web' ? { cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' } as any : {}),
+              }}
+            >
+              <ColorOrb size={20} />
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#0A0A0A' }}>Simanty ile logonu ekle</Text>
+            </Pressable>
+          </GlassTooltip>
           <View>
             <Text style={{ fontSize: 22, fontWeight: '700', color: T.ink, letterSpacing: -0.4 }}>
               {clinic?.name ?? '—'}
@@ -1066,31 +1116,37 @@ function ClinicKurumTab({
           </View>
 
           {!editing ? (
-            <Pressable
-              onPress={() => setEditing(true)}
-              className="flex-row items-center justify-center gap-2 py-2.5 rounded-xl mt-2"
-              style={{ backgroundColor: accentColor }}
-            >
-              <Edit2 size={13} color="#FFFFFF" strokeWidth={1.8} />
-              <Text className="text-[13px] font-semibold text-white">Bilgileri Düzenle</Text>
-            </Pressable>
+            <GlassTooltip title={autoT('Bilgileri Düzenle')} text={autoT('Kurum bilgilerini düzenlemeye başla')}>
+              <Pressable
+                onPress={() => setEditing(true)}
+                className="flex-row items-center justify-center gap-2 py-2.5 rounded-xl mt-2"
+                style={{ backgroundColor: accentColor }}
+              >
+                <Edit2 size={13} color="#FFFFFF" strokeWidth={1.8} />
+                <Text className="text-[13px] font-semibold text-white">Bilgileri Düzenle</Text>
+              </Pressable>
+            </GlassTooltip>
           ) : (
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 2 }}>
-              <Pressable
-                onPress={handleCancel}
-                style={{ flex: 1, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: T.hairline }}
-              >
-                <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink2 }}>Vazgeç</Text>
-              </Pressable>
-              <Pressable
-                onPress={handleSave}
-                disabled={saving}
-                style={{ flex: 1, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: accentColor, opacity: saving ? 0.6 : 1 }}
-              >
-                <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>
-                  {saving ? 'Kaydediliyor...' : 'Kaydet'}
-                </Text>
-              </Pressable>
+              <GlassTooltip title={autoT('Vazgeç')} text={autoT('Değişiklikleri kaydetmeden çık')} style={{ flex: 1 }}>
+                <Pressable
+                  onPress={handleCancel}
+                  style={{ alignSelf: 'stretch', height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: T.hairline }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink2 }}>Vazgeç</Text>
+                </Pressable>
+              </GlassTooltip>
+              <GlassTooltip title={autoT('Kaydet')} text={autoT('Kurum bilgilerini kaydet')} enabled={!saving} style={{ flex: 1 }}>
+                <Pressable
+                  onPress={handleSave}
+                  disabled={saving}
+                  style={{ alignSelf: 'stretch', height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: accentColor, opacity: saving ? 0.6 : 1 }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>
+                    {saving ? 'Kaydediliyor...' : 'Kaydet'}
+                  </Text>
+                </Pressable>
+              </GlassTooltip>
             </View>
           )}
         </View>
@@ -1301,9 +1357,11 @@ function ClinicKurumTab({
                 <Text style={{ fontSize: 16, fontWeight: '700', color: T.ink }}>Simanty ile Logo</Text>
                 <Text style={{ fontSize: 11, color: T.ink3, marginTop: 1 }}>İnternetten aday logolar — seçtiğin uygulanır</Text>
               </View>
-              <Pressable onPress={() => setLogoFinderOpen(false)} hitSlop={8} style={{ cursor: 'pointer' as any }}>
-                <X size={20} color={T.ink3} strokeWidth={2} />
-              </Pressable>
+              <GlassTooltip title={autoT('Kapat')} text={autoT('Pencereyi kapat')} placement="bottom">
+                <Pressable onPress={() => setLogoFinderOpen(false)} hitSlop={8} style={{ cursor: 'pointer' as any }}>
+                  <X size={20} color={T.ink3} strokeWidth={2} />
+                </Pressable>
+              </GlassTooltip>
             </View>
 
             {/* Manuel arama — Simanty bulamazsa veya kullanıcı "hiçbiri doğru değil" derse */}
@@ -1335,9 +1393,11 @@ function ClinicKurumTab({
                     style={{ flex: 1, fontSize: 14, color: T.ink, ...(Platform.OS === 'web' ? { outline: 'none' } as any : {}) }}
                   />
                 </View>
-                <Pressable onPress={() => runSearch()} disabled={logoSearching || (!logoQuery.trim() && !logoWebsite.trim())} style={{ paddingHorizontal: 18, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: (logoQuery.trim() || logoWebsite.trim()) ? accentColor : T.hairline, cursor: 'pointer' as any }}>
-                  {logoSearching ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>Ara</Text>}
-                </Pressable>
+                <GlassTooltip title={autoT('Ara')} text={autoT('İnternetten aday logoları ara')} enabled={!logoSearching && (!!logoQuery.trim() || !!logoWebsite.trim())}>
+                  <Pressable onPress={() => runSearch()} disabled={logoSearching || (!logoQuery.trim() && !logoWebsite.trim())} style={{ paddingHorizontal: 18, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: (logoQuery.trim() || logoWebsite.trim()) ? accentColor : T.hairline, cursor: 'pointer' as any }}>
+                    {logoSearching ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>Ara</Text>}
+                  </Pressable>
+                </GlassTooltip>
               </View>
             </View>
             )}

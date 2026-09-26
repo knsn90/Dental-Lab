@@ -180,6 +180,35 @@ export async function signUpLabUser(params: SignUpLabParams) {
   return res;
 }
 
+/**
+ * Supabase auth hatalarının ham İngilizce metnini kullanıcıya gösterilecek
+ * Türkçe karşılığına çevirir; tanımadığı hatada `null` döner (çağıran kendi
+ * yedek metnini kullansın).
+ *
+ * Neden: GoTrue mesajları her zaman İngilizce gelir ("User is banned" gibi) ve
+ * doğrudan ekrana basılınca hiçbir dilde anlaşılmıyordu. Türkçe karşılığı
+ * yazınca otomatik sözlük katmanı onu en/de/fa'ya çözüyor — yani tek yerde
+ * eşleyince dört dil birden düzeliyor.
+ *
+ * Her giriş yolu (şifre, OTP gönder, OTP doğrula, yönetici girişi) bunu
+ * kullanır; biri atlanırsa o yolda yine ham İngilizce görünür.
+ */
+export function authErrorMessage(raw: unknown): string | null {
+  const s = String((raw as any) ?? '');
+  if (!s) return null;
+  if (/banned/i.test(s))
+    return 'Hesabınız pasife alınmış. Laboratuvar yöneticinizle iletişime geçin.';
+  if (/email not confirmed/i.test(s))
+    return 'E-posta adresini doğrulaman gerekiyor.';
+  if (/rate limit|too many requests|over_email_send_rate/i.test(s))
+    return 'Çok fazla deneme yapıldı. Biraz bekleyip tekrar dene.';
+  if (/user not found|signups not allowed|signup_disabled/i.test(s))
+    return 'Bu e-posta ile kayıtlı hesap bulunamadı.';
+  if (/network|fetch|failed to fetch/i.test(s))
+    return 'Sunucuya bağlanılamadı. İnternet bağlantını kontrol et.';
+  return null;
+}
+
 export async function signIn(email: string, password: string) {
   return supabase.auth.signInWithPassword({ email, password });
 }

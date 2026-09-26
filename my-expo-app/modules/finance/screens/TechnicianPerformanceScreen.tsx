@@ -17,7 +17,7 @@ import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { CenteredLoader } from '../../../core/ui/CenteredLoader';
 import { FilterMenu } from '../../../core/ui/FilterMenu';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
-import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
 import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { baseSymbol, useBaseCurrency } from '../../../core/money/baseCurrency';
@@ -116,6 +116,9 @@ export function TechnicianPerformanceScreen() {
   const T = useMobileTokens();
   // SlideTabBar cursor'ı beyaz metin basar → koyu ink şart.
   const panelTheme = usePanelTheme();
+  // Tablo başlığı düz panel accent'i (uygulama genelinde aynı dil).
+  const tblAccent = panelTheme.primary;
+  const tblInk = onAccentInk(tblAccent);
   const isDark = useThemeModeStore(s => s.resolvedDark);
   useBaseCurrency();
 
@@ -220,15 +223,14 @@ export function TechnicianPerformanceScreen() {
             <View style={{
               flexDirection: 'row', alignItems: 'center',
               paddingHorizontal: 18, paddingVertical: 14,
-              backgroundColor: T.cardSoft,
-              borderBottomWidth: 1, borderBottomColor: T.hairline,
+              backgroundColor: tblAccent,
             }}>
-              <Text style={{ flex: 2.4, fontSize: 10, fontWeight: '600', color: T.ink3, letterSpacing: 0.8, textTransform: 'uppercase' }}>Teknisyen</Text>
-              <Text style={{ flex: 1.2, fontSize: 10, fontWeight: '600', color: T.ink3, letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'end' as any }}>Kullanım</Text>
-              <Text style={{ flex: 1.2, fontSize: 10, fontWeight: '600', color: T.ink3, letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'end' as any }}>Fire</Text>
-              <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: T.ink3, letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'center' }}>Verim</Text>
-              <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: T.ink3, letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'end' as any }}>Süre</Text>
-              <Text style={{ flex: 1.4, fontSize: 10, fontWeight: '600', color: T.ink3, letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'end' as any }}>Kar Katkısı</Text>
+              <Text style={{ flex: 2.4, fontSize: 10, fontWeight: '600', color: tblInk, letterSpacing: 0.8, textTransform: 'uppercase' }}>Teknisyen</Text>
+              <Text style={{ flex: 1.2, fontSize: 10, fontWeight: '600', color: tblInk, letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'end' as any }}>Kullanım</Text>
+              <Text style={{ flex: 1.2, fontSize: 10, fontWeight: '600', color: tblInk, letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'end' as any }}>Fire</Text>
+              <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: tblInk, letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'center' }}>Verim</Text>
+              <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: tblInk, letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'end' as any }}>Süre</Text>
+              <Text style={{ flex: 1.4, fontSize: 10, fontWeight: '600', color: tblInk, letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'end' as any }}>Kar Katkısı</Text>
             </View>
           )}
 

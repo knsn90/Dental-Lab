@@ -43,6 +43,7 @@ import { buildFinanceReportHtml } from '../buildFinanceReportHtml';
 import { baseSymbol, useBaseCurrency } from '../../../core/money/baseCurrency';
 import { formatMoney, CURRENCY_META, type Currency } from '../../../core/money/currency';
 import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
+import { WhiteHero } from '../../../core/ui/WhiteHero';
 
 // ── Patterns tokens ─────────────────────────────────────────────────
 const DISPLAY = {
@@ -235,6 +236,13 @@ export function FinanceReportScreen() {
   }, [summary]);
 
   const periodLabel = RANGE_OPTIONS.find(o => o.key === range)?.label ?? 'Tümü';
+
+  // Beyaz hero başlığı: para birimleri TOPLANMAZ → başlık ilk dövizin netini
+  // gösterir, tam kırılım altındaki ResultCard'larda kalır.
+  const repLead = byCurrency[0] ?? null;
+  const repMargin = repLead && repLead.income > 0
+    ? Math.round((repLead.profit / repLead.income) * 100)
+    : null;
 
   const handlePrintPdf = async () => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
@@ -478,6 +486,37 @@ export function FinanceReportScreen() {
         <CenteredLoader color={T.ink3} />
       ) : tab === 'rapor' ? (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={scrollPad} showsVerticalScrollIndicator={false}>
+          {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ─────────────────
+              Prim Motoru hiyerarşisi: kicker (dönem) → 44px net sonuç →
+              bağlam cümlesi → sağda 40px stat'lar. Kâr/zarar sinyali zemini
+              değil RAKAMI boyar; kart nötr kalır.
+              Para birimleri TOPLANMAZ: başlık ilk dövizin netini gösterir,
+              her dövizin tam kırılımı altındaki ResultCard'larda durur. */}
+          {byCurrency.length > 0 && (
+            <WhiteHero
+              kicker={`Gelir / Gider Raporu · ${periodLabel}`}
+              accent={theme.primary}
+              title={
+                <>Net sonuç{' '}
+                  <Text style={{ color: repLead!.profit >= 0 ? CHIP_TONES.success.text : CHIP_TONES.danger.text }}>
+                    {repLead!.profit >= 0 ? '+' : '−'}{formatMoney(Math.abs(repLead!.profit), repLead!.currency, { fractionDigits: 0 })}
+                  </Text>
+                </>
+              }
+              description={
+                `${periodLabel} · gelir ${formatMoney(repLead!.income, repLead!.currency, { fractionDigits: 0 })}` +
+                ` · gider ${formatMoney(repLead!.expense, repLead!.currency, { fractionDigits: 0 })}` +
+                (byCurrency.length > 1 ? ` · ${byCurrency.length} para birimi ayrı raporlanır` : '') +
+                (byMonth.length ? ` · ${byMonth.length} ay` : '')
+              }
+              stats={[
+                { value: formatMoney(repLead!.income,  repLead!.currency, { fractionDigits: 0 }), label: 'Gelir' },
+                { value: formatMoney(repLead!.expense, repLead!.currency, { fractionDigits: 0 }), label: 'Gider' },
+                ...(repMargin !== null ? [{ value: `%${repMargin}`, label: 'Marj' }] : []),
+              ]}
+            />
+          )}
+
           {/* ── Dönem sonucu — para birimi başına tek cevap ── */}
           {byCurrency.length === 0 ? (
             <EmptyCard icon={Inbox} text="Bu dönemde finansal hareket yok" />

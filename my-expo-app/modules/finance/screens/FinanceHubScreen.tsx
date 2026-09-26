@@ -8,7 +8,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, Pressable,
-  useWindowDimensions, Modal, Animated, Easing,
+  useWindowDimensions, Modal, Animated, Easing, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, useSegments } from 'expo-router';
@@ -324,9 +324,18 @@ export function FinanceHubScreen({ forceActiveKey, overrideContent }: FinanceHub
         <View style={{ flex: 1, flexDirection: 'row' }}>
 
           {/* ── Sidebar — Settings-style minimal vertical tabs ── */}
-          <View style={{ width: 200, paddingTop: 24, paddingBottom: 16 }}>
+          {/* Sidebar sayfa ile birlikte kaymaz — ana kenar çubuğu gibi yerinde durur. */}
+          <View
+            style={{
+              width: 200, paddingTop: 24, paddingBottom: 16,
+              ...(Platform.OS === 'web'
+                ? { position: 'sticky', top: 0, alignSelf: 'flex-start', maxHeight: '100vh' } as any
+                : null),
+            }}
+          >
             <ScrollView
               showsVerticalScrollIndicator={false}
+              style={{ flexShrink: 1, minHeight: 0 }}
               contentContainerStyle={{ gap: 2, paddingHorizontal: 8 }}
             >
               {TAB_GROUPS.map((group, gi) => (

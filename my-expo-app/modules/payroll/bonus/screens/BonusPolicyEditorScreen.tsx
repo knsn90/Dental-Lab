@@ -1002,7 +1002,6 @@ export default function BonusPolicyEditorScreen({ embeddedId, onBack }: Props = 
         borderRadius: 20, ...heroSurface, padding: 22,
         position: 'relative', overflow: 'hidden', marginBottom: 16,
       }}>
-        <View style={{ position: 'absolute', top: -40, end: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
         <View style={{ position: 'absolute', bottom: -50, start: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(0,0,0,0.05)' }} />
 
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>

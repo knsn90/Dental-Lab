@@ -8,6 +8,7 @@
 //   • Aktif işlerim list (or positive empty state)
 
 import React, { useEffect, useRef, useState } from 'react';
+import { HatchFill } from '../../../core/ui/HatchFill';
 import { firstName as displayFirstName } from '../../../core/util/personName';
 import { useTranslation } from 'react-i18next';
 import { autoT } from '../../../core/i18n/autoTranslate';
@@ -456,6 +457,8 @@ export function TechnicianMobileDashboard(props: TechnicianMobileDashboardProps)
                         ...(Platform.OS === 'web' ? { backgroundImage: STRIPE_BG } as any : {}),
                         overflow: 'hidden', position: 'relative' as any,
                       }}>
+                        {/* Native: CSS gradyanı yok → SVG tarama */}
+                        <HatchFill color={TECH.primary} />
                         {!empty && (
                           <View style={{
                             position: 'absolute', left: 0, right: 0, bottom: 0,

@@ -6,6 +6,7 @@
 
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { View, Text, Pressable, ScrollView, TextInput, Platform, useWindowDimensions, Modal } from 'react-native';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { confirmAsync } from '../../../core/util/confirm';
 import {
   Workflow, Cpu, Users, SlidersHorizontal, Plus, X, GripVertical, ChevronUp, ChevronDown,
@@ -502,16 +503,16 @@ function BuilderArea({ theme, isNarrow, stations, techs, templates, stationById,
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <View style={{ flex: 1, minWidth: 0 }} />
           <Pressable onPress={genFromServices} disabled={generating}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 13, paddingVertical: 10, borderRadius: 12, backgroundColor: tint(A, 0.12), borderWidth: 1, borderColor: tint(A, 0.3), opacity: generating ? 0.6 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 13, paddingVertical: 10, borderRadius: 9999, backgroundColor: tint(A, 0.12), borderWidth: 1, borderColor: tint(A, 0.3), opacity: generating ? 0.6 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
             <Layers size={14} color={A_DEEP} strokeWidth={2} />
             <Text style={{ fontSize: 12.5, fontWeight: '700', color: A_DEEP }}>{generating ? 'Üretiliyor…' : 'Fiyat listesinden üret'}</Text>
           </Pressable>
           <Pressable onPress={() => setAiOpen(true)}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 13, paddingVertical: 10, borderRadius: 12, backgroundColor: tint(A, 0.12), borderWidth: 1, borderColor: tint(A, 0.3), ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 13, paddingVertical: 10, borderRadius: 9999, backgroundColor: tint(A, 0.12), borderWidth: 1, borderColor: tint(A, 0.3), ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
             <Sparkles size={14} color={A_DEEP} strokeWidth={2} />
             <Text style={{ fontSize: 12.5, fontWeight: '700', color: A_DEEP }}>Yapay Zeka ile Kur</Text>
           </Pressable>
-          <Pressable onPress={openNew} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: A, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+          <Pressable onPress={openNew} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 9999, backgroundColor: A, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
             <Plus size={15} color={onA} strokeWidth={2.2} /><Text style={{ fontSize: 13, fontWeight: '800', color: onA }}>Yeni Akış</Text>
           </Pressable>
         </View>
@@ -538,7 +539,7 @@ function BuilderArea({ theme, isNarrow, stations, techs, templates, stationById,
             <View style={{ width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(A, 0.12) }}><Workflow size={24} color={A_DEEP} strokeWidth={1.8} /></View>
             <Text style={{ fontSize: 16, fontWeight: '700', color: (isDark ? T.ink : INK[900]) }}>Henüz iş akışı yok</Text>
             <Text style={{ fontSize: 13, color: (isDark ? T.ink3 : INK[500]), textAlign: 'center', maxWidth: 380 }}>İlk üretim akışını tasarla — aşamaları sürükleyerek diz, her aşamanın süre/yetkinlik kuralını belirle.</Text>
-            <Pressable onPress={openNew} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 11, borderRadius: 12, backgroundColor: A, marginTop: 4 }}>
+            <Pressable onPress={openNew} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 11, borderRadius: 9999, backgroundColor: A, marginTop: 4 }}>
               <Plus size={15} color={onA} strokeWidth={2.2} /><Text style={{ fontSize: 13.5, fontWeight: '800', color: onA }}>İlk Akışı Tasarla</Text>
             </Pressable>
           </View>
@@ -891,7 +892,7 @@ function AiBuilderModal({ visible, theme, stations, skillNames, onClose, onApply
                 {yesNo('İmplant üstü protez üretiyor musun?', implants, setImplants)}
                 {yesNo('Full-arch (tam çene) üretiyor musun?', fullArch, setFullArch)}
               </View>
-              <Pressable onPress={run} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 13, borderRadius: 12, backgroundColor: A, marginTop: 4, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+              <Pressable onPress={run} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 13, borderRadius: 9999, backgroundColor: A, marginTop: 4, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
                 <Sparkles size={16} color={onA} strokeWidth={2.2} /><Text style={{ fontSize: 14, fontWeight: '800', color: onA }}>Akış Öner</Text>
               </Pressable>
             </>)}
@@ -956,8 +957,12 @@ function AiBuilderModal({ visible, theme, stations, skillNames, onClose, onApply
 // AREA 2 — Yetkinlikler (yönetilen katalog: ad/açıklama/renk/ikon/sertifika · CRUD)
 // ════════════════════════════════════════════════════════════════════════════
 type SkillDraft = { id: string | null; name: string; description: string; color: string; icon: string; cert_level: string | null };
-export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload }: {
+export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload, newSignal = 0, hideNewButton = false }: {
   theme: Theme; labId: string | null; labSkills: LabSkill[]; stations: TriageStation[]; techs: TriageTech[]; onReload: () => void;
+  /** Dışarıdaki bir "Yeni Yetkinlik" düğmesi (ör. hero) her bastığında artırır → form açılır. */
+  newSignal?: number;
+  /** true → başlık satırındaki kendi "Yeni Yetkinlik" düğmesini gizle (düğme dışarıda). */
+  hideNewButton?: boolean;
 }) {
   const { A, A_DEEP, onA, PAGE } = theme;
   const T = useMobileTokens();
@@ -977,6 +982,27 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
   }, [stations, techs]);
 
   const openNew = () => { setError(''); setDraft({ id: null, name: '', description: '', color: SKILL_COLORS[0], icon: 'cpu', cert_level: null }); };
+  useEffect(() => { if (newSignal > 0) openNew(); }, [newSignal]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Arama + filtre (ad/açıklama · kullanım durumu · sertifika seviyesi).
+  const [skillSearch, setSkillSearch] = useState('');
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [useFilter, setUseFilter] = useState<'all' | 'no_station' | 'no_tech' | 'unused'>('all');
+  const [certFilter, setCertFilter] = useState<string>('all');   // 'all' | 'none' | cert key
+  const activeFilterCount = (useFilter !== 'all' ? 1 : 0) + (certFilter !== 'all' ? 1 : 0);
+  const visibleSkills = useMemo(() => {
+    const q = skillSearch.trim().toLocaleLowerCase('tr');
+    return labSkills.filter(sk => {
+      if (q && !(`${sk.name} ${sk.description ?? ''}`.toLocaleLowerCase('tr').includes(q))) return false;
+      const u = usage.get(sk.name) ?? { stations: 0, techs: 0 };
+      if (useFilter === 'no_station' && u.stations > 0) return false;
+      if (useFilter === 'no_tech' && u.techs > 0) return false;
+      if (useFilter === 'unused' && (u.stations > 0 || u.techs > 0)) return false;
+      if (certFilter === 'none' && sk.cert_level) return false;
+      if (certFilter !== 'all' && certFilter !== 'none' && sk.cert_level !== certFilter) return false;
+      return true;
+    });
+  }, [labSkills, usage, skillSearch, useFilter, certFilter]);
   const openEdit = (s: LabSkill) => { setError(''); setDraft({ id: s.id, name: s.name, description: s.description ?? '', color: s.color ?? SKILL_COLORS[0], icon: s.icon ?? 'cpu', cert_level: s.cert_level }); };
 
   const save = async () => {
@@ -1170,7 +1196,12 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
     </View>
   ) : (
     <View style={{ gap: 8 }}>
-      {labSkills.map(s => {
+      {visibleSkills.length === 0 && (
+        <View style={{ borderRadius: 14, padding: 24, alignItems: 'center', backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.06)' }}>
+          <Text style={{ fontSize: 12.5, color: isDark ? T.ink3 : INK[500] }}>Aramaya ya da filtreye uyan yetkinlik yok</Text>
+        </View>
+      )}
+      {visibleSkills.map(s => {
         const u = usage.get(s.name) ?? { stations: 0, techs: 0 };
         const orphan = u.techs === 0 && u.stations > 0;
         const active = draft?.id === s.id;
@@ -1235,6 +1266,9 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
 
   return (
     <View style={{ gap: 12 }}>
+      {/* Başlık + kendi düğmesi — hero'lu sayfada (hideNewButton) ikisi de gereksiz:
+          aynı bilgi ve düğme hero'da. */}
+      {!hideNewButton && (
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 15, fontWeight: '700', color: (isDark ? T.ink : INK[900]) }}>Yetkinlik Kataloğu</Text>
@@ -1243,10 +1277,78 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
         {/* "Yeni Yetkinlik" artık düzenleme sırasında da görünür: form listenin
             üstünü kaplamadığı için gizlemeye gerek kalmadı. */}
         <Pressable onPress={openNew}
-          style={({ pressed }: any) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: A, opacity: pressed ? 0.85 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) })}>
+          style={({ pressed }: any) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 9999, backgroundColor: A, opacity: pressed ? 0.85 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) })}>
           <Plus size={15} color={onA} strokeWidth={2.2} /><Text style={{ fontSize: 13, fontWeight: '800', color: onA }}>Yeni Yetkinlik</Text>
         </Pressable>
       </View>
+      )}
+
+      {/* Arama + filtre */}
+      {labSkills.length > 0 && (
+        <View style={{ gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, height: 38, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.08)', backgroundColor: isDark ? T.card : '#FFFFFF' }}>
+              <Search size={14} color={isDark ? T.ink3 : INK[400]} strokeWidth={1.8} />
+              <TextInput
+                value={skillSearch}
+                onChangeText={setSkillSearch}
+                placeholder="Yetkinlik ara..."
+                placeholderTextColor={isDark ? T.ink3 : INK[400]}
+                style={{ flex: 1, fontSize: 13, color: isDark ? T.ink : INK[900], ...(Platform.OS === 'web' ? { outlineWidth: 0 } as any : {}) }}
+              />
+              {!!skillSearch && (
+                <GlassTooltip title={autoT('Temizle')} text={autoT('Aramayı temizle')}>
+                  <Pressable onPress={() => setSkillSearch('')} hitSlop={8} style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : undefined}>
+                    <X size={13} color={isDark ? T.ink3 : INK[400]} strokeWidth={2} />
+                  </Pressable>
+                </GlassTooltip>
+              )}
+            </View>
+            <GlassTooltip title={autoT('Filtrele')} text={autoT('Yetkinlikleri kullanım durumuna ve sertifika seviyesine göre süz')}>
+              <Pressable
+                onPress={() => setFilterOpen(v => !v)}
+                style={({ pressed }: any) => ({
+                  flexDirection: 'row', alignItems: 'center', gap: 6, height: 38, paddingHorizontal: 14, borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: activeFilterCount > 0 || filterOpen ? A : (isDark ? T.hairline : 'rgba(0,0,0,0.08)'),
+                  backgroundColor: activeFilterCount > 0 ? tint(A, 0.10) : (isDark ? T.card : '#FFFFFF'),
+                  opacity: pressed ? 0.7 : 1,
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                })}
+              >
+                <SlidersHorizontal size={14} color={activeFilterCount > 0 ? A_DEEP : (isDark ? T.ink2 : INK[500])} strokeWidth={1.8} />
+                <Text style={{ fontSize: 12.5, fontWeight: '600', color: activeFilterCount > 0 ? A_DEEP : (isDark ? T.ink2 : INK[700]) }}>
+                  {autoT('Filtrele')}{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+                </Text>
+              </Pressable>
+            </GlassTooltip>
+          </View>
+          {filterOpen && (
+            <View style={{ gap: 8, padding: 12, borderRadius: 14, backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.06)' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <Text style={{ fontSize: 10.5, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: isDark ? T.ink3 : INK[500], width: 72 }}>{autoT('Kullanım')}</Text>
+                {([
+                  ['all', 'Tümü'], ['no_station', 'İstasyona bağlı değil'], ['no_tech', 'Teknisyeni yok'], ['unused', 'Hiç kullanılmıyor'],
+                ] as const).map(([k, l]) => (
+                  <FilterChip key={k} label={autoT(l)} on={useFilter === k} onPress={() => setUseFilter(k)} accent={A} accentDeep={A_DEEP} />
+                ))}
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <Text style={{ fontSize: 10.5, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: isDark ? T.ink3 : INK[500], width: 72 }}>{autoT('Seviye')}</Text>
+                <FilterChip label={autoT('Tümü')} on={certFilter === 'all'} onPress={() => setCertFilter('all')} accent={A} accentDeep={A_DEEP} />
+                {CERT_LEVELS.map(c => (
+                  <FilterChip key={c.key ?? 'none'} label={autoT(c.label)} on={certFilter === (c.key ?? 'none')} onPress={() => setCertFilter(c.key ?? 'none')} accent={A} accentDeep={A_DEEP} />
+                ))}
+              </View>
+              {activeFilterCount > 0 && (
+                <Pressable onPress={() => { setUseFilter('all'); setCertFilter('all'); }} style={{ alignSelf: 'flex-start', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: A_DEEP }}>{autoT('Filtreleri temizle')}</Text>
+                </Pressable>
+              )}
+            </View>
+          )}
+        </View>
+      )}
 
       {/* Liste önce, düzenleme yanda: eskiden form listenin ÜSTÜNDE açılıyor ve
           katalog ekrandan kayıyordu — hangi kaydı düzenlediğin görünmüyordu. */}
@@ -1491,7 +1593,7 @@ export function PeopleArea({ theme, techs, stations, stationSkills, onToggleStat
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <View style={{
             flex: 1, flexDirection: 'row', alignItems: 'center', gap: 9,
-            height: 40, paddingHorizontal: 12, borderRadius: 12,
+            height: 40, paddingHorizontal: 12, borderRadius: 9999,
             borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.10)', backgroundColor: isDark ? T.card : '#FFFFFF',
           }}>
             <Search size={14} color={(isDark ? T.ink3 : INK[400])} strokeWidth={1.8} />
@@ -1515,7 +1617,7 @@ export function PeopleArea({ theme, techs, stations, stationSkills, onToggleStat
             accessibilityLabel="Filtre"
             style={({ pressed, hovered }: any) => ({
               flexDirection: 'row', alignItems: 'center', gap: 7,
-              height: 40, paddingHorizontal: 12, borderRadius: 12,
+              height: 40, paddingHorizontal: 12, borderRadius: 9999,
               borderWidth: 1,
               borderColor: chipFilterOn ? A : hovered ? (isDark ? 'rgba(255,255,255,0.24)' : 'rgba(0,0,0,0.20)') : (isDark ? T.hairline : 'rgba(0,0,0,0.10)'),
               backgroundColor: chipFilterOn ? tint(A, 0.10) : (isDark ? T.card : '#FFFFFF'),
@@ -1530,7 +1632,6 @@ export function PeopleArea({ theme, techs, stations, stationSkills, onToggleStat
             <ChevronDown size={13} color={chipFilterOn ? A_DEEP : (isDark ? T.ink3 : INK[400])} strokeWidth={2} />
           </Pressable>
 
-          <Text style={{ fontSize: 11, color: (isDark ? T.ink3 : INK[400]) }}>{visible.length} kişi</Text>
         </View>
       )}
 

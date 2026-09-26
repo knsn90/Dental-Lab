@@ -38,12 +38,19 @@ import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { CenteredLoader } from '../../../core/ui/CenteredLoader';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
+import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
 
 interface Props {
   accentColor?: string;
 }
 
 export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
+  // Tablo başlığı düz panel accent'i (uygulama genelinde aynı dil).
+  const tblAccent = usePanelTheme().primary;
+  const tblInk = onAccentInk(tblAccent);
+  // Beyaz hero başlığı: çoklu-döviz TOPLANMAZ → en büyük dilim başlıkta.
+  const heroInk = useWhiteHeroInk(tblAccent);
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const profile = useAuthStore(s => s.profile);
@@ -140,6 +147,8 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
   const creditSlices = groupByCurrency(supBal.filter(x => x.amount < 0), x => ({ amount: -x.amount, currency: x.currency }));
   const totalCount  = suppliers.filter(s => s.is_active).length;
   const overdueCnt  = balances.filter(b => visibleIds.has(b.supplier_id) && Number(b.balance_account) > 0).length;
+  const debtLead = debtSlices[0] ?? null;
+  const debtRest = debtSlices.slice(1);
 
   if (activeId) {
     return (
@@ -154,77 +163,47 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
   return (
     <ScrollView contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 4, paddingBottom: 48, gap: 14 }}>
       <MobilePageTitle title="Tedarikçiler" subtitle="Cari hesaplar ve ödemeler" />
-      {/* ── F1 HeroCard — Tedarikçi özeti ── */}
-      <View style={{
-        borderRadius: 20, overflow: 'hidden',
-        backgroundColor: accentColor, padding: 18, position: 'relative',
-      }}>
-        <View style={{ position: 'absolute', top: -40, end: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
-        <View style={{ position: 'absolute', bottom: -50, start: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
-
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.78)', marginBottom: 8 }}>
-              Toplam Borç
-            </Text>
-            {/* Katı per-currency: her para birimi ayrı kart, asla toplanmaz */}
-            <MoneyMultiX slices={debtSlices} variant="cards" size="lg" accentColor={accentColor} emptyText="—" />
-            <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.72)', marginTop: 8 }}>
-              {totalCount} aktif tedarikçi
-              {overdueCnt > 0 ? ` · ${overdueCnt} borçlu` : ''}
-            </Text>
+      {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ─────────────────
+          Prim Motoru hiyerarşisi: kicker → 44px tek büyük rakam → bağlam
+          cümlesi → sağda 40px stat'lar. Rakam TOPLANMAZ; başlık en büyük
+          para birimi dilimini, kalanlar altındaki chip şeridini kullanır. */}
+      <WhiteHero
+        kicker="Tedarikçiler"
+        accent={tblAccent}
+        title={
+          debtLead ? (
+            <>Toplam borç <Text style={{ color: heroInk.accentInk }}>{formatMoney(debtLead.total, debtLead.currency, { fractionDigits: 0 })}</Text></>
+          ) : '—'
+        }
+        description={
+          `${totalCount} aktif tedarikçi` +
+          (overdueCnt > 0 ? ` · ${overdueCnt} firmaya borç var` : ' · açık borç yok') +
+          (creditSlices.length ? ' · alacaklı olduğun firmalar da var' : '')
+        }
+        stats={[
+          { value: String(totalCount), label: 'Tedarikçi' },
+          { value: String(overdueCnt), label: 'Borçlu' },
+          ...(debtRest.length ? [{ value: String(debtRest.length + 1), label: 'Para Birimi' }] : []),
+        ]}
+      >
+        {debtRest.length > 0 && (
+          <View style={{ marginTop: 10 }}>
+            <MoneyMultiX slices={debtRest} variant="inline" onAccent={heroInk.moneyOnAccent} />
           </View>
-          <View style={{ width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.18)' }}>
-            <Building2 size={20} color="#FFFFFF" strokeWidth={1.6} />
+        )}
+        {creditSlices.length > 0 && (
+          <View style={{ marginTop: 12 }}>
+            <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: heroInk.inkSoft, marginBottom: 3 }}>Alacak</Text>
+            <MoneyMultiX slices={creditSlices} variant="inline" onAccent={heroInk.moneyOnAccent} />
           </View>
-        </View>
-
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: 16 }}>
-          {([
-            { label: 'Alacak',     slices: creditSlices,       icon: ArrowDownCircle },
-            { label: 'Tedarikçi',  value: String(totalCount),  icon: Building2       },
-            { label: 'Borçlu',     value: String(overdueCnt),  icon: AlertCircle     },
-          ] as { label: string; value?: string; slices?: { currency: Currency; total: number }[]; icon: any }[]).map(stat => {
-            const Icon = stat.icon;
-            return (
-              <View key={stat.label} style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.16)' }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 }}>
-                  <Icon size={11} color="rgba(255,255,255,0.85)" strokeWidth={2} />
-                  <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>
-                    {stat.label}
-                  </Text>
-                </View>
-                {stat.slices ? (
-                  stat.slices.length === 0 ? (
-                    <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 16, color: '#FFFFFF', letterSpacing: -0.3, lineHeight: 20 }}>—</Text>
-                  ) : (
-                    <View style={{ gap: 1 }}>
-                      {stat.slices.map(sl => (
-                        <Text key={sl.currency} style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 16, color: '#FFFFFF', letterSpacing: -0.3, lineHeight: 20 }} numberOfLines={1}>
-                          {formatMoney(sl.total, sl.currency, { fractionDigits: 0 })}
-                        </Text>
-                      ))}
-                    </View>
-                  )
-                ) : (
-                  <Text
-                    style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 16, color: '#FFFFFF', letterSpacing: -0.3, lineHeight: 20 }}
-                    numberOfLines={1}
-                  >
-                    {stat.value}
-                  </Text>
-                )}
-              </View>
-            );
-          })}
-        </View>
-      </View>
+        )}
+      </WhiteHero>
 
       {/* ── Toolbar — tek satır: Search + Filtre + Yeni Tedarikçi ── */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <View style={{
           flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8,
-          backgroundColor: T.cardSoft, borderRadius: 14, borderWidth: 1, borderColor: T.hairline,
+          backgroundColor: T.card, borderRadius: 9999, borderWidth: 1, borderColor: T.hairline,
           paddingHorizontal: 12, height: 44,
         }}>
           <Search size={15} color={T.ink3} strokeWidth={1.6} />
@@ -258,8 +237,8 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
           onPress={() => setFormOpen({ visible: true, supplier: null })}
           style={{
             flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-            height: 44, paddingHorizontal: 14, borderRadius: 14,
-            backgroundColor: '#0A0A0A',
+            height: 44, paddingHorizontal: 14, borderRadius: 9999,
+            backgroundColor: tblAccent,
             ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
           }}
         >
@@ -287,11 +266,11 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
         isDesktop ? (
           <View style={[PCard, { padding: 0, overflow: 'hidden' }]}>
             {/* Desktop Header row */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 12, backgroundColor: isDark ? T.cardSoft : '#FBF9F4', borderBottomWidth: 1, borderBottomColor: T.hairline }}>
-              <Text style={[eyebrow, { flex: 2.5 }]}>Firma</Text>
-              <Text style={[eyebrow, { flex: 1.2 }]}>Kategori</Text>
-              <Text style={[eyebrow, { flex: 1.2 }]}>Son hareket</Text>
-              <Text style={[eyebrow, { flex: 1.5, textAlign: 'end' as any }]}>Bakiye</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 12, backgroundColor: tblAccent }}>
+              <Text style={[eyebrow, { flex: 2.5, color: tblInk }]}>Firma</Text>
+              <Text style={[eyebrow, { flex: 1.2, color: tblInk }]}>Kategori</Text>
+              <Text style={[eyebrow, { flex: 1.2, color: tblInk }]}>Son hareket</Text>
+              <Text style={[eyebrow, { flex: 1.5, textAlign: 'end' as any, color: tblInk }]}>Bakiye</Text>
               <View style={{ width: 12 }} />
             </View>
             {filtered.map((s, idx) => {

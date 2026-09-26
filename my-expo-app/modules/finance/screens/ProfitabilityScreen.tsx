@@ -24,6 +24,7 @@ import { CenteredLoader } from '../../../core/ui/CenteredLoader';
 import { baseSymbol, useBaseCurrency } from '../../../core/money/baseCurrency';
 import { CURRENCY_META, formatMoney, type Currency } from '../../../core/money/currency';
 import { groupByCurrency, type CurrencyTotal } from '../../../core/money/aggregations';
+import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface SummaryRow {
@@ -164,6 +165,8 @@ export function ProfitabilityScreen() {
   // SlideTabBar cursor'ı beyaz metin basar → koyu ink şart.
   const panelTheme = usePanelTheme();
   const isDark = useThemeModeStore(s => s.resolvedDark);
+  const heroInk = useWhiteHeroInk();
+
   useBaseCurrency();
 
   const [range, setRange] = useState<Range>('thisMonth');
@@ -182,6 +185,13 @@ export function ProfitabilityScreen() {
   const cached = loadCached();
 
   const [summary, setSummary]     = useState<SummaryRow | null>(cached?.summary ?? null);
+  // Maliyet dağılımı — hero içindeki pay şeridi ve satırları için.
+  const costParts = useMemo(() => ([
+    { label: 'Materyal',    value: Number(summary?.total_material ?? 0), color: '#4A8FC9' },
+    { label: 'İşçilik',     value: Number(summary?.total_labor    ?? 0), color: '#E89B2A' },
+    { label: 'Genel Gider', value: Number(summary?.total_overhead ?? 0), color: '#8B5CB8' },
+  ]), [summary]);
+  const costTotal = costParts.reduce((acc, p) => acc + p.value, 0);
   const [best, setBest]           = useState<OrderRow[]>(cached?.best ?? []);
   const [worst, setWorst]         = useState<OrderRow[]>(cached?.worst ?? []);
   const [doctors, setDoctors]     = useState<DoctorRow[]>(cached?.doctors ?? []);
@@ -287,64 +297,26 @@ export function ProfitabilityScreen() {
         <CenteredLoader color={T.ink3} inline />
       ) : (
         <>
-          {/* ── F1 HeroCard — Karlılık özeti (büyük + kapsamlı) ─────────── */}
-          <View style={{
-            borderRadius: 20, overflow: 'hidden',
-            backgroundColor: toneFg, padding: 20, position: 'relative',
-          }}>
-            <View style={{ position: 'absolute', top: -40, end: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.18)' }} />
-            <View style={{ position: 'absolute', bottom: -50, start: -20, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.12)' }} />
-
-            {/* Üst satır: Net Kâr + İkon */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.78)', marginBottom: 8 }}>
-                  Net Kâr · Bu Dönem
-                </Text>
-                <Text
-                  style={{ ...DISPLAY, fontSize: 38, color: '#FFFFFF', letterSpacing: -1.2, lineHeight: 42 }}
-                  numberOfLines={1}
-                >
-                  {profit >= 0 ? '+' : '−'}{baseSymbol()}{fmt(Math.abs(profit))}
-                </Text>
-                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.72)', marginTop: 4 }}>
-                  {/* Şablon dizeleri sözlükle eşleşemez (sayı değişiyor) →
-                      statik kelimeler ayrı ayrı autoT'den geçer. */}
-                  {summary?.total_orders ?? 0} {autoT('sipariş')} · {margin !== null ? `%${margin} ${autoT('marj')}` : `${autoT('marj')} —`}
-                  {margin !== null ? ` · ${autoT(
-                    margin >= 30 ? 'Mükemmel'
-                    : margin >= 20 ? 'İyi'
-                    : margin >= 10 ? 'Düşük' : 'Risk'
-                  )}` : ''}
-                </Text>
-              </View>
-              <View style={{ width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.22)' }}>
-                {profit >= 0
-                  ? <TrendingUp size={22} color="#FFFFFF" strokeWidth={1.6} />
-                  : <TrendingDown size={22} color="#FFFFFF" strokeWidth={1.6} />
-                }
-              </View>
-            </View>
-
-            {/* Marj büyük satırı */}
-            <View style={{
-              flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-              marginTop: 14, paddingTop: 12,
-              borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.22)',
-            }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Percent size={13} color="rgba(255,255,255,0.85)" strokeWidth={2} />
-                <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>
-                  Ortalama Marj
-                </Text>
-              </View>
-              <Text style={{ ...DISPLAY, fontSize: 22, color: '#FFFFFF', letterSpacing: -0.6, lineHeight: 26 }}>
-                {margin !== null ? `%${margin}` : '—'}
-              </Text>
-            </View>
-
-            {/* 4 mini stat grid — Gelir per-currency, diğerleri raporlama ₺ */}
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
+          {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ─────────────────
+              Prim Motoru hiyerarşisi. Kâr/zarar sinyali artık zemini değil
+              BAŞLIKTAKİ RAKAMI boyar (yeşil/kırmızı): kart nötr kalır, göz
+              doğrudan sayıya gider. */}
+          <WhiteHero
+            kicker="Karlılık · Bu Dönem"
+            title={
+              <>Net kâr <Text style={{ color: toneFg }}>{profit >= 0 ? '+' : '−'}{baseSymbol()}{fmt(Math.abs(profit))}</Text></>
+            }
+            description={
+              `${summary?.total_orders ?? 0} ${autoT('sipariş')} · ${margin !== null ? `%${margin} ${autoT('marj')}` : `${autoT('marj')} —`}` +
+              (margin !== null ? ` · ${autoT(margin >= 30 ? 'Mükemmel' : margin >= 20 ? 'İyi' : margin >= 10 ? 'Düşük' : 'Risk')}` : '')
+            }
+            stats={[
+              { value: margin !== null ? `%${margin}` : '—', label: 'Ort. Marj' },
+              { value: String(summary?.total_orders ?? 0),   label: 'Sipariş' },
+            ]}
+          >
+            {/* Gelir / Maliyet / İşçilik / Materyal — büyük rakamı "nereden geldi"ye açar. */}
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
               {([
                 { label: 'Gelir',    slices: revenueByCcy, icon: TrendingUp },
                 { label: 'Maliyet',  value: `${baseSymbol()}${fmt(summary?.total_cost     ?? 0)}`, icon: TrendingDown },
@@ -353,27 +325,30 @@ export function ProfitabilityScreen() {
               ] as { label: string; value?: string; slices?: CurrencyTotal[]; icon: any }[]).map(stat => {
                 const Icon = stat.icon;
                 return (
-                  <View key={stat.label} style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 9, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.16)' }}>
+                  <View key={stat.label} style={{
+                    flex: 1, minWidth: 110, paddingVertical: 10, paddingHorizontal: 9, borderRadius: 14,
+                    backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder,
+                  }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                      <Icon size={10} color="rgba(255,255,255,0.85)" strokeWidth={2} />
-                      <Text style={{ fontSize: 8.5, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>
+                      <Icon size={10} color={heroInk.inkSoft} strokeWidth={2} />
+                      <Text style={{ fontSize: 8.5, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase', color: heroInk.inkSoft }}>
                         {stat.label}
                       </Text>
                     </View>
                     {stat.slices ? (
                       stat.slices.length === 0 ? (
-                        <Text style={{ ...DISPLAY, fontSize: 13, color: '#FFFFFF', letterSpacing: -0.2, lineHeight: 17 }}>—</Text>
+                        <Text style={{ ...DISPLAY, fontSize: 13, color: heroInk.ink, letterSpacing: -0.2, lineHeight: 17 }}>—</Text>
                       ) : (
                         <View style={{ gap: 1 }}>
-                          {stat.slices.map(s => (
-                            <Text key={s.currency} style={{ ...DISPLAY, fontSize: 13, color: '#FFFFFF', letterSpacing: -0.2, lineHeight: 17 }} numberOfLines={1}>
-                              {formatMoney(s.total, (s.currency as Currency), { fractionDigits: 0 })}
+                          {stat.slices.map(sl => (
+                            <Text key={sl.currency} style={{ ...DISPLAY, fontSize: 13, color: heroInk.ink, letterSpacing: -0.2, lineHeight: 17 }} numberOfLines={1}>
+                              {formatMoney(sl.total, (sl.currency as Currency), { fractionDigits: 0 })}
                             </Text>
                           ))}
                         </View>
                       )
                     ) : (
-                      <Text style={{ ...DISPLAY, fontSize: 13, color: '#FFFFFF', letterSpacing: -0.2, lineHeight: 17 }} numberOfLines={1}>
+                      <Text style={{ ...DISPLAY, fontSize: 13, color: heroInk.ink, letterSpacing: -0.2, lineHeight: 17 }} numberOfLines={1}>
                         {stat.value}
                       </Text>
                     )}
@@ -381,25 +356,40 @@ export function ProfitabilityScreen() {
                 );
               })}
             </View>
-            <Text style={{ fontSize: 9, color: 'rgba(255,255,255,0.65)', marginTop: 8 }}>
-              {/* Eskiden {baseSymbol()} cümleyi üç parçaya bölüyordu; her parça
-                  ayrı ayrı sözlükte aranıp yarısı çevrilmeden kalıyordu. */}
+            {/* Maliyet dağılımı — ayrı bir kart olarak hero'nun ALTINDA duruyordu;
+                oysa üstteki Maliyet/İşçilik/Materyal kutucuklarının açılımı.
+                Hero'nun içine alındı ve her kaleme payı eklendi. */}
+            {costTotal > 0 && (
+              <View style={{ marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: heroInk.tileBorder, gap: 8 }}>
+                <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: heroInk.inkSoft }}>
+                  Maliyet Dağılımı
+                </Text>
+                <View style={{ flexDirection: 'row', height: 6, borderRadius: 3, overflow: 'hidden', backgroundColor: heroInk.tileBg }}>
+                  {costParts.map(part => {
+                    const w = (part.value / costTotal) * 100;
+                    if (w <= 0) return null;
+                    return <View key={part.label} style={{ width: `${w}%` as any, height: 6, backgroundColor: part.color }} />;
+                  })}
+                </View>
+                <View style={{ gap: 6, marginTop: 2 }}>
+                  {costParts.map(part => (
+                    <BreakRow
+                      key={part.label}
+                      label={part.label}
+                      value={part.value}
+                      share={Math.round((part.value / costTotal) * 100)}
+                    />
+                  ))}
+                </View>
+              </View>
+            )}
+
+            <Text style={{ fontSize: 9, color: heroInk.inkFaint, marginTop: 8 }}>
               {autoT('Net Kâr · Maliyet · İşçilik · Materyal raporlama para biriminde gösterilir:')} {baseSymbol()}
               {' '}{autoT('Farklı para birimindeki kalemler güncel kurla çevrildiği için tutarlar yaklaşıktır (≈).')}
             </Text>
-          </View>
+          </WhiteHero>
 
-          {/* ── Maliyet Dağılımı ─────────────────────────────────────────── */}
-          <View style={{ ...tableCard, backgroundColor: T.card, borderColor: T.hairline, padding: 18 } as any}>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink3, letterSpacing: 0.3, marginBottom: 10 }}>
-              Maliyet Dağılımı
-            </Text>
-            <View style={{ gap: 6 }}>
-              <BreakRow label="Materyal"     value={summary?.total_material ?? 0} />
-              <BreakRow label="İşçilik"      value={summary?.total_labor ?? 0} />
-              <BreakRow label="Genel Gider"  value={summary?.total_overhead ?? 0} />
-            </View>
-          </View>
 
           {/* ── Top best/worst (responsive split) ─────────────────────────── */}
           <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: 14 }}>
@@ -524,12 +514,19 @@ function KpiMini({ label, value, icon: Icon }: { label: string; value: string; i
   );
 }
 
-function BreakRow({ label, value }: { label: string; value: number }) {
-  const T = useMobileTokens();
+/** Maliyet dağılımı satırı — beyaz hero'nun İÇİNDE durur, rengini oradan alır.
+    `share` verilirse tutarın yanında payı da yazar (kalemin ağırlığı görünsün). */
+function BreakRow({ label, value, share }: { label: string; value: number; share?: number | null }) {
+  const heroInk = useWhiteHeroInk();
   return (
-    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-      <Text style={{ fontSize: 12, color: T.ink3, fontWeight: '600' }}>{label}</Text>
-      <Text style={{ fontSize: 12, color: T.ink, fontWeight: '700' }}>{baseSymbol()}{fmt(value)}</Text>
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+      <Text style={{ fontSize: 12, color: heroInk.inkSoft, fontWeight: '600' }}>{label}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+        <Text style={{ fontSize: 12, color: heroInk.ink, fontWeight: '700' }}>{baseSymbol()}{fmt(value)}</Text>
+        {share !== null && share !== undefined && (
+          <Text style={{ fontSize: 10, color: heroInk.inkFaint, fontWeight: '600' }}>%{share}</Text>
+        )}
+      </View>
     </View>
   );
 }

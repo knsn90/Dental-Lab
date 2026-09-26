@@ -4,6 +4,7 @@
 //           → bekleyen onaylar / geciken vakalar → quick actions
 
 import React from 'react';
+import { HatchFill } from '../../../core/ui/HatchFill';
 import { firstName as displayFirstName } from '../../../core/util/personName';
 import { View, Text, Pressable, ScrollView, Platform, RefreshControl } from 'react-native';
 import { useNavScrollProps } from '../../../core/ui/mobile/navScroll';
@@ -331,6 +332,8 @@ export function DoctorMobileDashboard(props: DoctorMobileDashboardProps) {
                           position: 'relative' as any,
                         }}
                       >
+                        {/* Native: CSS gradyanı yok → SVG tarama */}
+                        <HatchFill color={DOCTOR.primary} />
                         {!empty && (
                           <View
                             style={{

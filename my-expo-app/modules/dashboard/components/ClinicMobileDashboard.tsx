@@ -5,6 +5,7 @@
 //           → aksiyon gerektiren / hekim listesi → quick actions
 
 import React from 'react';
+import { HatchFill } from '../../../core/ui/HatchFill';
 import { firstName as displayFirstName } from '../../../core/util/personName';
 import { View, Text, Pressable, ScrollView, Platform, RefreshControl, Image } from 'react-native';
 import { useNavScrollProps } from '../../../core/ui/mobile/navScroll';
@@ -14,7 +15,6 @@ import {
   QrCode, Flame, FileCheck, ClipboardList, Bell, Stethoscope, User as UserIcon,
   AlertTriangle, ArrowUpRight,
 } from '../../../core/ui/icons';
-import Svg, { Defs, Pattern, Rect, Line } from 'react-native-svg';
 import { isRTL, fmtWeekdayDayMonth } from '../../../core/i18n';
 import { RadialGlow } from '../../../core/ui/gradients';
 import { autoT } from '../../../core/i18n/autoTranslate';
@@ -397,20 +397,8 @@ export function ClinicMobileDashboard(props: ClinicMobileDashboardProps) {
                         ...(Platform.OS === 'web' ? { backgroundImage: STRIPE_BG } as any : {}),
                         overflow: 'hidden', position: 'relative' as any,
                       }}>
-                        {/* Native: SVG çapraz tarama (web'deki backgroundImage karşılığı) */}
-                        {Platform.OS !== 'web' && (
-                          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
-                            <Svg width="100%" height="100%" preserveAspectRatio="none">
-                              <Defs>
-                                <Pattern id={`clinic-stripe-${i}`} patternUnits="userSpaceOnUse" width={12} height={12} patternTransform="rotate(135)">
-                                  <Rect x="0" y="0" width="12" height="12" fill="transparent" />
-                                  <Line x1="0" y1="0" x2="0" y2="12" stroke={CLINIC.primary} strokeWidth={5} strokeOpacity={0.22} />
-                                </Pattern>
-                              </Defs>
-                              <Rect x="0" y="0" width="100%" height="100%" fill={`url(#clinic-stripe-${i})`} />
-                            </Svg>
-                          </View>
-                        )}
+                        {/* Native: CSS gradyanı yok → SVG tarama */}
+                        <HatchFill color={CLINIC.primary} />
                         {!empty && (
                           <View style={{
                             position: 'absolute', left: 0, right: 0, bottom: 0,

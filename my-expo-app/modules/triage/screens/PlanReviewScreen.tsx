@@ -11,11 +11,11 @@ import { supabase } from '../../../core/api/supabase';
 // Panel-aware (usePanelTheme) — lab müdür panelinde safran accent.
 
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { View, Text, Pressable, ScrollView, Platform, Modal, TextInput, useWindowDimensions, Alert, Linking } from 'react-native';
+import { View, Text, Pressable, ScrollView, Platform, Modal, TextInput, useWindowDimensions, Alert, Linking, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useSegments } from 'expo-router';
 import {
-  GripVertical, X, Plus, AlertTriangle, Sparkles, ChevronUp, ChevronDown, ChevronRight, Download,
+  GripVertical, X, Plus, AlertTriangle, Sparkles, ChevronUp, ChevronDown, ChevronRight, ChevronLeft, Download,
   Play, FileText, Stethoscope, ChevronDown as Caret, Check, ArrowLeft, Layers, Box, MessageSquare, Save, Clock, Eye, Printer,
   Phone, Mail, User,
 } from '../../../core/ui/icons';
@@ -43,6 +43,8 @@ import { ImageLightbox } from '../../../core/ui/ImageLightbox';
 import { useBottomActionBar } from '../../../core/store/uiOverlayStore';
 import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 import { useInkUI } from '../../../core/theme/inkScale';
+import { WHITE_HERO_DISPLAY, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
+import { useHeroSurface, useNeonNavy, NeonPulse } from '../../../core/ui/HeroGlow';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 function is3DFileFmt(path: string): 'stl' | 'ply' | 'obj' | null {
@@ -318,6 +320,14 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
   const panelGroup = segments?.[0] && segments[0].startsWith('(') ? segments[0] : '(lab)';
   const theme = usePanelTheme();
   const A = theme.primary;
+  // Künye kartı "beyaz hero" anatomisinde: mürekkep/kutucuk renkleri ve koyu
+  // temadaki dış yüzey tek kaynaktan (WhiteHero ile aynı).
+  const HI = useWhiteHeroInk();
+  const heroOuter = useHeroSurface(A);
+  // "Hekim & Klinik" kartı — düz "neon navy" (açık temada düz panel accent'i,
+  // koyu temada neon yüzey). Metin/ikon renkleri de hook'tan gelir.
+  const nn = useNeonNavy(A);
+  const filesNavy = Platform.OS === 'web';
   // Koyu accent metin koyu yüzeyde okunmuyor → koyu temada açık tonu
   const A_DEEP = isDark ? mixWhite(A, 0.55) : theme.primaryDeep;
   const PAGE = isDark ? U.pageBg : (PANEL_BGPAGE[theme.key] ?? theme.bg);
@@ -1016,38 +1026,28 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
               Orb yalnız web'de: native'de `filter: blur` yok, keskin bir daire
               olarak görünürdü. */}
           <View style={{
-            flex: 1, minWidth: 0, borderRadius: 22,
+            flex: 1, minWidth: 0,
             // react-native-web her View'a z-index:0 verir → her kart kendi
             // stacking context'i olur ve DOM'da SONRA gelen kart üste biner.
             // Künyedeki butonların ipucu balonu diş şemasının altında kalmasın
             // diye bu kart bir üst basamağa alınır.
             zIndex: 3,
-            backgroundColor: SURF, borderWidth: 1, borderColor: tint(A, 0.16),
-            ...(Platform.OS === 'web' ? {
-              backgroundImage: `linear-gradient(150deg, ${tint(A, 0.17)} 0%, ${tint(A, 0.06)} 34%, #FFFFFF 66%)`,
-            } as any : {}),
+            // BEYAZ HERO anatomisi (core/ui/WhiteHero): panel accent'inin soluk
+            // tonu dış kabuk (radius 28, padding 14) + içte %55 beyaz cam kart.
+            // Eski gradyan + blur'lu ışık kümesi kaldırıldı. `overflow: hidden`
+            // BİLİNÇLİ YOK — ipucu balonları kırpılmasın.
+            borderRadius: 28, padding: 14,
+            ...(isDark ? heroOuter : { backgroundColor: theme.bg }),
           }}>
-            {/* Işık kümesi AYRI bir kırpma katmanında duruyor; kartın kendisine
-                `overflow: hidden` verilseydi içindeki butonların ipucu balonları
-                da kırpılırdı. Bu katman içerikle kardeş, atası değil. */}
-            {Platform.OS === 'web' && (
-              <View
-                pointerEvents="none"
-                style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 22, overflow: 'hidden' } as any}
-              >
-                <View
-                  style={{
-                    position: 'absolute', top: -84, end: -44, width: 230, height: 230, borderRadius: 115,
-                    backgroundColor: tint(A, 0.22),
-                    filter: 'blur(52px)',
-                  } as any}
-                />
-              </View>
-            )}
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 20 }}>
+            <View style={{
+              flex: 1, minWidth: 0, borderRadius: 22,
+              backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.55)',
+              borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.7)',
+            }}>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 26, paddingBottom: 18 }}>
               <View style={{ flex: 1, minWidth: 0, gap: 5 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <Text style={{ ...TYPE.label, color: A_DEEP }}>Plan Önizleme</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 1.1, textTransform: 'uppercase', color: HI.inkSoft }}>Plan Önizleme</Text>
                   {o?.is_urgent && (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: tint('#D94B4B', 0.10) }}>
                       <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: '#D94B4B' }} />
@@ -1055,10 +1055,10 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                     </View>
                   )}
                 </View>
-                <Text style={{ ...TYPE.display, color: INK[900] }} numberOfLines={1}>
+                <Text style={{ ...WHITE_HERO_DISPLAY, fontSize: 44, letterSpacing: -1.5, lineHeight: 48, color: HI.ink, marginTop: 6 }} numberOfLines={1}>
                   {o?.patient_name ?? 'Hasta'}
                 </Text>
-                <Text style={{ ...TYPE.body, color: INK[500] }} numberOfLines={1}>
+                <Text style={{ fontSize: 14, lineHeight: 21, color: HI.inkSoft, marginTop: 4 }} numberOfLines={1}>
                   #{o?.order_number ?? '—'}{distinctProcs.length > 0 ? ` · ${distinctProcs.join(' · ')}` : ''}
                 </Text>
               </View>
@@ -1120,7 +1120,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
               ];
               if (meta.length === 0) return null;
               return (
-                <View style={{ flexDirection: 'row', alignItems: 'flex-end', flexWrap: 'wrap', rowGap: 14, columnGap: 26, paddingHorizontal: 20, paddingVertical: 16, borderTopWidth: 1, borderTopColor: HAIR }}>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-end', flexWrap: 'wrap', rowGap: 14, columnGap: 28, paddingHorizontal: 26, paddingVertical: 8 }}>
                   {meta.map(m => (
                     m.accent ? (
                       <View
@@ -1139,8 +1139,8 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                       </View>
                     ) : (
                       <View key={m.label} style={{ minWidth: 0 }}>
-                        <Text style={{ ...TYPE.title, color: INK[900] }} numberOfLines={1}>{m.value}</Text>
-                        <Text style={{ ...TYPE.label, color: INK[400], marginTop: 3 }}>{m.label}</Text>
+                        <Text style={{ ...WHITE_HERO_DISPLAY, fontSize: 24, letterSpacing: -0.6, lineHeight: 28, color: HI.ink }} numberOfLines={1}>{m.value}</Text>
+                        <Text style={{ fontSize: 10, color: HI.inkSoft, textTransform: 'uppercase', letterSpacing: 0.7, marginTop: 4 }}>{m.label}</Text>
                       </View>
                     )
                   ))}
@@ -1155,7 +1155,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                 Ayraç çizgisi YOK: üç hairline bant kartı forma benzetiyordu,
                 bu blok künyenin devamı olarak boşlukla ayrılıyor. */}
             {teeth.length > 0 && (
-              <View style={{ paddingHorizontal: 20, paddingBottom: 18, gap: 10 }}>
+              <View style={{ paddingHorizontal: 26, paddingBottom: 22, gap: 10 }}>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
                   {distinctProcs.map(p => {
                     const c = procColor(p);
@@ -1195,16 +1195,25 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                 )}
               </View>
             )}
+            </View>
           </View>
 
           {/* ── SAĞ: diş şeması + implant ── */}
           {(teeth.length > 0 || implantInfo.hasAny) && (
           <View style={{ width: isNarrow ? '100%' : 360, gap: 12 }}>
           {teeth.length > 0 && (
-            <View style={{ borderRadius: 22, backgroundColor: SURF, borderWidth: 1, borderColor: HAIR, padding: 16, gap: 8 }}>
+            // BEYAZ HERO kabuğu — solundaki künye kartıyla aynı anatomi: panel
+            // tonu dış kabuk (28/14) + %55 beyaz cam iç kart (22). İki kart yan
+            // yana tek bir aile olarak okunur.
+            <View style={{ borderRadius: 28, padding: 14, ...(isDark ? heroOuter : { backgroundColor: theme.bg }) }}>
+            <View style={{
+              borderRadius: 22, padding: 16, gap: 8,
+              backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.55)',
+              borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.7)',
+            }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                <Text style={{ ...TYPE.label, color: INK[400] }}>Diş Şeması</Text>
-                <Text style={{ ...TYPE.meta, color: INK[400] }}>{teeth.length} diş</Text>
+                <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 1.1, textTransform: 'uppercase', color: HI.inkSoft }}>Diş Şeması</Text>
+                <Text style={{ ...TYPE.meta, color: HI.inkFaint }}>{teeth.length} diş</Text>
                 <View style={{ flex: 1 }} />
                 {selProc && (
                   <Tip label="Vurguyu kaldır, tüm dişleri göster">
@@ -1221,7 +1230,9 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
               <View style={{ alignItems: 'center', justifyContent: 'center' }}>
                 <LivingToothChart
                   order={chartOrder}
-                  containerWidth={chartCardW - 28}
+                  // Gerçek iç genişlik: kabuk dolgusu 2×14 + iç kenarlık 2×1 + iç dolgu 2×16 = 62.
+                  // Fazla verilince şema karta taşıp SAĞA kayıyordu.
+                  containerWidth={chartCardW - 62}
                   // Mobilde yükseklik sınırı YOK: ağız dikey oval olduğu için 210'luk
                   // kutuda şema kartın üçte birine küçülüyordu. Sipariş detayı gibi
                   // genişliğe göre orantılı çizilir; masaüstü kompakt 210'da kalır.
@@ -1238,6 +1249,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                   Diş-işlem eşlemesi yok — tüm dişler tek renk gösteriliyor.
                 </Text>
               )}
+            </View>
             </View>
           )}
 
@@ -1296,15 +1308,18 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
               zIndex 2: dosya satırlarındaki ipucu balonları sağdaki akış
               kolonunun altında kalmasın (DOM'da akış sonra geliyor). */}
           <View style={{ width: isNarrow ? '100%' : 256, gap: 12, zIndex: 2 }}>
-            <View style={{ borderRadius: 18, backgroundColor: SURF, borderWidth: 1, borderColor: HAIR, padding: 16, gap: 10 }}>
-              <Text style={{ ...TYPE.label, color: INK[400] }}>Hekim & Klinik</Text>
+            {/* DÜZ NAVY kart (neon navy, açık temada düz). `overflow` bilinçli
+                verilmedi — satırlardaki ipucu balonları kırpılmasın. */}
+            <View style={{ borderRadius: 18, padding: 16, gap: 10, ...nn.surface }}>
+              {!nn.flat && <NeonPulse radius={18} color={nn.glow} />}
+              <Text style={{ ...TYPE.label, color: nn.inkFaint }}>Hekim & Klinik</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: tint(A, 0.12), alignItems: 'center', justifyContent: 'center' }}>
-                  <Stethoscope size={15} color={A_DEEP} strokeWidth={1.8} />
+                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: nn.ghostBg, borderWidth: 1, borderColor: nn.ghostBorder, alignItems: 'center', justifyContent: 'center' }}>
+                  <Stethoscope size={15} color={nn.ink} strokeWidth={1.8} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ ...TYPE.body, fontWeight: '600', color: INK[900] }} numberOfLines={1}>{data?.doctorName ?? '—'}</Text>
-                  <Text style={{ ...TYPE.meta, color: INK[500], marginTop: 1 }} numberOfLines={1}>{data?.clinicName ?? ''}</Text>
+                  <Text style={{ ...TYPE.body, fontWeight: '600', color: nn.ink }} numberOfLines={1}>{data?.doctorName ?? '—'}</Text>
+                  <Text style={{ ...TYPE.meta, color: nn.inkSoft, marginTop: 1 }} numberOfLines={1}>{data?.clinicName ?? ''}</Text>
                 </View>
               </View>
 
@@ -1314,28 +1329,28 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
               {(() => {
                 const lines: { key: string; icon: React.ReactNode; text: string; href?: string; tip: string }[] = [
                   ...(data?.doctorPhone ? [{
-                    key: 'dp', icon: <Phone size={12} color={A_DEEP} strokeWidth={2} />,
+                    key: 'dp', icon: <Phone size={12} color={nn.ink} strokeWidth={2} />,
                     text: data.doctorPhone, href: `tel:${data.doctorPhone.replace(/\s/g, '')}`,
                     tip: 'Hekimi ara',
                   }] : []),
                   ...(data?.clinicPhone ? [{
-                    key: 'cp', icon: <Phone size={12} color={INK[400]} strokeWidth={2} />,
+                    key: 'cp', icon: <Phone size={12} color={nn.inkFaint} strokeWidth={2} />,
                     text: `${data.clinicPhone} · ${autoT('klinik')}`, href: `tel:${data.clinicPhone.replace(/\s/g, '')}`,
                     tip: 'Kliniği ara',
                   }] : []),
                   ...(data?.clinicContact ? [{
-                    key: 'cc', icon: <User size={12} color={INK[400]} strokeWidth={2} />,
+                    key: 'cc', icon: <User size={12} color={nn.inkFaint} strokeWidth={2} />,
                     text: `${data.clinicContact} · ${autoT('irtibat')}`, tip: 'Klinikteki irtibat kişisi',
                   }] : []),
                   ...(data?.clinicEmail ? [{
-                    key: 'ce', icon: <Mail size={12} color={INK[400]} strokeWidth={2} />,
+                    key: 'ce', icon: <Mail size={12} color={nn.inkFaint} strokeWidth={2} />,
                     text: data.clinicEmail, href: `mailto:${data.clinicEmail}`,
                     tip: 'E-posta gönder',
                   }] : []),
                 ];
                 if (lines.length === 0) return null;
                 return (
-                  <View style={{ gap: 2, paddingTop: 10, borderTopWidth: 1, borderTopColor: HAIR }}>
+                  <View style={{ gap: 2, paddingTop: 10, borderTopWidth: 1, borderTopColor: nn.ghostBorder }}>
                     {lines.map(l => {
                       const row = (
                         <Pressable
@@ -1344,13 +1359,13 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                           style={rowStyle(({ pressed, hovered }: any) => ({
                             flexDirection: 'row', alignItems: 'center', gap: 7,
                             paddingHorizontal: 6, paddingVertical: 6, borderRadius: 9, marginHorizontal: -6,
-                            backgroundColor: hovered && l.href ? 'rgba(0,0,0,0.035)' : 'transparent',
+                            backgroundColor: hovered && l.href ? nn.ghostBg : 'transparent',
                             ...press(pressed, 0.99),
                             ...(Platform.OS === 'web' && l.href ? { cursor: 'pointer' } as any : {}),
                           }))}
                         >
                           {l.icon}
-                          <Text style={{ ...TYPE.meta, color: l.href ? INK[800] : INK[500], flex: 1 }} numberOfLines={1}>{l.text}</Text>
+                          <Text style={{ ...TYPE.meta, color: l.href ? nn.ink : nn.inkSoft, flex: 1 }} numberOfLines={1}>{l.text}</Text>
                         </Pressable>
                       );
                       return l.href ? <Tip key={l.key} block label={l.tip}>{row}</Tip> : <View key={l.key}>{row}</View>;
@@ -1388,11 +1403,17 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
               </View>
             )}
 
-            {/* Dosyalar */}
-            <View style={{ borderRadius: 18, backgroundColor: SURF, borderWidth: 1, borderColor: HAIR, padding: 16, gap: 10 }}>
+            {/* Dosyalar — DÜZ NAVY (Hekim & Klinik kartıyla aynı yüzey). Yalnız
+                web'de: native'de içerik FilesList bileşeni ve o açık zemine göre
+                çizili; navy zeminde metni okunmazdı. */}
+            <View style={{
+              borderRadius: 18, padding: 16, gap: 10,
+              ...(filesNavy ? nn.surface : { backgroundColor: SURF, borderWidth: 1, borderColor: HAIR }),
+            }}>
+              {filesNavy && !nn.flat && <NeonPulse radius={18} color={nn.glow} />}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                <Text style={{ ...TYPE.label, color: INK[400] }}>Dosyalar</Text>
-                <Text style={{ ...TYPE.meta, color: INK[400] }}>{data?.files.length ?? 0}</Text>
+                <Text style={{ ...TYPE.label, color: filesNavy ? nn.inkFaint : INK[400] }}>Dosyalar</Text>
+                <Text style={{ ...TYPE.meta, color: filesNavy ? nn.inkFaint : INK[400] }}>{data?.files.length ?? 0}</Text>
               </View>
               {/* Tümünü katmanlı göster — 2+ 3D dosya varsa.
                   Referans panelindeki yardımcı aksiyon: dolu accent blok yerine
@@ -1406,17 +1427,18 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                   style={rowStyle(({ pressed, hovered }: any) => ({
                     alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', gap: 9,
                     paddingStart: 10, paddingEnd: 8, paddingVertical: 9, borderRadius: 12,
-                    backgroundColor: tint(A, hovered ? 0.17 : 0.10),
+                    backgroundColor: hovered ? nn.ghostBorder : nn.ghostBg,
+                    borderWidth: 1, borderColor: nn.ghostBorder,
                     ...press(pressed, 0.985),
                     ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'transform 110ms cubic-bezier(0.2,0,0,1), background-color 140ms ease' } as any : {}),
                   }))}
                 >
-                  <Layers size={14} color={A_DEEP} strokeWidth={2} />
-                  <Text style={{ ...TYPE.meta, fontWeight: '600', color: A_DEEP, flex: 1 }} numberOfLines={1}>
+                  <Layers size={14} color={nn.ink} strokeWidth={2} />
+                  <Text style={{ ...TYPE.meta, fontWeight: '600', color: nn.ink, flex: 1 }} numberOfLines={1}>
                     Katmanlı görüntüle
                   </Text>
-                  <View style={{ minWidth: 19, height: 18, paddingHorizontal: 5, borderRadius: 9, backgroundColor: tint(A, 0.18), alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ fontSize: 10, fontWeight: '700', color: A_DEEP }}>{all3DFiles.length}</Text>
+                  <View style={{ minWidth: 19, height: 18, paddingHorizontal: 5, borderRadius: 9, backgroundColor: nn.pillBg, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: nn.pillInk }}>{all3DFiles.length}</Text>
                   </View>
                 </Pressable>
                 </Tip>
@@ -1437,11 +1459,10 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                   onUploaded={load}
                 />
               ) : (data?.files.length ?? 0) === 0 ? (
-                <Text style={{ ...TYPE.meta, color: INK[400] }}>Dosya yok.</Text>
+                <Text style={{ ...TYPE.meta, color: nn.inkSoft }}>Dosya yok.</Text>
               ) : (
                 fileGroups.map((g) => {
                   const isCollapsed = !openFileCats[g.key];
-                  const catColor = g.key === 'photo' ? '#10B981' : g.key === 'scan' ? A : INK[500];
                   return (
                   <View key={g.key}>
                     {/* Kategori başlığı — tıklayınca aç/kapa (varsayılan kapalı).
@@ -1452,18 +1473,26 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                       style={rowStyle(({ pressed, hovered }: any) => ({
                         flexDirection: 'row', alignItems: 'center', gap: 8,
                         paddingHorizontal: 8, paddingVertical: 8, borderRadius: 10, marginHorizontal: -8,
-                        backgroundColor: hovered ? 'rgba(0,0,0,0.035)' : 'transparent',
+                        backgroundColor: hovered ? nn.ghostBg : 'transparent',
                         ...press(pressed, 0.985),
                         ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                       }))}
                     >
-                      {isCollapsed ? <ChevronRight size={14} color={INK[400]} strokeWidth={2} /> : <ChevronDown size={14} color={INK[400]} strokeWidth={2} />}
-                      <Text style={{ flex: 1, ...TYPE.meta, fontWeight: '600', color: INK[700] }}>{g.label}</Text>
-                      <View style={{ minWidth: 20, height: 18, paddingHorizontal: 6, borderRadius: 9, backgroundColor: tint(catColor, 0.13), alignItems: 'center', justifyContent: 'center' }}>
-                        <Text style={{ fontSize: 10, fontWeight: '700', color: catColor }}>{g.files.length}</Text>
+                      {isCollapsed ? <ChevronRight size={14} color={nn.inkFaint} strokeWidth={2} /> : <ChevronDown size={14} color={nn.inkFaint} strokeWidth={2} />}
+                      <Text style={{ flex: 1, ...TYPE.meta, fontWeight: '600', color: nn.ink }}>{g.label}</Text>
+                      {/* Sayaç: kategori rengi navy zeminde kayboluyordu (tarama rengi =
+                          panel accent'i = zemin). Cam kapsül + açık metin. */}
+                      <View style={{ minWidth: 20, height: 18, paddingHorizontal: 6, borderRadius: 9, backgroundColor: nn.ghostBg, borderWidth: 1, borderColor: nn.ghostBorder, alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: nn.ink }}>{g.files.length}</Text>
                       </View>
                     </Pressable>
-                    {!isCollapsed && g.files.map(f => {
+                    {/* Fotoğraflar GALERİ olarak — sipariş detayındaki FilesList ile aynı
+                        dil: büyük görsel + ileri/geri + sayaç + esnek şerit. Büyük görsele
+                        tıklayınca mevcut uygulama-içi lightbox açılır. */}
+                    {!isCollapsed && g.key === 'photo' && (
+                      <PlanPhotoGallery files={g.files} onOpen={openFilePreview} metaColor={nn.inkSoft} stripBg={nn.ghostBorder} />
+                    )}
+                    {!isCollapsed && g.key !== 'photo' && g.files.map(f => {
                   const previewable = !!(f.storage_path || f.signed_url); // tıklamada taze imzalanır
                   const isZip = isArchiveExt(f.name || f.storage_path);
                   const isBusy = extractingId === f.id;
@@ -1472,13 +1501,13 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                     key={f.id}
                     style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingStart: 22, paddingVertical: 5, borderRadius: 10 }}
                   >
-                    <View style={{ width: 28, height: 28, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(f.is3d || isZip ? A : INK[400], 0.11) }}>
-                      {f.is3d || isZip ? <Box size={14} color={A_DEEP} strokeWidth={1.8} /> : <FileText size={14} color={INK[500]} strokeWidth={1.8} />}
+                    <View style={{ width: 28, height: 28, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: nn.ghostBg }}>
+                      {f.is3d || isZip ? <Box size={14} color={nn.ink} strokeWidth={1.8} /> : <FileText size={14} color={nn.inkSoft} strokeWidth={1.8} />}
                     </View>
-                    <Text style={{ flex: 1, ...TYPE.meta, fontWeight: '600', color: INK[800] }} numberOfLines={1}>{f.name}</Text>
+                    <Text style={{ flex: 1, ...TYPE.meta, fontWeight: '600', color: nn.ink }} numberOfLines={1}>{f.name}</Text>
                     {(f.is3d || isZip) && (
-                      <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999, backgroundColor: tint(A, 0.14) }}>
-                        <Text style={{ fontSize: 8.5, fontWeight: '700', color: A_DEEP }}>{isZip ? 'ZIP' : '3D'}</Text>
+                      <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999, backgroundColor: nn.pillBg }}>
+                        <Text style={{ fontSize: 8.5, fontWeight: '700', color: nn.pillInk }}>{isZip ? 'ZIP' : '3D'}</Text>
                       </View>
                     )}
                     {/* Önizleme butonu — 3D ise viewer, diğeri yeni sekme */}
@@ -1490,14 +1519,14 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                         accessibilityLabel={isZip ? 'Zip’i aç ve 3D göster' : 'Önizle'}
                         style={({ pressed, hovered }: any) => ({
                           width: 26, height: 26, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
-                          backgroundColor: hovered && previewable ? tint(A, 0.13) : 'transparent', opacity: previewable ? 1 : 0.4,
+                          backgroundColor: hovered && previewable ? nn.ghostBg : 'transparent', opacity: previewable ? 1 : 0.4,
                           ...press(pressed, 0.9),
                           ...(Platform.OS === 'web' && previewable && !isBusy ? { cursor: 'pointer' } as any : {}),
                         })}
                       >
                         {isBusy
-                          ? <ActivityIndicator size="small" color={A_DEEP} />
-                          : <Eye size={13} color={previewable ? A_DEEP : INK[400]} strokeWidth={1.9} />}
+                          ? <ActivityIndicator size="small" color={nn.ink} />
+                          : <Eye size={13} color={previewable ? nn.ink : nn.inkFaint} strokeWidth={1.9} />}
                       </Pressable>
                     </Tip>
                     {/* İndir butonu — ham dosya (ZIP zip olarak iner) */}
@@ -1509,12 +1538,12 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                         accessibilityLabel="Dosyayı indir"
                         style={({ pressed, hovered }: any) => ({
                           width: 26, height: 26, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
-                          backgroundColor: hovered && previewable ? tint(A, 0.13) : 'transparent', opacity: previewable ? 1 : 0.4,
+                          backgroundColor: hovered && previewable ? nn.ghostBg : 'transparent', opacity: previewable ? 1 : 0.4,
                           ...press(pressed, 0.9),
                           ...(Platform.OS === 'web' && previewable ? { cursor: 'pointer' } as any : {}),
                         })}
                       >
-                        <Download size={13} color={previewable ? A_DEEP : INK[400]} strokeWidth={1.9} />
+                        <Download size={13} color={previewable ? nn.ink : nn.inkFaint} strokeWidth={1.9} />
                       </Pressable>
                     </Tip>
                   </View>
@@ -2759,4 +2788,98 @@ function StageCard({
     }, body);
   }
   return body;
+}
+
+/**
+ * Plan Önizleme fotoğraf galerisi — sipariş detayındaki FilesList galerisinin
+ * birebir görsel karşılığı (220px büyük görsel, ortada yüzen oklar, "1 / N"
+ * sayacı, eklenme tarihi, seçili karonun genişlediği esnek şerit).
+ *
+ * FilesList'in kendisi burada kullanılmıyor: o bileşen kendi 3D görüntüleyicisini,
+ * zip açıcısını ve yükleme düğmesini getiriyor; bu ekranın katmanlı görüntüleyici
+ * ve zip akışı zaten var, iki kopya aynı anda açılırdı. Yalnız galeri alındı.
+ */
+function PlanPhotoGallery({ files, onOpen, metaColor, stripBg }: {
+  files: Array<{ id: string; name: string; storage_path: string; signed_url: string | null; created_at?: string | null }>;
+  onOpen: (f: any) => void;
+  /** Tarih satırı rengi — kart zemini navy ise açık ton gelir. */
+  metaColor?: string;
+  /** Şerit karoları arasındaki ayraç zemini. */
+  stripBg?: string;
+}) {
+  const U = useInkUI();
+  const [curId, setCurId] = React.useState<string | null>(null);
+  // İmzalı URL'i henüz gelmemiş görsel boş kutu olarak gösterilmez.
+  const imgs = files.filter(f => !!f.signed_url);
+  if (!imgs.length) return null;
+  const cur = imgs.find(f => f.id === curId) ?? imgs[0];
+  const idx = imgs.findIndex(f => f.id === cur.id);
+  const step = (d: number) => setCurId(imgs[(idx + d + imgs.length) % imgs.length].id);
+  const navBtn: any = {
+    position: 'absolute', top: '50%', marginTop: -15,
+    width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    ...(Platform.OS === 'web' ? { cursor: 'pointer', boxShadow: '0 2px 8px rgba(15,23,42,0.16)' } : {}),
+  };
+  return (
+    // Dosya satırlarının 22px girintisi galeriye UYGULANMAZ: kartta sağa kayık
+    // duruyordu. Galeri kategori başlığıyla aynı hizada, tam genişlikte.
+    <View style={{ paddingTop: 4, paddingBottom: 8, alignSelf: 'stretch' }}>
+      <View style={{ position: 'relative' }}>
+        <Pressable
+          onPress={() => onOpen(cur)}
+          accessibilityLabel="Fotoğrafı büyüt"
+          style={{
+            width: '100%', height: 220, borderRadius: 12, overflow: 'hidden',
+            backgroundColor: U.isDark ? 'rgba(255,255,255,0.05)' : '#0F172A08',
+            ...(Platform.OS === 'web' ? { cursor: 'zoom-in' } as any : {}),
+          }}
+        >
+          <Image source={{ uri: cur.signed_url as string }} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
+        </Pressable>
+        {imgs.length > 1 && (
+          <>
+            {/* Konum start/end ile aynalanır; ok da aynalanmazsa RTL'de ters gösterir. */}
+            <Pressable onPress={() => step(-1)} hitSlop={8} accessibilityLabel="Önceki fotoğraf" style={[navBtn, isRTL() ? { right: 8 } : { left: 8 }]}>
+              {isRTL() ? <ChevronRight size={16} color="#0F172A" strokeWidth={2} /> : <ChevronLeft size={16} color="#0F172A" strokeWidth={2} />}
+            </Pressable>
+            <Pressable onPress={() => step(1)} hitSlop={8} accessibilityLabel="Sonraki fotoğraf" style={[navBtn, isRTL() ? { left: 8 } : { right: 8 }]}>
+              {isRTL() ? <ChevronLeft size={16} color="#0F172A" strokeWidth={2} /> : <ChevronRight size={16} color="#0F172A" strokeWidth={2} />}
+            </Pressable>
+            <View style={{ position: 'absolute', bottom: 8, alignSelf: 'center', paddingHorizontal: 9, paddingVertical: 3, borderRadius: 999, backgroundColor: 'rgba(15,23,42,0.72)' }}>
+              <Text style={{ fontSize: 10.5, color: '#FFF', fontWeight: '600' }}>{idx + 1} / {imgs.length}</Text>
+            </View>
+          </>
+        )}
+      </View>
+      {cur.created_at ? (
+        <Text style={{ fontSize: 10, color: metaColor ?? U.ink[400], marginTop: 6 }} numberOfLines={1}>
+          {cur.name} · {autoT('Eklendi')}: {new Date(cur.created_at).toLocaleString(localeTag(), { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+        </Text>
+      ) : null}
+      {imgs.length > 1 && (
+        // Esnek pay: kaç fotoğraf olursa olsun tek sıraya sığar; seçili 2.4 kat pay alır.
+        <View style={{ flexDirection: 'row', marginTop: 8, gap: 2, borderRadius: 8, overflow: 'hidden', backgroundColor: stripBg ?? (U.isDark ? U.surfaceSoft : '#FFFFFF') }}>
+          {imgs.map(f => {
+            const active = f.id === cur.id;
+            return (
+              <Pressable
+                key={f.id}
+                onPress={() => setCurId(f.id)}
+                accessibilityLabel={f.name}
+                style={{
+                  flex: active ? 2.4 : 1, height: 68, minWidth: 0,
+                  backgroundColor: U.isDark ? U.surfaceSoft : '#EEF2F6',
+                  opacity: active ? 1 : 0.78,
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'flex-grow 220ms ease-out, opacity 220ms ease-out' } as any : {}),
+                }}
+              >
+                <Image source={{ uri: f.signed_url as string }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
 }

@@ -193,7 +193,7 @@ function FilterDropdown({ label, value, options, selectedKey, onSelect, accentCo
         style={Platform.OS === 'web'
           ? ((({ pressed, hovered }: any) => ({
               flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6,
-              height: 36, paddingHorizontal: 12, borderRadius: 10,
+              height: 36, paddingHorizontal: 12, borderRadius: 9999,
               backgroundColor: on ? `${accentColor}${U.isDark ? '2E' : '14'}` : hovered ? U.chipNeutral : 'transparent',
               borderWidth: 1, borderColor: on ? `${accentColor}55` : U.fieldBorder,
               opacity: pressed ? 0.75 : 1,
@@ -487,12 +487,19 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
     }
   };
 
+  // Pasife alma ARTIK doğrudan profiles UPDATE'i değil: edge fonksiyon hem
+  // bayrağı yazar hem auth hesabını banlar. Yalnız bayrağı çevirmek açık
+  // oturumu kapatmıyordu (refresh ile süresiz yaşıyordu).
   const handleToggleActive = async (profile: Profile) => {
     const newVal = !profile.is_active;
     setUpdatingId(profile.id);
     try {
-      const { error } = await supabase.from('profiles').update({ is_active: newVal }).eq('id', profile.id);
-      if (!error) setProfiles(prev => prev.map(p => p.id === profile.id ? { ...p, is_active: newVal } : p));
+      const { data, error } = await supabase.functions.invoke('admin-update-user', {
+        body: { user_id: profile.id, is_active: newVal },
+      });
+      const msg = (data as any)?.error ?? (error as any)?.message;
+      if (msg) { toast.error(String(msg)); return; }
+      setProfiles(prev => prev.map(p => p.id === profile.id ? { ...p, is_active: newVal } : p));
     } finally { setUpdatingId(null); }
   };
 

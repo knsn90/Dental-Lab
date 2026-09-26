@@ -53,7 +53,7 @@ function clearFailCount(email: string) {
   if (typeof window === 'undefined' || !window.sessionStorage) return;
   window.sessionStorage.removeItem(FAIL_KEY_PREFIX + email.toLowerCase());
 }
-import { signIn } from '../api';
+import { signIn, authErrorMessage } from '../api';
 import { supabase } from '../../../core/api/supabase';
 import { useKioskMode } from '../../../core/kiosk/kioskModeStore';
 import { AuthShell, AuthInput, AuthButton, AUTH, AUTH_FONT } from '../components/AuthShell';
@@ -157,7 +157,7 @@ export function LoginScreen() {
         options: { shouldCreateUser: false },
       });
       if (error) {
-        setErrorMsg(error.message || 'OTP gönderilemedi.');
+        setErrorMsg(authErrorMessage(error.message) ?? error.message ?? 'OTP gönderilemedi.');
       } else {
         setOtpSentNotice(`6 haneli kod ${targetEmail} adresine gönderildi.`);
       }
@@ -180,7 +180,8 @@ export function LoginScreen() {
     });
     if (otpErr) {
       setLoading(false);
-      setErrorMsg('Kod hatalı veya süresi dolmuş.');
+      // Banlı hesapta hata "kod yanlış" değil — yanlış sebebi göstermeyelim.
+      setErrorMsg(authErrorMessage(otpErr.message) ?? 'Kod hatalı veya süresi dolmuş.');
       triggerShake();
       return;
     }
@@ -190,7 +191,7 @@ export function LoginScreen() {
       // Şifre yanlışsa açılan OTP session'unu kapat
       await supabase.auth.signOut();
       setLoading(false);
-      setErrorMsg('Kod doğru ama şifre yanlış. Tekrar dene.');
+      setErrorMsg(authErrorMessage(pwdErr.message) ?? 'Kod doğru ama şifre yanlış. Tekrar dene.');
       triggerShake();
       return;
     }
@@ -255,10 +256,10 @@ export function LoginScreen() {
       const credMsg = remain > 0
         ? `E-posta veya şifre hatalı. (${remain} hak kaldı)`
         : 'Çok fazla başarısız deneme. E-posta OTP ile devam etmen gerekiyor.';
-      const msg = isCredErr                                ? credMsg
-                : /email not confirmed/i.test(raw)         ? 'E-posta adresini doğrulaman gerekiyor.'
-                : /network|fetch|failed to fetch/i.test(raw) ? 'Sunucuya bağlanılamadı. İnternet bağlantını kontrol et.'
-                : raw || 'Giriş başarısız oldu.';
+      // Kimlik hatası kendi sayaç metnini kullanır; kalan her şey ortak
+      // eşleyiciden geçer (ham İngilizce GoTrue metni ekrana basılmasın).
+      const msg = isCredErr ? credMsg
+                : authErrorMessage(raw) ?? (raw || 'Giriş başarısız oldu.');
       setErrorMsg(msg);
       // eslint-disable-next-line no-console
       console.warn('[login] signIn error:', raw, error);
@@ -287,6 +288,13 @@ export function LoginScreen() {
       if (prof?.user_type === 'doctor' && prof?.approval_status === 'rejected') {
         await supabase.auth.signOut();
         setErrorMsg('Hesabınız reddedildi. Detay için laboratuvar ile iletişime geçin.');
+        triggerShake(); setLoading(false); return;
+      }
+      // Pasife alınmış hesap — HER kullanıcı tipi için. Bayrak zaten yukarıda
+      // çekiliyordu ama hiç okunmuyordu: pasif teknisyen sorunsuz giriyordu.
+      if (prof?.is_active === false) {
+        await supabase.auth.signOut();
+        setErrorMsg('Hesabınız pasife alınmış. Laboratuvar yöneticinizle iletişime geçin.');
         triggerShake(); setLoading(false); return;
       }
     }

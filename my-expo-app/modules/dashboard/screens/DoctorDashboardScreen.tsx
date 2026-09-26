@@ -1,4 +1,5 @@
 import i18n, { localeTag, isRTL } from '../../../core/i18n';
+import { HatchFill } from '../../../core/ui/HatchFill';
 import { firstName as displayFirstName } from '../../../core/util/personName';
 import { weekdayOffset, fmtWeekdayDayMonth } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
@@ -36,7 +37,8 @@ import { useOrders } from '../../orders/hooks/useOrders';
 import { isOrderOverdue, STATUS_CONFIG } from '../../orders/constants';
 import { WorkOrderStatus } from '../../../lib/types';
 import { DS } from '../../../core/theme/dsTokens';
-import { useSpotlightSurface, NeonPulse, useAccentTones } from '../../../core/ui/HeroGlow';
+import { useNeonNavy, NeonPulse, useAccentTones } from '../../../core/ui/HeroGlow';
+import { onAccentInk } from '../../../core/theme/usePanelTheme';
 import { PipelineFlowRow } from '../../../core/ui/PipelineFlowRow';
 import { useInkUI } from '../../../core/theme/inkScale';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
@@ -81,7 +83,7 @@ const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> =
   kurye_bekleniyor:{ label: 'Kurye Bekleniyor',color: '#1F5689',   bg: 'rgba(74,143,201,0.12)' },
   kuryede:         { label: 'Kuryede',         color: '#1F5689',   bg: 'rgba(74,143,201,0.12)' },
   iptal:           { label: 'İptal',           color: '#B91C1C',   bg: 'rgba(220,38,38,0.10)' },
-  teslimata_hazir: { label: 'Kuryeye Teslim Edildi', color: '#1F6B47',   bg: 'rgba(45,154,107,0.12)' },
+  teslimata_hazir: { label: 'Teslime Hazır',       color: '#1F6B47',   bg: 'rgba(45,154,107,0.12)' },
   teslim_edildi:   { label: 'Teslim Edildi',   color: DS.ink[400],  bg: 'rgba(0,0,0,0.04)' },
 };
 const STATUS_KEYS = ['alindi', 'uretimde', 'kalite_kontrol', 'teslimata_hazir', 'teslim_edildi'];
@@ -432,15 +434,25 @@ function ProductionBarChart({ data }: { data: { label: string; count: number }[]
         return (
           <View key={i} style={{ flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end', gap: 6 }}>
             <View style={{ width: '100%', maxWidth: 56, flex: 1, justifyContent: 'flex-end', alignItems: 'center' }}>
-              {isHighlight && (
-                <View style={{ marginBottom: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: U.surface, borderWidth: 1, borderColor: U.ink[100] }}>
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: FILL_DARK }}>{d.count}</Text>
-                </View>
-              )}
+              {/* HER ayın değeri yazılır. Eskiden etiket yalnız EN YÜKSEK ayda vardı,
+                  diğer aylar sayısız kalıyordu — kullanıcı "neden her ayın sayısı yok?"
+                  diye sordu (18.09.2026). Lab panosundaki kalıpla aynı: sabit yükseklikli
+                  etiket zonu, çubuğu itmez, tabanlar hizalı kalır. */}
+              <View style={{ height: 20, justifyContent: 'center', alignItems: 'center' }}>
+                {d.count > 0 ? (
+                  isHighlight ? (
+                    <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: U.surface, borderWidth: 1, borderColor: U.ink[100] }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: FILL_DARK }}>{d.count}</Text>
+                    </View>
+                  ) : (
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: U.ink[400] }}>{d.count}</Text>
+                  )
+                ) : null}
+              </View>
               <View
                 style={{
                   width: '100%',
-                  height: '100%',
+                  flex: 1,
                   borderRadius: 999,
                   backgroundColor: RAIL_BG,
                   // @ts-ignore web hatched bg
@@ -449,6 +461,8 @@ function ProductionBarChart({ data }: { data: { label: string; count: number }[]
                   position: 'relative' as any,
                 }}
               >
+                {/* Native: CSS gradyanı yok → SVG tarama */}
+                <HatchFill color={P} />
                 {d.count > 0 && (
                   <View
                     style={{
@@ -536,6 +550,8 @@ function WeeklyStrip({ weekDays, weekCounts, onPress }: {
                     position: 'relative' as any,
                   }}
                 >
+                  {/* Native: CSS gradyanı yok → SVG tarama */}
+                  <HatchFill color={P} />
                   {!empty && (
                     <View
                       style={{
@@ -570,7 +586,8 @@ function WeeklyStrip({ weekDays, weekCounts, onPress }: {
 
 // ── Animated CTA Card ──
 function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDesktop: boolean }) {
-  const spotlight = useSpotlightSurface(P);
+  // Açık temada da koyu/neon dil (kullanıcı kararı) — klinik panosuyla aynı.
+  const spotlight = useNeonNavy(P);
   const arrowAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
@@ -592,25 +609,20 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
       style={{ flex: 1 }}>
       <Animated.View style={{
         flex: 1, borderRadius: DS.radius.xl, padding: 22, position: 'relative', overflow: 'hidden',
-        // @ts-ignore web gradient
-        // Koyu tema: admin Özet'teki Hızlı İşlem kartıyla ortak dil — üstten
-        // yayılan ışık + gradyan + nabız atan neon kenar (aksan panelden gelir).
-        // Açık temada da admin ile aynı: üstten yayılan beyaz ışık + accent gradyanı.
-        backgroundImage:
-          'radial-gradient(120% 78% at 50% -10%, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0) 70%), '
-          + `linear-gradient(135deg, ${P} 0%, ${P_DEEP} 100%)`,
-        backgroundColor: P, minHeight: isDesktop ? undefined : 160,
-        ...(spotlight ? spotlight.surface : {}),
+        minHeight: isDesktop ? undefined : 160,
+        // Zemin TEK kaynaktan: useNeonNavy. Buradaki eski gradyan, açık temanın
+        // düz yüzeyinde backgroundImage olarak ayakta kalıp sızıyordu.
+        ...spotlight.surface,
         transform: [{ scale: scaleAnim }],
       }}>
-        {spotlight && <NeonPulse radius={DS.radius.xl} color={spotlight.glow} />}
+        {!spotlight.flat && <NeonPulse radius={DS.radius.xl} color={spotlight.glow} />}
         <View style={{ position: 'relative' }}>
-          <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 1.1, textTransform: 'uppercase', color: '#FFF', marginBottom: 14 }}>Hızlı işlem</Text>
-          <Text style={{ ...SERIF, fontSize: 32, letterSpacing: -0.64, lineHeight: 35, color: '#FFF', marginBottom: 16 }}>Yeni sipariş{'\n'}oluştur</Text>
-          <View className="flex-row items-center self-start rounded-full" style={{ paddingHorizontal: 18, paddingVertical: 10, backgroundColor: '#FFF', gap: 8 }}>
-            <Text style={{ fontSize: 13, fontWeight: '500', color: '#0A0A0A' }}>Başla</Text>
+          <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 1.1, textTransform: 'uppercase', color: spotlight.inkSoft, marginBottom: 14 }}>Hızlı işlem</Text>
+          <Text style={{ ...SERIF, fontSize: 32, letterSpacing: -0.64, lineHeight: 35, color: spotlight.ink, marginBottom: 16 }}>Yeni sipariş{'\n'}oluştur</Text>
+          <View className="flex-row items-center self-end rounded-full" style={{ paddingHorizontal: 18, paddingVertical: 10, backgroundColor: spotlight.pillBg, gap: 8 }}>
+            <Text style={{ fontSize: 13, fontWeight: '500', color: spotlight.pillInk }}>Başla</Text>
             <Animated.View style={{ transform: [{ translateX: arrowX }] }}>
-              {isRTL() ? <ArrowLeft size={14} color="#0A0A0A" strokeWidth={2} /> : <ArrowRight size={14} color="#0A0A0A" strokeWidth={2} />}
+              {isRTL() ? <ArrowLeft size={14} color={spotlight.pillInk} strokeWidth={2} /> : <ArrowRight size={14} color={spotlight.pillInk} strokeWidth={2} />}
             </Animated.View>
           </View>
         </View>
@@ -1116,10 +1128,12 @@ export function DoctorDashboardScreen() {
 
       {/* ════════ ORDERS TABLE ════════ */}
       <Card style={{ marginBottom: 14 }}>
-        <View className="flex-row items-center justify-between" style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
-          <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: U.ink[900] }}>Son Siparişler</Text>
+        {/* Kart başlığı düz PANEL ACCENT'i (klinik/hekim = zümrüt) — admin
+            Özet'teki "Son Siparişler" ile aynı dil, rengi panelden alır. */}
+        <View className="flex-row items-center justify-between" style={{ padding: 20, backgroundColor: P }}>
+          <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: onAccentInk(P) }}>Son Siparişler</Text>
           <Pressable onPress={() => router.push('/(doctor)/orders' as any)}>
-            <Text style={{ fontSize: 13, color: P, fontWeight: '700' }}>Tümünü Gör →</Text>
+            <Text style={{ fontSize: 13, color: onAccentInk(P), fontWeight: '700' }}>Tümünü Gör →</Text>
           </Pressable>
         </View>
         <View className="flex-row items-center" style={{ paddingHorizontal: 20, paddingVertical: 11, borderTopWidth: 1, borderTopColor: U.hairlineSoft, backgroundColor: U.ink[50] }}>

@@ -10,8 +10,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, Platform, ActivityIndicator } from 'react-native';
 import { useInkUI } from '../../../core/theme/inkScale';
-import { RotateCcw, TrendingDown, AlertTriangle } from '../../../core/ui/icons';
+import { TrendingDown, AlertTriangle } from '../../../core/ui/icons';
 import { fetchRemakeStats, type RemakeStats } from '../../orders/api';
+import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
+import { onAccentInk } from '../../../core/theme/usePanelTheme';
 
 const PERIODS = [
   { key: '30',  label: '30 gün' },
@@ -29,6 +31,7 @@ const iso = (d: Date) => d.toISOString().slice(0, 10);
 
 export function RemakeQualityCard({ accentColor = '#7C3AED', onOpenOrder }: Props) {
   const U = useInkUI();
+  const heroInk = useWhiteHeroInk(accentColor);
   const [days, setDays] = useState<string>('90');
   const [stats, setStats] = useState<RemakeStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -54,20 +57,25 @@ export function RemakeQualityCard({ accentColor = '#7C3AED', onOpenOrder }: Prop
   const maxStation = stats?.byStation[0]?.count ?? 1;
 
   return (
-    <View style={{
-      backgroundColor: U.surface, borderRadius: 18, padding: 20, gap: 16,
-      borderWidth: 1, borderColor: U.hairline,
-      ...(Platform.OS === 'web' ? { boxShadow: U.isDark ? '0 4px 16px rgba(0,0,0,0.35)' : '0 4px 16px rgba(0,0,0,0.04)' } as any : {}),
-    }}>
-      {/* Başlık + dönem */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-        <View style={{ width: 34, height: 34, borderRadius: 11, backgroundColor: accentColor + '1A', alignItems: 'center', justifyContent: 'center' }}>
-          <RotateCcw size={16} color={accentColor} strokeWidth={2} />
-        </View>
-        <View style={{ flex: 1, minWidth: 140 }}>
-          <Text style={{ fontSize: 15, fontWeight: '700', color: U.ink[900], letterSpacing: -0.2 }}>Yeniden Yapım</Text>
-          <Text style={{ fontSize: 11.5, color: U.ink[400], marginTop: 1 }}>Lab kaynaklı revizyon / teslim edilen</Text>
-        </View>
+    /* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ─────────────────
+       Oran 38px'lik bir metrik olarak gövdenin içinde duruyordu; asıl cevap
+       o. Prim Motoru hiyerarşisine alındı: kicker → 44px oran → bağlam →
+       sağda 40px stat'lar → sağ üstte dönem seçici. Oranın yeşil/turuncu/
+       kırmızı tonu KORUNUR (eşik sinyali). */
+    <WhiteHero
+      kicker="Yeniden Yapım"
+      accent={accentColor}
+      title={<><Text style={{ color: tone }}>%{rate.toFixed(1)}</Text> yeniden yapım</>}
+      description={
+        'Lab kaynaklı revizyon / teslim edilen' +
+        (stats ? ` · ${stats.delivered} teslim · ${stats.revisionsLab} lab kaynaklı` : '')
+      }
+      stats={stats ? [
+        { value: String(stats.delivered),        label: 'Teslim' },
+        { value: String(stats.revisionsLab),     label: 'Lab' },
+        { value: String(stats.revisionsClient),  label: 'Hekim' },
+      ] : undefined}
+      cta={
         <View style={{ flexDirection: 'row', gap: 5 }}>
           {PERIODS.map(p => {
             const active = days === p.key;
@@ -75,15 +83,17 @@ export function RemakeQualityCard({ accentColor = '#7C3AED', onOpenOrder }: Prop
               <Pressable key={p.key} onPress={() => setDays(p.key)}
                 style={{
                   paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
-                  backgroundColor: active ? U.ink[900] : U.chipNeutral,
+                  backgroundColor: active ? accentColor : heroInk.tileBg,
+                  borderWidth: 1, borderColor: active ? accentColor : heroInk.tileBorder,
                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                 }}>
-                <Text style={{ fontSize: 11.5, fontWeight: '600', color: active ? U.onDarkPill : U.ink[500] }}>{p.label}</Text>
+                <Text style={{ fontSize: 11.5, fontWeight: '600', color: active ? onAccentInk(accentColor) : heroInk.inkSoft }}>{p.label}</Text>
               </Pressable>
             );
           })}
         </View>
-      </View>
+      }
+    >
 
       {loading ? (
         <View style={{ paddingVertical: 24, alignItems: 'center' }}>
@@ -93,35 +103,16 @@ export function RemakeQualityCard({ accentColor = '#7C3AED', onOpenOrder }: Prop
         <Text style={{ fontSize: 13, color: U.ink[400] }}>Veri alınamadı.</Text>
       ) : (
         <>
-          {/* Metrikler */}
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 24, alignItems: 'flex-end' }}>
-            <View>
-              <Text style={{ fontSize: 10.5, fontWeight: '700', letterSpacing: 1, color: U.ink[400], textTransform: 'uppercase' }}>Oran</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 3, marginTop: 3 }}>
-                <Text style={{ fontSize: 38, fontWeight: '300', color: tone, letterSpacing: -1.4, lineHeight: 40 }}>
-                  {rate.toFixed(1)}
-                </Text>
-                <Text style={{ fontSize: 15, fontWeight: '500', color: tone }}>%</Text>
-              </View>
-            </View>
-            <View style={{ gap: 3 }}>
-              <Text style={{ fontSize: 12, color: U.ink[500] }}>
-                Teslim edilen <Text style={{ fontWeight: '700', color: U.ink[900] }}>{stats.delivered}</Text>
-              </Text>
-              <Text style={{ fontSize: 12, color: U.ink[500] }}>
-                Lab kaynaklı <Text style={{ fontWeight: '700', color: tone }}>{stats.revisionsLab}</Text>
-              </Text>
-              <Text style={{ fontSize: 12, color: U.ink[500] }}>
-                Hekim kaynaklı <Text style={{ fontWeight: '700', color: U.ink[900] }}>{stats.revisionsClient}</Text>
-                <Text style={{ color: U.ink[400] }}> · orana girmez</Text>
-              </Text>
-            </View>
-          </View>
+          {/* Hekim kaynaklı revizyon ORANA GİRMEZ — stat'ta sayı var ama bu
+              kural yalnız burada yazılı; kaldırılırsa rakam yanlış okunur. */}
+          <Text style={{ fontSize: 11.5, color: heroInk.inkFaint, marginTop: 12 }}>
+            Hekim kaynaklı revizyonlar orana girmez.
+          </Text>
 
           {/* İstasyon kırılımı */}
           {stats.byStation.length > 0 && (
-            <View style={{ gap: 8, paddingTop: 14, borderTopWidth: 1, borderTopColor: U.hairline }}>
-              <Text style={{ fontSize: 10.5, fontWeight: '700', letterSpacing: 1, color: U.ink[400], textTransform: 'uppercase' }}>
+            <View style={{ gap: 8, paddingTop: 14, borderTopWidth: 1, borderTopColor: heroInk.tileBorder }}>
+              <Text style={{ fontSize: 10.5, fontWeight: '700', letterSpacing: 1, color: heroInk.inkSoft, textTransform: 'uppercase' }}>
                 Nerede hata oluyor
               </Text>
               {stats.byStation.map(s => (
@@ -138,8 +129,8 @@ export function RemakeQualityCard({ accentColor = '#7C3AED', onOpenOrder }: Prop
 
           {/* Son revizyonlar */}
           {stats.rows.length > 0 ? (
-            <View style={{ gap: 8, paddingTop: 14, borderTopWidth: 1, borderTopColor: U.hairline }}>
-              <Text style={{ fontSize: 10.5, fontWeight: '700', letterSpacing: 1, color: U.ink[400], textTransform: 'uppercase' }}>
+            <View style={{ gap: 8, paddingTop: 14, borderTopWidth: 1, borderTopColor: heroInk.tileBorder }}>
+              <Text style={{ fontSize: 10.5, fontWeight: '700', letterSpacing: 1, color: heroInk.inkSoft, textTransform: 'uppercase' }}>
                 Revizyonlar ({stats.rows.length})
               </Text>
               {stats.rows.slice(0, 8).map(r => (
@@ -167,7 +158,7 @@ export function RemakeQualityCard({ accentColor = '#7C3AED', onOpenOrder }: Prop
               ))}
             </View>
           ) : (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 14, borderTopWidth: 1, borderTopColor: U.hairline }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 14, borderTopWidth: 1, borderTopColor: heroInk.tileBorder }}>
               {rate === 0 && stats.delivered > 0
                 ? <TrendingDown size={14} color="#059669" strokeWidth={2} />
                 : <AlertTriangle size={14} color="#9A9A9A" strokeWidth={2} />}
@@ -178,6 +169,6 @@ export function RemakeQualityCard({ accentColor = '#7C3AED', onOpenOrder }: Prop
           )}
         </>
       )}
-    </View>
+    </WhiteHero>
   );
 }

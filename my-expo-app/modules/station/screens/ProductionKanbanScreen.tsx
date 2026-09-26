@@ -20,23 +20,25 @@ import { autoT } from '../../../core/i18n/autoTranslate';
 
 import React, { useEffect, useMemo, useState, useContext, useRef } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Pressable,
   RefreshControl, useWindowDimensions, Platform, Modal, Animated, Easing,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useSegments } from 'expo-router';
 
 import { useAuthStore } from '../../../core/store/authStore';
-import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { DS } from '../../../core/theme/dsTokens';
 import { supabase } from '../../../core/api/supabase';
 import { toast } from '../../../core/ui/Toast';
 import { AppIcon } from '../../../core/ui/AppIcon';
 import { HubContext } from '../../../core/ui/HubContext';
+import { WhiteHero, useWhiteHeroInk, WHITE_HERO_DISPLAY } from '../../../core/ui/WhiteHero';
 
 import { useKanbanData, type KanbanCard, type KanbanColumn } from '../hooks/useKanbanData';
 import { autoAssignUser } from '../../orders/autoAssign';
+import { OrderDetailScreenV2 } from '../../orders/screens/OrderDetailScreenV2';
 import { STAGE_CHECKLIST, STAGE_LABEL, STAGE_COLOR, type Stage } from '../../orders/stages';
 import { slaStatus, humanIdle } from '../../orders/slaConfig';
 import { StageChecklistModal } from '../../orders/components/StageChecklistModal';
@@ -150,14 +152,17 @@ function makeStyles(C: Palette) {
     }),
 
     col: StyleSheet.create({
-      wrap:        { gap: 8 },
-      headerOuter: { paddingHorizontal: 14, paddingTop: 4, paddingBottom: 4, gap: 2 },
+      // Her istasyon = kendi TABLOSU: başlık şeridi kartın İÇİNDE ve düz panel
+      // accent'i (uygulama geneli tablo dili), satırlar altında.
+      wrap:        { gap: 0 },
+      table:       { backgroundColor: C.card, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: C.hairline },
+      headerOuter: { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 10, gap: 3, backgroundColor: C.accent },
       headerRow:   { flexDirection: 'row', alignItems: 'center', gap: 8 },
-      dot:         { width: 10, height: 10, borderRadius: 5 },
-      title:       { flex: 1, fontSize: 14, fontWeight: '600', color: C.ink, letterSpacing: -0.2 },
-      count:       { fontSize: 13, fontWeight: '600', color: C.ink3, ...NUM },
-      subtitle:    { fontSize: 12, color: C.ink3, fontWeight: '500' },
-      list:        { backgroundColor: C.card, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: C.hairline },
+      dot:         { width: 8, height: 8, borderRadius: 4, borderWidth: 1.5, borderColor: onAccentInk(C.accent) },
+      title:       { flex: 1, fontSize: 13.5, fontWeight: '600', color: onAccentInk(C.accent), letterSpacing: -0.2 },
+      count:       { fontSize: 13, fontWeight: '600', color: onAccentInk(C.accent), ...NUM },
+      subtitle:    { fontSize: 11.5, color: onAccentInk(C.accent), opacity: 0.75, fontWeight: '400' },
+      list:        { backgroundColor: C.card },
       empty:       { fontSize: 13, color: C.ink3, textAlign: 'center', paddingVertical: 18, fontWeight: '500' },
     }),
 
@@ -175,13 +180,14 @@ function makeStyles(C: Palette) {
       body:     { flex: 1, gap: 2, minWidth: 0 },
       titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
       title:    { flex: 1, fontSize: 15, fontWeight: '600', color: C.ink, letterSpacing: -0.2 },
-      lateText: { fontSize: 12, fontWeight: '700', color: DANGER, letterSpacing: 0.2 },
+      lateText: { fontSize: 12, fontWeight: '600', color: DANGER, letterSpacing: 0.2 },
 
       parallelBadge:     { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: hexA(C.accent, 0.12) },
       parallelBadgeText: { fontSize: 8.5, fontWeight: '800', color: C.accentDeep, letterSpacing: 0.4 },
 
-      meta:       { fontSize: 11.5, color: C.ink3, fontWeight: '500' },
-      metaStrong: { color: C.ink2, fontWeight: '600' },
+      // Hasta adı dışındaki kart bilgileri İNCE (kullanıcı isteği): meta 400, vurgulu 500.
+      meta:       { fontSize: 11.5, color: C.ink3, fontWeight: '400' },
+      metaStrong: { color: C.ink2, fontWeight: '500' },
 
       actionWrap: { flexShrink: 0 },
       pill:           { paddingHorizontal: 14, height: 30, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
@@ -190,7 +196,7 @@ function makeStyles(C: Palette) {
       // "Devam" birincil aksiyon DEĞİL — sayfada 20 kez tekrar ediyor ve dolgulu
       // pill olarak asıl bilgiden (iş tipi, gecikme) dikkat çalıyordu. Sade metin.
       pillGhost:     { paddingHorizontal: 8, height: 28, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
-      pillGhostText: { fontSize: 12.5, fontWeight: '600', letterSpacing: -0.1 },
+      pillGhostText: { fontSize: 12.5, fontWeight: '500', letterSpacing: -0.1 },
     }),
 
     mp: StyleSheet.create({
@@ -302,7 +308,7 @@ function ItemRow({
             )}
           </View>
           {detailLine ? (
-            <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '500', color: C.ink2, marginTop: 1 }}>
+            <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '400', color: C.ink2, marginTop: 1 }}>
               {detailLine}
             </Text>
           ) : null}
@@ -385,7 +391,8 @@ function ColumnView({
 
   return (
     <View style={[col.wrap, { width: colWidth }]}>
-      {/* Kolon başlığı — konteynerin dışında */}
+      <View style={col.table}>
+      {/* Kolon başlığı — tablonun İÇİNDE, navy şerit */}
       <View style={col.headerOuter}>
         <View style={col.headerRow}>
           <View style={[col.dot, { backgroundColor: headerColor }]} />
@@ -398,13 +405,13 @@ function ColumnView({
           ) : null}
           {/* İstasyon boşsa atıl kapasite — sessizce belirt */}
           {!isUnassigned && column.cards.length === 0 ? (
-            <Text style={{ fontSize: 10, fontWeight: '500', color: C.ink3, letterSpacing: 0.6, textTransform: 'uppercase' }}>
+            <Text style={{ fontSize: 10, fontWeight: '500', color: onAccentInk(C.accent), opacity: 0.7, letterSpacing: 0.6, textTransform: 'uppercase' }}>
               Boşta
             </Text>
           ) : null}
           <Text style={col.count}>{column.cards.length}</Text>
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginStart: 18, marginTop: 2, flexWrap: 'wrap' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginStart: 16, flexWrap: 'wrap' }}>
           {workloadLine && !isUnassigned ? <Text style={col.subtitle}>{workloadLine}</Text> : null}
           {column.overdue > 0 ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6, backgroundColor: hexA(DANGER, 0.12) }}>
@@ -445,20 +452,49 @@ function ColumnView({
           ))
         )}
       </View>
+      </View>
     </View>
   );
 }
 
 
+/** Hero'nun sağ üstündeki büyük canlı saat — kutu YOK, çıplak rakam (kullanıcı isteği).
+ *  Altında son eşitleme saati küçük satır olarak durur. */
+function HeroClock({ ink, inkSoft, lastSync }: { ink: string; inkSoft: string; lastSync: Date | null }) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <View style={{ alignItems: 'flex-end' }}>
+      <Text style={{ ...WHITE_HERO_DISPLAY, fontSize: 40, lineHeight: 44, letterSpacing: -1.2, color: ink, ...NUM }}>
+        {now.toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+      </Text>
+      {lastSync ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 }}>
+          <LiveDot color={DS.lab.success} />
+          <Text style={{ fontSize: 11, color: inkSoft, ...NUM }}>
+            {`${autoT('Son eşitleme')} ${lastSync.toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' })}`}
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 // ─── Sağ operasyon şeridi ────────────────────────────────────────────────────
 // Geniş ekranda kolonların sağında kalan boşluğu kullanır. Kendi verisi yok —
 // hepsi `columns`'tan türetilir, ek sorgu açmaz. İleride canlı istasyon
 // izleme / iş yükü dengeleme widget'ları bu şeride eklenebilir.
-function OpsRail({ columns, allColumns, C, width }: {
+function OpsRail({ columns, allColumns, C, width, inHero, hero }: {
   columns: KanbanColumn[];
   /** Filtrelenmemiş kolonlar — kapasite panelin filtresine göre değişmez. */
   allColumns: KanbanColumn[];
-  C: Palette; width: number;
+  C: Palette; width?: number;
+  /** true → hero'nun İÇİNDE üç sütunlu şerit (kullanıcı isteği); renkler hero'dan. */
+  inHero?: boolean;
+  hero?: { ink: string; inkSoft: string; inkFaint: string; tileBg: string; tileBorder: string };
 }) {
   const stalledCards = columns
     .flatMap(c => c.cards.map(card => ({ card, col: c })))
@@ -476,25 +512,64 @@ function OpsRail({ columns, allColumns, C, width }: {
     .sort((a, b) => b.cards.length - a.cards.length).slice(0, 5);
 
   /** Boş bölüm kutu ÇİZMEZ — sıfır bilgi için çerçeve çizmek panoyu şişiriyordu. */
+  const labelColor = inHero ? (hero?.inkSoft ?? C.ink3) : C.ink3;
+  const panelBg    = inHero ? (hero?.tileBg ?? C.card) : C.card;
+  const panelLine  = inHero ? (hero?.tileBorder ?? C.hairline) : C.hairline;
+  /** Hero içinde bölüm = tek satır özet (kullanıcı isteği: hero kompakt kalsın). */
+  const HeroLine = ({ title, count, empty, summary }: {
+    title: string; count: number; empty: string; summary: string;
+  }) => (
+    <View style={{ flexGrow: 1, flexShrink: 1, flexBasis: 220, minWidth: 0, gap: 2 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <Text style={{ fontSize: 10, fontWeight: '500', letterSpacing: 1.1, textTransform: 'uppercase', color: hero?.inkSoft ?? C.ink3 }}>{title}</Text>
+        <Text style={{ fontSize: 12, fontWeight: '700', color: hero?.ink ?? C.ink, ...NUM }}>{count}</Text>
+      </View>
+      <Text numberOfLines={1} style={{ fontSize: 12, color: hero?.inkSoft ?? C.ink3 }}>
+        {count === 0 ? empty : summary}
+      </Text>
+    </View>
+  );
+
   const Section = ({ title, count, empty, children }: {
     title: string; count: number; empty?: string; children?: React.ReactNode;
   }) => (
-    <View style={{ gap: 8 }}>
+    <View style={inHero ? { gap: 8, flexGrow: 1, flexShrink: 1, flexBasis: 220, minWidth: 0 } : { gap: 8 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <Text style={{ fontSize: 10, fontWeight: '500', letterSpacing: 1.2, textTransform: 'uppercase', color: C.ink3, flex: 1 }}>
+        <Text style={{ fontSize: 10, fontWeight: '500', letterSpacing: 1.2, textTransform: 'uppercase', color: labelColor, flex: 1 }}>
           {title}
         </Text>
-        <Text style={{ fontSize: 11, fontWeight: '600', color: C.ink3, ...NUM }}>{count}</Text>
+        <Text style={{ fontSize: 11, fontWeight: '600', color: labelColor, ...NUM }}>{count}</Text>
       </View>
       {count === 0 ? (
-        <Text style={{ fontSize: 12, color: C.ink3, opacity: 0.75, paddingBottom: 2 }}>{empty}</Text>
+        <Text style={{ fontSize: 12, color: labelColor, opacity: 0.75, paddingBottom: 2 }}>{empty}</Text>
       ) : (
-        <View style={{ backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.hairline, overflow: 'hidden' }}>
+        <View style={{ backgroundColor: panelBg, borderRadius: 14, borderWidth: 1, borderColor: panelLine, overflow: 'hidden' }}>
           {children}
         </View>
       )}
     </View>
   );
+
+  if (inHero) {
+    const short = (list: string[], n: number) =>
+      list.slice(0, n).join(' · ') + (list.length > n ? `  +${list.length - n}` : '');
+    return (
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 18, marginTop: 16 }}>
+        <HeroLine
+          title="Aşamada bekleyen" count={stalledCards.length} empty="Bekleyen iş yok"
+          summary={short(stalledCards.map(({ card, col }) => `#${card.order_number} ${col.label}`), 2)}
+        />
+        <HeroLine
+          title="Yoğun istasyonlar" count={busy.length} empty="Aktif istasyon yok"
+          summary={short(busy.map(c => `${c.label} ${c.cards.length}`), 2)}
+        />
+        <HeroLine
+          title="Atıl kapasite" count={idle.length} empty="Tüm istasyonlar dolu"
+          summary={short(idle.map(c => c.label), 3)}
+        />
+      </View>
+    );
+  }
 
   return (
     <View style={{ width, gap: 18 }}>
@@ -507,10 +582,10 @@ function OpsRail({ columns, allColumns, C, width }: {
             paddingHorizontal: 12, paddingVertical: 9,
             borderTopWidth: i === 0 ? 0 : StyleSheet.hairlineWidth, borderTopColor: C.hairline,
           }}>
-            <Text numberOfLines={1} style={{ fontSize: 12.5, fontWeight: '600', color: C.ink }}>
+            <Text numberOfLines={1} style={{ fontSize: 12.5, fontWeight: '600', color: inHero ? (hero?.ink ?? C.ink) : C.ink }}>
               #{card.order_number}
             </Text>
-            <Text numberOfLines={1} style={{ fontSize: 11, color: C.ink3, marginTop: 1 }}>
+            <Text numberOfLines={1} style={{ fontSize: 11, color: labelColor, marginTop: 1 }}>
               {col.label}{card.technician_name ? ` · ${card.technician_name}` : ' · atanmadı'}
             </Text>
           </View>
@@ -525,8 +600,8 @@ function OpsRail({ columns, allColumns, C, width }: {
             borderTopWidth: i === 0 ? 0 : StyleSheet.hairlineWidth, borderTopColor: C.hairline,
           }}>
             <View style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: c.color }} />
-            <Text numberOfLines={1} style={{ flex: 1, fontSize: 12.5, fontWeight: '500', color: C.ink }}>{c.label}</Text>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: C.ink2, ...NUM }}>{c.cards.length}</Text>
+            <Text numberOfLines={1} style={{ flex: 1, fontSize: 12.5, fontWeight: '500', color: inHero ? (hero?.ink ?? C.ink) : C.ink }}>{c.label}</Text>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: inHero ? (hero?.ink ?? C.ink2) : C.ink2, ...NUM }}>{c.cards.length}</Text>
           </View>
         ))}
       </Section>
@@ -538,10 +613,10 @@ function OpsRail({ columns, allColumns, C, width }: {
               <View key={c.key} style={{
                 flexDirection: 'row', alignItems: 'center', gap: 5,
                 paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999,
-                backgroundColor: hexA(C.ink3, 0.08),
+                backgroundColor: inHero ? (hero?.tileBorder ?? hexA(C.ink3, 0.08)) : hexA(C.ink3, 0.08),
               }}>
                 <View style={{ width: 6, height: 6, borderRadius: 999, backgroundColor: c.color }} />
-                <Text style={{ fontSize: 11, fontWeight: '500', color: C.ink2 }}>{c.label}</Text>
+                <Text style={{ fontSize: 11, fontWeight: '500', color: inHero ? (hero?.ink ?? C.ink2) : C.ink2 }}>{c.label}</Text>
               </View>
             ))}
           </View>
@@ -664,6 +739,8 @@ export function ProductionKanbanScreen() {
   const isEmbedded  = useContext(HubContext);
 
   const C  = usePalette();
+  // Beyaz hero içindeki durum kutucuklarının mürekkep/zemin renkleri.
+  const HI = useWhiteHeroInk();
   const sx = useMemo(() => makeStyles(C), [C]);
   const s  = sx.s;
   const A  = C.accent;
@@ -674,6 +751,8 @@ export function ProductionKanbanScreen() {
   const [showEmpty, setShowEmpty] = useState(false);  // işlem olmayan istasyonları göster/gizle
   const [busyId, setBusyId]         = useState<string | null>(null);
   const [checklistFor, setChecklistFor] = useState<{ card: KanbanCard; stage: Stage } | null>(null);
+  // Karta tıklayınca sayfadan ÇIKMA: hızlı bakış penceresi (kullanıcı isteği).
+  const [peekCard, setPeekCard] = useState<KanbanCard | null>(null);
   const [assignFor, setAssignFor]   = useState<KanbanCard | null>(null);
   // Filtreler (#1)
   const [search, setSearch]   = useState('');
@@ -721,7 +800,7 @@ export function ProductionKanbanScreen() {
   }
 
   function onCard(card: KanbanCard) {
-    router.push(`/${panelBase}/order/${card.id}` as any);
+    setPeekCard(card);
   }
 
   async function onContinue(card: KanbanCard) {
@@ -731,7 +810,7 @@ export function ProductionKanbanScreen() {
       const items = STAGE_CHECKLIST[stage] ?? [];
       const required = items.filter(i => i.required !== false);
       if (required.length === 0) {
-        router.push(`/${panelBase}/order/${card.id}` as any);
+        setPeekCard(card);   // panodan ayrılma: detay popup'ta açılır
         return;
       }
       const { data: logs } = await supabase
@@ -742,7 +821,7 @@ export function ProductionKanbanScreen() {
       const checkedKeys = new Set((logs ?? []).filter((r: any) => r.checked).map((r: any) => r.item_key));
       const allDone = required.every(i => checkedKeys.has(i.key));
       if (allDone) {
-        router.push(`/${panelBase}/order/${card.id}` as any);
+        setPeekCard(card);   // panodan ayrılma: detay popup'ta açılır
       } else {
         setChecklistFor({ card, stage });
       }
@@ -784,20 +863,13 @@ export function ProductionKanbanScreen() {
 
   // Kolonlar boşluğa yayılmaz — geniş ekranda da tavan var, sola yaslı akar.
   const visibleCount = filteredColumns.length || 1;
-  // Sağ operasyon şeridi 1440px üstünde açılır; genişliği kolon hesabından düşülür.
-  const RAIL_W    = 280;
-  // Rail, gerçek içerik genişliği yeterince genişse açılır ve 2-pane düzeninde
-  // sayfanın EN SAĞINA pinlenir; board solda kalan alanı doldurur (gerekirse
-  // yatay kaydırır). Eşik gerçek konteyner genişliğine göre (onLayout).
-  const railOn    = isDesktop && width >= 1180;
-  const available = width - PAD * 2 - COL_GAP * Math.max(visibleCount - 1, 0)
-                    - (railOn ? RAIL_W + PAD * 2 : 0);
+  // Operasyon şeridi hero'nun içinde → board tüm genişliği kullanır.
+  const available = width - PAD * 2 - COL_GAP * Math.max(visibleCount - 1, 0);
   const fits      = isDesktop && available / visibleCount >= COL_WIDTH;
   const colWidth  = fits ? Math.min(available / visibleCount, COL_MAX) : COL_WIDTH;
   // Kümenin gerçek genişliği — ortalamak için gerekli. `fits` dalında tüm
   // kolonlar tek satıra sığdığı garanti, dolayısıyla toplam basitçe hesaplanır.
-  const boardWidth = visibleCount * colWidth + COL_GAP * Math.max(visibleCount - 1, 0)
-                     + (railOn ? RAIL_W + COL_GAP : 0);
+  const boardWidth = visibleCount * colWidth + COL_GAP * Math.max(visibleCount - 1, 0);
 
   const renderColumns = () => filteredColumns.map(c => (
     <ColumnView
@@ -842,43 +914,54 @@ export function ProductionKanbanScreen() {
       edges={isEmbedded ? ([] as any) : ['top']}
       onLayout={(e) => { const w = e.nativeEvent.layout.width; if (w > 0 && Math.abs(w - measuredW) > 1) setMeasuredW(w); }}
     >
-      {/* ── Tek kontrol çubuğu: durum + arama + filtre + yenile ── */}
+      {/* ── BEYAZ HERO — panonun özeti. Durum sayıları hero'nun İÇİNDE ve hâlâ
+          KONTROL: Geciken / Acil / Boş istasyon'a dokununca ilgili filtre açılır
+          (eskiden kontrol çubuğundaydı; yetenek aynen taşındı). ── */}
+      {!loading && !error && (
+        <View style={{ paddingHorizontal: PAD, paddingTop: PAD }}>
+          <WhiteHero
+            kicker="Canlı Üretim Panosu"
+            title={<>{totalCards} <Text style={{ color: HI.accentInk }}>{autoT('iş üretimde')}</Text></>}
+            description={`${activeCount} ${autoT('aktif aşama')} · ${columns.filter(c => !c.isUnassigned).length} ${autoT('istasyon')}`}
+            cta={lastSync ? (
+              <HeroClock ink={HI.ink} inkSoft={HI.inkSoft} lastSync={lastSync} />
+            ) : undefined}
+          >
+            {/* Kompakt sayı çipleri — değer + etiket TEK satırda (hero sade kalsın). */}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 14 }}>
+              {stats.map(st => {
+                const body = (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: st.color ?? HI.ink, ...NUM }}>{st.value}</Text>
+                    <Text style={{ fontSize: 11.5, color: st.active ? (st.color ?? A) : HI.inkSoft }}>{autoT(st.label)}</Text>
+                  </View>
+                );
+                const tile: any = {
+                  paddingVertical: 6, paddingHorizontal: 11, borderRadius: 999,
+                  backgroundColor: st.active ? hexA(st.color ?? A, 0.12) : HI.tileBg,
+                  borderWidth: 1, borderColor: st.active ? hexA(st.color ?? A, 0.45) : HI.tileBorder,
+                };
+                return st.onPress ? (
+                  <TouchableOpacity key={st.key} onPress={st.onPress} activeOpacity={0.6}
+                    style={[tile, Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null]}>
+                    {body}
+                  </TouchableOpacity>
+                ) : (
+                  <View key={st.key} style={tile}>{body}</View>
+                );
+              })}
+            </View>
+            {/* Operasyon şeridi hero'nun İÇİNDE (kullanıcı isteği) — sağdaki ayrı sütun kaldırıldı. */}
+            <OpsRail columns={filteredColumns} allColumns={columns} C={C} inHero hero={HI} />
+          </WhiteHero>
+        </View>
+      )}
+
+      {/* ── Kontrol çubuğu: arama + filtre temizle + yenile (sayılar hero'da) ── */}
       {!loading && !error && (
         <View style={s.bar}>
-          <View style={s.statWrap}>
-            {stats.map(st => {
-              const body = (
-                <>
-                  <Text style={[s.statValue, st.color ? { color: st.color } : null]}>{st.value}</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <Text style={[s.statLabel, st.active ? { color: st.color ?? A } : null]}>{st.label}</Text>
-                    {st.active ? <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: st.color ?? A }} /> : null}
-                  </View>
-                </>
-              );
-              return st.onPress ? (
-                <TouchableOpacity key={st.key} onPress={st.onPress} activeOpacity={0.6}
-                  style={[s.statBlock, s.statBlockTap, st.active && { backgroundColor: hexA(st.color ?? A, 0.10) }]}>
-                  {body}
-                </TouchableOpacity>
-              ) : (
-                <View key={st.key} style={s.statBlock}>{body}</View>
-              );
-            })}
-          </View>
-
           <View style={s.barTools}>
-            {/* Son eşitleme METRİK değil DURUM — iş sayılarıyla aynı ağırlıkta
-                display rakamı olarak durunca "6. bir KPI" gibi okunuyordu.
-                Yenile düğmesinin yanı doğru yeri: neyi tazelediğini söylüyor. */}
-            {lastSync && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingEnd: 2 }}>
-                <LiveDot color={DS.lab.success} />
-                <Text style={{ fontSize: 11.5, fontWeight: '500', color: C.ink3, ...NUM }}>
-                  {lastSync.toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' })}
-                </Text>
-              </View>
-            )}
+            {/* Son eşitleme saati hero'nun sağ üstünde (kullanıcı isteği). */}
             <View style={s.searchBox}>
               <AppIcon name="search" size={14} color={C.ink3} />
               <TextInput
@@ -915,34 +998,6 @@ export function ProductionKanbanScreen() {
             <Text style={s.retryText}>Tekrar Dene</Text>
           </TouchableOpacity>
         </View>
-      ) : railOn ? (
-        // Geniş içerik (≥1180): kolonlar YATAY kaydırılır, sağ operasyon rail'i
-        // sabit genişlikte EN SAĞA pinlenir → kolonlar rail'le çakışmaz/kırpılmaz.
-        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'stretch' }}>
-          {/* minWidth:0 KRİTİK — web'de flex çocuğu, taşan yatay-scroll içeriği
-              yüzünden min-content'e kadar küçülmüyordu; board sabit kalıp kolonlar
-              rail'in arkasına taşıyordu. minWidth:0 → board kalan alanı alır,
-              içerik kendi içinde kaydırılır; rail en sağda sabit kalır. */}
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={Platform.OS === 'web'}
-              style={{ flex: 1 }}
-              contentContainerStyle={{ padding: PAD, gap: COL_GAP, flexDirection: 'row', alignItems: 'flex-start' }}
-              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={A} />}
-            >
-              {renderColumns()}
-            </ScrollView>
-          </View>
-          <ScrollView
-            // Genişlik = rail (280) + iki yanda 16px → OpsRail padding'i taşmadan
-            // oturur ve SAĞDA 16px sayfa boşluğu (PAGE_PADDING) korunur.
-            style={{ width: RAIL_W + PAD * 2, flexGrow: 0, flexShrink: 0, borderStartWidth: 1, borderStartColor: C.hairline }}
-            contentContainerStyle={{ paddingHorizontal: PAD, paddingVertical: PAD }}
-          >
-            <OpsRail columns={filteredColumns} allColumns={columns} C={C} width={RAIL_W} />
-          </ScrollView>
-        </View>
       ) : fits ? (
         // Rail yok, tüm kolonlar sığıyor → tek satır, ortalanmış (wrap yok).
         <ScrollView
@@ -969,6 +1024,52 @@ export function ProductionKanbanScreen() {
           {renderColumns()}
         </ScrollView>
       )}
+
+      {/* Sipariş detayı POPUP — panodan ayrılmadan (kullanıcı isteği).
+          Fatura ekranındaki kalıbın aynısı: OrderDetailScreenV2 `embedded`. */}
+      <Modal visible={!!peekCard} transparent animationType="fade" onRequestClose={() => setPeekCard(null)}>
+        <Pressable
+          onPress={() => setPeekCard(null)}
+          style={{
+            flex: 1, backgroundColor: 'rgba(15,23,42,0.38)', alignItems: 'center', justifyContent: 'center',
+            padding: isDesktop ? 16 : 0,
+            // Popup açıkken pano arkada bulanıklaşır (kullanıcı isteği).
+            ...(Platform.OS === 'web'
+              ? ({ backdropFilter: 'blur(10px) saturate(120%)', WebkitBackdropFilter: 'blur(10px) saturate(120%)' } as any)
+              : null),
+          }}
+        >
+          <Pressable
+            onPress={(e) => (e as any).stopPropagation?.()}
+            style={{
+              width: '100%', maxWidth: 1240, height: isDesktop ? '94%' : '100%',
+              borderRadius: isDesktop ? 24 : 0, overflow: 'hidden', backgroundColor: C.bg, position: 'relative',
+              ...(Platform.OS === 'web' ? { boxShadow: '0 24px 60px rgba(15,23,42,0.28)' } as any : {}),
+            }}
+          >
+            {peekCard && (
+              <OrderDetailScreenV2
+                idOverride={peekCard.id}
+                embedded
+                onRequestClose={() => setPeekCard(null)}
+                onOpenRelated={(id: string) => setPeekCard(prev => (prev ? { ...prev, id } : prev))}
+              />
+            )}
+            <Pressable
+              onPress={() => setPeekCard(null)}
+              accessibilityLabel="Sipariş detayını kapat"
+              style={{
+                position: 'absolute', top: 12, end: 12, zIndex: 50,
+                width: 38, height: 38, borderRadius: 19, backgroundColor: C.card,
+                alignItems: 'center', justifyContent: 'center',
+                ...(Platform.OS === 'web' ? { cursor: 'pointer', boxShadow: '0 4px 14px rgba(15,23,42,0.2)' } as any : {}),
+              }}
+            >
+              <AppIcon name="x" size={18} color={C.ink} />
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {checklistFor && profile && (
         <StageChecklistModal

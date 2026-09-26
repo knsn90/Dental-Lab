@@ -10,6 +10,7 @@ export async function createClinic(data: {
   address?: string;
   phone?: string;
   email?: string | null;
+  whatsapp_phone?: string | null;
   contact_person?: string;
   notes?: string | null;
   is_active?: boolean;
@@ -28,6 +29,7 @@ export async function updateClinic(
     address: string;
     phone: string;
     email: string | null;
+    whatsapp_phone: string | null;
     contact_person: string;
     notes: string | null;
     is_active: boolean;

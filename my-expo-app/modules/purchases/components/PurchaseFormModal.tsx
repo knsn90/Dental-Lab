@@ -25,6 +25,7 @@ import { supabase } from '../../../core/api/supabase';
 import { listSuppliers, createSupplier, type Supplier } from '../../suppliers/api';
 import { createPurchaseInvoice, type PurchasePaymentMethod, type PurchaseLineInput } from '../api';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
+import { ensureAiConsent } from '../../../core/ai/aiConsent';
 
 interface Line {
   id: string;                  // local row id (uuid)
@@ -132,6 +133,8 @@ export function PurchaseFormModal({ visible, accentColor = '#0A0A0A', onClose, o
 
   // ── PDF Yükle + OCR ──
   const handleParseInvoice = async (file: File) => {
+    // App Store 5.1.2(i): kişisel veri Claude'a gitmeden ÖNCE açık izin.
+    if (!(await ensureAiConsent())) return;
     setError(''); setParseInfo(null); setParsing(true);
     try {
       const buf = await file.arrayBuffer();

@@ -8,7 +8,7 @@
  *
  * Burası ham jsonb'yi OKUNUR gerçeklere çevirir:
  *   • bilinen anahtarlar Türkçe etiketle ve biçimlenmiş değerle,
- *   • durum kodları (`teslimata_hazir`) insan diline (`Kuryeye Teslim Edildi`),
+ *   • durum kodları (`teslimata_hazir`) insan diline (`Teslime Hazır`),
  *   • miktar + birim, eski → yeni gibi çiftler TEK satırda,
  *   • sipariş düzenlemesindeki `fields` anlık görüntüsü kendi bloğunda,
  *   • eşlenmemiş her anahtar yine de listelenir → hiçbir veri gizlenmez.

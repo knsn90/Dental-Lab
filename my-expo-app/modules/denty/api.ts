@@ -16,6 +16,7 @@ import type {
   BrainResponse, ClaudeMessage, ContentBlock, ToolKit, DentyOutcome, PendingAction,
 } from './types';
 import { WRITE_TOOLS, describeAction } from './tools';
+import { ensureAiConsent } from '../../core/ai/aiConsent';
 
 // Faz 0+1/2: kanıtlanmış model. Maliyet optimizasyonu (Haiku) sonraki fazda.
 const DENTY_MODEL = 'claude-sonnet-4-5';
@@ -26,6 +27,8 @@ async function callBrain(args: {
   messages: ClaudeMessage[];
   tools?: ToolKit['defs'];
 }): Promise<BrainResponse> {
+  // App Store 5.1.2(i): kişisel veri Claude'a gitmeden ÖNCE açık izin.
+  if (!(await ensureAiConsent())) throw new Error('Yapay zekâ izni verilmedi');
   const { data, error } = await supabase.functions.invoke('denty-brain', {
     body: {
       system: args.system,

@@ -17,9 +17,11 @@ import {
 } from '../../../core/ui/icons';
 
 import { DS } from '../../../core/theme/dsTokens';
-import { HeroGlow, useHeroSurface } from '../../../core/ui/HeroGlow';
+import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
 import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 import { HubContext } from '../../../core/ui/HubContext';
+import { SlideTabBar } from '../../../core/ui/SlideTabBar';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { useStockUI } from '../../stock/stockTheme';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { useAuthStore } from '../../../core/store/authStore';
@@ -54,7 +56,7 @@ const TAB_DEFS: { key: TabKey; label: string; statuses: RequestStatus[]; icon: a
 export function MaterialRequestsScreen() {
   const U = useStockUI();
   const TH = usePanelTheme();
-  const heroBg = useHeroSurface(TH.primary);
+  const heroInk = useWhiteHeroInk(TH.primary);
   const { profile } = useAuthStore();
   /* §1b — sayfa kenarı HER ZAMAN 16 (PAGE_PADDING). Bu ekran hem Stok hub'ında
      hem Onaylar sekmesinde render ediliyor; hub kabı kenarı zaten verdiği için
@@ -97,66 +99,37 @@ export function MaterialRequestsScreen() {
   return (
     <ScrollView
       style={{ flex: 1 }}
-      contentContainerStyle={{ paddingHorizontal: edge, paddingTop: PAGE_PADDING, paddingBottom: 48, gap: 16 }}
+      contentContainerStyle={{ paddingHorizontal: edge, paddingTop: isEmbedded ? 0 : PAGE_PADDING, paddingBottom: 48, gap: 16 }}
       showsVerticalScrollIndicator={false}
     >
-      {/* F2 Hero — full-bleed accent + dekoratif daireler + alt mini-stat şeridi */}
-      <View style={{
-        borderRadius: 28, padding: 28, ...heroBg,
-        position: 'relative', overflow: 'hidden',
-      }}>
-        {/* Dekoratif daireler */}
-        <HeroGlow size={220} opacity={0.15} delay={0} style={{ top: -40, end: -40 }} />
-        {/* İkinci küre de HeroGlow — `U.chipNeutral` accent zeminde nötr/soluk bir
-            leke bırakıyordu; hero dili beyaz ışık (koyu temada blur ile yayılır). */}
-        <HeroGlow size={180} opacity={0.10} delay={1400} style={{ bottom: -60, start: -20 }} />
-
-        {/* Üst satır — kicker + title + ikon kapsülü */}
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
-          <View style={{ flex: 1, minWidth: 260 }}>
-            <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.82)' }}>
-              {isAdmin ? 'Admin Onay Kuyruğu' : 'Mesul Müdür Onay Kuyruğu'}
-            </Text>
-            <Text style={{ ...DISPLAY, fontSize: 40, color: '#FFF', letterSpacing: -1.2, lineHeight: 44, marginTop: 8 }}>
-              Malzeme Talepleri
-            </Text>
-            <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.82)', marginTop: 10, maxWidth: 520, lineHeight: 19 }}>
-              {isAdmin
-                ? 'Mesul müdür tarafından yönlendirilen sarf/alet taleplerini onayla, sipariş ver ve teslim al.'
-                : 'Teknisyen tarafından açılan sarf/alet talebini incele, admin\'e yönlendir veya reddet.'}
-            </Text>
-          </View>
-          {/* Yenile + ikon kapsülü TEK satırda. Eskiden ikon üstte, Yenile
-              altında ayrı bir satırdaydı; hero boşuna ~50px uzuyordu.
-              Pressable'a OBJECT style veriliyor — fonksiyon-stili native'de
-              flexDirection:'row'u düşürüp ikonu etiketin üstüne alıyor
-              (bkz. modules/settings/sections/ProfileSection.tsx). */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <Pressable
-              onPress={load}
-              style={{
-                flexDirection: 'row', alignItems: 'center', gap: 6,
-                paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999,
-                backgroundColor: 'rgba(255,255,255,0.16)',
-                borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)',
-                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
-              }}
-            >
-              <RefreshCcw size={13} color="#FFF" strokeWidth={2} />
-              <Text style={{ fontSize: 13, fontWeight: '500', color: '#FFF' }}>Yenile</Text>
-            </Pressable>
-            <View style={{
-              width: 56, height: 56, borderRadius: 16,
-              backgroundColor: 'rgba(255,255,255,0.20)',
-              borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)',
-              alignItems: 'center', justifyContent: 'center',
-            }}>
-              <Wrench size={26} color="#FFF" strokeWidth={1.7} />
-            </View>
-          </View>
-        </View>
-
-        {/* Alt mini-stat şeridi — 4 tile */}
+      {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ─────────────────
+          Prim Motoru hiyerarşisi: kicker (onay kuyruğu) → 44px başlık →
+          açıklama cümlesi → sağ üstte Yenile → altta tıklanabilir sayaç
+          kutucukları. Dekoratif küreler ve sabit beyaz metinler kalktı. */}
+      <WhiteHero
+        kicker={isAdmin ? 'Admin Onay Kuyruğu' : 'Mesul Müdür Onay Kuyruğu'}
+        accent={TH.primary}
+        title="Malzeme Talepleri"
+        description={isAdmin
+          ? 'Mesul müdür tarafından yönlendirilen sarf/alet taleplerini onayla, sipariş ver ve teslim al.'
+          : 'Teknisyen tarafından açılan sarf/alet talebini incele, admin\'e yönlendir veya reddet.'}
+        cta={
+          <Pressable
+            onPress={load}
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 6,
+              paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999,
+              backgroundColor: heroInk.tileBg,
+              borderWidth: 1, borderColor: heroInk.tileBorder,
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
+            }}
+          >
+            <RefreshCcw size={13} color={heroInk.inkSoft} strokeWidth={2} />
+            <Text style={{ fontSize: 13, fontWeight: '500', color: heroInk.ink }}>Yenile</Text>
+          </Pressable>
+        }
+      >
+        {/* Sayaç kutucukları — tıklanınca ilgili sekmeye gider. */}
         {counts && (
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 20, flexWrap: 'wrap' }}>
             <HeroMiniStat icon={Hourglass}    label="Müdür Onay."  value={counts.submitted}                  onPress={() => setTab('pending_manager')} alert={counts.submitted > 0 && isManager} />
@@ -165,37 +138,23 @@ export function MaterialRequestsScreen() {
             <HeroMiniStat icon={PackageCheck} label="Teslim"       value={counts.received}                   onPress={() => setTab('received')} />
           </View>
         )}
-      </View>
+      </WhiteHero>
 
-      {/* Tab bar — segmented */}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, padding: 4, backgroundColor: U.ink[50], borderRadius: 12, borderWidth: 1, borderColor: U.ink[200] }}>
-        {TAB_DEFS.map(t => {
-          const active = tab === t.key;
-          const Icon = t.icon;
-          return (
-            <Pressable
-              key={t.key}
-              onPress={() => setTab(t.key)}
-              style={{
-                flexDirection: 'row', alignItems: 'center', gap: 6,
-                paddingHorizontal: 11, paddingVertical: 7, borderRadius: 8,
-                backgroundColor: active ? U.segActive : 'transparent',
-                ...(active && Platform.OS === 'web' ? { boxShadow: '0 1px 3px rgba(0,0,0,0.08)' } as any : null),
-              }}
-            >
-              <Icon size={12} color={active ? t.accent : U.ink[500]} strokeWidth={2} />
-              <Text style={{ fontSize: 11.5, fontWeight: active ? '700' : '500', color: active ? U.ink[900] : U.ink[500] }}>
-                {t.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      {/* Tab bar — uygulama geneli kayan sekme çubuğu (SlideTabBar). */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 0 }} contentContainerStyle={{ alignItems: 'center' }}>
+        <SlideTabBar
+          items={TAB_DEFS.map(t => ({ key: t.key, label: autoT(t.label) }))}
+          activeKey={tab}
+          onChange={k => setTab(k as TabKey)}
+          accentColor={TH.primary}
+          size="sm"
+        />
+      </ScrollView>
 
       {/* Search */}
       <View style={{
         flexDirection: 'row', alignItems: 'center', gap: 8,
-        backgroundColor: U.surface, borderWidth: 1, borderColor: U.ink[200], borderRadius: 12,
+        backgroundColor: U.surface, borderWidth: 1, borderColor: U.ink[200], borderRadius: 9999,
         paddingHorizontal: 12, paddingVertical: 7,
       }}>
         <Search size={13} color={U.ink[400]} />
@@ -263,6 +222,7 @@ function HeroMiniStat({
   icon: Icon, label, value, onPress, alert,
 }: { icon: any; label: string; value: number | string; onPress?: () => void; alert?: boolean }) {
   const [hovered, setHovered] = useState(false);
+  const heroInk = useWhiteHeroInk();
   const Wrapper: any = onPress ? Pressable : View;
   /* OBJECT style — fonksiyon-stili iki yönden riskli: (1) native'de satır
      yerleşimini düşürüyor, (2) `Wrapper` View'a düştüğünde View bir fonksiyonu
@@ -272,8 +232,8 @@ function HeroMiniStat({
     flex: 1, minWidth: 110,
     paddingVertical: 12, paddingHorizontal: 12,
     borderRadius: 12,
-    backgroundColor: alert ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.16)',
-    borderWidth: 1, borderColor: alert ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.20)',
+    backgroundColor: heroInk.tileBg,
+    borderWidth: 1, borderColor: alert ? heroInk.accentInk : heroInk.tileBorder,
     gap: 4,
     ...(Platform.OS === 'web' ? {
       cursor: onPress ? 'pointer' : 'default',
@@ -290,12 +250,12 @@ function HeroMiniStat({
       style={tileStyle}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <Icon size={12} color="rgba(255,255,255,0.92)" strokeWidth={2} />
-        <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: 'rgba(255,255,255,0.92)' }} numberOfLines={1}>
+        <Icon size={12} color={heroInk.inkSoft} strokeWidth={2} />
+        <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: heroInk.inkSoft }} numberOfLines={1}>
           {label}
         </Text>
       </View>
-      <Text style={{ ...DISPLAY, fontSize: 22, color: '#FFF', letterSpacing: -0.5, lineHeight: 26 }}>
+      <Text style={{ ...DISPLAY, fontSize: 22, color: heroInk.ink, letterSpacing: -0.5, lineHeight: 26 }}>
         {value}
       </Text>
     </Wrapper>

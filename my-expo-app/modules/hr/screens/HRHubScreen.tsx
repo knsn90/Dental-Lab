@@ -10,18 +10,20 @@
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, ScrollView, Pressable,
+  View, Text, ScrollView, Pressable, Modal,
   useWindowDimensions, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HubContext } from '../../../core/ui/HubContext';
+import { MobilePageTitle } from '../../../core/ui/mobile/MobilePageTitle';
+import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 import { DS } from '../../../core/theme/dsTokens';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import {
-  Users, CalendarDays, Trophy, FolderOpen, Plus, Cpu, UserCog,
+  Users, CalendarDays, Trophy, FolderOpen, Plus, Cpu, UserCog, Menu, X,
 } from '../../../core/ui/icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
@@ -77,6 +79,8 @@ export function HRHubScreen() {
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const activeTab = TABS.find(t => t.key === tab)!;
+  // Mobil sekme şeridinin sonundaki hamburger — tüm sekmeler tek listede.
+  const [tabMenuOpen, setTabMenuOpen] = useState(false);
   const accentColor = theme.primary;
 
   /** Sekme aksanı: nötr koyu lacivert (#0F172A) koyu zeminde kaybolur → ink'e çevir. */
@@ -100,16 +104,24 @@ export function HRHubScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: T.bg }}>
 
-      {/* ── Mobile: Horizontal pill bar ─────────────────────────── */}
-      {!isDesktop && (
-        <View style={{ paddingHorizontal: 12, paddingTop: Math.max(insets.top, 8) + 72, paddingBottom: 8 }}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 6, alignItems: 'center' }}
-          >
-            <View style={{ flexDirection: 'row', gap: 3, padding: 3, backgroundColor: T.cardSoft, borderRadius: 9999 }}>
-              {TABS.map(t => {
+      {/* Mobilde sayfa başlığı — masaüstündeki başlık çubuğunun karşılığı;
+          mobilde hiç görünmüyordu (kullanıcı bildirdi). */}
+      <MobilePageTitle title={activeTab.label} subtitle={activeTab.hint} />
+
+      {/* ── Sekme şeridi — mobil (Finans hub kalıbı: tam genişlik hap + hamburger) ── */}
+      {!isDesktop && (() => {
+        // Ekrana sığsın: üç ana bölüm inline, gerisi menüde. Açık sekme
+        // inline listede değilse ona da yer açılır (nerede olduğun görünsün).
+        const PRIMARY_KEYS = ['employees', 'hr', 'performance'];
+        const PRIMARY_INLINE = PRIMARY_KEYS
+          .map(k => TABS.find(t => t.key === k))
+          .filter((t): t is typeof TABS[number] => !!t);
+        const activeInPrimary = PRIMARY_INLINE.some(t => t.key === tab);
+        const inlineTabs = activeInPrimary ? PRIMARY_INLINE : [...PRIMARY_INLINE, activeTab];
+        return (
+          <View style={{ paddingHorizontal: PAGE_PADDING, paddingTop: 4, paddingBottom: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 3, padding: 3, backgroundColor: T.cardSoft, borderRadius: 9999, alignItems: 'center' }}>
+              {inlineTabs.map(t => {
                 const active = t.key === tab;
                 const TabIcon = t.icon;
                 return (
@@ -117,36 +129,119 @@ export function HRHubScreen() {
                     key={t.key}
                     onPress={() => setTab(t.key)}
                     style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 5,
-                      // Seçili pill daha geniş dursun (uygulama geneli kural).
-                      paddingHorizontal: active ? 18 : 12, paddingVertical: 8, borderRadius: 9999,
+                      // Seçili sekme daha çok pay alır (uygulama geneli pill kuralı).
+                      flex: active ? 1.55 : 1,
+                      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+                      paddingHorizontal: active ? 12 : 8, paddingVertical: 8, borderRadius: 9999,
                       backgroundColor: active ? theme.primary : 'transparent',
                     }}
                   >
-                    <TabIcon
-                      size={12}
-                      strokeWidth={active ? 2.2 : 1.8}
-                      color={active ? '#FFFFFF' : theme.primary}
-                    />
-                    <Text style={{ fontSize: 11, fontWeight: active ? '700' : '600', color: active ? '#FFFFFF' : T.ink3 }}>
+                    <TabIcon size={12} strokeWidth={active ? 2.2 : 1.8} color={active ? '#FFFFFF' : theme.primary} />
+                    <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: active ? '700' : '600', color: active ? '#FFFFFF' : T.ink3 }}>
                       {t.label}
                     </Text>
                   </Pressable>
                 );
               })}
+
+              <View style={{ width: 1, height: 16, backgroundColor: T.hairline, marginHorizontal: 2 }} />
+
+              <Pressable
+                onPress={() => setTabMenuOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Tüm menü"
+                style={{ alignItems: 'center', justifyContent: 'center', width: 36, height: 30, borderRadius: 9999 }}
+              >
+                <Menu size={16} strokeWidth={2} color={theme.primary} />
+              </Pressable>
             </View>
-          </ScrollView>
+          </View>
+        );
+      })()}
+
+      {/* ── Hamburger menü — sağ kenardan kayan drawer (Finans ile aynı) ── */}
+      <Modal visible={tabMenuOpen} transparent animationType="fade" onRequestClose={() => setTabMenuOpen(false)}>
+        <View style={{ flex: 1, flexDirection: 'row' }}>
+          <Pressable
+            onPress={() => setTabMenuOpen(false)}
+            style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.45)' }}
+            accessibilityLabel="Menüyü kapat"
+          />
+          <View
+            style={{
+              width: Math.min(320, width * 0.85),
+              height: '100%',
+              backgroundColor: T.card,
+              paddingTop: Math.max(insets.top, 12) + 8,
+              paddingBottom: Math.max(insets.bottom, 16) + 12,
+              ...(Platform.OS === 'web' ? ({ boxShadow: '-4px 0 24px rgba(15,23,42,0.18)' } as any) : {}),
+            }}
+          >
+            <View style={{ paddingHorizontal: 20, paddingBottom: 14, flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: T.ink3, marginBottom: 2 }}>
+                  Ekip
+                </Text>
+                <Text style={{ fontSize: 22, letterSpacing: -0.4, color: T.ink, fontWeight: '300' }}>
+                  Tüm menü
+                </Text>
+              </View>
+              <Pressable onPress={() => setTabMenuOpen(false)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: T.hairline, alignItems: 'center', justifyContent: 'center' }}>
+                <X size={16} color={T.ink2} strokeWidth={2} />
+              </Pressable>
+            </View>
+
+            <ScrollView contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 8 }}>
+              {TABS.map(t => {
+                const active = t.key === tab;
+                const TabIcon = t.icon;
+                return (
+                  <Pressable
+                    key={t.key}
+                    onPress={() => { setTab(t.key); setTabMenuOpen(false); }}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 12,
+                      paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12,
+                      backgroundColor: active ? `${theme.primary}14` : 'transparent',
+                    }}
+                  >
+                    <View style={{
+                      width: 32, height: 32, borderRadius: 10,
+                      backgroundColor: active ? theme.primary : `${theme.primary}14`,
+                      alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <TabIcon size={15} strokeWidth={active ? 2.2 : 1.8} color={active ? '#FFFFFF' : theme.primary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text numberOfLines={1} style={{ fontSize: 13.5, fontWeight: '600', color: active ? theme.primary : T.ink }}>{t.label}</Text>
+                      <Text numberOfLines={1} style={{ fontSize: 10.5, color: T.ink3, marginTop: 1 }}>{t.hint}</Text>
+                    </View>
+                    {active && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: theme.primary }} />}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
         </View>
-      )}
+      </Modal>
 
       {/* ── Layout ──────────────────────────────────────────────── */}
       {isDesktop ? (
         <View style={{ flex: 1, flexDirection: 'row' }}>
 
           {/* ── Desktop Sidebar ─────────────────────────────────── */}
-          <View style={{ width: 220, paddingTop: 24, paddingBottom: 16 }}>
+          {/* Sidebar sayfa ile birlikte kaymaz — ana kenar çubuğu gibi yerinde durur. */}
+          <View
+            style={{
+              width: 220, paddingTop: 24, paddingBottom: 16,
+              ...(Platform.OS === 'web'
+                ? { position: 'sticky', top: 0, alignSelf: 'flex-start', maxHeight: '100vh' } as any
+                : null),
+            }}
+          >
             <ScrollView
               showsVerticalScrollIndicator={false}
+              style={{ flexShrink: 1, minHeight: 0 }}
               contentContainerStyle={{ gap: 2, paddingHorizontal: 10 }}
             >
               {TABS.map(t => {

@@ -10,7 +10,7 @@
  */
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { weekdayOffset } from '../../../core/i18n';
-import { HeroGlow, useHeroSurface } from '../../../core/ui/HeroGlow';
+import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
 import { router, useSegments } from 'expo-router';
 import { RemakeQualityCard } from '../components/RemakeQualityCard';
 import {
@@ -30,7 +30,7 @@ import { DS }           from '../../../core/theme/dsTokens';
 import { useInkUI, type InkUI } from '../../../core/theme/inkScale';
 import { MobilePageTitle } from '../../../core/ui/mobile/MobilePageTitle';
 import { HubContext } from '../../../core/ui/HubContext';
-import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { baseSymbol, useBaseCurrency } from '../../../core/money/baseCurrency';
 
@@ -142,7 +142,8 @@ export function PerformanceScreen() {
   const isHub       = useHubContext();
   const panelTheme  = usePanelTheme();
   const accentColor = panelTheme.primary;
-  const heroBg = useHeroSurface(accentColor);
+  const heroInk = useWhiteHeroInk(accentColor);
+  const headInk = onAccentInk(accentColor);
   useBaseCurrency();
 
   const [range, setRange]       = useState<Range>('thisMonth');
@@ -308,7 +309,8 @@ export function PerformanceScreen() {
   return (
     <ScrollView
       style={{ flex: 1 }}
-      contentContainerStyle={{ paddingHorizontal: isHub ? 0 : 20, paddingTop: 4, paddingBottom: 40, gap: 14 }}
+      // Hub içinde başlık→içerik 16px: hub 8 + kaydırma 8 verir, burada ek yok.
+      contentContainerStyle={{ paddingHorizontal: isHub ? 0 : 20, paddingTop: isHub ? 0 : 4, paddingBottom: 40, gap: 14 }}
       showsVerticalScrollIndicator={false}
     >
       <MobilePageTitle title="Performans" subtitle="Teknisyen ve üretim metrikleri" />
@@ -318,36 +320,22 @@ export function PerformanceScreen() {
         accentColor={accentColor}
         onOpenOrder={(oid) => router.push(`/${panelBase}/order/${oid}` as any)}
       />
-      {/* ── F1 HeroCard — Performans özeti ── */}
+      {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ─────────────────
+          Prim Motoru hiyerarşisi: kicker → 44px toplam kar katkısı →
+          bağlam cümlesi → sağda 40px stat'lar → altta kutucuk şeridi. */}
       {totals && !loading && (
-        <View style={{
-          borderRadius: 20, overflow: 'hidden',
-          ...heroBg, padding: 18, position: 'relative',
-        }}>
-          <HeroGlow size={160} opacity={0.18} delay={0} style={{ top: -40, end: -40 }} />
-          <HeroGlow size={140} opacity={0.12} delay={1400} style={{ bottom: -50, start: -20 }} />
-
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.78)', marginBottom: 8 }}>
-                Toplam Kar Katkısı
-              </Text>
-              <Text
-                style={{ ...DISPLAY, fontWeight: '300', fontSize: 32, color: '#FFFFFF', letterSpacing: -1, lineHeight: 38 }}
-                numberOfLines={1}
-              >
-                {fmtCur(totals.totalProfit)}
-              </Text>
-              <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.72)', marginTop: 4 }}>
-                {totals.techCount} teknisyen · {fmt1(totals.totalLabor)} sa toplam süre
-              </Text>
-            </View>
-            <View style={{ width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.18)' }}>
-              <DollarSign size={20} color="#FFFFFF" strokeWidth={1.6} />
-            </View>
-          </View>
-
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 16 }}>
+        <WhiteHero
+          kicker="Performans"
+          accent={accentColor}
+          title={<>Kar katkısı <Text style={{ color: heroInk.accentInk }}>{fmtCur(totals.totalProfit)}</Text></>}
+          description={`${totals.techCount} teknisyen · ${fmt1(totals.totalLabor)} sa toplam süre`}
+          stats={[
+            { value: String(totals.techCount), label: 'Teknisyen' },
+            { value: `${fmt1(totals.totalLabor)} sa`, label: 'Süre' },
+            ...(totals.avgEfficiency !== null ? [{ value: `%${fmt1(totals.avgEfficiency)}`, label: 'Verim' }] : []),
+          ]}
+        >
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
             {([
               {
                 label: 'Fire',
@@ -367,15 +355,18 @@ export function PerformanceScreen() {
             ] as const).map(stat => {
               const Icon = stat.icon;
               return (
-                <View key={stat.label} style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.16)' }}>
+                <View key={stat.label} style={{
+                  flex: 1, minWidth: 110, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 14,
+                  backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder,
+                }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 }}>
-                    <Icon size={11} color="rgba(255,255,255,0.85)" strokeWidth={2} />
-                    <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>
+                    <Icon size={11} color={heroInk.inkSoft} strokeWidth={2} />
+                    <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: heroInk.inkSoft }}>
                       {stat.label}
                     </Text>
                   </View>
                   <Text
-                    style={{ ...DISPLAY, fontWeight: '300', fontSize: 18, color: '#FFFFFF', letterSpacing: -0.4, lineHeight: 22 }}
+                    style={{ ...DISPLAY, fontWeight: '300', fontSize: 18, color: heroInk.ink, letterSpacing: -0.4, lineHeight: 22 }}
                     numberOfLines={1}
                   >
                     {stat.value}
@@ -384,7 +375,7 @@ export function PerformanceScreen() {
               );
             })}
           </View>
-        </View>
+        </WhiteHero>
       )}
 
       {/* ── Filters — dönem pills + materyal dropdown ─────────── */}
@@ -497,21 +488,22 @@ export function PerformanceScreen() {
 
           {/* Desktop table header */}
           {isWide && (
+            /* Başlık şeridi düz panel accent'i — diğer tablolarla aynı dil.
+               Sıralama okları da accent üstü mürekkebi alır. */
             <View style={{
               flexDirection: 'row', alignItems: 'center',
               paddingHorizontal: 20, paddingVertical: 10,
-              backgroundColor: U.surfaceSoft,
-              borderBottomWidth: 1, borderBottomColor: U.hairlineSoft,
+              backgroundColor: accentColor,
             }}>
-              <Text style={{ ...U.colHeader, flex: 2.0 }}>TEKNİSYEN</Text>
-              <SortableHeader label="SİPARİŞ" flex={0.8} sortKey="orders" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} />
-              <SortableHeader label="KALİTE" flex={1} sortKey="quality" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="center" />
-              <Text style={{ ...U.colHeader, flex: 1, textAlign: 'center' }}>ZAMANIN.</Text>
-              <SortableHeader label="FİRE" flex={1.1} sortKey="waste" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="right" />
-              <SortableHeader label="VERİM" flex={1} sortKey="efficiency" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="center" />
-              <SortableHeader label="SÜRE" flex={1} sortKey="labor" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="right" />
-              <SortableHeader label="KAR KATKISI" flex={1.3} sortKey="profit" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="right" />
-              <SortableHeader label="SKOR" flex={1} sortKey="composite" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="center" />
+              <Text style={{ ...U.colHeader, flex: 2.0, color: headInk, opacity: 0.85 }}>TEKNİSYEN</Text>
+              <SortableHeader ink={headInk} label="SİPARİŞ" flex={0.8} sortKey="orders" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} />
+              <SortableHeader ink={headInk} label="KALİTE" flex={1} sortKey="quality" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="center" />
+              <Text style={{ ...U.colHeader, flex: 1, textAlign: 'center', color: headInk, opacity: 0.85 }}>ZAMANIN.</Text>
+              <SortableHeader ink={headInk} label="FİRE" flex={1.1} sortKey="waste" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="right" />
+              <SortableHeader ink={headInk} label="VERİM" flex={1} sortKey="efficiency" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="center" />
+              <SortableHeader ink={headInk} label="SÜRE" flex={1} sortKey="labor" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="right" />
+              <SortableHeader ink={headInk} label="KAR KATKISI" flex={1.3} sortKey="profit" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="right" />
+              <SortableHeader ink={headInk} label="SKOR" flex={1} sortKey="composite" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="center" />
             </View>
           )}
 
@@ -597,14 +589,18 @@ function KPIChip({ icon: Icon, iconColor, label, value, tone }: {
 }
 
 // ── Sortable Header ──────────────────────────────────────────────────
-function SortableHeader({ label, flex, sortKey, currentSort, currentDir, onPress, align = 'left' }: {
+function SortableHeader({ label, flex, sortKey, currentSort, currentDir, onPress, align = 'left', ink }: {
   label: string; flex: number; sortKey: SortKey;
   currentSort: SortKey; currentDir: SortDir;
   onPress: (key: SortKey) => void;
   align?: 'left' | 'center' | 'right';
+  /** Accent zeminli başlık şeridinde metin/ok rengi (verilmezse ink skalası). */
+  ink?: string;
 }) {
   const U = useInkUI();
   const active = currentSort === sortKey;
+  const fgOn = ink ?? U.ink[900];
+  const fgOff = ink ?? U.ink[500];
   return (
     <Pressable
       onPress={() => onPress(sortKey)}
@@ -618,17 +614,18 @@ function SortableHeader({ label, flex, sortKey, currentSort, currentDir, onPress
     >
       <Text style={{
         ...U.colHeader,
-        color: active ? U.ink[900] : U.ink[500],
+        color: active ? fgOn : fgOff,
+        opacity: ink && !active ? 0.85 : 1,
         fontWeight: active ? '700' : '600',
       }}>
         {label}
       </Text>
       {active ? (
         currentDir === 'asc'
-          ? <ChevronUp size={10} color={U.ink[900]} strokeWidth={2.5} />
-          : <ChevronDown size={10} color={U.ink[900]} strokeWidth={2.5} />
+          ? <ChevronUp size={10} color={fgOn} strokeWidth={2.5} />
+          : <ChevronDown size={10} color={fgOn} strokeWidth={2.5} />
       ) : (
-        <ArrowUpDown size={9} color={U.ink[300]} strokeWidth={2} />
+        <ArrowUpDown size={9} color={ink ?? U.ink[300]} strokeWidth={2} />
       )}
     </Pressable>
   );

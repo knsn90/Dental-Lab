@@ -35,7 +35,10 @@ import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { formatQty as fmtQty, formatQtyDual as fmtQtyDual } from '../../../core/util/formatQty';
 import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 import { HubContext } from '../../../core/ui/HubContext';
-import { HeroGlow, useHeroSurface } from '../../../core/ui/HeroGlow';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { autoT } from '../../../core/i18n/autoTranslate';
+import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
+import { onAccentInk } from '../../../core/theme/usePanelTheme';
 
 const DISPLAY = {
   fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
@@ -131,7 +134,9 @@ export function StockMovementsScreen({
   const T = useMobileTokens();
   const isDark = useThemeModeStore(st => st.resolvedDark);
   const edge = usePageEdge();
-  const heroBg = useHeroSurface(accentColor);
+  const heroInk = useWhiteHeroInk(accentColor);
+  // Tablo başlığı düz panel accent'i — metin luminance ile seçilir.
+  const tblInk = onAccentInk(accentColor);
   const s = useMemo(() => makeStyles(T, isDark, edge), [T, isDark, edge]);
 
   const [items, setItems]             = useState<Movement[]>([]);
@@ -141,7 +146,7 @@ export function StockMovementsScreen({
 
   // Filter state
   const [search, setSearch] = useState('');
-  const [searchOpen, setSearchOpen] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
   const [typeFilter, setTypeFilter] = useState<MoveType | 'ALL'>('ALL');
 
   // ── Data load ──
@@ -267,58 +272,32 @@ export function StockMovementsScreen({
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} />}
         ListHeaderComponent={
           <View>
-            {/* ── F1 HeroCard — Hareket özeti ──
-                Zemin `useHeroSurface` ile kurulur: açık temada panel accent'i
-                (birebir eskisi), koyu temada accent'in DERİN tonu/gradyanı —
-                düz safran koyu ekranda soluk bir leke gibi duruyordu.
-                Dekoratif daireler `<HeroGlow>`: koyu temada blur ile yayılır. */}
-            <View style={{
-              borderRadius: 20, overflow: 'hidden',
-              ...heroBg, padding: 18,
-              position: 'relative',
-              marginHorizontal: edge, marginTop: 4,
-            }}>
-              <HeroGlow size={160} opacity={0.18} delay={0} style={{ top: -40, end: -40 }} />
-              <HeroGlow size={140} opacity={0.12} delay={1400} style={{ bottom: -50, start: -20 }} />
-
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)', marginBottom: 8 }}>
-                    Toplam Hareket
-                  </Text>
-                  <Text style={{ ...DISPLAY, fontSize: 36, color: '#FFFFFF', letterSpacing: -1, lineHeight: 40 }}>
-                    {kpi.total}
-                  </Text>
-                  <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.72)', marginTop: 4 }}>
-                    Bugün {kpi.today} işlem
-                  </Text>
-                </View>
-                {/* Birincil eylem hero'nun içinde (Ürünler hero'suyla aynı kalıp):
-                    accent zeminde beyaz pill, üstte ayrı satır harcanmaz. */}
-                {onNewMovement ? (
-                  <Pressable
-                    onPress={onNewMovement}
-                    accessibilityRole="button"
-                    accessibilityLabel={newMovementLabel}
-                    style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0,
-                      paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999,
-                      backgroundColor: '#FFFFFF',
-                      ...(Platform.OS === 'web'
-                        ? ({ cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.16)' } as any)
-                        : { shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 3 }),
-                    }}
-                  >
-                    <Plus size={14} color={accentColor} strokeWidth={2.4} />
-                    <Text numberOfLines={1} style={{ fontSize: 12.5, fontWeight: '700', color: accentColor }}>{newMovementLabel}</Text>
-                  </Pressable>
-                ) : (
-                  <View style={{ width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.18)' }}>
-                    <Activity size={20} color="#FFFFFF" strokeWidth={1.6} />
-                  </View>
-                )}
-              </View>
-
+            {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ─────────────────
+                Prim Motoru hiyerarşisi: kicker → 44px tek büyük rakam →
+                bağlam cümlesi → sağ üstte birincil eylem → altta kutucuklar. */}
+            <WhiteHero
+              kicker="Toplam Hareket"
+              accent={accentColor}
+              title={<Text style={{ color: heroInk.accentInk }}>{kpi.total}</Text>}
+              description={`Bugün ${kpi.today} işlem`}
+              style={{ marginHorizontal: edge, marginTop: edge === 0 ? 0 : 4 }}
+              cta={onNewMovement ? (
+                <Pressable
+                  onPress={onNewMovement}
+                  accessibilityRole="button"
+                  accessibilityLabel={newMovementLabel}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0,
+                    paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999,
+                    backgroundColor: heroInk.isDark ? '#FFFFFF' : accentColor,
+                    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+                  }}
+                >
+                  <Plus size={14} color={heroInk.isDark ? accentColor : '#FFFFFF'} strokeWidth={2.4} />
+                  <Text numberOfLines={1} style={{ fontSize: 12.5, fontWeight: '700', color: heroInk.isDark ? accentColor : '#FFFFFF' }}>{newMovementLabel}</Text>
+                </Pressable>
+              ) : undefined}
+            >
               <View style={{ flexDirection: 'row', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
                 {([
                   { label: 'Bugün',       value: kpi.today,        icon: Clock         },
@@ -327,26 +306,75 @@ export function StockMovementsScreen({
                 ] as const).map(stat => {
                   const Icon = stat.icon;
                   return (
-                    <View key={stat.label} style={{ flex: 1, minWidth: 110, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.16)' }}>
+                    <View key={stat.label} style={{
+                      flex: 1, minWidth: 110, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 12,
+                      backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder,
+                    }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 }}>
-                        <Icon size={11} color="rgba(255,255,255,0.85)" strokeWidth={2} />
-                        <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>
+                        <Icon size={11} color={heroInk.inkSoft} strokeWidth={2} />
+                        <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: heroInk.inkSoft }}>
                           {stat.label}
                         </Text>
                       </View>
-                      <Text style={{ ...DISPLAY, fontSize: 20, color: '#FFFFFF', letterSpacing: -0.5, lineHeight: 22 }}>
+                      <Text style={{ ...DISPLAY, fontSize: 20, color: heroInk.ink, letterSpacing: -0.5, lineHeight: 22 }}>
                         {fmtQty(stat.value)}
                       </Text>
                     </View>
                   );
                 })}
               </View>
+            </WhiteHero>
+
+            {/* ── Toolbar — uygulama genelindeki dil: daima açık arama pili +
+                etiketli "Filtrele (n)" düğmesi; tip pilleri panelin içinde. ── */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: edge, marginTop: 14 }}>
+              <View style={{
+                flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
+                height: 38, paddingHorizontal: 12, borderRadius: 9999,
+                backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline,
+              }}>
+                <Search size={14} color={T.ink3} strokeWidth={1.8} />
+                <TextInput
+                  style={{ flex: 1, fontSize: 13, color: T.ink, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) } as any}
+                  placeholder="Ürün adı veya not ara..."
+                  placeholderTextColor={T.ink3}
+                  value={search}
+                  onChangeText={setSearch}
+                />
+                {search.length > 0 && (
+                  <GlassTooltip title={autoT('Temizle')} text={autoT('Aramayı temizle')}>
+                    <Pressable onPress={() => setSearch('')} hitSlop={8} style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}}>
+                      <X size={13} color={T.ink3} strokeWidth={2} />
+                    </Pressable>
+                  </GlassTooltip>
+                )}
+              </View>
+
+              <GlassTooltip title={autoT('Filtrele')} text={autoT('Hareketleri işlem tipine göre süz')}>
+                <Pressable
+                  onPress={() => setFilterOpen(v => !v)}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 6,
+                    height: 38, paddingHorizontal: 14, borderRadius: 9999,
+                    backgroundColor: typeFilter !== 'ALL' ? accentColor + '14' : T.card,
+                    borderWidth: 1, borderColor: typeFilter !== 'ALL' || filterOpen ? accentColor : T.hairline,
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  }}
+                >
+                  <SlidersHorizontal size={14} color={typeFilter !== 'ALL' ? accentColor : T.ink2} strokeWidth={1.8} />
+                  <Text style={{ fontSize: 12.5, fontWeight: '600', color: typeFilter !== 'ALL' ? accentColor : T.ink2 }}>
+                    {autoT('Filtrele')}{typeFilter !== 'ALL' ? ' (1)' : ''}
+                  </Text>
+                </Pressable>
+              </GlassTooltip>
             </View>
 
-            {/* ── Toolbar (arama + tip filtreleri) ───────────────── */}
-            <View style={s.toolbar}>
-              {/* Filter pills */}
-              <View style={s.pillRow}>
+            {filterOpen && (
+              <View style={{
+                marginHorizontal: edge, marginTop: 8, padding: 12, borderRadius: 14,
+                backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline,
+                flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+              }}>
                 <FilterPill
                   active={typeFilter === 'ALL'}
                   label="Tümü"
@@ -370,47 +398,17 @@ export function StockMovementsScreen({
                   );
                 })}
               </View>
-
-              {/* Search toggle */}
-              <Pressable
-                onPress={() => setSearchOpen(v => !v)}
-                style={[
-                  s.searchToggle,
-                  (searchOpen || search.length > 0) && { backgroundColor: accentColor + '14' },
-                ]}
-              >
-                <Search size={16} color={(searchOpen || search.length > 0) ? accentColor : T.ink3} strokeWidth={1.8} />
-              </Pressable>
-            </View>
-
-            {/* ── Search input (expandable) ──────────────────────── */}
-            {(searchOpen || search.length > 0) && (
-              <View style={s.searchBox}>
-                <Search size={16} color="#94A3B8" strokeWidth={1.8} />
-                <TextInput
-                  style={s.searchInput as any}
-                  placeholder="Ürün adı veya not ara..."
-                  placeholderTextColor="#AEAEB2"
-                  value={search}
-                  onChangeText={setSearch}
-                  autoFocus
-                />
-                {search.length > 0 && (
-                  <Pressable onPress={() => { setSearch(''); }}>
-                    <X size={14} color="#94A3B8" strokeWidth={2} />
-                  </Pressable>
-                )}
-              </View>
             )}
 
             {/* ── Desktop tablo başlığı ──────────────────────────── */}
             {isDesktop && filtered.length > 0 && (
-              <View style={s.tableHead}>
-                <Text style={[s.th, { flex: 0.5 }]}></Text>
-                <Text style={[s.th, { flex: 3 }]}>ÜRÜN</Text>
-                <Text style={[s.th, { flex: 1.2 }]}>İŞLEM</Text>
-                <Text style={[s.th, { flex: 1, textAlign: 'end' as any }]}>MİKTAR</Text>
-                <Text style={[s.th, { flex: 1.5, textAlign: 'end' as any }]}>SAAT</Text>
+              // Başlık şeridi düz panel accent'i — uygulama genelinde aynı dil.
+              <View style={[s.tableHead, { backgroundColor: accentColor }]}>
+                <Text style={[s.th, { color: tblInk, flex: 0.5 }]}></Text>
+                <Text style={[s.th, { color: tblInk, flex: 3 }]}>ÜRÜN</Text>
+                <Text style={[s.th, { color: tblInk, flex: 1.2 }]}>İŞLEM</Text>
+                <Text style={[s.th, { color: tblInk, flex: 1, textAlign: 'end' as any }]}>MİKTAR</Text>
+                <Text style={[s.th, { color: tblInk, flex: 1.5, textAlign: 'end' as any }]}>SAAT</Text>
               </View>
             )}
           </View>

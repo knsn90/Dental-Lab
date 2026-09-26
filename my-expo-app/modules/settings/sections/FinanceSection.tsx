@@ -21,6 +21,8 @@ import { useLabSettingsStore, type CurrencyCode } from '../../../core/store/labS
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { usePermissions } from '../../../core/hooks/usePermissions';
 import { CenteredLoader } from '../../../core/ui/CenteredLoader';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { SegmentPicker, DropdownSelect, SettingRow } from './GeneralSection';
 import { CurrencyRatesScreen } from '../screens/CurrencyRatesScreen';
 
@@ -221,8 +223,14 @@ export function FinanceSection({ accentColor }: Props) {
               const on = ch.locked || channels.includes(ch.key);
               const ChIcon = ch.icon;
               return (
-                <Pressable
+                <GlassTooltip
                   key={ch.key}
+                  title={autoT(ch.label)}
+                  text={ch.locked
+                    ? autoT('Uygulama içi hatırlatma her zaman açıktır, kapatılamaz')
+                    : autoT('Ödeme hatırlatmalarını bu kanaldan da gönder')}
+                >
+                <Pressable
                   disabled={ch.locked}
                   onPress={() => {
                     const cur = s.payment_reminder_channels ?? ['in_app', 'email', 'whatsapp'];
@@ -246,6 +254,7 @@ export function FinanceSection({ accentColor }: Props) {
                   </Text>
                   {on && <Check size={12} color={accentColor} strokeWidth={2.6} />}
                 </Pressable>
+                </GlassTooltip>
               );
             })}
           </View>

@@ -22,6 +22,8 @@ import { MaterialRequestsScreen } from '../material-requests/screens/MaterialReq
 import { getRequestCounts } from '../material-requests/api';
 import { supabase } from '../../core/api/supabase';
 import { SlideTabBar } from '../../core/ui/SlideTabBar';
+import { WhiteHero, useWhiteHeroInk } from '../../core/ui/WhiteHero';
+import { MobilePageTitle } from '../../core/ui/mobile/MobilePageTitle';
 import { usePanelTheme } from '../../core/theme/usePanelTheme';
 import { usePageTitleStore } from '../../core/store/pageTitleStore';
 import { useAuthStore } from '../../core/store/authStore';
@@ -130,6 +132,7 @@ export function AdminApprovalsScreen() {
   // Panel `primary`si (ör. lab safranı #F5C24B) beyazla okunmuyordu; `accent`
   // her panelde koyu ink (lab #0A0A0A · exec #172235 · klinik #2F313F).
   const panel = usePanelTheme();
+  const HI = useWhiteHeroInk();
 
   // Shell title kullan — Siparişler sayfası pattern'i.
   // Sayfa içi büyük başlık yok, sidebar/topbar'da küçük "Onaylar" yazsın.
@@ -158,27 +161,29 @@ export function AdminApprovalsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: T.bg }}>
-      {/* Mobil sayfa başlığı — TopActionBar'ın altında */}
-      {!isDesktop && (
-        <View style={{ paddingHorizontal: PAGE_PADDING, paddingTop: headerTopPad, paddingBottom: 6 }}>
-          <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3, letterSpacing: 1, textTransform: 'uppercase' }}>
-            YÖNETİM
-          </Text>
-          <Text style={{
-            fontSize: 34, fontWeight: '300', color: T.ink, letterSpacing: -1.2, lineHeight: 38, marginTop: 4,
-            ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
-          }}>
-            Onaylar
-          </Text>
-        </View>
-      )}
+      {/* BEYAZ HERO — sayfanın özeti: toplam bekleyen iş + sekme başına sayı.
+          Eski mobil başlık bloğunun yerini aldı (kicker/başlık hero'da); masaüstünde
+          kabuk başlığı zaten üstte. Sayılar YALNIZ görünen sekmelerden gelir. */}
+      {/* Mobilde sayfa başlığı (diğer ekranlarla aynı): hero kicker'ı başlığın
+          yerini tutmuyordu, üst çubukta sayfa adı hiç görünmüyordu. */}
+      <MobilePageTitle title="Onaylar" subtitle="Hekim, tasarım ve talep onayları" />
+      <View style={{ paddingHorizontal: isDesktop ? 24 : PAGE_PADDING, paddingTop: isDesktop ? headerTopPad : 4 }}>
+        <WhiteHero
+          kicker={autoT('Yönetim · Onaylar')}
+          title={totalPending > 0
+            ? <>{totalPending} <Text style={{ color: HI.accentInk }}>{autoT('bekleyen iş')}</Text></>
+            : <Text style={{ color: HI.accentInk }}>{autoT('Bekleyen iş yok')}</Text>}
+          description={autoT('Hekim kayıtları, tasarım onayları ve talepler tek yerde.')}
+          stats={TABS.map(t => ({ value: String(t.count ?? 0), label: autoT(t.short) }))}
+        />
+      </View>
 
       {/* Sekme çubuğu — masaüstü: paylaşılan SlideTabBar (users/logs ile aynı).
           Mobil: tam genişliğe yayılan kısa etiketli segmented; orada yayılmak
           doğru ve SlideTabBar'ın sabit dolgusu 5 sekmede taşardı. */}
       <View style={{
         paddingHorizontal: isDesktop ? 24 : PAGE_PADDING,
-        paddingTop: isDesktop ? headerTopPad : 8,
+        paddingTop: isDesktop ? 14 : 12,
         paddingBottom: 12,
         ...(isDesktop ? { flexDirection: 'row', alignItems: 'center', gap: 14 } : null),
       }}>

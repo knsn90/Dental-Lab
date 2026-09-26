@@ -21,6 +21,7 @@ import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { useInkUI } from '../../../core/theme/inkScale';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { LogDetail, logSummaryLine, fullTimestamp, ENTITY_LABEL } from '../../logs/logDetail';
 import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 
@@ -164,7 +165,7 @@ function LogRow({ log, isLast }: { log: ActivityLog; isLast: boolean }) {
 interface Props { accentColor?: string; }
 
 // ── Component ──────────────────────────────────────────────────────────
-export function LogsSection({ accentColor = '#4771AB' }: Props) {
+export function LogsSection({ accentColor = '#004B87' }: Props) {
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const [logs,     setLogs]     = useState<ActivityLog[]>([]);
@@ -248,19 +249,23 @@ export function LogsSection({ accentColor = '#4771AB' }: Props) {
           ))}
         </ScrollView>
         <View className="flex-row items-center gap-1.5 ps-2">
-          <Pressable
-            onPress={() => setSearchOpen(v => !v)}
-            className="w-8 h-8 rounded-lg items-center justify-center"
-            style={{ backgroundColor: searchOpen ? `${accentColor}14` : 'transparent' }}
-          >
-            <Search size={15} color={searchOpen ? accentColor : T.ink3} strokeWidth={1.8} />
-          </Pressable>
-          <Pressable
-            onPress={() => loadLogs(true)}
-            className="w-8 h-8 rounded-lg items-center justify-center"
-          >
-            <RefreshCw size={15} color={T.ink3} strokeWidth={1.8} />
-          </Pressable>
+          <GlassTooltip title={autoT('Ara')} text={autoT('Kayıtlarda metin ara')}>
+            <Pressable
+              onPress={() => setSearchOpen(v => !v)}
+              className="w-8 h-8 rounded-lg items-center justify-center"
+              style={{ backgroundColor: searchOpen ? `${accentColor}14` : 'transparent' }}
+            >
+              <Search size={15} color={searchOpen ? accentColor : T.ink3} strokeWidth={1.8} />
+            </Pressable>
+          </GlassTooltip>
+          <GlassTooltip title={autoT('Yenile')} text={autoT('Kayıtları yeniden yükle')}>
+            <Pressable
+              onPress={() => loadLogs(true)}
+              className="w-8 h-8 rounded-lg items-center justify-center"
+            >
+              <RefreshCw size={15} color={T.ink3} strokeWidth={1.8} />
+            </Pressable>
+          </GlassTooltip>
         </View>
       </View>
 
@@ -279,9 +284,11 @@ export function LogsSection({ accentColor = '#4771AB' }: Props) {
               style={{ outlineWidth: 0, color: T.ink }}
             />
             {search.length > 0 && (
-              <Pressable onPress={() => { setSearch(''); setSearchOpen(false); }}>
-                <XCircle size={14} color={T.ink3} strokeWidth={1.8} />
-              </Pressable>
+              <GlassTooltip title={autoT('Temizle')} text={autoT('Aramayı temizle ve kapat')}>
+                <Pressable onPress={() => { setSearch(''); setSearchOpen(false); }}>
+                  <XCircle size={14} color={T.ink3} strokeWidth={1.8} />
+                </Pressable>
+              </GlassTooltip>
             )}
           </View>
         </View>

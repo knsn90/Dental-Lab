@@ -30,7 +30,10 @@ import { buildCatalogPdfHtml, CATALOG_PALETTES, type CatalogTech } from '../../.
 const priceSym = (cur?: string | null) => CURRENCY_META[(cur || 'TRY') as Currency]?.symbol ?? '₺';
 import { useAuthStore } from '../../../core/store/authStore';
 import { DS } from '../../../core/theme/dsTokens';
-import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
+import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
+import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
@@ -142,6 +145,10 @@ const s = {
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0,0,0,0.06)',
+    // "···" menüsü listenin ÜSTÜNDE çizilsin: sonraki kardeşler (kategori
+    // başlıkları) aksi hâlde açılır menünün üzerine biniyordu.
+    zIndex: 30,
+    ...(Platform.OS === 'web' ? {} : { elevation: 30 }),
   },
   toolbarTitle: { flex: 1, fontSize: 13, color: DS.ink[500], fontWeight: '500' as const },
 
@@ -151,7 +158,7 @@ const s = {
     alignItems: 'center' as const,
     gap: 8,
     backgroundColor: DS.ink[50],
-    borderRadius: 14,
+    borderRadius: 9999,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.06)',
     paddingHorizontal: 16,
@@ -244,7 +251,8 @@ const s = {
   serviceRow: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    paddingVertical: 13,
+    // Fiyat satır İÇİNDE olduğu için satır yüksekliği düştü (13 → 11).
+    paddingVertical: 11,
     paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0,0,0,0.05)',
@@ -633,74 +641,126 @@ export function PriceListScreen() {
         <View style={{ flex: 1, minWidth: 0 }} />
 
         {/* Tetikleyici mevcut değeri gösterir — açmadan durumu bilmek için */}
-        <Pressable
-          onPress={() => setSettingsOpen(true)}
-          style={({ hovered }: any) => ({
-            flexDirection: 'row', alignItems: 'center', gap: 6,
-            paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999,
-            backgroundColor: hovered ? T.cardSoft : 'transparent',
-            borderWidth: 1, borderColor: T.hairline,
-            ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-          })}
-        >
-          <Zap size={13} color={T.ink3} strokeWidth={2} />
-          <Text style={{ fontSize: 12, fontWeight: '600', color: T.ink2 }}>
-            Acil ek ücret{savedRate ? ` · %${savedRate}` : ''}
-          </Text>
-        </Pressable>
+        <GlassTooltip title={autoT('Acil ek ücret')} text={autoT('"Acil" işaretli siparişlere faturada eklenen oranı belirle')}>
+          <Pressable
+            onPress={() => setSettingsOpen(true)}
+            style={({ hovered }: any) => ({
+              flexDirection: 'row', alignItems: 'center', gap: 6,
+              paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999,
+              backgroundColor: hovered ? T.cardSoft : 'transparent',
+              borderWidth: 1, borderColor: T.hairline,
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+            })}
+          >
+            <Zap size={13} color={T.ink3} strokeWidth={2} />
+            <Text style={{ fontSize: 12, fontWeight: '600', color: T.ink2 }}>
+              Acil ek ücret{savedRate ? ` · %${savedRate}` : ''}
+            </Text>
+          </Pressable>
+        </GlassTooltip>
       </View>
 
-      {/* ── Acil ek ücret ayarı ── */}
+      {/* ── Acil ek ücret ayarı — bulanık arka plan + accent başlık bandı ── */}
       <Modal visible={settingsOpen} transparent animationType="fade" onRequestClose={() => setSettingsOpen(false)}>
-        <Pressable onPress={() => setSettingsOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <Pressable onPress={() => {}} style={{ width: 380, maxWidth: '100%', backgroundColor: T.card, borderRadius: 18, overflow: 'hidden' }}>
-            <View style={{ paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: T.hairline }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Zap size={15} color={T.ink} strokeWidth={2.2} />
-                <Text style={{ fontSize: 16, fontWeight: '700', color: T.ink }}>Acil vaka ek ücreti</Text>
+        <Pressable
+          onPress={() => setSettingsOpen(false)}
+          style={{
+            flex: 1, backgroundColor: 'rgba(15,23,42,0.38)', alignItems: 'center', justifyContent: 'center', padding: 20,
+            ...(Platform.OS === 'web'
+              ? ({ backdropFilter: 'blur(10px) saturate(120%)', WebkitBackdropFilter: 'blur(10px) saturate(120%)' } as any)
+              : null),
+          }}
+        >
+          <Pressable
+            onPress={() => {}}
+            style={{
+              width: 420, maxWidth: '100%', backgroundColor: T.card, borderRadius: 20, overflow: 'hidden',
+              borderWidth: 1, borderColor: T.hairline,
+              ...(Platform.OS === 'web' ? ({ boxShadow: '0 24px 60px rgba(15,23,42,0.28)' } as any) : null),
+            }}
+          >
+            {/* Başlık bandı — düz panel accent'i */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingVertical: 16, backgroundColor: rootTheme.accent }}>
+              <Zap size={16} color={onAccentInk(rootTheme.accent)} strokeWidth={2.2} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: onAccentInk(rootTheme.accent) }}>Acil vaka ek ücreti</Text>
+                <Text style={{ fontSize: 12, color: onAccentInk(rootTheme.accent), opacity: 0.8, marginTop: 2, lineHeight: 17 }}>
+                  &quot;Acil&quot; işaretli siparişlere faturada bu oran eklenir.
+                </Text>
               </View>
-              <Text style={{ fontSize: 12, color: T.ink3, marginTop: 6, lineHeight: 17 }}>
-                &quot;Acil&quot; işaretli siparişlere faturada bu oran eklenir.
-              </Text>
+              <Pressable
+                onPress={() => setSettingsOpen(false)}
+                accessibilityLabel="Kapat"
+                hitSlop={8}
+                style={{
+                  width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: onAccentInk(rootTheme.accent) === '#FFFFFF' ? 'rgba(255,255,255,0.20)' : 'rgba(10,10,10,0.10)',
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                }}
+              >
+                <X size={15} color={onAccentInk(rootTheme.accent)} strokeWidth={2} />
+              </Pressable>
             </View>
-            <View style={{ padding: 20, gap: 14 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+
+            <View style={{ padding: 20, gap: 16 }}>
+              {/* Oran — büyük rakam, sağda sabit % işareti */}
+              <View>
+                <Text style={{ fontSize: 10.5, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: T.ink3, marginBottom: 8 }}>
+                  Ek ücret oranı
+                </Text>
                 <View style={{
-                  flexDirection: 'row', alignItems: 'center', flex: 1, gap: 4,
-                  backgroundColor: T.bg, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10,
-                  borderWidth: 1, borderColor: T.hairline,
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  backgroundColor: T.bg, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12,
+                  borderWidth: 1, borderColor: surDirty ? rootTheme.accent : T.hairline,
                 }}>
                   <TextInput
                     value={rate}
                     onChangeText={(v) => { setRate(v); setSurDirty(true); }}
                     placeholder="0" keyboardType="numeric" placeholderTextColor={T.ink3}
-                    style={{ flex: 1, fontSize: 18, fontWeight: '700', color: T.ink, textAlign: 'end' as any, outlineStyle: 'none' } as any}
+                    style={{ flex: 1, fontSize: 28, fontWeight: '700', color: T.ink, textAlign: 'end' as any, outlineStyle: 'none' } as any}
                   />
-                  <Text style={{ fontSize: 16, fontWeight: '700', color: T.ink3 }}>%</Text>
+                  <Text style={{ fontSize: 22, fontWeight: '700', color: T.ink3 }}>%</Text>
                 </View>
+                {/* Ne anlama geldiği: tek satır örnek */}
+                <Text style={{ fontSize: 12, color: T.ink3, marginTop: 8 }}>
+                  {(() => {
+                    const num = Math.max(0, Math.min(100, parseFloat((rate || '0').replace(',', '.')) || 0));
+                    const sym = baseSymbol();
+                    return num > 0
+                      ? `${autoT('Örnek')}: 1.000 ${sym} → ${(1000 * (1 + num / 100)).toLocaleString(localeTag())} ${sym}`
+                      : autoT('Oran 0 iken acil siparişlere ek ücret yansıtılmaz.');
+                  })()}
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Pressable
+                  onPress={() => setSettingsOpen(false)}
+                  style={{ flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: 999, borderWidth: 1, borderColor: T.hairline,
+                           ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink2 }}>Kapat</Text>
+                </Pressable>
                 <Pressable
                   onPress={saveSurcharge}
                   disabled={!saveActive}
                   style={{
-                    paddingHorizontal: 18, paddingVertical: 12, borderRadius: 12,
+                    flex: 1.4, alignItems: 'center', paddingVertical: 12, borderRadius: 999,
                     backgroundColor: saveActive ? rootTheme.accent : T.hairline,
                     ...(Platform.OS === 'web' ? { cursor: saveActive ? 'pointer' : 'default' } as any : {}),
                   }}
                 >
-                  <Text style={{ fontSize: 13, fontWeight: '800', color: saveActive ? '#FFFFFF' : T.ink3 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: saveActive ? onAccentInk(rootTheme.accent) : T.ink3 }}>
                     {surSaving ? '…' : 'Kaydet'}
                   </Text>
                 </Pressable>
               </View>
-              <Pressable onPress={() => setSettingsOpen(false)} style={{ alignItems: 'center', paddingVertical: 10 }}>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink3 }}>Kapat</Text>
-              </Pressable>
             </View>
           </Pressable>
         </Pressable>
       </Modal>
 
-      {tab === 'standard'   && <StandardTab />}
+      {tab === 'standard'   && <StandardTab urgentRate={savedRate} />}
       {tab === 'custom'     && <CustomTab />}
       {tab === 'promotions' && <PromotionsTab />}
     </View>
@@ -1005,8 +1065,11 @@ html, body { font-family: 'Inter','Helvetica Neue',Arial,sans-serif; color: #0F1
 }
 
 
-function StandardTab() {
+/** `urgentRate` — lab_settings.urgent_surcharge_rate; hero'da gösterilir
+ *  (veriyi üst bileşen zaten çekiyor, ikinci sorgu açmıyoruz). */
+function StandardTab({ urgentRate = 0 }: { urgentRate?: number }) {
   const catTheme = usePanelTheme();
+  const heroInk = useWhiteHeroInk(catTheme.primary);
   const T = useMobileTokens();
   const isDark = useThemeModeStore(st => st.resolvedDark);
   const { profile } = useAuthStore();
@@ -1393,8 +1456,25 @@ function StandardTab() {
   }, {});
   const ungrouped = sortByOrder(filtered.filter((sv) => !sv.category || !dynamicCategories.includes(sv.category)));
 
+  // Hero özeti — aktif hizmet, kategori ve acil ek ücret oranı.
+  const activeSvcs = services.filter(sv => sv.is_active);
+
   return (
     <View style={[s.tabContent, { backgroundColor: T.bg }]}>
+      {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ───────────────── */}
+      <View style={{ paddingHorizontal: PAGE_PADDING, paddingTop: 4, paddingBottom: 12 }}>
+        <WhiteHero
+          kicker="Finans · Fiyat Listesi"
+          accent={catTheme.primary}
+          title={<><Text style={{ color: heroInk.accentInk }}>{activeSvcs.length}</Text> aktif hizmet</>}
+          description={`${visibleFilterCats.length} kategori · ${services.length - activeSvcs.length} pasif hizmet`}
+          stats={[
+            { value: String(visibleFilterCats.length), label: 'Kategori' },
+            { value: urgentRate > 0 ? `%${urgentRate}` : '—', label: 'Acil ek ücret' },
+          ]}
+        />
+      </View>
+
       {/* Toolbar — arama + aksiyonlar (başlık hub tarafından gösterilir) */}
       <View style={[s.toolbar, { borderBottomColor: T.hairline }]}>
         <View style={[s.searchWrap, { backgroundColor: T.card, borderColor: T.hairline }]}>
@@ -1407,16 +1487,19 @@ function StandardTab() {
             placeholderTextColor={T.ink3}
           />
           {search.length > 0 && (
-            <Pressable onPress={() => setSearch('')}>
-              <X size={14} color={T.ink3} strokeWidth={1.6} />
-            </Pressable>
+            <GlassTooltip title={autoT('Temizle')} text={autoT('Aramayı temizle')}>
+              <Pressable onPress={() => setSearch('')} hitSlop={8} style={Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : undefined}>
+                <X size={14} color={T.ink3} strokeWidth={1.6} />
+              </Pressable>
+            </GlassTooltip>
           )}
         </View>
         {/* Kategoriler · PDF · Boşları Temizle → tek taşma menüsü.
             Dördü de aynı ağırlıkta dolu-kenarlıklı buton olarak yan yana
             duruyordu; oysa "Hizmet Ekle" günlük, "Boşları Temizle" yılda bir
             kullanılıyor. Ortak yol açıkta, gerisi bir tık altında. */}
-        <View style={{ position: 'relative' }}>
+        <View style={{ position: 'relative', zIndex: 50 }}>
+          <GlassTooltip title={autoT('Diğer işlemler')} text={autoT('Kategoriler, PDF dışa aktarma ve boş kategori temizliği')}>
           <Pressable
             onPress={() => setMoreOpen(v => !v)}
             accessibilityLabel="Diğer işlemler"
@@ -1433,6 +1516,7 @@ function StandardTab() {
           >
             <Text style={{ fontSize: 17, fontWeight: '700', color: isDark ? T.ink2 : DS.ink[700], marginTop: -4 }}>···</Text>
           </Pressable>
+          </GlassTooltip>
 
           {moreOpen && (
             <>
@@ -1442,7 +1526,9 @@ function StandardTab() {
                 style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40 } as any}
               />
               <View style={{
-                position: 'absolute', top: '100%', ...(isRTL() ? { left: 0 } : { right: 0 }), marginTop: 6, zIndex: 50,
+                position: 'absolute', top: '100%', ...(isRTL() ? { left: 0 } : { right: 0 }), marginTop: 6, zIndex: 60,
+                ...(Platform.OS === 'web' ? {} : { elevation: 60 }),
+                ...(Platform.OS === 'web' ? {} : { elevation: 50 }),
                 minWidth: 210, borderRadius: 14, padding: 6,
                 backgroundColor: isDark ? T.card : '#FFFFFF',
                 borderWidth: 1, borderColor: isDark ? T.hairline : DS.ink[200],
@@ -1477,10 +1563,12 @@ function StandardTab() {
           )}
         </View>
 
+        <GlassTooltip title={autoT('Hizmet ekle')} text={autoT('Katalog için yeni hizmet ve fiyat tanımla')}>
         <Pressable style={[s.addBtn, { backgroundColor: catTheme.accent }] as any} onPress={openAdd}>
           <Plus size={15} color="#FFFFFF" strokeWidth={2.2} />
           <Text style={s.addBtnText}>Hizmet Ekle</Text>
         </Pressable>
+        </GlassTooltip>
       </View>
 
       {/* PDF export modal */}
@@ -1597,8 +1685,9 @@ function StandardTab() {
       ) : (
         <ScrollView contentContainerStyle={s.list}>
           {Object.entries(grouped).map(([cat, items]) => (
-            <View key={cat}>
+            <View key={cat} style={[s.catCard, isDark && { backgroundColor: T.card, borderColor: T.hairline }] as any}>
               <CategoryHeader
+                accent={catTheme.primary}
                 name={cat}
                 count={items.length}
                 onRename={(nv) => handleRenameCategory(cat, nv)}
@@ -1609,7 +1698,7 @@ function StandardTab() {
                 isFirst={visibleFilterCats.indexOf(cat) === 0}
                 isLast={visibleFilterCats.indexOf(cat) === visibleFilterCats.length - 1}
               />
-              <View style={[s.catCard, isDark && { backgroundColor: T.card, borderColor: T.hairline }] as any}>
+              <View>
               {items.map((sv, idx) => (
                 <ServiceRow
                   key={sv.id}
@@ -1632,12 +1721,12 @@ function StandardTab() {
             </View>
           ))}
           {ungrouped.length > 0 && (
-            <View>
-              <View style={s.groupHeader}>
-                <Text style={[s.groupTitle, isDark && { color: T.ink2 }]}>Diğer</Text>
-                <Text style={[s.groupCount, isDark && { color: T.ink3 }]}>{ungrouped.length} hizmet</Text>
+            <View style={[s.catCard, isDark && { backgroundColor: T.card, borderColor: T.hairline }] as any}>
+              <View style={[s.groupHeader, { backgroundColor: catTheme.primary, marginBottom: 0, paddingHorizontal: 16, paddingVertical: 12 }]}>
+                <Text style={[s.groupTitle, { color: onAccentInk(catTheme.primary) }]}>Diğer</Text>
+                <Text style={[s.groupCount, { color: onAccentInk(catTheme.primary), opacity: 0.85 }]}>{ungrouped.length} hizmet</Text>
               </View>
-              <View style={[s.catCard, isDark && { backgroundColor: T.card, borderColor: T.hairline }] as any}>
+              <View>
               {ungrouped.map((sv, idx) => (
                 <ServiceRow
                   key={sv.id}
@@ -1734,8 +1823,10 @@ function StandardTab() {
 }
 
 function CategoryHeader({
-  name, count, onRename, onDelete, onMerge, onSplit, onMove, isFirst, isLast,
+  name, count, onRename, onDelete, onMerge, onSplit, onMove, isFirst, isLast, accent,
 }: {
+  /** Verilirse başlık, tablonun İÇİNDE düz panel accent'i bant olur. */
+  accent?: string;
   name: string;
   count: number;
   onRename: (newName: string) => void;
@@ -1757,14 +1848,22 @@ function CategoryHeader({
     setEditing(false);
   };
   /** Kategori başlığındaki kalem/birleştir/böl ikon düğmeleri (hover zemini temaya bağlı). */
-  const iconTint = isDark ? T.ink2 : DS.ink[500];
+  const onAcc    = accent ? onAccentInk(accent) : null;
+  const iconTint = onAcc ?? (isDark ? T.ink2 : DS.ink[500]);
+  const hoverBg  = onAcc
+    ? (onAcc === '#FFFFFF' ? 'rgba(255,255,255,0.18)' : 'rgba(10,10,10,0.10)')
+    : (isDark ? 'rgba(255,255,255,0.08)' : DS.ink[100]);
   const iconBtn = () => ({ hovered }: any) => ({
     padding: 5, borderRadius: 6,
-    backgroundColor: hovered ? (isDark ? 'rgba(255,255,255,0.08)' : DS.ink[100]) : 'transparent',
+    backgroundColor: hovered ? hoverBg : 'transparent',
     ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
   });
   return (
-    <View style={[s.groupHeader, { borderBottomColor: T.hairline }]}>
+    <View style={[
+      s.groupHeader,
+      { borderBottomColor: T.hairline },
+      accent ? { backgroundColor: accent, marginBottom: 0, paddingHorizontal: 16, paddingVertical: 12 } : null,
+    ]}>
       {editing ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
           <TextInput
@@ -1804,9 +1903,10 @@ function CategoryHeader({
                 disabled={isFirst}
                 hitSlop={4}
                 style={({ hovered }: any) => ({
-                  width: 18, height: 14, borderRadius: 4,
+                  width: 22, height: 16, borderRadius: 5,
                   alignItems: 'center', justifyContent: 'center',
                   backgroundColor: isFirst ? 'transparent'
+                    : onAcc ? (hovered ? hoverBg : 'transparent')
                     : isDark ? (hovered ? 'rgba(255,255,255,0.10)' : T.cardSoft)
                     : (hovered ? DS.ink[100] : DS.ink[50]),
                   opacity: isFirst ? 0.3 : 1,
@@ -1814,16 +1914,17 @@ function CategoryHeader({
                 })}
                 accessibilityLabel={`${name} kategorisini yukarı taşı`}
               >
-                <ChevronUp size={10} color={isDark ? T.ink2 : DS.ink[700]} strokeWidth={2} />
+                <ChevronUp size={12} color={onAcc ?? (isDark ? T.ink2 : DS.ink[700])} strokeWidth={2} />
               </Pressable>
               <Pressable
                 onPress={() => !isLast && onMove(1)}
                 disabled={isLast}
                 hitSlop={4}
                 style={({ hovered }: any) => ({
-                  width: 18, height: 14, borderRadius: 4,
+                  width: 22, height: 16, borderRadius: 5,
                   alignItems: 'center', justifyContent: 'center',
                   backgroundColor: isLast ? 'transparent'
+                    : onAcc ? (hovered ? hoverBg : 'transparent')
                     : isDark ? (hovered ? 'rgba(255,255,255,0.10)' : T.cardSoft)
                     : (hovered ? DS.ink[100] : DS.ink[50]),
                   opacity: isLast ? 0.3 : 1,
@@ -1831,48 +1932,56 @@ function CategoryHeader({
                 })}
                 accessibilityLabel={`${name} kategorisini aşağı taşı`}
               >
-                <ChevronDown size={10} color={isDark ? T.ink2 : DS.ink[700]} strokeWidth={2} />
+                <ChevronDown size={12} color={onAcc ?? (isDark ? T.ink2 : DS.ink[700])} strokeWidth={2} />
               </Pressable>
             </View>
-            <Text style={[s.groupTitle, isDark && { color: T.ink2 }]}>{name}</Text>
-            <Pressable
-              onPress={() => { setDraft(name); setEditing(true); }}
-              hitSlop={6}
-              style={iconBtn()}
-              accessibilityLabel={`${name} kategorisini yeniden adlandır`}
-            >
-              <Pencil size={11} color={iconTint} strokeWidth={1.6} />
-            </Pressable>
-            <Pressable
-              onPress={onMerge}
-              hitSlop={6}
-              style={iconBtn()}
-              accessibilityLabel={`${name} kategorisini birleştir`}
-            >
-              <GitMerge size={11} color={iconTint} strokeWidth={1.6} />
-            </Pressable>
-            <Pressable
-              onPress={onSplit}
-              hitSlop={6}
-              style={iconBtn()}
-              accessibilityLabel={`${name} kategorisini böl`}
-            >
-              <Scissors size={11} color={iconTint} strokeWidth={1.6} />
-            </Pressable>
-            <Pressable
-              onPress={onDelete}
-              hitSlop={6}
-              style={({ hovered }: any) => ({
-                padding: 5, borderRadius: 6,
-                backgroundColor: hovered ? 'rgba(217,75,75,0.10)' : 'transparent',
-                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-              })}
-              accessibilityLabel={`${name} kategorisini sil`}
-            >
-              <Trash2 size={11} color="#D94B4B" strokeWidth={1.6} />
-            </Pressable>
+            <Text style={[s.groupTitle, isDark && { color: T.ink2 }, onAcc ? { color: onAcc } : null]}>{name}</Text>
+            <GlassTooltip title={autoT('Yeniden adlandır')} text={autoT('Kategori adını değiştir')}>
+              <Pressable
+                onPress={() => { setDraft(name); setEditing(true); }}
+                hitSlop={6}
+                style={iconBtn()}
+                accessibilityLabel={`${name} kategorisini yeniden adlandır`}
+              >
+                <Pencil size={11} color={iconTint} strokeWidth={1.6} />
+              </Pressable>
+            </GlassTooltip>
+            <GlassTooltip title={autoT('Birleştir')} text={autoT('Bu kategoriyi başka bir kategoriyle birleştir')}>
+              <Pressable
+                onPress={onMerge}
+                hitSlop={6}
+                style={iconBtn()}
+                accessibilityLabel={`${name} kategorisini birleştir`}
+              >
+                <GitMerge size={11} color={iconTint} strokeWidth={1.6} />
+              </Pressable>
+            </GlassTooltip>
+            <GlassTooltip title={autoT('Böl')} text={autoT('Kategorideki hizmetleri yeni bir kategoriye ayır')}>
+              <Pressable
+                onPress={onSplit}
+                hitSlop={6}
+                style={iconBtn()}
+                accessibilityLabel={`${name} kategorisini böl`}
+              >
+                <Scissors size={11} color={iconTint} strokeWidth={1.6} />
+              </Pressable>
+            </GlassTooltip>
+            <GlassTooltip title={autoT('Sil')} text={autoT('Kategoriyi sil; hizmetler kategorisiz kalır')}>
+              <Pressable
+                onPress={onDelete}
+                hitSlop={6}
+                style={({ hovered }: any) => ({
+                  padding: 7, borderRadius: 8,
+                  backgroundColor: hovered ? 'rgba(217,75,75,0.14)' : 'transparent',
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                })}
+                accessibilityLabel={`${name} kategorisini sil`}
+              >
+                <Trash2 size={11} color={onAcc ? (onAcc === '#FFFFFF' ? '#FFD4D4' : '#9C2E2E') : '#D94B4B'} strokeWidth={1.6} />
+              </Pressable>
+            </GlassTooltip>
           </View>
-          <Text style={[s.groupCount, isDark && { color: T.ink3 }]}>{count} hizmet</Text>
+          <Text style={[s.groupCount, isDark && { color: T.ink3 }, onAcc ? { color: onAcc, opacity: 0.85 } : null]}>{count} hizmet</Text>
         </>
       )}
     </View>
@@ -1957,22 +2066,26 @@ function ServiceRow({
         {fmtServicePrice(sv)}
       </Text>
       {/* Beyaz buton kuralı: kart yüzeyi DEĞİL, bir kademe koyu (cardSoft) + hairline. */}
-      <Pressable style={[s.editBtn, isDark && { backgroundColor: T.cardSoft, borderColor: T.hairline }] as any} onPress={() => onEdit(sv)}>
-        <Pencil size={14} color={isDark ? T.ink2 : DS.ink[500]} strokeWidth={1.6} />
-      </Pressable>
-      <Pressable
-        onPress={() => onDelete(sv)}
-        hitSlop={6}
-        style={({ hovered }: any) => ({
-          width: 30, height: 30, borderRadius: 8,
-          alignItems: 'center', justifyContent: 'center',
-          backgroundColor: hovered ? 'rgba(217,75,75,0.10)' : 'transparent',
-          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-        })}
-        accessibilityLabel={`${sv.name} hizmetini sil`}
-      >
-        <Trash2 size={14} color="#D94B4B" strokeWidth={1.6} />
-      </Pressable>
+      <GlassTooltip title={autoT('Düzenle')} text={autoT('Hizmet adını, kategorisini ve fiyatını düzenle')}>
+        <Pressable style={[s.editBtn, isDark && { backgroundColor: T.cardSoft, borderColor: T.hairline }] as any} onPress={() => onEdit(sv)}>
+          <Pencil size={14} color={isDark ? T.ink2 : DS.ink[500]} strokeWidth={1.6} />
+        </Pressable>
+      </GlassTooltip>
+      <GlassTooltip title={autoT('Sil')} text={autoT('Hizmeti katalogdan sil')}>
+        <Pressable
+          onPress={() => onDelete(sv)}
+          hitSlop={6}
+          style={({ hovered }: any) => ({
+            width: 30, height: 30, borderRadius: 8,
+            alignItems: 'center', justifyContent: 'center',
+            backgroundColor: hovered ? 'rgba(217,75,75,0.10)' : 'transparent',
+            ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+          })}
+          accessibilityLabel={`${sv.name} hizmetini sil`}
+        >
+          <Trash2 size={14} color="#D94B4B" strokeWidth={1.6} />
+        </Pressable>
+      </GlassTooltip>
       <AppSwitch value={sv.is_active} onValueChange={() => onToggle(sv)} accentColor={theme.primary} />
     </View>
   );
@@ -1990,6 +2103,8 @@ function ServiceRow({
 // Tab 2 — Ozel Listeler (clinic / doctor-specific prices)
 // ────────────────────────────────────────────────────────────────────────────
 function CustomTab() {
+  const theme = usePanelTheme();
+  const heroInk = useWhiteHeroInk(theme.primary);
   const T = useMobileTokens();
   const isDark = useThemeModeStore(st => st.resolvedDark);
   const { profile } = useAuthStore();
@@ -2007,6 +2122,41 @@ function CustomTab() {
   const [pdfBusy, setPdfBusy]         = useState(false);
   const [importing, setImporting]     = useState(false);
   const [builderOpen, setBuilderOpen] = useState(false);
+
+  // Hero istatistikleri — klinik seçilince bir kez çekilir (sipariş sayısı + üye).
+  const [clinicStats, setClinicStats] = useState<{ orders: number; units: number } | null>(null);
+  useEffect(() => {
+    if (!selectedClinic) { setClinicStats(null); return; }
+    let cancel = false;
+    (async () => {
+      try {
+        // work_orders'ta clinic_id YOK → klinik hekimleri üzerinden.
+        const { data: docs } = await supabase.from('doctors').select('id').eq('clinic_id', selectedClinic.id);
+        const ids = (docs ?? []).map((d: any) => d.id);
+        if (!ids.length) { if (!cancel) setClinicStats({ orders: 0, units: 0 }); return; }
+        const { data: orders } = await supabase.from('work_orders').select('id').in('doctor_id', ids);
+        const orderIds = (orders ?? []).map((o: any) => o.id);
+        let units = 0;
+        if (orderIds.length) {
+          const { data: items } = await supabase.from('order_items').select('quantity').in('work_order_id', orderIds);
+          units = (items ?? []).reduce((a: number, it: any) => a + (Number(it.quantity) || 0), 0);
+        }
+        if (!cancel) setClinicStats({ orders: orderIds.length, units });
+      } catch { if (!cancel) setClinicStats(null); }
+    })();
+    return () => { cancel = true; };
+  }, [selectedClinic?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** "2 yıl 3 ay" — kliniğin kayıt tarihinden bugüne. */
+  const partnershipText = (iso?: string | null) => {
+    if (!iso) return '—';
+    const start = new Date(iso); const now = new Date();
+    let m = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
+    if (now.getDate() < start.getDate()) m -= 1;
+    if (m < 1) return autoT('1 aydan az');
+    const y = Math.floor(m / 12), mo = m % 12;
+    return [y ? `${y} ${autoT('yıl')}` : '', mo ? `${mo} ${autoT('ay')}` : ''].filter(Boolean).join(' ');
+  };
 
   // Klinik özel liste override map'i (builder'a geçilir)
   const overrideMap = React.useMemo(() => {
@@ -2204,48 +2354,68 @@ function CustomTab() {
       ) : (
         /* -- Service override list for selected clinic -- */
         <View style={{ flex: 1 }}>
-          {/* Back + clinic name header */}
-          <View style={[s.clinicHeader, isDark && { backgroundColor: T.card, borderBottomColor: T.hairline }] as any}>
-            <Pressable style={[s.backBtn, isDark && { backgroundColor: T.cardSoft, borderWidth: 1, borderColor: T.hairline }] as any} onPress={() => setSelected(null)}>
-              {isRTL() ? <ArrowRight size={16} color={isDark ? '#93C5FD' : '#2563EB'} strokeWidth={1.6} /> : <ArrowLeft size={16} color={isDark ? '#93C5FD' : '#2563EB'} strokeWidth={1.6} />}
-            </Pressable>
-            <View style={{ flex: 1 }}>
-              <Text style={[s.clinicHeaderTitle, isDark && { color: T.ink }] as any}>{selectedClinic.name}</Text>
-              <Text style={[s.clinicHeaderSub, isDark && { color: T.ink3 }] as any}>Ozel fiyat listesi</Text>
-            </View>
-            {/* F2: Standart listeyi bu kliniğe toplu aktar (başlangıç noktası) */}
-            <Pressable
-              onPress={handleImportStandard}
-              disabled={importing}
-              style={({ hovered }: any) => ({
-                flexDirection: 'row', alignItems: 'center', gap: 6,
-                paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9999,
-                backgroundColor: hovered ? '#1D4ED8' : '#2563EB',
-                opacity: importing ? 0.6 : 1,
-                ...(Platform.OS === 'web' ? { cursor: importing ? 'wait' as any : 'pointer' as any } as any : {}),
-              })}
-            >
-              <PlusCircle size={14} color="#FFFFFF" strokeWidth={1.9} />
-              <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>{importing ? 'Aktarılıyor…' : 'Standart listeyi aktar'}</Text>
-            </Pressable>
-            <Pressable
-              onPress={exportClinicPdf}
-              disabled={pdfBusy}
-              style={({ hovered }: any) => ({
-                flexDirection: 'row', alignItems: 'center', gap: 6,
-                paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9999,
-                backgroundColor: isDark ? (hovered ? 'rgba(255,255,255,0.06)' : T.cardSoft) : (hovered ? '#F1F5F9' : '#FFFFFF'),
-                borderWidth: 1, borderColor: isDark ? T.hairline : DS.ink[200],
-                opacity: pdfBusy ? 0.6 : 1,
-                ...(Platform.OS === 'web' ? { cursor: pdfBusy ? 'wait' as any : 'pointer' as any } as any : {}),
-              })}
-            >
-              <FileDown size={14} color={isDark ? T.ink2 : DS.ink[700]} strokeWidth={1.8} />
-              <Text style={{ fontSize: 12, fontWeight: '600', color: isDark ? T.ink : DS.ink[900] }}>{pdfBusy ? 'Hazırlanıyor…' : 'PDF'}</Text>
-            </Pressable>
-            <View style={s.overrideBadge}>
-              <Text style={s.overrideBadgeText}>{overrides.length} ozel fiyat</Text>
-            </View>
+          {/* ── Klinik hero — "BEYAZ HERO" (eski bilgi şeridinin yerine) ── */}
+          <View style={{ paddingHorizontal: PAGE_PADDING, paddingTop: 12, paddingBottom: 8 }}>
+            <WhiteHero
+              kicker="Özel Fiyat Listesi"
+              accent={theme.primary}
+              title={<Text numberOfLines={1}>{selectedClinic.name}</Text>}
+              description={`${overrides.length} ${autoT('özel fiyat')} · ${services.length} ${autoT('hizmet katalogda')}${clinicStats ? ` · ${autoT('birlikte')} ${partnershipText(selectedClinic.created_at)}` : ''}`}
+              stats={[
+                { value: partnershipText(selectedClinic.created_at), label: 'Birlikte' },
+                { value: clinicStats ? String(clinicStats.orders) : '—', label: 'Sipariş' },
+                { value: clinicStats ? String(clinicStats.units) : '—', label: 'Üye' },
+              ]}
+              actionsAlign="end"
+              actions={<>
+                  <GlassTooltip title={autoT('Geri')} text={autoT('Klinik listesine dön')}>
+                  <Pressable
+                    onPress={() => setSelected(null)}
+                    accessibilityLabel="Klinik listesine dön"
+                    style={{
+                      width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center',
+                      backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder,
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                    }}
+                  >
+                    {isRTL() ? <ArrowRight size={15} color={heroInk.ink} strokeWidth={1.8} /> : <ArrowLeft size={15} color={heroInk.ink} strokeWidth={1.8} />}
+                  </Pressable>
+                  </GlassTooltip>
+                  <GlassTooltip title={autoT('PDF')} text={autoT('Bu kliniğin özel fiyat listesini PDF olarak indir')}>
+                  <Pressable
+                    onPress={exportClinicPdf}
+                    disabled={pdfBusy}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 6,
+                      paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9999,
+                      backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder,
+                      opacity: pdfBusy ? 0.6 : 1,
+                      ...(Platform.OS === 'web' ? { cursor: pdfBusy ? 'wait' : 'pointer' } as any : {}),
+                    }}
+                  >
+                    <FileDown size={14} color={heroInk.ink} strokeWidth={1.8} />
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: heroInk.ink }}>{pdfBusy ? 'Hazırlanıyor…' : 'PDF'}</Text>
+                  </Pressable>
+                  </GlassTooltip>
+                  <GlassTooltip title={autoT('Standart listeyi aktar')} text={autoT('Standart katalogdaki hizmetleri bu kliniğe kopyalar; sonra tek tek düzenlersin')}>
+                  <Pressable
+                    onPress={handleImportStandard}
+                    disabled={importing}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 6,
+                      paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9999,
+                      backgroundColor: theme.primary, opacity: importing ? 0.6 : 1,
+                      ...(Platform.OS === 'web' ? { cursor: importing ? 'wait' : 'pointer' } as any : {}),
+                    }}
+                  >
+                    <PlusCircle size={14} color={onAccentInk(theme.primary)} strokeWidth={1.9} />
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: onAccentInk(theme.primary) }}>
+                      {importing ? 'Aktarılıyor…' : 'Standart listeyi aktar'}
+                    </Text>
+                  </Pressable>
+                  </GlassTooltip>
+              </>}
+            />
           </View>
 
           <ScrollView contentContainerStyle={s.list}>
@@ -2263,13 +2433,13 @@ function CustomTab() {
               const catSvcs = activeSvcs.filter((sv) => (sv.category || 'Diğer') === cat);
               if (!catSvcs.length) return null;
               return (
-                <View key={cat}>
-                  {/* Standart sekmeyle AYNI görünüm: başlık + adet, satırlar beyaz kart içinde. */}
-                  <View style={s.groupHeader}>
-                    <Text style={[s.groupTitle, isDark && { color: T.ink2 }]}>{cat}</Text>
-                    <Text style={[s.groupCount, isDark && { color: T.ink3 }]}>{catSvcs.length} hizmet</Text>
+                <View key={cat} style={[s.catCard, isDark && { backgroundColor: T.card, borderColor: T.hairline }] as any}>
+                  {/* Standart sekmeyle AYNI görünüm: başlık tablonun İÇİNDE navy bant. */}
+                  <View style={[s.groupHeader, { backgroundColor: theme.primary, marginBottom: 0, paddingHorizontal: 16, paddingVertical: 12 }]}>
+                    <Text style={[s.groupTitle, { color: onAccentInk(theme.primary) }]}>{cat}</Text>
+                    <Text style={[s.groupCount, { color: onAccentInk(theme.primary), opacity: 0.85 }]}>{catSvcs.length} hizmet</Text>
                   </View>
-                  <View style={[s.catCard, isDark && { backgroundColor: T.card, borderColor: T.hairline }] as any}>
+                  <View>
                   {catSvcs.map((sv, idx) => {
                     const override = overrides.find((o) => o.service_id === sv.id);
                     const effPrice = getEffectivePrice(sv, override);
@@ -2284,9 +2454,10 @@ function CustomTab() {
                         ] as any}
                         onPress={() => openEditOverride(sv)}
                       >
-                        <View style={{ flex: 1 }}>
-                          <Text style={[s.serviceName, { color: T.ink }]}>{sv.name}</Text>
-                          <View style={{ flexDirection: 'row', gap: 8, marginTop: 3, alignItems: 'center' }}>
+                        {/* Ad solda, fiyat AYNI SATIRDA sağda (kullanıcı isteği):
+                            fiyat alt satıra düşünce satırlar gereksiz yüksek kalıyordu. */}
+                        <Text style={[s.serviceName, { color: T.ink, flex: 1, minWidth: 0 }]} numberOfLines={1}>{sv.name}</Text>
+                        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexShrink: 0 }}>
                             {effPrice != null ? (
                               <>
                                 <Text style={s.overridePrice}>{(Number(effPrice) || 0).toLocaleString('tr-TR')} {priceSym(override?.custom_price != null ? (override.currency || sv.currency) : sv.currency)}</Text>
@@ -2304,7 +2475,6 @@ function CustomTab() {
                             ) : (
                               <Text style={s.stdPriceLabel}>Standart: {(Number(sv.price) || 0).toLocaleString('tr-TR')} {priceSym(sv.currency)}</Text>
                             )}
-                          </View>
                         </View>
                         {override
                           ? <Pencil size={16} color="#2563EB" strokeWidth={1.6} />

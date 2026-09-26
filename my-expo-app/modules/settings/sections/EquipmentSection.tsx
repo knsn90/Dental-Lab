@@ -30,6 +30,8 @@ import QRCode from 'react-native-qrcode-svg';
 import { printEquipmentLabel } from './equipment/printEquipmentLabel';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { autoT } from '../../../core/i18n/autoTranslate';
 
 // ─── Patterns tokens ─────────────────────────────────────────
 const DISPLAY = {
@@ -271,8 +273,6 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
         backgroundColor: accentColor, padding: 18,
         position: 'relative',
       }}>
-        <View style={{ position: 'absolute', top: -40, end: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
-        <View style={{ position: 'absolute', bottom: -50, start: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
 
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
           <View style={{ flex: 1, minWidth: 0 }}>
@@ -334,7 +334,7 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
       <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14, alignItems: 'center' }}>
         <View style={{
           flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8,
-          height: 44, borderRadius: 14, backgroundColor: T.card,
+          height: 44, borderRadius: 9999, backgroundColor: T.card,
           paddingHorizontal: 12, borderWidth: 1, borderColor: T.hairline,
         }}>
           <Search size={15} color={T.ink3} strokeWidth={1.8} />
@@ -349,9 +349,11 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
             } as any}
           />
           {search ? (
-            <Pressable onPress={() => setSearch('')} style={{ padding: 2 }}>
-              <X size={14} color={T.ink3} strokeWidth={2} />
-            </Pressable>
+            <GlassTooltip title={autoT('Temizle')} text={autoT('Arama kutusunu temizler')}>
+              <Pressable onPress={() => setSearch('')} style={{ padding: 2 }}>
+                <X size={14} color={T.ink3} strokeWidth={2} />
+              </Pressable>
+            </GlassTooltip>
           ) : null}
         </View>
 
@@ -359,36 +361,40 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
         {(() => {
           const hasFilter = filterCat !== null;
           return (
-            <Pressable
-              onPress={() => setFilterOpen(true)}
-              style={{
-                flexDirection: 'row', alignItems: 'center', gap: 6,
-                height: 44, paddingHorizontal: 14, borderRadius: 14,
-                backgroundColor: hasFilter ? (isDark ? T.ink : DS.ink[900]) : T.card,
-                borderWidth: hasFilter ? 0 : 1, borderColor: T.hairline,
-                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-              }}
-            >
-              <SlidersHorizontal size={14} strokeWidth={1.8} color={hasFilter ? (isDark ? T.bg : '#FFFFFF') : T.ink2} />
-              <Text style={{ fontSize: 12, fontWeight: hasFilter ? '700' : '600', color: hasFilter ? (isDark ? T.bg : '#FFFFFF') : T.ink2 }}>
-                Filtre{hasFilter ? ' (1)' : ''}
-              </Text>
-            </Pressable>
+            <GlassTooltip title={autoT('Filtre')} text={autoT('Demirbaşları kategoriye göre süz')}>
+              <Pressable
+                onPress={() => setFilterOpen(true)}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  height: 44, paddingHorizontal: 14, borderRadius: 9999,
+                  backgroundColor: hasFilter ? (isDark ? T.ink : DS.ink[900]) : T.card,
+                  borderWidth: hasFilter ? 0 : 1, borderColor: T.hairline,
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                }}
+              >
+                <SlidersHorizontal size={14} strokeWidth={1.8} color={hasFilter ? (isDark ? T.bg : '#FFFFFF') : T.ink2} />
+                <Text style={{ fontSize: 12, fontWeight: hasFilter ? '700' : '600', color: hasFilter ? (isDark ? T.bg : '#FFFFFF') : T.ink2 }}>
+                  Filtre{hasFilter ? ' (1)' : ''}
+                </Text>
+              </Pressable>
+            </GlassTooltip>
           );
         })()}
 
-        <Pressable
-          onPress={openNew}
-          style={{
-            flexDirection: 'row', alignItems: 'center', gap: 5,
-            height: 44, paddingHorizontal: 14, borderRadius: 14,
-            backgroundColor: isDark ? T.ink : DS.ink[900],
-            ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
-          } as any}
-        >
-          <Plus size={15} color={isDark ? T.bg : '#FFF'} strokeWidth={2.2} />
-          <Text style={{ fontSize: 12, fontWeight: '700', color: isDark ? T.bg : '#FFF' }}>Ekle</Text>
-        </Pressable>
+        <GlassTooltip title={autoT('Ekle')} text={autoT('Yeni demirbaş kaydı oluştur')}>
+          <Pressable
+            onPress={openNew}
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 5,
+              height: 44, paddingHorizontal: 14, borderRadius: 9999,
+              backgroundColor: isDark ? T.ink : DS.ink[900],
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+            } as any}
+          >
+            <Plus size={15} color={isDark ? T.bg : '#FFF'} strokeWidth={2.2} />
+            <Text style={{ fontSize: 12, fontWeight: '700', color: isDark ? T.bg : '#FFF' }}>Ekle</Text>
+          </Pressable>
+        </GlassTooltip>
       </View>
 
       {/* F5 FilterSheet — Kategori */}
@@ -403,12 +409,16 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
             <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: DS.ink[200], marginBottom: 14 }} />
             <View style={{ paddingHorizontal: 20, paddingBottom: 12, flexDirection: 'row', alignItems: 'center' }}>
               <Text style={{ fontSize: 18, fontWeight: '700', color: DS.ink[900], flex: 1 }}>Filtrele</Text>
-              <Pressable onPress={() => setFilterCat(null)} style={{ paddingHorizontal: 10, paddingVertical: 6 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[500] }}>Temizle</Text>
-              </Pressable>
-              <Pressable onPress={() => setFilterOpen(false)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : DS.ink[100], alignItems: 'center', justifyContent: 'center', marginStart: 4 }}>
-                <X size={16} color={isDark ? T.ink2 : DS.ink[700]} strokeWidth={2} />
-              </Pressable>
+              <GlassTooltip title={autoT('Temizle')} text={autoT('Seçili kategori filtresini kaldır')}>
+                <Pressable onPress={() => setFilterCat(null)} style={{ paddingHorizontal: 10, paddingVertical: 6 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[500] }}>Temizle</Text>
+                </Pressable>
+              </GlassTooltip>
+              <GlassTooltip title={autoT('Kapat')} text={autoT('Filtre panelini kapat')}>
+                <Pressable onPress={() => setFilterOpen(false)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : DS.ink[100], alignItems: 'center', justifyContent: 'center', marginStart: 4 }}>
+                  <X size={16} color={isDark ? T.ink2 : DS.ink[700]} strokeWidth={2} />
+                </Pressable>
+              </GlassTooltip>
             </View>
             <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 12, gap: 18 }}>
               <View style={{ gap: 8 }}>
@@ -443,13 +453,15 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
               </View>
             </ScrollView>
             <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
-              <Pressable onPress={() => setFilterOpen(false)} style={{
-                height: 48, borderRadius: 14, backgroundColor: DS.ink[900],
-                alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer' as any,
-              }}>
-                <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>Uygula</Text>
-              </Pressable>
+              <GlassTooltip title={autoT('Uygula')} text={autoT('Seçilen filtreyi listeye uygula')}>
+                <Pressable onPress={() => setFilterOpen(false)} style={{
+                  height: 48, borderRadius: 14, backgroundColor: DS.ink[900],
+                  alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer' as any,
+                }}>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>Uygula</Text>
+                </Pressable>
+              </GlassTooltip>
             </View>
           </Pressable>
         </Pressable>
@@ -465,16 +477,18 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
             {items.length === 0 ? 'Henüz demirbaş eklenmemiş' : 'Sonuç bulunamadı'}
           </Text>
           {items.length === 0 && (
-            <Pressable
-              onPress={openNew}
-              style={{
-                marginTop: 12, paddingHorizontal: 16, paddingVertical: 8,
-                borderRadius: 9999, backgroundColor: accentColor,
-                ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
-              } as any}
-            >
-              <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFF' }}>İlk Cihazı Ekle</Text>
-            </Pressable>
+            <GlassTooltip title={autoT('İlk Cihazı Ekle')} text={autoT('İlk demirbaş kaydını oluştur')}>
+              <Pressable
+                onPress={openNew}
+                style={{
+                  marginTop: 12, paddingHorizontal: 16, paddingVertical: 8,
+                  borderRadius: 9999, backgroundColor: accentColor,
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                } as any}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFF' }}>İlk Cihazı Ekle</Text>
+              </Pressable>
+            </GlassTooltip>
           )}
         </View>
       ) : (
@@ -554,18 +568,20 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
 
                 {/* Actions: QR + Edit */}
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  <Pressable
-                    onPress={(e: any) => { e?.stopPropagation?.(); setQrCopies(1); setQrItem(item); }}
-                    hitSlop={8}
-                    style={({ pressed }: any) => ({
-                      width: 32, height: 32, borderRadius: 10,
-                      alignItems: 'center', justifyContent: 'center',
-                      backgroundColor: pressed ? `${accentColor}18` : `${accentColor}0D`,
-                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
-                    })}
-                  >
-                    <QrCode size={15} color={accentColor} strokeWidth={1.8} />
-                  </Pressable>
+                  <GlassTooltip title={autoT('Etiket')} text={autoT('Bu cihaz için QR etiketi hazırla')}>
+                    <Pressable
+                      onPress={(e: any) => { e?.stopPropagation?.(); setQrCopies(1); setQrItem(item); }}
+                      hitSlop={8}
+                      style={({ pressed }: any) => ({
+                        width: 32, height: 32, borderRadius: 10,
+                        alignItems: 'center', justifyContent: 'center',
+                        backgroundColor: pressed ? `${accentColor}18` : `${accentColor}0D`,
+                        ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                      })}
+                    >
+                      <QrCode size={15} color={accentColor} strokeWidth={1.8} />
+                    </Pressable>
+                  </GlassTooltip>
                   <Edit3 size={14} color={DS.ink[300]} strokeWidth={1.6} />
                 </View>
               </Pressable>
@@ -603,16 +619,18 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
               <Text style={{ ...DISPLAY, fontSize: 18, color: T.ink }}>
                 {editItem ? 'Demirbaş Düzenle' : 'Yeni Demirbaş'}
               </Text>
-              <Pressable
-                onPress={() => setModalOpen(false)}
-                style={{
-                  width: 32, height: 32, borderRadius: 10,
-                  backgroundColor: T.cardSoft, alignItems: 'center', justifyContent: 'center',
-                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
-                } as any}
-              >
-                <X size={16} color={T.ink2} strokeWidth={2} />
-              </Pressable>
+              <GlassTooltip title={autoT('Kapat')} text={autoT('Pencereyi kaydetmeden kapat')}>
+                <Pressable
+                  onPress={() => setModalOpen(false)}
+                  style={{
+                    width: 32, height: 32, borderRadius: 10,
+                    backgroundColor: T.cardSoft, alignItems: 'center', justifyContent: 'center',
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                  } as any}
+                >
+                  <X size={16} color={T.ink2} strokeWidth={2} />
+                </Pressable>
+              </GlassTooltip>
             </View>
 
             {/* Form */}
@@ -890,49 +908,59 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
             }}>
               {editItem ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Pressable
-                    onPress={() => { handleDelete(editItem.id); setModalOpen(false); }}
-                    style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 5,
-                      paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9999,
-                      backgroundColor: 'rgba(220,38,38,0.08)',
-                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
-                    } as any}
-                  >
-                    <Trash2 size={13} color="#DC2626" strokeWidth={1.8} />
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#DC2626' }}>Sil</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => { setQrCopies(1); setQrItem(editItem); setModalOpen(false); }}
-                    style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 5,
-                      paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9999,
-                      backgroundColor: `${accentColor}14`,
-                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
-                    } as any}
-                  >
-                    <QrCode size={13} color={accentColor} strokeWidth={1.8} />
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: accentColor }}>Etiket</Text>
-                  </Pressable>
+                  <GlassTooltip title={autoT('Sil')} text={autoT('Bu demirbaşı kalıcı olarak sil')}>
+                    <Pressable
+                      onPress={() => { handleDelete(editItem.id); setModalOpen(false); }}
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 5,
+                        paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9999,
+                        backgroundColor: 'rgba(220,38,38,0.08)',
+                        ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                      } as any}
+                    >
+                      <Trash2 size={13} color="#DC2626" strokeWidth={1.8} />
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: '#DC2626' }}>Sil</Text>
+                    </Pressable>
+                  </GlassTooltip>
+                  <GlassTooltip title={autoT('Etiket')} text={autoT('Bu cihaz için QR etiketi hazırla')}>
+                    <Pressable
+                      onPress={() => { setQrCopies(1); setQrItem(editItem); setModalOpen(false); }}
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 5,
+                        paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9999,
+                        backgroundColor: `${accentColor}14`,
+                        ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                      } as any}
+                    >
+                      <QrCode size={13} color={accentColor} strokeWidth={1.8} />
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: accentColor }}>Etiket</Text>
+                    </Pressable>
+                  </GlassTooltip>
                 </View>
               ) : <View />}
 
-              <Pressable
-                onPress={handleSave}
-                disabled={!form.name.trim() || saving}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 5,
-                  paddingHorizontal: 16, paddingVertical: 8, borderRadius: 9999,
-                  backgroundColor: form.name.trim() ? accentColor : DS.ink[200],
-                  opacity: saving ? 0.6 : 1,
-                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
-                } as any}
+              <GlassTooltip
+                title={autoT(editItem ? 'Güncelle' : 'Kaydet')}
+                text={autoT('Demirbaş bilgilerini kaydet')}
+                enabled={!(!form.name.trim() || saving)}
               >
-                <Save size={13} color="#FFF" strokeWidth={1.8} />
-                <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFF' }}>
-                  {saving ? 'Kaydediliyor...' : editItem ? 'Güncelle' : 'Kaydet'}
-                </Text>
-              </Pressable>
+                <Pressable
+                  onPress={handleSave}
+                  disabled={!form.name.trim() || saving}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 5,
+                    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 9999,
+                    backgroundColor: form.name.trim() ? accentColor : DS.ink[200],
+                    opacity: saving ? 0.6 : 1,
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                  } as any}
+                >
+                  <Save size={13} color="#FFF" strokeWidth={1.8} />
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFF' }}>
+                    {saving ? 'Kaydediliyor...' : editItem ? 'Güncelle' : 'Kaydet'}
+                  </Text>
+                </Pressable>
+              </GlassTooltip>
             </View>
           </View>
         </View>
@@ -978,13 +1006,15 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
                   Demirbaş Etiketi
                 </Text>
               </View>
-              <Pressable
-                onPress={() => setQrItem(null)}
-                hitSlop={8}
-                style={{ padding: 6, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) } as any}
-              >
-                <X size={18} color={DS.ink[500]} strokeWidth={1.6} />
-              </Pressable>
+              <GlassTooltip title={autoT('Kapat')} text={autoT('Etiket önizlemesini kapat')}>
+                <Pressable
+                  onPress={() => setQrItem(null)}
+                  hitSlop={8}
+                  style={{ padding: 6, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) } as any}
+                >
+                  <X size={18} color={DS.ink[500]} strokeWidth={1.6} />
+                </Pressable>
+              </GlassTooltip>
             </View>
 
             {qrItem ? (
@@ -1106,51 +1136,61 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
                     borderRadius: 9999, borderWidth: 1, borderColor: DS.ink[200],
                     overflow: 'hidden', backgroundColor: '#FFFFFF',
                   }}>
-                    <Pressable
-                      onPress={() => setQrCopies(c => Math.max(1, c - 1))}
-                      hitSlop={6}
-                      style={{ paddingHorizontal: 12, paddingVertical: 7, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) } as any}
-                    >
-                      <Minus size={14} color={DS.ink[700]} strokeWidth={2} />
-                    </Pressable>
+                    <GlassTooltip title={autoT('Azalt')} text={autoT('Basılacak kopya sayısını azalt')} enabled={qrCopies > 1}>
+                      <Pressable
+                        onPress={() => setQrCopies(c => Math.max(1, c - 1))}
+                        hitSlop={6}
+                        style={{ paddingHorizontal: 12, paddingVertical: 7, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) } as any}
+                      >
+                        <Minus size={14} color={DS.ink[700]} strokeWidth={2} />
+                      </Pressable>
+                    </GlassTooltip>
                     <Text style={{
                       minWidth: 28, textAlign: 'center',
                       fontSize: 13, fontWeight: '700', color: DS.ink[900],
                     }}>
                       {qrCopies}
                     </Text>
-                    <Pressable
-                      onPress={() => setQrCopies(c => Math.min(6, c + 1))}
-                      hitSlop={6}
-                      style={{ paddingHorizontal: 12, paddingVertical: 7, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) } as any}
-                    >
-                      <Plus size={14} color={DS.ink[700]} strokeWidth={2} />
-                    </Pressable>
+                    <GlassTooltip title={autoT('Artır')} text={autoT('Basılacak kopya sayısını artır')} enabled={qrCopies < 6}>
+                      <Pressable
+                        onPress={() => setQrCopies(c => Math.min(6, c + 1))}
+                        hitSlop={6}
+                        style={{ paddingHorizontal: 12, paddingVertical: 7, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) } as any}
+                      >
+                        <Plus size={14} color={DS.ink[700]} strokeWidth={2} />
+                      </Pressable>
+                    </GlassTooltip>
                   </View>
                 </View>
 
                 {/* Print CTA */}
-                <Pressable
-                  onPress={async () => {
-                    if (!qrItem || qrPrinting) return;
-                    setQrPrinting(true);
-                    await printEquipmentLabel(qrItem, { copies: qrCopies });
-                    setQrPrinting(false);
-                  }}
-                  disabled={qrPrinting}
-                  style={{
-                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-                    paddingVertical: 13, borderRadius: 14,
-                    backgroundColor: accentColor,
-                    opacity: qrPrinting ? 0.6 : 1,
-                    ...(Platform.OS === 'web' ? { cursor: qrPrinting ? 'default' : 'pointer' } : {}),
-                  } as any}
+                <GlassTooltip
+                  title={autoT('Yazdır')}
+                  text={autoT('Etiketi yazdır veya PDF olarak kaydet')}
+                  enabled={!qrPrinting}
                 >
-                  <Printer size={15} color="#FFF" strokeWidth={1.8} />
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFF' }}>
-                    {qrPrinting ? 'Hazırlanıyor...' : Platform.OS === 'web' ? 'Yazdır / PDF' : 'PDF Olarak Paylaş'}
-                  </Text>
-                </Pressable>
+                  <Pressable
+                    onPress={async () => {
+                      if (!qrItem || qrPrinting) return;
+                      setQrPrinting(true);
+                      await printEquipmentLabel(qrItem, { copies: qrCopies });
+                      setQrPrinting(false);
+                    }}
+                    disabled={qrPrinting}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                      paddingVertical: 13, borderRadius: 14,
+                      backgroundColor: accentColor,
+                      opacity: qrPrinting ? 0.6 : 1,
+                      ...(Platform.OS === 'web' ? { cursor: qrPrinting ? 'default' : 'pointer' } : {}),
+                    } as any}
+                  >
+                    <Printer size={15} color="#FFF" strokeWidth={1.8} />
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFF' }}>
+                      {qrPrinting ? 'Hazırlanıyor...' : Platform.OS === 'web' ? 'Yazdır / PDF' : 'PDF Olarak Paylaş'}
+                    </Text>
+                  </Pressable>
+                </GlassTooltip>
 
                 <Text style={{ fontSize: 11, color: DS.ink[400], textAlign: 'center' }}>
                   Etiket boyutu: 62 × 40 mm · QR tarandığında bu cihaza ulaşır.

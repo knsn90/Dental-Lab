@@ -18,13 +18,16 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, Pressable, ActivityIndicator, Platform, useWindowDimensions } from 'react-native';
+import { View, Text, Pressable, TextInput, ActivityIndicator, Platform, useWindowDimensions } from 'react-native';
 import { useRouter, useSegments } from 'expo-router';
 import { safeBack } from '../../../core/util/safeBack';
-import { Check, ChevronDown, Inbox, Link2, RefreshCw, Sparkles, X } from '../../../core/ui/icons';
+import { Check, ChevronDown, Inbox, Link2, RefreshCw, Search, SlidersHorizontal, Sparkles, X } from '../../../core/ui/icons';
 import { ResponsiveCanvas } from '../../../core/layout/ResponsiveCanvas';
 import { groupByCategory, CategoryHeaderRow } from '../categoryGroup';
 import { DS } from '../../../core/theme/dsTokens';
+import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { useStockUI } from '../stockTheme';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
@@ -53,6 +56,7 @@ type SaveState = 'saved' | 'error';
 const PAGE = 80;
 
 export function MaterialMappingScreen({ accentColor = DS.lab.primary, embedded = false }: Props) {
+  const heroInk = useWhiteHeroInk(accentColor);
   const U = useStockUI();
   const router   = useRouter();
   const segments = useSegments();
@@ -73,6 +77,7 @@ export function MaterialMappingScreen({ accentColor = DS.lab.primary, embedded =
 
   const [pickerFor, setPickerFor] = useState<string | null>(null);
   const [filter, setFilter]       = useState<'all' | 'unmapped' | 'changed'>('all');
+  const [filterOpen, setFilterOpen] = useState(false);
   const [query, setQuery]         = useState('');
   const [hoverId, setHoverId]     = useState<string | null>(null);
   const [limit, setLimit]         = useState(PAGE);
@@ -168,14 +173,14 @@ export function MaterialMappingScreen({ accentColor = DS.lab.primary, embedded =
 
   if (loading) {
     return (
-      <ResponsiveCanvas size="lg" bgClassName="bg-transparent">
+      <ResponsiveCanvas size="lg" bgClassName="bg-transparent" padClassName={embedded ? 'pb-4' : undefined}>
         <Loader color={accentColor} />
       </ResponsiveCanvas>
     );
   }
 
   return (
-    <ResponsiveCanvas size="lg" bgClassName="bg-transparent">
+    <ResponsiveCanvas size="lg" bgClassName="bg-transparent" padClassName={embedded ? 'pb-4' : undefined}>
       {!embedded ? (
         <SecHeader
         eyebrow="Envanter · Eşleştirme"
@@ -187,58 +192,104 @@ export function MaterialMappingScreen({ accentColor = DS.lab.primary, embedded =
       />
       ) : null}
 
-      {/* ── Özet şeridi ────────────────────────────────────────── */}
-      <View style={[cardStyle, { paddingHorizontal: 18, paddingVertical: 14, marginBottom: 16 }]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: isNarrow ? 18 : 28, flexWrap: 'wrap' }}>
-          <MiniStat value={mappedCount} label="Bağlı"
-                    color={mappedCount > 0 ? DS.lab.success : U.ink[400]} />
-          <MiniStat value={missingCount} label="Eksik"
-                    color={missingCount > 0 ? DS.lab.warning : U.ink[400]} />
-          <MiniStat value={pending.length} label="Değişiklik"
-                    color={pending.length > 0 ? accentColor : U.ink[400]} />
-
-          {isNarrow ? null : <View style={{ flex: 1, minWidth: 0 }} />}
-
-          <MiniStat value={`%${pct}`} label="Tamamlandı"
-                    color={pct === 100 ? DS.lab.success : U.ink[900]} />
-
-          <Pressable
-            onPress={load}
-            style={({ pressed }) => ({
-              width: 30, height: 30, borderRadius: 999,
-              alignItems: 'center', justifyContent: 'center',
-              backgroundColor: U.chipNeutral,
-              opacity: pressed ? 0.6 : 1, ...webCursor,
-            })}
-          >
-            <RefreshCw size={13} color={U.ink[500]} strokeWidth={1.8} />
-          </Pressable>
+      {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ───────────────── */}
+      {/* ── Hero — "BEYAZ HERO": özet şeridi BURAYA katıldı (kullanıcı isteği),
+          ayrı kart yok; sayılar + ilerleme rayı hero'nun içinde. ── */}
+      <WhiteHero
+        kicker="Kurulum · Malzeme Eşleştirme"
+        accent={accentColor}
+        title={<><Text style={{ color: heroInk.accentInk }}>{mappedCount}</Text> eşleşmiş kalem</>}
+        description={`${rows.length} stok kalemi · ${missingCount} kalem henüz bir üretim malzemesine bağlı değil`}
+        stats={[
+          { value: `%${pct}`,            label: 'Tamamlandı' },
+          { value: String(missingCount), label: 'Bağlanmamış' },
+        ]}
+        cta={
+          <GlassTooltip title={autoT('Yenile')} text={autoT('Eşleştirme listesini yeniden yükle')}>
+            <Pressable
+              onPress={load}
+              style={({ pressed }) => ({
+                width: 34, height: 34, borderRadius: 999, alignItems: 'center', justifyContent: 'center',
+                backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder,
+                opacity: pressed ? 0.6 : 1, ...webCursor,
+              })}
+            >
+              <RefreshCw size={14} color={heroInk.inkSoft} strokeWidth={1.8} />
+            </Pressable>
+          </GlassTooltip>
+        }
+        style={{ marginBottom: 14 }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: isNarrow ? 18 : 28, flexWrap: 'wrap', marginTop: 16 }}>
+          <MiniStat value={mappedCount}    label="Bağlı"       color={mappedCount > 0 ? DS.lab.success : heroInk.inkFaint} />
+          <MiniStat value={missingCount}   label="Eksik"       color={missingCount > 0 ? DS.lab.warning : heroInk.inkFaint} />
+          <MiniStat value={pending.length} label="Değişiklik"  color={pending.length > 0 ? accentColor : heroInk.inkFaint} />
         </View>
-
-        {/* İnce ilerleme rayı */}
-        <View style={{ marginTop: 14 }}>
+        <View style={{ marginTop: 12 }}>
           <ProgressRail pct={pct} color={pct === 100 ? DS.lab.success : accentColor} />
         </View>
+      </WhiteHero>
+
+      {/* ── Arama + Filtrele (uygulama geneli dil) ─────────────── */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+        <View style={{
+          flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
+          height: 38, paddingHorizontal: 12, borderRadius: 9999,
+          backgroundColor: U.surface, borderWidth: 1, borderColor: U.hairline,
+        }}>
+          <Search size={14} color={U.ink[400]} strokeWidth={1.8} />
+          <TextInput
+            style={{ flex: 1, fontSize: 13, color: U.ink[900], ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) } as any}
+            value={query}
+            onChangeText={t => { setQuery(t); setLimit(PAGE); }}
+            placeholder="Ürün ara..."
+            placeholderTextColor={U.ink[400]}
+          />
+          {query.length > 0 && (
+            <GlassTooltip title={autoT('Temizle')} text={autoT('Aramayı temizle')}>
+              <Pressable onPress={() => { setQuery(''); setLimit(PAGE); }} hitSlop={8} style={webCursor as any}>
+                <X size={13} color={U.ink[400]} strokeWidth={2} />
+              </Pressable>
+            </GlassTooltip>
+          )}
+        </View>
+
+        <GlassTooltip title={autoT('Filtrele')} text={autoT('Bağlanmamış ya da değiştirilmiş kalemleri göster')}>
+          <Pressable
+            onPress={() => setFilterOpen(v => !v)}
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 6,
+              height: 38, paddingHorizontal: 14, borderRadius: 9999,
+              backgroundColor: filter !== 'all' ? tint(accentColor, 0.10) : U.surface,
+              borderWidth: 1, borderColor: filter !== 'all' || filterOpen ? accentColor : U.hairline,
+              ...webCursor,
+            }}
+          >
+            <SlidersHorizontal size={14} color={filter !== 'all' ? accentColor : U.ink[500]} strokeWidth={1.8} />
+            <Text style={{ fontSize: 12.5, fontWeight: '600', color: filter !== 'all' ? accentColor : U.ink[500] }}>
+              {autoT('Filtrele')}{filter !== 'all' ? ' (1)' : ''}
+            </Text>
+          </Pressable>
+        </GlassTooltip>
       </View>
 
-      {/* ── Arama + filtre (paylaşılan atomlar) ─────────────────── */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10,
-                     marginBottom: 16, flexWrap: 'wrap' }}>
-        <SearchField
-          value={query}
-          onChange={t => { setQuery(t); setLimit(PAGE); }}
-          placeholder="Ürün ara..."
-        />
-        <TabPill
-          value={filter}
-          onChange={k => { setFilter(k); setLimit(PAGE); }}
-          items={[
-            { key: 'all',      label: 'Tümü',        count: rows.length },
-            { key: 'unmapped', label: 'Bağlanmamış', count: missingCount },
-            { key: 'changed',  label: 'Değişenler',  count: pending.length },
-          ]}
-        />
-      </View>
+      {filterOpen && (
+        <View style={{
+          marginBottom: 16, padding: 12, borderRadius: 14,
+          backgroundColor: U.surface, borderWidth: 1, borderColor: U.hairline,
+          flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+        }}>
+          <TabPill
+            value={filter}
+            onChange={k => { setFilter(k); setLimit(PAGE); }}
+            items={[
+              { key: 'all',      label: 'Tümü',        count: rows.length },
+              { key: 'unmapped', label: 'Bağlanmamış', count: missingCount },
+              { key: 'changed',  label: 'Değişenler',  count: pending.length },
+            ]}
+          />
+        </View>
+      )}
 
       {/* ── Liste kartı ────────────────────────────────────────── */}
       {visible.length === 0 ? (
@@ -253,7 +304,7 @@ export function MaterialMappingScreen({ accentColor = DS.lab.primary, embedded =
             <ListHeader columns={[
               { label: 'Ürün', flex: 1 },
               { label: 'Üretim Malzemesi', width: 248, align: 'right' },
-            ]} />
+            ]} accent={accentColor} />
           )}
 
           {groupByCategory(shown, x => x.category, x => x.stock_item_id).map(entry => {

@@ -23,7 +23,8 @@ import {
   EXPENSE_CATEGORY_LABELS, EXPENSE_CATEGORY_COLORS,
   type Expense, type ExpenseCategory, type ExpensePaymentMethod, type CreateExpenseParams,
 } from '../api';
-import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
+import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
 import { DatePicker } from '../../../core/ui/DatePicker';
 // Phase 3: Multi-currency
 import { MoneyInput } from '../../../core/money/MoneyInput';
@@ -47,7 +48,6 @@ import { toast } from '../../../core/ui/Toast';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { useInkUI } from '../../../core/theme/inkScale';
-import { HeroGlow, useHeroSurface } from '../../../core/ui/HeroGlow';
 import {
   Plus, Search, X, Inbox, Pencil, Trash2,
   Package, Building, Users, Wrench, Receipt, MoreHorizontal, Truck,
@@ -56,6 +56,7 @@ import {
 } from '../../../core/ui/icons';
 import { supabase } from '../../../core/api/supabase';
 import { confirmAsync } from '../../../core/util/confirm';
+import { ensureAiConsent } from '../../../core/ai/aiConsent';
 
 // ── Patterns tokens ─────────────────────────────────────────────────
 const DISPLAY = {
@@ -125,7 +126,10 @@ export function ExpensesScreen() {
   const theme = usePanelTheme();
   // Koyu tema: nötr yüzeyler + hero lacivert gradyanı (açık temada birebir aynı kalır)
   const U = useInkUI();
-  const heroBg = useHeroSurface(theme.primary);
+  const heroInk = useWhiteHeroInk();
+  // Tablo kartı başlığı düz panel accent'i (uygulama genelinde aynı dil).
+  const tblAccent = theme.primary;
+  const tblInk = onAccentInk(tblAccent);
   const isEmbedded = useContext(HubContext);
 
   /**
@@ -274,6 +278,23 @@ export function ExpensesScreen() {
     return map;
   }, [expenses]);
 
+  // ── Hero özeti (beyaz hero) ──
+  // Çoklu-döviz kuralı: TOPLAMA YOK. Başlıkta en büyük dilim ("lead") durur,
+  // kalanlar (`rest`) altında inline chip olarak listelenir.
+  const lead = expByCcy[0] ?? null;
+  const rest = expByCcy.slice(1);
+  const catCount = Object.keys(catByCcy).length;
+  // En büyük kalem: lead para birimindeki en yüksek kategori.
+  const topCat = useMemo(() => {
+    if (!lead) return null;
+    let best: { cat: ExpenseCategory; total: number; currency: Currency } | null = null;
+    for (const [cat, slices] of Object.entries(catByCcy)) {
+      const sl = slices.find(x => x.currency === lead.currency);
+      if (sl && (!best || sl.total > best.total)) best = { cat: cat as ExpenseCategory, total: sl.total, currency: sl.currency };
+    }
+    return best;
+  }, [catByCcy, lead]);
+
   const openAdd = () => { setEditing(null); setModalOpen(true); };
   const openEdit = (e: Expense) => { setEditing(e); setModalOpen(true); };
 
@@ -410,52 +431,48 @@ export function ExpensesScreen() {
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={U.ink[300]} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Hero — paylaşılan kanonik hero (Personel ekranıyla aynı dil) ──
-            Koyu temada zemin `useHeroSurface` ile lacivert gradyana iner
-            (#001F3F → #002A5C → #004B87); açık temada panel accent'i korunur.
-            Dekoratif daireler `HeroGlow` — koyu temada blur ile yayılır. */}
-        <View style={{
-          borderRadius: 20, overflow: 'hidden',
-          ...heroBg,
-          paddingHorizontal: isDesktop ? 22 : 18,
-          paddingVertical: isDesktop ? 18 : 16,
-          position: 'relative',
-        }}>
-          <HeroGlow size={130} opacity={0.18} delay={0} style={{ top: -46, end: -34 }} />
-          <HeroGlow size={110} opacity={0.10} delay={1400} style={{ bottom: -52, start: -26 }} />
-
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
-            <View style={{ flexShrink: 1, minWidth: 210 }}>
-              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)', marginBottom: 12 }}>
-                Toplam Gider
-              </Text>
-              {/* Katı per-currency: her para birimi ayrı kart, asla toplanmaz */}
-              <MoneyMultiX slices={expByCcy} variant="cards" size="lg" accentColor={theme.primary} emptyText="—" />
-              <Text style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.88)', marginTop: 8 }}>
-                {filtered.length} kayıt
-                {expByCcy.length > 1 ? ` · ${expByCcy.length} para birimi` : ''}
-              </Text>
-            </View>
-
-            {/* Aksiyonlar — dar ekranda KENDİ satırına iner. Eskiden aynı satırda
-                kalıp sağdan taşıyordu ve "+ Gider" kapsülü ekran kenarında
-                kesiliyordu; `width:'100%'` + wrap ile hiçbir düğme kırpılmaz. */}
-            <View style={{
-              flexDirection: 'row', gap: 8, flexWrap: 'wrap',
-              flexShrink: 1,
-              ...(isDesktop ? { justifyContent: 'flex-end' } : { width: '100%' }),
-            }}>
+        {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ─────────────────
+            Prim Motoru panosunun bilgi hiyerarşisi birebir: kicker → 44px
+            tek büyük rakam → bağlam cümlesi → sağda 40px stat'lar → pill şeridi.
+            Rakam TOPLANMAZ (çoklu-döviz kuralı): başlık ana para biriminin
+            dilimini gösterir, diğer dövizler altında inline chip olarak durur. */}
+        <WhiteHero
+          kicker="Giderler"
+          accent={theme.primary}
+          title={
+            lead ? (
+              <>Toplam <Text style={{ color: heroInk.accentInk }}>{formatMoney(lead.total, lead.currency, { fractionDigits: 0 })}</Text></>
+            ) : '—'
+          }
+          description={
+            `${filtered.length} gider kaydı` +
+            (rest.length ? ` · ${rest.length + 1} para birimi` : '') +
+            (topCat ? ` · en büyük kalem ${EXPENSE_CATEGORY_LABELS[topCat.cat]}` : '')
+          }
+          stats={[
+            { value: String(filtered.length),  label: 'Kayıt' },
+            { value: String(catCount),         label: 'Kategori' },
+            ...(rest.length ? [{ value: String(rest.length + 1), label: 'Para Birimi' }] : []),
+          ]}
+          actions={
+            <>
               <PillBtn icon={Repeat} label="Otomatik" onPress={() => setRecurringOpen(true)} variant="ghost" onHero heroAccent={theme.primary} />
               <PillBtn icon={FileSpreadsheet} label="Excel" onPress={handleExcel} variant="ghost" onHero heroAccent={theme.primary} />
               <PillBtn icon={Receipt} label="Satın Alma" onPress={() => setPurchaseOpen(true)} variant="ghost" onHero heroAccent={theme.primary} />
               <PillBtn icon={Plus} label="Gider Ekle" onPress={openAdd} onHero heroAccent={theme.primary} />
+            </>
+          }
+        >
+          {rest.length > 0 && (
+            <View style={{ marginTop: 10 }}>
+              <MoneyMultiX slices={rest} variant="inline" onAccent={heroInk.moneyOnAccent} />
             </View>
-          </View>
+          )}
 
-          {/* Kategori kırılımı — kanonik hero stat tile'ları.
-              Eskiden çıplak metin sütunlarıydı: tutar uzayınca satır kayıyor,
-              tek bir "22.773 €" alt satıra düşüyordu. Tile (flex:1 + minWidth)
-              her kırılımı kendi kutusunda tutar, taşma olmaz. */}
+          {/* Kategori kırılımı — HER kalem ayrı ayrı. Başlıktaki tek büyük rakam
+              "toplam"ı verir, bu şerit onu nereye harcadığını açar; yalnız en
+              büyük kalemi göstermek bilgiyi kaybediyordu. Tile (flex + minWidth)
+              tutar uzayınca satırı kaydırmaz. */}
           {(() => {
             const tiles = CATEGORIES
               .map(cat => ({ cat, slices: catByCcy[cat] ?? [] }))
@@ -469,11 +486,12 @@ export function ExpensesScreen() {
                     <View key={cat} style={{
                       flex: 1, minWidth: 110,
                       paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12,
-                      backgroundColor: 'rgba(255,255,255,0.16)',
+                      backgroundColor: heroInk.tileBg,
+                      borderWidth: 1, borderColor: heroInk.tileBorder,
                     }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                        <Icon size={10} color="rgba(255,255,255,0.85)" strokeWidth={1.8} />
-                        <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }} numberOfLines={1}>
+                        <Icon size={10} color={heroInk.inkSoft} strokeWidth={1.8} />
+                        <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: heroInk.inkSoft }} numberOfLines={1}>
                           {EXPENSE_CATEGORY_LABELS[cat]}
                         </Text>
                       </View>
@@ -481,7 +499,7 @@ export function ExpensesScreen() {
                         {slices.map(sl => (
                           <Text
                             key={sl.currency}
-                            style={{ ...DISPLAY, fontSize: 15, letterSpacing: -0.3, lineHeight: 19, color: '#FFFFFF' }}
+                            style={{ ...DISPLAY, fontSize: 15, letterSpacing: -0.3, lineHeight: 19, color: heroInk.ink }}
                             numberOfLines={1}
                           >
                             {formatMoney(sl.total, sl.currency, { fractionDigits: 0 })}
@@ -494,14 +512,14 @@ export function ExpensesScreen() {
               </View>
             );
           })()}
-        </View>
+        </WhiteHero>
 
         {/* ── Search + Filtre butonu ─────────────────────────── */}
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <View style={{
             flex: 1,
             flexDirection: 'row', alignItems: 'center', gap: 10,
-            height: 44, paddingHorizontal: 14, borderRadius: 14,
+            height: 44, paddingHorizontal: 14, borderRadius: 9999,
             borderWidth: 1, borderColor: U.fieldBorder, backgroundColor: U.surface,
           }}>
             <Search size={15} color={U.ink[400]} strokeWidth={1.8} />
@@ -538,7 +556,7 @@ export function ExpensesScreen() {
                 }}
                 style={{
                   flexDirection: 'row', alignItems: 'center', gap: 6,
-                  height: 44, paddingHorizontal: 14, borderRadius: 14,
+                  height: 44, paddingHorizontal: 14, borderRadius: 9999,
                   backgroundColor: hasFilter ? U.ink[900] : U.plainBtn.bg,
                   borderWidth: hasFilter ? 0 : 1, borderColor: U.plainBtn.border,
                   cursor: 'pointer' as any,
@@ -710,10 +728,10 @@ export function ExpensesScreen() {
         ) : isDesktop ? (
           /* ── Desktop: tableCard §09 ──────────────────────── */
           <View style={U.tableCard}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
-              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: U.ink[900] }}>Gider Listesi</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, backgroundColor: tblAccent }}>
+              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: tblInk }}>Gider Listesi</Text>
               <View style={{ flex: 1 }} />
-              <Text style={{ fontSize: 12, color: U.ink[400] }}>{filtered.length} kayıt</Text>
+              <Text style={{ fontSize: 12, color: tblInk, opacity: 0.75 }}>{filtered.length} kayıt</Text>
             </View>
 
             {/* Header */}
@@ -802,11 +820,11 @@ export function ExpensesScreen() {
             })}
 
             {/* Footer */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderTopWidth: 1, borderTopColor: U.hairline, backgroundColor: U.surfaceSoft, gap: 10 }}>
-              <Text style={{ fontSize: 11, color: U.ink[500] }}>{filtered.length} kayıt</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, backgroundColor: tblAccent, gap: 10, paddingEnd: 76 }}>
+              <Text style={{ fontSize: 11, color: tblInk, opacity: 0.75 }}>{filtered.length} kayıt</Text>
               <View style={{ flex: 1 }} />
-              <Text style={{ fontSize: 12, fontWeight: '600', color: U.ink[900] }}>Toplam:</Text>
-              <MoneyMultiX slices={expByCcy} variant="inline" />
+              <Text style={{ fontSize: 12, fontWeight: '600', color: tblInk }}>Toplam:</Text>
+              <MoneyMultiX slices={expByCcy} variant="inline" onAccent={tblInk} />
             </View>
           </View>
         ) : (
@@ -938,6 +956,8 @@ function ExpenseFormModal({
   }, [visible, expense]);
 
   const handleParsePdf = async (file: File) => {
+    // App Store 5.1.2(i): kişisel veri Claude'a gitmeden ÖNCE açık izin.
+    if (!(await ensureAiConsent())) return;
     setError(''); setParseInfo(null); setParsing(true);
     try {
       const buf = await file.arrayBuffer();
@@ -1383,8 +1403,11 @@ function PillBtn({ icon: Icon, label, onPress, variant = 'dark', onHero, heroAcc
     // Kanonik hero: birincil kapsül düz (beyaz→plainBtn) zemin, ikincil
     // yarı saydam beyaz. Hero zemini accent/lacivert olduğu için ikincil
     // kapsülün beyaz metni her iki temada da kalır (CLAUDE.md istisnası).
-    if (dark) { bg = U.plainBtn.bg; fg = U.ink[900]; borderWidth = 0; }
-    else { bg = 'rgba(255,255,255,0.16)'; fg = '#FFFFFF'; borderColor = 'transparent'; borderWidth = 0; }
+    // Hero artık "beyaz hero": açık temada yüzey AÇIK, koyu temada lacivert.
+    // İkincil kapsülün sabit beyaz metni açık temada kayboluyordu.
+    if (dark) { bg = U.isDark ? U.plainBtn.bg : (heroAccent ?? U.ink[900]); fg = U.isDark ? U.ink[900] : '#FFFFFF'; borderWidth = 0; }
+    else if (U.isDark) { bg = 'rgba(255,255,255,0.16)'; fg = '#FFFFFF'; borderColor = 'transparent'; borderWidth = 0; }
+    else { bg = 'rgba(255,255,255,0.75)'; fg = U.ink[900]; borderColor = 'rgba(255,255,255,0.95)'; borderWidth = 1; }
   } else {
     bg = dark ? U.ink[900] : 'transparent';
     fg = dark ? U.onDarkPill : U.ink[700];
