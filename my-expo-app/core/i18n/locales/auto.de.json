@@ -8660,5 +8660,6 @@
   "Acil işaretle": "Als dringend markieren",
   "Acil siparişler listelerde en üstte ve kırmızı rozetle görünür": "Dringende Aufträge stehen oben in den Listen und tragen ein rotes Abzeichen",
   "Siparişin bağlı olduğu hekimi ve kliniği değiştirir; fatura da yeni kliniğe kesilir": "Ändert Arzt und Klinik des Auftrags; die Rechnung geht ebenfalls an die neue Klinik",
-  "Bu vaka için hatırlatma kurar": "Setzt eine Erinnerung für diesen Fall"
+  "Bu vaka için hatırlatma kurar": "Setzt eine Erinnerung für diesen Fall",
+  "için bağlantı testi henüz desteklenmiyor — anahtarları kaydedip kullanabilirsiniz": "unterstützt noch keinen Verbindungstest — Sie können die Schlüssel trotzdem speichern und nutzen"
 }

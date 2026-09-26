@@ -770,13 +770,12 @@ export async function testCredential(
     return { ok: true, message: 'Anahtar kaydedildi — kurye adres aramasında kullanılır (Places API açık olmalı).' };
   }
 
-  // TODO: Edge Function çağır → "test connection" endpoint'i
-  // await supabase.functions.invoke(`${type}-test`, { body: { provider, credentials } })
-  await supabase.rpc('record_provider_test', {
-    p_id: id, p_ok: false,
-    p_message: 'Bu provider için test endpoint\'i henüz aktif değil (Edge Function gerekli)',
-  });
-  return { ok: false, message: 'Test endpoint\'i Edge Function ile etkinleştirilecek' };
+  // Buraya düşen sağlayıcının bağlantı testi HENÜZ YAZILMADI. Mesaj lab
+  // kullanıcısına göre: "Edge Function gerekli" bizim geliştirici notumuzdu,
+  // karşı tarafta hiçbir şey ifade etmiyordu (kullanıcı ekranda gördü).
+  const notYet = `${provider} için bağlantı testi henüz desteklenmiyor — anahtarları kaydedip kullanabilirsiniz`;
+  await supabase.rpc('record_provider_test', { p_id: id, p_ok: false, p_message: notYet });
+  return { ok: false, message: notYet };
 }
 
 // ─── WhatsApp test mesajı gönder (outbound doğrulama) ────────────────────

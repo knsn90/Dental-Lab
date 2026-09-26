@@ -8643,5 +8643,6 @@
   "Acil işaretle": "علامت‌گذاری فوری",
   "Acil siparişler listelerde en üstte ve kırmızı rozetle görünür": "سفارش‌های فوری در بالای فهرست‌ها با نشان قرمز دیده می‌شوند",
   "Siparişin bağlı olduğu hekimi ve kliniği değiştirir; fatura da yeni kliniğe kesilir": "پزشک و کلینیک سفارش را تغییر می‌دهد؛ فاکتور نیز به کلینیک جدید صادر می‌شود",
-  "Bu vaka için hatırlatma kurar": "برای این پرونده یادآور تنظیم می‌کند"
+  "Bu vaka için hatırlatma kurar": "برای این پرونده یادآور تنظیم می‌کند",
+  "için bağlantı testi henüz desteklenmiyor — anahtarları kaydedip kullanabilirsiniz": "هنوز از تست اتصال پشتیبانی نمی‌کند — می‌توانید کلیدها را ذخیره و استفاده کنید"
 }

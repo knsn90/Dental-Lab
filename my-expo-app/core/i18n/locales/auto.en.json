@@ -8672,5 +8672,6 @@
   "Acil işaretle": "Mark as urgent",
   "Acil siparişler listelerde en üstte ve kırmızı rozetle görünür": "Urgent orders appear at the top of lists with a red badge",
   "Siparişin bağlı olduğu hekimi ve kliniği değiştirir; fatura da yeni kliniğe kesilir": "Changes the order’s doctor and clinic; the invoice is issued to the new clinic too",
-  "Bu vaka için hatırlatma kurar": "Sets a reminder for this case"
+  "Bu vaka için hatırlatma kurar": "Sets a reminder for this case",
+  "için bağlantı testi henüz desteklenmiyor — anahtarları kaydedip kullanabilirsiniz": "does not support a connection test yet — you can still save the keys and use it"
 }
