@@ -228,6 +228,8 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   const isEmbedded = useContext(HubContext) || !!onBack;
 
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+  /** Klinik/hekim "Öde" düğmesi — intent açılırken çift tıklamayı engeller. */
+  const [payBusy, setPayBusy] = useState(false);
   const [addItemModalVisible, setAddItemModalVisible] = useState(false);
   const [reminderOpen, setReminderOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -377,7 +379,9 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   // Klinik/hekim kendi faturasını öder: RPC intent açar (tutar SUNUCUDA
   // hesaplanır), sonra halka açık ödeme sayfasına gidilir. Aynı fatura için
   // geçerli bir intent varsa yenisi açılmaz, mevcut token döner.
-  const [payBusy, setPayBusy] = useState(false);
+  // (payBusy state'i YUKARIDA, diğer hook'ların yanında — burada tanımlanırsa
+  //  `if (loading) return` erken çıkışının ALTINDA kalır ve ilk render'da
+  //  hook sayısı değişir: "Rendered more hooks than during the previous render".)
   const handleClientPay = async () => {
     if (payBusy) return;
     setPayBusy(true);
