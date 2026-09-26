@@ -39,7 +39,9 @@ export function PaymentSheetModal({
           : { backgroundColor: U.isDark ? 'rgba(0,0,0,0.72)' : 'rgba(15,23,42,0.58)' },
       ]}>
         <View style={[U.modalCard, { maxWidth: 520, height: '88%' }]}>
-          <View style={U.modalHeaderRow}>
+          {/* Başlık da gövdeyle aynı 16px kenarda hizalanır (U.modalHeaderRow
+              20 veriyor, içerik 16 → başlık sağa kayık duruyordu). */}
+          <View style={[U.modalHeaderRow, { paddingHorizontal: 16 }]}>
             <Text style={U.modalTitle}>{autoT('Online Ödeme')}</Text>
             <Pressable
               onPress={onClose}

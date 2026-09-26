@@ -252,7 +252,15 @@ export function PublicPaymentScreen({
   const money = fmtMoney(Number(intent.amount), intent.currency);
   return (
     <Shell embedded={embedded} bg={U.pageBg}>
-      <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+      {/* Kenar boşluğu HER İKİ kullanımda 16 (PAGE_PADDING). Sayfada içerik
+          420'de ortalanır — geniş ekranda satırlar okunaksız uzamasın diye.
+          MODAL zaten dar: orada maxWidth uygulanırsa kartlar modalin
+          içinde ikinci kez daralıp yanlarda 50px'lik ölü boşluk bırakıyordu
+          (kullanıcı ekranda gördü). */}
+      <ScrollView
+        contentContainerStyle={[s.scroll, embedded ? { maxWidth: undefined, alignSelf: 'stretch' } : null]}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Lab kimliği — logo varsa logo, yoksa ad. Müşteri kartını girmeden
             önce kime ödediğini görmeli. */}
         <View style={s.labHead}>
