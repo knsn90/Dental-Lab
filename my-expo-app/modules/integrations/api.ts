@@ -140,9 +140,9 @@ export const PAYMENT_PROVIDERS: ProviderDefinition[] = [
     fields: [
       { key: 'api_key',    label: 'API Key',     type: 'password', required: true },
       { key: 'secret_key', label: 'Secret Key',  type: 'password', required: true },
-      { key: 'base_url',   label: 'Base URL',    type: 'url', placeholder: 'https://sandbox-api.iyzipay.com', helpText: 'Sandbox veya prod URL' },
+      { key: 'base_url',   label: 'Base URL',    type: 'url', placeholder: 'https://sandbox-api.iyzipay.com', helpText: 'Sandbox: https://sandbox-api.iyzipay.com · Canlı: https://api.iyzipay.com (anahtarlar ortamlar arasında farklıdır)' },
     ],
-    implemented: false,
+    implemented: true,
   },
   {
     key:   'paytr',

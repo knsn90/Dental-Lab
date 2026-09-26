@@ -66,6 +66,11 @@ Deno.serve(async (req: Request) => {
     const targetId: string | undefined = body?.user_id ?? body?.userId;
     const email: string | undefined    = body?.email;
     const password: string | undefined = body?.password;
+    // Aktif/pasif: istemci ARTIK profiles'ı doğrudan güncellemiyor. Pasife
+    // almak yalnız bayrağı çevirmek değil, auth hesabını da BANLAMAK demek —
+    // aksi halde açık oturum refresh'le süresiz yaşıyordu.
+    const isActive: boolean | undefined =
+      typeof body?.is_active === 'boolean' ? body.is_active : undefined;
 
     if (!targetId) throw new Error('Kullanıcı ID gerekli');
 
@@ -114,12 +119,21 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const authUpdates: { email?: string; password?: string } = {};
+    const authUpdates: { email?: string; password?: string; ban_duration?: string } = {};
     if (email && email.trim()) authUpdates.email = email.trim().toLowerCase();
     if (password)              authUpdates.password = password;
 
+    if (isActive !== undefined) {
+      // Kendini pasife alma: müdür kendi hesabını kilitleyip lab'ı yönetimsiz
+      // bırakmasın.
+      if (targetId === callerId) throw new Error('Kendi hesabınızı pasife alamazsınız');
+      // ban → yeni token verilmez ve refresh reddedilir, yani açık oturum da
+      // en geç bir sonraki yenilemede düşer. 'none' banı kaldırır.
+      authUpdates.ban_duration = isActive ? 'none' : '876000h';
+    }
+
     if (Object.keys(authUpdates).length === 0) {
-      throw new Error('Güncellenecek alan yok (email veya password gerekli)');
+      throw new Error('Güncellenecek alan yok (email, password veya is_active gerekli)');
     }
 
     if (authUpdates.password && authUpdates.password.length < 6) {
@@ -135,6 +149,14 @@ Deno.serve(async (req: Request) => {
     // profiles.email kolonunu da senkronize et (varsa)
     if (authUpdates.email) {
       await adminClient.from('profiles').update({ email: authUpdates.email }).eq('id', targetId);
+    }
+
+    // Bayrağı auth banından SONRA yaz: ban başarısız olursa profil "pasif"
+    // görünüp hesap hâlâ girebilir durumda kalmasın.
+    if (isActive !== undefined) {
+      const { error: flagError } = await adminClient
+        .from('profiles').update({ is_active: isActive }).eq('id', targetId);
+      if (flagError) throw new Error(flagError.message);
     }
 
     return new Response(

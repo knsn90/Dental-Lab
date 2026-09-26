@@ -289,7 +289,10 @@ serve(async (req) => {
   if (!body.work_order_id && !(body.dest_address ?? '').trim()) {
     return json({ ok: false, message: 'work_order_id ya da dest_address gerekli' });
   }
-  if (!(await ownsWorkOrder(body.work_order_id))) return denyTenant();
+  // SERBEST GÖNDERİ'de work_order_id YOKTUR — guard yalnız id verilmişse çalışır.
+  // Koşulsuz çağrılınca `ownsWorkOrder(undefined)` false dönüyor ve siparişsiz
+  // her kurye çağrısı 403 ile reddediliyordu ("non-2xx status code").
+  if (body.work_order_id && !(await ownsWorkOrder(body.work_order_id))) return denyTenant();
   const dst = body.work_order_id
     ? await resolveDest(admin, body.work_order_id)
     : { name: 'Alıcı', phone: '', address: '', clinic: '', order_number: null as any };

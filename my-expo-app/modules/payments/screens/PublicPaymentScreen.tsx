@@ -61,6 +61,15 @@ export function PublicPaymentScreen() {
   useEffect(() => {
     if (Platform.OS !== 'web' || stage !== '3ds') return;
     const onMsg = async (e: MessageEvent) => {
+      // iyzico: 3DS iframe'i banka doğrulamasından sonra payments-callback'e
+      // POST eder; ödeme ORADA (sunucuda) tamamlanır ve sonuç buraya
+      // postMessage ile gelir. İstemci hiçbir şeyi "ödendi" YAPMAZ, yalnız
+      // kaydı yeniden okur — doğruluk kaynağı sunucudaki intent durumudur.
+      if (e.data?.type === 'iyzico-3ds-done') {
+        if (e.data.ok) { setStage('success'); load(); }
+        else { setFailMessage('3DS doğrulaması tamamlanamadı'); setStage('fail'); }
+        return;
+      }
       if (e.data?.type === 'demo-3ds-success') {
         // Backend'e onay
         if (intent) {

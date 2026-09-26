@@ -30,7 +30,8 @@ import { MessageCircle, PhoneCall, CheckCircle2, RefreshCw, Bot } from '../../..
 import { WhatsAppChatModal, type ChatPeer } from '../components/WhatsAppChatModal';
 
 import { HubContext } from '../../../core/ui/HubContext';
-import { WhatsAppGlyph } from '../../../core/ui/WhatsAppGlyph';
+import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { toast } from '../../../core/ui/Toast';
 import { ConfirmDialog, type ConfirmState } from '../../../core/ui/ConfirmDialog';
 import { useAuthStore } from '../../../core/store/authStore';
@@ -77,6 +78,7 @@ function fmtPhone(p: string): string {
 export function WhatsAppSupportScreen({ accentColor = '#F5C24B' }: Props) {
   const T = useMobileTokens();
   const isDark = useThemeModeStore((s) => s.resolvedDark);
+  const heroInk = useWhiteHeroInk(accentColor);
   const isEmbedded = useContext(HubContext);
   const safeEdges = isEmbedded ? ([] as any) : (['top'] as any);
 
@@ -221,28 +223,38 @@ export function WhatsAppSupportScreen({ accentColor = '#F5C24B' }: Props) {
     <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={safeEdges}>
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 60 }}>
 
-        {/* Başlık satırı */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <View style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor + '22' }}>
-              {/* Marka işareti — hangi kanalın gelen kutusu olduğu başlıktan anlaşılsın */}
-              <WhatsAppGlyph size={17} color={accentColor} />
-            </View>
-            <View>
-              <Text style={{ ...DISPLAY, fontSize: 18, color: isDark ? T.ink : "#0A0A0A" }}>Destek Sohbetleri</Text>
-              <Text style={{ fontSize: 12, color: isDark ? T.ink2 : "#6B6B6B" }}>
-                {items.length > 0 ? `${items.length} sohbet sizi bekliyor` : 'WhatsApp gelen kutusu'}
-              </Text>
-            </View>
-          </View>
-          <Pressable
-            onPress={load}
-            style={{ width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? T.card : "#FFFFFF", borderWidth: 1, borderColor: isDark ? T.hairline : "#EAEAEA" }}
-            {...(Platform.OS === 'web' ? { className: 'web:cursor-pointer web:hover:bg-slate-50' } as any : {})}
-          >
-            <RefreshCw size={16} color="#6B6B6B" strokeWidth={1.8} />
-          </Pressable>
-        </View>
+        {/* Beyaz hero — bekleyen sohbet başlıkta, günün metrikleri sağda.
+            `kpi` zaten hesaplanıyordu ama hiçbir yerde gösterilmiyordu. */}
+        <WhiteHero
+          accent={accentColor}
+          kicker={autoT('WhatsApp Destek')}
+          title={items.length > 0
+            ? <>{items.length} <Text style={{ color: heroInk.accentInk }}>{autoT('bekleyen sohbet')}</Text></>
+            : autoT('Bekleyen sohbet yok')}
+          stats={[
+            { value: String(items.length), label: autoT('Bekleyen') },
+            { value: String(kpi.today), label: autoT('Bugün') },
+            { value: kpi.avgReplyMin != null ? String(kpi.avgReplyMin) : '—', label: autoT('Ort. yanıt (dk)') },
+            { value: String(botItems.length), label: autoT('Bot') },
+          ]}
+          actionsAlign="end"
+          actions={
+            <GlassTooltip title={autoT('Yenile')} text={autoT('Sohbet listesini ve günün metriklerini yeniden yükle')}>
+              <Pressable
+                onPress={load}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 7,
+                  paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999,
+                  backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder,
+                }}
+                {...(Platform.OS === 'web' ? { className: 'web:cursor-pointer' } as any : {})}
+              >
+                <RefreshCw size={15} color={heroInk.ink} strokeWidth={1.8} />
+                <Text style={{ fontSize: 13, fontWeight: '600', color: heroInk.ink }}>{autoT('Yenile')}</Text>
+              </Pressable>
+            </GlassTooltip>
+          }
+        />
 
         {/* Bilgi notu */}
         <View style={{ backgroundColor: accentColor + '14', borderRadius: 12, padding: 12 }}>

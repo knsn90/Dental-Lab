@@ -7,14 +7,15 @@
  */
 import { BasePaymentProvider } from './BaseProvider';
 import { DemoPaymentProvider } from './DemoProvider';
+import { IyzicoPaymentProvider } from './IyzicoProvider';
 import { getActiveCredential } from '../../integrations/api';
 
 type Factory = (cfg: any) => BasePaymentProvider;
 
 const PROVIDER_FACTORY: Record<string, Factory> = {
-  demo: (cfg) => new DemoPaymentProvider(cfg),
+  demo:   (cfg) => new DemoPaymentProvider(cfg),
+  iyzico: (cfg) => new IyzicoPaymentProvider(cfg),
   // Yeni eklenecekler:
-  // iyzico: (cfg) => new IyzicoProvider(cfg),
   // paytr:  (cfg) => new PaytrProvider(cfg),
   // param:  (cfg) => new ParamProvider(cfg),
 };
@@ -45,4 +46,4 @@ export function setActivePaymentProvider(provider: BasePaymentProvider): void {
   cachedAt = Date.now();
 }
 
-export { BasePaymentProvider, DemoPaymentProvider };
+export { BasePaymentProvider, DemoPaymentProvider, IyzicoPaymentProvider };

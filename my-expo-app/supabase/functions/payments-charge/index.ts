@@ -24,6 +24,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { iyzicoPost, iyziPrice, verifyInitSignature, IYZICO_SANDBOX, type IyzicoCreds } from '../_shared/iyzico.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin':  '*',
@@ -142,7 +143,7 @@ serve(async (req) => {
         result = await chargeViaDemo(intent, card, installment ?? 1);
         break;
       case 'iyzico':
-        result = await chargeViaIyzico(intent, card, installment ?? 1, (cred as any).credentials);
+        result = await chargeViaIyzico(supabase, intent, card, installment ?? 1, (cred as any).credentials);
         break;
       case 'paytr':
         result = await chargeViaPaytr(intent, card, installment ?? 1, (cred as any).credentials);
@@ -247,13 +248,152 @@ async function chargeViaDemo(intent: any, card: any, _installment: number) {
 
 // ─── Gerçek sağlayıcılar (skeleton) ────────────────────────────────────────
 
-async function chargeViaIyzico(intent: any, card: any, installment: number, creds: any) {
-  // TODO: iyzico 3DS init endpoint
-  // POST {base_url}/payment/3dsecure/initialize
-  // Body: { locale, conversationId, price, paidPrice, currency, basketId, paymentChannel, installment, paymentCard, buyer, billingAddress, basketItems }
-  // Imza HMAC-SHA256 ile auth header
-  // Response: { status: 'success', threeDSHtmlContent: '...' }
-  return { ok: false, error: 'iyzico implementasyonu henüz tamamlanmadı' };
+/**
+ * iyzico 3DS başlatma — POST {base}/payment/3dsecure/initialize
+ *
+ * Akış: burada 3DS ekranının HTML'i (base64) alınır, tarayıcıda iframe'de
+ * gösterilir; kullanıcı SMS kodunu girince banka bizim callbackUrl'imize POST
+ * eder ve ödeme ORADA tamamlanır (payments-callback → /payment/v2/3dsecure/auth).
+ * Yani bu fonksiyon parayı ÇEKMEZ, yalnız doğrulamayı başlatır.
+ *
+ * conversationId = intent.id → callback intent'i bununla bulur.
+ * basketId       = invoice_id → 3DS v2 tamamlamada birebir aynısı gönderilir.
+ */
+async function chargeViaIyzico(supabase: any, intent: any, card: any, installment: number, creds: any) {
+  const c: IyzicoCreds = {
+    api_key:    String(creds?.api_key ?? ''),
+    secret_key: String(creds?.secret_key ?? ''),
+    base_url:   String(creds?.base_url ?? '') || IYZICO_SANDBOX,
+  };
+  if (!c.api_key || !c.secret_key) {
+    return { ok: false, error: 'iyzico API anahtarları eksik', error_code: 'NO_CREDENTIALS' };
+  }
+  if (!card?.holder_name || !card?.number || !card?.cvc || !card?.expire_month || !card?.expire_year) {
+    return { ok: false, error: 'Kart bilgileri eksik', error_code: 'MISSING_FIELDS' };
+  }
+
+  // İstemci CardInput'u ay/yıl AYRI tutar (expire_month 'MM', expire_year 'YY'
+  // ya da 'YYYY'); iyzico dört haneli yıl ister.
+  const expireMonth = String(card.expire_month).padStart(2, '0');
+  const expireYear  = String(card.expire_year).length === 2
+    ? `20${card.expire_year}` : String(card.expire_year);
+  if (expireMonth.length !== 2 || expireYear.length !== 4) {
+    return { ok: false, error: 'Son kullanma tarihi geçersiz', error_code: 'INVALID_EXPIRY' };
+  }
+
+  // Alıcı bilgisi faturadan çözülür. iyzico bu alanları ZORUNLU tutar;
+  // boş bırakılırsa istek 400 döner. Eksik veride nötr varsayılanlar.
+  const { data: inv } = await supabase
+    .from('invoices')
+    .select('id, invoice_number, currency, clinic:clinics(name, address, phone, email), doctor:doctors(full_name, phone)')
+    .eq('id', intent.invoice_id)
+    .maybeSingle();
+
+  const clinic: any = (inv as any)?.clinic ?? null;
+  const doctor: any = (inv as any)?.doctor ?? null;
+  const rawName = String(doctor?.full_name || clinic?.name || 'Musteri').trim();
+  const parts = rawName.split(/\s+/);
+  const buyerName = parts.length > 1 ? parts.slice(0, -1).join(' ') : rawName;
+  const buyerSurname = parts.length > 1 ? parts[parts.length - 1] : rawName;
+
+  // Adres jsonb olabilir ({il, ilce, acik_adres…}) ya da düz metin.
+  const addrObj = clinic?.address;
+  const addrText = typeof addrObj === 'string'
+    ? addrObj
+    : [addrObj?.acik_adres ?? addrObj?.address, addrObj?.ilce ?? addrObj?.district, addrObj?.il ?? addrObj?.city]
+        .filter(Boolean).join(', ');
+  const address = (addrText || 'Adres bilgisi yok').slice(0, 250);
+  const city = String(addrObj?.il ?? addrObj?.city ?? 'Istanbul').slice(0, 50);
+
+  const phone = String(doctor?.phone || clinic?.phone || '').replace(/[^0-9+]/g, '');
+  const email = String(clinic?.email || '').trim() || 'noreply@siman.app';
+  const price = iyziPrice(intent.amount);
+
+  const body = {
+    locale: 'tr',
+    conversationId: String(intent.id),
+    price,
+    paidPrice: price,               // taksit komisyonu müşteriye yansıtılmıyor
+    currency: String(intent.currency ?? 'TRY'),
+    installment: Math.max(1, Number(installment) || 1),
+    basketId: String(intent.invoice_id),
+    paymentChannel: 'WEB',
+    paymentGroup: 'PRODUCT',
+    callbackUrl: `${Deno.env.get('SUPABASE_URL')}/functions/v1/payments-callback?provider=iyzico`,
+    paymentCard: {
+      cardHolderName: String(card.holder_name).slice(0, 100),
+      cardNumber: String(card.number).replace(/\s/g, ''),
+      expireMonth,
+      expireYear,
+      cvc: String(card.cvc),
+      registerCard: 0,
+    },
+    buyer: {
+      id: String(intent.clinic_id ?? intent.id),
+      name: buyerName.slice(0, 50),
+      surname: buyerSurname.slice(0, 50),
+      // TCKN zorunlu alan; kurumsal alıcıda gerçek kimlik tutmuyoruz.
+      identityNumber: '11111111111',
+      email,
+      gsmNumber: phone || '+905000000000',
+      registrationAddress: address,
+      city,
+      country: 'Turkey',
+      ip: '85.34.78.112',
+    },
+    billingAddress: {
+      contactName: rawName.slice(0, 100),
+      city, country: 'Turkey', address,
+    },
+    // Laboratuvar hizmeti fiziksel teslimat içermez → VIRTUAL, shipping yok.
+    basketItems: [{
+      id: String(intent.invoice_id),
+      name: `Fatura ${(inv as any)?.invoice_number ?? ''}`.trim().slice(0, 100),
+      category1: 'Dis Laboratuvari',
+      itemType: 'VIRTUAL',
+      price,
+    }],
+  };
+
+  const res = await iyzicoPost(c, '/payment/3dsecure/initialize', body);
+  const d: any = res.data ?? {};
+
+  if (!res.ok) {
+    return {
+      ok: false,
+      status: 'failed',
+      error: d.errorMessage ?? res.error ?? 'iyzico 3DS başlatılamadı',
+      error_code: d.errorCode ?? 'IYZICO_INIT_FAILED',
+      http_status: res.http_status,
+      raw_response: d,
+    };
+  }
+
+  // Yanıt imzası doğrulanır (paymentId:conversationId). İmza tutmazsa yanıtın
+  // iyzico'dan geldiğine güvenemeyiz → akışı başlatmıyoruz.
+  if (!(await verifyInitSignature(c.secret_key, d))) {
+    return {
+      ok: false, status: 'failed',
+      error: 'iyzico yanıt imzası doğrulanamadı',
+      error_code: 'IYZICO_BAD_SIGNATURE',
+      http_status: res.http_status,
+      raw_response: { paymentId: d.paymentId, conversationId: d.conversationId },
+    };
+  }
+
+  const html = d.threeDSHtmlContent ? atob(String(d.threeDSHtmlContent)) : null;
+  if (!html) {
+    return { ok: false, status: 'failed', error: '3DS içeriği boş döndü', error_code: 'IYZICO_NO_3DS_HTML', raw_response: d };
+  }
+
+  return {
+    ok: true,
+    status: 'awaiting_3ds',
+    provider_ref: String(d.paymentId),
+    threeds_html: html,
+    http_status: res.http_status,
+    raw_response: { paymentId: d.paymentId, conversationId: d.conversationId, signature: d.signature },
+  };
 }
 
 async function chargeViaPaytr(intent: any, card: any, installment: number, creds: any) {

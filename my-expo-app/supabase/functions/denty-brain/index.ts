@@ -13,6 +13,7 @@
 // Output : { ok: true, stop_reason, content, usage } | { ok: false, error }
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { callerHasAiConsent } from '../_shared/aiConsent.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -42,6 +43,10 @@ Deno.serve(async (req: Request) => {
     });
     const { data: userData, error: userErr } = await sb.auth.getUser(token);
     if (userErr || !userData?.user) return json({ ok: false, error: 'unauthorized' }, 401);
+
+    // App Store 5.1.2(i) — açık izin yoksa Claude'a HİÇ gitme.
+    const aiConsent = await callerHasAiConsent(req, supabaseUrl, anonKey, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
+    if (!aiConsent.ok) return json({ ok: false, error: 'AI_CONSENT_REQUIRED', reason: aiConsent.reason }, 403);
 
     // ─── 1b. Günlük kota (kullanıcı başına) ─────────────────────────────────
     // Asistan tüm panellerde açık; döngüye giren bir sohbet sınırsız Claude

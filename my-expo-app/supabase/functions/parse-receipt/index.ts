@@ -20,6 +20,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { timingSafeEqualStr, isServiceRoleBearer } from '../_shared/security.ts';
+import { callerHasAiConsent } from '../_shared/aiConsent.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -227,6 +228,13 @@ Deno.serve(async (req: Request) => {
 
   if (!(await assertCallerAuthorized(req))) {
     return new Response(JSON.stringify({ error: 'Yetkisiz erişim' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  // App Store 5.1.2(i) — İKİNCİ kapı: istemci atlatılsa bile açık izni olmayan
+  // kullanıcının verisi Claude'a gitmez. (İlk kapı: ensureAiConsent, istemcide.)
+  const aiConsent = await callerHasAiConsent(req, SUPABASE_URL, Deno.env.get('SUPABASE_ANON_KEY') ?? '', SERVICE_ROLE_KEY);
+  if (!aiConsent.ok) {
+    return new Response(JSON.stringify({ ok: false, error: 'AI_CONSENT_REQUIRED', reason: aiConsent.reason }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
   try {
     const body = await req.json();

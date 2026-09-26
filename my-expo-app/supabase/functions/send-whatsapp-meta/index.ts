@@ -83,6 +83,17 @@ const LAB_TEMPLATES: Record<string, { name: string; lang: string; params: (p: an
       { name: 'detay',      text: clean(p.workType || p.work_type) },
     ],
   },
+  // Kurye yola çıktı — lab dili ("… sipariş kuryeye teslim edildi"). Müşteri
+  // şablonu (siparis_kuryede) "siparişiniz elinizde olacak" diyor, lab için ters.
+  // Meta'da URL butonu sabit: https://siman.app/courier-tracking
+  delivery: {
+    name: 'siparis_kuryede_lab', lang: 'tr',
+    params: (p) => [
+      { name: 'siparis_no', text: clean(p.orderNumber || p.order_number) },
+      { name: 'klinik',     text: clean(p.clinic || p.clinicName || p.clinic_name || '—') },
+      { name: 'hasta_adi',  text: clean(p.patient || p.patient_name) },
+    ],
+  },
 };
 
 // Meta şablon değişkeni: boş olamaz, sekme/yeni satır/4+ boşluk olamaz.
@@ -170,9 +181,36 @@ Deno.serve(async (req) => {
   // sessizce bildirim almayı keserdi.
   const { data: profiles } = await admin
     .from('profiles')
-    .select('id, user_type, whatsapp_phone, phone, notification_prefs, is_active')
+    .select('id, user_type, whatsapp_phone, phone, notification_prefs, is_active, clinic_id')
     .in('id', userIds)
     .or('is_active.is.null,is_active.eq.true');
+
+  // ── KURUM WhatsApp hattı (clinics.whatsapp_phone) ─────────────────────────
+  // Kullanıcı kararı (2026-09-22): "kurum öncelikli, kişisel korunur".
+  //   müşteri alıcı → profil.whatsapp_phone (kişinin BİLEREK girdiği) > kurum hattı > profil.phone
+  // Kurum: profiles.clinic_id; hekim profilinde boşsa doctors.id = profil id → clinic_id.
+  const clinicOf = new Map<string, string>();
+  for (const pr of (profiles ?? []) as any[]) if (pr.clinic_id) clinicOf.set(pr.id, pr.clinic_id);
+  const needDoc = ((profiles ?? []) as any[]).filter(p => !p.clinic_id).map(p => p.id);
+  if (needDoc.length) {
+    const { data: docs } = await admin.from('doctors').select('id, clinic_id').in('id', needDoc);
+    for (const d of (docs ?? []) as any[]) if (d.clinic_id) clinicOf.set(d.id, d.clinic_id);
+  }
+  const clinicWa = new Map<string, string>();
+  const clinicIds = Array.from(new Set(clinicOf.values()));
+  if (clinicIds.length) {
+    const { data: cls } = await admin.from('clinics').select('id, whatsapp_phone').in('id', clinicIds);
+    for (const c of (cls ?? []) as any[]) if (c.whatsapp_phone) clinicWa.set(c.id, c.whatsapp_phone);
+  }
+
+  // Tekilleştirme anahtarı: aynı OLAY aynı NUMARAYA bir kez. Tetikleyici her
+  // bildirim satırı için AYRI çağırdığından aynı kurumun 3 kullanıcısı aynı hatta 3
+  // mesaj düşürürdü. 10 dk'lık kova: aynı sipariş için gerçekten TEKRAR eden bir
+  // olay (ör. ikinci kurye bacağı) sonsuza dek engellenmesin.
+  const bodyKey = String(extra?.__body ?? '').slice(0, 120);
+  const bucket = Math.floor(Date.now() / 600_000);
+  const dedupKeyFor = (phone: string) =>
+    [phone, category, String(resourceId ?? ''), bodyKey, extra?.__admin_copy ? 'copy' : '', bucket].join('|');
 
   let sent = 0;
   const results: any[] = [];
@@ -206,14 +244,36 @@ Deno.serve(async (req) => {
     } else if (!['doctor', 'clinic', 'clinic_admin', 'clinic_secretary'].includes(pr.user_type)) {
       results.push({ id: pr.id, skip: 'not-client' }); continue;
     }
-    // whatsapp_phone öncelikli; boşsa normal telefona düş. Meta ülke kodu ister → normalize.
-    const phone = normalizePhoneTR(pr.whatsapp_phone || pr.phone);
+    // Numara seçimi — müşteri tarafında kurum hattı kişisel NORMAL telefondan önce
+    // gelir; kişinin kendi girdiği whatsapp_phone her zaman korunur. Lab/admin
+    // tarafı değişmedi. Meta ülke kodu ister → normalize.
+    const isClient = !(pr.user_type === 'admin' || pr.user_type === 'lab');
+    const cid = clinicOf.get(pr.id);
+    const phone = normalizePhoneTR(
+      pr.whatsapp_phone || (isClient && cid ? clinicWa.get(cid) : '') || pr.phone,
+    );
     if (!phone) { results.push({ id: pr.id, skip: 'no-phone' }); continue; }
     // Opt-out
     // Admin nüshası "kesinlikle" gitsin (kullanıcı kararı) → kişisel WhatsApp kapatma
     // tercihi bu kopyayı durdurmaz; müşteri mesajlarında opt-out aynen geçerli.
     const optedOut = !adminCopy && pr?.notification_prefs?.categories?.[category]?.whatsapp === false;
     if (optedOut) { results.push({ id: pr.id, skip: 'opted-out' }); continue; }
+
+    // HATTI SAHİPLEN: önce 'pending' audit satırı; aynı anahtar başka bir paralel
+    // çağrıda zaten varsa (UNIQUE 23505) bu mesaj atlanır. Kontrol-sonra-gönder
+    // yarışa açıktı; ekleme atomik.
+    let auditId: string | null = null;
+    {
+      const { data: claim, error: claimErr } = await admin.from('whatsapp_notifications').insert({
+        user_id: pr.id, phone_to: phone, category,
+        template: useTpl.name, provider: 'meta', status: 'pending',
+        work_order_id: (resourceType === 'work_order' ? resourceId : null),
+        payload: extra ?? {},
+        dedup_key: dedupKeyFor(phone),
+      }).select('id').maybeSingle();
+      if (claimErr && (claimErr as any).code === '23505') { results.push({ id: pr.id, skip: 'dup-same-number' }); continue; }
+      auditId = (claim as any)?.id ?? null;
+    }
 
     try {
       const r = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${cred.phone_number_id}/messages`, {
@@ -237,23 +297,33 @@ Deno.serve(async (req) => {
       if (ok) sent++;
       results.push({ id: pr.id, ok, msg: ok ? 'sent' : (j?.error?.message ?? `HTTP ${r.status}`) });
 
-      // Audit (best-effort)
+      // Audit — sahiplenilen satırı sonuçla güncelle (yoksa eski usul ekle).
+      // provider_id (=wamid) yanıt-context korelasyonu için şart: klinik bu
+      // bildirime "yanıt" verince inbound-order-message wamid → work_order_id bulur.
       try {
-        await admin.from('whatsapp_notifications').insert({
-          user_id: pr.id, phone_to: phone, category,
-          template: useTpl.name, provider: 'meta',
+        const patch = {
           status: ok ? 'sent' : 'failed',
           provider_id: ok ? (j?.messages?.[0]?.id ?? null) : null,
           error: ok ? null : (j?.error?.message ?? null),
           sent_at: ok ? new Date().toISOString() : null,
-          // Yanıt-context korelasyonu: klinik bu bildirime "yanıt" verince
-          // inbound-order-message provider_id(=wamid) → work_order_id ile siparişi bulur.
-          work_order_id: (resourceType === 'work_order' ? resourceId : null),
-          payload: extra ?? {},
-        });
+        };
+        if (auditId) {
+          await admin.from('whatsapp_notifications').update(patch).eq('id', auditId);
+        } else {
+          await admin.from('whatsapp_notifications').insert({
+            user_id: pr.id, phone_to: phone, category,
+            template: useTpl.name, provider: 'meta',
+            work_order_id: (resourceType === 'work_order' ? resourceId : null),
+            payload: extra ?? {}, ...patch,
+          });
+        }
       } catch { /* audit opsiyonel */ }
     } catch (e) {
       results.push({ id: pr.id, ok: false, msg: String(e) });
+      // Sahiplenilen satır 'pending'de kalmasın — başarısız olarak kapat.
+      if (auditId) {
+        try { await admin.from('whatsapp_notifications').update({ status: 'failed', error: String(e).slice(0, 500) }).eq('id', auditId); } catch { /* */ }
+      }
     }
   }
 

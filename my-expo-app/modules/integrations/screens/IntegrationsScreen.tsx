@@ -40,7 +40,7 @@ interface Props {
   accentColor?: string;
 }
 
-export function IntegrationsScreen({ accentColor = '#4771AB' }: Props) {
+export function IntegrationsScreen({ accentColor = '#004B87' }: Props) {
   const trOnly = useTurkeyOnlyFeatures();
   const isEmbedded = useContext(HubContext);
   const safeEdges  = isEmbedded ? ([] as any) : (['top'] as any);

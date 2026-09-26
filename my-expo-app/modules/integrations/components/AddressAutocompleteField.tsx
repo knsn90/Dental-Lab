@@ -13,7 +13,7 @@ import { DS } from '../../../core/theme/dsTokens';
 interface Suggestion { name: string; address: string; lat: string | null; lng: string | null; }
 
 export function AddressAutocompleteField({
-  value, onChangeText, onSelect, placeholder, inputStyle, accentColor,
+  value, onChangeText, onSelect, placeholder, inputStyle, accentColor, silentValue,
 }: {
   value: string;
   onChangeText: (v: string) => void;
@@ -21,6 +21,13 @@ export function AddressAutocompleteField({
   placeholder?: string;
   inputStyle: any;
   accentColor: string;
+  /**
+   * Bu metin için öneri ARANMAZ. Ebeveyn adresi programatik yazdığında
+   * (ör. kayıtlı klinik seçildi) liste kendiliğinden açılmasın diye. Kullanıcı
+   * metni değiştirdiği anda eşleşme bozulur ve arama normale döner — yani
+   * kalıcı bir kilit değil. Verilmezse davranış hiç değişmez.
+   */
+  silentValue?: string | null;
 }) {
   const [results, setResults] = useState<Suggestion[]>([]);
   const [open, setOpen] = useState(false);
@@ -33,6 +40,9 @@ export function AddressAutocompleteField({
     if (pickedRef.current) { pickedRef.current = false; return; }
     const q = (value ?? '').trim();
     if (debRef.current) clearTimeout(debRef.current);
+    if (silentValue != null && q === String(silentValue).trim()) {
+      setResults([]); setOpen(false); setErr(null); return;
+    }
     if (q.length < 3) { setResults([]); setOpen(false); setErr(null); return; }
     debRef.current = setTimeout(async () => {
       setLoading(true); setErr(null);
@@ -51,7 +61,7 @@ export function AddressAutocompleteField({
       }
     }, 450);
     return () => { if (debRef.current) clearTimeout(debRef.current); };
-  }, [value]);
+  }, [value, silentValue]);
 
   const pick = (s: Suggestion) => {
     pickedRef.current = true;
