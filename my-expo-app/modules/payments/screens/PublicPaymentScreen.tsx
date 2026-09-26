@@ -252,13 +252,15 @@ export function PublicPaymentScreen({
   const money = fmtMoney(Number(intent.amount), intent.currency);
   return (
     <Shell embedded={embedded} bg={U.pageBg}>
-      {/* Kenar boşluğu HER İKİ kullanımda 16 (PAGE_PADDING). Sayfada içerik
-          420'de ortalanır — geniş ekranda satırlar okunaksız uzamasın diye.
-          MODAL zaten dar: orada maxWidth uygulanırsa kartlar modalin
-          içinde ikinci kez daralıp yanlarda 50px'lik ölü boşluk bırakıyordu
-          (kullanıcı ekranda gördü). */}
+      {/* Kenar boşluğu HER İKİ kullanımda 16 (PAGE_PADDING).
+          Genişlik sınırı YALNIZ sayfada eklenir — geniş ekranda satırlar
+          okunaksız uzamasın diye. Modalde hiç eklenmez.
+          DİKKAT: bunu tersine kurup modalde `maxWidth: undefined` ile
+          geçersiz kılmayı denemek İŞE YARAMIYOR — react-native-web tanımsız
+          değeri atlıyor, sınır duruyor; üstüne alignSelf 'stretch' olunca
+          kutu sola yaslanıp tüm boşluğu sağa yığıyordu (sol 16, sağ ~108). */}
       <ScrollView
-        contentContainerStyle={[s.scroll, embedded ? { maxWidth: undefined, alignSelf: 'stretch' } : null]}
+        contentContainerStyle={[s.scroll, embedded ? null : s.scrollPage]}
         showsVerticalScrollIndicator={false}
       >
         {/* Lab kimliği — logo varsa logo, yoksa ad. Müşteri kartını girmeden
@@ -409,7 +411,9 @@ function Field({ label, children, style }: { label: string; children: React.Reac
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F1F5F9' },
-  scroll: { padding: 16, paddingBottom: 28, gap: 12, maxWidth: 420, alignSelf: 'center', width: '100%' },
+  scroll: { padding: 16, paddingBottom: 28, gap: 12, width: '100%' },
+  /** Yalnız tam sayfa kullanımında: geniş ekranda ortala ve sınırla. */
+  scrollPage: { maxWidth: 420, alignSelf: 'center' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32, gap: 16 },
 
   iconCircle: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center' },
