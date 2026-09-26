@@ -30,6 +30,7 @@ import {
 } from '../../../core/ui/icons';
 import { DS } from '../../../core/theme/dsTokens';
 import { useInkUI } from '../../../core/theme/inkScale';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useHeroSurface } from '../../../core/ui/HeroGlow';
 import { useAuthStore } from '../../../core/store/authStore';
 import { useScanStore } from '../../../core/store/scanStore';
@@ -276,6 +277,8 @@ function LabLogo({ labId }: { labId: string | null }) {
 
 function MobileView({ profile, items, dash, loading, router, onRefresh, onScan, onActive }: any) {
   const U = useInkUI();
+  // Sayfa zemini panelin bgPage'inden (CLAUDE.md §2) — kabukla tek kaynak.
+  const T = useMobileTokens();
   const heroSurface = useHeroSurface(TH.primary);
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -308,7 +311,7 @@ function MobileView({ profile, items, dash, loading, router, onRefresh, onScan, 
 
   return (
     <ScrollView
-      style={{ flex: 1, backgroundColor: U.isDark ? U.pageBg : '#F5F9FD' /* istasyon bgPage (DESIGN_LANGUAGE §2) */ }}
+      style={{ flex: 1, backgroundColor: T.bg /* panel bgPage — tek kaynak useMobileTokens */ }}
       contentContainerStyle={{ paddingBottom: 110 }}
       refreshControl={<RefreshControl refreshing={loading} onRefresh={onRefresh} tintColor={TH.primary} />}
     >
@@ -395,11 +398,7 @@ function MobileView({ profile, items, dash, loading, router, onRefresh, onScan, 
           const addr = focus ? (formatAddress(isPickup ? focus.origin_address : focus.destination_address) || null) : null;
           return (
             <View style={{ borderRadius: 24, padding: 22, ...heroSurface, position: 'relative', overflow: 'hidden' }}>
-              {/* Dekoratif daireler — blur'lu + yayvan (yumuşak gradient hissi) */}
-              <BlurOrb size={250} color="rgba(255,255,255,0.32)" offset={{ top: -85, right: -60 }} />
-              <BlurOrb size={210} color="rgba(255,255,255,0.10)" offset={{ bottom: -85, left: -55 }} />
-              <BlurOrb size={140} color="rgba(255,255,255,0.20)" offset={{ top: 24, right: 34 }} />
-
+              {/* Dekoratif daireler KALDIRILDI (kullanıcı kararı): düz renk hero. */}
               {/* Üst satır: kicker + başlık + adres | ikon kapsülü */}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
                 <View style={{ flex: 1, minWidth: 0 }}>
@@ -833,10 +832,8 @@ function DesktopView({ profile, items, dash, loading, router, onRefresh, onScan,
             opacity: pressed ? 0.96 : 1,
           })}
         >
-          {/* Dekoratif daireler — F2 spec (220 + 180) */}
-          <View style={{ position: 'absolute', top: -40, end: -40, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(255,255,255,0.15)' }} pointerEvents="none" />
-          <View style={{ position: 'absolute', bottom: -60, start: -20, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(0,0,0,0.05)' }} pointerEvents="none" />
-
+          {/* Dekoratif daireler KALDIRILDI (kullanıcı kararı): düz renk hero — daireler
+              zemini gradyan gibi gösteriyordu. */}
           <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: 32, flexWrap: 'wrap' }}>
             {/* Sol: Eyebrow + Huge Display + Body + CTA */}
             <View style={{ flex: 1, minWidth: 320, justifyContent: 'space-between' }}>
@@ -906,9 +903,8 @@ function DesktopView({ profile, items, dash, loading, router, onRefresh, onScan,
           borderRadius: 28, padding: 48, ...heroSurface,
           position: 'relative', overflow: 'hidden',
         }}>
-          <View style={{ position: 'absolute', top: -40, end: -40, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(255,255,255,0.15)' }} pointerEvents="none" />
-          <View style={{ position: 'absolute', bottom: -60, start: -20, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(0,0,0,0.05)' }} pointerEvents="none" />
-
+          {/* Dekoratif daireler KALDIRILDI (kullanıcı kararı): düz renk hero — daireler
+              zemini gradyan gibi gösteriyordu. */}
           <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 32, flexWrap: 'wrap' }}>
             <View style={{ flex: 1, minWidth: 280 }}>
               <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>

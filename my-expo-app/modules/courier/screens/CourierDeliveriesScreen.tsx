@@ -12,6 +12,7 @@ import { autoT } from '../../../core/i18n/autoTranslate';
 import { MapPin, Package, Check, ChevronRight, ChevronLeft, CheckCircle2 } from '../../../core/ui/icons';
 import { DS } from '../../../core/theme/dsTokens';
 import { useInkUI } from '../../../core/theme/inkScale';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useAuthStore } from '../../../core/store/authStore';
 import { fetchMyDeliveries, type CourierDelivery } from '../api';
 import { formatAddress } from '../../../core/util/formatAddress';
@@ -34,6 +35,9 @@ const PURPOSE_LABEL: Record<string, string> = {
 
 export function CourierDeliveriesScreen() {
   const U = useInkUI();
+  // Sayfa zemini panelin bgPage'i olmalı (CLAUDE.md §2). TH.bg (#EAF2FA)
+  // 'soft fill' tokenı; kabuk #F5F9FD kullandığı için iki farklı mavi çıkıyordu.
+  const T = useMobileTokens();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { i18n } = useTranslation();
@@ -64,7 +68,7 @@ export function CourierDeliveriesScreen() {
 
   return (
     <ScrollView
-      style={{ flex: 1, backgroundColor: U.isDark ? U.pageBg : TH.bg }}
+      style={{ flex: 1, backgroundColor: T.bg }}
       contentContainerStyle={{ paddingBottom: 110 }}
       refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={TH.primary} />}
     >

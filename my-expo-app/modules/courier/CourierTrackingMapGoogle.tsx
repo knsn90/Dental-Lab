@@ -10,13 +10,17 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Platform, Pressable } from 'react-native';
 import { useWindowDimensions } from 'react-native';
-import { COURIER_ICON_URI } from './courierIcon';
+import { courierPinHtml, ensureCourierPinStyles, PIN_W, PIN_H } from './courierPin';
 import { MONO_LIGHT, MONO_DARK } from './monoMapStyle';
 import { Plus, Minus, Locate } from '../../core/ui/icons';
 import { supabase } from '../../core/api/supabase';
 import { geocodeTR } from './geocoder';
 import { useThemeModeStore } from '../../core/store/themeModeStore';
 import { useAccentTones } from '../../core/ui/HeroGlow';
+import { glassTipHtml } from '../../core/ui/glassTipHtml';
+import { autoT } from '../../core/i18n/autoTranslate';
+import { GlassTooltip } from '../../core/ui/GlassTooltip';
+import { mapControlTips } from './mapControlTips';
 
 interface Coord { lat: number; lng: number; }
 interface Ping extends Coord { recorded_at: string; accuracy_m?: number | null; }
@@ -31,11 +35,21 @@ interface Props {
   style?:        any;
   externalPosition?: Coord | null;
   originLabel?: string;
+  /** Pin balonunda adresin üstünde gösterilen gönderici adı. */
+  originName?: string;
+  /** Pin balonunda adresin üstünde gösterilen alıcı adı. */
+  destinationName?: string;
   onRouteInfo?: (info: { durationSec: number | null; distanceM: number | null; live: boolean } | null) => void;
   /** Altta haritanın üzerine binen yüzen panelin ölçülmüş yüksekliği (px). */
   bottomInset?: number;
   /** get_active_provider('maps') → credentials.api_key. Zorunlu. */
   apiKey: string;
+  /** Kurye pininin içindeki fotoğraf (dış sağlayıcıdan ya da profilden). */
+  courierPhoto?: string | null;
+  /** Foto yoksa baş harf üretmek + erişilebilirlik başlığı için. */
+  courierName?: string | null;
+  /** Konum CANLI akıyor mu? Yalnız true iken pin yeşil nabız atar. */
+  courierLive?: boolean;
 }
 
 // ─── Google Maps JS SDK yükleyici (idempotent) ────────────────────────────────
@@ -78,6 +92,74 @@ function numberedPinUri(n: number | string): string {
     `<text x="16" y="15" text-anchor="middle" dominant-baseline="central" font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="15" font-weight="800" fill="#fff">${n}</text>` +
     `</svg>`;
   return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+}
+
+/**
+ * Kurye pini için DOM katmanı (OverlayView).
+ *
+ * `google.maps.Marker` ikonu bir RESİMDİR — içine fotoğraf koyulabilir ama
+ * CSS animasyonu (canlı nabzı) çalıştırılamaz. Bu yüzden pin gerçek bir DOM
+ * düğümü olarak haritaya bindiriliyor; markup Leaflet ile TEK kaynaktan gelir.
+ * Sınıf ancak SDK yüklendikten sonra tanımlanabilir (OverlayView o an var olur).
+ */
+function makePinOverlay(g: any, div: HTMLDivElement, pos: { lat: number; lng: number }): any {
+  class PinOverlay extends g.maps.OverlayView {
+    pos = pos;
+    div = div;
+    onAdd() { this.getPanes().floatPane.appendChild(this.div); }
+    onRemove() { this.div.parentNode?.removeChild(this.div); }
+    draw() {
+      const proj = this.getProjection();
+      if (!proj) return;
+      const p = proj.fromLatLngToDivPixel(new g.maps.LatLng(this.pos.lat, this.pos.lng));
+      if (!p) return;
+      // Çapa ucun sivri noktası: kutunun ALT-ORTASI.
+      this.div.style.left = `${p.x - PIN_W / 2}px`;
+      this.div.style.top = `${p.y - PIN_H}px`;
+    }
+    setPosition(next: { lat: number; lng: number }) { this.pos = next; this.draw(); }
+    getPos() { return this.pos; }
+  }
+  return new PinOverlay();
+}
+
+/** Numaralı pinin üstünde cam balon (GlassTooltip ikizi). InfoWindow'un beyaz
+ *  kutusu + kapat düğmesi yerine tasarım dilindeki tooltip. Pin 34px yüksek. */
+function makeTipOverlay(g: any, pos: { lat: number; lng: number }): any {
+  class TipOverlay extends g.maps.OverlayView {
+    pos = pos;
+    div: HTMLDivElement = (() => {
+      const d = document.createElement('div');
+      d.style.position = 'absolute';
+      d.style.transform = 'translate(-50%, calc(-100% - 43px))';
+      d.style.pointerEvents = 'none';
+      d.style.zIndex = '1000';
+      return d;
+    })();
+    onAdd() { this.getPanes().floatPane.appendChild(this.div); }
+    onRemove() { this.div.parentNode?.removeChild(this.div); }
+    draw() {
+      const p = this.getProjection()?.fromLatLngToDivPixel(new g.maps.LatLng(this.pos.lat, this.pos.lng));
+      if (!p) return;
+      this.div.style.left = `${p.x}px`;
+      this.div.style.top = `${p.y}px`;
+    }
+    show(html: string) { this.div.innerHTML = html; this.div.style.display = 'block'; }
+    hide() { this.div.style.display = 'none'; }
+    setPos(next: { lat: number; lng: number }) { this.pos = next; this.draw(); }
+  }
+  const o = new TipOverlay();
+  o.hide();
+  return o;
+}
+
+/** Pin → hover'da balon; tıklayınca sabitlenir/kapanır. */
+function bindPinTip(g: any, map: any, marker: any, tip: any, html: () => string) {
+  let pinned = false;
+  tip.setMap(map);
+  marker.addListener('mouseover', () => tip.show(html()));
+  marker.addListener('mouseout', () => { if (!pinned) tip.hide(); });
+  marker.addListener('click', () => { pinned = !pinned; if (pinned) tip.show(html()); else tip.hide(); });
 }
 
 interface RouteResult { coords: Coord[]; durationSec: number | null; distanceM: number | null; }
@@ -127,8 +209,8 @@ async function resolveAddress(g: any, address: string): Promise<Coord | null> {
 // ─── Bileşen ──────────────────────────────────────────────────────────────────
 export function CourierTrackingMapGoogle({
   deliveryId, origin, destination, destinationLabel,
-  height = '100%', accent = '#2563EB', style, externalPosition, originLabel, onRouteInfo, apiKey,
-  bottomInset = 0,
+  height = '100%', accent = '#2563EB', style, externalPosition, originLabel, originName, destinationName, onRouteInfo, apiKey,
+  bottomInset = 0, courierPhoto, courierName, courierLive,
 }: Props) {
   const [lastPing, setLastPing] = useState<Ping | null>(null);
   const [destCoord, setDestCoord] = useState<Coord | null>(destination ?? null);
@@ -146,11 +228,17 @@ export function CourierTrackingMapGoogle({
   const routeCasingRef = useRef<any>(null);
   const destInfoRef = useRef<any>(null);
   const originInfoRef = useRef<any>(null);
+  const pinDivRef = useRef<HTMLDivElement | null>(null);
   const moveAnimRef = useRef<number | null>(null);
   const didFitRef = useRef(false);
   const fittedRealRef = useRef(false);   // gerçek (Directions) rotaya fit edildi mi
 
   const isDark = useThemeModeStore(s => s.resolvedDark);
+  const isDarkRef = useRef(isDark);
+  isDarkRef.current = isDark;
+  // Pin balonları bir kez bağlanır; metin her açılışta GÜNCEL seçimden okunur.
+  const tipRef = useRef({ destinationLabel, destinationName, originLabel, originName });
+  tipRef.current = { destinationLabel, destinationName, originLabel, originName };
   // Rota çizgisi: koyu haritada eski kobalt sönük kalıyor → lacivert ailenin
   // açık ucu (#5AA9E6). Açık haritada panel accent'i korunur.
   const routeColor = useAccentTones(accent).ink;
@@ -286,14 +374,12 @@ export function CourierTrackingMapGoogle({
       if (!destRef.current) {
         destRef.current = new g.maps.Marker({ position: pos, map, icon, zIndex: 500 });
         if (destinationLabel) {
-          destInfoRef.current = new g.maps.InfoWindow({
-            content: `<div style="font:600 12px system-ui;color:#0A0A0A;line-height:1.4;max-width:240px">${destinationLabel.replace(/</g, '&lt;')}</div>`,
-            disableAutoPan: true,
-          });
-          destRef.current.addListener('click', () => destInfoRef.current.open({ map, anchor: destRef.current }));
+          destInfoRef.current = makeTipOverlay(g, pos);
+          bindPinTip(g, map, destRef.current, destInfoRef.current,
+            () => { const t = tipRef.current; return glassTipHtml({ title: autoT('Teslim noktası'), name: t.destinationName !== t.destinationLabel ? t.destinationName : undefined, text: t.destinationLabel ?? '', dark: isDarkRef.current }); });
         }
-      } else { destRef.current.setPosition(pos); destRef.current.setIcon(icon); }
-    } else if (destRef.current) { destRef.current.setMap(null); destRef.current = null; }
+      } else { destRef.current.setPosition(pos); destRef.current.setIcon(icon); destInfoRef.current?.setPos(pos); }
+    } else if (destRef.current) { destRef.current.setMap(null); destRef.current = null; destInfoRef.current?.setMap(null); destInfoRef.current = null; }
 
     // Alım pini (1)
     if (originCoord) {
@@ -302,25 +388,30 @@ export function CourierTrackingMapGoogle({
       if (!originRef.current) {
         originRef.current = new g.maps.Marker({ position: pos, map, icon, zIndex: 500 });
         if (originLabel) {
-          originInfoRef.current = new g.maps.InfoWindow({
-            content: `<div style="font:600 12px system-ui;color:#0A0A0A;line-height:1.4;max-width:240px">${originLabel.replace(/</g, '&lt;')}</div>`,
-            disableAutoPan: true,
-          });
-          originRef.current.addListener('click', () => originInfoRef.current.open({ map, anchor: originRef.current }));
+          originInfoRef.current = makeTipOverlay(g, pos);
+          bindPinTip(g, map, originRef.current, originInfoRef.current,
+            () => { const t = tipRef.current; return glassTipHtml({ title: autoT('Alım noktası'), name: t.originName, text: t.originLabel ?? '', dark: isDarkRef.current }); });
         }
-      } else { originRef.current.setPosition(pos); originRef.current.setIcon(icon); }
-    } else if (originRef.current) { originRef.current.setMap(null); originRef.current = null; }
+      } else { originRef.current.setPosition(pos); originRef.current.setIcon(icon); originInfoRef.current?.setPos(pos); }
+    } else if (originRef.current) { originRef.current.setMap(null); originRef.current = null; originInfoRef.current?.setMap(null); originInfoRef.current = null; }
 
-    // Kurye scooter — dik durur; konum ~0.9s yumuşak tween.
-    // İkon 90×128 → oranı KORU (kare scaledSize ezerdi). Yükseklik 64 → genişlik ≈45.
+    // Kurye pini — fotoğraflı damla; konum ~0.9s yumuşak tween ile akar.
     if (lastPing) {
-      const icon = { url: COURIER_ICON_URI, scaledSize: new g.maps.Size(45, 64), anchor: new g.maps.Point(22, 58) };
       if (!courierRef.current) {
-        courierRef.current = new g.maps.Marker({ position: { lat: lastPing.lat, lng: lastPing.lng }, map, icon, zIndex: 1000 });
+        ensureCourierPinStyles();
+        const div = document.createElement('div');
+        div.style.position = 'absolute';
+        div.style.width = `${PIN_W}px`;
+        div.style.height = `${PIN_H}px`;
+        div.style.pointerEvents = 'none';
+        div.innerHTML = courierPinHtml({ photo: courierPhoto, name: courierName, live: !!courierLive, accent });
+        pinDivRef.current = div;
+        courierRef.current = makePinOverlay(g, div, { lat: lastPing.lat, lng: lastPing.lng });
+        courierRef.current.setMap(map);
       } else {
         if (moveAnimRef.current != null) cancelAnimationFrame(moveAnimRef.current);
-        const start = courierRef.current.getPosition();
-        const sLat = start.lat(), sLng = start.lng();
+        const start = courierRef.current.getPos();
+        const sLat = start.lat, sLng = start.lng;
         const eLat = lastPing.lat, eLng = lastPing.lng;
         const t0 = performance.now(), dur = 900;
         const step = (now: number) => {
@@ -331,8 +422,17 @@ export function CourierTrackingMapGoogle({
         };
         moveAnimRef.current = requestAnimationFrame(step);
       }
+    } else if (courierRef.current) {
+      courierRef.current.setMap(null); courierRef.current = null; pinDivRef.current = null;
     }
   }, [mapReady, lastPing, destCoord?.lat, destCoord?.lng, originCoord?.lat, originCoord?.lng, destinationLabel, originLabel]);
+
+  // Pin İÇERİĞİ (foto / canlılık) konumdan bağımsız değişir — overlay'i yeniden
+  // kurmadan yalnız markup tazelenir, yoksa nabız her veri gelişinde sıfırlanır.
+  useEffect(() => {
+    if (!pinDivRef.current) return;
+    pinDivRef.current.innerHTML = courierPinHtml({ photo: courierPhoto, name: courierName, live: !!courierLive, accent });
+  }, [courierPhoto, courierName, courierLive, accent]);
 
   // ── Rota çizimi (casing + ana çizgi) + fitBounds ───────────────────────────
   useEffect(() => {
@@ -433,8 +533,8 @@ export function CourierTrackingMapGoogle({
           { icon: Plus, onPress: () => mapRef.current?.setZoom((mapRef.current?.getZoom() ?? 13) + 1) },
           { icon: Minus, onPress: () => mapRef.current?.setZoom((mapRef.current?.getZoom() ?? 13) - 1) },
         ].map(({ icon: Icon, onPress }, i) => (
+          <GlassTooltip key={i} placement="left" {...mapControlTips()[i]}>
           <Pressable
-            key={i}
             onPress={onPress}
             style={{
               width: 38, height: 38, borderRadius: 19,
@@ -449,6 +549,7 @@ export function CourierTrackingMapGoogle({
           >
             <Icon size={16} color={isDark ? '#F7F2E9' : '#0F172A'} strokeWidth={2} />
           </Pressable>
+          </GlassTooltip>
         ))}
       </View>
     </View>

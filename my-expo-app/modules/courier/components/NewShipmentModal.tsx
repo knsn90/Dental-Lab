@@ -23,6 +23,7 @@ import { useAuthStore } from '../../../core/store/authStore';
 import { toast } from '../../../core/ui/Toast';
 import { createDelivery } from '../../orders/api';
 import { AddressAutocompleteField } from '../../integrations/components/AddressAutocompleteField';
+import { PartyPickerField } from './PartyPickerField';
 import { ILLER, ILCELER } from '../../clinics/data/turkey';
 
 /** Türkçe harfleri hesaba katan gevşek karşılaştırma (İ/ı tuzağı). */
@@ -87,6 +88,8 @@ export function NewShipmentModal({
   const [partyName, setPartyName] = useState('');
   const [address, setAddress]     = useState('');
   const [addrSel, setAddrSel]     = useState<{ address: string; lat: string | null; lng: string | null } | null>(null);
+  /** Programatik yazılan adres metni — bu metin için öneri listesi açılmaz. */
+  const [addrSilent, setAddrSilent] = useState<string | null>(null);
   const [phone, setPhone]         = useState('');
   const [notes, setNotes]         = useState('');
   const [fee, setFee]             = useState('');
@@ -164,7 +167,7 @@ export function NewShipmentModal({
 
   function reset() {
     setMode('order'); setOrderQ(''); setOrderSel(null); setOrderDir('lab_to_clinic');
-    setDirection('lab_to_other'); setPartyName(''); setAddress(''); setAddrSel(null);
+    setDirection('lab_to_other'); setPartyName(''); setAddress(''); setAddrSel(null); setAddrSilent(null);
     setPhone(''); setNotes(''); setFee(''); setCourierId(null);
     setCarrier('internal'); setBbkPrice(null); setBbkWeight('1');
     setShpState(''); setShpCity(''); setShpZip(''); setShpEmail(''); setShpTaxId(''); setShpRates([]); setShpService(null);
@@ -430,8 +433,14 @@ export function NewShipmentModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      {/* Arka plan bulanık — kurye haritası altta hareketli olduğu için düz
+          koyu perde yetmiyordu, form üzerinde odak kalmıyordu. */}
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center',
-                     backgroundColor: 'rgba(10,14,26,0.52)', padding: 16 }}>
+                     backgroundColor: 'rgba(10,14,26,0.52)', padding: 16,
+                     ...(Platform.OS === 'web'
+                       ? { backdropFilter: 'blur(10px) saturate(120%)',
+                           WebkitBackdropFilter: 'blur(10px) saturate(120%)' } as any
+                       : null) }}>
         <View style={{ width: '100%', maxWidth: 480, maxHeight: '88%', borderRadius: 22,
                        backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline, overflow: 'hidden' }}>
 
@@ -552,10 +561,36 @@ export function NewShipmentModal({
             )}
 
             {mode === 'free' && (
-            <View>
+            // Kayıtlı tedarikçi/klinik/hekim arasından seçilirse adres ve telefon
+            // birlikte dolar; eşleşme yoksa alan serbest metin olarak kalır.
+            <View style={{ zIndex: 30 }}>
               <Text style={label}>{autoT(isOut ? 'Alıcı adı' : 'Gönderen adı')}</Text>
-              <TextInput value={partyName} onChangeText={(v) => { setPartyName(v); invalidateQuote(); }} style={inputStyle}
-                placeholder={autoT('Ör. Dentsply Sirona Türkiye')} placeholderTextColor={T.ink3} />
+              <PartyPickerField
+                value={partyName}
+                onChangeText={(v) => { setPartyName(v); invalidateQuote(); }}
+                onPick={(h) => {
+                  setPartyName(h.name);
+                  if (h.phone) setPhone(h.phone);
+                  if (h.address) {
+                    // Konum bilgisi yok (kayıtta enlem/boylam tutulmuyor) → adres
+                    // metni yazılır, addrSel boş bırakılır. Kullanıcı isterse
+                    // adres alanından tekrar seçip koordinatı da ekleyebilir.
+                    setAddress(h.address);
+                    setAddrSel(null);
+                    // Bu metin programatik yazıldı → adres alanı kendiliğinden
+                    // öneri listesi açmasın (kullanıcı yazmaya başlayınca açılır).
+                    setAddrSilent(h.address);
+                    const g = parseTrAddress(h.address);
+                    if (g.il)   setShpState(g.il);
+                    if (g.ilce) setShpCity(g.ilce);
+                    if (g.zip)  setShpZip(g.zip);
+                  }
+                  invalidateQuote();
+                }}
+                placeholder={autoT('Ör. Dentsply Sirona Türkiye')}
+                inputStyle={inputStyle}
+                accentColor={accent}
+              />
             </View>
             )}
 
@@ -564,9 +599,10 @@ export function NewShipmentModal({
               <Text style={label}>{autoT(isOut ? 'Teslim adresi' : 'Alım adresi')}</Text>
               <AddressAutocompleteField
                 value={address}
-                onChangeText={(v) => { setAddress(v); setAddrSel(null); invalidateQuote(); }}
+                silentValue={addrSilent}
+                onChangeText={(v) => { setAddress(v); setAddrSel(null); setAddrSilent(null); invalidateQuote(); }}
                 onSelect={(a, lat, lng) => {
-                  setAddress(a); setAddrSel({ address: a, lat, lng }); invalidateQuote();
+                  setAddress(a); setAddrSel({ address: a, lat, lng }); setAddrSilent(null); invalidateQuote();
                   // Kargo alanlarını adresten doldur — kullanıcı aynı bilgiyi
                   // ikinci kez yazmasın. Elle değiştirmek serbest.
                   const g = parseTrAddress(a);

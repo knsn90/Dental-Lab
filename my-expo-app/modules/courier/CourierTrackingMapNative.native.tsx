@@ -12,14 +12,14 @@
 // dosyaya web-kirlenmesi olmadan bağımsız kalsın diye).
 
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, Image } from 'react-native';
+import { View, Text } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { supabase } from '../../core/api/supabase';
 import { geocodeTR } from './geocoder';
 import { useThemeModeStore } from '../../core/store/themeModeStore';
 import { useAccentTones } from '../../core/ui/HeroGlow';
 import { MONO_LIGHT, MONO_DARK } from './monoMapStyle';
-import { COURIER_ICON_URI } from './courierIcon';
+import { CourierPinMarker } from './CourierPinMarker';
 
 interface Coord { lat: number; lng: number; }
 interface Ping extends Coord { recorded_at: string; accuracy_m?: number | null; }
@@ -38,6 +38,10 @@ export interface Props {
   onRouteInfo?: (info: { durationSec: number | null; distanceM: number | null; live: boolean } | null) => void;
   /** Altta haritanın üzerine binen yüzen panelin ölçülmüş yüksekliği (px). */
   bottomInset?: number;
+  /** Kurye pinindeki fotoğraf + canlılık (web haritalarıyla aynı pin). */
+  courierPhoto?: string | null;
+  courierName?: string | null;
+  courierLive?: boolean;
 }
 
 const geocode = geocodeTR;
@@ -90,7 +94,7 @@ function NumberedPin({ n }: { n: number }) {
 export function CourierTrackingMapNative({
   deliveryId, origin, destination, destinationLabel,
   height = '100%', accent = '#2563EB', style, externalPosition, originLabel, onRouteInfo,
-  bottomInset = 0,
+  bottomInset = 0, courierPhoto, courierName, courierLive,
 }: Props) {
   const [lastPing, setLastPing] = useState<Ping | null>(null);
   // Özel View marker'ları iOS'te ilk karede boş kalabiliyor; kısa süre izleyip kapat.
@@ -230,12 +234,12 @@ export function CourierTrackingMapNative({
           <Marker
             coordinate={{ latitude: lastPing.lat, longitude: lastPing.lng }}
             title="Kurye"
-            anchor={{ x: 0.5, y: 0.9 }}
-            tracksViewChanges={tracksViews}
+            anchor={{ x: 0.5, y: 1 }}
+            tracksViewChanges={tracksViews || !!courierLive}
             zIndex={1000}
           >
-            {/* Web haritadaki scooter ikonunun aynısı — oran korunur (90×128). */}
-            <Image source={{ uri: COURIER_ICON_URI }} style={{ width: 45, height: 64 }} resizeMode="contain" />
+            {/* Web haritalarıyla AYNI pin: fotoğraf + canlı yeşil nabız. */}
+            <CourierPinMarker photo={courierPhoto} name={courierName} live={courierLive} accent={accent} />
           </Marker>
         )}
         {routeCoords && routeCoords.length > 1 && (

@@ -29,6 +29,7 @@ import {
 } from '../../../core/ui/icons';
 import { DS } from '../../../core/theme/dsTokens';
 import { useInkUI } from '../../../core/theme/inkScale';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useHeroSurface } from '../../../core/ui/HeroGlow';
 import { useAuthStore } from '../../../core/store/authStore';
 import { fetchMyDeliveries, type CourierDelivery } from '../api';
@@ -133,6 +134,9 @@ export function CourierStatsScreen() {
 
 function MobileView({ profile, filtered, stats, loading, range, setRange, onRefresh, last7Days, maxDayCount }: any) {
   const U = useInkUI();
+  // Sayfa zemini panelin bgPage'i olmalı (CLAUDE.md §2). TH.bg (#EAF2FA)
+  // 'soft fill' tokenı; kabuk #F5F9FD kullandığı için iki farklı mavi çıkıyordu.
+  const T = useMobileTokens();
   const heroSurface = useHeroSurface(TH.primary);
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -155,7 +159,7 @@ function MobileView({ profile, filtered, stats, loading, range, setRange, onRefr
   return (
     <>
     <ScrollView
-      style={{ flex: 1, backgroundColor: U.isDark ? U.pageBg : TH.bg }}
+      style={{ flex: 1, backgroundColor: T.bg }}
       contentContainerStyle={{ paddingBottom: 110 }}
       refreshControl={<RefreshControl refreshing={loading} onRefresh={onRefresh} tintColor={TH.primary} />}
     >
@@ -433,9 +437,8 @@ function DesktopView({ profile, filtered, stats, loading, range, setRange, onRef
         borderRadius: 28, padding: 48, ...heroSurface,
         position: 'relative', overflow: 'hidden',
       }}>
-        <View style={{ position: 'absolute', top: -40, end: -40, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(255,255,255,0.15)' }} pointerEvents="none" />
-        <View style={{ position: 'absolute', bottom: -60, start: -20, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(0,0,0,0.05)' }} pointerEvents="none" />
-
+        {/* Dekoratif daireler KALDIRILDI (kullanıcı kararı): düz renk hero — daireler
+            zemini gradyan gibi gösteriyordu. */}
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 32, flexWrap: 'wrap' }}>
           <View style={{ flex: 1, minWidth: 280 }}>
             <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>

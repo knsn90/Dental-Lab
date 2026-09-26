@@ -5,12 +5,16 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Platform, Pressable, useWindowDimensions } from 'react-native';
-import { COURIER_ICON_URI } from './courierIcon';
+import { courierPinHtml, ensureCourierPinStyles, PIN_W, PIN_H } from './courierPin';
 import { MapPin, Plus, Minus, Locate } from '../../core/ui/icons';
 import { supabase } from '../../core/api/supabase';
 import { geocodeTR } from './geocoder';
 import { useThemeModeStore } from '../../core/store/themeModeStore';
 import { useAccentTones } from '../../core/ui/HeroGlow';
+import { glassTipHtml } from '../../core/ui/glassTipHtml';
+import { autoT } from '../../core/i18n/autoTranslate';
+import { GlassTooltip } from '../../core/ui/GlassTooltip';
+import { mapControlTips } from './mapControlTips';
 import { CourierTrackingMapGoogle } from './CourierTrackingMapGoogle';
 // Native gerçek harita — react-native-maps'i platforma özel dosyada tutuyoruz
 // (web'de bundle EDİLMEZ; rn-maps'in web desteği yok). Metro .native/.web seçer.
@@ -40,6 +44,10 @@ interface Props {
   externalPosition?: Coord | null;
   /** Çıkış adresi — koordinat yoksa geokodlanır. Teslim edilmiş gönderilerde rota buradan başlar. */
   originLabel?: string;
+  /** Pin balonunda adresin üstünde gösterilen gönderici adı. */
+  originName?: string;
+  /** Pin balonunda adresin üstünde gösterilen alıcı adı. */
+  destinationName?: string;
   /**
    * Haritanın ALTINDA, üzerine binen yüzen panelin kapladığı piksel yüksekliği.
    * fitBounds bunu pay olarak ekler; yoksa rotanın alt ucu panelin arkasında kalır.
@@ -53,6 +61,13 @@ interface Props {
    * Rota hiç çizilemezse null.
    */
   onRouteInfo?: (info: { durationSec: number | null; distanceM: number | null; live: boolean } | null) => void;
+  /**
+   * Kurye pininin içindeki fotoğraf + canlılık. Pin artık sabit bir scooter
+   * resmi değil, kuryenin KENDİSİ; canlı konum akarken yeşil nabız atar.
+   */
+  courierPhoto?: string | null;
+  courierName?: string | null;
+  courierLive?: boolean;
 }
 
 const LEAFLET_CSS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
@@ -258,7 +273,8 @@ function applyRouteGradient(map: any, poly: any, stops: string[]): void {
 
 function CourierTrackingMapLeaflet({
   deliveryId, origin, destination, destinationLabel,
-  height = '100%', accent = '#2563EB', style, externalPosition, originLabel, onRouteInfo,
+  height = '100%', accent = '#2563EB', style, externalPosition, originLabel, originName, destinationName, onRouteInfo,
+  courierPhoto, courierName, courierLive,
 }: Props) {
   const [lastPing, setLastPing] = useState<Ping | null>(null);
   const [destCoord, setDestCoord] = useState<Coord | null>(destination ?? null);
@@ -447,8 +463,8 @@ function CourierTrackingMapLeaflet({
         destMarkerRef.current = L.marker([destCoord.lat, destCoord.lng], { icon: destIcon }).addTo(mapRef.current);
         if (destinationLabel) {
           destMarkerRef.current.bindPopup(
-            `<div style="font:600 12px system-ui;color:#0A0A0A;line-height:1.4;max-width:240px">${destinationLabel.replace(/</g, '&lt;')}</div>`,
-            { closeButton: false, offset: [0, -22] as any, autoClose: false },
+            glassTipHtml({ title: autoT('Teslim noktası'), name: destinationName !== destinationLabel ? destinationName : undefined, text: destinationLabel, dark: isDark }),
+            { closeButton: false, offset: [0, -30] as any, autoClose: false, className: 'gtip-host' },
           );
         }
       }
@@ -464,8 +480,8 @@ function CourierTrackingMapLeaflet({
         originMarkerRef.current = L.marker([originCoord.lat, originCoord.lng], { icon: originIcon }).addTo(mapRef.current);
         if (originLabel) {
           originMarkerRef.current.bindPopup(
-            `<div style="font:600 12px system-ui;color:#0A0A0A;line-height:1.4;max-width:240px">${originLabel.replace(/</g, '&lt;')}</div>`,
-            { closeButton: false, offset: [0, -26] as any, autoClose: false },
+            glassTipHtml({ title: autoT('Alım noktası'), name: originName, text: originLabel, dark: isDark }),
+            { closeButton: false, offset: [0, -30] as any, autoClose: false, className: 'gtip-host' },
           );
         }
       }
@@ -507,12 +523,13 @@ function CourierTrackingMapLeaflet({
         const rot = targetRot - 90;
 
         if (!markerRef.current) {
-          // Diş-scooter PIN — dik durur (dönmez); ucu tam konuma oturur.
-          // Kullanıcının ikonu — base64 data URI (harici istek yok, her ortamda yüklenir).
+          // Fotoğraflı damla pin — markup Google haritasıyla TEK kaynaktan
+          // (courierPin). Ucun sivri noktası tam konuma oturur.
+          ensureCourierPinStyles();
           const icon = L.divIcon({
             className: 'tracking-courier',
-            html: `<div style="width:64px;height:64px;filter:drop-shadow(0 6px 10px rgba(0,0,0,0.32))"><img src="${COURIER_ICON_URI}" style="width:100%;height:100%;object-fit:contain;display:block" draggable="false"/></div>`,
-            iconSize: [64, 64], iconAnchor: [32, 54],
+            html: courierPinHtml({ photo: courierPhoto, name: courierName, live: !!courierLive, accent }),
+            iconSize: [PIN_W, PIN_H], iconAnchor: [PIN_W / 2, PIN_H],
           });
           // zIndexOffset yüksek: numaralı pin'ler her poll'de yeniden eklenip
           // (origin/dest remove+readd) kurye marker'ının ÜSTÜNde kalıyordu; kurye
@@ -631,6 +648,19 @@ function CourierTrackingMapLeaflet({
 
   useEffect(() => { pushMapUpdate(); }, [pushMapUpdate]);
 
+  // Pin İÇERİĞİ (foto / canlılık) konumdan bağımsız değişir → marker yeniden
+  // kurulmadan ikon tazelenir; yoksa foto geç geldiğinde pin baş harfte kalıyor.
+  useEffect(() => {
+    const L = (typeof window !== 'undefined' ? (window as any).L : null);
+    if (!L || !markerRef.current) return;
+    ensureCourierPinStyles();
+    markerRef.current.setIcon(L.divIcon({
+      className: 'tracking-courier',
+      html: courierPinHtml({ photo: courierPhoto, name: courierName, live: !!courierLive, accent }),
+      iconSize: [PIN_W, PIN_H], iconAnchor: [PIN_W / 2, PIN_H],
+    }));
+  }, [courierPhoto, courierName, courierLive, accent]);
+
   if (Platform.OS !== 'web') {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { WebView } = require('react-native-webview');
@@ -695,6 +725,7 @@ window.__updateMap=function(d){
           gap: 8,
           zIndex: 1100,
         }}>
+          <GlassTooltip placement="left" {...mapControlTips()[0]}>
           <Pressable
             onPress={() => {
               if (!navigator.geolocation || !mapRef.current) return;
@@ -717,6 +748,8 @@ window.__updateMap=function(d){
           >
             <Locate size={16} color={isDark ? '#F7F2E9' : '#0F172A'} strokeWidth={2} />
           </Pressable>
+          </GlassTooltip>
+          <GlassTooltip placement="left" {...mapControlTips()[1]}>
           <Pressable
             onPress={() => mapRef.current?.zoomIn()}
             style={{
@@ -732,6 +765,8 @@ window.__updateMap=function(d){
           >
             <Plus size={16} color={isDark ? '#F7F2E9' : '#0F172A'} strokeWidth={2} />
           </Pressable>
+          </GlassTooltip>
+          <GlassTooltip placement="left" {...mapControlTips()[2]}>
           <Pressable
             onPress={() => mapRef.current?.zoomOut()}
             style={{
@@ -747,6 +782,7 @@ window.__updateMap=function(d){
           >
             <Minus size={16} color={isDark ? '#F7F2E9' : '#0F172A'} strokeWidth={2} />
           </Pressable>
+          </GlassTooltip>
         </View>
       )}
     </View>

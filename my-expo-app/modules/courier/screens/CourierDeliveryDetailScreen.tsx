@@ -25,6 +25,7 @@ import { updateDeliveryStatus } from '../../../modules/orders/api';
 import { CourierLiveMap } from '../CourierLiveMap';
 import { DS } from '../../../core/theme/dsTokens';
 import { useInkUI } from '../../../core/theme/inkScale';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { localeTag, isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { formatAddress } from '../../../core/util/formatAddress';
@@ -81,6 +82,9 @@ const initials = (s?: string | null) => {
 
 export function CourierDeliveryDetailScreen() {
   const U = useInkUI();
+  // Sayfa zemini panelin bgPage'i olmalı (CLAUDE.md §2). TH.bg (#EAF2FA)
+  // 'soft fill' tokenı; kabuk #F5F9FD kullandığı için iki farklı mavi çıkıyordu.
+  const T = useMobileTokens();
   const { t } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -175,14 +179,14 @@ export function CourierDeliveryDetailScreen() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: U.isDark ? U.pageBg : TH.bg, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ flex: 1, backgroundColor: T.bg, alignItems: 'center', justifyContent: 'center' }}>
         <ActivityIndicator color={TH.primary} />
       </View>
     );
   }
   if (!d) {
     return (
-      <View style={{ flex: 1, backgroundColor: U.isDark ? U.pageBg : TH.bg, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 32 }}>
+      <View style={{ flex: 1, backgroundColor: T.bg, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 32 }}>
         <Text style={{ ...DISPLAY, fontSize: 22, color: U.ink[900] }}>{t('courier.delivery.notFound')}</Text>
         <Pressable onPress={() => safeBack('/(station)')} style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999, backgroundColor: U.ink[900] }}>
           <Text style={{ fontSize: 13, fontWeight: '600', color: U.onDarkPill }}>{t('courier.delivery.back')}</Text>
