@@ -260,11 +260,13 @@ async function handleIyzicoCallback(supabase: any, body: Record<string, any>): P
   }
 
   // v2 tamamlama: paidPrice/basketId/currency INIT ile BİREBİR aynı olmalı.
+  // Alan listesi resmî SDK'daki CreateThreedsV2PaymentRequest ile birebir:
+  // locale, conversationId, paymentId, paidPrice, basketId, currency.
+  // conversationData v1 uca aittir, v2'de GÖNDERİLMEZ.
   const res = await iyzicoPost(creds, '/payment/v2/3dsecure/auth', {
     locale: 'tr',
     conversationId,
     paymentId,
-    conversationData: body.conversationData ? String(body.conversationData) : undefined,
     paidPrice: iyziPrice((intent as any).amount),
     basketId: String((intent as any).invoice_id),
     currency: String((intent as any).currency ?? 'TRY'),

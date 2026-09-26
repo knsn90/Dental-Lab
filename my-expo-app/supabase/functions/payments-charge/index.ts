@@ -345,6 +345,12 @@ async function chargeViaIyzico(supabase: any, intent: any, card: any, installmen
       contactName: rawName.slice(0, 100),
       city, country: 'Turkey', address,
     },
+    // Sanal ürün için zorunlu değil, ama bazı hesaplarda doğrulama arıyor;
+    // fatura adresinin aynısı gönderiliyor (fiziksel teslimat yok).
+    shippingAddress: {
+      contactName: rawName.slice(0, 100),
+      city, country: 'Turkey', address,
+    },
     // Laboratuvar hizmeti fiziksel teslimat içermez → VIRTUAL, shipping yok.
     basketItems: [{
       id: String(intent.invoice_id),

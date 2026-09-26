@@ -71,6 +71,9 @@ export async function iyzicoPost<T = any>(
       headers: {
         'Authorization': authHeader,
         'x-iyzi-rnd': rnd,
+        // Resmî SDK'lar bu başlığı gönderiyor; iyzico destek kayıtlarında
+        // entegrasyonu tanımak için kullanılıyor.
+        'x-iyzi-client-version': 'siman-edge-1.0',
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
