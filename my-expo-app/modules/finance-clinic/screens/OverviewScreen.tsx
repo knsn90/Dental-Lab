@@ -9,7 +9,6 @@
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { View, Text, ScrollView, Pressable } from 'react-native';
-import Svg, { Defs, LinearGradient, Stop, Path, Circle } from 'react-native-svg';
 import {
   Wallet, AlertCircle, Clock, CheckCircle2, FileText, ArrowRight, ArrowLeft, CreditCard,
   BarChart3, PieChart, TrendingUp,
@@ -365,24 +364,6 @@ function PremiumHero({
     }}>
       {/* Outer container shows panel theme; inner glass card sits on top */}
       <View style={{ position: 'relative', borderRadius: 22, overflow: 'hidden' }}>
-        {/* Decorative gradient blob */}
-        <Svg
-          width="100%"
-          height="100%"
-          style={{ position: 'absolute', top: 0, start: 0 }}
-          // @ts-ignore
-          pointerEvents="none"
-        >
-          <Defs>
-            <LinearGradient id="heroBlob" x1="0" y1="0" x2="1" y2="1">
-              <Stop offset="0" stopColor={TH.primary} stopOpacity="0.18" />
-              <Stop offset="1" stopColor={TH.primary} stopOpacity="0" />
-            </LinearGradient>
-          </Defs>
-          <Circle cx="92%" cy="20%" r="160" fill="url(#heroBlob)" />
-          <Circle cx="10%" cy="100%" r="180" fill="url(#heroBlob)" />
-        </Svg>
-
         <View style={{
           backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.62)',
           borderRadius: 22, padding: 22,
@@ -420,7 +401,16 @@ function PremiumHero({
               <Text style={{ fontSize: 11, color: isDark ? (T.ink3 as string) : DS.ink[500], fontWeight: '500', marginBottom: 4 }}>
                 Toplam Borç
               </Text>
-              <MoneyMultiX slices={dueCcy} variant="cards" onAccent="#FFFFFF" size="lg" accentColor={TH.primary} emptyText="—" />
+              {/* onAccent yalnız KOYU temada: açık temada kart zemini beyaz-alfa,
+                  beyaz rakam görünmez oluyordu (kullanıcı ekranda gördü). */}
+              <MoneyMultiX
+                slices={dueCcy}
+                variant="cards"
+                onAccent={isDark ? '#FFFFFF' : undefined}
+                size="lg"
+                accentColor={TH.primary}
+                emptyText="—"
+              />
               <View style={{ height: 4 }} />
               <Text style={{ fontSize: 13, color: isDark ? (T.ink3 as string) : DS.ink[500], marginTop: 6, lineHeight: 19, maxWidth: 520 }}>
                 {totalDue === 0
