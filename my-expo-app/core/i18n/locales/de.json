@@ -722,7 +722,8 @@
         "deleteError": "Benutzer konnte nicht gelöscht werden"
       },
       "pageKicker": "Klinik · Team",
-      "pageTitle": "Benutzer"
+      "pageTitle": "Benutzer",
+      "add": "Hinzufügen"
     },
     "doctors": {
       "statTotal": "Gesamt",

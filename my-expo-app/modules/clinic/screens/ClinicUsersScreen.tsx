@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  UserPlus, Stethoscope, ShieldCheck, ClipboardList, ChevronDown, Check, X, Users as UsersIcon, Trash2,
+  UserPlus, Stethoscope, ShieldCheck, ClipboardList, ChevronDown, Check, X, Trash2,
 } from '../../../core/ui/icons';
 
 import { fetchMyClinicUsers, updateClinicUser, inviteClinicUser, generateDoctorPassword, deleteClinicUser, updateClinicUserAuth } from '../api';
@@ -26,8 +26,8 @@ import { DS } from '../../../core/theme/dsTokens';
 import { titleCaseTR } from '../../../core/utils/textCase';
 import { isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
+import { WhiteHero } from '../../../core/ui/WhiteHero';
 import { useInkUI } from '../../../core/theme/inkScale';
-import { useHeroSurface, HeroGlow } from '../../../core/ui/HeroGlow';
 
 const SERIF = { fontFamily: DS.font.display as string, fontWeight: '300' as const };
 const P     = DS.clinic.primary;
@@ -96,91 +96,6 @@ function initials(name?: string | null) {
   const PREFIX_RE = /^(dr|dt|prof|doç|opr|uzm)\.?$/i;
   const words = name.trim().split(/\s+/).filter(w => !PREFIX_RE.test(w));
   return words.slice(0, 2).map(p => p[0]?.toLocaleUpperCase('tr-TR') ?? '').join('') || '?';
-}
-
-// ─── F1 HeroCard (patterns-mobile.tsx F1 canonical) ──────────────────────────
-// bg: theme.primary · text: #FFFFFF · blob: rgba(255,255,255,0.18 / 0.12)
-function UsersHeroCard({
-  accentColor, eyebrow, value, sub, stats, onInvite,
-}: {
-  accentColor: string;
-  eyebrow: string;
-  value: string | number;
-  sub: string;
-  stats: { label: string; value: number | string; icon?: any }[];
-  onInvite: () => void;
-}) {
-  const rtl = isRTL();
-  const heroBg = useHeroSurface(accentColor);
-  return (
-    <View style={{
-      borderRadius: 20, overflow: 'hidden',
-      backgroundColor: accentColor, padding: 18,
-      position: 'relative',
-      ...heroBg,
-    } as any}>
-      {/* Bloblar — F1 canonical (koyu temada blur ile yayılır) */}
-      <HeroGlow size={160} opacity={0.18} style={{ top: -40, ...(rtl ? { left: -40 } : { right: -40 }) }} />
-      <HeroGlow size={140} opacity={0.12} delay={900} style={{ bottom: -50, ...(rtl ? { right: -20 } : { left: -20 }) }} />
-
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.78)', marginBottom: 8 }}>
-            {eyebrow}
-          </Text>
-          <Text style={{ ...SERIF, fontSize: 32, color: '#FFFFFF', letterSpacing: -0.8, lineHeight: 36 }}>
-            {value}
-          </Text>
-          <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.72)', marginTop: 4 }}>{sub}</Text>
-        </View>
-
-        {/* Action stack — solid (Yeni) + ghost (alt) F1 buton şablonu */}
-        <View style={{ gap: 6 }}>
-          <Pressable
-            onPress={onInvite}
-            style={{
-              flexDirection: 'row', alignItems: 'center', gap: 5,
-              height: 32, paddingHorizontal: 12, borderRadius: 999,
-              backgroundColor: '#FFFFFF',
-              ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.15s' } as any : {}),
-            }}
-          >
-            <UserPlus size={12} color={accentColor} strokeWidth={2.4} />
-            <Text style={{ fontSize: 12, fontWeight: '700', color: accentColor }}>Ekle</Text>
-          </Pressable>
-          {/* Ghost — F1 referansı */}
-          <View style={{
-            flexDirection: 'row', alignItems: 'center', gap: 5,
-            height: 30, paddingHorizontal: 12, borderRadius: 999,
-            backgroundColor: 'transparent', borderWidth: 1, borderColor: 'rgba(255,255,255,0.55)',
-          }}>
-            <UsersIcon size={11} color="#FFFFFF" strokeWidth={1.8} />
-            <Text style={{ fontSize: 11, fontWeight: '600', color: '#FFFFFF' }}>Ekip</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Stat strip (F1 extension — translucent beyaz mini kartlar) */}
-      {stats.length > 0 && (
-        <View style={{ flexDirection: 'row', gap: 6, marginTop: 14, flexWrap: 'wrap' }}>
-          {stats.map((s) => {
-            const SIcon = s.icon;
-            return (
-              <View key={s.label} style={{ flex: 1, minWidth: 90, paddingVertical: 9, paddingHorizontal: 11, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.16)' }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 3 }}>
-                  {SIcon ? <SIcon size={10} color="rgba(255,255,255,0.9)" strokeWidth={2} /> : null}
-                  <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>{s.label}</Text>
-                </View>
-                <Text style={{ ...SERIF, fontSize: 20, color: '#FFFFFF', letterSpacing: -0.4, lineHeight: 22 }} numberOfLines={1}>
-                  {s.value}
-                </Text>
-              </View>
-            );
-          })}
-        </View>
-      )}
-    </View>
-  );
 }
 
 // ─── Kompakt rol filtre pill (sadece filtreleme, sayı tekrarı yok) ────────────
@@ -926,17 +841,35 @@ export function ClinicUsersScreen() {
           </View>
         )}
 
-        {/* ════════ F1 HERO CARD (patterns-mobile.tsx F1 canonical) ════════ */}
-        <UsersHeroCard
-          accentColor={P}
-          eyebrow={t('clinic.users.teamSummary')}
-          value={counts.all}
-          sub={`${counts.all} ${t('clinic.users.summaryDesc')}`}
-          onInvite={() => { setEditing(null); setFormOpen(true); }}
+        {/* ════════ BEYAZ HERO ════════
+            Eskiden dolu accent zeminli F1 kartıydı; içindeki dekoratif
+            daireler (HeroGlow blob'ları) kaldırıldı ve sayfa, sitenin
+            beyaz hero diline alındı. */}
+        <WhiteHero
+          compact
+          kicker={t('clinic.users.teamSummary')}
+          title={String(counts.all)}
+          description={`${counts.all} ${t('clinic.users.summaryDesc')}`}
+          cta={
+            <Pressable
+              onPress={() => { setEditing(null); setFormOpen(true); }}
+              style={({ pressed }) => ({
+                flexDirection: 'row', alignItems: 'center', gap: 6,
+                height: 34, paddingHorizontal: 14, borderRadius: 999,
+                backgroundColor: P, opacity: pressed ? 0.85 : 1,
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              })}
+            >
+              <UserPlus size={13} color="#FFFFFF" strokeWidth={2.2} />
+              <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#FFFFFF' }}>
+                {t('clinic.users.add', { defaultValue: 'Ekle' })}
+              </Text>
+            </Pressable>
+          }
           stats={[
-            { label: t('clinic.users.statDoctor'),    value: counts.doctor,           icon: Stethoscope },
-            { label: t('clinic.users.statSecretary'), value: counts.clinic_secretary, icon: ClipboardList },
-            { label: t('clinic.users.statAdmin'),     value: counts.clinic_admin,     icon: ShieldCheck },
+            { label: t('clinic.users.statDoctor'),    value: String(counts.doctor) },
+            { label: t('clinic.users.statSecretary'), value: String(counts.clinic_secretary) },
+            { label: t('clinic.users.statAdmin'),     value: String(counts.clinic_admin) },
           ]}
         />
 

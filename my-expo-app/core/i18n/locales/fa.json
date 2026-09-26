@@ -722,7 +722,8 @@
         "deleteError": "کاربر حذف نشد"
       },
       "pageKicker": "کلینیک · تیم",
-      "pageTitle": "کاربران"
+      "pageTitle": "کاربران",
+      "add": "افزودن"
     },
     "doctors": {
       "statTotal": "کل",

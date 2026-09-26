@@ -722,7 +722,8 @@
         "deleteError": "Couldn't delete user"
       },
       "pageKicker": "Clinic · Team",
-      "pageTitle": "Users"
+      "pageTitle": "Users",
+      "add": "Add"
     },
     "doctors": {
       "statTotal": "Total",

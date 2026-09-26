@@ -730,7 +730,8 @@
         "deleteError": "Kullanıcı silinemedi"
       },
       "pageKicker": "Klinik · Ekip",
-      "pageTitle": "Kullanıcılar"
+      "pageTitle": "Kullanıcılar",
+      "add": "Ekle"
     },
     "doctors": {
       "statTotal": "Toplam",
