@@ -359,7 +359,7 @@ function OrderPickerModal({ visible, orders, loading, accentColor, mode, setMode
           {/* Search */}
           <View style={{
             flexDirection: 'row', alignItems: 'center', gap: 8,
-            backgroundColor: '#F5F5F5', borderRadius: 12,
+            backgroundColor: '#FFFFFF', borderRadius: 9999,
             paddingHorizontal: 12, paddingVertical: 8, marginBottom: 12,
           }}>
             <Search size={14} color="#9A9A9A" strokeWidth={1.8} />

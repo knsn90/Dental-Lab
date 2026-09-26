@@ -8643,5 +8643,22 @@
   "Kısmi ödeme: tutar en eski faturadan başlayarak dağıtılır.": "Teilzahlung: Der Betrag wird ab der ältesten Rechnung verrechnet.",
   "Tüm açık faturalarınız kapanır.": "Alle Ihre offenen Rechnungen werden beglichen.",
   "Tutar 0 ile toplam bakiye arasında olmalı.": "Der Betrag muss zwischen 0 und dem Gesamtsaldo liegen.",
-  "Ödemeye geç": "Weiter zur Zahlung"
+  "Ödemeye geç": "Weiter zur Zahlung",
+  "Hasta, diş ve aşama bilgileriyle iş emri çıktısı alır": "Druckt den Arbeitsauftrag mit Patienten-, Zahn- und Stufendaten",
+  "Bekletmeyi bitirir; gecikme sayacı yeniden işler ve teslim tarihi ötelenir": "Beendet die Pause; der Verzögerungszähler läuft weiter und der Liefertermin verschiebt sich",
+  "Üretimi duraklatır; beklerken gecikme sayacı durur": "Pausiert die Produktion; der Verzögerungszähler stoppt",
+  "Aşamaları, teknisyenleri ve süreleri belirler; üretimi başlatır": "Legt Stufen, Techniker und Dauer fest und startet die Produktion",
+  "Aşama ve teknisyen planını değiştirir — üretim başlamadan önce": "Ändert den Stufen- und Technikerplan — vor Produktionsbeginn",
+  "Tasarımı hekime gönderir; onay gelene kadar üretim ilerlemez": "Sendet das Design an den Arzt; die Produktion wartet auf Freigabe",
+  "Siparişi bir sonraki duruma taşır": "Setzt den Auftrag in den nächsten Status",
+  "Teslim edilen işin düzeltmesi; bağlı yeni sipariş açılır, ücretlendirilmez": "Korrektur einer gelieferten Arbeit; erzeugt einen verknüpften neuen Auftrag, ohne Berechnung",
+  "Planlı sonraki aşama (ör. geçiciden nihaiye); hasta ve dosyalar dolu gelir, tam ücretli yeni sipariştir": "Der geplante nächste Schritt (z. B. Provisorium zu Final); Patient und Dateien sind vorbefüllt, es ist ein neuer Auftrag zum vollen Preis",
+  "Teslimat kaydı açar ve kurye çağırır; masraf laboratuvar giderine yazılır": "Erstellt eine Lieferung und ruft einen Kurier; die Kosten werden als Laboraufwand gebucht",
+  "Aktif aşamayı başka bir teknisyene devreder; bekleyen ve duraklamış aşamalar da geçer": "Übergibt die aktive Stufe an einen anderen Techniker; wartende und pausierte Stufen wechseln mit",
+  "Kalite kontrolden geçmedi: işi seçtiğin aşamaya geri gönderir": "Qualitätskontrolle nicht bestanden: schickt die Arbeit zur gewählten Stufe zurück",
+  "Acil işaretini kaldır": "Dringend-Markierung entfernen",
+  "Acil işaretle": "Als dringend markieren",
+  "Acil siparişler listelerde en üstte ve kırmızı rozetle görünür": "Dringende Aufträge stehen oben in den Listen und tragen ein rotes Abzeichen",
+  "Siparişin bağlı olduğu hekimi ve kliniği değiştirir; fatura da yeni kliniğe kesilir": "Ändert Arzt und Klinik des Auftrags; die Rechnung geht ebenfalls an die neue Klinik",
+  "Bu vaka için hatırlatma kurar": "Setzt eine Erinnerung für diesen Fall"
 }

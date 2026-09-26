@@ -8655,5 +8655,22 @@
   "Kısmi ödeme: tutar en eski faturadan başlayarak dağıtılır.": "Partial payment: the amount is applied starting from the oldest invoice.",
   "Tüm açık faturalarınız kapanır.": "All of your open invoices will be settled.",
   "Tutar 0 ile toplam bakiye arasında olmalı.": "The amount must be between 0 and the total balance.",
-  "Ödemeye geç": "Continue to payment"
+  "Ödemeye geç": "Continue to payment",
+  "Hasta, diş ve aşama bilgileriyle iş emri çıktısı alır": "Prints the work order with patient, tooth and stage details",
+  "Bekletmeyi bitirir; gecikme sayacı yeniden işler ve teslim tarihi ötelenir": "Ends the hold; the delay counter resumes and the delivery date shifts",
+  "Üretimi duraklatır; beklerken gecikme sayacı durur": "Pauses production; the delay counter stops while on hold",
+  "Aşamaları, teknisyenleri ve süreleri belirler; üretimi başlatır": "Sets the stages, technicians and durations, then starts production",
+  "Aşama ve teknisyen planını değiştirir — üretim başlamadan önce": "Changes the stage and technician plan — before production starts",
+  "Tasarımı hekime gönderir; onay gelene kadar üretim ilerlemez": "Sends the design to the doctor; production waits for approval",
+  "Siparişi bir sonraki duruma taşır": "Moves the order to the next status",
+  "Teslim edilen işin düzeltmesi; bağlı yeni sipariş açılır, ücretlendirilmez": "A correction of delivered work; opens a linked new order, not charged",
+  "Planlı sonraki aşama (ör. geçiciden nihaiye); hasta ve dosyalar dolu gelir, tam ücretli yeni sipariştir": "The planned next step (e.g. temporary to final); patient and files are prefilled, and it is a full-price new order",
+  "Teslimat kaydı açar ve kurye çağırır; masraf laboratuvar giderine yazılır": "Creates a delivery and calls a courier; the cost is booked as a lab expense",
+  "Aktif aşamayı başka bir teknisyene devreder; bekleyen ve duraklamış aşamalar da geçer": "Hands the active stage to another technician; pending and paused stages move too",
+  "Kalite kontrolden geçmedi: işi seçtiğin aşamaya geri gönderir": "Failed quality control: sends the job back to the stage you pick",
+  "Acil işaretini kaldır": "Remove the urgent flag",
+  "Acil işaretle": "Mark as urgent",
+  "Acil siparişler listelerde en üstte ve kırmızı rozetle görünür": "Urgent orders appear at the top of lists with a red badge",
+  "Siparişin bağlı olduğu hekimi ve kliniği değiştirir; fatura da yeni kliniğe kesilir": "Changes the order’s doctor and clinic; the invoice is issued to the new clinic too",
+  "Bu vaka için hatırlatma kurar": "Sets a reminder for this case"
 }

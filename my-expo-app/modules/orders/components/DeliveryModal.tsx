@@ -19,6 +19,7 @@ import { CarrierLogo } from './CarrierLogo';
 import { FilterMenu } from '../../../core/ui/FilterMenu';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { edgeErrorMessage } from '../../../core/api/edgeError';
 
 interface CourierOption { id: string; full_name: string; }
 
@@ -844,7 +845,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
       body: { action: 'calculate', work_order_id: workOrderId, extra_work_order_ids: groupIds.length ? groupIds : undefined, notes: notes.trim() || undefined, ...destOverride(), ...bbkOptions() },
     });
     setBbkBusy(false);
-    if (err || !(data as any)?.ok) { setError((data as any)?.message ?? err?.message ?? 'Fiyat alınamadı'); setErrDetail(fmtDebug(data)); return; }
+    if (err || !(data as any)?.ok) { setError((data as any)?.message ?? await edgeErrorMessage(err, 'Fiyat alınamadı')); setErrDetail(fmtDebug(data)); return; }
     setBbkPrice(String((data as any)?.price ?? '—'));
     setBbkBreakdown((data as any)?.breakdown ?? null);
   }
@@ -856,7 +857,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
     const { data, error: err } = await supabase.functions.invoke('banabikurye-dispatch', {
       body: { action: 'edit', order_id: editDelivery.orderId, notes: notes.trim() || undefined, ...destOverride() },
     });
-    if (err || !(data as any)?.ok) { setBbkBusy(false); setError((data as any)?.message ?? err?.message ?? 'Düzenlenemedi'); setErrDetail(fmtDebug(data)); return; }
+    if (err || !(data as any)?.ok) { setBbkBusy(false); setError((data as any)?.message ?? await edgeErrorMessage(err, 'Düzenlenemedi')); setErrDetail(fmtDebug(data)); return; }
     // Yerel teslimat kaydının adresini güncelle (varsa)
     if (addrSelected) {
       await supabase.from('deliveries').update({ destination_address: addrSelected.address }).eq('id', editDelivery.id);
@@ -876,7 +877,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
     const { data, error: err } = await supabase.functions.invoke('banabikurye-dispatch', {
       body: { action: 'create', work_order_id: workOrderId, extra_work_order_ids: groupIds.length ? groupIds : undefined, notes: notes.trim() || undefined, ...destOverride(), ...bbkOptions() },
     });
-    if (err || !(data as any)?.ok) { setBbkBusy(false); setError((data as any)?.message ?? err?.message ?? 'Kurye çağrılamadı'); setErrDetail(fmtDebug(data)); return; }
+    if (err || !(data as any)?.ok) { setBbkBusy(false); setError((data as any)?.message ?? await edgeErrorMessage(err, 'Kurye çağrılamadı')); setErrDetail(fmtDebug(data)); return; }
     const orderId = (data as any)?.order_id ?? (data as any)?.order_name ?? null;
     // Ücret: create yanıtı fiyat döndürürse onu, yoksa hesaplanan fiyatı kaydet.
     // BanaBiKurye ₺ ile çalışır — para birimi TRY sabit, lab base'i değil.
@@ -1066,7 +1067,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                   onChangeText={(t) => { setAddrQuery(t); setAddrTouched(true); }}
                   placeholder="Klinik adı, hekim adı veya adres…"
                   onSubmitEditing={() => handleAddrSearch()}
-                  style={{ flex: 1, borderWidth: 1, borderColor: (T.hairline as string), borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, /* @ts-ignore */ outlineWidth: 0 }}
+                  style={{ flex: 1, borderWidth: 1, borderColor: (T.hairline as string), borderRadius: 9999, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, /* @ts-ignore */ outlineWidth: 0 }}
                 />
                 <Pressable
                   onPress={() => handleAddrSearch()}

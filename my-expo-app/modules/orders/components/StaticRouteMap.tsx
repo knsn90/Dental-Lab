@@ -78,7 +78,7 @@ const MONO_STYLE_DARK = [
   'feature:water|element:labels.text.fill|color:0x5a544c',
 ];
 
-export function StaticRouteMap({ originText, destText, apiKey, height = 96, accent = '#4771AB', radius = 12 }: Props) {
+export function StaticRouteMap({ originText, destText, apiKey, height = 96, accent = '#004B87', radius = 12 }: Props) {
   const isDark = useThemeModeStore(s => s.resolvedDark);
   /**
    * Görsel, kabın GERÇEK en-boy oranında istenir.

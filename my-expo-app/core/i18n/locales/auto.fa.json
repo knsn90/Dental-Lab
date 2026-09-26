@@ -8626,5 +8626,22 @@
   "Kısmi ödeme: tutar en eski faturadan başlayarak dağıtılır.": "پرداخت جزئی: مبلغ از قدیمی‌ترین فاکتور شروع به تخصیص می‌شود.",
   "Tüm açık faturalarınız kapanır.": "همه فاکتورهای باز شما تسویه می‌شود.",
   "Tutar 0 ile toplam bakiye arasında olmalı.": "مبلغ باید بین ۰ و مانده کل باشد.",
-  "Ödemeye geç": "ادامه به پرداخت"
+  "Ödemeye geç": "ادامه به پرداخت",
+  "Hasta, diş ve aşama bilgileriyle iş emri çıktısı alır": "برگه کار را با اطلاعات بیمار، دندان و مرحله چاپ می‌کند",
+  "Bekletmeyi bitirir; gecikme sayacı yeniden işler ve teslim tarihi ötelenir": "توقف را پایان می‌دهد؛ شمارنده تأخیر دوباره کار می‌کند و تاریخ تحویل جابه‌جا می‌شود",
+  "Üretimi duraklatır; beklerken gecikme sayacı durur": "تولید را متوقف می‌کند؛ در حالت توقف شمارنده تأخیر می‌ایستد",
+  "Aşamaları, teknisyenleri ve süreleri belirler; üretimi başlatır": "مراحل، تکنسین‌ها و زمان‌ها را تعیین و تولید را آغاز می‌کند",
+  "Aşama ve teknisyen planını değiştirir — üretim başlamadan önce": "برنامه مراحل و تکنسین را پیش از شروع تولید تغییر می‌دهد",
+  "Tasarımı hekime gönderir; onay gelene kadar üretim ilerlemez": "طرح را برای پزشک می‌فرستد؛ تا تأیید، تولید پیش نمی‌رود",
+  "Siparişi bir sonraki duruma taşır": "سفارش را به وضعیت بعدی می‌برد",
+  "Teslim edilen işin düzeltmesi; bağlı yeni sipariş açılır, ücretlendirilmez": "اصلاح کار تحویل‌شده؛ سفارش جدید مرتبط باز می‌شود و هزینه‌ای ندارد",
+  "Planlı sonraki aşama (ör. geçiciden nihaiye); hasta ve dosyalar dolu gelir, tam ücretli yeni sipariştir": "مرحله بعدی برنامه‌ریزی‌شده (مثلاً موقت به نهایی)؛ بیمار و فایل‌ها از پیش پر می‌شوند و سفارش جدید با قیمت کامل است",
+  "Teslimat kaydı açar ve kurye çağırır; masraf laboratuvar giderine yazılır": "رکورد تحویل باز می‌کند و پیک می‌خواند؛ هزینه به عنوان هزینه لابراتوار ثبت می‌شود",
+  "Aktif aşamayı başka bir teknisyene devreder; bekleyen ve duraklamış aşamalar da geçer": "مرحله فعال را به تکنسین دیگری واگذار می‌کند؛ مراحل در انتظار و متوقف نیز منتقل می‌شوند",
+  "Kalite kontrolden geçmedi: işi seçtiğin aşamaya geri gönderir": "کنترل کیفیت را رد کرد: کار را به مرحله انتخابی بازمی‌گرداند",
+  "Acil işaretini kaldır": "برداشتن نشان فوری",
+  "Acil işaretle": "علامت‌گذاری فوری",
+  "Acil siparişler listelerde en üstte ve kırmızı rozetle görünür": "سفارش‌های فوری در بالای فهرست‌ها با نشان قرمز دیده می‌شوند",
+  "Siparişin bağlı olduğu hekimi ve kliniği değiştirir; fatura da yeni kliniğe kesilir": "پزشک و کلینیک سفارش را تغییر می‌دهد؛ فاکتور نیز به کلینیک جدید صادر می‌شود",
+  "Bu vaka için hatırlatma kurar": "برای این پرونده یادآور تنظیم می‌کند"
 }

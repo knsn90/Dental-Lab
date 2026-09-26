@@ -163,8 +163,6 @@ export function DoctorOrdersMobile({ orders, loading, refetch, onOpenOrder, onNe
           borderRadius: 20, overflow: 'hidden',
           backgroundColor: DOCTOR.primary, padding: 18, position: 'relative',
         }}>
-          <View style={{ position: 'absolute', top: -40, ...(rtl ? { left: -40 } : { right: -40 }), width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
-          <View style={{ position: 'absolute', bottom: -50, ...(rtl ? { right: -20 } : { left: -20 }), width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
 
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
             <View style={{ flex: 1, minWidth: 0 }}>
@@ -233,7 +231,7 @@ export function DoctorOrdersMobile({ orders, loading, refetch, onOpenOrder, onNe
         <View style={{
           flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
           paddingHorizontal: 14, paddingVertical: 11,
-          backgroundColor: T.card, borderRadius: 16,
+          backgroundColor: T.card, borderRadius: 9999,
           borderWidth: 1, borderColor: T.hairline,
         }}>
           <Search size={15} color={T.ink3} strokeWidth={1.8} />

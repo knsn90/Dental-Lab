@@ -95,6 +95,11 @@ export async function createWorkOrder(params: CreateWorkOrderParams & { measurem
               workType,
               clinic:      clinicName,
             },
+            // Yönetici e-postasının TEK sahibi DB tetikleyicisi (work_orders_notify_new):
+            // her siparişte, kim açarsa açsın çalışır. Burada da gönderilince her
+            // yönetici iki "Yeni iş emri" maili alıyordu. Push'lar istemcide kalır
+            // (tetikleyici push göndermiyor).
+            skipEmail: true,
           }).catch(() => null);
         }
       }

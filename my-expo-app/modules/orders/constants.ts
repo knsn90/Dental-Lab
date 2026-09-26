@@ -99,7 +99,7 @@ export const STATUS_CONFIG: Record<string, StatusConfig> = {
     ionIcon: 'shield-check-outline',
   },
   teslimata_hazir: {
-    label: 'Kuryeye Teslim Edildi',
+    label: 'Teslime Hazır',
     color: '#059669',
     bgColor: '#D1FAE5',
     next: 'teslim_edildi',

@@ -19,6 +19,7 @@ import { isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { supabase } from '../../../core/api/supabase';
 import { DS } from '../../../core/theme/dsTokens';
+import { ensureAiConsent } from '../../../core/ai/aiConsent';
 
 type Confidence = 'high' | 'medium' | 'low' | 'missing';
 
@@ -84,6 +85,8 @@ export function ScanWorkOrderModal({ visible, onClose, onCreateOrder, accentColo
   };
 
   const handleParse = async (file: File) => {
+    // App Store 5.1.2(i): kişisel veri Claude'a gitmeden ÖNCE açık izin.
+    if (!(await ensureAiConsent())) return;
     reset(); setParsing(true);
     try {
       // ── Görsel ön-işleme (sadece image, PDF değil) ──

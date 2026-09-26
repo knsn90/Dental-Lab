@@ -134,7 +134,7 @@ export function LinkRelationModal({ visible, orderId, orderNumber, patientName, 
                 </Pressable>
               ) : (
                 <>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, height: 42, borderRadius: 12, borderWidth: 1, borderColor: isDark ? T.hairline : "rgba(0,0,0,0.12)", backgroundColor: isDark ? T.cardSoft : "#FFFFFF" }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, height: 42, borderRadius: 9999, borderWidth: 1, borderColor: isDark ? T.hairline : "rgba(0,0,0,0.12)", backgroundColor: isDark ? T.cardSoft : "#FFFFFF" }}>
                     <Search size={15} color={isDark ? (T.ink3 as string) : "#9A9A9A"} />
                     <TextInput
                       value={query} onChangeText={setQuery} autoFocus

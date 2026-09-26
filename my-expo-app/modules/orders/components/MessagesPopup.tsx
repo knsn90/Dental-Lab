@@ -2022,6 +2022,13 @@ export function MessagesPopup({ visible, onClose, accentColor, initialOrderId }:
     return () => { if (useUiOverlayStore.getState().navDimClose === close) st.setNavDim(null); };
   }, [inline, visible]);
 
+  // Navbar'daki mesaj hücresi katman açıkken SEÇİLİ görünsün (••• deseni).
+  useEffect(() => {
+    if (!inline) return;
+    useUiOverlayStore.getState().setMessagesOpen(visible);
+    return () => useUiOverlayStore.getState().setMessagesOpen(false);
+  }, [inline, visible]);
+
   const [query,    setQuery]    = useState('');
   const [selected, setSelected] = useState<any | null>(null);
   const [mounted,  setMounted]  = useState(visible);

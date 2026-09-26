@@ -16,6 +16,8 @@ import { View, Text, ScrollView, Pressable, Platform, Modal, useWindowDimensions
 import { useLocalSearchParams, useRouter, useSegments } from 'expo-router';
 import { safeBack } from '../../../core/util/safeBack';
 import { webTitle } from '../../../core/util/webTitle';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { compactTeeth } from '../../../core/util/toothRange';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAnimatedKeyboardHeight } from '../../../core/ui/useAnimatedKeyboardHeight';
 import { useAuthStore } from '../../../core/store/authStore';
@@ -234,7 +236,7 @@ function themeAccent(theme: PanelTheme): string {
   // ClinicDashboard (#32BB78 emerald) ile uyumlu — klinik ve doctor aynı tonda
   if (theme === 'clinic') return '#32BB78';
   if (theme === 'doctor') return '#32BB78';
-  if (theme === 'exec')   return '#4771AB';
+  if (theme === 'exec')   return '#004B87';
   if (theme === 'tech')   return '#3B82F6';
   return '#F5C24B';
 }
@@ -1024,7 +1026,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
     const teeth = its
       .filter(it => (it.lane ?? 1) === lane)
       .flatMap(it => (Array.isArray(it.tooth_numbers) ? it.tooth_numbers : []));
-    return teeth.length ? teeth.join(', ') : `Şerit ${lane}`;
+    return teeth.length ? compactTeeth(teeth) : `Şerit ${lane}`;
   };
   // Şeridin İŞ TÜRÜ etiketi (aşama adı yerine gösterilir). İsmin sonundaki diş
   // parantezini temizle — dişler zaten ayrı "DİŞ …" olarak gösteriliyor.
@@ -1940,22 +1942,28 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                     stageKey={stageName}
                     subjectHint={`Vaka #${(order as any).order_number ?? ''} · `}
                   />
-                  <Pressable onPress={handlePrintFull} className={`w-8 h-8 rounded-full items-center justify-center ${heroOnDarkSurface ? 'bg-white/[0.06]' : heroPalette.dark ? 'bg-white/20' : 'bg-black/[0.06]'}`} {...webTitle(autoT('İş emrini yazdır'))}>
-                    <Printer size={14} color={heroOnDarkSurface ? 'rgba(255,255,255,0.55)' : heroPalette.dark ? '#FFFFFF' : '#0A0A0A'} strokeWidth={1.8} />
-                  </Pressable>
+                  <GlassTooltip title={autoT('İş emrini yazdır')} text={autoT('Hasta, diş ve aşama bilgileriyle iş emri çıktısı alır')}>
+                    <Pressable onPress={handlePrintFull} accessibilityHint={autoT('Hasta, diş ve aşama bilgileriyle iş emri çıktısı alır')} className={`w-8 h-8 rounded-full items-center justify-center ${heroOnDarkSurface ? 'bg-white/[0.06]' : heroPalette.dark ? 'bg-white/20' : 'bg-black/[0.06]'}`}>
+                      <Printer size={14} color={heroOnDarkSurface ? 'rgba(255,255,255,0.55)' : heroPalette.dark ? '#FFFFFF' : '#0A0A0A'} strokeWidth={1.8} />
+                    </Pressable>
+                  </GlassTooltip>
                   <OrderClientActions order={order as any} panelGroup={panelGroup} compact onChanged={refetch} onDark={heroPalette.dark} />
                   {/* İşi Beklet / Devam ettir — lab tarafı. Hekim kaynaklı beklemede
                       gecikme sayacı durur, devam edince teslim tarihi ötelenir. */}
                   {(panelGroup === '(lab)' || panelGroup === '(admin)')
                     && order.status !== 'teslim_edildi' && order.status !== 'iptal' && (
                     onHold ? (
-                                              <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="primary" size="sm" icon={Play} onPress={submitResume} disabled={holdBusy}>
+                      <GlassTooltip title={autoT('Devam ettir')} text={autoT('Bekletmeyi bitirir; gecikme sayacı yeniden işler ve teslim tarihi ötelenir')}>
+                        <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="primary" size="sm" icon={Play} onPress={submitResume} disabled={holdBusy}>
                           {holdBusy ? 'Devam ediliyor…' : 'Devam ettir'}
                         </PillBtn>
+                      </GlassTooltip>
                     ) : (
-                                              <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm" icon={Pause} onPress={() => { setHoldErr(null); setHoldOpen(true); }}>
+                      <GlassTooltip title={autoT('İşi beklet')} text={autoT('Üretimi duraklatır; beklerken gecikme sayacı durur')}>
+                        <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm" icon={Pause} onPress={() => { setHoldErr(null); setHoldOpen(true); }}>
                           İşi beklet
                         </PillBtn>
+                      </GlassTooltip>
                     )
                   )}
                   {/* Henüz triajlanmamış → "Planlamayı yap" — LAB yeni route'a, diğerleri modal */}
@@ -1964,16 +1972,20 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                       if (_panelGroupEarly === '(lab)' || _panelGroupEarly === '(admin)') router.push(`/${_panelGroupEarly}/order/plan/${id}` as any);
                       else setTriageOpen(true);
                     }}>
-                      <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="primary" size="sm" icon={ListChecks}>
-                        Planlamayı yap & başlat
-                      </PillBtn>
+                      <GlassTooltip title={autoT('Planlamayı yap & başlat')} text={autoT('Aşamaları, teknisyenleri ve süreleri belirler; üretimi başlatır')}>
+                        <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="primary" size="sm" icon={ListChecks}>
+                          Planlamayı yap & başlat
+                        </PillBtn>
+                      </GlassTooltip>
                     </Pressable>
                   )}
                   {/* Yeniden Planla — triajlı + üretim başlamamış (manager/admin) */}
                   {canReplan && !needsTriage && (
-                                          <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm" icon={ListChecks} onPress={() => setReplanOpen(true)}>
+                    <GlassTooltip title={autoT('Yeniden Planla')} text={autoT('Aşama ve teknisyen planını değiştirir — üretim başlamadan önce')}>
+                      <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm" icon={ListChecks} onPress={() => setReplanOpen(true)}>
                         Yeniden Planla
                       </PillBtn>
+                    </GlassTooltip>
                   )}
                   {/* Onay bekliyor rozeti */}
                   {designApprovalPending && (
@@ -1984,9 +1996,11 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                   )}
                   {/* Hekim Onayına Gönder — lab manager, triajlı, henüz pending/approved değil */}
                   {canSendDesignApproval && !needsTriage && (
-                                          <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm" icon={UserCheck} onPress={handleSendDesignApproval} disabled={sendingApproval}>
+                    <GlassTooltip title={autoT('Hekim Onayına Gönder')} text={autoT('Tasarımı hekime gönderir; onay gelene kadar üretim ilerlemez')}>
+                      <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm" icon={UserCheck} onPress={handleSendDesignApproval} disabled={sendingApproval}>
                         {sendingApproval ? 'Gönderiliyor…' : 'Hekim Onayına Gönder'}
                       </PillBtn>
+                    </GlassTooltip>
                   )}
                   {/* Manuel "Final QC'a geç" — aktif teslimat varken gizli (delivery flow yönetir).
                       teslimata_hazir'da da gizli: orada doğru aksiyon "Kuryeye Gönder" /
@@ -1995,9 +2009,11 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                       atlayarak teslimat kaydı oluşturmadan siparişi teslim edilmiş yapıyordu. */}
                   {canAdvance && nextStatus && !needsTriage && !hasPendingProductionStages && !activeDelivery && !designApprovalPending
                     && (order.status as string) !== 'teslimata_hazir' && (
-                                          <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="primary" size="sm" icon={Check} onPress={handleAdvanceStage} disabled={advancing}>
+                    <GlassTooltip title={`${nextStatusLabel}'a geç`} text={autoT('Siparişi bir sonraki duruma taşır')}>
+                      <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="primary" size="sm" icon={Check} onPress={handleAdvanceStage} disabled={advancing}>
                         {advancing ? 'Güncelleniyor…' : `${nextStatusLabel}'a geç`}
                       </PillBtn>
+                    </GlassTooltip>
                   )}
                   {/* Aşamalar bitmemişse manuel butonu yerine bilgilendirici chip */}
                   {hasPendingProductionStages && (
@@ -2024,17 +2040,21 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                   {/* Revizyon oluştur — teslim edilmiş siparişte hekim revize isterse.
                       Orijinal kapalı kalır, bağlı yeni sipariş planlamaya düşer. */}
                   {isManager && (order.status as string) === 'teslim_edildi' && (
-                                          <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="ghost" size="sm" icon={RotateCcw} onPress={() => setRevisionOpen(true)}>
+                    <GlassTooltip title={autoT('Revizyon Oluştur')} text={autoT('Teslim edilen işin düzeltmesi; bağlı yeni sipariş açılır, ücretlendirilmez')}>
+                      <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="ghost" size="sm" icon={RotateCcw} onPress={() => setRevisionOpen(true)}>
                         Revizyon Oluştur
                       </PillBtn>
+                    </GlassTooltip>
                   )}
                   {/* Devam siparişi — teslim edilmiş işin planlı sonraki aşaması (ör.
                       geçici→nihai). Revizyon DEĞİL: hasta+diş+dosyalar dolu gelir,
                       iş tipi/materyal sıfırdan seçilir; tam ücretli yeni sipariş. */}
                   {(isManager || _isDoctorOrClinic) && (order.status as string) === 'teslim_edildi' && (
-                                          <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="ghost" size="sm" icon={Layers} onPress={() => startContinuation(order.id)} disabled={!!contStarting}>
+                    <GlassTooltip title={autoT('Devam Siparişi')} text={autoT('Planlı sonraki aşama (ör. geçiciden nihaiye); hasta ve dosyalar dolu gelir, tam ücretli yeni sipariştir')}>
+                      <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="ghost" size="sm" icon={Layers} onPress={() => startContinuation(order.id)} disabled={!!contStarting}>
                         {contStarting ? 'Açılıyor…' : 'Devam Siparişi'}
                       </PillBtn>
+                    </GlassTooltip>
                   )}
                   {/* Teslimata hazır + henüz teslimat yok → teslim şekline göre aksiyon */}
                   {isManager && (order.status as string) === 'teslimata_hazir' && !activeDelivery && (
@@ -2057,9 +2077,11 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                         </PillBtn>
                       </Pressable>
                     ) : (
-                                              <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="primary" size="sm" onPress={() => setDeliveryModalOpen(true)}>
+                      <GlassTooltip title={autoT('Kuryeye Gönder')} text={autoT('Teslimat kaydı açar ve kurye çağırır; masraf laboratuvar giderine yazılır')}>
+                        <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="primary" size="sm" onPress={() => setDeliveryModalOpen(true)}>
                           Kuryeye Gönder
                         </PillBtn>
+                      </GlassTooltip>
                     )
                   )}
                   {/* ÇIKMAZ DURUM: nihai teslimat bacağı ZATEN teslim edilmiş ama sipariş
@@ -2280,7 +2302,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                 isDark ? accentInk
                 : heroPalette.dark ? '#FFFFFF'
                 // Mavi panellerde (admin/istasyon) lacivert ailesinden neon ton;
-                // panelin kendi primaryDeep'i (#314F7E) beyaz üstünde sert duruyordu.
+                // panelin kendi primaryDeep'i (#001F3F) beyaz üstünde sert duruyordu.
                 : (progressTheme === 'exec' || progressTheme === 'tech') ? NAVY_SWEEP
                 : dsTheme(progressTheme).primaryDeep
               }
@@ -2828,22 +2850,30 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
             </Text>
             <View className="flex-row flex-wrap gap-2">
               {isManager && activeStage && (
-                <Pressable onPress={() => setReassignOpen(true)}>
-                  <Chip tone="outline" icon={UserCheck}>Yeniden ata</Chip>
-                </Pressable>
+                <GlassTooltip title={autoT('Yeniden ata')} text={autoT('Aktif aşamayı başka bir teknisyene devreder; bekleyen ve duraklamış aşamalar da geçer')}>
+                  <Pressable onPress={() => setReassignOpen(true)}>
+                    <Chip tone="outline" icon={UserCheck}>Yeniden ata</Chip>
+                  </Pressable>
+                </GlassTooltip>
               )}
               {isManager && ((order.status as string) === 'kalite_kontrol' || (order.status as string) === 'asamada') && (
-                <Pressable onPress={() => setQcRejectOpen(true)}>
-                  <Chip tone="danger" icon={RotateCcw}>QC Red</Chip>
-                </Pressable>
+                <GlassTooltip title={autoT('QC Red')} text={autoT('Kalite kontrolden geçmedi: işi seçtiğin aşamaya geri gönderir')}>
+                  <Pressable onPress={() => setQcRejectOpen(true)}>
+                    <Chip tone="danger" icon={RotateCcw}>QC Red</Chip>
+                  </Pressable>
+                </GlassTooltip>
               )}
-              <Pressable onPress={handleToggleUrgent} disabled={togglingUrgent}>
-                {order.is_urgent ? (
-                  <Chip tone="danger" dot>Acil · Kaldır</Chip>
-                ) : (
-                  <Chip tone="outline">+ Acil işaretle</Chip>
-                )}
-              </Pressable>
+              <GlassTooltip
+                title={order.is_urgent ? autoT('Acil işaretini kaldır') : autoT('Acil işaretle')}
+                text={autoT('Acil siparişler listelerde en üstte ve kırmızı rozetle görünür')}>
+                <Pressable onPress={handleToggleUrgent} disabled={togglingUrgent}>
+                  {order.is_urgent ? (
+                    <Chip tone="danger" dot>Acil · Kaldır</Chip>
+                  ) : (
+                    <Chip tone="outline">+ Acil işaretle</Chip>
+                  )}
+                </Pressable>
+              </GlassTooltip>
             </View>
           </View>
         </View>
@@ -3286,18 +3316,24 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                 <Text className="text-[11px] text-ink-500 dark:text-white/55">{clinicName}</Text>
               </View>
               {isManager && (
-                <Pressable
-                  onPress={() => setDoctorChangeOpen(true)}
-                  className="w-8 h-8 rounded-lg border border-black/[0.08] items-center justify-center"
-                  style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}}
-                  {...webTitle(autoT('Hekim değiştir'))}
-                >
-                  <Pencil size={14} color={isDark ? (T.ink as string) : "#0A0A0A"} strokeWidth={1.8} />
-                </Pressable>
+                <GlassTooltip title={autoT('Hekim değiştir')} text={autoT('Siparişin bağlı olduğu hekimi ve kliniği değiştirir; fatura da yeni kliniğe kesilir')}>
+                  <Pressable
+                    onPress={() => setDoctorChangeOpen(true)}
+                    accessibilityHint={autoT('Siparişin bağlı olduğu hekimi ve kliniği değiştirir; fatura da yeni kliniğe kesilir')}
+                    className="w-8 h-8 rounded-lg border border-black/[0.08] items-center justify-center"
+                    style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}}
+                  >
+                    <Pencil size={14} color={isDark ? (T.ink as string) : "#0A0A0A"} strokeWidth={1.8} />
+                  </Pressable>
+                </GlassTooltip>
               )}
-              <Pressable className="w-8 h-8 rounded-lg border border-black/[0.08] items-center justify-center" {...webTitle(autoT('Hatırlatıcı'))}>
-                <Bell size={15} color={isDark ? (T.ink as string) : "#0A0A0A"} strokeWidth={1.6} />
-              </Pressable>
+              <GlassTooltip title={autoT('Hatırlatıcı')} text={autoT('Bu vaka için hatırlatma kurar')}>
+                <Pressable
+                  accessibilityHint={autoT('Bu vaka için hatırlatma kurar')}
+                  className="w-8 h-8 rounded-lg border border-black/[0.08] items-center justify-center">
+                  <Bell size={15} color={isDark ? (T.ink as string) : "#0A0A0A"} strokeWidth={1.6} />
+                </Pressable>
+              </GlassTooltip>
             </View>
             {(doctorPhone || clinicName) && (
               <View className="px-3 py-2.5 rounded-[10px] gap-2" style={{ backgroundColor: softPanelBg }}>

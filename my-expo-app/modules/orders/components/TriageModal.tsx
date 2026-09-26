@@ -629,7 +629,7 @@ export function TriageModal({
               onPress={() => setChatOpen(true)}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 6,
-                height: 36, paddingHorizontal: 12, borderRadius: 12,
+                height: 36, paddingHorizontal: 12, borderRadius: 9999,
                 backgroundColor: tint(accentColor, 0.12),
                 borderWidth: 1, borderColor: tint(accentColor, 0.28),
                 ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),

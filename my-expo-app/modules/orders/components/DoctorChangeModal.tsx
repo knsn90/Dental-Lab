@@ -27,7 +27,7 @@ interface Props {
   accentColor?:   string;
 }
 
-export function DoctorChangeModal({ visible, workOrderId, currentDoctorId, onClose, onChanged, accentColor = '#4771AB' }: Props) {
+export function DoctorChangeModal({ visible, workOrderId, currentDoctorId, onClose, onChanged, accentColor = '#004B87' }: Props) {
   const [list,   setList]    = useState<DoctorOption[]>([]);
   const [search, setSearch]  = useState('');
   const [picked, setPicked]  = useState<string | null>(currentDoctorId ?? null);
@@ -114,7 +114,7 @@ export function DoctorChangeModal({ visible, workOrderId, currentDoctorId, onClo
 
           {/* Search */}
           <View style={{ padding: 16, paddingBottom: 8 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.04)' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 9999, backgroundColor: 'rgba(0,0,0,0.04)' }}>
               <Search size={14} color="#9A9A9A" strokeWidth={1.8} />
               <TextInput
                 value={search}

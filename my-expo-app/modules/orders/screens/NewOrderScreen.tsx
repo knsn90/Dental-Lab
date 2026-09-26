@@ -596,7 +596,7 @@ const PANEL_THEMES: Record<NewOrderPanel, {
     submitLabel: 'Laboratuvara gönder',
   },
   admin: {
-    accent:      '#4771AB', // admin coral
+    accent:      '#004B87', // admin coral
     title:       'Yeni Sipariş',
     headerStep1: { lead: 'Önce ',  em: 'kim için', tail: ' çalışıyoruz?' },
     submitLabel: 'Siparişi oluştur',
@@ -9377,14 +9377,17 @@ function ChatBox({ messages, onAdd, onDelete, hideHeader, accentColor }: {
             </View>
           )}
 
-          {/* Sesli mesaj — pill içinde */}
-          <TouchableOpacity style={cb.pillIconBtn} onPress={recording ? stopRec : startRec} activeOpacity={0.7}>
-            <AppIcon
-              name={recording ? ('stop' as any) : ('microphone' as any)}
-              size={19}
-              color={recording ? '#EF4444' : _T_cb.ink3}
-            />
-          </TouchableOpacity>
+          {/* Sesli mesaj — pill içinde. Kayıt MediaRecorder (yalnız web) → native'de
+              ölü buton kalmasın diye gizli (boş durumdaki "Sesli not" çipiyle aynı). */}
+          {Platform.OS === 'web' && (
+            <TouchableOpacity style={cb.pillIconBtn} onPress={recording ? stopRec : startRec} activeOpacity={0.7}>
+              <AppIcon
+                name={recording ? ('stop' as any) : ('microphone' as any)}
+                size={19}
+                color={recording ? '#EF4444' : _T_cb.ink3}
+              />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Gönder — pill'in yanındaki yuvarlak buton */}

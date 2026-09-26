@@ -56,7 +56,7 @@ import { supabase } from '../../../core/api/supabase';
 import { bootMark } from '../../../core/debug/bootTrace';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useNavScrollProps } from '../../../core/ui/mobile/navScroll';
-import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
 import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
@@ -68,6 +68,31 @@ import { useAssignTechnician } from '../../admin/orders/hooks';
 import { advanceOrderStatus } from '../api';
 import { StatusUpdateModal } from '../components/StatusUpdateModal';
 import { KanbanBoard } from '../components/KanbanBoard';
+import { darkFg } from '../darkFg';
+
+/**
+ * PLANLAMA rengi — derin TEAL. Kullanıcı kararı (2026-09-22), değerler birebir
+ * kullanıcıdan: başlık #176B72, alt "PLANLAMA BEKLİYOR" bandı #155E64 (bir ton
+ * koyu → tablo altta "kapanır"), durum rozeti #E4F2F2 zemin + #176B72 metin.
+ * Amber "uyarı / duraklatıldı" demekti; teal hiçbir durum rengiyle çakışmaz.
+ * Bant, satır zemini, rozet ve mobil kart HEP buradan beslenir.
+ * NOT: Duraklatıldı (onHold) amber'ı bilinçli olarak AYRI kalır.
+ */
+const PLAN = {
+  band:     '#176B72',                 // tablo başlığı
+  footer:   '#155E64',                 // alt "PLANLAMA BEKLİYOR" bandı
+  accent:   '#247C83',                 // mobil kart ikon zemini / rozet
+  pillBg:   '#E4F2F2',                 // durum rozeti zemini (açık)
+  text:     '#176B72',                 // rozet + "planlama bekliyor" metni (açık)
+  soft:     '#F2F8F8',                 // satır zemini — rozetten bir tık açık
+  // Koyu tema: koyu teal metin koyu zeminde okunmaz → açık teal + saydam tonlar.
+  textDark: '#7FC7CC',
+  pillBgDark: 'rgba(36,124,131,0.26)',
+  softDark:   'rgba(36,124,131,0.12)',
+  ring:       'rgba(36,124,131,0.30)',
+  ringSoft:   'rgba(36,124,131,0.15)',
+  shadow:     'rgba(36,124,131,0.10)',
+};
 import { WorkOrder, WorkOrderStatus } from '../types';
 import { STATUS_CONFIG, isOrderOverdue } from '../constants';
 import { OrderStatusInfo } from '../../../core/ui/OrderStatusInfo';
@@ -129,15 +154,13 @@ function normaliseClinicOrders(orders: any[]): WorkOrder[] {
 const DISPLAY = { fontFamily: 'Inter Tight, Inter, system-ui, sans-serif' as const };
 
 // Koyu kartta okunmayan koyu ön-plan (status/accent) renkleri için açık karşılıkları.
-// Yalnız METİN/İKON önplanı için — arka plan/zemin rengi DEĞİŞMEZ.
-const DARK_FG: Record<string, string> = {
-  '#1E3A8A': '#93C5FD', '#1E5A8A': '#93C5FD', '#1F5689': '#93C5FD', '#3563A8': '#93C5FD',
-  '#0F6E50': '#6EE7B7', '#059669': '#6EE7B7', '#1F6B47': '#6EE7B7',
-  '#9C2E2E': '#FCA5A5', '#DC2626': '#FCA5A5',
-  '#92400E': '#E8B45E', '#B45309': '#E8B45E', '#D97706': '#E8B45E', '#9C5E0E': '#E8B45E',
-};
-function darkFg(isDark: boolean, fg: string, fallback?: string): string {
-  return isDark ? (DARK_FG[fg] ?? fallback ?? fg) : fg;
+
+/** Hex + alfa → rgba. Accent tonlu zeminler için. */
+function hexA(hex: string, a: number): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 }
 
 // ── Types ───────────────────────────────────────────────────────────
@@ -662,21 +685,23 @@ export function OrdersListScreenV2() {
             <ArrowUpDown size={15} color={T.ink2} strokeWidth={1.8} />
           </Pressable>
 
-          {/* View toggle */}
+          {/* View toggle — aktif hap T.ink (koyu temada AÇIK ton) olduğu için
+              ikon ZEMİN rengini alır; sabit '#FFF' koyu temada beyaz-üstü-beyaz
+              yapıp ikonu görünmez kılıyordu. */}
           <View className="flex-row p-0.5 rounded-full bg-cream-panel" style={isDark ? { backgroundColor: T.cardSoft } : undefined}>
             <Pressable
               onPress={() => setViewMode('list')}
               className="px-2 py-1 rounded-full"
               style={{ backgroundColor: viewMode === 'list' ? T.ink : 'transparent' }}
             >
-              <LayoutList size={14} color={viewMode === 'list' ? '#FFF' : T.ink2} strokeWidth={1.8} />
+              <LayoutList size={14} color={viewMode === 'list' ? T.card : T.ink2} strokeWidth={1.8} />
             </Pressable>
             <Pressable
               onPress={() => setViewMode('kanban')}
               className="px-2 py-1 rounded-full"
               style={{ backgroundColor: viewMode === 'kanban' ? T.ink : 'transparent' }}
             >
-              <Columns3 size={14} color={viewMode === 'kanban' ? '#FFF' : T.ink2} strokeWidth={1.8} />
+              <Columns3 size={14} color={viewMode === 'kanban' ? T.card : T.ink2} strokeWidth={1.8} />
             </Pressable>
           </View>
         </View>
@@ -923,7 +948,8 @@ export function OrdersListScreenV2() {
                         onArchive={(o) => setAdminArchiveTarget(o)}
                         onDelete={(o) => setAdminDeleteTarget(o)}
                         footerTitle="Planlama bekliyor"
-                        footerColor="#9C5E0E"
+                        footerColor={PLAN.band}
+                        footerBandColor={PLAN.footer}
                       />
                     ) : (
                       <View style={{ padding: 12, gap: 8 }}>
@@ -1380,12 +1406,12 @@ const MobileOrderCard = React.memo(function MobileOrderCard({ order, isManager, 
       onPress={() => onPress(order)}
       className="rounded-2xl p-4 flex-row gap-3"
       style={{
-        backgroundColor: needsTriage ? (isDark ? 'rgba(217,119,6,0.10)' : '#FFF7ED') : (isDark ? T.card : '#FFFFFF'),
+        backgroundColor: needsTriage ? (isDark ? PLAN.softDark : PLAN.soft) : (isDark ? T.card : '#FFFFFF'),
         borderWidth: needsTriage ? 1 : (isDark ? 1 : 0),
-        borderColor: needsTriage ? 'rgba(217,119,6,0.30)' : (isDark ? 'rgba(255,255,255,0.10)' : 'transparent'),
+        borderColor: needsTriage ? PLAN.ring : (isDark ? 'rgba(255,255,255,0.10)' : 'transparent'),
         // @ts-ignore — sabit shadow (animasyonsuz)
         boxShadow: needsTriage
-          ? '0 0 0 1px rgba(217,119,6,0.15), 0 4px 12px rgba(217,119,6,0.10)'
+          ? `0 0 0 1px ${PLAN.ringSoft}, 0 4px 12px ${PLAN.shadow}`
           : (isDark ? 'none' : '0 1px 4px rgba(0,0,0,0.04)'),
       }}
     >
@@ -1394,7 +1420,7 @@ const MobileOrderCard = React.memo(function MobileOrderCard({ order, isManager, 
         {needsTriage ? (
           <View
             className="w-7 h-7 rounded-full items-center justify-center"
-            style={{ backgroundColor: '#D97706' }}
+            style={{ backgroundColor: PLAN.accent }}
           >
             <ListChecks size={14} color="#FFF" strokeWidth={2} />
           </View>
@@ -1451,7 +1477,7 @@ const MobileOrderCard = React.memo(function MobileOrderCard({ order, isManager, 
         <View className="flex-row items-center gap-2 mt-0.5">
           <OrderStatusInfo order={order as any} size={13} />
           {needsTriage ? (
-            <View className="px-2 py-0.5 rounded flex-row items-center gap-1" style={{ backgroundColor: '#D97706' }}>
+            <View className="px-2 py-0.5 rounded flex-row items-center gap-1" style={{ backgroundColor: PLAN.accent }}>
               <Text className="text-[10px] font-bold" style={{ color: '#FFF', letterSpacing: 0.3 }}>
                 {autoT('Planlama Bekliyor').toUpperCase()}
               </Text>
@@ -1493,7 +1519,7 @@ const MobileOrderCard = React.memo(function MobileOrderCard({ order, isManager, 
 // ═══════════════════════════════════════════════════════════════════════
 // DESKTOP TABLE
 // ═══════════════════════════════════════════════════════════════════════
-function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, onArchive, onDelete, footerTitle, footerColor, paginate }: {
+function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, onArchive, onDelete, footerTitle, footerColor, footerBandColor, paginate }: {
   orders: WorkOrder[];
   isManager: boolean;
   isAdmin?: boolean;
@@ -1506,6 +1532,8 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
   footerTitle?: string;
   /** Footer title rengi */
   footerColor?: string;
+  /** Alt bant başlıktan FARKLI tonda olacaksa (planlama: bir ton koyu). */
+  footerBandColor?: string;
   /** Ana listede sayfalama (referans: sayfa başına birkaç kayıt, ferah görünüm) */
   paginate?: boolean;
 }) {
@@ -1513,7 +1541,19 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
   const isDark = useThemeModeStore(s => s.resolvedDark);
   // Avatar: lab tarafı panellerde klinik logosu, klinik/hekimde hasta baş harfleri
   const tablePanel = detectPanel(useSegments() as string[]);
-  const headColor = T.ink3;
+  const panelTheme = usePanelTheme();
+  // Tablo başlığı VE alt şeridi düz PANEL ACCENT'i — her iki temada. Gri-üstü-gri
+  // şeritler gövdeden ayrışmıyordu. Renk panelden gelir: yönetim lacivert, lab
+  // safran, klinik/hekim zümrüt, istasyon mavi. Metin luminance ile seçilir —
+  // safran üstünde beyaz okunmaz.
+  // Planlama tablosu kendi rengini taşır: başlık teal, alt bant bir ton koyu teal
+  // (dolu zemin + açık metin). Diğer tablolarda panel accent'i.
+  const bandColor = footerTitle ? (footerColor ?? PLAN.band) : null;
+  const headBg = bandColor ?? panelTheme.primary;
+  const onHead = onAccentInk(headBg);
+  const footBg = bandColor ? (footerBandColor ?? bandColor) : headBg;
+  const headColor = onHead === '#FFFFFF' ? 'rgba(255,255,255,0.88)' : 'rgba(10,10,10,0.72)';
+  const headColorFaint = onHead === '#FFFFFF' ? 'rgba(255,255,255,0.65)' : 'rgba(10,10,10,0.55)';
 
   // ── Sayfalama (yalnız ana liste) ──
   const PAGE_SIZE = 25;
@@ -1530,7 +1570,7 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
       style={{ borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.05)', backgroundColor: isDark ? T.card : '#FFFFFF' }}
     >
       {/* Column header */}
-      <View className="flex-row px-5 py-3 border-b" style={{ backgroundColor: isDark ? T.cardSoft : '#FAFAFA', borderBottomColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }}>
+      <View className="flex-row px-5 py-3 border-b" style={{ backgroundColor: headBg, borderBottomColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }}>
         <Text className="uppercase" style={{ flex: 30, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
           Hasta
         </Text>
@@ -1570,8 +1610,8 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
       <View
         className="flex-row items-center justify-center px-5 py-3 border-t"
         style={{
-          backgroundColor: footerTitle ? (isDark ? 'rgba(217,119,6,0.10)' : '#FFF7ED') : (isDark ? T.cardSoft : '#FAFAFA'),
-          borderTopColor: footerTitle ? 'rgba(217,119,6,0.20)' : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'),
+          backgroundColor: footBg,
+          borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
         }}
       >
         {footerTitle ? (
@@ -1583,7 +1623,7 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
               fontWeight: '700',
               letterSpacing: 1.4,
               textTransform: 'uppercase',
-              color: darkFg(isDark, footerColor ?? '#9C5E0E'),
+              color: onHead,
               textAlign: 'center',
             }}
           >
@@ -1591,7 +1631,7 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
           </Text>
         ) : paginate ? (
           <>
-            <Text style={{ fontSize: 12, color: T.ink3, flex: 1 }}>
+            <Text style={{ fontSize: 12, color: headColor, flex: 1 }}>
               {orders.length} {autoT('siparişten')} {orders.length === 0 ? 0 : firstIdx + 1}–{Math.min(firstIdx + PAGE_SIZE, orders.length)} {autoT('gösteriliyor')}
             </Text>
             <View className="flex-row items-center gap-1">
@@ -1601,16 +1641,16 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
                 className="w-8 h-8 rounded-full items-center justify-center"
                 style={{ opacity: safePage <= 0 ? 0.35 : 1, ...(Platform.OS === 'web' ? { cursor: safePage <= 0 ? 'default' : 'pointer' } as any : {}) }}
               >
-                {isRTL() ? <ChevronRight size={16} color={T.ink2} strokeWidth={2} /> : <ChevronLeft size={16} color={T.ink2} strokeWidth={2} />}
+                {isRTL() ? <ChevronRight size={16} color={headColor} strokeWidth={2} /> : <ChevronLeft size={16} color={headColor} strokeWidth={2} />}
               </Pressable>
               {Array.from({ length: totalPages }).map((_, i) => (
                 <Pressable
                   key={i}
                   onPress={() => setPage(i)}
                   className="h-8 rounded-full items-center justify-center"
-                  style={{ minWidth: 32, paddingHorizontal: 8, backgroundColor: i === safePage ? T.ink : 'transparent', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                  style={{ minWidth: 32, paddingHorizontal: 8, backgroundColor: i === safePage ? onHead : 'transparent', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
                 >
-                  <Text style={{ fontSize: 13, fontWeight: i === safePage ? '700' : '500', color: i === safePage ? '#FFFFFF' : T.ink2 }}>{i + 1}</Text>
+                  <Text style={{ fontSize: 13, fontWeight: i === safePage ? '700' : '500', color: i === safePage ? headBg : headColor }}>{i + 1}</Text>
                 </Pressable>
               ))}
               <Pressable
@@ -1619,12 +1659,12 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
                 className="w-8 h-8 rounded-full items-center justify-center"
                 style={{ opacity: safePage >= totalPages - 1 ? 0.35 : 1, ...(Platform.OS === 'web' ? { cursor: safePage >= totalPages - 1 ? 'default' : 'pointer' } as any : {}) }}
               >
-                {isRTL() ? <ChevronLeft size={16} color={T.ink2} strokeWidth={2} /> : <ChevronRight size={16} color={T.ink2} strokeWidth={2} />}
+                {isRTL() ? <ChevronLeft size={16} color={headColor} strokeWidth={2} /> : <ChevronRight size={16} color={headColor} strokeWidth={2} />}
               </Pressable>
             </View>
           </>
         ) : (
-          <Text style={{ fontSize: 11, color: T.ink3, flex: 1 }}>
+          <Text style={{ fontSize: 11, color: headColorFaint, flex: 1 }}>
             {orders.length} sipariş gösteriliyor
           </Text>
         )}
@@ -1658,6 +1698,7 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
   const needsTriage = order.status === 'alindi' && !(order as any).triaged_at;
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
+  const rowAccent = usePanelTheme().primary;
 
   // Durum rozeti rengi = YALNIZ workflow durumu (semantik).
   // Gecikme/öncelik AYRI boyut → rozeti boyamaz (gecikme VAKA meta'da kırmızı "N gün gecikti",
@@ -1678,7 +1719,12 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
   };
   const toneRaw = CHIP_TONES[chipTone];
   // Zemin (bg) rgba tonu koyuda da geçerli kalır; yalnız ön-plan metni/nokta rengi açılır (koyu kartta okunmasın diye).
-  const tone = { bg: toneRaw.bg, fg: darkFg(isDark, toneRaw.fg) };
+  // Planlama satırında rozet de bant renginde — eskiden bant amber, rozet mavi
+  // ("Alındı" info tonu) çıkıyordu; tek aile olarak okunsun. Genel "Alındı"
+  // durum rengine (core/theme/colors) DOKUNULMADI: yalnız bu satırda geçerli.
+  const tone = needsTriage && !onHold
+    ? { bg: isDark ? PLAN.pillBgDark : PLAN.pillBg, fg: isDark ? PLAN.textDark : PLAN.text }
+    : { bg: toneRaw.bg, fg: darkFg(isDark, toneRaw.fg) };
 
   // Patient initials for avatar
   const patientName = order.patient_name ? titleCaseTR(order.patient_name) : '—';
@@ -1699,7 +1745,11 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
   // YALNIZ HASTA alt-satırında gösterilir (tek yer) → burada tekrar edilmez.
   const attentionLabel = onHold ? autoT('Duraklatıldı') : isLate ? `${Math.abs(diff)} ${autoT('gün gecikti')}` : needsTriage ? autoT('planlama bekliyor') : null;
   const vakaMeta = [teethCount > 0 ? `${teethCount} ${autoT('diş')}` : null, attentionLabel].filter(Boolean).join('   ·   ');
-  const vakaMetaColor = attentionLabel ? darkFg(isDark, (onHold || needsTriage) ? '#9C5E0E' : '#9C2E2E') : T.ink3;
+  const vakaMetaColor = !attentionLabel ? T.ink3
+    : onHold      ? darkFg(isDark, '#9C5E0E')
+    : isLate      ? darkFg(isDark, '#9C2E2E')
+    : needsTriage ? (isDark ? PLAN.textDark : PLAN.text)
+    : T.ink3;
 
   return (
     <Pressable
@@ -1709,14 +1759,19 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
         // → padding hiç uygulanmıyordu. Tüm düzen doğrudan style'da (garanti uygulanır).
         { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 9, minHeight: 66 },
         !isLast && { borderBottomWidth: 1, borderBottomColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.10)' },
-        // Planlama bekleyen — sabit soft amber zemin + sol kenar şeridi (animasyon yok)
-        needsTriage && { backgroundColor: 'rgba(217,119,6,0.05)', borderStartWidth: 3, borderStartColor: '#D97706' },
+        // Planlama bekleyen — yalnız soft teal zemin. Sol kenar şeridi kaldırıldı
+        // (kullanıcı kararı): bant + zemin + rozet ayrımı zaten taşıyor.
+        needsTriage && { backgroundColor: isDark ? PLAN.softDark : PLAN.soft },
         // Revizyon alt-satırı — girintili (üstteki orijinale bağlı)
         (order as any).__revChild && { paddingStart: 18 },
         // @ts-ignore web hover
         Platform.OS === 'web' ? { cursor: 'pointer', transition: 'background-color 0.15s' } as any : undefined,
-        // Hover — sade zemin (planlama amber'ını ezmeyecek kadar hafif)
-        hovered && !needsTriage && Platform.OS === 'web' ? { backgroundColor: isDark ? 'rgba(255,255,255,0.035)' : 'rgba(0,0,0,0.025)' } as any : undefined,
+        // Hover — sade zemin (planlama zeminini ezmesin diye planlama satırında YOK)
+        // Hover nötr gri değil PANEL ACCENT'inin soluk tonu — tablo başlığıyla
+        // aynı aileden. Koyu temada aynı alfa siliniyor, bir tık yükseltilir.
+        hovered && !needsTriage && Platform.OS === 'web'
+          ? { backgroundColor: hexA(rowAccent, isDark ? 0.16 : 0.06) } as any
+          : undefined,
       ]}
     >
       {/* Hasta — klinik logosu (hangi klinikten geldiği) + isim + ACİL + #no + ilişki alt-satırı.
@@ -1725,7 +1780,10 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
         {clinicLogo ? (
           <View
             className="items-center justify-center overflow-hidden"
-            style={{ width: 34, height: 34, borderRadius: 17, flexShrink: 0, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline }}
+            // Zemin HER İKİ temada da BEYAZ: klinik logoları saydam zeminli ve
+            // koyu mürekkeple çizilmiş — koyu temada T.card (#1B1916) üstünde
+            // siyah-üstü-siyah olup kayboluyorlardı.
+            style={{ width: 34, height: 34, borderRadius: 17, flexShrink: 0, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: T.hairline }}
           >
             <Image source={{ uri: clinicLogo }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
           </View>

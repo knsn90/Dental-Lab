@@ -3,7 +3,9 @@ import { localeTag } from '../../../core/i18n';
  * KanbanBoard — Patterns design language (NativeWind)
  *
  * Stage-based kanban — her kolon bir üretim aşaması.
- * Cream page bg + beyaz kolon kartları + Patterns tipografi.
+ * Yüzeyler tema-duyarlı (`useMobileTokens`): açık temada krem sayfa + beyaz
+ * kolon/kart, koyu temada koyu kolon + bir kademe açık kart. Eskiden tüm
+ * yüzeyler `bg-white` sabitiydi — koyu temada pano bembeyaz kalıyordu.
  */
 import React from 'react';
 import {
@@ -20,6 +22,9 @@ import { isRTL } from '../../../core/i18n';
 import { WorkOrder, WorkOrderStatus } from '../types';
 import { STATUS_CONFIG, isOrderOverdue, getNextStatus } from '../constants';
 import { STAGE_LABEL, STAGE_COLOR, legacyStatusToStage, type Stage } from '../stages';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { darkFg } from '../darkFg';
 
 // ── Display font ────────────────────────────────────────────────────
 const DISPLAY = { fontFamily: 'Inter Tight, Inter, system-ui, sans-serif' as const };
@@ -40,17 +45,22 @@ function getOrderStage(order: WorkOrder): Stage {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
-function deliveryText(d: string, status: WorkOrderStatus): { text: string; color: string } {
-  if (status === 'teslim_edildi') return { text: 'Teslim edildi', color: '#6B6B6B' };
+/** Termin metni + rengi. Nötr tonlar token'dan, uyarı tonları darkFg ile eşlenir. */
+function deliveryText(
+  d: string, status: WorkOrderStatus,
+  T: { ink: string; ink3: string }, isDark: boolean,
+): { text: string; color: string } {
+  const warn = darkFg(isDark, '#D97706');
+  if (status === 'teslim_edildi') return { text: 'Teslim edildi', color: T.ink3 };
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const due   = new Date(d + 'T00:00:00');
   const diff  = Math.ceil((due.getTime() - today.getTime()) / 86_400_000);
-  if (diff < 0)   return { text: `${Math.abs(diff)}g gecikti`, color: '#DC2626' };
-  if (diff === 0) return { text: 'Bugün',       color: '#D97706' };
-  if (diff === 1) return { text: 'Yarın',       color: '#D97706' };
-  if (diff <= 3)  return { text: `${diff} gün`,  color: '#D97706' };
-  if (diff <= 7)  return { text: `${diff} gün`,  color: '#1A1A1A' };
-  return { text: due.toLocaleDateString(localeTag(), { day: 'numeric', month: 'short' }), color: '#6B6B6B' };
+  if (diff < 0)   return { text: `${Math.abs(diff)}g gecikti`, color: darkFg(isDark, '#DC2626') };
+  if (diff === 0) return { text: 'Bugün',       color: warn };
+  if (diff === 1) return { text: 'Yarın',       color: warn };
+  if (diff <= 3)  return { text: `${diff} gün`,  color: warn };
+  if (diff <= 7)  return { text: `${diff} gün`,  color: T.ink };
+  return { text: due.toLocaleDateString(localeTag(), { day: 'numeric', month: 'short' }), color: T.ink3 };
 }
 
 function getInitials(name: string) {
@@ -73,6 +83,7 @@ interface Props {
 export function KanbanBoard({ orders, userGroup, onStatusAdvance }: Props) {
   const router = useRouter();
   const { width } = useWindowDimensions();
+  const T = useMobileTokens();
 
   const BOARD_PAD = 12;
   const COL_GAP   = 8;
@@ -101,10 +112,10 @@ export function KanbanBoard({ orders, userGroup, onStatusAdvance }: Props) {
     return (
       <View
         key={stage}
-        className="bg-white rounded-2xl overflow-hidden"
+        className="rounded-2xl overflow-hidden"
         style={[
           isWide ? { flex: 1 } : { width: colWidth },
-          { borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' },
+          { backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline },
         ]}
       >
         {/* Column header */}
@@ -113,7 +124,7 @@ export function KanbanBoard({ orders, userGroup, onStatusAdvance }: Props) {
             <View className="w-2 h-2 rounded-full" style={{ backgroundColor: accent }} />
             <Text
               className="uppercase"
-              style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.8, color: '#6B6B6B' }}
+              style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.8, color: T.ink3 }}
             >
               {label}
             </Text>
@@ -140,9 +151,9 @@ export function KanbanBoard({ orders, userGroup, onStatusAdvance }: Props) {
           {col.length === 0 ? (
             <View
               className="items-center py-8 rounded-xl border border-dashed"
-              style={{ borderColor: 'rgba(0,0,0,0.1)' }}
+              style={{ borderColor: T.hairline }}
             >
-              <Text className="text-[12px] text-ink-400">Sipariş yok</Text>
+              <Text style={{ fontSize: 12, color: T.ink3 }}>Sipariş yok</Text>
             </View>
           ) : (
             col.map(order => (
@@ -195,9 +206,11 @@ function KanbanCard({
   onPress: () => void;
   onAdvance?: () => void;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(st => st.resolvedDark);
   const overdue    = isOrderOverdue(order.delivery_date, order.status, (order as any).hold_status);
   const nextStatus = getNextStatus(order.status);
-  const { text: dateText, color: dateColor } = deliveryText(order.delivery_date, order.status);
+  const { text: dateText, color: dateColor } = deliveryText(order.delivery_date, order.status, T as any, isDark);
   const doctorName = order.doctor?.full_name ?? '';
   const initials   = doctorName ? getInitials(doctorName) : '?';
   const patientName = order.patient_name ?? '—';
@@ -205,16 +218,18 @@ function KanbanCard({
   return (
     <Pressable
       onPress={onPress}
-      className="bg-white rounded-xl p-3 gap-2"
+      className="rounded-xl p-3 gap-2"
       style={[
-        { borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' },
+        // Kart kolondan BİR KADEME ayrışır: açık temada beyaz-üstü-beyaz olmasın
+        // diye hairline yeter, koyu temada cardSoft ile derinlik verilir.
+        { backgroundColor: isDark ? T.cardSoft : '#FFFFFF', borderWidth: 1, borderColor: T.hairline },
         // @ts-ignore web hover
         Platform.OS === 'web' ? { cursor: 'pointer', transition: 'box-shadow 0.15s' } as any : undefined,
       ]}
     >
       {/* Top row: order number + urgent + delivery */}
       <View className="flex-row items-center gap-1.5">
-        <Text style={{ fontSize: 11, fontFamily: 'monospace', color: '#6B6B6B' }}>
+        <Text style={{ fontSize: 11, fontFamily: 'monospace', color: T.ink3 }}>
           #{order.order_number}
         </Text>
         {order.is_urgent && (
@@ -233,15 +248,15 @@ function KanbanCard({
 
       {/* Patient name — primary */}
       <Text
-        className="text-[13px] font-medium text-ink-900"
-        style={overdue ? { color: '#DC2626' } : undefined}
+        className="text-[13px] font-medium"
+        style={{ color: overdue ? darkFg(isDark, '#DC2626') : T.ink }}
         numberOfLines={1}
       >
         {patientName}
       </Text>
 
       {/* Work type — secondary */}
-      <Text className="text-[11px] text-ink-500" numberOfLines={1}>
+      <Text style={{ fontSize: 11, color: T.ink2 }} numberOfLines={1}>
         {order.work_type}
       </Text>
 
@@ -258,7 +273,7 @@ function KanbanCard({
                   {initials}
                 </Text>
               </View>
-              <Text className="text-[10px] text-ink-500" numberOfLines={1}>
+              <Text style={{ fontSize: 10, color: T.ink3 }} numberOfLines={1}>
                 {doctorName.split(' ')[0]}
               </Text>
             </View>
@@ -267,8 +282,8 @@ function KanbanCard({
 
         {order.tooth_numbers.length > 0 && (
           <View className="flex-row items-center gap-1">
-            <View className="px-1.5 py-0.5 rounded bg-ink-50">
-              <Text className="text-[9px] font-semibold text-ink-500">
+            <View className="px-1.5 py-0.5 rounded" style={{ backgroundColor: T.hairline2 }}>
+              <Text style={{ fontSize: 9, fontWeight: '600', color: T.ink3 }}>
                 {order.tooth_numbers.length} diş
               </Text>
             </View>

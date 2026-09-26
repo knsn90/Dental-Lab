@@ -26,7 +26,7 @@ export function AddStageModal({
   accentColor?: string;
   onAdded?: () => void;
 }) {
-  const A = accentColor ?? '#4771AB';
+  const A = accentColor ?? '#004B87';
   const [stations, setStations] = useState<LabStation[]>([]);
   const [loading, setLoading] = useState(true);
   const [stationId, setStationId] = useState<string | null>(null);
