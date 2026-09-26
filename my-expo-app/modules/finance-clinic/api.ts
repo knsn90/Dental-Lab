@@ -25,6 +25,7 @@ import { rateToBase, useRateStore } from '../../core/money/rateCache';
 import { groupByCurrency, type CurrencyTotal } from '../../core/money/aggregations';
 import type { Currency } from '../../core/money/currency';
 import { ymdLocal } from '../../core/util/dates';
+import { ensureAiConsent } from '../../core/ai/aiConsent';
 
 /** Katı per-currency: {amount,currency} listesini para birimine göre grupla. */
 function byCcy(items: { amount: number; currency: string }[]): CurrencyTotal[] {
@@ -714,6 +715,8 @@ export async function generateReminderMessage(opts: {
     `Refer only to the "outstanding balance" generically. Write it in ${langName}.`;
   const user = `Write one short reminder message.\n${facts}`;
 
+  // App Store 5.1.2(i): kişisel veri Claude'a gitmeden ÖNCE açık izin.
+  if (!(await ensureAiConsent())) throw new Error('Yapay zekâ izni verilmedi');
   const { data, error } = await supabase.functions.invoke('denty-brain', {
     body: { system, messages: [{ role: 'user', content: user }], max_tokens: 300 },
   });

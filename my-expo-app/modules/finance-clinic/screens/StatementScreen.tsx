@@ -422,7 +422,7 @@ export function StatementScreen({ clinicId }: Props) {
         {/* Search */}
         <View style={{
           flexDirection: 'row', alignItems: 'center', gap: 8,
-          backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[200], borderRadius: 10,
+          backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[200], borderRadius: 9999,
           paddingHorizontal: 10, paddingVertical: 6,
         }}>
           <Search size={13} color={DS.ink[400]} />

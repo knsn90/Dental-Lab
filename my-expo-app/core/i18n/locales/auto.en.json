@@ -8645,5 +8645,6 @@
   "Aktif link": "Active link",
   "son": "until",
   "taksit": "installments",
-  "Maksimum bakiye": "Maximum balance"
+  "Maksimum bakiye": "Maximum balance",
+  "faturanın vadesi geçmiş": "invoices are overdue"
 }

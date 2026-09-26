@@ -9,7 +9,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useTurkeyOnlyFeatures } from '../../../core/store/labSettingsStore';
 import { useTranslation } from 'react-i18next';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { View, Text, Pressable, ScrollView, useWindowDimensions } from 'react-native';
+import { View, Text, Pressable, ScrollView, useWindowDimensions, Platform } from 'react-native';
 import {
   LayoutDashboard, BookOpen, Clock, AlertCircle, CreditCard, ListChecks,
 } from '../../../core/ui/icons';
@@ -166,7 +166,17 @@ export function ClinicFinanceHubScreen() {
       {/* DESKTOP: sidebar + content */}
       {isDesktop ? (
         <View style={{ flex: 1, flexDirection: 'row' }}>
-          <View style={{ width: 220, paddingTop: 16, paddingBottom: 16, paddingHorizontal: 12, gap: 4 }}>
+          {/* Sidebar sayfa ile birlikte kaymaz — ana kenar çubuğu gibi yerinde durur. */}
+          <View
+            style={{
+              width: 220, paddingTop: 16, paddingBottom: 16, paddingHorizontal: 12, gap: 4,
+              // Burada iç kaydırma yok (en çok 6 sekme) → maxHeight verilmez,
+              // aksi halde uzun bir listede sekmeler kırpılabilirdi.
+              ...(Platform.OS === 'web'
+                ? { position: 'sticky', top: 0, alignSelf: 'flex-start' } as any
+                : null),
+            }}
+          >
             {TABS.map(t_ => {
               const active = t_.key === tab;
               const Icon = t_.icon;

@@ -16,8 +16,9 @@ import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { fetchOpenInvoices, type ClinicInvoiceRow } from '../api';
 import {
   DISPLAY, TRY, M, Mnat, fmtDate, PAGE_PADDING,
-  ErrorBar, Loader, Card, SecHeader, EmptyCard, StatusChip, PillButton,
+  ErrorBar, Loader, Card, EmptyCard, StatusChip, PillButton,
 } from '../components/atoms';
+import { WhiteHero } from '../../../core/ui/WhiteHero';
 import { useRates, rateToBase } from '../../../core/money/rateCache';
 import { getBaseCurrency } from '../../../core/money/baseCurrency';
 import { groupByCurrency } from '../../../core/money/aggregations';
@@ -59,11 +60,10 @@ export function InvoiceListBase({
     return items;
   }, [items, filter]);
 
+  const overdueCount = filtered.filter(i => i.days_overdue > 0).length;
+
   // Katı per-currency: kalan tutar para birimine göre BAĞIMSIZ (asla toplanmaz)
   const remByCcy = groupByCurrency(filtered, i => ({ amount: Number(i.remaining) || 0, currency: (i.currency || 'TRY') as Currency }));
-  const remLabel = remByCcy.length
-    ? remByCcy.map(s => formatMoney(s.total, s.currency, { fractionDigits: 0 })).join(' · ')
-    : '—';
 
   if (loading) return <Loader />;
   if (error)   return <View style={{ padding: PAGE_PADDING }}><ErrorBar message={error} /></View>;
@@ -74,14 +74,26 @@ export function InvoiceListBase({
       contentContainerStyle={{ padding: PAGE_PADDING, paddingBottom: 48, gap: 16 }}
       showsVerticalScrollIndicator={false}
     >
-      <SecHeader
-        eyebrow={eyebrow}
+      {/* Beyaz hero: sayfa başlığı + kalan tutar aynı yüzeyde. Gecikme
+          listesinde accent tehlike rengine döner (fatura detayıyla aynı kural),
+          böylece "burası geciken liste" tek bakışta anlaşılır. */}
+      <WhiteHero
+        compact
+        accent={filter === 'overdue' ? '#D94B4B' : undefined}
+        kicker={eyebrow}
         title={title}
-        desc={
-          filtered.length === 0
-            ? '—'
-            : `${filtered.length} fatura · ${remLabel} kalan`
-        }
+        description={overdueCount > 0 && filter !== 'overdue'
+          ? `${overdueCount} ${autoT('faturanın vadesi geçmiş')}`
+          : undefined}
+        stats={[
+          { value: String(filtered.length), label: autoT('Fatura') },
+          /* Para birimleri ASLA toplanmaz: her biri kendi kutucuğunda durur.
+             İkiden fazlası hero'yu taşırıyor, kalanı listede zaten görünür. */
+          ...remByCcy.slice(0, 2).map(sum => ({
+            value: formatMoney(sum.total, sum.currency, { fractionDigits: 0 }),
+            label: autoT('Kalan'),
+          })),
+        ]}
       />
 
       {filtered.length === 0 ? (

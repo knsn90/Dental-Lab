@@ -420,7 +420,7 @@ function PremiumHero({
               <Text style={{ fontSize: 11, color: isDark ? (T.ink3 as string) : DS.ink[500], fontWeight: '500', marginBottom: 4 }}>
                 Toplam Borç
               </Text>
-              <MoneyMultiX slices={dueCcy} variant="cards" size="lg" accentColor={TH.primary} emptyText="—" />
+              <MoneyMultiX slices={dueCcy} variant="cards" onAccent="#FFFFFF" size="lg" accentColor={TH.primary} emptyText="—" />
               <View style={{ height: 4 }} />
               <Text style={{ fontSize: 13, color: isDark ? (T.ink3 as string) : DS.ink[500], marginTop: 6, lineHeight: 19, maxWidth: 520 }}>
                 {totalDue === 0
