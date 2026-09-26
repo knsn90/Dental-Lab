@@ -53,6 +53,8 @@ export interface PublicPaymentIntent {
   lab_name:         string;
   /** Aktif POS (demo, iyzico…). Test ipuçları yalnız demo'da gösterilir. */
   provider?:        string | null;
+  /** Lab logosu — ödeme ekranının başlığında görünür. */
+  lab_logo_url?:    string | null;
 }
 
 export interface InstallmentOption {

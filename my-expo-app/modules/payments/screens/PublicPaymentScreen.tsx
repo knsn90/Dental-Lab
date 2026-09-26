@@ -18,12 +18,15 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
-  ActivityIndicator, Platform,
+  ActivityIndicator, Platform, Pressable, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 
 import { AppIcon } from '../../../core/ui/AppIcon';
+import { Lock } from '../../../core/ui/icons';
+import { useInkUI } from '../../../core/theme/inkScale';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { Shadows, CardSpec } from '../../../core/theme/shadows';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
@@ -42,6 +45,9 @@ function fmtMoney(n: number, cur = 'TRY'): string {
   return sym + (Number(n) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/** Ödeme düğmesi lacivert: para akışının site genelindeki rengi. */
+const PAY_NAVY = '#314F7E';
+
 export function PublicPaymentScreen({
   token: tokenProp, embedded, onPaid,
 }: {
@@ -53,6 +59,7 @@ export function PublicPaymentScreen({
   onPaid?: () => void;
 } = {}) {
   const T = useMobileTokens();
+  const U = useInkUI();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   // Hook koşulsuz çağrılır; modalda parametre yok, prop kazanır.
   const params = useLocalSearchParams<{ token: string }>();
@@ -236,91 +243,106 @@ export function PublicPaymentScreen({
 
   // Form view
   const cfg = PAYMENT_STATUS_LABELS[intent.status];
+  const money = fmtMoney(Number(intent.amount), intent.currency);
   return (
-    <Shell embedded={embedded} bg={T.bg}>
-      <ScrollView contentContainerStyle={s.scroll}>
-        {/* Lab başlık */}
+    <Shell embedded={embedded} bg={U.pageBg}>
+      <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+        {/* Lab kimliği — logo varsa logo, yoksa ad. Müşteri kartını girmeden
+            önce kime ödediğini görmeli. */}
         <View style={s.labHead}>
-          <Text style={[s.labName, { color: T.ink }]}>{intent.lab_name}</Text>
-          <View style={[s.statusPill, { backgroundColor: cfg.color + '15' }]}>
-            <Text style={[s.statusPillText, { color: cfg.color }]}>{cfg.label}</Text>
+          {intent.lab_logo_url ? (
+            <Image
+              source={{ uri: intent.lab_logo_url }}
+              style={{ width: 132, height: 30 }}
+              resizeMode="contain"
+              accessibilityLabel={intent.lab_name}
+            />
+          ) : (
+            <Text style={{ fontSize: 14, fontWeight: '700', color: U.ink[900] }} numberOfLines={1}>
+              {intent.lab_name}
+            </Text>
+          )}
+          <View style={{ paddingHorizontal: 9, paddingVertical: 3.5, borderRadius: 999, backgroundColor: cfg.color + (U.isDark ? '2E' : '15') }}>
+            <Text style={{ fontSize: 9.5, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: cfg.color }}>
+              {cfg.label}
+            </Text>
           </View>
         </View>
 
-        {/* Fatura kartı */}
-        <View style={[s.invCard, { backgroundColor: T.card, borderColor: T.hairline }]}>
-          <Text style={[s.invLabel, { color: T.ink3 }]}>Fatura</Text>
-          <Text style={[s.invNumber, { color: T.ink3 }]}>{intent.invoice_number}</Text>
-          <Text style={[s.amountBig, { color: T.ink }]}>{fmtMoney(Number(intent.amount), intent.currency)}</Text>
-          {intent.clinic_name && <Text style={[s.invMeta, { color: T.ink3 }]}>{intent.clinic_name}</Text>}
-          {intent.doctor_name && <Text style={[s.invMeta, { color: T.ink3 }]}>Hekim: {intent.doctor_name}</Text>}
-          {intent.invoice_due_date && (
-            <Text style={[s.invMeta, { color: T.ink3 }]}>
-              Vade: {new Date(intent.invoice_due_date + 'T00:00:00').toLocaleDateString('tr-TR')}
+        {/* Tutar — ekranın tek büyük rakamı */}
+        <View style={{ ...U.cardSolid, padding: 16, gap: 2 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={{ ...(U.colHeader as object) }}>{autoT('Fatura')}</Text>
+            <Text style={{ fontSize: 11.5, fontFamily: 'monospace' as any, color: U.ink[500] }}>
+              {intent.invoice_number}
             </Text>
-          )}
+          </View>
+          <Text style={{ fontSize: 30, fontWeight: '700', letterSpacing: -0.8, color: U.ink[900], marginTop: 2 }}>
+            {money}
+          </Text>
+          <Text style={{ fontSize: 11.5, color: U.ink[500], marginTop: 4 }} numberOfLines={2}>
+            {[intent.clinic_name, intent.doctor_name].filter(Boolean).join(' · ')}
+          </Text>
+          {intent.invoice_due_date ? (
+            <Text style={{ fontSize: 11.5, color: U.ink[400] }}>
+              {autoT('Vade')}: {new Date(intent.invoice_due_date + 'T00:00:00').toLocaleDateString('tr-TR')}
+            </Text>
+          ) : null}
         </View>
 
         {/* Kart formu */}
-        <View style={[s.cardForm, { backgroundColor: T.card, borderColor: T.hairline }]}>
-          <Text style={[s.formTitle, { color: T.ink }]}>Kart Bilgileri</Text>
+        <View style={{ ...U.cardSolid, padding: 16, gap: 10 }}>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: U.ink[900] }}>{autoT('Kart bilgileri')}</Text>
 
-          <Field label="Kart Sahibi">
+          <Field label={autoT('Kart sahibi')}>
             <TextInput
-              style={[s.input, { color: T.ink, borderColor: T.hairline, backgroundColor: isDark ? T.cardSoft : "#FFFFFF" }]}
+              style={U.inputStyle}
               value={card.holder_name}
               onChangeText={v => setCard({ ...card, holder_name: v })}
               placeholder="AD SOYAD"
               autoCapitalize="characters"
-              placeholderTextColor={isDark ? (T.ink3 as string) : "#94A3B8"}
+              placeholderTextColor={U.ink[400]}
             />
           </Field>
 
-          <Field label="Kart Numarası">
+          <Field label={autoT('Kart numarası')}>
             <TextInput
-              style={[s.input, { color: T.ink, borderColor: T.hairline, backgroundColor: isDark ? T.cardSoft : "#FFFFFF" }]}
+              style={U.inputStyle}
               value={card.number}
               onChangeText={v => setCard({ ...card, number: v.replace(/\D/g, '').slice(0, 16) })}
               placeholder="1234 5678 9012 3456"
               keyboardType="number-pad"
               maxLength={16}
-              placeholderTextColor={isDark ? (T.ink3 as string) : "#94A3B8"}
+              placeholderTextColor={U.ink[400]}
             />
           </Field>
 
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <Field label="Ay" style={{ flex: 1 }}>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Field label={autoT('Ay')} style={{ flex: 1 }}>
               <TextInput
-                style={[s.input, { color: T.ink, borderColor: T.hairline, backgroundColor: isDark ? T.cardSoft : "#FFFFFF" }]}
+                style={U.inputStyle}
                 value={card.expire_month}
                 onChangeText={v => setCard({ ...card, expire_month: v.replace(/\D/g, '').slice(0, 2) })}
-                placeholder="MM"
-                keyboardType="number-pad"
-                maxLength={2}
-                placeholderTextColor={isDark ? (T.ink3 as string) : "#94A3B8"}
+                placeholder="AA" keyboardType="number-pad" maxLength={2}
+                placeholderTextColor={U.ink[400]}
               />
             </Field>
-            <Field label="Yıl" style={{ flex: 1 }}>
+            <Field label={autoT('Yıl')} style={{ flex: 1 }}>
               <TextInput
-                style={[s.input, { color: T.ink, borderColor: T.hairline, backgroundColor: isDark ? T.cardSoft : "#FFFFFF" }]}
+                style={U.inputStyle}
                 value={card.expire_year}
                 onChangeText={v => setCard({ ...card, expire_year: v.replace(/\D/g, '').slice(0, 4) })}
-                placeholder="YYYY"
-                keyboardType="number-pad"
-                maxLength={4}
-                placeholderTextColor={isDark ? (T.ink3 as string) : "#94A3B8"}
+                placeholder="YYYY" keyboardType="number-pad" maxLength={4}
+                placeholderTextColor={U.ink[400]}
               />
             </Field>
             <Field label="CVC" style={{ flex: 1 }}>
               <TextInput
-                style={[s.input, { color: T.ink, borderColor: T.hairline, backgroundColor: isDark ? T.cardSoft : "#FFFFFF" }]}
+                style={U.inputStyle}
                 value={card.cvc}
                 onChangeText={v => setCard({ ...card, cvc: v.replace(/\D/g, '').slice(0, 4) })}
-                placeholder="123"
-                keyboardType="number-pad"
-                maxLength={4}
-                secureTextEntry
-                placeholderTextColor={isDark ? (T.ink3 as string) : "#94A3B8"}
+                placeholder="123" keyboardType="number-pad" maxLength={4} secureTextEntry
+                placeholderTextColor={U.ink[400]}
               />
             </Field>
           </View>
@@ -328,28 +350,33 @@ export function PublicPaymentScreen({
           {/* Test kuralları YALNIZ demo POS'ta. Canlı sağlayıcıda gerçek
               kliniğe "CVC'ye 999 yaz" demiş oluyorduk. */}
           {intent.provider === 'demo' && (
-            <Text style={[s.demoHint, { color: T.ink3 }]}>
+            <Text style={{ fontSize: 11, color: U.ink[400], fontStyle: 'italic' }}>
               Sandbox: CVC 000 → başarısız · 999 → 3DS · diğer → başarılı
             </Text>
           )}
         </View>
 
-        {/* Pay button */}
-        <TouchableOpacity
-          style={[s.payBtn, paying && { opacity: 0.6 }]}
+        {/* Ödeme düğmesi — lacivert, tam yuvarlak (ödeme dili) */}
+        <Pressable
           onPress={handlePay}
           disabled={paying}
+          style={({ pressed }) => ({
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+            paddingVertical: 13, borderRadius: 9999, backgroundColor: PAY_NAVY,
+            opacity: paying ? 0.6 : pressed ? 0.85 : 1,
+            ...(Platform.OS === 'web' ? { cursor: paying ? 'default' : 'pointer' } as any : {}),
+          })}
         >
           {paying
-            ? <ActivityIndicator color="#FFFFFF" />
-            : <AppIcon name="lock" size={16} color="#FFFFFF" />}
-          <Text style={s.payText}>
-            {paying ? 'İşleniyor...' : `${fmtMoney(Number(intent.amount), intent.currency)} Öde`}
+            ? <ActivityIndicator color="#FFFFFF" size="small" />
+            : <Lock size={14} color="#FFFFFF" strokeWidth={2} />}
+          <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>
+            {paying ? autoT('İşleniyor…') : `${money} ${autoT('Öde')}`}
           </Text>
-        </TouchableOpacity>
+        </Pressable>
 
-        <Text style={[s.secureHint, { color: T.ink3 }]}>
-          🔒 Kart bilgileriniz GİB onaylı 3D Secure altyapısı ile güvence altındadır.
+        <Text style={{ fontSize: 10.5, color: U.ink[400], textAlign: 'center', lineHeight: 15 }}>
+          {autoT('Kart bilgileriniz 3D Secure ile korunur ve laboratuvarda saklanmaz.')}
         </Text>
       </ScrollView>
     </Shell>
@@ -357,10 +384,10 @@ export function PublicPaymentScreen({
 }
 
 function Field({ label, children, style }: { label: string; children: React.ReactNode; style?: any }) {
-  const T = useMobileTokens();
+  const U = useInkUI();
   return (
-    <View style={[{ marginBottom: 12 }, style]}>
-      <Text style={[s.fieldLabel, { color: T.ink3 }]}>{label}</Text>
+    <View style={[{ gap: 5 }, style]}>
+      <Text style={U.colHeader}>{label}</Text>
       {children}
     </View>
   );
@@ -368,7 +395,7 @@ function Field({ label, children, style }: { label: string; children: React.Reac
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F1F5F9' },
-  scroll: { padding: 20, paddingBottom: 60, gap: 16, maxWidth: 480, alignSelf: 'center', width: '100%' },
+  scroll: { padding: 16, paddingBottom: 28, gap: 12, maxWidth: 420, alignSelf: 'center', width: '100%' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32, gap: 16 },
 
   iconCircle: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center' },
