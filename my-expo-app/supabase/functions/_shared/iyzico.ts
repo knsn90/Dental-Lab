@@ -93,6 +93,46 @@ export async function iyzicoPost<T = any>(
   return { ok: resp.ok && data.status === 'success', http_status: resp.status, data };
 }
 
+/**
+ * İmzalı GET — gövdesiz uçlar için (ör. /payment/test).
+ * Gövde boşsa imzaya YALNIZ randomKey + yol girer; JSON.stringify({}) eklenirse
+ * imza tutmaz ve iyzico "invalid signature" döner.
+ */
+export async function iyzicoGet<T = any>(
+  creds: IyzicoCreds,
+  path: string,
+): Promise<{ ok: boolean; http_status: number; data: T | null; error?: string }> {
+  const base = (creds.base_url || IYZICO_SANDBOX).replace(/\/+$/, '');
+  const rnd = randomKey();
+  const signature = await hmacHex(creds.secret_key, rnd + path);
+  const authHeader = 'IYZWSv2 ' + btoa(
+    `apiKey:${creds.api_key}&randomKey:${rnd}&signature:${signature}`,
+  );
+
+  let resp: Response;
+  try {
+    resp = await fetch(base + path, {
+      method: 'GET',
+      headers: {
+        'Authorization': authHeader,
+        'x-iyzi-rnd': rnd,
+        'x-iyzi-client-version': 'siman-edge-1.0',
+        'Accept': 'application/json',
+      },
+    });
+  } catch (e) {
+    return { ok: false, http_status: 0, data: null, error: `iyzico bağlantı hatası: ${String(e)}` };
+  }
+
+  const text = await resp.text();
+  let data: any = null;
+  try { data = text ? JSON.parse(text) : null; } catch { /* JSON değilse ham metin */ }
+  if (!data) {
+    return { ok: false, http_status: resp.status, data: null, error: `iyzico yanıtı okunamadı (${resp.status})` };
+  }
+  return { ok: resp.ok && data.status === 'success', http_status: resp.status, data };
+}
+
 /** Fiyatı iyzico'nun beklediği biçime getirir: "35" → "35.0", "35.50" → "35.5" */
 export function iyziPrice(n: number | string): string {
   const num = Number(n) || 0;

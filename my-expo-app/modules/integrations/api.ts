@@ -639,6 +639,31 @@ export async function testCredential(
     return { ok: true, message: 'Demo provider — başarılı' };
   }
 
+  // iyzico — edge function ile gerçek bağlantı testi (GET /payment/test).
+  // İmza sunucuda üretilir; secret_key tarayıcıdan iyzico'ya ASLA gitmez.
+  // Kayıtlı satır varsa anahtarlar sunucuda okunur (id gönderilir), yeni
+  // girilen değerler ise doğrudan test edilir — kaydetmeden denenebilsin.
+  if (type === 'payment' && provider === 'iyzico') {
+    try {
+      const { data, error } = await supabase.functions.invoke('payments-charge', {
+        body: {
+          action: 'test',
+          provider: 'iyzico',
+          credential_id: id || undefined,
+          credentials: _credentials,
+        },
+      });
+      const ok = !error && (data as any)?.ok === true;
+      const msg = (data as any)?.message ?? error?.message ?? 'Bağlantı başarısız';
+      await supabase.rpc('record_provider_test', { p_id: id, p_ok: ok, p_message: msg });
+      return { ok, message: msg };
+    } catch (e: any) {
+      const msg = 'Test hatası: ' + (e?.message ?? String(e));
+      await supabase.rpc('record_provider_test', { p_id: id, p_ok: false, p_message: msg });
+      return { ok: false, message: msg };
+    }
+  }
+
   // BanaBiKurye — edge function ile gerçek bağlantı testi (GET /client).
   // auth_token tarayıcıdan CORS'a takılır → edge function üzerinden server-side çağrı.
   if (type === 'courier' && provider === 'banabikurye') {

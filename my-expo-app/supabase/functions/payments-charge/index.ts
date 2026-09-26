@@ -38,6 +38,17 @@ serve(async (req) => {
   try {
     const body = await req.json();
     const { intent_id, public_token, card, installment, provider_ref } = body;
+
+    // ── BAĞLANTI TESTİ (Entegrasyonlar → "Test") ──
+    // Ayrı bir akış: intent yok, kart yok. Sağlayıcının kimlik bilgileri
+    // gerçekten çalışıyor mu diye iyzico'nun /payment/test ucu çağrılır.
+    // YETKİ ŞART: bu uç, çalınmış anahtarları denemek için proxy'ye
+    // dönüşmesin diye yalnız manage_settings yetkisi olan lab kullanıcısına
+    // açıktır (ödeme akışı anon anahtarla çağrılabiliyor, bu çağrılamaz).
+    if (body.action === 'test') {
+      return await handleCredentialTest(req, body);
+    }
+
     const action: 'charge' | 'confirm' = body.action === 'confirm' ? 'confirm' : 'charge';
 
     if (!intent_id || !public_token) {
@@ -199,6 +210,109 @@ serve(async (req) => {
     });
   }
 });
+
+// ─── Bağlantı testi ────────────────────────────────────────────────────────
+
+const jsonResp = (payload: unknown, status = 200) =>
+  new Response(JSON.stringify(payload), {
+    status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+
+/**
+ * Entegrasyonlar ekranındaki "Test" düğmesi.
+ *
+ * Kimlik bilgileri İKİ kaynaktan gelebilir:
+ *  • `credentials` — formda yeni girilen, henüz kaydedilmemiş değerler
+ *  • `credential_id` — kayıtlı satır (service role ile okunur, lab eşleşmesi
+ *    doğrulanır; anahtarlar istemciye geri DÖNMEZ)
+ */
+async function handleCredentialTest(req: Request, body: any): Promise<Response> {
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader) return jsonResp({ ok: false, message: 'Yetkisiz erişim' }, 401);
+
+  const admin = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+  );
+  const caller = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_ANON_KEY')!,
+    { global: { headers: { Authorization: authHeader } } },
+  );
+
+  const { data: userData, error: authErr } = await caller.auth.getUser();
+  if (authErr || !userData?.user) return jsonResp({ ok: false, message: 'Yetkisiz erişim' }, 401);
+
+  // Yetki KULLANICININ oturumunda sorulur; service role ile sorulsaydı
+  // her zaman true dönerdi.
+  const { data: allowed } = await caller.rpc('has_permission', { p_key: 'manage_settings' });
+  if (allowed !== true) {
+    return jsonResp({ ok: false, message: 'Bu işlem için ayar yönetimi yetkisi gerekir' }, 403);
+  }
+
+  const { data: profile } = await admin
+    .from('profiles').select('lab_id').eq('id', userData.user.id).maybeSingle();
+  const labId = (profile as any)?.lab_id ?? null;
+  if (!labId) return jsonResp({ ok: false, message: 'Hesabınıza bağlı laboratuvar yok' }, 403);
+
+  let creds: any = body.credentials ?? null;
+  let provider: string = String(body.provider ?? '');
+
+  if (body.credential_id) {
+    const { data: row } = await admin
+      .from('provider_credentials')
+      .select('lab_id, provider, credentials')
+      .eq('id', body.credential_id)
+      .maybeSingle();
+    if (!row || (row as any).lab_id !== labId) {
+      return jsonResp({ ok: false, message: 'Kayıt bulunamadı' }, 404);
+    }
+    creds = (row as any).credentials;
+    provider = String((row as any).provider);
+  }
+
+  if (provider !== 'iyzico') {
+    return jsonResp({ ok: false, message: `Bu sağlayıcı için test yok: ${provider || '?'}` }, 400);
+  }
+
+  const c: IyzicoCreds = {
+    api_key:    String(creds?.api_key ?? ''),
+    secret_key: String(creds?.secret_key ?? ''),
+    base_url:   String(creds?.base_url ?? '') || IYZICO_SANDBOX,
+  };
+  if (!c.api_key || !c.secret_key) {
+    return jsonResp({ ok: false, message: 'API Key ve Secret Key zorunlu' }, 400);
+  }
+
+  // DİKKAT: /payment/test KİMLİK DOĞRULAMAZ — sahte anahtarla bile
+  // {"status":"success"} döner (ölçüldü: sandbox, 2026-09-26). Test için
+  // imzayı gerçekten doğrulayan bir uç gerekir: BIN sorgulama. Yanlış
+  // anahtarda errorCode 1001 "api bilgileri bulunamadı" döner.
+  const res = await iyzicoPost(c, '/payment/bin/check', {
+    locale: 'tr',
+    conversationId: 'siman-credential-test',
+    binNumber: '554960',
+  });
+  const d: any = res.data ?? {};
+  const isSandbox = c.base_url!.includes('sandbox');
+
+  if (!res.ok) {
+    const hint = d.errorCode === '1001' || d.errorCode === 1001
+      ? ' — API Key/Secret Key ve ortam (sandbox ↔ canlı) eşleşmiyor olabilir'
+      : '';
+    return jsonResp({
+      ok: false,
+      message: d.errorMessage
+        ? `Bağlantı reddedildi: ${d.errorMessage}${hint}`
+        : (res.error ?? `Bağlantı başarısız (HTTP ${res.http_status})`),
+    });
+  }
+
+  return jsonResp({
+    ok: true,
+    message: `Bağlantı başarılı — iyzico ${isSandbox ? 'sandbox' : 'canlı'} ortamı`,
+  });
+}
 
 // ─── Provider implementasyonları ───────────────────────────────────────────
 
