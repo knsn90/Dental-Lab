@@ -45,8 +45,14 @@ function fmtMoney(n: number, cur = 'TRY'): string {
   return sym + (Number(n) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-/** Ödeme düğmesi lacivert: para akışının site genelindeki rengi. */
-const PAY_NAVY = '#314F7E';
+/**
+ * Ödeme düğmesi KLİNİK yeşili (zümrüt 400 — DS.clinic.primary).
+ *
+ * Neden panelden türetilmiyor: bu ekran /pay/<token> olarak oturumsuz da
+ * açılıyor; orada route segmenti yok, usePanelTheme() lab safranına düşerdi.
+ * Ödeyen taraf her zaman klinik/hekim olduğu için palet sabit.
+ */
+const PAY_GREEN = '#32BB78';
 
 export function PublicPaymentScreen({
   token: tokenProp, embedded, onPaid,
@@ -362,7 +368,7 @@ export function PublicPaymentScreen({
           disabled={paying}
           style={({ pressed }) => ({
             flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-            paddingVertical: 13, borderRadius: 9999, backgroundColor: PAY_NAVY,
+            paddingVertical: 13, borderRadius: 9999, backgroundColor: PAY_GREEN,
             opacity: paying ? 0.6 : pressed ? 0.85 : 1,
             ...(Platform.OS === 'web' ? { cursor: paying ? 'default' : 'pointer' } as any : {}),
           })}

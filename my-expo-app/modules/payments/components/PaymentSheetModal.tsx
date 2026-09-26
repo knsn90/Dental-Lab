@@ -29,7 +29,15 @@ export function PaymentSheetModal({
 
   return (
     <Modal visible={!!token} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={U.modalOverlay}>
+      {/* Arka plan blur: kart girilen ekran, arkadaki listeden görsel olarak
+          ayrılsın. backdropFilter web'e özgü; native'de sahne biraz daha
+          koyultulur (expo-blur eklemeden aynı ayrışma hissi). */}
+      <View style={[
+        U.modalOverlay,
+        Platform.OS === 'web'
+          ? ({ backdropFilter: 'blur(8px) saturate(120%)', WebkitBackdropFilter: 'blur(8px) saturate(120%)' } as any)
+          : { backgroundColor: U.isDark ? 'rgba(0,0,0,0.72)' : 'rgba(15,23,42,0.58)' },
+      ]}>
         <View style={[U.modalCard, { maxWidth: 520, height: '88%' }]}>
           <View style={U.modalHeaderRow}>
             <Text style={U.modalTitle}>{autoT('Online Ödeme')}</Text>
