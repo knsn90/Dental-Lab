@@ -4,9 +4,9 @@
  */
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import { View, Text, ScrollView, Pressable, Platform } from 'react-native';
 import { useRouter, useSegments } from 'expo-router';
-import { FileText, AlertCircle, CreditCard, ChevronLeft, ChevronRight } from '../../../core/ui/icons';
+import { FileText, AlertCircle, CreditCard, ChevronLeft, ChevronRight, CheckCircle2, Clock } from '../../../core/ui/icons';
 import { isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
 
@@ -26,17 +26,36 @@ import { formatMoney, type Currency } from '../../../core/money/currency';
 
 type Props = {
   clinicId: string;
-  filter: 'open' | 'overdue';
-  title: string;
-  eyebrow: string;
-  emptyTitle: string;
-  emptyDescription: string;
-  emptyIcon: any;
+  /** Açılıştaki filtre; kullanıcı hero'daki iki kapsülle değiştirebilir. */
+  initialFilter?: 'open' | 'overdue';
 };
 
-export function InvoiceListBase({
-  clinicId, filter, title, eyebrow, emptyTitle, emptyDescription, emptyIcon,
-}: Props) {
+/**
+ * Metinler filtreye göre BURADA çözülür. Eskiden "Bekleyen" ve "Vadesi Geçen"
+ * iki ayrı sekmeydi ve aynı listeyi iki kez gösteriyordu (vadesi geçenler
+ * zaten bekleyenlerin alt kümesi); tek ekranda kapsül filtresine indirildi.
+ */
+const VIEW_TEXTS = {
+  open: {
+    eyebrow: 'Açık Faturalar',
+    title: 'Bekleyen Ödemeler',
+    emptyTitle: 'Bekleyen ödeme yok',
+    emptyDescription: 'Tüm açık faturalar tahsil edilmiş.',
+  },
+  overdue: {
+    eyebrow: 'Acil Tahsilat',
+    title: 'Vadesi Geçen',
+    emptyTitle: 'Vadesi geçen fatura yok',
+    emptyDescription: 'Tüm faturalarınız zamanında ödeniyor.',
+  },
+} as const;
+
+export function InvoiceListBase({ clinicId, initialFilter = 'open' }: Props) {
+  const [filter, setFilter] = useState<'open' | 'overdue'>(initialFilter);
+  // Sekme dışarıdan değişirse (Özet'teki "Tümü →" bağlantısı) takip et.
+  useEffect(() => { setFilter(initialFilter); }, [initialFilter]);
+  const texts = VIEW_TEXTS[filter];
+  const emptyIcon = filter === 'overdue' ? CheckCircle2 : Clock;
   useRates();
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
@@ -80,8 +99,8 @@ export function InvoiceListBase({
       <WhiteHero
         compact
         accent={filter === 'overdue' ? '#D94B4B' : undefined}
-        kicker={eyebrow}
-        title={title}
+        kicker={texts.eyebrow}
+        title={texts.title}
         description={overdueCount > 0 && filter !== 'overdue'
           ? `${overdueCount} ${autoT('faturanın vadesi geçmiş')}`
           : undefined}
@@ -94,10 +113,47 @@ export function InvoiceListBase({
             label: autoT('Kalan'),
           })),
         ]}
-      />
+      >
+        {/* İki görünüm tek ekranda: tümü ↔ yalnız vadesi geçenler. */}
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
+          {([
+            { key: 'open'    as const, label: autoT('Tümü'),          count: items.length },
+            { key: 'overdue' as const, label: autoT('Vadesi geçen'),  count: items.filter(i => i.days_overdue > 0).length },
+          ]).map(opt => {
+            const active = filter === opt.key;
+            return (
+              <Pressable
+                key={opt.key}
+                onPress={() => setFilter(opt.key)}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  paddingHorizontal: active ? 16 : 12, paddingVertical: 8, borderRadius: 999,
+                  backgroundColor: active
+                    ? (isDark ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.85)')
+                    : 'transparent',
+                  borderWidth: 1,
+                  borderColor: active
+                    ? 'transparent'
+                    : (isDark ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.9)'),
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                }}>
+                <Text style={{
+                  fontSize: 12.5, fontWeight: active ? '700' : '600',
+                  color: isDark ? '#FFFFFF' : DS.ink[900],
+                }}>
+                  {opt.label}
+                </Text>
+                <Text style={{ fontSize: 11.5, color: isDark ? 'rgba(255,255,255,0.65)' : DS.ink[500] }}>
+                  {opt.count}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </WhiteHero>
 
       {filtered.length === 0 ? (
-        <EmptyCard icon={emptyIcon} title={emptyTitle} description={emptyDescription} />
+        <EmptyCard icon={emptyIcon} title={texts.emptyTitle} description={texts.emptyDescription} />
       ) : (
         <Card style={{ padding: 0, overflow: 'hidden', borderColor: filter === 'overdue' ? 'rgba(217,75,75,0.30)' : (isDark ? T.hairline : DS.ink[200]) }}>
           {filtered.map((inv, i) => {

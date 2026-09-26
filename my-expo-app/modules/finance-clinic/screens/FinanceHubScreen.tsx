@@ -2,7 +2,9 @@
  * Mali İşlemler Hub — Klinik & Muayenehane.
  *
  * Solda sidebar (desktop) / üstte pill bar (mobile), sağda aktif sekme.
- * 6 sekme: Özet · Cari Ekstre · Bekleyen · Vadesi Geçen · Online POS · Ödemeler.
+ * 5 sekme: Özet · Cari Ekstre · Bekleyen · Online POS · Ödemeler.
+ * ('overdue' görünmez bir takma ad: Bekleyen ekranını vadesi-geçen
+ *  filtresiyle açar — eski derin bağlantılar kırılmasın.)
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
@@ -24,7 +26,6 @@ import { OverviewScreen } from './OverviewScreen';
 import { StatementScreen } from './StatementScreen';
 import { ClinicStatementScreen } from '../../invoices/screens/ClinicStatementScreen';
 import { OpenInvoicesScreen } from './OpenInvoicesScreen';
-import { OverdueScreen } from './OverdueScreen';
 import { OnlinePosScreen } from './OnlinePosScreen';
 import { PaymentHistoryScreen } from './PaymentHistoryScreen';
 
@@ -42,7 +43,6 @@ const ALL_TABS: TabDef[] = [
   { key: 'overview',  labelKey: 'clinic.finance.tabs.overview',  hintKey: 'clinic.finance.tabs.overviewHint',  icon: LayoutDashboard, accent: '#0F172A' },
   { key: 'statement', labelKey: 'clinic.finance.tabs.statement', hintKey: 'clinic.finance.tabs.statementHint', icon: BookOpen,        accent: '#0EA5E9' },
   { key: 'open',      labelKey: 'clinic.finance.tabs.open',      hintKey: 'clinic.finance.tabs.openHint',      icon: Clock,           accent: '#D97706' },
-  { key: 'overdue',   labelKey: 'clinic.finance.tabs.overdue',   hintKey: 'clinic.finance.tabs.overdueHint',   icon: AlertCircle,     accent: '#DC2626' },
   { key: 'pos',       labelKey: 'clinic.finance.tabs.pos',       hintKey: 'clinic.finance.tabs.posHint',       icon: CreditCard,      accent: '#7C3AED' },
   { key: 'payments',  labelKey: 'clinic.finance.tabs.payments',  hintKey: 'clinic.finance.tabs.paymentsHint',  icon: ListChecks,      accent: '#059669' },
 ];
@@ -67,8 +67,14 @@ export function ClinicFinanceHubScreen() {
   // Sekme URL'e yazılır: yenilemede/paylaşımda aynı sekme açılsın.
   const params = useLocalSearchParams<{ tab?: string }>();
   const router = useRouter();
+  // 'overdue' şeritte yok ama geçerli bir adres (Bekleyen'i ön-filtreli açar) →
+  // derin bağlantı çözümünde ayrıca kabul edilir, yoksa Özet'e düşerdi.
+  const isValidTab = useCallback(
+    (k: unknown) => typeof k === 'string' && (k === 'overdue' || TABS.some(x => x.key === k)),
+    [TABS],
+  );
   const [tab, setTabRaw] = useState<TabKey>(
-    (TABS.some(x => x.key === params.tab) ? params.tab : 'overview') as TabKey,
+    (isValidTab(params.tab) ? params.tab : 'overview') as TabKey,
   );
   const setTab = useCallback((k: TabKey) => {
     setTabRaw(k);
@@ -76,7 +82,7 @@ export function ClinicFinanceHubScreen() {
   }, [router]);
   useEffect(() => {
     const q = typeof params.tab === 'string' ? params.tab : null;
-    if (q && TABS.some(x => x.key === q) && q !== tab) setTabRaw(q as TabKey);
+    if (q && isValidTab(q) && q !== tab) setTabRaw(q as TabKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.tab]);
 
@@ -118,7 +124,11 @@ export function ClinicFinanceHubScreen() {
       case 'overview':  return <OverviewScreen clinicId={clinicId} onJump={setTab} />;
       case 'statement': return <ClinicStatementScreen clinicId={clinicId} selfView />;
       case 'open':      return <OpenInvoicesScreen clinicId={clinicId} />;
-      case 'overdue':   return <OverdueScreen clinicId={clinicId} />;
+      // 'overdue' ayrı sekme DEĞİL, aynı ekranın ön-filtreli hâli: vadesi
+      // geçenler zaten bekleyenlerin alt kümesi, iki sekme aynı listeyi
+      // gösteriyordu. Eski bağlantılar ve Özet'teki kısayol çalışsın diye
+      // route anahtarı korunuyor.
+      case 'overdue':   return <OpenInvoicesScreen clinicId={clinicId} onlyOverdue />;
       case 'pos':       return <OnlinePosScreen clinicId={clinicId} />;
       case 'payments':  return <PaymentHistoryScreen clinicId={clinicId} />;
     }
@@ -137,7 +147,7 @@ export function ClinicFinanceHubScreen() {
               backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)', borderRadius: 999,
             }}>
               {TABS.map(t_ => {
-                const active = t_.key === tab;
+                const active = t_.key === tab || (t_.key === 'open' && tab === 'overdue');
                 const Icon = t_.icon;
                 return (
                   <Pressable
@@ -178,7 +188,7 @@ export function ClinicFinanceHubScreen() {
             }}
           >
             {TABS.map(t_ => {
-              const active = t_.key === tab;
+              const active = t_.key === tab || (t_.key === 'open' && tab === 'overdue');
               const Icon = t_.icon;
               return (
                 <Pressable
