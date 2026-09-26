@@ -8681,5 +8681,11 @@
   "Kesilen fatura vs. ödenen tutar": "Invoiced vs. paid amount",
   "Ödeme oranı": "Payment rate",
   "Ödeme Yöntemleri": "Payment methods",
-  "Bu dönemde hareket yok": "No activity in this period"
+  "Bu dönemde hareket yok": "No activity in this period",
+  "Toplam borç": "Total balance due",
+  "Bu ay ödenen": "Paid this month",
+  "Kartla ödeme: tüm bakiyeyi ya da kısmi tutarı tek seferde öde": "Pay by card: settle the whole balance or a partial amount in one go",
+  "Fatura ve ödeme hareketlerinin tamamı; yazdırılabilir ve Excel'e aktarılabilir": "Every invoice and payment movement; printable and exportable to Excel",
+  "Aynı dönemin fatura ve ödeme hareketlerini satır satır gör": "See the same period’s invoice and payment movements line by line",
+  "Vadesi geçmiş faturaların tamamını listele": "List all overdue invoices"
 }

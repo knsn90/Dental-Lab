@@ -10,6 +10,7 @@ import React from 'react';
 import { View, Text, Pressable, ActivityIndicator, type StyleProp, type ViewStyle } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { DS } from '../../../core/theme/dsTokens';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
@@ -370,7 +371,8 @@ export function SecHeader({ eyebrow, title, desc, action }: {
   eyebrow: string;
   title: string;
   desc?: string;
-  action?: { label: string; onPress: () => void };
+  /** `hint` verilirse bağlantının üzerine gelince cam balon çıkar. */
+  action?: { label: string; onPress: () => void; hint?: string };
 }) {
   const TH = usePanelTheme();
   const T = useMobileTokens();
@@ -387,9 +389,15 @@ export function SecHeader({ eyebrow, title, desc, action }: {
         {desc ? <Text style={{ fontSize: 13, color: isDark ? (T.ink3 as string) : DS.ink[500], lineHeight: 19, maxWidth: 520 }}>{desc}</Text> : null}
       </View>
       {action ? (
-        <Pressable onPress={action.onPress} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
-          <Text style={{ fontSize: 12, fontWeight: '600', color: TH.primary }}>{action.label}</Text>
-        </Pressable>
+        <GlassTooltip title={action.label.replace(/\s*→$/, '')} text={action.hint ?? ''} enabled={!!action.hint}>
+          <Pressable
+            onPress={action.onPress}
+            accessibilityRole="button"
+            accessibilityHint={action.hint}
+            style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: TH.primary }}>{action.label}</Text>
+          </Pressable>
+        </GlassTooltip>
       ) : null}
     </View>
   );

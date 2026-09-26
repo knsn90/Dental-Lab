@@ -8652,5 +8652,11 @@
   "Kesilen fatura vs. ödenen tutar": "مبلغ فاکتورشده در برابر پرداخت‌شده",
   "Ödeme oranı": "نرخ پرداخت",
   "Ödeme Yöntemleri": "روش‌های پرداخت",
-  "Bu dönemde hareket yok": "در این دوره تحرکی نیست"
+  "Bu dönemde hareket yok": "در این دوره تحرکی نیست",
+  "Toplam borç": "کل بدهی",
+  "Bu ay ödenen": "پرداخت این ماه",
+  "Kartla ödeme: tüm bakiyeyi ya da kısmi tutarı tek seferde öde": "پرداخت با کارت: کل مانده یا بخشی از آن را یکجا بپرداز",
+  "Fatura ve ödeme hareketlerinin tamamı; yazdırılabilir ve Excel'e aktarılabilir": "همه گردش فاکتور و پرداخت؛ قابل چاپ و خروجی اکسل",
+  "Aynı dönemin fatura ve ödeme hareketlerini satır satır gör": "گردش فاکتور و پرداخت همان دوره را سطر به سطر ببین",
+  "Vadesi geçmiş faturaların tamamını listele": "فهرست همه فاکتورهای سررسید گذشته"
 }

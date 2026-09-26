@@ -15,6 +15,7 @@ import {
 } from '../../../core/ui/icons';
 
 import { DS } from '../../../core/theme/dsTokens';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { isRTL } from '../../../core/i18n';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
@@ -101,7 +102,6 @@ export function OverviewScreen({ clinicId, onJump }: Props) {
         overdueCount={data.overdue_count}
         upcomingCount={data.upcoming_count}
         collectionRate={collectionRate}
-        monthly={charts?.monthly_flow ?? []}
         /* Ödeme fatura bazında: Bekleyen listesine gider, her satırda "Öde". */
         onPay={() => onJump('open')}
         onStatement={() => onJump('statement')}
@@ -180,7 +180,8 @@ export function OverviewScreen({ clinicId, onJump }: Props) {
             {cc.monthly_flow.length > 0 && (
               <View>
                 <SecHeader eyebrow="Trend" title="Aylık Akış · Son 6 Ay" desc="Kesilen fatura vs. ödenen tutar"
-                  action={{ label: 'Ekstre →', onPress: () => onJump('statement') }} />
+                  action={{ label: 'Ekstre →', onPress: () => onJump('statement'),
+                    hint: 'Aynı dönemin fatura ve ödeme hareketlerini satır satır gör' }} />
                 <Card style={{ padding: 16, paddingTop: 12 }}>
                   {/* Kartın konusu ORAN: en büyük öğe o olmalı. Yanındaki
                       ikon kutusu aynı satırda ondan daha fazla yer kaplıyordu.
@@ -362,13 +363,12 @@ function PremiumHero({
   totalDue, overdue, thisMonthPaid,
   dueCcy, overdueCcy, paidCcy,
   openCount, overdueCount, upcomingCount, collectionRate,
-  monthly, onPay, onStatement,
+  onPay, onStatement,
 }: {
   totalDue: number; overdue: number; thisMonthPaid: number;
   dueCcy: CurrencyTotal[]; overdueCcy: CurrencyTotal[]; paidCcy: CurrencyTotal[];
   openCount: number; overdueCount: number; upcomingCount: number;
   collectionRate: number;
-  monthly: { label: string; invoiced: number; paid: number }[];
   onPay: () => void; onStatement: () => void;
 }) {
   const TH = usePanelTheme();
@@ -415,14 +415,35 @@ function PremiumHero({
             </View>
           </View>
 
-          {/* Main: big number + side stats */}
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 20 }}>
-            <View style={{ flex: 1, minWidth: 260 }}>
-              <Text style={{ fontSize: 11, color: isDark ? (T.ink3 as string) : DS.ink[500], fontWeight: '500', marginBottom: 4 }}>
-                Toplam Borç
-              </Text>
-              {/* onAccent yalnız KOYU temada: açık temada kart zemini beyaz-alfa,
-                  beyaz rakam görünmez oluyordu (kullanıcı ekranda gördü). */}
+          {/* ── Ana blok ──
+              Tutar, ALAN gibi görünen beyaz kutunun içindeydi; okuyan kişi
+              "buraya yazacak mıyım?" diye duraksıyordu. Tek para biriminde
+              rakam artık başlık olarak durur (kutu yok), çok döviz varsa her
+              biri kendi kutusunda kalır — para birimleri asla toplanmaz. */}
+          <View style={{ gap: 6 }}>
+            <Text style={{
+              fontSize: 10.5, letterSpacing: 0.3, fontWeight: '500',
+              color: isDark ? (T.ink3 as string) : DS.ink[500],
+            }}>
+              Toplam borç
+            </Text>
+
+            {dueCcy.length === 1 ? (
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+                <Text style={{
+                  ...DISPLAY, fontSize: 40, lineHeight: 44, letterSpacing: -1.2,
+                  color: isDark ? T.ink : DS.ink[900],
+                }}>
+                  {formatMoney(dueCcy[0].total, dueCcy[0].currency as Currency, { fractionDigits: 0 })}
+                </Text>
+                <Text style={{
+                  fontSize: 11, fontWeight: '700', letterSpacing: 0.6,
+                  color: isDark ? (T.ink3 as string) : DS.ink[400],
+                }}>
+                  {dueCcy[0].currency}
+                </Text>
+              </View>
+            ) : (
               <MoneyMultiX
                 slices={dueCcy}
                 variant="cards"
@@ -431,62 +452,76 @@ function PremiumHero({
                 accentColor={TH.primary}
                 emptyText="—"
               />
-              <View style={{ height: 4 }} />
-              <Text style={{ fontSize: 13, color: isDark ? (T.ink3 as string) : DS.ink[500], marginTop: 6, lineHeight: 19, maxWidth: 520 }}>
-                {totalDue === 0
-                  ? 'Şu anda ödenmemiş fatura yok. Tüm hesaplar güncel.'
-                  : `${openCount} açık fatura · ${overdueCount} vadesi geçen · ${upcomingCount} yaklaşan vade`}
-              </Text>
-            </View>
+            )}
 
-            <View style={{ flexDirection: 'row', gap: 22 }}>
-              <View style={{ alignItems: 'flex-end' }}>
-                <MoneyMultiX slices={overdueCcy} variant="inline" />
-                <Text style={{ fontSize: 10, color: isDark ? (T.ink3 as string) : DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, marginTop: 2, fontWeight: '600' }}>
-                  Geciken
-                </Text>
-              </View>
-              <View style={{ alignItems: 'flex-end' }}>
-                <MoneyMultiX slices={paidCcy} variant="inline" />
-                <Text style={{ fontSize: 10, color: isDark ? (T.ink3 as string) : DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, marginTop: 2, fontWeight: '600' }}>
-                  Bu Ay Öden.
-                </Text>
-              </View>
-            </View>
+            {/* Vadesi geçen sayısı buradan çıktı: aşağıdaki kutucukta hem
+                tutarı hem adedi veriliyor, iki yerde söylemek gürültü. */}
+            <Text style={{ fontSize: 12.5, color: isDark ? (T.ink3 as string) : DS.ink[500], lineHeight: 18, maxWidth: 520 }}>
+              {totalDue === 0
+                ? 'Şu anda ödenmemiş fatura yok. Tüm hesaplar güncel.'
+                : `${openCount} açık fatura · ${upcomingCount} yaklaşan vade`}
+            </Text>
           </View>
 
-          {/* Sparkline (mini bar) — son 6 ay paid */}
-          {monthly.length > 0 && (
-            <View style={{
-              flexDirection: 'row', alignItems: 'flex-end',
-              height: 36, gap: 4, marginTop: -4,
-            }}>
-              {(() => {
-                const max = Math.max(...monthly.flatMap(m => [m.invoiced, m.paid]), 1);
-                return monthly.map((m, i) => {
-                  const hP = Math.max(2, (m.paid / max) * 32);
-                  const hI = Math.max(2, (m.invoiced / max) * 32);
-                  return (
-                    <View key={i} style={{ flex: 1, flexDirection: 'row', alignItems: 'flex-end', gap: 2 }}>
-                      <View style={{ flex: 1, height: hI, backgroundColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(15,23,42,0.18)', borderRadius: 2 }} />
-                      <View style={{ flex: 1, height: hP, backgroundColor: TH.primary, borderRadius: 2 }} />
-                    </View>
-                  );
-                });
-              })()}
-            </View>
-          )}
+          {/* ── İki kutucuk ──
+              Eskiden sağda havada duran iki rakamdı; hizası kartın gridine
+              oturmuyor, sıfır değer "—" olarak çizilip veri yokmuş gibi
+              görünüyordu. Artık eşit genişlikte, aynı taban çizgisinde. */}
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {([
+              {
+                key: 'overdue',
+                label: overdueCount > 0 ? `Geciken · ${overdueCount} fatura` : 'Geciken',
+                slices: overdueCcy,
+                danger: overdue > 0,
+              },
+              { key: 'paid', label: 'Bu ay ödenen', slices: paidCcy, danger: false },
+            ]).map(tile => (
+              <View
+                key={tile.key}
+                style={{
+                  flex: 1, minWidth: 0,
+                  paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14,
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.70)',
+                  borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(255,255,255,0.85)',
+                }}
+              >
+                <Text numberOfLines={1} style={{
+                  ...DISPLAY, fontSize: 19, letterSpacing: -0.4,
+                  color: tile.danger ? (isDark ? '#F3A0A0' : '#9C2E2E') : (isDark ? T.ink : DS.ink[900]),
+                }}>
+                  {tile.slices.length
+                    ? tile.slices.map(x => formatMoney(x.total, x.currency as Currency, { fractionDigits: 0 })).join(' · ')
+                    : formatMoney(0, (dueCcy[0]?.currency ?? 'TRY') as Currency, { fractionDigits: 0 })}
+                </Text>
+                <Text numberOfLines={1} style={{
+                  fontSize: 10, letterSpacing: 0.4, fontWeight: '600', marginTop: 3,
+                  color: isDark ? (T.ink3 as string) : DS.ink[500],
+                }}>
+                  {tile.label}
+                </Text>
+              </View>
+            ))}
+          </View>
 
           {/* Actions */}
           <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
             {(overdue > 0 || upcomingCount > 0) && (
-              <PillButton variant="dark" leftIcon={<CreditCard size={13} color="#FFF" />} onPress={onPay}>
-                Online Ödeme Yap
-              </PillButton>
+              <GlassTooltip
+                title="Online Ödeme Yap"
+                text="Kartla ödeme: tüm bakiyeyi ya da kısmi tutarı tek seferde öde">
+                <PillButton variant="primary" leftIcon={<CreditCard size={13} color="#FFF" />} onPress={onPay}>
+                  Online Ödeme Yap
+                </PillButton>
+              </GlassTooltip>
             )}
-            <PillButton variant="light" leftIcon={<FileText size={13} color={isDark ? T.ink : DS.ink[800]} />} onPress={onStatement}>
-              Cari Ekstre
-            </PillButton>
+            <GlassTooltip
+              title="Cari Ekstre"
+              text="Fatura ve ödeme hareketlerinin tamamı; yazdırılabilir ve Excel'e aktarılabilir">
+              <PillButton variant="light" leftIcon={<FileText size={13} color={isDark ? T.ink : DS.ink[800]} />} onPress={onStatement}>
+                Cari Ekstre
+              </PillButton>
+            </GlassTooltip>
           </View>
         </View>
       </View>
