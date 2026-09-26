@@ -95,6 +95,52 @@ export async function startMyInvoicePayment(invoiceId: string): Promise<{
   };
 }
 
+// ─── Klinik: toplu ödeme (birden çok faturayı tek kartla) ────────────────
+//
+// Tutar SUNUCUDA doğrulanır (0 < tutar ≤ o para birimindeki açık bakiye) ve
+// ödeme onaylanınca faturalara EN ESKİDEN başlayarak dağıtılır — nakit toplu
+// tahsilatta kullanılan kuralın aynısı.
+
+export interface OpenBalanceRow {
+  currency: string;
+  balance: number;
+  invoice_count: number;
+}
+
+/** Kliniğin para birimi bazında açık bakiyesi. */
+export async function fetchMyOpenBalances(): Promise<OpenBalanceRow[]> {
+  const { data, error } = await supabase.rpc('my_open_balance_by_currency');
+  if (error) return [];
+  return ((data ?? []) as any[]).map(r => ({
+    currency: String(r.currency ?? 'TRY'),
+    balance: Number(r.balance) || 0,
+    invoice_count: Number(r.invoice_count) || 0,
+  }));
+}
+
+export async function startMyBulkPayment(currency: string, amount: number): Promise<{
+  error: string | null;
+  token: string | null;
+  amount?: number;
+  currency?: string;
+  provider?: string;
+  invoiceCount?: number;
+}> {
+  const { data, error } = await supabase
+    .rpc('create_my_bulk_payment_intent', { p_currency: currency, p_amount: amount });
+  if (error) return { error: error.message, token: null };
+  const row: any = Array.isArray(data) ? data[0] : data;
+  if (!row?.public_token) return { error: 'Ödeme başlatılamadı', token: null };
+  return {
+    error: null,
+    token: String(row.public_token),
+    amount: Number(row.amount) || 0,
+    currency: String(row.currency ?? currency),
+    provider: row.provider ? String(row.provider) : undefined,
+    invoiceCount: Number(row.invoice_count) || 0,
+  };
+}
+
 // ─── Halka açık ödeme intent'i çek ────────────────────────────────────────
 export async function fetchPublicIntent(token: string) {
   const { data, error } = await supabase

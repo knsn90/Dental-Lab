@@ -2,18 +2,17 @@
  * Mali İşlemler Hub — Klinik & Muayenehane.
  *
  * Solda sidebar (desktop) / üstte pill bar (mobile), sağda aktif sekme.
- * 5 sekme: Özet · Cari Ekstre · Bekleyen · Online POS · Ödemeler.
+ * 4 sekme: Özet · Cari Ekstre · Bekleyen · Ödemeler.
  * ('overdue' görünmez bir takma ad: Bekleyen ekranını vadesi-geçen
  *  filtresiyle açar — eski derin bağlantılar kırılmasın.)
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { useTurkeyOnlyFeatures } from '../../../core/store/labSettingsStore';
 import { useTranslation } from 'react-i18next';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { View, Text, Pressable, ScrollView, useWindowDimensions, Platform } from 'react-native';
 import {
-  LayoutDashboard, BookOpen, Clock, AlertCircle, CreditCard, ListChecks,
+  LayoutDashboard, BookOpen, Clock, AlertCircle, ListChecks,
 } from '../../../core/ui/icons';
 
 import { DS } from '../../../core/theme/dsTokens';
@@ -26,10 +25,9 @@ import { OverviewScreen } from './OverviewScreen';
 import { StatementScreen } from './StatementScreen';
 import { ClinicStatementScreen } from '../../invoices/screens/ClinicStatementScreen';
 import { OpenInvoicesScreen } from './OpenInvoicesScreen';
-import { OnlinePosScreen } from './OnlinePosScreen';
 import { PaymentHistoryScreen } from './PaymentHistoryScreen';
 
-type TabKey = 'overview' | 'statement' | 'open' | 'overdue' | 'pos' | 'payments';
+type TabKey = 'overview' | 'statement' | 'open' | 'overdue' | 'payments';
 
 interface TabDef {
   key: TabKey;
@@ -43,18 +41,15 @@ const ALL_TABS: TabDef[] = [
   { key: 'overview',  labelKey: 'clinic.finance.tabs.overview',  hintKey: 'clinic.finance.tabs.overviewHint',  icon: LayoutDashboard, accent: '#0F172A' },
   { key: 'statement', labelKey: 'clinic.finance.tabs.statement', hintKey: 'clinic.finance.tabs.statementHint', icon: BookOpen,        accent: '#0EA5E9' },
   { key: 'open',      labelKey: 'clinic.finance.tabs.open',      hintKey: 'clinic.finance.tabs.openHint',      icon: Clock,           accent: '#D97706' },
-  { key: 'pos',       labelKey: 'clinic.finance.tabs.pos',       hintKey: 'clinic.finance.tabs.posHint',       icon: CreditCard,      accent: '#7C3AED' },
   { key: 'payments',  labelKey: 'clinic.finance.tabs.payments',  hintKey: 'clinic.finance.tabs.paymentsHint',  icon: ListChecks,      accent: '#059669' },
 ];
 
 export function ClinicFinanceHubScreen() {
-  // Online POS = iyzico (Türk sağlayıcı). İran labında sekme HİÇ listelenmez;
-  // TABS hem şeridi hem route çözümünü beslediği için tek yerden düşürmek yeterli.
-  const trOnly = useTurkeyOnlyFeatures();
-  const TABS = React.useMemo(
-    () => ALL_TABS.filter(t_ => trOnly || t_.key !== 'pos'),
-    [trOnly],
-  );
+  // "Online POS" sekmesi KALDIRILDI (2026-09-26): payment_intents RLS'i lab'a
+  // kapalı ve klinik profilinde lab_id NULL olduğu için o ekran klinikte HER
+  // ZAMAN boş dönüyordu. Ödeme artık faturanın kendi "Öde" düğmesinden
+  // başlıyor; tahsilat geçmişi de "Ödemeler" sekmesinde.
+  const TABS = ALL_TABS;
   const { t } = useTranslation();
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
@@ -129,7 +124,6 @@ export function ClinicFinanceHubScreen() {
       // gösteriyordu. Eski bağlantılar ve Özet'teki kısayol çalışsın diye
       // route anahtarı korunuyor.
       case 'overdue':   return <OpenInvoicesScreen clinicId={clinicId} onlyOverdue />;
-      case 'pos':       return <OnlinePosScreen clinicId={clinicId} />;
       case 'payments':  return <PaymentHistoryScreen clinicId={clinicId} />;
     }
   };

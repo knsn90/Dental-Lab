@@ -213,21 +213,6 @@ export interface PaymentRow {
   order_no?: string | null;
 }
 
-export interface PaymentLinkRow {
-  id: string;
-  invoice_id: string;
-  invoice_no?: string | null;
-  token: string;
-  amount: number;
-  currency: string;
-  status: string;
-  created_at: string;
-  paid_at?: string | null;
-  /** Faturanın bağlı olduğu işin hastası/siparişi — hekim her sekmede görmek istiyor. */
-  patient_name?: string | null;
-  order_no?: string | null;
-}
-
 /* ────────────────────────────────────────────────────────────────────── */
 /*  Yardımcı: tarih farkları                                              */
 /* ────────────────────────────────────────────────────────────────────── */
@@ -909,29 +894,6 @@ export async function fetchPayments(clinicId: string): Promise<PaymentRow[]> {
 /* ────────────────────────────────────────────────────────────────────── */
 /*  Online POS — payment_intents                                          */
 /* ────────────────────────────────────────────────────────────────────── */
-
-export async function fetchPaymentLinks(clinicId: string): Promise<PaymentLinkRow[]> {
-  const { data, error } = await labEq(supabase
-    .from('payment_intents')
-    .select('id, invoice_id, token:public_token, amount, status, created_at, paid_at, invoices!inner(clinic_id, currency, invoice_no:invoice_number, work_order:work_orders!invoices_work_order_id_fkey(order_number, patient_name))')
-    .eq('invoices.clinic_id', clinicId), 'invoices.lab_id')
-    .order('created_at', { ascending: false });
-  if (error) throw error;
-  const base = getBaseCurrency();
-  return (data ?? []).map((p: any): PaymentLinkRow => ({
-    id: p.id,
-    invoice_id: p.invoice_id,
-    invoice_no: p.invoices?.invoice_no ?? null,
-    token: p.token,
-    amount: Number(p.amount ?? 0),
-    currency: p.invoices?.currency || base,
-    status: p.status,
-    created_at: p.created_at,
-    paid_at: p.paid_at,
-    patient_name: p.invoices?.work_order?.patient_name ?? null,
-    order_no: p.invoices?.work_order?.order_number ?? null,
-  }));
-}
 
 /* ────────────────────────────────────────────────────────────────────── */
 /*  Klinik resolve (clinic panel için profil.clinic_id, doctor için doctors→clinic) */

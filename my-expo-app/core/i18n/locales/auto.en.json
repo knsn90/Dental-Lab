@@ -8646,5 +8646,14 @@
   "son": "until",
   "taksit": "installments",
   "Maksimum bakiye": "Maximum balance",
-  "faturanın vadesi geçmiş": "invoices are overdue"
+  "faturanın vadesi geçmiş": "invoices are overdue",
+  "Toplu Ödeme": "Bulk payment",
+  "Ödenecek açık faturanız yok.": "You have no open invoices to pay.",
+  "Ödenecek tutar": "Amount to pay",
+  "Tüm bakiye": "Full balance",
+  "Yarısı": "Half",
+  "Kısmi ödeme: tutar en eski faturadan başlayarak dağıtılır.": "Partial payment: the amount is applied starting from the oldest invoice.",
+  "Tüm açık faturalarınız kapanır.": "All of your open invoices will be settled.",
+  "Tutar 0 ile toplam bakiye arasında olmalı.": "The amount must be between 0 and the total balance.",
+  "Ödemeye geç": "Continue to payment"
 }

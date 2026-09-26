@@ -20,6 +20,7 @@ import {
 } from '../components/atoms';
 import { WhiteHero } from '../../../core/ui/WhiteHero';
 import { startMyInvoicePayment } from '../../payments/api';
+import { BulkPayModal } from '../components/BulkPayModal';
 import { toast } from '../../../core/ui/Toast';
 import { useRates, rateToBase } from '../../../core/money/rateCache';
 import { getBaseCurrency } from '../../../core/money/baseCurrency';
@@ -70,6 +71,7 @@ export function InvoiceListBase({ clinicId, initialFilter = 'open' }: Props) {
   // "Öde" → lab'ın Entegrasyonlar'da tanımladığı AKTİF POS (iyzico vb.) ile
   // ödeme intent'i açar ve kart sayfasına gider. Sağlayıcı yoksa RPC hata
   // döndürür; kullanıcıyı boş bir kart formuna göndermiyoruz.
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [payingId, setPayingId] = useState<string | null>(null);
   // "Öde" satırın İÇİNDE; web'de tıklama satıra da sıçrar (DOM bubbling) ve
   // fatura detayı ile ödeme sayfası yarışırdı. Kısa ömürlü bayrak: düğmeye
@@ -134,8 +136,9 @@ export function InvoiceListBase({ clinicId, initialFilter = 'open' }: Props) {
           })),
         ]}
       >
-        {/* İki görünüm tek ekranda: tümü ↔ yalnız vadesi geçenler. */}
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
+        {/* İki görünüm tek ekranda: tümü ↔ yalnız vadesi geçenler.
+            Sağda toplu ödeme: tek karttan tüm bakiye ya da kısmi tutar. */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
           {([
             { key: 'open'    as const, label: autoT('Tümü'),          count: items.length },
             { key: 'overdue' as const, label: autoT('Vadesi geçen'),  count: items.filter(i => i.days_overdue > 0).length },
@@ -169,6 +172,25 @@ export function InvoiceListBase({ clinicId, initialFilter = 'open' }: Props) {
               </Pressable>
             );
           })}
+
+          <View style={{ flex: 1 }} />
+
+          {items.length > 0 && (
+            <Pressable
+              onPress={() => setBulkOpen(true)}
+              style={({ pressed }) => ({
+                flexDirection: 'row', alignItems: 'center', gap: 7,
+                paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999,
+                backgroundColor: isDark ? '#FFFFFF' : DS.ink[900],
+                opacity: pressed ? 0.85 : 1,
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              })}>
+              <CreditCard size={13} color={isDark ? DS.ink[900] : '#FFFFFF'} strokeWidth={2} />
+              <Text style={{ fontSize: 12.5, fontWeight: '700', color: isDark ? DS.ink[900] : '#FFFFFF' }}>
+                {autoT('Toplu Ödeme')}
+              </Text>
+            </Pressable>
+          )}
         </View>
       </WhiteHero>
 
@@ -246,6 +268,8 @@ export function InvoiceListBase({ clinicId, initialFilter = 'open' }: Props) {
           })}
         </Card>
       )}
+
+      <BulkPayModal visible={bulkOpen} onClose={() => setBulkOpen(false)} />
     </ScrollView>
   );
 }

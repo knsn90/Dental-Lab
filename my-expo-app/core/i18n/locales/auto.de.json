@@ -8634,5 +8634,14 @@
   "son": "bis",
   "taksit": "Raten",
   "Maksimum bakiye": "Maximaler Saldo",
-  "faturanın vadesi geçmiş": "Rechnungen sind überfällig"
+  "faturanın vadesi geçmiş": "Rechnungen sind überfällig",
+  "Toplu Ödeme": "Sammelzahlung",
+  "Ödenecek açık faturanız yok.": "Sie haben keine offenen Rechnungen zu bezahlen.",
+  "Ödenecek tutar": "Zu zahlender Betrag",
+  "Tüm bakiye": "Gesamter Saldo",
+  "Yarısı": "Hälfte",
+  "Kısmi ödeme: tutar en eski faturadan başlayarak dağıtılır.": "Teilzahlung: Der Betrag wird ab der ältesten Rechnung verrechnet.",
+  "Tüm açık faturalarınız kapanır.": "Alle Ihre offenen Rechnungen werden beglichen.",
+  "Tutar 0 ile toplam bakiye arasında olmalı.": "Der Betrag muss zwischen 0 und dem Gesamtsaldo liegen.",
+  "Ödemeye geç": "Weiter zur Zahlung"
 }

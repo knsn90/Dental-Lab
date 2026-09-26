@@ -35,7 +35,7 @@ import { useRates } from '../../../core/money/rateCache';
 
 type Props = {
   clinicId: string;
-  onJump: (tab: 'statement' | 'open' | 'overdue' | 'pos' | 'payments') => void;
+  onJump: (tab: 'statement' | 'open' | 'overdue' | 'payments') => void;
 };
 
 export function OverviewScreen({ clinicId, onJump }: Props) {
@@ -102,7 +102,8 @@ export function OverviewScreen({ clinicId, onJump }: Props) {
         upcomingCount={data.upcoming_count}
         collectionRate={collectionRate}
         monthly={charts?.monthly_flow ?? []}
-        onPay={() => onJump('pos')}
+        /* Ödeme fatura bazında: Bekleyen listesine gider, her satırda "Öde". */
+        onPay={() => onJump('open')}
         onStatement={() => onJump('statement')}
       />
 

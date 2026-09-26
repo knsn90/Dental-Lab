@@ -8617,5 +8617,14 @@
   "son": "تا",
   "taksit": "قسط",
   "Maksimum bakiye": "حداکثر مانده",
-  "faturanın vadesi geçmiş": "فاکتور سررسید گذشته است"
+  "faturanın vadesi geçmiş": "فاکتور سررسید گذشته است",
+  "Toplu Ödeme": "پرداخت یکجا",
+  "Ödenecek açık faturanız yok.": "فاکتور بازی برای پرداخت ندارید.",
+  "Ödenecek tutar": "مبلغ قابل پرداخت",
+  "Tüm bakiye": "کل مانده",
+  "Yarısı": "نصف",
+  "Kısmi ödeme: tutar en eski faturadan başlayarak dağıtılır.": "پرداخت جزئی: مبلغ از قدیمی‌ترین فاکتور شروع به تخصیص می‌شود.",
+  "Tüm açık faturalarınız kapanır.": "همه فاکتورهای باز شما تسویه می‌شود.",
+  "Tutar 0 ile toplam bakiye arasında olmalı.": "مبلغ باید بین ۰ و مانده کل باشد.",
+  "Ödemeye geç": "ادامه به پرداخت"
 }
