@@ -3,7 +3,7 @@
  * "open" filtresi = tüm açık faturalar; "overdue" = sadece vadesi geçenler.
  */
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { View, Text, ScrollView, Pressable, Platform } from 'react-native';
 import { useRouter, useSegments } from 'expo-router';
 import { FileText, AlertCircle, CreditCard, ChevronLeft, ChevronRight, CheckCircle2, Clock } from '../../../core/ui/icons';
@@ -19,6 +19,8 @@ import {
   ErrorBar, Loader, Card, EmptyCard, StatusChip, PillButton,
 } from '../components/atoms';
 import { WhiteHero } from '../../../core/ui/WhiteHero';
+import { startMyInvoicePayment } from '../../payments/api';
+import { toast } from '../../../core/ui/Toast';
 import { useRates, rateToBase } from '../../../core/money/rateCache';
 import { getBaseCurrency } from '../../../core/money/baseCurrency';
 import { groupByCurrency } from '../../../core/money/aggregations';
@@ -65,6 +67,24 @@ export function InvoiceListBase({ clinicId, initialFilter = 'open' }: Props) {
   const [items, setItems] = useState<ClinicInvoiceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // "Öde" → lab'ın Entegrasyonlar'da tanımladığı AKTİF POS (iyzico vb.) ile
+  // ödeme intent'i açar ve kart sayfasına gider. Sağlayıcı yoksa RPC hata
+  // döndürür; kullanıcıyı boş bir kart formuna göndermiyoruz.
+  const [payingId, setPayingId] = useState<string | null>(null);
+  // "Öde" satırın İÇİNDE; web'de tıklama satıra da sıçrar (DOM bubbling) ve
+  // fatura detayı ile ödeme sayfası yarışırdı. Kısa ömürlü bayrak: düğmeye
+  // basılan tıklamayı satır yutar.
+  const suppressRowPress = useRef(false);
+  const startPay = useCallback(async (invoiceId: string) => {
+    suppressRowPress.current = true;
+    setTimeout(() => { suppressRowPress.current = false; }, 400);
+    if (payingId) return;
+    setPayingId(invoiceId);
+    const r = await startMyInvoicePayment(invoiceId);
+    setPayingId(null);
+    if (r.error || !r.token) { toast.error(r.error ?? autoT('Ödeme başlatılamadı')); return; }
+    router.push(`/pay/${r.token}` as any);
+  }, [payingId, router]);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -161,7 +181,10 @@ export function InvoiceListBase({ clinicId, initialFilter = 'open' }: Props) {
             return (
               <Pressable
                 key={inv.id}
-                onPress={() => router.push(`/${panelBase}/invoice/${inv.invoice_no ?? inv.id}` as any)}
+                onPress={() => {
+                  if (suppressRowPress.current) return;   // "Öde"ye basıldı
+                  router.push(`/${panelBase}/invoice/${inv.invoice_no ?? inv.id}` as any);
+                }}
                 style={({ pressed }) => ({
                   flexDirection: 'row', alignItems: 'center', gap: 12,
                   paddingHorizontal: 16, paddingVertical: 14,
@@ -207,8 +230,14 @@ export function InvoiceListBase({ clinicId, initialFilter = 'open' }: Props) {
                     Kalan
                   </Text>
                 </View>
-                <PillButton variant={isOverdue ? 'danger' : 'dark'} size="sm" leftIcon={<CreditCard size={12} color="#FFF" />}>
-                  Öde
+                <PillButton
+                  variant={isOverdue ? 'danger' : 'dark'}
+                  size="sm"
+                  leftIcon={<CreditCard size={12} color="#FFF" />}
+                  disabled={payingId === inv.id}
+                  onPress={() => startPay(inv.id)}
+                >
+                  {payingId === inv.id ? autoT('Açılıyor…') : autoT('Öde')}
                 </PillButton>
                 {isRTL() ? <ChevronLeft size={16} color={isDark ? (T.ink3 as string) : DS.ink[400]} />
                          : <ChevronRight size={16} color={isDark ? (T.ink3 as string) : DS.ink[400]} />}

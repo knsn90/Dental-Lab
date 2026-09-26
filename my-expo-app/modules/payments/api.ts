@@ -78,6 +78,8 @@ export async function startMyInvoicePayment(invoiceId: string): Promise<{
   token: string | null;
   amount?: number;
   currency?: string;
+  /** Lab'ın aktif POS'u (iyzico, demo…) — RPC aktif sağlayıcı yoksa hata döner. */
+  provider?: string;
 }> {
   const { data, error } = await supabase
     .rpc('create_my_invoice_payment_intent', { p_invoice_id: invoiceId });
@@ -89,6 +91,7 @@ export async function startMyInvoicePayment(invoiceId: string): Promise<{
     token: String(row.public_token),
     amount: Number(row.amount) || 0,
     currency: String(row.currency ?? 'TRY'),
+    provider: row.provider ? String(row.provider) : undefined,
   };
 }
 
