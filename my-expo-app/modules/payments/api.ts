@@ -217,32 +217,24 @@ export async function queryIntent(intentId: string): Promise<ChargeQueryResult> 
 
 // ─── İade ────────────────────────────────────────────────────────────────
 export async function refundIntent(intentId: string, amount?: number): Promise<RefundResult> {
-  const { data: intent } = await supabase
-    .from('payment_intents')
-    .select('provider_ref, amount')
-    .eq('id', intentId)
-    .single();
-  const ref = (intent as any)?.provider_ref;
-  if (!ref) return { ok: false, error: 'Provider referansı yok' };
-
-  const provider = await getActivePaymentProvider();
-  const result = await provider.refund(ref, amount);
-
-  if (result.ok) {
-    // GÜVENLİK (2026-08-02): doğrudan UPDATE kaldırıldı — istemcinin artık
-    // payment_intents üzerinde UPDATE yetkisi yok. RPC lab sahipliğini ve
-    // manage_finance iznini kontrol eder.
-    // NOT: sağlayıcı çağrısı (provider.refund) hâlâ istemcide. Gerçek bir POS
-    // entegre edilirken o da edge function'a taşınmalı; şu an tek sağlayıcı
-    // demo olduğu için para hareketi yok.
-    const { error: rpcErr } = await supabase.rpc('refund_payment_intent', {
-      p_intent_id:    intentId,
-      p_status:       result.status ?? 'refunded',
-      p_provider_ref: null,
-    });
-    if (rpcErr) return { ok: false, error: rpcErr.message };
-  }
-  return result;
+  // GÜVENLİK: iade İSTEMCİDEN yapılmaz. Eskiden burada provider.refund()
+  // çağrılıyordu; gerçek POS'ta bu, sağlayıcı anahtarını tarayıcıya taşımak
+  // ve iade kararını istemciye bırakmak demekti. Artık tek yol edge function:
+  // yetkiyi (manage_finance) ve lab sahipliğini o doğrular, önce sağlayıcıya
+  // iade eder, ANCAK ONAY GELİRSE faturayı geri açar.
+  const { data, error } = await supabase.functions.invoke('payments-charge', {
+    body: { action: 'refund', intent_id: intentId, amount },
+  });
+  if (error) return { ok: false, error: error.message ?? 'İade başarısız' };
+  const r: any = data ?? {};
+  if (!r.ok) return { ok: false, error: r.error ?? 'İade başarısız' };
+  const row = Array.isArray(r.result) ? r.result[0] : r.result;
+  return {
+    ok: true,
+    refunded_amount: Number(r.refunded) || undefined,
+    status: row?.fully_refunded === false ? 'partially_refunded' : 'refunded',
+    raw_response: r,
+  };
 }
 
 // ─── Taksit seçenekleri ──────────────────────────────────────────────────

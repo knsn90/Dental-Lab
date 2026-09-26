@@ -49,6 +49,13 @@ serve(async (req) => {
       return await handleCredentialTest(req, body);
     }
 
+    // ── İADE ── Sağlayıcıya iade isteği + faturayı geri açma. Para hareketi
+    // olduğu için istemci KARAR VEREMEZ: yetki burada sorulur, iade
+    // sağlayıcıdan onaylanmadan hiçbir DB satırı değişmez.
+    if (body.action === 'refund') {
+      return await handleRefund(req, body);
+    }
+
     const action: 'charge' | 'confirm' = body.action === 'confirm' ? 'confirm' : 'charge';
 
     if (!intent_id || !public_token) {
@@ -312,6 +319,128 @@ async function handleCredentialTest(req: Request, body: any): Promise<Response> 
     ok: true,
     message: `Bağlantı başarılı — iyzico ${isSandbox ? 'sandbox' : 'canlı'} ortamı`,
   });
+}
+
+/**
+ * Online ödeme iadesi (tam veya kısmi).
+ *
+ * Sıra ÖNEMLİ: önce sağlayıcı, sonra veritabanı. Tersi olsaydı iyzico
+ * reddettiğinde fatura yanlışlıkla geri açılmış olurdu.
+ */
+async function handleRefund(req: Request, body: any): Promise<Response> {
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader) return jsonResp({ ok: false, error: 'Yetkisiz erişim' }, 401);
+
+  const admin = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+  );
+  const caller = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_ANON_KEY')!,
+    { global: { headers: { Authorization: authHeader } } },
+  );
+
+  const { data: userData, error: authErr } = await caller.auth.getUser();
+  if (authErr || !userData?.user) return jsonResp({ ok: false, error: 'Yetkisiz erişim' }, 401);
+
+  const { data: allowed } = await caller.rpc('has_permission', { p_key: 'manage_finance' });
+  if (allowed !== true) {
+    return jsonResp({ ok: false, error: 'Bu işlem için finans yetkisi gerekir' }, 403);
+  }
+
+  const { data: profile } = await admin
+    .from('profiles').select('lab_id').eq('id', userData.user.id).maybeSingle();
+  const labId = (profile as any)?.lab_id ?? null;
+
+  const { data: intent } = await admin
+    .from('payment_intents').select('*').eq('id', body.intent_id).maybeSingle();
+  if (!intent) return jsonResp({ ok: false, error: 'Ödeme kaydı bulunamadı' }, 404);
+  if ((intent as any).lab_id !== labId) {
+    return jsonResp({ ok: false, error: 'Bu ödeme kaydı laboratuvarınıza ait değil' }, 403);
+  }
+  if (!['paid', 'partially_refunded'].includes((intent as any).status)) {
+    return jsonResp({ ok: false, error: 'Yalnız tahsil edilmiş ödeme iade edilebilir' }, 409);
+  }
+  const providerRef = (intent as any).provider_ref;
+  if (!providerRef) return jsonResp({ ok: false, error: 'Sağlayıcı referansı yok' }, 409);
+
+  const amount = body.amount != null ? Number(body.amount) : Number((intent as any).amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return jsonResp({ ok: false, error: 'Geçerli bir iade tutarı girin' }, 400);
+  }
+
+  const { data: cred } = await admin
+    .from('provider_credentials').select('provider, credentials')
+    .eq('lab_id', labId).eq('type', 'payment').eq('is_active', true).maybeSingle();
+
+  const providerKey = (cred as any)?.provider ?? (intent as any).provider;
+
+  // Demo POS: sağlayıcı çağrısı yok, doğrudan DB'ye yansıtılır.
+  if (providerKey === 'demo') {
+    const { data: applied, error: dbErr } = await admin.rpc('apply_online_refund', {
+      p_intent_id: (intent as any).id, p_amount: amount, p_provider_ref: providerRef,
+    });
+    if (dbErr) return jsonResp({ ok: false, error: dbErr.message }, 500);
+    return jsonResp({ ok: true, refunded: amount, result: applied });
+  }
+
+  if (providerKey !== 'iyzico') {
+    return jsonResp({ ok: false, error: `İade bu sağlayıcıda desteklenmiyor: ${providerKey}` }, 501);
+  }
+
+  const c: IyzicoCreds = {
+    api_key:    String((cred as any)?.credentials?.api_key ?? ''),
+    secret_key: String((cred as any)?.credentials?.secret_key ?? ''),
+    base_url:   String((cred as any)?.credentials?.base_url ?? '') || IYZICO_SANDBOX,
+  };
+  if (!c.api_key || !c.secret_key) {
+    return jsonResp({ ok: false, error: 'iyzico API anahtarları eksik' }, 400);
+  }
+
+  // v2 iade: paymentId + tutar + para birimi yeter (v1 paymentTransactionId
+  // isterdi; onu ancak auth yanıtının itemTransactions'ından alabilirdik).
+  const res = await iyzicoPost(c, '/v2/payment/refund', {
+    locale: 'tr',
+    conversationId: String((intent as any).id),
+    paymentId: String(providerRef),
+    price: iyziPrice(amount),
+    currency: String((intent as any).currency ?? 'TRY'),
+    ip: '85.34.78.112',
+  });
+  const d: any = res.data ?? {};
+
+  await admin.from('payment_attempts').insert({
+    intent_id: (intent as any).id,
+    action: 'refund',
+    http_status: res.http_status,
+    response_body: { status: d.status, paymentId: d.paymentId, price: d.price, errorCode: d.errorCode },
+    error_code: d.errorCode ?? null,
+    error_message: d.errorMessage ?? res.error ?? null,
+  });
+
+  if (!res.ok) {
+    return jsonResp({
+      ok: false,
+      error: d.errorMessage ?? res.error ?? 'İade reddedildi',
+      error_code: d.errorCode ?? null,
+    });
+  }
+
+  // Sağlayıcı onayladı → fatura geri açılır.
+  const { data: applied, error: dbErr } = await admin.rpc('apply_online_refund', {
+    p_intent_id: (intent as any).id, p_amount: amount, p_provider_ref: providerRef,
+  });
+  if (dbErr) {
+    // Para İADE EDİLDİ ama kayıt düşmedi — sessizce yutulursa fatura ödenmiş
+    // görünmeye devam eder. Açıkça bildiriyoruz.
+    return jsonResp({
+      ok: false,
+      error: `İade sağlayıcıda gerçekleşti ancak faturaya işlenemedi: ${dbErr.message}`,
+    }, 500);
+  }
+
+  return jsonResp({ ok: true, refunded: amount, result: applied });
 }
 
 // ─── Provider implementasyonları ───────────────────────────────────────────
