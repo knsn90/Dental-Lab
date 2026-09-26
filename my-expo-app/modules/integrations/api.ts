@@ -140,7 +140,14 @@ export const PAYMENT_PROVIDERS: ProviderDefinition[] = [
     fields: [
       { key: 'api_key',    label: 'API Key',     type: 'password', required: true },
       { key: 'secret_key', label: 'Secret Key',  type: 'password', required: true },
-      { key: 'base_url',   label: 'Base URL',    type: 'url', placeholder: 'https://sandbox-api.iyzipay.com', helpText: 'Sandbox: https://sandbox-api.iyzipay.com · Canlı: https://api.iyzipay.com (anahtarlar ortamlar arasında farklıdır)' },
+      // Base URL iyzico'nun VERDİĞİ bir değer değil, ortama göre SABİTTİR —
+      // elle yazdırmak yazım hatası üretiyordu. İki seçenekli liste yapıldı.
+      { key: 'base_url', label: 'Ortam', type: 'select', required: true,
+        options: [
+          { value: 'https://sandbox-api.iyzipay.com', label: 'Sandbox (test)' },
+          { value: 'https://api.iyzipay.com',         label: 'Canlı (gerçek tahsilat)' },
+        ],
+        helpText: 'Sandbox ve canlı anahtarları FARKLIDIR. Anahtarın "sandbox-" ile başlıyorsa Sandbox seç.' },
     ],
     implemented: true,
   },
