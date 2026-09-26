@@ -41,6 +41,13 @@ interface UiOverlayState {
    * görünmeli (menü oradan açıldı; rota değişmediği için pathname'den
    * anlaşılamaz). MoreMenuSheet yazar, PillTabBar okur.
    */
+  /**
+   * Mesajlar katmanı açık mı. Mesajlar bir ROTA değil (navbar hücresi
+   * onPress ile katman açıyor) → pathname'den anlaşılamaz; navbar'daki
+   * mesaj hücresinin SEÇİLİ görünmesi bu bayrağa bakar (••• ile aynı desen).
+   */
+  messagesOpen: boolean;
+  setMessagesOpen: (open: boolean) => void;
   moreMenuOpen: boolean;
   setMoreMenuOpen: (open: boolean) => void;
   /**
@@ -64,6 +71,8 @@ export const useUiOverlayStore = create<UiOverlayState>((set) => ({
   popDentyFabSuppress: () => set((s) => ({ dentyFabSuppress: Math.max(0, s.dentyFabSuppress - 1) })),
   moreAnchorX: null,
   setMoreAnchorX: (x) => set((s) => (s.moreAnchorX === x ? s : { moreAnchorX: x })),
+  messagesOpen: false,
+  setMessagesOpen: (open) => set((s) => (s.messagesOpen === open ? s : { messagesOpen: open })),
   moreMenuOpen: false,
   setMoreMenuOpen: (open) => set((s) => (s.moreMenuOpen === open ? s : { moreMenuOpen: open })),
   navDimClose: null,

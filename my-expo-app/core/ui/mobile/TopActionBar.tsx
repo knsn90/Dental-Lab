@@ -25,6 +25,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useOrderChatInbox } from '../../../modules/orders/hooks/useOrderChatInbox';
 import { ProfileMenu as SharedProfileMenu } from './ProfileMenu';
 import { confirmAsync } from '../../util/confirm';
+import { onAccentInk } from '../../theme/usePanelTheme';
 
 // MessagesPopup — lazy (modül katmanı, circular import riskini önler)
 const MessagesPopup: any = React.lazy(() =>
@@ -408,7 +409,10 @@ function NotificationsMenu({
                     backgroundColor: accent,
                     alignItems: 'center', justifyContent: 'center',
                   }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#0E0E0E' }}>
+                    {/* Metin accent'in luminansına göre: lacivertte BEYAZ,
+                        safran gibi açık accent'te koyu kalır (sabit koyu metin
+                        lacivert hapta okunmuyordu). */}
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: onAccentInk(accent) }}>
                       {unreadCount > 99 ? '99+' : unreadCount}
                     </Text>
                   </View>
@@ -523,7 +527,6 @@ function TopBtn({ icon: Icon, onPress, badgeCount, btnRef }: { icon: any; onPres
   const surface  = isDark ? '#1B1916'                : '#FFFFFF';
   const border   = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(20,16,12,0.08)';
   const iconColor = isDark ? '#F7F2E9'               : '#0E0E0E';
-  const badgeRingColor = isDark ? '#1B1916'          : '#FFFFFF';
 
   const shadow = Platform.OS === 'web'
     ? ({
@@ -548,7 +551,6 @@ function TopBtn({ icon: Icon, onPress, badgeCount, btnRef }: { icon: any; onPres
       minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5,
       alignItems: 'center', justifyContent: 'center',
       backgroundColor: '#EF4444',
-      borderWidth: 2, borderColor: badgeRingColor,
       zIndex: 2,
     }}>
       <Text style={{ fontSize: 10, fontWeight: '700', color: '#FFFFFF', letterSpacing: -0.2 }}>

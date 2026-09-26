@@ -73,7 +73,11 @@ export function PanelTopHeader() {
 
   return (
     <>
-      {/* Üst blur şeridi — aşağı kaydırınca altından geçen içerik bulanıklaşır */}
+      {/* Üst blur şeridi — aşağı kaydırınca altından geçen içerik bulanıklaşır.
+          zIndex 8: sayfa içeriğinin ÜSTÜNDE, logo (1210) ve TopActionBar (1200)
+          butonlarının ALTINDA. Web'de backdrop-filter + mask kendi yığın bağlamını
+          kurduğu için logo eskiden 9'daydı ve Safari'de şeridin altında kalıp
+          soluyordu (2026-09-24). */}
       {Platform.OS === 'web' ? (
         <View pointerEvents="none" style={{
           position: 'absolute', top: 0, left: 0, right: 0, height: topBlurH, zIndex: 8,
@@ -120,7 +124,7 @@ export function PanelTopHeader() {
         Platform.OS !== 'web' && isSvgLogo ? (
           <View
             pointerEvents="none"
-            style={{ position: 'absolute', top: Math.max(insets.top, 8) + 7, ...(rtl ? { right: 20 } : { left: 20 }), width: 130, height: 38, zIndex: 9 }}
+            style={{ position: 'absolute', top: Math.max(insets.top, 8) + 7, ...(rtl ? { right: 20 } : { left: 20 }), width: 130, height: 38, zIndex: 1210 }}
           >
             {!!logoXml && <SvgCss xml={logoXml} width={130} height={38} />}
           </View>
@@ -128,7 +132,7 @@ export function PanelTopHeader() {
           <Image
             source={{ uri: logo }}
             resizeMode="contain"
-            style={{ position: 'absolute', top: Math.max(insets.top, 8) + 7, ...(rtl ? { right: 20 } : { left: 20 }), width: 130, height: 38, zIndex: 9, pointerEvents: 'none' } as any}
+            style={{ position: 'absolute', top: Math.max(insets.top, 8) + 7, ...(rtl ? { right: 20 } : { left: 20 }), width: 130, height: 38, zIndex: 1210, pointerEvents: 'none', isolation: 'isolate' } as any}
           />
         )
       )}

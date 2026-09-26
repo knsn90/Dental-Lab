@@ -98,12 +98,12 @@ export function PaymentHistoryScreen({ clinicId }: Props) {
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <View style={{ flex: 1, minWidth: 240 }}>
             <SecHeader
-              eyebrow="Tahsilat"
+              eyebrow="Ödemeler"
               title="Ödeme Geçmişi"
               desc={
                 payments.length === 0
                   ? (pendingSubs.length > 0 ? `${pendingSubs.length} bekleyen bildirim` : '—')
-                  : `${payments.length} tahsil edilen · ${paidLabel}`
+                  : `${payments.length} ödeme · ${paidLabel}`
               }
             />
           </View>
@@ -157,7 +157,7 @@ export function PaymentHistoryScreen({ clinicId }: Props) {
           </View>
         )}
 
-        {/* ─── Tahsil edilen ödemeler ─── */}
+        {/* ─── Yapılan ödemeler (klinik gözüyle) ─── */}
         <View>
           <SecHeader
             eyebrow="Onaylanan Tahsilat"

@@ -8648,5 +8648,8 @@
   "Kart bilgileri": "اطلاعات کارت",
   "Kart sahibi": "دارنده کارت",
   "Kart numarası": "شماره کارت",
-  "Kart bilgileriniz 3D Secure ile korunur ve laboratuvarda saklanmaz.": "اطلاعات کارت شما با 3D Secure محافظت می‌شود و در لابراتوار ذخیره نمی‌شود."
+  "Kart bilgileriniz 3D Secure ile korunur ve laboratuvarda saklanmaz.": "اطلاعات کارت شما با 3D Secure محافظت می‌شود و در لابراتوار ذخیره نمی‌شود.",
+  "Kesilen fatura vs. ödenen tutar": "مبلغ فاکتورشده در برابر پرداخت‌شده",
+  "Ödeme oranı": "نرخ پرداخت",
+  "Ödeme Yöntemleri": "روش‌های پرداخت"
 }

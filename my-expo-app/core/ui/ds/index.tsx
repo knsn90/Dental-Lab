@@ -17,6 +17,7 @@
  */
 
 import React from 'react';
+import { onAccentInk } from '../../theme/usePanelTheme';
 import { View, Text, Pressable, TextInput, Platform, ActivityIndicator } from 'react-native';
 import type { ViewStyle, StyleProp } from 'react-native';
 import { ChevronLeft, ChevronRight, Search, X } from '../icons';
@@ -372,8 +373,10 @@ export function ProgressRail({ pct, color }: { pct: number; color: string }) {
 
 /* ────────────────────────────  ListHeader  ──────────────────────────── */
 /** §7 tablo başlığı — 10px uppercase tracking, ink[50] zemin */
-export function ListHeader({ columns }: {
+export function ListHeader({ columns, accent }: {
   columns: { label: string; width?: number; flex?: number; align?: 'left' | 'right' }[];
+  /** Verilirse başlık şeridi düz panel accent'i olur (uygulama geneli tablo dili). */
+  accent?: string;
 }) {
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
@@ -381,8 +384,8 @@ export function ListHeader({ columns }: {
     <View style={{
       flexDirection: 'row', alignItems: 'center',
       paddingHorizontal: 18, paddingVertical: 10,
-      backgroundColor: isDark ? (T.cardSoft as string) : DS.ink[50],
-      borderBottomWidth: 1, borderBottomColor: isDark ? (T.hairline as string) : DS.ink[100],
+      backgroundColor: accent ?? (isDark ? (T.cardSoft as string) : DS.ink[50]),
+      borderBottomWidth: 1, borderBottomColor: accent ?? (isDark ? (T.hairline as string) : DS.ink[100]),
     }}>
       {columns.map((c, i) => (
         <Text
@@ -391,7 +394,7 @@ export function ListHeader({ columns }: {
             width: c.width, flex: c.flex,
             textAlign: c.align === 'right' ? 'right' : 'left',
             fontSize: 10, fontWeight: '500', letterSpacing: 1.2,
-            textTransform: 'uppercase', color: isDark ? (T.ink3 as string) : DS.ink[400],
+            textTransform: 'uppercase', color: accent ? onAccentInk(accent) : (isDark ? (T.ink3 as string) : DS.ink[400]),
           }}
         >
           {c.label}

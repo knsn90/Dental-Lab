@@ -31,7 +31,7 @@ import { autoT } from '../../i18n/autoTranslate';
 import { useThemeModeStore } from '../../store/themeModeStore';
 import { useCommandPalette } from '../../store/commandPaletteStore';
 import { useUiOverlayStore } from '../../store/uiOverlayStore';
-import { NAV, NAV_BAR_H, FAB_DOME, cellHitSlop, edgeSeparation, navGlass, navIndicator, navSurfaceStyle, useReduceTransparency, type NavGlass } from './navGlass';
+import { NAV, NAV_BAR_H, FAB_DOME, cellHitSlop, edgeSeparation, navGlass, navIndicator, navSurfaceStyle, useReduceTransparency, type NavGlass, NAV_DIM } from './navGlass';
 import { navCollapse, useNavScrollBridge, resetNavScroll } from './navScroll';
 import { GlassBlurLayer } from './GlassBlurLayer';
 
@@ -192,11 +192,17 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
   // Menü açıkken ••• SEÇİLİ görünür: menü oradan açıldı ama rota değişmedi,
   // dolayısıyla pathname'den anlaşılamaz. Kayan mercek de oraya kayar.
   const moreMenuOpen = useUiOverlayStore(st => st.moreMenuOpen);
+  // Mesajlar katmanı da rota DEĞİL → aynı şekilde store'dan okunur.
+  const messagesOpen = useUiOverlayStore(st => st.messagesOpen);
 
   const activeIdx = (() => {
     if (moreMenuOpen) {
       const mi = items.findIndex(isMenuAnchor);
       if (mi >= 0) return mi;
+    }
+    if (messagesOpen) {
+      const msg = items.findIndex(it => it.routeName === 'messages');
+      if (msg >= 0) return msg;
     }
     // Grup segmentleri ('/(admin)') URL'de GÖRÜNMEZ: panel kökünde usePathname
     // '/' döndürürken baseRoute '/(admin)' geliyordu → eşitlik hiç tutmuyor,
@@ -245,6 +251,20 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
   const handle = (item: PillTabItem) => {
     // Search tab → navbar'ı arama çubuğuna dönüştür (prop verildiyse)
     if (item.routeName === 'search' && searchEnabled) { openSearch(); return; }
+
+    // Açık bir katman (Tüm Menü / Mesajlar) varsa bar dokunuşu ÖNCE onu kapatır.
+    // Eskiden katmanın ŞEFFAF yakalayıcısı barı da örttüğü için bu kendiliğinden
+    // oluyordu; karartma artık barın ÜSTÜNDE bittiğinden dokunuş hücreye geliyor
+    // ve ••• (onPress = setOpen(true)) "zaten açık"ı tekrar açıyordu → kapanmıyor,
+    // diğer sekmeler de menü üstte kaldığı için işlevsiz görünüyordu.
+    const dimClose = useUiOverlayStore.getState().navDimClose;
+    if (dimClose) {
+      dimClose();
+      const anchorOfOpenLayer =
+        (moreMenuOpen && isMenuAnchor(item)) ||
+        (messagesOpen && item.routeName === 'messages');
+      if (anchorOfOpenLayer) return;   // aynı düğme = kapat (toggle)
+    }
     // Menü açılmadan HEMEN ÖNCE ölç: bar scroll ile geri çekilmiş olabilir,
     // kuyruk yine •••'nin tam altına düşsün.
     if (isMenuAnchor(item)) publishMoreAnchor();
@@ -259,7 +279,11 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
   // İnce materyal (küçük, etkileşimli chrome). Erişilebilirlikte saydamlık
   // kapalıysa opak yüzeye düşer.
   const solidGlass = useReduceTransparency();
-  const glass = navGlass(dark, 'thin', solidGlass);
+  // Arkada bir karartma katmanı varsa (Mesajlar / Tüm Menü) barın İNCE camı
+  // karartının üstünde solup kayboluyordu. O anda cam OPAK'a alınır: bar yüzen
+  // bir kontrol olarak net kalır, arkasındaki şerit kararmaya devam eder.
+  const dimBehind = useUiOverlayStore(st => !!st.navDimClose);
+  const glass = navGlass(dark, 'thin', solidGlass || dimBehind);
   const ind = navIndicator(dark, accent);
 
   // Scroll farkındalığı — web'de tek capture dinleyicisi tüm ekranları kapsar;
@@ -597,7 +621,7 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
 // ─── Navbar arkası karartma şeridi ──────────────────────────────────────────
 // MessagesPopup'ın backdrop'ıyla BİREBİR: aynı renk, web'de aynı blur, aynı
 // açılış/kapanış süresi → iki karartma bar üst kenarında dikişsiz birleşir.
-const DIM_COLOR = 'rgba(10,14,26,0.52)';
+const DIM_COLOR = NAV_DIM.color;
 function NavDimStrip({ height }: { height: number }) {
   const close = useUiOverlayStore(st => st.navDimClose);
   const on = !!close;

@@ -65,8 +65,8 @@ export const DS = {
     bgDeep:      '#E7EEF8',  // Background Deep
     surface:     '#FFFFFF',  // Kart — beyaz
     surfaceAlt:  '#243041',  // Koyu kart — lacivert (dark surface)
-    primary:     '#4771AB',  // Kobalt accent
-    primaryDeep: '#314F7E',  // Primary Active (gradient/hover ucu)
+    primary:     '#004B87',  // Navy orta-açık (HERO_NAVY.light) — açık temada da koyu temanın laciverti
+    primaryDeep: '#002A5C',  // Navy orta (HERO_NAVY.to) — gradyan/hover ucu
     accent:      '#172235',  // Ana yazı / koyu CTA (Text Primary)
     success:     '#2D9A6B',
     warning:     '#E89B2A',

@@ -41,17 +41,26 @@ export interface NotificationPrefs {
 
 const DEFAULT_PREFS: NotificationPrefs = {
   master_enabled: true,
-  channels:   { in_app: true,  browser_push: false, email: true,  whatsapp: false },
+  channels:   { in_app: true,  browser_push: false, email: true,  whatsapp: true },
   // Email default — "önemliler" açık (new_order/approval/payment/delivery),
   // chat & order_status & stock & paper_order email'i kapalı (spam olmasın).
+  //
+  // WhatsApp default AÇIK — yalnız Meta ONAYLI şablonu olan 4 kategoride
+  // (new_order · delivery · approval · payment) gerçekten mesaj çıkar; diğer
+  // kategorilerde şablon olmadığı için gönderim zaten atlanır. Numara olarak
+  // kullanıcının kayıtlı telefonu kullanılır (profiles.whatsapp_phone boşsa
+  // profiles.phone → send-whatsapp-meta'daki fallback). Sunucu tarafı da
+  // "yalnızca açıkça false ise sustur" mantığıyla çalışıyor; istemci
+  // varsayılanı false kaldığı sürece ayarlarını bir kez kaydeden kullanıcıda
+  // WhatsApp sessizce kapanıyordu (2026-09-24).
   categories: {
-    new_order:    { in_app: true,  browser_push: true,  email: true,  whatsapp: false },
+    new_order:    { in_app: true,  browser_push: true,  email: true,  whatsapp: true },
     order_status: { in_app: true,  browser_push: false, email: false, whatsapp: false },
     chat:         { in_app: true,  browser_push: true,  email: false, whatsapp: false },
-    approval:     { in_app: true,  browser_push: true,  email: true,  whatsapp: false },
-    payment:      { in_app: true,  browser_push: false, email: true,  whatsapp: false },
+    approval:     { in_app: true,  browser_push: true,  email: true,  whatsapp: true },
+    payment:      { in_app: true,  browser_push: false, email: true,  whatsapp: true },
     stock:        { in_app: true,  browser_push: false, email: false, whatsapp: false },
-    delivery:     { in_app: true,  browser_push: false, email: true,  whatsapp: false },
+    delivery:     { in_app: true,  browser_push: false, email: true,  whatsapp: true },
     paper_order:  { in_app: true,  browser_push: true,  email: false, whatsapp: false },
     material_request: { in_app: true, browser_push: true,  email: false, whatsapp: false },
     // İmplant parçaları (scan body, dijital analog …) — klinik aksiyon alacak:

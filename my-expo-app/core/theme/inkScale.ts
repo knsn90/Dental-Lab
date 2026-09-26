@@ -17,6 +17,7 @@
  */
 import { Platform } from 'react-native';
 import { DS } from './dsTokens';
+import { usePanelTheme } from './usePanelTheme';
 import { useThemeModeStore } from '../store/themeModeStore';
 
 export type InkScale = {
@@ -135,12 +136,26 @@ export function buildInkUI(isDark: boolean) {
       color: ink[500],
     } as any,
 
+    /**
+     * Modal arka planı. KURAL: sitedeki her popup'ın arkası BULANIK olur —
+     * açılan kart, arkasındaki içerikten görsel olarak ayrışsın diye.
+     * Yeni bir modal yazarken kendi rgba zeminini uydurma, bunu kullan.
+     *
+     * backdropFilter web'e özgü; native'de blur için expo-blur gerekir,
+     * orada scrim tek başına yeterli ayrışmayı veriyor.
+     */
     modalOverlay: {
       flex: 1,
       backgroundColor: isDark ? 'rgba(0,0,0,0.62)' : 'rgba(15,23,42,0.45)',
       justifyContent: 'center',
       alignItems: 'center',
       padding: 24,
+      ...(Platform.OS === 'web'
+        ? {
+            backdropFilter: 'blur(8px) saturate(120%)',
+            WebkitBackdropFilter: 'blur(8px) saturate(120%)',
+          }
+        : {}),
     } as any,
 
     modalCard: {
@@ -181,8 +196,35 @@ const DARK  = buildInkUI(true);
 
 export type InkUI = ReturnType<typeof buildInkUI>;
 
-/** İki nesne önceden kurulur — yeniden render'da tahsis yok. */
+/** Hex + alfa → rgba. */
+function hexA(hex: string, a: number): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+
+/**
+ * Satır hover'ı PANEL ACCENT'inin soluk tonudur — nötr gri her panelde aynı
+ * görünüyordu, tablo başlıklarıyla da aynı aileden değildi. Koyu zeminde %6
+ * silindiği için alfa yükseltilir.
+ *
+ * Varyantlar (isDark × accent) önbelleğe alınır: `useInkUI()` çok sık çağrılıyor,
+ * her render'da yeni nesne üretmek referans eşitliğini bozardı.
+ */
+const UI_CACHE = new Map<string, InkUI>();
+function inkUIFor(isDark: boolean, accent: string): InkUI {
+  const key = `${isDark ? 'd' : 'l'}|${accent}`;
+  const hit = UI_CACHE.get(key);
+  if (hit) return hit;
+  const base = isDark ? DARK : LIGHT;
+  const made: InkUI = { ...base, rowHover: hexA(accent, isDark ? 0.16 : 0.06) };
+  UI_CACHE.set(key, made);
+  return made;
+}
+
 export function useInkUI(): InkUI {
   const isDark = useThemeModeStore(s => s.resolvedDark);
-  return isDark ? DARK : LIGHT;
+  const accent = usePanelTheme().primary;
+  return inkUIFor(isDark, accent);
 }

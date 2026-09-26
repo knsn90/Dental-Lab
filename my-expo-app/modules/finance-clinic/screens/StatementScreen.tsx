@@ -48,7 +48,7 @@ const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
 const KIND_OPTIONS: { key: KindKey; label: string }[] = [
   { key: 'all',     label: 'Tümü' },
   { key: 'invoice', label: 'Fatura' },
-  { key: 'payment', label: 'Tahsilat' },
+  { key: 'payment', label: 'Ödeme' },
 ];
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);

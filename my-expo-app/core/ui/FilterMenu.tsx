@@ -83,11 +83,14 @@ export function FilterMenu({ label, items, active, onChange, accent, openSignal 
       <Pressable
         ref={triggerRef}
         onPress={openMenu}
+        // Yanındaki arama kutusu ve CTA 44px yüksekliğinde beyaz/pill; tetikleyici
+        // 32px'lik gri bir kapsüldü ve araç çubuğunda hizasız duruyordu.
         style={({ pressed }: any) => ({
           flexDirection: 'row', alignItems: 'center', gap: 6,
-          paddingStart: 12, paddingEnd: 9, paddingVertical: 7,
+          height: 44, paddingStart: 14, paddingEnd: 11,
           borderRadius: 9999,
-          backgroundColor: T.cardSoft,
+          backgroundColor: T.card,
+          borderWidth: 1, borderColor: T.hairline,
           opacity: pressed ? 0.65 : 1,
           transform: [{ scale: pressed ? 0.97 : 1 }],
           ...webCursor,

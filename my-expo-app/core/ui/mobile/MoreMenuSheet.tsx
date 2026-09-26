@@ -35,7 +35,7 @@ import { useMobileTokens } from '../../theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../store/themeModeStore';
 import { useUiOverlayStore } from '../../store/uiOverlayStore';
 import { SimanWordmark } from '../SimanWordmark';
-import { NAV, navBarMetrics, navGlass, navSurfaceStyle, topEdgeLight, useReduceTransparency } from './navGlass';
+import { NAV, navBarMetrics, navGlass, navSurfaceStyle, topEdgeLight, useReduceTransparency, NAV_DIM } from './navGlass';
 import { GlassBlurLayer } from './GlassBlurLayer';
 
 export interface MoreItem {
@@ -105,6 +105,16 @@ export function MoreMenuSheet({ visible, onClose, items, accentColor = '#0F172A'
     }
   }, [visible, anim]);
 
+  // Navbar ARKASI da kararsın: NavDimStrip şeridi barın ARKASINA çizilir,
+  // barın kendisi üstte kalır (PillTabBar karartma etkinken camı OPAK'a alır,
+  // yoksa ince cam karartının üstünde solup kayboluyordu).
+  const setNavDim = useUiOverlayStore(s => s.setNavDim);
+  useEffect(() => {
+    if (!visible) return;
+    setNavDim(onClose);
+    return () => setNavDim(null);
+  }, [visible, onClose, setNavDim]);
+
   // Android donanım geri tuşu — Modal'ın onRequestClose'unun yerine
   useEffect(() => {
     if (!visible || Platform.OS !== 'android') return;
@@ -156,13 +166,36 @@ export function MoreMenuSheet({ visible, onClose, items, accentColor = '#0F172A'
 
   return (
     <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
-      {/* Dokunma yakalayıcı — ŞEFFAF: navbar görünür kalır (eski sheet onu
-          tamamen örtüyordu). Dışarı ya da tekrar ••• dokunuşu kapatır. */}
-      <Pressable
-        onPress={onClose}
-        style={StyleSheet.absoluteFillObject}
-        accessibilityLabel={autoT('Menüyü kapat')}
-      />
+      {/* Arka plan: KARARTMA + BULANIKLIK (kullanıcı isteği). Eskiden şeffaftı;
+          menü, arkasındaki yoğun panoyla görsel olarak yarışıyordu. Ton ve blur
+          NavDimStrip ile AYNI kaynaktan (NAV_DIM) gelir → navbar arkasındaki
+          şeritle dikişsiz birleşir. Dokunuş menüyü kapatır. */}
+      <Animated.View
+        pointerEvents="auto"
+        style={[
+          // Navbar'ı ÖRTME: karartma barın üst kenarında biter. Menü zaten •••
+          // hücresine çapalı; bar kararırsa menünün nereden açıldığı kayboluyor
+          // (kullanıcı cihazda gördü).
+          { position: 'absolute', left: 0, right: 0, top: 0, bottom: nav.top },
+          { backgroundColor: NAV_DIM.color, opacity: anim },
+          Platform.OS === 'web'
+            ? ({ backdropFilter: NAV_DIM.webBlur, WebkitBackdropFilter: NAV_DIM.webBlur } as any)
+            : null,
+        ]}
+      >
+        {(Platform.OS === 'ios' || Platform.OS === 'android') && (
+          <BlurView
+            intensity={NAV_DIM.blurIntensity}
+            tint={isDark ? 'dark' : 'light'}
+            style={[StyleSheet.absoluteFillObject, { zIndex: -1 }]}
+          />
+        )}
+        <Pressable
+          onPress={onClose}
+          style={StyleSheet.absoluteFill}
+          accessibilityLabel={autoT('Menüyü kapat')}
+        />
+      </Animated.View>
 
       {/* Kuyruk — 45° döndürülmüş kare, üst yarısı kırpılır.
           Neden böyle: kenarlık-üçgeni hilesi kendi blur'unu taşıyamaz (0x0

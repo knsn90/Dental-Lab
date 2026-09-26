@@ -39,6 +39,14 @@ export interface DispatchInput {
   resourceId?:   string;
   actionUrl?:    string;
   payload?:      Record<string, any>;
+  /**
+   * E-postayı SUNUCU tarafı zaten gönderiyorsa true. Örn. `new_order`: DB
+   * tetikleyicisi (work_orders_notify_new → _notify_dedup) her yöneticiye
+   * satır + e-posta üretir. İstemci aynı bildirimi tekrar dağıtınca in-app
+   * satır 30 sn dedup ile YUTULUYOR ama e-posta çağrısı koşulsuz olduğu için
+   * her yönetici iki mail alıyordu (2026-09-22: 29 grubun 28'i çift).
+   */
+  skipEmail?:    boolean;
 }
 
 export interface DispatchResult {
@@ -124,7 +132,9 @@ export async function dispatchNotification(input: DispatchInput): Promise<Dispat
   }
 
   // ─── Email (Resend) ──────────────────────────────────────────────
-  try {
+  // Sunucu yolu e-postayı zaten gönderiyorsa burada tekrar GÖNDERME (WhatsApp'ta
+  // da aynı kural: kanalın sahibi tek yer).
+  if (!input.skipEmail) try {
     await supabase.functions.invoke('send-email-notification', {
       body: {
         userIds,

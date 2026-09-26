@@ -53,6 +53,12 @@ interface Props {
   emptyText?: string;
   style?: any;
   numberStyle?: TextStyle;
+  /**
+   * Accent zeminli şeritlerde (navy tablo alt satırı) kullanılacak metin rengi.
+   * Verilirse inline chip'ler saydam beyaz kapsüle ve bu mürekkebe döner —
+   * nötr gri chip + koyu yazı lacivert zeminde okunmuyordu.
+   */
+  onAccent?: string;
 }
 
 const NUM_SIZE: Record<Size, number> = { sm: 18, md: 24, lg: 32 };
@@ -77,6 +83,7 @@ export function MoneyMultiX({
   emptyText = '—',
   style,
   numberStyle,
+  onAccent,
 }: Props) {
   const U = useInkUI();
   const accent = accentColor ?? U.ink[700];
@@ -103,16 +110,16 @@ export function MoneyMultiX({
             style={{
               flexDirection: 'row', alignItems: 'center', gap: 4,
               paddingHorizontal: 8, paddingVertical: 3, borderRadius: 9999,
-              backgroundColor: U.chipNeutral,
+              backgroundColor: onAccent ? 'rgba(255,255,255,0.16)' : U.chipNeutral,
             }}
           >
-            <Text style={{ fontSize: 10, fontWeight: '700', color: U.ink[500] }}>
+            <Text style={{ fontSize: 10, fontWeight: '700', color: onAccent ?? U.ink[500], opacity: onAccent ? 0.8 : 1 }}>
               {CURRENCY_META[s.currency].symbol}
             </Text>
-            <Text style={{ fontSize: 11, fontWeight: '600', color: toneFor(U, s.total, colorBySign) }}>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: onAccent ?? toneFor(U, s.total, colorBySign) }}>
               {formatCompact(s.total, signed)}
             </Text>
-            {showCount ? <Text style={{ fontSize: 9, color: U.ink[400] }}>· {s.count}</Text> : null}
+            {showCount ? <Text style={{ fontSize: 9, color: onAccent ?? U.ink[400], opacity: onAccent ? 0.75 : 1 }}>· {s.count}</Text> : null}
           </View>
         ))}
       </View>
@@ -155,16 +162,19 @@ export function MoneyMultiX({
             style={{
               minWidth: 104, flexGrow: 1,
               paddingHorizontal: 12, paddingVertical: 10,
-              borderRadius: 14, backgroundColor: U.surface,
-              borderWidth: 1, borderColor: U.hairline,
+              // onAccent: hero gibi renkli zeminde beyaz kutular "yamalı" duruyordu
+              // (kullanıcı kararı) → kutu saydam, yalnız ince bir çerçeve kalır.
+              borderRadius: 14,
+              backgroundColor: onAccent ? 'transparent' : U.surface,
+              borderWidth: 1, borderColor: onAccent ? 'rgba(255,255,255,0.22)' : U.hairline,
             }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                <Text style={{ fontSize: 12, fontWeight: '700', color: U.ink[500] }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: onAccent ?? U.ink[500], opacity: onAccent ? 0.8 : 1 }}>
                   {CURRENCY_META[s.currency].symbol}
                 </Text>
-                <Text style={{ fontSize: 10, fontWeight: '700', color: U.ink[400], letterSpacing: 0.5 }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: onAccent ?? U.ink[400], opacity: onAccent ? 0.65 : 1, letterSpacing: 0.5 }}>
                   {s.currency}
                 </Text>
               </View>
@@ -174,7 +184,7 @@ export function MoneyMultiX({
             </View>
             <Text
               numberOfLines={1}
-              style={[{ fontFamily: DISPLAY_FONT, fontWeight: '300', fontSize: NUM_SIZE[size], letterSpacing: -0.6, color: toneFor(U, s.total, colorBySign) }, numberStyle]}
+              style={[{ fontFamily: DISPLAY_FONT, fontWeight: '300', fontSize: NUM_SIZE[size], letterSpacing: -0.6, color: onAccent ?? toneFor(U, s.total, colorBySign) }, numberStyle]}
             >
               {formatMoney(s.total, s.currency, { fractionDigits, signed })}
             </Text>

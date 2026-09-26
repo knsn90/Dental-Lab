@@ -19,8 +19,9 @@ import Animated, {
   useSharedValue, useAnimatedStyle, withRepeat, withTiming, Easing, cancelAnimation, ReduceMotion,
 } from 'react-native-reanimated';
 import { useThemeModeStore } from '../store/themeModeStore';
+import { onAccentInk } from '../theme/usePanelTheme';
 
-/** Hex rengi koyu temada derinleştirir: #4771AB → #1B2B41 (navy). */
+/** Hex rengi koyu temada derinleştirir: #002A5C → #1B2B41 (navy). */
 export function deepenForDark(hex: string, factor = 0.38): string {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
   if (!m) return hex;
@@ -57,7 +58,7 @@ export const HERO_NAVY = { from: '#001F3F', to: '#002A5C', light: '#004B87' } as
 /**
  * AÇIK temada ilerleme/timeline ışık izi. Lacivert ailesinden ama beyaz
  * zeminde "neon" okunacak kadar doygun: HERO_NAVY.light'ın (#004B87)
- * parlaklığı ve doygunluğu artırılmış hâli. Doğrudan #314F7E gibi koyu
+ * parlaklığı ve doygunluğu artırılmış hâli. Doğrudan #001F3F gibi koyu
  * lacivert kullanmak beyaz üstünde sert bir şerit yapıyordu.
  */
 export const NAVY_SWEEP = '#1E7FD4';
@@ -107,23 +108,32 @@ function alpha(hex: string, a: number): string {
  * diğer panellerde accent'in derin tonu kullanılır (panel kimliği korunur).
  * Açık temada `null` döner — çağıran kendi açık tasarımını korur.
  */
-export function useSpotlightSurface(accent: string): { surface: any; glow: string } | null {
+export function useSpotlightSurface(accent: string, opts?: { force?: boolean }): { surface: any; glow: string } | null {
   const isDark = useThemeModeStore(s => s.resolvedDark);
-  if (!isDark) return null;
+  // force: açık temada da koyu/neon yüzey istendiğinde (ör. "Hızlı işlem" kartı).
+  if (!isDark && !opts?.force) return null;
   const h = hueOf(accent);
   const isBlue = h !== null && h >= 185 && h <= 265;
   const deep = isBlue ? HERO_NAVY.from  : deepenForDark(accent, 0.28);
   const mid  = isBlue ? HERO_NAVY.to    : deepenForDark(accent, 0.40);
   const top  = isBlue ? HERO_NAVY.light : deepenForDark(accent, 0.58);
   const glow = isBlue ? '#38BDF8' : lightenForDark(accent, 0.30);
+  // AÇIK temada (force) aynı lacivert aile ama BİR KADEME AÇIK: siyah başlangıç
+  // yok, zemin orta ton, gradyan açık tonda biter. Koyu tema aynen korunur.
+  const bg    = isDark ? deep : mid;
+  // AÇIK temada gradyan BEYAZLA başlar (kullanıcı kararı): kart lacivert
+  // ailesinde kalır ama belirgin açılır. Saf beyaz DEĞİL — üstteki beyaz
+  // metni yutmasın diye tül (alfa) olarak biniyor. Koyu tema dokunulmadı.
+  const start = isDark ? '#0A0A0A' : 'rgba(255,255,255,0.38)';
+  const end   = isDark ? mid : top;
   return {
     glow,
     surface: {
-      backgroundColor: deep,
+      backgroundColor: bg,
       ...(Platform.OS === 'web' ? {
         backgroundImage:
           `radial-gradient(120% 78% at 50% -10%, ${alpha(top, 0.95)} 0%, ${alpha(mid, 0.55)} 42%, rgba(0,0,0,0) 76%), ` +
-          `linear-gradient(160deg, #0A0A0A 0%, ${deep} 62%, ${mid} 100%)`,
+          `linear-gradient(160deg, ${start} 0%, ${bg} 62%, ${end} 100%)`,
       } : {}),
       borderWidth: 1,
       borderColor: alpha(glow, 0.26),
@@ -131,11 +141,72 @@ export function useSpotlightSurface(accent: string): { surface: any; glow: strin
   };
 }
 
+export interface NeonNavy {
+  surface: any;
+  glow: string;
+  /** Kart içi metin renkleri — varyanta göre döner, çağıran yer sabit yazmaz. */
+  ink: string;
+  inkSoft: string;
+  inkFaint: string;
+  /** Dolu pill (birincil aksiyon) zemini ve üzerindeki metin. */
+  pillBg: string;
+  pillInk: string;
+  /** Hayalet pill (ikincil aksiyon) — metni `ink`. */
+  ghostBg: string;
+  ghostBorder: string;
+  /** true → yüzey DÜZ: gradyan/ışıma yok, NeonPulse da takılmaz. */
+  flat: boolean;
+}
+
 /**
- * Neon kenar + üstten ışık NABZI — `useSpotlightSurface` ile birlikte kullanılır.
- * Yalnız opacity/scale animasyonu (compositor dostu); reduced-motion'da sabit.
- * Kartın İÇİNE, içerikten ÖNCE koyulur; `pointerEvents:none`.
+ * "NEON NAVY" — CTA/hero kartlarının imza yüzeyi. TEMAYA GÖRE iki gövde:
+ *
+ *   KOYU tema → siyah→lacivert gradyan + üstten ışık + nabız atan neon kenar.
+ *   AÇIK tema → DÜZ lacivert (#004B87). Gradyan yok, ışıma yok (kullanıcı
+ *               kararı): beyaz sayfada iki denemeden sonra en okunaklısı,
+ *               sayfanın geri kalanıyla yarışmayan tek renk gövde çıktı.
+ *
+ * Metin/pill renkleri de buradan döner; çağıran ekran sabit hex yazmaz.
+ *
+ *   const nn = useNeonNavy(accent);
+ *   <View style={{ ...nn.surface, borderRadius: r }}>
+ *     {!nn.flat && <NeonPulse radius={r} color={nn.glow} />}
+ *     <Text style={{ color: nn.ink }}>…</Text>
+ *
+ * `opts.light` varyantı zorlar (tema ne olursa olsun); verilmezse temadan gelir.
  */
+export function useNeonNavy(accent: string, opts?: { light?: boolean }): NeonNavy {
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const base = useSpotlightSurface(accent, { force: true })!;
+  const ink = {
+    ink: '#FFFFFF',
+    inkSoft: 'rgba(255,255,255,0.88)',
+    inkFaint: 'rgba(255,255,255,0.60)',
+    pillBg: '#FFFFFF',
+    pillInk: '#0A2540',
+    ghostBg: 'rgba(255,255,255,0.16)',
+    ghostBorder: 'rgba(255,255,255,0.22)',
+  };
+  if (!(opts?.light ?? !isDark)) return { ...base, ...ink, flat: false };
+  // AÇIK tema: düz PANEL ACCENT'i. Eskiden `HERO_NAVY.light` sabitiydi —
+  // yönetim panelinde accent zaten #004B87 olduğu için fark edilmiyordu, ama
+  // klinik/hekim (zümrüt) ve lab (safran) panellerinde kart lacivert çıkıyordu.
+  const fg = onAccentInk(accent);
+  const onLight = fg === '#0A0A0A';   // safran gibi AÇIK accent'lerde ink koyu
+  return {
+    flat: true,
+    glow: accent,
+    surface: { backgroundColor: accent },
+    ink: fg,
+    inkSoft: onLight ? 'rgba(10,10,10,0.78)' : 'rgba(255,255,255,0.88)',
+    inkFaint: onLight ? 'rgba(10,10,10,0.55)' : 'rgba(255,255,255,0.60)',
+    pillBg: onLight ? '#0A0A0A' : '#FFFFFF',
+    pillInk: onLight ? '#FFFFFF' : accent,
+    ghostBg: onLight ? 'rgba(10,10,10,0.08)' : 'rgba(255,255,255,0.16)',
+    ghostBorder: onLight ? 'rgba(10,10,10,0.18)' : 'rgba(255,255,255,0.22)',
+  };
+}
+
 export function NeonPulse({ radius = 24, color = '#38BDF8' }: { radius?: number; color?: string }) {
   const p = useSharedValue(0);
   useEffect(() => {
@@ -247,6 +318,11 @@ export function HeroGlow({
     ],
     opacity: 1 - breathe.value * 0.18,
   }));
+
+  // AÇIK temada hero'lar DÜZ renk (kullanıcı kararı, 19.09.2026): beyaz
+  // daireler zemini gradyan gibi gösteriyordu. Koyu temada blur'lu ışık kalır.
+  // (Erken dönüş TÜM hook'lardan SONRA — koşullu hook olmaz.)
+  if (!isDark) return null;
 
   const alpha = isDark ? Math.min(opacity * 1.5, 0.4) : opacity;
   // Blur yarıçapı kürenin boyutuyla ölçeklenir; dar ekranda taşmasın diye kısılır.

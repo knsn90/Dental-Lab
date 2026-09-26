@@ -8665,5 +8665,8 @@
   "Kart bilgileri": "Kartendaten",
   "Kart sahibi": "Karteninhaber",
   "Kart numarası": "Kartennummer",
-  "Kart bilgileriniz 3D Secure ile korunur ve laboratuvarda saklanmaz.": "Ihre Kartendaten sind durch 3D Secure geschützt und werden vom Labor nicht gespeichert."
+  "Kart bilgileriniz 3D Secure ile korunur ve laboratuvarda saklanmaz.": "Ihre Kartendaten sind durch 3D Secure geschützt und werden vom Labor nicht gespeichert.",
+  "Kesilen fatura vs. ödenen tutar": "Fakturiert vs. bezahlt",
+  "Ödeme oranı": "Zahlungsquote",
+  "Ödeme Yöntemleri": "Zahlungsarten"
 }

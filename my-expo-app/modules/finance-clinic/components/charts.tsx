@@ -123,7 +123,7 @@ export function MonthlyFlowChart({ data, height = 220, currency }: { data: Month
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: TH.primary }} />
-          <Text style={{ fontSize: 11, color: isDark ? (T.ink2 as string) : DS.ink[700], fontWeight: '500' }}>Tahsil Edilen</Text>
+          <Text style={{ fontSize: 11, color: isDark ? (T.ink2 as string) : DS.ink[700], fontWeight: '500' }}>Ödenen</Text>
         </View>
       </View>
     </View>

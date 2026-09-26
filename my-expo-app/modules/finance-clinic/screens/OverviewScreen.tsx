@@ -117,7 +117,7 @@ export function OverviewScreen({ clinicId, onJump }: Props) {
           accent="#0F172A"
           percent={Math.min(100, collectionRate)}
           trend={{
-            text: collectionRate >= 70 ? `↑ %${collectionRate} tahsil` : `%${collectionRate} tahsil`,
+            text: collectionRate >= 70 ? `↑ %${collectionRate} ödendi` : `%${collectionRate} ödendi`,
             tone: collectionRate >= 70 ? 'success' : 'neutral',
           }}
           onPress={() => onJump('open')}
@@ -179,7 +179,7 @@ export function OverviewScreen({ clinicId, onJump }: Props) {
             {/* Aylık Akış */}
             {cc.monthly_flow.length > 0 && (
               <View>
-                <SecHeader eyebrow="Trend" title="Aylık Akış · Son 6 Ay" desc="Kesilen fatura vs. tahsil edilen tutar"
+                <SecHeader eyebrow="Trend" title="Aylık Akış · Son 6 Ay" desc="Kesilen fatura vs. ödenen tutar"
                   action={{ label: 'Ekstre →', onPress: () => onJump('statement') }} />
                 <Card style={{ padding: 16, paddingTop: 12 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -187,7 +187,7 @@ export function OverviewScreen({ clinicId, onJump }: Props) {
                       <BarChart3 size={14} color={TH.primary} strokeWidth={2} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 11, color: isDark ? (T.ink3 as string) : DS.ink[500], fontWeight: '500' }}>Tahsilat oranı</Text>
+                      <Text style={{ fontSize: 11, color: isDark ? (T.ink3 as string) : DS.ink[500], fontWeight: '500' }}>Ödeme oranı</Text>
                       <Text style={{ ...DISPLAY, fontSize: 20, color: isDark ? T.ink : DS.ink[900], letterSpacing: -0.4 }}>%{rate}</Text>
                     </View>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -223,7 +223,7 @@ export function OverviewScreen({ clinicId, onJump }: Props) {
               </View>
 
               <View style={{ flexGrow: 1, flexBasis: 320, minWidth: 280 }}>
-                <SecHeader eyebrow="Dağılım" title="Tahsilat Yöntemleri" desc="Son 90 gün" />
+                <SecHeader eyebrow="Dağılım" title="Ödeme Yöntemleri" desc="Son 90 gün" />
                 <Card style={{ padding: 16 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                     <View style={{ width: 28, height: 28, borderRadius: 9, backgroundColor: TH.bgSoft, alignItems: 'center', justifyContent: 'center' }}>

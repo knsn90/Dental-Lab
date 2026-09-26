@@ -62,6 +62,7 @@ import {
   Monitor, Sun, Moon,
 } from '../ui/icons';
 import { SupportIcon } from '../ui/SupportIcon';
+import { GlassTooltip } from '../ui/GlassTooltip';
 import { WhatsAppGlyph } from '../ui/WhatsAppGlyph';
 import { Tooth, Crown, Implant, ZirconiaDisc, DentalArch } from '../ui/dentalIcons';
 import { useAuthStore } from '../store/authStore';
@@ -686,6 +687,7 @@ export function PatternsShell({
           </View>
 
           {/* Destek — her panelde görünür yardım butonu */}
+          <GlassTooltip placement="bottom" style={{ alignSelf: 'center' }} title={autoT('Destek')} text={autoT('Destek talebi aç ya da ekibe yaz')}>
           <Pressable
             onPress={() => openSupport({ context: { source: 'manual' } })}
             accessibilityLabel="Destek talebi aç"
@@ -694,8 +696,10 @@ export function PatternsShell({
           >
             <SupportIcon size={14} color="#C2410C" strokeWidth={1.8} />
           </Pressable>
+          </GlassTooltip>
 
           {/* Bell — bildirim */}
+          <GlassTooltip placement="bottom" style={{ alignSelf: 'center' }} enabled={!notifOpen} title={autoT('Bildirimler')} text={autoT('Son bildirimlerini gör')}>
           <Pressable
             onPress={() => setNotifOpen(v => !v)}
             className="w-8 h-8 rounded-full items-center justify-center hover:bg-black/5 relative"
@@ -703,9 +707,11 @@ export function PatternsShell({
             <Bell size={14} color={SC.iconMuted} strokeWidth={1.8} />
             <BellBadge />
           </Pressable>
+          </GlassTooltip>
 
           {/* Messages */}
           {onPressMessages && (
+            <GlassTooltip placement="bottom" style={{ alignSelf: 'center' }} title={autoT('Mesajlar')} text={autoT('Sipariş sohbetlerini ve mesajlarını aç')}>
             <Pressable
               ref={tourRefs?.messages}
               onPress={onPressMessages}
@@ -718,7 +724,7 @@ export function PatternsShell({
                     position: 'absolute',
                     top: -4, end: -4,
                     minWidth: 18, height: 18, paddingHorizontal: 5,
-                    borderRadius: 9, borderWidth: 2, borderColor: '#FFFFFF',
+                    borderRadius: 9,
                     backgroundColor: '#EF4444',
                     alignItems: 'center', justifyContent: 'center',
                   }}
@@ -729,10 +735,12 @@ export function PatternsShell({
                 </View>
               )}
             </Pressable>
+            </GlassTooltip>
           )}
 
           {/* Profile — tüm panellerde görünür */}
           <View className="relative">
+            <GlassTooltip placement="bottom" enabled={!profileMenuOpen} title={autoT('Hesabım')} text={autoT('Profil, ayarlar ve çıkış')}>
             <Pressable
               onPress={() => setProfileMenuOpen(v => !v)}
               className="flex-row items-center gap-1.5 ps-0.5 pe-2.5 py-0.5 rounded-full"
@@ -755,6 +763,7 @@ export function PatternsShell({
                 {headerName}
               </Text>
             </Pressable>
+            </GlassTooltip>
 
             {profileMenuOpen && (
               <>
@@ -1376,7 +1385,7 @@ function BellBadge() {
         position: 'absolute',
         top: -4, end: -4,
         minWidth: 18, height: 18, paddingHorizontal: 5,
-        borderRadius: 9, borderWidth: 2, borderColor: '#FFFFFF',
+        borderRadius: 9,
         backgroundColor: '#EF4444',
         alignItems: 'center', justifyContent: 'center',
       }}

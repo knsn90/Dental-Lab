@@ -142,6 +142,29 @@ Koyu değerler: zemin `#141312` · hover `rgba(255,255,255,0.06)` · kenarlık
 `'#FFFFFF'` KALAMAZ — `ink[900]` koyu temada KREM olur, beyaz metin kaybolur.
 Bu butonlarda içerik `U.onDarkPill` (ikincil: `U.onDarkPillMuted`).
 
+### 🫧 POPUP ARKA PLANI KURALI (ZORUNLU)
+
+**Sitedeki HER popup/modal'ın arkası bulanıktır.** Açılan kart, arkasındaki
+listeden/formdan görsel olarak ayrışmalı; yalnız koyu bir scrim yetmiyor.
+
+Yeni modal yazarken kendi zeminini uydurma — `useInkUI().modalOverlay`
+kullan; blur, scrim, ortalama ve 24px dolgu onun içinde:
+
+```tsx
+const U = useInkUI();
+<Modal visible={open} transparent animationType="fade" onRequestClose={close}>
+  <View style={U.modalOverlay}>        {/* ← blur burada */}
+    <View style={U.modalCard}>…</View>
+  </View>
+</Modal>
+```
+
+`backdropFilter` web'e özgüdür; native'de blur için expo-blur gerekir,
+orada scrim tek başına yeterli ayrışmayı verir (token bunu kendi halleder).
+
+**Eski modaller:** ham `backgroundColor: 'rgba(15,23,42,0.45)'` yazan epey
+ekran var; bunlar token'a geçirildikçe blur kendiliğinden gelir.
+
 ### 👤 AVATAR & ROL/DURUM ETİKETİ KURALI (ZORUNLU)
 
 Pastel zemin + koyu metinli rozetler (`#DBEAFE`/`#F1F5F9` + `#0F172A` gibi) koyu
@@ -669,6 +692,10 @@ Canonical `X`-suffix bileşenleri kullan; aşağıdaki kalıplar showcase'de tan
 - **Onay dialog:** 3 ton — neutral / destructive (kırmızı) / success (yeşil).
 - **Empty state (EmptyStateX):** 56–80px daire ikon (cardLite gölge), başlık bold,
   opsiyonel CTA (panel accent / danger). `variant` = `default | error | success`.
+- **Tooltip (GlassTooltip):** site genelindeki tek hover balonu. Liquid glass yüzey,
+  başlık 12/700 + açıklama 11.5/16, Dock tarzı ok, portal ile çizildiği için kesilmez.
+  Bütün ikon-butonlarda kullanılır. React dışı yüzeylerde `glassTipHtml`. Tarayıcı `title=`
+  ve `InfoWindow` kullanma. Ayrıntı: `docs/DESIGN_LANGUAGE.md` §5.
 - **Section başlığı (SectionLabelX):** 11px bold UPPERCASE tracking-widest (ink-400) +
   opsiyonel "Tümünü Gör →" action (panel accent).
 

@@ -80,7 +80,7 @@ export class RootErrorBoundary extends React.Component<
     if (isChunkLoadError(this.state.error)) {
       return (
         <View style={{ flex: 1, backgroundColor: '#F7F9FC', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-          <ActivityIndicator color="#4771AB" />
+          <ActivityIndicator color="#002A5C" />
           <Text style={{ fontSize: 15, fontWeight: '600', color: '#172235', marginTop: 16 }}>
             Uygulama güncelleniyor…
           </Text>
@@ -90,7 +90,7 @@ export class RootErrorBoundary extends React.Component<
           {Platform.OS === 'web' ? (
             <Pressable
               onPress={() => { try { (window as any).location.reload(); } catch { /* */ } }}
-              style={{ marginTop: 18, backgroundColor: '#4771AB', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 999 }}>
+              style={{ marginTop: 18, backgroundColor: '#004B87', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 999 }}>
               <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 13.5 }}>Şimdi yenile</Text>
             </Pressable>
           ) : null}

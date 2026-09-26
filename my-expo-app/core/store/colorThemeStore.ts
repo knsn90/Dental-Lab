@@ -14,7 +14,7 @@ export interface ColorTheme {
 export const COLOR_THEMES: ColorTheme[] = [
   { key: 'saffron', name: 'Saffron',   description: 'Patterns lab — sıcak sarı',    primary: '#F5C24B', dark: '#E0A82E', muted: '#9A9A9A' },
   { key: 'sage',    name: 'Zümrüt',    description: 'Patterns clinic — zümrüt yeşili', primary: '#32BB78', dark: '#0C8F56', muted: '#9A9A9A' },
-  { key: 'coral',   name: 'Kobalt',    description: 'Patterns exec — profesyonel mavi', primary: '#4771AB', dark: '#314F7E', muted: '#98A2B3' },
+  { key: 'coral',   name: 'Kobalt',    description: 'Patterns exec — profesyonel mavi', primary: '#004B87', dark: '#001F3F', muted: '#98A2B3' },
   { key: 'blue',    name: 'Mavi',      description: 'Profesyonel mavi',             primary: '#2563EB', dark: '#1E40AF', muted: '#94A3B8' },
   { key: 'teal',    name: 'Teal',      description: 'Medikal yeşil-mavi',           primary: '#0891B2', dark: '#0E7490', muted: '#94A3B8' },
   { key: 'green',   name: 'Yeşil',     description: 'Sağlık ve doğa teması',        primary: '#059669', dark: '#047857', muted: '#94A3B8' },

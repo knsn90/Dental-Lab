@@ -17,8 +17,8 @@ export const MOBILE_PANEL_THEMES: Record<MobilePanel, PanelTheme> = {
   lab:        { primary: '#F5C24B', accentDark: '#0A0A0A', bgHero: '#3A2E10', bgDeep: '#E8DDB5', surface: '#FFFFFF', bgPage: '#F5F1EB' },
   // Klinik (emerald + charcoal) — ClinicDashboard (DS.clinic.primary #32BB78) ile uyumlu
   klinik:     { primary: '#32BB78', accentDark: '#2F313F', bgHero: '#2F313F', bgDeep: '#D3F8E0', surface: '#FFFFFF', bgPage: '#F9FAFB' },
-  // Exec/Admin (kobalt mavi + lacivert) — DS.exec.primary #4771AB ile uyumlu
-  exec:       { primary: '#4771AB', accentDark: '#172235', bgHero: '#243041', bgDeep: '#E7EEF8', surface: '#FFFFFF', bgPage: '#F7F9FC' },
+  // Exec/Admin (kobalt mavi + lacivert) — DS.exec.primary #002A5C ile uyumlu
+  exec:       { primary: '#004B87', accentDark: '#172235', bgHero: '#243041', bgDeep: '#E7EEF8', surface: '#FFFFFF', bgPage: '#F7F9FC' },
   teknisyen:  { primary: '#3B82F6', accentDark: '#0F2840', bgHero: '#1E3A6F', bgDeep: '#D2E1F0', surface: '#FFFFFF', bgPage: '#F5F9FD' },
   // Doctor (emerald + charcoal) — klinik ile aynı tonda
   doctor:     { primary: '#32BB78', accentDark: '#2F313F', bgHero: '#2F313F', bgDeep: '#D3F8E0', surface: '#FFFFFF', bgPage: '#F9FAFB' },
@@ -133,6 +133,9 @@ const SEGMENT_TO_PANEL: Record<string, MobilePanel> = {
   '(admin)':   'exec',
   '(doctor)':  'doctor',
   '(clinic)':  'klinik',
+  // Kurye paneli mavi; eşlenmediği için sayfa zemini KREM (lab) kalıyordu.
+  // Ayrı 'kurye' anahtarı açılana kadar teknisyen ile aynı (PanelLoader ile tutarlı).
+  '(courier)': 'teknisyen',
 };
 
 export function useMobileTokens(): typeof MOBILE_TOKENS {

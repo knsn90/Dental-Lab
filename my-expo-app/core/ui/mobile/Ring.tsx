@@ -9,6 +9,7 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Animated, Platform } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
+import { useCountUp } from '../ProgressX';
 
 interface RingProps {
   value: number;                  // 0-100
@@ -18,6 +19,12 @@ interface RingProps {
   track?: string;                 // track color
   /** Beyaz dot'u arc'ın sonuna koy ve halo pulse animasyonu çalıştır */
   animatedEndDot?: boolean;
+  /**
+   * Yay, 0'dan değere doğru SÜPÜRÜLEREK çizilsin mi (masaüstü PercentRingHero
+   * ile aynı his). Varsayılan KAPALI: Ring 8 ekranda kullanılıyor, mevcut
+   * davranışları değişmesin.
+   */
+  sweep?: boolean;
   /** Dot rengi (default: white) */
   dotColor?: string;
   /** Halo rengi (default: dot rengi semi-transparent) */
@@ -32,6 +39,7 @@ export function Ring({
   color = '#5B8DEF',
   track = 'rgba(255,255,255,0.10)',
   animatedEndDot = true,
+  sweep = false,
   dotColor = '#FFFFFF',
   haloColor,
   children,
@@ -39,12 +47,16 @@ export function Ring({
   // Değeri 0-100 aralığına sabitle; NaN/undefined → 0 (animated daire 0'da dursun)
   const v = Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
 
+  // Süpürme kapalıyken duration=0 → ilk karede hedefe oturur (boşa rAF yok).
+  const swept = useCountUp(v, sweep ? 1400 : 0);
+  const vv = sweep ? swept : v;
+
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
-  const dash = c * (v / 100);
+  const dash = c * (vv / 100);
 
   // Dot end position — 12 o'clock'tan saat yönünde v/100 * 360°
-  const theta = (v / 100) * 360; // degrees from top, clockwise
+  const theta = (vv / 100) * 360; // degrees from top, clockwise
   const rad = (theta * Math.PI) / 180;
   const cx = size / 2 + r * Math.sin(rad);
   const cy = size / 2 - r * Math.cos(rad);
@@ -72,7 +84,7 @@ export function Ring({
       {/* Track + progress arc */}
       <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
         <Circle cx={size / 2} cy={size / 2} r={r} stroke={track} strokeWidth={stroke} fill="none" />
-        {v > 0 && (
+        {vv > 0 && (
           <Circle
             cx={size / 2} cy={size / 2} r={r}
             stroke={color} strokeWidth={stroke} fill="none"
@@ -83,7 +95,7 @@ export function Ring({
       </Svg>
 
       {/* End dot + animated halo — value=0 olsa bile başlangıç noktasında (12 o'clock) göster */}
-      {animatedEndDot && v > 0 && v < 100 && (
+      {animatedEndDot && vv > 0 && vv < 100 && (
         <>
           {/* Halo — pulse loop */}
           <Animated.View

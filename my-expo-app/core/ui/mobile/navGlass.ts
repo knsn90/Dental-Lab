@@ -487,3 +487,15 @@ export function navBlurLayerStyle(g: NavGlass): any {
   if (Platform.OS !== 'web' || g.webBackdrop === 'none') return null;
   return { backdropFilter: g.webBackdrop, WebkitBackdropFilter: g.webBackdrop };
 }
+
+/**
+ * Yüzen katmanların (Mesajlar, Tüm Menü) arka plan karartması — TEK KAYNAK.
+ * PillTabBar'daki navbar-arkası şerit ve katmanın kendi backdrop'ı AYNI değeri
+ * kullanır; yoksa iki karartma barın üst kenarında ton farkıyla birleşiyor.
+ */
+export const NAV_DIM = {
+  color: 'rgba(10,14,26,0.52)',
+  webBlur: 'blur(10px)',
+  /** expo-blur yoğunluğu (native) */
+  blurIntensity: 22,
+} as const;
