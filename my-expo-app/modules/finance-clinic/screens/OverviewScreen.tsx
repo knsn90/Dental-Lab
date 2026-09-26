@@ -11,7 +11,7 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { View, Text, ScrollView, Pressable } from 'react-native';
 import {
   Wallet, AlertCircle, Clock, CheckCircle2, FileText, ArrowRight, ArrowLeft, CreditCard,
-  BarChart3, PieChart, TrendingUp,
+  PieChart, TrendingUp,
 } from '../../../core/ui/icons';
 
 import { DS } from '../../../core/theme/dsTokens';
@@ -182,17 +182,36 @@ export function OverviewScreen({ clinicId, onJump }: Props) {
                 <SecHeader eyebrow="Trend" title="Aylık Akış · Son 6 Ay" desc="Kesilen fatura vs. ödenen tutar"
                   action={{ label: 'Ekstre →', onPress: () => onJump('statement') }} />
                 <Card style={{ padding: 16, paddingTop: 12 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                    <View style={{ width: 28, height: 28, borderRadius: 9, backgroundColor: TH.bgSoft, alignItems: 'center', justifyContent: 'center' }}>
-                      <BarChart3 size={14} color={TH.primary} strokeWidth={2} />
+                  {/* Kartın konusu ORAN: en büyük öğe o olmalı. Yanındaki
+                      ikon kutusu aynı satırda ondan daha fazla yer kaplıyordu.
+                      Tipografi ölçüye göre: büyük rakam negatif tracking,
+                      küçük etiket hafif pozitif (Apple tipografi kuralı). */}
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginBottom: 14 }}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{
+                        fontSize: 10.5, letterSpacing: 0.3, fontWeight: '500',
+                        color: isDark ? (T.ink3 as string) : DS.ink[500],
+                      }}>
+                        Ödeme oranı
+                      </Text>
+                      <Text style={{
+                        ...DISPLAY, fontSize: 30, lineHeight: 34, letterSpacing: -0.9,
+                        color: isDark ? T.ink : DS.ink[900], marginTop: 1,
+                      }}>
+                        %{rate}
+                      </Text>
                     </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 11, color: isDark ? (T.ink3 as string) : DS.ink[500], fontWeight: '500' }}>Ödeme oranı</Text>
-                      <Text style={{ ...DISPLAY, fontSize: 20, color: isDark ? T.ink : DS.ink[900], letterSpacing: -0.4 }}>%{rate}</Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                      <TrendingUp size={11} color={rate >= 70 ? '#059669' : '#D97706'} />
-                      <Text style={{ fontSize: 10, color: rate >= 70 ? '#059669' : '#D97706', fontWeight: '700' }}>
+                    {/* Durum rozeti: renk + metin birlikte (renk körlüğünde
+                        yalnız renk yetmez). */}
+                    <View style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 5,
+                      paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999,
+                      backgroundColor: rate >= 70
+                        ? (isDark ? 'rgba(5,150,105,0.22)' : 'rgba(5,150,105,0.10)')
+                        : (isDark ? 'rgba(217,119,6,0.22)' : 'rgba(217,119,6,0.10)'),
+                    }}>
+                      <TrendingUp size={11} color={rate >= 70 ? '#059669' : '#D97706'} strokeWidth={2.2} />
+                      <Text style={{ fontSize: 10.5, letterSpacing: 0.2, color: rate >= 70 ? '#059669' : '#D97706', fontWeight: '700' }}>
                         {rate >= 70 ? 'İyi' : 'Düşük'}
                       </Text>
                     </View>

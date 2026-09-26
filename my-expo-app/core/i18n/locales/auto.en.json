@@ -8680,5 +8680,6 @@
   "Kart bilgileriniz 3D Secure ile korunur ve laboratuvarda saklanmaz.": "Your card details are protected by 3D Secure and are not stored by the laboratory.",
   "Kesilen fatura vs. ödenen tutar": "Invoiced vs. paid amount",
   "Ödeme oranı": "Payment rate",
-  "Ödeme Yöntemleri": "Payment methods"
+  "Ödeme Yöntemleri": "Payment methods",
+  "Bu dönemde hareket yok": "No activity in this period"
 }

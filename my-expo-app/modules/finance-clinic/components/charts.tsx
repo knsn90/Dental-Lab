@@ -35,96 +35,127 @@ export function MonthlyFlowChart({ data, height = 220, currency }: { data: Month
   const TH = usePanelTheme();
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
-  const W = 600;           // viewBox width — responsive via preserveAspectRatio
+
+  // Genişliği ÖLÇ. Sabit viewBox (600) + width="100%" kullanılınca SVG
+  // yüksekliğe sığacak şekilde ölçekleniyor ve kartın sağında kocaman ölü
+  // alan kalıyordu (kullanıcı ekranda gördü). Ölçülen genişlik viewBox'a
+  // birebir verilince grafik kartı dolduruyor, yazılar da ölçeklenmiyor.
+  const [w, setW] = React.useState(0);
+
   const H = height;
-  const PAD_T = 24, PAD_B = 36, PAD_L = 48, PAD_R = 12;
-  const innerW = W - PAD_L - PAD_R;
+  const PAD_T = 16, PAD_B = 30, PAD_L = 44, PAD_R = 8;
+  const innerW = Math.max(0, w - PAD_L - PAD_R);
   const innerH = H - PAD_T - PAD_B;
+
+  const hasAny = useMemo(
+    () => data.some(d => (Number(d.invoiced) || 0) > 0 || (Number(d.paid) || 0) > 0),
+    [data],
+  );
 
   const max = useMemo(() => {
     const m = Math.max(...data.flatMap(d => [d.invoiced, d.paid]), 1);
-    // güzel yuvarlak üst sınır
     const exp = Math.pow(10, Math.floor(Math.log10(m)));
     return Math.ceil(m / exp) * exp;
   }, [data]);
 
-  const bandW = innerW / data.length;
-  const barW  = Math.min(18, bandW / 3);
+  const bandW = data.length ? innerW / data.length : 0;
+  // Çubuk kalınlığı bantla birlikte büyür: dar kartta incelir, geniş kartta
+  // cetvel gibi uzayıp saçmalamaz.
+  const barW = Math.max(6, Math.min(22, bandW * 0.26));
+  const gap  = Math.max(2, barW * 0.22);
 
-  const yScale = (v: number) => PAD_T + innerH - (v / max) * innerH;
+  const yScale = (v: number) => PAD_T + innerH - ((Number(v) || 0) / max) * innerH;
 
-  // Y ekseni grid'i (4 hat)
-  const grids = [0, 0.25, 0.5, 0.75, 1].map(t => ({
-    v: max * t,
-    y: PAD_T + innerH - t * innerH,
-  }));
+  // Üç iç çizgi yeter; en üstteki sınır çizgisi grafiği kafesliyordu.
+  const grids = [0, 0.33, 0.66, 1].map(t => ({ v: max * t, y: PAD_T + innerH - t * innerH }));
+
+  const gridColor = isDark ? 'rgba(255,255,255,0.07)' : DS.ink[100];
+  const axisInk   = isDark ? (T.ink3 as string) : DS.ink[400];
+  const monthInk  = isDark ? (T.ink3 as string) : DS.ink[500];
+  // HİYERARŞİ: kesilen fatura BAĞLAM, ödenen İLERLEME. Eskiden kesilen
+  // neredeyse siyahtı (ink[800]) ve kartı o dolduruyordu; oysa kartın
+  // konusu ödeme oranı. Bağlam geri çekildi, ödenen öne çıktı.
+  const invoicedFill = isDark ? 'rgba(255,255,255,0.16)' : DS.ink[200];
+  const paidFill     = TH.primary;
 
   return (
-    <View style={{ width: '100%' }}>
-      <Svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`}>
-        {/* Grid */}
-        {grids.map((g, i) => (
-          <G key={i}>
-            <Line x1={PAD_L} y1={g.y} x2={W - PAD_R} y2={g.y} stroke={isDark ? (T.hairline as string) : DS.ink[100]} strokeWidth={1} />
-            <SvgText x={PAD_L - 6} y={g.y + 3} fontSize={9} fill={isDark ? (T.ink3 as string) : DS.ink[400]} textAnchor="end">
-              {compactCur(g.v, currency)}
-            </SvgText>
-          </G>
-        ))}
-
-        {/* Bars */}
-        {data.map((d, i) => {
-          const x0 = PAD_L + i * bandW + bandW / 2;
-          const yInv = yScale(d.invoiced);
-          const yPay = yScale(d.paid);
-          const hInv = PAD_T + innerH - yInv;
-          const hPay = PAD_T + innerH - yPay;
-          return (
-            <G key={d.month}>
-              {/* Invoiced (ink) */}
-              <Rect
-                x={x0 - barW - 1}
-                y={yInv}
-                width={barW}
-                height={Math.max(0, hInv)}
-                rx={3}
-                fill={DS.ink[800]}
+    <View style={{ width: '100%' }} onLayout={e => setW(Math.round(e.nativeEvent.layout.width))}>
+      {w > 0 ? (
+        <Svg width={w} height={H}>
+          {grids.map((g, i) => (
+            <G key={i}>
+              <Line
+                x1={PAD_L} y1={g.y} x2={w - PAD_R} y2={g.y}
+                stroke={i === 0 ? (isDark ? 'rgba(255,255,255,0.14)' : DS.ink[200]) : gridColor}
+                strokeWidth={1}
               />
-              {/* Paid (panel theme) */}
-              <Rect
-                x={x0 + 1}
-                y={yPay}
-                width={barW}
-                height={Math.max(0, hPay)}
-                rx={3}
-                fill={TH.primary}
-              />
-              {/* Ay etiketi */}
-              <SvgText
-                x={x0}
-                y={H - PAD_B + 18}
-                fontSize={11}
-                fill={isDark ? (T.ink3 as string) : DS.ink[500]}
-                fontWeight="600"
-                textAnchor="middle"
-              >
-                {d.label}
+              <SvgText x={PAD_L - 8} y={g.y + 3} fontSize={9.5} fill={axisInk} textAnchor="end">
+                {compactCur(g.v, currency)}
               </SvgText>
             </G>
-          );
-        })}
-      </Svg>
+          ))}
 
-      {/* Legend */}
-      <View style={{ flexDirection: 'row', gap: 16, marginTop: 6, paddingStart: 4 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: DS.ink[800] }} />
-          <Text style={{ fontSize: 11, color: isDark ? (T.ink2 as string) : DS.ink[700], fontWeight: '500' }}>Kesilen Fatura</Text>
+          {hasAny && data.map((d, i) => {
+            const cx   = PAD_L + i * bandW + bandW / 2;
+            const yInv = yScale(d.invoiced);
+            const yPay = yScale(d.paid);
+            const hInv = Math.max(0, PAD_T + innerH - yInv);
+            const hPay = Math.max(0, PAD_T + innerH - yPay);
+            const isLast = i === data.length - 1;
+            return (
+              <G key={d.month}>
+                {/* İçinde bulunulan ay sessizce işaretlenir — kullanıcı
+                    "şimdi neredeyim" sorusunu etiketi okumadan yanıtlasın. */}
+                {isLast && (
+                  <Rect
+                    x={PAD_L + i * bandW} y={PAD_T - 6}
+                    width={bandW} height={innerH + 6} rx={10}
+                    fill={isDark ? 'rgba(255,255,255,0.04)' : DS.ink[50]}
+                  />
+                )}
+                {hInv > 0 && (
+                  <Rect x={cx - barW - gap / 2} y={yInv} width={barW} height={hInv} rx={Math.min(4, barW / 2)} fill={invoicedFill} />
+                )}
+                {hPay > 0 && (
+                  <Rect x={cx + gap / 2} y={yPay} width={barW} height={hPay} rx={Math.min(4, barW / 2)} fill={paidFill} />
+                )}
+                <SvgText
+                  x={cx} y={H - PAD_B + 17} fontSize={10.5}
+                  fill={isLast ? (isDark ? (T.ink2 as string) : DS.ink[700]) : monthInk}
+                  fontWeight={isLast ? '600' : '500'}
+                  textAnchor="middle"
+                >
+                  {d.label}
+                </SvgText>
+              </G>
+            );
+          })}
+        </Svg>
+      ) : (
+        <View style={{ height: H }} />
+      )}
+
+      {/* Veri yoksa boş kafes çizip "sıfır" izlenimi vermek yerine söylenir. */}
+      {!hasAny && (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: H, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ fontSize: 12.5, color: axisInk }}>Bu dönemde hareket yok</Text>
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: TH.primary }} />
-          <Text style={{ fontSize: 11, color: isDark ? (T.ink2 as string) : DS.ink[700], fontWeight: '500' }}>Ödenen</Text>
-        </View>
+      )}
+
+      {/* Gösterge — kare yerine nokta, ölçüler küçültüldü: kartın konusu
+          grafiğin kendisi, gösterge yalnız anahtar. */}
+      <View style={{ flexDirection: 'row', gap: 14, marginTop: 10, paddingStart: PAD_L - 8 }}>
+        {[
+          { c: invoicedFill, l: 'Kesilen Fatura' },
+          { c: paidFill,     l: 'Ödenen' },
+        ].map(k => (
+          <View key={k.l} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: k.c }} />
+            <Text style={{ fontSize: 11, letterSpacing: 0.1, color: isDark ? (T.ink2 as string) : DS.ink[500], fontWeight: '500' }}>
+              {k.l}
+            </Text>
+          </View>
+        ))}
       </View>
     </View>
   );
