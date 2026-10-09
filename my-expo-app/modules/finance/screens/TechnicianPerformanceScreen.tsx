@@ -183,7 +183,9 @@ export function TechnicianPerformanceScreen() {
           style={{ marginStart: -3 }}
         />
 
+        {/* size="sm": yanındaki SlideTabBar sm ile aynı boy/punto. */}
         <FilterMenu
+          size="sm"
           label="Materyal"
           items={MATERIAL_TYPES.map(t => ({ key: t, label: t === 'all' ? 'Tümü' : t }))}
           active={matType}
@@ -191,6 +193,7 @@ export function TechnicianPerformanceScreen() {
         />
 
         <FilterMenu
+          size="sm"
           label="Sırala"
           items={SORT_OPTIONS.map(o => ({ key: o.key, label: o.label }))}
           active={sortKey}

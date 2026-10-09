@@ -40,9 +40,23 @@ interface Props {
    * 0/undefined ilk render'da açmaz.
    */
   openSignal?: number;
+  /**
+   * 'md' (varsayılan) 44pt — arama kutusu + CTA'lı araç çubuklarıyla hizalı.
+   * 'sm' — SlideTabBar `sm` ile aynı boy ve punto; sekme şeridinin yanında
+   * 44pt tetikleyici şeritten ~1.7× büyük duruyordu (Personel Verim).
+   */
+  size?: 'sm' | 'md';
 }
 
-export function FilterMenu({ label, items, active, onChange, accent, openSignal }: Props) {
+const SIZES = {
+  md: { box: { height: 44, paddingStart: 14, paddingEnd: 11 }, gap: 6, font: 12, chevron: 13 },
+  // SlideTabBar sm: dikey dolgu 6 + punto 11.5. Kenarlığın 1px'i dolgudan düşülür
+  // → aktif sekmeyle yapısı gereği aynı yükseklik (sabit height yok).
+  sm: { box: { paddingVertical: 5, paddingStart: 13, paddingEnd: 10 }, gap: 5, font: 11.5, chevron: 12 },
+} as const;
+
+export function FilterMenu({ label, items, active, onChange, accent, openSignal, size = 'md' }: Props) {
+  const SZ = SIZES[size];
   const T = useMobileTokens();
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -86,8 +100,8 @@ export function FilterMenu({ label, items, active, onChange, accent, openSignal 
         // Yanındaki arama kutusu ve CTA 44px yüksekliğinde beyaz/pill; tetikleyici
         // 32px'lik gri bir kapsüldü ve araç çubuğunda hizasız duruyordu.
         style={({ pressed }: any) => ({
-          flexDirection: 'row', alignItems: 'center', gap: 6,
-          height: 44, paddingStart: 14, paddingEnd: 11,
+          flexDirection: 'row', alignItems: 'center', gap: SZ.gap,
+          ...SZ.box,
           borderRadius: 9999,
           backgroundColor: T.card,
           borderWidth: 1, borderColor: T.hairline,
@@ -96,11 +110,11 @@ export function FilterMenu({ label, items, active, onChange, accent, openSignal 
           ...webCursor,
         })}
       >
-        <Text style={{ fontSize: 12, fontWeight: '500', color: T.ink3 }}>{label}</Text>
-        <Text style={{ fontSize: 12, fontWeight: '600', color: T.ink }} numberOfLines={1}>
+        <Text style={{ fontSize: SZ.font, fontWeight: '500', color: T.ink3 }}>{label}</Text>
+        <Text style={{ fontSize: SZ.font, fontWeight: '600', color: T.ink }} numberOfLines={1}>
           {current?.label ?? '—'}
         </Text>
-        <ChevronDown size={13} color={T.ink3} strokeWidth={2} />
+        <ChevronDown size={SZ.chevron} color={T.ink3} strokeWidth={2} />
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
