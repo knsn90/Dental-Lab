@@ -42,6 +42,7 @@ import { createChangeRequest } from '../changeRequests';
 import type { OrderPrefill, OrderEditPrefill } from '../prefillFromOrder';
 import { fetchOrderEditPrefill } from '../prefillFromOrder';
 import { implantFieldsPayload } from '../implantInfo';
+import { reconcileImplantDetails } from '../implantDetails';
 import { useNewOrderModalStore } from '../../../core/store/newOrderModalStore';
 import { useOnboardingStore } from '../../../core/onboarding/onboardingStore';
 import { useTourTarget } from '../../../core/onboarding/useTourTarget';
@@ -4648,12 +4649,9 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                     // İmplant modu: dokunulan diş implant pozisyonu olarak işaretlenir;
                     // fiyat/seçim mantığına dokunmaz.
                     if (implantMode) {
-                      setForm(f => {
-                        const keep = new Set(newTeeth);
-                        const details: Record<number, ImplantDetail> = {};
-                        Object.entries(f.implant_details).forEach(([k, v]) => { if (keep.has(Number(k))) details[Number(k)] = v; });
-                        return { ...f, implant_teeth: newTeeth, implant_details: details };
-                      });
+                      // Yeni implant dişi vakadaki ortak markayı devralır — yoksa taşınan
+                      // implant (26→27) markasız kalıp 2. adımı kilitliyordu.
+                      setForm(f => ({ ...f, implant_teeth: newTeeth, implant_details: reconcileImplantDetails(f.implant_details, newTeeth) }));
                       return;
                     }
                     const prevTeethSet = new Set(form.tooth_ops.map(o => o.tooth));

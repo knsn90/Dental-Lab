@@ -21,6 +21,7 @@ import { NOActionBar, NOActionBarProps } from './NOActionBar';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useBottomActionBar } from '../../../core/store/uiOverlayStore';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { useInkUI } from '../../../core/theme/inkScale';
 import { isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
 
@@ -111,7 +112,19 @@ export function NOPageChrome({
   const NO = useNOTokens();
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
+  const U = useInkUI();
   const rtl = isRTL();
+
+  // Web alt çubuğu, koyu tema: beyaz buton + krem metin ve krem "İleri" pill'i +
+  // beyaz metin görünmüyordu (NO.inkStrong koyuda krem olur — "ikiz tuzak").
+  // Açık tema değerleri birebir korunur.
+  const webPlainBtn = isDark
+    ? { backgroundColor: U.plainBtn.bg, border: `1px solid ${U.plainBtn.border}`, color: U.plainBtn.fg }
+    : { backgroundColor: 'rgba(255,255,255,0.85)', border: `1px solid ${NO.borderMedium}`, color: NO.inkStrong };
+  const webNextFg =
+    actionPrimary === 'saffron' ? (isDark ? '#0A0A0A' : NO.inkStrong)
+    : actionPrimary === 'success' ? '#FFFFFF'
+    : (isDark ? U.onDarkPill : '#FFFFFF');
 
   // Mobile'da form alanı bir beyaz tabaka — cream "şerit"ler (top/bottom)
   // görünmesin. Form kartları zaten beyaz, bg ile birleşip continuous form
@@ -483,8 +496,37 @@ export function NOPageChrome({
                 : { right: 'max(16px, calc(env(safe-area-inset-right, 0px) + 16px))' as any }),
               zIndex: 9999,
               pointerEvents: 'none',
+              // Hata balonu butonların ÜSTÜNE, aynı kenara hizalı. <html dir> RTL'de
+              // flex-end sola düşer — kutu da solda, hizalama kendiliğinden doğru.
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-end',
             }}
           >
+            {/* Sessiz kilit kalkanı (web): native kopyası display:none kaldığı için
+                web'de adım kilitlenince sebep hiç görünmüyordu (NEX-2026-0183). */}
+            {nextError ? (
+              <div
+                role="alert"
+                style={{
+                  maxWidth: 320,
+                  marginBottom: 8,
+                  padding: '8px 12px',
+                  borderRadius: 12,
+                  backgroundColor: isDark ? 'rgba(220,38,38,0.26)' : '#FEF2F2',
+                  border: `1px solid ${isDark ? 'rgba(248,113,113,0.35)' : 'rgba(220,38,38,0.25)'}`,
+                  boxShadow: '0 8px 24px rgba(15,23,42,0.14)',
+                  backdropFilter: 'blur(14px) saturate(160%)',
+                  WebkitBackdropFilter: 'blur(14px) saturate(160%)',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  lineHeight: '17px',
+                  color: isDark ? '#FCA5A5' : '#991B1B',
+                } as any}
+              >
+                {autoT(nextError)}
+              </div>
+            ) : null}
             <div
               style={{
                 display: 'flex',
@@ -493,9 +535,12 @@ export function NOPageChrome({
                 gap: 8,
                 padding: '8px 10px',
                 borderRadius: 9999,
-                backgroundColor: 'rgba(255,255,255,0.72)',
-                border: '1px solid rgba(255,255,255,0.55)',
-                boxShadow: '0 12px 32px rgba(15,23,42,0.16), inset 0 1px 0 rgba(255,255,255,0.7)',
+                // Koyuda kart tonu (#1B1916); içindeki butonlar bir kademe koyu (#141312).
+                backgroundColor: isDark ? 'rgba(27,25,22,0.82)' : 'rgba(255,255,255,0.72)',
+                border: isDark ? '1px solid rgba(255,255,255,0.10)' : '1px solid rgba(255,255,255,0.55)',
+                boxShadow: isDark
+                  ? '0 12px 32px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06)'
+                  : '0 12px 32px rgba(15,23,42,0.16), inset 0 1px 0 rgba(255,255,255,0.7)',
                 backdropFilter: 'blur(14px) saturate(160%)',
                 WebkitBackdropFilter: 'blur(14px) saturate(160%)',
                 pointerEvents: 'auto',
@@ -507,7 +552,7 @@ export function NOPageChrome({
                   <span style={{ fontSize: 11, color: NO.inkSoft }}>
                     Taslak · {savedTime}
                   </span>
-                  <div style={{ width: 1, height: 18, backgroundColor: 'rgba(0,0,0,0.10)', marginInlineStart: 4 }} />
+                  <div style={{ width: 1, height: 18, backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.10)', marginInlineStart: 4 }} />
                 </div>
               )}
               {onPreview && (
@@ -516,20 +561,18 @@ export function NOPageChrome({
                   style={{
                     padding: '9px 16px',
                     borderRadius: 9999,
-                    backgroundColor: 'rgba(255,255,255,0.85)',
-                    border: `1px solid ${NO.borderMedium}`,
+                    ...webPlainBtn,
                     display: 'flex',
                     alignItems: 'center',
                     gap: 6,
                     cursor: 'pointer',
                     fontSize: 13,
                     fontWeight: 500,
-                    color: NO.inkStrong,
                     fontFamily: 'inherit',
                   }}
                   title="Sipariş özetini önizle"
                 >
-                  <Printer size={14} color={NO.inkStrong} strokeWidth={2} />
+                  <Printer size={14} color={webPlainBtn.color} strokeWidth={2} />
                   Önizleme
                 </button>
               )}
@@ -539,20 +582,18 @@ export function NOPageChrome({
                   style={{
                     padding: '9px 16px',
                     borderRadius: 9999,
-                    backgroundColor: 'rgba(255,255,255,0.85)',
-                    border: `1px solid ${NO.borderMedium}`,
+                    ...webPlainBtn,
                     display: 'flex',
                     alignItems: 'center',
                     gap: 6,
                     cursor: 'pointer',
                     fontSize: 13,
                     fontWeight: 500,
-                    color: NO.inkStrong,
                     fontFamily: 'inherit',
                   }}
                 >
-                  {rtl ? <ArrowRight size={14} color={NO.inkStrong} strokeWidth={2} />
-                       : <ArrowLeft size={14} color={NO.inkStrong} strokeWidth={2} />}
+                  {rtl ? <ArrowRight size={14} color={webPlainBtn.color} strokeWidth={2} />
+                       : <ArrowLeft size={14} color={webPlainBtn.color} strokeWidth={2} />}
                   {autoT('Geri')}
                 </button>
               )}
@@ -575,20 +616,20 @@ export function NOPageChrome({
                     opacity: loading ? 0.7 : 1,
                     fontSize: 13,
                     fontWeight: 500,
-                    color: actionPrimary === 'saffron' ? NO.inkStrong : '#FFFFFF',
+                    color: webNextFg,
                     fontFamily: 'inherit',
                   }}
                 >
                   {loading
-                    ? <Loader size={14} color={actionPrimary === 'saffron' ? NO.inkStrong : '#FFFFFF'} strokeWidth={2} />
+                    ? <Loader size={14} color={webNextFg} strokeWidth={2} />
                     : null}
                   {autoT(nextLabel ?? 'İleri')}
                   {!loading && (
                     actionPrimary === 'success'
                       ? <Check size={14} color="#FFFFFF" strokeWidth={2.5} />
                       : rtl
-                        ? <ArrowLeft size={14} color={actionPrimary === 'saffron' ? NO.inkStrong : '#FFFFFF'} strokeWidth={2} />
-                        : <ArrowRight size={14} color={actionPrimary === 'saffron' ? NO.inkStrong : '#FFFFFF'} strokeWidth={2} />
+                        ? <ArrowLeft size={14} color={webNextFg} strokeWidth={2} />
+                        : <ArrowRight size={14} color={webNextFg} strokeWidth={2} />
                   )}
                 </button>
               )}
