@@ -221,6 +221,23 @@ if ((hasTransparentLogo || fs.existsSync(legacyIconPath)) && !html.includes('id=
   console.log('✓ Splash screen injected (' + (hasTransparentLogo ? 'inline SVG' : 'inline PNG base64') + ')');
 }
 
+// ─── Entry önbellek kırıcı — entry-<ad>.js?v=<içerik özeti> ─────────────────
+// Yalnız lazy chunk değişince entry ADI aynı kalıyor ama içeriği (chunk haritası)
+// değişiyor; immutable önbellekteki eski entry 404 chunk istiyordu. Bkz.
+// scripts/cacheBustEntry.js. index.html'e yazılan SON adım olmalı (modulepreload
+// etiketi dahil tüm entry adreslerini birlikte günceller).
+{
+  const { cacheBustEntry } = require('./cacheBustEntry');
+  const res = cacheBustEntry(html, (url) => fs.readFileSync(path.join(DIST, url)));
+  if (res.version) {
+    html = res.html;
+    fs.writeFileSync(indexPath, html);
+    console.log('✓ entry cache-bust: ?v=' + res.version);
+  } else {
+    console.warn('⚠ entry script bulunamadı — cache-bust atlandı');
+  }
+}
+
 // public/ klasörünü dist'e kopyala (manifest.webmanifest, sw.js, icons/)
 function copyRecursive(src, dst) {
   const stat = fs.statSync(src);
