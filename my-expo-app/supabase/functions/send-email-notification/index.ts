@@ -103,6 +103,24 @@ serve(async (req) => {
 
   const supabase = createClient(supabaseUrl, supabaseSrvKey);
 
+  // Telefon talebi: konuşma dökümünü e-postaya ekle. YALNIZ güvenilir sistem çağrısında
+  // (_notify_channels, x-notify-secret) ve talebin lab'ı alıcının lab'ıyla aynıysa —
+  // aksi halde oturum açmış bir kullanıcı başka lab'ın dökümünü kendine e-postalatabilirdi.
+  // Hata olursa e-posta dökümsüz (eskisi gibi) gider.
+  let leadTranscript: Array<{ role: string; text: string }> | null = null;
+  let leadLabId: string | null = null;
+  if (body.category === 'phone_lead' && authz.trusted && body.payload?.resourceId) {
+    try {
+      const { data: lead } = await supabase.from('phone_leads')
+        .select('lab_id, transcript').eq('id', String(body.payload.resourceId)).maybeSingle();
+      if (lead && Array.isArray((lead as any).transcript)) {
+        leadLabId = (lead as any).lab_id ?? null;
+        leadTranscript = ((lead as any).transcript as any[]).slice(0, 200)
+          .map((t) => ({ role: t?.role === 'assistant' ? 'assistant' : 'user', text: String(t?.text ?? '') }));
+      }
+    } catch { leadTranscript = null; }
+  }
+
   // 1. Yetkili alıcılar arasında email + pref opt-out filtresi
   const targets = recipients.filter((p: any) => {
     if (!p.email) return false;
@@ -173,11 +191,13 @@ serve(async (req) => {
       labLogoUrl: brand?.logo || undefined,
       orderDetail,
       orderUrgent,
+      transcript: leadTranscript && target?.lab_id && target.lab_id === leadLabId ? leadTranscript : null,
     });
     const text = renderTextBody({
       category: body.category,
       payload:  body.payload,
       appUrl:   appPublicUrl,
+      transcript: leadTranscript && target?.lab_id && target.lab_id === leadLabId ? leadTranscript : null,
     });
 
     try {
@@ -251,6 +271,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   paper_order:  'Yeni Kağıt Sipariş',
   order_watch:  'Günlük İş Takibi',
   stage_critical: 'Kritik Aşama Tamamlandı',
+  phone_lead:   'Telefon Talebi',
 };
 
 // work_order_status enum → okunur Türkçe etiket (sipariş detay kartında "Durum")
@@ -272,12 +293,16 @@ function renderSubject(_category: string, p: EmailPayload): string {
   return p.title;
 }
 
-function renderTextBody(opts: { category: string; payload: EmailPayload; appUrl: string }): string {
+function renderTextBody(opts: { category: string; payload: EmailPayload; appUrl: string; transcript?: Array<{ role: string; text: string }> | null }): string {
   const { payload, appUrl } = opts;
   const link = payload.actionUrl ? toAbs(payload.actionUrl, appUrl) : appUrl;
+  const tr = opts.transcript?.length
+    ? '\n\nGörüşme dökümü\n' + opts.transcript.map((t) => `${t.role === 'assistant' ? 'Asistan' : 'Arayan'}: ${t.text}`).join('\n')
+    : '';
   return [
     payload.title,
     payload.body ? `\n${payload.body}` : '',
+    tr,
     `\n\n${link}`,
     '\n\n— Siman',
   ].join('');
@@ -302,6 +327,7 @@ function renderHtmlBody(opts: {
   labLogoUrl?: string;
   orderDetail?: Record<string, string> | null;
   orderUrgent?: boolean;
+  transcript?: Array<{ role: string; text: string }> | null;
 }): string {
   const { category, payload, name, appUrl } = opts;
   const label = CATEGORY_LABEL[category] ?? 'Bildirim';
@@ -316,10 +342,12 @@ function renderHtmlBody(opts: {
   const labName     = opts.labName || extra.labName || extra.lab || 'Nexadent';
   const labLogoUrl  = opts.labLogoUrl || extra.labLogoUrl || extra.lab_logo_url || '';
   // Yalnız gerçek bir vaka/kayıt olan bildirimlerde QR göster (dijest vb.'de gösterme).
-  const showQr = !!(payload.resourceId && String(payload.resourceId).trim());
+  const showQr = category !== 'phone_lead' && !!(payload.resourceId && String(payload.resourceId).trim());
   // Gövde metnini (dijest özeti, mesaj vb.) gerçekten göster; yoksa generic satır.
   const bodyLine = payload.body && String(payload.body).trim()
-    ? escape(String(payload.body).trim())
+    ? (category === 'phone_lead'
+        ? escape(String(payload.body).trim()).replace(/\n/g, '<br>')   // talep / telefon / geri arama satırları
+        : escape(String(payload.body).trim()))
     : 'Detayları görüntülemek için aşağıdaki butonu kullanın.';
   // CTA etiketi: tek bir vaka varsa "İş Emrini Aç", yoksa (dijest/liste) "Panele Git".
   const ctaLabel = showQr ? 'İş Emrini Aç' : 'Panele Git';
@@ -365,6 +393,17 @@ function renderHtmlBody(opts: {
             </td></tr>`;
             }).join('')}
           </table>` : '';
+  // Telefon talebi: konuşma dökümü (Arayan / Asistan satırları)
+  const transcript = Array.isArray(opts.transcript) ? opts.transcript : [];
+  const transcriptHtml = transcript.length ? `
+              <div style="margin:4px 0 8px;font-size:10.5px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#94A3B8;">Görüşme dökümü</div>
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 20px;border:1px solid #E2E8F0;border-radius:12px;overflow:hidden;">
+                ${transcript.map((t, i) => `
+                <tr><td style="padding:9px 14px;${i < transcript.length - 1 ? 'border-bottom:1px solid #F1F5F9;' : ''}background:${t.role === 'assistant' ? '#F8FAFC' : '#FFFFFF'};">
+                  <div style="font-size:10.5px;font-weight:700;color:${t.role === 'assistant' ? '#64748B' : '#0F172A'};letter-spacing:0.3px;">${t.role === 'assistant' ? 'Asistan' : 'Arayan'}</div>
+                  <div style="font-size:13px;color:#0F172A;line-height:1.5;margin-top:2px;">${escape(t.text)}</div>
+                </td></tr>`).join('')}
+              </table>` : '';
   const createdAt   = new Date().toLocaleString('tr-TR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
 
   // Brand-level meta keys — UI'da brand strip / category chip / hero'da yer alıyor;
@@ -496,6 +535,7 @@ function renderHtmlBody(opts: {
                 ${bodyLine}
               </p>
               ${itemsHtml}
+              ${transcriptHtml}
             </td></tr>
             <tr><td align="center" style="text-align:center;padding-top:4px;">
               <!-- Bulletproof button (table-based, ortalı) -->

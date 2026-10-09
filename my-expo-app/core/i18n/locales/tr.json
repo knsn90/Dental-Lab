@@ -71,7 +71,9 @@
       "myJobs": "İşlerim",
       "history": "Geçmiş",
       "requests": "Talepler",
-      "waSupport": "WhatsApp Destek"
+      "waSupport": "WhatsApp Destek",
+      "phoneLeads": "Telefon Talepleri",
+      "phoneLeadsSub": "Telefon asistanı talepleri"
     },
     "sections": {
       "work": "İş Yönetimi",

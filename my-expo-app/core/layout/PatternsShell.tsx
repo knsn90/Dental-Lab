@@ -60,6 +60,7 @@ import {
   Camera, ScanLine, Clipboard, Wrench, Tag, ChevronDown, Inbox,
   ListCheck, Scooter, TrendingUp,
   Monitor, Sun, Moon,
+  PhoneCall as PhoneCallIcon,
 } from '../ui/icons';
 import { SupportIcon } from '../ui/SupportIcon';
 import { GlassTooltip } from '../ui/GlassTooltip';
@@ -83,6 +84,7 @@ import { autoT } from '../i18n/autoTranslate';
 import { useHeroSurface, useAccentTones } from '../ui/HeroGlow';
 import { isRTL } from '../i18n';
 import { amIPlatformAdmin, myLimits } from '../../modules/platform/api';
+import { useFeatureFlagsStore } from '../store/featureFlagsStore';
 
 // ── Types (compatible with DesktopShell's NavItem) ────────────────────
 export interface PatternsNavItem {
@@ -103,6 +105,8 @@ export interface PatternsNavItem {
   requiresPermission?: string;
   /** If set, this nav item is hidden unless the user has ANY of these permissions */
   requiresAnyPermission?: string[];
+  /** Lab bazlı modül bayrağı (platform panelinden açılır); kapalıysa öğe gizlenir */
+  requiresFeature?: string;
   /** Alt menü — set edilirse bu öğe açılır/kapanır bir grup butonu olur */
   children?: PatternsNavItem[];
 }
@@ -191,6 +195,7 @@ const ICONS: Record<string, React.ComponentType<any>> = {
   'list-todo':      ListTodo,
   'list-check':     ListCheck,
   scooter:          Scooter,
+  phone:            PhoneCallIcon,
   camera:           Camera,
   'scan-line':      ScanLine,
   clipboard:        Clipboard,
@@ -262,10 +267,13 @@ export function PatternsShell({
     try { if (typeof window !== 'undefined') window.localStorage?.removeItem('nx_panel'); } catch {}
   }, []);
 
-  // Filter nav items by RBAC permissions
+  // Filter nav items by module flags, then RBAC permissions
+  const featureFlags = useFeatureFlagsStore(s => s.flags);
   const filteredNavItems = useMemo(() => {
-    if (!permStore.loaded) return navItems; // show all while loading
-    return navItems.filter(item => {
+    // modül bayrağı: kapalı (ya da henüz yüklenmemiş) modül hiç görünmez
+    const byFeature = navItems.filter(item => !item.requiresFeature || featureFlags[item.requiresFeature] === true);
+    if (!permStore.loaded) return byFeature; // show all while loading
+    return byFeature.filter(item => {
       if (item.requiresPermission) {
         return permStore.permissions.has(item.requiresPermission);
       }
@@ -274,7 +282,7 @@ export function PatternsShell({
       }
       return true; // no permission required
     });
-  }, [navItems, permStore.loaded, permStore.permissions]);
+  }, [navItems, permStore.loaded, permStore.permissions, featureFlags]);
   const [collapsed, setCollapsed] = useState(false);
   const rtl = isRTL();
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);

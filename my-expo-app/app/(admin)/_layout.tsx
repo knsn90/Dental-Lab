@@ -16,6 +16,8 @@ import {
   CheckCircle2 as CheckCircle22, Users as Users2, Settings as Settings2,
   TrendingUp as TrendingUp2, FileText as FileText2,  ScanFace,
 } from '../../core/ui/icons';
+import { PhoneCall as PhoneCall2 } from '../../core/ui/icons';
+import { useFeature, useFeatureFlagsStore } from '../../core/store/featureFlagsStore';
 
 import { TopActionBar } from '../../core/ui/mobile/TopActionBar';
 import { bootMark } from '../../core/debug/bootTrace';
@@ -113,6 +115,11 @@ export default function AdminLayout() {
   // hook sayısı değişiyor ve React "Rendered more hooks" hatası veriyor.
   const faceScanOk = useFaceScanAvailable();
   const [faceScanOpen, setFaceScanOpen] = React.useState(false);
+  // Lab bazlı modül bayrakları (platform panelinden açılır/kapanır)
+  const loadFlags = useFeatureFlagsStore(s => s.load);
+  const featureFlags = useFeatureFlagsStore(s => s.flags);
+  useEffect(() => { if (profile?.lab_id) void loadFlags(profile.lab_id); }, [profile?.lab_id, loadFlags]);
+  const phoneAssistantOn = useFeature('phone_assistant');
 
   if (!profile) {
     return <Slot />;  // profil yükleniyor (optimistic) → kabuk
@@ -156,12 +163,16 @@ export default function AdminLayout() {
     { label: t('nav.items.support'),    href: '/(admin)/support',          iconName: 'help-circle',    matchPrefix: true, sectionLabel: t('nav.sections.help') },
     { label: t('nav.items.waSupport'),  href: '/(admin)/wa-support',       iconName: 'whatsapp', matchPrefix: false,
       requiresPermission: 'manage_settings' },
+    { label: t('nav.items.phoneLeads'), href: '/(admin)/phone-leads',      iconName: 'phone',    matchPrefix: false,
+      requiresFeature: 'phone_assistant' },
     { label: t('nav.items.messages'),          href: '/(admin)/messages',         iconName: 'messages-square', matchPrefix: false,
       onPress: () => setMessagesOpen(true),
       badgeCount: chatUnread > 0 ? chatUnread : undefined },
     { label: t('nav.items.settings'),           href: '/(admin)/settings',         iconName: 'settings',       matchPrefix: true, sectionLabel: t('nav.sections.system'),
       requiresPermission: 'view_settings' },
   ];
+  // Modülü kapalı öğeler komut paleti gibi kendi listeleyen yerlerde de görünmesin
+  const ADMIN_NAV_VISIBLE = ADMIN_NAV.filter((i: any) => !i.requiresFeature || featureFlags[i.requiresFeature] === true);
 
   if (isDesktop) {
     return (
@@ -175,7 +186,7 @@ export default function AdminLayout() {
             özete dönme hatasının sebebi buydu. Lazy kardeşler artık kendi
             sınırlarında — Slot onları asla beklemez. */}
         <PatternsShell
-          navItems={ADMIN_NAV}
+          navItems={ADMIN_NAV_VISIBLE}
           accentColor={accentColor}
           onPressMessages={() => setMessagesOpen(true)}
           messagesUnreadCount={chatUnread}
@@ -192,7 +203,7 @@ export default function AdminLayout() {
         </React.Suspense>
         <React.Suspense fallback={null}>
           <CommandPalette
-            navItems={ADMIN_NAV}
+            navItems={ADMIN_NAV_VISIBLE}
             onNavigate={(href: string) => router.push(href as any)}
             accentColor={accentColor}
           />
@@ -229,6 +240,7 @@ export default function AdminLayout() {
     { key: 'finance',  label: t('nav.items.finance'),           sub: t('admin.more.finance.sub'),    icon: Landmark2, onPress: () => router.push('/(admin)/finance' as any) },
     { key: 'team',     label: t('nav.items.team'),             sub: t('admin.more.team.sub'),   icon: Users2,    onPress: () => router.push('/(admin)/ik-depo' as any) },
     { key: 'stock',    label: t('nav.items.stock'),      sub: t('admin.more.stock.sub'),               icon: Package2,  onPress: () => router.push('/(admin)/stock' as any) },
+    ...(phoneAssistantOn ? [{ key: 'phone-leads', label: t('nav.items.phoneLeads'), sub: t('nav.items.phoneLeadsSub'), icon: PhoneCall2 as any, onPress: () => router.push('/(admin)/phone-leads' as any) }] : []),
     { key: 'settings', label: t('nav.items.settings'),          sub: t('admin.more.settings.sub'), icon: Settings2, onPress: () => router.push('/(admin)/settings' as any) },
   ];
 
@@ -248,6 +260,7 @@ export default function AdminLayout() {
         >
         <Tabs.Screen name="index" options={{ title: t('nav.items.summary') }} />
         <Tabs.Screen name="wa-support" options={{ href: null }} />
+        <Tabs.Screen name="phone-leads" options={{ href: null }} />
         <Tabs.Screen name="new-order" options={{ title: t('admin.tabs.newOrder') }} />
         <Tabs.Screen name="users" options={{ title: t('admin.tabs.users') }} />
         <Tabs.Screen name="clinics" options={{ title: t('nav.items.clinics') }} />
@@ -365,7 +378,7 @@ export default function AdminLayout() {
       {/* Command Palette — mobile search FAB üzerinden de erişilebilir */}
       <React.Suspense fallback={null}>
         <CommandPalette
-          navItems={ADMIN_NAV}
+          navItems={ADMIN_NAV_VISIBLE}
           onNavigate={(href: string) => router.push(href as any)}
           accentColor={accentColor}
         />

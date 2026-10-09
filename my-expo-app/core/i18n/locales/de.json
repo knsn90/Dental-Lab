@@ -71,7 +71,9 @@
       "myJobs": "Meine Aufgaben",
       "history": "Verlauf",
       "requests": "Anfragen",
-      "waSupport": "WhatsApp-Support"
+      "waSupport": "WhatsApp-Support",
+      "phoneLeads": "Telefonanfragen",
+      "phoneLeadsSub": "Anfragen des Telefonassistenten"
     },
     "sections": {
       "work": "Arbeitsverwaltung",

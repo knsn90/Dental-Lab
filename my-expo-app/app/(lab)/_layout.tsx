@@ -14,6 +14,8 @@ import {
   Package as Package2, Building2 as Building22, Truck as Truck2,
   CheckCircle2 as CheckCircle22, Camera as Camera2, Users as Users2, Settings as Settings2, ScanFace,
 } from '../../core/ui/icons';
+import { PhoneCall as PhoneCall2 } from '../../core/ui/icons';
+import { useFeature, useFeatureFlagsStore } from '../../core/store/featureFlagsStore';
 
 import { PatternsShell, useIsDesktop } from '../../core/layout/PatternsShell';
 import { usePendingApprovals as useDesignPending } from '../../modules/approvals/hooks/usePendingApprovals';
@@ -124,6 +126,11 @@ export default function LabLayout() {
 
   // Yüz tarama navbar butonu — HOOK'LAR erken return'lerin ÜSTÜNDE kalmalı.
   const faceScanOk = useFaceScanAvailable();
+  // Lab bazlı modül bayrakları (platform panelinden açılır/kapanır)
+  const loadFlags = useFeatureFlagsStore(s => s.load);
+  const featureFlags = useFeatureFlagsStore(s => s.flags);
+  useEffect(() => { if (profile?.lab_id) void loadFlags(profile.lab_id); }, [profile?.lab_id, loadFlags]);
+  const phoneAssistantOn = useFeature('phone_assistant');
   const [faceScanOpen, setFaceScanOpen] = React.useState(false);
 
   // ── Early returns now happen AFTER all hooks ──────────────────────────────
@@ -191,6 +198,9 @@ export default function LabLayout() {
     { label: t('nav.items.support'),           emoji: '💬', href: '/(lab)/support',           iconName: 'help-circle',    matchPrefix: true, sectionLabel: t('nav.sections.help') },
     { label: t('nav.items.waSupport'),         emoji: '💬', href: '/(lab)/wa-support',        iconName: 'whatsapp', matchPrefix: false,
       requiresPermission: 'manage_settings' },
+    // Telefon asistanı talepleri — yalnız müdür/admin + modül açık
+    ...(isManager ? [{ label: t('nav.items.phoneLeads'), href: '/(lab)/phone-leads', iconName: 'phone', matchPrefix: false,
+      requiresFeature: 'phone_assistant' }] : []),
     { label: t('nav.items.messages'),         emoji: '✉️', href: '/(lab)/messages',          iconName: 'messages-square', matchPrefix: false,
       onPress: () => setMessagesOpen(true),
       badgeCount: chatUnread > 0 ? chatUnread : undefined },
@@ -200,9 +210,9 @@ export default function LabLayout() {
 
   // RBAC: CommandPalette (mobil + desktop) yalnız yetkili nav öğelerini göstermeli.
   // PatternsShell sidebar'ı kendi içinde filtreler; CommandPalette'e filtreli liste geçilir.
-  const filteredNavForPalette = permLoaded
+  const filteredNavForPalette = (permLoaded
     ? LAB_NAV.filter((item: any) => !item.requiresPermission || canPerm(item.requiresPermission))
-    : LAB_NAV;
+    : LAB_NAV).filter((item: any) => !item.requiresFeature || featureFlags[item.requiresFeature] === true);
 
   if (isDesktop) {
     return (
@@ -273,6 +283,7 @@ export default function LabLayout() {
     { key: 'finance',  requires: 'view_financials', label: t('nav.items.finance'),          sub: 'Kasa · Fatura · Gider · Çek',    icon: Landmark2, onPress: () => router.push('/(lab)/finance' as any) },
     { key: 'team',     requires: 'view_team',       label: t('nav.items.team'),            sub: 'Personel · maaş · izin',         icon: Users2,    onPress: () => router.push('/(lab)/ik-depo' as any) },
     { key: 'stock',    requires: 'view_stock',      label: t('nav.items.stock'),     sub: 'Envanter · alarm',               icon: Package2,  onPress: () => router.push('/(lab)/stock' as any) },
+    ...(isManager && phoneAssistantOn ? [{ key: 'phone-leads', label: t('nav.items.phoneLeads'), sub: t('nav.items.phoneLeadsSub'), icon: PhoneCall2, onPress: () => router.push('/(lab)/phone-leads' as any) }] : []),
     { key: 'settings', requires: 'view_settings',   label: t('nav.items.settings'),         sub: 'Genel · Bildirim · Entegrasyon', icon: Settings2, onPress: () => router.push('/(lab)/settings' as any) },
   ] as any[]).filter((it: any) => !permLoaded || !it.requires || canPerm(it.requires));
 
@@ -295,6 +306,7 @@ export default function LabLayout() {
         >
         <Tabs.Screen name="index" options={{ title: 'Bugün' }} />
         <Tabs.Screen name="wa-support" options={{ href: null }} />
+        <Tabs.Screen name="phone-leads" options={{ href: null }} />
         <Tabs.Screen name="all-orders" options={{ title: 'Tüm İşler' }} />
         <Tabs.Screen name="pending-paper" options={{ title: 'Manuel Sipariş Inbox', href: null }} />
         <Tabs.Screen name="production"  options={{ title: 'Üretim Panosu' }} />

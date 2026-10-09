@@ -71,7 +71,9 @@
       "myJobs": "My jobs",
       "history": "History",
       "requests": "Requests",
-      "waSupport": "WhatsApp Support"
+      "waSupport": "WhatsApp Support",
+      "phoneLeads": "Phone Requests",
+      "phoneLeadsSub": "Phone assistant requests"
     },
     "sections": {
       "work": "Work management",
