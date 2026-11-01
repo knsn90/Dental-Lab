@@ -1,0 +1,4 @@
+# 20261101121000_karlilik_kirilim — canlı ÖNCE (2026-11-01)
+# public._profit_revenue_lines, public.profitability_by_clinic, public.profitability_by_service: YOK
+# (pg_proc sorgusu: yalnız profitability_summary ve profitability_revenue_ccy döndü — bkz. 20261101120000 before)
+# İstemci ProfitabilityScreen v4 bu fonksiyonları çağırmıyor; geri alma yalnız DROP'tur.
