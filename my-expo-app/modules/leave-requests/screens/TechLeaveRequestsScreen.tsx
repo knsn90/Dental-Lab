@@ -16,6 +16,7 @@ import { useStationTheme, hexA } from '../../../core/theme/stationPalette';
 import { DatePicker } from '../../../core/ui/DatePicker';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { toast } from '../../../core/ui/Toast';
+import { rowsChanged } from '../../hr/lib/leaveActions';
 import {
   fetchLeaves, createLeave, cancelLeave, calcBusinessDays,
   LEAVE_TYPE_LABELS, LEAVE_STATUS_CFG,
@@ -78,8 +79,9 @@ export function TechLeaveRequestsScreen() {
   const approvedDays  = items.filter(i => i.status === 'onaylandi').reduce((s, i) => s + Number(i.days_count ?? 0), 0);
 
   const onCancel = async (id: string) => {
-    const { error } = await cancelLeave(id);
-    if (error) { toast.error('İptal edilemedi'); return; }
+    const { data, error } = await cancelLeave(id);
+    // 0 satır: yönetici araya girip karar vermiş (RLS süzdü) → başarı deme, güncel durumu göster
+    if (error || !rowsChanged(data)) { toast.error('İptal edilemedi'); load(); return; }
     toast.success('Talep iptal edildi');
     load();
   };

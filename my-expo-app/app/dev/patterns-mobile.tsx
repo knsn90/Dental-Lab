@@ -951,7 +951,7 @@ export default function PatternsMobileScreen() {
                 <Text style={{ flex: 1, fontSize: 13, color: T.ink3 }}>Hasta veya sipariş ara…</Text>
               </View>
               <View style={{
-                width: 44, height: 44, borderRadius: 14,
+                width: 44, height: 44, borderRadius: 9999,
                 backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline,
                 alignItems: 'center', justifyContent: 'center',
               }}>
@@ -1161,7 +1161,7 @@ export default function PatternsMobileScreen() {
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <View style={{
                   flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
-                  height: 44, paddingHorizontal: 14, borderRadius: 14,
+                  height: 44, paddingHorizontal: 14, borderRadius: 9999,
                   backgroundColor: '#FFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
                 }}>
                   <Search size={14} color={T.ink3} strokeWidth={1.6} />

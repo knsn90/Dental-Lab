@@ -1,0 +1,8 @@
+# 20261027162000_prova_randevu — canlı durum (uygulamadan önce), 2026-10-27T10:42:31Z
+appointments_rows : 0
+helpers : [
+ "can_see_work_order_id(p_wo uuid)",
+ "log_activity(p_action text, p_entity_type text, p_entity_id uuid, p_entity_label text, p_metadata jsonb, p_lab_id uuid, p_actor_id uuid)",
+ "my_clinic_id()"
+]
+new_fns : null

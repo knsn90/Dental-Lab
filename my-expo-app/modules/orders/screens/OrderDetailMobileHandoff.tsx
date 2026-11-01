@@ -13,18 +13,22 @@
 //   8. QC quick tags
 
 import React, { useState } from 'react';
+import { EdgeSwipeBack } from '../../../core/ui/mobile/EdgeSwipeBack';
 import { View, Text, Pressable, ScrollView, Platform } from 'react-native';
 import { StepsTimelineX } from '../../../core/ui/ProgressX';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ChevronLeft, ChevronRight, Printer, MoreHorizontal, Play, Pause, AlertCircle,
-  Paperclip, Plus, MessageCircle, Mic, Truck, Check, ChevronDown, RotateCcw, Star, Layers, CornerUpLeft,
+  Paperclip, Plus, MessageCircle, History, Mic, Truck, Check, ChevronDown, RotateCcw, Star, Layers, CornerUpLeft,
 } from '../../../core/ui/icons';
 import Svg, { Circle } from 'react-native-svg';
 import { MOBILE_PANEL_THEMES, useMobileTokens, type MobilePanel } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
+import { provaHeroIcon, type ProvaDot } from '../prova/ProvaHeroIcon';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { onAccentInk } from '../../../core/theme/usePanelTheme';
 import { groupImplantTeeth, type ImplantInfo } from '../implantInfo';
 
 const STAGES = [
@@ -95,8 +99,12 @@ export interface OrderDetailMobileHandoffProps {
   logisticsNode?: React.ReactNode;
   // Progress
   operatorProgress: number;     // 40
-  // Activity
-  activities: { title: string; user: string; time: string; kind: 'prod' | 'done' | 'wait' }[];
+  /** Sipariş geçmişi popup'ını açar — verilirse üst çubukta saat ikonlu düğme çıkar. */
+  onHistory?: () => void;
+  /** Prova popup'ını açar (2. dalga 4) — verilirse üst çubukta takvim ikonlu düğme çıkar. */
+  onProva?: () => void;
+  /** Prova durum noktası: klinikte (amber), gecikti/risk (kırmızı), döndü (yeşil). */
+  provaDot?: ProvaDot;
   /** Hekim notu — varsa "Hekim Notu" tab/section'da gösterilir, yoksa boş mesaj */
   doctorNote?: string | null;
   // Actions
@@ -168,32 +176,83 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
       >
         {/* ═══ 1. Top bar ═══ */}
         <View style={{
-          paddingTop: insets.top + 12, paddingHorizontal: 16, paddingBottom: 8,
+          // Global logolu başlığın (logo + ikonlar, ~+46) altından başlar.
+          paddingTop: Math.max(insets.top, 8) + 58, paddingHorizontal: 16, paddingBottom: 8,
           flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
         }}>
-          <Pressable
-            onPress={props.onBack}
-            style={{
-              width: 38, height: 38, borderRadius: 12,
-              backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline,
-              alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            {isRTL() ? <ChevronRight size={18} color={T.ink} strokeWidth={2} />
-                     : <ChevronLeft size={18} color={T.ink} strokeWidth={2} />}
-          </Pressable>
-          <View style={{ alignItems: 'center', gap: 1 }}>
-            <Text style={{ fontFamily: T.mono, fontSize: 10, color: T.ink3, letterSpacing: 0.6 }}>
+          <GlassTooltip title={autoT('Geri')} text={autoT('Geldiğin ekrana döner')} placement="bottom">
+            <Pressable
+              onPress={props.onBack}
+              accessibilityRole="button"
+              accessibilityLabel={autoT('Geri')}
+              // Kontrastlı geri: panel vurgu rengi dolgu + üstünde okunur ikon (safranda koyu, diğerlerinde beyaz).
+              style={({ pressed }: any) => ({
+                width: 38, height: 38, borderRadius: 12,
+                backgroundColor: accent, borderWidth: 1, borderColor: accent,
+                alignItems: 'center', justifyContent: 'center',
+                transform: [{ scale: pressed ? 0.95 : 1 }],
+              })}
+            >
+              {isRTL() ? <ChevronRight size={18} color={onAccentInk(accent)} strokeWidth={2.2} />
+                       : <ChevronLeft size={18} color={onAccentInk(accent)} strokeWidth={2.2} />}
+            </Pressable>
+          </GlassTooltip>
+          {/* Başlık geri düğmesiyle sağdaki düğmelerin ARASINDAKİ boşlukta ortalanır. Ekranın tam
+              ortasına mutlak konumlanınca (eski hâl) sağdaki düğme sayısı arttıkça (Geçmiş + Prova +
+              Mesajlar) numaranın üstüne biniyordu; şimdi yer daralırsa numara kısalır, çakışmaz. */}
+          <View pointerEvents="none" style={{ flex: 1, minWidth: 0, marginHorizontal: 8, alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+            <Text style={{ fontFamily: T.mono, fontSize: 10, color: T.ink3, letterSpacing: 0.6 }} numberOfLines={1}>
               SİPARİŞ
             </Text>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink, maxWidth: '100%' }} numberOfLines={1}>
               {props.orderNumber}
             </Text>
           </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {/* Sipariş geçmişi — popup (kim, ne zaman, ne yaptı) */}
+          {props.onHistory ? (
+            <GlassTooltip title={autoT('Sipariş geçmişi')} text={autoT('Kim, ne zaman, ne yaptı: oluşturma, söz verilen teslim, kurye, notlar ve sohbet')} placement="bottom">
+              <Pressable
+                onPress={props.onHistory}
+                accessibilityRole="button"
+                accessibilityLabel={autoT('Sipariş geçmişi')}
+                style={({ pressed }: any) => ({
+                  width: 38, height: 38, borderRadius: 12,
+                  backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline,
+                  alignItems: 'center', justifyContent: 'center',
+                  transform: [{ scale: pressed ? 0.95 : 1 }],
+                })}
+              >
+                <History size={18} color={T.ink} strokeWidth={2} />
+              </Pressable>
+            </GlassTooltip>
+          ) : null}
+          {/* Prova — durum noktası ikonun üstünde (popup ortada açılır) */}
+          {props.onProva ? (() => {
+            const DotIcon = provaHeroIcon(props.provaDot ?? 'none');
+            return (
+              <GlassTooltip title={autoT('Prova')} text={autoT('Provalar ve hastanın prova/takma randevuları')} placement="bottom">
+                <Pressable
+                  onPress={props.onProva}
+                  accessibilityRole="button"
+                  accessibilityLabel={autoT('Prova')}
+                  style={({ pressed }: any) => ({
+                    width: 38, height: 38, borderRadius: 12,
+                    backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline,
+                    alignItems: 'center', justifyContent: 'center',
+                    transform: [{ scale: pressed ? 0.95 : 1 }],
+                  })}
+                >
+                  <DotIcon size={18} color={T.ink} strokeWidth={2} />
+                </Pressable>
+              </GlassTooltip>
+            );
+          })() : null}
           {/* Mesaj butonu — order-spesifik chat. Okunmamış varsa accent'li etiketli pill (belirgin ama sade) */}
           {props.onChat ? (() => {
             const hasUnread = !!props.chatUnreadCount && props.chatUnreadCount > 0;
             return (
+              <GlassTooltip title={autoT('Mesajlar')} text={autoT('Bu siparişin sohbetini açar')} placement="bottom">
               <Pressable
                 onPress={props.onChat}
                 accessibilityLabel="Mesajlar"
@@ -221,10 +280,12 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
                   </>
                 )}
               </Pressable>
+              </GlassTooltip>
             );
           })() : (
             <View style={{ width: 38 }} />
           )}
+          </View>
         </View>
 
         {/* ═══ 2. HERO — patient + countdown + timeline (panel-themed gradient) ═══ */}
@@ -545,7 +606,10 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
 
           {/* AŞAMA DETAYLARI — desktop ile TEK bileşen (StageWorkflowTimeline); node yoksa basit listeye düşer */}
           {props.stageTimelineNode ? (
-            <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.10)' }}>
+            /* Çizgi YOK: zaman çizelgesinin kendi başlığı zaten üst çizgiyle
+               başlıyor — burada da çizilince Zamanlama'nın altında çift çizgi
+               oluyordu. Tek çizgi = bileşeninki (masaüstüyle ortak). */
+            <View style={{ marginTop: 12 }}>
               {props.stageTimelineNode}
             </View>
           ) : (props.stageDetails && props.stageDetails.length > 0) ? (
@@ -1031,6 +1095,9 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
         </View>
         )}
       </ScrollView>
+
+      {/* Kenardan sağa kaydırınca geri — geri butonuyla AYNI fonksiyon */}
+      <EdgeSwipeBack onBack={props.onBack} />
     </View>
   );
 }

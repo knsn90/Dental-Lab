@@ -13,12 +13,14 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { navBarMetrics } from '../../../core/ui/mobile/navGlass';
+import { EdgeSwipeBack } from '../../../core/ui/mobile/EdgeSwipeBack';
 import { HubContext } from '../../../core/ui/HubContext';
 import {
   ArrowLeft, ArrowRight, Printer, Banknote, CreditCard, Landmark, File,
   MoreHorizontal, Building2, User, Phone, MapPin, Calendar,
   ClipboardList, Plus, Trash2, Send, BellRing, CircleX,
-  CircleCheck, X, AlertCircle, ChevronRight, ChevronLeft, ChevronDown, Check, FileText, Undo2,
+  CircleCheck, X, AlertCircle, ChevronRight, ChevronLeft, ChevronDown, Check, FileText, Undo2, Pencil,
 } from '../../../core/ui/icons';
 import { toast } from '../../../core/ui/Toast';
 import { PaymentBadges } from '../../../core/ui/PaymentBadges';
@@ -29,7 +31,7 @@ import { safeBack } from '../../../core/util/safeBack';
 import { DS } from '../../../core/theme/dsTokens';
 import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
 import { useInkUI, type InkUI } from '../../../core/theme/inkScale';
-import { useHeroSurface } from '../../../core/ui/HeroGlow';
+import { useHeroSurface, HERO_NAVY } from '../../../core/ui/HeroGlow';
 import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
 import { CURRENCY_META, type Currency } from '../../../core/money/currency';
 import { baseSymbol, getBaseCurrency } from '../../../core/money/baseCurrency';
@@ -37,7 +39,11 @@ import { useInvoice } from '../hooks/useInvoices';
 import {
   recordPayment, setInvoiceStatus, deleteInvoice,
   addInvoiceItem, deleteInvoiceItem, updateInvoiceItem, updateInvoice,
+  undoManualPayment,
 } from '../api';
+import type { Payment } from '../types';
+import { usePermissions } from '../../../core/hooks/usePermissions';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import {
   INVOICE_STATUS_LABELS,
   PAYMENT_METHOD_LABELS, type PaymentMethod,
@@ -45,12 +51,15 @@ import {
 import { printInvoice } from '../printInvoice';
 import { PaymentReminderModal } from '../components/PaymentReminderModal';
 import { InvoiceActionsCard } from '../components/InvoiceActionsCard';
+import { clinicEFaturaGaps, EFATURA_GAP_LABELS } from '../../efatura/lib/readiness';
+import { openEFaturaPdf } from '../../efatura/pdf';
 import { startMyInvoicePayment } from '../../payments/api';
 import { PaymentSheetModal } from '../../payments/components/PaymentSheetModal';
 import { OrderDetailScreenV2 } from '../../orders/screens/OrderDetailScreenV2';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { CenteredLoader } from '../../../core/ui/CenteredLoader';
 import { normalizeDoctorName } from '../../../core/utils/textCase';
+import { NavyBackButtonX } from '../../../core/ui/NavyBackButtonX';
 
 // ── Patterns tokens (§05 kartlar) ───────────────────────────────────
 const DISPLAY = {
@@ -107,7 +116,7 @@ function fmtDate(iso: string | null | undefined): string {
   const d = iso.includes('T') ? new Date(iso) : new Date(iso + 'T00:00:00');
   return d.toLocaleDateString(localeTag(), { day: '2-digit', month: 'long', year: 'numeric' });
 }
-// Adres JSON ({il,ilce,mahalle,sokak,bina_no,posta_kodu}) ise okunaklı metne çevir;
+// Adres JSON ({il,ilce,mahalle,sokak,bina_no,daire_no,posta_kodu}) ise okunaklı metne çevir;
 // düz metinse aynen döndür.
 function formatAddress(raw: string | null | undefined): string {
   if (!raw) return '';
@@ -118,7 +127,8 @@ function formatAddress(raw: string | null | undefined): string {
     if (!o || typeof o !== 'object') return s;
     const sokak = String(o.sokak ?? '').trim();
     const binaNo = String(o.bina_no ?? '').trim();
-    const line1 = [sokak, binaNo && !sokak.includes(binaNo) ? 'No: ' + binaNo : null].filter(Boolean).join(' ');
+    const daireNo = String(o.daire_no ?? '').trim();
+    const line1 = [sokak, binaNo && !sokak.includes(binaNo) ? 'No: ' + binaNo : null, daireNo ? 'D: ' + daireNo : null].filter(Boolean).join(' ');
     const mahalle = String(o.mahalle ?? '').trim();
     const line2 = [
       mahalle ? (/mah/i.test(mahalle) ? mahalle : mahalle + ' Mah.') : null,
@@ -186,6 +196,10 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   const CHIP_TONES = chipTones(U);
   const STATUS_CHIP = statusChip(U);
   const theme = usePanelTheme();
+  // Tablo şeritleri (Kalemler / Tahsilat) — finans tablolarıyla aynı dil: panel accent zemin
+  const stripBg = theme.primary;
+  const stripInk = onAccentInk(stripBg);
+  const stripPill = stripInk === '#FFFFFF' ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.08)';
   // HOOK: erken return'lerden ÖNCE ve koşulsuz. Aşağıda (isOverdue'nun
   // yanında) çağrılınca 'Rendered more hooks than during the previous
   // render' hatası veriyordu — yükleme/bulunamadı dallarında hiç
@@ -231,6 +245,15 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   /** Klinik/hekim "Öde" düğmesi — intent açılırken çift tıklamayı engeller. */
   const [payBusy, setPayBusy] = useState(false);
+  // Resmi e-fatura PDF'i — klinik/hekim panelinde başlıkta (lab'da e-Fatura kartında da var)
+  const [efPdfBusy, setEfPdfBusy] = useState(false);
+  const handleEFaturaPdf = async () => {
+    if (!invoice) return;
+    setEfPdfBusy(true);
+    const r = await openEFaturaPdf(invoice.id);
+    setEfPdfBusy(false);
+    if (!r.ok) toast.error(autoT(r.error ?? 'PDF açılamadı'));
+  };
   /** Açık ödeme modalinin token'ı — null iken modal kapalı. */
   const [payToken, setPayToken] = useState<string | null>(null);
   const [addItemModalVisible, setAddItemModalVisible] = useState(false);
@@ -239,10 +262,22 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   const [curPickerOpen, setCurPickerOpen] = useState(false);   // taslak para birimi seçici
   const [rateEditOpen, setRateEditOpen] = useState(false);     // kur düzenleme
   const [rateInput, setRateInput] = useState('');
+  const [taxEditOpen, setTaxEditOpen] = useState(false);       // KDV oranı düzenleme
+  const [taxInput, setTaxInput] = useState('');
   const [noteDraft, setNoteDraft] = useState('');
   const [savingNote, setSavingNote] = useState(false);
   const [previewOrderId, setPreviewOrderId] = useState<string | null>(null);
+  // Masaüstünde iş emri faturanın üstünde popup açılır; mobilde SAYFA olarak — tam ekran
+  // popup'ın kapatma X'i çentiğin altına düşüp dokunulamıyordu. Geri/kenar kaydırma faturaya döner.
+  const openOrder = (id: string) => {
+    if (isDesktop) setPreviewOrderId(id);
+    else router.push(`/${panelBase}/order/${id}` as any);
+  };
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);   // iptal/sil onayı (web-safe)
+  // Tahsilatı geri alma yalnız finans yetkilisine (RLS de aynı kuralı uygular).
+  // Hook KOŞULSUZ ve erken dönüşlerden ÖNCE — bu dosyada iki kez hook sırası bozuldu.
+  const { can } = usePermissions();
+  const canUndoPayment = !readOnly && can('manage_finance');
 
   // Fatura değiştiğinde not düzenleyicisini o faturanın güncel notuyla başlat.
   useEffect(() => {
@@ -297,6 +332,22 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
     if (!Number.isFinite(v) || v <= 0) { toast.error('Geçerli bir kur gir.'); return; }
     const { error } = await updateInvoice(invoice.id, { rate_at_time: v });
     if (error) toast.error((error as any).message ?? String(error)); else { toast.success('Kur güncellendi.'); refetch(); }
+  };
+
+  // KDV oranı: e-faturaya gönderilene kadar değiştirilebilir (gönderilmiş belge
+  // GİB'de kayıtlı — oran değişemez). Toplamları recalc_on_tax_change yeniden hesaplar.
+  const canEditTax = !readOnly && invoice.status !== 'iptal'
+    && (!invoice.efatura_uuid || invoice.efatura_status === 'error');
+  // Resmi e-faturası (ETTN) olan fatura Siman'da taslağa alınamaz / iptal edilemez / silinemez
+  // (DB tetikleyicisi zz_invoices_efatura_lock da reddeder). e-Fatura Luca'da iptal edildiyse açılır.
+  const efLocked = !!invoice.efatura_uuid && invoice.efatura_status !== 'cancelled';
+  const saveTax = async (raw?: string) => {
+    const v = Number(String(raw ?? taxInput).replace(',', '.'));
+    if (!Number.isFinite(v) || v < 0 || v > 100) { toast.error(autoT('Geçerli bir KDV oranı gir (0–100).')); return; }
+    setTaxEditOpen(false);
+    if (v === Number(invoice.tax_rate)) return;
+    const { error } = await updateInvoice(invoice.id, { tax_rate: v });
+    if (error) toast.error((error as any).message ?? String(error)); else { toast.success(autoT('KDV oranı güncellendi.')); refetch(); }
   };
 
   const saveNote = async () => {
@@ -406,6 +457,25 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   };
   // Kesilmiş faturayı TASLAĞA geri al → düzenleme (kalem ekle/sil, adet/fiyat) yeniden açılır.
   // Yalnız ödeme yokken; taslak bakiyeye/ekstreye girmez, yeniden kesilince aynı numarayla döner.
+  // Yanlışlıkla girilen tahsilat ("ödendi" yapılan fatura) — durum tetikleyiciyle kendiliğinden döner.
+  const handleUndoPayment = (p: Payment) => {
+    setConfirm({
+      title: 'Tahsilatı geri al', variant: 'danger',
+      message:
+        `${fmtMoney(p.amount)} · ${fmtDate(p.payment_date)} · ${autoT(PAYMENT_METHOD_LABELS[p.payment_method])}\n\n` +
+        autoT('Bu tahsilat silinir; fatura durumu ve kalan tutar kendiliğinden güncellenir. İşlem aktivite kaydına yazılır.'),
+      label: 'Geri al',
+      onConfirm: async () => {
+        setConfirm(null);
+        setBusy(true);
+        const { error } = await undoManualPayment(p, invoice.invoice_number, invoice.lab_id ?? null);
+        setBusy(false);
+        if (error) toast.error(autoT(error));
+        else { toast.success(autoT('Tahsilat geri alındı, fatura güncellendi.')); refetch(); }
+      },
+    });
+  };
+
   const handleRevertToDraft = () => {
     setConfirm({
       title: 'Taslağa Dön', variant: 'warning',
@@ -470,7 +540,9 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
              çentik payı buraya geçti, aksi halde içerik saat/çentiğin altına
              giriyordu. */
           paddingTop: isDesktop || isEmbedded ? 8 : insets.top + 8,
-          paddingBottom: 80,
+          // Mobilde yüzen alt menünün gerçek yüksekliği kadar boşluk; sabit 80 Face ID'li
+          // iPhone'da son ~36pt'yi (alttaki aksiyonlar) menünün arkasında bırakıyordu.
+          paddingBottom: isDesktop ? 80 : navBarMetrics(insets.bottom).clearance + 16,
           gap: isDesktop ? 20 : 14,
         }}
         showsVerticalScrollIndicator={false}
@@ -487,18 +559,8 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
             accent={heroAccent}
             compact
             leading={
-              <Pressable onPress={goBack} accessibilityRole="button"
-                accessibilityLabel={autoT('Geri')} hitSlop={8}
-                style={{
-                  width: 30, height: 30, borderRadius: 9,
-                  alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: U.surface, borderWidth: 1, borderColor: U.hairline,
-                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                }}>
-                {isRTL()
-                  ? <ArrowRight size={15} strokeWidth={1.9} color={U.ink[900]} />
-                  : <ArrowLeft size={15} strokeWidth={1.9} color={U.ink[900]} />}
-              </Pressable>
+              /* Lacivert geri düğmesi — Finans'ın ortak bileşeni (NavyBackButtonX) */
+              <NavyBackButtonX onPress={goBack} />
             }
             kicker={`${autoT('Fatura')} · ${invoice.invoice_number}`}
             title={fmtMoney(balance)}
@@ -543,18 +605,21 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
                       />
                     )}
                     {!readOnly && invoice.status === 'taslak' && (
-                      <PillBtn icon={Send} label={isDesktop ? 'Kesildi İşaretle' : undefined} color={CHIP_TONES.info.text} bg={CHIP_TONES.info.bg} onPress={handleMarkSent} disabled={busy} />
+                      <PillBtn icon={Send} label="Kesildi İşaretle" stacked={!isDesktop} color={CHIP_TONES.info.text} bg={CHIP_TONES.info.bg} onPress={handleMarkSent} disabled={busy} />
                     )}
                     {!readOnly && (invoice.status === 'kesildi' || invoice.status === 'kismi_odendi') && (
-                      <PillBtn icon={BellRing} label={isDesktop ? 'Hatirlatma' : undefined} color={U.ink[500]} bg={U.ink[50]} onPress={() => setReminderOpen(true)} disabled={busy} />
+                      <PillBtn icon={BellRing} label="Hatırlatma" stacked={!isDesktop} color={U.ink[500]} bg={U.ink[50]} onPress={() => setReminderOpen(true)} disabled={busy} />
                     )}
-                    {!readOnly && invoice.status === 'kesildi' && Number(invoice.paid_amount) === 0 && (
-                      <PillBtn icon={Undo2} label={isDesktop ? 'Taslağa Dön' : undefined} color={U.ink[700]} bg={U.ink[100]} onPress={handleRevertToDraft} disabled={busy} />
+                    {!readOnly && !efLocked && invoice.status === 'kesildi' && Number(invoice.paid_amount) === 0 && (
+                      <PillBtn icon={Undo2} label="Taslağa Dön" stacked={!isDesktop} color={U.ink[700]} bg={U.ink[100]} onPress={handleRevertToDraft} disabled={busy} />
                     )}
                     {!readOnly && balance > 0 && invoice.status !== 'iptal' && (
-                      <PillBtn icon={Banknote} label={isDesktop ? 'Tahsilat Ekle' : undefined} onPress={() => setPaymentModalVisible(true)} dark />
+                      <PillBtn icon={Banknote} label="Tahsilat Ekle" stacked={!isDesktop} onPress={() => setPaymentModalVisible(true)} dark />
                     )}
-                    <PillBtn icon={Printer} onPress={handlePrint} />
+                    {readOnly && invoice.efatura_uuid && invoice.efatura_status !== 'cancelled' && (
+                      <PillBtn icon={FileText} label={efPdfBusy ? 'PDF alınıyor…' : 'e-Fatura PDF'} stacked={!isDesktop} onPress={handleEFaturaPdf} disabled={efPdfBusy} />
+                    )}
+                    <PillBtn icon={Printer} label="Yazdır" stacked={!isDesktop} onPress={handlePrint} />
               </View>
               </View>
             }
@@ -611,7 +676,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
                 {orderLinks.length > 0 ? (
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                     {orderLinks.map(o => (
-                      <Pressable key={o.id} onPress={() => setPreviewOrderId(o.id)}
+                      <Pressable key={o.id} onPress={() => openOrder(o.id)}
                         style={{
                           flexDirection: 'row', alignItems: 'center', gap: 6,
                           paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999,
@@ -748,35 +813,36 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
                 <Pressable onPress={() => setCurPickerOpen(true)} style={{
                   flexDirection: 'row', alignItems: 'center', gap: 5,
                   paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
-                  borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg,
+                  backgroundColor: stripPill,
                   cursor: 'pointer' as any,
                 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: U.ink[700] }}>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: stripInk }}>
                     {CURRENCY_META[(invoice.currency || 'TRY') as Currency]?.symbol ?? '₺'} {invoice.currency || 'TRY'}
                   </Text>
-                  <ChevronDown size={13} strokeWidth={1.8} color={U.ink[500]} />
+                  <ChevronDown size={13} strokeWidth={1.8} color={stripInk} />
                 </Pressable>
+                {/* Şerit üstünde birincil eylem: şerit mürekkebi zemin, accent yazı */}
                 <Pressable onPress={() => setAddItemModalVisible(true)} style={{
                   flexDirection: 'row', alignItems: 'center', gap: 5,
                   paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
-                  backgroundColor: U.ink[900], cursor: 'pointer' as any,
+                  backgroundColor: stripInk, cursor: 'pointer' as any,
                 }}>
-                  <Plus size={13} strokeWidth={2} color={U.onDarkPill} />
-                  <Text style={{ fontSize: 12, fontWeight: '500', color: U.onDarkPill }}>Kalem Ekle</Text>
+                  <Plus size={13} strokeWidth={2} color={stripBg} />
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: stripBg }}>Kalem Ekle</Text>
                 </Pressable>
               </>
             ) : null;
             return (
               <View style={{
-                padding: 20, gap: 12,
-                borderBottomWidth: 1, borderBottomColor: U.hairline,
+                paddingHorizontal: isDesktop ? 20 : 16, paddingVertical: isDesktop ? 20 : 14, gap: 12,
+                backgroundColor: stripBg,
               }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <Text numberOfLines={1} style={{ ...DISPLAY, fontSize: isDesktop ? 22 : 18, letterSpacing: -0.4, color: U.ink[900], flexShrink: 1 }}>
+                  <Text numberOfLines={1} style={{ ...DISPLAY, fontSize: isDesktop ? 22 : 18, letterSpacing: -0.4, color: stripInk, flexShrink: 1 }}>
                     Fatura Kalemleri
                   </Text>
-                  <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: U.ink[100] }}>
-                    <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '600', color: U.ink[500] }}>
+                  <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: stripPill }}>
+                    <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '600', color: stripInk }}>
                       {items.length} Kalem
                     </Text>
                   </View>
@@ -898,10 +964,17 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
                 <Text style={{ fontSize: 12, color: U.ink[500] }}>Ara Toplam</Text>
                 <Text style={{ fontSize: 13, fontWeight: '500', color: U.ink[900] }}>{fmtMoney(invoice.subtotal)}</Text>
               </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: 12, color: U.ink[500] }}>KDV (%{Number(invoice.tax_rate).toLocaleString('tr-TR')})</Text>
+              <Pressable
+                onPress={canEditTax ? () => { setTaxInput(String(Number(invoice.tax_rate) || 0)); setTaxEditOpen(true); } : undefined}
+                disabled={!canEditTax}
+                style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', ...(Platform.OS === 'web' && canEditTax ? { cursor: 'pointer' } as any : {}) }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                  <Text style={{ fontSize: 12, color: U.ink[500] }}>KDV (%{Number(invoice.tax_rate).toLocaleString('tr-TR')})</Text>
+                  {canEditTax ? <Pencil size={11} color={U.ink[400]} strokeWidth={1.8} /> : null}
+                </View>
                 <Text style={{ fontSize: 13, fontWeight: '500', color: U.ink[900] }}>{fmtMoney(invoice.tax_amount)}</Text>
-              </View>
+              </Pressable>
               <View style={{ height: 2, backgroundColor: U.ink[900], marginVertical: 4 }} />
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>Genel Toplam</Text>
@@ -951,11 +1024,15 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
             {/* Toolbar */}
             <View style={{
               flexDirection: 'row', alignItems: 'center',
-              padding: 20, gap: 12,
-              borderBottomWidth: 1, borderBottomColor: U.hairline,
+              paddingHorizontal: isDesktop ? 20 : 16, paddingVertical: isDesktop ? 20 : 14, gap: 12,
+              backgroundColor: stripBg,
             }}>
-              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: U.ink[900] }}>
-                Tahsilat · {invoice.payments!.length}
+              <Text style={{ ...DISPLAY, fontSize: isDesktop ? 22 : 18, letterSpacing: -0.4, color: stripInk }}>
+                Tahsilat
+              </Text>
+              <View style={{ flex: 1 }} />
+              <Text style={{ fontSize: 12, color: stripInk, opacity: 0.75 }}>
+                {invoice.payments!.length} kayıt
               </Text>
             </View>
             {invoice.payments!.map((p, idx) => (
@@ -982,6 +1059,29 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
                 {p.receiver?.full_name && (
                   <Text style={{ fontSize: 11, color: U.ink[400] }}>{p.receiver.full_name}</Text>
                 )}
+                {/* Yalnız ELLE girilmiş tahsilat geri alınır; online ödeme iade akışında kalır. */}
+                {canUndoPayment && !p.idempotency_key && invoice.status !== 'iptal' ? (
+                  <GlassTooltip text={autoT('Tahsilatı geri al')}>
+                    <Pressable
+                      onPress={() => handleUndoPayment(p)}
+                      disabled={busy}
+                      accessibilityRole="button"
+                      accessibilityLabel={autoT('Tahsilatı geri al')}
+                      hitSlop={6}
+                      style={({ hovered, pressed }: any) => ({
+                        width: 32, height: 32, borderRadius: 999,
+                        alignItems: 'center', justifyContent: 'center',
+                        borderWidth: 1, borderColor: U.plainBtn.border,
+                        backgroundColor: hovered ? U.plainBtn.hoverBg : U.plainBtn.bg,
+                        opacity: busy ? 0.5 : 1,
+                        transform: [{ scale: pressed ? 0.94 : 1 }],
+                        ...(Platform.OS === 'web' ? ({ cursor: busy ? 'default' : 'pointer' } as any) : {}),
+                      })}
+                    >
+                      <Undo2 size={14} strokeWidth={1.9} color={U.ink[500]} />
+                    </Pressable>
+                  </GlassTooltip>
+                ) : null}
               </View>
             ))}
           </View>
@@ -1019,7 +1119,12 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
               type: invoice.efatura_type ?? null,
               provider: invoice.efatura_provider ?? null,
               error: invoice.efatura_error ?? null,
+              number: invoice.efatura_number ?? null,
             }}
+            invoiceStatus={invoice.status}
+            onIssueInvoice={handleMarkSent}
+            clinicGaps={invoice.clinic ? clinicEFaturaGaps(invoice.clinic).map((g) => autoT(EFATURA_GAP_LABELS[g])) : []}
+            onEditClinic={invoice.clinic ? () => router.push(`/${panelBase}/clinics?editClinic=${invoice.clinic!.id}` as any) : undefined}
             onChanged={refetch}
           />
         )}
@@ -1039,11 +1144,17 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
             <Text style={{ flex: 1, minWidth: 140, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: U.ink[400] }}>
               Tehlikeli işlemler
             </Text>
+            {efLocked ? (
+              <Text style={{ flexBasis: '100%', fontSize: 12, lineHeight: 17, color: U.ink[500] }}>
+                Bu faturanın resmi e-faturası kesildi; Siman'da iptal edilemez veya değiştirilemez. İptal / iade Luca'dan yapılır.
+              </Text>
+            ) : (
             <Pressable onPress={handleCancel} disabled={busy}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(217,75,75,0.28)', opacity: busy ? 0.5 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
               <CircleX size={13} strokeWidth={1.8} color={CHIP_TONES.danger.text} />
               <Text style={{ fontSize: 12.5, fontWeight: '600', color: CHIP_TONES.danger.text }}>Iptal Et</Text>
             </Pressable>
+            )}
             {invoice.status === 'taslak' && (
               <Pressable onPress={handleDelete} disabled={busy}
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(217,75,75,0.28)', opacity: busy ? 0.5 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
@@ -1177,20 +1288,85 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
         </Pressable>
       </Modal>
 
+      {/* KDV oranı — e-faturaya gönderilene kadar; toplamlar DB'de yeniden hesaplanır */}
+      <Modal visible={taxEditOpen} transparent animationType="fade" onRequestClose={() => setTaxEditOpen(false)}>
+        <Pressable onPress={() => setTaxEditOpen(false)} style={{ flex: 1, backgroundColor: U.isDark ? 'rgba(0,0,0,0.66)' : 'rgba(10,14,26,0.42)', justifyContent: 'center', alignItems: 'center', padding: 24, ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) }}>
+          <Pressable onPress={() => {}} style={{ backgroundColor: U.surface, borderRadius: 18, padding: 18, width: 300, gap: 10, ...(Platform.OS === 'web' ? { boxShadow: modalShadowOf(U) } as any : {}) } as any}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: U.ink[900] }}>KDV Oranı</Text>
+            <Text style={{ fontSize: 12, color: U.ink[500] }}>Fatura toplamı bu orana göre yeniden hesaplanır. e-Faturaya gönderildikten sonra değiştirilemez.</Text>
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              {[0, 1, 10, 20].map((r) => {
+                const on = Number(String(taxInput).replace(',', '.')) === r;
+                return (
+                  <Pressable key={r} onPress={() => setTaxInput(String(r))}
+                    style={{ flex: 1, paddingVertical: 8, borderRadius: 999, alignItems: 'center', borderWidth: 1,
+                      backgroundColor: on ? U.ink[900] : U.plainBtn.bg, borderColor: on ? U.ink[900] : U.plainBtn.border,
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: on ? U.onDarkPill : U.plainBtn.fg }}>%{r}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <TextInput
+              value={taxInput}
+              onChangeText={setTaxInput}
+              keyboardType="decimal-pad"
+              placeholder="10"
+              placeholderTextColor={U.ink[400]}
+              onSubmitEditing={() => saveTax()}
+              style={{ borderWidth: 1, borderColor: U.ink[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 16, color: U.ink[900], ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }}
+            />
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+              <Pressable onPress={() => setTaxEditOpen(false)} style={{ flex: 1, paddingVertical: 11, borderRadius: 999, backgroundColor: U.ink[100], alignItems: 'center', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[700] }}>Vazgeç</Text>
+              </Pressable>
+              <Pressable onPress={() => saveTax()} style={{ flex: 1, paddingVertical: 11, borderRadius: 999, backgroundColor: U.ink[900], alignItems: 'center', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: U.onDarkPill }}>Kaydet</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <AddItemModal visible={addItemModalVisible} invoiceId={invoice.id} currency={invoice.currency || 'TRY'}
         onClose={() => setAddItemModalVisible(false)} onDone={() => { setAddItemModalVisible(false); refetch(); }} />
       <PaymentReminderModal visible={reminderOpen} invoice={invoice}
         clinicName={invoice.clinic?.name ?? undefined} onClose={() => setReminderOpen(false)} onSent={() => refetch()} />
+
+      {/* Kenardan sağa kaydırınca geri — geri butonuyla AYNI fonksiyon (hub içi / rota) */}
+      <EdgeSwipeBack onBack={goBack} />
     </View>
   );
 }
 
 // ─── PillBtn (§03 butonlar — pill köşeli) ───────────────────────────
-function PillBtn({ icon: Icon, label, color, bg, onPress, disabled, dark }: {
+function PillBtn({ icon: Icon, label, color, bg, onPress, disabled, dark, stacked }: {
   icon: React.ComponentType<any>; label?: string; color?: string; bg?: string;
   onPress: () => void; disabled?: boolean; dark?: boolean;
+  /** Mobil: ikon dairesi + ALTINDA etiket. Yalnız ikonlu kapsüller ne yaptığını söylemiyordu. */
+  stacked?: boolean;
 }) {
   const U = useInkUI();
+  if (stacked) {
+    return (
+      <Pressable onPress={onPress} disabled={disabled} accessibilityRole="button" accessibilityLabel={label}
+        style={{ width: 72, alignItems: 'center', gap: 6, opacity: disabled ? 0.5 : 1 }}>
+        <View style={{
+          width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center',
+          backgroundColor: dark ? U.ink[900] : (bg ?? U.plainBtn.bg),
+          borderWidth: dark || bg ? 0 : 1, borderColor: U.plainBtn.border,
+        }}>
+          {/* dark zemin = ink[900] → koyu temada KREM olur; ikon onDarkPill (ikiz tuzak) */}
+          <Icon size={18} strokeWidth={1.8} color={dark ? U.onDarkPill : (color ?? U.ink[900])} />
+        </View>
+        {label ? (
+          <Text numberOfLines={2} style={{ fontSize: 11, lineHeight: 14, fontWeight: '500', color: U.ink[700], textAlign: 'center' }}>
+            {label}
+          </Text>
+        ) : null}
+      </Pressable>
+    );
+  }
   return (
     <Pressable onPress={onPress} disabled={disabled} style={{
       flexDirection: 'row', alignItems: 'center', gap: 6,
@@ -1221,18 +1397,21 @@ function PaymentModal({ visible, invoiceId, maxAmount, currency = 'TRY', onClose
 }) {
   const U = useInkUI();
   const [amount, setAmount] = useState('');
-  const [method, setMethod] = useState<PaymentMethod>('nakit');
+  // Yöntem bilerek boş gelir (nakit kasaya yanlışlıkla havale düşmesin) — madde 8
+  const [method, setMethod] = useState<PaymentMethod | null>(null);
+  const [methodErr, setMethodErr] = useState(false);
   const [refNo, setRefNo] = useState('');
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
 
   React.useEffect(() => {
-    if (visible) { setAmount(maxAmount > 0 ? maxAmount.toFixed(2) : ''); setMethod('nakit'); setRefNo(''); setNotes(''); }
+    if (visible) { setAmount(maxAmount > 0 ? maxAmount.toFixed(2) : ''); setMethod(null); setMethodErr(false); setRefNo(''); setNotes(''); }
   }, [visible, maxAmount]);
 
   const handleSave = async () => {
     const amt = Number(amount.replace(',', '.'));
     if (!Number.isFinite(amt) || amt <= 0) { toast.error('Geçerli bir tutar girin.'); return; }
+    if (!method) { setMethodErr(true); return; }
     setBusy(true);
     const { error } = await recordPayment({ invoice_id: invoiceId, amount: amt, payment_method: method, reference_no: refNo || undefined, notes: notes || undefined });
     setBusy(false);
@@ -1255,7 +1434,7 @@ function PaymentModal({ visible, invoiceId, maxAmount, currency = 'TRY', onClose
           <FL>Yontem</FL>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
             {PAYMENT_METHOD_OPTIONS.map(opt => { const a = method === opt.v; const MI = opt.icon; return (
-              <Pressable key={opt.v} onPress={() => setMethod(opt.v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1.5, borderColor: a ? U.ink[900] : U.plainBtn.border, backgroundColor: a ? U.ink[50] : U.plainBtn.bg, cursor: 'pointer' as any }}>
+              <Pressable key={opt.v} onPress={() => { setMethod(opt.v); setMethodErr(false); }} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1.5, borderColor: a ? U.ink[900] : methodErr ? U.chipTones.danger.fg : U.plainBtn.border, backgroundColor: a ? U.ink[50] : U.plainBtn.bg, cursor: 'pointer' as any }}>
                 <MI size={12} strokeWidth={1.6} color={a ? U.ink[900] : U.ink[400]} />
                 <Text style={{ fontSize: 12, fontWeight: a ? '600' : '500', color: a ? U.ink[900] : U.ink[400] }}>{opt.l}</Text>
               </Pressable>
@@ -1265,7 +1444,8 @@ function PaymentModal({ visible, invoiceId, maxAmount, currency = 'TRY', onClose
           <FI value={refNo} onChangeText={setRefNo} placeholder="Havale/cek referans no" />
           <FL>Not (ops.)</FL>
           <FI value={notes} onChangeText={setNotes} placeholder="Ek bilgi..." multiline style={{ minHeight: 56, textAlignVertical: 'top' }} />
-          <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end', paddingTop: 16, marginTop: 8, borderTopWidth: 1, borderTopColor: U.hairline }}>
+          <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end', alignItems: 'center', paddingTop: 16, marginTop: 8, borderTopWidth: 1, borderTopColor: U.hairline }}>
+            {methodErr ? <Text style={{ flex: 1, fontSize: 12, fontWeight: '600', color: U.chipTones.danger.fg }}>{autoT('Ödeme yöntemini seçin')}</Text> : null}
             <Pressable onPress={onClose} disabled={busy} style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, cursor: 'pointer' as any }}>
               <Text style={{ fontSize: 13, fontWeight: '500', color: U.ink[500] }}>Vazgec</Text>
             </Pressable>

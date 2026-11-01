@@ -10,7 +10,9 @@ import { buildCariStatementHtml, type CariLine } from '../../core/util/buildCari
 import { baseSymbol } from '../../core/money/baseCurrency';
 
 import { autoT } from '../../core/i18n/autoTranslate';
+import { revisionDetail } from './lib/statementRevision';
 import { htmlAttrs, printLocale } from '../../core/i18n/printLocale';
+import { vatPortion, statementVatSummary } from './lib/statementVat';
 // ── Yardımcılar ──────────────────────────────────────────────────────
 function esc(v: unknown): string {
   if (v === null || v === undefined) return '—';
@@ -66,6 +68,17 @@ export interface StatementLine {
   origCurrency?: string;
   /** Orijinal döviz tutarı (borç ya da alacak — pozitif) */
   origAmount?: number;
+  /** Tahsilat fişi ayrıntısı: dekont no · kapattığı faturalar · not */
+  detail?: string | null;
+  /** Tahsilat fişinin makbuz numarası (lib/receiptStatement.receiptVoucherNo) */
+  receiptNo?: string | null;
+  /** Revizyon faturası: asıl sipariş no + sorumlu (lib/statementRevision) */
+  revisionOf?: string | null;
+  revisionResponsible?: string | null;
+  /** Fatura satırı: borcun içindeki KDV payı (borçla aynı birimde) — lib/statementVat */
+  tax?: number;
+  /** Faturanın KDV oranı (%) */
+  taxRate?: number;
 }
 
 /**
@@ -99,9 +112,14 @@ export function buildStatementLines(
       patientName: inv.work_order?.patient_name ?? null,
       clinicName: inv.clinic?.name ?? null,
       doctorName: inv.doctor?.full_name ?? null,
+      revisionOf: inv.work_order?.revision_of?.order_number ?? null,
+      revisionResponsible: inv.work_order?.revision_responsible ?? null,
       status: inv.status,
       debit: debitVal,
       credit: 0,
+      // Kullanıcı: KDV fiyatın içinde görünmüyordu → satırda ayrı, sonda toplam
+      tax: vatPortion(inv, debitVal),
+      taxRate: Number(inv.tax_rate) || 0,
       ...(foreign && !original ? { origCurrency: inv.currency, origAmount: inv.total } : {}),
     });
     if (inv.payments) {
@@ -151,9 +169,19 @@ export function buildStatementHtml(
   period?: { from?: string; to?: string },
   /** Ekstrenin para birimi (katı per-currency — satırlar tek dövizde gelir). Default TRY. */
   currency: string = 'TRY',
+  /** Dönem açılış/kapanış bakiyesi (lib/statementTotals). Yoksa açılış 0, kapanış satır toplamı. */
+  totals?: { opening: number; closing: number },
+  /**
+   * Liste ayarı (lib/statementPrefs): vat=false → KDV sütunu/dökümü yok.
+   * sums: tahsilat satırları gizlendiğinde özet çubuğu yine TÜM hareketin borç/alacağını yazar.
+   */
+  opts: { vat?: boolean; sums?: { debit: number; credit: number } } = {},
 ): string {
+  const vat = statementVatSummary(lines);
+  const showVat = opts.vat !== false && vat.total > 0;
   const cariLines: CariLine[] = lines.map(l => ({
-    refNo: l.invoiceNo ?? null,
+    // Fatura satırında fatura no; tahsilat fişinde makbuz no (belge sütununda, referans etiketinin üstünde)
+    refNo: l.invoiceNo ?? (l.receiptNo ? `${autoT('Makbuz')} #${l.receiptNo}` : null),
     reference: l.type === 'invoice'
       ? (l.status ? (INVOICE_STATUS_LABELS[l.status as keyof typeof INVOICE_STATUS_LABELS] ?? l.status) : 'Fatura')
       : (l.method ? `Tahsilat (${PAYMENT_METHOD_LABELS[l.method as keyof typeof PAYMENT_METHOD_LABELS] ?? l.method})` : 'Tahsilat'),
@@ -161,12 +189,26 @@ export function buildStatementHtml(
     // Hekim isteği: ekstrede HASTA adı görünsün. Alt satırda eskiden fatura no
     // vardı — o zaten solda "Belge No" sütununda yazıyor, tekrarıydı. Yerine
     // sipariş no kondu: hasta + sipariş, hekimin işi tanıması için gereken çift.
-    counterparty: l.patientName ?? l.description,
-    counterpartySub: l.orderNo ?? null,
-    amount: l.debit > 0 ? l.debit : l.credit,
+    // Tahsilat fişi: yalnız tür + yatırıldığı yer ("Havale / EFT · Ziraat Bankası")
+    counterparty: l.type === 'payment' && !l.invoiceNo
+      ? [l.method ? autoT(PAYMENT_METHOD_LABELS[l.method as keyof typeof PAYMENT_METHOD_LABELS] ?? l.method) : autoT('Tahsilat'), l.detail]
+          .filter(Boolean).join(' · ')
+      // Liste ayarında hasta bilgisi kapalıysa açıklama fatura no'ya iner — belge sütununda zaten var
+      : (l.patientName ?? (l.description !== l.invoiceNo ? l.description : autoT('Fatura'))),
+    // Revizyon faturası: sipariş no yanında "Revizyon · Asıl sipariş … · Lab kaynaklı, ücretsiz"
+    counterpartySub: (l.type === 'payment'
+      ? [l.orderNo]
+      : [l.orderNo, l.revisionOf ? `${autoT('Revizyon')} · ${revisionDetail(l, l.debit, autoT)}` : null])
+      .filter(Boolean).join(' · ') || null,
+    // Fatura her zaman borç satırı: 0 tutarlı (ücretsiz revizyon) fatura eskiden yeşil "alacak" çiziliyordu.
+    // KDV ayrı sütundaysa tutar KDV HARİÇ (kullanıcı: "fiyat KDV dahil yazıyor, ayrı ayrı yazmalı")
+    amount: l.type === 'invoice' ? (showVat ? l.debit - (l.tax ?? 0) : l.debit) : l.credit,
     currency,
-    type: l.debit > 0 ? 'debit' : 'credit',
+    type: l.type === 'invoice' ? 'debit' : 'credit',
     balance: l.balance,
+    // KDV ayrı sütunda (kullanıcı: KDV'nin fiyatın içinde olduğu anlaşılmıyordu)
+    tax: l.type === 'invoice' ? (l.tax ?? 0) : null,
+    taxRate: l.type === 'invoice' ? (l.taxRate ?? null) : null,
   }));
 
   return buildCariStatementHtml({
@@ -185,9 +227,12 @@ export function buildStatementHtml(
       name: clinicName,
       addressLines: [],
     },
-    openingBalance: 0,
-    closingBalance: lines.reduce((s, l) => s + l.debit - l.credit, 0),
+    openingBalance: totals?.opening ?? 0,
+    closingBalance: totals?.closing ?? lines.reduce((s, l) => s + l.debit - l.credit, 0),
     currency,
     lines: cariLines,
+    // Dönemde fatura varsa KDV dökümü (KDV hariç + KDV = genel toplam); liste ayarıyla kapatılabilir
+    vatSummary: showVat ? vat : null,
+    summaryTotals: opts.sums ?? null,
   });
 }

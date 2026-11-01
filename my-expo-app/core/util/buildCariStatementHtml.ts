@@ -35,6 +35,10 @@ export interface CariLine {
   type: 'debit' | 'credit';
   /** Kümülatif bakiye (mutlak değer + ba ayrı) */
   balance: number;
+  /** Borç satırı (fatura): tutarın içindeki KDV — verilirse KDV sütunu açılır */
+  tax?: number | null;
+  /** KDV oranı (%) — KDV hücresinin altında */
+  taxRate?: number | null;
 }
 
 export interface CariStatementInput {
@@ -85,6 +89,14 @@ export interface CariStatementInput {
     /** Kapanış altındaki açıklama; boş string verilirse hiç yazılmaz. */
     closingHint?: string;
   };
+  /**
+   * Faturaların KDV dökümü (klinik ekstresi). Verilirse tabloda KDV sütunu ve
+   * altında "Ara Toplam (KDV hariç) + KDV = Genel Toplam" kutusu çizilir.
+   * Verilmezse (tedarikçi/personel/makbuz) belge olduğu gibi kalır.
+   */
+  vatSummary?: { net: number; tax: number; total: number } | null;
+  /** Özet çubuğu toplamları — satırlar süzülmüşse (ör. tahsilat gizli) tüm hareketin toplamı */
+  summaryTotals?: { debit: number; credit: number } | null;
   /** 'ledger' (varsayılan) = pozitif bakiye kırmızı/borç · 'neutral' = nötr ink */
   balanceTone?: 'ledger' | 'neutral';
   /** Borç/Alacak (B/A) rozetlerini ve alt lejantı gizle */
@@ -153,13 +165,15 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
   const L = input.labels ?? {};
   const neutralTone = input.balanceTone === 'neutral';
   const hideBa = input.hideBaBadges === true;
+  // KDV sütunu yalnız KDV dökümü verilen belgede (müşteri ekstresi)
+  const showVat = !!input.vatSummary;
   const addressLines = (input.holder.addressLines ?? []).filter(Boolean) as string[];
   const yearNow = new Date().getFullYear();
   const copyrightText = input.copyright ?? `© ${esc(input.lab.name)} ${yearNow}`;
 
   // Toplam Borç / Alacak (mali müşavir özet kutusu için)
-  const totalDebit  = input.lines.reduce((s, l) => s + (l.type === 'debit'  ? l.amount : 0), 0);
-  const totalCredit = input.lines.reduce((s, l) => s + (l.type === 'credit' ? l.amount : 0), 0);
+  const totalDebit  = input.summaryTotals?.debit  ?? input.lines.reduce((s, l) => s + (l.type === 'debit'  ? l.amount : 0), 0);
+  const totalCredit = input.summaryTotals?.credit ?? input.lines.reduce((s, l) => s + (l.type === 'credit' ? l.amount : 0), 0);
   const closingBa   = closing > 0.01 ? 'B' : closing < -0.01 ? 'A' : '—';
 
   const rowsHtml = input.lines
@@ -172,7 +186,7 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
       const baFlag = hideBa ? '' : (l.balance > 0.01 ? 'B' : l.balance < -0.01 ? 'A' : '—');
       return `<tr>
         <td class="t-id">
-          <div class="t-id-row"><span class="t-id-label">${autoT('Belge No')}</span><strong>${esc(l.refNo ?? '—')}</strong></div>
+          ${l.refNo ? `<div class="t-id-row"><strong>${esc(l.refNo)}</strong></div>` : ''}
           ${l.reference ? `<div class="ref-row"><span class="ref-tag">${esc(l.reference)}</span></div>` : ''}
         </td>
         <td class="date-cell" style="box-shadow:inset 3px 0 0 ${borderColor}">
@@ -184,6 +198,9 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
           ${l.counterpartySub ? `<div class="party-sub">${esc(l.counterpartySub)}</div>` : ''}
         </td>
         <td class="money-cell" style="color:${moneyColor}">${esc(moneyText)}</td>
+        ${showVat ? `<td class="vat-cell">${(l.tax ?? 0) > 0
+          ? `<div class="vat-num">${esc(fmtMoney(l.tax ?? 0, l.currency || currency))}</div>${(l.taxRate ?? 0) > 0 ? `<div class="vat-rate">%${esc(l.taxRate)}</div>` : ''}`
+          : '<span class="vat-none">—</span>'}</td>` : ''}
         <td class="balance-cell">
           <div class="balance-num">${esc(balText)}</div>
           <div class="ba-flag">${baFlag}</div>
@@ -375,7 +392,10 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
   }
   tbody tr:last-child td { border-bottom: 1px solid var(--line); }
 
-  td.t-id { width: 220px; padding-inline-end: 16px; }
+  /* Belge sütunu dar (kullanıcı: "belge sütununun eni azalsın, diğer sütunlar sığsın")
+     ama numara ve etiket TEK SATIR: en uzunlar ölçüldü — "Makbuz #7FA25EF7" 98px,
+     "Tahsilat (Havale / EFT)" etiketi 106px; 128px sütun ikisini de sığdırır. */
+  td.t-id { width: 128px; padding-inline-end: 8px; }
   .t-id-row {
     display: flex; gap: 10px; align-items: baseline;
     font-size: 11px; color: var(--ink-900); margin-bottom: 4px;
@@ -385,17 +405,17 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
     text-transform: uppercase; color: var(--ink-400);
     min-width: 60px;
   }
-  .t-id-row strong { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .t-id-row strong { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .ref-row { margin-top: 4px; }
   .ref-tag {
-    display: inline-block; padding: 2px 8px;
+    display: inline-block; padding: 2px 8px; white-space: nowrap;
     background: var(--line-2); border-radius: 3px;
     font-size: 9.5px; font-weight: 500; color: var(--ink-700);
     letter-spacing: 0.1px;
   }
 
   td.date-cell {
-    width: 100px; padding-inline-start: 14px;
+    width: 88px; padding-inline-start: 14px;
     font-size: 11px; color: var(--ink-700);
   }
   .date-text { font-weight: 600; color: var(--ink-900); font-variant-numeric: tabular-nums; }
@@ -410,14 +430,48 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
   }
 
   td.money-cell {
-    width: 140px; text-align: end;
+    width: 120px; text-align: end;
     font-variant-numeric: tabular-nums;
     font-weight: 600; font-size: 12px;
     letter-spacing: -0.1px;
   }
+  td.vat-cell {
+    width: 92px; text-align: end;
+    font-variant-numeric: tabular-nums; color: var(--ink-700);
+  }
+  .vat-num { font-size: 11px; font-weight: 500; }
+  .vat-rate { font-size: 9px; color: var(--ink-400); margin-top: 2px; }
+  .vat-none { color: var(--ink-300); }
+  .vat-summary {
+    margin: 18px 36px 0 auto; width: 320px;
+    border: 1px solid var(--line); border-radius: 6px;
+    padding: 12px 14px; background: var(--paper);
+  }
+  .vat-summary .vat-title {
+    font-size: 9px; font-weight: 700; letter-spacing: 1.2px;
+    text-transform: uppercase; color: var(--ink-500); margin-bottom: 8px;
+  }
+  .vat-summary .vat-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 11px; color: var(--ink-700); padding: 3px 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .vat-summary .vat-row.total {
+    border-top: 1px solid var(--line); margin-top: 4px; padding-top: 7px;
+    font-size: 12.5px; font-weight: 700; color: var(--ink-900);
+  }
   td.balance-cell {
-    width: 140px; text-align: end;
+    width: 120px; text-align: end;
     font-variant-numeric: tabular-nums; color: var(--ink-900);
+  }
+  /* A4 yazdırılabilir alanı (~182mm) ekrandaki 880px sayfadan dar: kenar ve hücre
+     boşlukları kısılır ki KDV sütunuyla birlikte tüm sütunlar sığsın. (Tablo
+     kurallarından SONRA durmalı — öncesindeki @media print bloğu bunları ezemez.) */
+  @media print {
+    .table-wrap { padding: 0 12px; }
+    thead th { padding-inline: 8px; }
+    tbody td { padding-inline: 8px; }
+    td.date-cell { padding-inline-start: 10px; }
   }
   .balance-num { font-size: 12px; font-weight: 600; }
   .ba-flag {
@@ -529,15 +583,24 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
           <th>${autoT('Belge / Referans')}</th>
           <th>${autoT('Tarih')}</th>
           <th>${autoT('Karşı Taraf')}</th>
-          <th class="num">${autoT('Tutar')} <span class="pos">(+)</span> <span class="neg">(−)</span></th>
+          <th class="num">${showVat ? autoT('Tutar (KDV hariç)') : autoT('Tutar')} <span class="pos">(+)</span> <span class="neg">(−)</span></th>
+          ${showVat ? `<th class="num">${autoT('KDV')}</th>` : ''}
           <th class="num">${autoT('Bakiye')}</th>
         </tr>
       </thead>
       <tbody>
-        ${rowsHtml || `<tr><td colspan="5" style="text-align:center;color:var(--ink-400);padding:40px;font-style:italic">${autoT('Bu dönemde hareket bulunmuyor.')}</td></tr>`}
+        ${rowsHtml || `<tr><td colspan="${showVat ? 6 : 5}" style="text-align:center;color:var(--ink-400);padding:40px;font-style:italic">${autoT('Bu dönemde hareket bulunmuyor.')}</td></tr>`}
       </tbody>
     </table>
   </div>
+
+  ${input.vatSummary ? `<!-- KDV dökümü: KDV hariç + KDV = genel toplam -->
+  <div class="vat-summary">
+    <div class="vat-title">${autoT('Faturaların KDV dökümü')}</div>
+    <div class="vat-row"><span>${autoT('Ara Toplam (KDV hariç)')}</span><span>${fmtMoney(input.vatSummary.net, currency)}</span></div>
+    <div class="vat-row"><span>${autoT('KDV Toplamı')}</span><span>${fmtMoney(input.vatSummary.tax, currency)}</span></div>
+    <div class="vat-row total"><span>${autoT('Genel Toplam (KDV dahil)')}</span><span>${fmtMoney(input.vatSummary.total, currency)}</span></div>
+  </div>` : ''}
 
   <!-- Summary bar -->
   <div class="summary-bar">

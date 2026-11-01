@@ -8,11 +8,12 @@ import {
 import { ClinicLogoPicker } from '../components/ClinicLogoPicker';
 import { Search, X, SlidersHorizontal, Plus, Building2, Users, UserPlus, List, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Edit2, Trash2, Phone, Mail, MapPin, RefreshCw, UserX, AlertCircle, Check, Percent, MinusCircle, Briefcase, Stethoscope, ClipboardList, FileText, Eye, EyeOff, Link2, Copy } from '../../../core/ui/icons';
 import { buildWorkOrderFormHtml } from '../../orders/buildWorkOrderFormHtml';
-import { useSegments } from 'expo-router';
+import { useLocalSearchParams, useSegments } from 'expo-router';
 import { LabConnectionsScreen } from '../../lab-connections/screens/LabConnectionsScreen';
 import { labCreateInvite } from '../../lab-connections/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { toast } from '../../../core/ui/Toast';
+import { ConfirmDialog, type ConfirmState } from '../../../core/ui/ConfirmDialog';
 import { MobilePageTitle } from '../../../core/ui/mobile/MobilePageTitle';
 import { AppSwitch } from '../../../core/ui/AppSwitch';
 import { supabase } from '../../../core/api/supabase';
@@ -31,6 +32,9 @@ import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { useColorThemeStore } from '../../../core/store/colorThemeStore';
 import { titleCaseTR as titleCaseTRShared, normalizeDoctorName } from '../../../core/utils/textCase';
 import { searchPlaces, getPlaceDetails, startPlaceSession, endPlaceSession, type PlaceSuggestion } from '../../auth/api/places';
+import i18n from 'i18next';
+import { DEFAULT_COUNTRY, countryName, countryOptions, isCountryCode } from '../../../core/data/countries';
+import { detectCountry } from '../../../core/geo/detectCountry';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
@@ -51,8 +55,9 @@ const inputBase = {
 } as any;
 
 // ─── Category ────────────────────────────────────────────────────────
-type ClinicCategory = 'klinik' | 'poliklinik' | 'hastane' | 'laboratuvar';
+type ClinicCategory = 'muayenehane' | 'klinik' | 'poliklinik' | 'hastane' | 'laboratuvar';
 const CLINIC_CATEGORIES: { value: ClinicCategory; label: string; icon: string; color: string; bg: string }[] = [
+  { value: 'muayenehane', label: 'Muayenehane', icon: 'account-outline',      color: '#DB2777', bg: '#FCE7F3' },  // tek hekimli
   { value: 'klinik',      label: 'Klinik',      icon: 'tooth-outline',        color: '#0891B2', bg: '#ECFEFF' },
   { value: 'poliklinik',  label: 'Poliklinik',  icon: 'stethoscope',          color: '#7C3AED', bg: '#EDE9FE' },
   { value: 'hastane',     label: 'Hastane',     icon: 'hospital-box-outline', color: '#059669', bg: '#D1FAE5' },
@@ -80,8 +85,10 @@ type Doctor = {
 type ClinicForm = {
   name: string; category: ClinicCategory; phone: string; email: string;
   whatsapp_phone: string;
+  /** Ülke (ISO kodu) — TR'de il/ilçe/mahalle listeden, yurt dışında serbest metin (il = eyalet, ilce = şehir) */
+  ulke: string;
   il: string; ilce: string; mahalle: string;
-  sokak: string; bina_no: string; posta_kodu: string;  // geocoding doğruluğu için
+  sokak: string; bina_no: string; daire_no: string; posta_kodu: string;  // geocoding doğruluğu için
   contact_person: string; notes: string; is_active: boolean;
   vkn: string; tax_office: string;
   admin_email: string; admin_password: string;
@@ -98,7 +105,7 @@ type DoctorForm = {
 
 const EMPTY_CLINIC: ClinicForm = {
   name: '', category: 'klinik', phone: '', email: '', whatsapp_phone: '',
-  il: '', ilce: '', mahalle: '', sokak: '', bina_no: '', posta_kodu: '',
+  ulke: DEFAULT_COUNTRY, il: '', ilce: '', mahalle: '', sokak: '', bina_no: '', daire_no: '', posta_kodu: '',
   contact_person: '', notes: '', is_active: true,
   vkn: '', tax_office: '', admin_email: '', admin_password: '',
   billing_mode: 'monthly_bulk', default_payment_terms_days: '30',
@@ -106,21 +113,24 @@ const EMPTY_CLINIC: ClinicForm = {
 const EMPTY_DOCTOR: DoctorForm = { full_name: '', phone: '', specialty: '', notes: '', clinic_id: '', is_active: true, tckn: '', email: '', password: '' };
 
 interface ParsedAddress {
+  ulke: string;
   il: string; ilce: string; mahalle: string;
-  sokak: string; bina_no: string; posta_kodu: string;
+  sokak: string; bina_no: string; daire_no: string; posta_kodu: string;
 }
 function parseAddress(raw?: string | null): ParsedAddress {
-  const empty: ParsedAddress = { il: '', ilce: '', mahalle: '', sokak: '', bina_no: '', posta_kodu: '' };
+  const empty: ParsedAddress = { ulke: DEFAULT_COUNTRY, il: '', ilce: '', mahalle: '', sokak: '', bina_no: '', daire_no: '', posta_kodu: '' };
   if (!raw) return empty;
   try {
     const p = JSON.parse(raw);
     if (p && typeof p === 'object') {
       return {
+        ulke:       isCountryCode(p.ulke) ? String(p.ulke).toUpperCase() : DEFAULT_COUNTRY,  // eski kayıtlar = TR
         il:         p.il ?? '',
         ilce:       p.ilce ?? '',
         mahalle:    p.mahalle ?? '',
         sokak:      p.sokak ?? '',
         bina_no:    p.bina_no ?? '',
+        daire_no:   p.daire_no ?? '',
         posta_kodu: p.posta_kodu ?? '',
       };
     }
@@ -129,19 +139,21 @@ function parseAddress(raw?: string | null): ParsedAddress {
 }
 
 function formatAddress(a: ParsedAddress): string {
-  const street = [a.sokak, a.bina_no].filter(Boolean).join(' No: ').trim();
+  const street = [a.sokak, a.bina_no && `No: ${a.bina_no}`, a.daire_no && `D: ${a.daire_no}`].filter(Boolean).join(' ').trim();
   const parts = [
     a.mahalle && `${a.mahalle}`,
     street,
     a.posta_kodu,
     a.ilce,
     a.il,
+    a.ulke && a.ulke !== DEFAULT_COUNTRY ? countryName(a.ulke, i18n.language) : null,
   ].filter(Boolean);
   return parts.join(', ');
 }
 
 const TAB_FILTERS = [
   { key: 'all',         label: 'Tümü' },
+  { key: 'muayenehane', label: 'Muayenehane' },
   { key: 'klinik',      label: 'Klinik' },
   { key: 'poliklinik',  label: 'Poliklinik' },
   { key: 'hastane',     label: 'Hastane' },
@@ -190,12 +202,27 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
   const [doctors, setDoctors]   = useState<Doctor[]>(initial?.doctors ?? []);
   const [loading, setLoading]   = useState(initial === null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // Pasife alma onayı (aktif etme sormaz)
+  const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [search,   setSearch]   = useState('');
 
   const [showClinicModal,   setShowClinicModal]   = useState(false);
   const [editingClinic,     setEditingClinic]     = useState<Clinic | null>(null);
   const [discountClinic,    setDiscountClinic]    = useState<Clinic | null>(null);
   const [discountMap,       setDiscountMap]       = useState<Record<string, number>>(initial?.discountMap ?? {});
+
+  // ?editClinic=<id> → o kliniğin düzenleme penceresi açılır (e-Fatura "eksik bilgi" kısayolu).
+  // ?clinic=<id> → genel aramadan gelen: o kliniğin kartı açık ve görünür (2. dalga 1).
+  const { editClinic, clinic: clinicParam } = useLocalSearchParams<{ editClinic?: string; clinic?: string }>();
+  const editParamHandled = useRef<string | null>(null);
+  useEffect(() => {
+    if (!editClinic || editParamHandled.current === editClinic) return;
+    const c = clinics.find((x) => x.id === editClinic);
+    if (!c) return;
+    editParamHandled.current = editClinic;
+    setEditingClinic(c);
+    setShowClinicModal(true);
+  }, [editClinic, clinics]);
 
   const [showDoctorModal, setShowDoctorModal] = useState(false);
   const [editingDoctor,   setEditingDoctor]   = useState<Doctor | null>(null);
@@ -232,6 +259,38 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
   const [categoryFilter,  setCategoryFilter]  = useState<ClinicCategory | 'all'>('all');
   const [statusFilter,    setStatusFilter]    = useState<'all' | 'active' | 'inactive'>('all');
   const [showFilterSheet, setShowFilterSheet] = useState(false);
+
+  // Genel arama → ?clinic=<id>: tek seferlik (editClinic ile aynı ref deseni). Kart süzgeçlerle
+  // gizlenmesin diye sekme "Tümü", arama ve filtreler sıfırlanır; sonra kart görünür alana kaydırılır.
+  const clinicParamHandled = useRef<string | null>(null);
+  const [scrollToClinic, setScrollToClinic] = useState<string | null>(null);
+  const contentScrollRef = useRef<ScrollView>(null);
+  const clinicRowsY = useRef(0);
+  const clinicRowY = useRef<Record<string, number>>({});
+  useEffect(() => {
+    if (!clinicParam || clinicParamHandled.current === clinicParam) return;
+    if (!clinics.some((x) => x.id === clinicParam)) return;
+    clinicParamHandled.current = clinicParam;
+    setActiveTab('all');
+    setSearch('');
+    setCategoryFilter('all');
+    setStatusFilter('all');
+    setExpanded((prev) => new Set(prev).add(clinicParam));
+    setScrollToClinic(clinicParam);
+  }, [clinicParam, clinics]);
+  useEffect(() => {
+    if (!scrollToClinic) return;
+    const id = scrollToClinic;
+    const t = setTimeout(() => {
+      if (Platform.OS === 'web' && typeof document !== 'undefined') {
+        document.getElementById(`clinic-row-${id}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      } else if (clinicRowY.current[id] != null) {
+        contentScrollRef.current?.scrollTo({ y: Math.max(0, clinicRowsY.current + clinicRowY.current[id] - 8), animated: true });
+      }
+      setScrollToClinic(null);
+    }, 150);
+    return () => clearTimeout(t);
+  }, [scrollToClinic]);
 
   // ── Page title ──
   const { setTitle: setPageTitle, clear: clearPageTitle } = usePageTitleStore();
@@ -275,10 +334,23 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
   const toggleExpand = (id: string) =>
     setExpanded(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
 
-  const handleToggleClinic = async (clinic: Clinic) => {
-    const val = !clinic.is_active;
-    await updateClinic(clinic.id, { is_active: val });
+  // Pasife alma tek tıkla olmaz (denetim: yanlış dokunuş kurumu sipariş veremez hâle
+  // getiriyordu) ve sunucu hatası artık gizlenmez — liste yalnız başarıdan sonra değişir.
+  const applyClinicActive = async (clinic: Clinic, val: boolean) => {
+    const { error } = await updateClinic(clinic.id, { is_active: val });
+    if (error) { toast.error(error.message); return; }
     setClinics(prev => prev.map(c => c.id === clinic.id ? { ...c, is_active: val } : c));
+  };
+  const handleToggleClinic = (clinic: Clinic) => {
+    if (!clinic.is_active) { applyClinicActive(clinic, true); return; }
+    setConfirm({
+      title: 'Pasife al',
+      highlight: clinic.name,
+      message: 'pasife alınacak; sipariş veremeyecek.',
+      label: 'Evet, pasife al',
+      variant: 'warning',
+      onConfirm: async () => { setConfirm(null); await applyClinicActive(clinic, false); },
+    });
   };
 
   const handlePrintClinicForm = async (clinic: Clinic) => {
@@ -378,10 +450,21 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
     }
   };
 
-  const handleToggleDoctor = async (doctor: Doctor) => {
-    const val = !doctor.is_active;
-    await updateDoctor(doctor.id, { is_active: val });
+  const applyDoctorActive = async (doctor: Doctor, val: boolean) => {
+    const { error } = await updateDoctor(doctor.id, { is_active: val });
+    if (error) { toast.error(error.message); return; }
     setDoctors(prev => prev.map(d => d.id === doctor.id ? { ...d, is_active: val } : d));
+  };
+  const handleToggleDoctor = (doctor: Doctor) => {
+    if (!doctor.is_active) { applyDoctorActive(doctor, true); return; }
+    setConfirm({
+      title: 'Pasife al',
+      highlight: doctor.full_name,
+      message: 'pasife alınacak; sipariş veremeyecek.',
+      label: 'Evet, pasife al',
+      variant: 'warning',
+      onConfirm: async () => { setConfirm(null); await applyDoctorActive(doctor, false); },
+    });
   };
 
   const handleDeleteDoctor = async (doctor: Doctor) => {
@@ -486,6 +569,7 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
 
       {/* ── Content ──────────────────────────────────────────────── */}
       <ScrollView
+        ref={contentScrollRef}
         className="flex-1"
         contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 4, paddingBottom: isDesktop ? 24 : 120 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} tintColor="#0A0A0A" />}
@@ -719,10 +803,11 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
                   onAdd={() => { setEditingClinic(null); setShowClinicModal(true); }}
                 />
               ) : (
-                <View style={{ gap: 12 }}>
+                <View style={{ gap: 12 }} onLayout={(e) => { clinicRowsY.current = e.nativeEvent.layout.y; }}>
                   {filteredClinics.map(clinic => (
+                    <View key={clinic.id} nativeID={`clinic-row-${clinic.id}`}
+                      onLayout={(e) => { clinicRowY.current[clinic.id] = e.nativeEvent.layout.y; }}>
                     <ClinicRow
-                      key={clinic.id}
                       clinic={clinic}
                       doctors={getDoctorsByClinic(clinic.id)}
                       members={getMembersByClinic(clinic.id)}
@@ -740,6 +825,7 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
                       onDeleteDoctor={handleDeleteDoctor}
                       onPrintForm={() => handlePrintClinicForm(clinic)}
                     />
+                    </View>
                   ))}
 
                   {unassigned.length > 0 && (
@@ -841,6 +927,8 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <ConfirmDialog state={confirm} onClose={() => setConfirm(null)} />
 
       <ClinicModal visible={showClinicModal} editingClinic={editingClinic} existingClinics={clinics} accentColor={accentColor}
         onClose={() => { setShowClinicModal(false); setEditingClinic(null); }}
@@ -1687,6 +1775,10 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
   const [nameFocused, setNameFocused] = useState(false);
   const [ilSearch, setIlSearch] = useState('');
   const [ilOpen, setIlOpen] = useState(false);
+  // Ülke: yeni kurumda IP/saat diliminden tahmin, kullanıcı değiştirebilir
+  const [countryOpen, setCountryOpen] = useState(false);
+  const [countrySearch, setCountrySearch] = useState('');
+  const countryTouched = useRef(false);
   const [ilceSearch, setIlceSearch] = useState('');
   const [ilceOpen, setIlceOpen] = useState(false);
   const [mahSearch, setMahSearch] = useState('');
@@ -1738,7 +1830,7 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
     if (!cancelled) startPlaceSession();
     const t = setTimeout(async () => {
       try {
-        const res = await searchPlaces(q);
+        const res = await searchPlaces(q, null, form.ulke);
         if (cancelled) return;
         setGplaceResults(res);
       } catch {
@@ -1748,21 +1840,29 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
       }
     }, 350);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [form.name, editingClinic]);
+  }, [form.name, form.ulke, editingClinic]);
 
   // Google Place seç → details çek → form'a uygula
   const applyGooglePlace = useCallback(async (suggestion: PlaceSuggestion) => {
     setGplaceLoading(true);
     try {
-      const d = await getPlaceDetails(suggestion.placeId);
+      const d = await getPlaceDetails(suggestion.placeId, form.ulke);
       if (!d) return;
+      // Bina no / daire no ayrı alanlara (eskiden caddeyle birleşip "Cadde / Sokak"a yazılıyordu).
+      // Yurt dışı yer: il = eyalet/bölge, ilce = şehir.
+      const ulke = isCountryCode(d.ulke) ? d.ulke : null;
+      const foreign = !!ulke && ulke !== DEFAULT_COUNTRY;
+      if (ulke) countryTouched.current = true;
       setForm(prev => ({
         ...prev,
         name:       d.name || prev.name,
+        ulke:       ulke ?? prev.ulke,
         il:         d.il || prev.il,
-        ilce:       d.ilce || prev.ilce,
-        mahalle:    d.mahalle || prev.mahalle,
-        sokak:      d.sokak || prev.sokak,
+        ilce:       (foreign ? (d.sehir || d.ilce) : d.ilce) || prev.ilce,
+        mahalle:    foreign ? (d.mahalle || '') : (d.mahalle || prev.mahalle),
+        sokak:      d.cadde || d.sokak || prev.sokak,
+        bina_no:    d.binaNo || prev.bina_no,
+        daire_no:   d.daireNo || prev.daire_no,
         posta_kodu: d.postaKodu || prev.posta_kodu,
         phone:      d.phone || prev.phone,
       }));
@@ -1771,7 +1871,7 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
       setGplaceLoading(false);
       endPlaceSession();
     }
-  }, []);
+  }, [form.ulke]);
 
   // Bu klinige ait clinic_admin profili var mi?
   useEffect(() => {
@@ -1794,8 +1894,8 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
         name: editingClinic.name, category: editingClinic.category ?? 'klinik',
         phone: editingClinic.phone ?? '', email: editingClinic.email ?? '',
         whatsapp_phone: editingClinic.whatsapp_phone ?? '',
-        il: addr.il, ilce: addr.ilce, mahalle: addr.mahalle,
-        sokak: addr.sokak, bina_no: addr.bina_no, posta_kodu: addr.posta_kodu,
+        ulke: addr.ulke, il: addr.il, ilce: addr.ilce, mahalle: addr.mahalle,
+        sokak: addr.sokak, bina_no: addr.bina_no, daire_no: addr.daire_no, posta_kodu: addr.posta_kodu,
         contact_person: editingClinic.contact_person ?? '',
         notes: editingClinic.notes ?? '', is_active: editingClinic.is_active,
         vkn: (editingClinic as any).vkn ?? '', tax_office: (editingClinic as any).tax_office ?? '',
@@ -1804,11 +1904,34 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
         default_payment_terms_days: String(editingClinic.default_payment_terms_days ?? 30),
       });
       setLogoUrl((editingClinic as any).logo_url ?? null);
-    } else { setForm(EMPTY_CLINIC); setLogoUrl(null); }
+    } else {
+      setForm(EMPTY_CLINIC); setLogoUrl(null);
+      // Yeni kurum: varsayılan ülke IP → saat dilimi → Türkiye; kullanıcı seçtiyse dokunma
+      countryTouched.current = false;
+      if (visible) {
+        detectCountry().then((c) => {
+          if (!countryTouched.current) setForm(prev => ({ ...prev, ulke: c }));
+        });
+      }
+    }
     setError(''); setIlOpen(false); setIlceOpen(false); setMahOpen(false); setIlSearch(''); setIlceSearch(''); setMahSearch('');
+    setCountryOpen(false); setCountrySearch('');
   }, [editingClinic, visible]);
 
   const set = (k: keyof ClinicForm, v: string | boolean) => setForm(prev => ({ ...prev, [k]: v }));
+  const isTR = (form.ulke || DEFAULT_COUNTRY) === DEFAULT_COUNTRY;
+  const countryOpts = countryOptions(i18n.language);
+  const countryResults = countryOpts
+    .filter(o => o.name.toLocaleLowerCase(i18n.language).includes(countrySearch.trim().toLocaleLowerCase(i18n.language)))
+    .map(o => o.name);
+  // Ülke değişince il/ilçe/mahalle sıfırlanır (TR listeleri ↔ serbest metin)
+  const selectCountry = (name: string) => {
+    const code = countryOpts.find(o => o.name === name)?.code;
+    if (!code) return;
+    countryTouched.current = true;
+    setForm(prev => prev.ulke === code ? prev : ({ ...prev, ulke: code, il: '', ilce: '', mahalle: '', posta_kodu: '' }));
+    setCountryOpen(false); setCountrySearch('');
+  };
 
   const handleSave = async () => {
     setError('');
@@ -1822,11 +1945,17 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
       setError('Geçerli bir WhatsApp numarası girin'); return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) { setError('Geçerli bir e-posta girin'); return; }
-    if (!form.il.trim()) { setError('İl zorunludur'); return; }
-    if (!form.ilce.trim()) { setError('İlçe zorunludur'); return; }
-    if (!form.mahalle.trim()) { setError('Mahalle zorunludur'); return; }
-    if (!form.sokak.trim())   { setError('Cadde/Sokak zorunludur (geocoding doğruluğu için)'); return; }
-    if (!form.bina_no.trim()) { setError('Bina no zorunludur'); return; }
+    if (isTR) {
+      if (!form.il.trim()) { setError('İl zorunludur'); return; }
+      if (!form.ilce.trim()) { setError('İlçe zorunludur'); return; }
+      if (!form.mahalle.trim()) { setError('Mahalle zorunludur'); return; }
+      if (!form.sokak.trim())   { setError('Cadde/Sokak zorunludur (geocoding doğruluğu için)'); return; }
+      if (!form.bina_no.trim()) { setError('Bina no zorunludur'); return; }
+    } else {
+      // Yurt dışı: eyalet/mahalle/bina no isteğe bağlı
+      if (!form.ilce.trim())  { setError('Şehir zorunludur'); return; }
+      if (!form.sokak.trim()) { setError('Adres zorunludur'); return; }
+    }
 
     // Klinik yetkilisi (admin) auth dogrulamasi — hem yeni kayit hem duzenlemede opsiyonel
     const adminEmailTrim = form.admin_email.trim();
@@ -1846,11 +1975,13 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
         email: form.email.trim() || null,
         whatsapp_phone: form.whatsapp_phone.trim() || null,
         address: JSON.stringify({
+          ulke:       form.ulke || DEFAULT_COUNTRY,
           il:         form.il.trim(),
           ilce:       form.ilce.trim(),
           mahalle:    form.mahalle.trim(),
           sokak:      form.sokak.trim(),
           bina_no:    form.bina_no.trim(),
+          daire_no:   form.daire_no.trim(),
           posta_kodu: form.posta_kodu.trim(),
         }),
         contact_person: cleanedContact, notes: form.notes.trim() || null, is_active: form.is_active, vkn: vknTrim || null, tax_office: form.tax_office.trim() || null,
@@ -2015,7 +2146,16 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
 
             {/* Kurum Bilgileri */}
             <SectionCard title="Kurum Bilgileri">
-              <ModalField label="Kurum Adı" required>
+              {/* Ülke — kurum bilgilerinin ilk satırı: Google kurum araması ve adres alanları buna göre */}
+              <ModalField label="Ülke" required hint={editingClinic || countryTouched.current ? undefined : autoT('Konumunuza göre seçildi — değiştirebilirsiniz')}>
+                <Pressable style={{ ...inputBase, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }} onPress={() => { setCountryOpen(v => !v); setIlOpen(false); setIlceOpen(false); setMahOpen(false); }}>
+                  <Text style={{ fontSize: 14, color: T.ink, flex: 1, textAlign: rtl ? 'right' : undefined }}>{countryName(form.ulke || DEFAULT_COUNTRY, i18n.language)}</Text>
+                  {countryOpen ? <ChevronUp size={14} color={T.ink3} strokeWidth={1.8} /> : <ChevronDown size={14} color={T.ink3} strokeWidth={1.8} />}
+                </Pressable>
+                {countryOpen && <DropdownList items={countryResults} selected={countryName(form.ulke || DEFAULT_COUNTRY, i18n.language)} searchValue={countrySearch} onSearch={setCountrySearch} searchPlaceholder={autoT('Ülke ara...')} onSelect={selectCountry} accentColor={accentColor} />}
+              </ModalField>
+              <ModalField label="Kurum Adı" required hint={editingClinic ? undefined
+                : `${autoT('Google araması')}: ${countryName(form.ulke || DEFAULT_COUNTRY, i18n.language)}`}>
                 <TextInput style={[inputBase, isDuplicate && { color: '#9C2E2E' }]} value={form.name} onChangeText={v => set('name', v)}
                   onFocus={() => setNameFocused(true)} onBlur={() => setTimeout(() => setNameFocused(false), 150)}
                   placeholder="Örn: Merkez Diş Kliniği" placeholderTextColor={DS.ink[400]} autoCorrect={false} />
@@ -2050,7 +2190,7 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: '#F8FAFC', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' }}>
                       <MapPin size={11} color="#1A73E8" strokeWidth={1.8} />
                       <Text style={{ flex: 1, fontSize: 10, fontWeight: '700', color: '#1A73E8', letterSpacing: 0.6, textTransform: 'uppercase' }}>
-                        Google Sonuçları
+                        {`${autoT('Google Sonuçları')} · ${countryName(form.ulke || DEFAULT_COUNTRY, i18n.language)}`}
                       </Text>
                       {gplaceLoading && (
                         <Text style={{ fontSize: 9, color: isDark ? T.ink3 : DS.ink[400], fontStyle: 'italic' }}>aranıyor…</Text>
@@ -2092,7 +2232,7 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
 
               </ModalField>
               <ModalField label="İrtibat Kişisi" required><TextInput style={inputBase} value={form.contact_person} onChangeText={v => set('contact_person', v)} placeholder="Örn: Mehmet Bey" placeholderTextColor={DS.ink[400]} /></ModalField>
-              <ModalField label="Telefon" required><TextInput style={inputBase} value={form.phone} onChangeText={v => set('phone', v)} placeholder="0555 000 00 00" placeholderTextColor={DS.ink[400]} keyboardType="phone-pad" /></ModalField>
+              <ModalField label="Telefon" required><TextInput style={inputBase} value={form.phone} onChangeText={v => set('phone', v)} placeholder={isTR ? '0555 000 00 00' : '+49 30 1234567'} placeholderTextColor={DS.ink[400]} keyboardType="phone-pad" /></ModalField>
               {/* WhatsApp hattı — kurum kullanıcılarına giden WhatsApp bildirimleri
                   önce buraya gider (hekimin kendi girdiği WhatsApp numarası korunur).
                   Kapatma kişinin kendi Ayarlar → Bildirimler'inde. */}
@@ -2100,13 +2240,15 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
                 label="WhatsApp Numarası"
                 hint="Kurum bildirimleri bu numaraya gider. İsteyen kullanıcı kendi Ayarlar → Bildirimler bölümünden kapatabilir."
               >
-                <TextInput style={inputBase} value={form.whatsapp_phone} onChangeText={v => set('whatsapp_phone', v)} placeholder="0555 000 00 00" placeholderTextColor={DS.ink[400]} keyboardType="phone-pad" />
+                <TextInput style={inputBase} value={form.whatsapp_phone} onChangeText={v => set('whatsapp_phone', v)} placeholder={isTR ? '0555 000 00 00' : '+49 151 23456789'} placeholderTextColor={DS.ink[400]} keyboardType="phone-pad" />
               </ModalField>
               <ModalField label="E-posta" required last><TextInput style={inputBase} value={form.email} onChangeText={v => set('email', v)} placeholder="info@klinik.com" placeholderTextColor={DS.ink[400]} keyboardType="email-address" autoCapitalize="none" /></ModalField>
             </SectionCard>
 
-            {/* Adres */}
+            {/* Adres — ülke en üstteki karttan: TR'de il/ilçe/mahalle listeleri, yurt dışında serbest metin */}
             <SectionCard title="Adres">
+              {isTR ? (
+              <>
               <ModalField label="İl" required>
                 <Pressable style={{ ...inputBase, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }} onPress={() => { setIlOpen(v => !v); setIlceOpen(false); }}>
                   <Text style={{ fontSize: 14, color: form.il ? T.ink : T.ink3, flex: 1, textAlign: rtl ? 'right' : undefined }}>{form.il || 'Seçiniz'}</Text>
@@ -2140,12 +2282,50 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
                   autoCapitalize="words"
                 />
               </ModalField>
-              <ModalField label="Bina No" required>
-                <TextInput style={inputBase} value={form.bina_no} onChangeText={v => set('bina_no', v)} placeholder="Örn: 21 veya 21/3" placeholderTextColor={DS.ink[400]} />
-              </ModalField>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <ModalField label="Bina No" required>
+                    <TextInput style={inputBase} value={form.bina_no} onChangeText={v => set('bina_no', v)} placeholder="Örn: 21" placeholderTextColor={DS.ink[400]} />
+                  </ModalField>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <ModalField label="Daire No">
+                    <TextInput style={inputBase} value={form.daire_no} onChangeText={v => set('daire_no', v)} placeholder="Örn: 3" placeholderTextColor={DS.ink[400]} />
+                  </ModalField>
+                </View>
+              </View>
               <ModalField label="Posta Kodu" last hint="Mahalle seçildiğinde otomatik dolar — değiştirebilirsin">
                 <TextInput style={inputBase} value={form.posta_kodu} onChangeText={v => set('posta_kodu', v.replace(/[^0-9]/g, ''))} placeholder="Örn: 34758" placeholderTextColor={DS.ink[400]} keyboardType="number-pad" maxLength={5} />
               </ModalField>
+              </>
+              ) : (
+              <>
+              <ModalField label="Eyalet / Bölge">
+                <TextInput style={inputBase} value={form.il} onChangeText={v => set('il', v)} placeholder={autoT('Örn: Bayern')} placeholderTextColor={DS.ink[400]} autoCapitalize="words" />
+              </ModalField>
+              <ModalField label="Şehir" required>
+                <TextInput style={inputBase} value={form.ilce} onChangeText={v => set('ilce', v)} placeholder={autoT('Örn: München')} placeholderTextColor={DS.ink[400]} autoCapitalize="words" />
+              </ModalField>
+              <ModalField label="Adres" required>
+                <TextInput style={inputBase} value={form.sokak} onChangeText={v => set('sokak', v)} placeholder={autoT('Cadde / sokak')} placeholderTextColor={DS.ink[400]} autoCapitalize="words" />
+              </ModalField>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <ModalField label="Bina No">
+                    <TextInput style={inputBase} value={form.bina_no} onChangeText={v => set('bina_no', v)} placeholder="Örn: 12" placeholderTextColor={DS.ink[400]} />
+                  </ModalField>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <ModalField label="Daire No">
+                    <TextInput style={inputBase} value={form.daire_no} onChangeText={v => set('daire_no', v)} placeholder="Örn: 3" placeholderTextColor={DS.ink[400]} />
+                  </ModalField>
+                </View>
+              </View>
+              <ModalField label="Posta Kodu" last>
+                <TextInput style={inputBase} value={form.posta_kodu} onChangeText={v => set('posta_kodu', v.slice(0, 12))} placeholder={autoT('Örn: 80802')} placeholderTextColor={DS.ink[400]} autoCapitalize="characters" />
+              </ModalField>
+              </>
+              )}
             </SectionCard>
 
             {/* e-Fatura */}

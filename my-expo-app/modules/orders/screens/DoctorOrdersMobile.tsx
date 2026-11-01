@@ -21,6 +21,8 @@ import { isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import type { WorkOrder, WorkOrderStatus } from '../types';
 import { buildRevisionCases } from '../revisionGroups';
+import { useLabToday } from '../../../core/metrics/useLabToday';
+import { isOverdueOrder } from '../../../core/metrics/orderDefs';
 
 const DOCTOR = MOBILE_PANEL_THEMES.doctor;
 
@@ -91,11 +93,9 @@ export function DoctorOrdersMobile({ orders, loading, refetch, onOpenOrder, onNe
   const [query, setQuery]   = useState('');
   const [filter, setFilter] = useState<FilterKey>('all');
 
-  const isOverdue = (o: WorkOrder) => {
-    if (o.status === 'teslim_edildi' || o.status === 'iptal') return false;
-    const d = new Date(o.delivery_date + 'T00:00:00');
-    return d.getTime() < new Date().setHours(0, 0, 0, 0);
-  };
+  // Tek tanım (2026-10-26): core/metrics/orderDefs + lab günü (beklemedeki/arşivdeki gecikmez).
+  const today = useLabToday();
+  const isOverdue = (o: WorkOrder) => isOverdueOrder(o as any, today);
 
   const counts = useMemo(() => ({
     all: orders.length,
@@ -104,7 +104,7 @@ export function DoctorOrdersMobile({ orders, loading, refetch, onOpenOrder, onNe
     ready:      orders.filter(o => o.status === 'teslimata_hazir').length,
     overdue:    orders.filter(isOverdue).length,
     delivered:  orders.filter(o => o.status === 'teslim_edildi').length,
-  } as Record<FilterKey, number>), [orders]);
+  } as Record<FilterKey, number>), [orders, today]);
 
   const filtered = useMemo(() => {
     let list = orders;

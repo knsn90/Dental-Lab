@@ -18,6 +18,7 @@
 //   (--no-verify-jwt şart: BanaBiKurye Supabase JWT'si göndermez.)
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { applyBbkProof, fetchBbkOrderForDelivery, runInBackground } from '../_shared/bbkProofApply.ts';
 
 const SUPABASE_URL  = Deno.env.get('SUPABASE_URL')!;
 const SRV_KEY       = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -128,6 +129,11 @@ Deno.serve(async (req) => {
     lastResult = data;
     if ((data as any)?.ok === true) {
       console.log(`banabikurye-callback: ${candidate} → ${mapped}`, JSON.stringify(data));
+      // 2. dalga 5: teslimde kanıt (ad, varış, varsa fotoğraf/imza) — yanıtı bekletmez, teslimi bozmaz
+      if (mapped === 'teslim_edildi') {
+        const order = body?.order ?? body?.data?.order ?? null;
+        await runInBackground(applyBbkProof(admin, candidate, order, () => fetchBbkOrderForDelivery(admin, candidate)));
+      }
       return json({ ok: true, matched: candidate, result: data });
     }
   }

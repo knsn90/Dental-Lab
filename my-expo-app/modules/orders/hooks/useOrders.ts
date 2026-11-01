@@ -8,8 +8,9 @@ import { fetchWorkOrdersForDoctor, fetchAllWorkOrders } from '../api';
 import { bootMark } from '../../../core/debug/bootTrace';
 
 const LS_PREFIX = 'orders_cache_v1';
-function cacheKey(userType: string, doctorId?: string, includeArchived?: boolean): string {
-  return `${LS_PREFIX}:${userType}:${doctorId ?? 'all'}:${includeArchived ? 'arc' : 'live'}`;
+function cacheKey(userType: string, doctorId?: string, includeArchived?: boolean, doctorIds?: string[]): string {
+  const dk = doctorIds?.length ? `:dr=${doctorIds.join(',')}` : '';
+  return `${LS_PREFIX}:${userType}:${doctorId ?? 'all'}:${includeArchived ? 'arc' : 'live'}${dk}`;
 }
 function loadCached(key: string): WorkOrder[] | null {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
@@ -33,22 +34,24 @@ function fetchOrders(
   userType: 'doctor' | 'lab',
   doctorId: string | undefined,
   includeArchived: boolean,
+  doctorIds?: string[],
 ): Promise<{ data: WorkOrder[] | null; error: any }> {
   const running = inFlight.get(ckey);
   if (running) return running;
   const p = (async () => {
     const r = userType === 'doctor' && doctorId
       ? await fetchWorkOrdersForDoctor(doctorId)
-      : await fetchAllWorkOrders({ includeArchived });
+      : await fetchAllWorkOrders({ includeArchived, doctorIds });
     return { data: (r.data as WorkOrder[]) ?? null, error: r.error };
   })().finally(() => { inFlight.delete(ckey); });
   inFlight.set(ckey, p);
   return p;
 }
 
-export function useOrders(userType: 'doctor' | 'lab', doctorId?: string, opts?: { includeArchived?: boolean }) {
+export function useOrders(userType: 'doctor' | 'lab', doctorId?: string, opts?: { includeArchived?: boolean; doctorIds?: string[] }) {
   const includeArchived = !!opts?.includeArchived;
-  const ckey = cacheKey(userType, doctorId, includeArchived);
+  const doctorIds = opts?.doctorIds;
+  const ckey = cacheKey(userType, doctorId, includeArchived, doctorIds);
   // OTURUMU BEKLE. Panel kabuğu optimistik yönlendirmeyle oturum hazır olmadan
   // monte oluyor; bu hook o anda sorgu atınca Supabase 401 döner ve liste boş
   // kalır (ölçüldü: tek açılışta 26 adet 401). Cache varsa kullanıcı yine anında
@@ -65,7 +68,7 @@ export function useOrders(userType: 'doctor' | 'lab', doctorId?: string, opts?: 
     bootMark(`useOrders.load(silent=${silent})`, { key: ckey });
     if (!silent) setLoading(true);
     setError(null);
-    const result = await fetchOrders(ckey, userType, doctorId, includeArchived);
+    const result = await fetchOrders(ckey, userType, doctorId, includeArchived, doctorIds);
 
     if (result.error) {
       setError(result.error.message);

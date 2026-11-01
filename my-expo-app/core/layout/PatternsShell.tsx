@@ -81,6 +81,7 @@ import { openSupport } from '../store/supportStore';
 import { MOBILE_PANEL_THEMES, type MobilePanel } from '../theme/mobileDesignTokens';
 import { useThemeModeStore } from '../store/themeModeStore';
 import { autoT } from '../i18n/autoTranslate';
+import { useCommandPalette } from '../store/commandPaletteStore';
 import { useHeroSurface, useAccentTones } from '../ui/HeroGlow';
 import { isRTL } from '../i18n';
 import { amIPlatformAdmin, myLimits } from '../../modules/platform/api';
@@ -299,7 +300,6 @@ export function PatternsShell({
     const over = Object.keys(limits || {}).filter((k) => Number(limits[k]) > 0 && Number(usage?.[k] || 0) > Number(limits[k])).map((k) => labels[k] || k);
     setOverLimits(over);
   } catch { /* yoksay */ } })(); }, []);
-  const [searchQ, setSearchQ] = useState('');
   const pageTitle = usePageTitleStore(s => s.title);
   const pageSubtitle = usePageTitleStore(s => s.subtitle);
   const pageActions = usePageTitleStore(s => s.actions);
@@ -674,25 +674,22 @@ export function PatternsShell({
          }}
        >
           {/* Search */}
-          <View
-            className="flex-row items-center gap-2 px-3 py-1.5 rounded-full"
+          {/* Genel arama (2. dalga 1): kutu ortadaki arama penceresini açar; Ctrl+K / ⌘K de aynı pencere */}
+          <Pressable
+            onPress={() => useCommandPalette.getState().openPalette()}
+            accessibilityRole="search"
+            className="flex-row items-center gap-2 px-3 py-1.5 rounded-full web:cursor-text"
             style={{ width: 180, backgroundColor: palette.panelBg }}
             {...(Platform.OS === 'web' ? { title: 'Arama — ⌘K ile hızlı aç' } : {})}
           >
             <Search size={13} color="#9A9A9A" strokeWidth={1.8} />
-            <TextInput
-              value={searchQ}
-              onChangeText={setSearchQ}
-              placeholder="Ara..."
-              placeholderTextColor="#9A9A9A"
-              onSubmitEditing={() => onSearchSubmit?.(searchQ)}
-              style={{
-                flex: 1, fontSize: 12, color: SC.ink,
-                // @ts-ignore web outline reset
-                outlineWidth: 0,
-              }}
-            />
-          </View>
+            <Text style={{ flex: 1, fontSize: 12, color: '#9A9A9A' }} numberOfLines={1}>Ara...</Text>
+            {Platform.OS === 'web' ? (
+              <Text style={{ fontSize: 10, color: '#9A9A9A' }}>
+                {typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl K'}
+              </Text>
+            ) : null}
+          </Pressable>
 
           {/* Destek — her panelde görünür yardım butonu */}
           <GlassTooltip placement="bottom" style={{ alignSelf: 'center' }} title={autoT('Destek')} text={autoT('Destek talebi aç ya da ekibe yaz')}>

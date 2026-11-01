@@ -18,7 +18,9 @@ export interface WorkOrder {
   patient_name: string | null;
   patient_id: string | null;
   patient_gender: PatientGender | null;
-  patient_dob: string | null;      // YYYY-MM-DD
+  patient_dob: string | null;      // YYYY-MM-DD (eski siparişler; yeni sipariş yaş ister)
+  /** Sipariş anındaki hasta yaşı (2026-10-19+). Yoksa patient_dob'dan hesaplanır → lib/patientAge.orderAge */
+  patient_age?: number | null;
   patient_phone: string | null;
   patient_nationality: string | null;
   patient_country: string | null;
@@ -82,6 +84,7 @@ export interface CreateWorkOrderParams {
   patient_id?: string;
   patient_gender?: string;
   patient_dob?: string;       // YYYY-MM-DD, optional
+  patient_age?: number;
   patient_phone?: string;
   /** Auto-derived from work_type — not exposed in UI */
   department?: string;

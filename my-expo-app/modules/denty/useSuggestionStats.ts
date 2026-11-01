@@ -21,6 +21,8 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../core/api/supabase';
 import type { PanelGroup } from './context';
+import { useAuthStore } from '../../core/store/authStore';
+import { autoT } from '../../core/i18n/autoTranslate';
 
 /** Bir öneri kartının altında gösterilecek canlı bilgi. */
 export interface SuggestionStat {
@@ -39,10 +41,6 @@ export type StatKey =
   | 'low_stock'           // kritik stok
   | 'station_queue';      // istasyonda bekleyen aşama
 
-/** Sipariş "kapandı" sayılan statüler — gecikme sayımından düşer. */
-const FINAL_STATUSES = ['teslim_edildi', 'iptal', 'iptal_edildi', 'reddedildi', 'tamamlandi'];
-/** Faturanın hâlâ tahsil edilebilir olduğu statüler (taslak alacak DEĞİL). */
-const OPEN_INVOICE_STATUSES = ['kesildi', 'kismi_odendi'];
 
 const CCY_SYMBOL: Record<string, string> = { TRY: '₺', EUR: '€', USD: '$', GBP: '£' };
 
@@ -57,9 +55,8 @@ export function useSuggestionStats(panel: PanelGroup | null, enabled: boolean) {
   useEffect(() => {
     if (!enabled || !panel) return;
     let cancelled = false;
-    const today = new Date().toISOString().slice(0, 10);
-
     (async () => {
+      // Tek tanım (2026-10-26): sayılar order_metrics / alacak görünümünden (lab günüyle hesaplanır).
       const out: Partial<Record<StatKey, SuggestionStat>> = {};
 
       // Her sorgu kendi başına başarısız olabilir; biri patlarsa diğerleri
@@ -68,35 +65,25 @@ export function useSuggestionStats(panel: PanelGroup | null, enabled: boolean) {
 
       // ── Gecikmiş siparişler ────────────────────────────────────────────
       tasks.push((async () => {
-        const { count } = await supabase
-          .from('work_orders')
-          .select('id', { count: 'exact', head: true })
-          .lt('delivery_date', today)
-          .not('status', 'in', `(${FINAL_STATUSES.join(',')})`);
-        if (count && count > 0) {
+        const { data } = await supabase.rpc('order_metrics');
+        const count = Number((data as any)?.overdue) || 0;
+        if (count > 0) {
           out.overdue_orders = { primary: `${count} sipariş gecikti`, alert: true };
         }
       })());
 
-      // ── Vadesi geçmiş faturalar (sayı + döviz bazlı bakiye) ────────────
+      // ── Vadesi geçmiş alacak (klinik bazında, avans düşülmüş; Özet ve hatırlatmayla aynı) ──
       tasks.push((async () => {
-        const { data } = await supabase
-          .from('invoices')
-          .select('total_amount, paid_amount, currency')
-          .in('status', OPEN_INVOICE_STATUSES)
-          .lt('due_date', today);
-        const rows = (data ?? []) as { total_amount: number; paid_amount: number; currency: string }[];
+        const labId = (useAuthStore.getState().profile as any)?.lab_id ?? null;
+        let q = supabase.from('v_clinic_balance_ccy').select('clinic_id, currency, overdue_net').gt('overdue_net', 0);
+        if (labId) q = q.eq('lab_id', labId);
+        const { data } = await q;
+        const rows = (data ?? []) as { clinic_id: string; currency: string; overdue_net: number }[];
         if (rows.length === 0) return;
         const byCcy = new Map<string, number>();
-        for (const r of rows) {
-          const bal = (Number(r.total_amount) || 0) - (Number(r.paid_amount) || 0);
-          if (bal <= 0) continue;
-          const c = r.currency || 'TRY';
-          byCcy.set(c, (byCcy.get(c) ?? 0) + bal);
-        }
-        if (byCcy.size === 0) return;
+        for (const r of rows) byCcy.set(r.currency || 'TRY', (byCcy.get(r.currency || 'TRY') ?? 0) + (Number(r.overdue_net) || 0));
         out.overdue_invoices = {
-          primary: `${rows.length} fatura vadesi geçti`,
+          primary: `${new Set(rows.map(r => r.clinic_id)).size} ${autoT('klinik ödeme bekliyor')}`,
           // Katı per-currency — toplamlar ayrı gösterilir, çevrilmez.
           secondary: Array.from(byCcy).map(([c, v]) => money(v, c)).join(' · '),
           alert: true,
@@ -104,7 +91,11 @@ export function useSuggestionStats(panel: PanelGroup | null, enabled: boolean) {
       })());
 
       // ── Faturasız teslimatlar ──────────────────────────────────────────
+      // Finans yetkisi yoksa fatura bağı RLS'te gizli: görünüm her teslimatı
+      // faturasız sayardı. Kart hiç gösterilmez.
       tasks.push((async () => {
+        const { data: canFin } = await supabase.rpc('lab_can_view_finance');
+        if (canFin !== true) return;
         const { count } = await supabase
           .from('v_unbilled_work_orders')
           .select('id', { count: 'exact', head: true });

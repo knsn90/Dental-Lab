@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Users, ClipboardCheck, Wrench, Ban, Pencil, Menu, X as CloseIcon } from '../../core/ui/icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { PendingApprovalsScreen } from './PendingApprovalsScreen';
+import { labSignupRequests } from '../lab-connections/api';
 import { DesignApprovalsScreen } from './DesignApprovalsScreen';
 import { CancelRequestsPanel } from './CancelRequestsPanel';
 import { ChangeRequestsPanel } from './ChangeRequestsPanel';
@@ -67,12 +68,10 @@ export function AdminApprovalsScreen() {
     let cancelled = false;
     const tick = async () => {
       try {
-        const { count } = await supabase
-          .from('profiles')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_type', 'doctor')
-          .eq('approval_status', 'pending');
-        if (!cancelled) setDoctorsPending(count ?? 0);
+        // Bekleyen hesaplar lab'a bağlı olmadığından profiles'tan okunamaz;
+        // lab'a gelen kayıt istekleri RPC'den (yönetici değilse boş döner).
+        const rows = await labSignupRequests(false);
+        if (!cancelled) setDoctorsPending(rows.length);
       } catch { /* ignore */ }
     };
     tick();

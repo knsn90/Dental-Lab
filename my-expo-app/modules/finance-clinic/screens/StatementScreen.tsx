@@ -8,7 +8,7 @@
  */
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { View, Text, ScrollView, TextInput, Pressable, Platform } from 'react-native';
+import { View, Text, ScrollView, TextInput, Pressable, Platform, useWindowDimensions } from 'react-native';
 import { useRouter, useSegments } from 'expo-router';
 import { Search, FileText, Banknote, Calendar, User as UserIcon, Filter as FilterIcon, X, FileSpreadsheet, Printer, ChevronRight, ChevronLeft } from '../../../core/ui/icons';
 import { isRTL } from '../../../core/i18n';
@@ -31,6 +31,11 @@ import { useRates, rateToBase } from '../../../core/money/rateCache';
 import { groupByCurrency, type CurrencyTotal } from '../../../core/money/aggregations';
 import { type Currency } from '../../../core/money/currency';
 import { exportStatementXls, exportStatementPdf, type ExportContext } from '../export';
+import { MoneyMultiX } from '../../../core/money/MoneyMultiX';
+import { MobileTableX, MobileTableRowX, MobileTableIconX, useMobileTableText } from '../../../core/ui/MobileTableX';
+import { statementVatByCurrency } from '../../invoices/lib/statementVat';
+import { StatementVatSummary } from '../../invoices/components/StatementVatSummary';
+import { autoT } from '../../../core/i18n/autoTranslate';
 
 type Props = { clinicId: string };
 type RangeKey = 'this_month' | 'last_month' | 'last_3m' | 'this_year' | 'all' | 'custom';
@@ -83,6 +88,9 @@ function rangeToDates(key: RangeKey): { from?: string; to?: string } {
 export function StatementScreen({ clinicId }: Props) {
   const TH = usePanelTheme();
   const U = useInkUI();
+  const MT = useMobileTableText();
+  // Mobilde 5 sütunlu tablo sığmıyordu (sabit sütunlar 364px) → ekstre mobil tablosu kalıbı
+  const isDesktop = useWindowDimensions().width >= 1024;
   useRates();
   const router = useRouter();
   const segments = useSegments();
@@ -158,6 +166,16 @@ export function StatementScreen({ clinicId }: Props) {
     return Object.entries(m).filter(([, v]) => Math.abs(v) > 0.0001)
       .map(([currency, total]) => ({ currency: currency as Currency, total, count: 0 }));
   }, [debitByCcy, creditByCcy]);
+  // Faturaların KDV dökümü — para birimine göre ayrı (kullanıcı: KDV fiyatın içinde anlaşılmıyordu)
+  const vatByCcy = statementVatByCurrency(filtered.map(l => ({
+    type: l.kind, debit: l.debit, tax: l.tax ?? 0, currency: l.currency || 'TRY',
+  })));
+  const taxByCcy: CurrencyTotal[] = vatByCcy.filter(v => v.tax > 0)
+    .map(v => ({ currency: v.currency as Currency, total: v.tax, count: 0 }));
+  const vatBlocks = vatByCcy.filter(v => v.total > 0);
+  // Borç sütunu KDV HARİÇ: alt satırda da KDV hariç toplam (bakiye yine KDV dahil)
+  const netDebitByCcy: CurrencyTotal[] = vatByCcy.filter(v => v.net > 0)
+    .map(v => ({ currency: v.currency as Currency, total: v.net, count: 0 }));
   // Dar sütunda para birimi başına alt alta küçük satırlar
   const CcyCol = ({ slices, color, width }: { slices: CurrencyTotal[]; color: string; width: number }) => (
     <View style={{ width, alignItems: 'flex-end' }}>
@@ -446,6 +464,50 @@ export function StatementScreen({ clinicId }: Props) {
           title={lines.length === 0 ? 'Hareket yok' : 'Eşleşen kayıt yok'}
           description={lines.length === 0 ? 'Seçili dönemde fatura veya ödeme kaydı bulunmuyor.' : 'Filtreleri değiştirin veya temizleyin.'}
         />
+      ) : !isDesktop ? (
+        /* Mobil — lab ekstresi / giderler mobil tablosuyla aynı kalıp */
+        <MobileTableX
+          title="Ekstre" count={filtered.length} countLabel="hareket"
+          footer={<>
+            <Text style={MT.footNote}>{filtered.length} hareket</Text>
+            <View style={{ flex: 1 }} />
+            <Text style={MT.footLabel}>Bakiye:</Text>
+            <MoneyMultiX slices={netByCcy} variant="inline" />
+          </>}
+        >
+          {filtered.map((l, i) => {
+            const isInvoice = l.kind === 'invoice';
+            const sub = [l.doctor_name, l.patient_name, l.order_no].filter(Boolean).join(' · ');
+            return (
+              <MobileTableRowX key={l.id} isLast={i === filtered.length - 1}
+                onPress={l.invoice_id ? () => router.push(`/${panelBase}/invoice/${l.invoice_id}` as any) : undefined}>
+                <MobileTableIconX icon={isInvoice ? FileText : Banknote} tone={isInvoice ? U.chipTones.info : U.chipTones.success} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={MT.title} numberOfLines={1}>{l.description}</Text>
+                  {/* Hekim + hasta (+ sipariş no) — hekim ekstrede hangi hastanın işi olduğunu görmek istiyor */}
+                  {sub ? <Text style={MT.sub} numberOfLines={1}>{sub}</Text> : null}
+                  <Text style={[MT.meta, { marginTop: 2 }]}>{fmtDate(l.date)}</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={[MT.amount, { color: l.credit > 0 ? U.chipTones.success.fg : U.ink[900] }]}>
+                    {l.credit > 0 ? `-${Mnat(l.credit, l.currency)}` : Mnat(l.debit - (l.tax ?? 0), l.currency)}
+                  </Text>
+                  {isInvoice && (l.tax ?? 0) > 0 ? (
+                    <Text style={{ fontSize: 10, color: U.ink[500], marginTop: 1 }}>
+                      {autoT('KDV')} {Mnat(l.tax ?? 0, l.currency)}
+                    </Text>
+                  ) : null}
+                  <Text style={[MT.amountSub, { color: l.balance > 0 ? U.chipTones.danger.fg : U.ink[400] }]}>
+                    {Mnat(l.balance, l.currency)}
+                  </Text>
+                </View>
+              </MobileTableRowX>
+            );
+          })}
+          {vatBlocks.map(v => (
+            <StatementVatSummary key={v.currency} summary={v} fmt={(n) => Mnat(n, v.currency)} />
+          ))}
+        </MobileTableX>
       ) : (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
           {/* Header */}
@@ -456,7 +518,9 @@ export function StatementScreen({ clinicId }: Props) {
           }}>
             <Text style={{ width: 84, fontSize: 10, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Tarih</Text>
             <Text style={{ flex: 1, fontSize: 10, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Açıklama</Text>
-            <Text style={{ width: 90, textAlign: 'end' as any, fontSize: 10, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Borç</Text>
+            {/* Kullanıcı: "önce fiyat, sonraki sütunda KDV" — borç KDV HARİÇ */}
+            <Text style={{ width: 90, textAlign: 'end' as any, fontSize: 10, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Borç (KDV hariç)</Text>
+            <Text style={{ width: 80, textAlign: 'end' as any, fontSize: 10, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>KDV</Text>
             <Text style={{ width: 90, textAlign: 'end' as any, fontSize: 10, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Alacak</Text>
             <Text style={{ width: 100, textAlign: 'end' as any, fontSize: 10, fontWeight: '700', color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Bakiye</Text>
           </View>
@@ -492,7 +556,10 @@ export function StatementScreen({ clinicId }: Props) {
                 )}
               </View>
               <Text style={{ width: 90, textAlign: 'end' as any, fontSize: 12, color: l.debit > 0 ? U.ink[900] : U.ink[300] }}>
-                {l.debit > 0 ? Mnat(l.debit, l.currency) : '—'}
+                {l.debit > 0 ? Mnat(l.debit - (l.tax ?? 0), l.currency) : '—'}
+              </Text>
+              <Text style={{ width: 80, textAlign: 'end' as any, fontSize: 11, color: (l.tax ?? 0) > 0 ? U.ink[700] : U.ink[300] }}>
+                {(l.tax ?? 0) > 0 ? Mnat(l.tax ?? 0, l.currency) : '—'}
               </Text>
               <Text style={{ width: 90, textAlign: 'end' as any, fontSize: 12, color: l.credit > 0 ? '#1F6B47' : U.ink[300], fontWeight: l.credit > 0 ? '600' : '400' }}>
                 {l.credit > 0 ? Mnat(l.credit, l.currency) : '—'}
@@ -514,10 +581,14 @@ export function StatementScreen({ clinicId }: Props) {
           }}>
             <Text style={{ width: 84, fontSize: 10, fontWeight: '700', color: U.ink[700], textTransform: 'uppercase', letterSpacing: 0.7 }}>Toplam</Text>
             <Text style={{ flex: 1, fontSize: 11, color: U.ink[500] }}>{filtered.length} hareket</Text>
-            <CcyCol slices={debitByCcy}  color={U.ink[900]} width={90} />
+            <CcyCol slices={netDebitByCcy} color={U.ink[900]} width={90} />
+            <CcyCol slices={taxByCcy}    color={U.ink[700]} width={80} />
             <CcyCol slices={creditByCcy} color="#1F6B47"    width={90} />
             <CcyCol slices={netByCcy}    color={U.ink[900]} width={100} />
           </View>
+          {vatBlocks.map(v => (
+            <StatementVatSummary key={v.currency} summary={v} fmt={(n) => Mnat(n, v.currency)} />
+          ))}
         </Card>
       )}
     </ScrollView>

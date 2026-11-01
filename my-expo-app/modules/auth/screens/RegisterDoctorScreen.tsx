@@ -8,17 +8,22 @@ import { View, Text, Pressable, Platform, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Mail, Lock, Eye, EyeOff, User as UserIcon, Phone, Building2, AlertCircle, ChevronLeft, ChevronRight } from '../../../core/ui/icons';
 import { signUpDoctor } from '../api';
-import { AddressFields, AddressData, buildAddressString } from '../components/AddressFields';
+import { AddressFields, CountryField, AddressData, buildAddressString, validateAddress, addressFromPlace } from '../components/AddressFields';
 import { AuthShell, AuthInput, AuthButton, AUTH, AUTH_FONT } from '../components/AuthShell';
 import { ConsentGate, EMPTY_CONSENTS, hasRequiredConsents, type ConsentState } from '../components/ConsentGate';
 import { ClinicNameAutocomplete } from '../components/ClinicNameAutocomplete';
 import { PasswordChecklist } from '../components/PasswordChecklist';
+import { ConnectCodeField, connectCodeError, normalizeConnectCode } from '../components/ConnectCodeField';
+import { useHostSignupLab } from '../hooks/useHostSignupLab';
 import { isRTL } from '../../../core/i18n';
 
 export function RegisterDoctorScreen() {
   const router = useRouter();
+  // Lab'ın kendi alan adından (www.nexadent.net) açıldıysa kod sunucudan gelir.
+  const hostLab = useHostSignupLab();
 
   const [form, setForm] = useState({
+    connect_code: '',
     full_name: '',
     clinic_name: '',
     phone: '',
@@ -57,11 +62,12 @@ export function RegisterDoctorScreen() {
   const validate = () => {
     const e: Partial<typeof form> = {};
     const ae: Partial<Record<keyof AddressData, string>> = {};
+    const codeErr = hostLab.status === 'found' ? undefined : connectCodeError(form.connect_code);
+    if (codeErr) e.connect_code = codeErr;
     if (!form.full_name.trim()) e.full_name = 'Ad soyad zorunlu';
     if (!form.phone.trim()) e.phone = 'Telefon zorunlu';
     if (!form.clinic_name.trim()) e.clinic_name = 'Klinik adı zorunlu';
-    if (!address.il) ae.il = 'İl seçin';
-    if (!address.ilce) ae.ilce = 'İlçe seçin';
+    Object.assign(ae, validateAddress(address));
     if (!form.email.trim()) e.email = 'E-posta zorunlu';
     else if (!/\S+@\S+\.\S+/.test(form.email)) e.email = 'Geçerli bir e-posta girin';
     if (form.password.length < 8) e.password = 'Şifre en az 8 karakter olmalı';
@@ -86,6 +92,7 @@ export function RegisterDoctorScreen() {
       clinic_name: form.clinic_name.trim(),
       phone: form.phone.trim(),
       address: buildAddressString(address),
+      connect_code: hostLab.status === 'found' ? hostLab.code : normalizeConnectCode(form.connect_code),
     });
     setLoading(false);
     if (error) {
@@ -118,7 +125,9 @@ export function RegisterDoctorScreen() {
     <AuthShell
       eyebrow="Hekim Kaydı"
       heading="Kayıt Ol"
-      subtitle="Bilgilerini gir. Lab onayı sonrası giriş yapabilirsin."
+      subtitle={hostLab.status === 'found'
+        ? 'Bilgilerini gir. Lab onayı sonrası giriş yapabilirsin.'
+        : 'Bilgilerini ve laboratuvarının bağlantı kodunu gir. Lab onayı sonrası giriş yapabilirsin.'}
       illustrationCaption="Tek hekim için&#10;hızlı kayıt akışı."
       tone="doctor"
       footerLink={{
@@ -159,6 +168,13 @@ export function RegisterDoctorScreen() {
           </View>
         ) : null}
 
+        <ConnectCodeField
+          value={form.connect_code}
+          onChangeText={set('connect_code')}
+          error={errors.connect_code}
+          hostLab={hostLab}
+        />
+
         <AuthInput
           value={form.full_name}
           onChangeText={set('full_name')}
@@ -175,7 +191,11 @@ export function RegisterDoctorScreen() {
           error={errors.phone}
           icon={<Phone size={15} color={AUTH.inkMuted} strokeWidth={1.8} />}
         />
+        {/* Ülke — Google kurum aramasının hemen üstünde; arama ve adres alanları buna göre */}
+        <CountryField value={address} onChange={(v) => { setAddress(v); setAddressErrors({}); }} />
+
         <ClinicNameAutocomplete
+          region={address.ulke}
           value={form.clinic_name}
           onChangeText={set('clinic_name')}
           placeholder="Klinik / Muayenehane (Google'dan ara)"
@@ -186,13 +206,7 @@ export function RegisterDoctorScreen() {
               clinic_name: d.name || prev.clinic_name,
               phone: prev.phone.trim() ? prev.phone : d.phone,
             }));
-            setAddress({
-              il: d.il || '',
-              ilce: d.ilce || '',
-              mahalle: d.mahalle || '',
-              sokak: d.sokak || '',
-              posta_kodu: d.postaKodu || '',
-            });
+            setAddress(addressFromPlace(d, address.ulke));
             setAddressErrors({});
             setErrors((p) => ({ ...p, clinic_name: '', phone: '' }));
           }}
@@ -204,6 +218,7 @@ export function RegisterDoctorScreen() {
             value={address}
             onChange={(v) => { setAddress(v); setAddressErrors({}); }}
             errors={addressErrors}
+            showCountry={false}
           />
         </View>
 
@@ -248,7 +263,10 @@ export function RegisterDoctorScreen() {
         <View style={{ marginTop: 8 }}>
           <ConsentGate value={consents} onChange={setConsents} showError={consentError} />
 
-          <AuthButton label="Hesap Oluştur" onPress={handleRegister} loading={loading} />
+          {/* Onay kutusu ile buton arasında nefes payı */}
+          <View style={{ height: 20 }} />
+
+          <AuthButton label="Hesap Oluştur" onPress={handleRegister} loading={loading || hostLab.status === 'loading'} />
         </View>
       </Animated.View>
     </AuthShell>

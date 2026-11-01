@@ -1,0 +1,1 @@
+../../../my-expo-app/supabase/functions/_shared/luca.ts

@@ -73,7 +73,9 @@
       "requests": "Anfragen",
       "waSupport": "WhatsApp-Support",
       "phoneLeads": "Telefonanfragen",
-      "phoneLeadsSub": "Anfragen des Telefonassistenten"
+      "phoneLeadsSub": "Anfragen des Telefonassistenten",
+      "scans": "Scan-Termine",
+      "scansSub": "Scan-Besuche in Kliniken"
     },
     "sections": {
       "work": "Arbeitsverwaltung",
@@ -105,8 +107,8 @@
     "delivered": "Geliefert",
     "overdueLabel": "Überfällig",
     "tryin": "Einprobe",
-    "totalCases": "Fälle gesamt",
-    "todayLine": "{{total}} Aufträge heute in Produktion, {{active}} aktiv",
+    "totalCases": "Neu diesen Monat",
+    "todayLine": "{{active}} aktive Aufträge",
     "todayOverdue": ", {{overdue}} überfällig",
     "weekDoneKicker": "{{count}} DIESE WOCHE ABGESCHLOSSEN",
     "newOrderKicker": "NEUER ARBEITSAUFTRAG",
@@ -421,6 +423,14 @@
       "workflows": {
         "label": "Arbeitsabläufe",
         "sub": "Designer für Produktionsabläufe"
+      },
+      "mycode": {
+        "label": "Mein Anmeldecode",
+        "sub": "Tablet-Anmeldecode (PIN)"
+      },
+      "devices": {
+        "label": "Tablets",
+        "sub": "Kiosk-Geräteverwaltung"
       }
     }
   },
@@ -503,7 +513,7 @@
       "active": "Aktiv",
       "overdue": "Überfällig",
       "today": "Heute",
-      "totalOrders": "Aufträge gesamt",
+      "totalOrders": "Aufträge · gesamt",
       "doctor": "Zahnarzt",
       "labUser": "Laborbenutzer",
       "memberTrend": "Einheiten-Trend",
@@ -522,13 +532,13 @@
       "invoice": "Abrechnen →",
       "financialSummary": "Finanzübersicht",
       "monthlyCollection": "Eingang diesen Monat",
-      "pendingInvoice": "Offene Rechnungen",
+      "pendingInvoice": "Forderungen",
       "paidInvoiceCount": "Bezahlte Rechnungen",
       "statusDistribution": "Statusverteilung",
       "workTypeDistribution": "Verteilung nach Arbeitsart",
       "totalMembers": "Einheiten",
-      "noOrdersToday": "Heute noch keine Aufträge.",
-      "ordersSummary": "{{total}} Aufträge, {{active}} aktiv{{overdue}}.",
+      "noOrdersToday": "Keine aktiven Aufträge.",
+      "ordersSummary": "{{active}} aktive Aufträge{{overdue}}.",
       "liveProduction": "Live-Produktion",
       "monthlyRevenue": "Monatsumsatz",
       "pendingApprovals": "Ausstehende Freigaben",
@@ -542,7 +552,10 @@
       "noDelayedCases": "Keine verzögerten Fälle",
       "productionOnTrack": "Die gesamte Produktion verläuft planmäßig.",
       "ordersOfTotal": "{{done}} / {{total}} Aufträge",
-      "deliveredAllTime": "Geliefert · gesamt"
+      "deliveredAllTime": "Geliefert · gesamt",
+      "newThisMonth": "Neu diesen Monat",
+      "newToday": "Neu heute",
+      "activeStaff": "Aktives Personal"
     },
     "buttons": {
       "start": "Start"
@@ -596,6 +609,7 @@
     },
     "cta": {
       "ordersToday": "HEUTE {{total}} AUFTRÄGE",
+      "dueToday": "HEUTE {{count}} FÄLLIG",
       "newOrder": "NEUER AUFTRAG",
       "createNewOrder": "Neuen Arbeitsauftrag erstellen"
     },
@@ -923,5 +937,10 @@
       "urgent": "Dringend",
       "inQueue": "In Warteschlange"
     }
+  },
+  "profitability": {
+    "tabServices": "Leistungen",
+    "serviceCount": "Leistungen",
+    "listPrice": "Liste"
   }
 }

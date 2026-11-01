@@ -20,7 +20,11 @@ const TR_LOCALE = 'tr-TR';
  */
 export function titleCaseTR(raw: string): string {
   if (!raw) return raw;
-  const cleaned = raw.trim().replace(/\s+/g, ' ').toLocaleLowerCase(TR_LOCALE);
+  const cleaned = raw.trim().replace(/\s+/g, ' ').toLocaleLowerCase(TR_LOCALE)
+    // Noktadan sonra boşluksuz yazılmış ünvanı ayır: "dt.esra" → "dt. esra".
+    // Ayrılmazsa ünvan tanınmıyor, normalizeDoctorName ikinci bir "Dt." ekliyordu
+    // ("Dt. Dt.esra Güllüoğlu", 2026-10-19).
+    .replace(/(^|\s)(dr|dt|prof|doç|opr|uzm)\.(?=\S)/g, '$1$2. ');
   // "Dr.", "Prof.", "Dt." gibi kısaltma önekleri
   const PREFIX_RE = /^(dr|dt|prof|doç|opr|uzm)\.?$/i;
   return cleaned
@@ -52,8 +56,13 @@ export function titleCaseTR(raw: string): string {
 export const DOCTOR_TITLE_DEFAULT = 'Dt.';
 
 export function normalizeDoctorName(raw: string): string {
-  const cleaned = titleCaseTR(raw);
+  let cleaned = titleCaseTR(raw);
   if (!cleaned) return cleaned;
+  // Baştaki AYNI ünvan tekrarını teke indir: "Dt. Dt. Ayşe" → "Dt. Ayşe".
+  // ("Prof. Dr." gibi farklı ünvan zincirlerine dokunulmaz.)
+  const words = cleaned.split(' ');
+  while (words.length > 2 && /^(Dr|Dt|Prof|Doç|Opr|Uzm)\.$/.test(words[0]) && words[0] === words[1]) words.shift();
+  cleaned = words.join(' ');
   const PREFIX_RE = /^(Dr\.?|Dt\.?|Prof\.?|Doç\.?|Opr\.?|Uzm\.?)\s/i;
   return PREFIX_RE.test(cleaned) ? cleaned : `${DOCTOR_TITLE_DEFAULT} ${cleaned}`;
 }

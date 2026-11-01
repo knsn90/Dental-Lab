@@ -27,6 +27,11 @@ import {
 import { useRates, rateToBase } from '../../../core/money/rateCache';
 import { groupByCurrency } from '../../../core/money/aggregations';
 import { formatMoney, type Currency } from '../../../core/money/currency';
+import { MoneyMultiX } from '../../../core/money/MoneyMultiX';
+import { MobileTableX, MobileTableRowX, MobileTableIconX, useMobileTableText } from '../../../core/ui/MobileTableX';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { autoT } from '../../../core/i18n/autoTranslate';
+import { localeTag } from '../../../core/i18n';
 
 type SubmissionWithClinic = PaymentSubmissionRow & { clinic_name?: string };
 
@@ -42,6 +47,7 @@ const METHOD_LABEL: Record<string, { label: string; icon: any; color: string }> 
 export function PaymentApprovalsScreen() {
   const TH = usePanelTheme();
   const U = useInkUI();
+  const MT = useMobileTableText();
   useRates();
   const isEmbedded = useContext(HubContext);   // FinanceHub içindeyse kendi başlığını gösterme
   const [items, setItems]     = useState<SubmissionWithClinic[]>([]);
@@ -115,103 +121,77 @@ export function PaymentApprovalsScreen() {
             description="Tüm ödeme bildirimleri işlendi. Yeni bildirim geldikçe burada görünür."
           />
         ) : (
-          <View style={{ gap: 12 }}>
-            {items.map(s => {
+          /* Ekstre / giderler mobil tablosuyla aynı kalıp */
+          <MobileTableX
+            title="Ödeme Onayları" count={items.length} countLabel="bildirim"
+            footer={<>
+              <Text style={MT.footNote}>{items.length} bildirim</Text>
+              <View style={{ flex: 1 }} />
+              <Text style={MT.footLabel}>Bekleyen:</Text>
+              <MoneyMultiX slices={_pg} variant="inline" />
+            </>}
+          >
+            {items.map((s, i) => {
               const cfg = METHOD_LABEL[s.payment_method] ?? METHOD_LABEL.diger;
               const Icon = cfg.icon;
               const busy = acting === s.id;
+              const details = [
+                s.reference_no ? `${autoT('Referans / Dekont')}: ${s.reference_no}` : null,
+                s.bank_name ? `${autoT('Banka')}: ${s.bank_name}` : null,
+                s.sender_name ? `${autoT('Gönderen')}: ${s.sender_name}` : null,
+              ].filter(Boolean).join(' · ');
               return (
-                <Card key={s.id} style={{ padding: 16, borderColor: 'rgba(232,155,42,0.30)' }}>
-                  {/* Header row: clinic + amount + status */}
-                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
-                    <View style={{
-                      width: 44, height: 44, borderRadius: 12,
-                      backgroundColor: cfg.color + '18',
-                      alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      <Icon size={20} color={cfg.color} strokeWidth={2} />
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
-                          {s.clinic_name ?? 'Klinik'}
+                <MobileTableRowX key={s.id} isLast={i === items.length - 1} align="flex-start">
+                  <MobileTableIconX icon={Icon} tone={{ bg: cfg.color + '18', fg: cfg.color }} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={MT.title} numberOfLines={1}>{s.clinic_name ?? autoT('Klinik')}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
+                      <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: cfg.color + '14' }}>
+                        <Text style={{ fontSize: 9, fontWeight: '700', color: cfg.color, letterSpacing: 0.3 }}>
+                          {autoT(cfg.label).toLocaleUpperCase(localeTag())}
                         </Text>
-                        <View style={{
-                          paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999,
-                          backgroundColor: cfg.color + '14',
-                        }}>
-                          <Text style={{ fontSize: 9, fontWeight: '700', color: cfg.color, letterSpacing: 0.3 }}>
-                            {cfg.label.toUpperCase()}
+                      </View>
+                      {s.invoice_no ? (
+                        <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: U.chipNeutral }}>
+                          <Text style={{ fontSize: 9, fontWeight: '700', color: U.ink[700], letterSpacing: 0.3 }}>
+                            {autoT('FATURA')} {s.invoice_no}
                           </Text>
                         </View>
-                        {s.invoice_no && (
-                          <View style={{
-                            paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999,
-                            backgroundColor: U.ink[100],
-                          }}>
-                            <Text style={{ fontSize: 9, fontWeight: '700', color: U.ink[700], letterSpacing: 0.3 }}>
-                              FATURA {s.invoice_no}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                      <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 4 }}>
-                        {s.patient_name ? `${s.patient_name} · ` : ''}
-                        Bildirim: {fmtDate(s.submitted_at.slice(0, 10))} · Ödeme tarihi: {fmtDate(s.payment_date)}
-                      </Text>
+                      ) : null}
                     </View>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={{ ...DISPLAY, fontSize: 24, color: DS.ink[900], letterSpacing: -0.7 }}>
-                        {M(s.amount, s.currency)}
-                      </Text>
+                    <Text style={[MT.meta, { marginTop: 3 }]}>
+                      {s.patient_name ? `${s.patient_name} · ` : ''}{autoT('Bildirim:')} {fmtDate(s.submitted_at.slice(0, 10))} · {autoT('Ödeme tarihi:')} {fmtDate(s.payment_date)}
+                    </Text>
+                    {details ? <Text style={[MT.meta, { marginTop: 2 }]}>{details}</Text> : null}
+                    {s.notes ? <Text style={[MT.meta, { marginTop: 2 }]} numberOfLines={2}>{autoT('Not')}: {s.notes}</Text> : null}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                      <GlassTooltip title={autoT('Reddet')} text={autoT('Bildirimi sebep yazarak reddeder')}>
+                        <Pressable
+                          disabled={busy}
+                          onPress={() => { setRejectTarget(s); setRejectReason(''); }}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg, opacity: busy ? 0.5 : 1, ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}) }}
+                        >
+                          <X size={12} color={U.plainBtn.fgMuted} strokeWidth={2} />
+                          <Text style={{ fontSize: 11, fontWeight: '500', color: U.plainBtn.fg }}>Reddet</Text>
+                        </Pressable>
+                      </GlassTooltip>
+                      <GlassTooltip title={autoT('Onayla & Hesaba İşle')} text={autoT('Ödemeyi onaylar ve klinik hesabına işler')}>
+                        <Pressable
+                          disabled={busy}
+                          onPress={() => handleApprove(s)}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999, backgroundColor: U.ink[900], opacity: busy ? 0.7 : 1, ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}) }}
+                        >
+                          {busy ? <ActivityIndicator size="small" color={U.onDarkPill} /> : <CheckCircle2 size={12} color={U.onDarkPill} strokeWidth={2} />}
+                          <Text style={{ fontSize: 11, fontWeight: '600', color: U.onDarkPill }}>{busy ? 'İşleniyor…' : 'Onayla & Hesaba İşle'}</Text>
+                        </Pressable>
+                      </GlassTooltip>
                     </View>
                   </View>
-
-                  {/* Detay grid */}
-                  <View style={{
-                    marginTop: 12, padding: 12,
-                    backgroundColor: U.ink[50], borderRadius: 12,
-                    flexDirection: 'row', flexWrap: 'wrap', gap: 12,
-                  }}>
-                    {s.reference_no && (
-                      <DetailItem label="Referans / Dekont" value={s.reference_no} />
-                    )}
-                    {s.bank_name && (
-                      <DetailItem label="Banka" value={s.bank_name} />
-                    )}
-                    {s.sender_name && (
-                      <DetailItem label="Gönderen" value={s.sender_name} />
-                    )}
-                    {s.notes && (
-                      <View style={{ flexBasis: '100%' }}>
-                        <DetailItem label="Not" value={s.notes} />
-                      </View>
-                    )}
-                  </View>
-
-                  {/* Aksiyonlar */}
-                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
-                    <PillButton
-                      variant="ghost"
-                      disabled={busy}
-                      onPress={() => { setRejectTarget(s); setRejectReason(''); }}
-                      leftIcon={<X size={13} color={DS.ink[700]} />}
-                    >
-                      Reddet
-                    </PillButton>
-                    <PillButton
-                      variant="dark"
-                      disabled={busy}
-                      onPress={() => handleApprove(s)}
-                      leftIcon={busy ? <ActivityIndicator size="small" color="#FFF" /> : <CheckCircle2 size={13} color="#FFF" />}
-                    >
-                      {busy ? 'İşleniyor…' : 'Onayla & Hesaba İşle'}
-                    </PillButton>
-                  </View>
-                </Card>
+                  <Text style={MT.amount}>{M(s.amount, s.currency)}</Text>
+                </MobileTableRowX>
               );
             })}
-          </View>
+          </MobileTableX>
         )}
       </ScrollView>
 
@@ -273,16 +253,3 @@ export function PaymentApprovalsScreen() {
   );
 }
 
-function DetailItem({ label, value }: { label: string; value: string }) {
-  const U = useInkUI();
-  return (
-    <View style={{ flex: 1, minWidth: 140 }}>
-      <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: U.ink[500] }}>
-        {label}
-      </Text>
-      <Text style={{ fontSize: 12, color: U.ink[900], marginTop: 2, fontWeight: '500' }}>
-        {value}
-      </Text>
-    </View>
-  );
-}

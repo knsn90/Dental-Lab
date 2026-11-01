@@ -38,6 +38,8 @@ import { PermissionsScreen } from '../../admin/permissions/PermissionsScreen';
 import { WorkflowStudioScreen } from '../../triage/screens/WorkflowStudioScreen';
 import { EquipmentSection } from '../sections/EquipmentSection';
 import { WorkHoursSection } from '../sections/WorkHoursSection';
+import { ScanSettingsSection } from '../sections/ScanSettingsSection';
+import { useFeatureFlagsStore } from '../../../core/store/featureFlagsStore';
 import { MyAccessCodeSection } from '../../kiosk/screens/MyAccessCodeSection';
 import { LabDevicesSection } from '../../kiosk/screens/LabDevicesSection';
 import { useKioskMode } from '../../../core/kiosk/kioskModeStore';
@@ -56,7 +58,7 @@ type SectionKey =
   | 'profile' | 'notifications' | 'general'
   | 'users'   | 'checkin'    | 'stations'      | 'integrations' | 'logs'
   | 'permissions' | 'equipment' | 'finance' | 'currency' | 'suppliers' | 'workhours'
-  | 'workflows' | 'mycode' | 'devices';
+  | 'workflows' | 'mycode' | 'devices' | 'scans';
 
 type PanelKind = 'lab' | 'admin' | 'doctor' | 'clinic' | 'station';
 
@@ -66,8 +68,12 @@ interface NavItem {
   sub:   string;
   /** If set, only show this tab when user has this permission */
   requiresPermission?: string;
+  /** Yalnız hesap sahibi (user_type='admin'): kayıtları sunucu yalnız ona açar (is_admin_user). */
+  adminOnly?: boolean;
   /** Yalnız TR bölgesinde görünür (e-Fatura/iyzico gibi Türkiye'ye özgü). */
   trOnly?: boolean;
+  /** Yalnız bu lab modülü (platform_feature_flags) açıkken görünür. */
+  requiresFeature?: string;
   /** Sol menüde hangi başlık altında görünsün. Boşsa öncekinin grubuna girer.
       13 madde düz liste hâlindeyken "hangi ayar nerede" taranarak bulunuyordu. */
   group?: string;
@@ -117,18 +123,20 @@ const ACCOUNT_ITEMS: NavItem[] = [
 const LAB_ITEMS: NavItem[] = [
   // ── Organizasyon: kim, hangi yetkiyle, hangi düzende çalışıyor ──
   { key: 'users',        label: 'Kullanıcılar',  sub: 'Personel ve stage yetkileri',  requiresPermission: 'manage_users',    group: 'Organizasyon' },
-  { key: 'permissions',  label: 'Yetkiler',      sub: 'Rol bazli erisim yonetimi',    requiresPermission: 'manage_settings' },
+  { key: 'permissions',  label: 'Yetkiler',      sub: 'Rol bazlı erişim yönetimi',    requiresPermission: 'manage_settings' },
   { key: 'workhours',    label: 'Çalışma Saatleri', sub: 'Vardiya, öğle, eşzamanlı iş', requiresPermission: 'manage_settings' },
   { key: 'checkin',      label: 'QR Check-in',   sub: 'Mesai takip ayarları',         requiresPermission: 'manage_settings' },
   { key: 'devices',      label: 'Tabletler',     sub: 'Kiosk cihaz yönetimi',         requiresPermission: 'manage_settings' },
   // ── Operasyon: üretim ve para akışını yapılandıran ayarlar ──
   { key: 'stations',     label: 'İstasyonlar',   sub: 'Üretim aşamaları',             requiresPermission: 'manage_settings', group: 'Operasyon' },
   { key: 'finance',      label: 'Finans Ayarları', sub: 'Para birimi, KDV, kur, ödeme hatırlatmaları', requiresPermission: 'manage_settings' },
+  { key: 'scans',        label: 'Tarama Randevuları', sub: 'Tarama saatleri, yol payı, bildirim saatleri', requiresPermission: 'manage_settings', requiresFeature: 'scan_appointments' },
   { key: 'integrations', label: 'Entegrasyonlar', sub: 'e-Fatura & POS ayarları',     requiresPermission: 'manage_settings', trOnly: true },
   // ── Sistem: gözlem ──
   // NOT: "WhatsApp Destek" buradan CIKARILDI — ayar degil, gunluk operasyon
-  // ekrani. Artik kenar cubugunda Destek'in yaninda kendi girdisi var.
-  { key: 'logs',         label: 'Loglar',         sub: 'Sistem aktivite kayıtları',   requiresPermission: 'manage_settings', group: 'Sistem' },
+  // ekrani. Destek ekraninin hero'sundaki "WhatsApp destek hattı" dugmesinden acilir.
+  // Loglar: activity_logs yalnız sahibe açık → ayar yetkili müdüre sekme hiç çizilmez (boş ekran kalkar).
+  { key: 'logs',         label: 'Loglar',         sub: 'Sistem aktivite kayıtları',   requiresPermission: 'manage_settings', adminOnly: true, group: 'Sistem' },
 ];
 
 /** Yalnız admin panelinde: İş Akışları kenar çubuğundan buraya taşındı.
@@ -171,7 +179,7 @@ export function SettingsHubScreen({
   const params = useLocalSearchParams<{ tab?: string }>();
   const VALID_KEYS: SectionKey[] = [
     'profile','notifications','general','mycode','devices','users','checkin','stations',
-    'integrations','logs','permissions','equipment','finance','currency','suppliers','workflows','workhours',
+    'integrations','logs','permissions','equipment','finance','currency','suppliers','workflows','workhours','scans',
   ];
   const initialFromUrl = typeof params.tab === 'string' && (VALID_KEYS as string[]).includes(params.tab)
     ? params.tab as SectionKey
@@ -228,14 +236,18 @@ export function SettingsHubScreen({
   // route'unda panel 'lab' algılanıp fetchForPanel admin'e lab_manager izinlerini
   // yüklediğinden RBAC filtresi lab ayarlarını eliyordu; admin için bypass edilir.
   const isSuperAdmin = useAuthStore(s => s.profile?.user_type) === 'admin';
+  const featureFlags = useFeatureFlagsStore(s => s.flags);
 
   // Filter nav items by RBAC permissions
   const allNavItems = getNavItems(isSuperAdmin && (panel === 'lab' || panel === 'admin') ? 'admin' : panel);
   const navItems = allNavItems.filter(item => {
     // Kiosk modunda yalnız hesap ayarları
     if (isKiosk && !KIOSK_ALLOWED.has(item.key)) return false;
+    // Modülü kapalı lab'da modül ayarı hiç listelenmez (admin dahil)
+    if (item.requiresFeature && featureFlags[item.requiresFeature] !== true) return false;
     // Bölge süzgeci izinden ÖNCE: İran labında e-Fatura/POS ayarı hiç listelenmez.
     if (item.trOnly && !trOnly) return false;
+    if (item.adminOnly && !isSuperAdmin) return false;
     if (isSuperAdmin) return true;      // admin her ayarı görür
     if (!item.requiresPermission) return true;
     if (!permStore.loaded) return true; // show all while loading
@@ -563,6 +575,7 @@ export function SettingsHubScreen({
               {active === 'stations' && <StationsSection accentColor={accent} />}
               {active === 'finance' && <FinanceSection panelType={panel} accentColor={accent} />}
               {active === 'workhours' && <WorkHoursSection accentColor={accent} />}
+              {active === 'scans' && <ScanSettingsSection accentColor={accent} />}
               {active === 'equipment' && <EquipmentSection accentColor={accent} />}
               {active === 'suppliers' && <SuppliersScreen accentColor={accent} />}
               {active === 'currency' && <FinanceSection panelType={panel} accentColor={accent} />}

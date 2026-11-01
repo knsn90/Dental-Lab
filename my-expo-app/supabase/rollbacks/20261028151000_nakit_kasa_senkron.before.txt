@@ -1,0 +1,22 @@
+# 20261028151000_nakit_kasa_senkron — canlı ÖNCE kaydı (2026-10-29)
+## source_triggers
+clinic_receipts.auto_set_lab_id_clinic_receipts = CREATE TRIGGER auto_set_lab_id_clinic_receipts BEFORE INSERT ON public.clinic_receipts FOR EACH ROW EXECUTE FUNCTION auto_set_lab_id()
+expenses.trg_expense_recurring_mark = CREATE TRIGGER trg_expense_recurring_mark BEFORE INSERT ON public.expenses FOR EACH ROW EXECUTE FUNCTION _expense_recurring_mark()
+expenses.trg_expense_to_salary = CREATE TRIGGER trg_expense_to_salary AFTER UPDATE OF expense_date, payment_method ON public.expenses FOR EACH ROW WHEN (((new.salary_payment_id IS NOT NULL) AND ((old.expense_date IS DISTINCT FROM new.expense_date) OR (old.payment_method IS DISTINCT FROM new.payment_method)))) EXECUTE FUNCTION sync_expense_to_salary()
+invoices.aa_enforce_invoice_totals = CREATE TRIGGER aa_enforce_invoice_totals BEFORE UPDATE ON public.invoices FOR EACH ROW EXECUTE FUNCTION aa_enforce_invoice_totals()
+invoices.auto_set_lab_id_invoices = CREATE TRIGGER auto_set_lab_id_invoices BEFORE INSERT ON public.invoices FOR EACH ROW EXECUTE FUNCTION auto_set_lab_id()
+invoices.invoices_default_tax_rate = CREATE TRIGGER invoices_default_tax_rate BEFORE INSERT ON public.invoices FOR EACH ROW EXECUTE FUNCTION invoices_default_tax_rate()
+invoices.recalc_on_tax_change = CREATE TRIGGER recalc_on_tax_change AFTER UPDATE OF tax_rate ON public.invoices FOR EACH ROW EXECUTE FUNCTION trg_recalc_on_tax_change()
+invoices.set_invoice_amount_base_trg = CREATE TRIGGER set_invoice_amount_base_trg BEFORE INSERT OR UPDATE ON public.invoices FOR EACH ROW EXECUTE FUNCTION set_invoice_amount_base()
+invoices.set_invoice_number_trigger = CREATE TRIGGER set_invoice_number_trigger BEFORE INSERT ON public.invoices FOR EACH ROW EXECUTE FUNCTION set_invoice_number()
+invoices.touch_invoices_updated_at = CREATE TRIGGER touch_invoices_updated_at BEFORE UPDATE ON public.invoices FOR EACH ROW EXECUTE FUNCTION touch_updated_at()
+invoices.trg_scan_invoice_cancelled = CREATE TRIGGER trg_scan_invoice_cancelled AFTER UPDATE OF status ON public.invoices FOR EACH ROW EXECUTE FUNCTION trg_scan_invoice_cancelled()
+invoices.zz_invoices_efatura_lock = CREATE TRIGGER zz_invoices_efatura_lock BEFORE DELETE OR UPDATE ON public.invoices FOR EACH ROW EXECUTE FUNCTION invoices_efatura_lock()
+payments.auto_set_lab_id_payments = CREATE TRIGGER auto_set_lab_id_payments BEFORE INSERT ON public.payments FOR EACH ROW EXECUTE FUNCTION auto_set_lab_id()
+payments.recalc_on_payment_change = CREATE TRIGGER recalc_on_payment_change AFTER INSERT OR DELETE OR UPDATE ON public.payments FOR EACH ROW EXECUTE FUNCTION trg_recalc_payment_state()
+payments.trg_log_payment_recorded = CREATE TRIGGER trg_log_payment_recorded AFTER INSERT ON public.payments FOR EACH ROW EXECUTE FUNCTION trg_log_payment_recorded()
+payments.trg_payments_financial_guard = CREATE TRIGGER trg_payments_financial_guard BEFORE INSERT OR UPDATE ON public.payments FOR EACH ROW EXECUTE FUNCTION payments_financial_guard()
+## new_functions_exist
+yok
+## movements
+0

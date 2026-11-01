@@ -32,6 +32,7 @@ import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { autoT } from '../../../core/i18n/autoTranslate';
+import { useFeature } from '../../../core/store/featureFlagsStore';
 
 // ─── Patterns tokens ─────────────────────────────────────────
 const DISPLAY = {
@@ -84,6 +85,8 @@ interface Equipment {
   purchase_date: string | null;
   warranty_end: string | null;
   notes: string | null;
+  /** Tarama randevularında kullanılan cihaz türü (scan_appointments modülü) */
+  scan_kind?: 'intraoral' | 'photogrammetry' | null;
   created_at: string;
   assignee?: { id: string; full_name: string } | null;
   station?: { id: string; name: string; color: string | null } | null;
@@ -135,7 +138,10 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
     category: 'other', status: 'active',
     assigned_to: '' as string, station_id: '' as string,
     purchase_date: '', warranty_end: '', notes: '',
+    scan_kind: '' as '' | 'intraoral' | 'photogrammetry',
   });
+  // Tarama cihazı seçimi yalnız tarama randevuları modülü açık lab'da
+  const scanOn = useFeature('scan_appointments');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -174,6 +180,7 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
       name: '', brand: '', model: '', serial_number: '',
       category: 'other', status: 'active',
       assigned_to: '', station_id: '', purchase_date: '', warranty_end: '', notes: '',
+      scan_kind: '',
     });
     setModalOpen(true);
   };
@@ -192,6 +199,7 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
       purchase_date: item.purchase_date ?? '',
       warranty_end: item.warranty_end ?? '',
       notes: item.notes ?? '',
+      scan_kind: item.scan_kind ?? '',
     });
     setModalOpen(true);
   };
@@ -211,6 +219,7 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
       purchase_date: form.purchase_date || null,
       warranty_end: form.warranty_end || null,
       notes: form.notes.trim() || null,
+      ...(scanOn ? { scan_kind: form.scan_kind || null } : {}),
     };
 
     if (editItem) {
@@ -710,6 +719,36 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
                   })}
                 </View>
               </View>
+
+              {/* Tarama cihazı (tarama randevuları modülü açıksa) */}
+              {scanOn ? (
+                <View>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[500], marginBottom: 6 }}>{autoT('Tarama cihazı')}</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+                    {([['', 'Değil'], ['intraoral', 'Ağız içi tarama'], ['photogrammetry', 'Fotogrametri']] as const).map(([key, label]) => {
+                      const active = form.scan_kind === key;
+                      return (
+                        <Pressable
+                          key={key || 'none'}
+                          onPress={() => setForm(f => ({ ...f, scan_kind: key }))}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: active }}
+                          style={{
+                            paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9999,
+                            backgroundColor: active ? accentColor : DS.ink[50],
+                            borderWidth: 1, borderColor: active ? accentColor : DS.ink[200],
+                            ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                          } as any}
+                        >
+                          <Text style={{ fontSize: 11, fontWeight: active ? '700' : '500', color: active ? '#FFF' : DS.ink[500] }}>
+                            {autoT(label)}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              ) : null}
 
               {/* Status pills */}
               <View>

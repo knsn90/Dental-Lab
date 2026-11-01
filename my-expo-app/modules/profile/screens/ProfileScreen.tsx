@@ -32,6 +32,7 @@ import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { DeleteAccountDialog } from '../components/DeleteAccountDialog';
+import { formatAddress } from '../../../core/util/formatAddress';
 
 // ── Display font ─────────────────────────────────────────────────────────
 const DISPLAY = {
@@ -147,30 +148,10 @@ function KurumRow({ icon: Icon, label, value, multiline, mono }: {
   );
 }
 
-// Adres JSON formatını insan-okunur tek satıra çevir
+// Adres JSON formatını insan-okunur tek satıra çevir — ortak biçimleyici (yurt dışında ülke adıyla)
 function formatClinicAddress(raw: any): string | null {
   if (!raw) return null;
-  // JSON string olarak gelmiş olabilir
-  if (typeof raw === 'string') {
-    try {
-      const parsed = JSON.parse(raw);
-      return formatClinicAddress(parsed);
-    } catch {
-      return raw; // düz string olarak göster
-    }
-  }
-  if (typeof raw === 'object') {
-    const parts = [
-      raw.sokak,
-      raw.bina_no ? `No: ${raw.bina_no}` : null,
-      raw.mahalle ? `${raw.mahalle} Mah.` : null,
-      raw.ilce,
-      raw.il,
-      raw.posta_kodu,
-    ].filter(Boolean);
-    return parts.length > 0 ? parts.join(', ') : null;
-  }
-  return null;
+  return formatAddress(typeof raw === 'string' ? raw : JSON.stringify(raw)) || null;
 }
 
 function FieldLabel({ children, error }: { children: string; error?: boolean }) {

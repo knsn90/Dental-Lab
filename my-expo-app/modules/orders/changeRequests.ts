@@ -77,7 +77,7 @@ export async function rejectChangeRequest(requestId: string, note?: string) {
 
 // ── Önerilen değişiklikleri okunur satırlara çevir (onay panelinde göstermek için) ──
 const FIELD_LABELS: Record<string, string> = {
-  patient_name: 'Hasta', patient_id: 'TC/Pasaport', patient_gender: 'Cinsiyet',
+  patient_name: 'Hasta', patient_id: 'TC/Pasaport', patient_gender: 'Cinsiyet', patient_age: 'Yaş',
   patient_nationality: 'Uyruk', patient_city: 'Şehir', work_type: 'İş tipi',
   shade: 'Renk', model_type: 'Model', delivery_method: 'Teslim şekli',
   delivery_date: 'Teslim tarihi', is_urgent: 'Acil', notes: 'Not', tooth_numbers: 'Dişler',

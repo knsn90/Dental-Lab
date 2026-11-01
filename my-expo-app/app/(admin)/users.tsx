@@ -19,6 +19,7 @@ import { AppSwitch } from '../../core/ui/AppSwitch';
 import { SlideTabBar } from '../../core/ui/SlideTabBar';
 import { IconBtn } from '../../core/ui/IconBtn';
 import { supabase } from '../../core/api/supabase';
+import { toast } from '../../core/ui/Toast';
 const K   = '#0F172A';
 const ERR = '#FF3B30';
 const BG  = '#F7F9FB';
@@ -230,12 +231,17 @@ export default function AdminUsersScreen() {
     }
   };
 
+  // Bkz. LabUsersManagement: bayrak + auth banı tek yerde, edge fonksiyonda.
   const handleToggleActive = async (profile: Profile) => {
     const newVal = !profile.is_active;
     setUpdatingId(profile.id);
     try {
-      const { error } = await supabase.from('profiles').update({ is_active: newVal }).eq('id', profile.id);
-      if (!error) setProfiles(prev => prev.map(p => p.id === profile.id ? { ...p, is_active: newVal } : p));
+      const { data, error } = await supabase.functions.invoke('admin-update-user', {
+        body: { user_id: profile.id, is_active: newVal },
+      });
+      const msg = (data as any)?.error ?? (error as any)?.message;
+      if (msg) { toast.error(String(msg)); return; }
+      setProfiles(prev => prev.map(p => p.id === profile.id ? { ...p, is_active: newVal } : p));
     } finally { setUpdatingId(null); }
   };
 
@@ -271,7 +277,8 @@ export default function AdminUsersScreen() {
   const activeFilterCount = statusFilter !== 'all' ? 1 : 0;
 
   const TYPE_TABS: { key: FilterType; label: string }[] = [
-    { key: 'all',          label: 'Tümü' },
+    // Bu ekranın sayısı giriş HESABIDIR (personel değil — tek tanım 2026-10-26).
+    { key: 'all',          label: 'Tüm hesaplar' },
     { key: 'admin',        label: 'Admin' },
     { key: 'lab',          label: 'Lab' },
     { key: 'doctor',       label: 'Hekim' },
@@ -860,7 +867,6 @@ function AddUserModal({
   const [level, setLevel] = useState<'junior' | 'mid' | 'senior'>('mid');
   const [stagePerms, setStagePerms] = useState<string[]>([]);
   const [caseTypes, setCaseTypes] = useState<string[]>([]);
-  const [salary, setSalary] = useState('');
   const [saving,  setSaving]  = useState(false);
   const [error,   setError]   = useState('');
 
@@ -870,7 +876,7 @@ function AddUserModal({
   const reset = () => {
     setFullName(''); setEmail(''); setPassword('');
     setSelectedRole('technician'); setClinicName(''); setPhone('');
-    setLevel('mid'); setStagePerms([]); setCaseTypes([]); setSalary(''); setError('');
+    setLevel('mid'); setStagePerms([]); setCaseTypes([]); setError('');
   };
 
   const handleClose = () => { reset(); onClose(); };
@@ -906,7 +912,6 @@ function AddUserModal({
         body.specialty = caseTypes.join(', ') || null;
         body.department = stagePerms.join(', ') || null;
         body.level = level;
-        body.monthly_salary = salary ? Number(salary) : null;
       }
       const { data, error: fnError } = await supabase.functions.invoke('admin-create-user', { body });
       if (fnError || data?.error) {
@@ -1066,10 +1071,7 @@ function AddUserModal({
                   })}
                 </View>
 
-                {/* Saat Ücreti */}
-                <Text style={[m.fieldLabel, { color: K }]}>Aylık Maaş (₺)</Text>
-                <TextInput style={m.input} value={salary} onChangeText={setSalary}
-                  placeholder="0" placeholderTextColor={'#AEAEB2'} keyboardType="numeric" />
+                {/* Maaş tek kaynak (2026-10-25): maaş Personel ekranından girilir */}
               </>
             )}
 

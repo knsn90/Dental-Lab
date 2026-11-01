@@ -1,7 +1,12 @@
+import { lazyRoute } from '../../core/_lazyRoute';
+import { useAutoDocumentScroll } from '../../core/ui/mobile/documentScroll';
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FaceScanQuickAction, useFaceScanAvailable } from '../../modules/orders/components/FaceScanQuickAction';
-const NewOrderScreen: any = React.lazy(() => import('../../modules/orders/screens/NewOrderScreen').then(m => ({ default: (m as any).NewOrderScreen })));
+// lazyRoute (React.lazy DEĞİL): Suspense'li yükleme modal içinde askıda kalıp formu
+// BOŞ bırakabiliyordu; deploy sonrası eski chunk 404'ünde de kurtarma (tek seferlik
+// yenileme) yalnız lazyRoute'ta var (2026-10-20, Android Chrome boş form).
+const NewOrderScreen: any = lazyRoute(() => import('../../modules/orders/screens/NewOrderScreen'), 'NewOrderScreen');
 const MessagesPopup: any = React.lazy(() => import('../../modules/orders/components/MessagesPopup').then(m => ({ default: (m as any).MessagesPopup })));
 const CommandPalette: any = React.lazy(() => import('../../core/ui/CommandPalette').then(m => ({ default: (m as any).CommandPalette })));
 const ScanB6Mobile: any = React.lazy(() => import('../../modules/orders/screens/ScanB6Mobile').then(m => ({ default: (m as any).ScanB6Mobile })));
@@ -14,10 +19,11 @@ import {
   Package as Package2, Building2 as Building22, Truck as Truck2,
   CheckCircle2 as CheckCircle22, Camera as Camera2, Users as Users2, Settings as Settings2, ScanFace,
 } from '../../core/ui/icons';
-import { PhoneCall as PhoneCall2 } from '../../core/ui/icons';
+import { PhoneCall as PhoneCall2, CalendarClock as CalendarClock2 } from '../../core/ui/icons';
 import { useFeature, useFeatureFlagsStore } from '../../core/store/featureFlagsStore';
 
 import { PatternsShell, useIsDesktop } from '../../core/layout/PatternsShell';
+import { useKeepRouteOnShellSwitch } from '../../core/layout/useKeepRouteOnShellSwitch';
 import { usePendingApprovals as useDesignPending } from '../../modules/approvals/hooks/usePendingApprovals';
 import { useMaterialRequestPending } from '../../modules/material-requests/hooks/usePendingCount';
 import { useStockAlert } from '../../core/hooks/useStockAlert';
@@ -54,8 +60,13 @@ export default function LabLayout() {
   // Detay sayfaları (order/[id], invoice/[id], statement, vs.) kendi sticky
   // header'larını taşıyor — global TopActionBar onlarla çakışmasın.
   // NOT: expo-router usePathname route group parens'i döndürmez → "/order/..." vs.
+  // Detay sayfaları kendi başlığını çizer → üst çubuk + logolu başlık gizli. İSTİSNA: mobilde
+  // sipariş detayı (/order/<id>) logolu başlık + ikonlarla görünür (kullanıcı isteği 2026-10-27);
+  // masaüstünde ve diğer detaylarda (fatura, ekstre…) değişiklik yok.
+  const isDesktopForHeader = useIsDesktop();
   const hideTopActionBar =
-    /^\/(order|invoice|purchase-invoice|expense|statement|delivery)\//.test(pathname);
+    /^\/(order|invoice|purchase-invoice|expense|statement|delivery)\//.test(pathname)
+    && !(!isDesktopForHeader && /^\/order\/[^/]+\/?$/.test(pathname));
   const { approvals: pendingDesign } = useDesignPending();
   const pendingMaterial = useMaterialRequestPending();
   const pendingCount = pendingDesign.length + pendingMaterial;
@@ -63,6 +74,10 @@ export default function LabLayout() {
   const { t } = useTranslation();
   const [pendingPaperCount, setPendingPaperCount] = useState(0);
   const isDesktop       = useIsDesktop();
+  // Genişlik 1024px eşiğini geçince (Slot ↔ Tabs) sayfa korunur — Y5
+  const shellDesktop = useKeepRouteOnShellSwitch(isDesktop, '(lab)');
+  // Mobil tarayıcıda sayfa (belge) kayar → adres çubuğu küçülür (bkz. documentScroll.ts).
+  useAutoDocumentScroll();
   const { profile, loading } = useAuthStore();
   const { totalUnread: chatUnread } = useOrderChatInbox();
   const pendingActionCount = usePendingActionCount();
@@ -131,6 +146,7 @@ export default function LabLayout() {
   const featureFlags = useFeatureFlagsStore(s => s.flags);
   useEffect(() => { if (profile?.lab_id) void loadFlags(profile.lab_id); }, [profile?.lab_id, loadFlags]);
   const phoneAssistantOn = useFeature('phone_assistant');
+  const scansOn = useFeature('scan_appointments');
   const [faceScanOpen, setFaceScanOpen] = React.useState(false);
 
   // ── Early returns now happen AFTER all hooks ──────────────────────────────
@@ -154,56 +170,41 @@ export default function LabLayout() {
     return <Redirect href="/" />;  // yanlış panel → doğru panele yönlendir
   }
 
-  // Sıra: Bugün · Siparişler · Kağıt Siparişler · Onaylar · Sağlık Kurumları ·
-  //       Ekip · Stok ve Depo · Kurye Takip · Finans · Destek · Mesajlar · Ayarlar
+  // Sıra (kullanıcı, 2026-10-28; Admin ile aynı): Bugün · Siparişler · Tarama Randevuları · Üretim Panosu
+  //   (+ İş Akışları) · Sağlık Kurumları · Kurye Takip · Finans (+ Fiyat Listesi) · Stok ve Depo · (Ekip) ·
+  //   Onaylar · Telefon Talepleri · Mesajlar · Destek · Ayarlar
   const LAB_NAV = [
-    // ── Ana ekran ──────────────────────────────────────────────────────────
     { label: t('nav.items.today'),            emoji: '📅', href: '/(lab)',                  iconName: 'home' },
-
-    // ── İş Yönetimi ────────────────────────────────────────────────────────
     { label: t('nav.items.orders'),       emoji: '📋', href: '/(lab)/all-orders',       iconName: 'list-check', matchPrefix: true,
       sectionLabel: t('nav.sections.work'),
       badgeCount: pendingActionCount > 0 ? pendingActionCount : undefined,
       requiresPermission: 'view_orders' },
-    { label: t('nav.items.approvals'),          emoji: '✅', href: '/(lab)/approvals',         iconName: 'check-circle',   matchPrefix: true,
-      badgeCount: pendingCount > 0 ? pendingCount : undefined,
-      requiresPermission: 'view_approvals' },
-
-    // ── Müşteriler ─────────────────────────────────────────────────────────
-    { label: t('nav.items.clinics'), emoji: '🏥', href: '/(lab)/clinics',          iconName: 'building-2',     matchPrefix: true, sectionLabel: t('nav.sections.customers') },
-
-    // ── Ekip ───────────────────────────────────────────────────────────────
-    { label: t('nav.items.team'),             emoji: '👨‍💼', href: '/(lab)/ik-depo',         iconName: 'users',         matchPrefix: false, sectionLabel: t('nav.sections.team'),
-      requiresPermission: 'view_team' },
-
-    // ── Stok & Depo ───────────────────────────────────────────────────────
-    { label: t('nav.items.stock'),     emoji: '📦', href: '/(lab)/stock',             iconName: 'package',        matchPrefix: true, sectionLabel: t('nav.sections.warehouse'),
-      badgeCount: stockAlert,
-      requiresPermission: 'view_stock' },
-
-    // ── Üretim (canlı pano + şablonlar) ───────────────────────────────────
+    // Tarama randevuları (klinikte ağız içi tarama / fotogrametri) — yönetici + modül açık
+    ...(isManager ? [{ label: t('nav.items.scans'), href: '/(lab)/scans', iconName: 'calendar', matchPrefix: false,
+      requiresFeature: 'scan_appointments' }] : []),
     { label: t('nav.items.production'),                  href: '/(lab)/production',       iconName: 'activity',       matchPrefix: true, sectionLabel: t('nav.sections.production') },
     { label: t('nav.items.workflows'),                    href: '/(lab)/workflows',        iconName: 'list-todo',      matchPrefix: true },
-
-    // ── Teslimat ──────────────────────────────────────────────────────────
+    { label: t('nav.items.clinics'), emoji: '🏥', href: '/(lab)/clinics',          iconName: 'building-2',     matchPrefix: true, sectionLabel: t('nav.sections.customers') },
     { label: t('nav.items.courier'),                    href: '/(lab)/courier-tracking', iconName: 'scooter',        matchPrefix: true, sectionLabel: t('nav.sections.delivery') },
-
-    // ── Finans (tek hub) ──────────────────────────────────────────────────
     { label: t('nav.items.finance'),           emoji: '💰', href: '/(lab)/finance',           iconName: 'landmark',       matchPrefix: false, sectionLabel: t('nav.sections.finance'),
       requiresPermission: 'view_financials' },
     { label: t('nav.items.priceList'),                 href: '/(lab)/finance?tab=pricelist', iconName: 'tag',        matchPrefix: false,
       requiresPermission: 'view_financials' },
-
-    // ── Yardım / İletişim / Hesap ─────────────────────────────────────────
-    { label: t('nav.items.support'),           emoji: '💬', href: '/(lab)/support',           iconName: 'help-circle',    matchPrefix: true, sectionLabel: t('nav.sections.help') },
-    { label: t('nav.items.waSupport'),         emoji: '💬', href: '/(lab)/wa-support',        iconName: 'whatsapp', matchPrefix: false,
-      requiresPermission: 'manage_settings' },
+    { label: t('nav.items.stock'),     emoji: '📦', href: '/(lab)/stock',             iconName: 'package',        matchPrefix: true, sectionLabel: t('nav.sections.warehouse'),
+      badgeCount: stockAlert,
+      requiresPermission: 'view_stock' },
+    // Ekip listede yoktu — kaldırılmadı, Stok ve Depo'nun yanında
+    { label: t('nav.items.team'),             emoji: '👨‍💼', href: '/(lab)/ik-depo',         iconName: 'users',         matchPrefix: false, sectionLabel: t('nav.sections.team'),
+      requiresPermission: 'view_team' },
+    { label: t('nav.items.approvals'),          emoji: '✅', href: '/(lab)/approvals',         iconName: 'check-circle',   matchPrefix: true,
+      badgeCount: pendingCount > 0 ? pendingCount : undefined,
+      requiresPermission: 'view_approvals' },
     // Telefon asistanı talepleri — yalnız müdür/admin + modül açık
     ...(isManager ? [{ label: t('nav.items.phoneLeads'), href: '/(lab)/phone-leads', iconName: 'phone', matchPrefix: false,
       requiresFeature: 'phone_assistant' }] : []),
-    { label: t('nav.items.messages'),         emoji: '✉️', href: '/(lab)/messages',          iconName: 'messages-square', matchPrefix: false,
-      onPress: () => setMessagesOpen(true),
-      badgeCount: chatUnread > 0 ? chatUnread : undefined },
+    // Mesajlar kenar çubuğunda yok — profil kartında (kullanıcı, 2026-10-28)
+    // WhatsApp destek hattı ayarı Destek ekranının içinde (hero düğmesi) — ayrı menü maddesi yok
+    { label: t('nav.items.support'),           emoji: '💬', href: '/(lab)/support',           iconName: 'help-circle',    matchPrefix: true, sectionLabel: t('nav.sections.help') },
     { label: t('nav.items.settings'),          emoji: '⚙️', href: '/(lab)/settings',          iconName: 'settings',       matchPrefix: true,
       requiresPermission: 'view_settings' },
   ];
@@ -214,7 +215,10 @@ export default function LabLayout() {
     ? LAB_NAV.filter((item: any) => !item.requiresPermission || canPerm(item.requiresPermission))
     : LAB_NAV).filter((item: any) => !item.requiresFeature || featureFlags[item.requiresFeature] === true);
 
-  if (isDesktop) {
+  // Kabuk değişiyor: eski navigator bu karede sökülür, yenisi bir sonrakinde kurulur (Y5)
+  if (shellDesktop === null) return <View style={{ flex: 1 }} />;
+
+  if (shellDesktop) {
     return (
       <>
         {/* NOT: navigator (PatternsShell'in <Slot/>'u / <Tabs>) lazy kardeşlerle AYNI
@@ -240,7 +244,7 @@ export default function LabLayout() {
           />
         </React.Suspense>
         <React.Suspense fallback={null}>
-          <CommandPalette
+          <CommandPalette panel="lab"
             navItems={filteredNavForPalette}
             onNavigate={(href: string) => router.push(href as any)}
             accentColor={accentColor}
@@ -283,6 +287,7 @@ export default function LabLayout() {
     { key: 'finance',  requires: 'view_financials', label: t('nav.items.finance'),          sub: 'Kasa · Fatura · Gider · Çek',    icon: Landmark2, onPress: () => router.push('/(lab)/finance' as any) },
     { key: 'team',     requires: 'view_team',       label: t('nav.items.team'),            sub: 'Personel · maaş · izin',         icon: Users2,    onPress: () => router.push('/(lab)/ik-depo' as any) },
     { key: 'stock',    requires: 'view_stock',      label: t('nav.items.stock'),     sub: 'Envanter · alarm',               icon: Package2,  onPress: () => router.push('/(lab)/stock' as any) },
+    ...(isManager && scansOn ? [{ key: 'scans', label: t('nav.items.scans'), sub: t('nav.items.scansSub'), icon: CalendarClock2, onPress: () => router.push('/(lab)/scans' as any) }] : []),
     ...(isManager && phoneAssistantOn ? [{ key: 'phone-leads', label: t('nav.items.phoneLeads'), sub: t('nav.items.phoneLeadsSub'), icon: PhoneCall2, onPress: () => router.push('/(lab)/phone-leads' as any) }] : []),
     { key: 'settings', requires: 'view_settings',   label: t('nav.items.settings'),         sub: 'Genel · Bildirim · Entegrasyon', icon: Settings2, onPress: () => router.push('/(lab)/settings' as any) },
   ] as any[]).filter((it: any) => !permLoaded || !it.requires || canPerm(it.requires));
@@ -297,6 +302,9 @@ export default function LabLayout() {
             Lazy kardeşler kendi sınırlarında durur. */}
       <View style={{ flex: 1, backgroundColor: isDark ? '#0E0E0E' : MOBILE_PANEL_THEMES.lab.bgPage }}>
         <Tabs
+          // Geri = geldiğin ekran. Varsayılan "firstRoute" her geri basışta Özet'e atıyordu
+          // (detay ekranları gizli sekme: Sağlık kurumları → fatura → geri = Özet).
+          backBehavior="history"
           screenOptions={{
             headerShown: false,
             sceneStyle: { backgroundColor: 'transparent' },
@@ -307,6 +315,7 @@ export default function LabLayout() {
         <Tabs.Screen name="index" options={{ title: 'Bugün' }} />
         <Tabs.Screen name="wa-support" options={{ href: null }} />
         <Tabs.Screen name="phone-leads" options={{ href: null }} />
+        <Tabs.Screen name="scans" options={{ href: null }} />
         <Tabs.Screen name="all-orders" options={{ title: 'Tüm İşler' }} />
         <Tabs.Screen name="pending-paper" options={{ title: 'Manuel Sipariş Inbox', href: null }} />
         <Tabs.Screen name="production"  options={{ title: 'Üretim Panosu' }} />
@@ -400,7 +409,7 @@ export default function LabLayout() {
 
       {/* Command Palette — modal, tüm sayfalarda erişilebilir */}
       <React.Suspense fallback={null}>
-        <CommandPalette
+        <CommandPalette panel="lab"
           navItems={filteredNavForPalette}
           onNavigate={(href: string) => router.push(href as any)}
           accentColor={accentColor}
@@ -434,7 +443,7 @@ export default function LabLayout() {
 
       {/* Sağ üst kalıcı aksiyon butonları (mobile only) — Search · QR · Bell · Profile
           Detay sayfaları kendi header'ını taşıyor (back + chat), TopActionBar çakışmasın */}
-      {!hideTopActionBar && <TopActionBar routePrefix="/(lab)" accentColor={accentColor} />}
+      {!hideTopActionBar && <TopActionBar routePrefix="/(lab)" showSearch accentColor={accentColor} />}
       {/* Global sabit lab başlığı — logo + üst blur şeridi (her sayfada) */}
       {!hideTopActionBar && <LabTopHeader />}
     </>

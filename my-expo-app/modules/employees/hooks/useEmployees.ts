@@ -58,7 +58,7 @@ export function useEmployees() {
         tc_no:       null,
         start_date:  p.created_at ?? new Date().toISOString().slice(0, 10),
         end_date:    null,
-        base_salary: 0,
+        base_salary: null,
         notes:       null,
         is_active:   p.is_active ?? true,
         created_at:  p.created_at ?? new Date().toISOString(),

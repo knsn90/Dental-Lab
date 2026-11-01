@@ -30,6 +30,7 @@ import { useAuthStore } from '../../../core/store/authStore';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { SlideTabBar } from '../../../core/ui/SlideTabBar';
+import { MobileTableX, MobileTableRowX, MobileTableIconX, useMobileTableText } from '../../../core/ui/MobileTableX';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { baseSymbol, useBaseCurrency } from '../../../core/money/baseCurrency';
 
@@ -233,13 +234,17 @@ export function BudgetScreen() {
           </View>
         )}
 
-        {/* Per-category bars */}
-        {items.map(b => (
-          <BudgetCard
-            key={b.id} item={b}
-            onEdit={() => { setEditing(b); setEditorOpen(true); }}
-          />
-        ))}
+        {/* Per-category bars — ekstre / giderler mobil tablosuyla aynı kalıp */}
+        {items.length > 0 && (
+          <MobileTableX title="Bütçe" count={items.length} countLabel="kategori">
+            {items.map((b, i) => (
+              <BudgetCard
+                key={b.id} item={b} isLast={i === items.length - 1}
+                onEdit={() => { setEditing(b); setEditorOpen(true); }}
+              />
+            ))}
+          </MobileTableX>
+        )}
       </ScrollView>
 
       <BudgetEditor
@@ -255,52 +260,31 @@ export function BudgetScreen() {
 }
 
 // ─── Budget Card ──────────────────────────────────────────────────────────
-function BudgetCard({ item, onEdit }: { item: BudgetActual; onEdit: () => void }) {
+function BudgetCard({ item, isLast, onEdit }: { item: BudgetActual; isLast: boolean; onEdit: () => void }) {
   const T = useMobileTokens();
+  const MT = useMobileTableText();
   const pct      = item.budget_amount > 0 ? (item.actual_amount / item.budget_amount) * 100 : 0;
   const remaining = item.budget_amount - item.actual_amount;
   const color    = CATEGORY_COLOR[item.category];
+  const pctColor = pct > 100 ? CHIP_TONES.danger.fg : pct > 80 ? CHIP_TONES.warning.fg : CHIP_TONES.success.fg;
 
   return (
-    <Pressable
-      style={[
-        { ...cardSolid, backgroundColor: T.card, gap: 8 } as any,
-        // @ts-ignore web
-        web({ cursor: 'pointer' }),
-      ]}
-      onPress={onEdit}
-    >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <View style={{ width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: color + '15' }}>
-          {item.category === 'total'
-            ? <Wallet size={16} color={color} strokeWidth={1.8} />
-            : <Tag size={16} color={color} strokeWidth={1.8} />
-          }
-        </View>
-        <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: T.ink }}>
-          {CATEGORY_LABEL[item.category]}
-        </Text>
-        <Text style={[
-          { fontSize: 14, fontWeight: '800', color: CHIP_TONES.success.fg },
-          pct > 100 && { color: CHIP_TONES.danger.fg },
-          pct > 80 && pct <= 100 && { color: CHIP_TONES.warning.fg },
-        ]}>
-          %{pct.toFixed(0)}
-        </Text>
-      </View>
-      <ProgressBar pct={pct} accent={color} />
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text style={{ fontSize: 12, color: T.ink3, fontWeight: '600' }}>
+    <MobileTableRowX isLast={isLast} onPress={onEdit}>
+      <MobileTableIconX icon={item.category === 'total' ? Wallet : Tag} tone={{ bg: color + '15', fg: color }} />
+      <View style={{ flex: 1, minWidth: 0, gap: 5 }}>
+        <Text style={MT.title} numberOfLines={1}>{CATEGORY_LABEL[item.category]}</Text>
+        <ProgressBar pct={pct} accent={color} />
+        <Text style={MT.meta} numberOfLines={1}>
           {fmtMoney(Number(item.actual_amount))} / {fmtMoney(Number(item.budget_amount))}
         </Text>
-        <Text style={[
-          { fontSize: 12, color: CHIP_TONES.success.fg, fontWeight: '700' },
-          remaining < 0 && { color: CHIP_TONES.danger.fg },
-        ]}>
-          {remaining >= 0 ? `Kalan: ${fmtMoney(remaining)}` : `Aşım: ${fmtMoney(-remaining)}`}
+      </View>
+      <View style={{ alignItems: 'flex-end' }}>
+        <Text style={[MT.amount, { color: pctColor }]}>%{pct.toFixed(0)}</Text>
+        <Text style={[MT.amountSub, { fontWeight: '600', color: remaining < 0 ? CHIP_TONES.danger.fg : CHIP_TONES.success.fg }]}>
+          {remaining >= 0 ? autoT('Kalan:') : autoT('Aşım:')} {fmtMoney(Math.abs(remaining))}
         </Text>
       </View>
-    </Pressable>
+    </MobileTableRowX>
   );
 }
 

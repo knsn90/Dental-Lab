@@ -1,6 +1,11 @@
+import { lazyRoute } from '../../core/_lazyRoute';
+import { useAutoDocumentScroll } from '../../core/ui/mobile/documentScroll';
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-const NewOrderScreen: any = React.lazy(() => import('../../modules/orders/screens/NewOrderScreen').then(m => ({ default: (m as any).NewOrderScreen })));
+// lazyRoute (React.lazy DEĞİL): Suspense'li yükleme modal içinde askıda kalıp formu
+// BOŞ bırakabiliyordu; deploy sonrası eski chunk 404'ünde de kurtarma (tek seferlik
+// yenileme) yalnız lazyRoute'ta var (2026-10-20, Android Chrome boş form).
+const NewOrderScreen: any = lazyRoute(() => import('../../modules/orders/screens/NewOrderScreen'), 'NewOrderScreen');
 const MessagesPopup: any = React.lazy(() => import('../../modules/orders/components/MessagesPopup').then(m => ({ default: (m as any).MessagesPopup })));
 const CommandPalette: any = React.lazy(() => import('../../core/ui/CommandPalette').then(m => ({ default: (m as any).CommandPalette })));
 const ScanB6Mobile: any = React.lazy(() => import('../../modules/orders/screens/ScanB6Mobile').then(m => ({ default: (m as any).ScanB6Mobile })));
@@ -15,6 +20,7 @@ import {
 import { TopActionBar } from '../../core/ui/mobile/TopActionBar';
 import { PanelTopHeader } from '../../core/ui/mobile/PanelTopHeader';
 import { PatternsShell, useIsDesktop } from '../../core/layout/PatternsShell';
+import { useKeepRouteOnShellSwitch } from '../../core/layout/useKeepRouteOnShellSwitch';
 import { PillTabBar, type PillTabItem } from '../../core/ui/mobile/PillTabBar';
 import { MOBILE_PANEL_THEMES } from '../../core/theme/mobileDesignTokens';
 import { useAuthStore } from '../../core/store/authStore';
@@ -31,6 +37,7 @@ import { useNewOrderModalStore } from '../../core/store/newOrderModalStore';
 import { supabase } from '../../core/api/supabase';
 import { OnboardingOverlay } from '../../core/onboarding/OnboardingOverlay';
 import { PaymentReminderGate } from '../../core/finance/PaymentReminderGate';
+import { useClinicBillingAccess } from '../../modules/clinic/useClinicBillingAccess';
 import { useOnboardingStore } from '../../core/onboarding/onboardingStore';
 import { useTourTarget } from '../../core/onboarding/useTourTarget';
 import { CLINIC_TOUR_STEPS } from '../../core/onboarding/tourSteps';
@@ -47,10 +54,19 @@ export default function ClinicLayout() {
   const { t } = useTranslation();
   const { profile, loading } = useAuthStore();
   const isDesktop = useIsDesktop();
+  // Genişlik 1024px eşiğini geçince (Slot ↔ Tabs) sayfa korunur — Y5
+  const shellDesktop = useKeepRouteOnShellSwitch(isDesktop, '(clinic)');
+  // Mobil tarayıcıda sayfa (belge) kayar → adres çubuğu küçülür (bkz. documentScroll.ts).
+  useAutoDocumentScroll();
   const router = useRouter();
   const pathname = usePathname();
+  // Detay sayfaları kendi başlığını çizer → üst çubuk + logolu başlık gizli. İSTİSNA: mobilde
+  // sipariş detayı (/order/<id>) logolu başlık + ikonlarla görünür (kullanıcı isteği 2026-10-27);
+  // masaüstünde ve diğer detaylarda (fatura, ekstre…) değişiklik yok.
+  const isDesktopForHeader = useIsDesktop();
   const hideTopActionBar =
-    /^\/(order|invoice|statement|delivery)\//.test(pathname);
+    /^\/(order|invoice|statement|delivery)\//.test(pathname)
+    && !(!isDesktopForHeader && /^\/order\/[^/]+\/?$/.test(pathname));
   const newOrderOpen    = useNewOrderModalStore(s => s.open);
   const setNewOrderOpen = useNewOrderModalStore(s => s.setOpen);
   const [messagesOpen, setMessagesOpen] = useState(false);
@@ -73,6 +89,9 @@ export default function ClinicLayout() {
   // Klinik kullanıcısının yetki tablosu — clinic_admin: full / secretary: clinic_permissions JSONB
   const perms = resolveClinicPerms(profile as any);
   const isClinicAdmin = profile?.user_type === 'clinic_admin';
+  // Finans yalnız faturayı görebilene (yönetici / yetkili sekreter / yöneticisiz klinikte hekim) — DB kararı
+  const billingAccess = useClinicBillingAccess();
+  const showFinance = billingAccess ?? isClinicAdmin;
 
   // ── İlk-giriş coach-mark turu hedefleri + tetikleme (hekim ile aynı motor) ──
   const newOrderTargetRef = useTourTarget('tour-new-order');
@@ -129,7 +148,9 @@ export default function ClinicLayout() {
     ...(perms.users_manage
       ? [{ label: t('nav.items.users'), href: '/(clinic)/users', iconName: 'users', matchPrefix: true }]
       : []),
-    { label: t('nav.items.finance'), href: '/(clinic)/finance', iconName: 'wallet', matchPrefix: true },
+    ...(showFinance
+      ? [{ label: t('nav.items.finance'), href: '/(clinic)/finance', iconName: 'wallet', matchPrefix: true }]
+      : []),
     { label: t('nav.items.courier'), href: '/(clinic)/courier-tracking', iconName: 'scooter', matchPrefix: true },
     { label: t('nav.items.support'), href: '/(clinic)/support', iconName: 'help-circle', matchPrefix: true },
     // Mesajlar — Ayarlar'dan önce; sidebar'a sabit eklemek yerine nav item
@@ -148,7 +169,10 @@ export default function ClinicLayout() {
     return <Redirect href="/" />;  // yanlış panel → doğru panele yönlendir
   }
 
-  if (isDesktop) {
+  // Kabuk değişiyor: eski navigator bu karede sökülür, yenisi bir sonrakinde kurulur (Y5)
+  if (shellDesktop === null) return <View style={{ flex: 1 }} />;
+
+  if (shellDesktop) {
     return (
       <>
         {/* NOT: navigator (PatternsShell'in <Slot/>'u / <Tabs>) lazy kardeşlerle AYNI
@@ -172,6 +196,14 @@ export default function ClinicLayout() {
           <MessagesPopup
             visible={messagesOpen}
             onClose={() => setMessagesOpen(false)}
+            accentColor={accentColor}
+          />
+        </React.Suspense>
+        {/* Genel arama (2. dalga 1): üst kutu + Ctrl+K masaüstünde de bu pencereyi açar */}
+        <React.Suspense fallback={null}>
+          <CommandPalette panel="clinic"
+            navItems={CLINIC_NAV}
+            onNavigate={(href: string) => router.push(href as any)}
             accentColor={accentColor}
           />
         </React.Suspense>
@@ -226,6 +258,9 @@ export default function ClinicLayout() {
             Lazy kardeşler kendi sınırlarında durur. */}
       <View style={{ flex: 1, backgroundColor: isDark ? '#0E0E0E' : MOBILE_PANEL_THEMES.klinik.bgPage }}>
         <Tabs
+          // Geri = geldiğin ekran. Varsayılan "firstRoute" her geri basışta Özet'e atıyordu
+          // (detay ekranları gizli sekme: Sağlık kurumları → fatura → geri = Özet).
+          backBehavior="history"
           screenOptions={{
             headerShown: false,
             sceneStyle: { backgroundColor: 'transparent' },
@@ -313,7 +348,7 @@ export default function ClinicLayout() {
       </React.Suspense>
 
       {/* Sağ üst kalıcı aksiyon butonları (mobile only) — QR · Bell · Profile */}
-      {!hideTopActionBar && <TopActionBar routePrefix="/(clinic)" accentColor={accentColor} messagesRef={messagesTargetRef} />}
+      {!hideTopActionBar && <TopActionBar routePrefix="/(clinic)" showSearch accentColor={accentColor} messagesRef={messagesTargetRef} />}
       {!hideTopActionBar && <PanelTopHeader />}
 
       {/* İlk-giriş coach-mark turu (klinik) — sadece ilk girişte */}
@@ -324,7 +359,7 @@ export default function ClinicLayout() {
 
       {/* Command Palette — mobile search FAB üzerinden de erişilebilir */}
       <React.Suspense fallback={null}>
-        <CommandPalette
+        <CommandPalette panel="clinic"
           navItems={CLINIC_NAV}
           onNavigate={(href: string) => router.push(href as any)}
           accentColor={accentColor}

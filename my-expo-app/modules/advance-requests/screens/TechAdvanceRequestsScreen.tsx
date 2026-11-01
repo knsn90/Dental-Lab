@@ -15,6 +15,7 @@ import { resolveMyEmployeeId } from '../../../core/api/resolveEmployee';
 import { useStationTheme, hexA } from '../../../core/theme/stationPalette';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { toast } from '../../../core/ui/Toast';
+import { MySalaryLine } from '../../employees/components/MySalaryLine';
 import {
   fetchMyAdvanceRequests, createAdvanceRequest, cancelAdvanceRequest,
   ADVANCE_STATUS_CFG, type AdvanceRequest, type AdvanceStatus,
@@ -96,6 +97,9 @@ export function TechAdvanceRequestsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={P.accent} />}
         showsVerticalScrollIndicator={false}
       >
+        {/* Kendi aylık maaşı (maaş tek kaynak, 2026-10-25) — yoksa hiç çizilmez */}
+        <MySalaryLine />
+
         {/* ═══ Hero — F1c HeroCompact (full-bleed accent + dekor + mini-stat) ═══ */}
         <View style={{
           borderRadius: 22, backgroundColor: P.accent, padding: 20, marginBottom: 14,

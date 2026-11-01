@@ -379,6 +379,35 @@ Hub içi tek satırlık özet için. Performans hero anatomisini birebir taşır
 />
 ```
 
+### GlassTooltip
+Site geneli hover balonu. **Bütün ikon-butonlarda ve anlamı ilk bakışta belli
+olmayan butonlarda kullan.** Yol: `core/ui/GlassTooltip.tsx` (native: sarmalayıcı)
++ `GlassTooltip.web.tsx` (balon).
+
+- **Yüzey (liquid glass):** `rgba(255,255,255,0.55)` + `backdrop-filter: blur(18px) saturate(180%)`
+  + 1px `rgba(255,255,255,0.75)` kenar + `0 8px 24px rgba(15,23,42,0.14)` gölge + üstte
+  `inset 0 1px 0 rgba(255,255,255,0.9)` parlama. Koyu tema: `rgba(40,36,32,0.55)` zemin + `rgba(255,255,255,0.14)` kenar.
+- **Geometri:** radius 12 · padding 10×8 · genişlik 190 (`width` ile değişir) · öğeden 9px uzakta.
+- **Tipografi:** başlık 12/700 ink-900 (opsiyonel) · açıklama 11.5/16 ink %70.
+- **Ok:** Dock tarzı, sarılan öğenin ortasını gösterir. Ok balonun dışında kırpılmış bir karedir;
+  camla üst üste binip iki kat koyulaşmaz.
+- **Yön:** `placement` = `top` (varsayılan) · `bottom` · `left` · `right`. Sığmazsa ters yöne
+  döner, yatayda ekrana sığdırılır. Dikey düğme yığınlarında (harita kontrolleri) `left` kullan.
+- **Kesilmez:** balon `document.body`'ye portal ile çizilir. `overflow:hidden` ve
+  `backdrop-filter`'lı kaplarda (yüzen cam paneller) güvenle kullanılabilir.
+- **Platform:** yalnız web (hover). Native'de balon çizilmez, bu yüzden aynı metni sarılan
+  öğeye `accessibilityHint` olarak da ver.
+- **Metin:** başlık = butonun adı, açıklama = "ne işe yarar" cümlesi. `autoT()` ile çevir.
+- **React dışı yüzeyler** (Google Maps OverlayView, Leaflet popup): `glassTipHtml({ title, text, dark })`
+  (`core/ui/glassTipHtml.ts`) aynı balonu ham HTML olarak üretir. Leaflet popup'ına
+  `className: 'gtip-host'` ver ki varsayılan beyaz kutu sıyrılsın. Görünüm değişirse iki dosyayı birlikte güncelle.
+```tsx
+<GlassTooltip title={autoT('Yeni gönderi')} text={autoT('Siparişten bağımsız yeni kurye gönderisi oluştur')}>
+  <Pressable accessibilityHint={…} … />
+</GlassTooltip>
+```
+Tarayıcı `title=` niteliği, Google `InfoWindow` ve koyu/opak tooltip **kullanma**. Tek tooltip stili budur.
+
 ---
 
 ## 6. Tab'lar
@@ -515,6 +544,7 @@ Dashboard üst kısımdaki hızlı erişim kartları (4–6 grid).
 8. **NativeWind + StyleSheet karıştırma** — bir komponentte tek yöntem.
 9. **Max 4 nested View** — flatten et.
 10. **Default tab/section'lar Pill variant'la başlar** — diğerleri özel sebebe bağlı.
+11. **Tarayıcı `title=` tooltip'i, Google `InfoWindow`, koyu opak balon yok.** Hover açıklaması daima `GlassTooltip` (React dışında `glassTipHtml`).
 
 ---
 

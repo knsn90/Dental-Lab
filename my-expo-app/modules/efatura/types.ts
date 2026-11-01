@@ -61,6 +61,32 @@ export interface EFaturaInvoice {
   notes?:         string | null;
 }
 
+// ─── Gönderim önizlemesi ───────────────────────────────────────────────
+// efatura-luca `preview` işleminin döndürdüğü özet — sunucudaki
+// supabase/functions/_shared/lucaInvoice.ts → LucaPreview ile BİREBİR aynı şekil.
+// Gönderimle aynı hazırlıktan üretilir; Luca'ya gitmez, DB'ye yazılmaz.
+export interface EFaturaPreview {
+  env: 'test' | 'prod';
+  kind: 'e_fatura' | 'e_arsiv';
+  scenario: 'TEMELFATURA' | 'TICARIFATURA' | null;
+  sendingType: 'ELEKTRONIK' | 'KAGIT' | null;
+  invoiceNumber: string;
+  issueDate: string;
+  currency: string;
+  crossRate: number | null;
+  seller: { name: string; taxCode: string; taxOffice: string; address: string };
+  receiver: { name: string; taxCode: string; taxOffice: string | null; address: string; email: string | null; inboxTag: string | null };
+  lines: Array<{ name: string; note?: string | null; quantity: number; unitPrice: number; discount: number; vatRate: number; net: number; vat: number }>;
+  totals: { net: number; discount: number; vat: number; payable: number; payableTry: number | null };
+  notes: string[];
+}
+
+/** preview null → sağlayıcının önizlemesi yok (demo); panel yalnız onay sorar. */
+export type EFaturaPreviewResult =
+  /** previewToken: gerçek gönderimde ZORUNLU (sunucu önizlenen içerikle birebir eşleşmeyi doğrular). */
+  | { ok: true; preview: EFaturaPreview | null; previewToken?: string; previewExpiresAt?: string }
+  | { ok: false; error: string };
+
 // ─── Provider Result Types ─────────────────────────────────────────────
 export interface EFaturaSendResult {
   ok:            boolean;
@@ -69,6 +95,8 @@ export interface EFaturaSendResult {
   status?:       EFaturaStatus;
   /** Düz, kullanıcıya gösterilebilecek hata mesajı */
   error?:        string;
+  /** Sunucu yeniden önizleme istedi (jeton yok / süresi doldu / fatura değişti) — hiçbir şey gönderilmedi. */
+  needsPreview?: boolean;
   /** Ham hata kodu (provider-specific) */
   error_code?:   string;
   /** Ham response (debug + log) */
@@ -76,6 +104,11 @@ export interface EFaturaSendResult {
   /** Ham request (log için) */
   raw_request?:  any;
   http_status?:  number;
+  /** Entegratörün resmi fatura numarası (Luca) */
+  number?:       string | null;
+  type?:         EFaturaType;
+  /** Sonuç + log sunucuda yazıldı (Luca) — istemci tekrar yazmaz */
+  persisted?:    boolean;
 }
 
 export interface EFaturaQueryResult {
@@ -83,6 +116,9 @@ export interface EFaturaQueryResult {
   status?:      EFaturaStatus;
   error?:       string;
   raw_response?: any;
+  number?:      string | null;
+  /** Sonuç + log sunucuda yazıldı (Luca) — istemci tekrar yazmaz */
+  persisted?:   boolean;
 }
 
 export interface MukellefCheckResult {

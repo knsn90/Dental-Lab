@@ -11,6 +11,7 @@
  */
 
 import { supabase } from '../../core/api/supabase';
+import { mergeReceiptPayments } from '../invoices/lib/receiptStatement';
 import { getActiveLabId } from '../../core/store/activeLabStore';
 import { getBaseCurrency } from '../../core/money/baseCurrency';
 
@@ -25,6 +26,9 @@ import { rateToBase, useRateStore } from '../../core/money/rateCache';
 import { groupByCurrency, type CurrencyTotal } from '../../core/money/aggregations';
 import type { Currency } from '../../core/money/currency';
 import { ymdLocal } from '../../core/util/dates';
+import { labTodayOf } from '../../core/metrics/orderDefs';
+import { loadLabTz } from '../../core/metrics/useLabToday';
+import { isPostedInvoice, isInvoiceOverdue } from '../../core/metrics/invoiceDefs';
 import { ensureAiConsent } from '../../core/ai/aiConsent';
 
 /** Katı per-currency: {amount,currency} listesini para birimine göre grupla. */
@@ -114,6 +118,10 @@ export interface StatementLine {
   currency: string;
   /** Sonraki bakiye — BAZ para biriminde (çok-para-birimli net) */
   balance: number;
+  /** Fatura satırı: borcun içindeki KDV (satırın para biriminde) — ekstrede ayrı yazılır */
+  tax?: number;
+  /** Faturanın KDV oranı (%) */
+  tax_rate?: number;
 }
 
 export interface ClinicDoctorOption {
@@ -229,23 +237,37 @@ const daysDiff = (from: string | null | undefined): number => {
 /* ────────────────────────────────────────────────────────────────────── */
 
 export async function fetchOverview(clinicId: string): Promise<FinanceOverview> {
-  const today    = ymdLocal(); // yerel gün — UTC kayması yok
+  // Tek tanım (2026-10-26): bugün lab gününde; bakiye ve vadesi geçmiş kliniğin GÖRÜNEN bakiyesinden
+  // (v_clinic_balance_ccy: kesilmiş faturalar − avans) — lab'ın Cari'si ve hatırlatmayla aynı rakam.
+  const today    = labTodayOf(await loadLabTz());
   const monthBeg = new Date(); monthBeg.setDate(1); monthBeg.setHours(0, 0, 0, 0);
   const monthBegStr = ymdLocal(monthBeg);
   const in7days  = new Date(); in7days.setDate(in7days.getDate() + 7);
   const in7str = ymdLocal(in7days);
 
-  const [invRes, payRes] = await Promise.all([
+  const [invRes, payRes, balRes, rcptRes] = await Promise.all([
     labEq(supabase
       .from('invoices')
       .select('id, status, total_amount:total, paid_amount, due_date, issue_date, currency')
       .eq('clinic_id', clinicId)
       .neq('status', 'iptal')),
+    // Tahsilat (tek tanım): makbuza bağlı OLMAYAN ödemeler ödeme gününde …
     labEq(supabase
       .from('payments')
-      .select('amount, payment_date, invoices!inner(clinic_id, currency)')
+      .select('amount, payment_date, currency, invoices!inner(clinic_id, currency)')
       .eq('invoices.clinic_id', clinicId)
+      .is('receipt_id', null)
       .gte('payment_date', monthBegStr), 'invoices.lab_id'),
+    labEq(supabase
+      .from('v_clinic_balance_ccy')
+      .select('currency, balance, overdue_net')
+      .eq('clinic_id', clinicId)),
+    // … + makbuz satırları makbuz gününde (avans dahil; sonradan faturaya dağıtılması tahsilat değil)
+    labEq(supabase
+      .from('clinic_receipt_lines')
+      .select('amount, currency, clinic_receipts!inner(clinic_id, receipt_date, base_currency, lab_id)')
+      .eq('clinic_receipts.clinic_id', clinicId)
+      .gte('clinic_receipts.receipt_date', monthBegStr), 'clinic_receipts.lab_id'),
   ]);
   // NOT: work_orders şu an clinic_id/invoice_id sütunlarını taşımıyor —
   // "faturalanmamış teslim edilen iş emirleri" hesabı geçici olarak 0.
@@ -258,26 +280,31 @@ export async function fetchOverview(clinicId: string): Promise<FinanceOverview> 
   let upcoming_count = 0, overdue_count = 0, open_invoices_count = 0;
   let this_month_invoiced_count = 0;
 
+  // Tutarlar görünümden (döviz başına): bakiye > 0 olanlar ve avans düşülmüş vadesi geçmiş.
+  for (const r of ((balRes as any).data ?? []) as any[]) {
+    const cur = String(r.currency || base);
+    if (Number(r.balance) > 0) dueItems.push({ amount: Number(r.balance), currency: cur });
+    if (Number(r.overdue_net) > 0) overdueItems.push({ amount: Number(r.overdue_net), currency: cur });
+  }
+  // Adetler fatura düzeyinde, aynı tanımla (kesilmiş, kalanı var; taslak alacak değil).
   invoices.forEach(inv => {
-    const cur = inv.currency || base;
     const remaining = Math.max(0, Number(inv.total_amount ?? 0) - Number(inv.paid_amount ?? 0));
-    const open = inv.status !== 'odendi' && inv.status !== 'taslak';
-    if (open && remaining > 0) {
-      dueItems.push({ amount: remaining, currency: cur });
+    if (isPostedInvoice(inv) && remaining > 0) {
       open_invoices_count += 1;
-      if (inv.due_date && inv.due_date < today) {
-        overdueItems.push({ amount: remaining, currency: cur });
-        overdue_count += 1;
-      } else if (inv.due_date && inv.due_date <= in7str) {
-        upcoming_count += 1;
-      }
+      if (isInvoiceOverdue({ ...inv, total: inv.total_amount }, today)) overdue_count += 1;
+      else if (inv.due_date && inv.due_date <= in7str) upcoming_count += 1;
     }
-    if (inv.issue_date && inv.issue_date >= monthBegStr) this_month_invoiced_count += 1;
+    if (isPostedInvoice(inv) && inv.issue_date && inv.issue_date >= monthBegStr) this_month_invoiced_count += 1;
   });
 
-  const paidItems = (payRes.data ?? []).map((p: any) => ({
-    amount: Number(p.amount ?? 0), currency: p.invoices?.currency || base,
-  }));
+  const paidItems = [
+    ...((payRes.data ?? []) as any[]).map((p: any) => ({
+      amount: Number(p.amount ?? 0), currency: p.currency || p.invoices?.currency || base,
+    })),
+    ...(((rcptRes as any).data ?? []) as any[]).map((l: any) => ({
+      amount: Number(l.amount ?? 0), currency: l.currency || l.clinic_receipts?.base_currency || base,
+    })),
+  ];
   const due  = sumMoney(dueItems);
   const od   = sumMoney(overdueItems);
   const paid = sumMoney(paidItems);
@@ -763,13 +790,14 @@ export async function fetchStatement(
   const [invRes, payRes] = await Promise.all([
     labEq(supabase
       .from('invoices')
-      .select('id, invoice_no:invoice_number, issue_date, total_amount:total, status, currency, doctor_id, doctors(id, full_name), work_order:work_orders!invoices_work_order_id_fkey(order_number, patient_name)')
+      .select('id, invoice_no:invoice_number, issue_date, total_amount:total, tax_amount, tax_rate, status, currency, doctor_id, doctors(id, full_name), work_order:work_orders!invoices_work_order_id_fkey(order_number, patient_name)')
       .eq('clinic_id', clinicId)
-      .neq('status', 'iptal'))
+      // Tek tanım: taslak fatura borç satırı değildir (kesilmemiş).
+      .not('status', 'in', '(iptal,taslak)'))
       .order('issue_date', { ascending: true }),
     labEq(supabase
       .from('payments')
-      .select('id, amount, payment_date, payment_method, reference_no, invoice_id, invoices!inner(clinic_id, currency, invoice_no:invoice_number, doctor_id, doctors(id, full_name), work_order:work_orders!invoices_work_order_id_fkey(order_number, patient_name))')
+      .select('id, amount, payment_date, payment_method, reference_no, invoice_id, receipt_id, invoices!inner(clinic_id, currency, invoice_no:invoice_number, doctor_id, doctors(id, full_name), work_order:work_orders!invoices_work_order_id_fkey(order_number, patient_name))')
       .eq('invoices.clinic_id', clinicId), 'invoices.lab_id')
       .order('payment_date', { ascending: true }),
   ]);
@@ -803,14 +831,23 @@ export async function fetchStatement(
         patient_name: inv.work_order?.patient_name ?? null,
         order_no: inv.work_order?.order_number ?? null,
         debit: total, credit: 0, currency: cur,
+        // Kullanıcı: KDV fiyatın içinde görünmüyordu → ekstrede ayrı (lib/statementVat)
+        tax: Number(inv.tax_amount) || 0,
+        tax_rate: Number(inv.tax_rate) || 0,
         balance: 0,
       },
     });
   });
 
-  (payRes.data ?? []).forEach((p: any) => {
+  // Cari hesap: aynı tahsilat fişinden gelen fatura-başı ödemeler TEK satır (para birimi başına);
+  // fişsiz (faturaya doğrudan) ödemeler eskisi gibi kendi satırında.
+  const payRows = mergeReceiptPayments((payRes.data ?? []).map((p: any) => ({
+    ...p, amount: Number(p.amount ?? 0), currency: p.invoices?.currency || base,
+  })));
+  payRows.forEach((p: any) => {
     const amt = Number(p.amount ?? 0);
-    const cur = p.invoices?.currency || base;
+    const cur = p.currency;
+    const many = p.merged > 1;
     movements.push({
       date: p.payment_date,
       baseDelta: -amt * rateToBase(cur),
@@ -819,12 +856,12 @@ export async function fetchStatement(
         kind: 'payment',
         date: p.payment_date,
         description: `Tahsilat · ${p.payment_method ?? '—'}${p.reference_no ? ` (${p.reference_no})` : ''}`,
-        invoice_id: p.invoice_id ?? null,
-        invoice_no: p.invoices?.invoice_no ?? null,
-        doctor_id: p.invoices?.doctor_id ?? null,
-        doctor_name: p.invoices?.doctors?.full_name ?? null,
-        patient_name: p.invoices?.work_order?.patient_name ?? null,
-        order_no: p.invoices?.work_order?.order_number ?? null,
+        invoice_id: many ? null : (p.invoice_id ?? null),
+        invoice_no: many ? null : (p.invoices?.invoice_no ?? null),
+        doctor_id: many ? null : (p.invoices?.doctor_id ?? null),
+        doctor_name: many ? null : (p.invoices?.doctors?.full_name ?? null),
+        patient_name: many ? null : (p.invoices?.work_order?.patient_name ?? null),
+        order_no: many ? null : (p.invoices?.work_order?.order_number ?? null),
         debit: 0, credit: amt, currency: cur,
         balance: 0,
       },

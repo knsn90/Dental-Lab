@@ -12,12 +12,15 @@ import {
   Home, ClipboardList, QrCode, Map as MapIcon, User,
 } from '../../core/ui/icons';
 import { PatternsShell, useIsDesktop } from '../../core/layout/PatternsShell';
+import { useKeepRouteOnShellSwitch } from '../../core/layout/useKeepRouteOnShellSwitch';
 import { PillTabBar, type PillTabItem } from '../../core/ui/mobile/PillTabBar';
 import { useAuthStore } from '../../core/store/authStore';
 import { useScanStore } from '../../core/store/scanStore';
 import { DS } from '../../core/theme/dsTokens';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { useCourierTracking } from '../../modules/courier/useCourierTracking';
+import { findOpenDeliveryForOrder } from '../../modules/delivery/proof/api';
+import { autoT } from '../../core/i18n/autoTranslate';
 
 // QR/kamera tarayıcı — Tara FAB (setScanOpen) ile açılır (station ile aynı).
 const ScanB6Mobile: any = React.lazy(() => import('../../modules/orders/screens/ScanB6Mobile').then(m => ({ default: (m as any).ScanB6Mobile })));
@@ -27,6 +30,8 @@ const COURIER_ACCENT = DS.tech.primary; // #3B82F6
 
 export default function CourierLayout() {
   const isDesktop = useIsDesktop();
+  // Genişlik 1024px eşiğini geçince (Slot ↔ Tabs) sayfa korunur — Y5
+  const shellDesktop = useKeepRouteOnShellSwitch(isDesktop, '(courier)');
   const { profile, loading } = useAuthStore();
   const isCourier = profile?.user_type === 'lab' && (profile as any)?.role === 'courier';
   const scanOpen    = useScanStore(s => s.open);
@@ -52,7 +57,10 @@ export default function CourierLayout() {
   ];
 
   // ── Desktop ────────────────────────────────────────────────────────────
-  if (isDesktop) {
+  // Kabuk değişiyor: eski navigator bu karede sökülür, yenisi bir sonrakinde kurulur (Y5)
+  if (shellDesktop === null) return <View style={{ flex: 1 }} />;
+
+  if (shellDesktop) {
     return (
       <PatternsShell
         navItems={COURIER_NAV}
@@ -81,6 +89,9 @@ export default function CourierLayout() {
     <View style={{ flex: 1, backgroundColor: DS.tech.bg }}>
       <StatusBar style="dark" />
       <Tabs
+          // Geri = geldiğin ekran. Varsayılan "firstRoute" her geri basışta Özet'e atıyordu
+          // (detay ekranları gizli sekme olduğu için: Sağlık kurumları → fatura → geri = Özet).
+          backBehavior="history"
         screenOptions={{
           headerShown: false,
           sceneStyle: { backgroundColor: DS.tech.bg },
@@ -114,7 +125,14 @@ export default function CourierLayout() {
         <React.Suspense fallback={null}>
           <ScanB6Mobile
             onClose={() => setScanOpen(false)}
-            onOpenOrder={(id: string) => { setScanOpen(false); router.push(`/(courier)/delivery/${id}` as any); }}
+            onOpenOrder={async (orderId: string) => {
+              // QR sipariş kimliği verir; kurye detayı teslimat kimliği bekler (2. dalga 5 — "Tara").
+              const deliveryId = profile?.id ? await findOpenDeliveryForOrder(orderId, profile.id) : null;
+              if (!deliveryId) return autoT('Bu siparişte size atanmış açık teslimat yok');
+              setScanOpen(false);
+              router.push(`/(courier)/delivery/${deliveryId}` as any);
+              return null;
+            }}
           />
         </React.Suspense>
       </Modal>

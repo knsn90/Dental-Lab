@@ -1,0 +1,20 @@
+{
+ "ccy": " SELECT month,\n    currency,\n    sum(income) AS income,\n    sum(expense) AS expense,\n    (sum(income) - sum(expense)) AS profit\n   FROM ( SELECT (date_trunc('month'::text, (invoices.issue_date)::timestamp with time zone))::date AS month,\n            COALESCE(invoices.currency, 'TRY'::text) AS currency,\n            invoices.total AS income,\n            0 AS expense\n           FROM invoices\n          WHERE ((invoices.lab_id = get_my_lab_id()) AND (invoices.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])))\n        UNION ALL\n         SELECT (date_trunc('month'::text, (expenses.expense_date)::timestamp with time zone))::date AS month,\n            COALESCE(expenses.currency, 'TRY'::text) AS currency,\n            0 AS income,\n            expenses.amount AS expense\n           FROM expenses\n          WHERE (expenses.lab_id = get_my_lab_id())) sub\n  GROUP BY month, currency\n  ORDER BY month DESC, currency;",
+ "deps": null,
+ "sum": " SELECT month,\n    sum(income) AS income,\n    sum(expense) AS expense,\n    (sum(income) - sum(expense)) AS profit\n   FROM ( SELECT (date_trunc('month'::text, (i.issue_date)::timestamp with time zone))::date AS month,\n            fn_to_base(i.lab_id, i.total, i.currency, i.issue_date) AS income,\n            0 AS expense\n           FROM invoices i\n          WHERE ((i.lab_id = get_my_lab_id()) AND (i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])))\n        UNION ALL\n         SELECT (date_trunc('month'::text, (e.expense_date)::timestamp with time zone))::date AS date_trunc,\n            0,\n            fn_to_base(e.lab_id, e.amount, e.currency, e.expense_date) AS fn_to_base\n           FROM expenses e\n          WHERE (e.lab_id = get_my_lab_id())) sub\n  GROUP BY month\n  ORDER BY month DESC;",
+ "sum_acl": "{postgres=arwdDxtm/postgres,anon=m/postgres,authenticated=rxtm/postgres,service_role=arwdDxtm/postgres}",
+ "sum_cols": [
+  "month",
+  "income",
+  "expense",
+  "profit"
+ ],
+ "sum_opts": [
+  "security_invoker=on"
+ ],
+ "up": " SELECT i.id,\n    i.invoice_number,\n    i.due_date,\n    (i.total - i.paid_amount) AS balance,\n    c.name AS clinic_name,\n    (i.due_date - CURRENT_DATE) AS days_until_due,\n    COALESCE(i.currency, 'TRY'::text) AS currency\n   FROM (invoices i\n     LEFT JOIN clinics c ON ((c.id = i.clinic_id)))\n  WHERE ((i.lab_id = get_my_lab_id()) AND (i.status <> ALL (ARRAY['odendi'::text, 'iptal'::text])) AND (i.due_date IS NOT NULL) AND (i.due_date >= CURRENT_DATE) AND (i.due_date <= (CURRENT_DATE + '14 days'::interval)))\n  ORDER BY i.due_date;",
+ "up_acl": "{postgres=arwdDxtm/postgres,anon=m/postgres,authenticated=rxtm/postgres,service_role=arwdDxtm/postgres}",
+ "up_opts": [
+  "security_invoker=on"
+ ]
+}

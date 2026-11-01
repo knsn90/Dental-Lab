@@ -42,6 +42,7 @@ import { createChangeRequest } from '../changeRequests';
 import type { OrderPrefill, OrderEditPrefill } from '../prefillFromOrder';
 import { fetchOrderEditPrefill } from '../prefillFromOrder';
 import { implantFieldsPayload } from '../implantInfo';
+import { ageFromDob, parseAgeInput, sanitizeAgeInput } from '../lib/patientAge';
 import { reconcileImplantDetails } from '../implantDetails';
 import { useNewOrderModalStore } from '../../../core/store/newOrderModalStore';
 import { useOnboardingStore } from '../../../core/onboarding/onboardingStore';
@@ -56,6 +57,8 @@ import { useSuppressDentyFab } from '../../../core/store/uiOverlayStore';
 import { fetchClinics, fetchAllDoctors, createClinic, createDoctor } from '../../clinics/api';
 import { titleCaseTR } from '../../../core/utils/textCase';
 import { toast } from '../../../core/ui/Toast';
+import { ApptDraftEditor, type DraftAppt } from '../prova/ApptDraftEditor';
+import { apptSave, apptRemove, fetchProvaSnapshot } from '../prova/api';
 import { ClinicModal as CanonicalClinicModal, DoctorModal as CanonicalDoctorModal } from '../../clinics/screens/ClinicsScreen';
 import { fetchLabServices } from '../../services/api';
 import { MachineType, PendingItem } from '../types';
@@ -64,7 +67,6 @@ import { LabService } from '../../services/types';
 import { ToothNumberPicker } from '../components/ToothNumberPicker';
 import { WORK_TYPES, ALL_SHADES, ORDER_TAGS, OP_CATEGORY, IMPLANT_SYSTEMS, IMPLANT_TYPES, ABUTMENT_TYPES, SCREW_TYPES, REMOVABLE_MATS, CROWN_MATERIALS, WORK_TYPE_TREE, WORK_TYPE_MAIN, deriveDepartment, isImplantWorkType } from '../constants';
 import { TOOTH_PATHS, TOOTH_LABEL_POS } from '../assets/toothPaths';
-import { GEO_COUNTRIES, GEO_BY_LABEL } from '../data/geo';
 import { C } from '../../../core/theme/colors';
 import { F } from '../../../core/theme/typography';
 import { AppSwitch } from '../../../core/ui/AppSwitch';
@@ -232,6 +234,9 @@ interface FormData {
   patient_id: string;
   patient_gender: 'erkek' | 'kadın' | 'belirtilmedi';
   patient_dob: Date | null;
+  /** Hasta yaşı (form metni). 2026-10-19: form doğum tarihi yerine yaş ister;
+   *  patient_dob yalnız eski siparişleri düzenlerken taşınır (formda gösterilmez). */
+  patient_age: string;
   patient_phone: string;
   is_urgent: boolean;
   model_type: string;
@@ -275,7 +280,7 @@ const BLANK_OP: Omit<ToothOp, 'tooth'> = {
 const INITIAL_FORM: FormData = {
   clinic_id: '', doctor_id: '',
   patient_first_name: '', patient_last_name: '', patient_id: '', patient_gender: 'belirtilmedi',
-  patient_dob: null, patient_phone: '',
+  patient_dob: null, patient_age: '', patient_phone: '',
   is_urgent: false, model_type: '',
   delivery_date: null as unknown as Date,
   notes: '', lab_notes: '',
@@ -336,7 +341,9 @@ function applyPrefill(p: OrderPrefill): FormData {
     base.patient_last_name  = pp.last_name;
     base.patient_id         = pp.id;
     base.patient_gender     = pp.gender;
-    base.patient_dob        = pp.dob ? new Date(pp.dob) : null;
+    // Doğum tarihi yeni siparişe TAŞINMAZ (form yaş ister, daha az kişisel veri); yaş taşınır.
+    base.patient_dob        = null;
+    base.patient_age        = pp.age ?? '';
     base.patient_nationality = pp.nationality;
     base.patient_country    = pp.country;
     base.patient_city       = pp.city;
@@ -360,6 +367,7 @@ function applyEditPrefill(p: OrderEditPrefill): FormData {
     patient_id: p.patient_id,
     patient_gender: p.patient_gender,
     patient_dob: p.patient_dob ? new Date(p.patient_dob) : null,
+    patient_age: p.patient_age ?? '',
     patient_phone: p.patient_phone,
     patient_nationality: p.patient_nationality,
     patient_country: p.patient_country,
@@ -619,6 +627,8 @@ export function NewOrderScreen({
   prefill,
   editOrderId,
   onSaved,
+  scanPrefill,
+  onCreated,
 }: {
   accentColor?: string;
   onClose?: () => void;
@@ -651,6 +661,10 @@ export function NewOrderScreen({
    * Verilirse taslak yok sayılır ve form vaka kurgusuyla dolu açılır (hasta boş).
    */
   prefill?: OrderPrefill | null;
+  /** Tarama kararı "Yeni sipariş aç": klinik, hekim, hasta ve dijital ölçü hazır gelir (taslak okunmaz). */
+  scanPrefill?: { clinic_id: string; doctor_id: string | null; patient_name: string } | null;
+  /** Yeni sipariş oluşturulunca (başarı ekranı gösterilirken) siparişin kimliğiyle çağrılır. */
+  onCreated?: (orderId: string) => void;
 }) {
   // Panel kimliğini türet — açıkça verilmemişse mode flag'lerinden çıkar
   const resolvedPanel: NewOrderPanel = panel
@@ -665,6 +679,30 @@ export function NewOrderScreen({
   useSuppressDentyFab(isEdit);
   const [editReady, setEditReady] = useState(!isEdit); // düzenlemede prefill gelene kadar false
   const [editOrderRow, setEditOrderRow] = useState<{ triaged_at?: string | null; status?: string | null } | null>(null);
+  // Hastanın prova/takma randevuları (2. dalga 4) — taslak; kayıt oluşturma/düzenleme sonunda apptSave/apptRemove.
+  const [appts, setAppts] = useState<DraftAppt[]>([]);
+  const apptOrigRef = useRef<DraftAppt[]>([]);
+  useEffect(() => {
+    if (!editOrderId) return;
+    let alive = true;
+    void fetchProvaSnapshot(editOrderId).then((r) => {
+      if (!alive || !r.ok || !r.data) return;
+      const list: DraftAppt[] = r.data.appointments
+        .filter((a) => !a.removed)
+        .map((a) => {
+          const pend = a.pending_action === 'ekle' || a.pending_action === 'degistir';
+          return {
+            id: a.id, kind: a.kind,
+            date: (pend ? a.pending_date : a.appt_date) ?? '',
+            time: ((pend ? a.pending_time : a.appt_time) ?? '').slice(0, 5) || null,
+          };
+        })
+        .filter((a) => !!a.date);
+      apptOrigRef.current = list;
+      setAppts(list);
+    });
+    return () => { alive = false; };
+  }, [editOrderId]);
 
   // Fiyat görünürlüğü: admin/klinik/hekim panelleri her zaman görür;
   // lab/istasyon kullanıcıları yalnız view_order_pricing izniyle görür.
@@ -716,6 +754,7 @@ export function NewOrderScreen({
     // Düzenleme / kopyalama ile açıldıysa taslağın kaldığı adıma değil, baştan başla.
     if (editOrderId) return 1;
     if (effectivePrefill) return 1;
+    if (scanPrefill) return 1;   // taramadan açıldı → taslağın adımı değil, baştan
     if (Platform.OS === 'web') {
       try {
         // Önce kalıcı (localStorage) sonra session — re-mount/reload sonrası kaldığı yerden devam
@@ -730,6 +769,7 @@ export function NewOrderScreen({
   useEffect(() => {
     if (Platform.OS === 'web') return;
     if (effectivePrefill) return;   // kopyalama ile açıldı → taslak adımını geri yükleme
+    if (scanPrefill) return;        // taramadan açıldı → taslağa hiç dokunma
     let active = true;
     (async () => {
       try {
@@ -743,11 +783,14 @@ export function NewOrderScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const goToStep = (s: Step) => {
+  const goToStep = (s: Step, opts?: { force?: boolean }) => {
     // İLERİ ATLAMA KİLİDİ: adım başlığına tıklayıp eksik adımı atlamak mümkündü.
     // Geriye dönüş serbest (kullanıcı düzeltmeye gidiyor); ileri giderken aradaki
     // ilk geçersiz adımda durur ve hatası görünür olur.
-    if (s > step) {
+    // `force`: YALNIZ ilk-giriş turu kullanır — formu gezdiren rehber; alanlar boşken
+    // kilit turu 1. adımda tutup spotlight'ı boş yere düşürüyordu. Gönderim
+    // (handleSubmit) tüm adımları ayrıca doğruladığı için eksik sipariş gidemez.
+    if (s > step && !opts?.force) {
       const blocking = ([1, 2, 3] as Step[]).filter(x => x < s).find(x => !isStepValid(x));
       if (blocking) {
         setStepAttempted(p => ({ ...p, [blocking]: true }));
@@ -791,7 +834,7 @@ export function NewOrderScreen({
   useEffect(() => {
     if (!tourGuided) return;
     const store = useOnboardingStore.getState();
-    store.registerRef('no-form-controller', { goToStep: (n: number) => goToStepRef.current(n as Step) });
+    store.registerRef('no-form-controller', { goToStep: (n: number) => goToStepRef.current(n as Step, { force: true }) });
     // Tur çalışıyorken bu modal spotlight'ı devralır.
     if (store.active) store.setOverlayHost('newOrder');
     return () => {
@@ -838,6 +881,18 @@ export function NewOrderScreen({
     // Düzenleme modu: form boş başlar, prefill mount effect'inde async yüklenir
     // (taslak asla okunmaz/karışmaz).
     if (editOrderId) return INITIAL_FORM;
+    // Tarama kararı "Yeni sipariş aç": klinik, hekim, hasta ve dijital ölçü hazır; taslak okunmaz.
+    if (scanPrefill) {
+      const parts = (scanPrefill.patient_name || '').trim().split(/\s+/).filter(Boolean);
+      return {
+        ...INITIAL_FORM,
+        clinic_id: scanPrefill.clinic_id,
+        doctor_id: scanPrefill.doctor_id ?? '',
+        patient_first_name: parts.length > 1 ? parts.slice(0, -1).join(' ') : (parts[0] ?? ''),
+        patient_last_name: parts.length > 1 ? parts[parts.length - 1] : '',
+        measurement_type: 'digital',
+      };
+    }
     // "Siparişten kopyala" — açık bir kullanıcı eylemi olduğu için kaydedilmiş
     // taslağın önüne geçer. Hasta alanları INITIAL_FORM'dan boş gelir.
     if (effectivePrefill) return applyPrefill(effectivePrefill);
@@ -848,6 +903,8 @@ export function NewOrderScreen({
         if (saved) {
           const parsed = JSON.parse(saved);
           if (parsed.patient_dob)   parsed.patient_dob   = new Date(parsed.patient_dob);
+          // Yaş alanından önceki taslaklar: yaş yoksa doğum tarihinden doldur.
+          if (typeof parsed.patient_age !== 'string') parsed.patient_age = parsed.patient_dob ? String(ageFromDob(parsed.patient_dob) ?? '') : '';
           if (parsed.delivery_date) parsed.delivery_date = new Date(parsed.delivery_date);
           const arrFields = ['tooth_ops','pending_items','attachments','tags','voice_notes','lab_voice_notes','chat_messages'] as const;
           arrFields.forEach(k => { if (!Array.isArray(parsed[k])) parsed[k] = (INITIAL_FORM as any)[k]; });
@@ -1074,7 +1131,8 @@ export function NewOrderScreen({
         patient_gender: ocr.patient_gender === 'kadın' ? 'kadın'
                       : ocr.patient_gender === 'erkek' ? 'erkek'
                       : prev.patient_gender,
-        patient_dob: ocr.patient_dob ? new Date(ocr.patient_dob) : prev.patient_dob,
+        // Belge doğum tarihi verirse yaşa çevrilir (form yaş ister; tarih saklanmaz).
+        patient_age: ocr.patient_dob && ageFromDob(ocr.patient_dob) != null ? String(ageFromDob(ocr.patient_dob)) : prev.patient_age,
         delivery_method: ocr.delivery_method ?? prev.delivery_method,
         scan_bodies_delivered: ocr.scan_bodies_delivered ?? prev.scan_bodies_delivered,
       }));
@@ -1132,7 +1190,7 @@ export function NewOrderScreen({
 
   // ── Draft save timestamp (UI göstergesinde kullanılır) ──
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(() => {
-    if (editOrderId) return null;   // düzenleme → taslak göstergesi yok
+    if (editOrderId || scanPrefill) return null;   // düzenleme / taramadan → taslak göstergesi yok
     if (Platform.OS === 'web') {
       try {
         const t = localStorage.getItem(DRAFT_TS_KEY);
@@ -1148,6 +1206,7 @@ export function NewOrderScreen({
     if (Platform.OS !== 'web') return false;
     if (editOrderId) return false;        // düzenleme → taslak sorusu yok
     if (effectivePrefill) return false;   // kopyalama ile açıldı → taslak sorusu sorma
+    if (scanPrefill) return false;        // taramadan açıldı → taslak sorusu sorma
     try {
       const hasDraft     = !!localStorage.getItem(DRAFT_KEY);
       const alreadyAsked = sessionStorage.getItem('new_order_draft_prompted') === '1';
@@ -1169,6 +1228,7 @@ export function NewOrderScreen({
   // Form değiştiğinde debounced olarak draft persist et (web: localStorage, native: AsyncStorage)
   useEffect(() => {
     if (isEdit) return;   // düzenleme modu: yeni-sipariş taslağına dokunma
+    if (scanPrefill) return;   // taramadan açılan form kullanıcının taslağının üstüne yazılmaz
     if (skipFirstDraftSaveRef.current) {
       skipFirstDraftSaveRef.current = false;
       return;
@@ -1224,6 +1284,7 @@ export function NewOrderScreen({
     if (Platform.OS === 'web') return;
     if (isEdit) return;             // düzenleme → taslak yükleme yok
     if (effectivePrefill) return;   // kopyalama ile açıldı → taslak formu geri yükleme
+    if (scanPrefill) return;        // taramadan açıldı → kayıtlı taslak tarama ön dolgusunu ezmesin
     if (nativeDraftCheckedRef.current) return;
     nativeDraftCheckedRef.current = true;
     (async () => {
@@ -1239,6 +1300,8 @@ export function NewOrderScreen({
         try {
           const parsed = JSON.parse(savedRaw);
           if (parsed.patient_dob)   parsed.patient_dob   = new Date(parsed.patient_dob);
+          // Yaş alanından önceki taslaklar: yaş yoksa doğum tarihinden doldur.
+          if (typeof parsed.patient_age !== 'string') parsed.patient_age = parsed.patient_dob ? String(ageFromDob(parsed.patient_dob) ?? '') : '';
           if (parsed.delivery_date) parsed.delivery_date = new Date(parsed.delivery_date);
           const arrFields = ['tooth_ops','pending_items','attachments','tags','voice_notes','lab_voice_notes','chat_messages'] as const;
           arrFields.forEach(k => { if (!Array.isArray(parsed[k])) parsed[k] = (INITIAL_FORM as any)[k]; });
@@ -1638,10 +1701,8 @@ export function NewOrderScreen({
     if (!doctorMode && !form.doctor_id)         e.doctor_id      = 'Diş hekimi seçin';
     if (!form.patient_first_name.trim())        e.patient_first_name = 'Ad zorunlu';
     if (!form.patient_last_name.trim())         e.patient_last_name  = 'Soyad zorunlu';
-    if (!form.patient_dob)                      e.patient_dob        = 'Doğum tarihi zorunlu';
+    if (parseAgeInput(form.patient_age) == null) e.patient_age      = (form.patient_age ?? '').trim() ? 'Yaş 0–120 arasında olmalı' : 'Yaş zorunlu';
     if (form.patient_gender === 'belirtilmedi') e.patient_gender = 'Cinsiyet seçin';
-    if (!form.patient_id?.trim())               e.patient_id     = 'TC kimlik zorunlu';
-    if (!form.patient_nationality)              e.patient_nationality = 'Uyruk seçin';
     if (!form.measurement_type)  e.measurement_type  = 'Ölçüm yöntemi seçin';
     if (!form.model_type)        e.model_type        = 'Model tipi seçin';
     // Dijital ölçüm + dosya gerektiren model tipi → en az 1 dosya yüklenmiş olmalı
@@ -1699,7 +1760,7 @@ export function NewOrderScreen({
   }, [form, hasImplantOp]);
 
   const STEP_FIELDS: Record<Step, string[]> = {
-    1: ['doctor_id', 'patient_first_name', 'patient_last_name', 'patient_gender', 'patient_dob'],
+    1: ['doctor_id', 'patient_first_name', 'patient_last_name', 'patient_gender', 'patient_age'],
     2: ['tooth_ops', 'implant_teeth', 'implant_brand'],
     3: ['measurement_type', 'model_type', 'delivery_date', 'delivery_method', 'attachments'],
     4: [],
@@ -1716,6 +1777,20 @@ export function NewOrderScreen({
   const filteredDoctors = form.clinic_id
     ? allDoctors.filter((d) => d.clinic_id === form.clinic_id)
     : allDoctors;
+
+  // Tek hekimli klinik: tek aday varsa (muayenehanede çoğu zaman klinik yetkilisinin
+  // kendisi) otomatik seçilir. Klinik başına BİR kez — kullanıcı temizlerse geri
+  // doldurulmaz. Düzenleme/taslakta hekim zaten dolu olduğundan dokunulmaz.
+  const autoDoctorForRef = useRef<string | null>(null);
+  const doctorCandidates = clinicMode ? allDoctors : (form.clinic_id ? filteredDoctors : []);
+  useEffect(() => {
+    if (doctorMode || form.doctor_id) return;
+    const key = clinicMode ? '__clinic_mode__' : form.clinic_id;
+    if (!key || autoDoctorForRef.current === key || doctorCandidates.length !== 1) return;
+    autoDoctorForRef.current = key;
+    setForm((f) => (f.doctor_id ? f : { ...f, doctor_id: doctorCandidates[0].id }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.clinic_id, form.doctor_id, doctorCandidates.length, doctorCandidates[0]?.id, clinicMode, doctorMode]);
 
   const itemTotal = form.pending_items.reduce((s, i) => s + i.price * i.quantity, 0);
 
@@ -2470,6 +2545,7 @@ export function NewOrderScreen({
       patient_id: form.patient_id || null,
       patient_gender: form.patient_gender !== 'belirtilmedi' ? form.patient_gender : null,
       patient_dob: form.patient_dob ? form.patient_dob.toISOString().split('T')[0] : null,
+      patient_age: parseAgeInput(form.patient_age),
       patient_nationality: form.patient_nationality || null,
       patient_country: form.patient_country || null,
       patient_city: form.patient_city || null,
@@ -2506,6 +2582,29 @@ export function NewOrderScreen({
     // Ekler alan/kalem güncellemesinden bağımsız yürür: yeni eklenen dosyalar
     // siparişe bağlanır, kaldırılanlar (yalnız lab/admin) silinir. Değişiklik
     // talebi modunda da dosyalar doğrudan eklenir — lab'ın görmesi gerekir.
+    // Randevu farkı (2. dalga 4): yeni → ekle, değişen → güncelle, çıkarılan → sil. Sunucu lab/hekim ve
+    // planlama durumuna göre doğrudan yazar ya da "önerilen tarih" olarak lab onayına gönderir.
+    let apptChanges = 0, apptFail = 0;
+    const origById = new Map(apptOrigRef.current.filter((a) => a.id).map((a) => [a.id as string, a]));
+    for (const a of appts) {
+      if (!a.date) continue;
+      const o = a.id ? origById.get(a.id) : undefined;
+      if (o && o.kind === a.kind && o.date === a.date && (o.time ?? null) === (a.time ?? null)) continue;
+      apptChanges++;
+      const r = await apptSave(editOrderId, a.id ?? null, a.kind, a.date, a.time);
+      if (!r.ok) apptFail++;
+    }
+    const keptIds = new Set(appts.map((a) => a.id).filter(Boolean) as string[]);
+    for (const o of apptOrigRef.current) {
+      if (o.id && !keptIds.has(o.id)) {
+        apptChanges++;
+        const r = await apptRemove(o.id);
+        if (!r.ok) apptFail++;
+      }
+    }
+    if (apptFail > 0) toast.error(`${apptFail} ${autoT('randevu değişikliği kaydedilemedi')}`);
+    else if (apptChanges > 0 && requestMode) toast.info(autoT('Randevu değişikliği lab onayına gönderildi'));
+
     const att = await persistEditAttachments(editOrderId, adminEdit);
     setLoading(false);
     if (att.failed > 0) toast.error(`${att.failed} dosya kaydedilemedi`);
@@ -2629,6 +2728,7 @@ export function NewOrderScreen({
       patient_id: form.patient_id || undefined,
       patient_gender: form.patient_gender !== 'belirtilmedi' ? form.patient_gender : undefined,
       patient_dob: form.patient_dob ? form.patient_dob.toISOString().split('T')[0] : undefined,
+      patient_age: parseAgeInput(form.patient_age) ?? undefined,
       patient_phone: form.patient_phone || undefined,
       department,
       tags: form.tags.length > 0 ? form.tags : undefined,
@@ -2949,11 +3049,25 @@ export function NewOrderScreen({
       toast.success(`${chatPersistSuccess} mesaj kaydedildi`);
     }
 
+    // Hastanın randevuları — yeni sipariş planlama öncesi olduğu için sunucu doğrudan yazar.
+    if (appts.length > 0) {
+      let apptFail = 0;
+      for (const a of appts) {
+        if (!a.date) continue;
+        const r = await apptSave(order.id, null, a.kind, a.date, a.time);
+        if (!r.ok) apptFail++;
+      }
+      if (apptFail > 0) toast.error(`${apptFail} ${autoT('randevu kaydedilemedi; sipariş detayındaki Prova penceresinden ekleyebilirsiniz.')}`);
+    }
+    setAppts([]);
+    apptOrigRef.current = [];
+
     setLoading(false);
     skipFirstDraftSaveRef.current = true;  // INITIAL_FORM set'i re-save tetiklemesin
     setForm(INITIAL_FORM);
     setLastSavedAt(null);
-    if (Platform.OS === 'web') {
+    // Taramadan açılan sipariş taslak kullanmadı → kullanıcının (ilgisiz) yeni-sipariş taslağı silinmez
+    if (!scanPrefill && Platform.OS === 'web') {
       try {
         sessionStorage.removeItem('new_order_step');
         sessionStorage.removeItem('new_order_form');
@@ -2962,7 +3076,7 @@ export function NewOrderScreen({
         localStorage.removeItem(DRAFT_TS_KEY);
         localStorage.removeItem(DRAFT_STEP_KEY);
       } catch {}
-    } else {
+    } else if (!scanPrefill) {
       void AsyncStorage.multiRemove([DRAFT_KEY, DRAFT_TS_KEY, DRAFT_STEP_KEY, 'new_order_draft_prompted']);
     }
     setStep(1);
@@ -2974,6 +3088,7 @@ export function NewOrderScreen({
       orderNumber,
       patientName: cleanedFullName || 'Yeni vaka',
     });
+    onCreated?.(order.id);
   };
 
   // Doctor modunda klinik/hekim profile'den gelir
@@ -3372,7 +3487,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
         <div class="cardBody">
           ${(form.patient_first_name || form.patient_last_name) ? `<div class="cr">${icoPerson}<div class="cl">Ad Soyad</div><div class="cv">${escapeHtml([form.patient_first_name, form.patient_last_name].filter(Boolean).join(' '))}</div></div>` : ''}
           ${form.patient_gender !== 'belirtilmedi' ? `<div class="cr">${genderIco}<div class="cl">Cinsiyet</div><div class="cv">${form.patient_gender === 'erkek' ? 'Erkek' : 'Kadın'}</div></div>` : ''}
-          ${form.patient_dob ? `<div class="cr">${icoCal}<div class="cl">Doğum Tarihi</div><div class="cv">${form.patient_dob.toLocaleDateString(localeTag())}</div></div>` : ''}
+          ${parseAgeInput(form.patient_age) != null ? `<div class="cr">${icoCal}<div class="cl">${autoT('Yaş')}</div><div class="cv">${parseAgeInput(form.patient_age)}</div></div>` : ''}
           ${form.patient_phone ? `<div class="cr">${icoPhone}<div class="cl">Telefon</div><div class="cv">${escapeHtml(form.patient_phone)}</div></div>` : ''}
         </div>
       </div>
@@ -3827,8 +3942,10 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
           <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: isDesktop ? 8 : 10 }}>
 
             {/* ── Kart 1: Klinik & hekim ── */}
+            {/* Masaüstünde iki kart AYNI yükseklikte: sarmalayıcılar satıra uzanır (stretch),
+                kart da sarmalayıcıyı doldurur (flex:1). Mobilde alt alta — etkisiz. */}
             <View ref={tourRefClinic} style={isDesktop ? { flex: 1 } : undefined}>
-              <NOCard>
+              <NOCard style={isDesktop ? { flex: 1 } : undefined}>
                 <NOCardHead num={1} title="Klinik & hekim" sub="Vakanın bağlı olduğu klinik ve hekim" accent={P} />
 
                 {clinicMode ? (
@@ -3928,7 +4045,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
 
             {/* ── Kart 2: Hasta bilgileri ── */}
             <View ref={tourRefPatient} style={isDesktop ? { flex: 1.6 } : undefined}>
-              <NOCard>
+              <NOCard style={isDesktop ? { flex: 1 } : undefined}>
                 <NOCardHead
                   num={2}
                   title="Hasta bilgileri"
@@ -3978,29 +4095,25 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                 </TwoCol>
                 </View>
 
-                {/* Satır 2: TC / Pasaport + Doğum tarihi */}
-                <View ref={tourFldDob}>
+                {/* Satır 2: Yaş + Cinsiyet.
+                    Hasta bilgisi yalnız ad, soyad, yaş ve cinsiyet (2026-10-18; 2026-10-19'da
+                    doğum tarihi yerine YAŞ → work_orders.patient_age). TC/pasaport, uyruk,
+                    ikamet ve telefon formdan kaldırıldı; eski siparişlerdeki değerler durur.
+                    Tur vurgusu (tourFldDob) artık yaş alanına bağlı. */}
                 <TwoCol stack={!isDesktop}>
-                  <Field label="TC / Pasaport No" value={form.patient_id}
-                    onChangeText={set('patient_id')} placeholder="TC veya Pasaport No" flex />
-                  <DateField
-                    label="Doğum tarihi"
-                    value={form.patient_dob}
-                    onChange={set('patient_dob')}
-                    maxDate={new Date()}
-                    placeholder="Tarih seçin"
-                    flex
-                    required
-                    error={fe('patient_dob')}
-                    accentColor={P}
-                  />
-                </TwoCol>
-                </View>
-
-                {/* Satır 3: Cinsiyet + Uyruk */}
-                <View ref={tourFldGender}>
-                <TwoCol stack={!isDesktop}>
-                  <View style={{ flex: 1 }}>
+                  <View ref={tourFldDob} style={{ flex: 1 }}>
+                    <Field
+                      label="Yaş"
+                      value={form.patient_age ?? ''}
+                      onChangeText={(t) => set('patient_age')(sanitizeAgeInput(t))}
+                      placeholder="Ör. 45"
+                      keyboardType="number-pad"
+                      flex
+                      required
+                      error={fe('patient_age')}
+                    />
+                  </View>
+                  <View ref={tourFldGender} style={{ flex: 1 }}>
                     <NOLabel required>Cinsiyet</NOLabel>
                     <NOSegment
                       options={GENDERS.map(g => g.label)}
@@ -4011,48 +4124,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                       }}
                     />
                   </View>
-                  <SearchableDropdown
-                    label="Uyruk"
-                    placeholder="Ülke ara..."
-                    options={GEO_COUNTRIES.map(c => ({ id: c.label, label: c.label }))}
-                    selectedId={form.patient_nationality}
-                    onSelect={set('patient_nationality')}
-                  />
                 </TwoCol>
-                </View>
-
-                {/* Satır 4: İkamet ülkesi + İkamet şehri + Telefon (3 kolon desktop) */}
-                <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: 12, marginTop: 12 }}>
-                  <View style={{ flex: 1 }}>
-                    <SearchableDropdown
-                      label="İkamet ülkesi"
-                      placeholder="Ülke ara..."
-                      options={GEO_COUNTRIES.map(c => ({ id: c.label, label: c.label }))}
-                      selectedId={form.patient_country}
-                      onSelect={(val) => {
-                        set('patient_country')(val);
-                        set('patient_city')('');
-                      }}
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <SearchableDropdown
-                      label="İkamet şehri"
-                      placeholder={form.patient_country ? 'Şehir ara...' : 'Önce ülke seçin'}
-                      options={
-                        form.patient_country && GEO_BY_LABEL[form.patient_country]
-                          ? GEO_BY_LABEL[form.patient_country].cities.map(city => ({ id: city, label: city }))
-                          : []
-                      }
-                      selectedId={form.patient_city}
-                      onSelect={set('patient_city')}
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Field label="Telefon" value={form.patient_phone}
-                      onChangeText={set('patient_phone')} placeholder="05XX XXX XX XX" flex />
-                  </View>
-                </View>
 
                 </View>{/* /hasta alanları kilidi */}
 
@@ -4147,6 +4219,13 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                     // bitmiş işin teslim tarihi geçmişte kalıyor.
                     minDate={isEdit ? undefined : addBusinessDays(new Date(), form.is_urgent ? 1 : 5)}
                     error={fe('delivery_date')}
+                    accentColor={P}
+                  />
+                  {/* Hastanın randevusu (isteğe bağlı) — prova ve takma ayrı; takma teslimden önceyse uyarı */}
+                  <ApptDraftEditor
+                    value={appts}
+                    onChange={setAppts}
+                    deliveryDate={form.delivery_date}
                     accentColor={P}
                   />
                   <InlineSelect
@@ -8632,10 +8711,15 @@ function WorkTypeSelector({
           {/* Ana tip chip — tıklayınca ana seçime döner */}
           <TouchableOpacity
             style={[wts.crumbChip, !op.work_type && wts.crumbChipActive]}
+            accessibilityRole="button"
+            accessibilityLabel={autoT('Kategoriyi değiştir')}
             onPress={() => {
-              // Kategori çipi: seçimi temizle ama AYNI kategoride kal → o kategorinin
-              // hizmetleri TEK dokunuşta açılır. Eskiden ana listeye dönüyordu ve
-              // kullanıcı ikinci kez kategoriye dokunmak zorunda kalıyordu.
+              // Hizmet SEÇİLİ DEĞİLSE (zaten hizmet listesindeyken): ana kategori
+              // listesine dön. Eskiden burada da aynı kategoride kalıyordu → yanlış
+              // kategoriye girildiğinde geri dönüş yolu yoktu (2026-10-19).
+              if (!op.work_type) { setPendingMain(null); return; }
+              // Hizmet seçiliyse: seçimi temizle ama AYNI kategoride kal → o kategorinin
+              // hizmetleri TEK dokunuşta açılır (ikinci kez kategoriye dokunmak gerekmez).
               setPendingMain(activeMain);
               updateToothOp({ work_type: '', shade: '', implant_system: '', implant_type: '', abutment: '', screw: '', material: '' });
             }}

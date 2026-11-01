@@ -24,6 +24,7 @@ import {
   PillButton, SecHeader, HeroCompact, Loader, ErrorBar,
   usePagePadding,
 } from '../components/atoms';
+import { NavyBackButtonX } from '../../../../core/ui/NavyBackButtonX';
 
 const STATUS_LABEL: Record<string, string> = {
   draft: 'taslak', approved: 'onaylı', posted: 'yansıtıldı', voided: 'iptal',
@@ -134,9 +135,7 @@ export default function TechnicianBonusScreen({ employeeId, initialName, onBack 
       {/* Back nav */}
       {onBack ? (
         <View style={{ marginBottom: 16 }}>
-          <PillButton variant="light" onPress={onBack} leftIcon={isRTL() ? <ArrowRight size={14} color={U.ink[900]} /> : <ArrowLeft size={14} color={U.ink[900]} />}>
-            Geri
-          </PillButton>
+          <NavyBackButtonX onPress={onBack} label="Geri" />
         </View>
       ) : null}
 

@@ -2133,7 +2133,9 @@ export function MessagesPopup({ visible, onClose, accentColor, initialOrderId }:
         return;
       }
     }
-    if (isDesktop && !selected) setSelected(items[0]);
+    // Masaüstünde ilk sohbet artık KENDİLİĞİNDEN seçilmez: seçilen sohbet açılınca mesajları
+    // herkes için "okundu" oluyordu — yönetici listeye göz atarken asıl ilgilenecek kişinin
+    // rozeti sessizce sönüyordu (denetim Y4). Sağ panel "Bir sohbet seç" boş durumunu gösterir.
   }, [visible, isDesktop, items, selected, initialOrderId]);
 
   // Reset selection on close

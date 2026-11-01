@@ -99,6 +99,21 @@ export function WhatsAppSupportScreen({ accentColor = '#F5C24B' }: Props) {
   const [filter, setFilter] = useState<'all' | 'waiting' | 'bot' | 'human'>('all');
   const [query, setQuery] = useState('');
   const [infoOpen, setInfoOpen] = useState(false);
+  /** Sohbet botu açık mı (Entegrasyonlar → WhatsApp → Sohbet botu). Kapalıyken
+   *  webhook gelen mesajlara dokunmaz; lab WhatsApp Business uygulamasından yanıtlar.
+   *  Erişim anahtarı istemciye çekilmesin diye yalnız o alan okunur. */
+  const [botOn, setBotOn] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!labId) return;
+    let alive = true;
+    (supabase.from('provider_credentials') as any)
+      .select('chat_bot:credentials->>chat_bot')
+      .eq('lab_id', labId).eq('type', 'messaging').eq('provider', 'whatsapp-cloud').eq('is_active', true)
+      .limit(1).maybeSingle()
+      .then(({ data }: any) => { if (alive) setBotOn(String(data?.chat_bot ?? '').toLowerCase() === 'on'); },
+            () => { if (alive) setBotOn(false); });
+    return () => { alive = false; };
+  }, [labId]);
 
   const load = useCallback(async () => {
     if (!labId) return;
@@ -256,7 +271,15 @@ export function WhatsAppSupportScreen({ accentColor = '#F5C24B' }: Props) {
           }
         />
 
-        {/* Bilgi notu */}
+        {/* Bilgi notu — bot kapalıyken mesajlar buraya hiç düşmez */}
+        {botOn === false ? (
+          <View style={{ backgroundColor: accentColor + '14', borderRadius: 12, padding: 12, gap: 4 }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? T.ink : "#0A0A0A" }}>Sohbet botu kapalı</Text>
+            <Text style={{ fontSize: 12.5, color: isDark ? T.ink2 : "#2C2C2C", lineHeight: 18 }}>
+              Gelen WhatsApp mesajlarına otomatik cevap verilmez ve buraya düşmez; WhatsApp Business uygulamanızdan cevaplayın. Sipariş bildirimleri gönderilmeye devam eder. Botu açmak için: Ayarlar → Entegrasyonlar → WhatsApp → Sohbet botu.
+            </Text>
+          </View>
+        ) : (
         <View style={{ backgroundColor: accentColor + '14', borderRadius: 12, padding: 12 }}>
           <Text style={{ fontSize: 12.5, color: isDark ? T.ink2 : "#2C2C2C", lineHeight: 18 }}>
             Simanty <Text style={{ fontWeight: '700' }}>varsayılan olarak kapalı</Text> — gelen mesajlara
@@ -266,6 +289,7 @@ export function WhatsAppSupportScreen({ accentColor = '#F5C24B' }: Props) {
             elle devredebilirsiniz. Devredilen sohbet 12 saat sessizlikte tekrar kapanır.
           </Text>
         </View>
+        )}
 
         {loading && items.length === 0 ? (
           <View style={{ paddingVertical: 40, alignItems: 'center' }}>
@@ -312,6 +336,7 @@ export function WhatsAppSupportScreen({ accentColor = '#F5C24B' }: Props) {
                   Başladı: {relTime(row.human_since)} · Son mesaj: {relTime(row.last_msg_at)}
                 </Text>
               </View>
+              {botOn !== false && (
               <Pressable
                 onPress={() => endChat(row)}
                 disabled={busyId === row.id}
@@ -327,6 +352,7 @@ export function WhatsAppSupportScreen({ accentColor = '#F5C24B' }: Props) {
                   : <CheckCircle2 size={15} color="#fff" strokeWidth={2} />}
                 <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>Bot'a devret</Text>
               </Pressable>
+              )}
             </Pressable>
           ))
         )}

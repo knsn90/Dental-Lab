@@ -16,6 +16,7 @@ import { useThemeModeStore } from '../store/themeModeStore';
 export interface OrderStatusInfoOrder {
   status?:        string | null;
   hold_status?:   string | null;
+  hold_category?: string | null;
   hold_reason?:   string | null;
   updated_at?:    string | null;
   delivery_date?: string | null;
@@ -54,6 +55,10 @@ function fmtDate(iso?: string | null): string | null {
 
 function buildInfo(o: OrderStatusInfoOrder): { title: string; lines: { label: string; value: string }[] } {
   // Duraklatıldı, statü ne olursa olsun önceliklidir (Siparişler listesindeki gösterimle birebir)
+  // Prova beklemesi (2. dalga 4): iş klinikte, teslim sayacı duruyor — "Duraklatıldı" değil.
+  if (o.hold_status === 'on_hold' && o.hold_category === 'client_prova') {
+    return { title: 'Provada', lines: [{ label: 'Durum', value: 'Prova klinikte · teslim sayacı duruyor' }] };
+  }
   if (o.hold_status === 'on_hold') {
     return {
       title: 'Duraklatıldı',

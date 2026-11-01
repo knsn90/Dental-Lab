@@ -1,0 +1,56 @@
+{
+ "receipts": [
+  {
+   "id": "5dd60d14-24fd-4b73-a9c9-5813a7382d93",
+   "lab_id": "243ef1db-9853-424b-8292-0025abfca436",
+   "clinic_id": "1d63b5ff-cffa-4a16-a835-c0fa046a14da",
+   "receipt_date": "2026-10-31",
+   "payment_method": "havale",
+   "reference_no": null,
+   "notes": null,
+   "received_by": "126be93f-a054-4652-a667-8bb052ec8c8c",
+   "base_currency": "EUR",
+   "total_base": 294.63,
+   "allocated_base": 294.63,
+   "idempotency_key": "rcpt-1793461308993-oxwh9hnh",
+   "created_at": "2026-10-31T15:42:09.416647+00:00",
+   "updated_at": "2026-10-31T15:42:09.416647+00:00"
+  },
+  {
+   "id": "d234ec81-a579-4b1d-a70c-8d33dfc851cb",
+   "lab_id": "243ef1db-9853-424b-8292-0025abfca436",
+   "clinic_id": "1d63b5ff-cffa-4a16-a835-c0fa046a14da",
+   "receipt_date": "2026-10-31",
+   "payment_method": "havale",
+   "reference_no": "A0AJX-B-202610311",
+   "notes": null,
+   "received_by": "126be93f-a054-4652-a667-8bb052ec8c8c",
+   "base_currency": "EUR",
+   "total_base": 294.63,
+   "allocated_base": 294.63,
+   "idempotency_key": "rcpt-1793461058149-kmbh5dlm",
+   "created_at": "2026-10-31T15:38:50.405762+00:00",
+   "updated_at": "2026-10-31T15:38:50.405762+00:00"
+  }
+ ],
+ "lines": [
+  {
+   "id": "b394a002-d6f7-4939-96cc-9a17d4c0b7a2",
+   "receipt_id": "d234ec81-a579-4b1d-a70c-8d33dfc851cb",
+   "currency": "TRY",
+   "amount": 16445.0,
+   "rate": 0.017916,
+   "amount_base": 294.63,
+   "created_at": "2026-10-31T15:38:50.405762+00:00"
+  },
+  {
+   "id": "82130a57-2c2d-4c02-a817-32d55874faca",
+   "receipt_id": "5dd60d14-24fd-4b73-a9c9-5813a7382d93",
+   "currency": "TRY",
+   "amount": 16445.0,
+   "rate": 0.017916,
+   "amount_base": 294.63,
+   "created_at": "2026-10-31T15:42:09.416647+00:00"
+  }
+ ]
+}

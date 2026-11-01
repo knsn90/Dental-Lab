@@ -1,0 +1,41 @@
+# 20261027160000_prova_sema — canlı durum (uygulamadan önce), 2026-10-27T10:15:25Z
+new_functions_exist : null
+order_appointments_exists : false
+provas_columns : [
+ "id uuid default=gen_random_uuid() NOT NULL",
+ "work_order_id uuid default=∅ NOT NULL",
+ "prova_number integer default=1 NOT NULL",
+ "sent_date date default=CURRENT_DATE NOT NULL",
+ "return_date date default=∅",
+ "doctor_notes text default=∅",
+ "lab_notes text default=∅",
+ "status text default='gönderildi'::text NOT NULL",
+ "created_by uuid default=∅",
+ "created_at timestamp with time zone default=now()",
+ "lab_id uuid default=∅",
+ "scheduled_date date default=∅",
+ "prova_type text default=∅",
+ "quota integer default=∅",
+ "order_item_id uuid default=∅",
+ "order_item_name text default=∅"
+]
+provas_constraints : [
+ "provas_created_by_fkey: FOREIGN KEY (created_by) REFERENCES profiles(id) ON DELETE SET NULL",
+ "provas_lab_id_fkey: FOREIGN KEY (lab_id) REFERENCES labs(id)",
+ "provas_order_item_id_fkey: FOREIGN KEY (order_item_id) REFERENCES order_items(id) ON DELETE SET NULL",
+ "provas_pkey: PRIMARY KEY (id)",
+ "provas_status_check: CHECK ((status = ANY (ARRAY['gönderildi'::text, 'döndü'::text, 'tamamlandı'::text])))",
+ "provas_work_order_id_fkey: FOREIGN KEY (work_order_id) REFERENCES work_orders(id) ON DELETE CASCADE"
+]
+provas_policies : [
+ "Lab all provas ALL using((EXISTS ( SELECT 1\n   FROM profiles\n  WHERE ((profiles.id = auth.uid()) AND (profiles.user_type = ANY (ARRAY['lab'::text, 'admin'::text])))))) check()",
+ "Lab users manage provas ALL using((is_lab_user() AND (lab_id = get_my_lab_id()))) check((is_lab_user() AND (lab_id = get_my_lab_id())))",
+ "doctor_view_provas SELECT using(is_my_doctor_order(work_order_id)) check()",
+ "field_staff_scope ALL using(((( SELECT my_user_type() AS my_user_type) <> ALL (ARRAY['lab'::text, 'admin'::text])) OR (( SELECT my_role_key() AS my_role_key) <> ALL (ARRAY['technician'::text, 'courier'::text])) OR can_see_work_order_id(work_order_id))) check(((( SELECT my_user_type() AS my_user_type) <> ALL (ARRAY['lab'::text, 'admin'::text])) OR (( SELECT my_role_key() AS my_role_key) <> ALL (ARRAY['technician'::text, 'courier'::text])) OR can_see_work_order_id(work_order_id)))",
+ "lab_admin_provas ALL using((EXISTS ( SELECT 1\n   FROM profiles\n  WHERE ((profiles.id = auth.uid()) AND (profiles.user_type = ANY (ARRAY['lab'::text, 'admin'::text])))))) check()",
+ "tenant_guard ALL using(((( SELECT get_my_lab_id() AS get_my_lab_id) IS NULL) OR (lab_id IS NULL) OR (lab_id = ( SELECT get_my_lab_id() AS get_my_lab_id)))) check((( SELECT is_platform_admin() AS is_platform_admin) OR (( SELECT get_my_lab_id() AS get_my_lab_id) IS NULL) OR (lab_id IS NULL) OR (lab_id = ( SELECT get_my_lab_id() AS get_my_lab_id))))"
+]
+provas_rows : 0
+provas_triggers : [
+ "provas_auto_lab_id"
+]

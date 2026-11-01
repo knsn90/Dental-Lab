@@ -1,0 +1,61 @@
+<!-- YEDEK: 2026-10-20'de panelden alınan ESKİ "Confirm sign up" şablonu. Konu: "Confirm your email address" -->
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="x-apple-disable-message-reformatting" />
+  <title>E-posta Doğrulama</title>
+</head>
+<body style="margin:0;padding:0;background:#F8FAFC;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#0F172A;-webkit-font-smoothing:antialiased;">
+<center style="width:100%;background:#F8FAFC;">
+  <div style="display:none;font-size:1px;color:#F8FAFC;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">
+    Nexadent hesabını doğrulamak için kodun: {{ .Token }}
+  </div>
+  <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="max-width:600px;width:100%;margin:0 auto;padding:28px 16px;">
+    <tr><td>
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#FFFFFF;border:1px solid #E2E8F0;border-radius:16px;overflow:hidden;">
+        <tr><td style="padding:26px 26px 0;">
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+            <tr><td valign="middle">
+              <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+                <td valign="middle" style="padding-right:10px;">
+                  <div style="width:48px;height:48px;border-radius:10px;background:#0F172A;text-align:center;line-height:48px;color:#FFFFFF;font-weight:800;font-size:20px;letter-spacing:0.5px;">N</div>
+                </td>
+                <td valign="middle">
+                  <div style="font-size:17px;font-weight:800;letter-spacing:0.8px;color:#0F172A;line-height:1.1;">NEXADENT</div>
+                  <div style="font-size:8px;font-weight:700;color:#64748B;letter-spacing:3.4px;margin-top:4px;">LABORATORY</div>
+                </td>
+              </tr></table>
+            </td></tr>
+          </table>
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-top:18px;border-bottom:2px solid #0F172A;"><tr><td></td></tr></table>
+          <div style="font-size:9px;font-weight:700;color:#64748B;letter-spacing:1.8px;text-transform:uppercase;margin-top:18px;">E-posta Doğrulama</div>
+          <h1 style="margin:6px 0 0 0;font-size:26px;font-weight:300;letter-spacing:-0.6px;color:#0F172A;line-height:1.15;">Hesabını doğrula</h1>
+          <p style="margin:10px 0 0 0;font-size:13px;line-height:1.55;color:#475569;">Nexadent hesabını oluşturduğun için teşekkürler. Aşağıdaki 6 haneli kodu uygulamadaki doğrulama ekranına gir.</p>
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-top:22px;">
+            <tr><td align="center" style="padding:24px 0;background:#F8FAFC;border-radius:14px;border:1px solid #E2E8F0;">
+              <div style="font-size:9px;font-weight:700;color:#94A3B8;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;">Doğrulama Kodu</div>
+              <div style="font-size:36px;font-weight:700;letter-spacing:10px;color:#0F172A;font-family:'SF Mono','Menlo','Monaco',monospace;">{{ .Token }}</div>
+              <div style="font-size:10px;color:#94A3B8;margin-top:10px;letter-spacing:0.3px;">Kod 1 saat geçerli — sadece bu cihazda kullan.</div>
+            </td></tr>
+          </table>
+          <p style="margin:22px 0 0 0;font-size:12px;line-height:1.55;color:#64748B;text-align:center;">Veya doğrudan tıkla:</p>
+          <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:10px auto 0;"><tr>
+            <td align="center" bgcolor="#0F172A" style="border-radius:9999px;">
+              <a href="{{ .ConfirmationURL }}" target="_blank" style="display:inline-block;padding:11px 22px;font-size:13px;font-weight:600;color:#FFFFFF;text-decoration:none;letter-spacing:0.2px;border-radius:9999px;">Hesabı doğrula</a>
+            </td>
+          </tr></table>
+          <p style="margin:26px 0 4px 0;font-size:11px;color:#94A3B8;line-height:1.55;text-align:center;">Sen istemediysen bu maili görmezden gelebilirsin — kimse hesabına erişemez.</p>
+        </td></tr>
+        <tr><td style="padding:18px 26px 22px;border-top:1px solid #E2E8F0;background:#FAFAFA;">
+          <div style="font-size:10px;font-weight:700;color:#0F172A;letter-spacing:0.5px;">NEXADENT <span style="color:#CBD5E1;">·</span> <span style="color:#64748B;font-weight:600;">Dijital Diş Laboratuvarı</span></div>
+          <div style="font-size:9px;color:#94A3B8;margin-top:3px;line-height:1.4;">Bu mail, hesap oluşturma işlemi sonucunda otomatik gönderildi.</div>
+        </td></tr>
+      </table>
+      <div style="margin-top:14px;text-align:center;font-size:9px;color:#94A3B8;letter-spacing:0.5px;">© Nexadent · Dijital Diş Laboratuvarı Yönetimi</div>
+    </td></tr>
+  </table>
+</center>
+</body>
+</html>

@@ -1,0 +1,87 @@
+{
+  "locale": "en",
+  "brand": "SIMAN",
+  "rtl": false,
+  "panels": [
+    {
+      "screen": "login",
+      "lead": "YOUR LAB",
+      "hi": "IN YOUR POCKET",
+      "tail": "",
+      "pos": "top",
+      "tilt": -9
+    },
+    {
+      "screen": "neworder",
+      "lead": "SEND AN ORDER",
+      "hi": "IN 60 SECONDS",
+      "tail": "",
+      "pos": "bottom",
+      "tilt": 9
+    },
+    {
+      "screen": "viewer",
+      "lead": "",
+      "hi": "3D SCANS",
+      "tail": "IN YOUR HAND",
+      "pos": "top",
+      "tilt": 0
+    },
+    {
+      "screen": "stages",
+      "lead": "TRACK EVERY STAGE",
+      "hi": "LIVE",
+      "tail": "",
+      "pos": "bottom",
+      "tilt": -9
+    },
+    {
+      "screen": "courier",
+      "lead": "FOLLOW YOUR COURIER",
+      "hi": "ON THE MAP",
+      "tail": "",
+      "pos": "top",
+      "tilt": 9
+    },
+    {
+      "screen": "kanban",
+      "lead": "EVERY JOB",
+      "hi": "ON ONE BOARD",
+      "tail": "",
+      "pos": "bottom",
+      "tilt": 0
+    },
+    {
+      "screen": "perf",
+      "lead": "",
+      "hi": "MEASURE PERFORMANCE",
+      "tail": "PAY BONUSES",
+      "pos": "top",
+      "tilt": -9
+    },
+    {
+      "screen": "finance",
+      "lead": "INVOICING AND PAYMENTS",
+      "hi": "AUTOMATIC",
+      "tail": "",
+      "pos": "bottom",
+      "tilt": 9
+    },
+    {
+      "screen": "chat",
+      "lead": "",
+      "hi": "EVERY CASE",
+      "tail": "HAS ITS OWN CHAT",
+      "pos": "top",
+      "tilt": 0
+    },
+    {
+      "screen": "girisdil",
+      "lead": "ONE LOGIN,",
+      "hi": "5 PANELS,",
+      "tail": "4 LANGUAGES",
+      "pos": "bottom",
+      "tilt": -9
+    }
+  ]
+}

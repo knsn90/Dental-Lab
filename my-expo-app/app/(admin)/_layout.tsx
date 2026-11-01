@@ -1,5 +1,10 @@
+import { lazyRoute } from '../../core/_lazyRoute';
+import { useAutoDocumentScroll } from '../../core/ui/mobile/documentScroll';
 import React, { useState, useEffect } from 'react';
-const NewOrderScreen: any = React.lazy(() => import('../../modules/orders/screens/NewOrderScreen').then(m => ({ default: (m as any).NewOrderScreen })));
+// lazyRoute (React.lazy DEĞİL): Suspense'li yükleme modal içinde askıda kalıp formu
+// BOŞ bırakabiliyordu; deploy sonrası eski chunk 404'ünde de kurtarma (tek seferlik
+// yenileme) yalnız lazyRoute'ta var (2026-10-20, Android Chrome boş form).
+const NewOrderScreen: any = lazyRoute(() => import('../../modules/orders/screens/NewOrderScreen'), 'NewOrderScreen');
 const MessagesPopup: any = React.lazy(() => import('../../modules/orders/components/MessagesPopup').then(m => ({ default: (m as any).MessagesPopup })));
 const ScanB6Mobile: any = React.lazy(() => import('../../modules/orders/screens/ScanB6Mobile').then(m => ({ default: (m as any).ScanB6Mobile })));
 const MoreMenuSheet: any = React.lazy(() => import('../../core/ui/mobile/MoreMenuSheet').then(m => ({ default: (m as any).MoreMenuSheet })));
@@ -16,13 +21,14 @@ import {
   CheckCircle2 as CheckCircle22, Users as Users2, Settings as Settings2,
   TrendingUp as TrendingUp2, FileText as FileText2,  ScanFace,
 } from '../../core/ui/icons';
-import { PhoneCall as PhoneCall2 } from '../../core/ui/icons';
+import { PhoneCall as PhoneCall2, CalendarClock as CalendarClock2 } from '../../core/ui/icons';
 import { useFeature, useFeatureFlagsStore } from '../../core/store/featureFlagsStore';
 
 import { TopActionBar } from '../../core/ui/mobile/TopActionBar';
 import { bootMark } from '../../core/debug/bootTrace';
 import { PanelTopHeader } from '../../core/ui/mobile/PanelTopHeader';
 import { PatternsShell, useIsDesktop } from '../../core/layout/PatternsShell';
+import { useKeepRouteOnShellSwitch } from '../../core/layout/useKeepRouteOnShellSwitch';
 import { PillTabBar, type PillTabItem } from '../../core/ui/mobile/PillTabBar';
 import { MOBILE_TOKENS as T, MOBILE_PANEL_THEMES } from '../../core/theme/mobileDesignTokens';
 import { usePendingApprovals } from '../../core/hooks/usePendingApprovals';
@@ -42,7 +48,7 @@ import { usePermissionStore } from '../../core/store/permissionStore';
 import { useThemeModeStore } from '../../core/store/themeModeStore';
 
 // Patterns admin teması — krem/mercan palette
-const ADMIN_DEFAULT_ACCENT = '#4771AB';
+const ADMIN_DEFAULT_ACCENT = '#004B87';
 
 // NOT: Desktop'ta "Yeni İş Emri" → route navigate eder (/(admin)/new-order),
 // sidebar kaybolmaz. Modal SADECE mobil için.
@@ -51,12 +57,21 @@ export default function AdminLayout() {
   const { t } = useTranslation();
   const router = useRouter();
   const pathname = usePathname();
+  // Detay sayfaları kendi başlığını çizer → üst çubuk + logolu başlık gizli. İSTİSNA: mobilde
+  // sipariş detayı (/order/<id>) logolu başlık + ikonlarla görünür (kullanıcı isteği 2026-10-27);
+  // masaüstünde ve diğer detaylarda (fatura, ekstre…) değişiklik yok.
+  const isDesktopForHeader = useIsDesktop();
   const hideTopActionBar =
-    /^\/(order|invoice|purchase-invoice|expense|statement|delivery)\//.test(pathname);
+    /^\/(order|invoice|purchase-invoice|expense|statement|delivery)\//.test(pathname)
+    && !(!isDesktopForHeader && /^\/order\/[^/]+\/?$/.test(pathname));
   const { profile, loading } = useAuthStore();
   const pendingCount      = usePendingApprovals();
   const stockAlert        = useStockAlert();
   const isDesktop         = useIsDesktop();
+  // Genişlik 1024px eşiğini geçince (Slot ↔ Tabs) sayfa korunur — Y5
+  const shellDesktop = useKeepRouteOnShellSwitch(isDesktop, '(admin)');
+  // Mobil tarayıcıda sayfa (belge) kayar → adres çubuğu küçülür (bkz. documentScroll.ts).
+  useAutoDocumentScroll();
   // pendingLeaveCount removed
   const { totalUnread: chatUnread } = useOrderChatInbox();
   // Global store — dashboard CTA card + FAB aynı modal'ı tetikler
@@ -120,6 +135,7 @@ export default function AdminLayout() {
   const featureFlags = useFeatureFlagsStore(s => s.flags);
   useEffect(() => { if (profile?.lab_id) void loadFlags(profile.lab_id); }, [profile?.lab_id, loadFlags]);
   const phoneAssistantOn = useFeature('phone_assistant');
+  const scansOn = useFeature('scan_appointments');
 
   if (!profile) {
     return <Slot />;  // profil yükleniyor (optimistic) → kabuk
@@ -128,53 +144,44 @@ export default function AdminLayout() {
     return <Redirect href="/" />;  // yanlış panel → doğru panele yönlendir
   }
 
-  // Sıra: Özet · Siparişler · Onaylar · Sağlık Kurumları · Ekip ·
-  //       Stok ve Depo · Finans · Destek Yönetim · Mesajlar · Ayarlar
+  // Sıra (kullanıcı, 2026-10-28): Özet · Siparişler · Tarama Randevuları · Üretim Panosu ·
+  //   Sağlık Kurumları · Kurye Takip · Finans · Stok ve Depo · (Ekip) · Onaylar ·
+  //   Telefon Talepleri · Mesajlar · Destek · Ayarlar
   const ADMIN_NAV = [
-    // ── Ana ekran ──────────────────────────────────────────────────────────
     { label: t('nav.items.summary'),              href: '/(admin)',                  iconName: 'home' },
-
-    // ── İş Yönetimi ────────────────────────────────────────────────────────
     { label: t('nav.items.orders'),        href: '/(admin)/orders',           iconName: 'list-check',     matchPrefix: true, sectionLabel: t('nav.sections.work'),
       requiresPermission: 'view_orders' },
-    { label: t('nav.items.approvals'),           href: '/(admin)/approvals',        iconName: 'check-circle',   matchPrefix: true,
-      badgeCount: pendingCount > 0 ? pendingCount : undefined,
-      requiresPermission: 'view_approvals' },
-
-    // ── Müşteriler ─────────────────────────────────────────────────────────
-    { label: t('nav.items.clinics'),  href: '/(admin)/clinics',          iconName: 'building-2',     matchPrefix: true, sectionLabel: t('nav.sections.customers') },
-
-    // ── Ekip ───────────────────────────────────────────────────────────────
-    { label: t('nav.items.team'),              href: '/(admin)/ik-depo',          iconName: 'users',          matchPrefix: false, sectionLabel: t('nav.sections.team'),
-      requiresPermission: 'view_team' },
-
-    // ── Depo / Finans ──────────────────────────────────────────────────────
-    { label: t('nav.items.stock'),      href: '/(admin)/stock',            iconName: 'package',        matchPrefix: true, sectionLabel: t('nav.sections.warehouse'),
-      badgeCount: stockAlert,
-      requiresPermission: 'view_stock' },
+    { label: t('nav.items.scans'),         href: '/(admin)/scans',            iconName: 'calendar',       matchPrefix: false,
+      requiresFeature: 'scan_appointments' },
     { label: t('nav.items.production'),     href: '/(admin)/production',       iconName: 'activity',       matchPrefix: true, sectionLabel: t('nav.sections.production') },
-
-    // ── Teslimat ───────────────────────────────────────────────────────────
+    { label: t('nav.items.clinics'),  href: '/(admin)/clinics',          iconName: 'building-2',     matchPrefix: true, sectionLabel: t('nav.sections.customers') },
     { label: t('nav.items.courier'),       href: '/(admin)/courier-tracking', iconName: 'scooter',        matchPrefix: true, sectionLabel: t('nav.sections.delivery') },
     { label: t('nav.items.finance'),            href: '/(admin)/finance',          iconName: 'landmark',       matchPrefix: false, sectionLabel: t('nav.sections.finance'),
       requiresPermission: 'view_financials' },
-
-    // ── Destek / İletişim / Hesap ─────────────────────────────────────────
-    { label: t('nav.items.support'),    href: '/(admin)/support',          iconName: 'help-circle',    matchPrefix: true, sectionLabel: t('nav.sections.help') },
-    { label: t('nav.items.waSupport'),  href: '/(admin)/wa-support',       iconName: 'whatsapp', matchPrefix: false,
-      requiresPermission: 'manage_settings' },
+    { label: t('nav.items.stock'),      href: '/(admin)/stock',            iconName: 'package',        matchPrefix: true, sectionLabel: t('nav.sections.warehouse'),
+      badgeCount: stockAlert,
+      requiresPermission: 'view_stock' },
+    // Ekip listede yoktu — kaldırılmadı, Stok ve Depo'nun yanında
+    { label: t('nav.items.team'),              href: '/(admin)/ik-depo',          iconName: 'users',          matchPrefix: false, sectionLabel: t('nav.sections.team'),
+      requiresPermission: 'view_team' },
+    { label: t('nav.items.approvals'),           href: '/(admin)/approvals',        iconName: 'check-circle',   matchPrefix: true,
+      badgeCount: pendingCount > 0 ? pendingCount : undefined,
+      requiresPermission: 'view_approvals' },
     { label: t('nav.items.phoneLeads'), href: '/(admin)/phone-leads',      iconName: 'phone',    matchPrefix: false,
       requiresFeature: 'phone_assistant' },
-    { label: t('nav.items.messages'),          href: '/(admin)/messages',         iconName: 'messages-square', matchPrefix: false,
-      onPress: () => setMessagesOpen(true),
-      badgeCount: chatUnread > 0 ? chatUnread : undefined },
+    // Mesajlar kenar çubuğunda yok — profil kartında (kullanıcı, 2026-10-28)
+    // WhatsApp destek hattı ayarı Destek ekranının içinde (hero düğmesi) — ayrı menü maddesi yok
+    { label: t('nav.items.support'),    href: '/(admin)/support',          iconName: 'help-circle',    matchPrefix: true, sectionLabel: t('nav.sections.help') },
     { label: t('nav.items.settings'),           href: '/(admin)/settings',         iconName: 'settings',       matchPrefix: true, sectionLabel: t('nav.sections.system'),
       requiresPermission: 'view_settings' },
   ];
   // Modülü kapalı öğeler komut paleti gibi kendi listeleyen yerlerde de görünmesin
   const ADMIN_NAV_VISIBLE = ADMIN_NAV.filter((i: any) => !i.requiresFeature || featureFlags[i.requiresFeature] === true);
 
-  if (isDesktop) {
+  // Kabuk değişiyor: eski navigator bu karede sökülür, yenisi bir sonrakinde kurulur (Y5)
+  if (shellDesktop === null) return <View style={{ flex: 1 }} />;
+
+  if (shellDesktop) {
     return (
       <>
         {/* PatternsShell <Slot/>'u içinde barındırır ve LAZY DEĞİL → kendi Suspense'i
@@ -202,7 +209,7 @@ export default function AdminLayout() {
           />
         </React.Suspense>
         <React.Suspense fallback={null}>
-          <CommandPalette
+          <CommandPalette panel="admin"
             navItems={ADMIN_NAV_VISIBLE}
             onNavigate={(href: string) => router.push(href as any)}
             accentColor={accentColor}
@@ -240,6 +247,7 @@ export default function AdminLayout() {
     { key: 'finance',  label: t('nav.items.finance'),           sub: t('admin.more.finance.sub'),    icon: Landmark2, onPress: () => router.push('/(admin)/finance' as any) },
     { key: 'team',     label: t('nav.items.team'),             sub: t('admin.more.team.sub'),   icon: Users2,    onPress: () => router.push('/(admin)/ik-depo' as any) },
     { key: 'stock',    label: t('nav.items.stock'),      sub: t('admin.more.stock.sub'),               icon: Package2,  onPress: () => router.push('/(admin)/stock' as any) },
+    ...(scansOn ? [{ key: 'scans', label: t('nav.items.scans'), sub: t('nav.items.scansSub'), icon: CalendarClock2 as any, onPress: () => router.push('/(admin)/scans' as any) }] : []),
     ...(phoneAssistantOn ? [{ key: 'phone-leads', label: t('nav.items.phoneLeads'), sub: t('nav.items.phoneLeadsSub'), icon: PhoneCall2 as any, onPress: () => router.push('/(admin)/phone-leads' as any) }] : []),
     { key: 'settings', label: t('nav.items.settings'),          sub: t('admin.more.settings.sub'), icon: Settings2, onPress: () => router.push('/(admin)/settings' as any) },
   ];
@@ -252,6 +260,9 @@ export default function AdminLayout() {
       <View style={{ flex: 1, backgroundColor: isDark ? T.dark : MOBILE_PANEL_THEMES.exec.bgPage }}>
         {/* MobileHeader kaldırıldı — yeni AdminMobileDashboard kendi başlığını taşıyor */}
         <Tabs
+          // Geri = geldiğin ekran. Varsayılan "firstRoute" her geri basışta Özet'e atıyordu
+          // (detay ekranları gizli sekme: Sağlık kurumları → fatura → geri = Özet).
+          backBehavior="history"
           screenOptions={{
             headerShown: false,
             sceneStyle: { backgroundColor: 'transparent' },
@@ -261,6 +272,7 @@ export default function AdminLayout() {
         <Tabs.Screen name="index" options={{ title: t('nav.items.summary') }} />
         <Tabs.Screen name="wa-support" options={{ href: null }} />
         <Tabs.Screen name="phone-leads" options={{ href: null }} />
+        <Tabs.Screen name="scans" options={{ href: null }} />
         <Tabs.Screen name="new-order" options={{ title: t('admin.tabs.newOrder') }} />
         <Tabs.Screen name="users" options={{ title: t('admin.tabs.users') }} />
         <Tabs.Screen name="clinics" options={{ title: t('nav.items.clinics') }} />
@@ -372,12 +384,12 @@ export default function AdminLayout() {
       )}
 
       {/* Sağ üst kalıcı aksiyon butonları (mobile only) — QR · Bell · Profile */}
-      {!hideTopActionBar && <TopActionBar routePrefix="/(admin)" accentColor={accentColor} />}
+      {!hideTopActionBar && <TopActionBar routePrefix="/(admin)" showSearch showMessages={false} accentColor={accentColor} />}
       {!hideTopActionBar && <PanelTopHeader />}
 
       {/* Command Palette — mobile search FAB üzerinden de erişilebilir */}
       <React.Suspense fallback={null}>
-        <CommandPalette
+        <CommandPalette panel="admin"
           navItems={ADMIN_NAV_VISIBLE}
           onNavigate={(href: string) => router.push(href as any)}
           accentColor={accentColor}

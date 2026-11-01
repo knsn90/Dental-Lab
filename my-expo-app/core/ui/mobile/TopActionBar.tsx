@@ -46,9 +46,14 @@ interface Props {
    * doctor layout passes this; other panels leave it undefined → no-op.
    */
   messagesRef?: (node: any) => void;
+  /** Genel arama (2. dalga 1): en solda arama düğmesi → ortadaki arama penceresi. Paleti mount
+   *  edilmiş ve çubuğunda başka arama girişi olmayan paneller verir (istasyonda "Ara" sekmesi var). */
+  showSearch?: boolean;
+  /** Mesajlar düğmesi (varsayılan açık). Alt çubuğunda zaten Mesaj olan panel (admin) kapatır. */
+  showMessages?: boolean;
 }
 
-export function TopActionBar({ routePrefix, notificationsRoute, accentColor, messagesRef }: Props) {
+export function TopActionBar({ routePrefix, notificationsRoute, accentColor, messagesRef, showSearch, showMessages = true }: Props) {
   const { width } = useWindowDimensions();
   const isNarrow = width < 768;
   const insets = useSafeAreaInsets();
@@ -101,17 +106,24 @@ export function TopActionBar({ routePrefix, notificationsRoute, accentColor, mes
       <View
         pointerEvents="box-none"
         style={{
-          position: 'absolute',
+          // Web: fixed — tarayıcı modunda sayfa kayınca üst butonlar ekran dışına
+          // çıkmasın (PillTabBar ile aynı gerekçe).
+          position: (Platform.OS === 'web' ? 'fixed' : 'absolute') as any,
           top: Math.max(insets.top, 8) + 6,
           // `end:` inline stili bu projede güvenilir değil → yönü açıkça seç
           ...(rtl ? { left: 12 } : { right: 12 }),
           flexDirection: 'row',
           gap: 6,
           zIndex: 1200,
+          // iOS WebKit: backdrop-filter'lı üst şerit (z 8) kendi GPU katmanında;
+          // katmanı olmayan kardeşleri z-index'e bakmadan ÖRTÜYOR → butonlar
+          // PWA'da beyaz tül altında bulanık görünüyordu. Kendi katmanı → üstte.
+          ...(Platform.OS === 'web' ? ({ transform: [{ translateZ: 0 }], willChange: 'transform' } as any) : {}),
         }}
       >
+        {showSearch ? <TopBtn icon={Search} onPress={onSearch} label={autoT('Ara')} /> : null}
         <TopBtn icon={QrCode} onPress={onScan} />
-        <TopBtn icon={MessageCircle} onPress={onMessages} badgeCount={chatUnread} btnRef={messagesRef} />
+        {showMessages ? <TopBtn icon={MessageCircle} onPress={onMessages} badgeCount={chatUnread} btnRef={messagesRef} /> : null}
         <TopBtn icon={Bell} onPress={onNotifications} badgeCount={unreadCount} />
         <TopBtn icon={UserIcon} onPress={onProfile} />
       </View>
@@ -521,7 +533,7 @@ function formatNotifTime(iso: string): string {
   }
 }
 
-function TopBtn({ icon: Icon, onPress, badgeCount, btnRef }: { icon: any; onPress?: () => void; badgeCount?: number; btnRef?: (node: any) => void }) {
+function TopBtn({ icon: Icon, onPress, badgeCount, btnRef, label }: { icon: any; onPress?: () => void; badgeCount?: number; btnRef?: (node: any) => void; label?: string }) {
   const rtl = isRTL();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const surface  = isDark ? '#1B1916'                : '#FFFFFF';
@@ -564,7 +576,7 @@ function TopBtn({ icon: Icon, onPress, badgeCount, btnRef }: { icon: any; onPres
   // matching tintColor (same pattern as PillTabBar's search button).
   if (LIQUID_GLASS) {
     return (
-      <Pressable ref={btnRef} onPress={onPress} hitSlop={8}>
+      <Pressable ref={btnRef} onPress={onPress} hitSlop={8} accessibilityRole="button" accessibilityLabel={label}>
         {({ pressed }: any) => (
           // Dış sarmal — overflow YOK, badge buradan taşabilir (kırpılmaz)
           <View style={{ width: 38, height: 38, position: 'relative', opacity: pressed ? 0.7 : 1 }}>
@@ -600,7 +612,7 @@ function TopBtn({ icon: Icon, onPress, badgeCount, btnRef }: { icon: any; onPres
 
   // Fallback — solid surface (web / older iOS / Android)
   return (
-    <Pressable ref={btnRef} onPress={onPress} hitSlop={8}>
+    <Pressable ref={btnRef} onPress={onPress} hitSlop={8} accessibilityRole="button" accessibilityLabel={label}>
       {({ pressed }: any) => (
         <View
           style={{

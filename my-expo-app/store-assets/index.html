@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Siman — App Store Görselleri</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800;900&family=Inter:wght@400;500;600;700&family=Vazirmatn:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F2F3F5;
+    --navy-deep:#28316f;
+    --navy-light:#548dca;
+    --navy-flat:#004B87;
+    --wave-deep:#1c2450;
+    --ink:#10131f;
+    --panel-w:1290px;
+    --panel-h:2796px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#5b5f66;font-family:Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+
+  /* ---------- strip ---------- */
+  #strip{display:flex;gap:0;width:max-content;transform-origin:0 0}
+  body.preview #strip{transform:scale(var(--s,0.147))}
+  body.preview{padding:24px}
+  body.export{background:#fff;padding:0}
+
+  .panel{
+    position:relative;width:var(--panel-w);height:var(--panel-h);
+    overflow:hidden;background:var(--paper);flex:0 0 auto;
+  }
+  body.preview .panel{outline:1px solid rgba(255,255,255,.25);outline-offset:-1px}
+
+  /* ---------- continuous wave ---------- */
+  .wave{position:absolute;top:0;left:0;height:var(--panel-h);pointer-events:none}
+
+  /* ---------- headline ---------- */
+  .copy{position:absolute;left:96px;right:96px;z-index:3}
+  .copy.top{top:196px}
+  .copy.bottom{bottom:210px}
+  .copy h2{
+    font-family:Montserrat,sans-serif;font-weight:900;font-size:128px;line-height:1.08;
+    letter-spacing:-3px;color:var(--ink);text-transform:uppercase;
+  }
+  .copy.bottom h2{color:#fff}
+  .copy h2 .hi{color:var(--navy-light)}
+  /* Farsça: Montserrat'ta Fars glifleri yok; Vazirmatn + RTL + normal harf aralığı */
+  body[data-rtl="1"] .copy{direction:rtl}
+  body[data-rtl="1"] .copy h2{font-family:Vazirmatn,sans-serif;font-weight:900;
+    letter-spacing:0;line-height:1.45;font-size:112px;text-transform:none}
+  .copy.bottom h2 .hi{color:#9fd0ff}
+
+  /* ---------- phone ---------- */
+  .stage{position:absolute;left:0;right:0;display:flex;justify-content:center;z-index:2}
+  .stage.lower{top:868px}
+  .stage.upper{top:252px}
+  .phone{
+    width:800px;height:1734px;border-radius:92px;flex:0 0 auto;
+    background:linear-gradient(145deg,#6f6a7d,#3c3947 40%,#5d5869);
+    padding:14px;transform:rotate(var(--rot,0deg));
+    box-shadow:0 70px 120px -30px rgba(16,19,31,.55), 0 10px 30px rgba(16,19,31,.25);
+  }
+  .screen{
+    width:100%;height:100%;border-radius:80px;background:#fff;overflow:hidden;
+    position:relative;display:flex;flex-direction:column;
+  }
+  .island{position:absolute;top:26px;left:50%;transform:translateX(-50%);
+    width:230px;height:62px;border-radius:40px;background:#16151b;z-index:9}
+  .sbar{height:112px;flex:0 0 auto;display:flex;align-items:flex-end;justify-content:space-between;
+    padding:0 56px 14px;font-size:27px;font-weight:600;color:#10131f}
+  .sbar .dots{display:flex;gap:7px;align-items:center}
+  .sbar i{display:block;width:8px;height:8px;border-radius:50%;background:#10131f;font-style:normal}
+  .sbar b{display:block;width:44px;height:20px;border-radius:5px;border:2.5px solid #10131f;position:relative}
+  .sbar b::after{content:"";position:absolute;inset:3px;background:#10131f;border-radius:2px}
+
+  .body{flex:1;padding:14px 40px 40px;display:flex;flex-direction:column;gap:22px;overflow:hidden}
+  /* Telefon ekranı bir liste; çocuklar sıkışıp üst üste binmemeli */
+  .body>*{flex-shrink:0}
+  .body>.sp{flex:1 1 auto;min-height:16px}
+
+  /* generic screen atoms */
+  .h1{font-size:46px;font-weight:700;color:#10131f;letter-spacing:-1px}
+  .h2s{font-size:31px;font-weight:600;color:#10131f}
+  .mut{font-size:26px;color:#8b93a3}
+  .card{background:#fff;border:2px solid #eceef3;border-radius:34px;padding:30px;box-shadow:0 8px 26px rgba(16,19,31,.05)}
+  .row{display:flex;align-items:center;gap:22px}
+  .pill{border-radius:999px;padding:13px 28px;font-size:25px;font-weight:600}
+  .cta{background:var(--navy-flat);color:#fff;border-radius:28px;padding:30px;text-align:center;
+    font-size:33px;font-weight:700}
+  .bar{height:18px;border-radius:9px;background:#eceef3}
+  .av{width:74px;height:74px;border-radius:50%;background:linear-gradient(140deg,var(--navy-light),var(--navy-deep));flex:0 0 auto}
+  .sq{width:74px;height:74px;border-radius:22px;background:#eef2f8;flex:0 0 auto}
+  .tabbar{height:118px;border-top:2px solid #eceef3;display:flex;align-items:center;justify-content:space-around;padding:0 30px}
+  .tabbar span{width:56px;height:56px;border-radius:18px;background:#eceef3}
+  .tabbar span.on{background:var(--navy-flat)}
+
+  /* Gerçek uygulama ekran görüntüsü — durum çubuğunun altına oturur.
+     Yüklenemezse kendini siler, altındaki CSS yer tutucu görünür. */
+  .shot{position:absolute;left:0;top:112px;width:100%;height:calc(100% - 112px);
+    object-fit:cover;object-position:top center;display:block}
+</style>
+</head>
+<body class="preview">
+<div id="strip"></div>
+
+<script>
+const PANEL_W = 1290, PANEL_H = 2796, COUNT = 10;
+const STRIP_W = PANEL_W * COUNT;
+
+/* ---- continuous wave across the whole strip ---- */
+function wavePath(baseY, a1, p1, a2, p2, phase){
+  const step = 18;
+  let d = "M 0 " + (baseY + a1*Math.sin(phase) + a2*Math.sin(phase*1.7));
+  for (let x = step; x <= STRIP_W; x += step){
+    const y = baseY
+      + a1*Math.sin((x/p1)*Math.PI*2 + phase)
+      + a2*Math.sin((x/p2)*Math.PI*2 + phase*1.7);
+    d += " L " + x + " " + y.toFixed(1);
+  }
+  return d + " L " + STRIP_W + " " + PANEL_H + " L 0 " + PANEL_H + " Z";
+}
+const MAIN_WAVE = wavePath(1690, 118, 4300, 46, 1750, 0.6);
+const DEEP_WAVE = wavePath(2438,  74, 5200, 30, 2100, 2.3);
+
+/* ---- placeholder screens ---- */
+const S = {
+  login: `<div class="body" style="justify-content:center;align-items:center;gap:40px;padding:0 70px">
+      <div style="width:150px;height:150px;border-radius:44px;background:linear-gradient(145deg,#548dca,#28316f)"></div>
+      <div class="h1" style="font-size:60px;letter-spacing:-2px">SİMAN</div>
+      <div class="mut" style="text-align:center;line-height:1.45">Dijital diş laboratuvarı<br>yönetim sistemi</div>
+      <div style="width:100%;display:flex;flex-direction:column;gap:20px;margin-top:20px">
+        <div class="card" style="padding:34px"><div class="mut" style="font-size:24px">E-posta</div></div>
+        <div class="card" style="padding:34px"><div class="mut" style="font-size:24px">Şifre</div></div>
+        <div class="cta">Giriş Yap</div>
+      </div></div>`,
+
+  neworder: `<div class="body">
+      <div class="h1">Yeni Sipariş</div>
+      <div class="row" style="gap:14px">
+        ${[1,2,3,4].map(i=>`<div style="flex:1;height:10px;border-radius:5px;background:${i<3?'#004B87':'#eceef3'}"></div>`).join('')}
+      </div>
+      <div class="card"><div class="row"><div class="sq"></div>
+        <div><div class="h2s">Dr. Mehmet Yılmaz</div><div class="mut">Özel Diş Kliniği</div></div></div></div>
+      <div class="h2s">Diş seçimi</div>
+      <div class="card" style="padding:26px"><div style="display:flex;flex-wrap:wrap;gap:11px">
+        ${Array.from({length:16},(_,i)=>`<div style="width:56px;height:56px;border-radius:14px;background:${[3,4,5].includes(i)?'#004B87':'#eef2f8'}"></div>`).join('')}
+      </div></div>
+      <div class="card"><div class="row" style="justify-content:space-between">
+        <div class="h2s">Zirkonya Kron</div><div class="pill" style="background:#eef2f8;color:#004B87">3 diş</div></div></div>
+      <div class="h2s">Renk</div>
+      <div style="display:flex;gap:14px">
+        ${['A1','A2','A3','B1','B2'].map((t,i)=>`<div class="pill" style="flex:1;text-align:center;
+          background:${i===1?'#004B87':'#eef2f8'};color:${i===1?'#fff':'#5b6575'}">${t}</div>`).join('')}
+      </div>
+      <div class="card"><div class="row" style="justify-content:space-between">
+        <div><div class="mut" style="font-size:23px">Teslim tarihi</div>
+          <div class="h2s">26 Eylül 2026</div></div>
+        <div class="sq" style="width:64px;height:64px"></div></div></div>
+      <div class="card" style="padding:26px"><div class="mut" style="font-size:24px">Not ekle</div>
+        <div class="bar" style="width:70%;margin-top:18px"></div>
+        <div class="bar" style="width:45%;margin-top:12px"></div></div>
+      <div class="sp"></div><div class="cta">Siparişi Gönder</div></div>`,
+
+  viewer: `<div class="body" style="padding:0;gap:0;background:#0d1020">
+      <div style="flex:1;position:relative;display:flex;align-items:center;justify-content:center;
+        background:radial-gradient(circle at 50% 42%,#1d2748,#0d1020 70%)">
+        <div style="width:330px;height:420px;border-radius:52% 52% 44% 44%/58% 58% 42% 42%;
+          background:linear-gradient(160deg,#dfe7f5,#8fa6c8 55%,#54648a);
+          box-shadow:0 40px 90px rgba(0,0,0,.55), inset 0 -30px 60px rgba(0,0,0,.3)"></div>
+        <div style="position:absolute;top:46px;left:40px;right:40px;display:flex;justify-content:space-between">
+          <div class="pill" style="background:rgba(255,255,255,.13);color:#fff">Üst Çene</div>
+          <div class="pill" style="background:rgba(255,255,255,.13);color:#fff">STL</div></div>
+        <div style="position:absolute;bottom:40px;left:40px;display:flex;gap:16px">
+          ${['#fff','#548dca','#f0b429'].map(c=>`<div style="width:74px;height:74px;border-radius:50%;background:rgba(255,255,255,.12);border:3px solid ${c}"></div>`).join('')}
+        </div></div>
+      <div style="background:#fff;padding:36px 40px 40px;display:flex;flex-direction:column;gap:20px">
+        <div class="row" style="justify-content:space-between"><div class="h2s">Tarama Notları</div>
+          <div class="mut">3 not</div></div>
+        <div class="card" style="padding:24px"><div class="row"><div class="av"></div>
+          <div class="mut" style="color:#10131f">Marjin çizgisi netleştirilmeli</div></div></div></div></div>`,
+
+  stages: `<div class="body">
+      <div class="row" style="justify-content:space-between"><div class="h1">#2451</div>
+        <div class="pill" style="background:#e8f5ee;color:#1b7a4b">Üretimde</div></div>
+      <div class="mut">Zirkonya Kron · 3 diş · Dr. Yılmaz</div>
+      <div style="display:flex;flex-direction:column;gap:0;margin-top:10px">
+        ${[['Model Hazırlık','done'],['Tarama','done'],['CAD Tasarım','done'],['Frezeleme','now'],['Sır & Boyama','next'],['Kalite Kontrol','next']]
+          .map(([t,st],i,a)=>`<div style="display:flex;gap:26px">
+            <div style="display:flex;flex-direction:column;align-items:center">
+              <div style="width:34px;height:34px;border-radius:50%;background:${st==='next'?'#eceef3':'#004B87'};
+                ${st==='now'?'box-shadow:0 0 0 10px rgba(0,75,135,.14)':''}"></div>
+              ${i<a.length-1?`<div style="width:5px;flex:1;background:${st==='next'?'#eceef3':'#004B87'}"></div>`:''}
+            </div>
+            <div style="padding-bottom:40px"><div class="h2s" style="color:${st==='next'?'#8b93a3':'#10131f'}">${t}</div>
+              <div class="mut" style="font-size:23px">${st==='next'?'Bekliyor':st==='now'?'Şu an · Ahmet K.':'Tamamlandı'}</div></div>
+          </div>`).join('')}
+      </div>
+      <div class="card" style="padding:26px"><div class="row" style="justify-content:space-between">
+        <div class="mut" style="font-size:24px">Tamamlanan</div>
+        <div class="h2s">3 / 6 aşama</div></div>
+        <div class="bar" style="margin-top:18px"><div style="width:50%;height:18px;border-radius:9px;background:#004B87"></div></div></div>
+      <div class="sp"></div>
+      <div class="card"><div class="row"><div class="av"></div><div>
+        <div class="h2s">Teslim: 26 Eylül</div><div class="mut">3 gün kaldı</div></div></div></div></div>`,
+
+  courier: `<div class="body" style="padding:0;gap:0">
+      <div style="flex:1;position:relative;background:#e9eef4">
+        ${[[0,180],[0,470],[0,760],[0,1050]].map(([_,y])=>`<div style="position:absolute;left:0;right:0;top:${y}px;height:3px;background:#dbe3ec"></div>`).join('')}
+        ${[160,400,600].map(x=>`<div style="position:absolute;top:0;bottom:0;left:${x}px;width:3px;background:#dbe3ec"></div>`).join('')}
+        <svg style="position:absolute;inset:0" viewBox="0 0 764 1100"><path d="M120 950 C 120 700, 420 720, 430 470 C 438 300, 600 280, 640 150"
+          fill="none" stroke="#004B87" stroke-width="13" stroke-linecap="round"/></svg>
+        <div style="position:absolute;left:96px;top:926px;width:48px;height:48px;border-radius:50%;background:#10131f;border:8px solid #fff"></div>
+        <div style="position:absolute;left:614px;top:126px;width:48px;height:48px;border-radius:50%;background:#004B87;border:8px solid #fff"></div>
+      </div>
+      <div style="background:#fff;border-radius:44px 44px 0 0;margin-top:-44px;position:relative;
+        padding:40px;display:flex;flex-direction:column;gap:24px">
+        <div class="row" style="justify-content:space-between"><div class="mut">Tahmini varış</div>
+          <div class="h2s">15 dakika</div></div>
+        <div class="card"><div class="row" style="justify-content:space-between">
+          <div class="row"><div class="av"></div><div><div class="h2s">Derick P.</div>
+            <div class="mut">4.9 puan · Kurye</div></div></div>
+          <div style="display:flex;gap:16px"><div class="sq" style="width:68px;height:68px;border-radius:50%"></div>
+            <div class="sq" style="width:68px;height:68px;border-radius:50%"></div></div></div></div>
+        <div class="cta">Canlı Takip</div></div></div>`,
+
+  kanban: `<div class="body">
+      <div class="row" style="justify-content:space-between"><div class="h1">Üretim Panosu</div>
+        <div class="sq" style="width:62px;height:62px"></div></div>
+      <div class="row" style="gap:14px">
+        ${['Tümü','Acil','Gecikmiş'].map((t,i)=>`<div class="pill" style="background:${i===0?'#004B87':'#eef2f8'};color:${i===0?'#fff':'#5b6575'}">${t}</div>`).join('')}
+      </div>
+      <div style="display:flex;gap:18px;flex:1;overflow:hidden">
+        ${[['Bekleyen',3,'#8b93a3'],['Üretimde',5,'#004B87'],['Kontrol',2,'#1b7a4b']].map(([t,n,c])=>`
+          <div style="flex:1;display:flex;flex-direction:column;gap:14px">
+            <div class="row" style="gap:10px"><div style="width:12px;height:12px;border-radius:50%;background:${c}"></div>
+              <div style="font-size:24px;font-weight:700;color:#10131f">${t}</div>
+              <div class="mut" style="font-size:22px">${n}</div></div>
+            ${Array.from({length:n>3?3:n},(_,i)=>`<div class="card" style="padding:20px;border-radius:24px">
+              <div style="font-size:22px;font-weight:700;color:#10131f;margin-bottom:12px">#24${51+i}</div>
+              <div class="bar" style="width:80%;height:12px;margin-bottom:9px"></div>
+              <div class="bar" style="width:55%;height:12px"></div>
+              <div class="row" style="margin-top:16px;gap:10px"><div class="av" style="width:42px;height:42px"></div>
+                <div class="mut" style="font-size:20px">2 gün</div></div></div>`).join('')}
+          </div>`).join('')}
+      </div></div>`,
+
+  perf: `<div class="body">
+      <div class="h1">Teknisyen Performansı</div><div class="mut">Eylül 2026</div>
+      <div class="card" style="background:linear-gradient(145deg,#28316f,#004B87);border:none;padding:36px">
+        <div style="color:#9fd0ff;font-size:24px;margin-bottom:10px">Toplam tamamlanan</div>
+        <div style="color:#fff;font-size:72px;font-weight:700;letter-spacing:-2px">248 iş</div>
+        <div style="color:#9fd0ff;font-size:24px;margin-top:8px">%18 artış · geçen aya göre</div></div>
+      <div class="card">
+        <div style="display:flex;align-items:flex-end;gap:16px;height:250px">
+          ${[45,68,52,84,71,96,62].map(h=>`<div style="flex:1;height:${h}%;border-radius:12px 12px 4px 4px;
+            background:${h>85?'#004B87':'#cfe0f2'}"></div>`).join('')}
+        </div>
+        <div class="row" style="justify-content:space-between;margin-top:20px">
+          ${['Pt','Sa','Ça','Pe','Cu','Ct','Pa'].map(d=>`<div class="mut" style="font-size:21px">${d}</div>`).join('')}
+        </div></div>
+      ${[['Ahmet Kaya',92],['Elif Demir',85],['Murat Şen',78]].map(([n,v])=>`
+        <div class="card" style="padding:26px"><div class="row" style="justify-content:space-between">
+          <div class="row"><div class="av" style="width:60px;height:60px"></div><div class="h2s">${n}</div></div>
+          <div style="font-size:30px;font-weight:700;color:#004B87">${v}%</div></div></div>`).join('')}
+      </div>`,
+
+  finance: `<div class="body">
+      <div class="h1">Finans</div>
+      <div class="card" style="background:linear-gradient(145deg,#28316f,#004B87);border:none;padding:36px">
+        <div style="color:#9fd0ff;font-size:24px">Bu ay tahsilat</div>
+        <div style="color:#fff;font-size:68px;font-weight:700;letter-spacing:-2px">₺284.500</div>
+        <div class="row" style="margin-top:22px;gap:28px">
+          <div><div style="color:#9fd0ff;font-size:21px">Bekleyen</div>
+            <div style="color:#fff;font-size:30px;font-weight:600">₺46.200</div></div>
+          <div><div style="color:#9fd0ff;font-size:21px">Gecikmiş</div>
+            <div style="color:#ffb4b4;font-size:30px;font-weight:600">₺12.800</div></div></div></div>
+      <div class="row" style="justify-content:space-between"><div class="h2s">Son faturalar</div>
+        <div class="mut">Tümü</div></div>
+      ${[['#F-1042','Özel Diş Kliniği','₺18.400','Ödendi','#1b7a4b','#e8f5ee'],
+         ['#F-1041','Dr. Yılmaz','₺9.750','Taslak','#8b6b00','#fdf3dd'],
+         ['#F-1040','Nexadent','₺31.200','Ödendi','#1b7a4b','#e8f5ee'],
+         ['#F-1039','Dent Plus','₺7.100','Gecikmiş','#b3261e','#fde8e6']]
+        .map(([no,cl,amt,st,c,bg])=>`<div class="card" style="padding:26px">
+          <div class="row" style="justify-content:space-between">
+            <div><div class="h2s">${cl}</div><div class="mut" style="font-size:22px">${no}</div></div>
+            <div style="text-align:right"><div style="font-size:30px;font-weight:700;color:#10131f">${amt}</div>
+              <div class="pill" style="background:${bg};color:${c};font-size:20px;padding:7px 18px;display:inline-block;margin-top:6px">${st}</div></div>
+          </div></div>`).join('')}
+      </div>`,
+
+  whatsapp: `<div class="body" style="padding:0;gap:0;background:#ece5dd">
+      <div style="background:#075e54;padding:26px 40px 30px;display:flex;align-items:center;gap:22px">
+        <div style="width:22px;height:22px;border-left:5px solid #fff;border-bottom:5px solid #fff;transform:rotate(45deg)"></div><div class="av"></div>
+        <div><div style="color:#fff;font-size:31px;font-weight:600">Siman Lab</div>
+          <div style="color:#b7d8d3;font-size:22px">çevrimiçi</div></div></div>
+      <div style="flex:1;padding:32px 30px;display:flex;flex-direction:column;gap:20px">
+        <div style="align-self:flex-end;max-width:76%;background:#dcf8c6;border-radius:26px 26px 6px 26px;padding:24px 28px">
+          <div style="font-size:26px;color:#10131f;line-height:1.4">Merhaba, 3 birim zirkonya kron siparişi vermek istiyorum</div></div>
+        <div style="align-self:flex-start;max-width:80%;background:#fff;border-radius:26px 26px 26px 6px;padding:24px 28px">
+          <div style="font-size:26px;color:#10131f;line-height:1.4">Tabii! Hasta adı ve diş numaralarını alabilir miyim?</div></div>
+        <div style="align-self:flex-end;max-width:70%;background:#dcf8c6;border-radius:26px 26px 6px 26px;padding:20px">
+          <div style="height:200px;border-radius:18px;background:linear-gradient(140deg,#cfd9e6,#8fa6c8)"></div>
+          <div style="font-size:24px;color:#10131f;margin-top:14px">Ağız içi fotoğraf</div></div>
+        <div style="align-self:flex-start;max-width:84%;background:#fff;border-radius:26px 26px 26px 6px;padding:24px 28px">
+          <div style="font-size:26px;color:#10131f;line-height:1.4;margin-bottom:16px">Sipariş oluşturuldu</div>
+          <div style="background:#eef2f8;border-radius:18px;padding:20px">
+            <div style="font-size:25px;font-weight:700;color:#004B87">#2451 · Zirkonya Kron</div>
+            <div style="font-size:22px;color:#8b93a3;margin-top:6px">Teslim: 26 Eylül</div></div></div>
+      </div>
+      <div style="background:#f0f0f0;padding:24px 30px;display:flex;gap:16px;align-items:center">
+        <div style="flex:1;background:#fff;border-radius:999px;padding:22px 30px;font-size:25px;color:#8b93a3">Mesaj yaz</div>
+        <div style="width:72px;height:72px;border-radius:50%;background:#075e54"></div></div></div>`,
+
+  multilab: `<div class="body">
+      <div class="h1">Laboratuvar Seç</div>
+      <div class="mut">Tek hesap, birden fazla laboratuvar</div>
+      ${[['Nexadent Dental Lab','İstanbul','#004B87',true],
+         ['Siman Prodental','Ankara','#548dca',false],
+         ['Ege Dental Studio','İzmir','#28316f',false]]
+        .map(([n,c,col,on])=>`<div class="card" style="padding:30px;${on?'border-color:#004B87;border-width:3px':''}">
+          <div class="row" style="justify-content:space-between">
+            <div class="row"><div style="width:76px;height:76px;border-radius:24px;background:${col}"></div>
+              <div><div class="h2s">${n}</div><div class="mut" style="font-size:23px">${c}</div></div></div>
+            ${on?'<div style="width:40px;height:40px;border-radius:50%;background:#004B87"></div>':''}
+          </div></div>`).join('')}
+      <div style="height:20px"></div>
+      <div class="h2s">Uygulama dili</div>
+      <div style="display:flex;flex-wrap:wrap;gap:16px">
+        ${[['Türkçe',1],['English',0],['Deutsch',0],['فارسی',0]].map(([l,on])=>`
+          <div class="pill" style="background:${on?'#004B87':'#eef2f8'};color:${on?'#fff':'#5b6575'};font-size:27px;padding:18px 34px">${l}</div>`).join('')}
+      </div>
+      <div class="card" style="padding:26px"><div class="row" style="justify-content:space-between">
+        <div><div class="h2s">Bildirimler</div><div class="mut" style="font-size:23px">Tüm laboratuvarlar</div></div>
+        <div style="width:86px;height:48px;border-radius:999px;background:#004B87;position:relative">
+          <div style="position:absolute;top:5px;right:5px;width:38px;height:38px;border-radius:50%;background:#fff"></div></div></div></div>
+      <div class="sp"></div>
+      <div class="mut" style="text-align:center;line-height:1.5">Arayüz, bildirimler ve belgeler<br>seçilen dilde görünür</div></div>`
+};
+
+/* ---- build ---- */
+const LANG = new URLSearchParams(location.search).get('lang') || 'tr';
+fetch(`copy.${LANG}.json`).then(r=>r.json()).then(cfg=>{
+  if (cfg.rtl) document.body.dataset.rtl = '1';
+  const strip = document.getElementById('strip');
+  cfg.panels.forEach((p,i)=>{
+    const head = [
+      p.lead ? `<span>${p.lead}</span> ` : '',
+      p.hi   ? `<span class="hi">${p.hi}</span> ` : '',
+      p.tail ? `<span>${p.tail}</span>` : ''
+    ].join('');
+
+    strip.insertAdjacentHTML('beforeend', `
+      <section class="panel" data-i="${i}">
+        <svg class="wave" width="${STRIP_W}" height="${PANEL_H}"
+             viewBox="0 0 ${STRIP_W} ${PANEL_H}" style="left:${-i*PANEL_W}px">
+          <defs>
+            <linearGradient id="g${i}" x1="0" y1="0" x2="${STRIP_W}" y2="0" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#28316f"/><stop offset="1" stop-color="#548dca"/>
+            </linearGradient>
+          </defs>
+          <path d="${MAIN_WAVE}" fill="url(#g${i})"/>
+          <path d="${DEEP_WAVE}" fill="#1c2450" opacity=".55"/>
+        </svg>
+
+        <div class="copy ${p.pos}"><h2>${head}</h2></div>
+
+        <div class="stage ${p.pos === 'top' ? 'lower' : 'upper'}">
+          <div class="phone" style="--rot:${p.tilt}deg">
+            <div class="screen">
+              <div class="island"></div>
+              <div class="sbar"><span>9:41</span>
+                <span class="dots"><i></i><i></i><i></i><b></b></span></div>
+              ${S[p.screen] || '<div class="body"></div>'}
+              <img class="shot" src="shots/${LANG}/${String(i+1).padStart(2,'0')}.png"
+                   alt="" onerror="this.remove()">
+            </div>
+          </div>
+        </div>
+      </section>`);
+  });
+
+  if (new URLSearchParams(location.search).has('export')){
+    document.body.className = 'export';
+  } else {
+    const fit = (window.innerWidth - 48) / STRIP_W;
+    document.documentElement.style.setProperty('--s', fit);
+    document.body.style.height = (PANEL_H * fit + 48) + 'px';
+  }
+  document.body.dataset.ready = '1';
+});
+</script>
+</body>
+</html>

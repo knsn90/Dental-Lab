@@ -7,7 +7,7 @@ import { autoT } from '../../../core/i18n/autoTranslate';
  * §04 CHIP_TONES, §05.5 form, §08 dialog, §03 pill buttons,
  * Lucide icons.
  */
-import React, { useState, useMemo, useContext } from 'react';
+import React, { useState, useMemo, useContext, useEffect } from 'react';
 import { useRouter, useSegments } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HubContext } from '../../../core/ui/HubContext';
@@ -37,10 +37,16 @@ import { formatMoney, useBaseCurrency, type Currency } from '../../../core/money
 import { baseSymbol } from '../../../core/money/baseCurrency';
 // Material purchase / inventory intake
 import { PurchaseFormModal } from '../../purchases/components/PurchaseFormModal';
+import { IncomingEFaturaModal } from '../../purchases/components/IncomingEFaturaModal';
+import type { PurchasePrefill } from '../../purchases/lib/incomingPrefill';
+import { getActiveProvider } from '../../efatura/providers';
 import { PurchaseInvoicePreviewModal } from '../../purchases/components/PurchaseInvoicePreviewModal';
 import { PurchaseInvoiceDetailScreen } from '../../purchases/screens/PurchaseInvoiceDetailScreen';
 import { ExpenseDetailScreen } from './ExpenseDetailScreen';
 import { RecurringExpensesPanel } from '../components/RecurringExpensesPanel';
+import { ExpenseMobileTable } from '../components/ExpenseMobileTable';
+// Kategori ikonu, ödeme yöntemleri, biçimleyiciler — mobil tabloyla ortak
+import { CAT_ICON, PAY_METHODS, fmtMoney, fmtDate, rowStyle } from '../lib/expenseDisplay';
 import { downloadCsv, csvMoney, csvDate } from '../../../core/util/csvExport';
 import { buildExpensesReportHtml, downloadExpensesReport } from '../../../core/util/buildExpensesReportHtml';
 import { useAuthStore } from '../../../core/store/authStore';
@@ -69,52 +75,12 @@ const DISPLAY = {
 
 const modalShadow = '0 8px 40px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08)';
 
-// ── Category → Lucide icon mapping ──────────────────────────────────
-const CAT_ICON: Record<ExpenseCategory, React.ComponentType<any>> = {
-  malzeme:  Package,
-  kira:     Building,
-  personel: Users,
-  ekipman:  Wrench,
-  vergi:    Receipt,
-  kurye:    Truck,
-  diger:    MoreHorizontal,
-};
-
 // Malzeme alımları artık Stok > Satın Alma akışından otomatik gider kaydı
 // olarak buraya yansır. Yine de manuel ekleme için kategori görünür kalır.
 const CATEGORIES: ExpenseCategory[] = ['malzeme', 'kira', 'personel', 'ekipman', 'vergi', 'kurye', 'diger'];
 // Genel gider formunda görünen kategoriler — sarf/demirbaş Stok › Satın Alma'dan girilir
 const FORM_CATEGORIES: ExpenseCategory[] = ['kira', 'personel', 'vergi', 'diger'];
-const PAY_METHODS: { v: ExpensePaymentMethod; l: string; icon: React.ComponentType<any> }[] = [
-  { v: 'nakit',  l: 'Nakit',  icon: Banknote },
-  { v: 'kart',   l: 'Kart',   icon: CreditCard },
-  { v: 'havale', l: 'Havale', icon: Landmark },
-  { v: 'cek',    l: 'Çek',    icon: FileText },
-  { v: 'diger',  l: 'Diğer',  icon: CircleDot },
-];
 
-// ── Helpers ──────────────────────────────────────────────────────────
-// Katı per-currency: tutar KENDİ para biriminde.
-function fmtMoney(n: number | string | null | undefined, currency: string = 'TRY'): string {
-  const v = typeof n === 'string' ? Number(n) : (n ?? 0);
-  return formatMoney(Number(v) || 0, (currency as Currency), { fractionDigits: 2 });
-}
-function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return '—';
-  return new Date(iso + 'T00:00:00').toLocaleDateString(localeTag(), { day: '2-digit', month: 'short', year: 'numeric' });
-}
-
-/**
- * Pressable satır stili — fonksiyon-stil YALNIZ web'de verilir.
- *
- * NEDEN: fonksiyon-stilli (`style={({hovered}) => …}`) bir Pressable iOS'ta
- * satır layout'unu düşürüyor — ikon üstte, tutar tam genişlikte kalıyor.
- * Web'de hover geri bildirimi aynen korunur; native'de basılmamış hâlin
- * düz nesnesi verilir.
- */
-function rowStyle(fn: (state: any) => any): any {
-  return Platform.OS === 'web' ? fn : fn({ hovered: false, pressed: false });
-}
 
 // ═════════════════════════════════════════════════════════════════════
 // MAIN
@@ -228,6 +194,11 @@ export function ExpensesScreen() {
   const [modalOpen, setModalOpen] = useState(false);
   const [recurringOpen, setRecurringOpen] = useState(false);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
+  // Gelen e-faturalar (Luca) → alış faturası ön dolumu. Yalnız aktif e-fatura sağlayıcı Luca ise.
+  const [incomingOpen, setIncomingOpen] = useState(false);
+  const [purchasePrefill, setPurchasePrefill] = useState<PurchasePrefill | null>(null);
+  const [lucaActive, setLucaActive] = useState(false);
+  useEffect(() => { getActiveProvider().then((p) => setLucaActive(p.key === 'luca')).catch(() => {}); }, []);
   const [editing, setEditing] = useState<Expense | null>(null);
   // Satın alma faturası önizleme — gider satırı bir purchase_invoice'a bağlıysa tıklanır
   const [previewInvoiceId, setPreviewInvoiceId] = useState<string | null>(null);
@@ -458,7 +429,10 @@ export function ExpensesScreen() {
             <>
               <PillBtn icon={Repeat} label="Otomatik" onPress={() => setRecurringOpen(true)} variant="ghost" onHero heroAccent={theme.primary} />
               <PillBtn icon={FileSpreadsheet} label="Excel" onPress={handleExcel} variant="ghost" onHero heroAccent={theme.primary} />
-              <PillBtn icon={Receipt} label="Satın Alma" onPress={() => setPurchaseOpen(true)} variant="ghost" onHero heroAccent={theme.primary} />
+              {lucaActive && (
+                <PillBtn icon={Inbox} label="Gelen e-Fatura" onPress={() => setIncomingOpen(true)} variant="ghost" onHero heroAccent={theme.primary} />
+              )}
+              <PillBtn icon={Receipt} label="Satın Alma" onPress={() => { setPurchasePrefill(null); setPurchaseOpen(true); }} variant="ghost" onHero heroAccent={theme.primary} />
               <PillBtn icon={Plus} label="Gider Ekle" onPress={openAdd} onHero heroAccent={theme.primary} />
             </>
           }
@@ -828,59 +802,15 @@ export function ExpensesScreen() {
             </View>
           </View>
         ) : (
-          /* ── Mobile: cardSolid §05 ──────────────────────────── */
-          <View style={{ gap: 10 }}>
-            {filtered.map(e => {
-              const Icon = CAT_ICON[e.category];
-              return (
-                <Pressable
-                  key={e.id}
-                  onPress={() => openExpense(e)}
-                  style={rowStyle(({ hovered }: any) => ({
-                    ...U.cardSolid,
-                    flexDirection: 'row', alignItems: 'center', gap: 12,
-                    backgroundColor: hovered ? U.rowHover : U.surface,
-                    cursor: 'pointer' as any,
-                  }))}
-                >
-                  <View style={{
-                    width: 40, height: 40, borderRadius: 12,
-                    backgroundColor: U.chipNeutral,
-                    alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    <Icon size={18} color={U.ink[500]} strokeWidth={1.6} />
-                  </View>
-                  <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>
-                      {e.description}
-                    </Text>
-                    <Text style={{ fontSize: 11, color: U.ink[400] }}>
-                      {EXPENSE_CATEGORY_LABELS[e.category]} · {fmtDate(e.expense_date)}
-                    </Text>
-                  </View>
-                  <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                    <Text style={{ ...DISPLAY, fontSize: 16, letterSpacing: -0.3, color: U.ink[900] }}>
-                      {fmtMoney(e.amount, (e as any).currency ?? 'TRY')}
-                    </Text>
-                    <View style={{ flexDirection: 'row', gap: 4 }}>
-                      <Pressable
-                        onPress={(ev: any) => { ev?.stopPropagation?.(); openEdit(e); }}
-                        style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: U.chipNeutral, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
-                      >
-                        <Pencil size={12} color={U.ink[500]} strokeWidth={1.8} />
-                      </Pressable>
-                      <Pressable
-                        onPress={(ev: any) => { ev?.stopPropagation?.(); handleDelete(e); }}
-                        style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: U.chipTones.danger.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
-                      >
-                        <Trash2 size={12} color={U.chipTones.danger.fg} strokeWidth={1.8} />
-                      </Pressable>
-                    </View>
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
+          /* ── Mobile: tableCard — ekstre mobil tablosuyla aynı kalıp ── */
+          <ExpenseMobileTable
+            rows={filtered}
+            totals={expByCcy}
+            accent={tblAccent}
+            onOpen={openExpense}
+            onEdit={openEdit}
+            onDelete={handleDelete}
+          />
         )}
       </ScrollView>
 
@@ -895,8 +825,15 @@ export function ExpensesScreen() {
       <PurchaseFormModal
         visible={purchaseOpen}
         accentColor="#DC2626"
-        onClose={() => setPurchaseOpen(false)}
-        onSaved={() => { setPurchaseOpen(false); refetch(); }}
+        prefill={purchasePrefill}
+        onClose={() => { setPurchaseOpen(false); setPurchasePrefill(null); }}
+        onSaved={() => { setPurchaseOpen(false); setPurchasePrefill(null); refetch(); }}
+      />
+
+      <IncomingEFaturaModal
+        visible={incomingOpen}
+        onClose={() => setIncomingOpen(false)}
+        onPick={(p) => { setIncomingOpen(false); setPurchasePrefill(p); setPurchaseOpen(true); }}
       />
 
       {/* E-Fatura tarzı satın alma faturası önizleme — purchase_invoice_id'li giderlere */}
@@ -920,7 +857,7 @@ export function ExpensesScreen() {
 // ═════════════════════════════════════════════════════════════════════
 // FORM MODAL — §08 dialog + §05.5 form
 // ═════════════════════════════════════════════════════════════════════
-function ExpenseFormModal({
+export function ExpenseFormModal({
   visible, expense, onClose, onSaved, accentColor = '#DC2626',
 }: { visible: boolean; expense: Expense | null; onClose: () => void; onSaved: () => void; accentColor?: string }) {
   const T = useMobileTokens();
@@ -931,7 +868,9 @@ function ExpenseFormModal({
   const [currency, setCurrency] = useState<Currency>('TRY');
   const [rate, setRate] = useState('');   // manuel kur (boş = o günün TCMB'si)
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [method, setMethod] = useState<ExpensePaymentMethod>('nakit');
+  // Yeni giderde yöntem bilerek boş gelir (nakit kasaya yanlışlıkla havale düşmesin) — madde 8
+  const [method, setMethod] = useState<ExpensePaymentMethod | null>(null);
+  const [methodErr, setMethodErr] = useState(false);
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -947,7 +886,8 @@ function ExpenseFormModal({
       setCurrency(((expense as any)?.currency as any) ?? 'TRY');
       setRate(expense && (expense as any).rate_at_time && (expense as any).currency !== 'TRY' ? String((expense as any).rate_at_time) : '');
       setDate(expense?.expense_date ?? new Date().toISOString().slice(0, 10));
-      setMethod(expense?.payment_method ?? 'nakit');
+      setMethod(expense?.payment_method ?? null);
+      setMethodErr(false);
       setNotes(expense?.notes ?? '');
       setError('');
       setParseInfo(null);
@@ -1047,6 +987,7 @@ function ExpenseFormModal({
     const amt = parseFloat(amount.replace(',', '.'));
     if (!description.trim()) { setError('Açıklama zorunlu'); return; }
     if (!amt || amt <= 0)    { setError('Geçerli bir tutar girin'); return; }
+    if (!method) { setMethodErr(true); return; }
 
     // Sarf malzeme veya demirbaş faturası kontrolü — sadece YENİ kayıtta sor
     // (mevcut linked kayıtların düzenlenmesinde tekrar sormaya gerek yok)
@@ -1312,7 +1253,7 @@ function ExpenseFormModal({
                 return (
                   <Pressable
                     key={m.v}
-                    onPress={() => setMethod(m.v)}
+                    onPress={() => { setMethod(m.v); setMethodErr(false); }}
                     style={{
                       paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999,
                       borderWidth: 1,
@@ -1350,9 +1291,13 @@ function ExpenseFormModal({
 
           {/* Footer — Patterns §13 */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 28, paddingVertical: 18, borderTopWidth: 1, borderTopColor: T.hairline2, backgroundColor: isDark ? T.cardSoft : '#FBF9F4' }}>
-            <Text style={{ flex: 1, fontSize: 11, color: T.ink3, fontStyle: 'italic' }}>
-              Yabancı para birimi seçilirse o günün kuru ile snapshot alınır.
-            </Text>
+            {methodErr ? (
+              <Text style={{ flex: 1, fontSize: 12, fontWeight: '600', color: isDark ? '#F3A0A0' : '#9C2E2E' }}>{autoT('Ödeme yöntemini seçin')}</Text>
+            ) : (
+              <Text style={{ flex: 1, fontSize: 11, color: T.ink3, fontStyle: 'italic' }}>
+                Yabancı para birimi seçilirse o günün kuru ile snapshot alınır.
+              </Text>
+            )}
             <Pressable
               onPress={onClose}
               disabled={saving}

@@ -8,6 +8,7 @@
 import { Platform, Linking } from 'react-native';
 import { supabase } from '../../core/api/supabase';
 import type { Currency } from '../../core/money/currency';
+import { normalizeInvoiceNo, isDuplicatePurchaseError } from './lib/invoiceNo';
 
 export type PurchasePaymentMethod = 'cash' | 'transfer' | 'check' | 'card' | 'open_account';
 
@@ -46,6 +47,8 @@ export interface CreatePurchaseInput {
   invoiceFileUrl?: string | null;
   notes?: string | null;
   lines: PurchaseLineInput[];
+  /** Gelen e-faturadan aktarımda ETTN — aynı e-fatura ikinci kez kaydedilemez (lab başına tekil). */
+  efaturaEttn?: string | null;
 }
 
 export interface PurchaseInvoice {
@@ -82,7 +85,9 @@ export async function createPurchaseInvoice(
     if (line.unit_price < 0) return { ok: false, error: 'Birim fiyat negatif olamaz' };
   }
 
-  const { data, error } = await supabase.rpc('create_purchase_invoice', {
+  // e-Faturadan aktarım: sarmalayıcı aynı işlemde faturayı kurar ve ETTN'yi yazar.
+  const fn = input.efaturaEttn ? 'create_purchase_invoice_from_efatura' : 'create_purchase_invoice';
+  const { data, error } = await supabase.rpc(fn, {
     p_lab_id: input.labId,
     p_supplier_id: input.supplierId,
     p_supplier_name: input.supplierName,
@@ -96,10 +101,45 @@ export async function createPurchaseInvoice(
     p_notes: input.notes ?? null,
     p_lines: input.lines,
     p_exchange_rate: input.exchangeRate ?? null,
+    ...(input.efaturaEttn ? { p_efatura_ettn: input.efaturaEttn } : {}),
   });
 
-  if (error) return { ok: false, error: error.message };
+  if (error) {
+    // Veritabanı mükerrer engeli (aynı lab + tedarikçi + numara) → anlaşılır mesaj
+    if (isDuplicatePurchaseError(error)) return { ok: false, error: 'Bu tedarikçiden aynı numaralı fatura zaten girilmiş. Aynı fatura ikinci kez kaydedilemez.' };
+    return { ok: false, error: error.message };
+  }
   return { ok: true, invoiceId: data as string };
+}
+
+/**
+ * Aynı tedarikçiden aynı numaralı alış faturası daha önce girilmiş mi?
+ * Numara yazım farkları normalize edilir ("FTR 001" = "ftr-001"). Numara boşsa
+ * kontrol yapılmaz (null). Formda kaydı önceden engellemek için; asıl engel veritabanında
+ * (purchase_invoices_lab_supplier_no_uq, 20261024120000).
+ */
+export async function findDuplicatePurchase(q: {
+  labId: string;
+  supplierId: string | null;
+  supplierName: string;
+  invoiceNumber: string | null | undefined;
+}): Promise<{ id: string; invoice_date: string; total: number; currency: string } | null> {
+  const key = normalizeInvoiceNo(q.invoiceNumber);
+  if (!key || !q.labId) return null;
+  let query = supabase
+    .from('purchase_invoices')
+    .select('id, invoice_number, invoice_date, total, currency')
+    .eq('lab_id', q.labId)
+    .not('invoice_number', 'is', null);
+  query = q.supplierId
+    ? query.eq('supplier_id', q.supplierId)
+    : query.ilike('supplier_name', q.supplierName.trim());
+  const { data, error } = await query.limit(500);
+  if (error || !data) return null;
+  const hit = (data as any[]).find(r => normalizeInvoiceNo(r.invoice_number) === key);
+  return hit
+    ? { id: hit.id, invoice_date: hit.invoice_date, total: Number(hit.total) || 0, currency: hit.currency }
+    : null;
 }
 
 export async function listPurchaseInvoices(limit = 100): Promise<{ data: PurchaseInvoice[] | null; error: any }> {

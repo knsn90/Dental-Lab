@@ -18,6 +18,7 @@ import {
   ConsentGate, EMPTY_CONSENTS, hasRequiredConsents, toConsentPayload, type ConsentState,
 } from './ConsentGate';
 import { AUTH, AUTH_FONT } from './AuthShell';
+import { useTourBlocker } from '../../../core/onboarding/useTourBlocker';
 
 export function ConsentGuard() {
   const session = useAuthStore((s) => s.session);
@@ -58,6 +59,10 @@ export function ConsentGuard() {
   const onSignOut = useCallback(async () => {
     try { await supabase.auth.signOut(); } catch { /* yut */ }
   }, []);
+
+  // Onay penceresi açıkken (ve oturum varken durum henüz bilinmezken) ilk-giriş
+  // turu bekler — yoksa web'de tur bu pencerenin ÜSTÜNE çiziliyordu.
+  useTourBlocker(!!userId && needsConsent !== false);
 
   if (needsConsent !== true) return null;
 

@@ -1,3 +1,4 @@
+import { EdgeSwipeBack } from '../../../core/ui/mobile/EdgeSwipeBack';
 import { localeTag } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { safeBack } from '../../../core/util/safeBack';
@@ -35,8 +36,13 @@ import { useBaseCurrency } from '../../../core/money/baseCurrency';
 import { formatMoney, CURRENCY_META, type Currency } from '../../../core/money/currency';
 import { groupByCurrency } from '../../../core/money/aggregations';
 import { MoneyMultiX } from '../../../core/money/MoneyMultiX';
+import { MobileTableX, MobileTableRowX, MobileTableIconX, useMobileTableText } from '../../../core/ui/MobileTableX';
 import { FAB_CLEARANCE } from '../../../core/ui/pageMetrics';
 import { isRTL } from '../../../core/i18n';
+
+/** Vadesi geçmiş alacak — tek tanım (2026-10-26): kliniğin avansı düşülmüş (v_clinic_balance_ccy.overdue_net);
+ *  Özet'teki "hatırlatılacak" listesi ve hatırlatma tutarıyla aynı. Görünüm eskiyse brüt değere düşer. */
+const netOverdue = (b: any): number => Number(b.overdue_net ?? b.overdue_amount) || 0;
 
 // ── Patterns tokens ─────────────────────────────────────────────────
 const DISPLAY = {
@@ -69,6 +75,7 @@ export function ClinicBalanceScreen() {
   const theme = usePanelTheme();
   // Koyu tema: tüm nötr yüzey/metin buradan gelir (açık değerler DS.ink ile birebir).
   const U = useInkUI();
+  const MT = useMobileTableText();
   // Hero — açık temada panel accent'i, koyu temada lacivert gradyan (HERO_NAVY).
   const heroInk = useWhiteHeroInk(theme.primary);
   // Tablo kartı başlığı düz panel accent'i (uygulama genelinde aynı dil).
@@ -162,7 +169,7 @@ export function ClinicBalanceScreen() {
   // toplam değil, yalnız sıralama sezgisi — para birimleri toplanmaz).
   const filtered = useMemo(() => {
     const list = rows.filter(b => {
-      if (overdueOnly && Number(b.overdue_amount) <= 0) return false;
+      if (overdueOnly && netOverdue(b) <= 0) return false;
       if (search) return b.clinic_name.toLowerCase().includes(search.toLowerCase());
       return true;
     });
@@ -170,7 +177,7 @@ export function ClinicBalanceScreen() {
       switch (sortKey) {
         case 'balance_desc': return Number(b.balance ?? 0) - Number(a.balance ?? 0);
         case 'balance_asc':  return Number(a.balance ?? 0) - Number(b.balance ?? 0);
-        case 'overdue_desc': return Number(b.overdue_amount ?? 0) - Number(a.overdue_amount ?? 0);
+        case 'overdue_desc': return netOverdue(b) - netOverdue(a);
         case 'name_asc':     return (a.clinic_name ?? '').localeCompare(b.clinic_name ?? '', 'tr');
         default:             return 0;
       }
@@ -178,17 +185,18 @@ export function ClinicBalanceScreen() {
   }, [rows, search, overdueOnly, sortKey]);
 
   // Hero & footer için per-currency gruplar (KATI — asla toplanmaz)
-  const balanceByCcy = groupByCurrency(rows, b => ({ amount: Number(b.balance), currency: b.currency as Currency }), { keepZero: true });
+  // Lab alacağı (tek tanım): yalnız POZİTİF bakiyeler; bir kliniğin avans fazlası başkasının borcunu kapatmaz.
+  const balanceByCcy = groupByCurrency(rows, b => ({ amount: Math.max(0, Number(b.balance)), currency: b.currency as Currency }), { keepZero: true });
   const billedByCcy  = groupByCurrency(rows, b => ({ amount: Number(b.total_billed), currency: b.currency as Currency }));
   const paidByCcy    = groupByCurrency(rows, b => ({ amount: Number(b.total_paid) + Number(b.unallocated_credit ?? 0), currency: b.currency as Currency }));
-  const overdueByCcy = groupByCurrency(rows, b => ({ amount: Number(b.overdue_amount), currency: b.currency as Currency }));
-  const overdueExists = rows.some(b => Number(b.overdue_amount) > 0);
+  const overdueByCcy = groupByCurrency(rows, b => ({ amount: netOverdue(b), currency: b.currency as Currency }));
+  const overdueExists = rows.some(b => netOverdue(b) > 0);
 
   // Beyaz hero başlığı: çoklu-döviz TOPLANMAZ → en büyük dilim başlıkta,
   // kalanlar altında inline chip.
   const lead = balanceByCcy[0] ?? null;
   const rest = balanceByCcy.slice(1);
-  const overdueCount = rows.filter(b => Number(b.overdue_amount) > 0).length;
+  const overdueCount = rows.filter(b => netOverdue(b) > 0).length;
 
   // Yaşlandırma — para birimi başına (her döviz kendi bar'ı)
   const agingByCcy = useMemo(() => {
@@ -423,7 +431,7 @@ export function ClinicBalanceScreen() {
             {/* Rows */}
             {filtered.map((b, i) => {
               const balance = Number(b.balance);
-              const overdue = Number(b.overdue_amount);
+              const overdue = netOverdue(b);
               const hasOverdue = overdue > 0;
               const billed = Number(b.total_billed);
               // Tahsil = faturaya yazilan odemeler + faturaya baglanmamis tahsilat.
@@ -561,91 +569,59 @@ export function ClinicBalanceScreen() {
             </View>
           </View>
         ) : (
-          /* ── Mobile: cardSolid §05 ───────────────────────────── */
-          <View style={{ gap: 10 }}>
-            {filtered.map(b => {
+          /* ── Mobile: tableCard — ekstre / giderler mobil tablosuyla aynı kalıp ── */
+          <MobileTableX
+            title="Sağlık Kurumu Bakiyeleri" count={filtered.length} countLabel="kurum" accent={tblAccent}
+            footer={<>
+              <Text style={MT.footNote}>{new Set(filtered.map(f => f.clinic_id)).size} sağlık kurumu</Text>
+              <View style={{ flex: 1 }} />
+              <Text style={MT.footLabel}>Toplam:</Text>
+              <MoneyMultiX slices={balanceByCcy} variant="inline" colorBySign />
+            </>}
+          >
+            {filtered.map((b, i) => {
               const balance = Number(b.balance);
-              const overdue = Number(b.overdue_amount);
+              const overdue = netOverdue(b);
               const hasOverdue = overdue > 0;
               const billed = Number(b.total_billed);
               // Tahsil = faturaya yazilan odemeler + faturaya baglanmamis tahsilat.
               const paid = Number(b.total_paid) + Number(b.unallocated_credit ?? 0);
-              const pct = billed > 0 ? Math.min(100, (paid / billed) * 100) : 0;
+              const tone = hasOverdue ? U.chipTones.danger : U.chipTones.info;
 
               return (
-                <Pressable
-                  key={`${b.clinic_id}-${b.currency}`}
-                  onPress={() => openStatement(b.clinic_id)}
-                  style={{ ...U.cardSolid, gap: 14, cursor: 'pointer' as any }}
-                >
-                  {/* Top row */}
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <View style={{
-                      width: 40, height: 40, borderRadius: 12,
-                      backgroundColor: hasOverdue ? U.chipTones.danger.bg : U.chipTones.info.bg,
-                      alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      <Building2 size={18} color={hasOverdue ? U.chipTones.danger.fg : U.chipTones.info.fg} strokeWidth={1.6} />
+                <MobileTableRowX key={`${b.clinic_id}-${b.currency}`} isLast={i === filtered.length - 1} onPress={() => openStatement(b.clinic_id)}>
+                  <MobileTableIconX icon={Building2} tone={tone} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    {/* Ad TEK BAŞINA tam satırı kullanır — rozet + sağdaki bakiye
+                        birlikte adı "Luna ..." gibi kırpıyordu. */}
+                    <Text style={MT.title} numberOfLines={1}>{b.clinic_name}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                      <CcyBadge currency={b.currency} />
+                      <Text style={MT.meta} numberOfLines={1}>{Number(b.invoice_count)} fatura</Text>
+                      {b.oldest_overdue_date && hasOverdue ? (
+                        <Text style={[MT.meta, { color: U.chipTones.danger.fg, fontWeight: '600' }]} numberOfLines={1}>Vade: {fmtDateShort(b.oldest_overdue_date)}</Text>
+                      ) : null}
                     </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      {/* Ad TEK BAŞINA tam satırı kullanır — rozet + sağdaki bakiye
-                          birlikte adı "Luna ..." gibi kırpıyordu. */}
-                      <Text style={{ fontSize: 15, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>
-                        {b.clinic_name}
-                      </Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 }}>
-                        <CcyBadge currency={b.currency} />
-                        <Text style={{ fontSize: 11, color: U.ink[400], flexShrink: 1 }} numberOfLines={1}>
-                          {Number(b.invoice_count)} fatura
-                          {b.oldest_overdue_date && hasOverdue
-                            ? ` · vade: ${fmtDateShort(b.oldest_overdue_date)}`
-                            : ''}
-                        </Text>
-                      </View>
-                    </View>
-                    <View style={{ alignItems: 'flex-end', flexDirection: 'row', gap: 6 }}>
-                      <View style={{ alignItems: 'flex-end' }}>
-                        <Text numberOfLines={1} style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: hasOverdue ? U.chipTones.danger.fg : U.ink[900] }}>
-                          {fmtCur(balance, b.currency)}
-                        </Text>
-                        <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: U.ink[400] }}>
-                          Bakiye
-                        </Text>
-                      </View>
-                      {isRTL() ? <ChevronLeft size={16} color={U.ink[300]} strokeWidth={1.8} /> : <ChevronRight size={16} color={U.ink[300]} strokeWidth={1.8} />}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', columnGap: 8, rowGap: 2, marginTop: 2, flexWrap: 'wrap' }}>
+                      <Text style={MT.meta}>Kesilen {fmtCur(billed, b.currency)}</Text>
+                      <Text style={[MT.meta, { color: U.chipTones.success.fg }]}>Tahsil {fmtCur(paid, b.currency)}</Text>
                     </View>
                   </View>
-
-                  {/* Progress */}
-                  <View style={{ height: 4, borderRadius: 999, backgroundColor: U.ink[100], overflow: 'hidden' }}>
-                    <View style={{ width: `${pct}%` as any, height: '100%', borderRadius: 999, backgroundColor: '#2D9A6B' }} />
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text numberOfLines={1} style={[MT.amount, { color: hasOverdue ? U.chipTones.danger.fg : U.ink[900] }]}>
+                      {fmtCur(balance, b.currency)}
+                    </Text>
+                    <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: U.ink[400], marginTop: 1 }}>
+                      Bakiye
+                    </Text>
+                    {hasOverdue ? (
+                      <Text style={[MT.amountSub, { color: U.chipTones.danger.fg, marginTop: 3 }]}>Gecikmiş {fmtCur(overdue, b.currency)}</Text>
+                    ) : null}
                   </View>
-
-                  {/* Stats */}
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: U.ink[400] }}>Kesilen</Text>
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[800], marginTop: 2 }}>{fmtCur(billed, b.currency)}</Text>
-                    </View>
-                    <View style={{ width: 1, height: 24, backgroundColor: U.ink[100], marginHorizontal: 12 }} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: U.ink[400] }}>Tahsil</Text>
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: U.chipTones.success.fg, marginTop: 2 }}>{fmtCur(paid, b.currency)}</Text>
-                    </View>
-                    {hasOverdue && (
-                      <>
-                        <View style={{ width: 1, height: 24, backgroundColor: U.ink[100], marginHorizontal: 12 }} />
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: U.ink[400] }}>Gecikmiş</Text>
-                          <Text style={{ fontSize: 13, fontWeight: '600', color: U.chipTones.danger.fg, marginTop: 2 }}>{fmtCur(overdue, b.currency)}</Text>
-                        </View>
-                      </>
-                    )}
-                  </View>
-                </Pressable>
+                </MobileTableRowX>
               );
             })}
-          </View>
+          </MobileTableX>
         )}
       </ScrollView>
 
@@ -745,6 +721,9 @@ export function ClinicBalanceScreen() {
           onClose={() => setReminderTarget(null)}
         />
       )}
+
+      {/* Kenardan sağa kaydırınca geri — geri butonuyla AYNI fonksiyon */}
+      <EdgeSwipeBack onBack={() => safeBack('/')} />
     </View>
   );
 }

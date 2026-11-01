@@ -1,0 +1,10 @@
+20261028147000 öncesi canlı md5 (2026-10-28):
+_scan_bill_charges(p_invoice uuid, p_charge_ids uuid[]) 497cbfea7918d373ce6f71b14bd2f0e5
+_scan_order_charge_ids(p_wo_ids uuid[], p_currency text) 84cd9fd46d370c47b778ee781c73e6fe
+_scan_patient_order(p uuid) 20555b62b5b804f125980a17bbdcbbee
+_scan_pool_charge_ids(p_clinic uuid, p_currency text) a42e9d975b27c441144c09ba6cc1f14a
+fn_generate_monthly_invoices() ea38bf8d0105745feb1e460918da1e58
+order_history(p_order uuid) 3d2a849bfc694cd113bc7440de50a00d
+scan_appt_save(p_id uuid, p_clinic uuid, p_doctor uuid, p_starts_at timestamp with time zone, p_minutes integer, p_technician uuid, p_source text, p_note text, p_services jsonb, p_intent text, p_order uuid) 8af536e70c4f4f49b089714dfa8b547e
+realtime: scan tabloları yok
+invoices tetikleyici: trg_scan_invoice_cancelled yok

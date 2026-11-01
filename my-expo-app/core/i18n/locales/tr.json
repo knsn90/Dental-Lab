@@ -73,7 +73,9 @@
       "requests": "Talepler",
       "waSupport": "WhatsApp Destek",
       "phoneLeads": "Telefon Talepleri",
-      "phoneLeadsSub": "Telefon asistanı talepleri"
+      "phoneLeadsSub": "Telefon asistanı talepleri",
+      "scans": "Tarama Randevuları",
+      "scansSub": "Klinikte tarama ziyaretleri"
     },
     "sections": {
       "work": "İş Yönetimi",
@@ -105,8 +107,8 @@
     "delivered": "Teslim",
     "overdueLabel": "Geciken",
     "tryin": "Prova",
-    "totalCases": "Toplam vaka",
-    "todayLine": "Bugün {{total}} sipariş üretimde, {{active}} aktif",
+    "totalCases": "Bu ay gelen",
+    "todayLine": "{{active}} aktif sipariş",
     "todayOverdue": ", {{overdue}} geciken",
     "weekDoneKicker": "BU HAFTA {{count}} TAMAMLANDI",
     "newOrderKicker": "YENİ İŞ EMRİ",
@@ -511,7 +513,7 @@
       "active": "Aktif",
       "overdue": "Geciken",
       "today": "Bugün",
-      "totalOrders": "Toplam sipariş",
+      "totalOrders": "sipariş · tüm zaman",
       "doctor": "Hekim",
       "labUser": "Lab kullanıcı",
       "memberTrend": "Üye Trendi",
@@ -530,13 +532,13 @@
       "invoice": "Faturala →",
       "financialSummary": "Finansal Özet",
       "monthlyCollection": "Bu Ay Tahsilat",
-      "pendingInvoice": "Bekleyen Fatura",
+      "pendingInvoice": "Alacak",
       "paidInvoiceCount": "Ödenen Fatura Adedi",
       "statusDistribution": "Statü Dağılımı",
       "workTypeDistribution": "İş Tipi Dağılımı",
       "totalMembers": "Üye",
-      "noOrdersToday": "Bugün henüz sipariş yok.",
-      "ordersSummary": "{{total}} sipariş, {{active}} aktif{{overdue}}.",
+      "noOrdersToday": "Aktif sipariş yok.",
+      "ordersSummary": "{{active}} aktif sipariş{{overdue}}.",
       "liveProduction": "Canlı üretim",
       "monthlyRevenue": "Aylık gelir",
       "pendingApprovals": "Onay bekleyen",
@@ -550,7 +552,10 @@
       "noDelayedCases": "Geciken vaka yok",
       "productionOnTrack": "Tüm üretim planlandığı gibi ilerliyor.",
       "ordersOfTotal": "{{done}} / {{total}} sipariş",
-      "deliveredAllTime": "Teslim edilen · tüm zamanlar"
+      "deliveredAllTime": "Teslim edilen · tüm zamanlar",
+      "newThisMonth": "Bu ay gelen",
+      "newToday": "Bugün gelen",
+      "activeStaff": "Aktif personel"
     },
     "buttons": {
       "start": "Başla"
@@ -604,6 +609,7 @@
     },
     "cta": {
       "ordersToday": "BUGÜN {{total}} SİPARİŞ",
+      "dueToday": "BUGÜN {{count}} TESLİM",
       "newOrder": "YENİ SİPARİŞ",
       "createNewOrder": "Yeni iş emri oluştur"
     },
@@ -931,5 +937,10 @@
       "urgent": "Acil",
       "inQueue": "Sırada"
     }
+  },
+  "profitability": {
+    "tabServices": "İşlemler",
+    "serviceCount": "işlem",
+    "listPrice": "Liste"
   }
 }

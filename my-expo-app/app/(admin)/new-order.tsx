@@ -7,6 +7,6 @@ export default function AdminNewOrderRoute() {
   const { profile, loading } = useAuthStore();
   if (loading || !profile) return null;
   if (profile.user_type !== 'admin') return null;
-  // Yönetim paneli teması: kobalt #4771AB · Başlık: "Yeni Sipariş"
+  // Yönetim paneli teması: kobalt #002A5C · Başlık: "Yeni Sipariş"
   return <NewOrderScreen panel="admin" />;
 }

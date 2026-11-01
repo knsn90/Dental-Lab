@@ -13,7 +13,7 @@
  * Veri: fetchMyDeliveries → bugüne filtre + status grupları
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { firstName as displayFirstName } from '../../../core/util/personName';
 import { useTranslation } from 'react-i18next';
 import { localeTag } from '../../../core/i18n';
@@ -46,6 +46,8 @@ import { SvgCss } from 'react-native-svg/css';
 import { NotificationsSheet } from '../../../core/ui/mobile/NotificationsSheet';
 import { ProfileMenu } from '../../../core/ui/mobile/ProfileMenu';
 import { confirmAsync } from '../../../core/util/confirm';
+import { DeliveryProofSheet } from '../../delivery/proof/DeliveryProofSheet';
+import { measureOrigin, type OriginRect } from '../../delivery/proof/useAnchoredSpring';
 
 const TH = DS.tech;
 const DISPLAY = {
@@ -297,9 +299,16 @@ function MobileView({ profile, items, dash, loading, router, onRefresh, onScan, 
 
   // Tek-dokunuş durum ilerletme (AL→alındı · BIRAK→teslim). Kart üstünden, detaya girmeden.
   const [actBusy, setActBusy] = useState<string | null>(null);
+  // Teslim (BIRAK) artık doğrudan durum değiştirmez: kanıt penceresi açılır (2. dalga 5).
+  const advRef = useRef<any>(null);
+  const [proofFor, setProofFor] = useState<{ id: string; origin: OriginRect | null } | null>(null);
   const doAdvance = async (d: CourierDelivery) => {
     if (actBusy) return;
     const { next } = advanceOf(d);
+    if (next === 'teslim_edildi') {
+      measureOrigin(advRef.current, (origin) => setProofFor({ id: d.id, origin }));
+      return;
+    }
     setActBusy(d.id);
     const r = await updateDeliveryStatus(d.id, next);
     setActBusy(null);
@@ -347,6 +356,13 @@ function MobileView({ profile, items, dash, loading, router, onRefresh, onScan, 
       </View>
 
       {/* Bildirim paneli — istasyon (tech) teması, DB feed */}
+      <DeliveryProofSheet
+        visible={!!proofFor}
+        deliveryId={proofFor?.id ?? null}
+        origin={proofFor?.origin ?? null}
+        onClose={() => setProofFor(null)}
+        onDelivered={() => onRefresh()}
+      />
       <NotificationsSheet
         visible={notifOpen}
         onClose={() => setNotifOpen(false)}
@@ -453,6 +469,7 @@ function MobileView({ profile, items, dash, loading, router, onRefresh, onScan, 
                     </Pressable>
                     {/* Aldım / Teslim Et — birincil (koyu), tek dokunuş durumu ilerletir */}
                     <Pressable
+                      ref={advRef}
                       onPress={() => doAdvance(focus)}
                       disabled={busy}
                       style={({ pressed }: any) => ({

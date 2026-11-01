@@ -1,0 +1,31 @@
+# Luca e-fatura SOAP proxy'si — VPS: /opt/luca-proxy (bkz. README.md)
+# Port YAYINLANMAZ; yalnız nexa_network üzerinden Caddy (/luca/*) erişir.
+services:
+  luca-proxy:
+    image: node:22.12.0-alpine
+    container_name: luca-proxy
+    restart: unless-stopped
+    working_dir: /app
+    command: ["node", "server.mjs"]
+    env_file: .env
+    volumes:
+      - ./app:/app:ro
+    user: "node"
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 128m
+    cpus: 0.5
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/luca/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    networks: [nexa]
+
+networks:
+  nexa:
+    external: true
+    name: nexa_network

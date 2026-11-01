@@ -1,0 +1,5 @@
+-- Canli durum (2026-10-26) — 20261027120000_log_arama oncesi
+-- activity_log_search / activity_log_actors canlida YOK (sayi=0).
+-- activity_logs politikalari (DEGISMEZ):
+--   admin_select_logs:r:(is_admin_user() AND (lab_id = get_my_lab_id()))
+--   authenticated_insert_logs:a:

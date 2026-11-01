@@ -59,6 +59,8 @@ import { useAccentTones } from '../../../core/ui/HeroGlow';
 import { ConfirmDialog, type ConfirmState } from '../../../core/ui/ConfirmDialog';
 import { toast } from '../../../core/ui/Toast';
 import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
+import { useRouter, useSegments } from 'expo-router';
+import { upsertCompensation } from '../../employees/compensationApi';
 
 // ── Design tokens ───────────────────────────────────────────────────────────
 const ERR = '#FF3B30';
@@ -328,11 +330,6 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
   }, [profiles]);
 
   // ── Skill level / trust / allowed_types updaters (Migration 047) ──────
-  async function setSalary(userId: string, rate: number) {
-    setProfiles(prev => prev.map(p => p.id === userId ? ({ ...p, monthly_salary: rate } as any) : p));
-    const { error } = await supabase.from('profiles').update({ monthly_salary: rate }).eq('id', userId);
-    if (error) console.warn('monthly_salary update', error.message);
-  }
 
   async function setSkillLevel(userId: string, level: SkillLevel) {
     setProfiles(prev => prev.map(p => p.id === userId ? ({ ...p, skill_level: level } as any) : p));
@@ -490,7 +487,19 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
   // Pasife alma ARTIK doğrudan profiles UPDATE'i değil: edge fonksiyon hem
   // bayrağı yazar hem auth hesabını banlar. Yalnız bayrağı çevirmek açık
   // oturumu kapatmıyordu (refresh ile süresiz yaşıyordu).
-  const handleToggleActive = async (profile: Profile) => {
+  // Pasife alma onay ister (oturumu kapatır, giriş engellenir); aktif etme sormaz.
+  const handleToggleActive = (profile: Profile) => {
+    if (!profile.is_active) { applyActive(profile); return; }
+    setConfirm({
+      title: 'Pasife al',
+      highlight: profile.full_name,
+      message: 'pasife alınacak; oturumu kapanır ve giriş yapamaz.',
+      label: 'Evet, pasife al',
+      variant: 'warning',
+      onConfirm: async () => { setConfirm(null); await applyActive(profile); },
+    });
+  };
+  const applyActive = async (profile: Profile) => {
     const newVal = !profile.is_active;
     setUpdatingId(profile.id);
     try {
@@ -762,7 +771,8 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
   const labRoleCount = (role: LabRole) => profiles.filter(p => p.user_type === 'lab' && p.role === role).length;
 
   const ALL_TYPE_TABS: { key: FilterType; label: string; count: number }[] = [
-    { key: 'all' as FilterType,          label: 'Tümü',        count: profiles.length },
+    // Bu ekranın sayısı giriş HESABIDIR (personel değil — tek tanım 2026-10-26).
+    { key: 'all' as FilterType,          label: 'Tüm hesaplar', count: profiles.length },
     { key: 'manager' as FilterType,      label: 'Müdür',       count: labRoleCount('manager') },
     { key: 'technician' as FilterType,   label: 'Teknisyen',   count: labRoleCount('technician') },
     { key: 'accounting' as FilterType,   label: 'Muhasebe',    count: labRoleCount('accounting') },
@@ -1252,6 +1262,8 @@ function EditUserModal({
   onToggleType: (userId: string, type: string) => void;
 }) {
   const U = useInkUI();
+  const router = useRouter();
+  const panelSeg = useSegments()[0];
   const P = accentColor;
   const { ink: PInk } = useAccentTones(P);
   const [fullName,    setFullName]    = useState('');
@@ -1262,7 +1274,6 @@ function EditUserModal({
   const [isActive,    setIsActive]    = useState(true);
   const [newPassword, setNewPassword] = useState('');
   const [skillLevel,  setSkillLevel2] = useState<SkillLevel>('mid');
-  const [salary,  setSalary]  = useState('');
   const [showPass,    setShowPass]    = useState(false);
   const [saving,      setSaving]      = useState(false);
   const [error,       setError]       = useState('');
@@ -1280,7 +1291,6 @@ function EditUserModal({
       setNewPassword('');
       setError('');
       setSkillLevel2(((profile as any).skill_level ?? 'mid') as SkillLevel);
-      setSalary(String((profile as any).monthly_salary ?? ''));
 
       if (profile.user_type === 'lab') {
         supabase
@@ -1316,7 +1326,6 @@ function EditUserModal({
         ...(profile.user_type === 'lab'    ? {
           role,
           skill_level: skillLevel,
-          monthly_salary: salary ? parseFloat(salary.replace(',', '.')) : 0,
         } : {}),
       };
 
@@ -1535,10 +1544,14 @@ function EditUserModal({
                   })}
                 </View>
 
-                {/* Saat Ücreti */}
-                <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>{`Aylık Maaş (${baseSymbol()})`}</Text>
-                <TextInput style={INPUT_STYLE} value={salary} onChangeText={setSalary}
-                  placeholder="0" placeholderTextColor={U.ink[400]} keyboardType="numeric" />
+                {/* Maaş tek kaynak (2026-10-25): maaş yalnız Personel ekranından düzenlenir */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <Text style={{ fontSize: 12, color: U.ink[500] }}>Maaş, Personel ekranından düzenlenir.</Text>
+                  <Pressable onPress={() => { onClose(); router.push(`/${panelSeg}/employees` as any); }}
+                    style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg }}>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: U.plainBtn.fg }}>Personel ekranına git</Text>
+                  </Pressable>
+                </View>
               </>
             )}
 
@@ -1686,15 +1699,19 @@ export function AddUserModal({
         const empRoleMap: Record<string, string> = {
           service: 'diger', intern: 'diger',
         };
-        const { error: empError } = await supabase.from('employees').insert({
+        const { data: empRow, error: empError } = await supabase.from('employees').insert({
           full_name:   fullName.trim(),
           role:        empRoleMap[selectedRole] ?? 'diger',
           phone:       phone.trim() || null,
-          base_salary: salary ? Number(salary) : 0,
           start_date:  new Date().toISOString().slice(0, 10),
           is_active:   true,
-        });
+        }).select('id, lab_id').single();
         if (empError) { setError(empError.message); setSaving(false); return; }
+        if (salary.trim() && empRow) {
+          // Maaş tek kaynak: employee_compensation (yalnız maaş yetkisi yazabilir)
+          const r = await upsertCompensation((empRow as any).id, (empRow as any).lab_id, { base_salary: Number(salary.replace(',', '.')) });
+          if (!r.ok) { setError(r.error ?? 'Maaş kaydedilemedi'); setSaving(false); return; }
+        }
         reset(); onSuccess(); return;
       }
 
@@ -1719,8 +1736,6 @@ export function AddUserModal({
             department: stagePerms.join(', ') || null,
             level,
           } : {}),
-          // Tüm lab personeli için maaş (opsiyonel)
-          ...(isLabRole && salary ? { monthly_salary: Number(salary) } : {}),
         },
       });
       if (fnError || data?.error) {
@@ -1738,18 +1753,21 @@ export function AddUserModal({
             service:      'diger',
             intern:       'diger',
           };
-          const { error: empError } = await supabase.from('employees').insert({
+          const { data: empRow, error: empError } = await supabase.from('employees').insert({
             full_name:   fullName.trim(),
             role:        empRoleMap[selectedRole] ?? 'diger',
             phone:       phone.trim() || null,
             email:       email.trim() || null,
-            base_salary: salary ? Number(salary) : 0,
             start_date:  new Date().toISOString().slice(0, 10),
             is_active:   true,
-          });
+          }).select('id, lab_id').single();
           if (empError) {
             // Auth hesabı oluştu ama employees yazılamadı — kullanıcıya bildir
             console.warn('employees insert error:', empError.message);
+          } else if (salary.trim() && empRow) {
+            // Maaş tek kaynak: employee_compensation (yalnız maaş yetkisi yazabilir)
+            const r = await upsertCompensation((empRow as any).id, (empRow as any).lab_id, { base_salary: Number(salary.replace(',', '.')) });
+            if (!r.ok) console.warn('compensation upsert error:', r.error);
           }
         }
         reset();

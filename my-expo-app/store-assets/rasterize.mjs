@@ -1,0 +1,10 @@
+import puppeteer from 'puppeteer';
+import { readFileSync } from 'node:fs';
+const svg = readFileSync(process.argv[2], 'utf8');
+const b = await puppeteer.launch({ args: ['--no-sandbox'] });
+const p = await b.newPage();
+await p.setViewport({ width: 512, height: 512, deviceScaleFactor: 1 });
+await p.setContent(`<body style="margin:0;background:transparent">${svg}</body>`);
+await p.screenshot({ path: process.argv[3], omitBackground: true });
+await b.close();
+console.log('  ✓ ' + process.argv[3]);

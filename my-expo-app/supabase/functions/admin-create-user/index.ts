@@ -72,7 +72,7 @@ Deno.serve(async (req: Request) => {
     const inheritedLabId = (callerIsPlatformAdmin && body.target_lab_id)
       ? String(body.target_lab_id)
       : (callerProfile.lab_id ?? null);
-    const { email, password, full_name, user_type, role, phone, address, clinic_type, specialty, department, level, monthly_salary, clinic_permissions, skip_doctor_row } = body;
+    const { email, password, full_name, user_type, role, phone, address, clinic_type, specialty, department, level, clinic_permissions, skip_doctor_row } = body;
     let { clinic_name, clinic_id } = body;
 
     // Lab müdürü admin (exec) hesabı AÇAMAZ; yalnız kendi ekibi + klinik hesapları
@@ -179,7 +179,7 @@ Deno.serve(async (req: Request) => {
         skill_level: level ?? null,
         allowed_types: (specialty && effectiveUserType === 'lab') ? specialty.split(', ').filter(Boolean) : null,
         allowed_stages: (department && effectiveUserType === 'lab') ? department.split(', ').filter(Boolean) : null,
-        monthly_salary: monthly_salary ?? null,
+        // maaş employee_compensation'da (20261025100000); profile yazılmaz
         is_active: true,
         // Lab kullanıcısı caller'ın lab_id'sini alır — wizard'a düşmez
         lab_id: isLabUser ? inheritedLabId : null,

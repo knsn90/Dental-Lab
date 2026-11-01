@@ -23,9 +23,12 @@ import { DatePicker } from '../../../core/ui/DatePicker';
 import { Currency, SUPPORTED_CURRENCIES, formatMoney } from '../../../core/money/currency';
 import { supabase } from '../../../core/api/supabase';
 import { listSuppliers, createSupplier, type Supplier } from '../../suppliers/api';
-import { createPurchaseInvoice, type PurchasePaymentMethod, type PurchaseLineInput } from '../api';
+import { createPurchaseInvoice, findDuplicatePurchase, type PurchasePaymentMethod, type PurchaseLineInput } from '../api';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { ensureAiConsent } from '../../../core/ai/aiConsent';
+import { autoT } from '../../../core/i18n/autoTranslate';
+import { localeTag } from '../../../core/i18n';
+import { matchSupplier, prefillLines, type PurchasePrefill } from '../lib/incomingPrefill';
 
 interface Line {
   id: string;                  // local row id (uuid)
@@ -66,6 +69,8 @@ interface StockItemLite {
 interface Props {
   visible: boolean;
   accentColor?: string;
+  /** Gelen e-faturadan (Luca) ön dolum — kayıtta ETTN yazılır, aynı fatura ikinci kez kaydedilemez. */
+  prefill?: PurchasePrefill | null;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -88,7 +93,7 @@ const newLine = (defaultVat = ''): Line => ({
   vat_rate: defaultVat,
 });
 
-export function PurchaseFormModal({ visible, accentColor = '#0A0A0A', onClose, onSaved }: Props) {
+export function PurchaseFormModal({ visible, accentColor = '#0A0A0A', prefill = null, onClose, onSaved }: Props) {
   const profile = useAuthStore(s => s.profile);
   const labId = (profile as any)?.lab_id ?? null;
   // Telefon genişliği: masaüstü tablo düzeni (sabit 70/64/110px sütunlar) 390pt
@@ -124,6 +129,10 @@ export function PurchaseFormModal({ visible, accentColor = '#0A0A0A', onClose, o
   // çift tıkta ikinci çağrı RPC'yi tekrar tetikleyebiliyordu (çift fatura/2× stok).
   const savingRef = useRef(false);
   const stopSaving = () => { savingRef.current = false; setSaving(false); };
+  // Mükerrer alış uyarısı: aynı tedarikçi + aynı numara bulununca ilk Kaydet durur, uyarı
+  // düğmenin üstünde çıkar; AYNI tedarikçi/numarayla ikinci Kaydet kaydeder. Tedarikçi ya da
+  // numara değişince anahtar değişir → kontrol yeniden yapılır.
+  const [dupWarning, setDupWarning] = useState('');
   const [error, setError] = useState('');
   const [parsing, setParsing] = useState(false);
   const [parseInfo, setParseInfo] = useState<string | null>(null);
@@ -247,6 +256,7 @@ export function PurchaseFormModal({ visible, accentColor = '#0A0A0A', onClose, o
     setError('');
     setParseInfo(null); setParsing(false);
     setParsedPdfFile(null); setArchivePdf(false);
+    setDupWarning(''); // önceki açılışın mükerrer uyarısı taşınmasın
 
     // Fetch suppliers + items
     (async () => {
@@ -256,6 +266,21 @@ export function PurchaseFormModal({ visible, accentColor = '#0A0A0A', onClose, o
       ]);
       if (s.data) setSuppliers(s.data);
       if (i.data) setItems(i.data as StockItemLite[]);
+      // Gelen e-fatura: başlık + kalemler birebir; tedarikçi VKN/ad ile, kalemler stok adıyla eşleşir.
+      if (prefill) {
+        const hit = matchSupplier(s.data ?? [], prefill.supplierName, prefill.supplierVkn);
+        setSupplierId(hit?.id ?? null);
+        setSupplierName(hit?.name ?? prefill.supplierName);
+        setInvoiceNumber(prefill.invoiceNumber);
+        setInvoiceDate(prefill.invoiceDate);
+        setDueDate(prefill.dueDate);
+        if ((SUPPORTED_CURRENCIES as readonly string[]).includes(prefill.currency)) setCurrency(prefill.currency as Currency);
+        setVatRate(String(prefill.vatRate));
+        setNotes(prefill.notes);
+        setLines(prefillLines(prefill, (i.data ?? []) as StockItemLite[]) as Line[]);
+        setParseInfo(`${autoT('Luca e-faturasından dolduruldu')} · ${prefill.invoiceNumber}`);
+        if (prefill.pdf) { setParsedPdfFile(prefill.pdf as unknown as File); setArchivePdf(true); }
+      }
     })();
   }, [visible]);
 
@@ -322,12 +347,28 @@ export function PurchaseFormModal({ visible, accentColor = '#0A0A0A', onClose, o
         if (existing) {
           resolvedSupplierId = (existing as any).id;
         } else {
-          const res = await createSupplier({ name: supplierName.trim(), category: 'material', default_currency: currency } as any);
+          const res = await createSupplier({
+            name: supplierName.trim(), category: 'material', default_currency: currency,
+            // e-faturadan gelen yeni tedarikçi VKN'siyle açılır (sonraki faturalar VKN'den eşleşir)
+            ...(prefill?.supplierVkn ? { tax_no: prefill.supplierVkn } : {}),
+          } as any);
           if (res.error) { setError('Tedarikçi oluşturulamadı: ' + (res.error as any).message); stopSaving(); return; }
           resolvedSupplierId = res.data?.id ?? null;
         }
       }
     }
+
+    // Mükerrer alış faturası: aynı tedarikçi + aynı numara ENGELLENİR (veritabanı da
+    // purchase_invoices_lab_supplier_no_uq ile reddeder; burada tarih/tutarla önceden söylenir).
+    if (labId) {
+      const dup = await findDuplicatePurchase({ labId, supplierId: resolvedSupplierId, supplierName, invoiceNumber });
+      if (dup) {
+        setDupWarning(`${autoT('Bu tedarikçiden aynı numaralı fatura zaten girilmiş')}: ${new Date(dup.invoice_date + 'T00:00:00').toLocaleDateString(localeTag())} · ${formatMoney(dup.total, dup.currency as Currency)}. ${autoT('Aynı fatura ikinci kez kaydedilemez.')}`);
+        stopSaving();
+        return;
+      }
+    }
+    setDupWarning('');
 
     // Şüpheli kalem var mı? — kullanıcı sarf/demirbaş seçmedi
     const reviewNeeded = lines.filter(l => l.needs_review);
@@ -410,6 +451,7 @@ export function PurchaseFormModal({ visible, accentColor = '#0A0A0A', onClose, o
       invoiceFileUrl,
       notes: notes.trim() || null,
       lines: lineInputs,
+      efaturaEttn: prefill?.ettn ?? null,
     });
 
     stopSaving();
@@ -798,6 +840,17 @@ export function PurchaseFormModal({ visible, accentColor = '#0A0A0A', onClose, o
                 </Text>
               </View>
             </View>
+
+            {dupWarning ? (
+              <View style={{
+                flexDirection: 'row', alignItems: 'center', gap: 8,
+                padding: 10, marginBottom: 10, backgroundColor: '#FEF3C7', borderRadius: 12,
+                borderWidth: 1, borderColor: '#F59E0B55',
+              }}>
+                <AlertCircle size={14} color="#92400E" strokeWidth={1.8} />
+                <Text style={{ flex: 1, fontSize: 12, color: '#92400E', fontWeight: '500' }}>{dupWarning}</Text>
+              </View>
+            ) : null}
 
             {/* Action buttons */}
             {/* Dar ekranda açıklama butonların ÜSTÜNDE tam genişlik: yan yana

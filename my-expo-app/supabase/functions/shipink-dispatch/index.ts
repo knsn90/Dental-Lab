@@ -41,6 +41,7 @@
  */
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { clinicAddressParts } from '../_shared/shipinkAddress.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -658,17 +659,17 @@ async function resolveRecipient(admin: any, body: ReqBody): Promise<Dest> {
         // Klinik vergi no hekim TCKN'sinden önceliklidir — fatura muhatabı klinik.
         const vkn = String(cl.vkn ?? '').replace(/\D/g, '');
         if (vkn && !String(body.recipient_tax_id ?? '').trim()) dest.taxId = vkn;
-        // clinics.address polimorfik (düz metin veya {il, ilce, ...} JSON).
-        // Yalnız istemci adres göndermediyse kullanılır.
+        // clinics.address METİN sütunu (çoğunlukla JSON) — eskiden nesne beklendiği için
+        // ham JSON sokak satırına gidiyordu. Sokak satırına bina + daire no da eklenir.
+        // Yalnız istemcinin boş bıraktığı alanlar doldurulur.
         if (!dest.street || !dest.city || !dest.state) {
-          const a = cl.address;
-          if (a && typeof a === 'object') {
-            if (!dest.state)  dest.state  = String(a.il ?? a.city ?? '');
-            if (!dest.city)   dest.city   = String(a.ilce ?? a.district ?? '');
-            if (!dest.zip)    dest.zip    = String(a.posta_kodu ?? a.zip ?? '');
-            if (!dest.street) dest.street = [a.mahalle, a.sokak, a.adres, a.street].filter(Boolean).join(' ').trim();
-          } else if (typeof a === 'string' && !dest.street) {
-            dest.street = a;
+          const a = clinicAddressParts(cl.address);
+          if (a) {
+            if (!dest.state)  dest.state  = a.state;
+            if (!dest.city)   dest.city   = a.city;
+            if (!dest.zip)    dest.zip    = a.zip;
+            if (!dest.street) dest.street = a.street;
+            if (!body.recipient_country && a.country) dest.country = a.country;
           }
         }
       }

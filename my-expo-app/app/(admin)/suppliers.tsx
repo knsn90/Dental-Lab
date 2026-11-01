@@ -3,5 +3,5 @@ const SuppliersScreen = lazyRoute(() => import('../../modules/suppliers/screens/
 
 // Yönetim paneli — coral accent
 export default function AdminSuppliersScreen() {
-  return <SuppliersScreen accentColor="#4771AB" />;
+  return <SuppliersScreen accentColor="#002A5C" />;
 }

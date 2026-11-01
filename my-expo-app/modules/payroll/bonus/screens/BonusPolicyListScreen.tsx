@@ -24,6 +24,7 @@ import {
   DISPLAY, TH, Loader, ErrorBar,
   usePagePadding,
 } from '../components/atoms';
+import { MobileTableX, MobileTableRowX, MobileTableIconX } from '../../../../core/ui/MobileTableX';
 
 /* ---------- preset seed ---------- */
 async function seedPreset(preset: string): Promise<string> {
@@ -291,9 +292,10 @@ export default function BonusPolicyListScreen({ onOpenEditor }: Props = {}) {
           </Text>
         </View>
       ) : (
-        <View style={{ gap: 10 }}>
-          {filtered.map(p => <PolicyRow key={p.id} policy={p} onPress={() => openEditor(p.id)} />)}
-        </View>
+        /* Ekstre / giderler mobil tablosuyla aynı kalıp */
+        <MobileTableX title="Prim Politikaları" count={filtered.length} countLabel="kayıt">
+          {filtered.map((p, i) => <PolicyRow key={p.id} policy={p} isLast={i === filtered.length - 1} onPress={() => openEditor(p.id)} />)}
+        </MobileTableX>
       )}
     </ScrollView>
   );
@@ -330,7 +332,7 @@ function FilterPill({ label, active, onPress, dot }:
 }
 
 /* ─────────────────────────────  PolicyRow  ──────────────────────────── */
-function PolicyRow({ policy: p, onPress }: { policy: BonusPolicy; onPress: () => void }) {
+function PolicyRow({ policy: p, isLast, onPress }: { policy: BonusPolicy; isLast: boolean; onPress: () => void }) {
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const U = useInkUI();
@@ -342,64 +344,49 @@ function PolicyRow({ policy: p, onPress }: { policy: BonusPolicy; onPress: () =>
   const isMuted  = p.status === 'archived';
 
   return (
-    <Pressable
-      onPress={onPress}
-      // Object style: fonksiyon-stilli Pressable native'de row layout'u düşürüyor
-      // (ikon üstte, rozet tam genişlik). Basınç opaklığı yerine sabit stil.
-      style={{
-        backgroundColor: isDark ? T.card : '#FFF', borderRadius: 16,
-        borderWidth: 1, borderColor: isDark ? T.hairline : U.ink[200],
-        padding: 14,
-        flexDirection: 'row', alignItems: 'center', gap: 14,
-        opacity: isMuted ? 0.75 : 1,
-      }}
-    >
-      <View style={{
-        width: 40, height: 40, borderRadius: 12,
-        backgroundColor: isActive ? (isDark ? 'rgba(90,169,230,0.16)' : TH.bgSoft) : (isDark ? 'rgba(255,255,255,0.08)' : U.ink[100]),
-        alignItems: 'center', justifyContent: 'center',
-      }}>
-        <Wallet size={18} color={isActive ? accentInk : (isDark ? (T.ink3 as string) : U.ink[400])} strokeWidth={1.8} />
+    <MobileTableRowX isLast={isLast} onPress={onPress}>
+      <View style={{ opacity: isMuted ? 0.75 : 1 }}>
+        <MobileTableIconX icon={Wallet} tone={isActive
+          ? { bg: isDark ? 'rgba(90,169,230,0.16)' : TH.bgSoft, fg: accentInk }
+          : { bg: isDark ? 'rgba(255,255,255,0.08)' : U.ink[100], fg: isDark ? (T.ink3 as string) : U.ink[400] }} />
       </View>
 
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <View style={{ flex: 1, minWidth: 0, opacity: isMuted ? 0.75 : 1 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <Text
-            style={{ fontSize: 14, fontWeight: '600', color: isDark ? T.ink : U.ink[900], letterSpacing: -0.2 }}
+            style={{ flexShrink: 1, fontSize: 13, fontWeight: '600', color: isDark ? T.ink : U.ink[900] }}
             numberOfLines={1}
           >
             {p.name}
           </Text>
           {/* Status chip */}
           <View style={{
-            flexDirection: 'row', alignItems: 'center', gap: 4,
-            paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999,
+            flexDirection: 'row', alignItems: 'center', gap: 3,
+            paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999,
             backgroundColor: t.bg,
           }}>
             <StatusIcon size={9} color={t.fg} strokeWidth={2.5} />
-            <Text style={{ fontSize: 10, fontWeight: '700', color: t.fg, letterSpacing: 0.4, textTransform: 'uppercase' }}>
+            <Text style={{ fontSize: 9, fontWeight: '700', color: t.fg, letterSpacing: 0.4, textTransform: 'uppercase' }}>
               {STATUS_LABELS[p.status]}
             </Text>
           </View>
         </View>
-        <Text style={{ fontSize: 11, color: isDark ? T.ink3 : U.ink[500], marginTop: 4 }} numberOfLines={1}>
-          {MODE_LABELS[p.mode]} · taban {sym}{p.base_rate}
+        <Text style={{ fontSize: 11, color: isDark ? T.ink3 : U.ink[400], marginTop: 2 }} numberOfLines={1}>
+          {autoT(MODE_LABELS[p.mode])} · {autoT('taban')} {sym}{p.base_rate}
           {p.description ? `  ·  ${p.description}` : ''}
         </Text>
       </View>
 
-      {/* Right metric column: base rate big */}
-      <View style={{ alignItems: 'flex-end' }}>
-        <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.6, color: isDark ? T.ink : U.ink[900] }}>
+      {/* Sağ sütun: taban oran */}
+      <View style={{ alignItems: 'flex-end', opacity: isMuted ? 0.75 : 1 }}>
+        <Text style={{ fontSize: 13, fontWeight: '600', color: isDark ? T.ink : U.ink[900] }}>
           {sym}{p.base_rate}
         </Text>
-        <Text style={{ fontSize: 9, fontWeight: '700', color: isDark ? T.ink3 : U.ink[400], textTransform: 'uppercase', letterSpacing: 0.6 }}>
+        <Text style={{ fontSize: 9, fontWeight: '700', color: isDark ? T.ink3 : U.ink[400], textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 1 }}>
           / ÜYE
         </Text>
       </View>
-
-      {isRTL() ? <ChevronLeft size={16} color={isDark ? (T.ink3 as string) : U.ink[400]} /> : <ChevronRight size={16} color={isDark ? (T.ink3 as string) : U.ink[400]} />}
-    </Pressable>
+    </MobileTableRowX>
   );
 }
 

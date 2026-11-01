@@ -33,6 +33,8 @@ import { Slot, usePathname, useRouter } from 'expo-router';
 import { useAuthStore } from '../store/authStore';
 import { usePageTitleStore } from '../store/pageTitleStore';
 import { useOrders } from '../../modules/orders/hooks/useOrders';
+import { useLabToday } from '../metrics/useLabToday';
+import { isOverdueOrder } from '../metrics/orderDefs';
 import { supabase } from '../api/supabase';
 import { sanitizeIlikeTerm } from '../util/search';
 import { BlurFade } from '../ui/BlurFade';
@@ -172,9 +174,10 @@ function RightPanel({ accentColor, profile, open, onToggle }: {
     ? orders.filter((o: any) => o.assigned_to === profile.id)
     : orders;
 
-  const today      = new Date().toISOString().split('T')[0];
+  // Tek tanım (2026-10-26): lab günü + core/metrics/orderDefs (iptal/arşiv/beklemedeki gecikmez).
+  const today      = useLabToday();
   const active     = myOrders.filter((o: any) => o.status === 'uretimde').length;
-  const overdue    = myOrders.filter((o: any) => o.delivery_date < today && o.status !== 'teslim_edildi').length;
+  const overdue    = myOrders.filter((o: any) => isOverdueOrder(o, today)).length;
   const unassigned = isManager ? orders.filter((o: any) => o.status === 'alindi' && !o.assigned_to).length : 0;
   const kk         = myOrders.filter((o: any) => o.status === 'kalite_kontrol').length;
 

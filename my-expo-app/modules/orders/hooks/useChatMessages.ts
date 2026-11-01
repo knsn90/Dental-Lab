@@ -31,7 +31,15 @@ function writeMsgCache(workOrderId: string, items: OrderMessage[]) {
   } catch { /* quota / disabled */ }
 }
 
-export function useChatMessages(workOrderId: string, currentUserId?: string | null, archiveOrderIds?: string[]) {
+export function useChatMessages(
+  workOrderId: string,
+  currentUserId?: string | null,
+  archiveOrderIds?: string[],
+  /** markRead:false → yalnız mesajları OKU, "okundu" işaretleme (ör. sipariş detayındaki
+   *  sayaç/önizleme). Varsayılan true: sohbet ekranları açılınca okundu yapar. */
+  opts?: { markRead?: boolean },
+) {
+  const shouldMarkRead = opts?.markRead !== false;
   // İlk render → cache varsa anında dolu
   const initial = workOrderId ? readMsgCache(workOrderId) : null;
   const [messages, setMessages] = useState<OrderMessage[]>(initial ?? []);
@@ -92,7 +100,7 @@ export function useChatMessages(workOrderId: string, currentUserId?: string | nu
 
     load();
     // Chat açıldığında karşı tarafın mesajlarını okundu yap
-    markRead();
+    if (shouldMarkRead) markRead();
     // Bu thread artık EKRANDA AÇIK → buna gelen yeni mesaj için in-app toast
     // gösterilmesin (kullanıcı zaten okuyor). Unmount'ta temizle.
     setActiveChatOrder(workOrderId);
@@ -112,7 +120,7 @@ export function useChatMessages(workOrderId: string, currentUserId?: string | nu
           () => {
             load();
             // Yeni gelen mesajı hemen okundu işaretle
-            markRead();
+            if (shouldMarkRead) markRead();
           }
         )
         .on(
@@ -155,7 +163,7 @@ export function useChatMessages(workOrderId: string, currentUserId?: string | nu
       // başka bir thread araya girdiyse onun işaretini ezme)
       if (getActiveChatOrder() === workOrderId) setActiveChatOrder(null);
     };
-  }, [workOrderId, load, markRead]);
+  }, [workOrderId, load, markRead, shouldMarkRead]);
 
   const send = async (senderId: string, content: string): Promise<string | null> => {
     if (!content.trim()) return null;

@@ -14,22 +14,24 @@ import type {
   InvoiceListFilters, CreateBulkInvoiceParams, UnbilledWorkOrder,
   LinkedWorkOrder,
 } from './types';
-import { groupByCurrency, type CurrencyTotal } from '../../core/money/aggregations';
+import { type CurrencyTotal } from '../../core/money/aggregations';
 import type { Currency } from '../../core/money/currency';
+import { labTodayOf } from '../../core/metrics/orderDefs';
+import { cachedLabTz, loadLabTz } from '../../core/metrics/useLabToday';
 
 // ─── Listeler ──────────────────────────────────────────────────────────────
 
 const INVOICE_SELECT = `
   *,
   doctor:doctors!invoices_doctor_id_fkey(id, full_name, phone, clinic_id),
-  clinic:clinics!invoices_clinic_id_fkey(id, name, address, phone, email),
+  clinic:clinics!invoices_clinic_id_fkey(id, name, address, phone, email, vkn, tax_office),
   work_order:work_orders!invoices_work_order_id_fkey(id, order_number, patient_name, delivery_date)
 `;
 
 const INVOICE_DETAIL_SELECT = `
   *,
   doctor:doctors!invoices_doctor_id_fkey(id, full_name, phone, clinic_id),
-  clinic:clinics!invoices_clinic_id_fkey(id, name, address, phone, email),
+  clinic:clinics!invoices_clinic_id_fkey(id, name, address, phone, email, vkn, tax_office),
   work_order:work_orders!invoices_work_order_id_fkey(id, order_number, patient_name, delivery_date),
   items:invoice_items(id, invoice_id, order_item_id, description, quantity, unit_price, total, discount_type, discount_value, net_total, sort_order, created_at),
   payments:payments(*, receiver:profiles!payments_received_by_fkey(id, full_name)),
@@ -56,8 +58,9 @@ export async function fetchInvoices(filters: InvoiceListFilters = {}) {
   if (filters.date_to)    q = q.lte('issue_date', filters.date_to);
 
   if (filters.overdue_only) {
-    const today = new Date().toISOString().split('T')[0];
-    q = q.lt('due_date', today).neq('status', 'odendi').neq('status', 'iptal');
+    // Tek tanım (2026-10-26): kesilmiş + ödenmemiş + vade lab gününden önce (taslak alacak değil).
+    const today = labTodayOf(cachedLabTz());
+    q = q.lt('due_date', today).in('status', ['kesildi', 'kismi_odendi']);
   }
 
   if (filters.search) {
@@ -121,7 +124,9 @@ export async function createInvoice(params: CreateInvoiceParams) {
       work_order_id: work_order_id ?? null,
       issue_date: issue_date ?? new Date().toISOString().slice(0, 10),
       due_date:   due_date ?? null,
-      tax_rate:   tax_rate ?? 20,
+      // Oran verilmezse DB lab'ın varsayılan KDV'sini yazar (invoices_default_tax_rate,
+      // Ayarlar → Finans). Eskiden burada sabit 20 vardı, lab ayarı yok sayılıyordu.
+      ...(tax_rate != null ? { tax_rate } : {}),
       notes:      notes ?? null,
       status:     'taslak',
     })
@@ -422,6 +427,54 @@ export async function deletePayment(id: string) {
 }
 
 /**
+ * Elle girilmiş tahsilatı geri alır (ör. yanlışlıkla "ödendi" yapılan fatura).
+ * Fatura durumu + ödenen tutar `recalc_on_payment_change` tetikleyicisiyle
+ * kendiliğinden döner (ödenen 0 → 'kesildi'). Yetki RLS'te: manage_finance.
+ *
+ * SİLİNMEYENLER — kendi akışları var, burada silmek kaydı yarım bırakır:
+ *   • online ödeme (idempotency_key dolu) → iade akışı
+ *   • çeke bağlı tahsilat (checks.payment_id) → Çek / Senet
+ *   • onaylı ödeme bildirimi (payment_submissions.approved_payment_id) → Ödeme Onayları
+ */
+export async function undoManualPayment(
+  p: Pick<Payment, 'id' | 'invoice_id' | 'amount' | 'currency' | 'payment_method' | 'payment_date' | 'idempotency_key'>,
+  invoiceNumber: string,
+  labId: string | null,
+): Promise<{ error: string | null }> {
+  if (p.idempotency_key) return { error: 'Online ödeme iade akışıyla geri alınır.' };
+
+  const [{ data: chk }, { data: sub }] = await Promise.all([
+    supabase.from('checks').select('id').eq('payment_id', p.id).limit(1),
+    supabase.from('payment_submissions').select('id').eq('approved_payment_id', p.id).limit(1),
+  ]);
+  if ((chk ?? []).length) return { error: 'Bu tahsilat bir çeke bağlı, Çek / Senet ekranından geri alın.' };
+  if ((sub ?? []).length) return { error: 'Bu tahsilat onaylanmış bir ödeme bildirimine bağlı, Ödeme Onayları ekranından geri alın.' };
+
+  // .select(): RLS yetkisizde HATA vermez, 0 satır siler — sessiz başarısızlığı yakala.
+  const { data, error } = await supabase.from('payments').delete().eq('id', p.id).select('id');
+  if (error) return { error: error.message };
+  if (!data || data.length === 0) return { error: 'Tahsilat silinemedi, yetkiniz olmayabilir.' };
+
+  // Denetim izi: kim, hangi tahsilatı sildi. Log hatası geri almayı bozmaz.
+  void Promise.resolve(
+    supabase.rpc('log_activity', {
+      p_action: 'Tahsilat silindi',
+      p_entity_type: 'payment',
+      p_entity_id: p.id,
+      p_entity_label: `${invoiceNumber} · ${p.payment_method} ${Number(p.amount).toFixed(2)} ${p.currency ?? ''}`.trim(),
+      p_metadata: {
+        invoice_id: p.invoice_id, amount: p.amount, currency: p.currency ?? null,
+        method: p.payment_method, payment_date: p.payment_date,
+      },
+      p_lab_id: labId,
+      p_actor_id: null,
+    } as any),
+  ).catch(() => {});
+
+  return { error: null };
+}
+
+/**
  * Toplu tahsilat — birden fazla faturaya tek tutarı vadesi yakın olanlardan
  * başlayarak dağıtır (bulk_record_payment RPC).
  * Dönen tablo: { invoice_id, amount_paid }[]
@@ -503,7 +556,8 @@ const CLINIC_STATEMENT_SELECT = `
   *,
   doctor:doctors!invoices_doctor_id_fkey(id, full_name, phone, clinic_id),
   clinic:clinics!invoices_clinic_id_fkey(id, name, address, phone, email),
-  work_order:work_orders!invoices_work_order_id_fkey(id, order_number, patient_name, delivery_date),
+  work_order:work_orders!invoices_work_order_id_fkey(id, order_number, patient_name, delivery_date, revision_responsible,
+    revision_of:revision_of_id(order_number)),
   payments:payments(*, receiver:profiles!payments_received_by_fkey(id, full_name))
 `;
 
@@ -520,33 +574,40 @@ export async function fetchInvoicesForClinic(clinicId: string) {
 
 // KATI per-currency: tüm istatistikler para birimine göre BAĞIMSIZ — base'e çevrilmez.
 export interface InvoiceStats {
-  thisMonth: CurrencyTotal[];   // bu ay kesilen
-  outstanding: CurrencyTotal[]; // toplam bakiye (kesilen − tahsil)
-  overdue: CurrencyTotal[];     // vadesi geçen
-  paid: CurrencyTotal[];        // toplam tahsilat
-  invoiceCount: number;
+  thisMonth: CurrencyTotal[];   // bu ay kesilen (ciro: kesilmiş fatura, fatura tarihi)
+  outstanding: CurrencyTotal[]; // toplam alacak (kliniklerin pozitif bakiyeleri, avans düşülmüş)
+  overdue: CurrencyTotal[];     // vadesi geçmiş alacak (avans düşülmüş)
+  paid: CurrencyTotal[];        // bu ay tahsilat (makbuz günü + makbuzsuz ödeme)
+  drafts: CurrencyTotal[];      // kesilmeyi bekleyen taslaklar (ciroya/alacağa girmez)
+  draftCount: number;
+  invoiceCount: number;         // kesilmiş fatura adedi
 }
 
+/** Faturalar özet kartları — TEK kaynak (20261026100000): finance_period_metrics +
+ *  lab_receivables_summary. Eskiden tüm faturalar sayfalamasız çekilip istemcide
+ *  toplanıyordu (taslak ve iptal dahil, "Tahsilat (30g)" aslında tüm zamandı). */
 export async function fetchInvoiceStats(): Promise<InvoiceStats> {
-  const today = new Date().toISOString().slice(0, 10);
-  const firstOfMonth = today.slice(0, 7) + '-01';
-
-  const [{ data: all }, { data: thisMonth }, { data: overdue }] = await Promise.all([
-    supabase.from('invoices').select('status, total, paid_amount, currency'),
-    supabase.from('invoices').select('total, currency').gte('issue_date', firstOfMonth),
-    supabase.from('invoices').select('total, paid_amount, currency')
-      .lt('due_date', today).neq('status', 'odendi').neq('status', 'iptal'),
+  const today = labTodayOf(await loadLabTz());
+  const firstOfMonth = today.slice(0, 8) + '01';
+  const [per, recv, cnt] = await Promise.all([
+    supabase.rpc('finance_period_metrics', { p_from: firstOfMonth, p_to: today }),
+    supabase.rpc('lab_receivables_summary'),
+    supabase.from('invoices').select('id', { count: 'exact', head: true }).in('status', ['kesildi', 'kismi_odendi', 'odendi']),
   ]);
-
-  const nonCancelled = ((all ?? []) as any[]).filter(i => i.status !== 'iptal');
-  const cur = (r: any) => (r.currency ?? 'TRY') as Currency;
-
+  const perRows = ((per.data ?? []) as any[]);
+  const recvRows = ((recv.data ?? []) as any[]);
+  const slices = (rows: any[], pick: (r: any) => number): CurrencyTotal[] =>
+    rows.map(r => ({ currency: (r.currency ?? 'TRY') as Currency, total: Number(pick(r)) || 0, count: 0 }))
+        .filter(c => c.total !== 0)
+        .sort((a, b) => b.total - a.total);
   return {
-    thisMonth:   groupByCurrency(((thisMonth ?? []) as any[]), r => ({ amount: Number(r.total) || 0, currency: cur(r) })),
-    outstanding: groupByCurrency(nonCancelled, r => ({ amount: (Number(r.total) || 0) - (Number(r.paid_amount) || 0), currency: cur(r) }), { keepZero: true }),
-    overdue:     groupByCurrency(((overdue ?? []) as any[]), r => ({ amount: (Number(r.total) || 0) - (Number(r.paid_amount) || 0), currency: cur(r) })),
-    paid:        groupByCurrency(nonCancelled, r => ({ amount: Number(r.paid_amount) || 0, currency: cur(r) })),
-    invoiceCount: nonCancelled.length,
+    thisMonth:   slices(perRows, r => r.revenue),
+    outstanding: slices(recvRows, r => r.receivable),
+    overdue:     slices(recvRows, r => r.overdue),
+    paid:        slices(perRows, r => r.collections),
+    drafts:      slices(recvRows, r => r.draft_total),
+    draftCount:  recvRows.reduce((n, r) => n + (Number(r.draft_count) || 0), 0),
+    invoiceCount: cnt.count ?? 0,
   };
 }
 
@@ -608,7 +669,7 @@ export async function fetchClinicReceipts(clinicId?: string): Promise<ClinicRece
   let q = supabase
     .from('clinic_receipts')
     .select('id, clinic_id, receipt_date, payment_method, reference_no, notes, '
-          + 'base_currency, total_base, allocated_base, '
+          + 'base_currency, total_base, allocated_base, account_id, account_label, '
           + 'lines:clinic_receipt_lines(currency, amount, rate, amount_base)')
     .order('receipt_date', { ascending: false })
     .limit(200);
@@ -616,6 +677,14 @@ export async function fetchClinicReceipts(clinicId?: string): Promise<ClinicRece
   const { data, error } = await q;
   if (error) throw new Error(error.message);
   return (data ?? []) as unknown as ClinicReceipt[];
+}
+
+/** Tahsilatın yatırıldığı hesabı yazar (nakitte boş bırakılır: nakit kasaya kendiliğinden düşer). Ad anlık kopyalanır. */
+export async function setClinicReceiptAccount(receiptId: string, account: { id: string; name: string } | null): Promise<void> {
+  const { error } = await supabase.from('clinic_receipts')
+    .update({ account_id: account?.id ?? null, account_label: account?.name ?? null })
+    .eq('id', receiptId);
+  if (error) throw new Error(error.message);
 }
 
 /** Fişi düzeltir — satırlar tamamen değiştirilir. Dağıtılmış fiş reddedilir. */

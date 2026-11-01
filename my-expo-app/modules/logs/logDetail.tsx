@@ -16,7 +16,7 @@
 import React from 'react';
 import { View, Text, Platform } from 'react-native';
 import { STATUS_TONES } from '../../core/theme/mobileTheme';
-import { localeTag } from '../../core/i18n';
+import { localeTag, isRTL } from '../../core/i18n';
 import { autoT } from '../../core/i18n/autoTranslate';
 import { useInkUI } from '../../core/theme/inkScale';
 
@@ -51,6 +51,9 @@ export const ENTITY_LABEL: Record<string, string> = {
   clinic:           'Klinik',
   doctor:           'Hekim',
   whatsapp_session: 'WhatsApp',
+  change_request:   'Değişiklik talebi',
+  cancel_request:   'İptal talebi',
+  payment:          'Tahsilat',
 };
 
 /** Aşama/iş durumu kodları — STATUS_TONES'ta olmayan teknik değerler. */
@@ -95,6 +98,7 @@ const FIELD_LABEL: Record<string, string> = {
   patient_name:        'Hasta adı',
   patient_id:          'Hasta no',
   patient_dob:         'Doğum tarihi',
+  patient_age:         'Yaş',
   patient_city:        'Şehir',
   patient_gender:      'Cinsiyet',
   patient_nationality: 'Uyruk',
@@ -105,7 +109,26 @@ const FIELD_LABEL: Record<string, string> = {
   delivery_method:     'Teslim yöntemi',
   is_urgent:           'Acil',
   notes:               'Notlar',
+  // 20261027110000 alan değişikliği kaydı (metadata.fields = [{field, old, new}])
+  doctor_id:           'Hekim',
+  lab_notes:           'Lab notu',
+  measurement_type:    'Ölçü türü',
+  model_type:          'Model türü',
+  implant_brand:       'İmplant markası',
+  implant_teeth:       'İmplant dişleri',
+  implant_details:     'İmplant ayrıntısı',
+  status:              'Durum',
 };
+
+const ITEM_OP: Record<string, string> = { added: 'Eklendi', removed: 'Çıkarıldı', changed: 'Değişti' };
+
+/** Eski → yeni oku; sağdan sola dillerde ters (sözlükteki "Lab → Klinik" = "… ← …" kalıbı). */
+const ARW = () => (isRTL() ? '←' : '→');
+/** Değişiklik değerinde evet/hayır çevrilir (fmtValue Türkçe döndürür). */
+const fv = (k: string, v: any) => (typeof v === 'boolean' ? autoT(v ? 'Evet' : 'Hayır') : fmtValue(k, v));
+
+/** Kişi kimliği → ad (Loglar ekranı kişi listesinden verir); yoksa kısaltılmış kimlik. */
+export type NameOf = (id: string) => string | null | undefined;
 
 const ROLE_TR: Record<string, string> = {
   lab: 'Lab', admin: 'Yönetici', technician: 'Teknisyen', doctor: 'Hekim',
@@ -152,9 +175,9 @@ function shortId(v: any): string {
  * Bir log satırının TÜM ayrıntısını sıralı "etiket → değer" çiftlerine çevirir.
  * `fields` (sipariş anlık görüntüsü) ayrı döner: kendi başlığı altında çizilir.
  */
-export function buildLogFacts(log: ActivityLogLike): { facts: LogFact[]; fields: LogFact[] } {
+export function buildLogFacts(log: ActivityLogLike, nameOf?: NameOf): { facts: LogFact[]; fields: LogFact[] } {
   const m: Record<string, any> = log.metadata ?? {};
-  const used = new Set<string>();
+  const used = new Set<string>(['source']);
   const facts: LogFact[] = [];
   const push = (label: string, value: string, wide?: boolean) => {
     if (value && value !== '—') facts.push({ label, value, wide });
@@ -167,12 +190,19 @@ export function buildLogFacts(log: ActivityLogLike): { facts: LogFact[]; fields:
   if (m.station)   { used.add('station');   push('İstasyon', String(m.station)); }
   if (m.stage)     { used.add('stage');     push('Aşama', String(m.stage)); }
 
+  // 1b) Teknisyen devri — from/to kişi kimliğidir, aşama durumu değil
+  if (log.action === 'Aşamayı devretti') {
+    used.add('from'); used.add('to');
+    const nm = (v: any) => (v ? (nameOf?.(String(v)) || shortId(v)) : '—');
+    push('Devir', `${nm(m.from)} ${ARW()} ${nm(m.to)}`);
+  }
+
   // 2) Durum geçişleri — "önceki → yeni" TEK satırda, kodlar çevrilerek
   if (m.old_status || m.new_status) {
     used.add('old_status'); used.add('new_status');
     push('Durum', `${statusLabel(m.old_status)} → ${statusLabel(m.new_status)}`);
   }
-  if (m.from || m.status) {
+  if ((m.from || m.status) && !used.has('from')) {
     used.add('from'); used.add('status');
     push('Aşama durumu', m.from && m.status
       ? `${statusLabel(m.from)} → ${statusLabel(m.status)}`
@@ -212,9 +242,31 @@ export function buildLogFacts(log: ActivityLogLike): { facts: LogFact[]; fields:
     push(KEY_LABEL[k] ?? k, fmtValue(k, m[k]), typeof m[k] === 'object');
   }
 
-  // 6) Sipariş düzenlemesi anlık görüntüsü
+  // 6) Sipariş düzenlemesi: yeni biçim (dizi, eski → yeni) / kalem farkı / eski anlık görüntü
   const fields: LogFact[] = [];
   const f = m.fields;
+  used.add('items');
+  if (Array.isArray(f)) {
+    for (const e of f) {
+      const k = String(e?.field ?? '');
+      if (!k || (k === 'status' && (m.old_status || m.new_status))) continue;
+      const val = e.changed
+        ? autoT('Değişti')
+        : k === 'status'
+          ? `${autoT(statusLabel(e.old))} ${ARW()} ${autoT(statusLabel(e.new))}`
+          : `${fv(k, e.old)} ${ARW()} ${fv(k, e.new)}`;
+      fields.push({ label: FIELD_LABEL[k] ?? k, value: val, wide: k === 'notes' || k === 'lab_notes' });
+    }
+  }
+  if (Array.isArray(m.items)) {
+    for (const it of m.items) {
+      const parts: string[] = [autoT(ITEM_OP[it?.op] ?? String(it?.op ?? ''))];
+      if (it?.qty_old != null || it?.qty_new != null) parts.push(`${autoT('Adet')} ${it.qty_old ?? '—'} ${ARW()} ${it.qty_new ?? '—'}`);
+      if ((it?.teeth_old ?? '') !== (it?.teeth_new ?? '')) parts.push(`${autoT('Diş')} ${it.teeth_old || '—'} ${ARW()} ${it.teeth_new || '—'}`);
+      if (it?.price_old != null || it?.price_new != null) parts.push(`${fmtNum(it.price_old ?? 0)} ${ARW()} ${fmtNum(it.price_new ?? 0)}${it.currency ? ' ' + it.currency : ''}`);
+      fields.push({ label: String(it?.service ?? '—'), value: parts.join(' · '), wide: true });
+    }
+  }
   if (f && typeof f === 'object' && !Array.isArray(f)) {
     const order = Object.keys(FIELD_LABEL).filter(k => k in f).concat(
       Object.keys(f).filter(k => !(k in FIELD_LABEL)),
@@ -273,9 +325,9 @@ function FactGrid({ items }: { items: LogFact[] }) {
  * Genişletilmiş satırın ayrıntı gövdesi: bağlam gerçekleri + sipariş anlık
  * görüntüsü + teknik künye (kayıt/aktör kimlikleri, tam zaman).
  */
-export function LogDetail({ log }: { log: ActivityLogLike }) {
+export function LogDetail({ log, nameOf }: { log: ActivityLogLike; nameOf?: NameOf }) {
   const U = useInkUI();
-  const { facts, fields } = buildLogFacts(log);
+  const { facts, fields } = buildLogFacts(log, nameOf);
   const entity = log.entity_type ? (ENTITY_LABEL[log.entity_type] ?? log.entity_type) : null;
 
   const tech: LogFact[] = [
@@ -330,8 +382,23 @@ export function LogDetail({ log }: { log: ActivityLogLike }) {
  * Satırın ALTINDA tek satırlık özet — genişletmeden de bağlam görünsün.
  * Örn: "NEX-2026-0175 · Gözde Ateş · Glaze / Polisaj · 0,0125 Adet".
  */
-export function logSummaryLine(log: ActivityLogLike): string | null {
-  const { facts } = buildLogFacts(log);
+export function logSummaryLine(log: ActivityLogLike, nameOf?: NameOf): string | null {
+  const { facts } = buildLogFacts(log, nameOf);
   if (facts.length === 0) return null;
   return facts.slice(0, 4).map(f => f.value).join(' · ');
+}
+
+/**
+ * Eylem metni, çevrilmiş. Veritabanına Türkçe yazılan "Durumu değiştirdi → Teslim Edildi"
+ * tek parça olduğu için sözlükte eşleşmiyordu (en/de/fa'da Türkçe kalıyordu): önek ve durum
+ * ayrı çevrilir; durum kodu metadata.new_status'tan okunur.
+ */
+export function logActionText(log: Pick<ActivityLogLike, 'action' | 'metadata'>): string {
+  const a = log.action ?? '';
+  const i = a.indexOf('→');
+  if (i < 0) return autoT(a);
+  const head = a.slice(0, i).trim();
+  const code = log.metadata?.new_status;
+  const tail = code ? statusLabel(code) : a.slice(i + 1).trim();
+  return `${autoT(head)} ${isRTL() ? '←' : '→'} ${autoT(tail)}`;
 }

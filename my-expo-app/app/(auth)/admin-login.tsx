@@ -13,7 +13,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../core/api/supabase';
-import { signIn, signOut } from '../../modules/auth/api';
+import { signIn, signOut, authErrorMessage } from '../../modules/auth/api';
 import { C } from '../../core/theme/colors';
 import { F } from '../../core/theme/typography';
 import { useIsDesktop } from '../../core/layout/DesktopShell';
@@ -227,7 +227,8 @@ export default function AdminLoginScreen() {
     try {
       const { data: authData, error: authError } = await signIn(email.trim().toLowerCase(), password);
       if (authError || !authData?.user) {
-        setErrorMsg('E-posta veya şifre hatalı.');
+        // Banlı/doğrulanmamış hesapta "şifre hatalı" demek yanıltıcı.
+        setErrorMsg(authErrorMessage(authError?.message) ?? 'E-posta veya şifre hatalı.');
         triggerShake(); setLoading(false); return;
       }
       const { data: profile } = await supabase

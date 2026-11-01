@@ -12,22 +12,25 @@ import {
 } from '../../../core/ui/icons';
 import { isRTL } from '../../../core/i18n';
 import { signUpClinic } from '../api';
-import { AddressFields, AddressData, buildAddressString } from '../components/AddressFields';
+import { AddressFields, CountryField, AddressData, buildAddressString, validateAddress, addressFromPlace } from '../components/AddressFields';
 import { AuthShell, AuthInput, AuthButton, AUTH, AUTH_FONT } from '../components/AuthShell';
 import { ConsentGate, EMPTY_CONSENTS, hasRequiredConsents, type ConsentState } from '../components/ConsentGate';
 import { ClinicNameAutocomplete } from '../components/ClinicNameAutocomplete';
 import { PasswordChecklist } from '../components/PasswordChecklist';
+import { ConnectCodeField, connectCodeError, normalizeConnectCode } from '../components/ConnectCodeField';
+import { useHostSignupLab } from '../hooks/useHostSignupLab';
 
-type ClinicType = 'klinik' | 'poliklinik' | 'hastane';
+type ClinicType = 'muayenehane' | 'klinik' | 'poliklinik' | 'hastane';
 
 // Sage yeşil — DOCTOR_TONE.primary ile uyumlu (RegisterClinicScreen tone="doctor")
 const TONE_GREEN = '#7A9B85';
 
 function SegmentPicker({ value, onChange }: { value: ClinicType; onChange: (v: ClinicType) => void }) {
   const opts: { key: ClinicType; label: string }[] = [
-    { key: 'klinik',     label: 'Klinik' },
-    { key: 'poliklinik', label: 'Poliklinik' },
-    { key: 'hastane',    label: 'Hastane' },
+    { key: 'muayenehane', label: 'Muayenehane' },  // tek hekimli
+    { key: 'klinik',      label: 'Klinik' },
+    { key: 'poliklinik',  label: 'Poliklinik' },
+    { key: 'hastane',     label: 'Hastane' },
   ];
   return (
     <View style={{ marginBottom: 14 }}>
@@ -38,7 +41,7 @@ function SegmentPicker({ value, onChange }: { value: ClinicType; onChange: (v: C
       }}>
         Kurum Türü
       </Text>
-      <View style={{ flexDirection: 'row', gap: 8 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {opts.map(o => {
           const active = o.key === value;
           return (
@@ -46,7 +49,7 @@ function SegmentPicker({ value, onChange }: { value: ClinicType; onChange: (v: C
               key={o.key}
               onPress={() => onChange(o.key)}
               style={({ hovered }: any) => ({
-                flex: 1, height: 44, borderRadius: 10,
+                flexGrow: 1, flexBasis: '45%', height: 44, borderRadius: 10,
                 alignItems: 'center', justifyContent: 'center',
                 backgroundColor: active ? TONE_GREEN : (hovered ? `${TONE_GREEN}10` : '#FFFFFF'),
                 borderWidth: 1, borderColor: active ? TONE_GREEN : AUTH.border,
@@ -74,8 +77,11 @@ function SegmentPicker({ value, onChange }: { value: ClinicType; onChange: (v: C
 
 export function RegisterClinicScreen() {
   const router = useRouter();
+  // Lab'ın kendi alan adından (www.nexadent.net) açıldıysa kod sunucudan gelir.
+  const hostLab = useHostSignupLab();
 
   const [form, setForm] = useState({
+    connect_code: '',
     clinic_name: '',
     clinic_type: 'klinik' as ClinicType,
     full_name: '',
@@ -115,9 +121,10 @@ export function RegisterClinicScreen() {
   const validate = () => {
     const e: Partial<Record<keyof typeof form, string>> = {};
     const ae: Partial<Record<keyof AddressData, string>> = {};
+    const codeErr = hostLab.status === 'found' ? undefined : connectCodeError(form.connect_code);
+    if (codeErr) e.connect_code = codeErr;
     if (!form.clinic_name.trim()) e.clinic_name = 'Klinik adı zorunlu';
-    if (!address.il) ae.il = 'İl seçin';
-    if (!address.ilce) ae.ilce = 'İlçe seçin';
+    Object.assign(ae, validateAddress(address));
     if (!form.full_name.trim()) e.full_name = 'Ad soyad zorunlu';
     if (!form.phone.trim()) e.phone = 'Telefon zorunlu';
     if (!form.email.trim()) e.email = 'E-posta zorunlu';
@@ -125,7 +132,10 @@ export function RegisterClinicScreen() {
     if (form.password.length < 8) e.password = 'Şifre en az 8 karakter olmalı';
     if (form.password !== form.passwordConfirm) e.passwordConfirm = 'Şifreler eşleşmiyor';
     setErrors(e); setAddressErrors(ae);
-    const has = Object.keys(e).length > 0 || Object.keys(ae).length > 0;
+    // P0-5 · R-01 — zorunlu onaylar olmadan kayıt yok (hekim/lab formlarıyla aynı).
+    const consentsOk = hasRequiredConsents(consents);
+    setConsentError(!consentsOk);
+    const has = Object.keys(e).length > 0 || Object.keys(ae).length > 0 || !consentsOk;
     if (has) triggerShake();
     return !has;
   };
@@ -142,6 +152,7 @@ export function RegisterClinicScreen() {
       phone: form.phone.trim(),
       address: buildAddressString(address),
       clinic_type: form.clinic_type,
+      connect_code: hostLab.status === 'found' ? hostLab.code : normalizeConnectCode(form.connect_code),
     });
     setLoading(false);
     if (error) {
@@ -212,9 +223,20 @@ export function RegisterClinicScreen() {
           </View>
         ) : null}
 
+        <ConnectCodeField
+          value={form.connect_code}
+          onChangeText={set('connect_code')}
+          error={errors.connect_code}
+          hostLab={hostLab}
+        />
+
         <SegmentPicker value={form.clinic_type} onChange={(v) => setForm(p => ({ ...p, clinic_type: v }))} />
 
+        {/* Ülke — Google kurum aramasının hemen üstünde; arama ve adres alanları buna göre */}
+        <CountryField value={address} onChange={(v) => { setAddress(v); setAddressErrors({}); }} />
+
         <ClinicNameAutocomplete
+          region={address.ulke}
           value={form.clinic_name}
           onChangeText={set('clinic_name')}
           placeholder="Kurum Adı (Google'dan ara)"
@@ -227,13 +249,7 @@ export function RegisterClinicScreen() {
               phone: prev.phone.trim() ? prev.phone : d.phone,
             }));
             // Adres alanlarını otomatik doldur (manuel düzenleme mümkün)
-            setAddress({
-              il: d.il || '',
-              ilce: d.ilce || '',
-              mahalle: d.mahalle || '',
-              sokak: d.sokak || '',
-              posta_kodu: d.postaKodu || '',
-            });
+            setAddress(addressFromPlace(d, address.ulke));
             setAddressErrors({});
             setErrors((p) => ({ ...p, clinic_name: '', phone: '' }));
           }}
@@ -243,6 +259,7 @@ export function RegisterClinicScreen() {
           value={address}
           onChange={(v) => { setAddress(v); setAddressErrors({}); }}
           errors={addressErrors}
+          showCountry={false}
         />
 
         {/* Ad+Telefon yan yana */}
@@ -318,7 +335,10 @@ export function RegisterClinicScreen() {
         <View style={{ marginTop: 8 }}>
           <ConsentGate value={consents} onChange={setConsents} showError={consentError} />
 
-          <AuthButton label="Hesap Oluştur" onPress={handleRegister} loading={loading} />
+          {/* Onay kutusu ile buton arasında nefes payı */}
+          <View style={{ height: 20 }} />
+
+          <AuthButton label="Hesap Oluştur" onPress={handleRegister} loading={loading || hostLab.status === 'loading'} />
         </View>
       </Animated.View>
     </AuthShell>

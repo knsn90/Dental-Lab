@@ -59,7 +59,7 @@ export default function NavGlassDev() {
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 220, gap: 10 }}>
           <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
             <Pressable onPress={() => setMode(dark ? 'light' : 'dark')}
-              style={{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999, backgroundColor: '#4771AB' }}>
+              style={{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999, backgroundColor: '#004B87' }}>
               <Text style={{ color: '#fff', fontWeight: '700' }}>{dark ? 'Açık tema' : 'Koyu tema'}</Text>
             </Pressable>
             <Pressable onPress={() => setShowMap(true)}
@@ -83,7 +83,7 @@ export default function NavGlassDev() {
       <PillTabBar
         items={TABS}
         baseRoute="/dev/nav-glass"
-        accentColor="#4771AB"
+        accentColor="#002A5C"
         fabItem={{ routeName: 'new', label: 'Yeni', icon: Plus, onPress: () => setShowMap(m => !m) }}
       />
       <MoreMenuSheet
@@ -92,7 +92,7 @@ export default function NavGlassDev() {
         title="Tüm Menü"
         subtitle="Sık kullanılmayan ekranlar"
         items={MORE}
-        accentColor="#4771AB"
+        accentColor="#002A5C"
       />
     </View>
   );

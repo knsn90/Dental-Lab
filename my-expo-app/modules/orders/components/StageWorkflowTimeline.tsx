@@ -22,7 +22,7 @@ export function StageWorkflowTimeline(p: any) {
     handleCompleteProductionStage, handleAdminCompleteStage, handleAdminActivateStage,
     handleAdminSkipStage, handleRemoveStage, setReassignOpen, openReassign, setAddStageOpen,
     refetch, refetchStages, fmtDate, isLaneOpen, toggleLane,
-    activeDelivery, setDeliveryModalOpen, stageCompleting,
+    activeDelivery, setDeliveryModalOpen, stageCompleting, onCloseWithoutProof,
   } = p;
   // Dar ekran (mobil): kompakt satırı 2 satıra aç — isim kırpılmasın.
   const { width } = useWindowDimensions();
@@ -423,6 +423,11 @@ export function StageWorkflowTimeline(p: any) {
                                 <Pressable
                                   onPress={async () => {
                                     const label = stg?.station?.name ?? 'Aşama';
+                                    // Kendi kurye teslimatı: kanıtsız kapatma penceresi (neden zorunlu) — onay o pencerenin kendisi
+                                    if (activeDelivery && activeDelivery.status !== 'teslim_edildi' && activeDelivery.mode === 'internal' && onCloseWithoutProof) {
+                                      onCloseWithoutProof();
+                                      return;
+                                    }
                                     const ok = await confirmAsync(
                                       `${label} aşamasını tamamla`,
                                       activeDelivery && activeDelivery.status !== 'teslim_edildi'

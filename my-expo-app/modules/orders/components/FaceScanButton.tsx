@@ -65,31 +65,29 @@ export function FaceScanButton({ workOrderId, accentColor, onUploaded }: Props) 
 
   return (
     // object style ZORUNLU — fonksiyon-stili native'de düşüp satırı column'a
-    // çeviriyordu (ikon etiketin üstünde kalıyordu). Solid accent pill yerine
-    // yumuşak accent tint: dosya bölümüne uyan, ikincil bir aksiyon gibi durur.
+    // çeviriyordu (ikon etiketin üstünde kalıyordu).
+    // Uygulamanın kapsül dili: "Tümünü 3D Aç" ile AYNI ölçü (40 yükseklik, radius 999),
+    // kenarlıksız yumuşak accent tint — yanındaki dolu ana eylemin ikincili.
+    // Eskiden köşeli + kenarlıklı kutuydu; sitedeki hiçbir butona benzemiyordu.
     <Pressable
       onPress={handlePress}
       disabled={busy}
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        alignSelf: 'flex-start',
-        gap: 8,
+        gap: 9,
+        height: 40,
         paddingHorizontal: 14,
-        paddingVertical: 11,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: accentColor + '55',
-        backgroundColor: accentColor + '14',
-        marginBottom: 8,
+        borderRadius: 999,
+        backgroundColor: accentColor + '1F',
         opacity: busy ? 0.6 : 1,
         ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
       }}
     >
       {busy
         ? <ActivityIndicator size="small" color={accentColor} />
-        : <ScanFace size={16} color={accentColor} strokeWidth={1.9} />}
-      <Text style={{ fontSize: 13, fontWeight: '700', color: accentColor }}>
+        : <ScanFace size={16} color={accentColor} strokeWidth={2.2} />}
+      <Text style={{ fontSize: 13.5, fontWeight: '700', color: accentColor, letterSpacing: -0.2 }} numberOfLines={1}>
         {busy ? 'Taranıyor…' : '3D Yüz Tarama'}
       </Text>
     </Pressable>

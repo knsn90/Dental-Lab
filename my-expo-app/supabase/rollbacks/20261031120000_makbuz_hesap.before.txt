@@ -1,0 +1,3 @@
+# 20261031120000_makbuz_hesap — canlı ÖNCE (2026-10-31)
+## clinic_receipts: account_id / account_label sütunları yok
+## clinic_receipts_lab_update kuralı: is_platform_admin() OR (lab_id = get_my_lab_id() AND has_permission(manage_finance))

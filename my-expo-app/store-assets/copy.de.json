@@ -1,0 +1,87 @@
+{
+  "locale": "de",
+  "brand": "SIMAN",
+  "rtl": false,
+  "panels": [
+    {
+      "screen": "login",
+      "lead": "DEIN LABOR",
+      "hi": "IN DER TASCHE",
+      "tail": "",
+      "pos": "top",
+      "tilt": -9
+    },
+    {
+      "screen": "neworder",
+      "lead": "AUFTRAG",
+      "hi": "IN 60 SEKUNDEN",
+      "tail": "SENDEN",
+      "pos": "bottom",
+      "tilt": 9
+    },
+    {
+      "screen": "viewer",
+      "lead": "",
+      "hi": "3D-SCANS",
+      "tail": "IN DER HAND",
+      "pos": "top",
+      "tilt": 0
+    },
+    {
+      "screen": "stages",
+      "lead": "JEDE PHASE",
+      "hi": "LIVE",
+      "tail": "VERFOLGEN",
+      "pos": "bottom",
+      "tilt": -9
+    },
+    {
+      "screen": "courier",
+      "lead": "KURIER",
+      "hi": "AUF DER KARTE",
+      "tail": "VERFOLGEN",
+      "pos": "top",
+      "tilt": 9
+    },
+    {
+      "screen": "kanban",
+      "lead": "ALLE AUFTRÄGE",
+      "hi": "AUF EINEM BOARD",
+      "tail": "",
+      "pos": "bottom",
+      "tilt": 0
+    },
+    {
+      "screen": "perf",
+      "lead": "",
+      "hi": "LEISTUNG MESSEN",
+      "tail": "PRÄMIEN ZAHLEN",
+      "pos": "top",
+      "tilt": -9
+    },
+    {
+      "screen": "finance",
+      "lead": "RECHNUNG UND INKASSO",
+      "hi": "AUTOMATISCH",
+      "tail": "",
+      "pos": "bottom",
+      "tilt": 9
+    },
+    {
+      "screen": "chat",
+      "lead": "",
+      "hi": "JEDER AUFTRAG",
+      "tail": "MIT EIGENEM CHAT",
+      "pos": "top",
+      "tilt": 0
+    },
+    {
+      "screen": "girisdil",
+      "lead": "EIN LOGIN,",
+      "hi": "5 PANELS,",
+      "tail": "4 SPRACHEN",
+      "pos": "bottom",
+      "tilt": -9
+    }
+  ]
+}

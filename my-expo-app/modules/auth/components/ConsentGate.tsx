@@ -19,6 +19,9 @@ import { AUTH, AUTH_FONT } from './AuthShell';
 import { LegalDocModal } from './LegalDocModal';
 // Hukuki URL'ler tek kaynaktan (core/legal.ts). Branded dom'e geçiş orada tek satır.
 import { LEGAL_PRIVACY_URL, LEGAL_TERMS_URL, LEGAL_DOC_VERSION } from '../../../core/legal';
+import { signupConsentMeta } from '../lib/signupConsents';
+import { splitLinkSentence } from '../lib/linkSentence';
+import { autoT } from '../../../core/i18n/autoTranslate';
 
 /** Yayınlanmış hukuki doküman sürümleri.
  *  siman-legal/ içeriği her değiştiğinde BURASI da artırılmalı — kullanıcıya
@@ -59,10 +62,19 @@ export function hasRequiredConsents(c: ConsentState): boolean {
 }
 
 /** ConsentState → record_consents RPC payload'ı. */
-export function toConsentPayload(c: ConsentState) {
-  const ua = Platform.OS === 'web' && typeof navigator !== 'undefined'
+function consentUserAgent(): string {
+  return Platform.OS === 'web' && typeof navigator !== 'undefined'
     ? navigator.userAgent
     : `app/${Platform.OS}`;
+}
+
+/** ConsentState → signUp metadata'sı (`consents`). Bkz. lib/signupConsents. */
+export function toSignupConsentMeta(c?: ConsentState) {
+  return signupConsentMeta(c as unknown as Record<string, boolean> | undefined, LEGAL_DOC_VERSION, consentUserAgent());
+}
+
+export function toConsentPayload(c: ConsentState) {
+  const ua = consentUserAgent();
   return (Object.keys(c) as (keyof ConsentState)[]).map((kind) => ({
     kind,
     granted: c[kind],
@@ -145,6 +157,10 @@ export function ConsentGate({ value, onChange, showError }: ConsentGateProps) {
   const toggle = (k: keyof ConsentState) => () => onChange({ ...value, [k]: !value[k] });
   const missing = showError && !hasRequiredConsents(value);
   const [doc, setDoc] = React.useState<{ url: string; title: string } | null>(null);
+  // Bağlantılı cümleler dil başına "{link}" yer tutuculu tek dize — söz dizimi
+  // dile göre değişiyor (TR: "X'nı okudum…", EN: "I have read the X and…").
+  const [privBefore, privAfter] = splitLinkSentence(autoT('{link}’nı okudum ve kişisel verilerimin işlenmesini kabul ediyorum.'));
+  const [termsBefore, termsAfter] = splitLinkSentence(autoT('{link}’nı kabul ediyorum.'));
 
   return (
     <View style={{ marginTop: 4 }}>
@@ -160,17 +176,19 @@ export function ConsentGate({ value, onChange, showError }: ConsentGateProps) {
       >
         <Row checked={value.privacy_policy} onToggle={toggle('privacy_policy')}
              error={missing && !value.privacy_policy} testID="consent-privacy">
+          {privBefore}
           <LegalLink label="Gizlilik Politikası"
                      onPress={() => setDoc({ url: LEGAL_PRIVACY_URL, title: 'Gizlilik Politikası' })} />
-          {'’nı okudum ve kişisel verilerimin işlenmesini kabul ediyorum.'}
+          {privAfter}
           <Text style={{ color: AUTH.danger }}> *</Text>
         </Row>
 
         <Row checked={value.terms} onToggle={toggle('terms')}
              error={missing && !value.terms} testID="consent-terms">
+          {termsBefore}
           <LegalLink label="Kullanım Koşulları"
                      onPress={() => setDoc({ url: LEGAL_TERMS_URL, title: 'Kullanım Koşulları' })} />
-          {'’nı kabul ediyorum.'}
+          {termsAfter}
           <Text style={{ color: AUTH.danger }}> *</Text>
         </Row>
 

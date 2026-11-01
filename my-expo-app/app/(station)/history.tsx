@@ -15,6 +15,9 @@ import { usePageTitleStore } from '../../core/store/pageTitleStore';
 import { supabase } from '../../core/api/supabase';
 import { useStationTheme, hexA } from '../../core/theme/stationPalette';
 import { mobileTopPad } from '../../core/ui/pageMetrics';
+import { WhiteHero, useWhiteHeroInk } from '../../core/ui/WhiteHero';
+import { onAccentInk } from '../../core/theme/usePanelTheme';
+import { SlideTabBar } from '../../core/ui/SlideTabBar';
 
 const DISPLAY_FONT = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
 
@@ -269,58 +272,31 @@ export default function StationHistoryScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: P.pageBg }}
-      contentContainerStyle={{ padding: 16, paddingTop: mobileTopPad(insets.top), paddingBottom: 80 }}
+      // 72px'lik üst pay YALNIZ mobilde gerekli (yüzen başlık oraya biniyor).
+      // Masaüstünde kabuk başlığı zaten üstte; o pay sayfa başlığıyla hero
+      // arasında ölü boşluk bırakıyordu → normal sayfa dolgusu.
+      contentContainerStyle={{ padding: 16, paddingTop: isMobile ? mobileTopPad(insets.top) : 16, paddingBottom: 80 }}
     >
-      {/* Mobil başlık — PatternsShell desktop'ta zaten üstte başlığı gösteriyor */}
-      {isMobile && (
-        <View style={{ marginBottom: 14 }}>
-          <Text style={{ fontSize: 11, fontWeight: '600', color: P.ink400, letterSpacing: 1.2, textTransform: 'uppercase' }}>
-            {t('station.history.breadcrumb')}
-          </Text>
-          <Text style={{ fontFamily: DISPLAY_FONT, fontWeight: '300', fontSize: 32, color: P.ink900, letterSpacing: -0.8, marginTop: 4 }}>
-            {t('station.history.pageTitle')}
-          </Text>
-          <Text style={{ fontSize: 12.5, color: P.ink500, marginTop: 4 }}>
-            {t('station.history.pageSubtitle')}
-          </Text>
-        </View>
-      )}
+      {/* BEYAZ HERO — sayfanın özeti: kaç aşama, kaç teslim, ortalama süre.
+          Eski mobil başlık bloğunun yerini aldı (kicker/başlık/alt metin hero'da). */}
+      <HistoryHero stages={stages} orders={orders} />
 
       {/* Tab pills + arama/filtre buton ikonları */}
       <View style={{ marginBottom: 14, gap: 10 }}>
         <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          {/* Tab pills */}
-          <View style={{
-            flexDirection: 'row', gap: 6, padding: 4,
-            backgroundColor: P.ink100, borderRadius: 999, alignSelf: 'flex-start',
-          }}>
-            {([
-              { key: 'stages', label: t('station.history.myStages'), count: filteredStages.length },
+          {/* Sekmeler — uygulama genelindeki kayan-cursor'lı SlideTabBar.
+              Elle yazılmış pill şeridi kaldırıldı: aktif pill'in genişliği ve
+              rengi diğer sayfalardakiyle tutmuyordu. */}
+          <SlideTabBar
+            items={[
+              { key: 'stages', label: t('station.history.myStages'),  count: filteredStages.length },
               { key: 'orders', label: t('station.history.delivered'), count: filteredOrders.length },
-            ] as const).map(t => {
-              const active = tab === t.key;
-              return (
-                <Pressable
-                  key={t.key}
-                  onPress={() => setTab(t.key)}
-                  style={{
-                    flexDirection: 'row', alignItems: 'center', gap: 7,
-                    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
-                    backgroundColor: active ? P.ink900 : 'transparent',
-                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                  }}
-                >
-                  <Text style={{ fontSize: 12.5, fontWeight: '600', color: active ? P.surface : P.ink500 }}>{t.label}</Text>
-                  <View style={{
-                    paddingHorizontal: 7, paddingVertical: 1, borderRadius: 999,
-                    backgroundColor: active ? hexA(P.surface, 0.18) : P.ink100,
-                  }}>
-                    <Text style={{ fontSize: 10.5, fontWeight: '700', color: active ? P.surface : P.ink500 }}>{t.count}</Text>
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
+            ]}
+            activeKey={tab}
+            onChange={(k) => setTab(k as 'stages' | 'orders')}
+            accentColor={P.accent}
+            style={{ marginStart: -4 }}
+          />
 
           <View style={{ flex: 1 }} />
 
@@ -372,7 +348,7 @@ export default function StationHistoryScreen() {
           <View style={{
             flexDirection: 'row', alignItems: 'center', gap: 8,
             paddingHorizontal: 14, height: 42,
-            backgroundColor: P.surface, borderRadius: 12,
+            backgroundColor: P.surface, borderRadius: 9999,
             borderWidth: 1, borderColor: P.ink100,
           }}>
             <Search size={15} color={P.ink400} strokeWidth={1.8} />
@@ -463,6 +439,54 @@ export default function StationHistoryScreen() {
         onGoToOrder={(woId) => { setSelectedStage(null); router.push(`/(station)/order/${woId}` as any); }}
       />
     </ScrollView>
+  );
+}
+
+/**
+ * Geçmiş sayfasının BEYAZ HERO'su (core/ui/WhiteHero — "beyaz hero").
+ *
+ * Hiyerarşi Prim Motoru panosundaki kartla aynıdır: kicker → büyük sayı +
+ * bağlam → cümle → sağda 40px istatistikler. Buradaki lider sayı TAMAMLANAN
+ * AŞAMA, çünkü teknisyenin geçmişi aşama üzerinden ölçülür; teslim edilen
+ * sipariş ve ortalama çalışma süresi yanında kutucuk olarak durur.
+ */
+function HistoryHero({ stages, orders }: { stages: CompletedStage[]; orders: DeliveredOrder[] }) {
+  const { t } = useTranslation();
+  const H = useWhiteHeroInk();
+
+  const { doneCount, avgLabel } = useMemo(() => {
+    const done = stages.filter(s => !!s.completed_at);
+    // Ortalama YALNIZ başlangıcı ve bitişi olan aşamalardan — yarım kayıt
+    // ortalamayı aşağı çekip yanlış bilgi verirdi.
+    const spans = done
+      .map(s => (s.started_at && s.completed_at
+        ? new Date(s.completed_at).getTime() - new Date(s.started_at).getTime() : null))
+      .filter((v): v is number => v != null && Number.isFinite(v) && v >= 0);
+    const avgMs = spans.length ? spans.reduce((a, b) => a + b, 0) / spans.length : null;
+    let label = '—';
+    if (avgMs != null) {
+      const mins = Math.round(avgMs / 60000);
+      if (mins < 60) label = `${mins}dk`;
+      else {
+        const h = Math.floor(mins / 60), m = mins % 60;
+        label = h < 24 ? (m ? `${h}s ${m}dk` : `${h}s`) : `${Math.floor(h / 24)}g`;
+      }
+    }
+    return { doneCount: done.length, avgLabel: label };
+  }, [stages]);
+
+  return (
+    <WhiteHero
+      style={{ marginBottom: 14 }}
+      kicker={t('station.history.breadcrumb')}
+      title={<>{stages.length} <Text style={{ color: H.accentInk }}>{t('common.stages')}</Text></>}
+      description={t('station.history.pageSubtitle')}
+      stats={[
+        { value: String(doneCount),    label: t('common.completed') },
+        { value: String(orders.length), label: t('station.history.delivered') },
+        { value: avgLabel,             label: t('common.duration') },
+      ]}
+    />
   );
 }
 
@@ -758,7 +782,9 @@ function SectionStages({ items, onSelectStage, isMobile }: { items: CompletedSta
       </View>
       <View style={{ backgroundColor: P.surface, borderRadius: 14, borderWidth: 1, borderColor: P.ink100, overflow: 'hidden' }}>
         {/* Tablo başlığı */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, backgroundColor: P.surfaceAlt, borderBottomWidth: 1, borderBottomColor: P.ink100 }}>
+        {/* Başlık şeridi PANEL RENGİNDE (teknisyen mavisi) — uygulama genelinde
+            tablo başlıkları panel accent'ini taşır; metin luminansa göre seçilir. */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, backgroundColor: P.accent, borderBottomWidth: 1, borderBottomColor: P.accent }}>
           <HeaderCell flex={2.2} label={t('common.stage')} />
           <HeaderCell flex={2.4} label={t('station.history.orderPatient')} />
           <HeaderCell flex={1.5} label={t('station.history.assigned')} />
@@ -819,9 +845,11 @@ function SectionStages({ items, onSelectStage, isMobile }: { items: CompletedSta
 
 function HeaderCell({ flex, label, align = 'left' }: { flex: number; label: string; align?: 'left' | 'right' }) {
   const P = useStationTheme();
+  // Zemin artık panel accent'i → metin sabit gri KALAMAZ; luminans kuralıyla seçilir.
+  const fg = onAccentInk(P.accent);
   return (
     <View style={{ flex, paddingHorizontal: 6 }}>
-      <Text style={{ fontSize: 10, fontWeight: '700', color: P.ink500, letterSpacing: 0.6, textTransform: 'uppercase', textAlign: (align === 'right' ? 'end' : undefined) as any }}>{label}</Text>
+      <Text style={{ fontSize: 10, fontWeight: '700', color: fg, letterSpacing: 0.6, textTransform: 'uppercase', textAlign: (align === 'right' ? 'end' : undefined) as any }}>{label}</Text>
     </View>
   );
 }

@@ -1,5 +1,5 @@
 // send-whatsapp-meta — Meta WhatsApp Cloud API ile MÜŞTERİYE (klinik/hekim)
-// şablonlu bildirim gönderir. Yalnız 3 kategori: new_order, delivery, approval.
+// şablonlu bildirim gönderir. Kategoriler: new_order, delivery, approval, payment, account.
 //
 // Kaynak: notifications AFTER INSERT trigger (trg_whatsapp_meta_notify) VEYA
 // istersen doğrudan invoke. Her kategorinin Meta'da ONAYLI bir şablonu olmalı.
@@ -69,6 +69,15 @@ const TEMPLATES: Record<string, { name: string; lang: string; params: (p: any) =
       { name: 'detay', text: clean(p.__body || p.body || 'Hesabınızda açık bakiye bulunuyor.') },
     ],
   },
+  // Hesap açıldı (lab onayı sonrası) → giriş linkiyle. Kaynak: _notify_account_opened.
+  account: {
+    name: 'hesap_acildi', lang: 'tr',
+    params: (p) => [
+      { name: 'ad',          text: clean(p.fullName) },
+      { name: 'laboratuvar', text: clean(p.labName || p.__body) },
+      { name: 'giris_linki', text: clean(p.loginUrl || 'https://siman.app/login') },
+    ],
+  },
 };
 
 // Lab ADMIN'e giden AYRI şablon (müşteri metni değil): "Laboratuvarınıza yeni sipariş geldi …".
@@ -85,7 +94,9 @@ const LAB_TEMPLATES: Record<string, { name: string; lang: string; params: (p: an
   },
   // Kurye yola çıktı — lab dili ("… sipariş kuryeye teslim edildi"). Müşteri
   // şablonu (siparis_kuryede) "siparişiniz elinizde olacak" diyor, lab için ters.
-  // Meta'da URL butonu sabit: https://siman.app/courier-tracking
+  // 2026-10-20: ilk sürüm (emoji + "kuryeyi canlı takip" + siman.app URL butonu)
+  // Meta'dan SCAM gerekçesiyle reddedildi → butonsuz, emojisiz düz metinle yeniden
+  // gönderildi. Değişkenler aynı; buton olmadığı için yalnız body parametreleri.
   delivery: {
     name: 'siparis_kuryede_lab', lang: 'tr',
     params: (p) => [
@@ -249,8 +260,10 @@ Deno.serve(async (req) => {
     // tarafı değişmedi. Meta ülke kodu ister → normalize.
     const isClient = !(pr.user_type === 'admin' || pr.user_type === 'lab');
     const cid = clinicOf.get(pr.id);
-    const phone = normalizePhoneTR(
-      pr.whatsapp_phone || (isClient && cid ? clinicWa.get(cid) : '') || pr.phone,
+    // Hesap açıldı KİŞİYE özeldir → kişinin kendi numarası kurum hattından önce gelir.
+    const phone = normalizePhoneTR(category === 'account'
+      ? (pr.whatsapp_phone || pr.phone || (cid ? clinicWa.get(cid) : ''))
+      : (pr.whatsapp_phone || (isClient && cid ? clinicWa.get(cid) : '') || pr.phone),
     );
     if (!phone) { results.push({ id: pr.id, skip: 'no-phone' }); continue; }
     // Opt-out

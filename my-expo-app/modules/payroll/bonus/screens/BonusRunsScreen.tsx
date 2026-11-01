@@ -26,6 +26,7 @@ import {
   PillButton, SecHeader, StatusChip, Chip, EmptyCard, Loader, ErrorBar,
   usePagePadding,
 } from '../components/atoms';
+import { MobileTableX, MobileTableRowX } from '../../../../core/ui/MobileTableX';
 
 const STATUS_FILTERS: { key: RunStatus | 'all'; label: string }[] = [
   { key: 'all',      label: 'Tümü' },
@@ -155,63 +156,46 @@ export default function BonusRunsScreen({ onOpenTechnician }: Props = {}) {
           description="Politikalar sekmesinden bir hesaplama oluştur."
         />
       ) : (
-        <View style={{ gap: 12 }}>
-          {filtered.map(r => {
+        /* Ekstre / giderler mobil tablosuyla aynı kalıp */
+        <MobileTableX title="Hesaplamalar" count={filtered.length} countLabel="kayıt">
+          {filtered.map((r, i) => {
             const policy = policyMap.get(r.policy_id);
             const rows: any[] = Array.isArray(r.breakdown) ? r.breakdown : (r.breakdown?.rows ?? []);
             return (
-              <Pressable
-                key={r.id}
-                onPress={() => setSelectedRun(r)}
-                style={({ pressed }) => ({
-                  backgroundColor: U.surface, borderRadius: 18,
-                  borderWidth: 1, borderColor: U.ink[200],
-                  padding: 18,
-                  flexDirection: 'row', alignItems: 'center', gap: 14,
-                  opacity: pressed ? 0.85 : 1,
-                })}
-              >
-                {/* Big month/year */}
-                <View style={{ width: 56, alignItems: 'center' }}>
-                  <Text style={{ ...DISPLAY, fontSize: 28, color: U.ink[900], letterSpacing: -0.8, lineHeight: 30 }}>
-                    {String(r.period_month).padStart(2, '0')}
-                  </Text>
-                  <Text style={{ fontSize: 10, color: U.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, marginTop: 2 }}>
-                    {r.period_year}
-                  </Text>
+              <MobileTableRowX key={r.id} isLast={i === filtered.length - 1} onPress={() => setSelectedRun(r)}>
+                {/* Ay karesi — ikon karesiyle aynı ölçü */}
+                <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: U.chipNeutral, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: U.ink[700] }}>{String(r.period_month).padStart(2, '0')}</Text>
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Text style={{ fontSize: 15, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={{ flexShrink: 1, fontSize: 13, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>
                       {policy?.name ?? '?'}
                     </Text>
                     <StatusChip status={r.status} />
                   </View>
-                  <Text style={{ fontSize: 12, color: U.ink[500], marginTop: 4 }}>
-                    {r.total_units === 1 ? `1 ${autoT('işlem')}` : `${r.total_units} ${autoT('üye')}`} · {rows.length} kişi ·{' '}
-                    {new Date(r.calculated_at).toLocaleDateString(localeTag())}
+                  <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 2 }} numberOfLines={1}>
+                    {r.period_year} · {r.total_units === 1 ? `1 ${autoT('işlem')}` : `${r.total_units} ${autoT('üye')}`} · {rows.length} {autoT('kişi')} · {new Date(r.calculated_at).toLocaleDateString(localeTag())}
                   </Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={{ ...DISPLAY, fontSize: 22, color: U.ink[900], letterSpacing: -0.7 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>
                     {TRY(r.total_payout)}
                   </Text>
                   {r.posted_at ? (
-                    <Text style={{ fontSize: 10, color: '#1F6B47', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    <Text style={{ fontSize: 9, fontWeight: '700', color: U.chipTones.success.fg, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 1 }}>
                       Yansıtıldı
                     </Text>
                   ) : r.approved_at ? (
-                    <Text style={{ fontSize: 10, color: '#9C5E0E', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    <Text style={{ fontSize: 9, fontWeight: '700', color: U.chipTones.warning.fg, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 1 }}>
                       Onaylı
                     </Text>
                   ) : null}
                 </View>
-                {isRTL() ? <ChevronLeft size={16} color={U.ink[400]} />
-                         : <ChevronRight size={16} color={U.ink[400]} />}
-              </Pressable>
+              </MobileTableRowX>
             );
           })}
-        </View>
+        </MobileTableX>
       )}
 
       <BonusRunDetailModal

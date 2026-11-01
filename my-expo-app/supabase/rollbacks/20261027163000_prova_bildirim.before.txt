@@ -1,0 +1,3 @@
+# 20261027163000_prova_bildirim — canlı durum (uygulamadan önce)
+# fn_daily_order_watch ve order_history canlı tanımları .down.sql içinde birebir duruyor.
+# prova-watch cron'u ve fn_prova_watch / _prova_watch_collect / _prova_risk_check / trg_work_orders_appt_risk yok.

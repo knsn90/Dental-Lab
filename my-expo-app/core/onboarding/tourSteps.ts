@@ -78,19 +78,14 @@ export const DOCTOR_TOUR_STEPS: TourStep[] = [
   {
     id: 'fld-dob',
     targetId: 'tour-fld-dob',
-    title: 'Kimlik ve doğum tarihi',
-    body:
-      'TC/pasaport numarası isteğe bağlıdır. Doğum tarihi ise zorunlu — sağdaki ' +
-      'takvim ikonuna dokunup seç. Doldurduysan "İleri" ile ilerleyelim.',
+    title: 'Hasta yaşı',
+    body: 'Hastanın yaşını yaz — zorunlu. Doldurduysan "İleri" ile ilerleyelim.',
   },
   {
     id: 'fld-gender',
     targetId: 'tour-fld-gender',
-    title: 'Cinsiyet ve uyruk',
-    body:
-      'Cinsiyeti seçmen zorunlu (tek dokunuş). Uyruk isteğe bağlıdır ama ' +
-      'yabancı hastalarda faturalama için faydalı. Alttaki ikamet ve telefon ' +
-      'alanları da tamamen opsiyonel.',
+    title: 'Cinsiyet',
+    body: 'Cinsiyeti seçmen zorunlu (tek dokunuş). Seçtiysen "İleri" ile devam edelim.',
   },
   {
     id: 'no-teeth',
@@ -228,19 +223,14 @@ export const CLINIC_TOUR_STEPS: TourStep[] = [
   {
     id: 'fld-dob',
     targetId: 'tour-fld-dob',
-    title: 'Kimlik ve doğum tarihi',
-    body:
-      'TC/pasaport numarası isteğe bağlıdır. Doğum tarihi ise zorunlu — sağdaki ' +
-      'takvim ikonuna dokunup seç. Doldurduysan "İleri" ile ilerleyelim.',
+    title: 'Hasta yaşı',
+    body: 'Hastanın yaşını yaz — zorunlu. Doldurduysan "İleri" ile ilerleyelim.',
   },
   {
     id: 'fld-gender',
     targetId: 'tour-fld-gender',
-    title: 'Cinsiyet ve uyruk',
-    body:
-      'Cinsiyeti seçmen zorunlu (tek dokunuş). Uyruk isteğe bağlıdır ama ' +
-      'yabancı hastalarda faturalama için faydalı. Alttaki ikamet ve telefon ' +
-      'alanları da tamamen opsiyonel.',
+    title: 'Cinsiyet',
+    body: 'Cinsiyeti seçmen zorunlu (tek dokunuş). Seçtiysen "İleri" ile devam edelim.',
   },
   {
     id: 'no-teeth',

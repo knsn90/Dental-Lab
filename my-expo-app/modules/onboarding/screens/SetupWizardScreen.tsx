@@ -22,8 +22,9 @@ import {
   Building2, Users, Stethoscope, Tag,
   ChevronRight, ChevronLeft, Check, Sparkles,
   ArrowRight, ArrowLeft, Phone, Mail, MapPin, User,
-  CircleCheck, ChevronDown, ChevronUp, AlertCircle,
+  CircleCheck, ChevronDown, ChevronUp, AlertCircle, Receipt, Landmark,
 } from '../../../core/ui/icons';
+import { validateLabBilling, splitLegacyAddress, LAB_BILLING_LABELS } from '../../settings/labBilling';
 import { DS } from '../../../core/theme/dsTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { isRTL } from '../../../core/i18n';
@@ -117,7 +118,11 @@ export function SetupWizardScreen({ onComplete }: Props) {
 
   // Form data — sadece local state, DB'ye yazılmaz (deferred)
   const [ownerName, setOwnerName] = useState('');
-  const [lab, setLab] = useState({ name: '', phone: '', email: '', address: '' });
+  const [lab, setLab] = useState({
+    name: '', phone: '', email: '', address: '',
+    // Fatura bilgileri — sihirbazda ZORUNLU (yeni lab e-fatura/künye eksik başlamasın)
+    legal_name: '', tax_number: '', tax_office: '', street: '', district: '', city: '', postal_code: '',
+  });
   const [clinic, setClinic] = useState({ name: '', phone: '', contact_person: '', category: 'klinik' });
   const [doctor, setDoctor] = useState({ full_name: '', phone: '', specialty: '' });
   const [employee, setEmployee] = useState({ full_name: '', role: 'teknisyen', phone: '' });
@@ -155,11 +160,21 @@ export function SetupWizardScreen({ onComplete }: Props) {
       .then(({ lab: existing, ownerName: name }) => {
         if (name) setOwnerName(name);
         if (existing) {
+          // Yapılandırılmış adres yoksa eski tek satır adresten ilk doldurma
+          const legacy = !existing.street && !existing.district && !existing.city
+            ? splitLegacyAddress(existing.address) : null;
           setLab({
             name: existing.name || '',
             phone: existing.phone || '',
             email: existing.email || '',
             address: existing.address || '',
+            legal_name: existing.legal_name || '',
+            tax_number: existing.tax_number || '',
+            tax_office: existing.tax_office || '',
+            street: legacy?.street ?? existing.street ?? '',
+            district: legacy?.district ?? existing.district ?? '',
+            city: legacy?.city ?? existing.city ?? '',
+            postal_code: existing.postal_code || '',
           });
         }
       })
@@ -178,6 +193,7 @@ export function SetupWizardScreen({ onComplete }: Props) {
         if (lab.name.trim().length < 2) errs.lab_name = 'Lab adı en az 2 karakter olmalı';
         if (!isValidPhone(lab.phone)) errs.lab_phone = 'Geçerli bir telefon numarası girin';
         if (!isValidEmail(lab.email)) errs.lab_email = 'Geçerli bir e-posta adresi girin';
+        for (const [f, msg] of Object.entries(validateLabBilling(lab))) errs[`lab_${f}`] = msg as string;
         break;
       case 'clinic':
         if (clinic.name.trim().length < 2) errs.clinic_name = 'Klinik adı en az 2 karakter olmalı';
@@ -568,8 +584,25 @@ function LabStep({ data, onChange, ownerName, onOwnerNameChange, errors, theme }
         onChangeText={(v: string) => onChange({ ...data, phone: v })} icon={Phone} keyboardType="phone-pad" error={errors.lab_phone} theme={theme} />
       <FormField label="E-posta" placeholder="ör. info@esenlab.com" value={data.email}
         onChangeText={(v: string) => onChange({ ...data, email: v })} icon={Mail} keyboardType="email-address" error={errors.lab_email} theme={theme} />
-      <FormField label="Adres" placeholder="ör. Fatih Cd. No:12, Beylikdüzü" value={data.address}
-        onChangeText={(v: string) => onChange({ ...data, address: v })} icon={MapPin} theme={theme} />
+      <View style={{ height: 1, backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : '#E8EDF4', marginVertical: 12 }} />
+      {/* Fatura bilgileri — zorunlu: e-fatura, ekstre ve iş kâğıdı künyesi buradan okunur.
+          Görünen adres bu alanlardan oluşur ("…, İlçe / İl"). Kurallar: settings/labBilling.ts */}
+      <Text style={{ fontSize: 13, fontWeight: '700', color: theme.INK, marginBottom: 2 }}>Fatura Bilgileri</Text>
+      <Text style={{ fontSize: 12, color: theme.INK3, marginBottom: 10 }}>e-Fatura ve resmi belgelerde kullanılır. Sonradan Ayarlar → Genel'den değiştirebilirsiniz.</Text>
+      <FormField label={LAB_BILLING_LABELS.legal_name} placeholder="ör. Esen Diş Laboratuvarı San. Tic. Ltd. Şti." value={data.legal_name}
+        onChangeText={(v: string) => onChange({ ...data, legal_name: v })} required icon={Building2} error={errors.lab_legal_name} theme={theme} />
+      <FormField label={LAB_BILLING_LABELS.tax_number} placeholder="10 ya da 11 hane" value={data.tax_number}
+        onChangeText={(v: string) => onChange({ ...data, tax_number: v })} required icon={Receipt} keyboardType="number-pad" error={errors.lab_tax_number} theme={theme} />
+      <FormField label={LAB_BILLING_LABELS.tax_office} placeholder="ör. Kozyatağı" value={data.tax_office}
+        onChangeText={(v: string) => onChange({ ...data, tax_office: v })} required icon={Landmark} error={errors.lab_tax_office} theme={theme} />
+      <FormField label={LAB_BILLING_LABELS.street} placeholder="Mahalle, cadde/sokak, no" value={data.street}
+        onChangeText={(v: string) => onChange({ ...data, street: v })} required icon={MapPin} error={errors.lab_street} theme={theme} />
+      <FormField label={LAB_BILLING_LABELS.district} placeholder="ör. Beylikdüzü" value={data.district}
+        onChangeText={(v: string) => onChange({ ...data, district: v })} required icon={MapPin} error={errors.lab_district} theme={theme} />
+      <FormField label={LAB_BILLING_LABELS.city} placeholder="ör. İstanbul" value={data.city}
+        onChangeText={(v: string) => onChange({ ...data, city: v })} required icon={MapPin} error={errors.lab_city} theme={theme} />
+      <FormField label={LAB_BILLING_LABELS.postal_code} placeholder="ör. 34520" value={data.postal_code}
+        onChangeText={(v: string) => onChange({ ...data, postal_code: v })} icon={MapPin} keyboardType="number-pad" error={errors.lab_postal_code} theme={theme} />
     </View>
   );
 }
@@ -577,6 +610,7 @@ function LabStep({ data, onChange, ownerName, onOwnerNameChange, errors, theme }
 // ── Clinic ─────────────────────────────────────────────────────────
 function ClinicStep({ data, onChange, errors, theme }: { data: any; onChange: (d: any) => void; errors: Record<string, string>; theme: Theme }) {
   const categories = [
+    { key: 'muayenehane', label: 'Muayenehane' },
     { key: 'klinik', label: 'Klinik' },
     { key: 'poliklinik', label: 'Poliklinik' },
     { key: 'hastane', label: 'Hastane' },
@@ -591,7 +625,7 @@ function ClinicStep({ data, onChange, errors, theme }: { data: any; onChange: (d
       {/* Category pills */}
       <View style={{ marginTop: 4, marginBottom: 8 }}>
         <Text style={{ ...SANS, fontSize: 13, fontWeight: '500', color: theme.INK, marginBottom: 8 }}>Tür</Text>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {categories.map(c => {
             const active = data.category === c.key;
             return (

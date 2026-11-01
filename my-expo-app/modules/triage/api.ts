@@ -131,6 +131,15 @@ export interface TriageData {
   clinicContact: string | null;
   /** Sipariş kalemleri — diş↔işlem şeması için (her kalem hangi dişlere uygulanır) */
   items: TriageOrderItem[];
+  /** Revizyon (revision_of_id) ya da devam siparişi (continues_order_id) ise ASIL sipariş */
+  parentOrder: TriageParentOrder | null;
+}
+
+export interface TriageParentOrder {
+  id: string;
+  kind: 'revision' | 'continuation';
+  order_number: string | null;
+  patient_name: string | null;
 }
 
 // Teknisyenin "aktif yük" sayılan stage durumları (tamamlanan/atlanan hariç)
@@ -318,22 +327,31 @@ export async function fetchTriageData(orderId: string, labId: string): Promise<T
       };
     });
 
-  // 8) Hekim notu — devam/revizyon siparişinde kendi notu boşsa ASIL işin notunu göster.
+  // 8) Ana sipariş (revizyon / devam) — künyede bağlantı olarak gösterilir.
+  //    Hekim notu: devam/revizyon siparişinde kendi notu boşsa ASIL işin notunu göster.
   let mergedOrder = ord;
-  if (ord && !((ord as any).notes) && parentId) {
+  let parentOrder: TriageParentOrder | null = null;
+  if (ord && parentId) {
     const { data: pOrd } = await supabase
       .from('work_orders')
-      .select('notes')
+      .select('id, order_number, patient_name, notes')
       .eq('id', parentId)
       .maybeSingle();
+    parentOrder = {
+      id: parentId,
+      kind: (ord as any).revision_of_id ? 'revision' : 'continuation',
+      order_number: (pOrd as any)?.order_number ?? null,
+      patient_name: (pOrd as any)?.patient_name ?? null,
+    };
     const pNote = (pOrd as any)?.notes;
-    if (pNote) mergedOrder = { ...(ord as any), notes: pNote };
+    if (pNote && !((ord as any).notes)) mergedOrder = { ...(ord as any), notes: pNote };
   }
 
   return {
     order: (mergedOrder as TriageOrderSummary) ?? null,
     stations, technicians, templates, files, messages, items,
     doctorName, clinicName, doctorPhone, clinicPhone, clinicEmail, clinicContact,
+    parentOrder,
   };
 }
 

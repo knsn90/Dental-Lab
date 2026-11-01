@@ -2,6 +2,7 @@
 // Kurye & GPS takip — Supabase API katmanı
 
 import { supabase } from '../../core/api/supabase';
+import { PROOF_SELECT } from './proof/api';
 
 // ── Tipler ────────────────────────────────────────────────────────────────────
 
@@ -91,6 +92,8 @@ export async function createDelivery(
       work_order_id: workOrderId,
       courier_id:    courierId,
       status:        'atandi',
+      // Kendi kurye ataması: teslim kanıtı akışı (yükleme politikası + deliver_with_proof) mode='internal' ister
+      mode:          'internal',
     })
     .select()
     .single();
@@ -145,7 +148,8 @@ export async function fetchDeliveryById(id: string) {
       .select(`
         id, work_order_id, courier_id, status,
         external_tracking_code, assigned_at, picked_up_at, delivered_at,
-        recipient_name, recipient_note,
+        recipient_name, recipient_note, mode, direction, external_provider, ext_courier_name,
+        ${PROOF_SELECT},
         courier:courier_id ( full_name, phone, courier_type ),
         work_order:work_order_id (
           order_number, work_type, delivery_date,

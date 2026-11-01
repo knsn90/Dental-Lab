@@ -271,7 +271,7 @@ export async function fetchWorkOrdersForDoctor(_doctorId: string) {
   return res;
 }
 
-export async function fetchAllWorkOrders(opts: { includeArchived?: boolean; limit?: number } = {}) {
+export async function fetchAllWorkOrders(opts: { includeArchived?: boolean; limit?: number; doctorIds?: string[] } = {}) {
   // NOTE: work_orders.doctor_id is polymorphic (profiles.id OR doctors.id).
   // Migration 037 intentionally dropped the FK constraint, so PostgREST
   // embedded resource joins using !work_orders_doctor_id_fkey no longer work.
@@ -286,9 +286,22 @@ export async function fetchAllWorkOrders(opts: { includeArchived?: boolean; limi
   if (!opts.includeArchived) {
     q = q.or('is_archived.is.null,is_archived.eq.false');
   }
+  // ?doctor= (genel arama → hekimin siparişleri): süzgeç sunucuda — son 300 sınırına takılmaz
+  if (opts.doctorIds?.length) q = q.in('doctor_id', opts.doctorIds);
   const res = await q;
   if (res.data) (res as any).data = await attachDoctors(flattenStageName(res.data as any[]));
   return res;
+}
+
+/** ?doctor=<doctors.id>: doctor_id çok biçimli — hekim kaydı + ona bağlı hekim hesap(lar)ının
+ *  profil kimliği (profiles.doctor_id). Adı süzgeç çipinde gösterilir. RLS ne gösterirse o. */
+export async function doctorFilterInfo(doctorId: string): Promise<{ ids: string[]; name: string | null }> {
+  const [doc, prof] = await Promise.all([
+    supabase.from('doctors').select('full_name').eq('id', doctorId).maybeSingle(),
+    supabase.from('profiles').select('id').eq('doctor_id', doctorId),
+  ]);
+  const ids = [doctorId, ...((prof.data ?? []) as { id: string }[]).map((r) => r.id)];
+  return { ids: Array.from(new Set(ids)), name: (doc.data as any)?.full_name ?? null };
 }
 
 export async function fetchWorkOrderById(idOrNumber: string) {
@@ -382,6 +395,8 @@ export async function createRevisionOrder(
   responsible: RevisionResponsible,
   deliveryDate?: string | null,
   faultStationId?: string | null,
+  /** Revizyona girecek işler + dişler (20261028130000). Verilmezse bütün kalemler kopyalanır. */
+  items?: { item_id: string; teeth: number[] }[] | null,
 ): Promise<{ ok: boolean; id?: string; error?: string }> {
   const { data, error } = await supabase.rpc('create_revision_order', {
     p_order_id:         orderId,
@@ -389,6 +404,7 @@ export async function createRevisionOrder(
     p_responsible:      responsible,
     p_delivery_date:    deliveryDate ?? null,
     p_fault_station_id: faultStationId ?? null,
+    p_items:            items && items.length ? items : null,
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true, id: data as string };
@@ -830,6 +846,7 @@ export interface ClientOrderEditFields {
   patient_id?: string | null;
   patient_gender?: string | null;
   patient_dob?: string | null;
+  patient_age?: number | null;
   patient_nationality?: string | null;
   patient_country?: string | null;
   patient_city?: string | null;

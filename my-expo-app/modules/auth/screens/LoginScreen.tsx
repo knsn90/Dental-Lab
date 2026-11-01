@@ -280,12 +280,10 @@ export function LoginScreen() {
         .select('user_type, approval_status, is_active')
         .eq('id', data.user.id)
         .single();
-      if (prof?.user_type === 'doctor' && prof?.approval_status === 'pending') {
-        await supabase.auth.signOut();
-        setErrorMsg('Hesabınız henüz onaylanmadı. Laboratuvar onayından sonra giriş yapabilirsiniz.');
-        triggerShake(); setLoading(false); return;
-      }
-      if (prof?.user_type === 'doctor' && prof?.approval_status === 'rejected') {
+      // Onay bekleyen hekim / klinik yöneticisi oturumda kalır; root guard onu
+      // bekleme ekranına alır (lab bağlantı kodu + onay durumu orada).
+      const clinicSide = ['doctor', 'clinic_admin', 'clinic_secretary'].includes(prof?.user_type ?? '');
+      if (clinicSide && prof?.approval_status === 'rejected') {
         await supabase.auth.signOut();
         setErrorMsg('Hesabınız reddedildi. Detay için laboratuvar ile iletişime geçin.');
         triggerShake(); setLoading(false); return;
@@ -327,7 +325,7 @@ export function LoginScreen() {
       footerLink={forgotMode ? undefined : {
         text: 'Hesabın yok mu?',
         linkText: 'Kayıt Ol',
-        onPress: () => router.push('/(auth)/register-choice'),
+        onPress: () => router.push('/(auth)/register'),
       }}
       bottomStart={(
         /* iyzico kriteri: giriş ekranında yasal sayfa linkleri görünür — kartın dışında,

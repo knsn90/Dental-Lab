@@ -73,7 +73,9 @@
       "requests": "درخواست‌ها",
       "waSupport": "پشتیبانی واتس‌اپ",
       "phoneLeads": "درخواست‌های تلفنی",
-      "phoneLeadsSub": "درخواست‌های دستیار تلفنی"
+      "phoneLeadsSub": "درخواست‌های دستیار تلفنی",
+      "scans": "نوبت‌های اسکن",
+      "scansSub": "بازدیدهای اسکن در کلینیک"
     },
     "sections": {
       "work": "مدیریت کار",
@@ -105,8 +107,8 @@
     "delivered": "تحویل‌شده",
     "overdueLabel": "عقب‌افتاده",
     "tryin": "پرو",
-    "totalCases": "کل کیس‌ها",
-    "todayLine": "{{total}} سفارش امروز در ساخت، {{active}} فعال",
+    "totalCases": "ورودی این ماه",
+    "todayLine": "{{active}} سفارش فعال",
     "todayOverdue": "، {{overdue}} عقب‌افتاده",
     "weekDoneKicker": "{{count}} تکمیل‌شده این هفته",
     "newOrderKicker": "سفارش کاری جدید",
@@ -421,6 +423,14 @@
       "workflows": {
         "label": "گردش‌کارها",
         "sub": "طراح جریان تولید"
+      },
+      "mycode": {
+        "label": "کد ورود من",
+        "sub": "کد ورود تبلت (PIN)"
+      },
+      "devices": {
+        "label": "تبلت‌ها",
+        "sub": "مدیریت دستگاه‌های کیوسک"
       }
     }
   },
@@ -503,7 +513,7 @@
       "active": "فعال",
       "overdue": "عقب‌افتاده",
       "today": "امروز",
-      "totalOrders": "کل سفارش‌ها",
+      "totalOrders": "سفارش · همه زمان‌ها",
       "doctor": "دندانپزشک",
       "labUser": "کاربر لابراتوار",
       "memberTrend": "روند واحدها",
@@ -522,13 +532,13 @@
       "invoice": "فاکتور ←",
       "financialSummary": "خلاصه مالی",
       "monthlyCollection": "وصولی این ماه",
-      "pendingInvoice": "فاکتور در انتظار",
+      "pendingInvoice": "مطالبات",
       "paidInvoiceCount": "تعداد فاکتورهای پرداخت‌شده",
       "statusDistribution": "توزیع وضعیت",
       "workTypeDistribution": "توزیع نوع کار",
       "totalMembers": "واحد",
-      "noOrdersToday": "امروز هنوز سفارشی نیست.",
-      "ordersSummary": "{{total}} سفارش، {{active}} فعال{{overdue}}.",
+      "noOrdersToday": "سفارش فعالی نیست.",
+      "ordersSummary": "{{active}} سفارش فعال{{overdue}}.",
       "liveProduction": "ساخت زنده",
       "monthlyRevenue": "درآمد ماهانه",
       "pendingApprovals": "در انتظار تأیید",
@@ -542,7 +552,10 @@
       "noDelayedCases": "کیس عقب‌افتاده‌ای نیست",
       "productionOnTrack": "همهٔ کارها طبق برنامه پیش می‌رود.",
       "ordersOfTotal": "{{done}} / {{total}} سفارش",
-      "deliveredAllTime": "تحویل‌شده · کل دوره"
+      "deliveredAllTime": "تحویل‌شده · کل دوره",
+      "newThisMonth": "ورودی این ماه",
+      "newToday": "ورودی امروز",
+      "activeStaff": "کارکنان فعال"
     },
     "buttons": {
       "start": "شروع"
@@ -596,6 +609,7 @@
     },
     "cta": {
       "ordersToday": "{{total}} سفارش امروز",
+      "dueToday": "{{count}} تحویل امروز",
       "newOrder": "سفارش جدید",
       "createNewOrder": "ثبت سفارش کاری جدید"
     },
@@ -923,5 +937,10 @@
       "urgent": "فوری",
       "inQueue": "در صف"
     }
+  },
+  "profitability": {
+    "tabServices": "خدمات",
+    "serviceCount": "خدمت",
+    "listPrice": "قیمت فهرست"
   }
 }

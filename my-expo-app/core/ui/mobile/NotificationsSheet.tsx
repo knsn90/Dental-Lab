@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isRTL } from '../../i18n';
 import {
   X, FileCheck, Flame, Package, ChevronRight, ChevronLeft, BellOff,
-  ShoppingCart, CreditCard, ClipboardCheck, MessageCircle, Truck, AlertCircle, Inbox, Wrench, AlarmClock, CheckCircle2, ClipboardList, PenLine,
+  ShoppingCart, CreditCard, ClipboardCheck, MessageCircle, Truck, AlertCircle, Inbox, Wrench, AlarmClock, CheckCircle2, ClipboardList, PenLine, UserCheck, Calendar,
 } from '../icons';
 import { useMobileTokens, MOBILE_PANEL_THEMES, type MobilePanel } from '../../theme/mobileDesignTokens';
 import { useNotifications, useNotificationsActions } from '../../store/notificationsStore';
@@ -438,6 +438,8 @@ const CATEGORY_CFG: Record<NotificationCategory, { icon: any; color: string; lab
   stock_count:      { icon: ClipboardList, color: '#7C3AED', label: 'Stok Sayımı'  },
   implant_parts:    { icon: Package,     color: '#F97316', label: 'İmplant Parçası' },
   scan_annotation:  { icon: PenLine,     color: '#2563EB', label: 'Tarama Notu' },
+  scan_schedule:    { icon: Calendar,    color: '#0891B2', label: 'Tarama Programı' },
+  account:          { icon: UserCheck,   color: '#059669', label: 'Hesap' },
 };
 
 // ── DB feed satırı — okunmamış vurgusu + relative time ─────────────────────

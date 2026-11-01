@@ -1,0 +1,87 @@
+{
+  "locale": "fa",
+  "brand": "سیمان",
+  "rtl": true,
+  "panels": [
+    {
+      "screen": "login",
+      "lead": "آزمایشگاه شما",
+      "hi": "در جیب شما",
+      "tail": "",
+      "pos": "top",
+      "tilt": -9
+    },
+    {
+      "screen": "neworder",
+      "lead": "سفارش را",
+      "hi": "در ۶۰ ثانیه",
+      "tail": "بفرستید",
+      "pos": "bottom",
+      "tilt": 9
+    },
+    {
+      "screen": "viewer",
+      "lead": "",
+      "hi": "اسکن سه‌بعدی",
+      "tail": "در دست شما",
+      "pos": "top",
+      "tilt": 0
+    },
+    {
+      "screen": "stages",
+      "lead": "هر مرحله را",
+      "hi": "زنده",
+      "tail": "ببینید",
+      "pos": "bottom",
+      "tilt": -9
+    },
+    {
+      "screen": "courier",
+      "lead": "پیک را",
+      "hi": "روی نقشه",
+      "tail": "دنبال کنید",
+      "pos": "top",
+      "tilt": 9
+    },
+    {
+      "screen": "kanban",
+      "lead": "همه کارها",
+      "hi": "در یک تابلو",
+      "tail": "",
+      "pos": "bottom",
+      "tilt": 0
+    },
+    {
+      "screen": "perf",
+      "lead": "",
+      "hi": "عملکرد را بسنجید",
+      "tail": "پاداش بدهید",
+      "pos": "top",
+      "tilt": -9
+    },
+    {
+      "screen": "finance",
+      "lead": "صورت‌حساب و وصول",
+      "hi": "خودکار",
+      "tail": "",
+      "pos": "bottom",
+      "tilt": 9
+    },
+    {
+      "screen": "chat",
+      "lead": "",
+      "hi": "هر سفارش",
+      "tail": "گفتگوی خودش را دارد",
+      "pos": "top",
+      "tilt": 0
+    },
+    {
+      "screen": "girisdil",
+      "lead": "یک ورود،",
+      "hi": "۵ پنل،",
+      "tail": "۴ زبان",
+      "pos": "bottom",
+      "tilt": -9
+    }
+  ]
+}

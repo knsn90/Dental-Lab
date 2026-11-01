@@ -4,6 +4,7 @@ import { Profile } from '../../lib/types';
 import { supabase } from '../api/supabase';
 import { bootMark } from '../debug/bootTrace';
 import { useLastPanelStore, type PanelKey } from './lastPanelStore';
+import { syncAccountLanguage } from '../i18n/accountLanguage';
 
 interface AuthState {
   session: Session | null;
@@ -77,6 +78,9 @@ export const useAuthStore = create<AuthState>((set) => ({
           p.user_type === 'lab' && p.role === 'courier'             ? null        :
           p.user_type === 'lab'                                     ? 'lab'       : null;
         if (lp) useLastPanelStore.getState().setPanel(lp);
+        // Dil hesaba bağlı (profiles.language): hangi cihazda girilirse girilsin
+        // hesabın dili uygulanır. Arka planda; girişi bekletmez, hata engellemez.
+        void syncAccountLanguage({ id: p.id, language: p.language ?? null });
       }
     } catch (_) {
       // sessizce geç

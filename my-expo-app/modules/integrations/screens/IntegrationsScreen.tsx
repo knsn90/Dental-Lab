@@ -577,7 +577,7 @@ function CredentialEditor({
                 {f.type === 'select' ? (
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                     {f.options?.map(opt => {
-                      const sel = credentials[f.key] === opt.value;
+                      const sel = (credentials[f.key] ?? f.defaultValue) === opt.value;
                       return (
                         <Pressable
                           key={opt.value}

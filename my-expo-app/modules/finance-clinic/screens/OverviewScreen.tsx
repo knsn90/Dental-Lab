@@ -8,7 +8,7 @@
  */
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import { View, Text, ScrollView, Pressable, Platform } from 'react-native';
 import {
   Wallet, AlertCircle, Clock, CheckCircle2, FileText, ArrowRight, ArrowLeft, CreditCard,
   PieChart, TrendingUp,
@@ -17,7 +17,9 @@ import {
 import { DS } from '../../../core/theme/dsTokens';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { isRTL } from '../../../core/i18n';
-import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
+import { MobileTableX, MobileTableRowX, MobileTableIconX, useMobileTableText } from '../../../core/ui/MobileTableX';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import {
@@ -43,6 +45,8 @@ export function OverviewScreen({ clinicId, onJump }: Props) {
   const TH = usePanelTheme();
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
+  const MT = useMobileTableText();
+  const overdueInk = isDark ? '#F3A0A0' : '#9C2E2E';
   useRates();
   const [data, setData]     = useState<FinanceOverview | null>(null);
   const [items, setItems]   = useState<ClinicInvoiceRow[]>([]);
@@ -259,97 +263,70 @@ export function OverviewScreen({ clinicId, onJump }: Props) {
         );
       })}
 
-      {/* ── Vadesi Geçen — uyarı kartı ── */}
+      {/* ── Vadesi Geçen — ekstre / giderler mobil tablosuyla aynı kalıp ── */}
       {overdueItems.length > 0 ? (
-        <View>
-          <SecHeader
-            eyebrow="Acil"
-            title="Vadesi Geçen Faturalar"
-            action={{ label: 'Tümü →', onPress: () => onJump('overdue') }}
-          />
-          <Card style={{ padding: 0, borderColor: 'rgba(217,75,75,0.30)' }}>
-            {overdueItems.map((inv, i) => (
-              <View
-                key={inv.id}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 12,
-                  paddingHorizontal: 16, paddingVertical: 14,
-                  borderBottomWidth: i < overdueItems.length - 1 ? 1 : 0,
-                  borderBottomColor: isDark ? T.hairline : DS.ink[100],
-                }}
-              >
-                <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(217,75,75,0.10)', alignItems: 'center', justifyContent: 'center' }}>
-                  <AlertCircle size={16} color="#9C2E2E" strokeWidth={2} />
-                </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ fontSize: 14, fontWeight: '600', color: isDark ? T.ink : DS.ink[900] }} numberOfLines={1}>
-                    Fatura {inv.invoice_no ?? '—'}
+        <MobileTableX title="Vadesi Geçen Faturalar" count={overdueItems.length} countLabel="fatura" accent="#D94B4B"
+          right={
+            <GlassTooltip title={autoT('Tümü')} text={autoT('Vadesi geçen faturaları açar')}>
+              <Pressable onPress={() => onJump('overdue')} style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : undefined}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: onAccentInk('#D94B4B') }}>Tümü →</Text>
+              </Pressable>
+            </GlassTooltip>
+          }>
+          {overdueItems.map((inv, i) => (
+            <MobileTableRowX key={inv.id} isLast={i === overdueItems.length - 1} onPress={() => onJump('overdue')}>
+              <MobileTableIconX icon={AlertCircle} tone={{ bg: isDark ? 'rgba(217,75,75,0.24)' : 'rgba(217,75,75,0.10)', fg: overdueInk }} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={MT.title} numberOfLines={1}>{inv.invoice_no ?? '—'}</Text>
+                {/* Hekim isteği: hangi hastanın faturası olduğu özet listelerinde de görünsün. */}
+                {!!inv.patient_name && (
+                  <Text style={MT.sub} numberOfLines={1}>
+                    {[inv.patient_name, inv.order_no].filter(Boolean).join(' · ')}
                   </Text>
-                  {/* Hekim isteği: hangi hastanın faturası olduğu özet listelerinde de görünsün. */}
-                  {!!inv.patient_name && (
-                    <Text style={{ fontSize: 11.5, color: isDark ? (T.ink2 as string) : DS.ink[700], marginTop: 2 }} numberOfLines={1}>
-                      {[inv.patient_name, inv.order_no].filter(Boolean).join(' · ')}
-                    </Text>
-                  )}
-                  <Text style={{ fontSize: 11, color: '#9C2E2E', marginTop: 2 }}>
-                    {inv.days_overdue} gün gecikmiş · vade {fmtDate(inv.due_date)}
-                  </Text>
-                </View>
-                <Text style={{ ...DISPLAY, fontSize: 18, color: '#9C2E2E', letterSpacing: -0.5 }}>
-                  {Mnat(inv.remaining, inv.currency)}
+                )}
+                <Text style={[MT.meta, { marginTop: 2, color: overdueInk, fontWeight: '600' }]}>
+                  {inv.days_overdue} {autoT('gün gecikmiş')} · {autoT('vade')} {fmtDate(inv.due_date)}
                 </Text>
               </View>
-            ))}
-          </Card>
-        </View>
+              <Text style={[MT.amount, { color: overdueInk }]}>
+                {Mnat(inv.remaining, inv.currency)}
+              </Text>
+            </MobileTableRowX>
+          ))}
+        </MobileTableX>
       ) : null}
 
       {/* ── Yaklaşan Vade ── */}
       {upcomingItems.length > 0 ? (
-        <View>
-          <SecHeader
-            eyebrow="Önümüzdeki Hafta"
-            title="Vadesi Yaklaşan"
-            action={{ label: 'Tümü →', onPress: () => onJump('open') }}
-          />
-          <Card style={{ padding: 0 }}>
-            {upcomingItems.map((inv, i) => (
-              <Pressable
-                key={inv.id}
-                onPress={() => onJump('open')}
-                style={({ pressed }) => ({
-                  flexDirection: 'row', alignItems: 'center', gap: 12,
-                  paddingHorizontal: 16, paddingVertical: 14,
-                  borderBottomWidth: i < upcomingItems.length - 1 ? 1 : 0,
-                  borderBottomColor: isDark ? T.hairline : DS.ink[100],
-                  opacity: pressed ? 0.85 : 1,
-                })}
-              >
-                <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: TH.bgSoft, alignItems: 'center', justifyContent: 'center' }}>
-                  <FileText size={16} color={TH.primary} strokeWidth={2} />
-                </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ fontSize: 14, fontWeight: '600', color: isDark ? T.ink : DS.ink[900] }} numberOfLines={1}>
-                    Fatura {inv.invoice_no ?? '—'}
-                  </Text>
-                  {/* Hekim isteği: hangi hastanın faturası olduğu özet listelerinde de görünsün. */}
-                  {!!inv.patient_name && (
-                    <Text style={{ fontSize: 11.5, color: isDark ? (T.ink2 as string) : DS.ink[700], marginTop: 2 }} numberOfLines={1}>
-                      {[inv.patient_name, inv.order_no].filter(Boolean).join(' · ')}
-                    </Text>
-                  )}
-                  <Text style={{ fontSize: 11, color: isDark ? (T.ink3 as string) : DS.ink[500], marginTop: 2 }}>
-                    Vade {fmtDate(inv.due_date)} · {Math.abs(inv.days_overdue)} gün kaldı
-                  </Text>
-                </View>
-                <Text style={{ ...DISPLAY, fontSize: 18, color: isDark ? T.ink : DS.ink[900], letterSpacing: -0.5 }}>
-                  {Mnat(inv.remaining, inv.currency)}
-                </Text>
-                {isRTL() ? <ArrowLeft size={14} color={isDark ? (T.ink3 as string) : DS.ink[400]} /> : <ArrowRight size={14} color={isDark ? (T.ink3 as string) : DS.ink[400]} />}
+        <MobileTableX title="Vadesi Yaklaşan" count={upcomingItems.length} countLabel="fatura"
+          right={
+            <GlassTooltip title={autoT('Tümü')} text={autoT('Tüm açık faturaları açar')}>
+              <Pressable onPress={() => onJump('open')} style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : undefined}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: onAccentInk(TH.primary) }}>Tümü →</Text>
               </Pressable>
-            ))}
-          </Card>
-        </View>
+            </GlassTooltip>
+          }>
+          {upcomingItems.map((inv, i) => (
+            <MobileTableRowX key={inv.id} isLast={i === upcomingItems.length - 1} onPress={() => onJump('open')}>
+              <MobileTableIconX icon={FileText} tone={{ bg: isDark ? 'rgba(90,169,230,0.16)' : TH.bgSoft, fg: isDark ? '#93C5FD' : TH.primary }} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={MT.title} numberOfLines={1}>{inv.invoice_no ?? '—'}</Text>
+                {/* Hekim isteği: hangi hastanın faturası olduğu özet listelerinde de görünsün. */}
+                {!!inv.patient_name && (
+                  <Text style={MT.sub} numberOfLines={1}>
+                    {[inv.patient_name, inv.order_no].filter(Boolean).join(' · ')}
+                  </Text>
+                )}
+                <Text style={[MT.meta, { marginTop: 2 }]}>
+                  {autoT('Vade')} {fmtDate(inv.due_date)} · {Math.abs(inv.days_overdue)} {autoT('gün kaldı')}
+                </Text>
+              </View>
+              <Text style={MT.amount}>
+                {Mnat(inv.remaining, inv.currency)}
+              </Text>
+            </MobileTableRowX>
+          ))}
+        </MobileTableX>
       ) : null}
     </ScrollView>
   );

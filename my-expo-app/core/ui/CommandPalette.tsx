@@ -28,6 +28,16 @@ import { AppIcon } from './AppIcon';
 import { useCommandPalette } from '../store/commandPaletteStore';
 import { C } from '../theme/colors';
 import { useThemeModeStore } from '../store/themeModeStore';
+import { autoT } from '../i18n/autoTranslate';
+import { formatMoney } from '../money/currency';
+import { formatDate } from '../utils/dates';
+import { useGlobalSearch } from '../../modules/search/useGlobalSearch';
+import { kindsForPanel, hrefFor, shouldSearch, isFresh } from '../../modules/search/lib/searchModel';
+import { foldTR } from '../../modules/search/lib/fold';
+import type { SearchKind, SearchPanel } from '../../modules/search/types';
+import { STATUS_CONFIG } from '../../modules/orders/constants';
+import { INVOICE_STATUS_LABELS } from '../../modules/invoices/types';
+import { buildPageCommands, recordRows, GROUP_LABEL, type RecordRow } from './commandPaletteModel';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -46,6 +56,9 @@ interface CommandItem {
   icon: string;
   emoji?: string;
   group: string;
+  /** Kayıt satırı (genel arama): ikinci satır + sağ rozet */
+  sublabel?: string;
+  badge?: string;
   onSelect: () => void;
 }
 
@@ -53,11 +66,48 @@ interface Props {
   navItems: NavItem[];
   onNavigate: (href: string) => void;
   accentColor?: string;
+  /** Verilirse sipariş/klinik/hekim/fatura da aranır (2. dalga 1). Verilmezse bugünkü gibi yalnız sayfalar. */
+  panel?: SearchPanel;
+}
+
+const KIND_ICON: Record<SearchKind, string> = {
+  orders: 'list-check', clinics: 'building-2', doctors: 'stethoscope', invoices: 'receipt',
+};
+
+function recordToCommand(r: RecordRow): Omit<CommandItem, 'onSelect'> {
+  const base = { id: `${r.kind}:${r.id}`, icon: KIND_ICON[r.kind], group: GROUP_LABEL[r.kind] };
+  switch (r.kind) {
+    case 'orders': {
+      const h = r.hit;
+      const st = h.is_archived ? autoT('Arşiv') : autoT(STATUS_CONFIG[h.status]?.label ?? h.status);
+      return { ...base,
+        label: [h.order_number, h.patient_name].filter(Boolean).join(' · '),
+        sublabel: [h.clinic_name, h.doctor_name, h.work_type].filter(Boolean).join(' · ') || undefined,
+        badge: [st, h.delivery_date ? formatDate(h.delivery_date) : null].filter(Boolean).join(' · ') };
+    }
+    case 'clinics': {
+      const h = r.hit;
+      return { ...base, label: h.name,
+        sublabel: `${h.doctor_count} ${autoT('hekim')}` + (h.is_active ? '' : ` · ${autoT('pasif')}`) };
+    }
+    case 'doctors': {
+      const h = r.hit;
+      return { ...base, label: h.full_name,
+        sublabel: [h.clinic_name, h.is_active ? null : autoT('pasif')].filter(Boolean).join(' · ') || undefined };
+    }
+    case 'invoices': {
+      const h = r.hit;
+      return { ...base, label: h.invoice_number,
+        sublabel: [h.efatura_number, h.clinic_name,
+          formatMoney(Number(h.total) || 0, (h.currency as any) ?? undefined),
+          autoT((INVOICE_STATUS_LABELS as Record<string, string>)[h.status] ?? h.status)].filter(Boolean).join(' · ') };
+    }
+  }
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function CommandPalette({ navItems, onNavigate, accentColor = C.primary }: Props) {
+export function CommandPalette({ navItems, onNavigate, accentColor = C.primary, panel }: Props) {
   const { open, query, closePalette, setQuery } = useCommandPalette();
   const isDark = useThemeModeStore(st => st.resolvedDark);
   const t = useMemo(() => paletteColors(isDark), [isDark]);
@@ -75,26 +125,6 @@ export function CommandPalette({ navItems, onNavigate, accentColor = C.primary }
     }
   }, [open]);
 
-  // Web: Cmd+K / Ctrl+K keyboard listener
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        if (open) closePalette();
-        else useCommandPalette.getState().openPalette();
-      }
-      if (!open) return;
-      if (e.key === 'Escape')    { closePalette(); }
-      if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx(i => i + 1); }
-      if (e.key === 'ArrowUp')   { e.preventDefault(); setActiveIdx(i => Math.max(0, i - 1)); }
-      if (e.key === 'Enter')     { e.preventDefault(); executeActive(); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, activeIdx]);
-
   // Build command list from navItems
   const allCommands: CommandItem[] = useMemo(() => {
     return navItems.map((item) => ({
@@ -107,14 +137,27 @@ export function CommandPalette({ navItems, onNavigate, accentColor = C.primary }
     }));
   }, [navItems, onNavigate, closePalette]);
 
-  // Filter by query
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return allCommands;
-    return allCommands.filter(
-      (c) => c.label.toLowerCase().includes(q) || c.group.toLowerCase().includes(q)
-    );
-  }, [allCommands, query]);
+  // Genel arama (panel verilmişse): menüde gidilebilen gruplar, sunucuda, çağıranın yetkisiyle
+  const navHrefs = useMemo(() => navItems.map((n) => n.href), [navItems]);
+  const kinds = useMemo(() => (panel ? kindsForPanel(panel, navHrefs) : []), [panel, navHrefs]);
+  const search = useGlobalSearch(open ? query : '', panel, kinds);
+  const searching = !!panel && kinds.length > 0 && shouldSearch(query);
+  // Sonuç ekrandaki sorgunun değilse (yazma sürüyor / istek uçuşta) kayıt satırları gösterilmez
+  const fresh = isFresh(search.forQ, query);
+
+  const recordCommands: CommandItem[] = useMemo(() => {
+    if (!panel || !searching || !fresh) return [];
+    return recordRows(search.result).map((r) => ({
+      ...recordToCommand(r),
+      onSelect: () => { closePalette(); onNavigate(hrefFor(panel, r.kind, r.id)); },
+    }));
+  }, [panel, searching, fresh, search.result, closePalette, onNavigate]);
+
+  // Kayıtlar önce (Siparişler · Klinikler · Hekimler · Faturalar), sonra sayfalar
+  const filtered = useMemo(
+    () => [...recordCommands, ...buildPageCommands(allCommands, query, foldTR)],
+    [recordCommands, allCommands, query],
+  );
 
   // Clamp active index
   const clampedIdx = Math.min(activeIdx, Math.max(0, filtered.length - 1));
@@ -124,6 +167,38 @@ export function CommandPalette({ navItems, onNavigate, accentColor = C.primary }
       filtered[clampedIdx].onSelect();
     }
   }
+
+  // Sonuç gelmeden Enter → sonuç gelince ilk satır açılır (yazmaya devam edilirse iptal)
+  const pendingEnter = useRef(false);
+  useEffect(() => { pendingEnter.current = false; }, [query, open]);
+  function submit() {
+    if (searching && !fresh) { pendingEnter.current = true; return; }
+    executeActive();
+  }
+  useEffect(() => {
+    if (pendingEnter.current && searching && fresh) { pendingEnter.current = false; executeActive(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fresh, searching, filtered]);
+
+  // Web: Cmd+K / Ctrl+K keyboard listener (filtered tanımından SONRA: bağımlılıkta kullanılıyor)
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        if (open) closePalette();
+        else useCommandPalette.getState().openPalette();
+      }
+      if (!open) return;
+      if (e.key === 'Escape')    { closePalette(); }
+      if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx(i => i + 1); }
+      if (e.key === 'ArrowUp')   { e.preventDefault(); setActiveIdx(i => Math.max(0, i - 1)); }
+      if (e.key === 'Enter')     { e.preventDefault(); submit(); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, activeIdx, filtered]);   // filtered: genel arama sonuçları sonradan gelir; Enter güncel listeyi seçmeli
 
   // Group commands
   const groups = useMemo(() => {
@@ -192,6 +267,13 @@ export function CommandPalette({ navItems, onNavigate, accentColor = C.primary }
               accentColor={accentColor}
               closePalette={closePalette}
               t={t}
+              placeholder={panel ? 'Sipariş, hasta, klinik, fatura ara…' : 'Ne yapmak istiyorsunuz?'}
+              onSubmit={submit}
+              status={{
+                loading: searching && (search.loading || !fresh),
+                error: searching && fresh && !!search.error,
+                ordersMore: searching && search.result.orders_more,
+              }}
             />
           </View>
         </Pressable>
@@ -243,7 +325,7 @@ function paletteColors(isDark: boolean): PaletteColors {
 
 function PanelContent({
   query, setQuery, inputRef, groups, filtered, clampedIdx,
-  setActiveIdx, accentColor, closePalette, t,
+  setActiveIdx, accentColor, closePalette, t, placeholder, status, onSubmit,
 }: {
   query: string;
   setQuery: (q: string) => void;
@@ -255,6 +337,9 @@ function PanelContent({
   accentColor: string;
   closePalette: () => void;
   t: PaletteColors;
+  placeholder: string;
+  status: { loading: boolean; error: boolean; ordersMore: boolean };
+  onSubmit: () => void;
 }) {
   // Scroll to active item
   const scrollRef = useRef<ScrollView>(null);
@@ -275,15 +360,20 @@ function PanelContent({
         <TextInput
           ref={inputRef}
           style={[s.searchInput, { color: t.ink }]}
-          placeholder="Ne yapmak istiyorsunuz?"
+          placeholder={placeholder}
           placeholderTextColor={t.inkMuted}
           value={query}
           onChangeText={setQuery}
           returnKeyType="go"
           autoCorrect={false}
           autoCapitalize="none"
-          onSubmitEditing={() => {
-            if (filtered[clampedIdx]) filtered[clampedIdx].onSelect();
+          onSubmitEditing={onSubmit}
+          // react-native-web TextInput tuş olayının yayılmasını durdurur → pencere dinleyicisi ok
+          // tuşlarını hiç görmez; yazarken gezinme burada yapılır.
+          onKeyPress={(e: any) => {
+            const k = e?.nativeEvent?.key;
+            if (k === 'ArrowDown') { e.preventDefault?.(); setActiveIdx((i) => Math.min(Math.max(0, filtered.length - 1), i + 1)); }
+            else if (k === 'ArrowUp') { e.preventDefault?.(); setActiveIdx((i) => Math.max(0, i - 1)); }
           }}
         />
         {query.length > 0 && (
@@ -302,11 +392,24 @@ function PanelContent({
 
       <View style={[s.divider, { backgroundColor: t.divider }]} />
 
+      {/* ── Arama durumu (genel arama) — sessiz geçmez ── */}
+      {status.error && (
+        <View style={s.statusRow}>
+          <AppIcon name="alert-circle" size={14} color={t.inkMuted} />
+          <Text style={[s.statusText, { color: t.inkMuted }]}>Arama yapılamadı</Text>
+        </View>
+      )}
+      {status.loading && filtered.length > 0 && (
+        <View style={s.statusRow}>
+          <Text style={[s.statusText, { color: t.inkMuted }]}>Aranıyor…</Text>
+        </View>
+      )}
+
       {/* ── Results ── */}
       {filtered.length === 0 ? (
         <View style={s.noResults}>
           <AppIcon name="search" size={24} color={t.inkMuted} />
-          <Text style={[s.noResultsText, { color: t.inkMuted }]}>Sonuç bulunamadı</Text>
+          <Text style={[s.noResultsText, { color: t.inkMuted }]}>{status.loading ? 'Aranıyor…' : 'Sonuç bulunamadı'}</Text>
         </View>
       ) : (
         <ScrollView
@@ -348,12 +451,24 @@ function PanelContent({
                       </View>
 
                       {/* Label — keep ink color, weight indicates active state */}
-                      <Text
-                        style={[s.itemLabel, { color: t.ink }, isActive && { fontWeight: '600' }]}
-                        numberOfLines={1}
-                      >
-                        {cmd.label}
-                      </Text>
+                      {cmd.sublabel ? (
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={[s.itemLabel, { color: t.ink, flex: 0 }, isActive && { fontWeight: '600' }]} numberOfLines={1}>
+                            {cmd.label}
+                          </Text>
+                          <Text style={[s.itemSub, { color: t.inkMuted }]} numberOfLines={1}>{cmd.sublabel}</Text>
+                        </View>
+                      ) : (
+                        <Text
+                          style={[s.itemLabel, { color: t.ink }, isActive && { fontWeight: '600' }]}
+                          numberOfLines={1}
+                        >
+                          {cmd.label}
+                        </Text>
+                      )}
+                      {cmd.badge ? (
+                        <Text style={[s.itemBadge, { color: t.inkMuted, backgroundColor: t.itemIconBg }]} numberOfLines={1}>{cmd.badge}</Text>
+                      ) : null}
 
                       {/* Arrow hint */}
                       {isActive && (
@@ -362,6 +477,9 @@ function PanelContent({
                     </TouchableOpacity>
                   );
                 })}
+                {status.ordersMore && groupLabel === GROUP_LABEL.orders && (
+                  <Text style={[s.moreHint, { color: t.inkMuted }]}>Daha fazla sonuç var, aramayı daraltın</Text>
+                )}
               </View>
             );
           })}
@@ -388,7 +506,7 @@ export function CommandPaletteFAB({ accentColor = C.primary }: { accentColor?: s
   return (
     <TouchableOpacity
       style={[fab.btn, { backgroundColor: accentColor }]}
-      onPress={openPalette}
+      onPress={() => openPalette()}
       activeOpacity={0.88}
     >
       <AppIcon name="search" size={20} color="#FFFFFF" strokeWidth={2} />
@@ -513,6 +631,36 @@ const s = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: C.textPrimary,
+  },
+  // Genel arama kayıt satırı (2. dalga 1)
+  itemSub: {
+    fontSize: 12,
+    marginTop: 1,
+  },
+  itemBadge: {
+    fontSize: 11,
+    fontWeight: '600',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    overflow: 'hidden',
+    maxWidth: 150,
+    flexShrink: 0,
+  },
+  moreHint: {
+    fontSize: 11.5,
+    paddingHorizontal: 20,
+    paddingVertical: 6,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+  },
+  statusText: {
+    fontSize: 12,
   },
 
   // ── Empty ──

@@ -10,7 +10,7 @@ import { supabase } from '../../../core/api/supabase';
 // Gerçek veriyle çalışır; onayda mevcut triage_order RPC'sini çağırır.
 // Panel-aware (usePanelTheme) — lab müdür panelinde safran accent.
 
-import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef, Suspense } from 'react';
 import { View, Text, Pressable, ScrollView, Platform, Modal, TextInput, useWindowDimensions, Alert, Linking, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useSegments } from 'expo-router';
@@ -43,8 +43,16 @@ import { ImageLightbox } from '../../../core/ui/ImageLightbox';
 import { useBottomActionBar } from '../../../core/store/uiOverlayStore';
 import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 import { useInkUI } from '../../../core/theme/inkScale';
+import { useLabelSize } from '../../orders/hooks/useLabelSize';
+import { LabelSizePicker } from '../../orders/components/LabelSizePicker';
 import { WHITE_HERO_DISPLAY, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
-import { useHeroSurface, useNeonNavy, NeonPulse } from '../../../core/ui/HeroGlow';
+
+// Ana sipariş popup'ı — sipariş detayı GECİKMELİ yüklenir: bu ekran ana pakette statik,
+// OrderDetailScreenV2'nin rotası lazyRoute; statik import "Requiring unknown module" (#130) çökmesi yapar.
+const OrderDetailLazy = React.lazy(() =>
+  import('../../orders/screens/OrderDetailScreenV2').then((m) => ({ default: m.OrderDetailScreenV2 })),
+);
+import { useHeroSurface, useNeonNavy, NeonPulse, HERO_NAVY } from '../../../core/ui/HeroGlow';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 function is3DFileFmt(path: string): 'stl' | 'ply' | 'obj' | null {
@@ -327,6 +335,8 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
   // "Hekim & Klinik" kartı — düz "neon navy" (açık temada düz panel accent'i,
   // koyu temada neon yüzey). Metin/ikon renkleri de hook'tan gelir.
   const nn = useNeonNavy(A);
+  // Geri düğmesi her panelde LACİVERT (kullanıcı isteği): açıkta düz #004B87, koyuda neon yüzey
+  const navyBack = useNeonNavy(HERO_NAVY.light);
   const filesNavy = Platform.OS === 'web';
   // Koyu accent metin koyu yüzeyde okunmuyor → koyu temada açık tonu
   const A_DEEP = isDark ? mixWhite(A, 0.55) : theme.primaryDeep;
@@ -348,7 +358,9 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
   const [openFileCats, setOpenFileCats] = useState<Record<string, boolean>>({});
   const [pickerFor, setPickerFor] = useState<string | null>(null); // teknisyen seçici açık olan stationId
   const [chatOpen, setChatOpen] = useState(false);                   // sipariş yazışması modal'ı
+  const [parentOpenId, setParentOpenId] = useState<string | null>(null);   // ana sipariş (revizyon/devam) popup'ı
   const [printing, setPrinting] = useState(false);                   // iş kağıdı hazırlanıyor
+  const [labelSize, setLabelSize] = useLabelSize();                 // A4/A5/A6 — sipariş detayıyla ortak, cihazda hatırlanır
   const [dragIndex, setDragIndex] = useState<number | null>(null);   // sürüklenen aktif satır
   const [overIndex, setOverIndex] = useState<number | null>(null);   // üzerine gelinen satır
   // Çok-şerit sürükle-bırak: hangi şeritte hangi satır sürükleniyor/üzerine geliniyor
@@ -552,8 +564,8 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
   useEffect(() => { load(); }, [load]);
 
   /**
-   * İş kağıdını yazdır — sipariş detayı ekranıyla AYNI A4 çıktısı
-   * (`buildOrderPrintDoc` ortak modülü).
+   * İş emri etiketini yazdır — sipariş detayı ekranıyla AYNI çıktı, seçili
+   * boyutta (A4/A5/A6; `buildOrderPrintDoc` ortak modülü).
    *
    * Triaj sorgusu yazdırma için gereken tüm kolonları çekmiyor (id/lab_id yok),
    * bu yüzden basılacak satır burada ayrıca okunuyor. Hekim/klinik adı ve
@@ -579,31 +591,18 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
         doctor: { full_name: data?.doctorName ?? '—', clinic_name: data?.clinicName ?? '—' },
       };
       const qrUrl = `${window.location.origin}/order/${row.order_number}`;
-      const html = await buildOrderPrintDoc(printable, qrUrl, (data?.messages ?? []) as any);
+      const html = await buildOrderPrintDoc(printable, { size: labelSize, qrUrl });
 
-      // Gizli iframe → tarayıcı yazdırma diyaloğu. Sayfanın kendisini
-      // yazdırmak yerine iframe kullanılıyor ki ekranın stilleri çıktıya
-      // karışmasın. QR ve logo dış kaynaktan geldiği için onload'dan sonra
-      // kısa bir bekleme var; erken print boş görsel basıyordu.
-      const frame = document.createElement('iframe');
-      frame.setAttribute('aria-hidden', 'true');
-      frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;';
-      frame.onload = () => {
-        setTimeout(() => {
-          try { frame.contentWindow?.focus(); frame.contentWindow?.print(); } catch { /* yoksay */ }
-          // Diyalog kapanmadan kaldırırsak yazdırma iptal olur — geç temizle.
-          setTimeout(() => frame.remove(), 60_000);
-        }, 400);
-      };
-      document.body.appendChild(frame);
-      frame.srcdoc = html;
+      // Gizli iframe → tarayıcı yazdırma diyaloğu (ortak yardımcı: fontlar hazır olunca basar).
+      const { printHtmlInHiddenFrame } = await import('../../../lib/printHtmlFrame');
+      printHtmlInHiddenFrame(html);
     } catch (e) {
       console.error('[PlanReview] yazdırma hazırlanamadı:', e);
       toast.error('Yazdırma hazırlanamadı.');
     } finally {
       setPrinting(false);
     }
-  }, [orderId, data]);
+  }, [orderId, data, labelSize]);
 
   const stationById = useMemo(() => new Map((data?.stations ?? []).map(s => [s.id, s])), [data]);
   const techById = useMemo(() => new Map((data?.technicians ?? []).map(t => [t.id, t])), [data]);
@@ -990,26 +989,6 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
   return (
     <View style={{ flex: 1, backgroundColor: PAGE }}>
       <ScrollView contentContainerStyle={{ paddingHorizontal: PAGE_PADDING, paddingTop: 18 + insets.top, paddingBottom: (isNarrow ? 300 : 150) + insets.bottom, width: '100%' }}>
-        {/* Geri — basınca küçülür (dokunuşta, bırakışta değil) */}
-        <View style={{ alignSelf: 'flex-start', marginBottom: 16, marginStart: -8 }}>
-          <Tip label="Planı kaydetmeden önceki sayfaya dön">
-            <Pressable
-              onPress={() => safeBack('/')}
-              hitSlop={8}
-              style={rowStyle(({ pressed, hovered }: any) => ({
-                flexDirection: 'row', alignItems: 'center', gap: 5,
-                paddingHorizontal: 8, paddingVertical: 6, borderRadius: 999,
-                backgroundColor: hovered ? 'rgba(0,0,0,0.04)' : 'transparent',
-                ...press(pressed),
-                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-              }))}
-            >
-              <ArrowLeft size={15} color={INK[500]} strokeWidth={2} />
-              <Text style={{ ...TYPE.body, color: INK[500], fontWeight: '600' }}>Geri</Text>
-            </Pressable>
-          </Tip>
-        </View>
-
         {/* Sipariş künyesi + diş şeması — SPLIT (sol künye · sağ diş şeması).
             İki kart aynı yükseklikte (`stretch`). Künye kartı diş şemasından
             kısa kalırsa fazla yükseklik ALTTA boşluk olarak birikmesin diye
@@ -1045,6 +1024,26 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
               borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.7)',
             }}>
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 26, paddingBottom: 18 }}>
+              {/* Geri — hero'nun içinde lacivert simge düğmesi; basınca küçülür (dokunuşta) */}
+              <Tip label="Planı kaydetmeden önceki sayfaya dön">
+                <Pressable
+                  onPress={() => safeBack('/')}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={autoT('Geri')}
+                  style={rowStyle(({ pressed }: any) => ({
+                    width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
+                    ...navyBack.surface,
+                    ...press(pressed),
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  }))}
+                >
+                  {!navyBack.flat && <NeonPulse radius={14} color={navyBack.glow} />}
+                  {isRTL()
+                    ? <ChevronRight size={18} color={navyBack.ink} strokeWidth={2.2} />
+                    : <ChevronLeft size={18} color={navyBack.ink} strokeWidth={2.2} />}
+                </Pressable>
+              </Tip>
               <View style={{ flex: 1, minWidth: 0, gap: 5 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 1.1, textTransform: 'uppercase', color: HI.inkSoft }}>Plan Önizleme</Text>
@@ -1061,6 +1060,34 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                 <Text style={{ fontSize: 14, lineHeight: 21, color: HI.inkSoft, marginTop: 4 }} numberOfLines={1}>
                   #{o?.order_number ?? '—'}{distinctProcs.length > 0 ? ` · ${distinctProcs.join(' · ')}` : ''}
                 </Text>
+                {/* Revizyon / devam siparişi: ASIL sipariş — tıklayınca o sipariş popup'ta açılır */}
+                {data?.parentOrder ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                    <Text style={{ fontSize: 13, color: HI.inkSoft }}>
+                      {data.parentOrder.kind === 'revision' ? autoT('Revizyon') : autoT('Devam siparişi')}
+                      {' · '}{autoT('Ana sipariş')}:
+                    </Text>
+                    <Tip label="Ana siparişi bu sayfadan ayrılmadan açar">
+                      <Pressable
+                        onPress={() => setParentOpenId(data.parentOrder!.id)}
+                        accessibilityRole="link"
+                        accessibilityLabel={`${autoT('Ana sipariş')} #${data.parentOrder.order_number ?? ''}`}
+                        style={rowStyle(({ pressed, hovered }: any) => ({
+                          flexDirection: 'row', alignItems: 'center', gap: 4,
+                          paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
+                          backgroundColor: tint(A, hovered ? 0.18 : 0.11),
+                          ...press(pressed),
+                          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                        }))}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: A_DEEP, textDecorationLine: 'underline' }}>
+                          #{data.parentOrder.order_number ?? '—'}
+                        </Text>
+                        {isRTL() ? <ChevronLeft size={13} color={A_DEEP} strokeWidth={2.2} /> : <ChevronRight size={13} color={A_DEEP} strokeWidth={2.2} />}
+                      </Pressable>
+                    </Tip>
+                  </View>
+                ) : null}
               </View>
 
               {/* İkincil aksiyonlar — sessiz, eşit ağırlıkta. Ana aksiyon altta. */}
@@ -1068,7 +1095,10 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                 {/* İş kağıdı — planı onaylamadan önce basılı nüsha alınabilsin.
                     Çıktı sipariş detayı ekranıyla birebir aynı (ortak modül). */}
                 {Platform.OS === 'web' && (
-                  <Tip label="İş kağıdını A4 olarak yazdır">
+                  <LabelSizePicker value={labelSize} onChange={setLabelSize} disabled={printing} />
+                )}
+                {Platform.OS === 'web' && (
+                  <Tip label="İş emri etiketini seçili boyutta yazdır">
                     <Pressable
                       onPress={handlePrint}
                       disabled={printing}
@@ -1829,10 +1859,22 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
               const arr = laneStations(lane);
               const inLane = new Set(arr.map(r => r.stationId));
               const addable = (data?.stations ?? []).filter(s => !inLane.has(s.id));
+              // Şeride atanmış işlem(ler): iş türü + dişler — başlığın yanında (çiplerle aynı biçim)
+              const laneWork = (data?.items ?? [])
+                .filter(it => itemLaneOf(it.id) === lane)
+                .map(it => `${it.name}${it.tooth_numbers?.length ? ` (${it.tooth_numbers.join(',')})` : ''}`)
+                .join(' · ');
               return (
                 <View key={`lane-${lane}`} style={{ gap: 10, borderRadius: 18, borderWidth: 1, borderColor: tint(A, 0.18), backgroundColor: tint(A, 0.028), padding: 14 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Text style={{ ...TYPE.label, color: A_DEEP }}>İş Şeridi {lane}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <Text style={{ ...TYPE.label, color: A_DEEP, flexShrink: 0 }}>İş Şeridi {lane}</Text>
+                      {laneWork ? (
+                        <Text style={{ ...TYPE.meta, fontWeight: '600', color: INK[700], flexShrink: 1 }} numberOfLines={1}>
+                          {laneWork}
+                        </Text>
+                      ) : null}
+                    </View>
                     <Tip label="Bu şeridi kaldır">
                       <Pressable
                         onPress={() => removeLane(lane)}
@@ -2175,6 +2217,47 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
       )}
 
       {/* Sipariş yazışması modal'ı — sorun olursa hekim/klinikle mesajlaş */}
+      {/* Ana sipariş popup'ı — sipariş detayı gömülü (embedded) açılır; içindeki "ilgili" sipariş aynı pencerede gezinir */}
+      <Modal visible={!!parentOpenId} transparent animationType="fade" onRequestClose={() => setParentOpenId(null)}>
+        <View style={[U.modalOverlay, { padding: isNarrow ? 0 : 24 }]}>
+          <Pressable onPress={() => setParentOpenId(null)} accessibilityLabel={autoT('Kapat')} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+          <View
+            style={{
+              width: '100%', maxWidth: 1240, height: isNarrow ? '100%' : '94%',
+              borderRadius: isNarrow ? 0 : 24, overflow: 'hidden', backgroundColor: PAGE,
+              ...(Platform.OS === 'web' ? { boxShadow: '0 20px 50px rgba(15,23,42,0.28)' } as any : {}),
+            }}
+          >
+            {parentOpenId ? (
+              <Suspense fallback={<View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator /></View>}>
+                <OrderDetailLazy
+                  idOverride={parentOpenId}
+                  embedded
+                  onRequestClose={() => setParentOpenId(null)}
+                  onOpenRelated={(rid: string) => setParentOpenId(rid)}
+                />
+              </Suspense>
+            ) : null}
+            <View style={{ position: 'absolute', top: 12, end: 12, zIndex: 50 }}>
+            <Tip label="Ana sipariş penceresini kapatır">
+              <Pressable
+                onPress={() => setParentOpenId(null)}
+                accessibilityRole="button"
+                accessibilityLabel={autoT('Kapat')}
+                style={{
+                  width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: U.plainBtn.border,
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer', boxShadow: '0 4px 14px rgba(15,23,42,0.2)' } as any : {}),
+                }}
+              >
+                <X size={18} color={U.plainBtn.fg} strokeWidth={2} />
+              </Pressable>
+            </Tip>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <Modal visible={chatOpen} transparent animationType="fade" onRequestClose={() => setChatOpen(false)}>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(10,14,26,0.52)', paddingTop: insets.top, ...(Platform.OS === 'web' ? ({ backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' } as any) : {}) }}>
           <View style={{ width: '94%', maxWidth: 720, height: '88%', maxHeight: 880, backgroundColor: SURF, borderRadius: 24, overflow: 'hidden' }}>

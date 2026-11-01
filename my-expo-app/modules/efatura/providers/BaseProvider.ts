@@ -12,6 +12,7 @@ import type {
   EFaturaSendResult,
   EFaturaQueryResult,
   MukellefCheckResult,
+  EFaturaPreviewResult,
 } from '../types';
 
 export interface ProviderConfig {
@@ -38,6 +39,11 @@ export abstract class BaseEFaturaProvider {
     this.config = config;
   }
 
+  /** Kayıtlı ortam (sandbox = test, production = canlı GİB) — kartta etiket olarak gösterilir. */
+  get environment(): 'sandbox' | 'production' {
+    return this.config?.environment === 'production' ? 'production' : 'sandbox';
+  }
+
   /** Faturayı entegratöre gönder */
   abstract send(invoice: EFaturaInvoice): Promise<EFaturaSendResult>;
 
@@ -49,4 +55,13 @@ export abstract class BaseEFaturaProvider {
 
   /** GİB Mükellef sorgusu (e-Fatura mı e-Arşiv mi karar için) */
   abstract checkMukellef(vkn: string): Promise<MukellefCheckResult>;
+
+  /**
+   * Sunucu taraflı sağlayıcılar (Luca): faturayı DB'den sunucu kurar, sonucu
+   * ve logu sunucu yazar. Tanımlıysa api.ts istemci tarafı kurulum/log yapmaz.
+   */
+  sendById?(invoiceId: string, opts?: { previewToken?: string }): Promise<EFaturaSendResult>;
+  queryStatusById?(invoiceId: string): Promise<EFaturaQueryResult>;
+  /** Gönderilecek faturanın önizlemesi (gönderimle aynı hazırlık; hiçbir şey göndermez). */
+  previewById?(invoiceId: string): Promise<EFaturaPreviewResult>;
 }

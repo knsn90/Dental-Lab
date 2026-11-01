@@ -164,8 +164,16 @@ export function MoreMenuSheet({ visible, onClose, items, accentColor = '#0F172A'
     ],
   } as any;
 
+  // Web'de kök katman EKRANA sabit (fixed): mobil tarayıcıda belge kaydırması
+  // (documentScroll) açıkken kapsayıcı sayfa boyunca uzuyor, absolute kök menüyü
+  // sayfanın dibine (görünür alanın dışına) çiziyordu — Finans/Ekip/Stok/Ayarlar
+  // telefondan açılamıyordu (denetim K3, 2026-10-24). Native'de değişiklik yok.
+  const rootStyle = Platform.OS === 'web'
+    ? ({ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000 } as any)
+    : StyleSheet.absoluteFillObject;
+
   return (
-    <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
+    <View style={rootStyle} pointerEvents="box-none">
       {/* Arka plan: KARARTMA + BULANIKLIK (kullanıcı isteği). Eskiden şeffaftı;
           menü, arkasındaki yoğun panoyla görsel olarak yarışıyordu. Ton ve blur
           NavDimStrip ile AYNI kaynaktan (NAV_DIM) gelir → navbar arkasındaki

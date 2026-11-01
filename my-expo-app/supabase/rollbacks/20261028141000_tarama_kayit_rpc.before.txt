@@ -1,0 +1,4 @@
+Task 2 öncesi canlı durum (2026-10-28):
+- scan_* fonksiyonları yok (yalnız Task 1 yardımcıları: _scan_enabled/_scan_can_manage/_scan_can_view).
+- clinics.geo_lat/geo_lng/geo_addr_hash/geo_at: Task 1 ile eklendi, BOŞ.
+- scan_clinic_geo tablosu yok.

@@ -204,12 +204,13 @@ export async function rejectLeave(id: string, rejectReason: string) {
   }).eq('id', id).select().single();
 }
 
+// .select('id'): RLS'in süzdüğü satır hata vermez, 0 satır döner — çağıran rowsChanged ile sınar.
 export async function cancelLeave(id: string) {
-  return supabase.from('employee_leaves').update({ status: 'iptal' }).eq('id', id);
+  return supabase.from('employee_leaves').update({ status: 'iptal' }).eq('id', id).select('id');
 }
 
 export async function deleteLeave(id: string) {
-  return supabase.from('employee_leaves').delete().eq('id', id);
+  return supabase.from('employee_leaves').delete().eq('id', id).select('id');
 }
 
 // ─── Attendance API ───────────────────────────────────────────────────────────
@@ -251,6 +252,15 @@ export async function upsertAttendance(params: CreateAttendanceParams) {
     overtime_minutes: params.overtime_minutes ?? 0,
     notes:            params.notes            ?? null,
   }, { onConflict: 'employee_id,work_date' }).select().single();
+}
+
+// Elle kayıttan (manual_attendance) sonra yalnız durum + fazla mesai: upsertAttendance
+// verilmeyen saat/notu null'a çeker ve RPC'nin yazdığını silerdi. .select('id') → rowsChanged.
+export async function updateAttendanceStatus(employeeId: string, workDate: string, status: AttendanceStatus, overtimeMinutes: number) {
+  return supabase.from('employee_attendance')
+    .update({ status, overtime_minutes: overtimeMinutes })
+    .eq('employee_id', employeeId).eq('work_date', workDate)
+    .select('id');
 }
 
 export async function deleteAttendance(id: string) {

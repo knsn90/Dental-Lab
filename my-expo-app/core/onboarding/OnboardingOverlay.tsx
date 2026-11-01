@@ -7,8 +7,9 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, Pressable, StyleSheet, Platform, useWindowDimensions,
+  View, Text, Pressable, StyleSheet, Platform, useWindowDimensions, Keyboard,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   useSharedValue, useAnimatedStyle, withTiming, withRepeat, withSequence,
   withDelay, Easing,
@@ -18,6 +19,38 @@ import { supabase } from '../api/supabase';
 import { useOnboardingStore } from './onboardingStore';
 import { useNewOrderModalStore } from '../store/newOrderModalStore';
 import { isRTL } from '../i18n';
+import { resetNavScroll } from '../ui/mobile/navScroll';
+
+/** Navbar'daki hedefler — kaydırmayla küçülmüş navbar ölçülmeden önce açılır. */
+const NAV_TARGETS = new Set(['tour-new-order', 'tour-orders']);
+/** Telefon genişliği: kart hedefin karşı kenarına sabitlenir, kompakt çizilir. */
+const MOBILE_MAX_W = 769;
+
+/** Klavye yüksekliği — native Keyboard olayları, web'de visualViewport farkı. */
+function useKeyboardHeight(enabled: boolean): number {
+  const [kb, setKb] = useState(0);
+  useEffect(() => {
+    if (!enabled) { setKb(0); return; }
+    if (Platform.OS === 'web') {
+      const vv: any = typeof window !== 'undefined' ? (window as any).visualViewport : null;
+      if (!vv) return;
+      const onChange = () => {
+        const diff = window.innerHeight - vv.height - (vv.offsetTop || 0);
+        setKb(diff > 120 ? diff : 0);   // küçük farklar adres çubuğu oynaması
+      };
+      vv.addEventListener('resize', onChange);
+      vv.addEventListener('scroll', onChange);
+      onChange();
+      return () => { vv.removeEventListener('resize', onChange); vv.removeEventListener('scroll', onChange); };
+    }
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const a = Keyboard.addListener(showEvt, (e: any) => setKb(e?.endCoordinates?.height ?? 0));
+    const b = Keyboard.addListener(hideEvt, () => setKb(0));
+    return () => { a.remove(); b.remove(); };
+  }, [enabled]);
+  return kb;
+}
 
 // Doctor emerald theme (CLAUDE.md §7)
 const PRIMARY = '#32BB78';
@@ -66,15 +99,34 @@ export function OnboardingOverlay({ host = 'root' }: { host?: 'root' | 'newOrder
   const finish = useOnboardingStore(s => s.finish);
   const skip = useOnboardingStore(s => s.skip);
   const overlayHost = useOnboardingStore(s => s.overlayHost);
+  // KVKK onayı / ödeme hatırlatması gibi zorunlu pencere açıkken bekle.
+  const blocked = useOnboardingStore(s => s.blockers > 0);
+  const insets = useSafeAreaInsets();
 
   // Yalnız aktif host çizer + yan-etkileri yürütür → çift karartma / çift
   // aksiyon olmaz. Modal-içi overlay 'newOrder', kök overlay 'root'.
   const isActiveHost = overlayHost === host;
 
   const { width: W, height: H } = useWindowDimensions();
+  const isMobile = W < MOBILE_MAX_W;
+  const kbH = useKeyboardHeight(active && isMobile);
 
   const [rect, setRect] = useState<Rect | null>(null);
   const [cardH, setCardH] = useState(220);
+  // Katmanın PENCEREDEKİ başlangıcı. Hedefler pencereye göre ölçülür ama katman
+  // ebeveyninin içinde çizilir: iOS'ta yeni-sipariş modalı SafeAreaView(top)
+  // içinde → katman durum çubuğu kadar aşağıda başlıyor, spotlight ve kart o
+  // kadar kayıyordu ("boş yerleri gösteriyor"). Ölçüp farkı düşüyoruz.
+  // Web'de katman body'ye portal + fixed → hep 0.
+  const rootRef = useRef<any>(null);
+  const [origin, setOrigin] = useState({ x: 0, y: 0 });
+  /** Katman başlangıcını ölç (native). Modal kayarak açılırken ara değer
+   *  gelebilir; bu yüzden her hedef ölçümünde YENİDEN çağrılır. */
+  const readOrigin = (cb: (o: { x: number; y: number }) => void) => {
+    const n = rootRef.current;
+    if (Platform.OS === 'web' || !n || typeof n.measureInWindow !== 'function') { cb({ x: 0, y: 0 }); return; }
+    n.measureInWindow((x: number, y: number) => cb({ x: x || 0, y: y || 0 }));
+  };
 
   // ─── Spotlight hole shared values ─────────────────────────────────────────
   const sx = useSharedValue(0);
@@ -130,7 +182,7 @@ export function OnboardingOverlay({ host = 'root' }: { host?: 'root' | 'newOrder
   // Execute the step's side-effect (open form / change wizard step) once when
   // it becomes active — only on the active host so it never fires twice.
   useEffect(() => {
-    if (!active || !isActiveHost) return;
+    if (!active || !isActiveHost || blocked) return;
     const a = steps[stepIndex]?.action;
     if (!a) return;
     // openNewOrder YALNIZ kök host'ta: form-içi overlay bunu çalıştırırsa
@@ -148,27 +200,42 @@ export function OnboardingOverlay({ host = 'root' }: { host?: 'root' | 'newOrder
       const ctrl = useOnboardingStore.getState().refs.get('no-form-controller');
       try { ctrl?.goToStep?.(a.formStep); } catch { /* noop */ }
     }
-  }, [active, isActiveHost, stepIndex, steps]);
+  }, [active, isActiveHost, blocked, stepIndex, steps]);
 
   // Measure the current target (re-run on step / window resize). Retries a few
   // times because a formStep action re-renders the wizard and the new section
   // needs a beat to lay out before its ref can be measured.
   useEffect(() => {
-    if (!active || !isActiveHost) return;
+    if (!active || !isActiveHost || blocked) return;
     const s = steps[stepIndex];
     if (!s || !s.targetId) { setRect(null); return; }
     let cancelled = false;
     // Adım değişiminde eski spotlight'ı bırakma — hedef ölçülene dek ortalı kart.
     setRect(null);
+    // Navbar kaydırmayla küçülmüş/aşağı itilmiş olabilir → normal boyuna aç;
+    // yoksa spotlight navbar'ın OLMASI gereken boş yeri gösteriyordu.
+    if (NAV_TARGETS.has(s.targetId)) { try { resetNavScroll(); } catch { /* noop */ } }
+    let scrolled = false;
     const doMeasure = () => {
       const node = useOnboardingStore.getState().refs.get(s.targetId!);
-      measureNode(node, (r) => { if (!cancelled && r) setRect(r); });
+      readOrigin((o) => measureNode(node, (r) => {
+        if (cancelled || !r) return;
+        setOrigin(prev => (Math.abs(prev.x - o.x) > 0.5 || Math.abs(prev.y - o.y) > 0.5 ? o : prev));
+        // Web: hedef görünür alanın dışındaysa bir kez ortaya kaydır; sonraki
+        // ölçümler yeni konumu yakalar (formun alttaki alanları).
+        const visibleH = H - kbH;
+        if (Platform.OS === 'web' && !scrolled && (r.y < 0 || r.y + Math.min(r.h, visibleH) > visibleH)) {
+          scrolled = true;
+          try { node?.scrollIntoView?.({ block: 'center', behavior: 'smooth' }); } catch { /* noop */ }
+        }
+        setRect({ x: r.x - o.x, y: r.y - o.y, w: r.w, h: r.h });
+      }));
     };
     doMeasure();
     // Staggered re-measures: modal mount / wizard step swap / scroll settle.
     const timers = [90, 260, 500, 800, 1200].map(ms => setTimeout(doMeasure, ms));
     return () => { cancelled = true; timers.forEach(clearTimeout); };
-  }, [active, isActiveHost, stepIndex, steps, W, H]);
+  }, [active, isActiveHost, blocked, stepIndex, steps, W, H, kbH]);
 
   // Animate the hole to the measured rect.
   useEffect(() => {
@@ -241,14 +308,28 @@ export function OnboardingOverlay({ host = 'root' }: { host?: 'root' | 'newOrder
     transform: [{ scale: 1 + ctaPulse.value * 0.04 }],
   }));
 
-  if (!active || !step || !isActiveHost) return null;
+  if (!active || !step || !isActiveHost || blocked) return null;
 
   // ─── Tooltip card position (JS; updates per step) ─────────────────────────
   const rtl = isRTL();
   const cardW = Math.min(CARD_MAX_W, W - 32);
+  const kbOpen = isMobile && kbH > 0;
   let cardLeft: number;
   let cardTop: number;
-  if (rect) {
+  if (isMobile && rect) {
+    // TELEFON: kart hedefin KARŞI kenarına sabitlenir. Hedefin altına/üstüne
+    // sığmadığında eskiden alanın ÜSTÜNE biniyordu → form alanı doldurulamıyordu.
+    // Klavye açıkken yalnız klavyenin üstündeki görünür alan hesaba katılır.
+    // Kart konumu katmanın yerel koordinatında (origin düşülmüş).
+    const visibleH = H - kbH - origin.y;
+    const topLimit = Math.max(8, insets.top + 8 - origin.y);
+    const bottomLimit = kbOpen ? visibleH - 8 : H - origin.y - insets.bottom - 12;
+    const targetMid = rect.y + rect.h / 2;
+    cardLeft = (W - cardW) / 2;
+    cardTop = targetMid > (topLimit + bottomLimit) / 2
+      ? topLimit                                   // hedef altta → kart üstte
+      : Math.max(topLimit, bottomLimit - cardH);   // hedef üstte → kart altta
+  } else if (rect) {
     const holeY = clamp(rect.y - PAD, 0, H);
     const holeH = Math.min(rect.h + PAD * 2, H - holeY);
     const centerX = rect.x + rect.w / 2;
@@ -277,6 +358,7 @@ export function OnboardingOverlay({ host = 'root' }: { host?: 'root' | 'newOrder
     // yerine fixed (web) / absolute (native) bir katman; box-none ile dokunuşlar
     // formun alanlarına geçer, yalnız ipucu kartı etkileşimli kalır.
       <Animated.View
+        ref={rootRef}
         pointerEvents="box-none"
         style={[
           // zIndex katmanı: masaüstünde form bir ROUTE (z~0) olduğundan turu
@@ -331,15 +413,17 @@ export function OnboardingOverlay({ host = 'root' }: { host?: 'root' | 'newOrder
           }}
           style={[
             styles.card,
+            isMobile && styles.cardCompact,
             { left: cardLeft, top: cardTop, width: cardW },
             cardAnimStyle,
           ]}
         >
-          <Text style={styles.title}>{step.title}</Text>
-          <Text style={styles.body}>{step.body}</Text>
+          <Text style={[styles.title, isMobile && styles.titleCompact]} numberOfLines={kbOpen ? 1 : undefined}>{step.title}</Text>
+          {/* Klavye açıkken yalnız başlık + düğmeler: alanı ve klavyeyi kapatmasın */}
+          {!kbOpen && <Text style={[styles.body, isMobile && styles.bodyCompact]}>{step.body}</Text>}
 
           {/* Progress dots */}
-          <View style={styles.dotsRow}>
+          {!kbOpen && <View style={[styles.dotsRow, isMobile && { marginTop: 12 }]}>
             {steps.map((_, i) => (
               <View
                 key={i}
@@ -351,10 +435,10 @@ export function OnboardingOverlay({ host = 'root' }: { host?: 'root' | 'newOrder
                 ]}
               />
             ))}
-          </View>
+          </View>}
 
           {/* Controls */}
-          <View style={styles.controls}>
+          <View style={[styles.controls, isMobile && { marginTop: kbOpen ? 8 : 14 }]}>
             <Pressable onPress={onSkip} hitSlop={8} style={webCursor}>
               {({ pressed }: any) => (
                 <Text style={[styles.skipText, { opacity: pressed ? 0.5 : 1 }]}>Atla</Text>
@@ -424,6 +508,20 @@ const styles = StyleSheet.create({
           shadowOffset: { width: 0, height: 14 },
           elevation: 18,
         }),
+  },
+  cardCompact: {
+    borderRadius: 18,
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 12,
+  },
+  titleCompact: {
+    fontSize: 16,
+  },
+  bodyCompact: {
+    fontSize: 13.5,
+    lineHeight: 19,
+    marginTop: 6,
   },
   title: {
     fontSize: 18,

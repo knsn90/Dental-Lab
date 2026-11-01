@@ -21,7 +21,8 @@ import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { toast } from '../../../core/ui/Toast';
 import { getRate } from '../../../core/money/currency';
 import { getBaseCurrency } from '../../../core/money/baseCurrency';
-import { previewClinicReceipt, recordClinicReceipt, updateClinicReceipt } from '../api';
+import { previewClinicReceipt, recordClinicReceipt, updateClinicReceipt, setClinicReceiptAccount } from '../api';
+import { fetchDepositAccounts } from '../../cash/api';
 import type { ReceiptLine, ReceiptResult, ClinicReceipt } from '../types';
 
 const CCY: ReceiptLine['currency'][] = ['TRY', 'EUR', 'USD', 'GBP'];
@@ -55,7 +56,12 @@ export function ClinicReceiptModal({
   const base = getBaseCurrency();
   const [rows, setRows]       = useState<Row[]>([{ currency: base as any, amount: '', rate: '1' }]);
   const [date, setDate]       = useState(new Date().toISOString().slice(0, 10));
-  const [method, setMethod]   = useState<string>('nakit');
+  // Yeni makbuzda yöntem bilerek boş gelir (nakit kasaya yanlışlıkla havale düşmesin) — madde 8
+  const [method, setMethod]   = useState<string | null>(null);
+  const [methodErr, setMethodErr] = useState(false);
+  // Yatırıldığı hesap (nakitte yok: nakit kasaya kendiliğinden düşer)
+  const [accounts, setAccounts] = useState<{ id: string; name: string; account_type: string; currency: string }[]>([]);
+  const [accountId, setAccountId] = useState<string | null>(null);
   const [refNo, setRefNo]     = useState('');
   const [notes, setNotes]     = useState('');
   const [preview, setPreview] = useState<ReceiptResult | null>(null);
@@ -70,8 +76,10 @@ export function ClinicReceiptModal({
   useEffect(() => {
     if (!visible) return;
     idemRef.current = `rcpt-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    setPreview(null); setBusy(false);
+    setPreview(null); setBusy(false); setMethodErr(false);
     setLocked(!!editing);
+    setAccountId(editing?.account_id ?? null);
+    fetchDepositAccounts().then(setAccounts).catch(() => setAccounts([]));
     if (editing) {
       // Düzenleme: kayıtlı satırları olduğu gibi göster — kur dahil, çünkü
       // tahsilat o gün o kurdan alındı; bugünün kuruyla ezmek yanlış olur.
@@ -84,7 +92,7 @@ export function ClinicReceiptModal({
       setNotes(editing.notes ?? '');
     } else {
       setRows([{ currency: base as any, amount: '', rate: '1' }]);
-      setRefNo(''); setNotes(''); setMethod('nakit');
+      setRefNo(''); setNotes(''); setMethod(null);
       setDate(new Date().toISOString().slice(0, 10));
     }
   }, [visible, base, editing]);
@@ -122,6 +130,7 @@ export function ClinicReceiptModal({
     if (!clinicId) return;
     const lines = validLines();
     if (lines.length === 0) { toast.error(autoT('En az bir tahsilat satırı gerekli')); return; }
+    if (!method) { setMethodErr(true); return; }
     setBusy(true);
     try {
       const res = editing
@@ -134,12 +143,33 @@ export function ClinicReceiptModal({
             referenceNo: refNo.trim() || null, notes: notes.trim() || null,
             idempotencyKey: idemRef.current,
           });
+      // Yatırıldığı hesap: makbuz kaydından sonra (hata tahsilatı geri almaz, yalnız uyarır)
+      const rid = editing?.id ?? (res as any)?.receipt_id;
+      if (rid) {
+        const acc = method !== 'nakit' ? accounts.find(a => a.id === accountId) ?? null : null;
+        try { await setClinicReceiptAccount(rid, acc ? { id: acc.id, name: acc.name } : null); }
+        catch { toast.error(autoT('Yatırıldığı hesap kaydedilemedi')); }
+      }
       toast.success(autoT(editing ? 'Tahsilat güncellendi' : 'Tahsilat kaydedildi'));
       onSaved?.(res);
       onClose();
     } catch (e: any) {
       toast.error(e?.message ?? autoT('Tahsilat kaydedilemedi'));
     } finally { setBusy(false); }
+  };
+
+  /** Hesap para hareketi değildir: kayıtlı (salt okunur / dağıtılmış) makbuzda da seçilir ve hemen kaydedilir */
+  const pickAccount = async (id: string | null) => {
+    setAccountId(id);
+    if (!(locked && editing)) return;   // yeni / düzenlenen makbuz: Kaydet'te yazılır
+    const acc = id ? accounts.find(a => a.id === id) ?? null : null;
+    try {
+      await setClinicReceiptAccount(editing.id, acc ? { id: acc.id, name: acc.name } : null);
+      toast.success(autoT('Yatırıldığı hesap kaydedildi'));
+      onSaved?.({ receipt_id: editing.id } as ReceiptResult);
+    } catch {
+      toast.error(autoT('Yatırıldığı hesap kaydedilemedi'));
+    }
   };
 
   const totalBase = validLines().reduce((s, l) => s + l.amount * l.rate, 0);
@@ -216,7 +246,7 @@ export function ClinicReceiptModal({
                 {METHODS.map(m => {
                   const on = method === m;
                   return (
-                    <Pressable key={m} onPress={() => setMethod(m)} disabled={locked}
+                    <Pressable key={m} onPress={() => { setMethod(m); setMethodErr(false); if (m === 'nakit') setAccountId(null); }} disabled={locked}
                       style={{
                         paddingHorizontal: on ? 14 : 11, paddingVertical: 7, borderRadius: 999,
                         backgroundColor: on ? U.ink[900] : U.surfaceSoft,
@@ -233,6 +263,39 @@ export function ClinicReceiptModal({
                 })}
               </View>
             </View>
+
+            {/* Yatırıldığı hesap — ekstrede "Havale / EFT · <hesap>" olarak görünür */}
+            {method ? (
+              <View>
+                <Text style={label}>{autoT('Yatırıldığı hesap')}</Text>
+                {method === 'nakit' ? (
+                  <Text style={{ fontSize: 12.5, color: U.ink[500] }}>{autoT('Nakit kasaya yazılır')}</Text>
+                ) : accounts.length === 0 ? (
+                  <Text style={{ fontSize: 12.5, color: U.ink[500] }}>{autoT('Tanımlı hesap yok — Kasa / Banka → Diğer hesaplar\'dan banka hesabı ekleyin')}</Text>
+                ) : (
+                  <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+                    {accounts.map(a => {
+                      const on = accountId === a.id;
+                      return (
+                        <GlassTooltip key={a.id} title={a.name} text={autoT('Tahsilatın yatırıldığı hesap')}>
+                          <Pressable onPress={() => pickAccount(on ? null : a.id)}
+                            style={{
+                              paddingHorizontal: on ? 14 : 11, paddingVertical: 7, borderRadius: 999,
+                              backgroundColor: on ? U.ink[900] : U.surfaceSoft,
+                              borderWidth: 1, borderColor: on ? U.ink[900] : U.hairline,
+                              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                            }}>
+                            <Text style={{ fontSize: 12.5, fontWeight: on ? '700' : '500', color: on ? U.surface : U.ink[700] }}>
+                              {a.name}
+                            </Text>
+                          </Pressable>
+                        </GlassTooltip>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+            ) : null}
 
             {/* Para birimi satırları */}
             <View>
@@ -397,6 +460,9 @@ export function ClinicReceiptModal({
                   <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[700] }}>Makbuz</Text>
                 </Pressable>
               </GlassTooltip>
+            ) : null}
+            {methodErr && !locked ? (
+              <Text style={{ flex: 1, fontSize: 12, fontWeight: '600', color: U.chipTones.danger.fg }}>{autoT('Ödeme yöntemini seçin')}</Text>
             ) : null}
             <Pressable onPress={onClose}
               style={{

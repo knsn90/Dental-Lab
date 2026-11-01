@@ -8,7 +8,8 @@
  * GPS: yolda iken otomatik tracking
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import { EdgeSwipeBack } from '../../../core/ui/mobile/EdgeSwipeBack';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { safeBack } from '../../../core/util/safeBack';
 import {
   View, Text, ScrollView, Pressable, Platform, Linking, useWindowDimensions, ActivityIndicator, Modal,
@@ -18,8 +19,11 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft, ArrowRight, MapPin, Phone, Truck, Check, Play, Navigation, Package,
-  Camera, PenTool, MessageCircle, Map as MapIcon, X, ExternalLink,
+  MessageCircle, Map as MapIcon, X, ExternalLink,
 } from '../../../core/ui/icons';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { DeliveryProofSheet } from '../../delivery/proof/DeliveryProofSheet';
+import { measureOrigin, type OriginRect } from '../../delivery/proof/useAnchoredSpring';
 import { supabase } from '../../../core/api/supabase';
 import { updateDeliveryStatus } from '../../../modules/orders/api';
 import { CourierLiveMap } from '../CourierLiveMap';
@@ -30,6 +34,7 @@ import { localeTag, isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { formatAddress } from '../../../core/util/formatAddress';
 import { deliveryRef } from '../../delivery/label';
+import { patientInitials } from '../../orders/lib/workLabel';
 
 const TH = DS.tech;
 const DISPLAY = {
@@ -141,6 +146,8 @@ export function CourierDeliveryDetailScreen() {
   };
 
   const [mapPickerOpen, setMapPickerOpen] = useState(false);
+  // Teslim kanıtı penceresi (2. dalga 5): "Teslim et" düğmesinin konumundan açılır.
+  const [proofOpen, setProofOpen] = useState<{ origin: OriginRect | null } | null>(null);
   // Leg hedefi: kurye henüz ALMADIYSA origin'e (AL) yön verir, aldıysa destination'a (BIRAK).
   const legTarget = (): string | null => {
     if (!d) return null;
@@ -195,7 +202,7 @@ export function CourierDeliveryDetailScreen() {
     );
   }
 
-  const props = { d, busy, onChangeStatus: changeStatus, onOpenMap: openMap, onCall: callCustomer, onBack: () => safeBack('/(station)') };
+  const props = { d, busy, onChangeStatus: changeStatus, onDeliver: (origin: OriginRect | null) => setProofOpen({ origin }), onOpenMap: openMap, onCall: callCustomer, onBack: () => safeBack('/(station)') };
   return (
     <>
       {isDesktop ? <DesktopView {...props} /> : <MobileView {...props} />}
@@ -204,6 +211,13 @@ export function CourierDeliveryDetailScreen() {
         address={formatAddress(legTarget() ?? d.destination_address)}
         onClose={() => setMapPickerOpen(false)}
         onSelect={launchMapApp}
+      />
+      <DeliveryProofSheet
+        visible={!!proofOpen}
+        deliveryId={d.id}
+        origin={proofOpen?.origin ?? null}
+        onClose={() => setProofOpen(null)}
+        onDelivered={() => { void load(); }}
       />
     </>
   );
@@ -309,7 +323,7 @@ function MapPickerModal({
 
 /* ════════════════════════ MOBILE ════════════════════════ */
 
-function MobileView({ d, busy, onChangeStatus, onOpenMap, onCall, onBack }: any) {
+function MobileView({ d, busy, onChangeStatus, onDeliver, onOpenMap, onCall, onBack }: any) {
   const U = useInkUI();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -409,7 +423,7 @@ function MobileView({ d, busy, onChangeStatus, onOpenMap, onCall, onBack }: any)
               <Text style={{ fontSize: 12, fontWeight: '600', color: U.ink[900] }}>
                 {d.order_number ? `${autoT('Sipariş')} #${d.order_number}` : t('courier.delivery.contents')}
               </Text>
-              {d.patient_name && <Text style={{ fontSize: 11, color: U.ink[500], marginTop: 2 }}>{d.patient_name}</Text>}
+              {d.patient_name && <Text style={{ fontSize: 11, color: U.ink[500], marginTop: 2 }}>{patientInitials(d.patient_name)}</Text>}
             </View>
           </View>
 
@@ -428,16 +442,19 @@ function MobileView({ d, busy, onChangeStatus, onOpenMap, onCall, onBack }: any)
           </View>
 
           {/* Aksiyon CTA'ları — status'a göre */}
-          <ActionBar status={d.status} busy={busy} onChangeStatus={onChangeStatus} mobile />
+          <ActionBar status={d.status} busy={busy} onChangeStatus={onChangeStatus} onDeliver={onDeliver} mobile />
         </View>
       </ScrollView>
+
+      {/* Kenardan sağa kaydırınca geri — geri butonuyla AYNI fonksiyon */}
+      <EdgeSwipeBack onBack={onBack} />
     </View>
   );
 }
 
 /* ════════════════════════ DESKTOP ════════════════════════ */
 
-function DesktopView({ d, busy, onChangeStatus, onOpenMap, onCall, onBack }: any) {
+function DesktopView({ d, busy, onChangeStatus, onDeliver, onOpenMap, onCall, onBack }: any) {
   const U = useInkUI();
   const { t, i18n } = useTranslation();
   const curIdx = statusIndex(d.status);
@@ -516,7 +533,7 @@ function DesktopView({ d, busy, onChangeStatus, onOpenMap, onCall, onBack }: any
           <Card padding={16} style={{ flex: 1 }}>
             <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: U.ink[500], marginBottom: 10 }}>{t('courier.delivery.package')}</Text>
             <Text style={{ ...DISPLAY, fontSize: 22, color: U.ink[900], letterSpacing: -0.5 }}>{d.order_number ? `#${d.order_number}` : '—'}</Text>
-            {d.patient_name && <Text style={{ fontSize: 12, color: U.ink[700], marginTop: 8 }}>Hasta: {d.patient_name}</Text>}
+            {d.patient_name && <Text style={{ fontSize: 12, color: U.ink[700], marginTop: 8 }}>Hasta: {patientInitials(d.patient_name)}</Text>}
             <Text style={{ fontSize: 11, color: U.ink[500], marginTop: 8 }}>
               Atandı: {new Date(d.assigned_at).toLocaleString(localeTag(i18n.language), { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
             </Text>
@@ -538,7 +555,7 @@ function DesktopView({ d, busy, onChangeStatus, onOpenMap, onCall, onBack }: any
 
         {/* Aksiyon CTA */}
         <View style={{ paddingTop: 4 }}>
-          <ActionBar status={d.status} busy={busy} onChangeStatus={onChangeStatus} />
+          <ActionBar status={d.status} busy={busy} onChangeStatus={onChangeStatus} onDeliver={onDeliver} />
         </View>
       </ScrollView>
 
@@ -597,9 +614,10 @@ function Timeline({ current }: { current: number }) {
   );
 }
 
-function ActionBar({ status, busy, onChangeStatus, mobile }: any) {
+function ActionBar({ status, busy, onChangeStatus, onDeliver, mobile }: any) {
   const U = useInkUI();
   const { t } = useTranslation();
+  const deliverRef = useRef<any>(null);
   // Status'a göre aktif aksiyon
   if (status === 'atandi' || status === 'beklemede') {
     return (
@@ -626,27 +644,21 @@ function ActionBar({ status, busy, onChangeStatus, mobile }: any) {
     );
   }
   if (status === 'yolda') {
+    // 2. dalga 5: teslim kanıt penceresinden geçer (fotoğraf zorunlu; kliniğe ad + imza).
     return (
-      <View style={{ flexDirection: 'row', gap: 10 }}>
-        <Pressable disabled={busy} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: mobile ? 14 : 999, backgroundColor: U.ink[900], opacity: busy ? 0.6 : 1 }}>
-          <Camera size={15} color={U.onDarkPill} />
-          <Text style={{ fontSize: 13, fontWeight: '600', color: U.onDarkPill }}>{t('courier.action.takePhoto')}</Text>
-        </Pressable>
-        {!mobile && (
-          <Pressable disabled={busy} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 999, backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: U.plainBtn.border, opacity: busy ? 0.6 : 1 }}>
-            <PenTool size={15} color={U.ink[800]} />
-            <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[800] }}>{t('courier.action.getSignature')}</Text>
-          </Pressable>
-        )}
+      <GlassTooltip title={t('courier.action.deliver')} text={autoT('Teslim kanıtını al ve teslimi kapat')} placement="top">
         <Pressable
-          onPress={() => onChangeStatus('teslim_edildi')}
+          ref={deliverRef}
+          onPress={() => measureOrigin(deliverRef.current, onDeliver)}
           disabled={busy}
-          style={{ flex: mobile ? 1 : 1.3, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: mobile ? 14 : 999, backgroundColor: SUCCESS, opacity: busy ? 0.6 : 1 }}
+          accessibilityRole="button"
+          accessibilityLabel={t('courier.action.deliver')}
+          style={({ pressed }: any) => ({ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: mobile ? 14 : 999, backgroundColor: SUCCESS, opacity: busy ? 0.6 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] })}
         >
           <Check size={15} color="#FFF" strokeWidth={2.4} />
-          <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFF' }}>{t('courier.action.deliver')}</Text>
+          <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFF' }}>{t('courier.action.deliver')}</Text>
         </Pressable>
-      </View>
+      </GlassTooltip>
     );
   }
   // teslim_edildi veya iptal

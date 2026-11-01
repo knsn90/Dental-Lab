@@ -1,0 +1,4 @@
+-- Canli durum (2026-10-27) — 20261027150000 oncesi
+-- expenses tetikleyicisi: YOK. salary_payments: trg_salary_to_expense (AFTER INSERT/UPDATE/DELETE → sync_salary_to_expense).
+-- Ayrismis kayit (14'ten 1): salary_payments a231a551-90a7-40eb-aa96-b25b737eab8d payment_date=2026-10-04;
+--   bagli gider dd95b54e-4709-474f-b788-ea97c8acb146 expense_date=2026-06-04 (donem 2026-6). Yontem ve tutar farki: 0.

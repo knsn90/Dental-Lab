@@ -1,7 +1,7 @@
 // modules/dashboard/components/LabMobileDashboard.tsx
 // Aydın Lab Mobile handoff — lab (üretim) mobile dashboard.
-// Sections: greeting → CTA → aktif üretim (dark) → KPI 2-grid → week strip
-//           → geciken vakalar / positive empty state
+// Sections: greeting → CTA → aktif üretim (halka = teslim oranı) → KPI 2-grid → tarama programı
+//           → sipariş trendi (masaüstü kartının mobil karşılığı) → geciken vakalar / positive empty state
 
 import React from 'react';
 import { HatchFill } from '../../../core/ui/HatchFill';
@@ -21,7 +21,6 @@ import {
   QrCode, Flame, CheckCircle2, ClipboardList, Bell, AlertTriangle, User,
 } from '../../../core/ui/icons';
 import { MOBILE_PANEL_THEMES, useMobileTokens } from '../../../core/theme/mobileDesignTokens';
-import { UnreadMessagesCard } from '../../../core/ui/mobile/UnreadMessagesCard';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { Ring } from '../../../core/ui/mobile/Ring';
 import { AnimatedNumber } from '../../../core/ui/mobile/AnimatedNumber';
@@ -29,6 +28,7 @@ import { NewOrderCTACard } from '../../../core/ui/mobile/NewOrderCTACard';
 import { useAuthStore } from '../../../core/store/authStore';
 import { RecentOrdersMobile, type RecentOrderItem } from './RecentOrdersMobile';
 
+import { ScanCalendarCard } from '../../scans/components/ScanCalendarCard';
 const LAB = MOBILE_PANEL_THEMES.lab;
 
 /**
@@ -56,10 +56,6 @@ function hexA(hex: string, a: number): string {
   } catch { return hex; }
 }
 
-// Hafta şeridi kolon etiketleri — ilk harf gösterilir; çeviri sonrası ilk harf
-// alınır (fa: دوشنبه → د), Türkçe görünüm birebir korunur.
-const WEEK_STRIP_DAYS = ['Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi','Pazar'];
-
 // Desktop ile aynı format: "Pazartesi, 12 Mayıs"
 function todayLabel(lng?: string): string {
   return new Date().toLocaleDateString(localeTag(lng), { weekday: 'long', day: 'numeric', month: 'long' });
@@ -78,9 +74,12 @@ export interface LabMobileDashboardProps {
   todayLabel?: string;
   // Live production
   liveActive?: number;
+  /** Halkanın paydası: arşiv ve iptal hariç tüm siparişler (masaüstü "Üretim · Teslim" halkasıyla aynı). */
   liveTotal?: number;
+  /** Halkanın payı: teslim edilen sipariş sayısı. */
+  liveDelivered?: number;
   liveStages?: { alindi: number; uretim: number; kk: number; hazir: number };
-  livePercent?: number;       // production rate
+  livePercent?: number;       // teslim oranı (liveDelivered / liveTotal)
   // KPI
   activeOrders?: number;
   todayCompleted?: number;
@@ -88,11 +87,8 @@ export interface LabMobileDashboardProps {
   overdueCount?: number;
   pendingApprovalsCount?: number;
   avgDurationHours?: number | null;
-  // Week
-  weekBars?: number[];     // her gün alınan sipariş sayısı (Pa→Pz)
-  weekDoneBars?: number[]; // her gün tamamlanan (opsiyonel — verilmezse sadece "Alınan" çubuğu)
-  weekRange?: string;
-  weekTotal?: number;
+  /** Sipariş trendi: son aylar (masaüstü "Sipariş Trendi" kartıyla aynı dizi; son eleman bu ay) */
+  orderTrend?: { label: string; count: number; teeth?: number }[];
   // Lists
   delayed?: LabDelayedCase[];
   recentOrders?: RecentOrderItem[];
@@ -110,6 +106,11 @@ export interface LabMobileDashboardProps {
   onRefresh?: () => void;
 }
 
+
+/** 3B görsel kabının yığın sırası. YALNIZ web'de: iOS (Fabric) zIndex'i katman
+ *  derinliği olarak uyguluyor; görsel kendi kabından çıkıp sabit üst başlığın
+ *  (logo + şerit) ÜSTÜNE biniyordu (build 69, 2026-10-21). */
+const ART_Z = Platform.OS === 'web' ? { zIndex: 2 } : {};
 export function LabMobileDashboard(props: LabMobileDashboardProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -129,10 +130,11 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
   const live = {
     active: props.liveActive ?? 0,
     total:  props.liveTotal ?? 0,
+    delivered: props.liveDelivered ?? 0,
     stages: props.liveStages ?? { alindi: 0, uretim: 0, kk: 0, hazir: 0 },
     pct:    props.livePercent ?? 0,
   };
-  const week    = props.weekBars ?? [0,0,0,0,0,0,0];
+  const trend   = props.orderTrend ?? [];
   const delayed = props.delayed  ?? [];
   const recent  = props.recentOrders ?? [];
   const overdue = props.overdueCount ?? 0;
@@ -169,7 +171,7 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
             {greeting}
           </Text>
           <Text style={{ fontSize: 13, color: T.ink3, marginTop: 8, lineHeight: 19 }}>
-            {t('dashboard.todayLine', { total: live.total, active: live.active })}{overdue > 0 ? t('dashboard.todayOverdue', { overdue }) : ''}.
+            {t('dashboard.todayLine', { active: live.active })}{overdue > 0 ? t('dashboard.todayOverdue', { overdue }) : ''}.
           </Text>
         </View>
 
@@ -236,10 +238,11 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
             </Text>
           </View>
           <Text style={{ fontSize: 10, color: T.onDark3, fontFamily: T.mono }}>
-            {live.active}/{live.total}
+            {live.delivered}/{live.total}
           </Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 14, marginTop: 14 }}>
+          <View style={{ alignItems: 'center', gap: 6 }}>
           <Ring value={live.pct} size={108} stroke={9} color={LAB.primary} track="rgba(255,255,255,0.10)" animatedEndDot>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 2 }}>
               <AnimatedNumber
@@ -256,6 +259,11 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
               }}>%</Text>
             </View>
           </Ring>
+          {/* yüzdenin ne olduğu: masaüstü "Üretim" kartındaki teslim halkasıyla aynı değer */}
+          <Text style={{ fontSize: 9.5, fontWeight: '600', color: T.onDark2, letterSpacing: 0.8, textTransform: 'uppercase' }} numberOfLines={1}>
+            {t('admin.dashboard.deliveryRate')}
+          </Text>
+          </View>
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               {[
@@ -316,119 +324,74 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
         />
       </View>
 
-      {/* ═══ Mesajlar kartı — okunmamışı öne çıkarır (panel accent) ═══ */}
-      <UnreadMessagesCard
-        accent={LAB.primary}
-        art={LAB_ART.messages}
-        showClinicLogo
-        onOpenOrder={(id) => router.push(`/(lab)/order/${id}` as any)}
-        onOpenInbox={() => router.push('/(lab)/messages' as any)}
-      />
+      {/* ═══ Tarama programı (modül açıksa; ay görünümü, dokunulan günün ajandası altta) ═══ */}
+      <ScanCalendarCard style={{ marginHorizontal: 16, marginBottom: 16 }} />
 
-      {/* ═══ Week strip — desktop "Bu hafta" tasarımıyla aynı dil (hatched pill bars) ═══ */}
-      {(() => {
-        const SCALE_MAX = 20; // 1..20 sipariş skalası
-        const LIGHT_BAR = `${LAB.primary}55`; // Alınan — sage soft
-        const DARK_BAR  = LAB.primary;         // Tamamlanan — sage solid
-        const RAIL_BG   = `${LAB.primary}14`;  // hafif görünür rail bg (was 08, çok solgun)
-        // @ts-ignore web — diagonal hatched rail (panel-themed)
-        const STRIPE_BG = `repeating-linear-gradient(135deg, ${LAB.primary}14 0 6px, transparent 6px 12px)`;
-        const totalReceived  = props.weekTotal ?? week.reduce((a, b) => a + b, 0);
-        const weekDone = props.weekDoneBars ?? [0,0,0,0,0,0,0];
-        const totalCompleted = weekDone.reduce((a, b) => a + b, 0);
-
+      {/* ═══ Sipariş trendi — masaüstü "Sipariş Trendi" kartının mobil karşılığı (hatched pill kolonları) ═══ */}
+      {trend.length > 0 && (() => {
+        const last = trend[trend.length - 1];
+        const max = Math.max(1, ...trend.map((m) => m.count));
+        const peak = trend.reduce((best, m, i) => (m.count > trend[best].count ? i : best), 0);
+        const FILL_LIGHT = `${LAB.primary}55`;
+        const FILL_DARK  = LAB.primary;
+        const RAIL_BG    = `${LAB.primary}14`;
+        const STRIPE_BG  = `repeating-linear-gradient(135deg, ${LAB.primary}14 0 6px, transparent 6px 12px)`;
         return (
           <View style={{
             marginHorizontal: 16, marginBottom: 16,
-            padding: 16, borderRadius: 20,
+            padding: 14, borderRadius: 20,
             backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline,
           }}>
-            {/* Header — title + legend */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-              <Text style={{
-                fontSize: 15, fontWeight: '500', color: T.ink,
-                ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
-              }}>
-                {t('dashboard.thisWeek')}
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 4 }}>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3, letterSpacing: 1, textTransform: 'uppercase' }}>
+                {autoT('Sipariş Trendi')}
               </Text>
-              <View style={{ flex: 1 }} />
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: LIGHT_BAR }} />
-                <Text style={{ fontSize: 11, color: T.ink3 }}>{t('dashboard.received')} </Text>
-                <Text style={{ fontSize: 11, color: T.ink3, fontWeight: '600' }}>{totalReceived}</Text>
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: DARK_BAR }} />
-                <Text style={{ fontSize: 11, color: T.ink3 }}>{t('dashboard.completed')} </Text>
-                <Text style={{ fontSize: 11, color: T.ink3, fontWeight: '600' }}>{totalCompleted}</Text>
-              </View>
+              <Text style={{ fontSize: 11, color: T.ink3 }}>
+                <Text style={{ color: T.ink, fontWeight: '600' }}>{last?.count ?? 0}</Text> {autoT('bu ay')}
+              </Text>
             </View>
-
-            {/* Bars */}
-            <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6, height: 140, paddingHorizontal: 2 }}>
-              {WEEK_STRIP_DAYS.map((d, i) => {
-                const received  = week[i] ?? 0;
-                const completed = weekDone[i] ?? 0;
-                const isToday   = i === 6;
-                const receivedPct  = received > 0  ? Math.min(Math.max((received / SCALE_MAX) * 100, 8), 100) : 0;
-                const completedRel = received > 0 ? Math.min((completed / received) * 100, 100) : 0;
-                const empty = received === 0;
+            <Text style={{ fontSize: 10.5, color: T.ink3, marginBottom: 12 }}>
+              {autoT('Son 6 aylık trend')}{(last?.teeth ?? 0) > 0 ? ` · ${last?.teeth} ${autoT('diş')}` : ''}
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-end', height: 128, paddingHorizontal: 2 }}>
+              {trend.map((m, i) => {
+                const pct = m.count > 0 ? Math.min(Math.max((m.count / max) * 100, 8), 100) : 0;
+                const hi = i === peak && m.count > 0;
                 return (
-                  <View key={i} style={{ flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end', gap: 6 }}>
-                    {/* Pill column — hatched rail */}
-                    <View style={{ width: '100%', maxWidth: 44, flex: 1, justifyContent: 'flex-end', alignItems: 'center' }}>
-                      <View
-                        style={{
-                          width: '100%', height: '100%',
-                          borderRadius: 999,
-                          backgroundColor: RAIL_BG,
-                          // @ts-ignore web
-                          backgroundImage: STRIPE_BG,
-                          overflow: 'hidden',
-                          position: 'relative' as any,
-                        }}
-                      >
+                  <View key={i} style={{ flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end', gap: 4 }}>
+                    {/* sabit yükseklikli etiket zonu: çubukların tabanı hizalı kalır */}
+                    <View style={{ height: 20, justifyContent: 'center', alignItems: 'center' }}>
+                      {m.count > 0 ? (
+                        hi ? (
+                          <View style={{ paddingHorizontal: 6, paddingVertical: 1.5, borderRadius: 8, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline }}>
+                            <Text style={{ fontSize: 9.5, fontWeight: '700', color: T.ink }}>{m.count}</Text>
+                          </View>
+                        ) : (
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: T.ink3 }}>{m.count}</Text>
+                        )
+                      ) : null}
+                    </View>
+                    <View style={{ width: '100%', maxWidth: 40, flex: 1, justifyContent: 'flex-end', alignItems: 'center' }}>
+                      <View style={{
+                        width: '100%', height: '100%', borderRadius: 999,
+                        backgroundColor: RAIL_BG,
+                        ...(Platform.OS === 'web' ? { backgroundImage: STRIPE_BG } as any : {}),
+                        overflow: 'hidden', position: 'relative' as any,
+                      }}>
                         {/* Native: CSS gradyanı yok → SVG tarama */}
                         <HatchFill color={LAB.primary} />
-                        {!empty && (
-                          <View
-                            style={{
-                              position: 'absolute',
-                              left: 0, right: 0, bottom: 0,
-                              height: `${receivedPct}%`,
-                              borderRadius: 999,
-                              backgroundColor: LIGHT_BAR,
-                              overflow: 'hidden',
-                              // @ts-ignore web
-                              transition: 'height 800ms cubic-bezier(0.22, 1, 0.36, 1)',
-                            } as any}
-                          >
-                            {completedRel > 0 && (
-                              <View
-                                style={{
-                                  position: 'absolute',
-                                  left: 0, right: 0, bottom: 0,
-                                  height: `${completedRel}%`,
-                                  borderRadius: 999,
-                                  backgroundColor: DARK_BAR,
-                                  // @ts-ignore web
-                                  transition: 'height 800ms cubic-bezier(0.22, 1, 0.36, 1)',
-                                } as any}
-                              />
-                            )}
-                          </View>
+                        {pct > 0 && (
+                          <View style={{
+                            position: 'absolute', left: 0, right: 0, bottom: 0,
+                            height: `${pct}%`, borderRadius: 999,
+                            backgroundColor: hi ? FILL_DARK : FILL_LIGHT,
+                            ...(Platform.OS === 'web' ? { transition: 'height 800ms cubic-bezier(0.22, 1, 0.36, 1)' } as any : {}),
+                          } as any} />
                         )}
                       </View>
                     </View>
-                    {/* Day label */}
-                    <Text style={{
-                      fontSize: 11,
-                      fontWeight: isToday ? '700' : '500',
-                      color: isToday ? T.ink : T.ink3,
-                      textTransform: 'uppercase',
-                      letterSpacing: 0.55,
-                    }}>
-                      {autoT(d).charAt(0)}
+                    <Text style={{ fontSize: 10, fontWeight: hi ? '700' : '500', color: hi ? T.ink : T.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }} numberOfLines={1}>
+                      {m.label}
                     </Text>
                   </View>
                 );
@@ -666,7 +629,7 @@ function Kpi({ label, numericValue, delta, deltaColor, sub, dark, accent, icon: 
   if (!art) return card;
   // Görsel kartın SINIRINI kontrollü aşar (yandan 6px), alt kenarla arasında 6px pay.
   return (
-    <View style={{ flex: 1, zIndex: 2 }}>
+    <View style={{ flex: 1, ...ART_Z }}>
       {card}
       <View pointerEvents="none" style={{ position: 'absolute', bottom: 6, width: artSize?.w ?? 66, height: artSize?.h ?? 66, ...artEdge }}>
         <Image source={art} resizeMode="contain" style={{ width: '100%', height: '100%' }} />

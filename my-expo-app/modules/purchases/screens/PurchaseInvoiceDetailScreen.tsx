@@ -14,6 +14,7 @@
  * display başlık Inter Tight 300, panel accent'i usePanelTheme'den.
  */
 
+import { EdgeSwipeBack } from '../../../core/ui/mobile/EdgeSwipeBack';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, Pressable, ScrollView, ActivityIndicator, Platform,
@@ -41,6 +42,7 @@ import { PurchaseInvoicePreviewModal } from '../components/PurchaseInvoicePrevie
 import { openPurchaseInvoiceFile } from '../api';
 import { PurchaseExtraLineModal } from '../components/PurchaseExtraLineModal';
 import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
+import { NavyBackButtonX } from '../../../core/ui/NavyBackButtonX';
 
 const DISPLAY = {
   fontFamily: 'Inter Tight, Inter, system-ui, sans-serif' as const,
@@ -191,6 +193,7 @@ export function PurchaseInvoiceDetailScreen({ invoiceId, onBack }: Props = {}) {
   }
 
   return (
+    <View style={{ flex: 1 }}>
     <ScrollView
       style={{ flex: 1 }}
       contentContainerStyle={{ padding: PAGE_PADDING, paddingBottom: 80, gap: 16, maxWidth: 1080, width: '100%', alignSelf: 'center' }}
@@ -198,18 +201,7 @@ export function PurchaseInvoiceDetailScreen({ invoiceId, onBack }: Props = {}) {
     >
       {/* ── Üst şerit ─────────────────────────────────────────── */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <Pressable
-          onPress={goBack}
-          style={({ pressed }) => ({
-            width: 32, height: 32, borderRadius: 999, alignItems: 'center',
-            justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.05)',
-            opacity: pressed ? 0.6 : 1, ...webCursor,
-          })}
-        >
-          {isRTL()
-            ? <ArrowRight size={16} color={DS.ink[700]} strokeWidth={1.9} />
-            : <ArrowLeft size={16} color={DS.ink[700]} strokeWidth={1.9} />}
-        </Pressable>
+        <NavyBackButtonX onPress={goBack} />
         <Text style={{
           flex: 1, fontSize: 10, fontWeight: '500', letterSpacing: 1.2,
           textTransform: 'uppercase', color: DS.ink[500],
@@ -501,6 +493,10 @@ export function PurchaseInvoiceDetailScreen({ invoiceId, onBack }: Props = {}) {
         purchaseInvoiceId={inv.id}
       />
     </ScrollView>
+
+    {/* Kenardan sağa kaydırınca geri — geri butonuyla AYNI fonksiyon */}
+    <EdgeSwipeBack onBack={goBack} />
+    </View>
   );
 }
 

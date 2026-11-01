@@ -1,0 +1,2 @@
+# 20261027164000_prova_metinleri — önceki tanımlar 20261027161000/162000/163000 göçleriyle birebir (canlıya o dosyalardan uygulandı);
+# .down.sql bu tanımları içerir.

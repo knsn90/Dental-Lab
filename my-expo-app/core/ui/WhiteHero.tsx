@@ -49,6 +49,11 @@ export interface WhiteHeroProps {
    * Verilmezse düzen hiç değişmez.
    */
   leading?: React.ReactNode;
+  /**
+   * BAŞLIĞIN soluna giren öğe (ör. detaydan listeye geri düğmesi). Başlık
+   * uzun olunca sarar, öğe ilk satırla ortalı kalır. Verilmezse düzen aynı.
+   */
+  titleLeading?: React.ReactNode;
   /** Büyük başlık — vurgulu parça için içine <Text> koyabilirsin. */
   title?: React.ReactNode;
   description?: React.ReactNode;
@@ -86,7 +91,7 @@ export interface WhiteHeroProps {
 }
 
 export function WhiteHero({
-  kicker, leading, title, description, stats, actions, actionsAlign = 'start', compact, cta, children, accent, tint, style,
+  kicker, leading, titleLeading, title, description, stats, actions, actionsAlign = 'start', compact, cta, children, accent, tint, style,
 }: WhiteHeroProps) {
   const U = useInkUI();
   const isDark = useThemeModeStore(s => s.resolvedDark);
@@ -134,15 +139,24 @@ export function WhiteHero({
                 {kicker}
               </Text>
             </View>
-            {title ? (
-              <Text style={{ ...WHITE_HERO_DISPLAY,
-                fontSize: narrow ? (compact ? 24 : 30) : (compact ? 32 : 44),
-                letterSpacing: narrow ? -0.7 : (compact ? -1 : -1.5),
-                lineHeight: narrow ? (compact ? 28 : 34) : (compact ? 36 : 48),
-                color: titleColor }}>
-                {title}
-              </Text>
-            ) : null}
+            {title ? (() => {
+              const titleText = (
+                <Text style={{ ...WHITE_HERO_DISPLAY,
+                  fontSize: narrow ? (compact ? 24 : 30) : (compact ? 32 : 44),
+                  letterSpacing: narrow ? -0.7 : (compact ? -1 : -1.5),
+                  lineHeight: narrow ? (compact ? 28 : 34) : (compact ? 36 : 48),
+                  color: titleColor,
+                  ...(titleLeading ? { flex: 1, minWidth: 0 } : null) }}>
+                  {title}
+                </Text>
+              );
+              return titleLeading ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  {titleLeading}
+                  {titleText}
+                </View>
+              ) : titleText;
+            })() : null}
             {description ? (
               <Text style={{ fontSize: 14, color: descColor, marginTop: 12, maxWidth: 520, lineHeight: 21 }}>
                 {description}

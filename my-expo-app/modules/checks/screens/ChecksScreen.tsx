@@ -30,6 +30,8 @@ import { confirmAsync } from '../../../core/util/confirm';
 import { DatePicker } from '../../../core/ui/DatePicker';
 import { groupByCurrency, type CurrencyTotal } from '../../../core/money/aggregations';
 import { MoneyMultiX } from '../../../core/money/MoneyMultiX';
+import { MobileTableX, MobileTableRowX, MobileTableIconX, useMobileTableText } from '../../../core/ui/MobileTableX';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { formatMoney, CURRENCY_META, SUPPORTED_CURRENCIES, type Currency } from '../../../core/money/currency';
 import {
   Plus, FileText, Building2, Landmark as BankIcon, Hash,
@@ -106,6 +108,7 @@ export function ChecksScreen() {
   const theme = usePanelTheme();
   // Koyu tema: nötr yüzeyler + hero lacivert gradyanı (açık tema birebir korunur)
   const U = useInkUI();
+  const MT = useMobileTableText();
   const heroInk = useWhiteHeroInk(theme.primary);
   // Tablo kartı başlığı düz panel accent'i (uygulama genelinde aynı dil).
   const tblAccent = theme.primary;
@@ -473,93 +476,81 @@ export function ChecksScreen() {
             </View>
           </View>
         ) : (
-          /* ── Mobile: cardSolid §05 ──────────────────────────── */
-          <View style={{ gap: 10 }}>
-            {checks.map(ck => {
+          /* ── Mobile: tableCard — ekstre / giderler mobil tablosuyla aynı kalıp ── */
+          <MobileTableX
+            title="Çek / Senet Listesi" count={checks.length} countLabel="kayıt" accent={tblAccent}
+            footer={<>
+              <Text style={MT.footNote}>{checks.length} kayıt</Text>
+              <View style={{ flex: 1 }} />
+              <Text style={MT.footLabel}>Bekleyen:</Text>
+              <MoneyMultiX slices={stats.pendingByCcy} variant="inline" />
+            </>}
+          >
+            {checks.map((ck, i) => {
               const sc = statusChip[ck.status];
               const isOverdue = ck.due_date < today && ck.status === 'beklemede';
               const daysLeft = Math.round((new Date(ck.due_date).getTime() - Date.now()) / 86400000);
+              const tone = isOverdue ? U.chipTones.danger : U.chipTones.warning;
+              const bankLine = [ck.bank_name, ck.check_number].filter(Boolean).join(' · ');
 
               return (
-                <View key={ck.id} style={{
-                  ...U.cardSolid, gap: 12,
-                  ...(isOverdue
-                    ? { borderWidth: 1, borderColor: 'rgba(217,75,75,0.2)' }
-                    : {}),
-                }}>
-                  {/* Top */}
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <View style={{
-                      width: 40, height: 40, borderRadius: 12,
-                      backgroundColor: isOverdue ? U.chipTones.danger.bg : U.chipTones.warning.bg,
-                      alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      <FileText size={18} color={isOverdue ? U.chipTones.danger.fg : U.chipTones.warning.fg} strokeWidth={1.6} />
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.3, color: isOverdue ? U.chipTones.danger.fg : U.ink[900] }}>
-                          {fmtMoney(Number(ck.amount), (ck as any).currency ?? 'TRY')}
-                        </Text>
-                        <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: sc.bg }}>
-                          <Text style={{ fontSize: 10, fontWeight: '400', color: sc.fg }}>{CHECK_STATUS_LABELS[ck.status]}</Text>
-                        </View>
-                      </View>
-                      {ck.clinic?.name && (
-                        <Text style={{ fontSize: 12, color: U.ink[500], marginTop: 2 }}>{ck.clinic.name}</Text>
-                      )}
-                    </View>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={{ fontSize: 12, fontWeight: '400', color: isOverdue ? U.chipTones.danger.fg : U.ink[800] }}>
-                        {fmtDate(ck.due_date)}
-                      </Text>
+                <MobileTableRowX key={ck.id} isLast={i === checks.length - 1}
+                  tint={isOverdue ? (U.isDark ? 'rgba(217,75,75,0.10)' : 'rgba(217,75,75,0.03)') : undefined}>
+                  <MobileTableIconX icon={FileText} tone={tone} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={MT.title} numberOfLines={1}>{ck.clinic?.name ?? '—'}</Text>
+                    {bankLine ? <Text style={MT.sub} numberOfLines={1}>{bankLine}</Text> : null}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', columnGap: 6, rowGap: 2, marginTop: 2, flexWrap: 'wrap' }}>
+                      <Text style={[MT.meta, isOverdue ? { color: U.chipTones.danger.fg, fontWeight: '600' } : null]}>Vade: {fmtDate(ck.due_date)}</Text>
                       {ck.status === 'beklemede' && (
-                        <Text style={{ fontSize: 10, color: isOverdue ? U.chipTones.danger.fg : U.chipTones.warning.fg, marginTop: 1 }}>
-                          {isOverdue ? `${Math.abs(daysLeft)}g gecikti` : `${daysLeft}g kaldı`}
+                        <Text style={{ fontSize: 10, color: isOverdue ? U.chipTones.danger.fg : daysLeft <= 7 ? U.chipTones.warning.fg : U.ink[400] }}>
+                          {isOverdue ? Math.abs(daysLeft) : daysLeft} {autoT(isOverdue ? 'gün gecikti' : 'gün kaldı')}
                         </Text>
                       )}
+                    </View>
+                    {ck.status === 'beklemede' && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 }}>
+                        <GlassTooltip title={autoT('Tahsil Edildi')} text={autoT('Çeki tahsil edildi olarak işaretler')}>
+                          <Pressable
+                            onPress={() => handleStatusChange(ck, 'tahsil_edildi')}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: U.chipTones.success.bg, cursor: 'pointer' as any }}
+                          >
+                            <CircleCheck size={12} color={U.chipTones.success.fg} strokeWidth={2} />
+                            <Text style={{ fontSize: 11, color: U.chipTones.success.fg }}>Tahsil Edildi</Text>
+                          </Pressable>
+                        </GlassTooltip>
+                        <GlassTooltip title={autoT('İade')} text={autoT('Çeki iade edildi olarak işaretler')}>
+                          <Pressable
+                            onPress={() => handleStatusChange(ck, 'iade')}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: U.chipTones.warning.bg, cursor: 'pointer' as any }}
+                          >
+                            <Undo2 size={12} color={U.chipTones.warning.fg} strokeWidth={2} />
+                            <Text style={{ fontSize: 11, color: U.chipTones.warning.fg }}>İade</Text>
+                          </Pressable>
+                        </GlassTooltip>
+                        <GlassTooltip title={autoT('Sil')} text={autoT('Çeki kalıcı olarak siler')}>
+                          <Pressable
+                            onPress={() => handleDelete(ck)}
+                            style={{ width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: U.chipTones.danger.bg, cursor: 'pointer' as any }}
+                          >
+                            <Trash2 size={12} color={U.chipTones.danger.fg} strokeWidth={2} />
+                          </Pressable>
+                        </GlassTooltip>
+                      </View>
+                    )}
+                  </View>
+                  <View style={{ alignItems: 'flex-end', alignSelf: 'flex-start' }}>
+                    <Text style={[MT.amount, { color: isOverdue ? U.chipTones.danger.fg : U.ink[900] }]}>
+                      {fmtMoney(Number(ck.amount), (ck as any).currency ?? 'TRY')}
+                    </Text>
+                    <View style={{ marginTop: 4, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: sc.bg }}>
+                      <Text style={{ fontSize: 9, fontWeight: '600', color: sc.fg }}>{CHECK_STATUS_LABELS[ck.status]}</Text>
                     </View>
                   </View>
-
-                  {/* Bank info */}
-                  {ck.bank_name && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <BankIcon size={12} color={U.ink[400]} strokeWidth={1.6} />
-                      <Text style={{ fontSize: 11, color: U.ink[500] }}>
-                        {ck.bank_name}{ck.check_number ? ` · No: ${ck.check_number}` : ''}
-                      </Text>
-                    </View>
-                  )}
-
-                  {/* Actions */}
-                  {ck.status === 'beklemede' && (
-                    <View style={{ flexDirection: 'row', gap: 6 }}>
-                      <Pressable
-                        onPress={() => handleStatusChange(ck, 'tahsil_edildi')}
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: U.chipTones.success.bg, cursor: 'pointer' as any }}
-                      >
-                        <CircleCheck size={13} color={U.chipTones.success.fg} strokeWidth={2} />
-                        <Text style={{ fontSize: 11, fontWeight: '400', color: U.chipTones.success.fg }}>Tahsil Edildi</Text>
-                      </Pressable>
-                      <Pressable
-                        onPress={() => handleStatusChange(ck, 'iade')}
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: U.chipTones.warning.bg, cursor: 'pointer' as any }}
-                      >
-                        <Undo2 size={13} color={U.chipTones.warning.fg} strokeWidth={2} />
-                        <Text style={{ fontSize: 11, fontWeight: '400', color: U.chipTones.warning.fg }}>İade</Text>
-                      </Pressable>
-                      <Pressable
-                        onPress={() => handleDelete(ck)}
-                        style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: U.chipTones.danger.bg, cursor: 'pointer' as any }}
-                      >
-                        <Trash2 size={13} color={U.chipTones.danger.fg} strokeWidth={2} />
-                      </Pressable>
-                    </View>
-                  )}
-                </View>
+                </MobileTableRowX>
               );
             })}
-          </View>
+          </MobileTableX>
         )}
       </ScrollView>
 

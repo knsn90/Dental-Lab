@@ -14,6 +14,7 @@
 import type { LabLetterhead } from '../receipt/buildReceiptHtml';
 import { autoT } from '../../core/i18n/autoTranslate';
 import { printLocale } from '../../core/i18n/printLocale';
+import { receiptVoucherNo } from './lib/receiptStatement';
 
 export interface ReceiptVoucherLine {
   currency: string;
@@ -60,7 +61,7 @@ export function buildReceiptVoucherHtml(
 ): string {
   const method = autoT(METHOD_LABEL[receipt.payment_method] ?? receipt.payment_method);
   // Makbuz no: fiş uuid'sinin ilk bloğu — kısa ve kayda geri götürür.
-  const voucherNo = receipt.id.split('-')[0].toUpperCase();
+  const voucherNo = receiptVoucherNo(receipt.id);
 
   const rows = (receipt.lines ?? []).map(l => `<tr>
       <td class="ccy"><span class="ccy-tag">${esc(l.currency)}</span></td>

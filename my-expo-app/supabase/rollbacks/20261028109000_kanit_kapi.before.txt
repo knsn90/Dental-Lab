@@ -1,0 +1,2 @@
+# 20261028109000_kanit_kapi — önceki durum: _deliveries_proof_guard 20261028100000_kanit_sema tanımı (recipient_name/signature_path korunmaz);
+# trg_deliveries_proof_gate YOK. Uygulanmadan önce canlı tanım yeniden ölçülür.

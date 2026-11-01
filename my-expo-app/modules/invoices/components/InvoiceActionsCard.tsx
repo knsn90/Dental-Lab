@@ -116,13 +116,21 @@ interface Props {
     type?: 'e_fatura' | 'e_arsiv' | null;
     provider?: string | null;
     error?: string | null;
+    number?: string | null;
   };
+  /** Siman fatura durumu — taslak/iptal iken e-fatura akışı kilitli */
+  invoiceStatus?: string | null;
+  /** "Faturayı kes" (taslak → kesildi) — e-fatura bölümündeki kilit butonu */
+  onIssueInvoice?: () => Promise<void> | void;
+  /** Klinik e-faturaya hazır değil → eksikler (autoT'lenmiş) + düzenleme kısayolu */
+  clinicGaps?: string[];
+  onEditClinic?: () => void;
   onChanged: () => void;
 }
 
 export function InvoiceActionsCard({
   invoiceId, balance, notes, readOnly, noteDraft, onNoteChange, onSaveNote, savingNote,
-  efatura, onChanged,
+  efatura, invoiceStatus, onIssueInvoice, clinicGaps, onEditClinic, onChanged,
 }: Props) {
   const U = useInkUI();
   const noteDirty = noteDraft.trim() !== (notes ?? '');
@@ -195,6 +203,11 @@ export function InvoiceActionsCard({
             type={efatura.type ?? null}
             provider={efatura.provider ?? null}
             error={efatura.error ?? null}
+            number={efatura.number ?? null}
+            invoiceStatus={invoiceStatus ?? null}
+            onIssueInvoice={readOnly ? undefined : onIssueInvoice}
+            clinicGaps={clinicGaps}
+            onEditClinic={readOnly ? undefined : onEditClinic}
             onChanged={onChanged}
           />
         </>

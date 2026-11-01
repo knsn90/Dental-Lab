@@ -13,8 +13,13 @@
  * her sekme kendi dökümünü/yürüyen toplamını gösterir.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, Modal, ScrollView, Platform } from 'react-native';
-import { X, Printer, Wallet, Banknote } from '../../../core/ui/icons';
+import { View, Text, Pressable, Modal, ScrollView, Platform, useWindowDimensions } from 'react-native';
+import { X, Printer, Wallet, Banknote, Pencil } from '../../../core/ui/icons';
+import { useInkUI } from '../../../core/theme/inkScale';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { autoT } from '../../../core/i18n/autoTranslate';
+import { ExpenseFormModal } from '../../expenses/screens/ExpensesScreen';
+import type { Expense } from '../../expenses/api';
 import { supabase } from '../../../core/api/supabase';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
@@ -48,6 +53,8 @@ interface Entry {
   currency: string;
   label: string;
   sub?: string | null;
+  /** Maaş satırında salary_payments.id — gider kaydı buradan bulunur. */
+  salaryId?: string;
 }
 
 interface LabLetterhead {
@@ -56,12 +63,14 @@ interface LabLetterhead {
 }
 
 export function EmployeeStatementModal({
-  employee, onClose,
-}: { employee: StatementEmployee; onClose: () => void }) {
+  employee, onClose, onChanged,
+}: { employee: StatementEmployee; onClose: () => void; onChanged?: () => void }) {
   const T = useMobileTokens();
+  const U = useInkUI();
   const isDark = useThemeModeStore(st => st.resolvedDark);
   const primary = usePanelTheme().primary;
   const labId = useAuthStore(st => (st.profile as any)?.lab_id) as string | undefined;
+  const narrow = useWindowDimensions().width < 768;
 
   const [loading, setLoading] = useState(true);
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -69,6 +78,26 @@ export function EmployeeStatementModal({
   // Antet — belgede lab logosu/adresi görünsün diye. Boş bırakılırsa çıktıda
   // yalnız "LABORATUVAR" yazıyordu.
   const [lab, setLab] = useState<LabLetterhead | null>(null);
+  // Maaş satırı → Giderler'deki gider düzenleme formu. Kaydedince döküm yeniden
+  // okunur (gider tarihi/yöntemi tetikleyiciyle maaş kaydına da geçer).
+  const [reloadKey, setReloadKey] = useState(0);
+  const [editExpense, setEditExpense] = useState<Expense | null>(null);
+  const [openingId, setOpeningId] = useState<string | null>(null);
+  const [rowErr, setRowErr] = useState<{ id: string; msg: string } | null>(null);
+
+  const openSalaryExpense = async (r: Entry) => {
+    if (!r.salaryId || openingId) return;
+    setRowErr(null);
+    setOpeningId(r.id);
+    const { data, error } = await supabase
+      .from('expenses').select('*').eq('salary_payment_id', r.salaryId).limit(1).maybeSingle();
+    setOpeningId(null);
+    if (error || !data) {
+      setRowErr({ id: r.id, msg: autoT('Bu maaşa bağlı gider kaydı bulunamadı.') });
+      return;
+    }
+    setEditExpense(data as Expense);
+  };
 
   useEffect(() => {
     let alive = true;
@@ -94,6 +123,7 @@ export function EmployeeStatementModal({
           currency: p.currency || 'TRY',
           label: `${MONTHS[(p.period_month ?? 1) - 1] ?? ''} ${p.period_year ?? ''} maaşı`.trim(),
           sub: [p.payment_method, p.notes].filter(Boolean).join(' · ') || null,
+          salaryId: p.id as string,
         })),
         ...((advRes.data ?? []) as any[]).map(a => ({
           id: `a-${a.id}`,
@@ -110,7 +140,7 @@ export function EmployeeStatementModal({
       setLoading(false);
     })();
     return () => { alive = false; };
-  }, [employee.id]);
+  }, [employee.id, reloadKey]);
 
   useEffect(() => {
     let alive = true;
@@ -215,9 +245,16 @@ export function EmployeeStatementModal({
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      {/* Uygulama popup zemini: bulanık + scrim (useInkUI().modalOverlay) */}
+      <View style={[U.modalOverlay, narrow ? { padding: 12 } : null]}>
+        {/* Kartın dışına dokununca kapanır */}
         <Pressable
-          onPress={(e: any) => e?.stopPropagation?.()}
+          onPress={onClose}
+          accessibilityLabel={autoT('Kapat')}
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, ...(Platform.OS === 'web' ? { cursor: 'default' } as any : null) }}
+        />
+        <View
+          accessibilityViewIsModal
           style={{ width: '100%', maxWidth: 720, maxHeight: '88%', backgroundColor: T.card, borderRadius: 20, overflow: 'hidden' }}
         >
           {/* Başlık */}
@@ -227,23 +264,27 @@ export function EmployeeStatementModal({
               <Text style={{ fontSize: 12, color: T.ink3, marginTop: 2 }}>{employee.full_name}</Text>
             </View>
             {Platform.OS === 'web' && rows.length > 0 && (
-              <Pressable
-                onPress={handlePrint}
-                style={({ hovered }: any) => ({
-                  flexDirection: 'row', alignItems: 'center', gap: 6,
-                  paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
-                  borderWidth: 1, borderColor: T.hairline,
-                  backgroundColor: hovered ? T.hairline2 : 'transparent',
-                  ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
-                })}
-              >
-                <Printer size={12} color={T.ink2} strokeWidth={1.8} />
-                <Text style={{ fontSize: 12, fontWeight: '500', color: T.ink2 }}>Yazdır / PDF</Text>
-              </Pressable>
+              <GlassTooltip title={autoT('Yazdır / PDF')} text={autoT('Dökümü yazdırır veya PDF olarak kaydeder')} placement="bottom">
+                <Pressable
+                  onPress={handlePrint}
+                  style={({ hovered }: any) => ({
+                    flexDirection: 'row', alignItems: 'center', gap: 6,
+                    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
+                    borderWidth: 1, borderColor: T.hairline,
+                    backgroundColor: hovered ? T.hairline2 : 'transparent',
+                    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+                  })}
+                >
+                  <Printer size={12} color={T.ink2} strokeWidth={1.8} />
+                  <Text style={{ fontSize: 12, fontWeight: '500', color: T.ink2 }}>Yazdır / PDF</Text>
+                </Pressable>
+              </GlassTooltip>
             )}
-            <Pressable onPress={onClose} hitSlop={8} style={{ padding: 4, ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}) }}>
-              <X size={18} color={T.ink3} strokeWidth={2} />
-            </Pressable>
+            <GlassTooltip title={autoT('Kapat')} text={autoT('Dökümü kapatır')} placement="bottom">
+              <Pressable onPress={onClose} hitSlop={8} accessibilityRole="button" accessibilityLabel={autoT('Kapat')} style={{ padding: 4, ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}) }}>
+                <X size={18} color={T.ink3} strokeWidth={2} />
+              </Pressable>
+            </GlassTooltip>
           </View>
 
           {loading ? (
@@ -293,14 +334,11 @@ export function EmployeeStatementModal({
 
               {/* Döküm */}
               <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ paddingHorizontal: 18, paddingVertical: 12 }}>
-                {withRunning.map((r, i) => (
-                  <View
-                    key={r.id}
-                    style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11,
-                      borderBottomWidth: i < withRunning.length - 1 ? 1 : 0, borderBottomColor: T.hairline2,
-                    }}
-                  >
+                {withRunning.map((r, i) => {
+                  const editable = r.kind === 'salary' && !!r.salaryId;
+                  const err = rowErr?.id === r.id ? rowErr.msg : null;
+                  const body = (
+                  <>
                     <View style={{
                       width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center',
                       backgroundColor: r.kind === 'advance' ? '#F59E0B18' : `${primary}18`,
@@ -314,18 +352,57 @@ export function EmployeeStatementModal({
                       <Text style={{ fontSize: 11, color: T.ink3, marginTop: 2 }} numberOfLines={1}>
                         {new Date(r.date).toLocaleDateString('tr-TR')}{r.sub ? ` · ${r.sub}` : ''}
                       </Text>
+                      {err ? (
+                        <Text style={{ fontSize: 11, fontWeight: '600', color: U.chipTones.danger.fg, marginTop: 3 }}>{err}</Text>
+                      ) : null}
                     </View>
                     <View style={{ alignItems: 'flex-end' }}>
                       <Text style={{ fontSize: 13, fontWeight: '700', color: T.ink }}>{fmt(r.amount)}</Text>
                       <Text style={{ fontSize: 10.5, color: T.ink3, marginTop: 2 }}>∑ {fmt(r.running)}</Text>
                     </View>
-                  </View>
-                ))}
+                    {/* Düzenleme ipucu — avans satırında boş yuva, tutar sütunu hizalı kalsın */}
+                    <View style={{ width: 14, alignItems: 'center', opacity: openingId === r.id ? 0.4 : 1 }}>
+                      {editable ? <Pencil size={12} color={T.ink3} strokeWidth={1.8} /> : null}
+                    </View>
+                  </>
+                  );
+                  const rowBase = {
+                    flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12, paddingVertical: 11,
+                    paddingHorizontal: 8, marginHorizontal: -8, borderRadius: 10,
+                    borderBottomWidth: i < withRunning.length - 1 ? 1 : 0, borderBottomColor: T.hairline2,
+                  };
+                  if (!editable) return <View key={r.id} style={rowBase}>{body}</View>;
+                  return (
+                    <GlassTooltip key={r.id} title={autoT('Gideri düzenle')} text={autoT('Bu maaş ödemesinin gider kaydını açar')} placement="top">
+                      <Pressable
+                        onPress={() => openSalaryExpense(r)}
+                        disabled={!!openingId}
+                        accessibilityRole="button"
+                        accessibilityLabel={autoT('Gideri düzenle')}
+                        style={({ hovered, pressed }: any) => ({
+                          ...rowBase,
+                          backgroundColor: pressed ? T.hairline : hovered ? T.hairline2 : 'transparent',
+                          ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+                        })}
+                      >
+                        {body}
+                      </Pressable>
+                    </GlassTooltip>
+                  );
+                })}
               </ScrollView>
             </>
           )}
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
+
+      {/* Giderler'deki aynı form — maaş satırının gider kaydını düzenler */}
+      <ExpenseFormModal
+        visible={!!editExpense}
+        expense={editExpense}
+        onClose={() => setEditExpense(null)}
+        onSaved={() => { setEditExpense(null); setReloadKey(k => k + 1); onChanged?.(); }}
+      />
     </Modal>
   );
 }

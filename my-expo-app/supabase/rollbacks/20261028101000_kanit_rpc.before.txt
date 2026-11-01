@@ -1,0 +1,3 @@
+# 20261028101000_kanit_rpc — önceki durum: trg_work_order_notify_status canlı tanımı .down.sql'in başında birebir;
+# deliver_with_proof / close_delivery_without_proof / delivery_proof_siblings / bbk_apply_delivery_proof /
+# _delivery_proof_notice / _delivery_proof_file_ok / _delivery_proof_close YOK (canlı ölçümle doğrulanır).

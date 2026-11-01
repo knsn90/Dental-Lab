@@ -27,6 +27,10 @@ import { useRates, rateToBase } from '../../../core/money/rateCache';
 import { getBaseCurrency } from '../../../core/money/baseCurrency';
 import { groupByCurrency } from '../../../core/money/aggregations';
 import { formatMoney, type Currency } from '../../../core/money/currency';
+import { MoneyMultiX } from '../../../core/money/MoneyMultiX';
+import { MobileTableX, MobileTableRowX, MobileTableIconX, useMobileTableText } from '../../../core/ui/MobileTableX';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { useInkUI } from '../../../core/theme/inkScale';
 
 type Props = {
   clinicId: string;
@@ -63,6 +67,8 @@ export function InvoiceListBase({ clinicId, initialFilter = 'open' }: Props) {
   useRates();
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
+  const U = useInkUI();
+  const MT = useMobileTableText();
   const router = useRouter();
   const segments = useSegments();
   const panelBase = String(segments?.[0] ?? '(clinic)');
@@ -199,76 +205,78 @@ export function InvoiceListBase({ clinicId, initialFilter = 'open' }: Props) {
       {filtered.length === 0 ? (
         <EmptyCard icon={emptyIcon} title={texts.emptyTitle} description={texts.emptyDescription} />
       ) : (
-        <Card style={{ padding: 0, overflow: 'hidden', borderColor: filter === 'overdue' ? 'rgba(217,75,75,0.30)' : (isDark ? T.hairline : DS.ink[200]) }}>
+        /* Ekstre / giderler mobil tablosuyla aynı kalıp */
+        <MobileTableX
+          title={texts.title} count={filtered.length} countLabel="fatura"
+          accent={filter === 'overdue' ? '#D94B4B' : undefined}
+          footer={<>
+            <Text style={MT.footNote}>{filtered.length} fatura</Text>
+            <View style={{ flex: 1 }} />
+            <Text style={MT.footLabel}>Kalan:</Text>
+            <MoneyMultiX slices={remByCcy} variant="inline" />
+          </>}
+        >
           {filtered.map((inv, i) => {
             const isOverdue = inv.days_overdue > 0;
+            const overdueInk = isDark ? '#F3A0A0' : '#9C2E2E';
             return (
-              <Pressable
+              <MobileTableRowX
                 key={inv.id}
+                isLast={i === filtered.length - 1}
+                tint={isOverdue ? (isDark ? 'rgba(217,75,75,0.08)' : 'rgba(217,75,75,0.03)') : undefined}
                 onPress={() => {
                   if (suppressRowPress.current) return;   // "Öde"ye basıldı
                   router.push(`/${panelBase}/invoice/${inv.invoice_no ?? inv.id}` as any);
                 }}
-                style={({ pressed }) => ({
-                  flexDirection: 'row', alignItems: 'center', gap: 12,
-                  paddingHorizontal: 16, paddingVertical: 14,
-                  borderBottomWidth: i < filtered.length - 1 ? 1 : 0,
-                  borderBottomColor: isDark ? T.hairline : DS.ink[100],
-                  backgroundColor: pressed ? (isDark ? 'rgba(255,255,255,0.05)' : DS.ink[50]) : 'transparent',
-                })}
               >
-                <View style={{
-                  width: 40, height: 40, borderRadius: 12,
-                  backgroundColor: isOverdue ? (isDark ? 'rgba(217,75,75,0.24)' : 'rgba(217,75,75,0.10)') : (isDark ? T.cardSoft : DS.ink[100]),
-                  alignItems: 'center', justifyContent: 'center',
-                }}>
-                  {isOverdue
-                    ? <AlertCircle size={18} color="#9C2E2E" strokeWidth={2} />
-                    : <FileText size={18} color={isDark ? (T.ink2 as string) : DS.ink[700]} strokeWidth={2} />}
-                </View>
+                <MobileTableIconX icon={isOverdue ? AlertCircle : FileText} tone={isOverdue
+                  ? { bg: isDark ? 'rgba(217,75,75,0.24)' : 'rgba(217,75,75,0.10)', fg: overdueInk }
+                  : undefined} />
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: isDark ? T.ink : DS.ink[900] }} numberOfLines={1}>
-                      Fatura {inv.invoice_no ?? '—'}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={[MT.title, { flexShrink: 1 }]} numberOfLines={1}>
+                      {inv.invoice_no ?? '—'}
                     </Text>
                     <StatusChip status={inv.status} />
                   </View>
                   {/* Hekim isteği: faturanın hangi hastaya ait olduğu her sekmede görünsün. */}
                   {!!inv.patient_name && (
-                    <Text style={{ fontSize: 11.5, color: isDark ? (T.ink2 as string) : DS.ink[700], marginTop: 2 }} numberOfLines={1}>
+                    <Text style={MT.sub} numberOfLines={1}>
                       {[inv.patient_name, inv.order_no].filter(Boolean).join(' · ')}
                     </Text>
                   )}
-                  <Text style={{ fontSize: 11, color: isOverdue ? (isDark ? '#F3A0A0' : '#9C2E2E') : (isDark ? (T.ink3 as string) : DS.ink[500]), marginTop: 4 }}>
+                  <Text style={[MT.meta, { marginTop: 2 }, isOverdue ? { color: overdueInk, fontWeight: '600' } : null]} numberOfLines={2}>
                     {isOverdue
                       ? `${inv.days_overdue} ${autoT('gün gecikmiş')} · ${autoT('vade')} ${fmtDate(inv.due_date)}`
                       : `${autoT('Vade')} ${fmtDate(inv.due_date)} · ${Math.abs(inv.days_overdue)} ${autoT('gün kaldı')}`}
                     {inv.paid_amount > 0 ? `  ·  ${Mnat(inv.paid_amount, inv.currency)} ${autoT('ödendi')}` : ''}
                   </Text>
                 </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={{ ...DISPLAY, fontSize: 20, color: isOverdue ? (isDark ? '#F3A0A0' : '#9C2E2E') : (isDark ? T.ink : DS.ink[900]), letterSpacing: -0.5 }}>
-                    {Mnat(inv.remaining, inv.currency)}
-                  </Text>
-                  <Text style={{ fontSize: 9, color: isDark ? (T.ink3 as string) : DS.ink[400], textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 2 }}>
-                    Kalan
-                  </Text>
+                <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={[MT.amount, { color: isOverdue ? overdueInk : U.ink[900] }]}>
+                      {Mnat(inv.remaining, inv.currency)}
+                    </Text>
+                    <Text style={{ fontSize: 9, fontWeight: '600', color: U.ink[400], textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 1 }}>
+                      Kalan
+                    </Text>
+                  </View>
+                  <GlassTooltip title={autoT('Öde')} text={autoT('Faturayı kartla öder')}>
+                    <PillButton
+                      variant={isOverdue ? 'danger' : 'dark'}
+                      size="sm"
+                      leftIcon={<CreditCard size={12} color="#FFF" />}
+                      disabled={payingId === inv.id}
+                      onPress={() => startPay(inv.id)}
+                    >
+                      {payingId === inv.id ? autoT('Açılıyor…') : autoT('Öde')}
+                    </PillButton>
+                  </GlassTooltip>
                 </View>
-                <PillButton
-                  variant={isOverdue ? 'danger' : 'dark'}
-                  size="sm"
-                  leftIcon={<CreditCard size={12} color="#FFF" />}
-                  disabled={payingId === inv.id}
-                  onPress={() => startPay(inv.id)}
-                >
-                  {payingId === inv.id ? autoT('Açılıyor…') : autoT('Öde')}
-                </PillButton>
-                {isRTL() ? <ChevronLeft size={16} color={isDark ? (T.ink3 as string) : DS.ink[400]} />
-                         : <ChevronRight size={16} color={isDark ? (T.ink3 as string) : DS.ink[400]} />}
-              </Pressable>
+              </MobileTableRowX>
             );
           })}
-        </Card>
+        </MobileTableX>
       )}
 
       <BulkPayModal

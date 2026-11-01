@@ -25,10 +25,12 @@ interface Props {
   onPlaceSelected: (details: PlaceDetails) => void;
   placeholder?: string;
   error?: string;
+  /** Google araması bu ülkeyle sınırlı (ISO kodu; varsayılan TR) — adres formundaki ülke */
+  region?: string;
 }
 
 export function ClinicNameAutocomplete({
-  value, onChangeText, onPlaceSelected, placeholder = 'Kurum Adı', error,
+  value, onChangeText, onPlaceSelected, placeholder = 'Kurum Adı', error, region,
 }: Props) {
   const [focused, setFocused] = useState(false);
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
@@ -62,14 +64,14 @@ export function ClinicNameAutocomplete({
     }
     setSearching(true);
     debounceRef.current = setTimeout(async () => {
-      const results = await searchPlaces(value);
+      const results = await searchPlaces(value, null, region);
       setSuggestions(results);
       setSearching(false);
       if (results.length > 0 && focused) setOpen(true);
     }, 400);
     return () => debounceRef.current && clearTimeout(debounceRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value]);
+  }, [value, region]);
 
   // Web: panel pozisyonu
   useLayoutEffect(() => {
@@ -110,7 +112,7 @@ export function ClinicNameAutocomplete({
     setOpen(false);
     setSuggestions([]);
     setLoadingDetails(true);
-    const details = await getPlaceDetails(s.placeId);
+    const details = await getPlaceDetails(s.placeId, region);
     setLoadingDetails(false);
     // Sonraki kayıt için yeni session
     startPlaceSession();

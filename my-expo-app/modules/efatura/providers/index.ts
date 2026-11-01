@@ -7,12 +7,14 @@
  */
 import { BaseEFaturaProvider } from './BaseProvider';
 import { DemoProvider } from './DemoProvider';
+import { LucaProvider } from './LucaProvider';
 import { getActiveCredential } from '../../integrations/api';
 
 type Factory = (cfg: any) => BaseEFaturaProvider;
 
 const PROVIDER_FACTORY: Record<string, Factory> = {
   demo: (cfg) => new DemoProvider(cfg),
+  luca: (cfg) => new LucaProvider(cfg),
   // Yeni eklenecekler:
   // nilvera: (cfg) => new NilveraProvider(cfg),
   // efinans: (cfg) => new EfinansProvider(cfg),

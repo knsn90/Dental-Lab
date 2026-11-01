@@ -1,0 +1,5 @@
+# 20261028152000_nakit_kasa_rpc — canlı ÖNCE kaydı (2026-10-29)
+## functions_exist
+yok
+## cash_rows
+0/0/0

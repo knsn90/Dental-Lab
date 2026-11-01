@@ -13,10 +13,13 @@ const NewRequestModal: any = React.lazy(() => import('../../modules/material-req
 import { useOrderChatInbox } from '../../modules/orders/hooks/useOrderChatInbox';
 import { Tabs, Slot, useRouter, Redirect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Home, ListChecks, QrCode, History, User, Search, Inbox, Wrench, Wallet, CalendarDays } from '../../core/ui/icons';
+import { Home, ListChecks, QrCode, History, User, Search, Inbox, Wrench, Wallet, CalendarDays, ScanLine } from '../../core/ui/icons';
+import { useFeatureFlagsStore } from '../../core/store/featureFlagsStore';
+import { autoT } from '../../core/i18n/autoTranslate';
 import { CommandPalette } from '../../core/ui/CommandPalette';
 import { useCommandPalette } from '../../core/store/commandPaletteStore';
 import { PatternsShell, useIsDesktop } from '../../core/layout/PatternsShell';
+import { useKeepRouteOnShellSwitch } from '../../core/layout/useKeepRouteOnShellSwitch';
 import { PillTabBar, type PillTabItem } from '../../core/ui/mobile/PillTabBar';
 import { TopActionBar } from '../../core/ui/mobile/TopActionBar';
 import { PanelTopHeader } from '../../core/ui/mobile/PanelTopHeader';
@@ -34,11 +37,15 @@ export default function StationLayout() {
   const { t } = useTranslation();
   const router = useRouter();
   const isDesktop = useIsDesktop();
+  // Genişlik 1024px eşiğini geçince (Slot ↔ Tabs) sayfa korunur — Y5
+  const shellDesktop = useKeepRouteOnShellSwitch(isDesktop, '(station)');
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const { profile, loading } = useAuthStore();
   const { fetchForPanel } = usePermissionStore();
   const canCreateOrder = usePermissionStore(s => s.can('manage_order_create'));
   const canViewOrders = usePermissionStore(s => s.can('view_orders'));
+  // Tarama randevuları modülü açık lab'da teknisyenin kendi programı (Randevularım)
+  const scanOn = useFeatureFlagsStore(s => s.flags.scan_appointments === true);
   const scanOpen    = useScanStore(s => s.open);
   const setScanOpen = useScanStore(s => s.setOpen);
   const [messagesOpen, setMessagesOpen] = useState(false);
@@ -64,6 +71,7 @@ export default function StationLayout() {
   const STATION_NAV = [
     { label: t('nav.items.panel'),            emoji: '📊', href: '/(station)',                   iconName: 'trending-up',    matchPrefix: false, sectionLabel: t('nav.sections.workArea') },
     { label: t('nav.items.myJobs'),          emoji: '🔧', href: '/(station)/jobs',              iconName: 'list-todo',      matchPrefix: true },
+    ...(scanOn ? [{ label: autoT('Randevularım'), emoji: '', href: '/(station)/scans', iconName: 'scan-line', matchPrefix: true }] : []),
     ...(canViewOrders ? [{ label: t('nav.items.orders'), emoji: '📦', href: '/(station)/orders', iconName: 'list-check',     matchPrefix: true }] : []),
     { label: t('nav.items.history'),           emoji: '📋', href: '/(station)/history',           iconName: 'clipboard-list', matchPrefix: true },
     { label: t('nav.items.requests'), emoji: '📨', href: '#talepler', iconName: 'inbox', sectionLabel: t('nav.items.requests'),
@@ -88,7 +96,10 @@ export default function StationLayout() {
     return <Redirect href="/" />;  // yanlış panel → doğru panele yönlendir
   }
 
-  if (isDesktop) {
+  // Kabuk değişiyor: eski navigator bu karede sökülür, yenisi bir sonrakinde kurulur (Y5)
+  if (shellDesktop === null) return <View style={{ flex: 1 }} />;
+
+  if (shellDesktop) {
     return (
       <>
         <PatternsShell
@@ -105,6 +116,12 @@ export default function StationLayout() {
             onClose={() => setMessagesOpen(false)}
           />
         </React.Suspense>
+        {/* Genel arama (2. dalga 1): üst kutu + Ctrl+K masaüstünde de bu pencereyi açar */}
+        <CommandPalette panel="station"
+          navItems={STATION_NAV}
+          onNavigate={(href) => router.push(href as any)}
+          accentColor={accentColor}
+        />
       </>
     );
   }
@@ -114,6 +131,8 @@ export default function StationLayout() {
 
   const PILL_TABS: PillTabItem[] = [
     { routeName: 'index',    label: t('nav.items.summary'),     icon: Home },
+    // Onaylı prototip: mobil çubukta "Taramalar" (yalnız modül açıkken)
+    ...(scanOn ? [{ routeName: 'scans', label: autoT('Taramalar'), icon: ScanLine }] : []),
     { routeName: 'jobs',     label: t('nav.items.myJobs'), icon: ListChecks },
     { routeName: 'history',  label: t('nav.items.history'),  icon: History },
     { routeName: 'talepler', label: t('nav.items.requests'), icon: Inbox, menuAnchor: true, onPress: () => setTalepOpen(v => !v) },
@@ -139,6 +158,9 @@ export default function StationLayout() {
     <View style={{ flex: 1, backgroundColor: isDark ? '#0E0E0E' : TEKNISYEN.bgPage }}>
       <StatusBar style="dark" />
       <Tabs
+        // Geri = geldiğin ekran. Varsayılan "firstRoute" her geri basışta Özet'e atıyordu
+        // (detay ekranları gizli sekme: Sağlık kurumları → fatura → geri = Özet).
+        backBehavior="history"
         screenOptions={{
           headerShown: false,
           sceneStyle: { backgroundColor: 'transparent' },
@@ -147,6 +169,7 @@ export default function StationLayout() {
       >
         <Tabs.Screen name="index"      options={{ title: t('nav.items.panel')      }} />
         <Tabs.Screen name="jobs"       options={{ title: t('nav.items.myJobs')    }} />
+        <Tabs.Screen name="scans"      options={{ title: autoT('Randevularım'), href: null } as any} />
         <Tabs.Screen name="new-order"  options={{ title: t('station.actions.newOrder'), href: null } as any} />
         <Tabs.Screen name="orders"     options={{ title: t('nav.items.orders'), href: null } as any} />
         {/* order/[id] nested route — expo-router auto-discovers; declaring it inside
@@ -182,7 +205,7 @@ export default function StationLayout() {
       {!scanOpen && <PanelTopHeader />}
 
       {/* Command palette — navbar'daki "Ara" butonundan açılır */}
-      <CommandPalette
+      <CommandPalette panel="station"
         navItems={STATION_NAV_FLAT}
         onNavigate={(href) => router.push(href as any)}
         accentColor={accentColor}

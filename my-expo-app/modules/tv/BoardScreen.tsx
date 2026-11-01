@@ -239,6 +239,8 @@ function HeroJob({ job, fs }: { job: ActiveJob; fs: (n: number) => number }) {
         <Text style={{ fontSize: fs(36), fontWeight: '800', letterSpacing: 1.5, textTransform: 'uppercase', color: TV.accent }} numberOfLines={1}>{job.stage}</Text>
         {/* hasta — EN güçlü */}
         <Text style={{ ...DISPLAY, fontWeight: '500', fontSize: fs(70), color: TV.ink, letterSpacing: -2.8, lineHeight: fs(74), marginTop: fs(12) }} numberOfLines={1}>{job.patient ?? job.orderNumber}</Text>
+        {/* klinik — hasta baş harfiyle birlikte vakayı tanıtır */}
+        {job.clinic && <Text style={{ fontSize: fs(32), fontWeight: '600', color: TV.ink, marginTop: fs(8) }} numberOfLines={1}>{job.clinic}</Text>}
         {job.caseType && <Text style={{ fontSize: fs(26), color: TV.ink2, marginTop: fs(6) }} numberOfLines={1}>{autoT(job.caseType)}</Text>}
         <Text style={{ fontSize: fs(18), color: TV.ink3, marginTop: fs(6), fontVariant: ['tabular-nums'] as any }}>#{job.orderNumber}</Text>
         {/* timer — büyük ama hasta/aşamayı domine etmez */}
@@ -294,6 +296,7 @@ function ActiveJobRow({ job, fs, hair, first }: { job: ActiveJob; fs: (n: number
         <Text style={{ ...DISPLAY, fontWeight: '500', fontSize: fs(42), color: TV.ink, letterSpacing: -1.2, lineHeight: fs(46) }} numberOfLines={1}>
           {job.patient ?? job.orderNumber}
         </Text>
+        {job.clinic && <Text style={{ fontSize: fs(24), fontWeight: '600', color: TV.ink, marginTop: fs(4) }} numberOfLines={1}>{job.clinic}</Text>}
         {job.caseType && <Text style={{ fontSize: fs(21), color: TV.ink2, marginTop: fs(3) }} numberOfLines={1}>{autoT(job.caseType)}</Text>}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: fs(12), marginTop: fs(10) }}>
           <Text style={{ fontSize: fs(18), fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase', color: TV.accent }} numberOfLines={1}>{job.stage}</Text>
@@ -332,6 +335,7 @@ function AttentionItemRow({ item, fs, hair, first }: { item: AttentionItem; fs: 
         <Text style={{ fontSize: fs(20), fontWeight: '700', letterSpacing: 0.3, textTransform: 'uppercase', color: TV.ink }} numberOfLines={1}>
           {item.patient ?? item.orderNumber}
         </Text>
+        {item.clinic && <Text style={{ fontSize: fs(16), fontWeight: '600', color: TV.ink, marginTop: fs(3) }} numberOfLines={1}>{item.clinic}</Text>}
         {item.caseType && <Text style={{ fontSize: fs(15), color: TV.ink2, marginTop: fs(3) }} numberOfLines={1}>{autoT(item.caseType)}</Text>}
         <Text style={{ fontSize: fs(15), color: TV.ink3, marginTop: fs(2) }} numberOfLines={1}>{why}</Text>
         <Text style={{ fontSize: fs(18), fontWeight: '800', letterSpacing: 0.5, color: cfg.tone, marginTop: fs(9) }} numberOfLines={1}>{badge}</Text>

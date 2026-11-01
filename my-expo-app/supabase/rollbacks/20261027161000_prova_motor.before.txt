@@ -1,0 +1,95 @@
+# 20261027161000_prova_motor — canlı durum (uygulamadan önce), 2026-10-27T10:36:18Z
+deliv_triggers : [
+ "deliveries_bbk_order_status",
+ "deliveries_fee_expense",
+ "deliveries_updated_at",
+ "ztg_deliveries_tenant_guard"
+]
+hold_order : CREATE OR REPLACE FUNCTION public.hold_order(p_order uuid, p_reason text, p_category text DEFAULT 'client_other'::text, p_responsible text DEFAULT 'client'::text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE v_lab uuid; v_resp text;
+BEGIN
+  SELECT lab_id INTO v_lab FROM work_orders WHERE id = p_order;
+  IF v_lab IS NULL OR v_lab IS DISTINCT FROM get_my_lab_id() THEN
+    RAISE EXCEPTION 'Bu siparisi bekletme yetkiniz yok';
+  END IF;
+
+  v_resp := CASE WHEN coalesce(p_responsible,'client') = 'lab' THEN 'lab' ELSE 'client' END;
+
+  UPDATE work_orders SET
+    hold_status      = 'on_hold',
+    hold_reason      = nullif(btrim(p_reason), ''),
+    hold_category    = p_category,
+    hold_responsible = v_resp,
+    hold_started_at  = now(),
+    hold_by          = auth.uid()
+  WHERE id = p_order
+    AND hold_status IS DISTINCT FROM 'on_hold';
+
+  IF NOT FOUND THEN RETURN; END IF;
+
+  INSERT INTO work_order_holds(work_order_id, lab_id, reason, category, responsible, started_at, held_by)
+  VALUES (p_order, v_lab, nullif(btrim(p_reason), ''), p_category, v_resp, now(), auth.uid());
+END $function$
+
+new_fns : null
+resume_order : CREATE OR REPLACE FUNCTION public.resume_order(p_order uuid)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE v_lab uuid; v_started timestamptz; v_resp text; v_days int;
+BEGIN
+  SELECT lab_id, hold_started_at, hold_responsible
+    INTO v_lab, v_started, v_resp
+  FROM work_orders WHERE id = p_order;
+
+  IF v_lab IS NULL OR v_lab IS DISTINCT FROM get_my_lab_id() THEN
+    RAISE EXCEPTION 'Bu siparisi devam ettirme yetkiniz yok';
+  END IF;
+  IF v_started IS NULL THEN RETURN 0; END IF;
+
+  v_days := greatest(0, round(extract(epoch FROM (now() - v_started)) / 86400.0))::int;
+
+  IF coalesce(v_resp,'client') = 'client' AND v_days > 0 THEN
+    UPDATE work_orders SET delivery_date = delivery_date + v_days WHERE id = p_order;
+  ELSE
+    v_days := 0;
+  END IF;
+
+  UPDATE work_orders SET
+    hold_status = NULL, hold_reason = NULL, hold_category = NULL,
+    hold_responsible = NULL, hold_started_at = NULL, hold_by = NULL
+  WHERE id = p_order;
+
+  UPDATE work_order_holds SET
+    ended_at = now(), extended_days = v_days, resumed_by = auth.uid()
+  WHERE work_order_id = p_order AND ended_at IS NULL;
+
+  RETURN v_days;
+END $function$
+
+wo_triggers : [
+ "trg_log_order_cancelled",
+ "trg_log_work_order_created",
+ "trg_notify_order_delivered",
+ "trg_queue_storage_cleanup",
+ "trg_wo_log_field_changes",
+ "trg_wo_log_status",
+ "work_orders_auto_draft_invoice",
+ "work_orders_auto_lab_id",
+ "work_orders_autofill_lab_id",
+ "work_orders_notify_design_approval",
+ "work_orders_notify_new",
+ "work_orders_notify_status",
+ "work_orders_notify_triage",
+ "work_orders_updated_at",
+ "z_set_order_number",
+ "ztg_work_orders_lifecycle_guard",
+ "ztg_work_orders_tenant_guard"
+]

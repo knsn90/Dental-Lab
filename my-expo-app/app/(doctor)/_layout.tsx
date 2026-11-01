@@ -1,6 +1,11 @@
+import { lazyRoute } from '../../core/_lazyRoute';
+import { useAutoDocumentScroll } from '../../core/ui/mobile/documentScroll';
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-const NewOrderScreen: any = React.lazy(() => import('../../modules/orders/screens/NewOrderScreen').then(m => ({ default: (m as any).NewOrderScreen })));
+// lazyRoute (React.lazy DEĞİL): Suspense'li yükleme modal içinde askıda kalıp formu
+// BOŞ bırakabiliyordu; deploy sonrası eski chunk 404'ünde de kurtarma (tek seferlik
+// yenileme) yalnız lazyRoute'ta var (2026-10-20, Android Chrome boş form).
+const NewOrderScreen: any = lazyRoute(() => import('../../modules/orders/screens/NewOrderScreen'), 'NewOrderScreen');
 const MessagesPopup: any = React.lazy(() => import('../../modules/orders/components/MessagesPopup').then(m => ({ default: (m as any).MessagesPopup })));
 const CommandPalette: any = React.lazy(() => import('../../core/ui/CommandPalette').then(m => ({ default: (m as any).CommandPalette })));
 const ScanB6Mobile: any = React.lazy(() => import('../../modules/orders/screens/ScanB6Mobile').then(m => ({ default: (m as any).ScanB6Mobile })));
@@ -10,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Slot, Tabs, useRouter, usePathname, Redirect } from 'expo-router';
 import { C as Colors } from '../../core/theme/colors';
 import { PatternsShell, useIsDesktop } from '../../core/layout/PatternsShell';
+import { useKeepRouteOnShellSwitch } from '../../core/layout/useKeepRouteOnShellSwitch';
 import { PillTabBar, type PillTabItem } from '../../core/ui/mobile/PillTabBar';
 import {
   Home, ClipboardList, MessageCircle, User, Plus, MoreHorizontal, Search,
@@ -33,6 +39,7 @@ import { useColorThemeStore, applyColorThemeWeb } from '../../core/store/colorTh
 import { supabase } from '../../core/api/supabase';
 import { OnboardingOverlay } from '../../core/onboarding/OnboardingOverlay';
 import { PaymentReminderGate } from '../../core/finance/PaymentReminderGate';
+import { useClinicBillingAccess } from '../../modules/clinic/useClinicBillingAccess';
 import { useOnboardingStore } from '../../core/onboarding/onboardingStore';
 import { useTourTarget } from '../../core/onboarding/useTourTarget';
 import { DOCTOR_TOUR_STEPS } from '../../core/onboarding/tourSteps';
@@ -54,10 +61,21 @@ export default function DoctorLayout() {
   const { t } = useTranslation();
   const { profile, loading } = useAuthStore();
   const isDesktop = useIsDesktop();
+  // Genişlik 1024px eşiğini geçince (Slot ↔ Tabs) sayfa korunur — Y5
+  const shellDesktop = useKeepRouteOnShellSwitch(isDesktop, '(doctor)');
+  // Finans yalnız kliniğinde faturayı görebilen kimse yoksa (ya da açık yetkiyle) — DB kararı
+  const showFinance = useClinicBillingAccess() === true;
+  // Mobil tarayıcıda sayfa (belge) kayar → adres çubuğu küçülür (bkz. documentScroll.ts).
+  useAutoDocumentScroll();
   const router = useRouter();
   const pathname = usePathname();
+  // Detay sayfaları kendi başlığını çizer → üst çubuk + logolu başlık gizli. İSTİSNA: mobilde
+  // sipariş detayı (/order/<id>) logolu başlık + ikonlarla görünür (kullanıcı isteği 2026-10-27);
+  // masaüstünde ve diğer detaylarda (fatura, ekstre…) değişiklik yok.
+  const isDesktopForHeader = useIsDesktop();
   const hideTopActionBar =
-    /^\/(order|invoice|statement|delivery)\//.test(pathname);
+    /^\/(order|invoice|statement|delivery)\//.test(pathname)
+    && !(!isDesktopForHeader && /^\/order\/[^/]+\/?$/.test(pathname));
   const newOrderOpen    = useNewOrderModalStore(s => s.open);
   const setNewOrderOpen = useNewOrderModalStore(s => s.setOpen);
   const [moreOpen,     setMoreOpen]     = useState(false);
@@ -132,7 +150,9 @@ export default function DoctorLayout() {
     { label: t('nav.items.myOrders'), href: '/(doctor)/orders',          iconName: 'list-check',     matchPrefix: true },
     { label: t('nav.items.approvals'),      href: '/(doctor)/approvals',        iconName: 'badge-check', matchPrefix: true, badgeCount: pendingApprovals, badgeColor: '#D94B4B' },
     { label: t('nav.items.courier'),  href: '/(doctor)/courier-tracking', iconName: 'scooter',        matchPrefix: true, sectionLabel: t('nav.sections.delivery') },
-    { label: t('nav.items.finance'), href: '/(doctor)/finance',          iconName: 'wallet',         matchPrefix: true, sectionLabel: t('nav.sections.finance') },
+    ...(showFinance
+      ? [{ label: t('nav.items.finance'), href: '/(doctor)/finance', iconName: 'wallet', matchPrefix: true, sectionLabel: t('nav.sections.finance') }]
+      : []),
     { label: t('nav.items.support'),       href: '/(doctor)/support',          iconName: 'help-circle',    matchPrefix: true, sectionLabel: t('nav.sections.help') },
     { label: t('nav.items.settings'),      href: '/(doctor)/settings',        iconName: 'settings',       matchPrefix: true, sectionLabel: t('nav.sections.system') },
   ];
@@ -145,7 +165,10 @@ export default function DoctorLayout() {
     return <Redirect href="/" />;  // yanlış panel → doğru panele yönlendir
   }
 
-  if (isDesktop) {
+  // Kabuk değişiyor: eski navigator bu karede sökülür, yenisi bir sonrakinde kurulur (Y5)
+  if (shellDesktop === null) return <View style={{ flex: 1 }} />;
+
+  if (shellDesktop) {
     return (
       <>
         {/* NOT: navigator (PatternsShell'in <Slot/>'u / <Tabs>) lazy kardeşlerle AYNI
@@ -168,6 +191,14 @@ export default function DoctorLayout() {
           <MessagesPopup
             visible={messagesOpen}
             onClose={() => setMessagesOpen(false)}
+            accentColor={accentColor}
+          />
+        </React.Suspense>
+        {/* Genel arama (2. dalga 1): üst kutu + Ctrl+K masaüstünde de bu pencereyi açar */}
+        <React.Suspense fallback={null}>
+          <CommandPalette panel="doctor"
+            navItems={DOCTOR_NAV}
+            onNavigate={(href: string) => router.push(href as any)}
             accentColor={accentColor}
           />
         </React.Suspense>
@@ -216,6 +247,9 @@ export default function DoctorLayout() {
       <View style={{ flex: 1, backgroundColor: isDark ? '#0E0E0E' : MOBILE_PANEL_THEMES.doctor.bgPage }}>
         {/* MobileHeader kaldırıldı — DoctorMobileDashboard kendi başlığını taşıyor */}
         <Tabs
+          // Geri = geldiğin ekran. Varsayılan "firstRoute" her geri basışta Özet'e atıyordu
+          // (detay ekranları gizli sekme: Sağlık kurumları → fatura → geri = Özet).
+          backBehavior="history"
           screenOptions={{
             headerShown: false,
             sceneStyle: { backgroundColor: 'transparent' },
@@ -300,12 +334,12 @@ export default function DoctorLayout() {
       </React.Suspense>
 
       {/* Sağ üst kalıcı aksiyon butonları (mobile only) — QR · Bell · Profile */}
-      {!hideTopActionBar && <TopActionBar routePrefix="/(doctor)" accentColor={accentColor} messagesRef={messagesTargetRef} />}
+      {!hideTopActionBar && <TopActionBar routePrefix="/(doctor)" showSearch accentColor={accentColor} messagesRef={messagesTargetRef} />}
       {!hideTopActionBar && <PanelTopHeader />}
 
       {/* Command Palette — mobile search FAB üzerinden de erişilebilir */}
       <React.Suspense fallback={null}>
-        <CommandPalette
+        <CommandPalette panel="doctor"
           navItems={DOCTOR_NAV}
           onNavigate={(href: string) => router.push(href as any)}
           accentColor={accentColor}

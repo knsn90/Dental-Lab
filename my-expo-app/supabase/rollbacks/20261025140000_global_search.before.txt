@@ -1,0 +1,29 @@
+-- 2026-10-25 canlı: global_search/search_fold YOK; ilgili SELECT kuralları
+-- fns: null
+clinics.Lab users manage clinics ALL PERMISSIVE USING ((is_lab_user() OR is_admin_user()) AND (lab_id = get_my_lab_id()))
+clinics.clinic_admin_view_own_clinic SELECT PERMISSIVE USING (is_clinic_admin() AND (id = my_clinic_id()))
+clinics.doctor_view_clinics_in_lab SELECT PERMISSIVE USING ((lab_id = get_my_lab_id()) AND (EXISTS ( SELECT 1
+   FROM profiles
+  WHERE ((profiles.id = auth.uid()) AND (profiles.user_type = 'doctor'::text)))))
+doctors.Lab users manage doctors ALL PERMISSIVE USING ((is_lab_user() OR is_admin_user()) AND (lab_id = get_my_lab_id()))
+doctors.clinic_admin_view_clinic_doctors SELECT PERMISSIVE USING (is_clinic_admin() AND (clinic_id = my_clinic_id()))
+doctors.doctor_view_doctors_same_clinic SELECT PERMISSIVE USING ((clinic_id = get_my_clinic_id()) AND (EXISTS ( SELECT 1
+   FROM profiles
+  WHERE ((profiles.id = auth.uid()) AND (profiles.user_type = 'doctor'::text)))))
+invoices.clinic_view_clinic_invoices SELECT PERMISSIVE USING ((clinic_id IS NOT NULL) AND (clinic_id = get_my_clinic_id()))
+invoices.clinic_view_multilab_invoices SELECT PERMISSIVE USING ((clinic_id IS NOT NULL) AND (clinic_id IN ( SELECT my_clinic_ids() AS my_clinic_ids)))
+invoices.doctor_view_own_clinic_invoices SELECT PERMISSIVE USING ((clinic_id = get_my_clinic_id()) AND (EXISTS ( SELECT 1
+   FROM profiles
+  WHERE ((profiles.id = auth.uid()) AND (profiles.user_type = 'doctor'::text)))))
+invoices.invoices_lab_select SELECT PERMISSIVE USING (lab_id = get_my_lab_id())
+profiles.Lab users can read lab profiles SELECT PERMISSIVE USING (is_lab_user() AND (lab_id = get_my_lab_id()))
+profiles.Own profile readable SELECT PERMISSIVE USING (( SELECT auth.uid() AS uid) = id)
+profiles.clinic_admin_view_clinic_profiles SELECT PERMISSIVE USING (is_clinic_admin() AND (clinic_id IS NOT NULL) AND (clinic_id = my_clinic_id()))
+profiles.clinic_admin_view_lab_users SELECT PERMISSIVE USING (( SELECT is_clinic_admin() AS is_clinic_admin) AND (user_type = ANY (ARRAY['lab'::text, 'admin'::text])) AND (lab_id IS NOT NULL) AND (lab_id IN ( SELECT my_connected_lab_ids() AS my_connected_lab_ids)))
+profiles.lab_read_connected_clinic_profiles SELECT PERMISSIVE USING (is_lab_user() AND (user_type = ANY (ARRAY['doctor'::text, 'clinic_admin'::text, 'clinic_secretary'::text])) AND profile_in_my_lab(id))
+profiles.lab_read_order_message_senders SELECT PERMISSIVE USING (is_lab_user() AND is_message_sender_in_my_lab(id))
+work_orders.wo_select_consolidated SELECT PERMISSIVE USING (((( SELECT my_user_type() AS my_user_type) = ANY (ARRAY['lab'::text, 'admin'::text])) AND (lab_id = ( SELECT get_my_lab_id() AS get_my_lab_id))) OR ((( SELECT my_user_type() AS my_user_type) = 'doctor'::text) AND doctor_owns_order_doctor(doctor_id)) OR (( SELECT is_clinic_admin() AS is_clinic_admin) AND (( SELECT my_clinic_id() AS my_clinic_id) IS NOT NULL) AND ((doctor_id IN ( SELECT p.id
+   FROM profiles p
+  WHERE (p.clinic_id = ( SELECT my_clinic_id() AS my_clinic_id)))) OR (doctor_id IN ( SELECT d.id
+   FROM doctors d
+  WHERE (d.clinic_id = ( SELECT my_clinic_id() AS my_clinic_id)))))))

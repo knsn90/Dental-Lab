@@ -1,0 +1,71 @@
+-- Canlı RLS kuralları (2026-10-24, değişiklik ÖNCESİ). Kaynak: pg_policies.
+-- Paket 1 (Görev 1-3) geri alma betikleri bu ifadeleri birebir geri kurar.
+
+[employee_advance_requests] ear_lab_own  cmd=ALL PERMISSIVE roles={public}
+  USING: (lab_id = get_my_lab_id())
+  CHECK: (lab_id = get_my_lab_id())
+[employee_advances] employee_advances_fin_del  cmd=DELETE PERMISSIVE roles={public}
+  USING: (is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+[employee_advances] employee_advances_fin_ins  cmd=INSERT PERMISSIVE roles={public}
+  USING: 
+  CHECK: (is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+[employee_advances] employee_advances_fin_upd  cmd=UPDATE PERMISSIVE roles={public}
+  USING: (is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+  CHECK: (is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+[employee_advances] employee_advances_read  cmd=SELECT PERMISSIVE roles={public}
+  USING: (is_platform_admin() OR (lab_id = get_my_lab_id()))
+[employee_payroll] employee_payroll_fin_del  cmd=DELETE PERMISSIVE roles={public}
+  USING: (is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+[employee_payroll] employee_payroll_fin_ins  cmd=INSERT PERMISSIVE roles={public}
+  USING: 
+  CHECK: (is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+[employee_payroll] employee_payroll_fin_upd  cmd=UPDATE PERMISSIVE roles={public}
+  USING: (is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+  CHECK: (is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+[employee_payroll] employee_payroll_read  cmd=SELECT PERMISSIVE roles={public}
+  USING: (is_platform_admin() OR (lab_id = get_my_lab_id()))
+[employees] employees_lab_own  cmd=ALL PERMISSIVE roles={public}
+  USING: (lab_id = get_my_lab_id())
+  CHECK: (lab_id = get_my_lab_id())
+[payroll_items] payroll_items_fin_del  cmd=DELETE PERMISSIVE roles={public}
+  USING: (is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+[payroll_items] payroll_items_fin_ins  cmd=INSERT PERMISSIVE roles={public}
+  USING: 
+  CHECK: (is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+[payroll_items] payroll_items_fin_upd  cmd=UPDATE PERMISSIVE roles={public}
+  USING: (is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+  CHECK: (is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+[payroll_items] payroll_items_read  cmd=SELECT PERMISSIVE roles={public}
+  USING: (is_platform_admin() OR (lab_id = get_my_lab_id()))
+[performance_bonuses] performance_bonuses_fin_del  cmd=DELETE PERMISSIVE roles={public}
+  USING: (is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+[performance_bonuses] performance_bonuses_fin_ins  cmd=INSERT PERMISSIVE roles={public}
+  USING: 
+  CHECK: (is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+[performance_bonuses] performance_bonuses_fin_upd  cmd=UPDATE PERMISSIVE roles={public}
+  USING: (is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+  CHECK: (is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+[performance_bonuses] performance_bonuses_read  cmd=SELECT PERMISSIVE roles={public}
+  USING: (is_platform_admin() OR (lab_id = get_my_lab_id()))
+[salary_payments] salary_payments_fin_del  cmd=DELETE PERMISSIVE roles={public}
+  USING: (is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+[salary_payments] salary_payments_fin_ins  cmd=INSERT PERMISSIVE roles={public}
+  USING: 
+  CHECK: (is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+[salary_payments] salary_payments_fin_upd  cmd=UPDATE PERMISSIVE roles={public}
+  USING: (is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+  CHECK: (is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+[salary_payments] salary_payments_read  cmd=SELECT PERMISSIVE roles={public}
+  USING: (is_platform_admin() OR (lab_id = get_my_lab_id()))
+
+-- Paket 1-B (2026-10-24) öncesi: expenses kuralları ve upsert_payroll_from_attendance
+[expenses] expenses_fin_del cmd=DELETE
+  USING: (is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+[expenses] expenses_fin_ins cmd=INSERT
+  USING: 
+  CHECK: (is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+[expenses] expenses_fin_upd cmd=UPDATE
+  USING: (is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+  CHECK: (is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+[expenses] expenses_read cmd=SELECT
+  USING: (is_platform_admin() OR (lab_id = get_my_lab_id()))

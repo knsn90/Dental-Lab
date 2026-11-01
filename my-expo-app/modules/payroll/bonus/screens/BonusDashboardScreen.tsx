@@ -30,6 +30,9 @@ import {
   PillButton, Loader, ErrorBar,
   usePagePadding,
 } from '../components/atoms';
+import { MobileTableX, MobileTableRowX, MobileTableIconX } from '../../../../core/ui/MobileTableX';
+import { GlassTooltip } from '../../../../core/ui/GlassTooltip';
+import { usePanelTheme, onAccentInk } from '../../../../core/theme/usePanelTheme';
 
 interface PolicySummary {
   policy: BonusPolicy;
@@ -54,6 +57,8 @@ export default function BonusDashboardScreen({
   const heroBg = useHeroSurface(TH.primary);
   // Kobalt accent koyu zeminde okunmuyor → metin/ikon için açık lacivert ucu.
   const accentInk = isDark ? NAVY_INK : TH.primary;
+  // Tablo şeridinin üstündeki "Tümü →" bağlantısı şeritle aynı mürekkebi alır
+  const stripInk = onAccentInk(usePanelTheme().primary);
   const router = useRouter();
   const now = new Date();
   const [year, setYear]   = useState(now.getFullYear());
@@ -208,27 +213,6 @@ export default function BonusDashboardScreen({
 
             {/* AKTİF POLİTİKALAR */}
             <View className="gap-3">
-              {summaries.length > 0 ? (
-                <View className="flex-row items-end justify-between">
-                  <View>
-                    <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: isDark ? T.ink3 : U.ink[500] }}>
-                      Aktif Politikalar
-                    </Text>
-                    <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.4, color: isDark ? T.ink : U.ink[900], marginTop: 2 }}>
-                      {summaries.length} politika simüle edildi
-                    </Text>
-                  </View>
-                  {onOpenPolicies ? (
-                    <Pressable
-                      onPress={onOpenPolicies}
-                      className="active:opacity-60 web:hover:opacity-70"
-                    >
-                      <Text style={{ fontSize: 12, fontWeight: '600', color: accentInk }}>Tümü →</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-              ) : null}
-
               {summaries.length === 0 ? (
                 <View
                   className="flex-col sm:flex-row items-start gap-4 p-5 sm:p-6 rounded-2xl border"
@@ -262,36 +246,33 @@ export default function BonusDashboardScreen({
                   </View>
                 </View>
               ) : (
-                <View className="gap-2">
-                  {summaries.map(s => {
+                /* Ekstre / giderler mobil tablosuyla aynı kalıp */
+                <MobileTableX title="Aktif Politikalar" count={summaries.length} countLabel="politika"
+                  right={onOpenPolicies ? (
+                    <GlassTooltip title={autoT('Tümü')} text={autoT('Tüm politikaları açar')}>
+                      <Pressable onPress={onOpenPolicies} className="active:opacity-60 web:hover:opacity-70 web:cursor-pointer">
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: stripInk }}>Tümü →</Text>
+                      </Pressable>
+                    </GlassTooltip>
+                  ) : undefined}
+                >
+                  {summaries.map((s, si) => {
                     const r = s.result;
                     const breakdown = r?.breakdown ?? [];
                     const techCount = breakdown.length;
                     const earnerCount = breakdown.filter((row: BonusRunBreakdownRow) => Number(row.total_bonus ?? 0) > 0).length;
                     const ratio = techCount > 0 ? earnerCount / techCount : 0;
                     return (
-                      <Pressable
+                      <MobileTableRowX
                         key={s.policy.id}
+                        isLast={si === summaries.length - 1}
                         onPress={() => onOpenEditor?.(s.policy.id)}
-                        className="
-                          rounded-2xl border p-4 active:opacity-90
-                          web:cursor-pointer web:hover:opacity-95
-                          web:focus-visible:ring-2 web:focus-visible:ring-success/40
-                        "
-                        style={{ backgroundColor: isDark ? T.card : '#FFF', borderColor: isDark ? T.hairline : U.ink[200] }}
                       >
-                        {/* Top row: name + mode chip + payout */}
-                        <View className="flex-row items-start gap-3">
-                          <View
-                            className="items-center justify-center"
-                            style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: isDark ? 'rgba(90,169,230,0.16)' : TH.bgSoft }}
-                          >
-                            <Wallet size={16} color={accentInk} strokeWidth={1.8} />
-                          </View>
+                          <MobileTableIconX icon={Wallet} tone={{ bg: isDark ? 'rgba(90,169,230,0.16)' : TH.bgSoft, fg: accentInk }} />
                           <View className="flex-1 min-w-0">
                             <View className="flex-row items-center gap-2 flex-wrap">
                               <Text
-                                style={{ fontSize: 14, fontWeight: '600', color: isDark ? T.ink : U.ink[900], letterSpacing: -0.2 }}
+                                style={{ flexShrink: 1, fontSize: 13, fontWeight: '600', color: isDark ? T.ink : U.ink[900] }}
                                 numberOfLines={1}
                               >
                                 {s.policy.name}
@@ -305,7 +286,7 @@ export default function BonusDashboardScreen({
                                 </Text>
                               </View>
                             </View>
-                            <Text style={{ fontSize: 11, color: isDark ? T.ink3 : U.ink[500], marginTop: 4 }} numberOfLines={1}>
+                            <Text style={{ fontSize: 11, color: isDark ? T.ink3 : U.ink[400], marginTop: 2 }} numberOfLines={1}>
                               {earnerCount}/{techCount} kişi prim aldı
                               {s.policy.mode !== 'individual' && (r?.total_pool ?? 0) > 0
                                 ? ` · ${autoT('havuz')} ${TRY(r?.total_pool)}`
@@ -314,21 +295,9 @@ export default function BonusDashboardScreen({
                             {s.error ? (
                               <Text style={{ fontSize: 10, color: TH.danger, marginTop: 4 }}>{s.error}</Text>
                             ) : null}
-                          </View>
-                          <View className="items-end">
-                            <Text style={{ ...DISPLAY, fontSize: 22, color: isDark ? T.ink : U.ink[900], letterSpacing: -0.7, lineHeight: 24 }}>
-                              {TRY(r?.total_payout)}
-                            </Text>
-                            <Text style={{ fontSize: 9, fontWeight: '700', color: isDark ? T.ink3 : U.ink[400], letterSpacing: 0.6, textTransform: 'uppercase', marginTop: 2 }}>
-                              Bu Ay
-                            </Text>
-                          </View>
-                          {isRTL() ? <ChevronLeft size={14} color={isDark ? (T.ink3 as string) : U.ink[400]} /> : <ChevronRight size={14} color={isDark ? (T.ink3 as string) : U.ink[400]} />}
-                        </View>
-
                         {/* Progress bar — hak eden oranı */}
                         {techCount > 0 ? (
-                          <View className="mt-3">
+                          <View style={{ marginTop: 6 }}>
                             <View
                               className="rounded-full overflow-hidden"
                               style={{ height: 4, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : U.ink[100] }}
@@ -343,61 +312,42 @@ export default function BonusDashboardScreen({
                             </View>
                           </View>
                         ) : null}
-                      </Pressable>
+                          </View>
+                          <View className="items-end">
+                            <Text style={{ fontSize: 13, fontWeight: '600', color: isDark ? T.ink : U.ink[900] }}>
+                              {TRY(r?.total_payout)}
+                            </Text>
+                            <Text style={{ fontSize: 9, fontWeight: '700', color: isDark ? T.ink3 : U.ink[400], letterSpacing: 0.6, textTransform: 'uppercase', marginTop: 1 }}>
+                              Bu Ay
+                            </Text>
+                          </View>
+                      </MobileTableRowX>
                     );
                   })}
-                </View>
+                </MobileTableX>
               )}
             </View>
 
             {/* SON HESAPLAMALAR — sadece run varsa göster */}
             {runs.length > 0 ? (
-              <View className="gap-3">
-                <View className="flex-row items-end justify-between">
-                  <View>
-                    <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: isDark ? T.ink3 : U.ink[500] }}>
-                      Son Hesaplamalar
-                    </Text>
-                    <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.4, color: isDark ? T.ink : U.ink[900], marginTop: 2 }}>
-                      {runs.length === 1 ? 'Son hesaplama' : `Son ${runs.length} hesaplama`}
-                    </Text>
-                  </View>
-                  {onOpenRuns ? (
-                    <Pressable
-                      onPress={onOpenRuns}
-                      className="active:opacity-60 web:hover:opacity-70"
-                    >
-                      <Text style={{ fontSize: 12, fontWeight: '600', color: accentInk }}>Tümü →</Text>
+              /* Ekstre / giderler mobil tablosuyla aynı kalıp */
+              <MobileTableX title="Son Hesaplamalar" count={runs.length} countLabel="kayıt"
+                right={onOpenRuns ? (
+                  <GlassTooltip title={autoT('Tümü')} text={autoT('Tüm hesaplamaları açar')}>
+                    <Pressable onPress={onOpenRuns} className="active:opacity-60 web:hover:opacity-70 web:cursor-pointer">
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: stripInk }}>Tümü →</Text>
                     </Pressable>
-                  ) : null}
-                </View>
-
-                <View
-                  className="rounded-2xl border overflow-hidden"
-                  style={{ backgroundColor: isDark ? T.card : '#FFF', borderColor: isDark ? T.hairline : U.ink[200] }}
-                >
+                  </GlassTooltip>
+                ) : undefined}
+              >
                   {runs.map((r, i) => {
                     const breakdownLen = (Array.isArray(r.breakdown) ? r.breakdown : (r.breakdown?.rows ?? [])).length;
                     return (
-                      <Pressable
-                        key={r.id}
-                        onPress={onOpenRuns}
-                        className="
-                          flex-row items-center gap-3 px-4 py-3
-                          active:opacity-80 web:hover:opacity-90
-                        "
-                        style={{
-                          borderBottomWidth: i < runs.length - 1 ? 1 : 0,
-                          borderBottomColor: isDark ? T.hairline2 : U.ink[100],
-                        }}
-                      >
-                        {/* Timeline indicator */}
-                        <View className="items-center" style={{ width: 32 }}>
-                          <Text style={{ ...DISPLAY, fontSize: 18, color: isDark ? T.ink : U.ink[900], letterSpacing: -0.5, lineHeight: 20 }}>
+                      <MobileTableRowX key={r.id} isLast={i === runs.length - 1} onPress={onOpenRuns}>
+                        {/* Ay karesi — ikon karesiyle aynı ölçü */}
+                        <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: U.chipNeutral, alignItems: 'center', justifyContent: 'center' }}>
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? T.ink : U.ink[700] }}>
                             {String(r.period_month).padStart(2, '0')}
-                          </Text>
-                          <Text style={{ fontSize: 9, fontWeight: '700', color: isDark ? T.ink3 : U.ink[400], letterSpacing: 0.6 }}>
-                            {String(r.period_year).slice(-2)}
                           </Text>
                         </View>
 
@@ -413,15 +363,13 @@ export default function BonusDashboardScreen({
                           </Text>
                         </View>
 
-                        <Text style={{ ...DISPLAY, fontSize: 18, color: isDark ? T.ink : U.ink[900], letterSpacing: -0.5 }}>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: isDark ? T.ink : U.ink[900] }}>
                           {TRY(r.total_payout)}
                         </Text>
-                        {isRTL() ? <ChevronLeft size={14} color={isDark ? (T.ink3 as string) : U.ink[400]} /> : <ChevronRight size={14} color={isDark ? (T.ink3 as string) : U.ink[400]} />}
-                      </Pressable>
+                      </MobileTableRowX>
                     );
                   })}
-                </View>
-              </View>
+              </MobileTableX>
             ) : null}
           </View>
 

@@ -43,7 +43,11 @@ export function dirIcon<T extends string>(name: T): T {
 
 const STORAGE_KEY = 'app_lang_v1';
 // Kullanıcı dili KENDİ seçti mi? Bölge varsayılanı yalnız bu yokken uygulanır.
+// Değer: seçimin sahibi (kullanıcı id'si); "1" = sahibi bilinmeyen eski seçim.
 const LANG_EXPLICIT_KEY = 'app_lang_explicit_v1';
+// Seçim yapıldı ama hesaba (profiles.language) henüz yazılamadı — ör. giriş
+// ekranında seçildi. Girişte hesaba yazılır (core/i18n/accountLanguage.ts).
+const LANG_PENDING_KEY = 'app_lang_sync_pending_v1';
 
 // Intl formatlayıcıları için BCP-47 etiketi
 // fa → Şemsi (Jalali) takvim: `-u-ca-persian` ile toLocaleDateString/Intl tarihleri
@@ -268,14 +272,56 @@ AsyncStorage.getItem(STORAGE_KEY).then((saved) => {
  * ayrı bir anahtarda tutulur; bölge varsayılanı (İran → Farsça) yalnız işaret
  * YOKKEN devreye girer. Böylece "İran labı Farsça açılır, kullanıcı isterse
  * değiştirir ve o seçim bir daha ezilmez" davranışı elde edilir.
+ *
+ * Bilinçli seçim hesaba da yazılır (accountLanguage.ts dinleyicisi): dil artık
+ * yalnız bu cihaza değil hesaba bağlıdır. `fromAccount` = dil hesaptan geldi
+ * (girişte uygulanıyor) — tekrar hesaba yazılmaz.
  */
-export async function setLanguage(lng: Lang, opts: { explicit?: boolean } = {}): Promise<void> {
+export async function setLanguage(
+  lng: Lang,
+  opts: { explicit?: boolean; fromAccount?: boolean; ownerId?: string } = {},
+): Promise<void> {
   const explicit = opts.explicit !== false;
   try {
     await AsyncStorage.setItem(STORAGE_KEY, lng);
-    if (explicit) await AsyncStorage.setItem(LANG_EXPLICIT_KEY, '1');
+    if (explicit) await AsyncStorage.setItem(LANG_EXPLICIT_KEY, opts.ownerId ?? '1');
+    if (opts.fromAccount) await AsyncStorage.removeItem(LANG_PENDING_KEY);
+    else if (explicit) await AsyncStorage.setItem(LANG_PENDING_KEY, '1');
   } catch { /* yoksay */ }
   await i18n.changeLanguage(lng);
+  if (explicit && !opts.fromAccount) {
+    try { explicitListener?.(lng); } catch { /* yoksay */ }
+  }
+}
+
+// ── Hesap senkronu için kancalar (accountLanguage.ts kullanır) ─────────────
+// Bu modül Supabase'e bağımlı olmasın diye hesaba yazma işi dışarıda; burada
+// yalnız cihaz tarafı durum ve bir dinleyici var.
+let explicitListener: ((lng: Lang) => void) | null = null;
+export function registerExplicitLanguageListener(cb: (lng: Lang) => void): void {
+  explicitListener = cb;
+}
+
+/** Cihazdaki dil durumu: kayıtlı dil (yoksa açık olan), seçimin sahibi, bekleyen var mı. */
+export async function readLanguageSyncState(): Promise<{ lang: string; explicitOwner: string | null; pending: boolean }> {
+  try {
+    const [lang, owner, pending] = await Promise.all([
+      AsyncStorage.getItem(STORAGE_KEY),
+      AsyncStorage.getItem(LANG_EXPLICIT_KEY),
+      AsyncStorage.getItem(LANG_PENDING_KEY),
+    ]);
+    return { lang: isSupported(lang) ? lang : i18n.language, explicitOwner: owner, pending: pending === '1' };
+  } catch {
+    return { lang: i18n.language, explicitOwner: null, pending: false };
+  }
+}
+
+/** Seçim hesaba yazıldı: bekleme kalkar, seçimin sahibi kaydedilir. */
+export async function markLanguageSynced(ownerId: string): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(LANG_PENDING_KEY);
+    await AsyncStorage.setItem(LANG_EXPLICIT_KEY, ownerId);
+  } catch { /* yoksay */ }
 }
 
 export default i18n;

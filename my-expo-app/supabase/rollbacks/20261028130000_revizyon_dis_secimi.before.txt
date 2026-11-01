@@ -1,0 +1,3 @@
+# 20261028130000_revizyon_dis_secimi — önceki durum (2026-10-28 canlı ölçüm)
+# create_revision_order(uuid,text,text,date,uuid) tek imza; sahibi postgres; EXECUTE: anon, authenticated, postgres, service_role
+# canlı tanım .down.sql içinde birebir. Revizyon sayısı: 3.

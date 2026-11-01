@@ -19,6 +19,7 @@ import { toast } from '../../../core/ui/Toast';
 import { updateOrderClient, updateOrderAdmin, isOrderPrePlanning, fetchOrderItems, type ClientOrderEditItem, type ClientOrderEditFields } from '../api';
 import { createChangeRequest } from '../changeRequests';
 import { isRTL } from '../../../core/i18n';
+import { orderAge, parseAgeInput, sanitizeAgeInput } from '../lib/patientAge';
 import { ToothNumberPicker } from './ToothNumberPicker';
 import { WORK_TYPES, ALL_SHADES } from '../constants';
 import type { WorkOrder } from '../types';
@@ -226,6 +227,8 @@ export function OrderEditSheet({
       patient_id: o.patient_id ?? '',
       patient_gender: o.patient_gender && o.patient_gender !== 'belirtilmedi' ? o.patient_gender : '',
       patient_dob: o.patient_dob ?? '',
+      // Yaş: kayıtlı yaş, yoksa (eski sipariş) doğum tarihinden.
+      patient_age: String(orderAge(o) ?? ''),
       patient_nationality: o.patient_nationality ?? '',
       patient_city: o.patient_city ?? '',
       shade: o.shade ?? '',
@@ -278,8 +281,11 @@ export function OrderEditSheet({
       toast.error('Teslim tarihi YYYY-AA-GG formatında olmalı.');
       return;
     }
-    if (f.patient_dob && !/^\d{4}-\d{2}-\d{2}$/.test(f.patient_dob)) {
-      toast.error('Doğum tarihi YYYY-AA-GG formatında olmalı.');
+    // Yaş yalnız kullanıcı değiştirdiyse gönderilir: eski siparişte tarihten
+    // hesaplanan yaş, dokunulmadıysa değişiklik talebinde "değişti" görünmesin.
+    const ageChanged = f.patient_age !== seed.patient_age;
+    if (ageChanged && f.patient_age.trim() && parseAgeInput(f.patient_age) == null) {
+      toast.error('Yaş 0–120 arasında olmalı.');
       return;
     }
     const cleanItems: ClientOrderEditItem[] = items
@@ -307,6 +313,7 @@ export function OrderEditSheet({
       patient_id: f.patient_id.trim() || null,
       patient_gender: f.patient_gender || null,
       patient_dob: f.patient_dob.trim() || null,
+      ...(ageChanged ? { patient_age: parseAgeInput(f.patient_age) } : {}),
       patient_nationality: f.patient_nationality.trim() || null,
       patient_city: f.patient_city.trim() || null,
       shade: f.shade.trim() || null,
@@ -376,15 +383,14 @@ export function OrderEditSheet({
             <View style={{ gap: 12 }}>
               <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: hexA(ink, 0.45) }}>Hasta</Text>
               <EditField label="Ad Soyad" value={f.patient_name} onChangeText={set('patient_name')} placeholder="Hasta adı soyadı" />
+              {/* Hasta bilgisi yalnız ad soyad, yaş, cinsiyet (yeni sipariş formuyla aynı;
+                  2026-10-19'da doğum tarihi yerine yaş). TC/pasaport, uyruk, şehir ve doğum
+                  tarihi gösterilmez; kayıtta siparişin mevcut değerleriyle gider →
+                  değişiklik talebinde "değişti" sayılmaz. */}
               <View style={{ flexDirection: 'row', gap: 10 }}>
-                <View style={{ flex: 1 }}><EditField label="TC / Pasaport" value={f.patient_id} onChangeText={set('patient_id')} placeholder="—" /></View>
-                <View style={{ flex: 1, gap: 6 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '600', color: hexA(ink, 0.6) }}>Doğum tarihi</Text>
-                  <DatePicker value={f.patient_dob || null} onChange={set('patient_dob')} accent={A} placeholder="Tarih seç" maxDate={todayIso} />
+                <View style={{ flex: 1 }}>
+                  <EditField label="Yaş" value={f.patient_age} onChangeText={(t) => set('patient_age')(sanitizeAgeInput(t))} placeholder="Ör. 45" keyboardType="numeric" />
                 </View>
-              </View>
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <View style={{ flex: 1 }}><EditField label="Uyruk" value={f.patient_nationality} onChangeText={set('patient_nationality')} placeholder="—" /></View>
                 <View style={{ flex: 1 }}><EditSeg label="Cinsiyet" options={GENDERS} value={f.patient_gender} onChange={set('patient_gender')} /></View>
               </View>
             </View>

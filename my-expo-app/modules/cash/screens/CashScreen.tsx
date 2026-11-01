@@ -15,13 +15,23 @@ import {
   useWindowDimensions,
 } from 'react-native';
 
-import { useCashAccounts, useMovements } from '../hooks/useCash';
+import { useCashAccounts, useMovements, useDrawers } from '../hooks/useCash';
 import {
   createCashAccount, updateCashAccount, deleteCashAccount,
   createMovement, deleteMovement,
   ACCOUNT_TYPE_LABELS, MOVEMENT_CATEGORY_LABELS,
-  type CashAccount, type AccountType, type MovementCategory, type MovementDirection,
+  type CashAccount, type AccountType, type MovementCategory, type MovementDirection, type Drawer,
 } from '../api';
+import { drawerFor, canSeeDrawers, DRAWER_CURRENCIES, type DrawerCurrency } from '../drawerModel';
+import { DrawerCard } from '../components/DrawerCard';
+import { DrawerMovementList } from '../components/DrawerMovementList';
+import { OpenDrawerModal } from '../components/OpenDrawerModal';
+import { CountDrawerModal } from '../components/CountDrawerModal';
+import { DepositModal } from '../components/DepositModal';
+import { CashNote } from '../components/CashModalShell';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { MobileTableX, MobileTableRowX, MobileTableIconX } from '../../../core/ui/MobileTableX';
+import { useFeaturePerms } from '../../../core/store/permissionStore';
 import { DS } from '../../../core/theme/dsTokens';
 import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
 import { WhiteHero } from '../../../core/ui/WhiteHero';
@@ -35,14 +45,12 @@ import { DatePicker } from '../../../core/ui/DatePicker';
 import { toast } from '../../../core/ui/Toast';
 import { useBaseCurrency } from '../../../core/money/baseCurrency';
 import { formatMoney, CURRENCY_META, SUPPORTED_CURRENCIES, type Currency } from '../../../core/money/currency';
-import { groupByCurrency } from '../../../core/money/aggregations';
-import { MoneyMultiX } from '../../../core/money/MoneyMultiX';
 import {
   Plus, X, Inbox, Pencil, Trash2, Search,
   Wallet, Landmark, ArrowDownCircle, ArrowUpCircle,
   Receipt, Building, Users, Wrench, Package,
   CircleDot, ChevronRight, Banknote, CreditCard,
-  ArrowDown, ArrowUp,
+  ArrowDown, ArrowUp, ClipboardCheck, ChevronDown, ChevronUp,
 } from '../../../core/ui/icons';
 
 // ── Patterns tokens ─────────────────────────────────────────────────
@@ -103,6 +111,8 @@ const CAT_ICON: Record<MovementCategory, React.ComponentType<any>> = {
   malzeme:  Package,
   vergi:    Receipt,
   diger:    CircleDot,
+  transfer: Landmark,
+  sayim:    ClipboardCheck,
 };
 
 const CATEGORIES: MovementCategory[] = ['tahsilat', 'odeme', 'maas', 'kira', 'malzeme', 'vergi', 'diger'];
@@ -179,6 +189,25 @@ export function CashScreen() {
   const heroBg = useHeroSurface(TH.primary);
 
   const { accounts, loading, refetch } = useCashAccounts();
+  // ── Nakit kasa (çekmece) — madde 8: ekranın odağı ────────────────
+  const { canView: canViewCash, canManage: canManageCash } = useFeaturePerms('cash');
+  // RLS kasa tablolarını view_cash/manage_cash'e bağlar → izinsiz kullanıcıya "açılmadı" değil yetki notu
+  const cashVisible = canSeeDrawers({ canView: canViewCash, canManage: canManageCash });
+  const { drawers, drawerIds, unposted, loading: drLoading, error: drError, refetch: refetchDrawers } = useDrawers();
+  const [selectedDrawerId, setSelectedDrawerId] = useState<string | null>(null);
+  const selectedDrawer = drawers.find(d => d.id === selectedDrawerId) ?? drawers[0] ?? null;
+  const { movements: drMoves, loading: drMovLoading, refetch: refetchDrMoves } = useMovements(selectedDrawer?.id ?? null);
+  const [openCur, setOpenCur] = useState<DrawerCurrency | null>(null);
+  const [countFor, setCountFor] = useState<Drawer | null>(null);
+  const [depositFor, setDepositFor] = useState<Drawer | null>(null);
+  const [othersOpen, setOthersOpen] = useState(false);
+  // Çekmeceler yalnız RPC ile açılır/değişir → "Diğer hesaplar" listesinde görünmez
+  const otherAccounts = useMemo(() => {
+    const ids = new Set(drawerIds);
+    return accounts.filter(a => !ids.has(a.id));
+  }, [accounts, drawerIds]);
+  const refreshAll = () => { refetch(); refetchDrawers(); refetchDrMoves(); };
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [addAccountOpen, setAddAccountOpen] = useState(false);
   const [editAccount, setEditAccount] = useState<CashAccount | null>(null);
@@ -186,28 +215,11 @@ export function CashScreen() {
   const [search, setSearch] = useState('');
 
   const selectedAccount = useMemo(
-    () => accounts.find(a => a.id === selectedId) ?? (accounts[0] ?? null),
-    [accounts, selectedId],
+    () => otherAccounts.find(a => a.id === selectedId) ?? (otherAccounts[0] ?? null),
+    [otherAccounts, selectedId],
   );
   const activeAccountId = selectedAccount?.id ?? null;
   const { movements, loading: movLoading, refetch: refetchMov } = useMovements(activeAccountId);
-
-  // Katı per-currency: bakiyeler para birimine göre BAĞIMSIZ toplanır (asla karışmaz).
-  const balByCurrency = groupByCurrency(
-    accounts,
-    a => ({ amount: Number(a.balance ?? 0), currency: (a.currency ?? 'TRY') as Currency }),
-    { keepZero: true },
-  );
-  const kasaByCurrency = groupByCurrency(
-    accounts.filter(a => a.account_type === 'kasa'),
-    a => ({ amount: Number(a.balance ?? 0), currency: (a.currency ?? 'TRY') as Currency }),
-    { keepZero: true },
-  );
-  const bankaByCurrency = groupByCurrency(
-    accounts.filter(a => a.account_type === 'banka'),
-    a => ({ amount: Number(a.balance ?? 0), currency: (a.currency ?? 'TRY') as Currency }),
-    { keepZero: true },
-  );
 
   const filteredMovements = useMemo(() => {
     if (!search) return movements;
@@ -240,66 +252,98 @@ export function CashScreen() {
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: 16, paddingBottom: 48, gap: 16 }}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={DS.ink[300]} />}
+        refreshControl={<RefreshControl refreshing={loading || drLoading} onRefresh={refreshAll} tintColor={DS.ink[300]} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ─────────────
-            Kullanıcının adlandırdığı imza hero dili; Prim Motoru panosuyla
-            aynı kap/tipografi. Para birimi kartları ve Kasa/Banka dökümü
-            başlık bloğunun altına `children` olarak giriyor — bunlar <Text>
-            değil bileşen olduğu için `title` kullanılamaz. */}
+        {/* ── Hero — "BEYAZ HERO": nakit kasa (madde 8) ─────────────
+            Ekranın sorusu "kasada ne kadar nakit olmalı". İki çekmece kartı
+            (TL · EUR) hero'nun gövdesine girer; banka ve elle hesaplar aşağıda
+            kapalı "Diğer hesaplar" bölümünde aynen durur. */}
         <WhiteHero
-          kicker="Toplam Bakiye"
+          kicker={autoT('Nakit Kasa')}
           accent={TH.primary}
-          stats={[
-            { value: String(accounts.length), label: 'Hesap' },
-            { value: String(accounts.filter(a => a.account_type === 'kasa').length), label: 'Kasa' },
-            { value: String(accounts.filter(a => a.account_type === 'banka').length), label: 'Banka' },
-          ]}
-          actions={<PillBtn icon={Plus} label="Hesap Ekle" onPress={() => setAddAccountOpen(true)} />}
+          description={autoT("Bu kasa, Siman'a girilen nakit tahsilat ve giderlerden hesaplanır. Nakit kayıtları Siman'a girildikçe doğru kalır.")}
           style={{ marginBottom: 0 }}
         >
-          <MoneyMultiX
-            slices={balByCurrency}
-            variant="cards"
-            onAccent={isDark ? '#FFFFFF' : undefined}
-            size="lg"
-            colorBySign
-            accentColor={TH.primary}
-          />
-
-          {/* Kasa / Banka dökümü — her biri kendi para birimlerinde (inline) */}
-          <View style={{ flexDirection: 'row', gap: 24, marginTop: 20, flexWrap: 'wrap' }}>
-            <View style={{ gap: 4 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Wallet size={11} color={accountColor('kasa', isDark)} strokeWidth={1.8} />
-                <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: isDark ? 'rgba(255,255,255,0.85)' : T.ink3 }}>
-                  Kasa
-                </Text>
-              </View>
-              <MoneyMultiX slices={kasaByCurrency} variant="inline" colorBySign emptyText="—" />
+          {!cashVisible ? (
+            <View style={{ marginTop: 18 }}>
+              <CashNote>{autoT('Kasayı görme yetkiniz yok. Yöneticiniz Yetkiler ekranında Kasa & Banka iznini açabilir.')}</CashNote>
             </View>
-            <View style={{ gap: 4 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Landmark size={11} color={accountColor('banka', isDark)} strokeWidth={1.8} />
-                <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: isDark ? 'rgba(255,255,255,0.85)' : T.ink3 }}>
-                  Banka
-                </Text>
-              </View>
-              <MoneyMultiX slices={bankaByCurrency} variant="inline" colorBySign emptyText="—" />
-            </View>
+          ) : (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 18 }}>
+            {DRAWER_CURRENCIES.map(c => {
+              const d = drawerFor(drawers, c);
+              return (
+                <DrawerCard
+                  key={c}
+                  currency={c}
+                  drawer={d}
+                  selected={!!d && d.id === selectedDrawer?.id}
+                  canManage={canManageCash}
+                  onSelect={() => d && setSelectedDrawerId(d.id)}
+                  onOpen={() => setOpenCur(c)}
+                  onCount={() => d && setCountFor(d)}
+                  onDeposit={() => d && setDepositFor(d)}
+                />
+              );
+            })}
           </View>
+          )}
+          {cashVisible && unposted.length > 0 ? (
+            <View style={{ marginTop: 12 }}>
+              <CashNote tone="warning">
+                {`${autoT('Kasası olmayan nakit')}: ${unposted.map(u => `${u.currency} ${u.cnt} ${autoT('kayıt')}`).join(' · ')}`}
+              </CashNote>
+            </View>
+          ) : null}
+          {drError ? (
+            <Text style={{ marginTop: 10, fontSize: 12, color: CT.danger.fg }}>{autoT(drError)}</Text>
+          ) : null}
         </WhiteHero>
 
+        {cashVisible && selectedDrawer ? (
+          <DrawerMovementList
+            drawer={selectedDrawer}
+            movements={drMoves}
+            loading={drMovLoading}
+            canManage={canManageCash}
+            onChanged={refreshAll}
+          />
+        ) : null}
+
+        {/* ── Diğer hesaplar (banka + elle hesaplar) — mevcut özellik aynen, varsayılan kapalı ── */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <GlassTooltip title={autoT('Diğer hesaplar')} text={autoT('Banka ve elle açılan hesapları gösterir ya da gizler')}>
+            <Pressable
+              onPress={() => setOthersOpen(o => !o)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: othersOpen }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, cursor: 'pointer' as any }}
+            >
+              {othersOpen
+                ? <ChevronUp size={16} color={T.ink2} strokeWidth={1.8} />
+                : <ChevronDown size={16} color={T.ink2} strokeWidth={1.8} />}
+              <Text style={{ fontSize: 14, fontWeight: '600', color: T.ink }}>{autoT('Diğer hesaplar')}</Text>
+              <Text style={{ fontSize: 12, color: T.ink3 }}>{otherAccounts.length}</Text>
+            </Pressable>
+          </GlassTooltip>
+          <View style={{ flex: 1 }} />
+          {othersOpen ? (
+            <GlassTooltip title={autoT('Hesap Ekle')} text={autoT('Banka ya da elle izlenen hesap ekler')}>
+              <View><PillBtn icon={Plus} label="Hesap Ekle" size="sm" onPress={() => setAddAccountOpen(true)} /></View>
+            </GlassTooltip>
+          ) : null}
+        </View>
+
         {/* ── Desktop: two-column layout ──────────────────────── */}
-        {isDesktop ? (
+        {!othersOpen ? null : isDesktop ? (
           <View style={{ flexDirection: 'row', gap: 16 }}>
             {/* Left: Accounts table */}
             <View style={{ flex: 1, ...tableCard, backgroundColor: T.card, borderColor: T.hairline }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, backgroundColor: tblAccent }}>
                 <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: tblInk }}>Hesaplar</Text>
                 <View style={{ flex: 1 }} />
-                <Text style={{ fontSize: 12, color: tblInk, opacity: 0.75 }}>{accounts.length} hesap</Text>
+                <Text style={{ fontSize: 12, color: tblInk, opacity: 0.75 }}>{otherAccounts.length} hesap</Text>
               </View>
 
               {/* Table header */}
@@ -319,12 +363,12 @@ export function CashScreen() {
                 ))}
               </View>
 
-              {accounts.length === 0 ? (
+              {otherAccounts.length === 0 ? (
                 <View style={{ alignItems: 'center', paddingVertical: 48, gap: 10 }}>
                   <Inbox size={32} color={T.ink3} strokeWidth={1.4} />
                   <Text style={{ fontSize: 14, fontWeight: '500', color: T.ink3 }}>Henüz hesap yok</Text>
                 </View>
-              ) : accounts.map((acc, i) => {
+              ) : otherAccounts.map((acc, i) => {
                 const isActive = acc.id === activeAccountId;
                 const Icon = ACCOUNT_ICON[acc.account_type];
                 const color = accountColor(acc.account_type, isDark);
@@ -336,7 +380,7 @@ export function CashScreen() {
                     style={{
                       flexDirection: 'row', alignItems: 'center',
                       paddingHorizontal: 20, paddingVertical: 14,
-                      borderBottomWidth: i < accounts.length - 1 ? 1 : 0,
+                      borderBottomWidth: i < otherAccounts.length - 1 ? 1 : 0,
                       borderBottomColor: T.hairline,
                       backgroundColor: isActive ? isDark ? 'rgba(255,255,255,0.05)' : 'rgba(74,143,201,0.06)' : 'transparent',
                       cursor: 'pointer' as any,
@@ -510,7 +554,7 @@ export function CashScreen() {
           <>
             {/* Account cards */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingVertical: 2 }}>
-              {accounts.map(acc => {
+              {otherAccounts.map(acc => {
                 const isActive = acc.id === activeAccountId;
                 const Icon = ACCOUNT_ICON[acc.account_type];
                 const color = accountColor(acc.account_type, isDark);
@@ -556,7 +600,7 @@ export function CashScreen() {
                   </Pressable>
                 );
               })}
-              {accounts.length === 0 && (
+              {otherAccounts.length === 0 && (
                 <View style={{ ...cardSolid, backgroundColor: T.card, borderColor: T.hairline, alignItems: 'center', paddingVertical: 32, paddingHorizontal: 32, gap: 8 }}>
                   <Wallet size={28} color={T.ink3} strokeWidth={1.4} />
                   <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink3 }}>Henüz hesap yok</Text>
@@ -607,40 +651,43 @@ export function CashScreen() {
                     <Inbox size={28} color={T.ink3} strokeWidth={1.4} />
                     <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink3 }}>Hareket yok</Text>
                   </View>
-                ) : filteredMovements.map(mv => {
-                  const isIn = mv.direction === 'giris';
-                  const color = directionColor(isIn ? 'giris' : 'cikis', isDark);
-                  const CIcon = CAT_ICON[mv.category as MovementCategory] ?? CircleDot;
-                  return (
-                    <View key={mv.id} style={{
-                      ...cardSolid, backgroundColor: T.card, borderColor: T.hairline, padding: 16,
-                      flexDirection: 'row', alignItems: 'center', gap: 12,
-                    }}>
-                      <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: `${color}14`, alignItems: 'center', justifyContent: 'center' }}>
-                        <CIcon size={16} color={color} strokeWidth={1.6} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink }} numberOfLines={1}>
-                          {mv.description}
-                        </Text>
-                        <Text style={{ fontSize: 11, color: T.ink3, marginTop: 2 }}>
-                          {MOVEMENT_CATEGORY_LABELS[mv.category as MovementCategory]} · {fmtDate(mv.movement_date)}
-                        </Text>
-                      </View>
-                      <View style={{ alignItems: 'flex-end', gap: 4 }}>
-                        <Text style={{ ...DISPLAY, fontSize: 16, fontWeight: '400', letterSpacing: -0.3, color }}>
-                          {isIn ? '+' : '−'}{fmtCur(mv.amount, selectedAccount?.currency)}
-                        </Text>
-                        <Pressable
-                          onPress={() => handleDeleteMovement(mv.id)}
-                          style={{ width: 26, height: 26, borderRadius: 8, backgroundColor: isDark ? T.cardSoft : DS.ink[50], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
-                        >
-                          <Trash2 size={11} color={T.ink3} strokeWidth={1.6} />
-                        </Pressable>
-                      </View>
-                    </View>
-                  );
-                })}
+                ) : (
+                  /* Mobil hareket listesi — ekstre / giderler mobil tablosuyla aynı kalıp */
+                  <MobileTableX title="Hesap hareketleri" subtitle={selectedAccount?.name ?? undefined}
+                    count={filteredMovements.length} countLabel="kayıt" accent={tblAccent}>
+                    {filteredMovements.map((mv, i) => {
+                      const isIn = mv.direction === 'giris';
+                      const color = directionColor(isIn ? 'giris' : 'cikis', isDark);
+                      const CIcon = CAT_ICON[mv.category as MovementCategory] ?? CircleDot;
+                      return (
+                        <MobileTableRowX key={mv.id} isLast={i === filteredMovements.length - 1}>
+                          <MobileTableIconX icon={CIcon} tone={{ bg: `${color}14`, fg: color }} />
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink }} numberOfLines={1}>
+                              {mv.description}
+                            </Text>
+                            <Text style={{ fontSize: 11, color: T.ink3, marginTop: 1 }} numberOfLines={1}>
+                              {autoT(MOVEMENT_CATEGORY_LABELS[mv.category as MovementCategory] ?? mv.category)} · {fmtDate(mv.movement_date)}
+                            </Text>
+                          </View>
+                          <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                            <Text style={{ fontSize: 13, fontWeight: '600', color }}>
+                              {isIn ? '+' : '−'}{fmtCur(mv.amount, selectedAccount?.currency)}
+                            </Text>
+                            <GlassTooltip title={autoT('Sil')} text={autoT('Hareketi kalıcı olarak siler')}>
+                              <Pressable
+                                onPress={() => handleDeleteMovement(mv.id)}
+                                style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: U.chipTones.danger.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                              >
+                                <Trash2 size={12} color={U.chipTones.danger.fg} strokeWidth={1.8} />
+                              </Pressable>
+                            </GlassTooltip>
+                          </View>
+                        </MobileTableRowX>
+                      );
+                    })}
+                  </MobileTableX>
+                )}
               </View>
             )}
           </>
@@ -653,6 +700,26 @@ export function CashScreen() {
         account={editAccount}
         onClose={() => { setAddAccountOpen(false); setEditAccount(null); }}
         onSaved={() => { setAddAccountOpen(false); setEditAccount(null); refetch(); }}
+      />
+
+      {/* ── Nakit kasa pencereleri ─────────────────────────────── */}
+      <OpenDrawerModal
+        visible={!!openCur}
+        currency={openCur}
+        onClose={() => setOpenCur(null)}
+        onDone={() => { setOpenCur(null); refreshAll(); }}
+      />
+      <CountDrawerModal
+        visible={!!countFor}
+        drawer={countFor}
+        onClose={() => setCountFor(null)}
+        onDone={() => { setCountFor(null); refreshAll(); }}
+      />
+      <DepositModal
+        visible={!!depositFor}
+        drawer={depositFor}
+        onClose={() => setDepositFor(null)}
+        onDone={() => { setDepositFor(null); refreshAll(); }}
       />
 
       {/* ── Movement Modal — §08 ──────────────────────────────── */}

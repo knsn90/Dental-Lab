@@ -43,6 +43,8 @@ import { STAGE_CHECKLIST, STAGE_LABEL, STAGE_COLOR, type Stage } from '../../ord
 import { slaStatus, humanIdle } from '../../orders/slaConfig';
 import { StageChecklistModal } from '../../orders/components/StageChecklistModal';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
+import { isOverdueOrder } from '../../../core/metrics/orderDefs';
+import { useLabToday } from '../../../core/metrics/useLabToday';
 
 // ─── Sabitler ────────────────────────────────────────────────────────────────
 const COL_WIDTH = 300;   // dar ekranda kolon genişliği
@@ -759,7 +761,9 @@ export function ProductionKanbanScreen() {
   const [fAcil, setFAcil]     = useState(false);
   const [fGeciken, setFGeciken] = useState(false);
 
-  const isOverdue = (d: string | null) => { if (!d) return false; const t = new Date(d).getTime(); return Number.isFinite(t) && t < Date.now(); };
+  // Tek tanım (2026-10-26): başlıktaki sayıyla aynı kural — gün kıyası, lab günü, beklemedeki gecikmez.
+  const today = useLabToday();
+  const isOverdueCard = (c: any) => isOverdueOrder({ status: c.status, delivery_date: c.delivery_date, hold_status: c.hold_status }, today);
 
   const totalCards  = useMemo(() => columns.reduce((s, c) => s + c.cards.length, 0), [columns]);
   const activeCount = useMemo(
@@ -769,7 +773,7 @@ export function ProductionKanbanScreen() {
   const overdueTotal = useMemo(() => columns.reduce((s, c) => s + c.overdue, 0), [columns]);
   const rushTotal = useMemo(() => {
     const seen = new Set<string>(); let n = 0;
-    columns.forEach(c => c.cards.forEach(card => { if (card.is_rush && !seen.has(card.id)) { seen.add(card.id); n++; } }));
+    columns.forEach(c => c.cards.forEach(card => { if (card.is_urgent && !seen.has(card.id)) { seen.add(card.id); n++; } }));
     return n;
   }, [columns]);
 
@@ -779,8 +783,8 @@ export function ProductionKanbanScreen() {
     .map(col => ({
       ...col,
       cards: col.cards.filter(c => {
-        if (fAcil && !c.is_rush) return false;
-        if (fGeciken && !isOverdue(c.delivery_date)) return false;
+        if (fAcil && !c.is_urgent) return false;
+        if (fGeciken && !isOverdueCard(c)) return false;
         if (q) {
           const hay = `${c.order_number ?? ''} ${c.work_type ?? ''} ${c.doctor_name ?? ''} ${c.clinic_name ?? ''} ${c.technician_name ?? ''}`.toLocaleLowerCase('tr-TR');
           if (!hay.includes(q)) return false;
@@ -799,8 +803,15 @@ export function ProductionKanbanScreen() {
     setRefreshing(false);
   }
 
+  // Masaüstünde popup (panodan ayrılmadan); mobilde sipariş SAYFASI — tam ekran popup'ın
+  // kapatma X'i çentiğin altına düşüp dokunulamıyordu. Geri tuşu / kenar kaydırma panoya döner.
+  function openOrder(card: KanbanCard) {
+    if (isDesktop) setPeekCard(card);
+    else router.push(`/${panelBase}/order/${card.id}` as any);
+  }
+
   function onCard(card: KanbanCard) {
-    setPeekCard(card);
+    openOrder(card);
   }
 
   async function onContinue(card: KanbanCard) {
@@ -810,7 +821,7 @@ export function ProductionKanbanScreen() {
       const items = STAGE_CHECKLIST[stage] ?? [];
       const required = items.filter(i => i.required !== false);
       if (required.length === 0) {
-        setPeekCard(card);   // panodan ayrılma: detay popup'ta açılır
+        openOrder(card);   // masaüstü: popup · mobil: sipariş sayfası
         return;
       }
       const { data: logs } = await supabase
@@ -821,7 +832,7 @@ export function ProductionKanbanScreen() {
       const checkedKeys = new Set((logs ?? []).filter((r: any) => r.checked).map((r: any) => r.item_key));
       const allDone = required.every(i => checkedKeys.has(i.key));
       if (allDone) {
-        setPeekCard(card);   // panodan ayrılma: detay popup'ta açılır
+        openOrder(card);   // masaüstü: popup · mobil: sipariş sayfası
       } else {
         setChecklistFor({ card, stage });
       }

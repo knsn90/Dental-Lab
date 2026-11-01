@@ -73,6 +73,12 @@ export interface Viewer3DProps {
    * Web viewer kullanmaz.
    */
   zipUrl?: string;
+  /**
+   * Birden fazla arşiv ("Tümünü 3D Aç"): hepsi WebView'de sırayla açılır ve `files`'taki
+   * doğrudan STL/PLY/OBJ'lerle aynı sahnede birleşir. Verilirse `zipUrl` yok sayılır.
+   * Yalnız native; web viewer kullanmaz.
+   */
+  zipUrls?: string[];
   /** Called when modal close requested */
   onClose: () => void;
 }

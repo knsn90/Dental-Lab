@@ -13,6 +13,7 @@
 //   • ekler, ses notları, sohbet, scan_bodies_delivered — vakaya özgü fiziksel/dosya durumu
 
 import { supabase } from '../../core/api/supabase';
+import { orderAge } from './lib/patientAge';
 import {
   parseItemNotes, parseImplantPositions, parseImplantDetails, readImplantInfo,
   type ImplantDetail,
@@ -73,6 +74,8 @@ export interface OrderPrefill {
   patient_prefill?: {
     first_name: string; last_name: string; id: string;
     gender: 'erkek' | 'kadın' | 'belirtilmedi'; dob: string;
+    /** Yaş (form metni). Kayıtlı yaş, yoksa doğum tarihinden. */
+    age: string;
     nationality: string; country: string; city: string;
   };
   /** Devam siparişinde ASIL işin dosyaları (taramalar) var mı — varsa "dijital
@@ -268,7 +271,7 @@ export async function fetchContinuationPrefill(orderId: string): Promise<OrderPr
     supabase
       .from('work_orders')
       .select(
-        'patient_name, patient_id, patient_gender, patient_dob, ' +
+        'patient_name, patient_id, patient_gender, patient_dob, patient_age, ' +
         'patient_nationality, patient_country, patient_city, notes'
       )
       .eq('id', orderId)
@@ -295,6 +298,7 @@ export async function fetchContinuationPrefill(orderId: string): Promise<OrderPr
       id: w.patient_id ?? '',
       gender: g === 'erkek' || g === 'kadın' ? g : 'belirtilmedi',
       dob: w.patient_dob ?? '',
+      age: String(orderAge(w) ?? ''),
       nationality: w.patient_nationality ?? '',
       country: w.patient_country ?? '',
       city: w.patient_city ?? '',
@@ -326,6 +330,7 @@ export interface OrderEditPrefill extends OrderPrefill {
   patient_id: string;
   patient_gender: 'erkek' | 'kadın' | 'belirtilmedi';
   patient_dob: string;          // 'YYYY-MM-DD' | ''
+  patient_age: string;          // form metni ('' = yok)
   patient_phone: string;
   patient_nationality: string;
   patient_country: string;
@@ -351,7 +356,7 @@ export async function fetchOrderEditPrefill(orderId: string): Promise<OrderEditP
   const { data: wo } = await supabase
     .from('work_orders')
     .select(
-      'patient_name, patient_id, patient_gender, patient_dob, ' +
+      'patient_name, patient_id, patient_gender, patient_dob, patient_age, ' +
       'patient_nationality, patient_country, patient_city, is_urgent, delivery_date, ' +
       'notes, lab_notes, scan_bodies_delivered, implant_brand, triaged_at, status'
     )
@@ -369,6 +374,7 @@ export async function fetchOrderEditPrefill(orderId: string): Promise<OrderEditP
     patient_id: w.patient_id ?? '',
     patient_gender: g === 'erkek' || g === 'kadın' ? g : 'belirtilmedi',
     patient_dob: w.patient_dob ?? '',
+    patient_age: String(orderAge(w) ?? ''),
     patient_phone: '',
     patient_nationality: w.patient_nationality ?? '',
     patient_country: w.patient_country ?? '',

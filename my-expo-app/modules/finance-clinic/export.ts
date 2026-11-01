@@ -10,6 +10,7 @@
 
 import { Platform } from 'react-native';
 import type { StatementLine } from './api';
+import { statementVatByCurrency } from '../invoices/lib/statementVat';
 import { baseSymbol, getBaseCurrency } from '../../core/money/baseCurrency';
 import { rateToBase } from '../../core/money/rateCache';
 import { CURRENCY_META, type Currency } from '../../core/money/currency';
@@ -58,8 +59,23 @@ function buildHtml(
   // (çok-para-birimli net → bugünün kuruyla baz'a çevrilip toplanır). baz=TRY.
   const B = baseSymbol();
   const totalDebit  = lines.reduce((s, l) => s + l.debit  * rateToBase(l.currency), 0);
+  // Borç sütunu KDV HARİÇ (kullanıcı: "önce fiyat, sonraki sütunda KDV"); bakiye KDV dahil kalır
+  const totalTax    = lines.reduce((s, l) => s + (l.tax ?? 0) * rateToBase(l.currency), 0);
   const totalCredit = lines.reduce((s, l) => s + l.credit * rateToBase(l.currency), 0);
   const closing     = lines.length > 0 ? lines[lines.length - 1].balance : opening;
+  // Faturaların KDV dökümü — para birimine göre ayrı (kullanıcı: KDV fiyatın içinde anlaşılmıyordu)
+  const vatByCcy = statementVatByCurrency(lines.map(l => ({
+    type: l.kind, debit: l.debit, tax: l.tax ?? 0, currency: l.currency || 'TRY',
+  }))).filter(v => v.total > 0);
+  const vatHtml = vatByCcy.length === 0 ? '' : `
+    <div class="vat-summary">
+      <div class="vat-title">${autoT('Faturaların KDV dökümü')}</div>
+      ${vatByCcy.map(v => `
+        <div class="vat-row"><span>${autoT('Ara Toplam (KDV hariç)')}</span><span>${fmtMoney(v.net)} ${sym(v.currency)}</span></div>
+        <div class="vat-row"><span>${autoT('KDV Toplamı')}</span><span>${fmtMoney(v.tax)} ${sym(v.currency)}</span></div>
+        <div class="vat-row total"><span>${autoT('Genel Toplam (KDV dahil)')}</span><span>${fmtMoney(v.total)} ${sym(v.currency)}</span></div>
+      `).join('')}
+    </div>`;
 
   // PDF varyasyonu için modern CSS, Excel için inline minimal stiller
   const rows = lines.map(l => {
@@ -79,7 +95,8 @@ function buildHtml(
             : ''}
         </td>
         <td class="cell-no">${escapeHtml(l.invoice_no ?? '')}</td>
-        <td class="cell-debit">${l.debit > 0 ? fmtMoney(l.debit) + ' ' + sym(l.currency) : ''}</td>
+        <td class="cell-debit">${l.debit > 0 ? fmtMoney(l.debit - (l.tax ?? 0)) + ' ' + sym(l.currency) : ''}</td>
+        <td class="cell-vat">${isInvoice && (l.tax ?? 0) > 0 ? fmtMoney(l.tax ?? 0) + ' ' + sym(l.currency) + ((l.tax_rate ?? 0) > 0 ? ` <span class="vat-rate">%${l.tax_rate}</span>` : '') : ''}</td>
         <td class="cell-credit">${l.credit > 0 ? fmtMoney(l.credit) + ' ' + sym(l.currency) : ''}</td>
         <td class="cell-balance ${l.balance > 0 ? 'bal-pos' : 'bal-zero'}">${fmtMoney(l.balance)} ${B}</td>
       </tr>
@@ -153,7 +170,13 @@ function buildHtml(
     .cell-desc { font-size: 12px; color: #1F2937; }
     .desc-main { font-weight: 500; }
     .desc-sub { font-size: 10px; color: #6B7280; margin-top: 2px; }
-    .cell-debit, .cell-credit, .cell-balance { text-align: end; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .cell-debit, .cell-credit, .cell-balance, .cell-vat { text-align: end; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .cell-vat { color: #2C2C2C; font-size: 11px; }
+    .vat-rate { color: #9A9A9A; font-size: 9px; }
+    .vat-summary { margin: 18px 0 0 auto; width: 340px; border: 1px solid #EAEAEA; border-radius: 6px; padding: 12px 14px; }
+    .vat-title { font-size: 9px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: #6B7280; margin-bottom: 8px; }
+    .vat-row { display: flex; justify-content: space-between; font-size: 11px; color: #2C2C2C; padding: 3px 0; font-variant-numeric: tabular-nums; }
+    .vat-row.total { border-top: 1px solid #EAEAEA; margin-top: 4px; padding-top: 7px; margin-bottom: 8px; font-size: 12.5px; font-weight: 700; color: #0A0A0A; }
     .cell-debit { color: #0A0A0A; font-weight: 500; }
     .cell-credit { color: #1F6B47; font-weight: 600; }
     .cell-balance { font-weight: 600; }
@@ -234,7 +257,8 @@ function buildHtml(
           <th>${autoT('Tür')}</th>
           <th>${autoT('Açıklama')}</th>
           <th>${autoT('Fatura No')}</th>
-          <th class="col-num">${autoT('Borç')}</th>
+          <th class="col-num">${autoT('Borç (KDV hariç)')}</th>
+          <th class="col-num">${autoT('KDV')}</th>
           <th class="col-num">Alacak</th>
           <th class="col-num">${autoT('Bakiye')}</th>
         </tr>
@@ -245,22 +269,25 @@ function buildHtml(
       <tfoot>
         <tr class="opening-row">
           <td colspan="4" class="label-cell">${autoT('Açılış Bakiye')}</td>
-          <td colspan="2"></td>
+          <td colspan="3"></td>
           <td class="cell-balance">${fmtMoney(opening)} ${B}</td>
         </tr>
         <tr class="totals-row">
           <td colspan="4" class="label-cell">Toplam Hareket (${lines.length} kayıt)</td>
-          <td class="cell-debit">${fmtMoney(totalDebit)} ${B}</td>
+          <td class="cell-debit">${fmtMoney(totalDebit - totalTax)} ${B}</td>
+          <td class="cell-vat">${totalTax > 0 ? fmtMoney(totalTax) + ' ' + B : ''}</td>
           <td class="cell-credit">${fmtMoney(totalCredit)} ${B}</td>
           <td class="cell-balance">${fmtMoney(totalDebit - totalCredit)} ${B}</td>
         </tr>
         <tr class="closing-row">
           <td colspan="4" class="label-cell">${autoT('GÜNCEL BAKİYE')}</td>
-          <td colspan="2"></td>
+          <td colspan="3"></td>
           <td class="cell-balance">${fmtMoney(closing)} ${B}</td>
         </tr>
       </tfoot>
     </table>
+
+    ${vatHtml}
 
     <div class="footer">
       Bu rapor ${escapeHtml(fmtDateTime(ctx.generatedAt))} tarihinde otomatik oluşturulmuştur.

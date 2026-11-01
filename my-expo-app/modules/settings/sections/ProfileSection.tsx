@@ -31,6 +31,7 @@ import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { searchPlaces, getPlaceDetails, startPlaceSession, endPlaceSession, type PlaceSuggestion } from '../../auth/api/places';
 import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 import { AiConsentRow } from '../../../core/ai/AiConsentRow';
+import { formatAddress } from '../../../core/util/formatAddress';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 const ROLE_LABEL: Record<string, string> = {
@@ -365,7 +366,7 @@ export function ProfileSection({ accentColor }: Props) {
       try { return fmtClinicAddress(JSON.parse(raw)); } catch { return raw; }
     }
     if (typeof raw === 'object') {
-      const parts = [raw.sokak, raw.bina_no ? `No: ${raw.bina_no}` : null, raw.mahalle ? `${raw.mahalle} Mah.` : null, raw.ilce, raw.il, raw.posta_kodu].filter(Boolean);
+      const parts = [raw.sokak, raw.bina_no ? `No: ${raw.bina_no}` : null, raw.daire_no ? `D: ${raw.daire_no}` : null, raw.mahalle ? `${raw.mahalle} Mah.` : null, raw.ilce, raw.il, raw.posta_kodu].filter(Boolean);
       return parts.length > 0 ? parts.join(', ') : null;
     }
     return null;
@@ -859,11 +860,13 @@ function ClinicKurumTab({
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [contactPerson, setContactPerson] = useState('');
+  const [ulke, setUlke] = useState('TR');
   const [il, setIl] = useState('');
   const [ilce, setIlce] = useState('');
   const [mahalle, setMahalle] = useState('');
   const [sokak, setSokak] = useState('');
   const [binaNo, setBinaNo] = useState('');
+  const [daireNo, setDaireNo] = useState('');
   const [postaKodu, setPostaKodu] = useState('');
   const [vkn, setVkn] = useState('');
   const [taxOffice, setTaxOffice] = useState('');
@@ -884,8 +887,9 @@ function ClinicKurumTab({
     setEmail(clinic.email ?? '');
     setContactPerson(clinic.contact_person ?? '');
     const addr = parseAddressRaw(clinic.address);
+    setUlke(addr.ulke);
     setIl(addr.il); setIlce(addr.ilce); setMahalle(addr.mahalle);
-    setSokak(addr.sokak); setBinaNo(addr.bina_no); setPostaKodu(addr.posta_kodu);
+    setSokak(addr.sokak); setBinaNo(addr.bina_no); setDaireNo(addr.daire_no); setPostaKodu(addr.posta_kodu);
     setVkn(clinic.vkn ?? '');
     setTaxOffice(clinic.tax_office ?? '');
     setBillingMode(clinic.billing_mode ?? 'monthly_bulk');
@@ -942,8 +946,10 @@ function ClinicKurumTab({
         billing_mode: billingMode,
         default_payment_terms_days: parseInt(paymentDays, 10) || 30,
         address: JSON.stringify({
+          // Ülke bu ekranda düzenlenmez ama KORUNUR (yoksa yurt dışı klinik Türkiye'ye dönerdi)
+          ulke,
           il: il.trim(), ilce: ilce.trim(), mahalle: mahalle.trim(),
-          sokak: sokak.trim(), bina_no: binaNo.trim(), posta_kodu: postaKodu.trim(),
+          sokak: sokak.trim(), bina_no: binaNo.trim(), daire_no: daireNo.trim(), posta_kodu: postaKodu.trim(),
         }),
       };
       const { data, error } = await supabase
@@ -1263,6 +1269,10 @@ function ClinicKurumTab({
                     <TextInput value={binaNo} onChangeText={setBinaNo} placeholder="21" placeholderTextColor={T.ink3} style={kurumInputStyle(T)} />
                   </View>
                   <View style={{ flex: 1 }}>
+                    <KurumLabel T={T}>Daire No</KurumLabel>
+                    <TextInput value={daireNo} onChangeText={setDaireNo} placeholder="3" placeholderTextColor={T.ink3} style={kurumInputStyle(T)} />
+                  </View>
+                  <View style={{ flex: 1 }}>
                     <KurumLabel T={T}>Posta Kodu</KurumLabel>
                     <TextInput value={postaKodu} onChangeText={(v) => setPostaKodu(v.replace(/[^0-9]/g, ''))} placeholder="34000" placeholderTextColor={T.ink3} keyboardType="number-pad" maxLength={5} style={kurumInputStyle(T)} />
                   </View>
@@ -1480,16 +1490,17 @@ function kurumInputStyle(T: any) {
 }
 
 // Adres JSON parse (form için: tüm 6 alan)
-function parseAddressRaw(raw: any): { il: string; ilce: string; mahalle: string; sokak: string; bina_no: string; posta_kodu: string } {
-  const empty = { il: '', ilce: '', mahalle: '', sokak: '', bina_no: '', posta_kodu: '' };
+function parseAddressRaw(raw: any): { ulke: string; il: string; ilce: string; mahalle: string; sokak: string; bina_no: string; daire_no: string; posta_kodu: string } {
+  const empty = { ulke: 'TR', il: '', ilce: '', mahalle: '', sokak: '', bina_no: '', daire_no: '', posta_kodu: '' };
   if (!raw) return empty;
   if (typeof raw === 'string') {
     try { return parseAddressRaw(JSON.parse(raw)); } catch { return empty; }
   }
   if (typeof raw === 'object') {
     return {
+      ulke: typeof raw.ulke === 'string' && /^[A-Za-z]{2}$/.test(raw.ulke) ? raw.ulke.toUpperCase() : 'TR',
       il: raw.il ?? '', ilce: raw.ilce ?? '', mahalle: raw.mahalle ?? '',
-      sokak: raw.sokak ?? '', bina_no: raw.bina_no ?? '', posta_kodu: raw.posta_kodu ?? '',
+      sokak: raw.sokak ?? '', bina_no: raw.bina_no ?? '', daire_no: raw.daire_no ?? '', posta_kodu: raw.posta_kodu ?? '',
     };
   }
   return empty;
@@ -1498,14 +1509,8 @@ function parseAddressRaw(raw: any): { il: string; ilce: string; mahalle: string;
 // Adres JSON → tek satır insan-okunur
 function fmtAddressRaw(raw: any): string | null {
   if (!raw) return null;
-  if (typeof raw === 'string') {
-    try { return fmtAddressRaw(JSON.parse(raw)); } catch { return raw; }
-  }
-  if (typeof raw === 'object') {
-    const parts = [raw.sokak, raw.bina_no ? `No: ${raw.bina_no}` : null, raw.mahalle ? `${raw.mahalle} Mah.` : null, raw.ilce, raw.il, raw.posta_kodu].filter(Boolean);
-    return parts.length > 0 ? parts.join(', ') : null;
-  }
-  return null;
+  // Ortak biçimleyici: JSON/düz metin; yurt dışında ülke adıyla (core/util/formatAddress)
+  return formatAddress(typeof raw === 'string' ? raw : JSON.stringify(raw)) || null;
 }
 
 // ── KurumInfoCard — clinic_admin Kurum Bilgileri tab'ında kullanılır ────

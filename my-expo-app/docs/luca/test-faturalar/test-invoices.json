@@ -1,0 +1,34 @@
+{
+  "e_arsiv": {
+    "externalCode": "5677e292-ad08-4961-9c9f-66f718affd00",
+    "ok": true,
+    "ettn": "1156735a-2819-49fc-a869-76b87bce8459",
+    "invoiceNumber": "TR12026000002762"
+  },
+  "e_fatura_hata_292pk": {
+    "externalCode": "fbef7e67-53cb-4c59-8f38-703f0c012a71",
+    "ok": true,
+    "ettn": "a7c4a22f-9568-4631-ad41-1a75369588e7",
+    "invoiceNumber": "TR02026000001722"
+  },
+  "e_fatura_hata_169pk": {
+    "externalCode": "5a2e8be1-41af-4b69-ae51-49d93f3206d8",
+    "ok": true,
+    "ettn": "4471d447-4032-4017-853f-770cca2d8699",
+    "invoiceNumber": "TR02026000001723"
+  },
+  "e_fatura_hata_turmobpk": {
+    "externalCode": "0845c883-8bde-40a9-b5de-ec74fd004c55",
+    "ok": true,
+    "ettn": "9cb03aae-a834-4bca-9e93-e3bb64fd931c",
+    "invoiceNumber": "TR02026000001724"
+  },
+  "e_fatura": {
+    "sellerVkn": "8810234738",
+    "inboxTag": "urn:mail:defaultpk@nilvera.com",
+    "externalCode": "259722bf-0fa3-4e5c-a32c-dad2604b9348",
+    "ok": true,
+    "ettn": "353614b1-dbb3-4e16-a3be-ca62ad275507",
+    "invoiceNumber": "6N92026000000521"
+  }
+}

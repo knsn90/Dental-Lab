@@ -39,6 +39,8 @@ import { autoT } from '../../../core/i18n/autoTranslate';
 import { formatAddress } from '../../../core/util/formatAddress';
 import { deleteMyAccount } from '../../../lib/auth';
 import { toast } from '../../../core/ui/Toast';
+import { MySalaryLine } from '../../employees/components/MySalaryLine';
+import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 
 const TH = DS.tech;
 const DISPLAY = {
@@ -183,6 +185,9 @@ function MobileView({ profile, filtered, stats, loading, range, setRange, onRefr
           <Bell size={15} color={U.ink[800]} />
         </View>
       </View>
+
+      {/* Kendi aylık maaşı (maaş tek kaynak, 2026-10-25) — yoksa hiç çizilmez */}
+      <MySalaryLine style={{ marginHorizontal: PAGE_PADDING }} />
 
       <View style={{ paddingHorizontal: 16, gap: 16 }}>
         {/* ── F1 Glassmorphism Hero (krem zemin + iç beyaz cam) ── */}

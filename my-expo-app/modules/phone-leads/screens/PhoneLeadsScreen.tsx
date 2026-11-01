@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useInkUI } from '../../../core/theme/inkScale';
-import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 import { useAuthStore } from '../../../core/store/authStore';
 import { useFeatureFlagsStore } from '../../../core/store/featureFlagsStore';
@@ -27,8 +27,11 @@ import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { PAGE_PADDING, CARD_GAP } from '../../../core/ui/pageMetrics';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { navBarMetrics } from '../../../core/ui/mobile/navGlass';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useIsDesktop } from '../../../core/layout/PatternsShell';
-import { PhoneCall, Search, X, Check, RotateCcw, Archive, ChevronRight } from '../../../core/ui/icons';
+import { PhoneCall, Search, X, Check, RotateCcw, Archive } from '../../../core/ui/icons';
 import { listPhoneLeads, setPhoneLeadStatus, formatPhone, type PhoneLead, type PhoneLeadStatus } from '../api';
 
 type TabKey = 'new' | 'called' | 'closed' | 'all';
@@ -79,9 +82,16 @@ function isUrgent(l: PhoneLead): boolean {
 export function PhoneLeadsScreen() {
   const U = useInkUI();
   const panel = usePanelTheme();
+  const headInk = onAccentInk(panel.primary) === '#FFFFFF' ? 'rgba(255,255,255,0.88)' : 'rgba(10,10,10,0.72)';
   // Diğer beyaz hero'larla aynı: panel primary (koyu temada hero yüzeyi panel kimliğini korur).
   const heroInk = useWhiteHeroInk(panel.primary);
   const isDesktop = useIsDesktop();
+  const MT = useMobileTokens();
+  const insets = useSafeAreaInsets();
+  // Mobilde sekmeler şeffaf (yüzen navbar için) → zemini ekran çizer; yoksa
+  // arkadaki sekmenin görselleri kartların arasından sızıyordu (2026-10-17).
+  const mobileBg = isDesktop ? undefined : MT.bg;
+  // Liste başlığı: masaüstü tablo başlığıyla aynı düz panel accent; yazı zeminden seçilir.
   const { ready, allowed } = useCanSee();
   const params = useLocalSearchParams<{ id?: string }>();
 
@@ -144,7 +154,7 @@ export function PhoneLeadsScreen() {
   const openLead = leads.find((l) => l.id === openId) ?? null;
 
   if (!ready) {
-    return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator /></View>;
+    return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: mobileBg }}><ActivityIndicator /></View>;
   }
   if (!allowed) return <AccessDenied />;
 
@@ -154,12 +164,18 @@ export function PhoneLeadsScreen() {
   ].filter(Boolean).join(' · ') || undefined;
 
   return (
-    // Zemin YOK: kabuk panelin bgPage'ini çizer (Tedarikçiler vb. ile aynı). U.pageBg
-    // açık temada #FFFFFF — sayfayı panel zemininden kopuk beyaz bırakıyordu.
-    <View style={{ flex: 1 }}>
+    // Masaüstünde zemin YOK: kabuk panelin bgPage'ini çizer (Tedarikçiler vb. ile aynı).
+    // Mobilde panelin sayfa zemini (MT.bg) — sekme sahnesi şeffaf.
+    <View style={{ flex: 1, backgroundColor: mobileBg }}>
       {/* Tam genişlik: masaüstünde üst çubuktaki sayfa başlığıyla aynı kolonda başlar
           (eskiden 1080px ortalanıyordu, başlıktan ~90px içeride duruyordu). */}
-      <ScrollView contentContainerStyle={{ paddingHorizontal: PAGE_PADDING, paddingTop: isDesktop ? 8 : 16, paddingBottom: 120, gap: CARD_GAP }}>
+      {/* Mobil üst boşluk: yüzen logo + üst butonların altından başla (Siparişler ile aynı +72) */}
+      <ScrollView contentContainerStyle={{
+        paddingHorizontal: PAGE_PADDING,
+        paddingTop: isDesktop ? 8 : Math.max(insets.top, 8) + 72,
+        paddingBottom: isDesktop ? 120 : navBarMetrics(insets.bottom).clearance + 16,
+        gap: CARD_GAP,
+      }}>
         {/* ── Beyaz hero — en önemli bilgi en büyük: bekleyen talep sayısı ── */}
         <WhiteHero
           compact
@@ -219,7 +235,19 @@ export function PhoneLeadsScreen() {
           ) : visible.length === 0 ? (
             <EmptyState title="Bu filtrede talep yok" />
           ) : (
-            visible.map((l) => <LeadRow key={l.id} lead={l} onPress={() => setOpenId(l.id)} />)
+            // Siparişler listesiyle aynı dil: tek kap + panel-accent başlık + ince çizgili satırlar
+            <View style={{ borderRadius: 22, overflow: 'hidden', borderWidth: 1, borderColor: MT.hairline, backgroundColor: MT.card }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 11, backgroundColor: panel.primary }}>
+                <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: headInk }}>
+                  {autoT('Arayan')} · {autoT('Talep')}
+                </Text>
+                <View style={{ flex: 1 }} />
+                <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: headInk }}>
+                  {autoT('Durum')}
+                </Text>
+              </View>
+              {visible.map((l) => <LeadRow key={l.id} lead={l} onPress={() => setOpenId(l.id)} />)}
+            </View>
           )}
         </View>
       </ScrollView>
@@ -276,44 +304,44 @@ function Monogram({ lead, size = 40 }: { lead: PhoneLead; size?: number }) {
 
 function LeadRow({ lead, onPress }: { lead: PhoneLead; onPress: () => void }) {
   const U = useInkUI();
+  const MT = useMobileTokens();
   const phone = formatPhone(lead.contact_phone || lead.caller_number);
   const who = lead.contact_name || phone;
+  const urgent = isUrgent(lead);
+  const rtl = isRTL();
+  // Siparişler satırıyla birebir: arayan → talep → telefon → etiket + tarih
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      style={({ hovered, pressed }: any) => ({
-        ...U.cardSolid,
-        flexDirection: 'row', alignItems: 'center', gap: 12,
-        paddingVertical: 14, paddingStart: 14, paddingEnd: 12,
-        ...(hovered ? { backgroundColor: U.rowHover } : {}),
-        // Basış anında (bırakınca değil) geri bildirim.
-        transform: [{ scale: pressed ? 0.99 : 1 }],
-        ...(Platform.OS === 'web'
-          ? ({ cursor: 'pointer', transitionProperty: 'transform, background-color', transitionDuration: '120ms' } as any)
-          : {}),
+      style={({ hovered }: any) => ({
+        flexDirection: 'row', alignItems: 'center', gap: 11,
+        paddingHorizontal: 16, paddingVertical: 11,
+        borderTopWidth: 1, borderTopColor: MT.hairline,
+        backgroundColor: hovered ? U.rowHover : (urgent ? 'rgba(217,75,75,0.06)' : 'transparent'),
+        ...(Platform.OS === 'web' ? ({ cursor: 'pointer', transitionProperty: 'background-color', transitionDuration: '120ms' } as any) : {}),
       })}
     >
-      <Monogram lead={lead} />
+      <Monogram lead={lead} size={36} />
       <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
-          <Text style={{ flex: 1, fontSize: 15, fontWeight: '600', letterSpacing: -0.2, color: U.ink[900] }} numberOfLines={1}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, minWidth: 0 }}>
+          <Text style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: '700', letterSpacing: -0.1, color: MT.ink, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>
             {who || 'Bilinmeyen arayan'}
           </Text>
-          <Text style={{ fontSize: 11.5, color: U.ink[400] }}>{fmtDate(lead.created_at)}</Text>
+          <StatusChip status={lead.status} />
         </View>
         {lead.request ? (
-          <Text style={{ fontSize: 13.5, lineHeight: 19, color: U.ink[700] }} numberOfLines={2}>{lead.request}</Text>
+          <Text style={{ fontSize: 12, lineHeight: 17, color: MT.ink2 }} numberOfLines={2}>{lead.request}</Text>
         ) : null}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 3 }}>
-          <StatusChip status={lead.status} />
-          {isUrgent(lead) ? <Chip tone={U.chipTones.danger} label="Geri arama istiyor" /> : null}
-          {lead.contact_name && phone ? <Text style={{ fontSize: 11.5, color: U.ink[500] }}>{phone}</Text> : null}
-          {lead.anonymized_at ? <Text style={{ fontSize: 11.5, color: U.ink[400] }}>Anonimleştirildi</Text> : null}
+        {lead.contact_name && phone ? (
+          <Text style={{ fontSize: 11.5, color: MT.ink3, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{phone}</Text>
+        ) : null}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 }}>
+          {urgent ? <Chip tone={U.chipTones.danger} label="Geri arama istiyor" /> : null}
+          {lead.anonymized_at ? <Text style={{ fontSize: 10.5, color: MT.ink3 }}>Anonimleştirildi</Text> : null}
+          <View style={{ flex: 1 }} />
+          <Text style={{ fontSize: 10.5, fontWeight: '500', color: MT.ink3, flexShrink: 0 }}>{fmtDate(lead.created_at)}</Text>
         </View>
-      </View>
-      <View style={isRTL() ? { transform: [{ scaleX: -1 }] } : undefined}>
-        <ChevronRight size={16} color={U.ink[300]} strokeWidth={2} />
       </View>
     </Pressable>
   );

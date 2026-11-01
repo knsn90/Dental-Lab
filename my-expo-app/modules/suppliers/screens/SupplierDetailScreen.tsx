@@ -13,17 +13,15 @@ import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSegments } from 'expo-router';
 import { HubContext } from '../../../core/ui/HubContext';
 import { PurchaseInvoiceDetailScreen } from '../../purchases/screens/PurchaseInvoiceDetailScreen';
-import { View, Text, Pressable, Platform, ScrollView} from 'react-native';
+import { View, Text, Pressable, Platform, ScrollView, useWindowDimensions } from 'react-native';
 import { confirmAsync } from '../../../core/util/confirm';
 import {
-  ArrowLeft, ArrowRight, ArrowDownCircle, ArrowUpCircle, RotateCcw, Settings as Adjust,
+  ArrowDownCircle, ArrowUpCircle, RotateCcw, Settings as Adjust,
   Phone, Mail, Globe, MapPin, Building2, CreditCard, Calendar,
   Pencil, Plus, Receipt, Printer, FileSpreadsheet, Trash2,
 } from '../../../core/ui/icons';
 import { useAuthStore } from '../../../core/store/authStore';
 import { formatMoney, useBaseCurrency, type Currency } from '../../../core/money/currency';
-import { CurrencyBreakdown } from '../../../core/money/CurrencyBreakdown';
-import { sumByCurrency } from '../../../core/money/aggregations';
 import {
   Supplier, SupplierBalance, SupplierTransaction, TransactionType, TX_TYPE_LABELS,
   PAYMENT_METHOD_LABELS, CATEGORY_LABELS,
@@ -36,10 +34,13 @@ import { findPurchaseInvoiceByNumber } from '../../purchases/api';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { CenteredLoader } from '../../../core/ui/CenteredLoader';
 import { buildCariStatementHtml, type CariLine } from '../../../core/util/buildCariStatementHtml';
-import { isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
-import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
-import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { MobileTableX, MobileTableRowX, MobileTableIconX, useMobileTableText } from '../../../core/ui/MobileTableX';
+import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { useInkUI } from '../../../core/theme/inkScale';
+import { RowActionsMenu } from '../../../core/ui/RowActionsMenu';
+import { NavyBackButtonX } from '../../../core/ui/NavyBackButtonX';
 
 interface Props {
   supplierId: string;
@@ -48,8 +49,10 @@ interface Props {
 }
 
 export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBack }: Props) {
-  const T = useMobileTokens();
-  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const U = useInkUI();
+  const MT = useMobileTableText();
+  const heroInk = useWhiteHeroInk();
+  const isDesktop = useWindowDimensions().width >= 1024;
   const router     = useRouter();
   const segments   = useSegments();
   const panel      = (segments?.[0] as string) ?? '(lab)';
@@ -93,17 +96,6 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
     load();
   };
 
-  const PCard = {
-    backgroundColor: T.card,
-    borderRadius: 18,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: T.hairline,
-    ...(Platform.OS === 'web' ? { boxShadow: '0 4px 16px rgba(0,0,0,0.04)' } : {}),
-  } as any;
-  const DisplayFont = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
-  const eyebrow = { fontSize: 11, fontWeight: '600' as const, color: T.ink3, letterSpacing: 1, textTransform: 'uppercase' as const };
-
   const load = async () => {
     setLoading(true);
     const [s, b, tx] = await Promise.all([
@@ -120,7 +112,6 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
   useEffect(() => { load(); }, [supplierId]);
 
   // Hooks ÖNCE, early return SONRA — "Rendered more hooks" hatasını önler.
-  // Phase 4: currency breakdown for purchases vs payments
   // Cari, tedarikçinin kendi para biriminde tutulur (EUR faturalı tedarikçide EUR).
   // Toplamlar/bakiye amount_account üzerinden; ≈₺ karşılığı ikincil bilgi olarak kalır.
   const acctCurrency = ((supplier?.default_currency ?? baseCurrency) as Currency);
@@ -136,15 +127,6 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
     if ((t.currency ?? acctCurrency) === acctCurrency) return Number(t.amount);
     return 0;   // çevrilemiyor — sıfır say, toplamı yanlış para birimiyle şişirme
   };
-
-  const purchaseSummary = useMemo(() => sumByCurrency(
-    transactions.filter(t => t.type === 'PURCHASE'),
-    t => ({ amount: Number(t.amount), currency: t.currency, amountBase: acctOf(t) }),
-  ), [transactions]);
-  const paymentSummary = useMemo(() => sumByCurrency(
-    transactions.filter(t => t.type === 'PAYMENT' || t.type === 'RETURN'),
-    t => ({ amount: Number(t.amount), currency: t.currency, amountBase: acctOf(t) }),
-  ), [transactions]);
 
   // Hareketleri eskiden yeniye sıralayıp running balance hesapla.
   // PURCHASE = borç (debit), PAYMENT/RETURN = alacak (credit).
@@ -190,8 +172,9 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
     ? Number((balance as any).balance_account ?? balance.balance_base)
     : 0;
   const tone = balance ? balanceColor(balanceAcct) : 'zero';
-  const toneColor = tone === 'debt' ? '#9C2E2E' : tone === 'credit' ? '#1F6B47' : '#9A9A9A';
-  const toneLabel = tone === 'debt' ? 'Bizim borcumuz' : tone === 'credit' ? 'Bizim alacağımız' : 'Hesap eşit';
+  const toneColor = tone === 'debt' ? U.chipTones.danger.fg : tone === 'credit' ? U.chipTones.success.fg : U.ink[400];
+  // Kısa etiket: mobilde üç rakam tek satıra sığsın ("Bizim borcumuz" taşırıyordu)
+  const toneLabel = tone === 'debt' ? 'Borcumuz' : tone === 'credit' ? 'Alacağımız' : 'Hesap eşit';
   const balanceText = balance
     ? formatMoney(Math.abs(balanceAcct), acctCurrency, { fractionDigits: 2 })
     : '—';
@@ -298,172 +281,131 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
     w.document.open(); w.document.write(html); w.document.close();
   };
 
+  // ── Görünüm: ekstre sayfasıyla aynı dil (beyaz hero + tablo kartları) ──
+  const payPct = ledgerRows.totalDebit > 0 ? Math.min(100, (ledgerRows.totalCredit / ledgerRows.totalDebit) * 100) : 0;
+  const fmt0 = (n: number) => formatMoney(n, acctCurrency, { fractionDigits: 0 });
+  const heroDesc = [
+    CATEGORY_LABELS[supplier.category] ? autoT(CATEGORY_LABELS[supplier.category]) : null,
+    supplier.tax_no ? `VKN ${supplier.tax_no}${supplier.tax_office ? ` · ${supplier.tax_office}` : ''}` : null,
+    balance && balance.purchase_count > 0
+      ? `${balance.purchase_count} ${autoT('alış')}${balance.last_transaction_date ? ` · ${new Date(balance.last_transaction_date).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short' })}` : ''}`
+      : null,
+  ].filter(Boolean).join(' · ');
+  const contactRows = [
+    supplier.contact_person ? { icon: Building2, label: 'İlgili kişi', value: supplier.contact_person } : null,
+    supplier.phone ? { icon: Phone, label: 'Telefon', value: supplier.phone } : null,
+    supplier.email ? { icon: Mail, label: 'E-posta', value: supplier.email } : null,
+    supplier.website ? { icon: Globe, label: 'Web', value: supplier.website } : null,
+    supplier.address ? { icon: MapPin, label: 'Adres', value: supplier.address } : null,
+    supplier.iban ? { icon: CreditCard, label: supplier.bank_name ? `IBAN · ${supplier.bank_name}` : 'IBAN', value: supplier.iban } : null,
+    supplier.payment_terms_days > 0 ? { icon: Calendar, label: 'Vade', value: `${supplier.payment_terms_days} ${autoT('gün')}` } : null,
+  ].filter(Boolean) as { icon: any; label: string; value: string }[];
+
   return (
-    <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60, gap: 14 }}>
-      {/* Back + Edit */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Pressable
-          onPress={onBack}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999, backgroundColor: T.hairline, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
-        >
-          {isRTL() ? <ArrowRight size={14} color={T.ink3} strokeWidth={1.8} /> : <ArrowLeft size={14} color={T.ink3} strokeWidth={1.8} />}
-          <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink3 }}>Tedarikçiler</Text>
-        </Pressable>
-        <View style={{ flexDirection: 'row', gap: 6 }}>
+    <ScrollView contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 4, paddingBottom: 60, gap: 16 }} showsVerticalScrollIndicator={false}>
+      {/* Beyaz hero — ekstre sayfasıyla aynı: geri kicker'ın solunda, bakiye/alış/ödeme
+          rakamları sağda, eylemler alt şeritte, ödeme oranı rayı en altta. */}
+      <WhiteHero
+        kicker={autoT('Tedarikçi Cari Hesabı')}
+        leading={<NavyBackButtonX onPress={onBack} tooltip="Tedarikçi listesine döner" />}
+        title={supplier.name}
+        // Ticari unvanlar uzun ("… SANAYİ VE DIŞ TİCARET LİMİTED ŞİRKETİ"): 44px başlık
+        // 6 satıra bölünüyordu → uzun adda hero'nun kompakt ölçüsü
+        compact={supplier.name.length > 28}
+        description={heroDesc || undefined}
+        stats={[
+          { value: tone === 'zero' ? '—' : fmt0(Math.abs(balanceAcct)), label: autoT(toneLabel) },
+          { value: fmt0(ledgerRows.totalDebit),  label: autoT('Toplam alış') },
+          { value: fmt0(ledgerRows.totalCredit), label: autoT('Toplam ödenen') },
+        ]}
+        actionsAlign="end"
+        actions={!isDesktop ? <>
+          {/* Mobil: tek satır — birincil eylem etiketli, gerisi etiketli "⋯" menüsünde
+              (dokunmatikte ipucu balonu çıkmaz; yalın ikonlar anlaşılmıyordu) */}
+          <GlassTooltip title={autoT('Ödeme ekle')} text={autoT('Tedarikçiye yapılan ödemeyi kaydeder')}>
+            <HeroBtn icon={ArrowDownCircle} label="Ödeme ekle" onPress={() => setTxOpen({ visible: true, type: 'PAYMENT' })} />
+          </GlassTooltip>
+          {Platform.OS === 'web' && (
+            <GlassTooltip title={autoT('Yazdır / PDF')} text={autoT('Ekstreyi yazdır veya PDF olarak kaydet')}>
+              <HeroBtn icon={Printer} onPress={handlePrint} variant="ghost" />
+            </GlassTooltip>
+          )}
+          <GlassTooltip title={autoT('Diğer işlemler')} text={autoT('Diğer işlemleri açar')}>
+            <View style={{ borderRadius: 999, borderWidth: 1, borderColor: U.ink[200], padding: 6 }}>
+              <RowActionsMenu size={26} color={U.ink[700]} actions={[
+                { key: 'purchase', label: 'Manuel fatura', icon: Receipt, onPress: () => setTxOpen({ visible: true, type: 'PURCHASE' }) },
+                { key: 'return', label: 'İade', icon: RotateCcw, onPress: () => setTxOpen({ visible: true, type: 'RETURN' }) },
+                { key: 'adjust', label: 'Düzeltme', icon: Adjust, onPress: () => setTxOpen({ visible: true, type: 'ADJUSTMENT' }) },
+                { key: 'edit', label: 'Düzenle', icon: Pencil, onPress: () => setEditOpen(true) },
+                ...(Platform.OS === 'web' ? [{ key: 'excel', label: 'Excel', icon: FileSpreadsheet, onPress: handleExportExcel }] : []),
+              ]} />
+            </View>
+          </GlassTooltip>
+        </> : <>
+          <GlassTooltip title={autoT('Ödeme ekle')} text={autoT('Tedarikçiye yapılan ödemeyi kaydeder')}>
+            <HeroBtn icon={ArrowDownCircle} label="Ödeme ekle" onPress={() => setTxOpen({ visible: true, type: 'PAYMENT' })} />
+          </GlassTooltip>
+          <GlassTooltip title={autoT('Manuel fatura')} text={autoT('Elle alış faturası kaydeder')}>
+            <HeroBtn icon={Receipt} label="Manuel fatura" onPress={() => setTxOpen({ visible: true, type: 'PURCHASE' })} variant="ghost" />
+          </GlassTooltip>
+          <GlassTooltip title={autoT('İade')} text={autoT('Tedarikçiye iade kaydeder')}>
+            <HeroBtn icon={RotateCcw} label="İade" onPress={() => setTxOpen({ visible: true, type: 'RETURN' })} variant="ghost" />
+          </GlassTooltip>
+          <GlassTooltip title={autoT('Düzeltme')} text={autoT('Bakiye düzeltme kaydı ekler')}>
+            <HeroBtn icon={Adjust} label="Düzeltme" onPress={() => setTxOpen({ visible: true, type: 'ADJUSTMENT' })} variant="ghost" />
+          </GlassTooltip>
+          <GlassTooltip title={autoT('Düzenle')} text={autoT('Firma bilgilerini düzenle')}>
+            <HeroBtn icon={Pencil} label="Düzenle" onPress={() => setEditOpen(true)} variant="ghost" />
+          </GlassTooltip>
           {Platform.OS === 'web' && (
             <>
-              <Pressable
-                onPress={handleExportExcel}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
-              >
-                <FileSpreadsheet size={12} color="#1F6B47" strokeWidth={1.8} />
-                <Text style={{ fontSize: 12, fontWeight: '500', color: '#1F6B47' }}>Excel</Text>
-              </Pressable>
-              <Pressable
-                onPress={handlePrint}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
-              >
-                <Printer size={12} color={T.ink3} strokeWidth={1.8} />
-                <Text style={{ fontSize: 12, fontWeight: '500', color: T.ink3 }}>Yazdır / PDF</Text>
-              </Pressable>
+              <GlassTooltip title={autoT('Yazdır / PDF')} text={autoT('Ekstreyi yazdır veya PDF olarak kaydet')}>
+                <HeroBtn icon={Printer} label="Yazdır / PDF" onPress={handlePrint} variant="ghost" />
+              </GlassTooltip>
+              <GlassTooltip title={autoT('Excel')} text={autoT('Ekstreyi Excel dosyası olarak indir')}>
+                <HeroBtn icon={FileSpreadsheet} label="Excel" onPress={handleExportExcel} variant="ghost" />
+              </GlassTooltip>
             </>
           )}
-          <Pressable
-            onPress={() => setEditOpen(true)}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
-          >
-            <Pencil size={12} color={T.ink3} strokeWidth={1.8} />
-            <Text style={{ fontSize: 12, fontWeight: '500', color: T.ink3 }}>Düzenle</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      {/* Hero: name + balance */}
-      <View style={[PCard, { gap: 14 }]}>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
-          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <View style={{ width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor + '14' }}>
-              <Building2 size={22} color={accentColor} strokeWidth={1.6} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={eyebrow}>{CATEGORY_LABELS[supplier.category]}</Text>
-              <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 28, letterSpacing: -0.8, color: T.ink, marginTop: 2 }} numberOfLines={2}>
-                {supplier.name}
+        </>}
+      >
+        {/* Ödeme oranı — ekstredeki tahsilat oranı rayıyla aynı */}
+        {ledgerRows.totalDebit > 0 ? (
+          <View style={{ marginTop: 16, gap: 6 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.7, textTransform: 'uppercase', color: heroInk.inkSoft }}>
+                Ödeme oranı
               </Text>
-              {supplier.tax_no ? (
-                <Text style={{ fontSize: 12, color: T.ink3, marginTop: 2 }}>
-                  VKN {supplier.tax_no}{supplier.tax_office ? ` · ${supplier.tax_office}` : ''}
-                </Text>
-              ) : null}
+              <Text style={{ fontSize: 11, fontWeight: '700', color: heroInk.ink }}>{payPct.toFixed(0)}%</Text>
             </View>
-          </View>
-
-          {/* Balance card */}
-          <View style={{ alignItems: 'flex-end', gap: 4 }}>
-            <Text style={[eyebrow, { color: toneColor }]}>{toneLabel}</Text>
-            <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 38, letterSpacing: -1.2, color: toneColor, lineHeight: 44 }}>
-              {tone === 'zero' ? '—' : balanceText}
-            </Text>
-            {balance && balance.purchase_count > 0 ? (
-              <Text style={{ fontSize: 11, color: T.ink3 }}>
-                {balance.purchase_count} alış · {balance.last_transaction_date ? new Date(balance.last_transaction_date).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short' }) : '—'}
-              </Text>
-            ) : null}
-          </View>
-        </View>
-
-        {/* Action buttons */}
-        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-          <Pressable
-            onPress={() => setTxOpen({ visible: true, type: 'PAYMENT' })}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 9999, backgroundColor: accentColor, ...(Platform.OS === 'web' ? { cursor: 'pointer', boxShadow: `0 4px 16px ${accentColor}33` } as any : {}) }}
-          >
-            <ArrowDownCircle size={14} color="#FFF" strokeWidth={1.8} />
-            <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFF' }}>Ödeme ekle</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setTxOpen({ visible: true, type: 'PURCHASE' })}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 9999, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
-          >
-            <Receipt size={14} color={T.ink3} strokeWidth={1.8} />
-            <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink3 }}>Manuel fatura</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setTxOpen({ visible: true, type: 'RETURN' })}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 9999, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
-          >
-            <RotateCcw size={14} color={T.ink3} strokeWidth={1.8} />
-            <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink3 }}>İade</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setTxOpen({ visible: true, type: 'ADJUSTMENT' })}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 9999, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
-          >
-            <Adjust size={14} color={T.ink3} strokeWidth={1.8} />
-            <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink3 }}>Düzeltme</Text>
-          </Pressable>
-        </View>
-
-        {/* Summary — Phase 4: currency breakdown popups */}
-        {balance && (balance.total_purchases > 0 || balance.total_payments > 0) ? (
-          <View style={{ flexDirection: 'row', gap: 24, paddingTop: 10, borderTopWidth: 1, borderTopColor: T.hairline, flexWrap: 'wrap' }}>
-            <View>
-              <Text style={[eyebrow, { color: '#9C2E2E' }]}>Toplam alış</Text>
-              <CurrencyBreakdown
-                summary={purchaseSummary}
-                baseCurrency={acctCurrency}
-                mode="compact"
-                title="Alış"
-                accentColor="#9C2E2E"
-                numberStyle={{ fontFamily: DisplayFont, fontWeight: '300' as any, fontSize: 18, letterSpacing: -0.4, color: '#9C2E2E', lineHeight: 22 }}
-              />
-            </View>
-            <View>
-              <Text style={[eyebrow, { color: '#1F6B47' }]}>Toplam ödenen</Text>
-              <CurrencyBreakdown
-                summary={paymentSummary}
-                baseCurrency={acctCurrency}
-                mode="compact"
-                title="Ödeme"
-                accentColor="#1F6B47"
-                numberStyle={{ fontFamily: DisplayFont, fontWeight: '300' as any, fontSize: 18, letterSpacing: -0.4, color: '#1F6B47', lineHeight: 22 }}
-              />
+            <View style={{ height: 6, borderRadius: 3, backgroundColor: heroInk.tileBg, overflow: 'hidden' }}>
+              <View style={{ width: `${payPct}%` as any, height: '100%', borderRadius: 3, backgroundColor: '#2D9A6B' }} />
             </View>
           </View>
         ) : null}
-      </View>
+      </WhiteHero>
 
-      {/* Contact info */}
-      {(supplier.contact_person || supplier.phone || supplier.email || supplier.website || supplier.address || supplier.iban) && (
-        <View style={[PCard, { gap: 10 }]}>
-          <Text style={eyebrow}>İletişim & banka</Text>
-          {supplier.contact_person ? <InfoRow icon={Building2} label="İlgili kişi" value={supplier.contact_person} /> : null}
-          {supplier.phone ? <InfoRow icon={Phone} label="Telefon" value={supplier.phone} /> : null}
-          {supplier.email ? <InfoRow icon={Mail} label="E-posta" value={supplier.email} /> : null}
-          {supplier.website ? <InfoRow icon={Globe} label="Web" value={supplier.website} /> : null}
-          {supplier.address ? <InfoRow icon={MapPin} label="Adres" value={supplier.address} /> : null}
-          {supplier.iban ? <InfoRow icon={CreditCard} label={`IBAN${supplier.bank_name ? ` · ${supplier.bank_name}` : ''}`} value={supplier.iban} /> : null}
-          {supplier.payment_terms_days > 0 ? <InfoRow icon={Calendar} label="Vade" value={`${supplier.payment_terms_days} ${autoT('gün')}`} /> : null}
-        </View>
-      )}
-
-      {/* Transactions table */}
-      <View style={[PCard, { padding: 0, overflow: 'hidden' }]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 18, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: T.hairline }}>
-          <Text style={[eyebrow, { color: T.ink3 }]}>Cari hareketler</Text>
+      {/* Cari hareketler — ekstre / finans tablolarıyla aynı kalıp */}
+      <MobileTableX
+        title="Cari hareketler" count={transactions.length} countLabel="kayıt"
+        footer={transactions.length > 0 ? <>
+          <Text style={MT.footNote}>{transactions.length} kayıt</Text>
           <View style={{ flex: 1 }} />
-          <Text style={{ fontSize: 11, color: T.ink3 }}>{transactions.length} kayıt</Text>
-        </View>
-
+          <Text style={MT.footLabel}>Bakiye:</Text>
+          <Text style={[MT.amount, { color: toneColor }]}>{tone === 'zero' ? '—' : balanceText}</Text>
+        </> : undefined}
+      >
         {transactions.length === 0 ? (
           <View style={{ alignItems: 'center', paddingVertical: 40, gap: 8 }}>
-            <Receipt size={28} color={isDark ? (T.ink3 as string) : '#D9D9D9'} strokeWidth={1.4} />
-            <Text style={{ fontSize: 13, color: T.ink3 }}>Henüz cari hareket yok</Text>
+            <Receipt size={28} color={U.ink[300]} strokeWidth={1.4} />
+            <Text style={{ fontSize: 13, color: U.ink[500] }}>Henüz cari hareket yok</Text>
           </View>
         ) : transactions.map((t, idx) => {
           const isCredit = t.type === 'PAYMENT' || t.type === 'RETURN';
           const sign = isCredit ? -1 : 1;
-          const txColor = t.type === 'PAYMENT' ? '#1F6B47' : t.type === 'RETURN' ? '#0F766E' : t.type === 'ADJUSTMENT' ? '#6B6B6B' : '#9C2E2E';
+          // Tema-farkında tonlar: alış borç (kırmızı), ödeme alacak (yeşil), iade bilgi, düzeltme nötr
+          const tt = t.type === 'PAYMENT' ? U.chipTones.success : t.type === 'RETURN' ? U.chipTones.info
+            : t.type === 'ADJUSTMENT' ? { bg: U.chipNeutral, fg: U.ink[500] } : U.chipTones.danger;
           const Icon = t.type === 'PURCHASE' ? ArrowUpCircle : t.type === 'PAYMENT' ? ArrowDownCircle : t.type === 'RETURN' ? RotateCcw : Adjust;
           // PURCHASE satırı tıklanabilir: önce purchase_invoice_id, yoksa invoice_no ile bul
           const isPurchase = t.type === 'PURCHASE' && (!!t.purchase_invoice_id || !!t.invoice_no);
@@ -481,109 +423,90 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
               if (uuid) openInvoice(uuid);
             }
           };
+          const meta = [
+            t.bank_name,
+            t.reference_no ? `Ref: ${t.reference_no}` : null,
+            t.iban,
+          ].filter(Boolean).join(' · ');
 
           return (
-            <Pressable
-              key={t.id}
-              onPress={isPurchase ? openPurchasePreview : undefined}
-              // ÖNEMLİ: fonksiyon-stilli Pressable native'de row layout'u DÜŞÜRÜYOR
-              // (ikon üstte, tutar ve aksiyonlar alt alta) — web'de görünmez.
-              // Native'de object stil, hover fonksiyon stili yalnız web'de.
-              style={Platform.OS === 'web'
-                ? ((({ hovered }: any) => ({
-                    flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12,
-                    paddingHorizontal: 18, paddingVertical: 13,
-                    borderBottomWidth: idx < transactions.length - 1 ? 1 : 0,
-                    borderBottomColor: T.hairline,
-                    backgroundColor: isPurchase && hovered ? (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.025)') : 'transparent',
-                    ...(isPurchase ? { cursor: 'pointer' } : {}),
-                  })) as any)
-                : {
-                    flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12,
-                    paddingHorizontal: 18, paddingVertical: 13,
-                    borderBottomWidth: idx < transactions.length - 1 ? 1 : 0,
-                    borderBottomColor: T.hairline,
-                    backgroundColor: 'transparent',
-                  }}
-            >
-              <View style={{ width: 36, height: 36, borderRadius: 18, flexShrink: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: txColor + '14' }}>
-                <Icon size={16} color={txColor} strokeWidth={1.6} />
-              </View>
+            <MobileTableRowX key={t.id} isLast={idx === transactions.length - 1} onPress={isPurchase ? openPurchasePreview : undefined}>
+              <MobileTableIconX icon={Icon} tone={tt} />
               <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '600', color: T.ink }}>{TX_TYPE_LABELS[t.type]}</Text>
+                  <Text numberOfLines={1} style={[MT.title, { flexShrink: 1 }]}>{TX_TYPE_LABELS[t.type]}</Text>
                   {t.invoice_no ? (
-                    <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, backgroundColor: T.hairline }}>
-                      <Text style={{ fontSize: 10, fontWeight: '600', color: T.ink3 }}>#{t.invoice_no}</Text>
+                    <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: U.chipNeutral }}>
+                      <Text style={{ fontSize: 9.5, fontWeight: '600', color: U.ink[500] }}>#{t.invoice_no}</Text>
                     </View>
                   ) : null}
-                  {t.payment_method ? (
-                    <Text style={{ fontSize: 10, color: T.ink3 }}>· {PAYMENT_METHOD_LABELS[t.payment_method]}</Text>
+                  {t.payment_method && PAYMENT_METHOD_LABELS[t.payment_method] ? (
+                    <Text style={{ fontSize: 10, color: U.ink[400] }}>· {PAYMENT_METHOD_LABELS[t.payment_method]}</Text>
                   ) : null}
                 </View>
-                {(t.bank_name || t.reference_no || t.iban) ? (
-                  <Text style={{ fontSize: 11, color: T.ink3, marginTop: 1 }} numberOfLines={1}>
-                    {[
-                      t.bank_name,
-                      t.reference_no ? `Ref: ${t.reference_no}` : null,
-                      t.iban,
-                    ].filter(Boolean).join(' · ')}
-                  </Text>
-                ) : null}
-                {t.description ? (
-                  <Text style={{ fontSize: 11, color: T.ink3, marginTop: 1 }} numberOfLines={1}>{t.description}</Text>
-                ) : null}
-                <Text style={{ fontSize: 10, color: T.ink3, marginTop: 1 }}>
+                {meta ? <Text style={MT.sub} numberOfLines={1}>{meta}</Text> : null}
+                {t.description ? <Text style={MT.sub} numberOfLines={1}>{t.description}</Text> : null}
+                <Text style={[MT.meta, { marginTop: 2 }]}>
                   {new Date(t.transaction_date).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short', year: 'numeric' })}
-                  {t.due_date ? ` · vade: ${new Date(t.due_date).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short' })}` : ''}
+                  {t.due_date ? ` · ${autoT('vade')} ${new Date(t.due_date).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short' })}` : ''}
                 </Text>
               </View>
-              <View style={{ alignItems: 'flex-end', flexShrink: 0 }}>
-                <Text style={{ fontSize: 14, fontWeight: '600', color: txColor, letterSpacing: -0.2, fontVariant: ['tabular-nums'] }}>
-                  {sign > 0 ? '+' : '−'}{formatMoney(t.amount, t.currency, { fractionDigits: 2 })}
-                </Text>
-                {/* İkincil satır CARİNİN para biriminde (amount_account), baz ₺'de değil.
-                    Bakiye/toplamlar zaten acctCurrency üzerinden hesaplanıyor; ≈ satırı
-                    da onunla aynı birimde olmalı ki hareketler bakiyeyle kıyaslanabilsin.
-                    Çevrim kaydın kendi account_rate_at_time'ıyla yapılmış (yeniden hesap yok). */}
-                {t.currency !== acctCurrency && t.amount_account != null ? (
-                  <Text style={{ fontSize: 10, color: T.ink3, marginTop: 1 }}>
-                    ≈ {formatMoney(Math.abs(Number(t.amount_account)), acctCurrency, { fractionDigits: 2 })}
+              <View style={{ alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={[MT.amount, { color: tt.fg, fontVariant: ['tabular-nums'] }]}>
+                    {sign > 0 ? '+' : '−'}{formatMoney(t.amount, t.currency, { fractionDigits: 2 })}
                   </Text>
-                ) : null}
+                  {/* İkincil satır CARİNİN para biriminde (amount_account), baz ₺'de değil.
+                      Bakiye/toplamlar zaten acctCurrency üzerinden hesaplanıyor; ≈ satırı
+                      da onunla aynı birimde olmalı ki hareketler bakiyeyle kıyaslanabilsin.
+                      Çevrim kaydın kendi account_rate_at_time'ıyla yapılmış (yeniden hesap yok). */}
+                  {t.currency !== acctCurrency && t.amount_account != null ? (
+                    <Text style={MT.amountSub}>
+                      ≈ {formatMoney(Math.abs(Number(t.amount_account)), acctCurrency, { fractionDigits: 2 })}
+                    </Text>
+                  ) : null}
+                </View>
+                {/* Düzenle + Sil */}
+                <View style={{ flexDirection: 'row', gap: 4 }}>
+                  <GlassTooltip title={autoT('Düzenle')} text={autoT('Hareketi düzenler')}>
+                    <Pressable
+                      onPress={(e: any) => { e?.stopPropagation?.(); handleEditTx(t); }}
+                      hitSlop={6}
+                      style={{ width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: U.chipNeutral, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                    >
+                      <Pencil size={12} color={U.ink[500]} strokeWidth={1.8} />
+                    </Pressable>
+                  </GlassTooltip>
+                  <GlassTooltip title={autoT('Sil')} text={autoT('Hareketi kalıcı olarak siler')}>
+                    <Pressable
+                      onPress={(e: any) => { e?.stopPropagation?.(); handleDeleteTx(t); }}
+                      hitSlop={6}
+                      style={{ width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: U.chipTones.danger.bg, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                    >
+                      <Trash2 size={12} color={U.chipTones.danger.fg} strokeWidth={1.8} />
+                    </Pressable>
+                  </GlassTooltip>
+                </View>
               </View>
-
-              {/* Edit + Delete actions */}
-              <View style={{ flexDirection: 'row', gap: 4, marginStart: 8, flexShrink: 0 }}>
-                <Pressable
-                  onPress={(e: any) => { e?.stopPropagation?.(); handleEditTx(t); }}
-                  hitSlop={6}
-                  style={{
-                    width: 28, height: 28, borderRadius: 14,
-                    alignItems: 'center', justifyContent: 'center',
-                    backgroundColor: T.hairline,
-                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                  }}
-                >
-                  <Pencil size={12} color={T.ink3} strokeWidth={1.8} />
-                </Pressable>
-                <Pressable
-                  onPress={(e: any) => { e?.stopPropagation?.(); handleDeleteTx(t); }}
-                  hitSlop={6}
-                  style={{
-                    width: 28, height: 28, borderRadius: 14,
-                    alignItems: 'center', justifyContent: 'center',
-                    backgroundColor: 'rgba(156,46,46,0.08)',
-                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                  }}
-                >
-                  <Trash2 size={12} color="#9C2E2E" strokeWidth={1.8} />
-                </Pressable>
-              </View>
-            </Pressable>
+            </MobileTableRowX>
           );
         })}
-      </View>
+      </MobileTableX>
+
+      {/* İletişim ve banka — aynı tablo kalıbında */}
+      {contactRows.length > 0 && (
+        <MobileTableX title="İletişim ve banka">
+          {contactRows.map((r, i) => (
+            <MobileTableRowX key={r.label} isLast={i === contactRows.length - 1}>
+              <MobileTableIconX icon={r.icon} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={MT.meta}>{r.label}</Text>
+                <Text style={[MT.title, { fontWeight: '500', marginTop: 1 }]}>{r.value}</Text>
+              </View>
+            </MobileTableRowX>
+          ))}
+        </MobileTableX>
+      )}
 
       {/* Modals */}
       <SupplierFormModal
@@ -613,17 +536,31 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
   );
 }
 
-function InfoRow({ icon: Icon, label, value }: { icon: any; label: string; value: string }) {
-  const T = useMobileTokens();
+/** Hero eylem düğmesi — ekstre sayfasındaki PillBtn ile aynı ölçü ve tonlar. */
+function HeroBtn({ icon: Icon, label, onPress, variant = 'dark' }: {
+  icon: React.ComponentType<any>; label?: string; onPress: () => void; variant?: 'dark' | 'ghost';
+}) {
+  const U = useInkUI();
+  const dark = variant === 'dark';
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-      <View style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: T.hairline }}>
-        <Icon size={12} color={T.ink3} strokeWidth={1.8} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 11, color: T.ink3, fontWeight: '500' }}>{label}</Text>
-        <Text style={{ fontSize: 13, color: T.ink2, fontWeight: '500', marginTop: 1 }}>{value}</Text>
-      </View>
-    </View>
+    <Pressable
+      onPress={onPress}
+      style={{
+        flexDirection: 'row', alignItems: 'center', gap: 6,
+        paddingHorizontal: label ? 16 : 12, paddingVertical: 10,
+        borderRadius: 999,
+        backgroundColor: dark ? U.ink[900] : 'transparent',
+        borderWidth: dark ? 0 : 1,
+        borderColor: U.ink[200],
+        ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+      }}
+    >
+      <Icon size={14} color={dark ? U.onDarkPill : U.ink[700]} strokeWidth={1.8} />
+      {!!label && (
+        <Text style={{ fontSize: 12, fontWeight: '600', color: dark ? U.onDarkPill : U.ink[700] }}>
+          {label}
+        </Text>
+      )}
+    </Pressable>
   );
 }

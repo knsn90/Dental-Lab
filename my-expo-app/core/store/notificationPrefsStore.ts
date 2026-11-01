@@ -22,7 +22,7 @@ export type NotificationCategory =
   | 'new_order'    | 'order_status'    | 'chat'      | 'approval'
   | 'payment'      | 'stock'           | 'delivery'  | 'paper_order'
   | 'material_request' | 'order_watch' | 'stage_critical' | 'stock_count'
-  | 'implant_parts' | 'scan_annotation';
+  | 'implant_parts' | 'scan_annotation' | 'account' | 'scan_schedule';
 
 export type NotificationChannel = 'in_app' | 'browser_push' | 'email' | 'whatsapp';
 
@@ -76,6 +76,10 @@ const DEFAULT_PREFS: NotificationPrefs = {
     // Fiziksel sayım hatırlatması (yalnız admin/lab-manager) — aksiyon gerektirir,
     // ayda birkaç kez çıkar: in-app + push + email açık, whatsapp kapalı.
     stock_count:  { in_app: true,  browser_push: true,  email: true,  whatsapp: false },
+    // Tarama programı (sabah bugün / akşam yarın; admin, lab yöneticisi, teknisyen) — WhatsApp gönderilmez.
+    scan_schedule: { in_app: true, browser_push: true, email: true, whatsapp: false },
+    // Hesap açıldı (lab onayı) — işlemsel: sunucu e-postayı tercihten bağımsız atar.
+    account:      { in_app: true,  browser_push: true,  email: true,  whatsapp: true },
   },
 };
 

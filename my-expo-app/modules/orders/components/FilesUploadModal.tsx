@@ -68,6 +68,8 @@ export interface UploadAttachment {
   canRemove?: boolean;
   /** Orijinal dosya adı (uzantı dahil) — 3D viewer için format tespiti. */
   filename?: string;
+  /** Sohbette paylaşılmış ek — "Sohbetten" grubunda, sohbet işaretiyle, silinemez. */
+  fromChat?: boolean;
 }
 
 export interface FilesUploadModalProps {
@@ -507,7 +509,8 @@ export function FilesUploadModal({
       { title: 'İmplant Bilgileri', color: '#8B5CF6', labels: [IMPLANT_SCAN_LABEL, SCAN_PARTS_PHOTO_LABEL] },
       { title: 'Ek Dosyalar',       color: '#F59E0B', labels: [PDF_LABEL, REF_PHOTO_LABEL] },
     ];
-    const catFor = (name: string) => {
+    const catFor = (name: string, fromChat?: boolean) => {
+      if (fromChat) return { title: 'Sohbetten', color: isDark ? '#7DD3FC' : '#0284C7', labels: [] };
       for (const c of cats) {
         for (const lbl of c.labels) {
           if (name.startsWith(lbl)) return c;
@@ -523,7 +526,7 @@ export function FilesUploadModal({
     };
     const map = new Map<string, { title: string; color: string; items: Array<{ att: UploadAttachment; r: number }> }>();
     attachments.forEach((att, idx) => {
-      const c = catFor(att.name);
+      const c = catFor(att.name, att.fromChat);
       if (!map.has(c.title)) map.set(c.title, { title: c.title, color: c.color, items: [] });
       map.get(c.title)!.items.push({ att, r: rec(att, idx) });
     });
@@ -534,7 +537,7 @@ export function FilesUploadModal({
         items: g.items.sort((a, b) => b.r - a.r).map(x => x.att),  // grup içi: yeni üstte
       }))
       .sort((a, b) => b.maxR - a.maxR);  // en son yüklenen kategori en üstte
-  }, [attachments, extraGroups, P]);
+  }, [attachments, extraGroups, P, isDark]);
 
   return (
     <Modal
@@ -741,6 +744,9 @@ export function FilesUploadModal({
                     )}
                   </View>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                    {heroFile.fromChat ? (
+                      <AppIcon name={'message-circle' as any} size={12} color={isDark ? '#7DD3FC' : '#0284C7'} />
+                    ) : null}
                     <Text numberOfLines={1} style={{ flex: 1, fontSize: 11, fontFamily: F.semibold, color: T.ink3 }}>
                       {shortLabel(heroFile.name)}
                     </Text>
@@ -874,6 +880,9 @@ export function FilesUploadModal({
                             </View>
                           );
                         })()}
+                        {att.fromChat ? (
+                          <AppIcon name={'message-circle' as any} size={13} color={isDark ? '#7DD3FC' : '#0284C7'} />
+                        ) : null}
                         <Text
                           style={{ flex: 1, fontSize: 12, fontFamily: F.semibold, color: T.ink }}
                           numberOfLines={1}

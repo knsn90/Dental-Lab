@@ -1,0 +1,16 @@
+# 20261031130000_fatura_no_siparis — canlı ÖNCE (2026-10-31)
+## set_invoice_number (canlı)
+CREATE OR REPLACE FUNCTION public.set_invoice_number()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.invoice_number IS NULL OR NEW.invoice_number = '' THEN
+    NEW.invoice_number := next_invoice_number(NEW.lab_id);
+  END IF;
+  RETURN NEW;
+END;
+$function$
+## invoice_orders tetikleyicileri: auto_set_lab_id_invoice_orders, trg_invoice_orders_one_active

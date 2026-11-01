@@ -25,6 +25,7 @@ import { navBarMetrics, navGlass, navSurfaceStyle, useReduceTransparency } from 
 import { GlassBlurLayer } from '../../core/ui/mobile/GlassBlurLayer';
 import { prefersReducedMotion } from '../../core/ui/mobile/navScroll';
 import { deliveryRef } from '../delivery/label';
+import { patientInitials } from '../orders/lib/workLabel';
 import { isIncomingLeg } from '../delivery/direction';
 import { NewShipmentModal } from './components/NewShipmentModal';
 import { SlideTabBar } from '../../core/ui/SlideTabBar';
@@ -350,7 +351,8 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
       return {
         ...r,
         order_number: deliveryRef(r),
-        patient_name: r.work_order?.patient_name ?? null,
+        // KVKK: kurye panelinde (courierId dolu) hasta adı baş harfe indirilir; lab/admin tam görür.
+        patient_name: courierId ? (patientInitials(r.work_order?.patient_name) || null) : (r.work_order?.patient_name ?? null),
         courier_name: r.courier?.full_name ?? null,
         doctor_name:    doc?.name ?? null,
         clinic_name:    doc?.clinicId ? (clinicMap.get(doc.clinicId)?.name ?? null) : null,

@@ -15,6 +15,10 @@ import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { toast } from '../../../core/ui/Toast';
+import { MobileTableX, MobileTableRowX, MobileTableInitialX, useMobileTableText } from '../../../core/ui/MobileTableX';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { useInkUI } from '../../../core/theme/inkScale';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import {
   fetchPendingAdvanceRequests, fetchAllAdvanceRequests,
   approveAdvanceRequest, rejectAdvanceRequest,
@@ -30,6 +34,8 @@ export function AdvanceRequestsAdminScreen() {
   const insets = useSafeAreaInsets();
   const theme = usePanelTheme();
   const T = useMobileTokens() as any;
+  const U = useInkUI();
+  const MT = useMobileTableText();
   const A = theme.primary;
   const { profile } = useAuthStore() as any;
   const PAGE = T.bg ?? '#F5F1EB';
@@ -112,47 +118,49 @@ export function AdvanceRequestsAdminScreen() {
             <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink }}>{tab === 'pending' ? 'Bekleyen talep yok' : 'Talep yok'}</Text>
           </View>
         ) : (
-          <View style={{ gap: 10 }}>
-            {items.map(it => {
+          /* Ekstre / giderler mobil tablosuyla aynı kalıp */
+          <MobileTableX title="Avans Talepleri" count={items.length} countLabel="talep" accent={A}>
+            {items.map((it, i) => {
               const cfg = ADVANCE_STATUS_CFG[it.status];
               const SIcon = STATUS_ICON[it.status];
+              const busy = busyId === it.id;
               return (
-                <View key={it.id} style={{ backgroundColor: T.card, borderRadius: 16, padding: 14, borderWidth: 1, borderColor: T.hairline }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={{ fontSize: 14, fontWeight: '700', color: T.ink }} numberOfLines={1}>{it.employees?.full_name ?? 'Personel'}</Text>
-                      <Text style={{ fontSize: 11, color: T.ink3 }}>{it.employees?.role ?? ''} · {fmtDate(it.created_at)}</Text>
-                    </View>
-                    <Text style={{ fontSize: 18, fontWeight: '800', color: T.ink, letterSpacing: -0.3 }}>{fmtTL(Number(it.amount))}</Text>
-                  </View>
-                  {!!it.reason && <Text style={{ fontSize: 12.5, color: T.ink2, marginTop: 6 }} numberOfLines={3}>{it.reason}</Text>}
-
-                  {it.status === 'bekliyor' ? (
-                    <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
-                      <Pressable disabled={busyId === it.id} onPress={() => setRejectFor(it)} style={({ pressed }: any) => ({ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 11, backgroundColor: 'rgba(217,75,75,0.10)', opacity: pressed ? 0.8 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) })}>
-                        <X size={15} color="#D94B4B" strokeWidth={2.4} />
-                        <Text style={{ fontSize: 13, fontWeight: '700', color: '#D94B4B' }}>Reddet</Text>
-                      </Pressable>
-                      <Pressable disabled={busyId === it.id} onPress={() => onApprove(it)} style={({ pressed }: any) => ({ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 11, backgroundColor: '#2D9A6B', opacity: pressed ? 0.85 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) })}>
-                        <Check size={15} color="#FFF" strokeWidth={2.6} />
-                        <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFF' }}>{busyId === it.id ? '…' : 'Onayla'}</Text>
-                      </Pressable>
-                    </View>
-                  ) : (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999, backgroundColor: cfg.bg }}>
-                        <SIcon size={12} color={cfg.fg} strokeWidth={2} />
-                        <Text style={{ fontSize: 11, fontWeight: '700', color: cfg.fg }}>{cfg.label}</Text>
+                <MobileTableRowX key={it.id} isLast={i === items.length - 1} align="flex-start">
+                  <MobileTableInitialX name={it.employees?.full_name} tone={{ bg: cfg.bg, fg: cfg.fg }} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={MT.title} numberOfLines={1}>{it.employees?.full_name ?? autoT('Personel')}</Text>
+                    <Text style={MT.sub} numberOfLines={1}>{it.employees?.role ?? ''} · {fmtDate(it.created_at)}</Text>
+                    {!!it.reason && <Text style={[MT.meta, { marginTop: 2, color: T.ink2 }]} numberOfLines={3}>{it.reason}</Text>}
+                    {it.status === 'bekliyor' ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 }}>
+                        <GlassTooltip title={autoT('Reddet')} text={autoT('Talebi reddeder')}>
+                          <Pressable disabled={busy} onPress={() => setRejectFor(it)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: U.chipTones.danger.bg, opacity: busy ? 0.5 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                            <X size={12} color={U.chipTones.danger.fg} strokeWidth={2.4} />
+                            <Text style={{ fontSize: 11, fontWeight: '600', color: U.chipTones.danger.fg }}>Reddet</Text>
+                          </Pressable>
+                        </GlassTooltip>
+                        <GlassTooltip title={autoT('Onayla')} text={autoT('Avans talebini onaylar ve deftere işler')}>
+                          <Pressable disabled={busy} onPress={() => onApprove(it)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999, backgroundColor: '#2D9A6B', opacity: busy ? 0.7 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                            <Check size={12} color="#FFF" strokeWidth={2.6} />
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFF' }}>{busy ? '…' : 'Onayla'}</Text>
+                          </Pressable>
+                        </GlassTooltip>
                       </View>
-                      {it.status === 'reddedildi' && !!it.reject_reason && (
-                        <Text style={{ fontSize: 11.5, color: '#D94B4B', flex: 1 }} numberOfLines={1}>{it.reject_reason}</Text>
-                      )}
+                    ) : it.status === 'reddedildi' && !!it.reject_reason ? (
+                      <Text style={[MT.meta, { marginTop: 2, color: U.chipTones.danger.fg }]} numberOfLines={1}>{it.reject_reason}</Text>
+                    ) : null}
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={MT.amount}>{fmtTL(Number(it.amount))}</Text>
+                    <View style={{ marginTop: 4, flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: cfg.bg }}>
+                      <SIcon size={10} color={cfg.fg} strokeWidth={2} />
+                      <Text style={{ fontSize: 9, fontWeight: '700', color: cfg.fg }}>{cfg.label}</Text>
                     </View>
-                  )}
-                </View>
+                  </View>
+                </MobileTableRowX>
               );
             })}
-          </View>
+          </MobileTableX>
         )}
       </ScrollView>
 

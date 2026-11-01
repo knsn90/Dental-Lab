@@ -1,0 +1,78 @@
+{
+ "acl": {
+  "v_clinic_balance": "{postgres=arwdDxtm/postgres,anon=m/postgres,authenticated=rxtm/postgres,service_role=arwdDxtm/postgres}",
+  "v_clinic_balance_ccy": "{postgres=arwdDxtm/postgres,anon=m/postgres,authenticated=rxtm/postgres,service_role=arwdDxtm/postgres}"
+ },
+ "cols_b": [
+  "clinic_id",
+  "clinic_name",
+  "lab_id",
+  "invoice_count",
+  "total_billed",
+  "total_paid",
+  "balance",
+  "overdue_amount",
+  "aging_current",
+  "aging_30",
+  "aging_60",
+  "aging_90",
+  "oldest_overdue_date",
+  "currency",
+  "total_billed_original",
+  "total_paid_original",
+  "balance_original",
+  "unallocated_credit"
+ ],
+ "cols_c": [
+  "clinic_id",
+  "clinic_name",
+  "lab_id",
+  "currency",
+  "invoice_count",
+  "total_billed",
+  "total_paid",
+  "balance",
+  "overdue_amount",
+  "aging_current",
+  "aging_30",
+  "aging_60",
+  "aging_90",
+  "oldest_overdue_date",
+  "unallocated_credit"
+ ],
+ "deps": null,
+ "exists": null,
+ "fn_deps": null,
+ "labs_tz": [
+  {
+   "id": "039dcd67-d21b-4c71-8a64-def61b051c8d",
+   "tz": "Asia/Tehran"
+  },
+  {
+   "id": "bcc579b7-3dd4-42f6-9489-5c1cc942038f",
+   "tz": "Europe/Istanbul"
+  },
+  {
+   "id": "7c769d4a-0cec-408f-85d0-9dccac7bd969",
+   "tz": "Europe/Istanbul"
+  },
+  {
+   "id": "fd0e6893-a542-4841-8f11-2873316bde72",
+   "tz": "Asia/Tehran"
+  },
+  {
+   "id": "243ef1db-9853-424b-8292-0025abfca436",
+   "tz": "Europe/Istanbul"
+  }
+ ],
+ "opts": {
+  "v_clinic_balance": [
+   "security_invoker=true"
+  ],
+  "v_clinic_balance_ccy": [
+   "security_invoker=true"
+  ]
+ },
+ "v_clinic_balance": " SELECT c.id AS clinic_id,\n    c.name AS clinic_name,\n    i.lab_id,\n    count(DISTINCT i.id) FILTER (WHERE (i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text]))) AS invoice_count,\n    COALESCE(sum(COALESCE(i.amount_base, (i.total * COALESCE(i.rate_at_time, (1)::numeric)))) FILTER (WHERE (i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text]))), (0)::numeric) AS total_billed,\n    COALESCE(sum((i.paid_amount * COALESCE(i.rate_at_time, (1)::numeric))) FILTER (WHERE (i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text]))), (0)::numeric) AS total_paid,\n    (COALESCE(sum(((i.total - i.paid_amount) * COALESCE(i.rate_at_time, (1)::numeric))) FILTER (WHERE (i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text]))), (0)::numeric) - COALESCE(( SELECT sum((r.total_base - r.allocated_base)) AS sum\n           FROM clinic_receipts r\n          WHERE (r.clinic_id = c.id)), (0)::numeric)) AS balance,\n    COALESCE(sum(((i.total - i.paid_amount) * COALESCE(i.rate_at_time, (1)::numeric))) FILTER (WHERE ((i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND (i.due_date < CURRENT_DATE) AND (i.paid_amount < i.total))), (0)::numeric) AS overdue_amount,\n    COALESCE(sum(((i.total - i.paid_amount) * COALESCE(i.rate_at_time, (1)::numeric))) FILTER (WHERE ((i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND (i.paid_amount < i.total) AND ((i.due_date IS NULL) OR (i.due_date >= CURRENT_DATE)))), (0)::numeric) AS aging_current,\n    COALESCE(sum(((i.total - i.paid_amount) * COALESCE(i.rate_at_time, (1)::numeric))) FILTER (WHERE ((i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND (i.paid_amount < i.total) AND (i.due_date IS NOT NULL) AND ((CURRENT_DATE - i.due_date) >= 1) AND ((CURRENT_DATE - i.due_date) <= 30))), (0)::numeric) AS aging_30,\n    COALESCE(sum(((i.total - i.paid_amount) * COALESCE(i.rate_at_time, (1)::numeric))) FILTER (WHERE ((i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND (i.paid_amount < i.total) AND (i.due_date IS NOT NULL) AND ((CURRENT_DATE - i.due_date) >= 31) AND ((CURRENT_DATE - i.due_date) <= 60))), (0)::numeric) AS aging_60,\n    COALESCE(sum(((i.total - i.paid_amount) * COALESCE(i.rate_at_time, (1)::numeric))) FILTER (WHERE ((i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND (i.paid_amount < i.total) AND (i.due_date IS NOT NULL) AND ((CURRENT_DATE - i.due_date) > 60))), (0)::numeric) AS aging_90,\n    min(i.due_date) FILTER (WHERE ((i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND (i.due_date < CURRENT_DATE) AND (i.paid_amount < i.total))) AS oldest_overdue_date,\n        CASE\n            WHEN (count(DISTINCT i.currency) FILTER (WHERE ((i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND (i.currency IS NOT NULL) AND (i.currency <> 'TRY'::text))) = 1) THEN max(i.currency) FILTER (WHERE ((i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND (i.currency <> 'TRY'::text)))\n            ELSE NULL::text\n        END AS currency,\n    COALESCE(sum(i.total) FILTER (WHERE ((i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND (i.currency IS NOT NULL) AND (i.currency <> 'TRY'::text))), (0)::numeric) AS total_billed_original,\n    COALESCE(sum(i.paid_amount) FILTER (WHERE ((i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND (i.currency IS NOT NULL) AND (i.currency <> 'TRY'::text))), (0)::numeric) AS total_paid_original,\n    COALESCE(sum((i.total - i.paid_amount)) FILTER (WHERE ((i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND (i.currency IS NOT NULL) AND (i.currency <> 'TRY'::text))), (0)::numeric) AS balance_original,\n    COALESCE(( SELECT sum((r.total_base - r.allocated_base)) AS sum\n           FROM clinic_receipts r\n          WHERE (r.clinic_id = c.id)), (0)::numeric) AS unallocated_credit\n   FROM (clinics c\n     LEFT JOIN invoices i ON ((i.clinic_id = c.id)))\n  GROUP BY c.id, c.name, i.lab_id;",
+ "v_clinic_balance_ccy": " SELECT c.id AS clinic_id,\n    c.name AS clinic_name,\n    i.lab_id,\n    COALESCE(i.currency, 'TRY'::text) AS currency,\n    count(DISTINCT i.id) FILTER (WHERE (i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text]))) AS invoice_count,\n    COALESCE(sum(i.total) FILTER (WHERE (i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text]))), (0)::numeric) AS total_billed,\n    COALESCE(sum(i.paid_amount) FILTER (WHERE (i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text]))), (0)::numeric) AS total_paid,\n    (COALESCE(sum((i.total - i.paid_amount)) FILTER (WHERE (i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text]))), (0)::numeric) - COALESCE(cr.credit, (0)::numeric)) AS balance,\n    COALESCE(sum((i.total - i.paid_amount)) FILTER (WHERE ((i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND (i.due_date < CURRENT_DATE) AND (i.paid_amount < i.total))), (0)::numeric) AS overdue_amount,\n    COALESCE(sum((i.total - i.paid_amount)) FILTER (WHERE ((i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND (i.paid_amount < i.total) AND ((i.due_date IS NULL) OR (i.due_date >= CURRENT_DATE)))), (0)::numeric) AS aging_current,\n    COALESCE(sum((i.total - i.paid_amount)) FILTER (WHERE ((i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND (i.paid_amount < i.total) AND (i.due_date IS NOT NULL) AND ((CURRENT_DATE - i.due_date) >= 1) AND ((CURRENT_DATE - i.due_date) <= 30))), (0)::numeric) AS aging_30,\n    COALESCE(sum((i.total - i.paid_amount)) FILTER (WHERE ((i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND (i.paid_amount < i.total) AND (i.due_date IS NOT NULL) AND ((CURRENT_DATE - i.due_date) >= 31) AND ((CURRENT_DATE - i.due_date) <= 60))), (0)::numeric) AS aging_60,\n    COALESCE(sum((i.total - i.paid_amount)) FILTER (WHERE ((i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND (i.paid_amount < i.total) AND (i.due_date IS NOT NULL) AND ((CURRENT_DATE - i.due_date) > 60))), (0)::numeric) AS aging_90,\n    min(i.due_date) FILTER (WHERE ((i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND (i.due_date < CURRENT_DATE) AND (i.paid_amount < i.total))) AS oldest_overdue_date,\n    COALESCE(cr.credit, (0)::numeric) AS unallocated_credit\n   FROM ((clinics c\n     JOIN invoices i ON ((i.clinic_id = c.id)))\n     LEFT JOIN ( SELECT r.clinic_id,\n            r.base_currency,\n            sum((r.total_base - r.allocated_base)) AS credit\n           FROM clinic_receipts r\n          GROUP BY r.clinic_id, r.base_currency) cr ON (((cr.clinic_id = c.id) AND (cr.base_currency = COALESCE(i.currency, 'TRY'::text)))))\n  GROUP BY c.id, c.name, i.lab_id, COALESCE(i.currency, 'TRY'::text), cr.credit;"
+}

@@ -36,14 +36,18 @@ import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 import { autoT } from '../../../core/i18n/autoTranslate';
+import { MobileTableX, MobileTableRowX, useMobileTableText } from '../../../core/ui/MobileTableX';
 import { supabase } from '../../../core/api/supabase';
 import { getRangeBounds, type RangeKey } from '../components/DateRangePicker';
 import { CenteredLoader } from '../../../core/ui/CenteredLoader';
 import { buildFinanceReportHtml } from '../buildFinanceReportHtml';
-import { baseSymbol, useBaseCurrency } from '../../../core/money/baseCurrency';
+import { baseSymbol, useBaseCurrency, getBaseCurrency } from '../../../core/money/baseCurrency';
 import { formatMoney, CURRENCY_META, type Currency } from '../../../core/money/currency';
 import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 import { WhiteHero } from '../../../core/ui/WhiteHero';
+import { labTodayOf } from '../../../core/metrics/orderDefs';
+import { loadLabTz } from '../../../core/metrics/useLabToday';
+import { isPostedInvoice, isInvoiceOverdue } from '../../../core/metrics/invoiceDefs';
 
 // ── Patterns tokens ─────────────────────────────────────────────────
 const DISPLAY = {
@@ -129,8 +133,9 @@ export function FinanceReportScreen() {
   const [tab, setTab] = useState<'rapor' | 'hatirlatma'>('rapor');
   const [range, setRange] = useState<RangeKey>('last_12_months');
 
-  const cacheKey = `finance_report_v2:${range}`;
-  type ReportCache = { summary: MonthlySummary[]; baseSummary?: { income: number; expense: number; profit: number }[]; upcoming: UpcomingDue[] };
+  // v3: tek tanım (2026-10-26) — birleşik toplam saklı kurla, yaklaşan vadelerde taslak yok.
+  const cacheKey = `finance_report_v3:${range}`;
+  type ReportCache = { summary: MonthlySummary[]; baseSummary?: { month?: string; income: number; expense: number; profit: number }[]; upcoming: UpcomingDue[] };
   const loadCached = (): ReportCache | null => {
     if (typeof window === 'undefined' || !window.localStorage) return null;
     try { const r = window.localStorage.getItem(cacheKey); return r ? JSON.parse(r) : null; } catch { return null; }
@@ -142,7 +147,7 @@ export function FinanceReportScreen() {
   const cached = loadCached();
 
   const [summary, setSummary] = useState<MonthlySummary[]>(cached?.summary ?? []);
-  const [baseSummary, setBaseSummary] = useState<{ income: number; expense: number; profit: number }[]>(cached?.baseSummary ?? []);
+  const [baseSummary, setBaseSummary] = useState<{ month?: string; income: number; expense: number; profit: number }[]>(cached?.baseSummary ?? []);
   const [upcoming, setUpcoming] = useState<UpcomingDue[]>(cached?.upcoming ?? []);
   const [loading, setLoading] = useState(cached === null);
 
@@ -175,7 +180,7 @@ export function FinanceReportScreen() {
       } else {
         sumRows = ((sBase.data ?? []) as any[]).map(r => ({ ...r, currency: 'TRY' })) as MonthlySummary[];
       }
-      const baseRows = (sBase.data ?? []) as { income: number; expense: number; profit: number }[];
+      const baseRows = (sBase.data ?? []) as { month?: string; income: number; expense: number; profit: number }[];
       const upRows  = (s2.data ?? []) as UpcomingDue[];
       setSummary(sumRows);
       setBaseSummary(baseRows);
@@ -357,19 +362,20 @@ export function FinanceReportScreen() {
       : undefined;
 
     // Collection stats
-    const invoices = (invRes.data ?? []) as any[];
-    const today = new Date().toISOString().slice(0, 10);
+    // Tek tanım (2026-10-26): yalnız kesilmiş faturalar (taslak ve iptal hariç); vade = lab günü.
+    const invoices = ((invRes.data ?? []) as any[]).filter(i => isPostedInvoice(i));
+    const today = labTodayOf(await loadLabTz());
     // Baz para birimine çevir (amount_base / paid_amount × rate) — karışık para birimi toplamı doğru olsun.
     const toBase = (i: any) => Number(i.amount_base ?? (Number(i.total ?? 0) * Number(i.rate_at_time ?? 1)));
     const paidBase = (i: any) => Number(i.paid_amount ?? 0) * Number(i.rate_at_time ?? 1);
-    const totalBilled  = invoices.filter(i => i.status !== 'iptal').reduce((s, i) => s + toBase(i), 0);
-    const totalPaid    = invoices.filter(i => i.status !== 'iptal').reduce((s, i) => s + paidBase(i), 0);
+    const totalBilled  = invoices.reduce((s, i) => s + toBase(i), 0);
+    const totalPaid    = invoices.reduce((s, i) => s + paidBase(i), 0);
     const totalOverdue = invoices
-      .filter(i => i.status !== 'iptal' && i.status !== 'odendi' && i.due_date && i.due_date < today)
+      .filter(i => isInvoiceOverdue(i, today))
       .reduce((s, i) => s + Math.max(0, toBase(i) - paidBase(i)), 0);
     const collection = {
       totalBilled, totalPaid, totalOverdue,
-      invoiceCount: invoices.filter(i => i.status !== 'iptal').length,
+      invoiceCount: invoices.length,
     };
 
     // Top expenses
@@ -380,18 +386,26 @@ export function FinanceReportScreen() {
       amount: Number(e.amount_base ?? e.amount ?? 0),
     }));
 
+    const singleCcy = byCurrency.length <= 1;
+    const pdfCurrency = singleCcy ? (byCurrency[0]?.currency ?? getBaseCurrency()) : getBaseCurrency();
+    const pdfRows = singleCcy
+      ? byMonth.map(mm => ({
+          month: mm.month,
+          income:  mm.rows.reduce((s, r) => s + Number(r.income), 0),
+          expense: mm.rows.reduce((s, r) => s + Number(r.expense), 0),
+          profit:  mm.rows.reduce((s, r) => s + Number(r.profit), 0),
+        }))
+      : baseSummary.filter(b => !!b.month).map(b => ({
+          month: String(b.month), income: Number(b.income) || 0, expense: Number(b.expense) || 0, profit: Number(b.profit) || 0,
+        }));
+
     const html = buildFinanceReportHtml({
       lab,
       periodLabel,
-      // PDF (follow-up): ay başına topla — tek para birimli lab'da doğru,
-      // çok-para'da numerik karışım (PDF'in per-currency'ye geçişi ayrı iş).
-      rows: byMonth.map(mm => ({
-        month: mm.month,
-        income:  mm.rows.reduce((s, r) => s + Number(r.income), 0),
-        expense: mm.rows.reduce((s, r) => s + Number(r.expense), 0),
-        profit:  mm.rows.reduce((s, r) => s + Number(r.profit), 0),
-      })),
-      currency: 'TRY',
+      // Dövizler TOPLANMAZ (tek tanım): tek döviz varsa o dövizin satırları; birden çoksa
+      // ana para birimine SAKLI kurla çevrilmiş aylık özet (v_monthly_finance_summary).
+      rows: pdfRows,
+      currency: pdfCurrency,
       previousPeriod,
       categoryBreakdown,
       methodBreakdown,
@@ -534,8 +548,8 @@ export function FinanceReportScreen() {
           {/* ── Aylık Döküm ── */}
           {byMonth.length > 0 && (
             <>
-              <SectionHeader icon={Calendar} label="Aylık Döküm" />
-              <View style={{ ...cardSolid, backgroundColor: T.card, padding: 0, overflow: 'hidden' }}>
+              {/* Ekstre / giderler mobil tablosuyla aynı kalıp */}
+              <MobileTableX title="Aylık Döküm" count={byMonth.length} countLabel="ay">
                 {byMonth.map((mm, i) => (
                   <MonthRow
                     key={mm.month}
@@ -545,7 +559,7 @@ export function FinanceReportScreen() {
                     isDesktop={isDesktop}
                   />
                 ))}
-              </View>
+              </MobileTableX>
               <Text style={{ fontSize: 11, color: T.ink3, paddingHorizontal: 12, lineHeight: 17 }}>
                 Barlar dönemin tamamında ortak ölçekle çizilir — aylar birbiriyle kıyaslanabilir.
               </Text>
@@ -555,16 +569,18 @@ export function FinanceReportScreen() {
       ) : (
         /* ── Hatırlatmalar Tab ── */
         <ScrollView style={{ flex: 1 }} contentContainerStyle={scrollPad} showsVerticalScrollIndicator={false}>
-          <SectionHeader icon={Bell} label="Yaklaşan Vadeler" count={upcoming.length} />
-
           {upcoming.length === 0 ? (
-            <EmptyCard icon={CheckCircle} text="14 gün içinde vadesi dolan fatura yok" tone={CHIP_TONES.success.text} />
+            <>
+              <SectionHeader icon={Bell} label="Yaklaşan Vadeler" count={upcoming.length} />
+              <EmptyCard icon={CheckCircle} text="14 gün içinde vadesi dolan fatura yok" tone={CHIP_TONES.success.text} />
+            </>
           ) : (
-            <View style={{ gap: 10 }}>
-              {upcoming.map(inv => (
-                <ReminderCard key={inv.id} inv={inv} />
+            /* Ekstre / giderler mobil tablosuyla aynı kalıp */
+            <MobileTableX title="Yaklaşan Vadeler" count={upcoming.length} countLabel="fatura">
+              {upcoming.map((inv, i) => (
+                <ReminderCard key={inv.id} inv={inv} isLast={i === upcoming.length - 1} />
               ))}
-            </View>
+            </MobileTableX>
           )}
         </ScrollView>
       )}
@@ -760,7 +776,7 @@ function MonthRow({ data, scaleByCcy, isLast, isDesktop }: {
 
   return (
     <View style={{
-      paddingHorizontal: 24, paddingVertical: 16,
+      paddingHorizontal: isDesktop ? 24 : 16, paddingVertical: isDesktop ? 16 : 12,
       borderBottomWidth: isLast ? 0 : 1,
       borderBottomColor: T.hairline,
       gap: 12,
@@ -827,59 +843,33 @@ function MiniBar({ label, value, pct, color }: { label: string; value: string; p
 }
 
 // ─── Reminder Card ──────────────────────────────────────────────────
-function ReminderCard({ inv }: { inv: UpcomingDue }) {
+function ReminderCard({ inv, isLast }: { inv: UpcomingDue; isLast: boolean }) {
   const T = useMobileTokens();
+  const MT = useMobileTableText();
   const days = inv.days_until_due;
   const tone = days <= 3 ? 'danger' : days <= 7 ? 'warning' : 'info';
   const chipTone = CHIP_TONES[tone];
 
   return (
-    <View style={{
-      ...cardSolid,
-      backgroundColor: T.card,
-      flexDirection: 'row', alignItems: 'center', gap: 14,
-      ...(days <= 3 ? {
-        backgroundColor: 'rgba(217,75,75,0.04)',
-        borderWidth: 1,
-        borderColor: 'rgba(217,75,75,0.15)',
-      } : {}),
-    }}>
-      {/* Days badge */}
-      <View style={{
-        width: 52, height: 52, borderRadius: 14,
-        backgroundColor: chipTone.bg,
-        alignItems: 'center', justifyContent: 'center',
-      }}>
-        <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.3, color: chipTone.text }}>
-          {days}
-        </Text>
-        <Text style={{ fontSize: 9, fontWeight: '600', color: chipTone.text, marginTop: -2 }}>gün</Text>
+    <MobileTableRowX isLast={isLast} tint={days <= 3 ? 'rgba(217,75,75,0.04)' : undefined}>
+      {/* Kalan gün karesi — ikon karesiyle aynı ölçü */}
+      <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: chipTone.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: chipTone.text }}>{days}</Text>
       </View>
-
-      {/* Info */}
-      <View style={{ flex: 1 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <FileText size={12} strokeWidth={1.6} color={T.ink3} />
-          <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink }}>{inv.invoice_number}</Text>
-        </View>
-        {inv.clinic_name && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 }}>
-            <Building2 size={11} strokeWidth={1.4} color={T.ink3} />
-            <Text style={{ fontSize: 12, color: T.ink3 }}>{inv.clinic_name}</Text>
-          </View>
-        )}
-        <Text style={{ fontSize: 11, color: T.ink3, marginTop: 3 }}>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={MT.title} numberOfLines={1}>{inv.invoice_number}</Text>
+        {inv.clinic_name ? <Text style={MT.sub} numberOfLines={1}>{inv.clinic_name}</Text> : null}
+        <Text style={[MT.meta, { marginTop: 2 }]} numberOfLines={1}>
           {new Date(inv.due_date + 'T00:00:00').toLocaleDateString(localeTag(), {
             day: '2-digit', month: 'long', year: 'numeric',
-          })}
+          })} · {days} {autoT('gün kaldı')}
         </Text>
       </View>
-
-      {/* Amount — faturanın kendi para biriminde (katı per-currency) */}
-      <Text style={{ ...DISPLAY, fontSize: 16, letterSpacing: -0.3, color: chipTone.text }}>
+      {/* Tutar — faturanın kendi para biriminde (katı per-currency) */}
+      <Text style={[MT.amount, { color: chipTone.text }]}>
         {formatMoney(Number(inv.balance) || 0, (inv.currency ?? 'TRY') as Currency, { fractionDigits: 2 })}
       </Text>
-    </View>
+    </MobileTableRowX>
   );
 }
 

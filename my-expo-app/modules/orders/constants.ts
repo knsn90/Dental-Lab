@@ -1,5 +1,7 @@
 import { localeTag } from '../../core/i18n';
 import { WorkOrderStatus } from './types';
+import { isOverdueOrder, labTodayOf } from '../../core/metrics/orderDefs';
+import { cachedLabTz } from '../../core/metrics/useLabToday';
 
 // ─── Work Types ──────────────────────────────────────────────────────────────
 export const WORK_TYPES = [
@@ -143,11 +145,8 @@ export function isOrderOverdue(
   status: WorkOrderStatus,
   holdStatus?: string | null,
 ): boolean {
-  if (status === 'teslim_edildi' || status === 'iptal') return false;
-  if (holdStatus === 'on_hold') return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return new Date(deliveryDate) < today;
+  // Tek tanım (2026-10-26): core/metrics/orderDefs + lab günü (TR 00:00–03:00 UTC tuzağı yok).
+  return isOverdueOrder({ status, delivery_date: deliveryDate, hold_status: holdStatus }, labTodayOf(cachedLabTz()));
 }
 
 export function formatDeliveryDate(dateStr: string): string {

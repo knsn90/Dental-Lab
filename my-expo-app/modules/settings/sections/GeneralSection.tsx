@@ -18,7 +18,7 @@ import {
   Globe, Clock, Calendar, Monitor, Sun, Moon, Laptop,
   ChevronDown, Check, Info, Hash, Percent, Timer, LogOut, List,
   CalendarDays, Watch, UserCheck, Building2, Image as ImageIcon, Upload, Trash2,
-  MapPin, Phone, Download,
+  MapPin, Phone, Download, Receipt,
   Bell, Mail, MessageCircle, Send, AlertTriangle,
 } from '../../../core/ui/icons';
 import { Image as RNImage } from 'react-native';
@@ -37,6 +37,14 @@ import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { usePermissions } from '../../../core/hooks/usePermissions';
 import { useLabBrandStore } from '../../../core/store/labBrandStore';
+import { useInkUI } from '../../../core/theme/inkScale';
+import { toast } from '../../../core/ui/Toast';
+import {
+  EMPTY_LAB_BILLING, LAB_BILLING_LABELS, REQUIRED_LAB_BILLING_FIELDS,
+  validateLabBilling, splitLegacyAddress, composeLabAddress,
+  type LabBilling, type LabBillingField,
+} from '../labBilling';
+import { fetchLabBilling, saveLabBilling } from '../labBillingApi';
 
 // ── Types ───────────────────────────────────────────────────────────────
 interface Props {
@@ -485,6 +493,169 @@ function SettingInput({ accentColor, style, multiline, ...rest }: any) {
   );
 }
 
+/**
+ * Fatura Bilgileri — lab künyesi: ticari unvan, VKN/TCKN, vergi dairesi ve
+ * yapılandırılmış adres. Zorunlu alanlar eksik/hatalıyken KAYDEDİLMEZ; e-fatura
+ * gönderimi de bunlar dolmadan kilitli. Görünen adres (labs.address) bu
+ * alanlardan oluşturulur — iki ayrı adres tutulmaz. Kurallar: ../labBilling.ts
+ *
+ * Diğer satırlar alan alan "çıkınca kaydet" çalışır; bu blok alanlar birbirine
+ * bağlı (zorunluluk) olduğu için tek "Kaydet" ile kaydeder.
+ */
+function LabBillingRow({ labId, accentColor, pickupAddress }: {
+  labId: string; accentColor: string; pickupAddress?: string | null;
+}) {
+  const T = useMobileTokens();
+  const U = useInkUI();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const bumpLabBrand = useLabBrandStore(s => s.bump);
+  const [saved, setSaved] = useState<LabBilling>(EMPTY_LAB_BILLING);
+  const [form, setForm] = useState<LabBilling>(EMPTY_LAB_BILLING);
+  const [loading, setLoading] = useState(true);
+  const [prefilled, setPrefilled] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [showErrors, setShowErrors] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    fetchLabBilling(labId).then(({ billing, prefilledFromAddress }) => {
+      if (!alive) return;
+      setForm(billing);
+      // Eski adresten doldurulan alanlar henüz KAYDEDİLMEDİ → "değişti" sayılır.
+      setSaved(prefilledFromAddress ? { ...billing, street: '', district: '', city: '' } : billing);
+      setPrefilled(prefilledFromAddress);
+      setLoading(false);
+    });
+    return () => { alive = false; };
+  }, [labId]);
+
+  const errors = validateLabBilling(form);
+  const savedComplete = Object.keys(validateLabBilling(saved)).length === 0;
+  const missingSaved = REQUIRED_LAB_BILLING_FIELDS.filter(f => !saved[f].trim());
+  const dirty = (Object.keys(form) as LabBillingField[]).some(k => form[k].trim() !== saved[k].trim());
+  const setField = (k: LabBillingField) => (v: string) => { setForm(f => ({ ...f, [k]: v })); setJustSaved(false); };
+
+  const save = async () => {
+    setShowErrors(true);
+    if (Object.keys(errors).length || saving) return;
+    setSaving(true);
+    const r = await saveLabBilling(labId, form);
+    setSaving(false);
+    if (!r.ok) { toast.error(autoT(r.error)); return; }
+    setSaved(r.billing); setForm(r.billing); setPrefilled(false); setShowErrors(false); setJustSaved(true);
+    bumpLabBrand();
+  };
+
+  const field = (k: LabBillingField, opts: { placeholder?: string; multiline?: boolean; keyboardType?: any; flex?: boolean } = {}) => {
+    const err = showErrors ? errors[k] : undefined;
+    const errColor = isDark ? '#FCA5A5' : '#D94B4B';
+    return (
+      <View key={k} style={{ gap: 4, ...(opts.flex ? { flex: 1, minWidth: 0 } : {}) }}>
+        <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3 }}>
+          {LAB_BILLING_LABELS[k]}{REQUIRED_LAB_BILLING_FIELDS.includes(k) ? ' *' : ''}
+        </Text>
+        <SettingInput
+          accentColor={err ? errColor : accentColor}
+          value={form[k]}
+          onChangeText={setField(k)}
+          onSubmitEditing={opts.multiline ? undefined : save}
+          placeholder={opts.placeholder}
+          multiline={opts.multiline}
+          keyboardType={opts.keyboardType}
+          style={{
+            width: '100%', paddingHorizontal: 12,
+            ...(opts.multiline ? { minHeight: 44, paddingVertical: 9, textAlignVertical: 'top' } : { height: 36 }),
+            ...(err ? { borderColor: errColor } : {}),
+          }}
+        />
+        {err ? <Text accessibilityRole="alert" style={{ fontSize: 11, color: errColor }}>{err}</Text> : null}
+      </View>
+    );
+  };
+
+  if (loading) {
+    return (
+      <SettingRow icon={Receipt} label="Fatura Bilgileri" sub="e-Fatura ve resmi belgeler için zorunlu" accentColor={accentColor}>
+        <ActivityIndicator size="small" color={accentColor} />
+      </SettingRow>
+    );
+  }
+
+  return (
+    <SettingRow icon={Receipt} label="Fatura Bilgileri" sub="e-Fatura ve resmi belgeler için zorunlu" accentColor={accentColor}>
+      <View style={{ flex: 1, gap: 10 }}>
+        {!savedComplete && !dirty ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: U.chipTones.warning.bg }}>
+            <AlertTriangle size={12} color={U.chipTones.warning.fg} strokeWidth={2} />
+            <Text style={{ fontSize: 11.5, fontWeight: '600', color: U.chipTones.warning.fg }}>
+              {`${autoT('Eksik')}: ${(missingSaved.length ? missingSaved : (Object.keys(validateLabBilling(saved)) as LabBillingField[])).map(f => autoT(LAB_BILLING_LABELS[f])).join(', ')}`}
+            </Text>
+          </View>
+        ) : null}
+        {prefilled ? (
+          <Text style={{ fontSize: 11.5, color: T.ink3 }}>Adres alanları mevcut adresinizden dolduruldu — kontrol edip kaydedin.</Text>
+        ) : null}
+
+        {field('legal_name', { placeholder: 'ör. Örnek Diş Laboratuvarı San. Tic. Ltd. Şti.' })}
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          {field('tax_number', { placeholder: '10 ya da 11 hane', keyboardType: 'number-pad', flex: true })}
+          {field('tax_office', { placeholder: 'ör. Kozyatağı', flex: true })}
+        </View>
+        {field('street', { placeholder: 'Mahalle, cadde/sokak, no', multiline: true })}
+        {pickupAddress && !form.street.trim() ? (
+          <Pressable
+            onPress={() => { setForm(f => ({ ...f, ...splitLegacyAddress(pickupAddress) })); setJustSaved(false); }}
+            style={({ pressed }: any) => ({
+              flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start',
+              paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8,
+              backgroundColor: `${accentColor}14`, opacity: pressed ? 0.6 : 1,
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+            })}
+          >
+            <Download size={12} color={accentColor} strokeWidth={2} />
+            <Text style={{ fontSize: 11.5, fontWeight: '600', color: accentColor }}>Kurye ayarındaki alış adresini kullan</Text>
+          </Pressable>
+        ) : null}
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          {field('district', { placeholder: 'İlçe', flex: true })}
+          {field('city', { placeholder: 'İl', flex: true })}
+          <View style={{ width: 96 }}>{field('postal_code', { placeholder: '34000', keyboardType: 'number-pad' })}</View>
+        </View>
+
+        {composeLabAddress(form) ? (
+          <Text numberOfLines={2} style={{ fontSize: 11.5, color: T.ink3 }}>
+            {`${autoT('Görünen adres')}: ${composeLabAddress(form)}`}
+          </Text>
+        ) : null}
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 10 }}>
+          {justSaved && !dirty ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Check size={12} color="#2D9A6B" strokeWidth={2.6} />
+              <Text style={{ fontSize: 11.5, fontWeight: '600', color: '#2D9A6B' }}>Kaydedildi</Text>
+            </View>
+          ) : null}
+          <Pressable
+            onPress={save}
+            disabled={!dirty || saving}
+            style={({ pressed }: any) => ({
+              flexDirection: 'row', alignItems: 'center', gap: 6,
+              paddingHorizontal: 16, paddingVertical: 8, borderRadius: 999,
+              backgroundColor: accentColor,
+              opacity: !dirty || saving ? 0.45 : pressed ? 0.85 : 1,
+              ...(Platform.OS === 'web' && dirty && !saving ? { cursor: 'pointer' } as any : {}),
+            })}
+          >
+            {saving ? <ActivityIndicator size="small" color="#FFFFFF" /> : null}
+            <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#FFFFFF' }}>{saving ? 'Kaydediliyor…' : 'Kaydet'}</Text>
+          </Pressable>
+        </View>
+      </View>
+    </SettingRow>
+  );
+}
+
 // Satır yüksekliği py-3.5 → py-3 (~72px → ~64px): sayfa kompaktlaştı.
 // İkon zemini 0x14 → 0x20, stroke 1.8 → 1.9: eskiden fazla soluktu.
 /**
@@ -658,8 +829,6 @@ export function GeneralSection({ panelType, accentColor }: Props) {
   // Laboratuvar adresi/telefonu — iş kâğıdı, fatura ve klinikten-alım kurye
   // bacaklarının VARIŞ noktası buradan okunur. Boşken create_delivery kurye
   // entegrasyonundaki alış adresine düşer; burası dolunca o öncelik kazanır.
-  const [labAddrInput, setLabAddrInput]   = useState('');
-  const [labAddrSaved, setLabAddrSaved]   = useState('');
   const [labPhoneInput, setLabPhoneInput] = useState('');
   const [labPhoneSaved, setLabPhoneSaved] = useState('');
   const [labSiteInput, setLabSiteInput]   = useState('');
@@ -676,7 +845,6 @@ export function GeneralSection({ panelType, accentColor }: Props) {
       const addr = (data as any)?.address ?? '';
       const tel  = (data as any)?.phone ?? '';
       const site = (data as any)?.website ?? '';
-      setLabAddrInput(addr);  setLabAddrSaved(addr);
       setLabPhoneInput(tel);  setLabPhoneSaved(tel);
       setLabSiteInput(site);  setLabSiteSaved(site);
       // Adres henüz girilmemişse kurye ayarındaki alış adresini öner
@@ -707,20 +875,21 @@ export function GeneralSection({ panelType, accentColor }: Props) {
 
   const saveLabContact = useCallback(async () => {
     if (!labId || labContactSaving) return;
-    const a = labAddrInput.trim();
     const t = labPhoneInput.trim();
     const w = labSiteInput.trim();
-    if (a === labAddrSaved.trim() && t === labPhoneSaved.trim() && w === labSiteSaved.trim()) return;
+    if (t === labPhoneSaved.trim() && w === labSiteSaved.trim()) return;
     setLabContactSaving(true);
+    // Adres burada YAZILMAZ: labs.address, Fatura Bilgileri'ndeki yapılandırılmış
+    // alanlardan oluşturulur (iki ayrı adres tutulmasın).
     const { error } = await supabase.from('labs')
-      .update({ address: a || null, phone: t || null, website: w || null }).eq('id', labId);
+      .update({ phone: t || null, website: w || null }).eq('id', labId);
     setLabContactSaving(false);
     if (!error) {
-      setLabAddrSaved(a); setLabPhoneSaved(t); setLabSiteSaved(w); setPickupAddr(null);
+      setLabPhoneSaved(t); setLabSiteSaved(w);
       // Kenar çubuğundaki logo bağlantısı anında güncellensin
       bumpLabBrand();
     }
-  }, [labId, labAddrInput, labPhoneInput, labSiteInput, labAddrSaved, labPhoneSaved, labSiteSaved, labContactSaving, bumpLabBrand]);
+  }, [labId, labPhoneInput, labSiteInput, labPhoneSaved, labSiteSaved, labContactSaving, bumpLabBrand]);
 
   const saveBrandMode = useCallback(async (mode: 'logo' | 'logo_text') => {
     setBrandMode(mode);
@@ -832,6 +1001,10 @@ export function GeneralSection({ panelType, accentColor }: Props) {
           </SettingRow>
         )}
 
+        {isLab && canManageSettings && labId ? (
+          <LabBillingRow labId={labId} accentColor={accentColor} pickupAddress={pickupAddr?.address ?? null} />
+        ) : null}
+
         {/* ── Laboratuvar adresi + telefon ──────────────────────────
             Kurye entegrasyonundaki "alış adresi" BanaBiKurye'ye özeldi;
             laboratuvarın kendi adresi hiçbir yerde tutulmuyordu. Klinikten
@@ -839,52 +1012,12 @@ export function GeneralSection({ panelType, accentColor }: Props) {
             bilgisi olarak buradan okunur. */}
         {isLab && canManageSettings && (
           <SettingRow
-            icon={MapPin}
-            label="Laboratuvar Adresi"
-            sub="Kurye teslim noktası, iş kâğıdı ve fatura künyesi"
+            icon={Phone}
+            label="İletişim"
+            sub="Telefon ve web sitesi · iş kâğıdı ve fatura künyesinde görünür"
             accentColor={accentColor}
           >
             <View style={{ flex: 1, gap: 8 }}>
-              <SettingInput
-                accentColor={accentColor}
-                value={labAddrInput}
-                onChangeText={setLabAddrInput}
-                onBlur={saveLabContact}
-                placeholder="Mah., Cad., No, İlçe / İl"
-                multiline
-                style={{ width: '100%', minHeight: 44, paddingHorizontal: 12, paddingVertical: 9, textAlignVertical: 'top' }}
-              />
-
-              {/* Adres zaten kurye ayarında varsa tek tıkla al — iki yere ayrı ayrı
-                  yazdırmak hataya davetiye. */}
-              {pickupAddr && !labAddrInput.trim() ? (
-                <GlassTooltip title={autoT('Adresi kullan')} text={autoT('Kurye ayarındaki alış adresini laboratuvar adresi alanına kopyalar')}>
-                  <Pressable
-                    onPress={() => {
-                      setLabAddrInput(pickupAddr.address);
-                      if (!labPhoneInput.trim() && pickupAddr.phone) setLabPhoneInput(pickupAddr.phone);
-                    }}
-                    style={Platform.OS === 'web'
-                      ? ((({ pressed }: any) => ({
-                          flexDirection: 'row' as const, alignItems: 'center' as const, gap: 7,
-                          paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8,
-                          backgroundColor: `${accentColor}14`,
-                          opacity: pressed ? 0.6 : 1, cursor: 'pointer',
-                        })) as any)
-                      : {
-                          flexDirection: 'row' as const, alignItems: 'center' as const, gap: 7,
-                          paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8,
-                          backgroundColor: `${accentColor}14`,
-                        }}
-                  >
-                    <Download size={12} color={accentColor} strokeWidth={2} />
-                    <Text numberOfLines={1} style={{ flex: 1, fontSize: 11.5, fontWeight: '600', color: accentColor }}>
-                      Kurye ayarındaki alış adresini kullan
-                    </Text>
-                  </Pressable>
-                </GlassTooltip>
-              ) : null}
-
               <View style={{ position: 'relative', justifyContent: 'center' }}>
                 <View style={{ position: 'absolute', start: 10, zIndex: 1 }} pointerEvents="none">
                   <Phone size={13} color={T.ink3} strokeWidth={1.8} />
@@ -922,7 +1055,7 @@ export function GeneralSection({ panelType, accentColor }: Props) {
               <View style={{ alignItems: 'flex-end' }}>
                 <SaveHint
                   saving={labContactSaving}
-                  dirty={labAddrInput.trim() !== labAddrSaved.trim() || labPhoneInput.trim() !== labPhoneSaved.trim() || labSiteInput.trim() !== labSiteSaved.trim()}
+                  dirty={labPhoneInput.trim() !== labPhoneSaved.trim() || labSiteInput.trim() !== labSiteSaved.trim()}
                   accentColor={accentColor}
                 />
               </View>

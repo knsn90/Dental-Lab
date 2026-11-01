@@ -105,10 +105,10 @@ interface StockItem {
 }
 
 const USAGE_CATEGORY_OPTIONS: { key: 'all' | 'production' | 'office' | 'misc'; label: string }[] = [
-  { key: 'all',        label: 'Tumu' },
-  { key: 'production', label: 'Uretim' },
+  { key: 'all',        label: 'Tümü' },
+  { key: 'production', label: 'Üretim' },
   { key: 'office',     label: 'Ofis' },
-  { key: 'misc',       label: 'Diger' },
+  { key: 'misc',       label: 'Diğer' },
 ];
 
 const STAGE_OPTIONS = ['TRIAGE', 'DESIGN', 'CAM', 'MILLING', 'SINTER', 'FINISH', 'QC'];
@@ -661,7 +661,7 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
 
             {/* Uretim Entegrasyonu */}
             <View style={U.sectionCard}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[800], marginBottom: 14 }}>Uretim Entegrasyonu</Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[800], marginBottom: 14 }}>Üretim Entegrasyonu</Text>
 
               {/* Usage category */}
               <View style={{ marginBottom: 12 }}>
@@ -669,7 +669,7 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                 <View style={{ flexDirection: 'row', gap: 6 }}>
                   {(['production', 'office', 'misc'] as const).map(cat => {
                     const active = usageCategory === cat;
-                    const label = cat === 'production' ? 'Uretim' : cat === 'office' ? 'Ofis' : 'Diger';
+                    const label = cat === 'production' ? 'Üretim' : cat === 'office' ? 'Ofis' : 'Diğer';
                     return (
                       <Pressable
                         key={cat}
@@ -713,7 +713,7 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                   <Text style={{ fontSize: 11, fontWeight: '500', color: U.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>TUKETIM MODELI</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                     {([
-                      { key: 'per_tooth',     label: 'Dis Basi',  hint: 'tooth x units' },
+                      { key: 'per_tooth',     label: 'Diş Başı',  hint: 'tooth x units' },
                       { key: 'fixed',         label: 'Sabit',     hint: '1 birim/siparis' },
                       { key: 'manual',        label: 'Manuel',    hint: 'her seferde gir' },
                     ] as const).map(opt => {
@@ -3292,9 +3292,9 @@ function ForecastTab({ items, accentColor, tabsNode }: { items: StockItem[]; acc
   const getRiskLabel = (days: number | null) => {
     if (days === null) return 'Belirsiz';
     if (days <= 0) return 'Tukendi';
-    if (days <= 7) return `${Math.ceil(days)} gun`;
-    if (days <= 30) return `${Math.ceil(days)} gun`;
-    return `${Math.ceil(days)} gun`;
+    if (days <= 7) return `${Math.ceil(days)} ${autoT('gün')}`;
+    if (days <= 30) return `${Math.ceil(days)} ${autoT('gün')}`;
+    return `${Math.ceil(days)} ${autoT('gün')}`;
   };
 
   // ── Patterns design tokens ──
@@ -3411,7 +3411,7 @@ function ForecastTab({ items, accentColor, tabsNode }: { items: StockItem[]; acc
                       {f.trendDirection === 'down' && (
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: U.chipTones.success.bg, borderRadius: 9999, paddingHorizontal: 6, paddingVertical: 1 }}>
                           <TrendingDown size={9} color={U.chipTones.success.fg} strokeWidth={2} />
-                          <Text style={{ fontSize: 9, fontWeight: '700', color: U.chipTones.success.fg }}>Azaliyor</Text>
+                          <Text style={{ fontSize: 9, fontWeight: '700', color: U.chipTones.success.fg }}>Azalıyor</Text>
                         </View>
                       )}
                     </View>
@@ -3420,7 +3420,7 @@ function ForecastTab({ items, accentColor, tabsNode }: { items: StockItem[]; acc
                         Stok: <Text style={{ fontWeight: '600', color: U.ink[800] }}>{fmtQty(f.item.quantity)} {f.item.unit || 'adet'}</Text>
                       </Text>
                       <Text style={{ fontSize: 12, color: U.ink[500] }}>
-                        Gunluk tuketim: <Text style={{ fontWeight: '600', color: U.ink[800] }}>{f.dailyRate.toFixed(1)}</Text>
+                        Günlük tüketim: <Text style={{ fontWeight: '600', color: U.ink[800] }}>{f.dailyRate.toFixed(1)}</Text>
                       </Text>
                     </View>
                     {f.upcomingNeed > 0 && (
@@ -3435,7 +3435,7 @@ function ForecastTab({ items, accentColor, tabsNode }: { items: StockItem[]; acc
 
                   {/* Middle: Mini sparkline (4 weeks) */}
                   <View style={{ width: isDesktop ? 100 : undefined, alignItems: 'center' }}>
-                    <Text style={{ fontSize: 9, color: U.ink[400], marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: '600' }}>Haftalik Tuketim</Text>
+                    <Text style={{ fontSize: 9, color: U.ink[400], marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: '600' }}>Haftalık Tüketim</Text>
                     <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: 32 }}>
                       {f.weeklyTrend.map((w, idx) => (
                         <View key={idx} style={{
@@ -5208,7 +5208,7 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
               <Text style={{ fontSize: 11, fontWeight: '700', color: U.ink[400], letterSpacing: 0.8, textTransform: 'uppercase' }}>Durum</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 {([
-                  { value: 'all', label: 'Tumu' },
+                  { value: 'all', label: 'Tümü' },
                   { value: 'ok', label: 'Normal' },
                   { value: 'critical', label: 'Kritik' },
                   { value: 'empty', label: 'Tukendi' },
@@ -5232,10 +5232,10 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
               <Text style={{ fontSize: 11, fontWeight: '700', color: U.ink[400], letterSpacing: 0.8, textTransform: 'uppercase' }}>Kullanim</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 {([
-                  { value: 'all',        label: 'Tumu'    },
-                  { value: 'production', label: 'Uretim'  },
+                  { value: 'all',        label: 'Tümü'    },
+                  { value: 'production', label: 'Üretim'  },
                   { value: 'office',     label: 'Ofis'    },
-                  { value: 'misc',       label: 'Diger'   },
+                  { value: 'misc',       label: 'Diğer'   },
                 ] as const).map(it => {
                   const active = draftUsage === it.value;
                   return (
@@ -5265,7 +5265,7 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
                           style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9999, backgroundColor: active ? accentColor : U.ink[100], ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                           onPress={() => setDraftCat(cat)}
                         >
-                          <Text style={{ fontSize: 13, fontWeight: active ? '600' : '500', color: active ? '#FFFFFF' : U.ink[500] }}>{cat === 'all' ? 'Tumu' : cat}</Text>
+                          <Text style={{ fontSize: 13, fontWeight: active ? '600' : '500', color: active ? '#FFFFFF' : U.ink[500] }}>{cat === 'all' ? 'Tümü' : cat}</Text>
                         </Pressable>
                       );
                     })}
@@ -5288,7 +5288,7 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
                           style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9999, backgroundColor: active ? accentColor : U.ink[100], ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                           onPress={() => setDraftBrand(b)}
                         >
-                          <Text style={{ fontSize: 13, fontWeight: active ? '600' : '500', color: active ? '#FFFFFF' : U.ink[500] }}>{b === 'all' ? 'Tumu' : b}</Text>
+                          <Text style={{ fontSize: 13, fontWeight: active ? '600' : '500', color: active ? '#FFFFFF' : U.ink[500] }}>{b === 'all' ? 'Tümü' : b}</Text>
                         </Pressable>
                       );
                     })}

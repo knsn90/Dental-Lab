@@ -29,6 +29,7 @@ export type FeatureKey =
   // Operations
   | 'orders'           | 'production'   | 'design'         | 'approvals'
   | 'order_create'     | 'order_pricing'
+  | 'scan_appointments'
   | 'deliveries'       | 'couriers'
   // Customers
   | 'customers'
@@ -105,6 +106,7 @@ export const FEATURES: FeatureDef[] = [
   { key: 'order_create',     category: 'orders',       label: 'Yeni Sipariş Oluştur', hasView: false, hasManage: true  , desc: 'Yeni iş emri oluşturabilir.', },
   { key: 'order_pricing',    category: 'orders',       label: 'Sipariş Fiyatları (görme)', hasView: true, hasManage: false , desc: 'Sipariş satırlarındaki fiyatları görebilir.', critical: true, },
   { key: 'approvals',        category: 'orders',       label: 'Onaylar',            hasView: true,  hasManage: true  , desc: 'Tasarım ve üretim onaylarını görür, onaylar veya reddeder.', },
+  { key: 'scan_appointments', category: 'orders',      label: 'Tarama Randevuları', hasView: true,  hasManage: true  , desc: 'Klinikteki tarama ziyaretlerini görür; yönetme randevu, iptal ve karar vermeyi kapsar.', },
   // Production / Design
   { key: 'production',       category: 'production',   label: 'Üretim',             hasView: true,  hasManage: true  , desc: 'Üretim panosunu görür; aşama başlatma/tamamlama yönetmeye bağlıdır.', },
   { key: 'design',           category: 'production',   label: 'Tasarım',            hasView: true,  hasManage: true  , desc: 'Tasarım dosyalarını görür ve yükler.', },
@@ -315,10 +317,10 @@ export type RoleKey =
 
 export const ROLE_LABELS: Record<RoleKey, string> = {
   admin:        'Admin',
-  lab_manager:  'Lab Yoneticisi',
+  lab_manager:  'Lab Yöneticisi',
   technician:   'Teknisyen',
   doctor:       'Hekim',
-  clinic_admin: 'Klinik Yoneticisi',
+  clinic_admin: 'Klinik Yöneticisi',
   courier:      'Kurye',
 };
 

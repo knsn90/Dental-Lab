@@ -29,13 +29,17 @@ import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { groupByCurrency, type CurrencyTotal } from '../../../core/money/aggregations';
 import { MoneyMultiX } from '../../../core/money/MoneyMultiX';
+import { MobileTableX, MobileTableRowX, MobileTableIconX, MobileTableInitialX, useMobileTableText } from '../../../core/ui/MobileTableX';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { useInkUI } from '../../../core/theme/inkScale';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { formatMoney, CURRENCY_META, SUPPORTED_CURRENCIES, type Currency } from '../../../core/money/currency';
 import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
 import { onAccentInk } from '../../../core/theme/usePanelTheme';
 
 const DISPLAY = { fontFamily: 'Inter Tight, Inter, system-ui, sans-serif', fontWeight: '300' as const };
 // Katı per-currency: tutar KENDİ para biriminde.
-const fmtMoney = (n: number, currency: string = 'TRY') => formatMoney(Number(n) || 0, (currency as Currency), { fractionDigits: 0 });
+const fmtMoney = (n: number | null | undefined, currency: string = 'TRY') => formatMoney(Number(n) || 0, (currency as Currency), { fractionDigits: 0 });
 
 // Modal sub-componentinde fallback olarak; ana ekranda usePanelTheme override eder.
 const P = '#7C3AED';
@@ -54,6 +58,8 @@ export function AdvancesScreen() {
   const insets = useSafeAreaInsets();
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
+  const U = useInkUI();
+  const MT = useMobileTableText();
   const LS_KEY_ADV = 'advances_screen_v1';
   const loadCachedAdv = (): { employees: EmpRow[]; recent: EmployeeAdvance[]; allAdvSlices?: CurrencyTotal[]; allPendSlices?: CurrencyTotal[] } | null => {
     if (typeof window === 'undefined' || !window.localStorage) return null;
@@ -76,7 +82,8 @@ export function AdvancesScreen() {
   const load = async (silent = false) => {
     if (!silent) setLoading(true);
     const [empsRes, advRes, ccyRes] = await Promise.all([
-      supabase.from('employees')
+      // Maaş tek kaynak: görünüm maaşı employee_compensation'dan getirir (yalnız maaş yetkisi)
+      supabase.from('v_employee_summary')
         .select('id, full_name, role, base_salary, is_active')
         // Pasif personel de finansta görünür (avans geçmişi korunur) — aktifler üstte.
         .order('is_active', { ascending: false })
@@ -174,7 +181,7 @@ export function AdvancesScreen() {
           (pendAllByCcy.length ? ' · bekleyen talep var' : '')
         }
         stats={[
-          { value: String(activeCount),   label: 'Personel' },
+          { value: String(activeCount),   label: 'Aktif personel' },
           { value: String(recent.length), label: 'Kayıt' },
           { value: String(advAllByCcy.length || 1), label: 'Para Birimi' },
         ]}
@@ -192,11 +199,8 @@ export function AdvancesScreen() {
         )}
       </WhiteHero>
 
-      {/* Ekip listesi */}
-      <View style={{ backgroundColor: T.card, borderRadius: 16, borderWidth: 1, borderColor: T.hairline, overflow: 'hidden' }}>
-        <View style={{ paddingHorizontal: 16, paddingVertical: 14, backgroundColor: P }}>
-          <Text style={{ ...DISPLAY, fontSize: 18, color: onAccentInk(P) }}>Ekip ve Avans Durumu</Text>
-        </View>
+      {/* Ekip listesi — ekstre / giderler mobil tablosuyla aynı kalıp */}
+      <MobileTableX title="Ekip ve Avans Durumu" count={employees.length} countLabel="kişi" accent={P}>
         {employees.length === 0 ? (
           <View style={{ padding: 32, alignItems: 'center', gap: 8 }}>
             <Banknote size={28} color={T.ink3} strokeWidth={1.5} />
@@ -206,42 +210,43 @@ export function AdvancesScreen() {
           employees.map((e, i) => {
             const isPassive = (e as any).is_active === false;
             return (
-            <View key={e.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: i < employees.length - 1 ? 1 : 0, borderBottomColor: T.hairline2, opacity: isPassive ? 0.62 : 1 }}>
-              <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: isPassive ? T.hairline2 : P + '15', alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: isPassive ? T.ink3 : P }}>{(e.full_name?.[0] ?? '?').toUpperCase()}</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={{ fontSize: 14, fontWeight: '600', color: T.ink }} numberOfLines={1}>{e.full_name}</Text>
-                  {isPassive && (
-                    <View style={{ paddingHorizontal: 7, paddingVertical: 1, borderRadius: 999, backgroundColor: T.hairline2 }}>
-                      <Text style={{ fontSize: 9, fontWeight: '700', color: T.ink3, letterSpacing: 0.3 }}>PASİF</Text>
-                    </View>
-                  )}
+              <MobileTableRowX key={e.id} isLast={i === employees.length - 1}>
+                <View style={{ opacity: isPassive ? 0.62 : 1 }}>
+                  <MobileTableInitialX name={e.full_name} muted={isPassive} tone={{ bg: isDark ? 'rgba(147,197,253,0.18)' : P + '15', fg: isDark ? '#93C5FD' : P }} />
                 </View>
-                <Text style={{ fontSize: 12, color: T.ink3, marginTop: 2 }}>
-                  {ROLE_LABELS[e.role]} · Maaş: {fmtMoney(e.base_salary)}
-                </Text>
-              </View>
-              <View style={{ alignItems: 'flex-end' }}>
-                <Text style={{ fontSize: 11, color: T.ink3 }}>Toplam verilen</Text>
-                <MoneyMultiX slices={e.advancesByCcy ?? []} variant="inline" />
-              </View>
-              <Pressable onPress={() => setAdvOpen(e)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: T.ink }}>
-                <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: P }} />
-                <Text style={{ fontSize: 12, fontWeight: '600', color: T.bg, marginStart: 2 }}>Avans Ver</Text>
-              </Pressable>
-            </View>
+                <View style={{ flex: 1, minWidth: 0, opacity: isPassive ? 0.62 : 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={[MT.title, { flexShrink: 1 }]} numberOfLines={1}>{e.full_name}</Text>
+                    {isPassive && (
+                      <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: T.hairline2 }}>
+                        <Text style={{ fontSize: 9, fontWeight: '700', color: T.ink3, letterSpacing: 0.3 }}>PASİF</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={MT.sub} numberOfLines={1}>
+                    {autoT(ROLE_LABELS[e.role] ?? e.role)} · {autoT('Maaş')} {fmtMoney(e.base_salary)}
+                  </Text>
+                  <View style={{ flexDirection: 'row', marginTop: 8 }}>
+                    <GlassTooltip title={autoT('Avans Ver')} text={autoT('Bu personele avans kaydeder')}>
+                      <Pressable onPress={() => setAdvOpen(e)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999, backgroundColor: U.ink[900], ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}) }}>
+                        <Plus size={12} color={U.onDarkPill} strokeWidth={2} />
+                        <Text style={{ fontSize: 11, fontWeight: '600', color: U.onDarkPill }}>Avans Ver</Text>
+                      </Pressable>
+                    </GlassTooltip>
+                  </View>
+                </View>
+                <View style={{ alignItems: 'flex-end', alignSelf: 'flex-start' }}>
+                  <Text style={{ fontSize: 10, color: T.ink3, marginBottom: 3 }}>Toplam verilen</Text>
+                  <MoneyMultiX slices={e.advancesByCcy ?? []} variant="inline" />
+                </View>
+              </MobileTableRowX>
             );
           })
         )}
-      </View>
+      </MobileTableX>
 
       {/* Son avanslar */}
-      <View style={{ backgroundColor: T.card, borderRadius: 16, borderWidth: 1, borderColor: T.hairline, overflow: 'hidden' }}>
-        <View style={{ paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: T.hairline }}>
-          <Text style={{ ...DISPLAY, fontSize: 18, color: T.ink }}>Son Avanslar</Text>
-        </View>
+      <MobileTableX title="Son Avanslar" count={Math.min(recent.length, 20)} countLabel="kayıt" accent={P}>
         {recent.length === 0 ? (
           <View style={{ padding: 32, alignItems: 'center' }}>
             <Text style={{ fontSize: 13, color: T.ink3 }}>Henüz avans yok.</Text>
@@ -249,53 +254,57 @@ export function AdvancesScreen() {
         ) : (
           recent.slice(0, 20).map((a, i) => {
             const emp = employees.find(e => e.id === a.employee_id);
+            const st = a.is_deducted ? U.chipTones.success : U.chipTones.warning;
             return (
-              <View key={a.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: i < Math.min(recent.length, 20) - 1 ? 1 : 0, borderBottomColor: T.hairline2 }}>
-                <View style={{ flex: 1 }}>
+              <MobileTableRowX key={a.id} isLast={i === Math.min(recent.length, 20) - 1}>
+                <MobileTableIconX icon={Banknote} tone={st} />
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink }}>{emp?.full_name ?? '—'}</Text>
-                    {a.is_deducted ? (
-                      <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: 'rgba(5,150,105,0.10)' }}>
-                        <Text style={{ fontSize: 9, fontWeight: '700', color: '#059669' }}>KESİLDİ</Text>
-                      </View>
-                    ) : (
-                      <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: 'rgba(217,119,6,0.10)' }}>
-                        <Text style={{ fontSize: 9, fontWeight: '700', color: '#D97706' }}>BEKLİYOR</Text>
-                      </View>
-                    )}
+                    <Text style={[MT.title, { flexShrink: 1 }]} numberOfLines={1}>{emp?.full_name ?? '—'}</Text>
+                    <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: st.bg }}>
+                      <Text style={{ fontSize: 9, fontWeight: '700', color: st.fg }}>{a.is_deducted ? 'KESİLDİ' : 'BEKLİYOR'}</Text>
+                    </View>
                   </View>
-                  <Text style={{ fontSize: 11, color: T.ink3, marginTop: 2 }}>
+                  <Text style={MT.sub} numberOfLines={1}>
                     {new Date(a.advance_date).toLocaleDateString(localeTag())}{a.description ? ` · ${a.description}` : ''}
                   </Text>
                 </View>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: P }}>{fmtMoney(a.amount, (a as any).currency ?? 'TRY')}</Text>
-                {!a.is_deducted && (
-                  <Pressable
-                    onPress={async () => {
-                      const { error } = await markAdvanceDeducted(a.id);
-                      if (error) toast.error((error as any).message);
-                      else { toast.success('Avans kesildi olarak işaretlendi'); load(); }
-                    }}
-                    style={{ padding: 6 }}
-                  >
-                    <CheckCircle2 size={15} color={'#059669'} strokeWidth={1.6} />
-                  </Pressable>
-                )}
-                <Pressable
-                  onPress={async () => {
-                    const { error } = await deleteAdvance(a.id);
-                    if (error) toast.error((error as any).message);
-                    else { toast.success('Avans silindi'); load(); }
-                  }}
-                  style={{ padding: 6 }}
-                >
-                  <Trash2 size={14} color={T.ink3} strokeWidth={1.6} />
-                </Pressable>
-              </View>
+                <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                  <Text style={MT.amount}>{fmtMoney(a.amount, (a as any).currency ?? 'TRY')}</Text>
+                  <View style={{ flexDirection: 'row', gap: 4 }}>
+                    {!a.is_deducted && (
+                      <GlassTooltip title={autoT('Kesildi')} text={autoT('Avansı maaştan kesildi olarak işaretler')}>
+                        <Pressable
+                          onPress={async () => {
+                            const { error } = await markAdvanceDeducted(a.id);
+                            if (error) toast.error((error as any).message);
+                            else { toast.success('Avans kesildi olarak işaretlendi'); load(); }
+                          }}
+                          style={{ width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: U.chipTones.success.bg, ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}) }}
+                        >
+                          <CheckCircle2 size={13} color={U.chipTones.success.fg} strokeWidth={1.8} />
+                        </Pressable>
+                      </GlassTooltip>
+                    )}
+                    <GlassTooltip title={autoT('Sil')} text={autoT('Avans kaydını siler')}>
+                      <Pressable
+                        onPress={async () => {
+                          const { error } = await deleteAdvance(a.id);
+                          if (error) toast.error((error as any).message);
+                          else { toast.success('Avans silindi'); load(); }
+                        }}
+                        style={{ width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: U.chipTones.danger.bg, ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}) }}
+                      >
+                        <Trash2 size={12} color={U.chipTones.danger.fg} strokeWidth={1.8} />
+                      </Pressable>
+                    </GlassTooltip>
+                  </View>
+                </View>
+              </MobileTableRowX>
             );
           })
         )}
-      </View>
+      </MobileTableX>
 
       {advOpen && (
         <GiveAdvanceModal

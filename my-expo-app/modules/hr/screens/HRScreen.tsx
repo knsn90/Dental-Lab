@@ -2,7 +2,7 @@ import { localeTag, weekdayOffset } from '../../../core/i18n';
 import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { autoT } from '../../../core/i18n/autoTranslate';
-import React, { useState, useMemo, useContext } from 'react';
+import React, { useState, useMemo, useContext, useEffect } from 'react';
 import { HubContext } from '../../../core/ui/HubContext';
 import {
   View, Text, ScrollView, Pressable,
@@ -24,11 +24,12 @@ import {
   LEAVE_TYPE_LABELS, LEAVE_TYPE_ICONS, LEAVE_TYPE_COLORS,
   LEAVE_STATUS_CFG, ATTENDANCE_STATUS_CFG,
   createLeave, approveLeave, rejectLeave, cancelLeave, deleteLeave,
-  upsertAttendance, deleteAttendance, manualAttendanceRPC,
+  upsertAttendance, updateAttendanceStatus, deleteAttendance, manualAttendanceRPC,
   calcBusinessDays, fmtMinutes,
 } from '../api';
 import { useLeaveSummaries, useEmployeeLeaves, useAttendance, usePendingLeaves } from '../hooks/useHR';
 import { useAuthStore } from '../../../core/store/authStore';
+import { supabase } from '../../../core/api/supabase';
 import { ROLE_LABELS, roleTone } from '../../employees/api';
 
 import {
@@ -40,6 +41,11 @@ import {
 import { getHolidaysForMonth, type TRHoliday } from '../helpers/turkeyHolidays';
 import { confirmAsync } from '../../../core/util/confirm';
 import { isRTL } from '../../../core/i18n';
+import { rowsChanged, canDeleteLeave } from '../lib/leaveActions';
+import { manualAttendanceError } from '../lib/attendanceResult';
+
+// RLS satırı süzünce (0 satır) gösterilen hata; toast'ta otomatik sözlükle çevrilir.
+const NOT_APPLIED = 'İşlem uygulanmadı: kaydın durumu değişmiş ya da bu işlem için yetkiniz yok.';
 
 // ─── Lucide icon map for leave type icons (from api) ─────────────────────────
 const LUCIDE_ICON_MAP: Record<string, React.FC<any>> = {
@@ -149,8 +155,16 @@ export function HRScreen() {
   const [currentMonth, setCurrentMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [showOnlyPending, setShowOnlyPending] = useState(false);
 
-  // ── Rol kontrolü: sadece mesul müdür ve admin onaylayabilir ──────────────
-  const canApprove = profile?.user_type === 'admin' || profile?.role === 'manager';
+  // ── Onay yetkisi: approve_leave (0b, 2026-10-25 — izinleri yalnız lab sahibi onaylar).
+  //    Veritabanına sorulur: istemci yetki deposu manage_leaves'i approve_leave'e genişletiyor
+  //    (eski ad eşlemesi), lab müdürü düğmeyi görürdü. el_* kuralları da has_permission'a bakar. ──
+  const [canApprove, setCanApprove] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    supabase.rpc('has_permission', { p_key: 'approve_leave' })
+      .then(({ data }) => { if (alive) setCanApprove(data === true); });
+    return () => { alive = false; };
+  }, []);
 
   const { summaries, loading: loadingSum, refetch: refetchSum } = useLeaveSummaries();
   const { leaves: pendingLeaves } = usePendingLeaves();
@@ -189,8 +203,9 @@ export function HRScreen() {
       { confirmText: 'İptal Et', destructive: true });
     if (!ok) return;
     try {
-      const { error } = await cancelLeave(id);
+      const { data, error } = await cancelLeave(id);
       if (error) throw error;
+      if (!rowsChanged(data)) { refetchLeaves(); throw new Error(NOT_APPLIED); }
       toast.success('İzin iptal edildi.');
       refetchSum(); refetchLeaves();
     } catch (e: any) { toast.error(e?.message ?? 'Hata oluştu.'); }
@@ -201,8 +216,9 @@ export function HRScreen() {
       { confirmText: 'Sil', destructive: true });
     if (!ok) return;
     try {
-      const { error } = await deleteLeave(id);
+      const { data, error } = await deleteLeave(id);
       if (error) throw error;
+      if (!rowsChanged(data)) { refetchLeaves(); throw new Error(NOT_APPLIED); }
       toast.success('İzin silindi.');
       refetchSum(); refetchLeaves();
     } catch (e: any) { toast.error(e?.message ?? 'Hata oluştu.'); }
@@ -1440,17 +1456,19 @@ function LeaveCard({ leave, canApprove, onApprove, onReject, onCancel, onDelete 
           ) : null}
         </View>
 
-        {/* Delete button */}
-        <Pressable
-          style={({ hovered }: any) => ({
-            width: 40, alignItems: 'center', justifyContent: 'center',
-            backgroundColor: hovered ? U.chipTones.danger.bg : 'transparent',
-            ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-          })}
-          onPress={() => onDelete(leave.id)}
-        >
-          <Trash2 size={14} color={U.ink[300]} strokeWidth={1.6} />
-        </Pressable>
+        {/* Delete button — onaylı/reddedilmiş izni yalnız onaylayan siler (el_delete) */}
+        {canDeleteLeave(leave.status, canApprove) && (
+          <Pressable
+            style={({ hovered }: any) => ({
+              width: 40, alignItems: 'center', justifyContent: 'center',
+              backgroundColor: hovered ? U.chipTones.danger.bg : 'transparent',
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+            })}
+            onPress={() => onDelete(leave.id)}
+          >
+            <Trash2 size={14} color={U.ink[300]} strokeWidth={1.6} />
+          </Pressable>
+        )}
       </View>
 
       {/* ACTION FOOTER */}
@@ -2324,7 +2342,7 @@ function AttendanceModal({ visible, employeeId, employeeName, onClose, onSaved }
     try {
       if (showTime && checkIn) {
         // Giriş/çıkış saati varsa → manualAttendanceRPC (recorded_by izlenebilir)
-        const { error } = await manualAttendanceRPC({
+        const { data, error } = await manualAttendanceRPC({
           employeeId,
           workDate,
           checkIn,
@@ -2332,13 +2350,14 @@ function AttendanceModal({ visible, employeeId, employeeName, onClose, onSaved }
           notes: notes.trim() || undefined,
         });
         if (error) throw error;
-        // Durumu ayrıca güncelle (status, overtime)
-        await upsertAttendance({
-          employee_id: employeeId,
-          work_date: workDate,
-          status,
-          overtime_minutes: status === 'normal' ? (parseInt(overtime) || 0) : 0,
-        });
+        const rpcErr = manualAttendanceError(data);   // ret {ok:false} olarak döner
+        if (rpcErr) throw new Error(rpcErr);
+        // Durumu ayrıca güncelle (status, overtime) — saatlere ve nota dokunmadan
+        const { data: upd, error: updErr } = await updateAttendanceStatus(
+          employeeId, workDate, status, status === 'normal' ? (parseInt(overtime) || 0) : 0,
+        );
+        if (updErr) throw updErr;
+        if (!rowsChanged(upd)) throw new Error(NOT_APPLIED);
       } else {
         // Saat yok (devamsız, izinli vb.) → direkt upsert
         const { error } = await upsertAttendance({

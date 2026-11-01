@@ -1,0 +1,45 @@
+# 20261031090000_fatura_kur_duzeltme — canlı ÖNCE kaydı (2026-10-31)
+## set_invoice_amount_base (canlı)
+CREATE OR REPLACE FUNCTION public.set_invoice_amount_base()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_base text;
+  v_rate numeric;
+BEGIN
+  SELECT default_currency INTO v_base FROM public.lab_settings WHERE lab_id = NEW.lab_id;
+  IF v_base IS NULL THEN v_base := 'TRY'; END IF;
+
+  IF COALESCE(NEW.currency, v_base) = v_base THEN
+    v_rate := 1;
+  ELSIF NEW.rate_at_time IS NOT NULL AND NEW.rate_at_time > 0 THEN
+    v_rate := NEW.rate_at_time;                 -- elle girilen / kilitli kur
+  ELSE
+    v_rate := public.get_currency_rate(NEW.lab_id, NEW.currency, v_base, COALESCE(NEW.issue_date, CURRENT_DATE));
+    IF v_rate IS NULL OR v_rate <= 0 THEN v_rate := 1; END IF;
+  END IF;
+
+  NEW.rate_at_time          := v_rate;
+  NEW.base_currency_at_time := v_base;
+  NEW.amount_base           := COALESCE(NEW.total, 0) * v_rate;
+  RETURN NEW;
+END;
+$function$
+## invoices.rate_at_time varsayılanı: 1
+## kur=1 kalmış baz dışı faturalar (id | lab | no | para | kayıtlı baz | lab baz | kur | toplam | baz tutar | kesim | bulunan kur | durum)
+1f04ee44-ad3f-49c3-bae3-ccf381fe18e6 | 243ef1db-9853-424b-8292-0025abfca436 | FTR-2026-00013 | USD | stored_base=EUR | lab_base=EUR | rate=1.000000 | total=0.00 | amount_base=0.00000000 | issue=2026-07-29 | lookup=0.87789946 | status=kesildi
+d6cabb3d-6293-4f0b-9568-7037ff430c24 | 243ef1db-9853-424b-8292-0025abfca436 | FTR-2026-00018 | USD | stored_base=EUR | lab_base=EUR | rate=1.000000 | total=88.00 | amount_base=88.00000000 | issue=2026-08-03 | lookup=0.86764123 | status=kesildi
+1957d018-f663-4938-bf33-84c2caf5c393 | 243ef1db-9853-424b-8292-0025abfca436 | FTR-2026-00019 | USD | stored_base=EUR | lab_base=EUR | rate=1.000000 | total=0.00 | amount_base=0.00000000 | issue=2026-08-05 | lookup=0.86641279 | status=kesildi
+45850d5c-c65a-4af2-a950-c167e47e871a | 243ef1db-9853-424b-8292-0025abfca436 | FTR-2026-00020 | USD | stored_base=EUR | lab_base=EUR | rate=1.000000 | total=132.00 | amount_base=132.00000000 | issue=2026-08-07 | lookup=0.86760300 | status=kesildi
+bee48811-8a16-48c3-88fd-b63a663b1066 | 243ef1db-9853-424b-8292-0025abfca436 | FTR-2026-00056 | TRY | stored_base=EUR | lab_base=EUR | rate=1.000000 | total=6380.00 | amount_base=6380.00000000 | issue=2026-10-21 | lookup=0.01796038 | status=kesildi
+2f4572ef-c6f3-424d-be02-2597c4906396 | 243ef1db-9853-424b-8292-0025abfca436 | FTR-2026-00059 | TRY | stored_base=EUR | lab_base=EUR | rate=1.000000 | total=8250.00 | amount_base=8250.00000000 | issue=2026-10-23 | lookup=0.01798571 | status=kesildi
+d88d5cb1-30a1-471a-bf83-230eb10c60c2 | 243ef1db-9853-424b-8292-0025abfca436 | FTR-2026-00063 | TRY | stored_base=EUR | lab_base=EUR | rate=1.000000 | total=1815.00 | amount_base=1815.00000000 | issue=2026-10-23 | lookup=0.01798571 | status=kesildi
+4dad9ce0-d403-42a3-a1ce-ec9e82d0754d | 243ef1db-9853-424b-8292-0025abfca436 | FTR-2026-00069 | TRY | stored_base=EUR | lab_base=EUR | rate=1.000000 | total=0.00 | amount_base=0.00000000 | issue=2026-10-28 | lookup=0.01801020 | status=kesildi
+74d94c53-e7de-4cd6-942a-fe61f62ae4ce | 7c769d4a-0cec-408f-85d0-9dccac7bd969 | DEMO-F-2026-001 | EUR | stored_base=TRY | lab_base=TRY | rate=1.000000 | total=0.00 | amount_base=0.00000000 | issue=2026-06-27 | lookup=53.024200 | status=odendi
+018e2e7a-4849-4936-8262-4cf987582acb | 7c769d4a-0cec-408f-85d0-9dccac7bd969 | DEMO-F-2026-002 | EUR | stored_base=TRY | lab_base=TRY | rate=1.000000 | total=0.00 | amount_base=0.00000000 | issue=2026-07-15 | lookup=53.575500 | status=kismi_odendi
+aba4e31f-8cce-47b3-8419-48f56507417a | 7c769d4a-0cec-408f-85d0-9dccac7bd969 | DEMO-F-2026-003 | EUR | stored_base=TRY | lab_base=TRY | rate=1.000000 | total=0.00 | amount_base=0.00000000 | issue=2026-06-20 | lookup=53.105100 | status=kesildi
+5c1e916a-cc6e-431e-8b1d-748d66185633 | 7c769d4a-0cec-408f-85d0-9dccac7bd969 | DEMO-F-2026-004 | EUR | stored_base=TRY | lab_base=TRY | rate=1.000000 | total=0.00 | amount_base=0.00000000 | issue=2026-07-30 | lookup=54.325000 | status=kesildi
+## bu faturalara bağlı kur=1 ödeme: 0

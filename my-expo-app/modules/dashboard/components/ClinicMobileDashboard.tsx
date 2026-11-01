@@ -22,7 +22,6 @@ import { MOBILE_PANEL_THEMES, useMobileTokens } from '../../../core/theme/mobile
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { useHeroSurface, lightenForDark } from '../../../core/ui/HeroGlow';
 import { DS } from '../../../core/theme/dsTokens';
-import { HeroGlowOverlay } from '../../../core/ui/mobile/HeroGlowOverlay';
 import { AlertPillX } from '../../../core/ui/AlertPillX';
 import { Ring } from '../../../core/ui/mobile/Ring';
 import { AnimatedNumber } from '../../../core/ui/mobile/AnimatedNumber';
@@ -32,6 +31,9 @@ import { useAuthStore } from '../../../core/store/authStore';
 
 import { UnreadMessagesCard } from '../../../core/ui/mobile/UnreadMessagesCard';
 import { RecentOrdersMobile, type RecentOrderItem } from './RecentOrdersMobile';
+import { MobileTableX, MobileTableRowX, MobileTableIconX } from '../../../core/ui/MobileTableX';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 
 const CLINIC = MOBILE_PANEL_THEMES.klinik;
 
@@ -119,6 +121,11 @@ export interface ClinicMobileDashboardProps {
   onRefresh?: () => void;
 }
 
+
+/** 3B görsel kabının yığın sırası. YALNIZ web'de: iOS (Fabric) zIndex'i katman
+ *  derinliği olarak uyguluyor; görsel kendi kabından çıkıp sabit üst başlığın
+ *  (logo + şerit) ÜSTÜNE biniyordu (build 69, 2026-10-21). */
+const ART_Z = Platform.OS === 'web' ? { zIndex: 2 } : {};
 export function ClinicMobileDashboard(props: ClinicMobileDashboardProps) {
   const faceScanOk = useFaceScanAvailable();
   const router = useRouter();
@@ -136,6 +143,8 @@ export function ClinicMobileDashboard(props: ClinicMobileDashboardProps) {
 
   const rawName = (profile?.full_name ?? '').trim();
   const firstName = displayFirstName(rawName);
+  // Tablo şeridi zemini (MobileTableX varsayılanı) — "Tümü →" mürekkebi buna göre seçilir
+  const stripAccent = usePanelTheme().primary;
   const rtl = isRTL();
   const clinic    = props.clinicName ?? (profile as any)?.clinic_name ?? autoT('Kliniğiniz');
   const greeting  = props.greeting   ?? `${autoT('Merhaba,')} ${clinic}.`;
@@ -231,45 +240,42 @@ export function ClinicMobileDashboard(props: ClinicMobileDashboardProps) {
            gelir: useHeroSurface mavi accent'te lacivert, klinikte ZÜMRÜT'ün
            derin tonunu üretir — lacivert SABİTLEMEK klinik kimliğini bozuyordu.
            Açık tema DEĞİŞMEDİ. */}
+      {/* DÜZ (flat) zümrüt — hekim panelindeki Aktif takip kartıyla aynı (2026-10-20).
+          Koyu zemin + ışıma kaldırıldı; vurgular yeşil zeminde kaybolmasın diye beyaz. */}
       <View style={{
         marginHorizontal: 16, marginBottom: 16,
         borderRadius: 24, padding: 18,
         overflow: 'hidden',
-        ...(isDark ? heroBg : { backgroundColor: CLINIC.bgHero }),
-        ...(isDark ? { borderWidth: 1, borderColor: hexA(clinicNeon, 0.26) } : {}),
-        ...(isDark && Platform.OS === 'web' ? {
-          boxShadow: `0 0 18px ${hexA(clinicNeon, 0.35)}, inset 0 0 22px ${hexA(clinicNeon, 0.10)}`,
-        } as any : {}),
+        backgroundColor: '#0C8F56',   // zümrüt 600 (CLAUDE.md klinik/hekim skalası)
       }}>
-        <HeroGlowOverlay color={isDark ? clinicNeon : CLINIC.primary} variant="warm" />
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <View style={{
               width: 7, height: 7, borderRadius: 4,
-              backgroundColor: isDark ? clinicNeon : CLINIC.primary,
-              ...(Platform.OS === 'web' ? { boxShadow: `0 0 0 4px ${isDark ? clinicNeon : CLINIC.primary}30` } as any : {}),
+              backgroundColor: '#FFFFFF',
+              ...(Platform.OS === 'web' ? { boxShadow: '0 0 0 4px rgba(255,255,255,0.22)' } as any : {}),
             }} />
-            <Text style={{ fontSize: 10.5, fontWeight: '600', color: T.onDark2, letterSpacing: 1.2, textTransform: 'uppercase' }}>
+            <Text style={{ fontSize: 10.5, fontWeight: '600', color: 'rgba(255,255,255,0.88)', letterSpacing: 1.2, textTransform: 'uppercase' }}>
               Klinik aktif takip
             </Text>
           </View>
-          <Text style={{ fontSize: 10, color: T.onDark3, fontFamily: T.mono }}>
+          <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', fontFamily: T.mono }}>
             {live.active}/{live.total}
           </Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 14, marginTop: 14 }}>
-          <Ring value={live.pct} size={108} stroke={9} color={isDark ? clinicNeon : CLINIC.primary} track="rgba(255,255,255,0.10)" animatedEndDot>
+          <Ring value={live.pct} size={108} stroke={9} color="#FFFFFF" track="rgba(255,255,255,0.22)" animatedEndDot>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 2 }}>
               <AnimatedNumber
                 value={live.pct}
                 duration={900}
                 style={{
-                  fontSize: 32, fontWeight: '400', color: T.onDark, letterSpacing: -0.8, lineHeight: 34,
+                  fontSize: 32, fontWeight: '400', color: '#FFFFFF', letterSpacing: -0.8, lineHeight: 34,
                   ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
                 }}
               />
               <Text style={{
-                fontSize: 14, color: isDark ? clinicNeon : CLINIC.primary, fontWeight: '400',
+                fontSize: 14, color: 'rgba(255,255,255,0.8)', fontWeight: '400',
                 ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
               }}>%</Text>
             </View>
@@ -287,8 +293,8 @@ export function ClinicMobileDashboard(props: ClinicMobileDashboardProps) {
                   <View style={{
                     width: 44, height: 44, borderRadius: 22,
                     borderWidth: 1.5,
-                    borderColor: s.n > 0 ? (isDark ? clinicNeon : CLINIC.primary) : 'rgba(255,255,255,0.14)',
-                    backgroundColor: s.n > 0 ? `${isDark ? clinicNeon : CLINIC.primary}1F` : 'transparent',
+                    borderColor: s.n > 0 ? '#FFFFFF' : 'rgba(255,255,255,0.30)',
+                    backgroundColor: s.n > 0 ? 'rgba(255,255,255,0.18)' : 'transparent',
                     alignItems: 'center', justifyContent: 'center',
                   }}>
                     <AnimatedNumber
@@ -296,12 +302,12 @@ export function ClinicMobileDashboard(props: ClinicMobileDashboardProps) {
                       duration={700}
                       delay={i * 80}
                       style={{
-                        fontSize: 17, fontWeight: '500', color: s.n > 0 ? T.onDark : T.onDark3,
+                        fontSize: 17, fontWeight: '500', color: s.n > 0 ? '#FFFFFF' : 'rgba(255,255,255,0.7)',
                         ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
                       }}
                     />
                   </View>
-                  <Text style={{ fontSize: 9, color: T.onDark3, letterSpacing: 0.6, textTransform: 'uppercase' }}>
+                  <Text style={{ fontSize: 9, color: 'rgba(255,255,255,0.75)', letterSpacing: 0.6, textTransform: 'uppercase' }}>
                     {s.l}
                   </Text>
                 </View>
@@ -421,6 +427,7 @@ export function ClinicMobileDashboard(props: ClinicMobileDashboardProps) {
       </View>
 
       {/* ═══ Aksiyon gerektiren — list or positive empty state ═══ */}
+      {delayed.length === 0 && (
       <View style={{ paddingHorizontal: 20, paddingTop: 4, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <Text style={{
           fontSize: 16, fontWeight: '500', color: T.ink, letterSpacing: -0.2,
@@ -428,12 +435,8 @@ export function ClinicMobileDashboard(props: ClinicMobileDashboardProps) {
         }}>
           Aksiyon gerektiren
         </Text>
-        {delayed.length > 0 && (
-          <Pressable onPress={() => router.push('/(clinic)/orders' as any)}>
-            <Text style={{ fontSize: 12, color: CLINIC.accentDark, fontWeight: '500' }}>Tümü →</Text>
-          </Pressable>
-        )}
       </View>
+      )}
 
       {/* Positive empty state */}
       {delayed.length === 0 && (
@@ -464,67 +467,58 @@ export function ClinicMobileDashboard(props: ClinicMobileDashboardProps) {
         </View>
       )}
 
-      {/* List */}
+      {/* List — ekstre / finans mobil tablolarıyla aynı kalıp */}
       {delayed.length > 0 && (
-        <View style={{ paddingHorizontal: 16, paddingBottom: 14, gap: 8 }}>
-          {delayed.slice(0, 3).map(o => {
-            const Icon = o.kind === 'pending_approval' ? FileCheck : Flame;
-            const iconBg = o.kind === 'pending_approval' ? CLINIC.bgDeep : T.rubySoft;
-            const iconColor = o.kind === 'pending_approval' ? CLINIC.accentDark : T.ruby;
-            const valueColor = o.kind === 'pending_approval' ? CLINIC.accentDark : T.ruby;
-            return (
-              <Pressable key={o.id} onPress={() => props.onOpenOrder?.(o.id)}>
-                {({ pressed }: any) => (
-                  <View style={{
-                    flexDirection: 'row', alignItems: 'center', gap: 12,
-                    padding: 12, borderRadius: 18,
-                    backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline,
-                    opacity: pressed ? 0.92 : 1,
-                  }}>
-                    <View style={{
-                      width: 36, height: 36, borderRadius: 10,
-                      backgroundColor: iconBg,
-                      alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      <Icon size={18} color={iconColor} strokeWidth={1.6} />
+        <View style={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 14 }}>
+          <MobileTableX title="Aksiyon gerektiren" count={delayed.length} countLabel="sipariş"
+            right={
+              <GlassTooltip title={autoT('Tümü')} text={autoT('Tüm siparişleri açar')}>
+                <Pressable onPress={() => router.push('/(clinic)/orders' as any)} style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : undefined}>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: onAccentInk(stripAccent) }}>Tümü →</Text>
+                </Pressable>
+              </GlassTooltip>
+            }>
+            {delayed.slice(0, 3).map((o, i, arr) => {
+              const Icon = o.kind === 'pending_approval' ? FileCheck : Flame;
+              const iconBg = o.kind === 'pending_approval' ? CLINIC.bgDeep : T.rubySoft;
+              const iconColor = o.kind === 'pending_approval' ? CLINIC.accentDark : T.ruby;
+              const valueColor = o.kind === 'pending_approval' ? CLINIC.accentDark : T.ruby;
+              return (
+                <MobileTableRowX key={o.id} isLast={i === arr.length - 1} onPress={() => props.onOpenOrder?.(o.id)}>
+                  <MobileTableIconX icon={Icon} tone={{ bg: iconBg as string, fg: iconColor as string }} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink, flexShrink: 1, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{o.patient}</Text>
+                      {/* Sipariş no Latin başlar → RNW dir="auto" ile LTR olur; RTL'de hizayı sabitle */}
+                      <Text style={{ fontSize: 10, color: T.ink3, fontFamily: T.mono, flexShrink: 0, textAlign: rtl ? 'right' : undefined }}>{o.id}</Text>
                     </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                        <Text style={{ fontSize: 14, fontWeight: '600', color: T.ink, flexShrink: 1, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{o.patient}</Text>
-                        {/* Sipariş no Latin başlar → RNW dir="auto" ile LTR olur; RTL'de hizayı sabitle */}
-                        <Text style={{ fontSize: 10, color: T.ink3, fontFamily: T.mono, flexShrink: 0, textAlign: rtl ? 'right' : undefined }}>{o.id}</Text>
-                      </View>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2, minWidth: 0 }}>
-                        {!!o.doctorName && (
-                          <>
-                            <Stethoscope size={10} color={T.ink3} strokeWidth={1.8} />
-                            <Text style={{ fontSize: 11, color: T.ink2, flexShrink: 1, fontWeight: '500' }} numberOfLines={1}>
-                              {o.doctorName}
-                            </Text>
-                            <Text style={{ fontSize: 11, color: T.ink3, flexShrink: 0 }}>·</Text>
-                          </>
-                        )}
-                        <Text style={{ fontSize: 11.5, color: T.ink3, flexShrink: 1 }} numberOfLines={1}>
-                          {o.workType}
-                        </Text>
-                      </View>
-                    </View>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={{
-                        fontSize: 13, fontWeight: '600', color: valueColor,
-                        ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
-                      }}>
-                        {o.remain}
-                      </Text>
-                      <Text style={{ fontSize: 9.5, color: T.ink3, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                        {o.kind === 'pending_approval' ? 'Onay' : 'Gecikme'}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2, minWidth: 0 }}>
+                      {!!o.doctorName && (
+                        <>
+                          <Stethoscope size={10} color={T.ink3} strokeWidth={1.8} />
+                          <Text style={{ fontSize: 11, color: T.ink2, flexShrink: 1, fontWeight: '500' }} numberOfLines={1}>
+                            {o.doctorName}
+                          </Text>
+                          <Text style={{ fontSize: 11, color: T.ink3, flexShrink: 0 }}>·</Text>
+                        </>
+                      )}
+                      <Text style={{ fontSize: 11, color: T.ink3, flexShrink: 1 }} numberOfLines={1}>
+                        {o.workType}
                       </Text>
                     </View>
                   </View>
-                )}
-              </Pressable>
-            );
-          })}
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: valueColor }}>
+                      {o.remain}
+                    </Text>
+                    <Text style={{ fontSize: 9, fontWeight: '600', color: T.ink3, letterSpacing: 0.5, textTransform: 'uppercase', marginTop: 1 }}>
+                      {o.kind === 'pending_approval' ? 'Onay' : 'Gecikme'}
+                    </Text>
+                  </View>
+                </MobileTableRowX>
+              );
+            })}
+          </MobileTableX>
         </View>
       )}
 
@@ -650,7 +644,7 @@ function Kpi({ label, numericValue, delta, deltaColor, sub, dark, accent, icon: 
 
   if (!art) return card;
   return (
-    <View style={{ flex: 1, zIndex: 2 }}>
+    <View style={{ flex: 1, ...ART_Z }}>
       {card}
       <View pointerEvents="none" style={{ position: 'absolute', bottom: 6, width: artSize?.w ?? 66, height: artSize?.h ?? 66, ...artEdge }}>
         <Image source={art} resizeMode="contain" style={{ width: '100%', height: '100%' }} />

@@ -9,6 +9,8 @@ import { supabase } from '../../../core/api/supabase';
 import { useAppResume } from '../../../core/hooks/useAppResume';
 import { mapStationToStage } from '../../orders/stationMapping';
 import { type Stage } from '../../orders/stages';
+import { isOverdueOrder } from '../../../core/metrics/orderDefs';
+import { useLabToday } from '../../../core/metrics/useLabToday';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -18,6 +20,10 @@ export interface KanbanCard {
   work_type:         string;
   delivery_date:     string;
   is_rush:           boolean;
+  /** Acil (siparişin is_urgent alanı; is_rush hiçbir ekranda yazılmıyor). */
+  is_urgent?:        boolean | null;
+  /** 'on_hold' → beklemede; tek tanıma göre gecikmiş sayılmaz (20261026121000). */
+  hold_status?:      string | null;
   status:            string;
   box_code:          string | null;
 
@@ -61,11 +67,14 @@ export interface KanbanColumn {
 interface StationRow { id: string; name: string; color: string | null; sequence_hint: number | null; }
 
 const UNASSIGNED_LABEL = 'Atanmamış';
-const isOverdue = (d: string | null) => { if (!d) return false; const t = new Date(d).getTime(); return Number.isFinite(t) && t < Date.now(); };
+// Tek tanım (2026-10-26): gün kıyası, lab günü. Eskiden saat kıyasıydı → bugün teslimli iş
+// TR 03:00'ten sonra "geciken" görünüyordu.
+const isOverdueOn = (c: KanbanCard, today: string) => isOverdueOrder({ status: c.status, delivery_date: c.delivery_date, hold_status: c.hold_status }, today);
 
 // ── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useKanbanData(labId: string | null | undefined) {
+  const today = useLabToday();
   const [cards,    setCards]    = useState<KanbanCard[]>([]);
   const [stations, setStations] = useState<StationRow[]>([]);
   const [loading,  setLoading]  = useState(true);
@@ -153,7 +162,7 @@ export function useKanbanData(labId: string | null | undefined) {
         cards: sortCards(list),
         workload: Array.from(wmap.entries()).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
         isUnassigned: false,
-        overdue: list.filter(c => isOverdue(c.delivery_date)).length,
+        overdue: list.filter(c => isOverdueOn(c, today)).length,
       };
     });
 
@@ -164,11 +173,11 @@ export function useKanbanData(labId: string | null | undefined) {
       cards: sortCards(unassigned),
       workload: [],
       isUnassigned: true,
-      overdue: unassigned.filter(c => isOverdue(c.delivery_date)).length,
+      overdue: unassigned.filter(c => isOverdueOn(c, today)).length,
     };
 
     return [...stationCols, unassignedCol];
-  }, [cards, stations]);
+  }, [cards, stations, today]);
 
   return { columns, cards, loading, error, lastSync, refresh: load };
 }

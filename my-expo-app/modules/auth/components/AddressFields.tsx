@@ -9,6 +9,13 @@
  *    • Nominatim OSM API      → sokak / cadde önerileri (klinik düzeyinde)
  *
  *  Static fallback: RPC fail olursa core/data/turkeyLocations'a düşer.
+ *
+ *  Ülke (2026-10-23): CountryField — yeni formda IP → saat dilimi → Türkiye ile önden
+ *  seçilir, kullanıcı değiştirebilir. Kayıt ekranları onu formun EN ÜSTÜNE koyar (Google
+ *  kurum araması o ülkede yapılır) ve AddressFields'e showCountry={false} verir.
+ *  Türkiye dışında il/ilçe listeleri yerine serbest metin (il = eyalet/bölge, ilce = şehir).
+ *  Kayıt JSON'dur — admin "Yeni Sağlık Kurumu" formuyla AYNI biçim
+ *  ({ulke, il, ilce, mahalle, sokak, bina_no, daire_no, posta_kodu}).
  */
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, Platform, Pressable } from 'react-native';
@@ -18,14 +25,22 @@ import { ILLER, ILCELER } from '../../../core/data/turkeyLocations';
 import { DropdownField } from './DropdownField';
 import { supabase } from '../../../core/api/supabase';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import i18n from 'i18next';
+import { DEFAULT_COUNTRY, countryName, countryOptions, isCountryCode } from '../../../core/data/countries';
+import { detectCountry } from '../../../core/geo/detectCountry';
+import type { PlaceDetails } from '../api/places';
 
 const GREEN = DS.clinic.primary;
 
 export interface AddressData {
+  /** ISO ülke kodu; boşsa form açılışında tahmin edilir (yoksa TR) */
+  ulke?: string;
   il: string;
   ilce: string;
   mahalle: string;
   sokak: string;
+  bina_no?: string;
+  daire_no?: string;
   posta_kodu?: string;
 }
 
@@ -33,10 +48,49 @@ interface Props {
   value: AddressData;
   onChange: (data: AddressData) => void;
   errors?: Partial<Record<keyof AddressData, string>>;
+  /** false → ülke burada çizilmez (ekran CountryField'i formun başına koyar) */
+  showCountry?: boolean;
 }
 
-export function AddressFields({ value, onChange, errors }: Props) {
+/**
+ * Ülke seçimi — değer yoksa form açılışında bir kez tahmin edilir (IP → saat dilimi → TR).
+ * Ülke değişince il/ilçe/mahalle/posta kodu sıfırlanır (başka ülkenin listesi geçersiz).
+ */
+export function CountryField({ value, onChange }: { value: AddressData; onChange: (data: AddressData) => void }) {
+  const ulke = value.ulke || DEFAULT_COUNTRY;
+  const lang = i18n.language;
+  const countryOpts = countryOptions(lang);
+  const latest = React.useRef(value);
+  latest.current = value;
+  useEffect(() => {
+    if (value.ulke) return;
+    let alive = true;
+    detectCountry().then((c) => {
+      if (alive && !latest.current.ulke) onChange({ ...latest.current, ulke: c });
+    });
+    return () => { alive = false; };
+  }, []);
+  const selectCountry = (name: string) => {
+    const code = countryOpts.find((o) => o.name === name)?.code;
+    if (!code || code === ulke) return;
+    onChange({ ...value, ulke: code, il: '', ilce: '', mahalle: '', posta_kodu: '' });
+  };
+  return (
+    <DropdownField
+      label="Ülke *"
+      value={countryName(ulke, lang)}
+      options={countryOpts.map((o) => o.name)}
+      placeholder="Ülke seçin"
+      onSelect={selectCountry}
+      icon={<MapPin size={14} color={DS.ink[400]} strokeWidth={1.8} />}
+    />
+  );
+}
+
+export function AddressFields({ value, onChange, errors, showCountry = true }: Props) {
   const isDark = useThemeModeStore(s => s.resolvedDark);
+  const ulke = value.ulke || DEFAULT_COUNTRY;
+  const isTR = ulke === DEFAULT_COUNTRY;
   const surface    = isDark ? '#1B1916'                : '#FFFFFF';
   const inkPrimary = isDark ? '#F7F2E9'                : DS.ink[900];
   const inkMuted   = isDark ? 'rgba(247,242,233,0.45)' : DS.ink[400];
@@ -63,7 +117,7 @@ export function AddressFields({ value, onChange, errors }: Props) {
 
   // İlçeler (il değişince)
   useEffect(() => {
-    if (!value.il) { setDbIlceler([]); return; }
+    if (!isTR || !value.il) { setDbIlceler([]); return; }
     (async () => {
       const { data } = await supabase.rpc('get_ilceler', { p_il: value.il });
       if (Array.isArray(data) && data.length > 0) {
@@ -72,11 +126,11 @@ export function AddressFields({ value, onChange, errors }: Props) {
         setDbIlceler(ILCELER[value.il] ?? []); // fallback
       }
     })();
-  }, [value.il]);
+  }, [value.il, isTR]);
 
   // Mahalleler (il+ilçe değişince)
   useEffect(() => {
-    if (!value.il || !value.ilce) { setDbMahalleler([]); return; }
+    if (!isTR || !value.il || !value.ilce) { setDbMahalleler([]); return; }
     (async () => {
       const { data } = await supabase.rpc('get_mahalleler', { p_il: value.il, p_ilce: value.ilce });
       if (Array.isArray(data)) {
@@ -85,7 +139,7 @@ export function AddressFields({ value, onChange, errors }: Props) {
         setDbMahalleler([]);
       }
     })();
-  }, [value.il, value.ilce]);
+  }, [value.il, value.ilce, isTR]);
 
   // Sokak suggest (Nominatim debounce 400ms)
   const [sokakSuggest, setSokakSuggest] = useState<Array<{ road: string; postcode: string | null }>>([]);
@@ -94,7 +148,7 @@ export function AddressFields({ value, onChange, errors }: Props) {
 
   useEffect(() => {
     const q = value.sokak.trim();
-    if (q.length < 2 || !value.il || !value.ilce) { setSokakSuggest([]); return; }
+    if (!isTR || q.length < 2 || !value.il || !value.ilce) { setSokakSuggest([]); return; }
     let cancelled = false;
     setSokakLoading(true);
     const t = setTimeout(async () => {
@@ -126,7 +180,7 @@ export function AddressFields({ value, onChange, errors }: Props) {
       }
     }, 400);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [value.sokak, value.il, value.ilce, value.mahalle]);
+  }, [value.sokak, value.il, value.ilce, value.mahalle, isTR]);
 
   // ── Setters ─────────────────────────────────────────────────────
   const set = (key: keyof AddressData) => (val: string) => {
@@ -159,6 +213,32 @@ export function AddressFields({ value, onChange, errors }: Props) {
 
   return (
     <View>
+      {/* Ülke — yeni formda konuma göre önden seçili (kayıt ekranlarında formun başında) */}
+      {showCountry && <CountryField value={value} onChange={onChange} />}
+
+      {!isTR ? (
+        <View>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <TextInputField label="Eyalet / Bölge" value={value.il} onChangeText={set('il')} placeholder="Örn: Bayern" error={errors?.il} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <TextInputField label="Şehir *" value={value.ilce} onChangeText={set('ilce')} placeholder="Örn: München" error={errors?.ilce} />
+            </View>
+          </View>
+          <TextInputField
+            label="Adres *"
+            value={value.sokak}
+            onChangeText={set('sokak')}
+            placeholder="Cadde / sokak"
+            error={errors?.sokak}
+            icon={<Home size={14} color={DS.ink[400]} strokeWidth={1.8} />}
+          />
+          <BuildingRow value={value} set={set} binaPlaceholder="Örn: 12" />
+          <TextInputField label="Posta kodu" value={value.posta_kodu ?? ''} onChangeText={set('posta_kodu')} placeholder="Örn: 80802" error={errors?.posta_kodu} />
+        </View>
+      ) : (
+      <View>
       {/* İl + İlçe yan yana */}
       <View style={{ flexDirection: 'row', gap: 10 }}>
         <View style={{ flex: 1 }}>
@@ -189,10 +269,10 @@ export function AddressFields({ value, onChange, errors }: Props) {
       {/* Sokak / Cadde — Nominatim suggest */}
       <View>
         <TextInputField
-          label="Sokak / Cadde / No"
+          label="Cadde / Sokak"
           value={value.sokak}
           onChangeText={set('sokak')}
-          placeholder="Örn: Cumhuriyet Cad. No: 12/3"
+          placeholder="Örn: Cumhuriyet Cad."
           error={errors?.sokak}
           icon={<Home size={14} color={DS.ink[400]} strokeWidth={1.8} />}
           onFocus={() => setSokakFocused(true)}
@@ -231,6 +311,25 @@ export function AddressFields({ value, onChange, errors }: Props) {
             ))}
           </View>
         )}
+      </View>
+      <BuildingRow value={value} set={set} binaPlaceholder="Örn: 21" />
+      </View>
+      )}
+    </View>
+  );
+}
+
+/** Bina No + Daire No yan yana (ikisi de isteğe bağlı). */
+function BuildingRow({ value, set, binaPlaceholder }: {
+  value: AddressData; set: (key: keyof AddressData) => (val: string) => void; binaPlaceholder: string;
+}) {
+  return (
+    <View style={{ flexDirection: 'row', gap: 10 }}>
+      <View style={{ flex: 1 }}>
+        <TextInputField label="Bina No" value={value.bina_no ?? ''} onChangeText={set('bina_no')} placeholder={binaPlaceholder} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <TextInputField label="Daire No" value={value.daire_no ?? ''} onChangeText={set('daire_no')} placeholder="Örn: 3" />
       </View>
     </View>
   );
@@ -293,8 +392,46 @@ function TextInputField({
   );
 }
 
-/** Birleşik adres string'i oluşturur (DB'ye kayıt için) */
+/**
+ * DB'ye kayıt için adres — admin "Yeni Sağlık Kurumu" formuyla AYNI JSON biçimi
+ * (eskiden "sokak, mahalle, ilçe, il" düz metniydi → e-fatura adres ayrıştırması tutmuyordu).
+ * Ekranda core/util/formatAddress ile okunur hâle gelir.
+ */
 export function buildAddressString(addr: AddressData): string {
-  const parts = [addr.sokak, addr.mahalle, addr.ilce, addr.il, addr.posta_kodu].filter(Boolean);
-  return parts.join(', ');
+  const t = (v?: string) => String(v ?? '').trim();
+  return JSON.stringify({
+    ulke: isCountryCode(addr.ulke) ? String(addr.ulke).toUpperCase() : DEFAULT_COUNTRY,
+    il: t(addr.il), ilce: t(addr.ilce), mahalle: t(addr.mahalle),
+    sokak: t(addr.sokak), bina_no: t(addr.bina_no), daire_no: t(addr.daire_no), posta_kodu: t(addr.posta_kodu),
+  });
+}
+
+/** Ülkeye göre zorunlu alanlar: TR → il + ilçe; yurt dışı → şehir + adres. */
+export function validateAddress(addr: AddressData): Partial<Record<keyof AddressData, string>> {
+  const e: Partial<Record<keyof AddressData, string>> = {};
+  if ((addr.ulke || DEFAULT_COUNTRY) === DEFAULT_COUNTRY) {
+    if (!addr.il) e.il = 'İl seçin';
+    if (!addr.ilce) e.ilce = 'İlçe seçin';
+  } else {
+    if (!addr.ilce.trim()) e.ilce = 'Şehir girin';
+    if (!addr.sokak.trim()) e.sokak = 'Adres girin';
+  }
+  return e;
+}
+
+/** Google yer ayrıntısı → adres (ülke dahil; yurt dışında şehir = locality). */
+export function addressFromPlace(d: PlaceDetails, prevUlke?: string): AddressData {
+  const ulke = isCountryCode(d.ulke) ? d.ulke : (prevUlke || DEFAULT_COUNTRY);
+  const foreign = ulke !== DEFAULT_COUNTRY;
+  return {
+    ulke,
+    il: d.il || '',
+    ilce: (foreign ? (d.sehir || d.ilce) : d.ilce) || '',
+    mahalle: d.mahalle || '',
+    // Bina / daire ayrı alanlarda — cadde satırına karışmaz
+    sokak: d.cadde || d.sokak || '',
+    bina_no: d.binaNo || '',
+    daire_no: d.daireNo || '',
+    posta_kodu: d.postaKodu || '',
+  };
 }

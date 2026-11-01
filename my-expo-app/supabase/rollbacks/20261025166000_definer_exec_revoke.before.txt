@@ -1,0 +1,5 @@
+-- 2026-10-26 canlı ACL
+_send_payment_reminder_core(p_lab_id uuid, p_clinic_id uuid, p_invoice_id uuid, p_tone text, p_message text, p_severity text, p_channels text[], p_sent_by uuid) owner=postgres acl={=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+alloc_receipt_to_invoices(p_receipt_id uuid, p_clinic_id uuid, p_base numeric, p_base_ccy text, p_date date, p_method text) owner=postgres acl={=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+get_admin_stats() owner=postgres acl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+record_clinic_receipt(p_clinic_id uuid, p_lines jsonb, p_receipt_date date, p_payment_method text, p_reference_no text, p_notes text, p_idempotency_key text) owner=postgres acl={=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}

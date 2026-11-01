@@ -42,10 +42,16 @@ interface BuildInput {
   gridLine?: string;
   /** ZIP modu — arşiv WebView içinde indirilip açılır (bkz. dosya başı) */
   zip?: { url: string; idPrefix?: string };
+  /**
+   * Birden fazla arşiv ("Tümünü 3D Aç"). Hepsi WebView'de SIRAYLA açılır (bellek
+   * tepesi tek arşivi geçmesin) ve `files`'taki doğrudan STL/PLY/OBJ'lerle aynı
+   * sahnede birleşir. Verilirse `zip` yok sayılır.
+   */
+  zips?: Array<{ url: string; idPrefix?: string }>;
 }
 
-export function buildViewerHtml({ files, layerStyles, bg = '#0e0e0e', gridLine = 'rgba(255,255,255,0.07)', zip }: BuildInput): string {
-  const payload = JSON.stringify({ files, layerStyles, bg, zip: zip ?? null });
+export function buildViewerHtml({ files, layerStyles, bg = '#0e0e0e', gridLine = 'rgba(255,255,255,0.07)', zip, zips }: BuildInput): string {
+  const payload = JSON.stringify({ files, layerStyles, bg, zip: zip ?? null, zips: zips ?? null });
   return /* html */ `<!DOCTYPE html>
 <html lang="tr">
 <head>
@@ -977,11 +983,15 @@ function tick() {
 }
 tick();
 
-// ZIP modu: önce arşivi aç, mesh listesini RN'e bildir, katman stillerini bekle.
+// ZIP modu: önce arşiv(ler)i aç, mesh listesini RN'e bildir, katman stillerini bekle.
+// Çoklu modda arşivler SIRAYLA açılır ve doğrudan dosyaların (INPUT.files) arkasına eklenir.
 let FILES = INPUT.files;
-if (INPUT.zip) {
+const ZIPS = (INPUT.zips && INPUT.zips.length) ? INPUT.zips : (INPUT.zip ? [INPUT.zip] : []);
+if (ZIPS.length) {
   try {
-    FILES = await extractZip(INPUT.zip);
+    const extracted = [];
+    for (const z of ZIPS) extracted.push(...(await extractZip(z)));
+    FILES = [...(INPUT.files || []), ...extracted];
   } catch (e) {
     showErr('Arşiv açılamadı: ' + String((e && e.message) || e));
     post({ type: 'ERROR', message: 'zip: ' + String((e && e.message) || e) });

@@ -1,0 +1,85 @@
+{
+ "ibm": "CREATE OR REPLACE FUNCTION public._is_bonus_manager()\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\n  SELECT\n    EXISTS (\n      -- profiles tarafı: admin veya lab manager\n      SELECT 1 FROM public.profiles p\n       WHERE p.id = auth.uid()\n         AND (\n              p.user_type = 'admin'\n           OR (p.user_type = 'lab' AND COALESCE(p.role, 'manager') IN ('manager', 'admin'))\n         )\n    )\n    OR EXISTS (\n      -- employees tarafı: yetkili rol\n      SELECT 1 FROM public.employees e\n       JOIN public.profiles p ON p.id = auth.uid()\n       WHERE e.lab_id = p.lab_id\n         AND e.email = (SELECT email FROM auth.users WHERE id = auth.uid())\n         AND e.role IN ('yonetici', 'hr_manager', 'finance_manager')\n         AND e.is_active = true\n    );\n$function$\n",
+ "pols": [
+  {
+   "check": null,
+   "cmd": "SELECT",
+   "name": "bonus_runs_read",
+   "permissive": "PERMISSIVE",
+   "qual": "(lab_id = get_my_lab_id())",
+   "roles": [
+    "public"
+   ],
+   "table": "bonus_runs"
+  },
+  {
+   "check": "((lab_id = get_my_lab_id()) AND _is_bonus_manager())",
+   "cmd": "ALL",
+   "name": "bonus_runs_write",
+   "permissive": "PERMISSIVE",
+   "qual": "((lab_id = get_my_lab_id()) AND _is_bonus_manager())",
+   "roles": [
+    "public"
+   ],
+   "table": "bonus_runs"
+  },
+  {
+   "check": "(lab_id = get_my_lab_id())",
+   "cmd": "ALL",
+   "name": "payroll_settings_lab_own",
+   "permissive": "PERMISSIVE",
+   "qual": "(lab_id = get_my_lab_id())",
+   "roles": [
+    "public"
+   ],
+   "table": "payroll_settings"
+  },
+  {
+   "check": "(lab_id = get_my_lab_id())",
+   "cmd": "ALL",
+   "name": "perf_rules_lab_own",
+   "permissive": "PERMISSIVE",
+   "qual": "(lab_id = get_my_lab_id())",
+   "roles": [
+    "public"
+   ],
+   "table": "performance_rules"
+  },
+  {
+   "check": "(EXISTS ( SELECT 1\n   FROM profiles p\n  WHERE ((p.id = auth.uid()) AND ((p.user_type = 'admin'::text) OR (p.role = 'manager'::text)))))",
+   "cmd": "ALL",
+   "name": "manager_admin_full",
+   "permissive": "PERMISSIVE",
+   "qual": "(EXISTS ( SELECT 1\n   FROM profiles p\n  WHERE ((p.id = auth.uid()) AND ((p.user_type = 'admin'::text) OR (p.role = 'manager'::text)))))",
+   "roles": [
+    "authenticated"
+   ],
+   "table": "salary_adjustments"
+  },
+  {
+   "check": null,
+   "cmd": "SELECT",
+   "name": "user_read_own",
+   "permissive": "PERMISSIVE",
+   "qual": "(user_id = auth.uid())",
+   "roles": [
+    "authenticated"
+   ],
+   "table": "salary_adjustments"
+  },
+  {
+   "check": "(( SELECT is_platform_admin() AS is_platform_admin) OR (( SELECT get_my_lab_id() AS get_my_lab_id) IS NULL) OR (user_id = ( SELECT auth.uid() AS uid)) OR (user_lab_id(user_id) IS NULL) OR (user_lab_id(user_id) = ( SELECT get_my_lab_id() AS get_my_lab_id)))",
+   "cmd": "ALL",
+   "name": "tenant_guard",
+   "permissive": "RESTRICTIVE",
+   "qual": "((( SELECT get_my_lab_id() AS get_my_lab_id) IS NULL) OR (user_id = ( SELECT auth.uid() AS uid)) OR (user_lab_id(user_id) IS NULL) OR (user_lab_id(user_id) = ( SELECT get_my_lab_id() AS get_my_lab_id)))",
+   "roles": [
+    "authenticated"
+   ],
+   "table": "salary_adjustments"
+  }
+ ],
+ "ps_cols": "id:NO,lab_id:NO,employee_id:NO,working_days_per_month:NO,late_penalty_per_incident:NO,overtime_multiplier:NO,include_sgk:NO,sgk_employee_rate:NO,sgk_employer_rate:NO,created_at:NO,updated_at:NO",
+ "sa_cols": "id,user_id,type,amount,reason,work_order_id,period_month,created_by,created_at,stage_id,source_table,source_id",
+ "unpost": "CREATE OR REPLACE FUNCTION public.unpost_bonus_run(p_run_id uuid)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\nDECLARE\n  v_caller   UUID := auth.uid();\n  v_run      public.bonus_runs%ROWTYPE;\n  v_user_type TEXT;\n  v_emp_role TEXT;\n  v_deleted  INTEGER;\nBEGIN\n  IF v_caller IS NULL THEN RAISE EXCEPTION 'auth required'; END IF;\n\n  -- Sadece admin veya yonetici unpost edebilir\n  SELECT user_type INTO v_user_type FROM profiles WHERE id = v_caller;\n  SELECT e.role    INTO v_emp_role\n    FROM employees e\n    JOIN profiles p ON p.id = v_caller\n   WHERE e.lab_id = p.lab_id AND e.email = (SELECT email FROM auth.users WHERE id = v_caller)\n   LIMIT 1;\n\n  IF NOT (v_user_type = 'admin' OR v_emp_role = 'yonetici') THEN\n    RAISE EXCEPTION 'forbidden: only admin or yonetici can unpost a run';\n  END IF;\n\n  SELECT * INTO v_run FROM bonus_runs WHERE id = p_run_id;\n  IF NOT FOUND THEN RAISE EXCEPTION 'run not found'; END IF;\n  IF v_run.lab_id <> get_my_lab_id() THEN RAISE EXCEPTION 'forbidden: cross-lab'; END IF;\n  IF v_run.status <> 'posted' THEN RAISE EXCEPTION 'only posted runs can be unposted'; END IF;\n\n  DELETE FROM salary_adjustments\n   WHERE source_table = 'bonus_runs' AND source_id = p_run_id;\n  GET DIAGNOSTICS v_deleted = ROW_COUNT;\n\n  UPDATE bonus_runs\n     SET status = 'approved', posted_by = NULL, posted_at = NULL\n   WHERE id = p_run_id;\n\n  RETURN jsonb_build_object(\n    'ok', true, 'run_id', p_run_id, 'status', 'approved',\n    'adjustments_deleted', v_deleted\n  );\nEND;\n$function$\n"
+}

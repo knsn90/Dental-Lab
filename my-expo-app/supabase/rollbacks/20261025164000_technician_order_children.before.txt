@@ -1,0 +1,43 @@
+-- 2026-10-26 canlı (önce): field_staff_scope YOK
+
+CREATE OR REPLACE FUNCTION public.can_access_work_order(p_order uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  select exists (select 1 from work_orders wo where wo.id = p_order and (
+      (is_lab_user() and wo.lab_id = get_my_lab_id())
+   or wo.doctor_id = auth.uid()
+   or (is_clinic_admin() and my_clinic_id() is not null and (
+        exists (select 1 from profiles p_doc where p_doc.id = wo.doctor_id and p_doc.clinic_id = my_clinic_id())
+     or exists (select 1 from doctors d_doc where d_doc.id = wo.doctor_id and d_doc.clinic_id = my_clinic_id())))
+   or is_platform_admin()));
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public._implant_parts_actor(p_order uuid)
+ RETURNS text
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT CASE
+    WHEN public.is_lab_user() AND EXISTS (
+      SELECT 1 FROM work_orders wo WHERE wo.id = p_order AND wo.lab_id = public.get_my_lab_id()
+    ) THEN 'lab'
+    WHEN EXISTS (SELECT 1 FROM work_orders wo WHERE wo.id = p_order AND wo.doctor_id = auth.uid())
+      THEN 'clinic'
+    WHEN public.is_my_doctor_order(p_order) THEN 'clinic'
+    WHEN EXISTS (
+      SELECT 1 FROM profiles pr
+       WHERE pr.id = auth.uid()
+         AND pr.user_type IN ('clinic_admin','clinic_secretary')
+         AND public._resolve_wo_clinic_id(p_order) IS NOT NULL
+         AND (pr.clinic_id = public._resolve_wo_clinic_id(p_order)
+              OR public._resolve_wo_clinic_id(p_order) IN (SELECT public.my_clinic_ids()))
+    ) THEN 'clinic'
+    ELSE NULL
+  END;
+$function$
+;

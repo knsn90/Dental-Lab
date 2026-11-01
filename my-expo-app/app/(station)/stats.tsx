@@ -2,6 +2,7 @@
 // Teknisyen Dashboard — Lab paneli kart tarzı (Patterns), tech-blue tema.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { HatchFill } from '../../core/ui/HatchFill';
 import { firstName as displayFirstName } from '../../core/util/personName';
 import { View, Text, ScrollView, Pressable, Platform, Animated, Easing } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,6 +21,7 @@ import { supabase } from '../../core/api/supabase';
 import { LinearProgressX, PercentRingX } from '../../core/ui/ProgressX';
 import { DS } from '../../core/theme/dsTokens';
 import { useStationTheme, hexA } from '../../core/theme/stationPalette';
+import { useNeonNavy, NeonPulse } from '../../core/ui/HeroGlow';
 import { localeTag, isRTL, fmtDayMonthShort, fmtDayMonthYear } from '../../core/i18n';
 import { mobileTopPad } from '../../core/ui/pageMetrics';
 
@@ -268,34 +270,30 @@ interface DayBar {
   count: number;
 }
 
-// ── Yeni Sipariş CTA kartı — station mavi (diğer panellerdeki AnimatedCTACard'ın eşi) ──
+/**
+ * Yeni Sipariş CTA — zemin TEK kaynaktan: `useNeonNavy` ("neon navy").
+ *
+ * Eskiden mavi→lacivert gradyan + yüzen beyaz daire + nabız atan beyaz ışıma
+ * vardı; açık temada kart alacalı görünüyordu. Kullanıcı kararı: açık temada
+ * DÜZ panel rengi, koyu temada neon yüzey + nabız — yönetim, lab, klinik ve
+ * hekim panellerindeki CTA kartlarıyla aynı dil.
+ */
 function StationCTACard({ onPress }: { onPress: () => void }) {
   const { t } = useTranslation();
-  const floatAnim = useRef(new Animated.Value(0)).current;
-  const glowAnim  = useRef(new Animated.Value(0)).current;
+  const nn = useNeonNavy(STATION_ACCENT);
+  // Tek kalan hareket: eylem okunun nazik dürtüsü.
   const arrowAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     Animated.loop(Animated.sequence([
-      Animated.timing(floatAnim, { toValue: 1, duration: 3000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      Animated.timing(floatAnim, { toValue: 0, duration: 3000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-    ])).start();
-    Animated.loop(Animated.sequence([
-      Animated.timing(glowAnim, { toValue: 1, duration: 2200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      Animated.timing(glowAnim, { toValue: 0, duration: 2200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-    ])).start();
-    Animated.loop(Animated.sequence([
       Animated.delay(2000),
       Animated.timing(arrowAnim, { toValue: 1, duration: 400, easing: Easing.out(Easing.ease), useNativeDriver: true }),
       Animated.timing(arrowAnim, { toValue: 0, duration: 400, easing: Easing.in(Easing.ease), useNativeDriver: true }),
     ])).start();
-  }, [floatAnim, glowAnim, arrowAnim]);
+  }, [arrowAnim]);
 
-  const floatY      = floatAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 8] });
-  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.10, 0.28] });
-  const glowScale   = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.15] });
-  const arrowX      = arrowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, isRTL() ? -6 : 6] });
+  const arrowX = arrowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, isRTL() ? -6 : 6] });
 
   return (
     <Pressable
@@ -307,20 +305,18 @@ function StationCTACard({ onPress }: { onPress: () => void }) {
       <Animated.View style={{
         flex: 1,
         borderRadius: 24, padding: 22, overflow: 'hidden', position: 'relative',
-        // @ts-ignore web gradient
-        backgroundImage: `linear-gradient(135deg, ${STATION_ACCENT} 0%, ${STATION_DEEP} 100%)`,
-        backgroundColor: STATION_ACCENT, minHeight: 180,
+        minHeight: 180,
+        ...nn.surface,
         transform: [{ scale: scaleAnim }],
       }}>
-        <Animated.View style={{ position: 'absolute', top: -20, end: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.18)', transform: [{ translateY: floatY }] }} />
-        <Animated.View pointerEvents="none" style={{ position: 'absolute', top: -40, end: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: '#FFFFFF', opacity: glowOpacity, transform: [{ scale: glowScale }] }} />
+        {!nn.flat && <NeonPulse radius={24} color={nn.glow} />}
         <View style={{ position: 'relative' }}>
-          <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 1.1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)', marginBottom: 14 }}>{t('station.dashboard.quickAction')}</Text>
-          <Text style={{ ...SERIF, fontSize: 32, letterSpacing: -0.6, lineHeight: 35, color: '#FFFFFF', marginBottom: 18 }}>{t('station.dashboard.createNewOrder')}</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', borderRadius: 9999, paddingHorizontal: 18, paddingVertical: 10, backgroundColor: '#FFFFFF', gap: 8 }}>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: STATION_DEEP }}>{t('station.dashboard.start')}</Text>
+          <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 1.1, textTransform: 'uppercase', color: nn.inkSoft, marginBottom: 14 }}>{t('station.dashboard.quickAction')}</Text>
+          <Text style={{ ...SERIF, fontSize: 32, letterSpacing: -0.6, lineHeight: 35, color: nn.ink, marginBottom: 18 }}>{t('station.dashboard.createNewOrder')}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', borderRadius: 9999, paddingHorizontal: 18, paddingVertical: 10, backgroundColor: nn.pillBg, gap: 8 }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: nn.pillInk }}>{t('station.dashboard.start')}</Text>
             <Animated.View style={{ transform: [{ translateX: arrowX }] }}>
-              {isRTL() ? <ArrowLeft size={14} color={STATION_DEEP} strokeWidth={2.2} /> : <ArrowRight size={14} color={STATION_DEEP} strokeWidth={2.2} />}
+              {isRTL() ? <ArrowLeft size={14} color={nn.pillInk} strokeWidth={2.2} /> : <ArrowRight size={14} color={nn.pillInk} strokeWidth={2.2} />}
             </Animated.View>
           </View>
         </View>
@@ -796,6 +792,8 @@ export default function StationDashboard() {
                             position: 'relative' as any,
                           }}
                         >
+                          {/* Native: CSS gradyanı yok → SVG tarama */}
+                          <HatchFill color={P.ink100} opacity={1} />
                           {!empty && (
                             <View
                               style={{

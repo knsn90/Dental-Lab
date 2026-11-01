@@ -21,6 +21,8 @@ import {
   DISPLAY, TH, PillButton, Chip, EmptyCard, Loader, ErrorBar,
   usePagePadding,
 } from '../components/atoms';
+import { MobileTableX, MobileTableRowX, MobileTableIconX } from '../../../../core/ui/MobileTableX';
+import { autoT } from '../../../../core/i18n/autoTranslate';
 
 interface HistoryEntry {
   id: string;
@@ -189,35 +191,23 @@ export default function BonusAuditScreen() {
       ) : filtered.length === 0 ? (
         <EmptyCard icon={History} title="Kayıt yok" description="Henüz policy değişikliği yapılmamış veya filtre dışında." />
       ) : (
-        <View style={{ gap: 12 }}>
-          {filtered.map(e => {
+        /* Ekstre / giderler mobil tablosuyla aynı kalıp — satıra dokununca ayrıntı açılır */
+        <MobileTableX title="Değişiklik Geçmişi" count={filtered.length} countLabel="kayıt">
+          {filtered.map((e, i) => {
             const diff = buildDiff(e.old_snapshot, e.new_snapshot);
             const open = expanded === e.id;
             const policy = policyMap.get(e.policy_id);
             const actorName = e.changed_by ? (actors.get(e.changed_by) ?? e.changed_by.slice(0, 8)) : 'Sistem';
+            const isLast = i === filtered.length - 1;
             return (
-              <View key={e.id} style={{
-                backgroundColor: U.surface, borderRadius: 18,
-                borderWidth: 1, borderColor: U.ink[200], overflow: 'hidden',
-              }}>
-                <Pressable
-                  onPress={() => setExpanded(open ? null : e.id)}
-                  style={({ pressed }) => ({
-                    flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18,
-                    opacity: pressed ? 0.85 : 1,
-                  })}
-                >
-                  {open ? <ChevronDown size={16} color={U.ink[500]} /> : (isRTL()
-                    ? <ChevronLeft size={16} color={U.ink[500]} />
-                    : <ChevronRight size={16} color={U.ink[500]} />)}
-                  <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: U.isDark ? TH.primary + '26' : TH.bgSoft, alignItems: 'center', justifyContent: 'center' }}>
-                    <Edit3 size={18} color={TH.primary} strokeWidth={1.8} />
-                  </View>
+              <View key={e.id}>
+                <MobileTableRowX isLast={isLast && !open} onPress={() => setExpanded(open ? null : e.id)}>
+                  <MobileTableIconX icon={Edit3} tone={{ bg: U.isDark ? TH.primary + '26' : TH.bgSoft, fg: U.isDark ? '#93C5FD' : TH.primary }} />
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>
                       {policy?.name ?? '?'}
                     </Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', columnGap: 10, rowGap: 2, marginTop: 2, flexWrap: 'wrap' }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                         <User size={11} color={U.ink[400]} />
                         <Text style={{ fontSize: 11, color: U.ink[500] }}>{actorName}</Text>
@@ -230,15 +220,20 @@ export default function BonusAuditScreen() {
                       </View>
                     </View>
                   </View>
-                  <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: TH.primary + '20' }}>
-                    <Text style={{ fontSize: 10, fontWeight: '700', color: TH.primary, letterSpacing: 0.5 }}>
-                      {diff.length} alan
-                    </Text>
+                  <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                    <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: TH.primary + '20' }}>
+                      <Text style={{ fontSize: 9, fontWeight: '700', color: U.isDark ? '#93C5FD' : TH.primary, letterSpacing: 0.5 }}>
+                        {diff.length} {autoT('alan')}
+                      </Text>
+                    </View>
+                    {open ? <ChevronDown size={14} color={U.ink[400]} /> : (isRTL()
+                      ? <ChevronLeft size={14} color={U.ink[400]} />
+                      : <ChevronRight size={14} color={U.ink[400]} />)}
                   </View>
-                </Pressable>
+                </MobileTableRowX>
 
                 {open ? (
-                  <View style={{ padding: 18, borderTopWidth: 1, borderTopColor: U.ink[100], backgroundColor: U.ink[50] }}>
+                  <View style={{ paddingHorizontal: 16, paddingVertical: 12, backgroundColor: U.surfaceSoft, borderBottomWidth: isLast ? 0 : 1, borderBottomColor: U.hairlineSoft }}>
                     {diff.length === 0 ? (
                       <Text style={{ fontSize: 12, color: U.ink[400], fontStyle: 'italic' }}>
                         Görünür değişiklik yok (sadece zaman damgası).
@@ -272,7 +267,7 @@ export default function BonusAuditScreen() {
               </View>
             );
           })}
-        </View>
+        </MobileTableX>
       )}
     </ScrollView>
   );

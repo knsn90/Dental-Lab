@@ -20,6 +20,7 @@
  */
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { applyBbkProof, runInBackground } from '../_shared/bbkProofApply.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -238,6 +239,15 @@ serve(async (req) => {
           .eq('external_tracking_no', String(body.order_id)).eq('mode', 'external')
           .is('delivered_at', null);
       } catch { /* takip yanıtını bozma */ }
+    }
+
+    // 2. dalga 5: sağlayıcı "completed" diyorsa teslimi (callback ile aynı fonksiyonla) uygula,
+    // sonra teslim kanıtını yaz — callback gelmese de "Durumu Güncelle" kanıtı getirir.
+    if (found && String(found.status ?? '').toLowerCase() === 'completed') {
+      try {
+        await admin.rpc('bbk_apply_delivery_status', { p_tracking_no: String(body.order_id), p_status: 'teslim_edildi', p_note: null });
+      } catch { /* takip yanıtını bozma */ }
+      await runInBackground(applyBbkProof(admin, String(body.order_id), found));
     }
 
     // Kurye kimliğini teslimat kaydına kalıcılaştır — geçmiş gönderilerde

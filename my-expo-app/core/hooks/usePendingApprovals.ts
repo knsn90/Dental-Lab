@@ -45,12 +45,15 @@ export function usePendingApprovals() {
     // Aynı anda gelen çağrılar tek turda birleşir.
     if (!countInFlight) {
       countInFlight = (async () => {
-        // 1) Bekleyen doktor kayıtları
-        const { count: doctorCount } = await supabase
-          .from('profiles')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_type', 'doctor')
-          .eq('approval_status', 'pending');
+        // 1) Bekleyen hesap kayıtları (public kayıt → lab'a bağlantı kodu ile istek).
+        //    Bekleyen hesap lab'a bağlı değil, profiles'tan okunamaz → RPC; yalnız yönetici.
+        let doctorCount = 0;
+        if (isManagerLike) {
+          try {
+            const { data } = await supabase.rpc('lab_signup_requests', { p_history: false });
+            doctorCount = Array.isArray(data) ? data.length : 0;
+          } catch { /* RPC yok / yetki yok */ }
+        }
 
         // 2) Bekleyen tasarım onayları (graceful fallback)
         let designCount = 0;
@@ -85,7 +88,7 @@ export function usePendingApprovals() {
     return subscribeShared(
       'pending_approvals_count',
       [
-        { event: '*', schema: 'public', table: 'profiles' },
+        { event: '*', schema: 'public', table: 'clinic_lab_memberships' },
         { event: '*', schema: 'public', table: 'approvals' },
         { event: '*', schema: 'public', table: 'material_requests' },
       ],

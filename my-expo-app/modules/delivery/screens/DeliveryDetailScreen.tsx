@@ -1,3 +1,4 @@
+import { EdgeSwipeBack } from '../../../core/ui/mobile/EdgeSwipeBack';
 import { localeTag } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { safeBack } from '../../../core/util/safeBack';
@@ -14,6 +15,11 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { fetchDeliveryById, updateDeliveryStatus, type Delivery, type GpsPing } from '../api';
 import { AppIcon } from '../../../core/ui/AppIcon';
 import { toast } from '../../../core/ui/Toast';
+import { ProofRow } from '../proof/ProofRow';
+import { ProofViewerModal } from '../proof/ProofViewerModal';
+import { CloseWithoutProofModal } from '../proof/CloseWithoutProofModal';
+import { proofKindOf } from '../proof/proofModel';
+import type { OriginRect } from '../proof/useAnchoredSpring';
 
 const ACCENT = '#2563EB';
 
@@ -104,6 +110,9 @@ export function DeliveryDetailScreen() {
   const [pings,    setPings]    = useState<GpsPing[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [advancing,setAdvancing]= useState(false);
+  // Teslim kanıtı (2. dalga 5): görüntüleyici + yöneticinin kanıtsız kapatması
+  const [viewer, setViewer] = useState<{ origin: OriginRect | null } | null>(null);
+  const [noProofOpen, setNoProofOpen] = useState(false);
 
   async function load() {
     if (!id) return;
@@ -120,6 +129,8 @@ export function DeliveryDetailScreen() {
     const current = stepIndex(delivery.status);
     const next    = STATUS_ORDER[current + 1];
     if (!next) return;
+    // Kendi kurye teslimatı kanıtsız kapanırken neden zorunlu (pencere = onay)
+    if (next === 'teslim_edildi' && (delivery as any).mode === 'internal') { setNoProofOpen(true); return; }
     setAdvancing(true);
     const { error } = await updateDeliveryStatus(delivery.id, next);
     setAdvancing(false);
@@ -250,8 +261,16 @@ export function DeliveryDetailScreen() {
           )}
         </View>
 
-        {/* ── Teslim alıcı (varsa) ── */}
-        {delivery.recipient_name && (
+        {/* ── Teslim kanıtı (siparişsiz gönderide tek görüldüğü yer) ── */}
+        {proofKindOf(delivery as any) !== 'none' && (
+          <View style={s.card}>
+            <Text style={s.cardTitle}>{autoT('Teslim kanıtı')}</Text>
+            <ProofRow leg={delivery as any} onOpen={(origin) => setViewer({ origin })} />
+          </View>
+        )}
+
+        {/* ── Teslim alıcı (eski kayıtlar — kanıt yoksa) ── */}
+        {delivery.recipient_name && proofKindOf(delivery as any) === 'none' && (
           <View style={s.card}>
             <Text style={s.cardTitle}>Teslim Alıcı</Text>
             <Row label="Ad" value={delivery.recipient_name} />
@@ -277,6 +296,24 @@ export function DeliveryDetailScreen() {
           </TouchableOpacity>
         )}
       </ScrollView>
+
+      {/* Kenardan sağa kaydırınca geri — geri butonuyla AYNI fonksiyon */}
+      <EdgeSwipeBack onBack={() => safeBack('/')} />
+      <ProofViewerModal
+        visible={!!viewer}
+        onClose={() => setViewer(null)}
+        leg={delivery as any}
+        origin={viewer?.origin ?? null}
+        orderNumber={(delivery as any).work_order?.order_number ?? null}
+      />
+      <CloseWithoutProofModal
+        visible={noProofOpen}
+        onClose={() => setNoProofOpen(false)}
+        deliveryId={delivery.id}
+        subtitle={[(delivery as any).courier?.full_name, (delivery as any).work_order?.order_number ? `#${(delivery as any).work_order.order_number}` : null].filter(Boolean).join(' · ')}
+        origin={null}
+        onClosed={() => { toast.success(autoT('Kanıtsız kapatıldı')); load(); }}
+      />
     </SafeAreaView>
   );
 }

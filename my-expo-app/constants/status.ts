@@ -1,5 +1,7 @@
 import { WorkOrderStatus } from '../lib/types';
 import Colors from './colors';
+import { isOverdueOrder, labTodayOf } from '../core/metrics/orderDefs';
+import { cachedLabTz } from '../core/metrics/useLabToday';
 
 export interface StatusConfig {
   label: string;
@@ -77,11 +79,9 @@ export function getNextStatus(status: WorkOrderStatus): WorkOrderStatus | null {
   return STATUS_CONFIG[status].next;
 }
 
+/** Tek tanım (2026-10-26): core/metrics/orderDefs'e devreder. */
 export function isOverdue(deliveryDate: string, status: WorkOrderStatus): boolean {
-  if (status === 'teslim_edildi' || status === 'iptal') return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return new Date(deliveryDate) < today;
+  return isOverdueOrder({ status, delivery_date: deliveryDate }, labTodayOf(cachedLabTz()));
 }
 
 export function formatDeliveryDate(dateStr: string): string {

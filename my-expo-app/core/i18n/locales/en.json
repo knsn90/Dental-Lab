@@ -73,7 +73,9 @@
       "requests": "Requests",
       "waSupport": "WhatsApp Support",
       "phoneLeads": "Phone Requests",
-      "phoneLeadsSub": "Phone assistant requests"
+      "phoneLeadsSub": "Phone assistant requests",
+      "scans": "Scan Appointments",
+      "scansSub": "Scan visits at clinics"
     },
     "sections": {
       "work": "Work management",
@@ -105,8 +107,8 @@
     "delivered": "Delivered",
     "overdueLabel": "Overdue",
     "tryin": "Try-in",
-    "totalCases": "Total cases",
-    "todayLine": "{{total}} orders in production today, {{active}} active",
+    "totalCases": "New this month",
+    "todayLine": "{{active}} active orders",
     "todayOverdue": ", {{overdue}} overdue",
     "weekDoneKicker": "{{count}} COMPLETED THIS WEEK",
     "newOrderKicker": "NEW WORK ORDER",
@@ -421,6 +423,14 @@
       "workflows": {
         "label": "Workflows",
         "sub": "Production flow designer"
+      },
+      "mycode": {
+        "label": "My Login Code",
+        "sub": "Tablet login code (PIN)"
+      },
+      "devices": {
+        "label": "Tablets",
+        "sub": "Kiosk device management"
       }
     }
   },
@@ -503,7 +513,7 @@
       "active": "Active",
       "overdue": "Overdue",
       "today": "Today",
-      "totalOrders": "Total orders",
+      "totalOrders": "orders · all time",
       "doctor": "Doctor",
       "labUser": "Lab user",
       "memberTrend": "Unit trend",
@@ -522,13 +532,13 @@
       "invoice": "Invoice →",
       "financialSummary": "Financial summary",
       "monthlyCollection": "Collected this month",
-      "pendingInvoice": "Pending invoices",
+      "pendingInvoice": "Receivables",
       "paidInvoiceCount": "Paid invoices",
       "statusDistribution": "Status breakdown",
       "workTypeDistribution": "Work type breakdown",
       "totalMembers": "Units",
-      "noOrdersToday": "No orders yet today.",
-      "ordersSummary": "{{total}} orders, {{active}} active{{overdue}}.",
+      "noOrdersToday": "No active orders.",
+      "ordersSummary": "{{active}} active orders{{overdue}}.",
       "liveProduction": "Live production",
       "monthlyRevenue": "Monthly revenue",
       "pendingApprovals": "Pending approvals",
@@ -542,7 +552,10 @@
       "noDelayedCases": "No delayed cases",
       "productionOnTrack": "All production is on track.",
       "ordersOfTotal": "{{done}} / {{total}} orders",
-      "deliveredAllTime": "Delivered · all time"
+      "deliveredAllTime": "Delivered · all time",
+      "newThisMonth": "New this month",
+      "newToday": "New today",
+      "activeStaff": "Active staff"
     },
     "buttons": {
       "start": "Start"
@@ -596,6 +609,7 @@
     },
     "cta": {
       "ordersToday": "{{total}} ORDERS TODAY",
+      "dueToday": "{{count}} DUE TODAY",
       "newOrder": "NEW ORDER",
       "createNewOrder": "Create new work order"
     },
@@ -923,5 +937,10 @@
       "urgent": "Urgent",
       "inQueue": "In queue"
     }
+  },
+  "profitability": {
+    "tabServices": "Procedures",
+    "serviceCount": "procedures",
+    "listPrice": "List"
   }
 }

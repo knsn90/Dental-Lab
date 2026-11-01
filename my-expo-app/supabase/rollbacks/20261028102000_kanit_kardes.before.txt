@@ -1,0 +1,3 @@
+# 20261028102000_kanit_kardes — önceki durum (2026-10-28 canlı ölçüm): delivery_proof_siblings kardeş durum koşulu
+#   d2.status::text not in ('teslim_edildi', 'iptal')
+# Tam tanım .down.sql'de birebir.

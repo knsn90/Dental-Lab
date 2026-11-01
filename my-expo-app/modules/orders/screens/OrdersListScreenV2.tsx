@@ -1,5 +1,12 @@
 import { localeTag, isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
+import { holdBadgeText, isProvaHold } from '../holdCategories';
+import { useProvaFlags } from '../prova/useProvaFlags';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { ProvaFlagsContext, ProvaListBadge, type ProvaFlagsCtx } from '../prova/ProvaListBadge';
+import { matchesProvaFilter } from '../prova/provaModel';
+import type { ProvaChip } from '../lib/listParams';
+import { splitPlanning } from '../lib/planningSplit';
 /**
  * OrdersListScreenV2 — Patterns design language (NativeWind)
  *
@@ -42,8 +49,15 @@ import {
   TextInput, Modal, Platform, useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, useSegments } from 'expo-router';
-import { Search, X, SlidersHorizontal, ArrowUpDown, ChevronLeft, ChevronRight, Flame, Clock, LayoutList, Columns3, UserCheck, Pencil, Archive, Trash2, RotateCcw, AlertCircle, ShieldAlert, ListChecks, Camera, CornerDownLeft, CornerDownRight, Inbox } from '../../../core/ui/icons';
+import { useRouter, useSegments, useLocalSearchParams } from 'expo-router';
+import { matchesDueFlag, listStateFromParams, paramsKey } from '../lib/listParams';
+import * as orderDefs from '../../../core/metrics/orderDefs';
+import { useLabToday } from '../../../core/metrics/useLabToday';
+import { useOrderMetrics } from '../../../core/metrics/useOrderMetrics';
+import { matchesOrderSearch } from '../lib/orderSearch';
+import { foldTR } from '../../search/lib/fold';
+import { doctorFilterInfo } from '../api';
+import { Search, X, Stethoscope, SlidersHorizontal, ArrowUpDown, ChevronLeft, ChevronRight, Flame, Clock, CalendarClock, LayoutList, Columns3, UserCheck, Pencil, Archive, Trash2, RotateCcw, AlertCircle, ShieldAlert, ListChecks, Camera, CornerDownLeft, CornerDownRight, Inbox } from '../../../core/ui/icons';
 import { RowActionsMenu, type RowAction } from '../../../core/ui/RowActionsMenu';
 import { ScanWorkOrderModal } from '../components/ScanWorkOrderModal';
 // Admin düzenleme artık yeni-sipariş SİHİRBAZINI (aynı 4 adım) düzenleme modunda açar.
@@ -185,14 +199,15 @@ const SORT_OPTIONS: { value: SortBy; label: string }[] = [
 ];
 
 // ── Helpers ─────────────────────────────────────────────────────────
-function deliveryText(d: string, status: WorkOrderStatus, holdStatus?: string | null): string {
+function deliveryText(d: string, status: WorkOrderStatus, holdStatus?: string | null, holdCategory?: string | null): string {
   if (status === 'teslim_edildi') return 'Teslim edildi';
   // Beklemedeki iş gecikme göstermez — sayaç durdu (bkz. isOrderOverdue / hold).
-  if (holdStatus === 'on_hold') return 'Beklemede';
+  // Prova beklemesi "Provada" (2. dalga 4): iş klinikte, sayaç duruyor.
+  if (holdStatus === 'on_hold') return isProvaHold({ hold_status: holdStatus, hold_category: holdCategory }) ? 'Provada' : 'Beklemede';
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const due   = new Date(d + 'T00:00:00');
   const diff  = Math.ceil((due.getTime() - today.getTime()) / 86_400_000);
-  if (diff < 0)   return `${Math.abs(diff)}g gecikti`;
+  if (diff < 0)   return `${Math.abs(diff)} ${autoT('gün gecikti')}`;
   if (diff === 0) return 'Bugün';
   if (diff === 1) return 'Yarın';
   if (diff <= 6)  return `${diff} ${autoT('gün')}`;
@@ -246,6 +261,23 @@ export function OrdersListScreenV2() {
   // Admin "Arşivi göster" toggle (state'i hook'tan önce — fetch param'ı için)
   const [showArchived, setShowArchived] = useState(false);
 
+  // ?doctor=<doctors.id> — genel aramadan "hekimin siparişleri" (2. dalga 1). Hekim kaydı + bağlı
+  // hekim hesaplarının profil kimlikleri; süzgeç sunucuda (useOrders) ve listede uygulanır.
+  const { doctor: doctorRouteParam } = useLocalSearchParams<{ doctor?: string | string[] }>();
+  const doctorParamId = (Array.isArray(doctorRouteParam) ? doctorRouteParam[0] : doctorRouteParam)?.trim() || null;
+  const [doctorFilter, setDoctorFilter] = useState<{ id: string; ids: string[]; name: string | null } | null>(null);
+  useEffect(() => {
+    if (!doctorParamId) { setDoctorFilter(null); return; }
+    let alive = true;
+    setDoctorFilter({ id: doctorParamId, ids: [doctorParamId], name: null });
+    doctorFilterInfo(doctorParamId)
+      .then((info) => { if (alive) setDoctorFilter({ id: doctorParamId, ...info }); })
+      .catch(() => { /* yalnız doctors.id ile süzülmeye devam */ });
+    return () => { alive = false; };
+  }, [doctorParamId]);
+  // setParams({doctor: undefined}) anahtarı kaldırmıyor (denendi) → boş değer = süzgeç yok
+  const clearDoctorFilter = () => router.setParams({ doctor: '' } as any);
+
   // Admin actions state — düzenle/pasife/sil için modal'lar list seviyesinde tutulur
   const [adminEditTarget, setAdminEditTarget]     = useState<WorkOrder | null>(null);
   const [adminArchiveTarget, setAdminArchiveTarget] = useState<WorkOrder | null>(null);
@@ -284,7 +316,7 @@ export function OrdersListScreenV2() {
   const labData    = useOrders(
     panel === 'doctor' ? 'doctor' : 'lab',
     panel === 'doctor' ? profile?.id : undefined,
-    { includeArchived: showArchived },
+    { includeArchived: showArchived, doctorIds: panel === 'lab' || panel === 'admin' ? doctorFilter?.ids : undefined },
   );
   const clinicData = useClinicOrders(panel === 'clinic');
 
@@ -309,6 +341,10 @@ export function OrdersListScreenV2() {
   const [paperInboxCount, setPaperInboxCount] = useState(0);
   const [urgentOnly, setUrgentOnly]     = useState(false);
   const [overdueOnly, setOverdueOnly]   = useState(false);
+  // "Bugün / Yarın çıkacak" (teslim günü) — Acil/Geciken ile birbirini dışlar.
+  const [dueFlag, setDueFlag]           = useState<'today' | 'tomorrow' | null>(null);
+  // Prova takibi (2. dalga 4): "Provada" / "Randevu riski" — lab/yönetici listesinde çip, her panelde satır rozeti.
+  const [provaChip, setProvaChip]       = useState<ProvaChip | null>(null);
   const [sortBy, setSortBy]             = useState<SortBy>('created_at');  // en yeni sipariş her zaman üstte
   const [sortDir, setSortDir]           = useState<SortDir>('desc');
   const [sortOpen, setSortOpen]         = useState(false);
@@ -345,10 +381,9 @@ export function OrdersListScreenV2() {
   const { technicians, loadingTechs, assigning, loadTechnicians, assign } = useAssignTechnician(refetch);
 
   // ── Derived ──
-  const visibleOrders = useMemo(() => {
-    if (isTechnician && profile?.id) return orders.filter(o => o.assigned_to === profile.id);
-    return orders;
-  }, [orders, isTechnician, profile?.id]);
+  // Teknisyenin "kendi işi" artık veritabanında süzülüyor (20261025163000: sipariş ya da aşama
+  // ataması + alınabilir aktif aşama). İstemcide yalnız assigned_to süzmek aşamadan gelen işi gizlerdi.
+  const visibleOrders = orders;
 
   // MOUNT/UNMOUNT izleme: `render #1`in tekrar tekrar çıkması bileşenin yeniden
   // MONTE edildiğini gösteriyor (useRef sıfırlanıyor). Kim söküyor, onu bulmak için.
@@ -357,7 +392,29 @@ export function OrdersListScreenV2() {
     return () => bootMark('OrdersList UNMOUNT');
   }, []);
 
-  const today = new Date().toISOString().split('T')[0];
+  // Tek tanım (2026-10-26): "bugün" lab'ın saat diliminde; süzgeçler core/metrics/orderDefs aynası.
+  const today = useLabToday();
+  const tomorrow = orderDefs.addDays(today, 1);
+
+  // Özet rozetleri listeyi filtreli açar: /orders?filter=overdue|today|tomorrow|urgent · ?status=alindi
+  // Mobilde sekme ekranı monte kalır → parametre yalnız açılışta değil, DEĞİŞİNCE de uygulanır.
+  // Parametresiz ilk açılışta kullanıcının durumuna dokunulmaz.
+  const routeParams = useLocalSearchParams<Record<string, string | string[]>>();
+  const routeKey = paramsKey(routeParams as any);
+  const appliedRouteKey = useRef<string | null>(null);
+  useEffect(() => {
+    const prev = appliedRouteKey.current;
+    appliedRouteKey.current = routeKey;
+    if (prev === null && routeKey === paramsKey({})) return;
+    if (prev === routeKey) return;
+    const st = listStateFromParams(routeParams as any, STATUS_FILTERS.map(f => String(f.value)));
+    setStatusFilter(st.status as WorkOrderStatus | 'all');
+    setOverdueOnly(st.overdue);
+    setUrgentOnly(st.urgent);
+    setDueFlag(st.dueFlag);
+    setProvaChip(st.provaChip);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeKey]);
 
   // GEÇİCİ TEŞHİS: ekran saniyede ~60 kez render ediliyor. Hangi DEĞERİN
   // değiştiğini bulmak için önceki render ile karşılaştırıp yalnız FARKI yazar;
@@ -390,6 +447,16 @@ export function OrdersListScreenV2() {
     _prevRef.current = snap;
   }
 
+  const { flags: provaFlags } = useProvaFlags(true, orders.length);
+  const provaCtx = useMemo<ProvaFlagsCtx>(() => ({
+    flags: provaFlags,
+    open: (id: string) => router.push(`/order/${id}?tab=prova` as any),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [provaFlags]);
+  const showProvaChips = panel === 'lab' || panel === 'admin';
+  const provaCount = useMemo(() => visibleOrders.filter(o => matchesProvaFilter(provaFlags.get(o.id), 'prova')).length, [visibleOrders, provaFlags]);
+  const riskCount  = useMemo(() => visibleOrders.filter(o => matchesProvaFilter(provaFlags.get(o.id), 'risk')).length, [visibleOrders, provaFlags]);
+
   const filtered = useMemo(() => {
     const list = visibleOrders.filter(o => {
       // Admin "Arşivi göster" açıkken sadece arşivli, kapalıyken sadece aktif
@@ -397,15 +464,16 @@ export function OrdersListScreenV2() {
       const isArch = !!(o as any).is_archived;
       const matchArchive = isAdmin ? (showArchived ? isArch : !isArch) : !isArch;
       const matchStatus = statusFilter === 'all' || o.status === statusFilter;
-      const sl = search.toLowerCase();
-      const matchSearch = !search
-        || o.order_number.toLowerCase().includes(sl)
-        || (o.doctor?.full_name ?? '').toLowerCase().includes(sl)
-        || (o.patient_name ?? '').toLowerCase().includes(sl)
-        || o.work_type.toLowerCase().includes(sl);
-      const matchUrgent  = !urgentOnly  || o.is_urgent;
-      const matchOverdue = !overdueOnly || (o.delivery_date < today && o.status !== 'teslim_edildi');
-      return matchArchive && matchStatus && matchSearch && matchUrgent && matchOverdue;
+      // Klinik adı da aranır; Türkçe harf katlamasıyla ("ayse" → "Ayşe") — 2. dalga 1
+      const matchSearch = matchesOrderSearch(o, search, foldTR);
+      const matchDoctor = !doctorFilter || doctorFilter.ids.includes(String((o as any).doctor_id ?? ''));
+      // Acil = teslim edilmemiş acil iş. "Teslim" sekmesi açıkça seçiliyse çip o sekmede daraltır
+      // (teslim edilmiş acil işler geçmişte bulunabilsin).
+      const matchUrgent  = !urgentOnly  || (statusFilter === 'teslim_edildi' ? !!o.is_urgent : orderDefs.isUrgentOpen(o as any));
+      const matchOverdue = !overdueOnly || orderDefs.isOverdueOrder(o as any, today);
+      const matchDue     = matchesDueFlag(o, dueFlag, today, tomorrow, orderDefs);
+      const matchProva   = !provaChip || matchesProvaFilter(provaFlags.get(o.id), provaChip);
+      return matchArchive && matchStatus && matchSearch && matchDoctor && matchUrgent && matchOverdue && matchDue && matchProva;
     });
     return list.sort((a, b) => {
       let cmp = 0;
@@ -415,13 +483,23 @@ export function OrdersListScreenV2() {
       else if (sortBy === 'is_urgent')     cmp = (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0);
       return sortDir === 'asc' ? cmp : -cmp;
     });
-  }, [visibleOrders, statusFilter, search, urgentOnly, overdueOnly, showArchived, isAdmin, today, sortBy, sortDir]);
+  }, [visibleOrders, statusFilter, search, doctorFilter, urgentOnly, overdueOnly, dueFlag, provaChip, provaFlags, showArchived, isAdmin, today, tomorrow, sortBy, sortDir]);
 
+  // Sayılar sunucudan (order_metrics; liste 300 satırla sınırlı — spec kararı 10). Lab/admin
+  // panelinde ve arşiv görünümü kapalıyken; diğer durumlarda ekrandaki satırlardan.
+  const { data: metrics } = useOrderMetrics();
+  // Hekim süzgeci açıksa satırlar o hekimin siparişleri → sayılar da ekrandan.
+  const serverCounts = (panel === 'lab' || panel === 'admin') && !showArchived && !doctorFilter ? metrics : null;
   const statusCounts = useMemo(() => {
+    if (serverCounts) {
+      const counts: Record<string, number> = { ...serverCounts.by_status };
+      counts.all = Object.values(serverCounts.by_status).reduce((a, b) => a + b, 0);
+      return counts;
+    }
     const counts: Record<string, number> = { all: visibleOrders.length };
     for (const o of visibleOrders) counts[o.status] = (counts[o.status] ?? 0) + 1;
     return counts;
-  }, [visibleOrders]);
+  }, [visibleOrders, serverCounts]);
 
   // Durum sekmeleri — lab VE admin panelinde sona "Manuel" (WhatsApp/kağıt
   // inbox) eklenir. Admin'de ayrı bir kenar çubuğu girdisi vardı; manuel gelen
@@ -433,11 +511,32 @@ export function OrdersListScreenV2() {
     [panel],
   );
 
-  const urgentCount = useMemo(() => visibleOrders.filter(o => o.is_urgent).length, [visibleOrders]);
-  const overdueCount = useMemo(
-    () => visibleOrders.filter(o => o.delivery_date < today && o.status !== 'teslim_edildi').length,
+  const clientUrgent = useMemo(() => visibleOrders.filter(o => orderDefs.isUrgentOpen(o as any)).length, [visibleOrders]);
+  const clientOverdue = useMemo(
+    () => visibleOrders.filter(o => orderDefs.isOverdueOrder(o as any, today)).length,
     [visibleOrders, today],
   );
+  const clientDueToday = useMemo(
+    () => visibleOrders.filter(o => matchesDueFlag(o, 'today', today, tomorrow, orderDefs)).length,
+    [visibleOrders, today, tomorrow],
+  );
+  const clientDueTomorrow = useMemo(
+    () => visibleOrders.filter(o => matchesDueFlag(o, 'tomorrow', today, tomorrow, orderDefs)).length,
+    [visibleOrders, today, tomorrow],
+  );
+  const urgentCount      = serverCounts ? serverCounts.urgent : clientUrgent;
+  const overdueCount     = serverCounts ? serverCounts.overdue : clientOverdue;
+  const dueTodayCount    = serverCounts ? serverCounts.due_today : clientDueToday;
+  const dueTomorrowCount = serverCounts ? serverCounts.due_tomorrow : clientDueTomorrow;
+  // Çipler birbirini dışlar (Acil / Geciken / Bugün / Yarın)
+  const pickChip = useCallback((k: 'urgent' | 'overdue' | 'today' | 'tomorrow' | 'prova' | 'risk') => {
+    const on = k === 'urgent' ? !urgentOnly : k === 'overdue' ? !overdueOnly
+      : k === 'prova' || k === 'risk' ? provaChip !== k : dueFlag !== k;
+    setUrgentOnly(k === 'urgent' && on);
+    setOverdueOnly(k === 'overdue' && on);
+    setDueFlag((k === 'today' || k === 'tomorrow') && on ? k : null);
+    setProvaChip((k === 'prova' || k === 'risk') && on ? k : null);
+  }, [urgentOnly, overdueOnly, dueFlag, provaChip]);
 
   // ── Handlers (memo'lu satırlar re-render etmesin diye stable callback) ──
   const onCardPress = useCallback((order: WorkOrder) => {
@@ -496,6 +595,59 @@ export function OrdersListScreenV2() {
   // MOBILE — Aydın Lab handoff (hekim için ayrı list component)
   // Diğer paneller B2 Kanban kullanmaya devam ediyor (sıralı revizyon).
   // ═══════════════════════════════════════════════════════════════════
+  // Admin ••• pencereleri (düzenle / pasife al / sil) — desktop + mobil ORTAK.
+  // Mobil erken return ediyor; yalnız desktop dalında mount edilseydi mobil kart
+  // menüsünden seçilen işlem sessizce hiçbir şey açmazdı (OrderDetailScreenV2 stageModals vakası).
+  const adminOrderModals = (
+    <>
+      {/* Admin: kapsamlı düzenleme — yeni-sipariş sihirbazı (aynı 4 adım), bilgi dolu, popup */}
+      {adminEditTarget && (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setAdminEditTarget(null)}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', alignItems: 'center', justifyContent: 'center', padding: width >= 768 ? 24 : 0 }}>
+            <View style={{ width: '100%', maxWidth: 1120, flex: 1, maxHeight: width >= 768 ? '94%' : '100%', borderRadius: width >= 768 ? 20 : 0, overflow: 'hidden', backgroundColor: isDark ? T.bg : '#F1F5F9', ...(Platform.OS === 'web' ? ({ boxShadow: '0 24px 60px rgba(15,23,42,0.28)' } as any) : {}) }}>
+              <React.Suspense fallback={<View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={T.ink as string} /></View>}>
+                <NewOrderEditWizard
+                  panel={panel as any}
+                  editOrderId={(adminEditTarget as any).id}
+                  onClose={() => setAdminEditTarget(null)}
+                  onSaved={() => { refetch?.(); setAdminEditTarget(null); }}
+                />
+              </React.Suspense>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* Admin: Archive/Restore Confirm */}
+      {adminArchiveTarget && (
+        <AdminConfirmDialog
+          type={(adminArchiveTarget as any).is_archived ? 'restore' : 'archive'}
+          orderNumber={adminArchiveTarget.order_number}
+          patientName={adminArchiveTarget.patient_name ?? '—'}
+          busy={adminBusy}
+          onCancel={() => setAdminArchiveTarget(null)}
+          onConfirm={handleArchiveConfirm}
+          confirmText=""
+          onChangeConfirmText={() => {}}
+        />
+      )}
+
+      {/* Admin: Delete Confirm */}
+      {adminDeleteTarget && (
+        <AdminConfirmDialog
+          type="delete"
+          orderNumber={adminDeleteTarget.order_number}
+          patientName={adminDeleteTarget.patient_name ?? '—'}
+          busy={adminBusy}
+          onCancel={() => { setAdminDeleteTarget(null); setAdminConfirmText(''); }}
+          onConfirm={handleDeleteConfirm}
+          confirmText={adminConfirmText}
+          onChangeConfirmText={setAdminConfirmText}
+        />
+      )}
+    </>
+  );
+
   if (!isDesktop) {
     if (panel === 'doctor') {
       return (
@@ -507,13 +659,40 @@ export function OrdersListScreenV2() {
         />
       );
     }
+    // Mobil liste masaüstüyle AYNI filtre kaynağını kullanır (durum sekmeleri,
+    // Acil/Geciken, arşiv, arama, sıralama) — iki görünüm farklı sayı göstermesin.
     return (
-      <OrdersKanbanB2Mobile
-        orders={orders}
-        loading={loading}
-        refetch={refetch}
-        onOpenOrder={onCardPress}
-      />
+      <ProvaFlagsContext.Provider value={provaCtx}>
+        <OrdersKanbanB2Mobile
+          orders={filtered}
+          loading={loading}
+          refetch={refetch}
+          onOpenOrder={onCardPress}
+          statusTabs={statusFilters
+            .filter(f => f.value !== 'manual')
+            .map(f => ({ key: String(f.value), label: f.label, count: statusCounts[String(f.value)] ?? 0 }))}
+          statusFilter={String(statusFilter)}
+          onStatusChange={(k) => setStatusFilter(k as any)}
+          search={search}
+          onSearchChange={setSearch}
+          urgent={{ active: urgentOnly, count: urgentCount, toggle: () => pickChip('urgent') }}
+          overdue={{ active: overdueOnly, count: overdueCount, toggle: () => pickChip('overdue') }}
+          dueToday={{ active: dueFlag === 'today', count: dueTodayCount, toggle: () => pickChip('today') }}
+          dueTomorrow={{ active: dueFlag === 'tomorrow', count: dueTomorrowCount, toggle: () => pickChip('tomorrow') }}
+          prova={showProvaChips ? { active: provaChip === 'prova', count: provaCount, toggle: () => pickChip('prova') } : undefined}
+          risk={showProvaChips ? { active: provaChip === 'risk', count: riskCount, toggle: () => pickChip('risk') } : undefined}
+          archive={isAdmin ? { active: showArchived, toggle: () => setShowArchived(v => !v) } : undefined}
+          doctorChip={doctorFilter ? { label: `${autoT('Hekim')}: ${doctorFilter.name ?? '…'}`, clear: clearDoctorFilter } : undefined}
+          manual={(panel === 'lab' || panel === 'admin')
+            ? { count: paperInboxCount, open: () => router.push(`/${panelGroup}/pending-paper` as any) }
+            : undefined}
+          sort={{ by: sortBy, dir: sortDir, options: SORT_OPTIONS, setBy: setSortBy, setDir: setSortDir }}
+          rowActionsFor={isAdmin
+            ? (o) => rowActions(o, setAdminEditTarget, setAdminArchiveTarget, setAdminDeleteTarget)
+            : undefined}
+        />
+        {adminOrderModals}
+      </ProvaFlagsContext.Provider>
     );
   }
 
@@ -521,6 +700,7 @@ export function OrdersListScreenV2() {
   // DESKTOP RENDER (mevcut, dokunulmadı)
   // ═══════════════════════════════════════════════════════════════════
   return (
+    <ProvaFlagsContext.Provider value={provaCtx}>
     <View style={{ flex: 1, backgroundColor: T.bg }}>
 
       {/* ── Unified Filter Bar — DESKTOP ONLY (mobile uses block below) ─── */}
@@ -573,7 +753,7 @@ export function OrdersListScreenV2() {
 
             {/* Acil / Geciken toggle pills */}
             <Pressable
-              onPress={() => { setUrgentOnly(v => !v); if (!urgentOnly) setOverdueOnly(false); }}
+              onPress={() => pickChip('urgent')}
               className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full"
               style={urgentOnly ? { backgroundColor: 'rgba(217,119,6,0.12)' } : { backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: 1, borderColor: T.hairline }}
             >
@@ -589,7 +769,7 @@ export function OrdersListScreenV2() {
             </Pressable>
 
             <Pressable
-              onPress={() => { setOverdueOnly(v => !v); if (!overdueOnly) setUrgentOnly(false); }}
+              onPress={() => pickChip('overdue')}
               className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full"
               style={overdueOnly ? { backgroundColor: 'rgba(220,38,38,0.12)' } : { backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: 1, borderColor: T.hairline }}
             >
@@ -603,6 +783,93 @@ export function OrdersListScreenV2() {
                 </Text>
               )}
             </Pressable>
+
+            {/* Teslim günü: bugün / yarın çıkacak işler */}
+            <Pressable
+              onPress={() => pickChip('today')}
+              className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full"
+              style={dueFlag === 'today' ? { backgroundColor: isDark ? 'rgba(96,165,250,0.18)' : 'rgba(37,99,235,0.10)' } : { backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: 1, borderColor: T.hairline }}
+            >
+              <CalendarClock size={12} color={dueFlag === 'today' ? (isDark ? '#93C5FD' : '#1D4ED8') : T.ink3} strokeWidth={1.8} />
+              <Text className="text-[12px] font-semibold" style={{ color: dueFlag === 'today' ? (isDark ? '#93C5FD' : '#1D4ED8') : T.ink2 }}>
+                Bugün çıkacak
+              </Text>
+              {dueTodayCount > 0 && (
+                <Text className="text-[10px] font-bold" style={{ color: dueFlag === 'today' ? (isDark ? '#93C5FD' : '#1D4ED8') : T.ink3, opacity: dueFlag === 'today' ? 0.7 : 1 }}>
+                  {dueTodayCount}
+                </Text>
+              )}
+            </Pressable>
+            <Pressable
+              onPress={() => pickChip('tomorrow')}
+              className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full"
+              style={dueFlag === 'tomorrow' ? { backgroundColor: isDark ? 'rgba(96,165,250,0.18)' : 'rgba(37,99,235,0.10)' } : { backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: 1, borderColor: T.hairline }}
+            >
+              <CalendarClock size={12} color={dueFlag === 'tomorrow' ? (isDark ? '#93C5FD' : '#1D4ED8') : T.ink3} strokeWidth={1.8} />
+              <Text className="text-[12px] font-semibold" style={{ color: dueFlag === 'tomorrow' ? (isDark ? '#93C5FD' : '#1D4ED8') : T.ink2 }}>
+                Yarın çıkacak
+              </Text>
+              {dueTomorrowCount > 0 && (
+                <Text className="text-[10px] font-bold" style={{ color: dueFlag === 'tomorrow' ? (isDark ? '#93C5FD' : '#1D4ED8') : T.ink3, opacity: dueFlag === 'tomorrow' ? 0.7 : 1 }}>
+                  {dueTomorrowCount}
+                </Text>
+              )}
+            </Pressable>
+
+            {showProvaChips && (
+              <GlassTooltip title={autoT('Provada')} text={autoT('Provası klinikte ya da lab onayı bekleyen siparişler')}>
+                <Pressable
+                  onPress={() => pickChip('prova')}
+                  className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full"
+                  style={provaChip === 'prova' ? { backgroundColor: (isDark ? 'rgba(232,155,42,0.22)' : 'rgba(232,155,42,0.15)') } : { backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: 1, borderColor: T.hairline }}
+                >
+                  <CalendarClock size={12} color={provaChip === 'prova' ? (isDark ? '#F0C078' : '#9C5E0E') : T.ink3} strokeWidth={1.8} />
+                  <Text className="text-[12px] font-semibold" style={{ color: provaChip === 'prova' ? (isDark ? '#F0C078' : '#9C5E0E') : T.ink2 }}>
+                    Provada
+                  </Text>
+                  {provaCount > 0 && (
+                    <Text className="text-[10px] font-bold" style={{ color: provaChip === 'prova' ? (isDark ? '#F0C078' : '#9C5E0E') : T.ink3, opacity: provaChip === 'prova' ? 0.7 : 1 }}>
+                      {provaCount}
+                    </Text>
+                  )}
+                </Pressable>
+              </GlassTooltip>
+            )}
+            {showProvaChips && (
+              <GlassTooltip title={autoT('Randevu riski')} text={autoT('Takma randevusuna yetişmeyecek ya da randevusu yaklaşan siparişler')}>
+                <Pressable
+                  onPress={() => pickChip('risk')}
+                  className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full"
+                  style={provaChip === 'risk' ? { backgroundColor: (isDark ? 'rgba(217,75,75,0.22)' : 'rgba(217,75,75,0.12)') } : { backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: 1, borderColor: T.hairline }}
+                >
+                  <CalendarClock size={12} color={provaChip === 'risk' ? (isDark ? '#F3A0A0' : '#9C2E2E') : T.ink3} strokeWidth={1.8} />
+                  <Text className="text-[12px] font-semibold" style={{ color: provaChip === 'risk' ? (isDark ? '#F3A0A0' : '#9C2E2E') : T.ink2 }}>
+                    Randevu riski
+                  </Text>
+                  {riskCount > 0 && (
+                    <Text className="text-[10px] font-bold" style={{ color: provaChip === 'risk' ? (isDark ? '#F3A0A0' : '#9C2E2E') : T.ink3, opacity: provaChip === 'risk' ? 0.7 : 1 }}>
+                      {riskCount}
+                    </Text>
+                  )}
+                </Pressable>
+              </GlassTooltip>
+            )}
+
+            {/* ?doctor= süzgeci (genel arama → hekimin siparişleri): dokununca kalkar */}
+            {doctorFilter && (
+              <Pressable
+                onPress={clearDoctorFilter}
+                accessibilityLabel={autoT('Hekim süzgecini kaldır')}
+                className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full"
+                style={{ backgroundColor: isDark ? 'rgba(96,165,250,0.18)' : 'rgba(29,78,216,0.10)', borderWidth: 1, borderColor: isDark ? 'rgba(96,165,250,0.35)' : 'rgba(29,78,216,0.25)' }}
+              >
+                <Stethoscope size={12} color={isDark ? '#93C5FD' : '#1D4ED8'} strokeWidth={1.8} />
+                <Text className="text-[12px] font-semibold" style={{ color: isDark ? '#93C5FD' : '#1D4ED8' }} numberOfLines={1}>
+                  {`${autoT('Hekim')}: ${doctorFilter.name ?? '…'}`}
+                </Text>
+                <X size={12} color={isDark ? '#93C5FD' : '#1D4ED8'} strokeWidth={2} />
+              </Pressable>
+            )}
 
             {/* Admin only: Arşivi göster toggle */}
             {isAdmin && (
@@ -641,7 +908,7 @@ export function OrdersListScreenV2() {
               <Search size={14} color={T.ink2} strokeWidth={1.8} />
               <TextInput
                 className="flex-1 text-[13px]"
-                placeholder="Sipariş, hasta, hekim ara..."
+                placeholder="Sipariş, hasta, hekim, klinik ara..."
                 placeholderTextColor={T.ink3 as string}
                 value={search}
                 onChangeText={setSearch}
@@ -720,7 +987,7 @@ export function OrdersListScreenV2() {
               <Search size={16} color={T.ink2} strokeWidth={1.8} />
               <TextInput
                 className="flex-1 ms-2 text-[14px]"
-                placeholder="Sipariş, hasta, hekim ara"
+                placeholder="Sipariş, hasta, hekim, klinik ara"
                 placeholderTextColor={T.ink3 as string}
                 value={search}
                 onChangeText={setSearch}
@@ -814,6 +1081,32 @@ export function OrdersListScreenV2() {
                 </Text>
               )}
             </Pressable>
+            {showProvaChips && (
+              <GlassTooltip title={autoT('Provada')} text={autoT('Provası klinikte ya da lab onayı bekleyen siparişler')}>
+                <Pressable
+                  onPress={() => pickChip('prova')}
+                  className="flex-row items-center rounded-full px-3"
+                  style={{ height: 30, gap: 5, backgroundColor: provaChip === 'prova' ? (isDark ? 'rgba(232,155,42,0.22)' : 'rgba(232,155,42,0.15)') : (isDark ? T.card : '#FFFFFF'), borderWidth: 1, borderColor: provaChip === 'prova' ? 'transparent' : T.hairline }}
+                >
+                  <CalendarClock size={13} color={provaChip === 'prova' ? (isDark ? '#F0C078' : '#9C5E0E') : T.ink3} strokeWidth={1.8} />
+                  <Text className="text-[12px] font-semibold" style={{ color: provaChip === 'prova' ? (isDark ? '#F0C078' : '#9C5E0E') : T.ink2 }}>Provada</Text>
+                  {provaCount > 0 && <Text className="text-[10px] font-bold" style={{ color: provaChip === 'prova' ? (isDark ? '#F0C078' : '#9C5E0E') : T.ink3 }}>{provaCount}</Text>}
+                </Pressable>
+              </GlassTooltip>
+            )}
+            {showProvaChips && (
+              <GlassTooltip title={autoT('Randevu riski')} text={autoT('Takma randevusuna yetişmeyecek ya da randevusu yaklaşan siparişler')}>
+                <Pressable
+                  onPress={() => pickChip('risk')}
+                  className="flex-row items-center rounded-full px-3"
+                  style={{ height: 30, gap: 5, backgroundColor: provaChip === 'risk' ? (isDark ? 'rgba(217,75,75,0.22)' : 'rgba(217,75,75,0.12)') : (isDark ? T.card : '#FFFFFF'), borderWidth: 1, borderColor: provaChip === 'risk' ? 'transparent' : T.hairline }}
+                >
+                  <CalendarClock size={13} color={provaChip === 'risk' ? (isDark ? '#F3A0A0' : '#9C2E2E') : T.ink3} strokeWidth={1.8} />
+                  <Text className="text-[12px] font-semibold" style={{ color: provaChip === 'risk' ? (isDark ? '#F3A0A0' : '#9C2E2E') : T.ink2 }}>Randevu riski</Text>
+                  {riskCount > 0 && <Text className="text-[10px] font-bold" style={{ color: provaChip === 'risk' ? (isDark ? '#F3A0A0' : '#9C2E2E') : T.ink3 }}>{riskCount}</Text>}
+                </Pressable>
+              </GlassTooltip>
+            )}
           </View>
         </View>
       )}
@@ -868,68 +1161,13 @@ export function OrdersListScreenV2() {
               <Text className="text-[13px] mt-3" style={{ color: T.ink3 }}>Yükleniyor…</Text>
             </View>
           ) : filtered.length === 0 ? (
-            <EmptyStateV2 search={search} hasFilters={urgentOnly || overdueOnly || statusFilter !== 'all'} />
+            <EmptyStateV2 search={search} hasFilters={urgentOnly || overdueOnly || !!provaChip || statusFilter !== 'all'} />
           ) : (() => {
-            // Planlama bekleyen siparişler ayrı bir bloğa alınır
-            const isTriagePending = (o: any) => o.status === 'alindi' && !o.triaged_at;
-            const pendingBase = filtered.filter(isTriagePending);
-
-            // Revizyon vaka-grubu: planlama bekleyen bir revizyon varsa, ORİJİNALİ de
-            // (teslim edilmiş olsa bile) bu bloğa taşınır ve revizyon onun ALTINA
-            // girintili yerleşir. Böylece parça-bütün ilişkisi görünür kalır ve iş
-            // planlama kuyruğundan düşmez.
-            const byId = new Map(filtered.map(o => [o.id, o]));
-            const pulledParentIds = new Set<string>();
-            const triagePendingOrders: any[] = [];
-            pendingBase.forEach(rev => {
-              // Ebeveyn bağı: revizyon → revision_of_id, devam siparişi → continues_order_id
-              const parentId = ((rev as any).revision_of_id ?? (rev as any).continues_order_id) as string | undefined;
-              const parent = parentId ? byId.get(parentId) : undefined;
-              const isCont = !(rev as any).revision_of_id && !!(rev as any).continues_order_id;
-              if (parent && !isTriagePending(parent) && !pulledParentIds.has(parent.id)) {
-                pulledParentIds.add(parent.id);
-                triagePendingOrders.push({ ...(parent as any), __revParent: true });
-              }
-              triagePendingOrders.push(parentId && parent ? { ...(rev as any), __revChild: true, __continuation: isCont } : rev);
-            });
-
-            // Ana listede de revizyonlar orijinallerinin ALTINA yuvalanır.
-            // (Orijinali listede olmayan revizyon yalnız kendi rozetiyle görünür.)
-            const nestRevisions = (list: any[]) => {
-              const ids = new Map(list.map(o => [o.id, o]));
-              const kids = new Map<string, any[]>();
-              const roots: any[] = [];
-              list.forEach(o => {
-                // Ebeveyn bağı: revizyon → revision_of_id, devam siparişi → continues_order_id
-                const pid = (o.revision_of_id ?? o.continues_order_id) as string | undefined;
-                if (pid && ids.has(pid)) {
-                  if (!kids.has(pid)) kids.set(pid, []);
-                  kids.get(pid)!.push(o);
-                } else {
-                  roots.push(o);
-                }
-              });
-              const out: any[] = [];
-              roots.forEach(r => {
-                const cs = kids.get(r.id);
-                out.push(cs?.length ? { ...r, __revParent: true } : r);
-                cs?.forEach(c => out.push({ ...c, __revChild: true, __continuation: !c.revision_of_id && !!c.continues_order_id }));
-              });
-              return out;
-            };
-
-            // DÜZ liste (yığma yok): her sipariş kendi satırı. İlişki (devam/revizyon)
-            // bir sonraki adımda HASTA alt-satırı + VAKA meta olarak gösterilir → __relType/__parentNo.
-            const byIdMain = new Map(filtered.map((o: any) => [o.id, o]));
-            const mainOrders = filtered
-              .filter(o => !isTriagePending(o) && !pulledParentIds.has(o.id))
-              .map((o: any) => {
-                const pid = o.revision_of_id ?? o.continues_order_id;
-                if (!pid) return o;
-                const isCont = !o.revision_of_id && !!o.continues_order_id;
-                const parent = byIdMain.get(pid);
-                return { ...o, __relType: isCont ? 'devam' : 'revizyon', __parentNo: parent?.order_number ?? null };
-              });
+            // Planlama bekleyen siparişler ayrı bir bloğa alınır. Revizyon/devam siparişi planlama
+            // beklerken ASIL sipariş bu bloğa TAŞINMAZ, kendi durumuyla ana listede kalır (kullanıcı
+            // 2026-10-28: "revizyon oluşturunca main siparişi de planlama listesine atıyor"). İlişki iki
+            // listede de aynı biçimde etiketlenir (__relType + __parentNo) — bkz. lib/planningSplit.
+            const { planning: triagePendingOrders, main: mainOrders } = splitPlanning(filtered as any[]);
 
             return (
               <View style={{ gap: 18 }}>
@@ -1170,51 +1408,8 @@ export function OrdersListScreenV2() {
         />
       )}
 
-      {/* Admin: kapsamlı düzenleme — yeni-sipariş sihirbazı (aynı 4 adım), bilgi dolu, popup */}
-      {adminEditTarget && (
-        <Modal visible transparent animationType="fade" onRequestClose={() => setAdminEditTarget(null)}>
-          <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', alignItems: 'center', justifyContent: 'center', padding: width >= 768 ? 24 : 0 }}>
-            <View style={{ width: '100%', maxWidth: 1120, flex: 1, maxHeight: width >= 768 ? '94%' : '100%', borderRadius: width >= 768 ? 20 : 0, overflow: 'hidden', backgroundColor: isDark ? T.bg : '#F1F5F9', ...(Platform.OS === 'web' ? ({ boxShadow: '0 24px 60px rgba(15,23,42,0.28)' } as any) : {}) }}>
-              <React.Suspense fallback={<View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={T.ink as string} /></View>}>
-                <NewOrderEditWizard
-                  panel={panel as any}
-                  editOrderId={(adminEditTarget as any).id}
-                  onClose={() => setAdminEditTarget(null)}
-                  onSaved={() => { refetch?.(); setAdminEditTarget(null); }}
-                />
-              </React.Suspense>
-            </View>
-          </View>
-        </Modal>
-      )}
-
-      {/* Admin: Archive/Restore Confirm */}
-      {adminArchiveTarget && (
-        <AdminConfirmDialog
-          type={(adminArchiveTarget as any).is_archived ? 'restore' : 'archive'}
-          orderNumber={adminArchiveTarget.order_number}
-          patientName={adminArchiveTarget.patient_name ?? '—'}
-          busy={adminBusy}
-          onCancel={() => setAdminArchiveTarget(null)}
-          onConfirm={handleArchiveConfirm}
-          confirmText=""
-          onChangeConfirmText={() => {}}
-        />
-      )}
-
-      {/* Admin: Delete Confirm */}
-      {adminDeleteTarget && (
-        <AdminConfirmDialog
-          type="delete"
-          orderNumber={adminDeleteTarget.order_number}
-          patientName={adminDeleteTarget.patient_name ?? '—'}
-          busy={adminBusy}
-          onCancel={() => { setAdminDeleteTarget(null); setAdminConfirmText(''); }}
-          onConfirm={handleDeleteConfirm}
-          confirmText={adminConfirmText}
-          onChangeConfirmText={setAdminConfirmText}
-        />
-      )}
+      {/* Admin düzenle / pasife al / sil — mobil ile ORTAK (adminOrderModals) */}
+      {adminOrderModals}
 
       {/* Kağıt iş emri OCR modalı */}
       <ScanWorkOrderModal
@@ -1232,6 +1427,7 @@ export function OrdersListScreenV2() {
         accentColor="#2563EB"
       />
     </View>
+    </ProvaFlagsContext.Provider>
   );
 }
 
@@ -1382,7 +1578,7 @@ const MobileOrderCard = React.memo(function MobileOrderCard({ order, isManager, 
   const isLate  = order.status !== 'teslim_edildi' && diff < 0 && !onHold;
   const stage   = stageOf(order);
   const stageColor = STAGE_COLOR[stage];
-  const dText   = deliveryText(order.delivery_date, order.status, (order as any).hold_status);
+  const dText   = deliveryText(order.delivery_date, order.status, (order as any).hold_status, (order as any).hold_category);
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const dColor  = darkFg(isDark, isLate ? '#DC2626' : diff <= 1 && order.status !== 'teslim_edildi' ? '#D97706' : T.ink2 as string);
@@ -1485,13 +1681,14 @@ const MobileOrderCard = React.memo(function MobileOrderCard({ order, isManager, 
           ) : (
             <View className="px-2 py-0.5 rounded" style={{ backgroundColor: (onHold ? '#E89B2A' : stageColor) + '14' }}>
               <Text className="text-[10px] font-bold" style={{ color: onHold ? darkFg(isDark, '#9C5E0E') : stageColor, letterSpacing: 0.3 }}>
-                {(onHold ? autoT('Duraklatıldı') : autoT(getOrderStageLabel(order as any))).toUpperCase()}
+                {(onHold ? autoT(holdBadgeText(order as any)) : autoT(getOrderStageLabel(order as any))).toUpperCase()}
               </Text>
             </View>
           )}
           <Text className="text-[11px] font-medium" style={{ color: dColor }}>
             {dText}
           </Text>
+          <ProvaListBadge orderId={order.id} />
         </View>
       </View>
 
@@ -1571,16 +1768,19 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
     >
       {/* Column header */}
       <View className="flex-row px-5 py-3 border-b" style={{ backgroundColor: headBg, borderBottomColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }}>
-        <Text className="uppercase" style={{ flex: 30, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
+        <Text className="uppercase" style={{ flex: 26, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
           Hasta
         </Text>
-        <Text className="uppercase" style={{ flex: 27, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
+        <Text className="uppercase" style={{ flex: 23, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
           Vaka
         </Text>
-        <Text className="uppercase" style={{ flex: 17, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
+        <Text className="uppercase" style={{ flex: 15, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
           Hekim
         </Text>
         <Text className="uppercase" style={{ flex: 12, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
+          Teslim
+        </Text>
+        <Text className="uppercase" style={{ flex: 10, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
           Oluşturma
         </Text>
         <Text className="uppercase" style={{ flex: 14, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
@@ -1693,7 +1893,7 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
   const isLate  = order.status !== 'teslim_edildi' && diff < 0 && !onHold;
   const stage   = stageOf(order);
   const stageColor = STAGE_COLOR[stage];
-  const dText   = deliveryText(order.delivery_date, order.status, (order as any).hold_status);
+  const dText   = deliveryText(order.delivery_date, order.status, (order as any).hold_status, (order as any).hold_category);
   const canAssign = isManager && order.status === 'alindi' && !order.assigned_to;
   const needsTriage = order.status === 'alindi' && !(order as any).triaged_at;
   const T = useMobileTokens();
@@ -1743,7 +1943,7 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
   const relLabel = relType === 'devam' ? autoT('Devam siparişi') : autoT('Revizyon');
   // VAKA meta satırı: yalnız vaka bileşimi + gerekiyorsa dikkat. İlişki (devam/revizyon)
   // YALNIZ HASTA alt-satırında gösterilir (tek yer) → burada tekrar edilmez.
-  const attentionLabel = onHold ? autoT('Duraklatıldı') : isLate ? `${Math.abs(diff)} ${autoT('gün gecikti')}` : needsTriage ? autoT('planlama bekliyor') : null;
+  const attentionLabel = onHold ? autoT(holdBadgeText(order as any)) : isLate ? `${Math.abs(diff)} ${autoT('gün gecikti')}` : needsTriage ? autoT('planlama bekliyor') : null;
   const vakaMeta = [teethCount > 0 ? `${teethCount} ${autoT('diş')}` : null, attentionLabel].filter(Boolean).join('   ·   ');
   const vakaMetaColor = !attentionLabel ? T.ink3
     : onHold      ? darkFg(isDark, '#9C5E0E')
@@ -1776,7 +1976,7 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
     >
       {/* Hasta — klinik logosu (hangi klinikten geldiği) + isim + ACİL + #no + ilişki alt-satırı.
           ACİL = öncelik (durum değil); ilişki (devam/revizyon) = alt-satır. */}
-      <View style={{ flex: 30, minWidth: 0, paddingEnd: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      <View style={{ flex: 26, minWidth: 0, paddingEnd: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         {clinicLogo ? (
           <View
             className="items-center justify-center overflow-hidden"
@@ -1824,7 +2024,7 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
 
       {/* Vaka — iş tipi (birincil, tek satır → uzun/çok türde "…" ile kesilir, HEKİM'e taşmaz)
           + meta satırı (diş sayısı · dikkat). */}
-      <View style={{ flex: 27, minWidth: 0, paddingEnd: 20 }}>
+      <View style={{ flex: 23, minWidth: 0, paddingEnd: 20 }}>
         <Text style={{ fontSize: 13.5, fontWeight: '500', color: T.ink }} numberOfLines={1}>
           {order.work_type}
         </Text>
@@ -1835,13 +2035,31 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
         ) : null}
       </View>
 
-      {/* Hekim */}
-      <Text style={{ flex: 17, minWidth: 0, fontSize: 13, color: T.ink2, paddingEnd: 14 }} numberOfLines={1}>
-        {order.doctor?.full_name ?? '—'}
-      </Text>
+      {/* Hekim + altında klinik adı (lab/yönetici görünümü; klinik/hekim panelinde
+          zaten kendi klinikleri olduğu için gösterilmez — logo kuralıyla aynı koşul). */}
+      <View style={{ flex: 15, minWidth: 0, paddingEnd: 14 }}>
+        <Text style={{ fontSize: 13, color: T.ink2 }} numberOfLines={1}>
+          {order.doctor?.full_name ?? '—'}
+        </Text>
+        {useClinicLogoAvatar && (order as any)?.doctor?.clinic?.name ? (
+          <Text style={{ fontSize: 11.5, color: T.ink3, marginTop: 2 }} numberOfLines={1}>
+            {(order as any).doctor.clinic.name}
+          </Text>
+        ) : null}
+      </View>
+
+      {/* Teslim tarihi + kalan/geciken gün (lab'ın sabah listesi bu sütuna bakar) */}
+      <View style={{ flex: 12, minWidth: 0, paddingEnd: 8 }}>
+        <Text style={{ fontSize: 13, color: T.ink2 }} numberOfLines={1}>
+          {fmtDate(order.delivery_date)}
+        </Text>
+        <Text style={{ fontSize: 11, fontWeight: isLate ? '600' : '400', color: isLate ? (isDark ? '#F87171' : '#DC2626') : T.ink3 }} numberOfLines={1}>
+          {dText}
+        </Text>
+      </View>
 
       {/* Oluşturma tarihi + saati */}
-      <View style={{ flex: 12 }}>
+      <View style={{ flex: 10 }}>
         <Text style={{ fontSize: 13, color: T.ink2 }} numberOfLines={1}>
           {order.created_at ? new Date(order.created_at).toLocaleDateString(localeTag()) : '—'}
         </Text>
@@ -1856,6 +2074,7 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
       <View style={{ flex: 14, alignItems: 'flex-start', paddingEnd: 8 }}>
         <View className="flex-row items-center gap-1.5 self-start" style={{ maxWidth: '100%' }}>
           <OrderStatusInfo order={order as any} />
+          <ProvaListBadge orderId={order.id} />
           {/* Durum — yumuşak dolgulu rozet (nokta + etiket) */}
           <View
             className="flex-row items-center gap-1.5 rounded-full"
@@ -1863,7 +2082,7 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
           >
             <View className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: tone.fg, flexShrink: 0 }} />
             <Text style={{ fontSize: 12, fontWeight: '600', color: tone.fg, flexShrink: 1 }} numberOfLines={1}>
-              {onHold ? 'Duraklatıldı' : getOrderStageLabel(order as any)}
+              {onHold ? holdBadgeText(order as any) : getOrderStageLabel(order as any)}
             </Text>
           </View>
         </View>

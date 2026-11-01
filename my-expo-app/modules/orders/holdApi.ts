@@ -7,32 +7,8 @@
 import { supabase } from '../../core/api/supabase';
 import { dispatchNotification } from '../../core/notifications/dispatch';
 
-/** Bekletme nedeni kategorileri. responsible='client' olanlar teslim tarihini öteler. */
-export const HOLD_CATEGORIES = [
-  { key: 'client_missing_file', label: 'Eksik dosya / tarama',   responsible: 'client' as const },
-  // Fiziksel eksik: abutment/analog, model, eski protez vb. klinikten gelmesi
-  // gereken PARÇA. 'Eksik dosya / tarama' dijital karşılığı; ikisi ayrı çünkü
-  // hekime giden bildirimde ne göndermesi gerektiği net olmalı.
-  { key: 'client_missing_part', label: 'Eksik parça / model',   responsible: 'client' as const },
-  { key: 'client_approval',     label: 'Hekim onayı bekleniyor', responsible: 'client' as const },
-  { key: 'client_other',        label: 'Diğer (hekim/klinik)',   responsible: 'client' as const },
-  { key: 'material',            label: 'Malzeme bekleniyor',     responsible: 'lab' as const },
-  { key: 'lab_other',           label: 'Diğer (lab içi)',        responsible: 'lab' as const },
-];
-
-export function holdCategoryLabel(key?: string | null): string {
-  return HOLD_CATEGORIES.find(c => c.key === key)?.label ?? 'Beklemede';
-}
-export function holdResponsibleOf(key: string): 'client' | 'lab' {
-  return HOLD_CATEGORIES.find(c => c.key === key)?.responsible ?? 'client';
-}
-
-/** Bekleme süresini gün olarak (yaklaşık) hesapla — rozet/etiket için. */
-export function holdDays(startedAt?: string | null): number {
-  if (!startedAt) return 0;
-  const ms = Date.now() - new Date(startedAt).getTime();
-  return Math.max(0, Math.round(ms / 86400000));
-}
+export * from './holdCategories';
+import { holdCategoryLabel, holdResponsibleOf } from './holdCategories';
 
 /**
  * İşi beklet. Hekim/klinik kullanıcılarına neden bildirimi de gider

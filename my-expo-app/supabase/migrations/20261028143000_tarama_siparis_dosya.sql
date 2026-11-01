@@ -1,0 +1,626 @@
+-- ════════════════════════════════════════════════════════════════════════════
+-- Tarama randevuları — sipariş iptali, Sipariş Geçmişi, dosyalar (plan Task 7)
+-- spec: docs/superpowers/specs/2026-10-28-tarama-randevulari-design.md (4.7, 4.9, 4.10)
+-- order_history: canlı tanım (.before) + YALNIZ lab tarafına 'scan' dalı.
+-- ════════════════════════════════════════════════════════════════════════════
+
+-- ── Sipariş iptali: bağlı tarama yeniden "karar bekliyor" ──
+-- Bağlı (siparise_baglandi/yeni_siparis) her satıra _scan_undo_core; kesilmiş faturalı satır olduğu
+-- gibi kalır. Karar verilmemiş ön bağlantı da çözülür. Hata siparişin iptalini ASLA engellemez.
+create or replace function public.trg_scan_order_cancelled()
+returns trigger language plpgsql security definer set search_path to 'public' as $$
+declare r record;
+begin
+  if NEW.status = 'iptal' and OLD.status is distinct from 'iptal' then
+    begin
+      for r in select id from public.scan_patients
+                where work_order_id = NEW.id and decision in ('siparise_baglandi', 'yeni_siparis') loop
+        perform public._scan_undo_core(r.id, 'order_cancelled');
+      end loop;
+      update public.scan_patients set work_order_id = null
+       where work_order_id = NEW.id and decision is null;
+    exception when others then
+      raise warning 'tarama sipariş iptali (%): %', NEW.id, SQLERRM;
+    end;
+  end if;
+  return NEW;
+end $$;
+revoke all on function public.trg_scan_order_cancelled() from public, anon, authenticated;
+
+drop trigger if exists trg_scan_order_cancelled on public.work_orders;
+create trigger trg_scan_order_cancelled
+  after update of status on public.work_orders
+  for each row execute function public.trg_scan_order_cancelled();
+
+-- ── Tarama dosyaları: scan-files (<lab>/<randevu>/<hasta>/<dosya>) ──
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('scan-files', 'scan-files', false, 52428800)
+on conflict (id) do nothing;
+
+create or replace function public._scan_patient_order(p uuid)
+returns uuid language sql stable security definer set search_path to 'public' as $$
+  select work_order_id from public.scan_patients where id = p;
+$$;
+
+create or replace function public._scan_file_can_write(p_lab uuid, p_appt uuid, p_patient uuid)
+returns boolean language sql stable security definer set search_path to 'public' as $$
+  select exists (
+    select 1 from public.scan_patients sp join public.scan_appointments a on a.id = sp.appointment_id
+     where sp.id = p_patient and a.id = p_appt and a.lab_id = p_lab
+       and a.lab_id = public.get_my_lab_id() and public._scan_enabled(a.lab_id)
+       and a.status <> 'iptal'
+       and (public._scan_can_manage() or a.technician_id = auth.uid()));
+$$;
+
+create or replace function public._scan_file_can_delete(p_patient uuid)
+returns boolean language sql stable security definer set search_path to 'public' as $$
+  select exists (
+    select 1 from public.scan_patients sp join public.scan_appointments a on a.id = sp.appointment_id
+     where sp.id = p_patient and sp.decision is null
+       and a.lab_id = public.get_my_lab_id() and public._scan_can_manage());
+$$;
+
+revoke all on function public._scan_patient_order(uuid), public._scan_file_can_write(uuid, uuid, uuid),
+  public._scan_file_can_delete(uuid) from public, anon;
+grant execute on function public._scan_patient_order(uuid), public._scan_file_can_write(uuid, uuid, uuid),
+  public._scan_file_can_delete(uuid) to authenticated;
+
+drop policy if exists sf_insert on storage.objects;
+create policy sf_insert on storage.objects for insert to authenticated
+  with check (bucket_id = 'scan-files'
+    and public._scan_file_can_write(public.try_uuid(split_part(name, '/', 1)),
+                                    public.try_uuid(split_part(name, '/', 2)),
+                                    public.try_uuid(split_part(name, '/', 3))));
+drop policy if exists sf_select on storage.objects;
+create policy sf_select on storage.objects for select to authenticated
+  using (bucket_id = 'scan-files'
+    and (exists (select 1 from public.scan_patients p where p.id = public.try_uuid(split_part(name, '/', 3)))
+         or exists (select 1 from public.work_orders w
+                     where w.id = public._scan_patient_order(public.try_uuid(split_part(name, '/', 3))))));
+drop policy if exists sf_delete on storage.objects;
+create policy sf_delete on storage.objects for delete to authenticated
+  using (bucket_id = 'scan-files' and public._scan_file_can_delete(public.try_uuid(split_part(name, '/', 3))));
+
+-- ── Güvenilir kayıt: Sipariş Geçmişi yalnız 'trusted' damgalı olgu satırlarını gösterir.
+-- activity_logs_trust_stamp damgayı siman.trusted_log='on' iken koyar (_apply_order_edit kalıbı).
+create or replace function public._scan_log_trusted(p_action text, p_entity_type text, p_entity_id uuid,
+                                                    p_label text, p_meta jsonb, p_lab uuid default null)
+returns void language plpgsql security definer set search_path to 'public' as $$
+begin
+  perform set_config('siman.trusted_log', 'on', true);
+  begin
+    perform public.log_activity(p_action, p_entity_type, p_entity_id, p_label, p_meta, p_lab);
+  exception when others then
+    perform set_config('siman.trusted_log', '', true);
+    raise;
+  end;
+  perform set_config('siman.trusted_log', '', true);
+end $$;
+revoke all on function public._scan_log_trusted(text, text, uuid, text, jsonb, uuid) from public, anon, authenticated;
+
+-- Karar ve geri alma kayıtları güvenilir yazılsın (Task 6 tanımları; yalnız kayıt çağrısı değişir)
+CREATE OR REPLACE FUNCTION public._scan_undo_core(p_patient uuid, p_reason text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_p public.scan_patients; v_inv uuid[];
+begin
+  select * into v_p from public.scan_patients where id = p_patient for update;
+  if v_p.id is null or v_p.decision is null then return false; end if;
+  if exists (select 1 from public.scan_patient_charges ch
+               join public.invoice_items ii on ii.id = ch.invoice_item_id
+               join public.invoices i on i.id = ii.invoice_id
+              where ch.scan_patient_id = p_patient and i.status not in ('taslak', 'iptal')) then
+    if p_reason is null then
+      raise exception 'Bu tarama kesilmiş bir faturada; önce faturayı iptal edin' using errcode = 'P0001';
+    end if;
+    return false;
+  end if;
+  select array_agg(distinct ii.invoice_id) into v_inv
+    from public.scan_patient_charges ch join public.invoice_items ii on ii.id = ch.invoice_item_id
+   where ch.scan_patient_id = p_patient;
+  delete from public.invoice_items ii
+   using public.scan_patient_charges ch, public.invoices i
+   where ch.scan_patient_id = p_patient and ii.id = ch.invoice_item_id
+     and i.id = ii.invoice_id and i.status = 'taslak';
+  delete from public.invoices i
+   where i.id = any (coalesce(v_inv, '{}')) and i.status = 'taslak' and i.work_order_id is null
+     and not exists (select 1 from public.invoice_items x where x.invoice_id = i.id)
+     and not exists (select 1 from public.invoice_orders o where o.invoice_id = i.id);
+  update public.scan_patient_charges
+     set status = 'beklemede', price = null, currency = null, price_source = null,
+         bill_with_order = null, invoice_item_id = null
+   where scan_patient_id = p_patient;
+  update public.scan_patients
+     set status = 'karar_bekliyor', decision = null, decided_by = null, decided_at = null,
+         work_order_id = case when p_reason is not null then null else work_order_id end
+   where id = p_patient;
+  perform public._scan_appt_refresh_status(v_p.appointment_id);
+  perform public._scan_log_trusted(
+    case when p_reason is null then 'Tarama kararını geri aldı' else 'Tarama yeniden karar bekliyor · sipariş iptal edildi' end,
+    'scan_appointment', v_p.appointment_id, public._scan_appt_label(v_p.appointment_id),
+    jsonb_build_object('work_order_id', v_p.work_order_id, 'scan_patient_id', p_patient, 'decision', v_p.decision),
+    v_p.lab_id);
+  return true;
+end $function$;
+
+CREATE OR REPLACE FUNCTION public.scan_decide(p_patient_ids uuid[], p_decision text, p_work_order uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_lab uuid := public.get_my_lab_id();
+  r record; c record; g record;
+  v_n int := 0;
+  v_appts uuid[] := '{}';
+  v_invoices uuid[] := '{}';
+  v_standalone uuid[] := '{}';
+  v_pooled int := 0; v_free int := 0;
+  v_ocur text; v_inv uuid; v_inv_status text; v_inv_cur text; v_id uuid; v_a uuid;
+  v_price numeric; v_cur text; v_src text;
+begin
+  if v_lab is null or not public._scan_enabled(v_lab) then
+    raise exception 'Tarama randevuları bu lab için kapalı' using errcode = 'P0001';
+  end if;
+  if not public._scan_can_manage() then
+    raise exception 'Karar yalnız admin ya da yöneticiye açık' using errcode = 'P0001';
+  end if;
+  if p_decision is null or p_decision not in ('siparise_baglandi', 'yeni_siparis', 'yalniz_tarama')
+     or p_patient_ids is null or cardinality(p_patient_ids) = 0
+     or (p_decision <> 'yalniz_tarama' and (cardinality(p_patient_ids) <> 1 or p_work_order is null)) then
+    raise exception 'Geçersiz karar' using errcode = 'P0001';
+  end if;
+  if p_decision <> 'yalniz_tarama' then
+    if exists (select 1 from public.work_orders where id = p_work_order and status = 'iptal') then
+      raise exception 'İptal edilmiş siparişe bağlanamaz' using errcode = 'P0001';
+    end if;
+    v_ocur := public._scan_order_currency(p_work_order);
+    select i.id, i.status, i.currency into v_inv, v_inv_status, v_inv_cur
+      from public.invoice_orders io join public.invoices i on i.id = io.invoice_id
+     where io.work_order_id = p_work_order and i.status <> 'iptal' limit 1;
+  end if;
+
+  for r in
+    select p.id, p.appointment_id, p.status, p.decision, a.clinic_id, a.status as appt_status,
+           a.starts_at, a.lab_id as alab
+      from public.scan_patients p join public.scan_appointments a on a.id = p.appointment_id
+     where p.id = any (p_patient_ids)
+     order by p.id
+     for update of p, a
+  loop
+    v_n := v_n + 1;
+    if r.alab <> v_lab then raise exception 'Tarama randevusu bulunamadı' using errcode = 'P0001'; end if;
+    if r.appt_status not in ('yapildi', 'kapandi') then
+      raise exception 'Önce "Tarama yapıldı" deyin' using errcode = 'P0001';
+    end if;
+    if r.status <> 'karar_bekliyor' or r.decision is not null then
+      raise exception 'Bu tarama zaten karara bağlanmış' using errcode = 'P0001';
+    end if;
+    if p_decision <> 'yalniz_tarama' and not exists (
+         select 1 from public.work_orders w
+          where w.id = p_work_order and w.lab_id = v_lab and public._resolve_wo_clinic_id(w.id) = r.clinic_id) then
+      raise exception 'Sipariş bu kliniğe ait değil' using errcode = 'P0001';
+    end if;
+
+    for c in
+      select ch.id, ch.service_id, s.scan_free_if_order
+        from public.scan_patient_charges ch join public.lab_services s on s.id = ch.service_id
+       where ch.scan_patient_id = r.id
+       for update of ch
+    loop
+      select rp.price, rp.currency, rp.source into v_price, v_cur, v_src
+        from public.resolve_item_price(v_lab, c.service_id, r.clinic_id,
+                                       (r.starts_at at time zone public._scan_tz(v_lab))::date) rp;
+      update public.scan_patient_charges
+         set price = coalesce(v_price, 0), currency = coalesce(v_cur, 'TRY'), price_source = v_src
+       where id = c.id;
+      v_cur := coalesce(v_cur, 'TRY');
+      if p_decision <> 'yalniz_tarama' and c.scan_free_if_order then
+        update public.scan_patient_charges set status = 'ucretsiz', bill_with_order = null where id = c.id;
+        v_free := v_free + 1;
+      elsif p_decision <> 'yalniz_tarama' and v_inv is not null and v_inv_status = 'taslak' and v_inv_cur = v_cur then
+        update public.scan_patient_charges set status = 'ucretli', bill_with_order = true where id = c.id;
+        perform public._scan_bill_charges(v_inv, array[c.id]);
+        if not (v_inv = any (v_invoices)) then v_invoices := v_invoices || v_inv; end if;
+      elsif p_decision <> 'yalniz_tarama' and v_inv is null and v_ocur = v_cur then
+        update public.scan_patient_charges set status = 'ucretli', bill_with_order = true where id = c.id;
+      else
+        update public.scan_patient_charges set status = 'ucretli', bill_with_order = false where id = c.id;
+        v_standalone := v_standalone || c.id;
+      end if;
+    end loop;
+
+    update public.scan_patients
+       set status = 'kapandi', decision = p_decision,
+           work_order_id = case when p_decision = 'yalniz_tarama' then null else p_work_order end,
+           decided_by = auth.uid(), decided_at = now()
+     where id = r.id;
+    if not (r.appointment_id = any (v_appts)) then v_appts := v_appts || r.appointment_id; end if;
+    perform public._scan_log_trusted('Tarama kararı verdi', 'scan_appointment', r.appointment_id,
+                                public._scan_appt_label(r.appointment_id),
+                                jsonb_build_object('work_order_id', p_work_order, 'decision', p_decision,
+                                                   'scan_patient_id', r.id));
+  end loop;
+  if v_n <> cardinality(p_patient_ids) then
+    raise exception 'Tarama randevusu bulunamadı' using errcode = 'P0001';
+  end if;
+
+  -- ayrı faturalananlar: klinik + para birimi başına
+  for g in
+    select a.clinic_id, ch.currency, array_agg(ch.id) as ids, coalesce(cl.billing_mode, 'monthly_bulk') as mode
+      from public.scan_patient_charges ch
+      join public.scan_patients p on p.id = ch.scan_patient_id
+      join public.scan_appointments a on a.id = p.appointment_id
+      join public.clinics cl on cl.id = a.clinic_id
+     where ch.id = any (v_standalone)
+     group by a.clinic_id, ch.currency, coalesce(cl.billing_mode, 'monthly_bulk')
+  loop
+    if g.mode = 'per_order' then
+      v_id := public._scan_new_draft(g.clinic_id, g.currency);
+      perform public._scan_bill_charges(v_id, g.ids);
+      v_invoices := v_invoices || v_id;
+    else
+      v_pooled := v_pooled + cardinality(g.ids);
+    end if;
+  end loop;
+
+  foreach v_a in array v_appts loop
+    perform public._scan_appt_refresh_status(v_a);
+  end loop;
+  return jsonb_build_object('invoices', to_jsonb(v_invoices), 'pooled', v_pooled, 'free', v_free);
+end $function$;
+
+-- ── Sipariş Geçmişi: tarama dalı ──
+CREATE OR REPLACE FUNCTION public.order_history(p_order uuid)
+ RETURNS TABLE(at timestamp with time zone, kind text, category text, actor_name text, detail jsonb, link_order_id uuid, link_order_no text)
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+#variable_conflict use_column
+declare
+  v_wo     public.work_orders;
+  v_lab    boolean;   -- çağıran lab tarafı (lab/admin)
+  v_fin    boolean;   -- lab: finans yetkisi
+  v_cbill  boolean;   -- klinik/hekim: siparişin kliniğinde fatura yetkisi
+  v_tz     text;
+begin
+  if p_order is null or not public.can_read_work_order(p_order) then
+    raise exception 'Bu siparişin geçmişini görme yetkiniz yok.' using errcode = '42501';
+  end if;
+
+  select * into v_wo from public.work_orders w where w.id = p_order;
+  v_lab := coalesce(public.my_user_type() in ('lab','admin'), false);
+  v_fin := v_lab and coalesce(public.lab_can_view_finance(), false);
+  v_cbill := (not v_lab) and coalesce(public.can_view_clinic_billing(
+               coalesce((select d.clinic_id from public.doctors d where d.id = v_wo.doctor_id),
+                        (select p.clinic_id from public.profiles p where p.id = v_wo.doctor_id))), false);
+  v_tz := coalesce(public.lab_tz(v_wo.lab_id), 'Europe/Istanbul');
+
+  return query
+  with
+  -- 20261027140000: yalnız siparişin KENDİ lab'ının kayıtları (başka lab'ın kullanıcısı bir sipariş
+  -- kimliğiyle log_activity / doğrudan INSERT yazabiliyordu → sahte satır başka tenant'ın geçmişine düşerdi).
+  logs as (
+    select l.* from public.activity_logs l
+     where l.lab_id = v_wo.lab_id
+       and (l.entity_id = p_order
+            or l.entity_id in (select s.id from public.order_stages s where s.work_order_id = p_order))
+  ),
+  -- Olgu satırları (alan/kalem/durum değişikliği, oluşturan, iptal, devir, red) yalnız sunucu
+  -- tetikleyicisinin/düzenleme fonksiyonunun yazdığı kayıtlardan: activity_logs_trust_stamp
+  -- istemcinin yazdığı satıra 'trusted' koymaz (siparişin tarafı da geçmişi uyduramaz).
+  tlogs as (
+    select l.* from logs l where l.metadata->>'trusted' = 'true'
+  ),
+  -- Task 2 alan değişikliği kaydı: metadata.fields = [{field, old, new} | {field, changed}]
+  fchg as (
+    select l.id, l.created_at, l.actor_id, l.actor_name, e.value as f, e.ordinality as ord
+      from tlogs l
+     cross join lateral jsonb_array_elements(
+             case when jsonb_typeof(l.metadata->'fields') = 'array' then l.metadata->'fields' else '[]'::jsonb end
+           ) with ordinality e
+     where l.entity_type = 'work_order'
+  ),
+  first_dd as (select f.f->>'old' as v from fchg f where f.f->>'field' = 'delivery_date' order by f.created_at, f.ord limit 1),
+  first_notes as (select f.f->>'old' as v from fchg f where f.f->>'field' = 'notes' order by f.created_at, f.ord limit 1),
+  creator as (
+    select l.actor_id, l.actor_name from tlogs l
+     where l.entity_type = 'work_order' and l.action = 'İş emri oluşturdu'
+     order by l.created_at limit 1
+  ),
+  ev(t, k, c, who, who_name, d, lid, lno) as (
+    -- oluşturma: o anda söz verilen teslim günü (ilk teslim tarihi değişikliğinin eski değeri)
+    select v_wo.created_at, 'created'::text, 'teslim'::text,
+           (select cr.actor_id from creator cr), (select cr.actor_name from creator cr),
+           -- değişiklik kaydı varsa İLK kaydın eski değeri (NULL olsa bile), yoksa bugünkü değer
+           jsonb_build_object('delivery_date', case when exists (select 1 from first_dd) then (select x.v from first_dd x)
+                                                    else v_wo.delivery_date::text end,
+                              'is_urgent', v_wo.is_urgent, 'work_type', v_wo.work_type),
+           null::uuid, null::text
+    union all
+    -- hekim notu: oluşturma anındaki metin
+    select v_wo.created_at, 'doctor_note', 'notlar_sohbet',
+           (select cr.actor_id from creator cr), (select cr.actor_name from creator cr),
+           jsonb_build_object('text', left(n.v, 1000)), null, null
+      from (select case when exists (select 1 from first_notes) then (select x.v from first_notes x)
+                        else v_wo.notes end as v) n
+     where nullif(btrim(n.v), '') is not null
+    union all
+    select f.created_at, 'delivery_date_changed', 'teslim', f.actor_id, f.actor_name,
+           jsonb_build_object('old', f.f->>'old', 'new', f.f->>'new'), null, null
+      from fchg f where f.f->>'field' = 'delivery_date'
+    union all
+    -- diğer alanlar: aynı kayıttaki alanlar tek satırda; lab notu klinik/hekime gösterilmez
+    select min(f.created_at), 'field_changed', 'diger', (array_agg(f.actor_id))[1], min(f.actor_name),
+           jsonb_build_object('fields', jsonb_agg(
+             case when f.f ? 'changed' then jsonb_build_object('field', f.f->>'field', 'changed', true)
+                  else jsonb_build_object('field', f.f->>'field', 'old', f.f->'old', 'new', f.f->'new') end
+             order by f.ord)), null, null
+      from fchg f
+     where f.f->>'field' not in ('delivery_date', 'status')
+       and (v_lab or f.f->>'field' not in ('lab_notes', 'manager_notes'))
+     group by f.id
+    union all
+    -- eski biçim (client_update_order: fields nesnesi, eski değer yok): yalnız alan adları
+    select l.created_at, 'field_changed', 'diger', l.actor_id, l.actor_name,
+           jsonb_build_object('legacy', true, 'fields',
+             (select coalesce(jsonb_agg(jsonb_build_object('field', k.key, 'changed', true)), '[]'::jsonb)
+                from jsonb_object_keys(l.metadata->'fields') k(key)
+               where v_lab or k.key not in ('lab_notes', 'manager_notes'))), null, null
+      from tlogs l
+     where l.entity_type = 'work_order' and jsonb_typeof(l.metadata->'fields') = 'object'
+    union all
+    -- kalemler (Task 2): fiyat alanları yalnız finans/fatura yetkilisine
+    select l.created_at, 'items_changed', 'diger', l.actor_id, l.actor_name,
+           jsonb_build_object('items',
+             (select coalesce(jsonb_agg(case when v_fin or v_cbill then i.value
+                                             else i.value - 'price_old' - 'price_new' - 'currency' end
+                                        order by i.ordinality), '[]'::jsonb)
+                from jsonb_array_elements(l.metadata->'items') with ordinality i)), null, null
+      from tlogs l
+     where l.entity_type = 'work_order' and jsonb_typeof(l.metadata->'items') = 'array'
+    union all
+    -- durum adımları; durum notu yalnız lab'a
+    select s.created_at, 'status_changed',
+           case when s.new_status::text in ('teslimata_hazir','kurye_bekleniyor','kuryede','teslim_edildi')
+                then 'teslim' else 'uretim' end,
+           s.changed_by, null,
+           jsonb_build_object('old', s.old_status::text, 'new', s.new_status::text)
+             || case when v_lab and nullif(btrim(s.note), '') is not null
+                     then jsonb_build_object('note', s.note) else '{}'::jsonb end,
+           null, null
+      from public.status_history s where s.work_order_id = p_order
+    union all
+    -- durum adımları (Task 2 kaydı: status_history'ye yazmayan yollar)
+    select f.created_at, 'status_changed',
+           case when f.f->>'new' in ('teslimata_hazir','kurye_bekleniyor','kuryede','teslim_edildi')
+                then 'teslim' else 'uretim' end,
+           f.actor_id, f.actor_name,
+           jsonb_build_object('old', f.f->>'old', 'new', f.f->>'new'), null, null
+      from fchg f where f.f->>'field' = 'status'
+    union all
+    -- eski siparişler: teslim durumu status_history'ye yazılmadıysa delivered_at'ten
+    select v_wo.delivered_at, 'status_changed', 'teslim', null, null,
+           jsonb_build_object('new', 'teslim_edildi', 'derived', true), null, null
+     where v_wo.delivered_at is not null
+       and not exists (select 1 from public.status_history s
+                        where s.work_order_id = p_order and s.new_status::text = 'teslim_edildi')
+       and not exists (select 1 from fchg f where f.f->>'field' = 'status' and f.f->>'new' = 'teslim_edildi')
+    union all
+    select l.created_at, 'order_cancelled', 'diger', l.actor_id, l.actor_name, '{}'::jsonb, null, null
+      from tlogs l where l.entity_type = 'work_order' and l.action = 'Siparişi iptal etti'
+    union all
+    -- aşamalar: yalnız lab
+    select x.t, x.k, 'uretim', x.who, null,
+           jsonb_build_object('station', st.name) || x.extra, null, null
+      from public.order_stages s
+      left join public.lab_stations st on st.id = s.station_id
+     cross join lateral (values
+        (s.assigned_at,  'stage_assigned',  null::uuid,
+           jsonb_build_object('technician', public._order_history_name(s.technician_id, true))),
+        (s.started_at,   'stage_started',   s.technician_id, '{}'::jsonb),
+        (s.completed_at, 'stage_completed', s.technician_id, '{}'::jsonb),
+        (s.approved_at,  'stage_approved',  s.approved_by,   '{}'::jsonb),
+        (s.skipped_at,   'stage_skipped',   s.skipped_by,    jsonb_build_object('reason', s.skipped_reason))
+      ) x(t, k, who, extra)
+     where v_lab and s.work_order_id = p_order and x.t is not null
+    union all
+    -- teknisyen devri (Task 2 kaydı): yalnız lab
+    select l.created_at, 'stage_reassigned', 'uretim', l.actor_id, l.actor_name,
+           jsonb_build_object('from', public._order_history_name(nullif(l.metadata->>'from', '')::uuid, true),
+                              'to',   public._order_history_name(nullif(l.metadata->>'to', '')::uuid, true),
+                              'station', l.metadata->>'station'), null, null
+      from tlogs l where v_lab and l.entity_type = 'stage' and l.action = 'Aşamayı devretti'
+    union all
+    -- kalite reddi (log_stage_activity kaydı): yalnız lab
+    select l.created_at, 'stage_rejected', 'uretim', l.actor_id, l.actor_name,
+           jsonb_build_object('station', l.metadata->>'station'), null, null
+      from tlogs l where v_lab and l.entity_type = 'stage' and l.action = 'Aşamayı reddetti'
+    union all
+    -- malzeme tüketimi: yalnız lab; metadata'dan yalnız malzeme alanları (hasta adı alınmaz)
+    select l.created_at, 'material_used', 'uretim', l.actor_id, l.actor_name,
+           jsonb_build_object('item', l.metadata->>'item', 'qty', l.metadata->'qty', 'unit', l.metadata->>'unit',
+                              'stage', l.metadata->>'stage'), null, null
+      from logs l where v_lab and l.entity_type = 'material'
+    union all
+    -- bekleme: lab kaynaklı beklemenin nedeni klinik/hekime gösterilmez
+    select h.started_at, 'hold_started', 'uretim', h.held_by, null,
+           case when v_lab or h.responsible = 'client'
+                then jsonb_build_object('reason', h.reason, 'category', h.category, 'responsible', h.responsible)
+                else '{}'::jsonb end, null, null
+      from public.work_order_holds h where h.work_order_id = p_order and h.started_at is not null
+    union all
+    select h.ended_at, 'hold_ended', 'uretim', h.resumed_by, null,
+           case when v_lab or h.responsible = 'client'
+                then jsonb_build_object('responsible', h.responsible, 'extended_days', h.extended_days)
+                else '{}'::jsonb end, null, null
+      from public.work_order_holds h where h.work_order_id = p_order and h.ended_at is not null
+    union all
+    -- kurye bacakları (ara gidişler dahil)
+    select x.t, x.k, 'teslim', d.courier_id, case when d.courier_id is null then d.ext_courier_name end,
+           jsonb_build_object('purpose', d.purpose, 'direction', d.direction, 'mode', d.mode,
+                              'provider', d.external_provider) || x.extra, null, null
+      from public.deliveries d
+     cross join lateral (values
+        (d.assigned_at,  'delivery_assigned',  '{}'::jsonb),
+        (d.picked_up_at, 'delivery_picked_up', '{}'::jsonb),
+        (d.delivered_at, 'delivery_delivered', jsonb_build_object('recipient_name', d.recipient_name)),
+        (d.cancelled_at, 'delivery_cancelled',
+           case when v_lab then jsonb_build_object('reason', d.cancel_reason) else '{}'::jsonb end)
+      ) x(t, k, extra)
+     where d.work_order_id = p_order and x.t is not null
+    union all
+    -- sohbet: klinik/hekim yalnız onaylı mesajları görür (order_messages kuralı)
+    select m.created_at, 'message', 'notlar_sohbet', m.sender_id,
+           case when m.sender_id is null then m.external_sender end,
+           jsonb_build_object('text', left(m.content, 280), 'attachment_name', m.attachment_name,
+                              'attachment_type', m.attachment_type), null, null
+      from public.order_messages m
+     where m.work_order_id = p_order and (v_lab or m.approval_status = 'approved')
+       and coalesce(m.message_type, 'user') not in ('parts_request', 'parts_status')
+    union all
+    select p.created_at, 'photo', 'diger', p.uploaded_by, null,
+           jsonb_build_object('name', regexp_replace(p.storage_path, '^.*/', ''), 'caption', p.caption), null, null
+      from public.work_order_photos p where p.work_order_id = p_order
+    union all
+    -- değişiklik / iptal talepleri: talep ve karar ayrı satır; önerilen değerler değil alan adları
+    select r.created_at, 'change_request', 'diger', r.requested_by, r.requester_name,
+           jsonb_build_object('step', 'requested', 'items', r.proposed_items is not null, 'fields',
+             (select coalesce(jsonb_agg(k.key), '[]'::jsonb)
+                from jsonb_object_keys(case when jsonb_typeof(r.proposed_fields) = 'object'
+                                            then r.proposed_fields else '{}'::jsonb end) k(key))), null, null
+      from public.order_change_requests r where r.work_order_id = p_order
+    union all
+    select r.reviewed_at, 'change_request', 'diger', r.reviewed_by, null,
+           jsonb_build_object('step', 'decided', 'status', r.status, 'note', r.review_note), null, null
+      from public.order_change_requests r where r.work_order_id = p_order and r.reviewed_at is not null
+    union all
+    select r.created_at, 'cancel_request', 'diger', r.requested_by, r.requester_name,
+           jsonb_build_object('step', 'requested', 'reason_code', r.reason_code, 'reason', r.reason_detail), null, null
+      from public.order_cancellation_requests r where r.work_order_id = p_order
+    union all
+    select r.reviewed_at, 'cancel_request', 'diger', r.reviewed_by, null,
+           jsonb_build_object('step', 'decided', 'status', r.status, 'note', r.review_note), null, null
+      from public.order_cancellation_requests r where r.work_order_id = p_order and r.reviewed_at is not null
+    union all
+    -- prova: tarih alanları gün olarak tutuluyor → date_only (saat gösterilmez)
+    select (pr.sent_date::timestamp at time zone v_tz), 'prova_sent', 'teslim', pr.created_by, null,
+           jsonb_build_object('date_only', true, 'number', pr.prova_number, 'type', pr.prova_type,
+                              'item', pr.order_item_name), null, null
+      from public.provas pr where pr.work_order_id = p_order and pr.sent_date is not null
+    union all
+    select (pr.return_date::timestamp at time zone v_tz), 'prova_returned', 'teslim', null, null,
+           jsonb_build_object('date_only', true, 'number', pr.prova_number, 'item', pr.order_item_name), null, null
+      from public.provas pr where pr.work_order_id = p_order and pr.return_date is not null
+    union all
+    -- 20261027163000: hekimin "provayı geri gönderdim" işareti
+    select pr.client_returned_at, 'prova_client_returned', 'teslim', pr.client_returned_by, null,
+           jsonb_build_object('number', pr.prova_number, 'item', pr.order_item_name), null, null
+      from public.provas pr where pr.work_order_id = p_order and pr.client_returned_at is not null
+    union all
+    -- 20261027163000: randevu kayıtları (appt_save / appt_remove / appt_review güvenilir log yazar)
+    select l.created_at, 'appointment', 'teslim', l.actor_id, l.actor_name,
+           jsonb_build_object('action', l.action, 'kind', l.metadata->>'kind', 'date', l.metadata->>'date',
+                              'time', l.metadata->>'time', 'old_date', l.metadata->>'old_date',
+                              'proposal', l.metadata->>'action'), null, null
+      from tlogs l where l.entity_type = 'work_order' and l.action like 'Randevu%'
+    union all
+    -- hekim (tasarım) onayı
+    select a.requested_at, 'approval_requested', 'uretim', a.requested_by, null,
+           jsonb_build_object('step', a.step_name), null, null
+      from public.approvals a where a.work_order_id = p_order and a.requested_at is not null
+    union all
+    select a.resolved_at, 'approval_decided', 'uretim', a.approved_by, null,
+           jsonb_build_object('step', a.step_name, 'status', a.status, 'reason', a.rejection_reason), null, null
+      from public.approvals a where a.work_order_id = p_order and a.resolved_at is not null
+    union all
+    select v_wo.doctor_approval_decided_at, 'approval_decided', 'uretim', v_wo.doctor_approval_decided_by, null,
+           jsonb_build_object('status', v_wo.doctor_approval_status, 'override', v_wo.doctor_approval_admin_override),
+           null, null
+     where v_wo.doctor_approval_decided_at is not null
+       and not exists (select 1 from public.approvals a where a.work_order_id = p_order and a.resolved_at is not null)
+    union all
+    select x.t, 'implant_part', 'diger', x.who, null,
+           jsonb_build_object('step', x.st, 'tooth', ip.tooth_number, 'part_type', ip.part_type,
+                              'quantity', ip.quantity), null, null
+      from public.order_implant_parts ip
+     cross join lateral (values
+        (ip.requested_at, 'requested', ip.requested_by),
+        (ip.ordered_at,   'ordered',   ip.ordered_by),
+        (ip.received_at,  'received',  ip.received_by),
+        (ip.returned_at,  'returned',  ip.returned_by),
+        (ip.cancelled_at, 'cancelled', ip.cancelled_by)
+      ) x(t, st, who)
+     where ip.work_order_id = p_order and x.t is not null
+    union all
+    select rv.created_at, 'review', 'notlar_sohbet', rv.rater_id, null,
+           jsonb_build_object('overall', rv.overall, 'comment', left(rv.comment, 280)), null, null
+      from public.order_reviews rv where rv.work_order_id = p_order
+    union all
+    -- fatura (kesilmiş) ve tahsilat: yalnız yetkiliye
+    select (i.issue_date::timestamp at time zone v_tz), 'invoice_issued', 'diger', null, null,
+           jsonb_build_object('date_only', true, 'invoice_number', i.invoice_number, 'status', i.status,
+                              'total', i.total, 'currency', i.currency), null, null
+      from public.invoices i
+     where i.work_order_id = p_order and i.issue_date is not null
+       and i.status in ('kesildi', 'kismi_odendi', 'odendi')
+       and (v_fin or ((not v_lab) and public.can_view_clinic_billing(i.clinic_id)))
+    union all
+    select py.created_at, 'payment', 'diger', py.received_by, null,
+           jsonb_build_object('amount', py.amount, 'currency', py.currency, 'method', py.payment_method,
+                              'payment_date', py.payment_date), null, null
+      from public.payments py
+      join public.invoices i on i.id = py.invoice_id
+     where i.work_order_id = p_order
+       and (v_fin or ((not v_lab) and public.can_view_clinic_billing(i.clinic_id)))
+    union all
+    -- revizyon ve devam bağları (iki yönlü); karşı siparişi okuyamayan bağlantıyı görmez
+    select c.created_at, 'revision_opened', 'diger', null, null,
+           jsonb_build_object('revision_no', c.revision_no)
+             || case when v_lab then jsonb_build_object('reason', c.revision_reason, 'responsible', c.revision_responsible)
+                     else '{}'::jsonb end,
+           c.id, c.order_number
+      from public.work_orders c
+     where c.revision_of_id = p_order and public.can_read_work_order(c.id)
+    union all
+    select v_wo.created_at, 'revision_of', 'diger', null, null,
+           jsonb_build_object('revision_no', v_wo.revision_no)
+             || case when v_lab then jsonb_build_object('reason', v_wo.revision_reason, 'responsible', v_wo.revision_responsible)
+                     else '{}'::jsonb end,
+           par.id, par.order_number
+      from public.work_orders par
+     where par.id = v_wo.revision_of_id and public.can_read_work_order(par.id)
+    union all
+    select c.created_at, 'continuation_opened', 'diger', null, null, '{}'::jsonb, c.id, c.order_number
+      from public.work_orders c
+     where c.continues_order_id = p_order and public.can_read_work_order(c.id)
+    union all
+    select v_wo.created_at, 'continuation_of', 'diger', null, null, '{}'::jsonb, par.id, par.order_number
+      from public.work_orders par
+     where par.id = v_wo.continues_order_id and public.can_read_work_order(par.id)
+    union all
+    -- 20261028143000: tarama randevusu olayları (karar/geri alma; metadata.work_order_id) — YALNIZ lab
+    select sl.created_at, 'scan', 'diger', sl.actor_id, sl.actor_name,
+           jsonb_build_object('action', sl.action, 'decision', sl.metadata->>'decision',
+                              'appointment_id', sl.entity_id, 'label', sl.entity_label), null, null
+      from public.activity_logs sl
+     where v_lab and sl.lab_id = v_wo.lab_id and sl.entity_type = 'scan_appointment'
+       and sl.metadata->>'trusted' = 'true'
+       and sl.metadata->>'work_order_id' = p_order::text
+  )
+  select ev.t, ev.k, ev.c,
+         coalesce(public._order_history_name(ev.who, v_lab),
+                  case when ev.who is null or v_lab then nullif(ev.who_name, '') end),
+         ev.d, ev.lid, ev.lno
+    from ev
+   where ev.t is not null
+   order by ev.t,
+            case ev.k when 'created' then 0 when 'revision_of' then 1 when 'continuation_of' then 1
+                      when 'doctor_note' then 2 else 3 end;
+end;
+$function$;

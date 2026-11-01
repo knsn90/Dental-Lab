@@ -15,6 +15,8 @@ import { AppIcon } from '../../../core/ui/AppIcon';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { useMobileTokens, MOBILE_TOKENS_DARK } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { isOverdueOrder, isUrgentOpen, labTodayOf } from '../../../core/metrics/orderDefs';
+import { loadLabTz } from '../../../core/metrics/useLabToday';
 
 const ACCENT = '#2563EB';
 
@@ -60,7 +62,8 @@ interface DeliverySummary {
 // ── Veri çekme ────────────────────────────────────────────────────────────────
 
 async function fetchAnalytics(labId: string) {
-  const today    = new Date().toISOString().split('T')[0];
+  // Tek tanım (2026-10-26): lab günü + core/metrics/orderDefs; acil = is_urgent.
+  const today    = labTodayOf(await loadLabTz());
   const month30  = new Date(Date.now() - 30 * 86_400_000).toISOString();
 
   const [stationRes, techRes, ordersRes, delivRes] = await Promise.all([
@@ -80,9 +83,10 @@ async function fetchAnalytics(labId: string) {
     // Aktif iş emirleri özeti
     supabase
       .from('work_orders')
-      .select('status, delivery_date, is_rush, created_at')
+      .select('status, delivery_date, is_urgent, hold_status, is_archived, created_at')
       .neq('status', 'teslim_edildi')
-      .neq('status', 'iptal'),
+      .neq('status', 'iptal')
+      .or('is_archived.is.null,is_archived.eq.false'),
 
     // Teslimat özeti (son 30 gün)
     supabase
@@ -100,8 +104,8 @@ async function fetchAnalytics(labId: string) {
     total_active:    orders.length,
     asamada:         orders.filter(o => o.status === 'asamada').length,
     completed_today: 0, // order_events'ten hesaplanabilir — şimdilik 0
-    overdue:         orders.filter(o => o.delivery_date < today).length,
-    rush_active:     orders.filter(o => o.is_rush).length,
+    overdue:         orders.filter(o => isOverdueOrder(o, today)).length,
+    rush_active:     orders.filter(o => isUrgentOpen(o)).length,
     avg_delivery_days: 0,
   };
 

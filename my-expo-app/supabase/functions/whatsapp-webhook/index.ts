@@ -46,6 +46,8 @@ interface WaCredential {
     business_account_id?: string;
     access_token?: string;
     verify_token?: string;
+    /** Sohbet botu (Simanty): 'on' → açık. Yoksa / başka değer → KAPALI (varsayılan). */
+    chat_bot?: string;
   };
 }
 
@@ -1786,6 +1788,16 @@ async function processIncoming(payload: any): Promise<void> {
         console.error('[wa] no active credential for phone_number_id=', phoneId, ' known=', active.map(c => c.credentials?.phone_number_id));
         continue;
       }
+      // ── SOHBET BOTU KAPALI (varsayılan, 2026-10-19) ──────────────────────────
+      // Hat Coexistence'ta (is_on_biz_app=true): aynı numara telefondaki WhatsApp
+      // Business uygulamasında da açık ve gelen mesajları lab ORADAN yanıtlıyor.
+      // Bot kapalıyken müşteri mesajlarına ve echo'lara HİÇ dokunulmaz: otomatik
+      // yanıt, bildirim, medya indirme, sohbet kaydı yok. Giden bildirimler
+      // (send-whatsapp-meta) ve yukarıdaki teslim durumu kaydı etkilenmez.
+      // Bot altyapısı aşağıda aynen duruyor: Entegrasyonlar → WhatsApp → "Sohbet
+      // botu: Açık" ile geri gelir.
+      if (String(cred.credentials?.chat_bot ?? '').toLowerCase() !== 'on') continue;
+
       const accessToken = cred.credentials.access_token;
       const contacts = Array.isArray(value?.contacts) ? value.contacts : [];
       const senderName = contacts[0]?.profile?.name ?? null;

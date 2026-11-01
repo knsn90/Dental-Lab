@@ -1,0 +1,40 @@
+# 20261031110000_odeme_lab_id — canlı ÖNCE kaydı (2026-10-31)
+## alloc_receipt_to_invoices = 20261031100000 sürümü (lab_id yazmıyor)
+## lab_id NULL ödemeler
+[
+ {
+  "id": "f4b50806-fb7d-45cc-bb7d-8e727d5cc401",
+  "inv": "FTR-2026-00063",
+  "inv_lab": "243ef1db",
+  "created": "2026-10-31T17:36:52.989047+00:00",
+  "receipt": "23fee05b"
+ },
+ {
+  "id": "db2f5907-1843-47ab-9138-4288284ea180",
+  "inv": "FTR-2026-00009",
+  "inv_lab": "243ef1db",
+  "created": "2026-09-24T15:13:59.950305+00:00",
+  "receipt": "7fa25ef7"
+ },
+ {
+  "id": "feb10e2e-b1dc-4fb1-a46a-0bba0e6d74bd",
+  "inv": "FTR-2026-00036",
+  "inv_lab": "243ef1db",
+  "created": "2026-09-24T15:13:59.950305+00:00",
+  "receipt": "7fa25ef7"
+ },
+ {
+  "id": "8b6b2269-8852-4d63-8b18-9ff3da655e0d",
+  "inv": "FTR-2026-00056",
+  "inv_lab": "243ef1db",
+  "created": "2026-10-31T17:36:52.989047+00:00",
+  "receipt": "23fee05b"
+ },
+ {
+  "id": "83d7a956-1719-4394-a435-1a9b12188e0b",
+  "inv": "FTR-2026-00059",
+  "inv_lab": "243ef1db",
+  "created": "2026-10-31T17:36:52.989047+00:00",
+  "receipt": "23fee05b"
+ }
+]

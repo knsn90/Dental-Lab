@@ -14,7 +14,7 @@
       "backgroundColor": "#FFFFFF"
     },
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "icon": "./assets/images/icon-ios.png",
       "bundleIdentifier": "com.nexadent.app",
       "config": {
@@ -22,14 +22,18 @@
       },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSCameraUsageDescription": "İş emri fotoğrafı çekmek, QR okutmak ve 3D yüz tarama (gülüş tasarımı için) yapmak amacıyla kamera erişimi gerekiyor.",
-        "NSPhotoLibraryUsageDescription": "Fotoğraf galerinize erişmek için izin gerekiyor.",
+        "NSCameraUsageDescription": "İş emri ve fatura fotoğrafı çekmek, QR kod okutmak ve 3D yüz taraması (gülüş tasarımı) yapmak için kamera kullanılır.",
+        "NSPhotoLibraryUsageDescription": "İş emrine, mesaja veya faturaya galerinden fotoğraf ve tarama görseli eklemek için fotoğraflarına erişilir.",
         "NSLocationWhenInUseUsageDescription": "Kurye teslimat takibini paylaşmak ve iş yeri giriş/çıkış (check-in) yapmak için konumunuz kullanılır.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Aktif teslimat sırasında, uygulama arka planda olsa bile konumunuz teslimat takibi için paylaşılır. Yalnız taşıdığınız teslimat varken çalışır.",
         "UIBackgroundModes": [
           "remote-notification",
           "location"
-        ]
+        ],
+        "NSMicrophoneUsageDescription": "Uygulama ses kaydetmez ve mikrofonu kullanmaz. Bu izin yalnız kamera bileşeninin video desteği nedeniyle tanımlıdır; istenmez.",
+        "NSFaceIDUsageDescription": "Oturum bilgilerin cihazında şifreli olarak saklanır; bu güvenli alana erişim gerektiğinde Face ID kullanılabilir.",
+        "NSLocationAlwaysUsageDescription": "Aktif teslimat sırasında, uygulama arka planda olsa bile konumunuz teslimat takibi için paylaşılır. Yalnız taşıdığınız teslimat varken çalışır.",
+        "NSLocalNetworkUsageDescription": "Yerel ağ yalnız geliştirme sürümünde, bilgisayardaki geliştirme sunucusuna bağlanmak için kullanılır. Yayındaki uygulama yerel ağa erişmez."
       }
     },
     "android": {
@@ -82,14 +86,15 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Fotoğraf galerinize erişmek için izin gerekiyor.",
-          "cameraPermission": "Kamera ile fotoğraf çekmek için izin gerekiyor."
+          "photosPermission": "İş emrine, mesaja veya faturaya galerinden fotoğraf ve tarama görseli eklemek için fotoğraflarına erişilir.",
+          "cameraPermission": "İş emri ve fatura fotoğrafı çekmek, QR kod okutmak ve 3D yüz taraması (gülüş tasarımı) yapmak için kamera kullanılır."
         }
       ],
       [
         "expo-camera",
         {
-          "cameraPermission": "QR kod okutmak ve iş emri fotoğrafı çekmek için kamera gerekiyor."
+          "cameraPermission": "İş emri ve fatura fotoğrafı çekmek, QR kod okutmak ve 3D yüz taraması (gülüş tasarımı) yapmak için kamera kullanılır.",
+          "microphonePermission": "Uygulama ses kaydetmez ve mikrofonu kullanmaz. Bu izin yalnız kamera bileşeninin video desteği nedeniyle tanımlıdır; istenmez."
         }
       ],
       [
@@ -108,7 +113,8 @@
           "locationAlwaysAndWhenInUsePermission": "Aktif teslimat sırasında, uygulama arka planda olsa bile konumunuz teslimat takibi için paylaşılır. Yalnız taşıdığınız teslimat varken çalışır.",
           "locationWhenInUsePermission": "Kurye teslimat takibini paylaşmak ve iş yeri giriş/çıkış (check-in) yapmak için konumunuz kullanılır.",
           "isAndroidBackgroundLocationEnabled": true,
-          "isAndroidForegroundServiceEnabled": true
+          "isAndroidForegroundServiceEnabled": true,
+          "locationAlwaysPermission": "Aktif teslimat sırasında, uygulama arka planda olsa bile konumunuz teslimat takibi için paylaşılır. Yalnız taşıdığınız teslimat varken çalışır."
         }
       ]
     ],

@@ -34,6 +34,7 @@ import { useUiOverlayStore } from '../../store/uiOverlayStore';
 import { NAV, NAV_BAR_H, FAB_DOME, cellHitSlop, edgeSeparation, navGlass, navIndicator, navSurfaceStyle, useReduceTransparency, type NavGlass, NAV_DIM } from './navGlass';
 import { navCollapse, useNavScrollBridge, resetNavScroll } from './navScroll';
 import { GlassBlurLayer } from './GlassBlurLayer';
+import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
 
 export interface PillSearchItem {
   label: string;
@@ -99,14 +100,20 @@ const badgeSideStyle = () => (isRTL() ? { left: -7 } : { right: -7 });
 /**
  * TopLight — üstten gelen ışık (cam kabarcık hissi).
  *   web    → tek CSS linear-gradient: gerçek yumuşak geçiş, ekstra View yok
- *   native → gradient paketi YOK, o yüzden azalan opaklıkta ÜÇ bant
+ *   native → react-native-svg LinearGradient (aynı yoğunluk eğrisi)
  *
- * Neden üç bant: tek bir "yarım yüzey" katmanı %50'de SERT bir çizgi bırakıyor
- * ve daireyi/pill'i iki tonlu gösteriyordu (ilk denemede FAB tam ortadan
- * bölünmüş görünüyordu). Üç kademe, kenarı gözle görülmez hâle getiriyor.
+ * Eskiden native'de azalan opaklıkta ÜÇ düz bant vardı; her bandın alt kenarı
+ * iOS'ta ayrı bir yatay çizgi olarak görünüyor, cam "şerit şerit" duruyordu
+ * (2026-10-17). SVG geçişi kenarsız; bantların toplam yoğunluğunu birebir izler.
  * pointerEvents none: dokunma her zaman altındaki hücreye gider.
  */
-const BANDS: Array<[string, number]> = [['22%', 1], ['38%', 0.6], ['56%', 0.3]];
+/** rgba()/hex → { rgb: '#RRGGBB' | 'rgb(...)', a } — SVG stop'ları için. */
+function splitAlpha(color: string): { rgb: string; a: number } {
+  const m = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/i.exec(color || '');
+  if (m) return { rgb: `rgb(${m[1]},${m[2]},${m[3]})`, a: m[4] != null ? Number(m[4]) : 1 };
+  return { rgb: color || '#FFFFFF', a: 1 };
+}
+let topLightSeq = 0;
 
 function TopLight({ webGradient, tint, radius = NAV.radius }: { webGradient: string; tint: string; radius?: number }) {
   if (Platform.OS === 'web') {
@@ -117,11 +124,32 @@ function TopLight({ webGradient, tint, radius = NAV.radius }: { webGradient: str
       />
     );
   }
+  return <NativeTopLight tint={tint} radius={radius} />;
+}
+
+function NativeTopLight({ tint, radius }: { tint: string; radius: number }) {
+  const id = useMemo(() => `topLight${++topLightSeq}`, []);
+  if (!tint || tint === 'transparent') return null;
+  const { rgb, a } = splitAlpha(tint);
+  // Eski üç bandın (22% × 1 · 38% × 0.6 · 56% × 0.3) üst üste toplam yoğunluğu
+  const a0 = 1 - (1 - a) * (1 - 0.6 * a) * (1 - 0.3 * a);
+  const a1 = 1 - (1 - 0.6 * a) * (1 - 0.3 * a);
+  const a2 = 0.3 * a;
   return (
     <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { borderRadius: radius, overflow: 'hidden' }]}>
-      {BANDS.map(([h, o]) => (
-        <View key={h} style={{ position: 'absolute', top: 0, left: 0, right: 0, height: h as any, backgroundColor: tint, opacity: o }} />
-      ))}
+      <Svg width="100%" height="100%">
+        <Defs>
+          <SvgLinearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0"    stopColor={rgb} stopOpacity={a0} />
+            <Stop offset="0.16" stopColor={rgb} stopOpacity={a0} />
+            <Stop offset="0.30" stopColor={rgb} stopOpacity={a1} />
+            <Stop offset="0.47" stopColor={rgb} stopOpacity={a2} />
+            <Stop offset="0.62" stopColor={rgb} stopOpacity={0} />
+            <Stop offset="1"    stopColor={rgb} stopOpacity={0} />
+          </SvgLinearGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${id})`} />
+      </Svg>
     </View>
   );
 }
@@ -641,7 +669,7 @@ function NavDimStrip({ height }: { height: number }) {
     <Animated.View
       pointerEvents={on ? 'auto' : 'none'}
       style={[{
-        position: 'absolute', left: 0, right: 0, bottom: 0, height,
+        position: (Platform.OS === 'web' ? 'fixed' : 'absolute') as any, left: 0, right: 0, bottom: 0, height,
         backgroundColor: DIM_COLOR, opacity: anim,
       }, Platform.OS === 'web' ? ({ backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' } as any) : null]}
     >
@@ -991,7 +1019,11 @@ function PillCell({
 // ─── Styles ─────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   wrap: {
-    position: 'absolute',
+    // Web: FIXED — iOS Safari/Chrome tarayıcı modunda kök kutu alt araç
+    // çubuğunun ARKASINA uzanıyor; absolute navbar o görünmeyen kenara düşüp
+    // kayboluyordu. fixed+bottom öğeleri tarayıcı her zaman görünür alanın
+    // altına (çubuğun üstüne) koyar. PWA/masaüstünde kök tam ekran → aynı yer.
+    position: (Platform.OS === 'web' ? 'fixed' : 'absolute') as any,
     start: 0,
     end: 0,
     paddingHorizontal: NAV.wrapPadH,

@@ -1,0 +1,2 @@
+-- 2026-10-26 canlı: üç görünümde reloptions YOK (sahip yetkisi); field_staff_scope koşulu:
+((select public.my_role_key()) <> all (array['technician', 'courier'])) or public.can_see_work_order_id(work_order_id)

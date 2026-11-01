@@ -4,35 +4,54 @@
     {
       "name": "Dist Static",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["-y", "serve", "dist", "-s", "-l", "4600"],
+      "runtimeArgs": [
+        "-y",
+        "serve",
+        "dist",
+        "-s",
+        "-l",
+        "4600"
+      ],
       "port": 4600,
       "autoPort": false
     },
     {
       "name": "Expo Web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "web"],
+      "runtimeArgs": [
+        "run",
+        "web"
+      ],
       "port": 8081,
       "autoPort": false
     },
     {
       "name": "Expo (Metro bundler)",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "start"],
+      "runtimeArgs": [
+        "run",
+        "start"
+      ],
       "port": 8081,
       "autoPort": false
     },
     {
       "name": "Expo iOS",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "ios"],
+      "runtimeArgs": [
+        "run",
+        "ios"
+      ],
       "port": 8081,
       "autoPort": false
     },
     {
       "name": "Expo Android",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "android"],
+      "runtimeArgs": [
+        "run",
+        "android"
+      ],
       "port": 8081,
       "autoPort": false
     }

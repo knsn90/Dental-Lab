@@ -33,6 +33,7 @@ import { AddUserModal } from '../../admin/users/LabUsersManagement';
 import { ConfirmDialog, type ConfirmState } from '../../../core/ui/ConfirmDialog';
 import { DatePicker } from '../../../core/ui/DatePicker';
 import { usePermissionStore } from '../../../core/store/permissionStore';
+import { upsertCompensation } from '../compensationApi';
 import { STAGE_LABEL, type Stage } from '../../orders/stages';
 import { DS } from '../../../core/theme/dsTokens';
 import { useInkUI } from '../../../core/theme/inkScale';
@@ -282,7 +283,7 @@ export function EmployeesScreen() {
   };
 
   const activeCount   = employees.filter(e => e.is_active).length;
-  const totalSalary   = employees.filter(e => e.is_active).reduce((s, e) => s + Number(e.base_salary), 0);
+  const totalSalary   = employees.filter(e => e.is_active).reduce((s, e) => s + (Number(e.base_salary) || 0), 0);
   const unpaidCount   = employees.filter(e => e.is_active && !e.current_month_paid).length;
   const totalAdvances = employees.reduce((s, e) => s + Number(e.pending_advances ?? 0), 0);
 
@@ -459,7 +460,7 @@ export function EmployeesScreen() {
             (canViewSalaries && unpaidCount > 0 ? ` · ${unpaidCount} kişinin maaşı ödenmedi` : '')
           }
           stats={[
-            { value: String(activeCount),      label: 'Aktif' },
+            { value: String(activeCount),      label: 'Aktif personel' },
             { value: String(employees.length), label: 'Toplam' },
           ]}
           // Düğmeler hero'nun ALT SAĞ köşesinde — kullanıcı isteği.
@@ -1067,7 +1068,7 @@ function EmployeeDetailPanel({ employee, onSalaryAdd, onAdvAdd, onRefresh }: {
                       {adv.description || 'Avans'}
                     </Text>
                     <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 2 }}>
-                      {fmtDate(adv.advance_date)} · {adv.is_deducted ? 'Kesildi' : 'Bekliyor'}
+                      {fmtDate(adv.advance_date)} · {adv.is_deducted ? 'Maaştan kesildi' : 'Bekliyor'}
                     </Text>
                   </View>
                   <Text style={{ fontSize: 13, fontWeight: '700', color: adv.is_deducted ? U.ink[400] : U.chipTones.warning.fg }}>
@@ -1078,7 +1079,7 @@ function EmployeeDetailPanel({ employee, onSalaryAdd, onAdvAdd, onRefresh }: {
                       onPress={() => handleMarkDeducted(adv.id)}
                       style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: U.chipTones.warning.bg, cursor: 'pointer' as any }}
                     >
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: U.chipTones.warning.fg }}>Kesildi</Text>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: U.chipTones.warning.fg }}>Maaştan kesildi</Text>
                     </Pressable>
                   )}
                   <Pressable onPress={() => handleDelAdv(adv.id)} style={{ padding: 4, cursor: 'pointer' as any }}>
@@ -1125,6 +1126,8 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
   const navGroup = navSegments?.[0] && navSegments[0].startsWith('(') ? navSegments[0] : '(lab)';
   // Maaş input'u sadece view_salaries yetkisi olanlara görünür
   const canViewSalaries = usePermissionStore(s => s.can('view_salaries'));
+  // Maaş yazma: employee_compensation kuralı (manage_salaries / manage_finance)
+  const canWriteSalary = usePermissionStore(s => s.can('manage_salaries') || s.can('manage_finance'));
   const [name,   setName]   = useState('');
   const [role,   setRole]   = useState<EmployeeRole>('teknisyen');
   const [phone,  setPhone]  = useState('');
@@ -1151,7 +1154,7 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
       setPhone(employee?.phone ?? '');
       setEmail(employee?.email ?? '');
       setPassword('');
-      setSalary(employee ? String(employee.base_salary) : '');
+      setSalary(employee && employee.base_salary != null ? String(employee.base_salary) : '');
       setStart(employee?.start_date ?? new Date().toISOString().slice(0, 10));
       setNotes(employee?.notes ?? '');
       setSkillLevel('mid');
@@ -1204,13 +1207,18 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
 
   const handleSave = async () => {
     if (!name.trim()) { toast.error('Ad Soyad zorunlu.'); return; }
-    // Maaş yalnızca yetkili kullanıcı görmüşse validate edilir; yoksa varsayılan 0 / mevcut değer korunur
-    const sal = canViewSalaries
-      ? Number(salary.replace(',', '.'))
-      : (employee ? Number(employee.base_salary) : 0);
-    if (canViewSalaries && (!Number.isFinite(sal) || sal < 0)) {
+    // Maaş yalnız yetkili kullanıcıda girilir ve employee_compensation'a yazılır (boş = maaş yok)
+    const salaryEmpty = salary.trim() === '';
+    const sal = Number(salary.replace(',', '.'));
+    if (canViewSalaries && !salaryEmpty && (!Number.isFinite(sal) || sal < 0)) {
       toast.error('Geçerli maaş girin.'); return;
     }
+    const writeSalary = async (empId: string | null | undefined, labId: string | null | undefined) => {
+      if (!canViewSalaries || !canWriteSalary || !empId || !labId) return true;
+      const r = await upsertCompensation(empId, labId, { base_salary: salaryEmpty ? null : sal });
+      if (!r.ok) { toast.error(r.error ?? 'Maaş kaydedilemedi'); return false; }
+      return true;
+    };
 
     // Auth: email + sifre verildiyse sisteme giris hesabi olustur
     const wantsAuth = !employee && email.trim() && password.length > 0;
@@ -1221,16 +1229,17 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
 
     setSaving(true);
     const params = { full_name: name.trim(), role, phone: phone || undefined,
-      email: email || undefined, base_salary: sal, start_date: start, notes: notes || undefined };
+      email: email || undefined, start_date: start, notes: notes || undefined };
 
     // employees tablosunu güncelle — synthetic profile satırı ise atla (profile-xxx)
     const isSyntheticOnly = !!employee && String(employee.id).startsWith('profile-');
     let employeeError: any = null;
     if (!isSyntheticOnly) {
-      const { error } = employee
+      const { data: saved, error } = employee
         ? await updateEmployee(employee.id, params)
         : await createEmployee(params);
       employeeError = error;
+      if (!error && !(await writeSalary((saved as any)?.id ?? employee?.id, (saved as any)?.lab_id ?? employee?.lab_id))) { setSaving(false); return; }
     }
     if (employeeError) { setSaving(false); toast.error((employeeError as any).message); return; }
 
@@ -1273,11 +1282,11 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
       // tarihi, notlar gibi bilgiler kalıcı olur.
       if (isSyntheticOnly) {
         // Email veya isim ile employees satırını ara
-        let existingEmp: { id: string } | null = null;
+        let existingEmp: { id: string; lab_id: string } | null = null;
         if (email.trim()) {
           const r = await supabase
             .from('employees')
-            .select('id')
+            .select('id, lab_id')
             .eq('email', email.trim())
             .maybeSingle();
           existingEmp = (r.data as any) ?? null;
@@ -1285,7 +1294,7 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
         if (!existingEmp && name.trim()) {
           const r = await supabase
             .from('employees')
-            .select('id')
+            .select('id, lab_id')
             .eq('full_name', name.trim())
             .maybeSingle();
           existingEmp = (r.data as any) ?? null;
@@ -1299,7 +1308,6 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
               role,
               phone:       phone || null,
               email:       email.trim() || null,
-              base_salary: Number.isFinite(sal) ? sal : 0,
               start_date:  start,
               notes:       notes || null,
             })
@@ -1309,23 +1317,24 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
             toast.error(updErr.message ?? 'Personel kaydı güncellenemedi');
             return;
           }
+          if (!(await writeSalary(existingEmp.id, existingEmp.lab_id))) { setSaving(false); return; }
         } else {
           // Yeni employees satırı oluştur — auth profile ile eşleşen
-          const { error: insErr } = await supabase.from('employees').insert({
+          const { data: insRow, error: insErr } = await supabase.from('employees').insert({
             full_name:   name.trim(),
             role,
             phone:       phone || null,
             email:       email.trim() || null,
-            base_salary: Number.isFinite(sal) ? sal : 0,
             start_date:  start,
             notes:       notes || null,
             is_active:   true,
-          });
+          }).select('id, lab_id').single();
           if (insErr) {
             setSaving(false);
             toast.error(insErr.message ?? 'Personel kaydı oluşturulamadı');
             return;
           }
+          if (!(await writeSalary((insRow as any)?.id, (insRow as any)?.lab_id))) { setSaving(false); return; }
         }
       }
     }
@@ -1654,7 +1663,7 @@ function SalaryModal({ visible, employee, onClose, onSaved }: {
   React.useEffect(() => {
     if (visible) {
       setYear(String(CUR_YEAR)); setMonth(String(CUR_MONTH));
-      setGross(String(employee.base_salary)); setDeductions('');
+      setGross(String(employee.base_salary ?? 0)); setDeductions('');
       setMethod('havale'); setPayDate(new Date().toISOString().slice(0, 10));
     }
   }, [visible, employee]);

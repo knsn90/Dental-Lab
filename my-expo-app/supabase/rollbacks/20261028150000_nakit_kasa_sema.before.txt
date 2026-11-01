@@ -1,0 +1,55 @@
+# 20261028150000_nakit_kasa_sema — canlı ÖNCE kaydı (2026-10-29)
+## policies
+cash_accounts.cash_accounts_lab_own [ALL] public USING (lab_id = get_my_lab_id()) CHECK (lab_id = get_my_lab_id())
+cash_movements.cash_movements_lab_own [ALL] public USING (lab_id = get_my_lab_id()) CHECK (lab_id = get_my_lab_id())
+## constraints
+cash_accounts.cash_accounts_account_type_check=CHECK ((account_type = ANY (ARRAY['kasa'::text, 'banka'::text])))
+cash_accounts.cash_accounts_pkey=PRIMARY KEY (id)
+cash_movements.cash_movements_account_id_fkey=FOREIGN KEY (account_id) REFERENCES cash_accounts(id) ON DELETE CASCADE
+cash_movements.cash_movements_amount_check=CHECK ((amount > (0)::numeric))
+cash_movements.cash_movements_category_check=CHECK ((category = ANY (ARRAY['tahsilat'::text, 'odeme'::text, 'maas'::text, 'kira'::text, 'malzeme'::text, 'vergi'::text, 'diger'::text])))
+cash_movements.cash_movements_created_by_fkey=FOREIGN KEY (created_by) REFERENCES profiles(id) ON DELETE SET NULL
+cash_movements.cash_movements_direction_check=CHECK ((direction = ANY (ARRAY['giris'::text, 'cikis'::text])))
+cash_movements.cash_movements_pkey=PRIMARY KEY (id)
+## indexes
+CREATE INDEX idx_cash_accounts_lab ON public.cash_accounts USING btree (lab_id, is_active)
+CREATE INDEX idx_cash_movements_account ON public.cash_movements USING btree (account_id, movement_date DESC)
+CREATE INDEX idx_cash_movements_created_by ON public.cash_movements USING btree (created_by)
+CREATE INDEX idx_cash_movements_lab_date ON public.cash_movements USING btree (lab_id, movement_date DESC)
+CREATE UNIQUE INDEX cash_accounts_pkey ON public.cash_accounts USING btree (id)
+CREATE UNIQUE INDEX cash_movements_pkey ON public.cash_movements USING btree (id)
+## columns
+cash_accounts.id:uuid:gen_random_uuid()
+cash_accounts.lab_id:uuid:get_my_lab_id()
+cash_accounts.name:text:-
+cash_accounts.account_type:text:'kasa'::text
+cash_accounts.bank_name:text:-
+cash_accounts.iban:text:-
+cash_accounts.currency:text:'TRY'::text
+cash_accounts.opening_balance:numeric:0
+cash_accounts.is_active:boolean:true
+cash_accounts.notes:text:-
+cash_accounts.created_at:timestamp with time zone:now()
+cash_accounts.updated_at:timestamp with time zone:now()
+cash_movements.id:uuid:gen_random_uuid()
+cash_movements.lab_id:uuid:get_my_lab_id()
+cash_movements.account_id:uuid:-
+cash_movements.direction:text:-
+cash_movements.amount:numeric:-
+cash_movements.movement_date:date:CURRENT_DATE
+cash_movements.category:text:'diger'::text
+cash_movements.description:text:-
+cash_movements.ref_type:text:-
+cash_movements.ref_id:uuid:-
+cash_movements.created_by:uuid:-
+cash_movements.created_at:timestamp with time zone:now()
+## expenses_cols
+id,lab_id,category,description,amount,expense_date,payment_method,notes,created_by,created_at,updated_at,currency,rate_at_time,amount_base,base_currency_at_time,purchase_invoice_id,salary_payment_id,advance_id,delivery_id
+## expenses_triggers
+trg_expense_to_salary=CREATE TRIGGER trg_expense_to_salary AFTER UPDATE OF expense_date, payment_method ON public.expenses FOR EACH ROW WHEN (((new.salary_payment_id IS NOT NULL) AND ((old.expense_date IS DISTINCT FROM new.expense_date) OR (old.payment_method IS DISTINCT FROM new.payment_method)))) EXECUTE FUNCTION sync_expense_to_salary()
+## cash_counts_exists
+false
+## view_md5
+15333ca3e15a6e220fc947b026005bea
+## rows
+0/0

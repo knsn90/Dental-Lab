@@ -1,0 +1,2 @@
+Task 8 öncesi cron.job (2026-10-28): auto_payment_reminders@0 7 * * * ; daily-order-watch@0 8 * * * ; daily-stage-leftovers@5 8 * * * ; efatura-status-sweep@0 6 * * * ; phone-leads-anonymize@30 0 * * * ; prova-watch@10 8 * * * ; shift-auto-pause@*/5 * * * * ; stock-count-reminder@0 6 * * * ; tcmb-daily-rates@30 13 * * 1-5
+_scan_digest_payload / fn_scan_schedule_digest yok.

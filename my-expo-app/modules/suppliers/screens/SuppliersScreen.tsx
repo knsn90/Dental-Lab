@@ -34,6 +34,7 @@ import { toast } from '../../../core/ui/Toast';
 import { MobilePageTitle } from '../../../core/ui/mobile/MobilePageTitle';
 import { SupplierDetailScreen } from './SupplierDetailScreen';
 import { SupplierFormModal } from '../components/SupplierFormModal';
+import { SupplierMobileTable } from '../components/SupplierMobileTable';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { CenteredLoader } from '../../../core/ui/CenteredLoader';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
@@ -383,120 +384,32 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
             })}
           </View>
         ) : (
-          /* Mobile: vertical card list */
-          <View style={{ gap: 10 }}>
-            {filtered.map((s) => {
+          /* Mobile: tableCard — ekstre / giderler mobil tablosuyla aynı kalıp */
+          <SupplierMobileTable
+            suppliers={filtered}
+            balanceMap={balanceMap}
+            baseCurrency={baseCurrency}
+            onOpen={(s) => setActiveId(s.id)}
+            onEdit={(s) => setFormOpen({ visible: true, supplier: s })}
+            onRemove={async (s) => {
               const bal = balanceMap[s.id];
-              const tone = bal ? balanceColor(Number(bal.balance_account)) : 'zero';
-              // Katı per-currency: tedarikçi kendi hesap para biriminde
-              const balCur = (s.default_currency || baseCurrency) as Currency;
-              const balanceText = bal
-                ? formatMoney(Math.abs(Number(bal.balance_account) || 0), balCur, { fractionDigits: 0 })
-                : '—';
-              const origText: string | null = null;
-              const lastDate = bal?.last_transaction_date
-                ? new Date(bal.last_transaction_date).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short', year: 'numeric' })
-                : null;
-              const toneColor = tone === 'debt' ? '#9C2E2E' : tone === 'credit' ? '#1F6B47' : '#9A9A9A';
-              const toneLabel = tone === 'debt' ? 'Borç' : tone === 'credit' ? 'Alacak' : 'Eşit';
-              return (
-                <Pressable
-                  key={s.id}
-                  onPress={() => setActiveId(s.id)}
-                  style={{
-                    backgroundColor: T.card, borderRadius: 16,
-                    borderWidth: 1, borderColor: T.hairline,
-                    padding: 14, gap: 10,
-                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
-                  }}
-                >
-                  {/* Üst satır: firma adı + bakiye */}
-                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
-                    <View style={{ flex: 1, minWidth: 0, opacity: s.is_active ? 1 : 0.6 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        <Text style={{ fontSize: 14, fontWeight: '700', color: T.ink, flexShrink: 1 }} numberOfLines={2}>{s.name}</Text>
-                        {!s.is_active && (
-                          <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: T.hairline }}>
-                            <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase', color: T.ink3 }}>Pasif</Text>
-                          </View>
-                        )}
-                      </View>
-                      <Text style={{ fontSize: 11, color: T.ink3, marginTop: 2 }}>
-                        {CATEGORY_LABELS[s.category]}
-                        {s.default_currency !== baseCurrency ? ` · ${s.default_currency}` : ''}
-                      </Text>
-                    </View>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 18, letterSpacing: -0.4, color: toneColor, lineHeight: 22 }}>
-                        {tone === 'zero' ? '—' : balanceText}
-                      </Text>
-                      {tone !== 'zero' && origText ? (
-                        <Text style={{ fontSize: 11, color: T.ink3, marginTop: 1 }}>({origText})</Text>
-                      ) : null}
-                      {tone !== 'zero' ? (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: toneColor }} />
-                          <Text style={{ fontSize: 10, color: toneColor, fontWeight: '700', letterSpacing: 0.3, textTransform: 'uppercase' }}>{toneLabel}</Text>
-                        </View>
-                      ) : null}
-                    </View>
-                  </View>
-
-                  {/* Alt satır: son hareket + actions */}
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: T.hairline }}>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={{ fontSize: 11, color: T.ink3 }} numberOfLines={1}>
-                        {lastDate ?? 'Henüz hareket yok'}
-                        {bal && bal.purchase_count > 0 ? ` · ${bal.purchase_count} alış` : ''}
-                      </Text>
-                      {(s.contact_person || s.phone) && (
-                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 2 }}>
-                          {s.contact_person ? (
-                            <Text style={{ fontSize: 10, color: T.ink3 }} numberOfLines={1}>{s.contact_person}</Text>
-                          ) : null}
-                          {s.phone ? (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                              <Phone size={9} color={T.ink3} strokeWidth={1.8} />
-                              <Text style={{ fontSize: 10, color: T.ink3 }}>{s.phone}</Text>
-                            </View>
-                          ) : null}
-                        </View>
-                      )}
-                    </View>
-                    <Pressable
-                      onPress={(e: any) => { e?.stopPropagation?.(); setFormOpen({ visible: true, supplier: s }); }}
-                      style={{ width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(31,86,137,0.10)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
-                    >
-                      <Pencil size={13} color="#1F5689" strokeWidth={1.8} />
-                    </Pressable>
-                    <Pressable
-                      onPress={async (e: any) => {
-                        e?.stopPropagation?.();
-                        const hasBalance = !!(bal && (bal.purchase_count > 0 || Math.abs(Number(bal.balance_account) || 0) > 0.01));
-                        const confirmMsg = hasBalance
-                          ? `${s.name} ${autoT('firmasının geçmiş işlemi var. Pasife alınsın mı?')}`
-                          : `${s.name} ${autoT('firmasını silmek istediğinden emin misin?')}`;
-                        if (!(await confirmAsync(autoT(hasBalance ? 'Firmayı Pasife Al' : 'Firmayı Sil'), confirmMsg, { confirmText: autoT(hasBalance ? 'Pasife Al' : 'Sil'), destructive: !hasBalance }))) return;
-                        const res = hasBalance ? await deactivateSupplier(s.id) : await deleteSupplier(s.id);
-                        if (res.error) {
-                          const msg = String((res.error as any).message ?? '');
-                          if (/foreign key|violates/i.test(msg)) {
-                            const fb = await deactivateSupplier(s.id);
-                            if (fb.error) { toast.error(autoT('Silinemedi:') + ' ' + msg); return; }
-                            toast.success(`${s.name} ${autoT('pasife alındı')}`);
-                          } else { toast.error('Silinemedi: ' + msg); return; }
-                        } else { toast.success(`${s.name} ${hasBalance ? 'pasife alındı' : 'silindi'}`); }
-                        load();
-                      }}
-                      style={{ width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(156,46,46,0.10)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
-                    >
-                      <Trash2 size={13} color="#9C2E2E" strokeWidth={1.8} />
-                    </Pressable>
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
+              const hasBalance = !!(bal && (bal.purchase_count > 0 || Math.abs(Number(bal.balance_account) || 0) > 0.01));
+              const confirmMsg = hasBalance
+                ? `${s.name} ${autoT('firmasının geçmiş işlemi var. Pasife alınsın mı?')}`
+                : `${s.name} ${autoT('firmasını silmek istediğinden emin misin?')}`;
+              if (!(await confirmAsync(autoT(hasBalance ? 'Firmayı Pasife Al' : 'Firmayı Sil'), confirmMsg, { confirmText: autoT(hasBalance ? 'Pasife Al' : 'Sil'), destructive: !hasBalance }))) return;
+              const res = hasBalance ? await deactivateSupplier(s.id) : await deleteSupplier(s.id);
+              if (res.error) {
+                const msg = String((res.error as any).message ?? '');
+                if (/foreign key|violates/i.test(msg)) {
+                  const fb = await deactivateSupplier(s.id);
+                  if (fb.error) { toast.error(autoT('Silinemedi:') + ' ' + msg); return; }
+                  toast.success(`${s.name} ${autoT('pasife alındı')}`);
+                } else { toast.error('Silinemedi: ' + msg); return; }
+              } else { toast.success(`${s.name} ${hasBalance ? 'pasife alındı' : 'silindi'}`); }
+              load();
+            }}
+          />
         )
       )}
 

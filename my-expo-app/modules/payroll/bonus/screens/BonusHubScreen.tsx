@@ -21,6 +21,7 @@ import BonusPolicyEditorScreen from './BonusPolicyEditorScreen';
 import BonusRunsScreen from './BonusRunsScreen';
 import TechnicianBonusScreen from './TechnicianBonusScreen';
 import BonusAuditScreen from './BonusAuditScreen';
+import { NavyBackButtonX } from '../../../../core/ui/NavyBackButtonX';
 
 type Mode = 'dashboard' | 'policies' | 'runs' | 'audit' | 'editor' | 'technician';
 
@@ -67,19 +68,7 @@ export default function BonusHubScreen() {
             style={{ marginStart: -4 }}
           />
         ) : mode === 'editor' ? (
-          <Pressable
-            onPress={() => setMode('policies')}
-            style={({ pressed }) => ({
-              flexDirection: 'row', alignItems: 'center', gap: 6,
-              alignSelf: 'flex-start',
-              backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: U.isDark ? U.plainBtn.border : U.ink[300],
-              paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
-              opacity: pressed ? 0.7 : 1,
-            })}
-          >
-            {isRTL() ? <ArrowRight size={14} color={U.ink[900]} /> : <ArrowLeft size={14} color={U.ink[900]} />}
-            <Text style={{ fontSize: 12, fontWeight: '500', color: U.ink[900] }}>Politikalara dön</Text>
-          </Pressable>
+          <NavyBackButtonX onPress={() => setMode('policies')} label="Politikalara dön" tooltip="Politika listesine döner" />
         ) : null}
       </View>
 

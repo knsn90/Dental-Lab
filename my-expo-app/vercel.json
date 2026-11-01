@@ -26,6 +26,8 @@
     }
   ],
   "rewrites": [
-    { "source": "/((?!_expo/|assets/|favicon|.well-known/).*)", "destination": "/index.html" }
+    { "source": "/privacy", "destination": "/privacy.html" },
+    { "source": "/gizlilik", "destination": "/gizlilik.html" },
+    { "source": "/((?!_expo/|assets/|favicon|.well-known/|api/|privacy\\.html|gizlilik\\.html).*)", "destination": "/index.html" }
   ]
 }

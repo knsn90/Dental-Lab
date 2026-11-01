@@ -7,7 +7,7 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import { View, Text, ScrollView, Pressable, Platform } from 'react-native';
 import {
   Banknote, ListChecks, CreditCard, Building2, FileText, ArrowDownToLine,
   Plus, Clock, CheckCircle2, X, AlertCircle, RefreshCcw,
@@ -27,6 +27,11 @@ import { useRates, rateToBase } from '../../../core/money/rateCache';
 import { groupByCurrency } from '../../../core/money/aggregations';
 import { formatMoney, type Currency } from '../../../core/money/currency';
 import { SubmitPaymentModal } from '../components/SubmitPaymentModal';
+import { MoneyMultiX } from '../../../core/money/MoneyMultiX';
+import { MobileTableX, MobileTableRowX, MobileTableIconX, useMobileTableText } from '../../../core/ui/MobileTableX';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { useInkUI } from '../../../core/theme/inkScale';
+import { autoT } from '../../../core/i18n/autoTranslate';
 
 type Props = { clinicId: string };
 
@@ -48,6 +53,8 @@ const STATUS_CFG: Record<SubmissionStatus, { label: string; fg: string; bg: stri
 
 export function PaymentHistoryScreen({ clinicId }: Props) {
   const TH = usePanelTheme();
+  const U = useInkUI();
+  const MT = useMobileTableText();
   useRates();
   const [payments, setPayments]       = useState<PaymentRow[]>([]);
   const [submissions, setSubmissions] = useState<PaymentSubmissionRow[]>([]);
@@ -80,6 +87,8 @@ export function PaymentHistoryScreen({ clinicId }: Props) {
     return g.length ? g.map(s => formatMoney(s.total, s.currency, { fractionDigits: 0 })).join(' · ') : '—';
   };
   const paidLabel = ccyLabel(payments);
+  const ccySlices = (list: { amount: number; currency: string }[]) =>
+    groupByCurrency(list, p => ({ amount: Number(p.amount) || 0, currency: (p.currency || 'TRY') as Currency }));
   const pendingLabel = ccyLabel(pendingSubs);
 
   const handleCancel = async (id: string) => {
@@ -118,13 +127,16 @@ export function PaymentHistoryScreen({ clinicId }: Props) {
 
         {/* ─── Bekleyen bildirimler ─── */}
         {pendingSubs.length > 0 && (
-          <View>
-            <SecHeader
-              eyebrow="İncelenmeyi Bekliyor"
-              title={`${pendingSubs.length} Bildirim`}
-              desc={`Toplam ${pendingLabel} · admin onayı sonrası işlenecek`}
-            />
-            <Card style={{ padding: 0, overflow: 'hidden', borderColor: 'rgba(232,155,42,0.30)' }}>
+          /* Ekstre / giderler mobil tablosuyla aynı kalıp */
+          <MobileTableX
+            title="İncelenmeyi Bekliyor" count={pendingSubs.length} countLabel="bildirim"
+            footer={<>
+              <Text style={MT.footNote}>{pendingSubs.length} bildirim</Text>
+              <View style={{ flex: 1 }} />
+              <Text style={MT.footLabel}>Bekleyen:</Text>
+              <MoneyMultiX slices={ccySlices(pendingSubs)} variant="inline" />
+            </>}
+          >
               {pendingSubs.map((s, i) => (
                 <SubmissionRow
                   key={s.id}
@@ -133,19 +145,12 @@ export function PaymentHistoryScreen({ clinicId }: Props) {
                   onCancel={() => handleCancel(s.id)}
                 />
               ))}
-            </Card>
-          </View>
+          </MobileTableX>
         )}
 
         {/* ─── Son işlenen bildirimler ─── */}
         {recentReviewed.length > 0 && (
-          <View>
-            <SecHeader
-              eyebrow="Geçmiş Bildirim"
-              title="Sonuçlanan Bildirimler"
-              desc="Son 5 inceleme"
-            />
-            <Card style={{ padding: 0, overflow: 'hidden' }}>
+          <MobileTableX title="Sonuçlanan Bildirimler" count={recentReviewed.length} countLabel="kayıt">
               {recentReviewed.map((s, i) => (
                 <SubmissionRow
                   key={s.id}
@@ -153,66 +158,55 @@ export function PaymentHistoryScreen({ clinicId }: Props) {
                   isLast={i === recentReviewed.length - 1}
                 />
               ))}
-            </Card>
-          </View>
+          </MobileTableX>
         )}
 
         {/* ─── Yapılan ödemeler (klinik gözüyle) ─── */}
-        <View>
-          <SecHeader
-            eyebrow="Onaylanan Tahsilat"
-            title="Hesaba İşlenen Ödemeler"
-            desc={payments.length === 0 ? '—' : `${payments.length} kayıt`}
-          />
-          {payments.length === 0 ? (
+        {payments.length === 0 ? (
+          <View>
+            <SecHeader
+              eyebrow="Onaylanan Tahsilat"
+              title="Hesaba İşlenen Ödemeler"
+              desc="—"
+            />
             <EmptyCard
               icon={ListChecks}
               title="Tahsilat kaydı yok"
               description="Henüz hesabınıza işlenmiş bir ödeme yok. Ödeme bildirimleri admin onayı sonrası burada görünür."
               cta={{ label: '+ Ödeme Bildir', onPress: () => setModalOpen(true) }}
             />
-          ) : (
-            <Card style={{ padding: 0, overflow: 'hidden' }}>
-              {payments.map((p, i) => {
-                const cfg = METHOD_LABEL[p.payment_method] ?? METHOD_LABEL.diger;
-                const Icon = cfg.icon;
-                return (
-                  <View
-                    key={p.id}
-                    style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 12,
-                      paddingHorizontal: 16, paddingVertical: 14,
-                      borderBottomWidth: i < payments.length - 1 ? 1 : 0,
-                      borderBottomColor: DS.ink[100],
-                    }}
-                  >
-                    <View style={{
-                      width: 36, height: 36, borderRadius: 10,
-                      backgroundColor: cfg.color + '18',
-                      alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      <Icon size={16} color={cfg.color} strokeWidth={2} />
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
-                        {cfg.label}
-                        {p.invoice_no ? `  ·  Fatura ${p.invoice_no}` : ''}
-                        {p.patient_name ? `  ·  ${p.patient_name}` : ''}
-                      </Text>
-                      <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 2 }}>
-                        {fmtDate(p.payment_date)}
-                        {p.reference_no ? `  ·  Ref. ${p.reference_no}` : ''}
-                      </Text>
-                    </View>
-                    <Text style={{ ...DISPLAY, fontSize: 18, color: '#1F6B47', letterSpacing: -0.5 }}>
-                      {M(p.amount, p.currency)}
+          </View>
+        ) : (
+          <MobileTableX
+            title="Hesaba İşlenen Ödemeler" count={payments.length} countLabel="kayıt"
+            footer={<>
+              <Text style={MT.footNote}>{payments.length} kayıt</Text>
+              <View style={{ flex: 1 }} />
+              <Text style={MT.footLabel}>Toplam:</Text>
+              <MoneyMultiX slices={ccySlices(payments)} variant="inline" />
+            </>}
+          >
+            {payments.map((p, i) => {
+              const cfg = METHOD_LABEL[p.payment_method] ?? METHOD_LABEL.diger;
+              const title = [autoT(cfg.label), p.invoice_no ? `${autoT('Fatura')} ${p.invoice_no}` : null, p.patient_name || null].filter(Boolean).join(' · ');
+              return (
+                <MobileTableRowX key={p.id} isLast={i === payments.length - 1}>
+                  <MobileTableIconX icon={cfg.icon} tone={{ bg: cfg.color + '18', fg: cfg.color }} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={MT.title} numberOfLines={1}>{title}</Text>
+                    <Text style={MT.sub} numberOfLines={1}>
+                      {fmtDate(p.payment_date)}
+                      {p.reference_no ? `  ·  ${autoT('Ref.')} ${p.reference_no}` : ''}
                     </Text>
                   </View>
-                );
-              })}
-            </Card>
-          )}
-        </View>
+                  <Text style={[MT.amount, { color: U.chipTones.success.fg }]}>
+                    {M(p.amount, p.currency)}
+                  </Text>
+                </MobileTableRowX>
+              );
+            })}
+          </MobileTableX>
+        )}
       </ScrollView>
 
       <SubmitPaymentModal
@@ -230,75 +224,58 @@ export function PaymentHistoryScreen({ clinicId }: Props) {
 function SubmissionRow({
   s, isLast, onCancel,
 }: { s: PaymentSubmissionRow; isLast: boolean; onCancel?: () => void }) {
-  const TH = usePanelTheme();
+  const U = useInkUI();
+  const MT = useMobileTableText();
   const cfg    = METHOD_LABEL[s.payment_method] ?? METHOD_LABEL.diger;
   const status = STATUS_CFG[s.status];
-  const Icon   = cfg.icon;
+  const title = [autoT(cfg.label), s.invoice_no ? `${autoT('Fatura')} ${s.invoice_no}` : null, s.patient_name || null].filter(Boolean).join(' · ');
   return (
-    <View
-      style={{
-        flexDirection: 'row', alignItems: 'flex-start', gap: 12,
-        paddingHorizontal: 16, paddingVertical: 14,
-        borderBottomWidth: isLast ? 0 : 1,
-        borderBottomColor: DS.ink[100],
-      }}
-    >
-      <View style={{
-        width: 36, height: 36, borderRadius: 10,
-        backgroundColor: cfg.color + '18',
-        alignItems: 'center', justifyContent: 'center',
-      }}>
-        <Icon size={16} color={cfg.color} strokeWidth={2} />
-      </View>
+    <MobileTableRowX isLast={isLast} align="flex-start">
+      <MobileTableIconX icon={cfg.icon} tone={{ bg: cfg.color + '18', fg: cfg.color }} />
       <View style={{ flex: 1, minWidth: 0 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
-            {cfg.label}
-            {s.invoice_no ? `  ·  Fatura ${s.invoice_no}` : ''}
-            {s.patient_name ? `  ·  ${s.patient_name}` : ''}
-          </Text>
-          <View style={{
-            paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999,
-            backgroundColor: status.bg,
-          }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text style={[MT.title, { flexShrink: 1 }]} numberOfLines={1}>{title}</Text>
+          <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: status.bg }}>
             <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.4, color: status.fg }}>
               {status.label}
             </Text>
           </View>
         </View>
-        <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 3 }}>
+        <Text style={MT.sub} numberOfLines={1}>
           {fmtDate(s.payment_date)}
-          {s.reference_no ? `  ·  Ref. ${s.reference_no}` : ''}
+          {s.reference_no ? `  ·  ${autoT('Ref.')} ${s.reference_no}` : ''}
           {s.bank_name ? `  ·  ${s.bank_name}` : ''}
         </Text>
         {s.sender_name ? (
-          <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 2 }}>
-            Gönderen: {s.sender_name}
+          <Text style={[MT.meta, { marginTop: 2 }]} numberOfLines={1}>
+            {autoT('Gönderen:')} {s.sender_name}
           </Text>
         ) : null}
         {s.status === 'rejected' && s.reject_reason ? (
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 4, marginTop: 6 }}>
-            <AlertCircle size={11} color="#9C2E2E" />
-            <Text style={{ fontSize: 11, color: '#9C2E2E', flex: 1 }} numberOfLines={3}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 4, marginTop: 4 }}>
+            <AlertCircle size={11} color={U.chipTones.danger.fg} />
+            <Text style={{ fontSize: 11, color: U.chipTones.danger.fg, flex: 1 }} numberOfLines={3}>
               {s.reject_reason}
             </Text>
           </View>
         ) : null}
       </View>
-      <View style={{ alignItems: 'flex-end', gap: 4 }}>
-        <Text style={{ ...DISPLAY, fontSize: 18, color: DS.ink[900], letterSpacing: -0.5 }}>
+      <View style={{ alignItems: 'flex-end', gap: 6 }}>
+        <Text style={MT.amount}>
           {M(s.amount, s.currency)}
         </Text>
         {onCancel && s.status === 'pending' ? (
-          <Pressable
-            onPress={onCancel}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
-          >
-            <X size={10} color={DS.ink[500]} />
-            <Text style={{ fontSize: 10, color: DS.ink[500], fontWeight: '500' }}>İptal</Text>
-          </Pressable>
+          <GlassTooltip title={autoT('İptal')} text={autoT('Bildirimi iptal eder')}>
+            <Pressable
+              onPress={onCancel}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999, borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+            >
+              <X size={10} color={U.plainBtn.fgMuted} />
+              <Text style={{ fontSize: 10, color: U.plainBtn.fg, fontWeight: '500' }}>İptal</Text>
+            </Pressable>
+          </GlassTooltip>
         ) : null}
       </View>
-    </View>
+    </MobileTableRowX>
   );
 }

@@ -16,7 +16,7 @@ export interface Employee {
   tc_no: string | null;
   start_date: string;
   end_date: string | null;
-  base_salary: number;
+  base_salary: number | null;   // employee_compensation'dan (v_employee_summary); yetkisizde null
   notes: string | null;
   is_active: boolean;
   created_at: string;
@@ -58,9 +58,7 @@ export interface CreateEmployeeParams {
   role: EmployeeRole;
   phone?: string;
   email?: string;
-  tc_no?: string;
   start_date?: string;
-  base_salary: number;
   notes?: string;
 }
 
@@ -156,15 +154,14 @@ export async function fetchEmployee(id: string) {
     .then(r => r as unknown as { data: Employee | null; error: any });
 }
 
+// Maaş ve TC kimlik no burada YOK — compensationApi.upsertCompensation (employee_compensation).
 export async function createEmployee(params: CreateEmployeeParams) {
   return supabase.from('employees').insert({
     full_name: params.full_name,
     role: params.role,
     phone: params.phone ?? null,
     email: params.email ?? null,
-    tc_no: params.tc_no ?? null,
     start_date: params.start_date ?? new Date().toISOString().slice(0, 10),
-    base_salary: params.base_salary,
     notes: params.notes ?? null,
   }).select().single();
 }

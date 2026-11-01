@@ -1,4 +1,4 @@
-export type ClinicCategory = 'klinik' | 'poliklinik' | 'hastane';
+export type ClinicCategory = 'muayenehane' | 'klinik' | 'poliklinik' | 'hastane' | 'laboratuvar';
 
 export interface Clinic {
   id: string;

@@ -1,0 +1,144 @@
+# 20261029090000_nakit_kasa_duzeltme — canlı ÖNCE kaydı (2026-10-29)
+# sync_salary_to_expense / sync_advance_to_expense canlı tam tanımları aşağıda (değiştirilmedi)
+## md5
+_cash_sync:eac04f16,_trg_cash_sync_expense:ddab385c,cash_unposted_summary:adb33c9f
+## cash_triggers
+expenses.zz_cash_sync_expense,invoices.zz_cash_sync_invoice,payments.zz_cash_sync_payment,clinic_receipts.zz_cash_sync_receipt,clinic_receipt_lines.zz_cash_sync_receipt_line
+## source_fn_md5
+sync_advance_to_expense:5cf994fa,sync_salary_to_expense:75922e11,trg_delivery_fee_expense:2878d91c,update_clinic_receipt:4411586f
+## expense_fk
+expenses_advance_id_fkey=FOREIGN KEY (advance_id) REFERENCES employee_advances(id) ON DELETE CASCADE
+expenses_delivery_id_fkey=FOREIGN KEY (delivery_id) REFERENCES deliveries(id) ON DELETE SET NULL
+expenses_purchase_invoice_id_fkey=FOREIGN KEY (purchase_invoice_id) REFERENCES purchase_invoices(id) ON DELETE CASCADE
+expenses_salary_payment_id_fkey=FOREIGN KEY (salary_payment_id) REFERENCES salary_payments(id) ON DELETE CASCADE
+## rows
+0/0/0
+
+## live trg
+employee_advances.trg_advance_to_expense = CREATE TRIGGER trg_advance_to_expense AFTER INSERT OR DELETE OR UPDATE ON public.employee_advances FOR EACH ROW EXECUTE FUNCTION sync_advance_to_expense()
+salary_payments.trg_salary_to_expense = CREATE TRIGGER trg_salary_to_expense AFTER INSERT OR DELETE OR UPDATE ON public.salary_payments FOR EACH ROW EXECUTE FUNCTION sync_salary_to_expense()
+## live fn_salary
+CREATE OR REPLACE FUNCTION public.sync_salary_to_expense()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+  v_employee_name text;
+  v_desc          text;
+  v_method        text;
+BEGIN
+  IF (TG_OP = 'DELETE') THEN
+    DELETE FROM public.expenses WHERE salary_payment_id = OLD.id;
+    RETURN OLD;
+  END IF;
+
+  SELECT full_name INTO v_employee_name FROM public.employees WHERE id = NEW.employee_id;
+  v_desc := format('Maaş ödemesi: %s · %s/%s',
+                   COALESCE(v_employee_name, '—'),
+                   LPAD(NEW.period_month::text, 2, '0'),
+                   NEW.period_year);
+  v_method := CASE NEW.payment_method
+                WHEN 'nakit'  THEN 'nakit'
+                WHEN 'kart'   THEN 'kart'
+                WHEN 'havale' THEN 'havale'
+                ELSE 'havale' END;
+
+  IF (TG_OP = 'INSERT') THEN
+    INSERT INTO public.expenses (
+      lab_id, category, description, amount, expense_date,
+      payment_method, currency, rate_at_time, amount_base, base_currency_at_time,
+      salary_payment_id, created_by
+    ) VALUES (
+      NEW.lab_id, 'personel', v_desc, NEW.net_amount, NEW.payment_date,
+      v_method, 'TRY', 1, NEW.net_amount, 'TRY',
+      NEW.id, NEW.created_by
+    );
+    RETURN NEW;
+  END IF;
+
+  IF (TG_OP = 'UPDATE') THEN
+    UPDATE public.expenses
+    SET amount = NEW.net_amount,
+        amount_base = NEW.net_amount,
+        expense_date = NEW.payment_date,
+        payment_method = v_method,
+        description = v_desc,
+        updated_at = NOW()
+    WHERE salary_payment_id = NEW.id;
+    RETURN NEW;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+
+## live fn_advance
+CREATE OR REPLACE FUNCTION public.sync_advance_to_expense()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+  v_employee_name text;
+  v_desc          text;
+BEGIN
+  IF (TG_OP = 'DELETE') THEN
+    DELETE FROM public.expenses WHERE advance_id = OLD.id;
+    RETURN OLD;
+  END IF;
+
+  SELECT full_name INTO v_employee_name FROM public.employees WHERE id = NEW.employee_id;
+  v_desc := format('Avans: %s%s',
+                   COALESCE(v_employee_name, '—'),
+                   CASE WHEN NEW.description IS NOT NULL AND length(NEW.description) > 0
+                        THEN ' · ' || NEW.description ELSE '' END);
+
+  IF (TG_OP = 'INSERT') THEN
+    -- Avans maaştan kesildiyse gider olarak yazma (maaş zaten brüt üzerinden gider yazıyor)
+    IF NEW.is_deducted = FALSE THEN
+      INSERT INTO public.expenses (
+        lab_id, category, description, amount, expense_date,
+        payment_method, currency, rate_at_time, amount_base, base_currency_at_time,
+        advance_id
+      ) VALUES (
+        NEW.lab_id, 'personel', v_desc, NEW.amount, NEW.advance_date,
+        'nakit', 'TRY', 1, NEW.amount, 'TRY',
+        NEW.id
+      );
+    END IF;
+    RETURN NEW;
+  END IF;
+
+  IF (TG_OP = 'UPDATE') THEN
+    -- Avans maaştan kesildiyse expenses satırını sil (çift sayım önlenir)
+    IF NEW.is_deducted = TRUE AND (OLD.is_deducted IS DISTINCT FROM TRUE) THEN
+      DELETE FROM public.expenses WHERE advance_id = NEW.id;
+    ELSIF NEW.is_deducted = FALSE THEN
+      -- Hâlâ aktif avans — bilgileri güncelle (ya da yoksa ekle)
+      IF EXISTS (SELECT 1 FROM public.expenses WHERE advance_id = NEW.id) THEN
+        UPDATE public.expenses
+        SET amount = NEW.amount,
+            amount_base = NEW.amount,
+            expense_date = NEW.advance_date,
+            description = v_desc,
+            updated_at = NOW()
+        WHERE advance_id = NEW.id;
+      ELSE
+        INSERT INTO public.expenses (
+          lab_id, category, description, amount, expense_date,
+          payment_method, currency, rate_at_time, amount_base, base_currency_at_time,
+          advance_id
+        ) VALUES (
+          NEW.lab_id, 'personel', v_desc, NEW.amount, NEW.advance_date,
+          'nakit', 'TRY', 1, NEW.amount, 'TRY', NEW.id
+        );
+      END IF;
+    END IF;
+    RETURN NEW;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+

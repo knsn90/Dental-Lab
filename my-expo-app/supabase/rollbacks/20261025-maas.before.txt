@@ -1,0 +1,97 @@
+{
+ "can_view_payroll": "CREATE OR REPLACE FUNCTION public.can_view_payroll()\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\n  select is_platform_admin()\n      or has_permission('view_salaries')\n      or has_permission('manage_salaries')\n      or has_permission('manage_finance');\n$function$\n",
+ "ec_exists": false,
+ "emp_salaries": [
+  {
+   "base_salary": 110000,
+   "id": "9d960b02-da4b-4443-80be-1397a372aa79",
+   "tc_no": null
+  },
+  {
+   "base_salary": 0,
+   "id": "cec76390-2f4c-4b7d-9a87-874d58457883",
+   "tc_no": null
+  },
+  {
+   "base_salary": 0,
+   "id": "ed538d76-8194-4075-9070-d0b70e31f939",
+   "tc_no": null
+  },
+  {
+   "base_salary": 35000,
+   "id": "5a719855-ba60-4a5d-99cb-1cd1b65da95e",
+   "tc_no": null
+  },
+  {
+   "base_salary": 0,
+   "id": "8b71cca2-3b10-4f11-8384-4e79a87363be",
+   "tc_no": null
+  },
+  {
+   "base_salary": 0,
+   "id": "8cb83089-11ac-4cb0-8209-d6d6ef3a3cde",
+   "tc_no": null
+  },
+  {
+   "base_salary": 40000,
+   "id": "238212ad-9b7a-4bff-b480-f7210753dcde",
+   "tc_no": null
+  },
+  {
+   "base_salary": 80000,
+   "id": "e2a611dd-e3d5-4cac-ad45-15772b84fffb",
+   "tc_no": null
+  }
+ ],
+ "emp_triggers": null,
+ "guard": "CREATE OR REPLACE FUNCTION public.profiles_guard_privileged_columns()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nDECLARE\n  v_uid     uuid := auth.uid();\n  v_self    boolean;\n  v_changed text[] := ARRAY[]::text[];\n  v_managed text[] := ARRAY[]::text[];\nBEGIN\n  -- Yalnız doğrudan istemci isteği kısıtlanır; SECURITY DEFINER RPC'ler,\n  -- service_role ve postgres baypas eder (bkz. dosya başı).\n  IF current_user NOT IN ('authenticated', 'anon') THEN\n    RETURN NEW;\n  END IF;\n\n  -- (1) Kimlik / kiracı: hiçbir istemci, hiçbir satırda değiştiremez.\n  IF NEW.id         IS DISTINCT FROM OLD.id         THEN v_changed := array_append(v_changed, 'id'); END IF;\n  IF NEW.created_at IS DISTINCT FROM OLD.created_at THEN v_changed := array_append(v_changed, 'created_at'); END IF;\n  IF NEW.user_type  IS DISTINCT FROM OLD.user_type  THEN v_changed := array_append(v_changed, 'user_type'); END IF;\n  IF NEW.lab_id     IS DISTINCT FROM OLD.lab_id     THEN v_changed := array_append(v_changed, 'lab_id'); END IF;\n  IF NEW.clinic_id  IS DISTINCT FROM OLD.clinic_id  THEN v_changed := array_append(v_changed, 'clinic_id'); END IF;\n  IF NEW.doctor_id  IS DISTINCT FROM OLD.doctor_id  THEN v_changed := array_append(v_changed, 'doctor_id'); END IF;\n\n  -- Kimliği bilinmeyen çağrı en sıkı kurala tabi (kendi satırı sayılır).\n  v_self := v_uid IS NULL OR OLD.id = v_uid;\n\n  IF v_self THEN\n    -- (2) Kendi yetkisini / onayını / aktifliğini değiştiremez.\n    IF NEW.role            IS DISTINCT FROM OLD.role            THEN v_changed := array_append(v_changed, 'role'); END IF;\n    IF NEW.is_active       IS DISTINCT FROM OLD.is_active       THEN v_changed := array_append(v_changed, 'is_active'); END IF;\n    IF NEW.approval_status IS DISTINCT FROM OLD.approval_status THEN v_changed := array_append(v_changed, 'approval_status'); END IF;\n    IF NEW.phone_verified  IS DISTINCT FROM OLD.phone_verified  THEN v_changed := array_append(v_changed, 'phone_verified'); END IF;\n\n    -- (3) Maaş / prim / performans / iş atama: yalnız lab yöneticisi kendi satırında.\n    IF NEW.monthly_salary         IS DISTINCT FROM OLD.monthly_salary         THEN v_managed := array_append(v_managed, 'monthly_salary'); END IF;\n    IF NEW.hourly_rate            IS DISTINCT FROM OLD.hourly_rate            THEN v_managed := array_append(v_managed, 'hourly_rate'); END IF;\n    IF NEW.bonus_per_extra_order  IS DISTINCT FROM OLD.bonus_per_extra_order  THEN v_managed := array_append(v_managed, 'bonus_per_extra_order'); END IF;\n    IF NEW.bonus_threshold_orders IS DISTINCT FROM OLD.bonus_threshold_orders THEN v_managed := array_append(v_managed, 'bonus_threshold_orders'); END IF;\n    IF NEW.trust_score            IS DISTINCT FROM OLD.trust_score            THEN v_managed := array_append(v_managed, 'trust_score'); END IF;\n    IF NEW.doctor_score           IS DISTINCT FROM OLD.doctor_score           THEN v_managed := array_append(v_managed, 'doctor_score'); END IF;\n    IF NEW.reject_count           IS DISTINCT FROM OLD.reject_count           THEN v_managed := array_append(v_managed, 'reject_count'); END IF;\n    IF NEW.completed_count        IS DISTINCT FROM OLD.completed_count        THEN v_managed := array_append(v_managed, 'completed_count'); END IF;\n    IF NEW.total_case_count       IS DISTINCT FROM OLD.total_case_count       THEN v_managed := array_append(v_managed, 'total_case_count'); END IF;\n    IF NEW.skill_level            IS DISTINCT FROM OLD.skill_level            THEN v_managed := array_append(v_managed, 'skill_level'); END IF;\n    IF NEW.skills                 IS DISTINCT FROM OLD.skills                 THEN v_managed := array_append(v_managed, 'skills'); END IF;\n    IF NEW.allowed_types          IS DISTINCT FROM OLD.allowed_types          THEN v_managed := array_append(v_managed, 'allowed_types'); END IF;\n    IF NEW.allowed_stages         IS DISTINCT FROM OLD.allowed_stages         THEN v_managed := array_append(v_managed, 'allowed_stages'); END IF;\n    IF NEW.daily_capacity         IS DISTINCT FROM OLD.daily_capacity         THEN v_managed := array_append(v_managed, 'daily_capacity'); END IF;\n\n    IF cardinality(v_managed) > 0 AND NOT public.can_manage_lab_settings() THEN\n      v_changed := array_cat(v_changed, v_managed);\n    END IF;\n\n    -- (4) Klinik içi yetkiler: yalnız klinik yöneticisi kendi satırında.\n    IF NEW.clinic_permissions IS DISTINCT FROM OLD.clinic_permissions\n       AND NOT public.is_clinic_admin() THEN\n      v_changed := array_append(v_changed, 'clinic_permissions');\n    END IF;\n  END IF;\n\n  IF cardinality(v_changed) > 0 THEN\n    RAISE EXCEPTION 'profiles: korumalı alan(lar) doğrudan güncellenemez: %', array_to_string(v_changed, ', ')\n      USING ERRCODE = '42501',\n            HINT    = 'Rol, lab/klinik üyeliği, onay, aktiflik ve maaş alanları yalnız yönetici ekranları ya da sunucu RPC''leri üzerinden değiştirilir.';\n  END IF;\n\n  RETURN NEW;\nEND;\n$function$\n",
+ "my_employee_id": "CREATE OR REPLACE FUNCTION public.my_employee_id()\n RETURNS uuid\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\n  select e.id\n  from public.employees e\n  join public.profiles p on p.id = auth.uid()\n  join auth.users u on u.id = auth.uid()\n  where e.lab_id = p.lab_id and e.is_active\n    and nullif(lower(btrim(e.email)), '') is not null\n    and lower(btrim(e.email)) = lower(btrim(u.email))\n  order by e.created_at, e.id\n  limit 1;\n$function$\n",
+ "prof_triggers": [
+  "on_new_user_notify_admins := CREATE TRIGGER on_new_user_notify_admins AFTER INSERT ON public.profiles FOR EACH ROW EXECUTE FUNCTION notify_admins_on_new_user()",
+  "profiles_clinic_admin_guard := CREATE TRIGGER profiles_clinic_admin_guard BEFORE UPDATE ON public.profiles FOR EACH ROW EXECUTE FUNCTION _guard_clinic_user_update()",
+  "profiles_guard_privileged_columns := CREATE TRIGGER profiles_guard_privileged_columns BEFORE UPDATE ON public.profiles FOR EACH ROW EXECUTE FUNCTION profiles_guard_privileged_columns()",
+  "profiles_link_doctor_on_clinic := CREATE TRIGGER profiles_link_doctor_on_clinic AFTER INSERT OR UPDATE OF clinic_id ON public.profiles FOR EACH ROW WHEN (((new.user_type = 'doctor'::text) AND (new.clinic_id IS NOT NULL) AND (new.doctor_id IS NULL))) EXECUTE FUNCTION profiles_link_doctor_on_clinic()",
+  "profiles_updated_at := CREATE TRIGGER profiles_updated_at BEFORE UPDATE ON public.profiles FOR EACH ROW EXECUTE FUNCTION handle_updated_at()",
+  "trg_log_profile_created := CREATE TRIGGER trg_log_profile_created AFTER INSERT ON public.profiles FOR EACH ROW EXECUTE FUNCTION log_profile_created()",
+  "trg_log_profile_updated := CREATE TRIGGER trg_log_profile_updated AFTER UPDATE ON public.profiles FOR EACH ROW EXECUTE FUNCTION log_profile_updated()"
+ ],
+ "profile_salaries": [
+  {
+   "id": "5ab98f51-dbef-4916-aa61-76a82bbdf219",
+   "monthly_salary": 35000
+  },
+  {
+   "id": "8ce19a0e-445d-4167-87e6-9fc192875169",
+   "monthly_salary": 0
+  },
+  {
+   "id": "36cf5470-a9e1-4d67-b9a6-adadbbf3b50f",
+   "monthly_salary": 40000
+  },
+  {
+   "id": "d72d7f0c-6922-4317-8dfd-906a1b50556a",
+   "monthly_salary": 60000
+  },
+  {
+   "id": "8cde8a36-e391-4de4-9672-98dae3051810",
+   "monthly_salary": 0
+  }
+ ],
+ "salary_perm_roles": [
+  {
+   "lab": null,
+   "perm": "manage_finance",
+   "role": "admin"
+  },
+  {
+   "lab": null,
+   "perm": "view_salaries",
+   "role": "admin"
+  },
+  {
+   "lab": null,
+   "perm": "manage_salaries",
+   "role": "admin"
+  }
+ ]
+}

@@ -4,5 +4,5 @@ const CourierTrackingScreen = lazyRoute(() => import('../../modules/courier/Cour
 import { lazyRoute } from '../../core/_lazyRoute';
 
 export default function AdminCourierTracking() {
-  return <CourierTrackingScreen accent="#4771AB" pageBg="#F7F9FC" routePrefix="/(admin)" />;
+  return <CourierTrackingScreen accent="#002A5C" pageBg="#F7F9FC" routePrefix="/(admin)" />;
 }

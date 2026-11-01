@@ -122,8 +122,13 @@ serve(async (req) => {
   }
 
   // 1. Yetkili alıcılar arasında email + pref opt-out filtresi
+  // "Hesabınız açıldı" işlemsel bir e-postadır (giriş linki taşır): yeni hesabın
+  // varsayılan tercihleri e-postayı kapalı tuttuğu için filtre uygulanırsa hiç
+  // gitmez. YALNIZ güvenilir sistem çağrısında (_notify_account_opened) atlanır.
+  const transactional = body.category === 'account' && authz.trusted;
   const targets = recipients.filter((p: any) => {
     if (!p.email) return false;
+    if (transactional) return true;
     const prefs = p.notification_prefs;
     if (!prefs || prefs.master_enabled === false) return false;
     if (prefs.channels?.email === false) return false;
@@ -270,8 +275,10 @@ const CATEGORY_LABEL: Record<string, string> = {
   delivery:     'Teslimat',
   paper_order:  'Yeni Kağıt Sipariş',
   order_watch:  'Günlük İş Takibi',
+  scan_schedule: 'Tarama Programı',
   stage_critical: 'Kritik Aşama Tamamlandı',
   phone_lead:   'Telefon Talebi',
+  account:      'Hesap',
 };
 
 // work_order_status enum → okunur Türkçe etiket (sipariş detay kartında "Durum")
@@ -350,7 +357,9 @@ function renderHtmlBody(opts: {
         : escape(String(payload.body).trim()))
     : 'Detayları görüntülemek için aşağıdaki butonu kullanın.';
   // CTA etiketi: tek bir vaka varsa "İş Emrini Aç", yoksa (dijest/liste) "Panele Git".
-  const ctaLabel = showQr ? 'İş Emrini Aç' : 'Panele Git';
+  // Çağıran özel etiket verebilir (ör. yeni kayıt → "Kaydı İncele").
+  const ctaOverride = typeof extra.ctaLabel === 'string' && extra.ctaLabel.trim() ? extra.ctaLabel.trim().slice(0, 40) : '';
+  const ctaLabel = ctaOverride || (category === 'account' ? 'Giriş Yap' : showQr ? 'İş Emrini Aç' : 'Panele Git');
 
   // Sipariş detay kartı (server'da sipariş satırından çözülür) — yeni sipariş,
   // beklemede vb. tüm work_order e-postalarını caller'a dokunmadan detaylandırır.
@@ -408,7 +417,8 @@ function renderHtmlBody(opts: {
 
   // Brand-level meta keys — UI'da brand strip / category chip / hero'da yer alıyor;
   // detail card'da tekrar göstermeye gerek yok.
-  const SKIP_KEYS = new Set(['labName', 'lab', 'labLogoUrl', 'lab_logo_url', 'orderNumber', 'order_number']);
+  // loginUrl/ctaLabel buton için taşınır (actionUrl/etiket) — satır olarak tekrar etme.
+  const SKIP_KEYS = new Set(['labName', 'lab', 'labLogoUrl', 'lab_logo_url', 'orderNumber', 'order_number', 'loginUrl', 'ctaLabel']);
   const detailKeys = Object.keys(extra)
     .filter(k => !SKIP_KEYS.has(k))
     .filter(k => extra[k] !== undefined && extra[k] !== null && String(extra[k]).trim() !== '');
@@ -631,6 +641,11 @@ function prettyKey(k: string): string {
     paymentMethod:'Ödeme Yöntemi',
     // Approval
     requestedBy:  'Talep Eden',
+    // Yeni kayıt (lab onayı)
+    signupType:   'Kayıt Türü',
+    fullName:     'Ad Soyad',
+    phone:        'Telefon',
+    email:        'E-posta',
     target:       'Hedef',
     // Stock
     item:         'Ürün',
@@ -659,6 +674,7 @@ const ACCENT_BY_CATEGORY: Record<string, string> = {
   delivery:     '#0D9488',
   paper_order:  '#9333EA',
   order_watch:  '#DC2626',
+  scan_schedule: '#0891B2',
   stage_critical: '#0C8F56',
 };
 

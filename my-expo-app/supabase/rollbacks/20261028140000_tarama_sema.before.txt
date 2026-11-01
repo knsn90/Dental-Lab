@@ -1,0 +1,16 @@
+cols => clinics(id,name,address,phone,email,contact_person,notes,is_active,created_at,lab_id,category,updated_at,vkn,tax_office,efatura_registered,efatura_alias,efatura_checked_at,clinic_type,billing_mode,default_payment_terms_days,logo_url,whatsapp_phone)
+cols => equipment(id,lab_id,name,brand,model,serial_number,category,status,assigned_to,purchase_date,warranty_end,notes,created_at,updated_at,station_id,integration_kind,endpoint_url,credentials_ref,live_status,last_heartbeat_at,current_stage_id,current_job_started_at,current_job_estimate_seconds,last_error_message,last_error_at)
+cols => lab_services(id,name,category,price,currency,is_active,sort_order,created_at,lab_id,production_days,price_type,unit)
+cols => lab_settings(id,lab_id,default_currency,week_start,theme_mode,order_prefix,default_tax_rate,working_hours_start,working_hours_end,auto_logout_minutes,items_per_page,created_at,updated_at,cost_method,urgent_surcharge_rate,auto_triage,inventory_qtyless_enabled,stock_count_interval_days,region,payment_reminder_auto,payment_reminder_frequency_days,payment_reminder_channels,payment_reminder_tone,payment_reminder_min_days_overdue,technician_name_visibility)
+flags => ai_assistant:false,courier_module:true,finance_module:true,phone_assistant:false,reviews_module:false,whatsapp_intake:false
+scan_tables => yok
+svc_nexadent => Intraoral Tarama hizmeti#1,Photogrammetri Hizmeti#1
+touch_fn => CREATE OR REPLACE FUNCTION public.touch_updated_at()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN NEW.updated_at := NOW(); RETURN NEW; END;
+$function$
+

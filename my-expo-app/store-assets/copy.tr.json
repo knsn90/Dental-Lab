@@ -1,0 +1,87 @@
+{
+  "locale": "tr",
+  "brand": "SİMAN",
+  "panels": [
+    {
+      "screen": "login",
+      "lead": "LABORATUVARIN",
+      "hi": "CEBİNDE",
+      "tail": "",
+      "pos": "top",
+      "tilt": -9
+    },
+    {
+      "screen": "neworder",
+      "lead": "SİPARİŞİ",
+      "hi": "60 SANİYEDE",
+      "tail": "GÖNDER",
+      "pos": "bottom",
+      "tilt": 9
+    },
+    {
+      "screen": "viewer",
+      "lead": "",
+      "hi": "3D TARAMAYI",
+      "tail": "ELİNDE ÇEVİR",
+      "pos": "top",
+      "tilt": 0
+    },
+    {
+      "screen": "stages",
+      "lead": "HER AŞAMAYI",
+      "hi": "CANLI",
+      "tail": "İZLE",
+      "pos": "bottom",
+      "tilt": -9
+    },
+    {
+      "screen": "courier",
+      "lead": "KURYENİ",
+      "hi": "HARİTADA",
+      "tail": "TAKİP ET",
+      "pos": "top",
+      "tilt": 9
+    },
+    {
+      "screen": "kanban",
+      "lead": "TÜM İŞLER",
+      "hi": "TEK PANODA",
+      "tail": "",
+      "pos": "bottom",
+      "tilt": 0
+    },
+    {
+      "screen": "perf",
+      "lead": "",
+      "hi": "PERFORMANSI",
+      "tail": "ÖLÇ, PRİMİ HESAPLA",
+      "pos": "top",
+      "tilt": -9
+    },
+    {
+      "screen": "finance",
+      "lead": "FATURA VE TAHSİLAT",
+      "hi": "OTOMATİK",
+      "tail": "",
+      "pos": "bottom",
+      "tilt": 9
+    },
+    {
+      "screen": "chat",
+      "lead": "",
+      "hi": "HER İŞİN",
+      "tail": "KENDİ SOHBETİ",
+      "pos": "top",
+      "tilt": 0
+    },
+    {
+      "screen": "girisdil",
+      "lead": "TEK GİRİŞ,",
+      "hi": "5 PANEL,",
+      "tail": "4 DİL",
+      "pos": "bottom",
+      "tilt": -9
+    }
+  ],
+  "rtl": false
+}

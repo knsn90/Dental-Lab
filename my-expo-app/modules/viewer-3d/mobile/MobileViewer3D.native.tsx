@@ -190,7 +190,7 @@ function RoundButton({ Icon, onPress, active, label }: { Icon: any; onPress: () 
   );
 }
 
-function MobileViewer3D({ visible, files: filesProp, title, onClose, zipUrl, orderId }: Viewer3DProps) {
+function MobileViewer3D({ visible, files: filesProp, title, onClose, zipUrl, zipUrls, orderId }: Viewer3DProps) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const C = useViewerChrome();
@@ -202,8 +202,12 @@ function MobileViewer3D({ visible, files: filesProp, title, onClose, zipUrl, ord
   const [zipFiles, setZipFiles] = useState<ViewerFile[] | null>(null);
   const [progress, setProgress] = useState<{ phase: string; pct?: number } | null>(null);
   const [progressTick, setProgressTick] = useState(0);
-  useEffect(() => { setZipFiles(null); setProgress(null); }, [zipUrl]);
-  const files = zipUrl ? (zipFiles ?? []) : filesProp;
+  // Arşiv modu: tek `zipUrl` YA DA çoklu `zipUrls` (doğrudan dosyalarla birleşik).
+  const multiZip = !!zipUrls?.length;
+  const zipKey = (multiZip ? zipUrls! : zipUrl ? [zipUrl] : []).join('|');
+  const zipMode = zipKey.length > 0;
+  useEffect(() => { setZipFiles(null); setProgress(null); }, [zipKey]);
+  const files = zipMode ? (zipFiles ?? []) : filesProp;
   const [_loadErr, setLoadErr] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [gridOn, setGridOn] = useState(false);
@@ -308,10 +312,17 @@ function MobileViewer3D({ visible, files: filesProp, title, onClose, zipUrl, ord
   // YENİDEN YÜKLENMEZ (yoksa arşiv baştan indirilirdi).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const html = useMemo(
-    () => (zipUrl
-      ? buildViewerHtml({ files: [], layerStyles: {}, bg: C.page, gridLine: C.gridLine, zip: { url: zipUrl, idPrefix: 'zip' } })
+    () => (zipMode
+      ? buildViewerHtml({
+          // Çoklu modda doğrudan dosyalar da gider; WebView arşivleri bunların ARKASINA ekler.
+          files: multiZip ? filesProp : [], layerStyles: {}, bg: C.page, gridLine: C.gridLine,
+          // Tek arşivde önek 'zip' KALIR — mevcut 3D notların mesh kimlikleri buna bağlı.
+          ...(multiZip
+            ? { zips: zipUrls!.map((url, i) => ({ url, idPrefix: `zip${i}` })) }
+            : { zip: { url: zipUrl!, idPrefix: 'zip' } }),
+        })
       : buildViewerHtml({ files: visibleFiles, layerStyles: initialStyles, bg: C.page, gridLine: C.gridLine })),
-    [zipUrl, zipUrl ? null : initialStyles, C.page, C.gridLine],
+    [zipKey, zipMode ? null : initialStyles, C.page, C.gridLine],
   );
 
   // Yükleme zaman aşımı: CDN/three.js 15 sn'de gelmezse hata göster (siyah ekranda takılı kalma).
@@ -320,9 +331,9 @@ function MobileViewer3D({ visible, files: filesProp, title, onClose, zipUrl, ord
     if (ready) return;
     const t = setTimeout(() => {
       setReady((r) => { if (!r) setLoadErr((e) => e ?? 'zaman-asimi'); return r; });
-    }, zipUrl ? 30000 : 15000);
+    }, zipMode ? 30000 : 15000);
     return () => clearTimeout(t);
-  }, [ready, progressTick, zipUrl]);
+  }, [ready, progressTick, zipMode]);
 
   // WebView'in bildirdiği mesh listesinden katman stilleri (meta ile aynı kural).
   const stylesFor = useCallback((list: ViewerFile[]) => {
@@ -547,9 +558,9 @@ function MobileViewer3D({ visible, files: filesProp, title, onClose, zipUrl, ord
                   ? autoT('Arşivde 3D model bulunamadı')
                   : <>3D önizleme açılamadı{'\n'}(internet bağlantısı gerekiyor)</>}
               </Text>
-              {(zipUrl || visibleFiles[0]?.url) ? (
+              {((zipUrls?.[0] ?? zipUrl) || visibleFiles[0]?.url) ? (
                 <Pressable
-                  onPress={() => openFileUrl(zipUrl || visibleFiles[0].url)}
+                  onPress={() => openFileUrl((zipUrls?.[0] ?? zipUrl) || visibleFiles[0].url)}
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 18, paddingVertical: 11, borderRadius: 999, backgroundColor: C.accent }}
                 >
                   <ExternalLink size={15} color={C.accentFg} strokeWidth={2.2} />

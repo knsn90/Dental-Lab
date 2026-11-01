@@ -9,6 +9,7 @@
  * - getActiveProvider(type)   → şu anki aktif sağlayıcı (config + key)
  */
 import { supabase } from '../../core/api/supabase';
+import { edgeErrorMessage } from '../../core/api/edgeError';
 
 export type IntegrationType = 'efatura' | 'payment' | 'ocr' | 'messaging' | 'sms' | 'maps' | 'storage' | 'courier';
 
@@ -54,6 +55,8 @@ export interface ProviderField {
   placeholder?:string;
   helpText?:   string;
   options?:    { value: string; label: string }[];
+  /** type='select': kayıtta değer YOKKEN geçerli olan seçenek (ekranda seçili görünür). */
+  defaultValue?: string;
   /** type='address': seçilen konumun enlem/boylamını yazacağı diğer alan key'leri */
   latKey?:     string;
   lngKey?:     string;
@@ -66,6 +69,21 @@ export const EFATURA_PROVIDERS: ProviderDefinition[] = [
     label: 'Demo (Sandbox)',
     description: 'Sahte e-Fatura sağlayıcısı. UI test ve geliştirme için.',
     fields: [],
+    implemented: true,
+  },
+  {
+    key:   'luca',
+    label: 'Luca (TÜRMOB)',
+    description: 'TÜRMOB Luca e-Fatura / e-Arşiv. Firma bilgileri Ayarlar → Genel → Fatura Bilgileri\'nden alınır; çağrılar Siman\'ın statik IP köprüsünden gider.',
+    // Satıcı künyesi (VKN, vergi dairesi, adres) LAB'a aittir — burada değil,
+    // Ayarlar → Genel → Fatura Bilgileri'nde (labs). Burada yalnız entegratöre özel ayar.
+    fields: [
+      { key: 'scenario',    label: 'e-Fatura senaryosu', type: 'select', helpText: 'Ticari faturada alıcı 8 gün içinde kabul/ret yanıtı verebilir', options: [
+        { value: 'TEMELFATURA',  label: 'Temel Fatura' },
+        { value: 'TICARIFATURA', label: 'Ticari Fatura' },
+      ]},
+      { key: 'test_vkn',    label: 'Test VKN',      type: 'text', placeholder: '1234567801', helpText: 'Yalnız Sandbox ortamında gönderen olarak kullanılır (Luca demo firması)' },
+    ],
     implemented: true,
   },
   {
@@ -250,7 +268,7 @@ export const MESSAGING_PROVIDERS: ProviderDefinition[] = [
   {
     key:   'whatsapp-cloud',
     label: 'WhatsApp Business Cloud API (Meta)',
-    description: 'Meta resmi WhatsApp Business. Webhook ile fotoğraf alır, OCR yapıp inbox\'a yazar.',
+    description: 'Meta resmi WhatsApp Business. Sipariş bildirimlerini gönderir; isteğe bağlı sohbet botu (Simanty) gelen mesajlara cevap verebilir.',
     pricing: 'İlk 1000 konuşma/ay ücretsiz · sonrası ülke bazlı',
     website: 'https://business.facebook.com',
     fields: [
@@ -264,6 +282,14 @@ export const MESSAGING_PROVIDERS: ProviderDefinition[] = [
         helpText: 'Kendi belirleyeceğin gizli string. Meta → Webhook setup\'ta AYNISINI gir. '
           + 'Callback URL: https://kjwjxqfdsxkxgcgophdy.supabase.co/functions/v1/whatsapp-webhook '
           + '· "messages" alanına abone ol.' },
+      // Varsayılan KAPALI: hat Coexistence'ta, gelen mesajları lab WhatsApp Business
+      // uygulamasından yanıtlıyor. Webhook yalnız 'on' görünce bota devreder.
+      { key: 'chat_bot', label: 'Sohbet botu (Simanty)', type: 'select', defaultValue: 'off',
+        helpText: 'Kapalıyken gelen mesajlara otomatik cevap verilmez; WhatsApp Business uygulamanızdan siz cevaplarsınız. Bildirimler (yeni sipariş, kuryede vb.) bu ayardan etkilenmez.',
+        options: [
+          { value: 'off', label: 'Kapalı' },
+          { value: 'on',  label: 'Açık' },
+        ]},
     ],
     implemented: true,
   },
@@ -637,6 +663,18 @@ export async function testCredential(
   if (provider === 'demo') {
     await supabase.rpc('record_provider_test', { p_id: id, p_ok: true, p_message: 'Demo provider — bağlantı simüle edildi' });
     return { ok: true, message: 'Demo provider — başarılı' };
+  }
+
+  // Luca — kaydedilmiş ayarla köprü + Luca + VKN yetkisi (kontör sorgusu) sunucuda denenir.
+  if (type === 'efatura' && provider === 'luca') {
+    if (!id) return { ok: false, message: 'Önce ayarı kaydedin, sonra test edin' };
+    const { data, error } = await supabase.functions.invoke('efatura-luca', { body: { action: 'test', credential_id: id } });
+    const ok = !error && (data as any)?.ok === true;
+    const msg = error
+      ? await edgeErrorMessage(error, 'Bağlantı başarısız')
+      : ((data as any)?.message ?? 'Bağlantı başarısız');
+    await supabase.rpc('record_provider_test', { p_id: id, p_ok: ok, p_message: msg });
+    return { ok, message: msg };
   }
 
   // iyzico — edge function ile gerçek bağlantı testi (GET /payment/test).

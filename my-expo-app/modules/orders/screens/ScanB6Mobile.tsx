@@ -29,7 +29,8 @@ interface ScanResult {
 
 interface Props {
   onClose: () => void;
-  onOpenOrder: (workOrderId: string) => void;
+  /** Metin dönerse (ör. kuryede "açık teslimat yok") tarayıcı açık kalır ve mesaj gösterilir. */
+  onOpenOrder: (workOrderId: string) => void | Promise<string | null | void>;
   onUpdateStatus?: (workOrderId: string) => void;
 }
 
@@ -400,7 +401,13 @@ export function ScanB6Mobile({ onClose, onOpenOrder, onUpdateStatus }: Props) {
           <Text style={styles.sheetMeta}>{scanned.clinic} · #{scanned.orderNumber}</Text>
 
           <View style={styles.sheetActions}>
-            <Pressable onPress={() => onOpenOrder(scanned.workOrderId)} style={styles.primaryBtn}>
+            <Pressable
+              onPress={async () => {
+                const msg = await onOpenOrder(scanned.workOrderId);
+                if (typeof msg === 'string' && msg) { setError(msg); setTimeout(() => setError(null), 2400); }
+              }}
+              style={styles.primaryBtn}
+            >
               <Text style={styles.primaryBtnText}>Vakayı aç</Text>
               {isRTL()
                 ? <ChevronLeft size={16} color="#0A0A0A" strokeWidth={2} />

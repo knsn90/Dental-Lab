@@ -22,6 +22,7 @@ import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { baseSymbol, useBaseCurrency } from '../../../core/money/baseCurrency';
 import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
+import { MobileTableX } from '../../../core/ui/MobileTableX';
 
 // ── Patterns tokens ─────────────────────────────────────────────────
 const DISPLAY = {
@@ -216,6 +217,19 @@ export function TechnicianPerformanceScreen() {
           </Text>
         </View>
       ) : (
+        !isWide ? (
+          /* Mobil — ekstre / giderler mobil tablosuyla aynı kalıp */
+          <MobileTableX title="Teknisyen Performansı" count={sorted.length} countLabel="kişi">
+            {sorted.map((row, i) => (
+              <PerfRowView
+                key={row.user_id}
+                row={row}
+                isLast={i === sorted.length - 1}
+                isWide={false}
+              />
+            ))}
+          </MobileTableX>
+        ) : (
         <View style={{
           ...tableCard,
           backgroundColor: T.card,
@@ -246,6 +260,7 @@ export function TechnicianPerformanceScreen() {
             />
           ))}
         </View>
+        )
       )}
     </ScrollView>
   );
@@ -329,11 +344,11 @@ function PerfRowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; i
   // Mobile: stacked card
   return (
     <View style={[
-      { paddingHorizontal: 18, paddingVertical: 14, gap: 10 },
+      { paddingHorizontal: 16, paddingVertical: 12, gap: 10 },
       !isLast && { borderBottomWidth: 1, borderBottomColor: T.hairline },
     ]}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: T.cardSoft, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: T.cardSoft, alignItems: 'center', justifyContent: 'center' }}>
           <Text style={{ fontSize: 12, fontWeight: '600', color: T.ink3 }}>{initials}</Text>
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>

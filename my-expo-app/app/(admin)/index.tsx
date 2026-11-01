@@ -3,16 +3,25 @@
  *
  * Layout:
  *   1. Hero — Serif greeting + stat pills + big numbers
- *   2. 4-card grid (AnimatedAktifVaka, Sipariş Trendi, PercentRing, TasksCard)
- *   3. Bottom row — WeeklyStrip + AnimatedCTACard
- *   4. Extra sections — Orders table, Finance, Status dist, Work type
+ *   2. 4-card grid (AnimatedAktifVaka, Sipariş Trendi, PercentRing, AnimatedCTACard) — eşit sütunlar (DashGrid)
+ *   3. Second row — TasksCard + tarama widget'ı (yarımlar)
+ *   4. Extra sections — Orders table, Finance | Status dist, Work type | WeeklyStrip
  *
- * Theme: DS.exec (kobalt #4771AB)
+ * Theme: DS.exec (kobalt #002A5C)
  * Patterns NativeWind — NO StyleSheet.create().
  */
 import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { HatchFill } from '../../core/ui/HatchFill';
 import { firstName as displayFirstName } from '../../core/util/personName';
 import { autoT } from '../../core/i18n/autoTranslate';
+import { useOrderMetrics } from '../../core/metrics/useOrderMetrics';
+import { useLabToday, cachedLabTz } from '../../core/metrics/useLabToday';
+import { labTodayOf, isOverdueOrder } from '../../core/metrics/orderDefs';
+import { METRIC_HINTS } from '../../core/metrics/metricHints';
+import { GlassTooltip } from '../../core/ui/GlassTooltip';
+import { useOverdueClinics } from '../../modules/dashboard/hooks/useOverdueClinics';
+import { overdueClinicLine } from '../../modules/dashboard/lib/overdueClinicLine';
+import { useFinancePeriod, useLabReceivables } from '../../core/metrics/useFinanceMetrics';
 import {
   View, Text, ScrollView, Pressable, Image,
   useWindowDimensions, Animated,
@@ -34,7 +43,8 @@ import { localeTag, isRTL, weekdayOffset, fmtWeekdayDayMonth } from '../../core/
 import { supabase } from '../../core/api/supabase';
 import { useRealtimeRefresh } from '../../core/hooks/useRealtimeRefresh';
 import { DS } from '../../core/theme/dsTokens';
-import { HERO_NAVY, prefersReducedMotion, useAccentTones } from '../../core/ui/HeroGlow';
+import { HERO_NAVY, prefersReducedMotion, useAccentTones, useNeonNavy, NeonPulse } from '../../core/ui/HeroGlow';
+import { onAccentInk } from '../../core/theme/usePanelTheme';
 import { useMobileTokens } from '../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../core/store/themeModeStore';
 import { useIsDesktop } from '../../core/layout/PatternsShell';
@@ -48,13 +58,15 @@ import { mapRevisionCases, flattenRevisionCases } from '../../modules/orders/rev
 import { useRevisionParents } from '../../modules/orders/hooks/useRevisionParents';
 import { NumberTickerX } from '../../core/ui/NumberTickerX';
 import { PipelineFlowRow } from '../../core/ui/PipelineFlowRow';
-import { groupByCurrency, type CurrencyTotal } from '../../core/money/aggregations';
+import { type CurrencyTotal } from '../../core/money/aggregations';
 import { formatMoney, useBaseCurrency, type Currency } from '../../core/money/currency';
 import { useDashboardCache } from '../../core/store/dashboardCacheStore';
 import { useNewOrderModalStore } from '../../core/store/newOrderModalStore';
 import { ActivityIndicator } from '../../core/ui/teethCompat';
 import { FaceScanQuickAction } from '../../modules/orders/components/FaceScanQuickAction';
 import { serviceUnitQty, serviceUnitLabel, resolveUnitForWorkType } from '../../core/util/serviceUnits';
+import { ScanCalendarCard, useScanCardVisible } from '../../modules/scans/components/ScanCalendarCard';
+import { DashRow, DashHalf, DashCell } from '../../modules/dashboard/components/DashGrid';
 
 // ── Display font — Patterns: Inter Tight Light (300), tight tracking ──
 const SERIF = {
@@ -63,10 +75,10 @@ const SERIF = {
 };
 
 // ── Shorthand aliases from DS tokens ──
-const P   = DS.exec.primary;      // #4771AB kobalt (AÇIK tema)
+const P   = DS.exec.primary;      // #002A5C kobalt (AÇIK tema)
 
 /**
- * Panel mavisi — koyu temada kobalt (#4771AB) parlak/eski duruyor; yerine yeni
+ * Panel mavisi — koyu temada kobalt (#002A5C) parlak/eski duruyor; yerine yeni
  * lacivert paletin açık tonu (#004B87) kullanılır. Grafik, halka, rozet ve
  * ikonların hepsi bundan beslenir ki sayfa tek bir mavi konuşsun.
  */
@@ -94,7 +106,7 @@ const CLR = {
 // 1.58) ve son adımlar birbirinden ayırt edilemiyor. Tek hue 5 erişilebilir adım
 // taşıyamıyor; kontrollü kategorik palet tek çözüm.
 const WORKTYPE_RAMP = [
-  DS.exec.primaryDeep,   // #314F7E lacivert · 8.23:1
+  DS.exec.primaryDeep,   // #001F3F lacivert · 8.23:1
   DS.teal.primaryDeep,   // #197872 koyu teal · 5.29:1
   DS.plum.primary,       // #8B5CB8 erik moru · 4.86:1
   DS.exec.info,          // #4A8FC9 açık mavi · 3.46:1
@@ -107,9 +119,21 @@ const STATUS_CFG: Record<string, { labelKey: string; color: string; bg: string }
   uretimde:        { labelKey: 'admin.status.production',        color: '#9C5E0E',   bg: 'rgba(232,155,42,0.15)' },
   kalite_kontrol:  { labelKey: 'admin.status.qualityControl',  color: '#1F5689',   bg: 'rgba(74,143,201,0.12)' },
   teslimata_hazir: { labelKey: 'admin.status.readyForDelivery', color: '#1F6B47',   bg: 'rgba(45,154,107,0.12)' },
+  // Kurye işi teslim aldı ve yolda — 'teslimata_hazir' ile KARIŞTIRMA
+  // (2026-09-24: hazır işler "Kuryeye Teslim Edildi" görünüyordu).
+  kurye_bekleniyor:{ labelKey: 'admin.status.waitingCourier', color: '#9C5E0E',   bg: 'rgba(232,155,42,0.15)' },
+  kuryede:         { labelKey: 'admin.status.withCourier',    color: '#1F5689',   bg: 'rgba(74,143,201,0.12)' },
   teslim_edildi:   { labelKey: 'admin.status.delivered',   color: DS.ink[400],  bg: 'rgba(0,0,0,0.04)' },
 };
 const STATUS_KEYS = ['alindi', 'uretimde', 'kalite_kontrol', 'teslimata_hazir', 'teslim_edildi'];
+/** order_metrics().by_status → dağılım kovaları. Eskiden yalnız 5 statü sayılıyordu;
+ *  kutu/atama/tasarım onayı/kurye durumları dağılımdan düşüyordu (denetim Y2). İptal yok. */
+const STATUS_BUCKET: Record<string, string> = {
+  alindi: 'alindi', kutu_atandi: 'alindi', atama_bekleniyor: 'alindi', tasarim_onayi_bekleniyor: 'alindi',
+  uretimde: 'uretimde', asamada: 'uretimde', kalite_kontrol: 'kalite_kontrol',
+  teslimata_hazir: 'teslimata_hazir', kurye_bekleniyor: 'teslimata_hazir', kuryede: 'teslimata_hazir',
+  teslim_edildi: 'teslim_edildi',
+};
 
 const PIPELINE_STAGES = [
   { key: 'alindi',          labelKey: 'admin.status.received'   },
@@ -296,7 +320,8 @@ function SpineCard({ title, value, unit, segments, zeros, children }: {
   const plain = typeof value === 'string' || typeof value === 'number';
   const T = useMobileTokens();
   return (
-    <Card style={{ padding: 20 }}>
+    // flex:1 → ızgara hücresini doldurur; yan yana kartlar eş boy kalır
+    <Card style={{ padding: 20, flex: 1 }}>
       {/* Başlık solda · toplam sağda — koyu bant yok, kart bağırmıyor */}
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 12 }}>
         <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: T.ink }} numberOfLines={1}>
@@ -698,15 +723,26 @@ function ProductionBarChart({ data }: { data: { label: string; count: number }[]
         return (
           <View key={i} style={{ flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end', gap: 6 }}>
             <View style={{ width: '100%', maxWidth: 56, flex: 1, justifyContent: 'flex-end', alignItems: 'center' }}>
-              {isHighlight && (
-                <View style={{ marginBottom: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline }}>
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: FILL_DARK }}>{d.count}</Text>
-                </View>
-              )}
+              {/* HER ayın değeri yazılır — eskiden yalnız en yüksek ayda pill vardı,
+                  diğer aylar sayısız kalıyordu. Klinik/Lab panolarıyla aynı kalıp:
+                  SABİT yükseklikli etiket zonu; çubuğu itmez, tabanlar hizalı kalır.
+                  (Rail'in height:'100%' olması bu zonla birlikte taşma yapıyordu →
+                  flex:1'e alındı.) */}
+              <View style={{ height: 20, justifyContent: 'center', alignItems: 'center' }}>
+                {d.count > 0 ? (
+                  isHighlight ? (
+                    <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: FILL_DARK }}>{d.count}</Text>
+                    </View>
+                  ) : (
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: T.ink3 }}>{d.count}</Text>
+                  )
+                ) : null}
+              </View>
               <View
                 style={{
                   width: '100%',
-                  height: '100%',
+                  flex: 1,
                   borderRadius: 999,
                   backgroundColor: RAIL_BG,
                   // @ts-ignore web hatched bg
@@ -715,6 +751,8 @@ function ProductionBarChart({ data }: { data: { label: string; count: number }[]
                   position: 'relative' as any,
                 }}
               >
+                {/* Native: CSS gradyanı yok → SVG tarama */}
+                <HatchFill color={PB} />
                 {d.count > 0 && (
                   <View
                     style={{
@@ -795,8 +833,6 @@ function WeeklyStrip({
           const receivedPct  = received > 0  ? Math.min(Math.max((received / SCALE_MAX) * 100, 8), 100) : 0;
           const completedRel = received > 0 ? Math.min((completed / received) * 100, 100) : 0;
           const empty = received === 0;
-          const showLabel = day.isToday && completed > 0;
-          const ratio = received > 0 ? Math.round((completed / received) * 100) : 0;
           return (
             <Pressable
               key={i}
@@ -805,16 +841,25 @@ function WeeklyStrip({
             >
               {/* Pill column — hatched rail always visible */}
               <View style={{ width: '100%', maxWidth: 56, flex: 1, justifyContent: 'flex-end', alignItems: 'center' }}>
-                {/* Completed label bubble */}
-                {showLabel && (
-                  <View style={{ marginBottom: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline }}>
-                    <Text style={{ fontSize: 10, fontWeight: '700', color: SAGE_DARK }}>{ratio}%</Text>
-                  </View>
-                )}
+                {/* HER günün alınan üye sayısı — aylık trend grafiğiyle aynı kalıp:
+                    SABİT yükseklikli değer zonu (çubuğu itmez, tabanlar hizalı).
+                    Eskiden burada yalnız BUGÜNÜN tamamlanma yüzdesi vardı, diğer
+                    günler sayısız kalıyordu. */}
+                <View style={{ height: 20, justifyContent: 'center', alignItems: 'center' }}>
+                  {!empty && (
+                    day.isToday ? (
+                      <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline }}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: SAGE_DARK }}>{received}</Text>
+                      </View>
+                    ) : (
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: T.ink3 }}>{received}</Text>
+                    )
+                  )}
+                </View>
                 <View
                   style={{
                     width: '100%',
-                    height: '100%',
+                    flex: 1,
                     borderRadius: 999,
                     backgroundColor: RAIL_BG,
                     // @ts-ignore web hatched bg
@@ -823,6 +868,8 @@ function WeeklyStrip({
                     position: 'relative' as any,
                   }}
                 >
+                  {/* Native: CSS gradyanı yok → SVG tarama */}
+                  <HatchFill color={PB} />
                   {!empty && (
                     <View
                       style={{
@@ -899,41 +946,19 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
       ]),
     ).start();
 
-    if (prefersReducedMotion()) { pulseAnim.setValue(1); return; }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1, duration: 3200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 0, duration: 3200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [arrowAnim, pulseAnim]);
+  }, [arrowAnim]);
 
   const arrowX = arrowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, isRTL() ? -6 : 6] });
   const handleHoverIn  = () => Animated.spring(scaleAnim, { toValue: 1.02, friction: 8, tension: 200, useNativeDriver: true }).start();
   const handleHoverOut = () => Animated.spring(scaleAnim, { toValue: 1,    friction: 8, tension: 200, useNativeDriver: true }).start();
 
   const neon = '#38BDF8';
-  const surface: any = isDark
-    ? {
-        backgroundColor: HERO_NAVY.from,
-        ...(Platform.OS === 'web' ? {
-          backgroundImage:
-            `radial-gradient(120% 78% at 50% -10%, ${hexA(HERO_NAVY.light, 0.95)} 0%, ${hexA(HERO_NAVY.to, 0.55)} 42%, rgba(0,0,0,0) 76%), ` +
-            `linear-gradient(160deg, #0A0A0A 0%, ${HERO_NAVY.from} 62%, ${HERO_NAVY.to} 100%)`,
-        } : {}),
-        borderWidth: 1,
-        borderColor: hexA(neon, 0.26),
-      }
-    : {
-        backgroundColor: PB,
-        ...(Platform.OS === 'web' ? {
-          backgroundImage:
-            `radial-gradient(120% 78% at 50% -10%, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0) 70%), ` +
-            `linear-gradient(135deg, ${PB} 0%, ${DS.exec.warning} 100%)`,
-        } : {}),
-      };
+  // Hızlı İşlem kartı HER İKİ temada da koyu/neon dilde (kullanıcı kararı):
+  // açık temadaki mavi→turuncu gradyan yerine koyu temanın lacivert yüzeyi.
+  // "neon navy" — CTA kartlarının imza yüzeyi (tek kaynak: useNeonNavy).
+  const nn = useNeonNavy(PB);
+  const surface: any = nn.surface;
+
 
   return (
     <Pressable onPress={onPress} onHoverIn={handleHoverIn} onHoverOut={handleHoverOut} style={{ flex: 1 }}>
@@ -947,49 +972,27 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
         transform: [{ scale: scaleAnim }],
         ...surface,
       }}>
-        {isDark && (
-          <>
-            {/* Üstteki ışık — çok yavaş genişleyip sönümlenir (materyal hissi) */}
-            <Animated.View pointerEvents="none" style={{
-              position: 'absolute', top: 0, start: 0, end: 0, height: '72%',
-              opacity: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] }),
-              transform: [{ scale: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] }) }],
-              ...(Platform.OS === 'web' ? {
-                backgroundImage: `radial-gradient(110% 100% at 50% -10%, ${hexA(neon, 0.28)} 0%, ${hexA(HERO_NAVY.light, 0.35)} 38%, rgba(0,0,0,0) 72%)`,
-              } as any : {}),
-            }} />
-            {/* Neon kenar — nabız yalnız bu katmanın opaklığında */}
-            <Animated.View pointerEvents="none" style={{
-              position: 'absolute', top: 0, start: 0, end: 0, bottom: 0,
-              borderRadius: DS.radius.xl,
-              borderWidth: 1, borderColor: neon,
-              opacity: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0.22, 0.7] }),
-              ...(Platform.OS === 'web'
-                ? { boxShadow: `0 0 18px ${hexA(neon, 0.35)}, inset 0 0 22px ${hexA(neon, 0.10)}` } as any
-                : {}),
-            }} />
-          </>
-        )}
+        {!nn.flat && <NeonPulse radius={DS.radius.xl} color={nn.glow} />}
         <View style={{ position: 'relative' }}>
           <Text style={{
             fontSize: 11, fontWeight: '500', letterSpacing: 0.1 * 11,
-            textTransform: 'uppercase', color: '#FFF', marginBottom: 14,
+            textTransform: 'uppercase', color: nn.inkSoft, marginBottom: 14,
           }}>
             {t('admin.dashboard.quickAction')}
           </Text>
           <Text style={{
             ...SERIF, fontSize: 32, letterSpacing: -0.02 * 32, lineHeight: 35,
-            color: '#FFF', marginBottom: 16,
+            color: nn.ink, marginBottom: 16,
           }}>
             {t('admin.dashboard.newOrder')}
           </Text>
           <View
-            className="flex-row items-center self-start rounded-full"
-            style={{ paddingHorizontal: 18, paddingVertical: 10, backgroundColor: '#FFF', gap: 8 }}
+            className="flex-row items-center self-end rounded-full"
+            style={{ paddingHorizontal: 18, paddingVertical: 10, backgroundColor: nn.pillBg, gap: 8 }}
           >
-            <Text style={{ fontSize: 13, fontWeight: '500', color: INK }}>{t('admin.buttons.start')}</Text>
+            <Text style={{ fontSize: 13, fontWeight: '500', color: nn.pillInk }}>{t('admin.buttons.start')}</Text>
             <Animated.View style={{ transform: [{ translateX: arrowX }] }}>
-              {isRTL() ? <ArrowLeft size={14} color={INK} strokeWidth={2} /> : <ArrowRight size={14} color={INK} strokeWidth={2} />}
+              {isRTL() ? <ArrowLeft size={14} color={nn.pillInk} strokeWidth={2} /> : <ArrowRight size={14} color={nn.pillInk} strokeWidth={2} />}
             </Animated.View>
           </View>
         </View>
@@ -1189,19 +1192,22 @@ function FinanceCard({ monthly, pending, paid }: { monthly: CurrencyTotal[]; pen
         ))}</View>;
   };
 
-  // UYARI (mevcut davranış korundu): bu oran para birimlerini toplayarak hesaplanıyor
-  // (₺0 + 615 € → tek oran). Katı per-currency kuralına aykırı; eski donut ring de
-  // aynı matematiği kullanıyordu. Ayrı bir karar gerektirir — bu redesign kapsamı değil.
-  const totalMonthly = (Array.isArray(monthly) ? monthly : []).reduce((s, c) => s + (Number(c.total) || 0), 0);
-  const totalPending = (Array.isArray(pending) ? pending : []).reduce((s, c) => s + (Number(c.total) || 0), 0);
-  const grandTotal   = totalMonthly + totalPending;
+  // Tahsil oranı yalnız tek döviz varken hesaplanır; dövizler birbirine toplanmaz
+  // (tek tanım 2026-10-26 — eskiden ₺0 + 615 € tek orana katılıyordu).
+  const mArr = Array.isArray(monthly) ? monthly : [];
+  const pArr = Array.isArray(pending) ? pending : [];
+  const sameCcy      = new Set([...mArr, ...pArr].map(c => c.currency)).size <= 1;
+  const totalMonthly = mArr.reduce((s, c) => s + (Number(c.total) || 0), 0);
+  const totalPending = pArr.reduce((s, c) => s + (Number(c.total) || 0), 0);
+  const grandTotal   = sameCcy ? totalMonthly + totalPending : 0;
   const collectRatio = grandTotal > 0 ? totalMonthly / grandTotal : 0;
   const collectPct   = Math.round(collectRatio * 100);
+  const pctText      = (p: number) => (sameCcy ? `${p}%` : '—');
 
   return (
     <SpineCard
       title={t('admin.dashboard.financialSummary')}
-      value={`${collectPct}%`}
+      value={pctText(collectPct)}
       unit="tahsil"
       // Veri yokken tam turuncu şerit göstermemek için boş bırak.
       segments={grandTotal > 0 ? [
@@ -1213,13 +1219,13 @@ function FinanceCard({ monthly, pending, paid }: { monthly: CurrencyTotal[]; pen
         color={CLR.green}
         label={t('admin.dashboard.monthlyCollection')}
         value={ccyLine(monthly, 13)}
-        meta={`${collectPct}%`}
+        meta={pctText(collectPct)}
       />
       <SpineRow
         color={CLR.orange}
         label={t('admin.dashboard.pendingInvoice')}
         value={ccyLine(pending, 13)}
-        meta={`${100 - collectPct}%`}
+        meta={pctText(100 - collectPct)}
       />
       {/* Nokta yok — bu bir sayaç, spine'daki paya dahil değil. */}
       <SpineRow
@@ -1235,6 +1241,8 @@ function FinanceCard({ monthly, pending, paid }: { monthly: CurrencyTotal[]; pen
 // ══════════════════════════════════════════════════════════════════
 export default function AdminDashboard() {
   const PB = usePanelBlue();
+  // Tarama programı kartı görünürken alt satır bölünür (sol: hafta + görevler, sağ: takvim)
+  const scanCard = useScanCardVisible().visible;
   const { t, i18n } = useTranslation();
   const router    = useRouter();
   const isDesktop = useIsDesktop();
@@ -1262,6 +1270,7 @@ export default function AdminDashboard() {
   const [overdueCount, setOverdue]        = useState(cache?.overdue ?? 0);
   const [totalDoctors, setDoctors]        = useState(cache?.totalDoctors ?? 0);
   const [totalLabUsers, setLabUsers]      = useState(cache?.totalLabUsers ?? 0);
+  const [canSeeStaff, setCanSeeStaff]     = useState(false);
   const [todayDelivery, setTodayDelivery] = useState(cache?.todayDelivery ?? 0);
   const [byStatus, setByStatus]           = useState<{ label: string; count: number; key: string }[]>(cache?.byStatus ?? []);
   // `unit` = hizmetin sayım birimi (üye/çene/adet…). Kart satır başına bunu
@@ -1292,9 +1301,30 @@ export default function AdminDashboard() {
   const lowStockCount = useStockAlert();
   // Görev kartını besleyen satırlar: faturasız teslimatlar + vadesi geçmiş faturalar
   const [unbilledRows, setUnbilledRows]     = useState<any[]>([]);
-  const [overdueInvoices, setOverdueInvoices] = useState<any[]>([]);
+  // Vadesi geçmiş alacak KLİNİK bazında (avans düşülmüş) — sabah "kime hatırlatayım" kararı.
+  const { rows: overdueClinics, refetch: refetchOverdueClinics } = useOverdueClinics();
+  // Finans özeti (tek tanım): bu ay tahsilat = makbuz günü + makbuzsuz ödeme; bekleyen =
+  // lab alacağı (avans düşülmüş). İkisi de döviz başına, toplanmaz.
+  const finToday = useLabToday();
+  const { rows: finPeriodRows } = useFinancePeriod(`${finToday.slice(0, 8)}01`, finToday);
+  const { rows: finRecvRows } = useLabReceivables();
+  useEffect(() => {
+    setFinMonthly(finPeriodRows.filter(r => r.collections !== 0)
+      .map(r => ({ currency: r.currency as Currency, total: r.collections, count: 0 })));
+  }, [finPeriodRows]);
+  useEffect(() => {
+    setFinPending(finRecvRows.filter(r => r.receivable !== 0)
+      .map(r => ({ currency: r.currency as Currency, total: r.receivable, count: 0 })));
+  }, [finRecvRows]);
   const loadUnbilled = useCallback(async () => {
     try {
+      // Finans yetkisi yoksa fatura bağı RLS'te gizli: görünüm her teslimatı faturasız
+      // gösterirdi. Kart boş kalır.
+      const { data: canFin } = await supabase.rpc('lab_can_view_finance');
+      if (canFin !== true) {
+        setUnbilledCount(0); setUnbilledClinics(0); setUnbilledTotals({}); setUnbilledRows([]);
+        return;
+      }
       const { data } = await supabase
         .from('v_unbilled_work_orders')
         .select('work_order_id, order_number, clinic_id, estimated_total, totals_by_currency, delivered_at')
@@ -1315,40 +1345,33 @@ export default function AdminDashboard() {
       setUnbilledRows(rows.slice(0, 2));
     } catch { /* skip */ }
   }, []);
-  const loadOverdueInvoices = useCallback(async () => {
-    try {
-      const todayStr = new Date().toISOString().slice(0, 10);
-      const { data } = await supabase
-        .from('invoices')
-        .select('id, invoice_number, total, paid_amount, due_date, currency')
-        .lt('due_date', todayStr)
-        .not('status', 'in', '("odendi","iptal","taslak")')  // taslak = henüz kesilmemiş fatura
-        .order('due_date', { ascending: true })
-        .limit(2);
-      setOverdueInvoices((data as any[]) ?? []);
-    } catch { /* skip */ }
-  }, []);
-  useEffect(() => { loadUnbilled(); loadOverdueInvoices(); }, [loadUnbilled, loadOverdueInvoices]);
+  useEffect(() => { loadUnbilled(); }, [loadUnbilled]);
 
   // ── Data loaders (mirroring Lab dashboard pattern) ──
 
+  // Tek tanım (2026-10-26): statü dağılımı, aktif, geciken, bugün gelen/teslim ve
+  // "bu ay gelen" order_metrics()'ten. Burada yalnız planlama bekleyen sayılır.
+  const { data: metrics, refetch: refetchMetrics } = useOrderMetrics();
+  useEffect(() => {
+    if (!metrics) return;
+    const counts: Record<string, number> = {};
+    STATUS_KEYS.forEach(k => { counts[k] = 0; });
+    Object.entries(metrics.by_status).forEach(([st, n]) => {
+      const b = STATUS_BUCKET[st];
+      if (b) counts[b] += n;
+    });
+    setPipelineCounts(counts);
+    setByStatus(STATUS_KEYS.map(k => ({ key: k, label: STATUS_CFG[k]?.labelKey ? t(STATUS_CFG[k].labelKey) : k, count: counts[k] })));
+    setTotalOrders(metrics.created_this_month);
+    setOverdue(metrics.overdue);
+    setTodayDelivery(metrics.due_today);
+    setTodayOrders(metrics.created_today);
+  }, [metrics, t]);
+  const totalActive = metrics?.active ?? cache?.totalActive ?? 0;
+
   const loadPipeline = useCallback(async () => {
     try {
-      const statuses = STATUS_KEYS;
-      // 'asamada' = sipariş aktif iş akışı aşamasında → "üretimde" kovasına say
-      // (STATUS_KEYS'te ayrı yer yok; üretim olarak gösterilir).
-      const results = await Promise.all([
-        ...statuses.map(st =>
-          supabase.from('work_orders').select('id', { count: 'exact', head: true }).eq('status', st)
-        ),
-        supabase.from('work_orders').select('id', { count: 'exact', head: true }).eq('status', 'asamada'),
-      ]);
-      const asamadaCount = results[statuses.length].count ?? 0;
-      const counts: Record<string, number> = {};
-      statuses.forEach((st, i) => { counts[st] = results[i].count ?? 0; });
-      counts['uretimde'] = (counts['uretimde'] ?? 0) + asamadaCount;
-      setPipelineCounts(counts);
-
+      refetchMetrics();
       // Planlama bekleyen: yalnız triaged_at NULL olan 'alindi' siparişler (planlanmamış).
       const planRes = await supabase
         .from('work_orders')
@@ -1357,25 +1380,15 @@ export default function AdminDashboard() {
         .is('triaged_at', null)
         .or('is_archived.is.null,is_archived.eq.false');
       setPlanningPending(planRes.count ?? 0);
-
-      // Toplam = work_orders'ın doğrudan (arşiv hariç) sayısı — status kovaları
-      // toplamı, bilinmeyen/özel durumdaki siparişleri kaçırıyordu.
-      const totalRes = await supabase
-        .from('work_orders')
-        .select('id', { count: 'exact', head: true })
-        .or('is_archived.is.null,is_archived.eq.false');
-      setTotalOrders(totalRes.count ?? statuses.reduce((s, _st, i) => s + (results[i].count ?? 0), 0));
-
-      setByStatus(statuses.map((k, i) => ({ key: k, label: STATUS_CFG[k]?.labelKey ? t(STATUS_CFG[k].labelKey) : k, count: (results[i].count ?? 0) + (k === 'uretimde' ? asamadaCount : 0) })));
     } catch (e) { if ((e as any)?.code !== '42501') console.error('[AdminDashboard] loadPipeline error:', e); }
-  }, [t]);
+  }, [refetchMetrics]);
 
   const loadRecent = useCallback(async () => {
     const { data, error } = await supabase
       .from('work_orders')
       // hold_status + revizyon alanları: durum etiketi ve vaka gruplaması için
       // gerekli (bu sorgu ikisini de seçmiyordu → revizyonlar köksüz görünüyordu)
-      .select('id, order_number, work_type, status, hold_status, delivery_date, doctor_id, patient_name, revision_of_id, revision_no, continues_order_id')
+      .select('id, order_number, work_type, status, hold_status, hold_category, is_archived, delivery_date, doctor_id, patient_name, revision_of_id, revision_no, continues_order_id')
       .order('created_at', { ascending: false })
       .limit(8);
     // 42501 = oturum kapandıktan sonra (anon) gelen "permission denied" — çıkışta
@@ -1410,7 +1423,7 @@ export default function AdminDashboard() {
     // satırı ebeveyninin altına girintili girmez (köksüz, düz satır görünür).
     setRecentOrders(rows.map((o: any) => ({
       id: o.id, order_number: o.order_number, work_type: o.work_type,
-      status: o.status, hold_status: o.hold_status ?? null,
+      status: o.status, hold_status: o.hold_status ?? null, hold_category: o.hold_category ?? null,
       delivery_date: o.delivery_date, is_urgent: o.is_urgent ?? false,
       revision_of_id: o.revision_of_id ?? null,
       revision_no: o.revision_no ?? null,
@@ -1422,23 +1435,19 @@ export default function AdminDashboard() {
   }, []);
 
   const loadExtra = useCallback(async () => {
-    const today = todayStr();
+    const today = labTodayOf(cachedLabTz());
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
     const in3Days = new Date(); in3Days.setDate(in3Days.getDate() + 3);
     const in3DaysStr = in3Days.toISOString().split('T')[0];
 
-    // 3 sorgu paralel — eskiden seri idi (~3× round-trip).
-    const [mainRes, todayRes, upcomingRes, servicesRes] = await Promise.all([
+    // Sorgular paralel. Bugün gelen sayısı order_metrics()'ten.
+    const [mainRes, upcomingRes, servicesRes] = await Promise.all([
       supabase
         .from('work_orders')
         .select('id, work_type, status, delivery_date, created_at, tooth_numbers')
         .gte('created_at', sixMonthsAgo.toISOString())
         .order('created_at', { ascending: false }),
-      supabase
-        .from('work_orders')
-        .select('id', { count: 'exact', head: true })
-        .gte('created_at', `${today}T00:00:00`),
       supabase
         .from('work_orders')
         .select('id, order_number, status, delivery_date, doctor_id')
@@ -1471,7 +1480,6 @@ export default function AdminDashboard() {
         ]),
       );
       const wtMap: Record<string, { count: number; unit: string | null }> = {};
-      let overdueN = 0, todayDeliveryN = 0;
 
       for (const o of data) {
         const teeth = Array.isArray((o as any).tooth_numbers) ? (o as any).tooth_numbers.length : 0;
@@ -1499,8 +1507,6 @@ export default function AdminDashboard() {
             unit,
           };
         }
-        if (o.delivery_date < today && o.status !== 'teslim_edildi') overdueN++;
-        if (o.delivery_date === today && o.status !== 'teslim_edildi') todayDeliveryN++;
       }
 
       setMonthly(monthBuckets.map(b => ({ label: monthsShort[b.m], count: b.count })));
@@ -1515,11 +1521,8 @@ export default function AdminDashboard() {
           .sort((a, b) => b[1].count - a[1].count)
           .map(([label, v]) => ({ label, count: v.count, unit: v.unit })),
       );
-      setOverdue(overdueN);
-      setTodayDelivery(todayDeliveryN);
     }
 
-    setTodayOrders(todayRes.count ?? 0);
     // Upcoming hekim adlarını polimorfik doctor_id'den çöz (doctors + profiles).
     const upRows = (upcomingRes.data ?? []) as any[];
     const upIds = Array.from(new Set(upRows.map(o => o.doctor_id).filter(Boolean)));
@@ -1540,37 +1543,32 @@ export default function AdminDashboard() {
 
   const loadProfiles = useCallback(async () => {
     // 2 count query paralel — eskiden tüm profiles satırları çekiliyordu.
-    const [doctorRes, labRes] = await Promise.all([
+    const [doctorRes, labRes, canView, canManage] = await Promise.all([
       // Hekimler `doctors` tablosunda (kliniklere bağlı) — profiles user_type='doctor'
       // sadece uygulamaya giriş yapan hekimleri sayıyordu, çoğu hekimi kaçırıyordu.
-      supabase.from('doctors').select('id', { count: 'exact', head: true }),
-      supabase.from('profiles').select('id', { count: 'exact', head: true }).in('user_type', ['lab', 'lab_user', 'mesul_mudur']),
+      // PASİF kayıtlar sayılmaz: işten ayrılmış hekim / kapatılmış lab kullanıcısı
+      // sayaçta görünüyordu. is_active NULL olan ESKİ kayıtlar aktif sayılır —
+      // aksi halde geçmiş veri sessizce sayıdan düşerdi.
+      supabase.from('doctors').select('id', { count: 'exact', head: true })
+        .or('is_active.is.null,is_active.eq.true'),
+      // Tek tanım (2026-10-26): "Aktif personel" = Ekip'teki aktif personel kayıtları (employees),
+      // giriş hesabı değil. Personeli görme yetkisi yoksa RLS yalnız kendi satırını verir → kart gizlenir.
+      supabase.from('employees').select('id', { count: 'exact', head: true }).eq('is_active', true),
+      supabase.rpc('has_permission', { p_key: 'view_employees' }),
+      supabase.rpc('has_permission', { p_key: 'manage_employees' }),
     ]);
     setDoctors(doctorRes.count ?? 0);
     setLabUsers(labRes.count ?? 0);
+    setCanSeeStaff(canView.data === true || canManage.data === true);
   }, []);
 
   const loadFinance = useCallback(async () => {
     try {
       const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
-      // KATI per-currency: faturanın kendi para biriminde, asla baz'a çevrilip toplanmaz.
-      const ccyOf = (i: any) => (i.currency || 'TRY') as Currency;
-      const [invRes, pendRes] = await Promise.all([
-        supabase.from('invoices').select('total, paid_amount, status, currency').gte('created_at', monthStart.toISOString()),
-        // Bekleyen = kesilmiş ama tamamı tahsil edilmemiş (kesildi + kısmi ödenmiş)
-        supabase.from('invoices').select('total, paid_amount, status, currency').in('status', ['kesildi', 'kismi_odendi']),
-      ]);
-      if (invRes.data) {
-        const paid = invRes.data.filter((i: any) => i.status === 'odendi');
-        setFinMonthly(groupByCurrency(paid, (i: any) => ({ amount: Number(i.total) || 0, currency: ccyOf(i) })));
-        setFinPaidCount(paid.length);
-      }
-      if (pendRes.data) {
-        // Bekleyen tutar = kalan (total - paid_amount), kendi para biriminde
-        setFinPending(groupByCurrency(pendRes.data, (i: any) => ({
-          amount: Math.max(0, Number(i.total ?? 0) - Number(i.paid_amount ?? 0)), currency: ccyOf(i),
-        })));
-      }
+      // Bu ay tahsilat ve bekleyen tutar useFinancePeriod / useLabReceivables'tan
+      // (tek tanım). Burada yalnız ödenen fatura adedi sayılır.
+      const invRes = await supabase.from('invoices').select('status').eq('status', 'odendi').gte('created_at', monthStart.toISOString());
+      if (invRes.data) setFinPaidCount(invRes.data.length);
     } catch { /* invoices table may not exist */ }
   }, []);
 
@@ -1590,21 +1588,21 @@ export default function AdminDashboard() {
   useEffect(() => {
     const t = setTimeout(() => {
       setCache({
-        pipelineCounts, byStatus, totalOrders, totalActive: totalOrders - (byStatus.find(s => s.key === 'teslim_edildi')?.count ?? 0),
+        pipelineCounts, byStatus, totalOrders, totalActive,
         monthly, weekCounts, weekDone, byWorkType, overdue: overdueCount, todayDelivery, todayOrders,
         recentOrders, upcoming, totalDoctors, totalLabUsers, finMonthly, finPending, finPaidCount,
       });
     }, 200);
     return () => clearTimeout(t);
   }, [
-    pipelineCounts, byStatus, totalOrders, monthly, weekCounts, weekDone, byWorkType,
+    pipelineCounts, byStatus, totalOrders, totalActive, monthly, weekCounts, weekDone, byWorkType,
     overdueCount, todayDelivery, todayOrders, recentOrders, upcoming,
     totalDoctors, totalLabUsers, finMonthly, finPending, finPaidCount, setCache,
   ]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([loadRecent(), loadPipeline(), loadExtra(), loadProfiles(), loadFinance()]);
+    await Promise.all([loadRecent(), loadPipeline(), loadExtra(), loadProfiles(), loadFinance(), refetchOverdueClinics()]);
     setRefreshing(false);
   };
 
@@ -1613,10 +1611,9 @@ export default function AdminDashboard() {
     Promise.all([loadRecent(), loadPipeline(), loadExtra(), loadProfiles(), loadFinance()]);
   });
 
-  const today = todayStr();
+  const today = useLabToday();
 
   // Derived stats
-  const totalActive = totalOrders - (byStatus.find(s => s.key === 'teslim_edildi')?.count ?? 0);
   // pipeCount: yüzdenin gerçek paydası (0 olabilir) — "1 / 9" bağlamı bundan yazılır.
   const pipeCount = Object.values(pipelineCounts).reduce((s, v) => s + v, 0);
   const totalPipe = pipeCount || 1;
@@ -1639,7 +1636,8 @@ export default function AdminDashboard() {
   };
 
   // Overdue orders as tasks
-  const overdueOrdersFromRecent = recentOrders.filter(o => o.delivery_date < today && o.status !== 'teslim_edildi');
+  // Tek tanım: iptal/arşiv/beklemedeki gecikmez (Geciken rozetiyle aynı kural).
+  const overdueOrdersFromRecent = recentOrders.filter(o => isOverdueOrder(o as any, today));
   overdueOrdersFromRecent.slice(0, 2).forEach(o => {
     const late = daysLate(o.delivery_date);
     taskItems.push({
@@ -1687,22 +1685,27 @@ export default function AdminDashboard() {
     });
   });
 
-  // Vadesi geçmiş fatura → tahsilat (kalan tutar faturanın kendi para biriminde)
-  overdueInvoices.forEach((inv: any) => {
-    const remaining = formatMoney(
-      (Number(inv.total) || 0) - (Number(inv.paid_amount) || 0),
-      (inv.currency ?? 'TRY') as Currency,
-      { fractionDigits: 0 },
-    );
-    const late = daysLate(inv.due_date);
+  // Vadesi geçmiş alacak → kime ödeme hatırlatılacak (klinik bazında, avans düşülmüş;
+  // hatırlatmanın göndereceği tutarla aynı). En çok geciken 3 klinik.
+  overdueClinics.slice(0, 3).forEach((c) => {
     taskItems.push({
       icon: Wallet as React.FC<any>,
-      label: `${autoT('Tahsilat yap')} · ${inv.invoice_number ?? autoT('fatura')}`,
-      time: late ? `${remaining} ${autoT('kaldı')} · ${late} ${autoT('gün vadesi geçti')}` : `${remaining} ${autoT('kaldı')}`,
+      label: `${autoT('Ödeme hatırlat')} · ${c.clinic_name}`,
+      time: overdueClinicLine(c),
       done: false,
-      onPress: () => router.push(`/(admin)/invoice/${inv.invoice_number ?? inv.id}` as any),
+      onPress: () => router.push(`/(admin)/statement/${c.clinic_id}` as any),
     });
   });
+  // 3'ten fazlası gizlenmesin: kalanlar Cari listesinde (aynı tutar, aynı sıra).
+  if (overdueClinics.length > 3) {
+    taskItems.push({
+      icon: Wallet as React.FC<any>,
+      label: `+${overdueClinics.length - 3} ${autoT('klinik daha')}`,
+      time: autoT('Cari Hesap'),
+      done: false,
+      onPress: () => router.push('/(admin)/finance?tab=clinic_balance' as any),
+    });
+  }
 
   if (lowStockCount > 0) {
     taskItems.push({
@@ -1733,15 +1736,6 @@ export default function AdminDashboard() {
   const recentRows = flattenRevisionCases(recentWithParents);
 
   if (!isDesktop) {
-    // Bu hafta bar değerleri — GERÇEK veri (weekCounts zaten yüklü; desktop kartı
-    // da aynı kaynağı kullanıyor). Eskiden [0,0,0,0,0,0,todayOrders] stub'ıydı:
-    // 6 gün hep boş görünüyor, bugünkü değer de daima son sütuna yazılıyordu.
-    // weekDays Pazartesi'den başlar; etiket ve bugün indeksi de oradan gelir ki
-    // sütunlarla veri hizalı olsun (i18n listesi Pazar ile başlıyor).
-    const weekBars   = weekDays.map(d => weekCounts[d.date] ?? 0);
-    const weekLabels = weekDays.map(d => d.label.split(' ')[0]);
-    const weekTodayIndex = weekDays.findIndex(d => d.isToday);
-
     // Notification buckets — admin-specific
     const { NotificationsSheet } = require('../../core/ui/mobile/NotificationsSheet');
     const notifApprovals = recentOrders
@@ -1780,8 +1774,8 @@ export default function AdminDashboard() {
 
     // Son Siparişler — mobil kart listesi (başlık = hekim adı; admin lab'ı yönetir)
     const toRecentItem = (o: any) => {
-      const st = resolveOrderStatus(o.status, o.hold_status);
-      const isOverdue = !!o.delivery_date && o.delivery_date < today && o.status !== 'teslim_edildi';
+      const st = resolveOrderStatus(o.status, o.hold_status, (o as any).hold_category);
+      const isOverdue = isOverdueOrder(o, today);
       const drName = o.doctor_name || '—';
       const ptName = (o.patient_name && String(o.patient_name).trim()) ? String(o.patient_name).trim() : '';
       return {
@@ -1808,9 +1802,18 @@ export default function AdminDashboard() {
           onOpenOrderById={(dbId: string) => router.push(`/(admin)/order/${dbId}` as any)}
           onAllOrders={() => router.push('/(admin)/orders' as any)}
           liveActive={totalActive}
-          liveTotal={totalOrders}
-          liveStages={{ alindi: 0, uretim: totalActive, kk: 0, hazir: 0 }}
-          livePercent={totalOrders > 0 ? Math.round((totalActive / totalOrders) * 100) : 0}
+          liveTotal={pipeCount}
+          liveDueToday={todayDelivery}
+          // Aşamalar masaüstü CANLI kartıyla AYNI kaynaktan (pipelineCounts) — eskiden sabit 0/aktif/0/0 gidiyordu
+          liveStages={{
+            alindi: pipelineCounts['alindi'] ?? 0,
+            uretim: pipelineCounts['uretimde'] ?? 0,
+            kk:     pipelineCounts['kalite_kontrol'] ?? 0,
+            hazir:  pipelineCounts['teslimata_hazir'] ?? 0,
+          }}
+          // Halka = masaüstü "Teslim Oranı" (teslim edilen / arşiv-iptal hariç tümü)
+          liveDelivered={deliveredPipe}
+          livePercent={deliveryPct}
           liveTimer={new Date().toLocaleTimeString(localeTag(i18n.language), { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           monthlyRevenue={'—'}
           monthlyDelta={undefined}
@@ -1818,11 +1821,7 @@ export default function AdminDashboard() {
           productionCount={totalActive}
           overdueCount={overdueCount}
           pendingApprovalsCount={notifApprovals.length}
-          weekBars={weekBars}
-          weekLabels={weekLabels}
-          weekTodayIndex={weekTodayIndex}
-          weekRange={`${fmtDate(weekDays[0].date)} – ${fmtDate(weekDays[6].date)}`}
-          weekTotal={weekBars.reduce((a, b) => a + b, 0)}
+          memberTrend={monthly}
           onNewOrder={() => useNewOrderModalStore.getState().setOpen(true)}
           onScan={() => router.push('/(admin)/scan' as any)}
           onApprovals={() => router.push('/(admin)/approvals' as any)}
@@ -1878,20 +1877,26 @@ export default function AdminDashboard() {
             {/* Stat pills row */}
             <View className="flex-row flex-wrap items-center" style={{ gap: 14, marginTop: 14 }}>
               <StatPill label={t('admin.dashboard.production')} value={`${productionPct}%`} bg={isDark ? 'rgba(255,255,255,0.14)' : INK} color={isDark ? (T.ink as string) : '#FFF'} />
-              <StatPill label={t('admin.dashboard.active')} value={totalActive} bg={PB} color="#FFF" />
-              <StatPill label={t('admin.dashboard.today')} value={todayOrders} bg={isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)'} color={T.ink} />
+              <GlassTooltip title={t('admin.dashboard.active')} text={autoT(METRIC_HINTS.active)}>
+                <StatPill label={t('admin.dashboard.active')} value={totalActive} bg={PB} color="#FFF" />
+              </GlassTooltip>
+              <GlassTooltip title={t('admin.dashboard.newToday')} text={autoT(METRIC_HINTS.newToday)}>
+                <StatPill label={t('admin.dashboard.newToday')} value={todayOrders} bg={isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)'} color={T.ink} />
+              </GlassTooltip>
               {/* Geciken + planlanacak AYNI satırda: StatPill ile eşit ölçülü
                   rozetler. İkinci bir şerit yok; renk tek başına yeter. */}
               {overdueCount > 0 && (
-                <AlertPillX
-                  icon={AlertTriangle}
-                  count={overdueCount}
-                  label={t('admin.dashboard.overdue')}
-                  color={CLR.red}
-                  labelColor="#9C2E2E"
-                  pulse
-                  onPress={() => router.push('/(admin)/orders' as any)}
-                />
+                <GlassTooltip title={t('admin.dashboard.overdue')} text={autoT(METRIC_HINTS.overdue)}>
+                  <AlertPillX
+                    icon={AlertTriangle}
+                    count={overdueCount}
+                    label={t('admin.dashboard.overdue')}
+                    color={CLR.red}
+                    labelColor="#9C2E2E"
+                    pulse
+                    onPress={() => router.push('/(admin)/orders?filter=overdue' as any)}
+                  />
+                </GlassTooltip>
               )}
               {planningPending > 0 && (
                 <AlertPillX
@@ -1913,29 +1918,36 @@ export default function AdminDashboard() {
               alignSelf: sol kolon daha uzun olduğunda KPI bloğu tepede kalıp
               altında boşluk bırakıyordu. */}
           <View className="flex-row" style={{ gap: 24, alignItems: 'flex-end', alignSelf: 'flex-end' }}>
-            <BigStat value={totalOrders} label={t('admin.dashboard.totalOrders')} />
+            <GlassTooltip title={t('admin.dashboard.newThisMonth')} text={autoT(METRIC_HINTS.newThisMonth)}>
+              <BigStat value={totalOrders} label={t('admin.dashboard.newThisMonth')} />
+            </GlassTooltip>
             <StatDivider />
             <BigStat value={totalDoctors} label={t('admin.dashboard.doctor')} />
             <StatDivider />
-            <BigStat value={totalLabUsers} label={t('admin.dashboard.labUser')} />
+            {canSeeStaff && (
+              <GlassTooltip title={t('admin.dashboard.activeStaff')} text={autoT(METRIC_HINTS.activeStaff)}>
+                <BigStat value={totalLabUsers} label={t('admin.dashboard.activeStaff')} />
+              </GlassTooltip>
+            )}
           </View>
         </View>
       </View>
 
-      {/* ════════ 4-CARD GRID ════════ */}
-      <View
-        className={isDesktop ? 'flex-row' : ''}
-        style={{ gap: 16, marginBottom: 16 }}
-      >
+      {/* ════════ 4-CARD GRID — eşit sütunlar; alt sıra aynı ızgarada hizalı (DashGrid) ════════ */}
+      <DashRow gap={16} style={{ marginBottom: 16 }}>
+        <DashHalf gap={16}>
         {/* Card 1: Aktif Vaka — dark top + white bottom + animations */}
+        <DashCell>
         <AnimatedAktifVakaCard
           isDesktop={isDesktop}
           pipelineCounts={pipelineCounts}
           latestOrder={latestOrder}
           router={router}
         />
+        </DashCell>
 
         {/* Card 2: Sipariş Trendi (bar chart) */}
+        <DashCell>
         <Card style={{ flex: isDesktop ? 1 : undefined, padding: 22, marginBottom: isDesktop ? 0 : 16 }}>
           <View className="flex-row items-start justify-between" style={{ marginBottom: 12 }}>
             <View>
@@ -1960,8 +1972,12 @@ export default function AdminDashboard() {
             </View>
           )}
         </Card>
+        </DashCell>
+        </DashHalf>
 
+        <DashHalf gap={16}>
         {/* Card 3: Üretim Ring — PercentRingHero on white bg */}
+        <DashCell>
         <Card style={{ flex: isDesktop ? 1 : undefined, padding: 22, alignItems: 'center', marginBottom: isDesktop ? 0 : 16 }}>
           <View className="w-full flex-row items-center justify-between" style={{ marginBottom: 8 }}>
             <Text style={{ fontSize: 14, fontWeight: '500', color: T.ink }}>{t('admin.dashboard.deliveryRate')}</Text>
@@ -1991,23 +2007,29 @@ export default function AdminDashboard() {
             </View>
           </View>
         </Card>
+        </DashCell>
 
         {/* Card 4: Yeni Sipariş CTA — Hero */}
-        <View style={{ flex: isDesktop ? 1 : undefined }}>
+        <DashCell>
+        <View style={{ flex: 1 }}>
           <AnimatedCTACard onPress={() => router.push('/(admin)/new-order' as any)} isDesktop={isDesktop} />
         </View>
-      </View>
+        </DashCell>
+        </DashHalf>
+      </DashRow>
 
-      {/* ════════ BOTTOM ROW — Weekly + Bugünkü Görevler ════════ */}
-      <View className={isDesktop ? 'flex-row' : ''} style={{ gap: 16, marginBottom: 16 }}>
-        <WeeklyStrip
-          weekDays={weekDays}
-          weekCounts={weekCounts}
-          weekDone={weekDone}
-          onPress={() => router.push('/(admin)/orders' as any)}
-        />
-        <TasksCard tasks={taskItems} />
-      </View>
+      {/* ════════ İKİNCİ SIRA — Bugünkü Görevler + tarama widget'ı (yarımlar).
+          "Bu hafta" en altta, İş Tipi Dağılımı'nın yanında (kullanıcı isteği). ════════ */}
+      <DashRow gap={16} style={{ marginBottom: 16 }}>
+        <DashHalf gap={16}>
+          <DashCell><TasksCard tasks={taskItems} /></DashCell>
+        </DashHalf>
+        {scanCard ? (
+          <DashHalf gap={16}>
+            <DashCell><ScanCalendarCard style={{ flex: 1 }} /></DashCell>
+          </DashHalf>
+        ) : null}
+      </DashRow>
 
       {/* ════════ EXTRA SECTIONS (below fold) ════════ */}
 
@@ -2019,19 +2041,21 @@ export default function AdminDashboard() {
         <>
           {/* Son Siparişler — Patterns table */}
           <Card style={{ marginBottom: 16 }}>
-            <View className="flex-row items-center justify-between" style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: T.hairline }}>
-              <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: T.ink }}>{t('admin.dashboard.recentOrders')}</Text>
+            {/* Kart başlığı — düz panel accent'i (navy). Metin luminance ile seçilir. */}
+            <View className="flex-row items-center justify-between" style={{ padding: 20, backgroundColor: PB }}>
+              <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: onAccentInk(PB) }}>{t('admin.dashboard.recentOrders')}</Text>
               <Pressable onPress={() => router.push('/(admin)/orders' as any)}>
-                <Text style={{ fontSize: 13, color: PB, fontWeight: '700' }}>{t('admin.dashboard.viewAll')}</Text>
+                <Text style={{ fontSize: 13, color: onAccentInk(PB), fontWeight: '700' }}>{t('admin.dashboard.viewAll')}</Text>
               </Pressable>
             </View>
 
-            {/* Table header */}
+            {/* Kolon şeridi — navy başlığın ALTINDA sakin ton kalır; iki accent
+                bandı üst üste gelince tablo ağırlaşıyordu. */}
             <View
               className="flex-row items-center"
               style={{
                 paddingHorizontal: 20, paddingVertical: 11,
-                borderTopWidth: 1, borderTopColor: T.hairline,
+                borderBottomWidth: 1, borderBottomColor: T.hairline,
                 backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : DS.ink[50],
               }}
             >
@@ -2045,7 +2069,7 @@ export default function AdminDashboard() {
             {recentOrders.length === 0
               ? <Text className="p-6 text-center" style={{ fontSize: 13, color: T.ink3 }}>{loading ? t('common.loading') : t('admin.dashboard.noOrders')}</Text>
               : recentRows.map((order: any, idx: number) => {
-                  const overdue = order.delivery_date < today && order.status !== 'teslim_edildi';
+                  const overdue = isOverdueOrder(order as any, today);
                   const isLast  = idx === recentRows.length - 1;
                   return (
                     <Pressable
@@ -2058,7 +2082,7 @@ export default function AdminDashboard() {
                         backgroundColor: overdue
                           ? 'rgba(217,75,75,0.06)'
                           : hovered === order.id
-                            ? 'rgba(233,119,87,0.06)'
+                            ? hexA(PB, 0.06)   // mercan yerine panel accent'i — tema dışı pembe kalkti
                             : undefined,
                       }}
                       onPress={() => router.push(`/(admin)/order/${order.id}` as any)}
@@ -2176,16 +2200,32 @@ export default function AdminDashboard() {
             </Pressable>
           )}
 
-          {/* Finance + Status + Work Type — 2-column below fold */}
-          <View className={isDesktop ? 'flex-row' : ''} style={{ gap: 16, marginBottom: 16 }}>
-            <View style={{ flex: isDesktop ? 1 : undefined, gap: 16 }}>
-              <FinanceCard monthly={finMonthly} pending={finPending} paid={finPaidCount} />
-              {byWorkType.length > 0 && <WorkTypeCard data={byWorkType} />}
-            </View>
-            <View style={{ flex: isDesktop ? 1 : undefined, gap: 16, marginTop: isDesktop ? 0 : 16 }}>
-              <StatusDistCard byStatus={byStatus} />
-            </View>
-          </View>
+          {/* Finans + Statü, altında İş Tipi + Bu hafta — aynı ızgara, sıra içinde eş boy */}
+          <DashRow gap={16} style={{ marginBottom: 16 }}>
+            <DashHalf gap={16}>
+              <DashCell><FinanceCard monthly={finMonthly} pending={finPending} paid={finPaidCount} /></DashCell>
+            </DashHalf>
+            <DashHalf gap={16}>
+              <DashCell><StatusDistCard byStatus={byStatus} /></DashCell>
+            </DashHalf>
+          </DashRow>
+          <DashRow gap={16} style={{ marginBottom: 16 }}>
+            {byWorkType.length > 0 ? (
+              <DashHalf gap={16}>
+                <DashCell><WorkTypeCard data={byWorkType} /></DashCell>
+              </DashHalf>
+            ) : null}
+            <DashHalf gap={16}>
+              <DashCell>
+                <WeeklyStrip
+                  weekDays={weekDays}
+                  weekCounts={weekCounts}
+                  weekDone={weekDone}
+                  onPress={() => router.push('/(admin)/orders' as any)}
+                />
+              </DashCell>
+            </DashHalf>
+          </DashRow>
         </>
       )}
 

@@ -4,57 +4,131 @@
     {
       "name": "Expo Web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "my-expo-app", "run", "web"],
+      "runtimeArgs": [
+        "--prefix",
+        "my-expo-app",
+        "run",
+        "web"
+      ],
       "port": 8081,
+      "autoPort": false
+    },
+    {
+      "name": "Expo Web 8082",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd my-expo-app && npx expo start --web --port 8082"
+      ],
+      "port": 8082,
       "autoPort": false
     },
     {
       "name": "Sinav",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["-y", "serve", "exam", "-l", "4700"],
+      "runtimeArgs": [
+        "-y",
+        "serve",
+        "exam",
+        "-l",
+        "4700"
+      ],
       "port": 4700,
       "autoPort": false
     },
     {
       "name": "Denty",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "denty-ui", "run", "dev", "--", "--port", "4800"],
+      "runtimeArgs": [
+        "--prefix",
+        "denty-ui",
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "4800"
+      ],
       "port": 4800,
       "autoPort": false
     },
     {
       "name": "siman-deck",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["-y", "serve", "/Users/saber/Downloads/siman-deck", "-l", "8911"],
+      "runtimeArgs": [
+        "-y",
+        "serve",
+        "/Users/saber/Downloads/siman-deck",
+        "-l",
+        "8911"
+      ],
       "port": 8911,
       "autoPort": false
     },
     {
       "name": "esenkim-motion",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "/Users/saber/Downloads/esenkim-motion", "run", "dev", "--", "--port", "8914", "--strictPort"],
+      "runtimeArgs": [
+        "--prefix",
+        "/Users/saber/Downloads/esenkim-motion",
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "8914",
+        "--strictPort"
+      ],
       "port": 8914,
       "autoPort": false
     },
     {
       "name": "palomar-hero",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "/Users/saber/palomar-hero", "run", "dev"],
+      "runtimeArgs": [
+        "--prefix",
+        "/Users/saber/palomar-hero",
+        "run",
+        "dev"
+      ],
       "port": 5190,
       "autoPort": false
     },
     {
       "name": "pluskimya-onizleme",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["-y", "serve", "/Users/saber/pluskimya/onizleme", "-l", "8920"],
+      "runtimeArgs": [
+        "-y",
+        "serve",
+        "/Users/saber/pluskimya/onizleme",
+        "-l",
+        "8920"
+      ],
       "port": 8920,
       "autoPort": false
     },
     {
       "name": "nexadent-catalog",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["-y", "serve", "nexadent-catalog", "-l", "8912"],
+      "runtimeArgs": [
+        "-y",
+        "serve",
+        "nexadent-catalog",
+        "-l",
+        "8912"
+      ],
       "port": 8912,
+      "autoPort": false
+    },
+    {
+      "name": "siman-store",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "-y",
+        "serve",
+        "my-expo-app/store-assets",
+        "-l",
+        "8915"
+      ],
+      "port": 8915,
       "autoPort": false
     }
   ]

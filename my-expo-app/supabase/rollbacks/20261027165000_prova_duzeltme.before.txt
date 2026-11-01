@@ -1,0 +1,3 @@
+# 20261027165000_prova_duzeltme — önceki tanımlar: resume_order + _prova_from_delivery (20261027161000), appt_save (20261027164000);
+# provas: authenticated ve anon INSERT/UPDATE/DELETE/TRUNCATE yetkili (Supabase varsayılanı) — canlı ölçümle doğrulanır.
+privs : authenticated:DELETE,authenticated:INSERT,authenticated:REFERENCES,authenticated:SELECT,authenticated:TRIGGER,authenticated:TRUNCATE,authenticated:UPDATE

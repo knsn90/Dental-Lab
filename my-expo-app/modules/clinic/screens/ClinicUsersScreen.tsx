@@ -28,6 +28,7 @@ import { isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { WhiteHero } from '../../../core/ui/WhiteHero';
 import { useInkUI } from '../../../core/theme/inkScale';
+import { MobileTableX, MobileTableRowX, useMobileTableText } from '../../../core/ui/MobileTableX';
 
 const SERIF = { fontFamily: DS.font.display as string, fontWeight: '300' as const };
 const P     = DS.clinic.primary;
@@ -120,55 +121,44 @@ function FilterPill({ icon: Icon, label, active, accent, onPress }: {
   );
 }
 
-function UserRow({ user, onPress }: { user: ClinicUser; onPress: () => void }) {
+function UserRow({ user, isLast, onPress }: { user: ClinicUser; isLast: boolean; onPress: () => void }) {
   const U = useInkUI();
+  const MT = useMobileTableText();
   const { t } = useTranslation();
   const rtl = isRTL();
   const meta = ROLE_META[user.user_type] ?? ROLE_META.doctor;
   const Icon = meta.icon;
+  const sub = [user.specialty, user.phone].filter(Boolean).join(' · ');
   return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        flexDirection: 'row', alignItems: 'center', gap: 14,
-        paddingHorizontal: 16, paddingVertical: 14,
-        borderTopWidth: 1, borderTopColor: U.hairlineSoft,
-        ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-      }}
-    >
-      {/* Avatar */}
+    <MobileTableRowX isLast={isLast} onPress={onPress}>
+      {/* Baş harf karesi — ikon karesiyle aynı ölçü, rol tonunda */}
       <View style={{
-        width: 42, height: 42, borderRadius: 21, backgroundColor: `${meta.accent}${U.isDark ? '3D' : '18'}`,
+        width: 32, height: 32, borderRadius: 10, backgroundColor: `${meta.accent}${U.isDark ? '3D' : '18'}`,
         alignItems: 'center', justifyContent: 'center',
       }}>
-        <Text style={{ fontSize: 14, fontWeight: '700', color: meta.accent }}>{initials(user.full_name)}</Text>
+        <Text style={{ fontSize: 12, fontWeight: '700', color: meta.accent }}>{initials(user.full_name)}</Text>
       </View>
 
       {/* Ad + Tür */}
-      <View style={{ flex: 1, gap: 2 }}>
-        <Text style={{ fontSize: 14, fontWeight: '600', color: user.is_active ? U.ink[900] : U.ink[400], textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={[MT.title, { color: user.is_active ? U.ink[900] : U.ink[400], textAlign: rtl ? 'right' : undefined }]} numberOfLines={1}>
           {titleCaseTR(user.full_name)}
         </Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, backgroundColor: `${meta.accent}${U.isDark ? '33' : '14'}` }}>
-            <Icon size={11} color={meta.accent} strokeWidth={2} />
-            <Text style={{ fontSize: 11, color: meta.accent, fontWeight: '600' }}>{t(meta.labelKey)}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: `${meta.accent}${U.isDark ? '33' : '14'}` }}>
+            <Icon size={10} color={meta.accent} strokeWidth={2} />
+            <Text style={{ fontSize: 10, color: meta.accent, fontWeight: '600' }}>{t(meta.labelKey)}</Text>
           </View>
-          {user.specialty && (
-            <Text style={{ fontSize: 11, color: U.ink[400] }} numberOfLines={1}>{user.specialty}</Text>
-          )}
-          {user.phone && (
-            <Text style={{ fontSize: 11, color: U.ink[400] }}>· {user.phone}</Text>
-          )}
+          {sub ? <Text style={[MT.meta, { flexShrink: 1 }]} numberOfLines={1}>{sub}</Text> : null}
         </View>
       </View>
 
       {!user.is_active && (
-        <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: U.chipNeutral }}>
-          <Text style={{ fontSize: 10, color: U.ink[500], fontWeight: '600', letterSpacing: 0.3 }}>PASİF</Text>
+        <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: U.chipNeutral }}>
+          <Text style={{ fontSize: 9, color: U.ink[500], fontWeight: '700', letterSpacing: 0.3 }}>PASİF</Text>
         </View>
       )}
-    </Pressable>
+    </MobileTableRowX>
   );
 }
 
@@ -884,6 +874,14 @@ export function ClinicUsersScreen() {
         </View>
 
         {/* ════════ LİSTE ════════ */}
+        {!loading && filtered.length > 0 ? (
+          /* Ekstre / finans mobil tablolarıyla aynı kalıp */
+          <MobileTableX title="Kullanıcılar" count={filtered.length} countLabel={t('clinic.users.recordCount')}>
+            {filtered.map((u, i) => (
+              <UserRow key={u.id} user={u} isLast={i === filtered.length - 1} onPress={() => { setEditing(u); setFormOpen(true); }} />
+            ))}
+          </MobileTableX>
+        ) : (
         <View style={{
           backgroundColor: U.surface, borderRadius: 22, overflow: 'hidden',
           ...(U.isDark ? { borderWidth: 1, borderColor: U.hairline } : {}),
@@ -937,12 +935,9 @@ export function ClinicUsersScreen() {
                 <Text style={{ fontSize: 13, color: '#FFF', fontWeight: '700' }}>{t('clinic.users.addFirst')}</Text>
               </Pressable>
             </View>
-          ) : (
-            filtered.map(u => (
-              <UserRow key={u.id} user={u} onPress={() => { setEditing(u); setFormOpen(true); }} />
-            ))
-          )}
+          ) : null}
         </View>
+        )}
       </ScrollView>
 
       <UserFormModal

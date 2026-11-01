@@ -1,5 +1,5 @@
 import { supabase } from '../../core/api/supabase';
-import { toConsentPayload, type ConsentState } from './components/ConsentGate';
+import { toConsentPayload, toSignupConsentMeta, type ConsentState } from './components/ConsentGate';
 
 export type UserType = 'lab' | 'doctor' | 'admin' | 'clinic_admin';
 export type LabRole = 'technician' | 'manager';
@@ -7,6 +7,12 @@ export type LabRole = 'technician' | 'manager';
 /**
  * Kayıt sırasında alınan onayları append-only `user_consents` defterine yazar
  * (P0-5 · R-01).
+ *
+ * 2026-10-20: e-posta doğrulaması (OTP) açıkken signUp OTURUM DÖNDÜRMEZ; bu RPC
+ * oturum istediği için kayıtta hep düşüyor, kullanıcı OTP'den sonra onayları
+ * ikinci kez görüyordu. Onaylar artık signUp metadata'sında (`consents`) gider ve
+ * auth.users tetikleyicisi yazar; bu çağrı yalnız signUp oturum döndürdüğünde
+ * (doğrulama kapalıysa) yapılır.
  *
  * Sessizce yutulmaz ama kaydı da bloklamaz: signUp başarılı olduysa kullanıcı
  * hesabı vardır; onay yazımı ağ hatasıyla düşerse `has_required_consents()`
@@ -31,6 +37,8 @@ export interface SignUpDoctorParams {
   clinic_name: string;
   phone: string;
   address: string;
+  /** Çalışılacak lab'ın verdiği bağlantı kodu — e-posta doğrulandıktan sonra kullanılır. */
+  connect_code: string;
   /** P0-5 · R-01 — kayıt ekranında toplanan onaylar. */
   consents?: ConsentState;
 }
@@ -45,8 +53,16 @@ export interface SignUpLabParams {
   consents?: ConsentState;
 }
 
+/**
+ * Public hekim kaydı. Yalnız auth kullanıcısı oluşturur; profil satırını sunucu
+ * (on_auth_user_created → handle_new_user) onay bekleyen, kliniksiz olarak açar.
+ * Klinik ve hekim kaydı lab onayında sunucuda kurulur (lab'ın CRM kliniği):
+ * bağlantı kodu, adres ve klinik tipi bu yüzden metadata'da taşınır ve e-posta
+ * doğrulandıktan sonra bekleme ekranında `clinic_signup_connect` ile kullanılır.
+ * (Eskiden burada yapılan clinics/doctors insert'i RLS'e, profil update'i
+ * korumalı alan guard'ına takılıyordu; zaten OTP öncesi oturum yok.)
+ */
 export async function signUpDoctor(params: SignUpDoctorParams) {
-  // 1 — Create auth user
   const authResult = await supabase.auth.signUp({
     email: params.email,
     password: params.password,
@@ -57,41 +73,17 @@ export async function signUpDoctor(params: SignUpDoctorParams) {
         clinic_name: params.clinic_name,
         phone: params.phone,
         role: null,
+        address: params.address,
+        connect_code: params.connect_code,
+        consents: toSignupConsentMeta(params.consents),
       },
     },
   });
 
   if (authResult.error || !authResult.data.user) return authResult;
 
-  // Onayları hesap oluşur oluşmaz yaz — RLS gereği oturum açık olmalı.
-  await recordConsents(params.consents);
-
-  // Mark doctor as pending approval (belt & suspenders alongside trigger)
-  await supabase
-    .from('profiles')
-    .update({ is_active: false, approval_status: 'pending' })
-    .eq('id', authResult.data.user.id);
-
-  // 2 — Create clinic record
-  const { data: clinic, error: clinicError } = await supabase
-    .from('clinics')
-    .insert({
-      name: params.clinic_name,
-      phone: params.phone,
-      address: params.address,
-      contact_person: params.full_name,
-    })
-    .select()
-    .single();
-
-  if (clinicError || !clinic) return authResult; // Non-fatal — auth succeeded
-
-  // 3 — Create doctor record linked to the new clinic
-  await supabase.from('doctors').insert({
-    full_name: params.full_name,
-    phone: params.phone,
-    clinic_id: clinic.id,
-  });
+  // Oturum varsa (doğrulama kapalı) RPC de yazar; yoksa tetikleyici yazdı.
+  if (authResult.data.session) await recordConsents(params.consents);
 
   return authResult;
 }
@@ -103,13 +95,15 @@ export interface SignUpClinicParams {
   clinic_name: string;
   phone: string;
   address: string;
-  clinic_type: 'klinik' | 'poliklinik' | 'hastane';
+  clinic_type: 'muayenehane' | 'klinik' | 'poliklinik' | 'hastane';
+  /** Çalışılacak lab'ın verdiği bağlantı kodu — e-posta doğrulandıktan sonra kullanılır. */
+  connect_code: string;
   /** P0-5 · R-01 — kayıt ekranında toplanan onaylar. */
   consents?: ConsentState;
 }
 
+/** Public klinik yöneticisi kaydı — akış signUpDoctor ile aynı. */
 export async function signUpClinic(params: SignUpClinicParams) {
-  // 1 — Create auth user (clinic admin)
   //   Migration 033 sonrası 'clinic_admin' geçerli bir user_type.
   //   Eskiden 'doctor' + role='clinic_admin' yazılıyordu; bu kullanıcı listesinde
   //   Klinik filtresinde görünmesini engelliyordu.
@@ -123,41 +117,17 @@ export async function signUpClinic(params: SignUpClinicParams) {
         clinic_name: params.clinic_name,
         phone: params.phone,
         role: 'clinic_admin',
+        address: params.address,
+        clinic_type: params.clinic_type,
+        connect_code: params.connect_code,
+        consents: toSignupConsentMeta(params.consents),
       },
     },
   });
 
   if (authResult.error || !authResult.data.user) return authResult;
 
-  await recordConsents(params.consents);
-
-  // Mark as pending approval
-  await supabase
-    .from('profiles')
-    .update({ is_active: false, approval_status: 'pending' })
-    .eq('id', authResult.data.user.id);
-
-  // 2 — Create clinic record with clinic_type
-  const { data: clinic, error: clinicError } = await supabase
-    .from('clinics')
-    .insert({
-      name: params.clinic_name,
-      phone: params.phone,
-      address: params.address,
-      contact_person: params.full_name,
-      clinic_type: params.clinic_type,
-    })
-    .select()
-    .single();
-
-  if (clinicError || !clinic) return authResult;
-
-  // 3 — Create doctor record (admin hekim)
-  await supabase.from('doctors').insert({
-    full_name: params.full_name,
-    phone: params.phone,
-    clinic_id: clinic.id,
-  });
+  if (authResult.data.session) await recordConsents(params.consents);
 
   return authResult;
 }
@@ -173,10 +143,11 @@ export async function signUpLabUser(params: SignUpLabParams) {
         clinic_name: null,
         phone: params.phone ?? null,
         role: params.role,
+        consents: toSignupConsentMeta(params.consents),
       },
     },
   });
-  if (!res.error && res.data.user) await recordConsents(params.consents);
+  if (!res.error && res.data.user && res.data.session) await recordConsents(params.consents);
   return res;
 }
 

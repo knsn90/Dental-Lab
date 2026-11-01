@@ -2,10 +2,10 @@ import { localeTag } from '../../../core/i18n';
 // modules/delivery/screens/CourierDeliveryScreen.tsx
 // Kurye ana ekranı — aktif teslimat + GPS başlat/durdur + durum güncelleme
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ScrollView, ActivityIndicator, TextInput, Alert,
+  ScrollView, ActivityIndicator, Alert,
   Animated, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,6 +13,9 @@ import { useAuthStore } from '../../../core/store/authStore';
 import { useCourierDelivery } from '../hooks/useCourierDelivery';
 import { AppIcon } from '../../../core/ui/AppIcon';
 import { toast } from '../../../core/ui/Toast';
+import { autoT } from '../../../core/i18n/autoTranslate';
+import { DeliveryProofSheet } from '../proof/DeliveryProofSheet';
+import { measureOrigin, type OriginRect } from '../proof/useAnchoredSpring';
 
 const ACCENT   = '#2563EB';
 const GREEN    = '#16A34A';
@@ -101,9 +104,10 @@ export function CourierDeliveryScreen() {
   const { delivery, loading, tracking, lastPingAt, pingError,
           startTracking, stopTracking, updateStatus, refresh } = useCourierDelivery(profile?.id ?? null);
 
-  const [recipientName, setRecipientName] = useState('');
   const [saving,        setSaving]        = useState(false);
-  const [showRecipient, setShowRecipient] = useState(false);
+  // Teslim adımı kanıt penceresinden geçer (2. dalga 5): fotoğraf + ad + imza ya da neden.
+  const advRef = useRef<any>(null);
+  const [proofOpen, setProofOpen] = useState<{ origin: OriginRect | null } | null>(null);
 
   if (loading) {
     return (
@@ -131,26 +135,20 @@ export function CourierDeliveryScreen() {
   async function handleAdvance() {
     if (!nextFlow) return;
 
-    // Teslim edildi → alıcı adı sorulsun
+    // Teslim edildi → kanıt penceresi (ad, imza, fotoğraf orada alınır)
     if (nextFlow.to === 'teslim_edildi') {
-      if (!recipientName.trim()) {
-        setShowRecipient(true);
-        return;
-      }
+      measureOrigin(advRef.current, (origin) => setProofOpen({ origin }));
+      return;
     }
 
     setSaving(true);
-    const { error } = await updateStatus(nextFlow.to as any, {
-      recipient_name: recipientName.trim() || undefined,
-    });
+    const { error } = await updateStatus(nextFlow.to as any);
     setSaving(false);
 
     if (error) {
       Alert.alert('Hata', error instanceof Error ? error.message : 'Güncelleme başarısız');
     } else {
       toast.success(`${nextFlow.label} ✓`);
-      setShowRecipient(false);
-      setRecipientName('');
     }
   }
 
@@ -239,23 +237,10 @@ export function CourierDeliveryScreen() {
           })}
         </View>
 
-        {/* ── Alıcı adı girişi (teslim edildi için) ── */}
-        {showRecipient && (
-          <View style={s.card}>
-            <Text style={s.cardTitle}>Teslim Alan</Text>
-            <TextInput
-              style={s.input}
-              placeholder="Teslim alan kişinin adı…"
-              value={recipientName}
-              onChangeText={setRecipientName}
-              autoFocus
-            />
-          </View>
-        )}
-
         {/* ── Aksiyon Butonu ── */}
         {!isDelivered && nextFlow && (
           <TouchableOpacity
+            ref={advRef}
             style={[s.actionBtn, { backgroundColor: nextFlow.color }, saving && s.actionBtnDisabled]}
             onPress={handleAdvance}
             disabled={saving}
@@ -284,6 +269,13 @@ export function CourierDeliveryScreen() {
           </View>
         )}
       </ScrollView>
+      <DeliveryProofSheet
+        visible={!!proofOpen}
+        deliveryId={delivery.id}
+        origin={proofOpen?.origin ?? null}
+        onClose={() => setProofOpen(null)}
+        onDelivered={() => { toast.success(autoT('Teslim edildi')); refresh(); }}
+      />
     </SafeAreaView>
   );
 }

@@ -11,5 +11,9 @@ export interface LabService {
   production_days: number | null;
   price_type: PriceType;
   unit: string | null;
+  /** Tarama randevuları: bu hizmet bir tarama hizmeti mi (ağız içi / fotogrametri) */
+  scan_kind?: 'intraoral' | 'photogrammetry' | null;
+  /** Tarama siparişe dönerse ücretsiz mi (lab ayarı) */
+  scan_free_if_order?: boolean;
   created_at: string;
 }

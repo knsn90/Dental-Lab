@@ -195,7 +195,7 @@ export interface FieldProps {
 
 export function Field({
   label, value, onChangeText, placeholder,
-  multiline, flex, style, required, error,
+  multiline, flex, style, required, error, keyboardType,
 }: FieldProps) {
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
@@ -237,6 +237,7 @@ export function Field({
         placeholder={placeholder}
         placeholderTextColor={T.ink3}
         multiline={multiline}
+        keyboardType={keyboardType as any}
         textAlignVertical={multiline ? 'top' : 'auto'}
       />
 

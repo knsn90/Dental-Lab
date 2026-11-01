@@ -1,0 +1,105 @@
+{
+ "cols": {
+  "employee_attendance": "id,lab_id,employee_id,work_date,check_in,check_out,status,work_minutes,overtime_minutes,notes,created_at,check_in_method,check_out_method,check_in_lat,check_in_lng,check_out_lat,check_out_lng,recorded_by",
+  "employee_documents": "id,lab_id,employee_id,doc_type,title,file_path,file_name,file_size,mime_type,valid_from,valid_until,notes,created_by,created_at,updated_at",
+  "employee_leaves": "id,lab_id,employee_id,leave_type,start_date,end_date,days_count,reason,status,reject_reason,approved_by,approved_at,created_at",
+  "employee_performance": "id,lab_id,employee_id,period,orders_assigned,orders_completed,orders_on_time,orders_late,orders_quality_ok,completion_rate,on_time_rate,quality_pass_rate,revenue_generated,score,is_locked,notes,created_at,updated_at"
+ },
+ "fns": [
+  "calculate_employee_performance definer=true",
+  "manual_attendance definer=true",
+  "qr_checkin definer=true"
+ ],
+ "leave_status_check": [
+  "CHECK ((days_count > 0))",
+  "CHECK ((leave_type = ANY (ARRAY['yillik'::text, 'mazeret'::text, 'hastalik'::text, 'ucretsiz'::text, 'dogum'::text, 'olum'::text, 'evlilik'::text])))",
+  "CHECK ((status = ANY (ARRAY['bekliyor'::text, 'onaylandi'::text, 'reddedildi'::text, 'iptal'::text])))",
+  "CHECK ((end_date >= start_date))"
+ ],
+ "pols": [
+  {
+   "check": "(lab_id = get_my_lab_id())",
+   "cmd": "ALL",
+   "name": "emp_perf_lab_own",
+   "permissive": "PERMISSIVE",
+   "qual": "(lab_id = get_my_lab_id())",
+   "roles": [
+    "public"
+   ],
+   "schema": "public",
+   "table": "employee_performance"
+  },
+  {
+   "check": null,
+   "cmd": "DELETE",
+   "name": "employee_docs_delete",
+   "permissive": "PERMISSIVE",
+   "qual": "((bucket_id = 'employee-docs'::text) AND ((storage.foldername(name))[1] = ( SELECT (labs.id)::text AS id\n   FROM labs\n  WHERE (labs.id = get_my_lab_id())\n LIMIT 1)))",
+   "roles": [
+    "authenticated"
+   ],
+   "schema": "storage",
+   "table": "objects"
+  },
+  {
+   "check": null,
+   "cmd": "SELECT",
+   "name": "employee_docs_read",
+   "permissive": "PERMISSIVE",
+   "qual": "((bucket_id = 'employee-docs'::text) AND ((storage.foldername(name))[1] = ( SELECT (labs.id)::text AS id\n   FROM labs\n  WHERE (labs.id = get_my_lab_id())\n LIMIT 1)))",
+   "roles": [
+    "authenticated"
+   ],
+   "schema": "storage",
+   "table": "objects"
+  },
+  {
+   "check": "((bucket_id = 'employee-docs'::text) AND ((storage.foldername(name))[1] = ( SELECT (labs.id)::text AS id\n   FROM labs\n  WHERE (labs.id = get_my_lab_id())\n LIMIT 1)))",
+   "cmd": "INSERT",
+   "name": "employee_docs_upload",
+   "permissive": "PERMISSIVE",
+   "qual": null,
+   "roles": [
+    "authenticated"
+   ],
+   "schema": "storage",
+   "table": "objects"
+  },
+  {
+   "check": "(lab_id = get_my_lab_id())",
+   "cmd": "ALL",
+   "name": "employee_attendance_lab_own",
+   "permissive": "PERMISSIVE",
+   "qual": "(lab_id = get_my_lab_id())",
+   "roles": [
+    "public"
+   ],
+   "schema": "public",
+   "table": "employee_attendance"
+  },
+  {
+   "check": "(lab_id = get_my_lab_id())",
+   "cmd": "ALL",
+   "name": "emp_docs_lab_own",
+   "permissive": "PERMISSIVE",
+   "qual": "(lab_id = get_my_lab_id())",
+   "roles": [
+    "public"
+   ],
+   "schema": "public",
+   "table": "employee_documents"
+  },
+  {
+   "check": "(lab_id = get_my_lab_id())",
+   "cmd": "ALL",
+   "name": "employee_leaves_lab_own",
+   "permissive": "PERMISSIVE",
+   "qual": "(lab_id = get_my_lab_id())",
+   "roles": [
+    "public"
+   ],
+   "schema": "public",
+   "table": "employee_leaves"
+  }
+ ]
+}

@@ -1,0 +1,22 @@
+-- 2026-10-26 canlı (önce)
+-- wo_select_consolidated:
+(((( SELECT my_user_type() AS my_user_type) = ANY (ARRAY['lab'::text, 'admin'::text])) AND (lab_id = ( SELECT get_my_lab_id() AS get_my_lab_id))) OR ((( SELECT my_user_type() AS my_user_type) = 'doctor'::text) AND doctor_owns_order_doctor(doctor_id)) OR (( SELECT is_clinic_admin() AS is_clinic_admin) AND (( SELECT my_clinic_id() AS my_clinic_id) IS NOT NULL) AND ((doctor_id IN ( SELECT p.id
+   FROM profiles p
+  WHERE (p.clinic_id = ( SELECT my_clinic_id() AS my_clinic_id)))) OR (doctor_id IN ( SELECT d.id
+   FROM doctors d
+  WHERE (d.clinic_id = ( SELECT my_clinic_id() AS my_clinic_id)))))))
+
+-- order_stages_select_consolidated (değişmiyor):
+((technician_id = ( SELECT auth.uid() AS uid)) OR (EXISTS ( SELECT 1
+   FROM work_orders wo
+  WHERE ((wo.id = order_stages.work_order_id) AND (( SELECT my_user_type() AS my_user_type) = ANY (ARRAY['lab'::text, 'admin'::text])) AND (wo.lab_id = ( SELECT get_my_lab_id() AS get_my_lab_id))))) OR (EXISTS ( SELECT 1
+   FROM work_orders wo
+  WHERE ((wo.id = order_stages.work_order_id) AND (wo.doctor_id = ( SELECT auth.uid() AS uid))))) OR (( SELECT is_clinic_admin() AS is_clinic_admin) AND (( SELECT my_clinic_id() AS my_clinic_id) IS NOT NULL) AND (EXISTS ( SELECT 1
+   FROM work_orders wo
+  WHERE ((wo.id = order_stages.work_order_id) AND ((wo.doctor_id IN ( SELECT p.id
+           FROM profiles p
+          WHERE (p.clinic_id = ( SELECT my_clinic_id() AS my_clinic_id)))) OR (wo.doctor_id IN ( SELECT d.id
+           FROM doctors d
+          WHERE (d.clinic_id = ( SELECT my_clinic_id() AS my_clinic_id))))))))))
+
+-- global_search: 20261025150000 tanımı

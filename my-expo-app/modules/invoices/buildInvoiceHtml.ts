@@ -46,7 +46,7 @@ function fmtMoney(amount: number | string | null | undefined, currency = 'TRY'):
   return sym + n.toLocaleString(printLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-/** Adres JSON ({il,ilce,mahalle,sokak,bina_no,posta_kodu}) → okunabilir tek satır. */
+/** Adres JSON ({il,ilce,mahalle,sokak,bina_no,daire_no,posta_kodu}) → okunabilir tek satır. */
 function formatAddress(raw: string | null | undefined): string {
   if (!raw) return '';
   const s = String(raw).trim();
@@ -56,7 +56,8 @@ function formatAddress(raw: string | null | undefined): string {
     if (!o || typeof o !== 'object') return s;
     const sokak = String(o.sokak ?? '').trim();
     const binaNo = String(o.bina_no ?? '').trim();
-    const line1 = [sokak, binaNo && !sokak.includes(binaNo) ? 'No: ' + binaNo : null].filter(Boolean).join(' ');
+    const daireNo = String(o.daire_no ?? '').trim();
+    const line1 = [sokak, binaNo && !sokak.includes(binaNo) ? 'No: ' + binaNo : null, daireNo ? 'D: ' + daireNo : null].filter(Boolean).join(' ');
     const mahalle = String(o.mahalle ?? '').trim();
     const line2 = [
       mahalle ? (/mah/i.test(mahalle) ? mahalle : mahalle + ' Mah.') : null,

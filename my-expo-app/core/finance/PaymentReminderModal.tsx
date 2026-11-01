@@ -15,7 +15,7 @@ import {
   AccessibilityInfo, ScrollView,
 } from 'react-native';
 import { useRouter, useSegments } from 'expo-router';
-import { X, ReceiptText, Phone } from '../ui/icons';
+import { X, ReceiptText, Phone, CreditCard, AlertCircle } from '../ui/icons';
 import { DS } from '../theme/dsTokens';
 import { useInkUI } from '../theme/inkScale';
 import { autoT } from '../i18n/autoTranslate';
@@ -100,13 +100,18 @@ function PressScale({ children, onPress, style, containerStyle }: any) {
 }
 
 export function PaymentReminderModal({
-  visible, rows, onClose, contactHint,
+  visible, rows, onClose, contactHint, onPay, payBusy = false, payError = null,
 }: {
   visible: boolean;
   rows: ReminderRow[];
   onClose: () => void;
   /** Lab'ın iletişim satırı (telefon/e-posta). Yoksa genel metin gösterilir. */
   contactHint?: string | null;
+  /** Verilirse "Kartla öde" birincil düğmesi çıkar: kart formu doğrudan açılır. */
+  onPay?: () => void;
+  payBusy?: boolean;
+  /** Ödeme başlatılamadıysa düğmenin hemen üstünde gösterilir. */
+  payError?: string | null;
 }) {
   const U = useInkUI();
   const amberText = U.isDark ? AMBER_TEXT_D : AMBER_TEXT;
@@ -265,34 +270,66 @@ export function PaymentReminderModal({
             </View>
           </View>
 
-          {/* İki eylem: çıkış (nötr) + gerçek aksiyon (faturalar). Tek siyah buton
-              "Anladım, teşekkürler" derken hem çok güçlü hem pasifti — kullanıcıyı
-              teşekkür etmeye zorluyordu. Ağırlık artık asıl işe verildi. */}
-          <View style={{ flexDirection: 'row', gap: 10, padding: 22, paddingTop: 18 }}>
-            <PressScale
-              onPress={onClose}
-              containerStyle={{ flex: 1 }}
-              style={{
-                borderRadius: 999, paddingVertical: 13, alignItems: 'center',
-                borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg,
-              }}
-            >
-              <Text style={{ color: U.ink[700], fontSize: 14, fontWeight: '600', letterSpacing: -0.1 }}>
-                Kapat
-              </Text>
-            </PressScale>
-            <PressScale
-              onPress={() => { onClose(); router.push(`/${panel}/finance` as any); }}
-              containerStyle={{ flex: 1.4 }}
-              style={{
-                borderRadius: 999, paddingVertical: 13, alignItems: 'center',
-                backgroundColor: U.ink[900],
-              }}
-            >
-              <Text style={{ color: U.onDarkPill, fontSize: 14, fontWeight: '600', letterSpacing: -0.1 }}>
-                Faturaları gör
-              </Text>
-            </PressScale>
+          {/* Birincil eylem: KARTLA ÖDE — kart formu doğrudan açılır (2026-10-19).
+              Eskiden tek aksiyon "Faturaları gör"dü; klinik önce faturalara gidip
+              oradan "Öde"ye basmak zorundaydı. Hata düğmenin hemen üstünde. */}
+          <View style={{ padding: 22, paddingTop: 18, gap: 10 }}>
+            {onPay && payError ? (
+              <View accessibilityRole="alert" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 12, backgroundColor: U.chipTones.danger.bg }}>
+                <AlertCircle size={14} strokeWidth={1.9} color={U.chipTones.danger.fg} />
+                <Text style={{ flex: 1, fontSize: 12.5, fontWeight: '600', color: U.chipTones.danger.fg }}>{payError}</Text>
+              </View>
+            ) : null}
+            {onPay ? (
+              <PressScale
+                onPress={payBusy ? undefined : onPay}
+                style={{
+                  borderRadius: 999, paddingVertical: 13, alignItems: 'center', justifyContent: 'center',
+                  flexDirection: 'row', gap: 8, backgroundColor: U.ink[900], opacity: payBusy ? 0.6 : 1,
+                }}
+              >
+                <CreditCard size={16} color={U.onDarkPill} strokeWidth={1.9} />
+                <Text style={{ color: U.onDarkPill, fontSize: 14, fontWeight: '600', letterSpacing: -0.1 }}>
+                  {payBusy
+                    ? autoT('Açılıyor…')
+                    : (() => {
+                        const one = rows.length === 1 ? rows[0] : null;
+                        return one
+                          ? `${autoT('Kartla öde')} · ${formatMoney(Number(one.overdue_amount) || 0, one.currency as Currency)}`
+                          : autoT('Kartla öde');
+                      })()}
+                </Text>
+              </PressScale>
+            ) : null}
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <PressScale
+                onPress={onClose}
+                containerStyle={{ flex: 1 }}
+                style={{
+                  borderRadius: 999, paddingVertical: 13, alignItems: 'center',
+                  borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg,
+                }}
+              >
+                <Text style={{ color: U.ink[700], fontSize: 14, fontWeight: '600', letterSpacing: -0.1 }}>
+                  Kapat
+                </Text>
+              </PressScale>
+              <PressScale
+                onPress={() => { onClose(); router.push(`/${panel}/finance` as any); }}
+                containerStyle={{ flex: onPay ? 1 : 1.4 }}
+                style={onPay ? {
+                  borderRadius: 999, paddingVertical: 13, alignItems: 'center',
+                  borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg,
+                } : {
+                  borderRadius: 999, paddingVertical: 13, alignItems: 'center',
+                  backgroundColor: U.ink[900],
+                }}
+              >
+                <Text style={{ color: onPay ? U.ink[700] : U.onDarkPill, fontSize: 14, fontWeight: '600', letterSpacing: -0.1 }}>
+                  Faturaları gör
+                </Text>
+              </PressScale>
+            </View>
           </View>
         </Animated.View>
       </Animated.View>

@@ -1,29 +1,48 @@
 import { localeTag } from '../../../core/i18n';
 /**
- * OrdersKanbanB2Mobile — Mobile orders view.
- * Görünüm modu: List (default) veya Kanban swimlanes.
- * Header üstünde: Arama · Filtre · Görünüm seçici (List/Kanban).
+ * OrdersKanbanB2Mobile — Mobil siparişler.
+ *
+ * Görünüm: Liste (varsayılan) veya Kanban kulvarları (filtre penceresinden).
+ *
+ * Filtre DURUMU bu bileşende tutulmaz: durum sekmeleri + sayıları, Acil/Geciken/
+ * Arşiv, arama ve sıralama OrdersListScreenV2'den gelir — masaüstüyle TEK kaynak,
+ * iki görünüm hiçbir zaman farklı sayı göstermez. `orders` zaten süzülmüş ve
+ * sıralanmış gelir.
  */
 import React, { useMemo, useState } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput,
   RefreshControl, StyleSheet, Modal, Image, Platform,
 } from 'react-native';
-import { Search, X, SlidersHorizontal, Hash, CalendarDays, Clock, CornerDownRight, CornerDownLeft } from '../../../core/ui/icons';
+import {
+  Search, X, SlidersHorizontal, Hash, CalendarDays, Clock, CornerDownRight, CornerDownLeft,
+  Inbox, Flame, Archive, Check, CalendarClock,
+} from '../../../core/ui/icons';
 import { isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
+import { holdBadgeText } from '../holdCategories';
+import { ProvaListBadge } from '../prova/ProvaListBadge';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSegments } from 'expo-router';
 import { DS } from '../../../core/theme/dsTokens';
 import { MFONT, useMobileTheme } from '../../../core/theme/mobileTheme';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { useInkUI } from '../../../core/theme/inkScale';
+import { PAGE_PADDING, CARD_GAP } from '../../../core/ui/pageMetrics';
+import { navBarMetrics } from '../../../core/ui/mobile/navGlass';
+import { RowActionsMenu, type RowAction } from '../../../core/ui/RowActionsMenu';
 import Svg, { Defs, Rect, RadialGradient, Stop } from 'react-native-svg';
 import type { WorkOrder } from '../types';
 import { buildRevisionCases } from '../revisionGroups';
 import { getOrderStageLabel } from '../utils/currentStage';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
+import { SlideTabBar } from '../../../core/ui/SlideTabBar';
+import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
+import { isPastDue, localISODate } from '../lib/listParams';
+import { MobileTableX } from '../../../core/ui/MobileTableX';
 void DS;
+void Svg; void Defs; void Rect; void RadialGradient; void Stop;
 
 interface LaneDef {
   key: string;
@@ -47,134 +66,200 @@ const LANES: LaneDef[] = [
 ];
 
 type ViewMode = 'list' | 'kanban';
-type StatusFilter = 'all' | 'planlama' | 'uretim' | 'kk' | 'hazir' | 'teslim';
+
+/** Acil / Geciken / Arşiv kapsül tonları — masaüstü 2. satırla aynı */
+/** MobilePageTitle ile aynı display font (Inter Tight 300). */
+const PAGE_DISPLAY_FONT = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
+
+const TONE_URGENT = '#D97706';
+const TONE_OVERDUE = '#DC2626';
+const TONE_DUE = '#1D4ED8';
+const TONE_ARCHIVE = '#92400E';
+const TONE_DOCTOR = '#1D4ED8';
 
 interface Props {
+  /** OrdersListScreenV2'nin süzülmüş + sıralanmış listesi */
   orders: WorkOrder[];
   loading?: boolean;
   refetch?: () => void;
   onOpenOrder: (order: WorkOrder) => void;
   onAddInLane?: (laneKey: string) => void;
+  statusTabs: { key: string; label: string; count: number }[];
+  statusFilter: string;
+  onStatusChange: (key: string) => void;
+  search: string;
+  onSearchChange: (q: string) => void;
+  urgent: { active: boolean; count: number; toggle: () => void };
+  overdue: { active: boolean; count: number; toggle: () => void };
+  /** Teslim günü bugün / yarın olan açık işler (isteğe bağlı) */
+  dueToday?: { active: boolean; count: number; toggle: () => void };
+  dueTomorrow?: { active: boolean; count: number; toggle: () => void };
+  /** Prova takibi (2. dalga 4) — yalnız lab/admin: "Provada" ve "Randevu riski" */
+  prova?: { active: boolean; count: number; toggle: () => void };
+  risk?: { active: boolean; count: number; toggle: () => void };
+  /** Yalnız admin — masaüstündeki "Arşivi göster" ile aynı */
+  archive?: { active: boolean; toggle: () => void };
+  /** ?doctor= süzgeci (genel arama → hekimin siparişleri); dokununca kalkar */
+  doctorChip?: { label: string; clear: () => void };
+  /** Yalnız lab/admin — manuel (WhatsApp/kağıt) gelen kutusu */
+  manual?: { count: number; open: () => void };
+  sort: {
+    by: string;
+    dir: 'asc' | 'desc';
+    options: { value: string; label: string }[];
+    setBy: (v: any) => void;
+    setDir: (d: 'asc' | 'desc') => void;
+  };
+  /** Kart ••• menüsü — masaüstü satırıyla AYNI işlem listesi (rowActions) */
+  rowActionsFor?: (o: WorkOrder) => RowAction[];
 }
 
-export function OrdersKanbanB2Mobile({ orders, loading, refetch, onOpenOrder, onAddInLane }: Props) {
+export function OrdersKanbanB2Mobile({
+  orders, loading, refetch, onOpenOrder, onAddInLane,
+  statusTabs, statusFilter, onStatusChange, search, onSearchChange,
+  urgent, overdue, dueToday, dueTomorrow, prova, risk, archive, manual, sort, rowActionsFor, doctorChip,
+}: Props) {
   const theme = useMobileTheme();
   const insets = useSafeAreaInsets();
   const T = useMobileTokens();
+  const U = useInkUI();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const styles = useMemo(() => makeStyles(T, isDark, theme.primary), [T, isDark, theme.primary]);
 
-  const [viewMode, setViewMode]       = useState<ViewMode>('list');
-  const [search, setSearch]           = useState('');
-  const [searchOpen, setSearchOpen]   = useState(false);
-  const [filterOpen, setFilterOpen]   = useState(false);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  // SlideTabBar cursor'ı beyaz metin basar → koyu ink accent şart (lab safranında
+  // beyaz yazı okunmaz). Masaüstü sekmeleriyle aynı kaynak.
+  const panelTheme = usePanelTheme();
+  const [viewMode, setViewMode]     = useState<ViewMode>('list');
+  const [filterOpen, setFilterOpen] = useState(false);
 
   /** Lane assignment for an order */
   const laneOf = (o: WorkOrder): LaneDef | undefined =>
     LANES.find(l => l.match.includes(o.status));
 
-  // Apply search + status filter
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return orders.filter(o => {
-      // status filter
-      if (statusFilter !== 'all') {
-        const lane = laneOf(o);
-        if (!lane || lane.key !== statusFilter) return false;
-      }
-      // search
-      if (q) {
-        const num  = String((o as any).order_number ?? o.id ?? '').toLowerCase();
-        const type = String((o as any).work_type ?? '').toLowerCase();
-        const doc  = String((o as any).doctor_name ?? '').toLowerCase();
-        const pat  = String((o as any).patient_name ?? '').toLowerCase();
-        if (!num.includes(q) && !type.includes(q) && !doc.includes(q) && !pat.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [orders, search, statusFilter]);
-
-  // Grouped for kanban view
+  // Kanban kulvarları — liste zaten süzülmüş gelir
   const grouped = useMemo(() => {
     const m: Record<string, WorkOrder[]> = {};
     LANES.forEach(l => { m[l.key] = []; });
-    filtered.forEach(o => {
+    orders.forEach(o => {
       const lane = laneOf(o);
       if (lane) m[lane.key].push(o);
     });
     return m;
-  }, [filtered]);
+  }, [orders]);
 
-  const activeFilterCount = statusFilter !== 'all' ? 1 : 0;
+  // Filtre butonundaki nokta: varsayılandan sapma (sıralama ya da Kanban)
+  const sheetDirty = viewMode !== 'list' || sort.by !== 'created_at' || sort.dir !== 'desc';
 
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: T.bg }}
-      contentContainerStyle={{ paddingBottom: 140 }}
+      contentContainerStyle={{ paddingBottom: navBarMetrics(insets.bottom).clearance + 16 }}
+      keyboardShouldPersistTaps="handled"
       refreshControl={refetch
         ? <RefreshControl refreshing={!!loading} onRefresh={refetch} tintColor={theme.accent} />
         : undefined}
       showsVerticalScrollIndicator={false}
     >
-      {/* ════ Header — başlık + sağda arama/filtre ════ */}
-      <View style={[styles.header, { paddingTop: Math.max(insets.top, 8) + 72 }]}>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={styles.eyebrow}>ÜRETİM PANOSU</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, flexWrap: 'nowrap' }}>
-            <Text style={styles.h2} numberOfLines={1}>Siparişler</Text>
-            <Text style={[styles.hint, { marginTop: 0 }]} numberOfLines={1}>
-              {filtered.length} sipariş{statusFilter !== 'all' ? ` · ${LANES.find(l => l.key === statusFilter)?.title}` : ''}
-            </Text>
-          </View>
-        </View>
-        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-          <Pressable
-            onPress={() => setSearchOpen(s => !s)}
-            style={[styles.iconBtn, searchOpen && styles.iconBtnActive]}
-            hitSlop={6}
-          >
-            <Search size={17} color={searchOpen ? theme.primary : T.ink2} strokeWidth={1.8} />
-          </Pressable>
-          <Pressable
-            onPress={() => setFilterOpen(true)}
-            style={[styles.iconBtn, activeFilterCount > 0 && styles.iconBtnActive]}
-            hitSlop={6}
-          >
-            <SlidersHorizontal size={17} color={activeFilterCount > 0 ? theme.primary : T.ink2} strokeWidth={1.8} />
-            {activeFilterCount > 0 && (
-              <View style={[styles.filterDot, { backgroundColor: theme.primary }]} />
-            )}
-          </Pressable>
-        </View>
+      {/* ════ Başlık ════ (+72: üstteki yüzen logo/ikon şeridi) */}
+      <View style={{ paddingHorizontal: PAGE_PADDING, paddingTop: Math.max(insets.top, 8) + 72 }}>
+        {/* Site geneli sayfa başlığı (MobilePageTitle) ölçüsü: display 300 / 26 + 13 alt yazı.
+            Önceden 34/800 + 15'ti; diğer mobil sayfaların iki kademe üstündeydi. */}
+        <Text style={{ fontSize: 26, lineHeight: 32, fontWeight: '300', letterSpacing: -0.6, color: T.ink, fontFamily: PAGE_DISPLAY_FONT }}>
+          Siparişler
+        </Text>
+        <Text style={{ fontSize: 13, lineHeight: 18, color: T.ink3, marginTop: 2, fontFamily: MFONT.uiRegular }}>
+          Tüm vakaların operasyonel görünümü
+        </Text>
       </View>
 
-      {/* ════ Inline search bar (toggled) ════ */}
-      {searchOpen && (
-        <View style={styles.searchWrap}>
-          <View style={styles.searchPill}>
-            <Search size={16} color={T.ink3} strokeWidth={1.8} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Sipariş, hasta, hekim ara"
-              placeholderTextColor={T.ink3}
-              value={search}
-              onChangeText={setSearch}
-              returnKeyType="search"
-              autoFocus
-            />
-            {search.length > 0 && (
-              <Pressable onPress={() => setSearch('')} hitSlop={8}>
-                <X size={15} color={T.ink3} strokeWidth={2} />
-              </Pressable>
-            )}
-          </View>
-        </View>
-      )}
+      {/* ════ Durum sekmeleri — masaüstüyle AYNI kanonik SlideTabBar (sm) ════
+          Faturalar / Onaylar / Kurumlar ile tek dil; uzun liste yatay kayar. */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: PAGE_PADDING }}
+        style={{ marginTop: 16, flexGrow: 0 }}
+      >
+        <SlideTabBar
+          size="sm"
+          items={statusTabs.map(t => ({ key: t.key, label: t.label, count: t.count }))}
+          activeKey={statusFilter}
+          onChange={onStatusChange}
+          accentColor={panelTheme.accent}
+          style={{ marginStart: -3 }}
+        />
+      </ScrollView>
 
-      {/* ════ Content ════ */}
+      {/* ════ Hızlı filtre kapsülleri — masaüstü 2. satırla aynı ince kapsül ════ */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: PAGE_PADDING, gap: 6 }}
+        style={{ marginTop: 10, flexGrow: 0 }}
+      >
+        {doctorChip && (
+          <FilterChip icon={X} label={doctorChip.label} tone={TONE_DOCTOR} active onPress={doctorChip.clear} />
+        )}
+        {manual && (
+          <FilterChip icon={Inbox} label="Manuel" count={manual.count} onPress={manual.open} />
+        )}
+        <FilterChip icon={Flame} label="Acil" count={urgent.count} tone={TONE_URGENT} active={urgent.active} onPress={urgent.toggle} />
+        <FilterChip icon={Clock} label="Geciken" count={overdue.count} tone={TONE_OVERDUE} active={overdue.active} onPress={overdue.toggle} />
+        {dueToday && (
+          <FilterChip icon={CalendarClock} label="Bugün çıkacak" count={dueToday.count} tone={TONE_DUE} active={dueToday.active} onPress={dueToday.toggle} />
+        )}
+        {dueTomorrow && (
+          <FilterChip icon={CalendarClock} label="Yarın çıkacak" count={dueTomorrow.count} tone={TONE_DUE} active={dueTomorrow.active} onPress={dueTomorrow.toggle} />
+        )}
+        {prova && (
+          <FilterChip icon={CalendarClock} label="Provada" count={prova.count} tone={TONE_URGENT} active={prova.active} onPress={prova.toggle} />
+        )}
+        {risk && (
+          <FilterChip icon={CalendarClock} label="Randevu riski" count={risk.count} tone={TONE_OVERDUE} active={risk.active} onPress={risk.toggle} />
+        )}
+        {archive && (
+          <FilterChip icon={Archive} label="Arşiv" tone={TONE_ARCHIVE} active={archive.active} onPress={archive.toggle} />
+        )}
+      </ScrollView>
+
+      {/* ════ Arama + sıralama — Faturalar arama kutusuyla aynı (hairline, 44) ════ */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: PAGE_PADDING, marginTop: 10 }}>
+        <View style={{
+          flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10,
+          height: 44, borderRadius: 999, paddingHorizontal: 16,
+          backgroundColor: U.surface, borderWidth: 1, borderColor: U.hairline,
+        }}>
+          <Search size={15} color={U.ink[400]} strokeWidth={1.6} />
+          <TextInput
+            style={{ flex: 1, fontSize: 14, color: U.ink[900], paddingVertical: 0 }}
+            placeholder="Sipariş, hasta, hekim, klinik ara..."
+            placeholderTextColor={U.ink[400]}
+            value={search}
+            onChangeText={onSearchChange}
+            returnKeyType="search"
+          />
+          {search.length > 0 && (
+            <Pressable onPress={() => onSearchChange('')} hitSlop={8} accessibilityLabel={autoT('Aramayı temizle')}>
+              <X size={15} color={U.ink[400]} strokeWidth={1.8} />
+            </Pressable>
+          )}
+        </View>
+        <Pressable
+          onPress={() => setFilterOpen(true)}
+          accessibilityLabel={autoT('Sıralama ve görünüm')}
+          style={{
+            width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center',
+            backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: U.plainBtn.border,
+          }}
+        >
+          <SlidersHorizontal size={16} color={sheetDirty ? panelTheme.accent : U.ink[500]} strokeWidth={1.8} />
+          {sheetDirty && <View style={[styles.filterDot, { backgroundColor: theme.primary }]} />}
+        </Pressable>
+      </View>
+
+      {/* ════ İçerik ════ */}
       {viewMode === 'list' ? (
-        <ListView orders={filtered} onOpenOrder={onOpenOrder} laneOf={laneOf} />
+        <ListView orders={orders} onOpenOrder={onOpenOrder} laneOf={laneOf} rowActionsFor={rowActionsFor} />
       ) : LANES.every(lane => (grouped[lane.key]?.length ?? 0) === 0) ? (
         <View style={{ paddingHorizontal: 24, paddingVertical: 48, alignItems: 'center' }}>
           <Text style={{ fontSize: 13, color: T.ink3, fontFamily: MFONT.uiRegular, textAlign: 'center' }}>
@@ -186,6 +271,7 @@ export function OrdersKanbanB2Mobile({ orders, loading, refetch, onOpenOrder, on
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.lanesRow}
+          style={{ marginTop: 16 }}
         >
           {LANES.filter(lane => (grouped[lane.key]?.length ?? 0) > 0).map((lane) => {
             const laneOrders = grouped[lane.key] ?? [];
@@ -215,45 +301,78 @@ export function OrdersKanbanB2Mobile({ orders, loading, refetch, onOpenOrder, on
         </ScrollView>
       )}
 
-      {loading && filtered.length === 0 && (
+      {loading && orders.length === 0 && (
         <View style={{ paddingVertical: 24, alignItems: 'center' }}>
           <ActivityIndicator color={theme.accent} />
         </View>
       )}
 
-      {/* ════ Filter Sheet ════ */}
+      {/* ════ Sıralama + Görünüm penceresi ════
+          Durum artık sekmelerde — burada yalnız ikincil kontroller. */}
       <Modal visible={filterOpen} transparent animationType="fade" onRequestClose={() => setFilterOpen(false)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setFilterOpen(false)}>
           <Pressable style={styles.modalSheet} onPress={(e) => e.stopPropagation()}>
             <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Durum</Text>
+
+            <Text style={styles.modalTitle}>Sıralama</Text>
             <View style={{ gap: 6 }}>
-              {([
-                { key: 'all',      label: 'Tümü',     dot: T.ink3 },
-                ...LANES.map(l => ({ key: l.key, label: l.title, dot: l.dot === 'PRIMARY' ? theme.primary : l.dot })),
-              ] as { key: StatusFilter; label: string; dot: string }[]).map(opt => {
-                const active = statusFilter === opt.key;
+              {sort.options.map(opt => {
+                const active = sort.by === opt.value;
                 return (
                   <Pressable
-                    key={opt.key}
-                    onPress={() => { setStatusFilter(opt.key); setFilterOpen(false); }}
+                    key={opt.value}
+                    onPress={() => sort.setBy(opt.value)}
                     style={[styles.filterRow, active && { borderColor: theme.primary, backgroundColor: `${theme.primary}10` }]}
                   >
-                    <View style={[styles.laneDot, { backgroundColor: opt.dot }]} />
                     <Text style={[styles.filterLabel, active && { color: theme.primary, fontFamily: MFONT.uiSemibold }]}>
                       {opt.label}
                     </Text>
                     <View style={{ flex: 1 }} />
-                    {active && <View style={[styles.checkDot, { backgroundColor: theme.primary }]} />}
+                    {active && <Check size={16} color={theme.primary} strokeWidth={2} />}
                   </Pressable>
                 );
               })}
             </View>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+              {(['desc', 'asc'] as const).map(d => {
+                const active = sort.dir === d;
+                return (
+                  <Pressable
+                    key={d}
+                    onPress={() => sort.setDir(d)}
+                    style={[styles.filterRow, { flex: 1, justifyContent: 'center' }, active && { borderColor: theme.primary, backgroundColor: `${theme.primary}10` }]}
+                  >
+                    <Text style={[styles.filterLabel, active && { color: theme.primary, fontFamily: MFONT.uiSemibold }]}>
+                      {d === 'desc' ? 'Azalan' : 'Artan'}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Text style={[styles.modalTitle, { marginTop: 18 }]}>Görünüm</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {(['list', 'kanban'] as const).map(m => {
+                const active = viewMode === m;
+                return (
+                  <Pressable
+                    key={m}
+                    onPress={() => { setViewMode(m); setFilterOpen(false); }}
+                    style={[styles.filterRow, { flex: 1, justifyContent: 'center' }, active && { borderColor: theme.primary, backgroundColor: `${theme.primary}10` }]}
+                  >
+                    <Text style={[styles.filterLabel, active && { color: theme.primary, fontFamily: MFONT.uiSemibold }]}>
+                      {m === 'list' ? 'Liste' : 'Kanban'}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
             <Pressable
-              onPress={() => { setStatusFilter('all'); setFilterOpen(false); }}
+              onPress={() => { sort.setBy('created_at'); sort.setDir('desc'); setViewMode('list'); setFilterOpen(false); }}
               style={styles.clearBtn}
             >
-              <Text style={[styles.clearBtnText, { color: T.ink3 }]}>Filtreyi Temizle</Text>
+              <Text style={[styles.clearBtnText, { color: T.ink3 }]}>Varsayılana dön</Text>
             </Pressable>
           </Pressable>
         </Pressable>
@@ -263,76 +382,85 @@ export function OrdersKanbanB2Mobile({ orders, loading, refetch, onOpenOrder, on
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// List View — vertical list of orders with status pill
+// Hızlı filtre kapsülü
+// ═══════════════════════════════════════════════════════════════════
+function FilterChip({ icon: Icon, label, count, tone, active, onPress }: {
+  icon: React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
+  label: string;
+  count?: number;
+  /** Aktifken alacağı ton (Acil/Geciken/Arşiv). Yoksa panel accent'i dolu kapsül (Manuel). */
+  tone?: string;
+  active?: boolean;
+  onPress: () => void;
+}) {
+  const T = useMobileTokens();
+  const U = useInkUI();
+  const panelTheme = usePanelTheme();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  // Pasif: beyaz kapsül + hairline (beyaz buton kuralı → koyuda plainBtn).
+  // Aktif: tonlu yumuşak zemin + ton metin — masaüstü 2. satırla birebir.
+  const toneFg = tone ? (isDark ? lighten(tone) : tone) : '#FFFFFF';
+  const bg = !active ? U.plainBtn.bg : tone ? `${tone}${isDark ? '33' : '1F'}` : panelTheme.accent;
+  const border = !active ? U.plainBtn.border : tone ? `${tone}${isDark ? '55' : '40'}` : 'transparent';
+  const fg = active ? toneFg : T.ink2;
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: !!active }}
+      hitSlop={{ top: 4, bottom: 4 }}
+      style={{
+        flexDirection: 'row', alignItems: 'center', gap: 6,
+        paddingVertical: 8, paddingHorizontal: 12,
+        borderRadius: 999, borderWidth: 1, borderColor: border, backgroundColor: bg,
+      }}
+    >
+      <Icon size={13} color={active ? toneFg : T.ink3} strokeWidth={1.8} />
+      {/* Etiket ve sayı ayrı <Text> — sözlük etiketi birebir eşlesin */}
+      <Text style={{ fontSize: 12.5, fontFamily: MFONT.uiSemibold, color: fg }}>{label}</Text>
+      {count != null && count > 0 && (
+        <Text style={{ fontSize: 11, fontFamily: MFONT.uiSemibold, color: active ? toneFg : T.ink3, opacity: active ? 0.75 : 1 }}>{count}</Text>
+      )}
+    </Pressable>
+  );
+}
+
+/** Koyu zeminde ton metni okunur kalsın — durum renginin açık karşılığı. */
+function lighten(hex: string): string {
+  const map: Record<string, string> = { '#D97706': '#FBBF24', '#DC2626': '#F87171', '#92400E': '#FCD34D' };
+  return map[hex.toUpperCase()] ?? hex;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Liste — düz, en yeni üstte (sıralama V2'den). Revizyonlar vaka altında.
 // ═══════════════════════════════════════════════════════════════════
 function ListView({
   orders,
   onOpenOrder,
   laneOf,
+  rowActionsFor,
 }: {
   orders: WorkOrder[];
   onOpenOrder: (o: WorkOrder) => void;
   laneOf: (o: WorkOrder) => LaneDef | undefined;
+  rowActionsFor?: (o: WorkOrder) => RowAction[];
 }) {
   const T = useMobileTokens();
-  const theme = useMobileTheme();
-  const isDark = useThemeModeStore(s => s.resolvedDark);
-  const styles = useMemo(() => makeStyles(T, isDark, theme.primary), [T, isDark, theme.primary]);
   // Lab/Admin panelinde avatar = klinik logosu (hangi klinikten geldiği bir bakışta belli).
   // Klinik/Hekim panelinde kendi işleri → hasta baş harfleri.
   const segments = useSegments() as string[];
   const useClinicLogoAvatar = segments?.[0] === '(lab)' || segments?.[0] === '(admin)';
-  // Teslim Edilen İşler (tarihçe) çok uzayabilir → ilk N kayıt + "hepsini gör".
-  const [showAllDelivered, setShowAllDelivered] = useState(false);
-  const DELIVERED_PREVIEW = 5;
 
-  // Group orders by lane — TÜM hook'lar early return'den ÖNCE (Rules of Hooks)
-  //
-  // Revizyonlar: aynı vakanın üyeleri ayrı kulvarlara dağılmasın diye önce vaka
-  // gruplarına ayrılır. Kulvara YALNIZ en güncel üye (anchor) girer; eski
-  // revizyonlar onun kartının altında girintili alt-liste olur. Böylece devam
-  // eden revizyon "Tamamlandı" kulvarına gömülmez.
-  const { groups, revChildren, numById } = useMemo(() => {
-    // YALNIZ revizyon gruplanır. Devam siparişi asıl işin yerine geçmez —
-    // ayrı (ama bağlantılı) bir iştir; masaüstündeki gibi kendi kartı olmalı.
-    // Eskiden 'all' bağıyla gruplanıyordu: devam siparişi asıl işin altına
-    // "geçmiş" olarak katlanıyor ve yeni kayıt listede hiç görünmüyordu.
-    const { anchors, children: revChildren } = buildRevisionCases(orders as any[], { linkBy: 'revision' });
-    // Devam siparişi kartında asıl işin numarası (masaüstü: "Devam siparişi · no")
+  // YALNIZ revizyon gruplanır: kulvara en güncel üye (anchor) girer, eskileri onun
+  // altında girintili. Devam siparişi ayrı iştir — kendi kartı olur, asıl işin
+  // numarası kartta gösterilir. buildRevisionCases girdi sırasını korur → V2'nin
+  // sıralaması aynen kalır.
+  const { anchors, revChildren, numById } = useMemo(() => {
+    const { anchors, children } = buildRevisionCases(orders as any[], { linkBy: 'revision' });
     const numById = new Map<string, string>();
     (orders as any[]).forEach(o => numById.set(String(o.id), String(o.order_number ?? '')));
-    const recent = (o: WorkOrder) => {
-      const t = (o as any).created_at ? Date.parse((o as any).created_at) : NaN;
-      return Number.isNaN(t) ? String((o as any).order_number ?? '') : t;
-    };
-    const byNewest = (a: WorkOrder, b: WorkOrder) => {
-      const ra = recent(a), rb = recent(b);
-      if (typeof ra === 'number' && typeof rb === 'number') return rb - ra;
-      return String(rb).localeCompare(String(ra));
-    };
-    // 4 kategori (sıralı bölümler):
-    //   1) Planlama Bekliyor — alındı + triage yapılmamış
-    //   2) Bekletilen İşler  — duraklatılmış (hold_status = on_hold), teslim edilmemiş
-    //   3) Üretim            — planlaması yapılmış + üretim aşamalarında (geri kalan aktif)
-    //   4) Teslim Edilen İşler — teslim_edildi (en sonda)
-    // Öncelik: teslim > bekletilen > planlama > üretim.
-    const isDone    = (o: WorkOrder) => (o as any).status === 'teslim_edildi';
-    const isHold    = (o: WorkOrder) => (o as any).hold_status === 'on_hold';
-    const needsTri  = (o: WorkOrder) => (o as any).status === 'alindi' && !(o as any).triaged_at;
-    const bucketOf = (o: WorkOrder): string =>
-      isDone(o) ? 'teslim' : isHold(o) ? 'bekletilen' : needsTri(o) ? 'planlama' : 'uretim';
-    const defs = [
-      { key: 'planlama',   title: 'Planlama Bekliyor',    dot: '#C97A2A' },
-      { key: 'bekletilen', title: 'Bekletilen İşler',     dot: '#E89B2A' },
-      { key: 'uretim',     title: 'Üretim',               dot: theme.primary },
-      { key: 'teslim',     title: 'Teslim Edilen İşler',  dot: '#64748B' },
-    ];
-    const byKey: Record<string, WorkOrder[]> = { planlama: [], bekletilen: [], uretim: [], teslim: [] };
-    (anchors as WorkOrder[]).forEach(o => { byKey[bucketOf(o)].push(o); });
-    Object.values(byKey).forEach(arr => arr.sort(byNewest));
-    const groups = defs.filter(d => byKey[d.key].length > 0).map(d => ({ ...d, items: byKey[d.key] }));
-    return { groups, revChildren, numById };
-  }, [orders, theme.primary]);
+    return { anchors: anchors as WorkOrder[], revChildren: children, numById };
+  }, [orders]);
 
   if (orders.length === 0) {
     return (
@@ -344,189 +472,171 @@ function ListView({
     );
   }
 
-  // Tek kart render — hem "Planlama bekliyor" bloğunda hem düz listede kullanılır.
-  const renderCard = (o: WorkOrder) => {
-    const orderNum = String((o as any).order_number ?? o.id ?? '').slice(-6);
-    const workType = (o as any).work_type ?? 'Sipariş';
-    const patient = (o as any).patient_name ?? (o as any).doctor_name ?? '—';
-    const doctorName = (o as any).doctor?.full_name ?? (o as any).doctor_name ?? null;
-    const clinicName = (o as any).doctor?.clinic?.name ?? (o as any).doctor?.clinic_name ?? (o as any).clinic_name ?? null;
-    // Doktoru kısalt, kliniği tam bırak (lab kliniğe göre düşünür)
-    const who = [doctorName ? abbrevDoctor(doctorName) : null, clinicName].filter(Boolean).join(' · ');
-    const onHold = (o as any).hold_status === 'on_hold';
-    const isDone = (o as any).status === 'teslim_edildi';
-    // Bölüm kalktı → durum rengi + etiketi karttan (order'dan) türetilir.
-    const lane = laneOf(o);
-    // 'alindi' İKİ farklı anı kapsar: planlama BEKLEYEN (triaged_at boş) ve
-    // planlaması yapılmış ama üretime başlamamış iş. Şerit başlığı ikisine de
-    // "Planlama" diyordu → planlaması bitmiş işler mobilde hâlâ "PLANLAMA"
-    // görünüyordu (masaüstü/liste rozeti "Alındı" diyor). Etiket artık tek
-    // yetkili kaynaktan gelir (getOrderStageLabel: triage-farkında + üretimde
-    // aktif istasyon adı), renk de buna göre.
-    const triagePending = (o as any).status === 'alindi' && !(o as any).triaged_at;
-    const planned = (o as any).status === 'alindi' && !triagePending;
-    const laneColor = planned
-      ? '#4A8FC9'                                    // alındı (planlaması yapıldı) → bilgi mavisi
-      : lane ? (lane.dot === 'PRIMARY' ? theme.primary : lane.dot) : (isDone ? '#64748B' : theme.primary);
-    const dot = onHold ? '#E89B2A' : laneColor;
-    // autoT ile aktif dile çevir, SONRA aktif dilin locale'inde büyüt (uppercase,
-    // autoT sözlük eşleşmesini bozduğu için önce çeviri şart).
-    const badgeLabel = autoT(onHold ? 'Duraklatıldı' : (getOrderStageLabel(o as any) || lane?.title || (isDone ? 'Teslim' : 'İşlemde'))).toLocaleUpperCase(localeTag());
-    const dd = (o as any).delivery_date;
-    const dleft = dd ? Math.ceil((new Date(dd + 'T00:00:00').getTime() - Date.now()) / 86_400_000) : null;
-    const due = onHold ? 'Beklemede' : (dd ? formatDue(dd) : '—');
-    const dueColor = onHold ? '#E89B2A'
-      : isDone || dleft == null ? T.ink2
-      : dleft < 0 ? '#D94B4B' : dleft <= 1 ? '#E89B2A' : T.ink2;
-    const createdTime = (o as any).created_at
-      ? new Date((o as any).created_at).toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' })
-      : null;
-    const initials = String(patient).trim().split(/\s+/).slice(0, 2)
-      .map((p: string) => p[0]?.toUpperCase() ?? '').join('') || '?';
-    const toothCount = Array.isArray((o as any).tooth_numbers) ? (o as any).tooth_numbers.length : 0;
-    const history = revChildren.get(String(o.id)) as WorkOrder[] | undefined;
-    const clinicLogo = useClinicLogoAvatar ? ((o as any)?.doctor?.clinic?.logo_url ?? null) : null;
-    return (
-      <View key={o.id}>
-        <Pressable
-          onPress={() => onOpenOrder(o)}
-          style={[styles.histCard, { borderColor: `${dot}40` }, isDone && { opacity: 0.74 }]}
-        >
-          {/* Üst satır — avatar + hasta/iş türü + durum çipi */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 11 }}>
-            {clinicLogo ? (
-              <View style={[styles.histAvatar, { backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline, overflow: 'hidden' }]}>
-                <Image source={{ uri: clinicLogo }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-              </View>
-            ) : (
-              <View style={[styles.histAvatar, { backgroundColor: `${dot}1A` }]}>
-                <Text style={[styles.histAvatarText, { color: dot }]}>{initials}</Text>
-              </View>
-            )}
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, minWidth: 0 }}>
-                <Text style={[styles.histTitle, { flexShrink: 1 }]} numberOfLines={1}>{patient}</Text>
-                {!!(o as any).revision_of_id && (
-                  <View style={{ paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 6, backgroundColor: 'rgba(232,155,42,0.15)', flexShrink: 0 }}>
-                    <Text style={{ fontSize: 8.5, fontWeight: '800', color: '#9C5E0E', letterSpacing: 0.4 }}>REVİZYON</Text>
-                  </View>
-                )}
-                {/* Devam siparişi — masaüstü listesiyle aynı mavi kimlik */}
-                {!(o as any).revision_of_id && !!(o as any).continues_order_id && (
-                  <View style={{ paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 6, backgroundColor: 'rgba(53,99,168,0.14)', flexShrink: 0 }}>
-                    <Text style={{ fontSize: 8.5, fontWeight: '800', color: '#3563A8', letterSpacing: 0.4 }}>{autoT('DEVAM')}</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={styles.histSub} numberOfLines={1}>{workType}</Text>
-              {!!who && (<Text style={styles.histWho} numberOfLines={1}>{who}</Text>)}
-            </View>
-            <View style={[styles.histBadge, { backgroundColor: `${dot}1A` }]}>
-              <View style={[styles.histBadgeDot, { backgroundColor: dot }]} />
-              <Text style={[styles.histBadgeText, { color: dot }]} numberOfLines={1}>{badgeLabel}</Text>
-            </View>
-          </View>
+  // Ekstre / finans mobil tablolarıyla aynı kalıp: panel accent şeridinde başlık + sayı
+  // (eskiden sütun adları yazıyordu). Şerit rengi MobileTableX'te panelden çözülür.
+  return (
+    <View style={{ paddingHorizontal: PAGE_PADDING, paddingTop: 16 }}>
+      {/* Sayı sekmedeki "Tümü N" ile aynı: revizyonlar ana satırın altında ama sayılır */}
+      <MobileTableX title="Siparişler" count={orders.length} countLabel="sipariş">
+      {anchors.map(o => (
+        <OrderCard
+          key={o.id}
+          order={o}
+          laneOf={laneOf}
+          onOpenOrder={onOpenOrder}
+          history={revChildren.get(String(o.id)) as WorkOrder[] | undefined}
+          parentNo={numById.get(String((o as any).continues_order_id ?? '')) ?? null}
+          actions={rowActionsFor?.(o)}
+          useClinicLogo={useClinicLogoAvatar}
+        />
+      ))}
+      </MobileTableX>
+    </View>
+  );
+}
 
-          {/* Alt satır — ikonlu meta: no · teslim · saat · diş */}
-          <View style={styles.histMetaRow}>
-            <View style={styles.histMeta}>
-              <Hash size={12.5} color={T.ink3} strokeWidth={1.8} />
-              <Text style={styles.histMetaText} numberOfLines={1}>{orderNum}</Text>
-            </View>
-            {/* Üretim panosunda asıl soru "ne zaman teslim etmeliyim?" →
-                aktif işlerde TERMİN, teslim edilenlerde TESLİM olarak etiketle. */}
-            <View style={styles.histMeta}>
-              <CalendarDays size={13} color={dueColor} strokeWidth={1.8} />
-              <Text style={[styles.histMetaText, { color: dueColor, fontFamily: MFONT.uiSemibold }]} numberOfLines={1}>
-                {onHold ? due : `${isDone ? autoT('Teslim') : autoT('Termin')} ${due}`}
-              </Text>
-            </View>
-            {/* Oluşturma saati yalnız teslim edilenlerde (tarihçe); aktif işte termin öne çıksın. */}
-            {isDone && createdTime && (
-              <View style={styles.histMeta}>
-                <Clock size={12.5} color={T.ink3} strokeWidth={1.8} />
-                <Text style={styles.histMetaText} numberOfLines={1}>{createdTime}</Text>
-              </View>
-            )}
-            {toothCount > 0 && (
-              <View style={styles.histMeta}>
-                <Text style={styles.histMetaText} numberOfLines={1}>{`${toothCount} diş`}</Text>
-              </View>
-            )}
-            {/* Devam siparişinde asıl işin numarası (masaüstü paritesi) */}
-            {!(o as any).revision_of_id && !!(o as any).continues_order_id && !!numById.get(String((o as any).continues_order_id)) && (
-              <View style={styles.histMeta}>
-                {isRTL()
-                  ? <CornerDownLeft size={12.5} color="#3563A8" strokeWidth={1.8} />
-                  : <CornerDownRight size={12.5} color="#3563A8" strokeWidth={1.8} />}
-                <Text style={[styles.histMetaText, { color: '#3563A8' }]} numberOfLines={1}>
-                  {numById.get(String((o as any).continues_order_id))}
-                </Text>
-              </View>
-            )}
-          </View>
-        </Pressable>
+// ═══════════════════════════════════════════════════════════════════
+// Sipariş kartı — avatar · hasta / no / iş / hekim · tarih + ••• + durum
+// ═══════════════════════════════════════════════════════════════════
+function OrderCard({ order: o, laneOf, onOpenOrder, history, parentNo, actions, useClinicLogo }: {
+  order: WorkOrder;
+  laneOf: (o: WorkOrder) => LaneDef | undefined;
+  onOpenOrder: (o: WorkOrder) => void;
+  history?: WorkOrder[];
+  parentNo: string | null;
+  actions?: RowAction[];
+  useClinicLogo: boolean;
+}) {
+  const T = useMobileTokens();
+  const theme = useMobileTheme();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const styles = useMemo(() => makeStyles(T, isDark, theme.primary), [T, isDark, theme.primary]);
 
-        {/* Vakanın eski revizyonları — girintili alt-liste */}
-        {(history ?? []).map(h => {
-          const hNo = String((h as any).order_number ?? h.id ?? '').slice(-6);
-          const hDone = (h as any).status === 'teslim_edildi';
-          return (
-            <Pressable
-              key={h.id}
-              onPress={() => onOpenOrder(h)}
-              style={{
-                flexDirection: 'row', alignItems: 'center', gap: 8,
-                marginStart: 22, marginTop: 6,
-                paddingHorizontal: 12, paddingVertical: 9,
-                borderRadius: 12,
-                backgroundColor: `${dot}0D`,
-                borderWidth: 1, borderColor: `${dot}1F`,
-              }}
-            >
-              {isRTL() ? <CornerDownLeft size={13} color={T.ink3} strokeWidth={2} /> : <CornerDownRight size={13} color={T.ink3} strokeWidth={2} />}
-              <Text style={[styles.histMetaText, { flex: 1 }]} numberOfLines={1}>#{hNo}</Text>
-              <Text style={[styles.histMetaText, { color: hDone ? '#2D9A6B' : T.ink2 }]} numberOfLines={1}>
-                {hDone ? 'Teslim edildi' : 'Önceki'}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    );
-  };
+  const orderNo = String((o as any).order_number ?? o.id ?? '');
+  const workType = (o as any).work_type ?? 'Sipariş';
+  const patient = (o as any).patient_name ?? (o as any).doctor_name ?? '—';
+  const doctorName: string | null = (o as any).doctor?.full_name ?? (o as any).doctor_name ?? null;
+  // Unvan zaten adın içindeyse ("Dt. …") ikinci kez ekleme
+  const drLabel = doctorName
+    ? (/^(Dr|Dt|Prof|Doç|Uzm|Op)\.?\s/i.test(doctorName.trim()) ? doctorName : `Dt. ${doctorName}`)
+    : null;
+  const onHold = (o as any).hold_status === 'on_hold';
+  const isDone = (o as any).status === 'teslim_edildi';
+  const lane = laneOf(o);
+  // 'alindi' iki anı kapsar: planlama BEKLEYEN (triaged_at boş) ve planlaması yapılmış
+  // ama üretime başlamamış iş. Etiket tek yetkili kaynaktan (getOrderStageLabel).
+  const triagePending = (o as any).status === 'alindi' && !(o as any).triaged_at;
+  const planned = (o as any).status === 'alindi' && !triagePending;
+  const laneColor = planned
+    ? '#4A8FC9'
+    : lane ? (lane.dot === 'PRIMARY' ? theme.primary : lane.dot) : (isDone ? '#2D9A6B' : theme.primary);
+  // Teslim edilen iş referanstaki gibi YEŞİL rozet (kulvar grisi değil)
+  const tone = onHold ? '#E89B2A' : (isDone ? '#2D9A6B' : laneColor);
+  const badgeLabel = autoT(onHold ? holdBadgeText(o as any) : (getOrderStageLabel(o as any) || lane?.title || (isDone ? 'Teslim' : 'İşlemde')));
+
+  const created = (o as any).created_at ? new Date((o as any).created_at) : null;
+  const dateStr = created ? created.toLocaleDateString(localeTag(), { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
+  const timeStr = created ? created.toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' }) : '';
+
+  const initials = String(patient).trim().split(/\s+/).slice(0, 2)
+    .map((p: string) => p[0]?.toUpperCase() ?? '').join('') || '?';
+  const clinicLogo = useClinicLogo ? ((o as any)?.doctor?.clinic?.logo_url ?? null) : null;
+  const isRevision = !!(o as any).revision_of_id;
+  const isContinuation = !isRevision && !!(o as any).continues_order_id;
+
+  const rtl = isRTL();
+  const overdue = !isDone && isPastDue((o as any).delivery_date, localISODate(new Date()));
 
   return (
-    <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
-      {groups.map((g, gi) => {
-        // Teslim Edilen İşler (tarihçe) → aktif operasyon ekranını boğmasın: ilk N + "gör".
-        const isDelivered = g.key === 'teslim';
-        const collapsed = isDelivered && !showAllDelivered && g.items.length > DELIVERED_PREVIEW;
-        const shown = collapsed ? g.items.slice(0, DELIVERED_PREVIEW) : g.items;
-        const hiddenCount = g.items.length - shown.length;
-        return (
-        <View key={g.key} style={{ marginTop: gi === 0 ? 4 : 22 }}>
-          <View style={styles.sectionHead}>
-            <View style={[styles.sectionDot, { backgroundColor: g.dot }]} />
-            <Text style={[styles.sectionTitle, (g.key === 'planlama' || g.key === 'bekletilen') && { color: '#9C5E0E' }]}>
-              {autoT(g.title).toLocaleUpperCase(localeTag())}
-            </Text>
-            <Text style={styles.sectionCount}>{`(${g.items.length})`}</Text>
-          </View>
-          <View style={{ gap: 20 }}>{shown.map(renderCard)}</View>
-          {isDelivered && g.items.length > DELIVERED_PREVIEW && (
-            <Pressable
-              onPress={() => setShowAllDelivered(v => !v)}
-              style={{ paddingVertical: 12, alignItems: 'center', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
-            >
-              <Text style={{ fontSize: 13, fontWeight: '600', color: theme.primary }}>
-                {showAllDelivered
-                  ? autoT('Daha az göster')
-                  : `${hiddenCount} ${autoT('teslim edilen işi gör')} →`}
-              </Text>
-            </Pressable>
-          )}
+    <View>
+      <Pressable
+        onPress={() => onOpenOrder(o)}
+        style={{
+          flexDirection: 'row', alignItems: 'center', gap: 11,
+          paddingHorizontal: 16, paddingVertical: 11,
+          borderTopWidth: 1, borderTopColor: T.hairline,
+          backgroundColor: overdue ? 'rgba(217,75,75,0.06)' : 'transparent',
+        }}
+      >
+        {/* Avatar — klinik logosu ya da hasta baş harfleri */}
+        <View style={{
+          width: 36, height: 36, borderRadius: 18, overflow: 'hidden',
+          alignItems: 'center', justifyContent: 'center',
+          backgroundColor: clinicLogo ? (isDark ? T.cardSoft : '#FFFFFF') : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)'),
+          ...(clinicLogo ? { borderWidth: 1, borderColor: T.hairline } : {}),
+        }}>
+          {clinicLogo
+            ? <Image source={{ uri: clinicLogo }} style={{ width: 36, height: 36 }} resizeMode="contain" />
+            : <Text style={{ fontSize: 12, fontWeight: '700', color: T.ink2 }}>{initials}</Text>}
         </View>
+
+        {/* Hasta → vaka → hekim → no + tarih (Son Siparişler satırıyla aynı hiyerarşi) */}
+        <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, minWidth: 0 }}>
+            <Text style={{ fontSize: 13.5, fontWeight: '700', color: T.ink, flex: 1, minWidth: 0, letterSpacing: -0.1, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>
+              {patient}
+            </Text>
+            <View style={{ maxWidth: '46%', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, backgroundColor: `${tone}${isDark ? '33' : '1A'}`, flexShrink: 0 }}>
+              <Text style={{ fontSize: 10.5, fontWeight: '700', color: isDark ? T.ink : tone, textAlign: 'center' }} numberOfLines={2}>
+                {badgeLabel}
+              </Text>
+            </View>
+            {!!actions?.length && <RowActionsMenu actions={actions} size={22} />}
+          </View>
+          <Text style={{ fontSize: 12, color: T.ink2 }} numberOfLines={1}>{workType}</Text>
+          {!!drLabel && (
+            <Text style={{ fontSize: 11.5, color: T.ink3, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>{drLabel}</Text>
+          )}
+          {/* Prova / randevu riski rozeti (liste bağlamından; yoksa çizilmez) */}
+          <ProvaListBadge orderId={(o as any).id} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 }}>
+            <Text style={{ fontSize: 10.5, color: T.ink3, fontFamily: T.mono, flexShrink: 1, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>
+              #{orderNo}
+            </Text>
+            {isRevision && (
+              <View style={{ paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 6, backgroundColor: 'rgba(232,155,42,0.15)', flexShrink: 0 }}>
+                <Text style={{ fontSize: 8.5, fontWeight: '800', color: isDark ? '#FCD34D' : '#9C5E0E', letterSpacing: 0.4 }}>{autoT('REVİZYON')}</Text>
+              </View>
+            )}
+            {isContinuation && (
+              <View style={{ paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 6, backgroundColor: 'rgba(53,99,168,0.14)', flexShrink: 0 }}>
+                <Text style={{ fontSize: 8.5, fontWeight: '800', color: isDark ? '#93C5FD' : '#3563A8', letterSpacing: 0.4 }}>{autoT('DEVAM')}</Text>
+              </View>
+            )}
+            {isContinuation && !!parentNo && (
+              <Text style={{ fontSize: 10.5, color: isDark ? '#93C5FD' : '#3563A8', flexShrink: 1 }} numberOfLines={1}>
+                {`${autoT('asıl')} #${parentNo}`}
+              </Text>
+            )}
+            <View style={{ flex: 1 }} />
+            <Text style={{ fontSize: 10.5, fontWeight: overdue ? '700' : '500', color: overdue ? (isDark ? '#F87171' : '#DC2626') : T.ink3, flexShrink: 0 }}>
+              {(o as any).delivery_date ? `${autoT('Teslim')} ${formatDue((o as any).delivery_date)}` : dateStr}
+            </Text>
+          </View>
+        </View>
+      </Pressable>
+
+      {/* Vakanın eski revizyonları — girintili alt satırlar (Son Siparişler ile aynı) */}
+      {(history ?? []).map(h => {
+        const hNo = String((h as any).order_number ?? h.id ?? '');
+        const hDone = (h as any).status === 'teslim_edildi';
+        return (
+          <Pressable
+            key={h.id}
+            onPress={() => onOpenOrder(h)}
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 8,
+              paddingStart: 34, paddingEnd: 16, paddingVertical: 9,
+              borderTopWidth: 1, borderTopColor: T.hairline,
+              backgroundColor: `${tone}0A`,
+            }}
+          >
+            {rtl ? <CornerDownLeft size={13} color={T.ink3} strokeWidth={2} /> : <CornerDownRight size={13} color={T.ink3} strokeWidth={2} />}
+            <Text style={{ flex: 1, fontSize: 11.5, color: T.ink2, fontFamily: T.mono, textAlign: rtl ? 'right' : undefined }} numberOfLines={1}>#{hNo}</Text>
+            <Text style={{ fontSize: 10.5, fontWeight: '600', color: hDone ? '#2D9A6B' : T.ink3 }} numberOfLines={1}>
+              {hDone ? 'Teslim edildi' : 'Önceki'}
+            </Text>
+          </Pressable>
         );
       })}
     </View>

@@ -51,6 +51,8 @@ import { PendingReviewsCard } from '../../reviews/components/PendingReviewsCard'
 import { resolveOrderStatus } from '../components/RecentOrdersMobile';
 import { mapRevisionCases, flattenRevisionCases } from '../../orders/revisionGroups';
 import { useRevisionParents } from '../../orders/hooks/useRevisionParents';
+import { useLabToday } from '../../../core/metrics/useLabToday';
+import { isOverdueOrder } from '../../../core/metrics/orderDefs';
 
 // ── Display font — Patterns: Inter Tight Light (300) ──
 const SERIF = {
@@ -702,7 +704,8 @@ export function DoctorDashboardScreen() {
   let cleanName = (profile?.full_name ?? '').trim();
   while (stripDrRe.test(cleanName)) cleanName = cleanName.replace(stripDrRe, '').trim();
   const firstName = displayFirstName(cleanName);
-  const today = todayStr();
+  // Tek tanım (2026-10-26): bugün lab gününde (isOrderOverdue de aynı saat dilimini kullanır).
+  const today = useLabToday();
 
   // ── Derived stats (orders üzerinde TEK pass — eskiden N×status filtre vardı) ──
   const weekDays = getWeekDays();
@@ -913,8 +916,8 @@ export function DoctorDashboardScreen() {
 
     // Son Siparişler — mobil kart listesi (başlık = hasta adı; hekim siparişi verir)
     const toRecentItem = (o: any) => {
-      const st = resolveOrderStatus(o.status, o.hold_status);
-      const isOverdue = !!o.delivery_date && o.delivery_date < today && o.status !== 'teslim_edildi';
+      const st = resolveOrderStatus(o.status, o.hold_status, (o as any).hold_category);
+      const isOverdue = isOverdueOrder(o, today);
       const pName = o.patient_name || '—';
       return {
         id: String(o.id),
@@ -1146,7 +1149,7 @@ export function DoctorDashboardScreen() {
         {recentOrders.length === 0
           ? <Text className="p-6 text-center" style={{ fontSize: 13, color: U.ink[400] }}>Yükleniyor...</Text>
           : recentRows.map((order: any, idx: number) => {
-              const overdue = order.delivery_date < today && order.status !== 'teslim_edildi';
+              const overdue = isOverdueOrder(order as any, today);
               const isLast = idx === recentRows.length - 1;
               return (
                 <Pressable key={order.id} className="flex-row items-center" style={{

@@ -60,21 +60,21 @@
 		<string>_expo._tcp</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>Kamera ile fotoğraf çekmek için izin gerekiyor.</string>
+	<string>İş emri ve fatura fotoğrafı çekmek, QR kod okutmak ve 3D yüz taraması (gülüş tasarımı) yapmak için kamera kullanılır.</string>
 	<key>NSFaceIDUsageDescription</key>
-	<string>Allow $(PRODUCT_NAME) to access your Face ID biometric data.</string>
+	<string>Oturum bilgilerin cihazında şifreli olarak saklanır; bu güvenli alana erişim gerektiğinde Face ID kullanılabilir.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Expo Dev Launcher uses the local network to discover and connect to development servers running on your computer.</string>
+	<string>Yerel ağ yalnız geliştirme sürümünde, bilgisayardaki geliştirme sunucusuna bağlanmak için kullanılır. Yayındaki uygulama yerel ağa erişmez.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Aktif teslimat sırasında, uygulama arka planda olsa bile konumunuz teslimat takibi için paylaşılır. Yalnız taşıdığınız teslimat varken çalışır.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
-	<string>Allow $(PRODUCT_NAME) to access your location</string>
+	<string>Aktif teslimat sırasında, uygulama arka planda olsa bile konumunuz teslimat takibi için paylaşılır. Yalnız taşıdığınız teslimat varken çalışır.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Kurye teslimat takibini paylaşmak ve iş yeri giriş/çıkış (check-in) yapmak için konumunuz kullanılır.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Allow $(PRODUCT_NAME) to access your microphone</string>
+	<string>Uygulama ses kaydetmez ve mikrofonu kullanmaz. Bu izin yalnız kamera bileşeninin video desteği nedeniyle tanımlıdır; istenmez.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Fotoğraf galerinize erişmek için izin gerekiyor.</string>
+	<string>İş emrine, mesaja veya faturaya galerinden fotoğraf ve tarama görseli eklemek için fotoğraflarına erişilir.</string>
 	<key>NSUserActivityTypes</key>
 	<array>
 		<string>$(PRODUCT_BUNDLE_IDENTIFIER).expo.index_route</string>
@@ -85,7 +85,6 @@
 	<array>
 		<string>remote-notification</string>
 		<string>location</string>
-		<string>fetch</string>
 	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>SplashScreen</string>

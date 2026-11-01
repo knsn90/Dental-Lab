@@ -146,7 +146,8 @@ export function DentyFAB() {
       {!isOpen && (
         <View
           pointerEvents="box-none"
-          style={{ position: 'absolute', ...(isRTL() ? { left: isWide ? 24 : 16 } : { right: isWide ? 24 : 16 }),
+          // Mobil web: fixed — tarayıcı modunda alt araç çubuğunun arkasına düşmesin (navbar ile aynı).
+          style={{ position: (Platform.OS === 'web' && !isWide ? 'fixed' : 'absolute') as any, ...(isRTL() ? { left: isWide ? 24 : 16 } : { right: isWide ? 24 : 16 }),
             bottom: (isWide ? 24 : (insets.bottom + 74)) + bottomBar, zIndex: 9999 }}
         >
           {isWide ? (

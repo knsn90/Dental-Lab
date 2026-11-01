@@ -48,6 +48,16 @@ interface OnboardingState {
   registerRef: (id: string, node: any) => void;
   unregisterRef: (id: string) => void;
 
+  /**
+   * Turun ÜSTÜNDE olması gereken zorunlu pencereler (KVKK onayı, ödeme
+   * hatırlatması…) açıkken > 0. Tur bu sürede çizilmez ve adım yan-etkileri
+   * (form aç) çalışmaz; kapanınca kaldığı adımdan devam eder. Sayaç: iç içe
+   * pencerelerden birinin kapanması diğerini yanlışlıkla serbest bırakmasın.
+   */
+  blockers: number;
+  pushBlocker: () => void;
+  popBlocker: () => void;
+
   start: (steps: TourStep[], markRpc?: string) => void;
   next: () => void;
   prev: () => void;
@@ -63,6 +73,9 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
   overlayHost: 'root',
   setOverlayHost: (h) => { if (get().overlayHost !== h) set({ overlayHost: h }); },
   refs: new Map<string, any>(),
+  blockers: 0,
+  pushBlocker: () => set({ blockers: get().blockers + 1 }),
+  popBlocker: () => set({ blockers: Math.max(0, get().blockers - 1) }),
 
   // Ref registry is a live lookup read during measurement; mutating in place
   // (no set()) avoids re-render churn as tab cells mount/unmount.

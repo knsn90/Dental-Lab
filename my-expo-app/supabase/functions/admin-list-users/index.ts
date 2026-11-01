@@ -74,7 +74,7 @@ Deno.serve(async (req: Request) => {
       adminClient.auth.admin.listUsers({ perPage: 1000 }),
       adminClient
         .from('profiles')
-        .select('id, full_name, email, phone, user_type, role, is_active, approval_status, clinic_name, clinic_id, lab_id, avatar_url, skill_level, monthly_salary, bonus_threshold_orders, bonus_per_extra_order, created_at, updated_at')
+        .select('id, full_name, email, phone, user_type, role, is_active, approval_status, clinic_name, clinic_id, lab_id, avatar_url, skill_level, bonus_threshold_orders, bonus_per_extra_order, created_at, updated_at')
         .order('created_at', { ascending: false }),
     ]);
     if (authRes.error) throw new Error(authRes.error.message);

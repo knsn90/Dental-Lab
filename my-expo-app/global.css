@@ -118,6 +118,67 @@ button::-moz-focus-inner {
   outline: none !important;
 }
 
+/* iOS Safari (TARAYICI modu, PWA değil): html/body %100 yüksekliği adres
+   çubuğu GİZLİYKENKİ büyük görünür alana göre hesaplanıyor; çubuk görünürken
+   sayfa ondan uzun kalıyor. iOS, body'deki overflow:hidden'ı dokunmatik
+   kaydırmada yok saydığı için belge çubuk yüksekliği kadar kayıyor → üstteki
+   lab logosu + üst butonlar ekran dışına çıkıyor, "Hoş geldin, …" başlığı
+   kesiliyordu (2026-10-20). Dinamik görünür yükseklik (100dvh) sayfayı tam
+   görünür alana eşitler; kayacak fazlalık kalmaz. Yalnız iOS'ta (touch-callout)
+   ve dvh destekleyen sürümlerde; diğer tarayıcılar değişmez. */
+@supports (-webkit-touch-callout: none) and (height: 100dvh) {
+  html, body, #root {
+    height: 100dvh;
+  }
+  html, body {
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+}
+
+/* DENEME — mobil tarayıcıda belge kaydırması (core/ui/mobile/documentScroll.ts).
+   Ekran odaktayken <html class="doc-scroll"> + ScrollView[data-docscroll].
+   İşaretli ScrollView'un ATALARI normal akışa alınır → içerik belgeyi uzatır,
+   tarayıcı kaydırırken adres çubuğunu küçültür / alt çubuğu gizler. Yalnız
+   işaretli ekranın ata zinciri etkilenir; sınıf yokken bu kurallar ölü. */
+html.doc-scroll,
+html.doc-scroll body {
+  height: auto !important;
+  overflow: visible !important;
+  overscroll-behavior: auto !important;
+}
+html.doc-scroll #root {
+  height: auto !important;
+  min-height: 100%;
+}
+html.doc-scroll div:has([data-docscroll]) {
+  position: relative !important;
+  top: auto !important;
+  bottom: auto !important;
+  height: auto !important;
+  overflow: visible !important;
+  flex: 0 0 auto !important;
+}
+html.doc-scroll [data-docscroll] {
+  overflow: visible !important;
+  height: auto !important;
+  flex: 0 0 auto !important;
+}
+
+/* Şifre maskesi — uygulamanın HER yerinde siyah yuvarlak nokta.
+   iOS WebKit maske karakterini (●) input'un fontundan çiziyor; Inter Tight'ta
+   bu glif yok/bozuk → noktalar "≣" gibi çizgili kutular olarak görünüyordu
+   (kayıt/giriş/profil, PWA + Safari). Sistem fontu doğru noktayı çizer.
+   Göz ikonuyla type="text" olunca normal font geri gelir. */
+input[type="password"] {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+  -webkit-text-security: disc;
+  letter-spacing: 0.12em;
+}
+input[type="password"]::placeholder {
+  letter-spacing: normal;
+}
+
 /* Browser native password reveal eye / clear X / credentials autofill key — bizim ikonumuz var */
 input::-ms-reveal,
 input::-ms-clear,

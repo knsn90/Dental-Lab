@@ -3,8 +3,12 @@ import { autoT } from '../../core/i18n/autoTranslate';
 /**
  * PendingApprovalsScreen — Patterns design language
  *
- * Hekim kayıt onayları + geçmiş (onaylanan/reddedilen geri alınabilir).
- * Supabase realtime ile güncellenir.
+ * Yeni hesap onayları (public kayıt: hekim / klinik yöneticisi) + son kararlar.
+ * Veri lab_signup_requests() RPC'sinden gelir: lab yöneticisi kendi lab'ına
+ * bağlantı kodu ile gelen istekleri görür (bekleyen hesaplar lab'a bağlı
+ * olmadığı için profiles tablosundan okunamazlar). Onay lab_approve_clinic →
+ * sunucu hesabı açar, lab'ın CRM kliniğini atar, hekim kaydına bağlar.
+ * DB: 20261017193000_clinic_self_signup_flow.sql
  * DS tokens, DISPLAY typography, inline styles.
  */
 import React, { useEffect, useState, useCallback } from 'react';
@@ -13,16 +17,21 @@ import {
   ActivityIndicator, RefreshControl, Alert, useWindowDimensions,
 } from 'react-native';
 import {
-  UserCheck, Clock, Phone, Building2, X, Check,
+  UserCheck, Clock, Phone, Building2, X, Check, Mail, MapPin,
   Undo2, CheckCircle2, XCircle, History, ChevronDown,
 } from '../../core/ui/icons';
 import { toast } from '../../core/ui/Toast';
 import { supabase } from '../../core/api/supabase';
-import { Profile } from '../../lib/types';
 import { DS } from '../../core/theme/dsTokens';
 import { useInkUI } from '../../core/theme/inkScale';
 import { useMobileTokens } from '../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../core/store/themeModeStore';
+import { useAuthStore } from '../../core/store/authStore';
+import { formatAddress } from '../../core/util/formatAddress';
+import {
+  labSignupRequests, labApproveClinic, labRejectClinic, labReopenSignup,
+  type SignupRequest,
+} from '../lab-connections/api';
 
 const DISPLAY: any = { fontFamily: DS.font.display, fontWeight: '300' };
 const R = { sm: 8, md: 12, lg: 16, xl: 18, pill: 999 };
@@ -42,20 +51,18 @@ function confirmAction(title: string, message: string): Promise<boolean> {
   }
   return new Promise(resolve => {
     Alert.alert(title, message, [
-      { text: 'Vazgeç', style: 'cancel', onPress: () => resolve(false) },
-      { text: 'Evet', onPress: () => resolve(true) },
+      { text: autoT('Vazgeç'), style: 'cancel', onPress: () => resolve(false) },
+      { text: autoT('Evet'), onPress: () => resolve(true) },
     ]);
   });
 }
 
-interface PendingDoctor extends Profile {
-  email?: string | null;
-}
+const displayName = (r: SignupRequest) => r.full_name?.trim() || autoT('İsimsiz');
 
 export function PendingApprovalsScreen() {
   const U = useInkUI();
-  const [pending, setPending]       = useState<PendingDoctor[]>([]);
-  const [history, setHistory]       = useState<PendingDoctor[]>([]);
+  const [pending, setPending]       = useState<SignupRequest[]>([]);
+  const [history, setHistory]       = useState<SignupRequest[]>([]);
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [actioningId, setActioningId] = useState<string | null>(null);
@@ -64,94 +71,79 @@ export function PendingApprovalsScreen() {
   const isDesktop = width >= 768;
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
+  const labId = useAuthStore(s => s.profile?.lab_id ?? null);
 
   const load = useCallback(async () => {
-    // Load pending
-    const { data: pendingData } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('user_type', 'doctor')
-      .eq('approval_status', 'pending')
-      .order('created_at', { ascending: false });
-    setPending((pendingData ?? []) as PendingDoctor[]);
-
-    // Load history (approved + rejected)
-    const { data: historyData } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('user_type', 'doctor')
-      .in('approval_status', ['approved', 'rejected'])
-      .order('created_at', { ascending: false })
-      .limit(30);
-    setHistory((historyData ?? []) as PendingDoctor[]);
-
+    try {
+      const [p, h] = await Promise.all([labSignupRequests(false), labSignupRequests(true)]);
+      setPending(p);
+      setHistory(h);
+    } catch {
+      setPending([]);
+      setHistory([]);
+    }
     setLoading(false);
     setRefreshing(false);
   }, []);
 
   useEffect(() => {
     load();
+    if (!labId) return;
+    // Yalnız bu lab'ın bağlantı satırları — filtresiz kanal açma (bkz. realtime sızıntısı).
     const channel = supabase
-      .channel('pending_approvals_screen')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, load)
+      .channel(`signup_requests_${labId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clinic_lab_memberships', filter: `lab_id=eq.${labId}` }, load)
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [load]);
+  }, [load, labId]);
 
-  const handleApprove = async (profile: PendingDoctor) => {
-    setActioningId(profile.id);
-    const { error } = await supabase
-      .from('profiles')
-      .update({ is_active: true, approval_status: 'approved' })
-      .eq('id', profile.id);
-    if (error) {
+  const handleApprove = async (r: SignupRequest) => {
+    setActioningId(r.membership_id);
+    try {
+      await labApproveClinic(r.membership_id);
+      toast.success(`${displayName(r)} ${autoT('onaylandı.')}`);
+      await load();
+    } catch {
       toast.error('Onaylama işlemi başarısız oldu.');
-    } else {
-      toast.success(`${profile.full_name} onaylandı.`);
-      await load();
     }
     setActioningId(null);
   };
 
-  const handleReject = async (profile: PendingDoctor) => {
+  const handleReject = async (r: SignupRequest) => {
     const ok = await confirmAction(
-      'Reddet',
-      `${profile.full_name} ${autoT('adlı hekimin kaydını reddetmek istediğinize emin misiniz?')}`,
+      autoT('Reddet'),
+      `${displayName(r)} ${autoT('adlı hekimin kaydını reddetmek istediğinize emin misiniz?')}`,
     );
     if (!ok) return;
 
-    setActioningId(profile.id);
-    const { error } = await supabase
-      .from('profiles')
-      .update({ is_active: false, approval_status: 'rejected' })
-      .eq('id', profile.id);
-    if (error) {
+    setActioningId(r.membership_id);
+    try {
+      await labRejectClinic(r.membership_id);
+      toast.success(`${displayName(r)} ${autoT('reddedildi.')}`);
+      await load();
+    } catch {
       toast.error('Reddetme işlemi başarısız oldu.');
-    } else {
-      toast.success(`${profile.full_name} reddedildi.`);
-      await load();
     }
     setActioningId(null);
   };
 
-  const handleUndo = async (profile: PendingDoctor) => {
-    const action = profile.approval_status === 'approved' ? 'onayı' : 'reddi';
+  // Yalnız reddedilen kayıt geri alınır (yeniden incelemeye döner). Onaylanan
+  // hesap klinik + hekim kaydıyla açıldığı için buradan geri alınmaz; gerekirse
+  // Kullanıcılar ekranından pasife alınır.
+  const handleUndo = async (r: SignupRequest) => {
     const ok = await confirmAction(
-      'Geri Al',
-      `${profile.full_name} için ${action} geri almak istediğinize emin misiniz?\nHekim tekrar "Onay bekliyor" durumuna geçecek.`,
+      autoT('Geri Al'),
+      `${displayName(r)} ${autoT('için reddi geri almak istediğinize emin misiniz? Kayıt tekrar "Onay bekliyor" durumuna geçecek.')}`,
     );
     if (!ok) return;
 
-    setActioningId(profile.id);
-    const { error } = await supabase
-      .from('profiles')
-      .update({ is_active: false, approval_status: 'pending' })
-      .eq('id', profile.id);
-    if (error) {
-      toast.error('Geri alma işlemi başarısız oldu.');
-    } else {
-      toast.success(`${profile.full_name} tekrar onay bekliyor.`);
+    setActioningId(r.membership_id);
+    try {
+      await labReopenSignup(r.membership_id);
+      toast.success(`${displayName(r)} ${autoT('tekrar onay bekliyor.')}`);
       await load();
+    } catch {
+      toast.error('Geri alma işlemi başarısız oldu.');
     }
     setActioningId(null);
   };
@@ -224,13 +216,13 @@ export function PendingApprovalsScreen() {
                 {/* Pending cards — desktop 3-col grid, mobile stack */}
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
                   {pending.map(doc => (
-                    <View key={doc.id} style={{
+                    <View key={doc.membership_id} style={{
                       width: isDesktop ? ('calc(33.333% - 7px)' as any) : '100%',
                       minWidth: isDesktop ? 280 : 0,
                     }}>
                       <DoctorCard
                         doctor={doc}
-                        actioning={actioningId === doc.id}
+                        actioning={actioningId === doc.membership_id}
                         onApprove={() => handleApprove(doc)}
                         onReject={() => handleReject(doc)}
                       />
@@ -268,13 +260,13 @@ export function PendingApprovalsScreen() {
                 {showHistory && (
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                     {history.map(doc => (
-                      <View key={doc.id} style={{
+                      <View key={doc.membership_id} style={{
                         width: isDesktop ? ('calc(50% - 4px)' as any) : '100%',
                       }}>
                         <HistoryCard
                           doctor={doc}
-                          actioning={actioningId === doc.id}
-                          onUndo={() => handleUndo(doc)}
+                          actioning={actioningId === doc.membership_id}
+                          onUndo={doc.status === 'rejected' ? () => handleUndo(doc) : undefined}
                         />
                       </View>
                     ))}
@@ -295,7 +287,7 @@ export function PendingApprovalsScreen() {
 function DoctorCard({
   doctor, actioning, onApprove, onReject,
 }: {
-  doctor: PendingDoctor;
+  doctor: SignupRequest;
   actioning: boolean;
   onApprove: () => void;
   onReject: () => void;
@@ -306,7 +298,7 @@ function DoctorCard({
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const CARD = makeCard(isDark, T);
 
-  const dateStr = new Date(doctor.created_at).toLocaleDateString(localeTag(), {
+  const dateStr = new Date(doctor.requested_at).toLocaleDateString(localeTag(), {
     day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
   });
   return (
@@ -327,8 +319,18 @@ function DoctorCard({
         <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Text style={{ fontSize: 14, fontWeight: '700', color: T.ink, letterSpacing: -0.1, flex: 1 }} numberOfLines={1}>
-              {doctor.full_name}
+              {displayName(doctor)}
             </Text>
+            {doctor.user_type !== 'doctor' ? (
+              <View style={{
+                paddingHorizontal: 7, paddingVertical: 2, borderRadius: R.pill,
+                backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.05)',
+              }}>
+                <Text style={{ fontSize: 9.5, fontWeight: '700', color: T.ink2 }}>
+                  {doctor.user_type === 'clinic_admin' ? 'Klinik yöneticisi' : 'Klinik sekreteri'}
+                </Text>
+              </View>
+            ) : null}
             <View style={{
               flexDirection: 'row', alignItems: 'center', gap: 3,
               paddingHorizontal: 7, paddingVertical: 2,
@@ -356,6 +358,18 @@ function DoctorCard({
               <Text style={{ fontSize: 10.5, color: T.ink3 }}>{dateStr}</Text>
             </View>
           </View>
+          {doctor.email ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Mail size={11} color={T.ink3} strokeWidth={1.6} />
+              <Text style={{ fontSize: 11, color: T.ink3, flexShrink: 1 }} numberOfLines={1}>{doctor.email}</Text>
+            </View>
+          ) : null}
+          {doctor.address ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <MapPin size={11} color={T.ink3} strokeWidth={1.6} />
+              <Text style={{ fontSize: 11, color: T.ink3, flexShrink: 1 }} numberOfLines={1}>{formatAddress(doctor.address)}</Text>
+            </View>
+          ) : null}
         </View>
       </View>
 
@@ -405,13 +419,14 @@ function DoctorCard({
 function HistoryCard({
   doctor, actioning, onUndo,
 }: {
-  doctor: PendingDoctor;
+  doctor: SignupRequest;
   actioning: boolean;
-  onUndo: () => void;
+  /** Yalnız reddedilen kayıtta verilir. */
+  onUndo?: () => void;
 }) {
   const U = useInkUI();
   const initial = doctor.full_name?.charAt(0)?.toUpperCase() ?? 'H';
-  const isApproved = doctor.approval_status === 'approved';
+  const isApproved = doctor.status === 'active';
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const CARD = makeCard(isDark, T);
@@ -443,7 +458,7 @@ function HistoryCard({
 
       <View style={{ flex: 1, gap: 1, minWidth: 0 }}>
         <Text style={{ fontSize: 12.5, fontWeight: '700', color: T.ink }} numberOfLines={1}>
-          {doctor.full_name}
+          {displayName(doctor)}
         </Text>
         {doctor.clinic_name ? (
           <Text style={{ fontSize: 10.5, color: T.ink3 }} numberOfLines={1}>{doctor.clinic_name}</Text>
@@ -457,14 +472,14 @@ function HistoryCard({
       }}>
         <statusCfg.Icon size={10} color={statusCfg.color} strokeWidth={2} />
         <Text style={{ fontSize: 10, fontWeight: '800', color: statusCfg.color, letterSpacing: 0.2 }}>
-          {statusCfg.label.toLocaleUpperCase('tr-TR')}
+          {autoT(statusCfg.label).toLocaleUpperCase(localeTag())}
         </Text>
       </View>
 
-      <Pressable
+      {onUndo ? <Pressable
         onPress={onUndo}
         disabled={actioning}
-        accessibilityLabel="Geri al"
+        accessibilityLabel={autoT('Geri al')}
         style={({ hovered }: any) => ({
           width: 30, height: 30, borderRadius: 9,
           alignItems: 'center', justifyContent: 'center',
@@ -475,7 +490,7 @@ function HistoryCard({
         })}
       >
         {actioning ? <ActivityIndicator size="small" color={U.ink[500]} /> : <Undo2 size={12} color={U.ink[500]} strokeWidth={1.8} />}
-      </Pressable>
+      </Pressable> : null}
     </View>
   );
 }

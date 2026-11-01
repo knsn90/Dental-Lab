@@ -47,7 +47,12 @@ const TONE_DARK = {
   danger:  '#FCA5A5',
 } as const;
 
-export function RowActionsMenu({ actions, size = 26 }: { actions: RowAction[]; size?: number }) {
+export function RowActionsMenu({ actions, size = 26, color }: {
+  actions: RowAction[];
+  size?: number;
+  /** Tetikleyici ikon rengi (renkli/koyu zemin üstünde). Verilmezse nötr gri. */
+  color?: string;
+}) {
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const [open, setOpen] = useState(false);
@@ -94,7 +99,7 @@ export function RowActionsMenu({ actions, size = 26 }: { actions: RowAction[]; s
           ...webCursor,
         })}
       >
-        <MoreHorizontal size={Math.round(size * 0.62)} color={isDark ? (T.ink3 as string) : '#6B6B6B'} strokeWidth={2} />
+        <MoreHorizontal size={Math.round(size * 0.62)} color={color ?? (isDark ? (T.ink3 as string) : '#6B6B6B')} strokeWidth={2} />
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>

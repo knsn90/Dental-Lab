@@ -17,6 +17,7 @@ import { BanaBiKuryeLogo } from './BanaBiKuryeLogo';
 import { ShipinkLogo } from './ShipinkLogo';
 import { CarrierLogo } from './CarrierLogo';
 import { FilterMenu } from '../../../core/ui/FilterMenu';
+import { useInkUI } from '../../../core/theme/inkScale';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { edgeErrorMessage } from '../../../core/api/edgeError';
@@ -85,6 +86,11 @@ interface Props {
   extraLeg?: boolean;
   /** Çağrı anındaki üretim aşaması adı — kayda snapshot olarak yazılır. */
   stageSnapshot?: string | null;
+  /**
+   * Ara harekette amaç önceden seçili gelsin (Prova popup'ındaki "Prova kuryesi" /
+   * "Dönüş kuryesi"). Verilmezse eski davranış: hiçbir amaç seçili gelmez.
+   */
+  initialPurpose?: DeliveryPurpose | null;
 }
 
 const PROVIDERS = ['MNG Kargo', 'Aras Kargo', 'Sürat Kargo', 'Yurtiçi Kargo', 'PTT Kargo', 'UPS', 'Diğer'];
@@ -202,43 +208,37 @@ const FONT_MONO = Platform.OS === 'ios' ? 'Menlo' : Platform.OS === 'android' ? 
  * Seçili durum yalnız renkle değil TİKLE de anlatılır; renk körlüğünde ve
  * düşük kontrastlı ekranda da okunur.
  */
-function SelectCard({ selected, accent, icon: Icon, title, desc, onPress }: {
-  selected: boolean; accent: string; icon: any; title: string; desc: string; onPress: () => void;
+/**
+ * Neden seçimi — tek dokunuş pill. Seçili olan panel renginde ve daha geniş
+ * (CLAUDE.md §1c: pasif 12 / aktif 18). Açık temada beyaz kapsül → koyu temada
+ * U.plainBtn (beyaz buton kuralı); seçili = accent zemin + beyaz metin.
+ */
+function PurposePill({ label, on, disabled, accent, icon: Icon, onPress }: {
+  label: string; on: boolean; disabled?: boolean; accent: string; icon?: any; onPress: () => void;
 }) {
   const T = useMobileTokens();
+  const U = useInkUI();
   const isDark = useThemeModeStore(s => s.resolvedDark);
+  const fg = on ? '#FFF' : (isDark ? U.plainBtn.fg : (T.ink as string));
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="radio"
+      accessibilityState={{ selected: on, disabled: !!disabled }}
       style={({ pressed }: any) => ({
-        flexDirection: 'row', alignItems: 'center', gap: 12,
-        padding: 14, borderRadius: 16,
-        borderWidth: 1.5, borderColor: selected ? accent : T.hairline,
-        backgroundColor: selected ? `${accent}0F` : (isDark ? T.card : '#FFF'),
-        opacity: pressed ? 0.7 : 1,
-        transform: [{ scale: pressed ? 0.99 : 1 }],
-        ...webCursor,
+        flexDirection: 'row', alignItems: 'center', gap: 6,
+        paddingVertical: 8, paddingHorizontal: on ? 18 : 12, borderRadius: 999,
+        borderWidth: 1,
+        borderColor: on ? accent : (isDark ? U.plainBtn.border : (T.hairline as string)),
+        backgroundColor: on ? accent : (isDark ? U.plainBtn.bg : '#FFF'),
+        opacity: disabled ? 0.4 : pressed ? 0.75 : 1,
+        transform: [{ scale: pressed && !disabled ? 0.98 : 1 }],
+        ...(disabled ? {} : webCursor),
       })}
     >
-      <View style={{
-        width: 34, height: 34, borderRadius: 999,
-        backgroundColor: selected ? `${accent}1F` : (isDark ? T.cardSoft : 'rgba(0,0,0,0.05)'),
-        alignItems: 'center', justifyContent: 'center',
-      }}>
-        <Icon size={16} color={selected ? accent : T.ink3} strokeWidth={1.9} />
-      </View>
-      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-        <Text style={{ fontSize: 13.5, fontWeight: '700', color: T.ink }}>{title}</Text>
-        <Text style={{ fontSize: 11.5, color: T.ink3, lineHeight: 16 }}>{desc}</Text>
-      </View>
-      <View style={{
-        width: 20, height: 20, borderRadius: 999,
-        borderWidth: selected ? 0 : 1.5, borderColor: T.hairline,
-        backgroundColor: selected ? accent : 'transparent',
-        alignItems: 'center', justifyContent: 'center',
-      }}>
-        {selected ? <Check size={12} color="#FFF" strokeWidth={3} /> : null}
-      </View>
+      {Icon ? <Icon size={13} color={on ? '#FFF' : (T.ink3 as string)} strokeWidth={2} /> : null}
+      <Text style={{ fontSize: 12.5, fontWeight: on ? '700' : '500', color: fg }}>{label}</Text>
     </Pressable>
   );
 }
@@ -368,9 +368,10 @@ function ModeCard({ selected, accent, icon: Icon, label, brand, brandMaxWidth = 
   );
 }
 
-export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated, accentColor = '#0A0A0A', lockExternal = false, editDelivery = null, extraLeg = false, stageSnapshot = null }: Props) {
+export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated, accentColor = '#0A0A0A', lockExternal = false, editDelivery = null, extraLeg = false, stageSnapshot = null, initialPurpose = null }: Props) {
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
+  const U = useInkUI();
   const [mode, setMode]         = useState<'internal' | 'external' | 'banabikurye' | 'shipink'>('external');
   const [couriers, setCouriers] = useState<CourierOption[]>([]);
   const [courierId, setCourierId] = useState<string | null>(null);
@@ -465,7 +466,6 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
    */
   const [purposeChosen, setPurposeChosen] = useState(false);
   /** Dış servis yönü seçilince "Ara hareket" menüsünü açan sinyal (sayaç). */
-  const [araOpenSignal, setAraOpenSignal] = useState(0);
   const [direction, setDirection] = useState<DeliveryDirection>('lab_to_clinic');
   /** Karşı taraf klinik değil DIŞ SERVİS mi (milling, döküm, lehim…)? */
   const isExtParty = direction === 'lab_to_other' || direction === 'other_to_lab';
@@ -544,10 +544,9 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
     setFee('');
     // Hiçbir neden SEÇİLİ gelmez — kullanıcı bilinçli seçsin (yanlışlıkla final
     // teslimat açılmasın). `purpose` yalnız teknik varsayılan.
-    setPurpose('teslimat');
-    setPurposeChosen(false);
-    setAraOpenSignal(0);
-    setDirection('lab_to_clinic');
+    setPurpose(initialPurpose ?? 'teslimat');
+    setPurposeChosen(!!initialPurpose);
+    setDirection(initialPurpose ? DEFAULT_DIRECTION[initialPurpose] : 'lab_to_clinic');
     setAddrQuery(''); setAddrResults([]); setAddrSelected(null); setAddrTouched(false);
     // Kayıtlı klinik adresleri + arama için lab konumu (ikisi de tek seferlik)
     supabase
@@ -650,7 +649,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
       .eq('role', 'courier')
       .or(`id.eq.${labId},lab_id.eq.${labId}`)
       .then(({ data }) => setCouriers((data ?? []) as CourierOption[]));
-  }, [visible, labId]);
+  }, [visible, labId, initialPurpose]);
 
   /** Neden seçilmeden kurye çağrılmaz (varsayılan 'teslimat' kaldırıldı). */
   const purposeMissing = () => extraLeg && !editDelivery && !purposeChosen;
@@ -1165,7 +1164,7 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <Pressable
         onPress={onClose}
-        style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+        style={U.modalOverlay}
       >
         <Pressable
           onPress={() => { /* swallow */ }}
@@ -1184,8 +1183,11 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
               <Text style={{ fontSize: 10, fontWeight: '700', color: accentColor, letterSpacing: 1, textTransform: 'uppercase' }}>
                 {/* Başlık üstü artık seçilen nedeni yansıtır — "Ara kurye
                     hareketi" sabitti, teslimat seçilince yanlış oluyordu. */}
+                {/* Neden SEÇİLMEDEN "Final teslimat" yazmaz: `purpose` yalnız teknik
+                    varsayılan ('teslimat'); başlık seçilmiş gibi görünüyordu, kullanıcı
+                    nedeni seçmeden "Onayla & Çağır"a basıp görünmeyen hatada kalıyordu. */}
                 {editDelivery ? 'Teslimat'
-                  : extraLeg ? (purpose === FINAL_PURPOSE ? 'Final teslimat' : 'Ara kurye hareketi')
+                  : extraLeg ? (!purposeChosen ? 'Kurye hareketi' : purpose === FINAL_PURPOSE ? 'Final teslimat' : 'Ara kurye hareketi')
                   : 'Teslimat'}
               </Text>
               <Text style={{ fontSize: 18, fontWeight: '700', color: (T.ink as string) }}>
@@ -1203,18 +1205,40 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
               <View style={{ gap: 14 }}>
                 <View style={{ gap: 8 }}>
                   <Text style={[SECTION_LBL, { color: T.ink3 }]}>Neden</Text>
-
-                  {/* En sık sebep önce, tek başına ve ne yaptığını yazarak.
-                      Diğerleri altında kompakt ızgarada — hiçbiri gizlenmiyor,
-                      yalnız sıra doğru. */}
-                  <SelectCard
-                    selected={purposeChosen && purpose === FINAL_PURPOSE}
-                    accent={accentColor}
-                    icon={Package}
-                    title="Teslimat"
-                    desc="Biten işi kliniğe gönder · siparişin final teslimatı olarak kaydedilir"
-                    onPress={() => { setPurpose(FINAL_PURPOSE); setPurposeChosen(true); setDirection(DEFAULT_DIRECTION.teslimat); setBbkPrice(null); setBbkBreakdown(null); resetShpRates(); }}
-                  />
+                  {/* Tek dokunuş: Teslimat (final) ve ara hareketler aynı grupta, hepsi
+                      görünür. Eskiden büyük kart + "Ara hareket" açılır menüsü vardı (iki
+                      adım; menü bir dönem yalnız dış serviste çıkıyordu → Lab↔Klinik ara
+                      hareketi kaydedilemiyordu, 2026-10-17). Dış servise final teslimat
+                      yapılmaz → o yönlerde Teslimat pasif. */}
+                  <View accessibilityRole="radiogroup" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    <PurposePill
+                      label="Teslimat"
+                      icon={Package}
+                      accent={accentColor}
+                      on={purposeChosen && purpose === FINAL_PURPOSE}
+                      disabled={isExtParty}
+                      onPress={() => { setPurpose(FINAL_PURPOSE); setPurposeChosen(true); setDirection(DEFAULT_DIRECTION.teslimat); setBbkPrice(null); setBbkBreakdown(null); resetShpRates(); }}
+                    />
+                    {EXTRA_PURPOSES.map(p => (
+                      <PurposePill
+                        key={p}
+                        label={DELIVERY_PURPOSE_LABELS[p]}
+                        accent={accentColor}
+                        on={purposeChosen && purpose === p}
+                        onPress={() => {
+                          setPurpose(p); setPurposeChosen(true);
+                          // Dış servis yönü kullanıcının SEÇİMİ — amaç değişince ezme.
+                          if (!isExtParty) setDirection(DEFAULT_DIRECTION[p]);
+                          setBbkPrice(null); setBbkBreakdown(null); resetShpRates();
+                        }}
+                      />
+                    ))}
+                  </View>
+                  <Text style={{ fontSize: 11.5, color: T.ink3 }}>
+                    {!purposeChosen ? 'Teslimat ya da bir ara hareket seçin'
+                      : purpose === FINAL_PURPOSE ? 'Siparişin final teslimatı olarak kaydedilir'
+                      : 'Ara hareket · final teslimat sayılmaz'}
+                  </Text>
 
                 </View>
 
@@ -1225,9 +1249,9 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                     value={direction}
                     onChange={(v) => {
                       setDirection(v as DeliveryDirection); setBbkPrice(null); setBbkBreakdown(null); resetShpRates();
-                      // Dış servis bacağı final teslimat olamaz — sıradaki adım
-                      // "hangi ara hareket?" olduğu için menü kendiliğinden açılır.
-                      if (v === 'lab_to_other' || v === 'other_to_lab') setAraOpenSignal((n) => n + 1);
+                      // Dış servise final teslimat yapılmaz — Teslimat seçiliyse seçim
+                      // kalkar, kullanıcı ara hareketi seçer (Teslimat pill'i burada pasif).
+                      if ((v === 'lab_to_other' || v === 'other_to_lab') && purpose === FINAL_PURPOSE) setPurposeChosen(false);
                     }}
                     items={[
                       { id: 'lab_to_clinic', label: 'Lab → Klinik' },
@@ -1239,32 +1263,6 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
                       { id: 'other_to_lab', label: 'Dış → Lab' },
                     ]}
                   />
-
-                  {/* Ara hareket SADECE dış servis yönlerinde ve YÖN sekmelerinin
-                      ALTINDA: sıra "yönü seç → hangi ara hareket?" diye ilerliyor,
-                      menü de seçimle birlikte kendiliğinden açılıyor. Normal
-                      Lab↔Klinik akışında neden zaten "Teslimat", menü görünmez. */}
-                  <View style={{ alignSelf: 'flex-start', display: isExtParty ? 'flex' : 'none' }}>
-                    <FilterMenu
-                      label="Ara hareket"
-                      items={[
-                        { key: '', label: 'Seçilmedi' },
-                        ...EXTRA_PURPOSES.map(p => ({ key: p, label: DELIVERY_PURPOSE_LABELS[p] })),
-                      ]}
-                      active={!purposeChosen || purpose === FINAL_PURPOSE ? '' : purpose}
-                      openSignal={araOpenSignal}
-                      onChange={(k) => {
-                        setBbkPrice(null); setBbkBreakdown(null); resetShpRates();
-                        const np = (k || FINAL_PURPOSE) as DeliveryPurpose;
-                        setPurpose(np);
-                        // "Seçilmedi" → seçim yapılmamış hâle dön (kart da seçili görünmesin).
-                        setPurposeChosen(!!k);
-                        // Dış servis yönü kullanıcının SEÇİMİ — amaç değişince ezme.
-                        if (!isExtParty) setDirection(DEFAULT_DIRECTION[np]);
-                      }}
-                      accent={accentColor}
-                    />
-                  </View>
                 </View>
               </View>
             )}
@@ -1970,26 +1968,32 @@ export function DeliveryModal({ visible, workOrderId, labId, onClose, onCreated,
               />
             </View>
 
-            {error && (
-              <View style={{ gap: 6 }}>
-                <Text style={{ fontSize: 12, color: '#DC2626', fontWeight: '500' }}>{error}</Text>
-                {errDetail && (
-                  <>
-                    <Pressable onPress={() => setErrOpen(v => !v)} hitSlop={6}>
-                      <Text style={{ fontSize: 11, color: '#991B1B', textDecorationLine: 'underline' }}>
-                        {errOpen ? 'Teknik detayı gizle' : 'Teknik detay'}
-                      </Text>
-                    </Pressable>
-                    {errOpen && (
+          </ScrollView>
+
+          {/* Hata HER ZAMAN görünür: eskiden kaydırma alanının en altındaydı (Not
+              kutusunun da altı) — "Onayla & Çağır" ön kontrolde durunca mesaj
+              görünmüyor, buton "çalışmıyor" sanılıyordu (2026-10-17, NEX-2026-0193). */}
+          {error && (
+            <View style={{ gap: 6, paddingHorizontal: 22, paddingTop: 12, paddingBottom: 4, borderTopWidth: 1, borderTopColor: (T.hairline as string) }}>
+              <Text accessibilityRole="alert" style={{ fontSize: 12.5, color: isDark ? '#FCA5A5' : '#DC2626', fontWeight: '600' }}>{error}</Text>
+              {errDetail && (
+                <>
+                  <Pressable onPress={() => setErrOpen(v => !v)} hitSlop={6} style={{ alignSelf: 'flex-start' }}>
+                    <Text style={{ fontSize: 11, color: isDark ? '#FCA5A5' : '#991B1B', textDecorationLine: 'underline' }}>
+                      {errOpen ? 'Teknik detayı gizle' : 'Teknik detay'}
+                    </Text>
+                  </Pressable>
+                  {errOpen && (
+                    <ScrollView style={{ maxHeight: 140 }}>
                       <Text selectable style={{ fontSize: 10, lineHeight: 15, color: '#7F1D1D', backgroundColor: '#FEF2F2', borderRadius: 8, padding: 10, fontFamily: FONT_MONO }}>
                         {errDetail}
                       </Text>
-                    )}
-                  </>
-                )}
-              </View>
-            )}
-          </ScrollView>
+                    </ScrollView>
+                  )}
+                </>
+              )}
+            </View>
+          )}
 
           {/* Footer */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 16, borderTopWidth: 1, borderTopColor: (T.hairline as string), backgroundColor: isDark ? T.card : '#FFFFFF', borderBottomStartRadius: 20, borderBottomEndRadius: 20 }}>

@@ -1,0 +1,9 @@
+# 20261028100000_kanit_sema — önceki durum (2026-10-28 canlı ölçüm)
+col: id:uuid, work_order_id:uuid, courier_id:uuid, status:USER-DEFINED, external_tracking_code:text, assigned_at:timestamp with time zone, picked_up_at:timestamp with time zone, delivered_at:timestamp with time zone, recipient_name:text, recipient_note:text, signature_path:text, created_at:timestamp with time zone, lab_id:uuid, mode:text, external_provider:text, external_tracking_no:text, destination_name:text, destination_address:text, destination_phone:text, cancelled_at:timestamp with time zone, cancel_reason:text, notes:text, updated_at:timestamp with time zone, purpose:text, direction:text, fee_amount:numeric, fee_currency:text, fee_source:text, stage_snapshot:text, ext_courier_name:text, ext_courier_phone:text, ext_courier_photo:text, origin_lat:numeric, origin_lng:numeric, dest_lat:numeric, dest_lng:numeric, origin_name:text, origin_address:text, external_label_url:text, shipment_no:text
+trg: deliveries_bbk_order_status, deliveries_fee_expense, deliveries_updated_at, trg_deliveries_prova_auto, ztg_deliveries_tenant_guard
+buckets: avatars, chat-attachments, employee-docs, lab-logos, occlusion-screenshots, paper-orders, purchase-invoices, support-attachments, work-order-photos
+dp_bucket: 0
+dp_policies: 0
+fns: ∅
+try_uuid: public.try_uuid
+rows: 64

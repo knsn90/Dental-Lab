@@ -81,10 +81,16 @@ const OPERATION_TABS: TabDef[] = [
   { key: 'advances',  label: 'Avans Talepleri', icon: Wallet,     accent: '#D97706', hint: 'Personel avans talepleri' },
   { key: 'bonus',     label: 'Prim Motoru',   icon: Sparkles,     accent: '#EA7A4C', hint: 'Bonus politikaları' },
   { key: 'cash',      label: 'Kasa / Banka',  icon: Landmark,     accent: '#059669', hint: 'Hesap hareketleri' },
+];
+
+// En sık kullanılan bölüm — menünün EN ÜSTÜNDE (kullanıcı isteği 2026-10-20:
+// Fiyat Listesi Operasyon'un en altındaydı, her seferinde 15 satır aşağı iniliyordu).
+const FREQUENT_TABS: TabDef[] = [
   { key: 'pricelist', label: 'Fiyat Listesi', icon: Tag,          accent: '#0891B2', hint: 'Hizmet katalog' },
 ];
 
 const TAB_GROUPS = [
+  { title: 'Sık Kullanılan', items: FREQUENT_TABS },
   { title: 'Analiz',    items: ANALYSIS_TABS },
   { title: 'Hesaplar',  items: COLLECTION_TABS },
   { title: 'Operasyon', items: OPERATION_TABS },
@@ -273,6 +279,7 @@ export function FinanceHubScreen({ forceActiveKey, overrideContent }: FinanceHub
               {(() => {
                 const HIDE = new Set(['profitability', 'invoices', 'expenses']);
                 return [
+                  { title: 'Sık Kullanılan', items: FREQUENT_TABS.filter(t => !HIDE.has(t.key)) },
                   { title: 'Analiz', items: ANALYSIS_TABS.filter(t => !HIDE.has(t.key)) },
                   { title: 'Hesaplar', items: COLLECTION_TABS.filter(t => !HIDE.has(t.key)) },
                   { title: 'Operasyon', items: OPERATION_TABS.filter(t => !HIDE.has(t.key)) },

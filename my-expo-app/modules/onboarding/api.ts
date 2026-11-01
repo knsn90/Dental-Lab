@@ -5,6 +5,7 @@
  * Böylece geri-ileri navigasyonda duplike kayıt oluşmaz.
  */
 import { supabase } from '../../core/api/supabase';
+import { normalizeLabBilling, composeLabAddress } from '../settings/labBilling';
 import { getBaseCurrency } from '../../core/money/baseCurrency';
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -13,6 +14,29 @@ export interface LabSetupData {
   phone?: string;
   email?: string;
   address?: string;
+  // Fatura bilgileri (zorunlu — ../settings/labBilling.ts kuralları)
+  legal_name?: string;
+  tax_number?: string;
+  tax_office?: string;
+  street?: string;
+  district?: string;
+  city?: string;
+  postal_code?: string;
+}
+
+/** Fatura alanları → labs satırı; görünen adres bu alanlardan oluşur. */
+function labBillingColumns(lab: LabSetupData) {
+  const b = normalizeLabBilling(lab as any);
+  return {
+    legal_name: b.legal_name || null,
+    tax_number: b.tax_number || null,
+    tax_office: b.tax_office || null,
+    street: b.street || null,
+    district: b.district || null,
+    city: b.city || null,
+    postal_code: b.postal_code || null,
+    address: composeLabAddress(b) || lab.address || null,
+  };
 }
 
 export interface ClinicSetupData {
@@ -83,7 +107,7 @@ export async function loadExistingData(): Promise<ExistingData> {
 
   const { data: lab } = await supabase
     .from('labs')
-    .select('name, phone, email, address')
+    .select('name, phone, email, address, legal_name, tax_number, tax_office, street, district, city, postal_code')
     .eq('id', labId)
     .single();
 
@@ -126,7 +150,7 @@ export async function saveWizardData(payload: WizardPayload) {
         name: payload.lab.name,
         phone: payload.lab.phone || null,
         email: payload.lab.email || null,
-        address: payload.lab.address || null,
+        ...labBillingColumns(payload.lab),
       })
       .eq('id', labId);
     if (error) throw error;
@@ -138,10 +162,14 @@ export async function saveWizardData(payload: WizardPayload) {
       p_name: payload.lab.name,
       p_phone: payload.lab.phone || null,
       p_email: payload.lab.email || null,
-      p_address: payload.lab.address || null,
+      p_address: labBillingColumns(payload.lab).address,
     });
     if (error) throw error;
     labId = newLabId as string;
+    // RPC fatura alanlarını almıyor → lab kurulunca aynı kullanıcı kendi labına
+    // yazar (labs_update_own). Sihirbazda zorunlu oldukları için boş geçmez.
+    const { error: billErr } = await supabase.from('labs').update(labBillingColumns(payload.lab)).eq('id', labId);
+    if (billErr) throw billErr;
   }
 
   // 2) Klinik (atlanmadıysa)

@@ -49,6 +49,7 @@ import { AlertPillX } from '../../../core/ui/AlertPillX';
 import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 import { shortClinicName } from '../../../core/utils/clinicName';
 import { fetchClinicBalances } from '../../invoices/api';
+import { useClinicBillingAccess } from '../../clinic/useClinicBillingAccess';
 import type { ClinicBalance } from '../../invoices/types';
 import { baseSymbol, getBaseCurrency } from '../../../core/money/baseCurrency';
 import { rateToBase } from '../../../core/money/rateCache';
@@ -56,6 +57,7 @@ import { CURRENCY_META, type Currency } from '../../../core/money/currency';
 import { resolveOrderStatus } from '../components/RecentOrdersMobile';
 import { mapRevisionCases, flattenRevisionCases } from '../../orders/revisionGroups';
 import { useRevisionParents } from '../../orders/hooks/useRevisionParents';
+import { useLabToday } from '../../../core/metrics/useLabToday';
 
 // ── Display font ──
 const SERIF = {
@@ -1005,17 +1007,21 @@ export function ClinicDashboardScreen() {
     })();
     return () => { alive = false; };
   }, [clinicId]);
-  // Mali durum (cari hesap) — RLS kliniği kendi satırına kısıtlar
+  // Mali durum (cari hesap) — RLS kliniği kendi satırına kısıtlar. Faturayı görme yetkisi yoksa
+  // (my_clinic_billing_access) kart hiç çizilmez: RLS'li sıfır bakiye yanıltıcı olurdu.
+  const billingAccess = useClinicBillingAccess();
   const [finance, setFinance] = useState<ClinicBalance | null>(null);
   useEffect(() => {
+    if (billingAccess !== true) { setFinance(null); return; }
     let alive = true;
     (async () => {
       const { data } = await fetchClinicBalances();
       if (alive) setFinance((data ?? [])[0] ?? null);
     })();
     return () => { alive = false; };
-  }, []);
-  const today = todayStr();
+  }, [billingAccess]);
+  // Tek tanım (2026-10-26): bugün lab gününde (isOrderOverdue de aynı saat dilimini kullanır).
+  const today = useLabToday();
 
   // ── Derived stats ──
   const total = orders.length;
@@ -1227,7 +1233,7 @@ export function ClinicDashboardScreen() {
 
     // Son Siparişler — mobil kart listesi (başlık = hasta adı; klinik siparişi verir)
     const toRecentItem = (o: any) => {
-      const st = resolveOrderStatus(o.status, o.hold_status);
+      const st = resolveOrderStatus(o.status, o.hold_status, (o as any).hold_category);
       const isOverdue = !!o.delivery_date && o.delivery_date < today && o.status !== 'teslim_edildi' && o.status !== 'iptal';
       const pName = o.patient_name ? titleCaseTR(o.patient_name) : '—';
       return {
@@ -1508,7 +1514,9 @@ export function ClinicDashboardScreen() {
           </Card>
         )}
         {/* Mali Durum — Statü Dağılımı yerine finansa özel kart */}
-        <ClinicFinanceCard fin={finance} isDesktop={isDesktop} onPress={() => router.push('/(clinic)/finance' as any)} />
+        {billingAccess === true && (
+          <ClinicFinanceCard fin={finance} isDesktop={isDesktop} onPress={() => router.push('/(clinic)/finance' as any)} />
+        )}
       </View>
 
       <View style={{ height: 40 }} />

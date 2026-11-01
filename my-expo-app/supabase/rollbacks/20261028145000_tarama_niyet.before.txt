@@ -1,0 +1,1 @@
+Öncesi (2026-10-28): scan_appointments'ta intent/intended_order_id yok; scan_appt_save 9 parametreli, md5 b2df4ef257cd71ac45d1d0c1e53ac90e (tanım: 20261028141000_tarama_kayit_rpc.sql).

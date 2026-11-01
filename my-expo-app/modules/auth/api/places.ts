@@ -6,6 +6,7 @@
  * - Diş klinikleri / sağlık kuruluşları öncelikli (includedPrimaryTypes)
  * - FieldMask ile sadece ihtiyacımız olan alanlar → düşük maliyet (Essentials SKU)
  */
+import { streetAndNumber } from './addressParts';
 
 const KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_KEY;
 
@@ -23,7 +24,18 @@ export interface PlaceDetails {
   il: string;
   ilce: string;
   mahalle: string;
+  /** Birleşik "Cadde No:12" (geriye dönük — teslimat/profil bunu kullanır) */
   sokak: string;
+  /** Yalnız cadde/sokak adı (bina no ayrı) — klinik formu */
+  cadde: string;
+  /** Bina no (street_number + premise) — klinik formunda ayrı alan */
+  binaNo: string;
+  /** Daire no (Google subpremise ya da "D:3") — klinik formunda ayrı alan */
+  daireNo: string;
+  /** Ülke kodu (ISO 3166-1 alpha-2, Google 'country') */
+  ulke: string;
+  /** Şehir (locality) — yurt dışı adreslerde ilçe yerine */
+  sehir: string;
   postaKodu: string;
   lat: number | null;
   lng: number | null;
@@ -110,8 +122,16 @@ const TR_BOUNDS = {
   },
 };
 
+/**
+ * Arama ülkesi (ISO kodu, varsayılan TR). Klinik formunda seçili ülke verilir — yurt dışı
+ * kliniklerin aranabilmesi için (2026-10-23). TR'de Türkçe, diğerlerinde İngilizce sonuç.
+ */
+const regionOf = (region?: string | null) => (/^[A-Za-z]{2}$/.test(String(region ?? '')) ? String(region).toLowerCase() : 'tr');
+const langOf = (r: string) => (r === 'tr' ? 'tr' : 'en');
+
 // ── Autocomplete ─────────────────────────────────────────────────────
-export async function searchPlaces(input: string, bias?: PlaceBias | null): Promise<PlaceSuggestion[]> {
+export async function searchPlaces(input: string, bias?: PlaceBias | null, region?: string | null): Promise<PlaceSuggestion[]> {
+  const r = regionOf(region);
   if (!KEY) {
     // eslint-disable-next-line no-console
     console.warn('[places] EXPO_PUBLIC_GOOGLE_PLACES_KEY tanımlı değil');
@@ -129,12 +149,12 @@ export async function searchPlaces(input: string, bias?: PlaceBias | null): Prom
       },
       body: JSON.stringify({
         input: input.trim(),
-        languageCode: 'tr',
-        regionCode: 'tr',
+        languageCode: langOf(r),
+        regionCode: r,
         // includedPrimaryTypes kasıtlı olarak verilmiyor — kurum adı geniş eşleşsin
         sessionToken: currentSessionToken,
-        // Sonuçları Türkiye ile SINIRLA — regionCode tek başına yetmiyor (bkz. TR_BOUNDS)
-        includedRegionCodes: ['tr'],
+        // Sonuçları seçili ülkeyle SINIRLA — regionCode tek başına yetmiyor (bkz. TR_BOUNDS)
+        includedRegionCodes: [r],
         locationBias: biasBody(bias),
       }),
     });
@@ -169,7 +189,8 @@ export async function searchPlaces(input: string, bias?: PlaceBias | null): Prom
  * selin" gibi tarif eden cümleleri de eşleştirir). Bu yüzden sadece FALLBACK
  * olarak çağrılır: SKU'su autocomplete'ten pahalı ve oturum jetonuna girmez.
  */
-export async function searchPlacesText(input: string, bias?: PlaceBias | null): Promise<PlaceSuggestion[]> {
+export async function searchPlacesText(input: string, bias?: PlaceBias | null, region?: string | null): Promise<PlaceSuggestion[]> {
+  const r = regionOf(region);
   if (!KEY) return [];
   const q = input.trim();
   if (q.length < 3) return [];
@@ -183,12 +204,12 @@ export async function searchPlacesText(input: string, bias?: PlaceBias | null): 
       },
       body: JSON.stringify({
         textQuery: q,
-        languageCode: 'tr',
-        regionCode: 'tr',
+        languageCode: langOf(r),
+        regionCode: r,
         maxResultCount: 8,
         // Bias ve restriction birlikte gönderilemez; koordinat varsa onu
-        // (daha isabetli), yoksa Türkiye kutusunu kullan.
-        ...(biasBody(bias) ? { locationBias: biasBody(bias) } : { locationRestriction: TR_BOUNDS }),
+        // (daha isabetli), yoksa Türkiye'de Türkiye kutusunu kullan (yurt dışında yalnız regionCode).
+        ...(biasBody(bias) ? { locationBias: biasBody(bias) } : r === 'tr' ? { locationRestriction: TR_BOUNDS } : {}),
       }),
     });
     if (!res.ok) {
@@ -271,7 +292,8 @@ function hasStrongMatch(query: string, results: PlaceSuggestion[]): boolean {
 }
 
 // ── Place Details ────────────────────────────────────────────────────
-export async function getPlaceDetails(placeId: string): Promise<PlaceDetails | null> {
+export async function getPlaceDetails(placeId: string, region?: string | null): Promise<PlaceDetails | null> {
+  const r = regionOf(region);
   if (!KEY) return null;
   try {
     // FieldMask — Essentials + nationalPhoneNumber (Pro) + websiteUri
@@ -286,7 +308,7 @@ export async function getPlaceDetails(placeId: string): Promise<PlaceDetails | n
     ].join(',');
 
     const res = await fetch(
-      `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}?sessionToken=${currentSessionToken || ''}&languageCode=tr&regionCode=tr`,
+      `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}?sessionToken=${currentSessionToken || ''}&languageCode=${langOf(r)}&regionCode=${r}`,
       {
         headers: {
           'X-Goog-Api-Key': KEY,
@@ -359,6 +381,9 @@ export async function getPlaceDetails(placeId: string): Promise<PlaceDetails | n
     }
 
     const postaKodu = find('postal_code');
+    const { cadde, binaNo, daireNo } = streetAndNumber({ route, streetNumber, premise, subpremise: find('subpremise'), fallback: route ? undefined : sokak });
+    const ulke = String(components.find((cc) => cc.types?.includes('country'))?.shortText ?? '').toUpperCase();
+    const sehir = find('locality') || find('postal_town');
 
     const phoneRaw: string = j.nationalPhoneNumber || '';
     const phone = phoneRaw.replace(/\s+/g, ' ').trim();
@@ -371,6 +396,11 @@ export async function getPlaceDetails(placeId: string): Promise<PlaceDetails | n
       ilce,
       mahalle,
       sokak,
+      cadde,
+      binaNo,
+      daireNo,
+      ulke,
+      sehir,
       postaKodu,
       lat: j.location?.latitude ?? null,
       lng: j.location?.longitude ?? null,

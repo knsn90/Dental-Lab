@@ -30,6 +30,7 @@ installGlobalErrorHandler();
 import { GlobalSupportTrigger } from '../modules/support/components/GlobalSupportTrigger';
 import { DentyFAB } from '../modules/denty/components/DentyFAB';
 import { ConsentGuard } from '../modules/auth/components/ConsentGuard';
+import { AiConsentDialog } from '../core/ai/AiConsentDialog';
 // Kurye arka plan konum task'i — iOS cold-relaunch'ta yeniden kayıt için açılışta
 // import edilmeli (native'de defineTask; web'de inert). Bkz. backgroundLocation.ts
 import '../modules/courier/backgroundLocation';
@@ -554,12 +555,32 @@ export default function RootLayout() {
       try { window.localStorage?.removeItem('nx_panel'); } catch {} // bayat bayrak → temizle, normal akış
     }
 
-    // Onaylanmamış hekim / klinik yöneticisi / sekreter — giriş engelle
-    const needsApproval = ['doctor', 'clinic_admin', 'clinic_secretary'].includes(userType as string);
-    if (needsApproval && profile?.approval_status && profile.approval_status !== 'approved') {
+    // Pasife alınmış hesap — rol ayrımı YOK. Açık oturumla uygulamayı yeniden
+    // açan pasif kullanıcı buradan düşer; login ekranındaki kontrol yalnız yeni
+    // girişi kapatıyor, bu ise cebinde açık oturum taşıyanı kapatıyor.
+    if (profile?.is_active === false) {
       if (!inAuthGroup) {
         supabase.auth.signOut();
         router.replace('/(auth)/login');
+      }
+      return;
+    }
+
+    // Onaylanmamış hekim / klinik yöneticisi / sekreter — panele girmez.
+    // Reddedilen: oturum kapanır. Onay bekleyen: oturum AÇIK kalır ve bekleme
+    // ekranına gider — orada lab bağlantı kodunu girer ve onayı bekler (public
+    // kayıt akışı; bekleyen hesap kliniksiz olduğu için hiçbir veri görmez).
+    const needsApproval = ['doctor', 'clinic_admin', 'clinic_secretary'].includes(userType as string);
+    if (needsApproval && profile?.approval_status && profile.approval_status !== 'approved') {
+      if (profile.approval_status === 'rejected') {
+        if (!inAuthGroup) {
+          supabase.auth.signOut();
+          router.replace('/(auth)/login');
+        }
+        return;
+      }
+      if (!(inAuthGroup && segments[1] === 'approval-waiting')) {
+        router.replace('/(auth)/approval-waiting' as any);
       }
       return;
     }
@@ -753,6 +774,8 @@ export default function RootLayout() {
       <GlobalSupportTrigger />
       <DentyFAB />
       <ConsentGuard />
+      {/* Yapay zekâ izni — ensureAiConsent() açar (App Store 5.1.2(i)) */}
+      <AiConsentDialog />
       <BootTracePanel />
     </RootErrorBoundary>
     </SafeAreaProvider>

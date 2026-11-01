@@ -1,5 +1,7 @@
 import { localeTag } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
+import { useFeature } from '../../../core/store/featureFlagsStore';
+import { toast } from '../../../core/ui/Toast';
 import { isRTL } from '../../../core/i18n';
 import { confirmAsync } from '../../../core/util/confirm';
 /**
@@ -10,10 +12,11 @@ import { confirmAsync } from '../../../core/util/confirm';
  *   Özel Listeler → Klinik / hekim bazlı fiyat istisnası
  *   Promosyonlar  → Kampanya, iskonto ve promosyon yönetimi
  */
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, createContext, useContext } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View, Text, ScrollView, Pressable,
-  TextInput, Modal, Alert,
+  TextInput, Modal, Alert, Image,
   Platform, useWindowDimensions,
 } from 'react-native';
 import {
@@ -36,6 +39,7 @@ import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useInkUI } from '../../../core/theme/inkScale';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { DatePicker } from '../../../core/ui/DatePicker';
 import { AppSwitch } from '../../../core/ui/AppSwitch';
@@ -47,6 +51,50 @@ import type { LabService, PriceType } from '../../services/types';
 import type { Clinic } from '../../clinics/types';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { CenteredLoader } from '../../../core/ui/CenteredLoader';
+import { navBarMetrics } from '../../../core/ui/mobile/navGlass';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+import { File as FSFile, Paths } from 'expo-file-system';
+import { MobileTableX, MobileTableRowX, MobileTableIconX, useMobileTableText } from '../../../core/ui/MobileTableX';
+import { NavyBackButtonX } from '../../../core/ui/NavyBackButtonX';
+
+// Uygulama-içi PDF önizleme — yalnız native'de WebView yükle (web iframe kullanır).
+const HtmlWebView: any = Platform.OS !== 'web' ? require('react-native-webview').WebView : null;
+
+/** A4 belgeyi dar ekrana sığdırmak için önizleme genişliği (px). */
+const DOC_PREVIEW_W = 820;
+
+/**
+ * Önizleme için HTML'e ekran ölçeği ekler. Yazdırma/PDF'i ETKİLEMEZ
+ * (@media screen + viewport yalnız ekranda geçerli).
+ *  native → WKWebView viewport genişliği belge genişliğine eşitlenir (sığdırır)
+ *  web    → iframe'de viewport meta yok sayılır; CSS zoom ile küçültülür
+ */
+function withPreviewScale(html: string, screenW: number): string {
+  const zoom = Math.min(1, Math.max(0.3, (screenW - 8) / DOC_PREVIEW_W));
+  const inject = Platform.OS === 'web'
+    ? `<style>@media screen{html{zoom:${zoom.toFixed(3)}}}</style>`
+    : `<meta name="viewport" content="width=${DOC_PREVIEW_W}">`;
+  return /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (m) => m + inject) : inject + html;
+}
+
+/**
+ * Mobil "akış" modu — sayfanın TAMAMI tek ScrollView'da kayar.
+ *
+ * Neden: Finans hub'ı mobilde kendi başlığını + sekme şeridini sabit tutuyor;
+ * üstüne bu ekranın başlığı, sekmeleri, beyaz hero'su, araç çubuğu ve kategori
+ * şeridi de sabit kalınca listeye neredeyse yer kalmıyor, hero yapışık duruyordu
+ * (iOS + PWA). Akışta sekmeler iç ScrollView yerine düz View çizer — iç içe
+ * dikey ScrollView ve kaydırma içinde `flex: 1` (yükseklik 0'a çöker) olmaz.
+ * Masaüstü (>= 1024) değişmez.
+ */
+const PriceFlowCtx = createContext(false);
+/** Liste kaydırıcısı — akışta düz View, masaüstünde kendi ScrollView'u. */
+function FlowScroll({ children, contentContainerStyle }: { children: React.ReactNode; contentContainerStyle?: any }) {
+  const flow = useContext(PriceFlowCtx);
+  if (flow) return <View style={contentContainerStyle}>{children}</View>;
+  return <ScrollView contentContainerStyle={contentContainerStyle}>{children}</ScrollView>;
+}
 
 // ────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -568,6 +616,9 @@ const m = {
 export function PriceListScreen() {
   useBaseCurrency();   // baz para birimi sembolü için (label'lar)
   const [tab, setTab] = useState('standard');
+  const { width: winW } = useWindowDimensions();
+  const flow = winW < 1024;   // FinanceHub'ın masaüstü eşiğiyle aynı
+  const insets = useSafeAreaInsets();
   const rootTheme = usePanelTheme();
   const T = useMobileTokens();
   const isDark = useThemeModeStore(st => st.resolvedDark);
@@ -604,8 +655,19 @@ export function PriceListScreen() {
   // değerli kalıcı köşesini işgal ediyordu; oysa sayfanın işi katalog gezmek.
   const [settingsOpen, setSettingsOpen] = useState(false);
 
+  const Root: any = flow ? ScrollView : View;
+  const rootProps = flow
+    ? {
+        style: { flex: 1, backgroundColor: T.bg },
+        contentContainerStyle: { paddingBottom: navBarMetrics(insets.bottom).clearance + 16 },
+        keyboardShouldPersistTaps: 'handled',
+        showsVerticalScrollIndicator: false,
+      }
+    : { style: [s.root, { backgroundColor: T.bg }] };
+
   return (
-    <View style={[s.root, { backgroundColor: T.bg }]}>
+    <PriceFlowCtx.Provider value={flow}>
+    <Root {...rootProps}>
       {/* ── Sayfa başlığı ───────────────────────────────────────────────
           Gradyanlı hero (~200px) kaldırıldı ama başlık gerekli: Finans Hub
           kabuk başlığını yalnız "Finans" olarak set ediyor, aktif alt bölümün
@@ -763,7 +825,8 @@ export function PriceListScreen() {
       {tab === 'standard'   && <StandardTab urgentRate={savedRate} />}
       {tab === 'custom'     && <CustomTab />}
       {tab === 'promotions' && <PromotionsTab />}
-    </View>
+    </Root>
+    </PriceFlowCtx.Provider>
   );
 }
 
@@ -773,8 +836,10 @@ export function PriceListScreen() {
 interface ServiceForm {
   name: string; category: string; price: string; currency: string; production_days: string;
   priceType: PriceType; unit: string;
+  /** Tarama randevuları modülü: tarama türü ('' = tarama hizmeti değil) + siparişe dönerse ücretsiz */
+  scan_kind: '' | 'intraoral' | 'photogrammetry'; scan_free_if_order: boolean;
 }
-const EMPTY_SVC: ServiceForm = { name: '', category: '', price: '0', currency: 'TRY', production_days: '', priceType: 'fixed', unit: 'Üye' };
+const EMPTY_SVC: ServiceForm = { name: '', category: '', price: '0', currency: 'TRY', production_days: '', priceType: 'fixed', unit: 'Üye', scan_kind: '', scan_free_if_order: true };
 
 // Fiyat birimleri — bu fiyat neyin başına? (üye/diş, çene, vaka...)
 const UNIT_OPTIONS = ['Üye', 'Çene', 'Vaka', 'Adet', 'Seans'];
@@ -928,6 +993,11 @@ function buildPriceListPdfHtml(opts: {
     if (eff === 0) return;                       // "____" basılan satır sayılmaz
     usedCcy.add((isCustom ? (ov?.currency || sv.currency) : sv.currency) || 'TRY');
   });
+  // Sağ üst etiket de basılan para birimini söyler (seçili TRY iken fiyatlar
+  // EUR basılınca başlık "TRY · Ekim" diyordu). Karışık birimde etiket düşer.
+  const docCcy = !showPrices || usedCcy.size === 0
+    ? currency
+    : usedCcy.size === 1 ? Array.from(usedCcy)[0] : '';
   const priceHeader = !showPrices || usedCcy.size === 0
     ? `FİYAT (${escape(currency)})`
     : usedCcy.size === 1
@@ -1028,7 +1098,7 @@ html, body { font-family: 'Inter','Helvetica Neue',Arial,sans-serif; color: #0F1
     </div>
     <div class="headerRight">
       <div class="docEyebrow">${escape(customEyebrow ?? (clinicName ? 'KLİNİK ÖZEL LİSTE' : 'GÜNCEL FİYAT LİSTESİ'))}</div>
-      <div class="docTitle">${escape(currency)} · ${new Date().toLocaleDateString(localeTag(), { year: 'numeric', month: 'long' })}</div>
+      <div class="docTitle">${docCcy ? `${escape(docCcy)} · ` : ''}${new Date().toLocaleDateString(localeTag(), { year: 'numeric', month: 'long' })}</div>
       <div class="docMeta">Ref: FL-${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}</div>
     </div>
   </div>
@@ -1070,6 +1140,7 @@ html, body { font-family: 'Inter','Helvetica Neue',Arial,sans-serif; color: #0F1
 function StandardTab({ urgentRate = 0 }: { urgentRate?: number }) {
   const catTheme = usePanelTheme();
   const heroInk = useWhiteHeroInk(catTheme.primary);
+  const flow = useContext(PriceFlowCtx);
   const T = useMobileTokens();
   const isDark = useThemeModeStore(st => st.resolvedDark);
   const { profile } = useAuthStore();
@@ -1119,6 +1190,7 @@ function StandardTab({ urgentRate = 0 }: { urgentRate?: number }) {
 
   useEffect(() => { load(); }, [load]);
 
+  const scanOn = useFeature('scan_appointments');
   const openAdd  = () => { setEdit(null); setForm(EMPTY_SVC); setError(''); setModal(true); };
   const openEdit = (sv: LabService) => {
     setEdit(sv);
@@ -1130,6 +1202,8 @@ function StandardTab({ urgentRate = 0 }: { urgentRate?: number }) {
       production_days: sv.production_days != null ? String(sv.production_days) : '',
       priceType: sv.price_type ?? 'fixed',
       unit: sv.unit ?? '',
+      scan_kind: sv.scan_kind ?? '',
+      scan_free_if_order: sv.scan_free_if_order ?? true,
     });
     setError(''); setModal(true);
   };
@@ -1148,6 +1222,8 @@ function StandardTab({ urgentRate = 0 }: { urgentRate?: number }) {
       production_days: days,
       price_type: form.priceType,
       unit: form.priceType === 'free' ? null : (form.unit.trim() || null),
+      // tarama alanları yalnız modül açıkken yazılır (kapalı lab'da dokunulmaz)
+      ...(scanOn ? { scan_kind: form.scan_kind || null, scan_free_if_order: form.scan_free_if_order } : {}),
     };
     const res = edit ? await updateLabService(edit.id, payload) : await createLabService(payload);
     setSaving(false);
@@ -1460,14 +1536,14 @@ function StandardTab({ urgentRate = 0 }: { urgentRate?: number }) {
   const activeSvcs = services.filter(sv => sv.is_active);
 
   return (
-    <View style={[s.tabContent, { backgroundColor: T.bg }]}>
+    <View style={flow ? { backgroundColor: T.bg } : [s.tabContent, { backgroundColor: T.bg }]}>
       {/* ── Hero — "BEYAZ HERO" (core/ui/WhiteHero) ───────────────── */}
       <View style={{ paddingHorizontal: PAGE_PADDING, paddingTop: 4, paddingBottom: 12 }}>
         <WhiteHero
           kicker="Finans · Fiyat Listesi"
           accent={catTheme.primary}
-          title={<><Text style={{ color: heroInk.accentInk }}>{activeSvcs.length}</Text> aktif hizmet</>}
-          description={`${visibleFilterCats.length} kategori · ${services.length - activeSvcs.length} pasif hizmet`}
+          title={<><Text style={{ color: heroInk.accentInk }}>{activeSvcs.length}</Text>{' '}{autoT('aktif hizmet')}</>}
+          description={`${visibleFilterCats.length} ${autoT('kategori')} · ${services.length - activeSvcs.length} ${autoT('pasif hizmet')}`}
           stats={[
             { value: String(visibleFilterCats.length), label: 'Kategori' },
             { value: urgentRate > 0 ? `%${urgentRate}` : '—', label: 'Acil ek ücret' },
@@ -1683,7 +1759,7 @@ function StandardTab({ urgentRate = 0 }: { urgentRate?: number }) {
       {loading ? (
         <CenteredLoader color={PRIMARY} inline />
       ) : (
-        <ScrollView contentContainerStyle={s.list}>
+        <FlowScroll contentContainerStyle={s.list}>
           {Object.entries(grouped).map(([cat, items]) => (
             <View key={cat} style={[s.catCard, isDark && { backgroundColor: T.card, borderColor: T.hairline }] as any}>
               <CategoryHeader
@@ -1760,7 +1836,7 @@ function StandardTab({ urgentRate = 0 }: { urgentRate?: number }) {
               )}
             </View>
           )}
-        </ScrollView>
+        </FlowScroll>
       )}
 
       <ServiceModal
@@ -2103,8 +2179,11 @@ function ServiceRow({
 // Tab 2 — Ozel Listeler (clinic / doctor-specific prices)
 // ────────────────────────────────────────────────────────────────────────────
 function CustomTab() {
+  const MU = useInkUI();
+  const MT = useMobileTableText();
   const theme = usePanelTheme();
   const heroInk = useWhiteHeroInk(theme.primary);
+  const flow = useContext(PriceFlowCtx);
   const T = useMobileTokens();
   const isDark = useThemeModeStore(st => st.resolvedDark);
   const { profile } = useAuthStore();
@@ -2310,10 +2389,10 @@ function CustomTab() {
   if (loading) return <CenteredLoader color={PRIMARY} inline />;
 
   return (
-    <View style={s.tabContent}>
+    <View style={flow ? undefined : s.tabContent}>
       {!selectedClinic ? (
         /* -- Clinic picker -- */
-        <ScrollView contentContainerStyle={s.list}>
+        <FlowScroll contentContainerStyle={s.list}>
           <View style={s.infoCard}>
             <Info size={15} color="#2563EB" strokeWidth={1.6} />
             <Text style={s.infoText}>
@@ -2327,39 +2406,52 @@ function CustomTab() {
               <Text style={s.emptyTitle}>Henüz klinik eklenmemiş</Text>
             </View>
           ) : (
-            clinics.map((c) => {
-              const overrideCount = overrideCounts[c.id] ?? 0;
-              return (
-                <Pressable key={c.id} style={s.clinicCard as any} onPress={() => selectClinic(c)}>
-                  <View style={s.clinicIcon}>
-                    <Building2 size={18} color="#2563EB" strokeWidth={1.6} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.clinicName}>{c.name}</Text>
-                    {c.contact_person && (
-                      <Text style={s.clinicSub}>{c.contact_person}</Text>
+            /* Ekstre / giderler mobil tablosuyla aynı kalıp */
+            <MobileTableX title="Sağlık Kurumları" count={clinics.length} countLabel="kurum">
+              {clinics.map((c, ci) => {
+                const overrideCount = overrideCounts[c.id] ?? 0;
+                const logo = (c as any).logo_url as string | null | undefined;
+                return (
+                  <MobileTableRowX key={c.id} isLast={ci === clinics.length - 1} onPress={() => selectClinic(c)}>
+                    {logo ? (
+                      // Zemin iki temada da BEYAZ: logolar saydam + koyu mürekkep,
+                      // koyu kart üstünde kaybolur (Siparişler/Sağlık Kurumları ile aynı).
+                      <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.06)', overflow: 'hidden' }}>
+                        <Image source={{ uri: logo }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                      </View>
+                    ) : (
+                      <MobileTableIconX icon={Building2} tone={MU.chipTones.info} />
                     )}
-                  </View>
-                  {overrideCount > 0 && (
-                    <View style={s.overrideBadge}>
-                      <Text style={s.overrideBadgeText}>{overrideCount}</Text>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={MT.title} numberOfLines={1}>{c.name}</Text>
+                      {c.contact_person ? <Text style={MT.sub} numberOfLines={1}>{c.contact_person}</Text> : null}
                     </View>
-                  )}
-                  {isRTL() ? <ChevronLeft size={16} color={DS.ink[400]} strokeWidth={1.6} /> : <ChevronRight size={16} color={DS.ink[400]} strokeWidth={1.6} />}
-                </Pressable>
-              );
-            })
+                    {overrideCount > 0 && (
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={MT.amount}>{overrideCount}</Text>
+                        <Text style={MT.amountSub}>özel fiyat</Text>
+                      </View>
+                    )}
+                  </MobileTableRowX>
+                );
+              })}
+            </MobileTableX>
           )}
-        </ScrollView>
+        </FlowScroll>
       ) : (
         /* -- Service override list for selected clinic -- */
-        <View style={{ flex: 1 }}>
+        <View style={flow ? undefined : { flex: 1 }}>
           {/* ── Klinik hero — "BEYAZ HERO" (eski bilgi şeridinin yerine) ── */}
           <View style={{ paddingHorizontal: PAGE_PADDING, paddingTop: 12, paddingBottom: 8 }}>
             <WhiteHero
               kicker="Özel Fiyat Listesi"
               accent={theme.primary}
-              title={<Text numberOfLines={1}>{selectedClinic.name}</Text>}
+              // Uzun klinik adı (ör. "… Ağız ve Diş Sağlığı Polikliniği") tek satıra
+              // zorlanınca kartın dışına taşıyordu → sarar. Geri düğmesi başlığın solunda.
+              title={selectedClinic.name}
+              titleLeading={<>
+              <NavyBackButtonX onPress={() => setSelected(null)} tooltip="Klinik listesine dön" />
+              </>}
               description={`${overrides.length} ${autoT('özel fiyat')} · ${services.length} ${autoT('hizmet katalogda')}${clinicStats ? ` · ${autoT('birlikte')} ${partnershipText(selectedClinic.created_at)}` : ''}`}
               stats={[
                 { value: partnershipText(selectedClinic.created_at), label: 'Birlikte' },
@@ -2368,19 +2460,6 @@ function CustomTab() {
               ]}
               actionsAlign="end"
               actions={<>
-                  <GlassTooltip title={autoT('Geri')} text={autoT('Klinik listesine dön')}>
-                  <Pressable
-                    onPress={() => setSelected(null)}
-                    accessibilityLabel="Klinik listesine dön"
-                    style={{
-                      width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center',
-                      backgroundColor: heroInk.tileBg, borderWidth: 1, borderColor: heroInk.tileBorder,
-                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                    }}
-                  >
-                    {isRTL() ? <ArrowRight size={15} color={heroInk.ink} strokeWidth={1.8} /> : <ArrowLeft size={15} color={heroInk.ink} strokeWidth={1.8} />}
-                  </Pressable>
-                  </GlassTooltip>
                   <GlassTooltip title={autoT('PDF')} text={autoT('Bu kliniğin özel fiyat listesini PDF olarak indir')}>
                   <Pressable
                     onPress={exportClinicPdf}
@@ -2418,7 +2497,7 @@ function CustomTab() {
             />
           </View>
 
-          <ScrollView contentContainerStyle={s.list}>
+          <FlowScroll contentContainerStyle={s.list}>
             {(() => {
               // Dinamik: hizmetlerin GERÇEK kategorileri (kategorisiz → 'Diğer').
               // Hardcoded SERVICE_CATEGORIES kullanılmıyordu → özel kategorili hizmetler
@@ -2488,7 +2567,7 @@ function CustomTab() {
               );
               });
             })()}
-          </ScrollView>
+          </FlowScroll>
         </View>
       )}
 
@@ -2641,6 +2720,8 @@ const DISCOUNT_COLORS: Record<string, string> = {
 
 function PromotionsTab() {
   const T = useMobileTokens();
+  const MU = useInkUI();
+  const MT = useMobileTableText();
   const [promos, setPromos]   = useState<Promotion[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal]     = useState(false);
@@ -2724,10 +2805,11 @@ function PromotionsTab() {
     return new Date(iso).toLocaleDateString(localeTag());
   };
 
+  const flow = useContext(PriceFlowCtx);
   if (loading) return <CenteredLoader color={PRIMARY} inline />;
 
   return (
-    <View style={s.tabContent}>
+    <View style={flow ? undefined : s.tabContent}>
       <View style={s.toolbar}>
         <Text style={s.toolbarTitle}>{promos.length} kampanya / promosyon</Text>
         <Pressable style={s.addBtn as any} onPress={openAdd}>
@@ -2736,7 +2818,7 @@ function PromotionsTab() {
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={s.list}>
+      <FlowScroll contentContainerStyle={s.list}>
         {promos.length === 0 && (
           <View style={s.empty}>
             <Tag size={36} color={DS.ink[300]} strokeWidth={1.4} />
@@ -2748,53 +2830,53 @@ function PromotionsTab() {
           </View>
         )}
 
-        {promos.map((p) => {
-          const status  = getStatus(p);
-          const color   = DISCOUNT_COLORS[status];
-          const statusLabel = status === 'active' ? 'Aktif' : status === 'expired' ? 'Sona Erdi' : 'Yakinda';
+        {/* Ekstre / giderler mobil tablosuyla aynı kalıp */}
+        {promos.length > 0 && (
+          <MobileTableX title="Promosyonlar" count={promos.length} countLabel="kayıt">
+            {promos.map((p, pi) => {
+              const status  = getStatus(p);
+              const color   = DISCOUNT_COLORS[status];
+              const statusLabel = status === 'active' ? 'Aktif' : status === 'expired' ? 'Sona Erdi' : 'Yakinda';
 
-          return (
-            <View key={p.id} style={[s.promoCard, !p.is_active && { opacity: 0.55 }]}>
-              <View style={s.promoTop}>
-                {/* Discount badge */}
-                <View style={[s.discountCircle, { backgroundColor: color + '18' }]}>
-                  <Text style={[s.discountCircleText, { color }]}>
-                    {p.discount_type === 'percent'
-                      ? `%${p.discount_value}`
-                      : `${p.discount_value} ${baseSymbol()}`}
-                  </Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.promoName}>{p.name}</Text>
-                  <View style={s.promoMeta}>
-                    <View style={[s.statusDot, { backgroundColor: color }]} />
-                    <Text style={[s.promoStatus, { color }]}>{statusLabel}</Text>
-                    <Text style={s.promoScope}>
-                      · {p.scope === 'all' ? 'Tum hizmetler' : p.scope === 'category' ? p.category ?? 'Kategori' : 'Secili hizmetler'}
+              return (
+                <MobileTableRowX key={p.id} isLast={pi === promos.length - 1}>
+                  {/* İndirim karesi — ikon karesiyle aynı ölçü */}
+                  <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: color + '18', alignItems: 'center', justifyContent: 'center', opacity: p.is_active ? 1 : 0.55 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color }} numberOfLines={1}>
+                      {p.discount_type === 'percent'
+                        ? `%${p.discount_value}`
+                        : `${p.discount_value}${baseSymbol()}`}
                     </Text>
                   </View>
-                </View>
-                <AppSwitch
-                  value={p.is_active}
-                  onValueChange={() => toggleActive(p)}
-                  accentColor={color}
-                />
-              </View>
-
-              <View style={s.promoDates}>
-                <View style={s.dateChip}>
-                  <Calendar size={12} color={DS.ink[400]} strokeWidth={1.6} />
-                  <Text style={s.dateChipText}>{formatDate(p.starts_at)} → {formatDate(p.ends_at)}</Text>
-                </View>
-                <Pressable style={s.editSmallBtn as any} onPress={() => openEdit(p)}>
-                  <Pencil size={13} color={DS.ink[500]} strokeWidth={1.6} />
-                  <Text style={s.editSmallText}>Düzenle</Text>
-                </Pressable>
-              </View>
-            </View>
-          );
-        })}
-      </ScrollView>
+                  <View style={{ flex: 1, minWidth: 0, opacity: p.is_active ? 1 : 0.55 }}>
+                    <Text style={MT.title} numberOfLines={1}>{p.name}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 }}>
+                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color }} />
+                      <Text style={{ fontSize: 11, fontWeight: '600', color }}>{statusLabel}</Text>
+                      <Text style={MT.meta} numberOfLines={1}>
+                        · {autoT(p.scope === 'all' ? 'Tum hizmetler' : p.scope === 'category' ? p.category ?? 'Kategori' : 'Secili hizmetler')}
+                      </Text>
+                    </View>
+                    <Text style={[MT.meta, { marginTop: 2 }]} numberOfLines={1}>{formatDate(p.starts_at)} → {formatDate(p.ends_at)}</Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                    <AppSwitch
+                      value={p.is_active}
+                      onValueChange={() => toggleActive(p)}
+                      accentColor={color}
+                    />
+                    <GlassTooltip title={autoT('Düzenle')} text={autoT('Promosyonu düzenler')}>
+                      <Pressable onPress={() => openEdit(p)} style={{ width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: MU.chipNeutral, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                        <Pencil size={12} color={MU.ink[500]} strokeWidth={1.8} />
+                      </Pressable>
+                    </GlassTooltip>
+                  </View>
+                </MobileTableRowX>
+              );
+            })}
+          </MobileTableX>
+        )}
+      </FlowScroll>
 
       {/* Promo modal */}
       <Modal visible={modal} transparent animationType="fade" onRequestClose={() => setModal(false)}>
@@ -3292,6 +3374,15 @@ function PriceListBuilderModal({
   const [excludedCats, setExcludedCats] = useState<Record<string, boolean>>(stored?.excludedCats ?? {});
   const [showPrices, setShowPrices] = useState<boolean>(pricedMode);
   const [generating, setGenerating] = useState(false);
+  // Mobil (iOS uygulaması + dar ekran web/PWA): yeni sekme açılamıyor — iOS
+  // PWA'da window.open/document.write çalışmıyor, native'de window hiç yok.
+  // Önizleme uygulama içinde açılır; PDF native'de paylaşım sayfasıyla,
+  // web'de tarayıcıda üretilip paylaşılır/indirilir. Masaüstü değişmedi.
+  const { width: winW } = useWindowDimensions();
+  const mobileDoc = Platform.OS !== 'web' || winW < 1024;
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  /** Web'de paylaşım izni (kullanıcı jesti) üretim sırasında düşerse hazır dosya burada bekler. */
+  const [readyPdf, setReadyPdf] = useState<File | null>(null);
 
   // Fiyat kaynağı — klinik özel listesi mi, standart liste mi.
   // Aynı klinik için iki belge de üretilebilsin diye (özel teklif ↔ standart
@@ -3361,13 +3452,169 @@ function PriceListBuilderModal({
   };
 
   const handlePreview = () => {
+    if (mobileDoc) { setPreviewHtml(buildHtml()); return; }
     if (typeof window === 'undefined') return;
     const html = buildHtml();
     const w = window.open('', '_blank');
     if (w) { w.document.write(html); w.document.close(); }
   };
 
+  /** Dosya adı (uzantısız) — iki belge türü aynı klinik için çakışmasın. */
+  const docBaseName = () => {
+    const baseName = activeClinicName ? `${lab.name || 'Lab'}_${activeClinicName}` : (lab.name || 'Lab');
+    const safeName = baseName.replace(/[^\wÀ-ſĞğŞşİıÇçÜüÖö -]/g, '').trim() || 'FiyatListesi';
+    const kind = activeOverrides ? 'OzelFiyatListesi' : 'FiyatListesi';
+    return `${safeName}_${kind}_${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+  };
+
+  /** Native: WKWebView'de PDF üret → anlamlı ada taşı → paylaşım sayfası (Dosyalar'a kaydet, WhatsApp…). */
+  const nativeSharePdf = async () => {
+    // iOS baskı motoru şablondaki @page kenarlarını uygulamıyor → içerik sayfa
+    // kenarına dayanıyordu. Aynı ölçü (16mm × 14mm ≈ 45pt × 40pt) burada verilir.
+    const { uri } = await Print.printToFileAsync({
+      html: buildHtml(), width: 595, height: 842,
+      margins: { top: 45, bottom: 45, left: 40, right: 40 },
+    });
+    let shareUri = uri;
+    try {
+      const src = new FSFile(uri);
+      const dest = new FSFile(Paths.cache, `${docBaseName().replace(/\s+/g, '_')}.pdf`);
+      if (dest.exists) dest.delete();
+      src.move(dest);
+      shareUri = src.uri;
+    } catch { /* ad değişmezse rastgele adla paylaşılır — içerik aynı */ }
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(shareUri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf', dialogTitle: docBaseName() });
+    }
+  };
+
+  /** Web (dar ekran / PWA): PDF dosyası paylaş — desteklenmiyorsa indir. */
+  const deliverWebPdf = async (file: File) => {
+    const nav: any = typeof navigator !== 'undefined' ? navigator : null;
+    if (nav?.canShare?.({ files: [file] })) {
+      try {
+        await nav.share({ files: [file], title: file.name });
+        setReadyPdf(null);
+        return;
+      } catch (e: any) {
+        if (e?.name === 'AbortError') { setReadyPdf(null); return; }   // kullanıcı vazgeçti
+        // NotAllowedError: üretim uzun sürdü, jest izni düştü → ikinci dokunuşta paylaş
+        if (e?.name === 'NotAllowedError') { setReadyPdf(file); return; }
+      }
+    }
+    const url = URL.createObjectURL(file);
+    const a = document.createElement('a');
+    a.href = url; a.download = file.name; a.rel = 'noopener';
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { try { document.body.removeChild(a); URL.revokeObjectURL(url); } catch {} }, 4000);
+    setReadyPdf(null);
+  };
+
+  /**
+   * Web (dar ekran / PWA): gerçek PDF dosyası.
+   *
+   * html2pdf KULLANILMAZ: kaynağı ANA belgeye kopyalayıp öyle çiziyor, iframe'in
+   * <head> stilleri düşüyor → PDF biçimsiz (düz yazdırma görünümü) çıkıyordu.
+   * html2canvas doğrudan iframe içindeki belgeyi çizer (stiller yerinde), jsPDF
+   * sayfalara böler. Sayfa kenarı bölüm/satır başlarına denk getirilir, satır
+   * ortadan kesilmez. Ölçüler @page ile aynı: A4, 16mm × 14mm kenar, 182mm içerik.
+   */
+  const buildWebPdfFile = async (): Promise<File> => {
+    const CONTENT_W = 688;                        // 182mm @ 96dpi = .doc max-width
+    const PAGE_H = Math.floor(CONTENT_W * 265 / 182); // 297 − 2×16mm dikey içerik
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = `position:fixed;left:-10000px;top:0;width:${CONTENT_W}px;height:${PAGE_H}px;border:none;`;
+    document.body.appendChild(iframe);
+    try {
+      const doc = iframe.contentDocument!;
+      doc.open(); doc.write(buildHtml()); doc.close();
+      await new Promise<void>((resolve) => {
+        const imgs = Array.from(doc.images);
+        if (imgs.length === 0) return resolve();
+        let loaded = 0;
+        const tick = () => { if (++loaded >= imgs.length) resolve(); };
+        imgs.forEach(img => { if (img.complete) tick(); else { img.onload = tick; img.onerror = tick; } });
+        setTimeout(resolve, 5000);
+      });
+      try { await (doc as any).fonts?.ready; } catch {}
+      // iOS Safari iframe'de "metin otomatik büyütme" yapıyor: bazı hücreler büyüyüp
+      // satır kutusundan taşıyor, yazılar karışık boyda ve kaymış çıkıyordu.
+      const fix = doc.createElement('style');
+      fix.textContent = 'html,body{-webkit-text-size-adjust:100%!important;text-size-adjust:100%!important}';
+      doc.head.appendChild(fix);
+      // html2canvas object-fit desteklemiyor → geniş logo kutuya sünüyordu.
+      // contain'i elle uygula: oranı koruyan gerçek genişlik/yükseklik ver.
+      doc.querySelectorAll('img').forEach((img) => {
+        const el = img as HTMLImageElement;
+        if (!el.naturalWidth || !el.naturalHeight) return;
+        const r = el.getBoundingClientRect();
+        if (!r.width || !r.height) return;
+        const ratio = el.naturalWidth / el.naturalHeight;
+        const w = r.width / r.height > ratio ? r.height * ratio : r.width;
+        const h = w / ratio;
+        el.style.width = `${w}px`; el.style.height = `${h}px`;
+        el.style.maxWidth = 'none'; el.style.maxHeight = 'none'; el.style.objectFit = 'fill';
+      });
+      await new Promise(r => setTimeout(r, 300));
+
+      const root = (doc.querySelector('.doc') as HTMLElement | null) ?? doc.body;
+      const rootTop = root.getBoundingClientRect().top;
+      const totalH = Math.ceil(root.scrollHeight);
+      // Sayfa kırılabilecek yerler: bölüm, tablo satırı, başlık bloğu, altbilgi başları
+      const breaks = Array.from(new Set(
+        Array.from(doc.querySelectorAll('.section, .priceTable tbody tr, .titleBlock, .footer'))
+          .map(el => Math.round((el as HTMLElement).getBoundingClientRect().top - rootTop)),
+      )).filter(y => y > 0).sort((a, b) => a - b);
+
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import('html2canvas'), import('jspdf')]);
+      const SCALE = 2;
+      const canvas = await html2canvas(root, {
+        scale: SCALE, useCORS: true, backgroundColor: '#FFFFFF', logging: false,
+        width: CONTENT_W, windowWidth: CONTENT_W,
+      });
+
+      const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+      let y0 = 0;
+      let first = true;
+      while (y0 < totalH - 1) {
+        let y1 = Math.min(y0 + PAGE_H, totalH);
+        if (y1 < totalH) {
+          const cand = breaks.filter(b => b > y0 + 60 && b <= y1);
+          if (cand.length) y1 = cand[cand.length - 1];
+        }
+        const slice = document.createElement('canvas');
+        slice.width = canvas.width;
+        slice.height = Math.max(1, Math.round((y1 - y0) * SCALE));
+        const ctx = slice.getContext('2d')!;
+        ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, slice.width, slice.height);
+        ctx.drawImage(canvas, 0, Math.round(y0 * SCALE), canvas.width, slice.height, 0, 0, slice.width, slice.height);
+        if (!first) pdf.addPage();
+        pdf.addImage(slice.toDataURL('image/jpeg', 0.92), 'JPEG', 14, 16, 182, (y1 - y0) * 182 / CONTENT_W);
+        first = false;
+        y0 = y1;
+      }
+      const name = `${docBaseName()}.pdf`;
+      return new File([pdf.output('blob')], name, { type: 'application/pdf' });
+    } finally {
+      try { document.body.removeChild(iframe); } catch {}
+    }
+  };
+
   const handleDownloadPdf = async () => {
+    if (mobileDoc) {
+      if (readyPdf) { await deliverWebPdf(readyPdf); return; }
+      setGenerating(true);
+      try {
+        if (Platform.OS !== 'web') await nativeSharePdf();
+        else await deliverWebPdf(await buildWebPdfFile());
+      } catch (e: any) {
+        console.error('PDF üretim hatası', e);
+        toast.error(`${autoT('PDF oluşturulamadı')}: ${e?.message ?? ''}`);
+      } finally {
+        setGenerating(false);
+      }
+      return;
+    }
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
     setGenerating(true);
     try {
@@ -3612,7 +3859,7 @@ function PriceListBuilderModal({
               })}
             >
               <Search size={15} color={DS.ink[700]} strokeWidth={1.8} />
-              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[700] }}>Önizle (yeni sekme)</Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[700] }}>{mobileDoc ? 'Önizle' : 'Önizle (yeni sekme)'}</Text>
             </Pressable>
             <Pressable
               onPress={handleDownloadPdf}
@@ -3626,12 +3873,85 @@ function PriceListBuilderModal({
               })}
             >
               <FileDown size={15} color="#FFFFFF" strokeWidth={1.8} />
-              <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>{generating ? 'Oluşturuluyor…' : 'PDF İndir'}</Text>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>{generating ? 'Oluşturuluyor…' : readyPdf ? 'PDF\'i paylaş' : 'PDF İndir'}</Text>
             </Pressable>
           </View>
         </View>
       </View>
+
+      {/* ── Mobil önizleme — uygulama içinde tam ekran (iOS: WebView · web/PWA: iframe) ── */}
+      <Modal visible={!!previewHtml} animationType="slide" presentationStyle="fullScreen" onRequestClose={() => setPreviewHtml(null)}>
+        <PdfPreviewPane
+          html={previewHtml}
+          title={docBaseName()}
+          busy={generating}
+          ready={!!readyPdf}
+          onClose={() => setPreviewHtml(null)}
+          onPdf={handleDownloadPdf}
+        />
+      </Modal>
     </Modal>
+  );
+}
+
+/** Mobil PDF önizleme paneli — başlık şeridi (kapat · PDF) + belge. */
+function PdfPreviewPane({ html, title, busy, ready, onClose, onPdf }: {
+  html: string | null; title: string; busy: boolean; ready: boolean;
+  onClose: () => void; onPdf: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const T = useMobileTokens();
+  const U = useInkUI();
+  const scaled = React.useMemo(() => (html ? withPreviewScale(html, width) : ''), [html, width]);
+  if (!html) return null;
+  return (
+    <View style={{ flex: 1, backgroundColor: T.bg }}>
+      <View style={{
+        flexDirection: 'row', alignItems: 'center', gap: 10,
+        paddingTop: insets.top + 8, paddingBottom: 10, paddingHorizontal: PAGE_PADDING,
+        backgroundColor: T.card, borderBottomWidth: 1, borderBottomColor: T.hairline,
+      }}>
+        <Pressable
+          onPress={onClose}
+          hitSlop={8}
+          accessibilityLabel={autoT('Kapat')}
+          style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: U.plainBtn.border }}
+        >
+          <X size={16} color={U.plainBtn.fg} strokeWidth={2} />
+        </Pressable>
+        <Text numberOfLines={1} style={{ flex: 1, fontSize: 14, fontWeight: '600', color: T.ink }}>{title}</Text>
+        <Pressable
+          onPress={onPdf}
+          disabled={busy}
+          style={{
+            flexDirection: 'row', alignItems: 'center', gap: 6,
+            paddingHorizontal: 14, height: 36, borderRadius: 999,
+            backgroundColor: U.ink[900], opacity: busy ? 0.6 : 1,
+          }}
+        >
+          {busy
+            ? <ActivityIndicator size="small" color={U.onDarkPill} />
+            : <FileDown size={14} color={U.onDarkPill} strokeWidth={1.8} />}
+          <Text style={{ fontSize: 13, fontWeight: '700', color: U.onDarkPill }}>{ready ? 'Paylaş' : 'PDF'}</Text>
+        </Pressable>
+      </View>
+      {Platform.OS === 'web' ? (
+        <View style={{ flex: 1, backgroundColor: '#E5E7EB' }}>
+          {React.createElement('iframe', {
+            srcDoc: scaled,
+            title,
+            style: { width: '100%', height: '100%', border: 0, backgroundColor: '#FFFFFF' },
+          })}
+        </View>
+      ) : (
+        <HtmlWebView
+          source={{ html: scaled }}
+          originWhitelist={['*']}
+          style={{ flex: 1, backgroundColor: '#E5E7EB' }}
+        />
+      )}
+    </View>
   );
 }
 
@@ -4433,6 +4753,7 @@ function ServiceModal({
   categories: string[];
 }) {
   const theme = usePanelTheme();
+  const scanOn = useFeature('scan_appointments');
   const [addingCat, setAddingCat] = useState(false);
   const [newCat, setNewCat] = useState('');
   const [extraCats, setExtraCats] = useState<string[]>([]);
@@ -4611,6 +4932,47 @@ function ServiceModal({
               <Text style={{ fontSize: 10.5, color: DS.ink[400], marginTop: 4 }}>
                 Tahmini üretim süresi — boş bırakırsan belirsiz gösterilir.
               </Text>
+              {/* Tarama randevuları: hizmetin tarama türü + siparişe dönerse ücretsiz (lab kararı) */}
+              {scanOn ? (
+                <>
+                  <View style={{ height: 10 }} />
+                  <Text style={m.fieldLabel}>{autoT('Tarama hizmeti')}</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                    {([['', 'Değil'], ['intraoral', 'Ağız içi tarama'], ['photogrammetry', 'Fotogrametri']] as const).map(([k, label]) => {
+                      const active = form.scan_kind === k;
+                      return (
+                        <Pressable key={k || 'none'} onPress={() => setForm((f) => ({ ...f, scan_kind: k }))}
+                          accessibilityRole="button" accessibilityState={{ selected: active }}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: active ? tint(theme.primary, 0.14) : '#FFFFFF', borderWidth: 1, borderColor: active ? theme.primary : 'rgba(0,0,0,0.12)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                          {active && <Check size={12} color={theme.primaryDeep} strokeWidth={3} />}
+                          <Text style={{ fontSize: 12.5, fontWeight: '600', color: active ? theme.primaryDeep : DS.ink[500] }}>{autoT(label)}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  {form.scan_kind ? (
+                    <>
+                      <View style={{ height: 8 }} />
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                        {([[true, 'Siparişe dönerse ücretsiz'], [false, 'Siparişe dönse de ücretli']] as const).map(([v, label]) => {
+                          const active = form.scan_free_if_order === v;
+                          return (
+                            <Pressable key={String(v)} onPress={() => setForm((f) => ({ ...f, scan_free_if_order: v }))}
+                              accessibilityRole="button" accessibilityState={{ selected: active }}
+                              style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: active ? tint(theme.primary, 0.14) : '#FFFFFF', borderWidth: 1, borderColor: active ? theme.primary : 'rgba(0,0,0,0.12)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                              {active && <Check size={12} color={theme.primaryDeep} strokeWidth={3} />}
+                              <Text style={{ fontSize: 12.5, fontWeight: '600', color: active ? theme.primaryDeep : DS.ink[500] }}>{autoT(label)}</Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                      <Text style={{ fontSize: 10.5, color: DS.ink[400], marginTop: 4 }}>
+                        {autoT('Taramadan sonra sipariş açılırsa ya da mevcut siparişe bağlanırsa bu hizmet faturalansın mı?')}
+                      </Text>
+                    </>
+                  ) : null}
+                </>
+              ) : null}
             </View>
 
             {error ? (

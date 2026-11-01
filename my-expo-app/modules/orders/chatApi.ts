@@ -485,6 +485,73 @@ export async function hydrateAttachmentUrls(messages: OrderMessage[]): Promise<v
   }
 }
 
+/** Sohbetten gelen bir ekin dosya listesinde taşıdığı şekil (WorkOrderPhoto uyumlu). */
+export interface ChatFileItem {
+  id: string;
+  work_order_id: string;
+  /** `chat/<bucket yolu>` — work-order-photos yollarıyla çakışmasın diye önekli. */
+  storage_path: string;
+  /** Gerçek bucket yolu (chat-attachments). */
+  chat_path: string;
+  caption: string | null;
+  uploaded_by: string;
+  created_at: string;
+  tooth_number: null;
+  __chat: true;
+}
+
+/**
+ * Siparişin sohbetinde paylaşılmış görsel ve dosyalar — dosya listesine/penceresine
+ * "sohbetten" işaretiyle eklenmek için. Yalnız onaylanmış (veya onay gerektirmeyen)
+ * mesajlar; sesli mesajlar dosya sayılmaz. Kopyalama yok: kayıt sohbette kalır,
+ * dosya chat-attachments bucket'ından imzalanarak okunur.
+ */
+export async function fetchChatAttachmentFiles(
+  workOrderId: string,
+): Promise<{ photos: ChatFileItem[]; urls: Record<string, string> }> {
+  const { data, error } = await supabase
+    .from('order_messages')
+    .select('id, work_order_id, sender_id, created_at, attachment_url, attachment_type, attachment_name, approval_status')
+    .eq('work_order_id', workOrderId)
+    .not('attachment_url', 'is', null)
+    .in('attachment_type', ['image', 'file'])
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (error || !data?.length) return { photos: [], urls: {} };
+
+  const photos: ChatFileItem[] = [];
+  for (const m of data as any[]) {
+    if (m.approval_status && m.approval_status !== 'approved') continue;
+    const path = chatAttachmentPath(m.attachment_url);
+    if (!path) continue;
+    // Ad uzantısızsa yolun uzantısını ekle — kategori (fotoğraf/tarama/belge) addan çıkarılıyor.
+    const realExt = (path.split('/').pop() ?? '').includes('.') ? path.split('.').pop()!.toLowerCase() : '';
+    let name = (m.attachment_name as string | null)?.trim() || (path.split('/').pop() ?? 'Dosya');
+    if (realExt && !name.toLowerCase().endsWith('.' + realExt)) name = `${name}.${realExt}`;
+    photos.push({
+      id: `chat-${m.id}`,
+      work_order_id: m.work_order_id,
+      storage_path: `chat/${path}`,
+      chat_path: path,
+      caption: name,
+      uploaded_by: m.sender_id,
+      created_at: m.created_at,
+      tooth_number: null,
+      __chat: true,
+    });
+  }
+  if (!photos.length) return { photos: [], urls: {} };
+
+  const uniquePaths = Array.from(new Set(photos.map(p => p.chat_path)));
+  const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrls(uniquePaths, SIGNED_URL_TTL_SEC);
+  const urls: Record<string, string> = {};
+  (signed ?? []).forEach((d, i) => {
+    const key = (d as any).path ?? uniquePaths[i];
+    if (d.signedUrl) urls[`chat/${key}`] = d.signedUrl;
+  });
+  return { photos, urls };
+}
+
 export async function uploadChatAttachment(
   file: File | Blob,
   workOrderId: string,

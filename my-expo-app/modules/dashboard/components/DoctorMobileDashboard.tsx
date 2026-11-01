@@ -3,10 +3,11 @@
 // Sections: header → greeting → aktif takip (dark) → KPI 2-grid → week strip
 //           → bekleyen onaylar / geciken vakalar → quick actions
 
+import { RadialGlow } from '../../../core/ui/gradients';
 import React from 'react';
 import { HatchFill } from '../../../core/ui/HatchFill';
 import { firstName as displayFirstName } from '../../../core/util/personName';
-import { View, Text, Pressable, ScrollView, Platform, RefreshControl } from 'react-native';
+import { View, Text, Pressable, ScrollView, Platform, RefreshControl, Image } from 'react-native';
 import { useNavScrollProps } from '../../../core/ui/mobile/navScroll';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,7 +17,6 @@ import {
 import { isRTL, fmtWeekdayDayMonth } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { MOBILE_PANEL_THEMES, useMobileTokens } from '../../../core/theme/mobileDesignTokens';
-import { HeroGlowOverlay } from '../../../core/ui/mobile/HeroGlowOverlay';
 import { Ring } from '../../../core/ui/mobile/Ring';
 import { AnimatedNumber } from '../../../core/ui/mobile/AnimatedNumber';
 import { NewOrderCTACard } from '../../../core/ui/mobile/NewOrderCTACard';
@@ -28,6 +28,11 @@ import { RecentOrdersMobile, type RecentOrderItem } from './RecentOrdersMobile';
 
 // Yeni vaka 3D ikonu (yeşil). Hekim accent'i yeşil değilse artı dairesi kalır.
 const NEW_ORDER_ICON_GREEN = require('../../../assets/images/icon-3d-new-order-green.png');
+/** KPI kartlarının 3B illüstrasyonları — klinik paneliyle aynı yeşil set. */
+const DOCTOR_ART = {
+  active:    require('../../../assets/images/kpi-3d-clinic-active.png'),
+  approvals: require('../../../assets/images/kpi-3d-clinic-approvals.png'),
+};
 const isGreenishHex = (hex: string) => {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i.exec(hex || '');
   if (!m) return false;
@@ -94,6 +99,14 @@ export interface DoctorMobileDashboardProps {
   onRefresh?: () => void;
 }
 
+
+/** Aktif takip kartının düz zemini — zümrüt 600 (CLAUDE.md klinik/hekim skalası). */
+const ACTIVE_CARD_BG = '#0C8F56';
+
+/** 3B görsel kabının yığın sırası. YALNIZ web'de: iOS (Fabric) zIndex'i katman
+ *  derinliği olarak uyguluyor; görsel kendi kabından çıkıp sabit üst başlığın
+ *  (logo + şerit) ÜSTÜNE biniyordu (build 69, 2026-10-21). */
+const ART_Z = Platform.OS === 'web' ? { zIndex: 2 } : {};
 export function DoctorMobileDashboard(props: DoctorMobileDashboardProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -176,41 +189,44 @@ export function DoctorMobileDashboard(props: DoctorMobileDashboardProps) {
         />
       )}
 
-      {/* ═══ Aktif takip card (panel-themed dark) ═══ */}
+      {/* ═══ Aktif takip card — DÜZ (flat) zümrüt ═══
+          Eskiden koyu zemin + ışıma (HeroGlowOverlay) vardı; masaüstündeki düz
+          panel renkleriyle aynı dile çekildi (2026-10-20). Zemin zümrüt skalası
+          600 (#0C8F56) — üstteki açık yeşil "Yeni vaka" kartından ayrışır; koyu
+          temada bir ton derin (700). Vurgular yeşil zeminde kaybolmasın diye beyaz. */}
       <View style={{
         marginHorizontal: 16, marginBottom: 16,
         borderRadius: 24, padding: 18,
-        backgroundColor: DOCTOR.bgHero, overflow: 'hidden',
+        backgroundColor: ACTIVE_CARD_BG, overflow: 'hidden',
       }}>
-        <HeroGlowOverlay color={DOCTOR.primary} variant="warm" />
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <View style={{
               width: 7, height: 7, borderRadius: 4,
-              backgroundColor: DOCTOR.primary,
-              ...(Platform.OS === 'web' ? { boxShadow: `0 0 0 4px ${DOCTOR.primary}30` } as any : {}),
+              backgroundColor: '#FFFFFF',
+              ...(Platform.OS === 'web' ? { boxShadow: '0 0 0 4px rgba(255,255,255,0.22)' } as any : {}),
             }} />
-            <Text style={{ fontSize: 10.5, fontWeight: '600', color: T.onDark2, letterSpacing: 1.2, textTransform: 'uppercase' }}>
+            <Text style={{ fontSize: 10.5, fontWeight: '600', color: 'rgba(255,255,255,0.88)', letterSpacing: 1.2, textTransform: 'uppercase' }}>
               Aktif takip
             </Text>
           </View>
-          <Text style={{ fontSize: 10, color: T.onDark3, fontFamily: T.mono }}>
+          <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', fontFamily: T.mono }}>
             {live.active}/{live.total}
           </Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 14, marginTop: 14 }}>
-          <Ring value={live.pct} size={108} stroke={9} color={DOCTOR.primary} track="rgba(255,255,255,0.10)" animatedEndDot>
+          <Ring value={live.pct} size={108} stroke={9} color="#FFFFFF" track="rgba(255,255,255,0.22)" animatedEndDot>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 2 }}>
               <AnimatedNumber
                 value={live.pct}
                 duration={900}
                 style={{
-                  fontSize: 32, fontWeight: '400', color: T.onDark, letterSpacing: -0.8, lineHeight: 34,
+                  fontSize: 32, fontWeight: '400', color: '#FFFFFF', letterSpacing: -0.8, lineHeight: 34,
                   ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
                 }}
               />
               <Text style={{
-                fontSize: 14, color: DOCTOR.primary, fontWeight: '400',
+                fontSize: 14, color: 'rgba(255,255,255,0.8)', fontWeight: '400',
                 ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
               }}>%</Text>
             </View>
@@ -227,8 +243,8 @@ export function DoctorMobileDashboard(props: DoctorMobileDashboardProps) {
                   <View style={{
                     width: 44, height: 44, borderRadius: 22,
                     borderWidth: 1.5,
-                    borderColor: s.n > 0 ? DOCTOR.primary : 'rgba(255,255,255,0.14)',
-                    backgroundColor: s.n > 0 ? `${DOCTOR.primary}1F` : 'transparent',
+                    borderColor: s.n > 0 ? '#FFFFFF' : 'rgba(255,255,255,0.30)',
+                    backgroundColor: s.n > 0 ? 'rgba(255,255,255,0.18)' : 'transparent',
                     alignItems: 'center', justifyContent: 'center',
                   }}>
                     <AnimatedNumber
@@ -236,12 +252,12 @@ export function DoctorMobileDashboard(props: DoctorMobileDashboardProps) {
                       duration={700}
                       delay={i * 80}
                       style={{
-                        fontSize: 17, fontWeight: '500', color: s.n > 0 ? T.onDark : T.onDark3,
+                        fontSize: 17, fontWeight: '500', color: s.n > 0 ? '#FFFFFF' : 'rgba(255,255,255,0.7)',
                         ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
                       }}
                     />
                   </View>
-                  <Text style={{ fontSize: 9, color: T.onDark3, letterSpacing: 0.6, textTransform: 'uppercase' }}>
+                  <Text style={{ fontSize: 9, color: 'rgba(255,255,255,0.75)', letterSpacing: 0.6, textTransform: 'uppercase' }}>
                     {s.l}
                   </Text>
                 </View>
@@ -259,7 +275,10 @@ export function DoctorMobileDashboard(props: DoctorMobileDashboardProps) {
           delta={`${props.thisMonthNew ?? 0} ${autoT('bu ay')}`}
           sub={`${props.overdueCount ?? 0} ${autoT('geciken')}`}
           deltaColor={T.jade}
+          accent={DOCTOR.primary}
           icon={ClipboardList}
+          art={DOCTOR_ART.active}
+          artSize={{ w: 69, h: 64 }}
         />
         <Kpi
           label={autoT('Onay bekleyen')}
@@ -269,6 +288,8 @@ export function DoctorMobileDashboard(props: DoctorMobileDashboardProps) {
           dark={(props.pendingApprovalsCount ?? 0) > 0}
           accent={DOCTOR.primary}
           icon={FileCheck}
+          art={DOCTOR_ART.approvals}
+          artSize={{ w: 72, h: 66 }}
         />
       </View>
 
@@ -517,11 +538,15 @@ function onAccentInk(accent: string): string {
   return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#0A0A0A' : '#FFFFFF';
 }
 
-function Kpi({ label, numericValue, delta, deltaColor, sub, dark, accent, icon: Icon }:
-  { label: string; numericValue: number; delta?: string; deltaColor?: string; sub?: string; dark?: boolean; accent?: string; icon?: any }) {
+// Klinik panelindeki görsel (3B illüstrasyon) destekli Kpi ile birebir —
+// `art` verilmezse eski düz ikonlu kart aynen çizilir.
+function Kpi({ label, numericValue, delta, deltaColor, sub, dark, accent, icon: Icon, art, artSize }:
+  { label: string; numericValue: number; delta?: string; deltaColor?: string; sub?: string; dark?: boolean; accent?: string; icon?: any; art?: any; artSize?: { w: number; h: number } }) {
   const T = useMobileTokens();
+  const rtl = isRTL();
   const acc = accent ?? '#F5C24B';
-  const fill = !!dark;
+  // 3D görsel varken accent DOLGU kullanılmaz: zümrüt görsel zümrüt zeminde kayboluyor.
+  const fill = !!dark && !art;
   const onAcc = onAccentInk(acc);
   const valueColor = fill ? onAcc : T.ink;
   const labelColor = fill ? `${onAcc}AA` : T.ink3;
@@ -529,41 +554,65 @@ function Kpi({ label, numericValue, delta, deltaColor, sub, dark, accent, icon: 
   const deltaColorFinal = fill ? `${onAcc}DD` : (deltaColor ?? T.ink2);
   const iconBg = fill ? `${onAcc}26` : `${acc}1A`;
   const iconColor = fill ? onAcc : acc;
-  return (
+  const artEdge = rtl ? { left: -6 } : { right: -6 };
+  const card = (
     <View style={{
-      flex: 1, borderRadius: 24, padding: 16,
+      flex: 1, borderRadius: art ? 22 : 24, padding: art ? 14 : 16, overflow: 'hidden',
+      minHeight: art ? 112 : undefined,
       backgroundColor: fill ? acc : T.card,
       borderWidth: fill ? 0 : 1, borderColor: T.hairline,
     }}>
+      {!!art && (
+        <View pointerEvents="none" style={{ position: 'absolute', bottom: -16, width: 100, height: 100, ...(rtl ? { left: -24 } : { right: -24 }) }}>
+          <RadialGlow color={acc} opacity={0.16} stopAt={64} />
+        </View>
+      )}
       <Text style={{ fontSize: 10.5, fontWeight: '600', color: labelColor, letterSpacing: 1, textTransform: 'uppercase' }} numberOfLines={1}>
         {label}
       </Text>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: art ? 4 : 8 }}>
         <AnimatedNumber
           value={numericValue}
           duration={800}
           style={{
-            fontSize: 34, fontWeight: '400', color: valueColor, letterSpacing: -1,
+            fontSize: art ? 30 : 34, fontWeight: '400', color: valueColor, letterSpacing: -1,
             ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
           }}
         />
-        {!!Icon && (
+        {!!Icon && !art && (
           <View style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: iconBg, alignItems: 'center', justifyContent: 'center' }}>
             <Icon size={20} color={iconColor} strokeWidth={2} />
           </View>
         )}
       </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+      <View style={{
+        flexDirection: art ? 'column' : 'row',
+        alignItems: art ? (rtl ? 'flex-end' : 'flex-start') : 'center',
+        justifyContent: art ? 'flex-end' : 'space-between',
+        gap: art ? 1 : 0,
+        marginTop: art ? 'auto' : 8,
+        ...(art ? (rtl ? { paddingStart: 46 } : { paddingEnd: 46 }) : {}),
+      }}>
         {!!delta && (
-          <Text style={{ fontSize: 11, fontWeight: '600', color: deltaColorFinal }}>
+          <Text numberOfLines={1} style={{ fontSize: art ? 10.5 : 11, fontWeight: '600', color: deltaColorFinal }}>
             {delta}
           </Text>
         )}
         {!!sub && (
-          <Text style={{ fontSize: 10.5, color: subColor }}>
+          <Text numberOfLines={1} style={{ fontSize: art ? 10 : 10.5, color: subColor }}>
             {sub}
           </Text>
         )}
+      </View>
+    </View>
+  );
+
+  if (!art) return card;
+  return (
+    <View style={{ flex: 1, ...ART_Z }}>
+      {card}
+      <View pointerEvents="none" style={{ position: 'absolute', bottom: 6, width: artSize?.w ?? 66, height: artSize?.h ?? 66, ...artEdge }}>
+        <Image source={art} resizeMode="contain" style={{ width: '100%', height: '100%' }} />
       </View>
     </View>
   );

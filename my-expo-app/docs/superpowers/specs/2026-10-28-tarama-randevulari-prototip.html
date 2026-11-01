@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tarama randevuları prototipi</title>
+<style>
+  /* ── Token'lar: CLAUDE.md tasarım sözleşmesi (açık = DS, koyu = MOBILE_TOKENS_DARK) ── */
+  :root {
+    --page: #F5F1EB; --surface: #FFFFFF; --sub: #F7F5F1; --ink: #0A0A0A; --ink2: #2C2C2C; --ink3: #6B6B6B; --ink4: #9A9A9A;
+    --hair: rgba(0,0,0,.07); --hair2: rgba(0,0,0,.12);
+    --amber: #E89B2A; --amberInk: #9A5B0C; --amberBg: #FCF3E3;
+    --red: #D94B4B; --redInk: #A32E2E; --redBg: #FBEAEA;
+    --green: #2D9A6B; --greenInk: #1C6E4B; --greenBg: #E5F4EC;
+    --blue: #4A8FC9; --blueInk: #2C6593; --blueBg: #E8F1F9;
+    --acc: #F5C24B; --accInk: #0A0A0A; --accSoft: #FBE9B6;           /* lab paneli: safran */
+    --navy: #004B87; --navyInk: #FFFFFF;                               /* useNeonNavy açık = düz lacivert */
+    --plainBg: #FFFFFF; --plainBorder: rgba(0,0,0,.10); --plainFg: #2C2C2C;
+    --scrim: rgba(15,23,42,.30);
+    --shadow: 0 8px 24px rgba(0,0,0,.10);
+    --intra: #2563EB; --intraBg: #E8EEFC; --photo: #7C3AED; --photoBg: #F0EAFB;
+  }
+  :root[data-panel="admin"] { --page: #F7F9FC; --acc: #4771AB; --accInk: #FFFFFF; --accSoft: #EAF2FB; }
+  :root[data-theme="dark"] {
+    --page: #0E0E0E; --surface: #1B1916; --sub: #141312; --ink: #F7F2E9; --ink2: #E4DED3; --ink3: #A59E92; --ink4: #7D776D;
+    --hair: rgba(255,255,255,.08); --hair2: rgba(255,255,255,.14);
+    --amberInk: #F2C277; --amberBg: rgba(232,155,42,.16);
+    --redInk: #F29A9A; --redBg: rgba(217,75,75,.18);
+    --greenInk: #8ED9B4; --greenBg: rgba(45,154,107,.18);
+    --blueInk: #9CC6EC; --blueBg: rgba(74,143,201,.18);
+    --accSoft: rgba(245,194,75,.16);
+    --navy: #002A5C; --navyInk: #E6F4FF;
+    --plainBg: #141312; --plainBorder: rgba(255,255,255,.10); --plainFg: #F7F2E9;
+    --scrim: rgba(0,0,0,.55);
+    --shadow: 0 8px 24px rgba(0,0,0,.45);
+    --intra: #93B4F5; --intraBg: rgba(37,99,235,.22); --photo: #C4A5F5; --photoBg: rgba(124,58,237,.24);
+  }
+  :root[data-theme="dark"][data-panel="admin"] { --accSoft: rgba(71,113,171,.22); }
+
+  * { box-sizing: border-box; margin: 0; }
+  body { font: 15px/1.45 Inter, -apple-system, system-ui, sans-serif; background: var(--page); color: var(--ink); min-height: 100vh;
+         -webkit-font-smoothing: antialiased; transition: background-color 240ms ease; }
+  button { font: inherit; color: inherit; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 16px; }
+  .display { font-family: 'Inter Tight', Inter, system-ui; font-weight: 300; letter-spacing: -.025em; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* Demo çubuğu */
+  .demo { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; font-size: 12px; color: var(--ink3); margin-bottom: 16px; }
+  .seg { display: inline-flex; background: var(--sub); border: 1px solid var(--hair); border-radius: 999px; padding: 3px; }
+  .seg button { border: 0; background: transparent; color: var(--ink3); font-weight: 600; font-size: 12px; padding: 8px 12px; border-radius: 999px; cursor: pointer; transition: padding 160ms ease; }
+  .seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.10); padding: 8px 18px; }
+
+  /* Basış tepkisi: dokunuşta (pointer-down), bırakışta değil */
+  .press { transition: transform 100ms ease-out, background-color 120ms, filter 120ms; cursor: pointer; }
+  .press:active, .press.down { transform: scale(.97); }
+
+  /* Cam tooltip (GlassTooltip) */
+  [data-tip] { position: relative; }
+  [data-tip]:hover::after, [data-tip]:focus-visible::after {
+    content: attr(data-tip); position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+    white-space: nowrap; font-size: 11.5px; font-weight: 600; color: var(--ink); padding: 7px 10px; border-radius: 10px;
+    background: rgba(255,255,255,.72); backdrop-filter: blur(14px) saturate(180%); -webkit-backdrop-filter: blur(14px) saturate(180%);
+    border: 1px solid rgba(255,255,255,.55); box-shadow: 0 8px 24px rgba(0,0,0,.14); pointer-events: none; z-index: 40;
+  }
+  :root[data-theme="dark"] [data-tip]:hover::after { background: rgba(27,25,22,.78); border-color: rgba(255,255,255,.10); color: var(--ink); }
+
+  /* Düğmeler */
+  .btn { height: 40px; padding: 0 18px; border-radius: 999px; border: 0; font-weight: 600; font-size: 13.5px; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+  .btn.pri { background: var(--acc); color: var(--accInk); }
+  .btn.sec { background: var(--plainBg); color: var(--plainFg); border: 1px solid var(--plainBorder); }
+  .btn.ghost { background: transparent; color: var(--ink3); }
+  .ibtn { width: 38px; height: 38px; border-radius: 13px; border: 1px solid var(--plainBorder); background: var(--plainBg); color: var(--plainFg); display: inline-grid; place-items: center; }
+  .ibtn.navy { background: var(--navy); color: var(--navyInk); border-color: transparent; }
+  :root[data-theme="dark"] .ibtn.navy { box-shadow: 0 0 0 1px rgba(56,189,248,.35), 0 0 18px rgba(56,189,248,.22); }
+  svg.i { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: 0 0 auto; }
+  svg.s { width: 14px; height: 14px; }
+
+  /* Kart */
+  .card { background: var(--surface); border: 1px solid var(--hair); border-radius: 24px; box-shadow: var(--shadow); }
+  .chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+  .chip.intra { background: var(--intraBg); color: var(--intra); } .chip.photo { background: var(--photoBg); color: var(--photo); }
+  .chip.amber { background: var(--amberBg); color: var(--amberInk); } .chip.green { background: var(--greenBg); color: var(--greenInk); }
+  .chip.blue { background: var(--blueBg); color: var(--blueInk); } .chip.neutral { background: var(--sub); color: var(--ink3); border: 1px solid var(--hair); }
+  .eyebrow { font-size: 10.5px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--ink4); }
+
+  /* ── Özet kartı: Tarama programı ── */
+  .sched { padding: 18px 18px 8px; }
+  .sched-h { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .sched-h h2 { font-size: 24px; line-height: 1.1; }
+  .sched-h .grow { flex: 1; min-width: 8px; }
+  .datenav { display: inline-flex; align-items: center; gap: 4px; }
+  .datenav .lbl { font-weight: 600; font-size: 13px; padding: 0 6px; min-width: 112px; text-align: center; }
+  .pending { height: 32px; padding: 0 12px; border-radius: 999px; border: 0; background: var(--amberBg); color: var(--amberInk); font-size: 12.5px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; }
+  .pending .dot { width: 7px; height: 7px; border-radius: 4px; background: var(--amber); box-shadow: 0 0 0 3px rgba(232,155,42,.25); }
+
+  .lanes { display: grid; grid-template-columns: 52px repeat(var(--lanes), 1fr); margin-top: 14px; position: relative; }
+  .hours { position: relative; }
+  .hours div { height: 52px; font-size: 11px; color: var(--ink4); transform: translateY(-7px); }
+  .lane { position: relative; border-left: 1px solid var(--hair); }
+  .lane-h { position: sticky; top: 0; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; font-size: 12.5px; font-weight: 600; color: var(--ink2); }
+  .lane-h .av { width: 22px; height: 22px; border-radius: 8px; display: grid; place-items: center; font-size: 10.5px; font-weight: 700; background: var(--accSoft); color: var(--ink); }
+  .grid-bg { position: absolute; inset: 34px 0 0 0; background-image: linear-gradient(var(--hair) 1px, transparent 1px); background-size: 100% 52px; pointer-events: none; }
+  .now-line { position: absolute; left: 52px; right: 0; height: 0; border-top: 2px solid var(--red); z-index: 3; }
+  .now-line::before { content: ''; position: absolute; left: -5px; top: -6px; width: 10px; height: 10px; border-radius: 5px; background: var(--red); }
+  .blk { position: absolute; left: 6px; right: 6px; border-radius: 14px; padding: 8px 10px; text-align: left; border: 1px solid var(--hair); background: var(--surface); overflow: hidden;
+         box-shadow: 0 1px 2px rgba(0,0,0,.05); display: flex; flex-direction: column; gap: 3px; }
+  .blk::before { content: ''; position: absolute; inset: 0; background: var(--intraBg); opacity: .55; z-index: 0; }
+  .blk.photo::before { background: var(--photoBg); }
+  .blk.both::before { background: linear-gradient(135deg, var(--intraBg), var(--photoBg)); }
+  .blk > * { position: relative; z-index: 1; }
+  .blk .t { font-size: 11.5px; font-weight: 700; color: var(--ink2); }
+  .blk .c { font-size: 13px; font-weight: 600; color: var(--ink); line-height: 1.2; }
+  .blk .m { font-size: 11px; color: var(--ink3); display: flex; gap: 6px; align-items: center; }
+  .blk .t { white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+  .blk.done { opacity: .62; } .blk.done .t::before { content: ''; width: 7px; height: 7px; border-radius: 4px; background: var(--green); flex: 0 0 auto; }
+  .blk.compact { flex-direction: row; align-items: center; gap: 8px; } .blk.compact .c { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .blk .tight { align-self: flex-start; font-size: 10.5px; font-weight: 700; color: var(--amberInk); background: var(--amberBg); border-radius: 999px; padding: 2px 8px; }
+  .travel { position: absolute; left: 14px; right: 14px; display: flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 600; color: var(--ink4); z-index: 2; }
+  .travel::before { content: ''; flex: 1; border-top: 1.5px dashed var(--hair2); }
+  .travel::after { content: ''; flex: 1; border-top: 1.5px dashed var(--hair2); }
+  .travel.short { color: var(--amberInk); } .travel.short::before, .travel.short::after { border-color: var(--amber); }
+
+  .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-top: 14px; }
+  .day { border-radius: 16px; background: var(--sub); border: 1px solid var(--hair); padding: 10px; min-height: 150px; display: flex; flex-direction: column; gap: 6px; }
+  .day .d { display: flex; align-items: baseline; justify-content: space-between; font-size: 12px; color: var(--ink3); }
+  .day .d b { font-size: 18px; font-weight: 400; color: var(--ink); font-family: 'Inter Tight', Inter, system-ui; }
+  .day.today { background: var(--accSoft); }
+  .day.off { opacity: .5; }
+  .mini { border-radius: 10px; padding: 6px 8px; font-size: 11.5px; background: var(--surface); border: 1px solid var(--hair); text-align: left; display: flex; gap: 6px; align-items: center; }
+  .mini i { width: 6px; height: 6px; border-radius: 3px; background: var(--intra); flex: 0 0 auto; } .mini.photo i { background: var(--photo); }
+  .mini span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .legend { display: flex; gap: 12px; align-items: center; font-size: 11.5px; color: var(--ink3); padding: 12px 2px 8px; flex-wrap: wrap; }
+  .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 4px; margin-right: 5px; vertical-align: middle; }
+
+  /* Boş gün: yer kaplamayan durum */
+  .empty { margin-top: 12px; border-radius: 16px; border: 1px dashed var(--hair2); padding: 16px; display: flex; align-items: center; gap: 12px; color: var(--ink3); font-size: 13px; }
+
+  /* ── Popup (useInkUI().modalOverlay: bulanık arka plan + ortada) ── */
+  .scrim { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; padding: 24px; z-index: 30; }
+  .scrim.on { display: flex; }
+  .scrim .bg { position: absolute; inset: 0; background: var(--scrim); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); opacity: 0; }
+  @media (max-width: 640px) { .scrim { padding: 12px; } }
+  .sheet { position: relative; width: 100%; max-width: 560px; max-height: 90vh; overflow: auto; background: var(--surface); border-radius: 26px;
+           box-shadow: 0 30px 80px rgba(0,0,0,.28), 0 2px 8px rgba(0,0,0,.08); will-change: transform, opacity; }
+  .sheet.wide { max-width: 640px; }
+  .sh-head { display: flex; align-items: flex-start; gap: 12px; padding: 20px 20px 8px; position: sticky; top: 0; background: var(--surface); z-index: 2; }
+  .sh-head .t { font-size: 21px; line-height: 1.15; }
+  .sh-head .s { font-size: 12.5px; color: var(--ink3); margin-top: 3px; }
+  .sh-head .x { margin-left: auto; }
+  .sh-body { padding: 6px 20px 8px; display: flex; flex-direction: column; gap: 16px; }
+  .sh-foot { position: sticky; bottom: 0; background: var(--surface); padding: 12px 20px 18px; display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--hair); }
+  .sh-foot .row { display: flex; gap: 8px; align-items: center; }
+  .sh-foot .row .grow { flex: 1; }
+
+  .field { display: flex; flex-direction: column; gap: 7px; }
+  .field > label { font-size: 12.5px; font-weight: 600; color: var(--ink2); }
+  .input { height: 44px; border-radius: 14px; border: 1px solid var(--hair2); background: var(--sub); padding: 0 14px; display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--ink); }
+  .input .ph { color: var(--ink4); } .input .grow { flex: 1; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 520px) { .row2 { grid-template-columns: 1fr; } }
+  .toggles { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tg { height: 38px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--hair2); background: var(--surface); color: var(--ink2); font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; }
+  .tg[aria-pressed="true"] { border-color: transparent; background: var(--ink); color: var(--surface); }
+  .tg .sw { width: 8px; height: 8px; border-radius: 4px; }
+  .stepper { display: inline-flex; align-items: center; height: 44px; border: 1px solid var(--hair2); border-radius: 14px; background: var(--sub); }
+  .stepper button { width: 40px; height: 42px; border: 0; background: transparent; font-size: 18px; color: var(--ink2); }
+  .stepper b { min-width: 64px; text-align: center; font-weight: 600; font-size: 14px; }
+
+  /* Uygun saatler */
+  .sugg-h { display: flex; align-items: center; gap: 8px; }
+  .sugg-h .note { font-size: 11.5px; color: var(--ink4); margin-left: auto; }
+  .sugg { display: flex; flex-direction: column; gap: 8px; }
+  .sg { display: grid; grid-template-columns: 64px 1fr auto; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 16px; border: 1px solid var(--hair); background: var(--surface); text-align: left; }
+  .sg:hover { background: var(--sub); }
+  .sg[aria-pressed="true"] { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink) inset; }
+  .sg .h { font-size: 20px; font-family: 'Inter Tight', Inter, system-ui; font-weight: 400; letter-spacing: -.4px; }
+  .sg .w { font-size: 13px; font-weight: 600; color: var(--ink); } .sg .w small { font-weight: 500; color: var(--ink3); }
+  .sg .r { font-size: 11.5px; color: var(--ink3); text-align: right; line-height: 1.35; }
+  .sg .best { font-size: 10px; font-weight: 700; letter-spacing: .6px; color: var(--greenInk); background: var(--greenBg); padding: 2px 7px; border-radius: 999px; margin-left: 6px; vertical-align: 2px; }
+
+  /* Uyarı satırları — kaydet düğmesinin yanında (görünür eylem hatası kuralı) */
+  .warns { display: flex; flex-direction: column; gap: 6px; }
+  .warn { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; color: var(--amberInk); background: var(--amberBg); border-radius: 12px; padding: 8px 10px; }
+  .warn small { color: var(--ink3); font-weight: 500; }
+  .more { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--ink3); border: 0; background: transparent; padding: 0; }
+
+  /* Detay */
+  .facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .fact { border-radius: 14px; background: var(--sub); padding: 10px 12px; }
+  .fact .k { font-size: 11px; color: var(--ink4); } .fact .v { font-size: 13.5px; font-weight: 600; margin-top: 2px; }
+  @media (max-width: 520px) { .facts { grid-template-columns: 1fr 1fr; } }
+  .pts { display: flex; flex-direction: column; gap: 8px; }
+  .pt { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 16px; border: 1px solid var(--hair); }
+  .pt .av { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; font-weight: 700; font-size: 12px; background: var(--sub); color: var(--ink2); }
+  .pt .nm { font-size: 14px; font-weight: 600; } .pt .sub { display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
+  .pt .grow { flex: 1; min-width: 0; }
+  .add { border: 1.5px dashed var(--hair2); background: transparent; border-radius: 16px; height: 46px; font-weight: 600; font-size: 13px; color: var(--ink3); display: flex; align-items: center; justify-content: center; gap: 8px; }
+
+  /* Karar */
+  .dec { border: 1px solid var(--hair); border-radius: 18px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .dec-h { display: flex; align-items: center; gap: 10px; }
+  .dec-h .nm { font-weight: 600; font-size: 14px; } .dec-h .grow { flex: 1; }
+  .opts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .opt { border-radius: 14px; border: 1px solid var(--hair2); background: var(--surface); padding: 10px; text-align: left; display: flex; flex-direction: column; gap: 4px; min-height: 74px; }
+  .opt b { font-size: 13px; } .opt span { font-size: 11.5px; color: var(--ink3); line-height: 1.3; }
+  .opt[aria-pressed="true"] { border-color: transparent; background: var(--ink); color: var(--surface); }
+  .opt[aria-pressed="true"] span { color: rgba(255,255,255,.7); }
+  :root[data-theme="dark"] .opt[aria-pressed="true"] span { color: rgba(10,10,10,.65); }
+  @media (max-width: 520px) { .opts { grid-template-columns: 1fr; } .opt { min-height: 0; } }
+  .orders { display: flex; flex-direction: column; gap: 6px; }
+  .ord { display: flex; align-items: center; gap: 10px; border-radius: 12px; padding: 8px 10px; background: var(--sub); font-size: 13px; text-align: left; border: 1px solid transparent; }
+  .ord[aria-pressed="true"] { border-color: var(--ink); background: var(--surface); }
+  .ord .no { font-weight: 700; } .ord .grow { flex: 1; } .ord .m { color: var(--ink3); font-size: 12px; }
+  .fee { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink2); background: var(--sub); border-radius: 12px; padding: 8px 10px; }
+  .fee b { margin-left: auto; font-variant-numeric: tabular-nums; }
+  .fee.free { background: var(--greenBg); color: var(--greenInk); }
+
+  /* Teknisyen mobil */
+  .phone { width: 375px; max-width: 100%; margin: 0 auto; background: var(--page); border-radius: 40px; border: 10px solid #111; overflow: hidden; height: 760px; display: flex; flex-direction: column; }
+  :root[data-theme="dark"] .phone { border-color: #2a2a2a; }
+  .ph-top { padding: 22px 16px 10px; }
+  .ph-top h1 { font-size: 28px; line-height: 1.1; }
+  .ph-top .s { color: var(--ink3); font-size: 13px; margin-top: 4px; }
+  .ph-list { flex: 1; overflow: auto; padding: 4px 16px 24px; display: flex; flex-direction: column; gap: 12px; }
+  .tcard { background: var(--surface); border: 1px solid var(--hair); border-radius: 22px; padding: 14px; display: flex; flex-direction: column; gap: 10px; box-shadow: var(--shadow); }
+  .tcard .top { display: flex; align-items: baseline; gap: 10px; }
+  .tcard .top .h { font-size: 26px; font-family: 'Inter Tight', Inter, system-ui; font-weight: 300; letter-spacing: -.6px; }
+  .tcard .top .c { font-weight: 600; font-size: 15px; } .tcard .addr { font-size: 12.5px; color: var(--ink3); }
+  .tcard .acts { display: flex; gap: 8px; } .tcard .acts .btn { flex: 1; justify-content: center; }
+  .tcard.next { border-color: transparent; box-shadow: 0 0 0 2px var(--acc), var(--shadow); }
+  .tabbar { height: 72px; border-top: 1px solid var(--hair); background: color-mix(in srgb, var(--surface) 80%, transparent); backdrop-filter: blur(20px); display: flex; align-items: center; justify-content: space-around; font-size: 10.5px; color: var(--ink4); }
+  .tabbar div { display: flex; flex-direction: column; align-items: center; gap: 4px; } .tabbar .on { color: var(--ink); font-weight: 700; }
+
+  /* Mobil görünüm: masaüstü kartı tek sütun liste */
+  .mobile .lanes { grid-template-columns: 44px 1fr; }
+  .mobile .lane:not(:first-of-type) { display: none; }
+  .mobile .wrap { max-width: 420px; }
+  .mobile .week { grid-template-columns: 1fr; }
+  .mobile .day { min-height: 0; }
+
+  @media (prefers-reduced-motion: reduce) { .press:active, .press.down { transform: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="demo">
+    <span>Görünüm</span>
+    <div class="seg" id="segView"><button aria-pressed="true" data-v="desk">Masaüstü</button><button aria-pressed="false" data-v="mob">Mobil</button></div>
+    <span>Tema</span>
+    <div class="seg" id="segTheme"><button aria-pressed="true" data-v="light">Açık</button><button aria-pressed="false" data-v="dark">Koyu</button></div>
+    <span>Panel</span>
+    <div class="seg" id="segPanel"><button aria-pressed="true" data-v="lab">Lab</button><button aria-pressed="false" data-v="admin">Admin</button></div>
+    <span>Ekran</span>
+    <div class="seg" id="segScreen"><button aria-pressed="true" data-v="ozet">Özet kartı</button><button aria-pressed="false" data-v="tech">Teknisyen</button></div>
+  </div>
+
+  <!-- ══ Özet kartı ══ -->
+  <section id="scrOzet">
+    <div class="card sched">
+      <div class="sched-h">
+        <div>
+          <div class="eyebrow">Tarama programı</div>
+          <h2 class="display">Çarşamba, 28 Ekim</h2>
+        </div>
+        <div class="grow"></div>
+        <button class="pending press" id="btnPending" data-tip="Karar bekleyen taramaları aç"><span class="dot"></span><span class="num">3</span> karar bekliyor</button>
+        <div class="seg" id="segRange"><button aria-pressed="true" data-v="day">Gün</button><button aria-pressed="false" data-v="week">Hafta</button></div>
+        <div class="datenav">
+          <button class="ibtn press" data-tip="Önceki gün" aria-label="Önceki gün"><svg class="i" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
+          <button class="ibtn press" data-tip="Sonraki gün" aria-label="Sonraki gün"><svg class="i" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+        </div>
+        <button class="ibtn navy press" id="btnNew" data-tip="Yeni tarama randevusu" aria-label="Yeni tarama randevusu"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+      </div>
+
+      <div id="dayView">
+        <div class="lanes" id="lanes" style="--lanes:2"></div>
+        <div class="legend">
+          <span><i style="background:var(--intra)"></i>Ağız içi tarama</span>
+          <span><i style="background:var(--photo)"></i>Fotogrametri</span>
+          <span style="margin-left:auto">Kesikli çizgi: iki randevu arası yol · sarı: yetişmesi zor</span>
+        </div>
+      </div>
+      <div id="weekView" hidden>
+        <div class="week" id="week"></div>
+        <div class="legend"><span><i style="background:var(--intra)"></i>Ağız içi tarama</span><span><i style="background:var(--photo)"></i>Fotogrametri</span><span style="margin-left:auto">Pazar tarama günü değil</span></div>
+      </div>
+    </div>
+    <div class="empty" style="margin-top:12px"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Boş bir günde kart bu tek satıra iner: "Bugün tarama yok". Ekranda yer kaplamaz.</div>
+  </section>
+
+  <!-- ══ Teknisyen ══ -->
+  <section id="scrTech" hidden>
+    <div class="phone">
+      <div class="ph-top"><div class="eyebrow">Randevularım</div><h1 class="display">Bugün 2 tarama</h1><div class="s">Sıradaki 13:30'da · Moda Diş</div></div>
+      <div class="ph-list">
+        <div class="tcard next">
+          <div class="top"><span class="h num">13:30</span><span class="c">Moda Diş Polikliniği</span></div>
+          <div class="addr">Caferağa Mah. Moda Cad. No 12, Kadıköy · 25 dk yol</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="chip intra">Ağız içi tarama</span><span class="chip neutral">Medit i900</span><span class="chip neutral">2 hasta</span></div>
+          <div class="acts">
+            <button class="btn sec press" data-tip="Google Haritalar'da yol tarifi"><svg class="i s" viewBox="0 0 24 24"><path d="M12 21s-7-6.5-7-11a7 7 0 0 1 14 0c0 4.5-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>Yol tarifi</button>
+            <button class="btn pri press" data-open="detail" data-tip="Hastaları ekle ve taramayı tamamla"><svg class="i s" viewBox="0 0 24 24"><path d="M5 12l5 5L19 8"/></svg>Taramayı bitir</button>
+          </div>
+        </div>
+        <div class="tcard">
+          <div class="top"><span class="h num">16:15</span><span class="c">Ataşehir Ağız ve Diş</span></div>
+          <div class="addr">Atatürk Mah. Ataşehir Bulv. 41 · 30 dk yol</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="chip photo">Fotogrametri</span><span class="chip neutral">T-Marker</span></div>
+          <div class="acts">
+            <button class="btn sec press" data-tip="Google Haritalar'da yol tarifi"><svg class="i s" viewBox="0 0 24 24"><path d="M12 21s-7-6.5-7-11a7 7 0 0 1 14 0c0 4.5-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>Yol tarifi</button>
+            <button class="btn sec press" data-open="detail" data-tip="Randevunun ayrıntıları">Ayrıntı</button>
+          </div>
+        </div>
+        <div class="eyebrow" style="margin-top:6px">Yarın</div>
+        <div class="tcard" style="box-shadow:none">
+          <div class="top"><span class="h num">10:00</span><span class="c">Kadıköy Dent</span></div>
+          <div style="display:flex;gap:6px"><span class="chip intra">Ağız içi tarama</span><span class="chip photo">Fotogrametri</span></div>
+        </div>
+      </div>
+      <div class="tabbar">
+        <div><svg class="i" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Ana sayfa</div>
+        <div class="on"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Taramalar</div>
+        <div><svg class="i" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>İşler</div>
+        <div><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>Profil</div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- ══ Popup'lar ══ -->
+<div class="scrim" id="scrim"><div class="bg" id="scrimBg"></div><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+
+<template id="tplNew">
+  <div class="sh-head">
+    <div><div class="t display">Yeni tarama randevusu</div><div class="s">Telefonla gelen randevuyu kaydedin; uygun saati sistem önerir.</div></div>
+    <button class="ibtn press x" data-close data-tip="Kapat" aria-label="Kapat"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+  <div class="sh-body">
+    <div class="field"><label>Klinik</label><div class="input"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><span class="grow">Ataşehir Ağız ve Diş</span><span class="chip neutral">18 dk · lab'dan</span></div></div>
+    <div class="field"><label>Tarama</label>
+      <div class="toggles">
+        <button class="tg press" aria-pressed="true" data-svc="intra"><span class="sw" style="background:var(--intra)"></span>Ağız içi tarama</button>
+        <button class="tg press" aria-pressed="false" data-svc="photo"><span class="sw" style="background:var(--photo)"></span>Fotogrametri</button>
+      </div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>Gün</label><div class="toggles">
+        <button class="tg press" aria-pressed="false">Bugün</button><button class="tg press" aria-pressed="true">Yarın</button><button class="tg press" aria-pressed="false">Cuma 30</button>
+      </div></div>
+      <div class="field"><label>Hekim ne zaman istiyor?</label><div class="toggles" id="win">
+        <button class="tg press" aria-pressed="false">Sabah</button><button class="tg press" aria-pressed="false">Öğle</button><button class="tg press" aria-pressed="true">Akşam</button>
+      </div></div>
+    </div>
+    <div class="field">
+      <div class="sugg-h"><label style="font-size:12.5px;font-weight:600;color:var(--ink2)">Uygun saatler</label><span class="note">yol süresi trafikli · Google</span></div>
+      <div class="sugg" id="sugg"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>Saat (elle de girebilirsiniz)</label><div class="input num" id="timeBox"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span class="grow" id="timeVal">16:15</span><button class="more press" id="manual" data-tip="Önerinin dışında bir saat dene">16:00 dene</button></div></div>
+      <div class="field"><label>Süre</label><div class="stepper"><button class="press" aria-label="Kısalt">−</button><b class="num">90 dk</b><button class="press" aria-label="Uzat">+</button></div></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>Teknisyen</label><div class="input"><span class="grow" id="techVal">Emre</span><svg class="i s" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></div></div>
+      <div class="field"><label>Cihaz</label><div class="input"><span class="grow" id="devVal">Medit i900</span><svg class="i s" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></div></div>
+    </div>
+    <button class="more press" id="moreBtn" data-tip="Hekim, hasta, kaynak ve not"><svg class="i s" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Hekim, hasta ve not ekle</button>
+    <div id="moreBox" hidden class="sh-body" style="padding:0">
+      <div class="row2">
+        <div class="field"><label>Hekim (isteğe bağlı)</label><div class="input"><span class="ph">Hekim seçin</span></div></div>
+        <div class="field"><label>Hasta (biliniyorsa)</label><div class="input"><span class="ph">Ad soyad</span></div></div>
+      </div>
+      <div class="field"><label>Randevu nereden geldi?</label><div class="toggles">
+        <button class="tg press" aria-pressed="true">Telefon</button><button class="tg press" aria-pressed="false">WhatsApp</button><button class="tg press" aria-pressed="false">Yüz yüze</button><button class="tg press" aria-pressed="false">Diğer</button>
+      </div></div>
+    </div>
+  </div>
+  <div class="sh-foot">
+    <div class="warns" id="warns"></div>
+    <div class="row"><span class="grow" style="font-size:12px;color:var(--ink4)">Uyarı kaydı engellemez.</span><button class="btn ghost press" data-close>Vazgeç</button><button class="btn pri press" data-close data-tip="Randevuyu kaydet ve teknisyene bildir">Kaydet</button></div>
+  </div>
+</template>
+
+<template id="tplDetail">
+  <div class="sh-head">
+    <div><div class="t display">Moda Diş Polikliniği</div><div class="s num">Bugün 13:30 – 15:00 · Emre · Medit i900</div></div>
+    <button class="ibtn press x" data-close data-tip="Kapat" aria-label="Kapat"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+  <div class="sh-body">
+    <div class="facts">
+      <div class="fact"><div class="k">Durum</div><div class="v">Planlandı</div></div>
+      <div class="fact"><div class="k">Kaydeden</div><div class="v">Telefon · Ayşe</div></div>
+      <div class="fact"><div class="k">Yol</div><div class="v num">25 dk</div></div>
+    </div>
+    <div class="field"><label>Taranan hastalar</label>
+      <div class="pts">
+        <div class="pt"><div class="av">AY</div><div class="grow"><div class="nm">Ayşe Yılmaz</div><div class="sub"><span class="chip intra">Ağız içi</span><span class="chip neutral">3 dosya</span></div></div>
+          <button class="ibtn press" data-tip="Tarama dosyası yükle" aria-label="Dosya yükle"><svg class="i" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg></button></div>
+        <div class="pt"><div class="av">MK</div><div class="grow"><div class="nm">Mehmet Kaya</div><div class="sub"><span class="chip intra">Ağız içi</span><span class="chip amber">Dosya yok</span></div></div>
+          <button class="ibtn press" data-tip="Tarama dosyası yükle" aria-label="Dosya yükle"><svg class="i" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg></button></div>
+        <button class="add press" data-tip="Bu ziyarette taranan bir hasta daha"><svg class="i s" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Hasta ekle</button>
+      </div>
+    </div>
+  </div>
+  <div class="sh-foot">
+    <div class="row">
+      <button class="ibtn press" data-tip="Ertele, iptal et" aria-label="Diğer işlemler"><svg class="i" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg></button>
+      <span class="grow"></span>
+      <button class="btn sec press" data-open="decide" data-tip="Admin ve yönetici karar verir">Karar ver</button>
+      <button class="btn pri press" data-close data-tip="Hastalar tamamsa taramayı yapıldı olarak işaretle"><svg class="i s" viewBox="0 0 24 24"><path d="M5 12l5 5L19 8"/></svg>Tarama yapıldı</button>
+    </div>
+  </div>
+</template>
+
+<template id="tplDecide">
+  <div class="sh-head">
+    <div><div class="t display">Karar bekleyen taramalar</div><div class="s">Her hasta için ayrı: siparişe bağla, yeni sipariş aç ya da yalnız tarama.</div></div>
+    <button class="ibtn press x" data-close data-tip="Kapat" aria-label="Kapat"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+  <div class="sh-body">
+    <div class="eyebrow">Moda Diş · Bugün 13:30</div>
+    <div class="dec" data-dec>
+      <div class="dec-h"><div class="pt" style="border:0;padding:0"><div class="av">AY</div></div><div class="grow"><div class="nm">Ayşe Yılmaz</div><div style="font-size:12px;color:var(--ink3)">Ağız içi tarama · 3 dosya</div></div></div>
+      <div class="opts">
+        <button class="opt press" aria-pressed="true" data-o="link"><b>Siparişe bağla</b><span>Kliniğin açık siparişleri</span></button>
+        <button class="opt press" aria-pressed="false" data-o="new"><b>Yeni sipariş aç</b><span>Klinik ve hasta hazır gelir</span></button>
+        <button class="opt press" aria-pressed="false" data-o="only"><b>Yalnız tarama</b><span>Ayrı kalem faturalanır</span></button>
+      </div>
+      <div class="orders" data-pane="link">
+        <button class="ord press" aria-pressed="true"><span class="no num">#2418</span><span class="grow">Ayşe Yılmaz · Zirkonyum köprü</span><span class="m">hasta adı eşleşti</span></button>
+        <button class="ord press" aria-pressed="false"><span class="no num">#2402</span><span class="grow">Can Demir · İmplant üstü</span><span class="m">3 gün önce</span></button>
+      </div>
+      <div class="fee free" data-fee><svg class="i s" viewBox="0 0 24 24"><path d="M5 12l5 5L19 8"/></svg>Ağız içi tarama siparişe dönerse ücretsiz<b>0,00 €</b></div>
+    </div>
+    <div class="dec" data-dec>
+      <div class="dec-h"><div class="pt" style="border:0;padding:0"><div class="av">MK</div></div><div class="grow"><div class="nm">Mehmet Kaya</div><div style="font-size:12px;color:var(--ink3)">Fotogrametri · dosya yok</div></div></div>
+      <div class="opts">
+        <button class="opt press" aria-pressed="false" data-o="link"><b>Siparişe bağla</b><span>Kliniğin açık siparişleri</span></button>
+        <button class="opt press" aria-pressed="false" data-o="new"><b>Yeni sipariş aç</b><span>Klinik ve hasta hazır gelir</span></button>
+        <button class="opt press" aria-pressed="true" data-o="only"><b>Yalnız tarama</b><span>Ayrı kalem faturalanır</span></button>
+      </div>
+      <div class="fee" data-fee><svg class="i s" viewBox="0 0 24 24"><path d="M4 7h16v12H4zM4 11h16"/></svg>Fotogrametri · kliniğin fiyatı · aylık faturaya eklenir<b>150,00 €</b></div>
+    </div>
+  </div>
+  <div class="sh-foot">
+    <div class="row"><span class="grow" style="font-size:12px;color:var(--ink4)">Karar sonradan geri alınabilir; kesilmiş faturadaki tarama hariç.</span><button class="btn ghost press" data-close>Sonra</button><button class="btn pri press" data-close data-tip="İki hasta için kararı kaydet">Kararları kaydet</button></div>
+  </div>
+</template>
+
+<script>
+(() => {
+  const root = document.documentElement;
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+
+  // ── Demo seçicileri ──
+  const seg = (id, fn) => document.getElementById(id).addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    b.parentElement.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    fn(b.dataset.v);
+  });
+  seg('segTheme', (v) => { root.dataset.theme = v; });
+  seg('segPanel', (v) => { root.dataset.panel = v; });
+  seg('segView', (v) => { document.body.classList.toggle('mobile', v === 'mob'); });
+  seg('segScreen', (v) => { document.getElementById('scrOzet').hidden = v !== 'ozet'; document.getElementById('scrTech').hidden = v !== 'tech'; });
+  seg('segRange', (v) => { document.getElementById('dayView').hidden = v !== 'day'; document.getElementById('weekView').hidden = v !== 'week'; });
+
+  // Basış tepkisi dokunuşta başlar (pointer-down), sürükleyip çıkınca iptal olur
+  document.addEventListener('pointerdown', (e) => { const p = e.target.closest('.press'); if (p) p.classList.add('down'); });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach((t) => document.addEventListener(t, () => document.querySelectorAll('.press.down').forEach((x) => x.classList.remove('down')), true));
+
+  // ── Gün görünümü: teknisyen şeritleri, 09:00–20:00 ──
+  const H0 = 9, PX = 52; // saat başına px
+  const y = (h, m) => 34 + ((h - H0) + m / 60) * PX;
+  const appts = [
+    { lane: 0, h: 9, m: 45, d: 75, c: 'Kadıköy Dent', k: 'intra', p: 1, done: true },
+    { lane: 0, h: 11, m: 30, d: 60, c: 'Moda Diş Polikliniği', k: 'intra', p: 2, done: true },
+    { lane: 0, h: 13, m: 30, d: 90, c: 'Moda Diş Polikliniği', k: 'intra', p: 2, sel: true },
+    { lane: 0, h: 16, m: 15, d: 90, c: 'Ataşehir Ağız ve Diş', k: 'photo', p: 1 },
+    { lane: 1, h: 10, m: 0, d: 120, c: 'Üsküdar Dental', k: 'both', p: 3 },
+    { lane: 1, h: 12, m: 15, d: 75, c: 'Bağdat Ağız Diş', k: 'photo', p: 1, tight: '25 dk yol · 15 dk açık' },
+  ];
+  const legs = [ // şeritteki önceki randevunun sırası → sonrakine yol
+    { lane: 0, prev: 0, txt: '15 dk yol' },
+    { lane: 0, prev: 1, txt: 'aynı klinik' },
+    { lane: 0, prev: 2, txt: '30 dk yol' },
+  ];
+  const lanes = document.getElementById('lanes');
+  const hrs = document.createElement('div'); hrs.className = 'hours';
+  hrs.innerHTML = '<div style="height:34px;transform:none"></div>' + Array.from({ length: 11 }, (_, i) => `<div class="num">${String(H0 + i).padStart(2, '0')}:00</div>`).join('');
+  lanes.appendChild(hrs);
+  ['Emre', 'Selin'].forEach((name, li) => {
+    const lane = document.createElement('div'); lane.className = 'lane'; lane.style.height = (34 + 11 * PX) + 'px';
+    lane.innerHTML = `<div class="grid-bg"></div><div class="lane-h"><span class="av">${name[0]}</span>${name}<span style="margin-left:auto;font-size:11px;color:var(--ink4);font-weight:500">${li === 0 ? 'Medit i900' : 'T-Marker'}</span></div>`;
+    appts.filter((a) => a.lane === li).forEach((a, i) => {
+      const b = document.createElement('button');
+      b.className = `blk press ${a.k}${a.done ? ' done' : ''}${a.d <= 60 ? ' compact' : ''}`;
+      b.style.top = y(a.h, a.m) + 'px'; b.style.height = (a.d / 60 * PX - 4) + 'px';
+      const end = new Date(0, 0, 0, a.h, a.m + a.d);
+      b.innerHTML = `<span class="t num">${String(a.h).padStart(2, '0')}:${String(a.m).padStart(2, '0')} – ${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}</span><span class="c">${a.c}</span>${a.d > 60 && !a.tight ? `<span class="m">${a.k === 'both' ? 'Ağız içi + Fotogrametri' : a.k === 'photo' ? 'Fotogrametri' : 'Ağız içi'} · ${a.p} hasta</span>` : ''}${a.tight ? `<span class="tight">${a.tight}</span>` : ''}`;
+      b.dataset.open = 'detail'; b.setAttribute('data-tip', 'Randevuyu aç');
+      lane.appendChild(b);
+    });
+    const mine = appts.filter((a) => a.lane === li);
+    legs.filter((l) => l.lane === li).forEach((l) => {
+      const prev = mine[l.prev], next = mine[l.prev + 1];
+      const t = document.createElement('div'); t.className = 'travel' + (l.short ? ' short' : '');
+      const pe = y(prev.h, prev.m) + prev.d / 60 * PX - 4, ns = y(next.h, next.m);
+      t.style.top = ((pe + ns) / 2 - 7) + 'px'; t.textContent = l.txt;
+      lane.appendChild(t);
+    });
+    lanes.appendChild(lane);
+  });
+  const nl = document.createElement('div'); nl.className = 'now-line'; nl.style.top = y(12, 50) + 'px'; lanes.appendChild(nl);
+
+  // ── Hafta görünümü ──
+  const wk = [['Pzt', 26, [['10:00', 'Moda Diş', 'intra']]], ['Sal', 27, [['09:30', 'Kadıköy Dent', 'intra'], ['14:00', 'Bağdat Ağız', 'photo']]],
+    ['Çar', 28, [['09:45', 'Kadıköy Dent', 'intra'], ['11:30', 'Moda Diş', 'intra'], ['13:30', 'Moda Diş', 'intra'], ['16:15', 'Ataşehir', 'photo']], true],
+    ['Per', 29, [['10:00', 'Kadıköy Dent', 'intra'], ['10:00', 'Üsküdar Dental', 'photo']]], ['Cum', 30, [['17:00', 'Ataşehir', 'intra']]], ['Cmt', 31, []], ['Paz', 1, [], false, true]];
+  document.getElementById('week').innerHTML = wk.map(([d, n, list, today, off]) =>
+    `<div class="day${today ? ' today' : ''}${off ? ' off' : ''}"><div class="d"><span>${d}</span><b class="num">${n}</b></div>${list.map(([t, c, k]) => `<button class="mini press ${k}" data-open="detail"><i></i><span class="num">${t}</span><span>${c}</span></button>`).join('') || `<span style="font-size:11.5px;color:var(--ink4)">${off ? 'Kapalı' : 'Boş'}</span>`}</div>`).join('');
+
+  // ── Popup: tetikleyiciden çıkan, kesilebilir yay (kritik sönümlü, response ~0.35 s) ──
+  const scrim = document.getElementById('scrim'), sheet = document.getElementById('sheet'), bg = document.getElementById('scrimBg');
+  let st = { s: 0.6, o: 0, v: 0, vo: 0 }, target = 0, raf = 0, origin = null;
+  const omega = 2 * Math.PI / 0.35;
+  function frame(t0) {
+    let last = performance.now();
+    cancelAnimationFrame(raf);
+    const step = (now) => {
+      const dt = Math.min(0.032, (now - last) / 1000); last = now;
+      const ts = target ? 1 : 0.6, to = target ? 1 : 0;
+      // kritik sönümlü yay: a = -ω²x - 2ωv (mevcut değerden başlar → yarıda kesilebilir)
+      st.v += (-(omega * omega) * (st.s - ts) - 2 * omega * st.v) * dt; st.s += st.v * dt;
+      st.vo += (-(omega * omega) * (st.o - to) - 2 * omega * st.vo) * dt; st.o += st.vo * dt;
+      apply();
+      const done = Math.abs(st.s - ts) < 0.001 && Math.abs(st.v) < 0.01 && Math.abs(st.o - to) < 0.002;
+      if (!done) raf = requestAnimationFrame(step);
+      else { st.s = ts; st.o = to; apply(); if (!target) scrim.classList.remove('on'); }
+    };
+    raf = requestAnimationFrame(step);
+  }
+  function apply() {
+    sheet.style.transform = `scale(${st.s})`;
+    sheet.style.opacity = String(Math.max(0, Math.min(1, st.o)));
+    bg.style.opacity = String(Math.max(0, Math.min(1, st.o)));
+  }
+  function openSheet(kind, from) {
+    const tpl = document.getElementById(kind === 'new' ? 'tplNew' : kind === 'decide' ? 'tplDecide' : 'tplDetail');
+    sheet.innerHTML = ''; sheet.appendChild(tpl.content.cloneNode(true));
+    sheet.classList.toggle('wide', kind === 'decide');
+    scrim.classList.add('on');
+    // Açılış kökeni: tetikleyen düğme (transform-origin) — kapanış aynı yoldan döner
+    const r = from?.getBoundingClientRect(), sr = sheet.getBoundingClientRect();
+    if (r) sheet.style.transformOrigin = `${r.left + r.width / 2 - sr.left}px ${r.top + r.height / 2 - sr.top}px`;
+    origin = from;
+    if (kind === 'new') wireNew();
+    if (kind === 'decide') wireDecide();
+    if (reduce.matches) { st = { s: 1, o: 0, v: 0, vo: 0 }; sheet.style.transition = bg.style.transition = 'opacity 200ms ease'; target = 1; st.o = 1; apply(); return; }
+    sheet.style.transition = bg.style.transition = '';
+    target = 1; frame();
+  }
+  function closeSheet() {
+    if (reduce.matches) { st.o = 0; apply(); setTimeout(() => scrim.classList.remove('on'), 200); return; }
+    target = 0; frame();
+  }
+  document.addEventListener('click', (e) => {
+    const o = e.target.closest('[data-open]'); if (o) { e.preventDefault(); if (scrim.classList.contains('on') && o.closest('.sheet')) { swapTo(o.dataset.open, o); } else openSheet(o.dataset.open, o); return; }
+    if (e.target.closest('[data-close]') || e.target === bg) closeSheet();
+  });
+  document.getElementById('btnNew').addEventListener('click', (e) => openSheet('new', e.currentTarget));
+  document.getElementById('btnPending').addEventListener('click', (e) => openSheet('decide', e.currentTarget));
+  addEventListener('keydown', (e) => { if (e.key === 'Escape' && scrim.classList.contains('on')) closeSheet(); });
+  function swapTo(kind, from) { target = 0; st.o = 0.0; openSheet(kind, from); }
+
+  // ── Form: öneriler + uyarılar ──
+  const SUG = [
+    { t: '16:15', w: 'Emre', d: 'Medit i900', r: 'Moda\'dan 30 dk yol<br>boşluk 15 dk', best: true },
+    { t: '17:30', w: 'Selin', d: 'Medit i900', r: 'Lab\'dan 18 dk<br>gün boş', },
+    { t: '15:45', w: 'Selin', d: 'Medit i900', r: 'Bağdat\'tan 22 dk<br>boşluk 20 dk' },
+    { t: '18:00', w: 'Emre', d: 'Medit i900', r: 'Ataşehir\'de arka arkaya<br>yol yok' },
+  ];
+  function wireNew() {
+    const box = sheet.querySelector('#sugg');
+    box.innerHTML = SUG.map((s, i) => `<button class="sg press" aria-pressed="${i === 0}" data-i="${i}"><span class="h num">${s.t}</span><span class="w">${s.w}${s.best ? '<span class="best">EN UYGUN</span>' : ''}<br><small>${s.d}</small></span><span class="r">${s.r}</span></button>`).join('');
+    const warns = sheet.querySelector('#warns');
+    const setWarn = (list) => { warns.innerHTML = list.map((w) => `<div class="warn"><svg class="i s" viewBox="0 0 24 24"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17h.01"/></svg><span>${w}</span></div>`).join(''); };
+    setWarn([]);
+    box.addEventListener('click', (e) => {
+      const b = e.target.closest('.sg'); if (!b) return;
+      box.querySelectorAll('.sg').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      const s = SUG[+b.dataset.i];
+      sheet.querySelector('#timeVal').textContent = s.t; sheet.querySelector('#techVal').textContent = s.w; sheet.querySelector('#devVal').textContent = s.d;
+      setWarn([]);
+    });
+    sheet.querySelector('#manual').addEventListener('click', () => {
+      sheet.querySelector('#timeVal').textContent = '16:00'; sheet.querySelector('#techVal').textContent = 'Emre';
+      box.querySelectorAll('.sg').forEach((x) => x.setAttribute('aria-pressed', 'false'));
+      setWarn(['Önceki randevudan yola 40 dk gerekiyor, 0 dk açık <small>· tahmini</small>', 'Teknisyenin bu saatte başka randevusu var']);
+    });
+    sheet.querySelector('#moreBtn').addEventListener('click', (e) => { sheet.querySelector('#moreBox').hidden = false; e.currentTarget.hidden = true; });
+    sheet.querySelectorAll('.toggles').forEach((g) => g.addEventListener('click', (e) => {
+      const b = e.target.closest('.tg'); if (!b) return;
+      if (b.dataset.svc) { b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true')); return; }
+      g.querySelectorAll('.tg').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    }));
+  }
+  function wireDecide() {
+    sheet.querySelectorAll('[data-dec]').forEach((d) => d.addEventListener('click', (e) => {
+      const o = e.target.closest('.opt');
+      if (o) {
+        d.querySelectorAll('.opt').forEach((x) => x.setAttribute('aria-pressed', String(x === o)));
+        const pane = d.querySelector('[data-pane]'); if (pane) pane.hidden = o.dataset.o !== 'link';
+        return;
+      }
+      const r = e.target.closest('.ord');
+      if (r) d.querySelectorAll('.ord').forEach((x) => x.setAttribute('aria-pressed', String(x === r)));
+    }));
+  }
+})();
+</script>
+</body>
+</html>

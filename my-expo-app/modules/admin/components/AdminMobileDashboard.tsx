@@ -5,7 +5,7 @@
 //   2) Primary CTA — animated "Yeni Sipariş" card
 //   3) Canlı üretim (dark hero) with animated Ring + stages
 //   4) KPI 2-grid (Aylık gelir · Aktif sipariş) with AnimatedNumber
-//   5) Week strip
+//   5) Tarama programı (modül açıksa) · Üye trendi (son 6 ay; kullanıcı: "bu hafta yerine üye trendi")
 //   6) Geciken vakalar list OR positive empty state
 
 import React from 'react';
@@ -28,10 +28,10 @@ import { AnimatedNumber } from '../../../core/ui/mobile/AnimatedNumber';
 import { NewOrderCTACard } from '../../../core/ui/mobile/NewOrderCTACard';
 import { useAuthStore } from '../../../core/store/authStore';
 
-import { UnreadMessagesCard } from '../../../core/ui/mobile/UnreadMessagesCard';
 import { RecentOrdersMobile, type RecentOrderItem } from '../../dashboard/components/RecentOrdersMobile';
 import { RadialGlow } from '../../../core/ui/gradients';
 
+import { ScanCalendarCard } from '../../scans/components/ScanCalendarCard';
 const EXEC = MOBILE_PANEL_THEMES.exec;
 
 /**
@@ -68,8 +68,14 @@ export interface AdminMobileDashboardProps {
   todayLabel?: string;
   // Live production
   liveActive?:   number;
+  /** Halkanın paydası: arşiv ve iptal hariç tüm siparişler (masaüstü "Teslim Oranı" ile aynı). */
   liveTotal?:    number;
+  /** Halkanın payı: teslim edilen sipariş sayısı (masaüstü "Teslim Oranı" ile aynı). */
+  liveDelivered?: number;
+  /** Bugün teslim edilmesi gereken açık iş sayısı (kicker) */
+  liveDueToday?: number;
   liveStages?:   { alindi: number; uretim: number; kk: number; hazir: number };
+  /** Halka yüzdesi = teslim oranı (liveDelivered / liveTotal) — kullanıcı: "halkayı teslim oranıyla değiştir" */
   livePercent?:  number;
   liveTimer?:    string;
   // KPI
@@ -79,15 +85,8 @@ export interface AdminMobileDashboardProps {
   productionCount?:  number;
   overdueCount?:     number;
   pendingApprovalsCount?: number;
-  // Week
-  weekBars?: number[];
-  weekRange?: string;
-  weekTotal?: number;
-  /** Pazartesi'den başlayan 7 gün etiketi. Verilmezse i18n listesi kullanılır —
-   *  ama o liste PAZAR ile başlıyor, veri ise Pazartesi ile; hizasız kalır. */
-  weekLabels?: string[];
-  /** Bugünün sütun indeksi. Verilmezse son sütun varsayılır (eski sabit davranış). */
-  weekTodayIndex?: number;
+  /** Üye trendi: son aylar (masaüstü "Üye Trendi" kartıyla aynı dizi; son eleman bu ay) */
+  memberTrend?: { label: string; count: number }[];
   // Delayed
   recentOrders?: RecentOrderItem[];
   // Actions
@@ -105,6 +104,11 @@ export interface AdminMobileDashboardProps {
   onRefresh?: () => void;
 }
 
+
+/** 3B görsel kabının yığın sırası. YALNIZ web'de: iOS (Fabric) zIndex'i katman
+ *  derinliği olarak uyguluyor; görsel kendi kabından çıkıp sabit üst başlığın
+ *  (logo + şerit) ÜSTÜNE biniyordu (build 69, 2026-10-21). */
+const ART_Z = Platform.OS === 'web' ? { zIndex: 2 } : {};
 export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
   const { t } = useTranslation();
   const router = useRouter();
@@ -125,11 +129,12 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
   const live = {
     active: props.liveActive ?? 0,
     total:  props.liveTotal ?? 0,
+    delivered: props.liveDelivered ?? 0,
     stages: props.liveStages ?? { alindi: 0, uretim: 0, kk: 0, hazir: 0 },
     pct:    props.livePercent ?? 0,
     timer:  props.liveTimer ?? '00:00:00',
   };
-  const week    = props.weekBars ?? [0,0,0,0,0,0,0];
+  const trend   = props.memberTrend ?? [];
   const pendingApprovals = props.pendingApprovalsCount ?? 0;
   const overdue = props.overdueCount ?? 0;
 
@@ -164,9 +169,8 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
             {greeting}
           </Text>
           <Text style={{ fontSize: 13.5, color: T.ink3, marginTop: 8, lineHeight: 19 }}>
-            {live.total > 0
+            {live.active > 0
               ? t('admin.dashboard.ordersSummary', {
-                  total: live.total,
                   active: live.active,
                   overdue: overdue > 0 ? `, ${t('admin.dashboard.overdueCount', { count: overdue })}` : '',
                 })
@@ -182,7 +186,9 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
         <NewOrderCTACard
           accentColor={EXEC.primary}
           onPress={props.onNewOrder}
-          kicker={live.total > 0 ? t('admin.cta.ordersToday', { total: live.total }) : t('admin.cta.newOrder')}
+          // Eskiden "BUGÜN {toplam} SİPARİŞ" yazıyordu ama sayı TÜM siparişlerdi (denetim);
+          // artık bugün teslim edilecek açık iş sayısı.
+          kicker={(props.liveDueToday ?? 0) > 0 ? t('admin.cta.dueToday', { count: props.liveDueToday }) : t('admin.cta.newOrder')}
           title={t('admin.cta.createNewOrder')}
           art={KPI_ART.newOrder}
           // 3D görsel lacivert/mavi → kart da lacivert gradyan (HERO_NAVY)
@@ -213,10 +219,11 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
             </Text>
           </View>
           <Text style={{ fontSize: 10, color: nn.inkFaint, fontFamily: T.mono }}>
-            {live.active}/{live.total}
+            {live.delivered}/{live.total}
           </Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 14, marginTop: 14 }}>
+          <View style={{ alignItems: 'center', gap: 6 }}>
           <Ring value={live.pct} size={108} stroke={9} color={nn.ink} track={hexA(nn.ink, 0.22)} animatedEndDot sweep>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 2 }}>
               <AnimatedNumber
@@ -233,6 +240,11 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
               }}>%</Text>
             </View>
           </Ring>
+          {/* yüzdenin ne olduğu: kart "canlı üretim" başlığını taşıyor */}
+          <Text style={{ fontSize: 9.5, fontWeight: '600', color: nn.inkSoft, letterSpacing: 0.8, textTransform: 'uppercase' }} numberOfLines={1}>
+            {t('admin.dashboard.deliveryRate')}
+          </Text>
+          </View>
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               {[
@@ -270,7 +282,7 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
       </View>
 
       {/* ═══ KPI 2-grid ═══ */}
-      <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingBottom: 16, zIndex: 2 }}>
+      <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingBottom: 16, ...ART_Z }}>
         {/* Onay bekleyen — "Aylık gelir" placeholder'ının yerine geldi (o kart hiç
             bağlanmamıştı, hep '—' gösteriyordu). Veri zaten yükleniyor; kart
             dokunulabilir ve onaylar ekranına gider. Kasıtlı olarak BEYAZ kalır:
@@ -303,56 +315,53 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
         />
       </View>
 
-      {/* ═══ Mesajlar kartı — okunmamışı öne çıkarır (panel accent) ═══ */}
-      <UnreadMessagesCard
-        accent={EXEC.primary}
-        art={KPI_ART.messages}
-        showClinicLogo
-        onOpenOrder={(id) => router.push(`/(admin)/order/${id}` as any)}
-        onOpenInbox={() => router.push('/(admin)/messages' as any)}
-      />
+      {/* ═══ Tarama programı (modül açıksa; ay görünümü, dokunulan günün ajandası altta) ═══ */}
+      <ScanCalendarCard style={{ marginHorizontal: 16, marginBottom: 16 }} />
 
-      {/* ═══ Week strip ═══ */}
+      {/* ═══ Üye trendi — masaüstü "Üye Trendi" kartının mobil karşılığı (hatched pill kolonları) ═══ */}
+      {trend.length > 0 && (
       <View style={{
         marginHorizontal: 16, marginBottom: 16,
         padding: 14, borderRadius: 20,
         backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline,
       }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 4 }}>
           <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3, letterSpacing: 1, textTransform: 'uppercase' }}>
-            {t('admin.dashboard.thisWeek')} · {props.weekRange ?? ''}
+            {t('admin.dashboard.memberTrend')}
           </Text>
           <Text style={{ fontSize: 11, color: T.ink3 }}>
-            {t('admin.dashboard.total', { total: '' }).trim()} <Text style={{ color: T.ink, fontWeight: '600' }}>{props.weekTotal ?? week.reduce((a, b) => a + b, 0)}</Text>
+            <Text style={{ color: T.ink, fontWeight: '600' }}>{trend[trend.length - 1]?.count ?? 0}</Text> {t('admin.dashboard.membersThisMonth')}
           </Text>
         </View>
-        {/* Admin: hatched-rail pill kolonları — coral accent */}
+        <Text style={{ fontSize: 10.5, color: T.ink3, marginBottom: 12 }}>{t('admin.dashboard.toothMemberNote')}</Text>
         {(() => {
-          // Sabit 20 tavanı yoğun haftalarda tüm sütunları doldurup farkı yok
-          // ediyordu; haftanın kendi tepesine göre büyüsün (20 = alt sınır).
-          const SCALE_MAX = Math.max(20, ...week);
-          const labels = props.weekLabels ?? t('admin.days.short').split(', ');
-          const todayIdx = props.weekTodayIndex ?? 6;
+          // Ölçek: dönemin kendi tepesi; en yüksek ay dolu accent + kapsül etiket, diğerleri soluk
+          const max = Math.max(1, ...trend.map((m) => m.count));
+          const peak = trend.reduce((best, m, i) => (m.count > trend[best].count ? i : best), 0);
           const FILL_LIGHT = `${EXEC.primary}55`;
           const FILL_DARK  = EXEC.primary;
           const RAIL_BG    = `${EXEC.primary}08`;
           const STRIPE_BG  = `repeating-linear-gradient(135deg, ${EXEC.primary}14 0 6px, transparent 6px 12px)`;
-
           return (
-            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-end', height: 110, paddingHorizontal: 2, paddingTop: 6 }}>
-              {labels.map((d, i) => {
-                const n = week[i] ?? 0;
-                const today = i === todayIdx;
-                const pct = n > 0 ? Math.min(Math.max((n / SCALE_MAX) * 100, 8), 100) : 0;
-                const empty = n === 0;
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-end', height: 128, paddingHorizontal: 2 }}>
+              {trend.map((m, i) => {
+                const pct = m.count > 0 ? Math.min(Math.max((m.count / max) * 100, 8), 100) : 0;
+                const hi = i === peak && m.count > 0;
                 return (
                   <View key={i} style={{ flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end', gap: 4 }}>
-                    <View style={{ width: '100%', maxWidth: 36, flex: 1, justifyContent: 'flex-end', alignItems: 'center' }}>
-                      {today && n > 0 && (
-                        <View style={{ marginBottom: 3, paddingHorizontal: 6, paddingVertical: 1.5, borderRadius: 8, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline }}>
-                          <Text style={{ fontSize: 9, fontWeight: '700', color: FILL_DARK }}>{n}</Text>
-                        </View>
-                      )}
+                    {/* sabit yükseklikli etiket zonu: çubukların tabanı hizalı kalır */}
+                    <View style={{ height: 20, justifyContent: 'center', alignItems: 'center' }}>
+                      {m.count > 0 ? (
+                        hi ? (
+                          <View style={{ paddingHorizontal: 6, paddingVertical: 1.5, borderRadius: 8, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline }}>
+                            <Text style={{ fontSize: 9.5, fontWeight: '700', color: FILL_DARK }}>{m.count}</Text>
+                          </View>
+                        ) : (
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: T.ink3 }}>{m.count}</Text>
+                        )
+                      ) : null}
+                    </View>
+                    <View style={{ width: '100%', maxWidth: 40, flex: 1, justifyContent: 'flex-end', alignItems: 'center' }}>
                       <View style={{
                         width: '100%', height: '100%', borderRadius: 999,
                         backgroundColor: RAIL_BG,
@@ -361,18 +370,18 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
                       }}>
                         {/* Native: CSS gradyanı yok → SVG tarama */}
                         <HatchFill color={EXEC.primary} />
-                        {!empty && (
+                        {pct > 0 && (
                           <View style={{
                             position: 'absolute', left: 0, right: 0, bottom: 0,
                             height: `${pct}%`, borderRadius: 999,
-                            backgroundColor: today ? FILL_DARK : FILL_LIGHT,
+                            backgroundColor: hi ? FILL_DARK : FILL_LIGHT,
                             ...(Platform.OS === 'web' ? { transition: 'height 800ms cubic-bezier(0.22, 1, 0.36, 1)' } as any : {}),
                           } as any} />
                         )}
                       </View>
                     </View>
-                    <Text style={{ fontSize: 10, fontWeight: today ? '700' : '500', color: today ? T.ink : T.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                      {d}
+                    <Text style={{ fontSize: 10, fontWeight: hi ? '700' : '500', color: hi ? T.ink : T.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }} numberOfLines={1}>
+                      {m.label}
                     </Text>
                   </View>
                 );
@@ -381,6 +390,7 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
           );
         })()}
       </View>
+      )}
 
       {/* ═══ Son Siparişler — desktop tablonun mobil karşılığı ═══ */}
       <RecentOrdersMobile
@@ -551,7 +561,7 @@ function Kpi({ label, numericValue, delta, deltaColor, sub, dark, accent, icon: 
   // 3D görsel kartın SINIRINI AŞAR (alta + yana taşar) → kartın üstünde duruyormuş
   // hissi. Bu yüzden kartın kendisi kırpılırken görsel kardeş katman olarak çizilir.
   return (
-    <View style={{ flex: 1, zIndex: 2 }}>
+    <View style={{ flex: 1, ...ART_Z }}>
       {card}
       <View pointerEvents="none" style={{ position: 'absolute', bottom: 6, width: artSize?.w ?? 66, height: artSize?.h ?? 66, ...artEdge }}>
         <Image source={art} resizeMode="contain" style={{ width: '100%', height: '100%' }} />

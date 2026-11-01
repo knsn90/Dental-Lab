@@ -13,9 +13,10 @@ import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 // Tüm sipariş statülerini + duraklatmayı kapsayan çözümleyici (dashboard muted paleti).
 // Lokal STATUS_CFG yalnız 5 statü içerdiği için asamada/kurye_bekleniyor/on_hold gibi
 // durumlar ham/yanlış görünüyordu; kartlar bunu kullanmalı.
-export function resolveOrderStatus(status?: string | null, holdStatus?: string | null): { label: string; color: string; bg: string } {
+export function resolveOrderStatus(status?: string | null, holdStatus?: string | null, holdCategory?: string | null): { label: string; color: string; bg: string } {
   // NOT: etiketler sabit sözlük (veri) — JSX değil, bu yüzden autoT() ile çevrilir.
-  if (holdStatus === 'on_hold') return { label: autoT('Duraklatıldı'), color: '#9C5E0E', bg: 'rgba(232,155,42,0.15)' };
+  // Prova beklemesi "Provada" (2. dalga 4), diğer beklemeler "Duraklatıldı".
+  if (holdStatus === 'on_hold') return { label: autoT(holdCategory === 'client_prova' ? 'Provada' : 'Duraklatıldı'), color: '#9C5E0E', bg: 'rgba(232,155,42,0.15)' };
   const GRAY  = { color: '#6B6B6B', bg: 'rgba(0,0,0,0.05)' };
   const AMBER = { color: '#9C5E0E', bg: 'rgba(232,155,42,0.15)' };
   const BLUE  = { color: '#1F5689', bg: 'rgba(74,143,201,0.12)' };

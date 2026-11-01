@@ -9,7 +9,7 @@ import { View, Text, Pressable, Platform, Linking, Modal, Image } from 'react-na
 import { useSegments } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import { FileUp, FileText, Image as ImageIcon, FileBox, Eye, Trash2, UploadCloud, Download, UserCheck, Clock as ClockIcon, ChevronDown } from '../../../core/ui/icons';
+import { FileUp, FileText, Image as ImageIcon, FileBox, Eye, Trash2, UploadCloud, Download, UserCheck, Clock as ClockIcon, ChevronDown, MessageCircle } from '../../../core/ui/icons';
 import { supabase } from '../../../core/api/supabase';
 import { useStationTheme, hexA } from '../../../core/theme/stationPalette';
 import { toast } from '../../../core/ui/Toast';
@@ -18,6 +18,7 @@ import { useAuthStore } from '../../../core/store/authStore';
 import { recordStageActivity } from '../api/timing';
 import { requestDesignApproval, resetDesignApproval } from '../api';
 import { FilesUploadModal, type UploadAttachment } from './FilesUploadModal';
+import { fetchChatAttachmentFiles } from '../chatApi';
 import { isImplantWorkType } from '../constants';
 import { getStationDescriptor, allStationFileCategories } from '../stations/registry';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
@@ -56,6 +57,10 @@ interface StageFile {
   signed_url?:  string;
   /** Revizyonda asıl (ebeveyn) işten devralınan dosya — salt okunur, silinemez. */
   __inherited?: boolean;
+  /** Sohbette paylaşılmış ek — chat-attachments bucket'ında; salt okunur. */
+  __chat?: boolean;
+  /** __chat ise gerçek bucket yolu (storage_path `chat/` önekli tutulur). */
+  chat_path?: string;
 }
 
 /** Web XHR upload — gerçek progress event'leriyle Supabase Storage'a doğrudan yazar. */
@@ -319,6 +324,19 @@ export function StageFileUpload({
       }
     } catch { /* devralma opsiyonel — hata olsa da kendi dosyaları gösterilir */ }
 
+    // Sohbette paylaşılan (onaylı) görsel/dosyalar — "Sohbetten" grubunda, salt okunur.
+    try {
+      const chat = await fetchChatAttachmentFiles(workOrderId);
+      for (const c of chat.photos) {
+        list.push({
+          id: c.id, storage_path: c.storage_path, caption: c.caption,
+          uploaded_by: c.uploaded_by, created_at: c.created_at,
+          filename: c.caption ?? c.chat_path.split('/').pop() ?? 'Dosya',
+          signed_url: chat.urls[c.storage_path], __chat: true, chat_path: c.chat_path,
+        });
+      }
+    } catch { /* sohbet ekleri opsiyonel */ }
+
     setFiles(list);
     setLoading(false);
   };
@@ -336,28 +354,31 @@ export function StageFileUpload({
       name:      f.caption?.trim() || f.filename,
       uri:       '',
       kind:      detectKind(f.storage_path) || detectKind(f.filename),
-      canRemove: f.__inherited ? isAdmin : canRemoveFile(f.uploaded_by),
+      canRemove: f.__chat ? false : f.__inherited ? isAdmin : canRemoveFile(f.uploaded_by),
       filename:  f.storage_path,  // 3D format tespiti için gerçek uzantılı path
       created_at: f.created_at,
+      fromChat:  !!f.__chat,
     }) as UploadAttachment);
     setAttachments(base);  // önce uri'siz göster (hızlı), sonra thumbnail'leri doldur
     (async () => {
-      const paths = files.map(f => f.storage_path);
-      if (paths.length === 0) return;
-      const { data: signed } = await supabase.storage
-        .from('work-order-photos')
-        .createSignedUrls(paths, 3600);
+      // Sohbet ekleri zaten imzalı geliyor (başka bucket) — yalnız sipariş dosyaları imzalanır.
+      const paths = files.filter(f => !f.__chat).map(f => f.storage_path);
+      if (paths.length === 0 && !files.some(f => f.__chat)) return;
+      const { data: signed } = paths.length
+        ? await supabase.storage.from('work-order-photos').createSignedUrls(paths, 3600)
+        : { data: [] as any[] };
       if (!alive || !signed) return;
       const urlByPath: Record<string, string> = {};
       signed.forEach((sgn: any) => { if (sgn?.signedUrl && sgn?.path) urlByPath[sgn.path] = sgn.signedUrl; });
       setAttachments(files.map(f => ({
         id:        f.id,
         name:      f.caption?.trim() || f.filename,
-        uri:       urlByPath[f.storage_path] ?? '',
+        uri:       f.__chat ? (f.signed_url ?? '') : (urlByPath[f.storage_path] ?? ''),
         kind:      detectKind(f.storage_path) || detectKind(f.filename),
-        canRemove: f.__inherited ? isAdmin : canRemoveFile(f.uploaded_by),
+        canRemove: f.__chat ? false : f.__inherited ? isAdmin : canRemoveFile(f.uploaded_by),
         filename:  f.storage_path,
         created_at: f.created_at,
+        fromChat:  !!f.__chat,
       })));
     })();
     return () => { alive = false; };
@@ -371,10 +392,18 @@ export function StageFileUpload({
     return 'image';
   }
 
+  /** Dosyanın bucket'ı + gerçek yolu — sohbet ekleri chat-attachments'ta durur. */
+  function storageOf(file: StageFile): { bucket: string; path: string } {
+    return file.__chat && file.chat_path
+      ? { bucket: 'chat-attachments', path: file.chat_path }
+      : { bucket: 'work-order-photos', path: file.storage_path };
+  }
+
   async function handleOpen(file: StageFile) {
+    const src = storageOf(file);
     const { data, error } = await supabase.storage
-      .from('work-order-photos')
-      .createSignedUrl(file.storage_path, 60 * 5);
+      .from(src.bucket)
+      .createSignedUrl(src.path, 60 * 5);
     if (error || !data?.signedUrl) {
       toast.error('Önizleme alınamadı');
       return;
@@ -439,9 +468,10 @@ export function StageFileUpload({
 
   /** Direct download — preview YOK, dosyayı diske kaydet. */
   async function handleDownload(file: StageFile) {
+    const src = storageOf(file);
     const { data, error } = await supabase.storage
-      .from('work-order-photos')
-      .createSignedUrl(file.storage_path, 60 * 5, { download: file.filename });
+      .from(src.bucket)
+      .createSignedUrl(src.path, 60 * 5, { download: file.filename });
     if (error || !data?.signedUrl) {
       toast.error('İndirme bağlantısı alınamadı');
       return;
@@ -463,6 +493,10 @@ export function StageFileUpload({
 
   async function handleDelete(file: StageFile) {
     if (uploading) return;
+    if (file.__chat) {
+      toast.error('Sohbetten gelen dosya — silmek için sohbetteki mesajı silin');
+      return;
+    }
     if (file.__inherited) {
       if (!isAdmin) {
         toast.error('Asıl işin dosyası — revizyondan silinemez');
@@ -1007,8 +1041,9 @@ export function StageFileUpload({
                 }}>
                   <Icon size={11} color={accent} strokeWidth={1.8} />
                 </View>
-                <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: P.ink900 }} numberOfLines={1}>
+                <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: f.__chat ? 'center' : 'baseline', gap: 6 }}>
+                  {f.__chat ? <MessageCircle size={12} color={accent} strokeWidth={2} /> : null}
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: P.ink900, flexShrink: 1 }} numberOfLines={1}>
                     {f.filename}
                   </Text>
                   <Text style={{ fontSize: 10, color: P.ink400 }} numberOfLines={1}>
@@ -1055,7 +1090,7 @@ export function StageFileUpload({
                 >
                   <Download size={11} color={P.ink500} strokeWidth={1.8} />
                 </Pressable>
-                {(f.__inherited ? isAdmin : canRemoveFile(f.uploaded_by)) && (
+                {!f.__chat && (f.__inherited ? isAdmin : canRemoveFile(f.uploaded_by)) && (
                   <Pressable
                     onPress={() => handleDelete(f)}
                     hitSlop={6}

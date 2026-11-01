@@ -1,4 +1,6 @@
-import { useSegments } from 'expo-router';
+import { useSegments, router } from 'expo-router';
+import { usePermissionStore } from '../../../core/store/permissionStore';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { localeTag, isRTL } from '../../../core/i18n';
 import { confirmAsync } from '../../../core/util/confirm';
@@ -325,6 +327,10 @@ export function SupportScreen() {
   const { profile } = useAuthStore();
   const { setTitle, clear } = usePageTitleStore();
   useEffect(() => { if (!isEmbedded) { setTitle('Destek', ''); } return clear; }, [isEmbedded]);
+  // WhatsApp destek hattı ayarı (eski ayrı menü maddesi) — lab/admin + manage_settings; rota panel-agnostik
+  const supportPanel = String((useSegments() as string[])?.[0] ?? '(lab)');
+  const canPerm = usePermissionStore((s) => s.can);
+  const canWaSupport = (supportPanel === '(lab)' || supportPanel === '(admin)') && canPerm('manage_settings' as any);
 
   // Panel-aware zemin & accent — klinik yeşil, lab sarı, admin mercan, istasyon mavi
   const panelTheme = usePanelTheme();
@@ -466,7 +472,28 @@ export function SupportScreen() {
           kicker={autoT('Üretim Destek Merkezi')}
           title={isAdmin ? autoT('Vakaları yönet') : autoT('Vakanı birlikte çözelim')}
           stats={heroKpis.map(k => ({ value: String(k.value), label: autoT(k.label) }))}
-        />
+        >
+          {canWaSupport ? (
+            <View style={{ marginTop: 14, alignItems: 'flex-start' }}>
+              <GlassTooltip title={autoT('WhatsApp destek hattı')} text={autoT('Destek taleplerinin WhatsApp hattını ve otomatik yanıtlarını yönet')}>
+                <Pressable
+                  onPress={() => router.push(`/${supportPanel}/wa-support` as any)}
+                  accessibilityRole="button"
+                  accessibilityLabel={autoT('WhatsApp destek hattı')}
+                  style={({ pressed }: any) => ({
+                    height: 36, paddingHorizontal: 14, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 8,
+                    backgroundColor: W.surface, borderWidth: 1, borderColor: W.cardBorder,
+                    transform: [{ scale: pressed ? 0.97 : 1 }],
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  })}
+                >
+                  <MessageSquare size={15} color={W.inkStrong} strokeWidth={1.8} />
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: W.inkStrong }}>{autoT('WhatsApp destek hattı')}</Text>
+                </Pressable>
+              </GlassTooltip>
+            </View>
+          ) : null}
+        </WhiteHero>
 
         {/* 2-pane: sol liste kartı + sağ detay kartı */}
         <View style={{ flex: 1, flexDirection: 'row', gap: 16, minHeight: 0 }}>

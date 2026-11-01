@@ -8,24 +8,32 @@ import { localeTag, isRTL } from '../../../core/i18n';
  * §09 tableCard, §05 cardSolid, §05.5 form, §03 pill buttons,
  * §04 CHIP_TONES, DISPLAY font, Lucide icons.
  */
-import React, { useEffect, useMemo, useState, useCallback, useContext } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useContext, useRef } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput,
   Platform, useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, useLocalSearchParams, useSegments } from 'expo-router';
+import { useRouter, useLocalSearchParams, useSegments, useFocusEffect } from 'expo-router';
 import {
   ArrowLeft, ArrowRight, Printer, Download, FileSpreadsheet, Wallet,
   Calendar, Search, X, Filter, SlidersHorizontal, ArrowUpRight, ArrowDownLeft,
   Minus, Banknote, CreditCard, Landmark, FileText,
-  Inbox, Building2, ChevronDown, FileClock, ChevronRight, ChevronLeft,
+  Inbox, Building2, ChevronDown, FileClock, ChevronRight, ChevronLeft, LayoutList,
 } from '../../../core/ui/icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 
 import { fetchInvoicesForClinic, fetchClinicBalance, fetchUnbilledWorkOrders, createInvoiceFromOrder, fetchClinicPriceCurrency, fetchClinicReceipts } from '../api';
 import { buildStatementLines, buildStatementHtml } from '../buildStatementHtml';
+import { statementVatSummary } from '../lib/statementVat';
+import { StatementVatSummary } from '../components/StatementVatSummary';
+import { StatementPrefsModal } from '../components/StatementPrefsModal';
+import { useStatementPrefs } from '../hooks/useStatementPrefs';
+import { applyStatementPrefs } from '../lib/statementPrefs';
+import { statementPeriodTotals } from '../lib/statementTotals';
+import { receiptCreditForCurrency, receiptVoucherNo, receiptDepositLabel } from '../lib/receiptStatement';
+import { revisionDetail } from '../lib/statementRevision';
 import { buildReceiptVoucherHtml } from '../buildReceiptVoucherHtml';
 import { ClinicReceiptModal } from '../components/ClinicReceiptModal';
 import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
@@ -50,6 +58,9 @@ import { useInkUI, type InkUI } from '../../../core/theme/inkScale';
 import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
 import { HubContext } from '../../../core/ui/HubContext';
 import { navBarMetrics } from '../../../core/ui/mobile/navGlass';
+import { useLabToday } from '../../../core/metrics/useLabToday';
+import { isPostedInvoice, isInvoiceOverdue } from '../../../core/metrics/invoiceDefs';
+import { NavyBackButtonX } from '../../../core/ui/NavyBackButtonX';
 
 // ── Patterns tokens ─────────────────────────────────────────────────
 const DISPLAY = {
@@ -170,10 +181,19 @@ function escapeCsv(v: any): string {
   return s;
 }
 
-function exportExcel(clinicName: string, lines: StatementLine[], periodFrom?: string, periodTo?: string, currency: string = 'TRY') {
-  const totalDebit  = lines.reduce((s, l) => s + l.debit, 0);
-  const totalCredit = lines.reduce((s, l) => s + l.credit, 0);
-  const closing     = totalDebit - totalCredit;
+function exportExcel(
+  clinicName: string, lines: StatementLine[], periodFrom?: string, periodTo?: string, currency: string = 'TRY',
+  totals?: { opening: number; closing: number },
+  /** Liste ayarı: KDV/durum sütunu; tahsilat gizliyse toplamlar ve KDV dökümü tüm hareketten */
+  opts: { vat?: boolean; status?: boolean; sums?: { debit: number; credit: number }; vatSource?: StatementLine[] } = {},
+) {
+  const showVat = opts.vat !== false;
+  const showStatus = opts.status !== false;
+  const totalDebit  = opts.sums?.debit  ?? lines.reduce((s, l) => s + l.debit, 0);
+  const totalCredit = opts.sums?.credit ?? lines.reduce((s, l) => s + l.credit, 0);
+  // Dönem filtreliyse önceki aylardan devreden borç açılışta görünür, kapanış ona eklenir.
+  const opening     = totals?.opening ?? 0;
+  const closing     = totals?.closing ?? totalDebit - totalCredit;
   const ba = (n: number) => n > 0.01 ? 'B' : n < -0.01 ? 'A' : '—';
   const fmtNum = (n: number) => n === 0 ? '' : n.toFixed(2);
 
@@ -187,7 +207,10 @@ function exportExcel(clinicName: string, lines: StatementLine[], periodFrom?: st
     [''],
   ];
 
-  const headers = ['Tarih', 'Belge No', 'Açıklama', `Borç (${currency})`, `Alacak (${currency})`, `Bakiye (${currency})`, 'B/A', 'Durum', 'Ödeme Yöntemi'];
+  // KDV ayrı sütunda + en altta döküm (kullanıcı: KDV'nin fiyatın içinde olduğu anlaşılmıyordu)
+  const vat = statementVatSummary(opts.vatSource ?? lines);
+  // Önce borç (KDV ayrıysa KDV HARİÇ), sonra KDV — kullanıcı: "önce fiyat, sonraki sütunda KDV"
+  const headers = ['Tarih', 'Belge No', 'Açıklama', showVat ? `Borç KDV hariç (${currency})` : `Borç (${currency})`, ...(showVat ? [`KDV (${currency})`] : []), `Alacak (${currency})`, `Bakiye (${currency})`, 'B/A', ...(showStatus ? ['Durum'] : []), 'Ödeme Yöntemi'];
 
   const rows = lines.map(l => {
     const status = l.type === 'invoice' && l.status
@@ -198,17 +221,29 @@ function exportExcel(clinicName: string, lines: StatementLine[], periodFrom?: st
       new Date(l.date + 'T00:00:00').toLocaleDateString(localeTag()),
       l.invoiceNo ?? '',
       `${l.type === 'invoice' ? 'Fatura' : 'Tahsilat'} — ${l.description}`,
-      fmtNum(l.debit),
+      fmtNum(showVat ? l.debit - (l.tax ?? 0) : l.debit),
+      ...(showVat ? [l.type === 'invoice' ? fmtNum(l.tax ?? 0) : ''] : []),
       fmtNum(l.credit),
       Math.abs(l.balance).toFixed(2),
       ba(l.balance),
-      status,
+      ...(showStatus ? [status] : []),
       method,
     ];
   });
 
-  const totalRow = ['', '', 'TOPLAM', totalDebit.toFixed(2), totalCredit.toFixed(2), Math.abs(closing).toFixed(2), ba(closing), '', ''];
-  const all = [...titleRows, headers, ...rows, totalRow];
+  const vatCell = showVat ? [vat.tax.toFixed(2)] : [];
+  const blankVat = showVat ? [''] : [];
+  const tail = showStatus ? ['', ''] : [''];
+  const totalRow = ['', '', 'TOPLAM', (showVat ? totalDebit - vat.tax : totalDebit).toFixed(2), ...vatCell, totalCredit.toFixed(2), Math.abs(closing).toFixed(2), ba(closing), ...tail];
+  const openingRow = ['', '', 'Devreden bakiye', '', ...blankVat, '', Math.abs(opening).toFixed(2), ba(opening), ...tail];
+  const vatRows = showVat && vat.total > 0 ? [
+    [''],
+    ['', '', 'Faturaların KDV dökümü'],
+    ['', '', 'Ara Toplam (KDV hariç)', vat.net.toFixed(2)],
+    ['', '', 'KDV Toplamı', vat.tax.toFixed(2)],
+    ['', '', 'Genel Toplam (KDV dahil)', vat.total.toFixed(2)],
+  ] : [];
+  const all = [...titleRows, headers, ...(Math.abs(opening) > 0.004 ? [openingRow] : []), ...rows, totalRow, ...vatRows];
   const csv = all.map(r => r.map(escapeCsv).join(',')).join('\n');
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -272,12 +307,19 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
 
   // Export state
   const [exporting, setExporting] = useState(false);
+  // Liste ayarı — kullanıcıya özel, cihazda (ekran + PDF + Excel)
+  const [prefsOpen, setPrefsOpen] = useState(false);
+  const { prefs, setPref, reset: resetPrefs } = useStatementPrefs();
 
   // Seçili para birimi — ekstre tek dövizde gösterilir (katı per-currency).
   // Başlangıç değeri geçicidir; aşağıdaki "akıllı varsayılan" efekti veri
   // gelince doğru dövizi seçer. Kullanıcı sekmeye bastıktan sonra bir daha
   // müdahale edilmez (ccyPinned).
   const [selectedCcy, setSelectedCcy] = useState<string>('TRY');
+  // Kliniğin görünen bakiyesi (tek tanım: kesilmiş fatura − avans, vadesi geçmiş avans düşülmüş),
+  // döviz başına — KPI'lar bu satırdan; liste/defter kapanışıyla aynı kaynak (20261026100000).
+  const [ccyBalance, setCcyBalance] = useState<{ currency: string; balance: number; overdue_net: number }[]>([]);
+  const labToday = useLabToday();
   const [ccyPinned, setCcyPinned] = useState(false);
   /** Kliniğin fiyat listesi para birimi — varsayılan sekmenin ilk tercihi. */
   const [priceCcy, setPriceCcy] = useState<string | null>(null);
@@ -289,12 +331,27 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
   const [editingReceipt, setEditingReceipt] = useState<ClinicReceipt | null>(null);
   /** Tahsilat sonrası ekstreyi yeniden çekmek için sayaç. */
   const [reloadTick, setReloadTick] = useState(0);
+  // Hangi klinik için veri yüklendi — aynı kliniğin TAZELEMESİ sessiz olsun (bkz. aşağı).
+  const loadedFor = useRef<string | null>(null);
+
+  // Faturaya gidip (router.push → kardeş sekme) "Kesildi" yapıp geri dönünce bu ekran
+  // hiç kapanmamış oluyor — mobil <Tabs> pasif ekranı mount tutar. Odaklanmada
+  // tazelenmezse kesilmiş fatura "Faturalanmamış İşler"de "Taslak" olarak kalıyordu.
+  // İlk odak = ilk mount; o yüklemeyi aşağıdaki effect zaten yapıyor → atla.
+  const firstFocus = useRef(true);
+  useFocusEffect(useCallback(() => {
+    if (firstFocus.current) { firstFocus.current = false; return; }
+    setReloadTick(t => t + 1);
+  }, []));
   const heroInk = useWhiteHeroInk();
 
   useEffect(() => {
     if (!clinicId) return;
     let cancelled = false;
-    setLoading(true);
+    // İlk yükleme / klinik değişimi → tam ekran yükleyici. Aynı kliniğin tazelemesi
+    // (odaklanma, işlem sonrası) SESSİZ: `loading` ekranı yükleyiciyle değiştirdiği
+    // için her geri dönüşte sayfa kararıp kaydırma başa atıyordu.
+    if (loadedFor.current !== clinicId) setLoading(true);
 
     Promise.all([
       fetchInvoicesForClinic(clinicId),
@@ -306,14 +363,17 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
       // aşağıdaki sıralama bir sonraki ölçüte düşer.
       fetchClinicPriceCurrency(clinicId).catch(() => null),
       fetchClinicReceipts(clinicId).catch(() => [] as ClinicReceipt[]),
-    ]).then(([invRes, balRes, unbRes, pCcy, rcpts]) => {
+      supabase.from('v_clinic_balance_ccy').select('currency, balance, overdue_net').eq('clinic_id', clinicId),
+    ]).then(([invRes, balRes, unbRes, pCcy, rcpts, ccyRes]) => {
       if (cancelled) return;
       setInvoices((invRes.data ?? []) as Invoice[]);
       setClinicInfo((balRes.data ?? null) as ClinicBalance | null);
       setUnbilled((unbRes.data ?? []) as UnbilledWorkOrder[]);
       setPriceCcy((pCcy as string | null) ?? null);
       setReceipts((rcpts as ClinicReceipt[]) ?? []);
+      setCcyBalance((((ccyRes as any)?.data ?? []) as any[]).map(r => ({ currency: String(r.currency ?? 'TRY'), balance: Number(r.balance) || 0, overdue_net: Number(r.overdue_net) || 0 })));
       setLoading(false);
+      loadedFor.current = clinicId;
     });
 
     return () => { cancelled = true; };
@@ -468,20 +528,18 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
 
   // Build statement (orijinal tutarda) — yalnız seçili dövizin faturaları.
   //
-  // Faturaya BAĞLANMAYAN toplu tahsilatlar da ekstreye girer: fiş hiçbir
-  // faturaya yazılmadığı için `payments` üzerinden gelmiyor, ama bakiyeyi
-  // düşürüyor. Listeye koymazsak para ortadan kaybolmuş gibi görünürdü.
-  //
-  // Fişin tutarı BAZ para birimindedir; ekstre ise seçili dövizde yürüyor.
-  // Bu yüzden fişler yalnız baz döviz sekmesinde listelenir — başka bir
-  // sekmede göstermek yanlış para biriminde bir rakam olurdu.
+  // Cari hesap mantığı (kullanıcı): faturalar borç, tahsilat fişi TEK alacak
+  // satırı olarak toplam borçtan düşer; faturalara dağıtım arka planda kalır.
+  // Fişin bu dövizdeki alacağı = bu dövizdeki faturalara dağıtılan tutar
+  // (faturanın kendi parasıyla) + baz döviz sekmesinde dağıtılmamış alacak
+  // (lib/receiptStatement). Eskiden fiş yalnız baz sekmesinde toplam bazıyla
+  // listeleniyordu → TL faturaları kapatan TL ödeme TL ekstresinde hiç görünmüyordu.
   const allLines = useMemo(() => {
     const invLines = buildStatementLines(postedInvoices, { original: true });
     const rcptLines: StatementLine[] = receipts
-      .filter(r => (r.base_currency ?? '') === selectedCcy)
-      // Fiş TAM tutarıyla tek satır: dağıtılan kısmın fatura-başı ödeme
-      // satırları buildStatementLines'ta gizleniyor, o yüzden çifte sayım yok.
-      .map(r => ({ ...r, credit_base: Number(r.total_base) || 0 }))
+      // Fiş tek satır: dağıtılan kısmın fatura-başı ödeme satırları
+      // buildStatementLines'ta gizleniyor, o yüzden çifte sayım yok.
+      .map(r => ({ ...r, credit_base: receiptCreditForCurrency(r, postedInvoices, selectedCcy) }))
       .filter(r => r.credit_base > 0.004)
       .map(r => ({
         id: `rcpt-${r.id}`,
@@ -493,9 +551,9 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
         credit: r.credit_base,
         balance: 0,
         // Fişin hangi paralardan oluştuğu alt satırda görünsün.
-        patientName: (r.lines ?? [])
-          .map(l => `${Number(l.amount).toLocaleString('tr-TR')} ${l.currency}`)
-          .join(' + ') || null,
+        receiptNo: receiptVoucherNo(r.id),
+        // Kullanıcı: tahsilat açıklamasında yalnız tür + nereye yatırıldığı (tür satırda ayrıca yazıyor)
+        detail: receiptDepositLabel(r, autoT),
       }));
     if (rcptLines.length === 0) return invLines;
     // Tarihe göre birleştir ve yürüyen bakiyeyi yeniden hesapla.
@@ -505,18 +563,21 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
     return merged.map(l => { run += l.debit - l.credit; return { ...l, balance: run }; });
   }, [postedInvoices, receipts, selectedCcy]);
 
-  // KPI'lar seçili dövizde, kesilmiş faturalardan hesaplanır (clinicInfo base'di → kullanılmaz)
+  // KPI'lar seçili dövizde. Kesilen/tahsil edilen kesilmiş faturalardan; BAKİYE ve VADESİ GEÇMİŞ
+  // kliniğin görünen bakiyesinden (avans düşülmüş — klinik ekranı, Cari listesi ve hatırlatmayla aynı).
   const kpis = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
     let billed = 0, paid = 0, overdue = 0;
     for (const i of postedInvoices) {
-      if (i.status === 'iptal') continue;
+      if (!isPostedInvoice(i)) continue;
       const t = Number(i.total || 0), pd = Number(i.paid_amount || 0);
       billed += t; paid += pd;
-      if (i.due_date && i.due_date < today && pd < t) overdue += t - pd;
+      if (isInvoiceOverdue(i, labToday)) overdue += t - pd;
     }
-    return { billed, paid, balance: billed - paid, overdue };
-  }, [postedInvoices]);
+    const row = ccyBalance.find(r => r.currency === selectedCcy);
+    return row
+      ? { billed, paid, balance: row.balance, overdue: row.overdue_net }
+      : { billed, paid, balance: billed - paid, overdue };
+  }, [postedInvoices, ccyBalance, selectedCcy, labToday]);
 
   const filtered = useMemo(() => {
     return allLines.filter(l => {
@@ -535,12 +596,24 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
   /** Filtre düğmesindeki sayaç — kaç ölçüt etkin. */
   const activeFilterCount = (dateFrom ? 1 : 0) + (dateTo ? 1 : 0) + (typeFilter !== 'all' ? 1 : 0);
 
+  // Ekstre (PDF/Excel) dönem açılış/kapanışı — tür/arama filtresinden BAĞIMSIZ.
+  const periodTotals = useMemo(
+    () => statementPeriodTotals(allLines, dateFrom || undefined, dateTo || undefined),
+    [allLines, dateFrom, dateTo],
+  );
+
   // Totals for filtered
   const totals = useMemo(() => {
     const debit = filtered.reduce((s, l) => s + l.debit, 0);
     const credit = filtered.reduce((s, l) => s + l.credit, 0);
     return { debit, credit, balance: debit - credit };
   }, [filtered]);
+  // Faturaların KDV dökümü — KDV hariç + KDV = genel toplam (lib/statementVat)
+  const vatSummary = useMemo(() => statementVatSummary(filtered), [filtered]);
+  // Liste ayarı (kullanıcıya özel): görünür satırlar — tutar/bakiye `filtered`'dan,
+  // kapalı alanlar boşaltılır, tahsilat kapalıysa satırları çıkar (lib/statementPrefs)
+  const shown = useMemo(() => applyStatementPrefs(filtered, prefs), [filtered, prefs]);
+  const showVat = prefs.vat && vatSummary.total > 0;
 
   // ── Print / PDF ────────────────────────────────────────
   const handlePrint = useCallback(async () => {
@@ -549,10 +622,13 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
       const lab = selfView ? await fetchSelfViewLab() : await fetchLab();
       const html = buildStatementHtml(
         clinicInfo?.clinic_name ?? 'Klinik',
-        filtered,
+        shown,
         lab,
         { from: dateFrom || undefined, to: dateTo || undefined },
         selectedCcy,
+        periodTotals,
+        // Liste ayarı: KDV kapalıysa sütun/döküm yok; tahsilat gizliyse de toplamlar tüm hareketten
+        { vat: prefs.vat, sums: { debit: totals.debit, credit: totals.credit } },
       );
 
       if (Platform.OS === 'web') {
@@ -577,7 +653,7 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
     } finally {
       setExporting(false);
     }
-  }, [clinicInfo, filtered, dateFrom, dateTo, selectedCcy, selfView]);
+  }, [clinicInfo, shown, dateFrom, dateTo, selectedCcy, selfView, periodTotals, prefs.vat, totals]);
 
   // ── Excel ──────────────────────────────────────────────
   /** Tahsilat makbuzu (PDF) — ekstre yazdırmayla aynı yol. */
@@ -618,9 +694,10 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
       toast.info('Excel dışa aktarma web üzerinde desteklenir');
       return;
     }
-    exportExcel(clinicInfo?.clinic_name ?? 'Sağlık Kurumu', filtered, dateFrom || undefined, dateTo || undefined, selectedCcy);
+    exportExcel(clinicInfo?.clinic_name ?? 'Sağlık Kurumu', shown, dateFrom || undefined, dateTo || undefined, selectedCcy, periodTotals,
+      { vat: prefs.vat, status: prefs.status, sums: { debit: totals.debit, credit: totals.credit }, vatSource: filtered });
     toast.success('Excel indirildi');
-  }, [clinicInfo, filtered, dateFrom, dateTo, selectedCcy]);
+  }, [clinicInfo, shown, filtered, dateFrom, dateTo, selectedCcy, periodTotals, prefs.vat, prefs.status, totals]);
 
   const clinicName = clinicInfo?.clinic_name ?? '';
   const totalBilled = kpis.billed;
@@ -694,26 +771,12 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
           /* Geri, kicker'in solunda: ayri bir satirda dururken hero'dan kopuk
              bir kutu gibi duruyordu. */
           leading={!selfView ? (
-            <GlassTooltip title={autoT('Geri')} text={autoT('Sağlık kurumu listesine dön')} placement="bottom">
-              <Pressable
-                // Ekstre, Finans hub'ının "Sağlık Kurumları" sekmesinin alt sayfası.
-                // safeBack mobilde Özet'e düşüyordu; hiyerarşik "yukarı" sabit.
-                onPress={() => router.replace(`/${panelBase}/finance?tab=clinic_balance` as any)}
-                accessibilityRole="button"
-                accessibilityLabel={autoT('Geri')}
-                hitSlop={8}
-                style={{
-                  width: 30, height: 30, borderRadius: 9,
-                  alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: U.surface, borderWidth: 1, borderColor: U.hairline,
-                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                }}
-              >
-                {isRTL()
-                  ? <ArrowRight size={15} color={U.ink[900]} strokeWidth={1.9} />
-                  : <ArrowLeft size={15} color={U.ink[900]} strokeWidth={1.9} />}
-              </Pressable>
-            </GlassTooltip>
+            /* Ekstre, Finans hub'ının "Sağlık Kurumları" sekmesinin alt sayfası.
+               safeBack mobilde Özet'e düşüyordu; hiyerarşik "yukarı" sabit. */
+            <NavyBackButtonX
+              onPress={() => router.replace(`/${panelBase}/finance?tab=clinic_balance` as any)}
+              tooltip="Sağlık kurumu listesine dön"
+            />
           ) : null}
           title={clinicName || autoT('Sağlık Kurumu')}
           description={`${allLines.length} ${autoT('hareket')}${overdue > 0 ? ` · ${fmtMoney(overdue, selectedCcy)} ${autoT('gecikmiş')}` : ''}`}
@@ -732,6 +795,9 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
                 <PillBtn icon={Wallet} label={isDesktop ? "Tahsilat ekle" : ""} onPress={() => { setEditingReceipt(null); setReceiptOpen(true); }} />
               </GlassTooltip>
             )}
+            <GlassTooltip title={autoT('Liste ayarı')} text={autoT('Ekstrede görünecek alanları seç; PDF ve Excel de buna göre çıkar')}>
+              <PillBtn icon={LayoutList} label={isDesktop ? "Liste ayarı" : ""} onPress={() => setPrefsOpen(true)} variant="ghost" />
+            </GlassTooltip>
             <GlassTooltip title={autoT('Yazdır / PDF')} text={autoT('Ekstreyi yazdır veya PDF olarak kaydet')}>
               <PillBtn icon={Printer} label={isDesktop ? "Yazdır / PDF" : ""} onPress={handlePrint} busy={exporting} variant="ghost" />
             </GlassTooltip>
@@ -998,7 +1064,7 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
               </Text>
               <View style={{ flex: 1 }} />
               <Text style={{ fontSize: 12, color: tblInk, opacity: 0.75 }}>
-                {filtered.length} hareket
+                {shown.length} hareket
                 {(dateFrom || dateTo) ? ` · ${dateFrom || '...'} → ${dateTo || '...'}` : ''}
               </Text>
             </View>
@@ -1010,7 +1076,9 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
                 { label: 'TİP',       flex: 0.6 },
                 { label: 'AÇIKLAMA',  flex: 3 },
                 { label: 'DURUM',     flex: 1 },
-                { label: 'BORÇ',      flex: 1.2, align: 'end' as const },
+                // Kullanıcı: "önce fiyat, sonraki sütunda KDV" — borç KDV hariç, KDV yanında
+                { label: showVat ? 'BORÇ (KDV HARİÇ)' : 'BORÇ', flex: 1.2, align: 'end' as const },
+                ...(showVat ? [{ label: 'KDV', flex: 1, align: 'end' as const }] : []),
                 { label: 'ALACAK',    flex: 1.2, align: 'end' as const },
                 { label: 'BAKİYE',    flex: 1.2, align: 'end' as const },
               ].map((h, i) => (
@@ -1021,8 +1089,8 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
             </View>
 
             {/* Rows */}
-            {filtered.map((line, i) => (
-              <StatementRow key={line.id ?? i} line={line} last={i === filtered.length - 1} currency={selectedCcy}
+            {shown.map((line, i) => (
+              <StatementRow key={line.id ?? i} line={line} last={i === shown.length - 1} currency={selectedCcy} showVat={showVat}
                 onOpen={line.id ? () => openLine(line) : undefined} />
             ))}
 
@@ -1033,13 +1101,18 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
               borderTopWidth: 1, borderTopColor: U.hairline,
               backgroundColor: U.surfaceSoft,
             }}>
-              <Text style={{ flex: 1.2, fontSize: 11, color: U.ink[500] }}>{filtered.length} hareket</Text>
+              <Text style={{ flex: 1.2, fontSize: 11, color: U.ink[500] }}>{shown.length} hareket</Text>
               <View style={{ flex: 0.6 }} />
               <View style={{ flex: 3 }} />
               <View style={{ flex: 1 }} />
               <Text style={{ flex: 1.2, fontSize: 12, fontWeight: '700', color: U.ink[900], textAlign: 'end' as any }}>
-                {fmtMoney(totals.debit, selectedCcy)}
+                {fmtMoney(showVat ? totals.debit - vatSummary.tax : totals.debit, selectedCcy)}
               </Text>
+              {showVat && (
+                <Text style={{ flex: 1, fontSize: 12, fontWeight: '700', color: U.ink[700], textAlign: 'end' as any }}>
+                  {fmtMoney(vatSummary.tax, selectedCcy)}
+                </Text>
+              )}
               <Text style={{ flex: 1.2, fontSize: 12, fontWeight: '700', color: U.chipTones.success.fg, textAlign: 'end' as any }}>
                 {fmtMoney(totals.credit, selectedCcy)}
               </Text>
@@ -1047,15 +1120,23 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
                 {fmtMoney(totals.balance, selectedCcy)}
               </Text>
             </View>
+            {showVat && (
+              <StatementVatSummary summary={vatSummary} fmt={(n) => fmtMoney(n, selectedCcy)} padH={20} />
+            )}
           </View>
         ) : (
           /* ���─ Mobile list ────────────────────────────────────── */
           <View style={U.tableCard}>
-            <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
-              <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: U.ink[900] }}>Ekstre</Text>
+            {/* Başlık şeridi masaüstüyle aynı: panel accent (lacivert) zemin + üstünde okunur mürekkep */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 14, backgroundColor: tblAccent }}>
+              <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: tblInk }}>Ekstre</Text>
+              <View style={{ flex: 1 }} />
+              <Text style={{ fontSize: 12, color: tblInk, opacity: 0.75 }}>
+                {shown.length} hareket
+              </Text>
             </View>
 
-            {filtered.map((line, i) => {
+            {shown.map((line, i) => {
               const isInvoice = line.type === 'invoice';
               const Icon = isInvoice ? ArrowUpRight : ArrowDownLeft;
               const chip = isInvoice && line.status ? STATUS_CHIP[line.status as InvoiceStatus] : null;
@@ -1064,8 +1145,8 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
                 ? ([line.invoiceNo, line.patientName].filter(Boolean).join(' · ') || line.description)
                 : autoT('Tahsilat');
               const mSub = mIsInvoice
-                ? [line.orderNo, line.doctorName].filter(Boolean).join(' · ')
-                : [line.invoiceNo, line.patientName].filter(Boolean).join(' · ');
+                ? [line.orderNo, revisionDetail(line, line.debit, autoT), line.doctorName].filter(Boolean).join(' · ')
+                : [line.invoiceNo, line.receiptNo ? `${autoT('Makbuz')} #${line.receiptNo}` : null, line.patientName, line.detail].filter(Boolean).join(' · ');
 
               return (
                 <Pressable key={line.id ?? i}
@@ -1074,7 +1155,7 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
                   style={({ pressed }: any) => ({
                   flexDirection: 'row', alignItems: 'center', gap: 12,
                   paddingHorizontal: 16, paddingVertical: 12,
-                  borderBottomWidth: i < filtered.length - 1 ? 1 : 0,
+                  borderBottomWidth: i < shown.length - 1 ? 1 : 0,
                   borderBottomColor: U.hairlineSoft,
                   backgroundColor: pressed && line.id ? U.rowHover : 'transparent',
                   ...(line.id && Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
@@ -1088,9 +1169,12 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
                   </View>
 
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>
-                      {mTitle}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={{ flexShrink: 1, fontSize: 13, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>
+                        {mTitle}
+                      </Text>
+                      {mIsInvoice && line.revisionOf ? <RevisionChip /> : null}
+                    </View>
                     {mSub ? (
                       <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 1 }} numberOfLines={1}>{mSub}</Text>
                     ) : null}
@@ -1116,8 +1200,14 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
                       fontSize: 13, fontWeight: '600',
                       color: isInvoice ? U.ink[900] : U.chipTones.success.fg,
                     }}>
-                      {isInvoice ? fmtMoney(line.debit, selectedCcy) : `-${fmtMoney(line.credit, selectedCcy)}`}
+                      {isInvoice ? fmtMoney(showVat ? line.debit - (line.tax ?? 0) : line.debit, selectedCcy) : `-${fmtMoney(line.credit, selectedCcy)}`}
                     </Text>
+                    {/* Kullanıcı: KDV fiyatın içinde görünmüyordu → ayrı yazılır */}
+                    {isInvoice && (line.tax ?? 0) > 0 ? (
+                      <Text style={{ fontSize: 10, color: U.ink[500], marginTop: 1 }}>
+                        {autoT('KDV')} {fmtMoney(line.tax ?? 0, selectedCcy)}
+                      </Text>
+                    ) : null}
                     <Text style={{ fontSize: 10, color: U.ink[400], marginTop: 1 }}>
                       {fmtMoney(line.balance, selectedCcy)}
                     </Text>
@@ -1126,13 +1216,16 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
               );
             })}
 
+            {showVat && (
+              <StatementVatSummary summary={vatSummary} fmt={(n) => fmtMoney(n, selectedCcy)} />
+            )}
             <View style={{
               flexDirection: 'row', justifyContent: 'space-between',
               paddingHorizontal: 16, paddingVertical: 12,
               borderTopWidth: 1, borderTopColor: U.hairline,
               backgroundColor: U.surfaceSoft,
             }}>
-              <Text style={{ fontSize: 11, color: U.ink[500] }}>{filtered.length} hareket</Text>
+              <Text style={{ fontSize: 11, color: U.ink[500] }}>{shown.length} hareket</Text>
               <Text style={{ fontSize: 13, fontWeight: '700', color: totals.balance > 0 ? U.ink[900] : U.chipTones.success.fg }}>
                 Bakiye: {fmtMoney(totals.balance, selectedCcy)}
               </Text>
@@ -1140,6 +1233,14 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
           </View>
         )}
       </ScrollView>
+
+      <StatementPrefsModal
+        visible={prefsOpen}
+        prefs={prefs}
+        onChange={setPref}
+        onReset={resetPrefs}
+        onClose={() => setPrefsOpen(false)}
+      />
 
       <ClinicReceiptModal
         visible={receiptOpen}
@@ -1155,7 +1256,20 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
 }
 
 // ─── Desktop statement row ───────────────────────────────────────────
-function StatementRow({ line, last, currency, onOpen }: { line: StatementLine; last: boolean; currency: string; onOpen?: () => void }) {
+/** Ekstrede revizyon faturası etiketi (asıl sipariş + sorumlu alt satırda) */
+function RevisionChip() {
+  const U = useInkUI();
+  const t = U.chipTones.warning;
+  return (
+    <GlassTooltip title={autoT('Revizyon')} text={autoT('Bu fatura bir revizyon siparişine ait')}>
+      <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: t.bg }}>
+        <Text style={{ fontSize: 10.5, fontWeight: '700', color: t.fg }}>{autoT('Revizyon')}</Text>
+      </View>
+    </GlassTooltip>
+  );
+}
+
+function StatementRow({ line, last, currency, onOpen, showVat = true }: { line: StatementLine; last: boolean; currency: string; onOpen?: () => void; showVat?: boolean }) {
   const U = useInkUI();
   const STATUS_CHIP = statusChip(U);
   const isInvoice = line.type === 'invoice';
@@ -1170,9 +1284,10 @@ function StatementRow({ line, last, currency, onOpen }: { line: StatementLine; l
   const rowTitle = isInvoice
     ? ([line.invoiceNo, line.patientName].filter(Boolean).join(' · ') || line.description)
     : autoT('Tahsilat');
+  // Revizyon faturası: "Asıl sipariş … · Lab kaynaklı, ücretsiz" sipariş no'nun yanında
   const rowSub = isInvoice
-    ? [line.orderNo, line.doctorName].filter(Boolean).join(' · ')
-    : [line.invoiceNo, line.patientName].filter(Boolean).join(' · ');
+    ? [line.orderNo, revisionDetail(line, line.debit, autoT), line.doctorName].filter(Boolean).join(' · ')
+    : [line.invoiceNo, line.receiptNo ? `${autoT('Makbuz')} #${line.receiptNo}` : null, line.patientName, line.detail].filter(Boolean).join(' · ');
 
   return (
     <Pressable
@@ -1202,9 +1317,10 @@ function StatementRow({ line, last, currency, onOpen }: { line: StatementLine; l
 
       <View style={{ flex: 3, gap: 2, paddingEnd: 8 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>
+          <Text style={{ flexShrink: 1, fontSize: 13, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>
             {rowTitle}
           </Text>
+          {isInvoice && line.revisionOf ? <RevisionChip /> : null}
           {!isInvoice && MIcon && (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
               <MIcon size={10} color={U.ink[400]} strokeWidth={1.6} />
@@ -1229,12 +1345,24 @@ function StatementRow({ line, last, currency, onOpen }: { line: StatementLine; l
         )}
       </View>
 
+      {/* Borç — KDV ayrı gösteriliyorsa KDV HARİÇ tutar (kullanıcı: "fiyat KDV dahil yazıyor,
+          ayrı ayrı yazmalı; önce fiyat sonra KDV"). Bakiye yine KDV dahil yürür. */}
       <Text style={{
         flex: 1.2, fontSize: 13, fontWeight: line.debit > 0 ? '600' : '400',
         color: line.debit > 0 ? U.ink[900] : U.ink[300], textAlign: 'end' as any,
       }}>
-        {line.debit > 0 ? fmtMoney(line.debit, currency) : '—'}
+        {line.debit > 0 ? fmtMoney(showVat ? line.debit - (line.tax ?? 0) : line.debit, currency) : '—'}
       </Text>
+
+      {/* KDV — borcun içindeki pay, fiyatın hemen sağında */}
+      {showVat && <View style={{ flex: 1, alignItems: 'flex-end' }}>
+        <Text style={{ fontSize: 12, color: (line.tax ?? 0) > 0 ? U.ink[700] : U.ink[300] }}>
+          {(line.tax ?? 0) > 0 ? fmtMoney(line.tax ?? 0, currency) : '—'}
+        </Text>
+        {(line.tax ?? 0) > 0 && (line.taxRate ?? 0) > 0 ? (
+          <Text style={{ fontSize: 10, color: U.ink[400], marginTop: 1 }}>%{line.taxRate}</Text>
+        ) : null}
+      </View>}
 
       <Text style={{
         flex: 1.2, fontSize: 13, fontWeight: line.credit > 0 ? '600' : '400',

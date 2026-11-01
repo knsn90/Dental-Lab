@@ -1,0 +1,88 @@
+-- 20261027130000_log_arama_aktor_grubu.sql
+-- 2. dalga 3 Task 6 eki: Loglar'daki kişi tipi sekmeleri sunucuda süzülsün.
+-- "Kullanıcılar" sekmesi admin + lab + kurye, "Klinikler" sekmesi klinik/klinik yöneticisi/sekreter
+-- kayıtlarını kapsar; 20261027120000'deki p_actor_type tek değere eşitti. Yalnız bu koşul değişir.
+-- Geri alma: rollbacks/20261027130000_log_arama_aktor_grubu.down.sql (20261027120000 tanımı)
+
+create or replace function public.activity_log_search(
+  p_from timestamptz default null,
+  p_to timestamptz default null,
+  p_actor uuid default null,
+  p_kind text default null,
+  p_order_no text default null,
+  p_before timestamptz default null,
+  p_limit int default 100,
+  p_before_id uuid default null,
+  p_actor_type text default null,
+  p_q text default null)
+ returns setof public.activity_logs
+ language plpgsql
+ stable security definer
+ set search_path to 'public'
+as $function$
+declare
+  v_lab uuid := public.get_my_lab_id();
+  v_ids uuid[];
+  v_rel uuid[];
+  v_no text := nullif(btrim(coalesce(p_order_no, '')), '');
+  v_q text := nullif(btrim(coalesce(p_q, '')), '');
+begin
+  if v_lab is null or not coalesce(public.is_admin_user(), false) then
+    return;
+  end if;
+
+  if v_no is not null then
+    select coalesce(array_agg(wo.id), '{}') into v_ids
+      from public.work_orders wo
+     where wo.lab_id = v_lab and lower(wo.order_number) = lower(v_no);
+    -- siparişe bağlı aşama ve talep kayıtları
+    select coalesce(array_agg(x.id), '{}') into v_rel from (
+      select s.id from public.order_stages s where s.work_order_id = any(v_ids)
+      union all select r.id from public.order_change_requests r where r.work_order_id = any(v_ids)
+      union all select r.id from public.order_cancellation_requests r where r.work_order_id = any(v_ids)
+    ) x;
+  end if;
+
+  return query
+  select l.*
+    from public.activity_logs l
+   where l.lab_id = v_lab
+     and (p_from is null or l.created_at >= p_from)
+     and (p_to is null or l.created_at < p_to)
+     and (p_actor is null or l.actor_id = p_actor)
+     and (p_actor_type is null or case p_actor_type
+            -- Loglar sekmeleri: "Kullanıcılar" = admin + lab + kurye; "Klinikler" = klinik hesapları
+            when 'users'  then l.actor_type in ('admin', 'lab', 'courier')
+            when 'clinic' then l.actor_type in ('clinic', 'clinic_admin', 'clinic_secretary')
+            else l.actor_type = p_actor_type
+          end)
+     and (p_before is null
+          or l.created_at < p_before
+          or (p_before_id is not null and l.created_at = p_before and l.id < p_before_id))
+     and (p_kind is null or case p_kind
+            when 'stage'          then l.entity_type in ('stage', 'order_stage')
+            when 'material'       then l.entity_type in ('material', 'stock_movement')
+            when 'field_change'   then l.action in ('Siparişi düzenledi', 'Kalemleri düzenledi')
+            when 'status_change'  then l.action like 'Durumu değiştirdi%' or l.action = 'Siparişi iptal etti'
+            when 'reassign'       then l.action = 'Aşamayı devretti'
+            when 'change_request' then l.entity_type in ('change_request', 'cancel_request')
+            else l.entity_type = p_kind
+          end)
+     and (v_no is null
+          or l.entity_id = any(v_ids)
+          or l.entity_id = any(v_rel)
+          or l.metadata->>'order_id' = any(v_ids::text[])
+          or l.metadata->>'order_no' = v_no
+          or l.metadata->>'invoice_id' in (select i.id::text from public.invoices i where i.work_order_id = any(v_ids)))
+     and (v_q is null
+          or l.action ilike '%' || v_q || '%'
+          or l.entity_label ilike '%' || v_q || '%'
+          or l.actor_name ilike '%' || v_q || '%')
+   order by l.created_at desc, l.id desc
+   limit greatest(1, least(coalesce(p_limit, 100), 500));
+end;
+$function$;
+
+revoke all on function public.activity_log_search(timestamptz, timestamptz, uuid, text, text, timestamptz, int, uuid, text, text) from public, anon;
+grant execute on function public.activity_log_search(timestamptz, timestamptz, uuid, text, text, timestamptz, int, uuid, text, text) to authenticated;
+

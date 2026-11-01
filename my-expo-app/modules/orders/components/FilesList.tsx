@@ -6,7 +6,7 @@
 import React, { useState, useMemo, useRef } from "react";
 import { View, Text, Pressable, Platform, Image, Modal, ActivityIndicator, ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Layers, ChevronRight, ChevronLeft, ChevronDown, Download, Eye, Image as ImageIcon, File as FileIcon, PenLine } from "../../../core/ui/icons";
+import { Layers, ChevronRight, ChevronLeft, ChevronDown, Download, Eye, Image as ImageIcon, File as FileIcon, PenLine, MessageCircle, ScanLine } from "../../../core/ui/icons";
 import { localeTag, isRTL } from "../../../core/i18n";
 import { autoT } from "../../../core/i18n/autoTranslate";
 import { useScanAnnotationCount } from "../../viewer-3d/annotations/useScanAnnotationCount";
@@ -69,6 +69,27 @@ const galleryNavBtn = {
   ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 2px 8px rgba(15,23,42,0.16)' } as any) : {}),
 };
 
+/** Sohbetten gelen dosyanın işaret rengi — mesaj balonu tonu, iki temada da okunur. */
+const CHAT_TINT_LIGHT = '#0284C7';
+const CHAT_TINT_DARK  = '#7DD3FC';
+// Tarama randevusundan gelen dosya (scan-files bucket'ı; __scan) — tarama türünün mavi tonu
+const SCAN_TINT_LIGHT = '#2C6593';
+const SCAN_TINT_DARK  = '#9BC6EC';
+/** Büyük görselde "Sohbet" rozeti — sol üst köşe (galeri okları dikey ortada). */
+const chatBadge = {
+  position: 'absolute' as const, top: 8,
+  flexDirection: 'row' as const, alignItems: 'center' as const, gap: 4,
+  paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
+  backgroundColor: 'rgba(2,132,199,0.88)',
+};
+/** Şerit karosunda küçük sohbet işareti. */
+const chatThumbDot = {
+  position: 'absolute' as const, top: 4, left: 4,
+  width: 16, height: 16, borderRadius: 8,
+  alignItems: 'center' as const, justifyContent: 'center' as const,
+  backgroundColor: 'rgba(2,132,199,0.88)',
+};
+
 const FILE_CAT_META: { key: FileCat; label: string }[] = [
   { key: 'scan',  label: 'Taramalar' },
   { key: 'photo', label: 'Fotoğraflar' },
@@ -92,6 +113,8 @@ export function FilesList({
   const insets = useSafeAreaInsets();
   const T = useMobileTokens();
   const isDark = useThemeModeStore((s) => s.resolvedDark);
+  const chatTint = isDark ? CHAT_TINT_DARK : CHAT_TINT_LIGHT;
+  const scanTint = isDark ? SCAN_TINT_DARK : SCAN_TINT_LIGHT;
   // Kategori aç/kapa durumu (varsayılan: KAPALI — kullanıcı isterse açar)
   const [openCats, setOpenCats] = useState<Record<string, boolean>>({});
   // 3D viewer state
@@ -258,6 +281,42 @@ export function FilesList({
       .filter(Boolean) as Array<{ id: string; name: string; url: string; format: 'stl'|'ply'|'obj'; textureUrl?: string|null }>;
   }, [photos, signedUrls]);
 
+  // ZIP taramaları — "Tümünü 3D Aç" bunları da kapsar. Klinikler taramaları çoğunlukla
+  // zip içinde gönderiyor; yalnız STL/PLY/OBJ sayılınca 2 ZIP + 1 STL'li siparişte
+  // buton hiç çıkmıyordu (web ve iOS).
+  const zipScans = useMemo(() => photos
+    .filter(f => isArchiveExt(f.storage_path))
+    .map(f => ({ id: f.id, url: (signedUrls[f.storage_path] ?? (f as any).signed_url ?? null) as string | null }))
+    .filter((z): z is { id: string; url: string } => !!z.url), [photos, signedUrls]);
+  const openAllCount = all3DFiles.length + zipScans.length;
+  // Native çoklu açılışta arşiv URL'leri — görüntüleyicinin WebView'i açar
+  const [allZipUrls, setAllZipUrls] = useState<string[] | null>(null);
+  const openAll3D = async () => {
+    setZipSource(null);
+    if (zipScans.length === 0) { setViewerAll(all3DFiles); return; }
+    if (Platform.OS !== 'web') {
+      // Native: arşivler WebView'de SIRAYLA açılır — RN JS thread'i donmaz.
+      setAllZipUrls(zipScans.map(z => z.url));
+      setViewerAll(all3DFiles);
+      return;
+    }
+    // Web: her arşiv mevcut unzipToViewer ile açılır, doğrudan dosyalarla birleşir.
+    setExtractingId('__all3d__');
+    try {
+      revokeZipUrls();
+      const merged = [...all3DFiles];
+      const objectUrls: string[] = [];
+      for (const z of zipScans) {
+        const r = await unzipToViewer(z.url, { idPrefix: z.id });
+        objectUrls.push(...r.objectUrls);
+        merged.push(...(r.files as typeof merged));
+      }
+      zipUrlsRef.current = objectUrls;
+      if (merged.length > 0) setViewerAll(merged);
+    } catch { /* tek tek açmak hâlâ mümkün */ }
+    finally { setExtractingId(null); }
+  };
+
   // 2D referans fotoğraflar — gülüş tasarımı / ekartörlü resim vb. (jpg/png)
   const referenceImages = useMemo(() => {
     return photos
@@ -288,38 +347,6 @@ export function FilesList({
   // sıfırlanır ve modal kapanır.
   return (
     <View className="gap-3">
-      {/* Multi-file "Tümünü 3D Aç" butonu — 2+ STL/PLY/OBJ varsa görünür (web + native).
-          Tüm taramaları tek sahnede katmanlar halinde açar (desktop paritesi). */}
-      {all3DFiles.length >= 2 && (() => {
-        // Panel accent'li pill CTA (tasarım dili: radius 999, accent = panel primary,
-        // accent-tonlu yumuşak gölge). Ön-plan kontrast-farkında: lab safranında ink.
-        const fg = onAccent(accentColor);
-        return (
-          <Pressable
-            onPress={() => { setZipSource(null); setViewerAll(all3DFiles); }}
-            android_ripple={{ color: alphaOf(fg, 0.12) }}
-            /* NOT: object style ZORUNLU — NativeWind v4'te fonksiyon-stilli Pressable
-               native'de backgroundColor'ı düşürüyor (buton beyaz kalıyordu). */
-            style={{
-              alignSelf: 'center',
-              flexDirection: 'row', alignItems: 'center', gap: 9,
-              height: 40, paddingHorizontal: 13, borderRadius: 999,
-              backgroundColor: accentColor,
-              shadowColor: accentColor, shadowOpacity: 0.30, shadowRadius: 12, shadowOffset: { width: 0, height: 4 },
-              elevation: 3,
-              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-            }}
-          >
-            <Layers size={16} color={fg} strokeWidth={2.2} />
-            <Text style={{ fontSize: 13.5, fontWeight: '700', color: fg, letterSpacing: -0.2 }} numberOfLines={1}>
-              Tümünü 3D Aç
-            </Text>
-            <View style={{ minWidth: 20, height: 20, paddingHorizontal: 6, borderRadius: 10, backgroundColor: alphaOf(fg, 0.20), alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ fontSize: 11.5, fontWeight: '800', color: fg }}>{all3DFiles.length}</Text>
-            </View>
-          </Pressable>
-        );
-      })()}
 
       {/* 3D kalem notu rozeti — karşı taraf taramaya çizim/not bıraktıysa
           sipariş detayında görünür olmalı; yoksa notlar viewer'ın içinde
@@ -402,6 +429,12 @@ export function FilesList({
                     >
                       <Image source={{ uri: cur.url }} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
                     </Pressable>
+                    {(cur.f as any).__chat ? (
+                      <View pointerEvents="none" style={[chatBadge, isRTL() ? { right: 8 } : { left: 8 }]}>
+                        <MessageCircle size={11} color="#FFFFFF" strokeWidth={2} />
+                        <Text style={{ fontSize: 10.5, color: '#FFFFFF', fontWeight: '600' }}>Sohbet</Text>
+                      </View>
+                    ) : null}
                     {imgs.length > 1 && (
                       <>
                         {/* Konum start/end ile aynalanır; ok da aynalanmazsa
@@ -428,9 +461,12 @@ export function FilesList({
                   </View>
                   {/* Seçili fotoğrafın eklenme tarihi */}
                   {cur.f.created_at ? (
-                    <Text style={{ fontSize: 10, color: isDark ? T.ink3 : "#9A9A9A", marginTop: 6 }} numberOfLines={1}>
-                      {(cur.f.caption ?? 'Fotoğraf')} · Eklendi: {new Date(cur.f.created_at).toLocaleString(localeTag(), { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 }}>
+                      {(cur.f as any).__chat ? <MessageCircle size={11} color={chatTint} strokeWidth={2} /> : (cur.f as any).__scan ? <ScanLine size={11} color={scanTint} strokeWidth={2} /> : null}
+                      <Text style={{ fontSize: 10, color: isDark ? T.ink3 : "#9A9A9A", flexShrink: 1 }} numberOfLines={1}>
+                        {(cur.f.caption ?? 'Fotoğraf')} · {(cur.f as any).__chat ? 'Sohbetten' : (cur.f as any).__scan ? 'Taramadan' : 'Eklendi'}: {new Date(cur.f.created_at).toLocaleString(localeTag(), { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                    </View>
                   ) : null}
                   {/* Şerit — tek sıra, bitişik karolar; seçili olan genişler.
                       Sarmalayan ızgara yerine yatay kaydırma: 20 fotoğrafta bile
@@ -462,6 +498,11 @@ export function FilesList({
                             }}
                           >
                             <Image source={{ uri: x.thumb }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                            {(x.f as any).__chat ? (
+                              <View pointerEvents="none" style={chatThumbDot}>
+                                <MessageCircle size={9} color="#FFFFFF" strokeWidth={2.2} />
+                              </View>
+                            ) : null}
                           </Pressable>
                         );
                       })}
@@ -510,7 +551,8 @@ export function FilesList({
                   <Icon size={11} color={color} strokeWidth={1.8} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+                  <View style={{ flexDirection: 'row', alignItems: (f as any).__chat || (f as any).__scan ? 'center' : 'baseline', gap: 6 }}>
+                    {(f as any).__chat ? <MessageCircle size={12} color={chatTint} strokeWidth={2} /> : (f as any).__scan ? <ScanLine size={12} color={scanTint} strokeWidth={2} /> : null}
                     <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '600', color: isDark ? T.ink : "#0A0A0A", flexShrink: 1 }}>
                       {filename}
                     </Text>
@@ -520,7 +562,7 @@ export function FilesList({
                   </View>
                   {uploadedAt ? (
                     <Text style={{ fontSize: 9.5, color: isDark ? T.ink3 : "#B0B0B0", marginTop: 1 }} numberOfLines={1}>
-                      Eklendi: {uploadedAt}
+                      {(f as any).__chat ? 'Sohbetten' : (f as any).__scan ? 'Taramadan' : 'Eklendi'}: {uploadedAt}
                     </Text>
                   ) : null}
                 </View>
@@ -563,13 +605,47 @@ export function FilesList({
           })}
         </View>
       )}
-      {/* 3D Yüz Tarama — sadece TrueDepth'li iPhone'larda görünür, diğer
-          platformlarda null döner. Mevcut StageFileUpload akışını bozmaz. */}
-      <FaceScanButton
-        workOrderId={workOrderId}
-        accentColor={accentColor}
-        onUploaded={onUploaded}
-      />
+      {/* Tümünü 3D Aç + 3D Yüz Tarama — AYNI satır, ortalı. Yüz tarama yalnız
+          TrueDepth'li iPhone'da görünür (başka yerde null) → o zaman tek buton ortada. */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: 10 }}>
+        {/* Multi-file "Tümünü 3D Aç" butonu — 2+ STL/PLY/OBJ varsa görünür (web + native).
+            Tüm taramaları tek sahnede katmanlar halinde açar (desktop paritesi). */}
+        {openAllCount >= 2 && (() => {
+          // Panel accent'li pill CTA (tasarım dili: radius 999, accent = panel primary,
+          // accent-tonlu yumuşak gölge). Ön-plan kontrast-farkında: lab safranında ink.
+          const fg = onAccent(accentColor);
+          return (
+            <Pressable
+              onPress={openAll3D}
+              disabled={extractingId === '__all3d__'}
+              android_ripple={{ color: alphaOf(fg, 0.12) }}
+              /* NOT: object style ZORUNLU — NativeWind v4'te fonksiyon-stilli Pressable
+                 native'de backgroundColor'ı düşürüyor (buton beyaz kalıyordu). */
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 9,
+                height: 40, paddingHorizontal: 13, borderRadius: 999,
+                backgroundColor: accentColor, opacity: extractingId === '__all3d__' ? 0.6 : 1,
+                shadowColor: accentColor, shadowOpacity: 0.30, shadowRadius: 12, shadowOffset: { width: 0, height: 4 },
+                elevation: 3,
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              }}
+            >
+              <Layers size={16} color={fg} strokeWidth={2.2} />
+              <Text style={{ fontSize: 13.5, fontWeight: '700', color: fg, letterSpacing: -0.2 }} numberOfLines={1}>
+                Tümünü 3D Aç
+              </Text>
+              <View style={{ minWidth: 20, height: 20, paddingHorizontal: 6, borderRadius: 10, backgroundColor: alphaOf(fg, 0.20), alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 11.5, fontWeight: '800', color: fg }}>{openAllCount}</Text>
+              </View>
+            </Pressable>
+          );
+        })()}
+        <FaceScanButton
+          workOrderId={workOrderId}
+          accentColor={accentColor}
+          onUploaded={onUploaded}
+        />
+      </View>
 
       {/* StageFileUpload sabit pozisyon — re-render'da unmount olmaz.
           triggerStyle='row': iç içe kart yerine inline trigger satırı (üstteki foto listesiyle aynı tarz). */}
@@ -608,7 +684,8 @@ export function FilesList({
             // Mesh zaten yüklü — küçük resmi bir kez üretip sakla. Sonraki
             // açılışlarda dosya listesi 16-29 MB indirmeden önizleme gösterir.
             const f = photos.find(p => p.id === viewer3DFile.id);
-            if (f?.storage_path) void saveMeshThumb(f.storage_path, dataUrl);
+            // Tarama dosyası başka bucket'ta (scan-files) — küçük resim work-order-photos'a yazılmaz
+            if (f?.storage_path && !(f as any).__scan) void saveMeshThumb(f.storage_path, dataUrl);
           }}
         />
       )}
@@ -742,9 +819,10 @@ export function FilesList({
         <MobileViewer3D
           visible={!!viewerAll}
           files={viewerAll}
-          title={`${viewerAll.length} dosya birlikte`}
+          zipUrls={allZipUrls ?? undefined}
+          title={allZipUrls?.length ? 'Taramalar' : `${viewerAll.length} dosya birlikte`}
           orderId={workOrderId}
-          onClose={() => { setViewerAll(null); setZipImages(null); setZipSource(null); refreshAnnotCount(); }}
+          onClose={() => { setViewerAll(null); setAllZipUrls(null); setZipImages(null); setZipSource(null); refreshAnnotCount(); }}
         />
       )}
     </View>

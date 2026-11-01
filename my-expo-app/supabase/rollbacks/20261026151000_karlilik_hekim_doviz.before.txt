@@ -1,0 +1,8 @@
+[
+ {
+  "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+  "def": "CREATE OR REPLACE FUNCTION public.profitability_by_doctor_revenue_ccy(p_lab_id uuid, p_from date, p_to date)\n RETURNS TABLE(doctor_id uuid, currency text, revenue numeric)\n LANGUAGE sql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\n  SELECT wo.doctor_id, COALESCE(i.currency, 'TRY') AS currency, SUM(i.total) AS revenue\n  FROM work_orders wo\n  JOIN invoices i ON i.work_order_id = wo.id AND i.status <> 'iptal'\n  WHERE wo.lab_id = p_lab_id\n    AND public.can_view_lab_profit(p_lab_id)\n    AND wo.created_at::DATE BETWEEN p_from AND p_to\n    AND wo.status <> 'iptal'\n  GROUP BY wo.doctor_id, COALESCE(i.currency, 'TRY')\n  HAVING SUM(i.total) <> 0;\n$function$\n",
+  "n": "profitability_by_doctor_revenue_ccy",
+  "sig": "p_lab_id uuid, p_from date, p_to date"
+ }
+]

@@ -1,3 +1,6 @@
+import { fetchChatAttachmentFiles } from '../chatApi';
+import { fetchScanFilesForOrder } from '../../scans/api';
+import { OrderScanRow } from '../../scans/components/OrderScanRow';
 import { localeTag, isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
 /**
@@ -26,42 +29,40 @@ import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { supabase } from '../../../core/api/supabase';
 import { buildOrderPrintDoc } from '../lib/buildOrderPrintDoc';
+import { orderAge } from '../lib/patientAge';
+import { buildShipLabelDoc } from '../lib/buildShipLabelDoc';
+import { printHtmlInHiddenFrame } from '../../../lib/printHtmlFrame';
+import { type LabelSize } from '../lib/workLabel';
+import { useLabelSize } from '../hooks/useLabelSize';
+import { LabelSizePicker } from '../components/LabelSizePicker';
+import { useInkUI } from '../../../core/theme/inkScale';
+import { X as CloseX } from '../../../core/ui/icons';
 import { getSignedUrls } from '../../../lib/photos';
 import { useOrderDetail } from '../hooks/useOrderDetail';
-import { SupportButton } from '../../support/components/SupportButton';
+import { openSupport } from '../../../core/store/supportStore';
+import { SupportIcon } from '../../../core/ui/SupportIcon';
+import { RowActionsMenu, type RowAction } from '../../../core/ui/RowActionsMenu';
 import { useOrderStages } from '../hooks/useOrderStages';
 import { LivingToothChart } from '../components/LivingToothChart';
 import { readImplantInfo, groupImplantTeeth } from '../implantInfo';
 import { LinearProgressX, PercentRingX, StepsTimelineX } from '../../../core/ui/ProgressX';
-import { Bell, Printer, Check, ArrowUpRight, ChevronLeft, ChevronRight, Phone, MapPin, Download, MessageSquare, FileText, Image as ImageIcon, File as FileIcon, RotateCcw, UserCheck, Upload, AlertTriangle, CircleCheck, Circle, Clock, ChevronDown, ChevronUp, ListChecks, Play, Truck, Eye, Trash2, Plus, SkipForward, Pause, Layers, CornerUpLeft, User } from '../../../core/ui/icons';
+import { Bell, Printer, Check, ArrowUpRight, ChevronLeft, ChevronRight, Phone, MapPin, Download, MessageSquare, FileText, Image as ImageIcon, File as FileIcon, RotateCcw, UserCheck, Upload, AlertTriangle, CircleCheck, Circle, Clock, ChevronDown, ChevronUp, ListChecks, Play, Truck, Eye, Trash2, Plus, SkipForward, Pause, Layers, CornerUpLeft, User, History } from '../../../core/ui/icons';
 
 // Lazy viewer-3d (three.js ayrı chunk) — tek paylaşılan retry'lı lazy instance.
 import { Viewer3DModalLazy as Viewer3DModal } from '../../viewer-3d/Viewer3DLazy';
 import { unzipToViewer, unzipToViewerNative, isArchiveExt } from '../fileArchive';
-import { holdOrder, resumeOrder, HOLD_CATEGORIES, holdCategoryLabel, holdDays } from '../holdApi';
+import { holdOrder, resumeOrder, HOLD_CATEGORIES, HOLD_PICKABLE, holdCategoryLabel, holdDays, isProvaHold } from '../holdApi';
 
 // HTML tasarım (exocad web viewer) native önizleme — sadece native'de WebView yükle
 // (web'de iframe kullanılır, require çağrılmaz → web bundle'ı etkilenmez).
 const HtmlWebView: any = Platform.OS !== 'web' ? require('react-native-webview').WebView : null;
 
 
-/** patient_dob (YYYY-MM-DD) → yaş. */
-function ageFromDob(dob?: string | null): number | null {
-  if (!dob) return null;
-  const m = dob.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return null;
-  const b = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  const now = new Date();
-  let a = now.getFullYear() - b.getFullYear();
-  const md = now.getMonth() - b.getMonth();
-  if (md < 0 || (md === 0 && now.getDate() < b.getDate())) a--;
-  return a >= 0 && a < 130 ? a : null;
-}
-
 /** Hasta yaş + cinsiyet küçük etiketi: "38 yaş · Kadın". */
 function patientAgeGenderLabel(order: any): string {
   const parts: string[] = [];
-  const age = ageFromDob(order?.patient_dob);
+  // Kayıtlı yaş (yeni siparişler) önce; eski siparişte doğum tarihinden hesaplanır.
+  const age = order ? orderAge(order) : null;
   if (age != null) parts.push(`${age} yaş`);
   const g = order?.patient_gender;
   if (g === 'kadın') parts.push('Kadın');
@@ -84,6 +85,8 @@ import { useNewOrderModalStore } from '../../../core/store/newOrderModalStore';
 import { AddStageModal } from '../components/AddStageModal';
 import { DeliveryModal } from '../components/DeliveryModal';
 import { DeliveryFeeModal } from '../components/DeliveryFeeModal';
+import { CloseWithoutProofModal } from '../../delivery/proof/CloseWithoutProofModal';
+import { PROOF_SELECT } from '../../delivery/proof/api';
 import { OrderLogisticsCard } from '../components/OrderLogisticsCard';
 import { OrderCourierTrackingModal } from '../components/OrderCourierTrackingModal';
 import { CURRENCY_META, type Currency } from '../../../core/money/currency';
@@ -118,13 +121,18 @@ import { AdminDangerSection } from '../components/AdminDangerSection';
 import { OrderClientActions } from '../components/OrderClientActions';
 import { StageFileUpload } from '../components/StageFileUpload';
 import { FilesList } from '../components/FilesList';
+import { OrderHistoryModal } from '../history/OrderHistoryModal';
+import { ProvaModal, type OriginRect } from '../prova/ProvaModal';
+import { useProvaSnapshot } from '../prova/useProvaSnapshot';
+import { flagFromSnapshot, heroLabel } from '../prova/provaModel';
+import { provaHeroIcon } from '../prova/ProvaHeroIcon';
 import { FaceScanButton } from '../components/FaceScanButton';
 import { formatDuration } from '../stations/stageStates';
 import { STAGE_ORDER, STAGE_LABEL, STAGE_COLOR, legacyStatusToStage } from '../stages';
 import type { Stage } from '../stages';
 import type { WorkOrderStatus } from '../../../lib/types';
 import type { WorkOrder } from '../types';
-import type { StatusHistory, WorkOrderPhoto } from '../../../lib/types';
+import type { WorkOrderPhoto } from '../../../lib/types';
 
 // ── Profit RPC return shape ─────────────────────────────────────────
 interface ProfitData {
@@ -278,7 +286,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   onRequestClose?: () => void;
   onOpenRelated?: (id: string) => void;
 } = {}) {
-  const { id: _routeId, triage: triageParam } = useLocalSearchParams<{ id: string; triage?: string }>();
+  const { id: _routeId, triage: triageParam, tab: tabParam } = useLocalSearchParams<{ id: string; triage?: string; tab?: string }>();
   const id = idOverride ?? _routeId;
   const router = useRouter();
   const { profile } = useAuthStore();
@@ -301,6 +309,11 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   const [jawView, setJawView] = useState<'both' | 'upper' | 'lower'>('both');
   const [printOpen, setPrintOpen] = useState(false);
   const [printPreviewHtml, setPrintPreviewHtml] = useState<string | null>(null);
+  const [printErr, setPrintErr] = useState<string | null>(null);
+  const [labelSize, setLabelSize] = useLabelSize();      // A4/A5/A6 — cihazda hatırlanır
+  const printReq = useRef(0);                             // hızlı boyut değişiminde eski önizleme yenisini ezmesin
+  const [printingLegId, setPrintingLegId] = useState<string | null>(null);   // gönderi fişi hazırlanıyor
+  const U = useInkUI();
   const [addStageOpen, setAddStageOpen] = useState(false);
   // İşi Beklet modalı
   const [holdOpen, setHoldOpen]     = useState(false);
@@ -310,6 +323,23 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   const [holdErr, setHoldErr]       = useState<string | null>(null);
   // Dosyalar ilk sekme ve varsayılan: sipariş açılınca ilk bakılan şey tarama/STL.
   const [sideTab, setSideTab] = useState<'doctor_note' | 'lab_note' | 'files'>('files');
+  // Sipariş geçmişi popup'ı — başlıktaki "Geçmiş" düğmesi; ?tab=history (Loglar'dan geçiş) doğrudan açar.
+  const [historyOpen, setHistoryOpen] = useState(tabParam === 'history');
+  // Hero eylem satırı: sığmayan seyrek işler "•••" menüsüne (ölçüme dayalı; geniş ekranda hepsi görünür).
+  const [actRowW, setActRowW] = useState(0);
+  const [actLeft, setActLeft] = useState<{ w: number; shown: string[] }>({ w: -1, shown: [] });
+  const [actSecW, setActSecW] = useState<Record<string, number>>({});
+  const secVisibleRef = useRef<Set<string>>(new Set());
+  useEffect(() => { if (tabParam === 'history') setHistoryOpen(true); }, [tabParam, _routeId]);
+  // Prova popup'ı (2. dalga 4) — hero'daki "Prova" hapı; ?tab=prova (bildirimler) doğrudan açar.
+  const [provaOpen, setProvaOpen] = useState(tabParam === 'prova');
+  const [provaOrigin, setProvaOrigin] = useState<OriginRect | null>(null);
+  const [provaCourier, setProvaCourier] = useState<'prova_gidis' | 'prova_donus' | null>(null);
+  const provaPillRef = useRef<View>(null);
+  // Rota kimliği sipariş numarasına dönüşebilir (/order/NEX-…); RPC uuid ister → yüklü siparişin id'si.
+  const provaOrderId = (order as any)?.id as string | undefined;
+  const provaSnap = useProvaSnapshot(provaOrderId, !!provaOrderId);
+  useEffect(() => { if (tabParam === 'prova') { setProvaOrigin(null); setProvaOpen(true); } }, [tabParam, _routeId]);
   const [chatOpen, setChatOpen] = useState(false);
   const [profit, setProfit] = useState<ProfitData | null>(null);
   const [related, setRelated] = useState<Array<{ id: string; order_number: string; work_type: string | null; status: string; delivery_date: string | null; }>>([]);
@@ -328,7 +358,9 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
     const ids = [(order as any)?.revision_of_id, (order as any)?.continues_order_id].filter(Boolean) as string[];
     return ids.length ? ids : undefined;
   })();
-  const { messages: chatMessages } = useChatMessages((order as any)?.id ?? '', profile?.id, revParentIds);
+  // Yalnız sayaç/önizleme: sipariş detayını açmak mesajları "okundu" yapmaz (denetim Y4) —
+  // okundu, sohbet gerçekten açılınca (MessagesB5Mobile / MessagesPopup) işaretlenir.
+  const { messages: chatMessages } = useChatMessages((order as any)?.id ?? '', profile?.id, revParentIds, { markRead: false });
   const [togglingUrgent, setTogglingUrgent] = useState(false);
   const [qcRejectOpen, setQcRejectOpen] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
@@ -355,6 +387,8 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   }, [newOrderModalOpen]);
   const [doctorChangeOpen, setDoctorChangeOpen] = useState(false);
   const [activeDelivery, setActiveDelivery] = useState<any | null>(null);
+  // Yönetici "Teslim Edildi" → kendi kurye teslimatında kanıtsız kapatma penceresi (2. dalga 5)
+  const [noProofOpen, setNoProofOpen] = useState(false);
   /** Siparişin TÜM kurye hareketleri (final teslimat + ara bacaklar), yeniden eskiye. */
   const [deliveryLegs, setDeliveryLegs] = useState<any[]>([]);
   // Kurye takip modalı — lojistik haritasına tıklanınca sayfadan ayrılmadan açılır.
@@ -423,7 +457,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
     const fetchDeliveries = async () => {
       const { data } = await supabase
         .from('deliveries')
-        .select('id, mode, status, courier_id, external_provider, external_tracking_no, external_tracking_code, external_label_url, picked_up_at, delivered_at, created_at, notes, destination_name, destination_address, destination_phone, purpose, direction, fee_amount, fee_currency, fee_source, stage_snapshot, courier:profiles!deliveries_courier_profiles_fkey(full_name)')
+        .select(`id, mode, status, courier_id, external_provider, external_tracking_no, external_tracking_code, external_label_url, picked_up_at, delivered_at, created_at, notes, destination_name, destination_address, destination_phone, purpose, direction, fee_amount, fee_currency, fee_source, stage_snapshot, ext_courier_name, ${PROOF_SELECT}, courier:profiles!deliveries_courier_profiles_fkey(full_name)`)
         .eq('work_order_id', orderUuid)
         .order('created_at', { ascending: false });
       const rows = (data ?? []) as any[];
@@ -511,6 +545,33 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
     })().catch(() => { /* parça görselleri opsiyonel — liste yine çalışır */ });
     return () => { cancelled = true; };
   }, [(order as any)?.id, notesTick]);
+
+  // Sohbette paylaşılan (onaylı) görsel ve dosyalar da Ekler'de görünür — sohbet
+  // işaretiyle. Kopyalama yok; kayıt sohbette kalır, okuma anında listeye katılır.
+  const [chatFiles, setChatFiles] = useState<{ photos: any[]; urls: Record<string, string> }>({ photos: [], urls: {} });
+  useEffect(() => {
+    const oid = (order as any)?.id as string | undefined;
+    if (!oid) { setChatFiles({ photos: [], urls: {} }); return; }
+    let cancelled = false;
+    fetchChatAttachmentFiles(oid)
+      .then(r => { if (!cancelled) setChatFiles(r); })
+      .catch(() => { /* sohbet ekleri opsiyonel — liste yine çalışır */ });
+    return () => { cancelled = true; };
+  }, [(order as any)?.id]);
+
+  // Tarama randevusunda bu siparişe bağlanan hastaların dosyaları (scan-files) da Ekler'de —
+  // "Taramadan" işaretiyle, salt okunur. Siparişi gören herkes (klinik/hekim dahil, spec karar 24);
+  // hangi klasörlerin görüneceğine sunucu (scan_order_file_dirs) karar verir.
+  const [scanFiles, setScanFiles] = useState<{ photos: any[]; urls: Record<string, string> }>({ photos: [], urls: {} });
+  useEffect(() => {
+    const oid = (order as any)?.id as string | undefined;
+    if (!oid) { setScanFiles({ photos: [], urls: {} }); return; }
+    let cancelled = false;
+    fetchScanFilesForOrder(oid)
+      .then(r => { if (!cancelled) setScanFiles(r); })
+      .catch(() => { /* tarama dosyaları opsiyonel — liste yine çalışır */ });
+    return () => { cancelled = true; };
+  }, [(order as any)?.id]);
 
   // Revizyon bağlantıları — bu sipariş neyin revizyonu + bundan açılan revizyonlar
   useEffect(() => {
@@ -1066,6 +1127,22 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   const qrUrl = Platform.OS === 'web' && typeof window !== 'undefined'
     ? `${window.location.origin}/order/${order.id}`
     : `https://dental-lab-steel.vercel.app/order/${order.id}`;
+
+  // Kurye hareketinin A6 gönderi fişi — kargoya / kutuya yapıştırılır. Yalnız web.
+  const printShipLabel = async (leg: { id: string }) => {
+    if (printingLegId) return;
+    setPrintingLegId(leg.id);
+    try {
+      const html = await buildShipLabelDoc(order, leg.id, { qrUrl });
+      printHtmlInHiddenFrame(html);
+    } catch (e) {
+      console.error('ship label failed', e);
+      toast.error(autoT('Gönderi fişi hazırlanamadı.'));
+    } finally {
+      setPrintingLegId(null);
+    }
+  };
+  const shipLabelHandler = Platform.OS === 'web' ? printShipLabel : undefined;
   const handleNavigateRelated = (relatedId: string) => {
     if (panelGroup && panelGroup.startsWith('(')) {
       router.push(`/${panelGroup}/order/${relatedId}` as any);
@@ -1190,8 +1267,122 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
       setReassignOpen={setReassignOpen} openReassign={openReassign} setAddStageOpen={setAddStageOpen}
       refetch={refetch} refetchStages={refetchStages}
       fmtDate={fmtDate} isLaneOpen={isLaneOpen} toggleLane={toggleLane}
-      activeDelivery={activeDelivery} setDeliveryModalOpen={setDeliveryModalOpen} stageCompleting={stageCompleting}
+      activeDelivery={activeDelivery}
+      onCloseWithoutProof={() => setNoProofOpen(true)} setDeliveryModalOpen={setDeliveryModalOpen} stageCompleting={stageCompleting}
     />
+  );
+
+  // Aşama modalleri — desktop + mobil ORTAK. Mobil erken return ediyor; bu modaller
+  // eskiden yalnız desktop dalında mount edildiği için mobilde Tamamla (malzeme
+  // tüketen istasyon), Aşama ekle ve Düzenle (devret) sessizce hiçbir şey yapmıyordu.
+  // ── Prova (2. dalga 4): hero hapı etiketi/noktası snapshot'tan; popup düğmenin yerinden açılır ──
+  const provaFlag = flagFromSnapshot(provaSnap.data);
+  const provaHero = heroLabel(provaFlag, autoT);
+  const ProvaIcon = provaHeroIcon(provaHero.dot);
+  const provaPanel = panelGroup === '(lab)' || panelGroup === '(admin)' || panelGroup === '(clinic)' || panelGroup === '(doctor)';
+  const openProva = () => {
+    const n: any = provaPillRef.current;
+    if (n && typeof n.measureInWindow === 'function') {
+      n.measureInWindow((x: number, y: number, w: number, h: number) => {
+        setProvaOrigin(w > 0 ? { x, y, w, h } : null);
+        setProvaOpen(true);
+      });
+    } else {
+      setProvaOrigin(null);
+      setProvaOpen(true);
+    }
+  };
+
+  const stageModals = (
+    <>
+      {/* Yönetici: kendi kurye teslimatını gerekçeli kanıtsız kapat (2. dalga 5) */}
+      <CloseWithoutProofModal
+        visible={noProofOpen}
+        onClose={() => setNoProofOpen(false)}
+        deliveryId={activeDelivery?.id ?? null}
+        subtitle={[activeDelivery?.courier?.full_name, (order as any).order_number ? `#${(order as any).order_number}` : null].filter(Boolean).join(' · ')}
+        origin={null}
+        onClosed={() => { refetch(); refetchStages(); }}
+      />
+      {/* Prova popup'ı (B düzeni) — hero hapı / mobil üst çubuk / ?tab=prova */}
+      <ProvaModal
+        visible={provaOpen}
+        onClose={() => setProvaOpen(false)}
+        orderId={order.id}
+        orderNumber={String((order as any).order_number ?? '')}
+        workTitle={(order as any).work_type ?? null}
+        originRect={provaOrigin}
+        snapshot={provaSnap.data}
+        loading={provaSnap.loading}
+        error={provaSnap.error}
+        refetch={provaSnap.refetch}
+        onChanged={refetch}
+        onCallCourier={(purpose) => { setProvaOpen(false); setProvaCourier(purpose); }}
+      />
+      {/* Prova kuryesi / dönüş kuryesi — ara kurye hareketi, amaç hazır seçili */}
+      {provaCourier && (panelGroup === '(lab)' || panelGroup === '(admin)') && (
+        <DeliveryModal
+          visible
+          workOrderId={order.id}
+          labId={(profile as any)?.lab_id ?? profile?.id ?? ''}
+          accentColor={panelAccent}
+          extraLeg
+          initialPurpose={provaCourier}
+          stageSnapshot={stageName}
+          onClose={() => setProvaCourier(null)}
+          onCreated={() => { setLegsTick(t => t + 1); refetch(); void provaSnap.refetch(); }}
+        />
+      )}
+      {/* Sipariş geçmişi popup'ı — masaüstü başlık düğmesi + mobil üst çubuk düğmesi */}
+      <OrderHistoryModal
+        visible={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        orderId={order.id}
+        orderNumber={String((order as any).order_number ?? '')}
+      />
+      {/* Reassign Modal — menüden seçilen aşama (yoksa aktif ?? ilk bekleyen) */}
+      {(() => {
+        const target = reassignStage ?? reassignTargetStage;
+        if (!isManager || !target) return null;
+        return (
+          <ReassignModal
+            visible={reassignOpen}
+            stageId={target.id}
+            stage={legacyStatusToStage(order.status)}
+            stationId={(target as any).station?.id ?? (target as any).station_id ?? null}
+            labId={profile?.lab_id ?? profile?.id ?? ''}
+            currentOwnerId={target.technician?.id}
+            onClose={() => { setReassignOpen(false); setReassignStage(null); }}
+            onReassigned={() => { refetch(); refetchStages(); }}
+          />
+        );
+      })()}
+      {/* Aşama ekle modal — müdür/admin: istasyon + konum seç */}
+      {isManager && order && (
+        <AddStageModal
+          visible={addStageOpen}
+          onClose={() => setAddStageOpen(false)}
+          orderId={order.id}
+          labId={(profile as any)?.lab_id ?? profile?.id ?? ''}
+          stages={orderStages as any}
+          accentColor={panelAccent}
+          onAdded={() => { refetch(); refetchStages(); }}
+        />
+      )}
+      {/* Material Confirm Modal — aşamayı malzeme onayıyla tamamla */}
+      <StageMaterialModal
+        visible={!!materialModalStageId}
+        stageId={materialModalStageId}
+        accentColor={panelAccent}
+        onClose={() => setMaterialModalStageId(null)}
+        onConfirmed={() => {
+          setMaterialModalStageId(null);
+          toast.success('Aşama tamamlandı, sıradaki başlatıldı');
+          refetch();
+          refetchStages();
+        }}
+      />
+    </>
   );
 
   if (!isDesktop) {
@@ -1236,14 +1427,6 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
     const techName = activeStage?.technician?.full_name ?? null;
     const techInit = techName ? techName.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase() : undefined;
 
-    // Aktivite log — son 3 status history
-    const activities = (order.status_history ?? []).slice(0, 3).map((h: any) => ({
-      title: `${STATUS_CONFIG[h.status as WorkOrderStatus]?.label ?? h.status}${h.note ? ' · ' + h.note : ''}`,
-      user: h.actor?.full_name ?? 'Sistem',
-      time: h.created_at ? new Date(h.created_at).toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' }) : '',
-      kind: h.status === order.status ? 'prod' : 'done',
-    }));
-
     // ── Teslimat aksiyonu (mobil) — desktop ile birebir aynı mantık ──
     const mDeliveryMethod = (order as any).delivery_method as 'kurye' | 'kargo' | 'elden' | null | undefined;
     let mDeliveryButton: { label: string; icon?: 'truck' | 'check'; onPress: () => void } | null = null;
@@ -1281,6 +1464,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
         mDeliveryButton = {
           label: 'Teslim Edildi', icon: 'check',
           onPress: async () => {
+            if (activeDelivery.mode === 'internal') { setNoProofOpen(true); return; }
             const r = await updateDeliveryStatus(activeDelivery.id, 'teslim_edildi');
             if (!r.ok) { alert(`Hata: ${r.error}`); return; }
             refetch();
@@ -1358,12 +1542,14 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
         })()}
         materialSub={undefined}
         colorShade={(order as any).shade ?? '—'}
-        attachmentCount={(order.photos ?? []).length}
+        // Liste (FilesList) sipariş + not ekleri + devralınan dosyaları gösteriyor; sayı da
+        // AYNISINI saysın — yalnız order.photos sayılınca devam siparişinde "0 dosya" yazıyordu.
+        attachmentCount={(order.photos ?? []).length + notePhotoFiles.photos.length + inheritedFiles.photos.length + chatFiles.photos.length + scanFiles.photos.length}
         attachments={[]}
         attachmentsNode={
           <FilesList
-            photos={[...(order.photos ?? []), ...notePhotoFiles.photos, ...inheritedFiles.photos]}
-            signedUrls={{ ...(signedUrls ?? {}), ...notePhotoFiles.urls, ...inheritedFiles.urls }}
+            photos={[...(order.photos ?? []), ...notePhotoFiles.photos, ...inheritedFiles.photos, ...chatFiles.photos, ...scanFiles.photos]}
+            signedUrls={{ ...(signedUrls ?? {}), ...notePhotoFiles.urls, ...inheritedFiles.urls, ...chatFiles.urls, ...scanFiles.urls }}
             thumbUrls={thumbUrls}
             workOrderId={order.id}
             accentColor={panelAccent}
@@ -1371,16 +1557,18 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
           />
         }
         operatorProgress={Math.round(progressPct)}
-        activities={activities.length > 0 ? activities : [
-          { title: 'Sipariş alındı', user: 'Sistem', time: '—', kind: 'wait' },
-        ]}
+        onHistory={() => setHistoryOpen(true)}
+        onProva={provaPanel && order.status !== 'iptal' ? () => { setProvaOrigin(null); setProvaOpen(true); } : undefined}
+        provaDot={provaHero.dot}
         doctorNote={(order as any).notes ?? null}
         onBack={() => {
-          // Sipariş detayı Siparişler listesinin alt sayfasıdır → geri her zaman
-          // o listeye döner (Özet'ten/karttan açılsa bile). Lab listesi 'all-orders'.
+          // Geri = GELDİĞİN ekran (fatura, pano, Özet…). Eskiden her zaman Siparişler
+          // listesine replace ediliyordu — sekmeler 'firstRoute' ile Özet'e atıyordu, bu onun
+          // yamasıydı. Artık <Tabs backBehavior="history">; geçmiş yoksa (bildirim/link)
+          // yine listeye düşer. Lab listesi 'all-orders'.
           if (panelGroup.startsWith('(')) {
             const ordersRoute = panelGroup === '(lab)' ? 'all-orders' : 'orders';
-            router.replace(`/${panelGroup}/${ordersRoute}` as any);
+            safeBack(`/${panelGroup}/${ordersRoute}`);
           } else {
             // Top-level /order/[id] (bildirim/derin bağlantı) — panel bilinmiyor.
             safeBack('/');
@@ -1391,6 +1579,8 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
         logisticsNode={
           <OrderLogisticsCard
             legs={deliveryLegs}
+            orderNumber={String((order as any).order_number ?? '')}
+            onProofChanged={() => { refetch(); refetchStages(); }}
             accent={panelAccent}
             rowBg={softPanelBg}
             isManager={isManager}
@@ -1403,6 +1593,8 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
             clinicAddress={clinicAddress}
             onOpenTracking={leg => setTrackingLeg(leg)}
             clientView={panelGroup === '(clinic)' || panelGroup === '(doctor)'}
+            onPrintLabel={shipLabelHandler}
+            printingLegId={printingLegId}
             frameless
           />
         }
@@ -1524,6 +1716,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
         clinicAddress={clinicAddress}
         accent={panelAccent}
       />
+      {stageModals}
       </>
     );
   }
@@ -1572,27 +1765,234 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
     refetch();
   };
 
-  const handlePrintFull = async () => {
+  // İş emri etiketi önizlemesi — seçili boyutta. Kağıt hep açık; arkasındaki
+  // zemin temaya uyar (yalnız ekranda, baskıya girmez).
+  const buildLabelPreview = async (size: LabelSize) => {
+    if (typeof window === 'undefined' || !order) return;
+    const req = ++printReq.current;
+    setPrintPreviewHtml(null);
+    setPrintErr(null);
+    try {
+      const html = await buildOrderPrintDoc(order, { size, qrUrl, screenBg: isDark ? '#141312' : '#EEF0F3' });
+      if (req === printReq.current) setPrintPreviewHtml(html);
+    } catch (e) {
+      console.error('print preview build failed', e);
+      if (req === printReq.current) setPrintErr(autoT('Önizleme hazırlanamadı. Tekrar deneyin.'));
+    }
+  };
+  const handlePrintFull = () => {
     setPrintOpen(true);
-    // Önizleme HTML'ini hazırla (yeni A5 layout)
-    if (typeof window !== 'undefined' && order) {
-      try {
-        const qrSvgHtml = (document.getElementById('dental-qr-container') as HTMLElement | null)
-          ?.querySelector('svg')?.outerHTML ?? '';
-        const html = await buildOrderPrintDoc(order, qrUrl, chatMessages, qrSvgHtml);
-        setPrintPreviewHtml(html);
-      } catch (e) {
-        console.error('print preview build failed', e);
+    buildLabelPreview(labelSize);
+  };
+  const changeLabelSize = (size: LabelSize) => {
+    setLabelSize(size);
+    buildLabelPreview(size);
+  };
+  const closePrint = () => {
+    printReq.current++;
+    setPrintOpen(false);
+    setPrintPreviewHtml(null);
+    setPrintErr(null);
+  };
+  // Önizleme iframe'inin kendisi basılır: @page boyutu iframe belgesinden gelir,
+  // yazı tipleri zaten yüklü. Yine de fontlar hazır olmadan basmayalım.
+  const handleActualPrint = () => {
+    if (typeof document === 'undefined') return;
+    const iframe = document.getElementById('print-iframe') as HTMLIFrameElement | null;
+    const w = iframe?.contentWindow;
+    if (!w) return;
+    const fonts = (iframe?.contentDocument as any)?.fonts;
+    Promise.resolve(fonts?.ready).catch(() => undefined).then(() => {
+      try { w.focus(); w.print(); } catch (e) { console.error('print failed', e); }
+    });
+  };
+
+  // ── Hero eylem satırı: TEK satır, sığmayan menüye ────────────────────────────
+  // Genişse her şey görünür (menü yok). Sığmazsa şu sırayla "•••" menüsüne geçer:
+  // devam → revizyon → yeniden planla → beklet → hekim onayına gönder → destek → yazdır → geçmiş.
+  // Durum etiketleri ve o anki ana iş (sonraki adım / kurye / planlama / devam ettir) hep görünür.
+  const secAvail: Record<string, boolean> = {
+    hold: (panelGroup === '(lab)' || panelGroup === '(admin)')
+      && order.status !== 'teslim_edildi' && order.status !== 'iptal' && !onHold,
+    replan: !!(canReplan && !needsTriage),
+    approval: !!(canSendDesignApproval && !needsTriage),
+    revision: !!(isManager && (order.status as string) === 'teslim_edildi'),
+    continuation: !!((isManager || _isDoctorOrClinic) && (order.status as string) === 'teslim_edildi'),
+    support: true, print: true, history: true,
+    prova: provaPanel && order.status !== 'iptal',
+    // teslimat işleri — sığmayınca "•••" (ana iş "Teslim Edildi" hep görünür)
+    dlvTrack: !!(isManager && activeDelivery && activeDelivery.status !== 'teslim_edildi'
+      && (activeDelivery.external_provider === 'BanaBiKurye' || activeDelivery.external_provider === 'Shipink')
+      && activeDelivery.external_tracking_no),
+    dlvEdit: !!(isManager && activeDelivery && activeDelivery.status !== 'teslim_edildi'
+      && activeDelivery.external_provider === 'BanaBiKurye' && activeDelivery.external_tracking_no),
+    dlvLabel: !!(isManager && activeDelivery && activeDelivery.external_provider === 'Shipink'
+      && (activeDelivery.external_label_url || activeDelivery.external_tracking_code)),
+    dlvCancel: !!(isManager && activeDelivery && activeDelivery.status !== 'teslim_edildi'),
+  };
+  const PILL_KEYS = ['hold', 'replan', 'approval', 'revision', 'continuation', 'prova', 'dlvTrack', 'dlvEdit', 'dlvLabel'];
+  const ICON_KEYS = ['dlvCancel', 'support', 'print', 'history'];
+  // prova en son gizlenir: durum noktası (klinikte/gecikti) operasyonel olarak en önemli bilgi
+  // Teslimatı iptal (yıkıcı, seyrek) İLK gizlenir; teslimat işleri ikonlardan sonra gizlenir.
+  const HIDE_ORDER = ['dlvCancel', 'continuation', 'revision', 'replan', 'hold', 'approval', 'support', 'print', 'history', 'dlvLabel', 'dlvEdit', 'dlvTrack', 'prova'];
+  const secKeys = PILL_KEYS.filter(k => secAvail[k]);
+  const secShownSet = (() => {
+    const all = new Set([...secKeys, ...ICON_KEYS.filter(k => secAvail[k])]);
+    const measured = actRowW > 0 && actLeft.w >= 0 && secKeys.every(k => (actSecW[k] ?? 0) > 0);
+    if (!measured) return all;                                    // ilk çizim: hepsi
+    const GAP = 8, ICON = 32, IGAP = 6;
+    // Sol grubun ölçüldüğü andaki görünür seyrek işler düşülür → hep görünen (sabit) kısım.
+    const fixed = actLeft.w - actLeft.shown.filter(k => secKeys.includes(k)).reduce((s2, k) => s2 + actSecW[k] + GAP, 0);
+    const need = (hidden: Set<string>) => {
+      const pills = secKeys.filter(k => !hidden.has(k)).reduce((s2, k) => s2 + actSecW[k] + GAP, 0);
+      const n = ICON_KEYS.filter(k => all.has(k) && !hidden.has(k)).length + (hidden.size > 0 ? 1 : 0);
+      const cluster = n > 0 ? n * ICON + (n - 1) * IGAP : 0;
+      return Math.max(0, fixed) + pills + GAP + cluster;
+    };
+    const hidden = new Set<string>();
+    for (const k of HIDE_ORDER) {
+      if (need(hidden) <= actRowW) break;
+      if (all.has(k)) hidden.add(k);
+    }
+    return new Set([...all].filter(k => !hidden.has(k)));
+  })();
+  secVisibleRef.current = secShownSet;
+  const secShown = (k: string) => secShownSet.has(k);
+  const supportCtx = () => openSupport({
+    context: {
+      source: 'order',
+      order_id: order.id,
+      order_number: String((order as any).order_number ?? ''),
+      patient_name: order.patient_name ?? undefined,
+      doctor_name: doctorName,
+      clinic_name: clinicName,
+      stage_key: stageName,
+      stage_label: stageName,
+    },
+    workOrderId: order.id,
+    stageKey: stageName,
+    subjectHint: `Vaka #${(order as any).order_number ?? ''} · `,
+  });
+  // ── Teslimat işleri (hero) — işleyiciler hem düğmede hem "•••" menüsünde kullanılır ──
+  const dlvLive = !!(isManager && activeDelivery && activeDelivery.status !== 'teslim_edildi');
+  const isBbkLive = dlvLive && activeDelivery.external_provider === 'BanaBiKurye' && !!activeDelivery.external_tracking_no;
+  const isShpLive = dlvLive && activeDelivery.external_provider === 'Shipink' && !!activeDelivery.external_tracking_no;
+  const handleBbkEdit = () => {
+    setEditDeliveryTarget({ id: activeDelivery.id, orderId: String(activeDelivery.external_tracking_no) });
+    setDeliveryModalOpen(true);
+  };
+  const handleBbkTrack = async () => {
+    setBbkTracking(true);
+    const { data, error: e } = await supabase.functions.invoke('banabikurye-dispatch', {
+      body: { action: 'track', order_id: activeDelivery.external_tracking_no },
+    });
+    if (e || !(data as any)?.ok) {
+      setBbkTracking(false);
+      toast.error((data as any)?.message ?? e?.message ?? 'Durum alınamadı');
+      return;
+    }
+    const bbk = (data as any)?.bbk_status ?? '—';
+    const mapped = (data as any)?.delivery_status ?? null;
+    if (mapped && mapped !== activeDelivery.status) {
+      const r = await updateDeliveryStatus(activeDelivery.id, mapped);
+      setBbkTracking(false);
+      if (!r.ok) { toast.error(autoT('Güncellenemedi:') + ' ' + (r.error ?? '')); return; }
+      toast.success(`BanaBiKurye: ${bbk} → durum güncellendi`);
+      refetch(); refetchStages();
+    } else {
+      setBbkTracking(false);
+      toast.success(`BanaBiKurye durumu: ${bbk}`);
+    }
+  };
+  const handleShipinkTrack = async () => {
+    setShpBusy(true);
+    const { data, error: e } = await supabase.functions.invoke('shipink-dispatch', {
+      body: { action: 'check', tracking_number: activeDelivery.external_tracking_no, delivery_id: activeDelivery.id },
+    });
+    setShpBusy(false);
+    if (e || !(data as any)?.ok) {
+      toast.error((data as any)?.message ?? e?.message ?? 'Durum alınamadı');
+      return;
+    }
+    const raw    = (data as any)?.status_raw || '—';
+    const mapped = (data as any)?.status ?? null;
+    // Eşleme edge function'da yapılıp kayda yazıldı; burada
+    // yalnız ekranı tazeliyoruz. Tanınmayan durumda kayıt
+    // DEĞİŞMEZ — ham metni göstermek yanlış statü yazmaktan iyi.
+    if (mapped && mapped !== activeDelivery.status) {
+      toast.success(`Shipink: ${raw} → durum güncellendi`);
+      refetch(); refetchStages();
+    } else {
+      toast.success(`Shipink durumu: ${raw}`);
+    }
+  };
+  const handleShipinkLabel = async () => {
+    let url: string | null = activeDelivery.external_label_url ?? null;
+    if (!url) {
+      setShpBusy(true);
+      const { data, error: e } = await supabase.functions.invoke('shipink-dispatch', {
+        body: { action: 'label', shipment_id: activeDelivery.external_tracking_code },
+      });
+      setShpBusy(false);
+      if (e || !(data as any)?.ok) {
+        toast.error((data as any)?.message ?? e?.message ?? 'Etiket alınamadı');
+        return;
+      }
+      url = (data as any)?.label_url ?? null;
+      if (url) {
+        await supabase.from('deliveries').update({ external_label_url: url }).eq('id', activeDelivery.id);
+        refetch();
       }
     }
+    if (!url) { toast.error('Etiket henüz hazır değil — birkaç dakika sonra tekrar deneyin.'); return; }
+    if (Platform.OS === 'web') { if (typeof window !== 'undefined') window.open(url, '_blank'); }
+    else await Linking.openURL(url);
   };
-  const handleActualPrint = () => {
-    if (typeof window === 'undefined') return;
-    const iframe = document.getElementById('print-iframe') as HTMLIFrameElement;
-    if (iframe?.contentWindow) {
-      iframe.contentWindow.print();
+  const handleCancelDelivery = async () => {
+    const ok = await confirmAsync('Teslimatı İptal Et', 'Teslimat iptal edilsin mi? Sipariş "Kuryeye Gönder" durumuna döner, kurye yeniden çağrılabilir.', { confirmText: 'İptal Et', destructive: true });
+    if (!ok) return;
+    setCancelingDelivery(true);
+    // BanaBiKurye ise gerçek siparişi de iptal et (best-effort)
+    if (activeDelivery.external_provider === 'BanaBiKurye' && activeDelivery.external_tracking_no) {
+      try {
+        await supabase.functions.invoke('banabikurye-dispatch', {
+          body: { action: 'cancel', order_id: activeDelivery.external_tracking_no },
+        });
+      } catch { /* yine de yerel iptal et */ }
     }
+    // Shipink ise gerçek gönderiyi de iptal et (best-effort).
+    // İptal ucu takip numarasını DEĞİL gönderi id'sini ister.
+    if (activeDelivery.external_provider === 'Shipink' && activeDelivery.external_tracking_code) {
+      try {
+        await supabase.functions.invoke('shipink-dispatch', {
+          body: { action: 'cancel', shipment_id: activeDelivery.external_tracking_code },
+        });
+      } catch { /* yine de yerel iptal et */ }
+    }
+    const r = await updateDeliveryStatus(activeDelivery.id, 'iptal');
+    setCancelingDelivery(false);
+    if (!r.ok) { toast.error('İptal edilemedi: ' + (r.error ?? '')); return; }
+    toast.success('Teslimat iptal edildi — kurye yeniden çağrılabilir.');
+    refetch(); refetchStages();
   };
+  const MENU_DEF: Record<string, RowAction> = {
+    hold: { key: 'hold', label: autoT('İşi beklet'), icon: Pause, onPress: () => { setHoldErr(null); setHoldOpen(true); } },
+    replan: { key: 'replan', label: autoT('Yeniden Planla'), icon: ListChecks, onPress: () => setReplanOpen(true) },
+    approval: { key: 'approval', label: autoT('Hekim Onayına Gönder'), icon: UserCheck, onPress: handleSendDesignApproval, disabled: sendingApproval },
+    revision: { key: 'revision', label: autoT('Revizyon Oluştur'), icon: RotateCcw, onPress: () => setRevisionOpen(true) },
+    continuation: { key: 'continuation', label: autoT('Devam Siparişi'), icon: Layers, onPress: () => startContinuation(order.id), disabled: !!contStarting },
+    support: { key: 'support', label: autoT('Destek'), icon: SupportIcon as any, onPress: supportCtx },
+    print: { key: 'print', label: autoT('İş emrini yazdır'), icon: Printer, onPress: handlePrintFull },
+    history: { key: 'history', label: autoT('Sipariş geçmişi'), icon: History, onPress: () => setHistoryOpen(true) },
+    prova: { key: 'prova', label: provaHero.text, icon: ProvaIcon as any, onPress: () => { setProvaOrigin(null); setProvaOpen(true); } },
+    dlvTrack: { key: 'dlvTrack', label: autoT('Durumu Güncelle'), icon: RotateCcw, onPress: () => { void (isBbkLive ? handleBbkTrack() : handleShipinkTrack()); }, disabled: bbkTracking || shpBusy },
+    dlvEdit: { key: 'dlvEdit', label: autoT('Teslimatı düzenle'), icon: Pencil, onPress: handleBbkEdit },
+    dlvLabel: { key: 'dlvLabel', label: autoT('Kargo Etiketi'), icon: Printer, onPress: () => { void handleShipinkLabel(); }, disabled: shpBusy },
+    dlvCancel: { key: 'dlvCancel', label: autoT('Teslimatı iptal et'), icon: CloseIcon as any, tone: 'danger', onPress: () => { void handleCancelDelivery(); }, disabled: cancelingDelivery },
+  };
+  const secMenu: RowAction[] = [...PILL_KEYS, ...ICON_KEYS]
+    .filter(k => secAvail[k] && !secShownSet.has(k))
+    .map(k => MENU_DEF[k]);
 
   return (
     <ScrollView className="flex-1" style={{ backgroundColor: T.bg }} contentContainerStyle={{ padding: 16, paddingTop: embedded ? 14 : insets.top + 16, paddingBottom: embedded ? 40 : 120 }}>
@@ -1770,6 +2170,9 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                   </View>
                 )}
 
+                {/* Bağlı tarama randevuları — yalnız lab panelleri (OrderScanRow kendisi süzer) */}
+                <OrderScanRow orderId={order.id} dark={!!heroPalette.dark} />
+
                 {/* SİPARİŞ BİLGİLERİ — sihirbazda toplanıp detayda hiç gösterilmeyen
                     alanlar (hasta kimliği, ölçü tipi, scan body, onay gerekliliği).
                     Hero'nun mevcut pill diliyle: yalnız SİNYAL taşıyanlar basılır —
@@ -1828,7 +2231,8 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                   Duraklama, statü ne olursa olsun önceliklidir (Siparişler listesi +
                   OrderStatusInfo ile birebir): asılı kalan bir hold, "teslim edildi"
                   görünse bile burada gösterilir ki liste/detay çelişmesin. */}
-              {onHold && order.status !== 'iptal' && (
+              {/* Prova beklemesinde (2. dalga 4) bu blok çizilmez — yerini hero'daki Prova hapı alır. */}
+              {onHold && !isProvaHold(order as any) && order.status !== 'iptal' && (
                 <View className="items-end" style={{ flexShrink: 0, maxWidth: 260 }}>
                   <Text className="text-[11px] font-semibold uppercase" style={{ letterSpacing: 1.32, color: '#E89B2A' }}>
                     Beklemede
@@ -1920,51 +2324,97 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
               </Pressable>
             </View>
 
-            {/* Aksiyonlar — kendi tam-genişlik satırı, taşarsa sarar (countdown'ı aşağı itmez) */}
+            {/* Aksiyonlar — TEK satır: solda durum + işler, sağda tek tip ikon kümesi (Destek ·
+                Yazdır · Geçmiş). Seyrek işler (beklet/yeniden planla/revizyon/devam) yalnız
+                SIĞMADIĞINDA "•••" menüsüne geçer; geniş ekranda hepsi görünür (ölçüme dayalı). */}
             <View className="mb-6">
-                <View className="flex-row items-center flex-wrap gap-2">
-                  <SupportButton
-                    variant="icon"
-                    size="sm"
-                    onDark={heroPalette.dark}
-                    accessibilityLabel="Bu vaka için destek aç"
-                    context={{
-                      source: 'order',
-                      order_id: order.id,
-                      order_number: String((order as any).order_number ?? ''),
-                      patient_name: order.patient_name ?? undefined,
-                      doctor_name: doctorName,
-                      clinic_name: clinicName,
-                      stage_key: stageName,
-                      stage_label: stageName,
-                    }}
-                    workOrderId={order.id}
-                    stageKey={stageName}
-                    subjectHint={`Vaka #${(order as any).order_number ?? ''} · `}
-                  />
-                  <GlassTooltip title={autoT('İş emrini yazdır')} text={autoT('Hasta, diş ve aşama bilgileriyle iş emri çıktısı alır')}>
-                    <Pressable onPress={handlePrintFull} accessibilityHint={autoT('Hasta, diş ve aşama bilgileriyle iş emri çıktısı alır')} className={`w-8 h-8 rounded-full items-center justify-center ${heroOnDarkSurface ? 'bg-white/[0.06]' : heroPalette.dark ? 'bg-white/20' : 'bg-black/[0.06]'}`}>
-                      <Printer size={14} color={heroOnDarkSurface ? 'rgba(255,255,255,0.55)' : heroPalette.dark ? '#FFFFFF' : '#0A0A0A'} strokeWidth={1.8} />
-                    </Pressable>
-                  </GlassTooltip>
+              {/* DURUM — eylem değil, bilgi: eylem satırının üstünde sakin bir satır (2026-10-28).
+                  Eskiden düğmelerle aynı gruptaydı; sığma hesabının dışında kaldığı için satırı taşırıyordu. */}
+              {(designApprovalPending || hasPendingProductionStages || (!nextStatus && !onHold)
+                || (activeDelivery && activeDelivery.status !== 'teslim_edildi')) && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+                    {/* Onay bekliyor rozeti */}
+                    {designApprovalPending && (
+                      <View className="flex-row items-center gap-1.5 px-3 h-8 rounded-full" style={{ backgroundColor: 'rgba(232,155,42,0.14)' }}>
+                        <Clock size={12} color="#B7791F" strokeWidth={1.8} />
+                        <Text className="text-[12px] font-semibold" style={{ color: '#B7791F' }}>Hekim onayı bekliyor</Text>
+                      </View>
+                    )}
+                    {/* Aşamalar bitmemişse manuel butonu yerine bilgilendirici chip */}
+                    {hasPendingProductionStages && (
+                      <View className="flex-row items-center gap-1.5 px-3 h-8 rounded-full" style={{ backgroundColor: heroPalette.dark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.05)' }}>
+                        <Clock size={12} color={heroPalette.dark ? '#FFFFFF' : '#6B6B6B'} strokeWidth={1.8} />
+                        <Text className="text-[12px] font-medium" style={{ color: heroPalette.dark ? '#FFFFFF' : '#2C2C2C' }}>
+                          {completedCount}/{totalStages} aşama tamamlandı
+                        </Text>
+                      </View>
+                    )}
+                    {!nextStatus && !onHold && (
+                      // Aksiyon DEĞİL — durum bilgisi. Koyu temada sessiz badge:
+                      // yumuşak yüzey + ince kenar + yeşil check + açık gri yazı.
+                      <View className="flex-row items-center gap-1.5 px-3 h-8 rounded-full"
+                        style={{
+                          backgroundColor: heroOnDarkSurface ? 'rgba(255,255,255,0.08)' : heroPalette.dark ? 'rgba(255,255,255,0.20)' : 'rgba(16,185,129,0.12)',
+                          borderWidth: heroOnDarkSurface ? 1 : 0,
+                          borderColor: 'rgba(255,255,255,0.10)',
+                        }}>
+                        <Check size={12} color={heroOnDarkSurface ? '#32BB78' : heroPalette.dark ? '#FFFFFF' : '#0F6E50'} strokeWidth={2.4} />
+                        <Text className="text-[12px] font-medium" style={{ color: heroOnDarkSurface ? '#D2D0CA' : heroPalette.dark ? '#FFFFFF' : '#0F6E50' }}>Teslim edildi</Text>
+                      </View>
+                    )}
+                    {/* Aktif teslimat: sağlayıcı · takip no */}
+                    {activeDelivery && activeDelivery.status !== 'teslim_edildi' && (
+                      <View className="flex-row items-center gap-1.5 px-3 h-8 rounded-full" style={{ backgroundColor: 'rgba(234,122,76,0.12)' }}>
+                        <Truck size={12} color="#9C5E0E" strokeWidth={2} />
+                        <Text className="text-[12px] font-medium" style={{ color: '#9C5E0E' }}>
+                          {activeDelivery.mode === 'external'
+                            ? `${activeDelivery.external_provider ?? 'Kargo'}${activeDelivery.external_tracking_no ? ` · ${activeDelivery.external_tracking_no}` : ''}`
+                            : 'Bizim kurye'}
+                        </Text>
+                      </View>
+                    )}
+                </View>
+              )}
+              <View
+                onLayout={(e: any) => { const w = Math.round(e.nativeEvent.layout.width); if (w !== actRowW) setActRowW(w); }}
+                style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}
+              >
+                <View
+                  onLayout={(e: any) => {
+                    const w = Math.round(e.nativeEvent.layout.width);
+                    const shown = Array.from(secVisibleRef.current);
+                    if (w !== actLeft.w || shown.join() !== actLeft.shown.join()) setActLeft({ w, shown });
+                  }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 }}
+                >
                   <OrderClientActions order={order as any} panelGroup={panelGroup} compact onChanged={refetch} onDark={heroPalette.dark} />
                   {/* İşi Beklet / Devam ettir — lab tarafı. Hekim kaynaklı beklemede
                       gecikme sayacı durur, devam edince teslim tarihi ötelenir. */}
                   {(panelGroup === '(lab)' || panelGroup === '(admin)')
                     && order.status !== 'teslim_edildi' && order.status !== 'iptal' && (
-                    onHold ? (
+                    onHold ? (isProvaHold(order as any) ? null : (
                       <GlassTooltip title={autoT('Devam ettir')} text={autoT('Bekletmeyi bitirir; gecikme sayacı yeniden işler ve teslim tarihi ötelenir')}>
                         <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="primary" size="sm" icon={Play} onPress={submitResume} disabled={holdBusy}>
                           {holdBusy ? 'Devam ediliyor…' : 'Devam ettir'}
                         </PillBtn>
                       </GlassTooltip>
-                    ) : (
+                    )) : secShown('hold') ? (
                       <GlassTooltip title={autoT('İşi beklet')} text={autoT('Üretimi duraklatır; beklerken gecikme sayacı durur')}>
                         <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm" icon={Pause} onPress={() => { setHoldErr(null); setHoldOpen(true); }}>
                           İşi beklet
                         </PillBtn>
                       </GlassTooltip>
-                    )
+                    ) : null
+                  )}
+                  {/* Prova — durum noktası + etiket; popup hapın yerinden büyüyerek açılır */}
+                  {secAvail.prova && secShown('prova') && (
+                    <View ref={provaPillRef} collapsable={false}>
+                      <GlassTooltip title={autoT('Prova')} text={autoT('Provalar ve hastanın prova/takma randevuları')}>
+                        <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm" icon={ProvaIcon} onPress={openProva}>
+                          {provaHero.text}
+                        </PillBtn>
+                      </GlassTooltip>
+                    </View>
                   )}
                   {/* Henüz triajlanmamış → "Planlamayı yap" — LAB yeni route'a, diğerleri modal */}
                   {canTriage && needsTriage && (
@@ -1980,22 +2430,15 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                     </Pressable>
                   )}
                   {/* Yeniden Planla — triajlı + üretim başlamamış (manager/admin) */}
-                  {canReplan && !needsTriage && (
+                  {canReplan && !needsTriage && secShown('replan') && (
                     <GlassTooltip title={autoT('Yeniden Planla')} text={autoT('Aşama ve teknisyen planını değiştirir — üretim başlamadan önce')}>
                       <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm" icon={ListChecks} onPress={() => setReplanOpen(true)}>
                         Yeniden Planla
                       </PillBtn>
                     </GlassTooltip>
                   )}
-                  {/* Onay bekliyor rozeti */}
-                  {designApprovalPending && (
-                    <View className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ backgroundColor: 'rgba(232,155,42,0.14)' }}>
-                      <Clock size={12} color="#B7791F" strokeWidth={1.8} />
-                      <Text className="text-[12px] font-semibold" style={{ color: '#B7791F' }}>Hekim onayı bekliyor</Text>
-                    </View>
-                  )}
                   {/* Hekim Onayına Gönder — lab manager, triajlı, henüz pending/approved değil */}
-                  {canSendDesignApproval && !needsTriage && (
+                  {canSendDesignApproval && !needsTriage && secShown('approval') && (
                     <GlassTooltip title={autoT('Hekim Onayına Gönder')} text={autoT('Tasarımı hekime gönderir; onay gelene kadar üretim ilerlemez')}>
                       <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm" icon={UserCheck} onPress={handleSendDesignApproval} disabled={sendingApproval}>
                         {sendingApproval ? 'Gönderiliyor…' : 'Hekim Onayına Gönder'}
@@ -2009,39 +2452,17 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                       atlayarak teslimat kaydı oluşturmadan siparişi teslim edilmiş yapıyordu. */}
                   {canAdvance && nextStatus && !needsTriage && !hasPendingProductionStages && !activeDelivery && !designApprovalPending
                     && (order.status as string) !== 'teslimata_hazir' && (
-                    <GlassTooltip title={`${nextStatusLabel}'a geç`} text={autoT('Siparişi bir sonraki duruma taşır')}>
+                    <GlassTooltip title={`${autoT('Sonraki adım')}: ${autoT(nextStatusLabel ?? '')}`} text={autoT('Siparişi bir sonraki duruma taşır')}>
                       <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="primary" size="sm" icon={Check} onPress={handleAdvanceStage} disabled={advancing}>
-                        {advancing ? 'Güncelleniyor…' : `${nextStatusLabel}'a geç`}
+                        {advancing ? 'Güncelleniyor…' : `${autoT('Sonraki adım')}: ${autoT(nextStatusLabel ?? '')}`}
                       </PillBtn>
                     </GlassTooltip>
                   )}
-                  {/* Aşamalar bitmemişse manuel butonu yerine bilgilendirici chip */}
-                  {hasPendingProductionStages && (
-                    <View className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ backgroundColor: heroPalette.dark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.05)' }}>
-                      <Clock size={12} color={heroPalette.dark ? '#FFFFFF' : '#6B6B6B'} strokeWidth={1.8} />
-                      <Text className="text-[12px] font-medium" style={{ color: heroPalette.dark ? '#FFFFFF' : '#2C2C2C' }}>
-                        {completedCount}/{totalStages} aşama tamamlandı
-                      </Text>
-                    </View>
-                  )}
-                  {!nextStatus && !onHold && (
-                    // Aksiyon DEĞİL — durum bilgisi. Koyu temada sessiz badge:
-                    // yumuşak yüzey + ince kenar + yeşil check + açık gri yazı.
-                    <View className="flex-row items-center gap-1.5 px-3 py-1 rounded-full"
-                      style={{
-                        backgroundColor: heroOnDarkSurface ? 'rgba(255,255,255,0.08)' : heroPalette.dark ? 'rgba(255,255,255,0.20)' : 'rgba(16,185,129,0.12)',
-                        borderWidth: heroOnDarkSurface ? 1 : 0,
-                        borderColor: 'rgba(255,255,255,0.10)',
-                      }}>
-                      <Check size={12} color={heroOnDarkSurface ? '#32BB78' : heroPalette.dark ? '#FFFFFF' : '#0F6E50'} strokeWidth={2.4} />
-                      <Text className="text-[12px] font-medium" style={{ color: heroOnDarkSurface ? '#D2D0CA' : heroPalette.dark ? '#FFFFFF' : '#0F6E50' }}>Teslim edildi</Text>
-                    </View>
-                  )}
                   {/* Revizyon oluştur — teslim edilmiş siparişte hekim revize isterse.
                       Orijinal kapalı kalır, bağlı yeni sipariş planlamaya düşer. */}
-                  {isManager && (order.status as string) === 'teslim_edildi' && (
+                  {isManager && (order.status as string) === 'teslim_edildi' && secShown('revision') && (
                     <GlassTooltip title={autoT('Revizyon Oluştur')} text={autoT('Teslim edilen işin düzeltmesi; bağlı yeni sipariş açılır, ücretlendirilmez')}>
-                      <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="ghost" size="sm" icon={RotateCcw} onPress={() => setRevisionOpen(true)}>
+                      <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm" icon={RotateCcw} onPress={() => setRevisionOpen(true)}>
                         Revizyon Oluştur
                       </PillBtn>
                     </GlassTooltip>
@@ -2049,9 +2470,9 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                   {/* Devam siparişi — teslim edilmiş işin planlı sonraki aşaması (ör.
                       geçici→nihai). Revizyon DEĞİL: hasta+diş+dosyalar dolu gelir,
                       iş tipi/materyal sıfırdan seçilir; tam ücretli yeni sipariş. */}
-                  {(isManager || _isDoctorOrClinic) && (order.status as string) === 'teslim_edildi' && (
+                  {(isManager || _isDoctorOrClinic) && (order.status as string) === 'teslim_edildi' && secShown('continuation') && (
                     <GlassTooltip title={autoT('Devam Siparişi')} text={autoT('Planlı sonraki aşama (ör. geçiciden nihaiye); hasta ve dosyalar dolu gelir, tam ücretli yeni sipariştir')}>
-                      <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="ghost" size="sm" icon={Layers} onPress={() => startContinuation(order.id)} disabled={!!contStarting}>
+                      <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm" icon={Layers} onPress={() => startContinuation(order.id)} disabled={!!contStarting}>
                         {contStarting ? 'Açılıyor…' : 'Devam Siparişi'}
                       </PillBtn>
                     </GlassTooltip>
@@ -2097,20 +2518,10 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                       Teslim Edildi
                     </PillBtn>
                   )}
-                  {/* Aktif teslimat varsa status + manuel "Teslim edildi" */}
-                  {activeDelivery && activeDelivery.status !== 'teslim_edildi' && (
-                    <View className="flex-row items-center gap-1.5 px-3 py-1 rounded-full" style={{ backgroundColor: 'rgba(234,122,76,0.12)' }}>
-                      <Truck size={12} color="#9C5E0E" strokeWidth={2} />
-                      <Text className="text-[12px] font-medium" style={{ color: '#9C5E0E' }}>
-                        {activeDelivery.mode === 'external'
-                          ? `${activeDelivery.external_provider ?? 'Kargo'}${activeDelivery.external_tracking_no ? ` · ${activeDelivery.external_tracking_no}` : ''}`
-                          : 'Bizim kurye'}
-                      </Text>
-                    </View>
-                  )}
                   {isManager && activeDelivery && activeDelivery.status !== 'teslim_edildi' && (
                     <Pressable
                       onPress={async () => {
+                        if (activeDelivery.mode === 'internal') { setNoProofOpen(true); return; }
                         const r = await updateDeliveryStatus(activeDelivery.id, 'teslim_edildi');
                         if (!r.ok) { alert(`Hata: ${r.error}`); return; }
                         refetch();
@@ -2121,80 +2532,23 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                       </PillBtn>
                     </Pressable>
                   )}
-                  {/* BanaBiKurye — teslim adresini/notu düzenle (/edit-order) */}
-                  {isManager && activeDelivery && activeDelivery.external_provider === 'BanaBiKurye'
-                    && activeDelivery.external_tracking_no && activeDelivery.status !== 'teslim_edildi' && (
-                    <Pressable
-                      onPress={() => {
-                        setEditDeliveryTarget({ id: activeDelivery.id, orderId: String(activeDelivery.external_tracking_no) });
-                        setDeliveryModalOpen(true);
-                      }}
-                    >
+                  {/* BanaBiKurye — teslim adresini/notu düzenle (/edit-order); sığmazsa "•••" */}
+                  {secAvail.dlvEdit && secShown('dlvEdit') && (
+                    <Pressable onPress={handleBbkEdit}>
                       <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm" icon={Pencil}>Düzenle</PillBtn>
                     </Pressable>
                   )}
-                  {/* BanaBiKurye — canlı durum senkronu (polling) */}
-                  {isManager && activeDelivery && activeDelivery.external_provider === 'BanaBiKurye'
-                    && activeDelivery.external_tracking_no && activeDelivery.status !== 'teslim_edildi' && (
-                    <Pressable
-                      disabled={bbkTracking}
-                      onPress={async () => {
-                        setBbkTracking(true);
-                        const { data, error: e } = await supabase.functions.invoke('banabikurye-dispatch', {
-                          body: { action: 'track', order_id: activeDelivery.external_tracking_no },
-                        });
-                        if (e || !(data as any)?.ok) {
-                          setBbkTracking(false);
-                          toast.error((data as any)?.message ?? e?.message ?? 'Durum alınamadı');
-                          return;
-                        }
-                        const bbk = (data as any)?.bbk_status ?? '—';
-                        const mapped = (data as any)?.delivery_status ?? null;
-                        if (mapped && mapped !== activeDelivery.status) {
-                          const r = await updateDeliveryStatus(activeDelivery.id, mapped);
-                          setBbkTracking(false);
-                          if (!r.ok) { toast.error(autoT('Güncellenemedi:') + ' ' + (r.error ?? '')); return; }
-                          toast.success(`BanaBiKurye: ${bbk} → durum güncellendi`);
-                          refetch(); refetchStages();
-                        } else {
-                          setBbkTracking(false);
-                          toast.success(`BanaBiKurye durumu: ${bbk}`);
-                        }
-                      }}
-                    >
+                  {/* BanaBiKurye — canlı durum senkronu (polling); sığmazsa "•••" */}
+                  {isBbkLive && secShown('dlvTrack') && (
+                    <Pressable disabled={bbkTracking} onPress={handleBbkTrack}>
                       <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm" icon={RotateCcw}>
                         {bbkTracking ? 'Sorgulanıyor…' : 'Durumu Güncelle'}
                       </PillBtn>
                     </Pressable>
                   )}
-                  {/* Shipink — takip durumunu sorgula ve teslimata yaz */}
-                  {isManager && activeDelivery && activeDelivery.external_provider === 'Shipink'
-                    && activeDelivery.external_tracking_no && activeDelivery.status !== 'teslim_edildi' && (
-                    <Pressable
-                      disabled={shpBusy}
-                      onPress={async () => {
-                        setShpBusy(true);
-                        const { data, error: e } = await supabase.functions.invoke('shipink-dispatch', {
-                          body: { action: 'check', tracking_number: activeDelivery.external_tracking_no, delivery_id: activeDelivery.id },
-                        });
-                        setShpBusy(false);
-                        if (e || !(data as any)?.ok) {
-                          toast.error((data as any)?.message ?? e?.message ?? 'Durum alınamadı');
-                          return;
-                        }
-                        const raw    = (data as any)?.status_raw || '—';
-                        const mapped = (data as any)?.status ?? null;
-                        // Eşleme edge function'da yapılıp kayda yazıldı; burada
-                        // yalnız ekranı tazeliyoruz. Tanınmayan durumda kayıt
-                        // DEĞİŞMEZ — ham metni göstermek yanlış statü yazmaktan iyi.
-                        if (mapped && mapped !== activeDelivery.status) {
-                          toast.success(`Shipink: ${raw} → durum güncellendi`);
-                          refetch(); refetchStages();
-                        } else {
-                          toast.success(`Shipink durumu: ${raw}`);
-                        }
-                      }}
-                    >
+                  {/* Shipink — takip durumunu sorgula ve teslimata yaz; sığmazsa "•••" */}
+                  {isShpLive && secShown('dlvTrack') && (
+                    <Pressable disabled={shpBusy} onPress={handleShipinkTrack}>
                       <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm" icon={RotateCcw}>
                         {shpBusy ? 'Sorgulanıyor…' : 'Durumu Güncelle'}
                       </PillBtn>
@@ -2203,76 +2557,72 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                   {/* Shipink — kutuya yapıştırılacak kargo etiketi (barkod).
                       Bağlantı kayıtta yoksa (etiket gönderi anında hazır
                       olmayabiliyor) gönderi id'siyle yeniden sorulur. */}
-                  {isManager && activeDelivery && activeDelivery.external_provider === 'Shipink'
-                    && (activeDelivery.external_label_url || activeDelivery.external_tracking_code) && (
-                    <Pressable
-                      disabled={shpBusy}
-                      onPress={async () => {
-                        let url: string | null = activeDelivery.external_label_url ?? null;
-                        if (!url) {
-                          setShpBusy(true);
-                          const { data, error: e } = await supabase.functions.invoke('shipink-dispatch', {
-                            body: { action: 'label', shipment_id: activeDelivery.external_tracking_code },
-                          });
-                          setShpBusy(false);
-                          if (e || !(data as any)?.ok) {
-                            toast.error((data as any)?.message ?? e?.message ?? 'Etiket alınamadı');
-                            return;
-                          }
-                          url = (data as any)?.label_url ?? null;
-                          if (url) {
-                            await supabase.from('deliveries').update({ external_label_url: url }).eq('id', activeDelivery.id);
-                            refetch();
-                          }
-                        }
-                        if (!url) { toast.error('Etiket henüz hazır değil — birkaç dakika sonra tekrar deneyin.'); return; }
-                        if (Platform.OS === 'web') { if (typeof window !== 'undefined') window.open(url, '_blank'); }
-                        else await Linking.openURL(url);
-                      }}
-                    >
+                  {secAvail.dlvLabel && secShown('dlvLabel') && (
+                    <Pressable disabled={shpBusy} onPress={handleShipinkLabel}>
                       <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm" icon={Printer}>
                         {shpBusy ? 'Alınıyor…' : 'Kargo Etiketi'}
                       </PillBtn>
                     </Pressable>
                   )}
-                  {/* Teslimatı iptal et → "Kuryeye Gönder" durumuna geri döner (yeniden çağrılabilir) */}
-                  {isManager && activeDelivery && activeDelivery.status !== 'teslim_edildi' && (
-                    <Pressable
-                      disabled={cancelingDelivery}
-                      onPress={async () => {
-                        const ok = await confirmAsync('Teslimatı İptal Et', 'Teslimat iptal edilsin mi? Sipariş "Kuryeye Gönder" durumuna döner, kurye yeniden çağrılabilir.', { confirmText: 'İptal Et', destructive: true });
-                        if (!ok) return;
-                        setCancelingDelivery(true);
-                        // BanaBiKurye ise gerçek siparişi de iptal et (best-effort)
-                        if (activeDelivery.external_provider === 'BanaBiKurye' && activeDelivery.external_tracking_no) {
-                          try {
-                            await supabase.functions.invoke('banabikurye-dispatch', {
-                              body: { action: 'cancel', order_id: activeDelivery.external_tracking_no },
-                            });
-                          } catch { /* yine de yerel iptal et */ }
-                        }
-                        // Shipink ise gerçek gönderiyi de iptal et (best-effort).
-                        // İptal ucu takip numarasını DEĞİL gönderi id'sini ister.
-                        if (activeDelivery.external_provider === 'Shipink' && activeDelivery.external_tracking_code) {
-                          try {
-                            await supabase.functions.invoke('shipink-dispatch', {
-                              body: { action: 'cancel', shipment_id: activeDelivery.external_tracking_code },
-                            });
-                          } catch { /* yine de yerel iptal et */ }
-                        }
-                        const r = await updateDeliveryStatus(activeDelivery.id, 'iptal');
-                        setCancelingDelivery(false);
-                        if (!r.ok) { toast.error('İptal edilemedi: ' + (r.error ?? '')); return; }
-                        toast.success('Teslimat iptal edildi — kurye yeniden çağrılabilir.');
-                        refetch(); refetchStages();
-                      }}
-                    >
-                      <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm" icon={CloseIcon}>
-                        {cancelingDelivery ? 'İptal ediliyor…' : 'Teslimatı İptal Et'}
-                      </PillBtn>
-                    </Pressable>
+                </View>
+                {/* Sağ: tek tip ikon kümesi — Destek · Yazdır · Geçmiş · (sığmayanlar) */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginStart: 'auto' as any }}>
+                  {/* Teslimatı iptal et — yıkıcı ve seyrek: metinsiz ikon (+ipucu); sığmazsa ilk "•••"e geçer */}
+                  {secAvail.dlvCancel && secShown('dlvCancel') && (
+                    <HeroIconBtn
+                      icon={CloseIcon} tone="danger" disabled={cancelingDelivery}
+                      label={autoT('Teslimatı iptal et')}
+                      hint={autoT('Teslimat iptal edilir; sipariş "Kuryeye Gönder" durumuna döner, kurye yeniden çağrılabilir')}
+                      onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} onPress={handleCancelDelivery}
+                    />
+                  )}
+                  {secShown('support') && (
+                    <HeroIconBtn
+                      icon={SupportIcon} label={autoT('Destek')} hint={autoT('Bu vaka için destek talebi açar')}
+                      onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} onPress={supportCtx}
+                    />
+                  )}
+                  {secShown('print') && (
+                    <HeroIconBtn
+                      icon={Printer} label={autoT('İş emrini yazdır')} hint={autoT('Kutuya yapıştırılacak iş emri etiketini A4, A5 ya da A6 basar')}
+                      onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} onPress={handlePrintFull}
+                    />
+                  )}
+                  {secShown('history') && (
+                    <HeroIconBtn
+                      icon={History} label={autoT('Sipariş geçmişi')} hint={autoT('Kim, ne zaman, ne yaptı: oluşturma, söz verilen teslim, kurye, notlar ve sohbet')}
+                      onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} onPress={() => setHistoryOpen(true)}
+                    />
+                  )}
+                  {secMenu.length > 0 && (
+                    <GlassTooltip title={autoT('Diğer işlemler')} text={autoT('Bu genişliğe sığmayan işlemler')}>
+                      <View style={heroIconFrame(heroPalette.dark, heroOnDarkSurface)}>
+                        <RowActionsMenu actions={secMenu} size={30}
+                          color={heroOnDarkSurface ? '#F4F3EF' : heroPalette.dark ? '#FFFFFF' : '#0A0A0A'} />
+                      </View>
+                    </GlassTooltip>
                   )}
                 </View>
+              </View>
+              {/* Gizli ölçüm satırı — seyrek işlerin doğal genişliği (sığma hesabı için) */}
+              <View
+                pointerEvents="none"
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+                style={{ position: 'absolute', left: 0, top: 0, opacity: 0, flexDirection: 'row', ...(Platform.OS === 'web' ? { visibility: 'hidden' } as any : null) }}
+              >
+                {secKeys.map(k => (
+                  <View key={k} onLayout={(e: any) => {
+                    const w = Math.round(e.nativeEvent.layout.width);
+                    if (w !== actSecW[k]) setActSecW(prev => ({ ...prev, [k]: w }));
+                  }}>
+                    <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm"
+                      icon={k === 'hold' ? Pause : k === 'replan' ? ListChecks : k === 'approval' ? UserCheck : k === 'revision' || k === 'dlvTrack' ? RotateCcw : k === 'prova' ? ProvaIcon : k === 'dlvEdit' ? Pencil : k === 'dlvLabel' ? Printer : Layers}>
+                      {k === 'hold' ? 'İşi beklet' : k === 'replan' ? 'Yeniden Planla' : k === 'approval' ? 'Hekim Onayına Gönder' : k === 'revision' ? 'Revizyon Oluştur' : k === 'prova' ? provaHero.text : k === 'dlvTrack' ? 'Durumu Güncelle' : k === 'dlvEdit' ? 'Düzenle' : k === 'dlvLabel' ? 'Kargo Etiketi' : 'Devam Siparişi'}
+                    </PillBtn>
+                  </View>
+                ))}
+              </View>
             </View>
 
             {/* Status timeline — "Hazır" yok; 4. adım Kurye (elden teslimde gizli) */}
@@ -2984,6 +3334,8 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
           {/* LOJİSTİK — siparişin tüm kurye hareketleri (desktop + mobil ortak bileşen) */}
           <OrderLogisticsCard
             legs={deliveryLegs}
+            orderNumber={String((order as any).order_number ?? '')}
+            onProofChanged={() => { refetch(); refetchStages(); }}
             accent={panelAccent}
             rowBg={softPanelBg}
             isManager={isManager}
@@ -2996,6 +3348,8 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
             clinicAddress={clinicAddress}
             onOpenTracking={leg => setTrackingLeg(leg)}
             clientView={panelGroup === '(clinic)' || panelGroup === '(doctor)'}
+            onPrintLabel={shipLabelHandler}
+            printingLegId={printingLegId}
           />
 
           {/* DİŞ ŞEMASI */}
@@ -3149,7 +3503,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
           <View className="bg-white dark:bg-[#1B1916] rounded-3xl border border-black/[0.06] dark:border-white/10 p-5">
             <View className="flex-row gap-1 p-1 rounded-xl mb-3.5" style={{ backgroundColor: softPanelBg }}>
               {([
-                { id: 'files',       label: 'Dosyalar',     count: (order.photos ?? []).length + notePhotoFiles.photos.length },
+                { id: 'files',       label: 'Dosyalar',     count: (order.photos ?? []).length + notePhotoFiles.photos.length + chatFiles.photos.length + scanFiles.photos.length },
                 { id: 'doctor_note', label: 'Hekim Notu', count: (order.notes && String(order.notes).trim().length > 0) ? 1 : 0 },
                 // Lab notu İÇ nottur: klinik/hekim yalnız lab "müşteriye görünür"
                 // işaretlediyse (lab_notes_visible) görebilir. Sekme aksi hâlde
@@ -3222,8 +3576,8 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
             )}
             {sideTab === 'files' && (
               <FilesList
-                photos={[...(order.photos ?? []), ...notePhotoFiles.photos, ...inheritedFiles.photos]}
-                signedUrls={{ ...(signedUrls ?? {}), ...notePhotoFiles.urls, ...inheritedFiles.urls }}
+                photos={[...(order.photos ?? []), ...notePhotoFiles.photos, ...inheritedFiles.photos, ...chatFiles.photos, ...scanFiles.photos]}
+                signedUrls={{ ...(signedUrls ?? {}), ...notePhotoFiles.urls, ...inheritedFiles.urls, ...chatFiles.urls, ...scanFiles.urls }}
                 thumbUrls={thumbUrls}
                 workOrderId={order.id}
                 accentColor={panelAccent}
@@ -3551,36 +3905,9 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
         </Modal>
       )}
 
-      {/* Reassign Modal — menüden seçilen aşama (yoksa aktif ?? ilk bekleyen) */}
-      {(() => {
-        const target = reassignStage ?? reassignTargetStage;
-        if (!isManager || !target) return null;
-        return (
-          <ReassignModal
-            visible={reassignOpen}
-            stageId={target.id}
-            stage={legacyStatusToStage(order.status)}
-            stationId={(target as any).station?.id ?? (target as any).station_id ?? null}
-            labId={profile?.lab_id ?? profile?.id ?? ''}
-            currentOwnerId={target.technician?.id}
-            onClose={() => { setReassignOpen(false); setReassignStage(null); }}
-            onReassigned={() => { refetch(); refetchStages(); }}
-          />
-        );
-      })()}
+      {/* Aşama modalleri — mobil ile ORTAK (stageModals) */}
+      {stageModals}
 
-      {/* Aşama ekle modal — müdür/admin: istasyon + konum seç */}
-      {isManager && order && (
-        <AddStageModal
-          visible={addStageOpen}
-          onClose={() => setAddStageOpen(false)}
-          orderId={order.id}
-          labId={(profile as any)?.lab_id ?? profile?.id ?? ''}
-          stages={orderStages as any}
-          accentColor={panelAccent}
-          onAdded={() => { refetch(); refetchStages(); }}
-        />
-      )}
 
       {/* Triaj modal — auto-open + manual */}
       {order && canTriage && (() => {
@@ -3631,7 +3958,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
             <View style={{ gap: 6 }}>
               <Text style={{ fontSize: 12, fontWeight: '600', color: isDark ? T.ink : '#0A0A0A' }}>Neden kategorisi</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                {HOLD_CATEGORIES.map(c => {
+                {HOLD_PICKABLE.map(c => {
                   const sel = holdCat === c.key;
                   return (
                     <Pressable key={c.key} onPress={() => setHoldCat(c.key)}
@@ -3685,270 +4012,79 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
         </Pressable>
       </Modal>
 
-      {/* Material Confirm Modal — aşamayı malzeme onayıyla tamamla */}
-      <StageMaterialModal
-        visible={!!materialModalStageId}
-        stageId={materialModalStageId}
-        accentColor={panelAccent}
-        onClose={() => setMaterialModalStageId(null)}
-        onConfirmed={() => {
-          setMaterialModalStageId(null);
-          toast.success('Aşama tamamlandı, sıradaki başlatıldı');
-          refetch();
-          refetchStages();
-        }}
-      />
 
-      {/* Print Preview Popup */}
+      {/* İş emri etiketi — önizleme + A4/A5/A6 seçimi + yazdır */}
       <Modal
         visible={printOpen}
         transparent
         animationType="fade"
-        onRequestClose={() => { setPrintOpen(false); setPrintPreviewHtml(null); }}
+        onRequestClose={closePrint}
       >
-        <Pressable
-          onPress={() => { setPrintOpen(false); setPrintPreviewHtml(null); }}
-          className="flex-1 items-center justify-center"
-          style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
-        >
+        <Pressable onPress={closePrint} style={U.modalOverlay}>
           <Pressable
             onPress={e => e.stopPropagation()}
             style={{
-              width: Math.min(width * 0.55, 580),
-              height: Math.min(height * 0.92, 880),
-              backgroundColor: '#fff',
-              borderRadius: 24,
-              overflow: 'hidden',
-              // @ts-ignore
-              boxShadow: '0 24px 64px rgba(0,0,0,0.2)',
+              ...U.modalCard,
+              maxWidth: undefined,
+              maxHeight: undefined,
+              width: Math.min(Math.max(width * 0.55, 500), 640, width - 32),
+              height: Math.min(height * 0.92, 900),
             }}
           >
-            {/* Toolbar */}
-            <View className="flex-row items-center justify-between px-5 py-3 border-b border-black/[0.06]">
-              <Text className="text-[15px] font-semibold text-ink-900">İş Kağıdı</Text>
-              <View className="flex-row items-center gap-2">
+            {/* Araç çubuğu */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: U.hairline }}>
+              <Text style={{ fontSize: 15, fontWeight: '600', color: U.ink[900] }}>İş Kağıdı</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <LabelSizePicker value={labelSize} onChange={changeLabelSize} />
                 <Pressable
-                  onPress={async () => {
-                    if (typeof window === 'undefined') return;
-                    // QR SVG (DOM'da rendered BrandedQR/QRCode)
-                    const qrSvgHtml = (document.getElementById('dental-qr-container') as HTMLElement | null)
-                      ?.querySelector('svg')?.outerHTML ?? '';
-                    const html = await buildOrderPrintDoc(order, qrUrl, chatMessages, qrSvgHtml);
-                    const w = window.open('', '_blank');
-                    if (!w) return;
-                    w.document.write(html + '<script>window.onload=()=>setTimeout(()=>window.print(),400);<\/script>');
-                    w.document.close();
+                  onPress={handleActualPrint}
+                  disabled={!printPreviewHtml}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
+                    backgroundColor: U.ink[900], opacity: printPreviewHtml ? 1 : 0.5,
+                    ...(Platform.OS === 'web' ? { cursor: printPreviewHtml ? 'pointer' : 'default' } as any : {}),
                   }}
-                  className="flex-row items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-ink-900"
                 >
-                  <Printer size={14} color="#FFF" strokeWidth={1.8} />
-                  <Text className="text-[12px] font-medium text-white">Yazdır</Text>
+                  <Printer size={14} color={U.onDarkPill} strokeWidth={1.8} />
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: U.onDarkPill }}>Yazdır</Text>
                 </Pressable>
                 <Pressable
-                  onPress={() => { setPrintOpen(false); setPrintPreviewHtml(null); }}
-                  className="w-8 h-8 rounded-full items-center justify-center bg-black/[0.06]"
+                  onPress={closePrint}
+                  accessibilityRole="button"
+                  accessibilityLabel={autoT('Kapat')}
+                  style={{
+                    width: 32, height: 32, borderRadius: 999, alignItems: 'center', justifyContent: 'center',
+                    backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: U.plainBtn.border,
+                  }}
                 >
-                  <Text className="text-[14px] text-ink-500">✕</Text>
+                  <CloseX size={14} color={U.plainBtn.fgMuted} strokeWidth={1.8} />
                 </Pressable>
               </View>
             </View>
 
-            {/* A5 İş Emri önizleme — Yeni Sipariş ile aynı HTML şablonu */}
             {Platform.OS === 'web' && printPreviewHtml ? (
               React.createElement('iframe', {
+                id: 'print-iframe',
                 srcDoc: printPreviewHtml,
-                style: { flex: 1, width: '100%', height: '100%', border: 0, backgroundColor: '#F5F2EA' },
-                title: 'İş Emri Önizleme',
+                style: { flex: 1, width: '100%', height: '100%', border: 0, backgroundColor: isDark ? '#141312' : '#EEF0F3' },
+                title: autoT('İş Kağıdı'),
               })
             ) : (
-            <ScrollView
-              className="flex-1"
-              style={{ backgroundColor: '#F5F2EA', display: 'none' }}
-              contentContainerStyle={{ padding: 24 }}
-            >
-              <View className="bg-white rounded-2xl p-6" style={{ maxWidth: 520, alignSelf: 'center', width: '100%',
-                // @ts-ignore
-                boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
-
-                {/* Header */}
-                <View className="flex-row justify-between items-start pb-3 mb-3" style={{ borderBottomWidth: 2.5, borderBottomColor: '#0A0A0A' }}>
-                  <View>
-                    <Text className="text-[16px] font-bold text-ink-900" style={{ letterSpacing: -0.4 }}>Aydın Lab</Text>
-                    <Text className="text-[8px] text-ink-400 mt-0.5">Diş Protez Laboratuvarı · İstanbul</Text>
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: isDark ? '#141312' : '#EEF0F3' }}>
+                {printErr ? (
+                  <View accessibilityRole="alert" style={{ alignItems: 'center', gap: 12 }}>
+                    <Text style={{ fontSize: 13, color: U.ink[700], textAlign: 'center' }}>{printErr}</Text>
+                    <Pressable
+                      onPress={() => buildLabelPreview(labelSize)}
+                      style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: U.plainBtn.border }}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: U.plainBtn.fg }}>Tekrar dene</Text>
+                    </Pressable>
                   </View>
-                  <View className="items-end">
-                    <Text className="text-[7px] font-bold uppercase text-ink-400" style={{ letterSpacing: 1.5 }}>İş Kağıdı</Text>
-                    <Text className="text-[13px] font-bold font-mono text-ink-900 mt-0.5">{order.order_number}</Text>
-                    <Text className="text-[8px] text-ink-400 mt-0.5">{fmtDate(order.created_at)}</Text>
-                  </View>
-                </View>
-
-                {order.is_urgent && (
-                  <View className="py-1 mb-3 rounded" style={{ backgroundColor: '#9C2E2E' }}>
-                    <Text className="text-[10px] font-bold text-white text-center" style={{ letterSpacing: 2 }}>⚠ ACİL</Text>
-                  </View>
+                ) : (
+                  <ActivityIndicator color={U.ink[500]} />
                 )}
-
-                {/* Patient + Order Info */}
-                <View className="flex-row gap-3 mb-3">
-                  <View className="flex-1 rounded-lg border border-black/[0.08] overflow-hidden">
-                    <View className="px-2 py-1" style={{ backgroundColor: '#FAFAF5' }}>
-                      <Text className="text-[7px] font-bold uppercase text-ink-400" style={{ letterSpacing: 1 }}>Hasta / Hekim</Text>
-                    </View>
-                    <View className="px-2.5 py-2">
-                      <Text style={{ fontFamily: 'Inter Tight, Inter, system-ui, sans-serif', fontWeight: '300', fontSize: 18, letterSpacing: -0.6, color: '#0A0A0A' }}>
-                        {order.patient_name ?? '—'}
-                      </Text>
-                      <Text className="text-[9px] text-ink-500 mt-1">
-                        <Text className="font-semibold text-ink-900">{order.doctor?.full_name ?? '—'}</Text>
-                        {clinicName !== '—' ? ` · ${clinicName}` : ''}
-                      </Text>
-                    </View>
-                  </View>
-                  <View className="flex-1 rounded-lg border border-black/[0.08] overflow-hidden">
-                    <View className="px-2 py-1" style={{ backgroundColor: '#FAFAF5' }}>
-                      <Text className="text-[7px] font-bold uppercase text-ink-400" style={{ letterSpacing: 1 }}>Sipariş Detayı</Text>
-                    </View>
-                    {[
-                      ['İş Tipi', order.work_type ?? '—', true],
-                      ['Renk', order.shade ?? '—', false],
-                      ['Teslim', fmtDate(order.delivery_date), true],
-                      ['Durum', STATUS_CONFIG[order.status as WorkOrderStatus]?.label ?? order.status, false],
-                    ].map(([lbl, val, bold], i) => (
-                      <View key={i} className="flex-row px-2.5 py-1 border-t border-black/[0.04]">
-                        <Text className="text-[8px] font-semibold uppercase text-ink-400" style={{ width: 52, letterSpacing: 0.3 }}>{lbl as string}</Text>
-                        <Text className={`text-[10px] ${bold ? 'font-bold' : 'font-medium'} text-ink-900`}>{val as string}</Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-
-                {/* Teknik */}
-                <View className="rounded-lg border border-black/[0.08] overflow-hidden mb-3">
-                  <View className="px-2 py-1" style={{ backgroundColor: '#FAFAF5' }}>
-                    <Text className="text-[7px] font-bold uppercase text-ink-400" style={{ letterSpacing: 1 }}>Teknik Bilgiler</Text>
-                  </View>
-                  <View className="flex-row">
-                    {[
-                      ['Makine', order.machine_type === 'milling' ? 'Freze' : order.machine_type === '3d_printing' ? '3D Baskı' : '—'],
-                      ['Model', order.model_type === 'dijital' ? 'Dijital' : order.model_type === 'fiziksel' ? 'Fiziksel' : order.model_type ?? '—'],
-                      ['Teknisyen', order.assignee?.full_name ?? '—'],
-                    ].map(([lbl, val], i) => (
-                      <View key={i} className="flex-1 px-2.5 py-1.5" style={i < 2 ? { borderEndWidth: 1, borderEndColor: 'rgba(0,0,0,0.04)' } : undefined}>
-                        <Text className="text-[7px] font-semibold uppercase text-ink-400" style={{ letterSpacing: 0.3 }}>{lbl}</Text>
-                        <Text className="text-[10px] font-medium text-ink-900 mt-0.5">{val}</Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-
-                {/* Diş Şeması — gerçek LivingToothChart */}
-                <View className="rounded-lg border border-black/[0.08] overflow-hidden mb-3">
-                  <View className="px-2 py-1" style={{ backgroundColor: '#FAFAF5' }}>
-                    <Text className="text-[7px] font-bold uppercase text-ink-400" style={{ letterSpacing: 1 }}>
-                      Diş Şeması — {allTeeth.length} diş
-                    </Text>
-                  </View>
-                  <View className="p-2">
-                    <LivingToothChart
-                      order={toothChartOrder}
-                      containerWidth={440}
-                      containerHeight={220}
-                      accentColor={panelAccent}
-                      colorMap={toothColorMap}
-                      frameless
-                    />
-                  </View>
-                </View>
-
-                {/* Items */}
-                {(order.order_items ?? []).length > 0 && (
-                  <View className="rounded-lg border border-black/[0.08] overflow-hidden mb-3">
-                    <View className="flex-row px-2.5 py-1" style={{ backgroundColor: '#FAFAF5' }}>
-                      <Text className="flex-1 text-[7px] font-bold uppercase text-ink-400" style={{ letterSpacing: 0.6 }}>Kalem / Hizmet</Text>
-                      <Text className="text-[7px] font-bold uppercase text-ink-400 text-center" style={{ width: 40, letterSpacing: 0.6 }}>Adet</Text>
-                      <Text className="text-[7px] font-bold uppercase text-ink-400" style={{ textAlign: 'end' as any, width: 60, letterSpacing: 0.6 }}>Fiyat</Text>
-                    </View>
-                    {(order.order_items ?? []).map((it: any, i: number) => (
-                      <View key={i} className="flex-row px-2.5 py-1.5 border-t border-black/[0.03]">
-                        <View className="flex-1 pe-2">
-                          <Text className="text-[10px] text-ink-900">{it.name}</Text>
-                          {!!it.notes && String(it.notes).trim().length > 0 && (
-                            <Text className="text-[8.5px] text-ink-500 mt-0.5">{it.notes}</Text>
-                          )}
-                        </View>
-                        <Text className="text-[10px] text-ink-500 text-center" style={{ width: 40 }}>{it.quantity}</Text>
-                        <Text className="text-[10px] text-ink-900" style={{ textAlign: 'end' as any, width: 60 }}>
-                          {it.price > 0 ? `₺${it.price.toLocaleString('tr-TR')}` : '—'}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-
-                {/* Notes */}
-                <View className="flex-row gap-2 mb-3">
-                  <View className="flex-1 rounded-lg border border-black/[0.08] overflow-hidden">
-                    <View className="px-2 py-1" style={{ backgroundColor: '#FAFAF5' }}>
-                      <Text className="text-[7px] font-bold uppercase text-ink-400" style={{ letterSpacing: 1 }}>Hekim Notu</Text>
-                    </View>
-                    <View className="px-2.5 py-2" style={{ minHeight: 32 }}>
-                      <Text className="text-[9px] text-ink-600">{order.notes || '—'}</Text>
-                    </View>
-                  </View>
-                  <View className="flex-1 rounded-lg border border-black/[0.08] overflow-hidden">
-                    <View className="px-2 py-1" style={{ backgroundColor: '#FAFAF5' }}>
-                      <Text className="text-[7px] font-bold uppercase text-ink-400" style={{ letterSpacing: 1 }}>Lab Notu</Text>
-                    </View>
-                    <View className="px-2.5 py-2" style={{ minHeight: 32 }}>
-                      <Text className="text-[9px] text-ink-600">{order.lab_notes || '—'}</Text>
-                    </View>
-                  </View>
-                </View>
-
-                {/* Doctor Messages */}
-                {chatMessages.filter(m => m.sender?.user_type === 'doctor' || m.sender?.user_type === 'clinic_admin').length > 0 && (
-                  <View className="rounded-lg border border-black/[0.08] overflow-hidden mb-3">
-                    <View className="px-2 py-1" style={{ backgroundColor: '#FAFAF5' }}>
-                      <Text className="text-[7px] font-bold uppercase text-ink-400" style={{ letterSpacing: 1 }}>
-                        Hekim Mesajları ({chatMessages.filter(m => m.sender?.user_type === 'doctor' || m.sender?.user_type === 'clinic_admin').length})
-                      </Text>
-                    </View>
-                    <View className="px-2.5 py-1.5">
-                      {chatMessages
-                        .filter(m => m.sender?.user_type === 'doctor' || m.sender?.user_type === 'clinic_admin')
-                        .map((m, i) => (
-                          <View key={i} className={`py-1.5 ${i > 0 ? 'border-t border-black/[0.03]' : ''}`}>
-                            <Text className="text-[7px] text-ink-400">
-                              <Text className="font-semibold text-ink-500">{m.sender?.full_name ?? 'Hekim'}</Text>
-                              {' · '}{fmtDate(m.created_at)}
-                            </Text>
-                            <Text className="text-[9px] text-ink-900 mt-0.5">{m.content}</Text>
-                          </View>
-                        ))}
-                    </View>
-                  </View>
-                )}
-
-                {/* Footer — QR + Signatures */}
-                <View className="flex-row justify-between items-end pt-3 mt-2" style={{ borderTopWidth: 1.5, borderTopColor: '#0A0A0A' }}>
-                  <View className="items-center">
-                    {/* @ts-ignore web img */}
-                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(qrUrl)}&margin=4&bgcolor=ffffff&color=0a0a0a`} width={52} height={52} style={{ borderRadius: 4 }} />
-                    <Text className="text-[7px] text-ink-300 mt-1">{order.order_number}</Text>
-                  </View>
-                  <View className="flex-row gap-4">
-                    {['Teslim Alan', 'Teknisyen', 'Kalite Kontrol'].map(lbl => (
-                      <View key={lbl} className="items-center">
-                        <View style={{ width: 68, height: 28 }} />
-                        <View style={{ width: 68, borderTopWidth: 1, borderTopColor: '#0A0A0A' }} />
-                        <Text className="text-[7px] text-ink-400 mt-1 uppercase" style={{ letterSpacing: 0.3 }}>{lbl}</Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
               </View>
-            </ScrollView>
             )}
           </Pressable>
         </Pressable>
@@ -3966,65 +4102,6 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
       />
     </ScrollView>
   );
-}
-
-// ═══════════════ TAB CONTENT ═══════════════
-function ActivityFeed({ history }: { history: StatusHistory[] }) {
-  if (history.length === 0) {
-    return (
-      <View className="py-6 items-center">
-        <Text className="text-[12px] text-ink-400 dark:text-white/45">Henüz aktivite kaydı yok</Text>
-      </View>
-    );
-  }
-  const sorted = [...history].sort((a, b) =>
-    (b.created_at ?? '').localeCompare(a.created_at ?? '')
-  );
-  return (
-    <View className="relative">
-      <View className="absolute bg-black/[0.06] dark:bg-white/10" style={{ start: 13, top: 14, bottom: 14, width: 1.5 }} />
-      {sorted.map((h, i) => {
-        const who = (h as any).changer?.full_name ?? 'Sistem';
-        const newCfg = STATUS_CONFIG[h.new_status];
-        const action = h.old_status
-          ? `${STATUS_CONFIG[h.old_status]?.label ?? h.old_status} → ${newCfg?.label ?? h.new_status}`
-          : `${newCfg?.label ?? h.new_status} olarak ayarladı`;
-        const time = h.created_at ? timeAgo(h.created_at) : '';
-        const dotBg = newCfg?.color ?? '#9A9A9A';
-        return (
-          <View key={h.id ?? i} className="flex-row gap-3 py-2.5 relative z-10">
-            <View
-              className="w-7 h-7 rounded-full items-center justify-center"
-              style={{ backgroundColor: dotBg }}
-            >
-              <Text className="text-white text-[12px]">•</Text>
-            </View>
-            <View className="flex-1">
-              <Text className="text-[12px]">
-                <Text className="font-medium text-ink-900 dark:text-[#F7F2E9]">{who}</Text>{' '}
-                <Text className="text-ink-500 dark:text-white/55">{action}</Text>
-              </Text>
-              {h.note ? (
-                <Text className="text-[11px] text-ink-700 dark:text-white/70 mt-1">{h.note}</Text>
-              ) : null}
-              <Text className="text-[11px] text-ink-400 dark:text-white/45 mt-0.5">{time}</Text>
-            </View>
-          </View>
-        );
-      })}
-    </View>
-  );
-}
-
-/** Accent üzerinde okunabilir ön-plan: açık accent'te (lab safranı) ink, koyuda beyaz. */
-function timeAgo(iso: string): string {
-  const d = new Date(iso);
-  const diff = (Date.now() - d.getTime()) / 1000;
-  if (diff < 60)        return 'az önce';
-  if (diff < 3600)      return `${Math.floor(diff / 60)} ${autoT('dk önce')}`;
-  if (diff < 86400)     return `${Math.floor(diff / 3600)} ${autoT('sa önce')}`;
-  if (diff < 86400 * 7) return `${Math.floor(diff / 86400)} ${autoT('g önce')}`;
-  return d.toLocaleDateString(localeTag(), { day: '2-digit', month: 'short' });
 }
 
 // ═══════════════ ORDER CHAT POPUP — ana ChatDetail bu işe sabitlenmiş ═══════════════
@@ -4421,6 +4498,42 @@ function Chip({ children, tone, dot = false, icon: Icon }: {
       {dot && <View className="w-1.5 h-1.5 rounded-full bg-ink-900 dark:bg-white/80" />}
       <Text className="text-[12px] font-medium text-ink-900 dark:text-[#F7F2E9]">{children}</Text>
     </View>
+  );
+}
+
+/** Hero ikon düğmesinin çerçevesi — PillBtn "surface" ile aynı zemin/kenar (32px yuvarlak). */
+function heroIconFrame(onDark: boolean, surfaceDark: boolean, hover = false): any {
+  if (surfaceDark) return { width: 32, height: 32, borderRadius: 16, borderWidth: 1, borderColor: '#77756F', backgroundColor: hover ? '#36342F' : '#2A2926', alignItems: 'center', justifyContent: 'center' };
+  if (onDark) return { width: 32, height: 32, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.40)', backgroundColor: hover ? 'rgba(255,255,255,0.26)' : 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' };
+  return { width: 32, height: 32, borderRadius: 16, borderWidth: 1, borderColor: '#EAEAEA', backgroundColor: hover ? '#F5F5F5' : '#FFFFFF', alignItems: 'center', justifyContent: 'center' };
+}
+
+/** Hero ikon düğmesi: tek tip 32px yuvarlak + cam tooltip (Destek · Yazdır · Geçmiş). */
+function HeroIconBtn({ icon: Icon, label, hint, onPress, onDark = false, surfaceDark = false, tone, disabled }: {
+  icon: any; label: string; hint: string; onPress: () => void; onDark?: boolean; surfaceDark?: boolean;
+  /** 'danger' — yıkıcı iş (Teslimatı iptal): ikon kırmızı */
+  tone?: 'danger'; disabled?: boolean;
+}) {
+  const fg = tone === 'danger'
+    ? (surfaceDark || onDark ? '#F29A9A' : '#D94B4B')
+    : surfaceDark ? '#F4F3EF' : onDark ? '#FFFFFF' : '#0A0A0A';
+  return (
+    <GlassTooltip title={label} text={hint}>
+      <Pressable
+        onPress={onPress}
+        disabled={disabled}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        style={({ hovered, pressed }: any) => ({
+          ...heroIconFrame(onDark, surfaceDark, !!(hovered || pressed)),
+          opacity: disabled ? 0.45 : 1,
+          transform: [{ scale: pressed ? 0.95 : 1 }],
+          ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+        })}
+      >
+        <Icon size={15} color={fg} strokeWidth={1.8} />
+      </Pressable>
+    </GlassTooltip>
   );
 }
 

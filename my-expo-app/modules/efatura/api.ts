@@ -12,7 +12,7 @@ import { getActiveProvider } from './providers';
 import type {
   EFaturaInvoice, EFaturaCustomer, EFaturaLab,
   EFaturaSendResult, EFaturaQueryResult, EFaturaStatus,
-  MukellefCheckResult,
+  MukellefCheckResult, EFaturaPreviewResult,
 } from './types';
 
 const MUKELLEF_CACHE_TTL_HOURS = 24;
@@ -107,8 +107,21 @@ async function buildDomainInvoice(invoiceId: string): Promise<EFaturaInvoice | {
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────
-export async function sendInvoice(invoiceId: string): Promise<EFaturaSendResult> {
+/**
+ * Göndermeden önce faturanın e-fatura özeti. Sağlayıcı önizleme sunmuyorsa
+ * (demo) `preview: null` döner — çağıran yine de onay sormalı.
+ */
+export async function previewInvoice(invoiceId: string): Promise<EFaturaPreviewResult> {
   const provider = await getActiveProvider();
+  if (!provider.previewById) return { ok: true, preview: null };
+  return provider.previewById(invoiceId);
+}
+
+export async function sendInvoice(invoiceId: string, opts?: { previewToken?: string }): Promise<EFaturaSendResult> {
+  const provider = await getActiveProvider();
+  // Sunucu taraflı sağlayıcı (Luca): kurulum, durum ve log sunucuda. Önizleme jetonu
+  // olmadan sunucu göndermez (kullanıcı kuralı: önce önizleme, sonra gerçek fatura).
+  if (provider.sendById) return provider.sendById(invoiceId, opts);
   const built = await buildDomainInvoice(invoiceId);
   if ('error' in built) return { ok: false, error: built.error };
 
@@ -149,6 +162,7 @@ export async function sendInvoice(invoiceId: string): Promise<EFaturaSendResult>
 
 export async function queryEFaturaStatus(invoiceId: string): Promise<EFaturaQueryResult> {
   const provider = await getActiveProvider();
+  if (provider.queryStatusById) return provider.queryStatusById(invoiceId);
   const { data: inv } = await supabase
     .from('invoices')
     .select('efatura_uuid, efatura_status')

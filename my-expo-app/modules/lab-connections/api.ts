@@ -85,3 +85,66 @@ export async function labPendingRequests(): Promise<PendingRequest[]> {
     clinic_name: r.lab_clinic?.name ?? null,
   }));
 }
+
+// ── Public kayıt (hekim / klinik yöneticisi) ─────────────────────────────────
+// DB: supabase/migrations/20261017193000_clinic_self_signup_flow.sql
+
+export interface SignupConnectResult {
+  membership_id: string;
+  status: MembershipStatus;
+  lab_name: string | null;
+  /** Hesap açıldı mı (davet kodu / lab'da otomatik onay). */
+  approved: boolean;
+}
+
+/**
+ * Onay bekleyen yeni hesap: lab bağlantı kodunu kullan (önce davet, olmazsa
+ * public katılım kodu). Davet kodunda hesap anında açılır; public kodda istek
+ * lab'ın "Onaylar → Hekim kaydı" ekranına düşer.
+ */
+export async function clinicSignupConnect(code: string): Promise<SignupConnectResult> {
+  const { data, error } = await supabase.rpc('clinic_signup_connect', { p_code: code.trim().toUpperCase() });
+  if (error) throw error;
+  return data as SignupConnectResult;
+}
+
+/** Bağlantı kodu hatalarını kullanıcı metnine çevirir (kayıt + bekleme ekranı). */
+export function connectCodeErrorMessage(e: any): string {
+  const raw = String(e?.message ?? '');
+  if (/request rejected/i.test(raw)) return 'Bu laboratuvar isteğini reddetti. Başka bir laboratuvarın kodunu deneyebilirsin.';
+  if (/invalid code/i.test(raw)) return 'Kod bulunamadı. Kontrol edip tekrar dene.';
+  if (/expired/i.test(raw)) return 'Kodun süresi dolmuş. Laboratuvardan yeni kod iste.';
+  if (/used up|inactive/i.test(raw)) return 'Bu kod artık geçerli değil.';
+  if (/fetch|network/i.test(raw)) return 'Sunucuya bağlanılamadı. İnternet bağlantını kontrol et.';
+  return 'Bağlanılamadı. Kodu kontrol et.';
+}
+
+export interface SignupRequest {
+  membership_id: string;
+  status: MembershipStatus;
+  requested_at: string;
+  decided_at: string | null;
+  profile_id: string;
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+  user_type: 'doctor' | 'clinic_admin' | 'clinic_secretary';
+  clinic_name: string | null;
+  address: string | null;
+}
+
+/**
+ * Lab yöneticisi: hesap onayı bekleyen yeni kayıtlar (history=true → son 30 karar).
+ * Yönetici olmayan lab kullanıcısında boş döner.
+ */
+export async function labSignupRequests(history = false): Promise<SignupRequest[]> {
+  const { data, error } = await supabase.rpc('lab_signup_requests', { p_history: history });
+  if (error) throw error;
+  return (data ?? []) as SignupRequest[];
+}
+
+/** Lab yöneticisi: reddedilen kaydı yeniden incelemeye al (bekleyene döner). */
+export async function labReopenSignup(membershipId: string): Promise<void> {
+  const { error } = await supabase.rpc('lab_reopen_signup', { p_membership_id: membershipId });
+  if (error) throw error;
+}

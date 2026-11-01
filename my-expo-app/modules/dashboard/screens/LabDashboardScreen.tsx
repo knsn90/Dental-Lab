@@ -14,7 +14,7 @@ import { HatchFill } from '../../../core/ui/HatchFill';
 import { firstName as displayFirstName } from '../../../core/util/personName';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { useTranslation } from 'react-i18next';
-import { localeTag, isRTL, weekdayOffset, fmtDayMonthShort, fmtMonthShort } from '../../../core/i18n';
+import { localeTag, isRTL, weekdayOffset, fmtMonthShort } from '../../../core/i18n';
 import {
   View, Text, ScrollView, Pressable, Image,
   useWindowDimensions, RefreshControl,
@@ -32,7 +32,6 @@ import {
   Check, Clipboard, Box, Settings, ListChecks, CornerDownRight,
   Receipt, Wallet,
 } from '../../../core/ui/icons';
-import { formatMoney, type Currency } from '../../../core/money/currency';
 import { baseSymbol } from '../../../core/money/baseCurrency';
 
 // DS tokens — single source of truth for all design values
@@ -40,7 +39,13 @@ import { DS } from '../../../core/theme/dsTokens';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { useTodayOrders } from '../../orders/hooks/useTodayOrders';
-import { isOrderOverdue } from '../../orders/constants';
+import { useOrderMetrics } from '../../../core/metrics/useOrderMetrics';
+import { useLabToday } from '../../../core/metrics/useLabToday';
+import { isOverdueOrder, isDueOn } from '../../../core/metrics/orderDefs';
+import { METRIC_HINTS } from '../../../core/metrics/metricHints';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { useOverdueClinics } from '../hooks/useOverdueClinics';
+import { overdueClinicLine } from '../lib/overdueClinicLine';
 import { fetchTodayProvas } from '../../provas/api';
 import { PROVA_TYPES } from '../../provas/types';
 import { supabase } from '../../../core/api/supabase';
@@ -57,6 +62,8 @@ import { FaceScanQuickAction } from '../../orders/components/FaceScanQuickAction
 import { resolveOrderStatus } from '../components/RecentOrdersMobile';
 import { mapRevisionCases, flattenRevisionCases } from '../../orders/revisionGroups';
 import { useRevisionParents } from '../../orders/hooks/useRevisionParents';
+import { ScanCalendarCard, useScanCardVisible } from '../../scans/components/ScanCalendarCard';
+import { DashRow, DashHalf, DashCell } from '../components/DashGrid';
 
 // Display font — Patterns: Inter Tight Light (300), tight tracking
 const SERIF = {
@@ -528,10 +535,10 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
   );
 }
 
-/** Status badge with dot. hold_status='on_hold' → Siparişler sayfasıyla aynı "Duraklatıldı" (warning). */
-function StatusBadge({ status, holdStatus }: { status: string; holdStatus?: string | null }) {
+/** Status badge with dot. hold_status='on_hold' → Siparişler sayfasıyla aynı "Duraklatıldı" (warning); prova beklemesi "Provada". */
+function StatusBadge({ status, holdStatus, holdCategory }: { status: string; holdStatus?: string | null; holdCategory?: string | null }) {
   const c = holdStatus === 'on_hold'
-    ? { label: 'Duraklatıldı', color: '#9C5E0E', bg: 'rgba(232,155,42,0.15)' }
+    ? { label: holdCategory === 'client_prova' ? 'Provada' : 'Duraklatıldı', color: '#9C5E0E', bg: 'rgba(232,155,42,0.15)' }
     : (STATUS_CFG[status] ?? { label: status, color: DS.ink[500], bg: 'rgba(0,0,0,0.05)' });
   return (
     <View
@@ -955,6 +962,8 @@ const PIPELINE_STAGES = [
 
 export function LabDashboardScreen() {
   const router       = useRouter();
+  // Tarama programı kartı görünürken alt satır bölünür (sol: hafta + görevler, sağ: takvim)
+  const scanCard = useScanCardVisible().visible;
   const { t, i18n }  = useTranslation();
   const { profile }  = useAuthStore();
   const { orders, loading, refetch } = useTodayOrders();
@@ -1008,59 +1017,44 @@ export function LabDashboardScreen() {
   // Planlama bekleyen siparişler — yeni gelen, henüz triajı yapılmamış
   const [triagePending, setTriagePending] = useState<any[]>(cache?.triagePending ?? []);
   // Görev kartını besleyen finans aksiyonları (faturasız teslimat + vadesi geçmiş fatura)
-  const [financeActions, setFinanceActions] = useState<{ unbilled: any[]; overdueInv: any[] }>({
-    unbilled: [], overdueInv: [],
-  });
+  const [financeActions, setFinanceActions] = useState<{ unbilled: any[] }>({ unbilled: [] });
+  // Vadesi geçmiş alacak KLİNİK bazında (avans düşülmüş) — sabah "kime hatırlatayım" kararı.
+  const { rows: overdueClinics, refetch: refetchOverdueClinics } = useOverdueClinics();
 
   const isManager  = profile?.role === 'manager' || profile?.user_type === 'admin';
-  const today      = todayStr();
+  // Tek tanım (2026-10-26): "bugün" lab'ın saat diliminde; sayılar order_metrics()'ten.
+  // Satır listeleri (gecikenler, bugün teslim) aynı kuralın istemci aynasıyla süzülür.
+  const today      = useLabToday();
   const firstName  = displayFirstName(profile?.full_name);
-  const overdueOrders    = orders.filter(o => isOrderOverdue(o.delivery_date, o.status, (o as any).hold_status));
-  const todayDeliverable = orders.filter(o => o.delivery_date === today && o.status !== 'teslim_edildi');
+  const overdueOrders    = orders.filter(o => isOverdueOrder(o as any, today));
+  const todayDeliverable = orders.filter(o => isDueOn(o as any, today));
+  const { data: metrics, refetch: refetchMetrics } = useOrderMetrics();
+  const overdueTotal = metrics?.overdue ?? overdueOrders.length;
+
+  useEffect(() => {
+    if (!metrics) return;
+    // Pano statü dağılımı: arşiv hariç, iptal gösterilmez.
+    const { iptal: _iptal, ...pipe } = metrics.by_status;
+    setPipelineCounts(pipe);
+    setTotalActive(metrics.active);
+    setTotalCases(metrics.created_this_month);
+    setTodayNewCount(metrics.created_today);
+    setTodayDelivered(metrics.delivered_today);
+  }, [metrics]);
 
   // ── Data loaders ──
-  const loadPipeline = useCallback(async () => {
-    try {
-      // Tüm aktif + teslim statülerini tek sorguda say (iptal hariç). RLS lab'a kısıtlar.
-      // Önemli: 'asamada', 'kutu_atandi', 'atama_bekleniyor', 'kurye_bekleniyor',
-      // 'kuryede', 'tasarim_onayi_bekleniyor' de aktif üretim sayılır — eskiden atlanıyordu,
-      // bu yüzden aşamadaki işler panoda 0 görünüyordu.
-      const ACTIVE = ['alindi', 'kutu_atandi', 'atama_bekleniyor', 'tasarim_onayi_bekleniyor',
-                      'asamada', 'uretimde', 'kalite_kontrol', 'teslimata_hazir',
-                      'kurye_bekleniyor', 'kuryede'];
-
-      // PERF (P1): sayımı sunucuda yap. Dönen satır sayısı STATÜ sayısı kadar,
-      // sipariş sayısından bağımsız. Eskiden lab'ın TÜM açık siparişleri
-      // çekilip JS'te sayılıyordu — 5.000 siparişlik bir lab'da her dashboard
-      // açılışında megabaytlarca veri demekti.
-      const counts: Record<string, number> = {};
-      const { data: agg, error: aggErr } = await supabase.rpc('dashboard_pipeline_counts');
-
-      if (!aggErr && Array.isArray(agg)) {
-        (agg as any[]).forEach((r) => {
-          if (r?.status) counts[r.status] = Number(r.n) || 0;
-        });
-      } else {
-        // Fallback: RPC yoksa (eski DB) veya hata verirse eski davranışa dön.
-        const { data, error } = await supabase.from('work_orders').select('status').neq('status', 'iptal');
-        if (error) throw error;
-        (data ?? []).forEach((r: any) => { const s = r.status; if (s) counts[s] = (counts[s] ?? 0) + 1; });
-      }
-      setPipelineCounts(counts);
-
-      // Total active (teslim edilmemiş + iptal olmayan)
-      const active = ACTIVE.reduce((s, st) => s + (counts[st] ?? 0), 0);
-      setTotalActive(active);
-    } catch (_) {}
-  }, []);
+  // Statü sayıları artık order_metrics()'ten (eski statü sayım RPC'si arşivi sayıyor,
+  // teknisyene tüm lab'ı veriyordu). Yenile = ölçüleri yeniden çek.
+  const loadPipeline = useCallback(async () => { refetchMetrics(); }, [refetchMetrics]);
 
   const loadExtra = useCallback(async () => {
    try {
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
 
-    // 7 sorgu paralel — eskiden seri idi (~4× round-trip).
-    const [mainRes, todayRes, approvalRes, triageRes, deliveredTodayRes, totalRes, seriesRes] = await Promise.all([
+    // Sorgular paralel. Bugün gelen / bugün teslim edilen / bu ay gelen sayıları
+    // artık order_metrics()'ten (tek tanım); burada sorulmaz.
+    const [mainRes, approvalRes, triageRes, seriesRes] = await Promise.all([
       supabase
         .from('work_orders')
         // NOT: work_orders.doctor_id polymorphic (profiles VEYA doctors) — FK
@@ -1077,14 +1071,10 @@ export function LabDashboardScreen() {
         // tam listeye ihtiyaç duymaz). Toplam sayı totalRes'ten, aylık/haftalık
         // seri dashboard_activity_series RPC'sinden geliyor. Eskiden 6 aylık TÜM
         // siparişler 12 kolonla çekilip JS'te gruplanıyordu.
-        .select('id, order_number, work_type, status, hold_status, delivery_date, created_at, patient_name, doctor_id, tooth_numbers, is_urgent, revision_of_id, revision_no, continues_order_id')
+        .select('id, order_number, work_type, status, hold_status, hold_category, delivery_date, created_at, patient_name, doctor_id, tooth_numbers, is_urgent, revision_of_id, revision_no, continues_order_id')
         .gte('created_at', sixMonthsAgo.toISOString())
         .order('created_at', { ascending: false })
         .limit(5),
-      supabase
-        .from('work_orders')
-        .select('id', { count: 'exact', head: true })
-        .gte('created_at', `${today}T00:00:00`),
       supabase
         .from('work_orders')
         .select('id', { count: 'exact', head: true })
@@ -1097,17 +1087,6 @@ export function LabDashboardScreen() {
         .or('is_archived.is.null,is_archived.eq.false')
         .order('created_at', { ascending: false })
         .limit(5),
-      // Bugün teslim edilen (BUGÜN BİTEN kartı) — status teslim_edildi + bugün güncellenen
-      supabase
-        .from('work_orders')
-        .select('id', { count: 'exact', head: true })
-        .eq('status', 'teslim_edildi')
-        .gte('updated_at', `${today}T00:00:00`),
-      // PERF (P1): toplam vaka sayısı — satır çekmeden HEAD count.
-      supabase
-        .from('work_orders')
-        .select('id', { count: 'exact', head: true })
-        .gte('created_at', sixMonthsAgo.toISOString()),
       // PERF (P1): aylık + haftalık seri, sunucu tarafında toplanmış.
       // Dönen satır: ay sayısı + son 7 gün. Sipariş sayısıyla ölçeklenmez.
       supabase.rpc('dashboard_activity_series', { p_months: 6 }),
@@ -1150,7 +1129,6 @@ export function LabDashboardScreen() {
           : null,
       }));
       setRecentOrders(recent5);
-      setTotalCases(totalRes.count ?? data.length);
 
       // ── Aylık + haftalık seri ────────────────────────────────────────────
       // PERF (P1): toplama sunucuda yapıldı. Boş iskeleti burada kuruyoruz ki
@@ -1214,9 +1192,7 @@ export function LabDashboardScreen() {
       setWeekTeeth(wt);
     }
 
-    setTodayNewCount(todayRes.count ?? 0);
     setPendingCount(approvalRes.count ?? 0);
-    setTodayDelivered(deliveredTodayRes.count ?? 0);
     // Triage listesi: doktor adlarını ayrı sorgu ile resolve et
     const triageData = triageRes.data ?? [];
     if (triageData.length > 0) {
@@ -1317,26 +1293,19 @@ export function LabDashboardScreen() {
   // vadesi geçmiş fatura). Hafif tutulur: yalnız gösterilecek alanlar, limit 5.
   const loadFinanceActions = useCallback(async () => {
     try {
-      const [unbilledRes, overdueRes] = await Promise.all([
-        supabase
-          .from('v_unbilled_work_orders')
-          .select('work_order_id, order_number, patient_name, doctor_name, delivered_at')
-          .order('delivered_at', { ascending: false, nullsFirst: false })
-          .limit(5),
-        supabase
-          .from('invoices')
-          .select('id, invoice_number, total, paid_amount, due_date, currency')
-          .lt('due_date', today)
-          .not('status', 'in', '("odendi","iptal","taslak")')  // taslak = henüz kesilmemiş fatura
-          .order('due_date', { ascending: true })
-          .limit(5),
-      ]);
-      setFinanceActions({
-        unbilled:   (unbilledRes.data as any[]) ?? [],
-        overdueInv: (overdueRes.data as any[]) ?? [],
-      });
+      // Finans yetkisi yoksa (paket A: fatura/fatura-sipariş bağı RLS'te gizli) hiç sorgulama —
+      // v_unbilled_work_orders her teslimatı faturasız gösterirdi.
+      const { data: canFin } = await supabase.rpc('lab_can_view_finance');
+      if (canFin !== true) { setFinanceActions({ unbilled: [] }); return; }
+      const unbilledRes = await supabase
+        .from('v_unbilled_work_orders')
+        .select('work_order_id, order_number, patient_name, doctor_name, delivered_at')
+        .order('delivered_at', { ascending: false, nullsFirst: false })
+        .limit(5);
+      setFinanceActions({ unbilled: (unbilledRes.data as any[]) ?? [] });
+      refetchOverdueClinics();
     } catch { /* view/tablo yoksa kart sessizce eski haliyle çalışır */ }
-  }, [today]);
+  }, [refetchOverdueClinics]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -1453,22 +1422,23 @@ export function LabDashboardScreen() {
       done: false,
       onPress: () => router.push(`/(lab)/order/${u.work_order_id}` as any),
     })),
-    // Vadesi geçmiş fatura → tahsilat
-    ...financeActions.overdueInv.slice(0, 2).map((inv: any) => {
-      const remaining = formatMoney(
-        (Number(inv.total) || 0) - (Number(inv.paid_amount) || 0),
-        (inv.currency ?? 'TRY') as Currency,
-        { fractionDigits: 0 },
-      );
-      const late = daysLate(inv.due_date);
-      return {
-        icon: Wallet as React.FC<any>,
-        label: `Tahsilat yap · ${inv.invoice_number ?? 'fatura'}`,
-        time: late ? `${remaining} ${autoT('kaldı')} · ${late} ${autoT('gün vadesi geçti')}` : `${remaining} ${autoT('kaldı')}`,
-        done: false,
-        onPress: () => router.push(`/(lab)/invoice/${inv.invoice_number ?? inv.id}` as any),
-      };
-    }),
+    // Vadesi geçmiş alacak → kime ödeme hatırlatılacak (klinik bazında, avans düşülmüş;
+    // hatırlatmanın göndereceği tutarla aynı). En çok geciken 3 klinik.
+    ...overdueClinics.slice(0, 3).map((c) => ({
+      icon: Wallet as React.FC<any>,
+      label: `${autoT('Ödeme hatırlat')} · ${c.clinic_name}`,
+      time: overdueClinicLine(c),
+      done: false,
+      onPress: () => router.push(`/(lab)/statement/${c.clinic_id}` as any),
+    })),
+    // 3'ten fazlası gizlenmesin: kalanlar Cari listesinde (aynı tutar, aynı sıra).
+    ...(overdueClinics.length > 3 ? [{
+      icon: Wallet as React.FC<any>,
+      label: `+${overdueClinics.length - 3} ${autoT('klinik daha')}`,
+      time: autoT('Cari Hesap'),
+      done: false,
+      onPress: () => router.push('/(lab)/finance?tab=clinic_balance' as any),
+    }] : []),
     ...((stockSummary?.lowCount ?? 0) > 0 ? [{
       icon: AlertTriangle as React.FC<any>,
       label: `${autoT('Stok siparişi ver')} · ${stockSummary!.lowCount} ${autoT('kalem')}`,
@@ -1504,16 +1474,9 @@ export function LabDashboardScreen() {
     const totalPipe = Object.values(pipelineCounts).reduce((s, v) => s + v, 0) || 1;
     const deliveredPct = Math.round(((pipelineCounts['teslim_edildi'] ?? 0) / totalPipe) * 100);
 
-    // Week bars (Pzt→Paz) — tüm veriden hesaplanan weekCounts/weekDone'tan türet.
-    // (Eskiden useTodayOrders'tan geliyordu; o yalnız bugün/gecikmiş aktifleri içerdiği
-    // için hafta grafiği hep boş kalıyordu.)
+    // Bu haftanın tamamlananları (KPI "Bu hafta N") — weekDone tüm veriden hesaplanır
     const wdays = getWeekDays();
-    const weekBars: number[]     = wdays.map(d => weekCounts[d.date] ?? 0);
     const weekDoneBars: number[] = wdays.map(d => weekDone[d.date] ?? 0);
-    const monthsShort = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
-    const ws = new Date(wdays[0].date + 'T00:00:00');
-    const we = new Date(wdays[6].date + 'T00:00:00');
-    const weekRange = `${fmtDayMonthShort(ws)} → ${fmtDayMonthShort(we)}`;
 
     // Delayed cases — overdue + critical
     const delayedItems = overdueOrders.slice(0, 3).map((o: any) => {
@@ -1563,8 +1526,8 @@ export function LabDashboardScreen() {
     // Gruplama slice'tan ÖNCE yapılır ki 6 satır 6 VAKA olsun (aynı vakanın iki
     // üyesi iki satır yiyip listeyi kısaltmasın).
     const toRecentItem = (o: any) => {
-      const st = resolveOrderStatus(o.status, o.hold_status);
-      const isOverdue = !!o.delivery_date && o.delivery_date < today && o.status !== 'teslim_edildi';
+      const st = resolveOrderStatus(o.status, o.hold_status, (o as any).hold_category);
+      const isOverdue = isOverdueOrder(o, today);
       const drName = (o.doctor as any)?.full_name ?? '—';
       const ptName = (o.patient_name && String(o.patient_name).trim()) ? String(o.patient_name).trim() : '';
       return {
@@ -1590,18 +1553,17 @@ export function LabDashboardScreen() {
       <>
         <LabMobileDashboard
           liveActive={totalActiveCount}
-          liveTotal={totalActiveCount + (pipelineCounts['teslim_edildi'] ?? 0)}
+          liveTotal={Object.values(pipelineCounts).reduce((a, b) => a + b, 0)}
           liveStages={stageCounts}
+          // Halka = masaüstü "Üretim" kartının teslim oranı; başlık teslim edilen / toplam
+          liveDelivered={pipelineCounts['teslim_edildi'] ?? 0}
           livePercent={deliveredPct}
           activeOrders={totalActiveCount}
           todayCompleted={todayDeliveredCount}
           weekCompleted={weekDoneBars.reduce((a, b) => a + b, 0)}
-          overdueCount={overdueOrders.length}
+          overdueCount={overdueTotal}
           pendingApprovalsCount={pendingCount}
-          weekBars={weekBars}
-          weekDoneBars={weekDoneBars}
-          weekRange={weekRange}
-          weekTotal={weekBars.reduce((a, b) => a + b, 0)}
+          orderTrend={monthly.map((m) => ({ label: m.month, count: m.count, teeth: m.teeth }))}
           delayed={delayedItems}
           recentOrders={recentForMobile}
           onNewOrder={() => useNewOrderModalStore.getState().setOpen(true)}
@@ -1670,16 +1632,18 @@ export function LabDashboardScreen() {
               <StatPill label={t('dashboard.delivered')} value={`${deliveryPct}%`} bg={P} color={INK} />
               <StatPill label={t('dashboard.stages.ready')} value={`${readyPct}%`} bg={isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)'} color={isDark ? T.ink : INK} />
               {/* Geciken AYNI satırda: StatPill ile eşit ölçülü rozet. */}
-              {overdueOrders.length > 0 && (
-                <AlertPillX
-                  icon={AlertTriangle}
-                  count={overdueOrders.length}
-                  label={t('dashboard.overdueLabel')}
-                  color={DS.lab.danger}
-                  labelColor="#9C2E2E"
-                  pulse
-                  onPress={() => router.push('/(lab)/orders' as any)}
-                />
+              {overdueTotal > 0 && (
+                <GlassTooltip title={t('dashboard.overdueLabel')} text={autoT(METRIC_HINTS.overdue)}>
+                  <AlertPillX
+                    icon={AlertTriangle}
+                    count={overdueTotal}
+                    label={t('dashboard.overdueLabel')}
+                    color={DS.lab.danger}
+                    labelColor="#9C2E2E"
+                    pulse
+                    onPress={() => router.push('/(lab)/orders?filter=overdue' as any)}
+                  />
+                </GlassTooltip>
               )}
               <FaceScanQuickAction accentColor={P} compact />
             </View>
@@ -1687,11 +1651,15 @@ export function LabDashboardScreen() {
 
           {/* Right: big stats — kart yok, aralarında yalnız saç teli ayraç. */}
           <View className="flex-row" style={{ gap: 24, alignItems: 'flex-end', alignSelf: 'flex-end' }}>
-            <BigStat value={totalActiveCount} label={t('dashboard.activeOrders')} />
+            <GlassTooltip title={t('dashboard.activeOrders')} text={autoT(METRIC_HINTS.active)}>
+              <BigStat value={totalActiveCount} label={t('dashboard.activeOrders')} />
+            </GlassTooltip>
             <StatDivider />
             <BigStat value={provas.length} label={t('dashboard.tryin')} />
             <StatDivider />
-            <BigStat value={totalCaseCount} label={t('dashboard.totalCases')} />
+            <GlassTooltip title={t('dashboard.totalCases')} text={autoT(METRIC_HINTS.newThisMonth)}>
+              <BigStat value={totalCaseCount} label={t('dashboard.totalCases')} />
+            </GlassTooltip>
           </View>
         </View>
       </View>
@@ -1854,12 +1822,11 @@ export function LabDashboardScreen() {
         </View>
       )}
 
-      {/* ════════ 4-CARD GRID ════════ */}
-      <View
-        className={isDesktop ? 'flex-row' : ''}
-        style={{ gap: 14, marginBottom: 14 }}
-      >
+      {/* ════════ 4-CARD GRID — eşit sütunlar; alt sıra aynı ızgarada hizalı (DashGrid) ════════ */}
+      <DashRow gap={14} style={{ marginBottom: 14 }}>
+        <DashHalf gap={14}>
         {/* Card 1: Aktif Vaka — dark top + white bottom + animations */}
+        <DashCell>
         <AnimatedAktifVakaCard
           isDesktop={isDesktop}
           pipelineCounts={{
@@ -1879,8 +1846,10 @@ export function LabDashboardScreen() {
           planningCount={triagePending.length}
           router={router}
         />
+        </DashCell>
 
         {/* Card 2: Sipariş Trendi (admin paneliyle aynı hatched pill chart) */}
+        <DashCell>
         <Card style={{ flex: isDesktop ? 1 : undefined, padding: 22, marginBottom: isDesktop ? 0 : 14 }}>
           <View className="flex-row items-start justify-between" style={{ marginBottom: 12 }}>
             <View>
@@ -1908,8 +1877,12 @@ export function LabDashboardScreen() {
             <ProductionBarChart data={monthly} />
           </View>
         </Card>
+        </DashCell>
+        </DashHalf>
 
+        <DashHalf gap={14}>
         {/* Card 3: Üretim Ring — PercentRingHero (Patterns 11.7) on white bg */}
+        <DashCell>
         <Card style={{ flex: isDesktop ? 1 : undefined, padding: 22, alignItems: 'center', marginBottom: isDesktop ? 0 : 14 }}>
           <View className="w-full flex-row items-center justify-between" style={{ marginBottom: 8 }}>
             <Text style={{ fontSize: 14, fontWeight: '500', color: T.ink }}>Üretim</Text>
@@ -1937,29 +1910,36 @@ export function LabDashboardScreen() {
             </View>
           </View>
         </Card>
+        </DashCell>
 
         {/* Card 4: Hızlı İşlem CTA — "Yeni sipariş oluştur" (görevler ile yer değişti) */}
-        <View style={{ flex: isDesktop ? 1.4 : undefined }}>
+        <DashCell>
+        <View style={{ flex: 1 }}>
           <AnimatedCTACard onPress={() => router.push('/(lab)/new-order' as any)} isDesktop={isDesktop} />
         </View>
-      </View>
+        </DashCell>
+        </DashHalf>
+      </DashRow>
 
-      {/* ════════ BOTTOM ROW — Weekly + Bugünkü Görevler ════════ */}
-      <View className={isDesktop ? 'flex-row' : ''} style={{ gap: 14, marginBottom: 14 }}>
-        {/* Weekly strip */}
-        <WeeklyStrip
-          weekDays={weekDays}
-          weekCounts={weekCounts}
-          weekDone={weekDone}
-          weekTeeth={weekTeeth}
-          onPress={() => router.push('/(lab)/all-orders' as any)}
-        />
-
-        {/* Bugünkü Görevler — Dark (CTA ile yer değişti) */}
-        <View style={{ flex: isDesktop ? 1 : undefined, marginTop: isDesktop ? 0 : 14 }}>
-          <TasksCard tasks={taskItems} />
-        </View>
-      </View>
+      {/* ════════ BOTTOM ROW — Weekly (yarım) + Bugünkü Görevler + tarama widget'ı (çeyrekler) ════════ */}
+      <DashRow gap={14} style={{ marginBottom: 14 }}>
+        <DashHalf gap={14}>
+          <DashCell>
+            <WeeklyStrip
+              weekDays={weekDays}
+              weekCounts={weekCounts}
+              weekDone={weekDone}
+              weekTeeth={weekTeeth}
+              onPress={() => router.push('/(lab)/all-orders' as any)}
+            />
+          </DashCell>
+        </DashHalf>
+        <DashHalf gap={14}>
+          {/* Bugünkü Görevler — Dark (CTA ile yer değişti) */}
+          <DashCell><TasksCard tasks={taskItems} /></DashCell>
+          {scanCard ? <DashCell><ScanCalendarCard style={{ flex: 1 }} /></DashCell> : null}
+        </DashHalf>
+      </DashRow>
 
       {/* ════════ EXTRA SECTIONS (below fold) ════════ */}
 
@@ -1992,7 +1972,7 @@ export function LabDashboardScreen() {
           ? <Text className="p-6 text-center" style={{ fontSize: 13, color: T.ink3 }}>Yükleniyor...</Text>
           : recentRows.map((order: any, idx: number) => {
               const onHold  = (order as any).hold_status === 'on_hold';
-              const overdue = order.delivery_date < today && order.status !== 'teslim_edildi' && !onHold;
+              const overdue = isOverdueOrder(order as any, today);
               const isLast  = idx === recentRows.length - 1;
               const drName  = (order.doctor as any)?.full_name ?? '--';
               return (
@@ -2062,7 +2042,7 @@ export function LabDashboardScreen() {
                     )}{order.work_type || '--'}</Text>
                   )}
                   <View style={{ flex: 1.4 }}>
-                    <StatusBadge status={order.status} holdStatus={(order as any).hold_status} />
+                    <StatusBadge status={order.status} holdStatus={(order as any).hold_status} holdCategory={(order as any).hold_category} />
                   </View>
                   {isDesktop && (
                     <Text style={{

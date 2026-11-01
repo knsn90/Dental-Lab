@@ -15,6 +15,8 @@ import { useOrders } from '../../modules/orders/hooks/useOrders';
 import type { WorkOrder } from '../../modules/orders/types';
 import { useNotifications, useNotificationsActions, type NotificationRow as DbNotifRow } from '../store/notificationsStore';
 import { useThemeModeStore } from '../store/themeModeStore';
+import { useLabToday } from '../metrics/useLabToday';
+import { isOverdueOrder } from '../metrics/orderDefs';
 
 export interface NotificationItemData {
   id:        string;
@@ -68,13 +70,14 @@ export function NotificationPopover({
   }, [visible, dbUnread, markAllRead]);
 
   // ── Bildirim listesi: geciken + atanmamış + KK'da çok bekleyenler
-  const today = new Date().toISOString().split('T')[0];
+  // Tek tanım (2026-10-26): lab günü + core/metrics/orderDefs.
+  const today = useLabToday();
   const items: NotificationItemData[] = React.useMemo(() => {
     const list: NotificationItemData[] = [];
     for (const o of orders ?? []) {
       const isDelivered = o.status === 'teslim_edildi';
       if (!o.delivery_date || isDelivered) continue;
-      const isOverdue = o.delivery_date < today;
+      const isOverdue = isOverdueOrder(o as any, today);
       if (isOverdue) {
         const days = Math.ceil((new Date().getTime() - new Date(o.delivery_date + 'T00:00:00').getTime()) / 86_400_000);
         list.push({
@@ -240,6 +243,7 @@ const ACCENT_BY_CATEGORY: Record<string, string> = {
   delivery:         '#0D9488',
   paper_order:      '#9333EA',
   material_request: '#D97706',   // Malzeme talebi — Stok/Depo bölümüne ait
+  account:          '#059669',   // Hesap açıldı (lab onayı)
 };
 
 function fmtRelative(iso: string): string {

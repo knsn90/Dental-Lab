@@ -74,10 +74,17 @@ export interface Invoice {
   efatura_sent_at?:  string | null;
   efatura_error?:    string | null;
   efatura_provider?: string | null;
+  /** Entegratörün resmi fatura numarası (Luca) */
+  efatura_number?:   string | null;
   // Joined (optional)
   doctor?:  { id: string; full_name: string; phone?: string | null; clinic_id?: string | null } | null;
-  clinic?:  { id: string; name: string; address?: string | null; phone?: string | null; email?: string | null } | null;
-  work_order?: { id: string; order_number: string; patient_name: string | null; delivery_date: string | null } | null;
+  clinic?:  { id: string; name: string; address?: string | null; phone?: string | null; email?: string | null; vkn?: string | null; tax_office?: string | null } | null;
+  work_order?: {
+    id: string; order_number: string; patient_name: string | null; delivery_date: string | null;
+    /** Revizyon siparişi: asıl sipariş + sorumlu (ekstre notu) — yalnız ekstre sorgusu doldurur */
+    revision_responsible?: string | null;
+    revision_of?: { order_number: string } | null;
+  } | null;
   items?:    InvoiceItem[];
   payments?: Payment[];
   // Toplu fatura: birden fazla iş emri (migration 022 junction'ından)
@@ -149,6 +156,9 @@ export interface Payment {
   notes: string | null;
   received_by: string | null;
   created_at: string;
+  currency?: string | null;
+  /** Dolu = sistemin yazdığı tahsilat (ör. online ödeme `intent:<id>`); boş = elle girilmiş. */
+  idempotency_key?: string | null;
   // Joined
   receiver?: { id: string; full_name: string } | null;
 }
@@ -291,4 +301,7 @@ export type ClinicReceipt = {
   total_base: number;
   allocated_base: number;
   lines: { currency: string; amount: number; rate: number; amount_base: number }[];
+  /** Yatırıldığı Kasa/Banka hesabı + seçim anındaki adı (ekstre açıklaması) */
+  account_id?: string | null;
+  account_label?: string | null;
 };

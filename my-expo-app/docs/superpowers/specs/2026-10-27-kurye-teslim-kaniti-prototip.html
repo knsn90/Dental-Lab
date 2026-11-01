@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Teslim kanıtı taslağı v2</title>
+<style>
+  :root {
+    --page: #F5F1EB; --surface: #FFFFFF; --ink: #0A0A0A; --ink2: #2C2C2C; --ink3: #6B6B6B; --ink4: #9A9A9A;
+    --hair: rgba(0,0,0,.07); --soft: #F4F2EE; --field: rgba(0,0,0,.12); --press: rgba(0,0,0,.04);
+    --tech: #3B82F6; --techBg: #EAF2FA;
+    --amber: #E89B2A; --amberInk: #9A5B0C; --amberBg: #FCF3E3;
+    --red: #D94B4B; --redInk: #A32E2E; --redBg: #FBEAEA;
+    --green: #2D9A6B; --greenInk: #1C6E4B; --greenBg: #E5F4EC;
+    --blueInk: #2C6593; --blueBg: #E8F1F9;
+    --photoA: #D9CBB4; --photoB: #B9A383;
+    --scrim: rgba(15,23,42,.30); --toast: rgba(28,26,22,.92); --toastInk: #F7F2E9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page: #0E0E0E; --surface: #1B1916; --ink: #F7F2E9; --ink2: #E4DED3; --ink3: #A59E92; --ink4: #7D776D;
+      --hair: rgba(255,255,255,.09); --soft: #141312; --field: rgba(255,255,255,.14); --press: rgba(255,255,255,.05);
+      --techBg: #0F1A2A;
+      --amberInk: #F2C277; --amberBg: rgba(232,155,42,.16);
+      --redInk: #F29A9A; --redBg: rgba(217,75,75,.18);
+      --greenInk: #8ED9B4; --greenBg: rgba(45,154,107,.18);
+      --blueInk: #9CC6EC; --blueBg: rgba(74,143,201,.18);
+      --photoA: #4A4033; --photoB: #2E271F;
+      --scrim: rgba(0,0,0,.50); --toast: rgba(247,242,233,.94); --toastInk: #141312;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
+  body { font: 15px/1.45 Inter, -apple-system, system-ui, sans-serif; background: var(--page); color: var(--ink); min-height: 100vh; -webkit-font-smoothing: antialiased; }
+  button { font: inherit; color: inherit; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
+  .demo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--ink3); margin-bottom: 12px; }
+  .seg { display: inline-flex; background: var(--soft); border: 1px solid var(--hair); border-radius: 999px; padding: 3px; flex-wrap: wrap; }
+  .seg button { border: 0; background: transparent; color: var(--ink3); font: 600 12px/1 Inter, system-ui; padding: 8px 12px; border-radius: 999px; cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.10); padding: 8px 18px; }
+  .note { font-size: 12.5px; color: var(--ink3); max-width: 660px; }
+
+  /* Basış geri bildirimi: dokununca anında (pointerdown), bırakınca değil */
+  .press { transition: transform 100ms ease-out, background-color 120ms; }
+  .press.down { transform: scale(.97); }
+
+  .stage { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; margin-top: 14px; }
+  .phone { width: 375px; max-width: 100%; height: 760px; border-radius: 40px; background: var(--techBg); border: 1px solid var(--hair); box-shadow: 0 30px 80px rgba(0,0,0,.16); position: relative; overflow: hidden; }
+  .phone .scroll { position: absolute; inset: 0; overflow: auto; padding: 54px 16px 140px; }
+  .crumb { font-size: 11px; color: var(--ink3); letter-spacing: .1px; }
+  .dtitle { font: 300 28px/1.08 'Inter Tight', Inter, system-ui; letter-spacing: -.7px; margin-top: 6px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 999px; font: 700 9.5px/1 Inter, system-ui; letter-spacing: .6px; }
+  .chip.y { background: var(--amberBg); color: var(--amberInk); }
+  .chip.g { background: var(--greenBg); color: var(--greenInk); }
+  .chip.n { background: var(--soft); color: var(--ink3); }
+  .card { background: var(--surface); border-radius: 18px; border: 1px solid var(--hair); padding: 14px; margin-top: 12px; }
+  .row { display: flex; align-items: center; gap: 10px; }
+  .muted { color: var(--ink3); font-size: 12.5px; }
+  .ghost { height: 64px; border-radius: 14px; background: var(--soft); margin-top: 10px; }
+  .bar { position: absolute; left: 16px; right: 16px; bottom: 28px; }
+  .cta { width: 100%; height: 52px; border-radius: 16px; border: 0; display: flex; align-items: center; justify-content: center; gap: 8px; font: 700 15px/1 Inter, system-ui; letter-spacing: -.1px; cursor: pointer; }
+  .cta.green { background: var(--green); color: #fff; }
+  .cta.amber { background: var(--amber); color: #fff; }
+  .cta[aria-disabled="true"] { opacity: .38; cursor: default; }
+  .done { padding: 16px; border-radius: 16px; background: var(--greenBg); color: var(--greenInk); text-align: center; font: 600 13.5px/1.4 Inter, system-ui; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .done svg path { stroke-dasharray: 30; stroke-dashoffset: 30; animation: draw 420ms 60ms cubic-bezier(.2,.9,.25,1) forwards; }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+
+  /* Pencere: ortada, bulanık arka; tetikleyiciden açılır, oraya kapanır (yaylı, yarıda kesilebilir) */
+  .layer { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; padding: 12px; z-index: 10; }
+  .layer.fixed { position: fixed; padding: 24px; }
+  @media (max-width: 640px) { .layer.fixed { padding: 12px; } }
+  .layer.on { display: flex; }
+  .layer .scrim { position: absolute; inset: 0; background: var(--scrim); opacity: 0; }
+  .sheet { position: relative; width: 100%; max-width: 480px; max-height: 94%; display: flex; flex-direction: column; background: var(--surface); border-radius: 28px; overflow: hidden;
+           box-shadow: 0 30px 80px rgba(0,0,0,.28), 0 2px 8px rgba(0,0,0,.08); opacity: 0; will-change: transform, opacity; }
+  .shead { display: flex; align-items: center; gap: 12px; padding: 18px 18px 10px; position: relative; z-index: 2; background: var(--surface); }
+  .shead::after, .sfoot::before { content: ''; position: absolute; left: 0; right: 0; height: 18px; pointer-events: none; opacity: 0; transition: opacity 160ms; }
+  .shead::after { top: 100%; background: linear-gradient(var(--surface), transparent); }
+  .sfoot::before { bottom: 100%; background: linear-gradient(transparent, var(--surface)); }
+  .sheet.scrolled .shead::after, .sheet.more .sfoot::before { opacity: 1; }
+  .shead .t { font: 400 20px/1.15 'Inter Tight', Inter, system-ui; letter-spacing: -.4px; }
+  .shead .s { font-size: 12px; color: var(--ink4); margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .x { margin-left: auto; width: 32px; height: 32px; border-radius: 16px; border: 1px solid var(--hair); background: var(--soft); color: var(--ink3); display: grid; place-items: center; cursor: pointer; flex-shrink: 0; }
+  .sbody { padding: 0 18px 8px; overflow: auto; overscroll-behavior: contain; }
+  .sfoot { position: relative; padding: 10px 18px 18px; background: var(--surface); }
+  .lbl { display: flex; align-items: center; gap: 8px; font: 600 13px/1 Inter, system-ui; margin: 16px 0 8px; }
+  .req { display: inline-flex; align-items: center; gap: 4px; font: 700 9.5px/1 Inter, system-ui; letter-spacing: .5px; padding: 4px 7px; border-radius: 999px; background: var(--soft); color: var(--ink3); }
+  .req.ok { background: var(--greenBg); color: var(--greenInk); }
+  .req.warn { background: var(--amberBg); color: var(--amberInk); }
+  .shot { width: 100%; aspect-ratio: 4/3; border-radius: 18px; border: 1.5px dashed var(--field); background: var(--soft); display: grid; place-items: center; cursor: pointer; color: var(--ink2); font: 600 14px/1 Inter, system-ui; position: relative; overflow: hidden; }
+  .shot .in { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .shot .sub { font: 500 11.5px/1.3 Inter, system-ui; color: var(--ink4); }
+  .shot.has { border-color: transparent; }
+  .photo { position: absolute; inset: 0; background: linear-gradient(160deg, var(--photoA), var(--photoB)); }
+  .photo svg { position: absolute; left: 50%; top: 52%; transform: translate(-50%,-50%); opacity: .55; }
+  .flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+  .pill { position: absolute; bottom: 10px; font: 600 11.5px/1 Inter, system-ui; color: #fff; background: rgba(0,0,0,.42); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); padding: 8px 11px; border-radius: 999px; border: 0; font-variant-numeric: tabular-nums; }
+  .pill.l { left: 10px; } .pill.r { right: 10px; cursor: pointer; }
+  input.f, textarea.f { width: 100%; border-radius: 14px; border: 1px solid var(--field); background: var(--surface); color: var(--ink); font: 400 16px/1.3 Inter, system-ui; padding: 12px 14px; outline: none; transition: border-color 120ms, box-shadow 120ms; }
+  input.f { height: 48px; }
+  textarea.f { min-height: 84px; resize: none; }
+  input.f:focus, textarea.f:focus { border-color: var(--tech); box-shadow: 0 0 0 3px rgba(59,130,246,.18); }
+  .pad { position: relative; height: 156px; border-radius: 18px; border: 1px solid var(--field); background: var(--soft); touch-action: none; overflow: hidden; transition: opacity 180ms; }
+  .pad canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
+  .pad .base { position: absolute; left: 20px; right: 20px; bottom: 36px; border-top: 1px dashed var(--field); pointer-events: none; }
+  .pad .ph { position: absolute; left: 0; right: 0; bottom: 13px; text-align: center; font-size: 11.5px; color: var(--ink4); pointer-events: none; }
+  .pad .clr { position: absolute; right: 8px; top: 8px; font: 600 11.5px/1 Inter, system-ui; color: var(--ink3); background: var(--surface); border: 1px solid var(--hair); padding: 8px 11px; border-radius: 999px; cursor: pointer; }
+  .pad.off { opacity: .35; pointer-events: none; }
+  .swrow { display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 12px 14px; border-radius: 16px; background: var(--soft); cursor: pointer; user-select: none; }
+  .swrow .tx { flex: 1; }
+  .swrow .a { font: 600 13.5px/1.2 Inter, system-ui; }
+  .swrow .b { font-size: 11.5px; color: var(--ink4); margin-top: 3px; }
+  .sw { width: 50px; height: 30px; border-radius: 15px; background: var(--field); position: relative; flex-shrink: 0; transition: background-color 200ms; }
+  .sw .k { position: absolute; top: 2px; left: 2px; width: 26px; height: 26px; border-radius: 13px; background: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.22); will-change: transform; }
+  .swrow[aria-checked="true"] .sw { background: var(--amber); }
+  .reveal { overflow: hidden; height: 0; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; padding-top: 10px; }
+  .chips button { border: 1px solid var(--hair); background: var(--surface); color: var(--ink2); font: 600 12.5px/1 Inter, system-ui; padding: 10px 12px; border-radius: 999px; cursor: pointer; }
+  .chips button[aria-pressed="true"] { background: var(--amberBg); border-color: transparent; color: var(--amberInk); }
+  .hint { font-size: 12px; color: var(--ink3); text-align: center; margin-top: 9px; min-height: 16px; }
+  .steps { display: flex; gap: 4px; margin-top: 10px; }
+  .steps i { flex: 1; height: 3px; border-radius: 2px; background: var(--hair); transition: background-color 200ms; }
+  .steps i.on { background: var(--green); }
+  .toast { position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%); background: var(--toast); color: var(--toastInk); font: 600 12.5px/1 Inter, system-ui; padding: 11px 14px; border-radius: 999px; display: none; gap: 12px; align-items: center; z-index: 30; white-space: nowrap; box-shadow: 0 8px 24px rgba(0,0,0,.2); }
+  .toast button { border: 0; background: transparent; color: var(--tech); font: 700 12.5px/1 Inter, system-ui; cursor: pointer; padding: 0; }
+
+  /* Sipariş tarafı */
+  .order { flex: 1 1 520px; min-width: 300px; position: relative; }
+  .hero { border-radius: 24px; padding: 20px; color: #fff; background: linear-gradient(135deg, #1F1A10 0%, #3A2E10 100%); }
+  .hero .kk { font-size: 10.5px; letter-spacing: 1.2px; font-weight: 700; color: rgba(255,255,255,.55); }
+  .hero h1 { font: 300 28px/1.08 'Inter Tight', Inter, system-ui; letter-spacing: -.7px; margin-top: 4px; }
+  .hero .meta { font-size: 12.5px; color: rgba(255,255,255,.72); margin-top: 4px; }
+  .lcard { background: var(--surface); border-radius: 22px; border: 1px solid var(--hair); padding: 16px; margin-top: 12px; }
+  .lhead { font: 700 10.5px/1 Inter, system-ui; letter-spacing: 1.2px; color: var(--ink4); text-transform: uppercase; margin-bottom: 4px; }
+  .leg { padding: 12px 0; border-top: 1px solid var(--hair); }
+  .leg:first-of-type { border-top: 0; }
+  .legtop { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .legtop .n { font: 600 13.5px/1.2 Inter, system-ui; }
+  .legtop .m { font-size: 12px; color: var(--ink3); margin-left: auto; font-variant-numeric: tabular-nums; }
+  .proof { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 10px; border-radius: 16px; background: var(--soft); cursor: pointer; border: 0; width: 100%; text-align: left; }
+  .proof:hover { background: var(--press); }
+  .thumb { width: 44px; height: 44px; border-radius: 11px; flex-shrink: 0; position: relative; overflow: hidden; background: linear-gradient(160deg, var(--photoA), var(--photoB)); }
+  .thumb.sig { background: var(--surface); border: 1px solid var(--hair); display: grid; place-items: center; }
+  .proof .tx { flex: 1; min-width: 0; }
+  .proof .a { font: 600 13px/1.25 Inter, system-ui; }
+  .proof .b { font-size: 11.5px; color: var(--ink3); margin-top: 2px; }
+  .warnline { color: var(--amberInk); }
+  .none { margin-top: 10px; padding: 11px 12px; border-radius: 16px; background: var(--soft); font-size: 12.5px; color: var(--ink3); }
+  .mgr { display: flex; gap: 8px; margin-top: 10px; }
+  .plain { height: 38px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--hair); background: var(--soft); font: 600 12.5px/1 Inter, system-ui; color: var(--ink2); cursor: pointer; display: inline-flex; align-items: center; gap: 7px; }
+  .notif { display: flex; gap: 10px; padding: 12px; border-radius: 18px; background: var(--surface); border: 1px solid var(--hair); box-shadow: 0 8px 24px rgba(0,0,0,.08); margin-bottom: 12px; }
+  .notif .ic { width: 34px; height: 34px; border-radius: 10px; background: var(--greenBg); color: var(--greenInk); display: grid; place-items: center; flex-shrink: 0; }
+  .notif .a { font: 600 13px/1.25 Inter, system-ui; }
+  .notif .b { font-size: 12px; color: var(--ink3); margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .big { width: 100%; aspect-ratio: 4/3; border-radius: 18px; position: relative; overflow: hidden; }
+  .sigbox { height: 112px; border-radius: 18px; border: 1px solid var(--hair); background: var(--soft); display: grid; place-items: center; margin-top: 10px; }
+  .kv { display: flex; justify-content: space-between; gap: 12px; padding: 11px 0; border-top: 1px solid var(--hair); font-size: 13px; }
+  .kv span:first-child { color: var(--ink3); }
+  .kv span:last-child { font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+  .src { display: inline-flex; margin: 12px 0 4px; font: 600 11px/1 Inter, system-ui; color: var(--blueInk); background: var(--blueBg); padding: 6px 9px; border-radius: 999px; }
+  .ovr { margin-top: 10px; padding: 12px; border-radius: 16px; background: var(--amberBg); color: var(--amberInk); font-size: 12.5px; line-height: 1.4; }
+
+  @media (prefers-reduced-transparency: reduce) { .pill { backdrop-filter: none; background: rgba(0,0,0,.7); } }
+  @media (prefers-contrast: more) { .sheet { border: 1px solid var(--ink3); } .req { border: 1px solid currentColor; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="demo">
+    <div class="seg" id="view">
+      <button aria-pressed="true" data-v="courier">Kurye ekranı</button>
+      <button aria-pressed="false" data-v="order">Siparişte (lab · klinik)</button>
+    </div>
+  </div>
+
+  <!-- ─────────── KURYE ─────────── -->
+  <section id="v-courier">
+    <div class="demo">
+      <span>Teslim yeri:</span>
+      <div class="seg" id="dir">
+        <button aria-pressed="true" data-d="clinic">Kliniğe teslim</button>
+        <button aria-pressed="false" data-d="lab">Lab'a teslim</button>
+      </div>
+    </div>
+    <p class="note">"Teslim et"e basın: pencere düğmeden büyüyerek açılır, kapatınca oraya geri döner; açılırken kapatıp yeniden açabilirsiniz. Fotoğraf her teslimde zorunlu. Kliniğe teslimde ad soyad ve imza da istenir; alınamazsa anahtar açılır ve neden seçilir. İmzayı parmakla ya da fareyle çizin; "Temizle" geri alınabilir.</p>
+    <div class="stage">
+      <div class="phone" id="phone">
+        <div class="scroll">
+          <div class="crumb">Teslimatlar / <span id="destCrumb">Örnek Diş Kliniği</span></div>
+          <div class="dtitle" id="destTitle">Örnek Diş Kliniği</div>
+          <div class="row" style="margin-top:8px"><span class="chip y" id="stChip">YOLDA</span><span class="muted">#2041 · Zirkonya köprü</span></div>
+          <div class="card"><div class="muted">Adres · harita · ara</div><div class="ghost"></div></div>
+          <div class="card"><div class="muted">Paket içeriği</div><div class="ghost" style="height:44px"></div></div>
+        </div>
+        <div class="bar" id="bar"></div>
+        <div class="toast" id="toast"><span id="toastTx">İmza silindi</span><button id="toastUndo">Geri al</button></div>
+
+        <div class="layer" id="cLayer">
+          <div class="scrim" data-close></div>
+          <div class="sheet" id="cSheet" role="dialog" aria-modal="true" aria-labelledby="sT">
+            <div class="shead">
+              <div><div class="t" id="sT">Teslim kanıtı</div><div class="s" id="sS">Örnek Diş Kliniği · #2041</div></div>
+              <button class="x press" data-close aria-label="Kapat"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+            </div>
+            <div class="sbody" id="cBody">
+              <div class="lbl">Fotoğraf <span class="req" id="photoReq">ZORUNLU</span></div>
+              <div class="shot press" id="shot" tabindex="0" role="button" aria-label="Fotoğraf çek"></div>
+
+              <div id="clinicOnly">
+                <div class="lbl">Teslim alan <span class="req" id="nameReq">ZORUNLU</span></div>
+                <input class="f" id="name" placeholder="Ad soyad" autocomplete="off" enterkeyhint="done">
+
+                <div class="lbl">İmza <span class="req" id="sigReq">ZORUNLU</span></div>
+                <div class="pad" id="pad">
+                  <canvas id="cv" aria-label="İmza alanı"></canvas>
+                  <div class="base"></div>
+                  <div class="ph" id="padPh">Teslim alan burayı imzalasın</div>
+                  <button class="clr press" id="clr" style="display:none">Temizle</button>
+                </div>
+
+                <div class="swrow" id="noSig" role="switch" aria-checked="false" tabindex="0">
+                  <div class="tx"><div class="a">İmza alınamadı</div><div class="b">Teslim yine kapanır; kanıt fotoğraf olur</div></div>
+                  <div class="sw"><div class="k" id="knob"></div></div>
+                </div>
+                <div class="reveal" id="reveal">
+                  <div class="chips" id="reasons">
+                    <button aria-pressed="false">Resepsiyonda kimse yoktu</button>
+                    <button aria-pressed="false">İmzalamak istemedi</button>
+                    <button aria-pressed="false">Paket kapıya bırakıldı</button>
+                    <button aria-pressed="false">Diğer</button>
+                  </div>
+                  <input class="f" id="other" placeholder="Kısaca neden" style="display:none;margin-top:8px">
+                  <div style="height:6px"></div>
+                </div>
+              </div>
+            </div>
+            <div class="sfoot">
+              <div class="steps" id="steps"></div>
+              <button class="cta green press" id="finish" aria-disabled="true" style="margin-top:12px">Teslimi tamamla</button>
+              <div class="hint" id="hint" aria-live="polite">Önce fotoğraf çekin</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────── SİPARİŞ ─────────── -->
+  <section id="v-order" hidden>
+    <div class="demo">
+      <span>Durum:</span>
+      <div class="seg" id="case">
+        <button aria-pressed="true" data-c="own">Kendi kurye</button>
+        <button aria-pressed="false" data-c="nosig">İmza alınamadı</button>
+        <button aria-pressed="false" data-c="bbk">BanaBiKurye · kanıtlı</button>
+        <button aria-pressed="false" data-c="bbk0">BanaBiKurye · kanıtsız</button>
+        <button aria-pressed="false" data-c="active">Yolda (yönetici)</button>
+        <button aria-pressed="false" data-c="ovr">Kanıtsız kapatıldı</button>
+      </div>
+    </div>
+    <p class="note">Klinik bildirimde teslim alanın adını ve saati görür. Fotoğraf ve imza siparişin Lojistik kartında durur; satıra basınca kanıt, küçük resmin olduğu yerden büyüyerek açılır. "Yolda (yönetici)" durumunda yöneticinin "Kanıtsız kapat" penceresi denenir; neden yazılmadan kapatılamaz.</p>
+    <div class="stage">
+      <div class="order">
+        <div class="notif" id="notif">
+          <div class="ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.2 4.2L19 7"/></svg></div>
+          <div><div class="a">Sipariş teslim edildi · #2041</div><div class="b" id="notifB">Teslim alan: Ayşe Y. · 14:32</div></div>
+        </div>
+        <div class="hero"><div class="kk">SİPARİŞ #2041</div><h1>Zirkonya köprü</h1><div class="meta" id="heroMeta">Örnek Diş Kliniği · Teslim edildi</div></div>
+        <div class="lcard">
+          <div class="lhead">Lojistik</div>
+          <div class="leg">
+            <div class="legtop"><span class="chip g" id="legChip">TESLİM EDİLDİ</span><span class="n" id="legName">Kliniğe teslim · Mehmet K.</span><span class="m" id="legTime">27 Eki 14:32</span></div>
+            <div id="legProof"></div>
+          </div>
+          <div class="leg">
+            <div class="legtop"><span class="chip g">TESLİM EDİLDİ</span><span class="n">Ölçü alma · Mehmet K.</span><span class="m">21 Eki 10:05</span></div>
+            <button class="proof press" data-open="labonly">
+              <span class="thumb" data-origin></span>
+              <span class="tx"><div class="a">Lab'a teslim edildi</div><div class="b">Fotoğraf</div></span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="layer fixed" id="pLayer">
+      <div class="scrim" data-pclose></div>
+      <div class="sheet" id="pSheet" role="dialog" aria-modal="true" aria-labelledby="pT">
+        <div class="shead">
+          <div><div class="t" id="pT">Teslim kanıtı</div><div class="s" id="pS">Kliniğe teslim · #2041</div></div>
+          <button class="x press" data-pclose aria-label="Kapat"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        </div>
+        <div class="sbody" id="pBody" style="padding-bottom:18px"></div>
+        <div class="sfoot" id="pFoot" style="display:none">
+          <button class="cta amber press" id="ovrGo" aria-disabled="true">Kanıtsız kapat</button>
+          <div class="hint" id="ovrHint">Nedeni yazın; klinik de görür</div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const RM = matchMedia('(prefers-reduced-motion: reduce)');
+const haptic = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} };
+
+/* ── Yay (spring): sönüm oranı + tepki süresi; her zaman ŞU ANKİ değer ve hızdan devam eder ── */
+function Spring(value, { response = 0.34, damping = 1 } = {}) {
+  const s = { value, v: 0, target: value, raf: 0, cbs: [], done: null };
+  const k = Math.pow(2 * Math.PI / response, 2), c = 4 * Math.PI * damping / response;
+  let last = 0;
+  function step(t) {
+    const dt = Math.min(0.032, last ? (t - last) / 1000 : 1 / 60); last = t;
+    const a = -k * (s.value - s.target) - c * s.v;
+    s.v += a * dt; s.value += s.v * dt;
+    if (Math.abs(s.v) < 0.002 && Math.abs(s.value - s.target) < 0.0008) { s.value = s.target; s.v = 0; }
+    s.cbs.forEach(f => f(s.value));
+    if (s.v === 0 && s.value === s.target) { s.raf = 0; const d = s.done; s.done = null; d && d(); return; }
+    s.raf = requestAnimationFrame(step);
+  }
+  s.to = (target, done) => { s.target = target; s.done = done || null; if (RM.matches) { s.value = target; s.v = 0; s.cbs.forEach(f => f(s.value)); s.done && s.done(); s.done = null; return; } if (!s.raf) { last = 0; s.raf = requestAnimationFrame(step); } };
+  s.on = f => (s.cbs.push(f), s);
+  return s;
+}
+
+/* Basış: pointerdown'da hemen küçül */
+document.addEventListener('pointerdown', e => { const p = e.target.closest('.press'); if (p) p.classList.add('down'); });
+['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => document.addEventListener(ev, () => document.querySelectorAll('.press.down').forEach(p => p.classList.remove('down')), true));
+
+/* ── Tetikleyiciye bağlı pencere: açılış/kapanış aynı yoldan, yarıda tersine çevrilebilir ── */
+function Dialog(layer, sheet, { onClosed } = {}) {
+  const scrim = layer.querySelector('.scrim');
+  const sp = Spring(0, { response: 0.36, damping: 1 });
+  let origin = null, opener = null;
+  sp.on(p => {
+    const q = Math.max(0, Math.min(1, p));
+    scrim.style.opacity = q;
+    const blur = (q * 8).toFixed(1);
+    scrim.style.backdropFilter = scrim.style.webkitBackdropFilter = matchMedia('(prefers-reduced-transparency: reduce)').matches ? 'none' : `blur(${blur}px)`;
+    if (RM.matches || !origin) { sheet.style.transform = 'none'; sheet.style.opacity = q; return; }
+    const sx = origin.s + (1 - origin.s) * p;
+    sheet.style.transform = `translate(${origin.dx * (1 - p)}px, ${origin.dy * (1 - p)}px) scale(${sx})`;
+    sheet.style.opacity = Math.min(1, q * 2.2);
+  });
+  function measure(trigger) {
+    if (!trigger) return null;
+    sheet.style.transform = 'none';
+    const r = trigger.getBoundingClientRect(), c = sheet.getBoundingClientRect();
+    return { dx: (r.left + r.width / 2) - (c.left + c.width / 2), dy: (r.top + r.height / 2) - (c.top + c.height / 2), s: Math.max(0.12, Math.min(0.5, r.width / c.width)) };
+  }
+  return {
+    open(trigger) {
+      opener = trigger; layer.classList.add('on');
+      if (sp.value < 0.02) origin = measure(trigger);
+      sp.to(1, () => { const f = sheet.querySelector('input, textarea'); });
+      setTimeout(() => sheet.querySelector('.x').focus({ preventScroll: true }), 20);
+    },
+    close() {
+      sp.to(0, () => { layer.classList.remove('on'); onClosed && onClosed(); opener && opener.focus && opener.focus({ preventScroll: true }); });
+    },
+    get isOpen() { return sp.target === 1; },
+  };
+}
+
+/* Kaydırma kenarı: sert çizgi yerine yalnız içerik altından geçerken solan maske */
+function edges(sheet, body) {
+  const f = () => { sheet.classList.toggle('scrolled', body.scrollTop > 2); sheet.classList.toggle('more', body.scrollTop + body.clientHeight < body.scrollHeight - 2); };
+  body.addEventListener('scroll', f, { passive: true }); new ResizeObserver(f).observe(body); return f;
+}
+
+function seg(id, cb) {
+  const el = $(id);
+  el.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    el.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
+    cb(b);
+  });
+}
+seg('#view', b => { $('#v-courier').hidden = b.dataset.v !== 'courier'; $('#v-order').hidden = b.dataset.v !== 'order'; });
+
+const BOX = '<svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7.5L12 3l8.5 4.5v9L12 21l-8.5-4.5z"/><path d="M3.5 7.5L12 12l8.5-4.5M12 12v9"/></svg>';
+const SIG = (w = 150) => `<svg width="${w}" height="${Math.round(w * .36)}" viewBox="0 0 150 54" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--ink2)"><path d="M8 40c10-22 18-30 22-24s-8 26-2 26 14-30 20-30-2 22 4 22 10-14 16-14 2 12 8 12 12-18 20-18 6 10 12 10 10-6 18-8"/></svg>`;
+const CHECK = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.2 4.2L19 7"/></svg>';
+
+/* ═════ KURYE ═════ */
+let dir = 'clinic', photo = false, signed = false, noSig = false, reason = '';
+const cDlg = Dialog($('#cLayer'), $('#cSheet'));
+const cEdges = edges($('#cSheet'), $('#cBody'));
+document.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', () => cDlg.close()));
+seg('#dir', b => { dir = b.dataset.d; resetCourier(); });
+
+function renderBar(state) {
+  if (state === 'done') return;
+  $('#bar').innerHTML = '<button class="cta green press" id="openSheet"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.2 4.2L19 7"/></svg>Teslim et</button>';
+  $('#openSheet').addEventListener('click', e => { cDlg.open(e.currentTarget); requestAnimationFrame(() => { sizeCanvas(); cEdges(); }); });
+}
+function resetCourier() {
+  photo = false; signed = false; reason = ''; strokes = [];
+  $('#destTitle').textContent = dir === 'lab' ? 'Laboratuvar' : 'Örnek Diş Kliniği';
+  $('#destCrumb').textContent = $('#destTitle').textContent;
+  $('#sS').textContent = (dir === 'lab' ? "Lab'a teslim" : 'Örnek Diş Kliniği') + ' · #2041';
+  $('#clinicOnly').style.display = dir === 'lab' ? 'none' : '';
+  $('#stChip').className = 'chip y'; $('#stChip').textContent = 'YOLDA';
+  $('#name').value = ''; $('#other').value = '';
+  setNoSig(false, true); redraw(); renderShot(); renderBar(); validate();
+}
+
+/* Fotoğraf: deklanşör ışığı + madde gibi yerine oturma + kısa titreşim (aynı karede) */
+function renderShot() {
+  const sh = $('#shot');
+  sh.classList.toggle('has', photo);
+  sh.innerHTML = photo
+    ? `<div class="photo" id="ph">${BOX}</div><div class="flash" id="fl"></div><span class="pill l">14:32</span><button class="pill r press" id="retake">Yeniden çek</button>`
+    : `<div class="in"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.8l1.2-2h7l1.2 2h1.8A2.5 2.5 0 0 1 21 8.5v9A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5z"/><circle cx="12" cy="13" r="3.6"/></svg>Fotoğraf çek<span class="sub">Paket ve bırakıldığı yer görünsün</span></div>`;
+  if (photo) $('#retake').addEventListener('click', e => { e.stopPropagation(); photo = false; renderShot(); validate(); });
+}
+function capture() {
+  if (photo) return;
+  photo = true; renderShot(); haptic(8);
+  const ph = $('#ph'), fl = $('#fl');
+  const s = Spring(0, { response: 0.42, damping: 1 }).on(p => { ph.style.transform = `scale(${1.06 - 0.06 * p})`; ph.style.filter = `blur(${(1 - p) * 6}px)`; fl.style.opacity = Math.max(0, 0.85 - p * 1.6); });
+  s.to(1);
+  validate(true);
+}
+$('#shot').addEventListener('click', capture);
+$('#shot').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); capture(); } });
+
+/* İmza: 1:1 takip, hızla incelen çizgi, yumuşatılmış eğri; "Temizle" geri alınabilir */
+const cv = $('#cv'), ctx = cv.getContext('2d');
+let strokes = [], cur = null, undoStack = null, toastT = 0;
+function sizeCanvas() {
+  const r = cv.getBoundingClientRect(); if (!r.width) return;
+  const d = devicePixelRatio || 1; cv.width = r.width * d; cv.height = r.height * d; ctx.setTransform(d, 0, 0, d, 0, 0); redraw();
+}
+function drawStroke(st) {
+  ctx.strokeStyle = getComputedStyle(document.body).color; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (let i = 1; i < st.length; i++) {
+    const a = st[i - 1], b = st[i], m0 = i > 1 ? mid(st[i - 2], a) : a, m1 = mid(a, b);
+    ctx.lineWidth = b.w; ctx.beginPath(); ctx.moveTo(m0.x, m0.y); ctx.quadraticCurveTo(a.x, a.y, m1.x, m1.y); ctx.stroke();
+  }
+}
+const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+function redraw() { ctx.clearRect(0, 0, cv.width, cv.height); strokes.forEach(drawStroke); signed = strokes.length > 0; $('#padPh').style.display = signed ? 'none' : ''; $('#clr').style.display = signed ? '' : 'none'; }
+function pt(e, prev) {
+  const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, t = performance.now();
+  let w = 2.6;
+  if (prev) { const sp = Math.hypot(x - prev.x, y - prev.y) / Math.max(1, t - prev.t); w = Math.max(1.3, Math.min(3.2, 3.2 - sp * 1.1)); w = prev.w * 0.6 + w * 0.4; }
+  return { x, y, t, w };
+}
+cv.addEventListener('pointerdown', e => { if (noSig) return; try { cv.setPointerCapture(e.pointerId); } catch (_) {} cur = [pt(e)]; strokes.push(cur); });
+cv.addEventListener('pointermove', e => {
+  if (!cur) return;
+  const co = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+  const evs = co.length ? co : [e];
+  evs.forEach(ev => cur.push(pt(ev, cur[cur.length - 1])));
+  redraw(); if (strokes.length === 1 && cur.length === 3) validate(true);
+});
+const endStroke = () => { if (cur && cur.length < 2) strokes.pop(); cur = null; redraw(); validate(true); };
+cv.addEventListener('pointerup', endStroke); cv.addEventListener('pointercancel', endStroke);
+$('#clr').addEventListener('click', () => {
+  undoStack = strokes; strokes = []; redraw(); validate(true);
+  showToast('İmza silindi', () => { strokes = undoStack; redraw(); validate(true); });
+});
+function showToast(text, undo) {
+  const t = $('#toast'); $('#toastTx').textContent = text; t.style.display = 'flex';
+  $('#toastUndo').onclick = () => { undo(); t.style.display = 'none'; };
+  clearTimeout(toastT); toastT = setTimeout(() => { t.style.display = 'none'; }, 4000);
+}
+$('#name').addEventListener('input', () => validate(true));
+
+/* İmza alınamadı: iOS anahtarı (yaylı düğme) + nedenlerin açılması */
+const knob = Spring(0, { response: 0.3, damping: 0.86 }).on(p => { $('#knob').style.transform = `translateX(${p * 20}px)`; });
+const rev = Spring(0, { response: 0.34, damping: 1 }).on(p => { const h = $('#reveal').scrollHeight; $('#reveal').style.height = (Math.max(0, p) * h) + 'px'; $('#reveal').style.opacity = Math.max(0, Math.min(1, p)); });
+function setNoSig(v, silent) {
+  noSig = v; $('#noSig').setAttribute('aria-checked', String(v));
+  knob.to(v ? 1 : 0); rev.to(v ? 1 : 0, () => { if (v) $('#reveal').style.height = 'auto'; });
+  $('#pad').classList.toggle('off', v);
+  if (!v) { reason = ''; $('#reasons').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', 'false')); $('#other').style.display = 'none'; }
+  if (!silent) validate(true);
+}
+$('#noSig').addEventListener('click', () => setNoSig(!noSig));
+$('#noSig').addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); setNoSig(!noSig); } });
+$('#reasons').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  $('#reasons').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
+  reason = b.textContent; $('#other').style.display = reason === 'Diğer' ? '' : 'none'; $('#reveal').style.height = 'auto';
+  if (reason === 'Diğer') $('#other').focus(); validate(true);
+});
+$('#other').addEventListener('input', () => validate(true));
+
+/* Satır içi doğrulama: neyin eksik olduğu hep görünür; düğme yalnız tamamlanınca canlanır */
+function setReq(el, state, label) {
+  const was = el.className; el.className = 'req' + (state ? ' ' + state : '');
+  el.innerHTML = (state === 'ok' ? CHECK : '') + label;
+  if (was !== el.className && state === 'ok' && !RM.matches) { const s = Spring(0.85, { response: 0.28, damping: 0.7 }).on(v => el.style.transform = `scale(${v})`); s.to(1); }
+}
+function validate() {
+  const hasName = $('#name').value.trim().length > 1;
+  const reasonOk = !!reason && (reason !== 'Diğer' || $('#other').value.trim().length > 2);
+  let ok = photo, hint = '';
+  const parts = dir === 'lab' ? [photo] : [photo, noSig ? true : hasName, noSig ? reasonOk : signed];
+  if (!photo) hint = 'Önce fotoğraf çekin';
+  else if (dir === 'clinic') {
+    if (noSig) { if (!reasonOk) { ok = false; hint = 'İmzanın neden alınamadığını seçin'; } }
+    else if (!hasName) { ok = false; hint = 'Teslim alanın adını yazın'; }
+    else if (!signed) { ok = false; hint = 'İmza alın ya da "İmza alınamadı"yı açın'; }
+  }
+  setReq($('#photoReq'), photo ? 'ok' : '', photo ? 'TAMAM' : 'ZORUNLU');
+  setReq($('#nameReq'), hasName ? 'ok' : '', hasName ? 'TAMAM' : (noSig ? 'İSTEĞE BAĞLI' : 'ZORUNLU'));
+  setReq($('#sigReq'), signed ? 'ok' : noSig ? 'warn' : '', signed ? 'TAMAM' : noSig ? 'ALINAMADI' : 'ZORUNLU');
+  $('#steps').innerHTML = parts.map(p => `<i class="${p ? 'on' : ''}"></i>`).join('');
+  $('#finish').setAttribute('aria-disabled', String(!ok)); $('#hint').textContent = ok ? (dir === 'lab' ? "Lab'a teslim · yalnız fotoğraf" : '') : hint;
+  return ok;
+}
+$('#finish').addEventListener('click', () => {
+  if (!validate()) { const h = $('#hint'); const s = Spring(-6, { response: 0.22, damping: 0.35 }).on(v => h.style.transform = `translateX(${v}px)`); s.to(0); haptic([6, 40, 6]); return; }
+  haptic(14);
+  const who = dir === 'lab' ? "Lab'a bırakıldı · fotoğraf kaydedildi" : (noSig ? 'İmza alınamadı · ' + (reason === 'Diğer' ? $('#other').value.trim() : reason) : 'Teslim alan: ' + $('#name').value.trim());
+  cDlg.close();
+  $('#stChip').className = 'chip g'; $('#stChip').textContent = 'TESLİM EDİLDİ';
+  $('#bar').innerHTML = `<div class="done"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.2 4.2L19 7"/></svg><div>Teslim edildi · 14:32</div><div style="font-weight:500;opacity:.85">${who}</div><a href="#" id="again" style="color:inherit;font-size:12px;margin-top:2px">Baştan dene</a></div>`;
+  $('#again').addEventListener('click', e => { e.preventDefault(); resetCourier(); });
+});
+window.addEventListener('resize', sizeCanvas);
+
+/* ═════ SİPARİŞ ═════ */
+let kase = 'own';
+const pDlg = Dialog($('#pLayer'), $('#pSheet'));
+const pEdges = edges($('#pSheet'), $('#pBody'));
+document.addEventListener('click', e => { if (e.target.closest('[data-pclose]')) pDlg.close(); });
+seg('#case', b => { kase = b.dataset.c; renderLeg(); });
+const CASES = {
+  own:   { leg: 'Kliniğe teslim · Mehmet K.', a: 'Teslim alan: Ayşe Y.', b: 'Fotoğraf · imza', notif: 'Teslim alan: Ayşe Y. · 14:32' },
+  nosig: { leg: 'Kliniğe teslim · Mehmet K.', a: 'İmza alınamadı', b: 'Resepsiyonda kimse yoktu · fotoğraf var', warn: true, notif: 'İmza alınamadı · 14:32' },
+  bbk:   { leg: 'Kliniğe teslim · BanaBiKurye', a: 'Teslim alan: Ayşe Y.', b: "BanaBiKurye'den · varış 14:32", notif: '14:32', noMedia: true },
+  bbk0:  { leg: 'Kliniğe teslim · BanaBiKurye', none: 'BanaBiKurye bu teslim için kanıt göndermedi.', notif: '14:32' },
+  active:{ leg: 'Kliniğe teslim · Mehmet K.', active: true },
+  ovr:   { leg: 'Kliniğe teslim · Mehmet K.', ovr: true, notif: 'Kanıtsız kapatıldı · 16:05' },
+};
+function renderLeg() {
+  const c = CASES[kase];
+  $('#legName').textContent = c.leg;
+  $('#notif').style.display = c.active ? 'none' : '';
+  if (c.notif) $('#notifB').textContent = c.notif;
+  $('#legChip').className = 'chip ' + (c.active ? 'y' : 'g'); $('#legChip').textContent = c.active ? 'YOLDA' : 'TESLİM EDİLDİ';
+  $('#legTime').textContent = c.active ? 'Çıkış 13:50' : (c.ovr ? '27 Eki 16:05' : '27 Eki 14:32');
+  $('#heroMeta').textContent = 'Örnek Diş Kliniği · ' + (c.active ? 'Kuryede' : 'Teslim edildi');
+  const chev = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>';
+  if (c.none) { $('#legProof').innerHTML = `<div class="none">${c.none}</div>`; return; }
+  if (c.active) { $('#legProof').innerHTML = `<div class="mgr"><button class="plain press" id="ovrOpen"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v5M12 16.5v.5"/><path d="M10.3 3.9L2.6 17.2A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.8L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>Kanıtsız kapat</button></div>`; $('#ovrOpen').addEventListener('click', e => openOverride(e.currentTarget)); return; }
+  if (c.ovr) { $('#legProof').innerHTML = `<div class="ovr"><b>Kanıtsız kapatıldı</b> · Yönetici: Selin A.<br>Neden: Kuryenin telefonu kapandı; klinik telefonla teyit etti.</div>`; return; }
+  $('#legProof').innerHTML = `<button class="proof press" data-open="${kase}">${c.noMedia ? '<span data-origin></span>' : '<span class="thumb" data-origin></span>'}${kase === 'nosig' || c.noMedia ? '' : `<span class="thumb sig">${SIG(36)}</span>`}<span class="tx"><div class="a ${c.warn ? 'warnline' : ''}">${c.a}</div><div class="b">${c.b}</div></span>${chev}</button>`;
+}
+renderLeg();
+document.addEventListener('click', e => { const b = e.target.closest('[data-open]'); if (b) openProof(b.dataset.open, b.querySelector('[data-origin]') || b); });
+function openProof(k, from) {
+  const lab = k === 'labonly', bbk = k === 'bbk', nosig = k === 'nosig';
+  $('#pT').textContent = 'Teslim kanıtı';
+  $('#pS').textContent = (lab ? "Lab'a teslim · Ölçü alma" : 'Kliniğe teslim') + ' · #2041';
+  let h = bbk ? '' : `<div class="big"><div class="photo">${BOX}<span class="pill l">${lab ? '21 Eki 10:05' : '27 Eki 14:32'}</span></div></div>`;
+  if (bbk) h += `<div class="none" style="margin-top:0">BanaBiKurye fotoğraf ve imza göndermedi; teslim alanın adı ve varış saati geldi.</div>`;
+  else if (!lab) h += nosig
+    ? `<div class="sigbox" style="color:var(--amberInk);font:600 13px/1.35 Inter,system-ui;text-align:center;padding:0 16px">İmza alınamadı<br><span style="font-weight:500;color:var(--ink3)">Resepsiyonda kimse yoktu</span></div>`
+    : `<div class="sigbox">${SIG(170)}</div>`;
+  if (bbk) h += `<span class="src">Kanıt BanaBiKurye'den geldi</span>`;
+  h += `<div style="margin-top:10px">`;
+  if (!lab) h += `<div class="kv"><span>Teslim alan</span><span>${nosig ? '—' : 'Ayşe Y.'}</span></div>`;
+  h += `<div class="kv"><span>Saat</span><span>${lab ? '21 Eki 2026 · 10:05' : '27 Eki 2026 · 14:32'}</span></div>`;
+  h += `<div class="kv"><span>Kurye</span><span>${bbk ? 'BanaBiKurye · Can D.' : 'Mehmet K.'}</span></div></div>`;
+  $('#pBody').innerHTML = h; $('#pFoot').style.display = 'none';
+  pDlg.open(from); requestAnimationFrame(pEdges);
+}
+function openOverride(from) {
+  $('#pT').textContent = 'Kanıtsız kapat';
+  $('#pS').textContent = 'Kliniğe teslim · Mehmet K. · #2041';
+  $('#pBody').innerHTML = `<p class="muted" style="margin-top:2px;line-height:1.5">Kurye fotoğraf çekemediyse teslimi siz kapatabilirsiniz. Siparişte "Kanıtsız kapatıldı", adınız ve yazdığınız neden görünür; klinik de görür.</p>
+    <div class="lbl">Neden <span class="req" id="ovrReq">ZORUNLU</span></div>
+    <textarea class="f" id="ovrTx" placeholder="Örn. kuryenin telefonu kapandı, klinik telefonla teyit etti"></textarea>`;
+  $('#pFoot').style.display = ''; $('#ovrGo').setAttribute('aria-disabled', 'true'); $('#ovrHint').textContent = 'Nedeni yazın; klinik de görür';
+  $('#ovrTx').addEventListener('input', () => { const ok = $('#ovrTx').value.trim().length > 5; $('#ovrGo').setAttribute('aria-disabled', String(!ok)); setReq($('#ovrReq'), ok ? 'ok' : '', ok ? 'TAMAM' : 'ZORUNLU'); $('#ovrHint').textContent = ok ? '' : 'Nedeni yazın; klinik de görür'; });
+  pDlg.open(from); requestAnimationFrame(pEdges);
+}
+$('#ovrGo').addEventListener('click', () => {
+  if ($('#ovrGo').getAttribute('aria-disabled') === 'true') { const h = $('#ovrHint'); Spring(-6, { response: 0.22, damping: 0.35 }).on(v => h.style.transform = `translateX(${v}px)`).to(0); return; }
+  haptic(14); pDlg.close();
+  CASES.ovr = { ...CASES.ovr }; const tx = $('#ovrTx').value.trim();
+  kase = 'ovr'; document.querySelectorAll('#case button').forEach(x => x.setAttribute('aria-pressed', x.dataset.c === 'ovr' ? 'true' : 'false'));
+  renderLeg(); $('#legProof .ovr').innerHTML = `<b>Kanıtsız kapatıldı</b> · Yönetici: Selin A.<br>Neden: ${tx.replace(/</g, '&lt;')}`;
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { cDlg.isOpen && cDlg.close(); pDlg.isOpen && pDlg.close(); } });
+
+resetCourier();
+</script>
+</body>
+</html>

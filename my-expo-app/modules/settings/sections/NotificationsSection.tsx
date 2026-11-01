@@ -19,8 +19,9 @@ import {
   ClipboardList, RefreshCw, MessageCircle, CheckCircle,
   CreditCard, Package, Truck, Camera, Wrench,
   Mail, Smartphone, Bell, BellOff, Volume2, AlertTriangle,
-  Shield, Check, X, AlarmClock, ClipboardCheck, PenLine,
+  Shield, Check, X, AlarmClock, ClipboardCheck, PenLine, Calendar,
 } from '../../../core/ui/icons';
+import { useFeature } from '../../../core/store/featureFlagsStore';
 import { supabase } from '../../../core/api/supabase';
 import { toE164 } from '../../../core/utils/format';
 import {
@@ -59,6 +60,7 @@ const ALL_GROUPS: {
       { key: 'order_status', icon: RefreshCw,     label: 'Sipariş Durumu',       sub: 'Aşama veya statü değiştiğinde' },
       { key: 'order_watch',  icon: AlarmClock,    label: 'Günlük İş Takibi',     sub: 'Her gün geciken + beklemedeki işler' },
       { key: 'stock_count',  icon: ClipboardCheck, label: 'Stok Sayımı',          sub: 'Sayım zamanı geldiğinde / taslak yarım kaldığında' },
+      { key: 'scan_schedule', icon: Calendar,      label: 'Tarama Programı',      sub: 'Sabah bugünün, akşam yarının tarama randevuları' },
       { key: 'stage_critical', icon: CheckCircle,  label: 'Kritik Aşama',         sub: 'Kritik bir aşama tamamlandığında' },
       { key: 'paper_order',  icon: Camera,        label: 'Kağıt Inbox',          sub: 'OCR sonrası bekleyen sipariş' },
       { key: 'approval',     icon: CheckCircle,   label: 'Onay Bekleyenler',     sub: 'Tasarım/üretim onayı gerektiğinde' },
@@ -98,6 +100,7 @@ function getGroupsForRole(userType?: string | null, role?: string | null) {
     'stock_count',       // stok sayımı hatırlatma — lab içi
     'material_request',  // sarf/alet talebi — lab içi
     'order_watch',       // günlük geciken/beklemede digest — yalnız admin/lab-manager
+    'scan_schedule',     // tarama programı — lab içi
   ]);
 
   // Teknisyen için gereksiz kategoriler — finans/yönetim odaklı olanlar
@@ -212,7 +215,11 @@ export function NotificationsSection({ accentColor }: Props) {
   const userId   = useAuthStore(s => s.profile?.id ?? null);
   const userType = useAuthStore(s => s.profile?.user_type ?? null);
   const userRole = useAuthStore(s => (s.profile as any)?.role ?? null);
-  const GROUPS = React.useMemo(() => getGroupsForRole(userType, userRole), [userType, userRole]);
+  // Tarama programı satırı yalnız 'scan_appointments' özelliği açık lab'da görünür
+  const scanOn = useFeature('scan_appointments');
+  const GROUPS = React.useMemo(() => getGroupsForRole(userType, userRole)
+    .map(g => ({ ...g, items: g.items.filter(it => scanOn || it.key !== 'scan_schedule') }))
+    .filter(g => g.items.length > 0), [userType, userRole, scanOn]);
 
   const waDirty = waPhone.trim() !== (profileWa ?? '').trim();
   const saveWaPhone = async () => {

@@ -3,6 +3,10 @@
 // Tüm sorgular savunmacı (hata → boş), pano asla çökmesin.
 
 import { supabase } from '../../core/api/supabase';
+import { patientInitials } from '../orders/lib/workLabel';
+import { boardClinicName, doctorIdsNeedingClinic } from './lib/boardClinic';
+import { isOverdueOrder, labTodayOf } from '../../core/metrics/orderDefs';
+import { loadLabTz } from '../../core/metrics/useLabToday';
 
 // ── İstasyon kiosk (Faz 2): teknisyenin işleri ──────────────────────
 export type KioskJob = {
@@ -36,7 +40,7 @@ export async function fetchMyStationJobs(technicianId: string): Promise<KioskJob
     stageId:      r.id,
     workOrderId:  r.work_order?.id ?? '',
     orderNumber:  r.work_order?.order_number ?? '—',
-    patient:      r.work_order?.patient_name ?? null,
+    patient:      patientInitials(r.work_order?.patient_name) || null, // KVKK: pano/kiosk ekranında baş harf
     deliveryDate: r.work_order?.delivery_date ?? null,
     station:      r.station?.name ?? '—',
     status:       r.status,
@@ -86,13 +90,13 @@ export function stationToFlow(name: string | null | undefined): string {
 export type FlowStage = { key: string; label: string; count: number; active: number };
 
 export type ActiveJob = {
-  id: string; orderNumber: string; patient: string | null; caseType: string | null;
+  id: string; orderNumber: string; patient: string | null; clinic: string | null; caseType: string | null;
   stage: string; stageIndex: number; technician: string | null; startedAt: string | null;
 };
 
 export type AttentionKind = 'overdue' | 'blocked' | 'approval' | 'paused' | 'urgent';
 export type AttentionItem = {
-  id: string; orderNumber: string; patient: string | null; caseType: string | null;
+  id: string; orderNumber: string; patient: string | null; clinic: string | null; caseType: string | null;
   kind: AttentionKind; daysLate: number; reason: string | null;
 };
 
@@ -134,18 +138,22 @@ const WO_STATUS_LABEL: Record<string, string> = {
  */
 export async function fetchBoard(): Promise<BoardData> {
   const todayISO = todayStartISO();
-  const todayDate = todayISO.slice(0, 10);
+  // Tek tanım (2026-10-26): lab günü. todayISO.slice(0,10) yerel gece yarısının UTC tarihiydi →
+  // TR'de DÜNÜ veriyordu, geciken eksik sayılıyordu.
+  const todayDate = labTodayOf(await loadLabTz());
 
-  const [woRes, stageRes, deliveredRes] = await Promise.all([
+  const [woRes, stageRes, deliveredRes, metricsRes] = await Promise.all([
     supabase.from('work_orders')
-      .select('id, order_number, patient_name, work_type, delivery_date, is_urgent, status, hold_reason, delay_reason')
+      .select('id, order_number, patient_name, doctor_id, work_type, delivery_date, is_urgent, status, hold_status, is_archived, hold_reason, delay_reason')
       .not('status', 'in', '(teslim_edildi,iptal)')
+      .or('is_archived.is.null,is_archived.eq.false')
       .limit(700),
     supabase.from('order_stages')
       .select('work_order_id, status, sequence_order, started_at, technician_id, station:lab_stations(name)')
       .in('status', OPEN_STATUSES)
       .limit(1500),
     supabase.from('deliveries').select('id', { count: 'exact', head: true }).not('work_order_id', 'is', null).eq('status', 'teslim_edildi').gte('delivered_at', todayISO),
+    supabase.rpc('order_metrics'),
   ]);
 
   const wos = (woRes.data ?? []) as any[];
@@ -166,12 +174,25 @@ export async function fetchBoard(): Promise<BoardData> {
     techMap = Object.fromEntries(((profs ?? []) as any[]).map(p => [p.id, p.full_name]));
   }
 
+  // Klinik adları hekimden çözülür (work_orders'ta klinik sütunu YOK; doctor_id polimorfik:
+  // doctors.id VEYA profiles.id; doctors önceliği) — tek toplu sorgu, hata → ad yok.
+  const clinicByDoctor = new Map<string, string | null>();
+  const needDoc = doctorIdsNeedingClinic(wos);
+  if (needDoc.length) {
+    const [docsRes, profsRes] = await Promise.all([
+      supabase.from('doctors').select('id, clinic:clinics(name)').in('id', needDoc),
+      supabase.from('profiles').select('id, clinic_name').in('id', needDoc),
+    ]);
+    for (const p of (profsRes.data ?? []) as any[]) clinicByDoctor.set(p.id, p.clinic_name ?? null);
+    for (const d of (docsRes.data ?? []) as any[]) if (d.clinic?.name) clinicByDoctor.set(d.id, d.clinic.name);
+  }
+
   // Her sipariş → GÜNCEL aşama (in-progress varsa o, yoksa en erken bekliyor, yoksa wo.status'a göre)
   type Cur = {
     wo: any; flowKey: string; stageStatus: string; stationName: string | null; stageLabel: string;
     technician: string | null; startedAt: string | null; overdue: boolean;
   };
-  const overdueOf = (dd: string | null) => !!dd && dd < todayDate;
+  const overdueOf = (wo: any) => isOverdueOrder(wo, todayDate);
   const flowLabel = (key: string) => FLOW.find(f => f.key === key)?.label ?? '—';
 
   const current: Cur[] = wos.map(wo => {
@@ -203,7 +224,7 @@ export async function fetchBoard(): Promise<BoardData> {
       flowKey = STATUS_FLOW[wo.status] ?? 'design'; stageStatus = 'queued';
       stationName = null; stageLabel = flowLabel(flowKey); technician = null; startedAt = null;
     }
-    return { wo, flowKey, stageStatus, stationName, stageLabel, technician, startedAt, overdue: overdueOf(wo.delivery_date) };
+    return { wo, flowKey, stageStatus, stationName, stageLabel, technician, startedAt, overdue: overdueOf(wo) };
   });
 
   // ── Zone 2: üretim hattı (her sipariş güncel aşamasında) ──
@@ -216,7 +237,8 @@ export async function fetchBoard(): Promise<BoardData> {
   const kpi = {
     active:  current.filter(c => c.stageStatus === 'aktif').length,
     waiting: current.filter(c => c.stageStatus === 'bekliyor' || c.stageStatus === 'queued').length,
-    delayed: current.filter(c => c.overdue).length,
+    // Geciken = order_metrics() (Özet ve listeyle aynı sayı); RPC gelmezse ekrandaki satırlardan.
+    delayed: Number((metricsRes.data as any)?.overdue ?? current.filter(c => c.overdue).length) || 0,
     deliveredToday: deliveredRes.count ?? 0,
   };
 
@@ -232,7 +254,8 @@ export async function fetchBoard(): Promise<BoardData> {
     .map(c => ({
     id: c.wo.id,
     orderNumber: c.wo.order_number ?? '—',
-    patient: c.wo.patient_name ?? null,
+    patient: patientInitials(c.wo.patient_name) || null,
+    clinic: boardClinicName(c.wo, clinicByDoctor),
     caseType: c.wo.work_type ?? null,
     stage: c.stageLabel,
     stageIndex: FLOW_INDEX[c.flowKey] ?? 0,
@@ -260,7 +283,8 @@ export async function fetchBoard(): Promise<BoardData> {
     .map(({ c, kind }) => ({
       id: c.wo.id,
       orderNumber: c.wo.order_number ?? '—',
-      patient: c.wo.patient_name ?? null,
+      patient: patientInitials(c.wo.patient_name) || null,
+      clinic: boardClinicName(c.wo, clinicByDoctor),
       caseType: c.wo.work_type ?? null,
       kind: kind!,
       daysLate: c.overdue ? daysLate(c.wo.delivery_date) : 0,

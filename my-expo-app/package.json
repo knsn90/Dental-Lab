@@ -43,7 +43,6 @@
     "expo-linking": "~55.0.15",
     "expo-localization": "~55.0.15",
     "expo-location": "~55.1.9",
-    "expo-modules-core": "~55.0.25",
     "expo-network": "~55.0.13",
     "expo-notifications": "~55.0.22",
     "expo-print": "~55.0.14",
@@ -95,5 +94,50 @@
     "@types/react": "~19.0.0",
     "@react-native/codegen": "0.83.6"
   },
-  "private": true
+  "private": true,
+  "expo": {
+    "doctor": {
+      "appConfigFieldsNotSyncedCheck": {
+        "enabled": false
+      }
+    },
+    "install": {
+      "exclude": [
+        "@types/react",
+        "@expo/metro-runtime",
+        "expo",
+        "expo-asset",
+        "expo-blur",
+        "expo-camera",
+        "expo-constants",
+        "expo-dev-client",
+        "expo-device",
+        "expo-document-picker",
+        "expo-file-system",
+        "expo-image-picker",
+        "expo-linking",
+        "expo-localization",
+        "expo-location",
+        "expo-modules-core",
+        "expo-network",
+        "expo-notifications",
+        "expo-print",
+        "expo-router",
+        "expo-secure-store",
+        "expo-sharing",
+        "expo-splash-screen",
+        "expo-status-bar",
+        "expo-system-ui",
+        "expo-task-manager",
+        "expo-updates",
+        "expo-web-browser",
+        "react-native",
+        "react-native-reanimated",
+        "react-native-safe-area-context",
+        "react-native-screens",
+        "react-native-svg",
+        "react-native-webview"
+      ]
+    }
+  }
 }

@@ -8,7 +8,9 @@
 
 import React from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
-import { Truck, ArrowLeft, ArrowRight, Plus, ChevronLeft, ChevronRight } from '../../../core/ui/icons';
+import { Truck, ArrowLeft, ArrowRight, Plus, ChevronLeft, ChevronRight, Printer } from '../../../core/ui/icons';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { isRTL } from '../../../core/i18n';
 import { DELIVERY_PURPOSE_LABELS, type DeliveryPurpose } from '../api';
 import { StaticRouteMap, legRouteAddresses } from './StaticRouteMap';
@@ -16,6 +18,10 @@ import { formatMoney } from '../../../core/money/currency';
 import { hexA } from '../../../core/theme/stationPalette';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { ProofRow } from '../../delivery/proof/ProofRow';
+import { ProofViewerModal } from '../../delivery/proof/ProofViewerModal';
+import { CloseWithoutProofModal } from '../../delivery/proof/CloseWithoutProofModal';
+import { measureOrigin, type OriginRect } from '../../delivery/proof/useAnchoredSpring';
 
 
 /** Teslimat durumu rozetleri — kurye takip ekranıyla aynı dil. */
@@ -41,6 +47,20 @@ export interface DeliveryLeg {
   fee_currency?: string | null;
   destination_address?: string | null;
   courier?: { full_name?: string | null } | null;
+  // Teslim kanıtı (2. dalga 5 — PROOF_SELECT)
+  delivered_at?: string | null;
+  ext_courier_name?: string | null;
+  recipient_name?: string | null;
+  recipient_title?: string | null;
+  signature_path?: string | null;
+  proof_photo_path?: string | null;
+  signature_skipped_reason?: string | null;
+  proof_source?: string | null;
+  proof_captured_at?: string | null;
+  proof_override_reason?: string | null;
+  proof_override_by_name?: string | null;
+  proof_override_at?: string | null;
+  provider_proof_checked_at?: string | null;
 }
 
 interface Props {
@@ -73,6 +93,17 @@ interface Props {
    * lojistik masrafı lab giderdir, müşteriye açılmaz.
    */
   clientView?: boolean;
+  /**
+   * Hareketin A6 gönderi fişini bas (kargoya / kutuya yapıştırılır). Verilmezse
+   * düğme çizilmez — yazdırma yalnız web'de; klinik/hekim görünümünde hiç yok.
+   */
+  onPrintLabel?: (leg: DeliveryLeg) => void;
+  /** Fişi hazırlanan hareket — düğmesi o sırada sönük ve basılamaz. */
+  printingLegId?: string | null;
+  /** Kanıt penceresinin alt başlığı için sipariş no. */
+  orderNumber?: string | null;
+  /** Yönetici kanıtsız kapattıktan sonra (realtime de yeniler). */
+  onProofChanged?: () => void;
 }
 
 const LIGHT_TONE = { label: '#9A9A9A', title: '#0A0A0A', muted: '#6B6B6B' };
@@ -89,9 +120,15 @@ export function OrderLogisticsCard({
   legs, accent, rowBg, isManager, canCall = true, onCall, onEditFee, fmtDate,
   frameless = false, tone,
   mapsApiKey, labAddress, clinicAddress, onOpenTracking, clientView = false,
+  onPrintLabel, printingLegId = null, orderNumber = null, onProofChanged,
 }: Props) {
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
+  // Teslim kanıtı görüntüleyici + yöneticinin "Kanıtsız kapat"ı (kapanış yayı için son bacak tutulur)
+  const [viewer, setViewer] = React.useState<{ leg: DeliveryLeg; origin: OriginRect | null } | null>(null);
+  const [viewerOpen, setViewerOpen] = React.useState(false);
+  const [noProof, setNoProof] = React.useState<{ leg: DeliveryLeg; origin: OriginRect | null } | null>(null);
+  const [noProofOpen, setNoProofOpen] = React.useState(false);
   // Çağıran tone geçmediyse: koyuda token-tabanlı, açıkta mevcut açık ton.
   const toneEff = tone ?? (isDark
     ? { label: T.ink3, title: T.ink, muted: T.ink2 }
@@ -240,6 +277,25 @@ export function OrderLogisticsCard({
                     {leg.stage_snapshot ? ` · ${leg.stage_snapshot}` : ''}
                     {' · '}{fmtDate(leg.created_at)}
                   </Text>
+                  {onPrintLabel && !clientView ? (
+                    <GlassTooltip title={autoT('Gönderi fişi')} text={autoT('Kargoya ya da kutuya yapıştırılacak A6 fişi basar')}>
+                      <Pressable
+                        onPress={() => onPrintLabel(leg)}
+                        disabled={printingLegId === leg.id}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel={autoT('Gönderi fişini yazdır')}
+                        style={({ hovered, pressed }: any) => ({
+                          width: 26, height: 26, borderRadius: 999, alignItems: 'center', justifyContent: 'center',
+                          backgroundColor: hovered ? hexA(accent, 0.12) : 'transparent',
+                          opacity: printingLegId === leg.id ? 0.4 : pressed ? 0.6 : 1,
+                          ...(Platform.OS === 'web' ? { cursor: printingLegId === leg.id ? 'default' : 'pointer' } as any : {}),
+                        })}
+                      >
+                        <Printer size={13} color={toneEff.muted} strokeWidth={1.9} />
+                      </Pressable>
+                    </GlassTooltip>
+                  ) : null}
                   {/* Ücret: klinik/hekimde HİÇ gösterilmez (lab gideri). Yönetici düzenler,
                       diğer lab kullanıcıları salt-okunur görür. */}
                   {clientView ? null : isManager ? (
@@ -252,6 +308,12 @@ export function OrderLogisticsCard({
                     !!fee && <Text style={{ fontSize: 11.5, fontWeight: '600', color: toneEff.title }}>{fee}</Text>
                   )}
                 </View>
+
+                {/* Teslim kanıtı (2. dalga 5) — türü yoksa hiçbir şey çizilmez */}
+                <ProofRow leg={leg as any} onOpen={(origin) => { setViewer({ leg, origin }); setViewerOpen(true); }} />
+                {isManager && !clientView && leg.mode === 'internal' && leg.status !== 'teslim_edildi' && leg.status !== 'iptal' ? (
+                  <NoProofButton accent={accent} onOpen={(origin) => { setNoProof({ leg, origin }); setNoProofOpen(true); }} />
+                ) : null}
 
                 {/* Rota önizlemesi yalnız en son kurye hareketinde. Anahtar ya da
                     adres yoksa bileşen kendini zaten gizler. */}
@@ -278,6 +340,21 @@ export function OrderLogisticsCard({
         </View>
       )}
 
+      <ProofViewerModal
+        visible={viewerOpen}
+        onClose={() => setViewerOpen(false)}
+        leg={(viewer?.leg ?? null) as any}
+        origin={viewer?.origin ?? null}
+        orderNumber={orderNumber}
+      />
+      <CloseWithoutProofModal
+        visible={noProofOpen}
+        onClose={() => setNoProofOpen(false)}
+        deliveryId={noProof?.leg.id ?? null}
+        subtitle={[noProof?.leg.courier?.full_name, orderNumber ? `#${orderNumber}` : null].filter(Boolean).join(' · ')}
+        origin={noProof?.origin ?? null}
+        onClosed={() => onProofChanged?.()}
+      />
     </>
   );
 
@@ -289,6 +366,30 @@ export function OrderLogisticsCard({
       borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.06)', padding: 20,
     }}>
       {body}
+    </View>
+  );
+}
+
+/** Yönetici: kendi kurye teslimatını gerekçeli kanıtsız kapatma düğmesi (pencere buradan açılır). */
+function NoProofButton({ accent, onOpen }: { accent: string; onOpen: (origin: OriginRect | null) => void }) {
+  const ref = React.useRef<any>(null);
+  return (
+    <View style={{ flexDirection: 'row', marginTop: 10 }}>
+      <GlassTooltip title={autoT('Kanıtsız kapat')} text={autoT('Kurye kanıt alamadıysa nedeniyle kapat')}>
+        <Pressable
+          ref={ref}
+          onPress={() => measureOrigin(ref.current, onOpen)}
+          accessibilityRole="button"
+          accessibilityLabel={autoT('Kanıtsız kapat')}
+          style={({ pressed }: any) => ({
+            flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
+            backgroundColor: hexA(accent, 0.10), transform: [{ scale: pressed ? 0.97 : 1 }],
+            ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+          })}
+        >
+          <Text style={{ fontSize: 12, fontWeight: '600', color: accent }}>{autoT('Kanıtsız kapat')}</Text>
+        </Pressable>
+      </GlassTooltip>
     </View>
   );
 }

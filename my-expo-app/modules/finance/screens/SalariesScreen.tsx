@@ -28,12 +28,16 @@ import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { groupByCurrency, type CurrencyTotal } from '../../../core/money/aggregations';
 import { MoneyMultiX } from '../../../core/money/MoneyMultiX';
+import { MobileTableX, MobileTableRowX, MobileTableIconX, MobileTableInitialX, useMobileTableText } from '../../../core/ui/MobileTableX';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
+import { useInkUI } from '../../../core/theme/inkScale';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { formatMoney, CURRENCY_META, SUPPORTED_CURRENCIES, type Currency } from '../../../core/money/currency';
 import { EmployeeStatementModal, type StatementEmployee } from '../components/EmployeeStatementModal';
 
 const DISPLAY = { fontFamily: 'Inter Tight, Inter, system-ui, sans-serif', fontWeight: '300' as const };
 // Katı per-currency: tutar KENDİ para biriminde.
-const fmtMoney = (n: number, currency: string = 'TRY') => formatMoney(Number(n) || 0, (currency as Currency), { fractionDigits: 0 });
+const fmtMoney = (n: number | null | undefined, currency: string = 'TRY') => formatMoney(Number(n) || 0, (currency as Currency), { fractionDigits: 0 });
 
 interface EmpRow extends Employee {
   total_paid?: number;
@@ -60,6 +64,8 @@ export function SalariesScreen() {
   const insets = useSafeAreaInsets();
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
+  const U = useInkUI();
+  const MT = useMobileTableText();
   // Koyu temada hero accent yerine lacivert gradyana iner; açık temada accent birebir korunur.
   const heroInk = useWhiteHeroInk(PANEL_PRIMARY);
   const LS_KEY = 'salaries_screen_v1';
@@ -85,7 +91,8 @@ export function SalariesScreen() {
   const load = async (silent = false) => {
     if (!silent) setLoading(true);
     const [empsRes, paysRes, ccyRes] = await Promise.all([
-      supabase.from('employees')
+      // Maaş tek kaynak: görünüm maaşı employee_compensation'dan getirir (yalnız maaş yetkisi)
+      supabase.from('v_employee_summary')
         .select('id, full_name, role, base_salary, is_active')
         // Pasif personel de finansta görünür (maaş geçmişi korunur) — aktifler üstte.
         .order('is_active', { ascending: false })
@@ -174,7 +181,7 @@ export function SalariesScreen() {
           (salaryRest.length ? ` · ${salaryRest.length + 1} para birimi` : '')
         }
         stats={[
-          { value: String(activeCount),   label: 'Personel' },
+          { value: String(activeCount),   label: 'Aktif personel' },
           { value: String(recent.length), label: 'Ödeme' },
           { value: String(salaryAllByCcy.length || 1), label: 'Para Birimi' },
         ]}
@@ -186,11 +193,8 @@ export function SalariesScreen() {
         )}
       </WhiteHero>
 
-      {/* Ekip listesi */}
-      <View style={{ backgroundColor: T.card, borderRadius: 16, borderWidth: 1, borderColor: T.hairline, overflow: 'hidden' }}>
-        <View style={{ paddingHorizontal: 16, paddingVertical: 14, backgroundColor: PANEL_PRIMARY }}>
-          <Text style={{ ...DISPLAY, fontSize: 18, color: tblInk }}>Ekip ve Maaş Durumu</Text>
-        </View>
+      {/* Ekip listesi — ekstre / giderler mobil tablosuyla aynı kalıp */}
+      <MobileTableX title="Ekip ve Maaş Durumu" count={employees.length} countLabel="kişi" accent={PANEL_PRIMARY}>
         {employees.length === 0 ? (
           <View style={{ padding: 32, alignItems: 'center', gap: 8 }}>
             <Wallet size={28} color={T.ink3} strokeWidth={1.5} />
@@ -200,64 +204,66 @@ export function SalariesScreen() {
           employees.map((e, i) => {
             const isPassive = (e as any).is_active === false;
             return (
-            <View key={e.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: i < employees.length - 1 ? 1 : 0, borderBottomColor: T.hairline2, opacity: isPassive ? 0.62 : 1 }}>
-              <View style={{ flexShrink: 0, width: 38, height: 38, borderRadius: 19, backgroundColor: isPassive ? T.hairline2 : (isDark ? 'rgba(167,139,250,0.22)' : '#7C3AED15'), alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: isPassive ? T.ink3 : (isDark ? '#C4B5FD' : '#7C3AED') }}>{(e.full_name?.[0] ?? '?').toUpperCase()}</Text>
-              </View>
-              {/* Ad + meta bloğu: flex:1 + minWidth → dar ekranda kelime-kelime sarılmak
-                  yerine gerçek genişliği kullanır; sığmazsa sağdaki kontroller alt satıra iner. */}
-              <View style={{ flex: 1, minWidth: 150 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={{ fontSize: 14, fontWeight: '600', color: T.ink }} numberOfLines={1}>{e.full_name}</Text>
-                  {isPassive && (
-                    <View style={{ paddingHorizontal: 7, paddingVertical: 1, borderRadius: 999, backgroundColor: T.hairline2 }}>
-                      <Text style={{ fontSize: 9, fontWeight: '700', color: T.ink3, letterSpacing: 0.3 }}>PASİF</Text>
-                    </View>
-                  )}
+              <MobileTableRowX key={e.id} isLast={i === employees.length - 1}>
+                <View style={{ opacity: isPassive ? 0.62 : 1 }}>
+                  <MobileTableInitialX name={e.full_name} muted={isPassive}
+                    tone={{ bg: isDark ? 'rgba(167,139,250,0.22)' : '#7C3AED15', fg: isDark ? '#C4B5FD' : '#7C3AED' }} />
                 </View>
-                <Text style={{ fontSize: 12, color: T.ink3, marginTop: 2 }}>
-                  {ROLE_LABELS[e.role]} · Maaş: {fmtMoney(e.base_salary)}
-                  {e.last_payment ? `  ·  Son: ${MONTH_NAMES[e.last_payment.month - 1]} ${e.last_payment.year}` : '  ·  ödeme yok'}
-                </Text>
-              </View>
-              {/* Sağ blok tek parça: kendi arasında sıkışmaz, gerekirse toptan alt satıra iner. */}
-              <View style={{ flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <View style={{ alignItems: 'flex-end', flexShrink: 0 }}>
-                  <Text style={{ fontSize: 11, color: T.ink3 }}>Toplam ödenen</Text>
+                <View style={{ flex: 1, minWidth: 0, opacity: isPassive ? 0.62 : 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={[MT.title, { flexShrink: 1 }]} numberOfLines={1}>{e.full_name}</Text>
+                    {isPassive && (
+                      <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: T.hairline2 }}>
+                        <Text style={{ fontSize: 9, fontWeight: '700', color: T.ink3, letterSpacing: 0.3 }}>PASİF</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={MT.sub} numberOfLines={1}>
+                    {autoT(ROLE_LABELS[e.role] ?? e.role)} · {autoT('Maaş')} {fmtMoney(e.base_salary)}
+                  </Text>
+                  <Text style={[MT.meta, { marginTop: 2 }]} numberOfLines={1}>
+                    {e.last_payment
+                      ? `${autoT('Son ödeme')}: ${autoT(MONTH_NAMES[e.last_payment.month] ?? '')} ${e.last_payment.year}`
+                      : autoT('Ödeme yok')}
+                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 }}>
+                    <GlassTooltip title={autoT('Döküm')} text={autoT('Personelin maaş dökümünü açar')}>
+                      {/* Object style — fonksiyon-stilli Pressable native'de row layout'u düşürüyor. */}
+                      <Pressable
+                        onPress={() => setStatementOf(e as StatementEmployee)}
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', gap: 4,
+                          paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999,
+                          borderWidth: 1, borderColor: U.plainBtn.border,
+                          backgroundColor: U.plainBtn.bg,
+                          ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+                        }}
+                      >
+                        <FileText size={12} color={U.plainBtn.fgMuted} strokeWidth={1.8} />
+                        <Text style={{ fontSize: 11, fontWeight: '500', color: U.plainBtn.fg }}>Döküm</Text>
+                      </Pressable>
+                    </GlassTooltip>
+                    {/* İkiz tuzak: zemin koyu temada KREM olur → ikon da metinle aynı koyu tona iner. */}
+                    <GlassTooltip title={autoT('Maaş Öde')} text={autoT('Bu personele maaş ödemesi kaydeder')}>
+                      <Pressable onPress={() => setPayOpen(e)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999, backgroundColor: U.ink[900], ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}) }}>
+                        <Plus size={12} color={U.onDarkPill} strokeWidth={2} />
+                        <Text style={{ fontSize: 11, fontWeight: '600', color: U.onDarkPill }}>Maaş Öde</Text>
+                      </Pressable>
+                    </GlassTooltip>
+                  </View>
+                </View>
+                <View style={{ alignItems: 'flex-end', alignSelf: 'flex-start' }}>
+                  <Text style={{ fontSize: 10, color: T.ink3, marginBottom: 3 }}>Toplam ödenen</Text>
                   <MoneyMultiX slices={e.salaryByCcy ?? []} variant="inline" colorBySign={false} />
                 </View>
-                {/* Object style — fonksiyon-stilli Pressable native'de row layout'u düşürüyor. */}
-                <Pressable
-                  onPress={() => setStatementOf(e as StatementEmployee)}
-                  style={{
-                    flexShrink: 0,
-                    flexDirection: 'row', alignItems: 'center', gap: 4,
-                    paddingHorizontal: 11, paddingVertical: 8, borderRadius: 999,
-                    borderWidth: 1, borderColor: T.hairline,
-                    backgroundColor: 'transparent',
-                    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
-                  }}
-                >
-                  <FileText size={12} color={T.ink2} strokeWidth={1.8} />
-                  <Text style={{ fontSize: 12, fontWeight: '500', color: T.ink2 }}>Döküm</Text>
-                </Pressable>
-                {/* İkiz tuzak: zemin koyu temada KREM olur → ikon da metinle aynı koyu tona iner. */}
-                <Pressable onPress={() => setPayOpen(e)} style={{ flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: T.ink }}>
-                  <Plus size={12} color={isDark ? (T.bg as string) : '#FFFFFF'} strokeWidth={2} />
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: T.bg }}>Maaş Öde</Text>
-                </Pressable>
-              </View>
-            </View>
+              </MobileTableRowX>
             );
           })
         )}
-      </View>
+      </MobileTableX>
 
       {/* Son ödemeler */}
-      <View style={{ backgroundColor: T.card, borderRadius: 16, borderWidth: 1, borderColor: T.hairline, overflow: 'hidden' }}>
-        <View style={{ paddingHorizontal: 16, paddingVertical: 14, backgroundColor: PANEL_PRIMARY }}>
-          <Text style={{ ...DISPLAY, fontSize: 18, color: tblInk }}>Son Maaş Ödemeleri</Text>
-        </View>
+      <MobileTableX title="Son Maaş Ödemeleri" count={Math.min(recent.length, 20)} countLabel="kayıt" accent={PANEL_PRIMARY}>
         {recent.length === 0 ? (
           <View style={{ padding: 32, alignItems: 'center' }}>
             <Text style={{ fontSize: 13, color: T.ink3 }}>Henüz ödeme yok.</Text>
@@ -266,29 +272,34 @@ export function SalariesScreen() {
           recent.slice(0, 20).map((p, i) => {
             const emp = employees.find(e => e.id === p.employee_id);
             return (
-              <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: i < Math.min(recent.length, 20) - 1 ? 1 : 0, borderBottomColor: T.hairline2 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink }}>{emp?.full_name ?? '—'}</Text>
-                  <Text style={{ fontSize: 11, color: T.ink3, marginTop: 2 }}>
-                    {MONTH_NAMES[p.month - 1]} {p.year} · {p.method} · {new Date(p.paid_at).toLocaleDateString(localeTag())}
+              <MobileTableRowX key={p.id} isLast={i === Math.min(recent.length, 20) - 1}>
+                <MobileTableIconX icon={Wallet} tone={U.chipTones.success} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={MT.title} numberOfLines={1}>{emp?.full_name ?? '—'}</Text>
+                  <Text style={MT.sub} numberOfLines={1}>
+                    {autoT(MONTH_NAMES[p.month] ?? '')} {p.year} · {p.method} · {new Date(p.paid_at).toLocaleDateString(localeTag())}
                   </Text>
                 </View>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: '#059669' }}>{fmtMoney(p.net, p.currency ?? 'TRY')}</Text>
-                <Pressable
-                  onPress={async () => {
-                    const { error } = await deleteSalaryPayment(p.id);
-                    if (error) toast.error((error as any).message);
-                    else { toast.success('Ödeme silindi'); load(); }
-                  }}
-                  style={{ padding: 6 }}
-                >
-                  <Trash2 size={14} color={T.ink3} strokeWidth={1.6} />
-                </Pressable>
-              </View>
+                <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                  <Text style={[MT.amount, { color: U.chipTones.success.fg }]}>{fmtMoney(p.net, p.currency ?? 'TRY')}</Text>
+                  <GlassTooltip title={autoT('Sil')} text={autoT('Maaş ödemesini siler')}>
+                    <Pressable
+                      onPress={async () => {
+                        const { error } = await deleteSalaryPayment(p.id);
+                        if (error) toast.error((error as any).message);
+                        else { toast.success('Ödeme silindi'); load(); }
+                      }}
+                      style={{ width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: U.chipTones.danger.bg, ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}) }}
+                    >
+                      <Trash2 size={12} color={U.chipTones.danger.fg} strokeWidth={1.8} />
+                    </Pressable>
+                  </GlassTooltip>
+                </View>
+              </MobileTableRowX>
             );
           })
         )}
-      </View>
+      </MobileTableX>
 
       {payOpen && (
         <PaySalaryModal
@@ -302,6 +313,7 @@ export function SalariesScreen() {
         <EmployeeStatementModal
           employee={statementOf}
           onClose={() => setStatementOf(null)}
+          onChanged={() => load(true)}
         />
       )}
     </ScrollView>

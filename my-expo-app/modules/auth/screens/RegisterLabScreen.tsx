@@ -249,6 +249,9 @@ export function RegisterLabScreen() {
         <View style={{ marginTop: 8 }}>
           <ConsentGate value={consents} onChange={setConsents} showError={consentError} />
 
+          {/* Onay kutusu ile buton arasında nefes payı */}
+          <View style={{ height: 20 }} />
+
           <AuthButton label="Hesap Oluştur" onPress={handleRegister} loading={loading} />
         </View>
       </Animated.View>

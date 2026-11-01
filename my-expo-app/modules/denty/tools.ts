@@ -11,6 +11,8 @@
 import { useCallback, useMemo } from 'react';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../core/api/supabase';
+import { labTodayOf } from '../../core/metrics/orderDefs';
+import { loadLabTz } from '../../core/metrics/useLabToday';
 import { sanitizeIlikeTerm } from '../../core/util/search';
 import { useAuthStore } from '../../core/store/authStore';
 import { usePermissionStore } from '../../core/store/permissionStore';
@@ -20,6 +22,7 @@ import {
   type ClientOrderEditFields, type ClientOrderEditItem,
 } from '../orders/api';
 import { createChangeRequest } from '../orders/changeRequests';
+import { ageFromDob, parseAgeInput } from '../orders/lib/patientAge';
 import { generateOrderReport } from './orderReport';
 import { adminCompleteStage, assignTechnician } from '../orders/api';
 import { sendMessage as chatSendMessage } from '../orders/chatApi';
@@ -239,7 +242,7 @@ const TOOL_DEFS: ToolDef[] = [
         hasta_soyadi: { type: 'string', description: 'Hasta SOYADI.' },
         cinsiyet: { type: 'string', enum: ['erkek', 'kadın'], description: 'Hasta cinsiyeti.' },
         tc_pasaport: { type: 'string', description: 'TC kimlik veya pasaport numarası.' },
-        dogum_tarihi: { type: 'string', description: 'Hasta doğum tarihi YYYY-AA-GG.' },
+        yas: { type: 'integer', description: 'Hasta yaşı (0–120). Doğum tarihi söylenirse yaşa çevirip buraya yaz.' },
         uyruk: { type: 'string', description: 'Hasta uyruğu, örn. "Türkiye".' },
         ikamet_ulke: { type: 'string', description: 'İkamet ülkesi.' },
         ikamet_sehir: { type: 'string', description: 'İkamet şehri.' },
@@ -302,7 +305,7 @@ const TOOL_DEFS: ToolDef[] = [
         hasta_ad_soyad: { type: 'string', description: 'Hasta TAM ad-soyad (düzeltilmiş hali). Kısmi değil, tam ad ver.' },
         cinsiyet: { type: 'string', enum: ['erkek', 'kadın'], description: 'Hasta cinsiyeti.' },
         tc_pasaport: { type: 'string', description: 'TC kimlik / pasaport no.' },
-        dogum_tarihi: { type: 'string', description: 'Doğum tarihi YYYY-AA-GG.' },
+        yas: { type: 'integer', description: 'Hasta yaşı (0–120).' },
         uyruk: { type: 'string', description: 'Uyruk.' },
         ikamet_ulke: { type: 'string', description: 'İkamet ülkesi.' },
         ikamet_sehir: { type: 'string', description: 'İkamet şehri.' },
@@ -483,6 +486,18 @@ function groupItemsForPayload(items: DentyOrderItem[]): ClientOrderEditItem[] {
   return out;
 }
 
+/**
+ * Hasta yaşı (2026-10-19: siparişte doğum tarihi yerine yaş). `yas` yoksa eski
+ * `dogum_tarihi` girdisi de kabul edilir ve yaşa çevrilir; tarih saklanmaz.
+ */
+function dentyAge(input: any): number | null {
+  if (input?.yas != null && input.yas !== '') {
+    const a = parseAgeInput(String(input.yas));
+    if (a != null) return a;
+  }
+  return ageFromDob(input?.dogum_tarihi ? String(input.dogum_tarihi) : null);
+}
+
 /** siparisDuzenle girdisinden ClientOrderEditFields üretir — YALNIZ verilen alanlar. */
 function buildEditFields(input: any, items: DentyOrderItem[] | null): ClientOrderEditFields {
   const f: ClientOrderEditFields = {};
@@ -490,7 +505,7 @@ function buildEditFields(input: any, items: DentyOrderItem[] | null): ClientOrde
   if (str(input?.hasta_ad_soyad)) f.patient_name = titleCaseTr(String(input.hasta_ad_soyad));
   if (input?.cinsiyet === 'erkek' || input?.cinsiyet === 'kadın') f.patient_gender = input.cinsiyet;
   if (str(input?.tc_pasaport)) f.patient_id = str(input.tc_pasaport);
-  if (str(input?.dogum_tarihi)) f.patient_dob = str(input.dogum_tarihi);
+  { const a = dentyAge(input); if (a != null) f.patient_age = a; }
   if (str(input?.uyruk)) f.patient_nationality = str(input.uyruk);
   if (str(input?.ikamet_ulke)) f.patient_country = str(input.ikamet_ulke);
   if (str(input?.ikamet_sehir)) f.patient_city = str(input.ikamet_sehir);
@@ -535,7 +550,7 @@ export function describeAction(name: string, input: any): ActionCard {
     if (fullName) rows.push({ label: 'Hasta', value: fullName });
     if (input?.cinsiyet) rows.push({ label: 'Cinsiyet', value: input.cinsiyet === 'kadın' ? 'Kadın' : 'Erkek' });
     if (input?.tc_pasaport) rows.push({ label: 'TC/Pasaport', value: String(input.tc_pasaport) });
-    if (input?.dogum_tarihi) rows.push({ label: 'Doğum tarihi', value: String(input.dogum_tarihi) });
+    if (dentyAge(input) != null) rows.push({ label: 'Yaş', value: String(dentyAge(input)) });
     if (input?.uyruk) rows.push({ label: 'Uyruk', value: String(input.uyruk) });
     if (input?.telefon) rows.push({ label: 'Telefon', value: String(input.telefon) });
 
@@ -600,7 +615,7 @@ export function describeAction(name: string, input: any): ActionCard {
     if (input?.hasta_ad_soyad) rows.push({ label: 'Hasta', value: String(input.hasta_ad_soyad) });
     if (input?.cinsiyet) rows.push({ label: 'Cinsiyet', value: input.cinsiyet === 'kadın' ? 'Kadın' : 'Erkek' });
     if (input?.tc_pasaport) rows.push({ label: 'TC/Pasaport', value: String(input.tc_pasaport) });
-    if (input?.dogum_tarihi) rows.push({ label: 'Doğum tarihi', value: String(input.dogum_tarihi) });
+    if (dentyAge(input) != null) rows.push({ label: 'Yaş', value: String(dentyAge(input)) });
     if (input?.uyruk) rows.push({ label: 'Uyruk', value: String(input.uyruk) });
     if (input?.ikamet_sehir) rows.push({ label: 'Şehir', value: String(input.ikamet_sehir) });
     const editItems = Array.isArray(input?.is_kalemleri) && input.is_kalemleri.length ? normalizeOrderItems(input) : [];
@@ -809,6 +824,9 @@ export function useDentyToolkit(ctx: DentyContext): ToolKit {
   const accountBalance = useCallback(async (): Promise<string> => {
     const clinicId = (profile as any)?.clinic_id ?? null;
     if (!clinicId) return 'Bu hesaba bağlı bir klinik/cari bulunamadı.';
+    // Klinik finansı yalnız faturayı görebilene (RLS ile aynı karar) — yoksa sıfır bakiye yanıltır
+    const { data: canSee } = await supabase.rpc('my_clinic_billing_access');
+    if (canSee !== true) return 'Bu bilgiyi görme yetkiniz yok. Cari durumu klinik yöneticiniz görebilir.';
     // Katı per-currency: her (klinik, para birimi) için ayrı satır, orijinal tutarda.
     // Baz-₺'ye çevrilmiş v_clinic_balance KULLANMA — yabancı para kliniklerde yanlış tutar+sembol verir.
     const { data, error } = await fetchClinicBalancesByCurrency();
@@ -922,7 +940,7 @@ export function useDentyToolkit(ctx: DentyContext): ToolKit {
       patient_name: patientName,
       patient_gender: gender,
       patient_id: input?.tc_pasaport || undefined,
-      patient_dob: input?.dogum_tarihi || undefined,
+      patient_age: dentyAge(input) ?? undefined,
       patient_phone: input?.telefon || undefined,
       patient_nationality: input?.uyruk || undefined,
       patient_country: input?.ikamet_ulke || undefined,
@@ -1112,21 +1130,31 @@ export function useDentyToolkit(ctx: DentyContext): ToolKit {
   // ── Salt-okunur: lab & yönetici panelleri ────────────────────────────────
   /** Günün tek bakışta durumu — dashboard'un sorduğu soruların aynısı. */
   const dailySummary = useCallback(async (): Promise<string> => {
-    const today = new Date().toISOString().slice(0, 10);
+    // Tek tanım (2026-10-26): bugün lab gününde; SAYILAR order_metrics()'ten (eskiden limit(5) ile
+    // sayılıyordu, en fazla 5 gösterebiliyordu). Örnek satırlar aynı kurala uyar (arşiv/bekleme hariç).
+    const today = labTodayOf(await loadLabTz());
     try {
+      const { data: om } = await supabase.rpc('order_metrics');
+      // Finans yetkisi yoksa fatura bağı RLS'te gizli: görünüm her teslimatı faturasız
+      // gösterirdi. Satır hiç sorulmaz ve özete yazılmaz.
+      const { data: canFin } = await supabase.rpc('lab_can_view_finance');
       const [overdueRes, todayRes, triageRes, stockRes, unbilledRes] = await Promise.all([
         supabase.from('work_orders')
           .select('order_number, patient_name, delivery_date')
           .lt('delivery_date', today).neq('status', 'teslim_edildi').neq('status', 'iptal')
+          .or('is_archived.is.null,is_archived.eq.false').or('hold_status.is.null,hold_status.neq.on_hold')
           .order('delivery_date').limit(5),
         supabase.from('work_orders')
           .select('order_number, patient_name')
-          .eq('delivery_date', today).neq('status', 'teslim_edildi').neq('status', 'iptal').limit(5),
+          .eq('delivery_date', today).neq('status', 'teslim_edildi').neq('status', 'iptal')
+          .or('is_archived.is.null,is_archived.eq.false').limit(5),
         supabase.from('work_orders')
           .select('order_number', { count: 'exact' })
           .is('triaged_at', null).neq('status', 'iptal').limit(5),
         supabase.from('stock_items').select('name, quantity, min_quantity').limit(200),
-        supabase.from('v_unbilled_work_orders').select('order_number, totals_by_currency').limit(5),
+        canFin === true
+          ? supabase.from('v_unbilled_work_orders').select('order_number, totals_by_currency').limit(5)
+          : Promise.resolve({ data: [] as any[] }),
       ]);
       const overdue = overdueRes.data ?? [];
       const todayList = todayRes.data ?? [];
@@ -1136,11 +1164,13 @@ export function useDentyToolkit(ctx: DentyContext): ToolKit {
       const unbilled = unbilledRes.data ?? [];
 
       const lines: string[] = ['GÜNLÜK ÖZET:'];
-      lines.push(`• Gecikmiş: ${overdue.length}${overdue.length ? ' → ' + overdue.map((o: any) => `#${o.order_number} (${o.patient_name ?? '-'}, ${o.delivery_date})`).join(', ') : ''}`);
-      lines.push(`• Bugün teslim: ${todayList.length}${todayList.length ? ' → ' + todayList.map((o: any) => `#${o.order_number}`).join(', ') : ''}`);
+      const overdueN = Number((om as any)?.overdue ?? overdue.length) || 0;
+      const dueTodayN = Number((om as any)?.due_today ?? todayList.length) || 0;
+      lines.push(`• Gecikmiş: ${overdueN}${overdue.length ? ' → ' + overdue.map((o: any) => `#${o.order_number} (${o.patient_name ?? '-'}, ${o.delivery_date})`).join(', ') : ''}`);
+      lines.push(`• Bugün teslim: ${dueTodayN}${todayList.length ? ' → ' + todayList.map((o: any) => `#${o.order_number}`).join(', ') : ''}`);
       lines.push(`• Planlama bekleyen: ${triageRes.count ?? triage.length}`);
       lines.push(`• Kritik stok: ${low.length}${low.length ? ' → ' + low.slice(0, 5).map((i: any) => `${i.name} (${i.quantity}/${i.min_quantity})`).join(', ') : ''}`);
-      lines.push(`• Faturasız teslimat: ${unbilled.length}${unbilled.length ? ' → ' + unbilled.map((u: any) => `#${u.order_number}`).join(', ') : ''}`);
+      if (canFin === true) lines.push(`• Faturasız teslimat: ${unbilled.length}${unbilled.length ? ' → ' + unbilled.map((u: any) => `#${u.order_number}`).join(', ') : ''}`);
       lines.push('(Sayılar kullanıcının yetkisi/RLS kapsamındadır.)');
       return lines.join('\n');
     } catch (e: any) { return `Özet alınamadı: ${e?.message ?? String(e)}`; }

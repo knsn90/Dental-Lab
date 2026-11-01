@@ -41,6 +41,8 @@ export async function createLabService(data: {
   production_days?: number | null;
   price_type?: 'fixed' | 'percent' | 'free';
   unit?: string | null;
+  scan_kind?: 'intraoral' | 'photogrammetry' | null;
+  scan_free_if_order?: boolean;
 }) {
   return supabase.from('lab_services').insert(data).select().single();
 }
@@ -57,6 +59,8 @@ export async function updateLabService(
     production_days: number | null;
     price_type: 'fixed' | 'percent' | 'free';
     unit: string | null;
+    scan_kind: 'intraoral' | 'photogrammetry' | null;
+    scan_free_if_order: boolean;
   }>
 ) {
   return supabase.from('lab_services').update(data).eq('id', id).select().single();
