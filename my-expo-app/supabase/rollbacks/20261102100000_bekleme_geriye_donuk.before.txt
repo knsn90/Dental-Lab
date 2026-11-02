@@ -80,4 +80,4 @@ END $function$;
 -- work_order_holds sütunları: id, work_order_id, lab_id, reason, category, responsible, started_at, ended_at, extended_days, held_by, resumed_by, created_at
 -- work_order_holds politikaları: field_staff_scope (*), wo_holds_lab_read (r: lab_id = get_my_lab_id())
 -- work_orders üzerinde trg_wo_close_hold_on_delivery YOK; _close_open_holds_on_delivery() YOK.
--- Hold alanlarını temizleyen teslim yolları (update_delivery_status, trg_bbk_sync_order_status) status=teslim_edildi ile AYNI UPDATE içinde temizler.
+-- Hold alanlarını temizleyen teslim yolları (update_delivery_status, trg_bbk_sync_order_status) status=teslim_edildi ile AYNI UPDATE içinde temizler. (DÜZELTME 20261102120000: update_work_order_status ve doğrudan istemci UPDATE temizleMEZ — bkz. 20261102120000 before.txt)

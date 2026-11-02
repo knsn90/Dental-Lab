@@ -318,8 +318,11 @@ function decision(status: unknown): Part {
 export function historyParts(row: HistoryRow): Part[] {
   const d = row.detail ?? {};
   const raw = (v: unknown): Part[] => (has(v) ? [{ t: 'raw', v: String(v) }] : []);
-  // Geriye dönük girilen bekleme günü: girişin yapıldığı an (kimin girdiği satırın actor_name'inde)
-  const recorded: Part[] = has(d.recorded_at) ? [{ t: 'text', v: 'Sonradan girildi' }, { t: 'date', v: String(d.recorded_at) }] : [];
+  // Geriye dönük girilen bekleme günü: girişin yapıldığı an. Kimin girdiği satırın actor_name'inde;
+  // başlangıç devam ettirirken düzeltildiyse giren başka biri olabilir → recorded_by (20261102120000).
+  const recorded: Part[] = has(d.recorded_at)
+    ? [{ t: 'text', v: 'Sonradan girildi' }, { t: 'date', v: String(d.recorded_at) }, ...raw(d.recorded_by)]
+    : [];
   switch (row.kind) {
     case 'created':
       return join([

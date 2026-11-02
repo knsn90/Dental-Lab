@@ -177,3 +177,17 @@ test('teslimde kapanan bekleme başlığı "Bekleme teslimde kapandı"', () => {
   assert.equal(historyTitle(row('hold_ended', { on_delivery: true })), 'Bekleme teslimde kapandı');
   assert.equal(historyTitle(row('hold_ended', {})), 'Devam ettirildi');
 });
+
+test('başlangıç devamda düzeltildiyse "Sonradan girildi" yanında giren kişinin adı yazılır', () => {
+  const ps = historyParts(row('hold_started', {
+    responsible: 'client', category: 'client_approval', recorded_at: '2026-11-02T09:00:00Z', recorded_by: 'Yönetici Bir',
+  }));
+  const i = ps.findIndex((p) => p.t === 'text' && p.v === 'Sonradan girildi');
+  assert.ok(i >= 0);
+  assert.deepEqual(ps.slice(i, i + 3), [
+    { t: 'text', v: 'Sonradan girildi' }, { t: 'date', v: '2026-11-02T09:00:00Z' }, { t: 'raw', v: 'Yönetici Bir' },
+  ]);
+  // recorded_by yoksa ad parçası eklenmez
+  const pn = historyParts(row('hold_started', { responsible: 'client', category: 'client_approval', recorded_at: '2026-11-02T09:00:00Z' }));
+  assert.equal(pn[pn.length - 1].t, 'date');
+});
