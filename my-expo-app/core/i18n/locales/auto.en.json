@@ -9827,5 +9827,6 @@
   "Uzatma yok": "No extension",
   "Teslim tarihi değişmez": "Delivery date stays the same",
   "Yeni teslim": "New delivery",
-  "Beklemeyi seçilen günde kapatır; hekim/klinik kaynaklıysa teslim tarihi ötelenir": "Ends the hold on the chosen day; if caused by the doctor/clinic, the delivery date is postponed"
+  "Beklemeyi seçilen günde kapatır; hekim/klinik kaynaklıysa teslim tarihi ötelenir": "Ends the hold on the chosen day; if caused by the doctor/clinic, the delivery date is postponed",
+  "gündür": "days"
 }

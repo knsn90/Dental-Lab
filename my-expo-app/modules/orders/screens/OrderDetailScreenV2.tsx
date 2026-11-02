@@ -15,7 +15,7 @@ import { autoT } from '../../../core/i18n/autoTranslate';
  *     Tur 4: Action handlers + permissions + edge cases
  */
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { View, Text, ScrollView, Pressable, Platform, Modal, useWindowDimensions, Image, ActivityIndicator, TextInput, Alert, Linking, Animated } from 'react-native';
+import { View, Text, ScrollView, Pressable, Platform, Modal, useWindowDimensions, Image, ActivityIndicator, Alert, Linking, Animated } from 'react-native';
 import { useLocalSearchParams, useRouter, useSegments } from 'expo-router';
 import { safeBack } from '../../../core/util/safeBack';
 import { webTitle } from '../../../core/util/webTitle';
@@ -51,7 +51,12 @@ import { Bell, Printer, Check, ArrowUpRight, ChevronLeft, ChevronRight, Phone, M
 // Lazy viewer-3d (three.js ayrı chunk) — tek paylaşılan retry'lı lazy instance.
 import { Viewer3DModalLazy as Viewer3DModal } from '../../viewer-3d/Viewer3DLazy';
 import { unzipToViewer, unzipToViewerNative, isArchiveExt } from '../fileArchive';
-import { holdOrder, resumeOrder, HOLD_CATEGORIES, HOLD_PICKABLE, holdCategoryLabel, holdDays, isProvaHold } from '../holdApi';
+import { holdCategoryLabel, isProvaHold } from '../holdApi';
+import { HoldOrderModal } from '../components/HoldOrderModal';
+import { ResumeOrderModal } from '../components/ResumeOrderModal';
+import { daysBetween as labDaysBetween } from '../holdDates';
+import { labTodayOf } from '../../../core/metrics/orderDefs';
+import { cachedLabTz, useLabToday } from '../../../core/metrics/useLabToday';
 
 // HTML tasarım (exocad web viewer) native önizleme — sadece native'de WebView yükle
 // (web'de iframe kullanılır, require çağrılmaz → web bundle'ı etkilenmez).
@@ -315,12 +320,10 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   const [printingLegId, setPrintingLegId] = useState<string | null>(null);   // gönderi fişi hazırlanıyor
   const U = useInkUI();
   const [addStageOpen, setAddStageOpen] = useState(false);
-  // İşi Beklet modalı
+  // İşi Beklet / Devam ettir pencereleri (madde 13 — unutulan gün sonradan girilir)
   const [holdOpen, setHoldOpen]     = useState(false);
-  const [holdCat, setHoldCat]       = useState<string>('client_missing_file');
-  const [holdReason, setHoldReason] = useState('');
-  const [holdBusy, setHoldBusy]     = useState(false);
-  const [holdErr, setHoldErr]       = useState<string | null>(null);
+  const [resumeOpen, setResumeOpen] = useState(false);
+  const labToday = useLabToday();
   // Dosyalar ilk sekme ve varsayılan: sipariş açılınca ilk bakılan şey tarama/STL.
   const [sideTab, setSideTab] = useState<'doctor_note' | 'lab_note' | 'files'>('files');
   // Sipariş geçmişi popup'ı — başlıktaki "Geçmiş" düğmesi; ?tab=history (Loglar'dan geçiş) doğrudan açar.
@@ -898,7 +901,10 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   const overdue = order ? isOrderOverdue(order.delivery_date, order.status, (order as any).hold_status) : false;
   // ── İşi Beklet — beklerken gecikme sayacı durur, kart "BEKLEMEDE" gösterir ──
   const onHold      = (order as any)?.hold_status === 'on_hold';
-  const heldDays    = onHold ? holdDays((order as any)?.hold_started_at) : 0;
+  // Lab gününde takvim farkı (cihaz saat dilimi değil) — "N gündür"
+  const heldDays    = onHold && (order as any)?.hold_started_at
+    ? Math.max(0, labDaysBetween(labTodayOf(cachedLabTz(), new Date((order as any).hold_started_at)), labToday))
+    : 0;
   const heldByClient = (order as any)?.hold_responsible !== 'lab';
   // Kalan gün — her iki taraf da yerel gün başına sabitlenir; saat farkı
   // yüzünden geciken sipariş "Bugün" (veya bugün teslim "1 gün gecikti")
@@ -1385,6 +1391,43 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
     </>
   );
 
+  // İşi Beklet / Devam ettir — masaüstü ve mobil ORTAK (mobil dal erken döner, bkz. stageModals).
+  const holdModals = order ? (
+    <>
+      <HoldOrderModal
+        visible={holdOpen}
+        order={{
+          id: order.id,
+          order_number: (order as any).order_number ?? null,
+          created_at: (order as any).created_at,
+          doctor_id: (order as any).doctor_id ?? null,
+          clinicId: (order as any).doctor?.clinic?.id ?? null,
+        }}
+        onClose={() => setHoldOpen(false)}
+        onDone={() => { setHoldOpen(false); refetch(); }}
+      />
+      {onHold && !!(order as any).hold_started_at && !isProvaHold(order as any) && (
+        <ResumeOrderModal
+          visible={resumeOpen}
+          order={{
+            id: order.id,
+            order_number: (order as any).order_number ?? null,
+            created_at: (order as any).created_at,
+            delivery_date: String(order.delivery_date ?? ''),
+            hold_started_at: (order as any).hold_started_at,
+            hold_responsible: (order as any).hold_responsible ?? null,
+            hold_category: (order as any).hold_category ?? null,
+            hold_reason: (order as any).hold_reason ?? null,
+          }}
+          onClose={() => setResumeOpen(false)}
+          onDone={() => { setResumeOpen(false); refetch(); }}
+        />
+      )}
+    </>
+  ) : null;
+  const canHoldHere = (panelGroup === '(lab)' || panelGroup === '(admin)')
+    && !!order && order.status !== 'teslim_edildi' && order.status !== 'iptal';
+
   if (!isDesktop) {
     const { OrderDetailMobileHandoff } = require('./OrderDetailMobileHandoff');
     const stageIdx = Math.min(Math.max(0, statusIdx), 4);
@@ -1642,7 +1685,11 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
           </View>
         }
         onPrint={Platform.OS === 'web' ? () => handlePrintFull() : undefined}
-        onPause={undefined}
+        onPause={canHoldHere && !onHold ? () => setHoldOpen(true) : undefined}
+        onResume={canHoldHere && onHold && !isProvaHold(order as any) ? () => setResumeOpen(true) : undefined}
+        holdLabel={onHold && order.status !== 'iptal'
+          ? (isProvaHold(order as any) ? autoT('Provada') : `${autoT('Beklemede')} · ${heldDays} ${autoT('gündür')}`)
+          : null}
         // teslimata_hazir + aktif teslimat: doğru aksiyon deliveryButton'da
         // (Kuryeye Gönder / Teslim Edildi) — genel ilerlet burada gizlenir,
         // yoksa aynı geçiş için iki buton çıkıyor (desktop ile aynı kural).
@@ -1717,6 +1764,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
         accent={panelAccent}
       />
       {stageModals}
+      {holdModals}
       </>
     );
   }
@@ -1738,33 +1786,6 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   };
 
   // ── Print popup ─────────────────────────────────────────────────
-  // ── İşi Beklet / Devam ettir ──────────────────────────────────────
-  const submitHold = async () => {
-    if (!order) return;
-    setHoldBusy(true); setHoldErr(null);
-    const res = await holdOrder({
-      orderId:     order.id,
-      reason:      holdReason,
-      category:    holdCat,
-      orderNumber: (order as any).order_number,
-      doctorId:    (order as any).doctor_id,
-      clinicId:    (order as any).doctor?.clinic?.id ?? null,
-    });
-    setHoldBusy(false);
-    if (!res.ok) { setHoldErr(res.error ?? 'Bekletilemedi'); return; }
-    setHoldOpen(false); setHoldReason('');
-    refetch();
-  };
-
-  const submitResume = async () => {
-    if (!order) return;
-    setHoldBusy(true);
-    const res = await resumeOrder(order.id);
-    setHoldBusy(false);
-    if (!res.ok) { setHoldErr(res.error ?? 'Devam ettirilemedi'); return; }
-    refetch();
-  };
-
   // İş emri etiketi önizlemesi — seçili boyutta. Kağıt hep açık; arkasındaki
   // zemin temaya uyar (yalnız ekranda, baskıya girmez).
   const buildLabelPreview = async (size: LabelSize) => {
@@ -1976,7 +1997,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
     refetch(); refetchStages();
   };
   const MENU_DEF: Record<string, RowAction> = {
-    hold: { key: 'hold', label: autoT('İşi beklet'), icon: Pause, onPress: () => { setHoldErr(null); setHoldOpen(true); } },
+    hold: { key: 'hold', label: autoT('İşi beklet'), icon: Pause, onPress: () => setHoldOpen(true) },
     replan: { key: 'replan', label: autoT('Yeniden Planla'), icon: ListChecks, onPress: () => setReplanOpen(true) },
     approval: { key: 'approval', label: autoT('Hekim Onayına Gönder'), icon: UserCheck, onPress: handleSendDesignApproval, disabled: sendingApproval },
     revision: { key: 'revision', label: autoT('Revizyon Oluştur'), icon: RotateCcw, onPress: () => setRevisionOpen(true) },
@@ -2242,7 +2263,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                       {heldDays}
                     </Text>
                     <Text className="uppercase" style={{ fontFamily: 'Inter Tight, Inter, system-ui, sans-serif', fontWeight: '500', fontSize: 11, letterSpacing: 2.2, color: heroPalette.dark ? 'rgba(255,255,255,0.70)' : '#6B6B6B' }}>
-                      gün
+                      gündür
                     </Text>
                   </View>
                   <Text className="text-[12px] mt-1" style={{ textAlign: 'end' as any, color: heroPalette.dark ? 'rgba(255,255,255,0.80)' : '#3C3C3C' }}>
@@ -2394,13 +2415,13 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                     && order.status !== 'teslim_edildi' && order.status !== 'iptal' && (
                     onHold ? (isProvaHold(order as any) ? null : (
                       <GlassTooltip title={autoT('Devam ettir')} text={autoT('Bekletmeyi bitirir; gecikme sayacı yeniden işler ve teslim tarihi ötelenir')}>
-                        <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="primary" size="sm" icon={Play} onPress={submitResume} disabled={holdBusy}>
-                          {holdBusy ? 'Devam ediliyor…' : 'Devam ettir'}
+                        <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="primary" size="sm" icon={Play} onPress={() => setResumeOpen(true)}>
+                          Devam ettir
                         </PillBtn>
                       </GlassTooltip>
                     )) : secShown('hold') ? (
                       <GlassTooltip title={autoT('İşi beklet')} text={autoT('Üretimi duraklatır; beklerken gecikme sayacı durur')}>
-                        <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm" icon={Pause} onPress={() => { setHoldErr(null); setHoldOpen(true); }}>
+                        <PillBtn onDark={heroPalette.dark} surfaceDark={heroOnDarkSurface} variant="surface" size="sm" icon={Pause} onPress={() => setHoldOpen(true)}>
                           İşi beklet
                         </PillBtn>
                       </GlassTooltip>
@@ -3907,6 +3928,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
 
       {/* Aşama modalleri — mobil ile ORTAK (stageModals) */}
       {stageModals}
+      {holdModals}
 
 
       {/* Triaj modal — auto-open + manual */}
@@ -3942,76 +3964,6 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
           onSaved={() => { setReplanOpen(false); refetch(); refetchStages(); }}
         />
       )}
-
-      {/* İşi Beklet — neden + kategori. Müşteri kaynaklıysa devam edince teslim ötelenir. */}
-      <Modal visible={holdOpen} transparent animationType="fade" onRequestClose={() => setHoldOpen(false)}>
-        <Pressable onPress={() => setHoldOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <Pressable onPress={() => {}} style={{ width: '100%', maxWidth: 480, backgroundColor: isDark ? T.card : '#FFFFFF', borderRadius: 20, padding: 20, gap: 14 }}>
-            <View style={{ gap: 4 }}>
-              <Text style={{ fontSize: 17, fontWeight: '700', color: isDark ? T.ink : '#0A0A0A' }}>İşi beklet</Text>
-              <Text style={{ fontSize: 12.5, color: isDark ? T.ink3 : '#6B6B6B', lineHeight: 18 }}>
-                Beklerken gecikme sayacı durur. Bekleme hekim/klinik kaynaklıysa devam ettirdiğinde
-                teslim tarihi bekleme süresi kadar ötelenir — gecikme lab'a yazılmaz.
-              </Text>
-            </View>
-
-            <View style={{ gap: 6 }}>
-              <Text style={{ fontSize: 12, fontWeight: '600', color: isDark ? T.ink : '#0A0A0A' }}>Neden kategorisi</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                {HOLD_PICKABLE.map(c => {
-                  const sel = holdCat === c.key;
-                  return (
-                    <Pressable key={c.key} onPress={() => setHoldCat(c.key)}
-                      style={{
-                        flexDirection: 'row', alignItems: 'center', gap: 6,
-                        paddingHorizontal: 11, paddingVertical: 7, borderRadius: 999,
-                        backgroundColor: sel ? panelAccent : (isDark ? T.cardSoft : '#F1F5F9'),
-                        borderWidth: 1, borderColor: sel ? panelAccent : (isDark ? T.hairline : 'rgba(0,0,0,0.08)'),
-                        ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                      }}>
-                      <Text style={{ fontSize: 12, fontWeight: '600', color: sel ? '#FFFFFF' : (isDark ? T.ink2 : '#334155') }}>{c.label}</Text>
-                      <Text style={{ fontSize: 9.5, fontWeight: '700', color: sel ? 'rgba(255,255,255,0.8)' : (isDark ? T.ink3 : '#9A9A9A') }}>
-                        {c.responsible === 'client' ? 'MÜŞTERİ' : 'LAB'}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-              <Text style={{ fontSize: 11, color: (isDark ? T.ink3 : '#9A9A9A') }}>
-                {HOLD_CATEGORIES.find(c => c.key === holdCat)?.responsible === 'client'
-                  ? 'Müşteri kaynaklı → teslim tarihi ötelenecek, hekime bildirim gider.'
-                  : 'Lab kaynaklı → teslim tarihi ÖTELENMEZ, gecikme lab\'da kalır.'}
-              </Text>
-            </View>
-
-            <View style={{ gap: 6 }}>
-              <Text style={{ fontSize: 12, fontWeight: '600', color: isDark ? T.ink : '#0A0A0A' }}>Açıklama</Text>
-              <TextInput
-                value={holdReason}
-                onChangeText={setHoldReason}
-                placeholder="Örn: Üst çene taraması eksik, hekimden bekleniyor"
-                placeholderTextColor={isDark ? (T.ink3 as string) : '#9A9A9A'}
-                multiline
-                style={{ minHeight: 72, borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.12)', borderRadius: 14, padding: 12, fontSize: 13, color: isDark ? T.ink : '#0A0A0A', textAlignVertical: 'top' }}
-              />
-            </View>
-
-            {!!holdErr && <Text style={{ fontSize: 12, color: '#D94B4B' }}>{holdErr}</Text>}
-
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10 }}>
-              <Pressable onPress={() => setHoldOpen(false)} style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: isDark ? T.hairline : 'rgba(0,0,0,0.12)' }}>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: isDark ? T.ink2 : '#334155' }}>Vazgeç</Text>
-              </Pressable>
-              <Pressable onPress={submitHold} disabled={holdBusy || !holdReason.trim()}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 12, backgroundColor: accentFill, opacity: (holdBusy || !holdReason.trim()) ? 0.5 : 1 }}>
-                <Pause size={14} color="#FFF" strokeWidth={2} />
-                <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFF' }}>{holdBusy ? 'Bekletiliyor…' : 'Beklet'}</Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
 
       {/* İş emri etiketi — önizleme + A4/A5/A6 seçimi + yazdır */}
       <Modal

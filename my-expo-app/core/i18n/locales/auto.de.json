@@ -9827,5 +9827,6 @@
   "Uzatma yok": "Keine Verlängerung",
   "Teslim tarihi değişmez": "Lieferdatum bleibt unverändert",
   "Yeni teslim": "Neue Lieferung",
-  "Beklemeyi seçilen günde kapatır; hekim/klinik kaynaklıysa teslim tarihi ötelenir": "Beendet die Pause am gewählten Tag; bei Ursache Zahnarzt/Klinik wird das Lieferdatum verschoben"
+  "Beklemeyi seçilen günde kapatır; hekim/klinik kaynaklıysa teslim tarihi ötelenir": "Beendet die Pause am gewählten Tag; bei Ursache Zahnarzt/Klinik wird das Lieferdatum verschoben",
+  "gündür": "Tage"
 }

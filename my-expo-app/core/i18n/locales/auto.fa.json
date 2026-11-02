@@ -9827,5 +9827,6 @@
   "Uzatma yok": "بدون تمدید",
   "Teslim tarihi değişmez": "تاریخ تحویل تغییر نمی‌کند",
   "Yeni teslim": "تحویل جدید",
-  "Beklemeyi seçilen günde kapatır; hekim/klinik kaynaklıysa teslim tarihi ötelenir": "توقف را در روز انتخاب‌شده می‌بندد؛ اگر به پزشک یا مرکز درمانی مربوط باشد، تاریخ تحویل عقب می‌رود"
+  "Beklemeyi seçilen günde kapatır; hekim/klinik kaynaklıysa teslim tarihi ötelenir": "توقف را در روز انتخاب‌شده می‌بندد؛ اگر به پزشک یا مرکز درمانی مربوط باشد، تاریخ تحویل عقب می‌رود",
+  "gündür": "روز"
 }

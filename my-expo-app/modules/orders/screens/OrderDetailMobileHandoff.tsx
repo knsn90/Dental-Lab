@@ -111,7 +111,12 @@ export interface OrderDetailMobileHandoffProps {
   onBack: () => void;
   onPrint?: () => void;
   onMore?: () => void;
+  /** "İşi beklet" penceresini açar; verilmezse Duraklat düğmesi çizilmez. */
   onPause?: () => void;
+  /** Beklemedeyken "Devam ettir" penceresini açar (Duraklat'ın yerini alır; prova beklemesinde verilmez). */
+  onResume?: () => void;
+  /** Hero'da bekleme etiketi — "Beklemede · 5 gündür" / "Provada". */
+  holdLabel?: string | null;
   onStageDone?: () => void;
   onAddAttachment?: () => void;
   /** Revizyon oluştur — teslim edilmiş siparişte (lab yöneticisi). Verilmezse buton çıkmaz. */
@@ -534,6 +539,16 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
                   </Text>
                 </View>
               )}
+
+              {/* Bekleme etiketi (madde 13) — beklerken gecikme yerine süre */}
+              {!!props.holdLabel && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#F0C078' }} />
+                  <Text style={{ fontSize: 11.5, fontWeight: '500', color: '#F0C078' }} numberOfLines={1}>
+                    {props.holdLabel}
+                  </Text>
+                </View>
+              )}
             </View>
           </View>
 
@@ -558,17 +573,39 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
               {showProductionActions && (
                 <View style={{ alignItems: 'flex-end', gap: 6 }}>
                   <View style={{ flexDirection: 'row', gap: 6 }}>
-                    <Pressable
-                      onPress={props.onPause}
-                      style={{
-                        paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999,
-                        backgroundColor: 'rgba(255,255,255,0.08)',
-                        flexDirection: 'row', alignItems: 'center', gap: 5,
-                      }}
-                    >
-                      <Pause size={11} color={T.onDark} strokeWidth={2} />
-                      <Text style={{ fontSize: 11, color: T.onDark, fontWeight: '500' }}>Duraklat</Text>
-                    </Pressable>
+                    {props.onResume ? (
+                      <GlassTooltip title={autoT('Devam ettir')} text={autoT('Beklemeyi seçilen günde kapatır; hekim/klinik kaynaklıysa teslim tarihi ötelenir')}>
+                        <Pressable
+                          onPress={props.onResume}
+                          accessibilityRole="button"
+                          accessibilityLabel={autoT('Devam ettir')}
+                          style={{
+                            paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999,
+                            backgroundColor: 'rgba(255,255,255,0.08)',
+                            flexDirection: 'row', alignItems: 'center', gap: 5,
+                          }}
+                        >
+                          <Play size={11} color={T.onDark} strokeWidth={2} />
+                          <Text style={{ fontSize: 11, color: T.onDark, fontWeight: '500' }} numberOfLines={1}>Devam ettir</Text>
+                        </Pressable>
+                      </GlassTooltip>
+                    ) : props.onPause ? (
+                      <GlassTooltip title={autoT('İşi beklet')} text={autoT('Üretimi duraklatır; beklerken gecikme sayacı durur')}>
+                        <Pressable
+                          onPress={props.onPause}
+                          accessibilityRole="button"
+                          accessibilityLabel={autoT('İşi beklet')}
+                          style={{
+                            paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999,
+                            backgroundColor: 'rgba(255,255,255,0.08)',
+                            flexDirection: 'row', alignItems: 'center', gap: 5,
+                          }}
+                        >
+                          <Pause size={11} color={T.onDark} strokeWidth={2} />
+                          <Text style={{ fontSize: 11, color: T.onDark, fontWeight: '500' }} numberOfLines={1}>Duraklat</Text>
+                        </Pressable>
+                      </GlassTooltip>
+                    ) : null}
                     <Pressable
                       onPress={props.onStageDone}
                       style={{
