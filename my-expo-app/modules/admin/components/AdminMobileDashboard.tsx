@@ -320,6 +320,8 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
           icon={ClipboardList}
           art={KPI_ART.production}
           artSize={{ w: 65, h: 68 }}
+          // Madde 13: geciken + uzun bekleyen listesi (NotificationsSheet) telefonda yalnız buradan açılır
+          onPress={overdue + held > 0 ? props.onNotifications : undefined}
         />
       </View>
 
