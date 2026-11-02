@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import {
   Search, X, SlidersHorizontal, Hash, CalendarDays, Clock, CornerDownRight, CornerDownLeft,
-  Inbox, Flame, Archive, Check, CalendarClock,
+  Inbox, Flame, Archive, Check, CalendarClock, Pause,
 } from '../../../core/ui/icons';
 import { isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
@@ -39,7 +39,8 @@ import { getOrderStageLabel } from '../utils/currentStage';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
-import { isPastDue, localISODate } from '../lib/listParams';
+import { isOverdueOrder } from '../../../core/metrics/orderDefs';
+import { useLabToday } from '../../../core/metrics/useLabToday';
 import { MobileTableX } from '../../../core/ui/MobileTableX';
 void DS;
 void Svg; void Defs; void Rect; void RadialGradient; void Stop;
@@ -76,6 +77,7 @@ const TONE_OVERDUE = '#DC2626';
 const TONE_DUE = '#1D4ED8';
 const TONE_ARCHIVE = '#92400E';
 const TONE_DOCTOR = '#1D4ED8';
+const TONE_HOLD = '#9C5E0E';
 
 interface Props {
   /** OrdersListScreenV2'nin süzülmüş + sıralanmış listesi */
@@ -97,6 +99,8 @@ interface Props {
   /** Prova takibi (2. dalga 4) — yalnız lab/admin: "Provada" ve "Randevu riski" */
   prova?: { active: boolean; count: number; toggle: () => void };
   risk?: { active: boolean; count: number; toggle: () => void };
+  /** Madde 13 — yalnız lab/admin: "Beklemede" (prova hariç bekleyen işler) */
+  hold?: { active: boolean; count: number; toggle: () => void };
   /** Yalnız admin — masaüstündeki "Arşivi göster" ile aynı */
   archive?: { active: boolean; toggle: () => void };
   /** ?doctor= süzgeci (genel arama → hekimin siparişleri); dokununca kalkar */
@@ -117,7 +121,7 @@ interface Props {
 export function OrdersKanbanB2Mobile({
   orders, loading, refetch, onOpenOrder, onAddInLane,
   statusTabs, statusFilter, onStatusChange, search, onSearchChange,
-  urgent, overdue, dueToday, dueTomorrow, prova, risk, archive, manual, sort, rowActionsFor, doctorChip,
+  urgent, overdue, dueToday, dueTomorrow, prova, risk, hold, archive, manual, sort, rowActionsFor, doctorChip,
 }: Props) {
   const theme = useMobileTheme();
   const insets = useSafeAreaInsets();
@@ -205,6 +209,9 @@ export function OrdersKanbanB2Mobile({
         )}
         <FilterChip icon={Flame} label="Acil" count={urgent.count} tone={TONE_URGENT} active={urgent.active} onPress={urgent.toggle} />
         <FilterChip icon={Clock} label="Geciken" count={overdue.count} tone={TONE_OVERDUE} active={overdue.active} onPress={overdue.toggle} />
+        {hold && (
+          <FilterChip icon={Pause} label="Beklemede" count={hold.count} tone={TONE_HOLD} active={hold.active} onPress={hold.toggle} />
+        )}
         {dueToday && (
           <FilterChip icon={CalendarClock} label="Bugün çıkacak" count={dueToday.count} tone={TONE_DUE} active={dueToday.active} onPress={dueToday.toggle} />
         )}
@@ -427,7 +434,7 @@ function FilterChip({ icon: Icon, label, count, tone, active, onPress }: {
 
 /** Koyu zeminde ton metni okunur kalsın — durum renginin açık karşılığı. */
 function lighten(hex: string): string {
-  const map: Record<string, string> = { '#D97706': '#FBBF24', '#DC2626': '#F87171', '#92400E': '#FCD34D' };
+  const map: Record<string, string> = { '#D97706': '#FBBF24', '#DC2626': '#F87171', '#92400E': '#FCD34D', '#9C5E0E': '#F0C078' };
   return map[hex.toUpperCase()] ?? hex;
 }
 
@@ -545,7 +552,9 @@ function OrderCard({ order: o, laneOf, onOpenOrder, history, parentNo, actions, 
   const isContinuation = !isRevision && !!(o as any).continues_order_id;
 
   const rtl = isRTL();
-  const overdue = !isDone && isPastDue((o as any).delivery_date, localISODate(new Date()));
+  // Tek tanım (orderDefs): beklemedeki/iptal/arşivdeki iş kırmızı yanmaz; gün lab gününde.
+  const labToday = useLabToday();
+  const overdue = isOverdueOrder(o as any, labToday);
 
   return (
     <View>

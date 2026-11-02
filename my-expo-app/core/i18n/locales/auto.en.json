@@ -9828,5 +9828,6 @@
   "Teslim tarihi değişmez": "Delivery date stays the same",
   "Yeni teslim": "New delivery",
   "Beklemeyi seçilen günde kapatır; hekim/klinik kaynaklıysa teslim tarihi ötelenir": "Ends the hold on the chosen day; if caused by the doctor/clinic, the delivery date is postponed",
-  "gündür": "days"
+  "gündür": "days",
+  "Beklemeye alınmış işler; gecikme sayacı durur": "Jobs put on hold; the delay counter is stopped"
 }

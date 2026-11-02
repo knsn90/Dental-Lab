@@ -9828,5 +9828,6 @@
   "Teslim tarihi değişmez": "تاریخ تحویل تغییر نمی‌کند",
   "Yeni teslim": "تحویل جدید",
   "Beklemeyi seçilen günde kapatır; hekim/klinik kaynaklıysa teslim tarihi ötelenir": "توقف را در روز انتخاب‌شده می‌بندد؛ اگر به پزشک یا مرکز درمانی مربوط باشد، تاریخ تحویل عقب می‌رود",
-  "gündür": "روز"
+  "gündür": "روز",
+  "Beklemeye alınmış işler; gecikme sayacı durur": "کارهای متوقف‌شده؛ شمارنده تأخیر متوقف است"
 }

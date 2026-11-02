@@ -64,7 +64,7 @@ export type ProvaChip = 'prova' | 'risk';
 export function listStateFromParams(
   p: Record<string, string | string[] | undefined>,
   allowedStatuses: readonly string[],
-): { status: string; overdue: boolean; urgent: boolean; dueFlag: 'today' | 'tomorrow' | null; doctorId: string | null; provaChip: ProvaChip | null } {
+): { status: string; overdue: boolean; urgent: boolean; dueFlag: 'today' | 'tomorrow' | null; doctorId: string | null; provaChip: ProvaChip | null; hold: boolean } {
   const f = first(p.filter);
   const { status, flag } = parseOrdersListParams(p, allowedStatuses);
   return {
@@ -75,7 +75,14 @@ export function listStateFromParams(
     // ?doctor=<doctors.id> — genel aramadan "hekimin siparişleri" (2. dalga 1)
     doctorId: (first(p.doctor) ?? '').trim() || null,
     provaChip: f === 'prova' || f === 'risk' ? f : null,
+    // ?filter=hold — "Beklemede" çipi (madde 13); prova çipiyle birbirini dışlar
+    hold: f === 'hold',
   };
+}
+
+/** Bekletme eylemleri ("Hekimi bekliyor", "Beklemede" çipi) yalnız lab ve yönetici panelinde (madde 13). */
+export function holdActionsAllowed(panelGroup: string): boolean {
+  return panelGroup === '(lab)' || panelGroup === '(admin)';
 }
 
 /** Filtreyi ilgilendiren parametrelerin anahtarı — yalnız bu değişince liste yeniden filtrelenir. */

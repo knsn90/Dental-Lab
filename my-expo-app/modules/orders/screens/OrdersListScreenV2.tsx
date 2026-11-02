@@ -50,14 +50,16 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useSegments, useLocalSearchParams } from 'expo-router';
-import { matchesDueFlag, listStateFromParams, paramsKey } from '../lib/listParams';
+import { matchesDueFlag, listStateFromParams, paramsKey, holdActionsAllowed } from '../lib/listParams';
 import * as orderDefs from '../../../core/metrics/orderDefs';
-import { useLabToday } from '../../../core/metrics/useLabToday';
+import { useLabToday, cachedLabTz } from '../../../core/metrics/useLabToday';
+import { HoldOrderModal } from '../components/HoldOrderModal';
+import { daysBetween as labDaysBetween } from '../holdDates';
 import { useOrderMetrics } from '../../../core/metrics/useOrderMetrics';
 import { matchesOrderSearch } from '../lib/orderSearch';
 import { foldTR } from '../../search/lib/fold';
 import { doctorFilterInfo } from '../api';
-import { Search, X, Stethoscope, SlidersHorizontal, ArrowUpDown, ChevronLeft, ChevronRight, Flame, Clock, CalendarClock, LayoutList, Columns3, UserCheck, Pencil, Archive, Trash2, RotateCcw, AlertCircle, ShieldAlert, ListChecks, Camera, CornerDownLeft, CornerDownRight, Inbox } from '../../../core/ui/icons';
+import { Search, X, Stethoscope, SlidersHorizontal, ArrowUpDown, ChevronLeft, ChevronRight, Flame, Clock, CalendarClock, LayoutList, Columns3, UserCheck, Pencil, Archive, Trash2, RotateCcw, AlertCircle, ShieldAlert, ListChecks, Camera, CornerDownLeft, CornerDownRight, Inbox, Pause } from '../../../core/ui/icons';
 import { RowActionsMenu, type RowAction } from '../../../core/ui/RowActionsMenu';
 import { ScanWorkOrderModal } from '../components/ScanWorkOrderModal';
 // Admin düzenleme artık yeni-sipariş SİHİRBAZINI (aynı 4 adım) düzenleme modunda açar.
@@ -132,9 +134,14 @@ function rowActions(
   onEdit?: (o: WorkOrder) => void,
   onArchive?: (o: WorkOrder) => void,
   onDelete?: (o: WorkOrder) => void,
+  /** "Hekimi bekliyor" (madde 13) — yalnız gecikmiş satırda; geciken iş beklemeye alınınca listeden çıkar. */
+  onAwaitDoctor?: (o: WorkOrder) => void,
 ): RowAction[] {
   const isArchived = !!(order as any).is_archived;
   const out: RowAction[] = [];
+  if (onAwaitDoctor && orderDefs.isOverdueOrder(order as any, orderDefs.labTodayOf(cachedLabTz()))) {
+    out.push({ key: 'await-doctor', label: 'Hekimi bekliyor', icon: Pause, onPress: () => onAwaitDoctor(order) });
+  }
   if (onEdit)    out.push({ key: 'edit',    label: 'Düzenle', icon: Pencil, onPress: () => onEdit(order) });
   if (onArchive) out.push({
     key: 'archive',
@@ -199,11 +206,18 @@ const SORT_OPTIONS: { value: SortBy; label: string }[] = [
 ];
 
 // ── Helpers ─────────────────────────────────────────────────────────
-function deliveryText(d: string, status: WorkOrderStatus, holdStatus?: string | null, holdCategory?: string | null): string {
+function deliveryText(d: string, status: WorkOrderStatus, holdStatus?: string | null, holdCategory?: string | null, holdStartedAt?: string | null): string {
   if (status === 'teslim_edildi') return 'Teslim edildi';
   // Beklemedeki iş gecikme göstermez — sayaç durdu (bkz. isOrderOverdue / hold).
   // Prova beklemesi "Provada" (2. dalga 4): iş klinikte, sayaç duruyor.
-  if (holdStatus === 'on_hold') return isProvaHold({ hold_status: holdStatus, hold_category: holdCategory }) ? 'Provada' : 'Beklemede';
+  if (holdStatus === 'on_hold') {
+    if (isProvaHold({ hold_status: holdStatus, hold_category: holdCategory })) return 'Provada';
+    if (!holdStartedAt) return 'Beklemede';
+    // Madde 13: kaç gündür beklediği (lab günü — cihaz saat dilimi değil)
+    const tz = cachedLabTz();
+    const n = Math.max(0, labDaysBetween(orderDefs.labTodayOf(tz, new Date(holdStartedAt)), orderDefs.labTodayOf(tz)));
+    return `${autoT('Beklemede')} · ${n} ${autoT('gün')}`;
+  }
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const due   = new Date(d + 'T00:00:00');
   const diff  = Math.ceil((due.getTime() - today.getTime()) / 86_400_000);
@@ -345,6 +359,11 @@ export function OrdersListScreenV2() {
   const [dueFlag, setDueFlag]           = useState<'today' | 'tomorrow' | null>(null);
   // Prova takibi (2. dalga 4): "Provada" / "Randevu riski" — lab/yönetici listesinde çip, her panelde satır rozeti.
   const [provaChip, setProvaChip]       = useState<ProvaChip | null>(null);
+  // Madde 13: "Beklemede" çipi (prova hariç bekleyen işler) — yalnız lab/yönetici paneli
+  const [holdOnly, setHoldOnly]         = useState(false);
+  const holdAllowed = holdActionsAllowed(panelGroup);
+  // "Hekimi bekliyor" — gecikmiş satırdan bekletme penceresi (awaitDoctor kipi)
+  const [awaitTarget, setAwaitTarget]   = useState<WorkOrder | null>(null);
   const [sortBy, setSortBy]             = useState<SortBy>('created_at');  // en yeni sipariş her zaman üstte
   const [sortDir, setSortDir]           = useState<SortDir>('desc');
   const [sortOpen, setSortOpen]         = useState(false);
@@ -413,6 +432,7 @@ export function OrdersListScreenV2() {
     setUrgentOnly(st.urgent);
     setDueFlag(st.dueFlag);
     setProvaChip(st.provaChip);
+    setHoldOnly(st.hold);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeKey]);
 
@@ -473,7 +493,8 @@ export function OrdersListScreenV2() {
       const matchOverdue = !overdueOnly || orderDefs.isOverdueOrder(o as any, today);
       const matchDue     = matchesDueFlag(o, dueFlag, today, tomorrow, orderDefs);
       const matchProva   = !provaChip || matchesProvaFilter(provaFlags.get(o.id), provaChip);
-      return matchArchive && matchStatus && matchSearch && matchDoctor && matchUrgent && matchOverdue && matchDue && matchProva;
+      const matchHold    = !holdOnly || orderDefs.isHeldOrder(o as any);
+      return matchArchive && matchStatus && matchSearch && matchDoctor && matchUrgent && matchOverdue && matchDue && matchProva && matchHold;
     });
     return list.sort((a, b) => {
       let cmp = 0;
@@ -483,7 +504,7 @@ export function OrdersListScreenV2() {
       else if (sortBy === 'is_urgent')     cmp = (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0);
       return sortDir === 'asc' ? cmp : -cmp;
     });
-  }, [visibleOrders, statusFilter, search, doctorFilter, urgentOnly, overdueOnly, dueFlag, provaChip, provaFlags, showArchived, isAdmin, today, tomorrow, sortBy, sortDir]);
+  }, [visibleOrders, statusFilter, search, doctorFilter, urgentOnly, overdueOnly, dueFlag, provaChip, holdOnly, provaFlags, showArchived, isAdmin, today, tomorrow, sortBy, sortDir]);
 
   // Sayılar sunucudan (order_metrics; liste 300 satırla sınırlı — spec kararı 10). Lab/admin
   // panelinde ve arşiv görünümü kapalıyken; diğer durumlarda ekrandaki satırlardan.
@@ -528,15 +549,18 @@ export function OrdersListScreenV2() {
   const overdueCount     = serverCounts ? serverCounts.overdue : clientOverdue;
   const dueTodayCount    = serverCounts ? serverCounts.due_today : clientDueToday;
   const dueTomorrowCount = serverCounts ? serverCounts.due_tomorrow : clientDueTomorrow;
-  // Çipler birbirini dışlar (Acil / Geciken / Bugün / Yarın)
-  const pickChip = useCallback((k: 'urgent' | 'overdue' | 'today' | 'tomorrow' | 'prova' | 'risk') => {
-    const on = k === 'urgent' ? !urgentOnly : k === 'overdue' ? !overdueOnly
+  const clientHeld = useMemo(() => visibleOrders.filter(o => orderDefs.isHeldOrder(o as any)).length, [visibleOrders]);
+  const heldCount        = serverCounts ? serverCounts.on_hold : clientHeld;
+  // Çipler birbirini dışlar (Acil / Geciken / Bugün / Yarın / Beklemede / Prova)
+  const pickChip = useCallback((k: 'urgent' | 'overdue' | 'today' | 'tomorrow' | 'prova' | 'risk' | 'hold') => {
+    const on = k === 'urgent' ? !urgentOnly : k === 'overdue' ? !overdueOnly : k === 'hold' ? !holdOnly
       : k === 'prova' || k === 'risk' ? provaChip !== k : dueFlag !== k;
     setUrgentOnly(k === 'urgent' && on);
     setOverdueOnly(k === 'overdue' && on);
     setDueFlag((k === 'today' || k === 'tomorrow') && on ? k : null);
     setProvaChip((k === 'prova' || k === 'risk') && on ? k : null);
-  }, [urgentOnly, overdueOnly, dueFlag, provaChip]);
+    setHoldOnly(k === 'hold' && on);
+  }, [urgentOnly, overdueOnly, dueFlag, provaChip, holdOnly]);
 
   // ── Handlers (memo'lu satırlar re-render etmesin diye stable callback) ──
   const onCardPress = useCallback((order: WorkOrder) => {
@@ -600,6 +624,22 @@ export function OrdersListScreenV2() {
   // menüsünden seçilen işlem sessizce hiçbir şey açmazdı (OrderDetailScreenV2 stageModals vakası).
   const adminOrderModals = (
     <>
+      {/* "Hekimi bekliyor" — gecikmiş satırdan bekletme (madde 13); kaydedince satır Geciken'den çıkar */}
+      {awaitTarget && (
+        <HoldOrderModal
+          visible
+          mode="awaitDoctor"
+          order={{
+            id: awaitTarget.id,
+            order_number: awaitTarget.order_number ?? null,
+            created_at: awaitTarget.created_at,
+            doctor_id: (awaitTarget as any).doctor_id ?? null,
+            clinicId: (awaitTarget as any).doctor?.clinic?.id ?? null,
+          }}
+          onClose={() => setAwaitTarget(null)}
+          onDone={() => { setAwaitTarget(null); refetch?.(); }}
+        />
+      )}
       {/* Admin: kapsamlı düzenleme — yeni-sipariş sihirbazı (aynı 4 adım), bilgi dolu, popup */}
       {adminEditTarget && (
         <Modal visible transparent animationType="fade" onRequestClose={() => setAdminEditTarget(null)}>
@@ -681,14 +721,21 @@ export function OrdersListScreenV2() {
           dueTomorrow={{ active: dueFlag === 'tomorrow', count: dueTomorrowCount, toggle: () => pickChip('tomorrow') }}
           prova={showProvaChips ? { active: provaChip === 'prova', count: provaCount, toggle: () => pickChip('prova') } : undefined}
           risk={showProvaChips ? { active: provaChip === 'risk', count: riskCount, toggle: () => pickChip('risk') } : undefined}
+          hold={holdAllowed ? { active: holdOnly, count: heldCount, toggle: () => pickChip('hold') } : undefined}
           archive={isAdmin ? { active: showArchived, toggle: () => setShowArchived(v => !v) } : undefined}
           doctorChip={doctorFilter ? { label: `${autoT('Hekim')}: ${doctorFilter.name ?? '…'}`, clear: clearDoctorFilter } : undefined}
           manual={(panel === 'lab' || panel === 'admin')
             ? { count: paperInboxCount, open: () => router.push(`/${panelGroup}/pending-paper` as any) }
             : undefined}
           sort={{ by: sortBy, dir: sortDir, options: SORT_OPTIONS, setBy: setSortBy, setDir: setSortDir }}
-          rowActionsFor={isAdmin
-            ? (o) => rowActions(o, setAdminEditTarget, setAdminArchiveTarget, setAdminDeleteTarget)
+          rowActionsFor={isAdmin || holdAllowed
+            ? (o) => rowActions(
+                o,
+                isAdmin ? setAdminEditTarget : undefined,
+                isAdmin ? setAdminArchiveTarget : undefined,
+                isAdmin ? setAdminDeleteTarget : undefined,
+                holdAllowed ? setAwaitTarget : undefined,
+              )
             : undefined}
         />
         {adminOrderModals}
@@ -783,6 +830,27 @@ export function OrdersListScreenV2() {
                 </Text>
               )}
             </Pressable>
+
+            {/* Madde 13: bekleyen işler (prova hariç) — gecikmeden düşen işler burada */}
+            {holdAllowed && (
+              <GlassTooltip title={autoT('Beklemede')} text={autoT('Beklemeye alınmış işler; gecikme sayacı durur')}>
+                <Pressable
+                  onPress={() => pickChip('hold')}
+                  className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full"
+                  style={holdOnly ? { backgroundColor: (isDark ? 'rgba(232,155,42,0.22)' : 'rgba(232,155,42,0.15)') } : { backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: 1, borderColor: T.hairline }}
+                >
+                  <Pause size={12} color={holdOnly ? (isDark ? '#F0C078' : '#9C5E0E') : T.ink3} strokeWidth={1.8} />
+                  <Text className="text-[12px] font-semibold" style={{ color: holdOnly ? (isDark ? '#F0C078' : '#9C5E0E') : T.ink2 }}>
+                    Beklemede
+                  </Text>
+                  {heldCount > 0 && (
+                    <Text className="text-[10px] font-bold" style={{ color: holdOnly ? (isDark ? '#F0C078' : '#9C5E0E') : T.ink3, opacity: holdOnly ? 0.7 : 1 }}>
+                      {heldCount}
+                    </Text>
+                  )}
+                </Pressable>
+              </GlassTooltip>
+            )}
 
             {/* Teslim günü: bugün / yarın çıkacak işler */}
             <Pressable
@@ -1161,7 +1229,7 @@ export function OrdersListScreenV2() {
               <Text className="text-[13px] mt-3" style={{ color: T.ink3 }}>Yükleniyor…</Text>
             </View>
           ) : filtered.length === 0 ? (
-            <EmptyStateV2 search={search} hasFilters={urgentOnly || overdueOnly || !!provaChip || statusFilter !== 'all'} />
+            <EmptyStateV2 search={search} hasFilters={urgentOnly || overdueOnly || holdOnly || !!provaChip || statusFilter !== 'all'} />
           ) : (() => {
             // Planlama bekleyen siparişler ayrı bir bloğa alınır. Revizyon/devam siparişi planlama
             // beklerken ASIL sipariş bu bloğa TAŞINMAZ, kendi durumuyla ana listede kalır (kullanıcı
@@ -1185,6 +1253,7 @@ export function OrdersListScreenV2() {
                         onEdit={(o) => setAdminEditTarget(o)}
                         onArchive={(o) => setAdminArchiveTarget(o)}
                         onDelete={(o) => setAdminDeleteTarget(o)}
+                        onAwaitDoctor={holdAllowed ? setAwaitTarget : undefined}
                         footerTitle="Planlama bekliyor"
                         footerColor={PLAN.band}
                         footerBandColor={PLAN.footer}
@@ -1222,6 +1291,7 @@ export function OrdersListScreenV2() {
                       onEdit={setAdminEditTarget}
                       onArchive={setAdminArchiveTarget}
                       onDelete={setAdminDeleteTarget}
+                      onAwaitDoctor={holdAllowed ? setAwaitTarget : undefined}
                     />
                   ) : (
                     <View className="gap-2">
@@ -1578,7 +1648,7 @@ const MobileOrderCard = React.memo(function MobileOrderCard({ order, isManager, 
   const isLate  = order.status !== 'teslim_edildi' && diff < 0 && !onHold;
   const stage   = stageOf(order);
   const stageColor = STAGE_COLOR[stage];
-  const dText   = deliveryText(order.delivery_date, order.status, (order as any).hold_status, (order as any).hold_category);
+  const dText   = deliveryText(order.delivery_date, order.status, (order as any).hold_status, (order as any).hold_category, (order as any).hold_started_at);
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const dColor  = darkFg(isDark, isLate ? '#DC2626' : diff <= 1 && order.status !== 'teslim_edildi' ? '#D97706' : T.ink2 as string);
@@ -1716,7 +1786,7 @@ const MobileOrderCard = React.memo(function MobileOrderCard({ order, isManager, 
 // ═══════════════════════════════════════════════════════════════════════
 // DESKTOP TABLE
 // ═══════════════════════════════════════════════════════════════════════
-function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, onArchive, onDelete, footerTitle, footerColor, footerBandColor, paginate }: {
+function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, onArchive, onDelete, onAwaitDoctor, footerTitle, footerColor, footerBandColor, paginate }: {
   orders: WorkOrder[];
   isManager: boolean;
   isAdmin?: boolean;
@@ -1725,6 +1795,8 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
   onEdit?: (o: WorkOrder) => void;
   onArchive?: (o: WorkOrder) => void;
   onDelete?: (o: WorkOrder) => void;
+  /** "Hekimi bekliyor" — lab/yönetici panelinde verilir; eylem yalnız gecikmiş satırda çıkar. */
+  onAwaitDoctor?: (o: WorkOrder) => void;
   /** Footer'da count yerine ortalanmış başlık (örn. "PLANLAMA BEKLİYOR") */
   footerTitle?: string;
   /** Footer title rengi */
@@ -1803,6 +1875,7 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
           onEdit={onEdit ? () => onEdit(order) : undefined}
           onArchive={onArchive ? () => onArchive(order) : undefined}
           onDelete={onDelete ? () => onDelete(order) : undefined}
+          onAwaitDoctor={onAwaitDoctor ? () => onAwaitDoctor(order) : undefined}
         />
       ))}
 
@@ -1873,7 +1946,7 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
   );
 }
 
-const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, isLast, useClinicLogoAvatar, onPress, onAssign, onEdit, onArchive, onDelete }: {
+const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, isLast, useClinicLogoAvatar, onPress, onAssign, onEdit, onArchive, onDelete, onAwaitDoctor }: {
   order: WorkOrder;
   /** Lab/admin/teknisyen: hasta baş harfleri yerine klinik logosu göster. */
   useClinicLogoAvatar?: boolean;
@@ -1885,6 +1958,7 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
   onEdit?: (o: WorkOrder) => void;
   onArchive?: (o: WorkOrder) => void;
   onDelete?: (o: WorkOrder) => void;
+  onAwaitDoctor?: (o: WorkOrder) => void;
 }) {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const due   = new Date(order.delivery_date + 'T00:00:00');
@@ -1893,9 +1967,16 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
   const isLate  = order.status !== 'teslim_edildi' && diff < 0 && !onHold;
   const stage   = stageOf(order);
   const stageColor = STAGE_COLOR[stage];
-  const dText   = deliveryText(order.delivery_date, order.status, (order as any).hold_status, (order as any).hold_category);
+  const dText   = deliveryText(order.delivery_date, order.status, (order as any).hold_status, (order as any).hold_category, (order as any).hold_started_at);
   const canAssign = isManager && order.status === 'alindi' && !order.assigned_to;
   const needsTriage = order.status === 'alindi' && !(order as any).triaged_at;
+  // ••• menüsü eylem varsa çizilir: yönetici işlemleri (yalnız admin) + gecikmiş satırda "Hekimi bekliyor".
+  // Menü çizilen ve atanabilen satırda "Ata" menünün başına girer (36px sütuna iki düğme sığmaz).
+  const rowMenu = (() => {
+    const acts = rowActions(order, isAdmin ? onEdit : undefined, isAdmin ? onArchive : undefined, isAdmin ? onDelete : undefined, onAwaitDoctor);
+    if (acts.length && canAssign && !isAdmin) acts.unshift({ key: 'assign', label: 'Ata', icon: UserCheck, onPress: () => onAssign(order) });
+    return acts;
+  })();
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const rowAccent = usePanelTheme().primary;
@@ -2092,8 +2173,8 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
       <View style={{ width: 36 }} className="flex-row items-center justify-end gap-1">
         {/* Admin işlemleri tek «⋯» menüsünde — üç ayrı ikon satırın sağından
             ~90px yiyordu ve yıkıcı «Sil» her satırda tek tıkla erişilebilirdi. */}
-        {isAdmin && <RowActionsMenu actions={rowActions(order, onEdit, onArchive, onDelete)} size={26} />}
-        {!isAdmin && (canAssign ? (
+        {rowMenu.length > 0 && <RowActionsMenu actions={rowMenu} size={26} />}
+        {rowMenu.length === 0 && (canAssign ? (
           <Pressable
             onPress={e => { (e as any).stopPropagation?.(); onAssign(order); }}
             className="px-3 py-1 rounded-full"

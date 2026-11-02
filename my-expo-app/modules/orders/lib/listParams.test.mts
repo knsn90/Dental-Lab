@@ -1,7 +1,7 @@
 // node --test my-expo-app/modules/orders/lib/listParams.test.mts   (.mts → tsc kapsamı dışında)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseOrdersListParams, matchesDueFlag, isPastDue, localISODate, listStateFromParams, paramsKey } from './listParams.ts';
+import { parseOrdersListParams, matchesDueFlag, isPastDue, localISODate, listStateFromParams, paramsKey, holdActionsAllowed } from './listParams.ts';
 import * as defs from '../../../core/metrics/orderDefs.ts';
 
 const S = ['all', 'alindi', 'uretimde', 'kalite_kontrol', 'teslimata_hazir', 'teslim_edildi'];
@@ -60,11 +60,11 @@ test('localISODate: yerel takvim günü', () => {
 });
 
 test('listStateFromParams: parametre listenin TAM filtre durumunu verir (çipler birbirini dışlar)', () => {
-  assert.deepEqual(listStateFromParams({ filter: 'overdue' }, S), { status: 'all', overdue: true, urgent: false, dueFlag: null, doctorId: null, provaChip: null });
-  assert.deepEqual(listStateFromParams({ filter: 'today', status: 'uretimde' }, S), { status: 'uretimde', overdue: false, urgent: false, dueFlag: 'today', doctorId: null, provaChip: null });
-  assert.deepEqual(listStateFromParams({ filter: 'urgent' }, S), { status: 'all', overdue: false, urgent: true, dueFlag: null, doctorId: null, provaChip: null });
-  assert.deepEqual(listStateFromParams({}, S), { status: 'all', overdue: false, urgent: false, dueFlag: null, doctorId: null, provaChip: null });
-  assert.deepEqual(listStateFromParams({ filter: 'xyz', status: 'foo' }, S), { status: 'all', overdue: false, urgent: false, dueFlag: null, doctorId: null, provaChip: null });
+  assert.deepEqual(listStateFromParams({ filter: 'overdue' }, S), { status: 'all', overdue: true, urgent: false, dueFlag: null, doctorId: null, provaChip: null, hold: false });
+  assert.deepEqual(listStateFromParams({ filter: 'today', status: 'uretimde' }, S), { status: 'uretimde', overdue: false, urgent: false, dueFlag: 'today', doctorId: null, provaChip: null, hold: false });
+  assert.deepEqual(listStateFromParams({ filter: 'urgent' }, S), { status: 'all', overdue: false, urgent: true, dueFlag: null, doctorId: null, provaChip: null, hold: false });
+  assert.deepEqual(listStateFromParams({}, S), { status: 'all', overdue: false, urgent: false, dueFlag: null, doctorId: null, provaChip: null, hold: false });
+  assert.deepEqual(listStateFromParams({ filter: 'xyz', status: 'foo' }, S), { status: 'all', overdue: false, urgent: false, dueFlag: null, doctorId: null, provaChip: null, hold: false });
 });
 
 test('paramsKey: yalnız filter+status+doctor değişince değişir', () => {
@@ -91,4 +91,20 @@ test('?filter=prova|risk prova çipini açar; diğer süzgeçleri kapalı bırak
   assert.equal(listStateFromParams({ filter: 'risk' }, ['alindi']).provaChip, 'risk');
   assert.equal(listStateFromParams({ filter: 'overdue' }, ['alindi']).provaChip, null);
   assert.equal(listStateFromParams({}, ['alindi']).provaChip, null);
+});
+
+// Madde 13: ?filter=hold → "Beklemede" çipi; prova çipiyle birbirini dışlar
+test('?filter=hold beklemede çipini açar; prova çipi kapalı kalır', () => {
+  const h = listStateFromParams({ filter: 'hold' }, ['alindi']);
+  assert.equal(h.hold, true);
+  assert.equal(h.provaChip, null);
+  assert.equal(h.overdue, false);
+  assert.equal(listStateFromParams({ filter: 'prova' }, ['alindi']).hold, false);
+  assert.equal(listStateFromParams({}, ['alindi']).hold, false);
+});
+
+test('holdActionsAllowed: bekletme eylemleri yalnız lab ve yönetici panelinde', () => {
+  assert.equal(holdActionsAllowed('(lab)'), true);
+  assert.equal(holdActionsAllowed('(admin)'), true);
+  for (const g of ['(clinic)', '(doctor)', '(station)', '']) assert.equal(holdActionsAllowed(g), false, g);
 });
