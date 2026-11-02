@@ -9832,5 +9832,7 @@
   "Beklemeye alınmış işler; gecikme sayacı durur": "Pausierte Aufträge; der Verzögerungszähler steht",
   "Uzun bekleyen": "Lange pausiert",
   "bekleyen iş daha": "weitere pausierte Aufträge",
-  "Gecikmiş işi beklemeye alır; hekim onayı ya da parça gelene kadar gecikme sayacı durur": "Pausiert den überfälligen Auftrag; der Verzögerungszähler stoppt, bis die Freigabe des Zahnarztes oder das Teil eintrifft"
+  "Gecikmiş işi beklemeye alır; hekim onayı ya da parça gelene kadar gecikme sayacı durur": "Pausiert den überfälligen Auftrag; der Verzögerungszähler stoppt, bis die Freigabe des Zahnarztes oder das Teil eintrifft",
+  "Sonradan girildi": "Nachträglich erfasst",
+  "Bekleme teslimde kapandı": "Pause bei Lieferung beendet"
 }

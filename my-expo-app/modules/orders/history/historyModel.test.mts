@@ -150,3 +150,30 @@ test('tarama satırı: karar türüne göre başlık, randevu etiketi ayrıntıd
   assert.deepEqual(texts(historyParts(row('scan', { action: 'Tarama kararı verdi', decision: 'yeni_siparis', label: lbl }))), [lbl]);
   assert.ok((HISTORY_KINDS as readonly string[]).includes('scan'));
 });
+
+test('bekleme başlangıcı sonradan girildiyse "Sonradan girildi" + giriş anı yazılır', () => {
+  const ps = historyParts(row('hold_started', { responsible: 'client', category: 'client_approval', recorded_at: '2026-10-25T09:00:00Z' }));
+  assert.ok(ps.some((p) => p.t === 'text' && p.v === 'Sonradan girildi'));
+  assert.ok(ps.some((p) => p.t === 'date' && p.v === '2026-10-25T09:00:00Z'));
+  assert.ok(ps.some((p) => p.t === 'holdCat' && p.v === 'client_approval'));
+});
+
+test('recorded_at yoksa "Sonradan girildi" yazılmaz', () => {
+  const ps = historyParts(row('hold_started', { responsible: 'client', category: 'client_approval' }));
+  assert.ok(!ps.some((p) => p.v === 'Sonradan girildi'));
+  const pe = historyParts(row('hold_ended', { extended_days: 3 }));
+  assert.ok(!pe.some((p) => p.v === 'Sonradan girildi'));
+});
+
+test('bitiş sonradan girildiyse uzatma parçaları + "Sonradan girildi" + tarih', () => {
+  const ps = historyParts(row('hold_ended', { extended_days: 7, recorded_at: '2026-10-26T08:00:00Z' }));
+  assert.ok(ps.some((p) => p.t === 'text' && p.v === 'Teslim süresi uzatıldı:'));
+  assert.ok(ps.some((p) => p.t === 'raw' && p.v === '+7'));
+  assert.ok(ps.some((p) => p.t === 'text' && p.v === 'Sonradan girildi'));
+  assert.ok(ps.some((p) => p.t === 'date' && p.v === '2026-10-26T08:00:00Z'));
+});
+
+test('teslimde kapanan bekleme başlığı "Bekleme teslimde kapandı"', () => {
+  assert.equal(historyTitle(row('hold_ended', { on_delivery: true })), 'Bekleme teslimde kapandı');
+  assert.equal(historyTitle(row('hold_ended', {})), 'Devam ettirildi');
+});

@@ -205,7 +205,7 @@ export function historyTitle(row: HistoryRow): string {
     case 'stage_rejected': return 'Kalite kontrolde reddedildi';
     case 'material_used': return 'Malzeme kullanıldı';
     case 'hold_started': return 'Beklemeye alındı';
-    case 'hold_ended': return 'Devam ettirildi';
+    case 'hold_ended': return d.on_delivery ? 'Bekleme teslimde kapandı' : 'Devam ettirildi';
     case 'delivery_assigned': return 'Kurye atandı';
     case 'delivery_picked_up': return 'Kurye teslim aldı';
     case 'delivery_delivered': return 'Kurye teslim etti';
@@ -318,6 +318,8 @@ function decision(status: unknown): Part {
 export function historyParts(row: HistoryRow): Part[] {
   const d = row.detail ?? {};
   const raw = (v: unknown): Part[] => (has(v) ? [{ t: 'raw', v: String(v) }] : []);
+  // Geriye dönük girilen bekleme günü: girişin yapıldığı an (kimin girdiği satırın actor_name'inde)
+  const recorded: Part[] = has(d.recorded_at) ? [{ t: 'text', v: 'Sonradan girildi' }, { t: 'date', v: String(d.recorded_at) }] : [];
   switch (row.kind) {
     case 'created':
       return join([
@@ -357,11 +359,15 @@ export function historyParts(row: HistoryRow): Part[] {
           : d.responsible === 'lab' ? [{ t: 'text', v: 'Lab kaynaklı' }] : [],
         has(d.category) ? [{ t: 'holdCat', v: String(d.category) }] : [],
         raw(d.reason),
+        recorded,
       ]);
     case 'hold_ended':
-      return Number(d.extended_days) > 0
-        ? [{ t: 'text', v: 'Teslim süresi uzatıldı:' }, { t: 'raw', v: `+${d.extended_days}` }, { t: 'text', v: 'gün' }]
-        : [];
+      return join([
+        Number(d.extended_days) > 0
+          ? [{ t: 'text', v: 'Teslim süresi uzatıldı:' }, { t: 'raw', v: `+${d.extended_days}` }, { t: 'text', v: 'gün' }]
+          : [],
+        recorded,
+      ]);
     case 'delivery_assigned':
     case 'delivery_picked_up':
     case 'delivery_delivered':
