@@ -9801,5 +9801,6 @@
   "Ort.": "Avg.",
   "liste altı": "below list",
   "Ciro kırılımı yüklenemedi; sayfayı yenileyip tekrar deneyin.": "Couldn't load the revenue breakdown; refresh the page and try again.",
-  "Ort. Marj": "Avg. Margin"
+  "Ort. Marj": "Avg. Margin",
+  "Beklemeye alınmış, teslim edilmemiş işler. Prova beklemesi sayılmaz; gecikme sayacı beklerken durur.": "Jobs put on hold and not yet delivered. Try-in holds are not counted; the delay counter stops while on hold."
 }

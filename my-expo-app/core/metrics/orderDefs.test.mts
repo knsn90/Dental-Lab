@@ -2,7 +2,7 @@
 // Sipariş tanımlarının istemci aynası; SQL karşılığı: lab_today, wo_is_open, wo_is_overdue (20261026100000).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { labTodayOf, addDays, isOpenOrder, isOverdueOrder, isUrgentOpen, isDueOn } from './orderDefs.ts';
+import { labTodayOf, addDays, isOpenOrder, isOverdueOrder, isUrgentOpen, isDueOn, isHeldOrder } from './orderDefs.ts';
 
 test('lab günü saat dilimine göre: TR gece 01:30 ertesi gündür', () => {
   assert.equal(labTodayOf('Europe/Istanbul', new Date('2026-10-26T22:30:00Z')), '2026-10-27');
@@ -48,4 +48,12 @@ test('açık iş ve belirli günde teslim', () => {
   assert.equal(isDueOn({ status: 'iptal', delivery_date: '2026-10-26' }, '2026-10-26'), false);
   assert.equal(isDueOn({ status: 'uretimde', delivery_date: '2026-10-26' }, '2026-10-26'), true);
   assert.equal(isDueOn({ status: 'uretimde', delivery_date: '2026-10-26', hold_status: 'on_hold' }, '2026-10-26'), true);
+});
+
+test('beklemede: açık + on_hold, prova beklemesi sayılmaz (madde 13)', () => {
+  assert.equal(isHeldOrder({ status: 'uretimde', hold_status: 'on_hold', hold_category: 'material' }), true);
+  assert.equal(isHeldOrder({ status: 'uretimde', hold_status: 'on_hold', hold_category: 'client_prova' }), false);
+  assert.equal(isHeldOrder({ status: 'teslim_edildi', hold_status: 'on_hold', hold_category: 'material' }), false);
+  assert.equal(isHeldOrder({ status: 'uretimde', hold_status: 'on_hold', hold_category: 'material', is_archived: true }), false);
+  assert.equal(isHeldOrder({ status: 'uretimde', hold_status: null }), false);
 });

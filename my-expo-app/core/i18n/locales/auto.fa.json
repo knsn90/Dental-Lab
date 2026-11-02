@@ -9801,5 +9801,6 @@
   "Ort.": "میانگین",
   "liste altı": "زیر قیمت فهرست",
   "Ciro kırılımı yüklenemedi; sayfayı yenileyip tekrar deneyin.": "تفکیک درآمد بارگذاری نشد؛ صفحه را تازه کنید و دوباره امتحان کنید.",
-  "Ort. Marj": "میانگین حاشیه"
+  "Ort. Marj": "میانگین حاشیه",
+  "Beklemeye alınmış, teslim edilmemiş işler. Prova beklemesi sayılmaz; gecikme sayacı beklerken durur.": "کارهای متوقف‌شده‌ای که هنوز تحویل نشده‌اند. توقفِ پرو شمرده نمی‌شود؛ شمارنده‌ی تأخیر در مدت توقف می‌ایستد."
 }

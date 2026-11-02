@@ -6,6 +6,7 @@
 export const METRIC_HINTS = {
   overdue: 'Teslim tarihi bugünden önce olan, henüz teslim edilmemiş işler. İptal, arşiv ve beklemedekiler sayılmaz.',
   active: 'Teslim edilmemiş işler. İptal ve arşiv hariç, beklemedekiler dahil.',
+  onHold: 'Beklemeye alınmış, teslim edilmemiş işler. Prova beklemesi sayılmaz; gecikme sayacı beklerken durur.',
   urgent: 'Teslim edilmemiş acil işler. İptal ve arşiv hariç.',
   dueToday: 'Teslim tarihi bugün olan, henüz teslim edilmemiş işler.',
   newToday: 'Bugün açılan siparişler. İptal, revizyon ve devam siparişleri hariç.',

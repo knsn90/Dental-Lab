@@ -13,6 +13,7 @@ export type OrderLike = {
   status: string;
   is_archived?: boolean | null;
   hold_status?: string | null;
+  hold_category?: string | null;
   delivery_date?: string | null;
   is_urgent?: boolean | null;
 };
@@ -52,6 +53,12 @@ export function isOverdueOrder(o: OrderLike, today: string): boolean {
   if (!isOpenOrder(o) || o.hold_status === 'on_hold') return false;
   const d = (o.delivery_date ?? '').slice(0, 10);
   return !!d && d < today;
+}
+
+/** Beklemede: açık + beklemeye alınmış; prova beklemesi sayılmaz (kendi göstergesi var).
+ *  SQL karşılığı: order_metrics().on_hold (20261102110000). */
+export function isHeldOrder(o: OrderLike): boolean {
+  return isOpenOrder(o) && o.hold_status === 'on_hold' && o.hold_category !== 'client_prova';
 }
 
 /** Acil iş: açık + acil işaretli (teslim edilmiş acil iş sayılmaz). */

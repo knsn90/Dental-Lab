@@ -9801,5 +9801,6 @@
   "Ort.": "Ø",
   "liste altı": "unter Liste",
   "Ciro kırılımı yüklenemedi; sayfayı yenileyip tekrar deneyin.": "Die Umsatzaufschlüsselung konnte nicht geladen werden; laden Sie die Seite neu und versuchen Sie es erneut.",
-  "Ort. Marj": "Ø Marge"
+  "Ort. Marj": "Ø Marge",
+  "Beklemeye alınmış, teslim edilmemiş işler. Prova beklemesi sayılmaz; gecikme sayacı beklerken durur.": "Pausierte, noch nicht gelieferte Aufträge. Einprobe-Pausen zählen nicht; der Verzugszähler steht während der Pause still."
 }
