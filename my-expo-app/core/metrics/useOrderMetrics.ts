@@ -16,6 +16,8 @@ export type OrderMetrics = {
   active: number;
   overdue: number;
   urgent: number;
+  /** Beklemede (prova beklemesi hariç) — orderDefs.isHeldOrder ile aynı kural (20261102110000). */
+  on_hold: number;
   due_today: number;
   due_tomorrow: number;
   created_today: number;
@@ -34,6 +36,7 @@ function normalize(raw: any): OrderMetrics | null {
     active: n(raw.active),
     overdue: n(raw.overdue),
     urgent: n(raw.urgent),
+    on_hold: n(raw.on_hold),
     due_today: n(raw.due_today),
     due_tomorrow: n(raw.due_tomorrow),
     created_today: n(raw.created_today),
