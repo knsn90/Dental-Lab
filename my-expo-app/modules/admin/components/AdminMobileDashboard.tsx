@@ -308,8 +308,11 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
           label={t('admin.dashboard.activeOrders')}
           numericValue={props.activeOrders ?? 0}
           delta={`${props.productionCount ?? 0} ${t('admin.dashboard.inProduction')}`}
+          // Dar kartta ikisi sığmıyor: geciken yoksa yalnız bekleme yazılır
           sub={held > 0
-            ? `${t('admin.dashboard.overdueCount', { count: overdue })} · ${t('dashboard.heldCount', { count: held })}`
+            ? (overdue > 0
+              ? `${t('admin.dashboard.overdueCount', { count: overdue })} · ${t('dashboard.heldCount', { count: held })}`
+              : t('dashboard.heldCount', { count: held }))
             : t('admin.dashboard.overdueCount', { count: overdue })}
           // Aktif > 0 ise highlight et
           dark={(props.activeOrders ?? 0) > 0}
