@@ -121,6 +121,7 @@
     },
     "activeOrders": "Active orders",
     "overdueCount": "{{count}} overdue",
+    "heldCount": "{{count}} on hold",
     "noOverdue": "None overdue",
     "doneToday": "Done today",
     "thisWeekCount": "{{count}} this week",
@@ -131,7 +132,8 @@
     "overdueCases": "Overdue cases",
     "noOverdueCases": "No overdue cases",
     "qc": "QC",
-    "delay": "Delay"
+    "delay": "Delay",
+    "hold": "On hold"
   },
   "courier": {
     "greeting": {

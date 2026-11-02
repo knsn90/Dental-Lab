@@ -35,7 +35,7 @@ import {
   CreditCard, Calendar, BarChart3, Layers, TrendingUp,
   AlertTriangle, ArrowUpRight, ArrowUpLeft, ArrowRight, ArrowLeft, Check, Trophy, Inbox, Receipt, CornerDownRight,
   Wallet,
-  PlusCircle,
+  PlusCircle, Pause,
 } from '../../core/ui/icons';
 import { useStockAlert } from '../../core/hooks/useStockAlert';
 import { useTranslation } from 'react-i18next';
@@ -56,6 +56,11 @@ import { AdminMobileDashboard } from '../../modules/admin/components/AdminMobile
 import { resolveOrderStatus } from '../../modules/dashboard/components/RecentOrdersMobile';
 import { mapRevisionCases, flattenRevisionCases } from '../../modules/orders/revisionGroups';
 import { useRevisionParents } from '../../modules/orders/hooks/useRevisionParents';
+import { useHeldOrders, type HeldOrder } from '../../modules/orders/hooks/useHeldOrders';
+import { isLongHold, daysBetween } from '../../modules/orders/holdDates';
+import { holdCategoryLabel } from '../../modules/orders/holdCategories';
+import { ResumeOrderModal } from '../../modules/orders/components/ResumeOrderModal';
+import { HoldOrderModal } from '../../modules/orders/components/HoldOrderModal';
 import { NumberTickerX } from '../../core/ui/NumberTickerX';
 import { PipelineFlowRow } from '../../core/ui/PipelineFlowRow';
 import { type CurrencyTotal } from '../../core/money/aggregations';
@@ -1004,10 +1009,17 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
 
 // ── Bugünkü Görevler — koyu kart ──
 const TASKS_SURFACE = '#3A4554';
+/** Görev kartı satırı. `action` = satırın sağında küçük eylem kapsülü (Devam ettir,
+ *  Hekimi bekliyor) — satıra dokunmak yine `onPress` (detaya git) yapar. */
+type TaskItem = {
+  icon: React.FC<any>; label: string; time: string; done: boolean; onPress?: () => void;
+  action?: { label: string; tip: string; onPress: () => void };
+};
+
 function TasksCard({
   tasks,
 }: {
-  tasks: { icon: React.FC<any>; label: string; time: string; done: boolean; onPress?: () => void }[];
+  tasks: TaskItem[];
 }) {
   const PB = usePanelBlue();
   const isDark = useThemeModeStore(s => s.resolvedDark);
@@ -1061,15 +1073,34 @@ function TasksCard({
                 </Text>
                 <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>{task.time}</Text>
               </View>
-              <View style={{
-                width: 18, height: 18, borderRadius: 9,
-                backgroundColor: task.done ? PB : 'transparent',
-                borderWidth: task.done ? 0 : 1.5,
-                borderColor: task.done ? undefined : 'rgba(255,255,255,0.2)',
-                alignItems: 'center', justifyContent: 'center',
-              }}>
-                {task.done && <Check size={10} color="#FFF" strokeWidth={2.5} />}
-              </View>
+              {task.action ? (
+                // Kart her iki temada koyu → kapsül beyaz-alfa zemin + beyaz metin
+                <GlassTooltip title={task.action.label} text={task.action.tip}>
+                  <Pressable
+                    onPress={(e: any) => { e?.stopPropagation?.(); task.action!.onPress(); }}
+                    accessibilityRole="button"
+                    accessibilityLabel={task.action.label}
+                    style={({ pressed }: any) => ({
+                      paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
+                      backgroundColor: pressed ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.10)',
+                      borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)',
+                      ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+                    })}
+                  >
+                    <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '600', color: '#FFF' }}>{task.action.label}</Text>
+                  </Pressable>
+                </GlassTooltip>
+              ) : (
+                <View style={{
+                  width: 18, height: 18, borderRadius: 9,
+                  backgroundColor: task.done ? PB : 'transparent',
+                  borderWidth: task.done ? 0 : 1.5,
+                  borderColor: task.done ? undefined : 'rgba(255,255,255,0.2)',
+                  alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {task.done && <Check size={10} color="#FFF" strokeWidth={2.5} />}
+                </View>
+              )}
             </Pressable>
           );
         })}
@@ -1352,6 +1383,12 @@ export default function AdminDashboard() {
   // Tek tanım (2026-10-26): statü dağılımı, aktif, geciken, bugün gelen/teslim ve
   // "bu ay gelen" order_metrics()'ten. Burada yalnız planlama bekleyen sayılır.
   const { data: metrics, refetch: refetchMetrics } = useOrderMetrics();
+  // Beklemedeki işler (madde 13): rozet sayısı order_metrics.on_hold'dan, satırlar
+  // useHeldOrders'tan (aynı paylaşılan gerçek zamanlı kanal).
+  const { rows: heldRows, refetch: refetchHeld } = useHeldOrders();
+  const heldCount = metrics?.on_hold ?? heldRows.length;
+  const [resumeTarget, setResumeTarget] = useState<HeldOrder | null>(null);
+  const [awaitTarget, setAwaitTarget] = useState<any | null>(null);
   useEffect(() => {
     if (!metrics) return;
     const counts: Record<string, number> = {};
@@ -1388,7 +1425,7 @@ export default function AdminDashboard() {
       .from('work_orders')
       // hold_status + revizyon alanları: durum etiketi ve vaka gruplaması için
       // gerekli (bu sorgu ikisini de seçmiyordu → revizyonlar köksüz görünüyordu)
-      .select('id, order_number, work_type, status, hold_status, hold_category, is_archived, delivery_date, doctor_id, patient_name, revision_of_id, revision_no, continues_order_id')
+      .select('id, order_number, work_type, status, hold_status, hold_category, is_archived, delivery_date, created_at, doctor_id, patient_name, revision_of_id, revision_no, continues_order_id')
       .order('created_at', { ascending: false })
       .limit(8);
     // 42501 = oturum kapandıktan sonra (anon) gelen "permission denied" — çıkışta
@@ -1431,6 +1468,10 @@ export default function AdminDashboard() {
       patient_name: o.patient_name ?? null,
       doctor_name: nameMap[o.doctor_id] ?? '--',
       clinic_logo_url: logoOf[clinicOf[o.doctor_id] ?? ''] ?? null,
+      // "Hekimi bekliyor" penceresi: açılış günü tabanı + hekim/klinik bildirimi
+      created_at: o.created_at ?? null,
+      doctor_id: o.doctor_id ?? null,
+      clinic_id: clinicOf[o.doctor_id] ?? null,
     })));
   }, []);
 
@@ -1602,7 +1643,7 @@ export default function AdminDashboard() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([loadRecent(), loadPipeline(), loadExtra(), loadProfiles(), loadFinance(), refetchOverdueClinics()]);
+    await Promise.all([loadRecent(), loadPipeline(), loadExtra(), loadProfiles(), loadFinance(), refetchOverdueClinics(), refetchHeld()]);
     setRefreshing(false);
   };
 
@@ -1626,7 +1667,7 @@ export default function AdminDashboard() {
 
   // Görev/aksiyon kartı — yalnız sipariş değil, bekleyen TÜM aksiyonlar burada:
   // gecikme · teslim · bugün · faturalama · tahsilat · kritik stok (aciliyet sırası).
-  const taskItems: { icon: React.FC<any>; label: string; time: string; done: boolean; onPress?: () => void }[] = [];
+  const taskItems: TaskItem[] = [];
   // UX: 1. satır = YAPILACAK İŞ (fiil önde), 2. satır = kararı veren bağlam.
   const taskNo = (no?: string | null) => (no ? `#${no}` : 'sipariş');
   const daysLate = (d?: string | null) => {
@@ -1646,8 +1687,44 @@ export default function AdminDashboard() {
       time: late ? `${late} ${autoT('gün gecikti')} · ${fmtDate(o.delivery_date)}` : fmtDate(o.delivery_date),
       done: false,
       onPress: () => router.push(`/(admin)/order/${o.id}` as any),
+      // Süre doldu ama iş hekimin onayını/parçasını bekliyor → tek dokunuşla beklemeye al.
+      // created_at önbellekteki eski satırda yoksa (taze yükleme gelene kadar) gösterilmez.
+      action: (o as any).created_at ? {
+        label: autoT('Hekimi bekliyor'),
+        tip: autoT('Gecikmiş işi beklemeye alır; hekim onayı ya da parça gelene kadar gecikme sayacı durur'),
+        onPress: () => setAwaitTarget(o),
+      } : undefined,
     });
   });
+
+  // Uzun süredir beklemede → unutulmasın: kategori · no, kaç gündür (+ neden)
+  const holdAgeOf = (r: HeldOrder) =>
+    r.hold_started_at ? daysBetween(labTodayOf(cachedLabTz(), new Date(r.hold_started_at)), today) : 0;
+  const longHolds = heldRows.filter(r => r.hold_started_at && isLongHold(holdAgeOf(r)));
+  longHolds.slice(0, 2).forEach(r => {
+    taskItems.push({
+      icon: Pause as React.FC<any>,
+      label: `${autoT(holdCategoryLabel(r.hold_category))} · ${taskNo(r.order_number)}`,
+      time: [`${holdAgeOf(r)} ${autoT('gündür')}`, r.hold_reason?.trim() || null].filter(Boolean).join(' · '),
+      done: false,
+      onPress: () => router.push(`/(admin)/order/${r.id}` as any),
+      action: {
+        label: autoT('Devam ettir'),
+        tip: autoT('Beklemeyi seçilen günde kapatır; hekim/klinik kaynaklıysa teslim tarihi ötelenir'),
+        onPress: () => setResumeTarget(r),
+      },
+    });
+  });
+  if (longHolds.length > 2) {
+    taskItems.push({
+      icon: Pause as React.FC<any>,
+      label: `+${longHolds.length - 2} ${autoT('bekleyen iş daha')}`,
+      time: autoT('Beklemede'),
+      done: false,
+      onPress: () => router.push('/(admin)/orders?filter=hold' as any),
+    });
+  }
+  const afterHoldChange = () => { refetchHeld(); refetchMetrics(); loadRecent(); };
 
   // Upcoming deliveries as tasks
   upcoming.slice(0, 2).forEach(o => {
@@ -1772,6 +1849,14 @@ export default function AdminDashboard() {
       };
     });
 
+    const notifHeld = longHolds.slice(0, 5).map(r => ({
+      id: String(r.order_number ?? r.id).slice(-6),
+      _id: r.id,
+      patient: r.patient_name ?? 'Hasta',
+      days: holdAgeOf(r),
+      subtitle: autoT(holdCategoryLabel(r.hold_category)),
+    }));
+
     // Son Siparişler — mobil kart listesi (başlık = hekim adı; admin lab'ı yönetir)
     const toRecentItem = (o: any) => {
       const st = resolveOrderStatus(o.status, o.hold_status, (o as any).hold_category);
@@ -1820,6 +1905,7 @@ export default function AdminDashboard() {
           activeOrders={totalActive}
           productionCount={totalActive}
           overdueCount={overdueCount}
+          heldCount={heldCount}
           pendingApprovalsCount={notifApprovals.length}
           memberTrend={monthly}
           onNewOrder={() => useNewOrderModalStore.getState().setOpen(true)}
@@ -1839,6 +1925,7 @@ export default function AdminDashboard() {
           approvals={notifApprovals}
           overdue={notifOverdue}
           upcoming={notifUpcoming}
+          held={notifHeld}
         />
       </View>
     );
@@ -1895,6 +1982,19 @@ export default function AdminDashboard() {
                     labelColor="#9C2E2E"
                     pulse
                     onPress={() => router.push('/(admin)/orders?filter=overdue' as any)}
+                  />
+                </GlassTooltip>
+              )}
+              {/* Beklemede: gecikme sayılmaz ama unutulmasın — Geciken ile aynı ölçü */}
+              {heldCount > 0 && (
+                <GlassTooltip title={autoT('Beklemede')} text={autoT(METRIC_HINTS.onHold)}>
+                  <AlertPillX
+                    icon={Pause}
+                    count={heldCount}
+                    label={autoT('Beklemede')}
+                    color={DS.exec.warning}
+                    labelColor={isDark ? '#F0C078' : '#9C5E0E'}
+                    onPress={() => router.push('/(admin)/orders?filter=hold' as any)}
                   />
                 </GlassTooltip>
               )}
@@ -2230,6 +2330,39 @@ export default function AdminDashboard() {
       )}
 
       <View style={{ height: 40 }} />
+
+      {resumeTarget && (
+        <ResumeOrderModal
+          visible
+          order={{
+            id: resumeTarget.id,
+            order_number: resumeTarget.order_number,
+            created_at: resumeTarget.created_at,
+            delivery_date: resumeTarget.delivery_date ?? '',
+            hold_started_at: resumeTarget.hold_started_at ?? resumeTarget.created_at,
+            hold_responsible: resumeTarget.hold_responsible,
+            hold_category: resumeTarget.hold_category,
+            hold_reason: resumeTarget.hold_reason,
+          }}
+          onClose={() => setResumeTarget(null)}
+          onDone={() => { setResumeTarget(null); afterHoldChange(); }}
+        />
+      )}
+      {awaitTarget && (
+        <HoldOrderModal
+          visible
+          mode="awaitDoctor"
+          order={{
+            id: awaitTarget.id,
+            order_number: awaitTarget.order_number ?? null,
+            created_at: awaitTarget.created_at,
+            doctor_id: awaitTarget.doctor_id ?? null,
+            clinicId: awaitTarget.clinic_id ?? null,
+          }}
+          onClose={() => setAwaitTarget(null)}
+          onDone={() => { setAwaitTarget(null); afterHoldChange(); }}
+        />
+      )}
     </ScrollView>
   );
 }

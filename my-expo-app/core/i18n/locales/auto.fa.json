@@ -9829,5 +9829,8 @@
   "Yeni teslim": "تحویل جدید",
   "Beklemeyi seçilen günde kapatır; hekim/klinik kaynaklıysa teslim tarihi ötelenir": "توقف را در روز انتخاب‌شده می‌بندد؛ اگر به پزشک یا مرکز درمانی مربوط باشد، تاریخ تحویل عقب می‌رود",
   "gündür": "روز",
-  "Beklemeye alınmış işler; gecikme sayacı durur": "کارهای متوقف‌شده؛ شمارنده تأخیر متوقف است"
+  "Beklemeye alınmış işler; gecikme sayacı durur": "کارهای متوقف‌شده؛ شمارنده تأخیر متوقف است",
+  "Uzun bekleyen": "توقف طولانی",
+  "bekleyen iş daha": "کار متوقف دیگر",
+  "Gecikmiş işi beklemeye alır; hekim onayı ya da parça gelene kadar gecikme sayacı durur": "کار عقب‌افتاده را متوقف می‌کند؛ تا تأیید پزشک یا رسیدن قطعه، شمارنده تأخیر می‌ایستد"
 }

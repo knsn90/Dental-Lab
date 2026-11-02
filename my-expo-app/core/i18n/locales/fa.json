@@ -121,6 +121,7 @@
     },
     "activeOrders": "سفارش‌های فعال",
     "overdueCount": "{{count}} عقب‌افتاده",
+    "heldCount": "{{count}} در انتظار",
     "noOverdue": "بدون تأخیر",
     "doneToday": "انجام‌شده امروز",
     "thisWeekCount": "{{count}} این هفته",
@@ -131,7 +132,8 @@
     "overdueCases": "کیس‌های عقب‌افتاده",
     "noOverdueCases": "کیس عقب‌افتاده‌ای نیست",
     "qc": "کنترل کیفیت",
-    "delay": "تأخیر"
+    "delay": "تأخیر",
+    "hold": "در انتظار"
   },
   "courier": {
     "greeting": {

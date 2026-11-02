@@ -30,7 +30,7 @@ import {
   Calendar, ShieldCheck, Inbox, Activity, CheckCircle,
   ChevronRight, ArrowUpRight, ArrowUpLeft, ArrowRight, ArrowLeft, Clock, Trophy,
   Check, Clipboard, Box, Settings, ListChecks, CornerDownRight,
-  Receipt, Wallet,
+  Receipt, Wallet, Pause,
 } from '../../../core/ui/icons';
 import { baseSymbol } from '../../../core/money/baseCurrency';
 
@@ -40,8 +40,13 @@ import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { useTodayOrders } from '../../orders/hooks/useTodayOrders';
 import { useOrderMetrics } from '../../../core/metrics/useOrderMetrics';
-import { useLabToday } from '../../../core/metrics/useLabToday';
-import { isOverdueOrder, isDueOn } from '../../../core/metrics/orderDefs';
+import { useLabToday, cachedLabTz } from '../../../core/metrics/useLabToday';
+import { isOverdueOrder, isDueOn, labTodayOf } from '../../../core/metrics/orderDefs';
+import { useHeldOrders, type HeldOrder } from '../../orders/hooks/useHeldOrders';
+import { isLongHold, daysBetween } from '../../orders/holdDates';
+import { holdCategoryLabel } from '../../orders/holdCategories';
+import { ResumeOrderModal } from '../../orders/components/ResumeOrderModal';
+import { HoldOrderModal } from '../../orders/components/HoldOrderModal';
 import { METRIC_HINTS } from '../../../core/metrics/metricHints';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { useOverdueClinics } from '../hooks/useOverdueClinics';
@@ -801,10 +806,17 @@ function WeeklyStrip({
 // Zemin DS.lab.surfaceAlt'ın (#1A1A1A) %10 beyazla karışmış hâli: yandaki
 // kartlarla ağırlık yarışına girmesin diye açıldı. Token'a dokunulmadı.
 const TASKS_SURFACE = '#333333';
+/** Görev kartı satırı. `action` = satırın sağında küçük eylem kapsülü (Devam ettir,
+ *  Hekimi bekliyor) — satıra dokunmak yine `onPress` (detaya git) yapar. */
+type TaskItem = {
+  icon: React.FC<any>; label: string; time: string; done: boolean; onPress?: () => void;
+  action?: { label: string; tip: string; onPress: () => void };
+};
+
 function TasksCard({
   tasks,
 }: {
-  tasks: { icon: React.FC<any>; label: string; time: string; done: boolean; onPress?: () => void }[];
+  tasks: TaskItem[];
 }) {
   const doneCount = tasks.filter(t => t.done).length;
   return (
@@ -853,15 +865,34 @@ function TasksCard({
                 </Text>
                 <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>{t.time}</Text>
               </View>
-              <View style={{
-                width: 18, height: 18, borderRadius: 9,
-                backgroundColor: t.done ? P : 'transparent',
-                borderWidth: t.done ? 0 : 1.5,
-                borderColor: t.done ? undefined : 'rgba(255,255,255,0.2)',
-                alignItems: 'center', justifyContent: 'center',
-              }}>
-                {t.done && <Check size={10} color={INK} strokeWidth={2.5} />}
-              </View>
+              {t.action ? (
+                // Kart her iki temada koyu → kapsül beyaz-alfa zemin + beyaz metin
+                <GlassTooltip title={t.action.label} text={t.action.tip}>
+                  <Pressable
+                    onPress={(e: any) => { e?.stopPropagation?.(); t.action!.onPress(); }}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.action.label}
+                    style={({ pressed }: any) => ({
+                      paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
+                      backgroundColor: pressed ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.10)',
+                      borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)',
+                      ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+                    })}
+                  >
+                    <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '600', color: '#FFF' }}>{t.action.label}</Text>
+                  </Pressable>
+                </GlassTooltip>
+              ) : (
+                <View style={{
+                  width: 18, height: 18, borderRadius: 9,
+                  backgroundColor: t.done ? P : 'transparent',
+                  borderWidth: t.done ? 0 : 1.5,
+                  borderColor: t.done ? undefined : 'rgba(255,255,255,0.2)',
+                  alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {t.done && <Check size={10} color={INK} strokeWidth={2.5} />}
+                </View>
+              )}
             </Pressable>
           );
         })}
@@ -1030,6 +1061,16 @@ export function LabDashboardScreen() {
   const todayDeliverable = orders.filter(o => isDueOn(o as any, today));
   const { data: metrics, refetch: refetchMetrics } = useOrderMetrics();
   const overdueTotal = metrics?.overdue ?? overdueOrders.length;
+  // Beklemedeki işler (madde 13): rozet sayısı order_metrics.on_hold'dan, satırlar
+  // useHeldOrders'tan. Uzun bekleyen = lab gününe göre LONG_HOLD_DAYS'i aşan.
+  const { rows: heldRows, refetch: refetchHeld } = useHeldOrders();
+  const heldCount = metrics?.on_hold ?? heldRows.length;
+  const holdAgeOf = (r: HeldOrder) =>
+    r.hold_started_at ? daysBetween(labTodayOf(cachedLabTz(), new Date(r.hold_started_at)), today) : 0;
+  const longHolds = heldRows.filter(r => r.hold_started_at && isLongHold(holdAgeOf(r)));
+  const [resumeTarget, setResumeTarget] = useState<HeldOrder | null>(null);
+  const [awaitTarget, setAwaitTarget] = useState<any | null>(null);
+  const afterHoldChange = () => { refetchHeld(); refetchMetrics(); refetch(); };
 
   useEffect(() => {
     if (!metrics) return;
@@ -1309,7 +1350,7 @@ export function LabDashboardScreen() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([refetch(), loadProvas(), loadExtra(), loadAnalytics(), loadPipeline(), loadStockSummary(), loadFinanceActions()]);
+    await Promise.all([refetch(), refetchHeld(), loadProvas(), loadExtra(), loadAnalytics(), loadPipeline(), loadStockSummary(), loadFinanceActions()]);
     setRefreshing(false);
   };
 
@@ -1380,7 +1421,7 @@ export function LabDashboardScreen() {
     const diff = Math.floor((Date.now() - new Date(`${d}T00:00:00`).getTime()) / 86400000);
     return diff > 0 ? diff : null;
   };
-  const taskItems = [
+  const taskItems: TaskItem[] = [
     ...(triagePending.length > 0 ? [{
       icon: ClipboardList as React.FC<any>,
       label: `${autoT('Planlamayı tamamla')} · ${triagePending.length} ${autoT('sipariş')}`,
@@ -1396,8 +1437,34 @@ export function LabDashboardScreen() {
         time: late ? `${late} ${autoT('gün gecikti')} · ${fmtDate(o.delivery_date)}` : fmtDate(o.delivery_date),
         done: false,
         onPress: () => router.push(`/(lab)/order/${o.id}` as any),
+        // Süre doldu ama iş hekimin onayını/parçasını bekliyor → tek dokunuşla beklemeye al
+        action: {
+          label: autoT('Hekimi bekliyor'),
+          tip: autoT('Gecikmiş işi beklemeye alır; hekim onayı ya da parça gelene kadar gecikme sayacı durur'),
+          onPress: () => setAwaitTarget(o),
+        },
       };
     }),
+    // Uzun süredir beklemede → unutulmasın: kategori · no, kaç gündür (+ neden)
+    ...longHolds.slice(0, 2).map(r => ({
+      icon: Pause as React.FC<any>,
+      label: `${autoT(holdCategoryLabel(r.hold_category))} · ${shortNo(r.order_number)}`,
+      time: [`${holdAgeOf(r)} ${autoT('gündür')}`, r.hold_reason?.trim() || null].filter(Boolean).join(' · '),
+      done: false,
+      onPress: () => router.push(`/(lab)/order/${r.id}` as any),
+      action: {
+        label: autoT('Devam ettir'),
+        tip: autoT('Beklemeyi seçilen günde kapatır; hekim/klinik kaynaklıysa teslim tarihi ötelenir'),
+        onPress: () => setResumeTarget(r),
+      },
+    })),
+    ...(longHolds.length > 2 ? [{
+      icon: Pause as React.FC<any>,
+      label: `+${longHolds.length - 2} ${autoT('bekleyen iş daha')}`,
+      time: autoT('Beklemede'),
+      done: false,
+      onPress: () => router.push('/(lab)/orders?filter=hold' as any),
+    }] : []),
     ...todayDeliverable.slice(0, 2).map(o => ({
       icon: Package as React.FC<any>,
       label: `Bugün teslim et · ${shortNo(o.order_number)}`,
@@ -1492,6 +1559,18 @@ export function LabDashboardScreen() {
       };
     });
 
+    // Uzun bekleyenler — geciken listesinin altında (kendi kotası) ve bildirimlerde
+    const holdItems = longHolds.slice(0, 5).map(r => ({
+      id: String(r.order_number ?? r.id).slice(-6),
+      _id: r.id,
+      patient: r.patient_name ?? 'Hasta',
+      workType: autoT(holdCategoryLabel(r.hold_category)),
+      remain: `${holdAgeOf(r)} ${autoT('gündür')}`,
+      kind: 'hold' as const,
+      days: holdAgeOf(r),
+    }));
+    const mobileDelayed = [...delayedItems, ...holdItems];
+
     // Notification buckets
     const notifApprovals = recentOrders
       .filter((o: any) => o.status === 'onay_bekliyor')
@@ -1562,9 +1641,10 @@ export function LabDashboardScreen() {
           todayCompleted={todayDeliveredCount}
           weekCompleted={weekDoneBars.reduce((a, b) => a + b, 0)}
           overdueCount={overdueTotal}
+          heldCount={heldCount}
           pendingApprovalsCount={pendingCount}
           orderTrend={monthly.map((m) => ({ label: m.month, count: m.count, teeth: m.teeth }))}
-          delayed={delayedItems}
+          delayed={mobileDelayed}
           recentOrders={recentForMobile}
           onNewOrder={() => useNewOrderModalStore.getState().setOpen(true)}
           onScan={() => require('../../../core/store/scanStore').useScanStore.getState().setOpen(true)}
@@ -1572,7 +1652,7 @@ export function LabDashboardScreen() {
           onNotifications={() => setNotificationsOpen(true)}
           onProfile={() => router.push('/(lab)/profile' as any)}
           onOpenOrder={(id: string) => {
-            const found = delayedItems.find((x: any) => x.id === id);
+            const found = mobileDelayed.find((x: any) => x.id === id);
             if (found) router.push(`/(lab)/order/${(found as any)._id}` as any);
           }}
           onOpenOrderById={(dbId: string) => router.push(`/(lab)/order/${dbId}` as any)}
@@ -1588,6 +1668,7 @@ export function LabDashboardScreen() {
           approvals={notifApprovals}
           overdue={notifOverdue}
           upcoming={notifUpcoming}
+          held={holdItems.map(h => ({ id: h.id, _id: h._id, patient: h.patient, days: h.days, subtitle: h.workType }))}
         />
       </>
     );
@@ -1642,6 +1723,19 @@ export function LabDashboardScreen() {
                     labelColor="#9C2E2E"
                     pulse
                     onPress={() => router.push('/(lab)/orders?filter=overdue' as any)}
+                  />
+                </GlassTooltip>
+              )}
+              {/* Beklemede: gecikme sayılmaz ama unutulmasın — Geciken ile aynı ölçü */}
+              {heldCount > 0 && (
+                <GlassTooltip title={autoT('Beklemede')} text={autoT(METRIC_HINTS.onHold)}>
+                  <AlertPillX
+                    icon={Pause}
+                    count={heldCount}
+                    label={autoT('Beklemede')}
+                    color={DS.lab.warning}
+                    labelColor={isDark ? '#F0C078' : '#9C5E0E'}
+                    onPress={() => router.push('/(lab)/orders?filter=hold' as any)}
                   />
                 </GlassTooltip>
               )}
@@ -2131,6 +2225,39 @@ export function LabDashboardScreen() {
       )}
 
       <View style={{ height: 40 }} />
+
+      {resumeTarget && (
+        <ResumeOrderModal
+          visible
+          order={{
+            id: resumeTarget.id,
+            order_number: resumeTarget.order_number,
+            created_at: resumeTarget.created_at,
+            delivery_date: resumeTarget.delivery_date ?? '',
+            hold_started_at: resumeTarget.hold_started_at ?? resumeTarget.created_at,
+            hold_responsible: resumeTarget.hold_responsible,
+            hold_category: resumeTarget.hold_category,
+            hold_reason: resumeTarget.hold_reason,
+          }}
+          onClose={() => setResumeTarget(null)}
+          onDone={() => { setResumeTarget(null); afterHoldChange(); }}
+        />
+      )}
+      {awaitTarget && (
+        <HoldOrderModal
+          visible
+          mode="awaitDoctor"
+          order={{
+            id: awaitTarget.id,
+            order_number: awaitTarget.order_number ?? null,
+            created_at: awaitTarget.created_at,
+            doctor_id: awaitTarget.doctor_id ?? null,
+            clinicId: awaitTarget.doctor?.clinic?.id ?? null,
+          }}
+          onClose={() => setAwaitTarget(null)}
+          onDone={() => { setAwaitTarget(null); afterHoldChange(); }}
+        />
+      )}
     </ScrollView>
   );
 }

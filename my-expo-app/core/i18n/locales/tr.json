@@ -121,6 +121,7 @@
     },
     "activeOrders": "Aktif sipariş",
     "overdueCount": "{{count}} geciken",
+    "heldCount": "{{count}} beklemede",
     "noOverdue": "gecikme yok",
     "doneToday": "Bugün biten",
     "thisWeekCount": "{{count}} bu hafta",
@@ -131,7 +132,8 @@
     "overdueCases": "Geciken vakalar",
     "noOverdueCases": "Geciken vaka yok",
     "qc": "KK",
-    "delay": "Gecikme"
+    "delay": "Gecikme",
+    "hold": "Beklemede"
   },
   "courier": {
     "greeting": {

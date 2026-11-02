@@ -121,6 +121,7 @@
     },
     "activeOrders": "Aktive Aufträge",
     "overdueCount": "{{count}} überfällig",
+    "heldCount": "{{count}} pausiert",
     "noOverdue": "keine überfällig",
     "doneToday": "Heute erledigt",
     "thisWeekCount": "{{count}} diese Woche",
@@ -131,7 +132,8 @@
     "overdueCases": "Überfällige Fälle",
     "noOverdueCases": "Keine überfälligen Fälle",
     "qc": "QK",
-    "delay": "Verzögerung"
+    "delay": "Verzögerung",
+    "hold": "Pausiert"
   },
   "courier": {
     "greeting": {

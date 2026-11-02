@@ -3,6 +3,7 @@
 //   • Onay bekleyen (pending design approvals)
 //   • Geciken (overdue cases)
 //   • Yaklaşan teslimler (upcoming due-soon)
+//   • Uzun bekleyen (held — yalnız `held` verilirse; lab/yönetici panoları)
 //
 // Each row is tappable → triggers `onOpenOrder(orderId)`.
 // Empty state shown when no items at all.
@@ -16,8 +17,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isRTL } from '../../i18n';
 import {
   X, FileCheck, Flame, Package, ChevronRight, ChevronLeft, BellOff,
-  ShoppingCart, CreditCard, ClipboardCheck, MessageCircle, Truck, AlertCircle, Inbox, Wrench, AlarmClock, CheckCircle2, ClipboardList, PenLine, UserCheck, Calendar,
+  ShoppingCart, CreditCard, ClipboardCheck, MessageCircle, Truck, AlertCircle, Inbox, Wrench, AlarmClock, CheckCircle2, ClipboardList, PenLine, UserCheck, Calendar, Pause,
 } from '../icons';
+import { useThemeModeStore } from '../../store/themeModeStore';
 import { useMobileTokens, MOBILE_PANEL_THEMES, type MobilePanel } from '../../theme/mobileDesignTokens';
 import { useNotifications, useNotificationsActions } from '../../store/notificationsStore';
 import type { NotificationCategory } from '../../store/notificationPrefsStore';
@@ -48,6 +50,17 @@ export interface NotificationUpcoming {
   remainLabel: string;
 }
 
+/** Uzun süredir beklemede olan iş (madde 13). Bekleme gecikme sayılmaz. */
+export interface NotificationHeld {
+  id: string;
+  _id: string;
+  patient: string;
+  /** beklemede geçen takvim günü */
+  days: number;
+  /** bekleme kategorisi (çevrilmiş) */
+  subtitle?: string;
+}
+
 interface Props {
   visible: boolean;
   onClose: () => void;
@@ -56,6 +69,8 @@ interface Props {
   approvals?: NotificationApproval[];
   overdue?: NotificationOverdue[];
   upcoming?: NotificationUpcoming[];
+  /** İsteğe bağlı — verilmezse bölüm hiç çizilmez (diğer paneller birebir aynı). */
+  held?: NotificationHeld[];
   /** Custom section labels — defaults to "Onay bekleyen / Geciken / Yaklaşan teslimler" (doctor) */
   labels?: {
     approvals?: string;   // default: "Onay bekleyen"
@@ -70,13 +85,18 @@ export function NotificationsSheet({
   approvals = [],
   overdue = [],
   upcoming = [],
+  held = [],
   labels = {},
 }: Props) {
   const approvalsLabel = labels.approvals ?? autoT('Onay bekleyen');
   const overdueLabel   = labels.overdue   ?? autoT('Geciken');
   const upcomingLabel  = labels.upcoming  ?? autoT('Yaklaşan teslimler');
   const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const PANEL = MOBILE_PANEL_THEMES[panel];
+  // Bekleme tonu: amber; koyu temada açık ton (yarı saydam zemin + açık metin)
+  const HOLD_FG = isDark ? '#F0C078' : '#9C5E0E';
+  const HOLD_BG = isDark ? 'rgba(232,155,42,0.22)' : 'rgba(232,155,42,0.14)';
   const insets = useSafeAreaInsets();
 
   // ── Real-time DB feed (yeni notifications altyapısı) ──────────────
@@ -86,7 +106,7 @@ export function NotificationsSheet({
   const visibleDb = dbItems.slice(0, 30);
   const unreadDb  = visibleDb.filter(n => !n.read_at);
 
-  const totalCount = unreadDb.length + approvals.length + overdue.length + upcoming.length;
+  const totalCount = unreadDb.length + approvals.length + overdue.length + upcoming.length + held.length;
 
   return (
     <Modal
@@ -284,6 +304,29 @@ export function NotificationsSheet({
                   iconBg={T.rubySoft}
                   icon={<Flame size={18} color={T.ruby} strokeWidth={1.7} />}
                   onPress={() => { onClose(); onOpenOrder(o._id); }}
+                />
+              ))}
+            </Section>
+          )}
+
+          {/* ── Uzun bekleyen (yalnız lab/yönetici; prop verilirse) ─────── */}
+          {held.length > 0 && (
+            <Section
+              icon={<Pause size={14} color={HOLD_FG} strokeWidth={2} />}
+              accent={HOLD_FG}
+              label={autoT('Uzun bekleyen')}
+              count={held.length}
+            >
+              {held.map(h => (
+                <NotificationRow
+                  key={h.id}
+                  patient={h.patient}
+                  subtitle={h.subtitle ?? autoT('Beklemede')}
+                  trailing={`${h.days} ${autoT('gündür')}`}
+                  trailingColor={HOLD_FG}
+                  iconBg={HOLD_BG}
+                  icon={<Pause size={18} color={HOLD_FG} strokeWidth={1.7} />}
+                  onPress={() => { onClose(); onOpenOrder(h._id); }}
                 />
               ))}
             </Section>

@@ -9829,5 +9829,8 @@
   "Yeni teslim": "New delivery",
   "Beklemeyi seçilen günde kapatır; hekim/klinik kaynaklıysa teslim tarihi ötelenir": "Ends the hold on the chosen day; if caused by the doctor/clinic, the delivery date is postponed",
   "gündür": "days",
-  "Beklemeye alınmış işler; gecikme sayacı durur": "Jobs put on hold; the delay counter is stopped"
+  "Beklemeye alınmış işler; gecikme sayacı durur": "Jobs put on hold; the delay counter is stopped",
+  "Uzun bekleyen": "Long on hold",
+  "bekleyen iş daha": "more on hold",
+  "Gecikmiş işi beklemeye alır; hekim onayı ya da parça gelene kadar gecikme sayacı durur": "Puts the overdue job on hold; the delay counter stops until the doctor's approval or the part arrives"
 }

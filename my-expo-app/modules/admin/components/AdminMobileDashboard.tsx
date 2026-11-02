@@ -84,6 +84,8 @@ export interface AdminMobileDashboardProps {
   activeOrders?:     number;
   productionCount?:  number;
   overdueCount?:     number;
+  /** Beklemedeki iş sayısı (prova hariç) — Aktif sipariş KPI alt satırına eklenir. */
+  heldCount?:        number;
   pendingApprovalsCount?: number;
   /** Üye trendi: son aylar (masaüstü "Üye Trendi" kartıyla aynı dizi; son eleman bu ay) */
   memberTrend?: { label: string; count: number }[];
@@ -137,6 +139,7 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
   const trend   = props.memberTrend ?? [];
   const pendingApprovals = props.pendingApprovalsCount ?? 0;
   const overdue = props.overdueCount ?? 0;
+  const held    = props.heldCount ?? 0;
 
   return (
     <ScrollView
@@ -305,7 +308,9 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
           label={t('admin.dashboard.activeOrders')}
           numericValue={props.activeOrders ?? 0}
           delta={`${props.productionCount ?? 0} ${t('admin.dashboard.inProduction')}`}
-          sub={t('admin.dashboard.overdueCount', { count: overdue })}
+          sub={held > 0
+            ? `${t('admin.dashboard.overdueCount', { count: overdue })} · ${t('dashboard.heldCount', { count: held })}`
+            : t('admin.dashboard.overdueCount', { count: overdue })}
           // Aktif > 0 ise highlight et
           dark={(props.activeOrders ?? 0) > 0}
           accent={EXEC.primary}

@@ -9829,5 +9829,8 @@
   "Yeni teslim": "Neue Lieferung",
   "Beklemeyi seçilen günde kapatır; hekim/klinik kaynaklıysa teslim tarihi ötelenir": "Beendet die Pause am gewählten Tag; bei Ursache Zahnarzt/Klinik wird das Lieferdatum verschoben",
   "gündür": "Tage",
-  "Beklemeye alınmış işler; gecikme sayacı durur": "Pausierte Aufträge; der Verzögerungszähler steht"
+  "Beklemeye alınmış işler; gecikme sayacı durur": "Pausierte Aufträge; der Verzögerungszähler steht",
+  "Uzun bekleyen": "Lange pausiert",
+  "bekleyen iş daha": "weitere pausierte Aufträge",
+  "Gecikmiş işi beklemeye alır; hekim onayı ya da parça gelene kadar gecikme sayacı durur": "Pausiert den überfälligen Auftrag; der Verzögerungszähler stoppt, bis die Freigabe des Zahnarztes oder das Teil eintrifft"
 }

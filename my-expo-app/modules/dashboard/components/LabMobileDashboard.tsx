@@ -18,7 +18,7 @@ import { deepenForDark, lightenForDark } from '../../../core/ui/HeroGlow';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  QrCode, Flame, CheckCircle2, ClipboardList, Bell, AlertTriangle, User,
+  QrCode, Flame, CheckCircle2, ClipboardList, Bell, AlertTriangle, User, Pause,
 } from '../../../core/ui/icons';
 import { MOBILE_PANEL_THEMES, useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
@@ -65,8 +65,9 @@ export interface LabDelayedCase {
   id: string;        // order_number
   patient: string;   // patient name
   workType: string;  // implant / kron vb.
-  remain: string;    // +1g 3sa veya QC
-  kind: 'qc' | 'delay';
+  remain: string;    // +1g 3sa veya QC; beklemede: "N gündür"
+  /** 'hold' = uzun süredir beklemede (gecikme sayılmaz; dokununca detay → Devam ettir) */
+  kind: 'qc' | 'delay' | 'hold';
 }
 
 export interface LabMobileDashboardProps {
@@ -85,6 +86,8 @@ export interface LabMobileDashboardProps {
   todayCompleted?: number;
   weekCompleted?: number;
   overdueCount?: number;
+  /** Beklemedeki iş sayısı (prova hariç) — Aktif KPI alt satırı. */
+  heldCount?: number;
   pendingApprovalsCount?: number;
   avgDurationHours?: number | null;
   /** Sipariş trendi: son aylar (masaüstü "Sipariş Trendi" kartıyla aynı dizi; son eleman bu ay) */
@@ -138,6 +141,12 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
   const delayed = props.delayed  ?? [];
   const recent  = props.recentOrders ?? [];
   const overdue = props.overdueCount ?? 0;
+  const held    = props.heldCount ?? 0;
+  // Geciken satırlar en çok 3, uzun bekleyenler en çok 2 — ayrı kotalar; olumlu boş
+  // durum yalnız GECİKEN yoksa çizilir (bekleme gecikme değildir).
+  const lateRows = delayed.filter(o => o.kind !== 'hold');
+  const holdRows = delayed.filter(o => o.kind === 'hold');
+  const listRows = [...lateRows.slice(0, 3), ...holdRows.slice(0, 2)];
 
   return (
     <ScrollView
@@ -306,7 +315,9 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
           label={t('dashboard.activeOrders')}
           numericValue={props.activeOrders ?? 0}
           delta={overdue > 0 ? t('dashboard.overdueCount', { count: overdue }) : t('dashboard.noOverdue')}
-          sub={props.avgDurationHours != null ? `${autoT('ort')} ${Math.round(props.avgDurationHours)}${autoT('sa')}` : undefined}
+          sub={held > 0
+            ? t('dashboard.heldCount', { count: held })
+            : props.avgDurationHours != null ? `${autoT('ort')} ${Math.round(props.avgDurationHours)}${autoT('sa')}` : undefined}
           deltaColor={overdue > 0 ? T.ruby : T.jade}
           icon={ClipboardList}
           art={LAB_ART.active}
@@ -409,7 +420,7 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
         }}>
           {t('dashboard.overdueCases')}
         </Text>
-        {delayed.length > 0 && (
+        {listRows.length > 0 && (
           <Pressable onPress={() => router.push('/(lab)/orders' as any)}>
             <Text style={{ fontSize: 12, color: LAB.accentDark, fontWeight: '500' }}>Tümü →</Text>
           </Pressable>
@@ -417,9 +428,9 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
       </View>
 
       {/* Positive empty state */}
-      {delayed.length === 0 && (
+      {lateRows.length === 0 && (
         <View style={{
-          marginHorizontal: 16, marginBottom: 16,
+          marginHorizontal: 16, marginBottom: holdRows.length > 0 ? 8 : 16,
           padding: 16, borderRadius: 18,
           backgroundColor: isDark ? `${LAB.primary}1F` : `${LAB.primary}14`,
           borderWidth: 1, borderColor: isDark ? `${LAB.primary}44` : `${LAB.primary}28`,
@@ -444,15 +455,17 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
       )}
 
       {/* List */}
-      {delayed.length > 0 && (
+      {listRows.length > 0 && (
         <View style={{ paddingHorizontal: 16, paddingBottom: 14, gap: 8 }}>
-          {delayed.slice(0, 3).map(o => {
-            const Icon = o.kind === 'qc' ? AlertTriangle : Flame;
-            const iconBg = o.kind === 'qc' ? `${LAB.primary}22` : T.rubySoft;
-            const iconColor = o.kind === 'qc' ? LAB.accentDark : T.ruby;
-            const valueColor = o.kind === 'qc' ? LAB.accentDark : T.ruby;
+          {listRows.map(o => {
+            const hold = o.kind === 'hold';
+            const Icon = o.kind === 'qc' ? AlertTriangle : hold ? Pause : Flame;
+            const holdFg = isDark ? '#F0C078' : '#9C5E0E';
+            const iconBg = o.kind === 'qc' ? `${LAB.primary}22` : hold ? (isDark ? 'rgba(232,155,42,0.22)' : 'rgba(232,155,42,0.14)') : T.rubySoft;
+            const iconColor = o.kind === 'qc' ? LAB.accentDark : hold ? holdFg : T.ruby;
+            const valueColor = o.kind === 'qc' ? LAB.accentDark : hold ? holdFg : T.ruby;
             return (
-              <Pressable key={o.id} onPress={() => props.onOpenOrder?.(o.id)}>
+              <Pressable key={`${o.kind}-${o.id}`} onPress={() => props.onOpenOrder?.(o.id)}>
                 {({ pressed }: any) => (
                 <View style={{
                   flexDirection: 'row', alignItems: 'center', gap: 12,
@@ -485,7 +498,7 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
                       {o.remain}
                     </Text>
                     <Text style={{ fontSize: 9.5, color: T.ink3, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                      {o.kind === 'qc' ? t('dashboard.qc') : t('dashboard.delay')}
+                      {o.kind === 'qc' ? t('dashboard.qc') : hold ? t('dashboard.hold') : t('dashboard.delay')}
                     </Text>
                   </View>
                 </View>
