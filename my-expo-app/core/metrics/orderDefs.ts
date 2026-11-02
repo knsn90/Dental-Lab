@@ -48,6 +48,15 @@ export function isOpenOrder(o: OrderLike): boolean {
   return !(CLOSED_STATUSES as readonly string[]).includes(o.status) && !o.is_archived;
 }
 
+/** Kapanmış iş ekranda nasıl anılır (madde 14): teslimde teslim anı (2026-10 öncesi
+ *  kayıtlarda boş), iptalde an tutulmaz. Açık işte null. Arşiv bakılmaz: kapanış statüden. */
+export function closedStateOf(o: { status: string; delivered_at?: string | null }):
+  { kind: 'delivered' | 'cancelled'; at: string | null } | null {
+  if (o.status === 'teslim_edildi') return { kind: 'delivered', at: o.delivered_at ?? null };
+  if (o.status === 'iptal') return { kind: 'cancelled', at: null };
+  return null;
+}
+
 /** Geciken: açık + teslim tarihi bugünden önce + beklemeye alınmamış. */
 export function isOverdueOrder(o: OrderLike, today: string): boolean {
   if (!isOpenOrder(o) || o.hold_status === 'on_hold') return false;

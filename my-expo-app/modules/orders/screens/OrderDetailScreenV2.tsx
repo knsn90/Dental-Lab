@@ -55,7 +55,7 @@ import { holdCategoryLabel, isProvaHold } from '../holdApi';
 import { HoldOrderModal } from '../components/HoldOrderModal';
 import { ResumeOrderModal } from '../components/ResumeOrderModal';
 import { daysBetween as labDaysBetween } from '../holdDates';
-import { labTodayOf } from '../../../core/metrics/orderDefs';
+import { labTodayOf, closedStateOf } from '../../../core/metrics/orderDefs';
 import { cachedLabTz, useLabToday } from '../../../core/metrics/useLabToday';
 
 // HTML tasarım (exocad web viewer) native önizleme — sadece native'de WebView yükle
@@ -723,6 +723,10 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   // 'triage' station'ına atanmış teknisyen kontrolü ileride eklenebilir
   const canTriage = isManager;
 
+  // Teslim edilmiş / iptal iş (madde 14): üretim, onay ve kurye eylemleri kapanır; aşamalar salt okunur.
+  const closedState = order ? closedStateOf(order as any) : null;
+  const isClosedOrder = !!closedState;
+
   // Henüz triajlanmamış mı?
   const needsTriage = !!order && !(order as any).triaged_at && ((order.status as string) === 'alindi' || (order.status as string) === 'aktif');
 
@@ -730,14 +734,14 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   // 'skipped' aşamalar normaldir (atlanmış), göz ardı edilir. Tamamlanmamış
   // (bekliyor/aktif/durakladi vb.) aşamalar yeniden planlanabilir.
   const replanEditable = (orderStages ?? []).filter(s => s.status !== 'skipped');
-  const canReplan = canTriage && !!order && !!(order as any).triaged_at
+  const canReplan = canTriage && !!order && !!(order as any).triaged_at && !isClosedOrder
     && replanEditable.length > 0
     && replanEditable.every(s => s.status !== 'tamamlandi' && s.status !== 'onaylandi');
   // ── Tasarım hekim onayı ──
   const designApprovalStatus = (order as any)?.doctor_approval_status as string | null;
   const designApprovalPending = designApprovalStatus === 'pending';
   // Lab tasarımı onaya gönderebilir mi? — triajlı + bekliyor/onaylı değil
-  const canSendDesignApproval = canTriage && !!order && !!(order as any).triaged_at
+  const canSendDesignApproval = canTriage && !!order && !!(order as any).triaged_at && !isClosedOrder
     && designApprovalStatus !== 'pending' && designApprovalStatus !== 'approved';
   const [sendingApproval, setSendingApproval] = useState(false);
   const handleSendDesignApproval = useCallback(async () => {
@@ -1265,6 +1269,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
       stagesExpanded={stagesExpanded} setStagesExpanded={setStagesExpanded}
       stageMenuOpen={stageMenuOpen} setStageMenuOpen={setStageMenuOpen}
       completedCount={completedCount} order={order} profile={profile} isManager={isManager}
+      readOnly={isClosedOrder}
       panelAccent={panelAccent} panelTheme={panelTheme}
       handleCompleteProductionStage={handleCompleteProductionStage}
       handleAdminCompleteStage={handleAdminCompleteStage}
@@ -1535,6 +1540,11 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
         currentStageIdx={stageIdx}
         totalStages={Math.max(orderStages.length, 5)}
         stageName={stageName}
+        closed={closedState ? {
+          kind: closedState.kind,
+          date: closedState.at ? fmtTr(closedState.at) : null,
+          done: completedCount, total: totalStages,
+        } : undefined}
         timelineSteps={isElden ? STATUS_LABELS_ELDEN : STATUS_LABELS}
         timelineCurrent={statusIdx}
         timelineTheme={progressTheme}

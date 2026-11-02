@@ -59,6 +59,9 @@ export interface OrderDetailMobileHandoffProps {
   currentStageIdx: number;      // 2 (mill)
   totalStages: number;          // 11
   stageName: string;            // "Frezeleme istasyonu"
+  /** Teslim edilmiş / iptal iş (madde 14): "Kalan" sayaçları yerine kapanış + tarih,
+   *  aşama satırında masaüstüyle aynı "X/Y aşama tamamlandı". */
+  closed?: { kind: 'delivered' | 'cancelled'; date: string | null; done: number; total: number };
   // Desktop ile aynı macro milestone timeline (Alındı · Üretim · Final QC · Kurye · Teslim)
   timelineSteps?: string[];     // STATUS_LABELS veya elden için STATUS_LABELS_ELDEN
   timelineCurrent?: number;     // statusIdx (macro 0-4)
@@ -350,6 +353,28 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
                 <Text style={{ color: T.ink3 }}>{props.clinicName}</Text>
               </Text>
             </View>
+            {props.closed ? (
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={{
+                fontSize: 9, color: T.ink3, letterSpacing: 1, textTransform: 'uppercase',
+              }}>
+                {props.closed.kind === 'delivered' ? 'Teslim edildi' : 'İptal edildi'}
+              </Text>
+              {props.closed.date ? (
+                <Text style={{
+                  fontSize: 18, fontWeight: '300', color: T.ink, letterSpacing: -0.4, marginTop: 4,
+                  ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
+                }}>
+                  {props.closed.date}
+                </Text>
+              ) : props.closed.kind === 'delivered' ? (
+                /* 2026-10 öncesi kayıtta teslim anı yok — tarih yerine onay işareti (blok dengesi) */
+                <View style={{ marginTop: 4 }}>
+                  <Check size={22} color={T.ink} strokeWidth={1.8} />
+                </View>
+              ) : null}
+            </View>
+            ) : (
             <View style={{ alignItems: 'flex-end' }}>
               <Text style={{
                 fontSize: 9, color: T.ink3, letterSpacing: 1, textTransform: 'uppercase',
@@ -369,6 +394,7 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
                 Teslim {props.deliveryDate}
               </Text>
             </View>
+            )}
           </View>
 
           {/* Revizyon bağlantıları — desktop ile aynı bilgi, karşılıklı ve tıklanabilir */}
@@ -437,7 +463,9 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
               <Text style={{
                 fontSize: 9.5, color: T.onDark3, letterSpacing: 1.4, textTransform: 'uppercase', fontWeight: '600',
               }}>
-                {isMultiLane ? 'Şu an' : `Şu an · aşama ${props.currentStageIdx + 1} / ${props.totalStages}`}
+                {props.closed
+                  ? `${props.closed.done}/${props.closed.total} ${autoT('aşama tamamlandı')}`
+                  : isMultiLane ? 'Şu an' : `Şu an · aşama ${props.currentStageIdx + 1} / ${props.totalStages}`}
               </Text>
               {isMultiLane ? (
                 /* Çok-şerit: şerit-başına (dişler · aktif istasyon · %) — desktop ile aynı */
@@ -562,13 +590,15 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
                 <Text style={{
                   fontSize: 9.5, color: T.onDark3, letterSpacing: 1, textTransform: 'uppercase', fontWeight: '600',
                 }}>
-                  Kalan süre
+                  {props.closed ? (props.closed.kind === 'delivered' ? 'Teslim edildi' : 'İptal edildi') : 'Kalan süre'}
                 </Text>
-                <Text style={{
-                  fontFamily: T.mono, fontSize: 22, color: T.onDark, marginTop: 3, letterSpacing: -1,
-                }}>
-                  {props.remainingTime}
-                </Text>
+                {(props.closed ? props.closed.date : props.remainingTime) ? (
+                  <Text style={{
+                    fontFamily: T.mono, fontSize: 22, color: T.onDark, marginTop: 3, letterSpacing: -1,
+                  }}>
+                    {props.closed ? props.closed.date : props.remainingTime}
+                  </Text>
+                ) : null}
               </View>
               {showProductionActions && (
                 <View style={{ alignItems: 'flex-end', gap: 6 }}>
@@ -606,16 +636,19 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
                         </Pressable>
                       </GlassTooltip>
                     ) : null}
-                    <Pressable
-                      onPress={props.onStageDone}
-                      style={{
-                        paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999,
-                        backgroundColor: accent,
-                        flexDirection: 'row', alignItems: 'center', gap: 5,
-                      }}
-                    >
-                      <Text style={{ fontSize: 11, color: '#FFFFFF', fontWeight: '600' }}>Aşama tamam</Text>
-                    </Pressable>
+                    {/* Yapacak iş yoksa (teslim edilmiş, kurye bekleniyor…) çizilmez — boş düğme kalmasın */}
+                    {props.onStageDone ? (
+                      <Pressable
+                        onPress={props.onStageDone}
+                        style={{
+                          paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999,
+                          backgroundColor: accent,
+                          flexDirection: 'row', alignItems: 'center', gap: 5,
+                        }}
+                      >
+                        <Text style={{ fontSize: 11, color: '#FFFFFF', fontWeight: '600' }}>Aşama tamam</Text>
+                      </Pressable>
+                    ) : null}
                   </View>
                 </View>
               )}
@@ -1106,8 +1139,8 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
           </View>
         </View>
 
-        {/* ═══ 8. QC quick tags (lab/admin/teknisyen — lab internal) ═══ */}
-        {showQcTags && (
+        {/* ═══ 8. QC quick tags (lab/admin/teknisyen — lab internal; kapanmış işte yok) ═══ */}
+        {showQcTags && !props.closed && (
         <View style={{ paddingHorizontal: 16, paddingBottom: 14 }}>
           <Text style={{
             fontSize: 9.5, fontWeight: '600', color: T.ink3, letterSpacing: 1, textTransform: 'uppercase',

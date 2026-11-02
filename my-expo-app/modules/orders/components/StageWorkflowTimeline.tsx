@@ -23,7 +23,10 @@ export function StageWorkflowTimeline(p: any) {
     handleAdminSkipStage, handleRemoveStage, setReassignOpen, openReassign, setAddStageOpen,
     refetch, refetchStages, fmtDate, isLaneOpen, toggleLane,
     activeDelivery, setDeliveryModalOpen, stageCompleting, onCloseWithoutProof,
+    readOnly,
   } = p;
+  // Teslim edilmiş / iptal iş (madde 14): liste yalnız bilgi — tamamla, menü, kurye, aşama ekle yok.
+  const editable = !readOnly;
   // Dar ekran (mobil): kompakt satırı 2 satıra aç — isim kırpılmasın.
   const { width } = useWindowDimensions();
   const isNarrow = width < 768;
@@ -125,12 +128,12 @@ export function StageWorkflowTimeline(p: any) {
                       ) : null;
 
                       // Aşama aksiyon menüsü (tek yerde kurulur; hem aktif split-buton'da hem ince satır ▼'inde kullanılır).
-                      const canComplete = !isCompleted && (isActive || isManager);
+                      const canComplete = editable && !isCompleted && (isActive || isManager);
                       const doComplete = isActive
                         ? () => handleCompleteProductionStage(stg.id)
                         : () => handleAdminCompleteStage(stg);
                       const menu: { icon: any; label: string; color: string; run: () => void }[] = [];
-                      if (isManager && !stg.is_virtual) {
+                      if (editable && isManager && !stg.is_virtual) {
                         if (isPending) menu.push({ icon: Play, label: 'Teknisyene gönder', color: 'rgba(255,255,255,0.85)', run: async () => { const r = await forceActivateStage(stg.id); if (!r.ok) { alert(`Aktif edilemedi: ${r.error ?? ''}`); return; } refetch(); refetchStages(); } });
                         else if (!isActive && !isCompleted) menu.push({ icon: Play, label: 'Teknisyene gönder', color: 'rgba(255,255,255,0.85)', run: () => handleAdminActivateStage(stg) });
                         // Devret: tamamlanmamış HER aşamada (aktif + bekleyen + duraklamış).
@@ -396,7 +399,7 @@ export function StageWorkflowTimeline(p: any) {
                             )}
 
                             {/* Sanal Kurye aşaması — "Kuryeye Gönder" (üst hero ile aynı modal/akış) */}
-                            {isManager && stg.station?.id === '__courier' && !activeDelivery && (
+                            {editable && isManager && stg.station?.id === '__courier' && !activeDelivery && (
                               <View className="flex-row gap-2 mt-2 flex-wrap">
                                 <Pressable
                                   onPress={() => setDeliveryModalOpen(true)}
@@ -418,7 +421,7 @@ export function StageWorkflowTimeline(p: any) {
                                 o yüzden aşama RPC'leri işlemez — teslimat durumu üzerinden
                                 ilerletilir. Kurye kaydı varsa onu 'teslim edildi' yapar,
                                 yoksa siparişin statüsünü doğrudan taşır. */}
-                            {isManager && stg.is_virtual && !isCompleted && (
+                            {editable && isManager && stg.is_virtual && !isCompleted && (
                               <View className="flex-row mt-2">
                                 <Pressable
                                   onPress={async () => {
@@ -469,7 +472,7 @@ export function StageWorkflowTimeline(p: any) {
                     })}
 
                     {/* Müdür/admin: sona / araya yeni aşama ekle */}
-                    {isManager && (
+                    {editable && isManager && (
                       <Pressable
                         onPress={() => setAddStageOpen(true)}
                         style={{
