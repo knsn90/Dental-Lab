@@ -39,8 +39,9 @@ import { getOrderStageLabel } from '../utils/currentStage';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
-import { isOverdueOrder } from '../../../core/metrics/orderDefs';
-import { useLabToday } from '../../../core/metrics/useLabToday';
+import { isOverdueOrder, labTodayOf } from '../../../core/metrics/orderDefs';
+import { useLabToday, cachedLabTz } from '../../../core/metrics/useLabToday';
+import { heldAgeDays } from '../holdDates';
 import { MobileTableX } from '../../../core/ui/MobileTableX';
 void DS;
 void Svg; void Defs; void Rect; void RadialGradient; void Stop;
@@ -555,6 +556,12 @@ function OrderCard({ order: o, laneOf, onOpenOrder, history, parentNo, actions, 
   // Tek tanım (orderDefs): beklemedeki/iptal/arşivdeki iş kırmızı yanmaz; gün lab gününde.
   const labToday = useLabToday();
   const overdue = isOverdueOrder(o as any, labToday);
+  // Madde 13: beklemedeki işte teslim günü yerine kaç gündür beklediği (masaüstü listeyle aynı metin)
+  const heldStart = (o as any).hold_started_at as string | null | undefined;
+  const heldDays = heldAgeDays({
+    hold_status: (o as any).hold_status, hold_category: (o as any).hold_category,
+    startDay: heldStart ? labTodayOf(cachedLabTz(), new Date(heldStart)) : null,
+  }, labToday);
 
   return (
     <View>
@@ -619,7 +626,9 @@ function OrderCard({ order: o, laneOf, onOpenOrder, history, parentNo, actions, 
             )}
             <View style={{ flex: 1 }} />
             <Text style={{ fontSize: 10.5, fontWeight: overdue ? '700' : '500', color: overdue ? (isDark ? '#F87171' : '#DC2626') : T.ink3, flexShrink: 0 }}>
-              {(o as any).delivery_date ? `${autoT('Teslim')} ${formatDue((o as any).delivery_date)}` : dateStr}
+              {heldDays != null
+                ? `${autoT('Beklemede')} · ${heldDays} ${autoT('gün')}`
+                : (o as any).delivery_date ? `${autoT('Teslim')} ${formatDue((o as any).delivery_date)}` : dateStr}
             </Text>
           </View>
         </View>

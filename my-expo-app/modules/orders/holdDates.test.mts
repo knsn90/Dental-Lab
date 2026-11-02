@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   LONG_HOLD_DAYS, daysBetween, holdExtensionDays, shiftedDelivery, holdStartFloor,
-  validateHoldStart, validateResumeStart, validateHoldEnd, isLongHold,
+  validateHoldStart, validateResumeStart, validateHoldEnd, isLongHold, heldAgeDays,
 } from './holdDates.ts';
 
 test('takvim günü farkı, ay geçişinde de doğru', () => {
@@ -55,4 +55,16 @@ test('uzun bekleme 3 günü aşan', () => {
   assert.equal(LONG_HOLD_DAYS, 3);
   assert.equal(isLongHold(3), false);
   assert.equal(isLongHold(4), true);
+});
+
+test('listede bekleme süresi: yalnız prova dışı beklemede, başlangıç gününden bugüne', () => {
+  const today = '2026-11-02';
+  assert.equal(heldAgeDays({ hold_status: 'on_hold', hold_category: 'material', startDay: '2026-10-28' }, today), 5);
+  assert.equal(heldAgeDays({ hold_status: 'on_hold', hold_category: null, startDay: '2026-11-02' }, today), 0);
+  // prova beklemesi "Provada" gösterir, süre değil
+  assert.equal(heldAgeDays({ hold_status: 'on_hold', hold_category: 'client_prova', startDay: '2026-10-28' }, today), null);
+  assert.equal(heldAgeDays({ hold_status: null, hold_category: null, startDay: '2026-10-28' }, today), null);
+  assert.equal(heldAgeDays({ hold_status: 'on_hold', hold_category: 'material', startDay: null }, today), null);
+  // saat farkıyla yarına düşmüş başlangıç negatif gün göstermez
+  assert.equal(heldAgeDays({ hold_status: 'on_hold', hold_category: 'material', startDay: '2026-11-03' }, today), 0);
 });

@@ -67,3 +67,13 @@ export function validateHoldEnd(day: string, o: { startDay: string; today: strin
 export function isLongHold(ageDays: number): boolean {
   return ageDays > LONG_HOLD_DAYS;
 }
+
+/** Listede "Beklemede · N gün": prova dışı beklemenin başlangıç gününden bugüne geçen gün.
+ *  Beklemede değilse, prova beklemesiyse ya da başlangıç bilinmiyorsa null. */
+export function heldAgeDays(
+  o: { hold_status?: string | null; hold_category?: string | null; startDay?: string | null },
+  today: string,
+): number | null {
+  if (o.hold_status !== 'on_hold' || o.hold_category === 'client_prova' || !o.startDay) return null;
+  return Math.max(0, daysBetween(o.startDay, today));
+}
