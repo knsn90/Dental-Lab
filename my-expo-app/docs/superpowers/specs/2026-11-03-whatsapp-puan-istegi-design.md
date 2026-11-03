@@ -1,6 +1,6 @@
 # WhatsApp'tan puan isteği — tasarım
 
-**Tarih:** 2026-11-03 · **Yol haritası:** 3. dalga, madde 2'nin ön koşulu ("Değerlendirmeler ekranı" bundan sonra gelir) · **Durum:** kullanıcı belge onayı bekliyor
+**Tarih:** 2026-11-03 · **Yol haritası:** 3. dalga, madde 2'nin ön koşulu ("Değerlendirmeler ekranı" bundan sonra gelir) · **Durum:** onaylandı 2026-11-03 (uygulama planı: `docs/superpowers/plans/2026-11-03-whatsapp-puan-istegi.md`)
 
 ## 1. Niyet ve neden
 
