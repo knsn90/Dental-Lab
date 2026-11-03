@@ -346,7 +346,8 @@ function renderHtmlBody(opts: {
   const patientName = extra.patient || extra.patientName || '';
   const workType    = extra.workType || extra.work_type || '';
   // Marka: caller override (opts) > extra > default. Alıcının gerçek lab'ından gelir.
-  const labName     = opts.labName || extra.labName || extra.lab || 'Nexadent';
+  // Marka çözülemezse başka bir lab'ın adı değil, ürün adı yazılır.
+  const labName     = opts.labName || extra.labName || extra.lab || 'Siman';
   const labLogoUrl  = opts.labLogoUrl || extra.labLogoUrl || extra.lab_logo_url || '';
   // Yalnız gerçek bir vaka/kayıt olan bildirimlerde QR göster (dijest vb.'de gösterme).
   const showQr = category !== 'phone_lead' && !!(payload.resourceId && String(payload.resourceId).trim());
@@ -431,8 +432,7 @@ function renderHtmlBody(opts: {
   const headerLogoImg = `<img src="${escape(labLogoUrl)}" alt="${escape(labName)}" style="height:52px;width:auto;max-width:360px;display:inline-block;" />`;
   // Fallback plaka (logo yoksa) — plaka tek başına anlamsız, yanında isim gösterilir.
   const tileMarkup = `<div style="width:52px;height:52px;border-radius:10px;background:#0F172A;text-align:center;line-height:52px;color:#FFFFFF;font-weight:800;font-size:21px;letter-spacing:0.5px;">${escape((labName.trim()[0] ?? 'N').toUpperCase())}</div>`;
-  // Kategori çipi + QR hücresi (yalnız gerçek vakada).
-  const chipHtml = `<div style="display:inline-block;font-size:9px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#64748B;border:1px solid #E2E8F0;border-radius:9999px;padding:4px 10px;background:#F8FAFC;">${escape(label)}</div>`;
+  // QR hücresi (yalnız gerçek vakada).
   const qrCell = `<td valign="top" align="right" width="92">
                 <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=2&qzone=1&bgcolor=ffffff&color=0f172a&ecc=M&data=${encodeURIComponent(link)}"
                   alt="Vaka QR" width="84" height="84"
@@ -481,7 +481,6 @@ function renderHtmlBody(opts: {
             <tr>
               <td align="${showQr ? 'left' : 'center'}" valign="middle">
                 ${headerLogoImg}
-                <div style="margin-top:12px;">${chipHtml}</div>
               </td>
               ${showQr ? qrCell : ''}
             </tr>
@@ -498,7 +497,6 @@ function renderHtmlBody(opts: {
                     </td>
                   </tr>
                 </table>
-                <div style="margin-top:10px;">${chipHtml}</div>
               </td>
               ${showQr ? qrCell : ''}
             </tr>
@@ -560,7 +558,7 @@ function renderHtmlBody(opts: {
               </table>
 
               <p style="margin:12px auto 0;font-size:11px;color:#94A3B8;line-height:1.5;word-break:break-all;max-width:440px;">
-                Veya linki tarayıcınıza yapıştırın:<br>
+                Düğme çalışmazsa bu bağlantıyı tarayıcınıza yapıştırın:<br>
                 <a href="${escape(link)}" target="_blank" style="color:#64748B;text-decoration:underline;">${escape(link)}</a>
               </p>
             </td></tr>

@@ -20,6 +20,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { timingSafeEqualStr, isServiceRoleBearer } from './security.ts';
+import { brandLabIdFor } from './brandLab.ts';
 
 export interface WorkOrderLite {
   id: string;
@@ -109,9 +110,13 @@ export async function authorizeNotification(opts: {
   const srvOk = isServiceRoleBearer(opts.authHeader, opts.serviceKey);
   if (secretOk || srvOk) {
     const wo = woId ? await loadWoLite(woId) : null;
+    const recipients = await resolveProfiles(requested);
+    // Siparişsiz sistem e-postası (günlük iş takibi vb.) markayı alıcıların ortak
+    // lab'ından alır; eskiden marka boş kalıyor, logo yerine plaka + varsayılan ad çıkıyordu.
+    const brandId = brandLabIdFor(wo?.lab_id ?? null, recipients.map(r => r.lab_id));
     return { ok: true, status: 200, trusted: true, callerId: null, callerLab: null, isPlatformAdmin: false,
-      recipients: await resolveProfiles(requested), deniedUserIds: [], workOrder: wo,
-      brandLab: wo ? await brandOf(wo.lab_id) : null };
+      recipients, deniedUserIds: [], workOrder: wo,
+      brandLab: await brandOf(brandId) };
   }
 
   // ── 2) authenticate caller (untrusted client path) ──
