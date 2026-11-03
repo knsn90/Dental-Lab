@@ -1,6 +1,6 @@
 # WhatsApp'tan puan isteği — tasarım
 
-**Tarih:** 2026-11-03 · **Yol haritası:** 3. dalga, madde 2'nin ön koşulu ("Değerlendirmeler ekranı" bundan sonra gelir) · **Durum:** onaylandı 2026-11-03 (uygulama planı: `docs/superpowers/plans/2026-11-03-whatsapp-puan-istegi.md`)
+**Tarih:** 2026-11-03 · **Yol haritası:** 3. dalga, madde 2'nin ön koşulu ("Değerlendirmeler ekranı" bundan sonra gelir) · **Durum:** onaylandı 2026-11-03; metinler §10 (uygulama planı: `docs/superpowers/plans/2026-11-03-whatsapp-puan-istegi.md`)
 
 ## 1. Niyet ve neden
 
@@ -209,3 +209,19 @@ Bu tablo üç işe yarar: sıklık sınırını uygulamak, düğme cevabını i�
 - İstek tablosunun tam sütunları ve indeksleri; `order_reviews` için tekillik kuralının biçimi.
 - Hekime giden kısa yanıtların ve bildirim başlıklarının son metni (şablon metni Meta'ya gitmeden kullanıcıya gösterilir).
 - Mobil kart ve rozetin görsel ayrıntısı (mevcut masaüstü dilinden ve item 14'ün kapalı sipariş görünümünden türetilir).
+
+## 10. Onaylanan metinler (kullanıcı onayı 2026-11-03)
+
+Değişken adları ve düğme sırası koda bağlıdır; metin değişse bile bunlar sabit kalır.
+
+| Ad | Metin |
+|---|---|
+| Şablon `is_degerlendirme` (UTILITY, `tr`) gövde | `Merhaba, {{hasta_adi}} hastanızın {{siparis_no}} numaralı {{is_turu}} işi birkaç gün önce teslim edildi. Hastaya nasıl oturdu?` |
+| `is_degerlendirme` düğmeleri (Hızlı cevap, sıra sabit) | `Sorunsuz` (5) · `Küçük düzeltme` (3) · `Sorun var` (1) |
+| Şablon `is_sorunu_lab` (UTILITY, `tr`) gövde | `Sorun bildirimi: {{hekim}}, {{siparis_no}} numaralı {{is_turu}} işinde sorun olduğunu bildirdi. Ayrıntılar Siman'da siparişin sayfasında.` |
+| Hekime yanıt (Sorunsuz) | `Teşekkür ederiz. Cevabınızı {lab} ekibine ilettik.` |
+| Hekime yanıt (Küçük düzeltme / Sorun var) | `Teşekkür ederiz, cevabınızı {lab} ekibine ilettik. Ekip sizinle iletişime geçecek. İsterseniz sorunu kısaca bu mesaja yazın; siparişe eklenir.` |
+| Uygulama içi, hekim/klinik | başlık `İşinizi değerlendirin`, gövde `<hasta adı ya da sipariş no> · <iş türü>` |
+| Uygulama içi, lab (Sorun var) | başlık `Hekim sorun bildirdi`, gövde `<sipariş no> · <hekim adı> · <iş türü>` |
+| Uygulama içi, lab (Küçük düzeltme) | başlık `Hekim küçük düzeltme istedi`, gövde aynı biçim |
+| E-posta kategori etiketi | `review_problem` → `Hekim Geri Bildirimi`, renk `#DC2626` |
