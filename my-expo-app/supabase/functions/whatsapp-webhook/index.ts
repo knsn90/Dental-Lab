@@ -31,6 +31,7 @@
 //   Meta imzalı değildir (kendi access_token'larını taşırlar) → ayrı yolda.
 
 import { verifyMetaSignature, timingSafeEqualStr } from '../_shared/security.ts';
+import { captureReviewMessages } from './reviewCapture.ts';
 
 const GRAPH_VERSION = 'v20.0';
 
@@ -1788,6 +1789,34 @@ async function processIncoming(payload: any): Promise<void> {
         console.error('[wa] no active credential for phone_number_id=', phoneId, ' known=', active.map(c => c.credentials?.phone_number_id));
         continue;
       }
+      const accessToken = cred.credentials.access_token;
+      const contacts = Array.isArray(value?.contacts) ? value.contacts : [];
+      const senderName = contacts[0]?.profile?.name ?? null;
+
+      const H = { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` };
+      const HJmin = { ...H, 'content-type': 'application/json', Prefer: 'return=minimal' };
+
+      // ── PUAN İSTEĞİ CEVABI VE NOTU (spec 2026-11-03) ─────────────────────────
+      // Sohbet botu kapısından ÖNCE: bot kapalı lab'da da hekimin düğmesi ve
+      // ardından yazdığı not kaydedilir. Yakalanmayan mesajlar aşağıdaki yoldan
+      // aynen devam eder; bot kapalıyken hâlâ hiçbirine dokunulmaz.
+      const botOn = String(cred.credentials?.chat_bot ?? '').toLowerCase() === 'on';
+      const logCx: Cx = { url: supabaseUrl, key: serviceRoleKey, phoneId, accessToken, labId: cred.lab_id, senderName, labName: '', H, HJmin };
+      const captured = await captureReviewMessages(messages, {
+        labId: cred.lab_id,
+        botOn,
+        rpc: async (fn, args) => {
+          const r = await fetch(`${supabaseUrl}/rest/v1/rpc/${fn}`, {
+            method: 'POST', headers: { ...H, 'content-type': 'application/json' }, body: JSON.stringify(args),
+          });
+          if (!r.ok) throw new Error(`rpc ${fn} ${r.status}`);
+          return r.json();
+        },
+        sendText: (to, body) => sendText(phoneId, accessToken, to, body),
+        logMessage: (row) => logMessage(logCx, row),
+      });
+      const rest = messages.filter((m: any) => !captured.has(m));
+
       // ── SOHBET BOTU KAPALI (varsayılan, 2026-10-19) ──────────────────────────
       // Hat Coexistence'ta (is_on_biz_app=true): aynı numara telefondaki WhatsApp
       // Business uygulamasında da açık ve gelen mesajları lab ORADAN yanıtlıyor.
@@ -1798,12 +1827,6 @@ async function processIncoming(payload: any): Promise<void> {
       // botu: Açık" ile geri gelir.
       if (String(cred.credentials?.chat_bot ?? '').toLowerCase() !== 'on') continue;
 
-      const accessToken = cred.credentials.access_token;
-      const contacts = Array.isArray(value?.contacts) ? value.contacts : [];
-      const senderName = contacts[0]?.profile?.name ?? null;
-
-      const H = { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` };
-      const HJmin = { ...H, 'content-type': 'application/json', Prefer: 'return=minimal' };
       // Lab adı — mesaj başlıklarında ve Simanty'nin tanıtımında kullanılır.
       // Sabit "Siman Laboratuvar" yazılıydı; çok kiracılı üründe her lab kendi
       // adını görmeli. Webhook paketi başına tek sorgu.
@@ -1847,7 +1870,7 @@ async function processIncoming(payload: any): Promise<void> {
       }
 
       // ── Müşteri girişleri → oturum-farkında dağıtım (menü + FSM handleMessage'da) ──
-      for (const msg of messages) {
+      for (const msg of rest) {
         try { await handleMessage(msg, cx); }
         catch (e) { console.error('[wa] handleMessage err:', e); }
       }
