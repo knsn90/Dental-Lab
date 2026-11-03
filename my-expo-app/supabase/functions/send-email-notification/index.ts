@@ -279,6 +279,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   stage_critical: 'Kritik Aşama Tamamlandı',
   phone_lead:   'Telefon Talebi',
   account:      'Hesap',
+  review_problem: 'Hekim Geri Bildirimi',
 };
 
 // work_order_status enum → okunur Türkçe etiket (sipariş detay kartında "Durum")
@@ -674,6 +675,7 @@ const ACCENT_BY_CATEGORY: Record<string, string> = {
   order_watch:  '#DC2626',
   scan_schedule: '#0891B2',
   stage_critical: '#0C8F56',
+  review_problem: '#DC2626',
 };
 
 function escape(s: string): string {

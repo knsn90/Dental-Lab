@@ -105,6 +105,17 @@ const LAB_TEMPLATES: Record<string, { name: string; lang: string; params: (p: an
       { name: 'hasta_adi',  text: clean(p.patient || p.patient_name) },
     ],
   },
+  // Hekim WhatsApp puan isteğinde "Sorun var" dedi (spec 2026-11-03 §5.4).
+  // Yalnız lab yöneticilerine gider; müşteri şablonu YOK. Değişkenler Meta'daki
+  // is_sorunu_lab şablonuyla birebir; payload'ı _review_alert_lab doldurur.
+  review_problem: {
+    name: 'is_sorunu_lab', lang: 'tr',
+    params: (p) => [
+      { name: 'hekim',      text: clean(p.doctor) },
+      { name: 'siparis_no', text: clean(p.orderNumber) },
+      { name: 'is_turu',    text: clean(p.workType) },
+    ],
+  },
 };
 
 // Meta şablon değişkeni: boş olamaz, sekme/yeni satır/4+ boşluk olamaz.
@@ -149,8 +160,10 @@ Deno.serve(async (req) => {
   try { body = await req.json(); } catch { return json({ ok: false, error: 'bad json' }, 400); }
 
   const category = String(body?.category ?? '');
-  const tpl = TEMPLATES[category];
-  if (!tpl) return json({ ok: true, skipped: 'no-template-for-category' });   // no-op
+  // Müşteri şablonu olmayan kategori yalnız lab şablonu varsa ilerler
+  // (review_problem); ikisi de yoksa no-op.
+  const tpl = TEMPLATES[category] ?? null;
+  if (!tpl && !LAB_TEMPLATES[category]) return json({ ok: true, skipped: 'no-template-for-category' });   // no-op
 
   const userIds: string[] = Array.isArray(body?.userIds) ? body.userIds.filter(Boolean) : [];
   if (userIds.length === 0) return json({ ok: true, sent: 0 });
@@ -184,7 +197,7 @@ Deno.serve(async (req) => {
   const cred = (credRow as any)?.credentials ?? null;
   if (!cred?.phone_number_id || !cred?.access_token) return json({ ok: true, sent: 0, skipped: 'no-wa-cred' });
 
-  const params = tpl.params(extra);
+  const params = tpl ? tpl.params(extra) : [];
 
   // Alıcı profillerini çek
   // PASİF kullanıcıya hiçbir kanaldan bildirim gitmez (kullanıcı kararı 2026-09-16).
@@ -236,7 +249,7 @@ Deno.serve(async (req) => {
     // role='manager' olan lab profilleri alıyor (trg_work_order_notify_new),
     // yani buraya gelen 'lab' kaydı zaten yöneticidir. Lab şablonu olmayan
     // kategorilerde aşağıdaki `if (!lt)` ile eskisi gibi atlanır.
-    let useTpl = tpl; let useParams = params;
+    let useTpl: typeof tpl = tpl; let useParams = params;
     // ADMİN NÜSHASI (ödeme hatırlatması): kullanıcı kararı — kliniğe giden her
     // hatırlatmanın bir kopyası lab yöneticilerine WhatsApp'tan GİDER. payment için
     // ayrı lab şablonu yok (Meta onayı gerekir); onaylı müşteri şablonu kullanılır,
@@ -255,6 +268,7 @@ Deno.serve(async (req) => {
     } else if (!['doctor', 'clinic', 'clinic_admin', 'clinic_secretary'].includes(pr.user_type)) {
       results.push({ id: pr.id, skip: 'not-client' }); continue;
     }
+    if (!useTpl) { results.push({ id: pr.id, skip: 'no-client-tpl' }); continue; }
     // Numara seçimi — müşteri tarafında kurum hattı kişisel NORMAL telefondan önce
     // gelir; kişinin kendi girdiği whatsapp_phone her zaman korunur. Lab/admin
     // tarafı değişmedi. Meta ülke kodu ister → normalize.
