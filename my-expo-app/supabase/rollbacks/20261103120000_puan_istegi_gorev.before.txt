@@ -1,0 +1,52 @@
+-- 20261103120000_puan_istegi_gorev — CANLI durum (2026-11-03T10:14Z)
+
+## notify_order_delivered (md5 e731660a32e7a553d2b1b49977a1eead, acl: =X/postgres postgres=X anon=X authenticated=X service_role=X)
+CREATE OR REPLACE FUNCTION public.notify_order_delivered()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+BEGIN
+  IF NEW.status = 'teslim_edildi' AND COALESCE(OLD.status::text, '') <> 'teslim_edildi'
+     AND NEW.doctor_id IS NOT NULL
+     AND EXISTS (SELECT 1 FROM public.profiles WHERE id = NEW.doctor_id) THEN
+    BEGIN
+      PERFORM public.create_notification(
+        NEW.doctor_id,
+        'delivery',
+        'İşinizi değerlendirin',
+        COALESCE(NULLIF(NEW.patient_name, ''), NEW.order_number) || ' teslim edildi — puan verebilirsiniz',
+        'work_order',
+        NEW.id,
+        NULL,
+        '{}'::jsonb
+      );
+    EXCEPTION WHEN OTHERS THEN
+      NULL;
+    END;
+  END IF;
+  RETURN NEW;
+END; $function$
+
+
+## tetikleyici
+CREATE TRIGGER trg_notify_order_delivered AFTER UPDATE OF status ON public.work_orders FOR EACH ROW EXECUTE FUNCTION notify_order_delivered()
+
+## cron.job (jobname, schedule, active) — review-request-tick YOK
+auto_payment_reminders	0 7 * * *	true
+daily-order-watch	0 8 * * *	true
+daily-stage-leftovers	5 8 * * *	true
+efatura-status-sweep	0 6 * * *	true
+monthly-invoice-sweep	0 6 1 * *	true
+phone-leads-anonymize	30 0 * * *	true
+prova-watch	10 8 * * *	true
+scan-schedule-digest	0 * * * *	true
+shift-auto-pause	*/5 * * * *	true
+stock-count-reminder	0 6 * * *	true
+tcmb-daily-rates	30 13 * * 1-5	true
+
+## _notify_channels başlık deseni (referans): Bearer anon + apikey anon + x-notify-secret = vault notify_fn_secret; url https://kjwjxqfdsxkxgcgophdy.supabase.co/functions/v1/<fn>
+
+## delivered_at yazımı: teslim RPC'leri status ile aynı UPDATE'te coalesce(delivered_at, now()) yazar (20260914250000, 20261028101000); geri alma delivered_at'i temizlemez → yeniden teslimde eski tarih kalır. İstek tarihi: aynı UPDATE'te değişen delivered_at, yoksa tetikleyici anı.
+
+## work_orders.doctor_id doctors'ta olmayan satır: 0 / 82
