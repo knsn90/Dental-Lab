@@ -30,6 +30,7 @@ import {
   type IntegrationType, type ProviderCredential, type ProviderDefinition,
 } from '../api';
 import { AddressAutocompleteField } from '../components/AddressAutocompleteField';
+import { ReviewRequestSettingsCard } from '../../reviews/components/ReviewRequestSettingsCard';
 
 const DISPLAY = {
   fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
@@ -157,6 +158,9 @@ export function IntegrationsScreen({ accentColor = '#004B87' }: Props) {
           onDelete={handleDelete}
           onTest={handleTest}
         />
+
+        {/* WhatsApp puan isteği — lab ayarı (yalnız lab yöneticisi görür) */}
+        <ReviewRequestSettingsCard accentColor={accentColor} />
 
         {loading && <ActivityIndicator color={accentColor} style={{ marginTop: 12 }} />}
       </ScrollView>

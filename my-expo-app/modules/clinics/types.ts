@@ -33,4 +33,6 @@ export interface Doctor {
   clinic?: Clinic;
   // e-Arşiv (migration 067)
   tckn?: string | null;
+  // true → bu hekime WhatsApp puan isteği gitmez (lab ayarı açık olsa bile)
+  review_wa_opt_out?: boolean;
 }

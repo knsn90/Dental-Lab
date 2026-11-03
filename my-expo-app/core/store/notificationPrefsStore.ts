@@ -22,7 +22,8 @@ export type NotificationCategory =
   | 'new_order'    | 'order_status'    | 'chat'      | 'approval'
   | 'payment'      | 'stock'           | 'delivery'  | 'paper_order'
   | 'material_request' | 'order_watch' | 'stage_critical' | 'stock_count'
-  | 'implant_parts' | 'scan_annotation' | 'account' | 'scan_schedule';
+  | 'implant_parts' | 'scan_annotation' | 'account' | 'scan_schedule'
+  | 'review_request' | 'review_problem' | 'review_minor';
 
 export type NotificationChannel = 'in_app' | 'browser_push' | 'email' | 'whatsapp';
 
@@ -80,6 +81,12 @@ const DEFAULT_PREFS: NotificationPrefs = {
     scan_schedule: { in_app: true, browser_push: true, email: true, whatsapp: false },
     // Hesap açıldı (lab onayı) — işlemsel: sunucu e-postayı tercihten bağımsız atar.
     account:      { in_app: true,  browser_push: true,  email: true,  whatsapp: true },
+    // "İşinizi değerlendirin" (hekim/klinik) — hatırlatma: uygulama içi + push, mail yok.
+    review_request: { in_app: true, browser_push: true, email: false, whatsapp: false },
+    // Hekim WhatsApp'tan "Sorun var" dedi (lab) — aksiyon gerektirir: mail de gider.
+    review_problem: { in_app: true, browser_push: true, email: true,  whatsapp: false },
+    // Hekim "Küçük düzeltme" dedi (lab) — uygulama içi + push yeter.
+    review_minor:   { in_app: true, browser_push: true, email: false, whatsapp: false },
   },
 };
 

@@ -81,6 +81,7 @@ type Doctor = {
   phone?: string | null; specialty?: string | null;
   notes?: string | null; clinic_id?: string | null;
   is_active: boolean;
+  review_wa_opt_out?: boolean;
 };
 type ClinicForm = {
   name: string; category: ClinicCategory; phone: string; email: string;
@@ -99,6 +100,8 @@ type DoctorForm = {
   full_name: string; phone: string; specialty: string;
   notes: string; clinic_id: string; is_active: boolean;
   tckn: string;
+  // true → bu hekime WhatsApp puan isteği gitmez
+  review_wa_opt_out: boolean;
   // Opsiyonel: doldurulursa hekim sisteme login olabilir
   email: string; password: string;
 };
@@ -110,7 +113,7 @@ const EMPTY_CLINIC: ClinicForm = {
   vkn: '', tax_office: '', admin_email: '', admin_password: '',
   billing_mode: 'monthly_bulk', default_payment_terms_days: '30',
 };
-const EMPTY_DOCTOR: DoctorForm = { full_name: '', phone: '', specialty: '', notes: '', clinic_id: '', is_active: true, tckn: '', email: '', password: '' };
+const EMPTY_DOCTOR: DoctorForm = { full_name: '', phone: '', specialty: '', notes: '', clinic_id: '', is_active: true, tckn: '', review_wa_opt_out: false, email: '', password: '' };
 
 interface ParsedAddress {
   ulke: string;
@@ -2531,7 +2534,7 @@ export function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, 
   useEffect(() => {
     setForm(editingDoctor ? { full_name: editingDoctor.full_name, phone: editingDoctor.phone ?? '', specialty: editingDoctor.specialty ?? '',
       notes: editingDoctor.notes ?? '', clinic_id: editingDoctor.clinic_id ?? '', is_active: editingDoctor.is_active, tckn: (editingDoctor as any).tckn ?? '',
-      email: '', password: '' }
+      review_wa_opt_out: !!editingDoctor.review_wa_opt_out, email: '', password: '' }
       : { ...EMPTY_DOCTOR, clinic_id: defaultClinicId });
     setError('');
   }, [editingDoctor, defaultClinicId, visible]);
@@ -2560,7 +2563,8 @@ export function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, 
       const finalName = normalizeDoctorName(form.full_name);
 
       const payload = { full_name: finalName, phone: form.phone.trim() || null, specialty: form.specialty.trim() || null,
-        notes: form.notes.trim() || null, clinic_id: form.clinic_id || null, is_active: form.is_active, tckn: tcknTrim || null };
+        notes: form.notes.trim() || null, clinic_id: form.clinic_id || null, is_active: form.is_active, tckn: tcknTrim || null,
+        review_wa_opt_out: form.review_wa_opt_out };
 
       // ÇİFT KAYIT KORUMASI: aynı klinikte aynı isimde bir KULLANICI profili
       // varsa (hekim ya da klinik yetkilisi — yetkili de hekim olabiliyor),
@@ -2743,6 +2747,13 @@ export function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, 
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Text style={{ fontSize: 13, fontWeight: '500', color: isDark ? T.ink2 : DS.ink[700] }}>Aktif</Text>
                 <AppSwitch value={form.is_active} onValueChange={v => set('is_active', v)} accentColor={accentColor} />
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 12 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '500', color: isDark ? T.ink2 : DS.ink[700] }}>WhatsApp puan isteği gönder</Text>
+                  <Text style={{ fontSize: 11.5, color: isDark ? T.ink3 : DS.ink[500], marginTop: 2, lineHeight: 16 }}>Kapalıysa bu hekime WhatsApp'tan puan isteği gitmez.</Text>
+                </View>
+                <AppSwitch value={!form.review_wa_opt_out} onValueChange={v => set('review_wa_opt_out', !v)} accentColor={accentColor} />
               </View>
             </SectionCard>
             {error ? (<View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(217,75,75,0.12)', borderRadius: R.sm, padding: 12 }}><AlertCircle size={12} color="#9C2E2E" strokeWidth={1.8} /><Text style={{ fontSize: 12, color: '#9C2E2E', flex: 1 }}>{error}</Text></View>) : null}

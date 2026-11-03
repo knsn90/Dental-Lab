@@ -2,7 +2,7 @@
 // İş değerlendirmesi: bekleyen liste penceresi ve kaynak etiketi.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PENDING_REVIEW_DAYS, pendingReviewSince, reviewSourceLabel } from './reviewRules.ts';
+import { PENDING_REVIEW_DAYS, pendingReviewSince, reviewSourceLabel, stepReviewDelayDays } from './reviewRules.ts';
 
 test('bekleyen pencere 30 gün', () => {
   assert.equal(PENDING_REVIEW_DAYS, 30);
@@ -15,4 +15,14 @@ test('kaynak etiketi', () => {
   assert.equal(reviewSourceLabel({ source: 'app', rater_role: 'clinic' }), 'Klinik');
   assert.equal(reviewSourceLabel({ source: 'app', rater_role: null }), 'Hekim');
   assert.equal(reviewSourceLabel({}), 'Hekim');
+});
+
+test('puan isteği gün sayısı 1–14 arasında kalır', () => {
+  assert.equal(stepReviewDelayDays(3, 1), 4);
+  assert.equal(stepReviewDelayDays(3, -1), 2);
+  assert.equal(stepReviewDelayDays(1, -1), 1);
+  assert.equal(stepReviewDelayDays(14, 1), 14);
+  assert.equal(stepReviewDelayDays(0, 0), 1);
+  assert.equal(stepReviewDelayDays(99, 0), 14);
+  assert.equal(stepReviewDelayDays(Number.NaN, 1), 3);
 });

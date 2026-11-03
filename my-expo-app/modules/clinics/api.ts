@@ -135,6 +135,7 @@ export async function createDoctor(data: {
   notes?: string | null;
   is_active?: boolean;
   tckn?: string | null;
+  review_wa_opt_out?: boolean;
 }) {
   return supabase.from('doctors').insert(data).select().single();
 }
@@ -149,6 +150,7 @@ export async function updateDoctor(
     notes: string | null;
     is_active: boolean;
     tckn: string | null;
+    review_wa_opt_out: boolean;
   }>
 ) {
   return supabase.from('doctors').update(data).eq('id', id).select().single();

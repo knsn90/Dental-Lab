@@ -18,6 +18,7 @@ import { isRTL } from '../../i18n';
 import {
   X, FileCheck, Flame, Package, ChevronRight, ChevronLeft, BellOff,
   ShoppingCart, CreditCard, ClipboardCheck, MessageCircle, Truck, AlertCircle, Inbox, Wrench, AlarmClock, CheckCircle2, ClipboardList, PenLine, UserCheck, Calendar, Pause,
+  Star, AlertTriangle,
 } from '../icons';
 import { useThemeModeStore } from '../../store/themeModeStore';
 import { useMobileTokens, MOBILE_PANEL_THEMES, type MobilePanel } from '../../theme/mobileDesignTokens';
@@ -483,6 +484,9 @@ const CATEGORY_CFG: Record<NotificationCategory, { icon: any; color: string; lab
   scan_annotation:  { icon: PenLine,     color: '#2563EB', label: 'Tarama Notu' },
   scan_schedule:    { icon: Calendar,    color: '#0891B2', label: 'Tarama Programı' },
   account:          { icon: UserCheck,   color: '#059669', label: 'Hesap' },
+  review_request:   { icon: Star,          color: '#E89B2A', label: 'Değerlendirme' },
+  review_problem:   { icon: AlertTriangle, color: '#DC2626', label: 'Hekim Sorunu' },
+  review_minor:     { icon: Wrench,        color: '#E89B2A', label: 'Küçük Düzeltme' },
 };
 
 // ── DB feed satırı — okunmamış vurgusu + relative time ─────────────────────

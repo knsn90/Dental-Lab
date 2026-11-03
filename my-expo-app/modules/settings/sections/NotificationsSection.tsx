@@ -19,7 +19,7 @@ import {
   ClipboardList, RefreshCw, MessageCircle, CheckCircle,
   CreditCard, Package, Truck, Camera, Wrench,
   Mail, Smartphone, Bell, BellOff, Volume2, AlertTriangle,
-  Shield, Check, X, AlarmClock, ClipboardCheck, PenLine, Calendar,
+  Shield, Check, X, AlarmClock, ClipboardCheck, PenLine, Calendar, Star,
 } from '../../../core/ui/icons';
 import { useFeature } from '../../../core/store/featureFlagsStore';
 import { supabase } from '../../../core/api/supabase';
@@ -76,6 +76,15 @@ const ALL_GROUPS: {
     ],
   },
   {
+    // Lab: hekimin WhatsApp cevabı · Hekim/klinik: değerlendirme hatırlatması
+    title: 'Değerlendirme',
+    items: [
+      { key: 'review_problem', icon: AlertTriangle, label: 'Hekim sorun bildirdi',        sub: 'Hekim WhatsApp\'tan "Sorun var" dediğinde' },
+      { key: 'review_minor',   icon: Wrench,        label: 'Hekim küçük düzeltme istedi', sub: 'Hekim WhatsApp\'tan "Küçük düzeltme" dediğinde' },
+      { key: 'review_request', icon: Star,          label: 'İşinizi değerlendirin',       sub: 'Teslimden birkaç gün sonra' },
+    ],
+  },
+  {
     title: 'Finans & Stok',
     items: [
       { key: 'payment',          icon: CreditCard, label: 'Ödeme & Fatura',     sub: 'Tahsilat, fatura, vade uyarıları' },
@@ -101,6 +110,8 @@ function getGroupsForRole(userType?: string | null, role?: string | null) {
     'material_request',  // sarf/alet talebi — lab içi
     'order_watch',       // günlük geciken/beklemede digest — yalnız admin/lab-manager
     'scan_schedule',     // tarama programı — lab içi
+    'review_problem',    // hekimin WhatsApp cevabı — lab'a gider
+    'review_minor',
   ]);
 
   // Teknisyen için gereksiz kategoriler — finans/yönetim odaklı olanlar
@@ -113,15 +124,22 @@ function getGroupsForRole(userType?: string | null, role?: string | null) {
     'delivery',      // Kurye/teslimat — operasyon
     'order_watch',   // günlük geciken/beklemede digest — yönetici işi
     'stage_critical',// kritik aşama bildirimi — teknisyene gerekmez
+    'review_problem',// hekim cevabı — yönetici işi
+    'review_minor',
+    'review_request',// "işinizi değerlendirin" — yalnız hekim/klinik
   ]);
 
-  let hide: Set<NotificationCategory> | null = null;
+  // Lab yöneticisi / admin — hekime giden hatırlatma onlara gelmez
+  const hideForLab = new Set<NotificationCategory>([
+    'review_request',
+  ]);
+
+  let hide: Set<NotificationCategory> = hideForLab;
   if (isClient)          hide = hideForClient;
   else if (isTechnician) hide = hideForTechnician;
-  if (!hide)             return ALL_GROUPS;
 
   return ALL_GROUPS
-    .map(g => ({ ...g, items: g.items.filter(it => !hide!.has(it.key)) }))
+    .map(g => ({ ...g, items: g.items.filter(it => !hide.has(it.key)) }))
     .filter(g => g.items.length > 0);
 }
 
