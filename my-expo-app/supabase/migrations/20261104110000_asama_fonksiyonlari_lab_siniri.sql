@@ -1,0 +1,622 @@
+-- 20261104110000_asama_fonksiyonlari_lab_siniri
+-- Aşama fonksiyonlarına lab sınırı (yol haritası: 2. dalga açık kalanı, "start_stage_simple'da lab kontrolü yok").
+-- Durum: aşama tablosundaki bekçi tetikleyici (enforce_lifecycle_tenant) başka lab'ın yazmasını
+-- zaten durduruyor; ama o bekçi siparişin HEKİMİNİ ve kliniğinin YÖNETİCİSİNİ de "işe erişebilir"
+-- sayıyor. Ekranda düğmeleri yok, yine de bu fonksiyonları doğrudan çağırıp kendi işlerinin
+-- üretim aşamalarını başlatabiliyor, durdurabiliyor, tamamlayabiliyor, sürelerini değiştirebiliyordu.
+-- record_machine_event ise (aşama verilmeden) başka lab'ın cihaz durumunu yazabiliyordu.
+--   • 11 fonksiyonun her birine, oturum kontrolünün hemen ardından tek satır eklenir:
+--     assert_my_stage(p_stage_id) → aşamanın lab'ı çağıranın lab'ı değilse 42501
+--     (platform yöneticisi geçer; lab'ı olmayan hekim/klinik hesabı geçemez).
+--   • record_machine_event: ayrıca cihazın lab'ı için assert_my_lab.
+-- Gövdenin geri kalanı canlı tanımla BİREBİR aynı (pg_get_functiondef, 2026-11-03T21:14Z); yetkiler (ACL) korunur.
+-- İstemci etkisi yok: bu fonksiyonları yalnız lab ekranları (operatör, iş istasyonu, sipariş detayı
+-- lab tarafı, istasyon kiosku) çağırıyor.
+-- Geri alma: rollbacks/20261104110000_asama_fonksiyonlari_lab_siniri.down.sql
+
+-- complete_stage_simple(uuid)
+CREATE OR REPLACE FUNCTION public.complete_stage_simple(p_stage_id uuid)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_caller UUID := auth.uid();
+  v_stage_tech UUID; v_status stage_status;
+  v_user_type TEXT; v_role TEXT;
+  v_work_order_id UUID; v_seq INT; v_next_id UUID; v_next_seq INT;
+  v_auto_prog BOOLEAN; v_safety_loop INT := 0; v_station_id UUID;
+  v_stage_kind TEXT; v_approval_req BOOLEAN; v_approval_stat TEXT; v_lane INT;
+BEGIN
+  IF v_caller IS NULL THEN RAISE EXCEPTION 'auth required'; END IF;
+  PERFORM public.assert_my_stage(p_stage_id);  -- 20261104110000: yalnız aşamanın lab'ı
+  SELECT technician_id, status, work_order_id, sequence_order, station_id, lane
+    INTO v_stage_tech, v_status, v_work_order_id, v_seq, v_station_id, v_lane
+    FROM public.order_stages WHERE id = p_stage_id;
+  IF NOT FOUND THEN RAISE EXCEPTION 'stage not found'; END IF;
+  SELECT user_type, role INTO v_user_type, v_role FROM public.profiles WHERE id = v_caller;
+  IF v_stage_tech <> v_caller AND NOT (v_user_type='admin')
+     AND NOT (v_user_type='lab' AND v_role IN ('manager','admin'))
+  THEN RAISE EXCEPTION 'forbidden'; END IF;
+  IF v_status <> 'aktif' THEN RAISE EXCEPTION 'stage must be aktif (current: %)', v_status; END IF;
+  UPDATE public.order_stages SET status='tamamlandi', completed_at=NOW() WHERE id = p_stage_id;
+  v_stage_kind := _stage_for_station(v_station_id);
+  SELECT doctor_approval_required, doctor_approval_status INTO v_approval_req, v_approval_stat
+    FROM public.work_orders WHERE id = v_work_order_id;
+  IF v_stage_kind = 'DESIGN' AND COALESCE(v_approval_req, FALSE) = TRUE
+     AND COALESCE(v_approval_stat, '') NOT IN ('approved') THEN
+    UPDATE public.work_orders
+       SET doctor_approval_status = 'pending', doctor_approval_required = TRUE,
+           status = 'tasarim_onayi_bekleniyor', current_stage_id = NULL
+     WHERE id = v_work_order_id;
+    BEGIN PERFORM generate_doctor_approval_token(v_work_order_id);
+    EXCEPTION WHEN OTHERS THEN NULL; END;
+    RETURN TRUE;
+  END IF;
+  v_next_seq := v_seq;
+  LOOP
+    v_safety_loop := v_safety_loop + 1;
+    EXIT WHEN v_safety_loop > 20;
+    SELECT os.id, ls.auto_progress, os.sequence_order INTO v_next_id, v_auto_prog, v_next_seq
+      FROM public.order_stages os JOIN public.lab_stations ls ON ls.id = os.station_id
+     WHERE os.work_order_id = v_work_order_id AND os.lane = v_lane
+       AND os.sequence_order > v_next_seq AND os.status = 'bekliyor'
+     ORDER BY os.sequence_order LIMIT 1;
+    EXIT WHEN v_next_id IS NULL;
+    IF v_auto_prog THEN
+      UPDATE public.order_stages
+         SET status='tamamlandi', technician_id = COALESCE(technician_id, v_caller),
+             assigned_at=COALESCE(assigned_at, NOW()), started_at=COALESCE(started_at, NOW()), completed_at=NOW()
+       WHERE id = v_next_id;
+    ELSE
+      UPDATE public.order_stages SET status='aktif', assigned_at=COALESCE(assigned_at, NOW()), started_at = NULL
+       WHERE id = v_next_id;
+      UPDATE public.work_orders SET current_stage_id = v_next_id, status = 'asamada' WHERE id = v_work_order_id;
+      RETURN TRUE;
+    END IF;
+  END LOOP;
+  IF EXISTS (SELECT 1 FROM public.order_stages WHERE work_order_id = v_work_order_id AND status IN ('bekliyor','aktif')) THEN
+    UPDATE public.work_orders
+       SET current_stage_id = (SELECT id FROM public.order_stages WHERE work_order_id = v_work_order_id AND status = 'aktif' ORDER BY lane, sequence_order LIMIT 1),
+           status = 'asamada'
+     WHERE id = v_work_order_id;
+  ELSE
+    UPDATE public.work_orders SET current_stage_id = NULL, status = 'teslimata_hazir' WHERE id = v_work_order_id;
+  END IF;
+  RETURN TRUE;
+END;
+$function$;
+
+-- confirm_stage_materials(uuid,jsonb,boolean,text)
+CREATE OR REPLACE FUNCTION public.confirm_stage_materials(p_stage_id uuid, p_lines jsonb, p_advance_stage boolean DEFAULT true, p_idempotency_key text DEFAULT NULL::text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_caller UUID := auth.uid();
+  v_stage_status stage_status; v_user_type TEXT; v_role TEXT;
+BEGIN
+  IF v_caller IS NULL THEN RAISE EXCEPTION 'auth required'; END IF;
+  PERFORM public.assert_my_stage(p_stage_id);  -- 20261104110000: yalnız aşamanın lab'ı
+
+  SELECT status INTO v_stage_status FROM public.order_stages WHERE id = p_stage_id;
+  IF v_stage_status IS NULL THEN RAISE EXCEPTION 'stage not found'; END IF;
+
+  SELECT user_type, role INTO v_user_type, v_role FROM public.profiles WHERE id = v_caller;
+  IF NOT (v_user_type='admin' OR (v_user_type='lab' AND v_role IN ('manager','admin'))
+    OR EXISTS (SELECT 1 FROM public.order_stages WHERE id=p_stage_id AND technician_id=v_caller)) THEN
+    RAISE EXCEPTION 'forbidden';
+  END IF;
+
+  PERFORM public.apply_stage_materials_core(p_stage_id, p_lines, v_caller, p_idempotency_key);
+
+  IF p_advance_stage AND v_stage_status='aktif' THEN
+    PERFORM public.complete_stage_simple(p_stage_id);
+  END IF;
+  RETURN TRUE;
+END; $function$;
+
+-- force_activate_stage(uuid)
+CREATE OR REPLACE FUNCTION public.force_activate_stage(p_stage_id uuid)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_caller       UUID := auth.uid();
+  v_user_type    TEXT; v_role TEXT;
+  v_status       stage_status;
+  v_default_tech UUID;
+  v_work_order   UUID;
+BEGIN
+  IF v_caller IS NULL THEN RAISE EXCEPTION 'auth required'; END IF;
+  PERFORM public.assert_my_stage(p_stage_id);  -- 20261104110000: yalnız aşamanın lab'ı
+
+  SELECT user_type, role INTO v_user_type, v_role FROM public.profiles WHERE id = v_caller;
+  IF NOT (v_user_type = 'admin'
+          OR (v_user_type = 'lab' AND v_role IN ('manager','admin'))) THEN
+    RAISE EXCEPTION 'forbidden';
+  END IF;
+
+  SELECT os.status, ls.default_technician_id, os.work_order_id
+    INTO v_status, v_default_tech, v_work_order
+    FROM public.order_stages os
+    JOIN public.lab_stations ls ON ls.id = os.station_id
+   WHERE os.id = p_stage_id;
+  IF v_status IS NULL THEN RAISE EXCEPTION 'stage not found'; END IF;
+  IF v_status <> 'bekliyor' THEN
+    RAISE EXCEPTION 'stage must be bekliyor (current: %)', v_status;
+  END IF;
+
+  UPDATE public.order_stages
+     SET status        = 'aktif',
+         technician_id = COALESCE(technician_id, v_default_tech),
+         assigned_at   = COALESCE(assigned_at, NOW()),
+         started_at    = NULL
+   WHERE id = p_stage_id;
+
+  UPDATE public.work_orders
+     SET current_stage_id = p_stage_id,
+         status           = 'asamada'
+   WHERE id = v_work_order;
+
+  RETURN TRUE;
+END;
+$function$;
+
+-- override_stage_timing(uuid,text,integer,text)
+CREATE OR REPLACE FUNCTION public.override_stage_timing(p_stage_id uuid, p_field_name text, p_new_value integer, p_reason text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_old_value INTEGER;
+  v_caller    UUID := auth.uid();
+BEGIN
+  IF v_caller IS NULL THEN
+    RAISE EXCEPTION 'auth required';
+  END IF;
+  PERFORM public.assert_my_stage(p_stage_id);  -- 20261104110000: yalnız aşamanın lab'ı
+  IF p_reason IS NULL OR length(trim(p_reason)) < 3 THEN
+    RAISE EXCEPTION 'override requires a reason (min 3 chars)';
+  END IF;
+  IF p_field_name NOT IN (
+    'active_work_seconds','machine_runtime_seconds','operator_setup_seconds','queue_waiting_seconds'
+  ) THEN
+    RAISE EXCEPTION 'override field not allowed: %', p_field_name;
+  END IF;
+  IF p_new_value < 0 THEN
+    RAISE EXCEPTION 'override value must be >= 0';
+  END IF;
+
+  -- Eski değer
+  EXECUTE format('SELECT %I FROM public.order_stages WHERE id = $1', p_field_name)
+    INTO v_old_value
+    USING p_stage_id;
+
+  IF v_old_value IS NULL THEN
+    -- Stage yoksa veya kolon NULL ise (ki NOT NULL DEFAULT 0 olduğu için olmamalı)
+    RAISE EXCEPTION 'stage not found or field unreadable';
+  END IF;
+
+  -- Audit
+  INSERT INTO public.stage_timing_overrides (stage_id, field_name, old_value, new_value, reason, actor_id)
+  VALUES (p_stage_id, p_field_name, v_old_value, p_new_value, p_reason, v_caller);
+
+  -- Update
+  EXECUTE format('UPDATE public.order_stages SET %I = $1 WHERE id = $2', p_field_name)
+    USING p_new_value, p_stage_id;
+
+  -- Event olarak da kaydet (analytics için)
+  INSERT INTO public.stage_activity_events (stage_id, event_type, source, payload, actor_id)
+  VALUES (
+    p_stage_id,
+    'timing_overridden',
+    'manual',
+    jsonb_build_object('field', p_field_name, 'old', v_old_value, 'new', p_new_value, 'reason', p_reason),
+    v_caller
+  );
+
+  RETURN TRUE;
+END;
+$function$;
+
+-- pause_stage(uuid,text)
+CREATE OR REPLACE FUNCTION public.pause_stage(p_stage_id uuid, p_reason text DEFAULT NULL::text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_current  stage_status;
+  v_caller   UUID := auth.uid();
+BEGIN
+  IF v_caller IS NULL THEN
+    RAISE EXCEPTION 'auth required';
+  END IF;
+  PERFORM public.assert_my_stage(p_stage_id);  -- 20261104110000: yalnız aşamanın lab'ı
+
+  SELECT status INTO v_current FROM public.order_stages WHERE id = p_stage_id;
+  IF v_current IS NULL THEN
+    RAISE EXCEPTION 'stage not found';
+  END IF;
+  IF v_current <> 'aktif' THEN
+    RAISE EXCEPTION 'stage must be aktif to pause (current: %)', v_current;
+  END IF;
+
+  UPDATE public.order_stages SET status = 'durakladi' WHERE id = p_stage_id;
+
+  INSERT INTO public.stage_state_transitions (stage_id, from_status, to_status, reason, actor_id)
+  VALUES (p_stage_id, v_current, 'durakladi', p_reason, v_caller);
+
+  INSERT INTO public.stage_activity_events (stage_id, event_type, source, payload, actor_id)
+  VALUES (p_stage_id, 'stage_paused', 'manual', jsonb_build_object('reason', p_reason), v_caller);
+
+  RETURN TRUE;
+END;
+$function$;
+
+-- record_machine_event(uuid,text,uuid,jsonb,integer)
+CREATE OR REPLACE FUNCTION public.record_machine_event(p_equipment_id uuid, p_event_type text, p_stage_id uuid DEFAULT NULL::uuid, p_payload jsonb DEFAULT NULL::jsonb, p_runtime_seconds integer DEFAULT NULL::integer)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_event_id UUID;
+  v_caller   UUID := auth.uid();
+BEGIN
+  -- Auth gerek (gerçek makine entegrasyonunda service-role token olur)
+  IF v_caller IS NULL THEN
+    RAISE EXCEPTION 'auth required';
+  END IF;
+  PERFORM public.assert_my_stage(p_stage_id);  -- 20261104110000: yalnız aşamanın lab'ı
+  PERFORM public.assert_my_lab((SELECT e.lab_id FROM public.equipment e WHERE e.id = p_equipment_id));
+  IF p_event_type IS NULL OR length(trim(p_event_type)) = 0 THEN
+    RAISE EXCEPTION 'event_type required';
+  END IF;
+
+  -- 1) machine_events log
+  INSERT INTO public.machine_events (equipment_id, stage_id, event_type, payload, runtime_seconds)
+  VALUES (p_equipment_id, p_stage_id, p_event_type, p_payload, p_runtime_seconds)
+  RETURNING id INTO v_event_id;
+
+  -- 2) equipment.live_status + heartbeat güncelle
+  UPDATE public.equipment SET
+    last_heartbeat_at = NOW(),
+    live_status = CASE p_event_type
+      WHEN 'heartbeat'      THEN COALESCE(NULLIF(p_payload->>'status', ''), live_status)
+      WHEN 'job_started'    THEN 'running'
+      WHEN 'job_completed'  THEN 'idle'
+      WHEN 'error'          THEN 'error'
+      WHEN 'status_changed' THEN COALESCE(NULLIF(p_payload->>'status', ''), live_status)
+      ELSE live_status
+    END,
+    current_stage_id = CASE p_event_type
+      WHEN 'job_started'    THEN p_stage_id
+      WHEN 'job_completed'  THEN NULL
+      ELSE current_stage_id
+    END,
+    current_job_started_at = CASE p_event_type
+      WHEN 'job_started'    THEN NOW()
+      WHEN 'job_completed'  THEN NULL
+      ELSE current_job_started_at
+    END,
+    current_job_estimate_seconds = CASE p_event_type
+      WHEN 'job_started' THEN COALESCE((p_payload->>'estimate_seconds')::INTEGER, current_job_estimate_seconds)
+      WHEN 'job_completed' THEN NULL
+      ELSE current_job_estimate_seconds
+    END,
+    last_error_message = CASE p_event_type
+      WHEN 'error' THEN p_payload->>'message'
+      ELSE last_error_message
+    END,
+    last_error_at = CASE p_event_type
+      WHEN 'error' THEN NOW()
+      ELSE last_error_at
+    END
+  WHERE id = p_equipment_id;
+
+  -- 3) job_completed ise stage'e runtime ekle + activity event
+  IF p_event_type = 'job_completed' AND p_stage_id IS NOT NULL AND p_runtime_seconds IS NOT NULL THEN
+    UPDATE public.order_stages
+    SET machine_runtime_seconds = machine_runtime_seconds + p_runtime_seconds,
+        last_activity_at = NOW(),
+        first_activity_at = COALESCE(first_activity_at, NOW())
+    WHERE id = p_stage_id;
+
+    INSERT INTO public.stage_activity_events (stage_id, event_type, source, payload, actor_id)
+    VALUES (
+      p_stage_id,
+      'machine_job_completed',
+      'machine_api',
+      jsonb_build_object(
+        'equipment_id',     p_equipment_id,
+        'runtime_seconds',  p_runtime_seconds,
+        'extra',            p_payload
+      ),
+      v_caller
+    );
+  ELSIF p_event_type = 'job_started' AND p_stage_id IS NOT NULL THEN
+    -- Job started — stage activity event
+    INSERT INTO public.stage_activity_events (stage_id, event_type, source, payload, actor_id)
+    VALUES (
+      p_stage_id,
+      'machine_job_started',
+      'machine_api',
+      jsonb_build_object('equipment_id', p_equipment_id, 'extra', p_payload),
+      v_caller
+    );
+  ELSIF p_event_type = 'error' AND p_stage_id IS NOT NULL THEN
+    INSERT INTO public.stage_activity_events (stage_id, event_type, source, payload, actor_id)
+    VALUES (
+      p_stage_id,
+      'machine_error',
+      'machine_api',
+      jsonb_build_object('equipment_id', p_equipment_id, 'extra', p_payload),
+      v_caller
+    );
+  END IF;
+
+  RETURN v_event_id;
+END;
+$function$;
+
+-- record_stage_activity(uuid,text,text,jsonb)
+CREATE OR REPLACE FUNCTION public.record_stage_activity(p_stage_id uuid, p_event_type text, p_source text DEFAULT 'system'::text, p_payload jsonb DEFAULT NULL::jsonb)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_event_id UUID;
+  v_caller   UUID := auth.uid();
+BEGIN
+  IF v_caller IS NULL THEN
+    RAISE EXCEPTION 'auth required';
+  END IF;
+  PERFORM public.assert_my_stage(p_stage_id);  -- 20261104110000: yalnız aşamanın lab'ı
+  IF p_source NOT IN ('manual','system','machine_api') THEN
+    RAISE EXCEPTION 'invalid source: %', p_source;
+  END IF;
+  IF p_event_type IS NULL OR length(trim(p_event_type)) = 0 THEN
+    RAISE EXCEPTION 'event_type required';
+  END IF;
+
+  INSERT INTO public.stage_activity_events (stage_id, event_type, source, payload, actor_id)
+  VALUES (p_stage_id, p_event_type, p_source, p_payload, v_caller)
+  RETURNING id INTO v_event_id;
+
+  UPDATE public.order_stages
+  SET first_activity_at = COALESCE(first_activity_at, NOW()),
+      last_activity_at  = NOW()
+  WHERE id = p_stage_id;
+
+  RETURN v_event_id;
+END;
+$function$;
+
+-- resume_stage(uuid,text)
+CREATE OR REPLACE FUNCTION public.resume_stage(p_stage_id uuid, p_reason text DEFAULT NULL::text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_current  stage_status;
+  v_caller   UUID := auth.uid();
+BEGIN
+  IF v_caller IS NULL THEN
+    RAISE EXCEPTION 'auth required';
+  END IF;
+  PERFORM public.assert_my_stage(p_stage_id);  -- 20261104110000: yalnız aşamanın lab'ı
+
+  SELECT status INTO v_current FROM public.order_stages WHERE id = p_stage_id;
+  IF v_current IS NULL THEN
+    RAISE EXCEPTION 'stage not found';
+  END IF;
+  IF v_current NOT IN ('durakladi','makine_bekliyor','onay_bekliyor','bloklu','yeniden') THEN
+    RAISE EXCEPTION 'stage cannot be resumed from %', v_current;
+  END IF;
+
+  UPDATE public.order_stages SET status = 'aktif' WHERE id = p_stage_id;
+
+  INSERT INTO public.stage_state_transitions (stage_id, from_status, to_status, reason, actor_id)
+  VALUES (p_stage_id, v_current, 'aktif', p_reason, v_caller);
+
+  INSERT INTO public.stage_activity_events (stage_id, event_type, source, payload, actor_id)
+  VALUES (p_stage_id, 'stage_resumed', 'manual', jsonb_build_object('reason', p_reason, 'from', v_current), v_caller);
+
+  RETURN TRUE;
+END;
+$function$;
+
+-- start_stage_simple(uuid,integer)
+CREATE OR REPLACE FUNCTION public.start_stage_simple(p_stage_id uuid, p_estimated_minutes integer DEFAULT NULL::integer)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_caller       UUID := auth.uid();
+  v_tech         UUID;
+  v_status       stage_status;
+  v_started      TIMESTAMPTZ;
+  v_assigned     TIMESTAMPTZ;
+  v_user_type    TEXT;
+  v_role         TEXT;
+  v_wait_secs    INT;
+  v_owner        UUID;
+  v_max          INT;
+  v_active_count INT;
+BEGIN
+  IF v_caller IS NULL THEN RAISE EXCEPTION 'auth required'; END IF;
+  PERFORM public.assert_my_stage(p_stage_id);  -- 20261104110000: yalnız aşamanın lab'ı
+
+  SELECT technician_id, status, started_at, assigned_at
+    INTO v_tech, v_status, v_started, v_assigned
+    FROM public.order_stages WHERE id = p_stage_id;
+  IF NOT FOUND THEN RAISE EXCEPTION 'stage not found'; END IF;
+
+  SELECT user_type, role INTO v_user_type, v_role FROM public.profiles WHERE id = v_caller;
+  IF v_tech IS NOT NULL AND v_tech <> v_caller
+     AND NOT (v_user_type='admin')
+     AND NOT (v_user_type='lab' AND v_role IN ('manager','admin'))
+  THEN RAISE EXCEPTION 'forbidden'; END IF;
+
+  IF v_status <> 'aktif' THEN
+    RAISE EXCEPTION 'stage must be aktif (current: %)', v_status;
+  END IF;
+
+  IF v_started IS NOT NULL THEN
+    IF p_estimated_minutes IS NOT NULL THEN
+      UPDATE public.order_stages
+         SET estimated_minutes = GREATEST(1, p_estimated_minutes)
+       WHERE id = p_stage_id;
+    END IF;
+    RETURN TRUE;
+  END IF;
+
+  v_owner := COALESCE(v_tech, v_caller);
+  SELECT COALESCE(l.max_active_jobs_per_tech, 1) INTO v_max
+    FROM public.profiles p LEFT JOIN public.labs l ON l.id = p.lab_id
+   WHERE p.id = v_owner;
+  v_max := COALESCE(v_max, 1);
+
+  SELECT count(*) INTO v_active_count
+    FROM public.order_stages
+   WHERE technician_id = v_owner
+     AND status = 'aktif'
+     AND started_at IS NOT NULL
+     AND id <> p_stage_id;
+
+  IF v_active_count >= v_max THEN
+    RAISE EXCEPTION 'Aynı anda en fazla % aktif iş yürütebilirsiniz. Fırın/makinedeki işi "Makineye Ver" ile parklayın ya da birini tamamlayın.', v_max
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  v_wait_secs := GREATEST(0, EXTRACT(EPOCH FROM (NOW() - COALESCE(v_assigned, NOW())))::INT);
+
+  UPDATE public.order_stages
+     SET started_at            = NOW(),
+         technician_id         = COALESCE(technician_id, v_caller),
+         queue_waiting_seconds = COALESCE(queue_waiting_seconds, 0) + v_wait_secs,
+         estimated_minutes     = CASE
+           WHEN p_estimated_minutes IS NOT NULL THEN GREATEST(1, p_estimated_minutes)
+           ELSE estimated_minutes
+         END
+   WHERE id = p_stage_id;
+
+  RETURN TRUE;
+END;
+$function$;
+
+-- start_stage_simple(uuid)
+CREATE OR REPLACE FUNCTION public.start_stage_simple(p_stage_id uuid)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_caller UUID := auth.uid();
+  v_tech UUID; v_status stage_status; v_started TIMESTAMPTZ; v_assigned TIMESTAMPTZ;
+  v_user_type TEXT; v_role TEXT; v_wait_secs INT; v_owner UUID; v_max INT; v_active_count INT; v_lab UUID;
+BEGIN
+  IF v_caller IS NULL THEN RAISE EXCEPTION 'auth required'; END IF;
+  PERFORM public.assert_my_stage(p_stage_id);  -- 20261104110000: yalnız aşamanın lab'ı
+  SELECT technician_id, status, started_at, assigned_at INTO v_tech, v_status, v_started, v_assigned
+    FROM public.order_stages WHERE id = p_stage_id;
+  IF NOT FOUND THEN RAISE EXCEPTION 'stage not found'; END IF;
+  SELECT user_type, role INTO v_user_type, v_role FROM public.profiles WHERE id = v_caller;
+  IF v_tech IS NOT NULL AND v_tech <> v_caller
+     AND NOT (v_user_type='admin') AND NOT (v_user_type='lab' AND v_role IN ('manager','admin'))
+  THEN RAISE EXCEPTION 'forbidden'; END IF;
+  IF v_status <> 'aktif' THEN RAISE EXCEPTION 'stage must be aktif (current: %)', v_status; END IF;
+  IF v_started IS NOT NULL THEN RETURN TRUE; END IF;
+
+  v_owner := COALESCE(v_tech, v_caller);
+  SELECT COALESCE(l.max_active_jobs_per_tech, 1), p.lab_id INTO v_max, v_lab
+    FROM public.profiles p LEFT JOIN public.labs l ON l.id = p.lab_id WHERE p.id = v_owner;
+  v_max := COALESCE(v_max, 1);
+  SELECT count(*) INTO v_active_count FROM public.order_stages
+   WHERE technician_id = v_owner AND status = 'aktif' AND started_at IS NOT NULL AND id <> p_stage_id;
+  IF v_active_count >= v_max THEN
+    RAISE EXCEPTION 'Aynı anda en fazla % aktif iş yürütebilirsiniz. Önce birini tamamlayın veya duraklatın.', v_max
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  v_wait_secs := GREATEST(0, EXTRACT(EPOCH FROM (NOW() - COALESCE(v_assigned, NOW())))::INT);
+  UPDATE public.order_stages
+     SET started_at = NOW(), last_active_started_at = NOW(),
+         technician_id = COALESCE(technician_id, v_caller),
+         queue_waiting_seconds = COALESCE(queue_waiting_seconds, 0) + v_wait_secs
+   WHERE id = p_stage_id;
+
+  INSERT INTO public.stage_work_segments (stage_id, lab_id, started_at) VALUES (p_stage_id, v_lab, NOW());
+  RETURN TRUE;
+END;
+$function$;
+
+-- transition_stage_state(uuid,stage_status,text)
+CREATE OR REPLACE FUNCTION public.transition_stage_state(p_stage_id uuid, p_new_status stage_status, p_reason text DEFAULT NULL::text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_current stage_status;
+  v_caller  UUID := auth.uid();
+BEGIN
+  IF v_caller IS NULL THEN
+    RAISE EXCEPTION 'auth required';
+  END IF;
+  PERFORM public.assert_my_stage(p_stage_id);  -- 20261104110000: yalnız aşamanın lab'ı
+
+  SELECT status INTO v_current FROM public.order_stages WHERE id = p_stage_id;
+  IF v_current IS NULL THEN
+    RAISE EXCEPTION 'stage not found';
+  END IF;
+  IF v_current = p_new_status THEN
+    RETURN FALSE;
+  END IF;
+
+  -- transition_stage_state hayatta kalacak transitions:
+  -- aktif ↔ durakladi/makine_bekliyor/onay_bekliyor/bloklu/yeniden
+  -- aktif → tamamlandi
+  -- bekliyor → aktif
+  IF p_new_status NOT IN (
+    'aktif','durakladi','makine_bekliyor','onay_bekliyor','bloklu','yeniden','tamamlandi'
+  ) THEN
+    RAISE EXCEPTION 'transition not allowed via this RPC: %', p_new_status;
+  END IF;
+
+  UPDATE public.order_stages SET status = p_new_status WHERE id = p_stage_id;
+
+  INSERT INTO public.stage_state_transitions (stage_id, from_status, to_status, reason, actor_id)
+  VALUES (p_stage_id, v_current, p_new_status, p_reason, v_caller);
+
+  INSERT INTO public.stage_activity_events (stage_id, event_type, source, payload, actor_id)
+  VALUES (
+    p_stage_id,
+    'stage_state_changed',
+    'manual',
+    jsonb_build_object('from', v_current, 'to', p_new_status, 'reason', p_reason),
+    v_caller
+  );
+
+  RETURN TRUE;
+END;
+$function$;

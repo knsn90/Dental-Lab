@@ -1,0 +1,10 @@
+-- 20261104100000_gider_okuma_finans_izni — CANLI durum (2026-11-03T21:14Z)
+
+## expenses politikaları (cmd · ad · roller [boş = PUBLIC] · USING · WITH CHECK)
+d	expenses_fin_del		(is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))	-
+a	expenses_fin_ins		-	(is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+w	expenses_fin_upd		(is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))	(is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+r	expenses_read		(is_platform_admin() OR ((lab_id = get_my_lab_id()) AND (((salary_payment_id IS NULL) AND (advance_id IS NULL)) OR ( SELECT can_view_payroll() AS can_view_payroll))))	-
+
+## expenses RLS
+True	False
