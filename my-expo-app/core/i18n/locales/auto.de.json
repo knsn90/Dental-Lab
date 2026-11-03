@@ -9836,5 +9836,8 @@
   "Gecikmiş işi beklemeye alır; hekim onayı ya da parça gelene kadar gecikme sayacı durur": "Pausiert den überfälligen Auftrag; der Verzögerungszähler stoppt, bis die Freigabe des Zahnarztes oder das Teil eintrifft",
   "Sonradan girildi": "Nachträglich erfasst",
   "Bekleme teslimde kapandı": "Pause bei Lieferung beendet",
-  "Teslim edilmiş veya iptal edilmiş iş devam ettirilemez": "Ein gelieferter oder stornierter Auftrag kann nicht fortgesetzt werden"
+  "Teslim edilmiş veya iptal edilmiş iş devam ettirilemez": "Ein gelieferter oder stornierter Auftrag kann nicht fortgesetzt werden",
+  "WhatsApp · hekim": "WhatsApp · Zahnarzt",
+  "WhatsApp · klinik hattı": "WhatsApp · Kliniknummer",
+  "Bu iş az önce değerlendirildi. Sayfayı yenileyip düzenleyebilirsiniz.": "Dieser Auftrag wurde gerade bewertet. Laden Sie die Seite neu, um die Bewertung zu bearbeiten."
 }

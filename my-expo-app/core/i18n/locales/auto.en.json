@@ -9836,5 +9836,8 @@
   "Gecikmiş işi beklemeye alır; hekim onayı ya da parça gelene kadar gecikme sayacı durur": "Puts the overdue job on hold; the delay counter stops until the doctor's approval or the part arrives",
   "Sonradan girildi": "Entered later",
   "Bekleme teslimde kapandı": "Hold closed on delivery",
-  "Teslim edilmiş veya iptal edilmiş iş devam ettirilemez": "A delivered or cancelled job can't be resumed"
+  "Teslim edilmiş veya iptal edilmiş iş devam ettirilemez": "A delivered or cancelled job can't be resumed",
+  "WhatsApp · hekim": "WhatsApp · doctor",
+  "WhatsApp · klinik hattı": "WhatsApp · clinic line",
+  "Bu iş az önce değerlendirildi. Sayfayı yenileyip düzenleyebilirsiniz.": "This order was just rated. Refresh the page to edit the rating."
 }

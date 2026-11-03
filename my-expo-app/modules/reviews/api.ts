@@ -1,7 +1,8 @@
 import { supabase } from '../../core/api/supabase';
 import type { OrderReview, ReviewInput, PendingReviewOrder } from './types';
+import { pendingReviewSince } from './reviewRules';
 
-const COLS = 'id, work_order_id, lab_id, rater_id, rater_role, overall, fit, occlusion, contacts, esthetics, surface, on_time, comment, photos, clinical_photos, lab_reply, lab_reply_at, lab_reply_by, created_at, updated_at';
+const COLS = 'id, work_order_id, lab_id, rater_id, rater_role, source, rater_doctor_id, overall, fit, occlusion, contacts, esthetics, surface, on_time, comment, photos, clinical_photos, lab_reply, lab_reply_at, lab_reply_by, created_at, updated_at';
 
 /**
  * İstemci tarafı yükleme sınırı — bucket 200 MB'a izin veriyor ama değerlendirme
@@ -49,7 +50,18 @@ export async function setLabReply(reviewId: string, reply: string): Promise<{ da
   return { data: (data as OrderReview) ?? null, error };
 }
 
-/** Belirli bir iş için MEVCUT kullanıcının değerlendirmesini getir (yoksa null). */
+/** İşin tek değerlendirmesi (iş başına bir tane; hekim, klinik veya WhatsApp). Yoksa null. */
+export async function getOrderReview(workOrderId: string): Promise<{ data: OrderReview | null; error: any }> {
+  const { data, error } = await supabase
+    .from('order_reviews')
+    .select(COLS)
+    .eq('work_order_id', workOrderId)
+    .maybeSingle();
+  return { data: (data as OrderReview) ?? null, error };
+}
+
+/** Belirli bir iş için MEVCUT kullanıcının değerlendirmesini getir (yoksa null).
+ *  Yerini getOrderReview alıyor; tek çağıranı sipariş ekranı. */
 export async function getMyReviewForOrder(workOrderId: string): Promise<{ data: OrderReview | null; error: any }> {
   const { data: auth } = await supabase.auth.getUser();
   const uid = auth.user?.id;
@@ -73,18 +85,16 @@ export async function listReviewsForOrder(workOrderId: string): Promise<{ data: 
   return { data: (data as OrderReview[]) ?? [], error };
 }
 
-/** MEVCUT kullanıcının değerlendirmediği teslim edilmiş işleri getir (Faz 2).
- *  work_orders RLS'i kullanıcıyı kendi işlerine kısıtlar; teslim olup henüz
- *  puanlanmamış olanları client tarafında ayıkla. */
+/** Son 30 günde teslim edilip HENÜZ HİÇ değerlendirilmemiş işler (hekim/klinik panosu).
+ *  work_orders RLS'i kullanıcıyı kendi işlerine kısıtlar. Değerlendirme iş başına
+ *  tektir: hekim, klinik ya da WhatsApp'tan biri puanladıysa iş listeden çıkar. */
 export async function listMyPendingReviews(limit = 50): Promise<{ data: PendingReviewOrder[]; error: any }> {
-  const { data: auth } = await supabase.auth.getUser();
-  const uid = auth.user?.id;
-  if (!uid) return { data: [], error: null };
   const { data: orders, error } = await supabase
     .from('work_orders')
     .select('id, order_number, patient_name, work_type, delivery_date')
     .eq('status', 'teslim_edildi')
-    .order('delivery_date', { ascending: false })
+    .gte('delivered_at', pendingReviewSince(new Date()))
+    .order('delivered_at', { ascending: false })
     .limit(limit);
   if (error) return { data: [], error };
   const ids = (orders ?? []).map((o: any) => o.id);
@@ -92,7 +102,6 @@ export async function listMyPendingReviews(limit = 50): Promise<{ data: PendingR
   const { data: reviews } = await supabase
     .from('order_reviews')
     .select('work_order_id')
-    .eq('rater_id', uid)
     .in('work_order_id', ids);
   const reviewed = new Set((reviews ?? []).map((r: any) => r.work_order_id));
   return { data: (orders ?? []).filter((o: any) => !reviewed.has(o.id)) as PendingReviewOrder[], error: null };
@@ -118,6 +127,11 @@ export async function submitReview(input: ReviewInput): Promise<{ data: OrderRev
     })
     .select(COLS)
     .single();
+  // İş başına tek değerlendirme (tekil indeks): başka biri — klinik, hekim ya da
+  // WhatsApp cevabı — az önce puanladı.
+  if ((error as any)?.code === '23505') {
+    return { data: null, error: { message: 'Bu iş az önce değerlendirildi. Sayfayı yenileyip düzenleyebilirsiniz.' } };
+  }
   return { data: (data as OrderReview) ?? null, error };
 }
 
@@ -137,4 +151,22 @@ export async function updateReview(id: string, patch: Partial<ReviewInput>): Pro
     .select(COLS)
     .single();
   return { data: (data as OrderReview) ?? null, error };
+}
+
+export interface ReviewWaSettings {
+  enabled: boolean;
+  enabled_at: string | null;
+  delay_days: number;
+  has_whatsapp: boolean;
+}
+
+/** Lab ayarı: teslimden sonra WhatsApp puan isteği (yalnız lab yöneticisi). */
+export async function getReviewWaSettings(): Promise<{ data: ReviewWaSettings | null; error: any }> {
+  const { data, error } = await supabase.rpc('get_review_wa_settings');
+  return { data: (data as ReviewWaSettings) ?? null, error };
+}
+
+export async function setReviewWaSettings(enabled: boolean, delayDays: number): Promise<{ data: ReviewWaSettings | null; error: any }> {
+  const { data, error } = await supabase.rpc('set_review_wa_settings', { p_enabled: enabled, p_delay_days: delayDays });
+  return { data: (data as ReviewWaSettings) ?? null, error };
 }

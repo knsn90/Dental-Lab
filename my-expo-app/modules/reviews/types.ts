@@ -13,8 +13,10 @@ export interface OrderReview {
   id: string;
   work_order_id: string;
   lab_id: string;
-  rater_id: string;
+  rater_id: string | null;                // WhatsApp klinik hattından gelen cevapta boş
   rater_role: 'doctor' | 'clinic' | null;
+  source: 'app' | 'whatsapp';
+  rater_doctor_id: string | null;
   overall: number;                       // 1–5 (zorunlu)
   fit: number | null;
   occlusion: number | null;

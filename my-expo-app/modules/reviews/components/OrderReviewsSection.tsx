@@ -11,6 +11,7 @@ import { useInkUI } from '../../../core/theme/inkScale';
 import { REVIEW_DIMENSIONS } from '../constants';
 import { listReviewsForOrder, setLabReply, signReviewPhotos } from '../api';
 import type { OrderReview } from '../types';
+import { reviewSourceLabel } from '../reviewRules';
 
 function Stars({ value, color, size = 14 }: { value: number; color: string; size?: number }) {
   const T = useMobileTokens();
@@ -65,7 +66,7 @@ export function OrderReviewsSection({ workOrderId, accent }: { workOrderId: stri
             <Text style={{ fontSize: 13, fontWeight: '700', color: T.ink }}>{r.overall.toFixed(1)}</Text>
             <View style={{ flex: 1 }} />
             <Text style={{ fontSize: 11, color: T.ink3 }}>
-              {r.rater_role === 'clinic' ? 'Klinik' : 'Hekim'} · {fmtWhen(r.created_at)}
+              {reviewSourceLabel(r)} · {fmtWhen(r.created_at)}
             </Text>
           </View>
 

@@ -308,14 +308,20 @@ export function ReviewModal({ visible, onClose, workOrderId, orderLabel, existin
               </View>
             ) : null}
 
-            {error ? <Text style={{ fontSize: 12, color: '#D94B4B', fontWeight: '600' }}>{error}</Text> : null}
             </View>
            </View>
           </ScrollView>
 
           {/* ── Footer ── */}
           {!readOnly && (
-            <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 20, paddingVertical: 12, borderTopWidth: 1, borderTopColor: U.ink[100], backgroundColor: U.surface }}>
+            <View style={{ gap: 10, paddingHorizontal: 20, paddingVertical: 12, borderTopWidth: 1, borderTopColor: U.ink[100], backgroundColor: U.surface }}>
+              {/* Kayıt hatası düğmenin hemen üstünde — kaydırma alanının dibinde görünmüyordu. */}
+              {error ? (
+                <View style={{ backgroundColor: U.chipTones.danger.bg, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 }}>
+                  <Text style={{ fontSize: 12, color: U.chipTones.danger.fg, fontWeight: '600' }}>{error}</Text>
+                </View>
+              ) : null}
+              <View style={{ flexDirection: 'row', gap: 10 }}>
               <Pressable onPress={onClose} style={{ flex: 1, height: 44, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: U.ink[100], cursor: 'pointer' as any }}>
                 <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[700] }}>Vazgeç</Text>
               </Pressable>
@@ -334,6 +340,7 @@ export function ReviewModal({ visible, onClose, workOrderId, orderLabel, existin
                   <Text style={{ fontSize: 15, fontWeight: '700', color: '#FFFFFF' }}>{existing ? 'Güncelle' : 'Değerlendirmeyi Gönder'}</Text>
                 )}
               </Pressable>
+              </View>
             </View>
           )}
         </View>
