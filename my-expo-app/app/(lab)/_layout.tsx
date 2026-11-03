@@ -24,6 +24,7 @@ import { useFeature, useFeatureFlagsStore } from '../../core/store/featureFlagsS
 
 import { PatternsShell, useIsDesktop } from '../../core/layout/PatternsShell';
 import { useKeepRouteOnShellSwitch } from '../../core/layout/useKeepRouteOnShellSwitch';
+import { panelNavigator } from '../../core/layout/shellSwitchHref';
 import { usePendingApprovals as useDesignPending } from '../../modules/approvals/hooks/usePendingApprovals';
 import { useMaterialRequestPending } from '../../modules/material-requests/hooks/usePendingCount';
 import { useStockAlert } from '../../core/hooks/useStockAlert';
@@ -163,8 +164,11 @@ export default function LabLayout() {
   // NOT: loading'i koşuldan çıkardık. Aksi halde token refresh / arka plan
   // refetch sırasında shell unmount olup sidebar kayboluyor, sonra remount
   // ediliyor (tüm data baştan yükleniyor).
+  // Masaüstü Slot · mobil Tabs · boş kare — Slot→Tabs aynı karede geçerse TabRouter çöker
+  const nav = panelNavigator(!!profile, shellDesktop);
   if (!profile) {
-    return <Slot />;  // profil yükleniyor (optimistic) → kabuk
+    // profil yükleniyor (optimistic) → masaüstünde kabuk; mobilde navigator yok
+    return nav === 'slot' ? <Slot /> : <View style={{ flex: 1 }} />;
   }
   if (profile.user_type !== 'lab' && profile.user_type !== 'admin') {
     return <Redirect href="/" />;  // yanlış panel → doğru panele yönlendir
@@ -216,9 +220,9 @@ export default function LabLayout() {
     : LAB_NAV).filter((item: any) => !item.requiresFeature || featureFlags[item.requiresFeature] === true);
 
   // Kabuk değişiyor: eski navigator bu karede sökülür, yenisi bir sonrakinde kurulur (Y5)
-  if (shellDesktop === null) return <View style={{ flex: 1 }} />;
+  if (nav === 'none') return <View style={{ flex: 1 }} />;
 
-  if (shellDesktop) {
+  if (nav === 'slot') {
     return (
       <>
         {/* NOT: navigator (PatternsShell'in <Slot/>'u / <Tabs>) lazy kardeşlerle AYNI

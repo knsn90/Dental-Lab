@@ -28,3 +28,21 @@ export function restoreStep(target: string | null, href: string, mounted: boolea
   if (!mounted) return 'hold';
   return href === target ? 'settle' : 'replace';
 }
+
+/**
+ * Panel düzeninin bu karede çizeceği navigator:
+ *  slot — <Slot/> (yığın): masaüstü kabuğu (profil yüklenirken de)
+ *  tabs — mobil <Tabs>
+ *  none — hiçbiri (boş <View/>): geçiş karesi ya da mobilde profil yüklenirken
+ *
+ * Mobilde profil yüklenirken <Slot/> ÇİZİLMEZ: profil gelince aynı karede <Tabs>'a
+ * geçiliyordu (Y5 boş karesi atlanıyordu). Yükleme Slot'u yığın durumunu grup
+ * rotasına yazıp parametreleri tükettiyse (iyimser "/" → panel yönlendirmesi +
+ * yüklenirken gezinme) TabRouter o yığın durumunu olduğu gibi alıyor →
+ * `state.history.filter` → "Cannot read properties of undefined (reading 'filter')".
+ */
+export function panelNavigator(hasProfile: boolean, shellDesktop: boolean | null): 'slot' | 'tabs' | 'none' {
+  if (shellDesktop === null) return 'none';
+  if (shellDesktop) return 'slot';
+  return hasProfile ? 'tabs' : 'none';
+}

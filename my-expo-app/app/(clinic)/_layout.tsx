@@ -21,6 +21,7 @@ import { TopActionBar } from '../../core/ui/mobile/TopActionBar';
 import { PanelTopHeader } from '../../core/ui/mobile/PanelTopHeader';
 import { PatternsShell, useIsDesktop } from '../../core/layout/PatternsShell';
 import { useKeepRouteOnShellSwitch } from '../../core/layout/useKeepRouteOnShellSwitch';
+import { panelNavigator } from '../../core/layout/shellSwitchHref';
 import { PillTabBar, type PillTabItem } from '../../core/ui/mobile/PillTabBar';
 import { MOBILE_PANEL_THEMES } from '../../core/theme/mobileDesignTokens';
 import { useAuthStore } from '../../core/store/authStore';
@@ -162,17 +163,20 @@ export default function ClinicLayout() {
   ];
 
   // Klinik kullanıcısı (admin veya sekreter) değilse layout chrome'unu gösterme
+  // Masaüstü Slot · mobil Tabs · boş kare — Slot→Tabs aynı karede geçerse TabRouter çöker
+  const nav = panelNavigator(!!profile, shellDesktop);
   if (!profile) {
-    return <Slot />;  // profil yükleniyor (optimistic) → kabuk
+    // profil yükleniyor (optimistic) → masaüstünde kabuk; mobilde navigator yok
+    return nav === 'slot' ? <Slot /> : <View style={{ flex: 1 }} />;
   }
   if (!['clinic_admin', 'clinic_secretary'].includes(profile.user_type)) {
     return <Redirect href="/" />;  // yanlış panel → doğru panele yönlendir
   }
 
   // Kabuk değişiyor: eski navigator bu karede sökülür, yenisi bir sonrakinde kurulur (Y5)
-  if (shellDesktop === null) return <View style={{ flex: 1 }} />;
+  if (nav === 'none') return <View style={{ flex: 1 }} />;
 
-  if (shellDesktop) {
+  if (nav === 'slot') {
     return (
       <>
         {/* NOT: navigator (PatternsShell'in <Slot/>'u / <Tabs>) lazy kardeşlerle AYNI

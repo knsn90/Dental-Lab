@@ -29,6 +29,7 @@ import { bootMark } from '../../core/debug/bootTrace';
 import { PanelTopHeader } from '../../core/ui/mobile/PanelTopHeader';
 import { PatternsShell, useIsDesktop } from '../../core/layout/PatternsShell';
 import { useKeepRouteOnShellSwitch } from '../../core/layout/useKeepRouteOnShellSwitch';
+import { panelNavigator } from '../../core/layout/shellSwitchHref';
 import { PillTabBar, type PillTabItem } from '../../core/ui/mobile/PillTabBar';
 import { MOBILE_TOKENS as T, MOBILE_PANEL_THEMES } from '../../core/theme/mobileDesignTokens';
 import { usePendingApprovals } from '../../core/hooks/usePendingApprovals';
@@ -137,8 +138,11 @@ export default function AdminLayout() {
   const phoneAssistantOn = useFeature('phone_assistant');
   const scansOn = useFeature('scan_appointments');
 
+  // Masaüstü Slot · mobil Tabs · boş kare — Slot→Tabs aynı karede geçerse TabRouter çöker
+  const nav = panelNavigator(!!profile, shellDesktop);
   if (!profile) {
-    return <Slot />;  // profil yükleniyor (optimistic) → kabuk
+    // profil yükleniyor (optimistic) → masaüstünde kabuk; mobilde navigator yok
+    return nav === 'slot' ? <Slot /> : <View style={{ flex: 1 }} />;
   }
   if (profile.user_type !== 'admin') {
     return <Redirect href="/" />;  // yanlış panel → doğru panele yönlendir
@@ -179,9 +183,9 @@ export default function AdminLayout() {
   const ADMIN_NAV_VISIBLE = ADMIN_NAV.filter((i: any) => !i.requiresFeature || featureFlags[i.requiresFeature] === true);
 
   // Kabuk değişiyor: eski navigator bu karede sökülür, yenisi bir sonrakinde kurulur (Y5)
-  if (shellDesktop === null) return <View style={{ flex: 1 }} />;
+  if (nav === 'none') return <View style={{ flex: 1 }} />;
 
-  if (shellDesktop) {
+  if (nav === 'slot') {
     return (
       <>
         {/* PatternsShell <Slot/>'u içinde barındırır ve LAZY DEĞİL → kendi Suspense'i

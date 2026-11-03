@@ -16,6 +16,7 @@ import { Slot, Tabs, useRouter, usePathname, Redirect } from 'expo-router';
 import { C as Colors } from '../../core/theme/colors';
 import { PatternsShell, useIsDesktop } from '../../core/layout/PatternsShell';
 import { useKeepRouteOnShellSwitch } from '../../core/layout/useKeepRouteOnShellSwitch';
+import { panelNavigator } from '../../core/layout/shellSwitchHref';
 import { PillTabBar, type PillTabItem } from '../../core/ui/mobile/PillTabBar';
 import {
   Home, ClipboardList, MessageCircle, User, Plus, MoreHorizontal, Search,
@@ -158,17 +159,20 @@ export default function DoctorLayout() {
   ];
 
   // Hekim olmayan kullanıcı bu layout'a düştüyse sidebar gösterme
+  // Masaüstü Slot · mobil Tabs · boş kare — Slot→Tabs aynı karede geçerse TabRouter çöker
+  const nav = panelNavigator(!!profile, shellDesktop);
   if (!profile) {
-    return <Slot />;  // profil yükleniyor (optimistic) → kabuk
+    // profil yükleniyor (optimistic) → masaüstünde kabuk; mobilde navigator yok
+    return nav === 'slot' ? <Slot /> : <View style={{ flex: 1 }} />;
   }
   if (profile.user_type !== 'doctor') {
     return <Redirect href="/" />;  // yanlış panel → doğru panele yönlendir
   }
 
   // Kabuk değişiyor: eski navigator bu karede sökülür, yenisi bir sonrakinde kurulur (Y5)
-  if (shellDesktop === null) return <View style={{ flex: 1 }} />;
+  if (nav === 'none') return <View style={{ flex: 1 }} />;
 
-  if (shellDesktop) {
+  if (nav === 'slot') {
     return (
       <>
         {/* NOT: navigator (PatternsShell'in <Slot/>'u / <Tabs>) lazy kardeşlerle AYNI

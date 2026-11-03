@@ -13,6 +13,7 @@ import {
 } from '../../core/ui/icons';
 import { PatternsShell, useIsDesktop } from '../../core/layout/PatternsShell';
 import { useKeepRouteOnShellSwitch } from '../../core/layout/useKeepRouteOnShellSwitch';
+import { panelNavigator } from '../../core/layout/shellSwitchHref';
 import { PillTabBar, type PillTabItem } from '../../core/ui/mobile/PillTabBar';
 import { useAuthStore } from '../../core/store/authStore';
 import { useScanStore } from '../../core/store/scanStore';
@@ -45,7 +46,9 @@ export default function CourierLayout() {
   useCourierTracking(isCourier ? profile?.id : null);
 
   if (loading) return <LoadingSpinner fullScreen message={t('common.loading')} />;
-  if (!profile || !isCourier) return <Slot />;
+  // Masaüstü Slot · mobil Tabs · boş kare — Slot→Tabs aynı karede geçerse TabRouter çöker
+  const nav = panelNavigator(!!profile && isCourier, shellDesktop);
+  if (!profile || !isCourier) return nav === 'slot' ? <Slot /> : <View style={{ flex: 1 }} />;
 
   const todayLabel = new Date().toLocaleDateString(localeTag(i18n.language), { day: '2-digit', month: 'long' });
   const COURIER_NAV = [
@@ -58,9 +61,9 @@ export default function CourierLayout() {
 
   // ── Desktop ────────────────────────────────────────────────────────────
   // Kabuk değişiyor: eski navigator bu karede sökülür, yenisi bir sonrakinde kurulur (Y5)
-  if (shellDesktop === null) return <View style={{ flex: 1 }} />;
+  if (nav === 'none') return <View style={{ flex: 1 }} />;
 
-  if (shellDesktop) {
+  if (nav === 'slot') {
     return (
       <PatternsShell
         navItems={COURIER_NAV}
