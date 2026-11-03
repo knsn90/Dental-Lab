@@ -17,78 +17,9 @@
 import { create } from 'zustand';
 import { Platform } from 'react-native';
 import { supabase } from '../api/supabase';
-
-export type NotificationCategory =
-  | 'new_order'    | 'order_status'    | 'chat'      | 'approval'
-  | 'payment'      | 'stock'           | 'delivery'  | 'paper_order'
-  | 'material_request' | 'order_watch' | 'stage_critical' | 'stock_count'
-  | 'implant_parts' | 'scan_annotation' | 'account' | 'scan_schedule'
-  | 'review_request' | 'review_problem' | 'review_minor';
-
-export type NotificationChannel = 'in_app' | 'browser_push' | 'email' | 'whatsapp';
-
-export interface CategoryToggles {
-  in_app:       boolean;
-  browser_push: boolean;
-  email:        boolean;
-  whatsapp:     boolean;
-}
-
-export interface NotificationPrefs {
-  master_enabled: boolean;
-  channels:   CategoryToggles;
-  categories: Record<NotificationCategory, CategoryToggles>;
-}
-
-const DEFAULT_PREFS: NotificationPrefs = {
-  master_enabled: true,
-  channels:   { in_app: true,  browser_push: false, email: true,  whatsapp: true },
-  // Email default — "önemliler" açık (new_order/approval/payment/delivery),
-  // chat & order_status & stock & paper_order email'i kapalı (spam olmasın).
-  //
-  // WhatsApp default AÇIK — yalnız Meta ONAYLI şablonu olan 4 kategoride
-  // (new_order · delivery · approval · payment) gerçekten mesaj çıkar; diğer
-  // kategorilerde şablon olmadığı için gönderim zaten atlanır. Numara olarak
-  // kullanıcının kayıtlı telefonu kullanılır (profiles.whatsapp_phone boşsa
-  // profiles.phone → send-whatsapp-meta'daki fallback). Sunucu tarafı da
-  // "yalnızca açıkça false ise sustur" mantığıyla çalışıyor; istemci
-  // varsayılanı false kaldığı sürece ayarlarını bir kez kaydeden kullanıcıda
-  // WhatsApp sessizce kapanıyordu (2026-09-24).
-  categories: {
-    new_order:    { in_app: true,  browser_push: true,  email: true,  whatsapp: true },
-    order_status: { in_app: true,  browser_push: false, email: false, whatsapp: false },
-    chat:         { in_app: true,  browser_push: true,  email: false, whatsapp: false },
-    approval:     { in_app: true,  browser_push: true,  email: true,  whatsapp: true },
-    payment:      { in_app: true,  browser_push: false, email: true,  whatsapp: true },
-    stock:        { in_app: true,  browser_push: false, email: false, whatsapp: false },
-    delivery:     { in_app: true,  browser_push: false, email: true,  whatsapp: true },
-    paper_order:  { in_app: true,  browser_push: true,  email: false, whatsapp: false },
-    material_request: { in_app: true, browser_push: true,  email: false, whatsapp: false },
-    // İmplant parçaları (scan body, dijital analog …) — klinik aksiyon alacak:
-    // talep maili gider, diğer adımlar yalnız uygulama içi.
-    implant_parts: { in_app: true, browser_push: true, email: true, whatsapp: false },
-    // Tarama üzerine 3D kalem notu — karşı taraf için aksiyon işareti, ama
-    // yazışma temposunda geliyor: uygulama içi + push, mail YOK (gürültü).
-    scan_annotation: { in_app: true, browser_push: true, email: false, whatsapp: false },
-    // Günlük geciken + beklemedeki iş digest'i (yalnız admin/lab-manager alır) — önemli: in-app + push + email açık, whatsapp opt-in.
-    order_watch:  { in_app: true,  browser_push: true,  email: true,  whatsapp: false },
-    // Kritik aşama tamamlandı (hekim/klinik/müdür/admin) — önemli kilometre taşı: in-app + push + email açık.
-    stage_critical: { in_app: true, browser_push: true, email: true, whatsapp: false },
-    // Fiziksel sayım hatırlatması (yalnız admin/lab-manager) — aksiyon gerektirir,
-    // ayda birkaç kez çıkar: in-app + push + email açık, whatsapp kapalı.
-    stock_count:  { in_app: true,  browser_push: true,  email: true,  whatsapp: false },
-    // Tarama programı (sabah bugün / akşam yarın; admin, lab yöneticisi, teknisyen) — WhatsApp gönderilmez.
-    scan_schedule: { in_app: true, browser_push: true, email: true, whatsapp: false },
-    // Hesap açıldı (lab onayı) — işlemsel: sunucu e-postayı tercihten bağımsız atar.
-    account:      { in_app: true,  browser_push: true,  email: true,  whatsapp: true },
-    // "İşinizi değerlendirin" (hekim/klinik) — hatırlatma: uygulama içi + push, mail yok.
-    review_request: { in_app: true, browser_push: true, email: false, whatsapp: false },
-    // Hekim WhatsApp'tan "Sorun var" dedi (lab) — aksiyon gerektirir: mail de gider.
-    review_problem: { in_app: true, browser_push: true, email: true,  whatsapp: false },
-    // Hekim "Küçük düzeltme" dedi (lab) — uygulama içi + push yeter.
-    review_minor:   { in_app: true, browser_push: true, email: false, whatsapp: false },
-  },
-};
+import { DEFAULT_PREFS } from './notificationPrefsDefaults';
+import type { NotificationCategory, NotificationChannel, NotificationPrefs } from './notificationPrefsDefaults';
+export type { NotificationCategory, NotificationChannel, CategoryToggles, NotificationPrefs } from './notificationPrefsDefaults';
 
 const LS_KEY = 'notif_prefs_v1';
 

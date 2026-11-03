@@ -13,7 +13,9 @@ Meta Business → WhatsApp Manager → Message templates:
 - `is_sorunu_lab` (tr) — durum **Approved**
 
 İkisi onaylanmadan 2. ve 4. adıma geçme. `is_degerlendirme` onaysızken gönderim
-Meta'dan hata döner ve satır `failed` olur.
+Meta'dan hata döner ve satır `failed` olur. Meta reddi ya da ağ hatası olan satır ertesi
+lab gününde kendiliğinden yeniden denenir (en çok 3 deneme, teslim + N + 7 gün içinde;
+`20261103140000`). `timeout` yeniden denenmez: mesaj gitmiş olabilir.
 
 ## 2. `send-whatsapp-meta` yayını (Görev 7 adım 3)
 
@@ -66,7 +68,14 @@ Beklenen: `sent` satırları, teslim raporunda `delivered`/`read`. `failed` vars
 - Satır `answered`, `answer = 1`; sipariş ekranında WhatsApp kaynaklı değerlendirme görünür.
 - Lab yöneticisinde "Hekim sorun bildirdi" uygulama içi bildirimi.
 - E-posta (kategori `review_problem`, varsayılan açık).
-- WhatsApp `is_sorunu_lab` (2. adım yayınlandıysa).
+- WhatsApp `is_sorunu_lab` (2. adım yayınlandıysa). Gitmediyse yöneticinin kayıtlı
+  tercihine bak: `notification_prefs.categories.review_problem.whatsapp = false` ise gönderici
+  `opted-out` ile atlar (Ayarlar → Bildirimler'de elle kapatılmış olabilir; varsayılan açık).
+
+```sql
+select count(*) filter (where notification_prefs #>> '{categories,review_problem,whatsapp}' = 'false') as kapali
+from profiles where lab_id = '<lab>' and user_type in ('admin', 'lab');
+```
 
 ```sql
 select category, title, created_at
