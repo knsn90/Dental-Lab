@@ -1,0 +1,77 @@
+-- 20261103110000_puan_istegi_sema — CANLI durum (2026-11-03T09:25Z)
+
+## order_reviews sütunları
+id	uuid	gen_random_uuid()	NO
+work_order_id	uuid		NO
+lab_id	uuid		NO
+rater_id	uuid	auth.uid()	NO
+rater_role	text		YES
+overall	smallint		NO
+fit	smallint		YES
+occlusion	smallint		YES
+contacts	smallint		YES
+esthetics	smallint		YES
+surface	smallint		YES
+on_time	smallint		YES
+comment	text		YES
+created_at	timestamp with time zone	now()	NO
+updated_at	timestamp with time zone	now()	NO
+lab_reply	text		YES
+lab_reply_at	timestamp with time zone		YES
+lab_reply_by	uuid		YES
+photos	ARRAY	'{}'::text[]	NO
+clinical_photos	ARRAY	'{}'::text[]	NO
+
+## order_reviews kısıtları
+order_reviews_contacts_check	CHECK (((contacts >= 1) AND (contacts <= 5)))
+order_reviews_esthetics_check	CHECK (((esthetics >= 1) AND (esthetics <= 5)))
+order_reviews_fit_check	CHECK (((fit >= 1) AND (fit <= 5)))
+order_reviews_occlusion_check	CHECK (((occlusion >= 1) AND (occlusion <= 5)))
+order_reviews_on_time_check	CHECK (((on_time >= 1) AND (on_time <= 5)))
+order_reviews_overall_check	CHECK (((overall >= 1) AND (overall <= 5)))
+order_reviews_pkey	PRIMARY KEY (id)
+order_reviews_surface_check	CHECK (((surface >= 1) AND (surface <= 5)))
+order_reviews_work_order_id_fkey	FOREIGN KEY (work_order_id) REFERENCES work_orders(id) ON DELETE CASCADE
+order_reviews_work_order_id_rater_id_key	UNIQUE (work_order_id, rater_id)
+
+## order_reviews politikaları (ad, cmd, USING, WITH CHECK, roller, permissive)
+field_staff_scope	*	((( SELECT my_user_type() AS my_user_type) <> ALL (ARRAY['lab'::text, 'admin'::text])) OR (( SELECT my_role_key() AS my_role_key) <> ALL (ARRAY['technician'::text, 'courier'::text])) OR can_see_work_order_id(work_order_id))	((( SELECT my_user_type() AS my_user_type) <> ALL (ARRAY['lab'::text, 'admin'::text])) OR (( SELECT my_role_key() AS my_role_key) <> ALL (ARRAY['technician'::text, 'courier'::text])) OR can_see_work_order_id(work_order_id))	authenticated	false
+order_reviews_insert	a		((rater_id = auth.uid()) AND (EXISTS ( SELECT 1
+   FROM work_orders wo
+  WHERE ((wo.id = order_reviews.work_order_id) AND (wo.status = 'teslim_edildi'::work_order_status)))))		true
+order_reviews_select	r	((rater_id = auth.uid()) OR (lab_id = get_my_lab_id()) OR (EXISTS ( SELECT 1
+   FROM work_orders wo
+  WHERE (wo.id = order_reviews.work_order_id))))			true
+order_reviews_update	w	(rater_id = auth.uid())	(rater_id = auth.uid())		true
+
+## order_reviews tetikleyicileri
+trg_set_order_review_lab_id	CREATE TRIGGER trg_set_order_review_lab_id BEFORE INSERT OR UPDATE ON public.order_reviews FOR EACH ROW EXECUTE FUNCTION set_order_review_lab_id()
+
+## RLS (rowsecurity, force, acl)
+true	false	postgres=arwdDxtm/postgres anon=m/postgres authenticated=arwdDxtm/postgres service_role=arwdDxtm/postgres
+
+## satır sayısı, distinct work_order_id, rater_id NULL (beklenen 6/6/0)
+6	6	0
+
+## lab_settings / doctors sütunları
+doctors	id uuid DEFAULT gen_random_uuid(), clinic_id uuid, full_name text, phone text, specialty text, notes text, is_active boolean DEFAULT true, created_at timestamp with time zone DEFAULT now(), lab_id uuid, updated_at timestamp with time zone DEFAULT now(), tckn text
+lab_settings	id uuid DEFAULT gen_random_uuid(), lab_id uuid, default_currency text DEFAULT 'TRY'::text, week_start text DEFAULT 'monday'::text, theme_mode text DEFAULT 'light'::text, order_prefix text DEFAULT 'LAB'::text, default_tax_rate numeric DEFAULT 20.00, working_hours_start time without time zone DEFAULT '08:00:00'::time without time zone, working_hours_end time without time zone DEFAULT '18:00:00'::time without time zone, auto_logout_minutes integer DEFAULT 0, items_per_page integer DEFAULT 50, created_at timestamp with time zone DEFAULT now(), updated_at timestamp with time zone DEFAULT now(), cost_method text DEFAULT 'snapshot'::text, urgent_surcharge_rate numeric DEFAULT 0, auto_triage boolean DEFAULT false, inventory_qtyless_enabled boolean DEFAULT false, stock_count_interval_days integer DEFAULT 30, region text DEFAULT 'TR'::text, payment_reminder_auto boolean DEFAULT false, payment_reminder_frequency_days integer DEFAULT 7, payment_reminder_channels ARRAY DEFAULT '{in_app,email,whatsapp}'::text[], payment_reminder_tone text DEFAULT 'standard'::text, payment_reminder_min_days_overdue integer DEFAULT 1, technician_name_visibility text DEFAULT 'full'::text, scan_hours_start time without time zone DEFAULT '09:00:00'::time without time zone, scan_hours_end time without time zone DEFAULT '20:00:00'::time without time zone, scan_workdays ARRAY DEFAULT '{1,2,3,4,5,6}'::integer[], scan_default_minutes integer DEFAULT 90, scan_buffer_minutes integer DEFAULT 10, scan_morning_at time without time zone DEFAULT '08:00:00'::time without time zone, scan_evening_at time without time zone DEFAULT '18:00:00'::time without time zone, scan_technician_ids ARRAY DEFAULT '{}'::uuid[]
+
+## _order_client_recipients (tanım, proacl, secdef)
+CREATE OR REPLACE FUNCTION public._order_client_recipients(p_order uuid)
+ RETURNS SETOF uuid
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  select distinct p.id
+    from public.work_orders wo
+    left join lateral (select public._resolve_wo_clinic_id(wo.id) as clinic_id) c on true
+    join public.profiles p
+      on p.id = wo.doctor_id
+      or (p.user_type = 'doctor' and p.doctor_id = wo.doctor_id)
+      or (c.clinic_id is not null and p.clinic_id = c.clinic_id
+          and p.user_type in ('clinic_admin', 'clinic_secretary'))
+   where wo.id = p_order and coalesce(p.is_active, true);
+$function$
+	postgres=X/postgres service_role=X/postgres	true
