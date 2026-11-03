@@ -1,0 +1,80 @@
+-- 20261103130000_puan_istegi_cevap — CANLI durum (2026-11-03T10:40Z)
+
+## trg_whatsapp_meta_notify (md5(pg_get_functiondef) 7241a51f467e3f51f09a8508c6edbef6, acl: {=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres})
+CREATE OR REPLACE FUNCTION public.trg_whatsapp_meta_notify()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE v_secret text; v_anon text; v_wa_ok boolean;
+BEGIN
+  IF NEW.category NOT IN ('new_order','delivery','approval','payment','account') THEN RETURN NEW; END IF;
+  -- Aşama/istasyon bildirimi → WhatsApp yok (uygulama içi + e-posta yeterli).
+  IF NEW.payload ? 'stage_id' THEN RETURN NEW; END IF;
+  IF NEW.category = 'payment' AND (NEW.payload ? 'reminder_id') THEN
+    SELECT (payment_reminder_channels @> ARRAY['whatsapp']) INTO v_wa_ok FROM lab_settings WHERE lab_id = NEW.lab_id LIMIT 1;
+    IF NOT COALESCE(v_wa_ok, false) THEN RETURN NEW; END IF;
+  END IF;
+  SELECT decrypted_secret INTO v_anon FROM vault.decrypted_secrets WHERE name='net_anon_key' LIMIT 1;
+  BEGIN SELECT decrypted_secret INTO v_secret FROM vault.decrypted_secrets WHERE name = 'notify_fn_secret' LIMIT 1; EXCEPTION WHEN OTHERS THEN v_secret := NULL; END;
+  BEGIN
+    PERFORM net.http_post(
+      url := 'https://kjwjxqfdsxkxgcgophdy.supabase.co/functions/v1/send-whatsapp-meta',
+      headers := jsonb_build_object('Content-Type','application/json','Authorization','Bearer ' || v_anon,'apikey', v_anon,'x-notify-secret', COALESCE(v_secret,'')),
+      body := jsonb_build_object('userIds', jsonb_build_array(NEW.user_id::text),'category', NEW.category,
+        'resource_type', COALESCE(NEW.resource_type,''),'resource_id', COALESCE(NEW.resource_id::text,''),
+        'payload', COALESCE(NEW.payload,'{}'::jsonb) || jsonb_build_object('__body', COALESCE(NEW.body,''), '__lab_id', COALESCE(NEW.lab_id::text,''))));
+  EXCEPTION WHEN OTHERS THEN NULL; END;
+  RETURN NEW;
+END; $function$
+
+
+## tetikleyici
+CREATE TRIGGER trg_whatsapp_meta_notify AFTER INSERT ON public.notifications FOR EACH ROW EXECUTE FUNCTION trg_whatsapp_meta_notify()
+
+## set_review_lab_reply (yalnız referans — değişmiyor)
+CREATE OR REPLACE FUNCTION public.set_review_lab_reply(p_review_id uuid, p_reply text)
+ RETURNS order_reviews
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE r public.order_reviews;
+BEGIN
+  UPDATE public.order_reviews
+     SET lab_reply    = NULLIF(btrim(p_reply), ''),
+         lab_reply_at = CASE WHEN NULLIF(btrim(p_reply), '') IS NULL THEN NULL ELSE now() END,
+         lab_reply_by = CASE WHEN NULLIF(btrim(p_reply), '') IS NULL THEN NULL ELSE auth.uid() END
+   WHERE id = p_review_id
+     AND lab_id = public.get_my_lab_id()        -- yalnız kendi lab'ının değerlendirmesi
+  RETURNING * INTO r;
+  IF r.id IS NULL THEN
+    RAISE EXCEPTION 'Yetkisiz veya değerlendirme bulunamadı';
+  END IF;
+  RETURN r;
+END; $function$
+
+
+## is_lab_manager (yalnız referans — değişmiyor)
+CREATE OR REPLACE FUNCTION public.is_lab_manager()
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT EXISTS (
+    SELECT 1 FROM profiles
+    WHERE id = auth.uid()
+      AND user_type = 'lab'
+      AND role = 'manager'
+  );
+$function$
+
+
+## yeni fonksiyonlar canlıda: YOK (review_wa_record_answer, review_wa_add_note, _review_alert_lab, get_review_wa_settings, set_review_wa_settings)
+
+## notlar
+- _notify_channels: in-app satırı + send-email-notification / send-expo-push / send-web-push / send-whatsapp-notification (Twilio).
+  Meta WhatsApp yalnız notifications AFTER INSERT tetikleyicisinden (trg_whatsapp_meta_notify) gider → çift Meta gönderimi yok.
+- send-whatsapp-meta tanımadığı kategoride TEMPLATES[category] yoksa 'no-template-for-category' ile hiçbir şey göndermez.
+- lab_settings: UNIQUE (lab_id) lab_settings_lab_unique; NOT NULL varsayılansız tek sütun lab_id.
