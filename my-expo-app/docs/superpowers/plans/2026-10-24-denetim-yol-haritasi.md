@@ -71,6 +71,7 @@ Ayrıntı: `2026-10-24-denetim-dalga-1.md`. Dört paket hâlinde ilerler; her pa
 ### 3. dalga: büyük (her biri ayrı tasarım ve plan)
 1. Klinik "müşteri kartı": sipariş, bakiye, son sipariş, puan ve yazışma tek kartta. Yanında müşteri analizi raporu: en çok iş gönderenler, sessizleşen müşteriler.
 2. Değerlendirmeler ekranı: ortalama, klinik kırılımı, düşük puan uyarısı.
+   - **Ön koşul — WhatsApp puan isteği** (kullanıcı: "klinikler puan vermiyor"): DB + edge CANLI 2026-11-03; istemci web deploy bekliyor; Meta şablon onayı (`is_degerlendirme`, `is_sorunu_lab`) bekliyor; `send-whatsapp-meta` onaydan sonra yayınlanacak; lab yöneticisi Ayarlar → Entegrasyonlar'dan açacak. Teslimden N gün (1–14, varsayılan 3) sonra hekime tek dokunuşlu mesaj (Sorunsuz / Küçük düzeltme / Sorun var); cevap işin değerlendirmesi olur; iş başına tek değerlendirme. Açılış sırası: `plans/2026-11-03-whatsapp-puan-istegi-acilis.md`. Spec/plan: `specs/2026-11-03-whatsapp-puan-istegi-design.md`, `plans/2026-11-03-whatsapp-puan-istegi.md`.
 3. İletişimin kliniğe bağlanması: telefon, WhatsApp, destek ve sohbet kliniğin zaman çizelgesinde.
 4. Tek "Onaylar" kutusu: izin, avans, malzeme, ödeme bildirimi, bağlantı isteği; rozet hepsini sayar.
 5. Menünün yeniden düzenlenmesi: bölüm başlıkları; Ayarlar lab kimliğiyle, Finans özetle açılır; mobil menü tamamlanır.
