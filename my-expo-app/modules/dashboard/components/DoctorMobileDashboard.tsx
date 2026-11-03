@@ -25,6 +25,8 @@ import { useAuthStore } from '../../../core/store/authStore';
 
 import { UnreadMessagesCard } from '../../../core/ui/mobile/UnreadMessagesCard';
 import { RecentOrdersMobile, type RecentOrderItem } from './RecentOrdersMobile';
+import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
+import { PendingReviewsCard } from '../../reviews/components/PendingReviewsCard';
 
 // Yeni vaka 3D ikonu (yeşil). Hekim accent'i yeşil değilse artı dairesi kalır.
 const NEW_ORDER_ICON_GREEN = require('../../../assets/images/icon-3d-new-order-green.png');
@@ -136,6 +138,8 @@ export function DoctorMobileDashboard(props: DoctorMobileDashboardProps) {
   };
   const week    = props.weekBars ?? [0,0,0,0,0,0,0];
   const delayed = props.delayed  ?? [];
+  // Bekleyen değerlendirme sayısı — rozet satırının alt boşluğunu belirler.
+  const [pendingReviews, setPendingReviews] = React.useState(0);
 
   return (
     <ScrollView
@@ -188,6 +192,17 @@ export function DoctorMobileDashboard(props: DoctorMobileDashboardProps) {
           icon={isGreenishHex(DOCTOR.primary) ? NEW_ORDER_ICON_GREEN : undefined}
         />
       )}
+
+      {/* ═══ Değerlendirilecek işler — masaüstü pano satırındaki rozetle aynı ═══
+          Kart kendi listesini yüklediği için satır hep bağlı; boşken yüksekliği
+          ve alt boşluğu sıfır kalır. */}
+      <View style={{
+        marginHorizontal: PAGE_PADDING,
+        marginBottom: pendingReviews > 0 ? 16 : 0,
+        flexDirection: 'row', flexWrap: 'wrap', gap: 10,
+      }}>
+        <PendingReviewsCard raterRole="doctor" compact onCount={setPendingReviews} />
+      </View>
 
       {/* ═══ Aktif takip card — DÜZ (flat) zümrüt ═══
           Eskiden koyu zemin + ışıma (HeroGlowOverlay) vardı; masaüstündeki düz

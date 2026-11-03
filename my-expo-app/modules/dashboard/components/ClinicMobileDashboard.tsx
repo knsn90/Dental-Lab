@@ -34,6 +34,8 @@ import { RecentOrdersMobile, type RecentOrderItem } from './RecentOrdersMobile';
 import { MobileTableX, MobileTableRowX, MobileTableIconX } from '../../../core/ui/MobileTableX';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
+import { PendingReviewsCard } from '../../reviews/components/PendingReviewsCard';
 
 const CLINIC = MOBILE_PANEL_THEMES.klinik;
 
@@ -161,6 +163,8 @@ export function ClinicMobileDashboard(props: ClinicMobileDashboardProps) {
 
   const doctorsCount = props.doctorsCount ?? 0;
   const pendingApprovals = props.pendingApprovalsCount ?? 0;
+  // Bekleyen değerlendirme sayısı — durum şeridinin alt boşluğunu belirler.
+  const [pendingReviews, setPendingReviews] = React.useState(0);
 
   return (
     <ScrollView
@@ -219,9 +223,15 @@ export function ClinicMobileDashboard(props: ClinicMobileDashboardProps) {
       {/* ═══ DURUM ŞERİDİ — geciken sipariş (kompakt pill) ═══
           Eskiden 72px'lik tam genişlik kırmızı banner'dı; tek geciken sipariş
           için ekranın en değerli alanını harcıyordu. Masaüstü panolarıyla aynı
-          dil: AlertPillX. */}
-      {(props.overdueCount ?? 0) > 0 && (
-        <View style={{ marginHorizontal: 16, marginBottom: 16, flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+          dil: AlertPillX. Değerlendirilecek işler de aynı satırda (masaüstüyle
+          aynı); kart kendi listesini yüklediği için satır hep bağlı, boşken
+          yüksekliği ve alt boşluğu sıfır kalır. */}
+      <View style={{
+        marginHorizontal: PAGE_PADDING,
+        marginBottom: (props.overdueCount ?? 0) > 0 || pendingReviews > 0 ? 16 : 0,
+        flexDirection: 'row', flexWrap: 'wrap', gap: 10,
+      }}>
+        {(props.overdueCount ?? 0) > 0 && (
           <AlertPillX
             icon={AlertTriangle}
             count={props.overdueCount ?? 0}
@@ -231,8 +241,9 @@ export function ClinicMobileDashboard(props: ClinicMobileDashboardProps) {
             pulse
             onPress={() => router.push('/(clinic)/orders' as any)}
           />
-        </View>
-      )}
+        )}
+        <PendingReviewsCard raterRole="clinic" compact onCount={setPendingReviews} />
+      </View>
 
       {/* ═══ Aktif takip card (panel-themed dark) — clinic-wide pipeline ═══
            Koyu temada Hızlı İşlem kartının DİLİ kullanılır (derin accent

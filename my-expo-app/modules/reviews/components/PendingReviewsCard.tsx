@@ -7,6 +7,8 @@ import { View, Text, Pressable, Animated, Easing } from 'react-native';
 import { Star, ArrowUpRight, ArrowUpLeft } from '../../../core/ui/icons';
 import { isRTL } from '../../../core/i18n';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { useInkUI } from '../../../core/theme/inkScale';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { AlertPillX } from '../../../core/ui/AlertPillX';
 import { listMyPendingReviews } from '../api';
 import { ReviewModal } from './ReviewModal';
@@ -24,6 +26,8 @@ export function PendingReviewsCard({
   onCount?: (n: number) => void;
 }) {
   const T = usePanelTheme();
+  const U = useInkUI();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [items, setItems] = useState<PendingReviewOrder[]>([]);
   const [active, setActive] = useState<PendingReviewOrder | null>(null);
 
@@ -70,7 +74,9 @@ export function PendingReviewsCard({
   if (compact) {
     return (
       <>
-        <AlertPillX icon={Star} count={count} label="Değerlendirilecek" color={T.primary} onPress={() => setActive(items[0])} />
+        {/* AlertPillX etiketi varsayılan DS.ink[500] — koyu zeminde kısık kalır;
+            yalnız koyu temada krem ikincil ton verilir (açık tema aynı). */}
+        <AlertPillX icon={Star} count={count} label="Değerlendirilecek" color={T.primary} labelColor={isDark ? U.ink[500] : undefined} onPress={() => setActive(items[0])} />
         {modal}
       </>
     );
