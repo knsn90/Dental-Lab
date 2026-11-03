@@ -60,21 +60,6 @@ export async function getOrderReview(workOrderId: string): Promise<{ data: Order
   return { data: (data as OrderReview) ?? null, error };
 }
 
-/** Belirli bir iş için MEVCUT kullanıcının değerlendirmesini getir (yoksa null).
- *  Yerini getOrderReview alıyor; tek çağıranı sipariş ekranı. */
-export async function getMyReviewForOrder(workOrderId: string): Promise<{ data: OrderReview | null; error: any }> {
-  const { data: auth } = await supabase.auth.getUser();
-  const uid = auth.user?.id;
-  if (!uid) return { data: null, error: null };
-  const { data, error } = await supabase
-    .from('order_reviews')
-    .select(COLS)
-    .eq('work_order_id', workOrderId)
-    .eq('rater_id', uid)
-    .maybeSingle();
-  return { data: (data as OrderReview) ?? null, error };
-}
-
 /** Bir işe ait tüm değerlendirmeler (lab tarafı gösterim için). */
 export async function listReviewsForOrder(workOrderId: string): Promise<{ data: OrderReview[]; error: any }> {
   const { data, error } = await supabase

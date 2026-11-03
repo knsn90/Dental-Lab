@@ -20,6 +20,9 @@ import {
 import { FabTabBar, type FabTabItem } from '../../core/ui/mobile/FabTabBar';
 import { AppBar } from '../../core/ui/mobile/AppBar';
 import { Ring as RingX } from '../../core/ui/mobile/Ring';
+import { ReviewPromptCard } from '../../modules/reviews/components/ReviewPromptCard';
+import { ReviewModal } from '../../modules/reviews/components/ReviewModal';
+import type { OrderReview } from '../../modules/reviews/types';
 
 // ── Atom: StatusPill ────────────────────────────────────────────────────────
 function StatusPill({ kind, dense, dark }: { kind: StatusKind; dense?: boolean; dark?: boolean }) {
@@ -462,8 +465,19 @@ function MDistRow({ dot, label, value, pct }: { dot?: string; label: string; val
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// F8 vitrini için örnek değerlendirme (ağ isteği yok; fotoğraf listesi boş).
+const DEMO_REVIEW: OrderReview = {
+  id: 'demo', work_order_id: 'demo', lab_id: 'demo', rater_id: null, rater_role: 'doctor',
+  source: 'whatsapp', rater_doctor_id: null, overall: 3,
+  fit: null, occlusion: null, contacts: null, esthetics: null, surface: null, on_time: null,
+  comment: 'Kenar uyumu biraz açık.', photos: [], clinical_photos: [],
+  lab_reply: null, lab_reply_at: null, lab_reply_by: null,
+  created_at: '2026-11-03T09:00:00Z', updated_at: '2026-11-03T09:00:00Z',
+};
+
 export default function PatternsMobileScreen() {
   const [activePanel, setActivePanel] = useState<'lab' | 'teknisyen' | 'klinik' | 'exec'>('teknisyen');
+  const [reviewDemo, setReviewDemo] = useState<'new' | 'existing' | null>(null);
   const theme = MOBILE_PANEL_THEMES[activePanel];
 
   const TABS: [FabTabItem, FabTabItem, FabTabItem, FabTabItem] = [
@@ -1312,8 +1326,24 @@ export default function PatternsMobileScreen() {
               <MDistRow dot="#6B3F94" label="PMMA geçici kron / köprü" value="6"  pct="8%" />
             </MDistCard>
           </Section>
+
+          <Section kicker="F8" title="ReviewPromptCard — teslim edilen işte değerlendirme (hekim/klinik)">
+            <ReviewPromptCard review={null} accent={MOBILE_PANEL_THEMES.klinik.primary} onPress={() => setReviewDemo('new')} />
+            <View style={{ height: 12 }} />
+            <ReviewPromptCard review={DEMO_REVIEW} accent={MOBILE_PANEL_THEMES.klinik.primary} onPress={() => setReviewDemo('existing')} />
+          </Section>
         </View>
       </ScrollView>
+
+      <ReviewModal
+        visible={!!reviewDemo}
+        onClose={() => setReviewDemo(null)}
+        workOrderId="demo"
+        orderLabel="NX-1042 · Örnek Hasta"
+        existing={reviewDemo === 'existing' ? DEMO_REVIEW : null}
+        raterRole="doctor"
+        onSaved={() => setReviewDemo(null)}
+      />
 
       {/* Sabit FAB tab bar */}
       <FabTabBar

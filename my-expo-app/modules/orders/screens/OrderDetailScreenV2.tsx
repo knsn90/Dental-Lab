@@ -103,7 +103,8 @@ import { hexA } from '../../../core/theme/stationPalette';
 import { DS, dsTheme } from '../../../core/theme/dsTokens';
 import { ReviewModal } from '../../reviews/components/ReviewModal';
 import { OrderReviewsSection } from '../../reviews/components/OrderReviewsSection';
-import { getMyReviewForOrder, listReviewsForOrder } from '../../reviews/api';
+import { getOrderReview, listReviewsForOrder } from '../../reviews/api';
+import { ReviewPromptCard } from '../../reviews/components/ReviewPromptCard';
 import type { OrderReview } from '../../reviews/types';
 import { LoadingSpinner } from '../../../components/ui/LoadingSpinner';
 import { ChatDetail } from '../components/MessagesPopup';
@@ -818,7 +819,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
     if (!id || !_isDoctorOrClinic || order?.status !== 'teslim_edildi') { setMyReview(null); return; }
     let cancelled = false;
     (async () => {
-      const { data } = await getMyReviewForOrder(id);
+      const { data } = await getOrderReview(id);
       if (cancelled) return;
       setMyReview(data);
       if (!data && reviewAutoPromptId.current !== id) {
@@ -1575,6 +1576,9 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
           })),
         ]}
         onOpenRelated={handleNavigateRelated}
+        reviewNode={_isDoctorOrClinic && (order.status as string) === 'teslim_edildi'
+          ? <ReviewPromptCard review={myReview} accent={panelAccent} onPress={() => setReviewOpen(true)} />
+          : undefined}
         technicianName={techName ?? undefined}
         technicianInitials={techInit}
         overdue={!!overdue}
@@ -1772,6 +1776,16 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
         labAddress={labAddress}
         clinicAddress={clinicAddress}
         accent={panelAccent}
+      />
+      {/* Değerlendirme modalı — mobil (desktop ile aynı) */}
+      <ReviewModal
+        visible={reviewOpen}
+        onClose={() => setReviewOpen(false)}
+        workOrderId={id}
+        orderLabel={`${order.order_number}${order.patient_name ? ' · ' + order.patient_name : ''}`}
+        existing={myReview}
+        raterRole={panelGroup === '(clinic)' ? 'clinic' : 'doctor'}
+        onSaved={(r) => setMyReview(r)}
       />
       {stageModals}
       {holdModals}

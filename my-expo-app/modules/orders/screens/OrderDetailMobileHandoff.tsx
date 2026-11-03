@@ -26,6 +26,7 @@ import { MOBILE_PANEL_THEMES, useMobileTokens, type MobilePanel } from '../../..
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
+import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 import { provaHeroIcon, type ProvaDot } from '../prova/ProvaHeroIcon';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { onAccentInk } from '../../../core/theme/usePanelTheme';
@@ -100,6 +101,8 @@ export interface OrderDetailMobileHandoffProps {
   cancelNode?: React.ReactNode;
   /** Lojistik (kurye hareketleri) kartı — Ekler'in hemen altında gösterilir. */
   logisticsNode?: React.ReactNode;
+  /** Değerlendirme kartı (hekim/klinik, teslim edilen iş) — lojistikten önce gösterilir. */
+  reviewNode?: React.ReactNode;
   // Progress
   operatorProgress: number;     // 40
   /** Sipariş geçmişi popup'ını açar — verilirse üst çubukta saat ikonlu düğme çıkar. */
@@ -1035,6 +1038,11 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
             )}
           </View>
         </View>
+
+        {/* Değerlendirme — teslim edilen iş (hekim/klinik) */}
+        {props.reviewNode ? (
+          <View style={{ paddingHorizontal: PAGE_PADDING, marginBottom: 12 }}>{props.reviewNode}</View>
+        ) : null}
 
         {/* Lojistik — kurye hareketleri + "Kurye çağır" (desktop ile aynı bileşen) */}
         {props.logisticsNode ? (

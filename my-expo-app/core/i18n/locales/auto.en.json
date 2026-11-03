@@ -9839,5 +9839,7 @@
   "Teslim edilmiş veya iptal edilmiş iş devam ettirilemez": "A delivered or cancelled job can't be resumed",
   "WhatsApp · hekim": "WhatsApp · doctor",
   "WhatsApp · klinik hattı": "WhatsApp · clinic line",
-  "Bu iş az önce değerlendirildi. Sayfayı yenileyip düzenleyebilirsiniz.": "This order was just rated. Refresh the page to edit the rating."
+  "Bu iş az önce değerlendirildi. Sayfayı yenileyip düzenleyebilirsiniz.": "This order was just rated. Refresh the page to edit the rating.",
+  "Değerlendirmeyi gör / düzenle": "View / edit rating",
+  "İşi değerlendir": "Review the work"
 }
