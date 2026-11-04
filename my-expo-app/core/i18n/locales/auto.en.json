@@ -9867,5 +9867,10 @@
   "Teslimden birkaç gün sonra": "A few days after delivery",
   "Hekim Sorunu": "Doctor issue",
   "Küçük Düzeltme": "Minor fix",
-  "Değerlendirilecek": "To review"
+  "Değerlendirilecek": "To review",
+  "Düşük puan": "Low rating",
+  "Genel ya da alt puan 3 ve altı": "Overall or sub-score of 3 or lower",
+  "Düşük puan aranmadı": "Low rating: not called yet",
+  "2 gün aranmayan düşük puan için bir kez": "Once, if a low rating goes 2 days without a call",
+  "Düşük puan 2 gündür aranmadı": "Low rating not called for 2 days"
 }

@@ -6,7 +6,8 @@ export type NotificationCategory =
   | 'payment'      | 'stock'           | 'delivery'  | 'paper_order'
   | 'material_request' | 'order_watch' | 'stage_critical' | 'stock_count'
   | 'implant_parts' | 'scan_annotation' | 'account' | 'scan_schedule'
-  | 'review_request' | 'review_problem' | 'review_minor';
+  | 'review_request' | 'review_problem' | 'review_minor'
+  | 'review_low' | 'review_low_reminder';
 
 export type NotificationChannel = 'in_app' | 'browser_push' | 'email' | 'whatsapp';
 
@@ -69,7 +70,11 @@ export const DEFAULT_PREFS: NotificationPrefs = {
     // Hekim WhatsApp'tan "Sorun var" dedi (lab) — aksiyon gerektirir: mail de gider.
     // WhatsApp AÇIK: Meta lab şablonu is_sorunu_lab var; gönderici opt-out (yukarıdaki not).
     review_problem: { in_app: true, browser_push: true, email: true,  whatsapp: true },
-    // Hekim "Küçük düzeltme" dedi (lab) — uygulama içi + push yeter.
+    // Eski: "Küçük düzeltme" (2026-11-04'ten beri yazılmaz; eski bildirimler için kalır).
     review_minor:   { in_app: true, browser_push: true, email: false, whatsapp: false },
+    // Düşük puan (lab yöneticisi) — uygulama içi + push; Meta şablonu dusuk_puan_lab. Mail yok.
+    review_low:     { in_app: true, browser_push: true, email: false, whatsapp: true },
+    // Düşük puan 2 gündür aranmadı (lab yöneticisi) — Meta şablonu dusuk_puan_hatirlatma. Mail yok.
+    review_low_reminder: { in_app: true, browser_push: true, email: false, whatsapp: true },
   },
 };

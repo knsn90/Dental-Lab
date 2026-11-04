@@ -14,6 +14,7 @@ import {
   View, Text, Pressable, ScrollView, Modal, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { isRTL } from '../../i18n';
 import {
   X, FileCheck, Flame, Package, ChevronRight, ChevronLeft, BellOff,
@@ -89,6 +90,7 @@ export function NotificationsSheet({
   held = [],
   labels = {},
 }: Props) {
+  const router = useRouter();
   const approvalsLabel = labels.approvals ?? autoT('Onay bekleyen');
   const overdueLabel   = labels.overdue   ?? autoT('Geciken');
   const upcomingLabel  = labels.upcoming  ?? autoT('Yaklaşan teslimler');
@@ -228,6 +230,11 @@ export function NotificationsSheet({
                         // resource_id'ye düş — eğer action_url order route'u ise dbId çıkar
                         if (n.resource_type === 'work_order' && n.resource_id) {
                           onOpenOrder(n.resource_id);
+                          return;
+                        }
+                        // Düşük puan → Değerlendirmeler sekmesi, ilgili satır (bağlantı alıcının panelinde)
+                        if (n.resource_type === 'review_followup') {
+                          router.push(n.action_url as any);
                           return;
                         }
                       }
@@ -487,6 +494,8 @@ const CATEGORY_CFG: Record<NotificationCategory, { icon: any; color: string; lab
   review_request:   { icon: Star,          color: '#E89B2A', label: 'Değerlendirme' },
   review_problem:   { icon: AlertTriangle, color: '#DC2626', label: 'Hekim Sorunu' },
   review_minor:     { icon: Wrench,        color: '#E89B2A', label: 'Küçük Düzeltme' },
+  review_low:          { icon: AlertTriangle, color: '#DC2626', label: 'Düşük Puan' },
+  review_low_reminder: { icon: AlarmClock,    color: '#E89B2A', label: 'Aranmadı Hatırlatması' },
 };
 
 // ── DB feed satırı — okunmamış vurgusu + relative time ─────────────────────

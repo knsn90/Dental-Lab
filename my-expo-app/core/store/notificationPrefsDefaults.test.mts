@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { DEFAULT_PREFS } from './notificationPrefsDefaults.ts';
 
 // send-whatsapp-meta TEMPLATES + LAB_TEMPLATES anahtarları
-const META_TEMPLATED = ['new_order', 'approval', 'payment', 'delivery', 'account', 'review_problem'] as const;
+const META_TEMPLATED = ['new_order', 'approval', 'payment', 'delivery', 'account', 'review_problem', 'review_low', 'review_low_reminder'] as const;
 
 test('Meta şablonlu kategorilerde WhatsApp varsayılanı açık', () => {
   for (const c of META_TEMPLATED) {

@@ -9867,5 +9867,10 @@
   "Teslimden birkaç gün sonra": "چند روز پس از تحویل",
   "Hekim Sorunu": "مشکل پزشک",
   "Küçük Düzeltme": "اصلاح جزئی",
-  "Değerlendirilecek": "در انتظار ارزیابی"
+  "Değerlendirilecek": "در انتظار ارزیابی",
+  "Düşük puan": "امتیاز پایین",
+  "Genel ya da alt puan 3 ve altı": "امتیاز کلی یا جزئی ۳ یا کمتر",
+  "Düşük puan aranmadı": "امتیاز پایین: هنوز تماس گرفته نشده",
+  "2 gün aranmayan düşük puan için bir kez": "یک بار، اگر ۲ روز پس از امتیاز پایین تماسی گرفته نشود",
+  "Düşük puan 2 gündür aranmadı": "امتیاز پایین: ۲ روز است تماسی گرفته نشده"
 }

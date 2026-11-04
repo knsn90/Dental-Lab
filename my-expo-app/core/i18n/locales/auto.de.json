@@ -9867,5 +9867,10 @@
   "Teslimden birkaç gün sonra": "Einige Tage nach der Lieferung",
   "Hekim Sorunu": "Zahnarzt-Problem",
   "Küçük Düzeltme": "Kleine Korrektur",
-  "Değerlendirilecek": "Zu bewerten"
+  "Değerlendirilecek": "Zu bewerten",
+  "Düşük puan": "Niedrige Bewertung",
+  "Genel ya da alt puan 3 ve altı": "Gesamt- oder Teilbewertung 3 oder niedriger",
+  "Düşük puan aranmadı": "Niedrige Bewertung: noch nicht angerufen",
+  "2 gün aranmayan düşük puan için bir kez": "Einmal, wenn eine niedrige Bewertung 2 Tage ohne Anruf bleibt",
+  "Düşük puan 2 gündür aranmadı": "Niedrige Bewertung seit 2 Tagen ohne Anruf"
 }

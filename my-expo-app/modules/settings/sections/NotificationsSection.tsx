@@ -80,7 +80,8 @@ const ALL_GROUPS: {
     title: 'Değerlendirme',
     items: [
       { key: 'review_problem', icon: AlertTriangle, label: 'Hekim sorun bildirdi',        sub: 'Hekim WhatsApp\'tan "Sorun var" dediğinde' },
-      { key: 'review_minor',   icon: Wrench,        label: 'Hekim küçük düzeltme istedi', sub: 'Hekim WhatsApp\'tan "Küçük düzeltme" dediğinde' },
+      { key: 'review_low',     icon: AlertTriangle, label: 'Düşük puan',                  sub: 'Genel ya da alt puan 3 ve altı' },
+      { key: 'review_low_reminder', icon: AlarmClock, label: 'Düşük puan aranmadı',          sub: '2 gün aranmayan düşük puan için bir kez' },
       { key: 'review_request', icon: Star,          label: 'İşinizi değerlendirin',       sub: 'Teslimden birkaç gün sonra' },
     ],
   },
@@ -112,6 +113,8 @@ function getGroupsForRole(userType?: string | null, role?: string | null) {
     'scan_schedule',     // tarama programı — lab içi
     'review_problem',    // hekimin WhatsApp cevabı — lab'a gider
     'review_minor',
+    'review_low',        // düşük puan uyarısı — yalnız lab yöneticisi
+    'review_low_reminder',
   ]);
 
   // Teknisyen için gereksiz kategoriler — finans/yönetim odaklı olanlar
@@ -126,6 +129,8 @@ function getGroupsForRole(userType?: string | null, role?: string | null) {
     'stage_critical',// kritik aşama bildirimi — teknisyene gerekmez
     'review_problem',// hekim cevabı — yönetici işi
     'review_minor',
+    'review_low',    // düşük puan uyarısı — yönetici işi
+    'review_low_reminder',
     'review_request',// "işinizi değerlendirin" — yalnız hekim/klinik
   ]);
 
