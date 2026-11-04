@@ -29,6 +29,7 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { authorizeNotification } from '../_shared/notify-authz.ts';
+import { pushData } from '../_shared/pushData.ts';
 import webpush from 'https://esm.sh/web-push@3.6.7';
 
 const supabaseUrl     = Deno.env.get('SUPABASE_URL')!;
@@ -132,7 +133,8 @@ serve(async (req) => {
   if (!tokens?.length) return json({ ok: true, sent: 0, skipped: 0, reason: 'no_subscriptions' });
 
   // 3. Her endpoint'e push gönder (paralel)
-  const payloadStr = JSON.stringify(body.payload);
+  // sw.js tıklamada data.url açar; DB göndericileri bağlantıyı actionUrl'e koyar (pushData eşler).
+  const payloadStr = JSON.stringify({ ...body.payload, data: pushData(body.payload as any) });
   const results = await Promise.all(tokens.map(async (row: any) => {
     let sub: any;
     try { sub = JSON.parse(row.token); } catch { return { ok: false, error: 'invalid_token' }; }

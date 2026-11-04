@@ -34,6 +34,7 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { authorizeNotification } from '../_shared/notify-authz.ts';
+import { pushData } from '../_shared/pushData.ts';
 
 const supabaseUrl    = Deno.env.get('SUPABASE_URL')!;
 const supabaseSrvKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -130,11 +131,13 @@ serve(async (req) => {
   if (!tokens?.length) return json({ ok: true, sent: 0, skipped: 0, reason: 'no_subscriptions' });
 
   // 3. ExpoPushMessage array hazırla (chunk by 100)
+  // data.url = dokununca açılacak yol; DB göndericileri actionUrl'e koyar (pushData eşler).
+  const data = pushData(body.payload as any);
   const messages = tokens.map((row: any) => ({
     to:        row.token,
     title:     body.payload.title,
     body:      body.payload.body  ?? '',
-    data:      body.payload.data  ?? {},
+    data,
     sound:     body.payload.sound ?? 'default',
     badge:     body.payload.badge,
     priority:  body.payload.priority ?? 'high',

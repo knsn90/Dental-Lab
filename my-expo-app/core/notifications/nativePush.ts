@@ -13,6 +13,7 @@
  */
 import { Platform } from 'react-native';
 import { supabase } from '../api/supabase';
+import { createTapRouter } from './pushTap';
 
 export type NativePushStatus =
   | 'unsupported'
@@ -55,14 +56,21 @@ export function setupNativePush(onNavigate?: (url: string) => void): void {
       }),
     });
 
-    // Notification tap → in-app navigate
-    Notifications.addNotificationResponseReceivedListener((response: any) => {
-      const data = response?.notification?.request?.content?.data ?? {};
-      const url = data.url as string | undefined;
-      if (url && _navigateHandler) {
-        try { _navigateHandler(url); } catch { /* */ }
-      }
+    // Notification tap → in-app navigate (yol data.url; aynı dokunuş bir kez işlenir)
+    const handleTap = createTapRouter((url) => {
+      if (!_navigateHandler) throw new Error('no navigate handler');
+      _navigateHandler(url);
     });
+    Notifications.addNotificationResponseReceivedListener((response: any) => { handleTap(response); });
+
+    // Uygulama bildirime dokunularak AÇILDIYSA bu dinleyici (oturumdan ~1,5 sn sonra
+    // kurulur) o dokunuşu kaçırır → son dokunuşu oku, işlendiyse temizle.
+    try {
+      const last = typeof Notifications.getLastNotificationResponse === 'function'
+        ? Notifications.getLastNotificationResponse()
+        : null;
+      if (last && handleTap(last)) Notifications.clearLastNotificationResponse?.();
+    } catch { /* */ }
 
     // Android channel — bildirimi görünür yapmak için zorunlu
     if (Platform.OS === 'android') {
