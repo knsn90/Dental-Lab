@@ -1,6 +1,6 @@
 # Değerlendirmeler ekranı ve düşük puan takibi — tasarım
 
-**Tarih:** 2026-11-04 · **Yol haritası:** 3. dalga, madde 2 ("Değerlendirmeler ekranı: ortalama, klinik kırılımı, düşük puan uyarısı") · **Ön koşul:** WhatsApp puan isteği (`docs/superpowers/specs/2026-11-03-whatsapp-puan-istegi-design.md`; DB + web canlı, Meta şablon onayı bekliyor) · **Durum:** onaylandı 2026-11-04; metinler §14 (onaylı); plan `docs/superpowers/plans/2026-11-04-degerlendirmeler-ekrani.md`
+**Tarih:** 2026-11-04 · **Yol haritası:** 3. dalga, madde 2 ("Değerlendirmeler ekranı: ortalama, klinik kırılımı, düşük puan uyarısı") · **Ön koşul:** WhatsApp puan isteği (`docs/superpowers/specs/2026-11-03-whatsapp-puan-istegi-design.md`; DB + web canlı, Meta şablon onayı bekliyor) · **Durum:** onaylandı 2026-11-04; metinler §14 (onaylı); plan `docs/superpowers/plans/2026-11-04-degerlendirmeler-ekrani.md` · **Uygulama (2026-11-04):** DB + web hazır; WhatsApp şablonları (`dusuk_puan_lab`, `dusuk_puan_hatirlatma`) Meta onayı bekliyor; `send-whatsapp-meta` edge yayını onaydan sonra. Ekran, Sağlık Kurumları'nın sol menüsünde Takip › Değerlendirmeler bölümü (kullanıcı isteğiyle sekmeler sol menüye taşındı; mobilde üç sekme + tüm menü penceresi).
 
 Görsel taslaklar (brainstorm oturumu, git dışı): `.superpowers/brainstorm/31429-1793788500/content/degerlendirmeler-v5.html` (ekran) ve `takip-v2.html` (arama takibi + işaretleme penceresi). Belge ile taslak çelişirse belge geçerlidir.
 
