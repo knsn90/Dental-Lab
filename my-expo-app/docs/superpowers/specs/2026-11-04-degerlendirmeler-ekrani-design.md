@@ -1,6 +1,6 @@
 # Değerlendirmeler ekranı ve düşük puan takibi — tasarım
 
-**Tarih:** 2026-11-04 · **Yol haritası:** 3. dalga, madde 2 ("Değerlendirmeler ekranı: ortalama, klinik kırılımı, düşük puan uyarısı") · **Ön koşul:** WhatsApp puan isteği (`docs/superpowers/specs/2026-11-03-whatsapp-puan-istegi-design.md`; DB + web canlı, Meta şablon onayı bekliyor) · **Durum:** taslak, kullanıcı onayı bekliyor (bağımsız okuma yapıldı 2026-11-04)
+**Tarih:** 2026-11-04 · **Yol haritası:** 3. dalga, madde 2 ("Değerlendirmeler ekranı: ortalama, klinik kırılımı, düşük puan uyarısı") · **Ön koşul:** WhatsApp puan isteği (`docs/superpowers/specs/2026-11-03-whatsapp-puan-istegi-design.md`; DB + web canlı, Meta şablon onayı bekliyor) · **Durum:** onaylandı 2026-11-04; metinler §14 (onaylı); plan `docs/superpowers/plans/2026-11-04-degerlendirmeler-ekrani.md`
 
 Görsel taslaklar (brainstorm oturumu, git dışı): `.superpowers/brainstorm/31429-1793788500/content/degerlendirmeler-v5.html` (ekran) ve `takip-v2.html` (arama takibi + işaretleme penceresi). Belge ile taslak çelişirse belge geçerlidir.
 
@@ -235,3 +235,18 @@ Her satır:
 - Arandı olarak işaretleme + not.
 - 2 gün aranmazsa tekrar hatırlatma.
 - Ekranın yeri: Sağlık Kurumları içinde "Değerlendirmeler" sekmesi; lab paneli ve Yönetim panelinde de görünür.
+
+## 14. Onaylanan metinler (2026-11-04)
+
+Kullanıcı §9'daki şablon taslakları yerine aşağıdaki düzeltilmiş metinleri onayladı (gerekçe: kliniği olmayan hekimde "X kliniğinden X" çıkıyordu; hatırlatma cümlesi düzeltildi). §9 ile çelişirse bu bölüm geçerlidir.
+
+| Yer | Metin |
+|---|---|
+| Şablon `dusuk_puan_lab` (UTILITY, `tr`) | `Düşük puan: {{hekim}} ({{klinik}}), {{siparis_no}} numaralı {{is_turu}} işine düşük puan verdi: {{puanlar}}. Ayrıntılar Siman'da Değerlendirmeler ekranında.` |
+| Şablon `dusuk_puan_hatirlatma` (UTILITY, `tr`) | `Hatırlatma: {{klinik}} için {{siparis_no}} numaralı işteki düşük puan 2 gündür aranmadı. Siman'da Değerlendirmeler ekranından "Arandı" olarak işaretleyebilirsiniz.` |
+| Uygulama içi uyarı | başlık `Düşük puan` · gövde `<sipariş no> · <klinik> · <hekim> · <iş türü> · <düşük puanlar>` |
+| Uygulama içi uyarı ("Sorun var" WhatsApp cevabı) | başlık `Hekim sorun bildirdi` · gövde aynı biçim; WhatsApp şablonu `is_sorunu_lab` |
+| Uygulama içi hatırlatma | başlık `Düşük puan 2 gündür aranmadı` · gövde `<sipariş no> · <klinik> · <düşük puanlar>` |
+| Pencere | §9'daki gibi |
+
+Değişkenler: `dusuk_puan_lab` → `hekim`, `klinik`, `siparis_no`, `is_turu`, `puanlar`; `dusuk_puan_hatirlatma` → `klinik`, `siparis_no`. Hekimin kliniği yoksa `klinik` = hekimin adı.
