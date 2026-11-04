@@ -1,0 +1,5 @@
+-- 20261104140000_degerlendirme_ekrani_rpc — CANLI durum (2026-11-04)
+
+## get_review_dashboard: YOK (pg_proc'ta 0 satır)
+## review_followup_set_call: YOK (pg_proc'ta 0 satır)
+## order_reviews: 6 satır, 1 lab (yalnız sayı; içerik yazılmadı)
