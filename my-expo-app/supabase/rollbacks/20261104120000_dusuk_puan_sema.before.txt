@@ -1,0 +1,13 @@
+-- 20261104120000_dusuk_puan_sema — CANLI durum (2026-11-04T12:38Z)
+
+## Ön koşul (geriye dönük doldurma yok)
+order_reviews içinde etkin en düşük ≤ 3 olan değerlendirme: 0
+review_requests içinde answer IN (1,3): 0
+
+## Var olmayanlar
+to_regclass('public.review_followups') = NULL
+_review_low_min, _review_low_scores_text, _review_low_url, _notify_inapp_push: canlıda yok
+
+## Dokunulmayan, referans
+_notify_channels md5(pg_get_functiondef) = c9c99a78cfe18a5dcd3b79f0a58246c3
+vault 'net_anon_key' mevcut (1 satır)
