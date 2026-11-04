@@ -154,3 +154,9 @@ export function formatAvg(n: number | null, locale: string): string {
   if (n == null || !Number.isFinite(n)) return '—';
   return new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(n);
 }
+
+/** Meta satırı ayırıcısı. Farsça'da "·" Farsça sıfıra (۰) benzer, rakamın yanında
+ *  "۲ پایین" → "۲۰ پایین" okunur; orada Farsça virgül kullanılır. */
+export function metaSep(lang: string): string {
+  return lang === 'fa' ? '، ' : ' · ';
+}

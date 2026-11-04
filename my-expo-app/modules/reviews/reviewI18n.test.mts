@@ -48,3 +48,32 @@ test('Değerlendirmeler ekranı hero ve tablo etiketleri en/de/fa sözlüklerind
     for (const k of DASHBOARD_LABELS) assert.ok(typeof d[k] === 'string' && d[k].length > 0, `${lang}: ${k}`);
   }
 });
+
+// Düşük puanlar listesi, arama penceresi (spec §9) ve Sağlık Kurumları sekmesi.
+const LOW_LIST_LABELS = [
+  'Düşük puanlar', 'Genel puan ya da herhangi bir alt puan 3 ve altı', 'Aranmadı', 'Tümü',
+  'Kliniği ara', 'Arandı', 'Siparişe git', 'Notu düzenle', 'Önceki arama', 'gündür aranmadı',
+  'Telefon kayıtlı değil', 'Arandı olarak işaretle', 'Görüşme notu',
+  'İsteğe bağlı. Yalnız lab yöneticileri görür, klinik görmez.', 'Vazgeç', 'Kaydet', 'İşareti kaldır',
+  'Değerlendirmeler', 'Bu ay düşük puan yok', 'Aranmamış düşük puan yok', 'Kopyala', 'Kopyalandı',
+  'Kaydedilemedi', 'Not', 'Ne konuşuldu, ne karar verildi…',
+];
+
+test('düşük puan listesi ve arama penceresi etiketleri en/de/fa sözlüklerinde', () => {
+  for (const lang of ['en', 'de', 'fa']) {
+    const d = dict(lang);
+    for (const k of LOW_LIST_LABELS) assert.ok(typeof d[k] === 'string' && d[k].length > 0, `${lang}: ${k}`);
+  }
+});
+
+// "Kliniği ara" burada ve triyaj ekranında telefonla aramadır; "Search clinic" yanlış çeviriydi.
+test('Kliniği ara telefonla arama olarak çevrilir', () => {
+  assert.equal(dict('en')['Kliniği ara'], 'Call clinic');
+  assert.equal(dict('de')['Kliniği ara'], 'Klinik anrufen');
+});
+
+test('hero fark cümlesi "Geçen aya göre:" diye ayrılır (en/de/fa söz dizimi)', () => {
+  assert.equal(dict('en')['Geçen aya göre'], 'Compared with last month:');
+  assert.equal(dict('de')['Geçen aya göre'], 'Im Vergleich zum Vormonat:');
+  assert.equal(dict('fa')['Geçen aya göre'], 'نسبت به ماه قبل:');
+});

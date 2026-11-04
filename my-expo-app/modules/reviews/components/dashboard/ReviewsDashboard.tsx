@@ -5,7 +5,7 @@
  * Sayfa kenar dolgusu ekranın kabından gelir; burada yatay dolgu yok.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, ActivityIndicator } from 'react-native';
+import { View, Text, ActivityIndicator, Platform } from 'react-native';
 import { useRouter, useSegments } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { WhiteHero } from '../../../../core/ui/WhiteHero';
@@ -21,16 +21,21 @@ import { isRTL } from '../../../../core/i18n';
 import { useAuthStore } from '../../../../core/store/authStore';
 import { usePermissionStore } from '../../../../core/store/permissionStore';
 import { useTurkeyOnlyFeatures } from '../../../../core/store/labSettingsStore';
-import { avgDelta, formatAvg, shiftMonth, currentTrMonth, isFutureMonth } from '../../dashboardRules';
+import { avgDelta, formatAvg, shiftMonth, currentTrMonth, isFutureMonth, metaSep } from '../../dashboardRules';
 import { getReviewDashboard } from '../../api';
-import type { ReviewDashboard } from '../../types';
+import type { ReviewDashboard, ReviewCallState } from '../../types';
 import { ReviewClinicsTable } from './ReviewClinicsTable';
 import { ReviewRowSummary } from './ReviewRowSummary';
-import { PressScale, useReviewTones, fmtInt, fmtPct, monthLabel } from './dashboardUi';
+import { ReviewLowList } from './ReviewLowList';
+import { PressScale, useReviewTones, useReducedMotion, fmtInt, fmtPct, monthLabel } from './dashboardUi';
 
 type Query = { month: string | null; focus: string | null };
 
-export function ReviewsDashboard({ focusWorkOrderId }: { focusWorkOrderId?: string | null }) {
+export function ReviewsDashboard({ focusWorkOrderId, scrollRef }: {
+  focusWorkOrderId?: string | null;
+  /** Ekranın dikey kaydırma kabı; native'de bildirim satırını görünür alana kaydırmak için. */
+  scrollRef?: React.RefObject<any>;
+}) {
   const U = useInkUI();
   const T = useMobileTableText();
   const tones = useReviewTones();
@@ -71,6 +76,23 @@ export function ReviewsDashboard({ focusWorkOrderId }: { focusWorkOrderId?: stri
   }, []);
 
   useEffect(() => { load(query); }, [query, load]);
+
+  // Arama kaydı kaydedilince satır yerinde güncellenir; hero sayıları değişmez.
+  const onCallChanged = useCallback((workOrderId: string, state: ReviewCallState) => {
+    setData(prev => (prev ? { ...prev, lows: prev.lows.map(l => (l.work_order_id === workOrderId ? { ...l, ...state } : l)) } : prev));
+  }, []);
+
+  const reduced = useReducedMotion();
+  const revealFocus = useCallback((node: any) => {
+    if (Platform.OS === 'web') {
+      node?.scrollIntoView?.({ block: 'center', behavior: reduced ? 'auto' : 'smooth' });
+      return;
+    }
+    const sv = scrollRef?.current;
+    const inner = sv?.getInnerViewRef?.() ?? sv?.getInnerViewNode?.();
+    if (!sv || !inner || !node?.measureLayout) return;
+    node.measureLayout(inner, (_x: number, y: number) => sv.scrollTo({ y: Math.max(0, y - 8), animated: !reduced }), () => {});
+  }, [scrollRef, reduced]);
 
   const now = new Date();
   const shownMonth = (data?.month ?? query.month ?? currentTrMonth(now)).slice(0, 7) + '-01';
@@ -144,7 +166,7 @@ export function ReviewsDashboard({ focusWorkOrderId }: { focusWorkOrderId?: stri
   return (
     <View style={{ gap: CARD_GAP, opacity: loading ? 0.6 : 1 }}>
       <WhiteHero
-        kicker={`${autoT('Değerlendirmeler')} · ${monthText}`}
+        kicker={`${autoT('Değerlendirmeler')}${metaSep(lang)}${monthText}`}
         title={hasMonth ? `${autoT('Ortalama')} ${formatAvg(s.avg, lang)}` : autoT('Bu ay puan yok')}
         description={[diffText, countText].filter(Boolean).join(' ') || undefined}
         stats={[
@@ -221,7 +243,9 @@ export function ReviewsDashboard({ focusWorkOrderId }: { focusWorkOrderId?: stri
             ))}
           </MobileTableX>
         </View>
-      ) : null}
+      ) : (
+        <ReviewLowList rows={data.lows} focusWorkOrderId={focus} onChanged={onCallChanged} onRevealFocus={revealFocus} />
+      )}
     </View>
   );
 }

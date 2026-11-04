@@ -5,7 +5,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, Animated, Platform, AccessibilityInfo, type ViewStyle, type StyleProp } from 'react-native';
 import { useInkUI } from '../../../../core/theme/inkScale';
-import { localeTag } from '../../../../core/i18n';
+import { localeTag, fmtDayMonthShort } from '../../../../core/i18n';
 
 /** Kullanıcı hareketi azaltmayı seçtiyse true. Web'de matchMedia, native'de A11y API. */
 export function useReducedMotion(): boolean {
@@ -107,4 +107,12 @@ export function monthShortLabel(month: string, lang: string): string {
   const tag = lang === 'fa' ? 'fa-IR-u-ca-gregory' : localeTag(lang);
   try { return new Intl.DateTimeFormat(tag, { month: 'short' }).format(d); }
   catch { return month.slice(5, 7); }
+}
+
+/** Arama zamanı: "6 Kas 14:20" (gün-ay takvim tercihine uyar). */
+export function callStamp(iso: string, lang: string): string {
+  const d = new Date(iso);
+  let time = '';
+  try { time = new Intl.DateTimeFormat(localeTag(lang), { hour: '2-digit', minute: '2-digit' }).format(d); } catch { /* yoksay */ }
+  return [fmtDayMonthShort(d), time].filter(Boolean).join(' ');
 }

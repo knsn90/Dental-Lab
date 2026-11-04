@@ -9,7 +9,7 @@ import { useInkUI } from '../../../../core/theme/inkScale';
 import { usePanelTheme, onAccentInk } from '../../../../core/theme/usePanelTheme';
 import { autoT } from '../../../../core/i18n/autoTranslate';
 import { isRTL } from '../../../../core/i18n';
-import { sortClinicRows, avgDelta, formatAvg, shiftMonth } from '../../dashboardRules';
+import { sortClinicRows, avgDelta, formatAvg, shiftMonth, metaSep } from '../../dashboardRules';
 import type { ReviewClinicRow } from '../../types';
 import { ReviewSparkline } from './ReviewSparkline';
 import { useReviewTones, fmtInt, monthShortLabel } from './dashboardUi';
@@ -32,15 +32,17 @@ export function ReviewClinicsTable({ rows, month, lang, selectedKey, onSelect }:
   const numW = narrow ? 64 : 86;
   const sorted = sortClinicRows(rows);
   const arrow = isRTL(lang) ? '←' : '→';
+  const headEnd = isRTL(lang) ? 'left' as const : 'right' as const;
   const range = `${monthShortLabel(shiftMonth(month, -5), lang)} ${arrow} ${monthShortLabel(month, lang)}`;
 
   return (
     <MobileTableX title="Klinikler" subtitle="En çok düşen en üstte" count={sorted.length} countLabel="klinik">
       {sorted.length > 0 ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: U.surfaceSoft, borderBottomWidth: 1, borderBottomColor: U.hairlineSoft }}>
+        // Dar ekranda uzun çeviriler ("LAST 6 MONTHS") iki satıra iner, kesilmez; satır alta hizalı.
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 12, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: U.surfaceSoft, borderBottomWidth: 1, borderBottomColor: U.hairlineSoft }}>
           <Text style={[U.colHeader, { flex: 1 }]}>{autoT('Klinik')}</Text>
-          <View style={{ width: sparkW, alignItems: 'flex-end' }}><Text style={U.colHeader} numberOfLines={1}>{autoT('Son 6 ay')}</Text></View>
-          <View style={{ width: numW, alignItems: 'flex-end' }}><Text style={U.colHeader} numberOfLines={1}>{autoT('Bu ay')}</Text></View>
+          <View style={{ width: sparkW, alignItems: 'flex-end' }}><Text style={[U.colHeader, { textAlign: headEnd }]} numberOfLines={2}>{autoT('Son 6 ay')}</Text></View>
+          <View style={{ width: numW, alignItems: 'flex-end' }}><Text style={[U.colHeader, { textAlign: headEnd }]} numberOfLines={2}>{autoT('Bu ay')}</Text></View>
         </View>
       ) : null}
 
@@ -54,7 +56,7 @@ export function ReviewClinicsTable({ rows, month, lang, selectedKey, onSelect }:
         const positive = d == null || d === 0 ? null : d > 0;
         const selected = selectedKey === r.key;
         const sub = has
-          ? `${fmtInt(r.month_count, lang)} ${autoT('değerlendirme')}${r.month_low > 0 ? ` · ${fmtInt(r.month_low, lang)} ${autoT('düşük')}` : ''}`
+          ? `${fmtInt(r.month_count, lang)} ${autoT('değerlendirme')}${r.month_low > 0 ? `${metaSep(lang)}${fmtInt(r.month_low, lang)} ${autoT('düşük')}` : ''}`
           : autoT('Bu ay puan yok');
         return (
           <MobileTableRowX

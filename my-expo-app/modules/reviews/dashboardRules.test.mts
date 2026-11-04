@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {
   REVIEW_LOW_MAX, SCORE_SHORT_LABELS, waButtonLabel, lowChips, canSeeReviewDashboard, avgDelta,
   sortClinicRows, sparkSegments, sortLows, defaultLowFilter, daysUncalled, callPhone,
-  shiftMonth, isFutureMonth, formatAvg,
+  shiftMonth, isFutureMonth, formatAvg, metaSep,
 } from './dashboardRules.ts';
 
 // Testlerde yalnız ilgili alanlar dolu; geri kalanı boş.
@@ -134,4 +134,12 @@ test('ortalama biçimi', () => {
   assert.equal(formatAvg(4.56, 'en'), '4.6');
   assert.equal(formatAvg(4, 'de'), '4,0');
   assert.equal(formatAvg(null, 'tr'), '—');
+});
+
+// Farsça'da "·" Farsça sıfıra (۰) benziyor: "۴ ارزیابی · ۲ پایین" "۲۰ پایین" okunuyordu.
+test('metaSep: Farsça\'da virgül (،), diğer dillerde orta nokta', () => {
+  assert.equal(metaSep('fa'), '، ');
+  assert.equal(metaSep('tr'), ' · ');
+  assert.equal(metaSep('en'), ' · ');
+  assert.equal(metaSep('de'), ' · ');
 });

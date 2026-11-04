@@ -11,7 +11,7 @@ import { useInkUI } from '../../../../core/theme/inkScale';
 import { usePanelTheme } from '../../../../core/theme/usePanelTheme';
 import { autoT } from '../../../../core/i18n/autoTranslate';
 import { fmtDayMonthShort } from '../../../../core/i18n';
-import { REVIEW_LOW_MAX, SCORE_SHORT_LABELS, lowChips, waButtonLabel } from '../../dashboardRules';
+import { REVIEW_LOW_MAX, SCORE_SHORT_LABELS, lowChips, waButtonLabel, metaSep } from '../../dashboardRules';
 import type { ReviewDashRow } from '../../types';
 import { useReviewTones, fmtInt } from './dashboardUi';
 
@@ -54,10 +54,10 @@ export function ReviewRowSummary({ row, lang, isLast, highlighted, titleExtra, c
       <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
         <View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <Text style={[T.title, { flexShrink: 1 }]} numberOfLines={1}>{`#${row.order_number ?? '—'} · ${row.clinic_name ?? '—'}`}</Text>
+            <Text style={[T.title, { flexShrink: 1 }]} numberOfLines={1}>{`#${row.order_number ?? '—'}${metaSep(lang)}${row.clinic_name ?? '—'}`}</Text>
             {titleExtra}
           </View>
-          <Text style={T.sub} numberOfLines={2}>{subParts.join(' · ')}</Text>
+          <Text style={T.sub} numberOfLines={2}>{subParts.join(metaSep(lang))}</Text>
         </View>
         {chips.length > 0 ? (
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>

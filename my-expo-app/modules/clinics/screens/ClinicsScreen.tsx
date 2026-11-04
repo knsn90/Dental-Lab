@@ -39,6 +39,9 @@ import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { authErrorText } from '../../../core/api/authErrors';
+import { useAuthStore } from '../../../core/store/authStore';
+import { canSeeReviewDashboard } from '../../reviews/dashboardRules';
+import { ReviewsDashboard } from '../../reviews/components/dashboard/ReviewsDashboard';
 
 // ── Design tokens ───────────────────────────────────────────────────
 const DISPLAY = {
@@ -165,6 +168,8 @@ const TAB_FILTERS = [
   { key: 'managers',    label: 'Yöneticiler' },
   { key: 'connections', label: 'Bağlantılar' },
 ];
+// Yalnız lab yöneticisi ve Yönetim paneli kullanıcısı görür (spec 2026-11-04 §7).
+const REVIEWS_TAB = { key: 'reviews', label: 'Değerlendirmeler' };
 
 // ═════════════════════════════════════════════════════════════════════
 // MAIN SCREEN
@@ -216,7 +221,9 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
 
   // ?editClinic=<id> → o kliniğin düzenleme penceresi açılır (e-Fatura "eksik bilgi" kısayolu).
   // ?clinic=<id> → genel aramadan gelen: o kliniğin kartı açık ve görünür (2. dalga 1).
-  const { editClinic, clinic: clinicParam } = useLocalSearchParams<{ editClinic?: string; clinic?: string }>();
+  const { editClinic, clinic: clinicParam, tab: tabParam, focus: focusParam } =
+    useLocalSearchParams<{ editClinic?: string; clinic?: string; tab?: string; focus?: string }>();
+  const canSeeReviews = canSeeReviewDashboard(useAuthStore(s => s.profile) as any);
   const editParamHandled = useRef<string | null>(null);
   useEffect(() => {
     if (!editClinic || editParamHandled.current === editClinic) return;
@@ -231,7 +238,19 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
   const [editingDoctor,   setEditingDoctor]   = useState<Doctor | null>(null);
   const [defaultClinicId, setDefaultClinicId] = useState('');
 
-  const [activeTab,       setActiveTab]       = useState<'all' | ClinicCategory | 'doctors' | 'managers' | 'connections'>('all');
+  const [activeTab,       setActiveTab]       = useState<'all' | ClinicCategory | 'doctors' | 'managers' | 'connections' | 'reviews'>('all');
+  // ?tab=reviews(&focus=<iş>) → Değerlendirmeler sekmesi (düşük puan bildirimi). Yetkisizse varsayılan kalır.
+  const reviewParamHandled = useRef<string | null>(null);
+  useEffect(() => {
+    if (tabParam !== 'reviews' || !canSeeReviews) return;
+    const sig = `${tabParam}:${focusParam ?? ''}`;
+    if (reviewParamHandled.current === sig) return;
+    reviewParamHandled.current = sig;
+    setActiveTab('reviews');
+  }, [tabParam, focusParam, canSeeReviews]);
+  useEffect(() => {
+    if (activeTab === 'reviews' && !canSeeReviews) setActiveTab('all');
+  }, [activeTab, canSeeReviews]);
   // "Bağlantı gönder" CTA — tek kullanımlık davet kodu üret + kopyala
   const [inviteOpen,   setInviteOpen]   = useState(false);
   // İş emri formu yazdır → önce hangi klinik için olduğunu sor.
@@ -560,7 +579,7 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
           contentContainerStyle={{ alignItems: 'center' }}
         >
           <SlideTabBar
-            items={TAB_FILTERS.map(f => ({ key: f.key, label: autoT(f.label), count: tabCounts[f.key] }))}
+            items={(canSeeReviews ? [...TAB_FILTERS, REVIEWS_TAB] : TAB_FILTERS).map(f => ({ key: f.key, label: autoT(f.label), count: tabCounts[f.key] }))}
             activeKey={activeTab}
             onChange={(k) => setActiveTab(k as any)}
             accentColor={panel.accent}
@@ -582,6 +601,9 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
           /* Klinik bağlantıları — davet kodu / public kod / bekleyen istekler.
              Eskiden ayrı sidebar sayfasıydı; artık Sağlık Kurumları sekmesi. */
           <LabConnectionsScreen embedded />
+        ) : activeTab === 'reviews' ? (
+          /* Değerlendirmeler — ortalama, klinik kırılımı, düşük puan takibi. */
+          <ReviewsDashboard focusWorkOrderId={typeof focusParam === 'string' ? focusParam : null} scrollRef={contentScrollRef} />
         ) : loading && clinics.length === 0 ? (
           <View className="py-16 items-center">
             <ActivityIndicator color="#0A0A0A" />
