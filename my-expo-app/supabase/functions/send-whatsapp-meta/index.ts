@@ -18,6 +18,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { timingSafeEqualStr } from '../_shared/security.ts';
+import { REVIEW_LOW_TEMPLATE_NAMES, reviewLowLabParams } from './reviewLowTemplates.ts';
 
 const GRAPH_VERSION = 'v20.0';
 
@@ -116,6 +117,15 @@ const LAB_TEMPLATES: Record<string, { name: string; lang: string; params: (p: an
       { name: 'is_turu',    text: clean(p.workType) },
     ],
   },
+  // Düşük puan (spec 2026-11-04 §14) — yalnız lab yöneticileri; payload'ı _review_low_alert doldurur.
+  review_low: {
+    name: REVIEW_LOW_TEMPLATE_NAMES.review_low, lang: 'tr',
+    params: (p) => reviewLowLabParams('review_low', p).map((x) => ({ name: x.name, text: clean(x.text) })),
+  },
+  review_low_reminder: {
+    name: REVIEW_LOW_TEMPLATE_NAMES.review_low_reminder, lang: 'tr',
+    params: (p) => reviewLowLabParams('review_low_reminder', p).map((x) => ({ name: x.name, text: clean(x.text) })),
+  },
 };
 
 // Meta şablon değişkeni: boş olamaz, sekme/yeni satır/4+ boşluk olamaz.
@@ -161,7 +171,7 @@ Deno.serve(async (req) => {
 
   const category = String(body?.category ?? '');
   // Müşteri şablonu olmayan kategori yalnız lab şablonu varsa ilerler
-  // (review_problem); ikisi de yoksa no-op.
+  // (review_problem, review_low, review_low_reminder); ikisi de yoksa no-op.
   const tpl = TEMPLATES[category] ?? null;
   if (!tpl && !LAB_TEMPLATES[category]) return json({ ok: true, skipped: 'no-template-for-category' });   // no-op
 
@@ -174,7 +184,8 @@ Deno.serve(async (req) => {
 
   // Gönderen lab'ı SERVER-SIDE, güvenilir kaynak tablosundan çöz (payload'dan DEĞİL).
   let labId: string | null = null;
-  if (resourceType === 'work_order' && resourceId) {
+  // review_followup'un kimliği iş emri kimliğidir (review_followups.work_order_id).
+  if ((resourceType === 'work_order' || resourceType === 'review_followup') && resourceId) {
     const { data: wo } = await admin.from('work_orders').select('lab_id').eq('id', resourceId).maybeSingle();
     labId = (wo as any)?.lab_id ?? null;
   } else if (resourceType === 'invoice' && resourceId) {
@@ -294,7 +305,7 @@ Deno.serve(async (req) => {
       const { data: claim, error: claimErr } = await admin.from('whatsapp_notifications').insert({
         user_id: pr.id, phone_to: phone, category,
         template: useTpl.name, provider: 'meta', status: 'pending',
-        work_order_id: (resourceType === 'work_order' ? resourceId : null),
+        work_order_id: ((resourceType === 'work_order' || resourceType === 'review_followup') ? resourceId : null),
         payload: extra ?? {},
         dedup_key: dedupKeyFor(phone),
       }).select('id').maybeSingle();
@@ -340,7 +351,7 @@ Deno.serve(async (req) => {
           await admin.from('whatsapp_notifications').insert({
             user_id: pr.id, phone_to: phone, category,
             template: useTpl.name, provider: 'meta',
-            work_order_id: (resourceType === 'work_order' ? resourceId : null),
+            work_order_id: ((resourceType === 'work_order' || resourceType === 'review_followup') ? resourceId : null),
             payload: extra ?? {}, ...patch,
           });
         }
