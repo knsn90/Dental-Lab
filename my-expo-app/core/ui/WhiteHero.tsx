@@ -57,8 +57,8 @@ export interface WhiteHeroProps {
   /** Büyük başlık — vurgulu parça için içine <Text> koyabilirsin. */
   title?: React.ReactNode;
   description?: React.ReactNode;
-  /** Sağdaki büyük sayılar. */
-  stats?: { value: string; label: string }[];
+  /** Sağdaki büyük sayılar. `color` verilmezse başlık rengi (ör. kırmızı uyarı rakamı için). */
+  stats?: { value: string; label: string; color?: string }[];
   /** Alttaki düğme şeridi. */
   actions?: React.ReactNode;
   /** Alt şeridin hizası: `start` (varsayılan, sol) · `end` (alt sağ köşe). */
@@ -190,7 +190,7 @@ export function WhiteHero({
                       fontSize: narrow ? (compact ? 18 : 22) : (compact ? 24 : 40),
                       letterSpacing: narrow ? -0.5 : (compact ? -0.7 : -1.4),
                       lineHeight: narrow ? (compact ? 22 : 26) : (compact ? 28 : 40),
-                      color: titleColor }}
+                      color: st.color ?? titleColor }}
                   >
                     {st.value}
                   </Text>

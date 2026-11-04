@@ -29,3 +29,22 @@ test('düşük puan bildirim etiketleri ve başlıkları en/de/fa sözlüklerind
     for (const k of LOW_ALERT_LABELS) assert.ok(typeof d[k] === 'string' && d[k].length > 0, `${lang}: ${k}`);
   }
 });
+
+// Değerlendirmeler ekranı: hero, klinik tablosu, boş/hata durumları.
+const DASHBOARD_LABELS = [
+  'Ortalama', 'Değerlendirme', 'Düşük puan', 'Puan alma', 'Klinikler', 'En çok düşen en üstte',
+  'Bu ay puan yok', 'yeni', 'Henüz değerlendirme yok',
+  "WhatsApp puan isteğini Ayarlar > Entegrasyonlar'dan açabilirsiniz.", 'Ayarlara git',
+  'Bu ayın teslimlerinin 14 günü henüz dolmadı', 'Geçen aya göre', 'Yeniden dene',
+  'Değerlendirmeler', 'değerlendirme', 'işe puan verildi', 'düştü', 'yükseldi', 'değişmedi',
+  'önceki', 'Son 6 ay', 'Son 6 ayda puan yok', 'Süzgeci kaldır', 'Değerlendirmeler yüklenemedi',
+  "WhatsApp'tan", 'Sorunsuz', 'Küçük düzeltme', 'Sorun var',
+  'Uyum', 'Kontakt', 'Yüzey', 'Zamanında teslim',
+];
+
+test('Değerlendirmeler ekranı hero ve tablo etiketleri en/de/fa sözlüklerinde', () => {
+  for (const lang of ['en', 'de', 'fa']) {
+    const d = dict(lang);
+    for (const k of DASHBOARD_LABELS) assert.ok(typeof d[k] === 'string' && d[k].length > 0, `${lang}: ${k}`);
+  }
+});

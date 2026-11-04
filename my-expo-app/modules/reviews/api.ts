@@ -1,5 +1,5 @@
 import { supabase } from '../../core/api/supabase';
-import type { OrderReview, ReviewInput, PendingReviewOrder } from './types';
+import type { OrderReview, ReviewInput, PendingReviewOrder, ReviewDashboard, ReviewCallState, ReviewCallAction } from './types';
 import { pendingReviewSince } from './reviewRules';
 
 const COLS = 'id, work_order_id, lab_id, rater_id, rater_role, source, rater_doctor_id, overall, fit, occlusion, contacts, esthetics, surface, on_time, comment, photos, clinical_photos, lab_reply, lab_reply_at, lab_reply_by, created_at, updated_at';
@@ -154,4 +154,19 @@ export async function getReviewWaSettings(): Promise<{ data: ReviewWaSettings | 
 export async function setReviewWaSettings(enabled: boolean, delayDays: number): Promise<{ data: ReviewWaSettings | null; error: any }> {
   const { data, error } = await supabase.rpc('set_review_wa_settings', { p_enabled: enabled, p_delay_days: delayDays });
   return { data: (data as ReviewWaSettings) ?? null, error };
+}
+
+/**
+ * Değerlendirmeler ekranı verisi (yalnız lab yöneticisi; sunucu denetler).
+ * `month` 'YYYY-MM-01'; verilmezse sunucu `focus` işinin ayını ya da TR saatiyle bu ayı seçer.
+ */
+export async function getReviewDashboard(month?: string | null, focus?: string | null): Promise<{ data: ReviewDashboard | null; error: any }> {
+  const { data, error } = await supabase.rpc('get_review_dashboard', { p_month: month ?? null, p_focus: focus ?? null });
+  return { data: (data as ReviewDashboard) ?? null, error };
+}
+
+/** Düşük puanlı işin arama kaydı: işaretle / notu düzenle / işareti kaldır. */
+export async function setReviewFollowupCall(workOrderId: string, action: ReviewCallAction, note?: string | null): Promise<{ data: ReviewCallState | null; error: any }> {
+  const { data, error } = await supabase.rpc('review_followup_set_call', { p_work_order: workOrderId, p_action: action, p_note: note ?? null });
+  return { data: (data as ReviewCallState) ?? null, error };
 }
