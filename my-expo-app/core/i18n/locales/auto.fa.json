@@ -9915,5 +9915,21 @@
   "İşareti kaldır": "حذف علامت",
   "Bu ay düşük puan yok": "این ماه امتیاز پایینی ثبت نشده",
   "Aranmamış düşük puan yok": "امتیاز پایینی بدون تماس نمانده",
-  "Ne konuşuldu, ne karar verildi…": "چه گفته شد و چه تصمیمی گرفته شد…"
+  "Ne konuşuldu, ne karar verildi…": "چه گفته شد و چه تصمیمی گرفته شد…",
+  "Kurumlar": "مؤسسه‌ها",
+  "Kişiler": "افراد",
+  "Takip": "پیگیری",
+  "Tüm kurumlar": "همه مؤسسه‌ها",
+  "Laboratuvara bağlı sağlık kurumları": "مؤسسه‌های درمانی متصل به لابراتوار",
+  "Bu türdeki sağlık kurumları": "مؤسسه‌های درمانی از این نوع",
+  "Kurumlara kayıtlı hekimler": "پزشکان ثبت‌شده در مؤسسه‌ها",
+  "Klinik yöneticisi hesapları": "حساب‌های مدیر کلینیک",
+  "Davet kodu, katılım kodu ve bekleyen istekler": "کد دعوت، کد عضویت و درخواست‌های در انتظار",
+  "Puan ortalaması, klinik kırılımı ve düşük puan takibi": "میانگین امتیاز، تفکیک کلینیک‌ها و پیگیری امتیازهای پایین",
+  "Puanlar": "امتیازها",
+  "aranmadı": "بدون تماس",
+  "Bir kuruma yeni hekim kaydet": "ثبت پزشک جدید برای یک مؤسسه",
+  "Kurum adı ve hekimleri önceden yazılı boş form": "فرم خالی که نام مؤسسه و پزشکانش از قبل پر شده است",
+  "Tek kullanımlık kod üret; klinik girince laboratuvarına bağlanır": "یک کد یک‌بارمصرف بسازید؛ کلینیک با واردکردن آن به لابراتوار شما متصل می‌شود",
+  "Kurum türleri, kişiler, takip ve işlemler": "انواع مؤسسه، افراد، پیگیری و اقدامات"
 }

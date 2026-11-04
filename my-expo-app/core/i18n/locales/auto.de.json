@@ -9915,5 +9915,21 @@
   "İşareti kaldır": "Markierung entfernen",
   "Bu ay düşük puan yok": "Diesen Monat keine niedrigen Bewertungen",
   "Aranmamış düşük puan yok": "Keine offenen niedrigen Bewertungen",
-  "Ne konuşuldu, ne karar verildi…": "Was wurde besprochen und entschieden…"
+  "Ne konuşuldu, ne karar verildi…": "Was wurde besprochen und entschieden…",
+  "Kurumlar": "Einrichtungen",
+  "Kişiler": "Personen",
+  "Takip": "Nachverfolgung",
+  "Tüm kurumlar": "Alle Einrichtungen",
+  "Laboratuvara bağlı sağlık kurumları": "Mit dem Labor verbundene Gesundheitseinrichtungen",
+  "Bu türdeki sağlık kurumları": "Gesundheitseinrichtungen dieses Typs",
+  "Kurumlara kayıtlı hekimler": "Bei Einrichtungen registrierte Zahnärzte",
+  "Klinik yöneticisi hesapları": "Konten der Klinikleitung",
+  "Davet kodu, katılım kodu ve bekleyen istekler": "Einladungscode, Beitrittscode und offene Anfragen",
+  "Puan ortalaması, klinik kırılımı ve düşük puan takibi": "Durchschnittsbewertung, Aufschlüsselung nach Klinik und Nachverfolgung niedriger Bewertungen",
+  "Puanlar": "Bewertungen",
+  "aranmadı": "nicht angerufen",
+  "Bir kuruma yeni hekim kaydet": "Neuen Zahnarzt bei einer Einrichtung erfassen",
+  "Kurum adı ve hekimleri önceden yazılı boş form": "Leeres Formular mit vorausgefülltem Einrichtungsnamen und Zahnärzten",
+  "Tek kullanımlık kod üret; klinik girince laboratuvarına bağlanır": "Einmalcode erzeugen; nach der Eingabe ist die Klinik mit Ihrem Labor verbunden",
+  "Kurum türleri, kişiler, takip ve işlemler": "Einrichtungstypen, Personen, Nachverfolgung und Aktionen"
 }

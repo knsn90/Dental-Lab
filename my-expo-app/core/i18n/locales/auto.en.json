@@ -9915,5 +9915,21 @@
   "İşareti kaldır": "Remove mark",
   "Bu ay düşük puan yok": "No low ratings this month",
   "Aranmamış düşük puan yok": "No uncalled low ratings",
-  "Ne konuşuldu, ne karar verildi…": "What was discussed and decided…"
+  "Ne konuşuldu, ne karar verildi…": "What was discussed and decided…",
+  "Kurumlar": "Institutions",
+  "Kişiler": "People",
+  "Takip": "Follow-up",
+  "Tüm kurumlar": "All institutions",
+  "Laboratuvara bağlı sağlık kurumları": "Healthcare institutions linked to the lab",
+  "Bu türdeki sağlık kurumları": "Healthcare institutions of this type",
+  "Kurumlara kayıtlı hekimler": "Doctors registered with institutions",
+  "Klinik yöneticisi hesapları": "Clinic manager accounts",
+  "Davet kodu, katılım kodu ve bekleyen istekler": "Invite code, join code and pending requests",
+  "Puan ortalaması, klinik kırılımı ve düşük puan takibi": "Average rating, clinic breakdown and low-rating follow-up",
+  "Puanlar": "Ratings",
+  "aranmadı": "not called",
+  "Bir kuruma yeni hekim kaydet": "Register a new doctor with an institution",
+  "Kurum adı ve hekimleri önceden yazılı boş form": "Blank form with the institution name and doctors pre-filled",
+  "Tek kullanımlık kod üret; klinik girince laboratuvarına bağlanır": "Generate a single-use code; the clinic connects to your lab when it enters it",
+  "Kurum türleri, kişiler, takip ve işlemler": "Institution types, people, follow-up and actions"
 }

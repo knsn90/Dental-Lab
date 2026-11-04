@@ -3,14 +3,14 @@ import {
   View, Text, ScrollView, TouchableOpacity, Image,
   Modal, TextInput,
   KeyboardAvoidingView, Platform, Alert, Pressable,
-  RefreshControl, useWindowDimensions, Animated, Easing,
+  RefreshControl, useWindowDimensions, Easing,
 } from 'react-native';
 import { ClinicLogoPicker } from '../components/ClinicLogoPicker';
-import { Search, X, SlidersHorizontal, Plus, Building2, Users, UserPlus, List, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Edit2, Trash2, Phone, Mail, MapPin, RefreshCw, UserX, AlertCircle, Check, Percent, MinusCircle, Briefcase, Stethoscope, ClipboardList, FileText, Eye, EyeOff, Link2, Copy } from '../../../core/ui/icons';
+import { Search, X, SlidersHorizontal, Plus, Building2, Users, UserPlus, List, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Edit2, Trash2, Phone, Mail, MapPin, RefreshCw, UserX, AlertCircle, Check, Percent, MinusCircle, Briefcase, Stethoscope, ClipboardList, Eye, EyeOff, Link2, Copy } from '../../../core/ui/icons';
 import { buildWorkOrderFormHtml } from '../../orders/buildWorkOrderFormHtml';
 import { useLocalSearchParams, useSegments } from 'expo-router';
 import { LabConnectionsScreen } from '../../lab-connections/screens/LabConnectionsScreen';
-import { labCreateInvite } from '../../lab-connections/api';
+import { labCreateInvite, labPendingRequests } from '../../lab-connections/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { toast } from '../../../core/ui/Toast';
 import { ConfirmDialog, type ConfirmState } from '../../../core/ui/ConfirmDialog';
@@ -24,10 +24,8 @@ import { DS } from '../../../core/theme/dsTokens';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
-import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
-import { useNeonNavy, NeonPulse } from '../../../core/ui/HeroGlow';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { useColorThemeStore } from '../../../core/store/colorThemeStore';
 import { titleCaseTR as titleCaseTRShared, normalizeDoctorName } from '../../../core/utils/textCase';
@@ -42,6 +40,10 @@ import { authErrorText } from '../../../core/api/authErrors';
 import { useAuthStore } from '../../../core/store/authStore';
 import { canSeeReviewDashboard } from '../../reviews/dashboardRules';
 import { ReviewsDashboard } from '../../reviews/components/dashboard/ReviewsDashboard';
+import { getReviewDashboard } from '../../reviews/api';
+import { ClinicsSideNav, ClinicsMobileNav, ClinicsSectionHeader, type ClinicsNavActions } from '../components/ClinicsNav';
+import { resolveClinicsTab, type ClinicsTabKey } from '../clinicsNav';
+import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 
 // ── Design tokens ───────────────────────────────────────────────────
 const DISPLAY = {
@@ -157,19 +159,7 @@ function formatAddress(a: ParsedAddress): string {
   return parts.join(', ');
 }
 
-const TAB_FILTERS = [
-  { key: 'all',         label: 'Tümü' },
-  { key: 'muayenehane', label: 'Muayenehane' },
-  { key: 'klinik',      label: 'Klinik' },
-  { key: 'poliklinik',  label: 'Poliklinik' },
-  { key: 'hastane',     label: 'Hastane' },
-  { key: 'laboratuvar', label: 'Laboratuvar' },
-  { key: 'doctors',     label: 'Hekimler' },
-  { key: 'managers',    label: 'Yöneticiler' },
-  { key: 'connections', label: 'Bağlantılar' },
-];
-// Yalnız lab yöneticisi ve Yönetim paneli kullanıcısı görür (spec 2026-11-04 §7).
-const REVIEWS_TAB = { key: 'reviews', label: 'Değerlendirmeler' };
+// Sekmeler: ../clinicsNav.ts (sol menü / mobil sekmeler, kullanıcı onayı 2026-11-04).
 
 // ═════════════════════════════════════════════════════════════════════
 // MAIN SCREEN
@@ -238,15 +228,17 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
   const [editingDoctor,   setEditingDoctor]   = useState<Doctor | null>(null);
   const [defaultClinicId, setDefaultClinicId] = useState('');
 
-  const [activeTab,       setActiveTab]       = useState<'all' | ClinicCategory | 'doctors' | 'managers' | 'connections' | 'reviews'>('all');
-  // ?tab=reviews(&focus=<iş>) → Değerlendirmeler sekmesi (düşük puan bildirimi). Yetkisizse varsayılan kalır.
-  const reviewParamHandled = useRef<string | null>(null);
+  const [activeTab,       setActiveTab]       = useState<ClinicsTabKey>('all');
+  // ?tab=<bölüm>(&focus=<iş>) → o bölüm açılır (ör. düşük puan bildirimi → reviews).
+  // Geçersiz ya da yetkisiz değer yok sayılır, varsayılan kalır.
+  const tabParamHandled = useRef<string | null>(null);
   useEffect(() => {
-    if (tabParam !== 'reviews' || !canSeeReviews) return;
-    const sig = `${tabParam}:${focusParam ?? ''}`;
-    if (reviewParamHandled.current === sig) return;
-    reviewParamHandled.current = sig;
-    setActiveTab('reviews');
+    const k = resolveClinicsTab(tabParam, { canSeeReviews });
+    if (!k) return;
+    const sig = `${k}:${focusParam ?? ''}`;
+    if (tabParamHandled.current === sig) return;
+    tabParamHandled.current = sig;
+    setActiveTab(k);
   }, [tabParam, focusParam, canSeeReviews]);
   useEffect(() => {
     if (activeTab === 'reviews' && !canSeeReviews) setActiveTab('all');
@@ -553,8 +545,36 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
   const tabCounts = useMemo(() => {
     const counts: Record<string, number> = { all: clinics.length, doctors: doctors.length };
     for (const cat of CLINIC_CATEGORIES) counts[cat.value] = categoryCounts[cat.value] ?? 0;
+    counts.managers = managers.length;
     return counts;
-  }, [clinics, doctors, categoryCounts]);
+  }, [clinics, doctors, managers, categoryCounts]);
+
+  // Takip: bekleyen bağlantı istekleri + bu ay aranmamış düşük puanlar (menüde "2 bekliyor").
+  // Açılışta ve bu iki bölümden çıkınca yenilenir (orada yapılan işlem sayıyı değiştirir).
+  const [attention, setAttention] = useState<{ connections: number | null; reviews: number | null }>({ connections: null, reviews: null });
+  const loadAttention = useCallback(async () => {
+    const [connections, reviews] = await Promise.all([
+      labPendingRequests().then((r) => r.length).catch(() => null),
+      canSeeReviews
+        ? getReviewDashboard().then(({ data, error }) => (error || !data ? null : (data.lows ?? []).filter((r) => r.is_open).length)).catch(() => null)
+        : Promise.resolve(null),
+    ]);
+    setAttention({ connections, reviews });
+  }, [canSeeReviews]);
+  const prevTabRef = useRef<ClinicsTabKey>(activeTab);
+  useEffect(() => {
+    const left = prevTabRef.current;
+    prevTabRef.current = activeTab;
+    if (left === activeTab || left === 'connections' || left === 'reviews') loadAttention();
+  }, [activeTab, loadAttention]);
+
+  const navActions: ClinicsNavActions = {
+    onAddClinic: () => { setEditingClinic(null); setShowClinicModal(true); },
+    onAddDoctor: () => openAddDoctor(''),
+    onPrintForm: () => { setPrintPickSearch(''); setPrintPickOpen(true); },
+    onSendInvite: sendInvite,
+  };
+  const navProps = { activeKey: activeTab, onSelect: setActiveTab, canSeeReviews, counts: tabCounts, attention, actions: navActions };
 
 
   // ═══════════════════════════════════════════════════════════════════
@@ -565,35 +585,19 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
 
       <MobilePageTitle title="Sağlık Kurumları" subtitle="Klinikler ve hekimler" />
 
-      {/* ── Filter Bar — 2 satır (tabs üstte, aksiyonlar altta) ─── */}
-      <View className="px-4 pb-2" style={{ paddingTop: isDesktop ? 12 : 4, gap: 10 }}>
-        {/* Row 1: Tabs — horizontal scroll; ScrollView dikey büyümesin */}
-        {/* Onaylar / Kullanıcılar / Kayıtlar ile AYNI bileşen (SlideTabBar).
-            Buradaki elle yazılmış gri raylı şerit görsel olarak yakındı ama
-            kayan cursor'ı yoktu ve sayaç tipografisi ayrı yoldan geliyordu.
-            8 sekme dar ekrana sığmadığı için yatay kaydırma korunuyor. */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={{ flexGrow: 0, flexShrink: 0 }}
-          contentContainerStyle={{ alignItems: 'center' }}
-        >
-          <SlideTabBar
-            items={(canSeeReviews ? [...TAB_FILTERS, REVIEWS_TAB] : TAB_FILTERS).map(f => ({ key: f.key, label: autoT(f.label), count: tabCounts[f.key] }))}
-            activeKey={activeTab}
-            onChange={(k) => setActiveTab(k as any)}
-            accentColor={panel.accent}
-            style={rtl ? { marginRight: -4 } : { marginLeft: -4 }}
-          />
-        </ScrollView>
+      {/* ── Menü — mobilde 3 sekme + tüm menü; masaüstünde sol menü (Finans gibi) ─── */}
+      {!isDesktop && <ClinicsMobileNav {...navProps} />}
 
-      </View>
+      <View style={{ flex: 1, flexDirection: isDesktop ? 'row' : 'column', minHeight: 0 }}>
+      {isDesktop && <ClinicsSideNav {...navProps} />}
+      <View style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
+      {isDesktop && <ClinicsSectionHeader activeKey={activeTab} />}
 
       {/* ── Content ──────────────────────────────────────────────── */}
       <ScrollView
         ref={contentScrollRef}
         className="flex-1"
-        contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 4, paddingBottom: isDesktop ? 24 : 120 }}
+        contentContainerStyle={{ paddingHorizontal: isDesktop ? PAGE_PADDING : 12, paddingTop: 4, paddingBottom: isDesktop ? 24 : 120 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} tintColor="#0A0A0A" />}
         showsVerticalScrollIndicator={false}
       >
@@ -615,50 +619,12 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
             {/* ── Main Column ── */}
             <View style={{ flex: isDesktop ? 1 : undefined, width: isDesktop ? undefined : '100%', minWidth: 0, gap: 12 }}>
 
-              {/* BEYAZ HERO — kurum özeti. Eski tek başına duran KPI kartları hero'nun
-                  İÇİNE alındı (kullanıcı isteği): kategori kutucukları hâlâ tıklanınca
-                  o sekmeye geçer, seçili olan kategori renginde çerçevelenir. */}
+              {/* BEYAZ HERO — kurum özeti. Tür kutucukları sol menüye taşındı (2026-11-04). */}
               <WhiteHero
                 kicker={autoT('Sağlık Kurumları')}
                 title={<>{clinics.length} <Text style={{ color: HI.accentInk }}>{autoT('kurum')}</Text></>}
                 description={`${clinics.filter(c => c.is_active).length} ${autoT('aktif kurum')} · ${doctors.length} ${autoT('hekim')}`}
-              >
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: isDesktop ? 10 : 8, marginTop: 20 }}>
-                  {CLINIC_CATEGORIES.map(cat => {
-                    const active = activeTab === cat.value;
-                    return (
-                      <Pressable
-                        key={cat.value}
-                        onPress={() => setActiveTab(cat.value)}
-                        style={{
-                          flex: isDesktop ? 1 : undefined,
-                          width: isDesktop ? undefined : '48%',
-                          minWidth: isDesktop ? 150 : 0,
-                          padding: isDesktop ? 14 : 10,
-                          borderRadius: 16,
-                          backgroundColor: HI.tileBg,
-                          borderWidth: active ? 1.5 : 1,
-                          borderColor: active ? cat.color : HI.tileBorder,
-                          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                        }}
-                      >
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: isDesktop ? 8 : 4 }}>
-                          <View style={{ width: isDesktop ? 24 : 20, height: isDesktop ? 24 : 20, borderRadius: R.sm, backgroundColor: cat.bg, alignItems: 'center', justifyContent: 'center' }}>
-                            <AppIcon name={cat.icon as any} size={isDesktop ? 12 : 11} color={cat.color} />
-                          </View>
-                          <Text style={{ fontSize: 10.5, fontWeight: '500', letterSpacing: 0.6, textTransform: 'uppercase', color: HI.inkSoft }} numberOfLines={1}>{autoT(cat.label)}</Text>
-                        </View>
-                        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-                          <Text style={{ ...DISPLAY, fontSize: isDesktop ? 30 : 22, letterSpacing: -0.6, color: HI.ink }}>{categoryCounts[cat.value] ?? 0}</Text>
-                          <Text style={{ fontSize: 10, color: HI.inkFaint }}>
-                            / {clinics.filter(c => (c.category ?? 'klinik') === cat.value && c.is_active).length} {autoT('aktif')}
-                          </Text>
-                        </View>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </WhiteHero>
+              />
 
               {/* Arama + filtre hero'nun ALTINDA (üst şeritten taşındı). */}
               <View className="flex-row items-center gap-2">
@@ -727,8 +693,8 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
                   </GlassTooltip>
                 )}
 
-                {/* Kurum ekle / Bağlantı gönder masaüstünde sağ kolondaki Hızlı İşlemler ve
-                    Belgeler kartlarında. Mobilde o kolon yok → burada kalır. */}
+                {/* Kurum ekle / Bağlantı gönder masaüstünde sol menüde (Yeni kurum · İşlemler).
+                    Mobilde menü kapalıyken de elde olsun diye burada kalır. */}
                 {!isDesktop && (
                 <>
                 {/* Bağlantı gönder — tek kullanımlık davet kodu üret, kliniğe ilet.
@@ -874,27 +840,11 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
               )}
             </View>
 
-            {/* ── Right Sidebar — desktop only ── */}
-            {isDesktop && (
-              <View style={{ width: 300, flexShrink: 0, gap: 12, position: 'sticky' as any, top: 12 }}>
-                {/* Quick Actions — animated accent card */}
-                <AnimatedQuickActions
-                  onAddClinic={() => { setEditingClinic(null); setShowClinicModal(true); }}
-                  onAddDoctor={() => openAddDoctor('')}
-                  onShowDoctors={() => setActiveTab('doctors')}
-                />
-
-                {/* Belgeler — iş emri formu vb. CTA'lar. Eski "Kategoriler" kartı hero'daki
-                    kategori kutucuklarını tekrarlıyordu, kaldırıldı. */}
-                <DocumentActionsCard
-                  onPrintForm={() => { setPrintPickSearch(''); setPrintPickOpen(true); }}
-                  onSendInvite={sendInvite}
-                />
-              </View>
-            )}
           </View>
         )}
       </ScrollView>
+      </View>
+      </View>
 
       {/* ── Modals ─────────────────────────────────────────────── */}
       <ClinicPickModal
@@ -986,51 +936,6 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
 // SUB COMPONENTS
 // ═══════════════════════════════════════════════════════════════════════
 
-// ─── Belgeler kartı (sağ kolon) ──────────────────────────────────────
-function DocumentActionsCard({ onPrintForm, onSendInvite }: { onPrintForm: () => void; onSendInvite: () => void }) {
-  const T = useMobileTokens();
-  const isDark = useThemeModeStore((s) => s.resolvedDark);
-  const accent = usePanelTheme().primary;
-  const rows = [
-    { icon: ClipboardList, label: 'İş emri formu yazdır', sub: 'Kurum seç, boş formu bas', tip: 'Seçtiğin kurum için boş iş emri formu yazdırır', onPress: onPrintForm },
-    { icon: Link2, label: 'Bağlantı davet kodu', sub: 'Kliniği laboratuvarına bağla', tip: 'Tek kullanımlık davet kodu üret; klinik kodu girince laboratuvarına bağlanır', onPress: onSendInvite },
-  ];
-  return (
-    <View style={{ ...CARD, ...(isDark ? { backgroundColor: T.card, borderColor: T.hairline } : {}), padding: 20 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <FileText size={13} color={isDark ? T.ink3 : DS.ink[400]} strokeWidth={1.8} />
-        <Text style={{ fontSize: 10, fontWeight: '500', letterSpacing: 1.2, textTransform: 'uppercase', color: isDark ? T.ink3 : DS.ink[500] }}>Belgeler</Text>
-      </View>
-      <View style={{ gap: 6 }}>
-        {rows.map(r => {
-          const Icon = r.icon;
-          return (
-            <GlassTooltip key={r.label} style={{ alignSelf: 'stretch' }} title={autoT(r.label)} text={autoT(r.tip)}>
-              <Pressable
-                onPress={r.onPress}
-                style={({ hovered }: any) => ({
-                  flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, borderRadius: R.md,
-                  backgroundColor: hovered ? (isDark ? 'rgba(255,255,255,0.05)' : DS.ink[50]) : 'transparent',
-                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                })}
-              >
-                <View style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: accent + (isDark ? '2E' : '14') }}>
-                  <Icon size={16} color={isDark ? T.ink : accent} strokeWidth={1.8} />
-                </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: isDark ? T.ink : DS.ink[900] }} numberOfLines={1}>{r.label}</Text>
-                  <Text style={{ fontSize: 11.5, color: isDark ? T.ink3 : DS.ink[500], marginTop: 1 }} numberOfLines={1}>{r.sub}</Text>
-                </View>
-                {isRTL() ? <ChevronLeft size={15} color={isDark ? T.ink3 : DS.ink[400]} strokeWidth={1.8} /> : <ChevronRight size={15} color={isDark ? T.ink3 : DS.ink[400]} strokeWidth={1.8} />}
-              </Pressable>
-            </GlassTooltip>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
 // ─── Kurum seçici (iş emri formu vb. için) ───────────────────────────
 function ClinicPickModal({ visible, title, hint, clinics, search, onSearch, onClose, onPick }: {
   visible: boolean; title: string; hint: string; clinics: Clinic[];
@@ -1088,88 +993,6 @@ function ClinicPickModal({ visible, title, hint, clinics, search, onSearch, onCl
   );
 }
 
-
-// ─── Animated Quick Actions Card ─────────────────────────────────────
-function AnimatedQuickActions({ onAddClinic, onAddDoctor, onShowDoctors }: {
-  onAddClinic: () => void; onAddDoctor: () => void; onShowDoctors: () => void;
-}) {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  // "Neon navy" (kullanıcı kararı, 22.09.2026 — önceki düz klinik yeşilinin yerine):
-  // açık temada DÜZ panel rengi (yönetimde lacivert), koyu temada neon yüzey.
-  // Metin/kapsül renkleri de hook'tan gelir, sabit beyaz yazılmaz.
-  const nn = useNeonNavy(usePanelTheme().primary);
-
-  const handleHoverIn = () => {
-    Animated.spring(scaleAnim, { toValue: 1.02, friction: 8, tension: 200, useNativeDriver: true }).start();
-  };
-  const handleHoverOut = () => {
-    Animated.spring(scaleAnim, { toValue: 1, friction: 8, tension: 200, useNativeDriver: true }).start();
-  };
-
-  return (
-    <Animated.View
-      // @ts-ignore web events
-      onMouseEnter={handleHoverIn}
-      onMouseLeave={handleHoverOut}
-      style={{
-        borderRadius: R.xl,
-        ...nn.surface,
-        padding: 20,
-        overflow: 'hidden',
-        transform: [{ scale: scaleAnim }],
-      }}
-    >
-      {!nn.flat && <NeonPulse radius={R.xl} color={nn.glow} />}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-        <Building2 size={14} color={nn.inkFaint} strokeWidth={1.8} />
-        <Text style={{ fontSize: 10, fontWeight: '500', letterSpacing: 1.2, textTransform: 'uppercase', color: nn.inkFaint }}>Hızlı İşlemler</Text>
-      </View>
-      <View style={{ gap: 4 }}>
-        <GlassTooltip style={{ alignSelf: 'stretch' }} title={autoT('Yeni kurum ekle')} text={autoT('Kurum ekleme formunu açar')}>
-          <Pressable onPress={onAddClinic}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 8, borderRadius: R.md, backgroundColor: nn.ghostBg }}>
-            <View style={{ width: 28, height: 28, borderRadius: R.sm, backgroundColor: nn.ghostBorder, alignItems: 'center', justifyContent: 'center' }}>
-              <Plus size={14} color={nn.ink} strokeWidth={1.8} />
-            </View>
-            <Text style={{ fontSize: 13, fontWeight: '500', color: nn.ink }}>Yeni Kurum Ekle</Text>
-          </Pressable>
-        </GlassTooltip>
-        <GlassTooltip style={{ alignSelf: 'stretch' }} title={autoT('Hekim ekle')} text={autoT('Bir kliniğe yeni hekim ekler')}>
-          <Pressable onPress={onAddDoctor}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 8, borderRadius: R.md, backgroundColor: nn.ghostBg }}>
-            <View style={{ width: 28, height: 28, borderRadius: R.sm, backgroundColor: nn.ghostBorder, alignItems: 'center', justifyContent: 'center' }}>
-              <UserPlus size={14} color={nn.ink} strokeWidth={1.8} />
-            </View>
-            <Text style={{ fontSize: 13, fontWeight: '500', color: nn.ink }}>Hekim Ekle</Text>
-          </Pressable>
-        </GlassTooltip>
-        <GlassTooltip style={{ alignSelf: 'stretch' }} title={autoT('Tüm hekimleri gör')} text={autoT('Hekimler listesine geçer')}>
-          <Pressable onPress={onShowDoctors}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 8, borderRadius: R.md, backgroundColor: nn.ghostBg }}>
-            <View style={{ width: 28, height: 28, borderRadius: R.sm, backgroundColor: nn.ghostBorder, alignItems: 'center', justifyContent: 'center' }}>
-              <List size={14} color={nn.ink} strokeWidth={1.8} />
-            </View>
-            <Text style={{ fontSize: 13, fontWeight: '500', color: nn.ink }}>Tüm Hekimleri Gör</Text>
-          </Pressable>
-        </GlassTooltip>
-      </View>
-    </Animated.View>
-  );
-}
-
-function QuickAction({ icon, iconBg, label, onPress }: { icon: React.ReactNode; iconBg: string; label: string; onPress: () => void }) {
-  const T = useMobileTokens();
-  const isDark = useThemeModeStore((s) => s.resolvedDark);
-  return (
-    <Pressable onPress={onPress}
-      style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 8, borderRadius: R.md }}>
-      <View style={{ width: 28, height: 28, borderRadius: R.sm, backgroundColor: iconBg, alignItems: 'center', justifyContent: 'center' }}>
-        {icon}
-      </View>
-      <Text style={{ fontSize: 13, fontWeight: '500', color: isDark ? T.ink : DS.ink[900] }}>{label}</Text>
-    </Pressable>
-  );
-}
 
 function EmptyState({ hasSearch, search, accentColor, onAdd }: { hasSearch: boolean; search: string; accentColor: string; onAdd: () => void }) {
   const T = useMobileTokens();
