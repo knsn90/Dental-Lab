@@ -9931,5 +9931,7 @@
   "Bir kuruma yeni hekim kaydet": "ثبت پزشک جدید برای یک مؤسسه",
   "Kurum adı ve hekimleri önceden yazılı boş form": "فرم خالی که نام مؤسسه و پزشکانش از قبل پر شده است",
   "Tek kullanımlık kod üret; klinik girince laboratuvarına bağlanır": "یک کد یک‌بارمصرف بسازید؛ کلینیک با واردکردن آن به لابراتوار شما متصل می‌شود",
-  "Kurum türleri, kişiler, takip ve işlemler": "انواع مؤسسه، افراد، پیگیری و اقدامات"
+  "Kurum türleri, kişiler, takip ve işlemler": "انواع مؤسسه، افراد، پیگیری و اقدامات",
+  "İndirim oranı kaydedilemedi.": "نرخ تخفیف ذخیره نشد.",
+  "İndirim kaldırılamadı.": "تخفیف حذف نشد."
 }

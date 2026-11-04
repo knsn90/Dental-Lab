@@ -9931,5 +9931,7 @@
   "Bir kuruma yeni hekim kaydet": "Neuen Zahnarzt bei einer Einrichtung erfassen",
   "Kurum adı ve hekimleri önceden yazılı boş form": "Leeres Formular mit vorausgefülltem Einrichtungsnamen und Zahnärzten",
   "Tek kullanımlık kod üret; klinik girince laboratuvarına bağlanır": "Einmalcode erzeugen; nach der Eingabe ist die Klinik mit Ihrem Labor verbunden",
-  "Kurum türleri, kişiler, takip ve işlemler": "Einrichtungstypen, Personen, Nachverfolgung und Aktionen"
+  "Kurum türleri, kişiler, takip ve işlemler": "Einrichtungstypen, Personen, Nachverfolgung und Aktionen",
+  "İndirim oranı kaydedilemedi.": "Der Rabattsatz konnte nicht gespeichert werden.",
+  "İndirim kaldırılamadı.": "Der Rabatt konnte nicht entfernt werden."
 }

@@ -18,6 +18,7 @@ import { MobilePageTitle } from '../../../core/ui/mobile/MobilePageTitle';
 import { AppSwitch } from '../../../core/ui/AppSwitch';
 import { supabase } from '../../../core/api/supabase';
 import { fetchClinics, createClinic, updateClinic, createDoctor, updateDoctor, fetchAllDoctors } from '../api';
+import { clinicDiscountUpsert, parseDiscountPercent } from '../clinicDiscount';
 import { ILLER, ILCELER } from '../data/turkey';
 import { AppIcon } from '../../../core/ui/AppIcon';
 import { DS } from '../../../core/theme/dsTokens';
@@ -72,6 +73,8 @@ const CLINIC_CATEGORIES: { value: ClinicCategory; label: string; icon: string; c
 // ─── Types ───────────────────────────────────────────────────────────
 type Clinic = {
   id: string; name: string;
+  /** fetchClinics `*` seçer; clinic_discounts benzersiz anahtarı (lab_id, clinic_id) için gerekir. */
+  lab_id?: string | null;
   category?: ClinicCategory | null;
   phone?: string | null; email?: string | null;
   /** Kurumun ortak WhatsApp hattı — bildirimler önce buraya (kişisel whatsapp_phone korunur). */
@@ -2691,7 +2694,7 @@ function ClinicDropdown({ value, clinics, accentColor, onChange }: {
 
 // ─── Discount Modal ──────────────────────────────────────────────────
 function DiscountModal({ clinic, currentDiscount, onClose, onSaved }: {
-  clinic: { id: string; name: string } | null; currentDiscount: number | null;
+  clinic: { id: string; name: string; lab_id?: string | null } | null; currentDiscount: number | null;
   onClose: () => void; onSaved: (clinicId: string, percent: number) => void;
 }) {
   const T = useMobileTokens();
@@ -2699,25 +2702,42 @@ function DiscountModal({ clinic, currentDiscount, onClose, onSaved }: {
   const rtl = isRTL();
   const [value, setValue] = React.useState('');
   const [saving, setSaving] = React.useState(false);
+  // Hata Kaydet'in hemen üstünde görünür (toast kaçırılıyordu; kural: eylem hatası butonun yanında).
+  const [error, setError] = React.useState<string | null>(null);
 
-  React.useEffect(() => { if (clinic) setValue(currentDiscount != null ? String(currentDiscount) : ''); }, [clinic, currentDiscount]);
+  React.useEffect(() => {
+    if (clinic) { setValue(currentDiscount != null ? String(currentDiscount) : ''); setError(null); }
+  }, [clinic, currentDiscount]);
 
   const handleSave = async () => {
-    const pct = Number(value.replace(',', '.'));
-    if (!Number.isFinite(pct) || pct < 0 || pct > 100) { toast.error(autoT('İndirim oranı 0 ile 100 arasında olmalıdır.')); return; }
+    const pct = parseDiscountPercent(value);
+    if (pct == null) { setError(autoT('İndirim oranı 0 ile 100 arasında olmalıdır.')); return; }
     if (!clinic) return;
     setSaving(true);
-    const { error } = await supabase.from('clinic_discounts').upsert({ clinic_id: clinic.id, discount_rate: pct }, { onConflict: 'clinic_id' });
+    setError(null);
+    // Benzersiz anahtar (lab_id, clinic_id) — eskiden onConflict:'clinic_id' her kayıtta 42P10 veriyordu.
+    const { row, onConflict } = clinicDiscountUpsert(clinic, pct);
+    const { error: err } = await supabase.from('clinic_discounts').upsert(row, { onConflict });
     setSaving(false);
-    if (error) { toast.error(error.message); return; }
+    if (err) {
+      console.warn('[clinic_discounts] upsert', err.code, err.message);
+      setError(autoT('İndirim oranı kaydedilemedi.'));
+      return;
+    }
     onSaved(clinic.id, pct);
   };
 
   const handleRemove = async () => {
     if (!clinic) return;
     setSaving(true);
-    await supabase.from('clinic_discounts').delete().eq('clinic_id', clinic.id);
+    setError(null);
+    const { error: err } = await supabase.from('clinic_discounts').delete().eq('clinic_id', clinic.id);
     setSaving(false);
+    if (err) {
+      console.warn('[clinic_discounts] delete', err.code, err.message);
+      setError(autoT('İndirim kaldırılamadı.'));
+      return;
+    }
     onSaved(clinic.id, 0);
   };
 
@@ -2741,7 +2761,7 @@ function DiscountModal({ clinic, currentDiscount, onClose, onSaved }: {
             <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: isDark ? T.ink3 : DS.ink[500], marginBottom: 8 }}>İndirim Oranı (%)</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: DS.ink[200], borderRadius: R.md, overflow: 'hidden' }}>
               <TextInput style={{ flex: 1, fontSize: 22, fontWeight: '800', color: isDark ? T.ink : DS.ink[900], paddingHorizontal: 16, paddingVertical: 12, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) } as any}
-                value={value} onChangeText={setValue} keyboardType="decimal-pad" placeholder="Örn: 10" placeholderTextColor={DS.ink[400]} maxLength={5} />
+                value={value} onChangeText={(v) => { setValue(v); if (error) setError(null); }} keyboardType="decimal-pad" placeholder="Örn: 10" placeholderTextColor={DS.ink[400]} maxLength={5} />
               <View style={{ paddingHorizontal: 16, ...(rtl ? { borderRightWidth: 1, borderRightColor: isDark ? T.hairline : DS.ink[200] } : { borderLeftWidth: 1, borderLeftColor: isDark ? T.hairline : DS.ink[200] }), backgroundColor: isDark ? T.cardSoft : DS.ink[50] }}>
                 <Text style={{ fontSize: 20, fontWeight: '800', color: '#7C3AED' }}>%</Text>
               </View>
@@ -2754,6 +2774,13 @@ function DiscountModal({ clinic, currentDiscount, onClose, onSaved }: {
               </Pressable>
             )}
           </View>
+          {error && (
+            <Text accessibilityRole="alert"
+                  style={{ paddingHorizontal: 20, paddingTop: 10, fontSize: 12, fontWeight: '600', lineHeight: 17,
+                           color: isDark ? '#F09595' : '#B42318', textAlign: rtl ? 'right' : undefined }}>
+              {error}
+            </Text>
+          )}
           <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 20, paddingVertical: 14, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
             <Pressable style={{ flex: 1, paddingVertical: 10, borderRadius: R.pill, borderWidth: 1, borderColor: DS.ink[200], alignItems: 'center' }} onPress={onClose} disabled={saving}>
               <Text style={{ fontSize: 14, fontWeight: '600', color: isDark ? T.ink3 : DS.ink[500] }}>İptal</Text>

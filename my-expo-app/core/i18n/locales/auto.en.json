@@ -9931,5 +9931,7 @@
   "Bir kuruma yeni hekim kaydet": "Register a new doctor with an institution",
   "Kurum adı ve hekimleri önceden yazılı boş form": "Blank form with the institution name and doctors pre-filled",
   "Tek kullanımlık kod üret; klinik girince laboratuvarına bağlanır": "Generate a single-use code; the clinic connects to your lab when it enters it",
-  "Kurum türleri, kişiler, takip ve işlemler": "Institution types, people, follow-up and actions"
+  "Kurum türleri, kişiler, takip ve işlemler": "Institution types, people, follow-up and actions",
+  "İndirim oranı kaydedilemedi.": "The discount rate could not be saved.",
+  "İndirim kaldırılamadı.": "The discount could not be removed."
 }
