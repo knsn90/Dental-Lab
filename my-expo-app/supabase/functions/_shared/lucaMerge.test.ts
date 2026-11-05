@@ -107,3 +107,56 @@ test('birleştirme: indirimsiz kümede çıktı değişmez (discount_amount 0/yo
   const base = mergeInvoices(rows, '2026-10-21');
   assert.deepEqual(mergeInvoices(rows.map((r) => ({ ...r, discount_amount: 0 })), '2026-10-21'), base);
 });
+
+// ── düzeltme turu 1: KDV dengeli birleştirme ─────────────────────────────
+import { invoiceTotalsWithDiscount } from './invoiceDiscount.ts';
+import { computeTotals } from './luca.ts';
+
+const mkSeller: SellerConfig = { vkn: '6312098145', tax_office: 'Kozyatağı', city: 'İstanbul', town: 'Ataşehir', street: 'Vatan Cad. 21' };
+const mkClinic = { name: 'Luna', vkn: '6091290810', tax_office: 'Kozyatağı', address: 'Metropol, Ataşehir / İstanbul', email: null, phone: null, efatura_alias: null };
+/** İndirimli kaynak fatura: DB gibi toplam = ROUND(ara toplam) + ROUND(KDV). */
+const discounted = (id: string, nets: number[], pct: number): MergeRow => {
+  const sum = nets.reduce((a, b) => a + b, 0);
+  const t = invoiceTotalsWithDiscount(sum, 20, 'percent', pct);
+  return row({ id, invoice_number: `FTR-2026-${id.padStart(5, '0')}`, tax_rate: 20, total: t.total, discount_amount: t.discount,
+    items: nets.map((n, i) => ({ description: `K${i}`, quantity: 1, unit_price: n, total: n, net_total: n, sort_order: i })) });
+};
+const sendMerged = (rows: MergeRow[]) => {
+  const m = mergeInvoices(rows, '2026-10-21');
+  return { m, r: buildLucaInput({ invoice: m, clinic: mkClinic, doctor: null, seller: mkSeller, kind: 'e_fatura', companyTaxCode: mkSeller.vkn, inboxTag: 'urn:mail:defaultpk@x', crossRate: 55.6, totalTolerance: rows.length / 100 }) };
+};
+
+test('birleştirme: 8 indirimli fatura → birleşik ödenecek tutar Σ toplam ile KURUŞU KURUŞUNA', () => {
+  const rows = [
+    discounted('1', [850, 850, 175], 7.5), discounted('2', [1250.5, 99.9, 33.33, 650], 12.5), discounted('3', [300, 2400], 10),
+    discounted('4', [175, 175, 175, 12.34], 5), discounted('5', [1000, 4500, 650, 850, 7.77], 7.5), discounted('6', [850, 850], 7.5),
+    discounted('7', [33.33, 33.33, 33.33], 10), discounted('8', [1250, 1250, 1250, 1250, 1250], 12.5),
+  ];
+  const { m, r } = sendMerged(rows);
+  if (!r.ok) throw new Error(r.error);
+  const sumTotals = Math.round(rows.reduce((a, x) => a + Number(x.total), 0) * 100) / 100;
+  assert.equal(m.total, sumTotals);
+  assert.equal(computeTotals(r.input.lines).payable, sumTotals);
+});
+
+test('birleştirme: indirimli + indirimsiz karışık — indirimliler tam, indirimsizlerde eski 1 kuruş toleransı', () => {
+  const plain = row({ id: 'p', invoice_number: 'FTR-2026-00099', tax_rate: 20, total: 24, items: [{ description: 'X', quantity: 1, unit_price: 20, total: 20, net_total: 20 }] });
+  const { m, r } = sendMerged([discounted('1', [850, 850, 175], 7.5), plain, discounted('2', [300, 2400], 10)]);
+  if (!r.ok) throw new Error(r.error);
+  assert.equal(computeTotals(r.input.lines).payable, m.total);
+  assert.equal(m.discount_tolerance, 0.015);
+});
+
+test('birleştirme: dengelenemeyen kaynak fatura birleşik faturayı reddettirir', () => {
+  const bad = row({ id: 'z', tax_rate: 1, total: 651.1, discount_amount: 2304.95, items: [
+    { description: 'A', quantity: 1, unit_price: 2550, total: 2550, net_total: 2550 }, { description: 'B', quantity: 1, unit_price: 399.6, total: 399.6, net_total: 399.6 }] });
+  const { r } = sendMerged([bad, row({ id: 'a' })]);
+  assert.equal(r.ok, false);
+  assert.match((r as { error: string }).error, /dağıtılamadı/);
+});
+
+test('indirimsiz birleştirme çıktısında yeni anahtar yok (discount_tolerance/discount_error)', () => {
+  const m = mergeInvoices([row({ id: 'a' })], '2026-10-21');
+  assert.equal('discount_tolerance' in m, false);
+  assert.equal('discount_error' in m, false);
+});

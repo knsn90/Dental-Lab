@@ -6,7 +6,7 @@
 // Resmi vergi belgesi olduğu için emin olunamayan her durumda GÖNDERMEZ ve
 // kullanıcıya ne düzeltmesi gerektiğini söyler (mesajlar Türkçe; istemci autoT ile çevirir).
 
-import { distributeDiscount } from './invoiceDiscount.ts';
+import { balanceDiscountShares } from './lucaDiscountBalance.ts';
 import { computeTotals, type LucaInvoiceInput, type LucaKind, type LucaLine } from './luca.ts';
 
 export interface DbItem {
@@ -33,6 +33,13 @@ export interface DbInvoice {
   notes: string | null;
   /** Fatura altı indirim (fatura para biriminde); kalemlere net tutarları oranında dağıtılır. */
   discount_amount?: number | string | null;
+  /** Birleştirilmiş faturada: kaynaklardan en az birinin indirimi mergeInvoices'te dengelenerek kalemlere
+   *  yazıldı → ödenecek tutar kontrolü sıkı yapılır: izin verilen sapma bu değerdir (0.005 + indirimsiz
+   *  kaynak sayısı × 0.01; indirimli kaynaklar kuruşu kuruşuna tutar, indirimsizlerin satır-yuvarlama
+   *  sapması eskisi gibi fatura başına 1 kuruş). */
+  discount_tolerance?: number;
+  /** mergeInvoices'te payların KDV yuvarlamasıyla dengelenememesi → buildLucaInput bu hatayla reddeder. */
+  discount_error?: string;
   items: DbItem[];
 }
 
@@ -71,6 +78,12 @@ export type EFaturaStatus = 'sent' | 'accepted' | 'rejected' | 'cancelled' | 'er
 
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const num = (v: unknown) => Number(v ?? 0) || 0;
+/** Kalemin net (iskonto sonrası) tutarı; net_total yoksa brüt (adet × fiyat). Tek kural: buildLucaInput + mergeInvoices. */
+export const itemNet = (it: DbItem): number => {
+  const gross = num(it.total) || r2(num(it.quantity) * num(it.unit_price));
+  return it.net_total === null || it.net_total === undefined ? gross : num(it.net_total);
+};
+export const DISCOUNT_BALANCE_ERROR = 'Fatura indirimi KDV yuvarlamasıyla kalemlere dağıtılamadı; indirimi bir kuruş değiştirip tekrar deneyin.';
 const blank = (s?: string | null) => !s || !s.trim();
 
 /** Adres JSON'unda ulke ≠ TR ise o ülke kodu, değilse (TR / düz metin / eski kayıt) null. */
@@ -222,22 +235,25 @@ export function buildLucaInput(args: {
   const foreign = currency !== 'TRY';
   if (foreign && !(args.crossRate && args.crossRate > 0)) return fail(`${currency} fatura için TCMB kuru bulunamadı`);
 
-  // Fatura altı indirim: kalem net tutarları oranında dağıtılır; pay kalemin iskontosuna eklenir
-  // (KDV tabanı = net − pay). Yoksa/0 ise bugünkü hesap aynen.
-  const netOf = (it: DbItem) => {
-    const gross = num(it.total) || r2(num(it.quantity) * num(it.unit_price));
-    return it.net_total === null || it.net_total === undefined ? gross : num(it.net_total);
-  };
+  // Fatura altı indirim: kalem net tutarları oranında dağıtılır ve DB'nin tek-seferlik KDV yuvarlamasıyla
+  // eşleşecek biçimde dengelenir; pay kalemin iskontosuna eklenir (KDV tabanı = net − pay).
+  // Yoksa/0 ise bugünkü hesap aynen.
+  if (invoice.discount_error) return fail(invoice.discount_error);
   const invDiscount = num(invoice.discount_amount);
-  const shares = invDiscount > 0
-    ? distributeDiscount(invoice.items.map((it, i) => ({ key: String(i), net: netOf(it) })), invDiscount)
-    : null;
+  let shares: number[] | null = null;
+  if (invDiscount > 0) {
+    if (invoice.items.some((it) => vatOf(it) !== vatOf(invoice.items[0]))) return fail(DISCOUNT_BALANCE_ERROR);
+    const b = balanceDiscountShares(invoice.items.map(itemNet), invDiscount, vatOf(invoice.items[0]));
+    if (!b.ok) return fail(DISCOUNT_BALANCE_ERROR);
+    shares = b.shares;
+  }
+  const strictTol = shares !== null ? 0.005 : (invoice.discount_tolerance ?? null);
 
   const lines: LucaLine[] = invoice.items.map((it, i) => {
     const quantity = num(it.quantity);
     const unitPrice = num(it.unit_price);
     const gross = num(it.total) || r2(quantity * unitPrice);
-    const net = netOf(it) - (shares?.[String(i)] ?? 0);
+    const net = shares ? r2(itemNet(it) - shares[i]) : itemNet(it);
     const discount = r2(gross - net);
     const name = (it.description ?? '').trim() || 'Hizmet';
     const line: LucaLine = { code: productCode(name), name, quantity, unitPrice, vatRate: vatOf(it), discountAmount: discount > 0 ? discount : 0 };
@@ -245,7 +261,11 @@ export function buildLucaInput(args: {
   });
 
   const t = computeTotals(lines);
-  if (Math.abs(r2(t.payable - num(invoice.total))) > (args.totalTolerance ?? 0.01) + 1e-9) {
+  // İndirimli faturada KDV dengelendiği için tutar kuruşu kuruşuna tutmalı; indirimsizde eski tolerans.
+  const payableOff = strictTol !== null
+    ? Math.abs(t.payable - num(invoice.total)) >= strictTol
+    : Math.abs(r2(t.payable - num(invoice.total))) > (args.totalTolerance ?? 0.01) + 1e-9;
+  if (payableOff) {
     return fail(`Fatura toplamı (${num(invoice.total).toFixed(2)}) ile e-fatura hesaplaması (${t.payable.toFixed(2)}) uyuşmuyor`);
   }
 

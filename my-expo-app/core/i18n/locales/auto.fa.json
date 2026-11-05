@@ -8760,6 +8760,7 @@
   "Faturada kalem yok": "فاکتور هیچ قلمی ندارد",
   "Tutarı 0 olan fatura e-faturaya gönderilemez": "فاکتور با مبلغ صفر را نمی‌توان به‌صورت الکترونیک ارسال کرد",
   "KDV oranı %0 olan fatura henüz gönderilemiyor (istisna kodu tanımlı değil)": "فاکتور با مالیات ۰٪ هنوز قابل ارسال نیست (کد معافیت تعریف نشده است)",
+  "Fatura indirimi KDV yuvarlamasıyla kalemlere dağıtılamadı; indirimi bir kuruş değiştirip tekrar deneyin.": "تخفیف فاکتور به‌دلیل گرد کردن مالیات بر ارزش افزوده بین اقلام تقسیم نشد؛ تخفیف را یک سنت تغییر دهید و دوباره امتحان کنید.",
   "Luca ayarlarında firma VKN'si geçersiz (10 hane olmalı)": "شناسه مالیاتی شرکت در تنظیمات Luca نامعتبر است (باید ۱۰ رقم باشد)",
   "Luca ayarlarında firma vergi dairesi eksik": "اداره مالیات شرکت در تنظیمات Luca وارد نشده است",
   "Luca ayarlarında firma il / ilçe bilgisi eksik": "استان / شهرستان شرکت در تنظیمات Luca وارد نشده است",

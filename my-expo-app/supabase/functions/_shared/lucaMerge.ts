@@ -7,8 +7,8 @@
 // Aynı kural "Luca'da zaten kesildi" bağlamasında da kullanılır.
 // Saf (I/O yok). Testler: lucaMerge.test.ts
 
-import type { DbInvoice, DbItem } from './lucaInvoice.ts';
-import { distributeDiscount } from './invoiceDiscount.ts';
+import { itemNet, DISCOUNT_BALANCE_ERROR, type DbInvoice, type DbItem } from './lucaInvoice.ts';
+import { balanceDiscountShares } from './lucaDiscountBalance.ts';
 
 export interface MergeRow {
   id: string;
@@ -35,11 +35,6 @@ export const MERGE_MAX = 200;
 
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const num = (v: unknown) => Number(v ?? 0) || 0;
-/** Kalemin net (iskonto sonrası) tutarı; net_total yoksa brüt (lucaInvoice.buildLucaInput ile aynı kural). */
-const itemNet = (it: DbItem) => {
-  const gross = num(it.total) || r2(num(it.quantity) * num(it.unit_price));
-  return it.net_total === null || it.net_total === undefined ? gross : num(it.net_total);
-};
 
 /** Önizleme jetonunun bağlandığı kimlik: fatura kümesi (sıra/tekrar önemsiz). */
 export function mergeKey(ids: string[]): string {
@@ -100,18 +95,24 @@ const NOTE_LIST_MAX = 10;
 export function mergeInvoices(rows: MergeRow[], issueDate: string): DbInvoice {
   const sorted = [...rows].sort((a, b) =>
     a.issue_date.localeCompare(b.issue_date) || a.invoice_number.localeCompare(b.invoice_number));
+  let discountedSources = 0;
+  let discountFailed = false;
   const items: DbItem[] = sorted.flatMap((r) => {
     const tag = r.order_numbers[0] ?? r.invoice_number;
     const sortedItems = [...r.items].sort((a, b) => num(a.sort_order) - num(b.sort_order));
     // Fatura altı indirim yalnız KENDİ faturasının kalemlerine (net oranında) yazılır:
     // pay net_total'dan düşer → Luca kalem iskontosu = brüt − (net − pay).
     const rowDiscount = num(r.discount_amount);
-    const shares = rowDiscount > 0
-      ? distributeDiscount(sortedItems.map((it, i) => ({ key: String(i), net: itemNet(it) })), rowDiscount)
-      : null;
+    let shares: number[] | null = null;
+    if (rowDiscount > 0) {
+      discountedSources++;
+      // KDV yuvarlaması faturanın KENDİ DB toplamıyla eşleşecek biçimde dengelenir (fatura başına).
+      const b = balanceDiscountShares(sortedItems.map(itemNet), rowDiscount, num(r.tax_rate));
+      if (b.ok) shares = b.shares; else discountFailed = true;
+    }
     return sortedItems
       .map((it, i) => {
-        const share = shares?.[String(i)] ?? 0;
+        const share = shares?.[i] ?? 0;
         return {
           description: it.description,
           line_note: tag,
@@ -135,6 +136,8 @@ export function mergeInvoices(rows: MergeRow[], issueDate: string): DbInvoice {
     tax_amount: null,
     total: r2(sorted.reduce((a, r) => a + num(r.total), 0)),
     notes: null,
+    ...(discountedSources > 0 ? { discount_tolerance: 0.005 + (sorted.length - discountedSources) * 0.01 } : {}),
+    ...(discountFailed ? { discount_error: DISCOUNT_BALANCE_ERROR } : {}),
     items,
   };
 }

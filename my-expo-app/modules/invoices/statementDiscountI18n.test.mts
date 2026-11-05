@@ -46,8 +46,11 @@ const TASK12 = [
   'Kesilmiş faturada indirim değiştirilemez. Ekstreden indirim ekleyebilirsiniz.',
 ];
 
+// Düzeltme turu (Görev 13): e-fatura sunucu hata metni (sunucudan Türkçe gelir, istemci autoT ile çevirir)
+const TASK13 = ['Fatura indirimi KDV yuvarlamasıyla kalemlere dağıtılamadı; indirimi bir kuruş değiştirip tekrar deneyin.'];
+
 test('ekstre indirimi metinleri en/de/fa sözlüklerinde', () => {
-  const keys = [...new Set([...TASK1, ...TASK4_5, ...TASK7, ...TASK11, ...TASK12])];
+  const keys = [...new Set([...TASK1, ...TASK4_5, ...TASK7, ...TASK11, ...TASK12, ...TASK13])];
   for (const lang of ['en', 'de', 'fa']) {
     const d = dict(lang);
     const missing = keys.filter((k) => !(typeof d[k] === 'string' && d[k].trim().length > 0));

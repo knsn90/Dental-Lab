@@ -8778,6 +8778,7 @@
   "Faturada kalem yok": "Die Rechnung hat keine Positionen",
   "Tutarı 0 olan fatura e-faturaya gönderilemez": "Eine Rechnung mit Betrag 0 kann nicht als E-Rechnung gesendet werden",
   "KDV oranı %0 olan fatura henüz gönderilemiyor (istisna kodu tanımlı değil)": "Rechnungen mit 0 % MwSt. können noch nicht gesendet werden (kein Befreiungscode definiert)",
+  "Fatura indirimi KDV yuvarlamasıyla kalemlere dağıtılamadı; indirimi bir kuruş değiştirip tekrar deneyin.": "Der Rechnungsrabatt konnte wegen der MwSt.-Rundung nicht auf die Positionen verteilt werden; ändern Sie den Rabatt um einen Cent und versuchen Sie es erneut.",
   "Luca ayarlarında firma VKN'si geçersiz (10 hane olmalı)": "Die Steuernummer in den Luca-Einstellungen ist ungültig (muss 10-stellig sein)",
   "Luca ayarlarında firma vergi dairesi eksik": "Das Finanzamt des Unternehmens fehlt in den Luca-Einstellungen",
   "Luca ayarlarında firma il / ilçe bilgisi eksik": "Provinz / Bezirk des Unternehmens fehlen in den Luca-Einstellungen",
