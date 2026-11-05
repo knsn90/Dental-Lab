@@ -8,14 +8,14 @@ export function isDiscountPayment(p: { payment_method?: string | null; statement
 
 /** notes içindeki "İND-n" numarası (büyük/küçük harf ve İ/I toleranslı); yoksa null. */
 export function discountPaymentDocNo(notes: string | null | undefined): number | null {
-  const m = /[İIiı]ND-(\d+)/i.exec(notes ?? '');
+  const m = /(?<![\p{L}\p{N}])[İIiı]ND-(\d+)/iu.exec(notes ?? '');
   return m ? Number(m[1]) : null;
 }
 
-/** "Ekstre indirimi İND-n"; numara bulunamazsa yalnız etiket. label çağıranda autoT'den geçmiş olmalı. */
-export function discountPaymentLabel(label: string, notes: string | null | undefined): string {
+/** "Ekstre indirimi<sep>İND-n"; numara bulunamazsa yalnız etiket. label çağıranda autoT'den geçmiş olmalı. */
+export function discountPaymentLabel(label: string, notes: string | null | undefined, sep = ' '): string {
   const n = discountPaymentDocNo(notes);
-  return n == null ? label : `${label} İND-${n}`;
+  return n == null ? label : `${label}${sep}İND-${n}`;
 }
 
 /** Cari "Tahsil Edilen" = total_paid + unallocated_credit − statement_discount_total (indirim tahsilat değil). */

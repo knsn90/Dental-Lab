@@ -102,6 +102,8 @@ export interface ClinicInvoiceRow {
 export interface StatementLine {
   id: string;
   kind: 'invoice' | 'payment';
+  /** Ekstre indirimi payı: alacak satırı ama tahsilat DEĞİL (rozet "İndirim", "Ödeme" süzgecinde yok). */
+  isDiscount?: boolean;
   date: string;
   description: string;
   invoice_id?: string | null;
@@ -858,11 +860,12 @@ export async function fetchStatement(
       line: {
         id: `pay-${p.id}`,
         kind: 'payment',
+        isDiscount: isDiscountPayment(p),
         date: p.payment_date,
         // İndirim payı tahsilat değil: faturadaki payı alacak satırı kalır (DB faturayı zaten düşürdü →
         // bakiye aynı), yalnız etiket "Ekstre indirimi · İND-n". Süzmek bakiyeyi şişirirdi.
         description: isDiscountPayment(p)
-          ? discountPaymentLabel('Ekstre indirimi', p.notes).replace(' İND-', ' · İND-')
+          ? discountPaymentLabel('Ekstre indirimi', p.notes, ' · ')
           : `Tahsilat · ${p.payment_method ?? '—'}${p.reference_no ? ` (${p.reference_no})` : ''}`,
         invoice_id: many ? null : (p.invoice_id ?? null),
         invoice_no: many ? null : (p.invoices?.invoice_no ?? null),

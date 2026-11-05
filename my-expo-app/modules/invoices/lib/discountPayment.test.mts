@@ -33,3 +33,11 @@ test('clinicCollected: ödenen + avans - indirim', () => {
   assert.equal(clinicCollected({ total_paid: '50' as any, unallocated_credit: null, statement_discount_total: undefined }), 50);
   assert.equal(clinicCollected({ total_paid: 10, statement_discount_total: 25 }), 0);
 });
+
+test('discountPaymentDocNo: gömülü önek sayılmaz (sol sınır)', () => {
+  assert.equal(discountPaymentDocNo('WIND-5'), null);
+  assert.equal(discountPaymentDocNo('xİND-5'), null);
+  assert.equal(discountPaymentDocNo('9IND-5'), null);
+  assert.equal(discountPaymentDocNo('(İND-5)'), 5);
+  assert.equal(discountPaymentDocNo('a İND-5'), 5);
+});

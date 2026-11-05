@@ -142,6 +142,7 @@ export function StatementScreen({ clinicId }: Props) {
     const q = query.trim().toLocaleLowerCase('tr');
     return lines.filter(l => {
       if (kind !== 'all' && l.kind !== kind) return false;
+      if (kind === 'payment' && l.isDiscount) return false;   // indirim payı tahsilat değil: yalnız "Tümü"nde
       if (doctorId !== 'all' && l.doctor_id !== doctorId) return false;
       if (q) {
         const inDesc = l.description.toLocaleLowerCase('tr').includes(q);

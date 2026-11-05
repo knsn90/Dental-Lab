@@ -85,11 +85,11 @@ function buildHtml(
         <td class="cell-date">${fmtDateTR(l.date)}</td>
         <td class="cell-kind">
           <span class="kind-badge ${isInvoice ? 'kind-invoice' : 'kind-payment'}">
-            ${isInvoice ? 'Fatura' : 'Tahsilat'}
+            ${autoT(isInvoice ? 'Fatura' : l.isDiscount ? 'İndirim' : 'Tahsilat')}
           </span>
         </td>
         <td class="cell-desc">
-          <div class="desc-main">${escapeHtml(l.description)}</div>
+          <div class="desc-main">${escapeHtml(autoT(l.description))}</div>
           ${(l.doctor_name || l.patient_name)
             ? `<div class="desc-sub">${escapeHtml([l.doctor_name, l.patient_name, l.order_no].filter(Boolean).join(' · '))}</div>`
             : ''}
