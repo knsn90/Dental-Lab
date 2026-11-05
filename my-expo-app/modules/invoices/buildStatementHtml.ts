@@ -234,5 +234,7 @@ export function buildStatementHtml(
     // Dönemde fatura varsa KDV dökümü (KDV hariç + KDV = genel toplam); liste ayarıyla kapatılabilir
     vatSummary: showVat ? vat : null,
     summaryTotals: opts.sums ?? null,
+    // Bu sütunda hasta + sipariş no ya da tahsilat yöntemi yazar; karşı taraf zaten klinik.
+    labels: { party: autoT('Açıklama') },
   });
 }

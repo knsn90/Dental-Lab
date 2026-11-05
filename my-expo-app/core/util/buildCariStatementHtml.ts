@@ -88,6 +88,12 @@ export interface CariStatementInput {
     closing?: string;
     /** Kapanış altındaki açıklama; boş string verilirse hiç yazılmaz. */
     closingHint?: string;
+    /**
+     * Üçüncü sütunun başlığı. Verilmezse "Karşı Taraf" (tedarikçi/personel).
+     * Klinik ekstresi "Açıklama" verir: o sütunda hasta + sipariş no ya da
+     * tahsilat yöntemi yazar, karşı taraf zaten klinik.
+     */
+    party?: string;
   };
   /**
    * Faturaların KDV dökümü (klinik ekstresi). Verilirse tabloda KDV sütunu ve
@@ -582,7 +588,7 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
         <tr>
           <th>${autoT('Belge / Referans')}</th>
           <th>${autoT('Tarih')}</th>
-          <th>${autoT('Karşı Taraf')}</th>
+          <th>${L.party !== undefined ? esc(L.party) : autoT('Karşı Taraf')}</th>
           <th class="num">${showVat ? autoT('Tutar (KDV hariç)') : autoT('Tutar')} <span class="pos">(+)</span> <span class="neg">(−)</span></th>
           ${showVat ? `<th class="num">${autoT('KDV')}</th>` : ''}
           <th class="num">${autoT('Bakiye')}</th>
