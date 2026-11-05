@@ -9,6 +9,7 @@ import type { Invoice } from './types';
 import { INVOICE_STATUS_LABELS, PAYMENT_METHOD_LABELS } from './types';
 import type { LabLetterhead } from '../receipt/buildReceiptHtml';
 import { autoT } from '../../core/i18n/autoTranslate';
+import { isDiscountPayment, discountPaymentLabel } from './lib/discountPayment';
 import { htmlAttrs, printLocale } from '../../core/i18n/printLocale';
 import { labTodayOf } from '../../core/metrics/orderDefs';
 import { cachedLabTz } from '../../core/metrics/useLabToday';
@@ -130,7 +131,7 @@ export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
         .map(p => `
           <tr>
             <td>${fmtDate(p.payment_date)}</td>
-            <td>${esc(PAYMENT_METHOD_LABELS[p.payment_method] ?? p.payment_method)}</td>
+            <td>${esc(isDiscountPayment(p) ? discountPaymentLabel(autoT('Ekstre indirimi'), p.notes) : PAYMENT_METHOD_LABELS[p.payment_method] ?? p.payment_method)}</td>
             <td>${p.reference_no ? esc(p.reference_no) : '—'}</td>
             <td class="num right"><b>${fmtMoney(p.amount, currency)}</b></td>
           </tr>`).join('')

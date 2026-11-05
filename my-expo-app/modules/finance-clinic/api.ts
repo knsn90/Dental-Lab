@@ -12,6 +12,7 @@
 
 import { supabase } from '../../core/api/supabase';
 import { mergeReceiptPayments } from '../invoices/lib/receiptStatement';
+import { isDiscountPayment, discountPaymentLabel } from '../invoices/lib/discountPayment';
 import { getActiveLabId } from '../../core/store/activeLabStore';
 import { getBaseCurrency } from '../../core/money/baseCurrency';
 
@@ -256,6 +257,7 @@ export async function fetchOverview(clinicId: string): Promise<FinanceOverview> 
       .from('payments')
       .select('amount, payment_date, currency, invoices!inner(clinic_id, currency)')
       .eq('invoices.clinic_id', clinicId)
+      .neq('payment_method', 'indirim')   // ekstre indirimi payı tahsilat değil
       .is('receipt_id', null)
       .gte('payment_date', monthBegStr), 'invoices.lab_id'),
     labEq(supabase
@@ -398,11 +400,13 @@ export async function fetchOverviewCharts(clinicId: string): Promise<OverviewCha
       .from('payments')
       .select('amount, payment_date, invoices!inner(clinic_id, currency)')
       .eq('invoices.clinic_id', clinicId)
+      .neq('payment_method', 'indirim')   // ekstre indirimi payı tahsilat değil
       .gte('payment_date', sixStr), 'invoices.lab_id'),
     labEq(supabase
       .from('payments')
       .select('amount, payment_method, invoices!inner(clinic_id, currency)')
       .eq('invoices.clinic_id', clinicId)
+      .neq('payment_method', 'indirim')   // ekstre indirimi payı tahsilat değil
       .gte('payment_date', d90Str), 'invoices.lab_id'),
   ]);
 
@@ -797,7 +801,7 @@ export async function fetchStatement(
       .order('issue_date', { ascending: true }),
     labEq(supabase
       .from('payments')
-      .select('id, amount, payment_date, payment_method, reference_no, invoice_id, receipt_id, invoices!inner(clinic_id, currency, invoice_no:invoice_number, doctor_id, doctors(id, full_name), work_order:work_orders!invoices_work_order_id_fkey(order_number, patient_name))')
+      .select('id, amount, payment_date, payment_method, reference_no, notes, statement_discount_id, invoice_id, receipt_id, invoices!inner(clinic_id, currency, invoice_no:invoice_number, doctor_id, doctors(id, full_name), work_order:work_orders!invoices_work_order_id_fkey(order_number, patient_name))')
       .eq('invoices.clinic_id', clinicId), 'invoices.lab_id')
       .order('payment_date', { ascending: true }),
   ]);
@@ -855,7 +859,11 @@ export async function fetchStatement(
         id: `pay-${p.id}`,
         kind: 'payment',
         date: p.payment_date,
-        description: `Tahsilat · ${p.payment_method ?? '—'}${p.reference_no ? ` (${p.reference_no})` : ''}`,
+        // İndirim payı tahsilat değil: faturadaki payı alacak satırı kalır (DB faturayı zaten düşürdü →
+        // bakiye aynı), yalnız etiket "Ekstre indirimi · İND-n". Süzmek bakiyeyi şişirirdi.
+        description: isDiscountPayment(p)
+          ? discountPaymentLabel('Ekstre indirimi', p.notes).replace(' İND-', ' · İND-')
+          : `Tahsilat · ${p.payment_method ?? '—'}${p.reference_no ? ` (${p.reference_no})` : ''}`,
         invoice_id: many ? null : (p.invoice_id ?? null),
         invoice_no: many ? null : (p.invoices?.invoice_no ?? null),
         doctor_id: many ? null : (p.invoices?.doctor_id ?? null),
@@ -911,6 +919,7 @@ export async function fetchPayments(clinicId: string): Promise<PaymentRow[]> {
     .from('payments')
     .select('id, invoice_id, amount, payment_date, payment_method, reference_no, invoices!inner(clinic_id, currency, invoice_no:invoice_number, work_order:work_orders!invoices_work_order_id_fkey(order_number, patient_name))')
     .eq('invoices.clinic_id', clinicId), 'invoices.lab_id')
+    .neq('payment_method', 'indirim')   // ekstre indirimi payı tahsilat listesinde görünmez
     .order('payment_date', { ascending: false });
   if (error) throw error;
   const base = getBaseCurrency();

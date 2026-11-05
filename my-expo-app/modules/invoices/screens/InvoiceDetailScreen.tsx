@@ -1,5 +1,6 @@
 import { localeTag, isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
+import { isDiscountPayment, discountPaymentLabel } from '../lib/discountPayment';
 /**
  * InvoiceDetailScreen — Fatura Detayı (Patterns Design Language)
  *
@@ -1054,7 +1055,9 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 14, fontWeight: '600', color: CHIP_TONES.success.text }}>{fmtMoney(p.amount)}</Text>
                   <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 2 }}>
-                    {fmtDate(p.payment_date)} · {PAYMENT_METHOD_LABELS[p.payment_method]}
+                    {fmtDate(p.payment_date)} · {isDiscountPayment(p)
+                      ? discountPaymentLabel(autoT('Ekstre indirimi'), p.notes)
+                      : PAYMENT_METHOD_LABELS[p.payment_method]}
                     {p.reference_no ? ` · ${p.reference_no}` : ''}
                   </Text>
                 </View>
@@ -1062,7 +1065,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
                   <Text style={{ fontSize: 11, color: U.ink[400] }}>{p.receiver.full_name}</Text>
                 )}
                 {/* Yalnız ELLE girilmiş tahsilat geri alınır; online ödeme iade akışında kalır. */}
-                {canUndoPayment && !p.idempotency_key && invoice.status !== 'iptal' ? (
+                {canUndoPayment && !p.idempotency_key && !isDiscountPayment(p) && invoice.status !== 'iptal' ? (
                   <GlassTooltip text={autoT('Tahsilatı geri al')}>
                     <Pressable
                       onPress={() => handleUndoPayment(p)}

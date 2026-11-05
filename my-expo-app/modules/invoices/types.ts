@@ -210,6 +210,8 @@ export interface ClinicBalanceCcy {
   oldest_overdue_date: string | null;
   /** Faturaya bağlanmamış tahsilat (baz para biriminde). Bakiyeden düşülür. */
   unallocated_credit?: number;
+  /** Ekstre indirimi toplamı (v_clinic_balance_ccy). Tahsilat DEĞİL: "Tahsil Edilen"den düşülür. */
+  statement_discount_total?: number;
 }
 
 // ─── Form / Create parametreleri ───────────────────────────────────────────

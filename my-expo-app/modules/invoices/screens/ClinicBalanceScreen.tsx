@@ -39,6 +39,7 @@ import { MoneyMultiX } from '../../../core/money/MoneyMultiX';
 import { MobileTableX, MobileTableRowX, MobileTableIconX, useMobileTableText } from '../../../core/ui/MobileTableX';
 import { FAB_CLEARANCE } from '../../../core/ui/pageMetrics';
 import { isRTL } from '../../../core/i18n';
+import { clinicCollected } from '../lib/discountPayment';
 
 /** Vadesi geçmiş alacak — tek tanım (2026-10-26): kliniğin avansı düşülmüş (v_clinic_balance_ccy.overdue_net);
  *  Özet'teki "hatırlatılacak" listesi ve hatırlatma tutarıyla aynı. Görünüm eskiyse brüt değere düşer. */
@@ -188,7 +189,7 @@ export function ClinicBalanceScreen() {
   // Lab alacağı (tek tanım): yalnız POZİTİF bakiyeler; bir kliniğin avans fazlası başkasının borcunu kapatmaz.
   const balanceByCcy = groupByCurrency(rows, b => ({ amount: Math.max(0, Number(b.balance)), currency: b.currency as Currency }), { keepZero: true });
   const billedByCcy  = groupByCurrency(rows, b => ({ amount: Number(b.total_billed), currency: b.currency as Currency }));
-  const paidByCcy    = groupByCurrency(rows, b => ({ amount: Number(b.total_paid) + Number(b.unallocated_credit ?? 0), currency: b.currency as Currency }));
+  const paidByCcy    = groupByCurrency(rows, b => ({ amount: clinicCollected(b), currency: b.currency as Currency }));
   const overdueByCcy = groupByCurrency(rows, b => ({ amount: netOverdue(b), currency: b.currency as Currency }));
   const overdueExists = rows.some(b => netOverdue(b) > 0);
 
@@ -434,8 +435,8 @@ export function ClinicBalanceScreen() {
               const overdue = netOverdue(b);
               const hasOverdue = overdue > 0;
               const billed = Number(b.total_billed);
-              // Tahsil = faturaya yazilan odemeler + faturaya baglanmamis tahsilat.
-              const paid = Number(b.total_paid) + Number(b.unallocated_credit ?? 0);
+              // Tahsil = faturaya yazilan odemeler + faturaya baglanmamis tahsilat − ekstre indirimi (tahsilat degil).
+              const paid = clinicCollected(b);
               const pct = billed > 0 ? Math.min(100, (paid / billed) * 100) : 0;
 
               return (
@@ -584,8 +585,8 @@ export function ClinicBalanceScreen() {
               const overdue = netOverdue(b);
               const hasOverdue = overdue > 0;
               const billed = Number(b.total_billed);
-              // Tahsil = faturaya yazilan odemeler + faturaya baglanmamis tahsilat.
-              const paid = Number(b.total_paid) + Number(b.unallocated_credit ?? 0);
+              // Tahsil = faturaya yazilan odemeler + faturaya baglanmamis tahsilat − ekstre indirimi (tahsilat degil).
+              const paid = clinicCollected(b);
               const tone = hasOverdue ? U.chipTones.danger : U.chipTones.info;
 
               return (
