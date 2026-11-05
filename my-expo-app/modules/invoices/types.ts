@@ -78,6 +78,10 @@ export interface Invoice {
   efatura_provider?: string | null;
   /** Entegratörün resmi fatura numarası (Luca) */
   efatura_number?:   string | null;
+  // Fatura altı indirim (20261105110000). discount_amount sunucuda hesaplanır (Σ net_total üzerinden).
+  discount_type?:   'percent' | 'fixed' | null;
+  discount_value?:  number;
+  discount_amount?: number;
   // Joined (optional)
   doctor?:  { id: string; full_name: string; phone?: string | null; clinic_id?: string | null } | null;
   clinic?:  { id: string; name: string; address?: string | null; phone?: string | null; email?: string | null; vkn?: string | null; tax_office?: string | null } | null;

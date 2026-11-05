@@ -106,7 +106,7 @@ export function buildStatementLines(
     const foreign = !!inv.currency && inv.currency !== 'TRY';
     // Borç: original ise faturanın kendi tutarı; değilse baz ₺ (amount_base ya da total×kur).
     const debitVal = original ? inv.total : (inv.amount_base != null ? inv.amount_base : inv.total * rate);
-    const invDisc = invoiceDiscountOf(inv as any);
+    const invDisc = invoiceDiscountOf(inv);
     lines.push({
       id: inv.id,
       date: inv.issue_date,

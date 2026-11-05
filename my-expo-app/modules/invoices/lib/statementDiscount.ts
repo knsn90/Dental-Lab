@@ -58,7 +58,7 @@ const round1 = (x: number) => Math.round(x * 10) / 10;
 
 /** Faturanın toplam indirimi: Σ(kalem brüt − net) + fatura altı indirim; brüt = Σ kalem brüt. */
 export function invoiceDiscountOf(inv: {
-  items?: ReadonlyArray<{ total: unknown; net_total: unknown }> | null;
+  items?: ReadonlyArray<{ total: unknown; net_total?: unknown }> | null;
   discount_amount?: unknown;
 }): { amount: number; gross: number } {
   let gross = 0;

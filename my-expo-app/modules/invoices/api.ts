@@ -288,7 +288,8 @@ export async function updateInvoice(
   id: string,
   patch: Partial<Pick<Invoice,
     'status' | 'issue_date' | 'due_date' | 'tax_rate' | 'notes' |
-    'doctor_id' | 'clinic_id' | 'currency' | 'rate_at_time'
+    'doctor_id' | 'clinic_id' | 'currency' | 'rate_at_time' |
+    'discount_type' | 'discount_value'
   >>,
 ) {
   return supabase

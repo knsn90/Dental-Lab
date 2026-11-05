@@ -1,0 +1,620 @@
+-- 20261105110000_fatura_alti_indirim — CANLI durum (2026-11-05)
+-- Salt okunur yakalama: pg_get_functiondef / pg_get_triggerdef / pg_get_constraintdef / information_schema.routine_privileges.
+-- Değişen: recalc_invoice_totals, aa_enforce_invoice_totals, create_bulk_invoice (4 → 6 argüman), _profit_revenue_lines,
+--          zz_sd_invoice_credit ve recalc_on_tax_change tetikleyicilerinin UPDATE OF listeleri.
+-- Değişmeyen (referans): set_invoice_amount_base, trg_recalc_on_tax_change, _sd_invoice_credit_trg, fn_generate_monthly_invoices, _invoice_efatura_locked.
+-- Yeni (canlıda YOK): invoices.discount_type/discount_value/discount_amount + 4 CHECK, _invoice_discount_amount, _invoices_discount_lock,
+--   zz_invoices_discount_lock, _invoices_discount_amount_on_insert, invoices_discount_amount_insert (BEFORE INSERT; mevcut BEFORE INSERT listesi aşağıda).
+-- Çağrılan (değişmez, referans): lab_can_manage_invoices() — create_bulk_invoice indirim yetki kapısı (düzeltme turu 1).
+
+## invoices — fatura altı sütunları
+-- information_schema.columns: discount_type / discount_value / discount_amount → 0 satır (yok)
+
+## invoices — CHECK kısıtları
+invoices_currency_check: CHECK ((currency = ANY (ARRAY['TRY'::text, 'EUR'::text, 'USD'::text, 'GBP'::text, 'IRT'::text])))
+invoices_efatura_status_check: CHECK ((efatura_status = ANY (ARRAY['pending'::text, 'queued'::text, 'sent'::text, 'accepted'::text, 'rejected'::text, 'cancelled'::text, 'error'::text])))
+invoices_efatura_type_check: CHECK (((efatura_type = ANY (ARRAY['e_fatura'::text, 'e_arsiv'::text])) OR (efatura_type IS NULL)))
+invoices_paid_amount_check: CHECK ((paid_amount >= (0)::numeric))
+invoices_status_check: CHECK ((status = ANY (ARRAY['taslak'::text, 'kesildi'::text, 'kismi_odendi'::text, 'odendi'::text, 'iptal'::text])))
+invoices_subtotal_check: CHECK ((subtotal >= (0)::numeric))
+invoices_tax_amount_check: CHECK ((tax_amount >= (0)::numeric))
+invoices_tax_rate_check: CHECK (((tax_rate >= (0)::numeric) AND (tax_rate <= (100)::numeric)))
+invoices_total_check: CHECK ((total >= (0)::numeric))
+
+## invoices — tetikleyiciler (pg_get_triggerdef)
+-- BEFORE INSERT: auto_set_lab_id_invoices, invoices_default_tax_rate, set_invoice_amount_base_trg, set_invoice_number_trigger
+CREATE TRIGGER aa_enforce_invoice_totals BEFORE UPDATE ON public.invoices FOR EACH ROW EXECUTE FUNCTION aa_enforce_invoice_totals();
+CREATE TRIGGER auto_set_lab_id_invoices BEFORE INSERT ON public.invoices FOR EACH ROW EXECUTE FUNCTION auto_set_lab_id();
+CREATE TRIGGER invoices_default_tax_rate BEFORE INSERT ON public.invoices FOR EACH ROW EXECUTE FUNCTION invoices_default_tax_rate();
+CREATE TRIGGER recalc_on_tax_change AFTER UPDATE OF tax_rate ON public.invoices FOR EACH ROW EXECUTE FUNCTION trg_recalc_on_tax_change();
+CREATE TRIGGER set_invoice_amount_base_trg BEFORE INSERT OR UPDATE ON public.invoices FOR EACH ROW EXECUTE FUNCTION set_invoice_amount_base();
+CREATE TRIGGER set_invoice_number_trigger BEFORE INSERT ON public.invoices FOR EACH ROW EXECUTE FUNCTION set_invoice_number();
+CREATE TRIGGER touch_invoices_updated_at BEFORE UPDATE ON public.invoices FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER trg_scan_invoice_cancelled AFTER UPDATE OF status ON public.invoices FOR EACH ROW EXECUTE FUNCTION trg_scan_invoice_cancelled();
+CREATE TRIGGER zz_cash_sync_invoice AFTER UPDATE OF status ON public.invoices FOR EACH ROW WHEN ((old.status IS DISTINCT FROM new.status)) EXECUTE FUNCTION _trg_cash_sync_invoice();
+CREATE TRIGGER zz_invoices_efatura_lock BEFORE DELETE OR UPDATE ON public.invoices FOR EACH ROW EXECUTE FUNCTION invoices_efatura_lock();
+CREATE TRIGGER zz_sd_invoice_credit AFTER INSERT OR DELETE OR UPDATE OF status, total, tax_rate ON public.invoices FOR EACH ROW EXECUTE FUNCTION _sd_invoice_credit_trg();
+
+## create_bulk_invoice — yetkiler (information_schema.routine_privileges)
+authenticated EXECUTE grantable=NO
+postgres EXECUTE grantable=YES
+service_role EXECUTE grantable=NO
+
+## fonksiyon md5(pg_get_functiondef) ve proacl
+_invoice_efatura_locked(uuid,text) md5=b8f750fdd9947d7df4bd003cf02750c7 acl={=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+_profit_revenue_lines(uuid,date,date) md5=dfb82578d73c95ca315d3d003ba29bd9 acl={postgres=X/postgres,service_role=X/postgres}
+_sd_invoice_credit_trg() md5=0988ef882ccdc48eb0bae8c95acf7554 acl={postgres=X/postgres,service_role=X/postgres}
+aa_enforce_invoice_totals() md5=4e269d625c8e567b711fc26f2c3c42fc acl={=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+create_bulk_invoice(uuid,uuid[],integer,text) md5=93fc733dd766a26d02e1b76c86d03ad7 acl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+fn_generate_monthly_invoices() md5=3aab15e54cccfcb219d4341c40de2b84 acl={postgres=X/postgres,service_role=X/postgres}
+recalc_invoice_totals(uuid) md5=35bce390103137b930e4312581a341c9 acl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+set_invoice_amount_base() md5=04f9f4a5b975e0ce29d0eff3844b1b23 acl={=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+trg_recalc_on_tax_change() md5=f73d6a67308d627f420ee95f9c5ae8c9 acl={=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+
+## recalc_invoice_totals(uuid)
+CREATE OR REPLACE FUNCTION public.recalc_invoice_totals(p_invoice_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_subtotal NUMERIC(12,2);
+  v_tax_rate NUMERIC(5,2);
+  v_tax      NUMERIC(12,2);
+  v_total    NUMERIC(12,2);
+BEGIN
+  SELECT COALESCE(SUM(net_total), 0) INTO v_subtotal
+  FROM invoice_items WHERE invoice_id = p_invoice_id;
+  SELECT tax_rate INTO v_tax_rate FROM invoices WHERE id = p_invoice_id;
+  v_tax_rate := COALESCE(v_tax_rate, 0);
+  v_tax   := ROUND(v_subtotal * v_tax_rate / 100, 2);
+  v_total := v_subtotal + v_tax;
+  UPDATE invoices SET subtotal = v_subtotal, tax_amount = v_tax, total = v_total
+  WHERE id = p_invoice_id;
+END;
+$function$;
+
+## aa_enforce_invoice_totals()
+CREATE OR REPLACE FUNCTION public.aa_enforce_invoice_totals()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE v_sub numeric;
+BEGIN
+  IF EXISTS (SELECT 1 FROM invoice_items WHERE invoice_id = NEW.id) THEN
+    -- item-based invoice: total/subtotal/tax are DERIVED (client input ignored)
+    SELECT COALESCE(SUM(net_total),0) INTO v_sub FROM invoice_items WHERE invoice_id = NEW.id;
+    NEW.subtotal   := v_sub;
+    NEW.tax_amount := ROUND(v_sub * COALESCE(NEW.tax_rate,0) / 100, 2);
+    NEW.total      := NEW.subtotal + NEW.tax_amount;
+  ELSE
+    -- item-less (manual) invoice: financial columns are FROZEN after creation
+    NEW.subtotal   := OLD.subtotal;
+    NEW.tax_amount := OLD.tax_amount;
+    NEW.total      := OLD.total;
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+## set_invoice_amount_base()
+CREATE OR REPLACE FUNCTION public.set_invoice_amount_base()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_base text;
+  v_rate numeric;
+begin
+  select default_currency into v_base from public.lab_settings where lab_id = new.lab_id;
+  if v_base is null then v_base := 'TRY'; end if;
+
+  if coalesce(new.currency, v_base) = v_base then
+    v_rate := 1;
+  elsif new.rate_at_time is not null and new.rate_at_time > 0 and new.rate_at_time <> 1
+        and not (tg_op = 'UPDATE' and new.currency is distinct from old.currency
+                 and new.rate_at_time is not distinct from old.rate_at_time) then
+    v_rate := new.rate_at_time;                 -- elle girilen / kilitli kur
+  else
+    v_rate := public.get_currency_rate(new.lab_id, new.currency, v_base, coalesce(new.issue_date, current_date));
+    if v_rate is null or v_rate <= 0 then v_rate := 1; end if;
+  end if;
+
+  new.rate_at_time          := v_rate;
+  new.base_currency_at_time := v_base;
+  new.amount_base           := coalesce(new.total, 0) * v_rate;
+  return new;
+end;
+$function$;
+
+## create_bulk_invoice(uuid,uuid[],integer,text)
+CREATE OR REPLACE FUNCTION public.create_bulk_invoice(p_clinic_id uuid, p_work_order_ids uuid[], p_due_days integer DEFAULT 30, p_notes text DEFAULT NULL::text)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_invoice_id   UUID;
+  v_lab_id       UUID;
+  v_doctor_id    UUID;
+  v_doctor_count INT;
+  v_sort         INT := 0;
+  v_wo           RECORD;
+  v_first_wo     UUID;
+  v_auto_notes   TEXT;
+  v_base         TEXT;
+  v_currency     TEXT;
+  v_ccy_count    INT;
+BEGIN
+  IF p_work_order_ids IS NULL OR array_length(p_work_order_ids, 1) IS NULL THEN
+    RAISE EXCEPTION 'En az bir sipariş seçmelisiniz';
+  END IF;
+
+  SELECT wo.lab_id INTO v_lab_id
+  FROM work_orders wo WHERE wo.id = p_work_order_ids[1];
+
+  IF v_lab_id IS NULL THEN
+    RAISE EXCEPTION 'İlk sipariş bulunamadı';
+  END IF;
+
+  -- H-1 tenant guard: the caller must be an authenticated user of the target lab
+  -- (same rule as invoices_lab_insert RLS), or a platform admin. This is a purely
+  -- user-facing RPC (no trigger/service caller), so anonymous callers are rejected
+  -- outright. Combined with the intra-set 'same clinic & lab' check below, any
+  -- mixed-tenant or foreign-lab input is rejected atomically.
+  -- 20261028146000: aylık süpürge (cron, oturumsuz) yalnız fn_generate_monthly_invoices'ın koyduğu
+  -- işaretle geçer (siman.trusted_invoice + auth.uid() NULL). İstemci yolu için kural aynen.
+  IF NOT (auth.uid() IS NULL AND coalesce(current_setting('siman.trusted_invoice', true), '') = 'on')
+     AND (auth.uid() IS NULL
+          OR NOT (v_lab_id = get_my_lab_id() OR is_platform_admin())) THEN
+    RAISE EXCEPTION 'yetkisiz: bu klinik/lab için toplu fatura oluşturamazsınız (lab %)', v_lab_id
+      USING errcode = '42501';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM work_orders wo
+    LEFT JOIN doctors d ON d.id = wo.doctor_id
+    WHERE wo.id = ANY(p_work_order_ids)
+      AND (d.clinic_id IS DISTINCT FROM p_clinic_id OR wo.lab_id <> v_lab_id)
+  ) THEN
+    RAISE EXCEPTION 'Tüm siparişler aynı kliniğe ve laboratuvara ait olmalı';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM unnest(p_work_order_ids) AS wo_id
+    WHERE NOT EXISTS (
+      SELECT 1 FROM invoice_orders io
+      JOIN invoices inv ON inv.id = io.invoice_id
+      WHERE io.work_order_id = wo_id AND inv.status <> 'iptal'
+    )
+  ) THEN
+    RAISE EXCEPTION 'Seçili siparişlerin tümü zaten faturalanmış';
+  END IF;
+
+  SELECT COALESCE(default_currency, 'TRY') INTO v_base
+    FROM lab_settings WHERE lab_id = v_lab_id;
+  v_base := COALESCE(v_base, 'TRY');
+
+  SELECT COUNT(DISTINCT COALESCE(oi.currency, v_base)) INTO v_ccy_count
+  FROM order_items oi
+  WHERE oi.work_order_id = ANY(p_work_order_ids);
+
+  IF v_ccy_count > 1 THEN
+    RAISE EXCEPTION 'Seçili siparişler farklı para birimlerinde — tek faturada birleştirilemez. Lütfen aynı para birimindekileri ayrı ayrı faturalayın.';
+  END IF;
+
+  SELECT COALESCE(oi.currency, v_base) INTO v_currency
+  FROM order_items oi
+  WHERE oi.work_order_id = ANY(p_work_order_ids)
+  GROUP BY COALESCE(oi.currency, v_base)
+  ORDER BY SUM(oi.quantity::numeric * oi.price) DESC NULLS LAST
+  LIMIT 1;
+
+  v_currency := COALESCE(v_currency, v_base);
+
+  SELECT COUNT(DISTINCT wo.doctor_id) INTO v_doctor_count
+  FROM work_orders wo
+  WHERE wo.id = ANY(p_work_order_ids)
+    AND NOT EXISTS (
+      SELECT 1 FROM invoice_orders io
+      JOIN invoices inv ON inv.id = io.invoice_id
+      WHERE io.work_order_id = wo.id AND inv.status <> 'iptal'
+    );
+
+  SELECT wo.doctor_id, wo.id INTO v_doctor_id, v_first_wo
+  FROM work_orders wo
+  WHERE wo.id = ANY(p_work_order_ids)
+    AND NOT EXISTS (
+      SELECT 1 FROM invoice_orders io
+      JOIN invoices inv ON inv.id = io.invoice_id
+      WHERE io.work_order_id = wo.id AND inv.status <> 'iptal'
+    )
+  ORDER BY wo.created_at
+  LIMIT 1;
+
+  v_auto_notes := CASE
+    WHEN v_doctor_count > 1
+    THEN 'Birden fazla hekimin işleri tek faturada birleştirildi. ' || COALESCE(p_notes, '')
+    ELSE p_notes
+  END;
+
+  INSERT INTO invoices (lab_id, doctor_id, clinic_id, work_order_id,
+                        status, issue_date, due_date, notes, currency, created_by)
+  VALUES (v_lab_id, v_doctor_id, p_clinic_id, v_first_wo,
+          'taslak', lab_today(v_lab_id),
+          lab_today(v_lab_id) + (p_due_days || ' days')::INTERVAL,
+          NULLIF(TRIM(COALESCE(v_auto_notes, '')), ''),
+          v_currency,
+          auth.uid())
+  RETURNING id INTO v_invoice_id;
+
+  FOR v_wo IN
+    SELECT wo.*
+    FROM work_orders wo
+    WHERE wo.id = ANY(p_work_order_ids)
+      AND NOT EXISTS (
+        SELECT 1 FROM invoice_orders io
+        JOIN invoices inv ON inv.id = io.invoice_id
+        WHERE io.work_order_id = wo.id AND inv.status <> 'iptal'
+      )
+    ORDER BY wo.created_at
+  LOOP
+    INSERT INTO invoice_orders (invoice_id, work_order_id, lab_id)
+    VALUES (v_invoice_id, v_wo.id, v_lab_id);
+
+    IF EXISTS (SELECT 1 FROM order_items oi WHERE oi.work_order_id = v_wo.id) THEN
+      INSERT INTO invoice_items (invoice_id, order_item_id, description, quantity, unit_price, sort_order)
+      SELECT
+        v_invoice_id,
+        oi.id,
+        '[' || v_wo.order_number || '] ' || oi.name,
+        oi.quantity,
+        oi.price,
+        v_sort + ROW_NUMBER() OVER (ORDER BY oi.created_at)
+      FROM order_items oi
+      WHERE oi.work_order_id = v_wo.id;
+
+      SELECT v_sort + COUNT(*) INTO v_sort
+      FROM order_items WHERE work_order_id = v_wo.id;
+    ELSE
+      v_sort := v_sort + 1;
+      INSERT INTO invoice_items (invoice_id, description, quantity, unit_price, sort_order)
+      VALUES (
+        v_invoice_id,
+        '[' || v_wo.order_number || '] ' ||
+          COALESCE(v_wo.work_type, 'Laboratuvar hizmeti') ||
+          CASE
+            WHEN v_wo.tooth_numbers IS NOT NULL AND array_length(v_wo.tooth_numbers, 1) > 0
+            THEN ' (Dişler: ' || array_to_string(v_wo.tooth_numbers, ', ') || ')'
+            ELSE ''
+          END,
+        GREATEST(COALESCE(array_length(v_wo.tooth_numbers, 1), 1), 1),
+        0,
+        v_sort
+      );
+    END IF;
+  END LOOP;
+
+  -- Tarama ücretleri (20261028142000): faturalanan siparişlere bağlı olanlar + kliniğin
+  -- "yalnız tarama" havuzu (aynı para birimi). Acil ek ücret tetikleyicisi tarama satırlarını dışlar.
+  PERFORM public._scan_bill_charges(v_invoice_id,
+    public._scan_order_charge_ids(p_work_order_ids, v_currency)
+    || public._scan_pool_charge_ids(p_clinic_id, v_currency));
+
+  RETURN v_invoice_id;
+END;
+$function$;
+
+## _profit_revenue_lines(uuid,date,date)
+CREATE OR REPLACE FUNCTION public._profit_revenue_lines(p_lab_id uuid, p_from date, p_to date)
+ RETURNS TABLE(invoice_id uuid, clinic_id uuid, doctor_id uuid, order_ids uuid[], row_kind text, service_id uuid, unit text, currency text, quantity numeric, revenue numeric, revenue_base numeric, has_list boolean, list_value_base numeric)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  WITH base AS (
+    SELECT COALESCE((SELECT default_currency FROM lab_settings WHERE lab_id = p_lab_id), 'TRY') AS ccy
+  ), inv AS (   -- dönemde KESİLEN faturalar (profitability_summary ile aynı seçim ve kur)
+    SELECT i.id, i.clinic_id, i.doctor_id AS inv_doctor, i.work_order_id, i.issue_date,
+           COALESCE(i.currency, 'TRY') AS currency, i.subtotal,
+           COALESCE(i.rate_at_time, i.amount_base / NULLIF(i.total, 0), 1) AS rate
+      FROM invoices i
+     WHERE i.lab_id = p_lab_id AND i.status IN ('kesildi','kismi_odendi','odendi')
+       AND i.issue_date BETWEEN p_from AND p_to
+  ), inv_orders AS (   -- faturaya bağlı siparişler: doğrudan bağ + toplu fatura bağı
+    SELECT inv.id AS inv_id, inv.work_order_id AS wo_id FROM inv WHERE inv.work_order_id IS NOT NULL
+    UNION
+    SELECT io.invoice_id, io.work_order_id FROM invoice_orders io JOIN inv ON inv.id = io.invoice_id
+  ), inv_x AS (   -- sipariş listesi + kalemden bulunamayan hekim için fatura düzeyi yedek
+    SELECT inv.*, COALESCE(ol.wo_ids, '{}'::uuid[]) AS wo_ids,
+           CASE COALESCE(cardinality(ol.wo_ids), 0)
+             WHEN 0 THEN inv.inv_doctor
+             WHEN 1 THEN (SELECT wo.doctor_id FROM work_orders wo WHERE wo.id = ol.wo_ids[1])
+           END AS fallback_doctor   -- çok siparişli toplu faturada invoices.doctor_id KULLANILMAZ (ilk siparişin hekimi)
+      FROM inv
+      LEFT JOIN LATERAL (SELECT array_agg(o.wo_id ORDER BY o.wo_id) AS wo_ids FROM inv_orders o WHERE o.inv_id = inv.id) ol ON true
+  ), items AS (
+    SELECT ix.id AS inv_id, ix.clinic_id, ix.currency, ix.rate, ix.issue_date, ix.wo_ids, ix.fallback_doctor,
+           ii.quantity, COALESCE(ii.net_total, ii.total, 0) AS amount,
+           -- sipariş: kalemin sipariş kalemi → yoksa açıklamanın "[sipariş no]" öneki (yalnız bu faturanın siparişleri)
+           COALESCE(oi.work_order_id,
+             (SELECT wo.id FROM work_orders wo
+               WHERE wo.id = ANY (ix.wo_ids)
+                 AND wo.order_number = btrim(substring(ii.description from '^\s*\[([^\]]*)\]'))
+               ORDER BY wo.id LIMIT 1)) AS item_wo,
+           oi.service_id AS oi_service,
+           -- eşleşme adı: sipariş kalemi adı; bağsız kalemde açıklamanın "[sipariş no]" öneki atılmış hâli
+           lower(btrim(COALESCE(oi.name, regexp_replace(ii.description, '^\s*\[[^\]]*\]\s*', '')))) AS match_name
+      FROM inv_x ix
+      JOIN invoice_items ii ON ii.invoice_id = ix.id
+      LEFT JOIN order_items oi ON oi.id = ii.order_item_id
+  ), item_lines AS (
+    SELECT it.inv_id, it.clinic_id,
+           CASE WHEN it.item_wo IS NOT NULL THEN (SELECT wo.doctor_id FROM work_orders wo WHERE wo.id = it.item_wo)
+                ELSE it.fallback_doctor END AS doctor_id,
+           -- siparişsiz kalem çok siparişli faturada sipariş SAHİPLENMEZ (siparişler kendi hekiminde sayılsın)
+           CASE WHEN it.item_wo IS NOT NULL THEN ARRAY[it.item_wo]
+                WHEN cardinality(it.wo_ids) <= 1 THEN it.wo_ids ELSE '{}'::uuid[] END AS order_ids,
+           CASE WHEN s.id IS NOT NULL THEN 'service' ELSE 'other' END AS row_kind,
+           s.id AS service_id, s.unit, it.currency, it.quantity, it.amount AS revenue, it.amount * it.rate AS revenue_base,
+           lr.lrate,
+           (s.id IS NOT NULL AND COALESCE(s.price, 0) > 0 AND lr.lrate IS NOT NULL) AS has_list,
+           CASE WHEN s.id IS NOT NULL AND COALESCE(s.price, 0) > 0 AND lr.lrate IS NOT NULL
+                THEN it.quantity * s.price * lr.lrate * it.rate ELSE 0 END AS list_value_base
+      FROM items it
+      LEFT JOIN LATERAL (   -- işlem eşleşmesi: service_id → aynı labda tam ad (büyük/küçük harf duyarsız) → Diğer
+        SELECT s0.id, s0.unit, s0.price, s0.currency FROM (
+          SELECT ls.id, ls.unit, ls.price, ls.currency, 0 AS pri, true AS act, ls.created_at
+            FROM lab_services ls WHERE it.oi_service IS NOT NULL AND ls.id = it.oi_service AND ls.lab_id = p_lab_id
+          UNION ALL
+          SELECT ls.id, ls.unit, ls.price, ls.currency, 1, COALESCE(ls.is_active, true), ls.created_at
+            FROM lab_services ls WHERE ls.lab_id = p_lab_id AND it.match_name <> '' AND lower(btrim(ls.name)) = it.match_name
+        ) s0 ORDER BY s0.pri, s0.act DESC, s0.created_at NULLS LAST, s0.id LIMIT 1
+      ) s ON true
+      -- liste fiyatı → faturanın dövizi (fatura tarihindeki kur); sonra faturanın kuruyla ana para birimi
+      LEFT JOIN LATERAL (
+        SELECT public.get_currency_rate(p_lab_id, COALESCE(s.currency, (SELECT ccy FROM base)), it.currency, it.issue_date) AS lrate
+         WHERE s.id IS NOT NULL AND COALESCE(s.price, 0) > 0
+      ) lr ON true
+  ), remainder AS (   -- kalem toplamı subtotal'den farklıysa ya da fatura kalemsizse fark: "Kalemsiz fatura"
+    SELECT ix.id AS inv_id, ix.clinic_id, ix.fallback_doctor AS doctor_id,
+           CASE WHEN cardinality(ix.wo_ids) <= 1 THEN ix.wo_ids ELSE '{}'::uuid[] END AS order_ids, 'no_items'::text AS row_kind,
+           NULL::uuid AS service_id, NULL::text AS unit, ix.currency, 0::numeric AS quantity,
+           ix.subtotal - COALESCE(t.amt, 0) AS revenue, (ix.subtotal - COALESCE(t.amt, 0)) * ix.rate AS revenue_base,
+           NULL::numeric AS lrate, false AS has_list, 0::numeric AS list_value_base
+      FROM inv_x ix
+      LEFT JOIN (SELECT il.inv_id, SUM(il.revenue) AS amt, count(*) AS n FROM item_lines il GROUP BY il.inv_id) t ON t.inv_id = ix.id
+     WHERE t.n IS NULL OR abs(ix.subtotal - t.amt) > 0.005
+  ), all_lines AS (
+    SELECT * FROM item_lines UNION ALL SELECT * FROM remainder
+  ), uncovered AS (   -- faturaya bağlı ama hiçbir satırda görünmeyen sipariş → 0 tutarlı satır (sipariş sayısı tutsun)
+    SELECT o.inv_id, ix.clinic_id, (SELECT wo.doctor_id FROM work_orders wo WHERE wo.id = o.wo_id) AS doctor_id,
+           ARRAY[o.wo_id] AS order_ids, 'no_items'::text AS row_kind, NULL::uuid AS service_id, NULL::text AS unit,
+           ix.currency, 0::numeric AS quantity, 0::numeric AS revenue, 0::numeric AS revenue_base,
+           NULL::numeric AS lrate, false AS has_list, 0::numeric AS list_value_base
+      FROM inv_orders o JOIN inv_x ix ON ix.id = o.inv_id
+     WHERE NOT EXISTS (SELECT 1 FROM all_lines l WHERE l.inv_id = o.inv_id AND o.wo_id = ANY (l.order_ids))
+  )
+  SELECT l.inv_id, l.clinic_id, l.doctor_id, l.order_ids, l.row_kind, l.service_id, l.unit, l.currency,
+         l.quantity, l.revenue, l.revenue_base, l.has_list, l.list_value_base
+    FROM (SELECT * FROM all_lines UNION ALL SELECT * FROM uncovered) l
+  UNION ALL
+  -- 20261105102000: ekstre indirimi — hizmete/hekime/siparişe dağıtılamaz; kliniğin eksi satırı, indirim gününde
+  -- (kendi dövizinde amount, ana parada amount_base). Kırılım toplamı dönem cirosuna eşit kalır.
+  SELECT NULL::uuid, d.clinic_id, NULL::uuid, '{}'::uuid[], 'statement_discount'::text, NULL::uuid, NULL::text,
+         d.currency, 0::numeric, -d.amount, -d.amount_base, false, 0::numeric
+    FROM clinic_statement_discounts d
+   WHERE d.lab_id = p_lab_id AND d.discount_date BETWEEN p_from AND p_to;
+$function$;
+
+## trg_recalc_on_tax_change()
+CREATE OR REPLACE FUNCTION public.trg_recalc_on_tax_change()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.tax_rate IS DISTINCT FROM OLD.tax_rate THEN
+    PERFORM recalc_invoice_totals(NEW.id);
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+## _sd_invoice_credit_trg()
+CREATE OR REPLACE FUNCTION public._sd_invoice_credit_trg()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_guc     text := COALESCE(current_setting('siman.sd_write', true), '');
+  v_trimmed boolean := false;
+  v_total   numeric;
+  v_paid    numeric;
+  v_excess  numeric;
+  r         record;
+BEGIN
+  -- 0) Fatura silindi
+  IF TG_OP = 'DELETE' THEN
+    IF OLD.clinic_id IS NULL OR NOT EXISTS (
+         SELECT 1 FROM clinic_statement_discounts sd
+          WHERE sd.lab_id = OLD.lab_id AND sd.clinic_id = OLD.clinic_id AND sd.currency = OLD.currency) THEN
+      RETURN NULL;
+    END IF;
+    IF v_guc <> 'on' THEN
+      PERFORM _sd_apply_credit(OLD.lab_id, OLD.clinic_id, OLD.currency);
+    END IF;
+    RETURN NULL;
+  END IF;
+
+  -- 1) Kısa devre
+  IF NEW.clinic_id IS NULL OR NOT EXISTS (
+       SELECT 1 FROM clinic_statement_discounts sd
+        WHERE sd.lab_id = NEW.lab_id AND sd.clinic_id = NEW.clinic_id AND sd.currency = NEW.currency) THEN
+    RETURN NULL;
+  END IF;
+
+  -- 1b) İptalden geri alma: faturada 'indirim' payı varsa reddedilir — o pay iptalde alacağa dönmüş ve
+  --     başka faturalara uygulanmış olabilir; geri alınırsa indirim tutarından fazlası uygulanmış olur
+  IF TG_OP = 'UPDATE' AND OLD.status = 'iptal' AND NEW.status IS DISTINCT FROM 'iptal'
+     AND EXISTS (SELECT 1 FROM payments p WHERE p.invoice_id = NEW.id AND p.payment_method = 'indirim') THEN
+    RAISE EXCEPTION 'SD_UNCANCEL_LOCKED' USING ERRCODE = '23514';
+  END IF;
+
+  -- 2) Toplam düşüşünde aşan 'indirim' payının kırpılması
+  IF TG_OP = 'UPDATE' AND NEW.status <> 'iptal' AND NEW.total < OLD.total AND NEW.paid_amount > NEW.total THEN
+    PERFORM pg_advisory_xact_lock(hashtext('sd:' || NEW.clinic_id));
+    SELECT i.total INTO v_total FROM invoices i WHERE i.id = NEW.id FOR UPDATE;
+    SELECT COALESCE(sum(p.amount), 0) INTO v_paid FROM payments p WHERE p.invoice_id = NEW.id;
+    v_excess := v_paid - v_total;
+    IF v_excess > 0 THEN
+      PERFORM set_config('siman.sd_write', 'on', true);
+      FOR r IN
+        SELECT p.id, p.amount, p.rate_at_time
+          FROM payments p
+          JOIN clinic_statement_discounts sd ON sd.id = p.statement_discount_id
+         WHERE p.invoice_id = NEW.id AND p.payment_method = 'indirim'
+         ORDER BY p.created_at DESC, sd.discount_date DESC, sd.created_at DESC, sd.doc_no DESC, p.id DESC
+      LOOP
+        EXIT WHEN v_excess <= 0;
+        IF r.amount <= v_excess THEN
+          DELETE FROM payments WHERE id = r.id;
+          v_excess := v_excess - r.amount;
+        ELSE
+          UPDATE payments
+             SET amount      = r.amount - v_excess,
+                 amount_base = round((r.amount - v_excess) * COALESCE(r.rate_at_time, 1), 2)
+           WHERE id = r.id;
+          v_excess := 0;
+        END IF;
+        v_trimmed := true;
+      END LOOP;
+      PERFORM set_config('siman.sd_write', v_guc, true);
+    END IF;
+  END IF;
+
+  -- 3) Alacağın yeniden uygulanması
+  IF v_guc <> 'on'
+     AND ((NEW.status NOT IN ('taslak', 'iptal') AND NEW.total > NEW.paid_amount)
+          OR (TG_OP = 'UPDATE' AND NEW.status = 'iptal' AND OLD.status IS DISTINCT FROM 'iptal')
+          OR v_trimmed) THEN
+    PERFORM _sd_apply_credit(NEW.lab_id, NEW.clinic_id, NEW.currency);
+  END IF;
+
+  RETURN NULL;
+END
+$function$;
+
+## fn_generate_monthly_invoices()
+CREATE OR REPLACE FUNCTION public.fn_generate_monthly_invoices()
+ RETURNS TABLE(clinic_id uuid, invoice_id uuid, work_order_count integer, error_msg text)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_clinic   RECORD;
+  v_grp      RECORD;
+  v_inv_id   uuid;
+  v_err      text;
+  v_note     text := 'Aylık toplu fatura · ' || to_char(now() - interval '1 month', 'MM.YYYY');  -- "Sabit · değişken" (autoT)
+BEGIN
+  -- 20261028146000 "süpürge": create_bulk_invoice'in oturumsuz (cron) yolu bu işaretle açılır; sonunda kapanır
+  PERFORM set_config('siman.trusted_invoice', 'on', true);
+  FOR v_clinic IN
+    SELECT c.id, COALESCE(c.default_payment_terms_days, 30) AS due_days
+    FROM clinics c
+    WHERE c.is_active = TRUE
+      AND COALESCE(c.billing_mode, 'monthly_bulk') = 'monthly_bulk'
+  LOOP
+    -- Gözden kaçan teslim edilmiş siparişler, para birimine göre (create_invoice_from_order'ın kuralı);
+    -- create_bulk_invoice karışık para birimini reddettiği için her para birimine ayrı taslak.
+    -- (Sorgular nitelendi: çıktı sütunu clinic_id ile çakışıyordu → 42702, fonksiyon hiç çalışmıyordu.)
+    FOR v_grp IN
+      SELECT public._scan_order_currency(u.work_order_id) AS ccy, array_agg(u.work_order_id) AS ids
+        FROM v_unbilled_work_orders u
+       WHERE u.clinic_id = v_clinic.id
+         -- 20261028147000: karışık para birimli sipariş grubu düşürmesin (create_bulk_invoice reddeder) → aşağıda ayrı
+         AND NOT public._scan_wo_mixed_currency(u.work_order_id)
+       GROUP BY 1
+    LOOP
+      BEGIN
+        v_inv_id := public.create_bulk_invoice(v_clinic.id, v_grp.ids, v_clinic.due_days, v_note);
+        v_err := NULL;
+      EXCEPTION WHEN OTHERS THEN
+        v_inv_id := NULL;
+        v_err    := SQLERRM;
+      END;
+      clinic_id        := v_clinic.id;
+      invoice_id       := v_inv_id;
+      work_order_count := array_length(v_grp.ids, 1);
+      error_msg        := v_err;
+      RETURN NEXT;
+    END LOOP;
+
+    -- Karışık para birimli siparişler: faturalanmaz, elle faturalansın diye hata satırı döner
+    FOR v_grp IN
+      SELECT NULL::text AS ccy, array_agg(u.work_order_id) AS ids
+        FROM v_unbilled_work_orders u
+       WHERE u.clinic_id = v_clinic.id AND public._scan_wo_mixed_currency(u.work_order_id)
+      HAVING count(*) > 0
+    LOOP
+      clinic_id        := v_clinic.id;
+      invoice_id       := NULL;
+      work_order_count := array_length(v_grp.ids, 1);
+      error_msg        := 'Karışık para birimli sipariş · elle faturalayın';
+      RETURN NEXT;
+    END LOOP;
+
+    -- "Yalnız tarama" havuzunda kalanlar (siparişli faturaya girmeyen para birimleri dahil)
+    IF cardinality(public._scan_pool_charge_ids(v_clinic.id, NULL)) > 0 THEN
+      BEGIN
+        v_inv_id := (public._scan_monthly_pool_invoices(v_clinic.id))[1];
+        v_err := NULL;
+      EXCEPTION WHEN OTHERS THEN
+        v_inv_id := NULL;
+        v_err := SQLERRM;
+      END;
+      clinic_id        := v_clinic.id;
+      invoice_id       := v_inv_id;
+      work_order_count := 0;
+      error_msg        := v_err;
+      RETURN NEXT;
+    END IF;
+  END LOOP;
+
+  PERFORM set_config('siman.trusted_invoice', '', true);
+  RETURN;
+END;
+$function$;
+
+## _invoice_efatura_locked(uuid,text)
+CREATE OR REPLACE FUNCTION public._invoice_efatura_locked(p_uuid uuid, p_status text)
+ RETURNS boolean
+ LANGUAGE sql
+ IMMUTABLE
+AS $function$
+  select p_uuid is not null and coalesce(p_status, '') <> 'cancelled'
+$function$;
+
+## lab_can_manage_invoices() — md5=844d529fdeeaca31294345c292ea0b1a acl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+CREATE OR REPLACE FUNCTION public.lab_can_manage_invoices()
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  select public.is_platform_admin() or (
+    exists (select 1 from public.profiles where id = auth.uid() and user_type in ('admin', 'lab'))
+    and (public.has_permission('manage_invoices') or public.has_permission('manage_finance')))
+$function$;
