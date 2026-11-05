@@ -4,7 +4,7 @@
 // (her kayıt başarısız, tablo boş — 2026-11-05).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { clinicDiscountUpsert, parseDiscountPercent } from './clinicDiscount.ts';
+import { applyClinicRate, clinicDiscountUpsert, parseDiscountPercent } from './clinicDiscount.ts';
 
 test('upsert benzersiz anahtar (lab_id, clinic_id) ile yapılır', () => {
   const { onConflict } = clinicDiscountUpsert({ id: 'c1', lab_id: 'l1' }, 10);
@@ -34,4 +34,13 @@ test('oran: geçersiz değerler null', () => {
   assert.equal(parseDiscountPercent('abc'), null);
   assert.equal(parseDiscountPercent('-1'), null);
   assert.equal(parseDiscountPercent('100.01'), null);
+});
+
+test('genel oran SQL ROUND ile aynı', () => {
+  assert.equal(applyClinicRate(1250.50, 15), 1062.93); // 1062.925
+  assert.equal(applyClinicRate(100.10, 15), 85.09);    // 85.085 (float 85.0849… tuzağı)
+  assert.equal(applyClinicRate(99.99, 7.5), 92.49);    // 92.49075
+  assert.equal(applyClinicRate(100, 0), 100);
+  assert.equal(applyClinicRate(0, 10), 0);
+  assert.equal(applyClinicRate(1.05, 50), 0.53);       // 0.525
 });
