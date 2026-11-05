@@ -41,3 +41,11 @@ export function discountPeriodLabel(
   }
   return `${pad2(fd)}.${pad2(fm)}.${fy} – ${pad2(td)}.${pad2(tm)}.${ty}`;
 }
+
+/** Sunucu hata mesajından SD_* kodunu çıkarır; yoksa ham mesaj ('Yetkiniz yok' vb.). Boşsa null. */
+export function sdServerError(message: string | null | undefined): string | null {
+  const m = String(message ?? '').trim();
+  if (!m) return null;
+  const hit = m.match(/SD_[A-Z_]+/);
+  return hit ? hit[0] : m;
+}

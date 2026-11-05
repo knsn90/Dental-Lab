@@ -15,7 +15,8 @@ export type PaymentMethod =
   | 'kart'
   | 'havale'
   | 'cek'
-  | 'diger';
+  | 'diger'
+  | 'indirim';
 
 export const INVOICE_STATUS_LABELS: Record<InvoiceStatus, string> = {
   taslak:       'Taslak',
@@ -39,6 +40,7 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   havale:  'Havale / EFT',
   cek:     'Çek',
   diger:   'Diğer',
+  indirim: 'Ekstre indirimi',
 };
 
 // ─── Tablolar ──────────────────────────────────────────────────────────────
@@ -159,6 +161,8 @@ export interface Payment {
   currency?: string | null;
   /** Dolu = sistemin yazdığı tahsilat (ör. online ödeme `intent:<id>`); boş = elle girilmiş. */
   idempotency_key?: string | null;
+  /** Dolu = ekstre indiriminin bu faturaya düşen payı (payment_method='indirim'). */
+  statement_discount_id?: string | null;
   // Joined
   receiver?: { id: string; full_name: string } | null;
 }
@@ -305,3 +309,23 @@ export type ClinicReceipt = {
   account_id?: string | null;
   account_label?: string | null;
 };
+
+// ─── Ekstre indirimi ───────────────────────────────────────────────────────
+
+export interface StatementDiscount {
+  id: string; lab_id: string; clinic_id: string; currency: string;
+  discount_date: string; period_from: string; period_to: string;
+  kind: 'percent' | 'fixed'; value: number; amount: number; base_amount: number;
+  doc_no: number; description: string | null; created_at: string;
+}
+
+export interface StatementDiscountInput {
+  clinicId: string; currency: string; from: string; to: string;
+  kind: 'percent' | 'fixed'; value: number;
+}
+
+export interface StatementDiscountQuote {
+  ok: boolean; error: string | null;
+  period_total: number; prior_discounts: number; base: number; amount: number;
+  to_invoices: number; to_credit: number; balance_before: number; balance_after: number;
+}

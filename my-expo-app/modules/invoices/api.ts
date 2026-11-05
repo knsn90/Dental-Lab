@@ -13,7 +13,9 @@ import type {
   ReceiptLine, ReceiptResult, ClinicReceipt,
   InvoiceListFilters, CreateBulkInvoiceParams, UnbilledWorkOrder,
   LinkedWorkOrder,
+  StatementDiscount, StatementDiscountInput, StatementDiscountQuote,
 } from './types';
+import { sdServerError } from './lib/statementDiscount';
 import { type CurrencyTotal } from '../../core/money/aggregations';
 import type { Currency } from '../../core/money/currency';
 import { labTodayOf } from '../../core/metrics/orderDefs';
@@ -560,7 +562,8 @@ const CLINIC_STATEMENT_SELECT = `
   clinic:clinics!invoices_clinic_id_fkey(id, name, address, phone, email),
   work_order:work_orders!invoices_work_order_id_fkey(id, order_number, patient_name, delivery_date, revision_responsible,
     revision_of:revision_of_id(order_number)),
-  payments:payments(*, receiver:profiles!payments_received_by_fkey(id, full_name))
+  payments:payments(*, receiver:profiles!payments_received_by_fkey(id, full_name)),
+  items:invoice_items(total, net_total)
 `;
 
 export async function fetchInvoicesForClinic(clinicId: string) {
@@ -714,4 +717,83 @@ export async function updateClinicReceipt(p: {
 export async function deleteClinicReceipt(receiptId: string): Promise<void> {
   const { error } = await supabase.rpc('delete_clinic_receipt', { p_receipt_id: receiptId });
   if (error) throw new Error(error.message);
+}
+
+// ─── Ekstre indirimi ───────────────────────────────────────────────────────
+// Hata: sunucu mesajındaki SD_* kodu ya da ham mesaj; arayüz sdErrorText ile eşler.
+
+const num = (x: unknown): number => Number(x) || 0;
+
+export async function fetchStatementDiscounts(
+  clinicId: string,
+): Promise<{ data: StatementDiscount[]; error: string | null }> {
+  const { data, error } = await supabase
+    .from('clinic_statement_discounts')
+    .select('id, lab_id, clinic_id, currency, discount_date, period_from, period_to, kind, value, amount, base_amount, doc_no, description, created_at')
+    .eq('clinic_id', clinicId)
+    .order('discount_date', { ascending: true })
+    .order('doc_no', { ascending: true });
+  if (error) return { data: [], error: sdServerError(error.message) ?? 'error' };
+  const rows = ((data ?? []) as unknown as StatementDiscount[]).map(r => ({
+    ...r, value: num(r.value), amount: num(r.amount), base_amount: num(r.base_amount), doc_no: num(r.doc_no),
+  }));
+  return { data: rows, error: null };
+}
+
+export async function previewStatementDiscount(
+  p: StatementDiscountInput,
+): Promise<{ data: StatementDiscountQuote | null; error: string | null }> {
+  try {
+    const { data, error } = await supabase.rpc('preview_statement_discount', {
+      p_clinic_id: p.clinicId, p_currency: p.currency, p_from: p.from, p_to: p.to,
+      p_kind: p.kind, p_value: p.value,
+    });
+    if (error) return { data: null, error: sdServerError(error.message) ?? 'error' };
+    const q = (data ?? {}) as Record<string, unknown>;
+    return {
+      data: {
+        ok: q.ok === true,
+        error: q.error ? String(q.error) : null,
+        period_total: num(q.period_total), prior_discounts: num(q.prior_discounts),
+        base: num(q.base), amount: num(q.amount),
+        to_invoices: num(q.to_invoices), to_credit: num(q.to_credit),
+        balance_before: num(q.balance_before), balance_after: num(q.balance_after),
+      },
+      error: null,
+    };
+  } catch (e: any) {
+    return { data: null, error: sdServerError(e?.message) ?? 'error' };
+  }
+}
+
+export async function recordStatementDiscount(
+  p: StatementDiscountInput & { date: string; description: string; idempotencyKey: string },
+): Promise<{ data: { id: string; doc_no: number; replayed: boolean } | null; error: string | null }> {
+  const call = () => supabase.rpc('record_statement_discount', {
+    p_clinic_id: p.clinicId, p_currency: p.currency, p_from: p.from, p_to: p.to,
+    p_kind: p.kind, p_value: p.value, p_discount_date: p.date,
+    p_description: p.description, p_idempotency_key: p.idempotencyKey,
+  });
+  try {
+    let res = await call();
+    // Deadlock (40P01): aynı anahtarla bir kez yeniden dene — kayıt idempotent.
+    if (res.error && (res.error as { code?: string }).code === '40P01') res = await call();
+    if (res.error) return { data: null, error: sdServerError(res.error.message) ?? 'error' };
+    const r = (res.data ?? {}) as Record<string, unknown>;
+    return { data: { id: String(r.id), doc_no: num(r.doc_no), replayed: r.replayed === true }, error: null };
+  } catch (e: any) {
+    return { data: null, error: sdServerError(e?.message) ?? 'error' };
+  }
+}
+
+export async function deleteStatementDiscount(id: string): Promise<{ error: string | null }> {
+  const call = () => supabase.rpc('delete_statement_discount', { p_id: id });
+  try {
+    let res = await call();
+    if (res.error && (res.error as { code?: string }).code === '40P01') res = await call();
+    if (res.error) return { error: sdServerError(res.error.message) ?? 'error' };
+    return { error: null };
+  } catch (e: any) {
+    return { error: sdServerError(e?.message) ?? 'error' };
+  }
 }

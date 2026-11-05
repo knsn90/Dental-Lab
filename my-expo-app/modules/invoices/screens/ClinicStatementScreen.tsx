@@ -86,6 +86,7 @@ const METHOD_ICON: Record<PaymentMethod, React.ComponentType<any>> = {
   havale: Landmark,
   cek:    FileText,
   diger:  Minus,
+  indirim: Minus,
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────
