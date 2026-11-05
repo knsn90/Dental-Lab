@@ -9,8 +9,8 @@ import type { Slice } from '../profitBreakdown';
 export const fmtPct = (n: number | string | null | undefined) =>
   (Number(n) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 1 });
 
-/** Sağ sütun: her döviz ayrı satır (hero'daki Gelir kutucuğu gibi) + altında pay. */
-export function SliceAmount({ slices, share }: { slices: Slice[]; share: number }) {
+/** Sağ sütun: her döviz ayrı satır (hero'daki Gelir kutucuğu gibi) + altında pay (null → pay yazılmaz: ekstre indirimi). */
+export function SliceAmount({ slices, share }: { slices: Slice[]; share: number | null }) {
   const TT = useMobileTableText();
   return (
     <View style={{ alignItems: 'flex-end' }}>
@@ -21,7 +21,7 @@ export function SliceAmount({ slices, share }: { slices: Slice[]; share: number 
           {formatMoney(Number(s.total) || 0, s.currency as Currency, { fractionDigits: 0 })}
         </Text>
       ))}
-      <Text style={TT.amountSub}>%{fmtPct(share)}</Text>
+      {share !== null && <Text style={TT.amountSub}>%{fmtPct(share)}</Text>}
     </View>
   );
 }

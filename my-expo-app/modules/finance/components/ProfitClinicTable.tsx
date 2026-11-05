@@ -1,4 +1,5 @@
 // Karlılık · Klinik Bazında Ciro (KDV hariç). Klinik satırına dokununca hekimleri altında açılır.
+// Kliniğin ekstre indirimleri (eksi) hekimlerin altında, en sonda ayrı alt satırdır; klinik toplamı bunu içerir.
 // Kâr/marj YOK — kullanıcı kararı: kâr yalnız dönem toplamı, kırılım ciro gösterir.
 import React, { useState } from 'react';
 import { View, Text } from 'react-native';
@@ -47,10 +48,16 @@ export function ProfitClinicTable({ rows }: { rows: ClinicRow[] }) {
             {isOpen && r.doctors.map((d, j) => (
               <MobileTableRowX key={d.key} isLast={isLast && j === r.doctors.length - 1} tint={U.surfaceSoft}>
                 <View style={{ width: 32 }} />
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={TT.title} numberOfLines={1}>{d.name ?? 'Hekim belirtilmemiş'}</Text>
-                  <Text style={TT.sub} numberOfLines={1}>{`${d.orderCount} ${autoT('sipariş')}`}</Text>
-                </View>
+                {d.kind === 'statement_discount' ? (
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={TT.title} numberOfLines={1}>{autoT('Ekstre indirimleri')}</Text>
+                  </View>
+                ) : (
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={TT.title} numberOfLines={1}>{d.name ?? 'Hekim belirtilmemiş'}</Text>
+                    <Text style={TT.sub} numberOfLines={1}>{`${d.orderCount} ${autoT('sipariş')}`}</Text>
+                  </View>
+                )}
                 <SliceAmount slices={d.slices} share={d.shareInClinic} />
                 <View style={{ width: 14 }} />
               </MobileTableRowX>

@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildClinicRows, buildServiceRows, sliceSum, missingCosts, marginLabel,
+  buildClinicRows, buildServiceRows, sliceSum, missingCosts, marginLabel, countClinicRows, countServiceRows,
   type ClinicLine, type ServiceLine,
 } from './profitBreakdown.ts';
 
@@ -131,4 +131,116 @@ test('marginLabel', () => {
   assert.equal(marginLabel(-1, { labor: false }), 'Risk');
   assert.equal(marginLabel(35, { labor: true }), null);
   assert.equal(marginLabel(null, { labor: false }), null);
+});
+
+test('ekstre indirimi kliniğin altında ayrı satır, klinik toplamını düşürür', () => {
+  const rows = buildClinicRows([
+    { clinic_id: 'c1', clinic_name: 'K', doctor_id: null, doctor_name: null, currency: 'TRY', revenue: 100, revenue_base: 100, order_ids: ['o1'] },
+    { clinic_id: 'c1', clinic_name: 'K', doctor_id: null, doctor_name: null, currency: 'TRY', revenue: -30, revenue_base: -30, order_ids: [], row_kind: 'statement_discount' },
+  ]);
+  assert.equal(rows[0].revenueBase, 70);
+  assert.deepEqual(rows[0].doctors.map(d => [d.key, d.revenueBase]), [['none', 100], ['statement_discount', -30]]);
+  assert.equal(rows[0].orderCount, 1);
+});
+test('hizmet kırılımında ekstre indirimi en sonda ve toplamı düşürür', () => {
+  const rows = buildServiceRows([
+    { row_kind: 'service', service_id: 's1', service_name: 'Zirkon', unit: null, currency: 'TRY', quantity: 1, revenue: 100, revenue_base: 100, listed_quantity: 0, listed_revenue_base: 0, list_value_base: 0 },
+    { row_kind: 'statement_discount', service_id: null, service_name: null, unit: null, currency: 'TRY', quantity: 0, revenue: -30, revenue_base: -30, listed_quantity: 0, listed_revenue_base: 0, list_value_base: 0 },
+  ]);
+  assert.deepEqual(rows.map(r => r.kind), ['service', 'statement_discount']);
+  assert.equal(rows.reduce((s, r) => s + r.revenueBase, 0), 70);
+  assert.equal(rows[1].avgUnitPrice, null);
+});
+
+test('ekstre indirimi alt satırı sıfır cirolu hekimden de sonra gelir, adı yok, siparişi yok', () => {
+  const [a] = buildClinicRows([
+    cl({ clinic_id: 'A', doctor_id: 'd1', doctor_name: 'H1', revenue: 100, revenue_base: 100, order_ids: ['o1'] }),
+    cl({ clinic_id: 'A', doctor_id: 'd5', doctor_name: 'H5', revenue: 0, revenue_base: 0, order_ids: ['o7'] }),
+    cl({ clinic_id: 'A', currency: 'EUR', revenue: -2, revenue_base: -2, row_kind: 'statement_discount' }),
+    cl({ clinic_id: 'A', currency: 'TRY', revenue: -10, revenue_base: -10, row_kind: 'statement_discount' }),
+  ]);
+  assert.deepEqual(a.doctors.map(d => d.key), ['d1', 'd5', 'statement_discount']);
+  const sd = a.doctors[2];
+  assert.equal(sd.kind, 'statement_discount');
+  assert.equal(sd.name, null);
+  assert.equal(sd.orderCount, 0);
+  assert.deepEqual(sd.slices, [{ currency: 'EUR', total: -2 }, { currency: 'TRY', total: -10 }]);
+  assert.equal(a.doctors[0].kind, 'doctor');
+  assert.equal(a.revenueBase, 88);
+  assert.equal(a.orderCount, 2);
+});
+
+test('yalnız ekstre indirimi olan klinik: eksi ciro, hekimsiz siparişle birleşmez', () => {
+  const rows = buildClinicRows([
+    cl({ clinic_id: 'A', revenue: 50, revenue_base: 50, order_ids: ['o1'] }),
+    cl({ clinic_id: 'B', clinic_name: 'Klinik B', revenue: -20, revenue_base: -20, row_kind: 'statement_discount' }),
+  ]);
+  assert.deepEqual(rows.map(r => [r.key, r.revenueBase, r.orderCount]), [['A', 50, 1], ['B', -20, 0]]);
+  assert.deepEqual(rows[1].doctors.map(d => d.key), ['statement_discount']);
+  assert.deepEqual(sliceSum(rows), [{ currency: 'TRY', total: 30 }]);
+});
+
+test('ekstre indirimi eksi kalemsiz satırdan da sonra gelir', () => {
+  const rows = buildServiceRows([
+    sl({ row_kind: 'statement_discount', currency: 'TRY', revenue: -10, revenue_base: -10 }),
+    sl({ row_kind: 'no_items', revenue: -50, revenue_base: -50 }),
+    sl({ service_id: 's1', service_name: 'Zirkonya', quantity: 1, revenue: 100, revenue_base: 100 }),
+  ]);
+  assert.deepEqual(rows.map(r => r.kind), ['service', 'no_items', 'statement_discount']);
+  const sd = rows[2];
+  assert.equal(sd.key, 'statement_discount');
+  assert.equal(sd.name, null);
+  assert.equal(sd.listUnitPrice, null);
+  assert.equal(sd.discountPct, null);
+});
+
+// Fix round 1 (Ruling T): paylar indirim DIŞI satırların brüt toplamına göre; indirim satırının payı yok; sayılar indirimi saymaz
+test('hizmet payı indirimsiz brüt toplama göre, indirim satırının payı yok', () => {
+  const rows = buildServiceRows([
+    sl({ service_id: 's1', service_name: 'Zirkonya', quantity: 1, revenue: 75, revenue_base: 75 }),
+    sl({ service_id: 's2', service_name: 'E.max', quantity: 1, revenue: 25, revenue_base: 25 }),
+    sl({ row_kind: 'statement_discount', revenue: -20, revenue_base: -20 }),
+  ]);
+  assert.deepEqual(rows.map(r => [r.kind, r.share]), [['service', 75], ['service', 25], ['statement_discount', null]]);
+  assert.equal(countServiceRows(rows), 2);
+});
+
+test('hekim payı (shareInClinic) indirimsiz brüt klinik toplamına göre, indirim alt satırının payı yok', () => {
+  const [a] = buildClinicRows([
+    cl({ clinic_id: 'A', doctor_id: 'd1', doctor_name: 'H1', revenue: 60, revenue_base: 60, order_ids: ['o1'] }),
+    cl({ clinic_id: 'A', doctor_id: 'd2', doctor_name: 'H2', revenue: 40, revenue_base: 40, order_ids: ['o2'] }),
+    cl({ clinic_id: 'A', revenue: -25, revenue_base: -25, row_kind: 'statement_discount' }),
+  ]);
+  assert.equal(a.revenueBase, 75);
+  assert.deepEqual(a.doctors.map(d => [d.key, d.shareInClinic]), [['d1', 60], ['d2', 40], ['statement_discount', null]]);
+});
+
+test('klinik sayısı yalnız indirimi olan kliniği saymaz; indirimsiz veride sayılar satır sayısıdır', () => {
+  const rows = buildClinicRows([
+    cl({ clinic_id: 'A', revenue: 50, revenue_base: 50, order_ids: ['o1'] }),
+    cl({ clinic_id: 'A', revenue: -5, revenue_base: -5, row_kind: 'statement_discount' }),
+    cl({ clinic_id: 'B', clinic_name: 'Klinik B', revenue: -20, revenue_base: -20, row_kind: 'statement_discount' }),
+  ]);
+  assert.equal(rows.length, 2);
+  assert.equal(countClinicRows(rows), 1);
+  assert.equal(countClinicRows(buildClinicRows(CLINIC_LINES)), buildClinicRows(CLINIC_LINES).length);
+  const svc = buildServiceRows([sl({ service_id: 's1', revenue: 10, revenue_base: 10 }), sl({ row_kind: 'other', revenue: 5, revenue_base: 5 })]);
+  assert.equal(countServiceRows(svc), svc.length);
+});
+
+// Fix round 2 (review Important 1): klinikler arası pay indirimsiz brüt ciroya göre; yalnız indirimi olan kliniğin payı yok
+test('klinik payı indirimsiz brüt toplama göre: A=100, yalnız indirimli B=−20 → A %100, B pay yok', () => {
+  const rows = buildClinicRows([
+    cl({ clinic_id: 'A', clinic_name: 'Klinik A', doctor_id: 'd1', doctor_name: 'H1', revenue: 100, revenue_base: 100, order_ids: ['o1'] }),
+    cl({ clinic_id: 'B', clinic_name: 'Klinik B', revenue: -20, revenue_base: -20, row_kind: 'statement_discount' }),
+  ]);
+  assert.deepEqual(rows.map(r => [r.key, r.revenueBase, r.share]), [['A', 100, 100], ['B', -20, null]]);
+});
+test('klinik payı paydası indirimsiz: indirimli A (120 − 20) ve B 80 → A %60, B %40', () => {
+  const rows = buildClinicRows([
+    cl({ clinic_id: 'A', clinic_name: 'Klinik A', revenue: 120, revenue_base: 120, order_ids: ['o1'] }),
+    cl({ clinic_id: 'A', clinic_name: 'Klinik A', revenue: -20, revenue_base: -20, row_kind: 'statement_discount' }),
+    cl({ clinic_id: 'B', clinic_name: 'Klinik B', revenue: 80, revenue_base: 80, order_ids: ['o2'] }),
+  ]);
+  assert.deepEqual(rows.map(r => [r.key, r.revenueBase, r.share]), [['A', 100, 60], ['B', 80, 40]]);
 });

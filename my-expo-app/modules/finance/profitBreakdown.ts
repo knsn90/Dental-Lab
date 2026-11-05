@@ -1,6 +1,8 @@
 // Karlılık ekranının klinik / işlem ciro kırılımı — saf model (içe aktarmasız).
 // Girdi: profitability_by_clinic / profitability_by_service satırları (Supabase
 // numeric'i string döndürebilir). Çıktı: döviz dilimli, payı hesaplanmış, sıralı satırlar.
+// Ekstre indirimi (20261105102000): ciroyu düşüren eksi satır — klinikte kliniğin altında ayrı alt satır,
+// işlem kırılımında en sonda ayrı satır; böylece kırılım toplamı dönem cirosuna eşit kalır.
 
 type Num = number | string | null | undefined;
 
@@ -9,24 +11,30 @@ export type Slice = { currency: string; total: number };
 export type ClinicLine = {
   clinic_id: string | null; clinic_name: string | null; doctor_id: string | null;
   doctor_name: string | null; currency: string; revenue: Num; revenue_base: Num; order_ids: string[] | null;
+  /** Eski önbellek satırlarında yok → sipariş satırı sayılır. */
+  row_kind?: 'order' | 'statement_discount';
 };
 export type DoctorRow = {
-  key: string; name: string | null; revenueBase: number; slices: Slice[];
-  orderCount: number; shareInClinic: number;
+  /** 'statement_discount': kliniğin ekstre indirimleri (hekimsiz siparişlerle birleşmez, en sonda). */
+  key: string; kind: 'doctor' | 'statement_discount'; name: string | null; revenueBase: number; slices: Slice[];
+  /** Kliniğin indirim DIŞI (brüt) toplamına göre pay; ekstre indirimi satırında null (pay gösterilmez). */
+  orderCount: number; shareInClinic: number | null;
 };
 export type ClinicRow = {
   key: string; kind: 'clinic' | 'doctorOnly' | 'none'; name: string | null;
-  revenueBase: number; slices: Slice[]; orderCount: number; share: number; doctors: DoctorRow[];
+  /** share: kliniğin indirim DIŞI (brüt) cirosu / tüm kliniklerin brüt cirosu; yalnız ekstre indirimi olan klinikte null. */
+  revenueBase: number; slices: Slice[]; orderCount: number; share: number | null; doctors: DoctorRow[];
 };
 
 export type ServiceLine = {
-  row_kind: 'service' | 'other' | 'no_items'; service_id: string | null;
+  row_kind: 'service' | 'other' | 'no_items' | 'statement_discount'; service_id: string | null;
   service_name: string | null; unit: string | null; currency: string; quantity: Num; revenue: Num;
   revenue_base: Num; listed_quantity: Num; listed_revenue_base: Num; list_value_base: Num;
 };
 export type ServiceRow = {
-  key: string; kind: 'service' | 'other' | 'no_items'; name: string | null;
-  unit: string | null; quantity: number; revenueBase: number; slices: Slice[]; share: number;
+  key: string; kind: 'service' | 'other' | 'no_items' | 'statement_discount'; name: string | null;
+  /** share: indirim DIŞI satırların brüt toplamına göre; ekstre indirimi satırında null. */
+  unit: string | null; quantity: number; revenueBase: number; slices: Slice[]; share: number | null;
   avgUnitPrice: number | null; listUnitPrice: number | null; discountPct: number | null;
 };
 
@@ -51,7 +59,10 @@ export function sliceSum(rows: { slices: Slice[] }[]): Slice[] {
   return toSlices(map);
 }
 
-type DoctorAcc = { name: string | null; base: number; ccy: Map<string, number>; orders: Set<string> };
+type DoctorAcc = {
+  kind: DoctorRow['kind']; name: string | null; base: number; ccy: Map<string, number>; orders: Set<string>;
+};
+const SD_KEY = 'statement_discount';
 type ClinicAcc = { kind: ClinicRow['kind']; name: string | null; doctors: Map<string, DoctorAcc> };
 
 export function buildClinicRows(lines: ClinicLine[]): ClinicRow[] {
@@ -67,9 +78,15 @@ export function buildClinicRows(lines: ClinicLine[]): ClinicRow[] {
           : { kind: 'none', name: null, doctors: new Map() };
       clinics.set(key, c);
     }
-    const dKey = l.doctor_id ?? 'none';
+    const isSd = l.row_kind === 'statement_discount';
+    const dKey = isSd ? SD_KEY : (l.doctor_id ?? 'none');
     let d = c.doctors.get(dKey);
-    if (!d) { d = { name: l.doctor_id ? l.doctor_name : null, base: 0, ccy: new Map(), orders: new Set() }; c.doctors.set(dKey, d); }
+    if (!d) {
+      d = isSd
+        ? { kind: 'statement_discount', name: null, base: 0, ccy: new Map(), orders: new Set() }
+        : { kind: 'doctor', name: l.doctor_id ? l.doctor_name : null, base: 0, ccy: new Map(), orders: new Set() };
+      c.doctors.set(dKey, d);
+    }
     d.base += num(l.revenue_base);
     addSlice(d.ccy, l.currency, num(l.revenue));
     for (const o of l.order_ids ?? []) d.orders.add(o);
@@ -77,29 +94,47 @@ export function buildClinicRows(lines: ClinicLine[]): ClinicRow[] {
 
   const built = [...clinics.entries()].map(([key, c]) => {
     const docs = [...c.doctors.entries()]
-      .map(([dKey, d]) => ({ key: dKey, name: d.name, revenueBase: d.base, slices: toSlices(d.ccy), orders: d.orders }))
-      .sort((a, b) => b.revenueBase - a.revenueBase || (a.name ?? '').localeCompare(b.name ?? ''));
+      .map(([dKey, d]) => ({ key: dKey, kind: d.kind, name: d.name, revenueBase: d.base, slices: toSlices(d.ccy), orders: d.orders }))
+      .sort((a, b) => {
+        if ((a.kind === 'statement_discount') !== (b.kind === 'statement_discount')) return a.kind === 'statement_discount' ? 1 : -1;
+        return b.revenueBase - a.revenueBase || (a.name ?? '').localeCompare(b.name ?? '');
+      });
     // Klinik toplamı hekim satırlarından türer → "hekimler toplamı = klinik" yapı gereği tutar.
     const revenueBase = docs.reduce((s, d) => s + d.revenueBase, 0);
+    // Pay paydası: ekstre indirimi hariç brüt toplam (net paydada paylar %100'ü aşardı)
+    const grossBase = docs.reduce((s, d) => (d.kind === 'statement_discount' ? s : s + d.revenueBase), 0);
     const orders = new Set<string>();
     for (const d of docs) for (const o of d.orders) orders.add(o);
     const doctors: DoctorRow[] = docs.map(d => ({
-      key: d.key, name: d.name, revenueBase: d.revenueBase, slices: d.slices,
-      orderCount: d.orders.size, shareInClinic: pct(d.revenueBase, revenueBase),
+      key: d.key, kind: d.kind, name: d.name, revenueBase: d.revenueBase, slices: d.slices,
+      orderCount: d.orders.size,
+      shareInClinic: d.kind === 'statement_discount' ? null : pct(d.revenueBase, grossBase),
     }));
-    return { key, kind: c.kind, name: c.name, revenueBase, slices: sliceSum(doctors), orderCount: orders.size, doctors };
+    const hasGross = docs.some(d => d.kind !== 'statement_discount');
+    return { key, kind: c.kind, name: c.name, revenueBase, grossBase, hasGross, slices: sliceSum(doctors), orderCount: orders.size, doctors };
   });
 
-  const total = built.reduce((s, r) => s + r.revenueBase, 0);
+  // Pay paydası: ekstre indirimi hariç brüt toplam (net paydada A=100 / yalnız indirimli B=−20 → A %125 olurdu)
+  const total = built.reduce((s, r) => s + r.grossBase, 0);
   return built
-    .map(r => ({ ...r, share: pct(r.revenueBase, total) }))
+    .map(({ grossBase, hasGross, ...r }): ClinicRow => ({ ...r, share: hasGross ? pct(grossBase, total) : null }))
     .sort((a, b) => {
       if ((a.kind === 'none') !== (b.kind === 'none')) return a.kind === 'none' ? 1 : -1;
       return b.revenueBase - a.revenueBase || (a.name ?? '').localeCompare(b.name ?? '');
     });
 }
 
-const KIND_ORDER: Record<ServiceRow['kind'], number> = { service: 0, other: 1, no_items: 2 };
+/** Başlıktaki klinik sayısı: yalnız ekstre indirimi olan (siparişsiz/faturasız) klinik sayılmaz. */
+export function countClinicRows(rows: ClinicRow[]): number {
+  return rows.filter(r => r.doctors.some(d => d.kind !== 'statement_discount')).length;
+}
+
+const KIND_ORDER: Record<ServiceRow['kind'], number> = { service: 0, other: 1, no_items: 2, statement_discount: 3 };
+
+/** Başlıktaki işlem sayısı: ekstre indirimi satırı bir işlem değildir. */
+export function countServiceRows(rows: ServiceRow[]): number {
+  return rows.filter(r => r.kind !== 'statement_discount').length;
+}
 
 export function buildServiceRows(lines: ServiceLine[]): ServiceRow[] {
   type Acc = {
@@ -124,11 +159,12 @@ export function buildServiceRows(lines: ServiceLine[]): ServiceRow[] {
     g.listValue += num(l.list_value_base);
   }
 
-  const total = [...groups.values()].reduce((s, g) => s + g.base, 0);
+  // Pay paydası: ekstre indirimi hariç brüt toplam; indirim satırının payı yok
+  const total = [...groups.values()].reduce((s, g) => (g.kind === 'statement_discount' ? s : s + g.base), 0);
   return [...groups.entries()]
     .map(([key, g]): ServiceRow => ({
       key, kind: g.kind, name: g.name, unit: g.unit, quantity: g.qty, revenueBase: g.base,
-      slices: toSlices(g.ccy), share: pct(g.base, total),
+      slices: toSlices(g.ccy), share: g.kind === 'statement_discount' ? null : pct(g.base, total),
       avgUnitPrice: g.kind === 'service' && g.qty > 0 ? g.base / g.qty : null,
       listUnitPrice: g.listedQty > 0 && g.listValue > 0 ? g.listValue / g.listedQty : null,
       discountPct: g.listValue > 0 ? round1((1 - g.listedRev / g.listValue) * 100) : null,

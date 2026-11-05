@@ -25,7 +25,7 @@ import { groupByCurrency, type CurrencyTotal } from '../../../core/money/aggrega
 import { WhiteHero, useWhiteHeroInk } from '../../../core/ui/WhiteHero';
 import { useInkUI } from '../../../core/theme/inkScale';
 import {
-  buildClinicRows, buildServiceRows, missingCosts, marginLabel,
+  buildClinicRows, buildServiceRows, missingCosts, marginLabel, countClinicRows, countServiceRows,
   type ClinicLine, type ServiceLine,
 } from '../profitBreakdown';
 import { ProfitClinicTable } from '../components/ProfitClinicTable';
@@ -402,7 +402,7 @@ export function ProfitabilityScreen() {
             />
             <MobileTableX
               title={breakdown === 'clinic' ? 'Klinik Bazında Ciro' : 'İşlem Bazında Ciro'}
-              count={breakdownRows.length}
+              count={breakdown === 'clinic' ? countClinicRows(clinicRows) : countServiceRows(serviceRows)}
               countLabel={breakdown === 'clinic' ? 'klinik' : t('profitability.serviceCount')}
             >
               {breakdownFailed && breakdownRows.length === 0 ? (

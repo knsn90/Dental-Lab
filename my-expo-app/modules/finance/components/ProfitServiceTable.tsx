@@ -1,10 +1,11 @@
 // Karlılık · İşlem Bazında Ciro (KDV hariç). Fatura kalemleri lab hizmetine eşlenir;
 // eşlenemeyenler "Diğer", kalemsiz fatura tutarları "Kalemsiz fatura" satırında toplanır.
+// Ekstre indirimleri (eksi) hizmetlere dağıtılamaz → en sonda kendi satırı; toplam dönem cirosuna eşit kalır.
 import React from 'react';
 import { View, Text } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
-import { Layers, Package, Receipt } from '../../../core/ui/icons';
+import { Layers, Package, Percent, Receipt } from '../../../core/ui/icons';
 import { useInkUI } from '../../../core/theme/inkScale';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { fmtBase } from '../../../core/money/baseCurrency';
@@ -22,8 +23,12 @@ export function ProfitServiceTable({ rows }: { rows: ServiceRow[] }) {
   return (
     <>
       {rows.map((r, i) => {
-        const name = r.kind === 'other' ? 'Diğer' : r.kind === 'no_items' ? 'Kalemsiz fatura' : (r.name ?? 'Diğer');
-        const icon = r.kind === 'service' ? Layers : r.kind === 'other' ? Package : Receipt;
+        const name = r.kind === 'other' ? 'Diğer' : r.kind === 'no_items' ? 'Kalemsiz fatura'
+          : r.kind === 'statement_discount' ? autoT('Ekstre indirimleri') : (r.name ?? 'Diğer');
+        const icon = r.kind === 'service' ? Layers : r.kind === 'other' ? Package
+          : r.kind === 'statement_discount' ? Percent : Receipt;
+        const tone = r.kind === 'service' ? U.chipTones.info
+          : r.kind === 'statement_discount' ? U.chipTones.warning : U.chipTones.neutral;
         const meta: string[] = [];
         if (r.kind === 'service') {
           meta.push(r.unit ? `${fmtQty(r.quantity)} ${autoT(r.unit)}` : fmtQty(r.quantity));
@@ -33,7 +38,7 @@ export function ProfitServiceTable({ rows }: { rows: ServiceRow[] }) {
         const discount = r.discountPct != null && r.discountPct > 0 ? r.discountPct : null;
         return (
           <MobileTableRowX key={r.key} isLast={i === rows.length - 1}>
-            <MobileTableIconX icon={icon} tone={r.kind === 'service' ? U.chipTones.info : U.chipTones.neutral} />
+            <MobileTableIconX icon={icon} tone={tone} />
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={TT.title} numberOfLines={1}>{name}</Text>
               {/* 2 satır: dar telefonda sondaki liste fiyatı kırpılmasın (indirim çipi ona göre okunur) */}
