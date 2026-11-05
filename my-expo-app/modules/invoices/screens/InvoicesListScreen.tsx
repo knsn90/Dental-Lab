@@ -761,9 +761,10 @@ function BulkInvoiceModal({
     return pairs.length ? pairs.map(([c, v]) => fmtMoney(v, c)).join(' · ') : '—';
   }, [orders, selectedOrders]);
 
-  // İndirimli toplam (KDV öncesi, toplamla aynı taban) — fatura tek para birimindedir;
-  // seçim tek dövizde değilse ya da indirim geçersiz/boşsa gösterilmez.
-  const discountedTotalLabel = useMemo(() => {
+  // Tahmini indirimli toplam (KDV öncesi, sipariş toplamı tabanı) — gerçek fatura Σ kalem net'i
+  // (tarama ücreti, acil farkı dahil) üzerinden indirir ve KDV ekler; bu yüzden yalnız tahmin.
+  // Fatura tek para birimindedir; seçim tek dövizde değilse ya da indirim geçersiz/boşsa gösterilmez.
+  const discountedEstimate = useMemo(() => {
     const v = validateInvoiceDiscount(discType, discRaw);
     if (!v.ok || v.value <= 0) return null;
     const acc: Record<string, number> = {};
@@ -773,7 +774,7 @@ function BulkInvoiceModal({
     const pairs = Object.entries(acc).filter(([, x]) => x > 0);
     if (pairs.length !== 1) return null;
     const [c, net] = pairs[0];
-    return fmtMoney(invoiceTotalsWithDiscount(net, 0, discType, v.value).subtotal, c);
+    return { amount: invoiceTotalsWithDiscount(net, 0, discType, v.value).subtotal, ccy: c };
   }, [orders, selectedOrders, discType, discRaw]);
 
   const toggleOrder = (id: string) => {
@@ -1046,11 +1047,21 @@ function BulkInvoiceModal({
               <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: U.ink[900] }}>
                 {selectedTotalLabelOrders}
               </Text>
-              {discountedTotalLabel ? (
-                <Text style={{ fontSize: 12, color: U.ink[500], marginTop: 2 }} numberOfLines={1}>
-                  {autoT('İndirimli toplam')}{': '}
-                  <Text style={{ fontWeight: '700', color: U.ink[900] }}>{discountedTotalLabel}</Text>
-                </Text>
+              {discountedEstimate ? (
+                <>
+                  <Text style={{ fontSize: 12, color: U.ink[500], marginTop: 2 }} numberOfLines={2}>
+                    {autoT('Tahmini indirimli toplam')}{': '}
+                    <Text style={{ fontWeight: '700', color: U.ink[900] }}>{fmtMoney(discountedEstimate.amount, discountedEstimate.ccy)}</Text>
+                  </Text>
+                  <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 1 }}>
+                    {autoT('KDV öncesi; tarama ücretleri ve acil farkı faturada eklenir.')}
+                  </Text>
+                  {discountedEstimate.amount <= 0 ? (
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: U.chipTones.warning.fg, marginTop: 2 }}>
+                      {autoT('Fatura tutarı 0 olacak.')}
+                    </Text>
+                  ) : null}
+                </>
               ) : null}
               {createErr ? (
                 <Text style={{ fontSize: 12, fontWeight: '600', color: U.chipTones.danger.fg, marginTop: 2 }}>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { invoiceDiscountAmount } from '../lib/invoiceDiscount';
+import { invoiceDiscountAmount, round2 } from '../lib/invoiceDiscount';
 import {
   fetchInvoices, fetchInvoiceById, fetchClinicBalances, fetchInvoiceStats,
   fetchUnbilledWorkOrders, fetchClinicBalancesByCurrency,
@@ -70,10 +70,11 @@ export function useInvoice(id: string | undefined) {
       const itemsNet = items.reduce((s: number, it: any) => s + (Number(it.net_total ?? it.total) || 0), 0);
       // Fatura altı indirim (20261105110000): recalc_invoice_totals ile aynı — Σ net − indirim
       const discountAmount = invoiceDiscountAmount(itemsNet, inv.discount_type ?? null, Number(inv.discount_value) || 0);
-      const subtotal = itemsNet - discountAmount;
+      // İndirim varsa SQL ROUND(x,2) gibi yuvarlanır; indirimsiz yol bugünküyle bit bit aynı kalır.
+      const subtotal = discountAmount > 0 ? round2(itemsNet - discountAmount) : itemsNet;
       const taxRate = Number((inv as any).tax_rate) || 0;
       const taxAmount = Math.round(subtotal * taxRate) / 100;   // subtotal*rate/100, 2 hane
-      const total = subtotal + taxAmount;
+      const total = discountAmount > 0 ? round2(subtotal + taxAmount) : subtotal + taxAmount;
       return { ...inv, items, subtotal, tax_amount: taxAmount, total, discount_amount: discountAmount } as Invoice;
     });
   }, []);

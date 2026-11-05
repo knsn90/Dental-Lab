@@ -791,10 +791,20 @@ export function ClinicBalanceScreen() {
                           <Text style={{ flex: 1, fontSize: 12.5, color: U.ink[700] }}>{autoT('İndirim')}</Text>
                           <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>{`−${fmtCur(disc.discount, pairs[0][0])}`}</Text>
                         </View>
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, borderTopWidth: 1, borderTopColor: U.hairline, paddingTop: 8 }}>
-                          <Text style={{ flex: 1, fontSize: 12.5, fontWeight: '600', color: U.ink[900] }}>{autoT('İndirimli toplam')}</Text>
-                          <Text style={{ fontSize: 13, fontWeight: '700', color: U.ink[900] }}>{fmtCur(disc.subtotal, pairs[0][0])}</Text>
+                        <View style={{ borderTopWidth: 1, borderTopColor: U.hairline, paddingTop: 8, gap: 2 }}>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
+                            <Text style={{ flex: 1, fontSize: 12.5, fontWeight: '600', color: U.ink[900] }}>{autoT('Tahmini indirimli toplam')}</Text>
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: U.ink[900] }}>{fmtCur(disc.subtotal, pairs[0][0])}</Text>
+                          </View>
+                          <Text style={{ fontSize: 11, color: U.ink[400] }}>
+                            {autoT('KDV öncesi; tarama ücretleri ve acil farkı faturada eklenir.')}
+                          </Text>
                         </View>
+                        {disc.subtotal <= 0 ? (
+                          <Text style={{ fontSize: 12, fontWeight: '600', color: U.chipTones.warning.fg }}>
+                            {autoT('Fatura tutarı 0 olacak.')}
+                          </Text>
+                        ) : null}
                       </>
                     ) : null}
                   </View>

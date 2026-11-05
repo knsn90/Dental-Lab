@@ -31,7 +31,8 @@ const TASK7 = [
 
 // Görev 11: fatura altı indirim alanı, toplu fatura akışları, alan/RPC hata metinleri
 const TASK11 = [
-  'Fatura indirimi', 'Faturala', 'İndirimli toplam', 'Toplu fatura',
+  'Fatura indirimi', 'Faturala', 'Tahmini indirimli toplam', 'Toplu fatura',
+  'KDV öncesi; tarama ücretleri ve acil farkı faturada eklenir.', 'Fatura tutarı 0 olacak.',
   'Faturalanmamış siparişleri tek taslak faturada birleştir', 'Yetkiniz yok',
   ...['abc', '101', '5'].map((raw, i) => {
     const r = validateInvoiceDiscount((['fixed', 'percent', null] as const)[i], raw);

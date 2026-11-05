@@ -79,10 +79,29 @@ export function distributeDiscount(
  * Kullanıcının yazdığı indirim değerini sayıya çevirir (Türkçe giriş):
  * virgül varsa noktalar binlik ayırıcıdır ("1.250,50" → 1250.5, "7,5" → 7.5);
  * virgül yoksa ve yalnız 3'lü nokta grupları varsa yine binliktir ("1.250" → 1250);
- * aksi halde olduğu gibi ("1.25" → 1.25). Boş → 0; sayı değilse NaN.
+ * aksi halde olduğu gibi ("1.25" → 1.25). Boş → 0; sayı değilse NaN. Farsça/Arapça rakamlar önce normalizeDigits'ten geçer.
  */
+/**
+ * Farsça (U+06F0–06F9) ve Arapça (U+0660–0669) rakamları ASCII'ye çevirir;
+ * Arapça ondalık ayırıcı ٫ (U+066B) → ',', binlik ayırıcı ٬ (U+066C) → '.'.
+ * Char-code eşlemesi (Hermes: lookbehind / \p{} yok).
+ */
+export function normalizeDigits(raw: string): string {
+  const src = String(raw ?? '');
+  let out = '';
+  for (let i = 0; i < src.length; i++) {
+    const c = src.charCodeAt(i);
+    if (c >= 0x06f0 && c <= 0x06f9) out += String.fromCharCode(48 + c - 0x06f0);
+    else if (c >= 0x0660 && c <= 0x0669) out += String.fromCharCode(48 + c - 0x0660);
+    else if (c === 0x066b) out += ',';
+    else if (c === 0x066c) out += '.';
+    else out += src[i];
+  }
+  return out;
+}
+
 export function parseDiscountInput(raw: string): number {
-  let s = String(raw ?? '').trim().replace(/\s+/g, '');
+  let s = normalizeDigits(raw).trim().replace(/\s+/g, '');
   if (s === '') return 0;
   if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
   else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');

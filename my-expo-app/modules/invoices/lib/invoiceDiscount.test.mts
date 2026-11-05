@@ -84,6 +84,14 @@ for (const m of [client, edge]) {
     assert.equal(m.invoiceDiscountRpcError('Tüm siparişler aynı kliniğe ve laboratuvara ait olmalı', 'fixed', '25'), null);
     assert.equal(m.invoiceDiscountRpcError(null, null, ''), null);
   });
+  test('alan doğrulaması: Farsça/Arapça rakamlar', () => {
+    assert.deepEqual(m.validateInvoiceDiscount('percent', '٧٫٥'), { ok: true, value: 7.5 });
+    assert.deepEqual(m.validateInvoiceDiscount('fixed', '۱۲۵۰'), { ok: true, value: 1250 });
+    assert.deepEqual(m.validateInvoiceDiscount('fixed', '۱٬۲۵۰٫۵'), { ok: true, value: 1250.5 });
+    assert.deepEqual(m.validateInvoiceDiscount('fixed', '۱.۲۵۰'), { ok: true, value: 1250 });
+    assert.deepEqual(m.validateInvoiceDiscount('percent', '۱۰۱'), { ok: false, error: "Yüzde 100'ü aşamaz." });
+    assert.equal(m.parseDiscountInput('٠'), 0);
+  });
 }
 test('iki kopya aynı', () => {
   for (const [n, t, v] of [[999.99, 'percent', 33.3], [12.345, 'fixed', 3], [0, 'percent', 50]] as const)
