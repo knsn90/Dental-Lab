@@ -1,7 +1,8 @@
 // Fatura altı indirim: saf hesap kuralları.
-// DİKKAT: Bu dosyanın AYNI içerikli bir kopyası supabase/functions/_shared/invoiceDiscount.ts
-// içinde durur (edge fonksiyonları istemci modüllerini içe aktaramaz). İkisi birlikte değişir;
-// SQL karşılığı (Görev 10) da aynı kuralı izler. Deno'ya özgü içe aktarma yok.
+// DİKKAT: istemci kopyası ile edge kopyası bayt bayt aynı kalmalıdır:
+// modules/invoices/lib/invoiceDiscount.ts ↔ supabase/functions/_shared/invoiceDiscount.ts
+// (edge fonksiyonları istemci modüllerini içe aktaramaz). SQL karşılığı (Görev 10) da aynı kuralı izler.
+// Deno'ya özgü içe aktarma yok.
 
 export type InvoiceDiscountType = 'percent' | 'fixed' | null;
 
@@ -10,6 +11,7 @@ export type InvoiceDiscountType = 'percent' | 'fixed' | null;
  * Kayan nokta payı: 100.10*15/100 = 15.014999… olur; SQL numeric 15.015 → 15.02 verir.
  * Çözüm: |x|*100 değerini 6 ondalığa sabitleyip (toFixed) sonra Math.round (yarım yukarı) yapmak;
  * işaret ayrı taşındığı için negatifte de sıfırdan uzağa yuvarlanır.
+ * Varsayım: girdiler en çok 4 ondalıklı veriden gelir; toFixed(6) 7+ ardışık 9'lu değerleri yanlış yuvarlayabilir.
  */
 export function round2(x: number): number {
   const n = Number(x);
@@ -24,7 +26,7 @@ export function invoiceDiscountAmount(itemsNet: number, type: InvoiceDiscountTyp
   const net = Number(itemsNet) || 0;
   const v = Number(value) || 0;
   if (!type || v <= 0 || net <= 0) return 0;
-  const d = type === 'percent' ? round2((net * v) / 100) : Math.min(v, net);
+  const d = type === 'percent' ? Math.min(net, round2((net * v) / 100)) : Math.min(v, net);
   return Math.max(0, round2(d));
 }
 
@@ -67,6 +69,8 @@ export function distributeDiscount(
       left -= give;
     }
   }
-  lines.forEach((l, i) => { out[l.key] = shares[i] / 100; });
+  const acc: Record<string, number> = {}; // yinelenen anahtarlar kuruş olarak toplanır
+  lines.forEach((l, i) => { acc[l.key] = (acc[l.key] ?? 0) + shares[i]; });
+  for (const k of Object.keys(acc)) out[k] = acc[k] / 100;
   return out;
 }

@@ -31,6 +31,13 @@ for (const m of [client, edge]) {
     assert.equal(m.round2(1.004), 1);
     assert.equal(m.round2(0), 0);
   });
+  test('yüzde > 100 kalem toplamını aşmaz', () => {
+    assert.equal(m.invoiceDiscountAmount(100, 'percent', 150), 100);
+    assert.deepEqual(m.invoiceTotalsWithDiscount(100, 20, 'percent', 150), { discount: 100, subtotal: 0, tax: 0, total: 0 });
+  });
+  test('dağıtım: yinelenen anahtarlar toplanır', () => {
+    assert.deepEqual(m.distributeDiscount([{ key: 'a', net: 1 }, { key: 'a', net: 2 }], 1), { a: 1 });
+  });
   test('dağıtım: sınırlar', () => {
     // indirim satır toplamını aşarsa toplama kırpılır
     assert.deepEqual(m.distributeDiscount([{ key: 'a', net: 10 }, { key: 'b', net: 5 }], 100), { a: 10, b: 5 });
