@@ -8,7 +8,8 @@ export function isDiscountPayment(p: { payment_method?: string | null; statement
 
 /** notes içindeki "İND-n" numarası (büyük/küçük harf ve İ/I toleranslı); yoksa null. */
 export function discountPaymentDocNo(notes: string | null | undefined): number | null {
-  const m = /(?<![\p{L}\p{N}])[İIiı]ND-(\d+)/iu.exec(notes ?? '');
+  // Sol sınır lookbehind/\p{} olmadan: Hermes (iOS) eski sürümlerinde ikisi de modül yüklenirken patlayabilir.
+  const m = /(?:^|[^A-Za-z0-9ÇĞİÖŞÜçğıöşüÂâÎîÛû])[İIiı]ND-(\d+)/i.exec(notes ?? '');
   return m ? Number(m[1]) : null;
 }
 
