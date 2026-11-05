@@ -1,0 +1,388 @@
+-- 20261105101000_ekstre_indirimi_rpc — CANLI durum (2026-11-05)
+-- Yakalama: 2026-11-05 07:19Z UTC, salt okuma; PostgreSQL 17.6
+-- Bu migration yalnız YENİ nesne ekler; aşağıdaki tanımların hiçbiri değişmez (referans).
+
+## Var olmayanlar (migration öncesi)
+_sd_quote / preview_statement_discount / record_statement_discount / delete_statement_discount / _sd_apply_credit / _sd_invoice_credit_trg: yok
+zz_sd_invoice_credit tetikleyicisi: yok
+public.clinic_statement_discount_counters tablosu: yok (to_regclass IS NULL; Ruling O ile eklenir, down.sql düşürür)
+
+## invoices tetikleyicileri (hepsi etkin 'O'; md5(ad|etkin|tanım satırları) = 709438a1df21180ffeda9449969845c2)
+aa_enforce_invoice_totals [O] CREATE TRIGGER aa_enforce_invoice_totals BEFORE UPDATE ON public.invoices FOR EACH ROW EXECUTE FUNCTION aa_enforce_invoice_totals()
+auto_set_lab_id_invoices [O] CREATE TRIGGER auto_set_lab_id_invoices BEFORE INSERT ON public.invoices FOR EACH ROW EXECUTE FUNCTION auto_set_lab_id()
+invoices_default_tax_rate [O] CREATE TRIGGER invoices_default_tax_rate BEFORE INSERT ON public.invoices FOR EACH ROW EXECUTE FUNCTION invoices_default_tax_rate()
+recalc_on_tax_change [O] CREATE TRIGGER recalc_on_tax_change AFTER UPDATE OF tax_rate ON public.invoices FOR EACH ROW EXECUTE FUNCTION trg_recalc_on_tax_change()
+set_invoice_amount_base_trg [O] CREATE TRIGGER set_invoice_amount_base_trg BEFORE INSERT OR UPDATE ON public.invoices FOR EACH ROW EXECUTE FUNCTION set_invoice_amount_base()
+set_invoice_number_trigger [O] CREATE TRIGGER set_invoice_number_trigger BEFORE INSERT ON public.invoices FOR EACH ROW EXECUTE FUNCTION set_invoice_number()
+touch_invoices_updated_at [O] CREATE TRIGGER touch_invoices_updated_at BEFORE UPDATE ON public.invoices FOR EACH ROW EXECUTE FUNCTION touch_updated_at()
+trg_scan_invoice_cancelled [O] CREATE TRIGGER trg_scan_invoice_cancelled AFTER UPDATE OF status ON public.invoices FOR EACH ROW EXECUTE FUNCTION trg_scan_invoice_cancelled()
+zz_cash_sync_invoice [O] CREATE TRIGGER zz_cash_sync_invoice AFTER UPDATE OF status ON public.invoices FOR EACH ROW WHEN ((old.status IS DISTINCT FROM new.status)) EXECUTE FUNCTION _trg_cash_sync_invoice()
+zz_invoices_efatura_lock [O] CREATE TRIGGER zz_invoices_efatura_lock BEFORE DELETE OR UPDATE ON public.invoices FOR EACH ROW EXECUTE FUNCTION invoices_efatura_lock()
+
+## payments tetikleyicileri (referans)
+auto_set_lab_id_payments [O] CREATE TRIGGER auto_set_lab_id_payments BEFORE INSERT ON public.payments FOR EACH ROW EXECUTE FUNCTION auto_set_lab_id()
+payments_sd_guard [O] CREATE TRIGGER payments_sd_guard BEFORE INSERT OR DELETE OR UPDATE ON public.payments FOR EACH ROW EXECUTE FUNCTION _payments_sd_guard()
+recalc_on_payment_change [O] CREATE TRIGGER recalc_on_payment_change AFTER INSERT OR DELETE OR UPDATE ON public.payments FOR EACH ROW EXECUTE FUNCTION trg_recalc_payment_state()
+trg_log_payment_recorded [O] CREATE TRIGGER trg_log_payment_recorded AFTER INSERT ON public.payments FOR EACH ROW EXECUTE FUNCTION trg_log_payment_recorded()
+trg_payments_financial_guard [O] CREATE TRIGGER trg_payments_financial_guard BEFORE INSERT OR UPDATE ON public.payments FOR EACH ROW EXECUTE FUNCTION payments_financial_guard()
+zz_cash_sync_payment [O] CREATE TRIGGER zz_cash_sync_payment AFTER INSERT OR DELETE OR UPDATE ON public.payments FOR EACH ROW EXECUTE FUNCTION _trg_cash_sync_payment()
+
+## alloc_receipt_to_invoices (pg_get_functiondef, md5 = d7406cf6556b56bd49a79c65a371127e) — 'indirim' payı INSERT sütunları buradan
+INSERT sütunları: lab_id, invoice_id, amount, payment_date, payment_method, currency, rate_at_time, amount_base, base_currency_at_time, receipt_id, received_by
+(yeni yazımlar + statement_discount_id, notes; lab_id açıkça indirimin lab'ı; received_by = auth.uid() aynı)
+CREATE OR REPLACE FUNCTION public.alloc_receipt_to_invoices(p_receipt_id uuid, p_clinic_id uuid, p_base numeric, p_base_ccy text, p_date date, p_method text)
+ RETURNS numeric
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_lines jsonb := '[]'::jsonb;
+  v_alloc numeric := 0;
+  v_lab   uuid;
+  pl      record;
+begin
+  -- Ödemenin lab'ı kliniğin lab'ı: auto_set_lab_id oturum lab'ına dayanır, oturumsuz (sistem) çağrıda NULL kalıyordu
+  select lab_id into v_lab from public.clinics where id = p_clinic_id;
+
+  -- Eşzamanlı tahsilatlar aynı faturayı iki kez kapatmasın
+  perform 1 from public.invoices
+   where clinic_id = p_clinic_id and status in ('kesildi', 'kismi_odendi') and total > paid_amount
+   for update;
+
+  -- İlk dağıtım (makbuzun henüz ödemesi yok) → satırlar aynı para kuralıyla; sonraki alacak uygulamaları yalnız baz
+  if not exists (select 1 from public.payments where receipt_id = p_receipt_id) then
+    select coalesce(jsonb_agg(jsonb_build_object('currency', l.currency, 'amount', l.amount, 'rate', l.rate)), '[]'::jsonb)
+      into v_lines
+      from public.clinic_receipt_lines l
+     where l.receipt_id = p_receipt_id;
+  end if;
+
+  for pl in select * from public._receipt_alloc_plan(p_clinic_id, v_lines, p_base) loop
+    insert into public.payments (lab_id, invoice_id, amount, payment_date, payment_method,
+                                 currency, rate_at_time, amount_base, base_currency_at_time,
+                                 receipt_id, received_by)
+    values (v_lab, pl.invoice_id, pl.amount, p_date, p_method,
+            pl.currency, pl.rate, pl.amount_base, p_base_ccy,
+            p_receipt_id, auth.uid());
+    v_alloc := v_alloc + pl.amount_base;
+  end loop;
+  return v_alloc;
+end $function$
+
+## record_clinic_receipt (pg_get_functiondef, md5 = 5a548fbb2fdb83427b7a31c892222301) — ana para / kur kuralı referansı
+Ana para: COALESCE(lab_settings.default_currency, 'TRY'). Kur sunucuda hesaplanmaz; satır kuru istemciden gelir
+(ClinicReceiptModal → core/money/currency.ts getRate → RPC get_currency_rate(p_lab_id, p_currency, p_base_currency, p_at_date),
+ bulunamazsa 1). amount_base = round(amount × rate, 2). Ekstre indirimi aynı ana parayı ve get_currency_rate'i sunucuda çağırır;
+ bulunamazsa 1 (set_invoice_amount_base ile aynı geri düşüş).
+CREATE OR REPLACE FUNCTION public.record_clinic_receipt(p_clinic_id uuid, p_lines jsonb, p_receipt_date date DEFAULT CURRENT_DATE, p_payment_method text DEFAULT 'nakit'::text, p_reference_no text DEFAULT NULL::text, p_notes text DEFAULT NULL::text, p_idempotency_key text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_lab       uuid;
+  v_base_ccy  text;
+  v_total     numeric;
+  v_receipt   uuid;
+  v_alloc     numeric;
+  v_l         jsonb;
+  v_existing  uuid;
+  v_res_dup   jsonb;
+BEGIN
+  SELECT lab_id INTO v_lab FROM clinics WHERE id = p_clinic_id;
+  IF v_lab IS NULL THEN RAISE EXCEPTION 'Klinik bulunamadı'; END IF;
+  IF NOT (is_platform_admin()
+          OR (v_lab = get_my_lab_id() AND has_permission('manage_finance'))) THEN
+    RAISE EXCEPTION 'Yetkiniz yok';
+  END IF;
+
+  IF p_idempotency_key IS NOT NULL THEN
+    SELECT id INTO v_existing FROM clinic_receipts
+     WHERE lab_id = v_lab AND idempotency_key = p_idempotency_key;
+    IF v_existing IS NOT NULL THEN
+      SELECT jsonb_build_object(
+               'receipt_id', r.id, 'total_base', r.total_base,
+               'allocated_base', r.allocated_base,
+               'credit_base', r.total_base - r.allocated_base,
+               'duplicate', true, 'allocations', '[]'::jsonb)
+        INTO v_res_dup FROM clinic_receipts r WHERE r.id = v_existing;
+      RETURN v_res_dup;
+    END IF;
+  END IF;
+
+  SELECT COALESCE(default_currency, 'TRY') INTO v_base_ccy
+    FROM lab_settings WHERE lab_id = v_lab;
+  v_base_ccy := COALESCE(v_base_ccy, 'TRY');
+
+  v_total := receipt_lines_total_base(p_lines);
+
+  INSERT INTO clinic_receipts (lab_id, clinic_id, receipt_date, payment_method,
+                               reference_no, notes, received_by, base_currency,
+                               total_base, allocated_base, idempotency_key)
+  VALUES (v_lab, p_clinic_id, p_receipt_date, p_payment_method,
+          p_reference_no, p_notes, auth.uid(), v_base_ccy,
+          v_total, 0, p_idempotency_key)
+  RETURNING id INTO v_receipt;
+
+  FOR v_l IN SELECT * FROM jsonb_array_elements(p_lines) LOOP
+    INSERT INTO clinic_receipt_lines (receipt_id, currency, amount, rate, amount_base)
+    VALUES (v_receipt, v_l->>'currency', (v_l->>'amount')::numeric,
+            (v_l->>'rate')::numeric,
+            round((v_l->>'amount')::numeric * (v_l->>'rate')::numeric, 2));
+  END LOOP;
+
+  v_alloc := alloc_receipt_to_invoices(v_receipt, p_clinic_id, v_total,
+                                       v_base_ccy, p_receipt_date, p_payment_method);
+
+  UPDATE clinic_receipts SET allocated_base = v_alloc, updated_at = now()
+   WHERE id = v_receipt;
+
+  RETURN jsonb_build_object(
+    'receipt_id', v_receipt, 'total_base', v_total,
+    'allocated_base', v_alloc, 'credit_base', v_total - v_alloc,
+    'allocations', COALESCE((
+      SELECT jsonb_agg(jsonb_build_object(
+               'invoice_id', p.invoice_id, 'invoice_no', i.invoice_number,
+               'amount', p.amount, 'currency', p.currency))
+        FROM payments p JOIN invoices i ON i.id = p.invoice_id
+       WHERE p.receipt_id = v_receipt), '[]'::jsonb));
+END $function$
+
+## _receipt_alloc_plan — dağıtım sırası referansı (md5 = 39b2b09444f82cec7e868e2f9196283f)
+status IN ('kesildi','kismi_odendi') AND total > paid_amount ORDER BY due_date ASC NULLS LAST, created_at ASC, id ASC
+(alloc_receipt_to_invoices aynı kümeyi FOR UPDATE ile kilitler)
+
+## get_currency_rate(p_lab_id uuid, p_currency text, p_base_currency text, p_at_date date) md5 = 9db454a7070b6cacea8b95e5e5791484
+
+## set_invoice_amount_base (kur geri düşüşü referansı)
+CREATE OR REPLACE FUNCTION public.set_invoice_amount_base()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_base text;
+  v_rate numeric;
+begin
+  select default_currency into v_base from public.lab_settings where lab_id = new.lab_id;
+  if v_base is null then v_base := 'TRY'; end if;
+
+  if coalesce(new.currency, v_base) = v_base then
+    v_rate := 1;
+  elsif new.rate_at_time is not null and new.rate_at_time > 0 and new.rate_at_time <> 1
+        and not (tg_op = 'UPDATE' and new.currency is distinct from old.currency
+                 and new.rate_at_time is not distinct from old.rate_at_time) then
+    v_rate := new.rate_at_time;                 -- elle girilen / kilitli kur
+  else
+    v_rate := public.get_currency_rate(new.lab_id, new.currency, v_base, coalesce(new.issue_date, current_date));
+    if v_rate is null or v_rate <= 0 then v_rate := 1; end if;
+  end if;
+
+  new.rate_at_time          := v_rate;
+  new.base_currency_at_time := v_base;
+  new.amount_base           := coalesce(new.total, 0) * v_rate;
+  return new;
+end;
+$function$
+
+## log_activity(p_action text, p_entity_type text, p_entity_id uuid, p_entity_label text, p_metadata jsonb, p_lab_id uuid, p_actor_id uuid) md5 = d9ff12969e696ab7de3c9ee0fe1e6750
+authenticated çağıranda actor = auth.uid(), lab = aktörün profil lab'ı (p_lab_id yok sayılır).
+
+## recalc_invoice_payment_state (paylar değişince durum/paid_amount; değişmiyor)
+CREATE OR REPLACE FUNCTION public.recalc_invoice_payment_state(p_invoice_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_paid   NUMERIC(12,2);
+  v_total  NUMERIC(12,2);
+  v_status TEXT;
+BEGIN
+  PERFORM assert_my_invoice(p_invoice_id);
+  SELECT COALESCE(SUM(amount), 0) INTO v_paid
+  FROM payments WHERE invoice_id = p_invoice_id;
+
+  SELECT total, status INTO v_total, v_status
+  FROM invoices WHERE id = p_invoice_id;
+
+  -- iptal edilmiş faturanın status'unu değiştirme
+  IF v_status = 'iptal' THEN
+    UPDATE invoices SET paid_amount = v_paid WHERE id = p_invoice_id;
+    RETURN;
+  END IF;
+
+  UPDATE invoices
+  SET paid_amount = v_paid,
+      status = CASE
+        WHEN v_paid >= v_total AND v_total > 0 THEN 'odendi'
+        WHEN v_paid > 0 AND v_paid < v_total   THEN 'kismi_odendi'
+        WHEN v_paid = 0 AND status IN ('kismi_odendi','odendi') THEN 'kesildi'
+        ELSE status
+      END
+  WHERE id = p_invoice_id;
+END;
+$function$
+
+## payments_financial_guard (Σ pay ≤ total; değişmiyor)
+CREATE OR REPLACE FUNCTION public.payments_financial_guard()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE v_inv RECORD; v_sum numeric;
+BEGIN
+  -- lock the invoice row: serializes concurrent payments to the same invoice
+  SELECT id, currency, total, status INTO v_inv
+    FROM invoices WHERE id = NEW.invoice_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'payment: invoice % not found', NEW.invoice_id USING ERRCODE='23503';
+  END IF;
+
+  -- M-05: currency must match the invoice
+  IF NEW.currency IS NULL THEN NEW.currency := v_inv.currency; END IF;
+  IF NEW.currency IS DISTINCT FROM v_inv.currency THEN
+    RAISE EXCEPTION 'payment currency % <> invoice currency %', NEW.currency, v_inv.currency USING ERRCODE='22023';
+  END IF;
+
+  -- M-04: no overpay (SUM of OTHER payments + this one must be <= total)
+  SELECT COALESCE(SUM(amount),0) INTO v_sum
+    FROM payments WHERE invoice_id = NEW.invoice_id
+      AND (TG_OP <> 'UPDATE' OR id <> NEW.id);
+  IF v_sum + NEW.amount > v_inv.total AND v_inv.total > 0 THEN
+    RAISE EXCEPTION 'overpay blocked: paid % + % > invoice total %', v_sum, NEW.amount, v_inv.total USING ERRCODE='23514';
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+
+## aa_enforce_invoice_totals (kalemli faturada total kalemlerden türetilir; değişmiyor)
+Not: KDV oranı değişimi total'i BU BEFORE tetikleyicide düşürür; UPDATE OF total tetikleyicisi komut hedefine baktığından
+yeni tetikleyici sütun listesine tax_rate eklendi.
+CREATE OR REPLACE FUNCTION public.aa_enforce_invoice_totals()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE v_sub numeric;
+BEGIN
+  IF EXISTS (SELECT 1 FROM invoice_items WHERE invoice_id = NEW.id) THEN
+    -- item-based invoice: total/subtotal/tax are DERIVED (client input ignored)
+    SELECT COALESCE(SUM(net_total),0) INTO v_sub FROM invoice_items WHERE invoice_id = NEW.id;
+    NEW.subtotal   := v_sub;
+    NEW.tax_amount := ROUND(v_sub * COALESCE(NEW.tax_rate,0) / 100, 2);
+    NEW.total      := NEW.subtotal + NEW.tax_amount;
+  ELSE
+    -- item-less (manual) invoice: financial columns are FROZEN after creation
+    NEW.subtotal   := OLD.subtotal;
+    NEW.tax_amount := OLD.tax_amount;
+    NEW.total      := OLD.total;
+  END IF;
+  RETURN NEW;
+END;
+$function$
+
+## invoices_efatura_lock (e-fatura kilidi; değişmiyor)
+postgres/service_role/supabase_admin için baypas; kilitli faturada yalnız taslak/iptal'e geçiş ve tutar/KDV/klinik değişimi yasak.
+paid_amount/status (kesildi→kismi_odendi→odendi) güncellemesi serbest.
+CREATE OR REPLACE FUNCTION public.invoices_efatura_lock()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+begin
+  if current_user in ('postgres', 'service_role', 'supabase_admin') then
+    return coalesce(new, old);
+  end if;
+
+  if tg_op = 'DELETE' then
+    if public._invoice_efatura_locked(old.efatura_uuid, old.efatura_status) then
+      raise exception 'e-Faturası kesilmiş fatura silinemez' using errcode = 'P0001';
+    end if;
+    return old;
+  end if;
+
+  if not public._invoice_efatura_locked(old.efatura_uuid, old.efatura_status) then
+    return new;
+  end if;
+
+  if new.status is distinct from old.status and new.status in ('taslak', 'iptal') then
+    raise exception 'e-Faturası kesilmiş fatura taslağa alınamaz veya iptal edilemez — iptal/iade Luca''dan yapılır'
+      using errcode = 'P0001';
+  end if;
+
+  if (new.subtotal, new.tax_rate, new.tax_amount, new.total, new.currency, new.clinic_id, new.efatura_uuid)
+     is distinct from
+     (old.subtotal, old.tax_rate, old.tax_amount, old.total, old.currency, old.clinic_id, old.efatura_uuid) then
+    raise exception 'e-Faturası kesilmiş faturanın tutarı, KDV''si veya kliniği değiştirilemez' using errcode = 'P0001';
+  end if;
+
+  return new;
+end;
+$function$
+
+## v_invoice_reminders (pg_get_viewdef; reloptions = {security_invoker=on}) — durum süzgeci YOK, her fatura bir satır
+ SELECT i.id AS invoice_id,
+    i.lab_id,
+    i.invoice_number,
+    i.clinic_id,
+    i.due_date,
+    i.total,
+    i.paid_amount,
+    i.total - i.paid_amount AS balance,
+    count(pr.id) AS reminder_count,
+    max(pr.sent_at) AS last_reminder_at,
+    (array_agg(pr.tone ORDER BY pr.sent_at DESC))[1] AS last_reminder_tone
+   FROM invoices i
+     LEFT JOIN payment_reminders pr ON pr.invoice_id = i.id
+  GROUP BY i.id;
+
+## _clinics_to_remind (otomatik hatırlatma kliniği seçimi; değişmiyor)
+CREATE OR REPLACE FUNCTION public._clinics_to_remind(p_lab uuid, p_min_days integer)
+ RETURNS SETOF uuid
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+  select v.clinic_id
+    from public.v_clinic_balance_ccy v
+   where v.lab_id = p_lab
+   group by v.clinic_id
+  having sum(v.overdue_net) > 0
+     and exists (select 1 from public.invoices i
+                  where i.clinic_id = v.clinic_id and i.lab_id = p_lab
+                    and i.status in ('kesildi', 'kismi_odendi') and i.paid_amount < i.total
+                    and i.due_date is not null and i.due_date <= public.lab_today(p_lab) - greatest(p_min_days, 0))
+$function$
+
+## Kasa / banka
+_cash_sync md5 = 1d3d33a0ad4722b3f3ac7d6134306a03: yalnız payment_method = 'nakit' AND receipt_id IS NULL AND fatura iptal değil → cash_movements.
+Banka hareketi ayrı tablo değil: cash_accounts.account_type = 'banka' hesaplarının cash_movements satırları (v_cash_account_summary).
+cash_movements üzerinde tetikleyici yok.
+
+## Fonksiyon yetkileri (desen referansı)
+_payments_sd_guard() = {postgres=X/postgres,service_role=X/postgres}
+_receipt_alloc_plan(uuid,jsonb,numeric) = {postgres=X/postgres,service_role=X/postgres}
+alloc_receipt_to_invoices(uuid,uuid,numeric,text,date,text) = {postgres=X/postgres,service_role=X/postgres}
+delete_clinic_receipt(uuid) = {=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+preview_clinic_receipt(uuid,jsonb) = {=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+record_clinic_receipt(uuid,jsonb,date,text,text,text,text) = {=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+Yeni: iç (_sd_quote, _sd_apply_credit, _sd_invoice_credit_trg) → REVOKE ALL FROM PUBLIC, anon, authenticated;
+istemci (preview/record/delete_statement_discount) → REVOKE ALL FROM PUBLIC, anon + GRANT EXECUTE TO authenticated.
+
+## Gönderici tetikleyiciler (net.http_post / _notify* / send)
+invoices, payments, invoice_items, activity_logs, clinics, cash_movements, cash_accounts, clinic_statement_discounts,
+scan_patient_charges, payment_reminders, clinic_receipts tetikleyicilerinde ve çağırdıkları yardımcılarda (log_activity, _cash_sync,
+_cash_drawer, recalc_*, assert_my_*, get_currency_rate, next_invoice_number, _order_invoice_number) yok → DISABLE gerekmedi.
+
+## Canlı parmak izi (tutar yok; md5)
+invoices: 77 satır, md5 = f708460bba9509e4a0882810f993c2be
+payments: 5 satır, md5 = b0e0b5537940096b008d078d05eb58c9
+clinic_statement_discounts: 0 satır · cash_movements: 0 satır
