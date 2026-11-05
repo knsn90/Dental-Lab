@@ -160,3 +160,16 @@ test('indirimsiz birleştirme çıktısında yeni anahtar yok (discount_toleranc
   assert.equal('discount_tolerance' in m, false);
   assert.equal('discount_error' in m, false);
 });
+
+test('birleştirme: indirimli kaynağın kendi kuruş sapması birleşik tolerans içinde gizlenemez', () => {
+  // 500 + 500, %10 indirim → DB 1080,00; ek kalem net_total null, total 0,01 → kaynağın kendi ödenecek tutarı 1080,01.
+  const sneaky = row({ id: 's', tax_rate: 20, total: 1080, discount_amount: 100, items: [
+    { description: 'A', quantity: 1, unit_price: 500, total: 500, net_total: 500, sort_order: 0 },
+    { description: 'B', quantity: 1, unit_price: 500, total: 500, net_total: 500, sort_order: 1 },
+    { description: 'C', quantity: 1, unit_price: 0.01, total: 0.01, net_total: null, sort_order: 2 },
+  ] });
+  const plain = row({ id: 'p', invoice_number: 'FTR-2026-00099', tax_rate: 20, total: 24, items: [{ description: 'X', quantity: 1, unit_price: 20, total: 20, net_total: 20 }] });
+  const { r } = sendMerged([sneaky, plain]);
+  assert.equal(r.ok, false);
+  assert.match((r as { error: string }).error, /kuruşu kuruşuna dağıtılamadı/);
+});

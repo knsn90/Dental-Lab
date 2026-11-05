@@ -83,7 +83,8 @@ export const itemNet = (it: DbItem): number => {
   const gross = num(it.total) || r2(num(it.quantity) * num(it.unit_price));
   return it.net_total === null || it.net_total === undefined ? gross : num(it.net_total);
 };
-export const DISCOUNT_BALANCE_ERROR = 'Fatura indirimi KDV yuvarlamasıyla kalemlere dağıtılamadı; indirimi bir kuruş değiştirip tekrar deneyin.';
+export const DISCOUNT_BALANCE_ERROR = 'Fatura indirimi KDV yuvarlaması nedeniyle e-fatura kalemlerine kuruşu kuruşuna dağıtılamadı. Faturayı iptal edip indirimi farklı bir tutarla yeniden kesin ya da indirimi ekstreden uygulayın.';
+export const DISCOUNT_MIXED_VAT_ERROR = 'Farklı KDV oranlı kalemleri olan indirimli fatura e-faturaya gönderilemiyor.';
 const blank = (s?: string | null) => !s || !s.trim();
 
 /** Adres JSON'unda ulke ≠ TR ise o ülke kodu, değilse (TR / düz metin / eski kayıt) null. */
@@ -242,7 +243,7 @@ export function buildLucaInput(args: {
   const invDiscount = num(invoice.discount_amount);
   let shares: number[] | null = null;
   if (invDiscount > 0) {
-    if (invoice.items.some((it) => vatOf(it) !== vatOf(invoice.items[0]))) return fail(DISCOUNT_BALANCE_ERROR);
+    if (invoice.items.some((it) => vatOf(it) !== vatOf(invoice.items[0]))) return fail(DISCOUNT_MIXED_VAT_ERROR);
     const b = balanceDiscountShares(invoice.items.map(itemNet), invDiscount, vatOf(invoice.items[0]));
     if (!b.ok) return fail(DISCOUNT_BALANCE_ERROR);
     shares = b.shares;

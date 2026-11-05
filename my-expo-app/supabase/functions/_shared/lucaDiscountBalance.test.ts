@@ -73,3 +73,9 @@ test('özellik: 2000+ rastgele fatura — (a)(b)(c)(d) tutar ya da başarısızl
   assert.ok(fail / N < 0.05, `toplam başarısızlık oranı ${fail / N}`);
   assert.ok(failMain / nMain < 0.01, `KDV 10/18/20 başarısızlık oranı ${failMain / nMain}`);
 });
+
+test('indirim net toplamını aşarsa kırpılıp başarılı denmez: { ok:false }', () => {
+  assert.deepEqual(balanceDiscountShares([100, 200], 300.01, 20), { ok: false });
+  assert.deepEqual(balanceDiscountShares([0, 0], 1, 20), { ok: false });
+  assert.equal(balanceDiscountShares([100, 200], 300, 20).ok, true); // tam net toplamı serbest
+});

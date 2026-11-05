@@ -9,6 +9,7 @@
 
 import { itemNet, DISCOUNT_BALANCE_ERROR, type DbInvoice, type DbItem } from './lucaInvoice.ts';
 import { balanceDiscountShares } from './lucaDiscountBalance.ts';
+import { computeTotals } from './luca.ts';
 
 export interface MergeRow {
   id: string;
@@ -108,7 +109,19 @@ export function mergeInvoices(rows: MergeRow[], issueDate: string): DbInvoice {
       discountedSources++;
       // KDV yuvarlaması faturanın KENDİ DB toplamıyla eşleşecek biçimde dengelenir (fatura başına).
       const b = balanceDiscountShares(sortedItems.map(itemNet), rowDiscount, num(r.tax_rate));
-      if (b.ok) shares = b.shares; else discountFailed = true;
+      if (b.ok) {
+        shares = b.shares;
+        // Kaynak bazlı kontrol: bu faturanın kendi kalemleri (paylarla) kendi DB toplamına KURUŞU KURUŞUNA
+        // eşit çıkmalı; yoksa sapma birleşik toleransın içinde gizlenebilir.
+        const own = computeTotals(sortedItems.map((it, i) => {
+          const q = num(it.quantity);
+          const up = num(it.unit_price);
+          const gross = num(it.total) || r2(q * up);
+          const d = r2(gross - r2(itemNet(it) - shares![i]));
+          return { code: 'x', name: 'x', quantity: q, unitPrice: up, vatRate: num(r.tax_rate), discountAmount: d > 0 ? d : 0 };
+        }));
+        if (Math.abs(own.payable - num(r.total)) >= 0.005) discountFailed = true;
+      } else discountFailed = true;
     }
     return sortedItems
       .map((it, i) => {

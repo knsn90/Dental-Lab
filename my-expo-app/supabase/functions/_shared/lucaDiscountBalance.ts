@@ -26,7 +26,7 @@ export type BalanceResult = { ok: true; shares: number[] } | { ok: false };
  * @param discount fatura altı indirim tutarı (2 ondalık)
  * @param ratePct KDV oranı (yüzde)
  * Dönüş: satır başına pay (nets ile aynı sıra, 2 ondalık). Garantiler (ok iken):
- *  (a) Σ pay = indirim (kuruş kuruş; indirim net toplamını aşarsa toplama kırpılır)
+ *  (a) Σ pay = indirim (kuruş kuruş; indirim net toplamını aşarsa { ok:false })
  *  (b) 0 ≤ pay ≤ net
  *  (c) |pay − orantılı değer| ≤ maxDevCents
  *  (d) Σ lineVat(net − pay) = ROUND((Σnet − indirim) × oran/100, 2)
@@ -40,9 +40,10 @@ export function balanceDiscountShares(
   const toC = (x: number) => Math.round(Number((Number(x) * 100).toFixed(6)));
   const n = nets.map((x) => Math.max(0, toC(x)));
   const total = n.reduce((a, b) => a + b, 0);
-  const want = Math.min(Math.max(0, toC(discount)), total);
+  const want = Math.max(0, toC(discount));
+  if (want > total) return { ok: false }; // indirim net toplamını aşıyorsa kırpıp "başarılı" denmez
   const zero = n.map(() => 0);
-  if (want <= 0 || total <= 0) return { ok: true, shares: zero.map((x) => x / 100) };
+  if (want <= 0) return { ok: true, shares: zero.map((x) => x / 100) };
 
   // Başlangıç: en büyük kalan yöntemi (her pay orantılı değerin 1 kuruş içinde).
   const real = n.map((x) => (want * x) / total);

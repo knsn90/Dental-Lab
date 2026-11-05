@@ -47,7 +47,10 @@ const TASK12 = [
 ];
 
 // Düzeltme turu (Görev 13): e-fatura sunucu hata metni (sunucudan Türkçe gelir, istemci autoT ile çevirir)
-const TASK13 = ['Fatura indirimi KDV yuvarlamasıyla kalemlere dağıtılamadı; indirimi bir kuruş değiştirip tekrar deneyin.'];
+const TASK13 = [
+  'Fatura indirimi KDV yuvarlaması nedeniyle e-fatura kalemlerine kuruşu kuruşuna dağıtılamadı. Faturayı iptal edip indirimi farklı bir tutarla yeniden kesin ya da indirimi ekstreden uygulayın.',
+  'Farklı KDV oranlı kalemleri olan indirimli fatura e-faturaya gönderilemiyor.',
+];
 
 test('ekstre indirimi metinleri en/de/fa sözlüklerinde', () => {
   const keys = [...new Set([...TASK1, ...TASK4_5, ...TASK7, ...TASK11, ...TASK12, ...TASK13])];

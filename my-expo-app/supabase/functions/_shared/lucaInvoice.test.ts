@@ -226,7 +226,7 @@ test('discount_amount yok / 0 / null → çıktı bugünküyle aynı', () => {
 // ── fatura altı indirim: KDV yuvarlama dengelemesi (düzeltme turu 1) ─────
 const sendArgs = { clinic, doctor: null, seller, kind: 'e_fatura' as const, companyTaxCode: '6312098145', inboxTag: 'urn:mail:x@y' };
 import { computeTotals } from './luca.ts';
-import { DISCOUNT_BALANCE_ERROR } from './lucaInvoice.ts';
+import { DISCOUNT_BALANCE_ERROR, DISCOUNT_MIXED_VAT_ERROR } from './lucaInvoice.ts';
 
 test('850+850+175, %7,5 indirim, %20 KDV: ödenecek tutar DB toplamıyla KURUŞU KURUŞUNA (2081,24)', () => {
   const d: DbInvoice = {
@@ -274,7 +274,7 @@ test('dengelenemeyen indirim gönderilmez: açık Türkçe hata', () => {
   };
   const r = buildLucaInput({ invoice: d, ...sendArgs });
   assert.deepEqual(r, { ok: false, error: DISCOUNT_BALANCE_ERROR });
-  assert.match(DISCOUNT_BALANCE_ERROR, /dağıtılamadı/);
+  assert.match(DISCOUNT_BALANCE_ERROR, /kuruşu kuruşuna dağıtılamadı/);
   // mergeInvoices'ten gelen hata da aynen reddedilir
   const r2 = buildLucaInput({ invoice: { ...inv, discount_error: DISCOUNT_BALANCE_ERROR }, ...sendArgs });
   assert.deepEqual(r2, { ok: false, error: DISCOUNT_BALANCE_ERROR });
@@ -288,4 +288,15 @@ test('indirimli faturada ödenecek tutar toleranssız: DB toplamı 1 kuruş fark
   const r = buildLucaInput({ invoice: d, ...sendArgs });
   assert.equal(r.ok, false);
   assert.match((r as { error: string }).error, /uyuşmuyor/);
+});
+
+test('indirimli faturada farklı KDV oranlı kalemler: kendi metniyle reddedilir', () => {
+  const d: DbInvoice = {
+    ...inv, tax_rate: 20, total: 348, discount_amount: 10,
+    items: [
+      { description: 'A', quantity: 1, unit_price: 100, total: 100, net_total: 100, vat_rate: 10 },
+      { description: 'B', quantity: 1, unit_price: 200, total: 200, net_total: 200, vat_rate: 20 },
+    ],
+  };
+  assert.deepEqual(buildLucaInput({ invoice: d, ...sendArgs }), { ok: false, error: DISCOUNT_MIXED_VAT_ERROR });
 });
