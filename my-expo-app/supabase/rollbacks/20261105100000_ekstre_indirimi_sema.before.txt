@@ -1,0 +1,182 @@
+-- 20261105100000_ekstre_indirimi_sema — CANLI durum (2026-11-05)
+-- Yakalama: 2026-11-04T22:56Z UTC (TR 2026-11-05), salt okuma; PostgreSQL 17.6
+
+## Var olmayanlar (migration öncesi)
+to_regclass('public.clinic_statement_discounts') = NULL
+payments.statement_discount_id: yok (42703 column does not exist)
+_payments_sd_guard(), payments_sd_guard tetikleyicisi, payments_sd_consistency: yok
+
+## v_clinic_balance_ccy (pg_get_viewdef, md5 = 56a3a10097612e940719e1875d8dc9bd)
+reloptions = {security_invoker=true} · owner = postgres
+relacl = {postgres=arwdDxtm/postgres,anon=m/postgres,authenticated=rxtm/postgres,service_role=arwdDxtm/postgres}
+sütunlar: clinic_id:uuid, clinic_name:text, lab_id:uuid, currency:text, invoice_count:bigint, total_billed:numeric, total_paid:numeric, balance:numeric, overdue_amount:numeric, aging_current:numeric, aging_30:numeric, aging_60:numeric, aging_90:numeric, oldest_overdue_date:date, unallocated_credit:numeric, overdue_net:numeric
+CREATE OR REPLACE VIEW public.v_clinic_balance_ccy WITH (security_invoker = true) AS
+ SELECT c.id AS clinic_id,
+    c.name AS clinic_name,
+    i.lab_id,
+    COALESCE(i.currency, 'TRY'::text) AS currency,
+    count(DISTINCT i.id) FILTER (WHERE i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AS invoice_count,
+    COALESCE(sum(i.total) FILTER (WHERE i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])), 0::numeric) AS total_billed,
+    COALESCE(sum(i.paid_amount) FILTER (WHERE i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])), 0::numeric) AS total_paid,
+    COALESCE(sum(i.total - i.paid_amount) FILTER (WHERE i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])), 0::numeric) - COALESCE(cr.credit, 0::numeric) AS balance,
+    COALESCE(sum(i.total - i.paid_amount) FILTER (WHERE (i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND i.due_date < lab_today(i.lab_id) AND i.paid_amount < i.total), 0::numeric) AS overdue_amount,
+    COALESCE(sum(i.total - i.paid_amount) FILTER (WHERE (i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND i.paid_amount < i.total AND (i.due_date IS NULL OR i.due_date >= lab_today(i.lab_id))), 0::numeric) AS aging_current,
+    COALESCE(sum(i.total - i.paid_amount) FILTER (WHERE (i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND i.paid_amount < i.total AND i.due_date IS NOT NULL AND (lab_today(i.lab_id) - i.due_date) >= 1 AND (lab_today(i.lab_id) - i.due_date) <= 30), 0::numeric) AS aging_30,
+    COALESCE(sum(i.total - i.paid_amount) FILTER (WHERE (i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND i.paid_amount < i.total AND i.due_date IS NOT NULL AND (lab_today(i.lab_id) - i.due_date) >= 31 AND (lab_today(i.lab_id) - i.due_date) <= 60), 0::numeric) AS aging_60,
+    COALESCE(sum(i.total - i.paid_amount) FILTER (WHERE (i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND i.paid_amount < i.total AND i.due_date IS NOT NULL AND (lab_today(i.lab_id) - i.due_date) > 60), 0::numeric) AS aging_90,
+    min(i.due_date) FILTER (WHERE (i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND i.due_date < lab_today(i.lab_id) AND i.paid_amount < i.total) AS oldest_overdue_date,
+    COALESCE(cr.credit, 0::numeric) AS unallocated_credit,
+    GREATEST(0::numeric, COALESCE(sum(i.total - i.paid_amount) FILTER (WHERE (i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND i.due_date < lab_today(i.lab_id) AND i.paid_amount < i.total), 0::numeric) - COALESCE(cr.credit, 0::numeric)) AS overdue_net
+   FROM clinics c
+     JOIN invoices i ON i.clinic_id = c.id
+     LEFT JOIN ( SELECT r.clinic_id,
+            r.base_currency,
+            sum(r.total_base - r.allocated_base) AS credit
+           FROM clinic_receipts r
+          GROUP BY r.clinic_id, r.base_currency) cr ON cr.clinic_id = c.id AND cr.base_currency = COALESCE(i.currency, 'TRY'::text)
+  GROUP BY c.id, c.name, i.lab_id, (COALESCE(i.currency, 'TRY'::text)), cr.credit;
+
+## v_clinic_balance (pg_get_viewdef, md5 = d3b51a069288c5d91c9d31d70c88cba2)
+reloptions = {security_invoker=true} · owner = postgres
+relacl = {postgres=arwdDxtm/postgres,anon=m/postgres,authenticated=rxtm/postgres,service_role=arwdDxtm/postgres}
+sütunlar: clinic_id:uuid, clinic_name:text, lab_id:uuid, invoice_count:bigint, total_billed:numeric, total_paid:numeric, balance:numeric, overdue_amount:numeric, aging_current:numeric, aging_30:numeric, aging_60:numeric, aging_90:numeric, oldest_overdue_date:date, currency:text, total_billed_original:numeric, total_paid_original:numeric, balance_original:numeric, unallocated_credit:numeric, overdue_net:numeric
+CREATE OR REPLACE VIEW public.v_clinic_balance WITH (security_invoker = true) AS
+ SELECT c.id AS clinic_id,
+    c.name AS clinic_name,
+    i.lab_id,
+    count(DISTINCT i.id) FILTER (WHERE i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AS invoice_count,
+    COALESCE(sum(COALESCE(i.amount_base, i.total * COALESCE(i.rate_at_time, 1::numeric))) FILTER (WHERE i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])), 0::numeric) AS total_billed,
+    COALESCE(sum(i.paid_amount * COALESCE(i.rate_at_time, 1::numeric)) FILTER (WHERE i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])), 0::numeric) AS total_paid,
+    COALESCE(sum((i.total - i.paid_amount) * COALESCE(i.rate_at_time, 1::numeric)) FILTER (WHERE i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])), 0::numeric) - COALESCE(( SELECT sum(r.total_base - r.allocated_base) AS sum
+           FROM clinic_receipts r
+          WHERE r.clinic_id = c.id), 0::numeric) AS balance,
+    COALESCE(sum((i.total - i.paid_amount) * COALESCE(i.rate_at_time, 1::numeric)) FILTER (WHERE (i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND i.due_date < lab_today(i.lab_id) AND i.paid_amount < i.total), 0::numeric) AS overdue_amount,
+    COALESCE(sum((i.total - i.paid_amount) * COALESCE(i.rate_at_time, 1::numeric)) FILTER (WHERE (i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND i.paid_amount < i.total AND (i.due_date IS NULL OR i.due_date >= lab_today(i.lab_id))), 0::numeric) AS aging_current,
+    COALESCE(sum((i.total - i.paid_amount) * COALESCE(i.rate_at_time, 1::numeric)) FILTER (WHERE (i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND i.paid_amount < i.total AND i.due_date IS NOT NULL AND (lab_today(i.lab_id) - i.due_date) >= 1 AND (lab_today(i.lab_id) - i.due_date) <= 30), 0::numeric) AS aging_30,
+    COALESCE(sum((i.total - i.paid_amount) * COALESCE(i.rate_at_time, 1::numeric)) FILTER (WHERE (i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND i.paid_amount < i.total AND i.due_date IS NOT NULL AND (lab_today(i.lab_id) - i.due_date) >= 31 AND (lab_today(i.lab_id) - i.due_date) <= 60), 0::numeric) AS aging_60,
+    COALESCE(sum((i.total - i.paid_amount) * COALESCE(i.rate_at_time, 1::numeric)) FILTER (WHERE (i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND i.paid_amount < i.total AND i.due_date IS NOT NULL AND (lab_today(i.lab_id) - i.due_date) > 60), 0::numeric) AS aging_90,
+    min(i.due_date) FILTER (WHERE (i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND i.due_date < lab_today(i.lab_id) AND i.paid_amount < i.total) AS oldest_overdue_date,
+        CASE
+            WHEN count(DISTINCT i.currency) FILTER (WHERE (i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND i.currency IS NOT NULL AND i.currency <> 'TRY'::text) = 1 THEN max(i.currency) FILTER (WHERE (i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND i.currency <> 'TRY'::text)
+            ELSE NULL::text
+        END AS currency,
+    COALESCE(sum(i.total) FILTER (WHERE (i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND i.currency IS NOT NULL AND i.currency <> 'TRY'::text), 0::numeric) AS total_billed_original,
+    COALESCE(sum(i.paid_amount) FILTER (WHERE (i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND i.currency IS NOT NULL AND i.currency <> 'TRY'::text), 0::numeric) AS total_paid_original,
+    COALESCE(sum(i.total - i.paid_amount) FILTER (WHERE (i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND i.currency IS NOT NULL AND i.currency <> 'TRY'::text), 0::numeric) AS balance_original,
+    COALESCE(( SELECT sum(r.total_base - r.allocated_base) AS sum
+           FROM clinic_receipts r
+          WHERE r.clinic_id = c.id), 0::numeric) AS unallocated_credit,
+    GREATEST(0::numeric, COALESCE(sum((i.total - i.paid_amount) * COALESCE(i.rate_at_time, 1::numeric)) FILTER (WHERE (i.status <> ALL (ARRAY['iptal'::text, 'taslak'::text])) AND i.due_date < lab_today(i.lab_id) AND i.paid_amount < i.total), 0::numeric) - COALESCE(( SELECT sum(r.total_base - r.allocated_base) AS sum
+           FROM clinic_receipts r
+          WHERE r.clinic_id = c.id), 0::numeric)) AS overdue_net
+   FROM clinics c
+     LEFT JOIN invoices i ON i.clinic_id = c.id
+  GROUP BY c.id, c.name, i.lab_id;
+
+## Görünüm yetkileri (information_schema.role_table_grants)
+v_clinic_balance | authenticated | REFERENCES,SELECT,TRIGGER
+v_clinic_balance | postgres | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
+v_clinic_balance | service_role | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
+v_clinic_balance_ccy | authenticated | REFERENCES,SELECT,TRIGGER
+v_clinic_balance_ccy | postgres | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
+v_clinic_balance_ccy | service_role | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
+(anon: yalnız MAINTAIN 'm'; CREATE OR REPLACE VIEW ACL'yi korur)
+
+## Görünümlere bağımlı nesneler
+pg_depend/pg_rewrite: bağımlı görünüm YOK; pg_depend'te bağımlı fonksiyon YOK (yalnız kendi satır/dizi tipleri).
+Gövdesinde adıyla v_clinic_balance_ccy kullanan fonksiyonlar (değişmiyor; kullandıkları sütunlar: currency, clinic_id, lab_id, balance, overdue_net):
+  _clinics_to_remind(p_lab uuid, p_min_days integer)        sql  md5 a2aaaaa608826ca07f8184ae3872f3be
+  _reminder_amounts(p_lab uuid, p_clinic uuid, p_invoice uuid) sql md5 be233bcbbc6e3eeb984e0b298fb2418f
+  lab_receivables_summary()                                  sql  md5 eecffc2e4c657a0c7ebbdfe8a883e7d9
+  my_open_balance_by_currency()                              sql  md5 3d4d59fbe7ad786c441470976c25357e (SECURITY DEFINER)
+  my_payment_reminder()                                      sql  md5 4fc186b63650ebf7192a18b35d992055 (SECURITY DEFINER)
+v_clinic_balance'ı (düz) adıyla kullanan fonksiyon: yok.
+
+## trg_log_payment_recorded() (pg_get_functiondef, md5 = b59d581cbf78f8c740b6a52fb66aba39)
+owner = postgres · SECURITY DEFINER · proacl = {=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+routine_privileges EXECUTE: PUBLIC, anon, authenticated, postgres, service_role (CREATE OR REPLACE korur)
+CREATE OR REPLACE FUNCTION public.trg_log_payment_recorded()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  PERFORM public.log_activity(
+    'payment_recorded', 'payment', NEW.id,
+    NEW.payment_method || ' ' || NEW.amount::text || ' ' || COALESCE(NEW.currency,''),
+    jsonb_build_object('invoice_id', NEW.invoice_id, 'amount', NEW.amount,
+                       'currency', NEW.currency, 'method', NEW.payment_method,
+                       'payment_date', NEW.payment_date),
+    NEW.lab_id, COALESCE(NEW.received_by, auth.uid()));
+  RETURN NEW;   -- log_activity swallows its own errors; cannot break the payment
+END;
+$function$;
+
+## payments kısıtları (pg_get_constraintdef)
+payments_amount_check [c] CHECK ((amount > (0)::numeric))
+payments_currency_check [c] CHECK ((currency = ANY (ARRAY['TRY'::text, 'EUR'::text, 'USD'::text, 'GBP'::text, 'IRT'::text])))
+payments_invoice_id_fkey [f] FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE
+payments_lab_id_fkey [f] FOREIGN KEY (lab_id) REFERENCES labs(id) ON DELETE CASCADE
+payments_payment_method_check [c] CHECK ((payment_method = ANY (ARRAY['nakit'::text, 'kart'::text, 'havale'::text, 'cek'::text, 'diger'::text])))
+payments_pkey [p] PRIMARY KEY (id)
+payments_receipt_id_fkey [f] FOREIGN KEY (receipt_id) REFERENCES clinic_receipts(id) ON DELETE SET NULL
+payments_received_by_fkey [f] FOREIGN KEY (received_by) REFERENCES profiles(id) ON DELETE SET NULL
+Canlı payment_method değerleri yalnız brief'teki liste ile aynı: ('nakit','kart','havale','cek','diger') — fark yok.
+
+## payments tetikleyicileri (hepsi etkin 'O')
+auto_set_lab_id_payments BEFORE INSERT → auto_set_lab_id()
+recalc_on_payment_change AFTER INSERT OR DELETE OR UPDATE → trg_recalc_payment_state()
+trg_log_payment_recorded AFTER INSERT → trg_log_payment_recorded()
+trg_payments_financial_guard BEFORE INSERT OR UPDATE → payments_financial_guard()
+zz_cash_sync_payment AFTER INSERT OR DELETE OR UPDATE → _trg_cash_sync_payment()
+
+## payments RLS (değişmiyor; referans)
+payments_lab_select / payments_lab_insert / payments_lab_update / payments_lab_delete, clinic_view_clinic_payments,
+clinic_view_multilab_payments, doctor_view_own_clinic_payments
+
+## clinic_receipts politikaları (pg_policies) — yeni tabloya kopyalanan klinik yüklemi
+clinic_receipts_lab_delete [PERMISSIVE] {public} DELETE USING (is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+clinic_receipts_lab_insert [PERMISSIVE] {public} INSERT CHECK (is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+clinic_receipts_lab_select [PERMISSIVE] {public} SELECT USING (lab_id = get_my_lab_id())
+clinic_receipts_lab_update [PERMISSIVE] {public} UPDATE USING (is_platform_admin() OR ((lab_id = get_my_lab_id()) AND has_permission('manage_finance'::text)))
+clinic_view_own_receipts [PERMISSIVE] {public} SELECT USING ((clinic_id IS NOT NULL) AND ((clinic_id = get_my_clinic_id()) OR (clinic_id IN ( SELECT my_clinic_ids() AS my_clinic_ids))))
+→ lab dışı SELECT politikası tek: clinic_view_own_receipts (yeni tabloda clinic_view_own_statement_discounts).
+
+## Tenant koruması bağlama deseni (enforce_lab_id_tenant)
+9 tabloda: ztg_<tablo>_tenant_guard BEFORE INSERT OR DELETE OR UPDATE FOR EACH ROW EXECUTE FUNCTION enforce_lab_id_tenant()
+(ör. stock_items | ztg_stock_items_tenant_guard)
+
+## Gönderici tetikleyiciler (net.http_post / _notify* / send)
+invoices, payments ve zincirledikleri (activity_logs, cash_movements, scan_patient_charges, invoice_items) üzerinde YOK;
+çağrılan yardımcılar (log_activity, _cash_sync, recalc_invoice_payment_state, assert_my_invoice, get_currency_rate, ...) da göndermiyor.
+Gönderen tetikleyiciler yalnız notifications/order_stages/work_orders/order_scan_annotations üzerinde (bu migration'ın yolunda değil).
+
+## Canlı parmak izi (tutar yok; md5) — uygulama öncesi/sonrası karşılaştırma için
+v_clinic_balance_ccy: 11 satır, md5(satırlar sıralı) = 9a5d371bbe612f0f20ffb0ab94994dc7
+v_clinic_balance:     52 satır, md5(satırlar sıralı) = 609568e0e763208fcc720c6f9cd3e693
+payments: 5 satır (payment_method ∈ {havale, nakit}) · clinic_receipts: 2 satır
+(aging sütunları lab_today'e bağlı; gün değişince parmak izi değişebilir — uygulamadan hemen önce yeniden ölçülür)
+
+## Fix round 1 — ek yakalamalar (2026-11-05, salt okuma)
+
+## payments SELECT politikaları (pg_policies; yeni tablonun okuma kapısı bunlardan — Ruling I)
+clinic_view_clinic_payments [{public}] SELECT USING ((EXISTS ( SELECT 1 FROM invoices inv WHERE ((inv.id = payments.invoice_id) AND (inv.clinic_id IS NOT NULL) AND (inv.clinic_id = get_my_clinic_id())))) AND (EXISTS ( SELECT 1 FROM invoices i2 WHERE ((i2.id = payments.invoice_id) AND can_view_clinic_billing(i2.clinic_id)))))
+clinic_view_multilab_payments [{public}] SELECT USING ((EXISTS ( SELECT 1 FROM invoices inv WHERE ((inv.id = payments.invoice_id) AND (inv.clinic_id IS NOT NULL) AND (inv.clinic_id IN ( SELECT my_clinic_ids() AS my_clinic_ids))))) AND (EXISTS ( SELECT 1 FROM invoices i2 WHERE ((i2.id = payments.invoice_id) AND can_view_clinic_billing(i2.clinic_id)))))
+doctor_view_own_clinic_payments [{public}] SELECT USING ((EXISTS ( SELECT 1 FROM invoices inv WHERE ((inv.id = payments.invoice_id) AND (inv.clinic_id = get_my_clinic_id())))) AND (EXISTS ( SELECT 1 FROM profiles WHERE ((profiles.id = auth.uid()) AND (profiles.user_type = 'doctor'::text)))) AND (EXISTS ( SELECT 1 FROM invoices i2 WHERE ((i2.id = payments.invoice_id) AND can_view_clinic_billing(i2.clinic_id)))))
+payments_lab_select [{public}] SELECT USING ((lab_id = get_my_lab_id()) AND lab_can_view_finance())
+
+## invoices klinik/hekim SELECT politikaları (aynı kapının doğrudan clinic_id sütunlu biçimi; yeni politikalar bunlarla birebir)
+clinic_view_clinic_invoices [{public}] SELECT USING ((clinic_id IS NOT NULL) AND (clinic_id = get_my_clinic_id()) AND can_view_clinic_billing(clinic_id))
+clinic_view_multilab_invoices [{public}] SELECT USING ((clinic_id IS NOT NULL) AND (clinic_id IN ( SELECT my_clinic_ids() AS my_clinic_ids)) AND can_view_clinic_billing(clinic_id))
+doctor_view_own_clinic_invoices [{public}] SELECT USING ((clinic_id = get_my_clinic_id()) AND (EXISTS ( SELECT 1 FROM profiles WHERE ((profiles.id = auth.uid()) AND (profiles.user_type = 'doctor'::text)))) AND can_view_clinic_billing(clinic_id))
+
+## Para birimi CHECK'leri (yeni tablonun currency listesi bunlarla aynı)
+invoices.invoices_currency_check CHECK ((currency = ANY (ARRAY['TRY'::text, 'EUR'::text, 'USD'::text, 'GBP'::text, 'IRT'::text])))
+payments.payments_currency_check CHECK ((currency = ANY (ARRAY['TRY'::text, 'EUR'::text, 'USD'::text, 'GBP'::text, 'IRT'::text])))
+
+## Görünüm bağımlılıkları yeniden doğrulandı (down.sql DROP VIEW için)
+pg_depend refobjid ∈ {v_clinic_balance_ccy, v_clinic_balance}: yalnız kendi satır tipi (pg_type, deptype i) ve kendi _RETURN kuralı (pg_rewrite, i).
+Satır tiplerine bağımlı: yalnız kendi dizi tipleri (deptype i). Görünüm yorumu yok; sütun düzeyi yetki yok.
+
+## Demo lab kullanıcı türleri (adsız sayım): admin 1, lab 4 (role = technician)
