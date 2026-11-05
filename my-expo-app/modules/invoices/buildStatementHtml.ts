@@ -13,7 +13,7 @@ import { autoT } from '../../core/i18n/autoTranslate';
 import { revisionDetail } from './lib/statementRevision';
 import { htmlAttrs, printLocale } from '../../core/i18n/printLocale';
 import { lineDelta } from './lib/statementTotals';
-import { invoiceDiscountOf } from './lib/statementDiscount';
+import { invoiceDiscountOf, discountCellValue, hasAnyDiscount, discountTotal, type DiscountMode } from './lib/statementDiscount';
 import { vatPortion, statementVatSummary } from './lib/statementVat';
 // ── Yardımcılar ──────────────────────────────────────────────────────
 function esc(v: unknown): string {
@@ -186,12 +186,38 @@ export function buildStatementHtml(
   /**
    * Liste ayarı (lib/statementPrefs): vat=false → KDV sütunu/dökümü yok.
    * sums: tahsilat satırları gizlendiğinde özet çubuğu yine TÜM hareketin borç/alacağını yazar.
+   * discountMode: İndirim sütunu tutar mı yüzde mi (klinik/hekim kendi ekstresinde hep tutar).
    */
-  opts: { vat?: boolean; sums?: { debit: number; credit: number } } = {},
+  opts: { vat?: boolean; sums?: { debit: number; credit: number }; discountMode?: DiscountMode } = {},
 ): string {
   const vat = statementVatSummary(lines);
   const showVat = opts.vat !== false && vat.total > 0;
-  const cariLines: CariLine[] = lines.map(l => ({
+  // İndirim sütunu: dönemde en az bir indirim (ekstre indirimi ya da indirimli fatura) varsa
+  const showDiscount = hasAnyDiscount(lines);
+  const discMode: DiscountMode = opts.discountMode ?? 'amount';
+  const discText = (l: StatementLine): string | undefined => {
+    const v = discountCellValue(l, discMode);
+    if (!v) return undefined;
+    return v.kind === 'percent'
+      ? '%' + v.value.toLocaleString(printLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+      : '−' + Math.abs(v.value).toLocaleString(printLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + currency;
+  };
+  const cariLines: CariLine[] = lines.map(l => l.type === 'discount' ? ({
+    // Ekstre indirimi: belge sütununda İND-n, tutar yalnız İndirim sütununda; bakiye düşer
+    refNo: l.invoiceNo ?? null,
+    reference: autoT('Ekstre indirimi'),
+    date: l.date,
+    counterparty: l.description || autoT('Dönem indirimi'),
+    counterpartySub: null,
+    amount: Number(l.discount) || 0,
+    currency,
+    type: 'credit',
+    kind: 'discount',
+    balance: l.balance,
+    tax: null,
+    taxRate: null,
+    ...(showDiscount ? { discountText: discText(l) } : {}),
+  } as CariLine) : ({
     // Fatura satırında fatura no; tahsilat fişinde makbuz no (belge sütununda, referans etiketinin üstünde)
     refNo: l.invoiceNo ?? (l.receiptNo ? `${autoT('Makbuz')} #${l.receiptNo}` : null),
     reference: l.type === 'invoice'
@@ -221,6 +247,7 @@ export function buildStatementHtml(
     // KDV ayrı sütunda (kullanıcı: KDV'nin fiyatın içinde olduğu anlaşılmıyordu)
     tax: l.type === 'invoice' ? (l.tax ?? 0) : null,
     taxRate: l.type === 'invoice' ? (l.taxRate ?? null) : null,
+    ...(showDiscount ? { discountText: discText(l) } : {}),
   }));
 
   return buildCariStatementHtml({
@@ -246,6 +273,8 @@ export function buildStatementHtml(
     // Dönemde fatura varsa KDV dökümü (KDV hariç + KDV = genel toplam); liste ayarıyla kapatılabilir
     vatSummary: showVat ? vat : null,
     summaryTotals: opts.sums ?? null,
+    // İndirim sütunu yalnız indirim varken; yoksa alanlar hiç verilmez → belge değişmez
+    ...(showDiscount ? { showDiscount: true, discountTotal: discountTotal(lines) } : {}),
     // Bu sütunda hasta + sipariş no ya da tahsilat yöntemi yazar; karşı taraf zaten klinik.
     labels: { party: autoT('Açıklama') },
   });

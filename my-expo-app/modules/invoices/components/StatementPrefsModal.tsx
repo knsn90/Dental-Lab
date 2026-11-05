@@ -14,6 +14,7 @@ import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { X } from '../../../core/ui/icons';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import type { StatementPrefs } from '../lib/statementPrefs';
+import type { DiscountMode } from '../lib/statementDiscount';
 
 const ROWS: { key: Exclude<keyof StatementPrefs, 'discountMode'>; label: string; hint: string }[] = [
   { key: 'vat',      label: 'KDV',                     hint: 'Fatura satırındaki KDV ve sondaki KDV dökümü' },
@@ -22,10 +23,17 @@ const ROWS: { key: Exclude<keyof StatementPrefs, 'discountMode'>; label: string;
   { key: 'status',   label: 'Durum ve revizyon notu',  hint: 'Kesildi / Ödendi etiketi ve revizyon faturası notu' },
 ];
 
-export function StatementPrefsModal({ visible, prefs, onChange, onReset, onClose }: {
+const DISCOUNT_MODES: { key: DiscountMode; label: string }[] = [
+  { key: 'percent', label: 'Yüzde' },
+  { key: 'amount',  label: 'Tutar' },
+];
+
+export function StatementPrefsModal({ visible, prefs, onChange, onDiscountMode, onReset, onClose }: {
   visible: boolean;
   prefs: StatementPrefs;
   onChange: (key: Exclude<keyof StatementPrefs, 'discountMode'>, value: boolean) => void;
+  /** Verilirse "İndirim gösterimi" seçeneği görünür (lab ekstresi; klinik panelinde hep tutar). */
+  onDiscountMode?: (mode: DiscountMode) => void;
   onReset: () => void;
   onClose: () => void;
 }) {
@@ -61,6 +69,34 @@ export function StatementPrefsModal({ visible, prefs, onChange, onReset, onClose
                 <AppSwitch value={prefs[r.key]} onValueChange={(v: boolean) => onChange(r.key, v)} accentColor={accent} />
               </View>
             ))}
+            {onDiscountMode ? (
+              <View style={{
+                flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12,
+                borderTopWidth: 1, borderTopColor: U.hairlineSoft,
+              }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontSize: 13.5, fontWeight: '600', color: U.ink[900] }}>{autoT('İndirim gösterimi')}</Text>
+                  <Text style={{ fontSize: 11.5, color: U.ink[500], marginTop: 2, lineHeight: 16 }}>{autoT('İndirim sütununda tutar ya da yüzde yazar')}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 4, padding: 3, backgroundColor: U.ink[100], borderRadius: 14 }}>
+                  {DISCOUNT_MODES.map(m => {
+                    const active = prefs.discountMode === m.key;
+                    return (
+                      <Pressable key={m.key} onPress={() => onDiscountMode(m.key)}
+                        accessibilityRole="button" accessibilityState={{ selected: active }}
+                        style={[{
+                          paddingHorizontal: active ? 18 : 12, paddingVertical: 8, borderRadius: 11,
+                          backgroundColor: active ? U.segActive : 'transparent',
+                        }, web]}>
+                        <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? U.ink[900] : U.ink[500] }}>
+                          {autoT(m.label)}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            ) : null}
             <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 8 }}>Bu ayar yalnız sizin için bu cihazda saklanır.</Text>
           </View>
 

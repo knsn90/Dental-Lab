@@ -57,6 +57,8 @@ export interface ConfirmState {
   cancelLabel?: string;
   variant:   ConfirmVariant;
   onConfirm: () => void | Promise<void>;
+  /** İşlem başarısızsa pencerede, düğmelerin üstünde satır içi gösterilen hata. Yoksa hiçbir şey çizilmez. */
+  error?: string | null;
 }
 
 const VARIANT_TONES: Record<ConfirmVariant, { fg: string; bg: string }> = {
@@ -137,6 +139,10 @@ export function ConfirmDialog({
               ) : null}
               {state.message}
             </Text>
+
+            {state.error ? (
+              <Text style={{ fontSize: 13, fontWeight: '600', color: tone.fg, marginTop: 12 }}>{state.error}</Text>
+            ) : null}
 
             {/* Footer */}
             <View style={{

@@ -13,6 +13,7 @@
 
 import { autoT } from '../i18n/autoTranslate';
 import { htmlAttrs, printLocale } from '../i18n/printLocale';
+import { cariDiscountTh, cariDiscountTd, cariDiscountSummaryRow } from './cariDiscountColumn';
 
 export interface CariLine {
   /** Belge no / referans (T_ID) */
@@ -39,6 +40,10 @@ export interface CariLine {
   tax?: number | null;
   /** KDV oranı (%) — KDV hücresinin altında */
   taxRate?: number | null;
+  /** İndirim sütunu metni (showDiscount iken; "−10,00 TRY" ya da "%5,0") */
+  discountText?: string;
+  /** 'discount' = ekstre indirimi satırı: tutar yalnız İndirim sütununda, toplam alacağa girmez */
+  kind?: 'discount';
 }
 
 export interface CariStatementInput {
@@ -103,6 +108,10 @@ export interface CariStatementInput {
   vatSummary?: { net: number; tax: number; total: number } | null;
   /** Özet çubuğu toplamları — satırlar süzülmüşse (ör. tahsilat gizli) tüm hareketin toplamı */
   summaryTotals?: { debit: number; credit: number } | null;
+  /** İndirim sütunu (klinik ekstresi, yalnız istenince). Verilmezse belge olduğu gibi kalır. */
+  showDiscount?: boolean;
+  /** Ekstre indirimlerinin toplamı — özet çubuğunda "İndirimler" (showDiscount iken, > 0 ise) */
+  discountTotal?: number;
   /** 'ledger' (varsayılan) = pozitif bakiye kırmızı/borç · 'neutral' = nötr ink */
   balanceTone?: 'ledger' | 'neutral';
   /** Borç/Alacak (B/A) rozetlerini ve alt lejantı gizle */
@@ -173,13 +182,17 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
   const hideBa = input.hideBaBadges === true;
   // KDV sütunu yalnız KDV dökümü verilen belgede (müşteri ekstresi)
   const showVat = !!input.vatSummary;
+  // İndirim sütunu yalnız istenince (klinik ekstresi); kapalıyken bütün parçalar ''
+  const showDiscount = input.showDiscount === true;
+  const discSum = Number(input.discountTotal) || 0;
+  const showDiscSum = showDiscount && discSum > 0.004;
   const addressLines = (input.holder.addressLines ?? []).filter(Boolean) as string[];
   const yearNow = new Date().getFullYear();
   const copyrightText = input.copyright ?? `© ${esc(input.lab.name)} ${yearNow}`;
 
   // Toplam Borç / Alacak (mali müşavir özet kutusu için)
   const totalDebit  = input.summaryTotals?.debit  ?? input.lines.reduce((s, l) => s + (l.type === 'debit'  ? l.amount : 0), 0);
-  const totalCredit = input.summaryTotals?.credit ?? input.lines.reduce((s, l) => s + (l.type === 'credit' ? l.amount : 0), 0);
+  const totalCredit = input.summaryTotals?.credit ?? input.lines.reduce((s, l) => s + (l.type === 'credit' && l.kind !== 'discount' ? l.amount : 0), 0);
   const closingBa   = closing > 0.01 ? 'B' : closing < -0.01 ? 'A' : '—';
 
   const rowsHtml = input.lines
@@ -203,10 +216,10 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
           <div class="party-name">${esc(l.counterparty ?? '')}</div>
           ${l.counterpartySub ? `<div class="party-sub">${esc(l.counterpartySub)}</div>` : ''}
         </td>
-        <td class="money-cell" style="color:${moneyColor}">${esc(moneyText)}</td>
+        <td class="money-cell" style="color:${moneyColor}">${l.kind === 'discount' ? '' : esc(moneyText)}</td>
         ${showVat ? `<td class="vat-cell">${(l.tax ?? 0) > 0
           ? `<div class="vat-num">${esc(fmtMoney(l.tax ?? 0, l.currency || currency))}</div>${(l.taxRate ?? 0) > 0 ? `<div class="vat-rate">%${esc(l.taxRate)}</div>` : ''}`
-          : '<span class="vat-none">—</span>'}</td>` : ''}
+          : '<span class="vat-none">—</span>'}</td>` : ''}${cariDiscountTd(showDiscount, l.discountText)}
         <td class="balance-cell">
           <div class="balance-num">${esc(balText)}</div>
           <div class="ba-flag">${baFlag}</div>
@@ -590,12 +603,12 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
           <th>${autoT('Tarih')}</th>
           <th>${L.party !== undefined ? esc(L.party) : autoT('Karşı Taraf')}</th>
           <th class="num">${showVat ? autoT('Tutar (KDV hariç)') : autoT('Tutar')} <span class="pos">(+)</span> <span class="neg">(−)</span></th>
-          ${showVat ? `<th class="num">${autoT('KDV')}</th>` : ''}
+          ${showVat ? `<th class="num">${autoT('KDV')}</th>` : ''}${cariDiscountTh(showDiscount, autoT('İndirim'))}
           <th class="num">${autoT('Bakiye')}</th>
         </tr>
       </thead>
       <tbody>
-        ${rowsHtml || `<tr><td colspan="${showVat ? 6 : 5}" style="text-align:center;color:var(--ink-400);padding:40px;font-style:italic">${autoT('Bu dönemde hareket bulunmuyor.')}</td></tr>`}
+        ${rowsHtml || `<tr><td colspan="${(showVat ? 6 : 5) + (showDiscount ? 1 : 0)}" style="text-align:center;color:var(--ink-400);padding:40px;font-style:italic">${autoT('Bu dönemde hareket bulunmuyor.')}</td></tr>`}
       </tbody>
     </table>
   </div>
@@ -609,7 +622,7 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
   </div>` : ''}
 
   <!-- Summary bar -->
-  <div class="summary-bar">
+  <div class="summary-bar"${showDiscSum ? ' style="grid-template-columns:1fr auto auto auto auto"' : ''}>
     <div>
       <div class="lbl">${autoT('Toplam')}</div>
       <div class="num" style="font-size:11px;font-weight:600;color:var(--ink-500);">${input.lines.length} hareket</div>
@@ -621,7 +634,7 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
     <div>
       <div class="lbl">${esc(L.credit ?? 'Toplam Alacak')}</div>
       <div class="num credit">${fmtMoney(totalCredit, currency)}</div>
-    </div>
+    </div>${cariDiscountSummaryRow(showDiscSum, autoT('İndirimler'), esc(fmtMoney(-discSum, currency, { sign: true })))}
     <div>
       <div class="lbl">${esc(L.closing ?? 'Kapanış Bakiyesi')}${hideBa ? '' : ` (${closingBa})`}</div>
       <div class="num ${closing > 0.01 ? 'debit' : closing < -0.01 ? 'credit' : ''}">${fmtMoney(Math.abs(closing), currency)}</div>
