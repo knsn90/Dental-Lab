@@ -79,9 +79,9 @@ export interface Invoice {
   /** Entegratörün resmi fatura numarası (Luca) */
   efatura_number?:   string | null;
   // Fatura altı indirim (20261105110000). discount_amount sunucuda hesaplanır (Σ net_total üzerinden).
-  discount_type?:   'percent' | 'fixed' | null;
-  discount_value?:  number;
-  discount_amount?: number;
+  discount_type:   'percent' | 'fixed' | null;
+  discount_value:  number;
+  discount_amount: number;
   // Joined (optional)
   doctor?:  { id: string; full_name: string; phone?: string | null; clinic_id?: string | null } | null;
   clinic?:  { id: string; name: string; address?: string | null; phone?: string | null; email?: string | null; vkn?: string | null; tax_office?: string | null } | null;
@@ -241,13 +241,16 @@ export interface InvoiceItemInput {
 
 /**
  * Toplu fatura RPC parametreleri
- * create_bulk_invoice(p_clinic_id, p_work_order_ids[], p_due_days, p_notes)
+ * create_bulk_invoice(p_clinic_id, p_work_order_ids[], p_due_days, p_notes, p_discount_type, p_discount_value)
  */
 export interface CreateBulkInvoiceParams {
   clinic_id: string;
   work_order_ids: string[];
   due_days?: number;                 // default 30
   notes?: string | null;
+  /** Fatura altı indirim (20261105110000); yok → null/0. Değer validateInvoiceDiscount'tan geçmiş olmalı. */
+  discount_type?: 'percent' | 'fixed' | null;
+  discount_value?: number;
 }
 
 export interface RecordPaymentParams {

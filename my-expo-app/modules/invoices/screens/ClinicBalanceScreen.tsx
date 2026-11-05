@@ -13,7 +13,7 @@ import { safeBack } from '../../../core/util/safeBack';
 import React, { useContext, useMemo, useState } from 'react';
 import {
   View, Text, ScrollView, Pressable, RefreshControl,
-  TextInput, useWindowDimensions, Platform, Modal,
+  TextInput, useWindowDimensions, Platform, Modal, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useSegments } from 'expo-router';
@@ -40,6 +40,11 @@ import { MobileTableX, MobileTableRowX, MobileTableIconX, useMobileTableText } f
 import { FAB_CLEARANCE } from '../../../core/ui/pageMetrics';
 import { isRTL } from '../../../core/i18n';
 import { clinicCollected } from '../lib/discountPayment';
+import { InvoiceDiscountField } from '../components/InvoiceDiscountField';
+import {
+  validateInvoiceDiscount, invoiceTotalsWithDiscount, invoiceDiscountRpcError, type InvoiceDiscountType,
+} from '../lib/invoiceDiscount';
+import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 
 /** Vadesi geçmiş alacak — tek tanım (2026-10-26): kliniğin avansı düşülmüş (v_clinic_balance_ccy.overdue_net);
  *  Özet'teki "hatırlatılacak" listesi ve hatırlatma tutarıyla aynı. Görünüm eskiyse brüt değere düşer. */
@@ -88,24 +93,46 @@ export function ClinicBalanceScreen() {
   const { rows, loading, refetch } = useClinicBalancesByCurrency();
   const { orders: unbilled, refetch: refetchUnbilled } = useUnbilledWorkOrders();
 
-  // clinic_id → { count, total, work_order_ids[] }
+  // clinic_id → { count, total, work_order_ids[], byCcy (para birimi → tutar) }
   const unbilledByClinic = useMemo(() => {
-    const map: Record<string, { count: number; total: number; ids: string[] }> = {};
+    const map: Record<string, { count: number; total: number; ids: string[]; byCcy: Record<string, number> }> = {};
     for (const o of (unbilled ?? [])) {
       const k = (o as any).clinic_id;
       if (!k) continue;
-      if (!map[k]) map[k] = { count: 0, total: 0, ids: [] };
+      if (!map[k]) map[k] = { count: 0, total: 0, ids: [], byCcy: {} };
       map[k].count += 1;
       map[k].total += Number((o as any).estimated_total ?? 0);
       map[k].ids.push((o as any).work_order_id);
+      const tbc = (o as any).totals_by_currency as Record<string, any> | null | undefined;
+      const pairs: Array<[string, number]> = tbc
+        ? Object.entries(tbc).map(([c, v]) => [c, Number(v) || 0])
+        : [['TRY', Number((o as any).estimated_total) || 0]];
+      for (const [c, v] of pairs) if (v > 0) map[k].byCcy[c] = (map[k].byCcy[c] ?? 0) + v;
     }
     return map;
   }, [unbilled]);
 
   const [billingClinicId, setBillingClinicId] = useState<string | null>(null);
+  // "Faturala" penceresi: fatura indirimi + indirimli toplam; RPC'den önce açılır, iptal edilebilir.
+  const [billTarget, setBillTarget] = useState<{ clinicId: string; clinicName: string } | null>(null);
+  const [billDiscType, setBillDiscType] = useState<InvoiceDiscountType>('percent');
+  const [billDiscRaw, setBillDiscRaw] = useState('');
+  const [billDiscErr, setBillDiscErr] = useState<string | null>(null);
+  const [billErr, setBillErr] = useState<string | null>(null);
+  const openBulkBill = (clinicId: string, clinicName: string) => {
+    const bucket = unbilledByClinic[clinicId];
+    if (!bucket || bucket.count === 0) return;
+    setBillDiscType('percent'); setBillDiscRaw(''); setBillDiscErr(null); setBillErr(null);
+    setBillTarget({ clinicId, clinicName });
+  };
+  const closeBulkBill = () => { if (!billingClinicId) setBillTarget(null); };
   const handleBulkBill = async (clinicId: string) => {
     const bucket = unbilledByClinic[clinicId];
     if (!bucket || bucket.count === 0) return;
+    setBillErr(null);
+    const disc = validateInvoiceDiscount(billDiscType, billDiscRaw);
+    if (!disc.ok) { setBillDiscErr(disc.error); setBillErr(disc.error); return; }
+    setBillDiscErr(null);
     // Vade: klinikten oku
     let dueDays = 30;
     try {
@@ -119,12 +146,18 @@ export function ClinicBalanceScreen() {
       work_order_ids: bucket.ids,
       due_days: dueDays,
       notes: `Toplu fatura — ${bucket.count} sipariş`,
+      discount_type: disc.value > 0 ? billDiscType : null,
+      discount_value: disc.value,
     });
     setBillingClinicId(null);
     if (error) {
-      toast.error('Toplu fatura: ' + ((error as any).message ?? 'hata'));
+      const msg = (error as any).message as string | undefined;
+      const dMsg = invoiceDiscountRpcError(msg, billDiscType, billDiscRaw);
+      if (dMsg) { setBillDiscErr(dMsg); setBillErr(dMsg); return; }
+      setBillErr(msg ?? 'hata');
       return;
     }
+    setBillTarget(null);
     toast.success(`${bucket.count} ${autoT('sipariş tek faturada birleştirildi')}`);
     refetch();
     refetchUnbilled();
@@ -537,7 +570,7 @@ export function ClinicBalanceScreen() {
                       const busy = billingClinicId === b.clinic_id;
                       return (
                         <Pressable
-                          onPress={(e: any) => { e?.stopPropagation?.(); handleBulkBill(b.clinic_id); }}
+                          onPress={(e: any) => { e?.stopPropagation?.(); openBulkBill(b.clinic_id, b.clinic_name); }}
                           disabled={busy}
                           style={{
                             paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
@@ -708,6 +741,97 @@ export function ClinicBalanceScreen() {
             </View>
           </Pressable>
         </Pressable>
+      </Modal>
+
+      {/* ── Faturala penceresi (fatura indirimi) ─────────────── */}
+      <Modal visible={!!billTarget} transparent animationType="fade" onRequestClose={closeBulkBill}>
+        {billTarget ? (() => {
+          const bucket = unbilledByClinic[billTarget.clinicId];
+          const busy = billingClinicId === billTarget.clinicId;
+          const pairs = Object.entries(bucket?.byCcy ?? {}).sort((a, b) => b[1] - a[1]);
+          const totalLabel = pairs.length ? pairs.map(([c, v]) => fmtCur(v, c)).join(' · ') : '—';
+          const v = validateInvoiceDiscount(billDiscType, billDiscRaw);
+          const disc = v.ok && v.value > 0 && pairs.length === 1
+            ? invoiceTotalsWithDiscount(pairs[0][1], 0, billDiscType, v.value) : null;
+          const web = Platform.OS === 'web' ? ({ cursor: busy ? 'not-allowed' : 'pointer' } as any) : {};
+          return (
+            <View style={U.modalOverlay}>
+              <View style={[U.modalCard, { maxWidth: 440 }]}>
+                <View style={U.modalHeaderRow}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={U.modalTitle} numberOfLines={1}>{autoT('Toplu fatura')}</Text>
+                    <Text style={{ fontSize: 12, color: U.ink[400], marginTop: 2 }} numberOfLines={1}>
+                      {`${billTarget.clinicName} · ${bucket?.count ?? 0} ${autoT('sipariş')}`}
+                    </Text>
+                  </View>
+                  <GlassTooltip title={autoT('Kapat')} text={autoT('Pencereyi kaydetmeden kapat')} placement="bottom">
+                    <Pressable onPress={closeBulkBill} hitSlop={8} accessibilityRole="button" accessibilityLabel={autoT('Kapat')}
+                      style={{ ...U.modalCloseBtn, ...(Platform.OS === 'web' ? { cursor: 'pointer', outlineStyle: 'none' } as any : {}) }}>
+                      <X size={15} color={U.ink[500]} strokeWidth={2} />
+                    </Pressable>
+                  </GlassTooltip>
+                </View>
+
+                <View style={{ padding: 18, gap: 14 }}>
+                  <InvoiceDiscountField
+                    type={billDiscType}
+                    value={billDiscRaw}
+                    error={billDiscErr}
+                    disabled={busy}
+                    onChange={(t, val) => { setBillDiscType(t); setBillDiscRaw(val); setBillDiscErr(null); setBillErr(null); }}
+                  />
+                  <View style={{ borderRadius: 14, backgroundColor: U.surfaceSoft, borderWidth: 1, borderColor: U.hairline, padding: 14, gap: 8 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
+                      <Text style={{ flex: 1, fontSize: 12.5, color: U.ink[700] }}>{autoT('Toplam')}</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>{totalLabel}</Text>
+                    </View>
+                    {disc ? (
+                      <>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
+                          <Text style={{ flex: 1, fontSize: 12.5, color: U.ink[700] }}>{autoT('İndirim')}</Text>
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>{`−${fmtCur(disc.discount, pairs[0][0])}`}</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, borderTopWidth: 1, borderTopColor: U.hairline, paddingTop: 8 }}>
+                          <Text style={{ flex: 1, fontSize: 12.5, fontWeight: '600', color: U.ink[900] }}>{autoT('İndirimli toplam')}</Text>
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: U.ink[900] }}>{fmtCur(disc.subtotal, pairs[0][0])}</Text>
+                        </View>
+                      </>
+                    ) : null}
+                  </View>
+                </View>
+
+                {/* Alt bar — hata düğmenin yanında */}
+                <View style={{
+                  flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'flex-end',
+                  paddingHorizontal: 18, paddingTop: 14, paddingBottom: 14 + (Platform.OS === 'web' ? 0 : insets.bottom),
+                  borderTopWidth: 1, borderTopColor: U.hairline,
+                }}>
+                  {billErr ? (
+                    <Text style={{ flex: 1, fontSize: 12, fontWeight: '600', color: U.chipTones.danger.fg }}>{autoT(billErr)}</Text>
+                  ) : null}
+                  <Pressable onPress={closeBulkBill} disabled={busy}
+                    style={[{
+                      paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999,
+                      borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg,
+                    }, web]}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: U.plainBtn.fg }}>{autoT('Vazgeç')}</Text>
+                  </Pressable>
+                  <GlassTooltip title={autoT('Faturala')} text={autoT('Faturalanmamış siparişleri tek taslak faturada birleştir')} enabled={!busy}>
+                    <Pressable onPress={() => handleBulkBill(billTarget.clinicId)} disabled={busy}
+                      style={[{
+                        flexDirection: 'row', alignItems: 'center', gap: 7,
+                        paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999,
+                        backgroundColor: U.ink[900], opacity: busy ? 0.6 : 1,
+                      }, web]}>
+                      {busy ? <ActivityIndicator size="small" color={U.onDarkPill} /> : <Receipt size={14} color={U.onDarkPill} strokeWidth={1.8} />}
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: U.onDarkPill }}>{autoT('Faturala')}</Text>
+                    </Pressable>
+                  </GlassTooltip>
+                </View>
+              </View>
+            </View>
+          );
+        })() : null}
       </Modal>
 
       {/* ── Ödeme Hatırlatması Modal ─────────────────────────── */}

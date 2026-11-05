@@ -49,6 +49,41 @@ for (const m of [client, edge]) {
     assert.equal(sum, 5);
     for (const k of ['a', 'b', 'c']) assert.ok(r[k] <= 0.02);
   });
+  test('alan doğrulaması: validateInvoiceDiscount', () => {
+    assert.deepEqual(m.validateInvoiceDiscount(null, ''), { ok: true, value: 0 });
+    assert.deepEqual(m.validateInvoiceDiscount('percent', ''), { ok: true, value: 0 });
+    assert.deepEqual(m.validateInvoiceDiscount('fixed', '   '), { ok: true, value: 0 });
+    assert.deepEqual(m.validateInvoiceDiscount('percent', '7,5'), { ok: true, value: 7.5 });
+    assert.deepEqual(m.validateInvoiceDiscount('percent', '100'), { ok: true, value: 100 });
+    assert.deepEqual(m.validateInvoiceDiscount('percent', '101'), { ok: false, error: "Yüzde 100'ü aşamaz." });
+    assert.deepEqual(m.validateInvoiceDiscount('fixed', '0'), { ok: false, error: "İndirim 0'dan büyük olmalı." });
+    assert.deepEqual(m.validateInvoiceDiscount('fixed', '-5'), { ok: false, error: "İndirim 0'dan büyük olmalı." });
+    assert.deepEqual(m.validateInvoiceDiscount('fixed', 'abc'), { ok: false, error: "İndirim 0'dan büyük olmalı." });
+    assert.deepEqual(m.validateInvoiceDiscount('fixed', '12abc'), { ok: false, error: "İndirim 0'dan büyük olmalı." });
+  });
+  test('alan doğrulaması: binlik nokta ve ondalık virgül', () => {
+    assert.deepEqual(m.validateInvoiceDiscount('fixed', '1.250'), { ok: true, value: 1250 });
+    assert.deepEqual(m.validateInvoiceDiscount('fixed', '1.250,50'), { ok: true, value: 1250.5 });
+    assert.deepEqual(m.validateInvoiceDiscount('fixed', '12.345.678'), { ok: true, value: 12345678 });
+    assert.deepEqual(m.validateInvoiceDiscount('fixed', '1250,5'), { ok: true, value: 1250.5 });
+    assert.deepEqual(m.validateInvoiceDiscount('fixed', '1.25'), { ok: true, value: 1.25 });
+    assert.deepEqual(m.validateInvoiceDiscount('fixed', '1250.50'), { ok: true, value: 1250.5 });
+    assert.deepEqual(m.validateInvoiceDiscount('fixed', ' 150 '), { ok: true, value: 150 });
+    assert.deepEqual(m.validateInvoiceDiscount('percent', '1.250'), { ok: false, error: "Yüzde 100'ü aşamaz." });
+    assert.equal(m.parseDiscountInput('1.250'), 1250);
+    assert.ok(Number.isNaN(m.parseDiscountInput('1,2,3')));
+  });
+  test('alan doğrulaması: tür yokken değer yazılırsa', () => {
+    assert.deepEqual(m.validateInvoiceDiscount(null, '5'), { ok: false, error: 'İndirim türü seçin.' });
+  });
+  test('RPC hatası eşlemesi: invoiceDiscountRpcError', () => {
+    assert.equal(m.invoiceDiscountRpcError('INV_DISCOUNT_VALUE', 'percent', '150'), "Yüzde 100'ü aşamaz.");
+    assert.equal(m.invoiceDiscountRpcError('INV_DISCOUNT_VALUE', 'fixed', '0'), "İndirim 0'dan büyük olmalı.");
+    assert.equal(m.invoiceDiscountRpcError('INV_DISCOUNT_VALUE', 'fixed', '25'), "İndirim 0'dan büyük olmalı.");
+    assert.equal(m.invoiceDiscountRpcError('Yetkiniz yok', 'fixed', '25'), 'Yetkiniz yok');
+    assert.equal(m.invoiceDiscountRpcError('Tüm siparişler aynı kliniğe ve laboratuvara ait olmalı', 'fixed', '25'), null);
+    assert.equal(m.invoiceDiscountRpcError(null, null, ''), null);
+  });
 }
 test('iki kopya aynı', () => {
   for (const [n, t, v] of [[999.99, 'percent', 33.3], [12.345, 'fixed', 3], [0, 'percent', 50]] as const)

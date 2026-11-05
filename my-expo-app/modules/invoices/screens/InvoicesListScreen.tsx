@@ -53,6 +53,10 @@ import { isInvoiceOverdue } from '../../../core/metrics/invoiceDefs';
 // Durum renkleri, biçimleyiciler, e-Fatura rozeti — mobil fatura tablosuyla ortak
 import { chipTones, statusChip, fmtMoney, fmtDate, EFaturaBadge } from '../lib/invoiceListDisplay';
 import { InvoiceMobileTable } from '../components/InvoiceMobileTable';
+import { InvoiceDiscountField } from '../components/InvoiceDiscountField';
+import {
+  validateInvoiceDiscount, invoiceTotalsWithDiscount, invoiceDiscountRpcError, type InvoiceDiscountType,
+} from '../lib/invoiceDiscount';
 
 // ── Patterns tokens ─────────────────────────────────────────────────
 const DISPLAY = {
@@ -721,6 +725,11 @@ function BulkInvoiceModal({
   const [dueDays, setDueDays] = useState('30');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  // Fatura indirimi — boş açılır (kliniğin genel oranıyla dolmaz); hata alanın / düğmenin yanında.
+  const [discType, setDiscType] = useState<InvoiceDiscountType>('percent');
+  const [discRaw, setDiscRaw] = useState('');
+  const [discErr, setDiscErr] = useState<string | null>(null);
+  const [createErr, setCreateErr] = useState<string | null>(null);
 
   const { orders, loading: loadingOrders } = useUnbilledWorkOrders(
     selectedClinicId ?? undefined,
@@ -752,6 +761,21 @@ function BulkInvoiceModal({
     return pairs.length ? pairs.map(([c, v]) => fmtMoney(v, c)).join(' · ') : '—';
   }, [orders, selectedOrders]);
 
+  // İndirimli toplam (KDV öncesi, toplamla aynı taban) — fatura tek para birimindedir;
+  // seçim tek dövizde değilse ya da indirim geçersiz/boşsa gösterilmez.
+  const discountedTotalLabel = useMemo(() => {
+    const v = validateInvoiceDiscount(discType, discRaw);
+    if (!v.ok || v.value <= 0) return null;
+    const acc: Record<string, number> = {};
+    orders
+      .filter(o => selectedOrders.has(o.work_order_id))
+      .forEach(o => ccyPairs(o).forEach(([c, x]) => { acc[c] = (acc[c] ?? 0) + x; }));
+    const pairs = Object.entries(acc).filter(([, x]) => x > 0);
+    if (pairs.length !== 1) return null;
+    const [c, net] = pairs[0];
+    return fmtMoney(invoiceTotalsWithDiscount(net, 0, discType, v.value).subtotal, c);
+  }, [orders, selectedOrders, discType, discRaw]);
+
   const toggleOrder = (id: string) => {
     setSelectedOrders(prev => {
       const next = new Set(prev);
@@ -775,6 +799,7 @@ function BulkInvoiceModal({
     setOrderSearch('');
     setDueDays('30');
     setNotes('');
+    setDiscType('percent'); setDiscRaw(''); setDiscErr(null); setCreateErr(null);
     onClose();
   };
 
@@ -785,16 +810,25 @@ function BulkInvoiceModal({
       toast.warning('Vade gun sayisi 0-365 arasinda olmali.');
       return;
     }
+    setCreateErr(null);
+    const disc = validateInvoiceDiscount(discType, discRaw);
+    if (!disc.ok) { setDiscErr(disc.error); setCreateErr(disc.error); return; }
+    setDiscErr(null);
     setSaving(true);
     const { data, error } = await createBulkInvoice({
       clinic_id: selectedClinicId,
       work_order_ids: Array.from(selectedOrders),
       due_days: dueDaysNum,
       notes: notes.trim() || null,
+      discount_type: disc.value > 0 ? discType : null,
+      discount_value: disc.value,
     });
     setSaving(false);
     if (error || !data) {
-      toast.error((error as any)?.message ?? 'Fatura olusturulamadi.');
+      const msg = (error as any)?.message as string | undefined;
+      const dMsg = invoiceDiscountRpcError(msg, discType, discRaw);
+      if (dMsg) { setDiscErr(dMsg); setCreateErr(dMsg); return; }
+      toast.error(msg ?? 'Fatura olusturulamadi.');
       return;
     }
     onCreated(data.id);
@@ -985,6 +1019,14 @@ function BulkInvoiceModal({
                         />
                       </View>
                     </View>
+                    <View style={{ marginTop: 12 }}>
+                      <InvoiceDiscountField
+                        type={discType}
+                        value={discRaw}
+                        error={discErr}
+                        onChange={(t, v) => { setDiscType(t); setDiscRaw(v); setDiscErr(null); setCreateErr(null); }}
+                      />
+                    </View>
                   </View>
                 )}
               </View>
@@ -1004,6 +1046,17 @@ function BulkInvoiceModal({
               <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: U.ink[900] }}>
                 {selectedTotalLabelOrders}
               </Text>
+              {discountedTotalLabel ? (
+                <Text style={{ fontSize: 12, color: U.ink[500], marginTop: 2 }} numberOfLines={1}>
+                  {autoT('İndirimli toplam')}{': '}
+                  <Text style={{ fontWeight: '700', color: U.ink[900] }}>{discountedTotalLabel}</Text>
+                </Text>
+              ) : null}
+              {createErr ? (
+                <Text style={{ fontSize: 12, fontWeight: '600', color: U.chipTones.danger.fg, marginTop: 2 }}>
+                  {autoT(createErr)}
+                </Text>
+              ) : null}
             </View>
             <Pressable
               onPress={handleCreate}

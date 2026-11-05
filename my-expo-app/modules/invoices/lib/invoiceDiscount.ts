@@ -74,3 +74,52 @@ export function distributeDiscount(
   for (const k of Object.keys(acc)) out[k] = acc[k] / 100;
   return out;
 }
+
+/**
+ * Kullanıcının yazdığı indirim değerini sayıya çevirir (Türkçe giriş):
+ * virgül varsa noktalar binlik ayırıcıdır ("1.250,50" → 1250.5, "7,5" → 7.5);
+ * virgül yoksa ve yalnız 3'lü nokta grupları varsa yine binliktir ("1.250" → 1250);
+ * aksi halde olduğu gibi ("1.25" → 1.25). Boş → 0; sayı değilse NaN.
+ */
+export function parseDiscountInput(raw: string): number {
+  let s = String(raw ?? '').trim().replace(/\s+/g, '');
+  if (s === '') return 0;
+  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+  else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');
+  if (!/^-?\d+(\.\d+)?$/.test(s)) return NaN;
+  return Number(s);
+}
+
+/**
+ * Fatura indirimi alanı doğrulaması (create_bulk_invoice INV_DISCOUNT_VALUE kuralıyla aynı).
+ * Boş → { ok, value: 0 } (indirim yok). Hata metinleri Türkçe kaynak; arayüz autoT() ile sarar.
+ */
+export function validateInvoiceDiscount(
+  type: InvoiceDiscountType,
+  raw: string,
+): { ok: true; value: number } | { ok: false; error: string } {
+  if (String(raw ?? '').trim() === '') return { ok: true, value: 0 };
+  const v = parseDiscountInput(raw);
+  if (!Number.isFinite(v) || v <= 0) return { ok: false, error: "İndirim 0'dan büyük olmalı." };
+  if (!type) return { ok: false, error: 'İndirim türü seçin.' };
+  if (type === 'percent' && v > 100) return { ok: false, error: "Yüzde 100'ü aşamaz." };
+  return { ok: true, value: v };
+}
+
+/**
+ * create_bulk_invoice indirim hatalarını alan metnine çevirir; indirimle ilgisiz hata → null.
+ * INV_DISCOUNT_VALUE (22023) → validateInvoiceDiscount metni; 'Yetkiniz yok' (42501) olduğu gibi.
+ */
+export function invoiceDiscountRpcError(
+  message: string | null | undefined,
+  type: InvoiceDiscountType,
+  raw: string,
+): string | null {
+  const msg = String(message ?? '');
+  if (msg.includes('INV_DISCOUNT_VALUE')) {
+    const r = validateInvoiceDiscount(type, raw);
+    return r.ok ? "İndirim 0'dan büyük olmalı." : r.error;
+  }
+  if (msg.includes('Yetkiniz yok')) return 'Yetkiniz yok';
+  return null;
+}

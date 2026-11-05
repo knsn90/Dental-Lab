@@ -217,6 +217,10 @@ export async function createBulkInvoice(params: CreateBulkInvoiceParams) {
     p_work_order_ids: params.work_order_ids,
     p_due_days:       params.due_days ?? 30,
     p_notes:          params.notes ?? null,
+    // Fatura altı indirim yalnız varsa gönderilir; indirimsiz çağrı bugünküyle aynı (4 argüman, varsayılanlar null/0)
+    ...(params.discount_type && (Number(params.discount_value) || 0) > 0
+      ? { p_discount_type: params.discount_type, p_discount_value: Number(params.discount_value) }
+      : {}),
   });
   if (error || !data) return { data: null, error };
   return fetchInvoiceById(data as string);

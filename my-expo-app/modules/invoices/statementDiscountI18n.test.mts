@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { sdErrorText } from './lib/statementDiscount.ts';
+import { validateInvoiceDiscount } from './lib/invoiceDiscount.ts';
 
 const dict = (lang: string): Record<string, string> =>
   JSON.parse(readFileSync(new URL(`../../core/i18n/locales/auto.${lang}.json`, import.meta.url), 'utf-8'));
@@ -28,8 +29,18 @@ const TASK7 = [
   'İndirim silinemedi.', 'İndirim silindi',
 ];
 
+// Görev 11: fatura altı indirim alanı, toplu fatura akışları, alan/RPC hata metinleri
+const TASK11 = [
+  'Fatura indirimi', 'Faturala', 'İndirimli toplam', 'Toplu fatura',
+  'Faturalanmamış siparişleri tek taslak faturada birleştir', 'Yetkiniz yok',
+  ...['abc', '101', '5'].map((raw, i) => {
+    const r = validateInvoiceDiscount((['fixed', 'percent', null] as const)[i], raw);
+    return r.ok ? '' : r.error;
+  }),
+];
+
 test('ekstre indirimi metinleri en/de/fa sözlüklerinde', () => {
-  const keys = [...new Set([...TASK1, ...TASK4_5, ...TASK7])];
+  const keys = [...new Set([...TASK1, ...TASK4_5, ...TASK7, ...TASK11])];
   for (const lang of ['en', 'de', 'fa']) {
     const d = dict(lang);
     const missing = keys.filter((k) => !(typeof d[k] === 'string' && d[k].trim().length > 0));
