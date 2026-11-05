@@ -85,3 +85,25 @@ test('birleştirilmiş fatura Luca girdisine dönüşür: karışık KDV, toplam
   assert.equal(r.input.lines[0].code, r.input.lines[0].code.replace(/\[.*\]/, ''));
   assert.equal(r.input.issueDate, '2026-10-21');
 });
+
+test('birleştirme: yalnız indirimli faturanın kalemlerine pay yazılır; Luca toplamı tutar', () => {
+  const seller: SellerConfig = { vkn: '6312098145', tax_office: 'Kozyatağı', city: 'İstanbul', town: 'Ataşehir', street: 'Vatan Cad. 21' };
+  const clinic = { name: 'Luna', vkn: '6091290810', tax_office: 'Kozyatağı', address: 'Metropol, Ataşehir / İstanbul', email: null, phone: null, efatura_alias: null };
+  const a = row({ id: 'a', tax_rate: 20, total: 348, discount_amount: 10, items: [
+    { description: 'A1', quantity: 1, unit_price: 100, total: 100, net_total: 100 },
+    { description: 'A2', quantity: 1, unit_price: 200, total: 200, net_total: 200 },
+  ] });
+  const b = row({ id: 'b', invoice_number: 'FTR-2026-00002', issue_date: '2026-09-05', tax_rate: 20, total: 120, items: [
+    { description: 'B1', quantity: 1, unit_price: 100, total: 100, net_total: 100 },
+  ] });
+  const m = mergeInvoices([a, b], '2026-10-21');
+  const r = buildLucaInput({ invoice: m, clinic, doctor: null, seller, kind: 'e_fatura', companyTaxCode: seller.vkn, inboxTag: 'urn:mail:defaultpk@x', crossRate: 55.6, totalTolerance: 0.02 });
+  if (!r.ok) throw new Error(r.error);
+  assert.deepEqual(r.input.lines.map((l) => l.discountAmount), [3.33, 6.67, 0]);
+});
+
+test('birleştirme: indirimsiz kümede çıktı değişmez (discount_amount 0/yok)', () => {
+  const rows = [row({ id: 'a' }), row({ id: 'b', invoice_number: 'FTR-2026-00002', issue_date: '2026-09-05' })];
+  const base = mergeInvoices(rows, '2026-10-21');
+  assert.deepEqual(mergeInvoices(rows.map((r) => ({ ...r, discount_amount: 0 })), '2026-10-21'), base);
+});

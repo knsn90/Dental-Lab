@@ -185,3 +185,40 @@ test('yurt dışı klinik (adres JSON ulke ≠ TR) e-faturaya gönderilmez — i
   assert.equal(r.ok, false);
   assert.match((r as any).error, /Yurt dışı klinik/);
 });
+
+// ── fatura altı indirim (discount_amount) kalemlere dağıtılır ────────────
+test('fatura altı indirim: kalem iskontosuna orantılı pay eklenir, Luca toplamı fatura toplamıyla tutar', () => {
+  const d: DbInvoice = {
+    ...inv, tax_rate: 20, subtotal: 290, tax_amount: 58, total: 348, discount_amount: 10,
+    items: [
+      { description: 'Kalem A', quantity: 1, unit_price: 100, total: 100, net_total: 100 },
+      { description: 'Kalem B', quantity: 1, unit_price: 200, total: 200, net_total: 200 },
+    ],
+  };
+  const input = ok(buildLucaInput({ invoice: d, clinic, doctor: null, seller, kind: 'e_fatura', companyTaxCode: '6312098145', inboxTag: 'urn:mail:x@y' }));
+  assert.deepEqual(input.lines.map((l) => l.discountAmount), [3.33, 6.67]);
+  const pre = buildLucaPreview(input, { env: 'test', sellerName: 'Lab', invoiceNumber: d.invoice_number });
+  assert.ok(Math.abs(pre.totals.payable - 348) <= 0.01);
+  assert.equal(pre.totals.discount, 10);
+});
+
+test('fatura altı indirim mevcut kalem iskontosunun üstüne eklenir (pay net üzerinden)', () => {
+  const d: DbInvoice = {
+    ...inv, tax_rate: 20, total: 0, discount_amount: 10,
+    items: [
+      { description: 'Kalem A', quantity: 1, unit_price: 120, total: 120, net_total: 100 },
+      { description: 'Kalem B', quantity: 1, unit_price: 200, total: 200, net_total: 200 },
+    ],
+  };
+  d.total = 348; // (300 − 10) × 1.2
+  const input = ok(buildLucaInput({ invoice: d, clinic, doctor: null, seller, kind: 'e_fatura', companyTaxCode: '6312098145', inboxTag: 'urn:mail:x@y' }));
+  assert.deepEqual(input.lines.map((l) => l.discountAmount), [23.33, 6.67]);
+});
+
+test('discount_amount yok / 0 / null → çıktı bugünküyle aynı', () => {
+  const base = ok(buildLucaInput({ invoice: inv, clinic, doctor: null, seller, kind: 'e_fatura', companyTaxCode: '6312098145', inboxTag: 'urn:mail:x@y' }));
+  for (const da of [0, null, undefined, '0'] as const) {
+    const withField = ok(buildLucaInput({ invoice: { ...inv, discount_amount: da as never }, clinic, doctor: null, seller, kind: 'e_fatura', companyTaxCode: '6312098145', inboxTag: 'urn:mail:x@y' }));
+    assert.deepEqual(withField, base);
+  }
+});

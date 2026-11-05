@@ -371,7 +371,7 @@ serve(async (req) => {
       if (ids.length > MERGE_MAX) return json({ ok: false, error: `Tek e-faturada birleştirilebilecek en çok fatura sayısı: ${MERGE_MAX}` }, 400);
       const { data: rowsRaw, error: rowsErr } = await service
         .from('invoices')
-        .select(`id, lab_id, clinic_id, invoice_number, status, issue_date, currency, tax_rate, total, notes,
+        .select(`id, lab_id, clinic_id, invoice_number, status, issue_date, currency, tax_rate, total, notes, discount_amount,
                  efatura_uuid, efatura_status,
                  items:invoice_items(description, quantity, unit_price, total, net_total, sort_order),
                  orders:invoice_orders(work_order:work_orders(order_number))`)
@@ -546,7 +546,7 @@ serve(async (req) => {
     const invoiceId = String(body?.invoice_id ?? '');
     const { data: inv, error: invErr } = await service
       .from('invoices')
-      .select(`id, lab_id, invoice_number, issue_date, currency, tax_rate, subtotal, tax_amount, total, notes, status,
+      .select(`id, lab_id, invoice_number, issue_date, currency, tax_rate, subtotal, tax_amount, total, notes, discount_amount, status,
                efatura_uuid, efatura_type, efatura_status, efatura_number, clinic_id,
                clinic:clinics(name, vkn, tax_office, address, email, phone, efatura_alias),
                doctor:doctors(full_name, tckn),

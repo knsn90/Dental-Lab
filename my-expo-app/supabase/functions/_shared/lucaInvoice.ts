@@ -6,6 +6,7 @@
 // Resmi vergi belgesi olduğu için emin olunamayan her durumda GÖNDERMEZ ve
 // kullanıcıya ne düzeltmesi gerektiğini söyler (mesajlar Türkçe; istemci autoT ile çevirir).
 
+import { distributeDiscount } from './invoiceDiscount.ts';
 import { computeTotals, type LucaInvoiceInput, type LucaKind, type LucaLine } from './luca.ts';
 
 export interface DbItem {
@@ -30,6 +31,8 @@ export interface DbInvoice {
   tax_amount: number | string | null;
   total: number | string | null;
   notes: string | null;
+  /** Fatura altı indirim (fatura para biriminde); kalemlere net tutarları oranında dağıtılır. */
+  discount_amount?: number | string | null;
   items: DbItem[];
 }
 
@@ -219,11 +222,22 @@ export function buildLucaInput(args: {
   const foreign = currency !== 'TRY';
   if (foreign && !(args.crossRate && args.crossRate > 0)) return fail(`${currency} fatura için TCMB kuru bulunamadı`);
 
-  const lines: LucaLine[] = invoice.items.map((it) => {
+  // Fatura altı indirim: kalem net tutarları oranında dağıtılır; pay kalemin iskontosuna eklenir
+  // (KDV tabanı = net − pay). Yoksa/0 ise bugünkü hesap aynen.
+  const netOf = (it: DbItem) => {
+    const gross = num(it.total) || r2(num(it.quantity) * num(it.unit_price));
+    return it.net_total === null || it.net_total === undefined ? gross : num(it.net_total);
+  };
+  const invDiscount = num(invoice.discount_amount);
+  const shares = invDiscount > 0
+    ? distributeDiscount(invoice.items.map((it, i) => ({ key: String(i), net: netOf(it) })), invDiscount)
+    : null;
+
+  const lines: LucaLine[] = invoice.items.map((it, i) => {
     const quantity = num(it.quantity);
     const unitPrice = num(it.unit_price);
     const gross = num(it.total) || r2(quantity * unitPrice);
-    const net = it.net_total === null || it.net_total === undefined ? gross : num(it.net_total);
+    const net = netOf(it) - (shares?.[String(i)] ?? 0);
     const discount = r2(gross - net);
     const name = (it.description ?? '').trim() || 'Hizmet';
     const line: LucaLine = { code: productCode(name), name, quantity, unitPrice, vatRate: vatOf(it), discountAmount: discount > 0 ? discount : 0 };
