@@ -1,7 +1,9 @@
 // Ekstre liste ayarı — kullanıcı: "ekstre sayfasına liste ayarı ekleyelim, kullanıcı
 // karar versin ekstrede neleri açıp kapatacağını". Ekran + PDF + Excel aynı ayarı
 // kullanır; tercih kullanıcıya özel, cihazda saklanır (hooks/useStatementPrefs).
-// Saf yardımcı — içe aktarma yok (node --test doğrudan çalıştırır).
+// Saf yardımcı — yalnız `import type` (node --test doğrudan çalıştırır).
+
+import type { DiscountMode } from './statementDiscount';
 
 export interface StatementPrefs {
   /** KDV sütunu + sondaki KDV dökümü */
@@ -12,9 +14,11 @@ export interface StatementPrefs {
   payments: boolean;
   /** Durum etiketi (Kesildi/Ödendi) + revizyon notu */
   status: boolean;
+  /** İndirim sütunu: tutar ya da yüzde */
+  discountMode: DiscountMode;
 }
 
-export const DEFAULT_STATEMENT_PREFS: StatementPrefs = { vat: true, details: true, payments: true, status: true };
+export const DEFAULT_STATEMENT_PREFS: StatementPrefs = { vat: true, details: true, payments: true, status: true, discountMode: 'amount' };
 
 /** Saklanan JSON'u okur; bozuk/eksik alan varsayılana (açık) düşer. */
 export function parseStatementPrefs(raw: string | null | undefined): StatementPrefs {
@@ -23,13 +27,15 @@ export function parseStatementPrefs(raw: string | null | undefined): StatementPr
   try { obj = JSON.parse(raw); } catch { return { ...DEFAULT_STATEMENT_PREFS }; }
   const out = { ...DEFAULT_STATEMENT_PREFS };
   for (const k of Object.keys(out) as (keyof StatementPrefs)[]) {
-    if (typeof obj?.[k] === 'boolean') out[k] = obj[k];
+    if (k === 'discountMode') continue;
+    if (typeof obj?.[k] === 'boolean') (out as any)[k] = obj[k];
   }
+  if (obj?.discountMode === 'amount' || obj?.discountMode === 'percent') out.discountMode = obj.discountMode;
   return out;
 }
 
 type PrefLine = {
-  type: 'invoice' | 'payment';
+  type: 'invoice' | 'payment' | 'discount';
   description: string;
   invoiceNo?: string | null;
   patientName?: string | null;

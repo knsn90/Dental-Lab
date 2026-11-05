@@ -16,7 +16,7 @@ const pay = {
 };
 
 test('varsayılan: her şey açık, satırlar aynen kalır', () => {
-  assert.deepEqual(DEFAULT_STATEMENT_PREFS, { vat: true, details: true, payments: true, status: true });
+  assert.deepEqual(DEFAULT_STATEMENT_PREFS, { vat: true, details: true, payments: true, status: true, discountMode: 'amount' });
   assert.deepEqual(applyStatementPrefs([inv, pay], DEFAULT_STATEMENT_PREFS), [inv, pay]);
 });
 
@@ -54,4 +54,14 @@ test('kayıt okuma: bozuk/eksik veri varsayılana düşer, bilinmeyen anahtar at
   assert.deepEqual(parseStatementPrefs('{bozuk'), DEFAULT_STATEMENT_PREFS);
   assert.deepEqual(parseStatementPrefs('{"vat":false,"x":1}'), { ...DEFAULT_STATEMENT_PREFS, vat: false });
   assert.deepEqual(parseStatementPrefs('{"payments":"evet"}'), DEFAULT_STATEMENT_PREFS);
+});
+
+test('discountMode okunur, geçersiz değer varsayılana döner', () => {
+  assert.equal(parseStatementPrefs(JSON.stringify({ discountMode: 'percent' })).discountMode, 'percent');
+  assert.equal(parseStatementPrefs(JSON.stringify({ discountMode: 'x' })).discountMode, 'amount');
+  assert.equal(parseStatementPrefs(JSON.stringify({ vat: true })).discountMode, 'amount');
+});
+test('tahsilat satırları kapalıyken indirim satırı kalır', () => {
+  const p = { ...DEFAULT_STATEMENT_PREFS, payments: false };
+  assert.deepEqual(applyStatementPrefs([{ type: 'payment' }, { type: 'discount' }, { type: 'invoice' }] as any, p).map((l: any) => l.type), ['discount', 'invoice']);
 });

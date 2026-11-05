@@ -1,6 +1,9 @@
 // Ekstre indirimi — saf kurallar (numara, hata metni, dönem etiketi).
 // Metinler Türkçe kaynaktır; çağıran autoT() ile sarar.
 
+import type { StatementDiscount } from '../types';
+import type { StatementLine } from '../buildStatementHtml';
+
 export type DiscountMode = 'amount' | 'percent';
 export type SdErrorCode = 'SD_EMPTY' | 'SD_VALUE' | 'SD_CAP';
 
@@ -48,4 +51,68 @@ export function sdServerError(message: string | null | undefined): string | null
   if (!m) return null;
   const hit = m.match(/SD_[A-Z_]+/);
   return hit ? hit[0] : m;
+}
+
+const num = (x: unknown): number => Number(x) || 0;
+const round1 = (x: number) => Math.round(x * 10) / 10;
+
+/** Faturanın toplam indirimi: Σ(kalem brüt − net) + fatura altı indirim; brüt = Σ kalem brüt. */
+export function invoiceDiscountOf(inv: {
+  items?: ReadonlyArray<{ total: unknown; net_total: unknown }> | null;
+  discount_amount?: unknown;
+}): { amount: number; gross: number } {
+  let gross = 0;
+  let amount = 0;
+  for (const it of inv.items ?? []) {
+    const t = num(it.total);
+    gross += t;
+    amount += t - num(it.net_total);
+  }
+  amount += num(inv.discount_amount);
+  return { amount: Math.round(amount * 100) / 100, gross: Math.round(gross * 100) / 100 };
+}
+
+/** Ekstre indirim kayıtları → ekstre satırları (yalnız seçili para birimi). Bakiye etkisi `lineDelta`. */
+export function discountStatementLines(
+  discounts: ReadonlyArray<StatementDiscount>,
+  currency: string,
+): StatementLine[] {
+  return discounts
+    .filter(d => d.currency === currency)
+    .map(d => ({
+      id: 'disc-' + d.id,
+      date: d.discount_date,
+      type: 'discount' as const,
+      description: d.description ?? '',
+      invoiceNo: statementDiscountDocNo(d.doc_no),
+      debit: 0,
+      credit: 0,
+      balance: 0,
+      discount: num(d.amount),
+      discountBase: num(d.base_amount),
+    }));
+}
+
+/** İndirim sütunu hücresi; tutar yoksa null, yüzdede dayanak yoksa null. */
+export function discountCellValue(
+  l: { type: string; discount?: number; discountBase?: number },
+  mode: DiscountMode,
+): { kind: 'amount' | 'percent'; value: number } | null {
+  const d = num(l.discount);
+  if (d <= 0) return null;
+  if (mode === 'amount') return { kind: 'amount', value: d };
+  const base = num(l.discountBase);
+  if (base <= 0) return null;
+  return { kind: 'percent', value: round1((d / base) * 100) };
+}
+
+export function hasAnyDiscount(lines: ReadonlyArray<{ discount?: number }>): boolean {
+  return lines.some(l => num(l.discount) > 0);
+}
+
+/** Yalnız indirim satırlarının toplamı (faturadaki bilgi tutarı sayılmaz). */
+export function discountTotal(lines: ReadonlyArray<{ type?: string; discount?: number }>): number {
+  let t = 0;
+  for (const l of lines) if (l.type === 'discount') t += num(l.discount);
+  return Math.round(t * 100) / 100;
 }

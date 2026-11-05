@@ -1,7 +1,7 @@
 // node --test modules/invoices/lib/statementDiscount.test.mts — ekstre indirimi saf kuralları
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { statementDiscountDocNo, sdErrorText, discountPeriodLabel, sdServerError } from './statementDiscount.ts';
+import { statementDiscountDocNo, sdErrorText, discountPeriodLabel, sdServerError, invoiceDiscountOf, discountCellValue, discountStatementLines, hasAnyDiscount, discountTotal } from './statementDiscount.ts';
 
 test('belge numarası', () => { assert.equal(statementDiscountDocNo(7), 'İND-7'); });
 test('hata metinleri spec §10', () => {
@@ -25,4 +25,29 @@ test('sunucu mesajından SD_* kodu ya da ham mesaj', () => {
   assert.equal(sdServerError('Yetkiniz yok'), 'Yetkiniz yok');
   assert.equal(sdServerError(''), null);
   assert.equal(sdServerError(null), null);
+});
+
+test('fatura indirimi: kalem + fatura altı', () => {
+  assert.deepEqual(invoiceDiscountOf({ items: [{ total: 100, net_total: 90 }, { total: '50', net_total: '50' }], discount_amount: 14 }), { amount: 24, gross: 150 });
+  assert.deepEqual(invoiceDiscountOf({ items: null }), { amount: 0, gross: 0 });
+});
+test('sütun değeri: tutar/yüzde, bir ondalık', () => {
+  const l = { type: 'discount', discount: 35, discountBase: 350 };
+  assert.deepEqual(discountCellValue(l, 'amount'), { kind: 'amount', value: 35 });
+  assert.deepEqual(discountCellValue(l, 'percent'), { kind: 'percent', value: 10 });
+  assert.deepEqual(discountCellValue({ type: 'invoice', discount: 1, discountBase: 3 }, 'percent'), { kind: 'percent', value: 33.3 });
+  assert.equal(discountCellValue({ type: 'invoice', discount: 0, discountBase: 100 }, 'amount'), null);
+  assert.equal(discountCellValue({ type: 'invoice', discount: 5, discountBase: 0 }, 'percent'), null);
+});
+test('indirim satırları yalnız seçili para biriminde', () => {
+  const d = (id: string, currency: string) => ({ id, currency, discount_date: '2026-10-31', amount: 10, base_amount: 100, doc_no: 3, description: 'x' }) as any;
+  const out = discountStatementLines([d('a', 'TRY'), d('b', 'EUR')], 'TRY');
+  assert.deepEqual(out.map(l => [l.id, l.type, l.debit, l.credit, l.discount]), [['disc-a', 'discount', 0, 0, 10]]);
+  assert.equal(out[0].invoiceNo, 'İND-3');
+});
+test('hasAnyDiscount / discountTotal', () => {
+  const ls = [{ type: 'invoice', discount: 5 }, { type: 'discount', discount: 9 }, { type: 'discount', discount: 1 }];
+  assert.equal(hasAnyDiscount(ls), true);
+  assert.equal(hasAnyDiscount([{ discount: 0 }, {}]), false);
+  assert.equal(discountTotal(ls), 10);
 });

@@ -12,6 +12,8 @@ import { baseSymbol } from '../../core/money/baseCurrency';
 import { autoT } from '../../core/i18n/autoTranslate';
 import { revisionDetail } from './lib/statementRevision';
 import { htmlAttrs, printLocale } from '../../core/i18n/printLocale';
+import { lineDelta } from './lib/statementTotals';
+import { invoiceDiscountOf } from './lib/statementDiscount';
 import { vatPortion, statementVatSummary } from './lib/statementVat';
 // ── Yardımcılar ──────────────────────────────────────────────────────
 function esc(v: unknown): string {
@@ -50,7 +52,7 @@ export interface StatementLine {
   /** Stabil React key için opsiyonel id (örn. fatura/ödeme uuid'si) */
   id?: string;
   date: string;
-  type: 'invoice' | 'payment';
+  type: 'invoice' | 'payment' | 'discount';
   description: string;
   invoiceNo?: string;
   /** Ekstre satırı başlığı/alt-satırı için (ekran) — sipariş no, hasta, klinik, hekim */
@@ -79,6 +81,10 @@ export interface StatementLine {
   tax?: number;
   /** Faturanın KDV oranı (%) */
   taxRate?: number;
+  /** İndirim satırında bakiyeyi düşüren tutar; fatura satırında yalnız bilgi */
+  discount?: number;
+  /** İndirim yüzdesi için dayanak (fatura brüt / dönem fatura toplamı) */
+  discountBase?: number;
 }
 
 /**
@@ -100,6 +106,7 @@ export function buildStatementLines(
     const foreign = !!inv.currency && inv.currency !== 'TRY';
     // Borç: original ise faturanın kendi tutarı; değilse baz ₺ (amount_base ya da total×kur).
     const debitVal = original ? inv.total : (inv.amount_base != null ? inv.amount_base : inv.total * rate);
+    const invDisc = invoiceDiscountOf(inv as any);
     lines.push({
       id: inv.id,
       date: inv.issue_date,
@@ -117,6 +124,8 @@ export function buildStatementLines(
       status: inv.status,
       debit: debitVal,
       credit: 0,
+      discount: invDisc.amount,
+      discountBase: invDisc.gross,
       // Kullanıcı: KDV fiyatın içinde görünmüyordu → satırda ayrı, sonda toplam
       tax: vatPortion(inv, debitVal),
       taxRate: Number(inv.tax_rate) || 0,
@@ -128,6 +137,9 @@ export function buildStatementLines(
         // görünür (ekran fişi ayrıca ekler). Burada da yazsaydık aynı para
         // hem fiş hem fatura-başı ödeme olarak iki kez sayılırdı.
         if ((p as any).receipt_id) continue;
+        // Ekstre indirimi payı: indirim ayrı 'discount' satırı olarak görünür; burada
+        // yazılsa iki kez sayılırdı.
+        if ((p as any).statement_discount_id) continue;
         // Alacak: original ise ödemenin kendi tutarı; değilse faturanın kuruyla baz'a çevrilir.
         const creditVal = original ? p.amount : p.amount * rate;
         lines.push({
@@ -155,7 +167,7 @@ export function buildStatementLines(
 
   let running = 0;
   return lines.map(l => {
-    running += l.debit - l.credit;
+    running += lineDelta(l);
     return { ...l, balance: running };
   });
 }
@@ -228,7 +240,7 @@ export function buildStatementHtml(
       addressLines: [],
     },
     openingBalance: totals?.opening ?? 0,
-    closingBalance: totals?.closing ?? lines.reduce((s, l) => s + l.debit - l.credit, 0),
+    closingBalance: totals?.closing ?? lines.reduce((s, l) => s + lineDelta(l), 0),
     currency,
     lines: cariLines,
     // Dönemde fatura varsa KDV dökümü (KDV hariç + KDV = genel toplam); liste ayarıyla kapatılabilir

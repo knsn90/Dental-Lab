@@ -15,7 +15,7 @@ import { X } from '../../../core/ui/icons';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import type { StatementPrefs } from '../lib/statementPrefs';
 
-const ROWS: { key: keyof StatementPrefs; label: string; hint: string }[] = [
+const ROWS: { key: Exclude<keyof StatementPrefs, 'discountMode'>; label: string; hint: string }[] = [
   { key: 'vat',      label: 'KDV',                     hint: 'Fatura satırındaki KDV ve sondaki KDV dökümü' },
   { key: 'details',  label: 'Hasta, sipariş ve hekim', hint: 'Fatura satırının altındaki hasta adı, sipariş no ve hekim' },
   { key: 'payments', label: 'Tahsilat satırları',      hint: 'Kapalıyken yalnız faturalar listelenir; bakiye yine tahsilatları içerir' },
@@ -25,7 +25,7 @@ const ROWS: { key: keyof StatementPrefs; label: string; hint: string }[] = [
 export function StatementPrefsModal({ visible, prefs, onChange, onReset, onClose }: {
   visible: boolean;
   prefs: StatementPrefs;
-  onChange: (key: keyof StatementPrefs, value: boolean) => void;
+  onChange: (key: Exclude<keyof StatementPrefs, 'discountMode'>, value: boolean) => void;
   onReset: () => void;
   onClose: () => void;
 }) {

@@ -12,7 +12,7 @@ const STORAGE_KEY = 'siman_statement_prefs_v1';
 interface StatementPrefsState {
   prefs: StatementPrefs;
   hydrated: boolean;
-  setPref: (key: keyof StatementPrefs, value: boolean) => void;
+  setPref: <K extends keyof StatementPrefs>(key: K, value: StatementPrefs[K]) => void;
   reset: () => void;
   hydrate: () => Promise<void>;
 }

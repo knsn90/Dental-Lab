@@ -31,7 +31,7 @@ import { StatementVatSummary } from '../components/StatementVatSummary';
 import { StatementPrefsModal } from '../components/StatementPrefsModal';
 import { useStatementPrefs } from '../hooks/useStatementPrefs';
 import { applyStatementPrefs } from '../lib/statementPrefs';
-import { statementPeriodTotals } from '../lib/statementTotals';
+import { statementPeriodTotals, lineDelta } from '../lib/statementTotals';
 import { receiptCreditForCurrency, receiptVoucherNo, receiptDepositLabel } from '../lib/receiptStatement';
 import { revisionDetail } from '../lib/statementRevision';
 import { buildReceiptVoucherHtml } from '../buildReceiptVoucherHtml';
@@ -561,7 +561,7 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
     const merged = [...invLines, ...rcptLines]
       .sort((a, b) => a.date.localeCompare(b.date));
     let run = 0;
-    return merged.map(l => { run += l.debit - l.credit; return { ...l, balance: run }; });
+    return merged.map(l => { run += lineDelta(l); return { ...l, balance: run }; });
   }, [postedInvoices, receipts, selectedCcy]);
 
   // KPI'lar seçili dövizde. Kesilen/tahsil edilen kesilmiş faturalardan; BAKİYE ve VADESİ GEÇMİŞ
@@ -607,7 +607,7 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
   const totals = useMemo(() => {
     const debit = filtered.reduce((s, l) => s + l.debit, 0);
     const credit = filtered.reduce((s, l) => s + l.credit, 0);
-    return { debit, credit, balance: debit - credit };
+    return { debit, credit, balance: filtered.reduce((s, l) => s + lineDelta(l), 0) };
   }, [filtered]);
   // Faturaların KDV dökümü — KDV hariç + KDV = genel toplam (lib/statementVat)
   const vatSummary = useMemo(() => statementVatSummary(filtered), [filtered]);

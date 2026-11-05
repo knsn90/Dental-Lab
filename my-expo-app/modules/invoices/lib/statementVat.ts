@@ -15,7 +15,7 @@ export function vatPortion(inv: { total: number | null; tax_amount: number | nul
 
 /** Fatura satırlarının KDV hariç / KDV / genel toplamı (tahsilat satırları sayılmaz). */
 export function statementVatSummary(
-  lines: { type: 'invoice' | 'payment'; debit: number; tax?: number | null }[],
+  lines: { type: 'invoice' | 'payment' | 'discount'; debit: number; tax?: number | null }[],
 ): { net: number; tax: number; total: number } {
   let total = 0, tax = 0;
   for (const l of lines) {
@@ -28,10 +28,10 @@ export function statementVatSummary(
 
 /** Çok para birimli ekstre (klinik paneli): döküm para birimine göre AYRI — asla toplanmaz. */
 export function statementVatByCurrency(
-  lines: { type: 'invoice' | 'payment'; debit: number; tax?: number | null; currency: string }[],
+  lines: { type: 'invoice' | 'payment' | 'discount'; debit: number; tax?: number | null; currency: string }[],
 ): { currency: string; net: number; tax: number; total: number }[] {
   const order: string[] = [];
-  const groups: Record<string, { type: 'invoice' | 'payment'; debit: number; tax?: number | null }[]> = {};
+  const groups: Record<string, { type: 'invoice' | 'payment' | 'discount'; debit: number; tax?: number | null }[]> = {};
   for (const l of lines) {
     if (l.type !== 'invoice') continue;
     if (!groups[l.currency]) { groups[l.currency] = []; order.push(l.currency); }
