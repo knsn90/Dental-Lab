@@ -2,15 +2,20 @@ import UIKit
 import SceneKit
 import simd
 
-/// Ön kamera taraması sonrası önizleme — kaydedilecek PLY'nin BİREBİR aynısını
-/// (aynı ColoredMesh) gösterir. Beğenilirse "Siparişe Kaydet", değilse "Tekrar Tara".
-/// "Renkli" = fotoğraf renkleri (ışıksız, gerçek ton) · "Yüzey" = gri, ışıklı geometri.
+/// Ön kamera taraması sonrası önizleme. Doku pişirildiyse kaydedilecek dokulu OBJ'yi
+/// gösterir: "İyileştirilmiş" / "Orijinal" (ışıksız, gerçek ton) · "Yüzey" (gri, ışıklı).
+/// Doku yoksa köşe renkli PLY ağı ("Renkli"). Kaydedilen doku = son seçilen renk modu.
 final class FacePreviewViewController: UIViewController {
 
-    var onSave: (() -> Void)?
+    /// enhanced: kullanıcı son olarak "İyileştirilmiş" mi seçti (doku yoksa anlamsız).
+    var onSave: ((_ enhanced: Bool) -> Void)?
     var onRetry: (() -> Void)?
 
     private let mesh: ColoredMesh
+    private let texture: BakedFaceTexture?
+    private var useEnhanced = true
+    private var texturedMaterial: SCNMaterial?
+    private var texturedGeometry: SCNGeometry?
     private let scnView = SCNView()
     private let meshNode = SCNNode()
     // Model kendi merkezinde döner (serbest kamera yerine) → elden kaçmaz
@@ -31,8 +36,9 @@ final class FacePreviewViewController: UIViewController {
     private let retryButton = UIButton(type: .system)
     private let spinner = UIActivityIndicatorView(style: .medium)
 
-    init(mesh: ColoredMesh) {
+    init(mesh: ColoredMesh, texture: BakedFaceTexture?) {
         self.mesh = mesh
+        self.texture = texture
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -71,7 +77,7 @@ final class FacePreviewViewController: UIViewController {
         let scene = SCNScene()
         scnView.scene = scene
         buildGeometries()
-        meshNode.geometry = colorGeometry
+        meshNode.geometry = texturedGeometry ?? colorGeometry
 
         // Ortala: modeli orijine taşı, kamera boyuta göre mesafe alsın
         var lo = SIMD3<Float>(repeating: .greatestFiniteMagnitude)
@@ -235,6 +241,27 @@ final class FacePreviewViewController: UIViewController {
         let surface = SCNGeometry(sources: [vertexSource, normalSource], elements: [element])
         surface.materials = [surfaceMaterial]
         surfaceGeometry = surface
+
+        // Dokulu taban ağ (kaydedilecek OBJ'nin aynısı)
+        if let tex = texture {
+            let snap = tex.snapshot
+            let tv = SCNGeometrySource(vertices: snap.vertices.map { SCNVector3($0.x, $0.y, $0.z) })
+            let tn = SCNGeometrySource(normals: tex.normals.map { SCNVector3($0.x, $0.y, $0.z) })
+            // SceneKit doku koordinatı sol-üst kökenli → görüntü-uzayı UV olduğu gibi
+            let tc = SCNGeometrySource(textureCoordinates: tex.uvs.map { CGPoint(x: CGFloat($0.x), y: CGFloat($0.y)) })
+            let te = SCNGeometryElement(indices: snap.triangleIndices, primitiveType: .triangles)
+            let mat = SCNMaterial()
+            mat.lightingModel = .constant
+            mat.diffuse.contents = UIImage(cgImage: tex.enhanced)
+            mat.diffuse.wrapS = .clamp
+            mat.diffuse.wrapT = .clamp
+            mat.diffuse.mipFilter = .linear
+            mat.isDoubleSided = true
+            let g = SCNGeometry(sources: [tv, tn, tc], elements: [te])
+            g.materials = [mat]
+            texturedMaterial = mat
+            texturedGeometry = g
+        }
     }
 
     // MARK: Arayüz
@@ -245,7 +272,7 @@ final class FacePreviewViewController: UIViewController {
         title.font = .systemFont(ofSize: 17, weight: .semibold)
         title.textColor = .white
 
-        let modes = UISegmentedControl(items: ["Renkli", "Yüzey"])
+        let modes = UISegmentedControl(items: texture != nil ? ["İyileştirilmiş", "Orijinal", "Yüzey"] : ["Renkli", "Yüzey"])
         modes.selectedSegmentIndex = 0
         modes.selectedSegmentTintColor = .white
         modes.setTitleTextAttributes([.foregroundColor: UIColor.black], for: .selected)
@@ -314,9 +341,21 @@ final class FacePreviewViewController: UIViewController {
     }
 
     @objc private func modeChanged(_ sender: UISegmentedControl) {
-        meshNode.geometry = sender.selectedSegmentIndex == 0 ? colorGeometry : surfaceGeometry
+        let i = sender.selectedSegmentIndex
+        guard let tex = texture, let textured = texturedGeometry else {
+            meshNode.geometry = i == 0 ? colorGeometry : surfaceGeometry
+            return
+        }
+        switch i {
+        case 0, 1:
+            useEnhanced = i == 0
+            texturedMaterial?.diffuse.contents = UIImage(cgImage: useEnhanced ? tex.enhanced : tex.original)
+            meshNode.geometry = textured
+        default:
+            meshNode.geometry = surfaceGeometry
+        }
     }
 
-    @objc private func saveTap() { onSave?() }
+    @objc private func saveTap() { onSave?(useEnhanced) }
     @objc private func retryTap() { onRetry?() }
 }

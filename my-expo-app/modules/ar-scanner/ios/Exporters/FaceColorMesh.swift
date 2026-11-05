@@ -112,17 +112,25 @@ struct FaceColorSample {
 //      baktığı kareden gelir; geçişler yumuşak ama detay karışıp bulanmaz.
 //   7. Hiçbir karede görülmeyen köşeler komşulardan doldurulur.
 
+/// Renk birleştirmenin sonucu: köşe renkli ağ (PLY + önizleme) ve dokunun da
+/// kullandığı seçilmiş kareler + kare başı pozlama kazancı (ön kare = 1).
+struct FaceColorResult {
+    let mesh: ColoredMesh
+    let views: [FaceColorView]
+    let gains: [SIMD3<Float>]
+}
+
 enum FaceColorMesh {
 
-    private static let minFacing: Float = 0.2
-    private static let depthEpsilon: Float = 0.004   // 4 mm
-    private static let eyeFrontOnlyInner: Float = 0.017
-    private static let eyeFrontOnlyOuter: Float = 0.025
+    static let minFacing: Float = 0.2
+    static let depthEpsilon: Float = 0.004   // 4 mm
+    static let eyeFrontOnlyInner: Float = 0.017
+    static let eyeFrontOnlyOuter: Float = 0.025
 
     static func build(snapshot: MeshSnapshot,
                       samples: [FaceColorSample],
                       frontOnlyCenters: [SIMD3<Float>],
-                      subdivisions: Int = 4) -> ColoredMesh {
+                      subdivisions: Int = 4) -> FaceColorResult {
         let baseVertexCount = snapshot.vertices.count
         let baseTris = snapshot.triangleIndices.map { UInt32(Int($0)) }
 
@@ -172,7 +180,8 @@ enum FaceColorMesh {
         let bytes = colors.map { c -> SIMD3<UInt8> in
             SIMD3<UInt8>(toSRGB8(c.x), toSRGB8(c.y), toSRGB8(c.z))
         }
-        return ColoredMesh(positions: pos, colors: bytes, triangles: tris)
+        return FaceColorResult(mesh: ColoredMesh(positions: pos, colors: bytes, triangles: tris),
+                               views: views, gains: gains)
     }
 
     /// Alan ağırlıklı köşe normalleri, yüzden DIŞARI bakacak şekilde yönlendirilmiş
@@ -453,29 +462,29 @@ enum FaceColorMesh {
 
     // MARK: Yardımcılar
 
-    private static func xyz(_ v: SIMD4<Float>) -> SIMD3<Float> { SIMD3<Float>(v.x, v.y, v.z) }
+    static func xyz(_ v: SIMD4<Float>) -> SIMD3<Float> { SIMD3<Float>(v.x, v.y, v.z) }
 
-    private static func upper3x3(_ m: simd_float4x4) -> simd_float3x3 {
+    static func upper3x3(_ m: simd_float4x4) -> simd_float3x3 {
         simd_float3x3(xyz(m.columns.0), xyz(m.columns.1), xyz(m.columns.2))
     }
 
-    private static func edge(_ a: SIMD2<Float>, _ b: SIMD2<Float>, _ p: SIMD2<Float>) -> Float {
+    static func edge(_ a: SIMD2<Float>, _ b: SIMD2<Float>, _ p: SIMD2<Float>) -> Float {
         (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x)
     }
 
-    private static func smoothstep(_ e0: Float, _ e1: Float, _ x: Float) -> Float {
+    static func smoothstep(_ e0: Float, _ e1: Float, _ x: Float) -> Float {
         let t = min(max((x - e0) / (e1 - e0), 0), 1)
         return t * t * (3 - 2 * t)
     }
 
     /// 0…255 sRGB → 0…1 lineer
-    private static func toLinear(_ v: Float) -> Float {
+    static func toLinear(_ v: Float) -> Float {
         let c = v / 255
         return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
     }
 
     /// 0…1 lineer → 0…255 sRGB
-    private static func toSRGB8(_ v: Float) -> UInt8 {
+    static func toSRGB8(_ v: Float) -> UInt8 {
         let c = min(max(v, 0), 1)
         let s = c <= 0.0031308 ? c * 12.92 : 1.055 * pow(c, 1 / 2.4) - 0.055
         return UInt8((s * 255).rounded())

@@ -473,6 +473,20 @@ async function loadFile(file) {
     } else throw new Error('Bilinmeyen format: ' + file.format);
 
     if (!geom.attributes.normal) geom.computeVertexNormals();
+    // OBJ + kardeş doku (yüz taraması: face_scan.obj + face_scan.jpg) → dokulu çiz.
+    // Doku yüklenemezse düz renkle devam (geometri etkilenmez).
+    let tex = null;
+    if (file.format === 'obj' && file.textureUrl && geom.attributes.uv) {
+      tex = await new Promise((resolve) => {
+        const loader = new THREE.TextureLoader();
+        loader.setCrossOrigin('anonymous');
+        loader.load(file.textureUrl, (t) => resolve(t), undefined, () => resolve(null));
+      });
+      if (tex) {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+      }
+    }
     // RAW koordinatları koru (exocad/3Shape davranışı) — aynı tarama oturumundan
     // gelen dosyalar gerçek okluzyon pozisyonunda gelir.
     geom.computeBoundingBox();
@@ -481,9 +495,10 @@ async function loadFile(file) {
     const style = INPUT.layerStyles[file.id] || {};
     const opacity = style.opacity != null ? style.opacity : 1;
     const mat = new THREE.MeshPhongMaterial({
-      color: new THREE.Color(style.color || file.color || '#E8D5C4'),
-      vertexColors: hasVC,
-      shininess: 42, specular: 0x3a3a3a,
+      color: new THREE.Color(tex ? '#FFFFFF' : (style.color || file.color || '#E8D5C4')),
+      map: tex,
+      vertexColors: hasVC && !tex,
+      shininess: tex ? 6 : 42, specular: tex ? 0x111111 : 0x3a3a3a,
       transparent: opacity < 1, opacity,
       wireframe: !!style.wireframe,
       side: THREE.DoubleSide,
@@ -875,7 +890,7 @@ function handleMessage(ev) {
     }
     case 'SET_COLOR': {
       const m = meshes.get(msg.fileId);
-      if (m && !m.material.vertexColors) { m.material.color.set(msg.hex); m.material.needsUpdate = true; }
+      if (m && !m.material.vertexColors && !m.material.map) { m.material.color.set(msg.hex); m.material.needsUpdate = true; }
       break;
     }
     case 'SET_WIREFRAME': {

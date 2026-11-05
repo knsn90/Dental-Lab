@@ -10,14 +10,14 @@ export type FaceScanResult = {
   asciiSTL: string | null;
   /** Binary STL — arka kamera modlarında dolu; ön kamerada null. */
   binarySTL: string | null;
-  /** Wavefront OBJ — arka kamera modlarında dolu; ön kamerada null. */
+  /** Wavefront OBJ — arka kamera modları + ön kamera (dokulu yüz, mm; doku pişirilemezse null). */
   obj: string | null;
   /** OBJ ile aynı klasörde MTL (texture referansı). */
   mtl: string | null;
-  /** Photographic texture (AR scene snapshot). */
+  /** OBJ dokusu — arka kamerada PNG, ön kamerada 4096 px pişirilmiş JPG (ad tarihsel). */
   texturePNG: string | null;
   /** Object Capture (LiDAR fotogrametri) USDZ — gömülü texture'lı yüksek kalite mesh. */
   usdz: string | null;
-  /** Köşe renkli binary PLY (mm) — ön kamera (TrueDepth) modunun TEK çıktısı; exocad uyumlu. */
+  /** Köşe renkli binary PLY (mm) — ön kamera (TrueDepth) modu; dokulu OBJ ile aynı uzayda. */
   ply: string | null;
 };

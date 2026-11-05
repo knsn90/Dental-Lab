@@ -42,6 +42,67 @@ enum OBJExporter {
         return Output(obj: obj, mtl: mtl, texturePNG: png, materialName: materialName)
     }
 
+    // MARK: Ön kamera — pişirilmiş dokulu yüz (OBJ + MTL + JPG, mm)
+
+    struct TexturedFiles {
+        let obj: URL
+        let mtl: URL
+        let texture: URL
+    }
+
+    /// Dokulu yüzü `dir` içine yazar: <base>.obj + <base>.mtl + <base>.jpg.
+    /// Birim mm (PLY ile aynı uzay → CAD'de üst üste oturur). vt, dokunun alt-sol
+    /// kökenli OBJ kuralına göre (1 − v) yazılır.
+    static func writeTextured(_ baked: BakedFaceTexture, texture: CGImage, to dir: URL,
+                              baseName: String = "face_scan", unitScale: Float = 1000) throws -> TexturedFiles {
+        let objURL = dir.appendingPathComponent("\(baseName).obj")
+        let mtlURL = dir.appendingPathComponent("\(baseName).mtl")
+        let texURL = dir.appendingPathComponent("\(baseName).jpg")
+
+        guard let jpg = UIImage(cgImage: texture).jpegData(compressionQuality: 0.9) else {
+            throw NSError(domain: "OBJExporter", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "Doku JPEG'e çevrilemedi"])
+        }
+        try jpg.write(to: texURL, options: .atomic)
+
+        let mtl = [
+            "# Siman face scan material",
+            "newmtl FaceMaterial",
+            "Ka 1.000 1.000 1.000",
+            "Kd 1.000 1.000 1.000",
+            "Ks 0.000 0.000 0.000",
+            "d 1.0",
+            "illum 1",
+            "map_Kd \(texURL.lastPathComponent)",
+            "",
+        ].joined(separator: "\n")
+        try Data(mtl.utf8).write(to: mtlURL, options: .atomic)
+
+        let snap = baked.snapshot
+        var out = "# Siman face scan (textured, mm)\nmtllib \(mtlURL.lastPathComponent)\no face\n"
+        out.reserveCapacity(snap.vertices.count * 96 + snap.triangleIndices.count * 12)
+        for v in snap.vertices {
+            let p = v * unitScale
+            out += "v \(p.x) \(p.y) \(p.z)\n"
+        }
+        for uv in baked.uvs {
+            out += "vt \(uv.x) \(1 - uv.y)\n"
+        }
+        for n in baked.normals {
+            out += "vn \(n.x) \(n.y) \(n.z)\n"
+        }
+        out += "usemtl FaceMaterial\ns 1\n"
+        var i = 0
+        let idx = snap.triangleIndices
+        while i + 2 < idx.count {
+            let a = Int(idx[i]) + 1, b = Int(idx[i + 1]) + 1, c = Int(idx[i + 2]) + 1
+            out += "f \(a)/\(a)/\(a) \(b)/\(b)/\(b) \(c)/\(c)/\(c)\n"
+            i += 3
+        }
+        try Data(out.utf8).write(to: objURL, options: .atomic)
+        return TexturedFiles(obj: objURL, mtl: mtlURL, texture: texURL)
+    }
+
     private static func composeOBJ(
         snapshot: MeshSnapshot,
         uvs: [SIMD2<Float>],

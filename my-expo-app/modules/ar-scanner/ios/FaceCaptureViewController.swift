@@ -4,9 +4,12 @@ import ARKit
 import CoreImage
 import AudioToolbox
 
-/// Sonuç: siparişe yüklenecek TEK dosya — köşe renkli PLY (mm).
+/// Sonuç: köşe renkli PLY (mm) + varsa dokulu OBJ paketi (OBJ + MTL + JPG, mm).
 struct FaceCaptureFiles {
     let ply: URL
+    var obj: URL? = nil
+    var mtl: URL? = nil
+    var texture: URL? = nil
 }
 
 /// AR yüz tarama VC — modal olarak sunulur, capture / cancel ile dismiss eder.
@@ -49,6 +52,7 @@ final class FaceCaptureViewController: UIViewController, ARSCNViewDelegate, ARSe
     private var frontSnapshot: MeshSnapshot?
     private var frontExpression: [Float] = []
     private var frontEyeCenters: [SIMD3<Float>] = []
+    private var frontEyeCaps: [EyeCap] = []
     private var firstSideYawSign: Float = 0
     private var firstTurnScreenSign: Float = 0
     private var poseHistory: [(time: TimeInterval, angles: SIMD2<Float>)] = []
@@ -363,11 +367,13 @@ final class FaceCaptureViewController: UIViewController, ARSCNViewDelegate, ARSe
     private func capture(face: ARFaceAnchor, frame: ARFrame, isFront: Bool) {
         if isFront {
             // Göz delikleri kişinin kendi gözüyle kapatılır; ağız açık kalır
-            frontSnapshot = EyeHoleFiller.fill(
+            let filled = EyeHoleFiller.fillEyes(
                 MeshSnapshot(faceGeometry: face.geometry),
                 leftEye: face.leftEyeTransform,
                 rightEye: face.rightEyeTransform
             )
+            frontSnapshot = filled.snapshot
+            frontEyeCaps = filled.caps
             frontExpression = expressionVector(face)
             frontEyeCenters = [face.leftEyeTransform.columns.3, face.rightEyeTransform.columns.3]
                 .map { SIMD3<Float>($0.x, $0.y, $0.z) }
@@ -496,6 +502,7 @@ final class FaceCaptureViewController: UIViewController, ARSCNViewDelegate, ARSe
         frontSnapshot = nil
         frontExpression = []
         frontEyeCenters = []
+        frontEyeCaps = []
         firstSideYawSign = 0
         firstTurnScreenSign = 0
         poseHistory.removeAll()
@@ -554,31 +561,50 @@ final class FaceCaptureViewController: UIViewController, ARSCNViewDelegate, ARSe
             }
             let captured = self.samples.compactMap { $0 }
             let eyes = self.frontEyeCenters
-            // Bölme + çok kareli renk birleştirme birkaç sn → ana thread'i kilitleme
+            let eyeCaps = self.frontEyeCaps
+            let context = self.ciContext
+            // Bölme + çok kareli renk birleştirme + doku pişirme birkaç sn → ana thread'i kilitleme
             DispatchQueue.global(qos: .userInitiated).async {
-                let mesh = FaceColorMesh.build(snapshot: snapshot, samples: captured, frontOnlyCenters: eyes)
+                let result = FaceColorMesh.build(snapshot: snapshot, samples: captured, frontOnlyCenters: eyes)
+                DispatchQueue.main.async {
+                    guard self.captureGeneration == generation else { return }
+                    self.hintPill.set("Doku hazırlanıyor")
+                }
+                // Doku başarısız olursa köşe renkli PLY ile devam (önceki davranış)
+                let texture = FaceTextureBaker.bake(snapshot: snapshot, views: result.views, gains: result.gains,
+                                                    frontOnlyCenters: eyes, eyeCaps: eyeCaps, context: context)
                 DispatchQueue.main.async {
                     guard self.onFinish != nil, self.captureGeneration == generation else { return }
-                    self.presentPreview(mesh: mesh)
+                    self.presentPreview(mesh: result.mesh, texture: texture)
                 }
             }
         }
     }
 
-    private func presentPreview(mesh: ColoredMesh) {
-        let preview = FacePreviewViewController(mesh: mesh)
+    private func presentPreview(mesh: ColoredMesh, texture: BakedFaceTexture?) {
+        let preview = FacePreviewViewController(mesh: mesh, texture: texture)
         preview.modalPresentationStyle = .fullScreen
         // Tekrar Tara → önizleme kapanır, viewDidAppear rehberi sıfırlayıp kamerayı başlatır
         preview.onRetry = { [weak preview] in preview?.dismiss(animated: true) }
-        // Siparişe Kaydet → PLY yazılır, finish self'i dismiss eder (önizleme dahil)
-        preview.onSave = { [weak self, weak preview] in
+        // Siparişe Kaydet → PLY (+ dokulu OBJ paketi) yazılır, finish self'i dismiss eder
+        preview.onSave = { [weak self, weak preview] enhanced in
             guard let self else { return }
             preview?.setSaving(true)
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
-                    let url = self.freshCaptureDirectory().appendingPathComponent("face_scan.ply")
+                    let dir = self.freshCaptureDirectory()
+                    let url = dir.appendingPathComponent("face_scan.ply")
                     try PLYExporter.writeBinary(mesh, to: url)
-                    DispatchQueue.main.async { self.finish(.success(FaceCaptureFiles(ply: url))) }
+                    var files = FaceCaptureFiles(ply: url)
+                    // OBJ paketi yazılamazsa PLY yine kaydedilir
+                    if let texture,
+                       let obj = try? OBJExporter.writeTextured(texture, texture: enhanced ? texture.enhanced : texture.original,
+                                                                to: dir) {
+                        files.obj = obj.obj
+                        files.mtl = obj.mtl
+                        files.texture = obj.texture
+                    }
+                    DispatchQueue.main.async { self.finish(.success(files)) }
                 } catch {
                     DispatchQueue.main.async {
                         preview?.setSaving(false)

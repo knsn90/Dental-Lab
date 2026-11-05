@@ -215,13 +215,13 @@ public class ArScannerModule: Module {
             case .none:
                 promise.resolve(NSNull())
             case .some(.success(let files)):
-                // Tek dosya: köşe renkli PLY (önizlemede onaylanan ağın aynısı)
+                // Köşe renkli PLY + varsa dokulu OBJ paketi (aynı klasörde; MTL dokuyu adıyla bağlar)
                 let dict: [String: Any] = [
                     "asciiSTL": NSNull(),
                     "binarySTL": NSNull(),
-                    "obj": NSNull(),
-                    "mtl": NSNull(),
-                    "texturePNG": NSNull(),
+                    "obj": files.obj?.path ?? NSNull(),
+                    "mtl": files.mtl?.path ?? NSNull(),
+                    "texturePNG": files.texture?.path ?? NSNull(),
                     "usdz": NSNull(),
                     "ply": files.ply.path,
                 ]
