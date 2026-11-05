@@ -10,6 +10,8 @@ import { INVOICE_STATUS_LABELS, PAYMENT_METHOD_LABELS } from './types';
 import type { LabLetterhead } from '../receipt/buildReceiptHtml';
 import { autoT } from '../../core/i18n/autoTranslate';
 import { htmlAttrs, printLocale } from '../../core/i18n/printLocale';
+import { labTodayOf } from '../../core/metrics/orderDefs';
+import { cachedLabTz } from '../../core/metrics/useLabToday';
 
 // ─── Yardımcılar ──────────────────────────────────────────────────────────
 function esc(v: unknown): string {
@@ -145,7 +147,8 @@ export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
   }[invoice.status] ?? { fg: '#475569', bg: '#F1F5F9' };
 
   // Vade geçti mi?
-  const today = new Date().toISOString().slice(0, 10);
+  // Lab günü (UTC değil): gece yarısından sonra vade rozeti bir gün geç dönerdi.
+  const today = labTodayOf(cachedLabTz());
   const isOverdue = invoice.due_date
     && invoice.due_date < today
     && invoice.status !== 'odendi'

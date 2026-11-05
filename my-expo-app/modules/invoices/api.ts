@@ -122,7 +122,8 @@ export async function createInvoice(params: CreateInvoiceParams) {
       doctor_id,
       clinic_id: clinic_id ?? null,
       work_order_id: work_order_id ?? null,
-      issue_date: issue_date ?? new Date().toISOString().slice(0, 10),
+      // Lab günü (UTC değil): TR'de 00:00–03:00 arası dünün tarihi yazılırdı.
+      issue_date: issue_date ?? labTodayOf(await loadLabTz()),
       due_date:   due_date ?? null,
       // Oran verilmezse DB lab'ın varsayılan KDV'sini yazar (invoices_default_tax_rate,
       // Ayarlar → Finans). Eskiden burada sabit 20 vardı, lab ayarı yok sayılıyordu.
@@ -369,7 +370,7 @@ export async function recordPayment(params: RecordPaymentParams) {
       rate_at_time: pRate,
       amount_base: amount * pRate,
       base_currency_at_time: 'TRY',
-      payment_date: payment_date ?? new Date().toISOString().slice(0, 10),
+      payment_date: payment_date ?? labTodayOf(await loadLabTz()),
       payment_method: payment_method ?? 'nakit',
       reference_no: reference_no ?? null,
       notes: notes ?? null,
@@ -486,11 +487,12 @@ export async function bulkRecordPayment(params: {
   payment_date?: string;
   notes?: string;
 }) {
-  return supabase.rpc('bulk_record_payment', {
+  const paymentDate = params.payment_date ?? labTodayOf(await loadLabTz());
+  return await supabase.rpc('bulk_record_payment', {
     p_invoice_ids:    params.invoice_ids,
     p_total_amount:   params.total_amount,
     p_payment_method: params.payment_method ?? 'nakit',
-    p_payment_date:   params.payment_date   ?? new Date().toISOString().slice(0, 10),
+    p_payment_date:   paymentDate,
     p_notes:          params.notes          ?? null,
   });
 }

@@ -60,6 +60,8 @@ import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { CenteredLoader } from '../../../core/ui/CenteredLoader';
 import { normalizeDoctorName } from '../../../core/utils/textCase';
 import { NavyBackButtonX } from '../../../core/ui/NavyBackButtonX';
+import { labTodayOf } from '../../../core/metrics/orderDefs';
+import { cachedLabTz } from '../../../core/metrics/useLabToday';
 
 // ── Patterns tokens (§05 kartlar) ───────────────────────────────────
 const DISPLAY = {
@@ -370,7 +372,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
 
   const chip = STATUS_CHIP[invoice.status] ?? CHIP_TONES.neutral;
   const balance = Number(invoice.total) - Number(invoice.paid_amount);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = labTodayOf(cachedLabTz());   // lab günü (UTC değil)
   const isOverdue = invoice.due_date && invoice.due_date < today
     && invoice.status !== 'odendi' && invoice.status !== 'iptal';
   /** Gecikmede hero tehlike rengine döner; hero içindeki her vurgu bundan

@@ -44,6 +44,8 @@ import { autoT } from '../../../core/i18n/autoTranslate';
 import { DatePicker } from '../../../core/ui/DatePicker';
 import { toast } from '../../../core/ui/Toast';
 import { useBaseCurrency } from '../../../core/money/baseCurrency';
+import { labTodayOf } from '../../../core/metrics/orderDefs';
+import { cachedLabTz, loadLabTz } from '../../../core/metrics/useLabToday';
 import { formatMoney, CURRENCY_META, SUPPORTED_CURRENCIES, type Currency } from '../../../core/money/currency';
 import {
   Plus, X, Inbox, Pencil, Trash2, Search,
@@ -982,13 +984,18 @@ function MovementModal({
   const [amount, setAmount]       = useState('');
   const [category, setCategory]   = useState<MovementCategory>('tahsilat');
   const [desc, setDesc]           = useState('');
-  const [date, setDate]           = useState(new Date().toISOString().slice(0, 10));
+  // Lab saat dilimindeki gün (toISOString UTC'dir; TR'de 00:00–03:00 arası dünü verirdi)
+  const [date, setDate]           = useState(() => labTodayOf(cachedLabTz()));
   const [saving, setSaving]       = useState(false);
 
   React.useEffect(() => {
     if (visible) {
       setDirection('giris'); setAmount(''); setCategory('tahsilat');
-      setDesc(''); setDate(new Date().toISOString().slice(0, 10));
+      setDesc('');
+      const guess = labTodayOf(cachedLabTz());
+      setDate(guess);
+      // Saat dilimi henüz okunmadıysa (varsayılan İstanbul) okununca düzelt; elle değiştirildiyse dokunma
+      if (!cachedLabTz()) loadLabTz().then(tz => setDate(d => (d === guess ? labTodayOf(tz) : d))).catch(() => {});
     }
   }, [visible]);
 

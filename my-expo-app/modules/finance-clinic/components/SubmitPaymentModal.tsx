@@ -34,6 +34,8 @@ import {
 } from '../api';
 import { DISPLAY, TRY, M, fmtDate, PillButton } from './atoms';
 import { useRates } from '../../../core/money/rateCache';
+import { labTodayOf } from '../../../core/metrics/orderDefs';
+import { cachedLabTz } from '../../../core/metrics/useLabToday';
 
 type Props = {
   visible: boolean;
@@ -52,7 +54,8 @@ const METHODS: { key: SubmissionMethod; label: string; icon: any; color: string;
   { key: 'diger',  label: 'Diğer',    icon: Banknote,   color: DS.ink[500] },
 ];
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
+// Lab günü (UTC değil): gece 00:00–03:00 arası hem varsayılan hem en geç seçilebilir gün dün olurdu.
+const todayISO = () => labTodayOf(cachedLabTz());
 
 export function SubmitPaymentModal({
   visible, clinicId, initialInvoiceId, onClose, onSubmitted,

@@ -1,5 +1,7 @@
 import { supabase } from '../../core/api/supabase';
 import type { DrawerCurrency } from './drawerModel';
+import { labTodayOf } from '../../core/metrics/orderDefs';
+import { loadLabTz } from '../../core/metrics/useLabToday';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type AccountType = 'kasa' | 'banka';
@@ -152,7 +154,8 @@ export async function createMovement(params: CreateMovementParams) {
       account_id: params.account_id,
       direction: params.direction,
       amount: params.amount,
-      movement_date: params.movement_date ?? new Date().toISOString().slice(0, 10),
+      // Lab günü (UTC değil): gece yarısından sonra hareket dünün tarihini almasın.
+      movement_date: params.movement_date ?? labTodayOf(await loadLabTz()),
       category: params.category,
       description: params.description,
       ref_type: params.ref_type ?? null,

@@ -308,7 +308,7 @@ export function InvoicesListScreen() {
                   // Dosya adı dönemi taşır (muhasebeciye ay sonu); sütunlar Luca listesiyle karşılaştırılabilir
                   const span = range.from || range.to
                     ? `${range.from ?? ''}_${range.to ?? ''}`
-                    : new Date().toISOString().slice(0, 10);
+                    : today;
                   const res = await downloadCsv(
                     `Faturalar-${span}`,
                     filtered,
@@ -1168,6 +1168,7 @@ function BulkPaymentModal({
   const U = useInkUI();
   const CHIP_TONES = chipTones(U);
   const STATUS_CHIP = statusChip(U);
+  const today = useLabToday();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [amount, setAmount] = useState('');
   // Yöntem bilerek boş gelir (nakit kasaya yanlışlıkla havale düşmesin) — madde 8
@@ -1318,7 +1319,7 @@ function BulkPaymentModal({
               ) : sortedInvoices.map(inv => {
                 const bal = Number(inv.total) - Number(inv.paid_amount);
                 const sel = selected.has(inv.id);
-                const overdue = inv.due_date && inv.due_date < new Date().toISOString().slice(0, 10);
+                const overdue = inv.due_date && inv.due_date < today;
                 return (
                   <Pressable
                     key={inv.id}
