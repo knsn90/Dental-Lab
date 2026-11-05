@@ -40,8 +40,14 @@ const TASK11 = [
   }),
 ];
 
+// Görev 12: fatura detayı ve PDF
+const TASK12 = [
+  'Kalem toplamı', 'Fatura indirimi', 'Fatura indirimi kaydedildi', 'Fatura tutarı 0 olacak.', 'Kaydet',
+  'Kesilmiş faturada indirim değiştirilemez. Ekstreden indirim ekleyebilirsiniz.',
+];
+
 test('ekstre indirimi metinleri en/de/fa sözlüklerinde', () => {
-  const keys = [...new Set([...TASK1, ...TASK4_5, ...TASK7, ...TASK11])];
+  const keys = [...new Set([...TASK1, ...TASK4_5, ...TASK7, ...TASK11, ...TASK12])];
   for (const lang of ['en', 'de', 'fa']) {
     const d = dict(lang);
     const missing = keys.filter((k) => !(typeof d[k] === 'string' && d[k].trim().length > 0));

@@ -9,6 +9,7 @@ import type { Invoice } from './types';
 import { INVOICE_STATUS_LABELS, PAYMENT_METHOD_LABELS } from './types';
 import type { LabLetterhead } from '../receipt/buildReceiptHtml';
 import { autoT } from '../../core/i18n/autoTranslate';
+import { round2 } from './lib/invoiceDiscount';
 import { isDiscountPayment, discountPaymentLabel } from './lib/discountPayment';
 import { htmlAttrs, printLocale } from '../../core/i18n/printLocale';
 import { labTodayOf } from '../../core/metrics/orderDefs';
@@ -96,6 +97,21 @@ export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
   const clinicPhone  = clinic?.phone   ? esc(clinic.phone)   : '';
   const clinicEmail  = clinic?.email   ? esc(clinic.email)   : '';
   const doctorName   = esc(doctor?.full_name ?? '—');
+
+  // Fatura altı indirim: yalnız indirim > 0 iken "Kalem toplamı" + "Fatura indirimi" satırları çizilir;
+  // indirimsiz fatura bugünkü çıktıyla bayt bayt aynı kalır.
+  const discountAmt = Number((invoice as any).discount_amount) || 0;
+  const discountRows = discountAmt > 0
+    ? `
+      <tr>
+        <td class="label">${autoT('Kalem toplamı')}</td>
+        <td class="value">${fmtMoney(round2(items.reduce((s, it) => s + (Number((it as any).net_total ?? it.total) || 0), 0)), currency)}</td>
+      </tr>
+      <tr>
+        <td class="label">${autoT('Fatura indirimi')}${(invoice as any).discount_type === 'percent' ? ` (%${Number((invoice as any).discount_value).toLocaleString(printLocale())})` : ''}</td>
+        <td class="value">−${fmtMoney(discountAmt, currency)}</td>
+      </tr>`
+    : '';
 
   // Kalem satırları
   const itemRows = items.length > 0
@@ -435,7 +451,7 @@ export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
 
   <!-- Toplamlar -->
   <div class="totals">
-    <table>
+    <table>${discountRows}
       <tr>
         <td class="label">${autoT('Ara Toplam')}</td>
         <td class="value">${fmtMoney(invoice.subtotal, currency)}</td>

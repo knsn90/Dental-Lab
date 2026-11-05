@@ -1,6 +1,8 @@
 import { localeTag, isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { isDiscountPayment, discountPaymentLabel } from '../lib/discountPayment';
+import { validateInvoiceDiscount, invoiceDiscountRpcError, invoiceTotalsWithDiscount, round2, type InvoiceDiscountType } from '../lib/invoiceDiscount';
+import { InvoiceDiscountField } from '../components/InvoiceDiscountField';
 /**
  * InvoiceDetailScreen — Fatura Detayı (Patterns Design Language)
  *
@@ -194,6 +196,8 @@ interface DetailProps {
   onBack?: () => void;
 }
 
+const DISCOUNT_LOCKED_TEXT = 'Kesilmiş faturada indirim değiştirilemez. Ekstreden indirim ekleyebilirsiniz.';
+
 export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   const U = useInkUI();
   const CHIP_TONES = chipTones(U);
@@ -269,6 +273,12 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   const [taxInput, setTaxInput] = useState('');
   const [noteDraft, setNoteDraft] = useState('');
   const [savingNote, setSavingNote] = useState(false);
+  // Fatura altı indirim alanı (taslakta düzenlenir). Ham metin; boş = indirim yok.
+  const [discType, setDiscType] = useState<InvoiceDiscountType>('percent');
+  const [discRaw, setDiscRaw] = useState('');
+  const [discErr, setDiscErr] = useState<string | null>(null);     // alanın altı: doğrulama / kilit
+  const [discSaveErr, setDiscSaveErr] = useState<string | null>(null); // kaydet düğmesinin yanı: ham sunucu hatası
+  const [discBusy, setDiscBusy] = useState(false);
   const [previewOrderId, setPreviewOrderId] = useState<string | null>(null);
   // Masaüstünde iş emri faturanın üstünde popup açılır; mobilde SAYFA olarak — tam ekran
   // popup'ın kapatma X'i çentiğin altına düşüp dokunulamıyordu. Geri/kenar kaydırma faturaya döner.
@@ -286,6 +296,14 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   useEffect(() => {
     setNoteDraft(invoice?.notes ?? '');
   }, [invoice?.id]);
+
+  // İndirim alanı sunucudaki değerle eşitlenir (fatura değişince / kayıttan sonra).
+  useEffect(() => {
+    setDiscType((invoice?.discount_type as InvoiceDiscountType) ?? 'percent');
+    const v = Number(invoice?.discount_value) || 0;
+    setDiscRaw(v > 0 ? String(v).replace('.', ',') : '');
+    setDiscErr(null); setDiscSaveErr(null);
+  }, [invoice?.id, invoice?.discount_type, invoice?.discount_value]);
 
   if (loading) {
     return <CenteredLoader color={U.ink[400]} />;
@@ -351,6 +369,31 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
     if (v === Number(invoice.tax_rate)) return;
     const { error } = await updateInvoice(invoice.id, { tax_rate: v });
     if (error) toast.error((error as any).message ?? String(error)); else { toast.success(autoT('KDV oranı güncellendi.')); refetch(); }
+  };
+
+  // Fatura altı indirim: doğrula → updateInvoice → yeniden yükle. Sunucu hataları alanın yanında.
+  const saveDiscount = async () => {
+    setDiscSaveErr(null);
+    const r = validateInvoiceDiscount(discType, discRaw);
+    if (!r.ok) { setDiscErr(r.error); return; }
+    setDiscErr(null);
+    setDiscBusy(true);
+    const patch = r.value > 0
+      ? { discount_type: discType, discount_value: r.value }
+      : { discount_type: null, discount_value: 0 };
+    const { error } = await updateInvoice(invoice.id, patch);
+    setDiscBusy(false);
+    if (error) {
+      const msg = String((error as any).message ?? error);
+      if (msg.includes('INV_DISCOUNT_LOCKED')) setDiscErr(DISCOUNT_LOCKED_TEXT);
+      else {
+        const mapped = invoiceDiscountRpcError(msg, discType, discRaw);
+        if (mapped) setDiscErr(mapped); else setDiscSaveErr(msg);
+      }
+      return;
+    }
+    toast.success(autoT('Fatura indirimi kaydedildi'));
+    refetchSilent();
   };
 
   const saveNote = async () => {
@@ -961,8 +1004,68 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
             backgroundColor: U.surfaceSoft,
             borderTopWidth: 1, borderTopColor: U.hairline,
           }}>
+            {/* Fatura altı indirim — yalnız lab panelinde; taslakta düzenlenir, kesilmişte kilitli */}
+            {!readOnly && (() => {
+              const canEditDiscount = invoice.status === 'taslak' && !efLocked;
+              const parsed = validateInvoiceDiscount(discType, discRaw);
+              const itemsNet = round2(((invoice as any).items ?? []).reduce((sum: number, it: any) => sum + (Number(it.net_total ?? it.total) || 0), 0));
+              const zeroed = canEditDiscount && parsed.ok && parsed.value > 0
+                && invoiceTotalsWithDiscount(itemsNet, 0, discType, parsed.value).subtotal <= 0;
+              const dirty = parsed.ok
+                && ((parsed.value > 0 ? discType : null) !== (invoice.discount_type ?? null)
+                  || parsed.value !== (Number(invoice.discount_value) || 0));
+              return (
+                <View style={{ alignSelf: 'flex-end', width: isDesktop ? 360 : '100%', marginBottom: 14 }}>
+                  <InvoiceDiscountField
+                    type={discType}
+                    value={discRaw}
+                    onChange={(t, v) => { setDiscType(t); setDiscRaw(v); setDiscErr(null); setDiscSaveErr(null); }}
+                    error={discErr}
+                    disabled={!canEditDiscount}
+                    lockedHint={autoT(DISCOUNT_LOCKED_TEXT)}
+                  />
+                  {zeroed ? (
+                    <Text style={{ marginTop: 6, fontSize: 12, fontWeight: '600', color: U.chipTones.warning.fg }}>{autoT('Fatura tutarı 0 olacak.')}</Text>
+                  ) : null}
+                  {canEditDiscount ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 }}>
+                      <Pressable
+                        onPress={discBusy || !dirty ? undefined : saveDiscount}
+                        disabled={discBusy || !dirty}
+                        accessibilityRole="button"
+                        style={[{
+                          paddingHorizontal: 18, paddingVertical: 9, borderRadius: 9999,
+                          backgroundColor: U.ink[900], opacity: discBusy || !dirty ? 0.45 : 1,
+                        }, Platform.OS === 'web' ? ({ cursor: discBusy || !dirty ? 'not-allowed' : 'pointer' } as any) : null]}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: U.onDarkPill }}>{autoT('Kaydet')}</Text>
+                      </Pressable>
+                      {discSaveErr ? (
+                        <Text style={{ flex: 1, fontSize: 12, fontWeight: '600', color: U.chipTones.danger.fg }}>{discSaveErr}</Text>
+                      ) : null}
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })()}
             {/* Toplamlar — sağa dayalı */}
             <View style={{ alignSelf: 'flex-end', width: isDesktop ? 260 : '100%', gap: 6 }}>
+              {(Number(invoice.discount_amount) || 0) > 0 && (
+                <>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text style={{ fontSize: 12, color: U.ink[500] }}>{autoT('Kalem toplamı')}</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '500', color: U.ink[900] }}>
+                      {fmtMoney(round2(((invoice as any).items ?? []).reduce((sum: number, it: any) => sum + (Number(it.net_total ?? it.total) || 0), 0)))}
+                    </Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text style={{ fontSize: 12, color: U.ink[500] }}>
+                      {autoT('Fatura indirimi')}{invoice.discount_type === 'percent' ? ` (%${Number(invoice.discount_value).toLocaleString('tr-TR')})` : ''}
+                    </Text>
+                    <Text style={{ fontSize: 13, fontWeight: '500', color: U.ink[900] }}>−{fmtMoney(invoice.discount_amount)}</Text>
+                  </View>
+                </>
+              )}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 <Text style={{ fontSize: 12, color: U.ink[500] }}>Ara Toplam</Text>
                 <Text style={{ fontSize: 13, fontWeight: '500', color: U.ink[900] }}>{fmtMoney(invoice.subtotal)}</Text>
