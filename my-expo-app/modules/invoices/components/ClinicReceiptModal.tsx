@@ -21,6 +21,8 @@ import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { toast } from '../../../core/ui/Toast';
 import { getRate } from '../../../core/money/currency';
 import { getBaseCurrency } from '../../../core/money/baseCurrency';
+import { labTodayOf } from '../../../core/metrics/orderDefs';
+import { cachedLabTz, loadLabTz } from '../../../core/metrics/useLabToday';
 import { previewClinicReceipt, recordClinicReceipt, updateClinicReceipt, setClinicReceiptAccount } from '../api';
 import { fetchDepositAccounts } from '../../cash/api';
 import type { ReceiptLine, ReceiptResult, ClinicReceipt } from '../types';
@@ -55,7 +57,8 @@ export function ClinicReceiptModal({
   const narrow = winW < 560;
   const base = getBaseCurrency();
   const [rows, setRows]       = useState<Row[]>([{ currency: base as any, amount: '', rate: '1' }]);
-  const [date, setDate]       = useState(new Date().toISOString().slice(0, 10));
+  // Lab saat dilimindeki gün: toISOString UTC'dir, TR'de 00:00–03:00 arası dünü verirdi.
+  const [date, setDate]       = useState(() => labTodayOf(cachedLabTz()));
   // Yeni makbuzda yöntem bilerek boş gelir (nakit kasaya yanlışlıkla havale düşmesin) — madde 8
   const [method, setMethod]   = useState<string | null>(null);
   const [methodErr, setMethodErr] = useState(false);
@@ -93,7 +96,13 @@ export function ClinicReceiptModal({
     } else {
       setRows([{ currency: base as any, amount: '', rate: '1' }]);
       setRefNo(''); setNotes(''); setMethod(null);
-      setDate(new Date().toISOString().slice(0, 10));
+      const guess = labTodayOf(cachedLabTz());
+      setDate(guess);
+      // Saat dilimi henüz okunmadıysa (varsayılan İstanbul) okununca düzelt;
+      // kullanıcı bu arada tarihi değiştirdiyse dokunma.
+      if (!cachedLabTz()) {
+        loadLabTz().then(tz => setDate(d => (d === guess ? labTodayOf(tz) : d))).catch(() => {});
+      }
     }
   }, [visible, base, editing]);
 

@@ -643,7 +643,8 @@ export async function recordClinicReceipt(p: {
   const { data, error } = await supabase.rpc('record_clinic_receipt', {
     p_clinic_id: p.clinicId,
     p_lines: p.lines,
-    p_receipt_date: p.receiptDate ?? new Date().toISOString().slice(0, 10),
+    // Lab günü (UTC değil): gece 00:00–03:00 arası fiş dünün tarihini almasın.
+    p_receipt_date: p.receiptDate ?? labTodayOf(await loadLabTz()),
     p_payment_method: p.method ?? 'nakit',
     p_reference_no: p.referenceNo ?? null,
     p_notes: p.notes ?? null,
