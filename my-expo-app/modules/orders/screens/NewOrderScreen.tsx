@@ -414,7 +414,7 @@ const ALL_IMPLANT_BRANDS = [
   'OsteoCare','Phibo','Replace (Nobel)','Seven Implant','SPI Element',
   'Touareg','Xive (Dentsply)','Southern Implants','Bredent','Cortex',
   'Alpha-Bio Tec','Biohorizons','Euroteknika','Implant Direct','Adin',
-  'Thommen Medical','Bionika','T-Plus',
+  'Thommen Medical','Implant Swiss','Bionika','T-Plus',
   'Hiossen','Anthogyr','Sweden & Martina','Noris Medical','Paltop',
   'Ditron Dental','TBR','C-Tech','GDT Dental','Cowellmedi','Dentis',
   'Warantec','Shinhung','Z-Systems','SGS Dental','Global D','Leader Italia',
