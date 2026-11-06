@@ -3,7 +3,8 @@
 // Sıra: özel fiyat → özel yüzde (> 0) → kliniğin genel oranı (> 0) → katalog. Yüzde = ROUND(katalog × (100 − p) / 100, 2).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildClinicPriceMap, clinicListFields, sameClinicPriceMap } from './clinicDiscount.ts';
+import { applyClinicRate, buildClinicPriceMap, clinicListFields, sameClinicPriceMap } from './clinicDiscount.ts';
+import { listPriceInfo } from '../invoices/lib/invoiceDiscount.ts';
 
 const SERVICES = [
   { id: 'plain', price: 1000 },
@@ -134,4 +135,21 @@ test('her katalog × oran × özel satır bileşiminde harita = resolve_item_pri
     checked++;
   }
   assert.equal(checked, catalogs.length * rates.length * ovs.length);
+});
+
+// Görev 17: faturadaki gösterim kontrolü (listPriceInfo, kendi round2'si) applyClinicRate (BigInt) ile aynı kuruşu bulur.
+test('listPriceInfo ↔ applyClinicRate: her katalog × oranda tutan fiyat tanınır, 1 kuruş sapan tanınmaz', () => {
+  const catalogs = [1.5, 9.5, 19.99, 40.5, 100, 100.1, 333.33, 1000, 1250.5, 2999.99, 1.05, 99.99];
+  const rates = [5, 7.5, 10, 12.5, 15, 33.33, 50, 100];
+  let checked = 0;
+  for (const c of catalogs) for (const r of rates) {
+    const net = applyClinicRate(c, r);
+    const label = `katalog ${c}, oran ${r}, net ${net}`;
+    assert.deepEqual(listPriceInfo({ quantity: 1, unit_price: net, list_unit_price: c, list_discount_pct: r }), { listUnit: c, pct: r }, label);
+    for (const off of [-0.01, 0.01]) {
+      assert.equal(listPriceInfo({ quantity: 1, unit_price: Math.round((net + off) * 100) / 100, list_unit_price: c, list_discount_pct: r }), null, `${label} ${off}`);
+    }
+    checked++;
+  }
+  assert.equal(checked, catalogs.length * rates.length);
 });

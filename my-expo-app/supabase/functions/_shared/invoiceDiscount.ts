@@ -22,6 +22,31 @@ export function round2(x: number): number {
 
 const toCents = (x: number): number => Math.round(Number((Number(x) * 100).toFixed(6)));
 
+/**
+ * Kliniğin genel oranından gelen kalemin gösterim bilgisi (Görev 17).
+ * invoice_items.list_unit_price / list_discount_pct yalnız gösterimdir; unit_price net kalır.
+ * İkisi de dolu, liste fiyatı > 0, oran (0, 100] aralığında ve
+ * unit_price = ROUND(liste × (100 − oran) / 100, 2) ise { listUnit, pct }, aksi halde null
+ * (_list_price_consistency tetikleyicisiyle aynı formül; oran 0 iken gösterilecek indirim yok).
+ * numeric sütunlar metin de gelebilir.
+ */
+export function listPriceInfo(item: {
+  quantity: unknown;
+  unit_price: unknown;
+  list_unit_price?: unknown;
+  list_discount_pct?: unknown;
+}): { listUnit: number; pct: number } | null {
+  const filled = (v: unknown) => v !== null && v !== undefined && String(v).trim() !== '';
+  if (!filled(item.list_unit_price) || !filled(item.list_discount_pct) || !filled(item.unit_price)) return null;
+  const listUnit = Number(item.list_unit_price);
+  const pct = Number(item.list_discount_pct);
+  const unit = Number(item.unit_price);
+  if (!Number.isFinite(listUnit) || !Number.isFinite(pct) || !Number.isFinite(unit)) return null;
+  if (listUnit <= 0 || pct <= 0 || pct > 100) return null;
+  if (toCents(unit) !== toCents(round2((listUnit * (100 - pct)) / 100))) return null;
+  return { listUnit, pct };
+}
+
 export function invoiceDiscountAmount(itemsNet: number, type: InvoiceDiscountType, value: number): number {
   const net = Number(itemsNet) || 0;
   const v = Number(value) || 0;

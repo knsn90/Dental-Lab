@@ -58,8 +58,11 @@ const TASK16 = [
   'Genel indirim',
 ];
 
+// Görev 17: fatura detayı ve PDF'te genel orandan gelen kalemin ikincil satırı ("Liste fiyatı X · Genel indirim %Y")
+const TASK17 = ['Liste fiyatı', 'Genel indirim'];
+
 test('ekstre indirimi metinleri en/de/fa sözlüklerinde', () => {
-  const keys = [...new Set([...TASK1, ...TASK4_5, ...TASK7, ...TASK11, ...TASK12, ...TASK13, ...TASK16])];
+  const keys = [...new Set([...TASK1, ...TASK4_5, ...TASK7, ...TASK11, ...TASK12, ...TASK13, ...TASK16, ...TASK17])];
   for (const lang of ['en', 'de', 'fa']) {
     const d = dict(lang);
     const missing = keys.filter((k) => !(typeof d[k] === 'string' && d[k].trim().length > 0));

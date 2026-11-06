@@ -9,7 +9,7 @@ import type { Invoice } from './types';
 import { INVOICE_STATUS_LABELS, PAYMENT_METHOD_LABELS } from './types';
 import type { LabLetterhead } from '../receipt/buildReceiptHtml';
 import { autoT } from '../../core/i18n/autoTranslate';
-import { round2 } from './lib/invoiceDiscount';
+import { listPriceInfo, round2 } from './lib/invoiceDiscount';
 import { isDiscountPayment, discountPaymentLabel } from './lib/discountPayment';
 import { htmlAttrs, printLocale } from '../../core/i18n/printLocale';
 import { labTodayOf } from '../../core/metrics/orderDefs';
@@ -122,9 +122,14 @@ export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
           const gross = Number(it.total) || 0;
           const net = (it as any).net_total != null ? Number((it as any).net_total) : gross;
           const disc = (Number((it as any).discount_value) || 0) > 0;
+          // Kliniğin genel oranından gelen kalem: liste fiyatı + oran ikincil satırda (birim fiyat/tutar sütunları net kalır).
+          const lp = listPriceInfo(it);
+          const listHtml = lp
+            ? `<br/><span style="font-size:11px;color:#64748B;">${autoT('Liste fiyatı')} ${fmtMoney(Number(lp.listUnit) || 0, currency)} · ${autoT('Genel indirim')} %${(Number(lp.pct) || 0).toLocaleString(printLocale())}</span>`
+            : '';
           const descHtml = disc
-            ? `${esc(it.description)}<br/><span style="font-size:11px;color:#64748B;">${autoT('İndirim')}: ${(it as any).discount_type === 'fixed' ? `−${fmtMoney((it as any).discount_value, currency)}` : `%${Number((it as any).discount_value).toLocaleString(printLocale())}`}</span>`
-            : esc(it.description);
+            ? `${esc(it.description)}${listHtml}<br/><span style="font-size:11px;color:#64748B;">${autoT('İndirim')}: ${(it as any).discount_type === 'fixed' ? `−${fmtMoney((it as any).discount_value, currency)}` : `%${Number((it as any).discount_value).toLocaleString(printLocale())}`}</span>`
+            : `${esc(it.description)}${listHtml}`;
           const totalHtml = disc
             ? `<span style="text-decoration:line-through;color:#94A3B8;font-weight:400;">${fmtMoney(gross, currency)}</span> <b>${fmtMoney(net, currency)}</b>`
             : `<b>${fmtMoney(gross, currency)}</b>`;

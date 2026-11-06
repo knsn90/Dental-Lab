@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as client from './invoiceDiscount.ts';
 import * as edge from '../../../supabase/functions/_shared/invoiceDiscount.ts';
+import { readFileSync } from 'node:fs';
 
 for (const m of [client, edge]) {
   test('tutar', () => {
@@ -92,8 +93,34 @@ for (const m of [client, edge]) {
     assert.deepEqual(m.validateInvoiceDiscount('percent', '۱۰۱'), { ok: false, error: "Yüzde 100'ü aşamaz." });
     assert.equal(m.parseDiscountInput('٠'), 0);
   });
+  test('listPriceInfo: genel orandan gelen kalem (Görev 17)', () => {
+    // 1250,50 × 85 / 100 = 1062,925 → 1062,93 (yarım sıfırdan uzağa)
+    assert.deepEqual(m.listPriceInfo({ quantity: 2, unit_price: 1062.93, list_unit_price: 1250.50, list_discount_pct: 15 }), { listUnit: 1250.5, pct: 15 });
+    // numeric sütunlar metin gelebilir
+    assert.deepEqual(m.listPriceInfo({ quantity: '1', unit_price: '92.49', list_unit_price: '99.99', list_discount_pct: '7.5' }), { listUnit: 99.99, pct: 7.5 });
+    // formül tutmuyor → null
+    assert.equal(m.listPriceInfo({ quantity: 2, unit_price: 1000, list_unit_price: 1250.50, list_discount_pct: 15 }), null);
+    assert.equal(m.listPriceInfo({ quantity: 2, unit_price: 1062.92, list_unit_price: 1250.50, list_discount_pct: 15 }), null);
+    // alanlar boş / tek alan dolu → null
+    assert.equal(m.listPriceInfo({ quantity: 2, unit_price: 1062.93, list_unit_price: null, list_discount_pct: null }), null);
+    assert.equal(m.listPriceInfo({ quantity: 2, unit_price: 1062.93 }), null);
+    assert.equal(m.listPriceInfo({ quantity: 2, unit_price: 1062.93, list_unit_price: 1250.50, list_discount_pct: null }), null);
+    assert.equal(m.listPriceInfo({ quantity: 2, unit_price: 1062.93, list_unit_price: '', list_discount_pct: 15 }), null);
+    // gösterilecek indirim yok (oran 0) ya da liste fiyatı 0 → null; geçersiz sayılar → null
+    assert.equal(m.listPriceInfo({ quantity: 1, unit_price: 100, list_unit_price: 100, list_discount_pct: 0 }), null);
+    assert.equal(m.listPriceInfo({ quantity: 1, unit_price: 0, list_unit_price: 0, list_discount_pct: 10 }), null);
+    assert.equal(m.listPriceInfo({ quantity: 1, unit_price: 110, list_unit_price: 100, list_discount_pct: -10 }), null);
+    assert.equal(m.listPriceInfo({ quantity: 1, unit_price: 'x', list_unit_price: 'y', list_discount_pct: 'z' }), null);
+    // %100: birim 0, liste ve oran gösterilir
+    assert.deepEqual(m.listPriceInfo({ quantity: 1, unit_price: 0, list_unit_price: 40.5, list_discount_pct: 100 }), { listUnit: 40.5, pct: 100 });
+  });
 }
 test('iki kopya aynı', () => {
   for (const [n, t, v] of [[999.99, 'percent', 33.3], [12.345, 'fixed', 3], [0, 'percent', 50]] as const)
     assert.deepEqual(client.invoiceTotalsWithDiscount(n, 18, t, v), edge.invoiceTotalsWithDiscount(n, 18, t, v));
+});
+test('iki kopya bayt bayt aynı (istemci ↔ edge)', () => {
+  const a = readFileSync(new URL('./invoiceDiscount.ts', import.meta.url), 'utf-8');
+  const b = readFileSync(new URL('../../../supabase/functions/_shared/invoiceDiscount.ts', import.meta.url), 'utf-8');
+  assert.equal(a, b);
 });

@@ -112,7 +112,8 @@ export function mergeInvoices(rows: MergeRow[], issueDate: string): DbInvoice {
       if (b.ok) {
         shares = b.shares;
         // Kaynak bazlı kontrol: bu faturanın kendi kalemleri (paylarla) kendi DB toplamına KURUŞU KURUŞUNA
-        // eşit çıkmalı; yoksa sapma birleşik toleransın içinde gizlenebilir.
+        // eşit çıkmalı; yoksa sapma birleşik toleransın içinde gizlenebilir. (Liste fiyatlı kalemde de satır
+        // net'i aynıdır — buildLucaInput yalnız brütü/iskontoyu liste fiyatından kurar — bu yüzden kontrol değişmez.)
         const own = computeTotals(sortedItems.map((it, i) => {
           const q = num(it.quantity);
           const up = num(it.unit_price);
@@ -134,6 +135,10 @@ export function mergeInvoices(rows: MergeRow[], issueDate: string): DbInvoice {
           total: it.total,
           net_total: share > 0 ? r2(itemNet(it) - share) : it.net_total,
           vat_rate: num(r.tax_rate),
+          // Gösterim alanları (Görev 17): buildLucaInput liste fiyatını PriceAmount yapar; satır net'i aynı kalır.
+          ...(it.list_unit_price != null || it.list_discount_pct != null
+            ? { list_unit_price: it.list_unit_price, list_discount_pct: it.list_discount_pct }
+            : {}),
         };
       });
   });

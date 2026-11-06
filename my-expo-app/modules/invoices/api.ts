@@ -35,7 +35,7 @@ const INVOICE_DETAIL_SELECT = `
   doctor:doctors!invoices_doctor_id_fkey(id, full_name, phone, clinic_id),
   clinic:clinics!invoices_clinic_id_fkey(id, name, address, phone, email, vkn, tax_office),
   work_order:work_orders!invoices_work_order_id_fkey(id, order_number, patient_name, delivery_date),
-  items:invoice_items(id, invoice_id, order_item_id, description, quantity, unit_price, total, discount_type, discount_value, net_total, sort_order, created_at),
+  items:invoice_items(id, invoice_id, order_item_id, description, quantity, unit_price, total, discount_type, discount_value, net_total, list_unit_price, list_discount_pct, sort_order, created_at),
   payments:payments(*, receiver:profiles!payments_received_by_fkey(id, full_name)),
   linked_orders:invoice_orders(
     invoice_id,

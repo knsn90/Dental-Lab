@@ -147,6 +147,10 @@ export interface InvoiceItem {
   discount_type?: 'percent' | 'fixed';
   discount_value?: number;
   net_total?: number;                // generated = brüt - indirim
+  /** Gösterim (20261105120000): kliniğin genel oranından gelen kalemde liste birim fiyatı ve oran.
+   *  unit_price net kalır; formül tutmazsa tetikleyici ikisini de siler. Okuma: lib/invoiceDiscount listPriceInfo. */
+  list_unit_price?: number | null;
+  list_discount_pct?: number | null;
   sort_order: number;
   created_at: string;
 }

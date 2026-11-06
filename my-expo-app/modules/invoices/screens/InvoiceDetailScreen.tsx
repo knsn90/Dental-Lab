@@ -1,7 +1,7 @@
 import { localeTag, isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { isDiscountPayment, discountPaymentLabel } from '../lib/discountPayment';
-import { validateInvoiceDiscount, invoiceDiscountRpcError, invoiceTotalsWithDiscount, round2, type InvoiceDiscountType } from '../lib/invoiceDiscount';
+import { validateInvoiceDiscount, invoiceDiscountRpcError, invoiceTotalsWithDiscount, listPriceInfo, round2, type InvoiceDiscountType } from '../lib/invoiceDiscount';
 import { InvoiceDiscountField } from '../components/InvoiceDiscountField';
 /**
  * InvoiceDetailScreen — Fatura Detayı (Patterns Design Language)
@@ -932,6 +932,15 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
               }}>
                 <View style={{ flex: 3 }}>
                   <Text style={{ fontSize: 13, fontWeight: '500', color: U.ink[900] }}>{it.description}</Text>
+                  {/* Kliniğin genel oranından gelen kalem: liste fiyatı ve oran (yalnız gösterim; birim fiyat/tutar net) */}
+                  {(() => {
+                    const lp = listPriceInfo(it);
+                    return lp ? (
+                      <Text style={{ fontSize: 11, color: U.ink[500], marginTop: 2 }}>
+                        {`${autoT('Liste fiyatı')} ${fmtMoney(Number(lp.listUnit) || 0)} · ${autoT('Genel indirim')} %${(Number(lp.pct) || 0).toLocaleString(localeTag())}`}
+                      </Text>
+                    ) : null;
+                  })()}
                   {!isDesktop && (
                     invoice.status === 'taslak' ? (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>

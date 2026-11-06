@@ -7,6 +7,7 @@
 // kullanıcıya ne düzeltmesi gerektiğini söyler (mesajlar Türkçe; istemci autoT ile çevirir).
 
 import { balanceDiscountShares } from './lucaDiscountBalance.ts';
+import { listPriceInfo } from './invoiceDiscount.ts';
 import { computeTotals, type LucaInvoiceInput, type LucaKind, type LucaLine } from './luca.ts';
 
 export interface DbItem {
@@ -19,6 +20,10 @@ export interface DbItem {
   vat_rate?: number | string | null;
   /** Satır açıklaması (Luca'da "Açıklama" sütunu) — toplu faturada sipariş no. */
   line_note?: string | null;
+  /** Gösterim: kliniğin genel oranından gelen kalemde liste birim fiyatı ve oran (unit_price net kalır).
+   *  listPriceInfo tutarsa Luca'ya PriceAmount = liste fiyatı, iskonto = adet × liste − net gider. */
+  list_unit_price?: number | string | null;
+  list_discount_pct?: number | string | null;
 }
 
 export interface DbInvoice {
@@ -257,6 +262,14 @@ export function buildLucaInput(args: {
     const net = shares ? r2(itemNet(it) - shares[i]) : itemNet(it);
     const discount = r2(gross - net);
     const name = (it.description ?? '').trim() || 'Hizmet';
+    // Genel orandan gelen kalem: birim fiyat liste fiyatı, iskonto = r2(adet × liste) − net (fatura altı pay dahil).
+    // Luca net'i r2(adet × liste) − iskonto = net → satır KDV'si ve ödenecek kontrolü değişmez.
+    const list = listPriceInfo(it);
+    const listDiscount = list ? r2(r2(quantity * list.listUnit) - net) : -1;
+    if (list && listDiscount >= 0) {
+      const line: LucaLine = { code: productCode(name), name, quantity, unitPrice: list.listUnit, vatRate: vatOf(it), discountAmount: listDiscount };
+      return it.line_note?.trim() ? { ...line, note: it.line_note.trim() } : line;
+    }
     const line: LucaLine = { code: productCode(name), name, quantity, unitPrice, vatRate: vatOf(it), discountAmount: discount > 0 ? discount : 0 };
     return it.line_note?.trim() ? { ...line, note: it.line_note.trim() } : line;
   });

@@ -373,7 +373,7 @@ serve(async (req) => {
         .from('invoices')
         .select(`id, lab_id, clinic_id, invoice_number, status, issue_date, currency, tax_rate, total, notes, discount_amount,
                  efatura_uuid, efatura_status,
-                 items:invoice_items(description, quantity, unit_price, total, net_total, sort_order),
+                 items:invoice_items(description, quantity, unit_price, total, net_total, list_unit_price, list_discount_pct, sort_order),
                  orders:invoice_orders(work_order:work_orders(order_number))`)
         .in('id', ids);
       if (rowsErr) return json({ ok: false, error: 'Faturalar okunamadı' }, 500);
@@ -550,7 +550,7 @@ serve(async (req) => {
                efatura_uuid, efatura_type, efatura_status, efatura_number, clinic_id,
                clinic:clinics(name, vkn, tax_office, address, email, phone, efatura_alias),
                doctor:doctors(full_name, tckn),
-               items:invoice_items(description, quantity, unit_price, total, net_total, sort_order)`)
+               items:invoice_items(description, quantity, unit_price, total, net_total, list_unit_price, list_discount_pct, sort_order)`)
       .eq('id', invoiceId)
       .maybeSingle();
     if (invErr || !inv) return json({ ok: false, error: 'Fatura bulunamadı' }, 404);

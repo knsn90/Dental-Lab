@@ -173,3 +173,29 @@ test('birleştirme: indirimli kaynağın kendi kuruş sapması birleşik toleran
   assert.equal(r.ok, false);
   assert.match((r as { error: string }).error, /kuruşu kuruşuna dağıtılamadı/);
 });
+
+// ── Görev 17: birleşik faturada liste fiyatı + oran ─────────────────────
+test('birleştirme: liste alanları kaleme taşınır; Luca satır net’i ve ödenecek tutar liste alanı yokkenkiyle aynı', () => {
+  const listed = { description: 'Zirkon', quantity: 2, unit_price: 1062.93, total: 2125.86, net_total: 2125.86, list_unit_price: 1250.5, list_discount_pct: 15, sort_order: 0 };
+  const plain = { description: 'Model', quantity: 1, unit_price: 250, total: 250, net_total: 250, sort_order: 1 };
+  const t = invoiceTotalsWithDiscount(2375.86, 20, 'fixed', 100);
+  const a = row({ id: 'a', tax_rate: 20, total: t.total, discount_amount: t.discount, items: [listed, plain] });
+  const b = row({ id: 'b', invoice_number: 'FTR-2026-00002', issue_date: '2026-09-05', tax_rate: 20, total: 3000.64,
+    items: [{ ...listed, net_total: 2500.53, quantity: 1, unit_price: 2500.53, total: 2500.53, list_unit_price: 2941.8, list_discount_pct: 15 }] });
+  // b: 2941,80 × 0,85 = 2500,53; × 1,2 = 3000,636 → 3000,64
+  const strip = (r: MergeRow): MergeRow => ({ ...r, items: r.items.map(({ list_unit_price: _a, list_discount_pct: _b, ...it }: any) => it) });
+  const { m, r } = sendMerged([a, b]);
+  const { r: r0 } = sendMerged([strip(a), strip(b)]);
+  if (!r.ok) throw new Error(r.error);
+  if (!r0.ok) throw new Error(r0.error);
+  assert.deepEqual(m.items.map((i) => [i.list_unit_price ?? null, i.list_discount_pct ?? null]), [[1250.5, 15], [null, null], [2941.8, 15]]);
+  assert.deepEqual(r.input.lines.map((l) => l.unitPrice), [1250.5, 250, 2941.8]);
+  const tl = computeTotals(r.input.lines), t0 = computeTotals(r0.input.lines);
+  assert.deepEqual(tl.lines.map((x) => [x.lineExtension, x.vat]), t0.lines.map((x) => [x.lineExtension, x.vat]));
+  assert.equal(tl.payable, t0.payable);
+  assert.equal(tl.payable, Math.round((t.total + 3000.64) * 100) / 100);
+  // iskonto = adet × liste − (net − pay)
+  assert.equal(r.input.lines[2].discountAmount, Math.round((2941.8 - 2500.53) * 100) / 100);
+  assert.equal(r.input.lines[0].discountAmount, Math.round((2501 - tl.lines[0].lineExtension) * 100) / 100);
+  assert.ok(tl.lines[0].lineExtension < 2125.86); // a'nın fatura altı payı bu satırda
+});

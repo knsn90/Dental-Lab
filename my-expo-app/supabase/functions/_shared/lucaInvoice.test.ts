@@ -300,3 +300,61 @@ test('indirimli faturada farklı KDV oranlı kalemler: kendi metniyle reddedilir
   };
   assert.deepEqual(buildLucaInput({ invoice: d, ...sendArgs }), { ok: false, error: DISCOUNT_MIXED_VAT_ERROR });
 });
+
+// ── Görev 17: genel orandan gelen kalemde liste fiyatı + oran ─────────────
+// PriceAmount = liste birim fiyatı; DiscountAmount = r2(adet × liste − net_total) + fatura altı pay.
+// Satırın Luca net'i (dolayısıyla KDV'si ve ödenecek kontrolü) liste alanı yokken bulunanla aynı kalır.
+const listItem = { description: 'Zirkon kron', quantity: 2, unit_price: 1062.93, total: 2125.86, net_total: 2125.86, list_unit_price: 1250.50, list_discount_pct: 15 };
+const plainItem = { description: 'Model', quantity: 1, unit_price: 250, total: 250, net_total: 250 };
+const lineNets = (lines: ReturnType<typeof ok>['lines']) => computeTotals(lines).lines.map((x) => x.lineExtension);
+
+test('liste fiyatlı kalem: PriceAmount = liste fiyatı, DiscountAmount = adet × liste − net; ödenecek tutar tutar', () => {
+  const d: DbInvoice = { ...inv, tax_rate: 20, total: 2851.03, items: [listItem, plainItem] }; // (2125,86 + 250) × 1,2 = 2851,032
+  const input = ok(buildLucaInput({ invoice: d, ...sendArgs }));
+  assert.deepEqual(input.lines.map((l) => [l.quantity, l.unitPrice, l.discountAmount]), [[2, 1250.5, 375.14], [1, 250, 0]]);
+  const strip = { ...d, items: d.items.map(({ list_unit_price: _a, list_discount_pct: _b, ...it }: any) => it) };
+  assert.deepEqual(lineNets(input.lines), lineNets(ok(buildLucaInput({ invoice: strip, ...sendArgs })).lines));
+  assert.equal(computeTotals(input.lines).payable, 2851.03);
+  // Önizleme (EFaturaPreviewModal) Luca girdisinden: satır net'i 2125,86, iskonto 375,14, ödenecek aynı
+  const pre = buildLucaPreview(input, { env: 'test', sellerName: 'Lab', invoiceNumber: d.invoice_number });
+  assert.deepEqual([pre.lines[0].unitPrice, pre.lines[0].discount, pre.lines[0].net], [1250.5, 375.14, 2125.86]);
+  assert.deepEqual([pre.totals.net, pre.totals.discount, pre.totals.payable], [2375.86, 375.14, 2851.03]);
+  buildSendEnvelope(input);
+});
+
+test('liste fiyatlı kalem + fatura altı indirim: pay iskontoya eklenir, satır net ve KDV değişmez', () => {
+  // Σnet 2375,86; indirim 100 → 2275,86 × 1,2 = 2731,032 → 2731,03
+  const d: DbInvoice = { ...inv, tax_rate: 20, total: 2731.03, discount_amount: 100, items: [listItem, plainItem] };
+  const input = ok(buildLucaInput({ invoice: d, ...sendArgs }));
+  const strip = { ...d, items: d.items.map(({ list_unit_price: _a, list_discount_pct: _b, ...it }: any) => it) };
+  const base = ok(buildLucaInput({ invoice: strip, ...sendArgs }));
+  const share0 = base.lines[0].discountAmount!; // liste alanı yokken iskonto = pay (brüt = net)
+  assert.equal(input.lines[0].unitPrice, 1250.5);
+  assert.equal(input.lines[0].discountAmount, Math.round((375.14 + share0) * 100) / 100);
+  assert.deepEqual(input.lines[1], base.lines[1]);
+  assert.deepEqual(lineNets(input.lines), lineNets(base.lines));
+  assert.equal(computeTotals(input.lines).vat, computeTotals(base.lines).vat);
+  assert.equal(computeTotals(input.lines).payable, 2731.03);
+});
+
+test('liste fiyatlı kalem + kalem indirimi: iskonto liste brütünden net_total’a', () => {
+  const it = { ...listItem, net_total: 2000 }; // kalem indirimi 125,86
+  const d: DbInvoice = { ...inv, tax_rate: 20, total: 2400, items: [it] };
+  const input = ok(buildLucaInput({ invoice: d, ...sendArgs }));
+  assert.deepEqual([input.lines[0].unitPrice, input.lines[0].discountAmount], [1250.5, 501]);
+  assert.equal(computeTotals(input.lines).payable, 2400);
+});
+
+test('liste alanı yok / boş / formül tutmuyor → çıktı bugünküyle deepEqual', () => {
+  const base = ok(buildLucaInput({ invoice: inv, ...sendArgs }));
+  const variants: Array<Record<string, unknown>> = [
+    { list_unit_price: null, list_discount_pct: null },
+    { list_unit_price: 1600, list_discount_pct: null },
+    { list_unit_price: 1600, list_discount_pct: 10 },   // 1600 × 0,9 = 1440 ≠ 1500
+    { list_unit_price: 1500, list_discount_pct: 0 },
+  ];
+  for (const v of variants) {
+    const withField = ok(buildLucaInput({ invoice: { ...inv, items: inv.items.map((it) => ({ ...it, ...v })) }, ...sendArgs }));
+    assert.deepEqual(withField, base, JSON.stringify(v));
+  }
+});
