@@ -52,8 +52,14 @@ const TASK13 = [
   'Farklı KDV oranlı kalemleri olan indirimli fatura e-faturaya gönderilemiyor.',
 ];
 
+// Görev 16: klinik indirim penceresi cümlesi ve fiyat listesindeki genel oran işareti ("%X" ayrı string çocuğu)
+const TASK16 = [
+  'Bu oran, kliniğe özel fiyatı olmayan hizmetlerde yeni siparişlere uygulanır.',
+  'Genel indirim',
+];
+
 test('ekstre indirimi metinleri en/de/fa sözlüklerinde', () => {
-  const keys = [...new Set([...TASK1, ...TASK4_5, ...TASK7, ...TASK11, ...TASK12, ...TASK13])];
+  const keys = [...new Set([...TASK1, ...TASK4_5, ...TASK7, ...TASK11, ...TASK12, ...TASK13, ...TASK16])];
   for (const lang of ['en', 'de', 'fa']) {
     const d = dict(lang);
     const missing = keys.filter((k) => !(typeof d[k] === 'string' && d[k].trim().length > 0));
@@ -65,4 +71,10 @@ test('üç sözlük aynı anahtar kümesini taşır', () => {
   const [en, de, fa] = ['en', 'de', 'fa'].map((l) => Object.keys(dict(l)).sort());
   assert.deepEqual(de, en);
   assert.deepEqual(fa, en);
+});
+
+test('klinik penceresinin eski cümlesi (yalnız orada kullanılıyordu) sözlüklerden kalktı', () => {
+  for (const lang of ['en', 'de', 'fa']) {
+    assert.equal(dict(lang)['Bu oran yeni fatura oluştururken otomatik uygulanır.'], undefined, lang);
+  }
 });

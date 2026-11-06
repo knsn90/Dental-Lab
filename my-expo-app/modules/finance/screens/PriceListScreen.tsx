@@ -47,6 +47,7 @@ import { AppSwitch } from '../../../core/ui/AppSwitch';
 import { fetchAllLabServices, createLabService, updateLabService, deleteLabService, aiCatalogCopy } from '../../services/api';
 import { fetchCategories, createCategory, renameCategoryRow, deleteCategoryRow, type ServiceCategory } from '../../../lib/serviceCategories';
 import { fetchClinics } from '../../clinics/api';
+import { applyClinicRate } from '../../clinics/clinicDiscount';
 import type { LabService, PriceType } from '../../services/types';
 import type { Clinic } from '../../clinics/types';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
@@ -2190,6 +2191,9 @@ function CustomTab() {
   const [clinics, setClinics]         = useState<Clinic[]>([]);
   const [services, setServices]       = useState<LabService[]>([]);
   const [overrides, setOverrides]     = useState<PriceOverride[]>([]);
+  // Kliniğin genel oranı (clinic_discounts): özel fiyatı/yüzdesi olmayan hizmetlerde yeni siparişe uygulanır.
+  const [clinicRate, setClinicRate]   = useState<number | null>(null);
+  const rateForRef                    = useRef<string | null>(null);
   const [overrideCounts, setOverrideCounts] = useState<Record<string, number>>({});
   const [selectedClinic, setSelected] = useState<Clinic | null>(null);
   const [loading, setLoading]         = useState(true);
@@ -2288,9 +2292,22 @@ function CustomTab() {
     setOverrides((data as PriceOverride[]) ?? []);
   }, []);
 
+  const loadClinicRate = useCallback(async (c: Clinic) => {
+    rateForRef.current = c.id;
+    setClinicRate(null);
+    let q = supabase.from('clinic_discounts').select('discount_rate').eq('clinic_id', c.id);
+    const labId = (c as any).lab_id as string | null | undefined;
+    if (labId) q = q.eq('lab_id', labId);
+    const { data, error } = await q;
+    if (rateForRef.current !== c.id || error) return;
+    const r = Number(((data ?? []) as any[])[0]?.discount_rate);
+    setClinicRate(Number.isFinite(r) && r > 0 ? r : null);
+  }, []);
+
   const selectClinic = (c: Clinic) => {
     setSelected(c);
     loadOverrides(c.id);
+    void loadClinicRate(c);
   };
 
   const openEditOverride = (sv: LabService) => {
@@ -2522,6 +2539,12 @@ function CustomTab() {
                   {catSvcs.map((sv, idx) => {
                     const override = overrides.find((o) => o.service_id === sv.id);
                     const effPrice = getEffectivePrice(sv, override);
+                    // Kendi fiyatı ve (0'dan büyük) yüzdesi olmayan satıra kliniğin genel oranı uygulanır —
+                    // resolve_item_price ile aynı kural. Kendi fiyatı/yüzdesi olan satır aynen kalır.
+                    const ownRule = override != null
+                      && (override.custom_price != null || (Number(override.discount_percent) || 0) > 0);
+                    const ratePrice = !ownRule && clinicRate != null
+                      ? applyClinicRate(Number(sv.price) || 0, clinicRate) : null;
                     return (
                       <Pressable
                         key={sv.id}
@@ -2537,7 +2560,17 @@ function CustomTab() {
                             fiyat alt satıra düşünce satırlar gereksiz yüksek kalıyordu. */}
                         <Text style={[s.serviceName, { color: T.ink, flex: 1, minWidth: 0 }]} numberOfLines={1}>{sv.name}</Text>
                         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexShrink: 0 }}>
-                            {effPrice != null ? (
+                            {ratePrice != null ? (
+                              <>
+                                <Text style={s.overridePrice}>{ratePrice.toLocaleString('tr-TR')} {priceSym(sv.currency)}</Text>
+                                {ratePrice < (Number(sv.price) || 0) && (
+                                  <Text style={s.standardPrice}>{(Number(sv.price) || 0).toLocaleString('tr-TR')} {priceSym(sv.currency)}</Text>
+                                )}
+                                <View style={{ backgroundColor: MU.chipTones.info.bg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+                                  <Text style={{ fontSize: 11, fontWeight: '700', color: MU.chipTones.info.fg }}>Genel indirim{' '}{`%${clinicRate}`}</Text>
+                                </View>
+                              </>
+                            ) : effPrice != null ? (
                               <>
                                 <Text style={s.overridePrice}>{(Number(effPrice) || 0).toLocaleString('tr-TR')} {priceSym(override?.custom_price != null ? (override.currency || sv.currency) : sv.currency)}</Text>
                                 {/* Üstü çizili standart fiyat yalnız İNDİRİMDE gösterilir (zamda mantıksız). */}

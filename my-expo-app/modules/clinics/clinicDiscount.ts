@@ -82,3 +82,94 @@ export function applyClinicRate(catalog: number, pct: number): number {
   const cents = n < BigInt(0) ? -q : q;
   return Number(cents) / 100;
 }
+
+/**
+ * Yeni sipariş ekranının klinik fiyat haritası değeri. `listPrice` / `ratePct` yalnız kliniğin genel oranı
+ * uygulandığında doludur (gösterim: katalog fiyatı + oran); diğer dallarda yoktur.
+ */
+export interface ClinicPriceEntry {
+  price: number;
+  currency?: string | null;
+  listPrice?: number;
+  ratePct?: number;
+}
+
+/** clinic_price_overrides satırının haritaya giren alanları (numeric sütunlar metin de gelebilir). */
+export interface ClinicPriceOverrideRow {
+  service_id: string;
+  custom_price: number | string | null;
+  discount_percent: number | string | null;
+  currency?: string | null;
+}
+
+const positive = (v: unknown): number | null => {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+/**
+ * Klinik fiyat haritası, resolve_item_price ile aynı öncelikle:
+ *   özel fiyat → özel yüzde (> 0) → kliniğin genel oranı (> 0) → katalog (haritada girdi yok).
+ * Kampanya istemci haritasında hiç yoktu, eklenmez (veritabanında da genel oranın altında).
+ * Yüzdeler applyClinicRate ile uygulanır: ROUND(katalog × (100 − yüzde) / 100, 2) ile kuruşu kuruşuna aynı.
+ * Özel fiyatı da yüzdesi de olmayan (ya da yüzdesi 0 olan) satır veritabanında olduğu gibi genel orana düşer.
+ */
+export function buildClinicPriceMap(
+  services: ReadonlyArray<{ id: string; price: unknown }>,
+  overrides: ReadonlyArray<ClinicPriceOverrideRow>,
+  clinicRate: unknown,
+): Record<string, ClinicPriceEntry> {
+  const base: Record<string, number> = {};
+  services.forEach(s => { base[s.id] = Number(s.price) || 0; });
+  const map: Record<string, ClinicPriceEntry> = {};
+  overrides.forEach(ov => {
+    if (ov.custom_price != null && ov.custom_price !== '') {
+      // Özel FİYAT: para birimi de override'dan gelir (USD listesi gibi).
+      map[ov.service_id] = { price: Number(ov.custom_price), currency: ov.currency ?? null };
+      return;
+    }
+    const pct = positive(ov.discount_percent);
+    if (pct != null) {
+      // İskonto: katalog fiyatının yüzdesi → para birimi KATALOĞUN kalır.
+      map[ov.service_id] = { price: applyClinicRate(base[ov.service_id] ?? 0, pct) };
+    }
+  });
+  const rate = positive(clinicRate);
+  if (rate != null) {
+    services.forEach(s => {
+      if (map[s.id]) return;
+      const catalog = base[s.id];
+      map[s.id] = { price: applyClinicRate(catalog, rate), listPrice: catalog, ratePct: rate };
+    });
+  }
+  return map;
+}
+
+/** İki harita aynı mı (fiyat, para birimi ve gösterim alanları dahil). */
+export function sameClinicPriceMap(
+  a: Record<string, ClinicPriceEntry>,
+  b: Record<string, ClinicPriceEntry>,
+): boolean {
+  const ak = Object.keys(a), bk = Object.keys(b);
+  return ak.length === bk.length && ak.every(k =>
+    b[k] != null
+    && a[k].price === b[k].price
+    && (a[k].currency ?? null) === (b[k].currency ?? null)
+    && (a[k].listPrice ?? null) === (b[k].listPrice ?? null)
+    && (a[k].ratePct ?? null) === (b[k].ratePct ?? null));
+}
+
+/**
+ * Kalem yazımının gösterim alanları: liste fiyatı ve oran ikisi de sayıysa ikisi birden, yoksa boş nesne
+ * (anahtar hiç gönderilmez). Fiyat formülü tutmazsa veritabanı tetikleyicisi ikisini de siler.
+ */
+export function clinicListFields(
+  listPrice: unknown,
+  ratePct: unknown,
+): { list_price: number; discount_percent: number } | Record<string, never> {
+  if (listPrice == null || ratePct == null || listPrice === '' || ratePct === '') return {};
+  const lp = Number(listPrice), rp = Number(ratePct);
+  if (!Number.isFinite(lp) || !Number.isFinite(rp)) return {};
+  return { list_price: lp, discount_percent: rp };
+}

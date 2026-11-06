@@ -807,6 +807,11 @@ export async function addOrderItem(data: {
   notes?: string;
   /** Bu hizmete denk gelen diş FDI numaraları (renk haritası + raporlama için) */
   tooth_numbers?: number[];
+  /** Gösterim: kliniğin genel oranından önceki katalog fiyatı. Yalnız oran uygulandıysa gönderilir
+   *  (yoksa anahtar hiç yazılmaz); fiyat formülü tutmazsa tetikleyici siler. */
+  list_price?: number;
+  /** Gösterim: uygulanan kliniğin genel oranı (%). list_price ile birlikte gönderilir. */
+  discount_percent?: number;
 }) {
   // Custom (hizmet seçilmemiş) kalemde service_id "" olabilir → uuid kolonuna ""
   // gitmesin (invalid input syntax for type uuid). "" veya undefined → NULL.

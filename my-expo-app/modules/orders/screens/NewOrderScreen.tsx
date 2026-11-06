@@ -64,6 +64,7 @@ import { fetchLabServices } from '../../services/api';
 import { MachineType, PendingItem } from '../types';
 import { Clinic, Doctor } from '../../clinics/types';
 import { LabService } from '../../services/types';
+import { buildClinicPriceMap, sameClinicPriceMap, clinicListFields, type ClinicPriceEntry } from '../../clinics/clinicDiscount';
 import { ToothNumberPicker } from '../components/ToothNumberPicker';
 import { WORK_TYPES, ALL_SHADES, ORDER_TAGS, OP_CATEGORY, IMPLANT_SYSTEMS, IMPLANT_TYPES, ABUTMENT_TYPES, SCREW_TYPES, REMOVABLE_MATS, CROWN_MATERIALS, WORK_TYPE_TREE, WORK_TYPE_MAIN, deriveDepartment, isImplantWorkType } from '../constants';
 import { TOOTH_PATHS, TOOTH_LABEL_POS } from '../assets/toothPaths';
@@ -169,9 +170,16 @@ interface ToothOp {
   /** Fiyat listesindeki birim (lab_services.unit): 'Çene' | 'Vaka' | 'Seans' | 'Adet' | …
    *  Fiyatlama çarpanını belirler: Çene→çene sayısı, Vaka/Seans→1, diğer→diş sayısı. */
   price_unit?: string | null;
+  /** Kliniğin genel oranı uygulandıysa (gösterim): katalog fiyatı ve oran. Kalem yazımında list_price /
+   *  discount_percent olarak gider; fiyat formülü tutmazsa veritabanı tetikleyicisi siler. */
+  list_price?: number;
+  discount_percent?: number;
   /** Aynı diş için birden fazla işlem ayırt etmek için transient uid (DB'ye yazılmaz). */
   __uid?: string;
 }
+
+/** Klinik fiyat haritasıyla fiyatlanmış hizmet: genel oranda katalog fiyatı ve oran da taşınır. */
+type PricedService = LabService & { list_price?: number; discount_percent?: number };
 
 /** "Ekspres Hizmetler" kategorisi — diş-başına iş türü DEĞİL, vaka düzeyi ek hizmet
  *  (tik ile seçilip iş listesine eklenir). Kategori adı "ekspres" içeriyorsa. */
@@ -1486,7 +1494,7 @@ export function NewOrderScreen({
    *  Eskiden yalnız sayı tutuluyordu; klinik listesi USD olsa bile katalogdan
    *  gelen EUR sembolü gösteriliyordu (ölçüldü: "Dent Hekim" 24 kalem USD,
    *  katalog EUR → ekranda €). Fiyatla para birimi ayrılamaz. */
-  const [clinicPriceMap, setClinicPriceMap] = useState<Record<string, { price: number; currency?: string | null }>>({});
+  const [clinicPriceMap, setClinicPriceMap] = useState<Record<string, ClinicPriceEntry>>({});
 
   useEffect(() => {
     // Doctor mode: clinic/doctor fetch'i atla
@@ -1537,24 +1545,22 @@ export function NewOrderScreen({
   }, []);
 
   // Seçili klinik için klinik-özel fiyat listesini (clinic_price_overrides) çek.
-  // custom_price varsa onu, yoksa discount_percent'i katalog fiyatına uygular.
-  // Klinik seçili değilse / override yoksa → genel katalog fiyatı kullanılır.
+  // custom_price varsa onu, yoksa discount_percent'i katalog fiyatına uygular; ikisi de yoksa
+  // kliniğin genel oranı (clinic_discounts, yalnız lab paneli) — resolve_item_price ile aynı sıra ve kuruş.
+  // Klinik seçili değilse / override ve oran yoksa → genel katalog fiyatı kullanılır.
   // clinicPriceMap'i YALNIZ gerçekten değiştiyse güncelle — her fire'da yeni {} / yeni
   // obje set etmek (özellikle klinik seçilmemiş WhatsApp/OCR siparişinde) gereksiz
   // render zinciri (effectiveServices → WorkTypeSelector …) üretip #185'i besleyebilir.
-  const applyClinicPriceMap = useCallback((next: Record<string, { price: number; currency?: string | null }>) => {
-    setClinicPriceMap(prev => {
-      const pk = Object.keys(prev), nk = Object.keys(next);
-      if (pk.length === nk.length && pk.every(k =>
-        prev[k]?.price === next[k]?.price && (prev[k]?.currency ?? null) === (next[k]?.currency ?? null)
-      )) return prev;
-      return next;
-    });
+  const applyClinicPriceMap = useCallback((next: Record<string, ClinicPriceEntry>) => {
+    setClinicPriceMap(prev => (sameClinicPriceMap(prev, next) ? prev : next));
   }, []);
   useEffect(() => {
     const clinicId = form.clinic_id;
     if (!clinicId) { applyClinicPriceMap({}); return; }
     const labId = (profile as any)?.lab_id ?? profile?.id ?? null;
+    // Genel oran yalnız lab tarafı panellerde (lab / admin / istasyon): hekim/klinik panelinde
+    // resolve_item_price 42501 veriyor (S1); orada haritaya oran girerse seçicideki fiyat eklenen kalemle ayrışır.
+    const readRate = resolvedPanel !== 'clinic' && resolvedPanel !== 'doctor';
     let cancelled = false;
     (async () => {
       try {
@@ -1563,26 +1569,21 @@ export function NewOrderScreen({
           .select('service_id, custom_price, discount_percent, currency')
           .eq('clinic_id', clinicId);
         if (labId) q = q.eq('lab_id', labId);
-        const { data, error } = await q;
+        let rq: any = null;
+        if (readRate) {
+          rq = supabase.from('clinic_discounts').select('discount_rate').eq('clinic_id', clinicId);
+          if (labId) rq = rq.eq('lab_id', labId);
+        }
+        const [{ data, error }, rateRes] = await Promise.all([q, rq ?? Promise.resolve(null)]);
         if (error || cancelled) return;
-        const base: Record<string, number> = {};
-        services.forEach(s => { base[s.id] = Number(s.price) || 0; });
-        const map: Record<string, { price: number; currency?: string | null }> = {};
-        ((data ?? []) as any[]).forEach(ov => {
-          if (ov.custom_price != null) {
-            // Özel FİYAT: para birimi de override'dan gelir (USD listesi gibi).
-            map[ov.service_id] = { price: Number(ov.custom_price), currency: ov.currency ?? null };
-          } else if (ov.discount_percent != null && Number(ov.discount_percent) > 0) {
-            // İskonto: katalog fiyatının yüzdesi → para birimi KATALOĞUN kalır.
-            const catalog = base[ov.service_id] ?? 0;
-            map[ov.service_id] = { price: Math.round(catalog * (100 - Number(ov.discount_percent)) / 100 * 100) / 100 };
-          }
-        });
+        // Oran okunamazsa (hata) harita bugünkü gibi yalnız özel satırlardan kurulur.
+        const rateRow = rateRes && !rateRes.error ? ((rateRes.data ?? []) as any[])[0] : null;
+        const map = buildClinicPriceMap(services, (data ?? []) as any[], rateRow?.discount_rate ?? null);
         if (!cancelled) applyClinicPriceMap(map);
       } catch { if (!cancelled) applyClinicPriceMap({}); }
     })();
     return () => { cancelled = true; };
-  }, [form.clinic_id, services, profile, applyClinicPriceMap]);
+  }, [form.clinic_id, services, profile, applyClinicPriceMap, resolvedPanel]);
 
   // ── Devam siparişinde ASIL işin dosyaları ────────────────────────────────
   // KOPYALANMAZ: yeni satır açılmaz, aynı dosya iki kez kaydedilmez. Sipariş
@@ -1629,7 +1630,11 @@ export function NewOrderScreen({
     () => services.map(s => {
       const ov = clinicPriceMap[s.id];
       if (ov == null) return s;
-      return { ...s, price: ov.price, currency: ov.currency ?? s.currency };
+      // Genel oranda katalog fiyatı + oran da taşınır (selectService diş işlemine kopyalar).
+      return {
+        ...s, price: ov.price, currency: ov.currency ?? s.currency,
+        ...(ov.listPrice != null && ov.ratePct != null ? { list_price: ov.listPrice, discount_percent: ov.ratePct } : {}),
+      } as PricedService;
     }),
     [services, clinicPriceMap]
   );
@@ -1811,6 +1816,8 @@ export function NewOrderScreen({
     // Para birimi fiyatla BİRLİKTE taşınır — resolve_item_price zaten döndürüyor,
     // eskiden atılıyordu ve 7 EUR ekranda ₺7 oluyordu.
     let resolvedCurrency: string = (service as any).currency ?? 'TRY';
+    // Genel oran dalında RPC katalog fiyatını ve oranı da döndürür (gösterim); diğer dallarda NULL.
+    let listFields: ReturnType<typeof clinicListFields> = {};
     try {
       const labId = getActiveLabId() ?? (profile as any)?.lab_id ?? profile?.id ?? null;
       if (labId && service.id) {
@@ -1826,6 +1833,7 @@ export function NewOrderScreen({
             resolvedPrice = Number(row.price);
             priceSource = row.source ?? 'catalog';
             if (row.currency) resolvedCurrency = String(row.currency);
+            listFields = clinicListFields(row.list_price, row.discount_percent);
           }
         }
       }
@@ -1833,7 +1841,7 @@ export function NewOrderScreen({
 
     set('pending_items')([
       ...form.pending_items,
-      { service_id: service.id, name: service.name, price: resolvedPrice, currency: resolvedCurrency, quantity: 1, price_source: priceSource } as any,
+      { service_id: service.id, name: service.name, price: resolvedPrice, currency: resolvedCurrency, quantity: 1, price_source: priceSource, ...listFields } as any,
     ]);
   };
 
@@ -2784,20 +2792,21 @@ export function NewOrderScreen({
         price: item.price,
         currency: (item as any).currency,
         quantity: item.quantity,
+        ...clinicListFields(item.list_price, item.discount_percent),
       });
     }
 
     // Tooth-ops'tan da order_item üret — her grup (work_type + detay) için 1 item.
     // Bu sayede sipariş detayında diş şeması farklı işlemleri farklı renkle gösterir.
     {
-      const opGroupMap = new Map<string, { ops: ToothOp[]; teeth: number[]; name: string; price: number; currency?: string }>();
+      const opGroupMap = new Map<string, { ops: ToothOp[]; teeth: number[]; name: string; price: number; currency?: string; list_price?: number; discount_percent?: number }>();
       form.tooth_ops.forEach(o => {
         if (!o.work_type) return;
         const k = [o.work_type, o.shade, o.material, o.implant_system, o.implant_type, o.abutment, o.screw].join('||');
         if (!opGroupMap.has(k)) {
           // currency: fiyat listesinden gelen para birimi (ToothOp.currency) —
           // artık kaleme de yazılıyor, aksi halde ekranda ₺ varsayılıyordu.
-          opGroupMap.set(k, { ops: [], teeth: [], name: o.work_type, price: o.price || 0, currency: o.currency });
+          opGroupMap.set(k, { ops: [], teeth: [], name: o.work_type, price: o.price || 0, currency: o.currency, list_price: o.list_price, discount_percent: o.discount_percent });
         }
         const g = opGroupMap.get(k)!;
         g.ops.push(o);
@@ -2832,6 +2841,7 @@ export function NewOrderScreen({
           name: g.name,
           price: g.price,
           currency: g.currency,
+          ...clinicListFields(g.list_price, g.discount_percent),
           // Çene/Vaka/Seans birimli hizmetlerde miktar diş sayısı DEĞİL, birim çarpanıdır
           // (gece plağı çene başına: üst çene 16 diş → 1 çene → qty 1).
           quantity: priceUnitQty(rep.price_unit, teethUnique),
@@ -8635,6 +8645,9 @@ function WorkTypeSelector({
       price: Number(svc.price) || 0,
       currency: svc.currency,
       price_unit: svc.unit ?? null,   // Çene/Vaka/Seans → fiyat çarpanını belirler
+      // Genel oran gösterimi: yoksa undefined yazılır ki dişin önceki işleminden kalan değer taşınmasın.
+      list_price: (svc as PricedService).list_price,
+      discount_percent: (svc as PricedService).discount_percent,
     };
     updateToothOp(fresh);
     // OP_CATEGORY'de surgical/other ise (yerleşik harita) auto-confirm

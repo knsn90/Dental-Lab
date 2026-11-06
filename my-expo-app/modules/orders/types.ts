@@ -130,4 +130,7 @@ export interface PendingItem {
   name: string;
   price: number;
   quantity: number;
+  /** Kliniğin genel oranı uygulandıysa (resolve_item_price list_price / discount_percent): yalnız gösterim. */
+  list_price?: number;
+  discount_percent?: number;
 }

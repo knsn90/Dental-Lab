@@ -2766,7 +2766,7 @@ function DiscountModal({ clinic, currentDiscount, onClose, onSaved }: {
                 <Text style={{ fontSize: 20, fontWeight: '800', color: '#7C3AED' }}>%</Text>
               </View>
             </View>
-            <Text style={{ fontSize: 12, color: isDark ? T.ink3 : DS.ink[400], lineHeight: 17, marginTop: 6 }}>Bu oran yeni fatura oluştururken otomatik uygulanır.</Text>
+            <Text style={{ fontSize: 12, color: isDark ? T.ink3 : DS.ink[400], lineHeight: 17, marginTop: 6 }}>Bu oran, kliniğe özel fiyatı olmayan hizmetlerde yeni siparişlere uygulanır.</Text>
             {currentDiscount != null && currentDiscount > 0 && (
               <Pressable onPress={handleRemove} disabled={saving} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 10, paddingVertical: 7, paddingHorizontal: 10, borderRadius: R.sm, backgroundColor: 'rgba(217,75,75,0.12)', alignSelf: 'flex-start' }}>
                 <Trash2 size={12} color="#9C2E2E" strokeWidth={1.8} />
