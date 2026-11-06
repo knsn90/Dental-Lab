@@ -4918,7 +4918,8 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                               const kept    = f.tooth_ops.filter(o => !teeth.includes(o.tooth));
                               const updated = teeth.map(t =>
                                 existing.includes(t)
-                                  ? { ...f.tooth_ops.find(o => o.tooth === t)!, work_type: 'Gece Plağı' }
+                                  // Önceki hizmetin liste fiyatı / oranı Gece Plağı'na taşınmasın (gösterim alanları).
+                                  ? { ...f.tooth_ops.find(o => o.tooth === t)!, work_type: 'Gece Plağı', list_price: undefined, discount_percent: undefined }
                                   : { tooth: t, ...BLANK_OP, __uid: newOpUid(), work_type: 'Gece Plağı' }
                               );
                               return { ...f, tooth_ops: [...kept, ...updated] };
