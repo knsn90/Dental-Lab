@@ -13,6 +13,12 @@ test('fatura/alacak bölüşümü', () => {
   assert.deepEqual(correctionSplit({ invoiceTotal: 600, paidAmount: 600, amount: 50 }), { toInvoice: 0, toCredit: 50 });
   assert.deepEqual(correctionSplit({ invoiceTotal: 0.1 + 0.2, paidAmount: 0, amount: 1.005 }), { toInvoice: 0.3, toCredit: 0.71 });
 });
+test('yuvarlama büyük tutarda da yarım değeri yukarı alır', () => {
+  assert.deepEqual(correctionSplit({ invoiceTotal: 0, paidAmount: 0, amount: 1000.005 }), { toInvoice: 0, toCredit: 1000.01 });
+});
+test('0\'a yuvarlanan tutar DZ_VALUE', () => {
+  assert.equal(validateCorrection({ amount: 0.004, reason: 'x', cap: 10 }), 'DZ_VALUE');
+});
 test('doğrulama sırası', () => {
   assert.equal(validateCorrection({ amount: 0, reason: 'x', cap: 10 }), 'DZ_VALUE');
   assert.equal(validateCorrection({ amount: 11, reason: 'x', cap: 10 }), 'DZ_CAP');

@@ -3,7 +3,6 @@
 
 import type { StatementDiscount } from '../types';
 import type { StatementLine } from '../buildStatementHtml';
-import { correctionDocNo } from './correctionDoc.ts';
 
 export type DiscountMode = 'amount' | 'percent';
 export type SdErrorCode = 'SD_EMPTY' | 'SD_VALUE' | 'SD_CAP';
@@ -104,7 +103,7 @@ export function discountStatementLines(
       date: d.discount_date,
       type: 'discount' as const,
       description: d.description ?? '',
-      invoiceNo: (d.doc_type ?? 'IND') === 'DZ' ? correctionDocNo(d.doc_no) : statementDiscountDocNo(d.doc_no),
+      invoiceNo: (d.doc_type ?? 'IND') === 'DZ' ? 'DZ-' + d.doc_no : statementDiscountDocNo(d.doc_no),
       docKind: (d.doc_type ?? 'IND') as 'IND' | 'DZ',
       debit: 0,
       credit: 0,

@@ -6,7 +6,7 @@ export type DzErrorCode = 'DZ_VALUE' | 'DZ_CAP' | 'DZ_REASON';
 /** SQL ROUND(x,2) ile aynı: yarım değerler sıfırdan uzağa. */
 function round2(x: number): number {
   const n = Number(x) || 0;
-  const r = Math.round((Math.abs(n) + Number.EPSILON) * 100) / 100;
+  const r = Math.round(Number((Math.abs(n) * 100).toFixed(6))) / 100;
   return n < 0 ? -r : r;
 }
 
@@ -28,9 +28,9 @@ export function correctionSplit(p: { invoiceTotal: number; paidAmount: number; a
 }
 
 export function validateCorrection(p: { amount: number; reason: string; cap: number }): DzErrorCode | null {
-  const amount = Number(p.amount) || 0;
+  const amount = round2(p.amount);
   if (!(amount > 0)) return 'DZ_VALUE';
-  if (round2(amount) > round2(Number(p.cap) || 0)) return 'DZ_CAP';
+  if (amount > round2(Number(p.cap) || 0)) return 'DZ_CAP';
   if (!String(p.reason ?? '').trim()) return 'DZ_REASON';
   return null;
 }
