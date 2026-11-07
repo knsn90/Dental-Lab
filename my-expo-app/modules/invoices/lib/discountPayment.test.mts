@@ -27,6 +27,15 @@ test('discountPaymentLabel', () => {
   assert.equal(discountPaymentLabel('Ekstre indirimi', undefined), 'Ekstre indirimi');
 });
 
+test('discountPaymentLabel: DZ payı "Düzeltme belgesi DZ-n"', () => {
+  assert.equal(discountPaymentLabel('Ekstre indirimi', 'DZ-4'), 'Düzeltme belgesi DZ-4');
+  assert.equal(discountPaymentLabel('Ekstre indirimi', 'DZ-4', ' · '), 'Düzeltme belgesi · DZ-4');
+  assert.equal(discountPaymentLabel('Statement discount', 'DZ-12', ' ', 'Correction document'), 'Correction document DZ-12');
+  // yalnız tam "DZ-n" notu (isCorrectionShare ile aynı)
+  assert.equal(discountPaymentLabel('Ekstre indirimi', 'xDZ-4'), 'Ekstre indirimi');
+  assert.equal(discountPaymentLabel('Ekstre indirimi', 'İND-2'), 'Ekstre indirimi İND-2');
+});
+
 test('clinicCollected: ödenen + avans - indirim', () => {
   assert.equal(clinicCollected({ total_paid: 100, unallocated_credit: 20, statement_discount_total: 30 }), 90);
   assert.equal(clinicCollected({ total_paid: 100 }), 100);

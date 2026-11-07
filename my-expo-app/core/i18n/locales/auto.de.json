@@ -1862,6 +1862,7 @@
   "Bu faturanın e-faturası gönderilmiş. E-fatura tarafını (iade/fiyat farkı) muhasebecinizle düzenleyin; DZ yalnız Siman içi belgedir.": "Die E-Rechnung zu dieser Rechnung wurde bereits versendet. Klären Sie die E-Rechnungsseite (Gutschrift/Preisdifferenz) mit Ihrem Steuerberater; der DZ ist nur ein interner Siman-Beleg.",
   "Düzeltme belgesini kaydet; tutar bu faturadan düşer, artan kısım kliniğin alacağına geçer": "Korrekturbeleg speichern; der Betrag wird von dieser Rechnung abgezogen, ein Überschuss geht als Guthaben an die Klinik",
   "Düzeltme belgesi kaydedildi": "Korrekturbeleg gespeichert",
+  "Kalem bulunamadı": "Position nicht gefunden",
   "Düzeltme yazıldı": "Korrektur erfasst",
   "Düzeltmeyi Kaydet": "Korrektur speichern",
   "Düzenle": "Bearbeiten",

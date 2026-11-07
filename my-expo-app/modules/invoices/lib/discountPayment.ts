@@ -13,8 +13,11 @@ export function discountPaymentDocNo(notes: string | null | undefined): number |
   return m ? Number(m[1]) : null;
 }
 
-/** "Ekstre indirimi<sep>İND-n"; numara bulunamazsa yalnız etiket. label çağıranda autoT'den geçmiş olmalı. */
-export function discountPaymentLabel(label: string, notes: string | null | undefined, sep = ' '): string {
+/** "Ekstre indirimi<sep>İND-n"; numara bulunamazsa yalnız etiket. Düzeltme belgesi payı (notes tam "DZ-n",
+ *  correctionDoc.isCorrectionShare ile aynı) "Düzeltme belgesi<sep>DZ-n" olur. Etiketler çağıranda autoT'den geçmiş olmalı. */
+export function discountPaymentLabel(label: string, notes: string | null | undefined, sep = ' ', dzLabel = 'Düzeltme belgesi'): string {
+  const dz = /^DZ-(\d+)$/.exec(notes ?? '');
+  if (dz) return `${dzLabel}${sep}DZ-${dz[1]}`;
   const n = discountPaymentDocNo(notes);
   return n == null ? label : `${label}${sep}İND-${n}`;
 }

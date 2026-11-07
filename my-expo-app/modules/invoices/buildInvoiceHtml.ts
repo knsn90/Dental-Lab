@@ -152,7 +152,7 @@ export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
         .map(p => `
           <tr>
             <td>${fmtDate(p.payment_date)}</td>
-            <td>${esc(isDiscountPayment(p) ? discountPaymentLabel(autoT('Ekstre indirimi'), p.notes) : PAYMENT_METHOD_LABELS[p.payment_method] ?? p.payment_method)}</td>
+            <td>${esc(isDiscountPayment(p) ? discountPaymentLabel(autoT('Ekstre indirimi'), p.notes, ' ', autoT('Düzeltme belgesi')) : PAYMENT_METHOD_LABELS[p.payment_method] ?? p.payment_method)}</td>
             <td>${p.reference_no ? esc(p.reference_no) : '—'}</td>
             <td class="num right"><b>${fmtMoney(p.amount, currency)}</b></td>
           </tr>`).join('')

@@ -10,8 +10,10 @@ const dict = (lang: string): Record<string, string> =>
   JSON.parse(readFileSync(new URL(`../../core/i18n/locales/auto.${lang}.json`, import.meta.url), 'utf-8'));
 
 // dzErrorText: altı kod + bilinmeyen kod → genel metin
-const ERRORS = ['DZ_VALUE', 'DZ_CAP', 'DZ_REASON', 'DZ_STATUS', 'DZ_DELETE_LOCKED', 'DZ_IDEMPOTENCY_CONFLICT', 'BILINMEYEN']
+const ERRORS = ['DZ_VALUE', 'DZ_CAP', 'DZ_REASON', 'DZ_STATUS', 'DZ_DELETE_LOCKED', 'DZ_IDEMPOTENCY_CONFLICT', 'DZ_BILINMEYEN']
   .map(dzErrorText);
+// Kodsuz sunucu mesajları dzErrorText'ten olduğu gibi geçer (autoT ile çevrilir)
+const PASS_THROUGH = ['Yetkiniz yok', 'Kalem bulunamadı', 'Klinik bulunamadı'].map(dzErrorText);
 
 // Fatura detayı (kalem düğmesi, kalem altı DZ listesi, tahsilat etiketi), pencere, ekstre ve PDF
 const UI = [
@@ -25,7 +27,7 @@ const UI = [
 ];
 
 test('düzeltme belgesi metinleri en/de/fa sözlüklerinde', () => {
-  const keys = [...new Set([...ERRORS, ...UI])];
+  const keys = [...new Set([...ERRORS, ...PASS_THROUGH, ...UI])];
   for (const lang of ['en', 'de', 'fa']) {
     const d = dict(lang);
     const missing = keys.filter((k) => !(typeof d[k] === 'string' && d[k].trim().length > 0));

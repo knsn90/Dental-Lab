@@ -24,6 +24,7 @@ import {
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 
+import { withEffectiveDiscounts } from '../lib/correctionDoc';
 import { fetchInvoicesForClinic, fetchClinicBalance, fetchUnbilledWorkOrders, createInvoiceFromOrder, fetchClinicPriceCurrency, fetchClinicReceipts, fetchStatementDiscounts, deleteStatementDiscount } from '../api';
 import { buildStatementLines, buildStatementHtml } from '../buildStatementHtml';
 import { statementVatSummary } from '../lib/statementVat';
@@ -642,7 +643,9 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
     // DZ satırı: "Düzeltme belgesi · <fatura no> · <gerekçe>" (fatura bulunamazsa no atlanır).
     const invNoById = new Map(invoices.map(i => [i.id, i.invoice_number] as const));
     const dzInvById = new Map(discounts.map(d => [d.id, d.invoice_id] as const));
-    const discLines = discountStatementLines(discounts, selectedCcy).map(l => {
+    // Faturası iptal DZ "boş": yalnız başka faturalara uygulanmış payı kadar sayılır, yoksa satır yok
+    // (SQL v_statement_discount_effective ile aynı kural → ekran, PDF, Excel ve bakiye aynı).
+    const discLines = discountStatementLines(withEffectiveDiscounts(discounts, invoices), selectedCcy).map(l => {
       if (l.docKind !== 'DZ') return l;
       const invId = dzInvById.get((l.id ?? '').slice('disc-'.length));
       const invNo = invId ? invNoById.get(invId) : undefined;

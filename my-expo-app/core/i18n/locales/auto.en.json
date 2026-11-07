@@ -1872,6 +1872,7 @@
   "Bu faturanın e-faturası gönderilmiş. E-fatura tarafını (iade/fiyat farkı) muhasebecinizle düzenleyin; DZ yalnız Siman içi belgedir.": "The e-invoice for this invoice has been sent. Arrange the e-invoice side (return/price difference) with your accountant; the DZ is an internal Siman document only.",
   "Düzeltme belgesini kaydet; tutar bu faturadan düşer, artan kısım kliniğin alacağına geçer": "Save the correction document; the amount is deducted from this invoice and any excess goes to the clinic's credit",
   "Düzeltme belgesi kaydedildi": "Correction document saved",
+  "Kalem bulunamadı": "Item not found",
   "Düzeltme yazıldı": "Correction recorded",
   "Düzeltmeyi Kaydet": "Save Correction",
   "Düzenle": "Edit",

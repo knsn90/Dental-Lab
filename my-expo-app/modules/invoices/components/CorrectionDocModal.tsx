@@ -43,9 +43,11 @@ export interface CorrectionDocModalProps {
   invoice: Pick<Invoice, 'id' | 'invoice_number' | 'currency' | 'total' | 'paid_amount' | 'efatura_uuid' | 'efatura_status'>;
   item: { id: string; description: string; net_total: number };
   priorOnItem: number;
+  /** Hazır tavan (kalem payı ve fatura kalanı; correctionMaxAmount). Yoksa kalem net − önceki DZ. */
+  cap?: number;
 }
 
-export function CorrectionDocModal({ visible, onClose, onSaved, invoice, item, priorOnItem }: CorrectionDocModalProps) {
+export function CorrectionDocModal({ visible, onClose, onSaved, invoice, item, priorOnItem, cap: capProp }: CorrectionDocModalProps) {
   const U = useInkUI();
   const theme = usePanelTheme();
   const insets = useSafeAreaInsets();
@@ -70,7 +72,9 @@ export function CorrectionDocModal({ visible, onClose, onSaved, invoice, item, p
 
   const currency = invoice.currency || 'TRY';
   const fmt = (n: number) => formatMoney(Number(n) || 0, currency as Currency, { fractionDigits: 2 });
-  const cap = correctionCap(Number(item.net_total) || 0, Number(priorOnItem) || 0);
+  const cap = capProp != null && Number.isFinite(Number(capProp))
+    ? Math.max(0, Number(capProp))
+    : correctionCap(Number(item.net_total) || 0, Number(priorOnItem) || 0);
   const v = toNum(amount);
   const split = Number.isFinite(v) && v > 0
     ? correctionSplit({ invoiceTotal: Number(invoice.total) || 0, paidAmount: Number(invoice.paid_amount) || 0, amount: v })

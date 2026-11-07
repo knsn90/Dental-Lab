@@ -5,7 +5,7 @@ import { isDiscountPayment, discountPaymentLabel } from '../lib/discountPayment'
 import { validateInvoiceDiscount, invoiceDiscountRpcError, invoiceTotalsWithDiscount, listPriceInfo, round2, type InvoiceDiscountType } from '../lib/invoiceDiscount';
 import { InvoiceDiscountField } from '../components/InvoiceDiscountField';
 import { CorrectionDocModal } from '../components/CorrectionDocModal';
-import { isCorrectionShare } from '../lib/correctionDoc';
+import { correctionMaxAmount } from '../lib/correctionDoc';
 /**
  * InvoiceDetailScreen — Fatura Detayı (Patterns Design Language)
  *
@@ -578,7 +578,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
 
   const items = (invoice.items ?? []).slice().sort((a, b) => a.sort_order - b.sort_order);
   // Düzeltme belgesi (DZ): yalnız lab panelinde, kesinleşmiş (iptal olmayan) faturada.
-  const canCorrect = !readOnly && ['kesildi', 'kismi_odendi', 'odendi'].includes(invoice.status);
+  const canCorrect = !readOnly && can('manage_finance') && ['kesildi', 'kismi_odendi', 'odendi'].includes(invoice.status);
   const correctionsByItem = new Map<string, CorrectionDoc[]>();
   for (const c of corrections) {
     if (!c.invoice_item_id) continue;
@@ -588,6 +588,13 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   }
   const priorOn = (itemId: string) =>
     round2((correctionsByItem.get(itemId) ?? []).reduce((s, c) => s + (Number(c.amount) || 0), 0));
+  // Tavan (SQL ile aynı): kalemin fatura toplamındaki payı − kalemdeki DZ; ayrıca faturanın tüm DZ'leri ≤ toplam
+  const sumItemNet = items.reduce((s, it) => s + (Number(it.net_total ?? it.total) || 0), 0);
+  const priorOnInvoice = round2(corrections.reduce((s, c) => s + (Number(c.amount) || 0), 0));
+  const correctionCapFor = (it: { id: string; net_total?: number | null; total?: number | null }) => correctionMaxAmount({
+    itemNetTotal: Number(it.net_total ?? it.total) || 0, invoiceTotal: Number(invoice.total) || 0, sumNetTotal: sumItemNet,
+    priorOnItem: priorOn(it.id), priorOnInvoice,
+  });
   const dzItem = dzItemId ? items.find(i => i.id === dzItemId) ?? null : null;
 
   return (
@@ -1206,10 +1213,8 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 14, fontWeight: '600', color: CHIP_TONES.success.text }}>{fmtMoney(p.amount)}</Text>
                   <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 2 }}>
-                    {fmtDate(p.payment_date)} · {isCorrectionShare(p)
-                      ? `${autoT('Düzeltme belgesi')} ${p.notes}`
-                      : isDiscountPayment(p)
-                      ? discountPaymentLabel(autoT('Ekstre indirimi'), p.notes)
+                    {fmtDate(p.payment_date)} · {isDiscountPayment(p)
+                      ? discountPaymentLabel(autoT('Ekstre indirimi'), p.notes, ' ', autoT('Düzeltme belgesi'))
                       : PAYMENT_METHOD_LABELS[p.payment_method]}
                     {p.reference_no ? ` · ${p.reference_no}` : ''}
                   </Text>
@@ -1400,6 +1405,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
           invoice={invoice}
           item={{ id: dzItem.id, description: dzItem.description, net_total: Number(dzItem.net_total ?? dzItem.total) || 0 }}
           priorOnItem={priorOn(dzItem.id)}
+          cap={correctionCapFor(dzItem)}
         />
       ) : null}
 
