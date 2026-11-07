@@ -59,6 +59,39 @@ Bu akış lab'a göre değişebildiği için bir ayardır. Lab'lar kendi düzeni
    - Yetki: finans yetkisi. Her DZ aktivite günlüğüne yazılır.
 10. **Kesinleştirme ve e-fatura ayrıdır.** "Kesinleşti" demek e-fatura gönderildi demek değildir. E-fatura (Luca) bugünkü gibi isteğe bağlı, ayrı bir adımdır; hangi faturanın e-faturaya gideceğine lab karar verir.
 
+11. **Aylık tek fatura (ayar açıkken).**
+    - Ön ekstre onaylandığında o ayın onaylanan taslakları, klinik ve para birimi başına **tek bir aylık faturada** birleşir. Mevcut toplu fatura altyapısı (`create_bulk_invoice`, `invoice_orders`) kullanılır.
+    - Kalemler birleşmez. Her iş kendi satırıyla kalır: tarih, sipariş no, hasta (baş harf ya da kod), iş, adet, birim fiyat, liste fiyatı ve genel oran.
+    - Fatura ile sipariş arasındaki bağ iki yönden görünür. Siparişte "Faturası: F-…" yazar.
+    - Fatura üstü indirim aylık faturada da uygulanabilir.
+    - İtirazlı kalem çözülünce **ek faturaya** girer.
+    - Ayar kapalıysa bugünkü iş başına fatura düzeni sürer.
+12. **Dönem bazlı hatırlatma.**
+    - Hatırlatma klinik başına tek mesajdır ve gecikmiş dönemleri listeler: "Eylül 1.600 ve Ekim 5.900, toplam 7.500 gecikti."
+    - Kaynak, faturaların vadesine dayalı mevcut gecikmiş hesaptır. Aylık tek faturada dönem ile fatura aynı şeydir.
+    - Taslak ve onay bekleyen tutar hatırlatmaya girmez.
+13. **Tahsilat dağıtımı.**
+    - Toplu ya da geç gelen ödeme, tek tutar olarak girilir.
+    - Para en eski açık borçtan başlayarak (FIFO) faturalara dağılır.
+    - Ödeme borçtan fazlaysa fazlası **alacak (avans)** olur ve sonraki faturalar kesinleşince kendiliğinden onlara uygulanır.
+    - Lab, kayıt sırasında otomatik sıranın yerine hangi faturaların kapanacağını **elle seçebilir**. Örnek: hekim "bu Kasım için" der.
+    - Ekstrede tahsilat satırı neyi kapattığını gösterir: "Kapattığı: F-1212 Eylül 1.600 · F-1240 Ekim 5.900 · Alacağa 1.300".
+14. **Ekstre görünümü** (ekran, klinik/hekim paneli ve PDF):
+    - Üstte üç rakam: kesinleşmiş bakiye, vadesi geçen, onay bekleyen.
+    - Tablo: devir, ardından aylık faturalar. Her fatura açılır ve işleri satır satır gösterir. Tahsilatlar, DZ ve İND kendi satırlarında yer alır; yürüyen bakiye ile dönem toplamı bulunur.
+    - En altta çerçeveli "Ön ekstre — onay bekliyor" bölümü yer alır: kalemler, notlar ve yanıtlar, onay düğmesi; PDF'te karekod.
+    - Örnek ekranlar: `.superpowers/brainstorm/68108-1793949820/content/` altında `ekstre-ornek.html` ve `pdf-ayrintili.html`.
+15. **Çok işli klinik** (ayda yüzlerce iş).
+    - **Ekran:** fatura içi işler hekime, sonra siparişe göre gruplanır ve katlanır. Ara toplam, arama (hasta, sipariş no) ve iş türü filtresi bulunur.
+    - **PDF iki seçenekli** (lab varsayılanı ayarlardan seçer, gönderirken değiştirebilir):
+      - **Özet:** hekim ve iş türü toplamları, 1–2 sayfa.
+      - **Ayrıntılı:** çok sayfa. Hekim bölümleri ve ara toplamları bulunur, tablo başlığı her sayfada tekrarlanır, ilk sayfada genel özet yer alır.
+16. **E-fatura (kullanıcı kararı: birleşik satır + döküm).**
+    - Aylık fatura e-faturaya **aynı hizmet + aynı birim fiyat + aynı oran** satırları birleştirilerek gider, örneğin "Zirkonyum kron · 1.530 · 120 adet". Liste fiyatı ve indirim birleşik satırda da korunur.
+    - Ayrıntılı iş listesi ayrıntılı PDF olarak üretilir ve fatura numarasıyla bağlanır ("F-1240 iş dökümü").
+    - E-fatura yalnız kesinleşmiş faturadan kesilir. Hekim onayından sonra kesildiği için itirazlar e-faturaya taşınmaz.
+    - Luca'nın kalem ve boyut sınırı ile birleşik satırın muhasebe uygunluğu kurulumda doğrulanır (muhasebeci teyidi).
+
 ## 3. Hedef olmayanlar
 
 - E-faturası gönderilmiş faturada DZ'nin vergi karşılığı (iade faturası ya da fiyat farkı faturası) ve Luca'ya gönderimi bu işin parçası değildir. Muhasebeci kuralı netleştirince ayrı iş olarak ele alınır. Bu işte DZ yalnız iç belgedir. E-faturası gönderilmiş faturaya DZ kesilirken "e-fatura tarafını muhasebecinizle düzenleyin" uyarısı gösterilir.
