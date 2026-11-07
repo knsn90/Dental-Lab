@@ -1,0 +1,44 @@
+-- 20261107100000_kesin_fatura_kilidi — CANLI durum (2026-11-07)
+
+## pg_trigger: public.invoices, public.invoice_items (tablo | ad | fonksiyon | zaman | olay | durum)
+-- invoice_items | list_price_consistency | _list_price_consistency | BEFORE | INSERT OR UPDATE | enabled=O
+-- invoice_items | maintain_urgent_surcharge | trg_maintain_urgent_surcharge | AFTER | INSERT OR UPDATE OR DELETE | enabled=O
+-- invoice_items | recalc_on_items_change | trg_recalc_invoice_totals | AFTER | INSERT OR UPDATE OR DELETE | enabled=O
+-- invoice_items | zz_invoice_items_efatura_lock | invoice_items_efatura_lock | BEFORE | INSERT OR UPDATE OR DELETE | enabled=O
+-- invoices | aa_enforce_invoice_totals | aa_enforce_invoice_totals | BEFORE | UPDATE | enabled=O
+-- invoices | auto_set_lab_id_invoices | auto_set_lab_id | BEFORE | INSERT | enabled=O
+-- invoices | invoices_default_tax_rate | invoices_default_tax_rate | BEFORE | INSERT | enabled=O
+-- invoices | invoices_discount_amount_insert | _invoices_discount_amount_on_insert | BEFORE | INSERT | enabled=O
+-- invoices | recalc_on_tax_change | trg_recalc_on_tax_change | AFTER | UPDATE | enabled=O
+-- invoices | set_invoice_amount_base_trg | set_invoice_amount_base | BEFORE | INSERT OR UPDATE | enabled=O
+-- invoices | set_invoice_number_trigger | set_invoice_number | BEFORE | INSERT | enabled=O
+-- invoices | touch_invoices_updated_at | touch_updated_at | BEFORE | UPDATE | enabled=O
+-- invoices | trg_scan_invoice_cancelled | trg_scan_invoice_cancelled | AFTER | UPDATE | enabled=O
+-- invoices | zz_cash_sync_invoice | _trg_cash_sync_invoice | AFTER | UPDATE | enabled=O
+-- invoices | zz_invoices_discount_lock | _invoices_discount_lock | BEFORE | UPDATE | enabled=O
+-- invoices | zz_invoices_efatura_lock | invoices_efatura_lock | BEFORE | UPDATE OR DELETE | enabled=O
+-- invoices | zz_sd_invoice_credit | _sd_invoice_credit_trg | AFTER | INSERT OR UPDATE OR DELETE | enabled=O
+
+## pg_get_triggerdef
+CREATE TRIGGER list_price_consistency BEFORE INSERT OR UPDATE ON public.invoice_items FOR EACH ROW EXECUTE FUNCTION _list_price_consistency();
+CREATE TRIGGER maintain_urgent_surcharge AFTER INSERT OR DELETE OR UPDATE ON public.invoice_items FOR EACH ROW EXECUTE FUNCTION trg_maintain_urgent_surcharge();
+CREATE TRIGGER recalc_on_items_change AFTER INSERT OR DELETE OR UPDATE ON public.invoice_items FOR EACH ROW EXECUTE FUNCTION trg_recalc_invoice_totals();
+CREATE TRIGGER zz_invoice_items_efatura_lock BEFORE INSERT OR DELETE OR UPDATE ON public.invoice_items FOR EACH ROW EXECUTE FUNCTION invoice_items_efatura_lock();
+CREATE TRIGGER aa_enforce_invoice_totals BEFORE UPDATE ON public.invoices FOR EACH ROW EXECUTE FUNCTION aa_enforce_invoice_totals();
+CREATE TRIGGER auto_set_lab_id_invoices BEFORE INSERT ON public.invoices FOR EACH ROW EXECUTE FUNCTION auto_set_lab_id();
+CREATE TRIGGER invoices_default_tax_rate BEFORE INSERT ON public.invoices FOR EACH ROW EXECUTE FUNCTION invoices_default_tax_rate();
+CREATE TRIGGER invoices_discount_amount_insert BEFORE INSERT ON public.invoices FOR EACH ROW EXECUTE FUNCTION _invoices_discount_amount_on_insert();
+CREATE TRIGGER recalc_on_tax_change AFTER UPDATE OF tax_rate, discount_type, discount_value ON public.invoices FOR EACH ROW EXECUTE FUNCTION trg_recalc_on_tax_change();
+CREATE TRIGGER set_invoice_amount_base_trg BEFORE INSERT OR UPDATE ON public.invoices FOR EACH ROW EXECUTE FUNCTION set_invoice_amount_base();
+CREATE TRIGGER set_invoice_number_trigger BEFORE INSERT ON public.invoices FOR EACH ROW EXECUTE FUNCTION set_invoice_number();
+CREATE TRIGGER touch_invoices_updated_at BEFORE UPDATE ON public.invoices FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER trg_scan_invoice_cancelled AFTER UPDATE OF status ON public.invoices FOR EACH ROW EXECUTE FUNCTION trg_scan_invoice_cancelled();
+CREATE TRIGGER zz_cash_sync_invoice AFTER UPDATE OF status ON public.invoices FOR EACH ROW WHEN ((old.status IS DISTINCT FROM new.status)) EXECUTE FUNCTION _trg_cash_sync_invoice();
+CREATE TRIGGER zz_invoices_discount_lock BEFORE UPDATE OF discount_type, discount_value ON public.invoices FOR EACH ROW EXECUTE FUNCTION _invoices_discount_lock();
+CREATE TRIGGER zz_invoices_efatura_lock BEFORE DELETE OR UPDATE ON public.invoices FOR EACH ROW EXECUTE FUNCTION invoices_efatura_lock();
+CREATE TRIGGER zz_sd_invoice_credit AFTER INSERT OR DELETE OR UPDATE OF status, total, tax_rate, discount_type, discount_value ON public.invoices FOR EACH ROW EXECUTE FUNCTION _sd_invoice_credit_trg();
+
+## Yeni nesneler (canlıda YOK — doğrulandı 2026-11-07)
+-- pg_proc: public._invoice_issued_lock, public._invoice_items_issued_lock → 0 satır
+-- pg_trigger: zzz_invoice_issued_lock, zzz_invoice_items_issued_lock → 0 satır
+-- Bu migration mevcut hiçbir fonksiyonu, kısıtı ya da yetkiyi değiştirmez; yalnız iki fonksiyon + iki tetikleyici ekler.
