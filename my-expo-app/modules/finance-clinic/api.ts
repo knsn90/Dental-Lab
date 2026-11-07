@@ -29,7 +29,7 @@ import type { Currency } from '../../core/money/currency';
 import { ymdLocal } from '../../core/util/dates';
 import { labTodayOf } from '../../core/metrics/orderDefs';
 import { loadLabTz } from '../../core/metrics/useLabToday';
-import { isPostedInvoice, isInvoiceOverdue } from '../../core/metrics/invoiceDefs';
+import { isPostedInvoice, isInvoiceOverdue, isStatementPayment } from '../../core/metrics/invoiceDefs';
 import { ensureAiConsent } from '../../core/ai/aiConsent';
 
 /** Katı per-currency: {amount,currency} listesini para birimine göre grupla. */
@@ -803,8 +803,11 @@ export async function fetchStatement(
       .order('issue_date', { ascending: true }),
     labEq(supabase
       .from('payments')
-      .select('id, amount, payment_date, payment_method, reference_no, notes, statement_discount_id, invoice_id, receipt_id, invoices!inner(clinic_id, currency, invoice_no:invoice_number, doctor_id, doctors(id, full_name), work_order:work_orders!invoices_work_order_id_fkey(order_number, patient_name))')
-      .eq('invoices.clinic_id', clinicId), 'invoices.lab_id')
+      .select('id, amount, payment_date, payment_method, reference_no, notes, statement_discount_id, invoice_id, receipt_id, invoices!inner(clinic_id, currency, status, invoice_no:invoice_number, doctor_id, doctors(id, full_name), work_order:work_orders!invoices_work_order_id_fkey(order_number, patient_name))')
+      .eq('invoices.clinic_id', clinicId)
+      // Tek tanım: iptal/taslak faturanın ödemesi (ve DZ/İND payı) ekstrede alacak satırı değildir —
+      // fatura satırıyla aynı süzgeç, v_clinic_balance_ccy ile aynı bakiye.
+      .not('invoices.status', 'in', '(iptal,taslak)'), 'invoices.lab_id')
       .order('payment_date', { ascending: true }),
   ]);
 
@@ -847,7 +850,7 @@ export async function fetchStatement(
 
   // Cari hesap: aynı tahsilat fişinden gelen fatura-başı ödemeler TEK satır (para birimi başına);
   // fişsiz (faturaya doğrudan) ödemeler eskisi gibi kendi satırında.
-  const payRows = mergeReceiptPayments((payRes.data ?? []).map((p: any) => ({
+  const payRows = mergeReceiptPayments((payRes.data ?? []).filter((p: any) => isStatementPayment(p)).map((p: any) => ({
     ...p, amount: Number(p.amount ?? 0), currency: p.invoices?.currency || base,
   })));
   payRows.forEach((p: any) => {
@@ -863,9 +866,9 @@ export async function fetchStatement(
         isDiscount: isDiscountPayment(p),
         date: p.payment_date,
         // İndirim payı tahsilat değil: faturadaki payı alacak satırı kalır (DB faturayı zaten düşürdü →
-        // bakiye aynı), yalnız etiket "Ekstre indirimi · İND-n". Süzmek bakiyeyi şişirirdi.
+        // bakiye aynı), yalnız etiket "Ekstre indirimi · İND-n" (DZ payı "Düzeltme belgesi · DZ-n"). Süzmek bakiyeyi şişirirdi.
         description: isDiscountPayment(p)
-          ? discountPaymentLabel('Ekstre indirimi', p.notes, ' · ')
+          ? discountPaymentLabel('Ekstre indirimi', p.notes, ' · ', 'Düzeltme belgesi')
           : `Tahsilat · ${p.payment_method ?? '—'}${p.reference_no ? ` (${p.reference_no})` : ''}`,
         invoice_id: many ? null : (p.invoice_id ?? null),
         invoice_no: many ? null : (p.invoices?.invoice_no ?? null),

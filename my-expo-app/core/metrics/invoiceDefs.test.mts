@@ -2,7 +2,7 @@
 // Fatura tanımlarının istemci aynası; SQL karşılığı: v_clinic_balance(_ccy), finance_period_metrics (20261026100000).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { POSTED_INVOICE_STATUSES, isPostedInvoice, isInvoiceOverdue } from './invoiceDefs.ts';
+import { POSTED_INVOICE_STATUSES, isPostedInvoice, isInvoiceOverdue, isStatementPayment } from './invoiceDefs.ts';
 
 test('kesilmiş fatura: taslak ve iptal hariç', () => {
   assert.deepEqual([...POSTED_INVOICE_STATUSES], ['kesildi', 'kismi_odendi', 'odendi']);
@@ -21,4 +21,16 @@ test('vadesi geçmiş fatura: kesilmiş, kalanı var, vade bugünden önce', () 
   assert.equal(isInvoiceOverdue(f('odendi', '2026-10-01', 100, 100), T), false);
   assert.equal(isInvoiceOverdue(f('kismi_odendi', '2026-10-01', 100, 40), T), true);
   assert.equal(isInvoiceOverdue(f('kesildi', null), T), false);
+});
+
+test('ekstre ödemesi: yalnız kesilmiş faturanın ödemesi (v_clinic_balance_ccy ile aynı)', () => {
+  assert.equal(isStatementPayment({ invoices: { status: 'kesildi' } }), true);
+  assert.equal(isStatementPayment({ invoices: { status: 'odendi' } }), true);
+  assert.equal(isStatementPayment({ invoices: { status: 'kismi_odendi' } }), true);
+  assert.equal(isStatementPayment({ invoices: { status: 'iptal' } }), false);
+  assert.equal(isStatementPayment({ invoices: { status: 'taslak' } }), false);
+  // durum gelmezse (eski seçim) dışlanmaz
+  assert.equal(isStatementPayment({ invoices: {} }), true);
+  assert.equal(isStatementPayment({ invoices: null }), true);
+  assert.equal(isStatementPayment({}), true);
 });

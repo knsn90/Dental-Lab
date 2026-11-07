@@ -23,3 +23,11 @@ export function isInvoiceOverdue(inv: InvoiceLike, today: string): boolean {
   if (!due || due >= today) return false;
   return (Number(inv.total) || 0) - (Number(inv.paid_amount) || 0) > 0;
 }
+
+/** Ekstreye giren ödeme: faturası kesilmiş (iptal/taslak değil). v_clinic_balance(_ccy) yalnız kesilmiş
+ *  faturaların paid_amount'unu sayar; iptal faturada kalan ödeme/pay ekstrede alacak satırı olmaz.
+ *  Gömülü fatura durumu gelmezse (eski seçim) ödeme dışlanmaz. */
+export function isStatementPayment(p: { invoices?: { status?: string | null } | null }): boolean {
+  const st = p.invoices?.status;
+  return st == null || isPostedInvoice({ status: st });
+}
