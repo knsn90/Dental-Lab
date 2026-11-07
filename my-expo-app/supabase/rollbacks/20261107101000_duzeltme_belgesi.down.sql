@@ -1,0 +1,346 @@
+-- 20261107101000_duzeltme_belgesi — geri alma: canlı tanımlar (.before.txt) aynen geri yazılır,
+-- yeni RPC + sayaç düşer, DZ satırları (payları zincirleme) silinir, şema eski haline döner.
+BEGIN;
+SET LOCAL lock_timeout = '3s';
+
+CREATE OR REPLACE FUNCTION public.record_statement_discount(p_clinic_id uuid, p_currency text, p_from date, p_to date, p_kind text, p_value numeric, p_discount_date date, p_description text, p_idempotency_key text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_lab      uuid;
+  v_id       uuid;
+  v_q        jsonb;
+  v_amount   numeric;
+  v_doc      int;
+  v_base_ccy text;
+  v_rate     numeric;
+  v_date     date := COALESCE(p_discount_date, p_to);
+  v_prior    text;
+  v_k_clinic uuid;
+  v_k_ccy    text;
+  v_rem      numeric;
+  v_to_inv   numeric := 0;
+  v_open     numeric;
+  v_take     numeric;
+  inv        record;
+BEGIN
+  SELECT lab_id INTO v_lab FROM clinics WHERE id = p_clinic_id;
+  IF v_lab IS NULL THEN RAISE EXCEPTION 'Klinik bulunamadı'; END IF;
+  IF NOT (is_platform_admin()
+          OR (v_lab = get_my_lab_id() AND has_permission('manage_finance'))) THEN
+    RAISE EXCEPTION 'Yetkiniz yok';
+  END IF;
+
+  -- Aynı (lab, idempotency_key): aynı klinik + para biriminde kaydı yeniden üretmeden döndür;
+  -- anahtar başka klinik / para biriminin kaydına aitse çakışma (yeniden oynatma değil)
+  IF p_idempotency_key IS NOT NULL THEN
+    SELECT d.id, d.clinic_id, d.currency INTO v_id, v_k_clinic, v_k_ccy FROM clinic_statement_discounts d
+     WHERE d.lab_id = v_lab AND d.idempotency_key = p_idempotency_key;
+    IF v_id IS NOT NULL AND (v_k_clinic IS DISTINCT FROM p_clinic_id OR v_k_ccy IS DISTINCT FROM p_currency) THEN
+      RAISE EXCEPTION 'SD_IDEMPOTENCY_CONFLICT';
+    END IF;
+  END IF;
+
+  IF v_id IS NULL THEN
+    -- Klinik kilidi: dayanak/bakiye okunmadan önce
+    PERFORM pg_advisory_xact_lock(hashtext('sd:' || p_clinic_id));
+    -- Kilit beklenirken aynı anahtarla eşzamanlı çağrı tamamlanmış olabilir
+    IF p_idempotency_key IS NOT NULL THEN
+      SELECT d.id, d.clinic_id, d.currency INTO v_id, v_k_clinic, v_k_ccy FROM clinic_statement_discounts d
+       WHERE d.lab_id = v_lab AND d.idempotency_key = p_idempotency_key;
+      IF v_id IS NOT NULL AND (v_k_clinic IS DISTINCT FROM p_clinic_id OR v_k_ccy IS DISTINCT FROM p_currency) THEN
+        RAISE EXCEPTION 'SD_IDEMPOTENCY_CONFLICT';
+      END IF;
+    END IF;
+  END IF;
+
+  IF v_id IS NOT NULL THEN
+    RETURN (
+      SELECT jsonb_build_object(
+               'id', d.id, 'doc_no', d.doc_no, 'amount', d.amount,
+               'to_invoices', x.to_inv, 'to_credit', d.amount - x.to_inv, 'replayed', true)
+        FROM clinic_statement_discounts d
+        CROSS JOIN LATERAL (
+          SELECT COALESCE(sum(p.amount), 0) AS to_inv
+            FROM payments p
+            JOIN invoices i ON i.id = p.invoice_id
+           WHERE p.statement_discount_id = d.id
+             AND i.issue_date BETWEEN d.period_from AND d.period_to) x
+       WHERE d.id = v_id);
+  END IF;
+
+  v_q := _sd_quote(v_lab, p_clinic_id, p_currency, p_from, p_to, p_kind, p_value);
+  IF NOT (v_q->>'ok')::boolean THEN
+    RAISE EXCEPTION '%', v_q->>'error';
+  END IF;
+  v_amount := (v_q->>'amount')::numeric;
+
+  -- İND numarası (K4 + Ruling O): lab sayacı; ilk satır MAX(doc_no)+1 ile tohumlanır, sonra hiç geri dönmez.
+  -- Sayaç satırının kilidi lab başına numaralamayı sıraya sokar; K4 lab kilidi de alınır.
+  PERFORM pg_advisory_xact_lock(hashtext('sd:' || v_lab));
+  INSERT INTO clinic_statement_discount_counters AS c (lab_id, last_doc_no)
+  VALUES (v_lab, (SELECT COALESCE(max(d.doc_no), 0) + 1 FROM clinic_statement_discounts d WHERE d.lab_id = v_lab))
+  ON CONFLICT (lab_id) DO UPDATE
+     SET last_doc_no = GREATEST(c.last_doc_no,
+                                (SELECT COALESCE(max(d.doc_no), 0) FROM clinic_statement_discounts d WHERE d.lab_id = v_lab)) + 1
+  RETURNING c.last_doc_no INTO v_doc;
+
+  -- Kur: ana para record_clinic_receipt ile aynı; kur get_currency_rate, yoksa 1
+  SELECT COALESCE(ls.default_currency, 'TRY') INTO v_base_ccy FROM lab_settings ls WHERE ls.lab_id = v_lab;
+  v_base_ccy := COALESCE(v_base_ccy, 'TRY');
+  IF p_currency = v_base_ccy THEN
+    v_rate := 1;
+  ELSE
+    v_rate := get_currency_rate(v_lab, p_currency, v_base_ccy, v_date);
+    IF v_rate IS NULL OR v_rate <= 0 THEN v_rate := 1; END IF;
+  END IF;
+
+  INSERT INTO clinic_statement_discounts (lab_id, clinic_id, currency, discount_date, period_from, period_to,
+                                          kind, value, amount, base_amount, rate, amount_base, doc_no,
+                                          description, idempotency_key, created_by)
+  VALUES (v_lab, p_clinic_id, p_currency, v_date, p_from, p_to,
+          p_kind, p_value, v_amount, (v_q->>'base')::numeric, v_rate, round(v_amount * v_rate, 2), v_doc,
+          NULLIF(btrim(p_description), ''), p_idempotency_key, auth.uid())
+  RETURNING id INTO v_id;
+
+  v_prior := current_setting('siman.sd_write', true);
+  PERFORM set_config('siman.sd_write', 'on', true);
+
+  -- Dönem faturalarına dağıtım (vadesi en eski önce)
+  v_rem := v_amount;
+  FOR inv IN
+    SELECT i.id, i.total, i.paid_amount, i.currency
+      FROM invoices i
+     WHERE i.lab_id = v_lab AND i.clinic_id = p_clinic_id AND i.currency = p_currency
+       AND i.issue_date BETWEEN p_from AND p_to
+       AND i.status IN ('kesildi', 'kismi_odendi') AND i.total > i.paid_amount
+     ORDER BY i.due_date ASC NULLS LAST, i.created_at, i.id
+     FOR UPDATE
+  LOOP
+    EXIT WHEN v_rem <= 0;
+    SELECT inv.total - COALESCE(sum(p.amount), 0) INTO v_open FROM payments p WHERE p.invoice_id = inv.id;
+    v_open := LEAST(v_open, inv.total - inv.paid_amount);
+    CONTINUE WHEN v_open <= 0;
+    v_take := LEAST(v_open, v_rem);
+
+    INSERT INTO payments (lab_id, invoice_id, amount, payment_date, payment_method,
+                          currency, rate_at_time, amount_base, base_currency_at_time,
+                          receipt_id, received_by, statement_discount_id, notes)
+    VALUES (v_lab, inv.id, v_take, v_date, 'indirim',
+            inv.currency, v_rate, round(v_take * v_rate, 2), v_base_ccy,
+            NULL, auth.uid(), v_id, 'İND-' || v_doc);
+
+    v_rem    := v_rem - v_take;
+    v_to_inv := v_to_inv + v_take;
+  END LOOP;
+
+  -- Dönem faturalarına sığmayan kısım (ve önceki alacaklar) diğer açık faturalara
+  PERFORM _sd_apply_credit(v_lab, p_clinic_id, p_currency);
+
+  PERFORM set_config('siman.sd_write', COALESCE(v_prior, ''), true);
+
+  PERFORM log_activity('statement_discount_created', 'clinic', p_clinic_id, 'İND-' || v_doc,
+    jsonb_build_object('amount', v_amount, 'currency', p_currency, 'period_from', p_from,
+                       'period_to', p_to, 'kind', p_kind, 'value', p_value),
+    v_lab, auth.uid());
+
+  RETURN jsonb_build_object('id', v_id, 'doc_no', v_doc, 'amount', v_amount,
+                            'to_invoices', v_to_inv, 'to_credit', v_amount - v_to_inv,
+                            'replayed', false);
+END
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.delete_statement_discount(p_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_d       record;
+  v_lab     uuid;
+  v_prior   text;
+  v_touched int;
+BEGIN
+  SELECT d.id, d.lab_id, d.clinic_id, d.doc_no, d.amount, d.currency, d.period_from, d.period_to,
+         d.kind, d.value, c.lab_id AS clinic_lab
+    INTO v_d
+    FROM clinic_statement_discounts d
+    JOIN clinics c ON c.id = d.clinic_id
+   WHERE d.id = p_id;
+  IF NOT FOUND THEN RAISE EXCEPTION 'İndirim bulunamadı'; END IF;
+  v_lab := v_d.clinic_lab;
+  IF NOT (is_platform_admin()
+          OR (v_lab = get_my_lab_id() AND v_d.lab_id = v_lab AND has_permission('manage_finance'))) THEN
+    RAISE EXCEPTION 'Yetkiniz yok';
+  END IF;
+
+  -- Klinik kilidi: paylar okunup silinmeden önce
+  PERFORM pg_advisory_xact_lock(hashtext('sd:' || v_d.clinic_id));
+  PERFORM 1 FROM clinic_statement_discounts WHERE id = p_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'İndirim bulunamadı'; END IF;
+
+  SELECT count(DISTINCT p.invoice_id) INTO v_touched
+    FROM payments p WHERE p.statement_discount_id = p_id;
+
+  v_prior := current_setting('siman.sd_write', true);
+  PERFORM set_config('siman.sd_write', 'on', true);
+  DELETE FROM clinic_statement_discounts WHERE id = p_id;   -- 'indirim' payları ON DELETE CASCADE
+  -- Diğer indirimlerin uygulanmamış alacağı, payları silinen faturalar dahil açık faturalara (Ruling P)
+  PERFORM _sd_apply_credit(v_d.lab_id, v_d.clinic_id, v_d.currency);
+  PERFORM set_config('siman.sd_write', COALESCE(v_prior, ''), true);
+
+  PERFORM log_activity('statement_discount_deleted', 'clinic', v_d.clinic_id, 'İND-' || v_d.doc_no,
+    jsonb_build_object('amount', v_d.amount, 'currency', v_d.currency, 'period_from', v_d.period_from,
+                       'period_to', v_d.period_to, 'kind', v_d.kind, 'value', v_d.value),
+    v_d.lab_id, auth.uid());
+
+  RETURN jsonb_build_object('id', p_id, 'invoices_touched', v_touched);
+END
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public._sd_apply_credit(p_lab uuid, p_clinic uuid, p_currency text)
+ RETURNS numeric
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  r_sd      record;
+  inv       record;
+  r_st      record;
+  v_credit  numeric;
+  v_open    numeric;
+  v_take    numeric;
+  v_applied numeric := 0;
+  v_prior   text;
+  v_base    text;
+BEGIN
+  IF p_lab IS NULL OR p_clinic IS NULL OR p_currency IS NULL THEN
+    RETURN 0;
+  END IF;
+
+  -- Klinik kilidi: Σ pay okunmadan önce (eşzamanlı yazanlar sıraya girer)
+  PERFORM pg_advisory_xact_lock(hashtext('sd:' || p_clinic));
+
+  -- Uygulanacak alacak yoksa ucuz çıkış
+  IF NOT EXISTS (
+       SELECT 1 FROM clinic_statement_discounts sd
+        WHERE sd.lab_id = p_lab AND sd.clinic_id = p_clinic AND sd.currency = p_currency
+          AND sd.amount > (SELECT COALESCE(sum(p.amount), 0)
+                             FROM payments p
+                             JOIN invoices i ON i.id = p.invoice_id
+                            WHERE p.statement_discount_id = sd.id AND i.status <> 'iptal')) THEN
+    RETURN 0;
+  END IF;
+
+  SELECT COALESCE(ls.default_currency, 'TRY') INTO v_base FROM lab_settings ls WHERE ls.lab_id = p_lab;
+  v_base := COALESCE(v_base, 'TRY');
+
+  v_prior := current_setting('siman.sd_write', true);
+  PERFORM set_config('siman.sd_write', 'on', true);
+
+  -- Toplamı artmış 'odendi' faturayı mevcut kuralla yeniden aç (kismi_odendi / kesildi)
+  FOR r_st IN
+    SELECT i.id
+      FROM invoices i
+     WHERE i.lab_id = p_lab AND i.clinic_id = p_clinic AND i.currency = p_currency
+       AND i.status = 'odendi' AND i.total > i.paid_amount
+     ORDER BY i.id
+     FOR UPDATE
+  LOOP
+    PERFORM recalc_invoice_payment_state(r_st.id);
+  END LOOP;
+
+  FOR r_sd IN
+    SELECT sd.id, sd.amount, sd.rate, sd.doc_no
+      FROM clinic_statement_discounts sd
+     WHERE sd.lab_id = p_lab AND sd.clinic_id = p_clinic AND sd.currency = p_currency
+     ORDER BY sd.discount_date, sd.created_at, sd.doc_no
+  LOOP
+    SELECT r_sd.amount - COALESCE(sum(p.amount), 0) INTO v_credit
+      FROM payments p
+      JOIN invoices i ON i.id = p.invoice_id
+     WHERE p.statement_discount_id = r_sd.id AND i.status <> 'iptal';
+    CONTINUE WHEN v_credit <= 0;
+
+    FOR inv IN
+      SELECT i.id, i.total, i.paid_amount, i.currency
+        FROM invoices i
+       WHERE i.lab_id = p_lab AND i.clinic_id = p_clinic AND i.currency = p_currency
+         AND i.status IN ('kesildi', 'kismi_odendi') AND i.total > i.paid_amount
+       ORDER BY i.due_date ASC NULLS LAST, i.created_at, i.id
+       FOR UPDATE
+    LOOP
+      EXIT WHEN v_credit <= 0;
+      SELECT inv.total - COALESCE(sum(p.amount), 0) INTO v_open FROM payments p WHERE p.invoice_id = inv.id;
+      v_open := LEAST(v_open, inv.total - inv.paid_amount);
+      CONTINUE WHEN v_open <= 0;
+      v_take := LEAST(v_open, v_credit);
+
+      INSERT INTO payments (lab_id, invoice_id, amount, payment_date, payment_method,
+                            currency, rate_at_time, amount_base, base_currency_at_time,
+                            receipt_id, received_by, statement_discount_id, notes)
+      VALUES (p_lab, inv.id, v_take, lab_today(p_lab), 'indirim',
+              inv.currency, r_sd.rate, round(v_take * r_sd.rate, 2), v_base,
+              NULL, auth.uid(), r_sd.id, 'İND-' || r_sd.doc_no);
+
+      v_credit  := v_credit - v_take;
+      v_applied := v_applied + v_take;
+    END LOOP;
+  END LOOP;
+
+  PERFORM set_config('siman.sd_write', COALESCE(v_prior, ''), true);
+  RETURN v_applied;
+END
+$function$
+;
+
+REVOKE ALL ON FUNCTION public._sd_apply_credit(uuid, uuid, text) FROM PUBLIC, anon, authenticated;
+
+DROP FUNCTION IF EXISTS public.record_correction_document(uuid, numeric, date, text, text);
+DROP TABLE IF EXISTS public.clinic_correction_counters;
+
+-- 1) DZ satırlarını sil ('indirim' payları ON DELETE CASCADE); etkilenen klinik/para birimlerinde
+--    kalan İND alacağı yeniden uygulanır (desen: delete_statement_discount)
+DO $down$
+DECLARE
+  r      record;
+  v_prior text := current_setting('siman.sd_write', true);
+BEGIN
+  PERFORM set_config('siman.sd_write', 'on', true);
+  FOR r IN
+    DELETE FROM public.clinic_statement_discounts WHERE doc_type = 'DZ'
+    RETURNING lab_id, clinic_id, currency
+  LOOP
+    NULL;
+  END LOOP;
+  FOR r IN
+    SELECT DISTINCT sd.lab_id, sd.clinic_id, sd.currency FROM public.clinic_statement_discounts sd
+  LOOP
+    PERFORM public._sd_apply_credit(r.lab_id, r.clinic_id, r.currency);
+  END LOOP;
+  PERFORM set_config('siman.sd_write', COALESCE(v_prior, ''), true);
+END
+$down$;
+
+-- 2) Kısıtlar, indeks, sütunlar
+DROP INDEX IF EXISTS public.clinic_statement_discounts_dz_item_idx;
+ALTER TABLE public.clinic_statement_discounts
+  DROP CONSTRAINT IF EXISTS clinic_statement_discounts_dz_target,
+  DROP CONSTRAINT IF EXISTS clinic_statement_discounts_dz_reason,
+  DROP CONSTRAINT IF EXISTS clinic_statement_discounts_lab_type_doc_no_key;
+ALTER TABLE public.clinic_statement_discounts
+  DROP COLUMN IF EXISTS invoice_item_id,
+  DROP COLUMN IF EXISTS invoice_id,
+  DROP COLUMN IF EXISTS doc_type;
+
+-- 3) Eski benzersizlik
+ALTER TABLE public.clinic_statement_discounts
+  ADD CONSTRAINT clinic_statement_discounts_lab_id_doc_no_key UNIQUE (lab_id, doc_no);
+COMMIT;
