@@ -19,7 +19,7 @@ import {
   ArrowLeft, ArrowRight, Printer, Download, FileSpreadsheet, Wallet,
   Calendar, Search, X, Filter, SlidersHorizontal, ArrowUpRight, ArrowDownLeft,
   Minus, Banknote, CreditCard, Landmark, FileText,
-  Inbox, Building2, ChevronDown, FileClock, ChevronRight, ChevronLeft, LayoutList, Percent,
+  Inbox, Building2, ChevronDown, FileClock, ChevronRight, ChevronLeft, LayoutList, Percent, FileEdit,
 } from '../../../core/ui/icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -132,6 +132,12 @@ function unbilledTotals(o: UnbilledWorkOrder): Record<string, number> {
   const raw = Number(o.estimated_total) || 0;
   return raw > 0 ? { TRY: raw } : {};
 }
+/** Düzeltme belgesi (DZ) satırının Alacak sütunundaki tutarı (spec P10: indirim sütununa girmez,
+ *  alacakta kendi satırıyla görünür). DZ dışındaki satırlarda 0. */
+function dzCredit(l: { type?: string; docKind?: 'IND' | 'DZ'; discount?: number }): number {
+  return l.type === 'discount' && l.docKind === 'DZ' ? (Number(l.discount) || 0) : 0;
+}
+
 /** İndirim sütunu hücresi: tutar eksi işaretli para, yüzde "%x,x"; indirim yoksa null. */
 function discountText(line: StatementLine, mode: DiscountMode, currency: string): string | null {
   const v = discountCellValue(line, mode);
@@ -221,7 +227,7 @@ function exportExcel(
     return v.kind === 'percent' ? `%${v.value.toFixed(1)}` : (-Math.abs(v.value)).toFixed(2);
   };
   const totalDebit  = opts.sums?.debit  ?? lines.reduce((s, l) => s + l.debit, 0);
-  const totalCredit = opts.sums?.credit ?? lines.reduce((s, l) => s + l.credit, 0);
+  const totalCredit = opts.sums?.credit ?? lines.reduce((s, l) => s + l.credit + dzCredit(l), 0);
   // Dönem filtreliyse önceki aylardan devreden borç açılışta görünür, kapanış ona eklenir.
   const opening     = totals?.opening ?? 0;
   const closing     = totals?.closing ?? totalDebit - totalCredit;
@@ -251,11 +257,11 @@ function exportExcel(
     return [
       new Date(l.date + 'T00:00:00').toLocaleDateString(localeTag()),
       l.invoiceNo ?? '',
-      `${l.type === 'invoice' ? 'Fatura' : l.type === 'discount' ? autoT('İndirim') : 'Tahsilat'} — ${l.description}`,
+      `${l.type === 'invoice' ? 'Fatura' : l.type === 'discount' ? (l.docKind === 'DZ' ? autoT('Düzeltme') : autoT('İndirim')) : 'Tahsilat'} — ${l.description}`,
       fmtNum(showVat ? l.debit - (l.tax ?? 0) : l.debit),
       ...(showVat ? [l.type === 'invoice' ? fmtNum(l.tax ?? 0) : ''] : []),
       ...(showDisc ? [discCell(l)] : []),
-      fmtNum(l.credit),
+      fmtNum(l.credit + dzCredit(l)),
       Math.abs(l.balance).toFixed(2),
       ba(l.balance),
       ...(showStatus ? [status] : []),
@@ -566,6 +572,12 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
     if (line.id?.startsWith('disc-')) {
       if (selfView) return;
       const id = line.id.slice('disc-'.length);
+      // Düzeltme belgesi silinemez (DZ_DELETE_LOCKED): satır bağlı faturayı açar.
+      if (line.docKind === 'DZ') {
+        const invId = discounts.find(d => d.id === id)?.invoice_id;
+        if (invId) router.push(`/${panelBase}/invoice/${invId}` as any);
+        return;
+      }
       const ask = (error: string | null): ConfirmState => ({
         title: autoT('İndirimi sil'),
         highlight: line.invoiceNo,
@@ -595,7 +607,7 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
       return;
     }
     if (line.id) router.push(`/${panelBase}/invoice/${line.id}` as any);
-  }, [panelBase, router, receipts, selfView]);
+  }, [panelBase, router, receipts, selfView, discounts]);
 
   // Build statement (orijinal tutarda) — yalnız seçili dövizin faturaları.
   //
@@ -627,7 +639,15 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
         detail: receiptDepositLabel(r, autoT),
       }));
     // Ekstre indirimleri (yalnız seçili döviz) — yürüyen bakiyeden ÖNCE birleşir.
-    const discLines = discountStatementLines(discounts, selectedCcy);
+    // DZ satırı: "Düzeltme belgesi · <fatura no> · <gerekçe>" (fatura bulunamazsa no atlanır).
+    const invNoById = new Map(invoices.map(i => [i.id, i.invoice_number] as const));
+    const dzInvById = new Map(discounts.map(d => [d.id, d.invoice_id] as const));
+    const discLines = discountStatementLines(discounts, selectedCcy).map(l => {
+      if (l.docKind !== 'DZ') return l;
+      const invId = dzInvById.get((l.id ?? '').slice('disc-'.length));
+      const invNo = invId ? invNoById.get(invId) : undefined;
+      return { ...l, description: [autoT('Düzeltme belgesi'), invNo, l.description].filter(Boolean).join(' · ') };
+    });
     if (rcptLines.length === 0 && discLines.length === 0) return invLines;
     // Tarihe göre birleştir ve yürüyen bakiyeyi yeniden hesapla. Sıralama kararlı:
     // aynı gün içinde fatura/tahsilat sırası olduğu gibi kalır, indirim o günün sonuna düşer
@@ -637,7 +657,7 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
       .sort((a, b) => a.date.localeCompare(b.date) || rank(a) - rank(b));
     let run = 0;
     return merged.map(l => { run += lineDelta(l); return { ...l, balance: run }; });
-  }, [postedInvoices, receipts, discounts, selectedCcy]);
+  }, [postedInvoices, invoices, receipts, discounts, selectedCcy]);
 
   // KPI'lar seçili dövizde. Kesilen/tahsil edilen kesilmiş faturalardan; BAKİYE ve VADESİ GEÇMİŞ
   // kliniğin görünen bakiyesinden (avans düşülmüş — klinik ekranı, Cari listesi ve hatırlatmayla aynı).
@@ -685,7 +705,8 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
   // Totals for filtered
   const totals = useMemo(() => {
     const debit = filtered.reduce((s, l) => s + l.debit, 0);
-    const credit = filtered.reduce((s, l) => s + l.credit, 0);
+    // DZ tutarı Alacak sütununda görünür → alacak toplamına girer (borç − alacak − indirimler = bakiye)
+    const credit = filtered.reduce((s, l) => s + l.credit + dzCredit(l), 0);
     return { debit, credit, balance: filtered.reduce((s, l) => s + lineDelta(l), 0) };
   }, [filtered]);
   // Faturaların KDV dökümü — KDV hariç + KDV = genel toplam (lib/statementVat)
@@ -1269,7 +1290,8 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
             {shown.map((line, i) => {
               const isInvoice = line.type === 'invoice';
               const isDisc = line.type === 'discount';
-              const Icon = isInvoice ? ArrowUpRight : isDisc ? Percent : ArrowDownLeft;
+              const isDz = isDisc && line.docKind === 'DZ';
+              const Icon = isInvoice ? ArrowUpRight : isDz ? FileEdit : isDisc ? Percent : ArrowDownLeft;
               const tone = isInvoice || isDisc ? U.chipTones.info : U.chipTones.success;
               const chip = isInvoice && line.status ? STATUS_CHIP[line.status as InvoiceStatus] : null;
               const mIsInvoice = line.type === 'invoice';
@@ -1278,9 +1300,10 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
               const tapOff = !line.id || (selfView && isDisc);
               const mTitle = mIsInvoice
                 ? ([line.invoiceNo, line.patientName].filter(Boolean).join(' · ') || line.description)
-                : isDisc ? autoT('Dönem indirimi') : autoT('Tahsilat');
+                : isDz ? line.description : isDisc ? autoT('Dönem indirimi') : autoT('Tahsilat');
               const mSub = mIsInvoice
                 ? [line.orderNo, revisionDetail(line, line.debit, autoT), line.doctorName].filter(Boolean).join(' · ')
+                : isDz ? (line.invoiceNo ?? '')
                 : isDisc ? [line.invoiceNo, line.description].filter(Boolean).join(' · ')
                 : [line.invoiceNo, line.receiptNo ? `${autoT('Makbuz')} #${line.receiptNo}` : null, line.patientName, line.detail].filter(Boolean).join(' · ');
 
@@ -1330,7 +1353,7 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
                       )}
                       {isDisc && (
                         <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: U.chipTones.info.bg }}>
-                          <Text style={{ fontSize: 9, fontWeight: '600', color: U.chipTones.info.fg }}>{autoT('İndirim')}</Text>
+                          <Text style={{ fontSize: 9, fontWeight: '600', color: U.chipTones.info.fg }}>{isDz ? autoT('Düzeltme') : autoT('İndirim')}</Text>
                         </View>
                       )}
                     </View>
@@ -1448,7 +1471,8 @@ function StatementRow({ line, last, currency, onOpen, showVat = true, discountMo
   const STATUS_CHIP = statusChip(U);
   const isInvoice = line.type === 'invoice';
   const isDiscount = line.type === 'discount';
-  const Icon = isInvoice ? ArrowUpRight : isDiscount ? Percent : ArrowDownLeft;
+  const isDz = isDiscount && line.docKind === 'DZ';
+  const Icon = isInvoice ? ArrowUpRight : isDz ? FileEdit : isDiscount ? Percent : ArrowDownLeft;
   const typeTone = isInvoice || isDiscount ? U.chipTones.info : U.chipTones.success;
   const discCell = discountMode ? discountText(line, discountMode, currency) : null;
   const chip = isInvoice && line.status ? STATUS_CHIP[line.status as InvoiceStatus] : null;
@@ -1460,10 +1484,11 @@ function StatementRow({ line, last, currency, onOpen, showVat = true, discountMo
   // tekrarladigi icin ayni fatura listede iki kez gorunuyordu.
   const rowTitle = isInvoice
     ? ([line.invoiceNo, line.patientName].filter(Boolean).join(' · ') || line.description)
-    : isDiscount ? autoT('Dönem indirimi') : autoT('Tahsilat');
+    : isDz ? line.description : isDiscount ? autoT('Dönem indirimi') : autoT('Tahsilat');
   // Revizyon faturası: "Asıl sipariş … · Lab kaynaklı, ücretsiz" sipariş no'nun yanında
   const rowSub = isInvoice
     ? [line.orderNo, revisionDetail(line, line.debit, autoT), line.doctorName].filter(Boolean).join(' · ')
+    : isDz ? (line.invoiceNo ?? '')
     : isDiscount ? [line.invoiceNo, line.description].filter(Boolean).join(' · ')
     : [line.invoiceNo, line.receiptNo ? `${autoT('Makbuz')} #${line.receiptNo}` : null, line.patientName, line.detail].filter(Boolean).join(' · ');
 
@@ -1523,7 +1548,7 @@ function StatementRow({ line, last, currency, onOpen, showVat = true, discountMo
         )}
         {isDiscount && (
           <View style={{ alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: U.chipTones.info.bg }}>
-            <Text style={{ fontSize: 10, fontWeight: '600', color: U.chipTones.info.fg }}>{autoT('İndirim')}</Text>
+            <Text style={{ fontSize: 10, fontWeight: '600', color: U.chipTones.info.fg }}>{isDz ? autoT('Düzeltme') : autoT('İndirim')}</Text>
           </View>
         )}
       </View>
@@ -1558,10 +1583,10 @@ function StatementRow({ line, last, currency, onOpen, showVat = true, discountMo
       )}
 
       <Text style={{
-        flex: 1.2, fontSize: 13, fontWeight: line.credit > 0 ? '600' : '400',
-        color: line.credit > 0 ? U.chipTones.success.fg : U.ink[300], textAlign: 'end' as any,
+        flex: 1.2, fontSize: 13, fontWeight: line.credit > 0 || isDz ? '600' : '400',
+        color: line.credit > 0 || isDz ? U.chipTones.success.fg : U.ink[300], textAlign: 'end' as any,
       }}>
-        {isDiscount ? '' : line.credit > 0 ? fmtMoney(line.credit, currency) : '—'}
+        {isDz ? fmtMoney(dzCredit(line), currency) : isDiscount ? '' : line.credit > 0 ? fmtMoney(line.credit, currency) : '—'}
       </Text>
 
       <Text style={{

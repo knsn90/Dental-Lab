@@ -4,6 +4,8 @@ import { invoiceStatusErrorText } from '../lib/statementDiscount';
 import { isDiscountPayment, discountPaymentLabel } from '../lib/discountPayment';
 import { validateInvoiceDiscount, invoiceDiscountRpcError, invoiceTotalsWithDiscount, listPriceInfo, round2, type InvoiceDiscountType } from '../lib/invoiceDiscount';
 import { InvoiceDiscountField } from '../components/InvoiceDiscountField';
+import { CorrectionDocModal } from '../components/CorrectionDocModal';
+import { isCorrectionShare } from '../lib/correctionDoc';
 /**
  * InvoiceDetailScreen — Fatura Detayı (Patterns Design Language)
  *
@@ -24,7 +26,7 @@ import {
   ArrowLeft, ArrowRight, Printer, Banknote, CreditCard, Landmark, File,
   MoreHorizontal, Building2, User, Phone, MapPin, Calendar,
   ClipboardList, Plus, Trash2, Send, BellRing, CircleX,
-  CircleCheck, X, AlertCircle, ChevronRight, ChevronLeft, ChevronDown, Check, FileText, Undo2, Pencil,
+  CircleCheck, X, AlertCircle, ChevronRight, ChevronLeft, ChevronDown, Check, FileText, Undo2, Pencil, FileEdit,
 } from '../../../core/ui/icons';
 import { toast } from '../../../core/ui/Toast';
 import { PaymentBadges } from '../../../core/ui/PaymentBadges';
@@ -43,9 +45,9 @@ import { useInvoice } from '../hooks/useInvoices';
 import {
   recordPayment, setInvoiceStatus, deleteInvoice,
   addInvoiceItem, deleteInvoiceItem, updateInvoiceItem, updateInvoice,
-  undoManualPayment,
+  undoManualPayment, fetchCorrectionsForInvoice,
 } from '../api';
-import type { Payment } from '../types';
+import type { Payment, CorrectionDoc } from '../types';
 import { usePermissions } from '../../../core/hooks/usePermissions';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import {
@@ -292,6 +294,23 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   // Hook KOŞULSUZ ve erken dönüşlerden ÖNCE — bu dosyada iki kez hook sırası bozuldu.
   const { can } = usePermissions();
   const canUndoPayment = !readOnly && can('manage_finance');
+  // Düzeltme belgeleri (DZ) — kalem altında listelenir; pencere tek kalem için açılır.
+  const [corrections, setCorrections] = useState<CorrectionDoc[]>([]);
+  const [dzItemId, setDzItemId] = useState<string | null>(null);
+  const corrReqRef = React.useRef(0);
+  /** Kayıttan sonra DZ listesini yeniden çekmek için (ödenmiş faturada tutar/durum değişmeyebilir). */
+  const [corrTick, setCorrTick] = useState(0);
+  const invStatus = invoice?.status;
+  const invPaid = invoice?.paid_amount;
+  useEffect(() => {
+    const invId = invoice?.id;
+    if (!invId || invStatus === 'taslak') { setCorrections([]); return; }
+    const my = ++corrReqRef.current;
+    fetchCorrectionsForInvoice(invId).then((res) => {
+      if (my !== corrReqRef.current) return;
+      if (!res.error) setCorrections(res.data);
+    });
+  }, [invoice?.id, invStatus, invPaid, corrTick]);
 
   // Fatura değiştiğinde not düzenleyicisini o faturanın güncel notuyla başlat.
   useEffect(() => {
@@ -360,7 +379,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   // GİB'de kayıtlı — oran değişemez). Toplamları recalc_on_tax_change yeniden hesaplar.
   const canEditTax = !readOnly && invoice.status === 'taslak'
     && (!invoice.efatura_uuid || invoice.efatura_status === 'error');
-  // Resmi e-faturası (ETTN) olan fatura Siman'da taslağa alınamaz / iptal edilemez / silinemez
+  // Resmi e-faturası (ETTN) olan fatura Siman'da iptal edilemez / silinemez
   // (DB tetikleyicisi zz_invoices_efatura_lock da reddeder). e-Fatura Luca'da iptal edildiyse açılır.
   const efLocked = !!invoice.efatura_uuid && invoice.efatura_status !== 'cancelled';
   const saveTax = async (raw?: string) => {
@@ -558,6 +577,18 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   };
 
   const items = (invoice.items ?? []).slice().sort((a, b) => a.sort_order - b.sort_order);
+  // Düzeltme belgesi (DZ): yalnız lab panelinde, kesinleşmiş (iptal olmayan) faturada.
+  const canCorrect = !readOnly && ['kesildi', 'kismi_odendi', 'odendi'].includes(invoice.status);
+  const correctionsByItem = new Map<string, CorrectionDoc[]>();
+  for (const c of corrections) {
+    if (!c.invoice_item_id) continue;
+    const arr = correctionsByItem.get(c.invoice_item_id) ?? [];
+    arr.push(c);
+    correctionsByItem.set(c.invoice_item_id, arr);
+  }
+  const priorOn = (itemId: string) =>
+    round2((correctionsByItem.get(itemId) ?? []).reduce((s, c) => s + (Number(c.amount) || 0), 0));
+  const dzItem = dzItemId ? items.find(i => i.id === dzItemId) ?? null : null;
 
   return (
     <View style={{ flex: 1 }}>
@@ -953,6 +984,32 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
                       İndirim: {it.discount_type === 'fixed' ? `−${fmtMoney(it.discount_value)}` : `%${Number(it.discount_value).toLocaleString('tr-TR')}`}
                     </Text>
                   ) : null}
+                  {/* Kalemin düzeltme belgeleri: DZ-n · −tutar · gerekçe · tarih */}
+                  {(correctionsByItem.get(it.id) ?? []).map(c => (
+                    <Text key={c.id} style={{ fontSize: 11, color: U.chipTones.info.fg, marginTop: 3 }}>
+                      {`DZ-${c.doc_no} · −${fmtMoney(Number(c.amount) || 0)}${c.description ? ` · ${c.description}` : ''} · ${fmtDate(c.discount_date)}`}
+                    </Text>
+                  ))}
+                  {canCorrect ? (
+                    <View style={{ flexDirection: 'row', marginTop: 8 }}>
+                      <GlassTooltip title={autoT('Düzeltme')} text={autoT('Bu kalem için düzeltme belgesi (DZ) yaz')}>
+                        <Pressable
+                          onPress={() => setDzItemId(it.id)}
+                          accessibilityRole="button"
+                          accessibilityLabel={autoT('Düzeltme')}
+                          style={{
+                            flexDirection: 'row', alignItems: 'center', gap: 5,
+                            paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
+                            borderWidth: 1, borderColor: U.plainBtn.border, backgroundColor: U.plainBtn.bg,
+                            ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+                          }}
+                        >
+                          <FileEdit size={12} strokeWidth={1.8} color={U.plainBtn.fgMuted} />
+                          <Text style={{ fontSize: 11, fontWeight: '600', color: U.plainBtn.fg }}>{autoT('Düzeltme')}</Text>
+                        </Pressable>
+                      </GlassTooltip>
+                    </View>
+                  ) : null}
                 </View>
                 {isDesktop && (
                   <View style={{ flex: 1, alignItems: 'center' }}>
@@ -1149,7 +1206,9 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 14, fontWeight: '600', color: CHIP_TONES.success.text }}>{fmtMoney(p.amount)}</Text>
                   <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 2 }}>
-                    {fmtDate(p.payment_date)} · {isDiscountPayment(p)
+                    {fmtDate(p.payment_date)} · {isCorrectionShare(p)
+                      ? `${autoT('Düzeltme belgesi')} ${p.notes}`
+                      : isDiscountPayment(p)
                       ? discountPaymentLabel(autoT('Ekstre indirimi'), p.notes)
                       : PAYMENT_METHOD_LABELS[p.payment_method]}
                     {p.reference_no ? ` · ${p.reference_no}` : ''}
@@ -1332,6 +1391,18 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
 
       <PaymentModal visible={paymentModalVisible} invoiceId={invoice.id} maxAmount={balance} currency={invoice.currency || 'TRY'}
         onClose={() => setPaymentModalVisible(false)} onDone={() => { setPaymentModalVisible(false); refetch(); }} />
+      {/* Düzeltme belgesi (DZ) penceresi — kesinleşmiş faturanın tek kalemi */}
+      {dzItem ? (
+        <CorrectionDocModal
+          visible={!!dzItem}
+          onClose={() => setDzItemId(null)}
+          onSaved={() => { setDzItemId(null); setCorrTick(t => t + 1); refetch(); }}
+          invoice={invoice}
+          item={{ id: dzItem.id, description: dzItem.description, net_total: Number(dzItem.net_total ?? dzItem.total) || 0 }}
+          priorOnItem={priorOn(dzItem.id)}
+        />
+      ) : null}
+
       {/* İptal/Sil onayı — web-safe ConfirmDialog (Alert.alert web'de çalışmıyor) */}
       <ConfirmDialog state={confirm} onClose={() => setConfirm(null)} />
 

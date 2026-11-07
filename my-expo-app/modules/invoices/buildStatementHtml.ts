@@ -204,7 +204,23 @@ export function buildStatementHtml(
       ? '%' + v.value.toLocaleString(printLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 })
       : '−' + Math.abs(v.value).toLocaleString(printLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + currency;
   };
-  const cariLines: CariLine[] = lines.map(l => l.type === 'discount' ? ({
+  const cariLines: CariLine[] = lines.map(l => l.type === 'discount' && l.docKind === 'DZ' ? ({
+    // Düzeltme belgesi (DZ): belge sütununda DZ-n, etiket "Düzeltme". İndirim sütunu boş
+    // (discountCellValue DZ'de null); tutar Alacak (tutar) sütununda görünür (spec P10) —
+    // 'discount' türü tutar hücresini boşalttığı için DZ alacak satırı olarak çizilir.
+    refNo: l.invoiceNo ?? null,
+    reference: autoT('Düzeltme'),
+    date: l.date,
+    counterparty: l.description || autoT('Düzeltme belgesi'),
+    counterpartySub: null,
+    amount: Number(l.discount) || 0,
+    currency,
+    type: 'credit',
+    balance: l.balance,
+    tax: null,
+    taxRate: null,
+    ...(showDiscount ? { discountText: discText(l) } : {}),
+  } as CariLine) : l.type === 'discount' ? ({
     // Ekstre indirimi: belge sütununda İND-n, tutar yalnız İndirim sütununda; bakiye düşer
     refNo: l.invoiceNo ?? null,
     reference: autoT('Ekstre indirimi'),
