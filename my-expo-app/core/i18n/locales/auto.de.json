@@ -3963,6 +3963,8 @@
   "Linköping": "Linköping",
   "Liste": "Liste",
   "Liste fiyatı": "Listenpreis",
+  "Bu faturaya ekstre indirimi payı uygulanmış; taslağa çevrilemez. Gerekirse indirimi ekstreden silin.": "Auf diese Rechnung wurde ein Anteil eines Kontoauszugsrabatts angewendet; sie kann nicht in einen Entwurf zurückgesetzt werden. Löschen Sie bei Bedarf den Rabatt im Kontoauszug.",
+  "Bu faturanın ekstre indirimi payı iptalde alacağa döndü; iptal geri alınamaz.": "Der Kontoauszugsrabatt-Anteil dieser Rechnung wurde bei der Stornierung in ein Guthaben umgewandelt; die Stornierung kann nicht rückgängig gemacht werden.",
   "Liste görünümünde tüm kayıtları görebilirsin.": "In der Listenansicht siehst du alle Einträge.",
   "Listede fiyatın yanında görünür (ör. \"120 ₺ / Üye\"). Boş bırakılırsa gösterilmez.": "Erscheint neben dem Preis in der Liste (z. B. \"120 ₺ / Mitglied\"). Bei leer wird nichts angezeigt.",
   "Listedeki eksik istasyonları toplu olarak ekler": "Fügt alle in deiner Liste fehlenden Stationen auf einmal hinzu",

@@ -1,0 +1,98 @@
+-- 20261106100000_sd_taslak_kilidi — ekstre indirimi payı taşıyan fatura taslağa dönemez (son inceleme bulgusu)
+-- Tek değişiklik: _sd_invoice_credit_trg'ye 1c adımı (SD_DRAFT_LOCKED). Yetkiler değişmez (CREATE OR REPLACE ACL'yi korur).
+BEGIN;
+SET LOCAL lock_timeout = '3s';
+CREATE OR REPLACE FUNCTION public._sd_invoice_credit_trg()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_guc     text := COALESCE(current_setting('siman.sd_write', true), '');
+  v_trimmed boolean := false;
+  v_total   numeric;
+  v_paid    numeric;
+  v_excess  numeric;
+  r         record;
+BEGIN
+  -- 0) Fatura silindi
+  IF TG_OP = 'DELETE' THEN
+    IF OLD.clinic_id IS NULL OR NOT EXISTS (
+         SELECT 1 FROM clinic_statement_discounts sd
+          WHERE sd.lab_id = OLD.lab_id AND sd.clinic_id = OLD.clinic_id AND sd.currency = OLD.currency) THEN
+      RETURN NULL;
+    END IF;
+    IF v_guc <> 'on' THEN
+      PERFORM _sd_apply_credit(OLD.lab_id, OLD.clinic_id, OLD.currency);
+    END IF;
+    RETURN NULL;
+  END IF;
+
+  -- 1) Kısa devre
+  IF NEW.clinic_id IS NULL OR NOT EXISTS (
+       SELECT 1 FROM clinic_statement_discounts sd
+        WHERE sd.lab_id = NEW.lab_id AND sd.clinic_id = NEW.clinic_id AND sd.currency = NEW.currency) THEN
+    RETURN NULL;
+  END IF;
+
+  -- 1b) İptalden geri alma: faturada 'indirim' payı varsa reddedilir — o pay iptalde alacağa dönmüş ve
+  --     başka faturalara uygulanmış olabilir; geri alınırsa indirim tutarından fazlası uygulanmış olur
+  IF TG_OP = 'UPDATE' AND OLD.status = 'iptal' AND NEW.status IS DISTINCT FROM 'iptal'
+     AND EXISTS (SELECT 1 FROM payments p WHERE p.invoice_id = NEW.id AND p.payment_method = 'indirim') THEN
+    RAISE EXCEPTION 'SD_UNCANCEL_LOCKED' USING ERRCODE = '23514';
+  END IF;
+
+  -- 1c) Taslağa dönüş: faturada 'indirim' payı varsa reddedilir — taslak fatura bakiyeye/ekstreye girmez,
+  --     pay ise indirimin tüketilmiş alacağı sayılır; dönüş kliniğin bakiyesinden payı sessizce düşürürdü
+  IF TG_OP = 'UPDATE' AND NEW.status = 'taslak' AND OLD.status IS DISTINCT FROM 'taslak'
+     AND EXISTS (SELECT 1 FROM payments p WHERE p.invoice_id = NEW.id AND p.payment_method = 'indirim') THEN
+    RAISE EXCEPTION 'SD_DRAFT_LOCKED' USING ERRCODE = '23514';
+  END IF;
+
+  -- 2) Toplam düşüşünde aşan 'indirim' payının kırpılması
+  IF TG_OP = 'UPDATE' AND NEW.status <> 'iptal' AND NEW.total < OLD.total AND NEW.paid_amount > NEW.total THEN
+    PERFORM pg_advisory_xact_lock(hashtext('sd:' || NEW.clinic_id));
+    SELECT i.total INTO v_total FROM invoices i WHERE i.id = NEW.id FOR UPDATE;
+    SELECT COALESCE(sum(p.amount), 0) INTO v_paid FROM payments p WHERE p.invoice_id = NEW.id;
+    v_excess := v_paid - v_total;
+    IF v_excess > 0 THEN
+      PERFORM set_config('siman.sd_write', 'on', true);
+      FOR r IN
+        SELECT p.id, p.amount, p.rate_at_time
+          FROM payments p
+          JOIN clinic_statement_discounts sd ON sd.id = p.statement_discount_id
+         WHERE p.invoice_id = NEW.id AND p.payment_method = 'indirim'
+         ORDER BY p.created_at DESC, sd.discount_date DESC, sd.created_at DESC, sd.doc_no DESC, p.id DESC
+      LOOP
+        EXIT WHEN v_excess <= 0;
+        IF r.amount <= v_excess THEN
+          DELETE FROM payments WHERE id = r.id;
+          v_excess := v_excess - r.amount;
+        ELSE
+          UPDATE payments
+             SET amount      = r.amount - v_excess,
+                 amount_base = round((r.amount - v_excess) * COALESCE(r.rate_at_time, 1), 2)
+           WHERE id = r.id;
+          v_excess := 0;
+        END IF;
+        v_trimmed := true;
+      END LOOP;
+      PERFORM set_config('siman.sd_write', v_guc, true);
+    END IF;
+  END IF;
+
+  -- 3) Alacağın yeniden uygulanması
+  IF v_guc <> 'on'
+     AND ((NEW.status NOT IN ('taslak', 'iptal') AND NEW.total > NEW.paid_amount)
+          OR (TG_OP = 'UPDATE' AND NEW.status = 'iptal' AND OLD.status IS DISTINCT FROM 'iptal')
+          OR v_trimmed) THEN
+    PERFORM _sd_apply_credit(NEW.lab_id, NEW.clinic_id, NEW.currency);
+  END IF;
+
+  RETURN NULL;
+END
+$function$;
+
+REVOKE ALL ON FUNCTION public._sd_invoice_credit_trg() FROM PUBLIC, anon, authenticated;
+COMMIT;

@@ -24,6 +24,21 @@ export function sdErrorText(code: string | null | undefined): string {
   return 'İndirim kaydedilemedi.';
 }
 
+// Fatura durum değişikliğinde sunucunun SD kilitleri (zz_sd_invoice_credit tetikleyicisi).
+const SD_STATUS_TEXTS: Record<string, string> = {
+  SD_DRAFT_LOCKED: 'Bu faturaya ekstre indirimi payı uygulanmış; taslağa çevrilemez. Gerekirse indirimi ekstreden silin.',
+  SD_UNCANCEL_LOCKED: 'Bu faturanın ekstre indirimi payı iptalde alacağa döndü; iptal geri alınamaz.',
+};
+
+/** Durum değişikliği hatası: SD kilidi → okunur metin; başka hata → ham mesaj; boş → genel metin. */
+export function invoiceStatusErrorText(message: string | null | undefined): string {
+  const m = String(message ?? '').trim();
+  if (!m) return 'İşlem başarısız';
+  const hit = m.match(/SD_[A-Z_]+/);
+  if (hit && Object.prototype.hasOwnProperty.call(SD_STATUS_TEXTS, hit[0])) return SD_STATUS_TEXTS[hit[0]];
+  return m;
+}
+
 function ymd(s: string): [number, number, number] {
   const [y, m, d] = s.slice(0, 10).split('-').map(Number);
   return [y, m, d];

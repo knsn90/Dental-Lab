@@ -1,5 +1,6 @@
 import { localeTag, isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
+import { invoiceStatusErrorText } from '../lib/statementDiscount';
 import { isDiscountPayment, discountPaymentLabel } from '../lib/discountPayment';
 import { validateInvoiceDiscount, invoiceDiscountRpcError, invoiceTotalsWithDiscount, listPriceInfo, round2, type InvoiceDiscountType } from '../lib/invoiceDiscount';
 import { InvoiceDiscountField } from '../components/InvoiceDiscountField';
@@ -532,7 +533,8 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
         setBusy(true);
         const { error } = await setInvoiceStatus(invoice.id, 'taslak');
         setBusy(false);
-        if (error) toast.error((error as any).message ?? String(error)); else { toast.success('Fatura taslağa alındı — artık düzenlenebilir.'); refetch(); }
+        // SD_DRAFT_LOCKED: ekstre indirimi payı taşıyan fatura taslağa dönemez (sunucu kilidi).
+        if (error) toast.error(autoT(invoiceStatusErrorText((error as any).message ?? String(error)))); else { toast.success('Fatura taslağa alındı — artık düzenlenebilir.'); refetch(); }
       },
     });
   };

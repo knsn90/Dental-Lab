@@ -1,7 +1,7 @@
 // node --test modules/invoices/lib/statementDiscount.test.mts — ekstre indirimi saf kuralları
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { statementDiscountDocNo, sdErrorText, discountPeriodLabel, sdServerError, invoiceDiscountOf, discountCellValue, discountStatementLines, hasAnyDiscount, discountTotal } from './statementDiscount.ts';
+import { statementDiscountDocNo, sdErrorText, invoiceStatusErrorText, discountPeriodLabel, sdServerError, invoiceDiscountOf, discountCellValue, discountStatementLines, hasAnyDiscount, discountTotal } from './statementDiscount.ts';
 
 test('belge numarası', () => { assert.equal(statementDiscountDocNo(7), 'İND-7'); });
 test('hata metinleri spec §10', () => {
@@ -50,4 +50,12 @@ test('hasAnyDiscount / discountTotal', () => {
   assert.equal(hasAnyDiscount(ls), true);
   assert.equal(hasAnyDiscount([{ discount: 0 }, {}]), false);
   assert.equal(discountTotal(ls), 10);
+});
+
+test('fatura durum hatası: SD kilitleri okunur metne, diğerleri ham', () => {
+  assert.equal(invoiceStatusErrorText('check violation: SD_DRAFT_LOCKED'), 'Bu faturaya ekstre indirimi payı uygulanmış; taslağa çevrilemez. Gerekirse indirimi ekstreden silin.');
+  assert.equal(invoiceStatusErrorText('SD_UNCANCEL_LOCKED'), 'Bu faturanın ekstre indirimi payı iptalde alacağa döndü; iptal geri alınamaz.');
+  assert.equal(invoiceStatusErrorText('Yetkiniz yok'), 'Yetkiniz yok');
+  assert.equal(invoiceStatusErrorText(''), 'İşlem başarısız');
+  assert.equal(invoiceStatusErrorText(null), 'İşlem başarısız');
 });

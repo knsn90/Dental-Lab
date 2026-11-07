@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { sdErrorText } from './lib/statementDiscount.ts';
+import { sdErrorText, invoiceStatusErrorText } from './lib/statementDiscount.ts';
 import { validateInvoiceDiscount } from './lib/invoiceDiscount.ts';
 
 const dict = (lang: string): Record<string, string> =>
@@ -61,8 +61,11 @@ const TASK16 = [
 // Görev 17: fatura detayı ve PDF'te genel orandan gelen kalemin ikincil satırı ("Liste fiyatı X · Genel indirim %Y")
 const TASK17 = ['Liste fiyatı', 'Genel indirim'];
 
+// Son inceleme: SD kilidi hata metinleri (taslağa dönüş / iptal geri alma)
+const FINAL = ['SD_DRAFT_LOCKED', 'SD_UNCANCEL_LOCKED', ''].map(invoiceStatusErrorText);
+
 test('ekstre indirimi metinleri en/de/fa sözlüklerinde', () => {
-  const keys = [...new Set([...TASK1, ...TASK4_5, ...TASK7, ...TASK11, ...TASK12, ...TASK13, ...TASK16, ...TASK17])];
+  const keys = [...new Set([...TASK1, ...TASK4_5, ...TASK7, ...TASK11, ...TASK12, ...TASK13, ...TASK16, ...TASK17, ...FINAL])];
   for (const lang of ['en', 'de', 'fa']) {
     const d = dict(lang);
     const missing = keys.filter((k) => !(typeof d[k] === 'string' && d[k].trim().length > 0));
