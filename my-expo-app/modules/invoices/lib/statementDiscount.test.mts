@@ -59,3 +59,11 @@ test('fatura durum hatası: SD kilitleri okunur metne, diğerleri ham', () => {
   assert.equal(invoiceStatusErrorText(''), 'İşlem başarısız');
   assert.equal(invoiceStatusErrorText(null), 'İşlem başarısız');
 });
+
+test('kesinleşmiş fatura kilidi okunur metne çevrilir', () => {
+  const t = 'Kesilmiş fatura değiştirilemez ve silinemez. Düzeltme için düzeltme belgesi (DZ), iptal ya da ek fatura kullanın.';
+  assert.equal(invoiceStatusErrorText('INV_ISSUED_LOCKED'), t);
+  assert.equal(invoiceStatusErrorText('ERROR: INV_ISSUED_LOCKED (SQLSTATE 42501)'), t);
+  assert.equal(invoiceStatusErrorText('INV_DISCOUNT_LOCKED'), t);
+  assert.equal(invoiceStatusErrorText('INV_OTHER'), 'INV_OTHER');
+});

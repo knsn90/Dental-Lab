@@ -62,7 +62,7 @@ const TASK16 = [
 const TASK17 = ['Liste fiyatı', 'Genel indirim'];
 
 // Son inceleme: SD kilidi hata metinleri (taslağa dönüş / iptal geri alma)
-const FINAL = ['SD_DRAFT_LOCKED', 'SD_UNCANCEL_LOCKED', ''].map(invoiceStatusErrorText);
+const FINAL = ['SD_DRAFT_LOCKED', 'SD_UNCANCEL_LOCKED', 'INV_ISSUED_LOCKED', ''].map(invoiceStatusErrorText);
 
 test('ekstre indirimi metinleri en/de/fa sözlüklerinde', () => {
   const keys = [...new Set([...TASK1, ...TASK4_5, ...TASK7, ...TASK11, ...TASK12, ...TASK13, ...TASK16, ...TASK17, ...FINAL])];

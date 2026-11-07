@@ -3975,6 +3975,7 @@
   "Liste fiyatı": "List price",
   "Bu faturaya ekstre indirimi payı uygulanmış; taslağa çevrilemez. Gerekirse indirimi ekstreden silin.": "This invoice has a statement discount share applied; it cannot be reverted to draft. If needed, delete the discount from the statement.",
   "Bu faturanın ekstre indirimi payı iptalde alacağa döndü; iptal geri alınamaz.": "This invoice's statement discount share was returned to credit on cancellation; the cancellation cannot be undone.",
+  "Kesilmiş fatura değiştirilemez ve silinemez. Düzeltme için düzeltme belgesi (DZ), iptal ya da ek fatura kullanın.": "An issued invoice cannot be changed or deleted. Use a correction document (DZ), a cancellation or a supplementary invoice to correct it.",
   "Liste görünümünde tüm kayıtları görebilirsin.": "You can see all records in list view.",
   "Listede fiyatın yanında görünür (ör. \"120 ₺ / Üye\"). Boş bırakılırsa gösterilmez.": "Shown next to the price in the list (e.g. \"120 ₺ / Member\"). Hidden if left empty.",
   "Listedeki eksik istasyonları toplu olarak ekler": "Adds all the stations missing from your list at once",

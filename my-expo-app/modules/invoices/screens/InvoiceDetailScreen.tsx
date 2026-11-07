@@ -358,7 +358,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
 
   // KDV oranı: e-faturaya gönderilene kadar değiştirilebilir (gönderilmiş belge
   // GİB'de kayıtlı — oran değişemez). Toplamları recalc_on_tax_change yeniden hesaplar.
-  const canEditTax = !readOnly && invoice.status !== 'iptal'
+  const canEditTax = !readOnly && invoice.status === 'taslak'
     && (!invoice.efatura_uuid || invoice.efatura_status === 'error');
   // Resmi e-faturası (ETTN) olan fatura Siman'da taslağa alınamaz / iptal edilemez / silinemez
   // (DB tetikleyicisi zz_invoices_efatura_lock da reddeder). e-Fatura Luca'da iptal edildiyse açılır.
@@ -500,10 +500,8 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
     setBusy(true);
     const { error } = await setInvoiceStatus(invoice.id, 'kesildi');
     setBusy(false);
-    if (error) toast.error((error as any).message ?? String(error)); else refetch();
+    if (error) toast.error(autoT(invoiceStatusErrorText((error as any).message ?? String(error)))); else refetch();
   };
-  // Kesilmiş faturayı TASLAĞA geri al → düzenleme (kalem ekle/sil, adet/fiyat) yeniden açılır.
-  // Yalnız ödeme yokken; taslak bakiyeye/ekstreye girmez, yeniden kesilince aynı numarayla döner.
   // Yanlışlıkla girilen tahsilat ("ödendi" yapılan fatura) — durum tetikleyiciyle kendiliğinden döner.
   const handleUndoPayment = (p: Payment) => {
     setConfirm({
@@ -523,21 +521,6 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
     });
   };
 
-  const handleRevertToDraft = () => {
-    setConfirm({
-      title: 'Taslağa Dön', variant: 'warning',
-      message: 'Fatura taslağa çevrilecek ve düzenlenebilir olacak. Taslak fatura bakiyeye/ekstreye dahil edilmez; düzenledikten sonra "Kesildi İşaretle" ile yeniden kesebilirsin.',
-      label: 'Taslağa Dön',
-      onConfirm: async () => {
-        setConfirm(null);   // onay diyaloğunu hemen kapat (ConfirmDialog onConfirm sonrası kapatmıyor)
-        setBusy(true);
-        const { error } = await setInvoiceStatus(invoice.id, 'taslak');
-        setBusy(false);
-        // SD_DRAFT_LOCKED: ekstre indirimi payı taşıyan fatura taslağa dönemez (sunucu kilidi).
-        if (error) toast.error(autoT(invoiceStatusErrorText((error as any).message ?? String(error)))); else { toast.success('Fatura taslağa alındı — artık düzenlenebilir.'); refetch(); }
-      },
-    });
-  };
   // NOT: RN Alert.alert web'de çalışmıyor → onay diyaloğu açılmıyordu (silinemiyordu).
   // Cross-platform ConfirmDialog kullanılıyor.
   const handleCancel = () => {
@@ -550,7 +533,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
         setBusy(true);
         const { error } = await setInvoiceStatus(invoice.id, 'iptal');
         setBusy(false);
-        if (error) toast.error((error as any).message ?? String(error)); else refetch();
+        if (error) toast.error(autoT(invoiceStatusErrorText((error as any).message ?? String(error)))); else refetch();
       },
     });
   };
@@ -657,9 +640,6 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
                     )}
                     {!readOnly && (invoice.status === 'kesildi' || invoice.status === 'kismi_odendi') && (
                       <PillBtn icon={BellRing} label="Hatırlatma" stacked={!isDesktop} color={U.ink[500]} bg={U.ink[50]} onPress={() => setReminderOpen(true)} disabled={busy} />
-                    )}
-                    {!readOnly && !efLocked && invoice.status === 'kesildi' && Number(invoice.paid_amount) === 0 && (
-                      <PillBtn icon={Undo2} label="Taslağa Dön" stacked={!isDesktop} color={U.ink[700]} bg={U.ink[100]} onPress={handleRevertToDraft} disabled={busy} />
                     )}
                     {!readOnly && balance > 0 && invoice.status !== 'iptal' && (
                       <PillBtn icon={Banknote} label="Tahsilat Ekle" stacked={!isDesktop} onPress={() => setPaymentModalVisible(true)} dark />

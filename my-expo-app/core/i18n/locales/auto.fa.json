@@ -3961,6 +3961,7 @@
   "Liste fiyatı": "قیمت فهرست",
   "Bu faturaya ekstre indirimi payı uygulanmış; taslağa çevrilemez. Gerekirse indirimi ekstreden silin.": "سهمی از تخفیف صورت‌حساب روی این فاکتور اعمال شده است؛ نمی‌توان آن را به پیش‌نویس برگرداند. در صورت نیاز، تخفیف را از صورت‌حساب حذف کنید.",
   "Bu faturanın ekstre indirimi payı iptalde alacağa döndü; iptal geri alınamaz.": "سهم تخفیف صورت‌حساب این فاکتور هنگام ابطال به اعتبار برگشت؛ ابطال قابل بازگشت نیست.",
+  "Kesilmiş fatura değiştirilemez ve silinemez. Düzeltme için düzeltme belgesi (DZ), iptal ya da ek fatura kullanın.": "فاکتور صادرشده قابل تغییر یا حذف نیست. برای اصلاح، از سند اصلاحی (DZ)، ابطال یا فاکتور تکمیلی استفاده کنید.",
   "Liste görünümünde tüm kayıtları görebilirsin.": "در نمای فهرست می‌توانی همه رکوردها را ببینی.",
   "Listede fiyatın yanında görünür (ör. \"120 ₺ / Üye\"). Boş bırakılırsa gösterilmez.": "در فهرست کنار قیمت نمایش داده می‌شود (مثلاً «۱۲۰ ₺ / عضو»). اگر خالی بماند نمایش داده نمی‌شود.",
   "Listedeki eksik istasyonları toplu olarak ekler": "ایستگاه‌هایی را که در فهرستت نیستند یکجا اضافه می‌کند",
