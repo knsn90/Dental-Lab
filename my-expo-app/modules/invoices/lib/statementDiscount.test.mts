@@ -67,3 +67,17 @@ test('kesinleşmiş fatura kilidi okunur metne çevrilir', () => {
   assert.equal(invoiceStatusErrorText('INV_DISCOUNT_LOCKED'), t);
   assert.equal(invoiceStatusErrorText('INV_OTHER'), 'INV_OTHER');
 });
+
+test('DZ satırı indirim sütununa ve toplamına girmez', () => {
+  const base = { lab_id: 'l', clinic_id: 'c', currency: 'TRY', discount_date: '2026-11-01', period_from: '2026-11-01', period_to: '2026-11-01', kind: 'fixed' as const, value: 0, base_amount: 0, doc_no: 1, description: null, created_at: '', invoice_id: null, invoice_item_id: null };
+  const lines = discountStatementLines([
+    { ...base, id: 'a', doc_type: 'IND', amount: 100 },
+    { ...base, id: 'b', doc_type: 'DZ', amount: 40 },
+  ], 'TRY');
+  assert.deepEqual(lines.map(l => l.invoiceNo), ['İND-1', 'DZ-1']);
+  assert.deepEqual(lines.map(l => l.docKind), ['IND', 'DZ']);
+  assert.equal(discountTotal(lines), 100);
+  assert.equal(discountCellValue(lines[1], 'amount'), null);
+  assert.equal(hasAnyDiscount([lines[1]]), false);
+  assert.equal(hasAnyDiscount(lines), true);
+});

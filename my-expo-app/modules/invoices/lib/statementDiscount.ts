@@ -3,6 +3,7 @@
 
 import type { StatementDiscount } from '../types';
 import type { StatementLine } from '../buildStatementHtml';
+import { correctionDocNo } from './correctionDoc.ts';
 
 export type DiscountMode = 'amount' | 'percent';
 export type SdErrorCode = 'SD_EMPTY' | 'SD_VALUE' | 'SD_CAP';
@@ -68,7 +69,7 @@ export function discountPeriodLabel(
 export function sdServerError(message: string | null | undefined): string | null {
   const m = String(message ?? '').trim();
   if (!m) return null;
-  const hit = m.match(/SD_[A-Z_]+/);
+  const hit = m.match(/(SD|DZ)_[A-Z_]+/);
   return hit ? hit[0] : m;
 }
 
@@ -103,7 +104,8 @@ export function discountStatementLines(
       date: d.discount_date,
       type: 'discount' as const,
       description: d.description ?? '',
-      invoiceNo: statementDiscountDocNo(d.doc_no),
+      invoiceNo: (d.doc_type ?? 'IND') === 'DZ' ? correctionDocNo(d.doc_no) : statementDiscountDocNo(d.doc_no),
+      docKind: (d.doc_type ?? 'IND') as 'IND' | 'DZ',
       debit: 0,
       credit: 0,
       balance: 0,
@@ -114,9 +116,10 @@ export function discountStatementLines(
 
 /** İndirim sütunu hücresi; tutar yoksa null, yüzdede dayanak yoksa null. */
 export function discountCellValue(
-  l: { type: string; discount?: number; discountBase?: number },
+  l: { type: string; discount?: number; discountBase?: number; docKind?: 'IND' | 'DZ' },
   mode: DiscountMode,
 ): { kind: 'amount' | 'percent'; value: number } | null {
+  if (l.docKind === 'DZ') return null;
   const d = num(l.discount);
   if (d <= 0) return null;
   if (mode === 'amount') return { kind: 'amount', value: d };
@@ -125,13 +128,13 @@ export function discountCellValue(
   return { kind: 'percent', value: round1((d / base) * 100) };
 }
 
-export function hasAnyDiscount(lines: ReadonlyArray<{ discount?: number }>): boolean {
-  return lines.some(l => num(l.discount) > 0);
+export function hasAnyDiscount(lines: ReadonlyArray<{ discount?: number; docKind?: 'IND' | 'DZ' }>): boolean {
+  return lines.some(l => l.docKind !== 'DZ' && num(l.discount) > 0);
 }
 
 /** Yalnız indirim satırlarının toplamı (faturadaki bilgi tutarı sayılmaz). */
-export function discountTotal(lines: ReadonlyArray<{ type?: string; discount?: number }>): number {
+export function discountTotal(lines: ReadonlyArray<{ type?: string; discount?: number; docKind?: 'IND' | 'DZ' }>): number {
   let t = 0;
-  for (const l of lines) if (l.type === 'discount') t += num(l.discount);
+  for (const l of lines) if (l.type === 'discount' && l.docKind !== 'DZ') t += num(l.discount);
   return Math.round(t * 100) / 100;
 }

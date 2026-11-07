@@ -330,7 +330,11 @@ export interface StatementDiscount {
   discount_date: string; period_from: string; period_to: string;
   kind: 'percent' | 'fixed'; value: number; amount: number; base_amount: number;
   doc_no: number; description: string | null; created_at: string;
+  doc_type: 'IND' | 'DZ'; invoice_id: string | null; invoice_item_id: string | null;
 }
+
+/** Düzeltme belgesi (DZ) — clinic_statement_discounts'ta doc_type='DZ' satırı. */
+export type CorrectionDoc = StatementDiscount & { doc_type: 'DZ' };
 
 export interface StatementDiscountInput {
   clinicId: string; currency: string; from: string; to: string;

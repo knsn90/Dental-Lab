@@ -85,6 +85,8 @@ export interface StatementLine {
   discount?: number;
   /** İndirim yüzdesi için dayanak (fatura brüt / dönem fatura toplamı) */
   discountBase?: number;
+  /** İndirim satırının türü: İND (ekstre indirimi) ya da DZ (düzeltme belgesi) */
+  docKind?: 'IND' | 'DZ';
 }
 
 /**

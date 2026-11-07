@@ -13,7 +13,7 @@ import type {
   ReceiptLine, ReceiptResult, ClinicReceipt,
   InvoiceListFilters, CreateBulkInvoiceParams, UnbilledWorkOrder,
   LinkedWorkOrder,
-  StatementDiscount, StatementDiscountInput, StatementDiscountQuote,
+  StatementDiscount, CorrectionDoc, StatementDiscountInput, StatementDiscountQuote,
 } from './types';
 import { sdServerError } from './lib/statementDiscount';
 import { type CurrencyTotal } from '../../core/money/aggregations';
@@ -734,7 +734,7 @@ export async function fetchStatementDiscounts(
 ): Promise<{ data: StatementDiscount[]; error: string | null }> {
   const { data, error } = await supabase
     .from('clinic_statement_discounts')
-    .select('id, lab_id, clinic_id, currency, discount_date, period_from, period_to, kind, value, amount, base_amount, doc_no, description, created_at')
+    .select('id, lab_id, clinic_id, currency, discount_date, period_from, period_to, kind, value, amount, base_amount, doc_no, description, created_at, doc_type, invoice_id, invoice_item_id')
     .eq('clinic_id', clinicId)
     .order('discount_date', { ascending: true })
     .order('doc_no', { ascending: true });
@@ -789,6 +789,47 @@ export async function recordStatementDiscount(
   } catch (e: any) {
     return { data: null, error: sdServerError(e?.message) ?? 'error' };
   }
+}
+
+export async function recordCorrectionDocument(
+  p: { invoiceItemId: string; amount: number; date: string; reason: string; idempotencyKey: string },
+): Promise<{ data: { id: string; doc_no: number; toInvoice: number; toCredit: number; replayed: boolean } | null; error: string | null }> {
+  const call = () => supabase.rpc('record_correction_document', {
+    p_invoice_item_id: p.invoiceItemId, p_amount: p.amount, p_doc_date: p.date,
+    p_reason: p.reason, p_idempotency_key: p.idempotencyKey,
+  });
+  try {
+    let res = await call();
+    // Deadlock (40P01): aynı anahtarla bir kez yeniden dene — kayıt idempotent.
+    if (res.error && (res.error as { code?: string }).code === '40P01') res = await call();
+    if (res.error) return { data: null, error: sdServerError(res.error.message) ?? 'error' };
+    const r = (res.data ?? {}) as Record<string, unknown>;
+    return {
+      data: {
+        id: String(r.id), doc_no: num(r.doc_no),
+        toInvoice: num(r.to_invoice), toCredit: num(r.to_credit), replayed: r.replayed === true,
+      },
+      error: null,
+    };
+  } catch (e: any) {
+    return { data: null, error: sdServerError(e?.message) ?? 'error' };
+  }
+}
+
+export async function fetchCorrectionsForInvoice(
+  invoiceId: string,
+): Promise<{ data: CorrectionDoc[]; error: string | null }> {
+  const { data, error } = await supabase
+    .from('clinic_statement_discounts')
+    .select('id, lab_id, clinic_id, currency, discount_date, period_from, period_to, kind, value, amount, base_amount, doc_no, description, created_at, doc_type, invoice_id, invoice_item_id')
+    .eq('doc_type', 'DZ')
+    .eq('invoice_id', invoiceId)
+    .order('doc_no', { ascending: true });
+  if (error) return { data: [], error: sdServerError(error.message) ?? 'error' };
+  const rows = ((data ?? []) as unknown as CorrectionDoc[]).map(r => ({
+    ...r, value: num(r.value), amount: num(r.amount), base_amount: num(r.base_amount), doc_no: num(r.doc_no),
+  }));
+  return { data: rows, error: null };
 }
 
 export async function deleteStatementDiscount(id: string): Promise<{ error: string | null }> {
