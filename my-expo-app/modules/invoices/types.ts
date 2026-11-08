@@ -297,12 +297,24 @@ export type ReceiptAllocation = {
   currency: string;
 };
 
+/** Önizlemenin döndürdüğü açık fatura (FIFO sırasında). */
+export interface OpenInvoice {
+  invoice_id: string;
+  invoice_no: string | null;
+  currency: string;
+  open: number;
+  issue_date: string | null;
+  due_date: string | null;
+}
+
 export type ReceiptResult = {
   receipt_id: string;
   total_base: number;
   allocated_base: number;
   credit_base: number;
   allocations: ReceiptAllocation[];
+  /** Yalnız önizlemede: elle seçim listesi için açık faturalar (FIFO sırası). */
+  open_invoices?: OpenInvoice[];
   /** Aynı idempotency anahtarıyla ikinci çağrı ise true. */
   duplicate?: boolean;
 };

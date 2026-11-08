@@ -9999,5 +9999,10 @@
   "Tek kullanımlık kod üret; klinik girince laboratuvarına bağlanır": "Generate a single-use code; the clinic connects to your lab when it enters it",
   "Kurum türleri, kişiler, takip ve işlemler": "Institution types, people, follow-up and actions",
   "İndirim oranı kaydedilemedi.": "The discount rate could not be saved.",
-  "İndirim kaldırılamadı.": "The discount could not be removed."
+  "İndirim kaldırılamadı.": "The discount could not be removed.",
+  "Faturaları elle seç": "Select invoices manually",
+  "Seçilen faturalar önce kapanır, kalanı en eskiden başlar": "Selected invoices are closed first; the rest starts from the oldest",
+  "Düzenlemede dağıtım en eski borçtan yeniden yapılır": "When editing, the allocation is redone from the oldest debt",
+  "Seçilen fatura artık açık değil": "The selected invoice is no longer open",
+  "Seçilebilir açık fatura yok": "No open invoices to select"
 }

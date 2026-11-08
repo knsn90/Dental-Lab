@@ -9999,5 +9999,10 @@
   "Tek kullanımlık kod üret; klinik girince laboratuvarına bağlanır": "یک کد یک‌بارمصرف بسازید؛ کلینیک با واردکردن آن به لابراتوار شما متصل می‌شود",
   "Kurum türleri, kişiler, takip ve işlemler": "انواع مؤسسه، افراد، پیگیری و اقدامات",
   "İndirim oranı kaydedilemedi.": "نرخ تخفیف ذخیره نشد.",
-  "İndirim kaldırılamadı.": "تخفیف حذف نشد."
+  "İndirim kaldırılamadı.": "تخفیف حذف نشد.",
+  "Faturaları elle seç": "انتخاب دستی فاکتورها",
+  "Seçilen faturalar önce kapanır, kalanı en eskiden başlar": "فاکتورهای انتخاب‌شده ابتدا تسویه می‌شوند و باقی‌مانده از قدیمی‌ترین شروع می‌شود",
+  "Düzenlemede dağıtım en eski borçtan yeniden yapılır": "در ویرایش، تخصیص دوباره از قدیمی‌ترین بدهی انجام می‌شود",
+  "Seçilen fatura artık açık değil": "فاکتور انتخاب‌شده دیگر باز نیست",
+  "Seçilebilir açık fatura yok": "فاکتور بازی برای انتخاب وجود ندارد"
 }

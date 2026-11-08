@@ -25,7 +25,10 @@ import { labTodayOf } from '../../../core/metrics/orderDefs';
 import { cachedLabTz, loadLabTz } from '../../../core/metrics/useLabToday';
 import { previewClinicReceipt, recordClinicReceipt, updateClinicReceipt, setClinicReceiptAccount } from '../api';
 import { fetchDepositAccounts } from '../../cash/api';
-import type { ReceiptLine, ReceiptResult, ClinicReceipt } from '../types';
+import type { ReceiptLine, ReceiptResult, ClinicReceipt, OpenInvoice } from '../types';
+import {
+  toggleSelection, pruneSelection, selectableInvoices, receiptErrorText,
+} from '../lib/receiptSelection';
 
 const CCY: ReceiptLine['currency'][] = ['TRY', 'EUR', 'USD', 'GBP'];
 const METHODS = ['nakit', 'kart', 'havale', 'cek', 'diger'] as const;
@@ -73,6 +76,13 @@ export function ClinicReceiptModal({
   /** Kayıtlı bir fiş SALT-OKUNUR açılır; düzenlemek ayrı bir adımdır.
    *  Yanlışlıkla üzerine yazmak, kayıtlı bir tahsilatta ucuz bir hata olmamalı. */
   const [locked, setLocked] = useState(false);
+  // Elle fatura seçimi: seçim sırası = kapanma sırası. Kapalıyken sunucuya hiç
+  // fatura listesi gitmez (dağıtım bugünkü FIFO ile birebir aynı kalır).
+  const [manual, setManual]     = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [openInvs, setOpenInvs] = useState<OpenInvoice[]>([]);
+  const [saveErr, setSaveErr]   = useState<string | null>(null);
+  const [prevTick, setPrevTick] = useState(0);
   const idemRef = useRef<string>('');
   const debRef  = useRef<any>(null);
 
@@ -80,6 +90,7 @@ export function ClinicReceiptModal({
     if (!visible) return;
     idemRef.current = `rcpt-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     setPreview(null); setBusy(false); setMethodErr(false);
+    setManual(false); setSelected([]); setOpenInvs([]); setSaveErr(null);
     setLocked(!!editing);
     setAccountId(editing?.account_id ?? null);
     fetchDepositAccounts().then(setAccounts).catch(() => setAccounts([]));
@@ -120,7 +131,22 @@ export function ClinicReceiptModal({
     .filter(l => isFinite(l.amount) && l.amount > 0 && isFinite(l.rate) && l.rate > 0),
   [rows]);
 
-  // Satırlar değiştikçe sunucudan dağıtım önizlemesi.
+  // Seçilebilir faturalar yalnız fişte tutarı girilmiş para birimlerindekiler
+  // (farklı para birimindeki seçili fatura DB'de uygulanmazdı).
+  const lineCcyKey = Array.from(new Set(validLines().map(l => l.currency))).sort().join(',');
+  const selectable = selectableInvoices(openInvs, lineCcyKey ? lineCcyKey.split(',') : []);
+  const selKey = selected.join(',');
+
+  // Liste ya da satır para birimleri değişince artık seçilemeyenleri seçimden at.
+  useEffect(() => {
+    setSelected(prev => {
+      const next = pruneSelection(prev, selectable);
+      return next.length === prev.length ? prev : next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openInvs, lineCcyKey]);
+
+  // Satırlar / seçim değiştikçe sunucudan dağıtım önizlemesi.
   useEffect(() => {
     if (!visible || !clinicId) return;
     const lines = validLines();
@@ -128,19 +154,35 @@ export function ClinicReceiptModal({
     if (lines.length === 0) { setPreview(null); return; }
     debRef.current = setTimeout(async () => {
       setLoadingPrev(true);
-      try { setPreview(await previewClinicReceipt(clinicId, lines)); }
-      catch { setPreview(null); }
+      try {
+        const r = await previewClinicReceipt(clinicId, lines, manual && !editing ? selected : undefined);
+        setPreview(r);
+        if (r.open_invoices) setOpenInvs(r.open_invoices);
+      } catch (e: any) {
+        setPreview(null);
+        // Seçili fatura artık geçersizse: seçimsiz listeyi çek, seçim kendiliğinden budanır.
+        const t = receiptErrorText(e?.message ?? '');
+        if (t) {
+          setSaveErr(t);
+          try {
+            const r = await previewClinicReceipt(clinicId, lines);
+            setPreview(r);
+            if (r.open_invoices) setOpenInvs(r.open_invoices);
+          } catch { /* liste alınamadı */ }
+        }
+      }
       finally { setLoadingPrev(false); }
     }, 400);
     return () => { if (debRef.current) clearTimeout(debRef.current); };
-  }, [visible, clinicId, validLines]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, clinicId, validLines, manual, selKey, editing, prevTick]);
 
   const save = async () => {
     if (!clinicId) return;
     const lines = validLines();
     if (lines.length === 0) { toast.error(autoT('En az bir tahsilat satırı gerekli')); return; }
     if (!method) { setMethodErr(true); return; }
-    setBusy(true);
+    setBusy(true); setSaveErr(null);
     try {
       const res = editing
         ? await updateClinicReceipt({
@@ -151,6 +193,7 @@ export function ClinicReceiptModal({
             clinicId, lines, receiptDate: date, method,
             referenceNo: refNo.trim() || null, notes: notes.trim() || null,
             idempotencyKey: idemRef.current,
+            invoiceIds: manual && selected.length > 0 ? selected : undefined,
           });
       // Yatırıldığı hesap: makbuz kaydından sonra (hata tahsilatı geri almaz, yalnız uyarır)
       const rid = editing?.id ?? (res as any)?.receipt_id;
@@ -163,7 +206,11 @@ export function ClinicReceiptModal({
       onSaved?.(res);
       onClose();
     } catch (e: any) {
-      toast.error(e?.message ?? autoT('Tahsilat kaydedilemedi'));
+      // Hata kaydet butonunun yanında okunur kalsın (toast kaybolur).
+      const raw = String(e?.message ?? '');
+      const friendly = receiptErrorText(raw);
+      setSaveErr(friendly ? autoT(friendly) : (raw || autoT('Tahsilat kaydedilemedi')));
+      if (friendly) setPrevTick(t => t + 1);   // listeyi yenile, kapanan fatura seçimden düşsün
     } finally { setBusy(false); }
   };
 
@@ -435,6 +482,83 @@ export function ClinicReceiptModal({
               ) : null}
             </View>
 
+            {/* Elle fatura seçimi — düzenlemede dağıtım yeniden FIFO yapıldığı için gizli */}
+            {editing ? (
+              <Text style={{ fontSize: 12, color: U.ink[500] }}>
+                {autoT('Düzenlemede dağıtım en eski borçtan yeniden yapılır')}
+              </Text>
+            ) : (
+              <View style={{ gap: 8 }}>
+                <Pressable
+                  onPress={() => { setManual(m => !m); setSaveErr(null); }}
+                  accessibilityRole="switch" accessibilityState={{ checked: manual }}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 10,
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  }}>
+                  <View style={{
+                    width: 36, height: 20, borderRadius: 10, padding: 2, justifyContent: 'center',
+                    backgroundColor: manual ? U.ink[900] : U.surfaceSoft,
+                    borderWidth: 1, borderColor: manual ? U.ink[900] : U.hairline,
+                  }}>
+                    <View style={{
+                      width: 14, height: 14, borderRadius: 7,
+                      backgroundColor: manual ? U.onDarkPill : U.ink[400],
+                      alignSelf: manual ? 'flex-end' : 'flex-start',
+                    }} />
+                  </View>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[700], flex: 1 }}>
+                    {autoT('Faturaları elle seç')}
+                  </Text>
+                </Pressable>
+                {manual ? (
+                  <View style={{ gap: 6 }}>
+                    <Text style={{ fontSize: 12, color: U.ink[500] }}>
+                      {autoT('Seçilen faturalar önce kapanır, kalanı en eskiden başlar')}
+                    </Text>
+                    {selectable.length === 0 ? (
+                      <Text style={{ fontSize: 12, color: U.ink[400] }}>
+                        {autoT('Seçilebilir açık fatura yok')}
+                      </Text>
+                    ) : selectable.map(inv => {
+                      const idx = selected.indexOf(inv.invoice_id);
+                      const on = idx >= 0;
+                      return (
+                        <Pressable key={inv.invoice_id}
+                          onPress={() => { setSelected(p => toggleSelection(p, inv.invoice_id)); setSaveErr(null); }}
+                          style={{
+                            flexDirection: 'row', alignItems: 'center', gap: 10,
+                            paddingHorizontal: 12, paddingVertical: 9, borderRadius: 12,
+                            backgroundColor: on ? `${U.ink[900]}14` : U.surfaceSoft,
+                            borderWidth: 1, borderColor: on ? U.ink[700] : U.hairline,
+                            ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                          }}>
+                          <View style={{
+                            width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center',
+                            backgroundColor: on ? U.ink[900] : 'transparent',
+                            borderWidth: 1, borderColor: on ? U.ink[900] : U.hairline,
+                          }}>
+                            {on ? <Text style={{ fontSize: 11.5, fontWeight: '700', color: U.onDarkPill }}>{idx + 1}</Text> : null}
+                          </View>
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={{ fontSize: 12.5, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>
+                              {inv.invoice_no ?? '—'}
+                            </Text>
+                            {inv.issue_date ? (
+                              <Text style={{ fontSize: 11, color: U.ink[400] }} numberOfLines={1}>{inv.issue_date}</Text>
+                            ) : null}
+                          </View>
+                          <Text style={{ fontSize: 12.5, fontWeight: '600', color: U.ink[700] }}>
+                            {fmt(Number(inv.open) || 0)} {inv.currency}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : null}
+              </View>
+            )}
+
             <View>
               <Text style={label}>Not</Text>
               {/* Cok satirli girdide metin dikeyde ORTALANMAZ; ustten dolgu
@@ -469,6 +593,9 @@ export function ClinicReceiptModal({
                   <Text style={{ fontSize: 13, fontWeight: '600', color: U.ink[700] }}>Makbuz</Text>
                 </Pressable>
               </GlassTooltip>
+            ) : null}
+            {saveErr && !locked ? (
+              <Text style={{ flex: 1, fontSize: 12, fontWeight: '600', color: U.chipTones.danger.fg }}>{saveErr}</Text>
             ) : null}
             {methodErr && !locked ? (
               <Text style={{ flex: 1, fontSize: 12, fontWeight: '600', color: U.chipTones.danger.fg }}>{autoT('Ödeme yöntemini seçin')}</Text>

@@ -9999,5 +9999,10 @@
   "Tek kullanımlık kod üret; klinik girince laboratuvarına bağlanır": "Einmalcode erzeugen; nach der Eingabe ist die Klinik mit Ihrem Labor verbunden",
   "Kurum türleri, kişiler, takip ve işlemler": "Einrichtungstypen, Personen, Nachverfolgung und Aktionen",
   "İndirim oranı kaydedilemedi.": "Der Rabattsatz konnte nicht gespeichert werden.",
-  "İndirim kaldırılamadı.": "Der Rabatt konnte nicht entfernt werden."
+  "İndirim kaldırılamadı.": "Der Rabatt konnte nicht entfernt werden.",
+  "Faturaları elle seç": "Rechnungen manuell auswählen",
+  "Seçilen faturalar önce kapanır, kalanı en eskiden başlar": "Ausgewählte Rechnungen werden zuerst beglichen, der Rest beginnt bei der ältesten",
+  "Düzenlemede dağıtım en eski borçtan yeniden yapılır": "Beim Bearbeiten wird die Verteilung ab der ältesten Schuld neu vorgenommen",
+  "Seçilen fatura artık açık değil": "Die ausgewählte Rechnung ist nicht mehr offen",
+  "Seçilebilir açık fatura yok": "Keine offenen Rechnungen zur Auswahl"
 }

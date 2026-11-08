@@ -10,7 +10,7 @@ import { dispatchToClinic } from '../../core/notifications/dispatch';
 import type {
   Invoice, InvoiceItem, Payment, ClinicBalance, ClinicBalanceCcy, InvoiceStatus,
   CreateInvoiceParams, InvoiceItemInput, RecordPaymentParams,
-  ReceiptLine, ReceiptResult, ClinicReceipt,
+  ReceiptLine, ReceiptResult, ClinicReceipt, OpenInvoice,
   InvoiceListFilters, CreateBulkInvoiceParams, UnbilledWorkOrder,
   LinkedWorkOrder,
   StatementDiscount, CorrectionDoc, StatementDiscountInput, StatementDiscountQuote,
@@ -630,11 +630,13 @@ export async function fetchInvoiceStats(): Promise<InvoiceStats> {
 
 /** Yazmadan dağıtım önizlemesi — pencere, kaydetmeden önce bunu gösterir. */
 export async function previewClinicReceipt(
-  clinicId: string, lines: ReceiptLine[],
+  clinicId: string, lines: ReceiptLine[], invoiceIds?: string[],
 ): Promise<ReceiptResult> {
   const { data, error } = await supabase.rpc('preview_clinic_receipt', {
     p_clinic_id: clinicId,
     p_lines: lines,
+    // Yalnız dolu dizi gönderilir: boşken dağıtım bugünküyle birebir aynı (FIFO).
+    ...(invoiceIds && invoiceIds.length > 0 ? { p_invoice_ids: invoiceIds } : {}),
   });
   if (error) throw new Error(error.message);
   return data as ReceiptResult;
@@ -649,6 +651,8 @@ export async function recordClinicReceipt(p: {
   notes?: string | null;
   /** Çift tıklama tek fiş üretsin diye pencere açılışında üretilir. */
   idempotencyKey?: string;
+  /** Elle seçilen faturalar (önce bunlar kapanır). Boşsa gönderilmez. */
+  invoiceIds?: string[];
 }): Promise<ReceiptResult> {
   const { data, error } = await supabase.rpc('record_clinic_receipt', {
     p_clinic_id: p.clinicId,
@@ -659,10 +663,13 @@ export async function recordClinicReceipt(p: {
     p_reference_no: p.referenceNo ?? null,
     p_notes: p.notes ?? null,
     p_idempotency_key: p.idempotencyKey ?? null,
+    ...(p.invoiceIds && p.invoiceIds.length > 0 ? { p_invoice_ids: p.invoiceIds } : {}),
   });
   if (error) throw new Error(error.message);
   return data as ReceiptResult;
 }
+
+export type { OpenInvoice };
 
 /** Klinikte duran kullanılmamış alacağı açık faturalara uygular. */
 export async function applyClinicCredit(
