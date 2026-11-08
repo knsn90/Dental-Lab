@@ -85,6 +85,7 @@ export function ClinicReceiptModal({
   const [prevTick, setPrevTick] = useState(0);
   const idemRef = useRef<string>('');
   const debRef  = useRef<any>(null);
+  const prevSeq = useRef(0);   // yalnız en son önizleme yanıtı uygulanır
 
   useEffect(() => {
     if (!visible) return;
@@ -151,27 +152,32 @@ export function ClinicReceiptModal({
     if (!visible || !clinicId) return;
     const lines = validLines();
     if (debRef.current) clearTimeout(debRef.current);
-    if (lines.length === 0) { setPreview(null); return; }
+    if (lines.length === 0) { prevSeq.current++; setPreview(null); setLoadingPrev(false); return; }
+    const seq = ++prevSeq.current;
+    const stale = () => seq !== prevSeq.current;
     debRef.current = setTimeout(async () => {
       setLoadingPrev(true);
       try {
         const r = await previewClinicReceipt(clinicId, lines, manual && !editing ? selected : undefined);
+        if (stale()) return;
         setPreview(r);
         if (r.open_invoices) setOpenInvs(r.open_invoices);
       } catch (e: any) {
+        if (stale()) return;
         setPreview(null);
         // Seçili fatura artık geçersizse: seçimsiz listeyi çek, seçim kendiliğinden budanır.
         const t = receiptErrorText(e?.message ?? '');
         if (t) {
-          setSaveErr(t);
+          setSaveErr(autoT(t));
           try {
             const r = await previewClinicReceipt(clinicId, lines);
+            if (stale()) return;
             setPreview(r);
             if (r.open_invoices) setOpenInvs(r.open_invoices);
           } catch { /* liste alınamadı */ }
         }
       }
-      finally { setLoadingPrev(false); }
+      finally { if (!stale()) setLoadingPrev(false); }
     }, 400);
     return () => { if (debRef.current) clearTimeout(debRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
