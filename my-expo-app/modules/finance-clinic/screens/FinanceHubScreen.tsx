@@ -2,7 +2,7 @@
  * Mali İşlemler Hub — Klinik & Muayenehane.
  *
  * Solda sidebar (desktop) / üstte pill bar (mobile), sağda aktif sekme.
- * 4 sekme: Özet · Cari Ekstre · Bekleyen · Ödemeler.
+ * 5 sekme: Özet · Cari Ekstre · Bekleyen · Ödemeler · Ön ekstre.
  * ('overdue' görünmez bir takma ad: Bekleyen ekranını vadesi-geçen
  *  filtresiyle açar — eski derin bağlantılar kırılmasın.)
  */
@@ -12,7 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { View, Text, Pressable, ScrollView, useWindowDimensions, Platform } from 'react-native';
 import {
-  LayoutDashboard, BookOpen, Clock, AlertCircle, ListChecks,
+  LayoutDashboard, BookOpen, Clock, AlertCircle, ListChecks, FileCheck,
 } from '../../../core/ui/icons';
 
 import { DS } from '../../../core/theme/dsTokens';
@@ -26,8 +26,9 @@ import { StatementScreen } from './StatementScreen';
 import { ClinicStatementScreen } from '../../invoices/screens/ClinicStatementScreen';
 import { OpenInvoicesScreen } from './OpenInvoicesScreen';
 import { PaymentHistoryScreen } from './PaymentHistoryScreen';
+import { PreStatementScreen } from './PreStatementScreen';
 
-type TabKey = 'overview' | 'statement' | 'open' | 'overdue' | 'payments';
+type TabKey = 'overview' | 'statement' | 'open' | 'overdue' | 'payments' | 'preStatement';
 
 interface TabDef {
   key: TabKey;
@@ -42,6 +43,8 @@ const ALL_TABS: TabDef[] = [
   { key: 'statement', labelKey: 'clinic.finance.tabs.statement', hintKey: 'clinic.finance.tabs.statementHint', icon: BookOpen,        accent: '#0EA5E9' },
   { key: 'open',      labelKey: 'clinic.finance.tabs.open',      hintKey: 'clinic.finance.tabs.openHint',      icon: Clock,           accent: '#D97706' },
   { key: 'payments',  labelKey: 'clinic.finance.tabs.payments',  hintKey: 'clinic.finance.tabs.paymentsHint',  icon: ListChecks,      accent: '#059669' },
+  // Ön ekstre: kapsamı RPC belirler (billing_view'siz hekim yalnız kendi kalemlerini görür).
+  { key: 'preStatement', labelKey: 'clinic.finance.tabs.preStatement', hintKey: 'clinic.finance.tabs.preStatementHint', icon: FileCheck, accent: '#2D9A6B' },
 ];
 
 export function ClinicFinanceHubScreen() {
@@ -125,6 +128,7 @@ export function ClinicFinanceHubScreen() {
       // route anahtarı korunuyor.
       case 'overdue':   return <OpenInvoicesScreen clinicId={clinicId} onlyOverdue />;
       case 'payments':  return <PaymentHistoryScreen clinicId={clinicId} />;
+      case 'preStatement': return <PreStatementScreen clinicId={clinicId} />;
     }
   };
 

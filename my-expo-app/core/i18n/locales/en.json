@@ -830,7 +830,9 @@
         "pos": "Online POS",
         "posHint": "Card payments",
         "payments": "Payments",
-        "paymentsHint": "Payment history"
+        "paymentsHint": "Payment history",
+        "preStatement": "Pre-statement",
+        "preStatementHint": "Invoices awaiting approval"
       },
       "error": {
         "clinicNotFound": "Clinic information not found. Check your profile settings."

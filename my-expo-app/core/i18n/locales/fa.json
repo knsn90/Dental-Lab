@@ -830,7 +830,9 @@
         "pos": "POS آنلاین",
         "posHint": "پرداخت کارتی",
         "payments": "پرداخت‌ها",
-        "paymentsHint": "تاریخچه وصول"
+        "paymentsHint": "تاریخچه وصول",
+        "preStatement": "پیش‌صورت‌حساب",
+        "preStatementHint": "فاکتورهای در انتظار تأیید"
       },
       "error": {
         "clinicNotFound": "اطلاعات کلینیک یافت نشد. تنظیمات پروفایل خود را بررسی کنید."

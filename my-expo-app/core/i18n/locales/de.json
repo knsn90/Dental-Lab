@@ -830,7 +830,9 @@
         "pos": "Online-POS",
         "posHint": "Kartenzahlung",
         "payments": "Zahlungen",
-        "paymentsHint": "Zahlungsverlauf"
+        "paymentsHint": "Zahlungsverlauf",
+        "preStatement": "Vorab-Auszug",
+        "preStatementHint": "Rechnungen zur Freigabe"
       },
       "error": {
         "clinicNotFound": "Klinikdaten nicht gefunden. Überprüfen Sie Ihre Profileinstellungen."

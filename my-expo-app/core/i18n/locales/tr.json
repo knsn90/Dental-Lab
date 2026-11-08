@@ -830,7 +830,9 @@
         "pos": "Online POS",
         "posHint": "Kart ile ödeme",
         "payments": "Ödemeler",
-        "paymentsHint": "Tahsilat geçmişi"
+        "paymentsHint": "Tahsilat geçmişi",
+        "preStatement": "Ön ekstre",
+        "preStatementHint": "Onay bekleyen faturalar"
       },
       "error": {
         "clinicNotFound": "Klinik bilgisi bulunamadı. Profil ayarlarınızı kontrol edin."
