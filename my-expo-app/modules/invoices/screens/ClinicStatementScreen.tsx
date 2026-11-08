@@ -33,7 +33,7 @@ import { StatementPrefsModal } from '../components/StatementPrefsModal';
 import { useStatementPrefs } from '../hooks/useStatementPrefs';
 import { applyStatementPrefs } from '../lib/statementPrefs';
 import { statementPeriodTotals, lineDelta } from '../lib/statementTotals';
-import { receiptCreditForCurrency, receiptVoucherNo, receiptDepositLabel } from '../lib/receiptStatement';
+import { receiptCreditForCurrency, receiptCoverage, formatReceiptCoverage, receiptVoucherNo, receiptDepositLabel } from '../lib/receiptStatement';
 import { revisionDetail } from '../lib/statementRevision';
 import { buildReceiptVoucherHtml } from '../buildReceiptVoucherHtml';
 import { ClinicReceiptModal } from '../components/ClinicReceiptModal';
@@ -95,6 +95,8 @@ const METHOD_ICON: Record<PaymentMethod, React.ComponentType<any>> = {
   diger:  Minus,
   indirim: Minus,
 };
+
+const TR_MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 
 // ── Helpers ──────────────────────────────────────────────────────────
 // Katı per-currency: tutar seçili/satırın para biriminde (base'e çevrilmez).
@@ -258,7 +260,7 @@ function exportExcel(
     return [
       new Date(l.date + 'T00:00:00').toLocaleDateString(localeTag()),
       l.invoiceNo ?? '',
-      `${l.type === 'invoice' ? 'Fatura' : l.type === 'discount' ? (l.docKind === 'DZ' ? autoT('Düzeltme') : autoT('İndirim')) : 'Tahsilat'} — ${l.description}`,
+      `${l.type === 'invoice' ? 'Fatura' : l.type === 'discount' ? (l.docKind === 'DZ' ? autoT('Düzeltme') : autoT('İndirim')) : 'Tahsilat'} — ${l.description}${l.coverage ? ` · ${l.coverage}` : ''}`,
       fmtNum(showVat ? l.debit - (l.tax ?? 0) : l.debit),
       ...(showVat ? [l.type === 'invoice' ? fmtNum(l.tax ?? 0) : ''] : []),
       ...(showDisc ? [discCell(l)] : []),
@@ -638,6 +640,11 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
         receiptNo: receiptVoucherNo(r.id),
         // Kullanıcı: tahsilat açıklamasında yalnız tür + nereye yatırıldığı (tür satırda ayrıca yazıyor)
         detail: receiptDepositLabel(r, autoT),
+        coverage: formatReceiptCoverage(receiptCoverage(r, postedInvoices, selectedCcy), {
+          tr: autoT,
+          money: (n) => fmtMoney(n, selectedCcy),
+          month: (d) => { const m = Number(d.slice(5, 7)); return m >= 1 && m <= 12 ? autoT(TR_MONTHS[m - 1]) : ''; },
+        }),
       }));
     // Ekstre indirimleri (yalnız seçili döviz) — yürüyen bakiyeden ÖNCE birleşir.
     // DZ satırı: "Düzeltme belgesi · <fatura no> · <gerekçe>" (fatura bulunamazsa no atlanır).
@@ -1340,6 +1347,9 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
                     {mSub ? (
                       <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 1 }} numberOfLines={1}>{mSub}</Text>
                     ) : null}
+                    {line.coverage ? (
+                      <Text style={{ fontSize: 11, color: U.ink[500], marginTop: 1 }} numberOfLines={2}>{line.coverage}</Text>
+                    ) : null}
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
                       <Text style={{ fontSize: 11, color: U.ink[400] }}>{fmtDateShort(line.date)}</Text>
                       {isInvoice && chip && line.status && (
@@ -1538,6 +1548,9 @@ function StatementRow({ line, last, currency, onOpen, showVat = true, discountMo
         </View>
         {rowSub ? (
           <Text style={{ fontSize: 11, color: U.ink[400] }} numberOfLines={1}>{rowSub}</Text>
+        ) : null}
+        {line.coverage ? (
+          <Text style={{ fontSize: 11, color: U.ink[500] }} numberOfLines={2}>{line.coverage}</Text>
         ) : null}
       </View>
 

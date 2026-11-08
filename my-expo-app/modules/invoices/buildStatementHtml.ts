@@ -72,6 +72,8 @@ export interface StatementLine {
   origAmount?: number;
   /** Tahsilat fişi ayrıntısı: dekont no · kapattığı faturalar · not */
   detail?: string | null;
+  /** Tahsilat satırı: "Kapattığı: F-… · Alacağa …" (lib/receiptStatement.formatReceiptCoverage) */
+  coverage?: string | null;
   /** Tahsilat fişinin makbuz numarası (lib/receiptStatement.receiptVoucherNo) */
   receiptNo?: string | null;
   /** Revizyon faturası: asıl sipariş no + sorumlu (lib/statementRevision) */
@@ -253,7 +255,7 @@ export function buildStatementHtml(
       : (l.patientName ?? (l.description !== l.invoiceNo ? l.description : autoT('Fatura'))),
     // Revizyon faturası: sipariş no yanında "Revizyon · Asıl sipariş … · Lab kaynaklı, ücretsiz"
     counterpartySub: (l.type === 'payment'
-      ? [l.orderNo]
+      ? [l.orderNo, l.coverage]
       : [l.orderNo, l.revisionOf ? `${autoT('Revizyon')} · ${revisionDetail(l, l.debit, autoT)}` : null])
       .filter(Boolean).join(' · ') || null,
     // Fatura her zaman borç satırı: 0 tutarlı (ücretsiz revizyon) fatura eskiden yeşil "alacak" çiziliyordu.

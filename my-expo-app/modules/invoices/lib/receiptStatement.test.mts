@@ -77,3 +77,43 @@ test('receiptDepositLabel: seçilen hesap adı; nakitte hesap yoksa Nakit Kasa; 
   assert.equal(receiptDepositLabel({ payment_method: 'havale', account_label: null }), null);
   assert.equal(receiptDepositLabel({ payment_method: 'nakit', account_label: null }, (s) => `[${s}]`), '[Nakit Kasa]');
 });
+
+import { receiptCoverage, formatReceiptCoverage } from './receiptStatement.ts';
+
+const cinv = (no: string, date: string, amt: number, status = 'odendi', currency = 'TRY') =>
+  ({ id: no, invoice_number: no, issue_date: date, currency, status, payments: [{ receipt_id: 'c1', amount: amt }] });
+const crcpt = { id: 'c1', base_currency: 'TRY', total_base: 8800, allocated_base: 7500 };
+
+test('receiptCoverage: fatura başına döküm (tarih artan) ve alacak', () => {
+  const invs = [cinv('F-1240', '2026-10-05', 5900), cinv('F-1212', '2026-09-10', 1600)];
+  const c = receiptCoverage(crcpt, invs, 'TRY');
+  assert.deepEqual(c.items, [
+    { invoiceNo: 'F-1212', issueDate: '2026-09-10', amount: 1600 },
+    { invoiceNo: 'F-1240', issueDate: '2026-10-05', amount: 5900 },
+  ]);
+  assert.equal(c.credit, 1300);
+  const e = receiptCoverage(crcpt, invs, 'EUR');
+  assert.deepEqual(e.items, []);
+  assert.equal(e.credit, 0);
+});
+
+test('receiptCoverage: iptal faturadaki ödeme items’a girmez', () => {
+  const c = receiptCoverage(crcpt, [cinv('F-1', '2026-09-01', 100, 'iptal')], 'TRY');
+  assert.deepEqual(c.items, []);
+});
+
+test('formatReceiptCoverage: tam biçim, yalnız alacak, boş', () => {
+  const opts = {
+    tr: (s: string) => s,
+    money: (n: number) => n.toLocaleString('tr-TR'),
+    month: (d: string) => ({ '09': 'Eylül', '10': 'Ekim' } as Record<string, string>)[d.slice(5, 7)],
+  };
+  const c = receiptCoverage(crcpt, [cinv('F-1212', '2026-09-10', 1600), cinv('F-1240', '2026-10-05', 5900)], 'TRY');
+  assert.equal(formatReceiptCoverage(c, opts), 'Kapattığı: F-1212 Eylül 1.600 · F-1240 Ekim 5.900 · Alacağa 1.300');
+  assert.equal(formatReceiptCoverage({ items: [], credit: 1300 }, opts), 'Alacağa 1.300');
+  assert.equal(formatReceiptCoverage({ items: [], credit: 0 }, opts), null);
+  assert.equal(
+    formatReceiptCoverage({ items: [{ invoiceNo: 'F-9', issueDate: null, amount: 50 }], credit: 0 }, opts),
+    'Kapattığı: F-9 50',
+  );
+});

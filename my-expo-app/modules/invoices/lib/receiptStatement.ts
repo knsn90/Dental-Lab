@@ -15,6 +15,9 @@ export interface ReceiptForStatement {
 }
 
 export interface InvoiceForStatement {
+  id?: string;
+  invoice_number?: string | null;
+  issue_date?: string | null;
   currency?: string | null;
   status?: string | null;
   payments?: { receipt_id?: string | null; amount: number | string }[] | null;
@@ -36,6 +39,44 @@ export function receiptCreditForCurrency(
     sum += Math.max(0, (Number(r.total_base) || 0) - (Number(r.allocated_base) || 0));
   }
   return Math.round(sum * 100) / 100;
+}
+
+export interface ReceiptCoverageItem { invoiceNo: string; issueDate: string | null; amount: number }
+export interface ReceiptCoverage { items: ReceiptCoverageItem[]; credit: number }
+
+const r2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Fişin "kapattığı": bu paradaki (iptal olmayan) faturalara fatura başına düşen tutar + baz sekmesinde dağıtılmamış alacak. */
+export function receiptCoverage(
+  r: ReceiptForStatement,
+  invoices: InvoiceForStatement[],
+  ccy: string,
+): ReceiptCoverage {
+  const items: ReceiptCoverageItem[] = [];
+  invoices.forEach((inv, idx) => {
+    if ((inv.currency || 'TRY') !== ccy || inv.status === 'iptal') return;
+    let sum = 0;
+    for (const p of inv.payments ?? []) if (p.receipt_id === r.id) sum += Number(p.amount) || 0;
+    if (sum > 0) items.push({ invoiceNo: inv.invoice_number || inv.id || String(idx + 1), issueDate: inv.issue_date ?? null, amount: r2(sum) });
+  });
+  items.sort((a, b) => (a.issueDate ?? '9999').localeCompare(b.issueDate ?? '9999') || a.invoiceNo.localeCompare(b.invoiceNo));
+  const credit = (r.base_currency || '') === ccy
+    ? r2(Math.max(0, (Number(r.total_base) || 0) - (Number(r.allocated_base) || 0)))
+    : 0;
+  return { items, credit };
+}
+
+/** "Kapattığı: F-1212 Eylül 1.600 · F-1240 Ekim 5.900 · Alacağa 1.300"; kapanan ve alacak yoksa null. */
+export function formatReceiptCoverage(
+  cov: ReceiptCoverage,
+  opts: { tr: (s: string) => string; money: (n: number) => string; month: (isoDate: string) => string },
+): string | null {
+  const parts = cov.items.map((it) =>
+    [it.invoiceNo, it.issueDate ? opts.month(it.issueDate) : '', opts.money(it.amount)].filter(Boolean).join(' '));
+  const credit = cov.credit > 0 ? `${opts.tr('Alacağa')} ${opts.money(cov.credit)}` : null;
+  if (parts.length === 0) return credit;
+  const head = `${opts.tr('Kapattığı')}: ${parts.join(' · ')}`;
+  return credit ? `${head} · ${credit}` : head;
 }
 
 /**

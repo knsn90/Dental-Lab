@@ -1856,6 +1856,7 @@
   "Kalan tutar": "مبلغ باقی‌مانده",
   "Bu faturaya": "به این فاکتور",
   "Alacağa": "به بستانکاری",
+  "Kapattığı": "تسویه‌شده",
   "Bu faturanın e-faturası gönderilmiş. E-fatura tarafını (iade/fiyat farkı) muhasebecinizle düzenleyin; DZ yalnız Siman içi belgedir.": "فاکتور الکترونیکی این فاکتور ارسال شده است. بخش فاکتور الکترونیکی (برگشت یا مابه‌التفاوت قیمت) را با حسابدارتان هماهنگ کنید؛ DZ فقط یک سند داخلی در Siman است.",
   "Düzeltme belgesini kaydet; tutar bu faturadan düşer, artan kısım kliniğin alacağına geçer": "سند اصلاحی را ثبت کنید؛ مبلغ از این فاکتور کم می‌شود و مازاد آن به بستانکاری کلینیک می‌رود",
   "Düzeltme belgesi kaydedildi": "سند اصلاحی ثبت شد",
