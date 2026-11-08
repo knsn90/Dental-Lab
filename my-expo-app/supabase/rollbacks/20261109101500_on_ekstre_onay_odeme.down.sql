@@ -1,0 +1,249 @@
+-- 20261109101500_on_ekstre_onay_odeme.down.sql — 3 ödeme fonksiyonunu canlı tanımlarına döndürür (.before.txt md5'leri),
+-- niyet kapısını ve _intent_clinic_credit'i düşürür. CREATE OR REPLACE → ACL korunur. Yazılmış alacak fişleri kalır.
+BEGIN;
+SET LOCAL lock_timeout = '3s';
+DROP TRIGGER IF EXISTS zz_payment_intent_draft_gate ON public.payment_intents;
+DROP FUNCTION IF EXISTS public._payment_intent_draft_gate();
+CREATE OR REPLACE FUNCTION public.bulk_record_payment(p_invoice_ids uuid[], p_total_amount numeric, p_payment_method text DEFAULT 'nakit'::text, p_payment_date date DEFAULT NULL::date, p_notes text DEFAULT NULL::text)
+ RETURNS TABLE(invoice_id uuid, amount_paid numeric)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_row       RECORD;
+  v_remaining NUMERIC := p_total_amount;
+  v_to_pay    NUMERIC;
+  v_lab_id    UUID := get_my_lab_id();
+  v_base_ccy  TEXT;
+  v_date      DATE;
+BEGIN
+  -- A: finance-role authorization (server-side; not UI)
+  -- 20261025168000: rol adı yerine yetki (platform yöneticisi helper'ın içinde)
+  IF NOT public.lab_can_manage_invoices() THEN
+    RAISE EXCEPTION 'unauthorized: finance role required to record payments' USING ERRCODE='42501';
+  END IF;
+
+  IF v_lab_id IS NULL AND NOT public.is_platform_admin() THEN
+    RAISE EXCEPTION 'unauthorized: no tenant context' USING ERRCODE='42501';
+  END IF;
+
+  -- Tarih verilmezse lab'ın yerel günü (CURRENT_DATE oturumun saat dilimindedir: UTC)
+  v_date := COALESCE(p_payment_date, lab_today(v_lab_id));
+
+  SELECT COALESCE(default_currency, 'TRY') INTO v_base_ccy
+    FROM lab_settings WHERE lab_id = v_lab_id;
+  v_base_ccy := COALESCE(v_base_ccy, 'TRY');
+
+  FOR v_row IN
+    SELECT i.id, (i.total - i.paid_amount) AS balance,
+           i.currency, COALESCE(i.rate_at_time, 1) AS rate
+      FROM invoices i
+     WHERE i.id = ANY(p_invoice_ids)
+       AND i.lab_id = v_lab_id
+       AND i.status NOT IN ('odendi','iptal')
+       AND (i.total - i.paid_amount) > 0
+     ORDER BY i.due_date ASC NULLS LAST, i.created_at ASC
+  LOOP
+    EXIT WHEN v_remaining <= 0;
+    v_to_pay := LEAST(v_row.balance, v_remaining);
+    INSERT INTO payments(lab_id, invoice_id, amount, payment_date, payment_method, notes,
+                         received_by, currency, rate_at_time, amount_base, base_currency_at_time)
+    VALUES (v_lab_id, v_row.id, v_to_pay, v_date, p_payment_method, p_notes,
+            auth.uid(), v_row.currency, v_row.rate,
+            round(v_to_pay * v_row.rate, 2), v_base_ccy);
+    v_remaining := v_remaining - v_to_pay;
+    invoice_id  := v_row.id;
+    amount_paid := v_to_pay;
+    RETURN NEXT;
+  END LOOP;
+END;
+$function$;
+CREATE OR REPLACE FUNCTION public.confirm_payment_intent(p_intent_id uuid, p_provider_ref text DEFAULT NULL::text)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_intent     RECORD;
+  v_inv_ccy    text;
+  v_payment_id uuid;
+  v_idem       text := 'intent:' || p_intent_id::text;
+  v_rem        numeric;
+  v_inv        RECORD;
+  v_take       numeric;
+  v_first      uuid;
+BEGIN
+  SELECT * INTO v_intent FROM payment_intents WHERE id = p_intent_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'payment_intent bulunamadı: %', p_intent_id;
+  END IF;
+
+  IF v_intent.status = 'paid' THEN
+    SELECT id INTO v_payment_id FROM payments WHERE idempotency_key = v_idem LIMIT 1;
+    IF v_payment_id IS NULL THEN
+      SELECT id INTO v_payment_id FROM payments
+       WHERE idempotency_key LIKE v_idem || ':%' ORDER BY created_at LIMIT 1;
+    END IF;
+    RETURN COALESCE(v_payment_id, v_intent.id);
+  END IF;
+
+  IF v_intent.status NOT IN ('pending','awaiting_3ds','authorized') THEN
+    RAISE EXCEPTION 'illegal payment_intent transition: % -> paid', v_intent.status USING ERRCODE='22023';
+  END IF;
+
+  -- H-02: expired intents cannot be confirmed (even with a valid provider signature/replay)
+  IF v_intent.expires_at IS NOT NULL AND v_intent.expires_at <= now() THEN
+    RAISE EXCEPTION 'payment_intent expired at %', v_intent.expires_at USING ERRCODE='22023';
+  END IF;
+
+  IF COALESCE(v_intent.is_bulk, false) THEN
+    -- TOPLU: tutar kliniğin aynı para birimindeki açık faturalarına EN ESKİDEN
+    -- başlayarak dağıtılır. Her fatura için AYRI idempotency_key → callback
+    -- tekrarında çift kayıt olmaz.
+    v_rem := v_intent.amount;
+    FOR v_inv IN
+      SELECT i.id, (i.total - i.paid_amount) AS due
+        FROM invoices i
+       WHERE i.clinic_id = v_intent.clinic_id
+         AND COALESCE(i.currency, 'TRY') = v_intent.currency
+         AND i.status IN ('kesildi','kismi_odendi')
+         AND i.total > i.paid_amount
+       ORDER BY i.due_date ASC NULLS LAST, i.created_at ASC, i.id ASC
+       FOR UPDATE
+    LOOP
+      EXIT WHEN v_rem <= 0;
+      v_take := LEAST(v_rem, v_inv.due);
+      CONTINUE WHEN v_take <= 0;
+
+      INSERT INTO payments (lab_id, invoice_id, amount, currency, payment_method,
+                            payment_date, notes, idempotency_key)
+      VALUES (v_intent.lab_id, v_inv.id, v_take, v_intent.currency, 'kart', lab_today(v_intent.lab_id),
+              'Online toplu ödeme · ' || v_intent.provider || COALESCE(' · ref:' || p_provider_ref, ''),
+              v_idem || ':' || v_inv.id::text)
+      ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
+      RETURNING id INTO v_payment_id;
+
+      IF v_first IS NULL THEN v_first := v_payment_id; END IF;
+      v_rem := v_rem - v_take;
+    END LOOP;
+
+    -- Intent açıldıktan sonra lab nakit tahsilat girdiyse bakiye küçülmüş
+    -- olabilir; kalan tutar ÇAPA faturaya yazılır ki para kayıt dışı kalmasın
+    -- (fazla ödeme = kliniğin alacağı olarak görünür).
+    IF v_rem > 0 THEN
+      INSERT INTO payments (lab_id, invoice_id, amount, currency, payment_method,
+                            payment_date, notes, idempotency_key)
+      VALUES (v_intent.lab_id, v_intent.invoice_id, v_rem, v_intent.currency, 'kart', lab_today(v_intent.lab_id),
+              'Online toplu ödeme · fazla tutar (alacak) · ' || v_intent.provider,
+              v_idem || ':rest')
+      ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
+      RETURNING id INTO v_payment_id;
+      IF v_first IS NULL THEN v_first := v_payment_id; END IF;
+    END IF;
+
+    v_payment_id := v_first;
+  ELSE
+    SELECT currency INTO v_inv_ccy FROM invoices WHERE id = v_intent.invoice_id;
+
+    INSERT INTO payments (lab_id, invoice_id, amount, currency, payment_method, payment_date, notes, idempotency_key)
+    VALUES (v_intent.lab_id, v_intent.invoice_id, v_intent.amount,
+            COALESCE(v_inv_ccy, v_intent.currency),
+            'kart', lab_today(v_intent.lab_id),
+            'Online ödeme · ' || v_intent.provider || COALESCE(' · ref:' || p_provider_ref, ''),
+            v_idem)
+    ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
+    RETURNING id INTO v_payment_id;
+
+    IF v_payment_id IS NULL THEN
+      SELECT id INTO v_payment_id FROM payments WHERE idempotency_key = v_idem LIMIT 1;
+    END IF;
+  END IF;
+
+  UPDATE payment_intents
+     SET status='paid', paid_at=now(), provider_ref=COALESCE(p_provider_ref, provider_ref), updated_at=now()
+   WHERE id = p_intent_id;
+
+  RETURN v_payment_id;
+END;
+$function$;
+CREATE OR REPLACE FUNCTION public.approve_payment_submission(p_submission_id uuid)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_user_id    UUID := auth.uid();
+  v_user_type  TEXT;
+  v_role       TEXT;
+  v_sub        payment_submissions%ROWTYPE;
+  v_payment_id UUID;
+BEGIN
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Oturum bulunamadı.';
+  END IF;
+
+  -- 20261025168000: rol adı yerine yetki — faturaları yönetebilen (RLS ile aynı kural)
+  IF NOT public.lab_can_manage_invoices() THEN
+    RAISE EXCEPTION 'Onaylama yetkiniz yok.';
+  END IF;
+
+  SELECT * INTO v_sub FROM payment_submissions WHERE id = p_submission_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Ödeme bildirimi bulunamadı.';
+  END IF;
+  IF v_sub.lab_id IS DISTINCT FROM get_my_lab_id() THEN
+    RAISE EXCEPTION 'Farklı bir laboratuvarın bildirimini onaylayamazsınız.';
+  END IF;
+  IF v_sub.status <> 'pending' THEN
+    RAISE EXCEPTION 'Bildirim zaten işlenmiş (durum: %).', v_sub.status;
+  END IF;
+
+  -- payments tablosuna kayıt düşer (invoice_id varsa)
+  -- invoice_id zorunlu olduğu için yoksa hata fırlatıyoruz —
+  -- ileride "genel hesap ödemesi" eklenirse buraya genişletilebilir.
+  IF v_sub.invoice_id IS NULL THEN
+    RAISE EXCEPTION 'Fatura bağlanmamış bildirim — şu an manuel müdahale gerekiyor.';
+  END IF;
+
+  -- 02.3.1 defense-in-depth: bildirimin faturası, bildirimin laboratuvarına ait olmalı
+  -- (02.3.1 öncesi forge edilmiş bir bildirim cross-tenant onaylanamasın)
+  IF NOT EXISTS (
+    SELECT 1 FROM invoices WHERE id = v_sub.invoice_id AND lab_id = v_sub.lab_id
+  ) THEN
+    RAISE EXCEPTION 'Bildirimdeki fatura farklı bir laboratuvara ait — onaylanamaz.'
+      USING errcode = '42501';
+  END IF;
+
+  INSERT INTO payments (
+    lab_id, invoice_id, amount, payment_date, payment_method, reference_no, notes, received_by
+  ) VALUES (
+    v_sub.lab_id, v_sub.invoice_id, v_sub.amount, v_sub.payment_date,
+    -- payments tablosu CHECK'i havale/nakit/kart/cek/diger kabul ediyor; eft → havale eşle
+    CASE WHEN v_sub.payment_method = 'eft' THEN 'havale' ELSE v_sub.payment_method END,
+    COALESCE(v_sub.reference_no, ''),
+    CONCAT_WS(' · ',
+      CASE WHEN v_sub.payment_method = 'eft' THEN '[EFT]' END,
+      CASE WHEN v_sub.bank_name   IS NOT NULL THEN 'Banka: ' || v_sub.bank_name   END,
+      CASE WHEN v_sub.sender_name IS NOT NULL THEN 'Gönderen: ' || v_sub.sender_name END,
+      v_sub.notes
+    ),
+    v_user_id
+  )
+  RETURNING id INTO v_payment_id;
+
+  -- Submission'ı onayla
+  UPDATE payment_submissions
+     SET status = 'approved',
+         reviewed_by = v_user_id,
+         reviewed_at = NOW(),
+         approved_payment_id = v_payment_id
+   WHERE id = p_submission_id;
+
+  RETURN v_payment_id;
+END;
+$function$;
+DROP FUNCTION IF EXISTS public._intent_clinic_credit(uuid, numeric, text, text);
+COMMIT;

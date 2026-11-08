@@ -1,0 +1,153 @@
+-- 20261109101000_on_ekstre_onay.before.txt — canlı durum (2026-11-08, uygulamadan önce). Yalnız trg_maintain_urgent_surcharge değişir; diğerleri salt referans.
+
+## Değişen nesne: trg_maintain_urgent_surcharge() — md5(prosrc)=7166fd3c80cc9422b4957f2d3adff975 proacl={=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres} secdef=true
+CREATE OR REPLACE FUNCTION public.trg_maintain_urgent_surcharge()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_invoice_id UUID;
+  v_lab_id     UUID;
+  v_status     TEXT;
+  v_is_urgent  BOOLEAN;
+  v_rate       NUMERIC;
+  v_base       NUMERIC;
+  v_surcharge  NUMERIC;
+  v_acil_id    UUID;
+  v_desc       TEXT;
+BEGIN
+  -- Kendi UPDATE/INSERT/DELETE'imizin tetiklediği yeniden girişleri engelle
+  IF pg_trigger_depth() > 1 THEN
+    RETURN COALESCE(NEW, OLD);
+  END IF;
+
+  v_invoice_id := COALESCE(NEW.invoice_id, OLD.invoice_id);
+
+  SELECT i.lab_id, i.status INTO v_lab_id, v_status
+  FROM invoices i WHERE i.id = v_invoice_id;
+  IF v_lab_id IS NULL THEN RETURN COALESCE(NEW, OLD); END IF;
+  IF v_status = 'iptal' THEN RETURN COALESCE(NEW, OLD); END IF;
+
+  SELECT EXISTS (
+    SELECT 1 FROM work_orders wo
+      WHERE wo.id = (SELECT work_order_id FROM invoices WHERE id = v_invoice_id)
+        AND wo.is_urgent
+    UNION ALL
+    SELECT 1 FROM invoice_orders io
+      JOIN work_orders wo ON wo.id = io.work_order_id
+      WHERE io.invoice_id = v_invoice_id AND wo.is_urgent
+  ) INTO v_is_urgent;
+
+  SELECT COALESCE(urgent_surcharge_rate, 0) INTO v_rate
+    FROM lab_settings WHERE lab_id = v_lab_id;
+
+  -- Mevcut acil satırının id'sini tut (varsa) — DELETE/INSERT yerine UPDATE için
+  SELECT id INTO v_acil_id
+    FROM invoice_items
+    WHERE invoice_id = v_invoice_id AND description LIKE 'Acil Ek Ücret (%'
+    ORDER BY created_at ASC LIMIT 1;
+
+  -- Olası fazladan (mükerrer) acil satırlarını temizle — yalnız birini koru
+  IF v_acil_id IS NOT NULL THEN
+    DELETE FROM invoice_items
+      WHERE invoice_id = v_invoice_id AND description LIKE 'Acil Ek Ücret (%' AND id <> v_acil_id;
+  END IF;
+
+  IF COALESCE(v_is_urgent, false) AND COALESCE(v_rate, 0) > 0 THEN
+    -- Baz: acil DIŞINDAKI kalemlerin brütü (kendi üstüne bindirmesin)
+    SELECT COALESCE(SUM(unit_price * quantity), 0) INTO v_base
+      FROM invoice_items
+      WHERE invoice_id = v_invoice_id AND description NOT LIKE 'Acil Ek Ücret (%'
+        -- 20261028142000: tarama satırları acil ek ücrete girmez
+        AND NOT EXISTS (SELECT 1 FROM scan_patient_charges sc WHERE sc.invoice_item_id = invoice_items.id);
+
+    v_surcharge := ROUND(v_base * v_rate / 100.0, 2);
+    v_desc := 'Acil Ek Ücret (%' || trim(to_char(v_rate, 'FM999990.##')) || ')';
+
+    IF v_surcharge > 0 THEN
+      IF v_acil_id IS NOT NULL THEN
+        -- VAR: yalnız tutar/başlık güncellenir → discount_* KORUNUR, id sabit
+        UPDATE invoice_items
+          SET unit_price = v_surcharge, quantity = 1, description = v_desc
+          WHERE id = v_acil_id;
+      ELSE
+        INSERT INTO invoice_items (invoice_id, description, quantity, unit_price, sort_order)
+        VALUES (v_invoice_id, v_desc, 1, v_surcharge,
+                COALESCE((SELECT MAX(sort_order) FROM invoice_items WHERE invoice_id = v_invoice_id), 0) + 1);
+      END IF;
+    ELSE
+      -- surcharge 0 → acil satırı olmamalı
+      DELETE FROM invoice_items
+        WHERE invoice_id = v_invoice_id AND description LIKE 'Acil Ek Ücret (%';
+    END IF;
+  ELSE
+    -- acil değil → acil satırı olmamalı
+    DELETE FROM invoice_items
+      WHERE invoice_id = v_invoice_id AND description LIKE 'Acil Ek Ücret (%';
+  END IF;
+
+  RETURN COALESCE(NEW, OLD);
+END;
+$function$
+
+
+## Salt referans fonksiyonlar (md5(prosrc) / proacl)
+_apply_clinic_credit_core(uuid,uuid) md5=fef29be5357ccd1e782b5bf56eca667a proacl={postgres=X/postgres,service_role=X/postgres}
+_invoice_issued_lock() md5=d0a41d158c279dda4a9e5b6dec18532f proacl={postgres=X/postgres,service_role=X/postgres}
+_invoice_items_issued_lock() md5=8eecded399bb8d188fd310a2e9429be1 proacl={postgres=X/postgres,service_role=X/postgres}
+_order_invoice_number(uuid,uuid) md5=99d5c9a469baea2b3b718983f8001a65 proacl={postgres=X/postgres,service_role=X/postgres}
+_ps_actor(uuid) md5=3448687563d27a5d8c8e705486f4c2ec proacl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+_ps_can_manage(uuid) md5=085079776ba3bcd62e53507de581c52a proacl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+_scan_new_draft(uuid,text) md5=8f218f06b0b3c1480e9ca6728ded3d95 proacl={postgres=X/postgres,service_role=X/postgres}
+_trg_bulk_invoice_number() md5=5345f230ae7ac5d8e4e7f609d147f2cb proacl={postgres=X/postgres,service_role=X/postgres}
+_trg_invoice_apply_receipt_credit() md5=fa1ef585b75cb951bda059d8fce340af proacl={postgres=X/postgres,service_role=X/postgres}
+_trg_invoice_release_receipt_credit() md5=fde5fcdd4a440c271d5ea97e2de8b60c proacl={postgres=X/postgres,service_role=X/postgres}
+alloc_receipt_to_invoices(uuid,uuid,numeric,text,date,text,uuid[]) md5=42020a5529384c5970d7877686e1fa2c proacl={postgres=X/postgres,service_role=X/postgres}
+approve_payment_submission(uuid) md5=f523a8d79f44f447ee895f9bb40ce58d proacl={=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+assert_my_invoice(uuid) md5=a424ce7837b46f3e860811899531ae3c proacl={postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+assert_my_lab(uuid) md5=187c7cd86f8e2069f7fcda06fd9a84c0 proacl={postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+bulk_record_payment(uuid[],numeric,text,date,text) md5=08bf1ea46fe16290429750dd8cd71bcc proacl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+confirm_payment_intent(uuid,text) md5=29533e8fd5831842bbae9fc4a77d9dbe proacl={postgres=X/postgres,service_role=X/postgres}
+create_bulk_invoice(uuid,uuid[],integer,text,text,numeric) md5=038613621ece4bbebe4d5fa51b8522df proacl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+create_invoice_from_order(uuid) md5=256b2b7ad0d411c5499555468727ea83 proacl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+fn_generate_monthly_invoices() md5=45d0788f8fa7bf848b0c81c9686c50fe proacl={postgres=X/postgres,service_role=X/postgres}
+invoice_orders_one_active() md5=bad1183d31bec5e189d55b8fd17b5a7c proacl={=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+lab_today(uuid,timestamp with time zone) md5=1b1a4c9dd56ffade7a668511629c672e proacl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+next_invoice_number(uuid) md5=b5f8b04bb358065a7f1d29d9600d1525 proacl={postgres=X/postgres,service_role=X/postgres}
+recalc_invoice_payment_state(uuid) md5=b17167311313bff2054c169be6b880c3 proacl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+recalc_invoice_totals(uuid) md5=b864f1127359e7948d311a915f38d555 proacl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+set_invoice_number() md5=f1c61a462e401099494a0b2028dd046b proacl={=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+
+## invoices / invoice_items / invoice_orders tetikleyicileri
+invoice_items | list_price_consistency | CREATE TRIGGER list_price_consistency BEFORE INSERT OR UPDATE ON public.invoice_items FOR EACH ROW EXECUTE FUNCTION _list_price_consistency()
+invoice_items | maintain_urgent_surcharge | CREATE TRIGGER maintain_urgent_surcharge AFTER INSERT OR DELETE OR UPDATE ON public.invoice_items FOR EACH ROW EXECUTE FUNCTION trg_maintain_urgent_surcharge()
+invoice_items | recalc_on_items_change | CREATE TRIGGER recalc_on_items_change AFTER INSERT OR DELETE OR UPDATE ON public.invoice_items FOR EACH ROW EXECUTE FUNCTION trg_recalc_invoice_totals()
+invoice_items | zz_invoice_items_efatura_lock | CREATE TRIGGER zz_invoice_items_efatura_lock BEFORE INSERT OR DELETE OR UPDATE ON public.invoice_items FOR EACH ROW EXECUTE FUNCTION invoice_items_efatura_lock()
+invoice_items | zzz_invoice_items_issued_lock | CREATE TRIGGER zzz_invoice_items_issued_lock BEFORE INSERT OR DELETE OR UPDATE ON public.invoice_items FOR EACH ROW EXECUTE FUNCTION _invoice_items_issued_lock()
+invoice_orders | auto_set_lab_id_invoice_orders | CREATE TRIGGER auto_set_lab_id_invoice_orders BEFORE INSERT ON public.invoice_orders FOR EACH ROW EXECUTE FUNCTION auto_set_lab_id()
+invoice_orders | trg_invoice_orders_one_active | CREATE TRIGGER trg_invoice_orders_one_active BEFORE INSERT ON public.invoice_orders FOR EACH ROW EXECUTE FUNCTION invoice_orders_one_active()
+invoice_orders | zz_bulk_invoice_number | CREATE TRIGGER zz_bulk_invoice_number AFTER INSERT ON public.invoice_orders FOR EACH ROW EXECUTE FUNCTION _trg_bulk_invoice_number()
+invoices | aa_enforce_invoice_totals | CREATE TRIGGER aa_enforce_invoice_totals BEFORE UPDATE ON public.invoices FOR EACH ROW EXECUTE FUNCTION aa_enforce_invoice_totals()
+invoices | auto_set_lab_id_invoices | CREATE TRIGGER auto_set_lab_id_invoices BEFORE INSERT ON public.invoices FOR EACH ROW EXECUTE FUNCTION auto_set_lab_id()
+invoices | invoices_default_tax_rate | CREATE TRIGGER invoices_default_tax_rate BEFORE INSERT ON public.invoices FOR EACH ROW EXECUTE FUNCTION invoices_default_tax_rate()
+invoices | invoices_discount_amount_insert | CREATE TRIGGER invoices_discount_amount_insert BEFORE INSERT ON public.invoices FOR EACH ROW EXECUTE FUNCTION _invoices_discount_amount_on_insert()
+invoices | recalc_on_tax_change | CREATE TRIGGER recalc_on_tax_change AFTER UPDATE OF tax_rate, discount_type, discount_value ON public.invoices FOR EACH ROW EXECUTE FUNCTION trg_recalc_on_tax_change()
+invoices | set_invoice_amount_base_trg | CREATE TRIGGER set_invoice_amount_base_trg BEFORE INSERT OR UPDATE ON public.invoices FOR EACH ROW EXECUTE FUNCTION set_invoice_amount_base()
+invoices | set_invoice_number_trigger | CREATE TRIGGER set_invoice_number_trigger BEFORE INSERT ON public.invoices FOR EACH ROW EXECUTE FUNCTION set_invoice_number()
+invoices | touch_invoices_updated_at | CREATE TRIGGER touch_invoices_updated_at BEFORE UPDATE ON public.invoices FOR EACH ROW EXECUTE FUNCTION touch_updated_at()
+invoices | trg_scan_invoice_cancelled | CREATE TRIGGER trg_scan_invoice_cancelled AFTER UPDATE OF status ON public.invoices FOR EACH ROW EXECUTE FUNCTION trg_scan_invoice_cancelled()
+invoices | zz_cash_sync_invoice | CREATE TRIGGER zz_cash_sync_invoice AFTER UPDATE OF status ON public.invoices FOR EACH ROW WHEN ((old.status IS DISTINCT FROM new.status)) EXECUTE FUNCTION _trg_cash_sync_invoice()
+invoices | zz_invoices_discount_lock | CREATE TRIGGER zz_invoices_discount_lock BEFORE UPDATE OF discount_type, discount_value ON public.invoices FOR EACH ROW EXECUTE FUNCTION _invoices_discount_lock()
+invoices | zz_invoices_efatura_lock | CREATE TRIGGER zz_invoices_efatura_lock BEFORE DELETE OR UPDATE ON public.invoices FOR EACH ROW EXECUTE FUNCTION invoices_efatura_lock()
+invoices | zz_sd_invoice_credit | CREATE TRIGGER zz_sd_invoice_credit AFTER INSERT OR DELETE OR UPDATE OF status, total, tax_rate, discount_type, discount_value ON public.invoices FOR EACH ROW EXECUTE FUNCTION _sd_invoice_credit_trg()
+invoices | zz_tr_invoice_receipt_credit | CREATE TRIGGER zz_tr_invoice_receipt_credit AFTER INSERT OR UPDATE OF status ON public.invoices FOR EACH ROW EXECUTE FUNCTION _trg_invoice_apply_receipt_credit()
+invoices | zz_tr_invoice_receipt_release | CREATE TRIGGER zz_tr_invoice_receipt_release AFTER UPDATE OF status ON public.invoices FOR EACH ROW WHEN (((new.status = 'iptal'::text) AND (old.status IS DISTINCT FROM 'iptal'::text))) EXECUTE FUNCTION _trg_invoice_release_receipt_credit()
+invoices | zzz_invoice_issued_lock | CREATE TRIGGER zzz_invoice_issued_lock BEFORE DELETE OR UPDATE ON public.invoices FOR EACH ROW EXECUTE FUNCTION _invoice_issued_lock()
+
+## Yeni nesneler yok mu (beklenen: hepsi false)
+statement_approvals=false _ps_finalize=false approve_pre_statement=false record_clinic_approval=false _invoice_approval_gate=false zz_invoice_approval_gate=false
+
+## Sayımlar
+labs_invoice_approval_enabled=0 drafts=8 drafts_with_discount=0 drafts_with_payments=0 drafts_nonzero_tax=8 clinic_admin_lab_id_eq_clinic_lab=0 statement_disputes=0
