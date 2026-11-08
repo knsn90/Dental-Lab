@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   canApprove, canLabWrite, invoiceHasOpenDispute, approvalPayload, undisputedCount,
-  disputeLabel, preStatementErrorText, summarizeApproval,
+  disputeLabel, preStatementErrorText, summarizeApproval, invoiceDisputeStatus,
 } from './preStatement.ts';
 
 const inv = (id: string, statuses: (string | null)[], updated_at = '2026-11-09T10:00:00+00:00') => ({
@@ -84,4 +84,12 @@ test('summarizeApproval', () => {
   };
   assert.deepEqual(summarizeApproval(r), { issued: 1, changed: 1, disputed: 2 });
   assert.deepEqual(summarizeApproval({ approval_id: null, issued: [], skipped: [] }), { issued: 0, changed: 0, disputed: 0 });
+});
+
+test('invoiceDisputeStatus — fatura rozeti en güçlü açık durumu gösterir', () => {
+  assert.equal(invoiceDisputeStatus(inv('a', ['yanitlandi', 'acik', null])), 'acik');
+  assert.equal(invoiceDisputeStatus(inv('b', ['yanitlandi', 'cozuldu'])), 'yanitlandi');
+  assert.equal(invoiceDisputeStatus(inv('c', ['cozuldu', null])), null);
+  assert.equal(invoiceDisputeStatus(inv('d', [])), null);
+  assert.equal(invoiceDisputeStatus({ items: undefined } as any), null);
 });

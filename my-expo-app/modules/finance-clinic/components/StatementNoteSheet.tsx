@@ -7,8 +7,10 @@
  * çağrılır, ebeveyn ön ekstreyi yeniden yükler.
  */
 
-import React, { useEffect, useState } from 'react';
-import { Modal, View, Text, Pressable, TextInput, ScrollView, ActivityIndicator, Platform } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  Modal, View, Text, Pressable, TextInput, ScrollView, ActivityIndicator, Platform, KeyboardAvoidingView,
+} from 'react-native';
 import { X, Send, Info } from '../../../core/ui/icons';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { useInkUI } from '../../../core/theme/inkScale';
@@ -38,8 +40,10 @@ export function DisputeChip({ status }: { status: DisputeStatus }) {
   );
 }
 
-export function StatementNoteSheet({ item, currency, onClose, onSent }: {
-  /** null → kapalı */
+export function StatementNoteSheet({ open, item: liveItem, currency, onClose, onSent }: {
+  /** Görünürlüğü ebeveyn yönetir (kalem tazelemede kaybolsa da popup ve hatası açık kalır). */
+  open: boolean;
+  /** Tazelenen veriden kalem; fatura bu arada kesildiyse null → son görülen kalem gösterilir. */
   item: PreStatementItem | null;
   currency: string | null;
   onClose: () => void;
@@ -50,14 +54,22 @@ export function StatementNoteSheet({ item, currency, onClose, onSent }: {
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Çift dokunuşta ikinci not gitmesin: state bir sonraki çizime kadar eski kalır, ref anında.
+  const inFlight = useRef(false);
+  // Son görülen kalem: tazeleme kalemi düşürse de popup (ve hata metni) yerinde kalır.
+  const [snapshot, setSnapshot] = useState<PreStatementItem | null>(liveItem);
+  useEffect(() => { if (liveItem) setSnapshot(liveItem); }, [liveItem]);
+  useEffect(() => { if (!open) setSnapshot(null); }, [open]);
+  const item = liveItem ?? snapshot;
 
   // Başka kaleme geçince taslak metin ve hata sıfırlanır.
   useEffect(() => { setBody(''); setError(null); }, [item?.id]);
 
   const send = async () => {
-    if (!item || sending) return;
+    if (!item || inFlight.current) return;
     const text = body.trim();
     if (!text) { setError(autoT('Not 1–2000 karakter olmalı')); return; }
+    inFlight.current = true;
     setSending(true); setError(null);
     try {
       await addStatementNote(item.id, text);
@@ -67,9 +79,11 @@ export function StatementNoteSheet({ item, currency, onClose, onSent }: {
       const msg = String(e?.message ?? e);
       const known = preStatementErrorText(msg);
       setError(known ? autoT(known) : msg);
-      // Fatura bu arada kesildiyse / kapsam değiştiyse liste tazelensin.
+      // Fatura bu arada kesildiyse / kapsam değiştiyse liste arka planda tazelensin;
+      // popup açık kalır, hata Gönder'in yanında görünür.
       if (/PS_NOT_DRAFT|PS_SCOPE/.test(msg)) void onSent();
     } finally {
+      inFlight.current = false;
       setSending(false);
     }
   };
@@ -77,7 +91,8 @@ export function StatementNoteSheet({ item, currency, onClose, onSent }: {
   const notes = item?.notes ?? [];
 
   return (
-    <Modal visible={!!item} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={open && !!item} transparent animationType="fade" onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
       <View style={U.modalOverlay}>
         <View style={U.modalCard}>
           <View style={U.modalHeaderRow}>
@@ -166,6 +181,7 @@ export function StatementNoteSheet({ item, currency, onClose, onSent }: {
           ) : null}
         </View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

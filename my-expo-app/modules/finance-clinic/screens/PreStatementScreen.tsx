@@ -16,10 +16,10 @@
  * Mobilde kart liste, masaüstünde tablo (hub ile aynı 900px eşiği).
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Modal, ActivityIndicator, Platform, useWindowDimensions } from 'react-native';
 import {
-  FileCheck, ChevronDown, ChevronRight, MessageSquare, Info, CheckCircle2, AlertTriangle,
+  FileCheck, ChevronDown, ChevronRight, MessageSquare, Info, CheckCircle2, AlertTriangle, RefreshCw,
 } from '../../../core/ui/icons';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { useInkUI } from '../../../core/theme/inkScale';
@@ -27,10 +27,10 @@ import { KPICardX } from '../../../core/ui/KPICardX';
 import { formatMoney, type Currency } from '../../../core/money/currency';
 import { fetchPreStatement, approvePreStatement } from '../../invoices/preStatementApi';
 import {
-  canApprove, invoiceHasOpenDispute, undisputedCount, preStatementErrorText, summarizeApproval,
+  canApprove, invoiceDisputeStatus, undisputedCount, preStatementErrorText, summarizeApproval,
 } from '../../invoices/lib/preStatement';
 import type { ApprovalMode, PreStatement, PreStatementInvoice, PreStatementItem } from '../../invoices/types';
-import { DISPLAY, PAGE_PADDING, fmtDate, ErrorBar, Loader, EmptyCard } from '../components/atoms';
+import { DISPLAY, PAGE_PADDING, fmtDate, ErrorBar, Loader, EmptyCard, PillButton } from '../components/atoms';
 import { StatementNoteSheet, DisputeChip } from '../components/StatementNoteSheet';
 
 /** Defansif para: her fatura kendi para biriminde (sabit ₺ yok). */
@@ -59,13 +59,21 @@ export function PreStatementScreen({ clinicId }: { clinicId: string }) {
   const [approving, setApproving] = useState(false);
   const [approveError, setApproveError] = useState<string | null>(null);
   const [result, setResult] = useState<ResultMsg | null>(null);
+  /** Sessiz tazeleme hatası: ekranı silmez, eldeki veri + küçük "yeniden dene" kalır. */
+  const [reloadError, setReloadError] = useState<string | null>(null);
+  // Çift dokunuşta ikinci onay isteği gitmesin (state bir sonraki çizime kadar eski kalır).
+  const approveInFlight = useRef(false);
 
   const load = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    setLoadError(null);
-    try { setData(await fetchPreStatement(clinicId)); }
-    catch (e) { setLoadError(errText(e)); }
-    finally { if (!silent) setLoading(false); }
+    if (!silent) { setLoading(true); setLoadError(null); }
+    try {
+      setData(await fetchPreStatement(clinicId));
+      setReloadError(null);
+      if (!silent) setLoadError(null);
+    } catch (e) {
+      if (silent) setReloadError(errText(e));
+      else setLoadError(errText(e));
+    } finally { if (!silent) setLoading(false); }
   }, [clinicId]);
   useEffect(() => { void load(); }, [load]);
 
@@ -73,7 +81,8 @@ export function PreStatementScreen({ clinicId }: { clinicId: string }) {
   const approver = !!data && canApprove(data.actor, data.enabled);
   const undisputed = undisputedCount(invoices);
 
-  // Not popup'ı tazelenen veriden beslenir; kalem artık yoksa (fatura kesildi) kapanır.
+  // Not popup'ı tazelenen veriden beslenir; kalem artık yoksa (fatura kesildi) popup son
+  // görülen kalemle açık kalır ki hata metni okunabilsin.
   const noteTarget = useMemo(() => {
     if (!noteItemId) return null;
     for (const inv of invoices) {
@@ -82,9 +91,12 @@ export function PreStatementScreen({ clinicId }: { clinicId: string }) {
     }
     return null;
   }, [noteItemId, invoices]);
+  const noteCurrency = useRef<string | null>(null);
+  if (noteTarget) noteCurrency.current = noteTarget.currency;
 
   const runApprove = async () => {
-    if (!confirmMode || approving) return;
+    if (!confirmMode || approveInFlight.current) return;
+    approveInFlight.current = true;
     setApproving(true); setApproveError(null);
     try {
       const r = await approvePreStatement(clinicId, invoices, confirmMode);
@@ -96,17 +108,28 @@ export function PreStatementScreen({ clinicId }: { clinicId: string }) {
       // Bu arada taslak silinmiş/kesilmiş olabilir → liste tazelensin.
       if (/PS_SCOPE/.test(String((e as any)?.message ?? e))) void load(true);
     } finally {
+      approveInFlight.current = false;
       setApproving(false);
     }
   };
 
   if (loading) return <Loader />;
   if (loadError || !data) {
-    return <View style={{ padding: PAGE_PADDING }}><ErrorBar message={loadError ?? autoT('Ön ekstre yüklenemedi')} /></View>;
+    return (
+      <View style={{ padding: PAGE_PADDING, alignItems: 'flex-start' }}>
+        <View style={{ alignSelf: 'stretch' }}><ErrorBar message={loadError ?? autoT('Ön ekstre yüklenemedi')} /></View>
+        <PillButton variant="light" size="sm" onPress={() => { void load(); }}
+          leftIcon={<RefreshCw size={12} color={U.ink[900]} strokeWidth={2} />}>
+          {autoT('Yeniden dene')}
+        </PillButton>
+      </View>
+    );
   }
 
   const ownScope = data.scope === 'own';
   const kpiStyle = isDesktop ? undefined : { minWidth: 150, padding: 14 };
+  // Dar ekranda (iki sütun) uzun başlık ikona yapışıyordu → mobilde ikon gösterilmez.
+  const kpiIcon = (name: string) => (isDesktop ? name : undefined);
 
   return (
     <ScrollView
@@ -137,13 +160,13 @@ export function PreStatementScreen({ clinicId }: { clinicId: string }) {
           {(data.summary ?? []).map(s => (
             <View key={s.currency} style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
               {!ownScope && s.finalized_balance != null ? (
-                <KPICardX title={autoT('Kesinleşmiş bakiye')} value={money(s.finalized_balance, s.currency)} icon="file-text" style={kpiStyle} />
+                <KPICardX title={autoT('Kesinleşmiş bakiye')} value={money(s.finalized_balance, s.currency)} icon={kpiIcon('file-text')} style={kpiStyle} />
               ) : null}
               {!ownScope && s.overdue != null ? (
-                <KPICardX title={autoT('Vadesi geçen')} value={money(s.overdue, s.currency)} icon="alert-triangle" style={kpiStyle}
-                  accent={(Number(s.overdue) || 0) > 0 ? '#D94B4B' : undefined} />
+                <KPICardX title={autoT('Vadesi geçen')} value={money(s.overdue, s.currency)} icon={kpiIcon('alert-triangle')} style={kpiStyle}
+                  accent={(Number(s.overdue) || 0) > 0 ? U.chipTones.danger.fg : undefined} />
               ) : null}
-              <KPICardX title={autoT('Onay bekleyen')} value={money(s.pending, s.currency)} icon="clock" style={kpiStyle} />
+              <KPICardX title={autoT('Onay bekleyen')} value={money(s.pending, s.currency)} icon={kpiIcon('clock')} style={kpiStyle} />
             </View>
           ))}
 
@@ -177,6 +200,18 @@ export function PreStatementScreen({ clinicId }: { clinicId: string }) {
 
           {result ? <ResultBanner r={result} /> : null}
 
+          {reloadError ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <Text style={{ flex: 1, minWidth: 180, fontSize: 12, color: U.chipTones.danger.fg }}>
+                {`${autoT('Liste yenilenemedi')}: ${reloadError}`}
+              </Text>
+              <PillButton variant="light" size="sm" onPress={() => { void load(true); }}
+                leftIcon={<RefreshCw size={12} color={U.ink[900]} strokeWidth={2} />}>
+                {autoT('Yeniden dene')}
+              </PillButton>
+            </View>
+          ) : null}
+
           {/* Taslak listesi */}
           {invoices.length === 0 ? (
             <EmptyCard icon={CheckCircle2} title={autoT('Onay bekleyen fatura yok')} />
@@ -198,8 +233,9 @@ export function PreStatementScreen({ clinicId }: { clinicId: string }) {
       )}
 
       <StatementNoteSheet
+        open={!!noteItemId}
         item={noteTarget?.item ?? null}
-        currency={noteTarget?.currency ?? null}
+        currency={noteTarget?.currency ?? noteCurrency.current}
         onClose={() => setNoteItemId(null)}
         onSent={() => load(true)}
       />
@@ -210,7 +246,8 @@ export function PreStatementScreen({ clinicId }: { clinicId: string }) {
         undisputed={undisputed}
         busy={approving}
         error={approveError}
-        onCancel={() => { if (!approving) { setConfirmMode(null); setApproveError(null); } }}
+        // Hata vazgeçince silinmez: diyalog kapanınca onay butonlarının yanında görünür kalır.
+        onCancel={() => { if (!approving) setConfirmMode(null); }}
         onConfirm={runApprove}
       />
     </ScrollView>
@@ -289,7 +326,7 @@ function InvoiceBlock({ inv, desktop, expanded, onToggle, onItem }: {
 }) {
   const U = useInkUI();
   const items = inv.items ?? [];
-  const disputed = invoiceHasOpenDispute(inv);
+  const disputeStatus = invoiceDisputeStatus(inv);
   const date = fmtDate(inv.issue_date ?? inv.created_at);
   const Chevron = expanded ? ChevronDown : ChevronRight;
 
@@ -310,7 +347,7 @@ function InvoiceBlock({ inv, desktop, expanded, onToggle, onItem }: {
             <Text style={{ fontSize: 14, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>
               {inv.invoice_number || autoT('Taslak fatura')}
             </Text>
-            {disputed ? <DisputeChip status="acik" /> : null}
+            {disputeStatus ? <DisputeChip status={disputeStatus} /> : null}
           </View>
           <Text style={{ fontSize: 11.5, color: U.ink[400] }} numberOfLines={1}>
             {`${date} · ${items.length} ${autoT('kalem')}`}
@@ -491,10 +528,10 @@ function ConfirmDialog({ mode, total, undisputed, busy, error, onCancel, onConfi
               <Pressable
                 onPress={onConfirm}
                 disabled={busy}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999, backgroundColor: '#2D9A6B', opacity: busy ? 0.6 : 1 }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999, backgroundColor: U.ink[900], opacity: busy ? 0.6 : 1 }}
               >
-                {busy ? <ActivityIndicator size="small" color="#FFFFFF" /> : null}
-                <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#FFFFFF' }}>{autoT('Onayla')}</Text>
+                {busy ? <ActivityIndicator size="small" color={U.onDarkPill} /> : null}
+                <Text style={{ fontSize: 12.5, fontWeight: '700', color: U.onDarkPill }}>{autoT('Onayla')}</Text>
               </Pressable>
             </View>
           </View>

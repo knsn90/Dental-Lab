@@ -17,6 +17,14 @@ export function invoiceHasOpenDispute(inv: PreStatementInvoice): boolean {
   return (inv.items ?? []).some((it) => it.dispute_status === 'acik' || it.dispute_status === 'yanitlandi');
 }
 
+/** Fatura düzeyi rozet: herhangi bir kalem 'acik' → 'acik'; yoksa 'yanitlandi' varsa o; aksi halde null. */
+export function invoiceDisputeStatus(inv: PreStatementInvoice): DisputeStatus | null {
+  const items = inv.items ?? [];
+  if (items.some((it) => it.dispute_status === 'acik')) return 'acik';
+  if (items.some((it) => it.dispute_status === 'yanitlandi')) return 'yanitlandi';
+  return null;
+}
+
 /** updated_at sunucudan gelen dizgiyle AYNEN geçer (Date'e çevrilirse mikrosaniye kaybolur → "değişti" sayılır). */
 export function approvalPayload(invoices: PreStatementInvoice[]): { id: string; updated_at: string }[] {
   return invoices.map((i) => ({ id: i.id, updated_at: i.updated_at }));
