@@ -32,6 +32,7 @@ const SD_STATUS_TEXTS: Record<string, string> = {
   INV_ISSUED_LOCKED: ISSUED_LOCKED_TEXT,
   // Eski tetikleyici (indirim kilidi) kesilmiş faturada önce davranabilir; kullanıcıya aynı metin.
   INV_DISCOUNT_LOCKED: ISSUED_LOCKED_TEXT,
+  INV_APPROVAL_REQUIRED: 'Bu lab\'da fatura klinik onayıyla kesinleşir; "Klinik adına onay kaydet"i kullanın',
 };
 
 /** Durum değişikliği hatası: SD kilidi → okunur metin; başka hata → ham mesaj; boş → genel metin. */

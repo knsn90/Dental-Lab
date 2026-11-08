@@ -81,3 +81,10 @@ test('DZ satırı indirim sütununa ve toplamına girmez', () => {
   assert.equal(hasAnyDiscount([lines[1]]), false);
   assert.equal(hasAnyDiscount(lines), true);
 });
+
+test('invoiceStatusErrorText: INV_APPROVAL_REQUIRED okunur metin', () => {
+  assert.equal(
+    invoiceStatusErrorText('P0001: INV_APPROVAL_REQUIRED'),
+    'Bu lab\'da fatura klinik onayıyla kesinleşir; "Klinik adına onay kaydet"i kullanın',
+  );
+});

@@ -358,3 +358,72 @@ export interface StatementDiscountQuote {
   period_total: number; prior_discounts: number; base: number; amount: number;
   to_invoices: number; to_credit: number; balance_before: number; balance_after: number;
 }
+
+// ─── Ön ekstre (get_pre_statement / onay RPC'leri) ─────────────────────────
+
+export type DisputeStatus = 'acik' | 'yanitlandi' | 'cozuldu';
+/** lab = lab tarafı (can_manage ayrı), approver = onaylayabilen klinik/hekim, viewer = yalnız görür */
+export type PsActor = 'lab' | 'approver' | 'viewer';
+
+export interface PreStatementNote {
+  id: string;
+  author_side: 'clinic' | 'lab';
+  body: string;
+  created_at: string;
+}
+
+export interface PreStatementItem {
+  id: string;
+  description: string | null;
+  quantity: number;
+  unit_price: number;
+  /** İndirim sonrası net tutar */
+  total: number;
+  gross_total: number;
+  order_no: string | null;
+  patient_initials: string | null;
+  doctor_name: string | null;
+  dispute_status: DisputeStatus | null;
+  notes: PreStatementNote[];
+}
+
+export interface PreStatementInvoice {
+  id: string;
+  subtotal: number;
+  tax: number;
+  invoice_number: string | null;
+  currency: string;
+  issue_date: string | null;
+  created_at: string;
+  /** Sunucudaki tam zaman damgası (mikrosaniye) — onayda AYNEN geri gönderilir */
+  updated_at: string;
+  total: number;
+  items: PreStatementItem[];
+}
+
+export interface PreStatementSummary {
+  currency: string;
+  /** 'own' kapsamda null */
+  finalized_balance: number | null;
+  /** 'own' kapsamda null */
+  overdue: number | null;
+  pending: number;
+}
+
+export interface PreStatement {
+  enabled: boolean;
+  actor: PsActor;
+  can_manage: boolean;
+  scope: 'full' | 'own';
+  summary: PreStatementSummary[];
+  invoices: PreStatementInvoice[];
+}
+
+export type ApprovalMode = 'all' | 'undisputed';
+
+export interface ApprovalResult {
+  /** Hepsi atlandıysa null */
+  approval_id: string | null;
+  issued: { invoice_id: string; invoice_number: string | null; currency: string; total: number }[];
+  skipped: { invoice_id: string; reason: 'changed' | 'disputed' }[];
+}
