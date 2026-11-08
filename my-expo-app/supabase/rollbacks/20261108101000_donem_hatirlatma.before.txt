@@ -1,0 +1,181 @@
+-- 20261108101000_donem_hatirlatma.before.txt — canlı durum (2026-11-08, uygulama öncesi)
+-- md5(pg_get_functiondef) ve proacl (pg_proc.proacl):
+--   _send_payment_reminder_core(uuid, uuid, uuid, text, text, text, text[], uuid)  md5 320dd298004609914c693d563d6002a3  proacl {postgres=X/postgres,service_role=X/postgres}
+--   _reminder_amounts(uuid, uuid, uuid)  md5 be233bcbbc6e3eeb984e0b298fb2418f  proacl {postgres=X/postgres,service_role=X/postgres}   (salt referans, DEĞİŞMİYOR)
+--   my_payment_reminder()  md5 4fc186b63650ebf7192a18b35d992055  proacl {postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}   (salt referans, DEĞİŞMİYOR)
+--   _overdue_periods_text(jsonb, date) ve _reminder_periods(uuid, uuid) canlıda YOK (yeni).
+-- my_payment_reminder payment_reminders.body OKUMAZ: v_clinic_balance_ccy'den para birimi başına
+--   overdue_amount/total_balance/overdue_count/oldest_due_date/days_late döndürür (popup yapılandırılmış alanlarla çizilir).
+-- Gönderici taraması: probe yolu (_overdue_periods_text, _reminder_periods, lab_today, invoices SELECT,
+--   _send_payment_reminder_core için yalnız CREATE OR REPLACE DDL'i) net.http_post / pg_net çağırmaz. Gönderici çağrılmaz.
+
+-- ==== _send_payment_reminder_core ====
+CREATE OR REPLACE FUNCTION public._send_payment_reminder_core(p_lab_id uuid, p_clinic_id uuid, p_invoice_id uuid, p_tone text, p_message text, p_severity text, p_channels text[], p_sent_by uuid)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_clinic_name TEXT; v_total_due NUMERIC := 0; v_overdue_due NUMERIC := 0; v_overdue_count INT := 0;
+  v_reminder_id UUID; v_title TEXT; v_body TEXT; v_recipients INT := 0; v_user_ids UUID[];
+  v_url TEXT; v_secret TEXT; v_anon TEXT;
+  v_due_text TEXT; v_by_ccy JSONB := '{}'::jsonb;
+  v_admin_ids UUID[];
+BEGIN
+  SELECT name INTO v_clinic_name FROM clinics WHERE id = p_clinic_id;
+  -- 20261026110000: tutar tek kaynaktan (kliniğin görünen bakiyesi, avans düşülmüş; lab günü)
+  SELECT a.total_due, a.overdue_due, a.overdue_count, a.due_text, a.by_ccy
+    INTO v_total_due, v_overdue_due, v_overdue_count, v_due_text, v_by_ccy
+    FROM public._reminder_amounts(p_lab_id, p_clinic_id, p_invoice_id) a;
+  IF COALESCE(v_total_due, 0) <= 0 THEN RETURN NULL; END IF;
+
+  v_title := CASE p_severity WHEN 'urgent' THEN '🔴 ACİL: Ödeme Bekliyor' WHEN 'warning' THEN '⚠️ Ödeme Hatırlatması' ELSE 'Ödeme Hatırlatması' END;
+  v_body := CONCAT_WS(' ',
+    CASE WHEN v_overdue_count > 0 THEN v_overdue_count::TEXT || ' fatura vadesini aştı.' ELSE NULL END,
+    'Açık borç: ' || COALESCE(v_due_text, TO_CHAR(v_total_due, 'FM999G999G990D00')) || '.',
+    CASE WHEN p_message IS NOT NULL AND LENGTH(BTRIM(p_message)) > 0 THEN '— ' || BTRIM(p_message) ELSE NULL END);
+  INSERT INTO payment_reminders (lab_id, clinic_id, invoice_id, channel, tone, subject, body, status, sent_by, sent_at, total_due, overdue_due, overdue_count, message, severity)
+  VALUES (p_lab_id, p_clinic_id, p_invoice_id, 'in_app', p_tone, v_title, v_body, 'sent', p_sent_by, NOW(), v_total_due, v_overdue_due, v_overdue_count, NULLIF(BTRIM(p_message),''), p_severity)
+  RETURNING id INTO v_reminder_id;
+  v_url := '/(clinic)/finance?tab=overview';
+  WITH inserted AS (
+    INSERT INTO notifications (user_id, lab_id, category, title, body, resource_type, resource_id, action_url, payload)
+    SELECT p.id, p_lab_id, 'payment', v_title, v_body,
+      CASE WHEN p_invoice_id IS NOT NULL THEN 'invoice' ELSE 'clinic_balance' END,
+      COALESCE(p_invoice_id, p_clinic_id), v_url,
+      jsonb_build_object('reminder_id', v_reminder_id, 'clinic_id', p_clinic_id, 'invoice_id', p_invoice_id,
+        'total_due', v_total_due, 'totals_by_currency', v_by_ccy,
+        'overdue_due', v_overdue_due, 'overdue_count', v_overdue_count,
+        'severity', p_severity, 'message', p_message, 'channels', to_jsonb(p_channels))
+    FROM profiles p WHERE p.clinic_id = p_clinic_id AND p.user_type IN ('clinic_admin','clinic_secretary','doctor')
+         AND public._user_can_view_clinic_billing(p.id, p_clinic_id)
+    RETURNING user_id
+  )
+  SELECT COUNT(*), array_agg(user_id) INTO v_recipients, v_user_ids FROM inserted;
+  UPDATE payment_reminders SET recipients_count = v_recipients WHERE id = v_reminder_id;
+  IF (p_channels @> ARRAY['email']) AND v_user_ids IS NOT NULL AND array_length(v_user_ids,1) > 0 THEN
+    BEGIN SELECT decrypted_secret INTO v_secret FROM vault.decrypted_secrets WHERE name='notify_fn_secret' LIMIT 1; EXCEPTION WHEN OTHERS THEN v_secret := NULL; END;
+    BEGIN SELECT decrypted_secret INTO v_anon FROM vault.decrypted_secrets WHERE name='net_anon_key' LIMIT 1; EXCEPTION WHEN OTHERS THEN v_anon := NULL; END;
+    IF v_anon IS NOT NULL THEN
+      BEGIN
+        PERFORM net.http_post(
+          url := 'https://kjwjxqfdsxkxgcgophdy.supabase.co/functions/v1/send-email-notification',
+          headers := jsonb_build_object('Content-Type','application/json','Authorization','Bearer ' || v_anon,'apikey', v_anon,'x-notify-secret', COALESCE(v_secret,'')),
+          body := jsonb_build_object('userIds', to_jsonb(v_user_ids), 'category','payment','notificationId', v_reminder_id,
+            'payload', jsonb_build_object('title', v_title, 'body', v_body, 'actionUrl', v_url,
+              'resourceType', CASE WHEN p_invoice_id IS NOT NULL THEN 'invoice' ELSE 'clinic_balance' END,
+              'resourceId', COALESCE(p_invoice_id, p_clinic_id)::text,
+              'extra', jsonb_build_object('clinicName', v_clinic_name, 'totalDue', v_total_due,
+                                          'totalsByCurrency', v_by_ccy, 'dueText', v_due_text,
+                                          'overdueCount', v_overdue_count))));
+      EXCEPTION WHEN OTHERS THEN NULL; END;
+    END IF;
+  END IF;
+  -- ── ADMİN NÜSHASI (WhatsApp) ─────────────────────────────────────────────
+  -- Kullanıcı kararı: hatırlatma gönderildiğinde bir kopyası lab yöneticilerine
+  -- (admin + lab müdürü) KESİNLİKLE WhatsApp'tan gider — kliniğin kanal
+  -- politikasından bağımsız. Uygulama içi bildirim YAZILMAZ (admin kutusu
+  -- kirlenmesin); doğrudan send-whatsapp-meta çağrılır, __admin_copy işaretiyle.
+  -- Hata hatırlatmayı asla bozmaz.
+  BEGIN
+    SELECT array_agg(p.id) INTO v_admin_ids
+      FROM profiles p
+     WHERE (p.lab_id = p_lab_id OR p.id = p_lab_id)
+       AND COALESCE(p.is_active, true)
+       AND (p.user_type = 'admin' OR (p.user_type = 'lab' AND p.role = 'manager'))
+        AND public._user_has_lab_finance(p.id, p_lab_id);
+    IF v_admin_ids IS NOT NULL AND array_length(v_admin_ids, 1) > 0 THEN
+      IF v_anon IS NULL THEN
+        BEGIN SELECT decrypted_secret INTO v_anon FROM vault.decrypted_secrets WHERE name='net_anon_key' LIMIT 1; EXCEPTION WHEN OTHERS THEN v_anon := NULL; END;
+      END IF;
+      IF v_secret IS NULL THEN
+        BEGIN SELECT decrypted_secret INTO v_secret FROM vault.decrypted_secrets WHERE name='notify_fn_secret' LIMIT 1; EXCEPTION WHEN OTHERS THEN v_secret := NULL; END;
+      END IF;
+      IF v_anon IS NOT NULL THEN
+        PERFORM net.http_post(
+          url := 'https://kjwjxqfdsxkxgcgophdy.supabase.co/functions/v1/send-whatsapp-meta',
+          headers := jsonb_build_object('Content-Type','application/json','Authorization','Bearer ' || v_anon,'apikey', v_anon,'x-notify-secret', COALESCE(v_secret,'')),
+          body := jsonb_build_object(
+            'userIds', to_jsonb(v_admin_ids),
+            'category', 'payment',
+            'resource_type', CASE WHEN p_invoice_id IS NOT NULL THEN 'invoice' ELSE 'clinic_balance' END,
+            'resource_id', COALESCE(p_invoice_id, p_clinic_id)::text,
+            'payload', jsonb_build_object(
+              '__admin_copy', true,
+              '__clinic_name', COALESCE(v_clinic_name, 'Klinik'),
+              '__body', v_body,
+              '__lab_id', p_lab_id::text,
+              'reminder_id', v_reminder_id)));
+      END IF;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN NULL; END;
+
+  RETURN v_reminder_id;
+END; $function$
+;
+
+-- ==== _reminder_amounts (referans) ====
+CREATE OR REPLACE FUNCTION public._reminder_amounts(p_lab uuid, p_clinic uuid, p_invoice uuid)
+ RETURNS TABLE(total_due numeric, overdue_due numeric, overdue_count integer, due_text text, by_ccy jsonb)
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+  with today as (select public.lab_today(p_lab) as d),
+  amt as (
+    select v.currency as ccy, greatest(v.balance, 0) as total, v.overdue_net as overdue
+      from public.v_clinic_balance_ccy v
+     where p_invoice is null and v.clinic_id = p_clinic and v.lab_id = p_lab
+    union all
+    select coalesce(nullif(upper(btrim(i.currency)), ''), 'TRY'),
+           greatest(0, coalesce(i.total, 0) - coalesce(i.paid_amount, 0)),
+           case when i.due_date is not null and i.due_date < (select d from today)
+                then greatest(0, coalesce(i.total, 0) - coalesce(i.paid_amount, 0)) else 0 end
+      from public.invoices i
+     where p_invoice is not null and i.id = p_invoice and i.clinic_id = p_clinic
+  ), cnt as (
+    select count(*)::int as n from public.invoices i, today
+     where i.clinic_id = p_clinic and i.lab_id = p_lab
+       and ((p_invoice is not null and i.id = p_invoice)
+         or (p_invoice is null and i.status in ('kesildi', 'kismi_odendi')))
+       and i.due_date is not null and i.due_date < today.d and i.paid_amount < i.total
+  )
+  select coalesce(sum(a.total), 0), coalesce(sum(a.overdue), 0), (select n from cnt),
+         string_agg(case a.ccy when 'EUR' then '€' when 'TRY' then '₺' when 'USD' then '$' when 'GBP' then '£'
+                               else a.ccy || ' ' end || to_char(a.total, 'FM999G999G990D00'),
+                    ' + ' order by a.total desc) filter (where a.total > 0),
+         coalesce(jsonb_object_agg(a.ccy, round(a.total, 2)) filter (where a.total > 0), '{}'::jsonb)
+    from amt a
+$function$
+;
+
+-- ==== my_payment_reminder (referans) ====
+CREATE OR REPLACE FUNCTION public.my_payment_reminder()
+ RETURNS TABLE(lab_id uuid, lab_name text, currency text, overdue_amount numeric, total_balance numeric, overdue_count integer, oldest_due_date date, days_late integer)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  -- 20261026110000: tutarlar kliniğin görünen bakiyesinden (v_clinic_balance_ccy; avans düşülmüş, lab günü)
+  select v.lab_id,
+         l.name,
+         v.currency,
+         sum(v.overdue_net),
+         sum(greatest(v.balance, 0)),
+         sum((select count(*) from invoices i
+               where i.clinic_id = v.clinic_id and i.lab_id = v.lab_id and coalesce(i.currency, 'TRY') = v.currency
+                 and i.status not in ('taslak', 'iptal') and i.paid_amount < i.total
+                 and i.due_date < public.lab_today(v.lab_id)))::int,
+         min(v.oldest_overdue_date),
+         coalesce((public.lab_today(v.lab_id) - min(v.oldest_overdue_date))::int, 0)
+    from v_clinic_balance_ccy v
+    left join labs l on l.id = v.lab_id
+   where v.clinic_id in (select public.my_clinic_ids())
+     -- Klinikte faturayı görebilen kullanıcı (yönetici / yetkili sekreter / yöneticisiz klinikteki hekim)
+     and public.can_view_clinic_billing(v.clinic_id)
+   group by v.lab_id, l.name, v.currency
+  -- Yalnız avans düşüldükten sonra gerçekten gecikmiş bakiyesi olanlar; yoksa popup açılmaz.
+  having sum(v.overdue_net) > 0;
+$function$
+;
