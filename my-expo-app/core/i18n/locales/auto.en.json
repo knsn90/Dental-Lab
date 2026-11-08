@@ -10003,7 +10003,7 @@
   "İndirim kaldırılamadı.": "The discount could not be removed.",
   "Faturaları elle seç": "Select invoices manually",
   "Seçilen faturalar önce kapanır, kalanı en eskiden başlar": "Selected invoices are closed first; the rest starts from the oldest",
-  "Düzenlemede dağıtım en eski borçtan yeniden yapılır": "When editing, the allocation is redone from the oldest debt",
+  "Düzenlenen tahsilat alacak olarak kalır; yeni fatura kesilince uygulanır": "The edited receipt stays as credit; it is applied when a new invoice is issued",
   "Seçilen fatura artık açık değil": "The selected invoice is no longer open",
   "Seçilebilir açık fatura yok": "No open invoices to select"
 }

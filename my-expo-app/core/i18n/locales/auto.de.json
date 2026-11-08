@@ -10003,7 +10003,7 @@
   "İndirim kaldırılamadı.": "Der Rabatt konnte nicht entfernt werden.",
   "Faturaları elle seç": "Rechnungen manuell auswählen",
   "Seçilen faturalar önce kapanır, kalanı en eskiden başlar": "Ausgewählte Rechnungen werden zuerst beglichen, der Rest beginnt bei der ältesten",
-  "Düzenlemede dağıtım en eski borçtan yeniden yapılır": "Beim Bearbeiten wird die Verteilung ab der ältesten Schuld neu vorgenommen",
+  "Düzenlenen tahsilat alacak olarak kalır; yeni fatura kesilince uygulanır": "Die bearbeitete Zahlung bleibt als Guthaben; sie wird verrechnet, sobald eine neue Rechnung ausgestellt wird",
   "Seçilen fatura artık açık değil": "Die ausgewählte Rechnung ist nicht mehr offen",
   "Seçilebilir açık fatura yok": "Keine offenen Rechnungen zur Auswahl"
 }

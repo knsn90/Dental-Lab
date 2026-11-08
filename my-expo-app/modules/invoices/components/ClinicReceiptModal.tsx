@@ -455,7 +455,8 @@ export function ClinicReceiptModal({
                 </Text>
               </View>
 
-              {(preview?.allocations ?? []).map(a => (
+              {/* Düzenlemede kayıt dağıtmaz (fiş alacak kalır) → FIFO önizlemesi gösterilmez */}
+              {(editing ? [] : (preview?.allocations ?? [])).map(a => (
                 <View key={a.invoice_id}
                   style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                   <Text style={{ fontSize: 12.5, color: U.ink[400] }} numberOfLines={1}>
@@ -467,7 +468,7 @@ export function ClinicReceiptModal({
                 </View>
               ))}
 
-              {preview && (preview.allocations ?? []).length === 0 ? (
+              {preview && !editing && (preview.allocations ?? []).length === 0 ? (
                 <Text style={{ fontSize: 12, color: U.ink[400] }}>
                   Kapatılacak açık fatura yok
                 </Text>
@@ -482,16 +483,16 @@ export function ClinicReceiptModal({
                     Kalan alacak
                   </Text>
                   <Text style={{ fontSize: 13, fontWeight: '700', color: U.ink[900] }}>
-                    {fmt(Number(preview.credit_base) || 0)} {base}
+                    {fmt(editing ? totalBase : (Number(preview.credit_base) || 0))} {base}
                   </Text>
                 </View>
               ) : null}
             </View>
 
-            {/* Elle fatura seçimi — düzenlemede dağıtım yeniden FIFO yapıldığı için gizli */}
+            {/* Elle fatura seçimi — düzenlenen fiş dağıtılmaz, alacak kalır; seçim gizli */}
             {editing ? (
               <Text style={{ fontSize: 12, color: U.ink[500] }}>
-                {autoT('Düzenlemede dağıtım en eski borçtan yeniden yapılır')}
+                {autoT('Düzenlenen tahsilat alacak olarak kalır; yeni fatura kesilince uygulanır')}
               </Text>
             ) : (
               <View style={{ gap: 8 }}>
