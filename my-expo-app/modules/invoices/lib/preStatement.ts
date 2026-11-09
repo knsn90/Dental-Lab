@@ -2,7 +2,7 @@
 // Node testinde çalıştığı için yerel importlar yalnız `import type`.
 
 import type {
-  ApprovalResult, DisputeStatus, PreStatementInvoice, PsActor, StatementRequestContacts, StatementSendChannel,
+  ApprovalResult, DisputeStatus, PreStatementInvoice, PreStatementItem, PsActor, StatementRequestContacts, StatementSendChannel,
 } from '../types';
 
 /** Yalnız onaylayıcı ve lab ayarı açıkken onaylayabilir. */
@@ -154,4 +154,65 @@ export function approvalBadgeText(
     return [tr('Lab tarafından kaydedildi'), date, reason].filter(Boolean).join(' · ');
   }
   return [tr('Klinik onayladı'), date].filter(Boolean).join(' · ');
+}
+
+// ─── Çok işli ekstre: süzme ve gruplama (plan 4 Task 7) ─────────────────
+
+const trLower = (v: unknown): string => String(v ?? '').toLocaleLowerCase('tr');
+
+/**
+ * Yalnız GÖRÜNÜM süzer: kalemler süzülür, fatura toplamı/updated_at aynen kalır; kalemi kalmayan
+ * fatura düşer. Onay RPC'si sunucuda klinik+dönem başınadır; çağıran onayı süzülmüş listeyle DEĞİL
+ * tam listeyle göndermelidir.
+ */
+export function filterPreStatement(
+  inv: PreStatementInvoice[], q: { text?: string; work?: string | null },
+): PreStatementInvoice[] {
+  const text = trLower(q.text).trim();
+  const work = q.work ? String(q.work) : null;
+  if (!text && !work) return inv;
+  const out: PreStatementInvoice[] = [];
+  for (const i of inv) {
+    const items = (i.items ?? []).filter((it) => {
+      if (work && String(it.description ?? '').trim() !== work) return false;
+      if (!text) return true;
+      return trLower(it.patient_initials).includes(text) || trLower(it.order_no).includes(text);
+    });
+    if (items.length > 0) out.push({ ...i, items });
+  }
+  return out;
+}
+
+export interface DoctorOrderGroup {
+  doctor: string;
+  orders: { order_no: string; items: PreStatementItem[]; subtotal: number }[];
+  subtotal: number;
+}
+
+/** Hekim → sipariş gruplaması (ilk görülme sırası korunur). Eksik hekim/sipariş "—". */
+export function groupItemsByDoctorOrder(inv: PreStatementInvoice): DoctorOrderGroup[] {
+  const docs = new Map<string, Map<string, PreStatementItem[]>>();
+  for (const it of inv.items ?? []) {
+    const d = String(it.doctor_name ?? '').trim() || '—';
+    const o = String(it.order_no ?? '').trim() || '—';
+    let om = docs.get(d);
+    if (!om) { om = new Map(); docs.set(d, om); }
+    const arr = om.get(o);
+    if (arr) arr.push(it); else om.set(o, [it]);
+  }
+  const sum = (xs: PreStatementItem[]) => xs.reduce((s, x) => s + (Number(x.total) || 0), 0);
+  return [...docs.entries()].map(([doctor, om]) => {
+    const orders = [...om.entries()].map(([order_no, items]) => ({ order_no, items, subtotal: sum(items) }));
+    return { doctor, orders, subtotal: orders.reduce((s, o) => s + o.subtotal, 0) };
+  });
+}
+
+/** Süzme seçicisi için benzersiz, sıralı iş açıklamaları. */
+export function workTypes(inv: PreStatementInvoice[]): string[] {
+  const set = new Set<string>();
+  for (const i of inv) for (const it of i.items ?? []) {
+    const d = String(it.description ?? '').trim();
+    if (d) set.add(d);
+  }
+  return [...set].sort((a, b) => a.localeCompare(b, 'tr'));
 }

@@ -24,6 +24,7 @@ import { canLabWrite, preStatementErrorText } from '../lib/preStatement';
 import type { PreStatement, PreStatementInvoice, StatementApprovalRow } from '../types';
 import { StatementNoteSheet } from '../../finance-clinic/components/StatementNoteSheet';
 import { InvoiceBlock } from '../../finance-clinic/screens/PreStatementScreen';
+import { useStatementView, StatementFilterBar, NoMatchLine } from '../../finance-clinic/components/StatementFilter';
 import { StatementApprovalBadge } from './StatementApprovalBadge';
 import { LabApprovalModal } from './LabApprovalModal';
 import { PreStatementPdfButton, doctorNamesOf } from './PreStatementPdfButton';
@@ -183,7 +184,6 @@ export function LabPreStatementSection({ st, clinicId, clinicName, currency, onA
   const { width } = useWindowDimensions();
   const isDesktop = width >= 900;
   const shown = useShown(st);
-  const [open, setOpen] = useState<Record<string, boolean>>({});
   const [noteItemId, setNoteItemId] = useState<string | null>(null);
   const [approveOpen, setApproveOpen] = useState(false);
   // "Onay iste" yeni bağlantı oluşturur (eskisi iptal) → bağlantı paneli yeniden kurulur, eski bağlantı görünmez.
@@ -193,6 +193,13 @@ export function LabPreStatementSection({ st, clinicId, clinicName, currency, onA
   // Liste seçili dövizde; onay da yalnız bu dövizin taslaklarını kapsar (ekstre tek dövizde okunur).
   const invoices = useMemo(() => all.filter(i => (i.currency || 'TRY') === currency), [all, currency]);
   const otherCcy = all.length - invoices.length;
+  // Süzme yalnız görünüm; "Klinik adına onay kaydet" tam `invoices` ile çalışır.
+  const view = useStatementView(invoices);
+  const itemTotal = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const i of invoices) m[i.id] = (i.items ?? []).length;
+    return m;
+  }, [invoices]);
   const doctors = useMemo(() => doctorNamesOf(st.data), [st.data]);
 
   const noteTarget = useMemo(() => {
@@ -291,18 +298,25 @@ export function LabPreStatementSection({ st, clinicId, clinicName, currency, onA
         {invoices.length === 0 ? (
           <Text style={{ fontSize: 12.5, color: U.ink[400] }}>{autoT('Onay bekleyen fatura yok')}</Text>
         ) : (
-          <View style={{ gap: 10 }}>
-            {invoices.map(inv => (
-              <InvoiceBlock
-                key={inv.id}
-                inv={inv}
-                desktop={isDesktop}
-                expanded={!!open[inv.id]}
-                onToggle={() => setOpen(o => ({ ...o, [inv.id]: !o[inv.id] }))}
-                onItem={it => setNoteItemId(it.id)}
-              />
-            ))}
-          </View>
+          <>
+            <StatementFilterBar view={view} />
+            {view.shown.length === 0 ? <NoMatchLine view={view} /> : (
+              <View style={{ gap: 10 }}>
+                {view.shown.map(inv => (
+                  <InvoiceBlock
+                    key={inv.id}
+                    inv={inv}
+                    desktop={isDesktop}
+                    expanded={view.isOpen(inv.id)}
+                    filtered={view.active}
+                    itemTotal={itemTotal[inv.id]}
+                    onToggle={() => view.toggle(inv.id)}
+                    onItem={it => setNoteItemId(it.id)}
+                  />
+                ))}
+              </View>
+            )}
+          </>
         )}
 
         {otherCcy > 0 ? (

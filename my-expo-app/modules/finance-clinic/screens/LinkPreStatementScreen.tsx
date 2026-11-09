@@ -33,6 +33,7 @@ import type { ApprovalMode, LinkPreStatement, PreStatement } from '../../invoice
 import type { LabLetterhead } from '../../receipt/buildReceiptHtml';
 import { DISPLAY, PAGE_PADDING, fmtDate, PillButton } from '../components/atoms';
 import { StatementNoteSheet } from '../components/StatementNoteSheet';
+import { useStatementView, StatementFilterBar, NoMatchLine } from '../components/StatementFilter';
 import { InvoiceBlock, InfoLine, ActionPill, ConfirmDialog, ResultBanner } from './PreStatementScreen';
 import { KPICardX } from '../../../core/ui/KPICardX';
 import { PreStatementPdfButton } from '../../invoices/components/PreStatementPdfButton';
@@ -64,7 +65,6 @@ export function LinkPreStatementScreen() {
   const [loading, setLoading] = useState(true);
   const [invalid, setInvalid] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [open, setOpen] = useState<Record<string, boolean>>({});
   const [noteItemId, setNoteItemId] = useState<string | null>(null);
   const [confirmMode, setConfirmMode] = useState<ApprovalMode | null>(null);
   const [approving, setApproving] = useState(false);
@@ -87,6 +87,13 @@ export function LinkPreStatementScreen() {
 
   const invoices = useMemo(() => (data?.enabled ? data.invoices ?? [] : []), [data]);
   const undisputed = undisputedCount(invoices);
+  // Süzme yalnız görünüm; onay ve PDF tam `invoices` ile çalışır.
+  const view = useStatementView(invoices);
+  const itemTotal = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const i of invoices) m[i.id] = (i.items ?? []).length;
+    return m;
+  }, [invoices]);
   const changed = (data?.changed_invoice_ids ?? []).length;
 
   const noteTarget = useMemo(() => {
@@ -318,18 +325,25 @@ export function LinkPreStatementScreen() {
                 </View>
               )
             ) : (
-              <View style={{ gap: 12 }}>
-                {invoices.map(inv => (
-                  <InvoiceBlock
-                    key={inv.id}
-                    inv={inv}
-                    desktop={isDesktop}
-                    expanded={!!open[inv.id]}
-                    onToggle={() => setOpen(o => ({ ...o, [inv.id]: !o[inv.id] }))}
-                    onItem={it => setNoteItemId(it.id)}
-                  />
-                ))}
-              </View>
+              <>
+                <StatementFilterBar view={view} />
+                {view.shown.length === 0 ? <NoMatchLine view={view} /> : (
+                  <View style={{ gap: 12 }}>
+                    {view.shown.map(inv => (
+                      <InvoiceBlock
+                        key={inv.id}
+                        inv={inv}
+                        desktop={isDesktop}
+                        expanded={view.isOpen(inv.id)}
+                        filtered={view.active}
+                        itemTotal={itemTotal[inv.id]}
+                        onToggle={() => view.toggle(inv.id)}
+                        onItem={it => setNoteItemId(it.id)}
+                      />
+                    ))}
+                  </View>
+                )}
+              </>
             )}
           </>
         )}
