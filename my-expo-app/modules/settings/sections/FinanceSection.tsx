@@ -13,11 +13,11 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, Platform, useWindowDimensions } from 'react-native';
 import {
   Globe, Percent, Clock, Bell, Mail, MessageCircle, Send, AlertTriangle, CalendarDays, Check,
-  ChevronDown, Coins, FileCheck,
+  ChevronDown, Coins, FileCheck, Layers, FileText,
 } from '../../../core/ui/icons';
 
 import { SUPPORTED_CURRENCIES, CURRENCY_META } from '../../../core/money/currency';
-import { useLabSettingsStore, type CurrencyCode } from '../../../core/store/labSettingsStore';
+import { useLabSettingsStore, useTurkeyOnlyFeatures, type CurrencyCode, type LabSettings } from '../../../core/store/labSettingsStore';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useInkUI } from '../../../core/theme/inkScale';
 import { usePermissions } from '../../../core/hooks/usePermissions';
@@ -93,6 +93,10 @@ export function FinanceSection({ accentColor }: Props) {
   const canManageFinance = can('manage_finance');
   const [approvalErr, setApprovalErr] = useState<string | null>(null);
   const [approvalSaving, setApprovalSaving] = useState(false);
+  // e-Fatura satır biçimi + ön ekstre PDF varsayılanı: herkes görür, yalnız mali işlem yöneticisi değiştirir.
+  const showEFatura = useTurkeyOnlyFeatures();
+  const [docErr, setDocErr] = useState<{ key: 'efatura_line_mode' | 'pre_statement_pdf_format'; msg: string } | null>(null);
+  const [docSaving, setDocSaving] = useState(false);
 
   useEffect(() => { load(); }, []);
 
@@ -123,6 +127,20 @@ export function FinanceSection({ accentColor }: Props) {
     setApprovalSaving(false);
     if (!ok) setApprovalErr(autoT('Ayar kaydedilemedi'));
   };
+
+  // Kaydedilemezse hata seçicinin altında; değer sunucudaki haliyle kalır (store güncellenmez).
+  const setDocSetting = async (key: 'efatura_line_mode' | 'pre_statement_pdf_format', patch: Partial<LabSettings>) => {
+    if (docSaving || !canManageFinance) return;
+    setDocSaving(true); setDocErr(null);
+    const ok = await update(patch);
+    setDocSaving(false);
+    if (!ok) setDocErr({ key, msg: autoT('Ayar kaydedilemedi') });
+  };
+  const docLock = { opacity: !canManageFinance || docSaving ? 0.6 : 1 };
+  const docEvents = !canManageFinance || docSaving ? 'none' as const : 'auto' as const;
+  const readOnlyNote = !canManageFinance ? (
+    <Text style={{ fontSize: 11.5, color: T.ink3 }}>{autoT('Yalnız mali işlem yetkisi olanlar değiştirebilir.')}</Text>
+  ) : null;
 
   if (loading) {
     return <CenteredLoader color={accentColor} label="Ayarlar yükleniyor…" />;
@@ -161,7 +179,6 @@ export function FinanceSection({ accentColor }: Props) {
           label="Varsayılan KDV Oranı"
           sub="Faturalarda kullanılacak oran"
           accentColor={accentColor}
-          isLast={!canManageFinance}
         >
           <DropdownSelect
             options={[
@@ -181,7 +198,6 @@ export function FinanceSection({ accentColor }: Props) {
             label={autoT('Hekim/klinik onayıyla kesinleştir')}
             sub={autoT('Açıkken taslaklar klinik onayına kadar kesinleşmez; Kesildi İşaretle yerine Klinik adına onay kaydet çıkar.')}
             accentColor={accentColor}
-            isLast
           >
             <View style={{ gap: 6, opacity: approvalSaving ? 0.6 : 1 }} pointerEvents={approvalSaving ? 'none' : 'auto'}>
               <SegmentPicker
@@ -196,6 +212,57 @@ export function FinanceSection({ accentColor }: Props) {
             </View>
           </SettingRow>
         ) : null}
+        {showEFatura ? (
+          <SettingRow
+            icon={Layers}
+            label={autoT('e-Fatura satır biçimi')}
+            sub={autoT('Birleşik biçime geçmeden önce muhasebecinizle teyit edin. Ayrıntılı iş listesi fatura numarasıyla iş dökümü PDF\'i olarak verilir.')}
+            accentColor={accentColor}
+          >
+            <View style={{ gap: 6 }}>
+              <View style={docLock} pointerEvents={docEvents}>
+                <SegmentPicker
+                  options={[
+                    { key: 'kalem', label: autoT('Her kalem ayrı') },
+                    { key: 'birlesik', label: autoT('Aynı hizmetler birleşik') },
+                  ]}
+                  value={settings?.efatura_line_mode === 'birlesik' ? 'birlesik' : 'kalem'}
+                  onChange={(v) => { void setDocSetting('efatura_line_mode', { efatura_line_mode: v }); }}
+                  accentColor={accentColor}
+                />
+              </View>
+              {docErr?.key === 'efatura_line_mode' ? (
+                <Text style={{ fontSize: 12, color: U.chipTones.danger.fg }}>{docErr.msg}</Text>
+              ) : null}
+              {readOnlyNote}
+            </View>
+          </SettingRow>
+        ) : null}
+        <SettingRow
+          icon={FileText}
+          label={autoT('Ön ekstre PDF varsayılanı')}
+          sub={autoT('Ön ekstre PDF penceresi bu biçimle açılır; her indirmede değiştirilebilir.')}
+          accentColor={accentColor}
+          isLast
+        >
+          <View style={{ gap: 6 }}>
+            <View style={docLock} pointerEvents={docEvents}>
+              <SegmentPicker
+                options={[
+                  { key: 'ozet', label: autoT('Özet') },
+                  { key: 'ayrintili', label: autoT('Ayrıntılı') },
+                ]}
+                value={settings?.pre_statement_pdf_format === 'ayrintili' ? 'ayrintili' : 'ozet'}
+                onChange={(v) => { void setDocSetting('pre_statement_pdf_format', { pre_statement_pdf_format: v }); }}
+                accentColor={accentColor}
+              />
+            </View>
+            {docErr?.key === 'pre_statement_pdf_format' ? (
+              <Text style={{ fontSize: 12, color: U.chipTones.danger.fg }}>{docErr.msg}</Text>
+            ) : null}
+            {readOnlyNote}
+          </View>
+        </SettingRow>
       </CollapseCard>
 
       {/* ── Ödeme Hatırlatmaları ─────────────────────────────── */}

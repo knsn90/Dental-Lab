@@ -55,6 +55,8 @@ export interface LabSettings {
   invoice_approval_enabled?: boolean;
   // Ön ekstre PDF'inin varsayılan biçimi (R4; DB varsayılanı 'ozet')
   pre_statement_pdf_format?: 'ozet' | 'ayrintili';
+  // e-Fatura (Luca) satır biçimi: her kalem ayrı ya da aynı hizmetler birleşik (DB varsayılanı 'kalem')
+  efatura_line_mode?: EFaturaLineMode;
 
   created_at: string;
   updated_at: string;
@@ -63,6 +65,7 @@ export interface LabSettings {
 export type PaymentReminderChannel = 'in_app' | 'email' | 'whatsapp';
 export type PaymentReminderTone    = 'gentle' | 'standard' | 'firm';
 export type TechNameVisibility     = 'full' | 'first' | 'hidden';
+export type EFaturaLineMode        = 'kalem' | 'birlesik';
 
 // ── Defaults ────────────────────────────────────────────────────────────
 const DEFAULTS: Omit<LabSettings, 'id' | 'lab_id' | 'created_at' | 'updated_at'> = {
@@ -175,4 +178,9 @@ export function useInvoiceApprovalEnabled(): boolean {
 /** Ön ekstre PDF seçicisinin varsayılan biçimi (ayarlar yüklenmemişken 'ozet'). */
 export function usePreStatementPdfFormat(): 'ozet' | 'ayrintili' {
   return useLabSettingsStore(s => (s.settings?.pre_statement_pdf_format === 'ayrintili' ? 'ayrintili' : 'ozet'));
+}
+
+/** e-Fatura satır biçimi ayarı (ayarlar yüklenmemişken 'kalem' = bugünkü akış). */
+export function useEFaturaLineMode(): EFaturaLineMode {
+  return useLabSettingsStore(s => (s.settings?.efatura_line_mode === 'birlesik' ? 'birlesik' : 'kalem'));
 }

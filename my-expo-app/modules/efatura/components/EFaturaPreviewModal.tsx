@@ -19,6 +19,7 @@ import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { AlertCircle, CheckCircle2, RefreshCw, X as CloseX } from '../../../core/ui/icons';
 import { NavyButton } from '../../invoices/components/InvoiceActionsCard';
 import type { EFaturaPreview } from '../types';
+import { LineModeBadge, LineModeFallback } from './LineModeNotice';
 
 interface Props {
   visible: boolean;
@@ -172,7 +173,15 @@ export function EFaturaPreviewModal({ visible, preview: p, loading, loadErr, iss
 
                 {/* Kalemler */}
                 <View style={{ gap: 2 }}>
-                  {label(autoT('Kalemler'))}
+                  {p.consolidated ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      {label(autoT('Kalemler'))}
+                      <LineModeBadge preview={p} />
+                    </View>
+                  ) : label(autoT('Kalemler'))}
+                  {p.consolidateFallback === 'rounding' ? (
+                    <View style={{ marginTop: 6, marginBottom: 4 }}><LineModeFallback preview={p} /></View>
+                  ) : null}
                   {p.lines.map((l, i) => (
                     <View key={i} style={{
                       flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10,

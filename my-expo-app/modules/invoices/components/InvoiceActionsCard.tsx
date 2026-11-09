@@ -18,6 +18,8 @@ import { View, Text, TextInput, Pressable, Platform } from 'react-native';
 import { useInkUI } from '../../../core/theme/inkScale';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { EFaturaPanel } from '../../efatura/components/EFaturaPanel';
+import { WorkBreakdownPdfButton } from './WorkBreakdownPdfButton';
+import { isWorkBreakdownStatus } from '../lib/workBreakdown';
 import { PaymentLinkPanel } from '../../payments/components/PaymentLinkPanel';
 import type { EFaturaStatus } from '../../efatura/types';
 
@@ -128,11 +130,13 @@ interface Props {
   clinicGaps?: string[];
   onEditClinic?: () => void;
   onChanged: () => void;
+  /** Verilirse e-fatura bölümünün altında "İş dökümü PDF" (yalnız kesinleşmiş faturada çizilir) */
+  workBreakdown?: { invoiceNumber: string; clinicName?: string | null };
 }
 
 export function InvoiceActionsCard({
   invoiceId, balance, notes, readOnly, noteDraft, onNoteChange, onSaveNote, savingNote,
-  efatura, invoiceStatus, onIssueInvoice, issueInvoiceError, clinicGaps, onEditClinic, onChanged,
+  efatura, invoiceStatus, onIssueInvoice, issueInvoiceError, clinicGaps, onEditClinic, onChanged, workBreakdown,
 }: Props) {
   const U = useInkUI();
   const noteDirty = noteDraft.trim() !== (notes ?? '');
@@ -213,6 +217,16 @@ export function InvoiceActionsCard({
             onEditClinic={readOnly ? undefined : onEditClinic}
             onChanged={onChanged}
           />
+          {workBreakdown && isWorkBreakdownStatus(invoiceStatus) ? (
+            <View style={{ paddingHorizontal: SECTION_PAD, paddingBottom: 16 }}>
+              <WorkBreakdownPdfButton
+                invoiceId={invoiceId}
+                invoiceNumber={workBreakdown.invoiceNumber}
+                invoiceStatus={invoiceStatus}
+                clinicName={workBreakdown.clinicName ?? null}
+              />
+            </View>
+          ) : null}
         </>
       ) : null}
     </View>

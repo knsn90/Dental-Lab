@@ -1347,6 +1347,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
             clinicGaps={invoice.clinic ? clinicEFaturaGaps(invoice.clinic).map((g) => autoT(EFATURA_GAP_LABELS[g])) : []}
             onEditClinic={invoice.clinic ? () => router.push(`/${panelBase}/clinics?editClinic=${invoice.clinic!.id}` as any) : undefined}
             onChanged={refetch}
+            workBreakdown={readOnly ? undefined : { invoiceNumber: invoice.invoice_number, clinicName: invoice.clinic?.name ?? null }}
           />
         )}
 

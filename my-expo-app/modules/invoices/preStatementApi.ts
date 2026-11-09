@@ -6,6 +6,7 @@ import type {
   StatementLinkStatus, StatementRequestContacts, StatementRequestResult, StatementSendChannel,
 } from './types';
 import { approvalPayload } from './lib/preStatement';
+import type { WorkBreakdownRpc } from './lib/workBreakdown';
 
 export async function fetchPreStatement(clinicId: string): Promise<PreStatement> {
   const { data, error } = await supabase.rpc('get_pre_statement', { p_clinic_id: clinicId });
@@ -126,4 +127,11 @@ export async function fetchStatementLinkStatus(clinicId: string): Promise<Statem
   const { data, error } = await supabase.rpc('get_statement_link_status', { p_clinic_id: clinicId });
   if (error) throw new Error(error.message);
   return data as StatementLinkStatus;
+}
+
+/** Kesinleşmiş faturanın iş dökümü (get_invoice_work_breakdown). PS_SCOPE / INV_NOT_FINALIZED mesajda kalır. */
+export async function fetchInvoiceWorkBreakdown(invoiceId: string): Promise<WorkBreakdownRpc> {
+  const { data, error } = await supabase.rpc('get_invoice_work_breakdown', { p_invoice_id: invoiceId });
+  if (error) throw Object.assign(new Error(error.message), { code: (error as any).code });
+  return data as WorkBreakdownRpc;
 }

@@ -59,9 +59,19 @@ function compact(list: string | null | undefined, max: number): string | null {
   return parts.length <= max ? parts.join(', ') : `${parts.slice(0, max).join(', ')} +${parts.length - max}`;
 }
 
-function build(input: PreStatementPdfInput, mode: 'ozet' | 'ayrintili'): string {
+function build(
+  input: PreStatementPdfInput,
+  mode: 'ozet' | 'ayrintili',
+  /** İş dökümü: başlık değişir, onay bandı yok, satır durumu "Fatura" (taslak değil). Verilmezse ön ekstre. */
+  workBreakdown?: { documentTitle: string },
+): string {
   const r = preStatementLines(input.data, input.currency, mode, { money });
-  const lines = r.lines.map((l) => displayLine(l, mode));
+  const lines = r.lines.map((l) => {
+    const d = displayLine(l, mode);
+    // İş dökümü kesinleşmiş faturadır: satır etiketi "Taslak" değil "Fatura" (şablon durumsuz satırda
+    // çevrilmemiş 'Fatura' yazar; çevrili etiket durum yerine geçirilir — INVOICE_STATUS_LABELS'te karşılığı yok).
+    return workBreakdown ? { ...d, status: autoT('Fatura') } : d;
+  });
   const approve = input.approve
     ? {
       url: input.approve.url,
@@ -81,12 +91,16 @@ function build(input: PreStatementPdfInput, mode: 'ozet' | 'ayrintili'): string 
       // ClinicStatementScreen.handlePrint gibi: özet toplamı KDV dahil borç (kapanış = açılış + borç)
       sums: { debit: r.lines.reduce((s, l) => s + Math.round(l.debit * 100), 0) / 100, credit: 0 },
       discountMode: 'amount',
-      documentTitle: autoT('Ön Ekstre'),
-      notice: {
-        title: autoT('Ön ekstre — onay bekliyor'),
-        text: autoT('Bu belgedeki faturalar henüz kesinleşmedi; onaylandığında kesinleşir.'),
-      },
-      ...(approve ? { approve } : {}),
+      ...(workBreakdown
+        ? { documentTitle: workBreakdown.documentTitle }
+        : {
+          documentTitle: autoT('Ön Ekstre'),
+          notice: {
+            title: autoT('Ön ekstre — onay bekliyor'),
+            text: autoT('Bu belgedeki faturalar henüz kesinleşmedi; onaylandığında kesinleşir.'),
+          },
+          ...(approve ? { approve } : {}),
+        }),
       ...(r.hideOpening ? { hideOpening: true } : {}),
       paper: true,
     },
@@ -101,4 +115,13 @@ export function buildPreStatementSummaryHtml(input: PreStatementPdfInput): strin
 /** Ayrıntılı: aynı tasarımda kalem başına bir satır. */
 export function buildPreStatementDetailHtml(input: PreStatementPdfInput): string {
   return build(input, 'ayrintili');
+}
+
+/**
+ * İş dökümü: kesinleşmiş TEK faturanın kalem listesi (lib/workBreakdown adaptörüyle), ayrıntılı biçimde.
+ * Karekod/onay bandı yok; açılış satırı gizli (adaptör finalized_balance=null verir).
+ */
+export function buildWorkBreakdownHtml(input: Omit<PreStatementPdfInput, 'approve'> & { documentTitle: string }): string {
+  const { documentTitle, ...rest } = input;
+  return build(rest, 'ayrintili', { documentTitle });
 }

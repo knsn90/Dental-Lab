@@ -27,6 +27,7 @@ import {
 import { ActionSectionHead, NavyButton, SECTION_PAD, navyTones } from '../../invoices/components/InvoiceActionsCard';
 import { stageStep, logActionLabel, type EFaturaStage } from '../lib/efaturaFlow';
 import type { EFaturaPreview } from '../types';
+import { LineModeBadge, LineModeFallback } from './LineModeNotice';
 
 export type EFaturaEnv = 'live' | 'test' | 'demo';
 
@@ -260,6 +261,7 @@ export function EFaturaSection(p: EFaturaSectionProps) {
               {` · ${d.lines.length} ${autoT('kalem')}`}
               {vatRates.length ? ` · ${autoT('KDV')} ${vatRates.map((r) => `%${r}`).join(', ')}` : ''}
             </Text>
+            {d.consolidated ? <View style={{ marginTop: 4 }}><LineModeBadge preview={d} /></View> : null}
           </View>
           <View style={{ height: 1, backgroundColor: U.hairlineSoft }} />
           <View style={{ paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 10 }}>
@@ -284,6 +286,8 @@ export function EFaturaSection(p: EFaturaSectionProps) {
             </Text>
           </View>
         </View>
+
+        <LineModeFallback preview={d} />
 
         {p.issueError ? banner('danger', p.issueError) : null}
 
