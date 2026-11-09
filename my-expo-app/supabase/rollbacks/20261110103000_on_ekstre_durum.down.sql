@@ -1,0 +1,372 @@
+-- 20261110103000_on_ekstre_durum — DOWN. Yeni get_statement_link_status'u düşürür; _ps_request_core,
+-- run_month_end_pre_statements ve get_pre_statement_by_link'in canlı tanımlarını (before.txt, pg_get_functiondef)
+-- BİREBİR geri yükler. CREATE OR REPLACE → ACL korunur. Veri satırlarına dokunmaz.
+BEGIN;
+SET LOCAL lock_timeout = '3s';
+
+DROP FUNCTION public.get_statement_link_status(uuid);
+
+CREATE OR REPLACE FUNCTION public._ps_request_core(p_clinic_id uuid, p_channels text[], p_trigger text, p_period text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_channels text[];
+  v_link_res jsonb;
+  v_link     statement_approval_links;
+  v_token    text;
+  v_c        jsonb;
+  v_msg      jsonb;
+  v_ch       text;
+  v_status   text;
+  v_error    text;
+  v_secret   text;
+  v_anon     text;
+  v_lab_name text;
+  v_probe    boolean := COALESCE(current_setting('siman.skip_notify', true), '') = 'on';
+  v_sends    jsonb := '[]'::jsonb;
+BEGIN
+  IF p_trigger IS NULL OR p_trigger NOT IN ('manual', 'month_end') THEN
+    RAISE EXCEPTION 'PS_TRIGGER' USING ERRCODE = '22023';
+  END IF;
+  IF (p_trigger = 'month_end' AND p_period IS NULL)
+     OR (p_period IS NOT NULL AND p_period !~ '^[0-9]{4}-(0[1-9]|1[0-2])$') THEN
+    RAISE EXCEPTION 'PS_PERIOD' USING ERRCODE = '22023';
+  END IF;
+  SELECT array_agg(DISTINCT c ORDER BY c) INTO v_channels FROM unnest(p_channels) c;
+  IF v_channels IS NULL OR cardinality(v_channels) = 0
+     OR EXISTS (SELECT 1 FROM unnest(v_channels) c WHERE c IS NULL OR c NOT IN ('email', 'whatsapp')) THEN
+    RAISE EXCEPTION 'PS_CHANNELS' USING ERRCODE = '22023';
+  END IF;
+
+  -- Klinik kilidi: eşzamanlı iki istek (elle ya da ay sonu) _ps_create_link_core'un kilidinden önce sıraya girer.
+  PERFORM pg_advisory_xact_lock(hashtext('ps_link:' || p_clinic_id::text));
+
+  IF p_trigger = 'manual' THEN
+    -- Sunucu soğuma süresi (yalnız elle): aynı lab + klinik için son 10 dakikada kuyruğa alınmış elle gönderim varsa yeni
+    -- bağlantı OLUŞTURULMAZ (öncekini iptal edip ikinci mesaj atmasın).
+    IF EXISTS (SELECT 1 FROM statement_link_sends s
+                WHERE s.lab_id = (SELECT c.lab_id FROM clinics c WHERE c.id = p_clinic_id)
+                  AND s.clinic_id = p_clinic_id
+                  AND s.trigger = 'manual' AND s.status = 'queued'
+                  AND s.created_at > now() - interval '10 minutes') THEN
+      RAISE EXCEPTION 'PS_RATE' USING ERRCODE = '22023';
+    END IF;
+  ELSE
+    -- Ay sonu tekilliği: bu klinik + dönem için month_end satırı varsa hiçbir şey yapılmaz (yeni bağlantı da yok →
+    -- ilk çalışmada gönderilen bağlantı iptal olmaz). Kısmi tekil indeks (clinic_id, period, channel) son güvencedir.
+    IF EXISTS (SELECT 1 FROM statement_link_sends s
+                WHERE s.clinic_id = p_clinic_id AND s.period = p_period AND s.trigger = 'month_end') THEN
+      RETURN jsonb_build_object('already_sent', true);
+    END IF;
+    -- C2: son 72 saatte kuyruğa alınmış elle gönderim varsa atla (çift mesaj yok; taze bağlantı iptal olmaz).
+    IF EXISTS (SELECT 1 FROM statement_link_sends s
+                WHERE s.clinic_id = p_clinic_id AND s.trigger = 'manual' AND s.status = 'queued'
+                  AND s.created_at > now() - interval '72 hours') THEN
+      RETURN jsonb_build_object('recent_manual', true);
+    END IF;
+    -- C3: bağlantıdan ÖNCE kullanılabilir kanal ön kontrolü (gönderim yolunun kurallarıyla aynı). Hiçbiri yoksa
+    -- bağlantı oluşturulmaz, mevcut bağlantı iptal edilmez, satır yazılmaz → sonraki çalışmada yeniden denenir.
+    --   alıcı: _ps_pick_recipient (= _ps_create_link_core'un R3 alıcısı)
+    --   e-posta: has_email AND NOT email_optout · WhatsApp: R6 gereği şimdilik hep kullanılamaz (WA_TEMPLATE)
+    DECLARE
+      v_rcp uuid := _ps_pick_recipient(p_clinic_id);
+      v_rc  jsonb;
+      v_ok  boolean := false;
+    BEGIN
+      IF v_rcp IS NOT NULL THEN
+        v_rc := COALESCE(_ps_recipient_contacts(v_rcp), '{}'::jsonb);
+        v_ok := ('email' = ANY (v_channels)
+                 AND COALESCE((v_rc->>'has_email')::boolean, false)
+                 AND NOT COALESCE((v_rc->>'email_optout')::boolean, true));
+        -- ('whatsapp' = ANY (v_channels) AND has_phone AND <onaylı şablon>) — şablon yok, bu yüzden false
+      END IF;
+      IF NOT v_ok THEN
+        RETURN jsonb_build_object('no_channel', true);
+      END IF;
+    END;
+  END IF;
+
+  -- Bağlantı (ayar, taslak, alıcı kuralları çekirdekte; önceki bağlantı iptal olur)
+  v_link_res := _ps_create_link_core(p_clinic_id);
+  v_token := v_link_res->>'token';
+  SELECT * INTO v_link FROM statement_approval_links WHERE id = (v_link_res->>'link_id')::uuid;
+  v_c := COALESCE(_ps_recipient_contacts(v_link.recipient_profile_id), '{}'::jsonb);
+  SELECT l.name INTO v_lab_name FROM labs l WHERE l.id = v_link.lab_id;
+
+  FOREACH v_ch IN ARRAY v_channels LOOP
+    v_status := NULL; v_error := NULL;
+    v_msg := _ps_request_message(v_link.id, v_ch, v_token, p_period);
+
+    IF v_ch = 'email' AND NOT COALESCE((v_c->>'has_email')::boolean, false) THEN
+      v_status := 'skipped'; v_error := 'NO_CONTACT';
+    ELSIF v_ch = 'whatsapp' AND NOT COALESCE((v_c->>'has_phone')::boolean, false) THEN
+      v_status := 'skipped'; v_error := 'NO_CONTACT';
+    ELSIF v_ch = 'whatsapp' THEN
+      -- R6: "bağlantınız hazır" için onaylı Meta şablonu yok → kanal kapalı, e-posta etkilenmez
+      v_status := 'unavailable'; v_error := 'WA_TEMPLATE';
+    ELSIF COALESCE((v_c->>'email_optout')::boolean, true) THEN
+      v_status := 'skipped'; v_error := 'EMAIL_OPTOUT';
+    ELSIF v_probe THEN
+      v_status := 'skipped_probe';
+    ELSE
+      BEGIN SELECT decrypted_secret INTO v_secret FROM vault.decrypted_secrets WHERE name = 'notify_fn_secret' LIMIT 1;
+      EXCEPTION WHEN OTHERS THEN v_secret := NULL; END;
+      BEGIN SELECT decrypted_secret INTO v_anon FROM vault.decrypted_secrets WHERE name = 'net_anon_key' LIMIT 1;
+      EXCEPTION WHEN OTHERS THEN v_anon := NULL; END;
+      IF v_anon IS NULL OR v_secret IS NULL THEN
+        v_status := 'failed'; v_error := 'NO_SECRET';
+      ELSE
+        BEGIN
+          PERFORM net.http_post(
+            url := 'https://kjwjxqfdsxkxgcgophdy.supabase.co/functions/v1/send-email-notification',
+            headers := jsonb_build_object('Content-Type', 'application/json', 'Authorization', 'Bearer ' || v_anon,
+                                          'apikey', v_anon, 'x-notify-secret', v_secret),
+            body := jsonb_build_object(
+              'userIds', jsonb_build_array(v_link.recipient_profile_id),
+              'category', 'payment',
+              'payload', jsonb_build_object(
+                'title', v_msg->>'title',
+                'body', v_msg->>'body',
+                'actionUrl', v_msg->>'url',
+                -- DİKKAT: email_notifications karartma tetikleyicisi TAM bu adı eşler; değiştirilmez.
+                'template', 'pre_statement_link',
+                'extra', jsonb_build_object('labName', v_lab_name, 'ctaLabel', 'Ekstreyi Aç'))));
+          v_status := 'queued';
+        EXCEPTION WHEN OTHERS THEN
+          v_status := 'failed'; v_error := 'HTTP_ERR';
+        END;
+      END IF;
+    END IF;
+
+    INSERT INTO statement_link_sends (link_id, lab_id, clinic_id, period, channel, trigger, status, error, created_by)
+    VALUES (v_link.id, v_link.lab_id, v_link.clinic_id, v_msg->>'period', v_ch, p_trigger, v_status, v_error, auth.uid());
+    v_sends := v_sends || jsonb_build_object('channel', v_ch, 'status', v_status, 'error', v_error);
+  END LOOP;
+
+  RETURN jsonb_build_object('link_id', v_link.id, 'expires_at', v_link.expires_at,
+                            'recipient_name', v_link_res->>'recipient_name', 'sends', v_sends);
+END $function$
+;;
+
+CREATE OR REPLACE FUNCTION public.run_month_end_pre_statements(p_period text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_lab     record;
+  v_clinic  record;
+  v_period  text;
+  v_res     jsonb;
+  v_code    text;
+  v_labs    int := 0;
+  v_clinics int := 0;
+  v_sent    int := 0;
+  v_skipped int := 0;
+  v_failed  int := 0;
+  v_reasons jsonb := '{}'::jsonb;
+  v_periods text[] := '{}';
+BEGIN
+  -- Savunma: yalnız oturumsuz (cron / postgres) çağrı. ACL zaten authenticated/anon/service_role'e kapalı.
+  IF auth.uid() IS NOT NULL THEN
+    RAISE EXCEPTION 'PS_SCOPE' USING ERRCODE = '42501';
+  END IF;
+  IF p_period IS NOT NULL AND p_period !~ '^[0-9]{4}-(0[1-9]|1[0-2])$' THEN
+    RAISE EXCEPTION 'PS_PERIOD' USING ERRCODE = '22023';
+  END IF;
+
+  FOR v_lab IN
+    SELECT l.id
+      FROM labs l
+      JOIN lab_settings s ON s.lab_id = l.id
+     WHERE s.invoice_approval_enabled = true
+       AND COALESCE(l.is_active, true)
+     ORDER BY l.id
+  LOOP
+    v_labs := v_labs + 1;
+    -- Biten ay: lab'ın yerel gününün ayından bir önceki ay (1'inde çalışınca az önce biten ay)
+    v_period := COALESCE(p_period, to_char(date_trunc('month', lab_today(v_lab.id)) - interval '1 day', 'YYYY-MM'));
+    IF NOT v_period = ANY (v_periods) THEN v_periods := v_periods || v_period; END IF;
+
+    FOR v_clinic IN
+      SELECT c.id
+        FROM clinics c
+       WHERE c.lab_id = v_lab.id
+         AND c.is_active = true
+         AND EXISTS (SELECT 1 FROM invoices i
+                      WHERE i.clinic_id = c.id AND i.lab_id = v_lab.id AND i.status = 'taslak')
+       ORDER BY c.id
+    LOOP
+      v_clinics := v_clinics + 1;
+      BEGIN
+        v_res := _ps_request_core(v_clinic.id, ARRAY['email', 'whatsapp'], 'month_end', v_period);
+        IF COALESCE((v_res->>'already_sent')::boolean, false)
+           OR COALESCE((v_res->>'recent_manual')::boolean, false) THEN
+          v_skipped := v_skipped + 1;
+        ELSIF COALESCE((v_res->>'no_channel')::boolean, false) THEN
+          -- ön kontrol: kullanılabilir kanal yok; bağlantı/satır yok → sonraki çalışmada yeniden denenir
+          v_failed := v_failed + 1;
+          v_reasons := jsonb_set(v_reasons, '{no_channel}', to_jsonb(COALESCE((v_reasons->>'no_channel')::int, 0) + 1));
+        ELSIF EXISTS (SELECT 1 FROM jsonb_array_elements(v_res->'sends') e
+                       WHERE e->>'status' IN ('queued', 'skipped_probe')) THEN
+          v_sent := v_sent + 1;
+        ELSE
+          -- ön kontrolden geçti ama gönderim düştü (NO_SECRET / HTTP_ERR); satırlar yazıldı → yeniden denenmez
+          v_failed := v_failed + 1;
+          v_reasons := jsonb_set(v_reasons, '{send_failed}', to_jsonb(COALESCE((v_reasons->>'send_failed')::int, 0) + 1));
+        END IF;
+      EXCEPTION WHEN OTHERS THEN
+        -- Klinik başına alt transaction: bu kliniğin bağlantısı/satırları geri alınır, döngü sürer.
+        -- Kod yalnız sabit PS_* adı; serbest hata metni (veri içerebilir) yazılmaz.
+        v_code := CASE WHEN SQLERRM ~ '^PS_[A-Z_]+$' THEN SQLERRM ELSE 'ERROR' END;
+        v_failed := v_failed + 1;
+        v_reasons := jsonb_set(v_reasons, ARRAY[v_code], to_jsonb(COALESCE((v_reasons->>v_code)::int, 0) + 1));
+        RAISE LOG 'run_month_end_pre_statements: clinic % failed (%: %)', v_clinic.id, SQLSTATE, v_code;
+      END;
+    END LOOP;
+  END LOOP;
+
+  RETURN jsonb_build_object('labs', v_labs, 'clinics', v_clinics, 'sent', v_sent, 'skipped', v_skipped,
+                            'failed', v_failed, 'failed_reasons', v_reasons, 'periods', to_jsonb(v_periods));
+END $function$
+;;
+
+CREATE OR REPLACE FUNCTION public.get_pre_statement_by_link(p_token text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_link     statement_approval_links := _ps_link_resolve_read(p_token);
+  v_used     boolean := v_link.used_at IS NOT NULL;
+  v_approval jsonb;
+  v_enabled  boolean;
+  v_ids      uuid[];
+  v_changed  uuid[];
+  v_summary  jsonb;
+  v_invoices jsonb;
+BEGIN
+  SELECT COALESCE(bool_or(s.invoice_approval_enabled), false) INTO v_enabled
+    FROM lab_settings s WHERE s.lab_id = v_link.lab_id;
+
+  -- Görünür küme: anlık görüntüdeki ve hâlâ bu kliniğin/lab'ın taslağı olan faturalar (sonradan eklenen taslak görünmez)
+  SELECT array_agg(i.id ORDER BY i.created_at, i.id),
+         array_agg(i.id ORDER BY i.created_at, i.id) FILTER (WHERE i.updated_at IS DISTINCT FROM s.ts)
+    INTO v_ids, v_changed
+    FROM (SELECT (e->>'id')::uuid AS id,
+                 max((e->>'updated_at')::timestamptz) AS ts
+            FROM jsonb_array_elements(v_link.snapshot) e GROUP BY 1) s
+    JOIN invoices i ON i.id = s.id
+   WHERE i.clinic_id = v_link.clinic_id AND i.lab_id = v_link.lab_id AND i.status = 'taslak';
+  v_ids := COALESCE(v_ids, '{}'::uuid[]);
+
+  -- Kalemler: get_pre_statement'ın 'full' biçimi (hasta adı yalnız baş harf)
+  WITH it AS (
+    SELECT ii.invoice_id, ii.id, ii.description, ii.quantity, ii.unit_price, ii.net_total, ii.total AS gross_total,
+           ii.sort_order, ii.created_at,
+           wo.order_number, wo.patient_name,
+           COALESCE(dr.full_name, dp.full_name) AS doctor_name,
+           sd.status AS dispute_status
+      FROM invoices i
+      JOIN invoice_items ii ON ii.invoice_id = i.id
+      LEFT JOIN order_items oi ON oi.id = ii.order_item_id
+      LEFT JOIN work_orders wo ON wo.id = COALESCE(oi.work_order_id, i.work_order_id)
+      LEFT JOIN doctors dr ON dr.id = COALESCE(wo.doctors_id, wo.doctor_id)
+      LEFT JOIN profiles dp ON dp.id = wo.doctor_id
+      LEFT JOIN statement_item_disputes sd ON sd.invoice_item_id = ii.id
+     WHERE i.id = ANY (v_ids)
+  ), per_inv AS (
+    SELECT it.invoice_id,
+           jsonb_agg(jsonb_build_object(
+             'id', it.id,
+             'description', it.description,
+             'quantity', it.quantity,
+             'unit_price', it.unit_price,
+             'total', it.net_total,
+             'gross_total', it.gross_total,
+             'order_no', it.order_number,
+             'patient_initials', (
+               SELECT NULLIF(string_agg(upper(left(w, 1)) || '.', '' ORDER BY ord), '')
+                 FROM regexp_split_to_table(btrim(COALESCE(it.patient_name, '')), '\s+')
+                      WITH ORDINALITY AS t(w, ord)
+                WHERE w <> ''),
+             'doctor_name', it.doctor_name,
+             'dispute_status', it.dispute_status,
+             'notes', (
+               SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                        'id', n.id, 'author_side', n.author_side,
+                        'body', n.body, 'created_at', n.created_at)
+                        ORDER BY n.created_at, n.id), '[]'::jsonb)
+                 FROM statement_item_notes n WHERE n.invoice_item_id = it.id)
+           ) ORDER BY it.sort_order, it.created_at, it.id) AS items
+      FROM it GROUP BY it.invoice_id
+  )
+  SELECT COALESCE(jsonb_agg(jsonb_build_object(
+           'id', i.id,
+           'subtotal', i.subtotal,
+           'tax', i.tax_amount,
+           'invoice_number', i.invoice_number,
+           'currency', i.currency,
+           'issue_date', i.issue_date,
+           'created_at', i.created_at,
+           'updated_at', i.updated_at,
+           'total', i.total,
+           'items', COALESCE(x.items, '[]'::jsonb)
+         ) ORDER BY i.issue_date, i.created_at, i.id), '[]'::jsonb)
+    INTO v_invoices
+    FROM invoices i
+    LEFT JOIN per_inv x ON x.invoice_id = i.id
+   WHERE i.id = ANY (v_ids);
+
+  -- Özet: get_pre_statement 'full' hesabı; pending yalnız görünür (anlık görüntü) taslaklardan
+  WITH drafts AS (
+    SELECT COALESCE(i.currency, 'TRY') AS currency, sum(i.total) AS pending
+      FROM invoices i WHERE i.id = ANY (v_ids)
+     GROUP BY 1
+  ), bal AS (
+    SELECT b.currency, b.balance, b.overdue_net
+      FROM v_clinic_balance_ccy b
+     WHERE b.clinic_id = v_link.clinic_id AND b.lab_id = v_link.lab_id
+  ), ccy AS (
+    SELECT currency FROM drafts UNION SELECT currency FROM bal
+  )
+  SELECT COALESCE(jsonb_agg(jsonb_build_object(
+           'currency', c.currency,
+           'finalized_balance', COALESCE(b.balance, 0),
+           'overdue', COALESCE(b.overdue_net, 0),
+           'pending', COALESCE(d.pending, 0)) ORDER BY c.currency), '[]'::jsonb)
+    INTO v_summary
+    FROM ccy c LEFT JOIN bal b ON b.currency = c.currency LEFT JOIN drafts d ON d.currency = c.currency;
+
+  -- R2: kullanılmış bağlantı salt okunur; onay özeti yalnız sayım
+  IF v_used THEN
+    SELECT jsonb_build_object('issued_count', cardinality(a.result_invoice_ids),
+                              'skipped_count', jsonb_array_length(a.skipped))
+      INTO v_approval
+      FROM statement_approvals a WHERE a.id = v_link.approval_id;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'enabled', v_enabled,
+    'actor', 'link',
+    'can_manage', false,
+    'can_approve', (v_enabled AND NOT v_used),
+    'approved', v_used,
+    'approved_at', v_link.used_at,
+    'approval', v_approval,
+    'scope', 'full',
+    'summary', v_summary,
+    'invoices', v_invoices,
+    'expires_at', v_link.expires_at,
+    'changed_invoice_ids', to_jsonb(COALESCE(v_changed, '{}'::uuid[])),
+    'clinic_name', (SELECT c.name FROM clinics c WHERE c.id = v_link.clinic_id),
+    'lab_name', (SELECT l.name FROM labs l WHERE l.id = v_link.lab_id));
+END $function$
+;;
+
+COMMIT;
