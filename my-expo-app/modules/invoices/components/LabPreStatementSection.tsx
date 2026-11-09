@@ -226,6 +226,7 @@ export function LabPreStatementSection({ st, clinicId, clinicName, currency, onA
             lab={fetchLabLetterhead}
             defaultFormat="ozet"
             doctors={doctors}
+            currency={currency}
           />
         ) : null}
         {canWrite && invoices.length > 0 ? (

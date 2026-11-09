@@ -6,7 +6,7 @@
 import type { Invoice } from './types';
 import { INVOICE_STATUS_LABELS, PAYMENT_METHOD_LABELS } from './types';
 import type { LabLetterhead } from '../receipt/buildReceiptHtml';
-import { buildCariStatementHtml, type CariLine } from '../../core/util/buildCariStatementHtml';
+import { buildCariStatementHtml, type CariLine, type CariStatementInput } from '../../core/util/buildCariStatementHtml';
 import { baseSymbol } from '../../core/money/baseCurrency';
 
 import { autoT } from '../../core/i18n/autoTranslate';
@@ -191,8 +191,17 @@ export function buildStatementHtml(
    * Liste ayarı (lib/statementPrefs): vat=false → KDV sütunu/dökümü yok.
    * sums: tahsilat satırları gizlendiğinde özet çubuğu yine TÜM hareketin borç/alacağını yazar.
    * discountMode: İndirim sütunu tutar mı yüzde mi (klinik/hekim kendi ekstresinde hep tutar).
+   * documentTitle / notice / approve / hideOpening / paper: buildCariStatementHtml'e AYNEN geçer
+   * (ön ekstre PDF'i). Verilmezse belge bit bit aynı kalır.
    */
-  opts: { vat?: boolean; sums?: { debit: number; credit: number }; discountMode?: DiscountMode } = {},
+  opts: {
+    vat?: boolean; sums?: { debit: number; credit: number }; discountMode?: DiscountMode;
+    documentTitle?: string;
+    notice?: CariStatementInput['notice'];
+    approve?: CariStatementInput['approve'];
+    hideOpening?: boolean;
+    paper?: boolean;
+  } = {},
 ): string {
   const vat = statementVatSummary(lines);
   const showVat = opts.vat !== false && vat.total > 0;
@@ -271,7 +280,7 @@ export function buildStatementHtml(
   }));
 
   return buildCariStatementHtml({
-    documentTitle: 'Cari Hesap Ekstresi',
+    documentTitle: opts.documentTitle ?? 'Cari Hesap Ekstresi',
     periodFrom: period?.from ?? null,
     periodTo: period?.to ?? null,
     lab: {
@@ -297,5 +306,10 @@ export function buildStatementHtml(
     ...(showDiscount ? { showDiscount: true, discountTotal: discountTotal(lines) } : {}),
     // Bu sütunda hasta + sipariş no ya da tahsilat yöntemi yazar; karşı taraf zaten klinik.
     labels: { party: autoT('Açıklama') },
+    // Ön ekstre seçenekleri: yalnız verilince alan eklenir
+    ...(opts.notice ? { notice: opts.notice } : {}),
+    ...(opts.approve ? { approve: opts.approve } : {}),
+    ...(opts.hideOpening ? { hideOpening: true } : {}),
+    ...(opts.paper ? { paper: true } : {}),
   });
 }

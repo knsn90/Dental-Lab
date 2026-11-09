@@ -35,6 +35,8 @@
   "taslak başka para biriminde; üstteki para birimi sekmesinden görün": "draft(s) in another currency; view them from the currency tab above",
   "Ön ekstre bölümünde yanıtlayın": "Reply in the pre-statement section",
   "Ön ekstre — onay bekliyor": "Pre-statement — awaiting approval",
+  "Ön Ekstre": "Pre-statement",
+  "Bu belgedeki faturalar henüz kesinleşmedi; onaylandığında kesinleşir.": "The invoices in this document are not final yet; they become final once approved.",
   "Örn. 05.11.2026 telefon görüşmesine göre": "E.g. per phone call on 05.11.2026",
   "İtirazı kapatır; kalem onaya hazır olur": "Closes the dispute; the item becomes ready for approval",
   "Liste yenilenemedi": "Could not refresh the list",

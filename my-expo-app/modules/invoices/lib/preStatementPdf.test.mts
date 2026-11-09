@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { groupByDoctor, workTypeTotals, pendingTotal, scopeToDoctor, itemShares } from './preStatementPdf.ts';
+import { pendingTotal, scopeToDoctor, itemShares, preStatementLines } from './preStatementPdf.ts';
 
 const item = (id: string, doctor: string | null, description: string, total: number, gross = total, qty = 1) => ({
   id, description, quantity: qty, unit_price: gross / qty, total, gross_total: gross,
@@ -16,26 +16,6 @@ const inv = (id: string, currency: string, items: any[], over: any = {}) => ({
 const A = inv('i1', 'TRY', [item('1', 'Dr. Zeynep', 'Kron', 100), item('2', 'Dr. Ali', 'Köprü', 50)]);
 const B = inv('i2', 'TRY', [item('3', 'Dr. Ali', 'Kron', 70), item('4', null, 'Model', 10)]);
 const C = inv('i3', 'EUR', [item('5', 'Dr. Ali', 'Kron', 20)]);
-
-test('groupByDoctor gruplar, boş adı — altına koyar, para birimi başına toplar', () => {
-  const g = groupByDoctor([A, B, C]);
-  assert.deepEqual(g.map((x) => x.doctor), ['—', 'Dr. Ali', 'Dr. Zeynep']);
-  const ali = g.find((x) => x.doctor === 'Dr. Ali')!;
-  assert.equal(ali.items.length, 3);
-  assert.deepEqual(ali.subtotal, { TRY: 120, EUR: 20 });
-  assert.equal(ali.items[0].invoice_id, 'i1');
-  assert.equal(ali.items[2].currency, 'EUR');
-  assert.deepEqual(g.find((x) => x.doctor === '—')!.subtotal, { TRY: 10 });
-});
-
-test('workTypeTotals aynı işi ve para birimini birleştirir, tutara göre azalan', () => {
-  const w = workTypeTotals([A, B, C]);
-  assert.deepEqual(w.find((x) => x.work === 'Kron' && x.currency === 'TRY'), { work: 'Kron', currency: 'TRY', quantity: 2, total: 170 });
-  assert.ok(w.find((x) => x.work === 'Kron' && x.currency === 'EUR'));
-  const tr = w.filter((x) => x.currency === 'TRY').map((x) => x.total);
-  assert.deepEqual(tr, [...tr].sort((a, b) => b - a));
-  assert.equal(w[0].total, 170);
-});
 
 test('pendingTotal para birimi başına 2 ondalığa yuvarlar', () => {
   assert.deepEqual(pendingTotal([{ currency: 'TRY', total: 100.005 } as any, { currency: 'TRY', total: 0.01 } as any]), { TRY: 100.02 });
@@ -105,17 +85,81 @@ const F1 = vatInv('f1', 'TRY', [item('1', 'Dr. Ali', 'Kron', 100.1), item('2', '
 const F2 = vatInv('f2', 'TRY', [item('4', 'Dr. Ali', 'Köprü', 77.7)], 77.7, 15.54);
 const F3 = vatInv('f3', 'EUR', [item('5', 'Dr. Ali', 'Kron', 10), item('6', 'Dr. Ali', 'Model', 10)], 18, 3.6);
 
-test('toplamlar birebir: hekim ara toplamları = iş türü toplamları = pendingTotal', () => {
-  const all = [F1, F2, F3];
-  for (const i of all) {
-    const sum = [...itemShares(i).values()].reduce((a, b) => a + b, 0);
-    assert.equal(Math.round(sum * 100), Math.round(i.total * 100));
+const cents = (n: number) => Math.round(n * 100);
+const FULL = 'Ayşe Kaya';
+const ps = (invoices: any[], fin: number | null = 1000): any => ({
+  enabled: true, actor: 'lab', can_manage: true, scope: 'full',
+  summary: [{ currency: 'TRY', finalized_balance: fin, overdue: 0, pending: pendingTotal(invoices).TRY ?? 0 },
+    { currency: 'EUR', finalized_balance: 5, overdue: 0, pending: pendingTotal(invoices).EUR ?? 0 }],
+  invoices,
+});
+// Fixture'da hasta TAM adı da var (RPC vermez ama sızıntıyı yakalamak için)
+const withName = (i: any) => ({ ...i, patient_name: FULL, items: i.items.map((it: any) => ({ ...it, patient_name: FULL })) });
+const LATE = { ...F2, id: 'f0', issue_date: null, created_at: '2026-10-28T09:00:00Z' };
+
+test('preStatementLines özet: fatura başına satır, running bakiye = closing = opening + pending', () => {
+  const r = preStatementLines(ps([F1, F2, F3, LATE].map(withName)), 'TRY', 'ozet');
+  assert.equal(r.lines.length, 3);                       // EUR faturası (F3) yok
+  assert.equal(r.opening, 1000);
+  assert.equal(r.hideOpening, false);
+  assert.equal(cents(r.closing), cents(1000 + pendingTotal([F1, F2, LATE]).TRY));
+  assert.equal(cents(r.lines[r.lines.length - 1].balance), cents(r.closing));
+  // sıralama issue_date ?? created_at artan
+  assert.deepEqual(r.lines.map((l) => l.id), ['f0', 'f1', 'f2']);
+  const l1 = r.lines[1];
+  assert.equal(l1.type, 'invoice');
+  assert.equal(l1.status, 'taslak');
+  assert.equal(cents(l1.debit), cents(F1.total));
+  assert.equal(cents(l1.tax!), cents(F1.tax));
+  assert.equal(l1.taxRate, 20);
+  assert.equal(l1.credit, 0);
+  assert.equal(l1.orderNo, 'S1, S2, S3');
+  assert.equal(l1.patientName, 'A.K.');
+  // İndirimli fatura: Σ net (183.6) − subtotal (170.5)
+  assert.equal(cents(l1.discount!), cents(183.6 - 170.5));
+  assert.equal(cents(l1.discountBase!), cents(183.6));
+  assert.equal(r.lines[2].discount ?? 0, 0);
+});
+
+test('preStatementLines ayrıntılı: kalem başına satır; debit ve tax fatura toplamına kuruşu kuruşuna eşit', () => {
+  const r = preStatementLines(ps([F1, F2, F3].map(withName)), 'TRY', 'ayrintili');
+  assert.equal(r.lines.length, 4);
+  for (const f of [F1, F2]) {
+    const ls = r.lines.filter((l) => l.id!.startsWith(f.id + ':'));
+    assert.equal(ls.length, f.items.length);
+    assert.equal(ls.reduce((s, l) => s + cents(l.debit), 0), cents(f.total));
+    assert.equal(ls.reduce((s, l) => s + cents(l.tax ?? 0), 0), cents(f.tax));
   }
-  const pend = pendingTotal(all);
-  const byDoc: Record<string, number> = {};
-  for (const g of groupByDoctor(all)) for (const [c, v] of Object.entries(g.subtotal)) byDoc[c] = Math.round(((byDoc[c] ?? 0) + v) * 100) / 100;
-  const byWork: Record<string, number> = {};
-  for (const w of workTypeTotals(all)) byWork[w.currency] = Math.round(((byWork[w.currency] ?? 0) + w.total) * 100) / 100;
-  assert.deepEqual(byDoc, pend);
-  assert.deepEqual(byWork, pend);
+  const first = r.lines[0];
+  assert.equal(first.orderNo, 'S1');
+  assert.equal(first.patientName, 'A.K.');
+  assert.equal(first.doctorName, 'Dr. Ali');
+  assert.match(first.description, /^Kron · 1 × /);
+  assert.ok(r.lines.every((l) => !l.discount));
+  assert.equal(cents(r.lines[r.lines.length - 1].balance), cents(r.closing));
+});
+
+test('preStatementLines: finalized_balance null → opening 0 ve hideOpening', () => {
+  const r = preStatementLines(ps([F1], null), 'TRY', 'ozet');
+  assert.equal(r.opening, 0);
+  assert.equal(r.hideOpening, true);
+  assert.equal(cents(r.closing), cents(F1.total));
+  // hekime özel kapsam (own) da açılışsız
+  const own = preStatementLines(scopeToDoctor(ps([F1, F2]), 'Dr. Ali'), 'TRY', 'ayrintili');
+  assert.equal(own.hideOpening, true);
+  assert.equal(own.opening, 0);
+});
+
+test('preStatementLines: başka para birimi satıra girmez; EUR seçilince yalnız EUR', () => {
+  const r = preStatementLines(ps([F1, F3]), 'EUR', 'ozet');
+  assert.deepEqual(r.lines.map((l) => l.id), ['f3']);
+  assert.equal(r.opening, 5);
+  assert.equal(cents(r.closing), cents(5 + F3.total));
+});
+
+test('preStatementLines: hasta tam adı hiçbir satırda yok (KVKK)', () => {
+  for (const mode of ['ozet', 'ayrintili'] as const) {
+    const r = preStatementLines(ps([F1, F2].map(withName)), 'TRY', mode);
+    assert.ok(!JSON.stringify(r).includes(FULL), mode);
+  }
 });

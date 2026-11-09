@@ -1,5 +1,6 @@
 /**
- * Ön ekstre PDF düğmesi + biçim seçici (Özet / Ayrıntılı).
+ * Ön ekstre PDF düğmesi + biçim seçici (Özet / Ayrıntılı) + para birimi (birden çoksa).
+ * PDF mevcut cari ekstre tasarımındadır (buildPreStatementHtml → buildStatementHtml); tek para birimli.
  * Lab tarafında isteğe bağlı "Hekim" seçici (R7): hekim seçilince yalnız o hekimin kalemleri,
  * kliniğin geneline ait rakamlar ve karekod olmadan, dosya adında hekimle.
  * Düğme ayar kapalıyken ya da taslak yokken çizilmez (çağıran enabled/invoices'a bakar; burada da korunur).
@@ -8,7 +9,6 @@ import React, { useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, Modal, ScrollView, Platform } from 'react-native';
 import { Download } from '../../../core/ui/icons';
 import { autoT } from '../../../core/i18n/autoTranslate';
-import { printLocale, htmlAttrs } from '../../../core/i18n/printLocale';
 import { useInkUI } from '../../../core/theme/inkScale';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { exportHtmlPdf } from '../../../core/print/exportHtmlPdf';
@@ -28,7 +28,17 @@ export function doctorNamesOf(data: PreStatement | null | undefined): string[] {
 
 const safe = (s: string) => s.replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'Klinik';
 
-export function PreStatementPdfButton({ clinicName, data, lab, defaultFormat, approve, doctors }: {
+/** Taslaklardaki para birimleri: özet sırası, ardından faturalarda geçen diğerleri. */
+function currenciesOf(data: PreStatement): string[] {
+  const out: string[] = [];
+  const add = (c: string | null | undefined) => { const v = c || 'TRY'; if (!out.includes(v)) out.push(v); };
+  const inUse = new Set((data.invoices ?? []).map(i => i.currency || 'TRY'));
+  for (const s of data.summary ?? []) if (inUse.has(s.currency)) add(s.currency);
+  for (const i of data.invoices ?? []) add(i.currency);
+  return out;
+}
+
+export function PreStatementPdfButton({ clinicName, data, lab, defaultFormat, approve, doctors, currency }: {
   clinicName: string;
   data: PreStatement;
   /** Hazır antet ya da (tıklamada çağrılan) çekici */
@@ -37,11 +47,19 @@ export function PreStatementPdfButton({ clinicName, data, lab, defaultFormat, ap
   approve?: PreStatementPdfInput['approve'];
   /** Yalnız lab tarafında verilir → "Hekim" seçici (R7) */
   doctors?: string[];
+  /** Varsayılan para birimi (lab: ekranda seçili olan). Yoksa ilk para birimi. */
+  currency?: string;
 }) {
   const U = useInkUI();
   const [open, setOpen] = useState(false);
   const [format, setFormat] = useState<PdfFormat>(defaultFormat);
   const [doctor, setDoctor] = useState<string | null>(null);
+  const ccyList = useMemo(() => currenciesOf(data), [data]);
+  const [ccyPick, setCcyPick] = useState<string | null>(null);
+  // Seçim yoksa ya da artık taslaklarda yoksa: çağıranın para birimi, o da yoksa ilki
+  const ccy = (ccyPick && ccyList.includes(ccyPick)) ? ccyPick
+    : (currency && ccyList.includes(currency)) ? currency
+    : (ccyList[0] ?? 'TRY');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inFlight = useRef(false);
@@ -57,15 +75,15 @@ export function PreStatementPdfButton({ clinicName, data, lab, defaultFormat, ap
     const now = new Date();
     const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const prefix = format === 'ayrintili' ? 'On-Ekstre-Ayrintili' : 'On-Ekstre';
-    const fileName = `${prefix}-${safe(clinicName)}${doctor ? `-${safe(doctor)}` : ''}-${ym}.pdf`;
+    const ccyPart = ccyList.length > 1 ? `-${ccy}` : '';
+    const fileName = `${prefix}-${safe(clinicName)}${doctor ? `-${safe(doctor)}` : ''}${ccyPart}-${ym}.pdf`;
     // await YOK: masaüstünde pencere tıklama jesti içinde açılmalı (exportHtmlPdf bunu ilk iş yapar).
     const html = (async () => {
       const letter = typeof lab === 'function' ? await lab() : lab;
       const input: PreStatementPdfInput = {
-        clinicName, lab: letter, data: scoped, generatedAt: now.toISOString(),
+        clinicName, lab: letter, data: scoped, currency: ccy, generatedAt: now.toISOString(),
         // Hekimli PDF'te karekod/onay yok (R7)
         approve: doctor ? undefined : approve,
-        i18n: { t: autoT, locale: printLocale(), htmlAttrs: htmlAttrs() },
       };
       return format === 'ayrintili' ? buildPreStatementDetailHtml(input) : buildPreStatementSummaryHtml(input);
     })();
@@ -126,6 +144,14 @@ export function PreStatementPdfButton({ clinicName, data, lab, defaultFormat, ap
                   {chip(autoT('Ayrıntılı'), format === 'ayrintili', () => setFormat('ayrintili'), 'ayr')}
                 </View>
               </View>
+              {ccyList.length > 1 ? (
+                <View style={{ gap: 8 }}>
+                  <Text style={lbl}>{autoT('Para birimi')}</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {ccyList.map(c => chip(c, ccy === c, () => setCcyPick(c), `c:${c}`))}
+                  </View>
+                </View>
+              ) : null}
               {docList.length > 0 ? (
                 <View style={{ gap: 8 }}>
                   <Text style={lbl}>{autoT('Hekim')}</Text>

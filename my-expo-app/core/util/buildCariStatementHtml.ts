@@ -122,6 +122,25 @@ export interface CariStatementInput {
    * beyaz metin okunmaz — açık tonlarda koyu metin gerekir.
    */
   accentColor?: string;
+  /**
+   * Antetin altında belirgin bant (ör. "Ön ekstre — onay bekliyor"). Verilmezse belge değişmez.
+   */
+  notice?: { title: string; text?: string } | null;
+  /**
+   * Hesap Özeti yanında onay karekodu kutusu (4. sütun). qrSvg güvenilir, yerelde üretilmiş SVG'dir
+   * (modules/orders/lib/qrSvg.ts) ve kaçışsız basılır. Verilmezse belge değişmez.
+   */
+  approve?: { qrSvg?: string; url: string; caption: string } | null;
+  /** Hesap Özeti'nde açılış bakiyesi satırını gizle (ör. hekime özel kapsamda açılış yok). */
+  hideOpening?: boolean;
+  /**
+   * Kâğıt görünümü: araç çubuğu yok, sayfa çerçevesiz/beyaz ve yazdırma sıkılaştırmaları ekranda da
+   * geçerli. html2canvas dosya yolu (core/print/exportHtmlPdf) @media print uygulamaz; bu olmadan
+   * araç çubuğu ve gri zemin PDF'e girer. Ayrıca satır şeridi inset box-shadow yerine kenarlıkla
+   * çizilir (html2canvas inset gölgeyi bazı dilimlerde tüm hücreyi boyayarak çiziyor).
+   * Verilmezse belge değişmez.
+   */
+  paper?: boolean;
 }
 
 /** Bir hex rengin üzerine beyaz mı siyah mı metin geleceğini luminance ile seçer. */
@@ -163,6 +182,35 @@ function fmtDateLong(iso?: string | null): string {
   return d.toLocaleDateString(printLocale(), { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+// Eklemeli seçeneklerin stilleri — yalnız seçenek verilince <style> sonuna eklenir.
+const PAPER_CSS = `
+  /* paper: ekranda da kâğıt (html2canvas @media print uygulamaz) */
+  .toolbar { display: none !important; }
+  body { background: #FFFFFF; }
+  .page { max-width: none; margin: 0; border: none; border-radius: 0; box-shadow: none; }
+  .table-wrap { padding: 0 12px; }
+  thead th { padding-inline: 8px; }
+  tbody td { padding-inline: 8px; }
+  td.date-cell { padding-inline-start: 10px; }
+`;
+const NOTICE_CSS = `
+  .notice-band {
+    margin: 0; padding: 12px 36px;
+    background: #FFF7E0; border-bottom: 1px solid #F1D48A;
+  }
+  .notice-title { font-size: 12px; font-weight: 700; color: #7A5200; letter-spacing: 0.1px; }
+  .notice-text { font-size: 10.5px; color: #7A5200; margin-top: 2px; }
+`;
+const APPROVE_CSS = `
+  /* 4 sütun: kenar boşlukları kısılır ki Hesap Özeti satırları kırılmasın */
+  .info-col { padding: 20px 16px; }
+  .info-col:first-child { padding-inline-start: 24px; }
+  .approve-col { text-align: center; padding-inline: 12px 20px !important; }
+  .approve-qr svg { width: 104px; height: 104px; display: block; margin: 0 auto; }
+  .approve-caption { font-size: 9.5px; font-weight: 600; color: var(--ink-700); margin-top: 6px; line-height: 1.4; }
+  .approve-url { font-size: 8px; color: var(--ink-400); margin-top: 3px; word-break: break-all; line-height: 1.3; }
+`;
+
 export function buildCariStatementHtml(input: CariStatementInput): string {
   const docTitle = input.documentTitle ?? 'Cari Hesap Ekstresi';
   const opening = input.openingBalance ?? 0;
@@ -189,6 +237,12 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
   const addressLines = (input.holder.addressLines ?? []).filter(Boolean) as string[];
   const yearNow = new Date().getFullYear();
   const copyrightText = input.copyright ?? `© ${esc(input.lab.name)} ${yearNow}`;
+  // Eklemeli seçenekler: verilmezse her parça '' → mevcut belgeler bit bit aynı.
+  const notice = input.notice ?? null;
+  const approve = input.approve ?? null;
+  const hideOpening = input.hideOpening === true;
+  const paper = input.paper === true;
+  const extraCss = (paper ? PAPER_CSS : '') + (notice ? NOTICE_CSS : '') + (approve ? APPROVE_CSS : '');
 
   // Toplam Borç / Alacak (mali müşavir özet kutusu için)
   const totalDebit  = input.summaryTotals?.debit  ?? input.lines.reduce((s, l) => s + (l.type === 'debit'  ? l.amount : 0), 0);
@@ -208,7 +262,7 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
           ${l.refNo ? `<div class="t-id-row"><strong>${esc(l.refNo)}</strong></div>` : ''}
           ${l.reference ? `<div class="ref-row"><span class="ref-tag">${esc(l.reference)}</span></div>` : ''}
         </td>
-        <td class="date-cell" style="box-shadow:inset 3px 0 0 ${borderColor}">
+        <td class="date-cell" style="${paper ? `border-inline-start:3px solid ${borderColor}` : `box-shadow:inset 3px 0 0 ${borderColor}`}">
           <div class="date-text">${fmtDate(l.date)}</div>
           ${l.time ? `<div class="time-text">${esc(l.time)}</div>` : ''}
         </td>
@@ -531,16 +585,16 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
   }
   .footer .legend { color: var(--ink-500); }
   .footer strong { color: var(--ink-900); font-weight: 600; }
-</style>
+${extraCss}</style>
 </head>
 <body>
 
-<div class="toolbar">
+${paper ? '' : `<div class="toolbar">
   <span class="title">${esc(docTitle)} · ${esc(input.holder.name)}</span>
   <button class="btn-print" onclick="window.print()">${autoT('Yazdır / PDF Kaydet')}</button>
   <button class="btn-close" onclick="window.close()">${autoT('Kapat')}</button>
 </div>
-
+`}
 <div class="page">
   <!-- Brand strip -->
   <!-- Document title block -->
@@ -563,8 +617,12 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
     </div>
   </div>
 
-  <!-- Info grid (3 columns) -->
-  <div class="info-grid">
+${notice ? `  <div class="notice-band">
+    <div class="notice-title">${esc(notice.title)}</div>
+    ${notice.text ? `<div class="notice-text">${esc(notice.text)}</div>` : ''}
+  </div>
+` : ''}  <!-- Info grid (3 columns) -->
+  <div class="info-grid"${approve ? ' style="grid-template-columns:1fr 1.15fr 1fr 136px"' : ''}>
     <div class="info-col">
       <div class="info-eyebrow">Cari Bilgileri</div>
       <div class="holder-name">${esc(input.holder.name)}</div>
@@ -578,8 +636,8 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
 
     <div class="info-col">
       <div class="info-eyebrow">${autoT('Hesap Özeti')}</div>
-      <div class="kv-row"><span class="kv-label">${esc(L.opening ?? 'Açılış Bakiyesi')}</span><span class="kv-value">${fmtMoney(opening, currency)}</span></div>
-      <div class="kv-row"><span class="kv-label">${esc(L.debit ?? 'Toplam Borç')}</span><span class="kv-value debit">${fmtMoney(totalDebit, currency)}</span></div>
+${hideOpening ? '' : `      <div class="kv-row"><span class="kv-label">${esc(L.opening ?? 'Açılış Bakiyesi')}</span><span class="kv-value">${fmtMoney(opening, currency)}</span></div>
+`}      <div class="kv-row"><span class="kv-label">${esc(L.debit ?? 'Toplam Borç')}</span><span class="kv-value debit">${fmtMoney(totalDebit, currency)}</span></div>
       <div class="kv-row"><span class="kv-label">${esc(L.credit ?? 'Toplam Alacak')}</span><span class="kv-value credit">${fmtMoney(totalCredit, currency)}</span></div>
       <div class="kv-row"><span class="kv-label">Hareket</span><span class="kv-value">${input.lines.length}</span></div>
     </div>
@@ -592,7 +650,13 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
       </div>
       <div class="muted-line" style="margin-top:10px"><strong style="color:var(--ink-700)">Para Birimi</strong> ${esc(currency)}</div>
     </div>
-  </div>
+${approve ? `
+    <div class="info-col approve-col">
+      ${approve.qrSvg ? `<div class="approve-qr">${approve.qrSvg}</div>` : ''}
+      <div class="approve-caption">${esc(approve.caption)}</div>
+      <div class="approve-url">${esc(approve.url)}</div>
+    </div>
+` : ''}  </div>
 
   <!-- Transactions -->
   <div class="table-wrap">
