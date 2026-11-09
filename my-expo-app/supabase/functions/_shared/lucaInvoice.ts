@@ -8,6 +8,7 @@
 
 import { balanceDiscountShares } from './lucaDiscountBalance.ts';
 import { listPriceInfo } from './invoiceDiscount.ts';
+import { consolidateLucaLines } from './lucaConsolidate.ts';
 import { computeTotals, type LucaInvoiceInput, type LucaKind, type LucaLine } from './luca.ts';
 
 export interface DbItem {
@@ -205,7 +206,12 @@ export function buildLucaInput(args: {
   /** Uygulama toplamıyla izin verilen sapma (varsayılan 0,01). Birleştirilmiş faturada
    *  her Siman faturası kendi KDV'sini yuvarladığı için fatura başına 1 kuruş. */
   totalTolerance?: number;
-}): { ok: true; input: LucaInvoiceInput } | { ok: false; error: string } {
+  /** 'kalem' (varsayılan): bugünkü satır-satır fatura. 'birlesik': aynı hizmet + fiyat + KDV satırları tek satır.
+   *  KDV yuvarlaması birleşikte kuruş saptırırsa kalem satırlarına geri düşer (consolidateFallback:'rounding'). */
+  lineMode?: 'kalem' | 'birlesik';
+  /** Birleşik modda "İş dökümü: …" notuna yazılacak fatura numaraları (yoksa invoice.invoice_number). */
+  dokumRefs?: string[];
+}): { ok: true; input: LucaInvoiceInput; consolidated: boolean; consolidateFallback?: 'rounding' } | { ok: false; error: string } {
   const { invoice, clinic, doctor, seller, kind } = args;
   const fail = (error: string) => ({ ok: false as const, error });
 
@@ -274,13 +280,33 @@ export function buildLucaInput(args: {
     return it.line_note?.trim() ? { ...line, note: it.line_note.trim() } : line;
   });
 
-  const t = computeTotals(lines);
-  // İndirimli faturada KDV dengelendiği için tutar kuruşu kuruşuna tutmalı; indirimsizde eski tolerans.
-  const payableOff = strictTol !== null
-    ? Math.abs(t.payable - num(invoice.total)) >= strictTol
-    : Math.abs(r2(t.payable - num(invoice.total))) > (args.totalTolerance ?? 0.01) + 1e-9;
-  if (payableOff) {
-    return fail(`Fatura toplamı (${num(invoice.total).toFixed(2)}) ile e-fatura hesaplaması (${t.payable.toFixed(2)}) uyuşmuyor`);
+  const payableOk = (ls: LucaLine[]) => {
+    const t = computeTotals(ls);
+    // İndirimli faturada KDV dengelendiği için tutar kuruşu kuruşuna tutmalı; indirimsizde eski tolerans.
+    const off = strictTol !== null
+      ? Math.abs(t.payable - num(invoice.total)) >= strictTol
+      : Math.abs(r2(t.payable - num(invoice.total))) > (args.totalTolerance ?? 0.01) + 1e-9;
+    return { off, payable: t.payable };
+  };
+  const chk = payableOk(lines);
+  if (chk.off) {
+    return fail(`Fatura toplamı (${num(invoice.total).toFixed(2)}) ile e-fatura hesaplaması (${chk.payable.toFixed(2)}) uyuşmuyor`);
+  }
+
+  // Birleşik satır: toplam kalem satırlarıyla kuruşu kuruşuna aynı kalmalı (KDV tek yuvarlama farkı),
+  // aksi halde resmi belgeye sapma sokmamak için kalem satırlarına dönülür.
+  let outLines = lines;
+  let consolidated = false;
+  let consolidateFallback: 'rounding' | undefined;
+  if (args.lineMode === 'birlesik') {
+    const merged = consolidateLucaLines(lines);
+    const mc = payableOk(merged);
+    if (!mc.off && Math.abs(r2(mc.payable - chk.payable)) < 0.005) {
+      outLines = merged;
+      consolidated = true;
+    } else {
+      consolidateFallback = 'rounding';
+    }
   }
 
   const receiverName = corporate
@@ -319,10 +345,14 @@ export function buildLucaInput(args: {
       phone: clinic?.phone ?? null,
       inboxTag: kind === 'e_fatura' ? args.inboxTag : null,
     },
-    lines,
-    notes: [`Siman fatura no: ${invoice.invoice_number}`, ...(blank(invoice.notes) ? [] : [invoice.notes!.trim()])],
+    lines: outLines,
+    notes: [
+      `Siman fatura no: ${invoice.invoice_number}`,
+      ...(consolidated ? [`İş dökümü: ${(args.dokumRefs?.length ? args.dokumRefs : [invoice.invoice_number]).join(', ')}`] : []),
+      ...(blank(invoice.notes) ? [] : [invoice.notes!.trim()]),
+    ],
   };
-  return { ok: true, input };
+  return { ok: true, input, consolidated, ...(consolidateFallback ? { consolidateFallback } : {}) };
 }
 
 // ─── Önizleme ─────────────────────────────────────────────────────────────

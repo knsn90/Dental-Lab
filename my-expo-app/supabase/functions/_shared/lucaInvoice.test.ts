@@ -358,3 +358,54 @@ test('liste alanı yok / boş / formül tutmuyor → çıktı bugünküyle deepE
     assert.deepEqual(withField, base, JSON.stringify(v));
   }
 });
+
+// ── birleşik satır modu (lineMode) ───────────────────────────────────────
+const bArgs = { clinic, doctor: null, seller, kind: 'e_fatura' as const, companyTaxCode: '6312098145', inboxTag: 'urn:mail:x@y' };
+const threeCrowns = (over: Partial<DbInvoice> = {}): DbInvoice => ({
+  ...inv, subtotal: 4590, tax_amount: 918, total: 5508,
+  items: [1, 2, 3].map((n) => ({ description: 'Zirkonyum kron', quantity: 1, unit_price: 1530, total: 1530, net_total: 1530, line_note: `NEX-${n}` })),
+  ...over,
+});
+
+test('kalem_mode_unchanged', () => {
+  const base = buildLucaInput({ invoice: inv, ...bArgs });
+  const explicit = buildLucaInput({ invoice: inv, ...bArgs, lineMode: 'kalem', dokumRefs: ['A', 'B'] });
+  assert.ok(base.ok && explicit.ok);
+  assert.deepEqual(explicit, base);
+  assert.equal((base as { consolidated: boolean }).consolidated, false);
+  assert.equal('consolidateFallback' in base, false);
+  assert.deepEqual((base as { input: { notes: string[] } }).input.notes, ['Siman fatura no: FTR-2026-00060']);
+});
+
+test('birlesik_payable_matches', () => {
+  const r = buildLucaInput({ invoice: threeCrowns(), ...bArgs, lineMode: 'birlesik' });
+  assert.ok(r.ok);
+  assert.equal(r.consolidated, true);
+  assert.equal(r.consolidateFallback, undefined);
+  assert.equal(r.input.lines.length, 1);
+  assert.equal(r.input.lines[0].quantity, 3);
+  assert.equal('note' in r.input.lines[0], false); // farklı sipariş etiketleri düştü
+  assert.equal(computeTotals(r.input.lines).payable, 5508);
+  assert.ok(r.input.notes!.includes('İş dökümü: FTR-2026-00060'));
+});
+
+test('merge_notes_list_dokum_numbers', () => {
+  const r = buildLucaInput({ invoice: threeCrowns(), ...bArgs, lineMode: 'birlesik', dokumRefs: ['FTR-1', 'FTR-2', 'FTR-3'] });
+  assert.ok(r.ok);
+  assert.deepEqual(r.input.notes, ['Siman fatura no: FTR-2026-00060', 'İş dökümü: FTR-1, FTR-2, FTR-3']);
+});
+
+test('fallback_on_vat_rounding', () => {
+  // 3 × 10,02 @%20: kalem KDV'leri 3 × 2,00 = 6,00; birleşik 30,06 × %20 = 6,01 → 1 kuruş sapma.
+  const d: DbInvoice = {
+    ...inv, subtotal: 30.06, tax_amount: 6, total: 36.06,
+    items: [1, 2, 3].map(() => ({ description: 'Ölçü kaşığı', quantity: 1, unit_price: 10.02, total: 10.02, net_total: 10.02 })),
+  };
+  const r = buildLucaInput({ invoice: d, ...bArgs, lineMode: 'birlesik' });
+  assert.ok(r.ok);
+  assert.equal(r.consolidated, false);
+  assert.equal(r.consolidateFallback, 'rounding');
+  assert.equal(r.input.lines.length, 3);
+  assert.deepEqual(r.input.notes, ['Siman fatura no: FTR-2026-00060']);
+  assert.equal(computeTotals(r.input.lines).payable, 36.06);
+});
