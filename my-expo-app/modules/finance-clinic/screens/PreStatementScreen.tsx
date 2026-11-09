@@ -32,6 +32,9 @@ import {
 import type { ApprovalMode, PreStatement, PreStatementInvoice, PreStatementItem } from '../../invoices/types';
 import { DISPLAY, PAGE_PADDING, fmtDate, ErrorBar, Loader, EmptyCard, PillButton } from '../components/atoms';
 import { StatementNoteSheet, DisputeChip } from '../components/StatementNoteSheet';
+import { PreStatementPdfButton } from '../../invoices/components/PreStatementPdfButton';
+import { fetchSelfViewLetterhead } from '../../invoices/labLetterheadApi';
+import { supabase } from '../../../core/api/supabase';
 
 /** Defansif para: her fatura kendi para biriminde (sabit ₺ yok). */
 const money = (n: unknown, cur: string | null | undefined) =>
@@ -63,6 +66,13 @@ export function PreStatementScreen({ clinicId }: { clinicId: string }) {
   const [reloadError, setReloadError] = useState<string | null>(null);
   // Çift dokunuşta ikinci onay isteği gitmesin (state bir sonraki çizime kadar eski kalır).
   const approveInFlight = useRef(false);
+  const [clinicName, setClinicName] = useState('');
+  useEffect(() => {
+    let live = true;
+    supabase.from('clinics').select('name').eq('id', clinicId).maybeSingle()
+      .then(({ data: c }) => { if (live) setClinicName((c as any)?.name ?? ''); });
+    return () => { live = false; };
+  }, [clinicId]);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) { setLoading(true); setLoadError(null); }
@@ -196,6 +206,15 @@ export function PreStatementScreen({ clinicId }: { clinicId: string }) {
             ) : data.actor === 'viewer' ? (
               <InfoLine text={autoT('Onayı klinik yöneticisi verir')} />
             ) : null
+          ) : null}
+
+          {invoices.length > 0 ? (
+            <PreStatementPdfButton
+              clinicName={clinicName || autoT('Klinik')}
+              data={data}
+              lab={fetchSelfViewLetterhead}
+              defaultFormat="ozet"
+            />
           ) : null}
 
           {result ? <ResultBanner r={result} /> : null}

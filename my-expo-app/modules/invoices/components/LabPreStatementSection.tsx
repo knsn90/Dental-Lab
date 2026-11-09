@@ -26,6 +26,8 @@ import { StatementNoteSheet } from '../../finance-clinic/components/StatementNot
 import { InvoiceBlock } from '../../finance-clinic/screens/PreStatementScreen';
 import { StatementApprovalBadge } from './StatementApprovalBadge';
 import { LabApprovalModal } from './LabApprovalModal';
+import { PreStatementPdfButton, doctorNamesOf } from './PreStatementPdfButton';
+import { fetchLabLetterhead } from '../labLetterheadApi';
 
 const DISPLAY = { fontFamily: 'Inter Tight, Inter, system-ui, sans-serif', fontWeight: '300' as const };
 
@@ -165,9 +167,11 @@ function ReloadLine({ message, onRetry }: { message: string; onRetry: () => Prom
 }
 
 // ─── Alt: çerçeveli bölüm ──────────────────────────────────────────────
-export function LabPreStatementSection({ st, clinicId, currency, onApproved }: {
+export function LabPreStatementSection({ st, clinicId, clinicName, currency, onApproved }: {
   st: LabPreStatementState;
   clinicId: string;
+  /** PDF başlığı ve dosya adı için */
+  clinicName?: string;
   /** Seçili ekstre dövizi — liste bu dövizin taslaklarını gösterir. */
   currency: string;
   /** Onay kaydedildi → ekstre (kesinleşen faturalar) yeniden yüklensin. */
@@ -185,6 +189,7 @@ export function LabPreStatementSection({ st, clinicId, currency, onApproved }: {
   // Liste seçili dövizde; onay da yalnız bu dövizin taslaklarını kapsar (ekstre tek dövizde okunur).
   const invoices = useMemo(() => all.filter(i => (i.currency || 'TRY') === currency), [all, currency]);
   const otherCcy = all.length - invoices.length;
+  const doctors = useMemo(() => doctorNamesOf(st.data), [st.data]);
 
   const noteTarget = useMemo(() => {
     if (!noteItemId) return null;
@@ -214,6 +219,15 @@ export function LabPreStatementSection({ st, clinicId, currency, onApproved }: {
             {autoT('Taslaklar bakiyeye ve hatırlatmaya girmez; klinik onayıyla kesinleşir')}
           </Text>
         </View>
+        {all.length > 0 ? (
+          <PreStatementPdfButton
+            clinicName={clinicName || autoT('Klinik')}
+            data={st.data}
+            lab={fetchLabLetterhead}
+            defaultFormat="ozet"
+            doctors={doctors}
+          />
+        ) : null}
         {canWrite && invoices.length > 0 ? (
           <GlassTooltip title={autoT('Klinik adına onay kaydet')} text={autoT('Klinikten aldığınız onayı gerekçesiyle kaydeder; taslaklar kesinleşir')}>
             <Pressable

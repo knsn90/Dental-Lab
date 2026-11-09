@@ -1440,6 +1440,7 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
           <LabPreStatementSection
             st={preSt}
             clinicId={clinicId}
+            clinicName={clinicName}
             currency={selectedCcy}
             onApproved={() => setReloadTick(t => t + 1)}
           />
