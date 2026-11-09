@@ -2,7 +2,8 @@
 // Node testinde çalıştığı için yerel importlar yalnız `import type`.
 
 import type {
-  ApprovalResult, DisputeStatus, PreStatementInvoice, PreStatementItem, PsActor, StatementRequestContacts, StatementSendChannel,
+  ApprovalResult, DisputeStatus, PreStatementInvoice, PreStatementItem, PsActor, StatementLinkStatus, StatementRequestContacts,
+  StatementSendChannel,
 } from '../types';
 
 /** Yalnız onaylayıcı ve lab ayarı açıkken onaylayabilir. */
@@ -94,6 +95,52 @@ export function sendStatusTone(status: string): SendTone {
   if (status === 'skipped_probe') return 'neutral';
   if (status === 'skipped' || status === 'unavailable') return 'warning';
   return 'danger';
+}
+
+// ─── Bağlantı / gönderim durumu satırı (plan 4 son düzeltme I2) ──────────
+
+const CHANNEL_LABELS: Record<string, string> = { email: 'E-posta', whatsapp: 'WhatsApp' };
+
+/**
+ * get_statement_link_status → tek satır: "Son gönderim: 01.12 · E-posta: Gönderim sıraya alındı ·
+ * Etkin bağlantı · Son geçerlilik: 24.12". Hiçbiri yoksa "Gönderim yok". Ton son gönderimden.
+ * `tr` her Türkçe parçaya ayrı uygulanır (tarih çevrilmez).
+ */
+export function statementLinkStatusLine(
+  s: StatementLinkStatus | null | undefined, fmtDate: (iso: string) => string, tr: (s: string) => string,
+): { text: string; tone: SendTone } {
+  const parts: string[] = [];
+  const send = s?.last_send ?? null;
+  const link = s?.active_link ?? null;
+  if (send) {
+    parts.push(`${tr('Son gönderim')}: ${fmtDate(send.created_at)}`);
+    if (send.trigger === 'month_end') parts.push(tr('Ay sonu'));
+    const ch = Object.prototype.hasOwnProperty.call(CHANNEL_LABELS, send.channel) ? CHANNEL_LABELS[send.channel] : 'Kanal';
+    parts.push(`${tr(ch)}: ${tr(sendStatusText(send.status, send.error))}`);
+  }
+  if (link) {
+    if (link.used) parts.push(link.used_at ? `${tr('Bağlantıyla onaylandı')}: ${fmtDate(link.used_at)}` : tr('Bağlantıyla onaylandı'));
+    else parts.push(`${tr('Etkin bağlantı')} · ${tr('Son geçerlilik')}: ${fmtDate(link.expires_at)}`);
+  }
+  if (parts.length === 0) return { text: tr('Gönderim yok'), tone: 'neutral' };
+  const tone: SendTone = send ? sendStatusTone(send.status) : link?.used ? 'success' : 'neutral';
+  return { text: parts.join(' · '), tone };
+}
+
+// ─── Girişsiz bağlantı sayfası: onay durumu (plan 4 son düzeltme I3) ─────
+
+export type LinkApproveState = 'disabled' | 'approved' | 'approve' | 'blocked';
+
+/**
+ * 'blocked': bağlantı geçerli ve okunur ama alıcı artık kliniğin onaylayıcısı değil (sunucu can_approve=false);
+ * onay/not düğmeleri yerine sakin bir not gösterilir.
+ */
+export function linkApproveState(
+  d: { enabled: boolean; approved: boolean; can_approve: boolean } | null | undefined,
+): LinkApproveState {
+  if (!d || !d.enabled) return 'disabled';
+  if (d.approved) return 'approved';
+  return d.can_approve ? 'approve' : 'blocked';
 }
 
 /** Kanal kutusu pasifse nedeni (Türkçe kaynak); seçilebilirse null. */

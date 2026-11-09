@@ -4,7 +4,7 @@ import {
   canApprove, canLabWrite, invoiceHasOpenDispute, approvalPayload, undisputedCount,
   disputeLabel, preStatementErrorText, summarizeApproval, invoiceDisputeStatus, approvalBadgeText,
   buildStatementLinkUrl, linkOrigin, sendStatusText, sendStatusTone, channelDisabledReason,
-  filterPreStatement, groupItemsByDoctorOrder, workTypes,
+  filterPreStatement, groupItemsByDoctorOrder, workTypes, statementLinkStatusLine, linkApproveState,
 } from './preStatement.ts';
 
 const inv = (id: string, statuses: (string | null)[], updated_at = '2026-11-09T10:00:00+00:00') => ({
@@ -263,4 +263,60 @@ test('filterPreStatement: I/ı/İ/i harf katlama (büyük I küçük i ile eşle
   assert.equal(filterPreStatement(x, { text: 'ı.k' })[0].items.length, 1);
   assert.equal(filterPreStatement(x, { text: 'İ.Z' })[0].items[0].patient_initials, 'ı.z.');
   assert.equal(filterPreStatement(x, { text: 'ı' }).length, 1);
+});
+
+// ─── Bağlantı / gönderim durumu (plan 4 son düzeltme I2) ───────────────
+
+const fd = (iso: string) => iso.slice(8, 10) + '.' + iso.slice(5, 7);
+const tr = (x: string) => x;
+const send = (status: string, error: string | null = null, channel = 'email', trigger = 'manual') => ({
+  created_at: '2026-12-01T06:30:00+00:00', trigger, channel, status, error, period: '2026-11',
+});
+const link = (used = false) => ({
+  created_at: '2026-11-09T10:00:00+00:00', expires_at: '2026-12-24T10:00:00+00:00', used, used_at: used ? '2026-11-10T10:00:00+00:00' : null,
+});
+
+test('statementLinkStatusLine: hiçbir şey yoksa "Gönderim yok"', () => {
+  assert.deepEqual(statementLinkStatusLine(null, fd, tr), { text: 'Gönderim yok', tone: 'neutral' });
+  assert.deepEqual(statementLinkStatusLine({ active_link: null, last_send: null }, fd, tr), { text: 'Gönderim yok', tone: 'neutral' });
+});
+
+test('statementLinkStatusLine: yalnız elle bağlantı (gönderim satırı yok)', () => {
+  assert.deepEqual(statementLinkStatusLine({ active_link: link(), last_send: null }, fd, tr),
+    { text: 'Etkin bağlantı · Son geçerlilik: 24.12', tone: 'neutral' });
+});
+
+test('statementLinkStatusLine: son gönderim + etkin bağlantı', () => {
+  assert.deepEqual(statementLinkStatusLine({ active_link: link(), last_send: send('queued') }, fd, tr),
+    { text: 'Son gönderim: 01.12 · E-posta: Gönderim sıraya alındı · Etkin bağlantı · Son geçerlilik: 24.12', tone: 'success' });
+});
+
+test('statementLinkStatusLine: başarısız / tercih kapalı gönderim mevcut metinle', () => {
+  assert.deepEqual(statementLinkStatusLine({ active_link: null, last_send: send('failed', 'HTTP_ERR') }, fd, tr),
+    { text: 'Son gönderim: 01.12 · E-posta: Gönderilemedi', tone: 'danger' });
+  assert.deepEqual(statementLinkStatusLine({ active_link: null, last_send: send('skipped', 'EMAIL_OPTOUT') }, fd, tr),
+    { text: 'Son gönderim: 01.12 · E-posta: Alıcının e-posta bildirimleri kapalı', tone: 'warning' });
+  assert.deepEqual(statementLinkStatusLine({ active_link: null, last_send: send('unavailable', 'WA_TEMPLATE', 'whatsapp') }, fd, tr),
+    { text: 'Son gönderim: 01.12 · WhatsApp: WhatsApp şablonu onay bekliyor', tone: 'warning' });
+});
+
+test('statementLinkStatusLine: ay sonu gönderimi ve kullanılmış bağlantı', () => {
+  assert.deepEqual(statementLinkStatusLine({ active_link: link(true), last_send: send('queued', null, 'email', 'month_end') }, fd, tr),
+    { text: 'Son gönderim: 01.12 · Ay sonu · E-posta: Gönderim sıraya alındı · Bağlantıyla onaylandı: 10.11', tone: 'success' });
+});
+
+test('statementLinkStatusLine: çeviri işlevi her parçaya uygulanır, ham kod sızmaz', () => {
+  const up = (x: string) => `[${x}]`;
+  assert.deepEqual(statementLinkStatusLine({ active_link: null, last_send: send('weird', 'X_Y', 'pigeon') }, fd, up),
+    { text: '[Son gönderim]: 01.12 · [Kanal]: [Gönderilemedi]', tone: 'danger' });
+});
+
+// ─── Bağlantı sayfası onay durumu (plan 4 son düzeltme I3) ─────────────
+
+test('linkApproveState: alıcı artık onaylayıcı değilse "blocked" (sayfa okunur, düğme yok)', () => {
+  assert.equal(linkApproveState({ enabled: true, approved: false, can_approve: true }), 'approve');
+  assert.equal(linkApproveState({ enabled: true, approved: false, can_approve: false }), 'blocked');
+  assert.equal(linkApproveState({ enabled: true, approved: true, can_approve: false }), 'approved');
+  assert.equal(linkApproveState({ enabled: false, approved: false, can_approve: false }), 'disabled');
+  assert.equal(linkApproveState(null), 'disabled');
 });

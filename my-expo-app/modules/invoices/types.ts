@@ -475,6 +475,18 @@ export interface StatementRequestResult {
   sends: StatementSendResult[];
 }
 
+/**
+ * get_statement_link_status (lab, finans görme) — kliniğin en yeni etkin bağlantısı ve son gönderimi.
+ * Jeton/karma/alıcı dönmez. error yalnız sabit kod.
+ */
+export interface StatementLinkStatus {
+  active_link: { created_at: string; expires_at: string; used: boolean; used_at: string | null } | null;
+  last_send: {
+    created_at: string; trigger: 'manual' | 'month_end' | string; channel: StatementSendChannel | string;
+    status: StatementSendStatus | string; error: StatementSendError | string | null; period: string;
+  } | null;
+}
+
 export interface ApprovalResult {
   /** Hepsi atlandıysa null */
   approval_id: string | null;

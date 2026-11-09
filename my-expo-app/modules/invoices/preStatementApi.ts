@@ -3,7 +3,7 @@
 import { supabase } from '../../core/api/supabase';
 import type {
   ApprovalMode, ApprovalResult, LinkPreStatement, PreStatement, PreStatementInvoice, StatementApprovalRow, StatementLink,
-  StatementRequestContacts, StatementRequestResult, StatementSendChannel,
+  StatementLinkStatus, StatementRequestContacts, StatementRequestResult, StatementSendChannel,
 } from './types';
 import { approvalPayload } from './lib/preStatement';
 
@@ -119,4 +119,11 @@ export async function requestPreStatementApproval(
   });
   if (error) throw new Error(error.message);
   return data as StatementRequestResult;
+}
+
+/** Lab (finans görme): kliniğin etkin bağlantısı ve son gönderimi. Jeton dönmez. */
+export async function fetchStatementLinkStatus(clinicId: string): Promise<StatementLinkStatus> {
+  const { data, error } = await supabase.rpc('get_statement_link_status', { p_clinic_id: clinicId });
+  if (error) throw new Error(error.message);
+  return data as StatementLinkStatus;
 }

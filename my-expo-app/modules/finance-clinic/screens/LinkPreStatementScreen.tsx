@@ -11,6 +11,8 @@
  *  - Onaydan sonra "N fatura kesinleşti" ve sayfa salt okunur.
  *  - Lab bağlantıdan sonra bir taslağı değiştirdiyse uyarı: yeni bağlantı istenir.
  *  - Geçersiz / süresi geçmiş / iptal edilmiş jeton → tek sade ekran (hangisi olduğu söylenmez).
+ *  - Alıcı artık kliniğin onaylayıcısı değilse (sunucu can_approve=false) sayfa okunur; onay düğmeleri yerine
+ *    sakin bir not çıkar ve not penceresi salt okunurdur.
  *  - PDF karekodsuz (R5); antet bağlantı yanıtındaki lab adından (oturum yok).
  *
  * KVKK: hasta yalnız baş harf (sunucu), telefon/e-posta yok.
@@ -20,7 +22,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View, Text, ScrollView, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CheckCircle2, AlertTriangle, XCircle, RefreshCw, Clock, Building2 } from '../../../core/ui/icons';
+import { CheckCircle2, AlertTriangle, XCircle, RefreshCw, Clock, Building2, Info } from '../../../core/ui/icons';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { useInkUI } from '../../../core/theme/inkScale';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
@@ -28,7 +30,7 @@ import { formatMoney, type Currency } from '../../../core/money/currency';
 import {
   fetchPreStatementByLink, approvePreStatementByLink, addStatementNoteByLink,
 } from '../../invoices/preStatementApi';
-import { undisputedCount, preStatementErrorText, summarizeApproval } from '../../invoices/lib/preStatement';
+import { undisputedCount, preStatementErrorText, summarizeApproval, linkApproveState } from '../../invoices/lib/preStatement';
 import type { ApprovalMode, LinkPreStatement, PreStatement } from '../../invoices/types';
 import type { LabLetterhead } from '../../receipt/buildReceiptHtml';
 import { DISPLAY, PAGE_PADDING, fmtDate, PillButton } from '../components/atoms';
@@ -185,6 +187,8 @@ export function LinkPreStatementScreen() {
   }
 
   const approvedView = data.approved;
+  // Alıcı artık onaylayıcı değil: bağlantı okunur ama onay/not yazılamaz (yazma RPC'si PS_LINK_INVALID verir)
+  const blocked = linkApproveState(data) === 'blocked';
   const kpiStyle = isDesktop ? undefined : { minWidth: 150, padding: 14 };
   // Dar ekranda uzun başlık ikona yapışmasın (klinik ekranıyla aynı)
   const kpiIcon = (name: string) => (isDesktop ? name : undefined);
@@ -275,7 +279,25 @@ export function LinkPreStatementScreen() {
             {result && !approvedView ? <ResultBanner r={result} /> : null}
 
             {/* Onay satırı */}
-            {data.can_approve && invoices.length > 0 ? (
+            {blocked && invoices.length > 0 ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 220,
+                  paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14, backgroundColor: U.chipNeutral }}>
+                  <Info size={14} color={U.ink[500]} strokeWidth={1.8} />
+                  <Text style={{ flex: 1, fontSize: 12.5, color: U.ink[700], lineHeight: 18 }}>
+                    {autoT('Bu bağlantıyla onay verilemiyor; lab\'dan yeni bağlantı isteyin.')}
+                  </Text>
+                </View>
+                {pdfData ? (
+                  <PreStatementPdfButton
+                    clinicName={data.clinic_name || autoT('Klinik')}
+                    data={pdfData}
+                    lab={letter}
+                    defaultFormat="ozet"
+                  />
+                ) : null}
+              </View>
+            ) : data.can_approve && invoices.length > 0 ? (
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
                 <ActionPill
                   label={`${autoT('İtirazsız kalemleri onayla')} (${undisputed})`}
@@ -311,7 +333,7 @@ export function LinkPreStatementScreen() {
               />
             ) : null}
 
-            {!approvedView && invoices.length > 0 ? (
+            {!approvedView && !blocked && invoices.length > 0 ? (
               <Text style={{ fontSize: 12, color: U.ink[500] }}>
                 {autoT('Kaleme dokunarak not yazabilirsiniz; not o kalem için itiraz açar')}
               </Text>
@@ -358,8 +380,10 @@ export function LinkPreStatementScreen() {
         item={noteTarget?.item ?? null}
         currency={noteTarget?.currency ?? noteCurrency.current}
         sendNote={sendNote}
-        readOnly={approvedView}
-        readOnlyText={autoT('Onay verildiği için bu bağlantıdan not yazılamaz')}
+        readOnly={approvedView || blocked}
+        readOnlyText={blocked
+          ? autoT('Bu bağlantıyla not yazılamaz; lab\'dan yeni bağlantı isteyin.')
+          : autoT('Onay verildiği için bu bağlantıdan not yazılamaz')}
         onClose={() => setNoteItemId(null)}
         onSent={() => load(true)}
       />

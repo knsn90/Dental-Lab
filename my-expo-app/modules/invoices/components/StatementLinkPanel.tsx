@@ -30,12 +30,14 @@ export function statementLinkOrigin(): string {
   return 'https://siman.app';
 }
 
-export function StatementLinkPanel({ clinicId, clinicName, data, lab, currency }: {
+export function StatementLinkPanel({ clinicId, clinicName, data, lab, currency, onCreated }: {
   clinicId: string;
   clinicName: string;
   data: PreStatement;
   lab: LabLetterhead | (() => Promise<LabLetterhead>);
   currency?: string;
+  /** Yeni bağlantı oluştu → durum satırı tazelensin. */
+  onCreated?: () => void;
 }) {
   const U = useInkUI();
   const [busy, setBusy] = useState(false);
@@ -56,6 +58,7 @@ export function StatementLinkPanel({ clinicId, clinicName, data, lab, currency }
       const r = await createStatementLink(clinicId);
       const url = buildStatementLinkUrl(r.token, statementLinkOrigin());
       setLink({ ...r, url });
+      onCreated?.();
       setQrSvg(await localQrSvg(url));
     } catch (e) {
       const msg = String((e as any)?.message ?? e);

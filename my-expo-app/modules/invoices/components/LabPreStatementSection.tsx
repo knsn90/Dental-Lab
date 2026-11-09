@@ -13,15 +13,16 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, Platform, useWindowDimensions } from 'react-native';
-import { AlertTriangle, FileCheck, RefreshCw, Info } from '../../../core/ui/icons';
+import { AlertTriangle, FileCheck, RefreshCw, Info, Send } from '../../../core/ui/icons';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { useInkUI } from '../../../core/theme/inkScale';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { formatMoney, type Currency } from '../../../core/money/currency';
 import { useInvoiceApprovalEnabled } from '../../../core/store/labSettingsStore';
-import { fetchPreStatement, fetchStatementApprovals } from '../preStatementApi';
-import { canLabWrite, preStatementErrorText } from '../lib/preStatement';
-import type { PreStatement, PreStatementInvoice, StatementApprovalRow } from '../types';
+import { fetchPreStatement, fetchStatementApprovals, fetchStatementLinkStatus } from '../preStatementApi';
+import { canLabWrite, preStatementErrorText, statementLinkStatusLine } from '../lib/preStatement';
+import type { PreStatement, PreStatementInvoice, StatementApprovalRow, StatementLinkStatus } from '../types';
+import { fmtDate } from '../../finance-clinic/components/atoms';
 import { StatementNoteSheet } from '../../finance-clinic/components/StatementNoteSheet';
 import { InvoiceBlock } from '../../finance-clinic/screens/PreStatementScreen';
 import { useStatementView, StatementFilterBar, NoMatchLine } from '../../finance-clinic/components/StatementFilter';
@@ -169,6 +170,33 @@ function ReloadLine({ message, onRetry }: { message: string; onRetry: () => Prom
   );
 }
 
+/**
+ * Salt okunur bağlantı/gönderim durumu (get_statement_link_status). Okunamazsa (RPC henüz yok, yetki,
+ * ağ) satır hiç çizilmez; bölümün geri kalanı etkilenmez. `epoch` artınca yeniden okunur.
+ */
+function LinkStatusLine({ clinicId, epoch }: { clinicId: string; epoch: number }) {
+  const U = useInkUI();
+  const [st, setSt] = useState<StatementLinkStatus | null | undefined>(undefined);
+  const reqRef = useRef(0);
+  useEffect(() => {
+    const my = ++reqRef.current;
+    fetchStatementLinkStatus(clinicId)
+      .then(r => { if (my === reqRef.current) setSt(r ?? null); })
+      .catch(() => { if (my === reqRef.current) setSt(undefined); });
+  }, [clinicId, epoch]);
+  // Başka kliniğe geçince eski kliniğin durumu görünmesin
+  useEffect(() => { setSt(undefined); }, [clinicId]);
+  if (st === undefined) return null;
+  const line = statementLinkStatusLine(st, fmtDate, autoT);
+  const fg = line.tone === 'neutral' ? U.ink[500] : U.chipTones[line.tone].fg;
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <Send size={13} color={fg} strokeWidth={1.8} />
+      <Text style={{ flex: 1, fontSize: 12, color: fg }}>{line.text}</Text>
+    </View>
+  );
+}
+
 // ─── Alt: çerçeveli bölüm ──────────────────────────────────────────────
 export function LabPreStatementSection({ st, clinicId, clinicName, currency, onApproved }: {
   st: LabPreStatementState;
@@ -188,6 +216,8 @@ export function LabPreStatementSection({ st, clinicId, clinicName, currency, onA
   const [approveOpen, setApproveOpen] = useState(false);
   // "Onay iste" yeni bağlantı oluşturur (eskisi iptal) → bağlantı paneli yeniden kurulur, eski bağlantı görünmez.
   const [linkEpoch, setLinkEpoch] = useState(0);
+  // Panelden elle bağlantı oluşturulunca yalnız durum satırı tazelenir (panel yeniden kurulmaz).
+  const [statusEpoch, setStatusEpoch] = useState(0);
 
   const all = useMemo(() => st.data?.invoices ?? [], [st.data]);
   // Liste seçili dövizde; onay da yalnız bu dövizin taslaklarını kapsar (ekstre tek dövizde okunur).
@@ -284,6 +314,8 @@ export function LabPreStatementSection({ st, clinicId, clinicName, currency, onA
         {canWrite && all.length > 0 ? (
           <StatementRequestButton clinicId={clinicId} onSent={() => setLinkEpoch(n => n + 1)} />
         ) : null}
+        {/* Son gönderim / etkin bağlantı — finans gören herkes için salt okunur */}
+        {all.length > 0 ? <LinkStatusLine clinicId={clinicId} epoch={linkEpoch + statusEpoch} /> : null}
         {canWrite && all.length > 0 ? (
           <StatementLinkPanel
             key={`link-${linkEpoch}`}
@@ -292,6 +324,7 @@ export function LabPreStatementSection({ st, clinicId, clinicName, currency, onA
             data={st.data}
             lab={fetchLabLetterhead}
             currency={currency}
+            onCreated={() => setStatusEpoch(n => n + 1)}
           />
         ) : null}
 
