@@ -29,6 +29,7 @@ import { LabApprovalModal } from './LabApprovalModal';
 import { PreStatementPdfButton, doctorNamesOf } from './PreStatementPdfButton';
 import { fetchLabLetterhead } from '../labLetterheadApi';
 import { StatementLinkPanel } from './StatementLinkPanel';
+import { StatementRequestButton } from './StatementRequestModal';
 
 const DISPLAY = { fontFamily: 'Inter Tight, Inter, system-ui, sans-serif', fontWeight: '300' as const };
 
@@ -185,6 +186,8 @@ export function LabPreStatementSection({ st, clinicId, clinicName, currency, onA
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [noteItemId, setNoteItemId] = useState<string | null>(null);
   const [approveOpen, setApproveOpen] = useState(false);
+  // "Onay iste" yeni bağlantı oluşturur (eskisi iptal) → bağlantı paneli yeniden kurulur, eski bağlantı görünmez.
+  const [linkEpoch, setLinkEpoch] = useState(0);
 
   const all = useMemo(() => st.data?.invoices ?? [], [st.data]);
   // Liste seçili dövizde; onay da yalnız bu dövizin taslaklarını kapsar (ekstre tek dövizde okunur).
@@ -272,7 +275,11 @@ export function LabPreStatementSection({ st, clinicId, clinicName, currency, onA
 
         {/* Girişsiz onay bağlantısı + karekodlu PDF (plan 4) — yalnız yazma yetkili lab kullanıcısı */}
         {canWrite && all.length > 0 ? (
+          <StatementRequestButton clinicId={clinicId} onSent={() => setLinkEpoch(n => n + 1)} />
+        ) : null}
+        {canWrite && all.length > 0 ? (
           <StatementLinkPanel
+            key={`link-${linkEpoch}`}
             clinicId={clinicId}
             clinicName={clinicName || autoT('Klinik')}
             data={st.data}

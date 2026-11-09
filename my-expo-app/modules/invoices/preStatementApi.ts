@@ -3,6 +3,7 @@
 import { supabase } from '../../core/api/supabase';
 import type {
   ApprovalMode, ApprovalResult, LinkPreStatement, PreStatement, PreStatementInvoice, StatementApprovalRow, StatementLink,
+  StatementRequestContacts, StatementRequestResult, StatementSendChannel,
 } from './types';
 import { approvalPayload } from './lib/preStatement';
 
@@ -95,4 +96,27 @@ export async function addStatementNoteByLink(
   });
   if (error) throw new Error(error.message);
   return data as { note_id: string; dispute_status: string | null };
+}
+
+// ─── "Onay iste" (plan 4 Task 5) ────────────────────────────────────────
+
+/** Lab (manage_finance): alıcının hangi kanaldan ulaşılabilir olduğu (yalnız boolean). */
+export async function fetchStatementRequestContacts(clinicId: string): Promise<StatementRequestContacts> {
+  const { data, error } = await supabase.rpc('get_statement_request_contacts', { p_clinic_id: clinicId });
+  if (error) throw new Error(error.message);
+  return data as StatementRequestContacts;
+}
+
+/**
+ * Lab (manage_finance): yeni onay bağlantısı oluşturur (öncekini iptal eder) ve seçili kanallardan
+ * alıcıya gönderimi kuyruğa alır. Sonuç kanal başınadır; jeton dönmez.
+ */
+export async function requestPreStatementApproval(
+  clinicId: string, channels: StatementSendChannel[],
+): Promise<StatementRequestResult> {
+  const { data, error } = await supabase.rpc('request_pre_statement_approval', {
+    p_clinic_id: clinicId, p_channels: channels,
+  });
+  if (error) throw new Error(error.message);
+  return data as StatementRequestResult;
 }

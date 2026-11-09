@@ -1,7 +1,9 @@
 // Ön ekstre — saf kurallar. Metinler Türkçe kaynaktır; çağıran autoT() ile sarar.
 // Node testinde çalıştığı için yerel importlar yalnız `import type`.
 
-import type { ApprovalResult, DisputeStatus, PreStatementInvoice, PsActor } from '../types';
+import type {
+  ApprovalResult, DisputeStatus, PreStatementInvoice, PsActor, StatementRequestContacts, StatementSendChannel,
+} from '../types';
 
 /** Yalnız onaylayıcı ve lab ayarı açıkken onaylayabilir. */
 export function canApprove(actor: PsActor | null, enabled: boolean): boolean {
@@ -50,6 +52,8 @@ const PS_TEXTS: Record<string, string> = {
   PS_EMPTY: 'Onaylanacak fatura seçilmedi',
   PS_LINK_INVALID: 'Bu bağlantı artık geçerli değil. Lab\'dan yeni bağlantı isteyin.',
   PS_NO_RECIPIENT: 'Kliniğin onay verecek yönetici hesabı yok',
+  PS_CHANNELS: 'En az bir gönderim kanalı seçin',
+  PS_RATE: 'Bu kliniğe az önce onay isteği gönderildi. Lütfen birkaç dakika sonra tekrar deneyin.',
   INV_APPROVAL_REQUIRED: 'Bu lab\'da fatura klinik onayıyla kesinleşir; "Klinik adına onay kaydet"i kullanın',
 };
 
@@ -57,6 +61,54 @@ const PS_TEXTS: Record<string, string> = {
 export function preStatementErrorText(msg: string): string | null {
   const hit = String(msg ?? '').match(/PS_[A-Z_]+|INV_APPROVAL_REQUIRED/);
   if (hit && Object.prototype.hasOwnProperty.call(PS_TEXTS, hit[0])) return PS_TEXTS[hit[0]];
+  return null;
+}
+
+// ─── "Onay iste" gönderim durumu (plan 4 Task 5) ─────────────────────────
+
+const SEND_ERROR_TEXTS: Record<string, string> = {
+  NO_CONTACT: 'Alıcının iletişim bilgisi yok',
+  EMAIL_OPTOUT: 'Alıcının e-posta bildirimleri kapalı',
+  WA_TEMPLATE: 'WhatsApp şablonu onay bekliyor',
+  NO_SECRET: 'Gönderim ayarı eksik',
+  HTTP_ERR: 'Gönderilemedi',
+};
+
+/** Kanal sonucu (request_pre_statement_approval → sends[]) okunur metne. Ham kod gösterilmez. */
+export function sendStatusText(status: string, error: string | null | undefined): string {
+  const e = error && Object.prototype.hasOwnProperty.call(SEND_ERROR_TEXTS, error) ? SEND_ERROR_TEXTS[error] : null;
+  switch (status) {
+    case 'queued': return 'Gönderim sıraya alındı';
+    case 'skipped_probe': return 'Deneme modu: gönderilmedi';
+    case 'skipped': return e ?? 'Gönderilmedi';
+    case 'unavailable': return e ?? 'Kanal kullanılamıyor';
+    case 'failed': return e ?? 'Gönderilemedi';
+    default: return 'Gönderilemedi';
+  }
+}
+
+export type SendTone = 'success' | 'warning' | 'danger' | 'neutral';
+
+export function sendStatusTone(status: string): SendTone {
+  if (status === 'queued') return 'success';
+  if (status === 'skipped_probe') return 'neutral';
+  if (status === 'skipped' || status === 'unavailable') return 'warning';
+  return 'danger';
+}
+
+/** Kanal kutusu pasifse nedeni (Türkçe kaynak); seçilebilirse null. */
+export function channelDisabledReason(
+  channel: StatementSendChannel, c: StatementRequestContacts | null | undefined,
+): string | null {
+  if (!c) return 'Alıcı bilgisi yükleniyor';
+  if (!c.has_recipient) return PS_TEXTS.PS_NO_RECIPIENT;
+  if (channel === 'email') {
+    if (!c.has_email) return 'Alıcının e-posta adresi yok';
+    if (c.email_optout) return 'Alıcının e-posta bildirimleri kapalı';
+    return null;
+  }
+  if (!c.has_phone) return 'Alıcının telefon numarası yok';
+  if (!c.whatsapp_available) return 'WhatsApp şablonu onay bekliyor';
   return null;
 }
 

@@ -446,6 +446,35 @@ export interface StatementLink {
   recipient_name: string | null;
 }
 
+/** "Onay iste" kanalları (plan 4 Task 5). */
+export type StatementSendChannel = 'email' | 'whatsapp';
+export type StatementSendStatus = 'queued' | 'skipped' | 'skipped_probe' | 'unavailable' | 'failed';
+export type StatementSendError = 'NO_CONTACT' | 'EMAIL_OPTOUT' | 'WA_TEMPLATE' | 'NO_SECRET' | 'HTTP_ERR';
+
+/** get_statement_request_contacts — alıcının yalnız boolean iletişim durumu (adres/numara dönmez). */
+export interface StatementRequestContacts {
+  has_recipient: boolean;
+  recipient_name: string | null;
+  has_email: boolean;
+  email_optout: boolean;
+  has_phone: boolean;
+  whatsapp_available: boolean;
+}
+
+export interface StatementSendResult {
+  channel: StatementSendChannel;
+  status: StatementSendStatus | string;
+  error: StatementSendError | string | null;
+}
+
+/** request_pre_statement_approval — jeton dönmez. */
+export interface StatementRequestResult {
+  link_id: string;
+  expires_at: string;
+  recipient_name: string | null;
+  sends: StatementSendResult[];
+}
+
 export interface ApprovalResult {
   /** Hepsi atlandıysa null */
   approval_id: string | null;

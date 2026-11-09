@@ -1,0 +1,45 @@
+-- 20261110101000_on_ekstre_gonderim — canlı yakalama (before). Yakalama zamanı: 2026-11-09 11:47:59.112321+00
+
+## Yeni nesneler yok mu (beklenen: hepsi false)
+statement_link_sends=false _ps_link_base_url=false _ps_pick_recipient=false _ps_pending_text=false _ps_request_message=false _ps_recipient_contacts=false get_statement_request_contacts=false request_pre_statement_approval=false _email_notifications_redact_link=false
+
+## DEĞİŞEN (yalnız tetikleyici eklenir): email_notifications — RLS / ACL / tetikleyiciler / politikalar
+relrowsecurity=true relacl={postgres=arwdDxtm/postgres,anon=m/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}
+triggers=(yok)
+email_notifications_select_own | SELECT | roles=public | using=(user_id = auth.uid())
+col id uuid
+col notification_id uuid
+col user_id uuid
+col email_to text
+col subject text
+col template text
+col payload jsonb
+col status text
+col provider text
+col provider_id text
+col error text
+col sent_at timestamp with time zone
+col created_at timestamp with time zone
+
+## REFERANS (değişmez; tüketilir) md5(prosrc) / proacl
+_ps_actor(uuid) md5=3448687563d27a5d8c8e705486f4c2ec proacl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+_ps_can_manage(uuid) md5=085079776ba3bcd62e53507de581c52a proacl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+_ps_profile_is_approver(uuid,uuid) md5=d6efbdf0feb47817829cd8a12100d7a3 proacl={postgres=X/postgres,service_role=X/postgres}
+_send_payment_reminder_core(uuid,uuid,uuid,text,text,text,text[],uuid) md5=b3cef37af4f2d2fa251cc54989e26135 proacl={postgres=X/postgres,service_role=X/postgres}
+create_statement_link(uuid) md5=4c4b5a0df47f02867065b8f11bfbf836 proacl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+get_my_lab_id() md5=8fa58b7e006df00011d67e9ad8a3a34f proacl={=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+lab_can_view_finance() md5=bbc4ccfbafecd4d021ea643c871337fc proacl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+lab_today(uuid,timestamp with time zone) md5=1b1a4c9dd56ffade7a668511629c672e proacl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+trg_whatsapp_meta_notify() md5=35a054270168d9bf07cdf168537eda8b proacl={=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+
+## statement_approval_links ACL / RLS
+relrowsecurity=true relacl={postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=r/postgres}
+
+## notifications tetikleyicileri (değişmez)
+trg_whatsapp_meta_notify,ztrg_notifications_skip_inactive
+
+## Vault (yalnız ad varlığı; değer yazılmaz)
+notify_fn_secret=true net_anon_key=true
+
+## Sayımlar
+notifications=7210 email_notifications=1930 net.http_request_queue=0 net._http_response=25 statement_approval_links=0 wa_cred_active=1
