@@ -11,6 +11,16 @@ import { listPriceInfo } from './invoiceDiscount.ts';
 import { consolidateLucaLines } from './lucaConsolidate.ts';
 import { computeTotals, type LucaInvoiceInput, type LucaKind, type LucaLine } from './luca.ts';
 
+/** e-Fatura notlarında (Siman fatura no / İş dökümü) tek tek yazılacak en çok fatura; fazlası özetlenir. */
+export const NOTE_LIST_MAX = 10;
+
+/** Fatura numarası listesi: NOTE_LIST_MAX'a kadar virgüllü, fazlası "ilk … son (n fatura)". Sıra çağırandan. */
+export function invoiceNumberList(nums: string[]): string {
+  return nums.length <= NOTE_LIST_MAX
+    ? nums.join(', ')
+    : `${nums[0]} … ${nums[nums.length - 1]} (${nums.length} fatura)`;
+}
+
 export interface DbItem {
   description: string | null;
   quantity: number | string | null;
@@ -354,7 +364,7 @@ export function buildLucaInput(args: {
     lines: outLines,
     notes: [
       `Siman fatura no: ${invoice.invoice_number}`,
-      ...(consolidated ? [`İş dökümü: ${(args.dokumRefs?.length ? args.dokumRefs : [invoice.invoice_number]).join(', ')}`] : []),
+      ...(consolidated ? [`İş dökümü: ${invoiceNumberList(args.dokumRefs?.length ? args.dokumRefs : [invoice.invoice_number])}`] : []),
       ...(blank(invoice.notes) ? [] : [invoice.notes!.trim()]),
     ],
   };

@@ -7,7 +7,7 @@
 // Aynı kural "Luca'da zaten kesildi" bağlamasında da kullanılır.
 // Saf (I/O yok). Testler: lucaMerge.test.ts
 
-import { itemNet, DISCOUNT_BALANCE_ERROR, type DbInvoice, type DbItem } from './lucaInvoice.ts';
+import { itemNet, DISCOUNT_BALANCE_ERROR, invoiceNumberList, type DbInvoice, type DbItem } from './lucaInvoice.ts';
 import { balanceDiscountShares } from './lucaDiscountBalance.ts';
 import { computeTotals } from './luca.ts';
 
@@ -102,9 +102,6 @@ export function mergeApprovalGate(
   return drafts.length ? { ok: false, code: INV_APPROVAL_REQUIRED, invoiceNumbers: drafts } : { ok: true };
 }
 
-/** e-Fatura notunda (Siman fatura no: …) tek tek yazılacak en çok fatura; fazlası özetlenir. */
-const NOTE_LIST_MAX = 10;
-
 /**
  * Birleşik fatura: kalemler fatura tarihi → no → kalem sırasıyla. Ürün adı
  * DEĞİŞMEZ (Luca ürün kartı adın kodundan bağlanır — önek her siparişe yeni kart
@@ -163,9 +160,7 @@ export function mergeInvoices(rows: MergeRow[], issueDate: string): DbInvoice {
   });
   return {
     id: sorted[0].id,
-    invoice_number: sorted.length <= NOTE_LIST_MAX
-      ? sorted.map((r) => r.invoice_number).join(', ')
-      : `${sorted[0].invoice_number} … ${sorted[sorted.length - 1].invoice_number} (${sorted.length} fatura)`,
+    invoice_number: invoiceNumberList(sorted.map((r) => r.invoice_number)),
     issue_date: issueDate,
     currency: sorted[0].currency,
     tax_rate: null,

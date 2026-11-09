@@ -1,7 +1,7 @@
 // node --test my-expo-app/supabase/functions/_shared/lucaInvoice.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseCityTown, mapLucaStatus, buildLucaInput, buildLucaPreview, productCode, type DbInvoice, type SellerConfig } from './lucaInvoice.ts';
+import { parseCityTown, mapLucaStatus, buildLucaInput, buildLucaPreview, productCode, invoiceNumberList, NOTE_LIST_MAX, type DbInvoice, type SellerConfig } from './lucaInvoice.ts';
 import { buildSendEnvelope } from './luca.ts';
 
 const seller: SellerConfig = { vkn: '6312098145', tax_office: 'Kozyatağı', city: 'İstanbul', town: 'Ataşehir', street: 'Atatürk Mah. Vatan Cad. No: 21' };
@@ -393,6 +393,21 @@ test('merge_notes_list_dokum_numbers', () => {
   const r = buildLucaInput({ invoice: threeCrowns(), ...bArgs, lineMode: 'birlesik', dokumRefs: ['FTR-1', 'FTR-2', 'FTR-3'] });
   assert.ok(r.ok);
   assert.deepEqual(r.input.notes, ['Siman fatura no: FTR-2026-00060', 'İş dökümü: FTR-1, FTR-2, FTR-3']);
+});
+
+test('dokum_note_truncated_like_merge_note', () => {
+  // NOTE_LIST_MAX'tan fazla kaynak: "İş dökümü" notu birleşik faturanın "Siman fatura no" notuyla AYNI biçimde kısalır.
+  const refs = Array.from({ length: NOTE_LIST_MAX + 2 }, (_, i) => `FTR-2026-${String(i + 1).padStart(5, '0')}`);
+  const r = buildLucaInput({ invoice: threeCrowns(), ...bArgs, lineMode: 'birlesik', dokumRefs: refs });
+  assert.ok(r.ok);
+  assert.equal(invoiceNumberList(refs), `FTR-2026-00001 … FTR-2026-000${NOTE_LIST_MAX + 2} (${NOTE_LIST_MAX + 2} fatura)`);
+  assert.ok(r.input.notes!.includes(`İş dökümü: ${invoiceNumberList(refs)}`));
+  // Az kaynak: not değişmez (tam liste)
+  const few = refs.slice(0, NOTE_LIST_MAX);
+  assert.equal(invoiceNumberList(few), few.join(', '));
+  const r2 = buildLucaInput({ invoice: threeCrowns(), ...bArgs, lineMode: 'birlesik', dokumRefs: few });
+  assert.ok(r2.ok);
+  assert.ok(r2.input.notes!.includes(`İş dökümü: ${few.join(', ')}`));
 });
 
 test('fallback_on_vat_rounding', () => {
