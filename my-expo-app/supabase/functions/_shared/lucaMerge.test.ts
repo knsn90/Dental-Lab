@@ -1,7 +1,7 @@
 // node --test my-expo-app/supabase/functions/_shared/lucaMerge.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeKey, validateMergeSet, mergeInvoices, isEttn, type MergeRow } from './lucaMerge.ts';
+import { mergeKey, validateMergeSet, mergeInvoices, isEttn, mergeApprovalGate, INV_APPROVAL_REQUIRED, type MergeRow } from './lucaMerge.ts';
 import { buildLucaInput, type SellerConfig } from './lucaInvoice.ts';
 
 const LAB = 'lab-1';
@@ -198,4 +198,25 @@ test('birleştirme: liste alanları kaleme taşınır; Luca satır net’i ve ö
   assert.equal(r.input.lines[2].discountAmount, Math.round((2941.8 - 2500.53) * 100) / 100);
   assert.equal(r.input.lines[0].discountAmount, Math.round((2501 - tl.lines[0].lineExtension) * 100) / 100);
   assert.ok(tl.lines[0].lineExtension < 2125.86); // a'nın fatura altı payı bu satırda
+});
+
+test('onay kapısı: ayar açık + seçimde taslak → INV_APPROVAL_REQUIRED (hiçbir şey gönderilmez)', () => {
+  const rows = [row({ id: 'a' }), row({ id: 'b', status: 'taslak', invoice_number: 'FTR-2026-00002' })];
+  const g = mergeApprovalGate(rows, true);
+  assert.equal(g.ok, false);
+  if (!g.ok) {
+    assert.equal(g.code, INV_APPROVAL_REQUIRED);
+    assert.deepEqual(g.invoiceNumbers, ['FTR-2026-00002']);
+  }
+});
+
+test('onay kapısı: ayar kapalıyken taslak dahil bugünkü gibi geçer', () => {
+  const rows = [row({ id: 'a' }), row({ id: 'b', status: 'taslak' })];
+  assert.deepEqual(mergeApprovalGate(rows, false), { ok: true });
+  assert.deepEqual(mergeApprovalGate(rows, null), { ok: true });
+});
+
+test('onay kapısı: ayar açık ama taslak yok → geçer', () => {
+  const rows = [row({ id: 'a' }), row({ id: 'b', status: 'odendi' }), row({ id: 'c', status: 'kismi_odendi' })];
+  assert.deepEqual(mergeApprovalGate(rows, true), { ok: true });
 });

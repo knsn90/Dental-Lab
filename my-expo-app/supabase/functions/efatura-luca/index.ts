@@ -51,7 +51,7 @@ import {
 } from '../_shared/luca.ts';
 import { buildLucaInput, buildLucaPreview, mapLucaStatus, type SellerConfig } from '../_shared/lucaInvoice.ts';
 import { previewDigest, signPreviewToken, verifyPreviewToken, PREVIEW_TOKEN_TTL_MS } from '../_shared/lucaPreviewToken.ts';
-import { mergeKey, validateMergeSet, mergeInvoices, isEttn, MERGE_MAX, type MergeRow } from '../_shared/lucaMerge.ts';
+import { mergeKey, validateMergeSet, mergeInvoices, isEttn, mergeApprovalGate, MERGE_MAX, type MergeRow } from '../_shared/lucaMerge.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin':  '*',
@@ -383,6 +383,17 @@ serve(async (req) => {
       }));
       const v = validateMergeSet(rows, ids, labId);
       if (!v.ok) return json({ ok: false, error: v.error }, 400);
+      // Ön ekstre onayı açıksa taslak Luca'ya HİÇ gitmez (önizleme/arama dahil): tüm istek reddedilir.
+      // Taslak seçilmemişse ayar okunmaz bile → ayar kapalı / taslaksız akış birebir aynı.
+      if (v.promoteIds.length) {
+        const { data: ls, error: lsErr } = await service
+          .from('lab_settings').select('invoice_approval_enabled').eq('lab_id', labId).maybeSingle();
+        if (lsErr) return json({ ok: false, error: 'Lab ayarları okunamadı' }, 500);
+        const gate = mergeApprovalGate(rows.filter((r) => ids.includes(r.id)), (ls as any)?.invoice_approval_enabled ?? false);
+        if (!gate.ok) {
+          return json({ ok: false, error: gate.code, code: gate.code, invoice_numbers: gate.invoiceNumbers }, 400);
+        }
+      }
       const selectedTotal = Math.round(rows.reduce((a, r) => a + (Number(r.total) || 0), 0) * 100) / 100;
       const logAll = (row: Record<string, unknown>) => service.from('efatura_logs').insert(
         ids.map((id) => ({ lab_id: labId, invoice_id: id, provider: 'luca', created_by: callerId, ...row })),
@@ -391,10 +402,15 @@ serve(async (req) => {
       const writeIssued = async (patch: Record<string, unknown>) => {
         const { data: upd, error } = await service.from('invoices').update(patch)
           .in('id', ids).eq('lab_id', labId).is('efatura_uuid', null).select('id');
+        let promoteError: string | null = null;
         if (!error && v.promoteIds.length) {
-          await service.from('invoices').update({ status: 'kesildi' }).in('id', v.promoteIds).eq('status', 'taslak');
+          const pr = await service.from('invoices').update({ status: 'kesildi' }).in('id', v.promoteIds).eq('status', 'taslak');
+          if (pr.error) {
+            promoteError = pr.error.message ?? String(pr.error);
+            console.error('efatura-luca: taslak → kesildi yükseltmesi başarısız', { ids: v.promoteIds, error: promoteError });
+          }
         }
-        return { error, updated: (upd ?? []).length };
+        return { error, updated: (upd ?? []).length, promoteError };
       };
 
       if (action === 'link_lookup' || action === 'link') {
@@ -429,7 +445,7 @@ serve(async (req) => {
           request_body: { op: 'link', count: ids.length },
           response_body: { invoiceNumber: found.invoiceNumber, status: found.status, detailStatus: found.detailStatus },
         });
-        return json({ ok: true, ...info, updated: w.updated });
+        return json({ ok: true, ...info, updated: w.updated, ...(w.promoteError ? { promote_error: w.promoteError } : {}) });
       }
 
       // merge_preview / merge_send — bugünün tarihi ve kuru (kullanıcı kararı 2026-10-21)
@@ -487,7 +503,7 @@ serve(async (req) => {
         efatura_provider: 'luca', efatura_sent_at: new Date().toISOString(), efatura_error: null,
       });
       await logAll({ action: 'send', request_body, response_body: s, http_status: 200, efatura_uuid: s.ettn, efatura_status: 'sent' });
-      return json({ ok: true, uuid: s.ettn, number: s.invoiceNumber ?? null, type: k.kind, status: 'sent', count: ids.length, updated: w.updated, persisted: !w.error });
+      return json({ ok: true, uuid: s.ettn, number: s.invoiceNumber ?? null, type: k.kind, status: 'sent', count: ids.length, updated: w.updated, persisted: !w.error, ...(w.promoteError ? { promote_error: w.promoteError } : {}) });
     }
 
     // ── Luca'da kesilen (giden) e-faturalar — salt okunur; bağlama penceresinde seçilir ──

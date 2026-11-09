@@ -13,6 +13,7 @@
  */
 import { supabase } from '../../core/api/supabase';
 import { edgeErrorMessage } from '../../core/api/edgeError';
+import { invoiceStatusErrorText } from '../invoices/lib/statementDiscount';
 import type { EFaturaPreview, EFaturaStatus } from './types';
 
 export interface BulkCandidate {
@@ -35,8 +36,10 @@ export interface BulkCandidate {
 
 async function invoke(body: Record<string, unknown>): Promise<any> {
   const { data, error } = await supabase.functions.invoke('efatura-luca', { body });
-  if (error) return { ok: false, error: await edgeErrorMessage(error, 'e-Fatura sunucusuna ulaşılamadı') };
-  return data;
+  const r = error ? { ok: false, error: await edgeErrorMessage(error, 'e-Fatura sunucusuna ulaşılamadı') } : data;
+  // Ön ekstre onayı açık + seçimde taslak → sunucu INV_APPROVAL_REQUIRED kodunu döndürür; okunur metne çevir.
+  if (r && /INV_APPROVAL_REQUIRED/.test(String(r.error ?? ''))) return { ...r, error: invoiceStatusErrorText(r.error) };
+  return r;
 }
 
 /** ETTN'si olmayan (Luca'da hiç kesilmemiş), iptal edilmemiş, tutarı olan faturalar. */

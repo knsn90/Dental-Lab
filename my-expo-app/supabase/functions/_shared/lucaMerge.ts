@@ -83,6 +83,25 @@ export function validateMergeSet(
   return { ok: true, clinicId, currency, promoteIds: set.filter((r) => r.status === 'taslak').map((r) => r.id) };
 }
 
+/** DB kapısıyla (zz_invoice_approval_gate) aynı hata kodu. */
+export const INV_APPROVAL_REQUIRED = 'INV_APPROVAL_REQUIRED' as const;
+
+/**
+ * Ön ekstre onayı: lab'da lab_settings.invoice_approval_enabled açıkken taslak fatura
+ * yalnız klinik onayıyla kesinleşir. Toplu e-fatura / bağlama taslağı Luca'ya gönderip
+ * SONRA "kesildi" yapmaya çalışırdı → DB kapısı reddeder, onaysız taslakta resmi e-fatura
+ * kalırdı. Bu yüzden Luca'ya HİÇBİR çağrı yapılmadan önce tüm istek reddedilir.
+ * Ayar kapalıyken (false/null) her zaman geçer — davranış değişmez.
+ */
+export function mergeApprovalGate(
+  rows: Array<Pick<MergeRow, 'status' | 'invoice_number'>>,
+  approvalEnabled: boolean | null | undefined,
+): { ok: true } | { ok: false; code: typeof INV_APPROVAL_REQUIRED; invoiceNumbers: string[] } {
+  if (approvalEnabled !== true) return { ok: true };
+  const drafts = rows.filter((r) => r.status === 'taslak').map((r) => r.invoice_number);
+  return drafts.length ? { ok: false, code: INV_APPROVAL_REQUIRED, invoiceNumbers: drafts } : { ok: true };
+}
+
 /** e-Fatura notunda (Siman fatura no: …) tek tek yazılacak en çok fatura; fazlası özetlenir. */
 const NOTE_LIST_MAX = 10;
 
