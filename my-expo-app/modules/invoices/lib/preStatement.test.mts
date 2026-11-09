@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   canApprove, canLabWrite, invoiceHasOpenDispute, approvalPayload, undisputedCount,
   disputeLabel, preStatementErrorText, summarizeApproval, invoiceDisputeStatus, approvalBadgeText,
+  buildStatementLinkUrl,
 } from './preStatement.ts';
 
 const inv = (id: string, statuses: (string | null)[], updated_at = '2026-11-09T10:00:00+00:00') => ({
@@ -114,4 +115,17 @@ test('approvalBadgeText — panel gerekçeyi göstermez, lab boş gerekçede son
   assert.equal(approvalBadgeText({ via: 'lab', reason: 'r', created_at: '' }, fmt, (s) => '[' + s + ']'), '[Lab tarafından kaydedildi] · 05.11.2026 · r');
   // bilinmeyen yol (ileride bağlantı/PDF) lab gibi GÖRÜNMEZ
   assert.equal(approvalBadgeText({ via: 'link', reason: null, created_at: '' }, fmt, (s) => s), 'Klinik onayladı · 05.11.2026');
+});
+
+test('preStatementErrorText — bağlantı kodları', () => {
+  assert.equal(preStatementErrorText('PS_LINK_INVALID'), "Bu bağlantı artık geçerli değil. Lab'dan yeni bağlantı isteyin.");
+  assert.equal(preStatementErrorText('ERROR: PS_NO_RECIPIENT'), 'Kliniğin onay verecek yönetici hesabı yok');
+});
+
+test('buildStatementLinkUrl', () => {
+  const tok = 'AbC-_0123456789abcdefghijklmnopqrstuvwxyzAB';
+  assert.equal(buildStatementLinkUrl(tok, 'https://siman.app'), `https://siman.app/s/${tok}`);
+  // Sondaki eğik çizgi çift "//" üretmez
+  assert.equal(buildStatementLinkUrl(tok, 'http://localhost:8081/'), `http://localhost:8081/s/${tok}`);
+  assert.equal(buildStatementLinkUrl(tok, 'https://siman.app///'), `https://siman.app/s/${tok}`);
 });

@@ -43,7 +43,9 @@ export function DisputeChip({ status }: { status: DisputeStatus }) {
   );
 }
 
-export function StatementNoteSheet({ open, item: liveItem, currency, onClose, onSent, side = 'clinic', readOnly = false }: {
+export function StatementNoteSheet({
+  open, item: liveItem, currency, onClose, onSent, side = 'clinic', readOnly = false, sendNote, readOnlyText,
+}: {
   /** Görünürlüğü ebeveyn yönetir (kalem tazelemede kaybolsa da popup ve hatası açık kalır). */
   open: boolean;
   /** Tazelenen veriden kalem; fatura bu arada kesildiyse null → son görülen kalem gösterilir. */
@@ -56,6 +58,10 @@ export function StatementNoteSheet({ open, item: liveItem, currency, onClose, on
   side?: 'clinic' | 'lab';
   /** Yazma alanı ve Çözüldü gizlenir (yalnız okuma yetkisi). */
   readOnly?: boolean;
+  /** Notu gönderen çağrı (varsayılan add_statement_note). Girişsiz bağlantı sayfası jetonlu çağrıyı verir. */
+  sendNote?: (itemId: string, body: string) => Promise<unknown>;
+  /** readOnly iken gösterilen açıklama (varsayılan: yetki metni). */
+  readOnlyText?: string;
 }) {
   const U = useInkUI();
   const [body, setBody] = useState('');
@@ -83,7 +89,7 @@ export function StatementNoteSheet({ open, item: liveItem, currency, onClose, on
     inFlight.current = true;
     setSending(true); setError(null);
     try {
-      await addStatementNote(item.id, text);
+      await (sendNote ?? addStatementNote)(item.id, text);
       setBody('');
       await onSent();
     } catch (e: any) {
@@ -205,7 +211,7 @@ export function StatementNoteSheet({ open, item: liveItem, currency, onClose, on
                 <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}>
                   <Info size={13} color={U.ink[400]} strokeWidth={1.8} />
                   <Text style={{ flex: 1, fontSize: 11.5, color: U.ink[500], lineHeight: 16 }}>
-                    {autoT('Yanıt yazmak için mali işlem yönetme yetkisi gerekir')}
+                    {readOnlyText ?? autoT('Yanıt yazmak için mali işlem yönetme yetkisi gerekir')}
                   </Text>
                 </View>
               ) : (<>

@@ -275,7 +275,7 @@ export function PreStatementScreen({ clinicId }: { clinicId: string }) {
 
 /* ───────────────────────────── parçalar ───────────────────────────── */
 
-function InfoLine({ text }: { text: string }) {
+export function InfoLine({ text }: { text: string }) {
   const U = useInkUI();
   return (
     <View style={{
@@ -316,7 +316,7 @@ export function ResultBanner({ r }: { r: ResultMsg }) {
   );
 }
 
-function ActionPill({ label, tip, onPress, disabled, primary }: {
+export function ActionPill({ label, tip, onPress, disabled, primary }: {
   label: string; tip: string; onPress: () => void; disabled?: boolean; primary?: boolean;
 }) {
   const U = useInkUI();
@@ -510,7 +510,7 @@ function ItemCards({ inv, date, onItem }: { inv: PreStatementInvoice; date: stri
   );
 }
 
-function ConfirmDialog({ mode, total, undisputed, busy, error, onCancel, onConfirm }: {
+export function ConfirmDialog({ mode, total, undisputed, busy, error, onCancel, onConfirm }: {
   mode: ApprovalMode | null; total: number; undisputed: number; busy: boolean; error: string | null;
   onCancel: () => void; onConfirm: () => void;
 }) {

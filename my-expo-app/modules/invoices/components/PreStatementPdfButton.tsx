@@ -16,6 +16,7 @@ import { buildPreStatementSummaryHtml, buildPreStatementDetailHtml, type PreStat
 import { scopeToDoctor, NO_DOCTOR, pdfCurrencies, pickCurrency } from '../lib/preStatementPdf';
 import type { PreStatement } from '../types';
 import type { LabLetterhead } from '../../receipt/buildReceiptHtml';
+import { usePreStatementPdfFormat } from '../../../core/store/labSettingsStore';
 
 export type PdfFormat = 'ozet' | 'ayrintili';
 
@@ -33,7 +34,9 @@ export function PreStatementPdfButton({ clinicName, data, lab, defaultFormat, ap
   data: PreStatement;
   /** Hazır antet ya da (tıklamada çağrılan) çekici */
   lab: LabLetterhead | (() => Promise<LabLetterhead>);
-  defaultFormat: PdfFormat;
+  /** Verilmezse lab ayarı (lab_settings.pre_statement_pdf_format, R4) */
+  defaultFormat?: PdfFormat;
+  /** Lab'ın bağlantı oluşturduktan hemen sonraki PDF'i: karekod + bağlantı (R5: yalnız bu PDF) */
   approve?: PreStatementPdfInput['approve'];
   /** Yalnız lab tarafında verilir → "Hekim" seçici (R7) */
   doctors?: string[];
@@ -42,7 +45,10 @@ export function PreStatementPdfButton({ clinicName, data, lab, defaultFormat, ap
 }) {
   const U = useInkUI();
   const [open, setOpen] = useState(false);
-  const [format, setFormat] = useState<PdfFormat>(defaultFormat);
+  const settingFormat = usePreStatementPdfFormat();
+  // Ayar sonradan yüklenebilir: kullanıcı seçmedikçe varsayılan izlenir.
+  const [picked, setFormat] = useState<PdfFormat | null>(null);
+  const format: PdfFormat = picked ?? defaultFormat ?? settingFormat;
   const [doctor, setDoctor] = useState<string | null>(null);
   // Hekim seçiliyse yalnız o hekimin kalemlerinin para birimleri (boş PDF eşleşmesi olmasın)
   const ccyList = useMemo(() => pdfCurrencies(data, doctor), [data, doctor]);

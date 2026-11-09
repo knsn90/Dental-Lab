@@ -48,6 +48,8 @@ const PS_TEXTS: Record<string, string> = {
   PS_REASON_REQUIRED: 'Gerekçe zorunlu',
   PS_MODE: 'Geçersiz onay türü',
   PS_EMPTY: 'Onaylanacak fatura seçilmedi',
+  PS_LINK_INVALID: 'Bu bağlantı artık geçerli değil. Lab\'dan yeni bağlantı isteyin.',
+  PS_NO_RECIPIENT: 'Kliniğin onay verecek yönetici hesabı yok',
   INV_APPROVAL_REQUIRED: 'Bu lab\'da fatura klinik onayıyla kesinleşir; "Klinik adına onay kaydet"i kullanın',
 };
 
@@ -56,6 +58,11 @@ export function preStatementErrorText(msg: string): string | null {
   const hit = String(msg ?? '').match(/PS_[A-Z_]+|INV_APPROVAL_REQUIRED/);
   if (hit && Object.prototype.hasOwnProperty.call(PS_TEXTS, hit[0])) return PS_TEXTS[hit[0]];
   return null;
+}
+
+/** Girişsiz onay sayfası adresi. origin: web'de window.location.origin, native'de https://siman.app. */
+export function buildStatementLinkUrl(token: string, origin: string): string {
+  return `${String(origin ?? '').replace(/\/+$/, '')}/s/${token}`;
 }
 
 export function summarizeApproval(r: ApprovalResult): { issued: number; changed: number; disputed: number } {

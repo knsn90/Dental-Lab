@@ -53,6 +53,8 @@ export interface LabSettings {
 
   // Ön ekstre: açıkken taslaklar klinik onayına kadar kesinleşmez (taslak→kesildi sunucuda kapalı)
   invoice_approval_enabled?: boolean;
+  // Ön ekstre PDF'inin varsayılan biçimi (R4; DB varsayılanı 'ozet')
+  pre_statement_pdf_format?: 'ozet' | 'ayrintili';
 
   created_at: string;
   updated_at: string;
@@ -168,4 +170,9 @@ export function defaultTaxRateFor(region: LabRegion): number {
 /** Lab "Hekim/klinik onayıyla kesinleştir" ayarı (ayarlar yüklenmemişken false = bugünkü akış). */
 export function useInvoiceApprovalEnabled(): boolean {
   return useLabSettingsStore(s => s.settings?.invoice_approval_enabled === true);
+}
+
+/** Ön ekstre PDF seçicisinin varsayılan biçimi (ayarlar yüklenmemişken 'ozet'). */
+export function usePreStatementPdfFormat(): 'ozet' | 'ayrintili' {
+  return useLabSettingsStore(s => (s.settings?.pre_statement_pdf_format === 'ayrintili' ? 'ayrintili' : 'ozet'));
 }

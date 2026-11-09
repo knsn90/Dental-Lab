@@ -488,6 +488,8 @@ export default function RootLayout() {
     // 'checkin' ve 'c': QR check-in akışı token ile çalışır, oturum gerektirmez
     const isPublicRoute = segments[0] === 'pay' || segments[0] === 'doctor-approval' || segments[0] === 'dev'
       || segments[0] === 'checkin' || segments[0] === 'c' || segments[0] === 'legal' || segments[0] === 'kiosk'
+      // 's': ön ekstre onay bağlantısı (/s/<jeton>) — girişsiz, jetonla.
+      || segments[0] === 's'
       // TV modu (/tv): auth'u kendi _layout'u sağlar, panel yönlendirmesini kendi index'i yapar.
       // Root guard'ın panel-zorlaması buraya karışmamalı (yoksa teknisyen /(station)'a atılır → Unmatched Route).
       || segments[0] === 'tv';

@@ -421,6 +421,31 @@ export interface PreStatement {
 
 export type ApprovalMode = 'all' | 'undisputed';
 
+/** get_pre_statement_by_link — girişsiz onay sayfası (jeton). Kişi adı/iletişim yok; yalnız sayımlar. */
+export interface LinkPreStatement extends Omit<PreStatement, 'actor'> {
+  actor: 'link';
+  /** enabled ve bağlantı kullanılmamış */
+  can_approve: boolean;
+  /** Bağlantıyla onay verildi (bağlantı "kullanıldı"; sayfa salt okunur) */
+  approved: boolean;
+  approved_at: string | null;
+  /** Yalnız kullanılmış bağlantıda dolu */
+  approval: { issued_count: number; skipped_count: number } | null;
+  expires_at: string;
+  /** Bağlantı oluşturulduktan sonra lab'ın değiştirdiği taslaklar (onaydan atlanır) */
+  changed_invoice_ids: string[];
+  clinic_name: string | null;
+  lab_name: string | null;
+}
+
+/** create_statement_link sonucu. token yalnız bu yanıtta bulunur (sunucuda karması saklanır). */
+export interface StatementLink {
+  token: string;
+  link_id: string;
+  expires_at: string;
+  recipient_name: string | null;
+}
+
 export interface ApprovalResult {
   /** Hepsi atlandıysa null */
   approval_id: string | null;

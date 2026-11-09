@@ -28,6 +28,7 @@ import { StatementApprovalBadge } from './StatementApprovalBadge';
 import { LabApprovalModal } from './LabApprovalModal';
 import { PreStatementPdfButton, doctorNamesOf } from './PreStatementPdfButton';
 import { fetchLabLetterhead } from '../labLetterheadApi';
+import { StatementLinkPanel } from './StatementLinkPanel';
 
 const DISPLAY = { fontFamily: 'Inter Tight, Inter, system-ui, sans-serif', fontWeight: '300' as const };
 
@@ -224,7 +225,6 @@ export function LabPreStatementSection({ st, clinicId, clinicName, currency, onA
             clinicName={clinicName || autoT('Klinik')}
             data={st.data}
             lab={fetchLabLetterhead}
-            defaultFormat="ozet"
             doctors={doctors}
             currency={currency}
           />
@@ -268,6 +268,17 @@ export function LabPreStatementSection({ st, clinicId, clinicName, currency, onA
               {st.approvals.map(a => <StatementApprovalBadge key={a.id} a={a} />)}
             </View>
           </View>
+        ) : null}
+
+        {/* Girişsiz onay bağlantısı + karekodlu PDF (plan 4) — yalnız yazma yetkili lab kullanıcısı */}
+        {canWrite && all.length > 0 ? (
+          <StatementLinkPanel
+            clinicId={clinicId}
+            clinicName={clinicName || autoT('Klinik')}
+            data={st.data}
+            lab={fetchLabLetterhead}
+            currency={currency}
+          />
         ) : null}
 
         {invoices.length === 0 ? (

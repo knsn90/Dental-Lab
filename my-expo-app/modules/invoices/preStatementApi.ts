@@ -1,7 +1,9 @@
 // Ön ekstre API — Supabase RPC sarmalayıcıları. Hatalar Error(message) olarak fırlatılır.
 
 import { supabase } from '../../core/api/supabase';
-import type { ApprovalMode, ApprovalResult, PreStatement, PreStatementInvoice, StatementApprovalRow } from './types';
+import type {
+  ApprovalMode, ApprovalResult, LinkPreStatement, PreStatement, PreStatementInvoice, StatementApprovalRow, StatementLink,
+} from './types';
 import { approvalPayload } from './lib/preStatement';
 
 export async function fetchPreStatement(clinicId: string): Promise<PreStatement> {
@@ -58,4 +60,39 @@ export async function fetchStatementApprovals(clinicId: string, limit = 5): Prom
     .limit(limit);
   if (error) throw new Error(error.message);
   return (data ?? []) as StatementApprovalRow[];
+}
+
+// ─── Onay bağlantısı (plan 4) ───────────────────────────────────────────
+// Jeton RPC'leri POST ile çağrılır (supabase.rpc). Jeton asla sorgu dizesine konmaz.
+
+/** Lab (manage_finance): kliniğe yeni onay bağlantısı. Kliniğin önceki bağlantısını iptal eder. */
+export async function createStatementLink(clinicId: string): Promise<StatementLink> {
+  const { data, error } = await supabase.rpc('create_statement_link', { p_clinic_id: clinicId });
+  if (error) throw new Error(error.message);
+  return data as StatementLink;
+}
+
+/** Girişsiz: bağlantının ön ekstresi. Geçersiz/süresi geçmiş/iptal → PS_LINK_INVALID. */
+export async function fetchPreStatementByLink(token: string): Promise<LinkPreStatement> {
+  const { data, error } = await supabase.rpc('get_pre_statement_by_link', { p_token: token });
+  if (error) throw new Error(error.message);
+  return data as LinkPreStatement;
+}
+
+/** Girişsiz: bağlantının anlık görüntüsündeki taslakları onaylar (bir kez). */
+export async function approvePreStatementByLink(token: string, mode: ApprovalMode): Promise<ApprovalResult> {
+  const { data, error } = await supabase.rpc('approve_pre_statement_by_link', { p_token: token, p_mode: mode });
+  if (error) throw new Error(error.message);
+  return data as ApprovalResult;
+}
+
+/** Girişsiz: kaleme klinik notu (itiraz açar). Anlık görüntü dışı kalem → PS_SCOPE. */
+export async function addStatementNoteByLink(
+  token: string, itemId: string, body: string,
+): Promise<{ note_id: string; dispute_status: string | null }> {
+  const { data, error } = await supabase.rpc('add_statement_note_by_link', {
+    p_token: token, p_invoice_item_id: itemId, p_body: body,
+  });
+  if (error) throw new Error(error.message);
+  return data as { note_id: string; dispute_status: string | null };
 }
