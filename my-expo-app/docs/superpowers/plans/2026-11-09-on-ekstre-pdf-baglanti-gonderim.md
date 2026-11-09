@@ -42,6 +42,7 @@
 - **R4 — PDF varsayılanı.** `lab_settings.pre_statement_pdf_format` (`'ozet'|'ayrintili'`, varsayılan `'ozet'`) eklenir. PDF düğmesi seçiciyi bu değerle açar.
 - **R5 — Klinik panelinden alınan PDF'te karekod yoktur.** Kullanıcı zaten giriş yapmıştır. Karekod yalnız lab'ın ürettiği ve bağlantı içeren PDF'te bulunur.
 - **R6 — WhatsApp şablonu.** Meta, ilk mesaj için onaylı şablon ister. Görev 5'te uygulayıcı mevcut şablonları listeler. Uygun şablon yoksa WhatsApp kanalı "şablon onayı bekliyor" diye kapalı kalır ve e-posta çalışır. Şablon başvurusu kullanıcıya bırakılır.
+- **R7 — Yetkisiz hekim (kullanıcı kararı).** Fatura görme yetkisi (billing_view) olmayan hekime yeni menü ya da sekme açılmaz; onay veremez. Bu hekim PDF'i yalnız lab'dan alır. Lab'ın PDF düğmesinde isteğe bağlı "Hekim" seçici bulunur. Hekim seçilince PDF yalnız o hekimin kalemlerini içerir ve kliniğin geneline ait rakamlar (kesinleşmiş bakiye, vadesi geçen) gösterilmez. Hekimli PDF'te karekod yoktur, çünkü onay yetkisi kliniğin yöneticisindedir.
 
 ## Global Constraints
 
@@ -121,6 +122,11 @@
     - `description` ve para birimi başına toplar. Tutara göre azalan sıralanır.
   - `pendingTotal(inv: PreStatementInvoice[]): Record<string, number>`
     - Fatura `total`'larının para birimi başına toplamı. 2 ondalığa yuvarlanır ve `get_pre_statement.summary.pending` ile aynı olmalıdır.
+  - `scopeToDoctor(data: PreStatement, doctor: string): PreStatement` (R7)
+    - Yalnız o hekimin kalemlerini bırakır ve kalemi kalmayan faturayı düşürür.
+    - Kalan faturalarda `subtotal`, `tax` ve `total`, bırakılan kalemlerin `total` ve `gross_total` toplamlarından yeniden hesaplanır.
+    - `summary` alanında `finalized_balance` ve `overdue` `null` olur; `pending`, bırakılan kalemlerin `gross_total` toplamıdır (para birimi başına, 2 ondalık).
+    - `scope` `'own'` yapılır.
 - `buildPreStatementHtml.ts`:
   - `buildPreStatementSummaryHtml(input: PreStatementPdfInput): string`
   - `buildPreStatementDetailHtml(input: PreStatementPdfInput): string`
@@ -144,6 +150,7 @@
   - `groupByDoctor` iki hekim ve üç faturayı doğru gruplar, hekim adı boş olanı `'—'` altına koyar, ara toplamlar para birimi başına doğrudur.
   - `workTypeTotals` aynı iş ve aynı para birimini birleştirir, farklı para birimini ayırır.
   - `pendingTotal`: `[{currency:'TRY', total: 100.005}, {currency:'TRY', total: 0.01}]` → `{TRY: 100.02}`.
+  - `scopeToDoctor`: başka hekimin kalemi sonuçta yer almaz; kalemi kalmayan fatura düşer; `summary[0].finalized_balance === null`; `pending` bırakılan kalemlerin `gross_total` toplamına eşittir.
 - [ ] **Step 2: Failing testler (`buildPreStatementHtml.test.mts`)**
   - İki çıktı da `'Ön ekstre — onay bekliyor'` içerir.
   - `approve` verilince `qrSvg` ve URL HTML'de geçer; verilmeyince `'karekodu okutun'` geçmez.
@@ -182,6 +189,7 @@
   - Hata `Error` olarak fırlatılır. Çağıran, hatayı butonun yanında gösterir.
 - **`PreStatementPdfButton` props:** `{ clinicName: string; data: PreStatement; lab: LabLetterhead; defaultFormat: 'ozet'|'ayrintili'; approve?: PreStatementPdfInput['approve'] }`
   - Bu görevde `defaultFormat` sabit `'ozet'`tir; Task 3 ayarı gelince ayardan okunur.
+  - Yalnız lab tarafında `doctors?: string[]` prop'u verilir ve seçicide "Tüm hekimler" ile hekim adları listelenir (R7). Hekim seçilince `scopeToDoctor` uygulanır, `approve` verilmez ve dosya adı `On-Ekstre-<klinik>-<hekim>-<YYYY-MM>.pdf` olur.
   - Lab tarafında letterhead mevcut `fetchLab` deseniyle alınır. Klinik tarafında ekstre ekranındaki self-view deseni kullanılır (`fetchSelfViewLab`).
 - Dosya adları: `On-Ekstre-<klinik>-<YYYY-MM>.pdf` ve `On-Ekstre-Ayrintili-<klinik>-<YYYY-MM>.pdf`.
 - Ayar kapalıyken ya da taslak yokken düğme görünmez.
