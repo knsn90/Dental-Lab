@@ -63,6 +63,8 @@ export interface EFaturaSectionProps {
   /** "Faturayı kes" (Siman faturasını taslaktan kesildi'ye al) */
   onIssueInvoice?: () => void;
   issuingInvoice?: boolean;
+  /** "Faturayı kes" hatası — butonun hemen altında */
+  issueInvoiceError?: string | null;
   /** Toplu e-fatura: aynı ETTN'yi paylaşan Siman faturası sayısı (>1 ise gösterilir) */
   groupCount?: number;
   /** Klinik e-faturaya hazır değil → eksikler (autoT'lenmiş etiketler); taslak oluşturma kapalı */
@@ -202,6 +204,9 @@ export function EFaturaSection(p: EFaturaSectionProps) {
             onPress={p.onIssueInvoice}
             disabled={p.issuingInvoice}
           />
+        ) : null}
+        {p.onIssueInvoice && p.issueInvoiceError ? (
+          <Text style={{ fontSize: 12, lineHeight: 16, color: U.chipTones.danger.fg }}>{p.issueInvoiceError}</Text>
         ) : null}
       </View>
     );

@@ -47,6 +47,8 @@ interface Props {
   invoiceStatus?: string | null;
   /** "Faturayı kes" — taslak Siman faturasını kesildi'ye alır (fatura ekranı sağlar) */
   onIssueInvoice?: () => Promise<void> | void;
+  /** "Faturayı kes" hatası (ebeveynden) — butonun altında */
+  issueInvoiceError?: string | null;
   /** Klinik e-faturaya hazır değil → eksikler (autoT'lenmiş) */
   clinicGaps?: string[];
   onEditClinic?: () => void;
@@ -54,7 +56,7 @@ interface Props {
 
 interface Draft { preview: EFaturaPreview; token?: string; expiresAt?: string }
 
-export function EFaturaPanel({ invoiceId, status, uuid, type, provider, error, number, step, onChanged, invoiceStatus, onIssueInvoice, clinicGaps, onEditClinic }: Props) {
+export function EFaturaPanel({ invoiceId, status, uuid, type, provider, error, number, step, onChanged, invoiceStatus, onIssueInvoice, issueInvoiceError, clinicGaps, onEditClinic }: Props) {
   const [busy, setBusy] = useState(false);
   const [logs, setLogs] = useState<any[]>([]);
   const [providerName, setProviderName] = useState<string>('Demo (Sandbox)');
@@ -247,6 +249,7 @@ export function EFaturaPanel({ invoiceId, status, uuid, type, provider, error, n
         blocker={blocker}
         onIssueInvoice={onIssueInvoice ? issueInvoice : undefined}
         issuingInvoice={issuingInvoice}
+        issueInvoiceError={issueInvoiceError ?? null}
         groupCount={groupCount}
         clinicGaps={clinicGaps}
         onEditClinic={onEditClinic}

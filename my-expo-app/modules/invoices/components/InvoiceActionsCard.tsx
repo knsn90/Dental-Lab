@@ -122,6 +122,8 @@ interface Props {
   invoiceStatus?: string | null;
   /** "Faturayı kes" (taslak → kesildi) — e-fatura bölümündeki kilit butonu */
   onIssueInvoice?: () => Promise<void> | void;
+  /** "Faturayı kes" başarısızsa butonun altında gösterilen hata (yoksa hiçbir şey çizilmez) */
+  issueInvoiceError?: string | null;
   /** Klinik e-faturaya hazır değil → eksikler (autoT'lenmiş) + düzenleme kısayolu */
   clinicGaps?: string[];
   onEditClinic?: () => void;
@@ -130,7 +132,7 @@ interface Props {
 
 export function InvoiceActionsCard({
   invoiceId, balance, notes, readOnly, noteDraft, onNoteChange, onSaveNote, savingNote,
-  efatura, invoiceStatus, onIssueInvoice, clinicGaps, onEditClinic, onChanged,
+  efatura, invoiceStatus, onIssueInvoice, issueInvoiceError, clinicGaps, onEditClinic, onChanged,
 }: Props) {
   const U = useInkUI();
   const noteDirty = noteDraft.trim() !== (notes ?? '');
@@ -206,6 +208,7 @@ export function InvoiceActionsCard({
             number={efatura.number ?? null}
             invoiceStatus={invoiceStatus ?? null}
             onIssueInvoice={readOnly ? undefined : onIssueInvoice}
+            issueInvoiceError={readOnly ? null : issueInvoiceError}
             clinicGaps={clinicGaps}
             onEditClinic={readOnly ? undefined : onEditClinic}
             onChanged={onChanged}

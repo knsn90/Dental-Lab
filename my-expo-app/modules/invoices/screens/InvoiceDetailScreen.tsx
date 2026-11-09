@@ -309,8 +309,13 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   // Sunucu yine INV_APPROVAL_REQUIRED döndürürse (ör. ayar başka cihazda açıldı) düğme yerinde değişir.
   const approvalSetting = useInvoiceApprovalEnabled();
   const [approvalForced, setApprovalForced] = useState(false);
-  const approvalOn = approvalSetting || approvalForced;
-  const [markErr, setMarkErr] = useState<string | null>(null);
+  // Kliniği olmayan faturada ön ekstre yolu yok → bugünkü "Kesildi İşaretle" akışı.
+  const approvalOn = (approvalSetting || approvalForced) && !!invoice?.clinic_id;
+  // Hata, işlemi başlatan butonun yanında: üst şerit ('hero') ya da e-Fatura kısayolu ('efatura').
+  const [markErrState, setMarkErrState] = useState<{ msg: string; at: 'hero' | 'efatura' } | null>(null);
+  const markErr = markErrState?.at === 'hero' ? markErrState.msg : null;
+  const efaturaIssueErr = markErrState?.at === 'efatura' ? markErrState.msg : null;
+  const setMarkErr = (msg: string | null, at: 'hero' | 'efatura' = 'hero') => setMarkErrState(msg ? { msg, at } : null);
   const [labApprove, setLabApprove] = useState<PreStatementInvoice[] | null>(null);
   const [approveLoading, setApproveLoading] = useState(false);
   const approveLoadRef = React.useRef(false);
@@ -530,7 +535,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
     const res = await printInvoice(invoice);
     if (!res.ok && res.error) toast.error(res.error);
   };
-  const handleMarkSent = async () => {
+  const handleMarkSent = async (at: 'hero' | 'efatura' = 'hero') => {
     setBusy(true);
     setMarkErr(null);
     const { error } = await setInvoiceStatus(invoice.id, 'kesildi');
@@ -540,27 +545,26 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
       if (/INV_APPROVAL_REQUIRED/.test(msg)) {
         // Ayar bu arada açılmış: hata düğmenin yanında, düğme "Klinik adına onay kaydet"e döner.
         setApprovalForced(true);
-        setMarkErr(autoT(invoiceStatusErrorText(msg)));
+        setMarkErr(autoT(invoiceStatusErrorText(msg)), at);
       } else toast.error(autoT(invoiceStatusErrorText(msg)));
     } else refetch();
   };
   // Yalnız bu faturayı içeren LabApprovalModal. Fatura sunucudan get_pre_statement ile TAZE
   // çekilir: updated_at dizgisi DB'deki gibi kalır (Date'e çevrilmez — K6).
-  const openLabApproval = async () => {
-    if (approveLoadRef.current) return;
-    if (!invoice.clinic_id) { setMarkErr(autoT('Bu işlem için mali işlem yönetme yetkisi gerekir')); return; }
+  const openLabApproval = async (at: 'hero' | 'efatura' = 'hero') => {
+    if (approveLoadRef.current || !invoice.clinic_id) return;
     approveLoadRef.current = true;
     setApproveLoading(true); setMarkErr(null);
     try {
       const ps = await fetchPreStatement(invoice.clinic_id);
-      if (!canLabWrite(ps.actor, ps.can_manage)) { setMarkErr(autoT('Bu işlem için mali işlem yönetme yetkisi gerekir')); return; }
+      if (!canLabWrite(ps.actor, ps.can_manage)) { setMarkErr(autoT('Bu işlem için mali işlem yönetme yetkisi gerekir'), at); return; }
       const inv = (ps.invoices ?? []).find(i => i.id === invoice.id);
-      if (!inv) { setMarkErr(autoT('Bu fatura artık taslak değil')); refetch(); return; }
+      if (!inv) { setMarkErr(autoT('Bu fatura artık taslak değil'), at); refetch(); return; }
       setLabApprove([inv]);
     } catch (e: any) {
       const msg = String(e?.message ?? e);
       const known = preStatementErrorText(msg);
-      setMarkErr(known ? autoT(known) : msg);
+      setMarkErr(known ? autoT(known) : msg, at);
     } finally {
       approveLoadRef.current = false;
       setApproveLoading(false);
@@ -722,11 +726,11 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
                       <Text style={{ maxWidth: 280, fontSize: 12, lineHeight: 16, color: U.chipTones.danger.fg }}>{markErr}</Text>
                     ) : null}
                     {!readOnly && invoice.status === 'taslak' && !approvalOn && (
-                      <PillBtn icon={Send} label="Kesildi İşaretle" stacked={!isDesktop} color={CHIP_TONES.info.text} bg={CHIP_TONES.info.bg} onPress={handleMarkSent} disabled={busy} />
+                      <PillBtn icon={Send} label="Kesildi İşaretle" stacked={!isDesktop} color={CHIP_TONES.info.text} bg={CHIP_TONES.info.bg} onPress={() => { void handleMarkSent('hero'); }} disabled={busy} />
                     )}
                     {!readOnly && invoice.status === 'taslak' && approvalOn && (
                       <GlassTooltip title={autoT('Klinik adına onay kaydet')} text={autoT('Klinikten aldığınız onayı gerekçesiyle kaydeder; fatura kesinleşir')}>
-                        <PillBtn icon={FileCheck} label={autoT('Klinik adına onay kaydet')} stacked={!isDesktop} color={CHIP_TONES.info.text} bg={CHIP_TONES.info.bg} onPress={openLabApproval} disabled={busy || approveLoading} />
+                        <PillBtn icon={FileCheck} label={autoT('Klinik adına onay kaydet')} stacked={!isDesktop} color={CHIP_TONES.info.text} bg={CHIP_TONES.info.bg} onPress={() => { void openLabApproval('hero'); }} disabled={busy || approveLoading} />
                       </GlassTooltip>
                     )}
                     {!readOnly && (invoice.status === 'kesildi' || invoice.status === 'kismi_odendi') && (
@@ -1338,7 +1342,8 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
               number: invoice.efatura_number ?? null,
             }}
             invoiceStatus={invoice.status}
-            onIssueInvoice={approvalOn ? openLabApproval : handleMarkSent}
+            onIssueInvoice={() => (approvalOn ? openLabApproval('efatura') : handleMarkSent('efatura'))}
+            issueInvoiceError={efaturaIssueErr}
             clinicGaps={invoice.clinic ? clinicEFaturaGaps(invoice.clinic).map((g) => autoT(EFATURA_GAP_LABELS[g])) : []}
             onEditClinic={invoice.clinic ? () => router.push(`/${panelBase}/clinics?editClinic=${invoice.clinic!.id}` as any) : undefined}
             onChanged={refetch}

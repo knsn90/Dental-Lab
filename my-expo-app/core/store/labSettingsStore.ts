@@ -161,11 +161,11 @@ export function useTurkeyOnlyFeatures(): boolean {
 }
 
 /** Bölgeye göre varsayılan KDV oranı — TR %20, IR %10. */
+export function defaultTaxRateFor(region: LabRegion): number {
+  return region === 'IR' ? 10 : 20;
+}
+
 /** Lab "Hekim/klinik onayıyla kesinleştir" ayarı (ayarlar yüklenmemişken false = bugünkü akış). */
 export function useInvoiceApprovalEnabled(): boolean {
   return useLabSettingsStore(s => s.settings?.invoice_approval_enabled === true);
-}
-
-export function defaultTaxRateFor(region: LabRegion): number {
-  return region === 'IR' ? 10 : 20;
 }

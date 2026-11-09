@@ -69,6 +69,7 @@ import { useLabToday } from '../../../core/metrics/useLabToday';
 import { isPostedInvoice, isInvoiceOverdue } from '../../../core/metrics/invoiceDefs';
 import { NavyBackButtonX } from '../../../core/ui/NavyBackButtonX';
 import { useLabPreStatement, LabPreStatementTop, LabPreStatementSection } from '../components/LabPreStatementSection';
+import { useInvoiceApprovalEnabled } from '../../../core/store/labSettingsStore';
 
 // ── Patterns tokens ─────────────────────────────────────────────────
 const DISPLAY = {
@@ -388,6 +389,10 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
   const loadedFor = useRef<string | null>(null);
   // Ön ekstre (lab tarafı) — ayar kapalıyken hiçbir şey çizmez; klinik kendi ekranını kullanır.
   const preSt = useLabPreStatement(clinicId, reloadTick, !selfView);
+  // Ayar açıkken taslaklar YALNIZ ön ekstre bölümünde görünür ("Faturalanmamış İşler"de değil).
+  // RPC sonucu esas; gelmeden önce lab ayarı (store) ipucu. Kapalıyken bugünkü davranış.
+  const approvalHint = useInvoiceApprovalEnabled();
+  const draftsInPreStatement = !selfView && (preSt.data ? preSt.data.enabled === true : approvalHint);
 
   // Faturaya gidip (router.push → kardeş sekme) "Kesildi" yapıp geri dönünce bu ekran
   // hiç kapanmamış oluyor — mobil <Tabs> pasif ekranı mount tutar. Odaklanmada
@@ -505,8 +510,8 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
     [ccyInvoices],
   );
   const draftInvoices = useMemo(
-    () => ccyInvoices.filter(i => i.status === 'taslak'),
-    [ccyInvoices],
+    () => (draftsInPreStatement ? [] : ccyInvoices.filter(i => i.status === 'taslak')),
+    [ccyInvoices, draftsInPreStatement],
   );
 
   // Seçili dövizde tutarı olan faturalanmamış işler + toplamları.
