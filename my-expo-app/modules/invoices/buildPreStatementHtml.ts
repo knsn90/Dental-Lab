@@ -3,8 +3,9 @@
  *
  * Saf dosya: `node --test` ile çalışır, bu yüzden yerel içe aktarma yalnız `import type`.
  * Çalışma zamanı yardımcıları (autoT / printLocale / baseSymbol) buradan ÇAĞRILMAZ; çağıran
- * `input.i18n` ile verir (bkz. PreStatementI18n). Verilmezse metinler Türkçe kaynak olarak kalır.
- * Gruplama mantığı lib/preStatementPdf.ts ile aynıdır (node, uzantısız yerel içe aktarmayı çözemez).
+ * `input.i18n` ile verir (bkz. PreStatementI18n; zorunlu — Türkçe yedek yok).
+ * Gruplama/pay mantığı lib/preStatementPdf.ts ile aynıdır (node, uzantısız yerel içe aktarmayı çözemez).
+ * Değiştirirsen ikisini birden değiştir; parity testi korur.
  *
  * KVKK: hasta yalnız `patient_initials`; not içerikleri yazılmaz, yalnız sayısı.
  */
@@ -26,7 +27,7 @@ export type PreStatementPdfInput = {
   data: PreStatement;
   generatedAt: string;
   approve?: { url: string; qrSvg?: string; expiresAt: string };
-  i18n?: PreStatementI18n;
+  i18n: PreStatementI18n;
 };
 
 // ── Yardımcılar ──────────────────────────────────────────────────────
@@ -43,7 +44,7 @@ interface Ctx { t: (s: string) => string; locale: string; attrs: string }
 
 function ctxOf(input: PreStatementPdfInput): Ctx {
   const i = input.i18n;
-  return { t: i?.t ?? ((s) => s), locale: i?.locale ?? 'tr-TR', attrs: i?.htmlAttrs ?? 'lang="tr" dir="ltr"' };
+  return { t: i.t, locale: i.locale, attrs: i.htmlAttrs };
 }
 
 function fmtMoney(c: Ctx, amount: unknown, currency: string): string {
@@ -63,43 +64,78 @@ function fmtDate(c: Ctx, iso: string | null | undefined, long = false): string {
 
 const r2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
 
-interface PdfItem extends PreStatementItem { invoice_date: string | null; currency: string }
-interface Group { doctor: string; items: PdfItem[]; subtotal: Record<string, number> }
+interface PdfItem extends PreStatementItem { invoice_date: string | null; currency: string; share: number }
+interface Group { doctor: string; items: PdfItem[]; subtotal: Record<string, number>; net: Record<string, number> }
+
+/** Fatura toplamını kalem net'leriyle orantılı, en büyük kalan yöntemiyle kuruşu kuruşuna dağıtır (lib ile aynı). */
+function itemShares(inv: PreStatementInvoice): Map<string, number> {
+  const items = inv.items ?? [];
+  const out = new Map<string, number>();
+  if (items.length === 0) return out;
+  const cents = Math.round((Number(inv.total) || 0) * 100);
+  const nets = items.map((it) => Number(it.total) || 0);
+  const sumNet = nets.reduce((a, b) => a + b, 0);
+  const raw = nets.map((n) => (sumNet === 0 ? cents / items.length : (cents * n) / sumNet));
+  const base = raw.map((x) => Math.floor(x + 1e-9));
+  let left = cents - base.reduce((a, b) => a + b, 0);
+  const order = raw.map((x, i) => ({ i, f: x - base[i] })).sort((a, b) => b.f - a.f || a.i - b.i);
+  for (let k = 0; left > 0 && order.length > 0; k = (k + 1) % order.length, left--) base[order[k].i] += 1;
+  items.forEach((it, i) => out.set(it.id, base[i] / 100));
+  return out;
+}
+
+function roundRec(rec: Record<string, number>): Record<string, number> {
+  const o: Record<string, number> = {};
+  for (const k of Object.keys(rec)) o[k] = r2(rec[k]);
+  return o;
+}
 
 function groups(invoices: PreStatementInvoice[]): Group[] {
-  const map = new Map<string, { items: PdfItem[]; sub: Record<string, number> }>();
+  const map = new Map<string, { items: PdfItem[]; sub: Record<string, number>; net: Record<string, number> }>();
   for (const inv of invoices) {
     const ccy = inv.currency || 'TRY';
+    const shares = itemShares(inv);
     for (const it of inv.items ?? []) {
       const name = (it.doctor_name ?? '').trim() || NO_DOCTOR;
       let g = map.get(name);
-      if (!g) { g = { items: [], sub: {} }; map.set(name, g); }
-      g.items.push({ ...it, invoice_date: inv.issue_date ?? null, currency: ccy });
-      g.sub[ccy] = (g.sub[ccy] ?? 0) + (Number(it.total) || 0);
+      if (!g) { g = { items: [], sub: {}, net: {} }; map.set(name, g); }
+      const share = shares.get(it.id) ?? 0;
+      g.items.push({ ...it, invoice_date: inv.issue_date ?? null, currency: ccy, share });
+      g.sub[ccy] = (g.sub[ccy] ?? 0) + share;
+      g.net[ccy] = (g.net[ccy] ?? 0) + (Number(it.total) || 0);
     }
   }
-  return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0], 'tr')).map(([doctor, g]) => {
-    const subtotal: Record<string, number> = {};
-    for (const k of Object.keys(g.sub)) subtotal[k] = r2(g.sub[k]);
-    return { doctor, items: g.items, subtotal };
-  });
+  return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0], 'tr'))
+    .map(([doctor, g]) => ({ doctor, items: g.items, subtotal: roundRec(g.sub), net: roundRec(g.net) }));
 }
 
 function workTotals(invoices: PreStatementInvoice[]): { work: string; currency: string; quantity: number; total: number }[] {
   const map = new Map<string, { work: string; currency: string; quantity: number; total: number }>();
   for (const inv of invoices) {
     const ccy = inv.currency || 'TRY';
+    const shares = itemShares(inv);
     for (const it of inv.items ?? []) {
       const work = (it.description ?? '').trim() || NO_DOCTOR;
       const key = `${ccy}\u0000${work}`;
       const e = map.get(key) ?? { work, currency: ccy, quantity: 0, total: 0 };
       e.quantity += Number(it.quantity) || 0;
-      e.total += Number(it.total) || 0;
+      e.total += shares.get(it.id) ?? 0;
       map.set(key, e);
     }
   }
   return [...map.values()].map((e) => ({ ...e, total: r2(e.total) })).sort((a, b) => b.total - a.total);
 }
+
+/** Fatura total'larının para birimi başına toplamı (lib.pendingTotal ile aynı). */
+function pendingOf(invoices: PreStatementInvoice[]): Record<string, number> {
+  const rec: Record<string, number> = {};
+  for (const i of invoices) { const c = i.currency || 'TRY'; rec[c] = (rec[c] ?? 0) + (Number(i.total) || 0); }
+  return roundRec(rec);
+}
+
+/** Yalnız parity testi içindir. */
+export const _groupsForTest = groups;
+export const _workTotalsForTest = workTotals;
 
 // ── Stil ─────────────────────────────────────────────────────────────
 const CSS = `
@@ -184,7 +220,7 @@ function moneyRec(c: Ctx, rec: Record<string, number>): string {
 
 function doctorTotalsTable(gs: Group[], c: Ctx): string {
   return `<h2>${esc(c.t('Hekim toplamları'))}</h2>
-  <table><thead><tr><th>${esc(c.t('Hekim'))}</th><th class="r">${esc(c.t('Kalem'))}</th><th class="r">${esc(c.t('Tutar'))}</th></tr></thead><tbody>
+  <table><thead><tr><th>${esc(c.t('Hekim'))}</th><th class="r">${esc(c.t('Kalem'))}</th><th class="r">${esc(c.t('Tutar (KDV dahil)'))}</th></tr></thead><tbody>
   ${gs.map((g) => `<tr><td>${esc(g.doctor)}</td><td class="r">${g.items.length}</td><td class="r">${moneyRec(c, g.subtotal)}</td></tr>`).join('')}
   </tbody></table>`;
 }
@@ -215,7 +251,7 @@ export function buildPreStatementSummaryHtml(input: PreStatementPdfInput): strin
   ${summaryBlock(input, c)}
   ${doctorTotalsTable(gs, c)}
   <h2>${esc(c.t('İş türü toplamları'))}</h2>
-  <table><thead><tr><th>${esc(c.t('İş'))}</th><th class="r">${esc(c.t('Adet'))}</th><th class="r">${esc(c.t('Tutar'))}</th></tr></thead><tbody>
+  <table><thead><tr><th>${esc(c.t('İş'))}</th><th class="r">${esc(c.t('Adet'))}</th><th class="r">${esc(c.t('Tutar (KDV dahil)'))}</th></tr></thead><tbody>
   ${works.map((w) => `<tr><td>${esc(w.work)}</td><td class="r">${w.quantity}</td><td class="r">${esc(fmtMoney(c, w.total, w.currency))}</td></tr>`).join('')}
   </tbody></table>
   <h2>${esc(c.t('Faturalar'))}</h2>
@@ -224,6 +260,17 @@ export function buildPreStatementSummaryHtml(input: PreStatementPdfInput): strin
   </tbody></table>
   ${footer(input, c)}`;
   return wrap(c, `${title} — ${input.clinicName}`, body);
+}
+
+/** Hekim bölümü sonu: Ara toplam (net) · KDV ve indirim payı (0 ise yok) · Hekim toplamı (pay toplamı). */
+function subtotalRows(g: Group, c: Ctx): string {
+  const diff: Record<string, number> = {};
+  for (const k of Object.keys(g.subtotal)) { const d = r2(g.subtotal[k] - (g.net[k] ?? 0)); if (d !== 0) diff[k] = d; }
+  const row = (label: string, rec: Record<string, number>, attr = '') =>
+    `<tr class="sub"${attr}><td colspan="6">${esc(c.t(label))}</td><td class="r" colspan="2">${moneyRec(c, rec)}</td></tr>`;
+  return row('Ara toplam', g.net)
+    + (Object.keys(diff).length ? row('KDV ve indirim payı', diff) : '')
+    + row('Hekim toplamı', g.subtotal, ' data-doctor-subtotal');
 }
 
 // ── Ayrıntılı PDF ────────────────────────────────────────────────────
@@ -245,13 +292,15 @@ export function buildPreStatementDetailHtml(input: PreStatementPdfInput): string
     <h3>${esc(g.doctor)}</h3>
     <table><thead><tr><th>${esc(c.t('Tarih'))}</th><th>${esc(c.t('Sipariş no'))}</th><th>${esc(c.t('Hasta'))}</th><th>${esc(c.t('İş'))}</th><th class="r">${esc(c.t('Adet'))}</th><th class="r">${esc(c.t('Birim fiyat'))}</th><th class="r">${esc(c.t('Tutar'))}</th><th>${esc(c.t('Durum'))}</th></tr></thead><tbody>
     ${g.items.map((it) => `<tr data-item><td>${esc(fmtDate(c, it.invoice_date))}</td><td>${esc(it.order_no)}</td><td>${esc(it.patient_initials)}</td><td>${esc(it.description)}</td><td class="r">${esc(it.quantity)}</td><td class="r">${esc(fmtMoney(c, it.unit_price, it.currency))}</td><td class="r">${esc(fmtMoney(c, it.total, it.currency))}</td><td>${status(it)}</td></tr>`).join('')}
-    <tr class="sub" data-doctor-subtotal><td colspan="6">${esc(c.t('Hekim ara toplamı'))}</td><td class="r" colspan="2">${moneyRec(c, g.subtotal)}</td></tr>
+    ${subtotalRows(g, c)}
     </tbody></table>
   </div>`).join('');
   const body = `${header(input, c, `${title} — ${c.t('Ayrıntılı')}`)}
   ${summaryBlock(input, c)}
   ${doctorTotalsTable(gs, c)}
   ${sections}
+  ${Object.entries(pendingOf(input.data.invoices)).sort((a, b) => a[0].localeCompare(b[0])).map(([ccy, v]) =>
+    `<table><tbody><tr class="sub" data-grand-total><td>${esc(c.t('Genel toplam'))} · ${esc(ccy)}</td><td class="r">${esc(fmtMoney(c, v, ccy))}</td></tr></tbody></table>`).join('')}
   ${footer(input, c)}`;
   return wrap(c, `${title} — ${input.clinicName}`, body);
 }

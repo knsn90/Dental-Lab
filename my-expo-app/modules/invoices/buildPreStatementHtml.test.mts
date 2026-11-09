@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPreStatementSummaryHtml, buildPreStatementDetailHtml } from './buildPreStatementHtml.ts';
+import { buildPreStatementSummaryHtml, buildPreStatementDetailHtml, _groupsForTest, _workTotalsForTest } from './buildPreStatementHtml.ts';
+import { groupByDoctor, workTypeTotals, pendingTotal } from './lib/preStatementPdf.ts';
 
 const FULL_NAME = 'Ayşe Kaya';
 const mk = (id: string, doctor: string | null, desc: string, total: number, extra: any = {}) => ({
@@ -24,7 +25,8 @@ const data = (over: any = {}): any => ({
   ],
   ...over,
 });
-const base = { clinicName: 'Örnek Klinik', lab: { name: 'Örnek Lab' }, generatedAt: '2026-11-09T09:00:00Z' };
+const i18n = { t: (s: string) => s, locale: 'tr-TR', htmlAttrs: 'lang="tr" dir="ltr"' };
+const base = { clinicName: 'Örnek Klinik', lab: { name: 'Örnek Lab' }, generatedAt: '2026-11-09T09:00:00Z', i18n };
 const both = (d: any, extra: any = {}) => [
   buildPreStatementSummaryHtml({ ...base, data: d, ...extra }),
   buildPreStatementDetailHtml({ ...base, data: d, ...extra }),
@@ -96,4 +98,36 @@ test('çeviri fonksiyonu verilirse etiketler çevrilir', () => {
   const h = buildPreStatementSummaryHtml({ ...base, data: data(), i18n: { t: (s: string) => (s === 'Onay bekleyen' ? 'Awaiting' : s), locale: 'en', htmlAttrs: 'lang="en" dir="ltr"' } });
   assert.ok(h.includes('Awaiting'));
   assert.ok(h.includes('lang="en"'));
+});
+
+// KDV + fatura indirimi fixture'ı (subtotal < Σ net)
+const vat = (id: string, ccy: string, items: any[], subtotal: number, tax: number) => ({
+  ...inv(id, items, ccy), subtotal, tax, total: Math.round((subtotal + tax) * 100) / 100,
+});
+const VINV: any[] = [
+  vat('f1', 'TRY', [mk('1', 'Dr. Ali', 'Kron', 100.1), mk('2', 'Dr. Zeynep', 'Kron', 50.2), mk('3', null, 'Model', 33.3)], 170.5, 34.1),
+  vat('f2', 'TRY', [mk('4', 'Dr. Ali', 'Köprü', 77.7)], 77.7, 15.54),
+  vat('f3', 'EUR', [mk('5', 'Dr. Ali', 'Kron', 10), mk('6', 'Dr. Ali', 'Model', 10)], 18, 3.6),
+];
+const money = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+test('parity: builder kopyası lib ile aynı sonucu verir', () => {
+  const a = _groupsForTest(VINV).map((g) => ({ doctor: g.doctor, subtotal: g.subtotal, net: g.net, items: g.items.map((i) => [i.id, i.share]) }));
+  const b = groupByDoctor(VINV).map((g) => ({ doctor: g.doctor, subtotal: g.subtotal, net: g.net, items: g.items.map((i) => [i.id, i.share]) }));
+  assert.deepEqual(a, b);
+  assert.deepEqual(_workTotalsForTest(VINV), workTypeTotals(VINV));
+  assert.ok(a.some((g) => g.doctor === '—'));
+});
+
+test('ayrıntılı PDF: Genel toplam pendingTotal ile aynı, hekim bölümünde üç satır', () => {
+  const d = data({ invoices: VINV, summary: [{ currency: 'TRY', finalized_balance: 0, overdue: 0, pending: 0 }] });
+  const h = buildPreStatementDetailHtml({ ...base, data: d });
+  const pend = pendingTotal(VINV);
+  assert.equal((h.match(/data-grand-total/g) ?? []).length, 2);
+  assert.ok(h.includes(money(pend.TRY)));
+  assert.ok(h.includes(money(pend.EUR)));
+  assert.ok(h.includes('Genel toplam'));
+  assert.ok(h.includes('KDV ve indirim payı'));
+  assert.ok(h.includes('Hekim toplamı'));
+  assert.equal((h.match(/data-doctor-subtotal/g) ?? []).length, 3);
 });
