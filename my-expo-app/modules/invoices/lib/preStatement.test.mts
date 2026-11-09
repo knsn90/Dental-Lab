@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   canApprove, canLabWrite, invoiceHasOpenDispute, approvalPayload, undisputedCount,
-  disputeLabel, preStatementErrorText, summarizeApproval, invoiceDisputeStatus,
+  disputeLabel, preStatementErrorText, summarizeApproval, invoiceDisputeStatus, approvalBadgeText,
 } from './preStatement.ts';
 
 const inv = (id: string, statuses: (string | null)[], updated_at = '2026-11-09T10:00:00+00:00') => ({
@@ -92,4 +92,26 @@ test('invoiceDisputeStatus — fatura rozeti en güçlü açık durumu gösterir
   assert.equal(invoiceDisputeStatus(inv('c', ['cozuldu', null])), null);
   assert.equal(invoiceDisputeStatus(inv('d', [])), null);
   assert.equal(invoiceDisputeStatus({ items: undefined } as any), null);
+});
+
+test('approvalBadgeText — lab kaydı ayrı görünür (anti-hedef 2)', () => {
+  const fmt = (iso: string) => iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' + iso.slice(0, 4);
+  const tr = (s: string) => s;
+  assert.equal(
+    approvalBadgeText({ via: 'lab', reason: '05.11.2026 telefon görüşmesine göre', created_at: '2026-11-05T09:00:00+00:00' }, fmt, tr),
+    'Lab tarafından kaydedildi · 05.11.2026 · 05.11.2026 telefon görüşmesine göre',
+  );
+  assert.equal(
+    approvalBadgeText({ via: 'panel', reason: null, created_at: '2026-11-05T09:00:00+00:00' }, fmt, tr),
+    'Klinik onayladı · 05.11.2026',
+  );
+});
+
+test('approvalBadgeText — panel gerekçeyi göstermez, lab boş gerekçede sonda ayraç bırakmaz, tr uygulanır', () => {
+  const fmt = () => '05.11.2026';
+  assert.equal(approvalBadgeText({ via: 'panel', reason: 'x', created_at: '' }, fmt, (s) => s), 'Klinik onayladı · 05.11.2026');
+  assert.equal(approvalBadgeText({ via: 'lab', reason: '  ', created_at: '' }, fmt, (s) => s), 'Lab tarafından kaydedildi · 05.11.2026');
+  assert.equal(approvalBadgeText({ via: 'lab', reason: 'r', created_at: '' }, fmt, (s) => '[' + s + ']'), '[Lab tarafından kaydedildi] · 05.11.2026 · r');
+  // bilinmeyen yol (ileride bağlantı/PDF) lab gibi GÖRÜNMEZ
+  assert.equal(approvalBadgeText({ via: 'link', reason: null, created_at: '' }, fmt, (s) => s), 'Klinik onayladı · 05.11.2026');
 });

@@ -269,7 +269,7 @@ function InfoLine({ text }: { text: string }) {
   );
 }
 
-function ResultBanner({ r }: { r: ResultMsg }) {
+export function ResultBanner({ r }: { r: ResultMsg }) {
   const U = useInkUI();
   const warn = r.changed > 0 || r.disputed > 0;
   const tone = warn ? U.chipTones.warning : U.chipTones.success;
@@ -320,7 +320,7 @@ function ActionPill({ label, tip, onPress, disabled, primary }: {
   );
 }
 
-function InvoiceBlock({ inv, desktop, expanded, onToggle, onItem }: {
+export function InvoiceBlock({ inv, desktop, expanded, onToggle, onItem }: {
   inv: PreStatementInvoice; desktop: boolean; expanded: boolean;
   onToggle: () => void; onItem: (it: PreStatementItem) => void;
 }) {

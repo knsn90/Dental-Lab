@@ -1,7 +1,7 @@
 // Ön ekstre API — Supabase RPC sarmalayıcıları. Hatalar Error(message) olarak fırlatılır.
 
 import { supabase } from '../../core/api/supabase';
-import type { ApprovalMode, ApprovalResult, PreStatement, PreStatementInvoice } from './types';
+import type { ApprovalMode, ApprovalResult, PreStatement, PreStatementInvoice, StatementApprovalRow } from './types';
 import { approvalPayload } from './lib/preStatement';
 
 export async function fetchPreStatement(clinicId: string): Promise<PreStatement> {
@@ -46,4 +46,16 @@ export async function recordClinicApproval(
   });
   if (error) throw new Error(error.message);
   return data as ApprovalResult;
+}
+
+/** Kliniğin son onay kayıtları (yeni → eski). approved_by kişi adı olarak gösterilmez. */
+export async function fetchStatementApprovals(clinicId: string, limit = 5): Promise<StatementApprovalRow[]> {
+  const { data, error } = await supabase
+    .from('statement_approvals')
+    .select('id, via, mode, reason, created_at')
+    .eq('clinic_id', clinicId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as StatementApprovalRow[];
 }

@@ -13,12 +13,13 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, Platform, useWindowDimensions } from 'react-native';
 import {
   Globe, Percent, Clock, Bell, Mail, MessageCircle, Send, AlertTriangle, CalendarDays, Check,
-  ChevronDown, Coins,
+  ChevronDown, Coins, FileCheck,
 } from '../../../core/ui/icons';
 
 import { SUPPORTED_CURRENCIES, CURRENCY_META } from '../../../core/money/currency';
 import { useLabSettingsStore, type CurrencyCode } from '../../../core/store/labSettingsStore';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useInkUI } from '../../../core/theme/inkScale';
 import { usePermissions } from '../../../core/hooks/usePermissions';
 import { CenteredLoader } from '../../../core/ui/CenteredLoader';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
@@ -83,10 +84,15 @@ export function FinanceSection({ accentColor }: Props) {
   const { settings, loading, load, update } = useLabSettingsStore();
   const [local, setLocal] = useState(LOCAL_DEFAULTS);
   const T = useMobileTokens();
+  const U = useInkUI();
   const { width: _vw } = useWindowDimensions();
   const sidePad = _vw < 768 ? 16 : 28;
   const { can } = usePermissions();
   const canManageSettings = can('manage_settings');
+  // Ön ekstre ayarı kesinleştirme akışını değiştirir → yalnız mali işlem yöneticisi görür/değiştirir.
+  const canManageFinance = can('manage_finance');
+  const [approvalErr, setApprovalErr] = useState<string | null>(null);
+  const [approvalSaving, setApprovalSaving] = useState(false);
 
   useEffect(() => { load(); }, []);
 
@@ -108,6 +114,15 @@ export function FinanceSection({ accentColor }: Props) {
     setLocal(prev => ({ ...prev, ...patch }));
     update(patch);
   }, [update]);
+
+  // Kaydedilemezse hata anahtarın yanında; değer sunucudaki haliyle kalır (store güncellenmez).
+  const setInvoiceApproval = async (on: boolean) => {
+    if (approvalSaving) return;
+    setApprovalSaving(true); setApprovalErr(null);
+    const ok = await update({ invoice_approval_enabled: on });
+    setApprovalSaving(false);
+    if (!ok) setApprovalErr(autoT('Ayar kaydedilemedi'));
+  };
 
   if (loading) {
     return <CenteredLoader color={accentColor} label="Ayarlar yükleniyor…" />;
@@ -146,7 +161,7 @@ export function FinanceSection({ accentColor }: Props) {
           label="Varsayılan KDV Oranı"
           sub="Faturalarda kullanılacak oran"
           accentColor={accentColor}
-          isLast
+          isLast={!canManageFinance}
         >
           <DropdownSelect
             options={[
@@ -160,6 +175,27 @@ export function FinanceSection({ accentColor }: Props) {
             accentColor={accentColor}
           />
         </SettingRow>
+        {canManageFinance ? (
+          <SettingRow
+            icon={FileCheck}
+            label={autoT('Hekim/klinik onayıyla kesinleştir')}
+            sub={autoT('Açıkken taslaklar klinik onayına kadar kesinleşmez; Kesildi İşaretle yerine Klinik adına onay kaydet çıkar.')}
+            accentColor={accentColor}
+            isLast
+          >
+            <View style={{ gap: 6, opacity: approvalSaving ? 0.6 : 1 }} pointerEvents={approvalSaving ? 'none' : 'auto'}>
+              <SegmentPicker
+                options={[{ key: 'off', label: autoT('Kapalı') }, { key: 'on', label: autoT('Açık') }]}
+                value={settings?.invoice_approval_enabled ? 'on' : 'off'}
+                onChange={(v) => { void setInvoiceApproval(v === 'on'); }}
+                accentColor={accentColor}
+              />
+              {approvalErr ? (
+                <Text style={{ fontSize: 12, color: U.chipTones.danger.fg }}>{approvalErr}</Text>
+              ) : null}
+            </View>
+          </SettingRow>
+        ) : null}
       </CollapseCard>
 
       {/* ── Ödeme Hatırlatmaları ─────────────────────────────── */}

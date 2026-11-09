@@ -68,6 +68,7 @@ import { navBarMetrics } from '../../../core/ui/mobile/navGlass';
 import { useLabToday } from '../../../core/metrics/useLabToday';
 import { isPostedInvoice, isInvoiceOverdue } from '../../../core/metrics/invoiceDefs';
 import { NavyBackButtonX } from '../../../core/ui/NavyBackButtonX';
+import { useLabPreStatement, LabPreStatementTop, LabPreStatementSection } from '../components/LabPreStatementSection';
 
 // ── Patterns tokens ─────────────────────────────────────────────────
 const DISPLAY = {
@@ -385,6 +386,8 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
   const [reloadTick, setReloadTick] = useState(0);
   // Hangi klinik için veri yüklendi — aynı kliniğin TAZELEMESİ sessiz olsun (bkz. aşağı).
   const loadedFor = useRef<string | null>(null);
+  // Ön ekstre (lab tarafı) — ayar kapalıyken hiçbir şey çizmez; klinik kendi ekranını kullanır.
+  const preSt = useLabPreStatement(clinicId, reloadTick, !selfView);
 
   // Faturaya gidip (router.push → kardeş sekme) "Kesildi" yapıp geri dönünce bu ekran
   // hiç kapanmamış oluyor — mobil <Tabs> pasif ekranı mount tutar. Odaklanmada
@@ -889,6 +892,9 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
             })}
           </View>
         )}
+
+        {/* ── Ön ekstre: açık itiraz şeridi + üç rakam (yalnız ayar açıkken) ── */}
+        {!selfView ? <LabPreStatementTop st={preSt} currency={selectedCcy} /> : null}
 
         {/* ── Beyaz hero — ozet kartlari icine alindi ──────────
             Ayri duran bes kutu, baslikla ekstre tablosu arasinda kopuk bir
@@ -1423,6 +1429,16 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
             </View>
           </View>
         )}
+
+        {/* ── Ön ekstre — onay bekliyor (yalnız ayar açıkken, en altta) ── */}
+        {!selfView && clinicId ? (
+          <LabPreStatementSection
+            st={preSt}
+            clinicId={clinicId}
+            currency={selectedCcy}
+            onApproved={() => setReloadTick(t => t + 1)}
+          />
+        ) : null}
       </ScrollView>
 
       <StatementPrefsModal

@@ -51,6 +51,9 @@ export interface LabSettings {
   // Gizlilik: hekim/kliniklere teknisyen adı nasıl görünsün
   technician_name_visibility: TechNameVisibility;
 
+  // Ön ekstre: açıkken taslaklar klinik onayına kadar kesinleşmez (taslak→kesildi sunucuda kapalı)
+  invoice_approval_enabled?: boolean;
+
   created_at: string;
   updated_at: string;
 }
@@ -158,6 +161,11 @@ export function useTurkeyOnlyFeatures(): boolean {
 }
 
 /** Bölgeye göre varsayılan KDV oranı — TR %20, IR %10. */
+/** Lab "Hekim/klinik onayıyla kesinleştir" ayarı (ayarlar yüklenmemişken false = bugünkü akış). */
+export function useInvoiceApprovalEnabled(): boolean {
+  return useLabSettingsStore(s => s.settings?.invoice_approval_enabled === true);
+}
+
 export function defaultTaxRateFor(region: LabRegion): number {
   return region === 'IR' ? 10 : 20;
 }

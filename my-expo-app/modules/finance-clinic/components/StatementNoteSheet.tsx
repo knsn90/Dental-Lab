@@ -3,6 +3,9 @@
  *
  * Ortalanmış popup (U.modalOverlay): kalemin mesaj dizisi + yazma alanı.
  * Klinik tarafının notu sunucuda o kalem için itiraz açar (add_statement_note).
+ * side='lab' (lab ekstresi): not lab yanıtıdır (itirazı 'Yanıtlandı' yapar) ve
+ * "Çözüldü" düğmesi çıkar (resolve_statement_dispute). readOnly: yalnız okunur
+ * (finans GÖRME yetkili lab kullanıcısı — yazma manage_finance ister).
  * Mesaj dizisi ebeveynin yeniden çektiği veriden gelir; gönderince onSent()
  * çağrılır, ebeveyn ön ekstreyi yeniden yükler.
  */
@@ -11,12 +14,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Modal, View, Text, Pressable, TextInput, ScrollView, ActivityIndicator, Platform, KeyboardAvoidingView,
 } from 'react-native';
-import { X, Send, Info } from '../../../core/ui/icons';
+import { X, Send, Info, CheckCircle2 } from '../../../core/ui/icons';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { useInkUI } from '../../../core/theme/inkScale';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { formatMoney, type Currency } from '../../../core/money/currency';
-import { addStatementNote } from '../../invoices/preStatementApi';
+import { addStatementNote, resolveStatementDispute } from '../../invoices/preStatementApi';
 import { disputeLabel, preStatementErrorText } from '../../invoices/lib/preStatement';
 import type { DisputeStatus, PreStatementItem } from '../../invoices/types';
 import { fmtDate } from './atoms';
@@ -40,7 +43,7 @@ export function DisputeChip({ status }: { status: DisputeStatus }) {
   );
 }
 
-export function StatementNoteSheet({ open, item: liveItem, currency, onClose, onSent }: {
+export function StatementNoteSheet({ open, item: liveItem, currency, onClose, onSent, side = 'clinic', readOnly = false }: {
   /** Görünürlüğü ebeveyn yönetir (kalem tazelemede kaybolsa da popup ve hatası açık kalır). */
   open: boolean;
   /** Tazelenen veriden kalem; fatura bu arada kesildiyse null → son görülen kalem gösterilir. */
@@ -49,6 +52,10 @@ export function StatementNoteSheet({ open, item: liveItem, currency, onClose, on
   onClose: () => void;
   /** Not kaydedildi ya da kalem/fatura artık geçerli değil → ebeveyn yeniden yükler. */
   onSent: () => Promise<void> | void;
+  /** Kimin adına yazılıyor: 'clinic' (varsayılan, not itiraz açar) ya da 'lab' (yanıt + Çözüldü). */
+  side?: 'clinic' | 'lab';
+  /** Yazma alanı ve Çözüldü gizlenir (yalnız okuma yetkisi). */
+  readOnly?: boolean;
 }) {
   const U = useInkUI();
   const [body, setBody] = useState('');
@@ -62,8 +69,12 @@ export function StatementNoteSheet({ open, item: liveItem, currency, onClose, on
   useEffect(() => { if (!open) setSnapshot(null); }, [open]);
   const item = liveItem ?? snapshot;
 
+  const [resolving, setResolving] = useState(false);
+  const [resolveError, setResolveError] = useState<string | null>(null);
+  const resolveInFlight = useRef(false);
+
   // Başka kaleme geçince taslak metin ve hata sıfırlanır.
-  useEffect(() => { setBody(''); setError(null); }, [item?.id]);
+  useEffect(() => { setBody(''); setError(null); setResolveError(null); }, [item?.id]);
 
   const send = async () => {
     if (!item || inFlight.current) return;
@@ -88,7 +99,27 @@ export function StatementNoteSheet({ open, item: liveItem, currency, onClose, on
     }
   };
 
+  const resolve = async () => {
+    if (!item || resolveInFlight.current) return;
+    resolveInFlight.current = true;
+    setResolving(true); setResolveError(null);
+    try {
+      await resolveStatementDispute(item.id);
+      await onSent();
+    } catch (e: any) {
+      const msg = String(e?.message ?? e);
+      const known = preStatementErrorText(msg);
+      setResolveError(known ? autoT(known) : msg);
+      if (/PS_NOT_DRAFT|PS_SCOPE/.test(msg)) void onSent();
+    } finally {
+      resolveInFlight.current = false;
+      setResolving(false);
+    }
+  };
+
   const notes = item?.notes ?? [];
+  const isLab = side === 'lab';
+  const canResolve = isLab && !readOnly && (item?.dispute_status === 'acik' || item?.dispute_status === 'yanitlandi');
 
   return (
     <Modal visible={open && !!item} transparent animationType="fade" onRequestClose={onClose}>
@@ -125,7 +156,8 @@ export function StatementNoteSheet({ open, item: liveItem, currency, onClose, on
                 {notes.length === 0 ? (
                   <Text style={{ fontSize: 12.5, color: U.ink[400] }}>{autoT('Henüz not yok')}</Text>
                 ) : notes.map(n => {
-                  const mine = n.author_side === 'clinic';
+                  const mine = n.author_side === side;
+                  const fromClinic = n.author_side === 'clinic';
                   return (
                     <View key={n.id} style={{
                       alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '88%',
@@ -133,7 +165,7 @@ export function StatementNoteSheet({ open, item: liveItem, currency, onClose, on
                       borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8, gap: 3,
                     }}>
                       <Text style={{ fontSize: 10.5, fontWeight: '700', color: mine ? U.chipTones.info.fg : U.ink[500] }}>
-                        {mine ? autoT('Klinik') : autoT('Lab')} · {fmtDate(n.created_at)}
+                        {fromClinic ? autoT('Klinik') : autoT('Lab')} · {fmtDate(n.created_at)}
                       </Text>
                       <Text style={{ fontSize: 13, color: U.ink[900], lineHeight: 18 }}>{n.body}</Text>
                     </View>
@@ -141,17 +173,54 @@ export function StatementNoteSheet({ open, item: liveItem, currency, onClose, on
                 })}
               </View>
 
+              {/* Lab: itirazı çözüldü say (düzeltme yapıldıktan sonra) */}
+              {canResolve ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  {resolveError ? (
+                    <Text style={{ flex: 1, minWidth: 160, fontSize: 12, color: U.chipTones.danger.fg }}>{resolveError}</Text>
+                  ) : null}
+                  <GlassTooltip title={autoT('Çözüldü')} text={autoT('İtirazı kapatır; kalem onaya hazır olur')} placement="top">
+                    <Pressable
+                      onPress={resolve}
+                      disabled={resolving}
+                      accessibilityLabel={autoT('Çözüldü')}
+                      style={({ pressed }) => ({
+                        flexDirection: 'row', alignItems: 'center', gap: 7,
+                        paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
+                        backgroundColor: U.chipTones.success.bg, opacity: resolving ? 0.6 : pressed ? 0.85 : 1,
+                        ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                      })}
+                    >
+                      {resolving
+                        ? <ActivityIndicator size="small" color={U.chipTones.success.fg} />
+                        : <CheckCircle2 size={13} color={U.chipTones.success.fg} strokeWidth={2} />}
+                      <Text style={{ fontSize: 12.5, fontWeight: '700', color: U.chipTones.success.fg }}>{autoT('Çözüldü')}</Text>
+                    </Pressable>
+                  </GlassTooltip>
+                </View>
+              ) : null}
+
               {/* Yazma alanı */}
+              {readOnly ? (
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}>
+                  <Info size={13} color={U.ink[400]} strokeWidth={1.8} />
+                  <Text style={{ flex: 1, fontSize: 11.5, color: U.ink[500], lineHeight: 16 }}>
+                    {autoT('Yanıt yazmak için mali işlem yönetme yetkisi gerekir')}
+                  </Text>
+                </View>
+              ) : (<>
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}>
                 <Info size={13} color={U.ink[400]} strokeWidth={1.8} />
                 <Text style={{ flex: 1, fontSize: 11.5, color: U.ink[500], lineHeight: 16 }}>
-                  {autoT('Notunuz bu kalem için itiraz açar; lab yanıtlar')}
+                  {isLab
+                    ? autoT('Yanıtınız itirazı "Yanıtlandı" yapar; taslağı düzelttiyseniz Çözüldü deyin')
+                    : autoT('Notunuz bu kalem için itiraz açar; lab yanıtlar')}
                 </Text>
               </View>
               <TextInput
                 value={body}
                 onChangeText={setBody}
-                placeholder={autoT('Notunuzu yazın')}
+                placeholder={isLab ? autoT('Yanıtınızı yazın') : autoT('Notunuzu yazın')}
                 placeholderTextColor={U.ink[400]}
                 multiline
                 maxLength={2000}
@@ -177,6 +246,7 @@ export function StatementNoteSheet({ open, item: liveItem, currency, onClose, on
                   <Text style={{ fontSize: 12.5, fontWeight: '700', color: U.onDarkPill }}>{autoT('Gönder')}</Text>
                 </Pressable>
               </View>
+              </>)}
             </ScrollView>
           ) : null}
         </View>

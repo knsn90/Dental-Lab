@@ -65,3 +65,24 @@ export function summarizeApproval(r: ApprovalResult): { issued: number; changed:
     disputed: r.skipped.filter((s) => s.reason === 'disputed').length,
   };
 }
+
+export interface ApprovalBadgeInput {
+  via: string;
+  reason: string | null;
+  created_at: string;
+}
+
+/**
+ * Onay geçmişi rozet metni. Lab'ın kaydettiği onay ('lab') hekim/klinik onayından AYRI görünür
+ * (anti-hedef 2): "Lab tarafından kaydedildi · tarih · gerekçe". Diğer yollar "Klinik onayladı · tarih".
+ */
+export function approvalBadgeText(
+  a: ApprovalBadgeInput, fmtDate: (iso: string) => string, tr: (s: string) => string,
+): string {
+  const date = fmtDate(a.created_at);
+  if (a.via === 'lab') {
+    const reason = String(a.reason ?? '').trim();
+    return [tr('Lab tarafından kaydedildi'), date, reason].filter(Boolean).join(' · ');
+  }
+  return [tr('Klinik onayladı'), date].filter(Boolean).join(' · ');
+}

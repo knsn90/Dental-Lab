@@ -427,3 +427,13 @@ export interface ApprovalResult {
   issued: { invoice_id: string; invoice_number: string | null; currency: string; total: number }[];
   skipped: { invoice_id: string; reason: 'changed' | 'disputed' }[];
 }
+
+/** statement_approvals satırı (onay geçmişi — RLS: lab finans görme / kliniğin kendisi) */
+export interface StatementApprovalRow {
+  id: string;
+  /** 'panel' = hekim/klinik panelden · 'link' = bağlantı · 'lab' = lab klinik adına kaydetti */
+  via: 'panel' | 'link' | 'lab';
+  mode: ApprovalMode;
+  reason: string | null;
+  created_at: string;
+}

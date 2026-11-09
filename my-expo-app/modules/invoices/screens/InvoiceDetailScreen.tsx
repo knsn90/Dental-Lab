@@ -6,6 +6,11 @@ import { validateInvoiceDiscount, invoiceDiscountRpcError, invoiceTotalsWithDisc
 import { InvoiceDiscountField } from '../components/InvoiceDiscountField';
 import { CorrectionDocModal } from '../components/CorrectionDocModal';
 import { correctionMaxAmount } from '../lib/correctionDoc';
+import { LabApprovalModal } from '../components/LabApprovalModal';
+import { fetchPreStatement } from '../preStatementApi';
+import { canLabWrite, preStatementErrorText } from '../lib/preStatement';
+import type { PreStatementInvoice } from '../types';
+import { useInvoiceApprovalEnabled } from '../../../core/store/labSettingsStore';
 /**
  * InvoiceDetailScreen — Fatura Detayı (Patterns Design Language)
  *
@@ -25,7 +30,7 @@ import { HubContext } from '../../../core/ui/HubContext';
 import {
   ArrowLeft, ArrowRight, Printer, Banknote, CreditCard, Landmark, File,
   MoreHorizontal, Building2, User, Phone, MapPin, Calendar,
-  ClipboardList, Plus, Trash2, Send, BellRing, CircleX,
+  ClipboardList, Plus, Trash2, Send, BellRing, CircleX, FileCheck,
   CircleCheck, X, AlertCircle, ChevronRight, ChevronLeft, ChevronDown, Check, FileText, Undo2, Pencil, FileEdit,
 } from '../../../core/ui/icons';
 import { toast } from '../../../core/ui/Toast';
@@ -300,6 +305,16 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   const corrReqRef = React.useRef(0);
   /** Kayıttan sonra DZ listesini yeniden çekmek için (ödenmiş faturada tutar/durum değişmeyebilir). */
   const [corrTick, setCorrTick] = useState(0);
+  // Ön ekstre (K5): lab ayarı açıkken taslak "Kesildi İşaretle" yerine "Klinik adına onay kaydet".
+  // Sunucu yine INV_APPROVAL_REQUIRED döndürürse (ör. ayar başka cihazda açıldı) düğme yerinde değişir.
+  const approvalSetting = useInvoiceApprovalEnabled();
+  const [approvalForced, setApprovalForced] = useState(false);
+  const approvalOn = approvalSetting || approvalForced;
+  const [markErr, setMarkErr] = useState<string | null>(null);
+  const [labApprove, setLabApprove] = useState<PreStatementInvoice[] | null>(null);
+  const [approveLoading, setApproveLoading] = useState(false);
+  const approveLoadRef = React.useRef(false);
+  useEffect(() => { setMarkErr(null); setLabApprove(null); }, [invoice?.id]);
   const invStatus = invoice?.status;
   const invPaid = invoice?.paid_amount;
   useEffect(() => {
@@ -517,9 +532,39 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   };
   const handleMarkSent = async () => {
     setBusy(true);
+    setMarkErr(null);
     const { error } = await setInvoiceStatus(invoice.id, 'kesildi');
     setBusy(false);
-    if (error) toast.error(autoT(invoiceStatusErrorText((error as any).message ?? String(error)))); else refetch();
+    if (error) {
+      const msg = (error as any).message ?? String(error);
+      if (/INV_APPROVAL_REQUIRED/.test(msg)) {
+        // Ayar bu arada açılmış: hata düğmenin yanında, düğme "Klinik adına onay kaydet"e döner.
+        setApprovalForced(true);
+        setMarkErr(autoT(invoiceStatusErrorText(msg)));
+      } else toast.error(autoT(invoiceStatusErrorText(msg)));
+    } else refetch();
+  };
+  // Yalnız bu faturayı içeren LabApprovalModal. Fatura sunucudan get_pre_statement ile TAZE
+  // çekilir: updated_at dizgisi DB'deki gibi kalır (Date'e çevrilmez — K6).
+  const openLabApproval = async () => {
+    if (approveLoadRef.current) return;
+    if (!invoice.clinic_id) { setMarkErr(autoT('Bu işlem için mali işlem yönetme yetkisi gerekir')); return; }
+    approveLoadRef.current = true;
+    setApproveLoading(true); setMarkErr(null);
+    try {
+      const ps = await fetchPreStatement(invoice.clinic_id);
+      if (!canLabWrite(ps.actor, ps.can_manage)) { setMarkErr(autoT('Bu işlem için mali işlem yönetme yetkisi gerekir')); return; }
+      const inv = (ps.invoices ?? []).find(i => i.id === invoice.id);
+      if (!inv) { setMarkErr(autoT('Bu fatura artık taslak değil')); refetch(); return; }
+      setLabApprove([inv]);
+    } catch (e: any) {
+      const msg = String(e?.message ?? e);
+      const known = preStatementErrorText(msg);
+      setMarkErr(known ? autoT(known) : msg);
+    } finally {
+      approveLoadRef.current = false;
+      setApproveLoading(false);
+    }
   };
   // Yanlışlıkla girilen tahsilat ("ödendi" yapılan fatura) — durum tetikleyiciyle kendiliğinden döner.
   const handleUndoPayment = (p: Payment) => {
@@ -673,8 +718,16 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
                         disabled={payBusy}
                       />
                     )}
-                    {!readOnly && invoice.status === 'taslak' && (
+                    {!readOnly && invoice.status === 'taslak' && markErr ? (
+                      <Text style={{ maxWidth: 280, fontSize: 12, lineHeight: 16, color: U.chipTones.danger.fg }}>{markErr}</Text>
+                    ) : null}
+                    {!readOnly && invoice.status === 'taslak' && !approvalOn && (
                       <PillBtn icon={Send} label="Kesildi İşaretle" stacked={!isDesktop} color={CHIP_TONES.info.text} bg={CHIP_TONES.info.bg} onPress={handleMarkSent} disabled={busy} />
+                    )}
+                    {!readOnly && invoice.status === 'taslak' && approvalOn && (
+                      <GlassTooltip title={autoT('Klinik adına onay kaydet')} text={autoT('Klinikten aldığınız onayı gerekçesiyle kaydeder; fatura kesinleşir')}>
+                        <PillBtn icon={FileCheck} label={autoT('Klinik adına onay kaydet')} stacked={!isDesktop} color={CHIP_TONES.info.text} bg={CHIP_TONES.info.bg} onPress={openLabApproval} disabled={busy || approveLoading} />
+                      </GlassTooltip>
                     )}
                     {!readOnly && (invoice.status === 'kesildi' || invoice.status === 'kismi_odendi') && (
                       <PillBtn icon={BellRing} label="Hatırlatma" stacked={!isDesktop} color={U.ink[500]} bg={U.ink[50]} onPress={() => setReminderOpen(true)} disabled={busy} />
@@ -1285,7 +1338,7 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
               number: invoice.efatura_number ?? null,
             }}
             invoiceStatus={invoice.status}
-            onIssueInvoice={handleMarkSent}
+            onIssueInvoice={approvalOn ? openLabApproval : handleMarkSent}
             clinicGaps={invoice.clinic ? clinicEFaturaGaps(invoice.clinic).map((g) => autoT(EFATURA_GAP_LABELS[g])) : []}
             onEditClinic={invoice.clinic ? () => router.push(`/${panelBase}/clinics?editClinic=${invoice.clinic!.id}` as any) : undefined}
             onChanged={refetch}
@@ -1411,6 +1464,16 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
 
       {/* İptal/Sil onayı — web-safe ConfirmDialog (Alert.alert web'de çalışmıyor) */}
       <ConfirmDialog state={confirm} onClose={() => setConfirm(null)} />
+
+      {!readOnly && invoice.clinic_id ? (
+        <LabApprovalModal
+          open={!!labApprove}
+          clinicId={invoice.clinic_id}
+          invoices={labApprove ?? []}
+          onClose={() => setLabApprove(null)}
+          onDone={() => { setMarkErr(null); void refetchSilent(); }}
+        />
+      ) : null}
 
       {/* Para birimi seçici — Modal (clipping/z-index sorunsuz) */}
       <Modal visible={curPickerOpen} transparent animationType="fade" onRequestClose={() => setCurPickerOpen(false)}>
