@@ -440,3 +440,15 @@ test('birlesik_with_invoice_discount_merges_exactly', () => {
   assert.deepEqual({ ...tm, lines: undefined }, { ...tk, lines: undefined });
   assert.equal(tm.discount, 90);
 });
+
+test('önizleme: satır biçimi meta alanları (varsayılan kalem; birleşik + geri düşme aktarılır)', () => {
+  const input = ok(buildLucaInput({ invoice: inv, clinic, doctor: null, seller, kind: 'e_fatura', companyTaxCode: '6312098145', inboxTag: 'urn:mail:defaultpk@gulus.test' }));
+  const def = buildLucaPreview(input, meta);
+  assert.equal(def.lineMode, 'kalem');
+  assert.equal(def.consolidated, false);
+  assert.equal('consolidateFallback' in def, false);
+  const b = buildLucaPreview(input, { ...meta, lineMode: 'birlesik', consolidated: false, consolidateFallback: 'rounding' });
+  assert.equal(b.lineMode, 'birlesik');
+  assert.equal(b.consolidated, false);
+  assert.equal(b.consolidateFallback, 'rounding');
+});

@@ -380,6 +380,12 @@ export interface LucaPreview {
   lines: Array<{ name: string; note?: string | null; quantity: number; unitPrice: number; discount: number; vatRate: number; net: number; vat: number }>;
   totals: { net: number; discount: number; vat: number; payable: number; payableTry: number | null };
   notes: string[];
+  /** Lab ayarı (lab_settings.efatura_line_mode). */
+  lineMode: 'kalem' | 'birlesik';
+  /** Satırlar gerçekten birleşik biçimde mi kuruldu (birleşik ayarda yuvarlama sapmasında false). */
+  consolidated: boolean;
+  /** Birleşik ayar açıkken kalem satırlarına geri düşüldüyse nedeni. */
+  consolidateFallback?: 'rounding';
 }
 
 const joinAddress = (street?: string | null, town?: string | null, city?: string | null) => {
@@ -389,7 +395,10 @@ const joinAddress = (street?: string | null, town?: string | null, city?: string
 
 export function buildLucaPreview(
   input: LucaInvoiceInput,
-  meta: { env: 'test' | 'prod'; sellerName: string; invoiceNumber: string },
+  meta: {
+    env: 'test' | 'prod'; sellerName: string; invoiceNumber: string;
+    lineMode?: 'kalem' | 'birlesik'; consolidated?: boolean; consolidateFallback?: 'rounding';
+  },
 ): LucaPreview {
   const t = computeTotals(input.lines);
   const isArchive = input.kind === 'e_arsiv';
@@ -434,5 +443,8 @@ export function buildLucaPreview(
       payableTry: input.crossRate ? r2(t.payable * input.crossRate) : null,
     },
     notes: input.notes ?? [],
+    lineMode: meta.lineMode === 'birlesik' ? 'birlesik' : 'kalem',
+    consolidated: meta.consolidated === true,
+    ...(meta.consolidateFallback ? { consolidateFallback: meta.consolidateFallback } : {}),
   };
 }

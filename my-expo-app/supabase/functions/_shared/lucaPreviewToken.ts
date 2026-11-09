@@ -58,3 +58,29 @@ export async function verifyPreviewToken(
   const expected = await hmac(secret, `${invoiceId}.${digest}.${expiresAt}`);
   return safeEqual(expected, m[2]) ? { ok: true } : { ok: false, reason: 'mismatch' };
 }
+
+export type LucaLineMode = 'kalem' | 'birlesik';
+
+/** lab_settings.efatura_line_mode → güvenli değer; bilinmeyen/boş/okunamadı = 'kalem'. */
+export function normalizeLineMode(v: unknown): LucaLineMode {
+  return v === 'birlesik' ? 'birlesik' : 'kalem';
+}
+
+/**
+ * Önizleme jetonunun özetlenen içeriği (efatura-luca preview/send/merge_*).
+ * input = buildLucaInput ÇIKTISI → birleşik modda birleştirilmiş satırlar + "İş dökümü" notu özetin
+ * içindedir (gönderilen = önizlenen). externalCode hariç (yeniden denemede değişir).
+ * 'kalem' modunda şekil bu özellikten önceki ile birebir aynı (eski jetonlar geçerli kalır);
+ * 'birlesik' modunda lineMode + consolidated eklenir → önizleme ile gönderim arasında ayar
+ * değişirse (satırlar aynı kalsa bile) özet tutmaz ve gönderim "içerik değişti" ile reddedilir.
+ */
+export function lucaDigestContent(a: {
+  env: string; kind: string; currency: string; crossRate: number | null;
+  input: Record<string, unknown>; lineMode?: LucaLineMode; consolidated?: boolean;
+}): Record<string, unknown> {
+  return {
+    env: a.env, kind: a.kind, currency: a.currency, crossRate: a.crossRate,
+    input: { ...a.input, externalCode: undefined },
+    ...(a.lineMode === 'birlesik' ? { lineMode: 'birlesik', consolidated: a.consolidated === true } : {}),
+  };
+}

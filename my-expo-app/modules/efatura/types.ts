@@ -79,6 +79,12 @@ export interface EFaturaPreview {
   lines: Array<{ name: string; note?: string | null; quantity: number; unitPrice: number; discount: number; vatRate: number; net: number; vat: number }>;
   totals: { net: number; discount: number; vat: number; payable: number; payableTry: number | null };
   notes: string[];
+  /** Lab'ın e-fatura satır biçimi ayarı (Luca). */
+  lineMode?: 'kalem' | 'birlesik';
+  /** Satırlar birleşik biçimde kuruldu mu (ayar birleşik ama yuvarlama sapmasında false). */
+  consolidated?: boolean;
+  /** Birleşik ayarda kalem satırlarına geri düşüldüyse nedeni. */
+  consolidateFallback?: 'rounding';
 }
 
 /** preview null → sağlayıcının önizlemesi yok (demo); panel yalnız onay sorar. */

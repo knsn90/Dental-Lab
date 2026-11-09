@@ -80,3 +80,58 @@ test('kalem açıklaması, kur veya dış kod dışı içerik değişirse özet 
   assert.notEqual(await digestOf(renamed), base);
   assert.notEqual(await digestOf(inv, 35.12), base);
 });
+
+// ── Birleşik satır biçimi (efatura_line_mode) ──
+import { lucaDigestContent, normalizeLineMode, type LucaLineMode } from './lucaPreviewToken.ts';
+
+test('normalizeLineMode: yalnız "birlesik" birleşik, gerisi kalem', () => {
+  assert.equal(normalizeLineMode('birlesik'), 'birlesik');
+  assert.equal(normalizeLineMode('kalem'), 'kalem');
+  for (const v of [null, undefined, '', 'BIRLESIK', 1, {}]) assert.equal(normalizeLineMode(v), 'kalem');
+});
+
+// Aynı hizmet + fiyat iki kez → birleşik modda tek satıra iner.
+const dupInv: DbInvoice = {
+  ...inv,
+  items: [
+    { description: 'Zirkonyum kron', quantity: 1, unit_price: 1500, total: 1500, net_total: 1500 },
+    { description: 'Zirkonyum kron', quantity: 1, unit_price: 1500, total: 1500, net_total: 1500 },
+    { description: 'Çalışma modeli', quantity: 1, unit_price: 250, total: 250, net_total: 250 },
+  ],
+};
+dupInv.total = 3900; // (1500 + 1500 + 250) × 1,20
+const modeDigest = async (invoice: DbInvoice, lineMode: LucaLineMode) => {
+  const r = buildLucaInput({
+    invoice, clinic, doctor: null, seller, kind: 'e_fatura', companyTaxCode: '6312098145', inboxTag: 'urn:mail:x@y',
+    lineMode, dokumRefs: [invoice.invoice_number],
+  });
+  if (!r.ok) throw new Error(r.error);
+  return { r, digest: await previewDigest(lucaDigestContent({ env: 'prod', kind: 'e_fatura', currency: invoice.currency, crossRate: null, input: r.input as unknown as Record<string, unknown>, lineMode, consolidated: r.consolidated })) };
+};
+
+test('kalem modu özeti eski özetle birebir aynı (yayın öncesi jetonlar geçerli)', async () => {
+  const { digest } = await modeDigest(inv, 'kalem');
+  assert.equal(digest, await digestOf(inv));
+});
+
+test('birleşik özet birleştirilmiş satırları kapsar; ayar değişirse jeton tutmaz', async () => {
+  const k = await modeDigest(dupInv, 'kalem');
+  const b = await modeDigest(dupInv, 'birlesik');
+  assert.equal(b.r.ok && b.r.consolidated, true);
+  assert.equal(b.r.ok && b.r.input.lines.length, 2);
+  assert.notEqual(b.digest, k.digest);
+  // birleşik önizleme jetonu → ayar kaleme dönünce gönderim reddedilir (ve tersi)
+  const now = Date.now();
+  const tokB = await signPreviewToken(SECRET, INV, b.digest, now + PREVIEW_TOKEN_TTL_MS);
+  assert.deepEqual(await verifyPreviewToken(SECRET, tokB, INV, b.digest, now), { ok: true });
+  assert.deepEqual(await verifyPreviewToken(SECRET, tokB, INV, k.digest, now), { ok: false, reason: 'mismatch' });
+  const tokK = await signPreviewToken(SECRET, INV, k.digest, now + PREVIEW_TOKEN_TTL_MS);
+  assert.deepEqual(await verifyPreviewToken(SECRET, tokK, INV, b.digest, now), { ok: false, reason: 'mismatch' });
+});
+
+test('birleşecek satır yoksa da ayar değişimi özeti değiştirir', async () => {
+  const k = await modeDigest(inv, 'kalem');
+  const b = await modeDigest(inv, 'birlesik');
+  assert.equal(b.r.ok && b.r.input.lines.length, k.r.ok && k.r.input.lines.length);
+  assert.notEqual(b.digest, k.digest);
+});

@@ -50,7 +50,10 @@ import {
   type LucaEnvelope, type LucaKind,
 } from '../_shared/luca.ts';
 import { buildLucaInput, buildLucaPreview, mapLucaStatus, type SellerConfig } from '../_shared/lucaInvoice.ts';
-import { previewDigest, signPreviewToken, verifyPreviewToken, PREVIEW_TOKEN_TTL_MS } from '../_shared/lucaPreviewToken.ts';
+import {
+  previewDigest, signPreviewToken, verifyPreviewToken, PREVIEW_TOKEN_TTL_MS,
+  lucaDigestContent, normalizeLineMode, type LucaLineMode,
+} from '../_shared/lucaPreviewToken.ts';
 import { mergeKey, validateMergeSet, mergeInvoices, isEttn, mergeApprovalGate, MERGE_MAX, type MergeRow } from '../_shared/lucaMerge.ts';
 
 const corsHeaders = {
@@ -121,6 +124,22 @@ async function labContext(service: any, labId: string): Promise<{ env: LucaEnvNa
     companyTaxCode: env === 'prod' ? labVkn : (String(c.test_vkn ?? '').trim() || DEFAULT_TEST_VKN),
     scenario: c.scenario === 'TICARIFATURA' ? 'TICARIFATURA' : 'TEMELFATURA',
   };
+}
+
+/** Lab'ın e-fatura satır biçimi (lab_settings.efatura_line_mode). Okunamazsa / satır yoksa 'kalem'
+ *  (bugünkü satır-satır davranış) — ayar hatası gönderimi engellemez. */
+async function labLineMode(service: any, labId: string): Promise<LucaLineMode> {
+  try {
+    const { data, error } = await service.from('lab_settings').select('efatura_line_mode').eq('lab_id', labId).maybeSingle();
+    if (error) {
+      console.warn('efatura-luca: efatura_line_mode okunamadı, kalem kullanılıyor', error.message ?? error);
+      return 'kalem';
+    }
+    return normalizeLineMode((data as any)?.efatura_line_mode);
+  } catch (e) {
+    console.warn('efatura-luca: efatura_line_mode okunamadı, kalem kullanılıyor', (e as Error)?.message ?? e);
+    return 'kalem';
+  }
 }
 
 /** Resmi e-fatura PDF'i. Yetki: çağıran faturayı kendi oturumuyla (RLS) görebiliyorsa — lab, klinik, hekim. */
@@ -339,9 +358,13 @@ serve(async (req) => {
     }
 
     // Önizlenen ve gönderilen içeriğin karşılaştırma özeti. externalCode hariç (yeniden
-    // denemede gönderimde değişir; vergi içeriği değil).
-    const digestFor = (kind: LucaKind, currency: string, crossRate: number | null, input: Record<string, unknown>) =>
-      previewDigest({ env, kind, currency, crossRate, input: { ...input, externalCode: undefined } });
+    // denemede gönderimde değişir; vergi içeriği değil). input buildLucaInput çıktısıdır → birleşik
+    // modda birleştirilmiş satırlar özetin içinde; birleşik modda lineMode/consolidated da eklenir
+    // (ayar önizleme ile gönderim arasında değişirse jeton tutmaz). Kalem modunda özet eskisiyle aynı.
+    const digestFor = (
+      kind: LucaKind, currency: string, crossRate: number | null, input: Record<string, unknown>,
+      lineMode: LucaLineMode, consolidated: boolean,
+    ) => previewDigest(lucaDigestContent({ env, kind, currency, crossRate, input, lineMode, consolidated }));
 
     /** Mükellef sorgusunun sonucunu önbelleğe ve kliniğe yaz (gönderimden önce). */
     async function rememberTaxPayer(clinicId: string | null, clinic: any, tp: any, inboxTag: string | null) {
@@ -458,20 +481,28 @@ serve(async (req) => {
       const k = await resolveKindFor(clinic);
       if (!k.ok) return json({ ok: false, error: k.error });
       const crossRate = await resolveCrossRateFor(v.currency, issueDate);
+      const lineMode = await labLineMode(service, labId);
+      // İş dökümü: kaynak Siman fatura numaralarının TAMAMI (mergeInvoices sırası: tarih, numara).
+      const dokumRefs = [...rows]
+        .sort((a, b) => a.issue_date.localeCompare(b.issue_date) || a.invoice_number.localeCompare(b.invoice_number))
+        .map((r) => r.invoice_number);
       const built = buildLucaInput({
         invoice: merged, clinic, doctor: null, seller, kind: k.kind, companyTaxCode, inboxTag: k.inboxTag, crossRate,
-        totalTolerance: Math.round(ids.length) / 100,
+        totalTolerance: Math.round(ids.length) / 100, lineMode, dokumRefs,
       });
       if (!built.ok) return json({ ok: false, error: built.error });
       if (!PREVIEW_SECRET) return json({ ok: false, error: 'Önizleme jetonu üretilemedi (sunucu yapılandırması)' }, 500);
       const key = mergeKey(ids);
-      const digest = await digestFor(k.kind, v.currency, crossRate, built.input as unknown as Record<string, unknown>);
+      const digest = await digestFor(k.kind, v.currency, crossRate, built.input as unknown as Record<string, unknown>, lineMode, built.consolidated);
 
       if (action === 'merge_preview') {
         const expiresAt = Date.now() + PREVIEW_TOKEN_TTL_MS;
         return json({
           ok: true,
-          preview: buildLucaPreview(built.input, { env, sellerName, invoiceNumber: '' }),
+          preview: buildLucaPreview(built.input, {
+            env, sellerName, invoiceNumber: '',
+            lineMode, consolidated: built.consolidated, consolidateFallback: built.consolidateFallback,
+          }),
           preview_token: await signPreviewToken(PREVIEW_SECRET, key, digest, expiresAt),
           preview_expires_at: new Date(expiresAt).toISOString(),
           count: ids.length, total: selectedTotal, currency: v.currency,
@@ -623,14 +654,17 @@ serve(async (req) => {
     const currency = String(invoice.currency ?? 'TRY').toUpperCase();
     const resolveCrossRate = () => resolveCrossRateFor(currency, invoice.issue_date);
     const items = [...(invoice.items ?? [])].sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+    // Satır biçimi her istekte taze okunur: önizleme ile gönderim arasında değişirse özet tutmaz.
+    const lineMode = await labLineMode(service, labId);
     const buildInput = (kind: LucaKind, inboxTag: string | null, crossRate: number | null) => buildLucaInput({
       invoice: { ...invoice, items }, clinic, doctor: invoice.doctor ?? null, seller, kind, companyTaxCode, inboxTag, crossRate,
+      lineMode, dokumRefs: [invoice.invoice_number],
     });
 
     // Önizlenen ve gönderilen içeriğin karşılaştırma özeti. externalCode hariç (yeniden
     // denemede gönderimde değişir; vergi içeriği değil).
-    const contentDigest = (kind: LucaKind, crossRate: number | null, input: Record<string, unknown>) =>
-      digestFor(kind, currency, crossRate, input);
+    const contentDigest = (kind: LucaKind, crossRate: number | null, input: Record<string, unknown>, consolidated: boolean) =>
+      digestFor(kind, currency, crossRate, input, lineMode, consolidated);
 
     // ── Önizle: Luca'ya gitmez, DB'ye yazmaz ──
     if (action === 'preview') {
@@ -641,11 +675,12 @@ serve(async (req) => {
       if (!built.ok) return json({ ok: false, error: built.error });
       if (!PREVIEW_SECRET) return json({ ok: false, error: 'Önizleme jetonu üretilemedi (sunucu yapılandırması)' }, 500);
       const expiresAt = Date.now() + PREVIEW_TOKEN_TTL_MS;
-      const digest = await contentDigest(k.kind, previewRate, built.input as unknown as Record<string, unknown>);
+      const digest = await contentDigest(k.kind, previewRate, built.input as unknown as Record<string, unknown>, built.consolidated);
       return json({
         ok: true,
         preview: buildLucaPreview(built.input, {
           env, sellerName, invoiceNumber: invoice.invoice_number,
+          lineMode, consolidated: built.consolidated, consolidateFallback: built.consolidateFallback,
         }),
         preview_token: await signPreviewToken(PREVIEW_SECRET, invoice.id, digest, expiresAt),
         preview_expires_at: new Date(expiresAt).toISOString(),
@@ -682,7 +717,7 @@ serve(async (req) => {
     // ── Önizleme kapısı: jetonsuz / süresi dolmuş / içerik değişmiş → Luca'ya GİTMEZ ──
     // fail() KULLANILMAZ: fatura hatalı işaretlenmez, yalnız yeniden önizleme istenir.
     {
-      const digest = await contentDigest(kind, crossRate, built.input as unknown as Record<string, unknown>);
+      const digest = await contentDigest(kind, crossRate, built.input as unknown as Record<string, unknown>, built.consolidated);
       const check = PREVIEW_SECRET
         ? await verifyPreviewToken(PREVIEW_SECRET, body?.preview_token, invoice.id, digest, Date.now())
         : ({ ok: false, reason: 'missing' } as const);
