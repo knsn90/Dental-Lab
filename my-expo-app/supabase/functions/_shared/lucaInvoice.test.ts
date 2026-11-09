@@ -452,3 +452,20 @@ test('önizleme: satır biçimi meta alanları (varsayılan kalem; birleşik + g
   assert.equal(b.consolidated, false);
   assert.equal(b.consolidateFallback, 'rounding');
 });
+
+test('birlesik_nothing_to_merge_equals_kalem', () => {
+  // Hiçbir satır birleşmiyorsa birleşik mod kalem moduyla aynıdır: "İş dökümü" notu eklenmez, consolidated=false.
+  const d: DbInvoice = {
+    ...inv, subtotal: 30, tax_amount: 6, total: 36,
+    items: [
+      { description: 'Zirkonyum kron', quantity: 1, unit_price: 10, total: 10, net_total: 10 },
+      { description: 'Ölçü kaşığı', quantity: 1, unit_price: 20, total: 20, net_total: 20 },
+    ],
+  };
+  const k = buildLucaInput({ invoice: d, ...bArgs });
+  const b = buildLucaInput({ invoice: d, ...bArgs, lineMode: 'birlesik' });
+  assert.ok(k.ok && b.ok);
+  assert.equal(b.consolidated, false);
+  assert.equal(b.consolidateFallback, undefined);
+  assert.deepEqual(b.input, k.input);
+});

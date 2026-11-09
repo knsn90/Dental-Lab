@@ -300,15 +300,18 @@ export function buildLucaInput(args: {
   let consolidateFallback: 'rounding' | undefined;
   if (args.lineMode === 'birlesik') {
     const merged = consolidateLucaLines(lines);
-    const mc = payableOk(merged);
-    // Net, iskonto, KDV ve ödenecek tek tek kalem toplamlarıyla aynı olmalı (sapmalar birbirini götürebilir).
-    const keys = ['lineExtension', 'discount', 'vat', 'taxInclusive', 'payable'] as const;
-    const same = keys.every((k) => Math.abs(mc.totals[k] - chk.totals[k]) < 0.005);
-    if (!mc.off && same) {
-      outLines = merged;
-      consolidated = true;
-    } else {
-      consolidateFallback = 'rounding';
+    // Birleşecek satır yoksa kalem moduyla aynı kalır (not eklenmez, geri düşme de yok).
+    if (merged.length < lines.length) {
+      const mc = payableOk(merged);
+      // Net, iskonto, KDV ve ödenecek tek tek kalem toplamlarıyla aynı olmalı (sapmalar birbirini götürebilir).
+      const keys = ['lineExtension', 'discount', 'vat', 'taxInclusive', 'payable'] as const;
+      const same = keys.every((k) => Math.abs(mc.totals[k] - chk.totals[k]) < 0.005);
+      if (!mc.off && same) {
+        outLines = merged;
+        consolidated = true;
+      } else {
+        consolidateFallback = 'rounding';
+      }
     }
   }
 
