@@ -286,14 +286,14 @@ export function buildLucaInput(args: {
     const off = strictTol !== null
       ? Math.abs(t.payable - num(invoice.total)) >= strictTol
       : Math.abs(r2(t.payable - num(invoice.total))) > (args.totalTolerance ?? 0.01) + 1e-9;
-    return { off, payable: t.payable };
+    return { off, payable: t.payable, totals: t };
   };
   const chk = payableOk(lines);
   if (chk.off) {
     return fail(`Fatura toplamı (${num(invoice.total).toFixed(2)}) ile e-fatura hesaplaması (${chk.payable.toFixed(2)}) uyuşmuyor`);
   }
 
-  // Birleşik satır: toplam kalem satırlarıyla kuruşu kuruşuna aynı kalmalı (KDV tek yuvarlama farkı),
+  // Birleşik satır: tüm toplamlar (net, iskonto, KDV, ödenecek) kalem satırlarıyla kuruşu kuruşuna aynı kalmalı,
   // aksi halde resmi belgeye sapma sokmamak için kalem satırlarına dönülür.
   let outLines = lines;
   let consolidated = false;
@@ -301,7 +301,10 @@ export function buildLucaInput(args: {
   if (args.lineMode === 'birlesik') {
     const merged = consolidateLucaLines(lines);
     const mc = payableOk(merged);
-    if (!mc.off && Math.abs(r2(mc.payable - chk.payable)) < 0.005) {
+    // Net, iskonto, KDV ve ödenecek tek tek kalem toplamlarıyla aynı olmalı (sapmalar birbirini götürebilir).
+    const keys = ['lineExtension', 'discount', 'vat', 'taxInclusive', 'payable'] as const;
+    const same = keys.every((k) => Math.abs(mc.totals[k] - chk.totals[k]) < 0.005);
+    if (!mc.off && same) {
       outLines = merged;
       consolidated = true;
     } else {

@@ -409,3 +409,34 @@ test('fallback_on_vat_rounding', () => {
   assert.deepEqual(r.input.notes, ['Siman fatura no: FTR-2026-00060']);
   assert.equal(computeTotals(r.input.lines).payable, 36.06);
 });
+
+test('fallback_on_fractional_qty_drift', () => {
+  // 3 × (0,5 × 10,13) @%20: kalem net 15,21 + KDV 3,03 = 18,24; birleşik net 15,20 + KDV 3,04 = 18,24.
+  // Ödenecek aynı ama net/KDV ayrı ayrı sapar → birleştirilmemeli.
+  const d: DbInvoice = {
+    ...inv, subtotal: 15.21, tax_amount: 3.03, total: 18.24,
+    items: [1, 2, 3].map(() => ({ description: 'Parça işi', quantity: 0.5, unit_price: 10.13, total: 5.07, net_total: 5.07 })),
+  };
+  const r = buildLucaInput({ invoice: d, ...bArgs, lineMode: 'birlesik' });
+  assert.ok(r.ok);
+  assert.equal(r.consolidated, false);
+  assert.equal(r.consolidateFallback, 'rounding');
+  assert.equal(r.input.lines.length, 3);
+  const t = computeTotals(r.input.lines);
+  assert.equal(t.vat, 3.03);
+  assert.equal(t.lineExtension, 15.21);
+});
+
+test('birlesik_with_invoice_discount_merges_exactly', () => {
+  const d = threeCrowns({ subtotal: 4590, discount_amount: 90, tax_amount: 900, total: 5400 });
+  const k = buildLucaInput({ invoice: d, ...bArgs });
+  const r = buildLucaInput({ invoice: d, ...bArgs, lineMode: 'birlesik' });
+  assert.ok(k.ok && r.ok);
+  assert.equal(r.consolidated, true);
+  assert.equal(r.input.lines.length, 1);
+  const tk = computeTotals(k.input.lines);
+  const tm = computeTotals(r.input.lines);
+  assert.equal(tm.payable, 5400);
+  assert.deepEqual({ ...tm, lines: undefined }, { ...tk, lines: undefined });
+  assert.equal(tm.discount, 90);
+});
