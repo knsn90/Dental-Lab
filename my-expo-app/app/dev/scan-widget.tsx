@@ -25,6 +25,8 @@ import { InvoiceMobileTable } from '../../modules/invoices/components/InvoiceMob
 import type { Invoice } from '../../modules/invoices/types';
 import type { Expense } from '../../modules/expenses/api';
 import { groupByCurrency } from '../../core/money/aggregations';
+import { FeaturesView } from '../../modules/settings/sections/FeaturesSection';
+import type { LabFeatureSetting } from '../../modules/platform/api';
 
 const TZ = 'Europe/Istanbul';
 
@@ -75,6 +77,11 @@ export default function ScanWidgetDemo() {
       onNav={() => {}} onNew={() => {}} onOpenRow={() => {}}
     />
   );
+
+  if (q.view === 'features') {
+    // Ayarlar › Özellikler (sahte satırlar; anahtar yalnız yerel durumu çevirir, RPC çağrılmaz). ?err=1 satır hatası
+    return <FeaturesDemo withErr={q.open === 'err'} />;
+  }
 
   if (q.view === 'cash') {
     // Nakit kasa (madde 8) — sahte veri: açık TL kasası + açılmamış EUR kasası, hareket listesi, pencereler.
@@ -205,13 +212,19 @@ export default function ScanWidgetDemo() {
             <DashCell><Placeholder label="Kart 4" /></DashCell>
           </DashHalf>
         </DashRow>
-        <DashRow gap={14}>
-          <DashHalf gap={14}>
-            <DashCell><Placeholder label="Bu hafta" /></DashCell>
-          </DashHalf>
+        {/* Lab Özet = Admin Özet düzeni: Bugünkü görevler + tarama (yarımlar); "Bu hafta" en altta */}
+        <DashRow gap={14} style={{ marginBottom: 14 }}>
           <DashHalf gap={14}>
             <DashCell><Placeholder label="Bugünkü görevler" dark /></DashCell>
+          </DashHalf>
+          <DashHalf gap={14}>
             <DashCell>{widget}</DashCell>
+          </DashHalf>
+        </DashRow>
+        <View style={{ marginBottom: 14 }}><Placeholder label="Son siparişler · İstasyon · Teknisyen" h={120} /></View>
+        <DashRow gap={14}>
+          <DashHalf gap={14}>
+            <DashCell><Placeholder label="Bu hafta" h={140} /></DashCell>
           </DashHalf>
         </DashRow>
       </View>
@@ -221,5 +234,20 @@ export default function ScanWidgetDemo() {
         <Text style={{ marginTop: 10, fontSize: 12, color: U.ink[500] }}>{t != null ? `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}` : '—'}</Text>
       </View>
     </ScrollView>
+  );
+}
+
+function FeaturesDemo({ withErr }: { withErr: boolean }) {
+  const U = useInkUI();
+  const [rows, setRows] = useState<LabFeatureSetting[]>([
+    { key: 'scan_appointments', label: 'Tarama randevuları', description: null, default_on: false, override: true, effective: true },
+    { key: 'phone_assistant', label: 'Telefon asistanı', description: null, default_on: false, override: null, effective: false },
+  ]);
+  return (
+    <View style={{ flex: 1, backgroundColor: U.isDark ? '#0E0E0E' : '#F5F1EB' }}>
+      <FeaturesView rows={rows} loadErr={null} busyKey={null} accentColor={DS.lab.primary}
+        rowErr={withErr ? { phone_assistant: 'Bu ayarı yalnız hesap sahibi ya da lab müdürü değiştirebilir.' } : {}}
+        onToggle={(r, next) => setRows((l) => l.map((x) => (x.key === r.key ? { ...x, override: next, effective: next } : x)))} />
+    </View>
   );
 }

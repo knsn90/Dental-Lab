@@ -69,13 +69,16 @@ export function Btn({ label, onPress, kind = 'sec', icon, tip, tipTitle, disable
   return tip ? <GlassTooltip title={tipTitle ?? label} text={tip} style={flex ? { flex: 1 } : undefined}>{body}</GlassTooltip> : body;
 }
 
-/** 38px ikon düğmesi; navy = lacivert (açıkta düz #004B87, koyuda neon yüzey) */
+/** 38px ikon düğmesi; navy = panelin birincil düğmesi. Yönetimde lacivert (açıkta düz #004B87, koyuda neon yüzey);
+    diğer panellerde panel accent'i — lab'da açıkta düz safran + koyu ikon, koyuda safranın derin tonu + neon kenar
+    (kullanıcı: "+ düğmesinin rengi panele uymuyor"; eskiden her panelde sabit lacivertti). */
 export function IconBtn({ onPress, children, tip, tipTitle, label, navy, size = 38, innerRef }: {
   onPress: () => void; children: (color: string) => React.ReactNode; tip: string; tipTitle?: string; label: string;
   navy?: boolean; size?: number; innerRef?: React.Ref<any>;
 }) {
   const U = useInkUI();
-  const nv = useNeonNavy(HERO_NAVY.light);
+  const panel = usePanelTheme();
+  const nv = useNeonNavy(panel.key === 'exec' ? HERO_NAVY.light : panel.primary);
   const color = navy ? nv.ink : U.plainBtn.fg;
   return (
     <GlassTooltip title={tipTitle ?? label} text={tip}>

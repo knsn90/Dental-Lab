@@ -2015,24 +2015,18 @@ export function LabDashboardScreen() {
         </DashHalf>
       </DashRow>
 
-      {/* ════════ BOTTOM ROW — Weekly (yarım) + Bugünkü Görevler + tarama widget'ı (çeyrekler) ════════ */}
+      {/* ════════ İKİNCİ SIRA — Bugünkü Görevler + tarama widget'ı (yarımlar), Admin Özet ile aynı düzen.
+          "Bu hafta" en alta indi (kullanıcı isteği, 2026-11-09: "admin panelindeki gibi"). ════════ */}
       <DashRow gap={14} style={{ marginBottom: 14 }}>
-        <DashHalf gap={14}>
-          <DashCell>
-            <WeeklyStrip
-              weekDays={weekDays}
-              weekCounts={weekCounts}
-              weekDone={weekDone}
-              weekTeeth={weekTeeth}
-              onPress={() => router.push('/(lab)/all-orders' as any)}
-            />
-          </DashCell>
-        </DashHalf>
         <DashHalf gap={14}>
           {/* Bugünkü Görevler — Dark (CTA ile yer değişti) */}
           <DashCell><TasksCard tasks={taskItems} /></DashCell>
-          {scanCard ? <DashCell><ScanCalendarCard style={{ flex: 1 }} /></DashCell> : null}
         </DashHalf>
+        {scanCard ? (
+          <DashHalf gap={14}>
+            <DashCell><ScanCalendarCard style={{ flex: 1 }} /></DashCell>
+          </DashHalf>
+        ) : null}
       </DashRow>
 
       {/* ════════ EXTRA SECTIONS (below fold) ════════ */}
@@ -2223,6 +2217,21 @@ export function LabDashboardScreen() {
           )}
         </View>
       )}
+
+      {/* ════════ EN ALT — Bu hafta (Admin Özet'teki gibi sayfanın sonunda) ════════ */}
+      <DashRow gap={14} style={{ marginBottom: 14 }}>
+        <DashHalf gap={14}>
+          <DashCell>
+            <WeeklyStrip
+              weekDays={weekDays}
+              weekCounts={weekCounts}
+              weekDone={weekDone}
+              weekTeeth={weekTeeth}
+              onPress={() => router.push('/(lab)/all-orders' as any)}
+            />
+          </DashCell>
+        </DashHalf>
+      </DashRow>
 
       <View style={{ height: 40 }} />
 
