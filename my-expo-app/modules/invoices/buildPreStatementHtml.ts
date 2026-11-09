@@ -83,7 +83,10 @@ function build(
     input.clinicName,
     lines,
     input.lab,
-    undefined,
+    // İş dökümü: dönem = faturanın düzenlenme günü (tek gün); ön ekstrede dönem yok ("Tüm dönem")
+    workBreakdown && input.data.invoices[0]?.issue_date
+      ? { from: input.data.invoices[0].issue_date, to: input.data.invoices[0].issue_date }
+      : undefined,
     input.currency,
     { opening: r.opening, closing: r.closing },
     {
@@ -92,7 +95,7 @@ function build(
       sums: { debit: r.lines.reduce((s, l) => s + Math.round(l.debit * 100), 0) / 100, credit: 0 },
       discountMode: 'amount',
       ...(workBreakdown
-        ? { documentTitle: workBreakdown.documentTitle }
+        ? { documentTitle: workBreakdown.documentTitle, workBreakdown: true }
         : {
           documentTitle: autoT('Ön Ekstre'),
           notice: {

@@ -141,6 +141,12 @@ export interface CariStatementInput {
    * Verilmezse belge değişmez.
    */
   paper?: boolean;
+  /**
+   * İş dökümü (tek, kesinleşmiş faturanın dökümü): açık cari bakiye gibi okunmasın diye kapanış kartı,
+   * Bakiye sütunu, B/A işaretleri ve lejantı, "Toplam Alacak" ve "Kapanış bakiyesi" çizilmez; özet başlığı
+   * "Fatura Özeti" olur; periodFrom = periodTo ise dönem tek gün yazılır. Verilmezse belge değişmez.
+   */
+  workBreakdown?: boolean;
 }
 
 /** Bir hex rengin üzerine beyaz mı siyah mı metin geleceğini luminance ile seçer. */
@@ -216,8 +222,11 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
   const opening = input.openingBalance ?? 0;
   const closing = input.closingBalance;
   const currency = input.currency || 'TRY';
+  const wb = input.workBreakdown === true;
   const period =
-    input.periodFrom && input.periodTo
+    wb && input.periodFrom && input.periodFrom === input.periodTo
+      ? fmtDateLong(input.periodFrom)
+      : input.periodFrom && input.periodTo
       ? `${fmtDateLong(input.periodFrom)} – ${fmtDateLong(input.periodTo)}`
       : input.periodFrom
         ? `${fmtDateLong(input.periodFrom)} ve sonrası`
@@ -227,7 +236,7 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
 
   const L = input.labels ?? {};
   const neutralTone = input.balanceTone === 'neutral';
-  const hideBa = input.hideBaBadges === true;
+  const hideBa = input.hideBaBadges === true || wb;
   // KDV sütunu yalnız KDV dökümü verilen belgede (müşteri ekstresi)
   const showVat = !!input.vatSummary;
   // İndirim sütunu yalnız istenince (klinik ekstresi); kapalıyken bütün parçalar ''
@@ -274,11 +283,11 @@ export function buildCariStatementHtml(input: CariStatementInput): string {
         ${showVat ? `<td class="vat-cell">${(l.tax ?? 0) > 0
           ? `<div class="vat-num">${esc(fmtMoney(l.tax ?? 0, l.currency || currency))}</div>${(l.taxRate ?? 0) > 0 ? `<div class="vat-rate">%${esc(l.taxRate)}</div>` : ''}`
           : '<span class="vat-none">—</span>'}</td>` : ''}${cariDiscountTd(showDiscount, l.discountText)}
-        <td class="balance-cell">
+${wb ? '' : `        <td class="balance-cell">
           <div class="balance-num">${esc(balText)}</div>
           <div class="ba-flag">${baFlag}</div>
         </td>
-      </tr>`;
+`}      </tr>`;
     })
     .join('');
 
@@ -622,7 +631,7 @@ ${notice ? `  <div class="notice-band">
     ${notice.text ? `<div class="notice-text">${esc(notice.text)}</div>` : ''}
   </div>
 ` : ''}  <!-- Info grid (3 columns) -->
-  <div class="info-grid"${approve ? ' style="grid-template-columns:1fr 1.15fr 1fr 136px"' : ''}>
+  <div class="info-grid"${approve ? ' style="grid-template-columns:1fr 1.15fr 1fr 136px"' : wb ? ' style="grid-template-columns:1.2fr 1fr"' : ''}>
     <div class="info-col">
       <div class="info-eyebrow">Cari Bilgileri</div>
       <div class="holder-name">${esc(input.holder.name)}</div>
@@ -635,14 +644,14 @@ ${notice ? `  <div class="notice-band">
     </div>
 
     <div class="info-col">
-      <div class="info-eyebrow">${autoT('Hesap Özeti')}</div>
+      <div class="info-eyebrow">${wb ? autoT('Fatura Özeti') : autoT('Hesap Özeti')}</div>
 ${hideOpening ? '' : `      <div class="kv-row"><span class="kv-label">${esc(L.opening ?? 'Açılış Bakiyesi')}</span><span class="kv-value">${fmtMoney(opening, currency)}</span></div>
 `}      <div class="kv-row"><span class="kv-label">${esc(L.debit ?? 'Toplam Borç')}</span><span class="kv-value debit">${fmtMoney(totalDebit, currency)}</span></div>
-      <div class="kv-row"><span class="kv-label">${esc(L.credit ?? 'Toplam Alacak')}</span><span class="kv-value credit">${fmtMoney(totalCredit, currency)}</span></div>
-      <div class="kv-row"><span class="kv-label">Hareket</span><span class="kv-value">${input.lines.length}</span></div>
+${wb ? '' : `      <div class="kv-row"><span class="kv-label">${esc(L.credit ?? 'Toplam Alacak')}</span><span class="kv-value credit">${fmtMoney(totalCredit, currency)}</span></div>
+`}      <div class="kv-row"><span class="kv-label">Hareket</span><span class="kv-value">${input.lines.length}</span></div>
     </div>
 
-    <div class="info-col">
+${wb ? '' : `    <div class="info-col">
       <div class="info-eyebrow">${esc(L.closing ?? 'Kapanış Bakiyesi')}</div>
       <div class="kv-value lg ${neutralTone ? '' : (closing > 0.01 ? 'debit' : closing < -0.01 ? 'credit' : '')}" style="font-family:'Inter Tight','Inter',system-ui,sans-serif; font-weight:300; font-size:30px; letter-spacing:-0.9px; line-height:1.1;">${fmtMoney(Math.abs(closing), currency)}</div>
       <div class="muted-line" style="margin-top:4px">
@@ -650,7 +659,7 @@ ${hideOpening ? '' : `      <div class="kv-row"><span class="kv-label">${esc(L.o
       </div>
       <div class="muted-line" style="margin-top:10px"><strong style="color:var(--ink-700)">Para Birimi</strong> ${esc(currency)}</div>
     </div>
-${approve ? `
+`}${approve ? `
     <div class="info-col approve-col">
       ${approve.qrSvg ? `<div class="approve-qr">${approve.qrSvg}</div>` : ''}
       <div class="approve-caption">${esc(approve.caption)}</div>
@@ -668,11 +677,11 @@ ${approve ? `
           <th>${L.party !== undefined ? esc(L.party) : autoT('Karşı Taraf')}</th>
           <th class="num">${showVat ? autoT('Tutar (KDV hariç)') : autoT('Tutar')} <span class="pos">(+)</span> <span class="neg">(−)</span></th>
           ${showVat ? `<th class="num">${autoT('KDV')}</th>` : ''}${cariDiscountTh(showDiscount, autoT('İndirim'))}
-          <th class="num">${autoT('Bakiye')}</th>
-        </tr>
+${wb ? '' : `          <th class="num">${autoT('Bakiye')}</th>
+`}        </tr>
       </thead>
       <tbody>
-        ${rowsHtml || `<tr><td colspan="${(showVat ? 6 : 5) + (showDiscount ? 1 : 0)}" style="text-align:center;color:var(--ink-400);padding:40px;font-style:italic">${autoT('Bu dönemde hareket bulunmuyor.')}</td></tr>`}
+        ${rowsHtml || `<tr><td colspan="${(showVat ? 6 : 5) + (showDiscount ? 1 : 0) - (wb ? 1 : 0)}" style="text-align:center;color:var(--ink-400);padding:40px;font-style:italic">${autoT('Bu dönemde hareket bulunmuyor.')}</td></tr>`}
       </tbody>
     </table>
   </div>
@@ -686,7 +695,7 @@ ${approve ? `
   </div>` : ''}
 
   <!-- Summary bar -->
-  <div class="summary-bar"${showDiscSum ? ' style="grid-template-columns:1fr auto auto auto auto"' : ''}>
+  <div class="summary-bar"${wb ? ` style="grid-template-columns:1fr auto${showDiscSum ? ' auto' : ''}"` : showDiscSum ? ' style="grid-template-columns:1fr auto auto auto auto"' : ''}>
     <div>
       <div class="lbl">${autoT('Toplam')}</div>
       <div class="num" style="font-size:11px;font-weight:600;color:var(--ink-500);">${input.lines.length} hareket</div>
@@ -694,15 +703,15 @@ ${approve ? `
     <div>
       <div class="lbl">${esc(L.debit ?? 'Toplam Borç')}</div>
       <div class="num debit">${fmtMoney(totalDebit, currency)}</div>
-    </div>
+    </div>${wb ? '' : `
     <div>
       <div class="lbl">${esc(L.credit ?? 'Toplam Alacak')}</div>
       <div class="num credit">${fmtMoney(totalCredit, currency)}</div>
-    </div>${cariDiscountSummaryRow(showDiscSum, autoT('İndirimler'), esc(fmtMoney(-discSum, currency, { sign: true })))}
+    </div>`}${cariDiscountSummaryRow(showDiscSum, autoT('İndirimler'), esc(fmtMoney(-discSum, currency, { sign: true })))}${wb ? '' : `
     <div>
       <div class="lbl">${esc(L.closing ?? 'Kapanış Bakiyesi')}${hideBa ? '' : ` (${closingBa})`}</div>
       <div class="num ${closing > 0.01 ? 'debit' : closing < -0.01 ? 'credit' : ''}">${fmtMoney(Math.abs(closing), currency)}</div>
-    </div>
+    </div>`}
   </div>
 
   <!-- Footer -->

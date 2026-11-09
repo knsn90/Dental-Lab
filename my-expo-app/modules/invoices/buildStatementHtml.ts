@@ -201,6 +201,8 @@ export function buildStatementHtml(
     approve?: CariStatementInput['approve'];
     hideOpening?: boolean;
     paper?: boolean;
+    /** İş dökümü PDF'i: bakiye öğeleri yok, "Fatura Özeti" (buildCariStatementHtml.workBreakdown). */
+    workBreakdown?: boolean;
   } = {},
 ): string {
   const vat = statementVatSummary(lines);
@@ -311,5 +313,6 @@ export function buildStatementHtml(
     ...(opts.approve ? { approve: opts.approve } : {}),
     ...(opts.hideOpening ? { hideOpening: true } : {}),
     ...(opts.paper ? { paper: true } : {}),
+    ...(opts.workBreakdown ? { workBreakdown: true } : {}),
   });
 }
