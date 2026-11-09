@@ -1,0 +1,395 @@
+-- 20261110100000_on_ekstre_baglanti — canlı yakalama (before). Yakalama zamanı: 2026-11-09 08:09:42.047418+00
+
+## DEĞİŞEN: _ps_finalize(uuid,jsonb,text,text,text) — md5(prosrc)=4049a14159a7316757e0460d3272091e proacl={postgres=X/postgres,service_role=X/postgres} secdef=true config={search_path=public}
+CREATE OR REPLACE FUNCTION public._ps_finalize(p_clinic_id uuid, p_invoices jsonb, p_mode text, p_via text, p_reason text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_uid      uuid := auth.uid();
+  v_lab      uuid;
+  v_terms    int;
+  v_cname    text;
+  v_today    date;
+  v_ids      uuid[];
+  v_sel      uuid[] := '{}';
+  v_issue    uuid[] := '{}';
+  v_skipped  jsonb := '[]'::jsonb;
+  v_issued   jsonb := '[]'::jsonb;
+  v_ts       timestamptz;
+  v_target   uuid;
+  v_src      uuid;
+  v_max      int;
+  v_wos      uuid[];
+  v_claims   text;
+  v_sub      text;
+  v_approval uuid;
+  r          record;
+  g          record;
+BEGIN
+  IF v_uid IS NULL THEN RAISE EXCEPTION 'PS_SCOPE' USING ERRCODE = '42501'; END IF;
+  IF p_mode IS NULL OR p_mode NOT IN ('all', 'undisputed') THEN
+    RAISE EXCEPTION 'PS_MODE' USING ERRCODE = '22023';
+  END IF;
+  IF p_via IS NULL OR p_via NOT IN ('panel', 'link', 'lab') THEN
+    RAISE EXCEPTION 'PS_MODE' USING ERRCODE = '22023';
+  END IF;
+  IF p_invoices IS NULL OR jsonb_typeof(p_invoices) <> 'array' OR jsonb_array_length(p_invoices) = 0 THEN
+    RAISE EXCEPTION 'PS_EMPTY' USING ERRCODE = '22023';
+  END IF;
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(p_invoices) e
+              WHERE jsonb_typeof(e) <> 'object'
+                 OR NOT COALESCE(e->>'id', '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$') THEN
+    RAISE EXCEPTION 'PS_SCOPE' USING ERRCODE = '42501';
+  END IF;
+
+  SELECT c.lab_id, c.default_payment_terms_days, c.name INTO v_lab, v_terms, v_cname
+    FROM clinics c WHERE c.id = p_clinic_id;
+  IF v_lab IS NULL THEN RAISE EXCEPTION 'PS_SCOPE' USING ERRCODE = '42501'; END IF;
+
+  -- Aynı kliniğe eşzamanlı iki onay sıraya girer; faturalar id sırasıyla kilitlenir (not/çözme FOR SHARE bekler)
+  PERFORM pg_advisory_xact_lock(hashtext('ps_finalize:' || p_clinic_id::text));
+  SELECT array_agg(DISTINCT (e->>'id')::uuid) INTO v_ids FROM jsonb_array_elements(p_invoices) e;
+  PERFORM 1 FROM invoices i WHERE i.id = ANY (v_ids) ORDER BY i.id FOR UPDATE;
+
+  -- Kapsam: her öğe bu kliniğin, bu lab'ın taslağı olmalı; değilse sessiz atlanmaz, tüm çağrı geri alınır
+  IF (SELECT count(*) FROM invoices i
+       WHERE i.id = ANY (v_ids) AND i.clinic_id = p_clinic_id AND i.lab_id = v_lab AND i.status = 'taslak')
+     <> cardinality(v_ids) THEN
+    RAISE EXCEPTION 'PS_SCOPE' USING ERRCODE = '42501';
+  END IF;
+
+  -- K6: istemcinin gördüğünden sonra değişen taslak bu onayla kesinleşmez; K2: undisputed modda itirazlı fatura bütünüyle kalır
+  FOR r IN
+    SELECT i.id, i.updated_at,
+           (SELECT e->>'updated_at' FROM jsonb_array_elements(p_invoices) e
+             WHERE (e->>'id')::uuid = i.id LIMIT 1) AS ts_txt
+      FROM invoices i WHERE i.id = ANY (v_ids)
+     ORDER BY i.created_at, i.id
+  LOOP
+    BEGIN
+      v_ts := r.ts_txt::timestamptz;
+    EXCEPTION WHEN OTHERS THEN
+      v_ts := NULL;
+    END;
+    IF v_ts IS NULL OR v_ts IS DISTINCT FROM r.updated_at THEN
+      v_skipped := v_skipped || jsonb_build_object('invoice_id', r.id, 'reason', 'changed');
+      CONTINUE;
+    END IF;
+    IF p_mode = 'undisputed' AND EXISTS (
+         SELECT 1 FROM statement_item_disputes d JOIN invoice_items ii ON ii.id = d.invoice_item_id
+          WHERE ii.invoice_id = r.id AND d.status IN ('acik', 'yanitlandi')) THEN
+      v_skipped := v_skipped || jsonb_build_object('invoice_id', r.id, 'reason', 'disputed');
+      CONTINUE;
+    END IF;
+    v_sel := v_sel || r.id;
+  END LOOP;
+
+  IF cardinality(v_sel) = 0 THEN
+    RETURN jsonb_build_object('approval_id', NULL, 'issued', '[]'::jsonb, 'skipped', v_skipped);
+  END IF;
+
+  v_today := lab_today(v_lab);
+
+  -- Yazma evresi sistem bağlamında: plan 2 alacak tetikleyicisi / İND yeniden uygulaması
+  -- (recalc_invoice_payment_state → assert_my_invoice) klinik kullanıcısında yetki hatası vermesin.
+  v_claims := current_setting('request.jwt.claims', true);
+  v_sub    := current_setting('request.jwt.claim.sub', true);
+  PERFORM set_config('request.jwt.claims', '', true);
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM set_config('siman.ps_merge', 'on', true);
+
+  -- (ay, para birimi, KDV oranı) başına gruplama; KDV oranı farklı taslaklar birleşmez (toplam = Σ kaynak korunur)
+  FOR g IN
+    SELECT array_agg(i.id ORDER BY i.created_at, i.id) FILTER (WHERE m.ok)     AS mids,
+           array_agg(i.id ORDER BY i.created_at, i.id) FILTER (WHERE NOT m.ok) AS sids
+      FROM invoices i
+      CROSS JOIN LATERAL (
+        SELECT NOT (i.discount_type IS NOT NULL AND i.discount_value > 0)      -- fatura üstü indirim: tek başına
+           AND i.efatura_uuid IS NULL
+           AND NOT EXISTS (SELECT 1 FROM payments x WHERE x.invoice_id = i.id)
+           AND NOT EXISTS (SELECT 1 FROM payment_intents x WHERE x.invoice_id = i.id)
+           AND NOT EXISTS (SELECT 1 FROM payment_submissions x WHERE x.invoice_id = i.id)
+           AND NOT EXISTS (SELECT 1 FROM payment_reminders x WHERE x.invoice_id = i.id)
+           AND NOT EXISTS (SELECT 1 FROM efatura_logs x WHERE x.invoice_id = i.id)
+           AND NOT EXISTS (SELECT 1 FROM clinic_statement_discounts x
+                            WHERE x.invoice_id = i.id
+                               OR x.invoice_item_id IN (SELECT ii.id FROM invoice_items ii WHERE ii.invoice_id = i.id)) AS ok
+      ) m
+     WHERE i.id = ANY (v_sel)
+     GROUP BY date_trunc('month', COALESCE(i.issue_date, i.created_at::date)), i.currency, COALESCE(i.tax_rate, 0)
+     ORDER BY min(i.created_at)
+  LOOP
+    v_issue := v_issue || COALESCE(g.sids, '{}'::uuid[]);
+    CONTINUE WHEN g.mids IS NULL;
+    v_target := g.mids[1];
+
+    IF cardinality(g.mids) > 1 THEN
+      -- hedefin kendi siparişi de invoice_orders'ta bağlı olsun
+      INSERT INTO invoice_orders (invoice_id, work_order_id, lab_id)
+      SELECT v_target, i.work_order_id, v_lab FROM invoices i
+       WHERE i.id = v_target AND i.work_order_id IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM invoice_orders x WHERE x.invoice_id = v_target AND x.work_order_id = i.work_order_id);
+
+      FOREACH v_src IN ARRAY g.mids[2:cardinality(g.mids)] LOOP
+        -- kalemler sıra korunarak sona eklenir
+        SELECT COALESCE(max(ii.sort_order), 0) INTO v_max FROM invoice_items ii WHERE ii.invoice_id = v_target;
+        UPDATE invoice_items ii
+           SET invoice_id = v_target, sort_order = v_max + x.rn
+          FROM (SELECT s.id, row_number() OVER (ORDER BY s.sort_order, s.created_at, s.id) AS rn
+                  FROM invoice_items s WHERE s.invoice_id = v_src) x
+         WHERE ii.id = x.id;
+        UPDATE statement_item_notes    SET invoice_id = v_target WHERE invoice_id = v_src;
+        UPDATE statement_item_disputes SET invoice_id = v_target WHERE invoice_id = v_src;
+
+        -- sipariş bağları: kaynağınkiler silinip hedefe yazılır (invoice_orders_one_active kaynağı görmesin)
+        SELECT array(SELECT io.work_order_id FROM invoice_orders io WHERE io.invoice_id = v_src
+                     UNION
+                     SELECT i.work_order_id FROM invoices i WHERE i.id = v_src AND i.work_order_id IS NOT NULL)
+          INTO v_wos;
+        DELETE FROM invoice_orders WHERE invoice_id = v_src;
+        INSERT INTO invoice_orders (invoice_id, work_order_id, lab_id)
+        SELECT v_target, w, v_lab FROM unnest(v_wos) w
+         WHERE NOT EXISTS (SELECT 1 FROM invoice_orders x WHERE x.invoice_id = v_target AND x.work_order_id = w);
+
+        DELETE FROM invoices WHERE id = v_src;
+      END LOOP;
+
+      -- çok siparişli fatura: sipariş-türevi numara toplu fatura kuralıyla sıradaki numaraya geçer
+      UPDATE invoices SET invoice_number = next_invoice_number(v_lab)
+       WHERE id = v_target AND invoice_number LIKE 'F-%';
+      PERFORM recalc_invoice_totals(v_target);
+    END IF;
+
+    v_issue := v_issue || v_target;
+  END LOOP;
+
+  PERFORM set_config('siman.ps_merge', '', true);
+
+  -- K8: tarih kesinleşme günü, vade süresi korunur. Plan 2 alacak tetikleyicisi bu UPDATE'te çalışır.
+  PERFORM set_config('siman.approval_issue', 'on', true);
+  UPDATE invoices i
+     SET status     = 'kesildi',
+         issue_date = v_today,
+         due_date   = v_today + COALESCE(v_terms, i.due_date - i.issue_date, 30)
+   WHERE i.id = ANY (v_issue);
+  PERFORM set_config('siman.approval_issue', '', true);
+
+  IF p_mode = 'all' THEN
+    UPDATE statement_item_disputes d
+       SET status = 'cozuldu', updated_at = now()
+      FROM invoice_items ii
+     WHERE ii.id = d.invoice_item_id AND ii.invoice_id = ANY (v_issue) AND d.status IN ('acik', 'yanitlandi');
+  END IF;
+
+  PERFORM set_config('request.jwt.claims', COALESCE(v_claims, ''), true);
+  PERFORM set_config('request.jwt.claim.sub', COALESCE(v_sub, ''), true);
+
+  SELECT COALESCE(jsonb_agg(jsonb_build_object('invoice_id', i.id, 'invoice_number', i.invoice_number,
+                                               'currency', i.currency, 'total', i.total)
+                            ORDER BY i.created_at, i.id), '[]'::jsonb)
+    INTO v_issued FROM invoices i WHERE i.id = ANY (v_issue);
+
+  INSERT INTO statement_approvals (lab_id, clinic_id, approved_by, via, mode, reason,
+                                   source_invoice_ids, result_invoice_ids, skipped)
+  VALUES (v_lab, p_clinic_id, v_uid, p_via, p_mode, NULLIF(btrim(COALESCE(p_reason, '')), ''),
+          v_sel, v_issue, v_skipped)
+  RETURNING id INTO v_approval;
+
+  -- Lab'a uygulama içi bildirim (lab'ın kendi kaydında yazılmaz)
+  IF p_via <> 'lab' AND COALESCE(current_setting('siman.skip_notify', true), '') <> 'on' THEN
+    INSERT INTO notifications (user_id, lab_id, category, title, body, resource_type, resource_id, action_url, payload)
+    SELECT p.id, v_lab, 'payment', 'Ön ekstre onaylandı',
+           COALESCE(v_cname, 'Klinik') || ' · ' || cardinality(v_issue)::text,
+           'clinic', p_clinic_id, '/statement/' || p_clinic_id::text,
+           jsonb_build_object('clinic_id', p_clinic_id, 'approval_id', v_approval, 'invoice_ids', to_jsonb(v_issue),
+                              'kind', 'pre_statement_approved')
+      FROM profiles p
+     WHERE p.lab_id = v_lab
+       AND p.user_type IN ('admin', 'lab')
+       AND COALESCE(p.is_active, true)
+       AND 'manage_finance' = ANY (resolve_role_permissions(_profile_role_key(p.user_type, p.role), v_lab));
+  END IF;
+
+  RETURN jsonb_build_object('approval_id', v_approval, 'issued', v_issued, 'skipped', v_skipped);
+END $function$
+
+
+## _ps_finalize aşırı yüklemeleri (beklenen: 1)
+_ps_finalize(uuid,jsonb,text,text,text)
+
+## REFERANS (değişmez): add_statement_note(uuid,text) — md5(prosrc)=687b810d54d1a29fa081eba52e0be660 proacl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+CREATE OR REPLACE FUNCTION public.add_statement_note(p_invoice_item_id uuid, p_body text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_body   text := btrim(COALESCE(p_body, ''));
+  v_inv    record;
+  v_actor  text;
+  v_side   text;
+  v_note   uuid;
+  v_status text;
+  v_title  text := 'Ön ekstre notu';
+  v_text   text;
+BEGIN
+  SELECT i.id, i.status, i.clinic_id, i.lab_id, i.invoice_number, c.name AS clinic_name, c.lab_id AS clinic_lab
+    INTO v_inv
+    FROM invoice_items ii
+    JOIN invoices i ON i.id = ii.invoice_id
+    LEFT JOIN clinics c ON c.id = i.clinic_id
+   WHERE ii.id = p_invoice_item_id
+   FOR SHARE OF i;
+  IF NOT FOUND OR v_inv.clinic_id IS NULL OR v_inv.lab_id IS DISTINCT FROM v_inv.clinic_lab THEN
+    RAISE EXCEPTION 'PS_SCOPE' USING ERRCODE = '42501';
+  END IF;
+  v_actor := _ps_actor(v_inv.clinic_id);
+  IF v_actor IS NULL THEN RAISE EXCEPTION 'PS_SCOPE' USING ERRCODE = '42501'; END IF;
+  -- Lab tarafı not yazmak için manage_finance ister (görme yetkisi okumaya yeter)
+  IF v_actor = 'lab' AND NOT _ps_can_manage(v_inv.clinic_id) THEN
+    RAISE EXCEPTION 'PS_SCOPE' USING ERRCODE = '42501';
+  END IF;
+  -- billing_view'i olmayan viewer yalnız kendi siparişinin kalemine not yazar
+  IF NOT _ps_full_scope(v_inv.clinic_id) AND NOT _ps_item_order_mine(p_invoice_item_id) THEN
+    RAISE EXCEPTION 'PS_SCOPE' USING ERRCODE = '42501';
+  END IF;
+  IF length(v_body) < 1 OR length(v_body) > 2000 THEN
+    RAISE EXCEPTION 'PS_BODY' USING ERRCODE = '22023';
+  END IF;
+  IF v_inv.status IS DISTINCT FROM 'taslak' THEN
+    RAISE EXCEPTION 'PS_NOT_DRAFT' USING ERRCODE = '22023';
+  END IF;
+
+  v_side := CASE WHEN v_actor = 'lab' THEN 'lab' ELSE 'clinic' END;
+
+  INSERT INTO statement_item_notes (invoice_item_id, invoice_id, lab_id, clinic_id, author_id, author_side, body)
+  VALUES (p_invoice_item_id, v_inv.id, v_inv.lab_id, v_inv.clinic_id, auth.uid(), v_side, v_body)
+  RETURNING id INTO v_note;
+
+  IF v_side = 'clinic' THEN
+    INSERT INTO statement_item_disputes (invoice_item_id, invoice_id, lab_id, clinic_id, status, updated_at)
+    VALUES (p_invoice_item_id, v_inv.id, v_inv.lab_id, v_inv.clinic_id, 'acik', now())
+    ON CONFLICT (invoice_item_id) DO UPDATE
+      SET status = 'acik', invoice_id = EXCLUDED.invoice_id, updated_at = now();
+  ELSE
+    -- Lab yanıtı yalnız açık/yanıtlanmış itirazı 'yanitlandi' yapar; çözülmüş itirazı yeniden açmaz.
+    UPDATE statement_item_disputes
+       SET status = 'yanitlandi', updated_at = now()
+     WHERE invoice_item_id = p_invoice_item_id AND status IN ('acik', 'yanitlandi');
+  END IF;
+
+  SELECT d.status INTO v_status FROM statement_item_disputes d WHERE d.invoice_item_id = p_invoice_item_id;
+
+  -- K3: klinik notu → lab'ın manage_finance kullanıcılarına uygulama içi bildirim
+  IF v_side = 'clinic' AND COALESCE(current_setting('siman.skip_notify', true), '') <> 'on' THEN
+    v_text := COALESCE(v_inv.clinic_name, 'Klinik') || ' · ' || v_inv.invoice_number;
+    INSERT INTO notifications (user_id, lab_id, category, title, body, resource_type, resource_id, action_url, payload)
+    SELECT p.id, v_inv.lab_id, 'payment', v_title, v_text, 'invoice', v_inv.id,
+           '/statement/' || v_inv.clinic_id::text,
+           jsonb_build_object('clinic_id', v_inv.clinic_id, 'invoice_id', v_inv.id,
+                              'invoice_item_id', p_invoice_item_id, 'note_id', v_note, 'kind', 'pre_statement_note')
+      FROM profiles p
+     WHERE p.lab_id = v_inv.lab_id
+       AND p.user_type IN ('admin', 'lab')
+       AND COALESCE(p.is_active, true)
+       AND 'manage_finance' = ANY (resolve_role_permissions(_profile_role_key(p.user_type, p.role), v_inv.lab_id));
+  END IF;
+
+  RETURN jsonb_build_object('note_id', v_note, 'dispute_status', v_status);
+END $function$
+
+
+## REFERANS (değişmez; _ps_finalize çağıranlar ve bağımlılıklar) md5(prosrc) / proacl
+_ps_actor(uuid) md5=3448687563d27a5d8c8e705486f4c2ec proacl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+_ps_can_manage(uuid) md5=085079776ba3bcd62e53507de581c52a proacl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+_ps_can_see_item(uuid,uuid) md5=b37532886a2da2f13ffb253e8e69803d proacl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+_ps_full_scope(uuid) md5=fbfbf6452df334f363fc9f025b0a4905 proacl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+_ps_item_order_mine(uuid) md5=d32b31db89a7374bb75153ff43efc2c0 proacl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+approve_pre_statement(uuid,jsonb,text) md5=d41e75cffca342fa5c4287caffe04a9b proacl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+get_my_lab_id() md5=8fa58b7e006df00011d67e9ad8a3a34f proacl={=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+get_pre_statement(uuid) md5=928e3480c029600d1304f8d2140040b8 proacl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+lab_can_view_finance() md5=bbc4ccfbafecd4d021ea643c871337fc proacl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+record_clinic_approval(uuid,jsonb,text,text) md5=a9fd75d86ad5fb8f7eb33f7921238217 proacl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+resolve_statement_dispute(uuid) md5=c02343d1a76773616ec595696f93107d proacl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+touch_updated_at() md5=7aade57928c5657d7611663a2a1d33c4 proacl={=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+
+## lab_settings sütunları
+id uuid null=NO default=gen_random_uuid()
+lab_id uuid null=NO default=
+default_currency text null=NO default='TRY'::text
+week_start text null=NO default='monday'::text
+theme_mode text null=NO default='light'::text
+order_prefix text null=NO default='LAB'::text
+default_tax_rate numeric null=NO default=20.00
+working_hours_start time without time zone null=NO default='08:00:00'::time without time zone
+working_hours_end time without time zone null=NO default='18:00:00'::time without time zone
+auto_logout_minutes integer null=NO default=0
+items_per_page integer null=NO default=50
+created_at timestamp with time zone null=NO default=now()
+updated_at timestamp with time zone null=NO default=now()
+cost_method text null=YES default='snapshot'::text
+urgent_surcharge_rate numeric null=NO default=0
+auto_triage boolean null=NO default=false
+inventory_qtyless_enabled boolean null=NO default=false
+stock_count_interval_days integer null=NO default=30
+region text null=NO default='TR'::text
+payment_reminder_auto boolean null=NO default=false
+payment_reminder_frequency_days integer null=NO default=7
+payment_reminder_channels ARRAY null=NO default='{in_app,email,whatsapp}'::text[]
+payment_reminder_tone text null=NO default='standard'::text
+payment_reminder_min_days_overdue integer null=NO default=1
+technician_name_visibility text null=NO default='full'::text
+scan_hours_start time without time zone null=YES default='09:00:00'::time without time zone
+scan_hours_end time without time zone null=YES default='20:00:00'::time without time zone
+scan_workdays ARRAY null=YES default='{1,2,3,4,5,6}'::integer[]
+scan_default_minutes integer null=YES default=90
+scan_buffer_minutes integer null=YES default=10
+scan_morning_at time without time zone null=YES default='08:00:00'::time without time zone
+scan_evening_at time without time zone null=YES default='18:00:00'::time without time zone
+scan_technician_ids ARRAY null=YES default='{}'::uuid[]
+review_wa_enabled boolean null=NO default=false
+review_wa_enabled_at timestamp with time zone null=YES default=
+review_wa_delay_days integer null=NO default=3
+invoice_approval_enabled boolean null=NO default=false
+
+## lab_settings politikaları / RLS / ACL
+relrowsecurity=true relacl={postgres=arwdDxtm/postgres,anon=m/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}
+lab_settings_read | SELECT | roles=public | using=(lab_id = get_my_lab_id()) | check=
+lab_settings_write | ALL | roles=public | using=(lab_id = get_my_lab_id()) | check=(lab_id = get_my_lab_id())
+
+## lab_settings CHECK kısıtları
+lab_settings_cost_method_check: CHECK ((cost_method = ANY (ARRAY['snapshot'::text, 'weighted_avg'::text, 'fifo'::text, 'manual'::text])))
+lab_settings_currency_check: CHECK ((default_currency = ANY (ARRAY['TRY'::text, 'EUR'::text, 'USD'::text, 'GBP'::text, 'IRT'::text])))
+lab_settings_region_check: CHECK ((region = ANY (ARRAY['TR'::text, 'IR'::text])))
+lab_settings_reminder_freq_chk: CHECK (((payment_reminder_frequency_days >= 1) AND (payment_reminder_frequency_days <= 90)))
+lab_settings_reminder_tone_chk: CHECK ((payment_reminder_tone = ANY (ARRAY['gentle'::text, 'standard'::text, 'firm'::text])))
+lab_settings_review_wa_delay_days_check: CHECK (((review_wa_delay_days >= 1) AND (review_wa_delay_days <= 14)))
+lab_settings_tech_name_vis_chk: CHECK ((technician_name_visibility = ANY (ARRAY['full'::text, 'first'::text, 'hidden'::text])))
+
+## pgcrypto
+extension=pgcrypto schema=extensions version=1.3
+extensions.gen_random_bytes(integer) acl={=X/postgres,postgres=X*/postgres,dashboard_user=X/postgres}
+extensions.digest(text,text) acl={=X/postgres,postgres=X*/postgres,dashboard_user=X/postgres}
+extensions.digest(bytea,text) acl={=X/postgres,postgres=X*/postgres,dashboard_user=X/postgres}
+anon_exec_gen_random_bytes=true postgres_exec_digest=true
+
+## statement_approvals (FK hedefi) ACL / RLS
+relrowsecurity=true relacl={postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres,authenticated=r/postgres}
+
+## Varsayılan ayrıcalıklar (public şeması; yeni nesneler)
+postgres f {postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+postgres S {postgres=rwU/postgres,anon=rwU/postgres,authenticated=rwU/postgres,service_role=rwU/postgres}
+supabase_admin S {postgres=rwU/supabase_admin,anon=rwU/supabase_admin,authenticated=rwU/supabase_admin,service_role=rwU/supabase_admin}
+supabase_admin r {postgres=arwdDxtm/supabase_admin,anon=arwdDxtm/supabase_admin,authenticated=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin}
+supabase_admin f {postgres=X/supabase_admin,anon=X/supabase_admin,authenticated=X/supabase_admin,service_role=X/supabase_admin}
+postgres r {postgres=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}
+
+## Yeni nesneler yok mu (beklenen: hepsi false)
+statement_approval_links=false create_statement_link=false _ps_link_resolve=false get_pre_statement_by_link=false approve_pre_statement_by_link=false add_statement_note_by_link=false lab_settings.pre_statement_pdf_format=false
+
+## Sayımlar
+labs_invoice_approval_enabled=1 statement_approvals=0 drafts=11
