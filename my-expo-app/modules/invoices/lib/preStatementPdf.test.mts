@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pendingTotal, scopeToDoctor, itemShares, preStatementLines } from './preStatementPdf.ts';
+import { pendingTotal, scopeToDoctor, itemShares, preStatementLines, pdfCurrencies, pickCurrency } from './preStatementPdf.ts';
+import { invoiceDiscountOf } from './statementDiscount.ts';
 
 const item = (id: string, doctor: string | null, description: string, total: number, gross = total, qty = 1) => ({
   id, description, quantity: qty, unit_price: gross / qty, total, gross_total: gross,
@@ -162,4 +163,30 @@ test('preStatementLines: hasta tam adı hiçbir satırda yok (KVKK)', () => {
     const r = preStatementLines(ps([F1, F2].map(withName)), 'TRY', mode);
     assert.ok(!JSON.stringify(r).includes(FULL), mode);
   }
+});
+
+test('preStatementLines özet indirimi mevcut ekstreyle aynı: satır indirimi + fatura altı indirim', () => {
+  // Kalem: brüt 200 / net 180 (satır indirimi 20); fatura altı indirim 10 → subtotal 170
+  const d = inv('d1', 'TRY', [item('1', 'Dr. Ali', 'Kron', 180, 200)], { subtotal: 170, tax: 0, total: 170 });
+  const l = preStatementLines(ps([d]), 'TRY', 'ozet').lines[0];
+  assert.equal(l.discount, 30);
+  assert.equal(l.discountBase, 200);
+  // Mevcut ekstrenin hesabı (fatura kalemi: total = brüt, net_total = net; discount_amount = fatura altı)
+  const existing = invoiceDiscountOf({ items: [{ total: 200, net_total: 180 }], discount_amount: 10 });
+  assert.deepEqual({ amount: l.discount, gross: l.discountBase }, existing);
+});
+
+test('pdfCurrencies: hekim seçilince yalnız o hekimin kalemlerinin para birimleri', () => {
+  const data = ps([A, B, C]);                       // A,B TRY (Ali, Zeynep, —); C EUR (yalnız Ali)
+  assert.deepEqual(pdfCurrencies(data, null), ['TRY', 'EUR']);
+  assert.deepEqual(pdfCurrencies(data, 'Dr. Ali'), ['TRY', 'EUR']);
+  assert.deepEqual(pdfCurrencies(data, 'Dr. Zeynep'), ['TRY']);
+});
+
+test('pickCurrency: seçim listede kalırsa korunur; değilse tercih, o da yoksa ilki', () => {
+  assert.equal(pickCurrency(['TRY', 'EUR'], 'EUR', 'TRY'), 'EUR');
+  assert.equal(pickCurrency(['TRY'], 'EUR', 'TRY'), 'TRY');
+  assert.equal(pickCurrency(['TRY', 'EUR'], null, 'EUR'), 'EUR');
+  assert.equal(pickCurrency(['TRY'], null, 'EUR'), 'TRY');
+  assert.equal(pickCurrency([], null, undefined), 'TRY');
 });

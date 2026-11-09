@@ -13,7 +13,7 @@ import { useInkUI } from '../../../core/theme/inkScale';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { exportHtmlPdf } from '../../../core/print/exportHtmlPdf';
 import { buildPreStatementSummaryHtml, buildPreStatementDetailHtml, type PreStatementPdfInput } from '../buildPreStatementHtml';
-import { scopeToDoctor, NO_DOCTOR } from '../lib/preStatementPdf';
+import { scopeToDoctor, NO_DOCTOR, pdfCurrencies, pickCurrency } from '../lib/preStatementPdf';
 import type { PreStatement } from '../types';
 import type { LabLetterhead } from '../../receipt/buildReceiptHtml';
 
@@ -27,16 +27,6 @@ export function doctorNamesOf(data: PreStatement | null | undefined): string[] {
 }
 
 const safe = (s: string) => s.replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'Klinik';
-
-/** Taslaklardaki para birimleri: özet sırası, ardından faturalarda geçen diğerleri. */
-function currenciesOf(data: PreStatement): string[] {
-  const out: string[] = [];
-  const add = (c: string | null | undefined) => { const v = c || 'TRY'; if (!out.includes(v)) out.push(v); };
-  const inUse = new Set((data.invoices ?? []).map(i => i.currency || 'TRY'));
-  for (const s of data.summary ?? []) if (inUse.has(s.currency)) add(s.currency);
-  for (const i of data.invoices ?? []) add(i.currency);
-  return out;
-}
 
 export function PreStatementPdfButton({ clinicName, data, lab, defaultFormat, approve, doctors, currency }: {
   clinicName: string;
@@ -54,12 +44,10 @@ export function PreStatementPdfButton({ clinicName, data, lab, defaultFormat, ap
   const [open, setOpen] = useState(false);
   const [format, setFormat] = useState<PdfFormat>(defaultFormat);
   const [doctor, setDoctor] = useState<string | null>(null);
-  const ccyList = useMemo(() => currenciesOf(data), [data]);
+  // Hekim seçiliyse yalnız o hekimin kalemlerinin para birimleri (boş PDF eşleşmesi olmasın)
+  const ccyList = useMemo(() => pdfCurrencies(data, doctor), [data, doctor]);
   const [ccyPick, setCcyPick] = useState<string | null>(null);
-  // Seçim yoksa ya da artık taslaklarda yoksa: çağıranın para birimi, o da yoksa ilki
-  const ccy = (ccyPick && ccyList.includes(ccyPick)) ? ccyPick
-    : (currency && ccyList.includes(currency)) ? currency
-    : (ccyList[0] ?? 'TRY');
+  const ccy = pickCurrency(ccyList, ccyPick, currency);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inFlight = useRef(false);
@@ -81,7 +69,7 @@ export function PreStatementPdfButton({ clinicName, data, lab, defaultFormat, ap
     const html = (async () => {
       const letter = typeof lab === 'function' ? await lab() : lab;
       const input: PreStatementPdfInput = {
-        clinicName, lab: letter, data: scoped, currency: ccy, generatedAt: now.toISOString(),
+        clinicName, lab: letter, data: scoped, currency: ccy,
         // Hekimli PDF'te karekod/onay yok (R7)
         approve: doctor ? undefined : approve,
       };

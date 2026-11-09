@@ -21,7 +21,6 @@ export type PreStatementPdfInput = {
   data: PreStatement;
   /** PDF'in para birimi (ekstre katı tek para birimlidir) */
   currency: string;
-  generatedAt: string;
   /** Yalnız lab'ın ürettiği, bağlantılı PDF'te (R5/R7) */
   approve?: { url: string; qrSvg?: string; expiresAt: string };
 };

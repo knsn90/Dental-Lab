@@ -130,8 +130,10 @@ export function preStatementLines(
       taxRate: rateOf(inv),
     };
     if (mode === 'ozet') {
-      const net = items.reduce((s, it) => s + num(it.total), 0);
-      const disc = r2(net - num(inv.subtotal));
+      // Mevcut ekstreyle aynı (statementDiscount.invoiceDiscountOf): satır indirimi Σ(brüt − net)
+      // + fatura altı indirim (Σnet − subtotal) = Σbrüt − subtotal; dayanak Σbrüt.
+      const gross = items.reduce((s, it) => s + num(it.gross_total), 0);
+      const disc = r2(gross - num(inv.subtotal));
       rows.push({
         ...common,
         id: inv.id,
@@ -141,7 +143,7 @@ export function preStatementLines(
         doctorName: uniq(items.map((it) => it.doctor_name)).join(', ') || null,
         debit: r2(num(inv.total)),
         tax: r2(num(inv.tax)),
-        ...(disc > 0.004 ? { discount: disc, discountBase: r2(net) } : {}),
+        ...(disc > 0.004 ? { discount: disc, discountBase: r2(gross) } : {}),
       });
     } else {
       const shares = itemShares(inv);
@@ -165,4 +167,25 @@ export function preStatementLines(
   const lines = rows.map((l) => { run += Math.round(l.debit * 100); return { ...l, balance: run / 100 }; });
   const closing = r2(opening + num(pendingTotal(invs)[currency]));
   return { lines, opening, closing, hideOpening };
+}
+
+/**
+ * PDF para birimleri: özet sırası, ardından faturalarda geçen diğerleri. Hekim seçiliyse
+ * scopeToDoctor kapsamından — hekim kalemi olmayan bir para birimiyle eşleşemez.
+ */
+export function pdfCurrencies(data: PreStatement, doctor: string | null): string[] {
+  const src = doctor ? scopeToDoctor(data, doctor) : data;
+  const inUse = new Set((src.invoices ?? []).map((i) => i.currency || 'TRY'));
+  const out: string[] = [];
+  const add = (c: string) => { if (inUse.has(c) && !out.includes(c)) out.push(c); };
+  for (const s of data.summary ?? []) add(s.currency);
+  for (const i of src.invoices ?? []) add(i.currency || 'TRY');
+  return out;
+}
+
+/** Seçim listede kalırsa o; değilse tercih (lab: ekranda seçili); o da yoksa ilki. */
+export function pickCurrency(list: string[], picked: string | null, preferred?: string): string {
+  if (picked && list.includes(picked)) return picked;
+  if (preferred && list.includes(preferred)) return preferred;
+  return list[0] ?? 'TRY';
 }
