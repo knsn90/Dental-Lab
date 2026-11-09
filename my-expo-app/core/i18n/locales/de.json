@@ -433,6 +433,44 @@
       "devices": {
         "label": "Tablets",
         "sub": "Kiosk-Geräteverwaltung"
+      },
+      "modules": {
+        "label": "Funktionen",
+        "sub": "Neue Module ein- oder ausschalten"
+      },
+      "scans": {
+        "label": "Scan-Termine",
+        "sub": "Scan-Zeiten, Wegepuffer, Benachrichtigungszeiten"
+      }
+    },
+    "modules": {
+      "eyebrow": "Module",
+      "intro": "Schalten Sie hier die neuen Funktionen ein oder aus, die Sie in Ihrem Labor nutzen möchten. Ein ausgeschaltetes Modul verschwindet aus Menü, Übersicht und Einstellungen; gespeicherte Daten werden nicht gelöscht.",
+      "empty": "Es gibt keine Module, die Sie ändern können.",
+      "on": "An",
+      "off": "Aus",
+      "turnOn": "Modul einschalten",
+      "turnOff": "Modul ausschalten",
+      "turnOnTip": "Das Modul erscheint sofort in Ihrem Labor",
+      "turnOffTip": "Das Modul verschwindet aus Menü und Übersicht; Daten werden nicht gelöscht",
+      "confirmTitle": "{{name}} ausschalten?",
+      "confirmOff": "Ja, ausschalten",
+      "cancel": "Abbrechen",
+      "errForbidden": "Nur der Kontoinhaber oder eine Laborleitung kann diese Einstellung ändern.",
+      "errNotReady": "Diese Einstellung ist auf dem Server noch nicht aktiv. Sie funktioniert, sobald das Update veröffentlicht ist.",
+      "errGeneric": "Speichern fehlgeschlagen. Bitte erneut versuchen.",
+      "offNoteDefault": "Ausgeschaltet verschwindet das Modul aus Menü und Übersicht; gespeicherte Daten werden nicht gelöscht.",
+      "items": {
+        "phone_assistant": {
+          "label": "Telefonanfragen",
+          "desc": "Anrufe, die der KI-Telefonassistent annimmt: Anfrageliste, Rückruf-Verfolgung und Benachrichtigungen.",
+          "offNote": "Solange ausgeschaltet, werden Anrufe des Telefonassistenten nicht in Siman gespeichert und es kommen keine Benachrichtigungen. Frühere Anfragen werden nicht gelöscht."
+        },
+        "scan_appointments": {
+          "label": "Scan-Termine",
+          "desc": "Intraoralscan- und Photogrammetrie-Besuche in Kliniken: Termine, Entscheidungen, Abrechnung und Planbenachrichtigungen.",
+          "offNote": "Solange ausgeschaltet, verschwinden Scan-Termine aus Menü, Übersicht und Einstellungen, und es können keine neuen Termine angelegt werden. Gespeicherte Termine werden nicht gelöscht."
+        }
       }
     }
   },

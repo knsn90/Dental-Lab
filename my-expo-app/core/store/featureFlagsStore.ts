@@ -17,6 +17,8 @@ interface FeatureFlagsState {
   /** Hangi lab için yüklendi (lab değişince yeniden yüklenir). */
   labId: string | null;
   load: (labId: string | null) => Promise<void>;
+  /** Önbelleği atlayıp yeniden çeker (Ayarlar › Özellikler'de modül açılıp kapatılınca menü hemen güncellensin). */
+  refresh: () => Promise<void>;
   reset: () => void;
 }
 
@@ -32,6 +34,13 @@ export const useFeatureFlagsStore = create<FeatureFlagsState>((set, get) => ({
     } catch {
       set({ flags: {}, loaded: true, labId });
     }
+  },
+  refresh: async () => {
+    // Hata olursa mevcut bayraklar korunur (açık modül bir anda kaybolmasın)
+    try {
+      const flags = await myFeatureFlags({ throwOnError: true });
+      set({ flags, loaded: true });
+    } catch { /* mevcut durum kalır */ }
   },
   reset: () => set({ flags: {}, loaded: false, labId: null }),
 }));

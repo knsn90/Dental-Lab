@@ -10133,5 +10133,9 @@
   "Seçilen faturalar önce kapanır, kalanı en eskiden başlar": "فاکتورهای انتخاب‌شده ابتدا تسویه می‌شوند و باقی‌مانده از قدیمی‌ترین شروع می‌شود",
   "Düzenlenen tahsilat alacak olarak kalır; yeni fatura kesilince uygulanır": "دریافتیِ ویرایش‌شده به‌صورت بستانکاری می‌ماند و با صدور فاکتور جدید اعمال می‌شود",
   "Seçilen fatura artık açık değil": "فاکتور انتخاب‌شده دیگر باز نیست",
-  "Seçilebilir açık fatura yok": "فاکتور بازی برای انتخاب وجود ندارد"
+  "Seçilebilir açık fatura yok": "فاکتور بازی برای انتخاب وجود ندارد",
+  "Modül aktif edildi": "ماژول روشن شد",
+  "Modül pasif edildi": "ماژول خاموش شد",
+  "Telefon asistanı": "دستیار تلفنی",
+  "Tarama randevuları": "نوبت‌های اسکن"
 }

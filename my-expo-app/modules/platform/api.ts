@@ -409,12 +409,23 @@ export async function setIntegration(key: string, enabled: boolean, status: stri
 }
 
 // ── App-side config (flag/limit enforcement) ──
-export async function myFeatureFlags(): Promise<Record<string, boolean>> {
+export async function myFeatureFlags(opts?: { throwOnError?: boolean }): Promise<Record<string, boolean>> {
   const { data, error } = await supabase.rpc('my_feature_flags');
-  if (error) return {};
+  if (error) { if (opts?.throwOnError) throw error; return {}; }
   const out: Record<string, boolean> = {};
   (data ?? []).forEach((r: any) => { out[r.key] = r.enabled === true; });
   return out;
+}
+/** Ayarlar › Özellikler: lab yöneticisinin KENDİ lab'ında açıp kapatabildiği modüller (katalogda lab_toggleable). */
+export type LabFeatureSetting = { key: string; label: string | null; description: string | null; default_on: boolean; override: boolean | null; effective: boolean };
+export async function labFeatureSettings(): Promise<LabFeatureSetting[]> {
+  const { data, error } = await supabase.rpc('lab_feature_settings');
+  if (error) throw error;
+  return (data ?? []) as LabFeatureSetting[];
+}
+export async function setLabFeature(key: string, enabled: boolean): Promise<void> {
+  const { error } = await supabase.rpc('lab_set_feature', { p_key: key, p_enabled: enabled });
+  if (error) throw error;
 }
 export async function myLimits(): Promise<{ limits: Record<string, number>; usage: Record<string, number> }> {
   const { data, error } = await supabase.rpc('my_limits');

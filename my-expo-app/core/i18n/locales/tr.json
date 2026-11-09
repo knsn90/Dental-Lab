@@ -433,6 +433,44 @@
       "devices": {
         "label": "Tabletler",
         "sub": "Kiosk cihaz yönetimi"
+      },
+      "modules": {
+        "label": "Özellikler",
+        "sub": "Yeni modülleri aç / kapat"
+      },
+      "scans": {
+        "label": "Tarama Randevuları",
+        "sub": "Tarama saatleri, yol payı, bildirim saatleri"
+      }
+    },
+    "modules": {
+      "eyebrow": "Modüller",
+      "intro": "Laboratuvarınızda kullanmak istediğiniz yeni özellikleri buradan açıp kapatın. Kapalı modül menüden, özetten ve ayarlardan kalkar; kayıtlı veriler silinmez.",
+      "empty": "Değiştirilebilecek modül yok.",
+      "on": "Açık",
+      "off": "Kapalı",
+      "turnOn": "Modülü aç",
+      "turnOff": "Modülü kapat",
+      "turnOnTip": "Modül laboratuvarınızda hemen görünür olur",
+      "turnOffTip": "Modül menüden ve özetten kalkar; veriler silinmez",
+      "confirmTitle": "{{name}} kapatılsın mı?",
+      "confirmOff": "Evet, kapat",
+      "cancel": "Vazgeç",
+      "errForbidden": "Bu ayarı yalnız hesap sahibi ya da lab müdürü değiştirebilir.",
+      "errNotReady": "Bu ayar sunucuda henüz etkin değil. Güncelleme yayınlanınca kullanılabilir.",
+      "errGeneric": "Kaydedilemedi. Lütfen tekrar deneyin.",
+      "offNoteDefault": "Kapatınca modül menüden ve özetten kalkar; kayıtlı veriler silinmez.",
+      "items": {
+        "phone_assistant": {
+          "label": "Telefon talepleri",
+          "desc": "Yapay zekâ telefon asistanının aldığı aramalar: talep listesi, geri arama takibi ve bildirimler.",
+          "offNote": "Kapalıyken telefon asistanının aldığı aramalar Siman'a kaydedilmez ve bildirim gelmez. Eski talepler silinmez."
+        },
+        "scan_appointments": {
+          "label": "Tarama randevuları",
+          "desc": "Klinikte ağız içi tarama ve fotogrametri ziyaretleri: randevu, karar, faturalama ve program bildirimi.",
+          "offNote": "Kapalıyken tarama randevuları menüden, özetten ve ayarlardan kalkar; yeni randevu açılamaz. Kayıtlı randevular silinmez."
+        }
       }
     }
   },

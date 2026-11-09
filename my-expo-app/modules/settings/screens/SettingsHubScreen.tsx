@@ -39,6 +39,7 @@ import { WorkflowStudioScreen } from '../../triage/screens/WorkflowStudioScreen'
 import { EquipmentSection } from '../sections/EquipmentSection';
 import { WorkHoursSection } from '../sections/WorkHoursSection';
 import { ScanSettingsSection } from '../sections/ScanSettingsSection';
+import { FeaturesSection } from '../sections/FeaturesSection';
 import { useFeatureFlagsStore } from '../../../core/store/featureFlagsStore';
 import { MyAccessCodeSection } from '../../kiosk/screens/MyAccessCodeSection';
 import { LabDevicesSection } from '../../kiosk/screens/LabDevicesSection';
@@ -58,7 +59,7 @@ type SectionKey =
   | 'profile' | 'notifications' | 'general'
   | 'users'   | 'checkin'    | 'stations'      | 'integrations' | 'logs'
   | 'permissions' | 'equipment' | 'finance' | 'currency' | 'suppliers' | 'workhours'
-  | 'workflows' | 'mycode' | 'devices' | 'scans';
+  | 'workflows' | 'mycode' | 'devices' | 'scans' | 'modules';
 
 type PanelKind = 'lab' | 'admin' | 'doctor' | 'clinic' | 'station';
 
@@ -74,6 +75,8 @@ interface NavItem {
   trOnly?: boolean;
   /** Yalnız bu lab modülü (platform_feature_flags) açıkken görünür. */
   requiresFeature?: string;
+  /** Yalnız hesap sahibi ya da lab müdürü (sunucu RPC'si de yalnız onlara açık: lab_set_feature). */
+  managerOnly?: boolean;
   /** Sol menüde hangi başlık altında görünsün. Boşsa öncekinin grubuna girer.
       13 madde düz liste hâlindeyken "hangi ayar nerede" taranarak bulunuyordu. */
   group?: string;
@@ -132,7 +135,10 @@ const LAB_ITEMS: NavItem[] = [
   { key: 'finance',      label: 'Finans Ayarları', sub: 'Para birimi, KDV, kur, ödeme hatırlatmaları', requiresPermission: 'manage_settings' },
   { key: 'scans',        label: 'Tarama Randevuları', sub: 'Tarama saatleri, yol payı, bildirim saatleri', requiresPermission: 'manage_settings', requiresFeature: 'scan_appointments' },
   { key: 'integrations', label: 'Entegrasyonlar', sub: 'e-Fatura & POS ayarları',     requiresPermission: 'manage_settings', trOnly: true },
-  // ── Sistem: gözlem ──
+  // ── Sistem: modüller + gözlem ──
+  // Özellikler: yeni modülleri (Telefon talepleri, Tarama randevuları…) lab yöneticisi kendisi açıp kapatır.
+  // requiresFeature YOK — kapalı modülü yeniden açabilmek için sekme her zaman görünür.
+  { key: 'modules',      label: 'Özellikler',     sub: 'Yeni modülleri aç / kapat',   requiresPermission: 'manage_settings', managerOnly: true, group: 'Sistem' },
   // NOT: "WhatsApp Destek" buradan CIKARILDI — ayar degil, gunluk operasyon
   // ekrani. Destek ekraninin hero'sundaki "WhatsApp destek hattı" dugmesinden acilir.
   // Loglar: activity_logs yalnız sahibe açık → ayar yetkili müdüre sekme hiç çizilmez (boş ekran kalkar).
@@ -179,7 +185,7 @@ export function SettingsHubScreen({
   const params = useLocalSearchParams<{ tab?: string }>();
   const VALID_KEYS: SectionKey[] = [
     'profile','notifications','general','mycode','devices','users','checkin','stations',
-    'integrations','logs','permissions','equipment','finance','currency','suppliers','workflows','workhours','scans',
+    'integrations','logs','permissions','equipment','finance','currency','suppliers','workflows','workhours','scans','modules',
   ];
   const initialFromUrl = typeof params.tab === 'string' && (VALID_KEYS as string[]).includes(params.tab)
     ? params.tab as SectionKey
@@ -236,6 +242,7 @@ export function SettingsHubScreen({
   // route'unda panel 'lab' algılanıp fetchForPanel admin'e lab_manager izinlerini
   // yüklediğinden RBAC filtresi lab ayarlarını eliyordu; admin için bypass edilir.
   const isSuperAdmin = useAuthStore(s => s.profile?.user_type) === 'admin';
+  const isLabManager = useAuthStore(s => s.profile?.user_type === 'lab' && (s.profile as any)?.role === 'manager');
   const featureFlags = useFeatureFlagsStore(s => s.flags);
 
   // Filter nav items by RBAC permissions
@@ -248,6 +255,7 @@ export function SettingsHubScreen({
     // Bölge süzgeci izinden ÖNCE: İran labında e-Fatura/POS ayarı hiç listelenmez.
     if (item.trOnly && !trOnly) return false;
     if (item.adminOnly && !isSuperAdmin) return false;
+    if (item.managerOnly && !isSuperAdmin && !isLabManager) return false;
     if (isSuperAdmin) return true;      // admin her ayarı görür
     if (!item.requiresPermission) return true;
     if (!permStore.loaded) return true; // show all while loading
@@ -576,6 +584,7 @@ export function SettingsHubScreen({
               {active === 'finance' && <FinanceSection panelType={panel} accentColor={accent} />}
               {active === 'workhours' && <WorkHoursSection accentColor={accent} />}
               {active === 'scans' && <ScanSettingsSection accentColor={accent} />}
+              {active === 'modules' && <FeaturesSection accentColor={accent} />}
               {active === 'equipment' && <EquipmentSection accentColor={accent} />}
               {active === 'suppliers' && <SuppliersScreen accentColor={accent} />}
               {active === 'currency' && <FinanceSection panelType={panel} accentColor={accent} />}

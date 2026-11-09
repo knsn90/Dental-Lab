@@ -10133,5 +10133,9 @@
   "Seçilen faturalar önce kapanır, kalanı en eskiden başlar": "Selected invoices are closed first; the rest starts from the oldest",
   "Düzenlenen tahsilat alacak olarak kalır; yeni fatura kesilince uygulanır": "The edited receipt stays as credit; it is applied when a new invoice is issued",
   "Seçilen fatura artık açık değil": "The selected invoice is no longer open",
-  "Seçilebilir açık fatura yok": "No open invoices to select"
+  "Seçilebilir açık fatura yok": "No open invoices to select",
+  "Modül aktif edildi": "Module turned on",
+  "Modül pasif edildi": "Module turned off",
+  "Telefon asistanı": "Phone assistant",
+  "Tarama randevuları": "Scan appointments"
 }

@@ -433,6 +433,44 @@
       "devices": {
         "label": "Tablets",
         "sub": "Kiosk device management"
+      },
+      "modules": {
+        "label": "Features",
+        "sub": "Turn new modules on or off"
+      },
+      "scans": {
+        "label": "Scan appointments",
+        "sub": "Scan hours, travel buffer, notification times"
+      }
+    },
+    "modules": {
+      "eyebrow": "Modules",
+      "intro": "Turn the new features you want to use in your lab on or off here. A module that is off disappears from the menu, the overview and settings; saved data is not deleted.",
+      "empty": "There are no modules you can change.",
+      "on": "On",
+      "off": "Off",
+      "turnOn": "Turn module on",
+      "turnOff": "Turn module off",
+      "turnOnTip": "The module appears in your lab right away",
+      "turnOffTip": "The module leaves the menu and the overview; data is not deleted",
+      "confirmTitle": "Turn off {{name}}?",
+      "confirmOff": "Yes, turn off",
+      "cancel": "Cancel",
+      "errForbidden": "Only the account owner or a lab manager can change this setting.",
+      "errNotReady": "This setting is not active on the server yet. It will work once the update is released.",
+      "errGeneric": "Could not save. Please try again.",
+      "offNoteDefault": "When off, the module leaves the menu and the overview; saved data is not deleted.",
+      "items": {
+        "phone_assistant": {
+          "label": "Phone requests",
+          "desc": "Calls taken by the AI phone assistant: request list, callback tracking and notifications.",
+          "offNote": "While off, calls taken by the phone assistant are not saved to Siman and no notifications are sent. Earlier requests are not deleted."
+        },
+        "scan_appointments": {
+          "label": "Scan appointments",
+          "desc": "Intraoral scan and photogrammetry visits at clinics: appointments, decisions, billing and schedule notifications.",
+          "offNote": "While off, scan appointments leave the menu, the overview and settings, and no new appointments can be made. Saved appointments are not deleted."
+        }
       }
     }
   },
