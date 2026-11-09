@@ -15,16 +15,18 @@ import { autoT } from '../../../core/i18n/autoTranslate';
 import { useInkUI } from '../../../core/theme/inkScale';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { createStatementLink } from '../preStatementApi';
-import { buildStatementLinkUrl, preStatementErrorText } from '../lib/preStatement';
+import { buildStatementLinkUrl, linkOrigin, preStatementErrorText } from '../lib/preStatement';
 import { localQrSvg } from '../../orders/lib/qrSvg';
 import type { PreStatement, StatementLink } from '../types';
 import type { LabLetterhead } from '../../receipt/buildReceiptHtml';
 import { PreStatementPdfButton } from './PreStatementPdfButton';
 import { fmtDate } from '../../finance-clinic/components/atoms';
 
-/** Web'de bulunduğu adres; native'de canlı alan adı. */
+/** Web'de bulunduğu adres (yerel/önizlemede canlı alan adı); native'de canlı alan adı. */
 export function statementLinkOrigin(): string {
-  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) return window.location.origin;
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
+    return linkOrigin(window.location.hostname, window.location.origin);
+  }
   return 'https://siman.app';
 }
 

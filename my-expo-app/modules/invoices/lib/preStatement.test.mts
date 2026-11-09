@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   canApprove, canLabWrite, invoiceHasOpenDispute, approvalPayload, undisputedCount,
   disputeLabel, preStatementErrorText, summarizeApproval, invoiceDisputeStatus, approvalBadgeText,
-  buildStatementLinkUrl,
+  buildStatementLinkUrl, linkOrigin,
 } from './preStatement.ts';
 
 const inv = (id: string, statuses: (string | null)[], updated_at = '2026-11-09T10:00:00+00:00') => ({
@@ -128,4 +128,17 @@ test('buildStatementLinkUrl', () => {
   // Sondaki eğik çizgi çift "//" üretmez
   assert.equal(buildStatementLinkUrl(tok, 'http://localhost:8081/'), `http://localhost:8081/s/${tok}`);
   assert.equal(buildStatementLinkUrl(tok, 'https://siman.app///'), `https://siman.app/s/${tok}`);
+});
+
+test('linkOrigin — yerel/önizleme alan adında canlı alan adı', () => {
+  assert.equal(linkOrigin('localhost', 'http://localhost:8081'), 'https://siman.app');
+  assert.equal(linkOrigin('127.0.0.1', 'http://127.0.0.1:8081'), 'https://siman.app');
+  assert.equal(linkOrigin('my-app-git-x.vercel.app', 'https://my-app-git-x.vercel.app'), 'https://siman.app');
+  assert.equal(linkOrigin('', ''), 'https://siman.app');
+});
+
+test('linkOrigin — gerçek alan adı korunur', () => {
+  assert.equal(linkOrigin('siman.app', 'https://siman.app'), 'https://siman.app');
+  assert.equal(linkOrigin('nexadent.net', 'https://nexadent.net'), 'https://nexadent.net');
+  assert.equal(linkOrigin('vercel.app.example.com', 'https://vercel.app.example.com'), 'https://vercel.app.example.com');
 });

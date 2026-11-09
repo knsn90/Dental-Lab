@@ -19,6 +19,7 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { supabase } from '../api/supabase';
+import { maskRoute } from './maskRoute';
 
 type Source = 'boundary' | 'global' | 'rejection' | 'manual';
 
@@ -99,7 +100,7 @@ function allowedToSend(fingerprint: string): boolean {
 function currentRoute(): string | null {
   if (Platform.OS !== 'web') return null;
   try {
-    return truncate((globalThis as any)?.location?.pathname ?? null, LIMITS.route);
+    return truncate(maskRoute((globalThis as any)?.location?.pathname ?? null), LIMITS.route);
   } catch {
     return null;
   }

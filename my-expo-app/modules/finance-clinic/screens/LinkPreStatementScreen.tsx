@@ -5,7 +5,7 @@
  * Oturum yoktur; tüm çağrılar jetonlu SECURITY DEFINER RPC'lerdir (POST — jeton sorgu dizesine
  * düşmez). Gezinme çubuğu yoktur.
  *
- *  - Üstte lab adı, klinik adı, son geçerlilik tarihi.
+ *  - Üstte lab adı, klinik adı, son geçerlilik tarihi; klinik ekranındaki üç rakam.
  *  - Kalem görünümü ve not penceresi klinik ekranıyla (PreStatementScreen) aynı bileşenler.
  *  - "İtirazsız kalemleri onayla" / "Tümünü onayla" — bağlantı bir kez onaylar.
  *  - Onaydan sonra "N fatura kesinleşti" ve sayfa salt okunur.
@@ -19,6 +19,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CheckCircle2, AlertTriangle, XCircle, RefreshCw, Clock, Building2 } from '../../../core/ui/icons';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { useInkUI } from '../../../core/theme/inkScale';
@@ -32,7 +33,8 @@ import type { ApprovalMode, LinkPreStatement, PreStatement } from '../../invoice
 import type { LabLetterhead } from '../../receipt/buildReceiptHtml';
 import { DISPLAY, PAGE_PADDING, fmtDate, PillButton } from '../components/atoms';
 import { StatementNoteSheet } from '../components/StatementNoteSheet';
-import { InvoiceBlock, InfoLine, ActionPill, ConfirmDialog } from './PreStatementScreen';
+import { InvoiceBlock, InfoLine, ActionPill, ConfirmDialog, ResultBanner } from './PreStatementScreen';
+import { KPICardX } from '../../../core/ui/KPICardX';
 import { PreStatementPdfButton } from '../../invoices/components/PreStatementPdfButton';
 
 const money = (n: unknown, cur: string | null | undefined) =>
@@ -52,6 +54,7 @@ export function LinkPreStatementScreen() {
   const { token: rawToken } = useLocalSearchParams<{ token: string }>();
   const token = Array.isArray(rawToken) ? rawToken[0] : rawToken;
   const U = useInkUI();
+  const insets = useSafeAreaInsets();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const pageBg = isDark ? '#0E0E0E' : '#F1F5F9';
   const { width } = useWindowDimensions();
@@ -120,8 +123,8 @@ export function LinkPreStatementScreen() {
       await load(true);
     } catch (e) {
       setApproveError(errText(e));
-      // Bağlantı bu arada kullanılmış/iptal edilmiş olabilir → durum tazelensin.
-      if (isInvalid(e)) void load(true);
+      // Bağlantı bu arada kullanılmış/iptal edilmiş olabilir → diyalog kapanır, durum tazelensin.
+      if (isInvalid(e)) { setConfirmMode(null); void load(true); }
     } finally {
       approveInFlight.current = false;
       setApproving(false);
@@ -175,13 +178,16 @@ export function LinkPreStatementScreen() {
   }
 
   const approvedView = data.approved;
+  const kpiStyle = isDesktop ? undefined : { minWidth: 150, padding: 14 };
+  // Dar ekranda uzun başlık ikona yapışmasın (klinik ekranıyla aynı)
+  const kpiIcon = (name: string) => (isDesktop ? name : undefined);
   const issuedCount = result?.issued ?? data.approval?.issued_count ?? 0;
   const leftCount = result ? result.changed + result.disputed : data.approval?.skipped_count ?? 0;
 
   return shell(
     <ScrollView
       style={{ flex: 1 }}
-      contentContainerStyle={{ padding: PAGE_PADDING, paddingTop: PAGE_PADDING + 8, paddingBottom: 48, alignItems: 'center' }}
+      contentContainerStyle={{ padding: PAGE_PADDING, paddingTop: PAGE_PADDING + 8 + insets.top, paddingBottom: 48, alignItems: 'center' }}
       showsVerticalScrollIndicator={false}
     >
       <View style={{ width: '100%', maxWidth: 1040, gap: 16 }}>
@@ -244,19 +250,22 @@ export function LinkPreStatementScreen() {
           <InfoLine text={autoT('Lab bu ayarı kapattı')} />
         ) : (
           <>
-            {/* Para birimi başına onay bekleyen toplam (genel bakiye bağlantıda gösterilmez) */}
-            {invoices.length > 0 ? (
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-                {(data.summary ?? []).filter(s => (Number(s.pending) || 0) > 0).map(s => (
-                  <View key={s.currency} style={{ flex: 1, minWidth: 150, ...U.cardSolid, padding: 14, gap: 4 }}>
-                    <Text style={{ fontSize: 9.5, fontWeight: '700', letterSpacing: 0.7, textTransform: 'uppercase', color: U.ink[400] }}>
-                      {autoT('Onay bekleyen')}
-                    </Text>
-                    <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.3, color: U.ink[900] }}>{money(s.pending, s.currency)}</Text>
-                  </View>
-                ))}
+            {/* Para birimi başına üç rakam — klinik ekranıyla aynı (null = 'own' kapsam → gizli) */}
+            {(data.summary ?? []).map(sm => (
+              <View key={sm.currency} style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+                {sm.finalized_balance != null ? (
+                  <KPICardX title={autoT('Kesinleşmiş bakiye')} value={money(sm.finalized_balance, sm.currency)} icon={kpiIcon('file-text')} style={kpiStyle} />
+                ) : null}
+                {sm.overdue != null ? (
+                  <KPICardX title={autoT('Vadesi geçen')} value={money(sm.overdue, sm.currency)} icon={kpiIcon('alert-triangle')} style={kpiStyle}
+                    accent={(Number(sm.overdue) || 0) > 0 ? U.chipTones.danger.fg : undefined} />
+                ) : null}
+                <KPICardX title={autoT('Onay bekleyen')} value={money(sm.pending, sm.currency)} icon={kpiIcon('clock')} style={kpiStyle} />
               </View>
-            ) : null}
+            ))}
+
+            {/* Onay hiçbir faturayı kesinleştirmediyse (hepsi atlandı) sonuç burada görünür */}
+            {result && !approvedView ? <ResultBanner r={result} /> : null}
 
             {/* Onay satırı */}
             {data.can_approve && invoices.length > 0 ? (

@@ -65,6 +65,16 @@ export function buildStatementLinkUrl(token: string, origin: string): string {
   return `${String(origin ?? '').replace(/\/+$/, '')}/s/${token}`;
 }
 
+/**
+ * Bağlantının alan adı: yerel (localhost, 127.*) ve önizleme (*.vercel.app) adreslerinde canlı
+ * alan adı; aksi halde bulunulan alan adı korunur (ör. lab alan adı nexadent.net).
+ */
+export function linkOrigin(hostname: string, origin: string): string {
+  const h = String(hostname ?? '').toLowerCase();
+  if (!h || !origin || h === 'localhost' || h.startsWith('127.') || h.endsWith('.vercel.app')) return 'https://siman.app';
+  return origin;
+}
+
 export function summarizeApproval(r: ApprovalResult): { issued: number; changed: number; disputed: number } {
   return {
     issued: r.issued.length,

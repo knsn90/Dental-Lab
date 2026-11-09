@@ -14,7 +14,7 @@ import { signalAppReady } from '../core/debug/appReady';
 // Panel-DIŞI üst-düzey rotalar: bunlar hiçbir panelin alt-yolu DEĞİL (public/oturumsuz).
 // Örn. /kiosk → oturum açılıp '/'ya dönülünce bu yol panel base'ine EKLENMEMELİ
 // (yoksa `/(admin)/kiosk` gibi var olmayan rota → "Unmatched Route").
-const NON_PANEL_TOP = new Set(['kiosk', 'pay', 'doctor-approval', 'checkin', 'c', 'legal', 'auth', 'tv']);
+const NON_PANEL_TOP = new Set(['kiosk', 'pay', 'doctor-approval', 'checkin', 'c', 'legal', 'auth', 'tv', 's']);
 const firstSegOf = (p: string) => p.replace(/^\/+/, '').split('/')[0];
 
 export default function Index() {
