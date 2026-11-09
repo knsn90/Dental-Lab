@@ -1,6 +1,7 @@
 /**
  * PDF antet (letterhead) çekicileri. ClinicStatementScreen'deki özel fetchLab / fetchSelfViewLab ile
- * aynı mantık; o dosya bu bileşenlerin içe aktardığı zincirde olduğundan döngü olmasın diye burada.
+ * aynı mantık (ClinicStatementScreen.fetchLab / fetchSelfViewLab'in AYNASI — ileride tek yerde
+ * birleştirilmeli; çalışan ekrana dokunmamak için şimdilik kopya). O dosya bu bileşenlerin içe aktardığı zincirde olduğundan döngü olmasın diye burada.
  */
 import { supabase } from '../../core/api/supabase';
 import { useActiveLabStore } from '../../core/store/activeLabStore';

@@ -9,6 +9,7 @@
  */
 import { Platform, Dimensions } from 'react-native';
 import { pdfExportMode } from './pdfExportMode';
+import { pageSlices, clampScale, type HeadBox } from './pageSlices';
 
 export { pdfExportMode } from './pdfExportMode';
 
@@ -28,7 +29,7 @@ export async function exportHtmlPdf(
     if (typeof window === 'undefined') throw new Error('PDF_NO_WINDOW');
     // Jest kaybolmasın: ilk await'ten önce aç.
     const w = window.open('', '_blank');
-    if (!w) throw new Error('POPUP_BLOCKED');
+    if (!w) { Promise.resolve(html).catch(() => {}); throw new Error('POPUP_BLOCKED'); }
     try {
       const src = await html;
       const title = fileName.replace(/\.pdf$/i, '');
@@ -123,8 +124,11 @@ async function buildWebPdfFile(html: string, fileName: string): Promise<File> {
     // satır yüksekliği verebiliyor (yedek font metrikleri); asıl çizilen düzen odur.
     let totalH = 0;
     let breaks: number[] = [];
-    let heads: { top: number; bottom: number; tableBottom: number }[] = [];
+    let heads: HeadBox[] = [];
+    let measured = false;
     const measure = (cdoc: Document) => {
+      if (measured) return;
+      measured = true;
       const croot = cdoc.body as HTMLElement;
       const top0 = croot.getBoundingClientRect().top;
       const rel = (el: Element) => (el as HTMLElement).getBoundingClientRect().top - top0;
@@ -141,40 +145,44 @@ async function buildWebPdfFile(html: string, fileName: string): Promise<File> {
     };
 
     const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import('html2canvas'), import('jspdf')]);
-    const canvas = await html2canvas(root, {
-      scale: SCALE, useCORS: true, backgroundColor: '#FFFFFF', logging: false,
-      width: CONTENT_W, windowWidth: CONTENT_W,
-      onclone: (cdoc) => { measure(cdoc); },
-    });
-    if (!totalH) totalH = Math.round(canvas.height / SCALE);
+    const scale = clampScale(CONTENT_W, PAGE_H, SCALE);
+    const base = { useCORS: true, backgroundColor: '#FFFFFF', logging: false, width: CONTENT_W, windowWidth: CONTENT_W } as const;
+    // iOS Safari ~16.7M px tuval sınırı: tüm belge tek tuvale ÇİZİLMEZ. Önce 1px'lik çizimle yalnız ölçülür.
+    const probe = await html2canvas(root, { ...base, scale: 1, height: 1, windowHeight: 1, onclone: (cdoc) => { measure(cdoc); } });
+    probe.width = 0; probe.height = 0;
+    if (!totalH) totalH = Math.ceil(root.scrollHeight);
+    const slices = pageSlices({ breaks, totalH, pageH: PAGE_H, heads });
+    const winH = totalH + 10;
 
     const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
     const mmPerPx = 182 / CONTENT_W;
-    let y0 = 0;
-    let first = true;
-    while (y0 < totalH - 1) {
-      const head = heads.find(h => y0 >= h.bottom - 1 && y0 < h.tableBottom - 1);
-      const headH = head ? head.bottom - head.top : 0;
-      let y1 = Math.min(y0 + PAGE_H - headH, totalH);
-      if (y1 < totalH) {
-        const cand = breaks.filter(b => b > y0 + 60 && b <= y1);
-        if (cand.length) y1 = cand[cand.length - 1];
+    const headCache = new Map<number, HTMLCanvasElement>();
+    try {
+      for (let i = 0; i < slices.length; i++) {
+        const sl = slices[i];
+        const bodyCv = await html2canvas(root, { ...base, scale, y: sl.y, height: sl.h, windowHeight: winH });
+        let headCv: HTMLCanvasElement | null = null;
+        if (sl.head) {
+          headCv = headCache.get(sl.head.top) ?? null;
+          if (!headCv) {
+            headCv = await html2canvas(root, { ...base, scale, y: sl.head.top, height: sl.head.bottom - sl.head.top, windowHeight: winH });
+            headCache.set(sl.head.top, headCv);
+          }
+        }
+        const page = document.createElement('canvas');
+        page.width = bodyCv.width;
+        page.height = bodyCv.height + (headCv ? headCv.height : 0);
+        const ctx = page.getContext('2d')!;
+        ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, page.width, page.height);
+        if (headCv) ctx.drawImage(headCv, 0, 0);
+        ctx.drawImage(bodyCv, 0, headCv ? headCv.height : 0);
+        if (i > 0) pdf.addPage();
+        pdf.addImage(page.toDataURL('image/jpeg', 0.92), 'JPEG', 14, 16, 182, (page.height / scale) * mmPerPx);
+        // Sonraki sayfadan önce belleği bırak (iOS tuval bellek tavanı)
+        bodyCv.width = 0; bodyCv.height = 0; page.width = 0; page.height = 0;
       }
-      const bodyPx = Math.max(1, Math.round((y1 - y0) * SCALE));
-      const headPx = Math.round(headH * SCALE);
-      const slice = document.createElement('canvas');
-      slice.width = canvas.width;
-      slice.height = headPx + bodyPx;
-      const ctx = slice.getContext('2d')!;
-      ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, slice.width, slice.height);
-      if (head && headPx > 0) {
-        ctx.drawImage(canvas, 0, Math.round(head.top * SCALE), canvas.width, headPx, 0, 0, canvas.width, headPx);
-      }
-      ctx.drawImage(canvas, 0, Math.round(y0 * SCALE), canvas.width, bodyPx, 0, headPx, canvas.width, bodyPx);
-      if (!first) pdf.addPage();
-      pdf.addImage(slice.toDataURL('image/jpeg', 0.92), 'JPEG', 14, 16, 182, (slice.height / SCALE) * mmPerPx);
-      first = false;
-      y0 = y1;
+    } finally {
+      headCache.forEach((c) => { c.width = 0; c.height = 0; });
     }
     return new File([pdf.output('blob')], fileName, { type: 'application/pdf' });
   } finally {
