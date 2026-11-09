@@ -167,6 +167,78 @@
 
 ---
 
+### Task 1b: Ön ekstre PDF'i mevcut cari ekstre tasarımında (kullanıcı kararı, 2026-11-09)
+
+**Neden:** Task 1'in kendi tasarımı kabul edilmedi. Kullanıcının sözü: "önceki ekstreyle aynı tasarım aynı detaylarla olmalı". Ön ekstre PDF'i, mevcut cari hesap ekstresi PDF'iyle (`buildStatementHtml` → `buildCariStatementHtml`) birebir aynı tasarımda olacak:
+- Aynı antet, holder kartı, Hesap Özeti, sütunlar (Tarih · Belge No · Açıklama · Borç · KDV · İndirim · Bakiye · B/A), KDV dökümü ve alt bilgi.
+
+**Kullanıcı kararları:**
+- Ortak şablona İSTEĞE BAĞLI alanlar eklenir. Verilmezlerse mevcut ekstre PDF'leri bit-bit aynı kalır.
+- Özet PDF fatura başına bir satırdır (mevcut ekstre gibi). Ayrıntılı PDF aynı tasarımda kalem başına bir satırdır.
+
+**Files:**
+- Modify: `core/util/buildCariStatementHtml.ts`. Yalnız eklemeli opsiyonel alanlar:
+  - `notice?: { title: string; text?: string }` — antetin altında belirgin bant ("Ön ekstre — onay bekliyor").
+  - `approve?: { qrSvg?: string; url: string; caption: string }` — Hesap Özeti yanında karekod kutusu.
+  - Gerekirse `hideOpening?: boolean` — own scope'ta açılış bakiyesi yok.
+- Modify: `modules/invoices/buildStatementHtml.ts`. `opts` alanına `notice?`, `approve?`, `documentTitle?`, `hideOpening?` eklenir; bunlar `buildCariStatementHtml`'e aynen geçirilir. Varsayılan davranış değişmez.
+- Create: `core/util/buildCariStatementHtml.golden.test.mts` ya da uygun bir test (bkz. Step 1).
+- Rewrite: `modules/invoices/buildPreStatementHtml.ts`.
+  - `buildPreStatementSummaryHtml` ve `buildPreStatementDetailHtml` imzaları korunur; `PreStatementPdfInput`'a `currency: string` eklenir.
+  - Gövde, `lib/preStatementPdf.ts::preStatementLines(...)` satırlarıyla `buildStatementHtml`'i çağıran ince bir sarmalayıcıdır.
+  - Task 1'in özel CSS/tablo kodu, `_groupsForTest`/`_workTotalsForTest` ve parity testi silinir.
+  - `i18n` alanı kaldırılır; çeviri `buildStatementHtml` gibi `autoT`/`printLocale` ile yapılır. Bu dosya artık node ile test edilmez, saf mantık lib'dedir.
+- Modify: `modules/invoices/lib/preStatementPdf.ts` + test.
+  - Eklenen: `preStatementLines`.
+  - Kullanılmayan `groupByDoctor`/`workTypeTotals` silinir; kalanlar: `itemShares`, `pendingTotal`, `scopeToDoctor`.
+- Modify: `modules/invoices/components/PreStatementPdfButton.tsx`.
+  - `currency` geçirilir. Birden çok para birimi varsa seçicide para birimi seçilir (lab'da varsayılan ekranda seçili olan).
+  - `i18n` kurulumu kaldırılır.
+- Modify: `auto.{en,de,fa}.json` (yeni metinler; artık kullanılmayan Task 1 anahtarları kalabilir).
+
+**Interfaces — Produces:**
+`preStatementLines(data: PreStatement, currency: string, mode: 'ozet'|'ayrintili'): { lines: StatementLine[]; opening: number; closing: number; hideOpening: boolean }`
+- `StatementLine`, `buildStatementHtml.ts`'ten `import type` ile alınır.
+- Yalnız `currency` faturaları kullanılır; sıralama `issue_date ?? created_at` artan, ardından `invoice_number`.
+- `opening` = `summary[currency].finalized_balance`; `null` ise 0 ve `hideOpening=true`.
+- `closing` = `opening + pendingTotal[currency]`. Satırların `balance` alanı running bakiyedir (opening + kümülatif borç).
+- **Özet satırı** (fatura başına):
+  - `type:'invoice'`, `invoiceNo`, `date`, `status:'taslak'`.
+  - `debit = inv.total`, `tax = inv.tax`, `taxRate` (tek oran varsa).
+  - `orderNo` = kalemlerin benzersiz sipariş no'ları (`, ` ile).
+  - `patientName` = baş harfler (benzersiz, `, ` ile; KVKK — RPC tam ad vermez).
+  - `doctorName`.
+  - `discount`/`discountBase` mevcut ekstredeki indirimli fatura satırı gibi: indirim = Σ kalem net − `inv.subtotal` (> 0 ise).
+- **Ayrıntılı satır** (kalem başına):
+  - Aynı fatura bilgileri.
+  - `description` = kalem açıklaması + ` · ${quantity} × ${unit_price}`.
+  - `orderNo` ve `patientName` = o kalemin.
+  - `debit` = `itemShares(inv)` payı.
+  - `tax` = `inv.tax`'ın kalem netine oranla largest-remainder ile dağıtılmış payı. Kalem payları fatura toplamına ve vergisine kuruşu kuruşuna eşittir.
+  - İndirim alanı ayrıntılıda verilmez; indirim fatura payına zaten işlenmiştir.
+- **Belge:** `documentTitle` = 'Ön Ekstre'; `notice.title` = 'Ön ekstre — onay bekliyor'; `notice.text` = 'Bu belgedeki faturalar henüz kesinleşmedi; onaylandığında kesinleşir.'
+- **Lab'daki hekime özel PDF (R7):** `scopeToDoctor` sonrası `hideOpening=true` (own scope).
+
+- [ ] **Step 1: Bit-bit koruma testi (önce).** `buildCariStatementHtml` ve `buildStatementHtml`'in yeni alanlar verilmeden ürettiği HTML, değişiklikten ÖNCEKİ çıktıyla birebir aynı kalmalı.
+  - Bu iki dosya node'da çalışmıyorsa, testi tsx/esbuild ile (repo'da hangisi varsa) ya da geçici bir betikle çalıştır.
+  - BASE commit'te sabit bir girdiyle (fatura + tahsilat + DZ + indirim + KDV) üretilen HTML'i scratchpad'e kaydet; değişiklikten sonra aynı girdiyle `diff` boş olmalı.
+  - Yöntemi ve sonucu rapora yaz.
+- [ ] **Step 2: `preStatementLines` için failing testler (node).**
+  - Özet: satır sayısı = fatura sayısı; son satırın `balance`'ı = `closing` = `opening + pending`.
+  - Ayrıntılı: satır sayısı = kalem sayısı; kalem `debit` toplamı fatura başına = `inv.total`, `tax` toplamı = `inv.tax`.
+  - `finalized_balance=null` → `opening` 0 ve `hideOpening` true.
+  - Başka para birimi faturası satıra girmez.
+  - Hasta tam adı fixture'da var ama satırlarda yok.
+  - İndirimli fatura özet satırında `discount` > 0.
+- [ ] **Step 3: Uygula.** Şablonlara eklemeli alanlar, `buildStatementHtml` opts geçişi, `buildPreStatementHtml` sarmalayıcıları, buton değişikliği.
+- [ ] **Step 4: Doğrula.**
+  - Step 1 diff'i boş; tam suite yeşil; tsc 0 hata.
+  - Task 2'nin Playwright koşumuyla aynı sahte veriyle (300 kalem dahil) özet, ayrıntılı ve hekime özel PDF üretilip PNG'ye çevrilir.
+  - Aynı görüntüde mevcut ekstre PDF'iyle yan yana karşılaştırma yapılır: başlık, sütunlar, Hesap Özeti aynı.
+  - Lab PDF'inde karekod ve bant görünür; klinik PDF'inde karekod yoktur.
+- [ ] **Step 5: Commit:** `feat(on-ekstre): ön ekstre PDF'i cari ekstre tasarımında`
+
+
 ### Task 2: PDF çıkışı ve PDF düğmeleri (lab + klinik)
 
 **Files:**
