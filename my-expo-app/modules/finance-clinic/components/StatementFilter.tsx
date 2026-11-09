@@ -37,7 +37,7 @@ export function useStatementView(invoices: PreStatementInvoice[]): StatementView
   // Seçili iş türü tazelenen veride kalmadıysa süzme "boş" sayılır.
   const workOk = work && works.includes(work) ? work : null;
   const shown = useMemo(() => filterPreStatement(invoices, { text: deferred, work: workOk }), [invoices, deferred, workOk]);
-  const active = !!(text.trim() || workOk);
+  const active = !!(deferred.trim() || workOk);
   const clear = useCallback(() => { setText(''); setWork(null); }, []);
   // touched[id] = kullanıcının varsayılanı çevirdiği fatura
   // Anahtar süzme durumunu içerir: süzme açılıp kapanınca varsayılana dönülür.

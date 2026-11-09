@@ -432,8 +432,10 @@ function GroupedItems({ inv, date, desktop, onItem, openByDefault }: {
   // flip[key] = varsayılanı çevrilen grup
   const [flip, setFlip] = useState<Record<string, boolean>>({});
   const [more, setMore] = useState<Record<string, number>>({});
-  const isOpen = (key: string, def: boolean) => (flip[key] ? !def : def);
-  const toggle = (key: string) => setFlip(f => ({ ...f, [key]: !f[key] }));
+  // Anahtar varsayılanı içerir: openByDefault değişince (süzme) çevirmeler sıfırlanır.
+  const fk = (key: string) => `${openByDefault ? 1 : 0}:${key}`;
+  const isOpen = (key: string, def: boolean) => (flip[fk(key)] ? !def : def);
+  const toggle = (key: string) => setFlip(f => ({ ...f, [fk(key)]: !f[fk(key)] }));
   const cur = inv.currency;
 
   return (

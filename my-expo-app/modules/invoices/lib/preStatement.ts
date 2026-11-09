@@ -158,7 +158,8 @@ export function approvalBadgeText(
 
 // ─── Çok işli ekstre: süzme ve gruplama (plan 4 Task 7) ─────────────────
 
-const trLower = (v: unknown): string => String(v ?? '').toLocaleLowerCase('tr');
+/** İ, I, i, ı birbirine eşit sayılır (iki taraf da aynı biçime katlanır). */
+const trLower = (v: unknown): string => String(v ?? '').toLocaleLowerCase('tr').replace(/ı/g, 'i').normalize('NFC');
 
 /**
  * Yalnız GÖRÜNÜM süzer: kalemler süzülür, fatura toplamı/updated_at aynen kalır; kalemi kalmayan

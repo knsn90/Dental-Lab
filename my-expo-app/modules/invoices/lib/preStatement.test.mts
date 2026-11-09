@@ -255,3 +255,12 @@ test('groupItemsByDoctorOrder: ara toplamlar kalem toplamına eşit, hekimsiz "�
 test('workTypes: benzersiz ve sıralı', () => {
   assert.deepEqual(workTypes(sample()), ['E-max', 'Gece plağı', 'Zirkonya']);
 });
+
+test('filterPreStatement: I/ı/İ/i harf katlama (büyük I küçük i ile eşleşir)', () => {
+  const x = [mk('k', 10, [['x', 'I.K.', 'SIP-100', 'Dr. A', 10], ['y', 'ı.z.', 'S-5', 'Dr. A', 0]])];
+  assert.equal(filterPreStatement(x, { text: 'sip' })[0].items.length, 1);
+  assert.equal(filterPreStatement(x, { text: 'i.k' })[0].items[0].patient_initials, 'I.K.');
+  assert.equal(filterPreStatement(x, { text: 'ı.k' })[0].items.length, 1);
+  assert.equal(filterPreStatement(x, { text: 'İ.Z' })[0].items[0].patient_initials, 'ı.z.');
+  assert.equal(filterPreStatement(x, { text: 'ı' }).length, 1);
+});
