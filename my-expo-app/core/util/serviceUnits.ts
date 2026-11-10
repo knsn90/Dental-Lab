@@ -65,9 +65,57 @@ export function resolveUnitForWorkType(
 
   const units = new Set<string>();
   for (const p of parts) {
-    const u = unitByServiceName.get(p);
+    const u = unitByServiceName.get(p) ?? unitByBaseName(p, unitByServiceName);
     if (u) units.add(u.toLocaleLowerCase('tr-TR'));
     else return null;              // tanınmayan hizmet → varsayılana düş
   }
   return units.size === 1 ? Array.from(units)[0] : null;
+}
+
+/** Hizmet adının parantez ekleri atılmış çekirdeği:
+ *  "3D baskı Gece Plağı ( Sprint Ray )" → "3D baskı Gece Plağı". Eski siparişler
+ *  ekin eklenmesinden önceki adla kayıtlı; birebir eşleşmeyince birim kayboluyordu
+ *  (gece plağı 3 sipariş × 16 diş = 48 "üye" görünüyordu). */
+export function baseServiceName(name: string): string {
+  return String(name ?? '').replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/** Birebir eşleşme yoksa: çekirdek adı aynı olan hizmetlerin TEK ortak birimi. */
+function unitByBaseName(part: string, unitByServiceName: Map<string, string | null>): string | null {
+  const want = baseServiceName(part).toLocaleLowerCase('tr-TR');
+  if (!want) return null;
+  const found = new Set<string>();
+  for (const [name, unit] of unitByServiceName) {
+    if (unit && baseServiceName(name).toLocaleLowerCase('tr-TR') === want) found.add(unit.toLocaleLowerCase('tr-TR'));
+  }
+  return found.size === 1 ? Array.from(found)[0] : null;
+}
+
+/** Dağılım kartının satır etiketi: bileşenler çekirdek ada indirilir, büyük/küçük
+ *  harf farkı gözetmeden tekilleştirilir (ilk görülen yazım korunur). Böylece
+ *  "X ( Sprint Ray )" ile "X" ve "X, X, X…" aynı satırda toplanır. */
+export function workTypeGroupLabel(workType: string): string {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of String(workType ?? '').split(',')) {
+    const base = baseServiceName(raw);
+    const key = base.toLocaleLowerCase('tr-TR');
+    if (!base || seen.has(key)) continue;
+    seen.add(key);
+    out.push(base);
+  }
+  return out.join(', ');
+}
+
+/** Her satırın payı yalnız KENDİ biriminin toplamına göre (üye üyeye, çene çeneye). */
+export function unitShares(rows: { count: number; unit?: string | null }[]): number[] {
+  const tot = new Map<string, number>();
+  for (const r of rows) {
+    const u = serviceUnitLabel(r.unit);
+    tot.set(u, (tot.get(u) ?? 0) + (Number(r.count) || 0));
+  }
+  return rows.map((r) => {
+    const t = tot.get(serviceUnitLabel(r.unit)) ?? 0;
+    return t > 0 ? (Number(r.count) || 0) / t : 0;
+  });
 }

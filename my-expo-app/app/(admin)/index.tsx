@@ -69,7 +69,7 @@ import { useDashboardCache } from '../../core/store/dashboardCacheStore';
 import { useNewOrderModalStore } from '../../core/store/newOrderModalStore';
 import { ActivityIndicator } from '../../core/ui/teethCompat';
 import { FaceScanQuickAction } from '../../modules/orders/components/FaceScanQuickAction';
-import { serviceUnitQty, serviceUnitLabel, resolveUnitForWorkType } from '../../core/util/serviceUnits';
+import { serviceUnitQty, serviceUnitLabel, resolveUnitForWorkType, workTypeGroupLabel, unitShares } from '../../core/util/serviceUnits';
 import { ScanCalendarCard, useScanCardVisible } from '../../modules/scans/components/ScanCalendarCard';
 import { DashRow, DashHalf, DashCell } from '../../modules/dashboard/components/DashGrid';
 
@@ -1163,10 +1163,14 @@ function WorkTypeCard({ data }: { data: { label: string; count: number; unit?: s
     .flatMap((u, i) => (byUnit.get(u) ?? []).slice(0, i === 0 ? 5 : 2))
     .sort((a, b) => b.count - a.count)
     .slice(0, WORKTYPE_RAMP.length);
-  // `total` YALNIZ şerit oranları için — gösterilmiyor. Farklı birimlerin
-  // toplamı anlamsızdır; oran hesabı için ortak bir payda gerektiği için var.
-  const total = data.reduce((s, d) => s + d.count, 0) || 1;
+  // Yüzde her satırın KENDİ birimi içindeki payıdır (üye üyeye, çene çeneye);
+  // farklı birimleri tek paydada toplamak anlamsızdı (48 üye / 342 "karışık").
+  const shares = unitShares(data);
+  const shareOf = (w: (typeof data)[number]) => shares[data.indexOf(w)] ?? 0;
   const live  = rows.filter(w => w.count > 0);
+  // Şerit: her birim eşit pay alır, birimin içinde satırlar kendi payıyla bölünür.
+  // Tek birim varken bu doğrudan satırın yüzdesidir.
+  const liveUnits = new Set(live.map(w => serviceUnitLabel(w.unit))).size || 1;
   const zeros = rows.filter(w => w.count === 0).map(w => w.label);
 
   // Birim başına kırılım: "47 üye · 4 çene · 2 adet"
@@ -1187,7 +1191,7 @@ function WorkTypeCard({ data }: { data: { label: string; count: number; unit?: s
       // adet bazlı model/tasarım işleri de diş sayılarak toplanmıştı.
       // Artık her birim kendi kırılımında: "47 üye · 4 çene · 2 adet".
       value={unitBreakdown}
-      segments={live.map((w) => ({ color: WORKTYPE_RAMP[rows.indexOf(w)], pct: w.count / total }))}
+      segments={live.map((w) => ({ color: WORKTYPE_RAMP[rows.indexOf(w)], pct: shareOf(w) / liveUnits }))}
       zeros={zeros}
     >
       {live.map(w => (
@@ -1197,7 +1201,7 @@ function WorkTypeCard({ data }: { data: { label: string; count: number; unit?: s
           label={w.label}
           value={w.count}
           // Satırın kendi birimi — "13 üye", "4 çene", "2 adet".
-          meta={`${serviceUnitLabel(w.unit)} · ${Math.round((w.count / total) * 100)}%`}
+          meta={`${serviceUnitLabel(w.unit)} · ${Math.round(shareOf(w) * 100)}%`}
         />
       ))}
     </SpineCard>
@@ -1538,11 +1542,13 @@ export default function AdminDashboard() {
         }
         if (o.work_type && teeth > 0) {
           // work_type diş başına tekrarlı olabilir ("X, X, X…") — tekilleştir
-          const wt = Array.from(new Set(String(o.work_type).split(',').map((s: string) => s.trim()).filter(Boolean))).join(', ');
+          // ve çekirdek ada indir: "X ( Sprint Ray )" ile eski "X" aynı satırda toplanır.
+          const wt = workTypeGroupLabel(String(o.work_type));
+          if (!wt) continue;
           // Miktar İŞİN KENDİ BİRİMİNDE. Eskiden burada koşulsuz `teeth`
           // toplanıyordu; gece plağı gibi ÇENE bazlı işler de diş sayıldığı için
           // tek plak 16 "üye" görünüp listenin başına geçiyordu.
-          const unit = resolveUnitForWorkType(wt, unitByService);
+          const unit = resolveUnitForWorkType(String(o.work_type), unitByService);
           wtMap[wt] = {
             count: (wtMap[wt]?.count ?? 0) + serviceUnitQty(unit, o.tooth_numbers ?? []),
             unit,
