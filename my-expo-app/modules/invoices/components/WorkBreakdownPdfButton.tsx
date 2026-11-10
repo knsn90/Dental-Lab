@@ -14,18 +14,20 @@ import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { exportHtmlPdf } from '../../../core/print/exportHtmlPdf';
 import { buildWorkBreakdownHtml } from '../buildPreStatementHtml';
 import { fetchInvoiceWorkBreakdown } from '../preStatementApi';
-import { fetchLabLetterhead } from '../labLetterheadApi';
+import { fetchLabLetterhead, fetchSelfViewLetterhead } from '../labLetterheadApi';
 import {
   workBreakdownToPreStatement, workBreakdownTitle, isWorkBreakdownStatus, workBreakdownFileName, workBreakdownErrorText,
 } from '../lib/workBreakdown';
 
-export function WorkBreakdownPdfButton({ invoiceId, invoiceNumber, invoiceStatus, clinicName }: {
+export function WorkBreakdownPdfButton({ invoiceId, invoiceNumber, invoiceStatus, clinicName, selfView }: {
   invoiceId: string;
   invoiceNumber: string;
   /** Siman fatura durumu — yalnız kesinleşmişte (kesildi/kısmi ödendi/ödendi) çizilir */
   invoiceStatus: string | null | undefined;
   /** RPC klinik adı vermezse yedek */
   clinicName?: string | null;
+  /** Klinik/hekim paneli: antet lab'ın markasından (get_lab_brand), kendi lab profilinden değil */
+  selfView?: boolean;
 }) {
   const U = useInkUI();
   const [busy, setBusy] = useState(false);
@@ -40,7 +42,7 @@ export function WorkBreakdownPdfButton({ invoiceId, invoiceNumber, invoiceStatus
     setBusy(true); setError(null);
     // await YOK: masaüstünde pencere tıklama jesti içinde açılmalı (exportHtmlPdf bunu ilk iş yapar).
     const html = (async () => {
-      const [rpc, lab] = await Promise.all([fetchInvoiceWorkBreakdown(invoiceId), fetchLabLetterhead()]);
+      const [rpc, lab] = await Promise.all([fetchInvoiceWorkBreakdown(invoiceId), selfView ? fetchSelfViewLetterhead() : fetchLabLetterhead()]);
       const data = workBreakdownToPreStatement(rpc);
       const no = rpc.invoice_number || invoiceNumber;
       return buildWorkBreakdownHtml({

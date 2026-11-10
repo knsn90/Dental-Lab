@@ -73,6 +73,8 @@ import { normalizeDoctorName } from '../../../core/utils/textCase';
 import { NavyBackButtonX } from '../../../core/ui/NavyBackButtonX';
 import { labTodayOf } from '../../../core/metrics/orderDefs';
 import { cachedLabTz } from '../../../core/metrics/useLabToday';
+import { WorkBreakdownPdfButton } from '../components/WorkBreakdownPdfButton';
+import { isWorkBreakdownStatus } from '../lib/workBreakdown';
 
 // ── Patterns tokens (§05 kartlar) ───────────────────────────────────
 const DISPLAY = {
@@ -1350,6 +1352,22 @@ export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
             workBreakdown={readOnly ? undefined : { invoiceNumber: invoice.invoice_number, clinicName: invoice.clinic?.name ?? null }}
           />
         )}
+
+        {/* Klinik/hekim: kesinleşmiş faturanın iş dökümü PDF'i (sunucu get_invoice_work_breakdown yetkiyi denetler). */}
+        {readOnly && isWorkBreakdownStatus(invoice.status) ? (
+          <View style={{ width: '100%', ...U.cardSolid, paddingHorizontal: 18, paddingVertical: 16, gap: 10 }}>
+            <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: U.ink[400] }}>
+              {autoT('İş dökümü')}
+            </Text>
+            <WorkBreakdownPdfButton
+              invoiceId={invoice.id}
+              invoiceNumber={invoice.invoice_number}
+              invoiceStatus={invoice.status}
+              clinicName={invoice.clinic?.name ?? null}
+              selfView
+            />
+          </View>
+        ) : null}
 
         </View>{/* ═══ /SAĞ KOLON ═══ */}
         </View>{/* ═══ /split wrapper ═══ */}
