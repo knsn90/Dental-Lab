@@ -126,9 +126,15 @@ serve(async (req) => {
   // varsayılan tercihleri e-postayı kapalı tuttuğu için filtre uygulanırsa hiç
   // gitmez. YALNIZ güvenilir sistem çağrısında (_notify_account_opened) atlanır.
   const transactional = body.category === 'account' && authz.trusted;
+  // Ön ekstre onay bağlantısı da işlemseldir (kullanıcı kararı 2026-11-11): varsayılan
+  // tercihler e-postayı kapalı tuttuğu için klinik onay isteğini hiç almıyordu. Yalnız
+  // güvenilir sistem çağrısında (request_pre_statement_approval) ve alıcı TÜM bildirimleri
+  // kapatmamışsa (master_enabled=false = bilinçli kapatma) gider.
+  const statementLink = authz.trusted && body.payload?.template === 'pre_statement_link';
   const targets = recipients.filter((p: any) => {
     if (!p.email) return false;
     if (transactional) return true;
+    if (statementLink) return p.notification_prefs?.master_enabled !== false;
     const prefs = p.notification_prefs;
     if (!prefs || prefs.master_enabled === false) return false;
     if (prefs.channels?.email === false) return false;
