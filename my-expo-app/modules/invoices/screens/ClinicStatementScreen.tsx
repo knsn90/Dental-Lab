@@ -53,8 +53,7 @@ import {
   PAYMENT_METHOD_LABELS,
 } from '../types';
 import { supabase } from '../../../core/api/supabase';
-import { useActiveLabStore } from '../../../core/store/activeLabStore';
-import type { LabLetterhead } from '../../receipt/buildReceiptHtml';
+import { fetchLabLetterhead, fetchSelfViewLetterhead } from '../labLetterheadApi';
 import { toast } from '../../../core/ui/Toast';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
@@ -161,47 +160,6 @@ function monthEndOf(ymd: string): string {
 function fmtDateShort(d: string | null | undefined): string {
   if (!d) return '—';
   return new Date(d + 'T00:00:00').toLocaleDateString(localeTag(), { day: '2-digit', month: 'short', year: 'numeric' });
-}
-
-// ── Lab fetch (cached) ───────────────────────────────────────────────
-let _cachedLab: LabLetterhead | null = null;
-async function fetchLab(): Promise<LabLetterhead> {
-  if (_cachedLab) return _cachedLab;
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { id: '', name: 'Lab' };
-  const { data: profile } = await supabase.from('profiles').select('lab_id').eq('id', user.id).single();
-  if (!profile?.lab_id) return { id: '', name: 'Lab' };
-  const { data } = await supabase
-    .from('labs')
-    .select('id, name, address, phone, email, website, tax_number, logo_url')
-    .eq('id', profile.lab_id)
-    .single();
-  _cachedLab = (data ?? { id: profile.lab_id, name: 'Lab' }) as LabLetterhead;
-  return _cachedLab;
-}
-
-// Klinik/hekim (selfView): kullanıcının profiles.lab_id'si YOK — bağlı olduğu lab'ı
-// aktif üyelikten (çoklu-lab) ya da kliniğin lab_id'sinden çöz, markayı get_lab_brand
-// SECURITY DEFINER RPC'sinden al (klinik/hekim labs tablosunu RLS ile okuyamaz).
-async function fetchSelfViewLab(): Promise<LabLetterhead> {
-  let labId: string | null = useActiveLabStore.getState().active?.lab_id ?? null;
-  if (!labId) {
-    const { data } = await supabase.from('clinics').select('lab_id').limit(1).maybeSingle();
-    labId = (data as any)?.lab_id ?? null;
-  }
-  if (!labId) return { id: '', name: 'Lab' };
-  const { data: lab } = await supabase.rpc('get_lab_brand', { p_lab_id: labId }).maybeSingle();
-  const b = lab as any;
-  return {
-    id: labId,
-    name: b?.name ?? 'Lab',
-    logo_url: b?.logo_url ?? null,
-    website: b?.website ?? null,
-    address: b?.address ?? null,
-    phone: b?.phone ?? null,
-    email: b?.email ?? null,
-    tax_number: b?.tax_number ?? null,
-  } as LabLetterhead;
 }
 
 // ── Excel export ─────────────────────────────────────────────────────
@@ -753,7 +711,7 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
   const handlePrint = useCallback(async () => {
     setExporting(true);
     try {
-      const lab = selfView ? await fetchSelfViewLab() : await fetchLab();
+      const lab = selfView ? await fetchSelfViewLetterhead() : await fetchLabLetterhead();
       const html = buildStatementHtml(
         clinicInfo?.clinic_name ?? 'Klinik',
         shown,
@@ -793,7 +751,7 @@ export function ClinicStatementScreen({ clinicId: clinicIdProp, selfView = false
   /** Tahsilat makbuzu (PDF) — ekstre yazdırmayla aynı yol. */
   const printVoucher = useCallback(async (r: ClinicReceipt) => {
     try {
-      const lab = selfView ? await fetchSelfViewLab() : await fetchLab();
+      const lab = selfView ? await fetchSelfViewLetterhead() : await fetchLabLetterhead();
       const html = buildReceiptVoucherHtml(clinicInfo?.clinic_name ?? 'Klinik', {
         id: r.id, receipt_date: r.receipt_date, payment_method: r.payment_method,
         reference_no: r.reference_no, notes: r.notes,
