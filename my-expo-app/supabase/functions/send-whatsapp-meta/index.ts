@@ -1,5 +1,5 @@
 // send-whatsapp-meta — Meta WhatsApp Cloud API ile MÜŞTERİYE (klinik/hekim)
-// şablonlu bildirim gönderir. Kategoriler: new_order, delivery, approval, payment, account.
+// şablonlu bildirim gönderir. Kategoriler: new_order, delivery, approval, payment, account, pre_statement.
 //
 // Kaynak: notifications AFTER INSERT trigger (trg_whatsapp_meta_notify) VEYA
 // istersen doğrudan invoke. Her kategorinin Meta'da ONAYLI bir şablonu olmalı.
@@ -68,6 +68,17 @@ const TEMPLATES: Record<string, { name: string; lang: string; params: (p: any) =
     name: 'odeme_hatirlatma', lang: 'tr',
     params: (p) => [
       { name: 'detay', text: clean(p.__body || p.body || 'Hesabınızda açık bakiye bulunuyor.') },
+    ],
+  },
+  // Ön ekstre onay bağlantısı → kliniğin alıcısına. Kaynak: _ps_request_core (net.http_post, __lab_id).
+  // {{baglanti}} jetonlu bağlantıdır: audit satırına KARARTILMIŞ yazılır (auditPayload).
+  pre_statement: {
+    name: 'on_ekstre_onay', lang: 'tr',
+    params: (p) => [
+      { name: 'laboratuvar', text: clean(p.laboratuvar) },
+      { name: 'donem',       text: clean(p.donem) },
+      { name: 'tutar',       text: clean(p.tutar) },
+      { name: 'baglanti',    text: clean(p.baglanti) },
     ],
   },
   // Hesap açıldı (lab onayı sonrası) → giriş linkiyle. Kaynak: _notify_account_opened.
@@ -179,6 +190,10 @@ Deno.serve(async (req) => {
   if (userIds.length === 0) return json({ ok: true, sent: 0 });
 
   const extra = body?.payload ?? {};
+  // Audit'e (whatsapp_notifications.payload) jetonlu bağlantı düz yazılmaz.
+  const auditPayload = category === 'pre_statement'
+    ? { ...extra, baglanti: String(extra?.baglanti ?? '').replace(/\/s\/[^/?#\s]+/, '/s/[redacted]') }
+    : (extra ?? {});
   const resourceType = String(body?.resource_type ?? '');
   const resourceId   = body?.resource_id ?? null;
 
@@ -294,7 +309,10 @@ Deno.serve(async (req) => {
     // Opt-out
     // Admin nüshası "kesinlikle" gitsin (kullanıcı kararı) → kişisel WhatsApp kapatma
     // tercihi bu kopyayı durdurmaz; müşteri mesajlarında opt-out aynen geçerli.
-    const optedOut = !adminCopy && pr?.notification_prefs?.categories?.[category]?.whatsapp === false;
+    // Ön ekstre bağlantısı işlemseldir (e-postayla aynı kural): yalnız TÜM bildirimler kapalıysa gitmez.
+    const optedOut = category === 'pre_statement'
+      ? pr?.notification_prefs?.master_enabled === false
+      : (!adminCopy && pr?.notification_prefs?.categories?.[category]?.whatsapp === false);
     if (optedOut) { results.push({ id: pr.id, skip: 'opted-out' }); continue; }
 
     // HATTI SAHİPLEN: önce 'pending' audit satırı; aynı anahtar başka bir paralel
@@ -306,7 +324,7 @@ Deno.serve(async (req) => {
         user_id: pr.id, phone_to: phone, category,
         template: useTpl.name, provider: 'meta', status: 'pending',
         work_order_id: ((resourceType === 'work_order' || resourceType === 'review_followup') ? resourceId : null),
-        payload: extra ?? {},
+        payload: auditPayload,
         dedup_key: dedupKeyFor(phone),
       }).select('id').maybeSingle();
       if (claimErr && (claimErr as any).code === '23505') { results.push({ id: pr.id, skip: 'dup-same-number' }); continue; }
@@ -352,7 +370,7 @@ Deno.serve(async (req) => {
             user_id: pr.id, phone_to: phone, category,
             template: useTpl.name, provider: 'meta',
             work_order_id: ((resourceType === 'work_order' || resourceType === 'review_followup') ? resourceId : null),
-            payload: extra ?? {}, ...patch,
+            payload: auditPayload, ...patch,
           });
         }
       } catch { /* audit opsiyonel */ }

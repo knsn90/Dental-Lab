@@ -149,7 +149,7 @@ test('sendStatusText: kanal durumu → okunur metin', () => {
   assert.equal(sendStatusText('skipped_probe', null), 'Deneme modu: gönderilmedi');
   assert.equal(sendStatusText('skipped', 'NO_CONTACT'), 'Alıcının iletişim bilgisi yok');
   assert.equal(sendStatusText('skipped', 'EMAIL_OPTOUT'), 'Alıcının e-posta bildirimleri kapalı');
-  assert.equal(sendStatusText('unavailable', 'WA_TEMPLATE'), 'WhatsApp şablonu onay bekliyor');
+  assert.equal(sendStatusText('unavailable', 'WA_TEMPLATE'), 'Laboratuvarın WhatsApp hattı bağlı değil');
   assert.equal(sendStatusText('failed', 'NO_SECRET'), 'Gönderim ayarı eksik');
   assert.equal(sendStatusText('failed', 'HTTP_ERR'), 'Gönderilemedi');
   // bilinmeyen durum / hata: güvenli varsayılan, ham kod sızmaz
@@ -174,7 +174,7 @@ test('channelDisabledReason: alıcı bilgisi yoksa kanal pasif ve nedeni yazıl�
   assert.equal(channelDisabledReason('email', { ...ok, has_email: false }), 'Alıcının e-posta adresi yok');
   assert.equal(channelDisabledReason('email', { ...ok, email_optout: true }), 'Alıcının e-posta bildirimleri kapalı');
   assert.equal(channelDisabledReason('whatsapp', { ...ok, has_phone: false }), 'Alıcının telefon numarası yok');
-  assert.equal(channelDisabledReason('whatsapp', { ...ok, whatsapp_available: false }), 'WhatsApp şablonu onay bekliyor');
+  assert.equal(channelDisabledReason('whatsapp', { ...ok, whatsapp_available: false }), 'Laboratuvarın WhatsApp hattı bağlı değil');
   // telefon yoksa önce o söylenir
   assert.equal(channelDisabledReason('whatsapp', { ...ok, has_phone: false, whatsapp_available: false }), 'Alıcının telefon numarası yok');
   const none = { ...ok, has_recipient: false };
@@ -297,7 +297,7 @@ test('statementLinkStatusLine: başarısız / tercih kapalı gönderim mevcut me
   assert.deepEqual(statementLinkStatusLine({ active_link: null, last_send: send('skipped', 'EMAIL_OPTOUT') }, fd, tr),
     { text: 'Son gönderim: 01.12 · E-posta: Alıcının e-posta bildirimleri kapalı', tone: 'warning' });
   assert.deepEqual(statementLinkStatusLine({ active_link: null, last_send: send('unavailable', 'WA_TEMPLATE', 'whatsapp') }, fd, tr),
-    { text: 'Son gönderim: 01.12 · WhatsApp: WhatsApp şablonu onay bekliyor', tone: 'warning' });
+    { text: 'Son gönderim: 01.12 · WhatsApp: Laboratuvarın WhatsApp hattı bağlı değil', tone: 'warning' });
 });
 
 test('statementLinkStatusLine: ay sonu gönderimi ve kullanılmış bağlantı', () => {

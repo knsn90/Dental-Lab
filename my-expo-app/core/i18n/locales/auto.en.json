@@ -84,6 +84,8 @@
   "Alıcının e-posta bildirimleri kapalı": "The recipient's email notifications are off",
   "Bu kliniğe az önce onay isteği gönderildi. Lütfen birkaç dakika sonra tekrar deneyin.": "An approval request was just sent to this clinic. Please try again in a few minutes.",
   "WhatsApp şablonu onay bekliyor": "WhatsApp template awaiting approval",
+  "Laboratuvarın WhatsApp hattı bağlı değil": "The lab's WhatsApp line is not connected",
+  "İş dökümü": "Work breakdown",
   "Gönderim ayarı eksik": "Sending is not configured",
   "Gönderilmedi": "Not sent",
   "Kanal kullanılamıyor": "Channel unavailable",

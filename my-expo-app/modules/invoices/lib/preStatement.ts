@@ -70,7 +70,7 @@ export function preStatementErrorText(msg: string): string | null {
 const SEND_ERROR_TEXTS: Record<string, string> = {
   NO_CONTACT: 'Alıcının iletişim bilgisi yok',
   EMAIL_OPTOUT: 'Alıcının e-posta bildirimleri kapalı',
-  WA_TEMPLATE: 'WhatsApp şablonu onay bekliyor',
+  WA_TEMPLATE: 'Laboratuvarın WhatsApp hattı bağlı değil',
   NO_SECRET: 'Gönderim ayarı eksik',
   HTTP_ERR: 'Gönderilemedi',
 };
@@ -155,7 +155,7 @@ export function channelDisabledReason(
     return null;
   }
   if (!c.has_phone) return 'Alıcının telefon numarası yok';
-  if (!c.whatsapp_available) return 'WhatsApp şablonu onay bekliyor';
+  if (!c.whatsapp_available) return 'Laboratuvarın WhatsApp hattı bağlı değil';
   return null;
 }
 
