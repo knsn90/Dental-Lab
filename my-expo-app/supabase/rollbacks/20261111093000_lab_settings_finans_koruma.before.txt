@@ -1,0 +1,2 @@
+lab_settings tetikleyicileri (2026-11-11, uygulamadan önce): yalnız trg_lab_settings_updated_at (BEFORE UPDATE → lab_settings_updated_at()).
+_lab_settings_finance_guard fonksiyonu ve trg_lab_settings_finance_guard YOK.
