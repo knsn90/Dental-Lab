@@ -45,3 +45,14 @@ test('fetchFromIso 23 ay geriden ayın 1i', () => {
   assert.equal(d.getDate(), 1);
   assert.equal(d.getHours(), 0);
 });
+
+test('monthLabel her zaman miladi takvim (Farsça Celali yerel ayarında bile)', () => {
+  const fa = monthLabel('2026-11', 'fa-IR-u-ca-persian', 'long');
+  assert.ok(!fa.includes('آبان'), fa);
+  assert.ok(fa.includes('نوامبر'), fa);
+  const faShort = monthLabel('2026-11', 'fa-IR-u-ca-persian', 'short');
+  assert.ok(faShort.includes('نوامبر'), faShort);
+  assert.ok(monthLabel('2026-11', 'fa-IR-u-ca-persian-nu-latn', 'long').includes('نوامبر'));
+  // uzantısız yerel ayar da miladi kalır, dil korunur
+  assert.match(monthLabel('2026-11', 'tr-TR', 'long'), /Kasım/);
+});

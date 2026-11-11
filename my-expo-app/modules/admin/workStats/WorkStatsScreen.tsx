@@ -227,7 +227,9 @@ export function WorkStatsScreen() {
 
   // ── Gövde ──
   let body: React.ReactNode;
-  if (!shownStats && data.status === 'error') {
+  // Hata: önceki ayın sonucu yeni ay etiketinin altında GÖSTERİLMEZ (yanlış okunurdu);
+  // yalnız hata metni + yanında "Yeniden dene".
+  if (data.status === 'error') {
     body = (
       <View style={{ ...U.cardSolid, alignItems: 'center', gap: 12 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -248,14 +250,6 @@ export function WorkStatsScreen() {
   } else {
     body = (
       <View style={{ gap: CARD_GAP, opacity: refreshing ? 0.55 : 1 }}>
-        {data.status === 'error' ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <Text accessibilityRole="alert" style={{ fontSize: 12.5, color: U.chipTones.danger.fg, fontWeight: '600' }}>
-              {autoT(data.error ?? 'İstatistik yüklenemedi')}
-            </Text>
-            <RetryBtn onPress={data.reload} />
-          </View>
-        ) : null}
         {st.tab === 'overview'
           ? <OverviewPlaceholder stats={shownStats} />
           : <HeatPlaceholder />}

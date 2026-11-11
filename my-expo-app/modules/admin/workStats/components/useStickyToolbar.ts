@@ -68,6 +68,7 @@ export function useStickyToolbar(enabled: boolean, top = 0) {
       ro?.disconnect();
       bar.style.transform = '';
       stuckRef.current = false;
+      setStuck(false);
     };
   }, [enabled, top]);
 

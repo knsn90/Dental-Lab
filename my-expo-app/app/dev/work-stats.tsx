@@ -1,7 +1,7 @@
 // app/dev/work-stats.tsx — İş İstatistikleri demo (yalnız __DEV__; ağ çağrısı YOK).
 // Canlı veri salt okunur ve oturumsuz tarayıcıda admin rotası açılmaz; ekran burada
 // sahte veriyle denenir. Parametreler: ?empty=1 (hiç sipariş yok) · ?err=1 (yükleme
-// hatası) · ?lang=en|de|fa · ?dark=1. Bu sayfa açıkken work_orders / doctors / clinics /
+// hatası) · ?err=switch (ilk pencere gelir, ay değişince okuma hata verir) · ?lang=en|de|fa · ?dark=1. Bu sayfa açıkken work_orders / doctors / clinics /
 // lab_services okumaları sahte satırlarla yanıtlanır; oturum profiline sahte lab_id yazılır.
 import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
@@ -56,7 +56,7 @@ function buildOrders() {
 }
 
 /** PostgREST sorgu kurucusunun yeterli taklidi: zincirlenir, await edilince {data,error}. */
-function fakeBuilder(table: string, opts: { empty: boolean; err: boolean }) {
+function fakeBuilder(table: string, opts: { empty: boolean; err: boolean; errSwitch: boolean; firstGte: { v?: string } }) {
   const st: { gte?: string; from?: number; to?: number; limit?: number; asc: boolean; cols: string } = { asc: true, cols: '' };
   const rows = (): any[] => {
     if (table === 'work_orders') {
@@ -73,6 +73,10 @@ function fakeBuilder(table: string, opts: { empty: boolean; err: boolean }) {
   };
   const run = () => {
     if (opts.err) return { data: null, error: { message: 'demo' } };
+    if (opts.errSwitch && table === 'work_orders' && st.gte) {
+      if (!opts.firstGte.v) opts.firstGte.v = st.gte;
+      else if (st.gte !== opts.firstGte.v) return { data: null, error: { message: 'demo' } };
+    }
     let r = rows();
     if (st.from !== undefined && st.to !== undefined) r = r.slice(st.from, st.to + 1);
     return { data: r, error: null };
@@ -96,7 +100,7 @@ export default function WorkStatsDemo() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const opts = { empty: empty === '1', err: err === '1' };
+    const opts = { empty: empty === '1', err: err === '1', errSwitch: err === 'switch', firstGte: {} as { v?: string } };
     const origFrom = (supabase as any).from;
     (supabase as any).from = (t: string) => (FAKE.has(t) ? fakeBuilder(t, opts) : origFrom.call(supabase, t));
     const prevProfile = useAuthStore.getState().profile;
