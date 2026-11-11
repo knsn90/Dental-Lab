@@ -10214,5 +10214,11 @@
   "azalış": "decrease",
   "kıyas yok": "no comparison",
   "İş tipleri": "Work types",
-  "bu ay 0": "0 this month"
+  "bu ay 0": "0 this month",
+  "Her satır kendi en büyük değerine göre renklenir": "Each row is shaded against its own highest value",
+  "Bu dönemde sipariş yok": "No orders in this period",
+  "Siparişleri göster": "Show orders",
+  "Az": "Less",
+  "Çok": "More",
+  "Bu hücrede sipariş yok": "No orders in this cell"
 }

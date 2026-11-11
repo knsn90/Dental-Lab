@@ -10214,5 +10214,11 @@
   "azalış": "Rückgang",
   "kıyas yok": "kein Vergleich",
   "İş tipleri": "Arbeitsarten",
-  "bu ay 0": "0 diesen Monat"
+  "bu ay 0": "0 diesen Monat",
+  "Her satır kendi en büyük değerine göre renklenir": "Jede Zeile wird an ihrem eigenen Höchstwert gemessen",
+  "Bu dönemde sipariş yok": "Keine Aufträge in diesem Zeitraum",
+  "Siparişleri göster": "Aufträge anzeigen",
+  "Az": "Weniger",
+  "Çok": "Mehr",
+  "Bu hücrede sipariş yok": "Keine Aufträge in dieser Zelle"
 }

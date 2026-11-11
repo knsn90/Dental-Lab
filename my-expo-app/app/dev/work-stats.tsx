@@ -1,11 +1,11 @@
 // app/dev/work-stats.tsx — İş İstatistikleri demo (yalnız __DEV__; ağ çağrısı YOK).
 // Canlı veri salt okunur ve oturumsuz tarayıcıda admin rotası açılmaz; ekran burada
 // sahte veriyle denenir. Parametreler: ?empty=1 (hiç sipariş yok) · ?err=1 (yükleme
-// hatası) · ?err=switch (ilk pencere gelir, ay değişince okuma hata verir) · ?lang=en|de|fa · ?dark=1 · ?ly=1 (geçen yıl Haz–Kas 2025 siparişleri de gelir; kayıt dönemi 2025'te başlar). Bu sayfa açıkken work_orders / doctors / clinics /
+// hatası) · ?err=switch (ilk pencere gelir, ay değişince okuma hata verir) · ?lang=en|de|fa · ?dark=1 · ?nav=log (router.push gitmez; hedef `window.__wsNav`'a yazılır — oturumsuz demoda admin rotası /login'e düşerdi) · ?ly=1 (geçen yıl Haz–Kas 2025 siparişleri de gelir; kayıt dönemi 2025'te başlar). Bu sayfa açıkken work_orders / doctors / clinics /
 // lab_services okumaları sahte satırlarla yanıtlanır; oturum profiline sahte lab_id yazılır.
 import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, router } from 'expo-router';
 import i18n from 'i18next';
 import { supabase } from '../../core/api/supabase';
 import { useAuthStore } from '../../core/store/authStore';
@@ -98,7 +98,7 @@ function fakeBuilder(table: string, opts: { empty: boolean; err: boolean; errSwi
 const FAKE = new Set(['work_orders', 'doctors', 'clinics', 'lab_services']);
 
 export default function WorkStatsDemo() {
-  const { empty, err, lang, dark, ly } = useLocalSearchParams<{ empty?: string; err?: string; lang?: string; dark?: string; ly?: string }>();
+  const { empty, err, lang, dark, ly, nav } = useLocalSearchParams<{ empty?: string; err?: string; lang?: string; dark?: string; ly?: string; nav?: string }>();
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -111,14 +111,23 @@ export default function WorkStatsDemo() {
     if (lang && lang !== prevLang) i18n.changeLanguage(lang);
     const prevDark = useThemeModeStore.getState().resolvedDark;
     if (dark === '1') useThemeModeStore.setState({ resolvedDark: true } as any);
+    const origPush = router.push;
+    if (nav === 'log') {
+      (router as any).push = (href: any) => {
+        const w = window as any;
+        (w.__wsNav ||= []).push(String(href));
+        console.log('[work-stats demo] router.push', href);
+      };
+    }
     setReady(true);
     return () => {
+      if (nav === 'log') (router as any).push = origPush;
       (supabase as any).from = origFrom;
       useAuthStore.setState({ profile: prevProfile });
       if (lang && lang !== prevLang) i18n.changeLanguage(prevLang);
       if (dark === '1') useThemeModeStore.setState({ resolvedDark: prevDark } as any);
     };
-  }, [empty, err, lang, dark, ly]);
+  }, [empty, err, lang, dark, ly, nav]);
 
   if (!ready) return <View />;
   return <WorkStatsScreen />;

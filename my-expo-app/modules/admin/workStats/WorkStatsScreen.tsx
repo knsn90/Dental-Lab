@@ -2,8 +2,8 @@
  * İş İstatistikleri — Admin Özet "Üye Trendi" kartından açılan sayfa (spec §7).
  * Bu dosya: iskelet, yapışkan araç çubuğu, klinik seçici, ay listesi, sekmeler,
  * yükleniyor/hata/boş durumları ve dışa aktarma bağlantısı. Genel bakış
- * (trend, kutular, listeler) `Overview` ile çizilir; ısı haritası Görev 7'de
- * bağlanır — aşağıda "YER TUTUCU" ile işaretli.
+ * (trend, kutular, listeler) `Overview` ile, ısı haritası `HeatmapTab` ile
+ * çizilir; hücreye basınca `CellOrdersModal` o hücrenin siparişlerini listeler.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, Modal, ScrollView, Platform, StyleSheet, useWindowDimensions } from 'react-native';
@@ -17,18 +17,19 @@ import { MOBILE_PANEL_THEMES } from '../../../core/theme/mobileDesignTokens';
 import { HERO_NAVY } from '../../../core/ui/HeroGlow';
 import { EmptyStateX } from '../../../core/ui/EmptyStateX';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
-import { Check, X, LayoutGrid } from '../../../core/ui/icons';
+import { Check, X } from '../../../core/ui/icons';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { printLocale } from '../../../core/i18n/printLocale';
 import { safeBack } from '../../../core/util/safeBack';
+import { router } from 'expo-router';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { fetchLabLetterhead } from '../../invoices/labLetterheadApi';
 import {
   monthLabel, shiftMonth, windowMonths, compareMonth, type MonthKey,
 } from './months';
 import {
-  aggregateWorkStats, heatmapRows, countOrders, UNKNOWN_CLINIC_ID, UNKNOWN_CLINIC_NAME,
-  type AggInput, type WorkStats,
+  aggregateWorkStats, heatmapRows, ordersInCell, countOrders, UNKNOWN_CLINIC_ID, UNKNOWN_CLINIC_NAME,
+  type AggInput, type WorkStats, type HeatRow, type CountedOrder,
 } from './aggregate';
 import { useWorkStatsData } from './useWorkStatsData';
 import { useWorkStatsState } from './useWorkStatsState';
@@ -44,10 +45,13 @@ import { TrendChart } from './components/TrendChart';
 import { MonthKpis } from './components/MonthKpis';
 import { WorkTypeList } from './components/WorkTypeList';
 import { ClinicList } from './components/ClinicList';
+import { HeatmapTab } from './components/HeatmapTab';
+import { CellOrdersModal } from './components/CellOrdersModal';
 import { rankWorkTypes } from './overview';
 import type { WorkStatsState } from './useWorkStatsState';
 
 const web = Platform.OS === 'web';
+const EMPTY_NAMES = new Map<string, string>();
 
 function exportErrorText(e: any): string {
   const m = String(e?.message ?? e ?? '');
@@ -114,6 +118,27 @@ export function WorkStatsScreen() {
   if (stats) lastStats.current = stats;
   const shownStats = stats ?? lastStats.current;
   const refreshing = !stats && !!lastStats.current && data.status === 'loading';
+
+  // ── Isı haritası: yalnız sekme açıkken hesaplanır; ay değişirken son sonuç soluk kalır ──
+  const heatNow: { rows: HeatRow[]; months: MonthKey[] } | null = useMemo(() => {
+    if (!input || st.tab !== 'heat') return null;
+    return { rows: heatmapRows(input, st.heatAxis), months: windowMonths(input.selected, 12) };
+  }, [input, st.tab, st.heatAxis]);
+  const lastHeat = useRef<{ rows: HeatRow[]; months: MonthKey[] } | null>(null);
+  if (heatNow) lastHeat.current = heatNow;
+  const heat = heatNow ?? (st.tab === 'heat' ? lastHeat.current : null);
+
+  // Hücre siparişleri penceresi: açıldığı andaki liste sabitlenir.
+  const [cell, setCell] = useState<{ title: string; orders: CountedOrder[] } | null>(null);
+  const [cellOpen, setCellOpen] = useState(false);
+  const onHeatCell = useCallback((month: MonthKey, key: string) => {
+    if (!input) return;
+    const row = heat?.rows.find((r) => r.key === key);
+    const name = row ? autoT(row.label) : key;
+    setCell({ title: `${name} · ${monthLabel(month, locale, 'long')}`, orders: ordersInCell(input, month, st.heatAxis, key)
+      .sort((a, b) => a.orderNumber.localeCompare(b.orderNumber, 'tr', { numeric: true })) });
+    setCellOpen(true);
+  }, [input, heat, locale, st.heatAxis]);
 
   // ── Klinik seçici seçenekleri: penceredeki klinikler, çoktan aza ──
   const clinicOptions: ClinicOption[] = useMemo(() => {
@@ -267,7 +292,17 @@ export function WorkStatsScreen() {
       <View style={{ gap: CARD_GAP, opacity: refreshing ? 0.55 : 1 }}>
         {st.tab === 'overview'
           ? <Overview stats={shownStats} st={st} chips={chips} locale={locale} />
-          : <HeatPlaceholder />}
+          : heat ? (
+            <HeatmapTab
+              rows={heat.rows}
+              months={heat.months}
+              monthLabels={heat.months.map((m) => monthLabel(m, locale, 'short'))}
+              monthLongLabels={heat.months.map((m) => monthLabel(m, locale, 'long'))}
+              axis={st.heatAxis}
+              onAxis={st.setHeatAxis}
+              onCell={onHeatCell}
+            />
+          ) : null}
       </View>
     );
   }
@@ -355,6 +390,15 @@ export function WorkStatsScreen() {
         value={st.clinicId}
         onPick={st.setClinicId}
         onClose={() => setPickerOpen(false)}
+      />
+
+      <CellOrdersModal
+        visible={cellOpen}
+        title={cell?.title ?? ''}
+        orders={cell?.orders ?? []}
+        clinicName={refs?.clinicName ?? EMPTY_NAMES}
+        onClose={() => setCellOpen(false)}
+        onOpenOrder={(id) => { setCellOpen(false); router.push(`/(admin)/order/${id}` as any); }}
       />
 
       <MonthListModal
@@ -504,17 +548,6 @@ function Overview({ stats, st, chips, locale }: {
           )}
         </>
       )}
-    </View>
-  );
-}
-
-/* YER TUTUCU — Görev 7 (HeatmapTab + CellOrdersModal) buraya bağlanır. */
-function HeatPlaceholder() {
-  const U = useInkUI();
-  return (
-    <View testID="ws-heat-placeholder" style={{ ...U.cardSolid, alignItems: 'center', paddingVertical: 48, gap: 10, borderStyle: 'dashed', borderWidth: 1, borderColor: U.ink[300] }}>
-      <LayoutGrid size={28} color={U.ink[400]} strokeWidth={1.6} />
-      <Text style={{ fontSize: 13, color: U.ink[500] }}>Isı haritası</Text>
     </View>
   );
 }
