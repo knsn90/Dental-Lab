@@ -1585,7 +1585,8 @@ export default function AdminDashboard() {
             else weekAdet += 1;
           }
         }
-        if (o.work_type && teeth > 0) {
+        // İptal edilen işler dağılımı şişirmesin (Üye Trendi ile aynı kural).
+        if (o.work_type && teeth > 0 && o.status !== 'iptal') {
           // work_type diş başına tekrarlı olabilir ("X, X, X…") — tekilleştir
           // ve çekirdek ada indir: "X ( Sprint Ray )" ile eski "X" aynı satırda toplanır.
           const wt = workTypeGroupLabel(String(o.work_type));
