@@ -20,6 +20,7 @@ export async function fetchWorkStatsWindow(labId: string, selected: MonthKey): P
       .eq('lab_id', labId)
       .gte('created_at', fromIso)
       .order('created_at')
+      .order('id')
       .range(from, to) as any,
   );
 }
