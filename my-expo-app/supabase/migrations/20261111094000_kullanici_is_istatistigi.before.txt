@@ -1,0 +1,2 @@
+-- 20261111094000_kullanici_is_istatistigi öncesi canlı durum (2026-11-11): public.get_user_work_stats(uuid) YOK (pg_proc sayımı 0).
+-- Geri alma: 20261111094000_kullanici_is_istatistigi.down.sql fonksiyonu düşürür; başka nesneye dokunulmaz.

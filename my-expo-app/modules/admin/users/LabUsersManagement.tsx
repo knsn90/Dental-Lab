@@ -61,6 +61,9 @@ import { toast } from '../../../core/ui/Toast';
 import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 import { useRouter, useSegments } from 'expo-router';
 import { upsertCompensation } from '../../employees/compensationApi';
+import { workStatsView, type UserWorkStats } from './userWorkStats';
+import { fetchUserWorkStats } from './userWorkStatsApi';
+import { useStickyFollow } from './useStickyFollow';
 
 // ── Design tokens ───────────────────────────────────────────────────────────
 const ERR = '#FF3B30';
@@ -134,12 +137,6 @@ function fmtDate(dateStr?: string | null) {
   return fmtDayMonthYear(d);
 }
 
-interface UserStats {
-  total: number;
-  active: number;
-  overdue: number;
-  activeOrders: { id: string; order_number: string; item: string; overdue: boolean }[];
-}
 
 // ── PatternsToggle ──────────────────────────────────────────────────────────
 // 44×24 → 36×20: kart minimal ama toggle en dikkat çeken öğeydi.
@@ -264,8 +261,8 @@ function FilterDropdown({ label, value, options, selectedKey, onSelect, accentCo
 }
 
 // ── Lucide icon helper for MetricCell ───────────────────────────────────────
-function MetricIcon({ name, size, color, style }: { name: string; size: number; color: string; style?: any }) {
-  const props = { size, color, strokeWidth: 1.6, style };
+function MetricIcon({ name, size, color }: { name: string; size: number; color: string }) {
+  const props = { size, color, strokeWidth: 1.6 };
   switch (name) {
     case 'flask-outline':  return <FlaskConical {...props} />;
     case 'chart-line':     return <TrendingUp {...props} />;
@@ -302,8 +299,11 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
   const [showAddModal,   setShowAddModal]   = useState(false);
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
   const [selectedId,     setSelectedId]     = useState<string | null>(null);
-  const [stats,          setStats]          = useState<UserStats | null>(null);
+  const [stats,          setStats]          = useState<UserWorkStats | null>(null);
   const [statsLoading,   setStatsLoading]   = useState(false);
+  const [statsError,     setStatsError]     = useState<string | null>(null);
+  // Hızlı art arda seçimde eski yanıt yenisinin üstüne yazmasın.
+  const statsReqRef = React.useRef<string | null>(null);
   const [skillsMap, setSkillsMap]   = useState<Map<string, Set<Stage>>>(new Map());
   const [skillBusy, setSkillBusy]   = useState<Set<string>>(new Set());
   const [rateEditId, setRateEditId] = useState<string | null>(null);
@@ -450,37 +450,18 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
   };
 
   const loadStats = async (userId: string) => {
+    statsReqRef.current = userId;
     setStatsLoading(true);
+    setStatsError(null);
     try {
-      const { data: orders } = await supabase
-        .from('work_orders')
-        .select('id, order_number, status, delivery_date, order_items(item_name)')
-        .or(`created_by.eq.${userId},assigned_to.eq.${userId}`)
-        .order('created_at', { ascending: false });
-
-      const today = new Date(); today.setHours(0, 0, 0, 0);
-      const all = orders ?? [];
-      const active = all.filter((o: any) => o.status !== 'teslim_edildi');
-      const overdue = active.filter((o: any) => {
-        if (!o.delivery_date) return false;
-        return new Date(o.delivery_date) < today;
-      });
-
-      setStats({
-        total: all.length,
-        active: active.length,
-        overdue: overdue.length,
-        activeOrders: active.slice(0, 4).map((o: any) => ({
-          id: o.id,
-          order_number: o.order_number ?? '—',
-          item: o.order_items?.[0]?.item_name ?? 'İş Emri',
-          overdue: o.delivery_date ? new Date(o.delivery_date) < today : false,
-        })),
-      });
+      const res = await fetchUserWorkStats(userId);
+      if (statsReqRef.current !== userId) return;
+      if (res.ok) setStats(res.stats);
+      else { setStats(null); setStatsError(res.message); }
     } catch {
-      setStats({ total: 0, active: 0, overdue: 0, activeOrders: [] });
+      if (statsReqRef.current === userId) { setStats(null); setStatsError('İstatistik yüklenemedi'); }
     } finally {
-      setStatsLoading(false);
+      if (statsReqRef.current === userId) setStatsLoading(false);
     }
   };
 
@@ -844,6 +825,8 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
     () => profiles.find(p => p.id === selectedId) ?? null,
     [profiles, selectedId]
   );
+  // Listenin altından seçilen kullanıcının paneli görünür alanda kalsın (web, geniş).
+  const sticky = useStickyFollow(isWide && !!selectedProfile);
 
   const handleSelect = (profile: Profile) => {
     if (selectedId === profile.id) return;
@@ -950,7 +933,7 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
         </View>
 
         {/* Grid: list + detail */}
-        <View style={[{ gap: 24 }, isWide && { flexDirection: 'row', alignItems: 'flex-start' }]}>
+        <View ref={sticky.rowRef} style={[{ gap: 24 }, isWide && { flexDirection: 'row', alignItems: 'flex-start' }]}>
           {/* List column */}
           <View style={[{ flex: 1, gap: 12 }, isWide && { flex: 2, minWidth: 0 }]}>
             {loading ? (
@@ -1014,14 +997,15 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
 
           {/* Detail panel */}
           {selectedProfile && (
-            <View style={[{ width: '100%' }, isWide && { flex: 1, position: 'sticky', top: 24 }] as any}>
+            <View ref={sticky.panelRef} style={[{ width: '100%' }, isWide && { flex: 1, alignSelf: 'flex-start' }] as any}>
               <DetailPanel
                 profile={selectedProfile}
                 badge={typeBadge(selectedProfile)}
                 stats={stats}
                 loading={statsLoading}
+                error={statsError}
                 primary={P}
-                onClose={() => { setSelectedId(null); setStats(null); }}
+                onClose={() => { statsReqRef.current = null; setSelectedId(null); setStats(null); setStatsError(null); }}
               />
             </View>
           )}
@@ -1129,20 +1113,21 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
 // ═════════════════════════════════════════════════════════════════════════════
 
 function DetailPanel({
-  profile, badge, stats, loading, primary, onClose,
+  profile, badge, stats, loading, error, primary, onClose,
 }: {
   profile: Profile;
   badge: { avatarBg: string; avatarText: string; roleLabel: string };
-  stats: UserStats | null;
+  stats: UserWorkStats | null;
   loading: boolean;
+  error: string | null;
   primary: string;
   onClose: () => void;
 }) {
   const U = useInkUI();
   const { ink: pInk } = useAccentTones(primary);
-  const productivity = stats && stats.total > 0
-    ? Math.round(((stats.total - stats.active) / stats.total) * 100)
-    : null;
+  // Yüklenirken de iskelet doğru role göre çizilsin diye boş istatistikten görünüm üretilir.
+  const view = stats ? workStatsView(stats) : null;
+  const toneColor = (t: string) => t === 'danger' ? '#DC2626' : t === 'muted' ? U.ink[500] : pInk;
 
   return (
     <View
@@ -1190,38 +1175,50 @@ function DetailPanel({
         <Text style={{ fontSize: 12, color: U.ink[400], fontWeight: '500' }}>Katılım: {fmtDate(profile.created_at)}</Text>
       </View>
 
-      {/* Metric grid */}
-      <View className="flex-row flex-wrap gap-2.5 p-5">
-        <MetricCell label="Toplam İş" value={loading ? '…' : (stats?.total ?? 0).toString()} icon="flask-outline" tint={pInk} />
-        <MetricCell label="Tamamlanma" value={loading ? '…' : productivity !== null ? `${productivity}%` : '—'} icon="chart-line" tint={pInk} accent />
-        <MetricCell label="Geciken" value={loading ? '…' : (stats?.overdue ?? 0).toString()} icon="alert-outline" tint="#DC2626" />
-        <MetricCell label="Aktif" value={loading ? '…' : (stats?.active ?? 0).toString()} icon="progress-clock" tint={U.ink[500]} />
-      </View>
-
-      {/* Active orders list */}
-      <View className="px-5 pb-5">
-        <Text style={{ fontSize: 10, fontWeight: '800', color: U.ink[500], letterSpacing: 0.8, marginBottom: 12 }}>AKTİF İŞLER</Text>
-        {loading ? (
-          <ActivityIndicator size="small" color={primary} style={{ marginTop: 8 }} />
-        ) : !stats?.activeOrders?.length ? (
-          <Text style={{ fontSize: 13, color: U.ink[400], paddingVertical: 6 }}>Aktif iş yok</Text>
-        ) : (
-          <View style={{ gap: 8 }}>
-            {stats.activeOrders.map(o => (
-              <View key={o.id} className="flex-row items-center gap-2.5 rounded-[10px] p-3" style={{ backgroundColor: U.surfaceSoft, borderWidth: U.isDark ? 1 : 0, borderColor: U.hairline }}>
-                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: o.overdue ? '#DC2626' : pInk }} />
-                <View className="flex-1">
-                  <Text style={{ fontSize: 13, fontWeight: '800', color: U.ink[900], textAlign: isRTL() ? 'right' : undefined }}>{o.order_number}</Text>
-                  <Text style={{ fontSize: 11, color: U.ink[500], marginTop: 2 }} numberOfLines={1}>{o.item}</Text>
-                </View>
-                {isRTL()
-                  ? <ChevronLeft size={14} color={U.ink[300]} strokeWidth={1.8} />
-                  : <ChevronRight size={14} color={U.ink[300]} strokeWidth={1.8} />}
-              </View>
+      {/* Metric grid — role göre dört metrik */}
+      {error ? (
+        <View className="px-5 pt-5 pb-5">
+          <Text style={{ fontSize: 13, color: '#DC2626', fontWeight: '600' }}>{error}</Text>
+        </View>
+      ) : (
+        <>
+          <View className="flex-row flex-wrap gap-2.5 p-5">
+            {(view?.metrics ?? [0, 1, 2, 3].map(i => ({ key: String(i), label: ' ', value: 0, icon: 'flask-outline', tone: 'plain' }))).map(m => (
+              <MetricCell
+                key={m.key}
+                label={m.label}
+                value={loading || !view ? '…' : String(m.value)}
+                icon={m.icon}
+                tint={toneColor(m.tone)}
+                accent={m.tone === 'accent' || m.tone === 'danger'}
+              />
             ))}
           </View>
-        )}
-      </View>
+
+          {/* Aktif iş / aşama / teslimat listesi */}
+          <View className="px-5 pb-5">
+            {view && <Text style={{ fontSize: 10, fontWeight: '800', color: U.ink[500], letterSpacing: 0.8, marginBottom: 12 }}>{view.listTitle}</Text>}
+            {loading || !view ? (
+              <ActivityIndicator size="small" color={primary} style={{ marginTop: 8 }} />
+            ) : !stats?.items.length ? (
+              <Text style={{ fontSize: 13, color: U.ink[400], paddingVertical: 6 }}>{view.emptyText}</Text>
+            ) : (
+              <View style={{ gap: 8 }}>
+                {stats.items.map((o, i) => (
+                  <View key={`${o.id ?? 'x'}-${i}`} className="flex-row items-center gap-2.5 rounded-[10px] p-3" style={{ backgroundColor: U.surfaceSoft, borderWidth: U.isDark ? 1 : 0, borderColor: U.hairline }}>
+                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: o.overdue ? '#DC2626' : pInk }} />
+                    <View className="flex-1">
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: U.ink[900], textAlign: isRTL() ? 'right' : undefined }}>{o.orderNumber}</Text>
+                      {!!o.label && <Text style={{ fontSize: 11, color: U.ink[500], marginTop: 2 }} numberOfLines={1}>{o.label}</Text>}
+                    </View>
+                    {o.overdue && <Text style={{ fontSize: 10, fontWeight: '800', color: '#DC2626' }}>Gecikti</Text>}
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        </>
+      )}
     </View>
   );
 }
@@ -1240,7 +1237,8 @@ function MetricCell({ label, value, icon, tint, accent }: {
       }}
     >
       <View style={{ position: 'absolute', top: -10, end: -10 }}>
-        <MetricIcon name={icon} size={64} color={tint} style={{ opacity: 0.1 }} />
+        {/* opacity ikon prop'unda etkisizdi (HugeIcons düşürüyor) → sarmalayıcıda. */}
+        <View style={{ opacity: 0.1 }}><MetricIcon name={icon} size={64} color={tint} /></View>
       </View>
       <Text style={{ fontSize: 10, fontWeight: '800', color: U.ink[500], letterSpacing: 0.5, textTransform: 'uppercase' }}>{label}</Text>
       <Text style={{ fontSize: 22, fontWeight: '800', color: accent ? tint : U.ink[900], letterSpacing: -0.5 }}>{value}</Text>

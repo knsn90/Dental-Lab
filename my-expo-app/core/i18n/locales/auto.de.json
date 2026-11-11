@@ -10156,5 +10156,18 @@
   "Modül aktif edildi": "Modul eingeschaltet",
   "Modül pasif edildi": "Modul ausgeschaltet",
   "Telefon asistanı": "Telefonassistent",
-  "Tarama randevuları": "Scan-Termine"
+  "Tarama randevuları": "Scan-Termine",
+  "Elindeki": "In Arbeit",
+  "Bu Ay Tamamlanan": "Diesen Monat abgeschlossen",
+  "Toplam Tamamlanan": "Insgesamt abgeschlossen",
+  "ELİNDEKİ İŞLER": "AUFTRÄGE IN ARBEIT",
+  "Elinde iş yok": "Keine Aufträge in Arbeit",
+  "Aktif Teslimat": "Aktive Lieferungen",
+  "Bu Ay Teslim": "Diesen Monat geliefert",
+  "Toplam Teslim": "Insgesamt geliefert",
+  "İptal / İade": "Storniert / Retour",
+  "AKTİF TESLİMATLAR": "AKTIVE LIEFERUNGEN",
+  "İstatistik yüklenemedi": "Statistik konnte nicht geladen werden",
+  "Bu kullanıcının istatistiğini görme yetkin yok": "Du darfst die Statistik dieses Benutzers nicht sehen",
+  "Hesabı olmayan personelin istatistiği tutulmaz": "Für Mitarbeitende ohne Konto wird keine Statistik geführt"
 }

@@ -29,6 +29,9 @@ import { AppIcon } from '../../core/ui/AppIcon';
 import { ActivityIndicator } from '../../core/ui/teethCompat';
 import { confirmAsync } from '../../core/util/confirm';
 import { autoT } from '../../core/i18n/autoTranslate';
+import { workStatsView, type UserWorkStats } from '../../modules/admin/users/userWorkStats';
+import { fetchUserWorkStats } from '../../modules/admin/users/userWorkStatsApi';
+import { useStickyFollow } from '../../modules/admin/users/useStickyFollow';
 import { useMobileTokens } from '../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../core/store/themeModeStore';
 
@@ -58,12 +61,6 @@ function fmtDate(dateStr?: string | null) {
   return fmtDayMonthYear(d);
 }
 
-interface UserStats {
-  total: number;
-  active: number;
-  overdue: number;
-  activeOrders: { id: string; order_number: string; item: string; overdue: boolean }[];
-}
 
 export default function AdminUsersScreen() {
   const { width } = useWindowDimensions();
@@ -98,8 +95,10 @@ export default function AdminUsersScreen() {
   const [showAddModal,   setShowAddModal]   = useState(false);
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
   const [selectedId,     setSelectedId]     = useState<string | null>(null);
-  const [stats,          setStats]          = useState<UserStats | null>(null);
+  const [stats,          setStats]          = useState<UserWorkStats | null>(null);
   const [statsLoading,   setStatsLoading]   = useState(false);
+  const [statsError,     setStatsError]     = useState<string | null>(null);
+  const statsReqRef = React.useRef<string | null>(null);
 
   useEffect(() => { loadProfiles(initialUsers !== null); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -197,37 +196,18 @@ export default function AdminUsersScreen() {
   };
 
   const loadStats = async (userId: string) => {
+    statsReqRef.current = userId;
     setStatsLoading(true);
+    setStatsError(null);
     try {
-      const { data: orders } = await supabase
-        .from('work_orders')
-        .select('id, order_number, status, delivery_date, order_items(item_name)')
-        .or(`created_by.eq.${userId},assigned_to.eq.${userId}`)
-        .order('created_at', { ascending: false });
-
-      const today = new Date(); today.setHours(0, 0, 0, 0);
-      const all = orders ?? [];
-      const active = all.filter((o: any) => o.status !== 'teslim_edildi');
-      const overdue = active.filter((o: any) => {
-        if (!o.delivery_date) return false;
-        return new Date(o.delivery_date) < today;
-      });
-
-      setStats({
-        total: all.length,
-        active: active.length,
-        overdue: overdue.length,
-        activeOrders: active.slice(0, 4).map((o: any) => ({
-          id: o.id,
-          order_number: o.order_number ?? '—',
-          item: o.order_items?.[0]?.item_name ?? 'İş Emri',
-          overdue: o.delivery_date ? new Date(o.delivery_date) < today : false,
-        })),
-      });
+      const res = await fetchUserWorkStats(userId);
+      if (statsReqRef.current !== userId) return;
+      if (res.ok) setStats(res.stats);
+      else { setStats(null); setStatsError(res.message); }
     } catch {
-      setStats({ total: 0, active: 0, overdue: 0, activeOrders: [] });
+      if (statsReqRef.current === userId) { setStats(null); setStatsError('İstatistik yüklenemedi'); }
     } finally {
-      setStatsLoading(false);
+      if (statsReqRef.current === userId) setStatsLoading(false);
     }
   };
 
@@ -297,6 +277,8 @@ export default function AdminUsersScreen() {
     () => profiles.find(p => p.id === selectedId) ?? null,
     [profiles, selectedId]
   );
+
+  const sticky = useStickyFollow(isWide && !!selectedProfile);
 
   const handleSelect = (profile: Profile) => {
     if (selectedId === profile.id) return;
@@ -371,7 +353,7 @@ export default function AdminUsersScreen() {
         )}
 
         {/* Main: List + Detail Panel */}
-        <View style={[styles.grid, isWide && styles.gridWide]}>
+        <View ref={sticky.rowRef} style={[styles.grid, isWide && styles.gridWide]}>
           {/* List column */}
           <View style={[styles.listCol, isWide && styles.listColWide]}>
             {loading ? (
@@ -444,14 +426,15 @@ export default function AdminUsersScreen() {
 
           {/* Detail Panel */}
           {selectedProfile && (
-            <View style={[styles.detailCol, isWide && styles.detailColWide]}>
+            <View ref={sticky.panelRef} style={[styles.detailCol, isWide && styles.detailColWide]}>
               <DetailPanel
                 profile={selectedProfile}
                 badge={typeBadge(selectedProfile)}
                 stats={stats}
                 loading={statsLoading}
+                error={statsError}
                 primary={K}
-                onClose={() => { setSelectedId(null); setStats(null); }}
+                onClose={() => { statsReqRef.current = null; setSelectedId(null); setStats(null); setStatsError(null); }}
               />
             </View>
           )}
@@ -524,21 +507,21 @@ export default function AdminUsersScreen() {
 // ─── Detail Panel ────────────────────────────────────────────────────────────
 
 function DetailPanel({
-  profile, badge, stats, loading, primary, onClose,
+  profile, badge, stats, loading, error, primary, onClose,
 }: {
   profile: Profile;
   badge: { avatarBg: string; avatarText: string; roleLabel: string };
-  stats: UserStats | null;
+  stats: UserWorkStats | null;
   loading: boolean;
+  error: string | null;
   primary: string;
   onClose: () => void;
 }) {
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const dp = makeDp(T, isDark);
-  const productivity = stats && stats.total > 0
-    ? Math.round(((stats.total - stats.active) / stats.total) * 100)
-    : null;
+  const view = stats ? workStatsView(stats) : null;
+  const toneColor = (t: string) => t === 'danger' ? '#DC2626' : t === 'muted' ? (isDark ? (T.ink3 as string) : '#64748B') : primary;
 
   return (
     <View style={dp.card}>
@@ -560,34 +543,48 @@ function DetailPanel({
         <Text style={dp.joined}>Katılım: {fmtDate(profile.created_at)}</Text>
       </View>
 
-      <View style={dp.metricGrid}>
-        <MetricCell label="Toplam İş" value={loading ? '…' : (stats?.total ?? 0).toString()} icon="flask-outline" tint={primary} />
-        <MetricCell label="Tamamlanma" value={loading ? '…' : productivity !== null ? `${productivity}%` : '—'} icon="chart-line" tint={primary} accent />
-        <MetricCell label="Geciken" value={loading ? '…' : (stats?.overdue ?? 0).toString()} icon="alert-outline" tint="#DC2626" />
-        <MetricCell label="Aktif" value={loading ? '…' : (stats?.active ?? 0).toString()} icon="progress-clock" tint="#64748B" />
-      </View>
-
-      <View style={dp.listSection}>
-        <Text style={dp.listTitle}>AKTİF İŞLER</Text>
-        {loading ? (
-          <ActivityIndicator size="small" color={primary} style={{ marginTop: 8 }} />
-        ) : !stats?.activeOrders?.length ? (
-          <Text style={dp.listEmpty}>Aktif iş yok</Text>
-        ) : (
-          <View style={{ gap: 8 }}>
-            {stats.activeOrders.map(o => (
-              <View key={o.id} style={dp.orderRow}>
-                <View style={[dp.dot, { backgroundColor: o.overdue ? '#DC2626' : primary }]} />
-                <View style={{ flex: 1 }}>
-                  <Text style={dp.orderNo}>{o.order_number}</Text>
-                  <Text style={dp.orderItem} numberOfLines={1}>{o.item}</Text>
-                </View>
-                <AppIcon name="chevron-right" size={14} color={isDark ? (T.ink3 as string) : '#CBD5E1'} />
-              </View>
+      {error ? (
+        <View style={dp.listSection}>
+          <Text style={{ fontSize: 13, color: '#DC2626', fontWeight: '600', marginTop: 16 }}>{error}</Text>
+        </View>
+      ) : (
+        <>
+          <View style={dp.metricGrid}>
+            {(view?.metrics ?? [0, 1, 2, 3].map(i => ({ key: String(i), label: ' ', value: 0, icon: 'flask-outline', tone: 'plain' }))).map(m => (
+              <MetricCell
+                key={m.key}
+                label={m.label}
+                value={loading || !view ? '…' : String(m.value)}
+                icon={m.icon}
+                tint={toneColor(m.tone)}
+                accent={m.tone === 'accent' || m.tone === 'danger'}
+              />
             ))}
           </View>
-        )}
-      </View>
+
+          <View style={dp.listSection}>
+            {view && <Text style={dp.listTitle}>{view.listTitle}</Text>}
+            {loading || !view ? (
+              <ActivityIndicator size="small" color={primary} style={{ marginTop: 8 }} />
+            ) : !stats?.items.length ? (
+              <Text style={dp.listEmpty}>{view.emptyText}</Text>
+            ) : (
+              <View style={{ gap: 8 }}>
+                {stats.items.map((o, i) => (
+                  <View key={`${o.id ?? 'x'}-${i}`} style={dp.orderRow}>
+                    <View style={[dp.dot, { backgroundColor: o.overdue ? '#DC2626' : primary }]} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={dp.orderNo}>{o.orderNumber}</Text>
+                      {!!o.label && <Text style={dp.orderItem} numberOfLines={1}>{o.label}</Text>}
+                    </View>
+                    {o.overdue && <Text style={{ fontSize: 10, fontWeight: '800', color: '#DC2626' }}>Gecikti</Text>}
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        </>
+      )}
     </View>
   );
 }
@@ -601,7 +598,7 @@ function MetricCell({ label, value, icon, tint, accent }: {
   return (
     <View style={dp.metric}>
       <View style={dp.metricIconWrap}>
-        <AppIcon name={icon as any} size={64} color={tint} style={{ opacity: 0.1 }} />
+        <View style={{ opacity: 0.1 }}><AppIcon name={icon as any} size={64} color={tint} /></View>
       </View>
       <Text style={dp.metricLabel}>{label}</Text>
       <Text style={[dp.metricValue, accent && { color: tint }]}>{value}</Text>
@@ -1142,7 +1139,7 @@ const makeStyles = (T: any, isDark: boolean) => StyleSheet.create({
   listCol:     { flex: 1, gap: 12 },
   listColWide: { flex: 2, minWidth: 0 },
   detailCol:   { width: '100%' },
-  detailColWide: { flex: 1, position: 'sticky', top: 24 } as any,
+  detailColWide: { flex: 1, alignSelf: 'flex-start' } as any,
 
   cardList:    { gap: 12 },
   card:        {

@@ -10156,5 +10156,18 @@
   "Modül aktif edildi": "Module turned on",
   "Modül pasif edildi": "Module turned off",
   "Telefon asistanı": "Phone assistant",
-  "Tarama randevuları": "Scan appointments"
+  "Tarama randevuları": "Scan appointments",
+  "Elindeki": "In hand",
+  "Bu Ay Tamamlanan": "Completed this month",
+  "Toplam Tamamlanan": "Total completed",
+  "ELİNDEKİ İŞLER": "JOBS IN HAND",
+  "Elinde iş yok": "No jobs in hand",
+  "Aktif Teslimat": "Active deliveries",
+  "Bu Ay Teslim": "Delivered this month",
+  "Toplam Teslim": "Total delivered",
+  "İptal / İade": "Cancelled / Returned",
+  "AKTİF TESLİMATLAR": "ACTIVE DELIVERIES",
+  "İstatistik yüklenemedi": "Statistics could not be loaded",
+  "Bu kullanıcının istatistiğini görme yetkin yok": "You are not allowed to view this user's statistics",
+  "Hesabı olmayan personelin istatistiği tutulmaz": "No statistics are kept for staff without an account"
 }

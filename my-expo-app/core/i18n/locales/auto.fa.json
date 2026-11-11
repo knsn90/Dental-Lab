@@ -10156,5 +10156,18 @@
   "Modül aktif edildi": "ماژول روشن شد",
   "Modül pasif edildi": "ماژول خاموش شد",
   "Telefon asistanı": "دستیار تلفنی",
-  "Tarama randevuları": "نوبت‌های اسکن"
+  "Tarama randevuları": "نوبت‌های اسکن",
+  "Elindeki": "در دست",
+  "Bu Ay Tamamlanan": "تکمیل‌شده این ماه",
+  "Toplam Tamamlanan": "کل تکمیل‌شده",
+  "ELİNDEKİ İŞLER": "کارهای در دست",
+  "Elinde iş yok": "کاری در دست ندارد",
+  "Aktif Teslimat": "تحویل‌های فعال",
+  "Bu Ay Teslim": "تحویل این ماه",
+  "Toplam Teslim": "کل تحویل‌ها",
+  "İptal / İade": "لغو / مرجوعی",
+  "AKTİF TESLİMATLAR": "تحویل‌های فعال",
+  "İstatistik yüklenemedi": "آمار بارگذاری نشد",
+  "Bu kullanıcının istatistiğini görme yetkin yok": "اجازهٔ دیدن آمار این کاربر را ندارید",
+  "Hesabı olmayan personelin istatistiği tutulmaz": "برای کارکنان بدون حساب آماری ثبت نمی‌شود"
 }
