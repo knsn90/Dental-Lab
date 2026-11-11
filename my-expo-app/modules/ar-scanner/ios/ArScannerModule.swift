@@ -25,6 +25,27 @@ public class ArScannerModule: Module {
             return ARFaceTrackingConfiguration.isSupported
         }
 
+        // Tam kafa (360°) taraması destekleniyor mu? Arka kamera + LiDAR derinlik + fotogrametri.
+        Function("isHeadScanSupported") { () -> Bool in
+            return Self.headScanSupported()
+        }
+
+        // Tam kafa (360°) taraması — ikinci kişi hastanın etrafında döner (Faz 4).
+        // lang: uygulama dili (tr/en/de/fa) — yerel ekran metinleri için.
+        AsyncFunction("startHeadScan") { (lang: String?, promise: Promise) in
+            DispatchQueue.main.async {
+                guard let presenter = Self.topMostViewController() else {
+                    promise.reject("E_NO_PRESENTER", "Aktif view controller bulunamadı.")
+                    return
+                }
+                guard #available(iOS 17.0, *), Self.headScanSupported() else {
+                    promise.reject("E_UNSUPPORTED", "Tam kafa taraması LiDAR'lı iPhone ve iOS 17 gerektirir.")
+                    return
+                }
+                Self.presentHeadScan(from: presenter, lang: lang, promise: promise)
+            }
+        }
+
         // Ön kamera (TrueDepth) rehberli tarama — Faz 1, modern kapsama rehberi.
         AsyncFunction("startFrontScan") { (promise: Promise) in
             DispatchQueue.main.async {
@@ -166,6 +187,46 @@ public class ArScannerModule: Module {
         presenter.present(host, animated: true)
     }
 
+    // MARK: Tam kafa (Faz 4)
+
+    @available(iOS 17.0, *)
+    private static func presentHeadScan(from presenter: UIViewController, lang: String?, promise: Promise) {
+        let dirs = ObjectCaptureDirs.make()
+        var didResolve = false
+        let flow = HeadScanView(dirs: dirs, text: HeadScanText(lang: lang)) { result in
+            guard !didResolve else { return }
+            didResolve = true
+            presenter.dismiss(animated: true) {
+                switch result {
+                case .none:
+                    promise.resolve(NSNull())
+                case .some(.success(let outputDir)):
+                    guard let obj = Self.firstFile(in: outputDir, ext: "obj") else {
+                        promise.reject("E_NO_OBJ", "OBJ üretilemedi."); return
+                    }
+                    let mtl = Self.firstFile(in: outputDir, ext: "mtl")
+                    // Doku = MTL'nin map_Kd'si (çıktıda normal/AO haritaları da var)
+                    let tex = HeadMeshPostProcess.diffuseTexture(objURL: obj)
+                    let stlPath = Self.makeSTL(fromOBJ: obj, in: outputDir)
+                    let usdzExists = FileManager.default.fileExists(atPath: dirs.outputUSDZ.path)
+                    promise.resolve([
+                        "asciiSTL": NSNull(), "binarySTL": stlPath,
+                        "obj": obj.path,
+                        "mtl": mtl?.path ?? NSNull(),
+                        "texturePNG": tex?.path ?? NSNull(),
+                        "usdz": usdzExists ? dirs.outputUSDZ.path : NSNull(),
+                        "ply": NSNull(),
+                    ] as [String: Any])
+                case .some(.failure(let err)):
+                    promise.reject("E_RECONSTRUCT_FAILED", err.localizedDescription)
+                }
+            }
+        }
+        let host = UIHostingController(rootView: flow)
+        host.modalPresentationStyle = .fullScreen
+        presenter.present(host, animated: true)
+    }
+
     // MARK: Ön kamera rehberli (Faz 1)
 
     @available(iOS 17.0, *)
@@ -241,6 +302,12 @@ public class ArScannerModule: Module {
         // Capture için yeterli ve doğru bir proxy — nonisolated API.
         guard #available(iOS 17.0, *) else { return false }
         return ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh)
+    }
+
+    private static func headScanSupported() -> Bool {
+        guard #available(iOS 17.0, *) else { return false }
+        return ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth)
+            && PhotogrammetrySession.isSupported
     }
 
     /// OBJ'den binary STL üretir, outputDir'e model.stl olarak yazar, path döner (yoksa NSNull).

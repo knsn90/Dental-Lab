@@ -19,7 +19,8 @@ import {
 import { ScanFace, X, Search } from '../../../core/ui/icons';
 import { toast } from '../../../core/ui/Toast';
 import { useAuthStore } from '../../../core/store/authStore';
-import { isSupported as arSupported, startScanMode, isFrontScanSupported, type ScanMode } from 'ar-scanner';
+import { isSupported as arSupported, startScanMode, isFrontScanSupported, isHeadScanSupported, type ScanMode } from 'ar-scanner';
+import i18n from '../../../core/i18n';
 import { uploadFaceScanResult } from '../utils/uploadFaceScanResult';
 import { useOrders } from '../hooks/useOrders';
 import type { WorkOrder } from '../types';
@@ -90,6 +91,7 @@ function FaceScanQuickActionInner({ accentColor, compact, profile, variant = 'pi
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<ScanMode>('rearGuided');
   const frontAvailable = useMemo(() => { try { return isFrontScanSupported(); } catch { return false; } }, []);
+  const headAvailable = useMemo(() => { try { return isHeadScanSupported(); } catch { return false; } }, []);
 
   // user_type → useOrders scope
   // doctor: kendi siparişleri; lab/clinic_admin/clinic_secretary: tüm (RLS filtreler)
@@ -115,7 +117,7 @@ function FaceScanQuickActionInner({ accentColor, compact, profile, variant = 'pi
 
     setBusy(true);
     try {
-      const result = await startScanMode(mode);   // rear=Object Capture, front=ön kamera rehberli
+      const result = await startScanMode(mode, i18n.language);   // rearGuided · front · head (360°)
       if (!result) return;
 
       const { uploadedCount, errors } = await uploadFaceScanResult({
@@ -150,6 +152,7 @@ function FaceScanQuickActionInner({ accentColor, compact, profile, variant = 'pi
         mode={mode}
         setMode={setMode}
         frontAvailable={frontAvailable}
+        headAvailable={headAvailable}
         onSelect={handleSelect}
         onClose={() => setPickerOpen(false)}
         onDismiss={runPendingScan}
@@ -275,13 +278,15 @@ interface PickerProps {
   mode:        ScanMode;
   setMode:     (m: ScanMode) => void;
   frontAvailable: boolean;
+  /** Tam kafa 360° (LiDAR + iOS 17) — yalnız destekleyen cihazda seçenek görünür */
+  headAvailable: boolean;
   onSelect:    (order: WorkOrder) => void;
   onClose:     () => void;
   /** Modal TAM kapandığında (iOS) — bekleyen taramayı başlatmak için */
   onDismiss?:  () => void;
 }
 
-function OrderPickerModal({ visible, orders, loading, accentColor, mode, setMode, frontAvailable, onSelect, onClose, onDismiss }: PickerProps) {
+function OrderPickerModal({ visible, orders, loading, accentColor, mode, setMode, frontAvailable, headAvailable, onSelect, onClose, onDismiss }: PickerProps) {
   const [query, setQuery] = useState('');
 
   // Aktif siparişler — teslim edilmemiş ve arşivlenmemiş
@@ -323,16 +328,17 @@ function OrderPickerModal({ visible, orders, loading, accentColor, mode, setMode
             </Pressable>
           </View>
 
-          {/* Mod seçimi — Rehberli (arka, yüksek kalite) / Ön (hızlı) */}
-          {frontAvailable && (
+          {/* Mod seçimi — Rehberli (arka, yüksek kalite) / Ön (hızlı) / Tam kafa (360°) */}
+          {(frontAvailable || headAvailable) && (
             <View style={{
               flexDirection: 'row', gap: 6, padding: 4, marginBottom: 12,
               backgroundColor: '#F1F1F1', borderRadius: 12,
             }}>
               {([
-                { key: 'rearGuided' as ScanMode, label: 'Rehberli', hint: 'Yüksek kalite' },
-                { key: 'front' as ScanMode,      label: 'Ön',       hint: 'Hızlı' },
-              ]).map(opt => {
+                { key: 'rearGuided' as ScanMode, label: 'Rehberli', hint: 'Yüksek kalite', show: true },
+                { key: 'front' as ScanMode,      label: 'Ön',       hint: 'Hızlı',         show: frontAvailable },
+                { key: 'head' as ScanMode,       label: 'Tam kafa', hint: '360°',          show: headAvailable },
+              ]).filter(opt => opt.show).map(opt => {
                 const active = mode === opt.key;
                 return (
                   <Pressable

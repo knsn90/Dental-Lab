@@ -12,9 +12,11 @@ type ArScannerNative = {
   startScan(): Promise<FaceScanResult | null>;
   startFrontScan(): Promise<FaceScanResult | null>;
   startGuidedRearScan(): Promise<FaceScanResult | null>;
+  isHeadScanSupported?(): boolean;
+  startHeadScan?(lang: string | null): Promise<FaceScanResult | null>;
 };
 
-export type ScanMode = 'rear' | 'front' | 'rearGuided';
+export type ScanMode = 'rear' | 'front' | 'rearGuided' | 'head';
 
 const native: ArScannerNative | null = (() => {
   if (Platform.OS !== 'ios') return null;
@@ -61,18 +63,28 @@ export function isFrontScanSupported(): boolean {
   try { return native.isFrontScanSupported(); } catch { return false; }
 }
 
+/** Tam kafa (360°) taraması var mı? (LiDAR'lı iPhone + iOS 17; eski native derlemede false) */
+export function isHeadScanSupported(): boolean {
+  if (!native?.isHeadScanSupported) return false;
+  try { return native.isHeadScanSupported(); } catch { return false; }
+}
+
 /**
  * Mod seçimli tarama:
  * - 'rear'  → Object Capture (LiDAR/arka kamera) varsa, yoksa TrueDepth fallback
  * - 'front' → Ön kamera rehberli tarama (Faz 1)
+ * - 'head'  → Tam kafa 360° (arka kamera + LiDAR, ikinci kişi çeker). lang = ekran dili.
  */
-export async function startScanMode(mode: ScanMode): Promise<FaceScanResult | null> {
+export async function startScanMode(mode: ScanMode, lang?: string): Promise<FaceScanResult | null> {
   if (!native) {
     throw new Error('3D yüz tarama sadece iOS\'ta desteklenir.');
   }
   switch (mode) {
     case 'front':      return native.startFrontScan();
     case 'rearGuided': return native.startGuidedRearScan();
+    case 'head':
+      if (!native.startHeadScan) throw new Error('Tam kafa taraması bu sürümde yok — uygulamayı güncelleyin.');
+      return native.startHeadScan(lang ?? null);
     default:           return native.startScan();
   }
 }
