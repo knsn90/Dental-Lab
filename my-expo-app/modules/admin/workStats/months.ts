@@ -49,12 +49,14 @@ export function gregorianLocale(locale: string): string {
   return `${tag}-u-ca-gregory`;
 }
 
-export function monthLabel(k: MonthKey, locale: string, style: 'short' | 'long'): string {
+/** 'long' → "Kasım 2026" · 'short' → "Kas" · 'shortYear' → "Kas 2025" (geçen yıl kıyası). */
+export function monthLabel(k: MonthKey, locale: string, style: 'short' | 'long' | 'shortYear'): string {
   const [y, m] = k.split('-').map(Number);
   const d = new Date(y, m - 1, 1);
-  return new Intl.DateTimeFormat(gregorianLocale(locale), style === 'long'
+  const opts: Intl.DateTimeFormatOptions = style === 'long'
     ? { month: 'long', year: 'numeric' }
-    : { month: 'short' }).format(d);
+    : style === 'shortYear' ? { month: 'short', year: 'numeric' } : { month: 'short' };
+  return new Intl.DateTimeFormat(gregorianLocale(locale), opts).format(d);
 }
 
 /** Seçili aydan 23 ay öncesinin 1'i 00:00 (yerel) — ISO. */

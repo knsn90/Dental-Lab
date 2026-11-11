@@ -11,6 +11,7 @@ import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { useInkUI } from '../../../../core/theme/inkScale';
 import { usePanelTheme } from '../../../../core/theme/usePanelTheme';
 import { hexA } from '../../../../core/theme/stationPalette';
+import { DS } from '../../../../core/theme/dsTokens';
 import { autoT } from '../../../../core/i18n/autoTranslate';
 import { isRTL } from '../../../../core/i18n';
 import type { MonthKey } from '../months';
@@ -20,6 +21,11 @@ import { useSpringValue } from '../useSpringValue';
 import { MiniSeries } from './MiniSeries';
 
 const web = Platform.OS === 'web';
+
+/** Çene/adet çubuklarının ikinci tonu: accent'ten ayrışan teal (koyuda açık teal). */
+export function secondTone(isDark: boolean): string {
+  return isDark ? '#6FD3CA' : DS.teal.primary;
+}
 
 export interface WorkTypeListProps {
   rows: WorkTypeRow[];
@@ -72,7 +78,7 @@ function TypeRow({ row, max, focused, expanded, months, selected, onPress }: {
   const U = useInkUI();
   const accent = usePanelTheme().primary;
   const primaryTone = U.isDark ? '#93C5FD' : accent;
-  const tone = row.bucket === 'uye' ? primaryTone : U.ink[400];
+  const tone = row.bucket === 'uye' ? primaryTone : secondTone(U.isDark);
   const w = useSpringValue(barPct(row.qty, max, 3));
   const barStyle = useAnimatedStyle(() => ({ width: `${w.value}%` as any }));
   const d = diffOf(row.qty, row.compare);
@@ -81,6 +87,7 @@ function TypeRow({ row, max, focused, expanded, months, selected, onPress }: {
   const dirWord = d?.dir === 'up' ? autoT('artış') : d?.dir === 'down' ? autoT('azalış') : d ? autoT('değişmedi') : autoT('kıyas yok');
 
   return (
+    <View>
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
@@ -106,9 +113,13 @@ function TypeRow({ row, max, focused, expanded, months, selected, onPress }: {
       <View style={{ height: 6, borderRadius: 999, backgroundColor: U.chipNeutral, marginTop: 7, overflow: 'hidden' }}>
         <Animated.View style={[{ height: '100%', borderRadius: 999, backgroundColor: tone }, barStyle]} />
       </View>
-      {expanded ? (
-        <MiniSeries series={row.series} months={months} selected={selected} unitLabel={unit} color={tone} />
-      ) : null}
     </Pressable>
+      {/* Satırın KARDEŞİ: mini grafiğe dokunmak satırı kapatmaz / ölçeklemez */}
+      {expanded ? (
+        <View style={{ paddingHorizontal: 10, paddingBottom: 6 }}>
+          <MiniSeries series={row.series} months={months} selected={selected} unitLabel={unit} color={tone} />
+        </View>
+      ) : null}
+    </View>
   );
 }

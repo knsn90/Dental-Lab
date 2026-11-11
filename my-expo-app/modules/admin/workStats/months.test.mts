@@ -56,3 +56,14 @@ test('monthLabel her zaman miladi takvim (Farsça Celali yerel ayarında bile)',
   // uzantısız yerel ayar da miladi kalır, dil korunur
   assert.match(monthLabel('2026-11', 'tr-TR', 'long'), /Kasım/);
 });
+
+test("monthLabel 'shortYear': kısa ay + yıl, miladi", () => {
+  const tr = monthLabel('2025-11', 'tr-TR', 'shortYear');
+  assert.match(tr, /Kas/);
+  assert.match(tr, /2025/);
+  const fa = monthLabel('2025-11', 'fa-IR-u-ca-persian-nu-latn', 'shortYear');
+  assert.ok(fa.includes('نوامبر'), fa);
+  assert.ok(fa.includes('2025'), fa);
+  // 'short' yılsız kalır (önceki ay kıyası değişmez)
+  assert.doesNotMatch(monthLabel('2025-11', 'tr-TR', 'short'), /2025/);
+});

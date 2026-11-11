@@ -68,7 +68,7 @@ export function MiniSeries({ series, months, selected, unitLabel, color }: {
                 }}
               >
                 {v ? (
-                  <View style={{ height: `${barPct(v, max, 8)}%`, borderRadius: 999, backgroundColor: color, opacity: on ? 1 : 0.45 }} />
+                  <View style={{ height: `${barPct(v, max, 8)}%`, borderRadius: 999, backgroundColor: color, opacity: on ? 1 : U.isDark ? 0.6 : 0.45 }} />
                 ) : null}
               </View>
               <Text numberOfLines={1} style={{ fontSize: 9, textTransform: 'uppercase', color: on ? U.ink[900] : U.ink[400], fontWeight: on ? '700' : '500' }}>

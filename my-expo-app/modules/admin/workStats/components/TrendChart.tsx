@@ -8,7 +8,8 @@
  * kaydırılır. Zaman ekseni RTL'de de soldan sağa kalır.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, Pressable, ScrollView, Platform } from 'react-native';
+import { View, Text, Pressable, ScrollView, Platform, useWindowDimensions } from 'react-native';
+import { PAGE_PADDING } from '../../../../core/ui/pageMetrics';
 import Animated, { useAnimatedStyle, useReducedMotion } from 'react-native-reanimated';
 import { ChevronDown, Check } from '../../../../core/ui/icons';
 import { HatchFill } from '../../../../core/ui/HatchFill';
@@ -76,7 +77,10 @@ export function TrendChart(p: TrendChartProps) {
   }, [p.points, p.showLastYear]);
 
   // ── Yatay kaydırma (dar alan) ──
-  const [viewW, setViewW] = useState(0);
+  // İlk karede genişlik pencereden tohumlanır (ölçüm gelene dek); ScrollView hep
+  // çizilir, yalnız scrollEnabled değişir → sütunlar yeniden doğmaz.
+  const { width: winW } = useWindowDimensions();
+  const [viewW, setViewW] = useState(() => Math.max(0, winW - 2 * (PAGE_PADDING + 18)));
   const n = Math.max(p.points.length, 1);
   const contentW = Math.max(viewW, n * COL_MIN_W);
   const scrolls = viewW > 0 && contentW > viewW + 1;
@@ -92,7 +96,7 @@ export function TrendChart(p: TrendChartProps) {
     <View
       style={{
         flexDirection: 'row', alignItems: 'stretch', height: CHART_H,
-        width: scrolls ? contentW : '100%',
+        width: scrolls ? contentW : (viewW > 0 ? viewW : '100%'),
         // Zaman ekseni RTL'de de soldan sağa (spec §9)
         direction: 'ltr',
       } as any}
@@ -135,17 +139,17 @@ export function TrendChart(p: TrendChartProps) {
       <ChipRow chips={p.chips} chip={p.chip} onChip={p.onChip} accent={accent} />
 
       <View onLayout={(e) => setViewW(e.nativeEvent.layout.width)}>
-        {scrolls ? (
-          <ScrollView
-            ref={scrollRef}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            bounces
-            style={{ direction: 'ltr' } as any}
-          >
-            {columns}
-          </ScrollView>
-        ) : columns}
+        <ScrollView
+          ref={scrollRef}
+          horizontal
+          scrollEnabled={scrolls}
+          showsHorizontalScrollIndicator={false}
+          bounces={scrolls}
+          style={{ direction: 'ltr' } as any}
+          contentContainerStyle={scrolls ? undefined : { flexGrow: 1 }}
+        >
+          {columns}
+        </ScrollView>
       </View>
     </View>
   );

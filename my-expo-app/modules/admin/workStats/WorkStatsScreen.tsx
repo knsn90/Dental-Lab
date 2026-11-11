@@ -473,7 +473,8 @@ function Overview({ stats, st, chips, locale }: {
             qty={q}
             compare={stats.compareQty}
             compareMode={st.compare}
-            compareMonthText={monthLabel(compareMonth(st.selected, st.compare), locale, 'short')}
+            // Geçen yıl kıyasında yıl da yazılır: "Kas 2025" (yalnız "Kas" seçili ay sanılıyordu)
+            compareMonthText={monthLabel(compareMonth(st.selected, st.compare), locale, st.compare === 'lastYear' ? 'shortYear' : 'short')}
             avg6={stats.avg6Uye}
           />
           {empty && !st.focusWorkType ? (
