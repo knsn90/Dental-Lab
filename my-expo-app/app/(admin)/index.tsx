@@ -192,6 +192,12 @@ function hexA(hex: string, alpha: number) {
 }
 
 /** Get the 7-day window for "Bu hafta" strip (Mon–Sun) */
+/** Yerel takvim günü (YYYY-MM-DD). toISOString UTC gününü verir: TR'de 00:00–03:00
+ *  arası açılan sipariş bir önceki güne yazılıyordu, gece yarısından sonra hafta kayıyordu. */
+function localISO(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function getWeekDays(t: (k: string) => string): { label: string; date: string; isToday: boolean }[] {
   const now = new Date();
   const dayOfWeek = now.getDay();
@@ -199,12 +205,12 @@ function getWeekDays(t: (k: string) => string): { label: string; date: string; i
   // Hafta başlangıcı bölgeye bağlı: TR/AB Pazartesi, İran Cumartesi (weekdayOffset).
   monday.setDate(now.getDate() - weekdayOffset(dayOfWeek));
   const result: { label: string; date: string; isToday: boolean }[] = [];
-  const todayISO = todayStr();
+  const todayISO = localISO(now);
   const daysShort = t('admin.days.short').split(', ');
   for (let i = 0; i < 7; i++) {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
-    const iso = d.toISOString().split('T')[0];
+    const iso = localISO(d);
     result.push({
       label: `${daysShort[d.getDay()]} ${d.getDate()}`,
       date: iso,
@@ -791,11 +797,12 @@ function ProductionBarChart({ data }: { data: { label: string; count: number }[]
 
 // ── Weekly Calendar Strip ──
 function WeeklyStrip({
-  weekDays, weekCounts, weekDone, onPress,
+  weekDays, weekCounts, weekDone, extra, onPress,
 }: {
   weekDays: { label: string; date: string; isToday: boolean }[];
   weekCounts: Record<string, number>;
   weekDone: Record<string, number>;
+  extra?: { cene: number; adet: number };
   onPress: () => void;
 }) {
   const PB = usePanelBlue();
@@ -829,6 +836,16 @@ function WeeklyStrip({
           </View>
         </View>
       </View>
+
+      {/* Çene/adet işleri üyeye katılmaz — bu haftakiler ayrı not. */}
+      {(() => {
+        const parts: string[] = [];
+        if (extra?.cene) parts.push(`${extra.cene} ${autoT('çene')}`);
+        if (extra?.adet) parts.push(`${extra.adet} ${autoT('adet')}`);
+        return parts.length
+          ? <Text style={{ fontSize: 11, color: T.ink2, fontWeight: '600', marginTop: -6, marginBottom: 10 }}>{`${autoT('Bu hafta ayrıca')} ${parts.join(' · ')}`}</Text>
+          : null;
+      })()}
 
       {/* Bars */}
       <View className="flex-row items-end" style={{ gap: 10, flex: 1, minHeight: 140, paddingHorizontal: 2 }}>
@@ -1329,6 +1346,7 @@ export default function AdminDashboard() {
   const [planningPending, setPlanningPending] = useState<number>(0);
   const [weekCounts, setWeekCounts]       = useState<Record<string, number>>(cache?.weekCounts ?? {});
   const [weekDone, setWeekDone]           = useState<Record<string, number>>(cache?.weekDone ?? {});
+  const [weekExtra, setWeekExtra]         = useState<{ cene: number; adet: number }>({ cene: 0, adet: 0 });
 
   // Finance state
   const [finMonthly, setFinMonthly]       = useState<CurrencyTotal[]>(cache?.finMonthly ?? []);
@@ -1528,6 +1546,7 @@ export default function AdminDashboard() {
       const wc: Record<string, number> = {};
       const wcDone: Record<string, number> = {};
       weekDays.forEach(wd => { wc[wd.date] = 0; wcDone[wd.date] = 0; });
+      let weekCene = 0, weekAdet = 0;
       // Hizmet adı → birim eşlemi (küçük harf, kırpılmış). service_id üretimde
       // boş olduğu için isimle eşleşiyoruz (bkz. serviceUnits.ts notu).
       const unitByService = new Map<string, string | null>(
@@ -1555,10 +1574,15 @@ export default function AdminDashboard() {
               break;
             }
           }
-          const isoDay = o.created_at?.slice(0, 10);
-          if (isoDay && wc[isoDay] !== undefined) {
-            wc[isoDay] += teeth;
-            if (o.status === 'teslim_edildi') wcDone[isoDay] += teeth;
+          // Haftalık şerit de aynı kural: yalnız üye birimli işler çubukta;
+          // çene/adet işleri haftalık notta. İptaller sayılmaz.
+          const isoDay = localISO(c);
+          if (o.status !== 'iptal' && wc[isoDay] !== undefined) {
+            if (bucket === 'uye') {
+              wc[isoDay] += teeth;
+              if (o.status === 'teslim_edildi') wcDone[isoDay] += teeth;
+            } else if (bucket === 'cene') weekCene += serviceUnitQty(oUnit, o.tooth_numbers ?? []);
+            else weekAdet += 1;
           }
         }
         if (o.work_type && teeth > 0) {
@@ -1580,6 +1604,7 @@ export default function AdminDashboard() {
       setMonthly(monthBuckets.map(b => ({ label: monthsShort[b.m], count: b.count, cene: b.cene, adet: b.adet })));
       setWeekCounts(wc);
       setWeekDone(wcDone);
+      setWeekExtra({ cene: weekCene, adet: weekAdet });
       // slice YOK — seçimi kart yapar. Burada kesince farklı BİRİMLER aynı
       // sıralamada yarışıyordu: gece plağı "2 çene" ile 30/24/14 üyelik işlerin
       // altında kalıp listeye hiç giremiyordu (ve başlıktaki birim kırılımı da
@@ -2351,6 +2376,7 @@ export default function AdminDashboard() {
                   weekDays={weekDays}
                   weekCounts={weekCounts}
                   weekDone={weekDone}
+                  extra={weekExtra}
                   onPress={() => router.push('/(admin)/orders' as any)}
                 />
               </DashCell>

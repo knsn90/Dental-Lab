@@ -10170,5 +10170,6 @@
   "İstatistik yüklenemedi": "Statistics could not be loaded",
   "Bu kullanıcının istatistiğini görme yetkin yok": "You are not allowed to view this user's statistics",
   "Hesabı olmayan personelin istatistiği tutulmaz": "No statistics are kept for staff without an account",
-  "Bu ay ayrıca": "Also this month"
+  "Bu ay ayrıca": "Also this month",
+  "Bu hafta ayrıca": "Also this week"
 }
