@@ -9,6 +9,7 @@
 //   6) Geciken vakalar list OR positive empty state
 
 import React from 'react';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { HatchFill } from '../../../core/ui/HatchFill';
 import { firstName as displayFirstName } from '../../../core/util/personName';
 import { fmtWeekdayDayMonth, isRTL } from '../../../core/i18n';
@@ -88,7 +89,7 @@ export interface AdminMobileDashboardProps {
   heldCount?:        number;
   pendingApprovalsCount?: number;
   /** Üye trendi: son aylar (masaüstü "Üye Trendi" kartıyla aynı dizi; son eleman bu ay) */
-  memberTrend?: { label: string; count: number }[];
+  memberTrend?: { label: string; count: number; cene?: number; adet?: number }[];
   // Delayed
   recentOrders?: RecentOrderItem[];
   // Actions
@@ -343,7 +344,17 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
             <Text style={{ color: T.ink, fontWeight: '600' }}>{trend[trend.length - 1]?.count ?? 0}</Text> {t('admin.dashboard.membersThisMonth')}
           </Text>
         </View>
-        <Text style={{ fontSize: 10.5, color: T.ink3, marginBottom: 12 }}>{t('admin.dashboard.toothMemberNote')}</Text>
+        <Text style={{ fontSize: 10.5, color: T.ink3, marginBottom: (trend[trend.length - 1]?.cene || trend[trend.length - 1]?.adet) ? 2 : 12 }}>{t('admin.dashboard.toothMemberNote')}</Text>
+        {(() => {
+          // Çene/adet işleri üyeye katılmaz; bu ayınkiler ayrı satırda.
+          const last = trend[trend.length - 1];
+          const parts: string[] = [];
+          if (last?.cene) parts.push(`${last.cene} ${autoT('çene')}`);
+          if (last?.adet) parts.push(`${last.adet} ${autoT('adet')}`);
+          return parts.length
+            ? <Text style={{ fontSize: 10.5, color: T.ink2, fontWeight: '600', marginBottom: 12 }}>{`${autoT('Bu ay ayrıca')} ${parts.join(' · ')}`}</Text>
+            : null;
+        })()}
         {(() => {
           // Ölçek: dönemin kendi tepesi; en yüksek ay dolu accent + kapsül etiket, diğerleri soluk
           const max = Math.max(1, ...trend.map((m) => m.count));

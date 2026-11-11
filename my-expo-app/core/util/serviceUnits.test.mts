@@ -40,3 +40,20 @@ test('unitShares her satırı yalnız kendi birim toplamına böler', () => {
   ]);
   assert.deepEqual(s, [0.75, 0.25, 0.75, 0.25]);
 });
+
+import { memberBucketOf, serviceUnitQty } from './serviceUnits.ts';
+
+test('memberBucketOf: çene/adet ayrı kovada, bilinmeyen üye', () => {
+  assert.equal(memberBucketOf('Çene'), 'cene');
+  assert.equal(memberBucketOf('Vaka'), 'adet');
+  assert.equal(memberBucketOf('Adet'), 'adet');
+  assert.equal(memberBucketOf('Üye'), 'uye');
+  assert.equal(memberBucketOf(null), 'uye');
+});
+
+test('gece plağı 16 diş → 1 çene, 16 üye DEĞİL', () => {
+  const teeth = [11,12,13,14,15,16,17,18,21,22,23,24,25,26,27,28];
+  assert.equal(memberBucketOf('çene'), 'cene');
+  assert.equal(serviceUnitQty('çene', teeth), 1);
+  assert.equal(serviceUnitQty('çene', [...teeth, 31, 41]), 2);
+});

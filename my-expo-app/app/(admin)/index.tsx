@@ -69,7 +69,7 @@ import { useDashboardCache } from '../../core/store/dashboardCacheStore';
 import { useNewOrderModalStore } from '../../core/store/newOrderModalStore';
 import { ActivityIndicator } from '../../core/ui/teethCompat';
 import { FaceScanQuickAction } from '../../modules/orders/components/FaceScanQuickAction';
-import { serviceUnitQty, serviceUnitLabel, resolveUnitForWorkType, workTypeGroupLabel, unitShares } from '../../core/util/serviceUnits';
+import { serviceUnitQty, serviceUnitLabel, resolveUnitForWorkType, workTypeGroupLabel, unitShares, memberBucketOf } from '../../core/util/serviceUnits';
 import { ScanCalendarCard, useScanCardVisible } from '../../modules/scans/components/ScanCalendarCard';
 import { DashRow, DashHalf, DashCell } from '../../modules/dashboard/components/DashGrid';
 
@@ -1209,6 +1209,14 @@ function WorkTypeCard({ data }: { data: { label: string; count: number; unit?: s
 }
 
 // ── Finance Card ──
+/** Üye Trendi alt notu: bu ayın çene/adet işleri (üye sayısına KATILMAZ). Yoksa ''. */
+function extraUnitsNote(m?: { cene?: number; adet?: number }): string {
+  const parts: string[] = [];
+  if (m?.cene) parts.push(`${m.cene} ${autoT('çene')}`);
+  if (m?.adet) parts.push(`${m.adet} ${autoT('adet')}`);
+  return parts.length ? `${autoT('Bu ay ayrıca')} ${parts.join(' · ')}` : '';
+}
+
 function FinanceCard({ monthly, pending, paid }: { monthly: CurrencyTotal[]; pending: CurrencyTotal[]; paid: number }) {
   const { t } = useTranslation();
   const T = useMobileTokens();
@@ -1311,7 +1319,7 @@ export default function AdminDashboard() {
   // `unit` = hizmetin sayım birimi (üye/çene/adet…). Kart satır başına bunu
   // gösteriyor; birimler toplanmadığı için tipte taşınması şart.
   const [byWorkType, setByWorkType]       = useState<{ label: string; count: number; unit?: string | null }[]>(cache?.byWorkType ?? []);
-  const [monthly, setMonthly]             = useState<{ label: string; count: number }[]>(cache?.monthly ?? []);
+  const [monthly, setMonthly]             = useState<{ label: string; count: number; cene?: number; adet?: number }[]>(cache?.monthly ?? []);
   const [recentOrders, setRecentOrders]   = useState<any[]>(cache?.recentOrders ?? []);
   const [upcoming, setUpcoming]           = useState<any[]>(cache?.upcoming ?? []);
   const [hovered, setHovered]             = useState<string | null>(null);
@@ -1481,7 +1489,11 @@ export default function AdminDashboard() {
 
   const loadExtra = useCallback(async () => {
     const today = labTodayOf(cachedLabTz());
+    // İlk kova ayın 1'inden başlar — eskiden "bugünden 5 ay geri" alınıyordu,
+    // ilk ay yarım sayılıyordu (Haziran 36 yerine 8).
     const sixMonthsAgo = new Date();
+    sixMonthsAgo.setDate(1);
+    sixMonthsAgo.setHours(0, 0, 0, 0);
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
     const in3Days = new Date(); in3Days.setDate(in3Days.getDate() + 3);
     const in3DaysStr = in3Days.toISOString().split('T')[0];
@@ -1508,10 +1520,10 @@ export default function AdminDashboard() {
     if (data) {
       // Tek pass — sayaçlar diş bazlı (her tooth_numbers entry'si = 1 üye).
       const weekDays = getWeekDays(t);
-      const monthBuckets: { y: number; m: number; count: number }[] = [];
+      const monthBuckets: { y: number; m: number; count: number; cene: number; adet: number }[] = [];
       for (let i = 5; i >= 0; i--) {
-        const d = new Date(); d.setMonth(d.getMonth() - i);
-        monthBuckets.push({ y: d.getFullYear(), m: d.getMonth(), count: 0 });
+        const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
+        monthBuckets.push({ y: d.getFullYear(), m: d.getMonth(), count: 0, cene: 0, adet: 0 });
       }
       const wc: Record<string, number> = {};
       const wcDone: Record<string, number> = {};
@@ -1531,8 +1543,17 @@ export default function AdminDashboard() {
         const c = o.created_at ? new Date(o.created_at) : null;
         if (c && teeth > 0) {
           const y = c.getFullYear(), m = c.getMonth();
-          for (const mb of monthBuckets) {
-            if (mb.y === y && mb.m === m) { mb.count += teeth; break; }
+          // Üye Trendi işin KENDİ biriminde: çene/adet işleri ayrı sayaçta
+          // (tek gece plağı 16 "üye" görünüyordu). İptaller sayılmaz.
+          const oUnit = o.work_type ? resolveUnitForWorkType(String(o.work_type), unitByService) : null;
+          const bucket = memberBucketOf(oUnit);
+          if (o.status !== 'iptal') for (const mb of monthBuckets) {
+            if (mb.y === y && mb.m === m) {
+              if (bucket === 'uye') mb.count += teeth;
+              else if (bucket === 'cene') mb.cene += serviceUnitQty(oUnit, o.tooth_numbers ?? []);
+              else mb.adet += 1;
+              break;
+            }
           }
           const isoDay = o.created_at?.slice(0, 10);
           if (isoDay && wc[isoDay] !== undefined) {
@@ -1556,7 +1577,7 @@ export default function AdminDashboard() {
         }
       }
 
-      setMonthly(monthBuckets.map(b => ({ label: monthsShort[b.m], count: b.count })));
+      setMonthly(monthBuckets.map(b => ({ label: monthsShort[b.m], count: b.count, cene: b.cene, adet: b.adet })));
       setWeekCounts(wc);
       setWeekDone(wcDone);
       // slice YOK — seçimi kart yapar. Burada kesince farklı BİRİMLER aynı
@@ -2063,6 +2084,9 @@ export default function AdminDashboard() {
                 <Text style={{ fontSize: 14, color: T.ink3 }}> {t('admin.dashboard.membersThisMonth')}</Text>
               </Text>
               <Text style={{ fontSize: 11, color: T.ink3, marginTop: 4 }}>{t('admin.dashboard.toothMemberNote')}</Text>
+              {!!extraUnitsNote(monthly[monthly.length - 1]) && (
+                <Text style={{ fontSize: 11, color: T.ink2, fontWeight: '600', marginTop: 2 }}>{extraUnitsNote(monthly[monthly.length - 1])}</Text>
+              )}
             </View>
             <Pressable
               onPress={() => router.push('/(admin)/orders' as any)}

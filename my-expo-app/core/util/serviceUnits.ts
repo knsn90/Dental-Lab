@@ -119,3 +119,18 @@ export function unitShares(rows: { count: number; unit?: string | null }[]): num
     return t > 0 ? (Number(r.count) || 0) / t : 0;
   });
 }
+
+/**
+ * Üye Trendi kovası: bir siparişin miktarı hangi sayaca yazılır?
+ * "1 diş = 1 üye" yalnız üye birimli işler için doğrudur. Gece plağı / tam çene
+ * gibi ÇENE birimli işler diş sayısıyla toplanınca tek plak 16 "üye" görünüyordu
+ * (2026-11-11: 6 ayda 523 görünen, gerçekte 281 üye + 17 çene + 2 adet).
+ * Birimi çözülemeyen (null / karışık) iş varsayılan olarak üyedir.
+ */
+export type MemberBucket = 'uye' | 'cene' | 'adet';
+export function memberBucketOf(unit: string | null | undefined): MemberBucket {
+  const u = (unit ?? '').toLocaleLowerCase('tr-TR');
+  if (u === 'çene') return 'cene';
+  if (u === 'vaka' || u === 'seans' || u === 'adet') return 'adet';
+  return 'uye';
+}
