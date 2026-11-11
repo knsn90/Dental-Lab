@@ -10202,5 +10202,17 @@
   "İş tipine göre": "Nach Arbeitsart",
   "Kliniğe göre": "Nach Klinik",
   "Kıyas üye": "Vergleich Einheiten",
-  "Son 12 ay · iş tipine göre": "Letzte 12 Monate · nach Arbeitsart"
+  "Son 12 ay · iş tipine göre": "Letzte 12 Monate · nach Arbeitsart",
+  "Aylık trend": "Monatstrend",
+  "kayıt yok": "keine Daten",
+  "Diğer…": "Weitere…",
+  "geçen yılın bu ayına ait kayıt yok": "keine Daten für diesen Monat im Vorjahr",
+  "önceki aya ait kayıt yok": "keine Daten für den Vormonat",
+  "6 ay ort.": "Ø 6 Monate",
+  "üye/ay": "Einheiten/Monat",
+  "artış": "Anstieg",
+  "azalış": "Rückgang",
+  "kıyas yok": "kein Vergleich",
+  "İş tipleri": "Arbeitsarten",
+  "bu ay 0": "0 diesen Monat"
 }

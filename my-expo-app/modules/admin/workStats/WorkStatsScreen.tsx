@@ -1,9 +1,9 @@
 /**
  * İş İstatistikleri — Admin Özet "Üye Trendi" kartından açılan sayfa (spec §7).
  * Bu dosya: iskelet, yapışkan araç çubuğu, klinik seçici, ay listesi, sekmeler,
- * yükleniyor/hata/boş durumları ve dışa aktarma bağlantısı. Sekme içerikleri
- * (trend, kutular, listeler, ısı haritası) Görev 6/7'de bağlanır — aşağıda
- * "YER TUTUCU" ile işaretli.
+ * yükleniyor/hata/boş durumları ve dışa aktarma bağlantısı. Genel bakış
+ * (trend, kutular, listeler) `Overview` ile çizilir; ısı haritası Görev 7'de
+ * bağlanır — aşağıda "YER TUTUCU" ile işaretli.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, Modal, ScrollView, Platform, StyleSheet, useWindowDimensions } from 'react-native';
@@ -40,6 +40,12 @@ import { WorkStatsToolbar } from './components/WorkStatsToolbar';
 import { ClinicPicker, type ClinicOption } from './components/ClinicPicker';
 import { useStickyToolbar } from './components/useStickyToolbar';
 import type { AnchorRect } from './components/AnchoredPopover';
+import { TrendChart } from './components/TrendChart';
+import { MonthKpis } from './components/MonthKpis';
+import { WorkTypeList } from './components/WorkTypeList';
+import { ClinicList } from './components/ClinicList';
+import { rankWorkTypes } from './overview';
+import type { WorkStatsState } from './useWorkStatsState';
 
 const web = Platform.OS === 'web';
 
@@ -124,6 +130,15 @@ export function WorkStatsScreen() {
       total,
     })).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, 'tr'));
   }, [data.status, data.orders, refs, st.selected]);
+
+  // ── Trend çipleri: penceredeki iş tipleri (klinik süzgeciyle), çoktan aza ──
+  const chipsNow: string[] | null = useMemo(() => {
+    if (data.status !== 'ready' || !refs) return null;
+    return rankWorkTypes(countOrders({ ...refs, orders: data.orders }), windowMonths(st.selected, 12), st.clinicId);
+  }, [data.status, data.orders, refs, st.selected, st.clinicId]);
+  const lastChips = useRef<string[]>([]);
+  if (chipsNow) lastChips.current = chipsNow;
+  const chips = chipsNow ?? lastChips.current;
 
   const clinicLabel = st.clinicId === null
     ? autoT('Tüm klinikler')
@@ -251,7 +266,7 @@ export function WorkStatsScreen() {
     body = (
       <View style={{ gap: CARD_GAP, opacity: refreshing ? 0.55 : 1 }}>
         {st.tab === 'overview'
-          ? <OverviewPlaceholder stats={shownStats} />
+          ? <Overview stats={shownStats} st={st} chips={chips} locale={locale} />
           : <HeatPlaceholder />}
       </View>
     );
@@ -422,34 +437,72 @@ function MonthListModal({ visible, months, selected, locale, onPick, onClose }: 
   );
 }
 
-/* ─────────────────────────────────────────────────────────────────────────────
- * YER TUTUCU — Görev 6 (TrendChart, MonthKpis, WorkTypeList, ClinicList) buraya
- * bağlanır. Şimdilik yalnız seçili ayın üç toplamı ve boş durumlar çizilir;
- * böylece ay/klinik/kıyas seçimi tarayıcıda doğrulanabilir.
- * ──────────────────────────────────────────────────────────────────────────── */
-function OverviewPlaceholder({ stats }: { stats: WorkStats }) {
+/**
+ * Genel bakış (spec §7.3–7.4): üstte 12 aylık trend, altında seçili ayın dört
+ * kutusu ve iş tipi / klinik listeleri (≥1024 px yan yana, altında alt alta).
+ */
+function Overview({ stats, st, chips, locale }: {
+  stats: WorkStats; st: WorkStatsState; chips: string[]; locale: string;
+}) {
   const U = useInkUI();
+  const { width } = useWindowDimensions();
+  const wide = width >= 1024;
+  const [expanded, setExpanded] = useState<string | null>(null);
   const q = stats.selectedQty;
-  const c = stats.compareQty;
-  if (!q) {
-    return <View style={U.cardSolid}><EmptyStateX icon="calendar" title="Bu aya ait kayıt yok" compact /></View>;
-  }
-  const empty = q.uye === 0 && q.cene === 0 && q.adet === 0;
-  const cell = (label: string, v: number, cv: number | null | undefined) => (
-    <View key={label} style={{ flexGrow: 1, flexBasis: 160, ...U.cardSolid, padding: 18, gap: 6 }}>
-      <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: U.ink[400] }}>{label}</Text>
-      <Text style={{ fontSize: 34, fontWeight: '300', letterSpacing: -0.85, color: U.ink[900], fontVariant: ['tabular-nums'] }}>{v}</Text>
-      <Text style={{ fontSize: 12, color: U.ink[500], fontVariant: ['tabular-nums'] }}>{cv == null ? '—' : cv}</Text>
-    </View>
-  );
+  const bucket = stats.trend[0]?.bucket ?? 'uye';
+  const unitLabel = autoT(bucket === 'cene' ? 'çene' : bucket === 'adet' ? 'adet' : 'üye');
+  const empty = !!q && q.uye === 0 && q.cene === 0 && q.adet === 0;
+
   return (
     <View style={{ gap: CARD_GAP }}>
-      <View testID="ws-overview-placeholder" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: CARD_GAP }}>
-        {cell(autoT('Toplam üye'), q.uye, c?.uye)}
-        {cell(autoT('Çene'), q.cene, c?.cene)}
-        {cell(autoT('Adet'), q.adet, c?.adet)}
-      </View>
-      {empty ? <View style={U.cardSolid}><EmptyStateX icon="inbox" title="Bu ay sipariş gelmedi" compact /></View> : null}
+      <TrendChart
+        points={stats.trend}
+        selected={st.selected}
+        onSelect={st.setSelected}
+        showLastYear={st.compare === 'lastYear'}
+        chips={chips}
+        chip={st.chipWorkType}
+        onChip={st.setChipWorkType}
+        unitLabel={unitLabel}
+      />
+      {!q ? (
+        <View style={U.cardSolid}><EmptyStateX icon="calendar" title="Bu aya ait kayıt yok" compact /></View>
+      ) : (
+        <>
+          <MonthKpis
+            qty={q}
+            compare={stats.compareQty}
+            compareMode={st.compare}
+            compareMonthText={monthLabel(compareMonth(st.selected, st.compare), locale, 'short')}
+            avg6={stats.avg6Uye}
+          />
+          {empty && !st.focusWorkType ? (
+            <View style={U.cardSolid}><EmptyStateX icon="inbox" title="Bu ay sipariş gelmedi" compact /></View>
+          ) : (
+            <View style={{ flexDirection: wide ? 'row' : 'column', alignItems: wide ? 'flex-start' : 'stretch', gap: CARD_GAP }}>
+              <View style={wide ? { flex: 1, minWidth: 0 } : undefined}>
+                <WorkTypeList
+                  rows={stats.workTypes}
+                  focus={st.focusWorkType}
+                  onFocus={st.setFocusWorkType}
+                  expanded={expanded}
+                  onExpand={setExpanded}
+                  months={stats.months}
+                  selected={st.selected}
+                />
+              </View>
+              <View style={wide ? { flex: 1, minWidth: 0 } : undefined}>
+                <ClinicList
+                  rows={stats.clinics}
+                  onPick={st.setClinicId}
+                  focusLabel={st.focusWorkType}
+                  onClearFocus={() => { st.setFocusWorkType(null); setExpanded(null); }}
+                />
+              </View>
+            </View>
+          )}
+        </>
+      )}
     </View>
   );
 }

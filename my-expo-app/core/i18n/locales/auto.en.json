@@ -10202,5 +10202,17 @@
   "İş tipine göre": "By work type",
   "Kliniğe göre": "By clinic",
   "Kıyas üye": "Comparison units",
-  "Son 12 ay · iş tipine göre": "Last 12 months · by work type"
+  "Son 12 ay · iş tipine göre": "Last 12 months · by work type",
+  "Aylık trend": "Monthly trend",
+  "kayıt yok": "no records",
+  "Diğer…": "Other…",
+  "geçen yılın bu ayına ait kayıt yok": "no records for this month last year",
+  "önceki aya ait kayıt yok": "no records for the previous month",
+  "6 ay ort.": "6-mo avg.",
+  "üye/ay": "units/month",
+  "artış": "increase",
+  "azalış": "decrease",
+  "kıyas yok": "no comparison",
+  "İş tipleri": "Work types",
+  "bu ay 0": "0 this month"
 }

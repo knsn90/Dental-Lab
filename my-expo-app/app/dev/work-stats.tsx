@@ -1,7 +1,7 @@
 // app/dev/work-stats.tsx — İş İstatistikleri demo (yalnız __DEV__; ağ çağrısı YOK).
 // Canlı veri salt okunur ve oturumsuz tarayıcıda admin rotası açılmaz; ekran burada
 // sahte veriyle denenir. Parametreler: ?empty=1 (hiç sipariş yok) · ?err=1 (yükleme
-// hatası) · ?err=switch (ilk pencere gelir, ay değişince okuma hata verir) · ?lang=en|de|fa · ?dark=1. Bu sayfa açıkken work_orders / doctors / clinics /
+// hatası) · ?err=switch (ilk pencere gelir, ay değişince okuma hata verir) · ?lang=en|de|fa · ?dark=1 · ?ly=1 (geçen yıl Haz–Kas 2025 siparişleri de gelir; kayıt dönemi 2025'te başlar). Bu sayfa açıkken work_orders / doctors / clinics /
 // lab_services okumaları sahte satırlarla yanıtlanır; oturum profiline sahte lab_id yazılır.
 import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
@@ -28,11 +28,13 @@ const SERVICES = [
 ];
 // Üye hedefleri (spec §12 ölçümüyle aynı): Haz 36 · Tem 19 · Ağu 75 · Eyl 32 · Eki 84 · Kas 63
 const MONTHS: [number, number, number][] = [[2026, 5, 36], [2026, 6, 19], [2026, 7, 75], [2026, 8, 32], [2026, 9, 84], [2026, 10, 63]];
+// ?ly=1: geçen yılın aynı ayları (trend "Geçen yıl" işaretleri ve fark metinleri için)
+const MONTHS_LY: [number, number, number][] = [[2025, 5, 22], [2025, 6, 41], [2025, 7, 30], [2025, 8, 55], [2025, 9, 47], [2025, 10, 70]];
 
-function buildOrders() {
+function buildOrders(ly = false) {
   const out: any[] = [];
   let n = 1;
-  for (const [y, m, total] of MONTHS) {
+  for (const [y, m, total] of ly ? [...MONTHS_LY, ...MONTHS] : MONTHS) {
     let left = total;
     let i = 0;
     while (left > 0) {
@@ -56,11 +58,11 @@ function buildOrders() {
 }
 
 /** PostgREST sorgu kurucusunun yeterli taklidi: zincirlenir, await edilince {data,error}. */
-function fakeBuilder(table: string, opts: { empty: boolean; err: boolean; errSwitch: boolean; firstGte: { v?: string } }) {
+function fakeBuilder(table: string, opts: { empty: boolean; err: boolean; errSwitch: boolean; ly: boolean; firstGte: { v?: string } }) {
   const st: { gte?: string; from?: number; to?: number; limit?: number; asc: boolean; cols: string } = { asc: true, cols: '' };
   const rows = (): any[] => {
     if (table === 'work_orders') {
-      let r = opts.empty ? [] : buildOrders();
+      let r = opts.empty ? [] : buildOrders(opts.ly);
       if (st.gte) r = r.filter((o) => o.created_at >= st.gte!);
       r.sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
       if (st.limit) r = r.slice(0, st.limit);
@@ -96,11 +98,11 @@ function fakeBuilder(table: string, opts: { empty: boolean; err: boolean; errSwi
 const FAKE = new Set(['work_orders', 'doctors', 'clinics', 'lab_services']);
 
 export default function WorkStatsDemo() {
-  const { empty, err, lang, dark } = useLocalSearchParams<{ empty?: string; err?: string; lang?: string; dark?: string }>();
+  const { empty, err, lang, dark, ly } = useLocalSearchParams<{ empty?: string; err?: string; lang?: string; dark?: string; ly?: string }>();
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const opts = { empty: empty === '1', err: err === '1', errSwitch: err === 'switch', firstGte: {} as { v?: string } };
+    const opts = { empty: empty === '1', err: err === '1', errSwitch: err === 'switch', ly: ly === '1', firstGte: {} as { v?: string } };
     const origFrom = (supabase as any).from;
     (supabase as any).from = (t: string) => (FAKE.has(t) ? fakeBuilder(t, opts) : origFrom.call(supabase, t));
     const prevProfile = useAuthStore.getState().profile;
@@ -116,7 +118,7 @@ export default function WorkStatsDemo() {
       if (lang && lang !== prevLang) i18n.changeLanguage(prevLang);
       if (dark === '1') useThemeModeStore.setState({ resolvedDark: prevDark } as any);
     };
-  }, [empty, err, lang, dark]);
+  }, [empty, err, lang, dark, ly]);
 
   if (!ready) return <View />;
   return <WorkStatsScreen />;
