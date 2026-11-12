@@ -39,6 +39,11 @@ const DEMO_SUMMARIES: ClinicSummary[] = [
   },
 ];
 
+const EXTRA_TOP: ClinicSummary[] = [['c4','Ortodonti Merkezi Bakırköy',31,12],['c5','Smile Design Nişantaşı',22,9],['c6','Ankara Diş Polikliniği',11,3]].map(([id,name,u,o]) => ({
+  clinicId: id as string, name: name as string, all: fig(o as number, u as number, 0, [], (u as number) * 900), month: fig(o as number, u as number, 0, [], (u as number) * 900),
+  lastOrderAt: null, balance: [], overdue: [], aging: null, oldestOverdueDays: null, rating: null,
+}));
+
 const DEMO_MESSAGES = [
   { id: 'm1', workOrderId: 'o1', orderNumber: 'S-1042', content: 'Renk A2 olsun, prova için perşembe uygun mu?', createdAt: '2026-11-11T10:00:00' },
   { id: 'm2', workOrderId: 'o2', orderNumber: 'S-1038', content: 'Ölçüyü kurye ile gönderdik.', createdAt: '2026-11-09T16:30:00' },
@@ -77,7 +82,7 @@ export default function ClinicSummaryDemo() {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: dark === '1' ? '#0E0E0E' : '#F5F1EB' }}
       contentContainerStyle={{ padding: PAGE_PADDING, gap: 12, maxWidth: 720 }}>
-      <TopClinicsCard summaries={new Map(DEMO_SUMMARIES.map((x) => [x.clinicId, x]))} onOpen={setOpenId} />
+      <View style={{ width: 360, minHeight: 330 }}><TopClinicsCard fill summaries={new Map([...DEMO_SUMMARIES, ...EXTRA_TOP].map((x) => [x.clinicId, x]))} onOpen={setOpenId} /></View>
       <TopClinicsCard compact summaries={new Map(DEMO_SUMMARIES.map((x) => [x.clinicId, { ...x, month: { ...x.month, orders: 0, qty: { uye: 0, cene: 0, adet: 0 }, revenueBase: 0 } }]))} onOpen={setOpenId} />
       {DEMO_SUMMARIES.map((s) => (
         <View key={s.clinicId} style={U.cardSolid}>

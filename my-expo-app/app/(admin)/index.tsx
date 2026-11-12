@@ -4,7 +4,7 @@
  * Layout:
  *   1. Hero — Serif greeting + stat pills + big numbers
  *   2. 4-card grid (AnimatedAktifVaka, Sipariş Trendi, PercentRing, AnimatedCTACard) — eşit sütunlar (DashGrid)
- *   3. Second row — TasksCard + tarama widget'ı (yarımlar)
+ *   3. Second row — TasksCard + tarama widget'ı + TopClinicsCard (üçte birler)
  *   4. Extra sections — Orders table, Finance | Status dist, Work type | WeeklyStrip
  *
  * Theme: DS.exec (kobalt #002A5C)
@@ -71,7 +71,7 @@ import { ActivityIndicator } from '../../core/ui/teethCompat';
 import { FaceScanQuickAction } from '../../modules/orders/components/FaceScanQuickAction';
 import { serviceUnitQty, serviceUnitLabel, resolveUnitForWorkType, workTypeGroupLabel, unitShares, memberBucketOf } from '../../core/util/serviceUnits';
 import { ScanCalendarCard, useScanCardVisible } from '../../modules/scans/components/ScanCalendarCard';
-import { DashRow, DashHalf, DashCell } from '../../modules/dashboard/components/DashGrid';
+import { DashRow, DashHalf, DashCell, DashThird } from '../../modules/dashboard/components/DashGrid';
 import { TopClinicsCard } from '../../modules/clinicSummary/components/TopClinicsCard';
 
 // ── Display font — Patterns: Inter Tight Light (300), tight tracking ──
@@ -2313,17 +2313,15 @@ export default function AdminDashboard() {
         </DashHalf>
       </DashRow>
 
-      {/* ════════ İKİNCİ SIRA — Bugünkü Görevler + tarama widget'ı (yarımlar).
+      {/* ════════ İKİNCİ SIRA — Bugünkü Görevler + tarama widget'ı + klinik sıralaması (üçte birler).
           "Bu hafta" en altta, İş Tipi Dağılımı'nın yanında (kullanıcı isteği). ════════ */}
       <DashRow gap={16} style={{ marginBottom: 16 }}>
-        <DashHalf gap={16}>
-          <DashCell><TasksCard tasks={taskItems} /></DashCell>
-        </DashHalf>
+        <DashThird><TasksCard tasks={taskItems} /></DashThird>
         {scanCard ? (
-          <DashHalf gap={16}>
-            <DashCell><ScanCalendarCard style={{ flex: 1 }} /></DashCell>
-          </DashHalf>
+          <DashThird><ScanCalendarCard style={{ flex: 1 }} /></DashThird>
         ) : null}
+        {/* En çok iş gönderen klinikler — satıra tıklayınca klinik özeti popup'ı */}
+        <DashThird><TopClinicsCard fill /></DashThird>
       </DashRow>
 
       {/* ════════ EXTRA SECTIONS (below fold) ════════ */}
@@ -2522,10 +2520,6 @@ export default function AdminDashboard() {
               </DashCell>
             </DashHalf>
           </DashRow>
-          {/* En çok iş gönderen klinikler — satıra tıklayınca klinik özeti popup'ı */}
-          <View style={{ marginBottom: 16 }}>
-            <TopClinicsCard />
-          </View>
         </>
       )}
 

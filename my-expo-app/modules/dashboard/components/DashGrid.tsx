@@ -25,3 +25,8 @@ export function DashHalf({ gap, children }: { gap: number; children: React.React
 export function DashCell({ children }: { children: React.ReactNode }) {
   return <View style={{ flexGrow: 1, flexShrink: 1, flexBasis: CELL_MIN, minWidth: 0 }}>{children}</View>;
 }
+
+/** Satırın üçte biri — üç kartlı satırlar için. Daralınca 2'li, sonra tek sütuna iner. */
+export function DashThird({ children }: { children: React.ReactNode }) {
+  return <View style={{ flexGrow: 1, flexShrink: 1, flexBasis: 280, minWidth: 0 }}>{children}</View>;
+}
