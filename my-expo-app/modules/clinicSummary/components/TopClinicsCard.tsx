@@ -12,7 +12,9 @@ import { useInkUI } from '../../../core/theme/inkScale';
 import { usePermissionStore } from '../../../core/store/permissionStore';
 import { DS } from '../../../core/theme/dsTokens';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
-import { AlertTriangle, RoyalCrown } from '../../../core/ui/icons';
+import { AlertTriangle } from '../../../core/ui/icons';
+import Svg, { Path, Circle, Text as SvgText } from 'react-native-svg';
+import { HERO_NAVY } from '../../../core/ui/HeroGlow';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { useReducedMotion } from '../../reviews/components/dashboard/dashboardUi';
 import { rankTop, type RankMode, type ClinicSummary } from '../summary';
@@ -34,11 +36,8 @@ function usePalette() {
     fillFrom: isDark ? '#4F7DB8' : DS.exec.primary,
     fillTo: isDark ? '#9EC0E8' : DS.exec.primaryDeep,
     track: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(23,34,53,0.06)',
-    tint: isDark ? 'rgba(127,168,217,0.12)' : 'rgba(71,113,171,0.07)',
-    tintBorder: isDark ? 'rgba(127,168,217,0.22)' : 'rgba(71,113,171,0.14)',
     avatarBg: isDark ? 'rgba(127,168,217,0.18)' : 'rgba(49,79,126,0.10)',
     avatarFg: isDark ? '#BFD3EC' : DS.exec.primaryDeep,
-    leadAvatarBg: isDark ? '#004B87' : DS.exec.primaryDeep,
   };
 }
 
@@ -71,7 +70,7 @@ function Seg<K extends string>({ value, options, onChange }: { value: K; options
 }
 
 /** Kapsül çubuk — oran değişince 0→hedef değil, BULUNDUĞU değerden hedefe akar. */
-function Bar({ ratio, height, dim }: { ratio: number; height: number; dim?: boolean }) {
+function Bar({ ratio, height, dim, onNavy }: { ratio: number; height: number; dim?: boolean; onNavy?: boolean }) {
   const P = usePalette();
   const reduced = useReducedMotion();
   const target = Math.max(0.04, Math.min(1, ratio));
@@ -84,11 +83,13 @@ function Bar({ ratio, height, dim }: { ratio: number; height: number; dim?: bool
   }, [target, reduced, v]);
   const width = v.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
   return (
-    <View style={{ height, borderRadius: 999, backgroundColor: P.track, overflow: 'hidden' }}>
+    <View style={{ height, borderRadius: 999, backgroundColor: onNavy ? 'rgba(255,255,255,0.14)' : P.track, overflow: 'hidden' }}>
       <Animated.View style={{
         height, borderRadius: 999, width, opacity: dim ? 0.6 : 1,
-        backgroundColor: P.fillTo,
-        ...(web ? { backgroundImage: `linear-gradient(90deg, ${P.fillFrom} 0%, ${P.fillTo} 100%)` } : {}),
+        backgroundColor: onNavy ? '#9EC0E8' : P.fillTo,
+        ...(web ? { backgroundImage: onNavy
+          ? 'linear-gradient(90deg, #6E9BD0 0%, #FFFFFF 100%)'
+          : `linear-gradient(90deg, ${P.fillFrom} 0%, ${P.fillTo} 100%)` } : {}),
       } as any} />
     </View>
   );
@@ -105,7 +106,7 @@ function ClinicAvatar({ name, logoUrl, size, lead }: { name: string; logoUrl?: s
     return (
       <View style={{
         width: size, height: size, borderRadius: radius, overflow: 'hidden', backgroundColor: '#FFFFFF',
-        borderWidth: 1, borderColor: lead ? P.tintBorder : T.hairline, alignItems: 'center', justifyContent: 'center',
+        borderWidth: lead ? 0 : 1, borderColor: T.hairline, alignItems: 'center', justifyContent: 'center',
       }}>
         <Image
           source={{ uri: logoUrl }}
@@ -120,53 +121,78 @@ function ClinicAvatar({ name, logoUrl, size, lead }: { name: string; logoUrl?: s
   return (
     <View style={{
       width: size, height: size, borderRadius: radius, alignItems: 'center', justifyContent: 'center',
-      backgroundColor: lead ? P.leadAvatarBg : P.avatarBg,
+      backgroundColor: lead ? 'rgba(255,255,255,0.14)' : P.avatarBg,
     }}>
       <Text style={{ fontSize: Math.round(size * 0.36), fontWeight: '700', letterSpacing: 0.3, color: lead ? '#FFFFFF' : P.avatarFg }}>{monogram(name)}</Text>
     </View>
   );
 }
 
-/** Sıra rozeti — avatarın sağ üst köşesinde taç: 1 altın · 2 gümüş · 3 bronz.
- *  Metal tonları her iki temada aynı (ödül rengi, çevrilmez). */
+/** Sıra rozeti — avatarın sağ üst köşesinde madalya: tırtıklı mühür + numara + iki
+ *  kurdele (1 altın · 2 gümüş · 3 bronz). Metal tonları her iki temada aynı
+ *  (ödül rengi, çevrilmez). viewBox 40×50: mühür üstte, kurdeleler altta. */
 const MEDALS = {
-  1: { base: '#F5C24B', grad: 'linear-gradient(145deg, #FFE08A 0%, #F5C24B 45%, #D99A1E 100%)', glow: 'rgba(217,154,30,0.45)', ink: '#5A3A00' },
-  2: { base: '#C9D1DA', grad: 'linear-gradient(145deg, #F4F7FA 0%, #C9D1DA 50%, #9AA6B2 100%)', glow: 'rgba(120,135,150,0.40)', ink: '#3B4652' },
-  3: { base: '#D49A6A', grad: 'linear-gradient(145deg, #F2C9A1 0%, #D49A6A 50%, #A5673A 100%)', glow: 'rgba(165,103,58,0.40)', ink: '#4A2A10' },
+  1: { rim: '#FFC531', ring: '#F2A900', disk: '#FFD45C', shine: '#FFE58F', num: '#FFFFFF', ribbon: '#EF5A2A', stripe: '#FF8D45' },
+  2: { rim: '#CBD3DC', ring: '#9EAAB7', disk: '#E2E8EE', shine: '#F3F6F9', num: '#566270', ribbon: '#3E6FA8', stripe: '#6E9BD0' },
+  3: { rim: '#E3A673', ring: '#B9773F', disk: '#F0BD8E', shine: '#F8D6B4', num: '#FFFFFF', ribbon: '#7A4FA6', stripe: '#A47ACC' },
 } as const;
 
-function RankBadge({ rank, size }: { rank: 1 | 2 | 3; size: number }) {
-  const T = useMobileTokens();
+/** 12 dişli mühür kenarı (yumuşak tepe/çukur). */
+function sealPath(cx: number, cy: number, rOut: number, rIn: number, n = 12): string {
+  const pts: string[] = [];
+  for (let i = 0; i < n * 2; i++) {
+    const r = i % 2 === 0 ? rOut : rIn;
+    const a = (Math.PI / n) * i - Math.PI / 2;
+    pts.push(`${(cx + r * Math.cos(a)).toFixed(2)},${(cy + r * Math.sin(a)).toFixed(2)}`);
+  }
+  return `M${pts.join('L')}Z`;
+}
+const SEAL = sealPath(20, 18, 17.5, 14.6);
+
+function Medal({ rank, size }: { rank: 1 | 2 | 3; size: number }) {
   const m = MEDALS[rank];
+  return (
+    <Svg width={size} height={size * 1.25} viewBox="0 0 40 50">
+      {/* Kurdeleler — mührün arkasında, V uçlu */}
+      <Path d="M10 26 L5 47 L10.5 43.5 L13.5 48.5 L19 29 Z" fill={m.ribbon} />
+      <Path d="M30 26 L35 47 L29.5 43.5 L26.5 48.5 L21 29 Z" fill={m.ribbon} />
+      <Path d="M11.6 27.5 L7.9 43.4 L9.4 42.5 L13.2 28.3 Z" fill={m.stripe} />
+      <Path d="M28.4 27.5 L32.1 43.4 L30.6 42.5 L26.8 28.3 Z" fill={m.stripe} />
+      {/* Mühür */}
+      <Path d={SEAL} fill={m.rim} />
+      <Circle cx={20} cy={18} r={11.5} fill={m.ring} />
+      <Circle cx={20} cy={18} r={9.3} fill={m.disk} />
+      {/* Çapraz parlama — yarım disk biraz açık */}
+      <Path d="M12.4 25.6 A11.5 11.5 0 0 1 27.6 10.4 Z" fill={m.shine} opacity={0.45} />
+      <SvgText x={20} y={22.6} fontSize={13} fontWeight="800" fill={m.num} textAnchor="middle">{String(rank)}</SvgText>
+    </Svg>
+  );
+}
+
+function RankBadge({ rank, size }: { rank: 1 | 2 | 3; size: number }) {
   const title = `${rank}. ${autoT('sıra')}`;
   const text = rank === 1 ? autoT('Seçili dönemde en çok iş gönderen')
     : rank === 2 ? autoT('Seçili dönemde ikinci sırada') : autoT('Seçili dönemde üçüncü sırada');
-  const off = -Math.round(size * 0.38);
   return (
-    <View style={{ position: 'absolute', right: off, top: off }}>
+    <View style={{ position: 'absolute', right: -Math.round(size * 0.42), top: -Math.round(size * 0.4) }}>
       <GlassTooltip title={title} text={text}>
         <View
           accessibilityLabel={`${title} · ${text}`}
-          style={{
-            width: size, height: size, borderRadius: size / 2,
-            alignItems: 'center', justifyContent: 'center',
-            backgroundColor: m.base, borderWidth: 2, borderColor: T.card,
-            ...(web ? { backgroundImage: m.grad, boxShadow: `0 2px 6px ${m.glow}` } : {}),
-          } as any}
+          style={web ? ({ filter: 'drop-shadow(0 1.5px 2px rgba(0,0,0,0.22))' } as any) : undefined}
         >
-          <RoyalCrown size={Math.round(size * 0.52)} color={m.ink} strokeWidth={2} />
+          <Medal rank={rank} size={size} />
         </View>
       </GlassTooltip>
     </View>
   );
 }
 
-function OverdueMark() {
+function OverdueMark({ onNavy }: { onNavy?: boolean } = {}) {
   const U = useInkUI();
   return (
     <GlassTooltip title={autoT('Vadesi geçmiş borç')} text={autoT('Ödeme durumu sıralamayı etkilemez')}>
       <View accessibilityLabel={autoT('Vadesi geçmiş borç')}>
-        <AlertTriangle size={12} color={U.chipTones.warning.fg} strokeWidth={1.8} />
+        <AlertTriangle size={12} color={onNavy ? '#F5C24B' : U.chipTones.warning.fg} strokeWidth={1.8} />
       </View>
     </GlassTooltip>
   );
@@ -232,36 +258,37 @@ export function TopClinicsCard(props: {
         </View>
       ) : (
         <View style={{ flex: props.fill ? 1 : undefined, gap: 4 }}>
-          {/* Lider — renkli zemin değil, hafif ton + ince kenar; değer öne çıkar */}
+          {/* Lider — lacivert kutu (her iki temada), içerik beyaz; değer öne çıkar */}
           <Pressable
             onPress={() => open(lead.clinicId)}
             accessibilityRole="button"
             accessibilityLabel={`1. ${lead.name}`}
             style={pressStyle({
               borderRadius: 14, padding: 10, marginBottom: 4,
-              backgroundColor: P.tint, borderWidth: 1, borderColor: P.tintBorder,
+              backgroundColor: HERO_NAVY.to,
+              ...(web ? { backgroundImage: `linear-gradient(135deg, ${HERO_NAVY.from} 0%, ${HERO_NAVY.to} 55%, ${HERO_NAVY.light} 100%)` } : {}),
             })}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <View>
                 <ClinicAvatar name={lead.name} logoUrl={map.get(lead.clinicId)?.logoUrl} size={38} lead />
-                <RankBadge rank={1} size={20} />
+                <RankBadge rank={1} size={26} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <Text style={{ flexShrink: 1, fontSize: 13.5, fontWeight: '700', color: T.ink }} numberOfLines={1}>{lead.name}</Text>
-                  {lead.overdue ? <OverdueMark /> : null}
+                  <Text style={{ flexShrink: 1, fontSize: 13.5, fontWeight: '700', color: '#FFFFFF' }} numberOfLines={1}>{lead.name}</Text>
+                  {lead.overdue ? <OverdueMark onNavy /> : null}
                 </View>
-                <Text style={{ fontSize: 11, color: T.ink3, marginTop: 1 }} numberOfLines={1}>
+                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.68)', marginTop: 1 }} numberOfLines={1}>
                   {`${autoT('Pay')} %${share(lead.uye)}`}{mode === 'score' ? ` · ${lead.uye} ${autoT('üye')}` : ''}
                 </Text>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
-                <Text style={{ fontSize: 22, fontWeight: '300', letterSpacing: -0.6, color: T.ink, fontVariant: ['tabular-nums'] }}>{String(val(lead))}</Text>
-                <Text style={{ fontSize: 10, color: T.ink3, marginTop: -2 }}>{mode === 'uye' ? autoT('üye') : autoT('Puan')}</Text>
+                <Text style={{ fontSize: 22, fontWeight: '300', letterSpacing: -0.6, color: '#FFFFFF', fontVariant: ['tabular-nums'] }}>{String(val(lead))}</Text>
+                <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.62)', marginTop: -2 }}>{mode === 'uye' ? autoT('üye') : autoT('Puan')}</Text>
               </View>
             </View>
-            <View style={{ marginTop: 9 }}><Bar ratio={1} height={5} /></View>
+            <View style={{ marginTop: 9 }}><Bar ratio={1} height={5} onNavy /></View>
           </Pressable>
 
           {rest.map((r, i) => (
@@ -274,7 +301,7 @@ export function TopClinicsCard(props: {
             >
               <View>
                 <ClinicAvatar name={r.name} logoUrl={map.get(r.clinicId)?.logoUrl} size={28} />
-                {i < 2 ? <RankBadge rank={(i + 2) as 2 | 3} size={16} /> : null}
+                {i < 2 ? <RankBadge rank={(i + 2) as 2 | 3} size={20} /> : null}
               </View>
               <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
