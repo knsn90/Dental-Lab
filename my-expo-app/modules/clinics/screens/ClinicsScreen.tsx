@@ -47,6 +47,8 @@ import { resolveClinicsTab, type ClinicsTabKey } from '../clinicsNav';
 import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 import { ClinicSummaryStrip } from '../../clinicSummary/components/ClinicSummaryStrip';
 import { useClinicSummaryModal } from '../../clinicSummary/components/ClinicSummaryModal';
+import { useClinicSummaries } from '../../clinicSummary/useClinicSummaries';
+import { sortByWork } from '../../clinicSummary/summary';
 
 // ── Design tokens ───────────────────────────────────────────────────
 const DISPLAY = {
@@ -180,6 +182,7 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
   const segments = useSegments() as string[];
   const panelType = (segments?.[0] ?? '') === '(admin)' ? 'admin' : 'lab';
   const clinicSummary = useClinicSummaryModal();
+  const summaries = useClinicSummaries();
   const { getTheme } = useColorThemeStore();
   const accentColor = accentColorProp ?? getTheme(panelType).primary;
   const T = useMobileTokens();
@@ -530,7 +533,7 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
   const openFilter = () => { setDraftCategory(categoryFilter); setDraftStatus(statusFilter); setShowFilterSheet(true); };
   const applyFilter = () => { setCategoryFilter(draftCategory); setStatusFilter(draftStatus); setShowFilterSheet(false); };
 
-  const filteredClinics = useMemo(() => clinics.filter(c => {
+  const filteredClinics = useMemo(() => sortByWork(clinics.filter(c => {
     if (activeTab !== 'all' && activeTab !== 'doctors' && activeTab !== 'managers' && (c.category ?? 'klinik') !== activeTab) return false;
     if (categoryFilter !== 'all' && (c.category ?? 'klinik') !== categoryFilter) return false;
     if (statusFilter === 'active' && !c.is_active) return false;
@@ -539,7 +542,7 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
     if (c.name.toLowerCase().includes(q)) return true;
     if (c.contact_person?.toLowerCase().includes(q)) return true;
     return getDoctorsByClinic(c.id).some(d => d.full_name.toLowerCase().includes(q));
-  }), [clinics, activeTab, categoryFilter, statusFilter, q, doctors]);
+  }), clinicSummary.enabled ? summaries.map : new Map()), [clinics, activeTab, categoryFilter, statusFilter, q, doctors, summaries.map, clinicSummary.enabled]);
 
   const categoryCounts = useMemo(() =>
     CLINIC_CATEGORIES.reduce((acc, cat) => {

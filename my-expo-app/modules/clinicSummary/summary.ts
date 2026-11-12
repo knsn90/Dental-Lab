@@ -151,3 +151,18 @@ export function rankTop(s: Map<string, ClinicSummary>, period: 'month' | 'all', 
   rows.sort((a, b) => key(b) - key(a) || b.uye - a.uye || a.name.localeCompare(b.name, 'tr'));
   return rows.slice(0, limit);
 }
+
+/** Klinik listesini iş hacmine göre sıralar: tüm zamanların üyesi çoktan aza,
+ *  eşitlikte sipariş sayısı, sonra ad. Özeti olmayanlar sona, giriş sırasıyla. */
+export function sortByWork<T extends { id: string; name: string }>(list: T[], map: Map<string, ClinicSummary>): T[] {
+  if (map.size === 0) return list;
+  return list
+    .map((c, i) => ({ c, i, s: map.get(c.id) }))
+    .sort((x, y) => {
+      if (!x.s || !y.s) return x.s ? -1 : y.s ? 1 : x.i - y.i;
+      return (y.s.all.qty.uye - x.s.all.qty.uye)
+        || (y.s.all.orders - x.s.all.orders)
+        || x.c.name.localeCompare(y.c.name, 'tr');
+    })
+    .map((r) => r.c);
+}

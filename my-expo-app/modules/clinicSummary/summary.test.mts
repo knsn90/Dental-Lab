@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildClinicSummaries, pickMain, rankTop,
+  buildClinicSummaries, pickMain, rankTop, sortByWork,
   type ClinicSummary, type RevenueRow, type BalanceRow, type ReviewRow,
 } from './summary.ts';
 import { countOrders, type RawOrder } from '../admin/workStats/aggregate.ts';
@@ -157,4 +157,12 @@ test('rankTop: üye modunda yalnız ciro olan (üyesiz) klinik listelenmez', () 
   const m = new Map([['A', fake('A', 'A', 0, 500)], ['B', fake('B', 'B', 3, 0)]]);
   assert.deepEqual(rankTop(m, 'month', 'uye').map((r) => r.clinicId), ['B']);
   assert.deepEqual(rankTop(m, 'month', 'score').map((r) => r.clinicId).sort(), ['A', 'B']);
+});
+
+test('sortByWork: üye çoktan aza, eşitlikte sipariş, sonra ad; özetsiz sona', () => {
+  const m = new Map([['a', fake('a', 'Alfa', 5, 0)], ['b', fake('b', 'Beta', 9, 0)], ['c', fake('c', 'Cem', 5, 0)]]);
+  m.get('c')!.all = { ...m.get('c')!.all, orders: 3 };
+  const list = [{ id: 'x', name: 'Ada' }, { id: 'a', name: 'Alfa' }, { id: 'c', name: 'Cem' }, { id: 'b', name: 'Beta' }];
+  assert.deepEqual(sortByWork(list, m).map((r) => r.id), ['b', 'c', 'a', 'x']);
+  assert.deepEqual(sortByWork(list, new Map()).map((r) => r.id), ['x', 'a', 'c', 'b']);
 });
