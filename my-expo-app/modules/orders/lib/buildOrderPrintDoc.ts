@@ -15,6 +15,7 @@
 import { supabase } from '../../../core/api/supabase';
 import type { WorkOrder } from '../types';
 import { readImplantInfo } from '../implantInfo';
+import { brandWithModel } from '../implantCatalogModel';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { htmlAttrs, printLocale } from '../../../core/i18n/printLocale';
 import { isRTL } from '../../../core/i18n';
@@ -75,7 +76,7 @@ export async function buildOrderPrintDoc(order: WorkOrder, opts: WorkLabelDocOpt
       for (const t of implant.teeth) {
         const d = implant.details[t];
         const patch = {
-          implantSystem: (d?.system ?? '').trim() || implant.brand || null,
+          implantSystem: brandWithModel((d?.system ?? '').trim() || implant.brand, d?.model) || null,
           implantType:   (d?.type ?? '').trim() || null,
           abutment:      (d?.abutment ?? '').trim() || null,
           screw:         (d?.screw ?? '').trim() || null,

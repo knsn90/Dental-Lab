@@ -44,6 +44,8 @@ import { fetchOrderEditPrefill } from '../prefillFromOrder';
 import { implantFieldsPayload } from '../implantInfo';
 import { ageFromDob, parseAgeInput, sanitizeAgeInput } from '../lib/patientAge';
 import { reconcileImplantDetails } from '../implantDetails';
+import { useImplantBrandNames, ImplantBrandAddRow, ImplantModelField } from '../components/ImplantCatalogParts';
+import { brandWithModel } from '../implantCatalogModel';
 import { useNewOrderModalStore } from '../../../core/store/newOrderModalStore';
 import { useOnboardingStore } from '../../../core/onboarding/onboardingStore';
 import { useTourTarget } from '../../../core/onboarding/useTourTarget';
@@ -145,6 +147,7 @@ interface AttachedFile {
 /** Diş başına implant bilgisi (hibrit/full-çene vakalarda her implant ayrı). */
 interface ImplantDetail {
   system: string;    // marka
+  model?: string;    // markanın modeli (BLX…) — isteğe bağlı, lab kataloğundan
   type: string;      // Bone/Tissue Level, Mini…
   abutment: string;  // Anatomik, Düz, Açılı…
   screw: string;     // Multi-unit, Tekli, Hex
@@ -407,6 +410,10 @@ const fmtDraftTime = (d: Date) =>
  *  ki hekim aramadan görsün (bilmediği markayı arayamaz). Bunu seçmek geçerli
  *  bir cevaptır: lab en azından bilginin sorulduğunu ve bilinmediğini görür. */
 export const IMPLANT_BRAND_UNKNOWN = 'Markası bilinmiyor';
+
+/** Katalog listesinin başında/sonunda sabit kalan seçenekler. */
+const BRAND_HEAD = [IMPLANT_BRAND_UNKNOWN];
+const BRAND_TAIL = ['Diğer'];
 
 const ALL_IMPLANT_BRANDS = [
   IMPLANT_BRAND_UNKNOWN,
@@ -2528,7 +2535,7 @@ export function NewOrderScreen({
           noteParts.push(`İmplant pozisyonları: ${sorted.join(', ')}`);
           const detailSeg = sorted
             .filter(t => { const d = form.implant_details[t]; return d && (d.system || d.type || d.abutment || d.screw); })
-            .map(t => { const d = form.implant_details[t]; return `${t} = ${d.system || ''}|${d.type || ''}|${d.abutment || ''}|${d.screw || ''}`; })
+            .map(t => { const d = form.implant_details[t]; return `${t} = ${brandWithModel(d.system, d.model)}|${d.type || ''}|${d.abutment || ''}|${d.screw || ''}`; })
             .join('; ');
           if (detailSeg) noteParts.push(`İmplant detayları: ${detailSeg}`);
         }
@@ -2832,7 +2839,7 @@ export function NewOrderScreen({
           noteParts.push(`İmplant pozisyonları: ${sorted.join(', ')}`);
           const detailSeg = sorted
             .filter(t => { const d = form.implant_details[t]; return d && (d.system || d.type || d.abutment || d.screw); })
-            .map(t => { const d = form.implant_details[t]; return `${t} = ${d.system || ''}|${d.type || ''}|${d.abutment || ''}|${d.screw || ''}`; })
+            .map(t => { const d = form.implant_details[t]; return `${t} = ${brandWithModel(d.system, d.model)}|${d.type || ''}|${d.abutment || ''}|${d.screw || ''}`; })
             .join('; ');
           if (detailSeg) noteParts.push(`İmplant detayları: ${detailSeg}`);
         }
@@ -6304,7 +6311,7 @@ function ImplantDetailsList({
         // (aksi halde hekim türü/abutment'ı girip tamam sanıyor).
         const summary = !filled ? autoT('Bilgi girilmedi')
           : !d.system ? autoT('Marka seçilmedi')
-          : [d.system, d.type, d.abutment, d.screw].filter(Boolean).join(' · ');
+          : [brandWithModel(d.system, d.model), d.type, d.abutment, d.screw].filter(Boolean).join(' · ');
         const goNext = () => { const next = teeth[i + 1]; setOpenTooth(next != null ? next : null); };
         return (
           <View key={`impdet-${t}`} style={{ borderTopWidth: i > 0 ? 1 : 0, borderTopColor: NO.borderSoft, overflow: 'visible', zIndex: open ? 30 : 1, backgroundColor: open ? accent + '08' : 'transparent' }}>
@@ -6337,8 +6344,9 @@ function ImplantDetailsList({
                 )}
                 <Text style={{ fontSize: 11, fontWeight: '600', color: NO.inkMedium, marginBottom: 5 }}>{autoT('İmplant Markası')} *</Text>
                 <View style={{ marginBottom: 10, zIndex: 50 }}>
-                  <ImplantBrandCombobox value={d.system} onChange={(v) => onChange(t, { system: v })} accent={accent} />
+                  <ImplantBrandCombobox value={d.system} onChange={(v) => onChange(t, v === d.system ? { system: v } : { system: v, model: '' })} accent={accent} />
                 </View>
+                <ImplantModelField brand={d.system} value={d.model ?? ''} onChange={(m) => onChange(t, { model: m })} accent={accent} />
                 <PillRow label="İmplant Türü"  opts={IMPLANT_TYPES}  value={d.type}     onSel={(v) => onChange(t, { type: v })} />
                 <PillRow label="Abutment Tipi" opts={ABUTMENT_TYPES} value={d.abutment} onSel={(v) => onChange(t, { abutment: v })} />
                 <PillRow label="Vida Tipi"     opts={SCREW_TYPES}    value={d.screw}    onSel={(v) => { onChange(t, { screw: v }); if (v) setTimeout(goNext, 150); }} />
@@ -6375,11 +6383,12 @@ function ImplantBrandCombobox({
     if (Platform.OS === 'web') { try { window.localStorage.setItem(RECENT_KEY, JSON.stringify(next)); } catch {} }
   };
 
+  const { names: brandNames } = useImplantBrandNames(ALL_IMPLANT_BRANDS, BRAND_HEAD, BRAND_TAIL);
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return ALL_IMPLANT_BRANDS;
-    return ALL_IMPLANT_BRANDS.filter(b => b.toLowerCase().includes(q));
-  }, [search]);
+    const q = search.trim().toLocaleLowerCase('tr');
+    if (!q) return brandNames;
+    return brandNames.filter(b => b.toLocaleLowerCase('tr').includes(q));
+  }, [search, brandNames]);
 
   return (
     <View style={{ overflow: 'visible' as any }}>
@@ -6496,6 +6505,12 @@ function ImplantBrandCombobox({
                 <Text style={{ fontSize: 11.5, color: NO.inkMute }}>Sonuç yok</Text>
               </View>
             )}
+            <ImplantBrandAddRow
+              search={search}
+              names={brandNames}
+              accent={accent}
+              onPick={(b) => { onChange(b); pushRecent(b); setOpen(false); setSearch(''); }}
+            />
           </ScrollView>
         </View>
       )}
@@ -6515,11 +6530,12 @@ function ImplantBrandPicker({
   // overflow/transform clip'leyemez.
   const triggerRef = useRef<any>(null);
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const { names: brandNames } = useImplantBrandNames(ALL_IMPLANT_BRANDS, BRAND_HEAD, BRAND_TAIL);
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return ALL_IMPLANT_BRANDS;
-    return ALL_IMPLANT_BRANDS.filter(b => b.toLowerCase().includes(q));
-  }, [search]);
+    const q = search.trim().toLocaleLowerCase('tr');
+    if (!q) return brandNames;
+    return brandNames.filter(b => b.toLocaleLowerCase('tr').includes(q));
+  }, [search, brandNames]);
 
   const openDropdown = () => {
     if (Platform.OS === 'web' && triggerRef.current && triggerRef.current.getBoundingClientRect) {
@@ -6635,6 +6651,12 @@ function ImplantBrandPicker({
                   <Text style={{ fontSize: 12, color: NO.inkMute }}>Sonuç yok</Text>
                 </View>
               )}
+              <ImplantBrandAddRow
+                search={search}
+                names={brandNames}
+                accent={accent}
+                onPick={(b) => { onChange(b); closeDropdown(); setSearch(''); }}
+              />
             </ScrollView>
           </View>
         </WebPortal>
@@ -6698,6 +6720,12 @@ function ImplantBrandPicker({
                 <Text style={{ fontSize: 12, color: NO.inkMute }}>Sonuç yok</Text>
               </View>
             )}
+            <ImplantBrandAddRow
+              search={search}
+              names={brandNames}
+              accent={accent}
+              onPick={(b) => { onChange(b); setOpen(false); setSearch(''); }}
+            />
           </ScrollView>
         </View>
       )}

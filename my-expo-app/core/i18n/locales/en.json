@@ -441,6 +441,10 @@
       "scans": {
         "label": "Scan appointments",
         "sub": "Scan hours, travel buffer, notification times"
+      },
+      "implants": {
+        "label": "Implant Brands",
+        "sub": "Brand and model list"
       }
     },
     "modules": {

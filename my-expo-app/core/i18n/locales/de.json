@@ -441,6 +441,10 @@
       "scans": {
         "label": "Scan-Termine",
         "sub": "Scan-Zeiten, Wegepuffer, Benachrichtigungszeiten"
+      },
+      "implants": {
+        "label": "Implantatmarken",
+        "sub": "Marken- und Modellliste"
       }
     },
     "modules": {

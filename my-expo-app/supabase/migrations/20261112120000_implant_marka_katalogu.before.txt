@@ -1,0 +1,5 @@
+-- 20261112120000_implant_marka_katalogu öncesi canlı durum (2026-11-12):
+-- public.implant_brands / public.implant_models tabloları YOK (pg_class sayımı 0).
+-- implant_catalog_* / _implant_catalog_* fonksiyonları YOK. Mevcut _implant_* fonksiyonları
+-- (_implant_note_notify, _implant_part_label, _implant_parts_actor, _implant_parts_announce) DOKUNULMAZ.
+-- Geri alma: 20261112120000_implant_marka_katalogu.down.sql yalnız bu migration'ın nesnelerini düşürür.

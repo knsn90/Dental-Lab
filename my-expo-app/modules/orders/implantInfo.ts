@@ -16,6 +16,7 @@
  */
 
 import type { ImplantDetail } from './types';
+import { brandWithModel } from './implantCatalogModel';
 
 export type { ImplantDetail };
 
@@ -113,12 +114,14 @@ export function parseItemNotes(notes?: string | null): {
 // ─── Okuma ───────────────────────────────────────────────────────────────────
 
 function isBlankDetail(d?: ImplantDetail | null): boolean {
-  return !d || !(d.system || d.type || d.abutment || d.screw);
+  return !d || !(d.system || d.model || d.type || d.abutment || d.screw);
 }
 
 function normalizeDetail(raw: any): ImplantDetail {
+  const model = String(raw?.model ?? '').trim();
   return {
     system:   String(raw?.system   ?? '').trim(),
+    ...(model ? { model } : {}),
     type:     String(raw?.type     ?? '').trim(),
     abutment: String(raw?.abutment ?? '').trim(),
     screw:    String(raw?.screw    ?? '').trim(),
@@ -218,7 +221,7 @@ export function readImplantInfo(
 /** Bir dişin detayını okunur tek satıra çevirir: "Neodent · Bone Level · Ti-base". */
 export function formatImplantDetail(d?: ImplantDetail | null): string {
   if (!d) return '';
-  return [d.system, d.type, d.abutment, d.screw].map(s => (s ?? '').trim()).filter(Boolean).join(' · ');
+  return [brandWithModel(d.system, d.model), d.type, d.abutment, d.screw].map(s => (s ?? '').trim()).filter(Boolean).join(' · ');
 }
 
 /**
@@ -229,7 +232,7 @@ export function formatImplantDetail(d?: ImplantDetail | null): string {
  */
 export function implantLineFor(info: ImplantInfo, tooth: number): string {
   const d = info.details[tooth];
-  const system = (d?.system ?? '').trim() || info.brand;
+  const system = brandWithModel((d?.system ?? '').trim() || info.brand, d?.model);
   return [system, d?.type, d?.abutment, d?.screw].map(s => (s ?? '').trim()).filter(Boolean).join(' · ');
 }
 
@@ -257,7 +260,7 @@ export function groupImplantTeeth(info: ImplantInfo): { teeth: number[]; detail:
 export function implantBrands(info: ImplantInfo): string[] {
   const set = new Set<string>();
   if (info.brand) set.add(info.brand);
-  for (const d of Object.values(info.details)) if (d.system) set.add(d.system);
+  for (const d of Object.values(info.details)) if (d.system) set.add(brandWithModel(d.system, d.model));
   return Array.from(set);
 }
 

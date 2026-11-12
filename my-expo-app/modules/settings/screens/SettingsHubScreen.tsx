@@ -41,6 +41,7 @@ import { EquipmentSection } from '../sections/EquipmentSection';
 import { WorkHoursSection } from '../sections/WorkHoursSection';
 import { ScanSettingsSection } from '../sections/ScanSettingsSection';
 import { FeaturesSection } from '../sections/FeaturesSection';
+import { ImplantBrandsSection } from '../sections/ImplantBrandsSection';
 import { useFeatureFlagsStore } from '../../../core/store/featureFlagsStore';
 import { MyAccessCodeSection } from '../../kiosk/screens/MyAccessCodeSection';
 import { LabDevicesSection } from '../../kiosk/screens/LabDevicesSection';
@@ -60,7 +61,7 @@ type SectionKey =
   | 'profile' | 'notifications' | 'general'
   | 'users'   | 'checkin'    | 'stations'      | 'integrations' | 'logs'
   | 'permissions' | 'equipment' | 'finance' | 'currency' | 'suppliers' | 'workhours'
-  | 'workflows' | 'mycode' | 'devices' | 'scans' | 'modules';
+  | 'workflows' | 'mycode' | 'devices' | 'scans' | 'modules' | 'implants';
 
 type PanelKind = 'lab' | 'admin' | 'doctor' | 'clinic' | 'station';
 
@@ -135,6 +136,8 @@ const LAB_ITEMS: NavItem[] = [
   { key: 'stations',     label: 'İstasyonlar',   sub: 'Üretim aşamaları',             requiresPermission: 'manage_settings', group: 'Operasyon' },
   { key: 'finance',      label: 'Finans Ayarları', sub: 'Para birimi, KDV, kur, ödeme hatırlatmaları', requiresPermission: 'manage_settings' },
   { key: 'scans',        label: 'Tarama Randevuları', sub: 'Tarama saatleri, yol payı, bildirim saatleri', requiresPermission: 'manage_settings', requiresFeature: 'scan_appointments' },
+  // İmplant markaları: yeni sipariş formundaki lab kataloğu — düzeltme/gizleme/birleştirme yalnız yöneticide.
+  { key: 'implants',     label: 'İmplant Markaları', sub: 'Marka ve model listesi', requiresPermission: 'manage_settings', managerOnly: true },
   { key: 'integrations', label: 'Entegrasyonlar', sub: 'e-Fatura & POS ayarları',     requiresPermission: 'manage_settings', trOnly: true },
   // ── Sistem: modüller + gözlem ──
   // Özellikler: yeni modülleri (Telefon talepleri, Tarama randevuları…) lab yöneticisi kendisi açıp kapatır.
@@ -186,7 +189,7 @@ export function SettingsHubScreen({
   const params = useLocalSearchParams<{ tab?: string }>();
   const VALID_KEYS: SectionKey[] = [
     'profile','notifications','general','mycode','devices','users','checkin','stations',
-    'integrations','logs','permissions','equipment','finance','currency','suppliers','workflows','workhours','scans','modules',
+    'integrations','logs','permissions','equipment','finance','currency','suppliers','workflows','workhours','scans','modules','implants',
   ];
   const initialFromUrl = typeof params.tab === 'string' && (VALID_KEYS as string[]).includes(params.tab)
     ? params.tab as SectionKey
@@ -572,6 +575,7 @@ export function SettingsHubScreen({
               {active === 'workhours' && <WorkHoursSection accentColor={accent} />}
               {active === 'scans' && <ScanSettingsSection accentColor={accent} />}
               {active === 'modules' && <FeaturesSection accentColor={accent} />}
+              {active === 'implants' && <ImplantBrandsSection accentColor={accent} />}
               {active === 'equipment' && <EquipmentSection accentColor={accent} />}
               {active === 'suppliers' && <SuppliersScreen accentColor={accent} />}
               {active === 'currency' && <FinanceSection panelType={panel} accentColor={accent} />}

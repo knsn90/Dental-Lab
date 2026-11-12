@@ -441,6 +441,10 @@
       "scans": {
         "label": "Tarama Randevuları",
         "sub": "Tarama saatleri, yol payı, bildirim saatleri"
+      },
+      "implants": {
+        "label": "İmplant Markaları",
+        "sub": "Marka ve model listesi"
       }
     },
     "modules": {

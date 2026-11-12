@@ -120,6 +120,8 @@ export interface CreateWorkOrderParams {
 /** Tek bir dişteki implant bilgisi (work_orders.implant_details değeri). */
 export interface ImplantDetail {
   system: string;
+  /** Markanın modeli (Straumann → "BLX"); isteğe bağlı, lab kataloğundan seçilir. */
+  model?: string;
   type: string;
   abutment: string;
   screw: string;
