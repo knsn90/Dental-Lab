@@ -71,7 +71,7 @@ import { ActivityIndicator } from '../../core/ui/teethCompat';
 import { FaceScanQuickAction } from '../../modules/orders/components/FaceScanQuickAction';
 import { serviceUnitQty, resolveUnitForWorkType, workTypeGroupLabel, memberBucketOf } from '../../core/util/serviceUnits';
 import { ScanCalendarCard, useScanCardVisible } from '../../modules/scans/components/ScanCalendarCard';
-import { DashRow, DashHalf, DashCell, DashThird } from '../../modules/dashboard/components/DashGrid';
+import { DashRow, DashHalf, DashCell, DashThird, DashHalfSpacer } from '../../modules/dashboard/components/DashGrid';
 import { TopClinicsCard } from '../../modules/clinicSummary/components/TopClinicsCard';
 import {
   STATUS_CFG, STATUS_KEYS, STATUS_BUCKET,
@@ -2194,26 +2194,32 @@ export default function AdminDashboard() {
             </Pressable>
           )}
 
-          {/* Finans tek başına; altında Statü · İş Tipi · Bu hafta tek satırda (kullanıcı isteği, 2026-11-12) */}
+          {/* Finans + Statü, altında İş Tipi + Bu hafta — aynı ızgara, sıra içinde eş boy */}
           <DashRow gap={16} style={{ marginBottom: 16 }}>
             <DashHalf gap={16}>
               <DashCell><FinanceCard monthly={finMonthly} pending={finPending} paid={finPaidCount} /></DashCell>
             </DashHalf>
+            <DashHalf gap={16}>
+              <DashCell><StatusDistCard byStatus={byStatus} /></DashCell>
+            </DashHalf>
           </DashRow>
           <DashRow gap={16} style={{ marginBottom: 16 }}>
-            <DashThird><StatusDistCard byStatus={byStatus} /></DashThird>
             {byWorkType.length > 0 ? (
-              <DashThird><WorkTypeCard data={byWorkType} onPress={() => router.push('/(admin)/work-stats' as any)} /></DashThird>
-            ) : null}
-            <DashThird>
-              <WeeklyStrip
-                weekDays={weekDays}
-                weekCounts={weekCounts}
-                weekDone={weekDone}
-                extra={weekExtra}
-                onPress={() => router.push('/(admin)/work-stats' as any)}
-              />
-            </DashThird>
+              <DashHalf gap={16}>
+                <DashCell><WorkTypeCard data={byWorkType} onPress={() => router.push('/(admin)/work-stats' as any)} /></DashCell>
+              </DashHalf>
+            ) : <DashHalfSpacer gap={16} />}
+            <DashHalf gap={16}>
+              <DashCell>
+                <WeeklyStrip
+                  weekDays={weekDays}
+                  weekCounts={weekCounts}
+                  weekDone={weekDone}
+                  extra={weekExtra}
+                  onPress={() => router.push('/(admin)/work-stats' as any)}
+                />
+              </DashCell>
+            </DashHalf>
           </DashRow>
         </>
       )}

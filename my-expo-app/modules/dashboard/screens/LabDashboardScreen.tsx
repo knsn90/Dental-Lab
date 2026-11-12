@@ -68,7 +68,7 @@ import { resolveOrderStatus } from '../components/RecentOrdersMobile';
 import { mapRevisionCases, flattenRevisionCases } from '../../orders/revisionGroups';
 import { useRevisionParents } from '../../orders/hooks/useRevisionParents';
 import { ScanCalendarCard, useScanCardVisible } from '../../scans/components/ScanCalendarCard';
-import { DashRow, DashHalf, DashCell, DashThird } from '../components/DashGrid';
+import { DashRow, DashHalf, DashCell, DashThird, DashHalfSpacer } from '../components/DashGrid';
 import { statusBuckets } from '../lib/distributions';
 import { StatusDistCard, WorkTypeCard, STATUS_CFG as DIST_STATUS_CFG, STATUS_KEYS as DIST_STATUS_KEYS, STATUS_BUCKET as DIST_STATUS_BUCKET } from '../components/DistributionCards';
 import { useManagerDistributions } from '../hooks/useManagerDistributions';
@@ -2046,7 +2046,7 @@ export function LabDashboardScreen() {
           <DashHalf gap={14}>
             <DashCell><ScanCalendarCard style={{ flex: 1 }} /></DashCell>
           </DashHalf>
-        ) : null}
+        ) : <DashHalfSpacer gap={14} />}
       </DashRow>
       )}
 
@@ -2239,21 +2239,34 @@ export function LabDashboardScreen() {
         </View>
       )}
 
-      {/* Statü · İş tipi (yalnız yönetici) · Bu hafta — tek satır (kullanıcı isteği, 2026-11-12) */}
+      {/* Yönetici: Statü + İş tipi dağılımı (Admin Özet'teki kartlar) */}
+      {isManager ? (
+        <DashRow gap={14} style={{ marginBottom: 14 }}>
+          <DashHalf gap={14}>
+            <DashCell><StatusDistCard byStatus={mgrByStatus} /></DashCell>
+          </DashHalf>
+          {mgrDist.byWorkType.length > 0 ? (
+            <DashHalf gap={14}>
+              <DashCell><WorkTypeCard data={mgrDist.byWorkType} /></DashCell>
+            </DashHalf>
+          ) : <DashHalfSpacer gap={14} />}
+        </DashRow>
+      ) : null}
+
+      {/* ════════ EN ALT — Bu hafta (Admin Özet'teki gibi sayfanın sonunda) ════════ */}
       <DashRow gap={14} style={{ marginBottom: 14 }}>
-        {isManager ? <DashThird><StatusDistCard byStatus={mgrByStatus} /></DashThird> : null}
-        {isManager && mgrDist.byWorkType.length > 0 ? (
-          <DashThird><WorkTypeCard data={mgrDist.byWorkType} /></DashThird>
-        ) : null}
-        <DashThird>
-          <WeeklyStrip
-            weekDays={weekDays}
-            weekCounts={weekCounts}
-            weekDone={weekDone}
-            weekTeeth={weekTeeth}
-            onPress={() => router.push('/(lab)/all-orders' as any)}
-          />
-        </DashThird>
+        <DashHalf gap={14}>
+          <DashCell>
+            <WeeklyStrip
+              weekDays={weekDays}
+              weekCounts={weekCounts}
+              weekDone={weekDone}
+              weekTeeth={weekTeeth}
+              onPress={() => router.push('/(lab)/all-orders' as any)}
+            />
+          </DashCell>
+        </DashHalf>
+        <DashHalfSpacer gap={14} />
       </DashRow>
 
       <View style={{ height: 40 }} />

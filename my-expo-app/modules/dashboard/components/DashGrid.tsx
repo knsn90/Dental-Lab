@@ -30,3 +30,9 @@ export function DashCell({ children }: { children: React.ReactNode }) {
 export function DashThird({ children }: { children: React.ReactNode }) {
   return <View style={{ flexGrow: 1, flexShrink: 1, flexBasis: 280, minWidth: 0 }}>{children}</View>;
 }
+
+/** Satırda tek kart kaldığında boş YARIM yer tutucu — tek kart tüm satıra yayılmasın,
+ *  diğer satırlardaki yarımlarla aynı genişlikte kalsın (kullanıcı isteği, 2026-11-12). */
+export function DashHalfSpacer({ gap }: { gap: number }) {
+  return <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ flexGrow: 1, flexShrink: 1, flexBasis: CELL_MIN * 2 + gap, minWidth: 0, height: 0 }} />;
+}
