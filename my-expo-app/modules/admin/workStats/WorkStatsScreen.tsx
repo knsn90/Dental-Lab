@@ -241,7 +241,7 @@ export function WorkStatsScreen() {
 
   // ── Yapışkan araç çubuğu ──
   const stickyTop = isDesktop ? 0 : mobileTopPad(insets.top) - 8;
-  const { rowRef, barRef, stuck } = useStickyToolbar(web, stickyTop);
+  const { rowRef, holderRef, barRef, stuck } = useStickyToolbar(web, stickyTop);
   const pageBg = isDark ? '#0E0E0E' : MOBILE_PANEL_THEMES.exec.bgPage;
   const solidBar = isDark ? HERO_NAVY.from : MOBILE_PANEL_THEMES.exec.bgPage;
   // Mobilde yüzen menünün arkası da bu katmanla örtülür → daha opak ki içerik okunmasın.
@@ -328,6 +328,7 @@ export function WorkStatsScreen() {
       >
         <View ref={rowRef} style={{ gap: CARD_GAP }}>
           {/* Yapışkan araç çubuğu — gerçek kaydırma kaplarını dinleyip translateY ile izler */}
+          <View ref={holderRef} style={{ zIndex: 20 }}>
           <View ref={barRef} style={{ zIndex: 20, position: 'relative' }}>
             {/* Malzeme katmanı: yalnız yapışınca görünür; sayfa kenarına taşar */}
             <View
@@ -374,6 +375,7 @@ export function WorkStatsScreen() {
               exportDisabled={!input}
               onBack={() => safeBack('/(admin)')}
             />
+          </View>
           </View>
 
           {/* Sekmeler */}
