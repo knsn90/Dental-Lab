@@ -33,6 +33,7 @@ import { RecentOrdersMobile, type RecentOrderItem } from '../../dashboard/compon
 import { RadialGlow } from '../../../core/ui/gradients';
 
 import { ScanCalendarCard } from '../../scans/components/ScanCalendarCard';
+import { TopClinicsCard } from '../../clinicSummary/components/TopClinicsCard';
 const EXEC = MOBILE_PANEL_THEMES.exec;
 
 /**
@@ -415,6 +416,11 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
         })()}
       </Pressable>
       )}
+
+      {/* ═══ En çok iş gönderen klinikler (kompakt) ═══ */}
+      <View style={{ marginHorizontal: 16, marginBottom: 16 }}>
+        <TopClinicsCard compact />
+      </View>
 
       {/* ═══ Son Siparişler — desktop tablonun mobil karşılığı ═══ */}
       <RecentOrdersMobile

@@ -11,6 +11,7 @@ import { PAGE_PADDING } from '../../core/ui/pageMetrics';
 import { ClinicSummaryStrip } from '../../modules/clinicSummary/components/ClinicSummaryStrip';
 import { ClinicSummaryModal } from '../../modules/clinicSummary/components/ClinicSummaryModal';
 import type { ClinicSummary } from '../../modules/clinicSummary/summary';
+import { TopClinicsCard } from '../../modules/clinicSummary/components/TopClinicsCard';
 
 const fig = (orders: number, uye: number, cene: number, revenue: { currency: string; amount: number }[], base: number) =>
   ({ orders, qty: { uye, cene, adet: 0 }, revenue, revenueBase: base });
@@ -76,6 +77,8 @@ export default function ClinicSummaryDemo() {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: dark === '1' ? '#0E0E0E' : '#F5F1EB' }}
       contentContainerStyle={{ padding: PAGE_PADDING, gap: 12, maxWidth: 720 }}>
+      <TopClinicsCard summaries={new Map(DEMO_SUMMARIES.map((x) => [x.clinicId, x]))} onOpen={setOpenId} />
+      <TopClinicsCard compact summaries={new Map(DEMO_SUMMARIES.map((x) => [x.clinicId, { ...x, month: { ...x.month, orders: 0, qty: { uye: 0, cene: 0, adet: 0 }, revenueBase: 0 } }]))} onOpen={setOpenId} />
       {DEMO_SUMMARIES.map((s) => (
         <View key={s.clinicId} style={U.cardSolid}>
           <Pressable onPress={() => setOpenId(s.clinicId)}>

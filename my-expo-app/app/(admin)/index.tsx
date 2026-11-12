@@ -72,6 +72,7 @@ import { FaceScanQuickAction } from '../../modules/orders/components/FaceScanQui
 import { serviceUnitQty, serviceUnitLabel, resolveUnitForWorkType, workTypeGroupLabel, unitShares, memberBucketOf } from '../../core/util/serviceUnits';
 import { ScanCalendarCard, useScanCardVisible } from '../../modules/scans/components/ScanCalendarCard';
 import { DashRow, DashHalf, DashCell } from '../../modules/dashboard/components/DashGrid';
+import { TopClinicsCard } from '../../modules/clinicSummary/components/TopClinicsCard';
 
 // ── Display font — Patterns: Inter Tight Light (300), tight tracking ──
 const SERIF = {
@@ -2521,6 +2522,10 @@ export default function AdminDashboard() {
               </DashCell>
             </DashHalf>
           </DashRow>
+          {/* En çok iş gönderen klinikler — satıra tıklayınca klinik özeti popup'ı */}
+          <View style={{ marginBottom: 16 }}>
+            <TopClinicsCard />
+          </View>
         </>
       )}
 
