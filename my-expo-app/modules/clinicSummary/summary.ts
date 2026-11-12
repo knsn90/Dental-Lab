@@ -136,7 +136,8 @@ export function rankTop(s: Map<string, ClinicSummary>, period: 'month' | 'all', 
   const rows: RankedClinic[] = [];
   for (const c of s.values()) {
     const f = c[period];
-    if (f.qty.uye <= 0 && f.revenueBase <= 0) continue;
+    // Üye modunda ciro tek başına satır açmaz (ay başı kesilen faturalar "0 üye" listelemesin; ciro yetkisizine sızmasın).
+    if (mode === 'uye' ? f.qty.uye <= 0 : f.qty.uye <= 0 && f.revenueBase <= 0) continue;
     rows.push({ clinicId: c.clinicId, name: c.name, uye: f.qty.uye, revenueBase: f.revenueBase, score: 0, overdue: c.overdue.length > 0 });
   }
   const maxU = Math.max(0, ...rows.map((r) => r.uye));

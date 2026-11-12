@@ -2,7 +2,7 @@
 // tek isteği paylaşır. 5 dk taze; aynı anda çağıranlar aynı promise'i bekler.
 import { useCallback, useEffect, useState } from 'react';
 import { useAuthStore } from '../../core/store/authStore';
-import { fetchClinicSummaryData } from './api';
+import { fetchClinicSummaryData, resetClinicSummaryRefs } from './api';
 import type { ClinicSummary } from './summary';
 
 type Status = 'loading' | 'ready' | 'error';
@@ -41,11 +41,18 @@ export function useClinicSummaries(): { status: Status; map: Map<string, ClinicS
   }, [labId]);
 
   useEffect(() => {
-    if (!labId) return;
+    // Lab değişti / oturum kapandı: önceki lab'ın verisini ASLA gösterme.
+    if (!labId) {
+      cache = null; inflight = null; resetClinicSummaryRefs();
+      setMap(null); setStatus('loading');
+      return;
+    }
+    if (cache && cache.labId !== labId) { cache = null; resetClinicSummaryRefs(); }
+    if (!cache) { setMap(null); setStatus('loading'); }
     let alive = true;
     load(labId, tick > 0)
       .then((m) => { if (alive) { setMap(m); setStatus('ready'); } })
-      .catch(() => { if (alive && !map) setStatus('error'); });
+      .catch(() => { if (alive) { setMap((cur) => (cur && cache?.labId === labId ? cur : null)); setStatus((st) => (cache?.labId === labId ? st : 'error')); } });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [labId, tick]);

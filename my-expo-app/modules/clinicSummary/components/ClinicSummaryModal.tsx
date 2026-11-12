@@ -164,7 +164,7 @@ export function ClinicSummaryModal(props: { clinicId: string | null; onClose: ()
                     ) : null}
                     {s.aging ? (
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                        {([[autoT('Vadesi gelmemiş'), s.aging.current], ['30+', s.aging.d30], ['60+', s.aging.d60], ['90+', s.aging.d90]] as [string, number][]).map(([k, v]) => (
+                        {([[autoT('Vadesi gelmemiş'), s.aging.current], [`1–30 ${autoT('gün')}`, s.aging.d30], [`31–60 ${autoT('gün')}`, s.aging.d60], [`61+ ${autoT('gün')}`, s.aging.d90]] as [string, number][]).map(([k, v]) => (
                           <View key={k} style={{ paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999, backgroundColor: U.chipNeutral }}>
                             <Text style={{ fontSize: 11.5, color: U.ink[700] }}>
                               {`${k}: ${fmtMoney({ currency: s.balance[0]?.currency ?? 'TRY', amount: v })}`}

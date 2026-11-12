@@ -152,3 +152,9 @@ test('rankTop: overdue işareti sırayı değiştirmez, ilk 5', () => {
   assert.equal(r[0].overdue, true);
   assert.equal(r[1].overdue, false);
 });
+
+test('rankTop: üye modunda yalnız ciro olan (üyesiz) klinik listelenmez', () => {
+  const m = new Map([['A', fake('A', 'A', 0, 500)], ['B', fake('B', 'B', 3, 0)]]);
+  assert.deepEqual(rankTop(m, 'month', 'uye').map((r) => r.clinicId), ['B']);
+  assert.deepEqual(rankTop(m, 'month', 'score').map((r) => r.clinicId).sort(), ['A', 'B']);
+});

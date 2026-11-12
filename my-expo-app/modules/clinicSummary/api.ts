@@ -23,6 +23,12 @@ async function softRpc(fn: string, args: Record<string, unknown>): Promise<any[]
 let ordersById = new Map<string, { doctor_id: string | null; order_number: string | null }>();
 let clinicDoctors = new Map<string, string[]>();
 
+/** Oturum kapanınca / lab değişince modül eşlemelerini sıfırla. */
+export function resetClinicSummaryRefs() {
+  ordersById = new Map();
+  clinicDoctors = new Map();
+}
+
 /** Tüm klinik özetleri. Sipariş/refs hatası fırlatır; ciro/bakiye/puan yumuşak. */
 export async function fetchClinicSummaryData(labId: string): Promise<Map<string, ClinicSummary>> {
   const today = labTodayOf(cachedLabTz());
@@ -67,9 +73,14 @@ export async function fetchClinicSummaryData(labId: string): Promise<Map<string,
 export interface RecentMessage { id: string; workOrderId: string; orderNumber: string; content: string; createdAt: string }
 
 /** Kliniğin siparişlerindeki son onaylı yazışmalar (sohbet kutusunun kuralıyla aynı).
- *  fetchClinicSummaryData en az bir kez çalışmış olmalı (sipariş eşlemesi oradan). */
+ *  Hekimler doğrudan okunur — özet yüklenmesini beklemez. */
 export async function fetchClinicRecentMessages(clinicId: string, labId: string, limit = 3): Promise<RecentMessage[]> {
-  const doctors = clinicDoctors.get(clinicId) ?? [];
+  let doctors = clinicDoctors.get(clinicId) ?? [];
+  if (!doctors.length) {
+    const { data: docs, error: de } = await supabase.from('doctors').select('id').eq('lab_id', labId).eq('clinic_id', clinicId);
+    if (de) throw de;
+    doctors = (docs ?? []).map((d: any) => d.id as string);
+  }
   if (!doctors.length) return [];
   const { data: ords, error: oe } = await supabase.from('work_orders').select('id, order_number')
     .eq('lab_id', labId).in('doctor_id', doctors).order('created_at', { ascending: false }).limit(200);
