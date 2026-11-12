@@ -217,8 +217,11 @@ export function ClinicSummaryModal(props: { clinicId: string | null; onClose: ()
 }
 
 /** Ekran düzeyinde tek popup: `open(id)` çağır, `element`'i render et. */
-export function useClinicSummaryModal(): { open(clinicId: string): void; element: React.ReactElement | null } {
+/** Yalnız (lab)/(admin) panelinde etkin; diğer panellerde `enabled` false, open no-op. */
+export function useClinicSummaryModal(): { open(clinicId: string): void; element: React.ReactElement | null; enabled: boolean } {
   const [id, setId] = useState<string | null>(null);
-  const element = id ? <ClinicSummaryModal clinicId={id} onClose={() => setId(null)} /> : null;
-  return { open: setId, element };
+  const group = (useSegments() as string[])[0];
+  const enabled = group === '(lab)' || group === '(admin)';
+  const element = enabled && id ? <ClinicSummaryModal clinicId={id} onClose={() => setId(null)} /> : null;
+  return { open: (cid: string) => { if (enabled) setId(cid); }, element, enabled };
 }

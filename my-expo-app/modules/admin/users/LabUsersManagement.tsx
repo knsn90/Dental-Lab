@@ -64,6 +64,8 @@ import { upsertCompensation } from '../../employees/compensationApi';
 import { workStatsView, type UserWorkStats } from './userWorkStats';
 import { fetchUserWorkStats } from './userWorkStatsApi';
 import { useStickyFollow } from './useStickyFollow';
+import { ClinicSummaryStrip } from '../../clinicSummary/components/ClinicSummaryStrip';
+import { useClinicSummaryModal } from '../../clinicSummary/components/ClinicSummaryModal';
 
 // ── Design tokens ───────────────────────────────────────────────────────────
 const ERR = '#FF3B30';
@@ -277,6 +279,7 @@ function MetricIcon({ name, size, color }: { name: string; size: number; color: 
 // ═════════════════════════════════════════════════════════════════════════════
 
 export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }: { accentColor?: string; labOnly?: boolean }) {
+  const clinicSummary = useClinicSummaryModal();
   const U = useInkUI();
   const P = accentColor;
   // Koyu temada accent'in dolgu/metin karşılıkları (mavi → lacivert #004B87 / #5AA9E6).
@@ -631,9 +634,19 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
             {clinicName && (
               <>
                 <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: '#6BA888' }} />
-                <Text style={{ fontSize: 12, color: U.plainBtn.fgMuted, flexShrink: 1, maxWidth: 320 }} numberOfLines={1}>
-                  {(prof as any).clinic_name}
-                </Text>
+                {(prof as any).clinic_id && clinicSummary.enabled ? (
+                  <Pressable
+                    onPress={(e: any) => { e?.stopPropagation?.(); clinicSummary.open(String((prof as any).clinic_id)); }}
+                    accessibilityRole="button"
+                    style={({ hovered }: any) => ({ flexShrink: 1, maxWidth: 320, borderRadius: 6, paddingHorizontal: 3, marginHorizontal: -3, backgroundColor: hovered ? U.rowHover : 'transparent' })}
+                  >
+                    <Text style={{ fontSize: 12, color: U.plainBtn.fgMuted }} numberOfLines={1}>{(prof as any).clinic_name}</Text>
+                  </Pressable>
+                ) : (
+                  <Text style={{ fontSize: 12, color: U.plainBtn.fgMuted, flexShrink: 1, maxWidth: 320 }} numberOfLines={1}>
+                    {(prof as any).clinic_name}
+                  </Text>
+                )}
                 <Text style={{ fontSize: 12, color: U.ink[300] }}>·</Text>
               </>
             )}
@@ -948,6 +961,7 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
               </View>
             ) : isClinicView ? (
               <View style={{ gap: 18 }}>
+                {clinicSummary.element}
                 {groupedByClinic.map(group => {
                   const adminCount = group.members.filter(m => m.user_type === 'clinic_admin').length;
                   const secCount   = group.members.filter(m => (m.user_type as string) === 'clinic_secretary').length;
@@ -980,6 +994,11 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
                           )}
                         </View>
                       </View>
+                      {group.clinicId !== '__none__' ? (
+                        <View style={{ paddingHorizontal: 4, marginTop: -6 }}>
+                          <ClinicSummaryStrip clinicId={group.clinicId} onOpen={() => clinicSummary.open(group.clinicId)} />
+                        </View>
+                      ) : null}
                       {/* Grup üyeleri */}
                       <View style={{ gap: 8 }}>
                         {group.members.map(prof => renderUserRow(prof))}
@@ -990,6 +1009,7 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
               </View>
             ) : (
               <View style={{ gap: 10 }}>
+                {clinicSummary.element}
                 {filtered.map((prof) => renderUserRow(prof))}
               </View>
             )}

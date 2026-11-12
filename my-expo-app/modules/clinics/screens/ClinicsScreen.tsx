@@ -45,6 +45,8 @@ import { getReviewDashboard } from '../../reviews/api';
 import { ClinicsSideNav, ClinicsMobileNav, ClinicsSectionHeader, type ClinicsNavActions } from '../components/ClinicsNav';
 import { resolveClinicsTab, type ClinicsTabKey } from '../clinicsNav';
 import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
+import { ClinicSummaryStrip } from '../../clinicSummary/components/ClinicSummaryStrip';
+import { useClinicSummaryModal } from '../../clinicSummary/components/ClinicSummaryModal';
 
 // ── Design tokens ───────────────────────────────────────────────────
 const DISPLAY = {
@@ -177,6 +179,7 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
   const isNarrow = width < 560;
   const segments = useSegments() as string[];
   const panelType = (segments?.[0] ?? '') === '(admin)' ? 'admin' : 'lab';
+  const clinicSummary = useClinicSummaryModal();
   const { getTheme } = useColorThemeStore();
   const accentColor = accentColorProp ?? getTheme(panelType).primary;
   const T = useMobileTokens();
@@ -818,9 +821,11 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
                       onEditDoctor={openEditDoctor}
                       onDeleteDoctor={handleDeleteDoctor}
                       onPrintForm={() => handlePrintClinicForm(clinic)}
+                      onOpenSummary={() => clinicSummary.open(clinic.id)}
                     />
                     </View>
                   ))}
+                  {clinicSummary.element}
 
                   {unassigned.length > 0 && (
                     <View style={{ marginTop: 8 }}>
@@ -1137,7 +1142,7 @@ function ClinicRow({
   clinic, doctors, members = [], isExpanded, accentColor, discountPercent,
   onToggleExpand, onToggleClinic, onEditClinic, onDeleteClinic,
   onSetDiscount, onAddDoctor, onToggleDoctor, onEditDoctor, onDeleteDoctor,
-  onPrintForm,
+  onPrintForm, onOpenSummary,
 }: {
   clinic: Clinic; doctors: Doctor[]; members?: ClinicMember[]; isExpanded: boolean; accentColor: string;
   discountPercent: number | null;
@@ -1146,6 +1151,7 @@ function ClinicRow({
   onSetDiscount: () => void; onAddDoctor: () => void;
   onToggleDoctor: (d: Doctor) => void; onEditDoctor: (d: Doctor) => void; onDeleteDoctor: (d: Doctor) => void;
   onPrintForm: () => void;
+  onOpenSummary?: () => void;
 }) {
   const rtl = isRTL();
   const T = useMobileTokens();
@@ -1189,6 +1195,7 @@ function ClinicRow({
                 : (clinic.contact_person || 'Henüz hekim eklenmemiş')}
             </Text>
           </View>
+          <ClinicSummaryStrip clinicId={clinic.id} onOpen={onOpenSummary} />
         </View>
 
         {/* Actions */}

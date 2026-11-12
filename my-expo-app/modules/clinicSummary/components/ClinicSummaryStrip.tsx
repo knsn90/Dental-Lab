@@ -2,6 +2,7 @@
 // Yüklenirken "…", hata/özet yok → hiç çizilmez (liste beklemez, bozulmaz).
 import React from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
+import { useSegments } from 'expo-router';
 import { useInkUI } from '../../../core/theme/inkScale';
 import { usePermissionStore } from '../../../core/store/permissionStore';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
@@ -35,7 +36,10 @@ export function ClinicSummaryStrip(props: { clinicId: string; onOpen?: () => voi
   const live = useClinicSummary(props.summary === undefined ? props.clinicId : null);
   const s = props.summary !== undefined ? props.summary : live.summary;
   const status = props.summary !== undefined ? 'ready' : live.status;
+  const group = (useSegments() as string[])[0];
+  const allowed = props.summary !== undefined || group === '(lab)' || group === '(admin)';
 
+  if (!allowed) return null;
   if (status === 'loading' && !s) {
     return <Text style={{ fontSize: 12, color: U.ink[400], marginTop: 6 }}>…</Text>;
   }

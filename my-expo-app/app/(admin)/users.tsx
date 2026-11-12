@@ -34,6 +34,8 @@ import { fetchUserWorkStats } from '../../modules/admin/users/userWorkStatsApi';
 import { useStickyFollow } from '../../modules/admin/users/useStickyFollow';
 import { useMobileTokens } from '../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../core/store/themeModeStore';
+import { ClinicSummaryStrip } from '../../modules/clinicSummary/components/ClinicSummaryStrip';
+import { useClinicSummaryModal } from '../../modules/clinicSummary/components/ClinicSummaryModal';
 
 type FilterType = 'all' | 'admin' | 'lab' | 'doctor' | 'clinic_admin';
 type StatusFilter = 'all' | 'active' | 'inactive';
@@ -69,6 +71,7 @@ export default function AdminUsersScreen() {
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const styles = makeStyles(T, isDark);
   const fp = makeFp(T, isDark);
+  const clinicSummary = useClinicSummaryModal();
 
   // localStorage cache — 2. ziyarette anında render, arka planda taze veri.
   const LS_KEY_USERS = 'admin_users_cache_v1';
@@ -366,6 +369,7 @@ export default function AdminUsersScreen() {
               </View>
             ) : (
               <View style={styles.cardList}>
+                {clinicSummary.element}
                 {filtered.map((profile) => {
                   const badge = typeBadge(profile);
                   const selected = selectedId === profile.id;
@@ -392,6 +396,17 @@ export default function AdminUsersScreen() {
                           </View>
                           <Text style={styles.cardEmail} numberOfLines={1}>{profile.email ?? '—'}</Text>
                         </View>
+                        {(profile as any).clinic_id && profile.user_type === 'clinic_admin' ? (
+                          <View style={{ marginTop: 4 }}>
+                            {(profile as any).clinic_name ? (
+                              <Text style={styles.cardEmail} numberOfLines={1}>{(profile as any).clinic_name}</Text>
+                            ) : null}
+                            <ClinicSummaryStrip
+                              clinicId={String((profile as any).clinic_id)}
+                              onOpen={() => clinicSummary.open(String((profile as any).clinic_id))}
+                            />
+                          </View>
+                        ) : null}
                       </View>
                       <View style={styles.cardRight}>
                         <View style={styles.toggleCluster}>
