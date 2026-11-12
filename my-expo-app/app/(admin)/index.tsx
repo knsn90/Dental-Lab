@@ -117,6 +117,44 @@ const WORKTYPE_RAMP = [
   DS.exec.info,          // #4A8FC9 açık mavi · 3.46:1
   DS.plum.primaryDeep,   // #6B3F94 koyu erik · 7.60:1
 ];
+/** Koyu tema karşılıkları — lacivert/koyu erik koyu kart zemininde (#1B1916) kayboluyordu. */
+const WORKTYPE_RAMP_DARK = ['#7FA8D9', '#5FC4BB', '#B58FD8', '#8EC0EA', '#A07DC8'];
+
+/** İş Tipi Dağılımı halkaları — iç içe, en büyük pay en dışta. Yay = işin
+ *  KENDİ birimi içindeki payı (üye üyeye, çene çeneye); 12'den başlar, saat yönünde. */
+function WorkTypeRings({ items, size = 196 }: { items: { color: string; pct: number }[]; size?: number }) {
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const p = useCountUp(1, prefersReducedMotion() ? 0 : 1100);
+  const stroke = 12;
+  const gap = 6;
+  const outer = (size - stroke) / 2;
+  const track = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)';
+  const cx = size / 2;
+  return (
+    <View style={{ alignItems: 'center', marginTop: 14, marginBottom: 6 }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <Svg width={size} height={size}>
+        {items.map((it, i) => {
+          const r = outer - i * (stroke + gap);
+          if (r <= stroke) return null;
+          const c = 2 * Math.PI * r;
+          const pct = Math.max(0.012, Math.min(1, it.pct)) * p;
+          return (
+            <React.Fragment key={i}>
+              <Circle cx={cx} cy={cx} r={r} stroke={track} strokeWidth={stroke} fill="none" />
+              {pct > 0.001 ? (
+                <Circle
+                  cx={cx} cy={cx} r={r} stroke={it.color} strokeWidth={stroke} fill="none"
+                  strokeDasharray={`${pct * c} ${c}`} strokeLinecap="round"
+                  transform={`rotate(-90 ${cx} ${cx})`}
+                />
+              ) : null}
+            </React.Fragment>
+          );
+        })}
+      </Svg>
+    </View>
+  );
+}
 
 const STATUS_CFG: Record<string, { labelKey: string; color: string; bg: string }> = {
   alindi:          { labelKey: 'admin.status.received',          color: DS.ink[500],  bg: 'rgba(0,0,0,0.05)' },
@@ -318,8 +356,10 @@ function Spine({ segments }: { segments: { color: string; pct: number }[] }) {
   );
 }
 
-function SpineCard({ title, value, unit, segments, zeros, children, onPress }: {
+function SpineCard({ title, value, unit, segments, zeros, children, onPress, visual }: {
   title:     string;
+  /** Verilirse tepedeki şerit (Spine) yerine bu çizilir. */
+  visual?:   React.ReactNode;
   /** Verilirse kart tıklanabilir olur (başlığın yanında ↗). */
   onPress?:  () => void;
   /** string/number ise display tipografisiyle sarılır; ReactNode olduğu gibi basılır. */
@@ -351,7 +391,7 @@ function SpineCard({ title, value, unit, segments, zeros, children, onPress }: {
         </View>
       </View>
 
-      <Spine segments={segments} />
+      {visual ?? <Spine segments={segments} />}
 
       <View style={{ marginTop: 8 }}>{children}</View>
 
@@ -1178,6 +1218,8 @@ function StatusDistCard({ byStatus }: { byStatus: { label: string; count: number
 function WorkTypeCard({ data }: { data: { label: string; count: number; unit?: string | null }[] }) {
   const { t } = useTranslation();
   const router = useRouter();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const ramp = isDark ? WORKTYPE_RAMP_DARK : WORKTYPE_RAMP;
   if (!data.length) return null;
 
   // Birim başına ayrı seçim: baskın birimden (genelde "üye") ilk 5, diğer
@@ -1200,7 +1242,15 @@ function WorkTypeCard({ data }: { data: { label: string; count: number; unit?: s
   // farklı birimleri tek paydada toplamak anlamsızdı (48 üye / 342 "karışık").
   const shares = unitShares(data);
   const shareOf = (w: (typeof data)[number]) => shares[data.indexOf(w)] ?? 0;
-  const live  = rows.filter(w => w.count > 0);
+  // Halka sırası: baskın birimin (genelde üye) işleri dışta, paya göre; sonra
+  // diğer birimler. Tek başına %100 olan bir çene işi en dışa geçip kartı
+  // domine etmesin. Liste de aynı sırayla.
+  const mainUnit = unitsBySize[0];
+  const live  = rows.filter(w => w.count > 0).sort((a, b) => {
+    const am = serviceUnitLabel(a.unit) === mainUnit ? 0 : 1;
+    const bm = serviceUnitLabel(b.unit) === mainUnit ? 0 : 1;
+    return am - bm || shareOf(b) - shareOf(a);
+  });
   // Şerit: her birim eşit pay alır, birimin içinde satırlar kendi payıyla bölünür.
   // Tek birim varken bu doğrudan satırın yüzdesidir.
   const liveUnits = new Set(live.map(w => serviceUnitLabel(w.unit))).size || 1;
@@ -1225,13 +1275,14 @@ function WorkTypeCard({ data }: { data: { label: string; count: number; unit?: s
       // adet bazlı model/tasarım işleri de diş sayılarak toplanmıştı.
       // Artık her birim kendi kırılımında: "47 üye · 4 çene · 2 adet".
       value={unitBreakdown}
-      segments={live.map((w) => ({ color: WORKTYPE_RAMP[rows.indexOf(w)], pct: shareOf(w) / liveUnits }))}
+      segments={live.map((w, i) => ({ color: ramp[i], pct: shareOf(w) / liveUnits }))}
+      visual={<WorkTypeRings items={live.map((w, i) => ({ color: ramp[i], pct: shareOf(w) }))} />}
       zeros={zeros}
     >
-      {live.map(w => (
+      {live.map((w, i) => (
         <SpineRow
           key={w.label}
-          color={WORKTYPE_RAMP[rows.indexOf(w)]}
+          color={ramp[i]}
           label={w.label}
           value={w.count}
           // Satırın kendi birimi — "13 üye", "4 çene", "2 adet".
