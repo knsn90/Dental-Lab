@@ -1,5 +1,5 @@
 // app/dev/clinic-summary.tsx — Klinik müşteri kartı demo (ağ çağrısı YOK, sahte özet).
-// Parametreler: ?lang=en|de|fa · ?dark=1 · ?open=1 (popup açık başlar) · ?noperm=1 (ciro/borç yetkisi yok)
+// Parametreler: ?lang=en|de|fa · ?dark=1 · ?open=1|c2 (popup açık başlar) · ?noperm=1 (ciro/borç yetkisi yok)
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, Pressable } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
@@ -54,7 +54,7 @@ const DEMO_MESSAGES = [
 export default function ClinicSummaryDemo() {
   const { lang, dark, open, noperm } = useLocalSearchParams<{ lang?: string; dark?: string; open?: string; noperm?: string }>();
   const [ready, setReady] = useState(false);
-  const [openId, setOpenId] = useState<string | null>(open === '1' ? 'c1' : null);
+  const [openId, setOpenId] = useState<string | null>(open === '1' ? 'c1' : open?.startsWith('c') ? open : null);
   const U = useInkUI();
 
   useEffect(() => {
