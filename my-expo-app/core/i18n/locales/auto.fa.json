@@ -10267,5 +10267,12 @@
   "isteğe bağlı": "اختیاری",
   "Yeni marka ekle:": "افزودن برند جدید:",
   "model": "مدل",
-  "İmplant markaları": "برندهای ایمپلنت"
+  "İmplant markaları": "برندهای ایمپلنت",
+  "Marka ekle": "افزودن برند",
+  "Marka adı": "نام برند",
+  "Bu markada henüz model yok.": "این برند هنوز مدلی ندارد.",
+  "zaten listede": "از قبل در فهرست است",
+  "eklendi": "افزوده شد",
+  "Yeni sipariş formunda görünen marka ve modeller. Buradan ya da sipariş formundan yeni marka/model eklenebilir; düzeltme, gizleme ve birleştirme yalnız buradan yapılır. Geçmiş siparişler değişmez.": "برندها و مدل‌هایی که در فرم سفارش جدید نمایش داده می‌شوند. برند یا مدل جدید را می‌توان از اینجا یا از فرم سفارش اضافه کرد؛ اصلاح، پنهان‌سازی و ادغام فقط از اینجا انجام می‌شود. سفارش‌های قبلی تغییر نمی‌کنند.",
+  "İşlem başarısız.": "عملیات ناموفق بود."
 }

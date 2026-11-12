@@ -10267,5 +10267,12 @@
   "isteğe bağlı": "optional",
   "Yeni marka ekle:": "Neue Marke hinzufügen:",
   "model": "Modelle",
-  "İmplant markaları": "Implantatmarken"
+  "İmplant markaları": "Implantatmarken",
+  "Marka ekle": "Marke hinzufügen",
+  "Marka adı": "Markenname",
+  "Bu markada henüz model yok.": "Diese Marke hat noch keine Modelle.",
+  "zaten listede": "ist bereits in der Liste",
+  "eklendi": "hinzugefügt",
+  "Yeni sipariş formunda görünen marka ve modeller. Buradan ya da sipariş formundan yeni marka/model eklenebilir; düzeltme, gizleme ve birleştirme yalnız buradan yapılır. Geçmiş siparişler değişmez.": "Marken und Modelle im Formular für neue Aufträge. Neue Marken/Modelle können hier oder im Auftragsformular hinzugefügt werden; Korrigieren, Ausblenden und Zusammenführen geschieht nur hier. Frühere Aufträge bleiben unverändert.",
+  "İşlem başarısız.": "Die Aktion ist fehlgeschlagen."
 }

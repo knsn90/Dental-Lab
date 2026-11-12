@@ -10,11 +10,13 @@ import { PAGE_PADDING, CARD_GAP } from '../../../core/ui/pageMetrics';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { ConfirmDialog, type ConfirmState } from '../../../core/ui/ConfirmDialog';
 import { autoT } from '../../../core/i18n/autoTranslate';
-import { Pencil, Eye, EyeOff, GitMerge, ChevronDown, ChevronRight, Search, X, Check } from '../../../core/ui/icons';
+import { Pencil, Eye, EyeOff, GitMerge, ChevronDown, ChevronRight, Search, X, Check, Plus } from '../../../core/ui/icons';
+import { onAccentInk } from '../../../core/theme/usePanelTheme';
 import {
   fetchImplantCatalog, updateImplantCatalogItem, mergeImplantBrand, useCatalogLabId, type CatalogBrand,
+  addImplantBrand, addImplantModel,
 } from '../../orders/implantCatalog';
-import { catalogKey, cleanCatalogName } from '../../orders/implantCatalogModel';
+import { catalogKey, cleanCatalogName, suggestSimilar } from '../../orders/implantCatalogModel';
 
 const pointer = Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {};
 
@@ -94,7 +96,7 @@ export function ImplantBrandsSection({ accentColor = '#F5C24B' }: { accentColor?
         />
         <Pressable onPress={saveEdit} disabled={!!busy}
           style={{ width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor, ...pointer }}>
-          {busy === id ? <ActivityIndicator size="small" color="#0A0A0A" /> : <Check size={15} color="#0A0A0A" strokeWidth={2.2} />}
+          {busy === id ? <ActivityIndicator size="small" color={onAccentInk(accentColor)} /> : <Check size={15} color={onAccentInk(accentColor)} strokeWidth={2.2} />}
         </Pressable>
         <Pressable onPress={() => setEditing(null)} hitSlop={4}
           style={{ width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center',
@@ -125,7 +127,7 @@ export function ImplantBrandsSection({ accentColor = '#F5C24B' }: { accentColor?
             {autoT('İmplant markaları')}
           </Text>
           <Text style={{ fontSize: 13, color: U.ink[500], lineHeight: 19 }}>
-            {autoT('Yeni sipariş formunda görünen marka ve modeller. Hekim, klinik ve lab kullanıcıları formdan yeni marka/model ekleyebilir; düzeltme, gizleme ve birleştirme yalnız buradan yapılır. Geçmiş siparişler değişmez.')}
+            {autoT('Yeni sipariş formunda görünen marka ve modeller. Buradan ya da sipariş formundan yeni marka/model eklenebilir; düzeltme, gizleme ve birleştirme yalnız buradan yapılır. Geçmiş siparişler değişmez.')}
           </Text>
 
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, ...U.inputStyle, height: 40 }}>
@@ -134,6 +136,21 @@ export function ImplantBrandsSection({ accentColor = '#F5C24B' }: { accentColor?
               style={{ flex: 1, fontSize: 13.5, color: U.ink[900], ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
             {!!q && <Pressable onPress={() => setQ('')} hitSlop={6} style={pointer}><X size={14} color={U.ink[400]} /></Pressable>}
           </View>
+
+          {!!labId && (
+            <AddInline
+              label={autoT('Marka ekle')}
+              placeholder={autoT('Marka adı')}
+              names={(rows ?? []).map(b => b.name)}
+              accentColor={accentColor}
+              onAdd={async (name) => {
+                const r = await addImplantBrand(labId, name);
+                await load();
+                setOpen(r.id);
+                return r;
+              }}
+            />
+          )}
 
           {loadErr ? (
             <Text style={{ fontSize: 13, fontWeight: '600', color: U.chipTones.danger.fg, marginTop: 12 }} accessibilityLiveRegion="polite">{loadErr}</Text>
@@ -177,7 +194,7 @@ export function ImplantBrandsSection({ accentColor = '#F5C24B' }: { accentColor?
                       <View style={{ marginStart: 30, marginTop: 4 }}>
                         {b.models.length === 0 && (
                           <Text style={{ fontSize: 12, color: U.ink[400], paddingVertical: 6 }}>
-                            {autoT('Bu markada model yok. Model, sipariş formundan eklenir.')}
+                            {autoT('Bu markada henüz model yok.')}
                           </Text>
                         )}
                         {b.models.map(m => (
@@ -200,6 +217,21 @@ export function ImplantBrandsSection({ accentColor = '#F5C24B' }: { accentColor?
                             )}
                           </View>
                         ))}
+                        {!!labId && (
+                          <AddInline
+                            compact
+                            label={autoT('Model ekle')}
+                            placeholder={autoT('Model adı (ör. BLX)')}
+                            names={b.models.map(m => m.name)}
+                            accentColor={accentColor}
+                            onAdd={async (name) => {
+                              const r = await addImplantModel(labId, b.id, name);
+                              await load();
+                              setOpen(b.id);
+                              return r;
+                            }}
+                          />
+                        )}
                       </View>
                     )}
                   </View>
@@ -232,6 +264,100 @@ export function ImplantBrandsSection({ accentColor = '#F5C24B' }: { accentColor?
       />
       <ConfirmDialog state={confirm} onClose={() => setConfirm(null)} />
     </>
+  );
+}
+
+/** "+ Ekle" bağlantısı → satır içi giriş. Aynı ad varsa yeni kayıt açılmaz, bilgi verilir. */
+function AddInline({
+  label, placeholder, names, accentColor, onAdd, compact,
+}: {
+  label: string;
+  placeholder: string;
+  names: string[];
+  accentColor: string;
+  onAdd: (name: string) => Promise<{ name: string; existed: boolean }>;
+  compact?: boolean;
+}) {
+  const U = useInkUI();
+  const [openForm, setOpenForm] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ tone: 'danger' | 'info' | 'success'; text: string } | null>(null);
+  const name = cleanCatalogName(draft);
+  const similar = name ? suggestSimilar(names, name) : null;
+  const ink = onAccentInk(accentColor);
+  const linkColor = U.isDark ? U.ink[700] : U.ink[900];
+
+  const submit = async () => {
+    if (!name || busy) return;
+    setBusy(true); setMsg(null);
+    try {
+      const r = await onAdd(name);
+      if (r.existed) setMsg({ tone: 'info', text: `«${r.name}» ${autoT('zaten listede')}` });
+      else { setMsg({ tone: 'success', text: `«${r.name}» ${autoT('eklendi')}` }); setDraft(''); setOpenForm(false); }
+    } catch (e: any) {
+      setMsg({ tone: 'danger', text: autoT(String(e?.message ?? 'İşlem başarısız.')) });
+    } finally { setBusy(false); }
+  };
+
+  const msgView = msg ? (
+    <Text style={{ fontSize: 12, fontWeight: '600', color: U.chipTones[msg.tone].fg, flexShrink: 1 }} accessibilityLiveRegion="polite">
+      {msg.text}
+    </Text>
+  ) : null;
+
+  if (!openForm) {
+    return (
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: compact ? 4 : 10, flexWrap: 'wrap' }}>
+        <Pressable onPress={() => { setOpenForm(true); setMsg(null); }}
+          style={({ hovered }: any) => ({
+            flexDirection: 'row', alignItems: 'center', gap: 6,
+            paddingHorizontal: compact ? 0 : 12, paddingVertical: compact ? 4 : 8,
+            borderRadius: 999,
+            ...(compact ? {} : { backgroundColor: hovered ? U.rowHover : U.plainBtn.bg, borderWidth: 1, borderColor: U.plainBtn.border }),
+            ...pointer,
+          })}>
+          <Plus size={14} color={linkColor} strokeWidth={2} />
+          <Text style={{ fontSize: compact ? 12.5 : 13, fontWeight: '600', color: linkColor }}>{label}</Text>
+        </Pressable>
+        {msgView}
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ marginTop: compact ? 4 : 10, gap: 6 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <TextInput
+          value={draft}
+          onChangeText={(v) => { setDraft(v); setMsg(null); }}
+          onSubmitEditing={submit}
+          autoFocus maxLength={60}
+          placeholder={placeholder}
+          placeholderTextColor={U.ink[400]}
+          style={{ ...U.inputStyle, height: 38, flexGrow: 1, minWidth: 160, fontSize: 13.5 }}
+        />
+        <Pressable onPress={submit} disabled={busy || !name}
+          style={{ height: 38, paddingHorizontal: 16, borderRadius: 999, alignItems: 'center', justifyContent: 'center',
+            backgroundColor: accentColor, opacity: busy || !name ? 0.5 : 1, ...pointer }}>
+          {busy ? <ActivityIndicator size="small" color={ink} />
+            : <Text style={{ fontSize: 13, fontWeight: '700', color: ink }}>{autoT('Ekle')}</Text>}
+        </Pressable>
+        <Pressable onPress={() => { setOpenForm(false); setDraft(''); setMsg(null); }}
+          style={{ height: 38, paddingHorizontal: 14, borderRadius: 999, alignItems: 'center', justifyContent: 'center',
+            backgroundColor: U.plainBtn.bg, borderWidth: 1, borderColor: U.plainBtn.border, ...pointer }}>
+          <Text style={{ fontSize: 13, color: U.plainBtn.fg }}>{autoT('Vazgeç')}</Text>
+        </Pressable>
+        {msgView}
+      </View>
+      {!!similar && (
+        <Pressable onPress={() => setDraft(similar)} style={pointer}>
+          <Text style={{ fontSize: 12, color: U.ink[500] }}>
+            {autoT('Bunu mu demek istediniz:')} <Text style={{ fontWeight: '700', color: U.ink[900] }}>{similar}</Text>?
+          </Text>
+        </Pressable>
+      )}
+    </View>
   );
 }
 
