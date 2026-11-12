@@ -54,6 +54,8 @@ export interface OrderDetailMobileHandoffProps {
   isUrgent: boolean;
   doctorName: string;
   clinicName: string;
+  /** Yalnız (lab)/(admin): klinik adına dokununca klinik özeti popup'ı. */
+  onClinicPress?: () => void;
   remainingDays: number;        // 1
   deliveryDate: string;         // "12.05.2026"
   // Production
@@ -353,7 +355,11 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
               <Text style={{ fontSize: 12.5, color: T.ink2, marginTop: 6, lineHeight: 18 }}>
                 {props.doctorName}
                 {'\n'}
-                <Text style={{ color: T.ink3 }}>{props.clinicName}</Text>
+                <Text
+                  style={{ color: T.ink3, ...(props.onClinicPress && Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                  onPress={props.onClinicPress}
+                  accessibilityRole={props.onClinicPress ? 'button' : undefined}
+                >{props.clinicName}</Text>
               </Text>
             </View>
             {props.closed ? (

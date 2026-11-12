@@ -1,5 +1,6 @@
 import { fetchChatAttachmentFiles } from '../chatApi';
 import { fetchScanFilesForOrder } from '../../scans/api';
+import { useClinicSummaryModal } from '../../clinicSummary/components/ClinicSummaryModal';
 import { OrderScanRow } from '../../scans/components/OrderScanRow';
 import { localeTag, isRTL } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
@@ -412,6 +413,9 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   const [labAddress, setLabAddress]     = useState<string | null>(null);
   const [clinicAddress, setClinicAddress] = useState<string | null>(null);
   const orderClinicId = (order as any)?.doctor?.clinic?.id as string | undefined;
+  // Klinik özeti popup'ı — yalnız (lab)/(admin); diğer panellerde klinik adı düz metin kalır.
+  const clinicSummary = useClinicSummaryModal();
+  const clinicPress = clinicSummary.enabled && orderClinicId ? () => clinicSummary.open(orderClinicId) : undefined;
 
   useEffect(() => {
     let cancelled = false;
@@ -1536,6 +1540,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
         isUrgent={!!order.is_urgent}
         doctorName={doctorName}
         clinicName={clinicName}
+        onClinicPress={clinicPress}
         remainingDays={remainingDays}
         deliveryDate={fmtTr(deliveryDateStr)}
         currentStageIdx={stageIdx}
@@ -1789,6 +1794,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
       />
       {stageModals}
       {holdModals}
+      {clinicSummary.element}
       </>
     );
   }
@@ -2144,8 +2150,9 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
                   {order.patient_name ? titleCaseTR(order.patient_name) : '—'}
                 </Text>
                 <Text className="text-[13px] mt-2" style={{ color: heroPalette.dark ? 'rgba(255,255,255,0.85)' : '#3C3C3C' }}>
-                  {doctorName} · {clinicName}
+                  {doctorName} · <Text onPress={clinicPress} accessibilityRole={clinicPress ? 'button' : undefined} style={clinicPress && Platform.OS === 'web' ? { cursor: 'pointer' } as any : undefined}>{clinicName}</Text>
                 </Text>
+                {clinicSummary.element}
                 <Text className="text-[12px] mt-1" style={{ color: heroPalette.dark ? 'rgba(255,255,255,0.65)' : '#6B6B6B' }}>
                   Giriş: {fmtDate(order.created_at)}
                 </Text>
@@ -3712,7 +3719,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
               <Avatar name={doctorName} size={40} bg="#3B82F6" fg="#FFF" />
               <View className="flex-1">
                 <Text className="text-[13px] font-medium text-ink-900 dark:text-[#F7F2E9]">{doctorName}</Text>
-                <Text className="text-[11px] text-ink-500 dark:text-white/55">{clinicName}</Text>
+                <Text className="text-[11px] text-ink-500 dark:text-white/55" onPress={clinicPress} accessibilityRole={clinicPress ? 'button' : undefined} style={clinicPress && Platform.OS === 'web' ? { cursor: 'pointer' } as any : undefined}>{clinicName}</Text>
               </View>
               {isManager && (
                 <GlassTooltip title={autoT('Hekim değiştir')} text={autoT('Siparişin bağlı olduğu hekimi ve kliniği değiştirir; fatura da yeni kliniğe kesilir')}>
