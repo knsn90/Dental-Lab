@@ -1,7 +1,7 @@
 // node --test modules/admin/workStats/heatmap.test.mts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { heatLevel, heatAlpha, heatStrong, HEAT_ALPHA, HEAT_LEVELS } from './heatmap.ts';
+import { heatLevel, heatAlpha, heatStrong, heatInk, composite, contrastRatio, HEAT_ALPHA, HEAT_LEVELS } from './heatmap.ts';
 
 test('heatLevel: null → null (kayıt yok)', () => {
   assert.equal(heatLevel(null, 10), null);
@@ -41,4 +41,38 @@ test('heatStrong: yalnız 4 ve üstü', () => {
   assert.equal(heatStrong(3), false);
   assert.equal(heatStrong(4), true);
   assert.equal(heatStrong(5), true);
+});
+
+const INK = '#0A0A0A', WHITE = '#FFFFFF', NAVY = '#001F3F', CREAM = '#F7F2E9';
+const rgb = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)) as [number, number, number];
+
+test('contrastRatio: siyah/beyaz 21, aynı renk 1', () => {
+  assert.ok(Math.abs(contrastRatio(rgb('#000000'), rgb('#FFFFFF')) - 21) < 0.01);
+  assert.equal(contrastRatio(rgb('#777777'), rgb('#777777')), 1);
+});
+
+test('heatInk: açık kobaltta her basamakta seçilen mürekkep ≥ 4.5:1', () => {
+  for (let lv = 1; lv <= HEAT_LEVELS; lv++) {
+    const a = HEAT_ALPHA[lv];
+    const ink = heatInk('#4771AB', a, '#FFFFFF', [INK, WHITE]);
+    const r = contrastRatio(composite('#4771AB', a, '#FFFFFF')!, rgb(ink));
+    assert.ok(r >= 4.5, `basamak ${lv}: ${ink} ${r.toFixed(2)}`);
+  }
+  // eski hata: 4. basamakta beyaz ~3.3:1 → artık beyaz seçilmez
+  assert.equal(heatInk('#4771AB', HEAT_ALPHA[4], '#FFFFFF', [INK, WHITE]), INK);
+});
+
+test('heatInk: koyu temada her basamakta ≥ 4.5:1 (lacivert / krem)', () => {
+  for (let lv = 1; lv <= HEAT_LEVELS; lv++) {
+    const a = HEAT_ALPHA[lv];
+    const ink = heatInk('#93C5FD', a, '#1B1916', [CREAM, NAVY]);
+    const r = contrastRatio(composite('#93C5FD', a, '#1B1916')!, rgb(ink));
+    assert.ok(r >= 4.5, `basamak ${lv}: ${ink} ${r.toFixed(2)}`);
+  }
+  assert.equal(heatInk('#93C5FD', HEAT_ALPHA[1], '#1B1916', [CREAM, NAVY]), CREAM);
+  assert.equal(heatInk('#93C5FD', HEAT_ALPHA[5], '#1B1916', [CREAM, NAVY]), NAVY);
+});
+
+test('heatInk: çözülemeyen renk → ilk aday', () => {
+  assert.equal(heatInk('rgba(0,0,0,1)', 0.5, '#FFFFFF', [INK, WHITE]), INK);
 });

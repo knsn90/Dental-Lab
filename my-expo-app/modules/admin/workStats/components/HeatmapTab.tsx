@@ -9,16 +9,17 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, ScrollView, Platform, useWindowDimensions } from 'react-native';
 import { useInkUI } from '../../../../core/theme/inkScale';
-import { usePanelTheme, onAccentInk } from '../../../../core/theme/usePanelTheme';
+import { usePanelTheme } from '../../../../core/theme/usePanelTheme';
 import { hexA } from '../../../../core/theme/stationPalette';
 import { HERO_NAVY } from '../../../../core/ui/HeroGlow';
 import { GlassTooltip } from '../../../../core/ui/GlassTooltip';
 import { EmptyStateX } from '../../../../core/ui/EmptyStateX';
 import { PAGE_PADDING } from '../../../../core/ui/pageMetrics';
 import { autoT } from '../../../../core/i18n/autoTranslate';
+import { isRTL } from '../../../../core/i18n';
 import type { MonthKey } from '../months';
 import type { HeatAxis, HeatRow } from '../aggregate';
-import { HEAT_ALPHA, HEAT_LEVELS, heatLevel, heatStrong } from '../heatmap';
+import { HEAT_ALPHA, HEAT_LEVELS, heatLevel, heatStrong, heatInk } from '../heatmap';
 
 const web = Platform.OS === 'web';
 const cursor = (on: boolean) => (web ? ({ cursor: on ? 'pointer' : 'default' } as any) : {});
@@ -133,7 +134,7 @@ export function HeatmapTab({ rows, months, monthLabels, axis, onAxis, onCell, mo
             }}
           >
             <View style={{ height: HEAD_H, justifyContent: 'center' }}>
-              <Text numberOfLines={1} style={{ textAlign: 'left', fontSize: 10.5, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: U.ink[400] }}>
+              <Text numberOfLines={1} style={{ textAlign: isRTL() ? 'right' : 'left', fontSize: 10.5, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: U.ink[400] }}>
                 {axis === 'workType' ? autoT('İş tipi') : `${autoT('Klinik')} · ${autoT('üye')}`}
               </Text>
             </View>
@@ -178,6 +179,7 @@ export function HeatmapTab({ rows, months, monthLabels, axis, onAxis, onCell, mo
                       key={months[i]}
                       value={v}
                       max={r.max}
+                      count={r.counts[i] ?? 0}
                       width={cellW}
                       a11yLabel={`${autoT(r.label)} · ${monthLongLabels?.[i] ?? monthLabels[i] ?? months[i]}`}
                       unit={autoT(r.unitLabel)}
@@ -202,9 +204,10 @@ function RowName({ row, axis }: { row: HeatRow; axis: HeatAxis }) {
   // Birim yalnız üye DIŞI satırlarda adın yanında (çene/adet…); klinik ekseni hep üye.
   const unit = axis === 'workType' && row.unitLabel !== 'üye' ? autoT(row.unitLabel) : null;
   return (
-    <View style={{ height: ROW_H, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+    // Tablo `direction: ltr` (zaman ekseni); RTL'de ad sütunun sağına yaslanır, birim adın solunda.
+    <View style={{ height: ROW_H, flexDirection: isRTL() ? 'row-reverse' : 'row', alignItems: 'center', gap: 6 }}>
       <GlassTooltip title={label} text={unit ? `${autoT('Birim')}: ${unit}` : `${autoT('Birim')}: ${autoT('üye')}`} placement="right" style={{ flexShrink: 1, minWidth: 0 }}>
-        <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '600', color: U.ink[900] }}>{label}</Text>
+        <Text numberOfLines={1} style={{ textAlign: isRTL() ? 'right' : 'left', fontSize: 13, fontWeight: '600', color: U.ink[900] }}>{label}</Text>
       </GlassTooltip>
       {unit ? (
         <Text style={{ flexShrink: 0, fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: U.ink[400] }}>
@@ -215,11 +218,10 @@ function RowName({ row, axis }: { row: HeatRow; axis: HeatAxis }) {
   );
 }
 
-function HeatCell({ value, max, width, a11yLabel, unit, onPress }: {
-  value: number | null; max: number; width: number; a11yLabel: string; unit: string; onPress(): void;
+function HeatCell({ value, max, count, width, a11yLabel, unit, onPress }: {
+  value: number | null; max: number; count: number; width: number; a11yLabel: string; unit: string; onPress(): void;
 }) {
   const U = useInkUI();
-  const accent = usePanelTheme().primary;
   const base = useHeatBase();
   const level = heatLevel(value, max);
 
@@ -239,12 +241,37 @@ function HeatCell({ value, max, width, a11yLabel, unit, onPress }: {
 
   const strong = heatStrong(level);
   const bg = level === 0 ? U.chipNeutral : hexA(base, HEAT_ALPHA[level]);
-  const fg = strong ? (U.isDark ? HERO_NAVY.from : onAccentInk(accent)) : level === 0 ? U.ink[400] : U.ink[900];
+  // Metin rengi hesapla: zemin üstünde en yüksek karşıtlık (≥4.5:1, heatmap.test)
+  const fg = level === 0
+    ? (count > 0 ? U.ink[500] : U.ink[400])
+    : heatInk(base, HEAT_ALPHA[level], U.surface, U.isDark ? [U.ink[900], HERO_NAVY.from] : [U.ink[900], '#FFFFFF']);
   const text = (
     <Text style={{ fontSize: 12.5, fontWeight: strong ? '700' : '600', color: fg, fontVariant: ['tabular-nums'] }}>
       {String(value)}
     </Text>
   );
+
+  // Değer 0 ama sipariş var (ör. klinik o ay yalnız çene/adet gönderdi) → açılabilir;
+  // altta küçük nokta "burada sipariş var" der.
+  if (level === 0 && count > 0) {
+    return (
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={`${a11yLabel}: 0 ${unit} · ${count} ${autoT('sipariş')} · ${autoT('Siparişleri göster')}`}
+        style={({ pressed, hovered }: any) => ({
+          width, height: CELL_H, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
+          backgroundColor: bg,
+          borderWidth: 1.5, borderColor: hovered || pressed ? hexA(base, U.isDark ? 0.9 : 0.85) : 'transparent',
+          transform: [{ scale: pressed ? 0.97 : 1 }],
+          ...cursor(true),
+        })}
+      >
+        {text}
+        <View style={{ position: 'absolute', bottom: 4, width: 4, height: 4, borderRadius: 2, backgroundColor: hexA(base, U.isDark ? 0.9 : 0.8) }} />
+      </Pressable>
+    );
+  }
 
   if (level === 0) {
     return (

@@ -64,7 +64,12 @@ export interface WorkStats {
 }
 
 export type HeatAxis = 'workType' | 'clinic';
-export interface HeatRow { key: string; label: string; unitLabel: string; cells: (number | null)[]; max: number }
+/**
+ * `cells` = gösterilen miktar (klinik ekseninde yalnız üye); `counts` = o ayda o
+ * satıra düşen sipariş SAYISI (her kova). Hücre, değeri 0 olsa da sipariş varsa
+ * (ör. klinik o ay yalnız çene/adet gönderdi) açılabilir olmalı.
+ */
+export interface HeatRow { key: string; label: string; unitLabel: string; cells: (number | null)[]; counts: number[]; max: number }
 
 /** Ay kayıt dönemi içinde mi? (lab geneli; firstMonth null → hiçbir ay). */
 export function inRecord(month: MonthKey, firstMonth: MonthKey | null): boolean {
@@ -229,7 +234,7 @@ export function heatmapRows(input: AggInput, axis: HeatAxis): HeatRow[] {
   const months = windowMonths(input.selected, 12);
   const inWindow = new Set(months);
   const list = scoped(input).filter((c) => inWindow.has(c.month));
-  const rows = new Map<string, { label: string; unitLabel: string; byMonth: Map<MonthKey, number>; total: number }>();
+  const rows = new Map<string, { label: string; unitLabel: string; byMonth: Map<MonthKey, number>; nByMonth: Map<MonthKey, number>; total: number }>();
   for (const c of list) {
     const key = axis === 'workType' ? c.workType : c.clinicId;
     let r = rows.get(key);
@@ -238,18 +243,21 @@ export function heatmapRows(input: AggInput, axis: HeatAxis): HeatRow[] {
         label: axis === 'workType' ? c.workType : clinicLabel(c.clinicId, input.clinicName),
         unitLabel: axis === 'workType' ? serviceUnitLabel(c.unit) : 'üye',
         byMonth: new Map(),
+        nByMonth: new Map(),
         total: 0,
       };
       rows.set(key, r);
     }
     const v = axis === 'workType' ? c.qty : (c.bucket === 'uye' ? c.qty : 0);
     r.byMonth.set(c.month, (r.byMonth.get(c.month) ?? 0) + v);
+    r.nByMonth.set(c.month, (r.nByMonth.get(c.month) ?? 0) + 1);
     r.total += v;
   }
   return Array.from(rows, ([key, r]) => {
     const cells = months.map((m) => (inRecord(m, input.firstMonth) ? (r.byMonth.get(m) ?? 0) : null));
     const max = cells.reduce<number>((mx, v) => (v != null && v > mx ? v : mx), 0);
-    return { key, label: r.label, unitLabel: r.unitLabel, cells, max, total: r.total };
+    const counts = months.map((m) => r.nByMonth.get(m) ?? 0);
+    return { key, label: r.label, unitLabel: r.unitLabel, cells, counts, max, total: r.total };
   })
     .sort((a, b) => b.total - a.total || cmpTr(a.label, b.label))
     .map(({ total: _t, ...h }) => h);

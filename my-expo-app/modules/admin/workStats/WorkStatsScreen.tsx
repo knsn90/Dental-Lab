@@ -29,7 +29,7 @@ import {
 } from './months';
 import {
   aggregateWorkStats, heatmapRows, ordersInCell, countOrders, UNKNOWN_CLINIC_ID, UNKNOWN_CLINIC_NAME,
-  type AggInput, type WorkStats, type HeatRow, type CountedOrder,
+  type AggInput, type WorkStats, type HeatRow, type HeatAxis, type CountedOrder,
 } from './aggregate';
 import { useWorkStatsData } from './useWorkStatsData';
 import { useWorkStatsState } from './useWorkStatsState';
@@ -120,11 +120,14 @@ export function WorkStatsScreen() {
   const refreshing = !stats && !!lastStats.current && data.status === 'loading';
 
   // ── Isı haritası: yalnız sekme açıkken hesaplanır; ay değişirken son sonuç soluk kalır ──
-  const heatNow: { rows: HeatRow[]; months: MonthKey[] } | null = useMemo(() => {
+  // Eksen sonuçla BİRLİKTE saklanır: yükleme sırasında eksen değişirse eski satırlar
+  // yeni eksen etiketiyle çizilmez (soluk eski tablo kendi ekseniyle kalır).
+  type HeatView = { rows: HeatRow[]; months: MonthKey[]; axis: HeatAxis };
+  const heatNow: HeatView | null = useMemo(() => {
     if (!input || st.tab !== 'heat') return null;
-    return { rows: heatmapRows(input, st.heatAxis), months: windowMonths(input.selected, 12) };
+    return { rows: heatmapRows(input, st.heatAxis), months: windowMonths(input.selected, 12), axis: st.heatAxis };
   }, [input, st.tab, st.heatAxis]);
-  const lastHeat = useRef<{ rows: HeatRow[]; months: MonthKey[] } | null>(null);
+  const lastHeat = useRef<HeatView | null>(null);
   if (heatNow) lastHeat.current = heatNow;
   const heat = heatNow ?? (st.tab === 'heat' ? lastHeat.current : null);
 
@@ -133,12 +136,13 @@ export function WorkStatsScreen() {
   const [cellOpen, setCellOpen] = useState(false);
   const onHeatCell = useCallback((month: MonthKey, key: string) => {
     if (!input) return;
-    const row = heat?.rows.find((r) => r.key === key);
+    if (!heat) return;
+    const row = heat.rows.find((r) => r.key === key);
     const name = row ? autoT(row.label) : key;
-    setCell({ title: `${name} · ${monthLabel(month, locale, 'long')}`, orders: ordersInCell(input, month, st.heatAxis, key)
+    setCell({ title: `${name} · ${monthLabel(month, locale, 'long')}`, orders: ordersInCell(input, month, heat.axis, key)
       .sort((a, b) => a.orderNumber.localeCompare(b.orderNumber, 'tr', { numeric: true })) });
     setCellOpen(true);
-  }, [input, heat, locale, st.heatAxis]);
+  }, [input, heat, locale]);
 
   // ── Klinik seçici seçenekleri: penceredeki klinikler, çoktan aza ──
   const clinicOptions: ClinicOption[] = useMemo(() => {
@@ -298,7 +302,7 @@ export function WorkStatsScreen() {
               months={heat.months}
               monthLabels={heat.months.map((m) => monthLabel(m, locale, 'short'))}
               monthLongLabels={heat.months.map((m) => monthLabel(m, locale, 'long'))}
-              axis={st.heatAxis}
+              axis={heat.axis}
               onAxis={st.setHeatAxis}
               onCell={onHeatCell}
             />

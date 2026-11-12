@@ -27,6 +27,17 @@ export interface CellOrdersModalProps {
 
 export function CellOrdersModal({ visible, title, orders, clinicName, onClose, onOpenOrder }: CellOrdersModalProps) {
   const U = useInkUI();
+  // Birim bazında toplam: "21 üye · 2 çene · 1 adet" (klinik ekseninde hücre yalnız üyeyi
+  // gösterir; çene/adet siparişleri burada da listelenir ve toplamda ayrı yazılır).
+  const byUnit = new Map<string, number>();
+  for (const o of orders) {
+    const u = serviceUnitLabel(o.unit);
+    byUnit.set(u, (byUnit.get(u) ?? 0) + o.qty);
+  }
+  const UNIT_ORDER = ['üye', 'çene', 'adet', 'vaka', 'seans'];
+  const qtyParts = Array.from(byUnit)
+    .sort((a, b) => UNIT_ORDER.indexOf(a[0]) - UNIT_ORDER.indexOf(b[0]))
+    .map(([u, q]) => `${q} ${autoT(u)}`);
   const clinicOf = (id: string) =>
     id === UNKNOWN_CLINIC_ID ? autoT(UNKNOWN_CLINIC_NAME) : (clinicName.get(id) || autoT(UNKNOWN_CLINIC_NAME));
 
@@ -40,7 +51,7 @@ export function CellOrdersModal({ visible, title, orders, clinicName, onClose, o
             <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
               <Text numberOfLines={2} style={U.modalTitle}>{title}</Text>
               <Text style={{ fontSize: 12, color: U.ink[500] }}>
-                {`${autoT('Siparişler')}: ${orders.length}`}
+                {[`${autoT('Siparişler')}: ${orders.length}`, ...qtyParts].join(' · ')}
               </Text>
             </View>
             <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel={autoT('Kapat')} style={U.modalCloseBtn}>

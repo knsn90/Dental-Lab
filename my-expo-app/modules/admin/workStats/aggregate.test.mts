@@ -330,6 +330,13 @@ test('heatmapRows: iş tipi ve klinik ekseni', () => {
   assert.equal(a.cells[months.indexOf('2026-05')], null);
   assert.equal(a.max, 3);
   assert.equal(b.max, 5);
+  // counts: sipariş SAYISI (her kova). Ekim'de A yalnız çene gönderdi → değer 0, sayı 1
+  assert.equal(a.cells[months.indexOf('2026-10')], 0);
+  assert.equal(a.counts[months.indexOf('2026-10')], 1, 'yalnız çene ayı yine açılabilir');
+  assert.equal(a.counts[months.indexOf('2026-11')], 3);
+  assert.equal(a.counts.length, 12);
+  assert.equal(z.counts[months.indexOf('2026-11')], 1);
+  assert.equal(z.counts[months.indexOf('2026-07')], 0);
 
   // Klinik süzgeci: klinik ekseni tek satıra iner
   const clB = heatmapRows(input({ clinicId: 'cB' }), 'clinic');
