@@ -27,7 +27,7 @@ import {
   useWindowDimensions, Animated,
   Platform, RefreshControl, Easing, StyleSheet,
 } from 'react-native';
-import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient, Stop, Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
@@ -119,6 +119,43 @@ const WORKTYPE_RAMP = [
 ];
 /** Koyu tema karşılıkları — lacivert/koyu erik koyu kart zemininde (#1B1916) kayboluyordu. */
 const WORKTYPE_RAMP_DARK = ['#7FA8D9', '#5FC4BB', '#B58FD8', '#8EC0EA', '#A07DC8'];
+
+/** Finansal Özet yarım daire göstergesi — dolu yay tahsil edilen pay, kalan yay
+ *  bekleyen pay (liste noktalarıyla aynı renk). Ortada büyük yüzde. pct=null → çok
+ *  döviz/veri yok: yalnız iz + "—". */
+function CollectGauge({ pct, fill, rest, caption, width = 148 }: {
+  pct: number | null; fill: string; rest: string; caption: string; width?: number;
+}) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const p = useCountUp(1, prefersReducedMotion() ? 0 : 1100);
+  const stroke = 14;
+  const r = (width - stroke) / 2;
+  const cx = width / 2;
+  const cy = r + stroke / 2;
+  const h = cy + stroke / 2;
+  const d = `M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`;
+  const len = Math.PI * r;
+  const v = pct == null ? 0 : Math.max(0, Math.min(1, pct)) * p;
+  const track = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)';
+  return (
+    <View style={{ width, height: h + 4, alignItems: 'center' }}>
+      <Svg width={width} height={h}>
+        <Path d={d} stroke={pct == null ? track : rest} strokeOpacity={pct == null ? 1 : 0.35} strokeWidth={stroke} fill="none" strokeLinecap="round" />
+        {v > 0.001 ? (
+          <Path d={d} stroke={fill} strokeWidth={stroke} fill="none" strokeLinecap="round"
+                strokeDasharray={`${v * len} ${len}`} />
+        ) : null}
+      </Svg>
+      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, alignItems: 'center' }}>
+        <Text style={{ ...SERIF, fontSize: 26, letterSpacing: -0.6, color: T.ink, ...NUM }}>
+          {pct == null ? '—' : `${Math.round(pct * 100 * p)}%`}
+        </Text>
+        <Text style={{ fontSize: 10, fontWeight: '500', letterSpacing: 0.6, textTransform: 'uppercase', color: T.ink3 }}>{caption}</Text>
+      </View>
+    </View>
+  );
+}
 
 /** İş Tipi Dağılımı halkaları — iç içe, en büyük pay en dışta. Yay = işin
  *  KENDİ birimi içindeki payı (üye üyeye, çene çeneye); 12'den başlar, saat yönünde. */
@@ -1345,8 +1382,16 @@ function FinanceCard({ monthly, pending, paid }: { monthly: CurrencyTotal[]; pen
   return (
     <SpineCard
       title={t('admin.dashboard.financialSummary')}
-      value={pctText(collectPct)}
-      unit="tahsil"
+      // Yüzde artık göstergenin ortasında — başlıkta tekrar etmiyor.
+      value={null}
+      visual={
+        <CollectGauge
+          pct={sameCcy && grandTotal > 0 ? collectRatio : null}
+          fill={CLR.green}
+          rest={CLR.orange}
+          caption={autoT('tahsil edildi')}
+        />
+      }
       // Veri yokken tam turuncu şerit göstermemek için boş bırak.
       segments={grandTotal > 0 ? [
         { color: CLR.green,  pct: collectRatio },
