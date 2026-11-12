@@ -14,11 +14,36 @@ import type { ClinicSummary } from '../summary';
 import { fmtMoney } from './MoneyText';
 import { fmtDay, qtyExtras } from './ClinicSummaryStrip';
 import { printLocale } from '../../../core/i18n/printLocale';
+import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
+import { HERO_NAVY } from '../../../core/ui/HeroGlow';
 
 type Period = 'month' | 'all';
 
 const webPointer = Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {};
 const DISPLAY_FONT = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : undefined;
+
+function hexA(hex: string, a: number): string {
+  const h = hex.replace('#', '');
+  const n = (i: number) => parseInt(h.slice(i, i + 2), 16);
+  return `rgba(${n(0)},${n(2)},${n(4)},${a})`;
+}
+
+/** Panelin rengi: lab safran · klinik zümrüt · admin kobalt (koyu temada lacivert). */
+function usePanelTone() {
+  const p = usePanelTheme();
+  const { isDark } = useInkUI();
+  const exec = p.key === 'exec';
+  const fill = exec && isDark ? HERO_NAVY.light : p.primary;
+  const base = exec && isDark ? '#4F7DB8' : p.primary;
+  return {
+    fill,
+    onFill: onAccentInk(fill),
+    tint: hexA(base, isDark ? 0.14 : 0.10),
+    edge: hexA(base, isDark ? 0.28 : 0.22),
+    bar: hexA(base, isDark ? 0.55 : 0.45),
+    label: isDark ? (exec ? '#BFD3EC' : p.primary) : (p.key === 'lab' ? '#8A6414' : p.primaryDeep),
+  };
+}
 
 /** Gruplu liste: küçük başlık + yumuşak zeminli tek kart, satırlar ince çizgiyle ayrılır. */
 function Group({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
@@ -57,10 +82,11 @@ function Line({ label, value, tone, strong }: { label: string; value: string; to
 /** Büyük, ince sayı + küçük etiket. */
 function Metric({ label, value, extra, caption, wide }: { label: string; value: string; extra?: string[]; caption?: string; wide?: boolean }) {
   const U = useInkUI();
+  const tone = usePanelTone();
   const size = value.length > 9 ? 20 : value.length > 6 ? 23 : 26;
   return (
-    <View style={{ flexGrow: wide ? 1.8 : 1, flexBasis: 0, minWidth: wide ? 150 : 92, backgroundColor: U.surfaceSoft, borderRadius: 14, borderWidth: 1, borderColor: U.hairlineSoft, paddingHorizontal: 14, paddingVertical: 12 }}>
-      <Text style={{ fontSize: 11.5, fontWeight: '600', color: U.ink[500] }} numberOfLines={1}>{label}</Text>
+    <View style={{ flexGrow: wide ? 1.8 : 1, flexBasis: 0, minWidth: wide ? 150 : 92, backgroundColor: tone.tint, borderRadius: 14, borderWidth: 1, borderColor: tone.edge, paddingHorizontal: 14, paddingVertical: 12 }}>
+      <Text style={{ fontSize: 11.5, fontWeight: '600', color: tone.label }} numberOfLines={1}>{label}</Text>
       <Text style={{ fontSize: size, lineHeight: 32, fontWeight: '300', letterSpacing: -0.03 * size, color: U.ink[900], marginTop: 4, fontVariant: ['tabular-nums'], fontFamily: DISPLAY_FONT }} numberOfLines={1}>
         {value}
       </Text>
@@ -75,9 +101,10 @@ function Metric({ label, value, extra, caption, wide }: { label: string; value: 
 /** Vade dağılımı: tek orantılı şerit + yalnız dolu dilimlerin açıklaması. */
 function AgingBar({ aging, currency }: { aging: NonNullable<ClinicSummary['aging']>; currency: string }) {
   const U = useInkUI();
+  const tone = usePanelTone();
   const warn = U.chipTones.warning.fg;
   const parts = [
-    { k: 'c', label: autoT('Vadesi gelmemiş'), v: Number(aging.current) || 0, color: U.ink[300] },
+    { k: 'c', label: autoT('Vadesi gelmemiş'), v: Number(aging.current) || 0, color: tone.bar },
     { k: '30', label: `1–30 ${autoT('gün')}`, v: Number(aging.d30) || 0, color: warn + '88' },
     { k: '60', label: `31–60 ${autoT('gün')}`, v: Number(aging.d60) || 0, color: warn },
     { k: '90', label: `61+ ${autoT('gün')}`, v: Number(aging.d90) || 0, color: U.chipTones.danger.fg },
@@ -129,6 +156,7 @@ export function ClinicSummaryModal(props: { clinicId: string | null; onClose: ()
 
   const open = !!props.clinicId;
   const f = s ? s[period] : null;
+  const tone = usePanelTone();
   const danger = U.chipTones.danger.fg;
   const go = (path: string) => { props.onClose(); router.push(path as any); };
 
@@ -143,11 +171,10 @@ export function ClinicSummaryModal(props: { clinicId: string | null; onClose: ()
         style={{
           flex: active ? 1.55 : 1, alignItems: 'center',
           paddingVertical: 8, paddingHorizontal: active ? 12 : 8, borderRadius: 999,
-          backgroundColor: active ? U.segActive : 'transparent', ...webPointer,
-          ...(active && Platform.OS === 'web' && !U.isDark ? { boxShadow: '0 1px 3px rgba(0,0,0,0.08)' } : {}),
+          backgroundColor: active ? tone.fill : 'transparent', ...webPointer,
         } as any}
       >
-        <Text style={{ fontSize: 12.5, fontWeight: active ? '700' : '500', color: active ? U.ink[900] : U.ink[500] }} numberOfLines={1}>{label}</Text>
+        <Text style={{ fontSize: 12.5, fontWeight: active ? '700' : '500', color: active ? tone.onFill : U.ink[500] }} numberOfLines={1}>{label}</Text>
       </Pressable>
     );
   };
@@ -165,7 +192,7 @@ export function ClinicSummaryModal(props: { clinicId: string | null; onClose: ()
       })}
     >
       <Text style={{ fontSize: 13, fontWeight: '600', color: U.plainBtn.fg }}>{label}</Text>
-      <ArrowUpRight size={14} color={U.plainBtn.fg} strokeWidth={1.8} />
+      <ArrowUpRight size={14} color={tone.label} strokeWidth={1.8} />
     </Pressable>
   );
 
