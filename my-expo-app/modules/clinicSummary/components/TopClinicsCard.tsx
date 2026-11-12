@@ -110,9 +110,9 @@ function ClinicAvatar({ name, logoUrl, size, lead }: { name: string; logoUrl?: s
         <Image
           source={{ uri: logoUrl }}
           onError={() => setBroken(true)}
-          resizeMode="contain"
+          resizeMode="cover"
           accessibilityIgnoresInvertColors
-          style={{ width: size - 6, height: size - 6 }}
+          style={{ width: '100%', height: '100%' }}
         />
       </View>
     );
