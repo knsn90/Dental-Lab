@@ -14,6 +14,7 @@ import { DS } from '../../../core/theme/dsTokens';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { AlertTriangle, RoyalCrown } from '../../../core/ui/icons';
 import { HERO_NAVY } from '../../../core/ui/HeroGlow';
+import { usePanelTheme, onAccentInk } from '../../../core/theme/usePanelTheme';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { titleCaseTR } from '../../../core/utils/textCase';
 import { useReducedMotion } from '../../reviews/components/dashboard/dashboardUi';
@@ -29,15 +30,64 @@ function monogram(name: string): string {
   return ((w[0]?.[0] ?? '') + (w[1]?.[0] ?? '')).toLocaleUpperCase('tr') || '·';
 }
 
+function hexA(hex: string, a: number): string {
+  const h = hex.replace('#', '');
+  return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`;
+}
+
+/** Çubuk + avatar tonları aktif panelden: admin kobalt, lab safran (paneller kendi rengini taşır). */
 function usePalette() {
   const isDark = useThemeModeStore((s) => s.resolvedDark);
+  const panel = usePanelTheme();
+  if (panel.key === 'exec') {
+    return {
+      isDark,
+      fillFrom: isDark ? '#4F7DB8' : DS.exec.primary,
+      fillTo: isDark ? '#9EC0E8' : DS.exec.primaryDeep,
+      track: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(23,34,53,0.06)',
+      avatarBg: isDark ? 'rgba(127,168,217,0.18)' : 'rgba(49,79,126,0.10)',
+      avatarFg: isDark ? '#BFD3EC' : DS.exec.primaryDeep,
+    };
+  }
   return {
     isDark,
-    fillFrom: isDark ? '#4F7DB8' : DS.exec.primary,
-    fillTo: isDark ? '#9EC0E8' : DS.exec.primaryDeep,
-    track: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(23,34,53,0.06)',
-    avatarBg: isDark ? 'rgba(127,168,217,0.18)' : 'rgba(49,79,126,0.10)',
-    avatarFg: isDark ? '#BFD3EC' : DS.exec.primaryDeep,
+    fillFrom: panel.primary,
+    fillTo: panel.primaryDeep,
+    track: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(10,10,10,0.06)',
+    avatarBg: hexA(panel.primary, isDark ? 0.2 : 0.22),
+    avatarFg: isDark ? panel.primary : panel.accent,
+  };
+}
+
+/** Lider kutusu yüzeyi: admin'de HERO_NAVY, diğer panellerde panel accent'i.
+ *  Metin/ikon tonu zeminin parlaklığına göre (safran üstünde koyu ink). */
+type LeadSkin = {
+  bg: string; bgImage: string; ink: string; ink2: string; ink3: string;
+  monoBg: string; track: string; fill: string; fillImage: string; warn: string;
+};
+function useLeadSkin(): LeadSkin {
+  const panel = usePanelTheme();
+  if (panel.key === 'exec') {
+    return {
+      bg: HERO_NAVY.to,
+      bgImage: `linear-gradient(135deg, ${HERO_NAVY.from} 0%, ${HERO_NAVY.to} 55%, ${HERO_NAVY.light} 100%)`,
+      ink: '#FFFFFF', ink2: 'rgba(255,255,255,0.82)', ink3: 'rgba(255,255,255,0.78)',
+      monoBg: 'rgba(255,255,255,0.14)', track: 'rgba(255,255,255,0.14)',
+      fill: '#9EC0E8', fillImage: 'linear-gradient(90deg, #6E9BD0 0%, #FFFFFF 100%)', warn: '#F5C24B',
+    };
+  }
+  const light = onAccentInk(panel.primary) !== '#FFFFFF';
+  return {
+    bg: panel.primary,
+    bgImage: `linear-gradient(135deg, ${panel.primary} 0%, ${panel.primaryDeep} 100%)`,
+    ink: light ? '#0A0A0A' : '#FFFFFF',
+    ink2: light ? 'rgba(10,10,10,0.74)' : 'rgba(255,255,255,0.82)',
+    ink3: light ? 'rgba(10,10,10,0.68)' : 'rgba(255,255,255,0.78)',
+    monoBg: light ? 'rgba(10,10,10,0.08)' : 'rgba(255,255,255,0.14)',
+    track: light ? 'rgba(10,10,10,0.12)' : 'rgba(255,255,255,0.14)',
+    fill: light ? '#0A0A0A' : '#FFFFFF',
+    fillImage: light ? 'linear-gradient(90deg, rgba(10,10,10,0.55) 0%, #0A0A0A 100%)' : 'linear-gradient(90deg, rgba(255,255,255,0.6) 0%, #FFFFFF 100%)',
+    warn: light ? '#9C2E2E' : '#F5C24B',
   };
 }
 
@@ -70,7 +120,7 @@ function Seg<K extends string>({ value, options, onChange }: { value: K; options
 }
 
 /** Kapsül çubuk — oran değişince 0→hedef değil, BULUNDUĞU değerden hedefe akar. */
-function Bar({ ratio, height, dim, onNavy }: { ratio: number; height: number; dim?: boolean; onNavy?: boolean }) {
+function Bar({ ratio, height, dim, skin }: { ratio: number; height: number; dim?: boolean; skin?: LeadSkin }) {
   const P = usePalette();
   const reduced = useReducedMotion();
   const target = Math.max(0.04, Math.min(1, ratio));
@@ -83,12 +133,12 @@ function Bar({ ratio, height, dim, onNavy }: { ratio: number; height: number; di
   }, [target, reduced, v]);
   const width = v.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
   return (
-    <View style={{ height, borderRadius: 999, backgroundColor: onNavy ? 'rgba(255,255,255,0.14)' : P.track, overflow: 'hidden' }}>
+    <View style={{ height, borderRadius: 999, backgroundColor: skin ? skin.track : P.track, overflow: 'hidden' }}>
       <Animated.View style={{
         height, borderRadius: 999, width, opacity: dim ? 0.6 : 1,
-        backgroundColor: onNavy ? '#9EC0E8' : P.fillTo,
-        ...(web ? { backgroundImage: onNavy
-          ? 'linear-gradient(90deg, #6E9BD0 0%, #FFFFFF 100%)'
+        backgroundColor: skin ? skin.fill : P.fillTo,
+        ...(web ? { backgroundImage: skin
+          ? skin.fillImage
           : `linear-gradient(90deg, ${P.fillFrom} 0%, ${P.fillTo} 100%)` } : {}),
       } as any} />
     </View>
@@ -96,7 +146,7 @@ function Bar({ ratio, height, dim, onNavy }: { ratio: number; height: number; di
 }
 
 /** Klinik avatarı: logo varsa logo (beyaz zeminde, sığdırılmış), yoksa / yüklenemezse monogram. */
-function ClinicAvatar({ name, logoUrl, size, lead }: { name: string; logoUrl?: string | null; size: number; lead?: boolean }) {
+function ClinicAvatar({ name, logoUrl, size, lead }: { name: string; logoUrl?: string | null; size: number; lead?: LeadSkin }) {
   const P = usePalette();
   const T = useMobileTokens();
   const [broken, setBroken] = useState(false);
@@ -121,9 +171,9 @@ function ClinicAvatar({ name, logoUrl, size, lead }: { name: string; logoUrl?: s
   return (
     <View style={{
       width: size, height: size, borderRadius: radius, alignItems: 'center', justifyContent: 'center',
-      backgroundColor: lead ? 'rgba(255,255,255,0.14)' : P.avatarBg,
+      backgroundColor: lead ? lead.monoBg : P.avatarBg,
     }}>
-      <Text style={{ fontSize: Math.round(size * 0.36), fontWeight: '700', letterSpacing: 0.3, color: lead ? '#FFFFFF' : P.avatarFg }}>{monogram(name)}</Text>
+      <Text style={{ fontSize: Math.round(size * 0.36), fontWeight: '700', letterSpacing: 0.3, color: lead ? lead.ink : P.avatarFg }}>{monogram(name)}</Text>
     </View>
   );
 }
@@ -182,12 +232,12 @@ function PlainRankBadge({ rank, size }: { rank: number; size: number }) {
   );
 }
 
-function OverdueMark({ onNavy }: { onNavy?: boolean } = {}) {
+function OverdueMark({ color }: { color?: string } = {}) {
   const U = useInkUI();
   return (
     <GlassTooltip title={autoT('Vadesi geçmiş borç')} text={autoT('Ödeme durumu sıralamayı etkilemez')}>
       <View accessibilityLabel={autoT('Vadesi geçmiş borç')}>
-        <AlertTriangle size={12} color={onNavy ? '#F5C24B' : U.chipTones.warning.fg} strokeWidth={1.8} />
+        <AlertTriangle size={12} color={color ?? U.chipTones.warning.fg} strokeWidth={1.8} />
       </View>
     </GlassTooltip>
   );
@@ -236,6 +286,7 @@ export function TopClinicsCard(props: {
   });
 
   const [lead, ...rest] = rows;
+  const skin = useLeadSkin();
 
   return (
     <View style={{
@@ -260,30 +311,30 @@ export function TopClinicsCard(props: {
             accessibilityLabel={`1. ${titleCaseTR(lead.name)}`}
             style={pressStyle({
               borderRadius: 14, padding: 10, marginBottom: 4,
-              backgroundColor: HERO_NAVY.to,
-              ...(web ? { backgroundImage: `linear-gradient(135deg, ${HERO_NAVY.from} 0%, ${HERO_NAVY.to} 55%, ${HERO_NAVY.light} 100%)` } : {}),
+              backgroundColor: skin.bg,
+              ...(web ? { backgroundImage: skin.bgImage } : {}),
             })}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <View>
-                <ClinicAvatar name={lead.name} logoUrl={map.get(lead.clinicId)?.logoUrl} size={38} lead />
+                <ClinicAvatar name={lead.name} logoUrl={map.get(lead.clinicId)?.logoUrl} size={38} lead={skin} />
                 <RankBadge rank={1} size={20} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <Text style={{ flexShrink: 1, fontSize: 13.5, fontWeight: '700', color: '#FFFFFF' }} numberOfLines={1}>{titleCaseTR(lead.name)}</Text>
-                  {lead.overdue ? <OverdueMark onNavy /> : null}
+                  <Text style={{ flexShrink: 1, fontSize: 13.5, fontWeight: '700', color: skin.ink }} numberOfLines={1}>{titleCaseTR(lead.name)}</Text>
+                  {lead.overdue ? <OverdueMark color={skin.warn} /> : null}
                 </View>
-                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.82)', marginTop: 1 }} numberOfLines={1}>
+                <Text style={{ fontSize: 11, color: skin.ink2, marginTop: 1 }} numberOfLines={1}>
                   {`${autoT('Pay')} %${share(lead.uye)}`}{mode === 'score' ? ` · ${lead.uye} ${autoT('üye')}` : ''}
                 </Text>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
-                <Text style={{ fontSize: 22, fontWeight: '300', letterSpacing: -0.6, color: '#FFFFFF', fontVariant: ['tabular-nums'] }}>{String(val(lead))}</Text>
-                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.78)', marginTop: -2 }}>{mode === 'uye' ? autoT('üye') : autoT('Puan')}</Text>
+                <Text style={{ fontSize: 22, fontWeight: '300', letterSpacing: -0.6, color: skin.ink, fontVariant: ['tabular-nums'] }}>{String(val(lead))}</Text>
+                <Text style={{ fontSize: 11, color: skin.ink3, marginTop: -2 }}>{mode === 'uye' ? autoT('üye') : autoT('Puan')}</Text>
               </View>
             </View>
-            <View style={{ marginTop: 9 }}><Bar ratio={share(lead.uye) / 100} height={5} onNavy /></View>
+            <View style={{ marginTop: 9 }}><Bar ratio={share(lead.uye) / 100} height={5} skin={skin} /></View>
           </Pressable>
 
           {rest.map((r, i) => (

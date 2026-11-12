@@ -2194,32 +2194,26 @@ export default function AdminDashboard() {
             </Pressable>
           )}
 
-          {/* Finans + Statü, altında İş Tipi + Bu hafta — aynı ızgara, sıra içinde eş boy */}
+          {/* Finans tek başına; altında Statü · İş Tipi · Bu hafta tek satırda (kullanıcı isteği, 2026-11-12) */}
           <DashRow gap={16} style={{ marginBottom: 16 }}>
             <DashHalf gap={16}>
               <DashCell><FinanceCard monthly={finMonthly} pending={finPending} paid={finPaidCount} /></DashCell>
             </DashHalf>
-            <DashHalf gap={16}>
-              <DashCell><StatusDistCard byStatus={byStatus} /></DashCell>
-            </DashHalf>
           </DashRow>
           <DashRow gap={16} style={{ marginBottom: 16 }}>
+            <DashThird><StatusDistCard byStatus={byStatus} /></DashThird>
             {byWorkType.length > 0 ? (
-              <DashHalf gap={16}>
-                <DashCell><WorkTypeCard data={byWorkType} onPress={() => router.push('/(admin)/work-stats' as any)} /></DashCell>
-              </DashHalf>
+              <DashThird><WorkTypeCard data={byWorkType} onPress={() => router.push('/(admin)/work-stats' as any)} /></DashThird>
             ) : null}
-            <DashHalf gap={16}>
-              <DashCell>
-                <WeeklyStrip
-                  weekDays={weekDays}
-                  weekCounts={weekCounts}
-                  weekDone={weekDone}
-                  extra={weekExtra}
-                  onPress={() => router.push('/(admin)/work-stats' as any)}
-                />
-              </DashCell>
-            </DashHalf>
+            <DashThird>
+              <WeeklyStrip
+                weekDays={weekDays}
+                weekCounts={weekCounts}
+                weekDone={weekDone}
+                extra={weekExtra}
+                onPress={() => router.push('/(admin)/work-stats' as any)}
+              />
+            </DashThird>
           </DashRow>
         </>
       )}

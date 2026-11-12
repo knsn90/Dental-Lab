@@ -2239,33 +2239,21 @@ export function LabDashboardScreen() {
         </View>
       )}
 
-      {/* Yönetici: Statü + İş tipi dağılımı (Admin Özet'teki kartlar) */}
-      {isManager ? (
-        <DashRow gap={14} style={{ marginBottom: 14 }}>
-          <DashHalf gap={14}>
-            <DashCell><StatusDistCard byStatus={mgrByStatus} /></DashCell>
-          </DashHalf>
-          {mgrDist.byWorkType.length > 0 ? (
-            <DashHalf gap={14}>
-              <DashCell><WorkTypeCard data={mgrDist.byWorkType} /></DashCell>
-            </DashHalf>
-          ) : null}
-        </DashRow>
-      ) : null}
-
-      {/* ════════ EN ALT — Bu hafta (Admin Özet'teki gibi sayfanın sonunda) ════════ */}
+      {/* Statü · İş tipi (yalnız yönetici) · Bu hafta — tek satır (kullanıcı isteği, 2026-11-12) */}
       <DashRow gap={14} style={{ marginBottom: 14 }}>
-        <DashHalf gap={14}>
-          <DashCell>
-            <WeeklyStrip
-              weekDays={weekDays}
-              weekCounts={weekCounts}
-              weekDone={weekDone}
-              weekTeeth={weekTeeth}
-              onPress={() => router.push('/(lab)/all-orders' as any)}
-            />
-          </DashCell>
-        </DashHalf>
+        {isManager ? <DashThird><StatusDistCard byStatus={mgrByStatus} /></DashThird> : null}
+        {isManager && mgrDist.byWorkType.length > 0 ? (
+          <DashThird><WorkTypeCard data={mgrDist.byWorkType} /></DashThird>
+        ) : null}
+        <DashThird>
+          <WeeklyStrip
+            weekDays={weekDays}
+            weekCounts={weekCounts}
+            weekDone={weekDone}
+            weekTeeth={weekTeeth}
+            onPress={() => router.push('/(lab)/all-orders' as any)}
+          />
+        </DashThird>
       </DashRow>
 
       <View style={{ height: 40 }} />
