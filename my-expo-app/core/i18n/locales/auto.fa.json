@@ -10274,5 +10274,7 @@
   "zaten listede": "از قبل در فهرست است",
   "eklendi": "افزوده شد",
   "Yeni sipariş formunda görünen marka ve modeller. Buradan ya da sipariş formundan yeni marka/model eklenebilir; düzeltme, gizleme ve birleştirme yalnız buradan yapılır. Geçmiş siparişler değişmez.": "برندها و مدل‌هایی که در فرم سفارش جدید نمایش داده می‌شوند. برند یا مدل جدید را می‌توان از اینجا یا از فرم سفارش اضافه کرد؛ اصلاح، پنهان‌سازی و ادغام فقط از اینجا انجام می‌شود. سفارش‌های قبلی تغییر نمی‌کنند.",
-  "İşlem başarısız.": "عملیات ناموفق بود."
+  "İşlem başarısız.": "عملیات ناموفق بود.",
+  "Ciro fatura tarihine göre ve KDV hariç hesaplanır. Borç KDV dahildir; bu yüzden ödeme alınmamış olsa da borç ciro + KDV kadar görünür.": "درآمد بر اساس تاریخ فاکتور و بدون مالیات بر ارزش افزوده محاسبه می‌شود. بدهی شامل مالیات است؛ به همین دلیل حتی بدون دریافت پرداخت، بدهی برابر با درآمد + مالیات نمایش داده می‌شود.",
+  "Borç (KDV dahil)": "بدهی (با مالیات)"
 }

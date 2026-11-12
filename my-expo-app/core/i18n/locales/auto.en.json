@@ -10274,5 +10274,7 @@
   "zaten listede": "is already in the list",
   "eklendi": "added",
   "Yeni sipariş formunda görünen marka ve modeller. Buradan ya da sipariş formundan yeni marka/model eklenebilir; düzeltme, gizleme ve birleştirme yalnız buradan yapılır. Geçmiş siparişler değişmez.": "Brands and models shown in the new order form. New brands/models can be added here or from the order form; correcting, hiding and merging is done only here. Past orders stay unchanged.",
-  "İşlem başarısız.": "The action failed."
+  "İşlem başarısız.": "The action failed.",
+  "Ciro fatura tarihine göre ve KDV hariç hesaplanır. Borç KDV dahildir; bu yüzden ödeme alınmamış olsa da borç ciro + KDV kadar görünür.": "Revenue is calculated by invoice date and excludes VAT. The balance includes VAT, so even with no payment received, the balance shows as revenue + VAT.",
+  "Borç (KDV dahil)": "Balance (incl. VAT)"
 }

@@ -143,12 +143,12 @@ export function ClinicSummaryModal(props: { clinicId: string | null; onClose: ()
                     {f.revenue.length
                       ? f.revenue.map((m) => <Row key={m.currency} label={m.currency} value={fmtMoney(m)} />)
                       : <Row label={autoT('Ciro')} value="—" />}
-                    <Text style={{ fontSize: 11, color: U.ink[400], marginTop: 4 }}>{autoT('Ciro fatura tarihine göre')}</Text>
+                    <Text style={{ fontSize: 11, lineHeight: 16, color: U.ink[400], marginTop: 4 }}>{autoT('Ciro fatura tarihine göre ve KDV hariç hesaplanır. Borç KDV dahildir; bu yüzden ödeme alınmamış olsa da borç ciro + KDV kadar görünür.')}</Text>
                   </Section>
                 ) : null}
 
                 {canBalance ? (
-                  <Section title={autoT('Borç')}>
+                  <Section title={autoT('Borç (KDV dahil)')}>
                     {s.balance.length
                       ? s.balance.map((m) => <Row key={m.currency} label={`${autoT('Bakiye')} · ${m.currency}`} value={fmtMoney(m)} />)
                       : <Row label={autoT('Bakiye')} value="—" />}
