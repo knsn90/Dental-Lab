@@ -109,13 +109,15 @@ export function TopClinicsCard(props: {
   compact?: boolean;
   /** Izgara hücresinde komşularıyla eş boy olmak için (flex:1). ScrollView içinde verme. */
   fill?: boolean;
+  /** false → ciroya dayalı "Puan" sıralaması hiç sunulmaz (lab panosu: finansal olmayan). */
+  scoreMode?: boolean;
   summaries?: Map<string, ClinicSummary>;
   onOpen?: (clinicId: string) => void;
 }) {
   const T = useMobileTokens();
   const U = useInkUI();
   const P = usePalette();
-  const canProfit = usePermissionStore((s) => s.can('view_profit'));
+  const canProfit = usePermissionStore((s) => s.can('view_profit')) && props.scoreMode !== false;
   const live = useClinicSummaries();
   const modal = useClinicSummaryModal();
   const map = props.summaries ?? live.map;

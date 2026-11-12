@@ -68,7 +68,11 @@ import { resolveOrderStatus } from '../components/RecentOrdersMobile';
 import { mapRevisionCases, flattenRevisionCases } from '../../orders/revisionGroups';
 import { useRevisionParents } from '../../orders/hooks/useRevisionParents';
 import { ScanCalendarCard, useScanCardVisible } from '../../scans/components/ScanCalendarCard';
-import { DashRow, DashHalf, DashCell } from '../components/DashGrid';
+import { DashRow, DashHalf, DashCell, DashThird } from '../components/DashGrid';
+import { statusBuckets } from '../lib/distributions';
+import { StatusDistCard, WorkTypeCard, STATUS_CFG as DIST_STATUS_CFG, STATUS_KEYS as DIST_STATUS_KEYS, STATUS_BUCKET as DIST_STATUS_BUCKET } from '../components/DistributionCards';
+import { useManagerDistributions } from '../hooks/useManagerDistributions';
+import { TopClinicsCard } from '../../clinicSummary/components/TopClinicsCard';
 
 // Display font — Patterns: Inter Tight Light (300), tight tracking
 const SERIF = {
@@ -1053,6 +1057,9 @@ export function LabDashboardScreen() {
   const { rows: overdueClinics, refetch: refetchOverdueClinics } = useOverdueClinics();
 
   const isManager  = profile?.role === 'manager' || profile?.user_type === 'admin';
+  // Yönetici-yalnız finansal olmayan widget'lar (Admin Özet ile aynı kartlar):
+  // Statü dağılımı · İş tipi dağılımı · En çok iş gönderenler (yalnız üye).
+  const mgrDist = useManagerDistributions(isManager);
   // Tek tanım (2026-10-26): "bugün" lab'ın saat diliminde; sayılar order_metrics()'ten.
   // Satır listeleri (gecikenler, bugün teslim) aynı kuralın istemci aynasıyla süzülür.
   const today      = useLabToday();
@@ -1060,6 +1067,11 @@ export function LabDashboardScreen() {
   const overdueOrders    = orders.filter(o => isOverdueOrder(o as any, today));
   const todayDeliverable = orders.filter(o => isDueOn(o as any, today));
   const { data: metrics, refetch: refetchMetrics } = useOrderMetrics();
+  const mgrByStatus = React.useMemo(() => {
+    if (!metrics) return [];
+    const counts = statusBuckets(metrics.by_status as Record<string, number>, DIST_STATUS_KEYS, DIST_STATUS_BUCKET);
+    return DIST_STATUS_KEYS.map(k => ({ key: k, label: DIST_STATUS_CFG[k]?.labelKey ? t(DIST_STATUS_CFG[k].labelKey) : k, count: counts[k] }));
+  }, [metrics, t]);
   const overdueTotal = metrics?.overdue ?? overdueOrders.length;
   // Beklemedeki işler (madde 13): rozet sayısı order_metrics.on_hold'dan, satırlar
   // useHeldOrders'tan. Uzun bekleyen = lab gününe göre LONG_HOLD_DAYS'i aşan.
@@ -2017,6 +2029,14 @@ export function LabDashboardScreen() {
 
       {/* ════════ İKİNCİ SIRA — Bugünkü Görevler + tarama widget'ı (yarımlar), Admin Özet ile aynı düzen.
           "Bu hafta" en alta indi (kullanıcı isteği, 2026-11-09: "admin panelindeki gibi"). ════════ */}
+      {isManager ? (
+        // Yönetici: Admin Özet gibi üçte birler — Görevler · Tarama · En çok iş gönderenler
+        <DashRow gap={14} style={{ marginBottom: 14 }}>
+          <DashThird><TasksCard tasks={taskItems} /></DashThird>
+          {scanCard ? <DashThird><ScanCalendarCard style={{ flex: 1 }} /></DashThird> : null}
+          <DashThird><TopClinicsCard fill scoreMode={false} /></DashThird>
+        </DashRow>
+      ) : (
       <DashRow gap={14} style={{ marginBottom: 14 }}>
         <DashHalf gap={14}>
           {/* Bugünkü Görevler — Dark (CTA ile yer değişti) */}
@@ -2028,6 +2048,7 @@ export function LabDashboardScreen() {
           </DashHalf>
         ) : null}
       </DashRow>
+      )}
 
       {/* ════════ EXTRA SECTIONS (below fold) ════════ */}
 
@@ -2217,6 +2238,20 @@ export function LabDashboardScreen() {
           )}
         </View>
       )}
+
+      {/* Yönetici: Statü + İş tipi dağılımı (Admin Özet'teki kartlar) */}
+      {isManager ? (
+        <DashRow gap={14} style={{ marginBottom: 14 }}>
+          <DashHalf gap={14}>
+            <DashCell><StatusDistCard byStatus={mgrByStatus} /></DashCell>
+          </DashHalf>
+          {mgrDist.byWorkType.length > 0 ? (
+            <DashHalf gap={14}>
+              <DashCell><WorkTypeCard data={mgrDist.byWorkType} /></DashCell>
+            </DashHalf>
+          ) : null}
+        </DashRow>
+      ) : null}
 
       {/* ════════ EN ALT — Bu hafta (Admin Özet'teki gibi sayfanın sonunda) ════════ */}
       <DashRow gap={14} style={{ marginBottom: 14 }}>
