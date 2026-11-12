@@ -122,16 +122,16 @@ const WORKTYPE_RAMP_DARK = ['#7FA8D9', '#5FC4BB', '#B58FD8', '#8EC0EA', '#A07DC8
 
 /** İş Tipi Dağılımı halkaları — iç içe, en büyük pay en dışta. Yay = işin
  *  KENDİ birimi içindeki payı (üye üyeye, çene çeneye); 12'den başlar, saat yönünde. */
-function WorkTypeRings({ items, size = 196 }: { items: { color: string; pct: number }[]; size?: number }) {
+function WorkTypeRings({ items, size = 128 }: { items: { color: string; pct: number }[]; size?: number }) {
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const p = useCountUp(1, prefersReducedMotion() ? 0 : 1100);
-  const stroke = 12;
-  const gap = 6;
+  const stroke = 8;
+  const gap = 4;
   const outer = (size - stroke) / 2;
   const track = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)';
   const cx = size / 2;
   return (
-    <View style={{ alignItems: 'center', marginTop: 14, marginBottom: 6 }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+    <View style={{ alignItems: 'center' }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       <Svg width={size} height={size}>
         {items.map((it, i) => {
           const r = outer - i * (stroke + gap);
@@ -391,9 +391,19 @@ function SpineCard({ title, value, unit, segments, zeros, children, onPress, vis
         </View>
       </View>
 
-      {visual ?? <Spine segments={segments} />}
-
-      <View style={{ marginTop: 8 }}>{children}</View>
+      {visual ? (
+        // Kompakt: grafik solda, liste sağda (kart dikeyde büyümesin)
+        // Dar kartta (< ~350px) liste halkaların altına iner; adlar kesilmez.
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', columnGap: 16, rowGap: 8, marginTop: 12 }}>
+          {visual}
+          <View style={{ flexGrow: 1, flexShrink: 1, flexBasis: 200, minWidth: 0 }}>{children}</View>
+        </View>
+      ) : (
+        <>
+          <Spine segments={segments} />
+          <View style={{ marginTop: 8 }}>{children}</View>
+        </>
+      )}
 
       {zeros && zeros.length > 0 ? (
         <Text style={{ fontSize: 11, color: T.ink3, marginTop: 4 }}>
