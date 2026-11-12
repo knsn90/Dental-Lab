@@ -7,13 +7,14 @@
 import React, { useRef, useState } from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
 import {
-  ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, ChevronDown, Building2, Download,
+  ChevronLeft, ChevronRight, ChevronDown, Building2, Download,
   FileSpreadsheet, FileText,
 } from '../../../../core/ui/icons';
 import { useInkUI } from '../../../../core/theme/inkScale';
 import { usePanelTheme } from '../../../../core/theme/usePanelTheme';
 import { DS } from '../../../../core/theme/dsTokens';
 import { GlassTooltip } from '../../../../core/ui/GlassTooltip';
+import { NavyBackButtonX } from '../../../../core/ui/NavyBackButtonX';
 import { autoT } from '../../../../core/i18n/autoTranslate';
 import { isRTL } from '../../../../core/i18n';
 import type { CompareMode } from '../months';
@@ -84,7 +85,6 @@ export function WorkStatsToolbar(p: WorkStatsToolbarProps) {
   // RTL'de araç çubuğu aynalanır; "önceki" oku sağda, ok yönleri de döner.
   const PrevIcon = rtl ? ChevronRight : ChevronLeft;
   const NextIcon = rtl ? ChevronLeft : ChevronRight;
-  const BackIcon = rtl ? ArrowRight : ArrowLeft;
   const fg = U.plainBtn.fg;
 
   const seg = (m: CompareMode, label: string) => {
@@ -184,11 +184,7 @@ export function WorkStatsToolbar(p: WorkStatsToolbarProps) {
       {/* 1. satır: geri + başlık · dışa aktarma */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         {p.onBack ? (
-          <GlassTooltip title={autoT('Geri')} text={autoT('Önceki sayfaya döner')} placement="bottom">
-            <PlainBtn square onPress={p.onBack} label={autoT('Geri')}>
-              <BackIcon size={15} color={fg} strokeWidth={2.2} />
-            </PlainBtn>
-          </GlassTooltip>
+          <NavyBackButtonX onPress={p.onBack} />
         ) : null}
         <Text
           accessibilityRole="header"
