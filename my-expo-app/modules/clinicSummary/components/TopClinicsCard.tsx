@@ -12,8 +12,7 @@ import { useInkUI } from '../../../core/theme/inkScale';
 import { usePermissionStore } from '../../../core/store/permissionStore';
 import { DS } from '../../../core/theme/dsTokens';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
-import { AlertTriangle } from '../../../core/ui/icons';
-import Svg, { Path, Circle, Text as SvgText } from 'react-native-svg';
+import { AlertTriangle, RoyalCrown } from '../../../core/ui/icons';
 import { HERO_NAVY } from '../../../core/ui/HeroGlow';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { useReducedMotion } from '../../reviews/components/dashboard/dashboardUi';
@@ -101,7 +100,7 @@ function ClinicAvatar({ name, logoUrl, size, lead }: { name: string; logoUrl?: s
   const T = useMobileTokens();
   const [broken, setBroken] = useState(false);
   useEffect(() => { setBroken(false); }, [logoUrl]);
-  const radius = Math.round(size * 0.3);
+  const radius = size / 2;
   if (logoUrl && !broken) {
     return (
       <View style={{
@@ -128,59 +127,34 @@ function ClinicAvatar({ name, logoUrl, size, lead }: { name: string; logoUrl?: s
   );
 }
 
-/** Sıra rozeti — avatarın sağ üst köşesinde madalya: tırtıklı mühür + numara + iki
- *  kurdele (1 altın · 2 gümüş · 3 bronz). Metal tonları her iki temada aynı
- *  (ödül rengi, çevrilmez). viewBox 40×50: mühür üstte, kurdeleler altta. */
+/** Sıra rozeti — avatarın sağ üst köşesinde taç: 1 altın · 2 gümüş · 3 bronz.
+ *  Metal tonları her iki temada aynı (ödül rengi, çevrilmez); taç beyaz. */
 const MEDALS = {
-  1: { rim: '#FFC531', ring: '#F2A900', disk: '#FFD45C', shine: '#FFE58F', num: '#FFFFFF', ribbon: '#EF5A2A', stripe: '#FF8D45' },
-  2: { rim: '#CBD3DC', ring: '#9EAAB7', disk: '#E2E8EE', shine: '#F3F6F9', num: '#566270', ribbon: '#3E6FA8', stripe: '#6E9BD0' },
-  3: { rim: '#E3A673', ring: '#B9773F', disk: '#F0BD8E', shine: '#F8D6B4', num: '#FFFFFF', ribbon: '#7A4FA6', stripe: '#A47ACC' },
+  1: { base: '#E8A923', grad: 'linear-gradient(145deg, #FFD15C 0%, #E8A923 50%, #B97A0C 100%)', glow: 'rgba(217,154,30,0.45)', ink: '#FFFFFF' },
+  2: { base: '#9DA9B5', grad: 'linear-gradient(145deg, #CDD5DD 0%, #9DA9B5 50%, #707D8A 100%)', glow: 'rgba(120,135,150,0.40)', ink: '#FFFFFF' },
+  3: { base: '#C27F4A', grad: 'linear-gradient(145deg, #E5AE7F 0%, #C27F4A 50%, #8E5328 100%)', glow: 'rgba(165,103,58,0.40)', ink: '#FFFFFF' },
 } as const;
 
-/** 12 dişli mühür kenarı (yumuşak tepe/çukur). */
-function sealPath(cx: number, cy: number, rOut: number, rIn: number, n = 12): string {
-  const pts: string[] = [];
-  for (let i = 0; i < n * 2; i++) {
-    const r = i % 2 === 0 ? rOut : rIn;
-    const a = (Math.PI / n) * i - Math.PI / 2;
-    pts.push(`${(cx + r * Math.cos(a)).toFixed(2)},${(cy + r * Math.sin(a)).toFixed(2)}`);
-  }
-  return `M${pts.join('L')}Z`;
-}
-const SEAL = sealPath(20, 18, 17.5, 14.6);
-
-function Medal({ rank, size }: { rank: 1 | 2 | 3; size: number }) {
-  const m = MEDALS[rank];
-  return (
-    <Svg width={size} height={size * 1.25} viewBox="0 0 40 50">
-      {/* Kurdeleler — mührün arkasında, V uçlu */}
-      <Path d="M10 26 L5 47 L10.5 43.5 L13.5 48.5 L19 29 Z" fill={m.ribbon} />
-      <Path d="M30 26 L35 47 L29.5 43.5 L26.5 48.5 L21 29 Z" fill={m.ribbon} />
-      <Path d="M11.6 27.5 L7.9 43.4 L9.4 42.5 L13.2 28.3 Z" fill={m.stripe} />
-      <Path d="M28.4 27.5 L32.1 43.4 L30.6 42.5 L26.8 28.3 Z" fill={m.stripe} />
-      {/* Mühür */}
-      <Path d={SEAL} fill={m.rim} />
-      <Circle cx={20} cy={18} r={11.5} fill={m.ring} />
-      <Circle cx={20} cy={18} r={9.3} fill={m.disk} />
-      {/* Çapraz parlama — yarım disk biraz açık */}
-      <Path d="M12.4 25.6 A11.5 11.5 0 0 1 27.6 10.4 Z" fill={m.shine} opacity={0.45} />
-      <SvgText x={20} y={22.6} fontSize={13} fontWeight="800" fill={m.num} textAnchor="middle">{String(rank)}</SvgText>
-    </Svg>
-  );
-}
-
 function RankBadge({ rank, size }: { rank: 1 | 2 | 3; size: number }) {
+  const T = useMobileTokens();
+  const m = MEDALS[rank];
   const title = `${rank}. ${autoT('sıra')}`;
   const text = rank === 1 ? autoT('Seçili dönemde en çok iş gönderen')
     : rank === 2 ? autoT('Seçili dönemde ikinci sırada') : autoT('Seçili dönemde üçüncü sırada');
+  const off = -Math.round(size * 0.38);
   return (
-    <View style={{ position: 'absolute', right: -Math.round(size * 0.42), top: -Math.round(size * 0.4) }}>
+    <View style={{ position: 'absolute', right: off, top: off }}>
       <GlassTooltip title={title} text={text}>
         <View
           accessibilityLabel={`${title} · ${text}`}
-          style={web ? ({ filter: 'drop-shadow(0 1.5px 2px rgba(0,0,0,0.22))' } as any) : undefined}
+          style={{
+            width: size, height: size, borderRadius: size / 2,
+            alignItems: 'center', justifyContent: 'center',
+            backgroundColor: m.base, borderWidth: 2, borderColor: T.card,
+            ...(web ? { backgroundImage: m.grad, boxShadow: `0 2px 6px ${m.glow}` } : {}),
+          } as any}
         >
-          <Medal rank={rank} size={size} />
+          <RoyalCrown size={Math.round(size * 0.52)} color={m.ink} strokeWidth={2} />
         </View>
       </GlassTooltip>
     </View>
@@ -272,7 +246,7 @@ export function TopClinicsCard(props: {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <View>
                 <ClinicAvatar name={lead.name} logoUrl={map.get(lead.clinicId)?.logoUrl} size={38} lead />
-                <RankBadge rank={1} size={26} />
+                <RankBadge rank={1} size={20} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
@@ -301,7 +275,7 @@ export function TopClinicsCard(props: {
             >
               <View>
                 <ClinicAvatar name={r.name} logoUrl={map.get(r.clinicId)?.logoUrl} size={28} />
-                {i < 2 ? <RankBadge rank={(i + 2) as 2 | 3} size={20} /> : null}
+                {i < 2 ? <RankBadge rank={(i + 2) as 2 | 3} size={16} /> : null}
               </View>
               <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
