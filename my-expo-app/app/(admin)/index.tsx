@@ -2115,7 +2115,7 @@ export default function AdminDashboard() {
               )}
             </View>
             <Pressable
-              onPress={() => router.push('/(admin)/orders' as any)}
+              onPress={() => router.push('/(admin)/work-stats' as any)}
               className="items-center justify-center rounded-full"
               style={{ width: 32, height: 32, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : DS.ink[100] }}
             >

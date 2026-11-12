@@ -331,7 +331,10 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
 
       {/* ═══ Üye trendi — masaüstü "Üye Trendi" kartının mobil karşılığı (hatched pill kolonları) ═══ */}
       {trend.length > 0 && (
-      <View style={{
+      <Pressable
+        onPress={() => router.push('/(admin)/work-stats' as any)}
+        accessibilityRole="button"
+        style={{
         marginHorizontal: 16, marginBottom: 16,
         padding: 14, borderRadius: 20,
         backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline,
@@ -410,7 +413,7 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
             </View>
           );
         })()}
-      </View>
+      </Pressable>
       )}
 
       {/* ═══ Son Siparişler — desktop tablonun mobil karşılığı ═══ */}
