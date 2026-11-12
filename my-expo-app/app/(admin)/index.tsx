@@ -318,8 +318,10 @@ function Spine({ segments }: { segments: { color: string; pct: number }[] }) {
   );
 }
 
-function SpineCard({ title, value, unit, segments, zeros, children }: {
+function SpineCard({ title, value, unit, segments, zeros, children, onPress }: {
   title:     string;
+  /** Verilirse kart tıklanabilir olur (başlığın yanında ↗). */
+  onPress?:  () => void;
   /** string/number ise display tipografisiyle sarılır; ReactNode olduğu gibi basılır. */
   value:     string | number | React.ReactNode;
   unit?:     string;
@@ -330,14 +332,17 @@ function SpineCard({ title, value, unit, segments, zeros, children }: {
 }) {
   const plain = typeof value === 'string' || typeof value === 'number';
   const T = useMobileTokens();
-  return (
+  const card = (
     // flex:1 → ızgara hücresini doldurur; yan yana kartlar eş boy kalır
     <Card style={{ padding: 20, flex: 1 }}>
       {/* Başlık solda · toplam sağda — koyu bant yok, kart bağırmıyor */}
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 12 }}>
-        <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: T.ink }} numberOfLines={1}>
-          {title}
-        </Text>
+        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text style={{ flexShrink: 1, fontSize: 14, fontWeight: '600', color: T.ink }} numberOfLines={1}>
+            {title}
+          </Text>
+          {onPress ? (isRTL() ? <ArrowUpLeft size={14} color={T.ink3} strokeWidth={1.8} /> : <ArrowUpRight size={14} color={T.ink3} strokeWidth={1.8} />) : null}
+        </View>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
           {plain
             ? <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.5, color: T.ink, ...NUM }}>{value}</Text>
@@ -356,6 +361,16 @@ function SpineCard({ title, value, unit, segments, zeros, children }: {
         </Text>
       ) : null}
     </Card>
+  );
+  if (!onPress) return card;
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      style={({ pressed }: any) => ({ flex: 1, opacity: pressed ? 0.85 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) })}
+    >
+      {card}
+    </Pressable>
   );
 }
 
@@ -1162,6 +1177,7 @@ function StatusDistCard({ byStatus }: { byStatus: { label: string; count: number
 // ── Work Type Card ──
 function WorkTypeCard({ data }: { data: { label: string; count: number; unit?: string | null }[] }) {
   const { t } = useTranslation();
+  const router = useRouter();
   if (!data.length) return null;
 
   // Birim başına ayrı seçim: baskın birimden (genelde "üye") ilk 5, diğer
@@ -1202,6 +1218,7 @@ function WorkTypeCard({ data }: { data: { label: string; count: number; unit?: s
     .join(' · ');
   return (
     <SpineCard
+      onPress={() => router.push('/(admin)/work-stats' as any)}
       title={t('admin.dashboard.workTypeDistribution')}
       // Başlıkta TEK toplam YOK — birimler toplanamaz.
       // Eskiden "87 Üye" yazıyordu ama o 87'nin içinde çene bazlı plaklar ve
@@ -2393,7 +2410,7 @@ export default function AdminDashboard() {
                   weekCounts={weekCounts}
                   weekDone={weekDone}
                   extra={weekExtra}
-                  onPress={() => router.push('/(admin)/orders' as any)}
+                  onPress={() => router.push('/(admin)/work-stats' as any)}
                 />
               </DashCell>
             </DashHalf>
