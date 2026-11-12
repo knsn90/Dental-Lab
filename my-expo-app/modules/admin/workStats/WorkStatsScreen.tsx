@@ -244,7 +244,10 @@ export function WorkStatsScreen() {
   const { rowRef, barRef, stuck } = useStickyToolbar(web, stickyTop);
   const pageBg = isDark ? '#0E0E0E' : MOBILE_PANEL_THEMES.exec.bgPage;
   const solidBar = isDark ? HERO_NAVY.from : MOBILE_PANEL_THEMES.exec.bgPage;
-  const glassBar = isDark ? 'rgba(0,31,63,0.72)' : 'rgba(247,249,252,0.78)';
+  // Mobilde yüzen menünün arkası da bu katmanla örtülür → daha opak ki içerik okunmasın.
+  const glassBar = isDesktop
+    ? (isDark ? 'rgba(0,31,63,0.72)' : 'rgba(247,249,252,0.78)')
+    : (isDark ? 'rgba(0,31,63,0.9)' : 'rgba(247,249,252,0.92)');
   const barBg = reducedTransparency ? solidBar : glassBar;
   const fadeTo = isDark ? 'rgba(0,31,63,0)' : 'rgba(247,249,252,0)';
 
@@ -330,7 +333,9 @@ export function WorkStatsScreen() {
             <View
               pointerEvents="none"
               style={{
-                position: 'absolute', top: 0, bottom: 0, left: -PAGE_PADDING, right: -PAGE_PADDING,
+                // Mobilde ekranın en üstüne kadar uzar: yüzen menü ile çubuk arasında
+                // içeriğin göründüğü boşluk kalmaz.
+                position: 'absolute', top: isDesktop ? 0 : -stickyTop, bottom: 0, left: -PAGE_PADDING, right: -PAGE_PADDING,
                 backgroundColor: barBg,
                 opacity: stuck ? 1 : 0,
                 ...(web ? {
