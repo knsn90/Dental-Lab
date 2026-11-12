@@ -161,6 +161,26 @@ function RankBadge({ rank, size }: { rank: 1 | 2 | 3; size: number }) {
   );
 }
 
+/** 4. ve sonrası: madalyasız, nötr sayı rozeti — aynı köşe, aynı ölçü. */
+function PlainRankBadge({ rank, size }: { rank: number; size: number }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore((s) => s.resolvedDark);
+  const off = -Math.round(size * 0.38);
+  return (
+    <View
+      accessibilityLabel={`${rank}. ${autoT('sıra')}`}
+      style={{
+        position: 'absolute', right: off, top: off,
+        width: size, height: size, borderRadius: size / 2,
+        alignItems: 'center', justifyContent: 'center',
+        backgroundColor: isDark ? '#3A3833' : '#E4E6EA', borderWidth: 2, borderColor: T.card,
+      }}
+    >
+      <Text style={{ fontSize: Math.round(size * 0.5), fontWeight: '700', color: isDark ? '#F7F2E9' : '#4A4F57', fontVariant: ['tabular-nums'] }}>{rank}</Text>
+    </View>
+  );
+}
+
 function OverdueMark({ onNavy }: { onNavy?: boolean } = {}) {
   const U = useInkUI();
   return (
@@ -253,16 +273,16 @@ export function TopClinicsCard(props: {
                   <Text style={{ flexShrink: 1, fontSize: 13.5, fontWeight: '700', color: '#FFFFFF' }} numberOfLines={1}>{lead.name}</Text>
                   {lead.overdue ? <OverdueMark onNavy /> : null}
                 </View>
-                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.68)', marginTop: 1 }} numberOfLines={1}>
+                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.82)', marginTop: 1 }} numberOfLines={1}>
                   {`${autoT('Pay')} %${share(lead.uye)}`}{mode === 'score' ? ` · ${lead.uye} ${autoT('üye')}` : ''}
                 </Text>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
                 <Text style={{ fontSize: 22, fontWeight: '300', letterSpacing: -0.6, color: '#FFFFFF', fontVariant: ['tabular-nums'] }}>{String(val(lead))}</Text>
-                <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.62)', marginTop: -2 }}>{mode === 'uye' ? autoT('üye') : autoT('Puan')}</Text>
+                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.78)', marginTop: -2 }}>{mode === 'uye' ? autoT('üye') : autoT('Puan')}</Text>
               </View>
             </View>
-            <View style={{ marginTop: 9 }}><Bar ratio={1} height={5} onNavy /></View>
+            <View style={{ marginTop: 9 }}><Bar ratio={share(lead.uye) / 100} height={5} onNavy /></View>
           </Pressable>
 
           {rest.map((r, i) => (
@@ -275,19 +295,18 @@ export function TopClinicsCard(props: {
             >
               <View>
                 <ClinicAvatar name={r.name} logoUrl={map.get(r.clinicId)?.logoUrl} size={28} />
-                {i < 2 ? <RankBadge rank={(i + 2) as 2 | 3} size={16} /> : null}
+                {i < 2 ? <RankBadge rank={(i + 2) as 2 | 3} size={16} /> : <PlainRankBadge rank={i + 2} size={16} />}
               </View>
               <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  {i >= 2 ? <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3, fontVariant: ['tabular-nums'] }}>{i + 2}</Text> : null}
                   <Text style={{ flexShrink: 1, fontSize: 12.5, fontWeight: '600', color: T.ink }} numberOfLines={1}>{r.name}</Text>
                   {r.overdue ? <OverdueMark /> : null}
                 </View>
-                <Bar ratio={val(r) / max} height={3} dim />
+                <Bar ratio={(share(lead.uye) / 100) * (val(r) / max)} height={3} dim />
               </View>
               <View style={{ alignItems: 'flex-end', minWidth: 38 }}>
                 <Text style={{ fontSize: 13, fontWeight: '700', color: T.ink, fontVariant: ['tabular-nums'] }}>{String(val(r))}</Text>
-                <Text style={{ fontSize: 10, color: T.ink3 }} numberOfLines={1}>{`%${share(r.uye)}`}</Text>
+                <Text style={{ fontSize: 11, color: T.ink2 }} numberOfLines={1}>{`%${share(r.uye)}`}</Text>
               </View>
             </Pressable>
           ))}
