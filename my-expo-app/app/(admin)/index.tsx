@@ -2141,7 +2141,14 @@ export default function AdminDashboard() {
               {isRTL() ? <ArrowUpLeft size={14} color={T.ink3} strokeWidth={1.8} /> : <ArrowUpRight size={14} color={T.ink3} strokeWidth={1.8} />}
             </Pressable>
           </View>
-          <PercentRingHero value={deliveryPct} size={140} darkText />
+          {/* Halka → teslim edilen siparişler (tıklanan rakam kendi listesini açar) */}
+          <Pressable
+            onPress={() => router.push('/(admin)/orders?status=teslim_edildi' as any)}
+            accessibilityRole="button"
+            style={Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : undefined}
+          >
+            <PercentRingHero value={deliveryPct} size={140} darkText />
+          </Pressable>
           {/* Yüzde tek başına "neyin %11'i?" sorusunu bırakıyordu — payı/paydayı yaz. */}
           <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink2, marginTop: 10 }}>
             {t('admin.dashboard.ordersOfTotal', { done: deliveredPipe, total: pipeCount })}
@@ -2151,16 +2158,24 @@ export default function AdminDashboard() {
           </Text>
           {/* Mini pipeline stats */}
           <View className="flex-row" style={{ gap: 8, marginTop: 12 }}>
-            <View className="items-center rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : DS.ink[100] }}>
+            <Pressable
+              onPress={() => router.push('/(admin)/orders?status=uretimde' as any)}
+              accessibilityRole="button"
+              style={({ hovered, pressed }: any) => ({ alignItems: 'center', borderRadius: 999, opacity: pressed ? 0.7 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}), paddingHorizontal: 10, paddingVertical: 4, backgroundColor: isDark ? (hovered ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.08)') : (hovered ? DS.ink[200] : DS.ink[100]) })}
+            >
               <Text style={{ fontSize: 10, fontWeight: '500', color: T.ink3 }}>
                 {pipelineCounts['uretimde'] ?? 0} {t('admin.dashboard.inProduction')}
               </Text>
-            </View>
-            <View className="items-center rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: hexA(PB, 0.15) }}>
+            </Pressable>
+            <Pressable
+              onPress={() => router.push('/(admin)/orders?status=teslimata_hazir' as any)}
+              accessibilityRole="button"
+              style={({ hovered, pressed }: any) => ({ alignItems: 'center', borderRadius: 999, opacity: pressed ? 0.7 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}), paddingHorizontal: 10, paddingVertical: 4, backgroundColor: hexA(PB, hovered ? 0.25 : 0.15) })}
+            >
               <Text style={{ fontSize: 10, fontWeight: '500', color: PB }}>
                 {pipelineCounts['teslimata_hazir'] ?? 0} {t('admin.status.ready')}
               </Text>
-            </View>
+            </Pressable>
           </View>
         </Card>
         </DashCell>
