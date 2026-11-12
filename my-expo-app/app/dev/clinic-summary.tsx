@@ -19,6 +19,7 @@ const fig = (orders: number, uye: number, cene: number, revenue: { currency: str
 const DEMO_SUMMARIES: ClinicSummary[] = [
   {
     clinicId: 'c1', name: 'Dent Klinik Kadıköy',
+    logoUrl: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSc4MCcgaGVpZ2h0PSc4MCcgdmlld0JveD0nMCAwIDQwIDQwJz48Y2lyY2xlIGN4PScyMCcgY3k9JzIwJyByPScxNicgZmlsbD0nIzMyQkI3OCcvPjxwYXRoIGQ9J00xMyAyMWw1IDUgOS0xMScgc3Ryb2tlPSd3aGl0ZScgc3Ryb2tlLXdpZHRoPSczLjUnIGZpbGw9J25vbmUnIHN0cm9rZS1saW5lY2FwPSdyb3VuZCcvPjwvc3ZnPg==",
     all: fig(214, 612, 9, [{ currency: 'TRY', amount: 1284500 }, { currency: 'EUR', amount: 4200 }], 1431000),
     month: fig(18, 47, 1, [{ currency: 'TRY', amount: 96400 }], 96400),
     lastOrderAt: '2026-11-11T09:20:00', balance: [{ currency: 'TRY', amount: 182300 }, { currency: 'EUR', amount: 900 }],
@@ -42,6 +43,7 @@ const DEMO_SUMMARIES: ClinicSummary[] = [
 const EXTRA_TOP: ClinicSummary[] = [['c4','Ortodonti Merkezi Bakırköy',31,12],['c5','Smile Design Nişantaşı',22,9],['c6','Ankara Diş Polikliniği',11,3]].map(([id,name,u,o]) => ({
   clinicId: id as string, name: name as string, all: fig(o as number, u as number, 0, [], (u as number) * 900), month: fig(o as number, u as number, 0, [], (u as number) * 900),
   lastOrderAt: null, balance: [], overdue: [], aging: null, oldestOverdueDays: null, rating: null,
+  logoUrl: id === 'c5' ? "data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSc4MCcgaGVpZ2h0PSc4MCcgdmlld0JveD0nMCAwIDQwIDQwJz48Y2lyY2xlIGN4PScyMCcgY3k9JzIwJyByPScxNicgZmlsbD0nIzQ3NzFBQicvPjxwYXRoIGQ9J00xMyAyMWw1IDUgOS0xMScgc3Ryb2tlPSd3aGl0ZScgc3Ryb2tlLXdpZHRoPSczLjUnIGZpbGw9J25vbmUnIHN0cm9rZS1saW5lY2FwPSdyb3VuZCcvPjwvc3ZnPg==" : id === 'c6' ? 'https://invalid.example/x.png' : null,
 }));
 
 const DEMO_MESSAGES = [

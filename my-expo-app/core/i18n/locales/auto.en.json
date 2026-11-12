@@ -10240,5 +10240,9 @@
   "Bu ay henüz iş yok": "No work this month yet",
   "Henüz iş yok": "No work yet",
   "Ödeme durumu sıralamayı etkilemez": "Payment status does not affect the ranking",
-  "Pay": "Share"
+  "Pay": "Share",
+  "sıra": "place",
+  "Seçili dönemde en çok iş gönderen": "Top sender in the selected period",
+  "Seçili dönemde ikinci sırada": "Second place in the selected period",
+  "Seçili dönemde üçüncü sırada": "Third place in the selected period"
 }

@@ -10240,5 +10240,9 @@
   "Bu ay henüz iş yok": "Diesen Monat noch keine Aufträge",
   "Henüz iş yok": "Noch keine Aufträge",
   "Ödeme durumu sıralamayı etkilemez": "Der Zahlungsstatus beeinflusst die Reihenfolge nicht",
-  "Pay": "Anteil"
+  "Pay": "Anteil",
+  "sıra": "Platz",
+  "Seçili dönemde en çok iş gönderen": "Top-Auftraggeber im gewählten Zeitraum",
+  "Seçili dönemde ikinci sırada": "Platz 2 im gewählten Zeitraum",
+  "Seçili dönemde üçüncü sırada": "Platz 3 im gewählten Zeitraum"
 }

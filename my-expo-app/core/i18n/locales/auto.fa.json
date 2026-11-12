@@ -10240,5 +10240,9 @@
   "Bu ay henüz iş yok": "این ماه هنوز کاری نیست",
   "Henüz iş yok": "هنوز کاری نیست",
   "Ödeme durumu sıralamayı etkilemez": "وضعیت پرداخت بر رتبه‌بندی اثر ندارد",
-  "Pay": "سهم"
+  "Pay": "سهم",
+  "sıra": "رتبه",
+  "Seçili dönemde en çok iş gönderen": "بیشترین ارسال‌کننده در دوره انتخاب‌شده",
+  "Seçili dönemde ikinci sırada": "رتبه دوم در دوره انتخاب‌شده",
+  "Seçili dönemde üçüncü sırada": "رتبه سوم در دوره انتخاب‌شده"
 }

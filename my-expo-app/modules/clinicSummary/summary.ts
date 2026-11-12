@@ -21,6 +21,8 @@ export interface ClinicSummary {
   clinicId: string; name: string;
   all: PeriodFigures; month: PeriodFigures;
   lastOrderAt: string | null;
+  /** Klinik logosu (clinics.logo_url) — yoksa arayüz monogram çizer. */
+  logoUrl?: string | null;
   balance: Money[]; overdue: Money[];
   aging: { current: number; d30: number; d60: number; d90: number } | null;
   oldestOverdueDays: number | null;

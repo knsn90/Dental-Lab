@@ -33,7 +33,7 @@ export function resetClinicSummaryRefs() {
 export async function fetchClinicSummaryData(labId: string): Promise<Map<string, ClinicSummary>> {
   const today = labTodayOf(cachedLabTz());
   const monthStart = `${today.slice(0, 7)}-01`;
-  const [orders, refs, revenueAll, revenueMonth, balances, reviews] = await Promise.all([
+  const [orders, refs, revenueAll, revenueMonth, balances, reviews, logos] = await Promise.all([
     fetchAllPages<RawOrder>((from, to) =>
       supabase.from('work_orders')
         .select('id, order_number, work_type, status, created_at, tooth_numbers, doctor_id')
@@ -44,6 +44,9 @@ export async function fetchClinicSummaryData(labId: string): Promise<Map<string,
     fetchClinicBalancesByCurrency().then((r) => (r.error ? [] : r.data)).catch(() => []),
     fetchAllPages<{ overall: number | null; work_order_id: string }>((from, to) =>
       supabase.from('order_reviews').select('overall, work_order_id').eq('lab_id', labId)
+        .order('id').range(from, to) as any).catch(() => []),
+    fetchAllPages<{ id: string; logo_url: string | null }>((from, to) =>
+      supabase.from('clinics').select('id, logo_url').eq('lab_id', labId).not('logo_url', 'is', null)
         .order('id').range(from, to) as any).catch(() => []),
   ]);
 
@@ -60,7 +63,7 @@ export async function fetchClinicSummaryData(labId: string): Promise<Map<string,
   ordersById = byId;
   clinicDoctors = docs;
 
-  return buildClinicSummaries({
+  const summaries = buildClinicSummaries({
     orders, clinicByDoctor: refs.clinicByDoctor, clinicName: refs.clinicName,
     unitByServiceName: refs.unitByServiceName,
     revenueAll: mapRevenueRows(revenueAll), revenueMonth: mapRevenueRows(revenueMonth),
@@ -68,6 +71,11 @@ export async function fetchClinicSummaryData(labId: string): Promise<Map<string,
     reviews: mapReviewRows(reviews, orderDoctor, refs.clinicByDoctor),
     currentMonth: today.slice(0, 7), today,
   });
+  for (const l of logos) {
+    const s = summaries.get(l.id);
+    if (s && l.logo_url) s.logoUrl = l.logo_url;
+  }
+  return summaries;
 }
 
 export interface RecentMessage { id: string; workOrderId: string; orderNumber: string; content: string; createdAt: string }

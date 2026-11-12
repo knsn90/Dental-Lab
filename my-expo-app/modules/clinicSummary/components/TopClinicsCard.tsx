@@ -5,14 +5,14 @@
 // 2–5 sıkı satırlar; çubuklar dönem/sıralama değişince yumuşakça dolar (hareket
 // azaltma açıksa anında). Dar bir üçte-bir sütuna sığar.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, Pressable, Platform, Animated, Easing } from 'react-native';
+import { View, Text, Pressable, Platform, Animated, Easing, Image } from 'react-native';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { useInkUI } from '../../../core/theme/inkScale';
 import { usePermissionStore } from '../../../core/store/permissionStore';
 import { DS } from '../../../core/theme/dsTokens';
 import { GlassTooltip } from '../../../core/ui/GlassTooltip';
-import { AlertTriangle } from '../../../core/ui/icons';
+import { AlertTriangle, RoyalCrown } from '../../../core/ui/icons';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { useReducedMotion } from '../../reviews/components/dashboard/dashboardUi';
 import { rankTop, type RankMode, type ClinicSummary } from '../summary';
@@ -90,6 +90,73 @@ function Bar({ ratio, height, dim }: { ratio: number; height: number; dim?: bool
         backgroundColor: P.fillTo,
         ...(web ? { backgroundImage: `linear-gradient(90deg, ${P.fillFrom} 0%, ${P.fillTo} 100%)` } : {}),
       } as any} />
+    </View>
+  );
+}
+
+/** Klinik avatarı: logo varsa logo (beyaz zeminde, sığdırılmış), yoksa / yüklenemezse monogram. */
+function ClinicAvatar({ name, logoUrl, size, lead }: { name: string; logoUrl?: string | null; size: number; lead?: boolean }) {
+  const P = usePalette();
+  const T = useMobileTokens();
+  const [broken, setBroken] = useState(false);
+  useEffect(() => { setBroken(false); }, [logoUrl]);
+  const radius = Math.round(size * 0.3);
+  if (logoUrl && !broken) {
+    return (
+      <View style={{
+        width: size, height: size, borderRadius: radius, overflow: 'hidden', backgroundColor: '#FFFFFF',
+        borderWidth: 1, borderColor: lead ? P.tintBorder : T.hairline, alignItems: 'center', justifyContent: 'center',
+      }}>
+        <Image
+          source={{ uri: logoUrl }}
+          onError={() => setBroken(true)}
+          resizeMode="contain"
+          accessibilityIgnoresInvertColors
+          style={{ width: size - 6, height: size - 6 }}
+        />
+      </View>
+    );
+  }
+  return (
+    <View style={{
+      width: size, height: size, borderRadius: radius, alignItems: 'center', justifyContent: 'center',
+      backgroundColor: lead ? P.leadAvatarBg : P.avatarBg,
+    }}>
+      <Text style={{ fontSize: Math.round(size * 0.36), fontWeight: '700', letterSpacing: 0.3, color: lead ? '#FFFFFF' : P.avatarFg }}>{monogram(name)}</Text>
+    </View>
+  );
+}
+
+/** Sıra rozeti — avatarın sağ üst köşesinde taç: 1 altın · 2 gümüş · 3 bronz.
+ *  Metal tonları her iki temada aynı (ödül rengi, çevrilmez). */
+const MEDALS = {
+  1: { base: '#F5C24B', grad: 'linear-gradient(145deg, #FFE08A 0%, #F5C24B 45%, #D99A1E 100%)', glow: 'rgba(217,154,30,0.45)', ink: '#5A3A00' },
+  2: { base: '#C9D1DA', grad: 'linear-gradient(145deg, #F4F7FA 0%, #C9D1DA 50%, #9AA6B2 100%)', glow: 'rgba(120,135,150,0.40)', ink: '#3B4652' },
+  3: { base: '#D49A6A', grad: 'linear-gradient(145deg, #F2C9A1 0%, #D49A6A 50%, #A5673A 100%)', glow: 'rgba(165,103,58,0.40)', ink: '#4A2A10' },
+} as const;
+
+function RankBadge({ rank, size }: { rank: 1 | 2 | 3; size: number }) {
+  const T = useMobileTokens();
+  const m = MEDALS[rank];
+  const title = `${rank}. ${autoT('sıra')}`;
+  const text = rank === 1 ? autoT('Seçili dönemde en çok iş gönderen')
+    : rank === 2 ? autoT('Seçili dönemde ikinci sırada') : autoT('Seçili dönemde üçüncü sırada');
+  const off = -Math.round(size * 0.38);
+  return (
+    <View style={{ position: 'absolute', right: off, top: off }}>
+      <GlassTooltip title={title} text={text}>
+        <View
+          accessibilityLabel={`${title} · ${text}`}
+          style={{
+            width: size, height: size, borderRadius: size / 2,
+            alignItems: 'center', justifyContent: 'center',
+            backgroundColor: m.base, borderWidth: 2, borderColor: T.card,
+            ...(web ? { backgroundImage: m.grad, boxShadow: `0 2px 6px ${m.glow}` } : {}),
+          } as any}
+        >
+          <RoyalCrown size={Math.round(size * 0.52)} color={m.ink} strokeWidth={2} />
+        </View>
+      </GlassTooltip>
     </View>
   );
 }
@@ -176,14 +243,9 @@ export function TopClinicsCard(props: {
             })}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <View style={{ width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: P.leadAvatarBg }}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF', letterSpacing: 0.3 }}>{monogram(lead.name)}</Text>
-                <View style={{
-                  position: 'absolute', right: -5, top: -5, minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 3,
-                  alignItems: 'center', justifyContent: 'center', backgroundColor: T.card, borderWidth: 1, borderColor: P.tintBorder,
-                }}>
-                  <Text style={{ fontSize: 9, fontWeight: '800', color: P.avatarFg }}>1</Text>
-                </View>
+              <View>
+                <ClinicAvatar name={lead.name} logoUrl={map.get(lead.clinicId)?.logoUrl} size={38} lead />
+                <RankBadge rank={1} size={20} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
@@ -210,12 +272,13 @@ export function TopClinicsCard(props: {
               accessibilityLabel={`${i + 2}. ${r.name}`}
               style={pressStyle({ flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 10, paddingVertical: 5, paddingHorizontal: 6, marginHorizontal: -6 })}
             >
-              <View style={{ width: 28, height: 28, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: P.avatarBg }}>
-                <Text style={{ fontSize: 10.5, fontWeight: '700', color: P.avatarFg }}>{monogram(r.name)}</Text>
+              <View>
+                <ClinicAvatar name={r.name} logoUrl={map.get(r.clinicId)?.logoUrl} size={28} />
+                {i < 2 ? <RankBadge rank={(i + 2) as 2 | 3} size={16} /> : null}
               </View>
               <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3, fontVariant: ['tabular-nums'] }}>{i + 2}</Text>
+                  {i >= 2 ? <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3, fontVariant: ['tabular-nums'] }}>{i + 2}</Text> : null}
                   <Text style={{ flexShrink: 1, fontSize: 12.5, fontWeight: '600', color: T.ink }} numberOfLines={1}>{r.name}</Text>
                   {r.overdue ? <OverdueMark /> : null}
                 </View>

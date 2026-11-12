@@ -17,6 +17,7 @@ import React from 'react';
 import { HugeiconsIcon, type HugeiconsProps } from '@hugeicons/react-native';
 
 import Activity01Icon from '@hugeicons/core-free-icons/Activity01Icon';
+import CrownIcon from '@hugeicons/core-free-icons/CrownIcon';
 import AlarmClockIcon from '@hugeicons/core-free-icons/AlarmClockIcon';
 import Alert02Icon from '@hugeicons/core-free-icons/Alert02Icon';
 import AlertCircleIcon from '@hugeicons/core-free-icons/AlertCircleIcon';
@@ -600,6 +601,8 @@ export const TrendingDown = make(TrendingDownIcon, 'TrendingDown');
 export const TrendingUp = make(TrendingUpIcon, 'TrendingUp');
 export const TriangleAlert = make(TriangleAlertIcon, 'TriangleAlert');
 export const Trophy = make(TrophyIcon, 'Trophy');
+/** Kraliyet tacı (lider rozeti) — diş kronu DEĞİL; o dentalIcons'taki Crown. */
+export const RoyalCrown = make(CrownIcon, 'RoyalCrown');
 export const Truck = make(TruckIcon, 'Truck');
 export const Undo2 = make(ArrowTurnBackwardIcon, 'Undo2');
 export const Unlock = make(SquareUnlock01Icon, 'Unlock');
