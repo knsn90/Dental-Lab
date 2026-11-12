@@ -15,6 +15,7 @@ import { GlassTooltip } from '../../../core/ui/GlassTooltip';
 import { AlertTriangle, RoyalCrown } from '../../../core/ui/icons';
 import { HERO_NAVY } from '../../../core/ui/HeroGlow';
 import { autoT } from '../../../core/i18n/autoTranslate';
+import { titleCaseTR } from '../../../core/utils/textCase';
 import { useReducedMotion } from '../../reviews/components/dashboard/dashboardUi';
 import { rankTop, type RankMode, type ClinicSummary } from '../summary';
 import { useClinicSummaries } from '../useClinicSummaries';
@@ -256,7 +257,7 @@ export function TopClinicsCard(props: {
           <Pressable
             onPress={() => open(lead.clinicId)}
             accessibilityRole="button"
-            accessibilityLabel={`1. ${lead.name}`}
+            accessibilityLabel={`1. ${titleCaseTR(lead.name)}`}
             style={pressStyle({
               borderRadius: 14, padding: 10, marginBottom: 4,
               backgroundColor: HERO_NAVY.to,
@@ -270,7 +271,7 @@ export function TopClinicsCard(props: {
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <Text style={{ flexShrink: 1, fontSize: 13.5, fontWeight: '700', color: '#FFFFFF' }} numberOfLines={1}>{lead.name}</Text>
+                  <Text style={{ flexShrink: 1, fontSize: 13.5, fontWeight: '700', color: '#FFFFFF' }} numberOfLines={1}>{titleCaseTR(lead.name)}</Text>
                   {lead.overdue ? <OverdueMark onNavy /> : null}
                 </View>
                 <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.82)', marginTop: 1 }} numberOfLines={1}>
@@ -290,7 +291,7 @@ export function TopClinicsCard(props: {
               key={r.clinicId}
               onPress={() => open(r.clinicId)}
               accessibilityRole="button"
-              accessibilityLabel={`${i + 2}. ${r.name}`}
+              accessibilityLabel={`${i + 2}. ${titleCaseTR(r.name)}`}
               style={pressStyle({ flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 10, paddingVertical: 5, paddingHorizontal: 6, marginHorizontal: -6 })}
             >
               <View>
@@ -299,7 +300,7 @@ export function TopClinicsCard(props: {
               </View>
               <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <Text style={{ flexShrink: 1, fontSize: 12.5, fontWeight: '600', color: T.ink }} numberOfLines={1}>{r.name}</Text>
+                  <Text style={{ flexShrink: 1, fontSize: 12.5, fontWeight: '600', color: T.ink }} numberOfLines={1}>{titleCaseTR(r.name)}</Text>
                   {r.overdue ? <OverdueMark /> : null}
                 </View>
                 <Bar ratio={(share(lead.uye) / 100) * (val(r) / max)} height={3} dim />

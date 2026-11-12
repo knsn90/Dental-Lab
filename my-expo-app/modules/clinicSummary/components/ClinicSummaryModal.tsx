@@ -6,6 +6,7 @@ import { useInkUI } from '../../../core/theme/inkScale';
 import { usePermissionStore } from '../../../core/store/permissionStore';
 import { useAuthStore } from '../../../core/store/authStore';
 import { autoT } from '../../../core/i18n/autoTranslate';
+import { titleCaseTR } from '../../../core/utils/textCase';
 import { X, Star, AlertTriangle, ArrowUpRight } from '../../../core/ui/icons';
 import { useClinicSummary } from '../useClinicSummaries';
 import { fetchClinicRecentMessages, type RecentMessage } from '../api';
@@ -112,7 +113,7 @@ export function ClinicSummaryModal(props: { clinicId: string | null; onClose: ()
         <Pressable style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} onPress={props.onClose} accessibilityLabel={autoT('Kapat')} />
         <View style={U.modalCard}>
           <View style={U.modalHeaderRow}>
-            <Text style={U.modalTitle} numberOfLines={1}>{s?.name || autoT('Klinik özeti')}</Text>
+            <Text style={U.modalTitle} numberOfLines={1}>{s?.name ? titleCaseTR(s.name) : autoT('Klinik özeti')}</Text>
             <Pressable onPress={props.onClose} style={U.modalCloseBtn} accessibilityRole="button" accessibilityLabel={autoT('Kapat')}>
               <X size={16} color={U.ink[700]} strokeWidth={1.8} />
             </Pressable>
