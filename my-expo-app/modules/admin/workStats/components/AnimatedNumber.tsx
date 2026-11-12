@@ -8,6 +8,7 @@ import { Text, type TextStyle } from 'react-native';
 import { useAnimatedReaction, runOnJS } from 'react-native-reanimated';
 import { useSpringValue } from '../useSpringValue';
 import { printLocale } from '../../../../core/i18n/printLocale';
+import { formatStatNumber } from '../formatStatNumber';
 
 export function AnimatedNumber({ value, decimals = 0, style, accessibilityLabel }: {
   value: number; decimals?: number; style?: TextStyle | TextStyle[]; accessibilityLabel?: string;
@@ -22,9 +23,7 @@ export function AnimatedNumber({ value, decimals = 0, style, accessibilityLabel 
   );
   return (
     <Text style={style} accessibilityLabel={accessibilityLabel}>
-      {decimals > 0
-        ? new Intl.NumberFormat(printLocale(), { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(shown)
-        : String(Math.round(shown))}
+      {formatStatNumber(shown, decimals, printLocale())}
     </Text>
   );
 }

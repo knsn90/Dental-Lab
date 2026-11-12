@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   monthKeyOf, monthKeyOfIso, shiftMonth, windowMonths, compareMonth, monthLabel, fetchFromIso,
+  isLiveWindow,
 } from './months.ts';
 
 test('shiftMonth yıl sınırlarını aşar', () => {
@@ -66,4 +67,11 @@ test("monthLabel 'shortYear': kısa ay + yıl, miladi", () => {
   assert.ok(fa.includes('2025'), fa);
   // 'short' yılsız kalır (önceki ay kıyası değişmez)
   assert.doesNotMatch(monthLabel('2025-11', 'tr-TR', 'short'), /2025/);
+});
+
+test('isLiveWindow: içinde bulunulan ayı içeren pencere tazelenir, geçmiş pencere önbellekte kalır', () => {
+  assert.equal(isLiveWindow('2026-11', '2026-11'), true);
+  assert.equal(isLiveWindow('2026-12', '2026-11'), true);
+  assert.equal(isLiveWindow('2026-10', '2026-11'), false);
+  assert.equal(isLiveWindow('2025-11', '2026-11'), false);
 });

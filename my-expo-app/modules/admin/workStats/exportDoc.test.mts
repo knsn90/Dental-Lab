@@ -80,3 +80,21 @@ test('WORK_STATS_TEXTS: t ile geçer', () => {
   const h = buildWorkStatsPdfHtml(inp({ t: (s) => `«${s}»` }));
   assert.ok(h.includes('«İş İstatistikleri»'));
 });
+
+test('birim etiketi t ile çevrilir (pdf + xls)', () => {
+  const t = (s: string) => (s === 'üye' ? 'unit' : s);
+  for (const h of [buildWorkStatsPdfHtml(inp({ t })), buildWorkStatsXlsHtml(inp({ t }))]) {
+    assert.ok(h.includes('<td>unit</td>'), 'çevrilmiş birim yok');
+    assert.ok(!h.includes('<td>üye</td>'), 'çevrilmemiş birim kaldı');
+  }
+});
+
+test('xls: sayısal hücreler x:num taşır (ortalama yerelden bağımsız)', () => {
+  const h = buildWorkStatsXlsHtml(inp());
+  assert.ok(h.includes('xmlns:x="urn:schemas-microsoft-com:office:excel"'));
+  assert.match(h, /<td class="n" x:num="12\.5"[^>]*>12\.5<\/td>/);
+  assert.match(h, /<td class="n" x:num="4321"[^>]*>4321<\/td>/);
+  assert.match(h, /<td class="diff" x:num="1321"[^>]*>\+1321<\/td>/);
+  // pdf'te x:num yok
+  assert.ok(!buildWorkStatsPdfHtml(inp()).includes('x:num'));
+});

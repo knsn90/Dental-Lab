@@ -56,7 +56,8 @@ function build(i: ExportDocInput, mode: Mode): string {
   const num = (v: number | null, fmt: '0' | '0.0' = '0') => {
     if (v === null || v === undefined || !Number.isFinite(v)) return `<td class="n">${DASH}</td>`;
     const txt = fmt === '0' ? String(v) : v.toFixed(1);
-    return `<td class="n"${xls ? ` style="mso-number-format:'${fmt}'"` : ''}>${txt}</td>`;
+    // x:num: Excel değeri yerelden bağımsız sayı okur (tr-TR'de "12.5" tarih/metin olmaz).
+    return `<td class="n"${xls ? ` x:num="${txt}" style="mso-number-format:'${fmt}'"` : ''}>${txt}</td>`;
   };
   const diff = (cur: number | null, cmp: number | null) => {
     if (cur === null || cmp === null || !Number.isFinite(cur) || !Number.isFinite(cmp)) {
@@ -64,7 +65,7 @@ function build(i: ExportDocInput, mode: Mode): string {
     }
     const d = cur - cmp;
     const txt = d > 0 ? `+${d}` : String(d);
-    return `<td class="diff"${xls ? ` style="mso-number-format:'0'"` : ''}>${txt}</td>`;
+    return `<td class="diff"${xls ? ` x:num="${d}" style="mso-number-format:'0'"` : ''}>${txt}</td>`;
   };
   const th = (s: string) => `<th>${esc(s)}</th>`;
   const thT = (k: string) => `<th>${tx(k)}</th>`;
@@ -85,7 +86,7 @@ function build(i: ExportDocInput, mode: Mode): string {
 </tbody></table>`;
 
   const wtRows = s.workTypes.map((w) =>
-    `<tr><td>${esc(w.label)}</td><td>${esc(w.unitLabel)}</td>${num(w.qty)}${num(w.compare)}${diff(w.qty, w.compare)}</tr>`).join('');
+    `<tr><td>${esc(w.label)}</td><td>${esc(i.t(w.unitLabel))}</td>${num(w.qty)}${num(w.compare)}${diff(w.qty, w.compare)}</tr>`).join('');
   const workTypes = `
 <h2>${tx('workTypeTable')}</h2>
 <table><thead><tr>${thT('workType')}${thT('unit')}${th(i.monthLabel)}${th(i.compareLabel)}${thT('diff')}</tr></thead><tbody>${wtRows}</tbody></table>`;
@@ -104,7 +105,7 @@ function build(i: ExportDocInput, mode: Mode): string {
   const trend = `
 <h2>${tx('trendTable')}</h2>
 <table><thead><tr>${thT('workType')}${thT('unit')}${i.monthLabels.map(th).join('')}</tr></thead><tbody>${
-    trendRows.map((r) => `<tr><td>${esc(r.label)}</td><td>${esc(r.unit)}</td>${i.monthLabels.map((_, k) => num(r.cells[k] ?? null)).join('')}</tr>`).join('')
+    trendRows.map((r) => `<tr><td>${esc(r.label)}</td><td>${esc(i.t(r.unit))}</td>${i.monthLabels.map((_, k) => num(r.cells[k] ?? null)).join('')}</tr>`).join('')
   }</tbody></table>`;
 
   const head = `

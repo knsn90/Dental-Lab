@@ -64,3 +64,12 @@ export function fetchFromIso(selected: MonthKey): string {
   const [y, m] = shiftMonth(selected, -23).split('-').map(Number);
   return new Date(y, m - 1, 1, 0, 0, 0, 0).toISOString();
 }
+
+/**
+ * Pencere canlı mı? Sorgu penceresi üst sınırsızdır; seçili ay içinde bulunulan aya
+ * (veya sonrasına) ulaşıyorsa sayılar hâlâ değişir → önbellek olsa da arkadan tazelenir.
+ * Yalnız geçmiş aylar önbellekte kalabilir.
+ */
+export function isLiveWindow(selected: MonthKey, current: MonthKey): boolean {
+  return selected >= current;
+}
