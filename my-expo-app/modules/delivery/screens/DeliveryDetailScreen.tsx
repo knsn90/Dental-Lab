@@ -1,4 +1,5 @@
 import { EdgeSwipeBack } from '../../../core/ui/mobile/EdgeSwipeBack';
+import { NavyBackButtonX } from '../../../core/ui/NavyBackButtonX';
 import { localeTag } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { safeBack } from '../../../core/util/safeBack';
@@ -168,9 +169,7 @@ export function DeliveryDetailScreen() {
     <SafeAreaView style={s.container} edges={['top']}>
       {/* Header */}
       <View style={s.header}>
-        <TouchableOpacity style={s.backBtn} onPress={() => safeBack('/')}>
-          <AppIcon name="arrow-left" size={20} color={ACCENT} />
-        </TouchableOpacity>
+        <NavyBackButtonX onPress={() => safeBack('/')} />
         <View style={{ flex: 1 }}>
           <Text style={s.title}>Teslimat Detayı</Text>
           <Text style={s.sub}>#{wo?.order_number ?? id.slice(0, 8)}</Text>

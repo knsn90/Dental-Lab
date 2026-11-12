@@ -2,6 +2,7 @@
 // Aydın Lab Mobile handoff — top app bar.
 // Pattern: 56 safe-area + 20 horizontal padding · optional kicker (caps) · title big (36/300) or std (22/600).
 
+import { NavyBackButtonX } from '../NavyBackButtonX';
 import React from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
 import { ChevronLeft, ChevronRight } from '../icons';
@@ -39,12 +40,7 @@ export function AppBar({
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 36, marginBottom: kicker ? 6 : 4 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             {showBack && (
-              <Pressable
-                onPress={() => safeBack()}
-                style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }}
-              >
-                <BackIcon size={20} color={T.ink} strokeWidth={2} />
-              </Pressable>
+              <NavyBackButtonX onPress={() => safeBack()} />
             )}
             {leading}
           </View>

@@ -18,6 +18,7 @@
  *   • Her uyarının bir sonraki adımı vardır — çıkmaz uyarı yok
  */
 
+import { NavyBackButtonX } from '../../../core/ui/NavyBackButtonX';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, Pressable, TextInput, ActivityIndicator, Platform,
@@ -225,18 +226,7 @@ export function ConsumptionProfileScreen({ accentColor = DS.lab.primary, embedde
         <>
       {/* ── Geri + eyebrow ─────────────────────────────────────── */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-        <Pressable
-          onPress={goBack}
-          style={({ pressed }) => ({
-            width: 30, height: 30, borderRadius: 999,
-            alignItems: 'center', justifyContent: 'center',
-            backgroundColor: U.chipNeutral, opacity: pressed ? 0.6 : 1, ...webCursor,
-          })}
-        >
-          {isRTL()
-            ? <ChevronRight size={16} color={U.ink[700]} strokeWidth={1.8} />
-            : <ChevronLeft size={16} color={U.ink[700]} strokeWidth={1.8} />}
-        </Pressable>
+        <NavyBackButtonX onPress={goBack} />
         <Text style={{
           fontSize: 10, fontWeight: '500', letterSpacing: 1.2,
           textTransform: 'uppercase', color: U.ink[500],

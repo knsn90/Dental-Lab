@@ -1,4 +1,5 @@
 import { EdgeSwipeBack } from '../../../core/ui/mobile/EdgeSwipeBack';
+import { NavyBackButtonX } from '../../../core/ui/NavyBackButtonX';
 import { localeTag } from '../../../core/i18n';
 import { autoT } from '../../../core/i18n/autoTranslate';
 import { safeBack } from '../../../core/util/safeBack';
@@ -261,9 +262,7 @@ export function ClinicBalanceScreen() {
       {/* ── Standalone header ─────────────────────────────────── */}
       {!isEmbedded && (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingTop: 58, paddingBottom: 8 }}>
-          <Pressable onPress={() => safeBack('/')} style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: U.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}>
-            {isRTL() ? <ArrowRight size={18} color={U.ink[900]} strokeWidth={1.8} /> : <ArrowLeft size={18} color={U.ink[900]} strokeWidth={1.8} />}
-          </Pressable>
+          <NavyBackButtonX onPress={() => safeBack('/')} />
           <View style={{ flex: 1 }}>
             <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: U.ink[900] }}>Cari Hesap</Text>
             <Text style={{ fontSize: 12, color: U.ink[400], marginTop: 2 }}>Sağlık kurumu bazlı bakiye özeti</Text>

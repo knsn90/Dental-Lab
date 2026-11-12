@@ -1,4 +1,5 @@
 import { localeTag } from '../../../core/i18n';
+import { NavyBackButtonX } from '../../../core/ui/NavyBackButtonX';
 import { safeBack } from '../../../core/util/safeBack';
 // modules/station/screens/RouteAssignScreen.tsx
 // Mesul müdür — iş emri için istasyon rotası + teknisyen atama
@@ -375,9 +376,7 @@ export function RouteAssignScreen() {
     <SafeAreaView style={[s.container, isDark && sd.container]} edges={['top']}>
       {/* ── Başlık ── */}
       <View style={[s.header, isDark && sd.header]}>
-        <TouchableOpacity style={s.backBtn} onPress={() => safeBack('/(station)')}>
-          <AppIcon name="arrow-left" size={20} color={ACCENT} />
-        </TouchableOpacity>
+        <NavyBackButtonX onPress={() => safeBack('/(station)')} />
         <View style={{ flex: 1 }}>
           <Text style={[s.headerTitle, isDark && { color: T.ink }]}>İstasyon Rotası</Text>
           <Text style={[s.headerSub, isDark && { color: T.ink3 }]}>#{order.order_number}</Text>

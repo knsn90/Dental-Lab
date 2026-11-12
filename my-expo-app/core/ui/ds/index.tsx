@@ -16,6 +16,7 @@
  * semibold yalnız kart başlığında.
  */
 
+import { NavyBackButtonX } from '../NavyBackButtonX';
 import React from 'react';
 import { onAccentInk } from '../../theme/usePanelTheme';
 import { View, Text, Pressable, TextInput, Platform, ActivityIndicator } from 'react-native';
@@ -83,17 +84,7 @@ export function SecHeader({ eyebrow, title, desc, onBack, action }: {
     <View style={{ marginBottom: 16, gap: 6 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         {onBack ? (
-          <Pressable
-            onPress={onBack}
-            style={({ pressed }) => ({
-              width: 30, height: 30, borderRadius: 999,
-              alignItems: 'center', justifyContent: 'center',
-              backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
-              opacity: pressed ? 0.6 : 1, ...webCursor,
-            })}
-          >
-            {isRTL() ? <ChevronRight size={16} color={isDark ? (T.ink2 as string) : DS.ink[700]} strokeWidth={1.8} /> : <ChevronLeft size={16} color={isDark ? (T.ink2 as string) : DS.ink[700]} strokeWidth={1.8} />}
-          </Pressable>
+          <NavyBackButtonX onPress={onBack} />
         ) : null}
         <Text style={{
           fontSize: 11, fontWeight: '500', letterSpacing: 1.4,

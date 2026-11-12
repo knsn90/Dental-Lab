@@ -8,6 +8,7 @@
  * GPS: yolda iken otomatik tracking
  */
 
+import { NavyBackButtonX } from '../../../core/ui/NavyBackButtonX';
 import { EdgeSwipeBack } from '../../../core/ui/mobile/EdgeSwipeBack';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { safeBack } from '../../../core/util/safeBack';
@@ -336,9 +337,7 @@ function MobileView({ d, busy, onChangeStatus, onDeliver, onOpenMap, onCall, onB
         flexDirection: 'row', alignItems: 'center', gap: 12,
         backgroundColor: U.surface, zIndex: 2,
       }}>
-        <Pressable onPress={onBack} style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: U.ink[100], alignItems: 'center', justifyContent: 'center' }}>
-          {isRTL() ? <ArrowRight size={16} color={U.ink[800]} /> : <ArrowLeft size={16} color={U.ink[800]} />}
-        </Pressable>
+        <NavyBackButtonX onPress={onBack} />
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 16, fontWeight: '600', color: U.ink[900] }} numberOfLines={1}>
             {d.destination_name ?? d.order_number ?? t('courier.delivery.defaultTitle')}
@@ -463,10 +462,7 @@ function DesktopView({ d, busy, onChangeStatus, onDeliver, onOpenMap, onCall, on
       {/* SOL — info paneli */}
       <ScrollView style={{ flex: 4 }} contentContainerStyle={{ padding: 16, gap: 16 }}>
         {/* Breadcrumb + back */}
-        <Pressable onPress={onBack} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start' }}>
-          {isRTL() ? <ArrowRight size={14} color={U.ink[500]} /> : <ArrowLeft size={14} color={U.ink[500]} />}
-          <Text style={{ fontSize: 11, color: U.ink[500] }}>Teslimatlar / {d.destination_name ?? '—'}</Text>
-        </Pressable>
+        <NavyBackButtonX onPress={onBack} label={`${autoT('Teslimatlar')} / ${d.destination_name ?? '—'}`} />
 
         {/* Page title */}
         <View>

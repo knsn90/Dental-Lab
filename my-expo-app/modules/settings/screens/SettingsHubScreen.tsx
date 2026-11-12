@@ -6,6 +6,7 @@
  *
  * Tüm paneller (lab, admin, doctor, clinic) aynı ekranı kullanır.
  */
+import { NavyBackButtonX } from '../../../core/ui/NavyBackButtonX';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTurkeyOnlyFeatures } from '../../../core/store/labSettingsStore';
 import { safeBack } from '../../../core/util/safeBack';
@@ -287,21 +288,7 @@ export function SettingsHubScreen({
             backgroundColor: panelBg,
           }}
         >
-          <GlassTooltip title={autoT('Geri')} text={autoT('Önceki sayfaya dön')} placement="bottom">
-            <Pressable
-              onPress={() => { try { safeBack('/'); } catch {} }}
-              style={({ pressed }: any) => ({
-                width: 36, height: 36, borderRadius: 18,
-                alignItems: 'center', justifyContent: 'center',
-                backgroundColor: pressed ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)') : 'transparent',
-                // @ts-ignore web
-                cursor: 'pointer',
-              })}
-              accessibilityLabel="Geri"
-            >
-              {isRTL() ? <ChevronRight size={22} color={isDark ? (T.ink as string) : "#0A0A0A"} strokeWidth={2} /> : <ChevronLeft size={22} color={isDark ? (T.ink as string) : "#0A0A0A"} strokeWidth={2} />}
-            </Pressable>
-          </GlassTooltip>
+          <NavyBackButtonX onPress={() => { try { safeBack('/'); } catch {} }} />
           <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.4, color: T.ink }}>
             Ayarlar
           </Text>
