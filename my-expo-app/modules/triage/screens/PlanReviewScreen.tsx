@@ -1023,7 +1023,9 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
               backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.55)',
               borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.7)',
             }}>
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 26, paddingBottom: 18 }}>
+            {/* Dar ekranda aksiyonlar (A4/A5/A6 · Yazdır · Mesaj) alt satıra iner: aynı
+                satırda kalınca başlık sütununu sıfıra eziyor, hasta adı kayboluyordu. */}
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: isNarrow ? 18 : 26, paddingBottom: 18, flexWrap: isNarrow ? 'wrap' : 'nowrap' }}>
               {/* Geri — hero'nun içinde lacivert simge düğmesi; basınca küçülür (dokunuşta) */}
               <Tip label="Planı kaydetmeden önceki sayfaya dön">
                 <Pressable
@@ -1054,7 +1056,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                     </View>
                   )}
                 </View>
-                <Text style={{ ...WHITE_HERO_DISPLAY, fontSize: 44, letterSpacing: -1.5, lineHeight: 48, color: HI.ink, marginTop: 6 }} numberOfLines={1}>
+                <Text style={{ ...WHITE_HERO_DISPLAY, fontSize: isNarrow ? 32 : 44, letterSpacing: isNarrow ? -1 : -1.5, lineHeight: isNarrow ? 36 : 48, color: HI.ink, marginTop: 6 }} numberOfLines={isNarrow ? 2 : 1}>
                   {o?.patient_name ?? 'Hasta'}
                 </Text>
                 <Text style={{ fontSize: 14, lineHeight: 21, color: HI.inkSoft, marginTop: 4 }} numberOfLines={1}>
@@ -1091,7 +1093,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
               </View>
 
               {/* İkincil aksiyonlar — sessiz, eşit ağırlıkta. Ana aksiyon altta. */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, ...(isNarrow ? { width: '100%' as const, flexWrap: 'wrap' as const } : null) }}>
                 {/* İş kağıdı — planı onaylamadan önce basılı nüsha alınabilsin.
                     Çıktı sipariş detayı ekranıyla birebir aynı (ortak modül). */}
                 {Platform.OS === 'web' && (
@@ -2486,7 +2488,9 @@ function StageFlow({
   // ── Dikey (dar ekran): kart, ok, kart, ok … ──
   if (vertical) {
     return (
-      <View onLayout={(e) => setBoxW(e.nativeEvent.layout.width)}>
+      // paddingTop: ilk kartın numara diski kartın üstüne yarı taşar (top: -NODE/2);
+      // yer açılmazsa üstteki "Aşama Ekle" düğmesinin üzerine biniyordu (mobil).
+      <View onLayout={(e) => setBoxW(e.nativeEvent.layout.width)} style={{ paddingTop: NODE / 2 + 4 }}>
         {entries.map((en, i) => (
           <View key={en.key} style={{ zIndex: en.key === pickerKey ? 20 : 1 }}>
             {renderCard(en, i)}
