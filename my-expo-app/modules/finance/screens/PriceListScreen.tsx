@@ -14,6 +14,7 @@ import { confirmAsync } from '../../../core/util/confirm';
  */
 import React, { useEffect, useRef, useState, useCallback, createContext, useContext } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useLocalSearchParams } from 'expo-router';
 import {
   View, Text, ScrollView, Pressable,
   TextInput, Modal, Alert, Image,
@@ -621,7 +622,9 @@ const m = {
 // ────────────────────────────────────────────────────────────────────────────
 export function PriceListScreen() {
   useBaseCurrency();   // baz para birimi sembolü için (label'lar)
-  const [tab, setTab] = useState('standard');
+  // ?clinic=<id> (Sağlık Kurumları kartındaki "Özel fiyat listesi") → doğrudan Özel Listeler.
+  const deepClinic = useLocalSearchParams<{ clinic?: string }>().clinic;
+  const [tab, setTab] = useState(typeof deepClinic === 'string' && deepClinic ? 'custom' : 'standard');
   const { width: winW } = useWindowDimensions();
   const flow = winW < 1024;   // FinanceHub'ın masaüstü eşiğiyle aynı
   const insets = useSafeAreaInsets();
@@ -2316,6 +2319,17 @@ function CustomTab() {
     loadOverrides(c.id);
     void loadClinicRate(c);
   };
+
+  // Kurum kartından gelindiyse (?clinic=<id>) o kliniği bir kez aç.
+  const deepClinicId = useLocalSearchParams<{ clinic?: string }>().clinic;
+  const deepAppliedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (typeof deepClinicId !== 'string' || !deepClinicId || deepAppliedRef.current === deepClinicId) return;
+    const c = clinics.find(x => x.id === deepClinicId);
+    if (!c) return;
+    deepAppliedRef.current = deepClinicId;
+    selectClinic(c);
+  }, [deepClinicId, clinics]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openEditOverride = (sv: LabService) => {
     const existing = overrides.find((o) => o.service_id === sv.id);

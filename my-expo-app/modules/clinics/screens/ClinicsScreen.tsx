@@ -6,9 +6,9 @@ import {
   RefreshControl, useWindowDimensions, Easing,
 } from 'react-native';
 import { ClinicLogoPicker } from '../components/ClinicLogoPicker';
-import { Search, X, SlidersHorizontal, Plus, Building2, Users, UserPlus, List, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Edit2, Trash2, Phone, Mail, MapPin, RefreshCw, UserX, AlertCircle, Check, Percent, MinusCircle, Briefcase, Stethoscope, ClipboardList, Eye, EyeOff, Link2, Copy } from '../../../core/ui/icons';
+import { Search, X, SlidersHorizontal, Plus, Building2, Users, UserPlus, List, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Edit2, Trash2, Phone, Mail, MapPin, RefreshCw, UserX, AlertCircle, Check, Percent, MinusCircle, Briefcase, Stethoscope, ClipboardList, Eye, EyeOff, Link2, Copy, Tag } from '../../../core/ui/icons';
 import { buildWorkOrderFormHtml } from '../../orders/buildWorkOrderFormHtml';
-import { useLocalSearchParams, useSegments } from 'expo-router';
+import { useLocalSearchParams, useSegments, useRouter } from 'expo-router';
 import { LabConnectionsScreen } from '../../lab-connections/screens/LabConnectionsScreen';
 import { labCreateInvite, labPendingRequests } from '../../lab-connections/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -181,6 +181,7 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
   const isNarrow = width < 560;
   const segments = useSegments() as string[];
   const panelType = (segments?.[0] ?? '') === '(admin)' ? 'admin' : 'lab';
+  const router = useRouter();
   const clinicSummary = useClinicSummaryModal();
   const summaries = useClinicSummaries();
   const { getTheme } = useColorThemeStore();
@@ -825,6 +826,10 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
                       onDeleteDoctor={handleDeleteDoctor}
                       onPrintForm={() => handlePrintClinicForm(clinic)}
                       onOpenSummary={() => clinicSummary.open(clinic.id)}
+                      // Yalnız admin paneli: kliniğin özel fiyat listesine git.
+                      onOpenPriceList={panelType === 'admin'
+                        ? () => router.push(`/(admin)/finance?tab=pricelist&clinic=${clinic.id}` as any)
+                        : undefined}
                     />
                     </View>
                   ))}
@@ -1145,7 +1150,7 @@ function ClinicRow({
   clinic, doctors, members = [], isExpanded, accentColor, discountPercent,
   onToggleExpand, onToggleClinic, onEditClinic, onDeleteClinic,
   onSetDiscount, onAddDoctor, onToggleDoctor, onEditDoctor, onDeleteDoctor,
-  onPrintForm, onOpenSummary,
+  onPrintForm, onOpenSummary, onOpenPriceList,
 }: {
   clinic: Clinic; doctors: Doctor[]; members?: ClinicMember[]; isExpanded: boolean; accentColor: string;
   discountPercent: number | null;
@@ -1155,6 +1160,8 @@ function ClinicRow({
   onToggleDoctor: (d: Doctor) => void; onEditDoctor: (d: Doctor) => void; onDeleteDoctor: (d: Doctor) => void;
   onPrintForm: () => void;
   onOpenSummary?: () => void;
+  /** Verilirse kartta "Özel fiyat listesi" düğmesi çıkar (yalnız admin paneli verir). */
+  onOpenPriceList?: () => void;
 }) {
   const rtl = isRTL();
   const T = useMobileTokens();
@@ -1213,6 +1220,17 @@ function ClinicRow({
                 <ClipboardList size={14} color={isDark ? T.ink2 : DS.ink[500]} strokeWidth={1.8} />
               </Pressable>
             </GlassTooltip>
+            {onOpenPriceList ? (
+              <GlassTooltip title={autoT('Özel fiyat listesi')} text={autoT('Bu kliniğe özel fiyatları aç ve düzenle')}>
+                <Pressable
+                  style={{ width: 32, height: 32, borderRadius: R.sm, alignItems: 'center', justifyContent: 'center' }}
+                  onPress={onOpenPriceList}
+                  accessibilityLabel={autoT('Özel fiyat listesi')}
+                >
+                  <Tag size={14} color={isDark ? T.ink2 : DS.ink[500]} strokeWidth={1.8} />
+                </Pressable>
+              </GlassTooltip>
+            ) : null}
             <GlassTooltip title={autoT('Düzenle')} text={autoT('Kurum bilgilerini düzenle')}>
               <Pressable style={{ width: 32, height: 32, borderRadius: R.sm, alignItems: 'center', justifyContent: 'center' }} onPress={onEditClinic}>
                 <Edit2 size={14} color={DS.ink[500]} strokeWidth={1.8} />
