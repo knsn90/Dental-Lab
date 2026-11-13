@@ -436,34 +436,6 @@ export function topEdgeLight(dark: boolean): string {
     : 'linear-gradient(180deg, rgba(255,255,255,0.55) 0px, rgba(255,255,255,0.12) 40px, rgba(255,255,255,0) 88px)';
 }
 
-/**
- * AYRIM BÖLGESİ — Apple'ın "scroll edge effect" ilkesi (apple-design §12):
- * yüzen chrome'un içerikle buluştuğu yerde 1px ayraç yerine ilerleyen bir
- * bulanıklık. Barın hemen üstünde ince bir şerit; maske sayesinde yukarı
- * doğru tamamen kaybolur → koyu katman ya da ağır gradyan YOK, yalnız
- * içeriğin geri çekildiği yumuşak bir geçiş.
- */
-export function edgeSeparation(dark: boolean): any {
-  if (Platform.OS !== 'web') return null;
-  // iOS WebKit backdrop-filter'ı mask-image ile KIRPMIYOR: şeridin üst kenarı
-  // tam genişlikte sert, gölgeli bir çizgi olarak çiziliyordu (PWA, 2026-11-13).
-  if (typeof navigator !== 'undefined') {
-    const ua = navigator.userAgent || '';
-    const iOS = /iP(hone|ad|od)/.test(ua) || (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1);
-    if (iOS) return null;
-  }
-  const filter = dark
-    ? 'blur(8px) saturate(140%) brightness(0.82)'
-    : 'blur(8px) saturate(160%) brightness(1.06) contrast(0.92)';
-  const mask = 'linear-gradient(to top, rgba(0,0,0,1) 0%, rgba(0,0,0,0.45) 40%, rgba(0,0,0,0) 100%)';
-  return {
-    backdropFilter: filter,
-    WebkitBackdropFilter: filter,
-    maskImage: mask,
-    WebkitMaskImage: mask,
-  };
-}
-
 /** Dolu accent FAB üstündeki kubbe ışığı — daireyi "ışık alan" yapar. */
 export const FAB_DOME = topLight('rgba(255,255,255,0.26)', 'rgba(255,255,255,0.07)');
 

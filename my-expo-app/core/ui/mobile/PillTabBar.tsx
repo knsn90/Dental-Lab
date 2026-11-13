@@ -31,7 +31,7 @@ import { autoT } from '../../i18n/autoTranslate';
 import { useThemeModeStore } from '../../store/themeModeStore';
 import { useCommandPalette } from '../../store/commandPaletteStore';
 import { useUiOverlayStore } from '../../store/uiOverlayStore';
-import { NAV, NAV_BAR_H, FAB_DOME, cellHitSlop, edgeSeparation, navGlass, navIndicator, navSurfaceStyle, useReduceTransparency, type NavGlass, NAV_DIM, navBottomInset } from './navGlass';
+import { NAV, NAV_BAR_H, FAB_DOME, cellHitSlop, navGlass, navIndicator, navSurfaceStyle, useReduceTransparency, type NavGlass, NAV_DIM, navBottomInset } from './navGlass';
 import { navCollapse, useNavScrollBridge, resetNavScroll } from './navScroll';
 import { GlassBlurLayer } from './GlassBlurLayer';
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
@@ -626,11 +626,8 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
         ],
       };
 
-  // Ayrım bölgesi — içerik yüzen chrome'a değdiği yerde geri çekilir
-  // (Apple'ın scroll-edge effect ilkesi). Koyu katman/ağır gradyan YOK:
-  // maske şeridi yukarı doğru tamamen kaybolur. Yalnız web (native'de
-  // backdrop-filter yok).
-  const edge = edgeSeparation(dark);
+  // Barın üstündeki tam-genişlik bulanıklık şeridi (scroll-edge) KALDIRILDI
+  // (2026-11-13): üst kenarı kartları kesen sert bir çizgi olarak görünüyordu.
 
   return (
     <>
@@ -638,14 +635,6 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
         aynı tonla karart — katmanın karartması bar üst kenarında kesilmesin. */}
     <NavDimStrip height={bottomOffset + NAV_BAR_H} />
     <Animated.View pointerEvents={navHidden && !searchActive ? 'none' : 'box-none'} style={[s.wrap, { bottom: wrapBottom }, collapseStyle as any]}>
-      {edge && !searchActive ? (
-        <View
-          pointerEvents="none"
-          // 16px: barın üstünde kalan boşluğa sığar. Daha uzunu, üstteki
-          // yüzeyin (kurye sheet'i) yuvarlak alt köşesini bulandırıyordu.
-          style={[{ position: 'absolute', left: 0, right: 0, bottom: '100%' as any, height: 16 }, edge]}
-        />
-      ) : null}
       {resultsOverlay}
       {content}
     </Animated.View>
