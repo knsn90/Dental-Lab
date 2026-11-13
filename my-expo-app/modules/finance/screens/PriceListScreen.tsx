@@ -2187,7 +2187,12 @@ function ServiceRow({
 // ────────────────────────────────────────────────────────────────────────────
 // Tab 2 — Ozel Listeler (clinic / doctor-specific prices)
 // ────────────────────────────────────────────────────────────────────────────
-function CustomTab() {
+function CustomTab({ initialClinicId, onExit }: {
+  /** Verilirse bu klinik doğrudan açılır (Sağlık Kurumları popup'ı). */
+  initialClinicId?: string;
+  /** Popup modu: geri düğmesi klinik listesine değil, popup'ı kapatmaya gider. */
+  onExit?: () => void;
+} = {}) {
   const MU = useInkUI();
   const MT = useMobileTableText();
   const theme = usePanelTheme();
@@ -2321,7 +2326,8 @@ function CustomTab() {
   };
 
   // Kurum kartından gelindiyse (?clinic=<id>) o kliniği bir kez aç.
-  const deepClinicId = useLocalSearchParams<{ clinic?: string }>().clinic;
+  const deepParam = useLocalSearchParams<{ clinic?: string }>().clinic;
+  const deepClinicId = initialClinicId ?? deepParam;
   const deepAppliedRef = useRef<string | null>(null);
   useEffect(() => {
     if (typeof deepClinicId !== 'string' || !deepClinicId || deepAppliedRef.current === deepClinicId) return;
@@ -2431,6 +2437,12 @@ function CustomTab() {
     : clinics;
 
   if (loading) return <CenteredLoader color={PRIMARY} inline />;
+  // Popup modunda klinik listesi hiç gösterilmez — klinik seçilene kadar yükleyici.
+  if (onExit && !selectedClinic) {
+    return clinics.some(c => c.id === initialClinicId)
+      ? <CenteredLoader color={PRIMARY} inline />
+      : <View style={s.empty}><Text style={s.emptyTitle}>Klinik bulunamadı</Text></View>;
+  }
 
   return (
     <View style={flow ? undefined : s.tabContent}>
@@ -2562,7 +2574,7 @@ function CustomTab() {
               // zorlanınca kartın dışına taşıyordu → sarar. Geri düğmesi başlığın solunda.
               title={selectedClinic.name}
               titleLeading={<>
-              <NavyBackButtonX onPress={() => setSelected(null)} tooltip="Klinik listesine dön" />
+              <NavyBackButtonX onPress={() => (onExit ? onExit() : setSelected(null))} tooltip={onExit ? 'Kapat' : 'Klinik listesine dön'} />
               </>}
               description={`${overrides.length} ${autoT('özel fiyat')} · ${services.length} ${autoT('hizmet katalogda')}${clinicStats ? ` · ${autoT('birlikte')} ${partnershipText(selectedClinic.created_at)}` : ''}`}
               stats={[
@@ -5124,6 +5136,32 @@ function ServiceModal({
               <Text style={m.saveText}>{saving ? 'Kaydediliyor...' : edit ? 'Güncelle' : 'Ekle'}</Text>
             </Pressable>
           </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+
+/**
+ * Bir kliniğin özel fiyat listesi — POPUP. Sağlık Kurumları kartından açılır;
+ * Özel Listeler sekmesindeki ekranın AYNISI (CustomTab), finansa gitmeden.
+ */
+export function ClinicPriceListModal({ clinicId, onClose }: { clinicId: string | null; onClose: () => void }) {
+  const U = useInkUI();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(st => st.resolvedDark);
+  return (
+    <Modal visible={!!clinicId} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={U.modalOverlay}>
+        <View style={[U.modalCard, {
+          maxWidth: 1080, height: '92%', maxHeight: '92%',
+          // Yalnız admin panelinden açılır → admin sayfa zemini (#F7F9FC).
+          backgroundColor: isDark ? T.bg : '#F7F9FC',
+        }]}>
+          <PriceFlowCtx.Provider value={false}>
+            {clinicId ? <CustomTab initialClinicId={clinicId} onExit={onClose} /> : null}
+          </PriceFlowCtx.Provider>
         </View>
       </View>
     </Modal>

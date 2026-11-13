@@ -8,7 +8,7 @@ import {
 import { ClinicLogoPicker } from '../components/ClinicLogoPicker';
 import { Search, X, SlidersHorizontal, Plus, Building2, Users, UserPlus, List, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Edit2, Trash2, Phone, Mail, MapPin, RefreshCw, UserX, AlertCircle, Check, Percent, MinusCircle, Briefcase, Stethoscope, ClipboardList, Eye, EyeOff, Link2, Copy, Tag } from '../../../core/ui/icons';
 import { buildWorkOrderFormHtml } from '../../orders/buildWorkOrderFormHtml';
-import { useLocalSearchParams, useSegments, useRouter } from 'expo-router';
+import { useLocalSearchParams, useSegments } from 'expo-router';
 import { LabConnectionsScreen } from '../../lab-connections/screens/LabConnectionsScreen';
 import { labCreateInvite, labPendingRequests } from '../../lab-connections/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -47,6 +47,9 @@ import { resolveClinicsTab, type ClinicsTabKey } from '../clinicsNav';
 import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 import { ClinicSummaryStrip } from '../../clinicSummary/components/ClinicSummaryStrip';
 import { useClinicSummaryModal } from '../../clinicSummary/components/ClinicSummaryModal';
+// STATİK import: PriceListScreen FinanceHub'da da statik içe aktarılıyor; burada
+// tembel yüklemek "hem statik hem async" çakışmasına (prod #130 çökmesi) yol açar.
+import { ClinicPriceListModal } from '../../finance/screens/PriceListScreen';
 import { useClinicSummaries } from '../../clinicSummary/useClinicSummaries';
 import { sortByWork } from '../../clinicSummary/summary';
 
@@ -181,7 +184,7 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
   const isNarrow = width < 560;
   const segments = useSegments() as string[];
   const panelType = (segments?.[0] ?? '') === '(admin)' ? 'admin' : 'lab';
-  const router = useRouter();
+  const [priceClinicId, setPriceClinicId] = useState<string | null>(null);
   const clinicSummary = useClinicSummaryModal();
   const summaries = useClinicSummaries();
   const { getTheme } = useColorThemeStore();
@@ -827,9 +830,7 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
                       onPrintForm={() => handlePrintClinicForm(clinic)}
                       onOpenSummary={() => clinicSummary.open(clinic.id)}
                       // Yalnız admin paneli: kliniğin özel fiyat listesine git.
-                      onOpenPriceList={panelType === 'admin'
-                        ? () => router.push(`/(admin)/finance?tab=pricelist&clinic=${clinic.id}` as any)
-                        : undefined}
+                      onOpenPriceList={panelType === 'admin' ? () => setPriceClinicId(clinic.id) : undefined}
                     />
                     </View>
                   ))}
@@ -920,6 +921,11 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
       </Modal>
 
       <ConfirmDialog state={confirm} onClose={() => setConfirm(null)} />
+
+      {/* Kliniğin özel fiyat listesi — sayfadan çıkmadan popup (yalnız admin). */}
+      {priceClinicId ? (
+        <ClinicPriceListModal clinicId={priceClinicId} onClose={() => setPriceClinicId(null)} />
+      ) : null}
 
       <ClinicModal visible={showClinicModal} editingClinic={editingClinic} existingClinics={clinics} accentColor={accentColor}
         onClose={() => { setShowClinicModal(false); setEditingClinic(null); }}
