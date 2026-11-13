@@ -15,6 +15,7 @@ import { htmlAttrs, printLocale } from '../../../core/i18n/printLocale';
 import { isRTL } from '../../../core/i18n';
 import { resolveShipParties, isFinalLeg, labPartyAddress } from './shipLabel';
 import { localQrSvg } from './qrSvg';
+import { formatAddress } from '../../../core/util/formatAddress';
 
 const LEG_SELECT = 'id, mode, purpose, direction, notes, created_at, external_provider, external_tracking_no, '
   + 'destination_name, destination_address, destination_phone, origin_name, origin_address, '
@@ -57,11 +58,14 @@ export async function buildShipLabelDoc(order: WorkOrder, legId: string, opts: {
   if (!leg) throw new Error(legRes.error?.message || 'Kurye hareketi bulunamadı');
   const lab = (labRes.data ?? {}) as any;
 
-  const { from, to } = resolveShipParties({
+  const parties = resolveShipParties({
     leg,
     lab: { name: lab.name ?? '', address: labPartyAddress(lab), phone: lab.phone ?? '' },
     clinic: { name: clinic.name, person: order.doctor?.full_name ?? '', address: clinic.address, phone: clinic.phone },
   });
+  // Adres bazı kayıtlarda JSON ({"ulke":"TR","il":…}) saklanıyor — fişe okunur satır basılır.
+  const from = { ...parties.from, address: formatAddress(parties.from.address) };
+  const to = { ...parties.to, address: formatAddress(parties.to.address) };
 
   const carrier = leg.mode === 'internal'
     ? [autoT('Bizim kurye'), leg.courier?.full_name].filter(Boolean).join(' · ')
