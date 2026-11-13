@@ -10284,5 +10284,10 @@
   "Kamera açılamadı. Belgeyi dosyadan yükleyebilirsiniz.": "Die Kamera konnte nicht geöffnet werden. Sie können das Dokument als Datei hochladen.",
   "Kağıdı kameraya düz tutun; yazılar net okunuyorsa çekin.": "Halten Sie das Blatt gerade vor die Kamera; lösen Sie aus, sobald die Schrift scharf ist.",
   "Fotoğrafı Çek": "Foto aufnehmen",
-  "Evrak tarayıcısıyla taranan PDF/görseli seçin ya da buraya sürükleyin": "Wählen Sie ein mit dem Dokumentenscanner gescanntes PDF/Bild oder ziehen Sie es hierher"
+  "Evrak tarayıcısıyla taranan PDF/görseli seçin ya da buraya sürükleyin": "Wählen Sie ein mit dem Dokumentenscanner gescanntes PDF/Bild oder ziehen Sie es hierher",
+  "Yeni sipariş nasıl girilsin?": "Wie möchten Sie den neuen Auftrag erfassen?",
+  "Formu doldur": "Formular ausfüllen",
+  "Klinik, hasta ve işlemleri adım adım girin.": "Klinik, Patient und Leistungen Schritt für Schritt eingeben.",
+  "Kağıttan tara": "Vom Papier scannen",
+  "Kağıt iş emrini kamerayla çekin ya da taranmış dosyayı yükleyin; bilgiler forma aktarılır.": "Fotografieren Sie den Papierauftrag oder laden Sie eine gescannte Datei hoch; die Angaben werden ins Formular übernommen."
 }

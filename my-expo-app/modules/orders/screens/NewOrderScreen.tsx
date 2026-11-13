@@ -84,6 +84,8 @@ import { GulushIcon } from '../../../components/icons/GulushIcon';
 import { Viewer3DModalLazy } from '../../viewer-3d/Viewer3DLazy';
 
 import { AppIcon } from '../../../core/ui/AppIcon';
+import { NewOrderEntryChooser } from '../components/NewOrderEntryChooser';
+import { ScanWorkOrderModal } from '../components/ScanWorkOrderModal';
 import {
   SectionCard, FieldError, Field, SearchableDropdown, Chip, TwoCol,
   LockedInfoCard, DISPLAY_FONT, CARD_SHADOW, INPUT_STYLE,
@@ -1063,6 +1065,18 @@ export function NewOrderScreen({
   // ScanWorkOrderModal sessionStorage'a 'ocr_work_order' yazıp NewOrderScreen'e yönlendiriyor.
   // İlk mount'ta okunur, form'a uygulanır ve key silinir.
   const [ocrBanner, setOcrBanner] = useState<string | null>(null);
+  // Lab/admin "Yeni sipariş" girişinde: form mu, kağıttan tarama mı? (2026-11-13)
+  // Düzenleme, ön-dolu (kopya / tarama kararı) ve zaten OCR verisiyle gelen
+  // açılışlarda sorulmaz. Tarama yalnız web'de var.
+  const [ocrNonce, setOcrNonce] = useState(0);
+  const [askEntry, setAskEntry] = useState(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
+    if (!(resolvedPanel === 'lab' || resolvedPanel === 'admin')) return false;
+    if (isEdit || prefill || scanPrefill) return false;
+    try { if (window.sessionStorage?.getItem('ocr_work_order')) return false; } catch { /* yut */ }
+    return true;
+  });
+  const [entryScanOpen, setEntryScanOpen] = useState(false);
   // WhatsApp botunda adım-adım siparişte toplanan medya (paper-orders/wa-pending yolları);
   // onaylanıp work_order oluşunca work-order-photos'a taşınır (aşağıda submit sonrası).
   const pendingWaMediaRef = useRef<any[] | null>(null);
@@ -1203,7 +1217,7 @@ export function NewOrderScreen({
       try { window.sessionStorage.removeItem('ocr_work_order'); } catch {}
     } catch { /* JSON parse hatası — sessizce yut */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [ocrNonce]);
 
   // ── Draft save timestamp (UI göstergesinde kullanılır) ──
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(() => {
@@ -5661,6 +5675,23 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
       ) : null}
 
       </NOPageChrome>{/* NOPageChrome */}
+
+      {/* Giriş sorusu (lab/admin): formu doldur ↔ kağıttan tara */}
+      <NewOrderEntryChooser
+        visible={askEntry}
+        accent={P}
+        onForm={() => setAskEntry(false)}
+        onScan={() => { setAskEntry(false); setEntryScanOpen(true); }}
+      />
+      <ScanWorkOrderModal
+        visible={entryScanOpen}
+        onClose={() => setEntryScanOpen(false)}
+        onCreateOrder={(parsed) => {
+          try { window.sessionStorage?.setItem('ocr_work_order', JSON.stringify(parsed)); } catch { /* yut */ }
+          setOcrNonce(n => n + 1);
+        }}
+        accentColor={P}
+      />
 
       {/* Denty FAB — NATIVE'de modal (pageSheet) kök FAB'ı örttüğü için burada
           ayrıca mount edilir. WEB'de gerekmez: kök FAB zIndex 9999 ile modalın
