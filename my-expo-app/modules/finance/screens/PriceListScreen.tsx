@@ -58,6 +58,11 @@ import * as Sharing from 'expo-sharing';
 import { File as FSFile, Paths } from 'expo-file-system';
 import { MobileTableX, MobileTableRowX, MobileTableIconX, useMobileTableText } from '../../../core/ui/MobileTableX';
 import { NavyBackButtonX } from '../../../core/ui/NavyBackButtonX';
+// Kurum ekleme kartı — Sağlık Kurumları ekranındakiyle AYNI bileşen. Tembel yüklenir:
+// ClinicsScreen rotalarda lazyRoute ile geliyor; statik import burada "Requiring unknown
+// module" çökmesine yol açabilir (bkz. lazy route + statik import tuzağı).
+const LazyClinicModal = React.lazy(() =>
+  import('../../clinics/screens/ClinicsScreen').then(m => ({ default: m.ClinicModal })));
 
 // Uygulama-içi PDF önizleme — yalnız native'de WebView yükle (web iframe kullanır).
 const HtmlWebView: any = Platform.OS !== 'web' ? require('react-native-webview').WebView : null;
@@ -2197,6 +2202,7 @@ function CustomTab() {
   const [overrideCounts, setOverrideCounts] = useState<Record<string, number>>({});
   const [selectedClinic, setSelected] = useState<Clinic | null>(null);
   const [clinicSearch, setClinicSearch] = useState('');
+  const [addClinicOpen, setAddClinicOpen] = useState(false);
   const [loading, setLoading]         = useState(true);
   const [editModal, setEditModal]     = useState(false);
   const [editSvc, setEditSvc]         = useState<LabService | null>(null);
@@ -2431,10 +2437,12 @@ function CustomTab() {
             </View>
           ) : (<>
             {/* Klinik arama — ad ve yetkili kişide, Türkçe büyük/küçük harf duyarsız */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 }}>
             <View style={{
               // s.searchWrap'ı yaymıyoruz: oradaki flex:1 dikey kaydırmada yüksekliği sıfıra ezer.
+              flex: 1, minWidth: 0,
               flexDirection: 'row', alignItems: 'center', gap: 8, height: 44,
-              paddingHorizontal: 16, marginBottom: 14, borderRadius: 9999, borderWidth: 1,
+              paddingHorizontal: 16, borderRadius: 9999, borderWidth: 1,
               backgroundColor: isDark ? MU.plainBtn.bg : T.card, borderColor: T.hairline,
               ...(Platform.OS === 'web' ? { boxShadow: isDark ? 'none' : '0 4px 12px rgba(0,0,0,0.05)' } as any : {}),
             }}>
@@ -2453,6 +2461,24 @@ function CustomTab() {
                   </Pressable>
                 </GlassTooltip>
               )}
+            </View>
+            {/* Yeni kurum — Sağlık Kurumları ekranındaki "Kurum" düğmesiyle aynı kart açılır */}
+            <GlassTooltip title={autoT('Yeni kurum')} text={autoT('Yeni klinik ya da sağlık kurumu ekle')}>
+              <Pressable
+                onPress={() => setAddClinicOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel={autoT('Yeni kurum')}
+                style={({ hovered }: any) => ({
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  height: 44, paddingHorizontal: 16, borderRadius: 9999,
+                  backgroundColor: MU.ink[900], opacity: hovered ? 0.88 : 1,
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                })}
+              >
+                <Plus size={15} color={MU.onDarkPill} strokeWidth={2.2} />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: MU.onDarkPill }}>Kurum</Text>
+              </Pressable>
+            </GlassTooltip>
             </View>
             {filteredClinics.length === 0 ? (
               <View style={s.empty}>
@@ -2493,7 +2519,24 @@ function CustomTab() {
             )}
           </>)}
         </FlowScroll>
-      ) : (
+      ) : null}
+      {addClinicOpen ? (
+        <React.Suspense fallback={null}>
+          <LazyClinicModal
+            visible
+            editingClinic={null}
+            existingClinics={clinics}
+            accentColor={theme.primary}
+            onClose={() => setAddClinicOpen(false)}
+            onSuccess={() => {
+              setAddClinicOpen(false);
+              // Tam yükleyici yerine yalnız klinik listesini tazele.
+              fetchClinics().then(({ data }) => setClinics((data as Clinic[]) ?? [])).catch(() => {});
+            }}
+          />
+        </React.Suspense>
+      ) : null}
+      {!selectedClinic ? null : (
         /* -- Service override list for selected clinic -- */
         <View style={flow ? undefined : { flex: 1 }}>
           {/* ── Klinik hero — "BEYAZ HERO" (eski bilgi şeridinin yerine) ── */}
