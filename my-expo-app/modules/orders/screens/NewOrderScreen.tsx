@@ -55,7 +55,9 @@ import { supabase } from '../../../core/api/supabase';
 import { getActiveLabId } from '../../../core/store/activeLabStore';
 import { CURRENCY_META } from '../../../core/money/currency';
 import { DentyFAB } from '../../denty/components/DentyFAB';
-import { useSuppressDentyFab } from '../../../core/store/uiOverlayStore';
+import { useSuppressDentyFab, useBottomActionBar } from '../../../core/store/uiOverlayStore';
+import { isRTL } from '../../../core/i18n';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fetchClinics, fetchAllDoctors, createClinic, createDoctor } from '../../clinics/api';
 import { titleCaseTR } from '../../../core/utils/textCase';
 import { toast } from '../../../core/ui/Toast';
@@ -9179,6 +9181,46 @@ function ChatBox({ messages, onAdd, onDelete, hideHeader, accentColor }: {
   const [attachMenuOpen, setAttachMenuOpen] = React.useState(false);
   const [pendingFile, setPendingFile]  = React.useState<File | null>(null);
   const [pendingCaption, setPendingCaption] = React.useState('');
+  // Simanty orb'u (DentyFAB, sağ-alt 60px) gönder düğmesinin üstüne binerse
+  // orb'u composer'ın üstüne kaldır. Yalnız web; ölçüm görünür konumdan.
+  const sendRef = React.useRef<any>(null);
+  const [orbLift, setOrbLift] = React.useState(0);
+  const { bottom: _cbInsetBottom } = useSafeAreaInsets();
+  useBottomActionBar(orbLift);
+  React.useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    let raf = 0;
+    const measure = () => {
+      raf = 0;
+      const el = sendRef.current as HTMLElement | null;
+      if (!el || typeof el.getBoundingClientRect !== 'function') return;
+      const r = el.getBoundingClientRect();
+      const vw = window.innerWidth, vh = window.innerHeight;
+      const wide = vw >= 760;
+      const side = wide ? 24 : 16;
+      const base = wide ? 24 : _cbInsetBottom + 74;
+      const ORB = 60, GAP = 8;
+      const zoneTop = vh - base - ORB - GAP;
+      const hitX = isRTL() ? r.left < side + ORB + GAP : r.right > vw - side - ORB - GAP;
+      const hit = r.width > 0 && hitX && r.bottom > zoneTop && r.top < vh - base + GAP;
+      const next = hit ? Math.max(0, Math.round(vh - r.top + GAP - base)) : 0;
+      setOrbLift(prev => (Math.abs(prev - next) < 2 ? prev : next));
+    };
+    const schedule = () => { if (!raf) raf = requestAnimationFrame(measure); };
+    schedule();
+    window.addEventListener('scroll', schedule, true);
+    window.addEventListener('resize', schedule);
+    const RO = (window as any).ResizeObserver;
+    const ro = RO ? new RO(schedule) : null;
+    if (ro && sendRef.current) ro.observe(sendRef.current);
+    if (ro) ro.observe(document.body);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      window.removeEventListener('scroll', schedule, true);
+      window.removeEventListener('resize', schedule);
+      ro?.disconnect();
+    };
+  }, [_cbInsetBottom]);
   const mrRef       = React.useRef<any>(null);
   const chunksRef   = React.useRef<Blob[]>([]);
   const timerRef    = React.useRef<any>(null);
@@ -9516,6 +9558,7 @@ function ChatBox({ messages, onAdd, onDelete, hideHeader, accentColor }: {
 
         {/* Gönder — pill'in yanındaki yuvarlak buton */}
         <TouchableOpacity
+          ref={sendRef}
           style={[cb.sendCircle, !text.trim() && cb.sendCircleOff]}
           onPress={sendText}
           disabled={!text.trim()}
