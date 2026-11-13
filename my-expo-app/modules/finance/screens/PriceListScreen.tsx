@@ -5154,11 +5154,32 @@ export function ClinicPriceListModal({ clinicId, onClose }: { clinicId: string |
   return (
     <Modal visible={!!clinicId} transparent animationType="fade" onRequestClose={onClose}>
       <View style={U.modalOverlay}>
+        {/* Dışarı tıklayınca kapanır — kartın ARKASINDA tam kaplayan katman. */}
+        <Pressable
+          onPress={onClose}
+          accessibilityLabel={autoT('Kapat')}
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, ...(Platform.OS === 'web' ? { cursor: 'default' } as any : {}) }}
+        />
         <View style={[U.modalCard, {
           maxWidth: 1080, height: '92%', maxHeight: '92%',
           // Yalnız admin panelinden açılır → admin sayfa zemini (#F7F9FC).
           backgroundColor: isDark ? T.bg : '#F7F9FC',
         }]}>
+          {/* Kapat — üst şerit (hero'nun sağındaki düğmelerin üstüne binmesin) */}
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: PAGE_PADDING, paddingTop: 12 }}>
+          <GlassTooltip title={autoT('Kapat')} text={autoT('Fiyat listesini kapat')}>
+            <Pressable
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel={autoT('Kapat')}
+              style={[U.modalCloseBtn, {
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              }]}
+            >
+              <X size={14} color={U.ink[500]} strokeWidth={1.8} />
+            </Pressable>
+          </GlassTooltip>
+          </View>
           <PriceFlowCtx.Provider value={false}>
             {clinicId ? <CustomTab initialClinicId={clinicId} onExit={onClose} /> : null}
           </PriceFlowCtx.Provider>
