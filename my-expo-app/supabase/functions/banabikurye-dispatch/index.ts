@@ -206,11 +206,16 @@ serve(async (req) => {
     const r = await bbkGet(env, token, `/courier?order_id=${encodeURIComponent(body.order_id)}`);
     let courier = r.data?.courier ?? (r.data?.order?.courier ?? null);
 
-    const o = await bbkGet(env, token, '/orders');
-    const list = o.data?.orders ?? (Array.isArray(o.data) ? o.data : []);
-    const found = Array.isArray(list)
-      ? list.find((x: any) => x?.order_id === body.order_id || x?.order_name === body.order_id)
-      : null;
+    // Önce doğrudan order_id filtresiyle (bbkProofApply ile aynı) — filtresiz /orders
+    // sayfalı döner ve eski/kalabalık hesapta sipariş listede hiç bulunmayabiliyordu.
+    const pickOrder = (d: any) => {
+      const l = d?.orders ?? (Array.isArray(d) ? d : []);
+      return Array.isArray(l)
+        ? (l.find((x: any) => String(x?.order_id) === String(body.order_id) || String(x?.order_name) === String(body.order_id)) ?? null)
+        : null;
+    };
+    let found: any = pickOrder((await bbkGet(env, token, `/orders?order_id=${encodeURIComponent(body.order_id)}`)).data);
+    if (!found) found = pickOrder((await bbkGet(env, token, '/orders')).data);
     let bbkStatus: string | null = found?.status ?? r.data?.order?.status ?? r.data?.status ?? null;
     courier = courier ?? found?.courier ?? null;
 
@@ -220,7 +225,20 @@ serve(async (req) => {
     // gösterirdi. Doğru sinyal noktaların `courier_visit_datetime`'ıdır: nokta 0 = alım,
     // son nokta = teslim. Ziyaret damgası dolduysa gerçek alım/teslim gerçekleşmiştir.
     const pts: any[] = Array.isArray(found?.points) ? found.points : [];
-    const pickupVisit = pts.length ? (pts[0]?.courier_visit_datetime ?? null) : null;
+    // İkinci sinyal: teslim noktasının teslimat durumu. Kurye alım noktasında
+    // check-in yapmadan paketi alıp çıkabiliyor (ziyaret damgası boş kalıyor); bu
+    // durumda teslim noktası 'parcel_picked_up' → 'courier_arrived' → 'finished' ilerler.
+    const dropPt: any = pts.length > 1 ? pts[pts.length - 1] : null;
+    const dropDelivStatus = String(dropPt?.delivery?.status ?? dropPt?.delivery_status ?? '').toLowerCase();
+    const pickedByStatus = ['parcel_picked_up', 'courier_arrived', 'finished', 'completed'].includes(dropDelivStatus);
+    // Teşhis — kişisel veri YOK: yalnız durum kodları ve zaman damgaları.
+    console.log('[bbk track]', JSON.stringify({
+      order: String(body.order_id), found: !!found, status: found?.status ?? null,
+      points: pts.map((p: any) => ({ visit: p?.courier_visit_datetime ?? null, delivery: p?.delivery?.status ?? p?.delivery_status ?? null })),
+    }));
+    const pickupVisit = pts.length
+      ? (pts[0]?.courier_visit_datetime ?? (pickedByStatus ? new Date().toISOString() : null))
+      : null;
     const dropVisit   = pts.length > 1 ? (pts[pts.length - 1]?.courier_visit_datetime ?? null) : null;
     if (pickupVisit) {
       // Yalnız boşken yaz — üzerine yazma (idempotent). teslim_alindi'ye de yükselt ki
