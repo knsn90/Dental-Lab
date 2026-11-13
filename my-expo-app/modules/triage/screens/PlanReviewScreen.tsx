@@ -2812,7 +2812,11 @@ function StageCard({
               <Text style={{ ...TYPE.body, color: INK[700], fontWeight: '600', flex: 1 }}>Otomatik — en uygun</Text>
               {!tech && <Check size={15} color={accentDeep} strokeWidth={2.5} />}
             </Pressable>
-            {[...technicians].sort((a, b) => {
+            {technicians
+              // Pasif personel ve kuryeler seçilemez (otomatik atamayla aynı
+              // havuz). Zaten atanmış olan kişi seçili görünsün diye listede kalır.
+              .filter(t => t.id === tech?.id || (t.is_active !== false && t.role !== 'courier'))
+              .sort((a, b) => {
               // Uygun (yetkin) teknisyenler önce, sonra az yüklü
               const qa = isQualified(st, a) ? 0 : 1, qb = isQualified(st, b) ? 0 : 1;
               if (qa !== qb) return qa - qb;
