@@ -10278,5 +10278,11 @@
   "Ciro fatura tarihine göre ve KDV hariç hesaplanır. Borç KDV dahildir; bu yüzden ödeme alınmamış olsa da borç ciro + KDV kadar görünür.": "Der Umsatz wird nach Rechnungsdatum und ohne MwSt. berechnet. Der Saldo enthält die MwSt.; daher erscheint der Saldo auch ohne Zahlungseingang als Umsatz + MwSt.",
   "Borç (KDV dahil)": "Saldo (inkl. MwSt.)",
   "KDV hariç": "zzgl. MwSt.",
-  "KDV dahil": "inkl. MwSt."
+  "KDV dahil": "inkl. MwSt.",
+  "Kamera izni verilmedi. Tarayıcının adres çubuğundaki kamera simgesinden izin verin.": "Kamerazugriff wurde verweigert. Erlauben Sie ihn über das Kamerasymbol in der Adressleiste des Browsers.",
+  "Bu cihazda kamera bulunamadı. Belgeyi dosyadan yükleyebilirsiniz.": "Auf diesem Gerät wurde keine Kamera gefunden. Sie können das Dokument als Datei hochladen.",
+  "Kamera açılamadı. Belgeyi dosyadan yükleyebilirsiniz.": "Die Kamera konnte nicht geöffnet werden. Sie können das Dokument als Datei hochladen.",
+  "Kağıdı kameraya düz tutun; yazılar net okunuyorsa çekin.": "Halten Sie das Blatt gerade vor die Kamera; lösen Sie aus, sobald die Schrift scharf ist.",
+  "Fotoğrafı Çek": "Foto aufnehmen",
+  "Evrak tarayıcısıyla taranan PDF/görseli seçin ya da buraya sürükleyin": "Wählen Sie ein mit dem Dokumentenscanner gescanntes PDF/Bild oder ziehen Sie es hierher"
 }

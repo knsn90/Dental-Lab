@@ -70,6 +70,91 @@ export function ScanWorkOrderModal({ visible, onClose, onCreateOrder, accentColo
 
   const reset = () => { setParsed(null); setError(null); setClinicName(null); };
 
+  // ── Masaüstü webcam ──
+  // `capture` özniteliğini yalnız mobil tarayıcılar uygular; laptopta dosya
+  // seçici açılıyordu. İnce işaretçili (fare) cihazda kamerayı getUserMedia ile
+  // modal içinde açıp tek kare yakalarız. Dokunmatik cihaz → eski input yolu.
+  const [camOn, setCamOn]   = useState(false);
+  const [camErr, setCamErr] = useState<string | null>(null);
+  const videoRef  = useRef<any>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  const stopCam = () => {
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
+    setCamOn(false);
+  };
+  useEffect(() => { if (!visible) stopCam(); }, [visible]);
+  useEffect(() => () => stopCam(), []);
+  useEffect(() => {
+    if (camOn && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play?.().catch(() => {});
+    }
+  }, [camOn]);
+
+  const wantsWebcam = () => {
+    if (Platform.OS !== 'web' || typeof navigator === 'undefined') return false;
+    if (!navigator.mediaDevices?.getUserMedia) return false;
+    try { return !window.matchMedia('(pointer: coarse)').matches; } catch { return true; }
+  };
+
+  const openCamera = async () => {
+    setCamErr(null);
+    if (!wantsWebcam()) { handlePick(true); return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1920 }, height: { ideal: 1080 }, facingMode: 'environment' },
+        audio: false,
+      });
+      streamRef.current = stream;
+      setCamOn(true);
+    } catch (e: any) {
+      const name = e?.name ?? '';
+      setCamErr(name === 'NotAllowedError'
+        ? autoT('Kamera izni verilmedi. Tarayıcının adres çubuğundaki kamera simgesinden izin verin.')
+        : name === 'NotFoundError'
+          ? autoT('Bu cihazda kamera bulunamadı. Belgeyi dosyadan yükleyebilirsiniz.')
+          : autoT('Kamera açılamadı. Belgeyi dosyadan yükleyebilirsiniz.'));
+    }
+  };
+
+  const snapPhoto = () => {
+    const v = videoRef.current as HTMLVideoElement | null;
+    if (!v || !v.videoWidth) return;
+    const c = document.createElement('canvas');
+    c.width = v.videoWidth; c.height = v.videoHeight;
+    c.getContext('2d')?.drawImage(v, 0, 0, c.width, c.height);
+    c.toBlob(b => {
+      stopCam();
+      if (b) handleParse(new File([b], 'kamera.jpg', { type: 'image/jpeg' }));
+    }, 'image/jpeg', 0.92);
+  };
+
+  // Dosya bırakma (evrak tarayıcısının kaydettiği PDF/görsel sürüklenebilir).
+  const dropRef = useRef<any>(null);
+  const [dragOver, setDragOver] = useState(false);
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const el = dropRef.current as HTMLElement | null;
+    if (!el || typeof el.addEventListener !== 'function') return;
+    const over = (e: DragEvent) => { e.preventDefault(); setDragOver(true); };
+    const leave = () => setDragOver(false);
+    const drop = (e: DragEvent) => {
+      e.preventDefault(); setDragOver(false);
+      const f = e.dataTransfer?.files?.[0];
+      if (f && /^(application\/pdf|image\/)/.test(f.type)) handleParse(f);
+    };
+    el.addEventListener('dragover', over);
+    el.addEventListener('dragleave', leave);
+    el.addEventListener('drop', drop);
+    return () => {
+      el.removeEventListener('dragover', over);
+      el.removeEventListener('dragleave', leave);
+      el.removeEventListener('drop', drop);
+    };
+  });
+
   const handlePick = (cameraOnly = false) => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
     const input = document.createElement('input');
@@ -175,24 +260,65 @@ export function ScanWorkOrderModal({ visible, onClose, onCreateOrder, accentColo
                 {/* AI badge */}
                 <AIBadge accentColor={accentColor} />
 
-                {/* Kamera ile çek */}
-                <AIActionButton
-                  onPress={() => handlePick(true)}
-                  accentColor={accentColor}
-                  variant="primary"
-                  icon={<Camera size={18} color="#FFF" strokeWidth={2} />}
-                  title="Kamera ile Çek"
-                />
+                {camOn ? (
+                  <View style={{ gap: 10 }}>
+                    <View style={{ borderRadius: 14, overflow: 'hidden', backgroundColor: '#0A0A0A', aspectRatio: 16 / 9 }}>
+                      {React.createElement('video', {
+                        ref: videoRef, autoPlay: true, playsInline: true, muted: true,
+                        style: { width: '100%', height: '100%', objectFit: 'contain', display: 'block' },
+                      })}
+                    </View>
+                    <Text style={{ fontSize: 11.5, color: DS.ink[500], textAlign: 'center' }}>
+                      Kağıdı kameraya düz tutun; yazılar net okunuyorsa çekin.
+                    </Text>
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                      <Pressable
+                        onPress={stopCam}
+                        style={{ flex: 1, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)' }}
+                      >
+                        <Text style={{ fontSize: 13.5, fontWeight: '600', color: DS.ink[700] }}>Vazgeç</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={snapPhoto}
+                        style={{ flex: 1.55, height: 46, borderRadius: 12, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor }}
+                      >
+                        <Camera size={17} color="#FFF" strokeWidth={2} />
+                        <Text style={{ fontSize: 13.5, fontWeight: '700', color: '#FFFFFF' }}>Fotoğrafı Çek</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : (
+                  <>
+                    {/* Kamera ile çek */}
+                    <AIActionButton
+                      onPress={openCamera}
+                      accentColor={accentColor}
+                      variant="primary"
+                      icon={<Camera size={18} color="#FFF" strokeWidth={2} />}
+                      title="Kamera ile Çek"
+                    />
+                    {camErr && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 4 }}>
+                        <AlertCircle size={14} color="#9C2E2E" strokeWidth={1.8} />
+                        <Text style={{ flex: 1, fontSize: 11.5, color: '#9C2E2E' }}>{camErr}</Text>
+                      </View>
+                    )}
 
-                {/* Dosya seç */}
-                <AIActionButton
-                  onPress={() => handlePick(false)}
-                  accentColor={accentColor}
-                  variant="secondary"
-                  icon={<FileUp size={18} color={accentColor} strokeWidth={1.8} />}
-                  title="Dosyadan Yükle (PDF / Görsel)"
-                  subtitle="QR kodlu lab formu en doğru sonucu verir"
-                />
+                    {/* Dosya seç / evrak tarayıcısı çıktısını bırak */}
+                    <View ref={dropRef} style={{ borderRadius: 14, ...(dragOver ? { backgroundColor: accentColor + '10' } : {}) }}>
+                      <AIActionButton
+                        onPress={() => handlePick(false)}
+                        accentColor={accentColor}
+                        variant="secondary"
+                        icon={<FileUp size={18} color={accentColor} strokeWidth={1.8} />}
+                        title="Dosyadan Yükle (PDF / Görsel)"
+                        subtitle={Platform.OS === 'web' && wantsWebcam()
+                          ? 'Evrak tarayıcısıyla taranan PDF/görseli seçin ya da buraya sürükleyin'
+                          : 'QR kodlu lab formu en doğru sonucu verir'}
+                      />
+                    </View>
+                  </>
+                )}
               </View>
             )}
 

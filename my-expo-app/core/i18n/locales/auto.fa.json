@@ -10278,5 +10278,11 @@
   "Ciro fatura tarihine göre ve KDV hariç hesaplanır. Borç KDV dahildir; bu yüzden ödeme alınmamış olsa da borç ciro + KDV kadar görünür.": "درآمد بر اساس تاریخ فاکتور و بدون مالیات بر ارزش افزوده محاسبه می‌شود. بدهی شامل مالیات است؛ به همین دلیل حتی بدون دریافت پرداخت، بدهی برابر با درآمد + مالیات نمایش داده می‌شود.",
   "Borç (KDV dahil)": "بدهی (با مالیات)",
   "KDV hariç": "بدون مالیات",
-  "KDV dahil": "با مالیات"
+  "KDV dahil": "با مالیات",
+  "Kamera izni verilmedi. Tarayıcının adres çubuğundaki kamera simgesinden izin verin.": "اجازهٔ دسترسی به دوربین داده نشد. از نماد دوربین در نوار آدرس مرورگر اجازه دهید.",
+  "Bu cihazda kamera bulunamadı. Belgeyi dosyadan yükleyebilirsiniz.": "دوربینی روی این دستگاه پیدا نشد. می‌توانید سند را از فایل بارگذاری کنید.",
+  "Kamera açılamadı. Belgeyi dosyadan yükleyebilirsiniz.": "دوربین باز نشد. می‌توانید سند را از فایل بارگذاری کنید.",
+  "Kağıdı kameraya düz tutun; yazılar net okunuyorsa çekin.": "کاغذ را صاف جلوی دوربین بگیرید؛ وقتی نوشته‌ها واضح بود عکس بگیرید.",
+  "Fotoğrafı Çek": "گرفتن عکس",
+  "Evrak tarayıcısıyla taranan PDF/görseli seçin ya da buraya sürükleyin": "PDF/تصویر اسکن‌شده با اسکنر اسناد را انتخاب کنید یا اینجا بکشید"
 }

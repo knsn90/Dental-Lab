@@ -1207,7 +1207,7 @@ export function OrdersListScreenV2() {
               </Pressable>
             </View>
           )}
-          <PendingPaperOrdersScreen />
+          <PendingPaperOrdersScreen embedded />
         </View>
       ) : isDesktop && viewMode === 'kanban' ? (
         <KanbanBoard orders={visibleOrders} userGroup={(panelGroup || '(lab)') as any} onStatusAdvance={onStatusAdvance} />

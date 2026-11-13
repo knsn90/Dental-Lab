@@ -10278,5 +10278,11 @@
   "Ciro fatura tarihine göre ve KDV hariç hesaplanır. Borç KDV dahildir; bu yüzden ödeme alınmamış olsa da borç ciro + KDV kadar görünür.": "Revenue is calculated by invoice date and excludes VAT. The balance includes VAT, so even with no payment received, the balance shows as revenue + VAT.",
   "Borç (KDV dahil)": "Balance (incl. VAT)",
   "KDV hariç": "excl. VAT",
-  "KDV dahil": "incl. VAT"
+  "KDV dahil": "incl. VAT",
+  "Kamera izni verilmedi. Tarayıcının adres çubuğundaki kamera simgesinden izin verin.": "Camera permission was denied. Allow it from the camera icon in the browser's address bar.",
+  "Bu cihazda kamera bulunamadı. Belgeyi dosyadan yükleyebilirsiniz.": "No camera was found on this device. You can upload the document from a file.",
+  "Kamera açılamadı. Belgeyi dosyadan yükleyebilirsiniz.": "The camera could not be opened. You can upload the document from a file.",
+  "Kağıdı kameraya düz tutun; yazılar net okunuyorsa çekin.": "Hold the paper flat to the camera; take the photo once the text is sharp.",
+  "Fotoğrafı Çek": "Take Photo",
+  "Evrak tarayıcısıyla taranan PDF/görseli seçin ya da buraya sürükleyin": "Choose a PDF/image from your document scanner, or drag it here"
 }

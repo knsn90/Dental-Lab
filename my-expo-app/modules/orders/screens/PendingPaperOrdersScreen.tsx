@@ -12,7 +12,11 @@ import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, Pressable, ScrollView, Platform, RefreshControl, Image,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useSegments } from 'expo-router';
+import { NavyBackButtonX } from '../../../core/ui/NavyBackButtonX';
+import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
+import { MOBILE_PANEL_THEMES } from '../../../core/theme/mobileDesignTokens';
+import { ScanWorkOrderModal } from '../components/ScanWorkOrderModal';
 import {
   Inbox, MessageCircle, Phone, Camera, Check, X, AlertCircle,
   ChevronRight, ChevronLeft, Sparkles, Calendar, Building2, MessageSquare, ScanLine,
@@ -68,8 +72,17 @@ function brandTone(hex: string, isDark: boolean) {
   return { bg: `rgba(${r},${g},${b},0.24)`, fg: `rgb(${r},${g},${b})` };
 }
 
-export function PendingPaperOrdersScreen() {
+/**
+ * `embedded`: Siparişler listesinin "Manuel" sekmesine gömülü (zemin/başlık
+ * çerçevesi orada). Tek başına rota olarak (mobil `/pending-paper`) açılınca
+ * kendi sayfa zeminini, geri düğmesini ve "Kağıt Sipariş Tara"yı çizer —
+ * mobil Tabs sahnesi şeffaf olduğu için zeminsiz ekran alttaki sayfayı gösteriyordu.
+ */
+export function PendingPaperOrdersScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const router = useRouter();
+  const segments = useSegments() as string[];
+  const panelGroup = String(segments?.[0] ?? '(lab)');
+  const [scanOpen, setScanOpen] = useState(false);
   const { profile } = useAuthStore();
   const labId = (profile as any)?.lab_id ?? profile?.id ?? null;
   const U = useInkUI();
@@ -171,18 +184,68 @@ export function PendingPaperOrdersScreen() {
     return new Date(iso).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short' });
   };
 
-  if (loading) {
+  const pageBg = U.isDark ? '#0E0E0E'
+    : (MOBILE_PANEL_THEMES as any)[panelGroup === '(admin)' ? 'exec' : 'lab']?.bgPage ?? '#F5F1EB';
+  const goBack = () => {
+    if ((router as any).canGoBack?.()) router.back();
+    else router.replace(`/${panelGroup}/orders` as any);
+  };
+  const frame = (body: React.ReactNode) => {
+    if (embedded) return <>{body}</>;
     return (
+      <View style={{ flex: 1, backgroundColor: pageBg }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: PAGE_PADDING, paddingTop: 12, paddingBottom: 4 }}>
+          <NavyBackButtonX onPress={goBack} />
+          <View style={{ flex: 1 }} />
+          {Platform.OS === 'web' && (
+            <Pressable
+              onPress={() => setScanOpen(true)}
+              accessibilityRole="button"
+              style={({ pressed }: any) => ({
+                flexDirection: 'row', alignItems: 'center', gap: 7,
+                paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999,
+                backgroundColor: U.isDark ? 'rgba(96,165,250,0.16)' : '#EFF6FF',
+                borderWidth: 1, borderColor: U.isDark ? 'rgba(147,197,253,0.30)' : 'rgba(37,99,235,0.25)',
+                opacity: pressed ? 0.75 : 1,
+              })}
+            >
+              <Camera size={13} color={U.isDark ? '#93C5FD' : '#2563EB'} strokeWidth={1.9} />
+              <Text style={{ fontSize: 12.5, fontWeight: '600', color: U.isDark ? '#93C5FD' : '#2563EB' }}>
+                Kağıt Sipariş Tara
+              </Text>
+            </Pressable>
+          )}
+        </View>
+        {body}
+        <ScanWorkOrderModal
+          visible={scanOpen}
+          onClose={() => setScanOpen(false)}
+          onCreateOrder={(parsed) => {
+            try {
+              if (typeof window !== 'undefined' && window.sessionStorage) {
+                window.sessionStorage.setItem('ocr_work_order', JSON.stringify(parsed));
+              }
+            } catch { /* ignore */ }
+            router.push(`/${panelGroup}/new-order` as any);
+          }}
+          accentColor="#2563EB"
+        />
+      </View>
+    );
+  };
+
+  if (loading) {
+    return frame(
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80 }}>
         <ActivityIndicator color={U.ink[400]} />
       </View>
     );
   }
 
-  return (
+  return frame(
     <ScrollView
       style={{ flex: 1 }}
-      contentContainerStyle={{ padding: 20, paddingBottom: 60, gap: 14 }}
+      contentContainerStyle={{ padding: embedded ? 20 : PAGE_PADDING, paddingBottom: embedded ? 60 : 140, gap: 14 }}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
