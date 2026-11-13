@@ -42,8 +42,13 @@ export const NAV = {
   fab: 64,
   fabIcon: 28,
 
-  /** Scroll-aware daralma — bar KAYBOLMAZ, yalnız geri çekilir */
-  collapse: { translateY: 10, scale: 0.94, opacity: 0.92 },
+  /**
+   * Scroll-aware gizlenme — aşağı okurken bar ekranın altına kayıp kaybolur,
+   * yukarı kaydırınca / sayfa başında / sayfa sonunda geri gelir (Safari araç
+   * çubuğu gibi; kullanıcı kararı 2026-11-13). Kayma mesafesi barın kendi alt
+   * ofseti + FAB yüksekliği + pay olarak PillTabBar'da hesaplanır.
+   */
+  collapse: { extra: 16, opacity: 0 },
 
   /** Basma fiziği */
   press: { cell: 0.95, fab: 0.94 },
@@ -54,6 +59,21 @@ export const NAV = {
  * 8 + (24 + 20) + 8 = 60pt.
  */
 export const NAV_BAR_H = NAV.barPadV * 2 + NAV.iconBox + NAV.cellPadV * 2;
+
+/**
+ * Barın alt ofsetinde kullanılacak güvenli alan. Mobil TARAYICI sekmesinde
+ * (PWA değil) görünür alan zaten Safari/Chrome'un alt çubuğunun üstünde biter;
+ * ev göstergesi payını ikinci kez eklemek barı ~34pt havada bırakıyordu
+ * (iPhone ekran görüntüsü, 2026-11-13). PWA ve native'de inset aynen kalır.
+ */
+export function navBottomInset(bottomInset: number): number {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return bottomInset;
+  try {
+    if ((window.navigator as any).standalone) return bottomInset;
+    if (window.matchMedia?.('(display-mode: standalone)').matches) return bottomInset;
+  } catch { return bottomInset; }
+  return 0;
+}
 
 /**
  * Floating navbar'ın ekran altında kapladığı alan + üstünde bırakılması gereken
@@ -69,7 +89,7 @@ export const NAV_BAR_H = NAV.barPadV * 2 + NAV.iconBox + NAV.cellPadV * 2;
  */
 export function navBarMetrics(bottomInset: number, gap = 14) {
   // PillTabBar'ın `bottomOffset`i ile BİREBİR aynı formül olmalı.
-  const offset = Math.max(bottomInset, 8) + 8;
+  const offset = Math.max(navBottomInset(bottomInset), 8) + 8;
   const top = offset + NAV_BAR_H;
   return { barH: NAV_BAR_H, offset, top, gap, clearance: top + gap };
 }

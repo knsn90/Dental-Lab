@@ -13,7 +13,8 @@
 // pointerEvents="none" → altındaki içerik/scroll etkileşimini engellemez.
 
 import React, { useEffect, useState } from 'react';
-import { View, Image, Platform } from 'react-native';
+import { View, Image, Platform, Animated } from 'react-native';
+import { navEdge, useNavScrollBridge } from './navScroll';
 import { BlurView } from 'expo-blur';
 import MaskedView from '@react-native-masked-view/masked-view';
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
@@ -35,6 +36,8 @@ function fadeRgba(hex: string, a: number): string {
 
 export function PanelTopHeader() {
   const insets = useSafeAreaInsets();
+  // Üst kenar şeridi kaydırmayı izlesin (navbar olmayan panelde de).
+  useNavScrollBridge();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const MT = useMobileTokens();
   const { profile } = useAuthStore();
@@ -107,7 +110,10 @@ export function PanelTopHeader() {
            ve üst butonların ÜSTÜNE çiziyordu: ikisi de soluk/bulanık görünüyordu
            (translateZ denemesi yetmedi, 2026-10-17). Filtresiz katmanda yığın
            sırası her tarayıcıda güvenilir. Native BlurView aşağıda, değişmedi. */
-        <View pointerEvents="none" style={{
+        <Animated.View pointerEvents="none" style={{
+          // Yalnız içerik altından geçerken görünür (sayfa en üstteyken tarih
+          // satırını soldurmasın — 2026-11-13).
+          opacity: navEdge,
           position: 'fixed', top: 0, left: 0, right: 0, height: topBlurH, zIndex: 8,
           // Yumuşak (ease-out) söniş: logo/butonların altına dek ~opak, sonra çok
           // kademeli iner. Eski 3 kademeli iniş renkli kartların üstünde sert bant

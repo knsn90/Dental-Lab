@@ -31,7 +31,7 @@ import { autoT } from '../../i18n/autoTranslate';
 import { useThemeModeStore } from '../../store/themeModeStore';
 import { useCommandPalette } from '../../store/commandPaletteStore';
 import { useUiOverlayStore } from '../../store/uiOverlayStore';
-import { NAV, NAV_BAR_H, FAB_DOME, cellHitSlop, edgeSeparation, navGlass, navIndicator, navSurfaceStyle, useReduceTransparency, type NavGlass, NAV_DIM } from './navGlass';
+import { NAV, NAV_BAR_H, FAB_DOME, cellHitSlop, edgeSeparation, navGlass, navIndicator, navSurfaceStyle, useReduceTransparency, type NavGlass, NAV_DIM, navBottomInset } from './navGlass';
 import { navCollapse, useNavScrollBridge, resetNavScroll } from './navScroll';
 import { GlassBlurLayer } from './GlassBlurLayer';
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
@@ -302,7 +302,7 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
   };
 
   // Home indicator ile bar arasında nefes — bar ekranın altına YAPIŞMAZ.
-  const bottomOffset = Math.max(insets.bottom, 8) + 8;
+  const bottomOffset = Math.max(navBottomInset(insets.bottom), 8) + 8;
   const accent = accentColor ?? '#32BB78';
   // İnce materyal (küçük, etkileşimli chrome). Erişilebilirlikte saydamlık
   // kapalıysa opak yüzeye düşer.
@@ -317,6 +317,13 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
   // Scroll farkındalığı — web'de tek capture dinleyicisi tüm ekranları kapsar;
   // native'de ekranlar `useNavScrollProps()` ile besler (bkz. navScroll.ts).
   useNavScrollBridge();
+  // Gizliyken görünmez bar dokunuşları yutmasın. Değer yalnız eşikte state'e
+  // yansır → kaydırma sırasında re-render yok.
+  const [navHidden, setNavHidden] = useState(false);
+  useEffect(() => {
+    const id = navCollapse.addListener(({ value }) => setNavHidden(value > 0.5));
+    return () => navCollapse.removeListener(id);
+  }, []);
   // Rota değişince bar açık başlar (yeni sayfa tepeden açılıyor).
   useEffect(() => { resetNavScroll(); }, [pathname]);
 
@@ -611,11 +618,11 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
     : {
         // Ölçek alt kenardan büyür/küçülür → bar "aşağı çekiliyor" gibi
         // okunur, ortadan büzülmüş gibi değil.
-        transformOrigin: 'center bottom',
-        opacity: navCollapse.interpolate({ inputRange: [0, 1], outputRange: [1, NAV.collapse.opacity] }),
+        // Ekranın altına tamamen kayar; opaklık kaymanın son yarısında söner
+        // (cam ekran kenarında yarım kalıp parlamasın).
+        opacity: navCollapse.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1, NAV.collapse.opacity] }),
         transform: [
-          { translateY: navCollapse.interpolate({ inputRange: [0, 1], outputRange: [0, NAV.collapse.translateY] }) },
-          { scale: navCollapse.interpolate({ inputRange: [0, 1], outputRange: [1, NAV.collapse.scale] }) },
+          { translateY: navCollapse.interpolate({ inputRange: [0, 1], outputRange: [0, wrapBottom + NAV.fab + NAV.collapse.extra] }) },
         ],
       };
 
@@ -630,7 +637,7 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
     {/* Navbar üstünde biten katman (Mesajlar) açıkken barın ARKASINDAKİ şeridi
         aynı tonla karart — katmanın karartması bar üst kenarında kesilmesin. */}
     <NavDimStrip height={bottomOffset + NAV_BAR_H} />
-    <Animated.View pointerEvents="box-none" style={[s.wrap, { bottom: wrapBottom }, collapseStyle as any]}>
+    <Animated.View pointerEvents={navHidden && !searchActive ? 'none' : 'box-none'} style={[s.wrap, { bottom: wrapBottom }, collapseStyle as any]}>
       {edge && !searchActive ? (
         <View
           pointerEvents="none"
