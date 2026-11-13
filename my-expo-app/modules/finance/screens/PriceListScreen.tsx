@@ -2196,6 +2196,7 @@ function CustomTab() {
   const rateForRef                    = useRef<string | null>(null);
   const [overrideCounts, setOverrideCounts] = useState<Record<string, number>>({});
   const [selectedClinic, setSelected] = useState<Clinic | null>(null);
+  const [clinicSearch, setClinicSearch] = useState('');
   const [loading, setLoading]         = useState(true);
   const [editModal, setEditModal]     = useState(false);
   const [editSvc, setEditSvc]         = useState<LabService | null>(null);
@@ -2402,6 +2403,12 @@ function CustomTab() {
   };
 
   const activeSvcs = services.filter((sv) => sv.is_active);
+  const clinicQ = clinicSearch.trim().toLocaleLowerCase('tr');
+  const filteredClinics = clinicQ
+    ? clinics.filter((c) =>
+        (c.name ?? '').toLocaleLowerCase('tr').includes(clinicQ)
+        || (c.contact_person ?? '').toLocaleLowerCase('tr').includes(clinicQ))
+    : clinics;
 
   if (loading) return <CenteredLoader color={PRIMARY} inline />;
 
@@ -2422,14 +2429,38 @@ function CustomTab() {
               <Building2 size={36} color={DS.ink[300]} strokeWidth={1.4} />
               <Text style={s.emptyTitle}>Henüz klinik eklenmemiş</Text>
             </View>
-          ) : (
+          ) : (<>
+            {/* Klinik arama — ad ve yetkili kişide, Türkçe büyük/küçük harf duyarsız */}
+            <View style={[s.searchWrap, { flex: 0, marginBottom: 14, backgroundColor: isDark ? MU.plainBtn.bg : T.card, borderColor: T.hairline }]}>
+              <Search size={15} color={T.ink3} strokeWidth={1.6} />
+              <TextInput
+                style={[s.searchInput as any, { color: T.ink }]}
+                value={clinicSearch}
+                onChangeText={setClinicSearch}
+                placeholder="Klinik ara..."
+                placeholderTextColor={T.ink3}
+              />
+              {clinicSearch.length > 0 && (
+                <GlassTooltip title={autoT('Temizle')} text={autoT('Aramayı temizle')}>
+                  <Pressable onPress={() => setClinicSearch('')} hitSlop={8} style={Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : undefined}>
+                    <X size={14} color={T.ink3} strokeWidth={1.6} />
+                  </Pressable>
+                </GlassTooltip>
+              )}
+            </View>
+            {filteredClinics.length === 0 ? (
+              <View style={s.empty}>
+                <Search size={32} color={DS.ink[300]} strokeWidth={1.4} />
+                <Text style={[s.emptyTitle, isDark && { color: T.ink2 }]}>Sonuç bulunamadı</Text>
+              </View>
+            ) : (
             /* Ekstre / giderler mobil tablosuyla aynı kalıp */
-            <MobileTableX title="Sağlık Kurumları" count={clinics.length} countLabel="kurum">
-              {clinics.map((c, ci) => {
+            <MobileTableX title="Sağlık Kurumları" count={filteredClinics.length} countLabel="kurum">
+              {filteredClinics.map((c, ci) => {
                 const overrideCount = overrideCounts[c.id] ?? 0;
                 const logo = (c as any).logo_url as string | null | undefined;
                 return (
-                  <MobileTableRowX key={c.id} isLast={ci === clinics.length - 1} onPress={() => selectClinic(c)}>
+                  <MobileTableRowX key={c.id} isLast={ci === filteredClinics.length - 1} onPress={() => selectClinic(c)}>
                     {logo ? (
                       // Zemin iki temada da BEYAZ: logolar saydam + koyu mürekkep,
                       // koyu kart üstünde kaybolur (Siparişler/Sağlık Kurumları ile aynı).
@@ -2453,7 +2484,8 @@ function CustomTab() {
                 );
               })}
             </MobileTableX>
-          )}
+            )}
+          </>)}
         </FlowScroll>
       ) : (
         /* -- Service override list for selected clinic -- */
