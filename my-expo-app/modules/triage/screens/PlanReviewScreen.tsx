@@ -258,13 +258,16 @@ function Tip({ label, children, grow, block }: {
     },
     <>
       {children}
-      <View
+      {/* YALNIZ hover'dayken çizilir: gizli (opacity 0) balon da düzende yer
+          kaplıyordu (left/right -130) → sağ kenardaki düğmelerde belge ekrandan
+          genişliyor, mobilde header'ın sağ ikonları (bildirim, profil) ekran
+          dışına itiliyordu. */}
+      {on ? <View
         pointerEvents="none"
         style={{
           position: 'absolute', bottom: '100%', left: -HALF, right: -HALF, marginBottom: 8,
-          alignItems: 'center', zIndex: 200, opacity: on ? 1 : 0,
+          alignItems: 'center', zIndex: 200,
           transform: [{ translateX: dx }],
-          transition: 'opacity 120ms ease',
         } as any}
       >
         <View style={{
@@ -277,7 +280,7 @@ function Tip({ label, children, grow, block }: {
             {label}
           </Text>
         </View>
-      </View>
+      </View> : null}
     </>,
   );
 }
