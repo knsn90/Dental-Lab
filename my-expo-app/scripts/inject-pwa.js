@@ -20,7 +20,11 @@ const PWA_HEAD = `
 
     <!-- ── iOS PWA capable ──────────────────────────────────────────── -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- "default": uygulama durum çubuğunun ALTINDAN başlar. black-translucent iOS
+         standalone'da görünüm yüksekliğini durum çubuğu kadar kısa hesaplıyordu →
+         altta ~47pt beyaz şerit + navbar yukarıda; içerik de saatin arkasından
+         bulanık kayıyordu (2026-11-13). -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Siman" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-180.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-180.png" />
