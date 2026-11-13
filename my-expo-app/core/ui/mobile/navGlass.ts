@@ -445,6 +445,13 @@ export function topEdgeLight(dark: boolean): string {
  */
 export function edgeSeparation(dark: boolean): any {
   if (Platform.OS !== 'web') return null;
+  // iOS WebKit backdrop-filter'ı mask-image ile KIRPMIYOR: şeridin üst kenarı
+  // tam genişlikte sert, gölgeli bir çizgi olarak çiziliyordu (PWA, 2026-11-13).
+  if (typeof navigator !== 'undefined') {
+    const ua = navigator.userAgent || '';
+    const iOS = /iP(hone|ad|od)/.test(ua) || (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1);
+    if (iOS) return null;
+  }
   const filter = dark
     ? 'blur(8px) saturate(140%) brightness(0.82)'
     : 'blur(8px) saturate(160%) brightness(1.06) contrast(0.92)';

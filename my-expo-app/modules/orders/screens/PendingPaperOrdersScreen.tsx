@@ -10,11 +10,12 @@ import { confirmAsync } from '../../../core/util/confirm';
 
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  View, Text, Pressable, ScrollView, Platform, RefreshControl, Image,
+  View, Text, Pressable, ScrollView, Platform, RefreshControl, Image, useWindowDimensions,
 } from 'react-native';
 import { useRouter, useSegments } from 'expo-router';
 import { NavyBackButtonX } from '../../../core/ui/NavyBackButtonX';
-import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
+import { PAGE_PADDING, mobileTopPad } from '../../../core/ui/pageMetrics';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MOBILE_PANEL_THEMES } from '../../../core/theme/mobileDesignTokens';
 import { ScanWorkOrderModal } from '../components/ScanWorkOrderModal';
 import {
@@ -83,6 +84,10 @@ export function PendingPaperOrdersScreen({ embedded = false }: { embedded?: bool
   const segments = useSegments() as string[];
   const panelGroup = String(segments?.[0] ?? '(lab)');
   const [scanOpen, setScanOpen] = useState(false);
+  const insets = useSafeAreaInsets();
+  const { width: winW } = useWindowDimensions();
+  // Mobilde logo + üst düğmeler sabit yüzer → satır onların ALTINDAN başlar.
+  const topPad = winW < 768 ? mobileTopPad(insets.top) : 12;
   const { profile } = useAuthStore();
   const labId = (profile as any)?.lab_id ?? profile?.id ?? null;
   const U = useInkUI();
@@ -194,7 +199,7 @@ export function PendingPaperOrdersScreen({ embedded = false }: { embedded?: bool
     if (embedded) return <>{body}</>;
     return (
       <View style={{ flex: 1, backgroundColor: pageBg }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: PAGE_PADDING, paddingTop: 12, paddingBottom: 4 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: PAGE_PADDING, paddingTop: topPad, paddingBottom: 4 }}>
           <NavyBackButtonX onPress={goBack} />
           <View style={{ flex: 1 }} />
           {Platform.OS === 'web' && (
