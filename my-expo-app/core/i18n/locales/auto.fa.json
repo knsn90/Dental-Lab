@@ -10292,5 +10292,11 @@
   "Kağıt iş emrini kamerayla çekin ya da taranmış dosyayı yükleyin; bilgiler forma aktarılır.": "از برگهٔ سفارش کاغذی با دوربین عکس بگیرید یا فایل اسکن‌شده را بارگذاری کنید؛ اطلاعات به فرم منتقل می‌شود.",
   "Özel fiyat listesi": "لیست قیمت اختصاصی",
   "Bu kliniğe özel fiyatları aç ve düzenle": "قیمت‌های اختصاصی این کلینیک را باز و ویرایش کنید",
-  "Fiyat listesini kapat": "بستن لیست قیمت"
+  "Fiyat listesini kapat": "بستن لیست قیمت",
+  "Seçilen hekimin kaydı bulunamadı.": "سابقهٔ دندانپزشک انتخاب‌شده پیدا نشد.",
+  "Lab notu hekime görünür": "یادداشت لابراتوار برای دندانپزشک قابل مشاهده",
+  "Makine tipi": "نوع دستگاه",
+  "Ölçü tipi": "نوع قالب‌گیری",
+  "Scan body teslim edildi": "اسکن‌بادی تحویل داده شد",
+  "Hekim onayı gerekli": "تأیید دندانپزشک لازم است"
 }

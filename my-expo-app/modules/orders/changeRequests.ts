@@ -81,6 +81,10 @@ const FIELD_LABELS: Record<string, string> = {
   patient_nationality: 'Uyruk', patient_city: 'Şehir', work_type: 'İş tipi',
   shade: 'Renk', model_type: 'Model', delivery_method: 'Teslim şekli',
   delivery_date: 'Teslim tarihi', is_urgent: 'Acil', notes: 'Not', tooth_numbers: 'Dişler',
+  // 20261113150000: düzenleme artık bu alanları da gönderiyor
+  lab_notes: 'Lab notu', lab_notes_visible: 'Lab notu hekime görünür', tags: 'Etiketler',
+  machine_type: 'Makine tipi', measurement_type: 'Ölçü tipi',
+  scan_bodies_delivered: 'Scan body teslim edildi', doctor_approval_required: 'Hekim onayı gerekli',
 };
 
 export function summarizeChangeFields(fields: Record<string, any>): { label: string; value: string }[] {

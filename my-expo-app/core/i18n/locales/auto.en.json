@@ -10292,5 +10292,11 @@
   "Kağıt iş emrini kamerayla çekin ya da taranmış dosyayı yükleyin; bilgiler forma aktarılır.": "Photograph the paper work order or upload a scanned file; the details are carried into the form.",
   "Özel fiyat listesi": "Custom price list",
   "Bu kliniğe özel fiyatları aç ve düzenle": "Open and edit this clinic's custom prices",
-  "Fiyat listesini kapat": "Close price list"
+  "Fiyat listesini kapat": "Close price list",
+  "Seçilen hekimin kaydı bulunamadı.": "The selected doctor's record could not be found.",
+  "Lab notu hekime görünür": "Lab note visible to doctor",
+  "Makine tipi": "Machine type",
+  "Ölçü tipi": "Impression type",
+  "Scan body teslim edildi": "Scan body delivered",
+  "Hekim onayı gerekli": "Doctor approval required"
 }

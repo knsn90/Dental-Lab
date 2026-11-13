@@ -2591,12 +2591,39 @@ export function NewOrderScreen({
       // İmplant alanları HER ZAMAN gönderilir (null dahil) — vakadan implant
       // kaldırıldığında eski değer kalmasın. RPC "anahtar varsa yaz" mantığında.
       ...implantFieldsPayload(form),
+      // 20261113150000: bu alanlar düzenlemede değişiyor ama hiç gönderilmiyordu
+      // (NEX-2026-0231). Prefill hepsini siparişten doldurur → dokunulmayan değer korunur.
+      lab_notes: form.lab_notes || null,
+      lab_notes_visible: form.lab_notes_visible,
+      tags: form.tags,
+      machine_type: form.machine_type || null,
+      measurement_type: form.measurement_type || null,
+      scan_bodies_delivered: form.scan_bodies_delivered,
+      doctor_approval_required: form.doctor_approval_required,
     };
 
     // Kaydet yolu: lab/admin panel → doğrudan admin güncelleme; hekim/klinik →
     // planlama öncesi doğrudan, sonrası değişiklik talebi (lab onayı).
     const adminEdit = resolvedPanel === 'lab' || resolvedPanel === 'admin' || resolvedPanel === 'station';
     const requestMode = !adminEdit && !isOrderPrePlanning(editOrderRow);
+
+    // Hekim/klinik değişikliği YALNIZ lab/admin (sunucu da yalnız admin_update_order'da yazar).
+    // Seçici bazen profiles.id verir → work_orders.doctor_id doctors.id olmalı; eşini bul.
+    if (adminEdit && form.doctor_id) {
+      const { data: docRow } = await supabase.from('doctors').select('id').eq('id', form.doctor_id).maybeSingle();
+      let docId: string | null = (docRow as any)?.id ?? null;
+      if (!docId) {
+        const { data: prof } = await supabase.from('profiles').select('full_name, clinic_id').eq('id', form.doctor_id).maybeSingle();
+        if ((prof as any)?.full_name) {
+          let q = supabase.from('doctors').select('id').ilike('full_name', (prof as any).full_name).limit(1);
+          if ((prof as any).clinic_id) q = q.eq('clinic_id', (prof as any).clinic_id);
+          const { data: m } = await q.maybeSingle();
+          docId = (m as any)?.id ?? null;
+        }
+      }
+      if (!docId) { setSubmitError(autoT('Seçilen hekimin kaydı bulunamadı.')); return; }
+      fields.doctor_id = docId;
+    }
 
     setLoading(true);
     const { error } = adminEdit

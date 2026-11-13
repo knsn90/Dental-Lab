@@ -867,6 +867,15 @@ export interface ClientOrderEditFields {
   implant_brand?: string | null;
   implant_teeth?: number[] | null;
   implant_details?: Record<string, { system: string; type: string; abutment: string; screw: string }> | null;
+  /** Yalnız admin_update_order yazar (lab/admin); hekim/klinik yollarında yok sayılır. */
+  doctor_id?: string | null;
+  lab_notes?: string | null;
+  lab_notes_visible?: boolean;
+  tags?: string[];
+  machine_type?: string | null;
+  measurement_type?: string | null;
+  scan_bodies_delivered?: boolean;
+  doctor_approval_required?: boolean;
 }
 
 export interface ClientOrderEditItem {

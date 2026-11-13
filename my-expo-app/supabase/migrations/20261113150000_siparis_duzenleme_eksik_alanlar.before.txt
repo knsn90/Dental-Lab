@@ -1,0 +1,14 @@
+BEFORE — 20261113150000_siparis_duzenleme_eksik_alanlar (canlı, 2026-11-13)
+
+md5(prosrc):
+  _apply_order_edit   0255171463c2af7618fcd3ca723a9768
+  admin_update_order  2bee65e71f64619bba29bbd9bd8b4ab9
+  _doctor_delete_guard  (yok)
+
+doctors tetikleyicileri: doctors_auto_lab_id, doctors_link_profile_on_insert,
+  doctors_updated_at, trg_log_doctor_created, trg_log_doctor_deleted (BEFORE DELETE),
+  trg_log_doctor_updated — trg_doctor_delete_guard YOK.
+
+Tam tanımlar: .down.sql (canlı pg_get_functiondef çıktısından birebir).
+Kanıt vakası: NEX-2026-0231 doctor_id=eb934fab… (doctors/profiles'ta yok; hekim 14:44'te silindi).
+work_orders içinde öksüz doctor_id: 1/105.

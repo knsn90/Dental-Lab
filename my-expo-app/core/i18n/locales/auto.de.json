@@ -10292,5 +10292,11 @@
   "Kağıt iş emrini kamerayla çekin ya da taranmış dosyayı yükleyin; bilgiler forma aktarılır.": "Fotografieren Sie den Papierauftrag oder laden Sie eine gescannte Datei hoch; die Angaben werden ins Formular übernommen.",
   "Özel fiyat listesi": "Individuelle Preisliste",
   "Bu kliniğe özel fiyatları aç ve düzenle": "Individuelle Preise dieser Klinik öffnen und bearbeiten",
-  "Fiyat listesini kapat": "Preisliste schließen"
+  "Fiyat listesini kapat": "Preisliste schließen",
+  "Seçilen hekimin kaydı bulunamadı.": "Der Datensatz des ausgewählten Zahnarztes wurde nicht gefunden.",
+  "Lab notu hekime görünür": "Labornotiz für Zahnarzt sichtbar",
+  "Makine tipi": "Maschinentyp",
+  "Ölçü tipi": "Abformungsart",
+  "Scan body teslim edildi": "Scanbody geliefert",
+  "Hekim onayı gerekli": "Zahnarztfreigabe erforderlich"
 }
