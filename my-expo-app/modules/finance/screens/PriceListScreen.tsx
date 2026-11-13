@@ -2431,7 +2431,13 @@ function CustomTab() {
             </View>
           ) : (<>
             {/* Klinik arama — ad ve yetkili kişide, Türkçe büyük/küçük harf duyarsız */}
-            <View style={[s.searchWrap, { flex: 0, marginBottom: 14, backgroundColor: isDark ? MU.plainBtn.bg : T.card, borderColor: T.hairline }]}>
+            <View style={{
+              // s.searchWrap'ı yaymıyoruz: oradaki flex:1 dikey kaydırmada yüksekliği sıfıra ezer.
+              flexDirection: 'row', alignItems: 'center', gap: 8, height: 44,
+              paddingHorizontal: 16, marginBottom: 14, borderRadius: 9999, borderWidth: 1,
+              backgroundColor: isDark ? MU.plainBtn.bg : T.card, borderColor: T.hairline,
+              ...(Platform.OS === 'web' ? { boxShadow: isDark ? 'none' : '0 4px 12px rgba(0,0,0,0.05)' } as any : {}),
+            }}>
               <Search size={15} color={T.ink3} strokeWidth={1.6} />
               <TextInput
                 style={[s.searchInput as any, { color: T.ink }]}
