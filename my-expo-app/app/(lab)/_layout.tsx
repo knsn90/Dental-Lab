@@ -67,7 +67,7 @@ export default function LabLayout() {
   const isDesktopForHeader = useIsDesktop();
   const hideTopActionBar =
     /^\/(order|invoice|purchase-invoice|expense|statement|delivery)\//.test(pathname)
-    && !(!isDesktopForHeader && /^\/order\/[^/]+\/?$/.test(pathname));
+    && !(!isDesktopForHeader && /^\/order\/(plan\/)?[^/]+\/?$/.test(pathname));   // mobil: sipariş detayı + plan önizleme header'lı
   const { approvals: pendingDesign } = useDesignPending();
   const pendingMaterial = useMaterialRequestPending();
   const pendingCount = pendingDesign.length + pendingMaterial;

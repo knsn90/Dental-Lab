@@ -64,7 +64,7 @@ export default function AdminLayout() {
   const isDesktopForHeader = useIsDesktop();
   const hideTopActionBar =
     /^\/(order|invoice|purchase-invoice|expense|statement|delivery)\//.test(pathname)
-    && !(!isDesktopForHeader && /^\/order\/[^/]+\/?$/.test(pathname));
+    && !(!isDesktopForHeader && /^\/order\/(plan\/)?[^/]+\/?$/.test(pathname));   // mobil: sipariş detayı + plan önizleme header'lı
   const { profile, loading } = useAuthStore();
   const pendingCount      = usePendingApprovals();
   const stockAlert        = useStockAlert();

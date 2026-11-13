@@ -988,7 +988,8 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
 
   return (
     <View style={{ flex: 1, backgroundColor: PAGE }}>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: PAGE_PADDING, paddingTop: 18 + insets.top, paddingBottom: (isNarrow ? 300 : 150) + insets.bottom, width: '100%' }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: PAGE_PADDING, paddingTop: winW < 1024 ? Math.max(insets.top, 8) + 58 : 18 + insets.top,   // mobilde panel header'ı (logo + ikonlar) üstte — sipariş detayıyla aynı ofset
+        paddingBottom: (isNarrow ? 300 : 150) + insets.bottom, width: '100%' }}>
         {/* Sipariş künyesi + diş şeması — SPLIT (sol künye · sağ diş şeması).
             İki kart aynı yükseklikte (`stretch`). Künye kartı diş şemasından
             kısa kalırsa fazla yükseklik ALTTA boşluk olarak birikmesin diye
