@@ -8,6 +8,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { firstName as displayFirstName } from '../../core/util/personName';
 import { safeBack } from '../util/safeBack';
+import { NavyBackButtonX } from '../ui/NavyBackButtonX';
 import { View, Text, ScrollView, Pressable, TextInput, Platform, useWindowDimensions, Animated, Easing, Image, Linking } from 'react-native';
 import { Slot, usePathname, useRouter } from 'expo-router';
 
@@ -303,6 +304,7 @@ export function PatternsShell({
   const pageTitle = usePageTitleStore(s => s.title);
   const pageSubtitle = usePageTitleStore(s => s.subtitle);
   const pageActions = usePageTitleStore(s => s.actions);
+  const pageBack = usePageTitleStore(s => s.onBack);
 
   useEffect(() => { injectPatternsScrollbar(); }, []);
 
@@ -607,7 +609,10 @@ export function PatternsShell({
           {/* Page title */}
           <View className="flex-1" style={{ ...(rtl ? { paddingLeft: 280 } : { paddingRight: 280 }) }}>
             {effectiveTitle ? (
-              <View className="gap-0.5">
+              <View className="flex-row" style={{ gap: 14, alignItems: 'flex-start' }}>
+              {/* Düğme (30px) başlık SATIRININ (38/50px) ortasına hizalı — alt yazıya değil. */}
+              {pageBack ? <View style={{ marginTop: rtl ? 10 : 4 }}><NavyBackButtonX onPress={pageBack} /></View> : null}
+              <View className="gap-0.5" style={{ flex: 1, minWidth: 0 }}>
                 <Text
                   className="text-ink-900 dark:text-white/90"
                   numberOfLines={1}
@@ -648,6 +653,7 @@ export function PatternsShell({
                     })}
                   </View>
                 ) : null}
+              </View>
               </View>
             ) : null}
           </View>

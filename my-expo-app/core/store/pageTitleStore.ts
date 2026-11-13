@@ -11,8 +11,11 @@ interface PageTitleState {
   subtitle: string | null;
   /** Sayfa başlığının yanında (sağında) gösterilecek aksiyon node'u (ör. Düzenle/Sil) */
   actions:  ReactNode | null;
+  /** Verilirse başlığın SOLUNDA lacivert geri düğmesi çizilir (yalnız bunu veren sayfalarda). */
+  onBack:   (() => void) | null;
   setTitle:   (title: string | null, subtitle?: string | null) => void;
   setActions: (actions: ReactNode | null) => void;
+  setBack:    (onBack: (() => void) | null) => void;
   clear:      () => void;
 }
 
@@ -20,7 +23,9 @@ export const usePageTitleStore = create<PageTitleState>((set) => ({
   title:    null,
   subtitle: null,
   actions:  null,
+  onBack:   null,
   setTitle:   (title, subtitle = null) => set({ title, subtitle }),
   setActions: (actions) => set({ actions }),
-  clear:      () => set({ title: null, subtitle: null, actions: null }),
+  setBack:    (onBack) => set({ onBack }),
+  clear:      () => set({ title: null, subtitle: null, actions: null, onBack: null }),
 }));

@@ -891,8 +891,21 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
   const progressTheme: 'lab' | 'clinic' | 'exec' | 'tech' = panelTheme === 'doctor' ? 'tech' : panelTheme;
 
   // Page title — PatternsShell toolbar satırında gösterilir
-  const { setTitle: setPageTitle, clear: clearPageTitle } = usePageTitleStore();
+  const { setTitle: setPageTitle, setBack: setPageBack, clear: clearPageTitle } = usePageTitleStore();
   const _clinic = order?.doctor?.clinic_name ?? order?.doctor?.clinic?.name ?? '';
+  // Geri = GELDİĞİN ekran (fatura, pano, Özet…). Eskiden her zaman Siparişler
+  // listesine replace ediliyordu — sekmeler 'firstRoute' ile Özet'e atıyordu, bu onun
+  // yamasıydı. Artık <Tabs backBehavior="history">; geçmiş yoksa (bildirim/link)
+  // yine listeye düşer. Lab listesi 'all-orders'.
+  const goBackFromDetail = () => {
+    if (panelGroup.startsWith('(')) {
+      const ordersRoute = panelGroup === '(lab)' ? 'all-orders' : 'orders';
+      safeBack(`/${panelGroup}/${ordersRoute}`);
+    } else {
+      // Top-level /order/[id] (bildirim/derin bağlantı) — panel bilinmiyor.
+      safeBack('/');
+    }
+  };
   useEffect(() => {
     if (embedded) return;   // popup içinde shell başlığını ezme
     if (order) {
@@ -900,6 +913,8 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
         order.order_number,
         `Siparişler › ${_clinic || '—'}`
       );
+      // Masaüstü başlığında sipariş numarasının solunda geri düğmesi.
+      setPageBack(goBackFromDetail);
     }
     return () => clearPageTitle();
   }, [order?.order_number, _clinic, panelGroup, embedded]);
@@ -1623,19 +1638,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
         onProva={provaPanel && order.status !== 'iptal' ? () => { setProvaOrigin(null); setProvaOpen(true); } : undefined}
         provaDot={provaHero.dot}
         doctorNote={(order as any).notes ?? null}
-        onBack={() => {
-          // Geri = GELDİĞİN ekran (fatura, pano, Özet…). Eskiden her zaman Siparişler
-          // listesine replace ediliyordu — sekmeler 'firstRoute' ile Özet'e atıyordu, bu onun
-          // yamasıydı. Artık <Tabs backBehavior="history">; geçmiş yoksa (bildirim/link)
-          // yine listeye düşer. Lab listesi 'all-orders'.
-          if (panelGroup.startsWith('(')) {
-            const ordersRoute = panelGroup === '(lab)' ? 'all-orders' : 'orders';
-            safeBack(`/${panelGroup}/${ordersRoute}`);
-          } else {
-            // Top-level /order/[id] (bildirim/derin bağlantı) — panel bilinmiyor.
-            safeBack('/');
-          }
-        }}
+        onBack={goBackFromDetail}
         onChat={() => setChatOpen(true)}
         cancelNode={<OrderClientActions order={order as any} panelGroup={panelGroup} onChanged={refetch} />}
         logisticsNode={
@@ -2787,7 +2790,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
             <View className="p-6 flex-row items-center gap-5 flex-wrap">
               <PercentRingX value={progressPct} size={88} theme={progressTheme} />
               <View className="flex-1" style={{ minWidth: 160 }}>
-                <Text className="text-[11px] font-semibold uppercase" style={{ letterSpacing: 1.1, color: accentInk }}>
+                <Text className="text-[11px] font-semibold uppercase" style={{ letterSpacing: 1.1, color: 'rgba(255,255,255,0.68)' }}>
                   Şu an
                 </Text>
                 <Text className="text-white mt-0.5" style={{ ...DISPLAY, fontSize: 24, letterSpacing: -0.4 }}>
