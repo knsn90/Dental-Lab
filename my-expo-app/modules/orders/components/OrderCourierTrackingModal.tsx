@@ -109,7 +109,7 @@ export function OrderCourierTrackingModal({ visible, onClose, leg, labAddress, c
 
   const { originText, destText } = legRouteAddresses(leg, labAddress ?? null, clinicAddress ?? null);
   const courierName = extCourier?.name ?? leg.ext_courier_name ?? leg.courier?.full_name ?? leg.external_provider ?? autoT('Kurye');
-  const courierPhoto = extCourier?.photoUrl ?? leg.ext_courier_photo ?? null;
+  const courierPhoto = extCourier?.photoUrl ?? leg.ext_courier_photo ?? leg.courier?.avatar_url ?? null;
   const phone = extCourier?.phone ?? leg.ext_courier_phone ?? leg.destination_phone ?? null;
   const stRaw = STATUS_CFG[String(leg.status)] ?? STATUS_CFG.beklemede;
   const st = isDark ? { ...stRaw, fg: DARK_STATUS_FG[stRaw.fg] ?? T.ink2 } : stRaw;
@@ -273,6 +273,10 @@ export function OrderCourierTrackingModal({ visible, onClose, leg, labAddress, c
             accent={accent}
             height="100%"
             onRouteInfo={setEta}
+            // Pin kuryenin fotoğrafını (yoksa baş harflerini) gösterir — Kurye Takip sayfasıyla aynı.
+            courierPhoto={courierPhoto ?? undefined}
+            courierName={courierName}
+            courierLive={['atandi', 'teslim_alindi', 'yolda'].includes(String(leg.status))}
           />
 
           {/* Başlık */}

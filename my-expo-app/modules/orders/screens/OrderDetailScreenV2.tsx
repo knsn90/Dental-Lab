@@ -465,7 +465,7 @@ export function OrderDetailScreenV2({ idOverride, embedded = false, onRequestClo
     const fetchDeliveries = async () => {
       const { data } = await supabase
         .from('deliveries')
-        .select(`id, mode, status, courier_id, external_provider, external_tracking_no, external_tracking_code, external_label_url, picked_up_at, delivered_at, created_at, notes, destination_name, destination_address, destination_phone, purpose, direction, fee_amount, fee_currency, fee_source, stage_snapshot, ext_courier_name, ${PROOF_SELECT}, courier:profiles!deliveries_courier_profiles_fkey(full_name)`)
+        .select(`id, mode, status, courier_id, external_provider, external_tracking_no, external_tracking_code, external_label_url, picked_up_at, delivered_at, created_at, notes, destination_name, destination_address, destination_phone, purpose, direction, fee_amount, fee_currency, fee_source, stage_snapshot, ext_courier_name, ext_courier_phone, ext_courier_photo, ${PROOF_SELECT}, courier:profiles!deliveries_courier_profiles_fkey(full_name, avatar_url)`)
         .eq('work_order_id', orderUuid)
         .order('created_at', { ascending: false });
       const rows = (data ?? []) as any[];
