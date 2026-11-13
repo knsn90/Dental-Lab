@@ -1940,7 +1940,12 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: 'rgba(20,15,10,0.55)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{
+        flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20,
+        // POPUP ARKA PLANI KURALI: arkası bulanık (useInkUI().modalOverlay ile aynı değerler).
+        backgroundColor: isDark ? 'rgba(0,0,0,0.62)' : 'rgba(15,23,42,0.45)',
+        ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px) saturate(120%)', WebkitBackdropFilter: 'blur(8px) saturate(120%)' } as any : {}),
+      }}>
         <View style={{
           backgroundColor: T.card, borderRadius: 24, width: '100%', maxWidth: 560, maxHeight: '94%', overflow: 'hidden',
           ...(Platform.OS === 'web' ? { boxShadow: isDark ? '0 24px 64px rgba(0,0,0,0.6)' : '0 24px 64px rgba(0,0,0,0.22)' } as any : {}),
@@ -2499,7 +2504,12 @@ export function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, 
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: 'rgba(20,15,10,0.55)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{
+        flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20,
+        // POPUP ARKA PLANI KURALI: arkası bulanık (useInkUI().modalOverlay ile aynı değerler).
+        backgroundColor: isDark ? 'rgba(0,0,0,0.62)' : 'rgba(15,23,42,0.45)',
+        ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px) saturate(120%)', WebkitBackdropFilter: 'blur(8px) saturate(120%)' } as any : {}),
+      }}>
         <View style={{
           backgroundColor: T.card, borderRadius: 24, width: '100%', maxWidth: 500, maxHeight: '94%', overflow: 'hidden',
           ...(Platform.OS === 'web' ? { boxShadow: isDark ? '0 24px 64px rgba(0,0,0,0.6)' : '0 24px 64px rgba(0,0,0,0.22)' } as any : {}),
