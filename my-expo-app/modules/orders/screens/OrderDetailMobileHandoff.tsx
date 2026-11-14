@@ -12,9 +12,9 @@
 //   7. Activity log (Tüm/Aktivite/Mesaj tabs)
 //   8. QC quick tags
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { EdgeSwipeBack } from '../../../core/ui/mobile/EdgeSwipeBack';
-import { View, Text, Pressable, ScrollView, Platform } from 'react-native';
+import { View, Text, Pressable, ScrollView, Platform, Modal, useWindowDimensions } from 'react-native';
 import { StepsTimelineX } from '../../../core/ui/ProgressX';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -161,6 +161,94 @@ export interface OrderDetailMobileHandoffProps {
   implantParts?: React.ReactNode;
 }
 
+type OverflowItem = {
+  key: string; label: string; hint: string;
+  Icon: React.ComponentType<any>; onPress: () => void;
+  /** Geri dönüşü zor eylem: menüde ayraçla ayrılır, amber tonda yazılır. */
+  caution?: boolean;
+};
+
+/** Üst çubuğun "•••" düğmesi. Tek eylemde doğrudan o eylemin düğmesi, birden fazlasında
+ *  düğmenin altına demirlenen küçük menü (etiketli satırlar). Eylem yoksa hiçbir şey çizmez. */
+function TopBarOverflow({ items }: { items: OverflowItem[] }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const { width: winW } = useWindowDimensions();
+  const anchorRef = useRef<View>(null);
+  const [pos, setPos] = useState<{ right: number; top: number } | null>(null);
+  if (items.length === 0) return null;
+
+  const btn = {
+    width: 40, height: 40, borderRadius: 13, backgroundColor: T.card,
+    alignItems: 'center' as const, justifyContent: 'center' as const,
+  };
+  const amber = isDark ? '#FBBF24' : '#B45309';
+
+  if (items.length === 1) {
+    const it = items[0];
+    return (
+      <GlassTooltip title={it.label} text={it.hint} placement="bottom">
+        <Pressable onPress={it.onPress} accessibilityRole="button" accessibilityLabel={it.label} style={btn}>
+          <it.Icon size={19} color={it.caution ? amber : T.ink} strokeWidth={2} />
+        </Pressable>
+      </GlassTooltip>
+    );
+  }
+
+  const MENU_W = 236;
+  const open = () => {
+    anchorRef.current?.measureInWindow((x, y, w, h) => setPos({ right: x + w, top: y + h + 8 }));
+  };
+  const close = () => setPos(null);
+  const left = pos ? Math.min(Math.max(pos.right - MENU_W, 16), Math.max(16, winW - MENU_W - 16)) : 0;
+
+  return (
+    <>
+      <GlassTooltip title={autoT('Diğer işlemler')} text={autoT('Sipariş geçmişi ve seyrek kullanılan işlemler')} placement="bottom">
+        <Pressable ref={anchorRef as any} onPress={open} accessibilityRole="button" accessibilityLabel={autoT('Diğer işlemler')} style={btn}>
+          <MoreHorizontal size={19} color={T.ink} strokeWidth={2} />
+        </Pressable>
+      </GlassTooltip>
+      <Modal visible={!!pos} transparent animationType="fade" onRequestClose={close}>
+        <Pressable
+          onPress={close}
+          accessibilityLabel={autoT('Kapat')}
+          style={{
+            flex: 1, backgroundColor: isDark ? 'rgba(0,0,0,0.45)' : 'rgba(15,23,42,0.18)',
+            ...(Platform.OS === 'web' ? ({ backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', cursor: 'default' } as any) : {}),
+          }}
+        >
+          <View style={{
+            position: 'absolute', top: pos?.top ?? 0, left, width: MENU_W,
+            backgroundColor: T.card, borderRadius: 16, paddingVertical: 6,
+            shadowColor: '#000', shadowOpacity: isDark ? 0.5 : 0.16, shadowRadius: 24, shadowOffset: { width: 0, height: 10 },
+            elevation: 12,
+          }}>
+            {items.map((it, i) => (
+              <React.Fragment key={it.key}>
+                {it.caution && i > 0 ? (
+                  <View style={{ height: 1, backgroundColor: T.hairline, marginVertical: 6, marginHorizontal: 14 }} />
+                ) : null}
+                <Pressable
+                  onPress={() => { close(); it.onPress(); }}
+                  accessibilityRole="button"
+                  accessibilityLabel={it.label}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 44, paddingHorizontal: 14 }}
+                >
+                  <it.Icon size={18} color={it.caution ? amber : T.ink2} strokeWidth={2} />
+                  <Text style={{ flex: 1, fontSize: 15, fontWeight: '500', color: it.caution ? amber : T.ink }} numberOfLines={1}>
+                    {it.label}
+                  </Text>
+                </Pressable>
+              </React.Fragment>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
+    </>
+  );
+}
+
 export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
@@ -202,7 +290,7 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
               accessibilityLabel={autoT('Geri')}
               // Kontrastlı geri: panel vurgu rengi dolgu + üstünde okunur ikon (safranda koyu, diğerlerinde beyaz).
               style={({ pressed }: any) => ({
-                width: 38, height: 38, borderRadius: 12,
+                width: 40, height: 40, borderRadius: 13,
                 backgroundColor: accent, borderWidth: 1, borderColor: accent,
                 alignItems: 'center', justifyContent: 'center',
                 transform: [{ scale: pressed ? 0.95 : 1 }],
@@ -212,54 +300,17 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
                        : <ChevronLeft size={18} color={onAccentInk(accent)} strokeWidth={2.2} />}
             </Pressable>
           </GlassTooltip>
-          {/* Başlık geri düğmesiyle sağdaki düğmelerin ARASINDAKİ boşlukta ortalanır. Ekranın tam
-              ortasına mutlak konumlanınca (eski hâl) sağdaki düğme sayısı arttıkça (Geçmiş + Prova +
-              Mesajlar) numaranın üstüne biniyordu; şimdi yer daralırsa numara kısalır, çakışmaz. */}
-          <View pointerEvents="none" style={{ flex: 1, minWidth: 0, marginHorizontal: 8, alignItems: 'center', justifyContent: 'center', gap: 1 }}>
-            <Text style={{ fontFamily: T.mono, fontSize: 10, color: T.ink3, letterSpacing: 0.6 }} numberOfLines={1}>
-              SİPARİŞ
+          {/* Sipariş numarası geri düğmesinin yanında, başa yaslı: göz geri → numara → eylemler
+              sırasıyla okur; sağdaki düğme sayısı ne olursa olsun numara kaymaz. */}
+          <View pointerEvents="none" style={{ flex: 1, minWidth: 0, marginHorizontal: 10, justifyContent: 'center', gap: 1 }}>
+            <Text style={{ fontSize: 11, color: T.ink3, textAlign: isRTL() ? 'right' : 'left' }} numberOfLines={1}>
+              {autoT('Sipariş')}
             </Text>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink, maxWidth: '100%' }} numberOfLines={1}>
+            <Text style={{ fontSize: 16, fontWeight: '600', color: T.ink, letterSpacing: -0.2, textAlign: isRTL() ? 'right' : 'left' }} numberOfLines={1}>
               {props.orderNumber}
             </Text>
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          {/* Teslimi geri al — yalnız teslim edilmiş işte yöneticiye */}
-          {props.onUndoDelivery ? (
-            <GlassTooltip title={autoT('Teslimi geri al')} text={autoT('Yanlışlıkla teslim edildiyse siparişi seçtiğiniz üretim aşamasına döndürür')} placement="bottom">
-              <Pressable
-                onPress={props.onUndoDelivery}
-                accessibilityRole="button"
-                accessibilityLabel={autoT('Teslimi geri al')}
-                style={({ pressed }: any) => ({
-                  width: 38, height: 38, borderRadius: 12,
-                  backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline,
-                  alignItems: 'center', justifyContent: 'center',
-                  transform: [{ scale: pressed ? 0.95 : 1 }],
-                })}
-              >
-                <Undo2 size={18} color={T.ink} strokeWidth={2} />
-              </Pressable>
-            </GlassTooltip>
-          ) : null}
-          {/* Sipariş geçmişi — popup (kim, ne zaman, ne yaptı) */}
-          {props.onHistory ? (
-            <GlassTooltip title={autoT('Sipariş geçmişi')} text={autoT('Kim, ne zaman, ne yaptı: oluşturma, söz verilen teslim, kurye, notlar ve sohbet')} placement="bottom">
-              <Pressable
-                onPress={props.onHistory}
-                accessibilityRole="button"
-                accessibilityLabel={autoT('Sipariş geçmişi')}
-                style={({ pressed }: any) => ({
-                  width: 38, height: 38, borderRadius: 12,
-                  backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline,
-                  alignItems: 'center', justifyContent: 'center',
-                  transform: [{ scale: pressed ? 0.95 : 1 }],
-                })}
-              >
-                <History size={18} color={T.ink} strokeWidth={2} />
-              </Pressable>
-            </GlassTooltip>
-          ) : null}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           {/* Prova — durum noktası ikonun üstünde (popup ortada açılır) */}
           {props.onProva ? (() => {
             const DotIcon = provaHeroIcon(props.provaDot ?? 'none');
@@ -270,54 +321,65 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
                   accessibilityRole="button"
                   accessibilityLabel={autoT('Prova')}
                   style={({ pressed }: any) => ({
-                    width: 38, height: 38, borderRadius: 12,
-                    backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline,
+                    width: 40, height: 40, borderRadius: 13,
+                    backgroundColor: T.card,
                     alignItems: 'center', justifyContent: 'center',
                     transform: [{ scale: pressed ? 0.95 : 1 }],
                   })}
                 >
-                  <DotIcon size={18} color={T.ink} strokeWidth={2} />
+                  <DotIcon size={19} color={T.ink} strokeWidth={2} />
                 </Pressable>
               </GlassTooltip>
             );
           })() : null}
-          {/* Mesaj butonu — order-spesifik chat. Okunmamış varsa accent'li etiketli pill (belirgin ama sade) */}
+          {/* Mesajlar — okunmamış sayısı ikonun köşesinde rozet; düğme GENİŞLEMEZ (numara kaymasın). */}
           {props.onChat ? (() => {
-            const hasUnread = !!props.chatUnreadCount && props.chatUnreadCount > 0;
+            const unread = props.chatUnreadCount && props.chatUnreadCount > 0 ? props.chatUnreadCount : 0;
             return (
               <GlassTooltip title={autoT('Mesajlar')} text={autoT('Bu siparişin sohbetini açar')} placement="bottom">
-              <Pressable
-                onPress={props.onChat}
-                accessibilityLabel="Mesajlar"
-                style={{
-                  height: 38, borderRadius: 12,
-                  width: hasUnread ? undefined : 38,
-                  paddingHorizontal: hasUnread ? 11 : 0,
-                  flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-                  backgroundColor: hasUnread ? accentSoft : T.card,
-                  borderWidth: 1, borderColor: hasUnread ? accent : T.hairline,
-                }}
-              >
-                <MessageCircle size={18} color={T.ink} strokeWidth={2} />
-                {hasUnread && (
-                  <>
-                    <Text style={{ fontSize: 12.5, fontWeight: '700', color: T.ink }}>Mesaj</Text>
-                    <View style={{
+                <Pressable
+                  onPress={props.onChat}
+                  accessibilityRole="button"
+                  accessibilityLabel={autoT('Mesajlar')}
+                  style={{
+                    width: 40, height: 40, borderRadius: 13,
+                    backgroundColor: T.card,
+                    alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  <MessageCircle size={19} color={T.ink} strokeWidth={2} />
+                  {unread > 0 ? (
+                    <View pointerEvents="none" style={{
+                      position: 'absolute', top: -4, right: -4,
                       minWidth: 18, height: 18, paddingHorizontal: 5, borderRadius: 9,
-                      backgroundColor: T.ruby, alignItems: 'center', justifyContent: 'center',
+                      backgroundColor: T.ruby, borderWidth: 2, borderColor: T.bg,
+                      alignItems: 'center', justifyContent: 'center',
                     }}>
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: '#FFFFFF' }}>
-                        {props.chatUnreadCount}
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: '#FFFFFF', lineHeight: 12 }}>
+                        {unread > 99 ? '99+' : unread}
                       </Text>
                     </View>
-                  </>
-                )}
-              </Pressable>
+                  ) : null}
+                </Pressable>
               </GlassTooltip>
             );
-          })() : (
-            <View style={{ width: 38 }} />
-          )}
+          })() : null}
+          {/* Seyrek eylemler (geçmiş, teslimi geri al) "•••" menüsünde, yazılı etiketle. Tek eylem
+              varsa menü açtırmak boşa bir dokunuş olur — o zaman doğrudan düğme olarak durur. */}
+          <TopBarOverflow
+            items={[
+              props.onHistory ? {
+                key: 'history', label: autoT('Sipariş geçmişi'),
+                hint: autoT('Kim, ne zaman, ne yaptı: oluşturma, söz verilen teslim, kurye, notlar ve sohbet'),
+                Icon: History, onPress: props.onHistory,
+              } : null,
+              props.onUndoDelivery ? {
+                key: 'undo', label: autoT('Teslimi geri al'),
+                hint: autoT('Yanlışlıkla teslim edildiyse siparişi seçtiğiniz üretim aşamasına döndürür'),
+                Icon: Undo2, onPress: props.onUndoDelivery, caution: true,
+              } : null,
+            ].filter(Boolean) as OverflowItem[]}
+          />
           </View>
         </View>
 
@@ -369,7 +431,8 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
               <Text style={{
                 fontSize: 30, fontWeight: '300', color: T.ink, letterSpacing: -0.6, lineHeight: 32,
                 ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
-              }} numberOfLines={1}>
+              }} numberOfLines={2}>
+                {/* 2 satır: tek satırda "Reyhan Fırat Ak…" diye kesiliyordu (kartın en önemli bilgisi) */}
                 {props.patient}
               </Text>
               <Text style={{ fontSize: 12.5, color: T.ink2, marginTop: 6, lineHeight: 18 }}>
@@ -609,26 +672,31 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
             </View>
           </View>
 
-          {/* Bottom row — remaining time + actions */}
+          {/* Bottom row — remaining time + actions.
+              Kapalı (teslim/iptal) siparişte durum + tarih üstteki hasta kartında zaten
+              yazıyor; burada ikinci kez çizilmez. Eylem de yoksa satırın tamamı kalkar. */}
+          {(!props.closed || (showProductionActions && !!(props.onResume || props.onPause || props.onStageDone))) && (
           <View style={{
             marginTop: 14, paddingTop: 12,
             borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.10)',
           }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 8 }}>
+              {props.closed ? <View /> : (
               <View>
                 <Text style={{
                   fontSize: 9.5, color: T.onDark3, letterSpacing: 1, textTransform: 'uppercase', fontWeight: '600',
                 }}>
-                  {props.closed ? (props.closed.kind === 'delivered' ? 'Teslim edildi' : 'İptal edildi') : 'Kalan süre'}
+                  Kalan süre
                 </Text>
-                {(props.closed ? props.closed.date : props.remainingTime) ? (
+                {props.remainingTime ? (
                   <Text style={{
                     fontFamily: T.mono, fontSize: 22, color: T.onDark, marginTop: 3, letterSpacing: -1,
                   }}>
-                    {props.closed ? props.closed.date : props.remainingTime}
+                    {props.remainingTime}
                   </Text>
                 ) : null}
               </View>
+              )}
               {showProductionActions && (
                 <View style={{ alignItems: 'flex-end', gap: 6 }}>
                   <View style={{ flexDirection: 'row', gap: 6 }}>
@@ -683,6 +751,7 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
               )}
             </View>
           </View>
+          )}
 
           {/* ZAMANLAMA — operatör / kuyruk (desktop kartı bilgisi; hekim/klinik gizli) */}
           {!isDoctorView && (props.operatorMins != null || props.queueMins != null) && (
@@ -777,33 +846,23 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
             </View>
           ) : null}
 
-          {/* Revizyon oluştur — teslim edilmiş siparişte (desktop ile aynı akış) */}
-          {props.onCreateRevision && (
-            <View style={{ marginTop: 12 }}>
-              <Pressable
-                onPress={props.onCreateRevision}
-                style={{
-                  alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6,
-                  paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
-                  backgroundColor: 'rgba(255,255,255,0.10)',
-                  borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
-                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                }}
-              >
-                <RotateCcw size={13} color={T.onDark} strokeWidth={2} />
-                <Text style={{ fontSize: 12, color: T.onDark, fontWeight: '700' }}>Revizyon Oluştur</Text>
-              </Pressable>
-            </View>
-          )}
-
-          {/* Teslimat aksiyonu — Kuryeye Gönder / Elden Teslim / Teslim Edildi (desktop ile aynı) */}
-          {(props.deliveryButton || props.deliveryStatusLabel) && (
+          {/* Eylemler TEK sarmalı satırda: Revizyon oluştur + teslimat düğmesi yan yana,
+              kargo rozeti sığmazsa alta iner (eskiden üçü alt alta üç satırdı). */}
+          {(props.onCreateRevision || props.deliveryButton || props.deliveryStatusLabel) && (
             <View style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-              {props.deliveryStatusLabel && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.10)' }}>
-                  <Truck size={12} color={T.onDark} strokeWidth={2} />
-                  <Text style={{ fontSize: 11, color: T.onDark, fontWeight: '600' }}>{props.deliveryStatusLabel}</Text>
-                </View>
+              {props.onCreateRevision && (
+                <Pressable
+                  onPress={props.onCreateRevision}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 6,
+                    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
+                    backgroundColor: 'rgba(255,255,255,0.14)',
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  }}
+                >
+                  <RotateCcw size={13} color={T.onDark} strokeWidth={2} />
+                  <Text style={{ fontSize: 12, color: T.onDark, fontWeight: '700' }}>Revizyon Oluştur</Text>
+                </Pressable>
               )}
               {props.deliveryButton && (
                 <Pressable
@@ -815,6 +874,12 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
                     : <Truck size={13} color="#FFFFFF" strokeWidth={2} />}
                   <Text style={{ fontSize: 12, color: '#FFFFFF', fontWeight: '700' }}>{props.deliveryButton.label}</Text>
                 </Pressable>
+              )}
+              {props.deliveryStatusLabel && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.10)' }}>
+                  <Truck size={12} color={T.onDark} strokeWidth={2} />
+                  <Text style={{ fontSize: 11, color: T.onDark, fontWeight: '600' }}>{props.deliveryStatusLabel}</Text>
+                </View>
               )}
             </View>
           )}

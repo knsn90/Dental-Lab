@@ -10,6 +10,7 @@ import { useSegments } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { FileUp, FileText, Image as ImageIcon, FileBox, Eye, Trash2, UploadCloud, Download, UserCheck, Clock as ClockIcon, ChevronDown, MessageCircle } from '../../../core/ui/icons';
+import { autoT } from '../../../core/i18n/autoTranslate';
 import { supabase } from '../../../core/api/supabase';
 import { useStationTheme, hexA } from '../../../core/theme/stationPalette';
 import { toast } from '../../../core/ui/Toast';
@@ -862,42 +863,31 @@ export function StageFileUpload({
     </Modal>
   ) : null;
 
-  // ── triggerStyle='row' — kompakt drop-zone (sipariş detay için) ──
-  // Card variant ile aynı görsel dil: ortalı ikon kutusu + başlık + alt yazı.
+  // ── triggerStyle='row' — ince "Dosya ekle" satırı (sipariş detayı dosya kartı) ──
+  // Eskiden ortalı ikon kutusu + başlık + açıklamayla kartın üçte birini tutuyordu;
+  // çoğu zaman kullanılmayan bir eylem için fazlaydı (2026-11-14).
   if (triggerStyle === 'row') {
     return (
       <>
         <Pressable
           onPress={() => setModalOpen(true)}
           disabled={uploading}
+          accessibilityRole="button"
           style={{
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            paddingVertical: 18,
-            paddingHorizontal: 14,
+            flexDirection: 'row', alignItems: 'center', gap: 8,
+            minHeight: 40, paddingVertical: 8, paddingHorizontal: 10,
+            borderRadius: 10, borderWidth: 1, borderStyle: 'dashed', borderColor: hexA(accent, 0.35),
             opacity: uploading ? 0.5 : 1,
-            ...(Platform.OS === 'web' ? {
-              cursor: uploading ? 'wait' : 'pointer',
-              transition: 'background-color 0.15s',
-            } as any : {}),
+            ...(Platform.OS === 'web' ? { cursor: uploading ? 'wait' : 'pointer' } as any : {}),
           }}
         >
-          <View style={{
-            width: 44, height: 44, borderRadius: 12,
-            alignItems: 'center', justifyContent: 'center',
-            backgroundColor: hexA(accent, 0.10),
-          }}>
-            <UploadCloud size={20} color={accent} strokeWidth={1.8} />
-          </View>
-          <Text style={{
-            fontSize: 13.5, fontWeight: '600', color: accent,
-            letterSpacing: -0.1,
-          }}>
-            {uploading ? 'Yükleniyor…' : 'Dosya Yükleme'}
+          <UploadCloud size={16} color={accent} strokeWidth={1.8} />
+          <Text style={{ fontSize: 13, fontWeight: '600', color: accent, letterSpacing: -0.1 }} numberOfLines={1}>
+            {uploading ? autoT('Yükleniyor…') : autoT('Dosya ekle')}
           </Text>
-          <Text style={{ fontSize: 11, color: P.ink400, textAlign: 'center' }}>
-            Fotoğraf, STL, PLY, PDF eklemek için tıklayın
+          <View style={{ flex: 1 }} />
+          <Text style={{ fontSize: 12, color: P.ink400, flexShrink: 1 }} numberOfLines={1}>
+            {autoT('Fotoğraf, STL, PLY, PDF')}
           </Text>
         </Pressable>
         {modalEl}

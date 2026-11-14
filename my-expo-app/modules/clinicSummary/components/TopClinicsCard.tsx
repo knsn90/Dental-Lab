@@ -23,6 +23,13 @@ import { useClinicSummaries } from '../useClinicSummaries';
 import { useClinicSummaryModal } from './ClinicSummaryModal';
 
 type Period = 'month' | 'all';
+/**
+ * Tek tip satır düzeni: lider de diğerleriyle aynı satırda (logo + taç rozeti + orantılı
+ * çubuk), uzun adlar iki satıra sarar. Önce yalnız telefonda (`compact`) açıktı; kullanıcı
+ * masaüstünde de aynı tasarımı istedi (2026-11-14). Koyu "lider kutusu" kodu duruyor,
+ * false yapılırsa geri gelir.
+ */
+const UNIFORM_ROWS: boolean = true;
 const web = Platform.OS === 'web';
 
 function monogram(name: string): string {
@@ -307,7 +314,7 @@ export function TopClinicsCard(props: {
           {/* Lider — lacivert kutu (her iki temada), içerik beyaz; değer öne çıkar.
               compact (telefon): lider de diğerleriyle AYNI satır düzeninde (aşağıda) —
               koyu ayrı kutu, 25'le berabere olan 2. sırayı önemsiz gösteriyordu. */}
-          {props.compact ? null : (
+          {UNIFORM_ROWS ? null : (
           <Pressable
             onPress={() => open(lead.clinicId)}
             accessibilityRole="button"
@@ -341,9 +348,9 @@ export function TopClinicsCard(props: {
           </Pressable>
           )}
 
-          {(props.compact ? rows : rest).map((r, i) => {
-            const rank = props.compact ? i + 1 : i + 2;
-            const c = !!props.compact;
+          {(UNIFORM_ROWS ? rows : rest).map((r, i) => {
+            const rank = UNIFORM_ROWS ? i + 1 : i + 2;
+            const c = UNIFORM_ROWS;
             return (
             <Pressable
               key={r.clinicId}

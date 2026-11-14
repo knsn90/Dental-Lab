@@ -130,6 +130,39 @@ interface Props {
 
 const LIGHT_TONE = { label: '#9A9A9A', title: '#0A0A0A', muted: '#6B6B6B' };
 
+/** Kartta gösterilen tam durum adı (DELIVERY_STATUS_CFG'deki kısaltmalar "Aldı"/"Teslim" başka ekranlarda kullanılıyor). */
+const STATUS_LONG: Record<string, string> = {
+  beklemede: 'Beklemede', atandi: 'Atandı', teslim_alindi: 'Teslim alındı',
+  yolda: 'Yolda', teslim_edildi: 'Teslim edildi', iptal: 'İptal',
+};
+
+/** Hareket kutusundaki etiketli eylem düğmesi (beyaz kapsül; ne yaptığını yazar). */
+function LegAction({ label, tip, accent, isDark, title, disabled, onPress }: {
+  label: string; tip?: string; accent: string; isDark: boolean; title: string; disabled?: boolean; onPress: () => void;
+}) {
+  const btn = (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={({ pressed }: any) => ({
+        flex: 1, minWidth: 0, alignItems: 'center',
+        paddingHorizontal: 6, paddingVertical: 7, borderRadius: 999,
+        backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : '#FFFFFF',
+        opacity: disabled ? 0.5 : pressed ? 0.6 : 1,
+        ...(Platform.OS === 'web' ? { cursor: disabled ? 'default' : 'pointer' } as any : {}),
+      })}
+    >
+      <Text style={{ fontSize: 12, fontWeight: '600', color: isDark ? title : accent }} numberOfLines={1}>{label}</Text>
+    </Pressable>
+  );
+  // Tooltip sarmalayıcısı da alanı paylaşsın diye flex:1 kapsayıcı içinde
+  return tip
+    ? <View style={{ flex: 1, minWidth: 0, flexDirection: 'row' }}><GlassTooltip title={label} text={tip}>{btn}</GlassTooltip></View>
+    : btn;
+}
+
 /** Koyu modda teslimat rozeti ön-plan renkleri (açık koyu-lacivert/yeşil/kırmızı okunmaz). */
 const DARK_STATUS_FG: Record<string, string> = {
   '#6B6B6B': 'rgba(247,242,233,0.72)',
@@ -190,51 +223,34 @@ export function OrderLogisticsCard({
           buton üst üste geliyordu. İkisi de aynı ağırlıkta olunca göz hangisine
           bakacağını bilmiyordu. Eylem artık etkilediği kartın başlığında,
           içerikten hafif. */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-        <Truck size={12} color={toneEff.label} strokeWidth={1.8} />
-        <Text style={{ fontSize: 11, fontWeight: '600', color: toneEff.label, letterSpacing: 1.1, textTransform: 'uppercase' }}>
+      {/* Başlık diğer kartlarla aynı ölçü (14/600, büyük harfsiz). Sağda yalnız "Kurye
+          çağır"; teslimat belgesi düğmesi etiketli olarak kartın altına indi (başlıkta
+          ve satırda iki ayrı yazıcı ikonu vardı, hangisinin neyi bastığı belli değildi). */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <Text style={{ fontSize: 14, fontWeight: '600', letterSpacing: -0.1, color: toneEff.title }}>
           Lojistik
         </Text>
-        <View style={{ flex: 1 }} />
         {shownLegs.length > 0 && (
-          <Text style={{ fontSize: 11, fontWeight: '500', color: toneEff.muted }}>
+          <Text style={{ fontSize: 12, color: toneEff.muted }}>
             {shownLegs.length} hareket
           </Text>
         )}
-        {onPrintForPurpose && !clientView ? (
-          <GlassTooltip title={autoT('Teslimat belgesi')} text={autoT('Teslimat türünü sorar, A6 belgeyi basar. Kurye çağırmadan da kullanılır.')}>
-            <Pressable
-              ref={typeBtnRef}
-              onPress={() => measureOrigin(typeBtnRef.current, (o) => { setTypeOrigin(o); setTypeOpen(true); })}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={autoT('Teslimat belgesi yazdır')}
-              style={({ hovered, pressed }: any) => ({
-                width: 26, height: 26, borderRadius: 999, alignItems: 'center', justifyContent: 'center',
-                backgroundColor: hexA(accent, hovered ? 0.18 : 0.10),
-                opacity: pressed ? 0.6 : 1,
-                transform: [{ scale: pressed ? 0.94 : 1 }],
-                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-              })}
-            >
-              <Printer size={13} color={accent} strokeWidth={2} />
-            </Pressable>
-          </GlassTooltip>
-        ) : null}
+        <View style={{ flex: 1 }} />
         {isManager && canCall && shownLegs.length > 0 && (
           <Pressable
             onPress={onCall}
+            accessibilityRole="button"
             style={({ pressed }: any) => ({
               flexDirection: 'row', alignItems: 'center', gap: 5,
-              paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
+              paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999,
               backgroundColor: hexA(accent, 0.10),
               opacity: pressed ? 0.6 : 1,
               transform: [{ scale: pressed ? 0.96 : 1 }],
               ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
             })}
           >
-            <Plus size={12} color={accent} strokeWidth={2.4} />
-            <Text style={{ fontSize: 11.5, fontWeight: '600', color: accent }}>Kurye</Text>
+            <Plus size={13} color={accent} strokeWidth={2.4} />
+            <Text style={{ fontSize: 12, fontWeight: '600', color: accent }}>{autoT('Kurye çağır')}</Text>
           </Pressable>
         )}
       </View>
@@ -297,138 +313,149 @@ export function OrderLogisticsCard({
               ? formatMoney(Number(leg.fee_amount) || 0, (leg.fee_currency ?? 'TRY') as any)
               : null;
             return (
-              <Pressable
+              <View
                 key={leg.id}
-                onPress={onOpenTracking ? () => onOpenTracking(leg) : undefined}
-                disabled={!onOpenTracking}
-                style={({ pressed }: any) => ({
-                  padding: 12, borderRadius: 16, backgroundColor: rowBg,
-                  // Tıklanabilir satır basıldığı anda cevap versin — bırakmayı beklemesin.
-                  opacity: onOpenTracking && pressed ? 0.7 : 1,
-                  transform: [{ scale: onOpenTracking && pressed ? 0.99 : 1 }],
-                  ...(onOpenTracking && Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                })}
+                style={{ padding: 12, borderRadius: 16, backgroundColor: rowBg }}
               >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: toneEff.title }}>{purposeLabel}</Text>
-                  {(leg.direction === 'clinic_to_lab') !== isRTL()
-                    ? <ArrowLeft size={11} color={toneEff.muted} strokeWidth={2} />
-                    : <ArrowRight size={11} color={toneEff.muted} strokeWidth={2} />}
-                  <Text style={{ flex: 1, fontSize: 11, color: toneEff.muted }} numberOfLines={1}>
-                    {leg.direction === 'clinic_to_lab' ? 'Klinik → Lab' : 'Lab → Klinik'}
+                {/* 1) Yön başlık + TEK durum rozeti. Eskiden ikinci satırda aşama adı
+                    ("Teslim Edildi") rozetteki durumla ("Beklemede") yan yana durup
+                    çelişki gibi okunuyordu; aşama artık "Aşama:" diye etiketli. */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: toneEff.title }} numberOfLines={1}>
+                    {leg.direction === 'clinic_to_lab' ? 'Klinik' : 'Lab'}
                   </Text>
-                  <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: st.bg }}>
-                    <Text style={{ fontSize: 10, fontWeight: '600', color: st.fg }}>{st.label}</Text>
+                  {isRTL()
+                    ? <ArrowLeft size={13} color={toneEff.muted} strokeWidth={2} />
+                    : <ArrowRight size={13} color={toneEff.muted} strokeWidth={2} />}
+                  <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: toneEff.title }} numberOfLines={1}>
+                    {leg.direction === 'clinic_to_lab' ? 'Lab' : 'Klinik'}
+                  </Text>
+                  <View style={{ paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999, backgroundColor: st.bg }}>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: st.fg }}>{autoT(STATUS_LONG[leg.status] ?? st.label)}</Text>
                   </View>
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 }}>
                   {isCargo && leg.external_carrier_name ? <CarrierBadge name={leg.external_carrier_name} width={40} height={16} /> : null}
-                  <Text style={{ flex: 1, fontSize: 11, color: toneEff.muted }} numberOfLines={1}>
-                    {who}
-                    {leg.stage_snapshot ? ` · ${leg.stage_snapshot}` : ''}
-                    {' · '}{fmtDate(leg.created_at)}
+                  <Text style={{ flex: 1, fontSize: 12, color: toneEff.muted }} numberOfLines={2}>
+                    {[purposeLabel, who, fmtDate(leg.created_at)].filter(Boolean).join(' · ')}
+                    {leg.stage_snapshot ? ` · ${autoT('Aşama')}: ${leg.stage_snapshot}` : ''}
                   </Text>
-                  {onPrintLabel && !clientView ? (
-                    <GlassTooltip title={autoT('Gönderi fişi')} text={autoT('Kargoya ya da kutuya yapıştırılacak A6 fişi basar')}>
-                      <Pressable
-                        onPress={() => onPrintLabel(leg)}
-                        disabled={printingLegId === leg.id}
-                        hitSlop={8}
-                        accessibilityRole="button"
-                        accessibilityLabel={autoT('Gönderi fişini yazdır')}
-                        style={({ hovered, pressed }: any) => ({
-                          width: 26, height: 26, borderRadius: 999, alignItems: 'center', justifyContent: 'center',
-                          backgroundColor: hovered ? hexA(accent, 0.12) : 'transparent',
-                          opacity: printingLegId === leg.id ? 0.4 : pressed ? 0.6 : 1,
-                          ...(Platform.OS === 'web' ? { cursor: printingLegId === leg.id ? 'default' : 'pointer' } as any : {}),
-                        })}
-                      >
-                        <Printer size={13} color={toneEff.muted} strokeWidth={1.9} />
-                      </Pressable>
-                    </GlassTooltip>
-                  ) : null}
-                  {/* Ücret: klinik/hekimde HİÇ gösterilmez (lab gideri). Yönetici düzenler,
-                      diğer lab kullanıcıları salt-okunur görür. */}
-                  {clientView ? null : isManager ? (
-                    <Pressable onPress={() => onEditFee(leg)} hitSlop={8}>
-                      <Text style={{ fontSize: 11.5, fontWeight: '600', color: fee ? toneEff.title : accent }}>
-                        {fee ?? '+ ücret'}
-                      </Text>
-                    </Pressable>
-                  ) : (
-                    !!fee && <Text style={{ fontSize: 11.5, fontWeight: '600', color: toneEff.title }}>{fee}</Text>
-                  )}
                 </View>
+
+                {/* 2) Üç adımlı ilerleme */}
+                {(() => {
+                  const step = leg.status === 'teslim_edildi' ? 3 : (leg.status === 'teslim_alindi' || leg.status === 'yolda') ? 2 : 1;
+                  const on = isDark ? '#6EE7B7' : '#1D9E75';
+                  const off = isDark ? 'rgba(255,255,255,0.14)' : 'rgba(15,23,42,0.10)';
+                  const labels = [autoT('Hazırlandı'), autoT('Yolda'), autoT('Teslim edildi')];
+                  return (
+                    <View style={{ marginTop: 12 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        {[1, 2, 3].map(n => (
+                          <React.Fragment key={n}>
+                            {n > 1 ? <View style={{ flex: 1, height: 3, borderRadius: 2, backgroundColor: step >= n ? on : off }} /> : null}
+                            <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: step >= n ? on : off }} />
+                          </React.Fragment>
+                        ))}
+                      </View>
+                      <View style={{ flexDirection: 'row', marginTop: 5 }}>
+                        {labels.map((l, i) => (
+                          <Text key={l} numberOfLines={1} style={{
+                            flex: 1, fontSize: 11, textAlign: i === 0 ? (isRTL() ? 'right' : 'left') : i === 1 ? 'center' : (isRTL() ? 'left' : 'right'),
+                            color: step === i + 1 ? toneEff.title : toneEff.muted, fontWeight: step === i + 1 ? '600' : '400',
+                          }}>{l}</Text>
+                        ))}
+                      </View>
+                    </View>
+                  );
+                })()}
 
                 {/* Teslim kanıtı (2. dalga 5) — türü yoksa hiçbir şey çizilmez */}
                 <ProofRow leg={leg as any} onOpen={(origin) => { setViewer({ leg, origin }); setViewerOpen(true); }} />
-                {/* Kargo takip numarası — bağlantı varsa taşıyıcının takip sayfasını açar */}
-                {trackNo ? (
-                  <Pressable
-                    onPress={trackUrl ? () => {
-                      if (Platform.OS === 'web') { if (typeof window !== 'undefined') window.open(trackUrl, '_blank', 'noopener'); }
-                      else void Linking.openURL(trackUrl);
-                    } : undefined}
-                    disabled={!trackUrl}
-                    accessibilityRole={trackUrl ? 'link' : undefined}
-                    accessibilityLabel={`${autoT('Takip no')} ${trackNo}`}
-                    style={({ pressed }: any) => ({
-                      flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6,
-                      opacity: pressed ? 0.6 : 1,
-                      ...(trackUrl && Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                    })}
-                  >
-                    <Text style={{ fontSize: 11, color: toneEff.muted }}>{autoT('Takip no')}</Text>
-                    <Text
-                      selectable
-                      style={{
-                        flexShrink: 1, fontSize: 11.5, fontWeight: '600', color: toneEff.title, fontVariant: ['tabular-nums'],
-                        fontFamily: Platform.OS === 'web' ? 'JetBrains Mono, ui-monospace, Menlo, monospace' : undefined,
-                      }}
-                      numberOfLines={1}
-                    >
-                      {trackNo}
-                    </Text>
-                    {trackUrl ? <ArrowUpRight size={12} color={toneEff.muted} strokeWidth={2} /> : null}
-                  </Pressable>
-                ) : null}
-                {onCargoLabel && isManager && !clientView && leg.external_provider === 'Shipink'
-                  && (leg.external_label_url || leg.external_tracking_code) ? (
-                  <View style={{ flexDirection: 'row', marginTop: 10 }}>
-                    <GlassTooltip title={autoT('Kargo etiketi')} text={autoT('Kargo firmasının barkodlu etiketini açar; kutuya yapıştırılır')}>
+
+                {/* 3) Takip no (solda) + ücret (sağda). Ücret: klinik/hekimde HİÇ gösterilmez
+                    (lab gideri). Yönetici düzenler, diğer lab kullanıcıları salt-okunur görür. */}
+                {(trackNo || (!clientView && (isManager || fee))) ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 }}>
+                    {trackNo ? (
                       <Pressable
-                        onPress={() => onCargoLabel(leg)}
-                        disabled={cargoLabelLegId === leg.id}
-                        accessibilityRole="button"
-                        accessibilityLabel={autoT('Kargo etiketi')}
+                        onPress={trackUrl ? () => {
+                          if (Platform.OS === 'web') { if (typeof window !== 'undefined') window.open(trackUrl, '_blank', 'noopener'); }
+                          else void Linking.openURL(trackUrl);
+                        } : undefined}
+                        disabled={!trackUrl}
+                        accessibilityRole={trackUrl ? 'link' : undefined}
+                        accessibilityLabel={`${autoT('Takip no')} ${trackNo}`}
                         style={({ pressed }: any) => ({
-                          flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
-                          backgroundColor: hexA(accent, 0.10),
-                          opacity: cargoLabelLegId === leg.id ? 0.55 : 1,
-                          transform: [{ scale: pressed ? 0.97 : 1 }],
-                          ...(Platform.OS === 'web' ? { cursor: cargoLabelLegId === leg.id ? 'default' : 'pointer' } as any : {}),
+                          flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 5,
+                          opacity: pressed ? 0.6 : 1,
+                          ...(trackUrl && Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                         })}
                       >
-                        <ScanLine size={13} color={accent} strokeWidth={2} />
-                        <Text style={{ fontSize: 12, fontWeight: '600', color: accent }}>
-                          {autoT(cargoLabelLegId === leg.id ? 'Alınıyor…' : 'Kargo etiketi')}
+                        <Text
+                          selectable
+                          style={{
+                            flexShrink: 1, fontSize: 12, color: toneEff.muted, fontVariant: ['tabular-nums'],
+                            fontFamily: Platform.OS === 'web' ? 'JetBrains Mono, ui-monospace, Menlo, monospace' : undefined,
+                          }}
+                          numberOfLines={1}
+                        >
+                          {trackNo}
+                        </Text>
+                        {trackUrl ? <ArrowUpRight size={12} color={toneEff.muted} strokeWidth={2} /> : null}
+                      </Pressable>
+                    ) : <View style={{ flex: 1 }} />}
+                    {clientView ? null : isManager ? (
+                      <Pressable onPress={() => onEditFee(leg)} hitSlop={8} accessibilityRole="button">
+                        <Text style={{ fontSize: 14, fontWeight: '600', color: fee ? toneEff.title : accent }}>
+                          {fee ?? '+ ücret'}
                         </Text>
                       </Pressable>
-                    </GlassTooltip>
+                    ) : (
+                      !!fee && <Text style={{ fontSize: 14, fontWeight: '600', color: toneEff.title }}>{fee}</Text>
+                    )}
+                  </View>
+                ) : null}
+
+                {/* 4) ETİKETLİ eylemler — ikon yerine ne yaptığını yazan düğmeler */}
+                {(onOpenTracking || (onPrintLabel && !clientView) || (onCargoLabel && isManager && !clientView && isCargo && (leg.external_label_url || leg.external_tracking_code))) ? (
+                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 10 }}>
+                    {/* TEK satır: düğmeler alanı eşit paylaşır, alt satıra düşmez (kullanıcı kararı) */}
+                    {onOpenTracking ? (
+                      <LegAction label={autoT('Kurye Takip')} accent={accent} isDark={isDark} title={toneEff.title} onPress={() => onOpenTracking(leg)} />
+                    ) : null}
+                    {onCargoLabel && isManager && !clientView && isCargo && (leg.external_label_url || leg.external_tracking_code) ? (
+                      <LegAction
+                        label={autoT(cargoLabelLegId === leg.id ? 'Alınıyor…' : 'Kargo etiketi')}
+                        tip={autoT('Kargo firmasının barkodlu etiketini açar; kutuya yapıştırılır')}
+                        accent={accent} isDark={isDark} title={toneEff.title}
+                        disabled={cargoLabelLegId === leg.id}
+                        onPress={() => onCargoLabel(leg)}
+                      />
+                    ) : null}
+                    {onPrintLabel && !clientView ? (
+                      <LegAction
+                        label={autoT('Gönderi fişi')}
+                        tip={autoT('Kargoya ya da kutuya yapıştırılacak A6 fişi basar')}
+                        accent={accent} isDark={isDark} title={toneEff.title}
+                        disabled={printingLegId === leg.id}
+                        onPress={() => onPrintLabel(leg)}
+                      />
+                    ) : null}
                   </View>
                 ) : null}
                 {isManager && !clientView && leg.mode === 'internal' && leg.status !== 'teslim_edildi' && leg.status !== 'iptal' ? (
                   <NoProofButton accent={accent} onOpen={(origin) => { setNoProof({ leg, origin }); setNoProofOpen(true); }} />
                 ) : null}
 
-                {/* Rota önizlemesi yalnız en son kurye hareketinde. Anahtar ya da
-                    adres yoksa bileşen kendini zaten gizler. */}
+                {/* Rota önizlemesi yalnız en son kurye hareketinde (kargo dahil — kullanıcı
+                    haritayı kartta görmek istiyor). Anahtar ya da adres yoksa çizilmez. */}
                 {(() => {
-                  if (leg.id !== mapLegId || isCargo) return null;
+                  if (leg.id !== mapLegId) return null;
                   const { originText, destText } = legRouteAddresses(leg, labAddress, clinicAddress);
                   if (!mapsApiKey || !originText || !destText) return null;
                   return (
-                    <View style={{ marginTop: 10 }}>
+                    <View style={{ marginTop: 12 }}>
                       <StaticRouteMap
                         originText={originText}
                         destText={destText}
@@ -440,11 +467,37 @@ export function OrderLogisticsCard({
                     </View>
                   );
                 })()}
-              </Pressable>
+              </View>
             );
           })}
         </View>
       )}
+
+      {/* Teslimat belgesi = gönderi fişinin türü henüz belli olmayan hâli (kullanıcı,
+          2026-11-14): yalnız kurye hareketi YOKKEN görünür ve türü sorar. Hareket
+          oluşunca kalkar; o hareketin "Gönderi fişi" düğmesi aynı belgeyi basar. */}
+      {onPrintForPurpose && !clientView && shownLegs.length === 0 ? (
+        <View style={{ flexDirection: 'row', marginTop: 10 }}>
+          <GlassTooltip title={autoT('Teslimat belgesi')} text={autoT('Teslimat türünü sorar, A6 belgeyi basar. Kurye çağırmadan da kullanılır.')}>
+            <Pressable
+              ref={typeBtnRef}
+              onPress={() => measureOrigin(typeBtnRef.current, (o) => { setTypeOrigin(o); setTypeOpen(true); })}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel={autoT('Teslimat belgesi yazdır')}
+              style={({ pressed }: any) => ({
+                flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
+                backgroundColor: hexA(accent, 0.10),
+                opacity: pressed ? 0.6 : 1,
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              })}
+            >
+              <Printer size={13} color={accent} strokeWidth={2} />
+              <Text style={{ fontSize: 12, fontWeight: '600', color: accent }}>{autoT('Teslimat belgesi')}</Text>
+            </Pressable>
+          </GlassTooltip>
+        </View>
+      ) : null}
 
       <ProofViewerModal
         visible={viewerOpen}

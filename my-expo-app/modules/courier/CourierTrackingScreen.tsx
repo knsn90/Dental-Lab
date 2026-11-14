@@ -9,8 +9,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Search, MapPin, ArrowRight, ArrowLeft, MessageSquare, Phone, ChevronRight, ChevronLeft, Clock,
   QrCode, Bell, User as UserIcon, X, Package, PackageCheck, Trash2,
-  ChevronDown, Check, Plus,
+  ChevronDown, Check, Plus, Copy,
 } from '../../core/ui/icons';
+import { CarrierLogo } from '../orders/components/CarrierLogo';
 import { isRTL } from '../../core/i18n';
 import { autoT } from '../../core/i18n/autoTranslate';
 import { supabase } from '../../core/api/supabase';
@@ -187,6 +188,30 @@ function fmtTime(iso?: string | null): string | null {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** Sağlayıcı marka logosu — NewShipmentModal ile aynı adresler (uzaktan, yüklenmezse ikon). */
+function providerLogoUrl(provider?: string | null): string | null {
+  const k = String(provider ?? '').trim().toLowerCase();
+  if (k === 'banabikurye') return 'https://banabikurye.com/img/tr/logo.svg';
+  if (k === 'shipink')     return 'https://shipink.io/logo-transparent-with-name.svg';
+  return null;
+}
+
+/** Listeyi günlere böler: teslim edildiyse teslim günü, değilse oluşturma günü. */
+function deliveryDayKey(d: { delivered_at: string | null; assigned_at: string }): string {
+  const t = new Date(d.delivered_at ?? d.assigned_at);
+  return isNaN(t.getTime()) ? '' : `${t.getFullYear()}-${t.getMonth()}-${t.getDate()}`;
+}
+function deliveryDayLabel(d: { delivered_at: string | null; assigned_at: string }): string {
+  const t = new Date(d.delivered_at ?? d.assigned_at);
+  if (isNaN(t.getTime())) return '';
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(new Date()) - day(t)) / 86400000);
+  if (diff === 0) return autoT('Bugün');
+  if (diff === 1) return autoT('Dün');
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(t.getDate())}.${p(t.getMonth() + 1)}.${t.getFullYear()}`;
 }
 
 function formatPhone(raw: string): string {
@@ -417,10 +442,12 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
   useEffect(() => { setShowAllDeliveries(false); }, [tab, search]);
   // Yolda: tüm canlı taşımalar açık. Teslim Edildi: ilk kayıt + "Daha fazla".
   const showAll = tab === 'active' || showAllDeliveries;
-  const visibleDeliveries = showAll ? filtered : filtered.slice(0, 1);
+  // Masaüstünde kart haritayı örtmesin diye kısa tutulur: ilk DONE_PREVIEW kayıt.
+  const DONE_PREVIEW = 4;
+  const visibleDeliveries = showAll ? filtered : filtered.slice(0, DONE_PREVIEW);
   // "Daha fazla" açıkken liste uzayabilir → o zaman kart %45'e kadar büyür ve
   // kaydırılır; aksi halde (tek taşıma ya da boş durum) içeriğe göre büzülür.
-  const panelExpanded = showAll && filtered.length > 1;
+  const panelExpanded = showAll && filtered.length > DONE_PREVIEW;
   // Panelin ÖLÇÜLEN yüksekliği — haritanın fitBounds payı buradan beslenir,
   // yoksa rotanın alt ucu panelin arkasında kalıyor (tahmin yerine ölçüm).
   const [panelH, setPanelH] = useState(0);
@@ -651,6 +678,196 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
       : '0 12px 32px rgba(15,23,42,0.18), inset 0 1px 0 rgba(255,255,255,0.6)',
   } as any : {};
 
+  /** Teslimat ayrıntısı — masaüstü cam kutusu ve mobil popup AYNI gövdeyi çizer.
+   *  Sıra: durum · güzergâh · kurye · (varış) · zaman çizelgesi · adresler · takip no. */
+  const renderDetail = (mobile: boolean) => {
+                if (!selected) return null;
+                const cfg = STATUS_CFG[selected.status];
+                const r = routeEndpoints(selected);
+                const first = (t: string) => t.split('\n')[0] || '—';
+                const when = fmtDateTime(selected.delivered_at ?? selected.assigned_at);
+                const courierPhone = extCourier?.phone ?? selected.ext_courier_phone ?? null;
+                const anyPhone = courierPhone ?? selected.destination_phone ?? '';
+                const courierTitle = extCourier?.name ?? selected.ext_courier_name ?? selected.courier_name
+                  ?? (selected.mode === 'internal' ? autoT('Kurye') : (selected.external_provider ?? autoT('Kurye')));
+                const logo = selected.mode === 'external' ? providerLogoUrl(selected.external_provider) : null;
+                const softFill = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(15,23,42,0.045)';
+                const web = Platform.OS === 'web' ? { cursor: 'pointer' } as any : {};
+                return (
+                  <View style={mobile ? { gap: 14 } : { padding: 16, gap: 14 }}>
+                    {/* Durum + tarih, altında güzergâh (tam ad, 2 satıra kadar) */}
+                    <View style={{ gap: 6 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <View style={{ paddingHorizontal: 9, paddingVertical: 3, borderRadius: 999, backgroundColor: cfg.bg }}>
+                          <Text style={{ fontSize: 11.5, fontWeight: '600', color: cfg.fg }}>
+                            {selected.status === 'teslim_edildi' ? autoT('Teslim edildi') : cfg.label}
+                          </Text>
+                        </View>
+                        {when ? <Text style={{ flex: 1, fontSize: 12, color: C.inkMuted }} numberOfLines={1}>{when}</Text> : <View style={{ flex: 1 }} />}
+                        {mobile ? (
+                          <Pressable onPress={() => setDetailOpen(false)} accessibilityRole="button" accessibilityLabel={autoT('Kapat')} hitSlop={8}
+                            style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: C.closeBg }}>
+                            <X size={15} color={C.inkMuted} strokeWidth={2.2} />
+                          </Pressable>
+                        ) : null}
+                      </View>
+                      <Text style={{ fontSize: mobile ? 17 : 15.5, lineHeight: mobile ? 22 : 20, fontWeight: '600', color: C.ink, letterSpacing: -0.2 }} numberOfLines={3}>
+                        {first(r.fromText)}
+                        <Text style={{ fontWeight: '400', color: C.inkMuted }}>{isRTL() ? '  ←  ' : '  →  '}</Text>
+                        {first(r.toText)}
+                      </Text>
+                      {(selected.order_number || selected.patient_name) ? (
+                        <Text style={{ fontSize: 12, color: C.inkMuted }} numberOfLines={1}>
+                          {[selected.order_number ? `#${selected.order_number}` : null, selected.patient_name].filter(Boolean).join('  ·  ')}
+                        </Text>
+                      ) : null}
+                    </View>
+
+                    {/* Kurye — canlı takipten (extCourier) → kalıcı kolonlar → iç kurye → sağlayıcı */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 16, backgroundColor: softFill }}>
+                      <CourierAvatar
+                        size={40}
+                        accent={accent}
+                        initialsColor={accent}
+                        photo={extCourier?.photoUrl ?? selected.ext_courier_photo}
+                        name={courierTitle || 'K'}
+                      />
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={{ fontSize: 14, fontWeight: '600', color: C.ink }} numberOfLines={1}>{courierTitle}</Text>
+                        <Text style={{ fontSize: 12, color: C.inkMuted }} numberOfLines={1}>
+                          {courierPhone ? formatPhone(courierPhone)
+                            : selected.mode === 'internal' ? 'Bizim kurye' : (selected.external_provider ?? 'Dış kargo')}
+                        </Text>
+                      </View>
+                      <GlassTooltip title={autoT('Mesaj gönder')} text={autoT("Kuryeye WhatsApp'tan yaz")}>
+                        <Pressable
+                          accessibilityRole="button" accessibilityLabel={autoT('Mesaj gönder')}
+                          onPress={() => {
+                            // Kuryeye WhatsApp'tan yaz (hem web hem mobil). Numara yoksa uyar.
+                            let d = anyPhone.replace(/\D/g, '');
+                            if (!d) { Alert.alert('Telefon yok', 'Mesaj gönderilecek numara bulunamadı.'); return; }
+                            if (d.startsWith('0')) d = '90' + d.slice(1); else if (d.length === 10) d = '90' + d;
+                            const tno = selected.external_tracking_no ? ` (#${selected.external_tracking_no})` : '';
+                            const text = encodeURIComponent(`Merhaba, BanaBiKurye gönderisi${tno} hakkında bilgi almak istiyorum.`);
+                            Linking.openURL(`https://wa.me/${d}?text=${text}`)
+                              .catch(() => { Linking.openURL(`sms:${anyPhone.replace(/[^\d+]/g, '')}`).catch(() => {}); });
+                          }}
+                          style={{
+                            width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
+                            backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.85)',
+                            opacity: anyPhone ? 1 : 0.45, ...web,
+                          }}
+                        >
+                          <MessageSquare size={15} color={C.ink} strokeWidth={2} />
+                        </Pressable>
+                      </GlassTooltip>
+                      <GlassTooltip title={autoT('Ara')} text={autoT('Kuryeyi telefonla ara')}>
+                        <Pressable
+                          accessibilityRole="button" accessibilityLabel={autoT('Ara')}
+                          onPress={() => {
+                            // Dış kuryede API'den / kayıtlı kurye telefonu; yoksa alıcı telefonu.
+                            const tel = anyPhone.replace(/[^\d+]/g, '');
+                            if (!tel) { Alert.alert('Telefon yok', 'Bu teslimat için aranacak bir numara bulunamadı.'); return; }
+                            Linking.openURL(`tel:${tel}`).catch(() => {});
+                          }}
+                          style={{
+                            width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
+                            backgroundColor: accent, opacity: anyPhone ? 1 : 0.45, ...web,
+                          }}
+                        >
+                          <Phone size={15} color="#FFF" strokeWidth={2} />
+                        </Pressable>
+                      </GlassTooltip>
+                    </View>
+
+                    {/* Tahmini varış — yalnız süren gönderide. Kurye canlıysa gerçek varış,
+                        değilse çıkış→teslim güzergâh süresi. */}
+                    {eta?.durationSec != null && selected.status !== 'teslim_edildi' && selected.status !== 'iptal' && (
+                      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, paddingHorizontal: 2 }}>
+                        <Text style={{ fontSize: 12, color: C.inkMuted }}>{eta.live ? 'Tahmini Varış' : 'Güzergâh Süresi'}</Text>
+                        <Text style={{ fontSize: 16, fontWeight: '600', color: C.ink }} numberOfLines={1}>
+                          ~{fmtDuration(eta.durationSec)}
+                          {eta.distanceM != null ? <Text style={{ fontSize: 12, fontWeight: '400', color: C.inkMuted }}>{`  ·  ${fmtKm(eta.distanceM)}`}</Text> : null}
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Zaman çizelgesi — masaüstünde AÇIK (3–4 adım; katlamak bir tık daha demek) */}
+                    <DeliveryTimeline delivery={selected} etaSec={eta?.durationSec} accent={accent} flush alwaysOpen />
+
+                    {/* Adresler (katlanır) */}
+                    <View style={{ borderRadius: 16, backgroundColor: softFill, overflow: 'hidden' }}>
+                      <DeliveryRouteCard delivery={selected} accent={accent} flush />
+                    </View>
+
+                    {/* Sağlayıcı + takip no + siparişe git */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 28 }}>
+                      {selected.mode === 'external' && selected.external_tracking_no ? (
+                        <>
+                          {logo ? (
+                            <View style={{ height: 24, paddingHorizontal: 6, borderRadius: 7, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
+                              <CarrierLogo url={logo} width={56} height={15} />
+                            </View>
+                          ) : (
+                            <Text style={{ fontSize: 12, fontWeight: '600', color: C.inkMuted }} numberOfLines={1}>{selected.external_provider}</Text>
+                          )}
+                          <Text style={{ flexShrink: 1, fontSize: 12.5, fontWeight: '500', color: C.ink, fontVariant: ['tabular-nums'] }} numberOfLines={1}>
+                            #{selected.external_tracking_no}
+                          </Text>
+                          {Platform.OS === 'web' ? (
+                            <GlassTooltip title={autoT('Kopyala')} text={autoT('Takip numarasını panoya kopyalar')}>
+                              <Pressable
+                                accessibilityRole="button" accessibilityLabel={autoT('Kopyala')}
+                                onPress={() => {
+                                  try { (navigator as any).clipboard?.writeText(String(selected.external_tracking_no)); toast.success(autoT('Kopyalandı')); } catch { /* pano yok */ }
+                                }}
+                                style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', ...web }}
+                              >
+                                <Copy size={14} color={C.inkMuted} strokeWidth={2} />
+                              </Pressable>
+                            </GlassTooltip>
+                          ) : null}
+                        </>
+                      ) : null}
+                      <View style={{ flex: 1 }} />
+                      {!mobile && selected.work_order_id ? (
+                        <Pressable onPress={() => goOrder(selected.work_order_id, selected.id)} accessibilityRole="link"
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 2, ...web }}>
+                          <Text style={{ fontSize: 12.5, fontWeight: '600', color: accent }}>{autoT('Siparişi aç')}</Text>
+                          {isRTL() ? <ChevronLeft size={14} color={accent} strokeWidth={2.2} /> : <ChevronRight size={14} color={accent} strokeWidth={2.2} />}
+                        </Pressable>
+                      ) : null}
+                    </View>
+
+                    {/* Mobil: ana eylem tam genişlik düğme; iptal yalnız yola çıkmamış gönderide */}
+                    {mobile && (selected.work_order_id || selected.status === 'beklemede') ? (
+                      <View style={{ gap: 8 }}>
+                        {selected.work_order_id ? (
+                          <Pressable
+                            onPress={() => { setDetailOpen(false); goOrder(selected.work_order_id, selected.id); }}
+                            accessibilityRole="button"
+                            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 48, borderRadius: 24, backgroundColor: accent }}
+                          >
+                            <Package size={16} color="#FFF" strokeWidth={2} />
+                            <Text style={{ fontSize: 15, fontWeight: '600', color: '#FFF' }}>{autoT('Siparişi aç')}</Text>
+                          </Pressable>
+                        ) : null}
+                        {selected.status === 'beklemede' && (
+                          <Pressable
+                            onPress={() => { setDetailOpen(false); cancelDelivery(selected); }}
+                            accessibilityRole="button"
+                            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 48, borderRadius: 24, backgroundColor: 'rgba(220,38,38,0.10)' }}
+                          >
+                            <Trash2 size={15} color={isDark ? '#FCA5A5' : '#DC2626'} strokeWidth={2} />
+                            <Text style={{ fontSize: 15, fontWeight: '600', color: isDark ? '#FCA5A5' : '#DC2626' }}>Teslimatı İptal Et</Text>
+                          </Pressable>
+                        )}
+                      </View>
+                    ) : null}
+                  </View>
+                );
+  };
+
   return (
     <View style={{ flex: 1, position: 'relative' as any, backgroundColor: isDark ? '#0E0E0E' : pageBg }}>
       {/* Map — desktop ve mobile'da tüm ekran (sayfa zemini) */}
@@ -754,6 +971,8 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
           overflow: 'hidden',
           // Mobil sheet: kalın cam (aynı aile, farklı ağırlık).
           // Desktop panel: mevcut ince cam formülü DEĞİŞMEDİ.
+          // Mobil sheet: kalın cam. Masaüstü panel: SAYDAM ince cam (harita arkadan
+          // görünür) — kullanıcı tercihi (2026-11-14): kalın materyal denendi, geri alındı.
           ...(isNarrow
             ? {
                 ...navSurfaceStyle(glass),
@@ -763,10 +982,10 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
               }
             : {
                 backgroundColor: Platform.OS === 'web' ? glassBg : (isDark ? '#17130F' : '#FFFFFF'),
-                ...(Platform.OS !== 'web' ? {
-                  borderWidth: 1,
-                  borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.06)',
-                } : {}),
+                borderWidth: 1,
+                borderColor: Platform.OS === 'web'
+                  ? (isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.55)')
+                  : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.06)'),
                 ...glassStrong,
               }),
         }}>
@@ -797,13 +1016,25 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
             {/* Başlık satırı: panel adı + sayı. */}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 2 }}>
               <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={{ fontSize: 15, fontWeight: '800', color: inkPrimary }} numberOfLines={1}>{autoT('Teslimatlar')}</Text>
-                {!loading && (
+                <Text style={{ fontSize: 16, fontWeight: '600', color: inkPrimary, letterSpacing: -0.2 }} numberOfLines={1}>{autoT('Teslimatlar')}</Text>
+                {/* Sayı sekmelerde yazıyor; mobilde sheet kapalıyken sekme görünmediği için burada kalır. */}
+                {!loading && isNarrow && (
                   <View style={{ paddingHorizontal: 7, paddingVertical: 1, borderRadius: 999, backgroundColor: `${accent}1F` }}>
-                    <Text style={{ fontSize: 11.5, fontWeight: '800', color: accent }}>{filtered.length}</Text>
+                    <Text style={{ fontSize: 11.5, fontWeight: '700', color: accent }}>{filtered.length}</Text>
                   </View>
                 )}
               </View>
+              {/* Masaüstü: eylem başlıkta, ETİKETLİ ve panel vurgu renginde. */}
+              {!isNarrow && canCreateShipment && (
+                <GlassTooltip title={autoT('Yeni gönderi')} text={autoT('Siparişten bağımsız yeni kurye gönderisi oluştur')}>
+                  <Pressable onPress={() => setNewShipOpen(true)} accessibilityRole="button" accessibilityLabel={autoT('Yeni gönderi')}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingStart: 9, paddingEnd: 12, height: 32, borderRadius: 16,
+                             backgroundColor: accent, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                    <Plus size={15} color="#FFFFFF" strokeWidth={2.2} />
+                    <Text style={{ fontSize: 12.5, fontWeight: '600', color: '#FFFFFF' }}>{autoT('Yeni gönderi')}</Text>
+                  </Pressable>
+                </GlassTooltip>
+              )}
               {/* Sheet KAPALIYKEN sekmeler gizli; buton aşağıda tek başına kalınca
                   kartın ortasında koca bir boşluk oluşuyordu (2026-09-24). Kapalı
                   durumda buton başlığın yanına gelir, o satır hiç çizilmez. */}
@@ -841,7 +1072,7 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
                   />
                   </View>
                 )}
-                {canCreateShipment && (
+                {isNarrow && canCreateShipment && (
                   <NewShipmentButton size={tabBarH} onPress={() => setNewShipOpen(true)} />
                 )}
               </View>
@@ -907,9 +1138,15 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
               </View>
             ) : (
               <>
-                {(isNarrow ? (sheetCollapsed ? filtered.slice(0, 1) : filtered) : visibleDeliveries).map(d => (
+                {(isNarrow ? (sheetCollapsed ? filtered.slice(0, 1) : filtered) : visibleDeliveries).map((d, i, arr) => (
+                  <React.Fragment key={d.id}>
+                  {/* Gün başlığı — sıra günden güne değişince (kapalı mobil sheet'te tek kayıt: başlıksız) */}
+                  {!(isNarrow && sheetCollapsed) && (i === 0 || deliveryDayKey(arr[i - 1]) !== deliveryDayKey(d)) ? (
+                    <Text style={{ fontSize: 11.5, fontWeight: '600', color: inkMutedDark, paddingHorizontal: 4, marginTop: i === 0 ? 0 : 4, marginBottom: -4 }}>
+                      {deliveryDayLabel(d)}
+                    </Text>
+                  ) : null}
                   <DeliveryListCard
-                    key={d.id}
                     d={d}
                     accent={accent}
                     isNarrow={isNarrow}
@@ -919,33 +1156,30 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
                     onOpenOrder={() => goOrder(d.work_order_id, d.id)}
                     onCancel={d.status === 'beklemede' ? () => cancelDelivery(d) : undefined}
                   />
+                  </React.Fragment>
                 ))}
-                {!isNarrow && !showAll && filtered.length > 1 && (
+                {!isNarrow && !showAll && filtered.length > DONE_PREVIEW && (
                   <Pressable
                     onPress={() => setShowAllDeliveries(true)}
                     style={{
-                      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-                      paddingVertical: 10, borderRadius: 12,
-                      backgroundColor: tabsBg, borderWidth: 1, borderColor: pillBorder,
+                      alignItems: 'center', justifyContent: 'center', paddingVertical: 6,
                       ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                     }}
                   >
-                    <Text style={{ fontSize: 12.5, fontWeight: '600', color: inkPrimary }}>
-                      {`Daha fazla (${filtered.length - 1})`}
+                    <Text style={{ fontSize: 12.5, fontWeight: '600', color: accent }}>
+                      {`${autoT('Daha fazla')} (${filtered.length - DONE_PREVIEW})`}
                     </Text>
                   </Pressable>
                 )}
-                {!isNarrow && tab === 'done' && showAllDeliveries && filtered.length > 1 && (
+                {!isNarrow && tab === 'done' && showAllDeliveries && filtered.length > DONE_PREVIEW && (
                   <Pressable
                     onPress={() => setShowAllDeliveries(false)}
                     style={{
-                      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-                      paddingVertical: 10, borderRadius: 12,
-                      backgroundColor: tabsBg, borderWidth: 1, borderColor: pillBorder,
+                      alignItems: 'center', justifyContent: 'center', paddingVertical: 6,
                       ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                     }}
                   >
-                    <Text style={{ fontSize: 12.5, fontWeight: '600', color: inkPrimary }}>Daha az göster</Text>
+                    <Text style={{ fontSize: 12.5, fontWeight: '600', color: accent }}>Daha az göster</Text>
                   </Pressable>
                 )}
               </>
@@ -968,290 +1202,38 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix,
             zIndex: 1000,
             ...(Platform.OS === 'web' ? { pointerEvents: 'auto' } as any : {}),
           }}>
-            {/* ─── TEK GLASS KUTU ───
-                Kurye · tahmini varış · rota · kargo takip tek kart içinde, aralarında
-                hairline ayraç. (Önceden 4 ayrı yüzen kart vardı; haritayı parçalıyordu.) */}
+            {/* ─── TEK LIQUID GLASS KUTU ───
+                Sıra, sorulan soruların sırası: durum ne · nereden nereye · kim taşıyor ·
+                ne zaman ne oldu · takip no. "Teslim edildi" tek yerde (üstteki rozet + tarih). */}
             <View style={{
-              backgroundColor: isDark ? 'rgba(20,16,12,0.62)' : 'rgba(255,255,255,0.08)',
+              // Saydam ince cam — soldaki panelle aynı materyal.
+              backgroundColor: Platform.OS === 'web'
+                ? (isDark ? 'rgba(20,16,12,0.62)' : 'rgba(255,255,255,0.08)')
+                : (isDark ? '#17130F' : '#FFFFFF'),
               borderRadius: 22, overflow: 'hidden',
               borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.55)',
-              ...(Platform.OS === 'web' ? {
-                backdropFilter: 'blur(3px) saturate(120%)',
-                WebkitBackdropFilter: 'blur(3px) saturate(120%)',
-                boxShadow: isDark
-                  ? '0 12px 32px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.06)'
-                  : '0 12px 32px rgba(15,23,42,0.18), inset 0 1px 0 rgba(255,255,255,0.6)',
-              } as any : {}),
+              ...glassStrong,
             }}>
-              {/* ─── Kurye ─── */}
-              <View style={{
-                padding: 14,
-                flexDirection: 'row', alignItems: 'center', gap: 12,
-              }}>
-                {/* Canlı takipten (extCourier) → kalıcı kolonlar → iç kurye → sağlayıcı.
-                    Geçmiş dış gönderilerde ext_courier_* dolu geldiği için ad/foto burada çıkar. */}
-                <CourierAvatar
-                  size={44}
-                  accent={accent}
-                  initialsColor={accent}
-                  photo={extCourier?.photoUrl ?? selected.ext_courier_photo}
-                  name={extCourier?.name ?? selected.ext_courier_name ?? selected.courier_name ?? selected.external_provider ?? 'K'}
-                />
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  {/* Dış kuryede API gerçek kurye adını veriyor → onu başlığa al,
-                      sağlayıcı adı alt satıra düşsün. Yoksa eski davranış. */}
-                  <Text style={{ fontSize: 14, fontWeight: '600', color: C.ink }} numberOfLines={1}>
-                    {extCourier?.name ?? selected.ext_courier_name ?? selected.courier_name ?? selected.external_provider ?? 'Kurye'}
-                  </Text>
-                  <Text style={{ fontSize: 11, color: C.inkMuted }} numberOfLines={1}>
-                    {selected.mode === 'internal'
-                      ? 'Bizim kurye'
-                      : [selected.external_provider ?? 'Dış kargo',
-                         (() => { const p = extCourier?.phone ?? selected.ext_courier_phone; return p ? formatPhone(p) : null; })()]
-                          .filter(Boolean).join(' · ')}
-                  </Text>
-                </View>
-                <View style={{ flexDirection: 'row', gap: 6 }}>
-                  <GlassTooltip title={autoT('Mesaj gönder')} text={autoT("Kuryeye WhatsApp'tan yaz")}>
-                  <Pressable
-                    onPress={() => {
-                      // Kuryeye WhatsApp'tan yaz (hem web hem mobil). Numara yoksa uyar.
-                      const raw = (extCourier?.phone ?? selected.ext_courier_phone ?? selected.destination_phone ?? '');
-                      let d = raw.replace(/\D/g, '');
-                      if (!d) { Alert.alert('Telefon yok', 'Mesaj gönderilecek numara bulunamadı.'); return; }
-                      if (d.startsWith('0')) d = '90' + d.slice(1); else if (d.length === 10) d = '90' + d;
-                      const tno = (selected as any).external_tracking_no ? ` (#${(selected as any).external_tracking_no})` : '';
-                      const text = encodeURIComponent(`Merhaba, BanaBiKurye gönderisi${tno} hakkında bilgi almak istiyorum.`);
-                      Linking.openURL(`https://wa.me/${d}?text=${text}`)
-                        .catch(() => { Linking.openURL(`sms:${raw.replace(/[^\d+]/g, '')}`).catch(() => {}); });
-                    }}
-                    style={{
-                      width: 36, height: 36, borderRadius: 18,
-                      alignItems: 'center', justifyContent: 'center',
-                      backgroundColor: (extCourier?.phone ?? selected.ext_courier_phone ?? selected.destination_phone) ? C.btnBg : `${C.btnBg}66`,
-                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                    }}
-                  >
-                    <MessageSquare size={14} color={C.btnFg} strokeWidth={2} />
-                  </Pressable>
-                  </GlassTooltip>
-                  <GlassTooltip title={autoT('Ara')} text={autoT('Kuryeyi telefonla ara')}>
-                  <Pressable
-                    onPress={() => {
-                      // Dış kuryede API'den / kayıtlı kurye telefonu; yoksa alıcı telefonu.
-                      const tel = (extCourier?.phone ?? selected.ext_courier_phone ?? selected.destination_phone ?? '').replace(/[^\d+]/g, '');
-                      if (!tel) { Alert.alert('Telefon yok', 'Bu teslimat için aranacak bir numara bulunamadı.'); return; }
-                      Linking.openURL(`tel:${tel}`).catch(() => {});
-                    }}
-                    style={{
-                      width: 36, height: 36, borderRadius: 18,
-                      alignItems: 'center', justifyContent: 'center',
-                      backgroundColor: (extCourier?.phone ?? selected.ext_courier_phone ?? selected.destination_phone) ? accent : `${accent}66`,
-                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                    }}
-                  >
-                    <Phone size={14} color="#FFF" strokeWidth={2} />
-                  </Pressable>
-                  </GlassTooltip>
-                </View>
-              </View>
-
-              {/* ─── Zaman Çizelgesi (katlanabilir) ─── */}
-              <View style={C.hairline} />
-              <DeliveryTimeline delivery={selected} etaSec={eta?.durationSec} accent={accent} flush />
-
-              {/* ─── Tahmini Varış ───
-                  Kurye canlı konum verirken rota kuryeden başlar → gerçek varış tahmini.
-                  Konum yoksa süre çıkış→teslim güzergâhınındır, etiket ona göre değişir.
-                  Biten/iptal gönderide anlamsız olduğu için gizlenir. */}
-              {eta?.durationSec != null && selected.status !== 'teslim_edildi' && selected.status !== 'iptal' && (
-                <>
-                  <View style={C.hairline} />
-                  <View style={{ padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <View style={{
-                      width: 38, height: 38, borderRadius: 19, backgroundColor: `${accent}1F`,
-                      alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      <Clock size={19} color={accent} strokeWidth={2} />
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: accent, letterSpacing: 0.4, textTransform: 'uppercase' }}>
-                        {eta.live ? 'Tahmini Varış' : 'Güzergâh Süresi'}
-                      </Text>
-                      <Text style={{ fontSize: 16, fontWeight: '500', color: C.ink }} numberOfLines={1}>
-                        ~{fmtDuration(eta.durationSec)}
-                        {eta.distanceM != null ? <Text style={{ fontSize: 12, fontWeight: '400', color: C.inkMuted }}>{`  ·  ${fmtKm(eta.distanceM)}`}</Text> : null}
-                      </Text>
-                    </View>
-                  </View>
-                </>
-              )}
-
-              {/* ─── Teslim Edildi (tarih + saat) ─── */}
-              {selected.delivered_at && fmtDateTime(selected.delivered_at) && (
-                <>
-                  <View style={C.hairline} />
-                  <View style={{ padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <View style={{
-                      width: 38, height: 38, borderRadius: 19, backgroundColor: C.greenBg,
-                      alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      <PackageCheck size={19} color={C.green} strokeWidth={2} />
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: C.green, letterSpacing: 0.4, textTransform: 'uppercase' }}>
-                        Teslim Edildi
-                      </Text>
-                      <Text style={{ fontSize: 16, fontWeight: '500', color: C.ink }} numberOfLines={1}>
-                        {fmtDateTime(selected.delivered_at)}
-                      </Text>
-                    </View>
-                  </View>
-                </>
-              )}
-
-              {/* ─── Rota (Gönderen → Alıcı) ─── */}
-              <View style={C.hairline} />
-              <DeliveryRouteCard delivery={selected} accent={accent} flush />
-
-              {/* ─── External tracking varsa göster ─── */}
-              {selected.mode === 'external' && selected.external_tracking_no && (
-                <>
-                  <View style={C.hairline} />
-                  <View style={{ padding: 14, gap: 3 }}>
-                    <Text style={{ fontSize: 10, fontWeight: '700', color: C.inkMuted, letterSpacing: 0.4, textTransform: 'uppercase' }}>Kargo Takip</Text>
-                    <Text style={{ fontSize: 13, fontWeight: '500', color: C.ink }}>
-                      {selected.external_provider} · #{selected.external_tracking_no}
-                    </Text>
-                  </View>
-                </>
-              )}
+              {renderDetail(false)}
             </View>
           </View>
         )}
       </View>
 
       {/* MOBİL — teslimat detay bottom sheet (karta tıklayınca açılır) */}
-      <Modal visible={isNarrow && detailOpen && !!selected} transparent animationType="slide" onRequestClose={() => setDetailOpen(false)}>
-        <Pressable onPress={() => setDetailOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.42)', justifyContent: 'flex-end', ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) }}>
-          <Pressable onPress={() => {}} style={{ backgroundColor: C.sheetBg, borderTopStartRadius: 24, borderTopEndRadius: 24, paddingTop: 8, paddingBottom: insets.bottom + 20, paddingHorizontal: 16, gap: 14 }}>
-            {/* Grabber + başlık */}
-            <View style={{ alignItems: 'center', marginBottom: 2 }}>
-              <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: C.grabber }} />
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ fontSize: 16, fontWeight: '800', color: C.ink }} numberOfLines={1}>
-                  Teslimat · #{selected?.order_number ?? '—'}
-                </Text>
-                {selected?.patient_name ? (
-                  <Text style={{ fontSize: 12, color: C.inkMuted, marginTop: 1 }} numberOfLines={1}>{selected.patient_name}</Text>
-                ) : null}
-              </View>
-              {selected ? (
-                <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: STATUS_CFG[selected.status]?.bg }}>
-                  <Text style={{ fontSize: 11, fontWeight: '800', color: STATUS_CFG[selected.status]?.fg }}>{STATUS_CFG[selected.status]?.label}</Text>
-                </View>
-              ) : null}
-              <Pressable onPress={() => setDetailOpen(false)} style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: C.closeBg }}>
-                <X size={16} color={C.inkMuted} strokeWidth={2} />
-              </Pressable>
-            </View>
-
-            {selected ? (
-              <>
-                {/* Kurye */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, backgroundColor: C.softBg, borderWidth: 1, borderColor: C.softBorder }}>
-                  <CourierAvatar
-                    size={44}
-                    accent={accent}
-                    initialsColor={accent}
-                    photo={extCourier?.photoUrl ?? selected.ext_courier_photo}
-                    name={extCourier?.name ?? selected.ext_courier_name ?? selected.courier_name ?? selected.external_provider ?? 'K'}
-                  />
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: C.ink }} numberOfLines={1}>{extCourier?.name ?? selected.ext_courier_name ?? selected.courier_name ?? selected.external_provider ?? 'Kurye'}</Text>
-                    <Text style={{ fontSize: 11, color: C.inkMuted }} numberOfLines={1}>
-                      {selected.mode === 'internal'
-                        ? 'Bizim kurye'
-                        : [selected.external_provider ?? 'Dış kargo',
-                           (() => { const p = extCourier?.phone ?? selected.ext_courier_phone; return p ? formatPhone(p) : null; })()]
-                            .filter(Boolean).join(' · ')}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Zaman çizelgesi (katlanabilir) */}
-                <DeliveryTimeline delivery={selected} etaSec={eta?.durationSec} accent={accent} />
-
-                {/* Tahmini varış — OSRM rota süresinden hesaplanır (BanaBiKurye ETA
-                    vermiyor). Kurye canlı değilse süre güzergâhın kendisine aittir. */}
-                {eta?.durationSec != null && selected.status !== 'teslim_edildi' && selected.status !== 'iptal' && (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, backgroundColor: `${accent}12`, borderWidth: 1, borderColor: `${accent}33` }}>
-                    <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: `${accent}1F`, alignItems: 'center', justifyContent: 'center' }}>
-                      <Clock size={19} color={accent} strokeWidth={2} />
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: accent, letterSpacing: 0.4, textTransform: 'uppercase' }}>
-                        {eta.live ? 'Tahmini Varış' : 'Güzergâh Süresi'}
-                      </Text>
-                      <Text style={{ fontSize: 16, fontWeight: '500', color: C.ink }} numberOfLines={1}>
-                        ~{fmtDuration(eta.durationSec)}
-                        {eta.distanceM != null ? <Text style={{ fontSize: 12, fontWeight: '400', color: C.inkMuted }}>{`  ·  ${fmtKm(eta.distanceM)}`}</Text> : null}
-                      </Text>
-                    </View>
-                  </View>
-                )}
-
-                {/* Teslim edildi (tarih + saat) */}
-                {selected.delivered_at && fmtDateTime(selected.delivered_at) && (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, backgroundColor: 'rgba(16,185,129,0.10)', borderWidth: 1, borderColor: 'rgba(16,185,129,0.28)' }}>
-                    <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(16,185,129,0.16)', alignItems: 'center', justifyContent: 'center' }}>
-                      <PackageCheck size={19} color={C.green} strokeWidth={2} />
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: C.green, letterSpacing: 0.4, textTransform: 'uppercase' }}>
-                        Teslim Edildi
-                      </Text>
-                      <Text style={{ fontSize: 16, fontWeight: '500', color: C.ink }} numberOfLines={1}>
-                        {fmtDateTime(selected.delivered_at)}
-                      </Text>
-                    </View>
-                  </View>
-                )}
-
-                {/* Rota */}
-                <DeliveryRouteCard delivery={selected} accent={accent} />
-
-                {/* Kargo takip (external) */}
-                {selected.mode === 'external' && selected.external_tracking_no ? (
-                  <View style={{ padding: 14, borderRadius: 16, backgroundColor: C.softBg, borderWidth: 1, borderColor: C.softBorder, gap: 3 }}>
-                    <Text style={{ fontSize: 10, fontWeight: '700', color: C.inkMuted, letterSpacing: 0.4, textTransform: 'uppercase' }}>Kargo Takip</Text>
-                    <Text style={{ fontSize: 13, fontWeight: '500', color: C.ink }}>{selected.external_provider} · #{selected.external_tracking_no}</Text>
-                  </View>
-                ) : null}
-
-                {/* Aksiyonlar */}
-                <View style={{ gap: 8 }}>
-                  <Pressable
-                    onPress={() => { setDetailOpen(false); goOrder(selected.work_order_id, selected.id); }}
-                    style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13, borderRadius: 14, backgroundColor: accent }}
-                  >
-                    <Package size={15} color="#FFF" strokeWidth={2} />
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFF' }}>İş Emrini Aç</Text>
-                  </Pressable>
-                  {selected.status === 'beklemede' && (
-                    <Pressable
-                      onPress={() => { setDetailOpen(false); cancelDelivery(selected); }}
-                      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13, borderRadius: 14, backgroundColor: 'rgba(220,38,38,0.08)', borderWidth: 1, borderColor: 'rgba(220,38,38,0.20)' }}
-                    >
-                      <Trash2 size={15} color="#DC2626" strokeWidth={2} />
-                      <Text style={{ fontSize: 14, fontWeight: '700', color: '#DC2626' }}>Teslimatı İptal Et</Text>
-                    </Pressable>
-                  )}
-                </View>
-              </>
-            ) : null}
+      <Modal visible={isNarrow && detailOpen && !!selected} transparent animationType="fade" onRequestClose={() => setDetailOpen(false)}>
+        {/* Ortada popup (alt sayfa değil) — arkası bulanık; boşluğa dokununca kapanır. */}
+        <Pressable onPress={() => setDetailOpen(false)} accessibilityLabel={autoT('Kapat')}
+          style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16,
+                   backgroundColor: 'rgba(10,14,26,0.48)',
+                   ...(Platform.OS === 'web' ? { backdropFilter: 'blur(10px) saturate(120%)', WebkitBackdropFilter: 'blur(10px) saturate(120%)', cursor: 'default' } as any : {}) }}>
+          <Pressable onPress={() => {}}
+            style={{ width: '100%', maxWidth: 420, maxHeight: '88%', borderRadius: 24, overflow: 'hidden',
+                     backgroundColor: C.sheetBg, borderWidth: 1, borderColor: C.softBorder,
+                     ...(Platform.OS === 'web' ? { cursor: 'default', boxShadow: '0 24px 60px rgba(0,0,0,0.28)' } as any : {}) }}>
+            <ScrollView contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
+              {renderDetail(true)}
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
@@ -1475,13 +1457,16 @@ function DeliveryRouteCard({ delivery, accent, flush = false }: {
 }
 
 
-function DeliveryTimeline({ delivery, etaSec, accent, flush = false }: {
+function DeliveryTimeline({ delivery, etaSec, accent, flush = false, alwaysOpen = false }: {
   delivery: DeliveryRow; etaSec?: number | null; accent: string;
   /** true → masaüstü cam kutusunun içinde: kendi kenarlığı/zemini olmasın. */
   flush?: boolean;
+  /** true → başlık/aç-kapa yok, adımlar hep görünür; saat satırın sonunda. */
+  alwaysOpen?: boolean;
 }) {
   const C = useCourierInk();
-  const [open, setOpen] = useState(false);
+  const [openState, setOpen] = useState(false);
+  const open = alwaysOpen || openState;
   const steps = buildTimeline(delivery, etaSec);
   // Özet: son gerçekleşen ya da şu an aktif olan adım.
   const current = [...steps].reverse().find(st => st.state === 'active')
@@ -1495,7 +1480,7 @@ function DeliveryTimeline({ delivery, etaSec, accent, flush = false }: {
     <View style={flush
       ? { overflow: 'hidden' }
       : { borderRadius: 16, backgroundColor: C.softBg, borderWidth: 1, borderColor: C.softBorder, overflow: 'hidden' }}>
-      <Pressable
+      {alwaysOpen ? null : <Pressable
         onPress={() => setOpen(v => !v)}
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
@@ -1519,10 +1504,10 @@ function DeliveryTimeline({ delivery, etaSec, accent, flush = false }: {
         <View style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }}>
           <ChevronDown size={16} color={C.inkMuted} strokeWidth={2} />
         </View>
-      </Pressable>
+      </Pressable>}
 
       {open && (
-        <View style={{ paddingHorizontal: 14, paddingBottom: 14, gap: 0 }}>
+        <View style={alwaysOpen ? { paddingHorizontal: 2 } : { paddingHorizontal: 14, paddingBottom: 14, gap: 0 }}>
           {steps.map((st, i) => {
             const last = i === steps.length - 1;
             const dotColor = st.state === 'done' ? accent : st.state === 'active' ? accent : 'transparent';
@@ -1545,11 +1530,13 @@ function DeliveryTimeline({ delivery, etaSec, accent, flush = false }: {
                     <View style={{ width: 1.5, flex: 1, minHeight: 18, backgroundColor: st.state === 'done' ? `${accent}55` : C.stepLine }} />
                   )}
                 </View>
-                <View style={{ flex: 1, minWidth: 0, paddingBottom: last ? 0 : 12 }}>
+                <View style={[{ flex: 1, minWidth: 0, paddingBottom: last ? 0 : 12 },
+                              alwaysOpen ? { flexDirection: 'row', alignItems: 'baseline', gap: 8 } : null]}>
                   <Text style={{
                     fontSize: 12.5,
-                    fontWeight: st.state === 'pending' ? '500' : '700',
+                    fontWeight: st.state === 'pending' ? '500' : (alwaysOpen ? '600' : '700'),
                     color: st.state === 'pending' ? C.inkMuted : C.ink,
+                    ...(alwaysOpen ? { flex: 1 } : null),
                   }} numberOfLines={1}>
                     {st.state === 'active' ? (st.activeLabel ?? st.label) : st.label}
                   </Text>
@@ -1586,80 +1573,79 @@ function DeliveryListCard({ d, selected, onSelect, onOpenOrder, onCancel, accent
   const courierName  = d.ext_courier_name ?? d.courier_name ?? null;
   const courierPhoto = d.ext_courier_photo ?? null;
 
+  // Sağdaki saat: teslim edildiyse teslim saati, değilse oluşturma saati.
+  const timeText = fmtTime(d.delivered_at ?? d.assigned_at);
+  const logo = d.mode === 'external' ? providerLogoUrl(d.external_provider) : null;
+  const delivered = d.status === 'teslim_edildi';
+
   return (
     <Pressable
       // Kart tıklanabilir: önce teslimat detay sheet'i açılır (mobil) / haritada
-      // seçilir (desktop). Sipariş detayına gitmek isteyen sheet içindeki
-      // "Siparişi Gör" butonuna basar — kart artık doğrudan sipariş açmıyor.
+      // seçilir (desktop). Sipariş detayına gitmek isteyen ayrıntıdaki
+      // "Siparişi aç"a basar — kart doğrudan sipariş açmaz.
       onPress={onSelect}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
       style={{
-        backgroundColor: selected ? C.cardBgSel : C.cardBg,
+        // Cam panelin İÇİNDE ikinci bir blur yok (cam üstüne cam okunurluğu bozar):
+        // satır düz, seçili olan panel vurgusunun soluk dolgusunu alır.
+        backgroundColor: selected ? `${accent}${C.isDark ? '33' : '1A'}` : 'transparent',
         borderRadius: 14,
-        padding: 11,
+        paddingHorizontal: 10, paddingVertical: 9,
         flexDirection: 'row', alignItems: 'center', gap: 8,
-        ...(Platform.OS === 'web' ? {
-          cursor: 'pointer',
-          backdropFilter: 'blur(8px) saturate(140%)',
-          WebkitBackdropFilter: 'blur(8px) saturate(140%)',
-        } as any : {}),
+        ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
       }}
     >
-      <View style={{ flex: 1, gap: 7 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text
-              style={{ fontSize: 12, fontWeight: '700', color: C.ink, flexShrink: 1 }}
-              numberOfLines={1}
-            >{origin}</Text>
-            {isRTL() ? <ArrowLeft size={11} color={C.inkFaint} strokeWidth={1.8} /> : <ArrowRight size={11} color={C.inkFaint} strokeWidth={1.8} />}
-            <Text style={{ fontSize: 12, fontWeight: '700', color: C.ink }} numberOfLines={1}>{dest}</Text>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: cfg.bg }}>
-              <Text style={{ fontSize: 9, fontWeight: '700', color: cfg.fg, textTransform: 'uppercase' }}>{cfg.label}</Text>
-            </View>
-            {onCancel && (
-              <GlassTooltip title={autoT('Gönderiyi iptal et')} text={autoT('Henüz yola çıkmamış gönderiyi iptal eder')}>
-              <Pressable
-                onPress={(e) => { e.stopPropagation?.(); onCancel(); }}
-                hitSlop={8}
-                style={{
-                  width: 26, height: 26, borderRadius: 13,
-                  alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: 'rgba(220,38,38,0.10)',
-                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                }}
-              >
-                <Trash2 size={12} color="#DC2626" strokeWidth={2} />
-              </Pressable>
-              </GlassTooltip>
-            )}
-          </View>
-        </View>
-
+      <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+        {/* 1. satır — güzergâh, satırın TAMAMI: iki ad da daralabilir, hiçbiri rozete yer vermek için kesilmez */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          {courierName && (
-            <>
-              <CourierAvatar size={18} accent={accent} initialsColor={accent} photo={courierPhoto} name={courierName} />
-              <Text style={{ fontSize: 10.5, fontWeight: '600', color: C.ink }} numberOfLines={1}>{courierName}</Text>
-              <Text style={{ fontSize: 10.5, color: C.inkFaint }}>·</Text>
-            </>
-          )}
-          <Text style={{ fontSize: 10.5, color: C.inkMuted }} numberOfLines={1}>Sipariş #{d.order_number ?? '—'}</Text>
+          <Text style={{ fontSize: 13.5, fontWeight: '600', color: C.ink, flexShrink: 1 }} numberOfLines={1}>{origin}</Text>
+          {isRTL() ? <ArrowLeft size={12} color={C.inkMuted} strokeWidth={2} /> : <ArrowRight size={12} color={C.inkMuted} strokeWidth={2} />}
+          <Text style={{ fontSize: 13.5, fontWeight: '600', color: C.ink, flexShrink: 1 }} numberOfLines={1}>{dest}</Text>
         </View>
 
-        {/* Hasta adı — kendi satırında: dar ekranda kurye+sipariş+hasta tek satıra
-            sığmayıp hepsi kesiliyordu. Kişi ikonuyla ayrı satır tam okunur. */}
-        {d.patient_name ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-            <UserIcon size={11} color={C.inkFaint} strokeWidth={1.8} />
-            <Text style={{ fontSize: 11, fontWeight: '600', color: C.inkMuted, flex: 1 }} numberOfLines={1}>{d.patient_name}</Text>
-          </View>
-        ) : null}
+        {/* 2. satır — kim taşıyor · sipariş · hasta … saat */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {courierName ? (
+            <CourierAvatar size={18} accent={accent} initialsColor={accent} photo={courierPhoto} name={courierName} />
+          ) : logo ? (
+            <View style={{ height: 18, paddingHorizontal: 4, borderRadius: 5, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
+              <CarrierLogo url={logo} width={44} height={12} />
+            </View>
+          ) : null}
+          <Text style={{ flex: 1, fontSize: 11.5, color: C.inkMuted }} numberOfLines={1}>
+            {[courierName, d.order_number ? `#${d.order_number}` : null, d.patient_name].filter(Boolean).join('  ·  ') || '—'}
+          </Text>
+          {/* Teslim edilmişte durum sekmeden belli → yalnız saat; sürende durum rozeti */}
+          {!delivered ? (
+            <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: cfg.bg }}>
+              <Text style={{ fontSize: 10.5, fontWeight: '600', color: cfg.fg }}>{cfg.label}</Text>
+            </View>
+          ) : null}
+          {timeText ? <Text style={{ fontSize: 11.5, color: C.inkMuted, fontVariant: ['tabular-nums'] }}>{timeText}</Text> : null}
+        </View>
       </View>
 
-      {/* Tıklanabilirlik göstergesi — karta basınca sipariş detayına gidilir */}
-      {isRTL() ? <ChevronLeft size={17} color={C.inkFaint} strokeWidth={2} /> : <ChevronRight size={17} color={C.inkFaint} strokeWidth={2} />}
+      {onCancel && (
+        <GlassTooltip title={autoT('Gönderiyi iptal et')} text={autoT('Henüz yola çıkmamış gönderiyi iptal eder')}>
+          <Pressable
+            onPress={(e) => { e.stopPropagation?.(); onCancel(); }}
+            hitSlop={8}
+            accessibilityRole="button" accessibilityLabel={autoT('Gönderiyi iptal et')}
+            style={{
+              width: 28, height: 28, borderRadius: 14,
+              alignItems: 'center', justifyContent: 'center',
+              backgroundColor: 'rgba(220,38,38,0.10)',
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+            }}
+          >
+            <Trash2 size={13} color="#DC2626" strokeWidth={2} />
+          </Pressable>
+        </GlassTooltip>
+      )}
+
+      {/* Mobilde satır ayrıntı sayfasını açar → ok; masaüstünde seçim vurgusu yeter */}
+      {isNarrow ? (isRTL() ? <ChevronLeft size={16} color={C.inkFaint} strokeWidth={2} /> : <ChevronRight size={16} color={C.inkFaint} strokeWidth={2} />) : null}
     </Pressable>
   );
 }

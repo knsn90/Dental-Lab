@@ -13,7 +13,8 @@
  */
 import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, Modal, TextInput, ScrollView, Platform, ActivityIndicator } from 'react-native';
-import { X, Truck, ArrowUpRight, ArrowDownLeft } from '../../../core/ui/icons';
+import { X, Truck, ArrowUpRight, ArrowDownLeft, Banknote, CreditCard, ChevronDown, Check } from '../../../core/ui/icons';
+import { CarrierLogo } from '../../orders/components/CarrierLogo';
 
 import { supabase } from '../../../lib/supabase';
 import { autoT } from '../../../core/i18n/autoTranslate';
@@ -60,6 +61,32 @@ type Carrier = 'internal' | 'bbk' | 'shipink';
 interface ShpCard { id: string; default?: boolean; [k: string]: any }
 interface ShpRate { carrier_service_id: string; provider?: string; carrier_account_id?: string;
                     name?: string; price?: number; currency?: string; carrier?: string }
+// BanaBiKurye seçenekleri — sipariş içi "Kurye çağır" penceresiyle (DeliveryModal) aynı küme.
+// Hizmet: API'de type (standard | endofday) + zaman penceresi; "İleri zamanlı" standard + saat.
+const BBK_SERVICES = [
+  { id: 'standard' as const,  label: 'Standart' },
+  { id: 'endofday' as const,  label: 'Gün sonu' },
+  { id: 'scheduled' as const, label: 'İleri zamanlı' },
+];
+type BbkService = typeof BBK_SERVICES[number]['id'];
+const BBK_CONTENT_TAGS = ['Lab sarf malzemesi', 'Model', 'Ölçü', 'Diğer'];
+// Hizmet sağlayıcı marka logoları — kargo firması logolarıyla aynı yol (CarrierLogo):
+// uzaktan yüklenir, yüklenemezse nötr ikona düşer. Paketlenmez.
+const PROVIDER_LOGOS = {
+  bbk:     'https://banabikurye.com/img/tr/logo.svg',
+  shipink: 'https://shipink.io/logo-transparent-with-name.svg',
+} as const;
+interface BbkCard { id: number; name: string | null; last4: string | null; brand: string | null }
+
+/** "YYYY-MM-DDTHH:mm" (datetime-local) → ISO 8601 +03:00; opsiyonel saat ekle. */
+function trIso(local: string, addHours = 0): string | null {
+  const m = local.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]) + addHours, Number(m[5]));
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:00+03:00`;
+}
+
 /** Gönderi siparişe bağlanabilir ya da tamamen bağımsız olabilir. */
 type Mode = 'order' | 'free';
 interface CourierOption { id: string; full_name: string | null }
@@ -98,6 +125,23 @@ export function NewShipmentModal({
   // burada yalnız ağırlık ve fiyat tutulur.
   const [bbkWeight, setBbkWeight] = useState('1');
   const [bbkPrice, setBbkPrice]   = useState<number | null>(null);
+  const [bbkService, setBbkService] = useState<BbkService>('standard');
+  const [bbkSched, setBbkSched]   = useState('');   // "YYYY-MM-DDTHH:mm"
+  // Ödeme şekli — BİLİNÇLİ olarak varsayılansız: para hareketi doğurur ve fiyata girer.
+  const [bbkPayment, setBbkPayment] = useState<'cash' | 'bank_card' | null>(null);
+  const [bbkCards, setBbkCards]   = useState<BbkCard[]>([]);
+  const [bbkCardId, setBbkCardId] = useState<number | null>(null);
+  const [bbkCardsLoading, setBbkCardsLoading] = useState(false);
+  const [bbkContent, setBbkContent] = useState(BBK_CONTENT_TAGS[0]);
+  const [bbkInsurance, setBbkInsurance] = useState('');
+  const [bbkPromo, setBbkPromo]   = useState('');
+  const [bbkBuildingNo, setBbkBuildingNo] = useState('');
+  const [bbkFloor, setBbkFloor]   = useState('');
+  const [bbkApartment, setBbkApartment] = useState('');
+  const [bbkIntercom, setBbkIntercom] = useState('');
+  const [bbkLoaders, setBbkLoaders] = useState(false);
+  const [bbkNotify, setBbkNotify] = useState(true);
+  const [bbkMoreOpen, setBbkMoreOpen] = useState(false);
   // Shipink — yapılandırılmış adres (state=İL, city=İLÇE) ve paket ölçüsü ister.
   const [shpState, setShpState]   = useState('');
   const [shpCity, setShpCity]     = useState('');
@@ -170,6 +214,10 @@ export function NewShipmentModal({
     setDirection('lab_to_other'); setPartyName(''); setAddress(''); setAddrSel(null); setAddrSilent(null);
     setPhone(''); setNotes(''); setFee(''); setCourierId(null);
     setCarrier('internal'); setBbkPrice(null); setBbkWeight('1');
+    setBbkService('standard'); setBbkSched(''); setBbkPayment(null); setBbkCards([]); setBbkCardId(null);
+    setBbkContent(BBK_CONTENT_TAGS[0]); setBbkInsurance(''); setBbkPromo('');
+    setBbkBuildingNo(''); setBbkFloor(''); setBbkApartment(''); setBbkIntercom('');
+    setBbkLoaders(false); setBbkNotify(true); setBbkMoreOpen(false);
     setShpState(''); setShpCity(''); setShpZip(''); setShpEmail(''); setShpTaxId(''); setShpRates([]); setShpService(null);
     setErr(null);
   }
@@ -238,16 +286,65 @@ export function NewShipmentModal({
     return true;
   }
 
+  /** BanaBiKurye zorunlu alanları — fiyat sorgusundan ve çağrıdan ÖNCE. */
+  function bbkGuard(): boolean {
+    if (!guard()) return false;
+    if (mode === 'free' && !phone.trim()) { setErr(autoT('BanaBiKurye için alıcı telefonu zorunlu.')); return false; }
+    if (!(Number(bbkWeight.replace(',', '.')) > 0)) { setErr(autoT('Ağırlık girin.')); return false; }
+    if (bbkService === 'scheduled' && !trIso(bbkSched)) { setErr(autoT('İleri zamanlı için tarih-saat seçin.')); return false; }
+    if (bbkPayment == null) { setErr(autoT('Ödeme şeklini seçin (nakit veya banka kartı).')); return false; }
+    if (bbkPayment === 'bank_card' && bbkCardId == null) { setErr(autoT('Banka kartı seçin.')); return false; }
+    return true;
+  }
+
+  /** BanaBiKurye'ye giden seçenekler — fiyat ve çağrı AYNI gövdeyi kullanır. */
+  function bbkOptions() {
+    const opts: Record<string, any> = {
+      service_type: bbkService === 'scheduled' ? 'standard' : bbkService,
+      total_weight_kg: Number(bbkWeight.replace(',', '.')) || 1,
+      content_note: bbkContent || undefined,
+      notify_recipient: bbkNotify,
+    };
+    const ins = Number(bbkInsurance.replace(',', '.'));
+    if (bbkInsurance.trim() && isFinite(ins) && ins > 0) opts.insurance_amount = ins;
+    if (bbkPromo.trim()) opts.promo_code = bbkPromo.trim();
+    if (bbkService === 'scheduled') {
+      const start = trIso(bbkSched);
+      if (start) { opts.required_start_datetime = start; opts.required_finish_datetime = trIso(bbkSched, 2); }
+    }
+    if (bbkBuildingNo.trim()) opts.dest_building_no = bbkBuildingNo.trim();
+    if (bbkFloor.trim())      opts.dest_floor = bbkFloor.trim();
+    if (bbkApartment.trim())  opts.dest_apartment = bbkApartment.trim();
+    if (bbkIntercom.trim())   opts.dest_intercom = bbkIntercom.trim();
+    if (bbkLoaders) opts.loaders_count = 1;
+    if (bbkPayment === 'bank_card') {
+      opts.payment_method = 'bank_card';
+      if (bbkCardId != null) opts.bank_card_id = bbkCardId;
+    }
+    return opts;
+  }
+
+  /** BanaBiKurye hesabının kayıtlı banka kartları (banka kartı ödemesi için). */
+  async function bbkLoadCards() {
+    setBbkCardsLoading(true);
+    try {
+      const { data } = await supabase.functions.invoke('banabikurye-dispatch', { body: { action: 'bank_cards' } });
+      const cards: BbkCard[] = Array.isArray((data as any)?.cards) ? (data as any).cards : [];
+      setBbkCards(cards);
+      if (cards.length) setBbkCardId(prev => prev ?? cards[0].id);
+    } catch { /* liste boş kalır — kullanıcı "kayıtlı kart yok" görür */ }
+    setBbkCardsLoading(false);
+  }
+
   /** BanaBiKurye — fiyat hesapla (kurye ÇAĞIRMAZ, ücretsiz). */
   async function bbkCalculate() {
-    if (!guard()) return;
+    if (!bbkGuard()) return;
     setBusy(true); setErr(null);
     const { data, error } = await supabase.functions.invoke('banabikurye-dispatch', {
       body: {
         action: 'calculate', direction: apiDirection(),
         notes: notes.trim() || undefined,
-        total_weight_kg: Number(bbkWeight) || 1,
-        ...destBody(),
+        ...destBody(), ...bbkOptions(),
       },
     });
     setBusy(false);
@@ -258,14 +355,13 @@ export function NewShipmentModal({
 
   /** BanaBiKurye — kuryeyi ÇAĞIRIR ve teslimat kaydını açar. */
   async function bbkCreate() {
-    if (!guard()) return;
+    if (!bbkGuard()) return;
     setBusy(true); setErr(null);
     const { data, error } = await supabase.functions.invoke('banabikurye-dispatch', {
       body: {
         action: 'create', direction: apiDirection(),
         notes: notes.trim() || undefined,
-        total_weight_kg: Number(bbkWeight) || 1,
-        ...destBody(),
+        ...destBody(), ...bbkOptions(),
       },
     });
     const d = data as any;
@@ -446,20 +542,27 @@ export function NewShipmentModal({
         <View style={{ width: '100%', maxWidth: 480, maxHeight: '88%', borderRadius: 22,
                        backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline, overflow: 'hidden' }}>
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8,
-                         paddingHorizontal: 16, paddingVertical: 13,
-                         borderBottomWidth: 1, borderBottomColor: T.hairline }}>
-            <Truck size={16} color={accent} strokeWidth={1.8} />
-            <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: T.ink }}>
-              {autoT('Yeni gönderi')}
-            </Text>
-            <Pressable onPress={onClose} hitSlop={8}
-              style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : undefined}>
-              <X size={16} color={T.ink3} strokeWidth={2} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10,
+                         paddingHorizontal: 18, paddingTop: 16, paddingBottom: 12 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ fontSize: 18, fontWeight: '600', color: T.ink, letterSpacing: -0.3 }}>
+                {autoT('Yeni gönderi')}
+              </Text>
+              {mode === 'order' && orderSel ? (
+                <Text style={{ fontSize: 12, color: T.ink3, marginTop: 1 }} numberOfLines={1}>
+                  #{orderSel.order_number ?? '—'}{orderSel.patient_name ? `  ·  ${orderSel.patient_name}` : ''}
+                </Text>
+              ) : null}
+            </View>
+            <Pressable onPress={onClose} hitSlop={8} accessibilityRole="button" accessibilityLabel={autoT('Kapat')}
+              style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center',
+                       backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.05)',
+                       ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+              <X size={15} color={T.ink2} strokeWidth={2.2} />
             </Pressable>
           </View>
 
-          <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }} keyboardShouldPersistTaps="handled">
+          <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 2, paddingBottom: 16, gap: 14 }} keyboardShouldPersistTaps="handled">
             {/* Mod — siparişe bağlı mı, bağımsız mı */}
             <View style={{ flexDirection: 'row', gap: 6, padding: 4, borderRadius: 999,
                            backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.04)' }}>
@@ -627,44 +730,241 @@ export function NewShipmentModal({
             </View>
             )}
 
-            {/* Taşıyıcı */}
+            {/* Taşıyıcı — logolu kutular. Marka logoları açık zemin için çizilmiş; koyu temada da
+                okunsun diye logo beyaz rozette durur (marka yüzeyi, iki temada aynı). */}
             <View>
               <Text style={label}>{autoT('Taşıyıcı')}</Text>
-              <View style={{ flexDirection: 'row', gap: 6 }}>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
                 {([
-                  { v: 'internal' as const, t: 'Kendi kuryemiz' },
-                  { v: 'bbk' as const,      t: 'BanaBiKurye' },
-                  { v: 'shipink' as const,  t: 'Kargo' },
-                ]).map(({ v, t }) => {
+                  { v: 'internal' as const, name: autoT('Kendi kuryemiz'), sub: autoT('Lab kuryesi'),     logo: null },
+                  { v: 'bbk' as const,      name: 'BanaBiKurye',           sub: autoT('Aynı gün kurye'),  logo: PROVIDER_LOGOS.bbk },
+                  { v: 'shipink' as const,  name: 'Shipink',               sub: autoT('Kargo firmaları'), logo: PROVIDER_LOGOS.shipink },
+                ]).map(({ v, name, sub, logo }) => {
                   const on = carrier === v;
                   return (
-                    <Pressable key={v} onPress={() => { setCarrier(v); setErr(null); setBbkPrice(null); setShpRates([]); }}
-                      style={{ flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 999, borderWidth: 1,
-                               borderColor: on ? accent : T.hairline,
-                               backgroundColor: on ? `${accent}1A` : 'transparent',
+                    <Pressable key={v}
+                      onPress={() => { setCarrier(v); setErr(null); setBbkPrice(null); setShpRates([]); }}
+                      accessibilityRole="button" accessibilityLabel={name} accessibilityState={{ selected: on }}
+                      style={{ flex: 1, minWidth: 0, paddingHorizontal: 9, paddingTop: 10, paddingBottom: 9, borderRadius: 16,
+                               borderWidth: 1.5, borderColor: on ? accent : 'transparent',
+                               backgroundColor: on ? `${accent}12` : (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(15,23,42,0.04)'),
                                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-                      <Text style={{ fontSize: 12, fontWeight: on ? '700' : '500', color: on ? accent : T.ink2 }}>
-                        {autoT(t)}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', height: 26 }}>
+                        {logo ? (
+                          <View style={{ height: 26, paddingHorizontal: 6, borderRadius: 8, backgroundColor: '#FFFFFF',
+                                         alignItems: 'center', justifyContent: 'center' }}>
+                            <CarrierLogo url={logo} width={58} height={16} />
+                          </View>
+                        ) : (
+                          <View style={{ width: 26, height: 26, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
+                                         backgroundColor: on ? accent : (isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.08)') }}>
+                            <Truck size={15} color={on ? '#FFFFFF' : T.ink2} strokeWidth={1.9} />
+                          </View>
+                        )}
+                      </View>
+                      {/* Logo adı zaten yazıyor → altında yalnız ne olduğu; logosuz kutuda ad. 2 satıra
+                          kadar sarar: dar telefonda "Kendi kuryemiz" tek satıra sığmıyor, kesilmesin. */}
+                      <Text style={{ fontSize: 11.5, lineHeight: 14, fontWeight: on ? '600' : '500', color: on ? T.ink : T.ink2,
+                                     marginTop: 8, minHeight: 28 }} numberOfLines={2}>
+                        {logo ? sub : name}
                       </Text>
+                      {/* Seçim işareti köşede, logonun üstüne binmeden */}
+                      {on ? (
+                        <View pointerEvents="none" style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: 10,
+                                       backgroundColor: accent, borderWidth: 2, borderColor: T.card,
+                                       alignItems: 'center', justifyContent: 'center' }}>
+                          <Check size={10} color="#FFFFFF" strokeWidth={3} />
+                        </View>
+                      ) : null}
                     </Pressable>
                   );
                 })}
               </View>
             </View>
 
-            {/* BanaBiKurye — araç tipi ve hizmet tipi sunucuda varsayılı (motor/standart) */}
-            {carrier === 'bbk' && (
-              <View>
-                <Text style={label}>{autoT('Ağırlık (kg)')}</Text>
-                <TextInput value={bbkWeight} onChangeText={(v) => { setBbkWeight(v); invalidateQuote(); }}
-                  style={inputStyle} keyboardType="decimal-pad" placeholderTextColor={T.ink3} />
-                {bbkPrice != null && (
-                  <Text style={{ fontSize: 12.5, color: T.ink, marginTop: 8, fontWeight: '700' }}>
-                    {autoT('Tahmini ücret')}: ₺{bbkPrice.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </Text>
-                )}
-              </View>
-            )}
+            {/* BanaBiKurye — sipariş içi "Kurye çağır" ile aynı alanlar. Araç: motor (sunucu varsayılanı). */}
+            {carrier === 'bbk' && (() => {
+              const soft = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(15,23,42,0.04)';
+              const segOn = isDark ? 'rgba(255,255,255,0.14)' : '#FFFFFF';
+              const danger = isDark ? '#F87171' : '#D94B4B';
+              const web = Platform.OS === 'web' ? { cursor: 'pointer' } as any : {};
+              const rowBase = { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, minHeight: 44, paddingHorizontal: 12 };
+              const sep = { borderTopWidth: 1, borderTopColor: T.hairline };
+              const chip = (on: boolean) => ({
+                paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999,
+                backgroundColor: on ? accent : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)'), ...web,
+              });
+              const chipText = (on: boolean) => ({ fontSize: 12, fontWeight: on ? '600' as const : '500' as const, color: on ? '#FFFFFF' : T.ink2 });
+              const bare = { fontSize: 14, color: T.ink, paddingVertical: 0, textAlign: 'right' as const,
+                             ...(Platform.OS === 'web' ? { outlineWidth: 0 } as any : {}) };
+              return (
+                <View style={{ gap: 14 }}>
+                  {/* Hizmet — bölümlü denetim */}
+                  <View>
+                    <Text style={label}>{autoT('Hizmet tipi')}</Text>
+                    <View style={{ flexDirection: 'row', padding: 3, borderRadius: 12, backgroundColor: soft }}>
+                      {BBK_SERVICES.map(sv => {
+                        const on = bbkService === sv.id;
+                        return (
+                          <Pressable key={sv.id} onPress={() => { setBbkService(sv.id); invalidateQuote(); }}
+                            style={{ flex: 1, alignItems: 'center', paddingVertical: 7, borderRadius: 9,
+                                     backgroundColor: on ? segOn : 'transparent', ...web }}>
+                            <Text style={{ fontSize: 12.5, fontWeight: on ? '600' : '500', color: on ? T.ink : T.ink3 }} numberOfLines={1}>
+                              {autoT(sv.label)}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                    {bbkService === 'scheduled' && (
+                      <View style={{ marginTop: 8 }}>
+                        {Platform.OS === 'web'
+                          ? React.createElement('input', {
+                              type: 'datetime-local',
+                              value: bbkSched,
+                              'aria-label': autoT('Teslim zamanı'),
+                              onChange: (e: any) => { setBbkSched(e.target.value); invalidateQuote(); },
+                              style: {
+                                border: 'none', borderRadius: 12, padding: '11px 12px', fontSize: 14,
+                                outline: 'none', fontFamily: 'inherit', color: T.ink,
+                                backgroundColor: soft, colorScheme: isDark ? 'dark' : 'light',
+                              },
+                            })
+                          : (
+                            <TextInput value={bbkSched} onChangeText={(v) => { setBbkSched(v); invalidateQuote(); }}
+                              style={inputStyle} placeholder="2026-07-24T15:30" placeholderTextColor={T.ink3} />
+                          )}
+                        <Text style={{ fontSize: 11, color: T.ink3, marginTop: 5 }}>
+                          {autoT('Kurye bu saatten itibaren ~2 saatlik pencerede teslim eder.')}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Ödeme şekli — ZORUNLU, varsayılansız, katlanmaz */}
+                  <View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={label}>{autoT('Ödeme şekli')}</Text>
+                      {bbkPayment == null ? (
+                        <Text style={{ fontSize: 10.5, fontWeight: '600', color: danger, marginBottom: 5 }}>{autoT('zorunlu')}</Text>
+                      ) : null}
+                    </View>
+                    <View style={{ borderRadius: 14, backgroundColor: soft, overflow: 'hidden',
+                                   borderWidth: 1, borderColor: bbkPayment == null ? `${danger}66` : 'transparent' }}>
+                      {([['cash', 'Nakit', Banknote], ['bank_card', 'Banka kartı', CreditCard]] as const).map(([val, lbl, Ico], i) => {
+                        const on = bbkPayment === val;
+                        return (
+                          <Pressable key={val}
+                            accessibilityRole="radio" accessibilityState={{ selected: on }}
+                            onPress={() => {
+                              setBbkPayment(val); invalidateQuote();
+                              if (val === 'bank_card' && bbkCards.length === 0) void bbkLoadCards();
+                            }}
+                            style={[rowBase, i > 0 ? sep : null, web]}>
+                            <Ico size={17} color={on ? accent : T.ink2} strokeWidth={1.8} />
+                            <Text style={{ flex: 1, fontSize: 14, fontWeight: on ? '600' : '400', color: T.ink }}>{autoT(lbl)}</Text>
+                            <View style={{ width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+                                           backgroundColor: on ? accent : 'transparent',
+                                           borderWidth: on ? 0 : 1.5, borderColor: T.ink3 }}>
+                              {on ? <Check size={12} color="#FFFFFF" strokeWidth={3} /> : null}
+                            </View>
+                          </Pressable>
+                        );
+                      })}
+                      {bbkPayment === 'bank_card' && (
+                        <View style={[{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 12, paddingVertical: 10 }, sep]}>
+                          {bbkCardsLoading ? (
+                            <Text style={{ fontSize: 12, color: T.ink3 }}>{autoT('Kartlar yükleniyor…')}</Text>
+                          ) : bbkCards.length === 0 ? (
+                            <Text style={{ fontSize: 12, color: T.ink3 }}>{autoT('Kayıtlı kart yok — BanaBiKurye hesabınızdan ekleyin.')}</Text>
+                          ) : bbkCards.map(c => {
+                            const on = bbkCardId === c.id;
+                            const txt = [c.brand, c.last4 ? '•••• ' + c.last4 : (c.name ?? `${autoT('Kart')} ${c.id}`)].filter(Boolean).join(' ');
+                            return (
+                              <Pressable key={c.id} onPress={() => { setBbkCardId(c.id); invalidateQuote(); }} style={chip(on)}>
+                                <Text style={chipText(on)}>{txt}</Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      )}
+                    </View>
+                    {bbkPayment == null && (
+                      <Text style={{ fontSize: 11, color: danger, marginTop: 6 }}>
+                        {autoT('Kurye ücretinin nasıl ödeneceğini seçin — fiyat buna göre hesaplanır.')}
+                      </Text>
+                    )}
+                  </View>
+
+                  {/* Paket — ağırlık, içerik ve isteğe bağlı ek ayrıntılar tek grupta */}
+                  <View>
+                    <Text style={label}>{autoT('Paket')}</Text>
+                    <View style={{ borderRadius: 14, backgroundColor: soft, overflow: 'hidden' }}>
+                      <View style={rowBase}>
+                        <Text style={{ flex: 1, fontSize: 14, color: T.ink2 }}>{autoT('Ağırlık (kg)')}</Text>
+                        <TextInput value={bbkWeight} onChangeText={(v) => { setBbkWeight(v); invalidateQuote(); }}
+                          style={[bare, { width: 72 }]} keyboardType="decimal-pad" placeholder="1" placeholderTextColor={T.ink3}
+                          accessibilityLabel={autoT('Ağırlık (kg)')} />
+                      </View>
+                      <View style={[{ paddingHorizontal: 12, paddingVertical: 10, gap: 8 }, sep]}>
+                        <Text style={{ fontSize: 14, color: T.ink2 }}>{autoT('İçerik')}</Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                          {BBK_CONTENT_TAGS.map(tag => {
+                            const on = bbkContent === tag;
+                            return (
+                              <Pressable key={tag} onPress={() => setBbkContent(tag)} style={chip(on)}>
+                                <Text style={chipText(on)}>{autoT(tag)}</Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      </View>
+                      <Pressable onPress={() => setBbkMoreOpen(o => !o)} accessibilityRole="button"
+                        accessibilityState={{ expanded: bbkMoreOpen }} style={[rowBase, sep, web]}>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={{ fontSize: 14, color: T.ink }}>{autoT('Ek ayrıntılar')}</Text>
+                          <Text style={{ fontSize: 11, color: T.ink3 }} numberOfLines={1}>
+                            {autoT('Kapı bilgisi, güvence, promosyon kodu')}
+                          </Text>
+                        </View>
+                        <View style={{ transform: [{ rotate: bbkMoreOpen ? '180deg' : '0deg' }] }}>
+                          <ChevronDown size={16} color={T.ink3} strokeWidth={2} />
+                        </View>
+                      </Pressable>
+                      {bbkMoreOpen && (
+                        <>
+                          {([
+                            ['Bina no', bbkBuildingNo, setBbkBuildingNo, false],
+                            ['Kat', bbkFloor, setBbkFloor, false],
+                            ['Daire', bbkApartment, setBbkApartment, false],
+                            ['Zil / interkom', bbkIntercom, setBbkIntercom, false],
+                            ['Güvence tutarı (₺)', bbkInsurance, setBbkInsurance, true],
+                            ['Promosyon kodu', bbkPromo, setBbkPromo, true],
+                          ] as const).map(([lbl, val, set, priced]) => (
+                            <View key={lbl} style={[rowBase, sep]}>
+                              <Text style={{ fontSize: 14, color: T.ink2 }}>{autoT(lbl)}</Text>
+                              <TextInput value={val} onChangeText={(v) => { set(v); if (priced) invalidateQuote(); }}
+                                style={[bare, { flex: 1 }]} placeholder="—" placeholderTextColor={T.ink3}
+                                keyboardType={lbl.startsWith('Güvence') ? 'decimal-pad' : 'default'}
+                                autoCapitalize={lbl === 'Promosyon kodu' ? 'characters' : 'none'}
+                                accessibilityLabel={autoT(lbl)} />
+                            </View>
+                          ))}
+                          <View style={[{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 12, paddingVertical: 10 }, sep]}>
+                            <Pressable onPress={() => { setBbkLoaders(v => !v); invalidateQuote(); }} style={chip(bbkLoaders)}>
+                              <Text style={chipText(bbkLoaders)}>{autoT('Yükleme yardımı')}</Text>
+                            </Pressable>
+                            <Pressable onPress={() => setBbkNotify(v => !v)} style={chip(bbkNotify)}>
+                              <Text style={chipText(bbkNotify)}>{autoT('SMS ile alıcıyı bilgilendir')}</Text>
+                            </Pressable>
+                          </View>
+                        </>
+                      )}
+                    </View>
+                  </View>
+                </View>
+              );
+            })()}
 
             {/* Kargo (Shipink) — yapılandırılmış adres + paket ölçüsü ister */}
             {carrier === 'shipink' && (
@@ -870,14 +1170,24 @@ export function NewShipmentModal({
             )}
           </ScrollView>
 
-          <View style={{ flexDirection: 'row', gap: 8, padding: 14,
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 18, paddingVertical: 12,
                          borderTopWidth: 1, borderTopColor: T.hairline }}>
             <Pressable onPress={onClose} style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999,
                          borderWidth: 1, borderColor: T.hairline,
                          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
               <Text style={{ fontSize: 13, color: T.ink2 }}>{autoT('Vazgeç')}</Text>
             </Pressable>
-            <View style={{ flex: 1 }} />
+            {/* Ücret, onu doğuran düğmenin yanında: fiyat alınınca burada belirir. */}
+            <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-end', paddingRight: 4 }}>
+              {carrier === 'bbk' && bbkPrice != null ? (
+                <>
+                  <Text style={{ fontSize: 10.5, color: T.ink3 }} numberOfLines={1}>{autoT('Tahmini ücret')}</Text>
+                  <Text style={{ fontSize: 16, fontWeight: '600', color: T.ink, letterSpacing: -0.2 }} numberOfLines={1}>
+                    ₺{bbkPrice.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
+                </>
+              ) : null}
+            </View>
             {/* Dış taşıyıcıda akış iki adımlı: önce ücretsiz fiyat sorgusu,
                 sonra gerçek çağrı. Buton hangi adımdaysa onu yazar. */}
             <Pressable
@@ -890,7 +1200,7 @@ export function NewShipmentModal({
               // Genişlik SABİT: gösterge koşullu eklenince buton büyüyordu; ayrıca
               // etiket ("Fiyat sorgula" → "İşleniyor…") kısalıp uzadıkça da oynuyordu.
               style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-                       paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999, minWidth: 176,
+                       paddingHorizontal: 16, paddingVertical: 11, borderRadius: 999, minWidth: 150,
                        backgroundColor: accent, opacity: busy ? 0.5 : 1,
                        ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
               {/* İkon yuvası hep aynı ölçüde — gösterge girip çıkarken buton oynamasın */}

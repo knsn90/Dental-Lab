@@ -80,10 +80,10 @@ export function AdminDangerSection({ orderId, order, isArchived, onArchived, onD
           padding: 20,
         }}
       >
-        {/* Header — eyebrow */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-          <ShieldAlert size={11} color="#D97706" strokeWidth={2} />
-          <Text style={{ fontSize: 11, fontWeight: '600', color: '#D97706', letterSpacing: 1.1, textTransform: 'uppercase' }}>
+        {/* Başlık — diğer kartlarla aynı ölçü (14/600, büyük harfsiz) */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 4 }}>
+          <ShieldAlert size={15} color={isDark ? '#E8B45E' : '#B45309'} strokeWidth={2} />
+          <Text style={{ fontSize: 14, fontWeight: '600', letterSpacing: -0.1, color: isDark ? T.ink : '#0A0A0A' }}>
             Yönetici işlemleri
           </Text>
         </View>
@@ -104,33 +104,33 @@ export function AdminDangerSection({ orderId, order, isArchived, onArchived, onD
           </View>
         )}
 
-        {/* List rows — sade satır deseni, ayırıcı çizgi ile */}
-        <View style={{ marginTop: 12, marginHorizontal: -8 }}>
-          {/* Düzenle */}
-          <ActionRow
+        {/* Günlük iki eylem üstte yan yana; riskli olanlar ayrı başlık altında.
+            Eskiden dördü aynı görünümde alt alta duruyordu: "Düzenle" ile "Kalıcı sil"
+            arasında yalnız renk farkı vardı, yanlış satıra dokunmak kolaydı (2026-11-14). */}
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+          <ActionTile
             icon={Pencil}
-            iconColor="#1F5689"
-            iconBg="rgba(31,86,137,0.10)"
             label="Düzenle"
             sub="Sipariş alanlarını güncelle"
             onPress={() => setEditOpen(true)}
-            isFirst
           />
-          {/* Başka siparişe bağla — devam / revizyon */}
-          <ActionRow
+          <ActionTile
             icon={Link2}
-            iconColor="#1F5689"
-            iconBg="rgba(31,86,137,0.10)"
             label="Başka siparişe bağla"
             sub="Devam ya da revizyon siparişi yap"
             onPress={() => setLinkOpen(true)}
           />
+        </View>
+
+        <Text style={{ fontSize: 12, fontWeight: '500', color: isDark ? T.ink3 : '#8A94A6', marginTop: 16, marginBottom: 2 }}>
+          Dikkat gerektiren
+        </Text>
+        <View style={{ marginHorizontal: -8 }}>
           {/* Pasife al / Geri yükle */}
           {!isArchived ? (
             <ActionRow
               icon={Archive}
               iconColor="#92400E"
-              iconBg="rgba(217,119,6,0.10)"
               label="Pasife al"
               sub="Listelerden gizle, geri alınabilir"
               onPress={() => setConfirmType('archive')}
@@ -139,21 +139,18 @@ export function AdminDangerSection({ orderId, order, isArchived, onArchived, onD
             <ActionRow
               icon={RotateCcw}
               iconColor="#1F6B47"
-              iconBg="rgba(31,107,71,0.10)"
               label="Geri yükle"
               sub="Aktif listeye geri al"
               onPress={() => setConfirmType('restore')}
             />
           )}
-          {/* Kalıcı sil */}
+          {/* Kalıcı sil — en altta, kırmızı. "CASCADE" teknik terimi yerine ne olacağı yazar. */}
           <ActionRow
             icon={Trash2}
             iconColor="#9C2E2E"
-            iconBg="rgba(156,46,46,0.10)"
             label="Kalıcı sil"
-            sub="Geri alınamaz · CASCADE"
+            sub="Geri alınamaz; bağlı tüm kayıtlar da silinir"
             onPress={() => setConfirmType('delete')}
-            isLast
             destructive
           />
         </View>
@@ -202,14 +199,35 @@ export function AdminDangerSection({ orderId, order, isArchived, onArchived, onD
   );
 }
 
-// ─── ActionRow — sade list-row pattern ──────────────────────────────────────
+// ─── ActionTile — günlük eylem kutusu (yan yana iki tane) ───────────────────
+function ActionTile({ icon: Icon, label, sub, onPress }: { icon: any; label: string; sub?: string; onPress: () => void }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      /* Object style ZORUNLU: fonksiyon-stilli Pressable native'de zemini düşürüyor. */
+      style={{
+        flex: 1, minWidth: 0, borderRadius: 14, padding: 12,
+        backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F5F8FC',
+        ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+      }}
+    >
+      <Icon size={18} color={isDark ? '#93C5FD' : '#1F5689'} strokeWidth={1.8} />
+      <Text style={{ fontSize: 14, fontWeight: '600', color: isDark ? T.ink : '#0A0A0A', marginTop: 8 }} numberOfLines={2}>{label}</Text>
+      {sub ? <Text style={{ fontSize: 12, lineHeight: 16, color: isDark ? T.ink3 : '#8A94A6', marginTop: 2 }} numberOfLines={2}>{sub}</Text> : null}
+    </Pressable>
+  );
+}
+
+// ─── ActionRow — riskli eylem satırı (ikon kutusuz, çizgisiz) ───────────────
 function ActionRow({
-  icon: Icon, iconColor, iconBg, label, sub, onPress, isFirst, isLast, destructive,
+  icon: Icon, iconColor, label, sub, onPress, destructive,
 }: {
-  icon: any; iconColor: string; iconBg: string;
+  icon: any; iconColor: string;
   label: string; sub?: string;
   onPress: () => void;
-  isFirst?: boolean; isLast?: boolean;
   destructive?: boolean;
 }) {
   const T = useMobileTokens();
@@ -219,27 +237,26 @@ function ActionRow({
   return (
     <Pressable
       onPress={onPress}
+      accessibilityRole="button"
       style={({ hovered }: any) => ({
         flexDirection: 'row', alignItems: 'center', gap: 12,
-        paddingVertical: 11, paddingHorizontal: 8, borderRadius: 12,
+        paddingVertical: 10, paddingHorizontal: 8, borderRadius: 12,
         backgroundColor: hovered
-          ? (destructive ? (isDark ? 'rgba(252,165,165,0.08)' : 'rgba(156,46,46,0.04)') : (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)'))
+          ? (destructive ? (isDark ? 'rgba(252,165,165,0.08)' : 'rgba(156,46,46,0.05)') : (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)'))
           : 'transparent',
-        borderTopWidth: !isFirst ? 1 : 0,
-        borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
         ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'background-color 0.15s' } as any : {}),
       })}
     >
-      <View style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: iconBg }}>
-        <Icon size={13} color={icColor} strokeWidth={1.8} />
+      <View style={{ width: 22, alignItems: 'center' }}>
+        <Icon size={18} color={icColor} strokeWidth={1.8} />
       </View>
-      <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 13, fontWeight: '600', color: labelColor }}>{label}</Text>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={{ fontSize: 14, fontWeight: '600', color: labelColor }}>{label}</Text>
         {sub ? (
-          <Text style={{ fontSize: 11, color: isDark ? T.ink3 : '#9A9A9A', marginTop: 1 }}>{sub}</Text>
+          <Text style={{ fontSize: 12, lineHeight: 16, color: isDark ? T.ink3 : '#8A94A6', marginTop: 1 }} numberOfLines={2}>{sub}</Text>
         ) : null}
       </View>
-      {isRTL() ? <ChevronLeft size={14} color={isDark ? 'rgba(255,255,255,0.30)' : '#CCC'} strokeWidth={1.6} /> : <ChevronRight size={14} color={isDark ? 'rgba(255,255,255,0.30)' : '#CCC'} strokeWidth={1.6} />}
+      {isRTL() ? <ChevronLeft size={16} color={isDark ? 'rgba(255,255,255,0.30)' : '#B9C4D6'} strokeWidth={1.8} /> : <ChevronRight size={16} color={isDark ? 'rgba(255,255,255,0.30)' : '#B9C4D6'} strokeWidth={1.8} />}
     </Pressable>
   );
 }

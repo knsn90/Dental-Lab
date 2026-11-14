@@ -4,7 +4,7 @@
 // OrderDetailScreenV2 lazyRoute ile yuklendiginden ona statik import YASAK
 // (#130 unknown-module cokmesi) -> bilesen kendi modulunde yasamali.
 import React, { useState, useMemo, useRef } from "react";
-import { View, Text, Pressable, Platform, Image, Modal, ActivityIndicator, ScrollView } from "react-native";
+import { View, Text, Pressable, Platform, Image, Modal, ActivityIndicator, ScrollView, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Layers, ChevronRight, ChevronLeft, ChevronDown, Download, Eye, Image as ImageIcon, File as FileIcon, PenLine, MessageCircle, ScanLine } from "../../../core/ui/icons";
 import { localeTag, isRTL } from "../../../core/i18n";
@@ -90,6 +90,9 @@ const chatThumbDot = {
   backgroundColor: 'rgba(2,132,199,0.88)',
 };
 
+/** Kategori başına görünen satır; fazlası "N dosya daha göster" ile açılır */
+const ROW_LIMIT = 5;
+
 const FILE_CAT_META: { key: FileCat; label: string }[] = [
   { key: 'scan',  label: 'Taramalar' },
   { key: 'photo', label: 'Fotoğraflar' },
@@ -117,6 +120,13 @@ export function FilesList({
   const scanTint = isDark ? SCAN_TINT_DARK : SCAN_TINT_LIGHT;
   // Kategori aç/kapa durumu (varsayılan: KAPALI — kullanıcı isterse açar)
   const [openCats, setOpenCats] = useState<Record<string, boolean>>({});
+  // Uzun listede ilk ROW_LIMIT satır görünür; "N dosya daha göster" ile açılır (kategori başına)
+  const [showAllCats, setShowAllCats] = useState<Record<string, boolean>>({});
+  // Web'de üstüne gelinen satır (hafif zemin). Dokunmatikte kullanılmaz.
+  const [hoverId, setHoverId] = useState<string | null>(null);
+  const { width: winW } = useWindowDimensions();
+  // Masaüstünde satır 32pt (fare), telefonda 40pt (parmak)
+  const rowH = Platform.OS === 'web' && winW >= 1024 ? 32 : 40;
   // 3D viewer state
   const [viewer3DFile, setViewer3DFile] = useState<{ id: string; name: string; url: string; format: 'stl'|'ply'|'obj'; textureUrl?: string|null } | null>(null);
   // Uygulama-içi görsel / HTML tasarım önizleme (yeni tab yerine popup) — dosya modalı ile aynı davranış
@@ -381,25 +391,49 @@ export function FilesList({
           const catColor = g.key === 'photo' ? '#10B981' : g.key === 'scan' ? '#3B82F6' : '#6B7280';
           return (
           <View key={g.key} style={{ marginBottom: 2 }}>
-            {/* Kategori başlığı — tıklayınca aç/kapa (varsayılan kapalı) */}
-            <Pressable
-              onPress={() => setOpenCats(s => ({ ...s, [g.key]: !s[g.key] }))}
-              hitSlop={4}
-              /* NOT: object style ZORUNLU — NativeWind v4'te fonksiyon-stilli
-                 Pressable native'de stili düşürüp satırı column'a çeviriyor;
-                 rozet tam-genişlik bar oluyordu (web'de sorun yok). */
-              style={{
-                flexDirection: 'row', alignItems: 'center', gap: 7,
-                paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8,
-                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-              }}
-            >
-              {isCollapsed ? <ChevronRight size={14} color="#64748B" strokeWidth={2} /> : <ChevronDown size={14} color="#64748B" strokeWidth={2} />}
-              <Text style={{ flex: 1, fontSize: 11, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase', color: isDark ? T.ink2 : "#475569" }}>{g.label}</Text>
-              <View style={{ minWidth: 20, height: 18, paddingHorizontal: 6, borderRadius: 9, backgroundColor: catColor + '1A', alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontSize: 10, fontWeight: '800', color: catColor }}>{g.files.length}</Text>
-              </View>
-            </Pressable>
+            {/* Kategori başlığı — normal yazım, sayı gri; tarama grubunda sağda
+                "Tümünü 3D aç" bağlantısı (eskiden listenin altında büyük ayrı bir düğmeydi;
+                liste uzadıkça aşağı kayıyordu). Başlık ve bağlantı AYRI Pressable:
+                iç içe düğme web'de geçersiz. */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 6 }}>
+              <Pressable
+                onPress={() => setOpenCats(st => ({ ...st, [g.key]: !st[g.key] }))}
+                hitSlop={4}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: !isCollapsed }}
+                /* NOT: object style ZORUNLU — NativeWind v4'te fonksiyon-stilli
+                   Pressable native'de stili düşürüp satırı column'a çeviriyor. */
+                style={{
+                  flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 6,
+                  paddingVertical: 8,
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                }}
+              >
+                {isCollapsed
+                  ? (isRTL() ? <ChevronLeft size={14} color={isDark ? T.ink3 : '#64748B'} strokeWidth={2} /> : <ChevronRight size={14} color={isDark ? T.ink3 : '#64748B'} strokeWidth={2} />)
+                  : <ChevronDown size={14} color={isDark ? T.ink3 : '#64748B'} strokeWidth={2} />}
+                <Text style={{ fontSize: 14, fontWeight: '600', letterSpacing: -0.1, color: isDark ? T.ink : '#0A0A0A' }} numberOfLines={1}>{g.label}</Text>
+                <Text style={{ fontSize: 12, color: isDark ? T.ink3 : '#8A94A6' }}>{g.files.length}</Text>
+              </Pressable>
+              {g.key === 'scan' && openAllCount >= 2 ? (
+                <Pressable
+                  onPress={openAll3D}
+                  disabled={extractingId === '__all3d__'}
+                  hitSlop={6}
+                  accessibilityRole="button"
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 6,
+                    opacity: extractingId === '__all3d__' ? 0.5 : 1,
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  }}
+                >
+                  {extractingId === '__all3d__'
+                    ? <ActivityIndicator size="small" color={isDark ? T.ink2 : accentColor} />
+                    : <Layers size={14} color={isDark ? (T.ink as string) : accentColor} strokeWidth={2} />}
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: isDark ? T.ink : accentColor }} numberOfLines={1}>{autoT('Tümünü 3D aç')}</Text>
+                </Pressable>
+              ) : null}
+            </View>
             {!isCollapsed && g.key === 'photo' && (() => {
               // İmzalı URL'i olan görseller — henüz gelmemiş olanlar atlanır,
               // boş kutu göstermek yerine geldiğinde kendiliğinden belirir.
@@ -511,135 +545,100 @@ export function FilesList({
                 </View>
               );
             })()}
-            {!isCollapsed && g.key !== 'photo' && g.files.map((f) => {
+            {!isCollapsed && g.key !== 'photo' && (showAllCats[g.key] ? g.files : g.files.slice(0, ROW_LIMIT)).map((f) => {
             const ext = (f.storage_path.split('.').pop() ?? '').toUpperCase().slice(0, 4);
             const isImage = /\.(jpe?g|png|webp|gif|bmp)$/i.test(f.storage_path);
-            // Tür ayrımı: STL/PLY/OBJ, ZIP, HTML ve PDF ayrı renk+ikon alır.
-            // Öncesinde görsel olmayan her şey aynı mavi dosya ikonuydu.
             const lowExt = ext.toLowerCase();
             const isMesh = ['stl', 'ply', 'obj', '3mf'].includes(lowExt);
             const isZip  = ['zip', 'rar', '7z', 'gz'].includes(lowExt);
             const isHtml = ['html', 'htm'].includes(lowExt);
             const isPdf  = lowExt === 'pdf';
-            const color = isImage ? '#10B981'
+            const rawName = f.caption ?? f.storage_path.split('/').pop() ?? '—';
+            // Ad sonundaki " · 10.11.2026 …" tarih eki kesilir: tarih zaten sağda yazıyor ve
+            // ek yüzünden asıl ad ("Üst Çene Taraması") kırpılıyordu. Tarih olmayan ek korunur.
+            const filename = rawName.replace(/\s+·\s+\d{1,2}[./]\d{1,2}[./]\d{2,4}.*$/, '').trim() || rawName;
+            // Nokta rengi: taramada ÇENE türü (üst mavi · alt yeşil · kapanış mor), diğerlerinde dosya türü
+            const lowName = rawName.toLocaleLowerCase('tr');
+            const color = /üst|ust|upper|maxil/.test(lowName) && (isMesh || isZip) ? '#378ADD'
+                        : /alt|lower|mandib/.test(lowName) && (isMesh || isZip) ? '#1D9E75'
+                        : /kapan|bite|occlu|okl[uü]z/.test(lowName) && (isMesh || isZip) ? '#7F77DD'
+                        : isImage ? '#10B981'
                         : isMesh ? '#3B82F6'
                         : isZip  ? '#D97706'
                         : isHtml ? '#8B5CF6'
                         : isPdf  ? '#DC2626'
                         : '#64748B';
-            const Icon = isImage ? ImageIcon : isMesh ? Layers : FileIcon;
-            const filename = f.caption ?? f.storage_path.split('/').pop() ?? '—';
-            const uploadedAt = f.created_at
-              ? new Date(f.created_at).toLocaleString(localeTag(), { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+            const shortDate = f.created_at
+              ? new Date(f.created_at).toLocaleDateString(localeTag(), { day: 'numeric', month: 'short' })
               : '';
+            const meta = [ext, f.tooth_number != null ? `${autoT('Diş')} ${f.tooth_number}` : null, shortDate].filter(Boolean).join(' · ');
+            const busy = extractingId === f.id;
             return (
-              <View
+              <Pressable
                 key={f.id}
+                onPress={() => openPreview(f)}
+                disabled={busy}
+                {...(Platform.OS === 'web' ? ({ onHoverIn: () => setHoverId(f.id), onHoverOut: () => setHoverId(h => (h === f.id ? null : h)) } as any) : {})}
+                accessibilityLabel={`${filename}, ${meta}`}
+                /* Satırın kendisi önizleme/3D açar (ayrı göz ikonu kalktı). Dış Pressable'a
+                   düğme rolü verilmez: içinde indirme düğmesi var, iç içe <button> geçersiz. */
                 style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 9,
-                  paddingHorizontal: 12, paddingVertical: 5, paddingStart: 28,
+                  flexDirection: 'row', alignItems: 'center', gap: 8,
+                  height: rowH, paddingHorizontal: 6, borderRadius: 8,
+                  backgroundColor: hoverId === f.id ? (isDark ? 'rgba(255,255,255,0.06)' : '#F1F5FA') : 'transparent',
+                  ...(Platform.OS === 'web' ? { cursor: busy ? 'wait' : 'pointer' } as any : {}),
                 }}
               >
-                <View
-                  style={{
-                    width: 22, height: 22, borderRadius: 6,
-                    alignItems: 'center', justifyContent: 'center',
-                    backgroundColor: color + '1A',
-                    borderWidth: 1, borderColor: color + '33',
-                  }}
-                >
-                  <Icon size={11} color={color} strokeWidth={1.8} />
+                <View style={{ width: 14, alignItems: 'center', justifyContent: 'center' }}>
+                  {busy
+                    ? <ActivityIndicator size="small" color={isDark ? (T.ink2 as string) : '#475569'} />
+                    : <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />}
                 </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <View style={{ flexDirection: 'row', alignItems: (f as any).__chat || (f as any).__scan ? 'center' : 'baseline', gap: 6 }}>
-                    {(f as any).__chat ? <MessageCircle size={12} color={chatTint} strokeWidth={2} /> : (f as any).__scan ? <ScanLine size={12} color={scanTint} strokeWidth={2} /> : null}
-                    <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '600', color: isDark ? T.ink : "#0A0A0A", flexShrink: 1 }}>
-                      {filename}
-                    </Text>
-                    <Text style={{ fontSize: 10, color: isDark ? T.ink3 : "#9A9A9A", flexShrink: 0 }} numberOfLines={1}>
-                      {ext}{f.tooth_number != null ? ` · Diş ${f.tooth_number}` : ''}
-                    </Text>
-                  </View>
-                  {uploadedAt ? (
-                    <Text style={{ fontSize: 9.5, color: isDark ? T.ink3 : "#B0B0B0", marginTop: 1 }} numberOfLines={1}>
-                      {(f as any).__chat ? 'Sohbetten' : (f as any).__scan ? 'Taramadan' : 'Eklendi'}: {uploadedAt}
-                    </Text>
-                  ) : null}
-                </View>
-                {/* Preview button — STL/PLY/OBJ ise 3D viewer, zip ise açıp 3D, diğerleri yeni tab */}
+                {(f as any).__chat ? <MessageCircle size={12} color={chatTint} strokeWidth={2} /> : (f as any).__scan ? <ScanLine size={12} color={scanTint} strokeWidth={2} /> : null}
+                <Text numberOfLines={1} style={{ flex: 1, minWidth: 0, fontSize: rowH >= 40 ? 14 : 13, fontWeight: '500', color: isDark ? T.ink : '#0A0A0A' }}>
+                  {filename}
+                </Text>
+                <Text numberOfLines={1} style={{ fontSize: 12, color: isDark ? T.ink3 : '#8A94A6', flexShrink: 0 }}>
+                  {meta}
+                </Text>
                 <Pressable
-                  onPress={() => openPreview(f)}
-                  disabled={extractingId === f.id}
+                  onPress={(e: any) => { e?.stopPropagation?.(); forceDownload(f); }}
                   hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${autoT('İndir')}: ${filename}`}
                   // @ts-ignore web tooltip
-                  title={isArchiveExt(f.storage_path) ? 'Zip aç ve 3D göster' : 'Önizle'}
+                  title={autoT('İndir')}
                   style={{
-                    width: 24, height: 24, borderRadius: 6,
-                    alignItems: 'center', justifyContent: 'center',
-                    ...(Platform.OS === 'web' && extractingId !== f.id ? { cursor: 'pointer' } as any : {}),
-                  }}
-                >
-                  {extractingId === f.id
-                    ? <ActivityIndicator size="small" color="#475569" />
-                    : <Eye size={12} color="#475569" strokeWidth={1.8} />}
-                </Pressable>
-                {/* Download button — zorla indirme */}
-                <Pressable
-                  onPress={() => forceDownload(f)}
-                  hitSlop={6}
-                  // @ts-ignore web tooltip
-                  title="İndir"
-                  style={{
-                    width: 24, height: 24, borderRadius: 6,
+                    width: rowH >= 40 ? 32 : 26, height: rowH >= 40 ? 32 : 26, borderRadius: 8,
                     alignItems: 'center', justifyContent: 'center',
                     ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                   }}
                 >
-                  <Download size={12} color="#475569" strokeWidth={1.8} />
+                  <Download size={rowH >= 40 ? 17 : 15} color={isDark ? (T.ink2 as string) : '#475569'} strokeWidth={1.8} />
                 </Pressable>
-              </View>
+              </Pressable>
             );
             })}
+            {!isCollapsed && g.key !== 'photo' && g.files.length > ROW_LIMIT ? (
+              <Pressable
+                onPress={() => setShowAllCats(st => ({ ...st, [g.key]: !st[g.key] }))}
+                hitSlop={4}
+                accessibilityRole="button"
+                style={{ alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 7, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '500', color: isDark ? T.ink2 : accentColor }}>
+                  {showAllCats[g.key] ? autoT('Daha az göster') : `${g.files.length - ROW_LIMIT} ${autoT('dosya daha göster')}`}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
           );
           })}
         </View>
       )}
-      {/* Tümünü 3D Aç + 3D Yüz Tarama — AYNI satır, ortalı. Yüz tarama yalnız
-          TrueDepth'li iPhone'da görünür (başka yerde null) → o zaman tek buton ortada. */}
+      {/* 3D Yüz Tarama — yalnız TrueDepth'li iPhone'da görünür (başka yerde null).
+          "Tümünü 3D aç" artık tarama grubunun başlığında. */}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: 10 }}>
-        {/* Multi-file "Tümünü 3D Aç" butonu — 2+ STL/PLY/OBJ varsa görünür (web + native).
-            Tüm taramaları tek sahnede katmanlar halinde açar (desktop paritesi). */}
-        {openAllCount >= 2 && (() => {
-          // Panel accent'li pill CTA (tasarım dili: radius 999, accent = panel primary,
-          // accent-tonlu yumuşak gölge). Ön-plan kontrast-farkında: lab safranında ink.
-          const fg = onAccent(accentColor);
-          return (
-            <Pressable
-              onPress={openAll3D}
-              disabled={extractingId === '__all3d__'}
-              android_ripple={{ color: alphaOf(fg, 0.12) }}
-              /* NOT: object style ZORUNLU — NativeWind v4'te fonksiyon-stilli Pressable
-                 native'de backgroundColor'ı düşürüyor (buton beyaz kalıyordu). */
-              style={{
-                flexDirection: 'row', alignItems: 'center', gap: 9,
-                height: 40, paddingHorizontal: 13, borderRadius: 999,
-                backgroundColor: accentColor, opacity: extractingId === '__all3d__' ? 0.6 : 1,
-                shadowColor: accentColor, shadowOpacity: 0.30, shadowRadius: 12, shadowOffset: { width: 0, height: 4 },
-                elevation: 3,
-                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-              }}
-            >
-              <Layers size={16} color={fg} strokeWidth={2.2} />
-              <Text style={{ fontSize: 13.5, fontWeight: '700', color: fg, letterSpacing: -0.2 }} numberOfLines={1}>
-                Tümünü 3D Aç
-              </Text>
-              <View style={{ minWidth: 20, height: 20, paddingHorizontal: 6, borderRadius: 10, backgroundColor: alphaOf(fg, 0.20), alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontSize: 11.5, fontWeight: '800', color: fg }}>{openAllCount}</Text>
-              </View>
-            </Pressable>
-          );
-        })()}
         <FaceScanButton
           workOrderId={workOrderId}
           accentColor={accentColor}
